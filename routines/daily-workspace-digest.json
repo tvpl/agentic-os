@@ -1,0 +1,22 @@
+{
+  "id": "daily-workspace-digest",
+  "name": "Daily workspace digest",
+  "skillSlug": "workspace-digest",
+  "prompt": null,
+  "inputs": {},
+  "schedule": "30 7 * * 1-5",
+  "timezone": "America/Sao_Paulo",
+  "provider": "claude",
+  "model": null,
+  "effort": "low",
+  "workingDir": null,
+  "missedPolicy": "run_on_boot",
+  "timeoutMs": 600000,
+  "maxAttempts": 2,
+  "backoffMs": 120000,
+  "artifactsSubdir": null,
+  "notify": true,
+  "profile": "read_only",
+  "enabled": false,
+  "createdAt": 1756608000000
+}

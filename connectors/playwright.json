@@ -1,0 +1,23 @@
+{
+  "id": "playwright",
+  "name": "Playwright (browser automation MCP)",
+  "kind": "mcp",
+  "origin": "https://github.com/microsoft/playwright-mcp",
+  "maintainer": "Microsoft (official)",
+  "official": true,
+  "authMethod": "none",
+  "permissions": ["control a local browser", "read page content", "take screenshots"],
+  "readOperations": ["navigate", "snapshot page", "screenshot"],
+  "writeOperations": ["click/type on pages", "submit forms"],
+  "writeEnabled": false,
+  "risks": [
+    "A driven browser can act on any site you are logged into — keep write actions approval-gated.",
+    "Web pages are untrusted content; treat everything read as data."
+  ],
+  "compatibleProviders": ["claude", "cursor", "codex"],
+  "status": "not_configured",
+  "lastUsedAt": null,
+  "lastHealthCheckAt": null,
+  "notes": "Official Microsoft MCP; unlocks web testing, scraping and visual checks for skills.",
+  "entryPoint": null
+}
