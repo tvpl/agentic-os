@@ -65,6 +65,38 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     }
   });
 
+  /**
+   * Open a file with the OS default application — explicit user action only.
+   * The executable is a fixed platform constant; the path is containment-checked.
+   */
+  app.post("/api/memory/open", async (req) => {
+    const { p } = z.object({ p: z.string() }).parse(req.body);
+    const roots = [
+      ...ctx.settings().indexedFolders.filter((f) => f.enabled).map((f) => f.path),
+      ctx.paths.home,
+    ];
+    let resolved: string;
+    try {
+      const { resolveInsideRoots } = await import("@mordomo/core");
+      resolved = resolveInsideRoots(roots, p);
+    } catch (err) {
+      throw Object.assign(new Error((err as Error).message), { statusCode: 403 });
+    }
+    const { spawn } = await import("node:child_process");
+    const [exe, args] =
+      process.platform === "darwin"
+        ? ["open", [resolved]]
+        : process.platform === "win32"
+          ? ["cmd", ["/c", "start", "", resolved]]
+          : ["xdg-open", [resolved]];
+    const child = spawn(exe, args, { detached: true, stdio: "ignore" });
+    child.on("error", () => {
+      /* opener missing (headless) — the UI already shows the path */
+    });
+    child.unref();
+    return { opened: resolved };
+  });
+
   app.post("/api/memory/routers", async () => {
     const result = generateRouters(ctx.db, ctx.paths, ctx.settings());
     return { written: result.written };
