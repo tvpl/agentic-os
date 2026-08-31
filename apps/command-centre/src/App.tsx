@@ -7,6 +7,7 @@ import {
   CalendarClock,
   ListTree,
   Plug,
+  Grid3x3,
   Settings as SettingsIcon,
 } from "lucide-react";
 import { api, type Meta } from "./api";
@@ -20,6 +21,7 @@ import Runs from "./views/Runs";
 import Connectors from "./views/Connectors";
 import Settings from "./views/Settings";
 import Setup from "./views/Setup";
+import PixelStudio from "./views/PixelStudio";
 
 export default function App() {
   const [meta, setMeta] = useState<Meta | null>(null);
@@ -103,6 +105,7 @@ function Shell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => void 
     { to: "/routines", icon: <CalendarClock aria-hidden />, label: t("nav.routines") },
     { to: "/runs", icon: <ListTree aria-hidden />, label: t("nav.runs") },
     { to: "/connectors", icon: <Plug aria-hidden />, label: t("nav.connectors") },
+    { to: "/pixel", icon: <Grid3x3 aria-hidden />, label: t("nav.pixel") },
     { to: "/settings", icon: <SettingsIcon aria-hidden />, label: t("nav.settings") },
   ];
   return (
@@ -137,6 +140,7 @@ function Shell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => void 
           <Route path="/runs" element={<Runs />} />
           <Route path="/runs/:id" element={<Runs />} />
           <Route path="/connectors" element={<Connectors />} />
+          <Route path="/pixel" element={<PixelStudio />} />
           <Route path="/settings" element={<Settings onMetaChanged={onMetaChanged} />} />
         </Routes>
       </main>

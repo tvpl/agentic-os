@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.2.0 — 2026-08-31
+
+Visual overhaul: the futuristic HUD Command Centre.
+
+- Design system 2.0: warm near-black ground, corner-bracketed panels, tracked
+  uppercase labels, glowing orange default accent (still user-configurable),
+  dot-grid texture, full reduced-motion support; light theme retuned.
+- Second Brain 2.0: full-screen animated canvas map — Force / Circle / Hex /
+  Rings layouts, Areas/Folders views, ring-spin + link-springs + node-size
+  controls, file-name toggle, clickable legend and area hubs (click to
+  filter), pixel-art ROUTER.MD core, search with `/` shortcut + FTS results,
+  hover tooltips, in-place preview drawer, zoom/pan; scales to thousands of
+  nodes via sprite caching (no per-node DOM).
+- Dashboard 2.0 "orbital command centre": particle core built from the real
+  index, orbital ring of recent artifacts + recently touched files with age
+  tags, skills deck with a model × effort matrix picker (persists per skill),
+  routines board (Fired/Next/Queued/Paused), live clock with UTC + routine
+  timezone and quarter-week dots, micro-apps panel.
+- Pixel Studio micro-app: 16/24/32 pixel editor with pencil/eraser/fill/
+  eyedropper, mirror-X, undo, animation frames with onion skin and fps
+  preview, export PNG / sprite sheet / SVG, save into artifacts through a
+  validated local API; registered in the connector registry.
+- New seed skill `pixel-icon` (pixel-art SVG icon sets with a contact-sheet
+  preview) with progressive-disclosure drawing rules.
+- Graph API cap raised to 4000 nodes; per-provider model listing endpoint.
+
 ## 0.1.0 — 2026-08-31
 
 Initial release of MordomoOS.

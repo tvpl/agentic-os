@@ -74,7 +74,7 @@ export const SettingsSchema = z.object({
   accentColor: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/)
-    .default("#3b82f6"),
+    .default("#f97316"),
   port: z.number().int().min(1024).max(65535).default(4777),
   bindAddress: z.string().default("127.0.0.1"),
   timezone: z.string().default("UTC"),

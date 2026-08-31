@@ -65,6 +65,12 @@ export interface Meta {
   version: string;
 }
 
+export interface ModelishOption {
+  id: string;
+  label: string;
+  recommendedFor?: string;
+}
+
 export interface ProviderSnapshot {
   id: ProviderId;
   enabled: boolean;

@@ -66,9 +66,14 @@ describe("seed data validity (repo source of truth)", () => {
       expect.arrayContaining(["email-gmail", "calendar-google", "playwright"]),
     );
     for (const c of connectors) {
-      expect(c.status).toBe("not_configured");
       expect(c.writeEnabled).toBe(false);
-      expect(c.risks.length).toBeGreaterThan(0);
+      if (c.kind === "micro-app" && c.official) {
+        // Built-in micro-apps (e.g. Pixel Studio) ship ready to use.
+        expect(["healthy", "configured"]).toContain(c.status);
+      } else {
+        expect(c.status).toBe("not_configured");
+        expect(c.risks.length).toBeGreaterThan(0);
+      }
     }
   });
 });

@@ -20,6 +20,7 @@ const routes = [
   ["routines", "/#/routines"],
   ["runs", "/#/runs"],
   ["connectors", "/#/connectors"],
+  ["pixel", "/#/pixel"],
   ["settings", "/#/settings"],
 ];
 const widths = [

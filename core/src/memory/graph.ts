@@ -40,7 +40,7 @@ export function buildGraph(
   db: Db,
   opts: { area?: string; dir?: string; query?: string; maxNodes?: number } = {},
 ): GraphData {
-  const maxNodes = Math.min(opts.maxNodes ?? 400, 1500);
+  const maxNodes = Math.min(opts.maxNodes ?? 400, 4000);
   const clauses: string[] = [];
   const params: unknown[] = [];
   if (opts.area) {

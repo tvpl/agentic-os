@@ -86,6 +86,11 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
     return { detection, auth, models };
   });
 
+  app.get("/api/providers/:id/models", async (req) => {
+    const { id } = z.object({ id: ProviderId }).parse(req.params);
+    return ctx.adapters[id].listModels();
+  });
+
   app.put("/api/providers/default", async (req) => {
     const { provider } = z.object({ provider: ProviderId }).parse(req.body);
     const s = ctx.settings();

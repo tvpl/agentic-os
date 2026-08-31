@@ -44,7 +44,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
         area: z.string().optional(),
         dir: z.string().optional(),
         q: z.string().optional(),
-        maxNodes: z.coerce.number().int().min(10).max(1500).optional(),
+        maxNodes: z.coerce.number().int().min(10).max(4000).optional(),
       })
       .parse(req.query);
     return buildGraph(ctx.db, { area: q.area, dir: q.dir, query: q.q, maxNodes: q.maxNodes });

@@ -10,6 +10,7 @@ import { registerRunRoutes } from "./routes/runs.js";
 import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerRoutineRoutes } from "./routes/routines.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
+import { registerMicroappRoutes } from "./routes/microapps.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -65,6 +66,7 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   registerMemoryRoutes(app, ctx);
   registerRoutineRoutes(app, ctx);
   registerConnectorRoutes(app, ctx);
+  registerMicroappRoutes(app, ctx);
 
   // ---- Command Centre static UI --------------------------------------------
   const uiDist = path.resolve(here, "..", "..", "command-centre", "dist");
