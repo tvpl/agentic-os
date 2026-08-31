@@ -80,7 +80,10 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
       // origins cannot read it (CORS) nor send it (custom header + no CORS).
       const html = fs
         .readFileSync(indexFile, "utf8")
-        .replace('<meta name="mordomo-token" content="">', `<meta name="mordomo-token" content="${token}">`);
+        .replace(
+          /<meta name="mordomo-token" content=""\s*\/?>/,
+          `<meta name="mordomo-token" content="${token}" />`,
+        );
       reply.type("text/html; charset=utf-8").send(html);
     };
     app.get("/", serveIndex);

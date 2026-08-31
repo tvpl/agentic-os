@@ -26,3 +26,9 @@ Thumbs.db
 tests/.tmp/
 coverage/
 playwright-report/
+
+# Machine-local generated state
+config/sync-manifest.json
+logs/*.log
+memory/ROUTER.md
+memory/areas/

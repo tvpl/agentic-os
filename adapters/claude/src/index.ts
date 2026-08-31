@@ -116,12 +116,16 @@ export class ClaudeAdapter implements AgentAdapter {
     args.push("--add-dir", run.artifactsDir);
     if (run.mode === "read_only") {
       // Headless default mode auto-denies permission prompts; writes are only
-      // pre-approved inside the artifacts directory.
+      // pre-approved inside the artifacts directory. Claude Code permission
+      // rules address absolute paths with a leading double slash.
+      const artifactsRule = run.artifactsDir.startsWith("/")
+        ? `/${run.artifactsDir}`
+        : run.artifactsDir;
       args.push(
         "--permission-mode",
         "default",
         "--allowedTools",
-        `Write(${run.artifactsDir}/**),Edit(${run.artifactsDir}/**)`,
+        `Write(${artifactsRule}/**),Edit(${artifactsRule}/**)`,
         "--disallowedTools",
         "Bash(rm:*),Bash(sudo:*)",
       );

@@ -1,0 +1,108 @@
+# MordomoOS — User Manual
+
+## 1. First contact
+
+After `scripts/setup.sh` (or `npm install && npm run build && npx mordomo setup`):
+
+```bash
+mordomo start        # → http://127.0.0.1:4777
+```
+
+The Command Centre opens on the **Dashboard**: active provider + quick
+Claude/Cursor/Codex switcher, favorite skills with Run buttons, routines and
+next executions, recent artifacts, in-progress runs, failures needing
+attention, and 7-day metrics. The Second Brain card is the centrepiece.
+
+Language (English/Português) and theme (dark/light/system) live in
+**Settings → Identity**.
+
+## 2. Skills (your SOPs as commands)
+
+- **Run**: Dashboard button, or Skills → open → choose provider/model/effort +
+  fill inputs → Run. Terminal: `mordomo run <slug> --provider codex --input focus=Finanças`.
+- **Create**: Skills → New skill. Rule of thumb from ARMS: *if you prompted the
+  same task twice, make it a skill*; keep SKILL.md under 60 lines.
+- **Skill trees**: put long references/templates in the skill's `resources/`
+  folder and let SKILL.md act as a router. Skills at ≥150 body lines are
+  flagged **thick** in the UI and by `mordomo doctor`.
+- **Export**: Skills → Export to providers (or `mordomo sync <dir> --apply`).
+  One canonical skill becomes `.claude/skills/…`, `.cursor/commands/…`,
+  `.agents/skills/…` plus CLAUDE.md/AGENTS.md. Files you edited by hand are
+  flagged as conflicts and only overwritten with your per-file approval, after
+  a backup.
+- **Import**: `POST /api/skills/import` or copy a folder with a SKILL.md into
+  `skills/` — it is validated on load.
+
+Every run writes its outputs to `artifacts/<run-id>/`; artifacts appear on the
+Dashboard and in the run's page.
+
+## 3. Memory & the Second Brain
+
+- Choose folders in **Settings → Memory** (each can map to an area: Worker,
+  Documentos, Finanças, Projetos — rename freely). Nothing is indexed without
+  explicit selection; exclusions (`.git`, `node_modules`, `.env*`, keys, …)
+  are honored *before* reading. Your files are never moved or renamed.
+- **Refresh**: Second Brain → Refresh index, or `mordomo index` (also
+  regenerates the routers in `memory/`).
+- **Routers** (`memory/ROUTER.md` + `memory/areas/*.md`) are the agent-facing
+  map — compiled into CLAUDE.md/AGENTS.md on sync. `mordomo doctor` flags
+  broken pointers and stale routers.
+- **Second Brain**: graph (zoom with the wheel, drag to pan, click a node) or
+  grid; search as you type; filter by area/type; preview is text-only and
+  secret-blocked; copy the full path or open the file explicitly. "Related
+  files" explains *why* two files are connected (markdown link, same folder).
+
+## 4. Routines (scheduled work)
+
+Routines → New routine: name, a skill (or free prompt), cron schedule +
+timezone, provider/model/effort, missed-run policy (*skip* or *run on next
+boot*), timeout, attempts, security profile. Routines are created **paused**
+unless you tick Enabled — including the seeded *Daily workspace digest*.
+
+- **Test now** fires it immediately and links to the live run.
+- **History** shows every firing with its run; repeatedly failing routines are
+  flagged on the Dashboard.
+- Routines fire while the MordomoOS service is running. For login autostart:
+  `mordomo service install` (systemd --user on Linux, launchd on macOS, Task
+  Scheduler on Windows) — always shown and confirmed before anything is
+  installed. With the *run on next boot* policy, missed schedules are caught up
+  when the service starts.
+
+## 5. Connectors
+
+Connectors → **Run audit**: discovers MCP servers already configured for
+Claude/Cursor/Codex (names and commands only — credential values are never
+read) and recommends at most 3 additions, official/maintained first. Each
+registry entry shows origin, maintainer, auth method, permissions, read/write
+operations, risks and health. Enabling write operations always creates a
+pending approval in Settings. Install/authenticate steps are never performed
+without you.
+
+## 6. Runs & observability
+
+Runs page: every execution with status
+(`queued/running/done/failed/cancelled/interrupted`), provider, origin,
+duration; open one for the live event log (SSE), the prompt, artifacts and an
+actionable error message. **Cancel** stops the underlying process (kill-tree).
+Logs are JSONL in `logs/` (rotated, secret-redacted, retention configurable);
+diagnostics export: `GET /api/diagnostics/export`.
+
+## 7. Security profiles & approvals
+
+Settings → Security: `read_only` → `review_before_write` → `controlled_write`
+→ `approved_automation`. Regardless of profile, these always require explicit
+approval: installing software, changing global configs, destructive commands,
+accessing new folders, connector writes, startup services, exposing ports,
+sending data to external services. Pending approvals appear in Settings.
+
+## 8. The 7-day adoption plan (from the ARMS guide)
+
+1. **Day 1 — Skills**: run `workspace-digest`; create one skill from your most
+   repeated task. 2. **Day 2 — Skills**: split a thick skill / pin favorites.
+3. **Day 3 — Memory**: pick folders, refresh index, check the routers.
+4. **Day 4 — Routines**: enable the daily digest or create your own.
+5. **Day 5 — Applications**: run the connector audit, wire the top pick.
+6. **Day 6 — Command Centre**: set language/theme/accent; star what you use.
+7. **Day 7 — Test day**: `mordomo doctor`, fix warnings by editing files.
+Weekly maintenance ≈ 15 min: `mordomo doctor` (stale routers, thick skills,
+silent routines) and the do-it-twice rule.
