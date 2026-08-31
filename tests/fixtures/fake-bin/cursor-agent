@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Fake Cursor Agent CLI for adapter tests.
+case "$1" in
+  --version) echo "2025.01.15-fake"; exit 0 ;;
+  --help)
+    echo "Usage: cursor-agent [options] [prompt]"
+    echo "  -p, --print            non-interactive mode"
+    echo "  --output-format <fmt>  text|json|stream-json"
+    echo "  --model <model>        model id"
+    echo "  --force                apply changes without approval"
+    exit 0 ;;
+  status)
+    if [[ "$FAKE_CURSOR_LOGGED_OUT" == "1" ]]; then echo "Not logged in"; exit 1; fi
+    echo "Logged in as fake@example.com"; exit 0 ;;
+esac
+echo '{"type":"system","subtype":"init"}'
+echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Cursor fake reply."}]}}'
+echo '{"type":"result","result":"Cursor run finished."}'
+exit 0

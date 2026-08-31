@@ -1,0 +1,74 @@
+import fs from "node:fs";
+import path from "node:path";
+
+/** True when `child` is `parent` or inside it (after resolution). */
+export function isInside(parent: string, child: string): boolean {
+  const rel = path.relative(path.resolve(parent), path.resolve(child));
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+/**
+ * Resolve a user-supplied path and require containment inside one of the
+ * granted roots. Follows symlinks (realpath) so a link cannot escape the root.
+ * Throws on violation — callers turn this into a 403.
+ */
+export function resolveInsideRoots(roots: string[], candidate: string): string {
+  const resolved = path.resolve(candidate);
+  const real = fs.existsSync(resolved) ? fs.realpathSync(resolved) : resolved;
+  for (const root of roots) {
+    const realRoot = fs.existsSync(root) ? fs.realpathSync(root) : path.resolve(root);
+    if (isInside(realRoot, real)) return real;
+  }
+  throw new PathAccessError(candidate);
+}
+
+export class PathAccessError extends Error {
+  constructor(public readonly attempted: string) {
+    super(`Path is outside the granted folders: ${attempted}`);
+    this.name = "PathAccessError";
+  }
+}
+
+/**
+ * Exclusion matcher. Patterns are matched against every path segment and the
+ * relative path: `node_modules` excludes any segment with that name;
+ * `.env.*`/`*.pem` glob against segment names.
+ */
+export function makeExcludeMatcher(patterns: string[]): (relPath: string) => boolean {
+  const regexes = patterns.map((p) => globToRegex(p));
+  return (relPath: string) => {
+    const segments = relPath.split(/[\\/]/).filter(Boolean);
+    return segments.some((seg) => regexes.some((re) => re.test(seg)));
+  };
+}
+
+function globToRegex(glob: string): RegExp {
+  const escaped = glob
+    .split("*")
+    .map((part) => part.replace(/[.+^${}()|[\]\\?]/g, "\\$&"))
+    .join(".*");
+  return new RegExp(`^${escaped}$`, "i");
+}
+
+/** Files that must never be read/previewed even inside granted roots. */
+export const SECRET_FILE_PATTERNS = [
+  ".env",
+  ".env.*",
+  "*.pem",
+  "*.key",
+  "*.p12",
+  "*.pfx",
+  "id_rsa*",
+  "id_ed25519*",
+  "*.keystore",
+  "credentials*.json",
+  ".credentials*",
+  ".npmrc",
+  ".netrc",
+  "*.token",
+];
+
+const secretMatcher = makeExcludeMatcher(SECRET_FILE_PATTERNS);
+export function isSecretFile(filePath: string): boolean {
+  return secretMatcher(path.basename(filePath));
+}

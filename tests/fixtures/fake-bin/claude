@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Faithful fake of the Claude Code CLI for adapter tests (stream-json shapes
+# match claude 2.x headless output). Never used in production.
+case "$1" in
+  --version) echo "9.9.9-fake (Claude Code)"; exit 0 ;;
+  --help)
+    echo "Usage: claude [options] [command] [prompt]"
+    echo "  -p, --print                  print response and exit"
+    echo "  --output-format <format>     text|json|stream-json"
+    echo "  --model <model>              set model"
+    echo "  --permission-mode <mode>     permission mode"
+    echo "  --allowedTools <tools...>    allowed tools"
+    echo "  --disallowedTools <tools...> disallowed tools"
+    echo "  --add-dir <dirs...>          additional directories"
+    echo "  --verbose                    verbose"
+    exit 0 ;;
+esac
+
+# Headless run: prompt arrives on stdin. Simulate a small stream-json session.
+PROMPT="$(cat)"
+if [[ "$FAKE_CLAUDE_HANG" == "1" ]]; then sleep 300; exit 1; fi
+echo '{"type":"system","subtype":"init","model":"fake-sonnet","session_id":"fake"}'
+echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Working on it."}]}}'
+echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/x"}}]}}'
+if [[ "$FAKE_CLAUDE_FAIL" == "1" ]]; then
+  echo '{"type":"result","subtype":"error","is_error":true,"result":"boom"}'
+  exit 1
+fi
+if [[ -n "$FAKE_CLAUDE_ARTIFACT_DIR" ]]; then
+  mkdir -p "$FAKE_CLAUDE_ARTIFACT_DIR"
+  echo "artifact for: ${PROMPT:0:40}" > "$FAKE_CLAUDE_ARTIFACT_DIR/digest.md"
+fi
+echo '{"type":"result","subtype":"success","is_error":false,"result":"All done. secret sk-test1234567890abcdefTOKEN should be redacted."}'
+exit 0
