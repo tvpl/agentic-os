@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.3.0 — 2026-08-31
+
+The OS release: it stops being a web page and becomes a desktop.
+
+- **OS shell**: sidebar removed. The fullscreen desktop IS the dashboard;
+  every app (Skills, Routines, Runs, Connectors, Pixel Studio, Settings)
+  opens over it with a "Back to the OS" chip; app launcher overlay
+  (☰ Menu / Ctrl-⌘ M), Esc returns to the desktop.
+- **Drag-and-drop widget desktop**: widgets snap to a 24-column grid and can
+  be dragged, resized (corner handle) and hidden in edit mode (✏), with the
+  layout persisted server-side in settings; reset layout anytime. Widgets:
+  Micro Apps, Today (live clock, timezones, quarter-week dots, what's next),
+  Workspace (indexed files with per-area glow dots), Skills Deck
+  (model × effort matrix), Routines board, Pulse (metrics + 14-day run
+  sparkline), Needs Attention. Wallpaper: starfield + additive-glow particle
+  core built from the real index, ringed by recent artifacts/files.
+- **Second Brain — the ARMS universe**: concentric labeled rings around a
+  pixel ROUTER.MD core — SKILLS (spark nodes → open the skill), MEMORY (area
+  hubs with folder-icon discs, counts, and expandable file nebulas with fan
+  lines — click a hub to expand/collapse), ROUTINES (animated clock nodes),
+  APPLICATIONS (hex badges per connector). Additive-blend glow, hex-lattice
+  starfield background, animated dashed link curves, cluster-size slider,
+  expand/collapse all, Bake settings (persists the view as your default),
+  collapsible legend covering every layer.
+
 ## 0.2.0 — 2026-08-31
 
 Visual overhaul: the futuristic HUD Command Centre.

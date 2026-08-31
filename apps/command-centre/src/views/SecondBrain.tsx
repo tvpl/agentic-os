@@ -1,4 +1,5 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   forceCenter,
   forceCollide,
@@ -6,28 +7,30 @@ import {
   forceManyBody,
   forceSimulation,
   type Simulation,
+  type SimulationNodeDatum,
 } from "d3-force";
-import { Copy, ExternalLink, RefreshCw, X } from "lucide-react";
-import { api, type GraphData, type GraphNode } from "../api";
+import { ArrowLeft, Copy, ExternalLink, RefreshCw, X } from "lucide-react";
+import { api, type GraphData, type GraphNode, type Connector, type RoutineStatus, type Skill } from "../api";
 import { I18nContext, useT } from "../i18n";
 import { formatBytes, timeAgo, useToast } from "../components/ui";
+import { LAUNCHER_EVENT } from "../App";
 
 /* ============================================================================
-   Second Brain 2.0 — full-bleed animated canvas map of the workspace.
-   Layouts: Force · Circle · Hex · Rings (default). Views: Areas · Folders.
-   Thousands of nodes at 60fps via cached glow sprites + spatial hit-grid.
+   Second Brain — the ARMS universe as a living map.
+   Concentric structure: pixel ROUTER core → SKILLS ring (sparks) → MEMORY
+   (area hubs with expandable file nebulas) → ROUTINES ring (clocks) →
+   APPLICATIONS ring (hex badges). Canvas with additive glow; layouts change
+   how the MEMORY nebulas are shaped. Everything on screen is real data.
 ============================================================================ */
 
 type LayoutKind = "force" | "circle" | "hex" | "rings";
 type ViewKind = "areas" | "folders";
 
-interface BrainNode extends GraphNode {
+interface FileNode extends GraphNode, SimulationNodeDatum {
   x: number;
   y: number;
   tx: number;
   ty: number;
-  vx: number;
-  vy: number;
   baseAngle: number;
   baseRadius: number;
   phase: number;
@@ -42,11 +45,24 @@ interface Hub {
   x: number;
   y: number;
   baseAngle: number;
-  baseRadius: number;
+  expanded: boolean;
+}
+
+interface OrbNode {
+  kind: "skill" | "routine" | "app";
+  id: string;
+  label: string;
+  sub: string;
+  baseAngle: number;
+  radius: number;
+  x: number;
+  y: number;
+  active: boolean;
+  official?: boolean;
 }
 
 interface PreviewState {
-  node: BrainNode;
+  node: FileNode;
   content: string | null;
   kind: string;
   message: string | null;
@@ -54,77 +70,122 @@ interface PreviewState {
 }
 
 const GROUP_COLORS = [
-  "#c084fc", "#f472b6", "#fb923c", "#22d3ee",
-  "#fde047", "#4ade80", "#a5b4fc", "#f87171",
+  "#c084fc", "#f472b6", "#22d3ee", "#fde047",
+  "#4ade80", "#fb923c", "#a5b4fc", "#f87171",
   "#5eead4", "#fbbf24",
 ];
-
+const RING = { skills: 92, hubs: 178, filesInner: 150, routines: 318, apps: 372, labelPad: 14 };
+const SKILL_COLOR = "#fb923c";
+const ROUTINE_COLOR = "#fbbf24";
+const APP_COLOR = "#7dd3fc";
 const TWO_PI = Math.PI * 2;
+const BAKE_KEY = "mordomo.brain.settings";
+
+interface BrainSettings {
+  layout: LayoutKind;
+  view: ViewKind;
+  spin: number;
+  showNames: boolean;
+  linkSpring: number;
+  nodeScale: number;
+  clusterSize: number;
+}
+const DEFAULT_SETTINGS: BrainSettings = {
+  layout: "rings",
+  view: "areas",
+  spin: 0.16,
+  showNames: false,
+  linkSpring: 0.05,
+  nodeScale: 1,
+  clusterSize: 1,
+};
+function loadBaked(): BrainSettings {
+  try {
+    const raw = localStorage.getItem(BAKE_KEY);
+    if (raw) return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<BrainSettings>) };
+  } catch {
+    /* private mode / blocked storage */
+  }
+  return DEFAULT_SETTINGS;
+}
 
 export default function SecondBrain() {
   const t = useT();
   const { lang } = useContext(I18nContext);
   const toast = useToast();
+  const navigate = useNavigate();
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const baked = useMemo(loadBaked, []);
 
   const [graph, setGraph] = useState<GraphData | null>(null);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [routines, setRoutines] = useState<RoutineStatus[]>([]);
+  const [connectors, setConnectors] = useState<Connector[]>([]);
   const [total, setTotal] = useState(0);
-  const [layout, setLayout] = useState<LayoutKind>("rings");
-  const [view, setView] = useState<ViewKind>("areas");
-  const [spin, setSpin] = useState(0.15);
-  const [showNames, setShowNames] = useState(false);
-  const [linkSpring, setLinkSpring] = useState(0.04);
-  const [nodeScale, setNodeScale] = useState(1);
+  const [layout, setLayout] = useState<LayoutKind>(baked.layout);
+  const [view, setView] = useState<ViewKind>(baked.view);
+  const [spin, setSpin] = useState(baked.spin);
+  const [showNames, setShowNames] = useState(baked.showNames);
+  const [linkSpring, setLinkSpring] = useState(baked.linkSpring);
+  const [nodeScale, setNodeScale] = useState(baked.nodeScale);
+  const [clusterSize, setClusterSize] = useState(baked.clusterSize);
+  const [legendOpen, setLegendOpen] = useState(true);
   const [filterGroup, setFilterGroup] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
-  const [hits, setHits] = useState<Array<{ id: number; name: string; rel: string; snippet: string | null }>>([]);
+  const [hits, setHits] = useState<Array<{ id: number; name: string; rel: string }>>([]);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [hover, setHover] = useState<{ x: number; y: number; title: string; sub: string } | null>(null);
-  const [accent, setAccent] = useState("#f97316");
 
-  // Mutable world shared with the render loop (avoids re-renders per frame).
   const world = useRef({
-    nodes: [] as BrainNode[],
-    edges: [] as Array<{ a: number; b: number }>, // indexes into nodes
+    files: [] as FileNode[],
+    edges: [] as Array<{ a: number; b: number }>,
     hubs: [] as Hub[],
+    orbs: [] as OrbNode[],
     transform: { x: 0, y: 0, k: 1 },
     theta: 0,
-    layout: "rings" as LayoutKind,
-    spin: 0.15,
-    nodeScale: 1,
+    layout: baked.layout as LayoutKind,
+    spin: baked.spin,
+    nodeScale: baked.nodeScale,
+    clusterSize: baked.clusterSize,
     filterGroup: null as string | null,
     matched: null as Set<number> | null,
     selectedId: null as number | null,
-    showNames: false,
-    hoverId: null as number | null,
-    hoverHub: null as string | null,
+    showNames: baked.showNames,
+    hoverKey: null as string | null,
     colorOf: new Map<string, string>(),
-    sim: null as Simulation<BrainNode, undefined> | null,
-    linkSpring: 0.04,
+    sim: null as Simulation<FileNode, undefined> | null,
+    linkSpring: baked.linkSpring,
+    dirty: true,
   });
 
   /* ---------- data ---------- */
   const load = useCallback(async () => {
-    const data = await api.get<GraphData>("/api/memory/graph?maxNodes=3000");
-    setGraph(data);
-    setTotal(data.totalFiles);
+    const [g, sk, rt, cn] = await Promise.all([
+      api.get<GraphData>("/api/memory/graph?maxNodes=3000"),
+      api.get<Skill[]>("/api/skills").catch(() => []),
+      api.get<RoutineStatus[]>("/api/routines").catch(() => []),
+      api.get<Connector[]>("/api/connectors").catch(() => []),
+    ]);
+    setGraph(g);
+    setTotal(g.totalFiles);
+    setSkills(sk.filter((s) => s.enabled).slice(0, 24));
+    setRoutines(rt.slice(0, 18));
+    setConnectors(cn.slice(0, 20));
   }, []);
 
   useEffect(() => {
     void load().catch(() => setGraph({ nodes: [], edges: [], truncated: false, totalFiles: 0 }));
-    setAccent(getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#f97316");
   }, [load]);
 
   useEffect(() => {
-    const id = setTimeout(() => setDebounced(query), 200);
+    const id = setTimeout(() => setDebounced(query), 180);
     return () => clearTimeout(id);
   }, [query]);
 
-  // FTS deep-search (content) results shown in the panel.
   useEffect(() => {
     if (!debounced.trim()) {
       setHits([]);
@@ -132,9 +193,7 @@ export default function SecondBrain() {
     }
     let cancelled = false;
     void api
-      .get<Array<{ id: number; name: string; rel: string; snippet: string | null }>>(
-        `/api/memory/search?q=${encodeURIComponent(debounced)}&limit=8`,
-      )
+      .get<Array<{ id: number; name: string; rel: string }>>(`/api/memory/search?q=${encodeURIComponent(debounced)}&limit=8`)
       .then((res) => !cancelled && setHits(res))
       .catch(() => undefined);
     return () => {
@@ -142,7 +201,6 @@ export default function SecondBrain() {
     };
   }, [debounced]);
 
-  /* ---------- world building ---------- */
   const groupOf = useCallback(
     (n: GraphNode): string => {
       if (view === "areas") return n.area ?? "unsorted";
@@ -152,52 +210,91 @@ export default function SecondBrain() {
     [view],
   );
 
+  /* ---------- build world ---------- */
   useEffect(() => {
     if (!graph) return;
     const w = world.current;
     const groups = new Map<string, number>();
-    for (const n of graph.nodes) {
-      const g = groupOf(n);
-      groups.set(g, (groups.get(g) ?? 0) + 1);
-    }
+    for (const n of graph.nodes) groups.set(groupOf(n), (groups.get(groupOf(n)) ?? 0) + 1);
     const groupKeys = [...groups.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
     w.colorOf = new Map(groupKeys.map((k, i) => [k, GROUP_COLORS[i % GROUP_COLORS.length]!]));
 
-    const prev = new Map(w.nodes.map((n) => [n.id, n]));
-    let seed = 1;
-    const rand = () => {
-      seed = (seed * 16807) % 2147483647;
-      return seed / 2147483647;
-    };
-    w.nodes = graph.nodes.map((n) => {
+    const prevExpanded = new Map(w.hubs.map((h) => [h.key, h.expanded]));
+    w.hubs = groupKeys.map((key, gi) => ({
+      key,
+      color: w.colorOf.get(key)!,
+      count: groups.get(key) ?? 0,
+      x: 0,
+      y: 0,
+      baseAngle: (gi / Math.max(1, groupKeys.length)) * TWO_PI - Math.PI / 2,
+      expanded: prevExpanded.get(key) ?? true,
+    }));
+
+    let seed = 3;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const prev = new Map(w.files.map((n) => [n.id, n]));
+    w.files = graph.nodes.map((n) => {
       const old = prev.get(n.id);
-      const group = groupOf(n);
       return {
         ...n,
-        group,
-        x: old?.x ?? (rand() - 0.5) * 100,
-        y: old?.y ?? (rand() - 0.5) * 100,
+        group: groupOf(n),
+        x: old?.x ?? (rand() - 0.5) * 60,
+        y: old?.y ?? (rand() - 0.5) * 60,
         tx: 0,
         ty: 0,
-        vx: 0,
-        vy: 0,
         baseAngle: 0,
         baseRadius: 0,
         phase: rand() * TWO_PI,
-        r: 2 + Math.min(3, Math.log10(Math.max(10, n.size)) - 1),
+        r: 1.7 + Math.min(2.6, Math.log10(Math.max(10, n.size)) - 1) * 0.9,
       };
     });
-    const indexOf = new Map(w.nodes.map((n, i) => [n.id, i]));
+    const indexOf = new Map(w.files.map((n, i) => [n.id, i]));
     w.edges = graph.edges
       .filter((e) => e.kind === "markdown-link")
       .map((e) => ({ a: indexOf.get(e.source) ?? -1, b: indexOf.get(e.target) ?? -1 }))
       .filter((e) => e.a >= 0 && e.b >= 0);
 
-    computeLayout(w, layout, view);
+    // structure orbs
+    w.orbs = [
+      ...skills.map((s, i): OrbNode => ({
+        kind: "skill",
+        id: s.slug,
+        label: `/${s.slug}`,
+        sub: t("brain.ring.skills"),
+        baseAngle: (i / Math.max(1, skills.length)) * TWO_PI - Math.PI / 2,
+        radius: RING.skills,
+        x: 0,
+        y: 0,
+        active: s.enabled,
+      })),
+      ...routines.map((r, i): OrbNode => ({
+        kind: "routine",
+        id: r.id,
+        label: r.name,
+        sub: t("brain.ring.routines"),
+        baseAngle: (i / Math.max(1, routines.length)) * TWO_PI + 0.35,
+        radius: RING.routines,
+        x: 0,
+        y: 0,
+        active: r.enabled,
+      })),
+      ...connectors.map((c, i): OrbNode => ({
+        kind: "app",
+        id: c.id,
+        label: c.name,
+        sub: t("brain.ring.apps"),
+        baseAngle: (i / Math.max(1, connectors.length)) * TWO_PI + 0.12,
+        radius: RING.apps,
+        x: 0,
+        y: 0,
+        active: c.status === "healthy" || c.status === "configured",
+        official: c.official,
+      })),
+    ];
+    layoutFiles(w);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, view, groupOf]);
+  }, [graph, skills, routines, connectors, groupOf]);
 
-  // Push simple control state into the world ref.
   useEffect(() => {
     const w = world.current;
     w.spin = spin;
@@ -205,15 +302,18 @@ export default function SecondBrain() {
     w.showNames = showNames;
     w.filterGroup = filterGroup;
     w.linkSpring = linkSpring;
-  }, [spin, nodeScale, showNames, filterGroup, linkSpring]);
+    if (w.clusterSize !== clusterSize) {
+      w.clusterSize = clusterSize;
+      layoutFiles(w);
+    }
+  }, [spin, nodeScale, showNames, filterGroup, linkSpring, clusterSize]);
 
   useEffect(() => {
     const w = world.current;
     w.layout = layout;
-    computeLayout(w, layout, view);
+    layoutFiles(w);
   }, [layout, view]);
 
-  // Search highlighting (name/path match on loaded nodes).
   useEffect(() => {
     const w = world.current;
     if (!debounced.trim()) {
@@ -222,12 +322,12 @@ export default function SecondBrain() {
     }
     const q = debounced.toLowerCase();
     w.matched = new Set(
-      w.nodes.filter((n) => n.name.toLowerCase().includes(q) || n.rel.toLowerCase().includes(q)).map((n) => n.id),
+      w.files.filter((n) => n.name.toLowerCase().includes(q) || n.rel.toLowerCase().includes(q)).map((n) => n.id),
     );
   }, [debounced]);
 
-  /* ---------- selection / preview ---------- */
-  const select = useCallback(async (node: BrainNode | null) => {
+  /* ---------- selection ---------- */
+  const select = useCallback(async (node: FileNode | null) => {
     world.current.selectedId = node?.id ?? null;
     if (!node) {
       setPreview(null);
@@ -255,7 +355,7 @@ export default function SecondBrain() {
 
   const selectById = useCallback(
     (id: number) => {
-      const node = world.current.nodes.find((n) => n.id === id);
+      const node = world.current.files.find((n) => n.id === id);
       if (node) void select(node);
     },
     [select],
@@ -275,21 +375,34 @@ export default function SecondBrain() {
     }
   };
 
+  const bake = () => {
+    try {
+      const settings: BrainSettings = { layout, view, spin, showNames, linkSpring, nodeScale, clusterSize };
+      localStorage.setItem(BAKE_KEY, JSON.stringify(settings));
+      toast(t("brain.baked"), "ok");
+    } catch {
+      toast("Storage unavailable", "danger");
+    }
+  };
+
+  const setAllExpanded = (expanded: boolean) => {
+    const w = world.current;
+    for (const hub of w.hubs) hub.expanded = expanded;
+    layoutFiles(w);
+  };
+
   /* ---------- keyboard ---------- */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+      const inField = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName ?? "");
+      if (e.key === "/" && !inField) {
         e.preventDefault();
         searchRef.current?.focus();
-      }
-      if (e.key === "Escape") {
-        setQuery("");
-        void select(null);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [select]);
+  }, []);
 
   /* ---------- render loop ---------- */
   useEffect(() => {
@@ -300,6 +413,7 @@ export default function SecondBrain() {
     const w = world.current;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const sprites = new Map<string, HTMLCanvasElement>();
+    let bgCanvas: HTMLCanvasElement | null = null;
     let raf = 0;
     let last = performance.now();
     let running = true;
@@ -308,17 +422,62 @@ export default function SecondBrain() {
       let s = sprites.get(color);
       if (s) return s;
       s = document.createElement("canvas");
-      s.width = 32;
-      s.height = 32;
+      s.width = 40;
+      s.height = 40;
       const sc = s.getContext("2d")!;
-      const g = sc.createRadialGradient(16, 16, 1, 16, 16, 15);
-      g.addColorStop(0, color);
-      g.addColorStop(0.35, color + "cc");
+      const g = sc.createRadialGradient(20, 20, 0.5, 20, 20, 19);
+      g.addColorStop(0, "#ffffff");
+      g.addColorStop(0.18, color);
+      g.addColorStop(0.5, color + "88");
       g.addColorStop(1, color + "00");
       sc.fillStyle = g;
-      sc.fillRect(0, 0, 32, 32);
+      sc.fillRect(0, 0, 40, 40);
       sprites.set(color, s);
       return s;
+    };
+
+    const buildBackground = (width: number, height: number) => {
+      bgCanvas = document.createElement("canvas");
+      bgCanvas.width = width;
+      bgCanvas.height = height;
+      const bc = bgCanvas.getContext("2d")!;
+      let seed = 11;
+      const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+      // stars
+      bc.fillStyle = "#efe9da";
+      for (let i = 0; i < 220; i++) {
+        bc.globalAlpha = 0.06 + rand() * 0.22;
+        bc.fillRect(rand() * width, rand() * height, 1.2, 1.2);
+      }
+      bc.globalAlpha = 1;
+      // faint hex lattice
+      const hexR = 34;
+      bc.strokeStyle = "rgba(240,230,210,0.03)";
+      bc.lineWidth = 1;
+      for (let row = 0; row * hexR * 1.5 < height + hexR; row++) {
+        for (let col = 0; col * hexR * Math.sqrt(3) < width + hexR; col++) {
+          const cx2 = col * hexR * Math.sqrt(3) + (row % 2 ? (hexR * Math.sqrt(3)) / 2 : 0);
+          const cy2 = row * hexR * 1.5;
+          bc.beginPath();
+          for (let i = 0; i < 6; i++) {
+            const a = (Math.PI / 3) * i + Math.PI / 6;
+            const px = cx2 + Math.cos(a) * hexR;
+            const py = cy2 + Math.sin(a) * hexR;
+            if (i === 0) bc.moveTo(px, py);
+            else bc.lineTo(px, py);
+          }
+          bc.closePath();
+          bc.stroke();
+        }
+      }
+      // center glow
+      const glow = bc.createRadialGradient(width / 2, height / 2, 10, width / 2, height / 2, Math.min(width, height) * 0.55);
+      const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#f97316";
+      glow.addColorStop(0, accent + "1f");
+      glow.addColorStop(0.4, "#2b0f4d22");
+      glow.addColorStop(1, "transparent");
+      bc.fillStyle = glow;
+      bc.fillRect(0, 0, width, height);
     };
 
     const resize = () => {
@@ -327,6 +486,7 @@ export default function SecondBrain() {
       canvas.width = Math.max(1, Math.floor(rect.width * dpr));
       canvas.height = Math.max(1, Math.floor(rect.height * dpr));
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      buildBackground(rect.width, rect.height);
     };
     resize();
     const ro = new ResizeObserver(resize);
@@ -342,170 +502,257 @@ export default function SecondBrain() {
       const cx = cw / 2;
       const cy = ch / 2;
       const tr = w.transform;
+      const tNow = now / 1000;
+      if (!reduceMotion) w.theta += w.spin * dt * 0.45;
 
-      if (!reduceMotion) w.theta += w.spin * dt * 0.5;
+      const styles = getComputedStyle(document.documentElement);
+      const accentCol = styles.getPropertyValue("--accent").trim() || "#f97316";
+      const textDim = styles.getPropertyValue("--text-dim").trim() || "#b3aa96";
+      const faint = styles.getPropertyValue("--text-faint").trim() || "#7d7462";
 
-      // Advance node positions.
+      ctx.clearRect(0, 0, cw, ch);
+      if (bgCanvas) ctx.drawImage(bgCanvas, 0, 0, cw, ch);
+
+      // advance files
       if (w.layout === "force") {
-        w.sim?.tick(); // the simulation mutates n.x / n.y directly
+        w.sim?.tick();
       } else {
         const cos = Math.cos(w.theta);
         const sin = Math.sin(w.theta);
-        for (const n of w.nodes) {
+        for (const n of w.files) {
           const bx = Math.cos(n.baseAngle) * n.baseRadius;
           const by = Math.sin(n.baseAngle) * n.baseRadius;
           n.tx = bx * cos - by * sin;
           n.ty = bx * sin + by * cos;
-          n.x += (n.tx - n.x) * Math.min(1, dt * 6);
-          n.y += (n.ty - n.y) * Math.min(1, dt * 6);
+          n.x += (n.tx - n.x) * Math.min(1, dt * 7);
+          n.y += (n.ty - n.y) * Math.min(1, dt * 7);
         }
       }
+      const cosT = Math.cos(w.theta);
+      const sinT = Math.sin(w.theta);
+      for (const hub of w.hubs) {
+        const bx = Math.cos(hub.baseAngle) * RING.hubs;
+        const by = Math.sin(hub.baseAngle) * RING.hubs;
+        hub.x = bx * cosT - by * sinT;
+        hub.y = bx * sinT + by * cosT;
+      }
+      for (const orb of w.orbs) {
+        const speed = orb.kind === "skill" ? -0.35 : orb.kind === "routine" ? 0.5 : 0.22;
+        const a = orb.baseAngle + w.theta * speed;
+        orb.x = Math.cos(a) * orb.radius;
+        orb.y = Math.sin(a) * orb.radius;
+      }
 
-      ctx.clearRect(0, 0, cw, ch);
-
-      // Faint decorative outer rings (screen-space, centered).
       ctx.save();
       ctx.translate(cx + tr.x, cy + tr.y);
       ctx.scale(tr.k, tr.k);
 
-      const styles = getComputedStyle(document.documentElement);
-      const borderCol = styles.getPropertyValue("--border-strong").trim() || "#383225";
-      const textDim = styles.getPropertyValue("--text-dim").trim() || "#a89f8d";
-      const accentCol = styles.getPropertyValue("--accent").trim() || accent;
-
-      if (w.layout !== "force") {
-        ctx.strokeStyle = borderCol;
-        ctx.globalAlpha = 0.5;
+      // ring guides + labels
+      const ringDefs: Array<{ r: number; label: string; color: string }> = [
+        { r: RING.skills, label: t("brain.ring.skills").toUpperCase(), color: SKILL_COLOR },
+        { r: RING.hubs + 60, label: t("brain.ring.memory").toUpperCase(), color: "#c084fc" },
+        { r: RING.routines, label: t("brain.ring.routines").toUpperCase(), color: ROUTINE_COLOR },
+        { r: RING.apps, label: t("brain.ring.apps").toUpperCase(), color: APP_COLOR },
+      ];
+      for (const ring of ringDefs) {
+        ctx.beginPath();
+        ctx.arc(0, 0, ring.r, 0, TWO_PI);
+        ctx.strokeStyle = ring.color + "2e";
         ctx.lineWidth = 1 / tr.k;
-        for (const rr of [Math.min(cw, ch) * 0.46, Math.min(cw, ch) * 0.52]) {
-          ctx.beginPath();
-          ctx.arc(0, 0, rr, 0, TWO_PI);
-          ctx.stroke();
-          // orbit markers
-          for (let i = 0; i < 24; i++) {
-            const a = (i / 24) * TWO_PI + w.theta * (rr % 2 === 0 ? 0.6 : -0.4);
-            ctx.beginPath();
-            ctx.arc(Math.cos(a) * rr, Math.sin(a) * rr, 1.6 / tr.k, 0, TWO_PI);
-            ctx.fillStyle = borderCol;
-            ctx.fill();
-          }
-        }
-        ctx.globalAlpha = 1;
-      }
-
-      // Edges (markdown links).
-      if (w.edges.length > 0 && w.edges.length < 1200) {
-        ctx.strokeStyle = accentCol;
-        ctx.lineWidth = 0.6 / tr.k;
-        ctx.globalAlpha = 0.22;
-        ctx.beginPath();
-        for (const e of w.edges) {
-          const a = w.nodes[e.a];
-          const b = w.nodes[e.b];
-          if (!a || !b) continue;
-          if (w.filterGroup && a.group !== w.filterGroup && b.group !== w.filterGroup) continue;
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
-        }
         ctx.stroke();
-        ctx.globalAlpha = 1;
+        ctx.font = `800 ${15 / Math.max(0.7, tr.k)}px ${styles.getPropertyValue("--font") || "sans-serif"}`;
+        ctx.fillStyle = ring.color + "b8";
+        ctx.textAlign = "center";
+        ctx.shadowColor = ring.color;
+        ctx.shadowBlur = 14;
+        ctx.fillText(ring.label, 0, -ring.r + RING.labelPad / tr.k - 4);
+        ctx.shadowBlur = 0;
+        ctx.textAlign = "start";
       }
-
-      // Nodes.
-      const tNow = now / 1000;
-      let labelBudget = 260;
-      for (const n of w.nodes) {
-        const color = w.colorOf.get(n.group) ?? "#94a3b8";
-        const dimByFilter = w.filterGroup !== null && n.group !== w.filterGroup;
-        const dimBySearch = w.matched !== null && !w.matched.has(n.id);
-        const selected = w.selectedId === n.id;
-        const hovered = w.hoverId === n.id;
-        let alpha = dimByFilter || dimBySearch ? 0.08 : 0.9;
-        if (!reduceMotion && !dimByFilter && !dimBySearch) {
-          alpha *= 0.75 + 0.25 * Math.sin(tNow * 1.4 + n.phase);
-        }
-        const boost = selected || hovered ? 1.9 : w.matched?.has(n.id) ? 1.5 : 1;
-        const size = n.r * w.nodeScale * boost;
-        ctx.globalAlpha = alpha;
-        ctx.drawImage(sprite(color), n.x - size * 2.2, n.y - size * 2.2, size * 4.4, size * 4.4);
-        ctx.globalAlpha = Math.min(1, alpha + 0.1);
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, size, 0, TWO_PI);
-        ctx.fill();
-
-        const wantLabel =
-          selected || hovered || (w.matched?.has(n.id) ?? false) ||
-          ((w.showNames || tr.k > 1.7) && !dimByFilter && !dimBySearch && labelBudget > 0);
-        if (wantLabel && labelBudget > 0) {
-          labelBudget--;
-          ctx.globalAlpha = selected || hovered ? 1 : 0.75;
-          ctx.fillStyle = textDim;
-          ctx.font = `${10 / tr.k}px ${styles.getPropertyValue("--mono") || "monospace"}`;
-          ctx.fillText(n.name.length > 28 ? n.name.slice(0, 26) + "…" : n.name, n.x + size + 4 / tr.k, n.y + 3 / tr.k);
+      // orbit dots on outer rings
+      for (const rr of [RING.routines, RING.apps]) {
+        for (let i = 0; i < 36; i++) {
+          const a = (i / 36) * TWO_PI + w.theta * (rr === RING.apps ? 0.22 : 0.5);
+          ctx.beginPath();
+          ctx.arc(Math.cos(a) * rr, Math.sin(a) * rr, 1.1 / tr.k, 0, TWO_PI);
+          ctx.fillStyle = faint;
+          ctx.globalAlpha = 0.5;
+          ctx.fill();
         }
       }
       ctx.globalAlpha = 1;
 
-      // Hubs + centre (non-force layouts). Hubs rotate with their clusters.
-      if (w.layout !== "force") {
-        const cosT = Math.cos(w.theta);
-        const sinT = Math.sin(w.theta);
-        for (const hub of w.hubs) {
-          const bx = Math.cos(hub.baseAngle) * hub.baseRadius;
-          const by = Math.sin(hub.baseAngle) * hub.baseRadius;
-          hub.x = bx * cosT - by * sinT;
-          hub.y = bx * sinT + by * cosT;
-          const active = w.filterGroup === hub.key || w.hoverHub === hub.key;
-          ctx.beginPath();
-          ctx.arc(hub.x, hub.y, active ? 11 : 8, 0, TWO_PI);
-          ctx.fillStyle = hub.color;
-          ctx.globalAlpha = active ? 1 : 0.9;
-          ctx.fill();
-          ctx.globalAlpha = 1;
-          ctx.strokeStyle = "#00000055";
-          ctx.lineWidth = 1.5 / tr.k;
-          ctx.stroke();
-          ctx.fillStyle = active ? accentCol : textDim;
-          ctx.font = `700 ${11 / tr.k}px ${styles.getPropertyValue("--font") || "sans-serif"}`;
-          ctx.textAlign = "center";
-          const label = hub.key.toUpperCase();
-          ctx.fillText(label.length > 16 ? label.slice(0, 15) + "…" : label, hub.x, hub.y - 14 / tr.k);
-          ctx.textAlign = "start";
+      // hub fan lines (expanded hubs with modest counts) + markdown links
+      ctx.globalCompositeOperation = "lighter";
+      for (const hub of w.hubs) {
+        if (!hub.expanded || hub.count > 80) continue;
+        if (w.filterGroup && hub.key !== w.filterGroup) continue;
+        ctx.strokeStyle = hub.color;
+        ctx.globalAlpha = 0.14;
+        ctx.lineWidth = 0.7 / tr.k;
+        ctx.beginPath();
+        for (const n of w.files) {
+          if (n.group !== hub.key) continue;
+          ctx.moveTo(hub.x, hub.y);
+          ctx.lineTo(n.x, n.y);
         }
-        drawPixelCore(ctx, accentCol, tr.k, reduceMotion ? 0 : tNow);
-        ctx.fillStyle = textDim;
-        ctx.font = `800 ${11 / tr.k}px ${styles.getPropertyValue("--font") || "sans-serif"}`;
-        ctx.textAlign = "center";
-        ctx.fillText("ROUTER.MD", 0, 34 / tr.k);
-        ctx.textAlign = "start";
+        ctx.stroke();
       }
+      if (w.edges.length > 0 && w.edges.length < 1500) {
+        ctx.strokeStyle = accentCol;
+        ctx.lineWidth = 0.9 / tr.k;
+        ctx.globalAlpha = 0.3;
+        ctx.setLineDash([5 / tr.k, 7 / tr.k]);
+        ctx.lineDashOffset = reduceMotion ? 0 : -tNow * 8;
+        ctx.beginPath();
+        for (const e of w.edges) {
+          const a = w.files[e.a];
+          const b = w.files[e.b];
+          if (!a || !b) continue;
+          const mx = (a.x + b.x) / 2 * 0.82;
+          const my = (a.y + b.y) / 2 * 0.82;
+          ctx.moveTo(a.x, a.y);
+          ctx.quadraticCurveTo(mx, my, b.x, b.y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.globalAlpha = 1;
+
+      // FILE particles (additive)
+      let labelBudget = 240;
+      for (const n of w.files) {
+        const color = w.colorOf.get(n.group) ?? "#94a3b8";
+        const hub = w.hubs.find((h) => h.key === n.group);
+        const collapsedDim = hub && !hub.expanded ? 0.35 : 1;
+        const dimByFilter = w.filterGroup !== null && n.group !== w.filterGroup;
+        const dimBySearch = w.matched !== null && !w.matched.has(n.id);
+        const selected = w.selectedId === n.id;
+        let alpha = (dimByFilter || dimBySearch ? 0.05 : 0.95) * collapsedDim;
+        if (!reduceMotion && alpha > 0.2) alpha *= 0.7 + 0.3 * Math.sin(tNow * 1.5 + n.phase);
+        const boost = selected ? 2.1 : w.matched?.has(n.id) ? 1.6 : 1;
+        const size = n.r * w.nodeScale * boost;
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(sprite(color), n.x - size * 2.6, n.y - size * 2.6, size * 5.2, size * 5.2);
+
+        const wantLabel =
+          selected || (w.matched?.has(n.id) ?? false) ||
+          ((w.showNames || tr.k > 1.9) && !dimByFilter && !dimBySearch && collapsedDim === 1 && labelBudget > 0);
+        if (wantLabel && labelBudget > 0) {
+          labelBudget--;
+          ctx.globalCompositeOperation = "source-over";
+          ctx.globalAlpha = selected ? 1 : 0.7;
+          ctx.fillStyle = textDim;
+          ctx.font = `${10 / tr.k}px ${styles.getPropertyValue("--mono") || "monospace"}`;
+          ctx.fillText(n.name.length > 26 ? n.name.slice(0, 24) + "…" : n.name, n.x + size + 5 / tr.k, n.y + 3 / tr.k);
+          ctx.globalCompositeOperation = "lighter";
+        }
+      }
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1;
+
+      // SKILL sparks
+      for (const orb of w.orbs) {
+        const hovered = w.hoverKey === `${orb.kind}:${orb.id}`;
+        if (orb.kind === "skill") {
+          const pulse = reduceMotion ? 1 : 0.85 + 0.15 * Math.sin(tNow * 2 + orb.baseAngle * 5);
+          drawSpark(ctx, orb.x, orb.y, (hovered ? 11 : 8) * pulse, SKILL_COLOR, tr.k);
+          if (hovered || tr.k > 1.6) {
+            ctx.fillStyle = hovered ? accentCol : textDim;
+            ctx.font = `700 ${10 / tr.k}px ${styles.getPropertyValue("--mono") || "monospace"}`;
+            ctx.textAlign = "center";
+            ctx.fillText(orb.label, orb.x, orb.y - 12 / tr.k);
+            ctx.textAlign = "start";
+          }
+        } else if (orb.kind === "routine") {
+          drawClock(ctx, orb.x, orb.y, hovered ? 10 : 8, ROUTINE_COLOR, orb.active, tr.k, tNow);
+          if (hovered) {
+            ctx.fillStyle = accentCol;
+            ctx.font = `700 ${10.5 / tr.k}px ${styles.getPropertyValue("--font") || "sans-serif"}`;
+            ctx.textAlign = "center";
+            ctx.fillText(orb.label, orb.x, orb.y - 15 / tr.k);
+            ctx.textAlign = "start";
+          }
+        } else {
+          drawHexBadge(ctx, orb.x, orb.y, hovered ? 15 : 12, APP_COLOR, orb.label, !!orb.official, orb.active, tr.k);
+          if (hovered) {
+            ctx.fillStyle = accentCol;
+            ctx.font = `700 ${10.5 / tr.k}px ${styles.getPropertyValue("--font") || "sans-serif"}`;
+            ctx.textAlign = "center";
+            ctx.fillText(orb.label, orb.x, orb.y - 20 / tr.k);
+            ctx.textAlign = "start";
+          }
+        }
+      }
+
+      // MEMORY hubs
+      for (const hub of w.hubs) {
+        const active = w.filterGroup === hub.key || w.hoverKey === `hub:${hub.key}`;
+        const rr = active ? 13 : 10.5;
+        ctx.save();
+        ctx.shadowColor = hub.color;
+        ctx.shadowBlur = active ? 26 : 14;
+        ctx.beginPath();
+        ctx.arc(hub.x, hub.y, rr, 0, TWO_PI);
+        ctx.fillStyle = hub.color;
+        ctx.fill();
+        ctx.restore();
+        drawFolderGlyph(ctx, hub.x, hub.y, rr * 0.9, "#0b0a08");
+        // count badge
+        ctx.font = `800 ${9 / tr.k}px ${styles.getPropertyValue("--mono") || "monospace"}`;
+        ctx.fillStyle = faint;
+        ctx.textAlign = "center";
+        ctx.fillText(String(hub.count), hub.x, hub.y + rr + 11 / tr.k);
+        // label
+        ctx.fillStyle = active ? accentCol : textDim;
+        ctx.font = `800 ${11.5 / tr.k}px ${styles.getPropertyValue("--font") || "sans-serif"}`;
+        const label = hub.key.toUpperCase();
+        ctx.fillText(label.length > 16 ? label.slice(0, 15) + "…" : label, hub.x, hub.y - rr - 7 / tr.k);
+        ctx.textAlign = "start";
+        if (!hub.expanded) {
+          ctx.strokeStyle = hub.color;
+          ctx.globalAlpha = 0.6;
+          ctx.lineWidth = 1 / tr.k;
+          ctx.beginPath();
+          ctx.arc(hub.x, hub.y, rr + 5, 0, TWO_PI);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      // pixel core
+      drawPixelCore(ctx, accentCol, tr.k, reduceMotion ? 0 : tNow);
+      ctx.fillStyle = textDim;
+      ctx.font = `800 ${11 / tr.k}px ${styles.getPropertyValue("--font") || "sans-serif"}`;
+      ctx.textAlign = "center";
+      ctx.fillText("ROUTER.MD", 0, 36 / tr.k);
+      ctx.textAlign = "start";
 
       ctx.restore();
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
-
     return () => {
       running = false;
       cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, [accent]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t]);
 
-  /* ---------- force simulation lifecycle ---------- */
+  /* ---------- force simulation ---------- */
   useEffect(() => {
     const w = world.current;
     w.sim?.stop();
     w.sim = null;
     if (layout !== "force" || !graph) return;
-    const links = w.edges.map((e) => ({ source: w.nodes[e.a]!, target: w.nodes[e.b]! }));
-    w.sim = forceSimulation(w.nodes)
-      .force("charge", forceManyBody().strength(-26))
+    const links = w.edges.map((e) => ({ source: w.files[e.a]!, target: w.files[e.b]! }));
+    w.sim = forceSimulation(w.files)
+      .force("charge", forceManyBody().strength(-24))
       .force("center", forceCenter(0, 0))
-      .force("collide", forceCollide<BrainNode>((n) => n.r * 2.4))
-      .force("link", forceLink(links).distance(46).strength(w.linkSpring * 10))
-      .alphaDecay(0.008)
+      .force("collide", forceCollide<FileNode>((n) => n.r * 2.6))
+      .force("link", forceLink(links).distance(44).strength(linkSpring * 10))
+      .alphaDecay(0.006)
       .stop();
     return () => {
       w.sim?.stop();
@@ -533,14 +780,17 @@ export default function SecondBrain() {
       };
     };
 
-    const hitTest = (wx: number, wy: number): { node?: BrainNode; hub?: Hub } => {
-      const tol = 10 / w.transform.k;
+    const hitTest = (wx: number, wy: number): { file?: FileNode; hub?: Hub; orb?: OrbNode } => {
       for (const hub of w.hubs) {
-        if (Math.hypot(wx - hub.x, wy - hub.y) < 16) return { hub };
+        if (Math.hypot(wx - hub.x, wy - hub.y) < 17) return { hub };
       }
-      let best: BrainNode | undefined;
+      for (const orb of w.orbs) {
+        if (Math.hypot(wx - orb.x, wy - orb.y) < (orb.kind === "app" ? 17 : 13)) return { orb };
+      }
+      const tol = 9 / w.transform.k + 4;
+      let best: FileNode | undefined;
       let bestD = tol * tol;
-      for (const n of w.nodes) {
+      for (const n of w.files) {
         const dx = wx - n.x;
         const dy = wy - n.y;
         const d = dx * dx + dy * dy;
@@ -549,15 +799,15 @@ export default function SecondBrain() {
           best = n;
         }
       }
-      return { node: best };
+      return { file: best };
     };
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const rect = canvas.getBoundingClientRect();
       const tr = w.transform;
-      const factor = e.deltaY < 0 ? 1.12 : 0.9;
-      const k = Math.min(8, Math.max(0.3, tr.k * factor));
+      const factor = e.deltaY < 0 ? 1.13 : 0.89;
+      const k = Math.min(9, Math.max(0.3, tr.k * factor));
       const mx = e.clientX - rect.left - rect.width / 2;
       const my = e.clientY - rect.top - rect.height / 2;
       const wx = (mx - tr.x) / tr.k;
@@ -584,12 +834,13 @@ export default function SecondBrain() {
       }
       const p = toWorld(e.clientX, e.clientY);
       const hit = hitTest(p.x, p.y);
-      w.hoverId = hit.node?.id ?? null;
-      w.hoverHub = hit.hub?.key ?? null;
+      w.hoverKey = hit.hub ? `hub:${hit.hub.key}` : hit.orb ? `${hit.orb.kind}:${hit.orb.id}` : null;
       if (hit.hub) {
-        setHover({ x: p.sx + 14, y: p.sy + 10, title: hit.hub.key, sub: `${hit.hub.count} files — click to filter` });
-      } else if (hit.node) {
-        setHover({ x: p.sx + 14, y: p.sy + 10, title: hit.node.name, sub: hit.node.group });
+        setHover({ x: p.sx + 14, y: p.sy + 10, title: hit.hub.key, sub: `${hit.hub.count} ${t("brain.files")} — ${t("brain.clickToFilter")}` });
+      } else if (hit.orb) {
+        setHover({ x: p.sx + 14, y: p.sy + 10, title: hit.orb.label, sub: hit.orb.sub });
+      } else if (hit.file) {
+        setHover({ x: p.sx + 14, y: p.sy + 10, title: hit.file.name, sub: hit.file.group });
       } else {
         setHover(null);
       }
@@ -602,9 +853,14 @@ export default function SecondBrain() {
       const p = toWorld(e.clientX, e.clientY);
       const hit = hitTest(p.x, p.y);
       if (hit.hub) {
-        setFilterGroup((cur) => (cur === hit.hub!.key ? null : hit.hub!.key));
-      } else if (hit.node) {
-        void select(hit.node);
+        hit.hub.expanded = !hit.hub.expanded;
+        layoutFiles(w);
+      } else if (hit.orb) {
+        if (hit.orb.kind === "skill") navigate(`/skills/${hit.orb.id}`);
+        else if (hit.orb.kind === "routine") navigate("/routines");
+        else navigate("/connectors");
+      } else if (hit.file) {
+        void select(hit.file);
       } else {
         void select(null);
       }
@@ -626,16 +882,13 @@ export default function SecondBrain() {
       canvas.removeEventListener("pointerup", onUp);
       canvas.removeEventListener("dblclick", onDblClick);
     };
-  }, [select]);
+  }, [select, navigate, t]);
 
-  /* ---------- derived ---------- */
+  /* ---------- legend data ---------- */
   const legend = useMemo(() => {
     if (!graph) return [];
     const counts = new Map<string, number>();
-    for (const n of graph.nodes) {
-      const g = groupOf(n);
-      counts.set(g, (counts.get(g) ?? 0) + 1);
-    }
+    for (const n of graph.nodes) counts.set(groupOf(n), (counts.get(groupOf(n)) ?? 0) + 1);
     const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
     return sorted.map(([key, count], i) => ({
       key,
@@ -663,9 +916,17 @@ export default function SecondBrain() {
           </div>
           <div className="brain2-brand"><span className="byline">{total.toLocaleString()} {t("brain.sub")}</span></div>
         </div>
-        <button className="btn sm" onClick={refresh} disabled={refreshing}>
-          {refreshing ? <span className="spinner" aria-hidden /> : <RefreshCw aria-hidden />} {t("brain.refresh")}
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn sm" onClick={refresh} disabled={refreshing} title={t("brain.refresh")}>
+            {refreshing ? <span className="spinner" aria-hidden /> : <RefreshCw aria-hidden />}
+          </button>
+          <button className="os-chip" onClick={() => navigate("/")}>
+            <ArrowLeft aria-hidden /> {t("os.backToOs")}
+          </button>
+          <button className="os-chip" onClick={() => window.dispatchEvent(new Event(LAUNCHER_EVENT))}>
+            ☰ {t("os.menu")}
+          </button>
+        </div>
       </div>
 
       <div className="brain2-panel">
@@ -680,12 +941,7 @@ export default function SecondBrain() {
         {hits.length > 0 && (
           <div>
             {hits.map((h) => (
-              <button
-                key={h.id}
-                className="microapp-row"
-                style={{ padding: "5px 6px" }}
-                onClick={() => selectById(h.id)}
-              >
+              <button key={h.id} className="microapp-row" style={{ padding: "5px 6px" }} onClick={() => selectById(h.id)}>
                 <span style={{ minWidth: 0 }}>
                   <span className="ma-name truncate" style={{ display: "block", fontSize: 12 }}>{h.name}</span>
                   <span className="ma-desc truncate" style={{ display: "block" }}>{h.rel}</span>
@@ -698,21 +954,15 @@ export default function SecondBrain() {
           <div className="hud-label" style={{ marginBottom: 6 }}>{t("brain.layout")}</div>
           <div className="segmented sm" role="group" aria-label={t("brain.layout")}>
             {(["force", "circle", "hex", "rings"] as LayoutKind[]).map((k) => (
-              <button key={k} className={layout === k ? "active" : ""} onClick={() => setLayout(k)}>
-                {layoutLabels[k]}
-              </button>
+              <button key={k} className={layout === k ? "active" : ""} onClick={() => setLayout(k)}>{layoutLabels[k]}</button>
             ))}
           </div>
         </div>
         <div>
           <div className="hud-label" style={{ marginBottom: 6 }}>{t("brain.view")}</div>
           <div className="segmented sm" role="group" aria-label={t("brain.view")}>
-            <button className={view === "areas" ? "active" : ""} onClick={() => { setView("areas"); setFilterGroup(null); }}>
-              {t("brain.view.areas")}
-            </button>
-            <button className={view === "folders" ? "active" : ""} onClick={() => { setView("folders"); setFilterGroup(null); }}>
-              {t("brain.view.folders")}
-            </button>
+            <button className={view === "areas" ? "active" : ""} onClick={() => { setView("areas"); setFilterGroup(null); }}>{t("brain.view.areas")}</button>
+            <button className={view === "folders" ? "active" : ""} onClick={() => { setView("folders"); setFilterGroup(null); }}>{t("brain.view.folders")}</button>
           </div>
         </div>
         <div>
@@ -734,11 +984,22 @@ export default function SecondBrain() {
           </div>
         </div>
         <div>
+          <div className="hud-label">{t("brain.clusterSize")}</div>
+          <div className="slider-row">
+            <input type="range" min={0.5} max={1.8} step={0.05} value={clusterSize} onChange={(e) => setClusterSize(Number(e.target.value))} aria-label={t("brain.clusterSize")} />
+            <span className="val">{clusterSize.toFixed(2)}</span>
+          </div>
+        </div>
+        <div>
           <div className="hud-label">{t("brain.nodeSize")}</div>
           <div className="slider-row">
             <input type="range" min={0.4} max={2} step={0.05} value={nodeScale} onChange={(e) => setNodeScale(Number(e.target.value))} aria-label={t("brain.nodeSize")} />
             <span className="val">{nodeScale.toFixed(2)}</span>
           </div>
+        </div>
+        <div className="row">
+          <button className="btn sm" onClick={() => setAllExpanded(true)}>{t("brain.expandAll")}</button>
+          <button className="btn sm" onClick={() => setAllExpanded(false)}>{t("brain.collapseAll")}</button>
         </div>
         <div className="row">
           <button
@@ -752,18 +1013,21 @@ export default function SecondBrain() {
           >
             {t("brain.reset")}
           </button>
-          {filterGroup && (
-            <button className="btn sm outline-accent" onClick={() => setFilterGroup(null)}>
-              <X aria-hidden /> {filterGroup}
-            </button>
-          )}
+          <button className="btn sm outline-accent" onClick={bake}>{t("brain.bake")}</button>
         </div>
+        {filterGroup && (
+          <button className="btn sm outline-accent" onClick={() => setFilterGroup(null)}>
+            <X aria-hidden /> {filterGroup}
+          </button>
+        )}
         {graph?.truncated && <p style={{ margin: 0, fontSize: 11, color: "var(--text-faint)" }}>{t("brain.truncated")}</p>}
       </div>
 
-      {legend.length > 0 && (
+      {legendOpen && legend.length > 0 ? (
         <div className="brain2-legend" aria-label={t("brain.legend")}>
-          <div className="hud-label" style={{ marginBottom: 6 }}>{t("brain.legend")}</div>
+          <button className="hud-label" style={{ marginBottom: 6, background: "none", border: "none", cursor: "pointer", padding: 0 }} onClick={() => setLegendOpen(false)}>
+            ◆ {t("brain.legend")}
+          </button>
           {legend.slice(0, 9).map((l) => (
             <div className="lg-row" key={l.key}>
               <button
@@ -771,14 +1035,21 @@ export default function SecondBrain() {
                 aria-pressed={filterGroup === l.key}
                 style={{ opacity: filterGroup && filterGroup !== l.key ? 0.4 : 1, width: "100%" }}
               >
-                <span className="dot" style={{ background: l.color, boxShadow: `0 0 6px ${l.color}` }} />
+                <span className="dot" style={{ background: l.color, boxShadow: `0 0 8px ${l.color}` }} />
                 <span className="truncate" style={{ maxWidth: 110 }}>{l.key}</span>
                 <span className="count">{l.count}</span>
               </button>
             </div>
           ))}
+          <div className="lg-row"><span className="dot" style={{ background: SKILL_COLOR, boxShadow: `0 0 8px ${SKILL_COLOR}` }} /> {t("brain.ring.skills")}<span className="count">{skills.length}</span></div>
+          <div className="lg-row"><span className="dot" style={{ background: ROUTINE_COLOR, boxShadow: `0 0 8px ${ROUTINE_COLOR}` }} /> {t("brain.ring.routines")}<span className="count">{routines.length}</span></div>
+          <div className="lg-row"><span className="dot" style={{ background: APP_COLOR, boxShadow: `0 0 8px ${APP_COLOR}` }} /> {t("brain.ring.apps")}<span className="count">{connectors.length}</span></div>
         </div>
-      )}
+      ) : legend.length > 0 ? (
+        <button className="os-chip" style={{ position: "absolute", left: 16, bottom: 16, zIndex: 10 }} onClick={() => setLegendOpen(true)}>
+          ◆ {t("brain.legend")}
+        </button>
+      ) : null}
 
       <div className="brain2-bottom-tag">{layoutLabels[layout]} · {view === "areas" ? t("brain.view.areas") : t("brain.view.folders")}</div>
 
@@ -835,9 +1106,7 @@ export default function SecondBrain() {
               <div className="hud-label" style={{ margin: "10px 0 4px" }}>{t("brain.related")}</div>
               {preview.related.slice(0, 6).map((r) => (
                 <div className="list-row" key={`${r.id}-${r.why}`} style={{ padding: "5px 0" }}>
-                  <button className="btn ghost sm" style={{ padding: "2px 6px" }} onClick={() => selectById(r.id)}>
-                    {r.name}
-                  </button>
+                  <button className="btn ghost sm" style={{ padding: "2px 6px" }} onClick={() => selectById(r.id)}>{r.name}</button>
                   <span className="meta" style={{ textAlign: "right", fontSize: 11 }}>{r.why}</span>
                 </div>
               ))}
@@ -849,124 +1118,205 @@ export default function SecondBrain() {
   );
 }
 
-/* ---------- layout computation (base polar coordinates per node) ---------- */
-function computeLayout(
-  w: {
-    nodes: BrainNode[];
-    hubs: Hub[];
-    colorOf: Map<string, string>;
-  },
-  layout: LayoutKind,
-  _view: ViewKind,
-): void {
-  const groups = new Map<string, BrainNode[]>();
-  for (const n of w.nodes) {
-    const list = groups.get(n.group) ?? [];
+/* ---------------------------------------------------------------------------
+   File layout: nebulas around each hub, shaped by the chosen layout.
+--------------------------------------------------------------------------- */
+function layoutFiles(w: {
+  files: FileNode[];
+  hubs: Hub[];
+  layout: LayoutKind;
+  clusterSize: number;
+}): void {
+  const byGroup = new Map<string, FileNode[]>();
+  for (const n of w.files) {
+    const list = byGroup.get(n.group) ?? [];
     list.push(n);
-    groups.set(n.group, list);
+    byGroup.set(n.group, list);
   }
-  const groupKeys = [...groups.entries()].sort((a, b) => b[1].length - a[1].length).map(([k]) => k);
-  const G = Math.max(1, groupKeys.length);
-  const totalN = Math.max(1, w.nodes.length);
+  const cs = w.clusterSize;
 
-  w.hubs = groupKeys.map((key, gi) => ({
-    key,
-    color: w.colorOf.get(key) ?? "#94a3b8",
-    count: groups.get(key)?.length ?? 0,
-    x: 0,
-    y: 0,
-    baseAngle: (gi / G) * TWO_PI - Math.PI / 2,
-    baseRadius: 120,
-  }));
+  for (const hub of w.hubs) {
+    const list = (byGroup.get(hub.key) ?? []).slice().sort((a, b) => b.mtime - a.mtime);
+    if (list.length === 0) continue;
+    const hubX = Math.cos(hub.baseAngle) * RING.hubs;
+    const hubY = Math.sin(hub.baseAngle) * RING.hubs;
 
-  if (layout === "force") {
-    // Seed cluster-ish start positions; the simulation takes it from here.
-    groupKeys.forEach((key, gi) => {
-      const angle = (gi / G) * TWO_PI;
-      const list = groups.get(key)!;
+    if (!hub.expanded) {
+      // tight halo hugging the hub
       list.forEach((n, i) => {
-        n.x = Math.cos(angle) * 160 + (i % 17) * 6 - 48;
-        n.y = Math.sin(angle) * 160 + Math.floor(i / 17) * 6 - 48;
+        const rr = 20 + (i % 3) * 5;
+        const aa = (i / Math.max(1, list.length)) * TWO_PI;
+        const x = hubX + Math.cos(aa) * rr * 0.8;
+        const y = hubY + Math.sin(aa) * rr * 0.8;
+        n.baseRadius = Math.hypot(x, y);
+        n.baseAngle = Math.atan2(y, x);
       });
-    });
-    return;
-  }
+      continue;
+    }
 
-  if (layout === "rings") {
-    // Reference look: hubs on an inner ring; each group's files fan outwards in
-    // its angular sector across expanding arc bands. Recent files sit closer.
-    groupKeys.forEach((key, gi) => {
-      const list = groups.get(key)!.slice().sort((a, b) => b.mtime - a.mtime);
-      const sector = TWO_PI / G;
-      const a0 = gi * sector - Math.PI / 2 + sector * 0.08;
-      const span = sector * 0.84;
-      const hub = w.hubs.find((h) => h.key === key);
-      if (hub) {
-        hub.baseAngle = a0 + span / 2;
-        hub.baseRadius = 120;
-      }
-      const perBand = Math.max(6, Math.ceil(span * 170 / 14));
+    if (w.layout === "hex") {
+      const HEX = 13 * cs;
+      const cols = Math.max(3, Math.ceil(Math.sqrt(list.length) * 1.25));
       list.forEach((n, i) => {
-        const band = Math.floor(i / perBand);
-        const posInBand = i % perBand;
-        const bandCount = Math.min(perBand, list.length - band * perBand);
-        n.baseRadius = 170 + band * 16 + (i % 3) * 3;
-        n.baseAngle = a0 + (bandCount <= 1 ? span / 2 : (posInBand / (bandCount - 1)) * span);
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        const localX = (col - cols / 2) * HEX + (row % 2 ? HEX / 2 : 0);
+        const localY = 46 + row * HEX * 0.87;
+        const ang = hub.baseAngle + Math.PI / 2;
+        const x = hubX + localX * Math.cos(ang) - localY * Math.sin(ang) * 0 + Math.cos(hub.baseAngle) * localY;
+        const y = hubY + localX * Math.sin(ang) + Math.sin(hub.baseAngle) * localY;
+        n.baseRadius = Math.hypot(x, y);
+        n.baseAngle = Math.atan2(y, x);
       });
-    });
-  } else if (layout === "circle") {
-    // Each group is a packed disc arranged around the centre.
-    const ringR = Math.max(200, 60 * Math.sqrt(G) + 120);
-    groupKeys.forEach((key, gi) => {
-      const list = groups.get(key)!;
-      const angle = (gi / G) * TWO_PI - Math.PI / 2;
-      const gx = Math.cos(angle) * ringR;
-      const gy = Math.sin(angle) * ringR;
-      const clusterR = 14 + Math.sqrt(list.length) * 7;
+    } else if (w.layout === "circle") {
+      const clusterR = (16 + Math.sqrt(list.length) * 7.5) * cs;
+      const centerR = RING.hubs + clusterR + 26;
+      const gx = Math.cos(hub.baseAngle) * centerR;
+      const gy = Math.sin(hub.baseAngle) * centerR;
       list.forEach((n, i) => {
         const rr = clusterR * Math.sqrt((i + 0.5) / list.length);
-        const aa = i * 2.399963; // golden angle spiral
+        const aa = i * 2.399963;
         const x = gx + Math.cos(aa) * rr;
         const y = gy + Math.sin(aa) * rr;
         n.baseRadius = Math.hypot(x, y);
         n.baseAngle = Math.atan2(y, x);
       });
-      const hub = w.hubs.find((h) => h.key === key);
-      if (hub) {
-        hub.baseRadius = ringR;
-        hub.baseAngle = angle;
-      }
-    });
-  } else {
-    // Hex: nodes snapped to a hex lattice, groups in wedges from the centre.
-    const HEX = 16;
-    groupKeys.forEach((key, gi) => {
-      const list = groups.get(key)!;
-      const sector = TWO_PI / G;
-      const midAngle = gi * sector - Math.PI / 2;
-      const cols = Math.max(3, Math.ceil(Math.sqrt(list.length) * 1.2));
+    } else {
+      // rings (default): a nebula wedge sweeping outward from the hub —
+      // the dense, organic look of the reference. Golden-angle spiral bounded
+      // to the hub's sector between filesInner and the routines ring.
+      const sector = TWO_PI / Math.max(1, w.hubs.length);
+      const span = sector * 0.9;
       list.forEach((n, i) => {
-        const row = Math.floor(i / cols);
-        const col = i % cols;
-        const localX = (col - cols / 2) * HEX + (row % 2 ? HEX / 2 : 0);
-        const localY = 120 + row * HEX * 0.87;
-        // rotate the wedge into place
-        const x = localX * Math.cos(midAngle + Math.PI / 2) - localY * Math.sin(midAngle + Math.PI / 2);
-        const y = localX * Math.sin(midAngle + Math.PI / 2) + localY * Math.cos(midAngle + Math.PI / 2);
-        n.baseRadius = Math.hypot(x, y);
-        n.baseAngle = Math.atan2(y, x);
+        const tFrac = (i + 0.5) / list.length;
+        const rr = (RING.filesInner + (RING.routines - 42 - RING.filesInner) * Math.pow(tFrac, 0.72)) * (0.82 + 0.36 * ((i * 0.618) % 1)) * (0.7 + 0.3 * cs);
+        const aa = hub.baseAngle - span / 2 + span * ((i * 0.381966) % 1);
+        n.baseRadius = Math.min(rr, RING.routines - 26);
+        n.baseAngle = aa;
       });
-      const hub = w.hubs.find((h) => h.key === key);
-      if (hub) {
-        hub.baseRadius = 96;
-        hub.baseAngle = midAngle;
-      }
-    });
+    }
   }
-  void totalN;
 }
 
-/* Pixel-art centre glyph (a tiny document/robot mark) drawn on canvas. */
+/* ---------------------------------------------------------------------------
+   Crafted canvas glyphs
+--------------------------------------------------------------------------- */
+function drawSpark(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string, k: number): void {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 16;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  const inner = size * 0.32;
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * TWO_PI - Math.PI / 2;
+    const r = i % 2 === 0 ? size : inner;
+    const px = Math.cos(a) * r;
+    const py = Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "#fff8ee";
+  ctx.beginPath();
+  ctx.arc(0, 0, Math.max(1, size * 0.16), 0, TWO_PI);
+  ctx.fill();
+  ctx.restore();
+  void k;
+}
+
+function drawClock(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+  active: boolean,
+  k: number,
+  tNow: number,
+): void {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.globalAlpha = active ? 1 : 0.45;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = active ? 14 : 4;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.6 / Math.max(0.7, k);
+  ctx.beginPath();
+  ctx.arc(0, 0, size, 0, TWO_PI);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  // hands
+  const minuteA = (tNow * 0.8) % TWO_PI;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(Math.cos(minuteA - Math.PI / 2) * size * 0.72, Math.sin(minuteA - Math.PI / 2) * size * 0.72);
+  ctx.moveTo(0, 0);
+  ctx.lineTo(Math.cos(minuteA / 12 - Math.PI / 2) * size * 0.45, Math.sin(minuteA / 12 - Math.PI / 2) * size * 0.45);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawHexBadge(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+  label: string,
+  official: boolean,
+  active: boolean,
+  k: number,
+): void {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.globalAlpha = active ? 1 : 0.72;
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 3) * i - Math.PI / 6;
+    const px = Math.cos(a) * size;
+    const py = Math.sin(a) * size;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fillStyle = "#10131a";
+  ctx.fill();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = official ? 14 : 6;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.6 / Math.max(0.7, k);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = color;
+  ctx.font = `800 ${Math.max(7, size * 0.62)}px ui-monospace, monospace`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(initials(label), 0, 0.5);
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "start";
+  ctx.restore();
+}
+
+function initials(name: string): string {
+  const words = name.replace(/\(.*?\)/g, "").trim().split(/[\s-]+/).filter(Boolean);
+  if (words.length >= 2) return (words[0]![0]! + words[1]![0]!).toUpperCase();
+  return (name.slice(0, 2) || "?").toUpperCase();
+}
+
+function drawFolderGlyph(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string): void {
+  ctx.save();
+  ctx.translate(x - size / 2, y - size / 2);
+  ctx.fillStyle = color;
+  const s = size;
+  ctx.fillRect(0, s * 0.25, s, s * 0.55);
+  ctx.fillRect(0, s * 0.12, s * 0.45, s * 0.2);
+  ctx.restore();
+}
+
 const CORE_PIXELS = [
   "01111110",
   "01000010",
@@ -978,15 +1328,17 @@ const CORE_PIXELS = [
   "00000000",
 ];
 function drawPixelCore(ctx: CanvasRenderingContext2D, color: string, k: number, tNow: number): void {
-  const px = 4 / Math.max(0.6, Math.min(k, 2));
+  const px = 4.4 / Math.max(0.6, Math.min(k, 2));
   const half = (CORE_PIXELS.length * px) / 2;
-  const pulse = tNow === 0 ? 0.5 : 0.4 + 0.2 * Math.sin(tNow * 2);
+  const pulse = tNow === 0 ? 0.5 : 0.4 + 0.25 * Math.sin(tNow * 2);
   ctx.save();
   ctx.strokeStyle = color;
   ctx.globalAlpha = pulse;
-  ctx.lineWidth = 1.5 / k;
+  ctx.lineWidth = 1.6 / k;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 18;
   ctx.beginPath();
-  ctx.arc(0, 0, half + 12 / k, 0, TWO_PI);
+  ctx.arc(0, 0, half + 13 / k, 0, TWO_PI);
   ctx.stroke();
   ctx.globalAlpha = 1;
   ctx.fillStyle = color;
@@ -997,5 +1349,6 @@ function drawPixelCore(ctx: CanvasRenderingContext2D, color: string, k: number, 
       }
     }
   });
+  ctx.shadowBlur = 0;
   ctx.restore();
 }

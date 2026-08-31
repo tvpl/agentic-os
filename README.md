@@ -9,12 +9,16 @@ Everything runs on your machine, bound to `127.0.0.1`. The source of truth is
 files + SQLite — never the UI. Providers are replaceable adapters over the same
 skills catalog, memory index, routines, artifacts and logs.
 
-The Command Centre wears a futuristic HUD skin: an orbital dashboard (particle
-core of your real files, ring of recent artifacts, skills deck with a
-model × effort matrix, routines board, live clock), a full-screen animated
-**Second Brain** (Force/Circle/Hex/Rings layouts, search-as-you-type, area
-filters, safe previews), and **Pixel Studio** — a built-in micro-app to draw
-and animate pixel art, export PNG/sprite-sheet/SVG or save into artifacts.
+The Command Centre is a fullscreen **OS desktop**, not a web page: a
+starfield wallpaper with a glowing particle core built from your real files,
+**drag-and-drop widgets** that snap to a grid (layout persisted), an app
+launcher (Ctrl/⌘ M), and fullscreen apps with a "Back to the OS" chip. The
+**Second Brain** renders the whole ARMS universe as concentric animated rings
+— SKILLS sparks, MEMORY area hubs with expandable file nebulas, ROUTINES
+clocks and APPLICATIONS hex badges — with Force/Circle/Hex/Rings layouts,
+search-as-you-type and safe previews. **Pixel Studio** is a built-in
+micro-app to draw and animate pixel art, export PNG/sprite-sheet/SVG or save
+into artifacts.
 
 > Guia rápido em português: [`docs/README.pt-BR.md`](docs/README.pt-BR.md)
 

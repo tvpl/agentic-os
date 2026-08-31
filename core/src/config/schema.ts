@@ -105,6 +105,18 @@ export const SettingsSchema = z.object({
     })
     .default({}),
   favoriteSkills: z.array(z.string()).default([]),
+  /** Command Centre desktop widget layout (24-col grid units), per widget id. */
+  dashboardLayout: z
+    .record(
+      z.object({
+        x: z.number().int().min(0).max(23),
+        y: z.number().int().min(0).max(60),
+        w: z.number().int().min(2).max(24),
+        h: z.number().int().min(2).max(40),
+        visible: z.boolean().default(true),
+      }),
+    )
+    .default({}),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 
