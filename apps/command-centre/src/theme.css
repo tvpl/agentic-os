@@ -640,8 +640,8 @@ mark { background: color-mix(in srgb, var(--accent) 32%, transparent); color: in
 
 /* ---- second brain 2.0 ---- */
 .brain2 { position: relative; height: calc(100vh - 0px); overflow: hidden; background: var(--bg); }
-.brain2 canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
-.brain2 canvas.dragging { cursor: grabbing; }
+.brain2 > canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+.brain2 > canvas.dragging { cursor: grabbing; }
 .brain2-topbar {
   position: absolute; top: 0; left: 0; right: 0; z-index: 10;
   display: flex; align-items: center; justify-content: space-between;
@@ -656,8 +656,9 @@ mark { background: color-mix(in srgb, var(--accent) 32%, transparent); color: in
 .brain2-panel {
   position: absolute; top: 60px; right: 16px; z-index: 10;
   width: 252px;
-  background: color-mix(in srgb, var(--bg-raise) 90%, transparent);
-  backdrop-filter: blur(8px);
+  background: color-mix(in srgb, var(--bg-raise) 97%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 12px;
@@ -690,8 +691,9 @@ input[type="range"]::-moz-range-thumb {
 
 .brain2-legend {
   position: absolute; left: 16px; bottom: 16px; z-index: 10;
-  background: color-mix(in srgb, var(--bg-raise) 90%, transparent);
-  backdrop-filter: blur(8px);
+  background: color-mix(in srgb, var(--bg-raise) 97%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 10px 12px;
@@ -720,6 +722,25 @@ input[type="range"]::-moz-range-thumb {
   box-shadow: var(--shadow);
 }
 .brain2-tooltip .sub { font-size: 10.5px; color: var(--text-dim); font-weight: 500; }
+.brain2-minimap {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  cursor: crosshair;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+}
+.zoom-stack {
+  position: absolute; right: 284px; bottom: 16px; z-index: 10;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 6px;
+  background: color-mix(in srgb, var(--bg-raise) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+}
+@media (max-width: 980px) { .zoom-stack { right: 16px; bottom: 76px; } }
+.brain2.presenting canvas { cursor: default; }
 .brain2-bottom-tag {
   position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 9;
   background: var(--bg-raise-2); border: 1px solid var(--border-strong);

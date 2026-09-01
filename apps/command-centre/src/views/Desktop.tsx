@@ -11,6 +11,7 @@ import {
   Grid3x3,
   Info,
   LayoutGrid,
+  Palette,
   Pencil,
   Play,
   Plus,
@@ -75,7 +76,10 @@ interface DashData {
   areas: Array<{ area: string; count: number }>;
 }
 
-export default function Desktop({ meta }: { meta: Meta }) {
+/** One-click accent presets, cycled by the palette tool and persisted. */
+const ACCENT_PRESETS = ["#f97316", "#22d3ee", "#a78bfa", "#4ade80", "#f43f5e", "#fbbf24"];
+
+export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaChanged?: () => void }) {
   const t = useT();
   const navigate = useNavigate();
   const toast = useToast();
@@ -110,6 +114,26 @@ export default function Desktop({ meta }: { meta: Meta }) {
   useEffect(() => {
     if (data) setLayout({ ...DEFAULT_LAYOUT, ...data.layout });
   }, [data]);
+
+  // Keep the desktop alive: refresh runs/routines/artifacts periodically.
+  useEffect(() => {
+    const id = setInterval(reload, 10_000);
+    return () => clearInterval(id);
+  }, [reload]);
+
+  const cycleAccent = async () => {
+    const current = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+    const idx = ACCENT_PRESETS.findIndex((c) => c.toLowerCase() === current.toLowerCase());
+    const next = ACCENT_PRESETS[(idx + 1) % ACCENT_PRESETS.length]!;
+    document.documentElement.style.setProperty("--accent", next);
+    try {
+      await api.put("/api/settings", { accentColor: next });
+      onMetaChanged?.();
+      toast(`${t("settings.accent")}: ${next}`, "ok");
+    } catch (err) {
+      toast((err as Error).message, "danger");
+    }
+  };
 
   const persistLayout = useCallback((next: LayoutMap) => {
     setLayout(next);
@@ -164,6 +188,7 @@ export default function Desktop({ meta }: { meta: Meta }) {
     <div className={`desktop${editMode ? " edit-mode" : ""}`}>
       <OrbitalCore
         artifacts={data.artifacts}
+        activeRuns={data.runs.filter((r) => ["running", "queued"].includes(r.status)).length}
         onOpenBrain={() => navigate("/brain")}
         onOpenRun={(runId) => navigate(`/runs/${runId}`)}
       />
@@ -205,6 +230,9 @@ export default function Desktop({ meta }: { meta: Meta }) {
               title={`${t("os.menu")} (Ctrl/⌘ M)`}
             >
               <LayoutGrid aria-hidden />
+            </button>
+            <button className="os-tool" onClick={cycleAccent} aria-label={t("settings.accent")} title={t("settings.accent")}>
+              <Palette aria-hidden />
             </button>
             <button className="os-tool" onClick={() => navigate("/settings")} aria-label={t("nav.settings")} title={t("nav.settings")}>
               <Info aria-hidden />
@@ -415,13 +443,17 @@ const AREA_COLORS = ["#c084fc", "#f472b6", "#fb923c", "#22d3ee", "#fde047", "#4a
 
 function OrbitalCore({
   artifacts,
+  activeRuns,
   onOpenBrain,
   onOpenRun,
 }: {
   artifacts: ArtifactEntry[];
+  activeRuns: number;
   onOpenBrain: () => void;
   onOpenRun: (runId: string) => void;
 }) {
+  const activeRef = useRef(activeRuns);
+  activeRef.current = activeRuns;
   const t = useT();
   const { lang } = useContext(I18nContext);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -537,6 +569,33 @@ function OrbitalCore({
       }
       ctx.stroke();
       ctx.globalAlpha = 1;
+
+      // live agents: pulsing halo + orbiting comet while runs are active
+      if (activeRef.current > 0) {
+        const accent = styles.getPropertyValue("--accent").trim() || "#f97316";
+        const haloR = Math.min(rect.width, rect.height) * 0.22;
+        const pulse = reduceMotion ? 0.5 : 0.35 + 0.25 * Math.sin(tSec * 4);
+        ctx.strokeStyle = accent;
+        ctx.globalAlpha = pulse;
+        ctx.lineWidth = 1.6;
+        ctx.shadowColor = accent;
+        ctx.shadowBlur = 22;
+        ctx.beginPath();
+        ctx.arc(cx, cy, haloR + Math.sin(tSec * 2) * 5, 0, TWO_PI);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        const ca = tSec * 1.6;
+        for (let i = 0; i < 7; i++) {
+          const trailA = ca - i * 0.09;
+          ctx.globalAlpha = (1 - i / 7) * 0.85;
+          const sz = 3.4 - i * 0.4;
+          ctx.fillStyle = i === 0 ? "#ffffff" : accent;
+          ctx.beginPath();
+          ctx.arc(cx + Math.cos(trailA) * haloR, cy + Math.sin(trailA) * haloR * 0.92, Math.max(0.8, sz), 0, TWO_PI);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
 
       // particle ball — additive blending for the bright, luminous look
       ctx.globalCompositeOperation = "lighter";

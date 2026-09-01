@@ -129,7 +129,7 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
   return (
     <div className="os-root">
       <Routes>
-        <Route path="/" element={<Desktop meta={meta} />} />
+        <Route path="/" element={<Desktop meta={meta} onMetaChanged={onMetaChanged} />} />
         <Route path="/brain" element={<SecondBrain />} />
         <Route path="/skills" element={<AppFrame><Skills /></AppFrame>} />
         <Route path="/skills/:slug" element={<AppFrame><Skills /></AppFrame>} />
