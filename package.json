@@ -1,0 +1,33 @@
+{
+  "name": "mordomo-os",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MordomoOS — a local, vendor-neutral agentic operating system (ARMS) over Claude Code, Cursor Agent and OpenAI Codex.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "core",
+    "adapters/claude",
+    "adapters/cursor",
+    "adapters/codex",
+    "apps/api",
+    "apps/command-centre"
+  ],
+  "scripts": {
+    "build": "tsc -b core adapters/claude adapters/cursor adapters/codex apps/api && npm run build -w apps/command-centre",
+    "build:server": "tsc -b core adapters/claude adapters/cursor adapters/codex apps/api",
+    "typecheck": "tsc -b core adapters/claude adapters/cursor adapters/codex apps/api --noEmit false && npm run typecheck -w apps/command-centre",
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "mordomo": "node apps/api/dist/cli.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "playwright-core": "^1.49.0"
+  }
+}

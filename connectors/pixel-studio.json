@@ -1,0 +1,20 @@
+{
+  "id": "pixel-studio",
+  "name": "Pixel Studio (pixel-art micro-app)",
+  "kind": "micro-app",
+  "origin": "built-in (MordomoOS)",
+  "maintainer": "MordomoOS",
+  "official": true,
+  "authMethod": "none",
+  "permissions": [],
+  "readOperations": ["draw pixel art", "animate frames", "export png/svg"],
+  "writeOperations": ["save to artifacts"],
+  "writeEnabled": false,
+  "risks": [],
+  "compatibleProviders": ["claude", "cursor", "codex"],
+  "status": "healthy",
+  "lastUsedAt": null,
+  "lastHealthCheckAt": null,
+  "notes": "Built-in pixel-art drawing and animation editor that exports PNG/SVG sprites and saves them into the artifacts directory.",
+  "entryPoint": "/#/pixel"
+}

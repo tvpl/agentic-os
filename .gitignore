@@ -1,0 +1,34 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Local state (source of truth for the machine, never committed)
+config/settings.json
+config/token
+config/db/
+config/backups/
+config/run/
+logs/*.jsonl
+logs/*.jsonl.*
+artifacts/*
+!artifacts/.gitkeep
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Test output
+tests/.tmp/
+coverage/
+playwright-report/
+
+# Machine-local generated state
+config/sync-manifest.json
+logs/*.log
+memory/ROUTER.md
+memory/areas/

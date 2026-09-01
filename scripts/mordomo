@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Convenience wrapper: run the mordomo CLI from anywhere.
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec node "$DIR/apps/api/dist/cli.js" "$@"

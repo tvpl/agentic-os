@@ -1,0 +1,23 @@
+{
+  "id": "calendar-google",
+  "name": "Calendar (Google Calendar MCP)",
+  "kind": "mcp",
+  "origin": "https://github.com/nspady/google-calendar-mcp",
+  "maintainer": "nspady (community)",
+  "official": false,
+  "authMethod": "oauth",
+  "permissions": ["read events", "create events (opt-in)"],
+  "readOperations": ["list events", "search events", "free/busy"],
+  "writeOperations": ["create event", "update event"],
+  "writeEnabled": false,
+  "risks": [
+    "Community-maintained: review the code before installing.",
+    "Write access can modify your real agenda — keep read-only until trusted."
+  ],
+  "compatibleProviders": ["claude", "cursor", "codex"],
+  "status": "not_configured",
+  "lastUsedAt": null,
+  "lastHealthCheckAt": null,
+  "notes": "Enables morning-brief routines that include today's agenda.",
+  "entryPoint": null
+}

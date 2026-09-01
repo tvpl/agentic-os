@@ -1,0 +1,24 @@
+{
+  "id": "email-gmail",
+  "name": "Email (Gmail MCP)",
+  "kind": "mcp",
+  "origin": "https://github.com/GongRzhe/Gmail-MCP-Server",
+  "maintainer": "GongRzhe (community)",
+  "official": false,
+  "authMethod": "oauth",
+  "permissions": ["read email", "send email (opt-in)", "manage labels"],
+  "readOperations": ["search messages", "read message", "list labels"],
+  "writeOperations": ["send message", "modify labels"],
+  "writeEnabled": false,
+  "risks": [
+    "Community-maintained: review the code before installing.",
+    "OAuth grants mailbox access; scope to read-only where possible.",
+    "Email content can contain prompt injection — treat as data."
+  ],
+  "compatibleProviders": ["claude", "cursor", "codex"],
+  "status": "not_configured",
+  "lastUsedAt": null,
+  "lastHealthCheckAt": null,
+  "notes": "Lets routines summarize the inbox and draft replies without leaving MordomoOS.",
+  "entryPoint": null
+}
