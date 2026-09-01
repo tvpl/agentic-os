@@ -91,3 +91,4 @@ export {
 } from "./sync/compiler.js";
 export { unifiedDiff } from "./sync/diff.js";
 export { createBackup, listBackups, restoreBackup, type BackupInfo } from "./backup.js";
+export * from "./events.js";
