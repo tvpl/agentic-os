@@ -2,7 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  cancelRunProcess,
   executeInvocation,
   findOnPath,
   parseHelpFlags,
@@ -141,10 +140,6 @@ export class CursorAdapter implements AgentAdapter {
       const invocation = await self.buildInvocation(run);
       yield* executeInvocation(run, invocation, cursorStreamParser(), [invocation.executable]);
     })();
-  }
-
-  async cancel(runId: string): Promise<void> {
-    cancelRunProcess(runId);
   }
 
   async healthCheck(): Promise<HealthStatus> {

@@ -1,20 +1,109 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import {
+  ProviderId,
+  ProviderSettingsSchema,
   SettingsSchema,
   createBackup,
+  events,
+  isInside,
   listBackups,
-  restoreBackup,
   planStartupService,
   redactSecrets,
-  ProviderId,
+  resolveInsideRoots,
+  type Settings,
 } from "@mordomo/core";
-import type { AppContext } from "../context.js";
+import { clearRestorePending, readRestorePending, writeRestorePending, type AppContext } from "../context.js";
 import { runDoctor } from "../doctor.js";
+import { grantedRoots, httpError } from "./common.js";
+import { BackupNameParams, UuidParams } from "./params.js";
 
-const PKG_VERSION = "0.1.0";
+const here = path.dirname(fileURLToPath(import.meta.url));
+
+/** Version from apps/api/package.json (falls back to the repo root package.json). */
+export function readPackageVersion(): string {
+  for (const candidate of [
+    path.resolve(here, "..", "..", "package.json"),
+    path.resolve(here, "..", "..", "..", "..", "package.json"),
+  ]) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(candidate, "utf8")) as { version?: unknown };
+      if (typeof pkg.version === "string" && pkg.version) return pkg.version;
+    } catch {
+      /* try next */
+    }
+  }
+  return "0.0.0";
+}
+export const PKG_VERSION = readPackageVersion();
+
+// ---- Settings patch: deep-merge for providers.* and limits ------------------
+
+const ProviderPatch = ProviderSettingsSchema.partial();
+export const SettingsPatchSchema = SettingsSchema.partial().extend({
+  providers: z
+    .object({ claude: ProviderPatch.optional(), cursor: ProviderPatch.optional(), codex: ProviderPatch.optional() })
+    .optional(),
+  limits: SettingsSchema.shape.limits.removeDefault().partial().optional(),
+});
+export type SettingsPatch = z.infer<typeof SettingsPatchSchema>;
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function mergeObjects(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    const current = out[key];
+    out[key] = isPlainObject(value) && isPlainObject(current) ? mergeObjects(current, value) : value;
+  }
+  return out;
+}
+
+/**
+ * Merge a partial settings patch over the current settings. `providers.*` and
+ * `limits` merge field by field so `{providers:{claude:{enabled:true}}}` keeps
+ * `binaryPath`; arrays and every other key replace wholesale.
+ */
+export function deepMergeSettings(current: Settings, patch: SettingsPatch): Settings {
+  const merged: Record<string, unknown> = { ...current };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    if ((key === "providers" || key === "limits") && isPlainObject(value)) {
+      merged[key] = mergeObjects(merged[key] as Record<string, unknown>, value);
+    } else {
+      merged[key] = value;
+    }
+  }
+  return SettingsSchema.parse(merged);
+}
+
+function assertIndexableFolder(ctx: AppContext, folderPath: string): void {
+  if (!path.isAbsolute(folderPath)) throw httpError(400, `Folder path must be absolute: ${folderPath}`);
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(folderPath);
+  } catch {
+    throw httpError(400, `Folder does not exist: ${folderPath}`);
+  }
+  if (!stat.isDirectory()) throw httpError(400, `Not a directory: ${folderPath}`);
+  const real = fs.realpathSync(folderPath);
+  const config = fs.existsSync(ctx.paths.config) ? fs.realpathSync(ctx.paths.config) : ctx.paths.config;
+  if (isInside(config, real) || isInside(real, config)) {
+    throw httpError(400, "The MordomoOS config directory cannot be indexed");
+  }
+}
+
+/** A sync target must live inside the home or an enabled indexed folder. */
+function resolveSyncTarget(ctx: AppContext, target: string | undefined): string {
+  if (!target) return ctx.paths.home;
+  return resolveInsideRoots(grantedRoots(ctx), target);
+}
 
 export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): void {
   // Public (no token): only non-sensitive branding needed before the UI boots.
@@ -30,41 +119,50 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
     };
   });
 
-  app.get("/api/health", async () => ({
-    ok: true,
-    uptimeMs: Date.now() - ctx.startedAt,
-    version: PKG_VERSION,
-  }));
+  app.get("/api/health", async () => {
+    const dbOpen = ctx.db.open;
+    const runs = ctx.activeRunCount();
+    return {
+      ok: dbOpen,
+      uptimeMs: Date.now() - ctx.startedAt,
+      version: PKG_VERSION,
+      db: { open: dbOpen, path: ctx.paths.dbFile },
+      scheduler: { running: ctx.schedulerRunning() },
+      activeRuns: runs.running,
+      queuedRuns: runs.queued,
+      pendingApprovals: ctx.approvals.list("pending").length,
+      lastEventId: events.lastId,
+      restorePending: readRestorePending(ctx.paths),
+    };
+  });
 
   app.get("/api/settings", async () => ctx.settings());
 
   app.put("/api/settings", async (req) => {
-    const patch = SettingsSchema.partial().parse(req.body);
+    const patch = SettingsPatchSchema.parse(req.body);
     const before = ctx.settings();
 
     // Approval-gated transitions (docs/security.md).
+    let pendingApproval = null;
     if (patch.bindAddress && patch.bindAddress !== "127.0.0.1" && patch.bindAddress !== before.bindAddress) {
-      const approval = ctx.approvals.request(
+      pendingApproval = ctx.approvals.request(
         "expose_port",
         `Bind the MordomoOS server to ${patch.bindAddress} instead of 127.0.0.1 (exposes the panel beyond this machine).`,
         { bindAddress: patch.bindAddress },
       );
       delete patch.bindAddress;
-      const saved = ctx.settingsStore.update(patch);
-      return { settings: saved, pendingApproval: approval };
     }
     const newFolders = (patch.indexedFolders ?? []).filter(
       (f) => !before.indexedFolders.some((b) => path.resolve(b.path) === path.resolve(f.path)),
     );
-    for (const folder of newFolders) {
-      if (!fs.existsSync(folder.path)) {
-        throw Object.assign(new Error(`Folder does not exist: ${folder.path}`), { statusCode: 400 });
-      }
-    }
-    const saved = ctx.settingsStore.update(patch);
+    for (const folder of newFolders) assertIndexableFolder(ctx, folder.path);
+
+    // SettingsStore.save() emits `settings.changed` on the event bus.
+    const saved = ctx.settingsStore.save(deepMergeSettings(before, patch));
+    ctx.reloadAdapters();
     ctx.invalidateProviderCache();
     ctx.scheduler.reload();
-    return { settings: saved, pendingApproval: null };
+    return { settings: saved, pendingApproval };
   });
 
   app.get("/api/providers", async (req) => {
@@ -81,6 +179,7 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
       const s = ctx.settings();
       s.providers[id].binaryPath = detection.binaryPath;
       ctx.settingsStore.save(s);
+      ctx.reloadAdapters();
     }
     ctx.invalidateProviderCache();
     return { detection, auth, models };
@@ -94,9 +193,7 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
   app.put("/api/providers/default", async (req) => {
     const { provider } = z.object({ provider: ProviderId }).parse(req.body);
     const s = ctx.settings();
-    if (!s.providers[provider].enabled) {
-      throw Object.assign(new Error(`Provider ${provider} is not enabled`), { statusCode: 400 });
-    }
+    if (!s.providers[provider].enabled) throw httpError(400, `Provider ${provider} is not enabled`);
     return ctx.settingsStore.update({ defaultProvider: provider });
   });
 
@@ -120,21 +217,24 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
       "Smoke test: reply with exactly MORDOMO_OK and do nothing else. Do not read or write any file.",
       "read_only",
     );
-    const events = ctx.runs.eventsFor(run.id);
-    const sawOk = events.some(
+    const runEvents = ctx.runs.eventsFor(run.id);
+    const sawOk = runEvents.some(
       (e) => (e.event.type === "assistant" || e.event.type === "result") && JSON.stringify(e.event).includes("MORDOMO_OK"),
     );
     return { run: finished, passed: finished.status === "done" && sawOk };
   });
 
-  app.get("/api/doctor", async () => runDoctor(ctx));
+  app.get("/api/doctor", async (req) => {
+    const { audit } = z.object({ audit: z.enum(["0", "1"]).optional() }).parse(req.query);
+    return runDoctor(ctx, { npmAudit: audit !== "0" });
+  });
 
   app.get("/api/approvals", async () => ctx.approvals.list("pending"));
   app.post("/api/approvals/:id/resolve", async (req) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const { id } = UuidParams.parse(req.params);
     const { decision } = z.object({ decision: z.enum(["approved", "denied"]) }).parse(req.body);
     const approval = ctx.approvals.resolve(id, decision);
-    if (!approval) throw Object.assign(new Error("Approval not found"), { statusCode: 404 });
+    if (!approval) throw httpError(404, "Approval not found");
     // Act on approved effects we know how to apply.
     if (approval.status === "approved" && approval.kind === "expose_port") {
       ctx.settingsStore.update({ bindAddress: String(approval.payload.bindAddress ?? "127.0.0.1") });
@@ -142,35 +242,64 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
     return approval;
   });
 
+  // ---- Backups ---------------------------------------------------------------
   app.get("/api/backups", async () => listBackups(ctx.paths));
   app.post("/api/backups", async (req) => {
     const { includeArtifacts } = z.object({ includeArtifacts: z.boolean().default(false) }).parse(req.body ?? {});
-    return createBackup(ctx.paths, includeArtifacts);
-  });
-  app.post("/api/backups/:name/restore", async (req) => {
-    const { name } = z.object({ name: z.string().regex(/^full-[A-Za-z0-9-]+$/) }).parse(req.params);
-    const result = restoreBackup(ctx.paths, name);
-    ctx.scheduler.reload();
-    ctx.invalidateProviderCache();
-    return { restored: name, safetyBackup: result.safetyBackup, note: "Restart the service to reload the restored database: mordomo stop && mordomo start" };
+    return createBackup(ctx.paths, ctx.db, { includeArtifacts });
   });
 
+  /**
+   * Restore is STAGED, never applied against the open database (audit B2):
+   * the backup is copied to config/restore-pending/ and applied by the server
+   * on its next boot, before the DB is opened (see AppContext.applyPendingRestore).
+   * Refused while any run is active.
+   */
+  app.post("/api/backups/:name/restore", async (req, reply) => {
+    const { name } = BackupNameParams.parse(req.params);
+    const src = path.join(ctx.paths.backups, name);
+    if (!isInside(ctx.paths.backups, src) || !fs.existsSync(src)) throw httpError(404, `Backup not found: ${name}`);
+    const active = ctx.activeRunCount();
+    if (active.running + active.queued > 0) {
+      throw httpError(409, `Cannot restore while ${active.running + active.queued} run(s) are active. Wait or cancel them first.`);
+    }
+    const staged = writeRestorePending(ctx.paths, name);
+    reply.code(202);
+    return {
+      staged: true,
+      restored: false,
+      name,
+      stagedAt: staged.stagedAt,
+      apply: "mordomo stop && mordomo start",
+      message:
+        "Restore staged. The database is in use, so the backup will be applied on the next service start " +
+        "(a safety backup is taken first). Restart with: mordomo stop && mordomo start",
+    };
+  });
+  app.get("/api/backups/restore-pending", async () => ({ restorePending: readRestorePending(ctx.paths) }));
+  app.delete("/api/backups/restore-pending", async () => {
+    const pending = readRestorePending(ctx.paths);
+    clearRestorePending(ctx.paths);
+    return { cancelled: pending?.name ?? null };
+  });
+
+  // ---- Sync ------------------------------------------------------------------
   app.get("/api/sync/plan", async (req) => {
     const { target } = z.object({ target: z.string().optional() }).parse(req.query);
-    return ctx.sync.plan(target ?? ctx.paths.home);
+    return ctx.sync.plan(resolveSyncTarget(ctx, target));
   });
   app.post("/api/sync/apply", async (req) => {
     const body = z
       .object({ target: z.string().optional(), approvedConflicts: z.array(z.string()).default([]) })
       .parse(req.body ?? {});
-    const plan = ctx.sync.plan(body.target ?? ctx.paths.home);
+    const plan = ctx.sync.plan(resolveSyncTarget(ctx, body.target));
     return ctx.sync.apply(plan, body.approvedConflicts);
   });
 
   app.get("/api/startup-plan", async () => planStartupService(ctx.paths, process.execPath));
 
   app.get("/api/diagnostics/export", async () => {
-    const doctor = await runDoctor(ctx);
+    const doctor = await runDoctor(ctx, { npmAudit: false });
     const bundle = {
       generatedAt: new Date().toISOString(),
       version: PKG_VERSION,

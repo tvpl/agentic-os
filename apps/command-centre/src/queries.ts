@@ -6,7 +6,17 @@
  * invalidate precisely. Add new keys here, never inline in a view.
  */
 import { useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-query";
-import { api } from "./api";
+import {
+  api,
+  type ArtifactEntry,
+  type Connector,
+  type Meta,
+  type Metrics,
+  type ProviderSnapshot,
+  type RoutineStatus,
+  type RunRecord,
+  type Skill,
+} from "./api";
 
 export const qk = {
   meta: ["meta"] as const,
@@ -36,6 +46,7 @@ export const invalidationMap: Record<string, readonly (readonly unknown[])[]> = 
   "run.finished": [["runs"], ["run"], ["metrics"], ["artifacts"], ["routines"]],
   "routine.fired": [["routines"], ["runs"]],
   "routine.changed": [["routines"]],
+  "index.progress": [["memory", "status"]],
   "index.finished": [["memory"]],
   "approval.requested": [["approvals"]],
   "approval.resolved": [["approvals"], ["settings"], ["connectors"]],
@@ -43,15 +54,16 @@ export const invalidationMap: Record<string, readonly (readonly unknown[])[]> = 
   "backup.created": [["backups"]],
 };
 
-/** Thin wrapper: GET an API path into the cache under a key. */
-export function useApiQuery<T>(
-  key: readonly unknown[],
-  path: string,
-  options: Omit<UseQueryOptions<T, Error, T, readonly unknown[]>, "queryKey" | "queryFn"> = {},
-) {
+/** Named SSE event types the stream subscribes to. */
+export const OS_EVENT_TYPES: readonly string[] = Object.keys(invalidationMap);
+
+export type ApiQueryOptions<T> = Omit<UseQueryOptions<T, Error, T, readonly unknown[]>, "queryKey" | "queryFn">;
+
+/** Thin wrapper: GET an API path into the cache under a key (request is aborted when the query is cancelled). */
+export function useApiQuery<T>(key: readonly unknown[], path: string, options: ApiQueryOptions<T> = {}) {
   return useQuery<T, Error, T, readonly unknown[]>({
     queryKey: key,
-    queryFn: () => api.get<T>(path),
+    queryFn: ({ signal }) => api.get<T>(path, { signal }),
     ...options,
   });
 }
@@ -60,3 +72,20 @@ export function useInvalidate() {
   const qc = useQueryClient();
   return (...keys: readonly (readonly unknown[])[]) => Promise.all(keys.map((k) => qc.invalidateQueries({ queryKey: k })));
 }
+
+/* ---- shared "useOs*" hooks: one cache entry per resource ------------------ */
+export const useOsMeta = (o?: ApiQueryOptions<Meta>) => useApiQuery<Meta>(qk.meta, "/api/meta", o);
+export const useOsProviders = (o?: ApiQueryOptions<ProviderSnapshot[]>) => useApiQuery<ProviderSnapshot[]>(qk.providers, "/api/providers", o);
+export const useOsSkills = (o?: ApiQueryOptions<Skill[]>) => useApiQuery<Skill[]>(qk.skills, "/api/skills", o);
+export const useOsRoutines = (o?: ApiQueryOptions<RoutineStatus[]>) => useApiQuery<RoutineStatus[]>(qk.routines, "/api/routines", o);
+export const useOsRuns = (params: { limit?: number; status?: string; origin?: string } = {}, o?: ApiQueryOptions<RunRecord[]>) => {
+  const qs = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== "")
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+    .join("&");
+  return useApiQuery<RunRecord[]>(qk.runs(params), `/api/runs${qs ? `?${qs}` : ""}`, o);
+};
+export const useOsRun = (id: string, o?: ApiQueryOptions<RunRecord>) => useApiQuery<RunRecord>(qk.run(id), `/api/runs/${encodeURIComponent(id)}`, o);
+export const useOsMetrics = (o?: ApiQueryOptions<Metrics>) => useApiQuery<Metrics>(qk.metrics, "/api/metrics", o);
+export const useOsArtifacts = (o?: ApiQueryOptions<ArtifactEntry[]>) => useApiQuery<ArtifactEntry[]>(qk.artifacts, "/api/artifacts/recent", o);
+export const useOsConnectors = (o?: ApiQueryOptions<Connector[]>) => useApiQuery<Connector[]>(qk.connectors, "/api/connectors", o);

@@ -28,7 +28,7 @@ export default tseslint.config(
     // Backend, CLI, tests and config scripts run on Node.
     files: ["**/*.{js,mjs,cjs,ts}"],
     languageOptions: {
-      globals: { ...globals.node, ...globals.es2022 },
+      globals: { ...globals.node, ...globals.es2021 },
     },
   },
   {
@@ -51,7 +51,7 @@ export default tseslint.config(
     ...jsxA11y.flatConfigs.recommended,
     languageOptions: {
       ...jsxA11y.flatConfigs.recommended.languageOptions,
-      globals: { ...globals.browser, ...globals.es2022 },
+      globals: { ...globals.browser, ...globals.es2021 },
     },
   },
   {
@@ -61,6 +61,11 @@ export default tseslint.config(
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
     },
+  },
+  {
+    // Playwright scripts evaluate callbacks inside the browser page.
+    files: ["tests/e2e/**/*.{ts,mjs}"],
+    languageOptions: { globals: { ...globals.browser, ...globals.node } },
   },
   {
     // Tests are allowed to poke at internals.

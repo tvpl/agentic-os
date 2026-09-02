@@ -5,8 +5,10 @@ import type { MordomoPaths } from "../paths.js";
 import type { Settings } from "../config/schema.js";
 import type { RunManager, RunRecord } from "../runs/runManager.js";
 import type { SkillCatalog } from "../skills/catalog.js";
-import { RoutineStore, nextRunAt } from "./store.js";
+import type { RoutineStore } from "./store.js";
 import type { Routine, RoutineStatus } from "./types.js";
+import { JsonlLogger } from "../logs/jsonl.js";
+import { events } from "../events.js";
 
 /**
  * Internal scheduler (documented fallback + default engine).
@@ -16,10 +18,38 @@ import type { Routine, RoutineStatus } from "./types.js";
  *
  * Catch-up: on start, any enabled routine with missedPolicy=run_on_boot whose
  * last firing is older than its previous scheduled slot fires once.
+ *
+ * Firing model: `fire()` creates the first run row and resolves immediately
+ * with its id; execution (and retries, each a new run linked by parent_run_id)
+ * continues in the background, tracked per routine so overlapping firings are
+ * refused. The croner callback returns the whole in-flight promise so
+ * `protect: true` engages as well.
  */
+
+export type FireReason = "fired" | "caught_up" | "manual";
+
+export interface FireOptions {
+  reason?: FireReason;
+  scheduledFor?: number | null;
+  /** The history row was already inserted (catch-up); only fill in the run id. */
+  historyAlreadyRecorded?: boolean;
+}
+
+export interface FireResult {
+  runId: string;
+  status: string;
+}
+
+/** Hard cap on croner steps when searching for the previous slot. */
+const PREVIOUS_SLOT_MAX_STEPS = 500;
+
 export class RoutineScheduler {
   private jobs = new Map<string, Cron>();
   private running = false;
+  /** Background firing per routine: in-flight guard + what stop() drains. */
+  private readonly inflight = new Map<string, Promise<void>>();
+  private abort = new AbortController();
+  private readonly logger: JsonlLogger;
 
   constructor(
     private readonly db: Db,
@@ -28,18 +58,39 @@ export class RoutineScheduler {
     private readonly runs: RunManager,
     private readonly skills: SkillCatalog,
     private readonly getSettings: () => Settings,
-  ) {}
+  ) {
+    const s = getSettings();
+    this.logger = new JsonlLogger(paths.logs, "scheduler", s.limits.logMaxFileBytes, s.limits.logRetentionDays);
+  }
+
+
+  /** Logging must never throw, even after the logs dir is gone (late background tasks). */
+  private log(record: Record<string, unknown>): void {
+    try {
+      this.logger.append(record);
+    } catch {
+      /* best effort */
+    }
+  }
 
   start(): void {
     this.running = true;
+    this.abort = new AbortController();
     this.reload();
     this.catchUpMissed();
   }
 
+  /** Stop cron jobs and cancel pending backoff sleeps. In-flight runs are left to RunManager.shutdown(). */
   stop(): void {
     this.running = false;
+    this.abort.abort();
     for (const job of this.jobs.values()) job.stop();
     this.jobs.clear();
+  }
+
+  /** Wait for background firings to settle (after stop() + runs.shutdown()). */
+  async drain(): Promise<void> {
+    await Promise.allSettled([...this.inflight.values()]);
   }
 
   /** Re-read routine files and rebuild cron jobs. Call after any CRUD change. */
@@ -51,93 +102,171 @@ export class RoutineScheduler {
       if (!routine.enabled) continue;
       const job = new Cron(
         routine.schedule,
-        { timezone: routine.timezone, protect: true },
-        () => void this.fire(routine.id, "fired", Date.now()),
+        {
+          timezone: this.timezoneFor(routine),
+          // Blocked overlapping ticks are recorded as `skipped` (croner still blocks them).
+          protect: () =>
+            this.safeHistory(routine.id, null, Date.now(), "skipped", "Previous firing still in flight (croner protect)."),
+          catch: (err) => this.log({ event: "cron_callback_error", routineId: routine.id, error: String(err) }),
+        },
+        (self) => this.onTick(routine.id, self),
       );
       this.jobs.set(routine.id, job);
     }
   }
 
+  /** Cron callback: returns the full in-flight promise so `protect` engages. */
+  private async onTick(routineId: string, job: Cron): Promise<void> {
+    const scheduledFor = job.currentRun()?.getTime() ?? Date.now();
+    if (this.inflight.has(routineId)) {
+      this.safeHistory(routineId, null, scheduledFor, "skipped", "Previous firing still in flight.");
+      return;
+    }
+    try {
+      await this.fire(routineId, { reason: "fired", scheduledFor });
+    } catch (err) {
+      const message = (err as Error).message;
+      this.safeHistory(routineId, null, scheduledFor, "failed_to_fire", message);
+      this.log({ event: "failed_to_fire", routineId, error: message });
+      return;
+    }
+    await this.inflight.get(routineId);
+  }
+
   private catchUpMissed(): void {
+    let routines: Routine[];
+    try {
+      routines = this.store.list();
+    } catch (err) {
+      this.log({ event: "catch_up_skipped", error: (err as Error).message });
+      return;
+    }
     const now = Date.now();
-    for (const routine of this.store.list()) {
+    for (const routine of routines) {
       if (!routine.enabled || routine.missedPolicy !== "run_on_boot") continue;
-      const previous = previousScheduledTime(routine, now);
+      const previous = previousScheduledTime(routine.schedule, this.timezoneFor(routine), now);
       if (!previous) continue;
       const last = this.lastFiring(routine.id);
-      if (!last || last < previous) {
-        this.recordHistory(routine.id, null, previous, "caught_up", "Missed while the service was off; fired on boot per policy.");
-        void this.fire(routine.id, "caught_up", previous, true);
-      }
+      if (last && last >= previous) continue;
+      this.recordHistory(routine.id, null, previous, "caught_up", "Missed while the service was off; fired on boot per policy.");
+      this.fire(routine.id, { reason: "caught_up", scheduledFor: previous, historyAlreadyRecorded: true }).catch(
+        (err: Error) => {
+          this.safeHistory(routine.id, null, previous, "failed_to_fire", err.message);
+          this.log({ event: "failed_to_fire", routineId: routine.id, reason: "caught_up", error: err.message });
+        },
+      );
     }
   }
 
-  /** Fire a routine now (scheduler tick, catch-up, or manual test run). */
-  async fire(
-    routineId: string,
-    reason: "fired" | "caught_up" | "manual",
-    scheduledFor: number | null,
-    historyAlreadyRecorded = false,
-  ): Promise<RunRecord | null> {
+  /**
+   * Fire a routine now. Resolves as soon as the first run row exists; the run
+   * (and any retries) executes in the background. Throws with `statusCode`
+   * 404 (unknown routine), 409 (already in flight) or 400 (missing skill).
+   */
+  async fire(routineId: string, opts: FireOptions = {}): Promise<FireResult> {
+    const reason = opts.reason ?? "manual";
+    const scheduledFor = opts.scheduledFor ?? null;
     const routine = this.store.get(routineId);
-    if (!routine) return null;
-    const settings = this.getSettings();
+    if (!routine) throw Object.assign(new Error(`Routine not found: ${routineId}`), { statusCode: 404 });
+    if (this.inflight.has(routineId)) {
+      throw Object.assign(new Error(`Routine "${routineId}" is already running.`), { statusCode: 409 });
+    }
 
-    let prompt: string;
+    const settings = this.getSettings();
     let skillSlug: string | null = null;
     let mode: "read_only" | "write" = routine.profile === "read_only" ? "read_only" : "write";
-    const run = this.runs.create({
-      origin: "routine",
-      provider: routine.provider,
-      prompt: routine.prompt ?? `(skill: ${routine.skillSlug})`,
-      cwd: routine.workingDir ?? this.paths.home,
-      model: routine.model ?? settings.providers[routine.provider].defaultModel,
-      effort: routine.effort,
-      mode,
-      timeoutMs: routine.timeoutMs,
-      profile: routine.profile,
-      skillSlug: routine.skillSlug,
-      routineId: routine.id,
-    });
-
+    let buildPrompt: (runId: string) => string;
     if (routine.skillSlug) {
       const skill = this.skills.load(routine.skillSlug);
       if (!skill) {
-        this.recordHistory(routine.id, run.id, scheduledFor, "failed_to_fire", `Skill "${routine.skillSlug}" not found.`);
-        await this.runs.cancel(run.id);
-        return this.runs.get(run.id);
+        throw Object.assign(new Error(`Skill "${routine.skillSlug}" not found.`), { statusCode: 400 });
       }
       skillSlug = skill.slug;
-      const artifactsDir = path.join(this.paths.artifacts, run.id);
-      prompt = this.skills.buildRunPrompt(skill, routine.inputs, artifactsDir);
       if (skill.mode === "read_only") mode = "read_only";
+      buildPrompt = (runId) => this.skills.buildRunPrompt(skill, routine.inputs, path.join(this.paths.artifacts, runId));
     } else {
-      prompt = [
-        routine.prompt ?? "",
-        `Write any produced file into: ${path.join(this.paths.artifacts, run.id)}`,
-      ].join("\n\n");
+      buildPrompt = (runId) =>
+        [routine.prompt ?? "", `Write any produced file into: ${path.join(this.paths.artifacts, runId)}`].join("\n\n");
     }
 
-    if (!historyAlreadyRecorded) {
-      this.recordHistory(routine.id, run.id, scheduledFor, reason === "manual" ? "fired" : reason, reason === "manual" ? "Manual test run." : null);
-    } else {
-      this.db.prepare("UPDATE routine_history SET run_id = ? WHERE routine_id = ? AND run_id IS NULL AND fired_at = (SELECT MAX(fired_at) FROM routine_history WHERE routine_id = ?)").run(run.id, routine.id, routine.id);
-    }
+    const createRun = (attempt: number, parentRunId: string | null) =>
+      this.runs.create({
+        origin: "routine",
+        provider: routine.provider,
+        prompt: routine.prompt ?? `(skill: ${skillSlug})`,
+        cwd: routine.workingDir ?? this.paths.home,
+        model: routine.model ?? settings.providers[routine.provider].defaultModel,
+        effort: routine.effort,
+        mode,
+        timeoutMs: routine.timeoutMs,
+        profile: routine.profile,
+        skillSlug,
+        routineId: routine.id,
+        parentRunId,
+        attempts: attempt,
+      });
 
-    // Retries with backoff
-    let attempt = 0;
-    let record: RunRecord | null = null;
-    while (attempt < routine.maxAttempts) {
+    const first = createRun(1, null);
+    if (opts.historyAlreadyRecorded) {
+      this.db
+        .prepare(
+          "UPDATE routine_history SET run_id = ? WHERE routine_id = ? AND run_id IS NULL AND fired_at = (SELECT MAX(fired_at) FROM routine_history WHERE routine_id = ? AND run_id IS NULL)",
+        )
+        .run(first.id, routine.id, routine.id);
+    } else {
+      this.recordHistory(
+        routine.id,
+        first.id,
+        scheduledFor,
+        reason === "manual" ? "fired" : reason,
+        reason === "manual" ? "Manual test run." : null,
+      );
+    }
+    events.emit("routine.fired", { routineId: routine.id, runId: first.id });
+
+    const task = this.runWithRetries(routine, first, buildPrompt, mode, createRun, scheduledFor)
+      .catch((err: Error) => {
+        this.log({ event: "routine_run_error", routineId: routine.id, runId: first.id, error: err.message });
+      })
+      .finally(() => {
+        if (this.inflight.get(routine.id) === task) this.inflight.delete(routine.id);
+      });
+    this.inflight.set(routine.id, task);
+    return { runId: first.id, status: first.status };
+  }
+
+  private async runWithRetries(
+    routine: Routine,
+    first: RunRecord,
+    buildPrompt: (runId: string) => string,
+    mode: "read_only" | "write",
+    createRun: (attempt: number, parentRunId: string | null) => RunRecord,
+    scheduledFor: number | null,
+  ): Promise<void> {
+    let current = first;
+    let attempt = 1;
+    for (;;) {
+      const record = await this.runs.execute(current.id, buildPrompt(current.id), mode);
+      const retryable =
+        record.status === "failed" || (record.status === "timed_out" && routine.retryOnTimeout);
+      if (!retryable || attempt >= routine.maxAttempts || this.abort.signal.aborted) return;
+      const ok = await sleep(routine.backoffMs * attempt, this.abort.signal);
+      if (!ok) return;
       attempt++;
-      record = await this.runs.execute(run.id, prompt, mode);
-      if (record.status === "done" || record.status === "cancelled") break;
-      if (attempt < routine.maxAttempts) {
-        await sleep(routine.backoffMs * attempt);
-        this.db.prepare("UPDATE runs SET status = 'queued', attempts = ? WHERE id = ?").run(attempt + 1, run.id);
-      }
+      current = createRun(attempt, first.id);
+      this.recordHistory(
+        routine.id,
+        current.id,
+        scheduledFor,
+        "fired",
+        `Retry ${attempt}/${routine.maxAttempts} after ${record.status} (run ${record.id}).`,
+      );
     }
-    void skillSlug;
-    return record;
+  }
+
+  /** Effective timezone: the routine's own, else settings.timezone, else UTC. */
+  private timezoneFor(routine: Routine): string {
+    return routine.timezone || this.getSettings().timezone || "UTC";
   }
 
   private lastFiring(routineId: string): number | null {
@@ -159,9 +288,24 @@ export class RoutineScheduler {
       .run(routineId, runId, scheduledFor, Date.now(), status, note);
   }
 
+  /** recordHistory that never throws (used from error paths, possibly after the DB closed). */
+  private safeHistory(
+    routineId: string,
+    runId: string | null,
+    scheduledFor: number | null,
+    status: string,
+    note: string | null,
+  ): void {
+    try {
+      this.recordHistory(routineId, runId, scheduledFor, status, note);
+    } catch (err) {
+      this.log({ event: "history_write_failed", routineId, status, error: (err as Error).message });
+    }
+  }
+
   history(routineId: string, limit = 20): Array<{ id: number; runId: string | null; scheduledFor: number | null; firedAt: number; status: string; note: string | null }> {
     const rows = this.db
-      .prepare("SELECT * FROM routine_history WHERE routine_id = ? ORDER BY fired_at DESC LIMIT ?")
+      .prepare("SELECT * FROM routine_history WHERE routine_id = ? ORDER BY fired_at DESC, id DESC LIMIT ?")
       .all(routineId, limit) as Array<{ id: number; run_id: string | null; scheduled_for: number | null; fired_at: number; status: string; note: string | null }>;
     return rows.map((r) => ({ id: r.id, runId: r.run_id, scheduledFor: r.scheduled_for, firedAt: r.fired_at, status: r.status, note: r.note }));
   }
@@ -172,20 +316,20 @@ export class RoutineScheduler {
         .prepare(
           `SELECT h.fired_at, COALESCE(r.status, h.status) AS status
            FROM routine_history h LEFT JOIN runs r ON r.id = h.run_id
-           WHERE h.routine_id = ? ORDER BY h.fired_at DESC LIMIT 1`,
+           WHERE h.routine_id = ? ORDER BY h.fired_at DESC, h.id DESC LIMIT 1`,
         )
         .get(routine.id) as { fired_at: number; status: string } | undefined;
       const failures = (
         this.db
           .prepare(
             `SELECT COUNT(*) c FROM routine_history h JOIN runs r ON r.id = h.run_id
-             WHERE h.routine_id = ? AND r.status = 'failed' AND h.fired_at > ?`,
+             WHERE h.routine_id = ? AND r.status IN ('failed','timed_out') AND h.fired_at > ?`,
           )
           .get(routine.id, Date.now() - 3 * 86_400_000) as { c: number }
       ).c;
       return {
         ...routine,
-        nextRunAt: nextRunAt(routine),
+        nextRunAt: routine.enabled ? nextScheduledTime(routine.schedule, this.timezoneFor(routine)) : null,
         lastFiredAt: lastRow?.fired_at ?? null,
         lastStatus: lastRow?.status ?? null,
         recentFailures: failures,
@@ -195,26 +339,66 @@ export class RoutineScheduler {
   }
 }
 
-function previousScheduledTime(routine: Routine, now: number): number | null {
+function nextScheduledTime(schedule: string, timezone: string): number | null {
   try {
-    // Walk back: find the most recent scheduled slot before `now` by scanning
-    // next runs from (now - 7 days).
-    const job = new Cron(routine.schedule, { timezone: routine.timezone, paused: true });
-    let cursor = new Date(now - 7 * 86_400_000);
-    let previous: number | null = null;
-    for (let i = 0; i < 4000; i++) {
-      const next = job.nextRun(cursor);
-      if (!next || next.getTime() >= now) break;
-      previous = next.getTime();
-      cursor = new Date(next.getTime() + 1000);
-    }
+    const job = new Cron(schedule, { timezone, paused: true });
+    const next = job.nextRun();
     job.stop();
-    return previous;
+    return next ? next.getTime() : null;
   } catch {
     return null;
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Most recent scheduled slot strictly before `now`. croner only enumerates
+ * forwards, so: estimate the period from the next two runs, look at a window
+ * of that size ending at `now`, and widen it (doubling) until it contains a
+ * slot; then step forward inside the window to the last slot before `now`.
+ * Bounded by PREVIOUS_SLOT_MAX_STEPS in each direction.
+ */
+export function previousScheduledTime(schedule: string, timezone: string, now: number): number | null {
+  let job: Cron | null = null;
+  try {
+    job = new Cron(schedule, { timezone, paused: true });
+    const n1 = job.nextRun(new Date(now));
+    const n2 = n1 ? job.nextRun(n1) : null;
+    let window = n1 && n2 ? Math.max(n2.getTime() - n1.getTime(), 1000) : 60_000;
+    const maxWindow = 366 * 86_400_000;
+    for (let i = 0; i < PREVIOUS_SLOT_MAX_STEPS && window <= maxWindow; i++) {
+      const candidate = job.nextRun(new Date(now - window));
+      if (candidate && candidate.getTime() < now) {
+        let previous = candidate.getTime();
+        for (let j = 0; j < PREVIOUS_SLOT_MAX_STEPS; j++) {
+          const next = job.nextRun(new Date(previous));
+          if (!next || next.getTime() >= now) break;
+          previous = next.getTime();
+        }
+        return previous;
+      }
+      window *= 2;
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    job?.stop();
+  }
+}
+
+/** Resolves true after `ms`, or false immediately when `signal` aborts. */
+function sleep(ms: number, signal: AbortSignal): Promise<boolean> {
+  if (ms <= 0) return Promise.resolve(true);
+  if (signal.aborted) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve(true);
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve(false);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }

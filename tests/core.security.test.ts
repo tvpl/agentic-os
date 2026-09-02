@@ -3,7 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   redactSecrets,
+  redactObject,
   isInside,
+  isInsideAny,
   resolveInsideRoots,
   PathAccessError,
   makeExcludeMatcher,
@@ -35,6 +37,31 @@ describe("secret redaction", () => {
   it("keeps normal text intact", () => {
     const text = "Fix the login page and update the docs.";
     expect(redactSecrets(text)).toBe(text);
+  });
+
+  it("keeps JSON parseable after redaction (quotes stay balanced)", () => {
+    const payload = {
+      password: "x",
+      nested: { token: "abcdefgh12345678", note: "password=hunter2hunter2; done", auth: 'say "hi"' },
+      escaped: { secret: 'abc\\"def\\"ghi', passwd: "trailing\\\\" },
+      header: "Authorization: Bearer abcdefghij1234567890XYZ",
+      list: ["api_key: 'quoted-secret-value'", "api-key=plainsecret"],
+    };
+    const json = JSON.stringify(payload);
+    const out = redactSecrets(json);
+    const parsed = JSON.parse(out) as typeof payload;
+    expect(parsed.password).toBe("x");
+    expect(parsed.nested.token).toBe("[REDACTED:credential-pair]");
+    expect(parsed.nested.note).not.toContain("hunter2hunter2");
+    expect(parsed.nested.auth).toBe("[REDACTED:credential-pair]"); // aggressive by design, still valid JSON
+    expect(parsed.escaped.secret).toBe("[REDACTED:credential-pair]");
+    expect(parsed.escaped.passwd).toBe("[REDACTED:credential-pair]");
+    expect(parsed.header).not.toContain("abcdefghij1234567890XYZ");
+    expect(parsed.list[0]).toBe("api_key: '[REDACTED:credential-pair]'");
+    expect(parsed.list[1]).toBe("api-key=[REDACTED:credential-pair]");
+    expect(() => redactObject(payload)).not.toThrow();
+    expect(redactSecrets('password: "abc123456"')).toBe('password: "[REDACTED:credential-pair]"');
+    expect(redactSecrets("password: abc123456")).toBe("password: [REDACTED:credential-pair]");
   });
 });
 
@@ -68,6 +95,9 @@ describe("path containment", () => {
   it("isInside handles prefixes correctly", () => {
     expect(isInside("/a/b", "/a/b/c")).toBe(true);
     expect(isInside("/a/b", "/a/bc")).toBe(false);
+    expect(isInsideAny(["/x", "/a/b"], "/a/b/c")).toBe(true);
+    expect(isInsideAny(["/x", "/a/b"], "/a/bc")).toBe(false);
+    expect(isInsideAny([], "/a")).toBe(false);
   });
 });
 

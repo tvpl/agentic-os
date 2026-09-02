@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, useCallback, useContext } from "react";
 
 export type Lang = "en" | "pt-BR";
 
@@ -270,6 +270,35 @@ const en = {
   "pixel.saveBtn": "Save",
   "pixel.nameInvalid": "Name must be lowercase letters, digits and dashes (max 40).",
   "pixel.saved": "Saved:",
+  "common.name": "Name",
+  "common.description": "Description",
+  "common.mode": "Mode",
+  "common.back": "Back",
+  "common.actions": "Actions",
+  "common.dismiss": "Dismiss",
+  "common.timeout": "The request timed out.",
+  "common.network": "Network error — the local service did not answer.",
+  "common.reconnecting": "Live updates disconnected — reconnecting…",
+  "skills.name": "Skill name",
+  "routines.name": "Routine name",
+  "routines.attempts": "Attempts",
+  "routines.timeoutMin": "Timeout (min)",
+  "table.provider": "Provider",
+  "table.origin": "Origin",
+  "table.status": "Status",
+  "table.duration": "Duration",
+  "table.when": "When",
+  "os.agenticOs": "Agentic OS",
+  "clock.week": "Wk",
+  "launcher.searchPh": "Search apps and skills…",
+  "launcher.apps": "Apps",
+  "launcher.skills": "Skills",
+  "launcher.noResults": "No matches for “{query}”",
+  "launcher.open": "open",
+  "error.title": "This app crashed",
+  "error.body": "An unexpected error happened while rendering {name}. Your other apps are unaffected.",
+  "error.details": "Details",
+  "error.reload": "Reload page",
 };
 
 type Dict = typeof en;
@@ -543,6 +572,35 @@ const ptBR: Dict = {
   "pixel.saveBtn": "Salvar",
   "pixel.nameInvalid": "O nome deve ter letras minúsculas, dígitos e hífens (máx. 40).",
   "pixel.saved": "Salvo:",
+  "common.name": "Nome",
+  "common.description": "Descrição",
+  "common.mode": "Modo",
+  "common.back": "Voltar",
+  "common.actions": "Ações",
+  "common.dismiss": "Dispensar",
+  "common.timeout": "A requisição expirou.",
+  "common.network": "Erro de rede — o serviço local não respondeu.",
+  "common.reconnecting": "Atualizações ao vivo desconectadas — reconectando…",
+  "skills.name": "Nome da skill",
+  "routines.name": "Nome da rotina",
+  "routines.attempts": "Tentativas",
+  "routines.timeoutMin": "Timeout (min)",
+  "table.provider": "Provedor",
+  "table.origin": "Origem",
+  "table.status": "Status",
+  "table.duration": "Duração",
+  "table.when": "Quando",
+  "os.agenticOs": "Agentic OS",
+  "clock.week": "Sem",
+  "launcher.searchPh": "Busque apps e skills…",
+  "launcher.apps": "Apps",
+  "launcher.skills": "Skills",
+  "launcher.noResults": "Nada encontrado para “{query}”",
+  "launcher.open": "abrir",
+  "error.title": "Este app travou",
+  "error.body": "Um erro inesperado aconteceu ao renderizar {name}. Os outros apps não foram afetados.",
+  "error.details": "Detalhes",
+  "error.reload": "Recarregar página",
 };
 
 export const dictionaries: Record<Lang, Dict> = { en, "pt-BR": ptBR };
@@ -553,7 +611,35 @@ export const I18nContext = createContext<{ lang: Lang; setLang: (l: Lang) => voi
   setLang: () => {},
 });
 
-export function useT(): (key: TKey) => string {
+export type TVars = Record<string, string | number>;
+
+/** Pure lookup with `{name}` interpolation — usable outside React (canvas loops, tests). */
+export function tf(lang: Lang, key: TKey, vars?: TVars): string {
+  const raw = dictionaries[lang][key] ?? key;
+  if (!vars) return raw;
+  return raw.replace(/\{(\w+)\}/g, (match, name: string) => (name in vars ? String(vars[name]) : match));
+}
+
+/** BCP-47 locale for Intl.* for a UI language. */
+export function localeOf(lang: Lang): string {
+  return lang === "pt-BR" ? "pt-BR" : "en-GB";
+}
+
+/**
+ * Translator, referentially stable per language (safe in effect deps).
+ * `t(key)` or `t(key, { name })` for `{name}` placeholders.
+ */
+export function useT(): (key: TKey, vars?: TVars) => string {
   const { lang } = useContext(I18nContext);
-  return (key) => dictionaries[lang][key] ?? key;
+  return useCallback((key: TKey, vars?: TVars) => tf(lang, key, vars), [lang]);
+}
+
+/** Locale for Intl.DateTimeFormat / NumberFormat / RelativeTimeFormat. Never hard-code "en-GB". */
+export function useLocale(): string {
+  const { lang } = useContext(I18nContext);
+  return localeOf(lang);
+}
+
+export function useLang(): Lang {
+  return useContext(I18nContext).lang;
 }

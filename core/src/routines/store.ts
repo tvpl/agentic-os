@@ -87,7 +87,7 @@ export class RoutineStore {
 
 export function validateCron(expression: string, timezone: string): void {
   try {
-    const job = new Cron(expression, { timezone, paused: true });
+    const job = new Cron(expression, { timezone: timezone || undefined, paused: true });
     job.stop();
   } catch (err) {
     throw new Error(`Invalid schedule "${expression}" (${(err as Error).message})`);
@@ -97,7 +97,7 @@ export function validateCron(expression: string, timezone: string): void {
 export function nextRunAt(routine: Routine): number | null {
   if (!routine.enabled) return null;
   try {
-    const job = new Cron(routine.schedule, { timezone: routine.timezone, paused: true });
+    const job = new Cron(routine.schedule, { timezone: routine.timezone || undefined, paused: true });
     const next = job.nextRun();
     job.stop();
     return next ? next.getTime() : null;

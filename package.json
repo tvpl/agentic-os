@@ -19,9 +19,15 @@
   "scripts": {
     "build": "tsc -b core adapters/claude adapters/cursor adapters/codex apps/api && npm run build -w apps/command-centre",
     "build:server": "tsc -b core adapters/claude adapters/cursor adapters/codex apps/api",
-    "typecheck": "tsc -b core adapters/claude adapters/cursor adapters/codex apps/api --noEmit false && npm run typecheck -w apps/command-centre",
+    "typecheck": "tsc -b core adapters/claude adapters/cursor adapters/codex apps/api && npm run typecheck -w apps/command-centre",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
+    "prepare": "husky",
     "mordomo": "node apps/api/dist/cli.js"
   },
   "devDependencies": {
@@ -38,5 +44,12 @@
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.69.0",
     "vitest": "^4.1.11"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs,cjs}": [
+      "eslint --max-warnings=0",
+      "prettier --write"
+    ],
+    "*.{json,md,css,html,yml,yaml}": "prettier --write --ignore-unknown"
   }
 }

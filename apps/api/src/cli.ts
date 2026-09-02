@@ -446,7 +446,9 @@ async function cmdSetup(args: CliArgs): Promise<void> {
         value: id,
         label: `${id}${detections[id].installed ? "" : " (not installed — can be enabled later)"}`,
       })),
-      initialValues: ProviderId.options.filter((id) => settings.providers[id].enabled || detections[id].installed),
+      initialValues: ProviderId.options.filter(
+        (id) => settings.providers[id].enabled || detections[id].installed,
+      ),
       required: true,
     });
     if (p.isCancel(enabled)) return cancel();
@@ -518,7 +520,11 @@ async function cmdSetup(args: CliArgs): Promise<void> {
           options: [{ value: "", label: "(no area)" }, ...areaNames.map((a) => ({ value: a, label: a }))],
         });
         if (p.isCancel(area)) return cancel();
-        settings.indexedFolders.push({ path: path.resolve(raw), area: (area as string) || null, enabled: true });
+        settings.indexedFolders.push({
+          path: path.resolve(raw),
+          area: (area as string) || null,
+          enabled: true,
+        });
       }
     }
 
@@ -790,7 +796,9 @@ async function cmdBackup(args: CliArgs): Promise<void> {
   const ctx = new AppContext();
   if (args.list) {
     for (const b of listBackups(ctx.paths)) {
-      console.log(`${b.name}  ${(b.sizeBytes / 1024).toFixed(1)} KB  ${new Date(b.createdAt).toLocaleString()}`);
+      console.log(
+        `${b.name}  ${(b.sizeBytes / 1024).toFixed(1)} KB  ${new Date(b.createdAt).toLocaleString()}`,
+      );
     }
     ctx.close();
     return;
@@ -851,7 +859,9 @@ To remove the code too, simply delete the repository folder afterwards.`);
   if (!args.yes) {
     if (!process.stdin.isTTY) {
       console.error(
-        pc.red("Refusing to purge without confirmation: stdin is not a terminal. Re-run with --yes to confirm."),
+        pc.red(
+          "Refusing to purge without confirmation: stdin is not a terminal. Re-run with --yes to confirm.",
+        ),
       );
       process.exit(EXIT_USAGE);
     }
@@ -968,7 +978,12 @@ async function cmdRun(args: CliArgs): Promise<void> {
   const ctx = new AppContext();
   const skill = ctx.skills.load(slug);
   if (!skill) {
-    console.error(`Unknown skill: ${slug}. Available: ${ctx.skills.list().map((s) => s.slug).join(", ")}`);
+    console.error(
+      `Unknown skill: ${slug}. Available: ${ctx.skills
+        .list()
+        .map((s) => s.slug)
+        .join(", ")}`,
+    );
     ctx.close();
     process.exit(1);
   }

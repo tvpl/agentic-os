@@ -2,7 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  cancelRunProcess,
   executeInvocation,
   findOnPath,
   parseHelpFlags,
@@ -131,10 +130,6 @@ export class CodexAdapter implements AgentAdapter {
       const invocation = await self.buildInvocation(run);
       yield* executeInvocation(run, invocation, codexStreamParser(), [invocation.executable]);
     })();
-  }
-
-  async cancel(runId: string): Promise<void> {
-    cancelRunProcess(runId);
   }
 
   async healthCheck(): Promise<HealthStatus> {

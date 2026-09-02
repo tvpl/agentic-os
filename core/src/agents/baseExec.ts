@@ -78,7 +78,8 @@ export async function* executeInvocation(
   let cancelRequested = false;
   const onAbort = () => {
     cancelRequested = true;
-    handle.cancel("cancelled");
+    const reason = signal?.reason as { graceMs?: number } | undefined;
+    handle.cancel("cancelled", typeof reason?.graceMs === "number" ? reason.graceMs : undefined);
   };
   if (signal) {
     if (signal.aborted) onAbort();

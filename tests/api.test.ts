@@ -36,7 +36,7 @@ beforeAll(async () => {
   settings.setupCompleted = true;
   ctx.settingsStore.save(settings);
   // Recreate adapters with the pinned fake binary
-  (ctx.adapters.claude as unknown as { opts: { binaryPath: string } }) = ctx.adapters.claude;
+  ctx.reloadAdapters();
   token = ctx.token();
   app = await buildServer(ctx);
 });
@@ -75,7 +75,10 @@ describe("settings & providers", () => {
     const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth() });
     expect(get.statusCode).toBe(200);
     const bad = await app.inject({ method: "PUT", url: "/api/settings", headers: auth(), payload: { port: 80 } });
-    expect(bad.statusCode).toBe(500); // zod rejects privileged ports (<1024)
+    expect(bad.statusCode).toBe(400); // zod rejects privileged ports (<1024)
+    expect(bad.json().error.code).toBe("validation");
+    expect(bad.json().error.issues.length).toBeGreaterThan(0);
+    expect(typeof bad.json().message).toBe("string");
     const ok = await app.inject({ method: "PUT", url: "/api/settings", headers: auth(), payload: { accentColor: "#22c55e" } });
     expect(ok.statusCode).toBe(200);
     expect(ok.json().settings.accentColor).toBe("#22c55e");
@@ -148,7 +151,8 @@ describe("skills API", () => {
       payload: { provider: "codex" },
     });
     expect(res.statusCode).toBe(400);
-    expect(res.json().error).toContain("not enabled");
+    expect(res.json().error.message).toContain("not enabled");
+    expect(res.json().message).toContain("not enabled");
   });
 
   it("creates, favorites and deletes a skill", async () => {

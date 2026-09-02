@@ -12,6 +12,12 @@ import {
   listBackups,
   restoreBackup,
   unifiedDiff,
+  RoutineStore,
+  ConnectorRegistry,
+  InvalidIdError,
+  JsonlLogger,
+  rotateFile,
+  events,
 } from "@mordomo/core";
 import { makeTempHome } from "./helpers.js";
 
@@ -32,6 +38,59 @@ describe("settings store", () => {
       // Idempotent: saving the same object changes nothing.
       store.save(reloaded);
       expect(store.load()).toEqual(reloaded);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("caches by mtime+size, deep-merges patches and emits settings.changed", () => {
+    const { paths, cleanup } = makeTempHome();
+    try {
+      const store = new SettingsStore(paths);
+      const changes: number[] = [];
+      const unsubscribe = events.subscribe((e) => {
+        if (e.type === "settings.changed") changes.push(e.id);
+      });
+      try {
+        store.update({ providers: { claude: { enabled: true, binaryPath: "/opt/claude" } } } as never);
+        // Partial provider patch must not reset siblings to defaults.
+        const after = store.update({ providers: { claude: { defaultModel: "opus" } } } as never);
+        expect(after.providers.claude.enabled).toBe(true);
+        expect(after.providers.claude.binaryPath).toBe("/opt/claude");
+        expect(after.providers.claude.defaultModel).toBe("opus");
+        expect(after.providers.cursor.enabled).toBe(false);
+        expect(changes.length).toBe(2);
+
+        // Returned objects are clones: mutating one does not poison the cache.
+        const a = store.load();
+        a.systemName = "mutated";
+        expect(store.load().systemName).toBe("MordomoOS");
+
+        // An external write (different size) is picked up without save().
+        const raw = JSON.parse(fs.readFileSync(paths.settingsFile, "utf8"));
+        raw.systemName = "external-writer";
+        fs.writeFileSync(paths.settingsFile, JSON.stringify(raw, null, 2));
+        expect(store.load().systemName).toBe("external-writer");
+
+        // Functional patches read the fresh state.
+        const fn = store.update((cur) => ({ port: cur.port + 1 }));
+        expect(fn.port).toBe(4778);
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("serialises async updates so none is lost", async () => {
+    const { paths, cleanup } = makeTempHome();
+    try {
+      const store = new SettingsStore(paths);
+      await Promise.all(
+        Array.from({ length: 5 }, (_, i) => store.updateAsync((cur) => ({ areas: [...cur.areas, `a${i}`] }))),
+      );
+      expect(store.load().areas.filter((a) => a.startsWith("a")).length).toBe(5);
     } finally {
       cleanup();
     }
@@ -113,6 +172,142 @@ describe("skill catalog", () => {
   });
 });
 
+describe("file-backed stores: id validation and per-file isolation", () => {
+  const routine = {
+    id: "nightly",
+    name: "Nightly",
+    prompt: "do it",
+    schedule: "0 2 * * *",
+  };
+
+  it("RoutineStore rejects traversal ids with a 400 error and deletes nothing", () => {
+    const { paths, cleanup } = makeTempHome();
+    try {
+      const store = new RoutineStore(paths);
+      store.save(routine as never);
+      const victim = path.join(paths.home, "victim.json");
+      fs.writeFileSync(victim, "{}");
+      for (const bad of ["../victim", "..%2Fvictim", "a/b", "a\\b", "..", ".hidden", "UPPER", "", "x".repeat(90)]) {
+        expect(() => store.remove(bad), bad).toThrow(InvalidIdError);
+        expect(() => store.get(bad), bad).toThrow(InvalidIdError);
+      }
+      let caught: unknown;
+      try {
+        store.remove("../victim");
+      } catch (err) {
+        caught = err;
+      }
+      expect((caught as InvalidIdError).statusCode).toBe(400);
+      expect(fs.existsSync(victim)).toBe(true);
+      expect(fs.existsSync(path.join(paths.routines, "nightly.json"))).toBe(true);
+      expect(() => store.save({ ...routine, id: "../victim" } as never)).toThrow();
+      expect(store.remove("nightly")).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("RoutineStore.list skips a corrupt file and reports it", () => {
+    const { paths, cleanup } = makeTempHome();
+    try {
+      const store = new RoutineStore(paths);
+      store.save(routine as never);
+      fs.writeFileSync(path.join(paths.routines, "broken.json"), "{ not json");
+      fs.writeFileSync(path.join(paths.routines, "invalid.json"), JSON.stringify({ id: "invalid" }));
+      const list = store.list();
+      expect(list.map((r) => r.id)).toEqual(["nightly"]);
+      const problems = store.lastProblems();
+      expect(problems.length).toBe(2);
+      expect(problems.map((p) => path.basename(p.file)).sort()).toEqual(["broken.json", "invalid.json"]);
+      expect(problems.every((p) => p.error.length > 0)).toBe(true);
+      fs.unlinkSync(path.join(paths.routines, "broken.json"));
+      fs.unlinkSync(path.join(paths.routines, "invalid.json"));
+      store.list();
+      expect(store.lastProblems()).toEqual([]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("ConnectorRegistry validates ids and isolates bad files", () => {
+    const { paths, cleanup } = makeTempHome();
+    try {
+      const registry = new ConnectorRegistry(paths);
+      registry.save({ id: "gmail", name: "Gmail", kind: "api", origin: "x", maintainer: "y" } as never);
+      const victim = path.join(paths.home, "victim.json");
+      fs.writeFileSync(victim, "{}");
+      expect(() => registry.remove("../victim")).toThrow(InvalidIdError);
+      expect(() => registry.get("../../etc/passwd")).toThrow(InvalidIdError);
+      expect(fs.existsSync(victim)).toBe(true);
+      fs.writeFileSync(path.join(paths.connectors, "corrupt.json"), "\u0000");
+      expect(registry.list().map((c) => c.id)).toEqual(["gmail"]);
+      expect(registry.lastProblems().length).toBe(1);
+      expect(registry.lastProblems()[0]!.file).toContain("corrupt.json");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("SkillCatalog validates slugs and isolates broken skill folders", () => {
+    const { paths, cleanup } = makeTempHome();
+    try {
+      const catalog = new SkillCatalog(paths);
+      catalog.save(SkillFrontmatterSchema.parse({ name: "Ok", slug: "ok", description: "d" }), "Body.");
+      const outside = path.join(paths.home, "outside");
+      fs.mkdirSync(outside);
+      fs.writeFileSync(path.join(outside, "SKILL.md"), "x");
+      expect(() => catalog.remove("../outside")).toThrow(InvalidIdError);
+      expect(() => catalog.load("../outside")).toThrow(InvalidIdError);
+      expect(() => catalog.setEnabled("a/b", false)).toThrow(InvalidIdError);
+      expect(fs.existsSync(path.join(outside, "SKILL.md"))).toBe(true);
+
+      fs.mkdirSync(path.join(paths.skills, "broken"));
+      fs.writeFileSync(path.join(paths.skills, "broken", "SKILL.md"), "---\nname: 1\n---\nbody");
+      fs.mkdirSync(path.join(paths.skills, "Bad Name"));
+      fs.writeFileSync(path.join(paths.skills, "Bad Name", "SKILL.md"), "---\nname: x\ndescription: y\n---\nbody");
+      expect(catalog.list().map((s) => s.slug)).toEqual(["ok"]);
+      const problems = catalog.lastProblems();
+      expect(problems.length).toBe(2);
+      expect(problems.some((p) => p.file.includes("broken"))).toBe(true);
+      expect(problems.some((p) => p.file.includes("Bad Name"))).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("jsonl logger", () => {
+  it("prunes old rotations on construction and rotateFile rotates any file", () => {
+    const { paths, cleanup } = makeTempHome();
+    try {
+      const old = path.join(paths.logs, "runs.jsonl.2020-01-01T00-00-00-000Z");
+      fs.writeFileSync(old, "{}\n");
+      const past = new Date(Date.now() - 40 * 86_400_000);
+      fs.utimesSync(old, past, past);
+      const fresh = path.join(paths.logs, "runs.jsonl.recent");
+      fs.writeFileSync(fresh, "{}\n");
+      const logger = new JsonlLogger(paths.logs, "runs", 65536, 30);
+      expect(fs.existsSync(old)).toBe(false);
+      expect(fs.existsSync(fresh)).toBe(true);
+      logger.append({ token: "abcdefghijklmnop" });
+      const line = fs.readFileSync(path.join(paths.logs, "runs.jsonl"), "utf8");
+      expect(line).not.toContain("abcdefghijklmnop");
+      expect(() => JSON.parse(line.trim())).not.toThrow();
+
+      const out = path.join(paths.logs, "service.out.log");
+      fs.writeFileSync(out, "x".repeat(2000));
+      expect(rotateFile(out, 4096)).toBeNull();
+      const rotated = rotateFile(out, 1024);
+      expect(rotated).toBeTruthy();
+      expect(fs.existsSync(rotated!)).toBe(true);
+      expect(fs.existsSync(out)).toBe(false);
+      expect(rotateFile(path.join(paths.logs, "missing.log"), 10)).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
+});
+
 describe("sync compiler", () => {
   it("creates, updates, and detects conflicts with backup", () => {
     const { paths, cleanup } = makeTempHome();
@@ -180,14 +375,16 @@ describe("diff", () => {
 });
 
 describe("backup and restore", () => {
-  it("round-trips skills and settings", () => {
+  it("round-trips skills and settings", async () => {
     const { paths, cleanup } = makeTempHome();
+    const db = openDb(paths).db;
     try {
       const store = new SettingsStore(paths);
       store.update({ systemName: "MordomoOS-test" });
       const catalog = new SkillCatalog(paths);
       catalog.save(SkillFrontmatterSchema.parse({ name: "Keep", slug: "keep-me", description: "d" }), "Body.");
-      const backup = createBackup(paths);
+      const backup = await createBackup(paths, db);
+      db.close(); // restore requires a closed database
       expect(listBackups(paths).some((b) => b.name === backup.name)).toBe(true);
 
       catalog.remove("keep-me");

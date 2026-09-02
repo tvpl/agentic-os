@@ -1,77 +1,78 @@
-import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { RoutineSchema } from "@mordomo/core";
+import { RoutineSchema, events } from "@mordomo/core";
 import type { AppContext } from "../context.js";
+import { httpError } from "./common.js";
+import { IdParams } from "./params.js";
 
 export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): void {
+  const changed = (id: string, action: string) => events.emit("routine.changed", { id, action });
+
   app.get("/api/routines", async () => ctx.scheduler.status());
 
   app.post("/api/routines", async (req) => {
     const routine = RoutineSchema.parse(req.body);
-    if (ctx.routines.get(routine.id)) {
-      throw Object.assign(new Error(`Routine "${routine.id}" already exists`), { statusCode: 409 });
-    }
+    if (ctx.routines.get(routine.id)) throw httpError(409, `Routine "${routine.id}" already exists`);
     if (routine.skillSlug && !ctx.skills.load(routine.skillSlug)) {
-      throw Object.assign(new Error(`Unknown skill: ${routine.skillSlug}`), { statusCode: 400 });
+      throw httpError(400, `Unknown skill: ${routine.skillSlug}`);
     }
     const saved = ctx.routines.save(routine);
     ctx.scheduler.reload();
+    changed(saved.id, "created");
     return saved;
   });
 
   app.put("/api/routines/:id", async (req) => {
-    const { id } = z.object({ id: z.string() }).parse(req.params);
-    if (!ctx.routines.get(id)) throw Object.assign(new Error("Routine not found"), { statusCode: 404 });
+    const { id } = IdParams.parse(req.params);
+    if (!ctx.routines.get(id)) throw httpError(404, "Routine not found");
     const routine = RoutineSchema.parse({ ...(req.body as object), id });
     if (routine.skillSlug && !ctx.skills.load(routine.skillSlug)) {
-      throw Object.assign(new Error(`Unknown skill: ${routine.skillSlug}`), { statusCode: 400 });
+      throw httpError(400, `Unknown skill: ${routine.skillSlug}`);
     }
     const saved = ctx.routines.save(routine);
     ctx.scheduler.reload();
+    changed(id, "updated");
     return saved;
   });
 
   app.post("/api/routines/:id/toggle", async (req) => {
-    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const { id } = IdParams.parse(req.params);
     const routine = ctx.routines.get(id);
-    if (!routine) throw Object.assign(new Error("Routine not found"), { statusCode: 404 });
+    if (!routine) throw httpError(404, "Routine not found");
     const saved = ctx.routines.save({ ...routine, enabled: !routine.enabled });
     ctx.scheduler.reload();
+    changed(id, saved.enabled ? "enabled" : "disabled");
     return saved;
   });
 
   app.post("/api/routines/:id/duplicate", async (req) => {
-    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const { id } = IdParams.parse(req.params);
+    if (!ctx.routines.get(id)) throw httpError(404, "Routine not found");
     const copy = ctx.routines.duplicate(id);
     ctx.scheduler.reload();
+    changed(copy.id, "created");
     return copy;
   });
 
   app.delete("/api/routines/:id", async (req) => {
-    const { id } = z.object({ id: z.string() }).parse(req.params);
-    if (!ctx.routines.remove(id)) throw Object.assign(new Error("Routine not found"), { statusCode: 404 });
+    const { id } = IdParams.parse(req.params);
+    if (!ctx.routines.remove(id)) throw httpError(404, "Routine not found");
     ctx.scheduler.reload();
+    changed(id, "deleted");
     return { deleted: id };
   });
 
-  /** Manual test run — returns immediately; watch via /api/runs/:id/stream. */
+  /** Manual test run — returns the real run id; watch via /api/runs/:id/stream. */
   app.post("/api/routines/:id/run", async (req) => {
-    const { id } = z.object({ id: z.string() }).parse(req.params);
-    const routine = ctx.routines.get(id);
-    if (!routine) throw Object.assign(new Error("Routine not found"), { statusCode: 404 });
-    const firing = ctx.scheduler.fire(id, "manual", null);
-    // Give the scheduler a beat to create the run record so we can return its id.
-    const record = await Promise.race([
-      firing,
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
-    ]);
-    if (record) return { runId: record.id, status: record.status };
-    const latest = ctx.runs.list({ limit: 1, origin: "routine" })[0];
-    return { runId: latest?.id ?? null, status: latest?.status ?? "queued" };
+    const { id } = IdParams.parse(req.params);
+    if (!ctx.routines.get(id)) throw httpError(404, "Routine not found");
+    // fire() creates the run row and resolves at once; execution continues
+    // in the background (409 from core if the routine is already in flight).
+    const { runId, status } = await ctx.scheduler.fire(id, { reason: "manual" });
+    return { runId, status };
   });
 
   app.get("/api/routines/:id/history", async (req) => {
-    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const { id } = IdParams.parse(req.params);
     return ctx.scheduler.history(id, 30);
   });
 }
