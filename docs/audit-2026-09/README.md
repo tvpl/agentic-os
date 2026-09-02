@@ -473,13 +473,13 @@ Este relatório foi executado nas ondas descritas em [`PLANO.md`](PLANO.md). O q
 |---|---|
 | 1–19 (corrigir agora) | **Todos fechados.** Traversal (rotas e stores), backup online, restore em staging, shutdown gracioso, croner com promise e guarda, adapters recarregados nas mudanças de settings com deep-merge, zod → 400, Host IPv6 e `timingSafeEqual`, preview com exclusões e blocklist de diretórios, cancelamento pela saída real, retries como runs novas, chrome em fluxo normal, `useT` memoizado, focus trap, SSE com cleanup, desktop sem tela em branco, contraste derivado do accent, dependências atualizadas, docs alinhadas. |
 | 20–35 (melhorar em seguida) | **Todos fechados.** Indexação em transação e fatiada com progresso, cache de settings, isolamento por arquivo nos stores, retenção e `Last-Event-ID`, CLI com `parseArgs` e pidfile com identidade, log de requisições, TanStack Query com cache compartilhado, `/api/events` invalidando o cache, `React.lazy` por rota, strings no dicionário, custo de canvas reduzido, tema claro nos canvases, tokens e primitivas, desktop responsivo, timeline virtualizada, harness de testes e CI. |
-| 36 (registro de providers) | **Adiado.** Exige trocar o enum em `schema.ts`, o compilador e o auditor ao mesmo tempo; sem ganho funcional imediato e com risco alto de regressão sem um quarto provider real para validar. |
+| 36 (registro de providers) | Fechado: `ProviderRegistry` com manifestos (identidade, binário, capacidades, layout nativo, arquivos de config do home, padrão de ferramentas de escrita) e fábricas; compilador de sync, auditor de conectores, detecção de escrita do run manager e composição da API são genéricos sobre o registro. Adicionar um provider é declarar o id, publicar o pacote com manifesto e fábrica e registrá-lo em `apps/api/src/providers.ts`. A UI mostra o nome e sinaliza "somente leitura só no prompt" para o Cursor. |
 | 37 (máquina de estados da run) | Fechado: `transition()` é o único escritor de status, `timed_out` distinto, cancelamento por `AbortSignal` sem registro global. |
 | 38 (trabalho longo fora da thread HTTP) | Parcial: a indexação roda em fatias com `setImmediate` e publica progresso; backup e sync-apply continuam síncronos. |
 | 39 (semântica dos perfis) | Fechado: `read_only` recusa escrita, `review_before_write` cria aprovação `write_run` (202) e a run parte na aprovação, rotinas só escrevem sob `approved_automation`. |
-| 40 (motor do cérebro como pacote) | **Adiado.** O renderizador atual recebeu as correções de custo e de tema; a extração para worker fica para uma iteração com regressão visual automatizada. |
+| 40 (motor do cérebro como pacote) | Fechado na parte estrutural: modelo de mundo, layouts, física e hit testing vivem em `src/brain/engine/` como TypeScript puro com 16 testes unitários (determinismo, convergência, prioridade de picking, zoom ao redor do cursor); `SecondBrain.tsx` só desenha e reage. Mover o renderizador para um Web Worker com `OffscreenCanvas` fica como otimização opcional, agora possível sem tocar o modelo. |
 | 41 (dividir componentes-deus) | Fechado para Desktop e Runs; Segundo Cérebro permanece em um arquivo, com a lista acessível e o painel separados em componentes. |
-| 42 (Storybook) | **Adiado.** |
+| 42 (Storybook) | Fechado sem dependência nova: `gallery.html` (`npm run gallery`) renderiza primitivas, widgets do desktop, painel "Agora" e linha do tempo com dados de exemplo nos dois temas; `tests/e2e/gallery.spec.ts` compara 18 baselines de captura com tempo congelado. |
 | 43 (vista acessível do grafo) | Fechado: lista pesquisável e navegável por teclado sincronizada com a seleção do canvas. |
 
 ### 13.3 O que as capturas mostram
@@ -504,4 +504,4 @@ Configurações em seis abas, com validação inline, confirmações e o perfil 
 
 - O rótulo do anel "APLICAÇÕES" ainda pode ser cortado pelo badge de um conector quando os dois coincidem no mesmo ângulo.
 - O tema claro do Segundo Cérebro melhorou (fundo e mistura por token), mas os sprites de brilho continuam desenhados para fundo escuro.
-- Itens 36, 40 e 42 seguem no roadmap (seção 11) como evolução, não como dívida bloqueante.
+- O renderizador do Segundo Cérebro ainda roda na thread principal; a extração do motor (item 40) deixa a migração para Web Worker como próximo passo isolado.

@@ -40,6 +40,8 @@ export default defineConfig({
     outDir: "dist",
     sourcemap: false,
     rolldownOptions: {
+      // Two pages: the Command Centre and the component gallery (visual-regression surface).
+      input: { main: path.resolve(here, "index.html"), gallery: path.resolve(here, "gallery.html") },
       output: {
         // One long-lived vendor chunk; routes are lazy so the main chunk stays small.
         codeSplitting: {

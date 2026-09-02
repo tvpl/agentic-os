@@ -39,6 +39,14 @@ Hardening release: the September audit (`docs/audit-2026-09/`) executed end to e
   next-runs preview; Settings in tabs; 3-step Setup; Pixel Studio draft and
   unsaved-work guard; design tokens (spacing, type, z-index, motion), primitives,
   accent-derived contrast (AA), light-theme canvases, i18n parity enforced by test.
+- **Providers**: `ProviderRegistry` with manifests + factories; the sync
+  compiler, connector auditor, run manager write detection and API
+  composition are generic over the registry; `/api/providers` exposes
+  `displayName`, `capabilities` and `installHint`.
+- **Second Brain engine**: world model, layouts, physics and hit testing
+  extracted into pure modules (`src/brain/engine/`) with unit tests.
+- **Component gallery**: `gallery.html` (`npm run gallery`) renders primitives
+  and widgets with fixtures in both themes; Playwright screenshot baselines.
 - **Tooling**: ESLint 9 + Prettier + husky/lint-staged, GitHub Actions CI
   (Node 20/22 × three OSes + e2e), frontend unit tests, Playwright smoke with
   axe; `npm audit` clean (fastify/static, vite, vitest updated).

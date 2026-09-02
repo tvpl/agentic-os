@@ -29,7 +29,8 @@
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
     "prepare": "husky",
     "mordomo": "node apps/api/dist/cli.js",
-    "test:ui": "npm run test -w apps/command-centre"
+    "test:ui": "npm run test -w apps/command-centre",
+    "gallery": "vite --config apps/command-centre/vite.config.ts apps/command-centre --open /gallery.html"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
