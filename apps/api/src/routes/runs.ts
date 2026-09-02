@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import { ProviderId, EffortLevel, resolveInsideRoots, isInside } from "@mordomo/core";
 import type { AppContext } from "../context.js";
-import { grantedRoots, httpError } from "./common.js";
+import { gateWrite, grantedRoots, httpError, launchPromptRun, type PromptRunInput } from "./common.js";
 import { UuidParams } from "./params.js";
 import { lastEventId, openSse } from "./sse.js";
 
@@ -29,7 +29,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
   });
 
   /** Manual prompt run (Command Centre "Run a prompt" box). */
-  app.post("/api/runs", async (req) => {
+  app.post("/api/runs", async (req, reply) => {
     const body = z
       .object({
         prompt: z.string().min(1).max(20_000),
@@ -45,25 +45,22 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     const provider = body.provider ?? settings.defaultProvider;
     if (!settings.providers[provider].enabled) throw httpError(400, `Provider ${provider} is not enabled`);
     const cwd = body.cwd ? resolveInsideRoots(grantedRoots(ctx), body.cwd) : ctx.paths.home;
-    if (body.mode === "write" && settings.securityProfile === "read_only") {
-      throw httpError(403, "The current security profile is read-only; enable writes in Settings first.");
-    }
-    const run = ctx.runs.create({
-      origin: "manual",
-      provider,
+    const input: PromptRunInput = {
       prompt: body.prompt,
-      cwd,
+      provider,
       model: body.model !== undefined ? body.model : settings.providers[provider].defaultModel,
       effort: body.effort ?? settings.providers[provider].defaultEffort,
       mode: body.mode,
+      cwd,
       timeoutMs: body.timeoutMs ?? settings.limits.defaultTimeoutMs,
-      profile: body.mode === "write" ? settings.securityProfile : "read_only",
-    });
-    const artifactsNote = `\n\nIf you produce files, write them into: ${path.join(ctx.paths.artifacts, run.id)}`;
-    ctx.runs.execute(run.id, body.prompt + artifactsNote, body.mode).catch((err: unknown) => {
-      req.log.error({ err, runId: run.id, msg: "run failed to execute" });
-    });
-    return { runId: run.id, status: "queued" };
+    };
+    const gate = gateWrite(ctx, body.mode, "manual", `Write-mode prompt run with ${provider}: "${body.prompt.slice(0, 80)}"`, { kind: "prompt", input });
+    if (gate.pendingApproval) {
+      reply.code(202);
+      return { runId: null, status: "waiting_approval", pendingApproval: gate.pendingApproval };
+    }
+    const { runId } = launchPromptRun(ctx, input, (err, id) => req.log.error({ err, runId: id, msg: "run failed to execute" }));
+    return { runId, status: "queued" };
   });
 
   app.post("/api/runs/:id/cancel", async (req) => {

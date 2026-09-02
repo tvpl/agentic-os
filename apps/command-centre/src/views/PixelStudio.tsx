@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Copy,
   Download,
@@ -18,6 +19,7 @@ import {
 import { api } from "../api";
 import { useT } from "../i18n";
 import { useToast } from "../components/ui";
+import { useConfirm } from "../hooks/useConfirm";
 
 /* =========================================================================
    Pixel Studio — a self-contained pixel-art drawing + animation micro-app.
@@ -34,6 +36,7 @@ const MAX_FRAMES = 24;
 const MAX_UNDO = 40;
 const EXPORT_SCALE = 16;
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+const DRAFT_KEY = "pixel-studio-draft";
 
 /** PICO-8 palette — 16 well-loved retro colors. */
 const PALETTE = [
@@ -157,75 +160,14 @@ interface Snapshot {
   current: number;
 }
 
-const PXS_CSS = `
-.pxs-layout { display: grid; grid-template-columns: 236px minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
-@media (max-width: 980px) { .pxs-layout { grid-template-columns: 1fr; } }
-.pxs-layout .card { margin: 0; }
-.pxs-col { display: flex; flex-direction: column; gap: 14px; }
-.pxs-checker {
-  background-color: var(--bg);
-  background-image: conic-gradient(color-mix(in srgb, var(--text) 8%, transparent) 25%, transparent 0 50%, color-mix(in srgb, var(--text) 8%, transparent) 0 75%, transparent 0);
-  background-size: 14px 14px;
-}
-.pxs-stage {
-  position: relative; width: 100%; max-width: 620px; margin: 0 auto; aspect-ratio: 1;
-  border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent), 0 0 28px -10px color-mix(in srgb, var(--accent) 45%, transparent);
-}
-.pxs-stage canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; touch-action: none; cursor: crosshair; }
-.pxs-gridlines {
-  position: absolute; inset: 0; pointer-events: none;
-  background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--text) 10%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--text) 10%, transparent) 1px, transparent 1px);
-  background-size: var(--pxs-cell) var(--pxs-cell);
-}
-.pxs-toolgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.pxs-tool {
-  display: flex; align-items: center; gap: 6px; padding: 7px 8px;
-  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
-  background: var(--bg-raise); color: var(--text-dim); font: inherit; font-weight: 550; font-size: 11.5px;
-  cursor: pointer; transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
-  min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-}
-.pxs-tool svg { flex-shrink: 0; }
-.pxs-tool svg { width: 14px; height: 14px; }
-.pxs-tool:hover { background: var(--bg-raise-2); color: var(--text); }
-.pxs-tool.active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg-raise)); }
-.pxs-tool .pxs-key { margin-left: auto; }
-.pxs-swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; }
-.pxs-swatch {
-  aspect-ratio: 1; width: 100%; border-radius: 5px; border: 1px solid var(--border-strong);
-  cursor: pointer; padding: 0; transition: transform 0.1s ease;
-}
-.pxs-swatch:hover { transform: scale(1.14); }
-.pxs-swatch.active { outline: 2px solid var(--accent); outline-offset: 1px; }
-.pxs-current { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
-.pxs-current .pxs-chip { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--border-strong); flex-shrink: 0; }
-.pxs-colorinput { width: 34px; height: 30px; padding: 0; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg-raise); cursor: pointer; }
-.pxs-frames { display: flex; flex-wrap: wrap; gap: 8px; }
-.pxs-frame {
-  position: relative; width: 52px; height: 52px; padding: 0; cursor: pointer;
-  border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden;
-}
-.pxs-frame:hover { border-color: var(--text-faint); }
-.pxs-frame.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.pxs-frame canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
-.pxs-frame .pxs-frame-n {
-  position: absolute; bottom: 1px; right: 3px; font-size: 10px; font-family: var(--mono);
-  color: var(--text); text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg);
-}
-.pxs-preview-row { display: flex; align-items: flex-end; gap: 14px; justify-content: center; padding: 8px 0; }
-.pxs-preview-box { border: 1px solid var(--border); border-radius: 4px; }
-.pxs-preview-box canvas { display: block; image-rendering: pixelated; }
-.pxs-fps { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); }
-.pxs-fps input[type="range"] { flex: 1; accent-color: var(--accent); }
-.pxs-stack { display: flex; flex-direction: column; gap: 7px; }
-`;
 
 export default function PixelStudio() {
   const t = usePixelT();
   const toast = useToast();
+  const confirm = useConfirm();
+  const navigate = useNavigate();
+  const dirtyRef = useRef(false);
+  const restoredRef = useRef(false);
 
   const [size, setSize] = useState<GridSize>(16);
   const [frames, setFrames] = useState<Frame[]>(() => [makeFrame(16)]);
@@ -246,8 +188,63 @@ export default function PixelStudio() {
 
   const frame = frames[current] ?? frames[0] ?? makeFrame(size);
 
+  /* ---------- draft persistence + unsaved-work guard (audit 6.8) ---------- */
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw) as Snapshot;
+      if (!GRID_SIZES.includes(d.size) || !Array.isArray(d.frames) || d.frames.length === 0) return;
+      setSize(d.size);
+      setFrames(d.frames);
+      setCurrent(Math.min(d.current, d.frames.length - 1));
+      dirtyRef.current = true;
+      toast(t("pixel.draftRestored"), "info");
+    } catch {
+      /* storage blocked or corrupt draft */
+    }
+  }, [toast, t]);
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      try {
+        if (frames.some((f) => f.some((c) => c !== null))) localStorage.setItem(DRAFT_KEY, JSON.stringify({ size, frames, current }));
+        else localStorage.removeItem(DRAFT_KEY);
+      } catch {
+        /* storage blocked */
+      }
+    }, 400);
+    return () => window.clearTimeout(id);
+  }, [frames, size, current]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !dirtyRef.current) return;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName ?? "")) return;
+      if ((e.target as Element | null)?.closest?.('[role="dialog"]')) return;
+      e.stopPropagation();
+      e.preventDefault();
+      void confirm({ title: t("pixel.leaveTitle"), body: t("pixel.leaveBody"), danger: true, confirmLabel: t("pixel.leave") }).then((ok) => {
+        if (ok) {
+          dirtyRef.current = false;
+          navigate("/");
+        }
+      });
+    };
+    const onUnload = (e: BeforeUnloadEvent) => {
+      if (dirtyRef.current) e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("beforeunload", onUnload);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("beforeunload", onUnload);
+    };
+  }, [confirm, navigate, t]);
+
   /* ---------- undo ---------- */
   const pushUndo = useCallback(() => {
+    dirtyRef.current = true;
     undoRef.current.push({ frames: cloneFrames(frames), size, current });
     if (undoRef.current.length > MAX_UNDO) undoRef.current.shift();
   }, [frames, size, current]);
@@ -363,10 +360,10 @@ export default function PixelStudio() {
   }, []);
 
   /* ---------- grid size ---------- */
-  const changeSize = (next: GridSize) => {
+  const changeSize = async (next: GridSize) => {
     if (next === size) return;
     if (next < size && frames.some((f) => hasPixelsOutside(f, size, next))) {
-      if (!window.confirm(t("pixel.gridConfirm"))) return;
+      if (!(await confirm({ title: t("pixel.gridConfirm"), danger: true }))) return;
     }
     pushUndo();
     setFrames((prev) => prev.map((f) => resizeFrame(f, size, next)));
@@ -394,16 +391,16 @@ export default function PixelStudio() {
     setCurrent(current + 1);
   };
 
-  const deleteFrame = () => {
+  const deleteFrame = async () => {
     if (frames.length <= 1) return;
-    if (!window.confirm(t("pixel.deleteConfirm"))) return;
+    if (!(await confirm({ title: t("pixel.deleteConfirm"), danger: true, confirmLabel: t("common.delete") }))) return;
     pushUndo();
     setFrames((prev) => prev.filter((_, i) => i !== current));
     setCurrent(Math.max(0, current - 1));
   };
 
-  const clearFrame = () => {
-    if (!window.confirm(t("pixel.clearConfirm"))) return;
+  const clearFrame = async () => {
+    if (!(await confirm({ title: t("pixel.clearConfirm"), danger: true }))) return;
     pushUndo();
     setFrames((prev) => {
       const next = prev.slice();
@@ -441,6 +438,7 @@ export default function PixelStudio() {
       if (frames.length > 1) body.spriteSheetDataUrl = sheetToPngDataUrl(frames, size, EXPORT_SCALE);
       const res = await api.post<{ saved: string[] }>("/api/microapps/pixel/save", body);
       toast(`${t("pixel.saved")} ${res.saved.join(", ")}`, "ok");
+      dirtyRef.current = false;
     } catch (err) {
       toast((err as Error).message, "danger");
     } finally {
@@ -457,7 +455,6 @@ export default function PixelStudio() {
 
   return (
     <div className="page">
-      <style>{PXS_CSS}</style>
       <div className="page-head">
         <div>
           <h1>{t("pixel.title")}</h1>
@@ -615,7 +612,7 @@ export default function PixelStudio() {
 
           <div className="card">
             <h2>{t("pixel.preview")}</h2>
-            <PreviewBoxes frames={frames} size={size} playing={playing} fps={fps} current={current} />
+            <PreviewBoxes label={t("brain.preview")} frames={frames} size={size} playing={playing} fps={fps} current={current} />
             <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8 }}>
               <button className="btn primary sm" onClick={() => setPlaying((v) => !v)}>
                 {playing ? <Pause aria-hidden /> : <Play aria-hidden />} {playing ? t("pixel.pause") : t("pixel.play")}
@@ -693,12 +690,14 @@ function PreviewBoxes({
   playing,
   fps,
   current,
+  label,
 }: {
   frames: Frame[];
   size: GridSize;
   playing: boolean;
   fps: number;
   current: number;
+  label: string;
 }) {
   const [tick, setTick] = useState(0);
   const ref1x = useRef<HTMLCanvasElement>(null);
@@ -730,7 +729,7 @@ function PreviewBoxes({
         <canvas ref={ref1x} width={size} height={size} style={{ width: size, height: size }} aria-hidden />
       </div>
       <div className="pxs-preview-box pxs-checker">
-        <canvas ref={ref4x} width={size} height={size} style={{ width: size * 4, height: size * 4 }} aria-label="Preview" />
+        <canvas ref={ref4x} width={size} height={size} style={{ width: size * 4, height: size * 4 }} aria-label={label} />
       </div>
     </div>
   );

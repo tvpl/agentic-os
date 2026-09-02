@@ -24,7 +24,7 @@ export {
   isSecretFile,
   SECRET_FILE_PATTERNS,
 } from "./security/paths.js";
-export { PROFILES, type ProfileCapabilities, type ApprovalKind } from "./security/profiles.js";
+export { PROFILES, writeDecision, type ProfileCapabilities, type ApprovalKind, type WriteDecision, type WriteOrigin } from "./security/profiles.js";
 export { ApprovalStore, type Approval } from "./security/approvals.js";
 export {
   safeSpawn,

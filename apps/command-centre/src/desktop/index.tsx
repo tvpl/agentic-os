@@ -84,7 +84,11 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   const runSkill = useMutation({
     mutationFn: async (skill: Skill) => {
       if (skill.inputs.some((i) => i.required)) return { navigateTo: `/skills/${skill.slug}` };
-      const res = await api.post<{ runId: string }>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, { inputs: {} });
+      const res = await api.post<{ runId: string | null }>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, { inputs: {} });
+      if (!res.runId) {
+        toast(t("runs.approvalPending"), "info");
+        return { navigateTo: "/settings?tab=security" };
+      }
       toast(`▶ /${skill.slug}`, "ok");
       return { navigateTo: `/runs/${res.runId}` };
     },

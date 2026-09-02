@@ -43,14 +43,14 @@ wins and this page is the bug.
 
 ## Security profiles
 
-Profiles are the run-level write policy (`core/src/security/profiles.ts`). They are
-being wired into the run pipeline together with the provider registry (see
-[adapters-guide.md](adapters-guide.md)):
+Profiles are the run-level write policy (`core/src/security/profiles.ts`,
+`writeDecision()`), applied by the API before a run is created and by the scheduler
+before a routine fires:
 
 | Profile | Meaning |
 |---|---|
 | `read_only` | write runs are refused; agents run in each provider's read-only mode |
-| `review_before_write` | write runs wait for a human approval before their changes are applied |
+| `review_before_write` | interactive write runs are not started: a `write_run` approval is created (`202 waiting_approval`) and the run launches when a human approves it in Settings › Security |
 | `controlled_write` | interactive write runs apply immediately (constrained to the working dir); routines cannot write |
 | `approved_automation` | routines may also run with write access, unattended |
 
@@ -61,8 +61,9 @@ mechanically; **Cursor is prompt-level only** and should not be trusted for
 
 ## Approval-gated actions (never silent)
 
-Exposing the server beyond `127.0.0.1` (`expose_port`) and enabling connector writes
-(`connector_write`) create pending approvals in the UI/CLI today. Startup-service
+Exposing the server beyond `127.0.0.1` (`expose_port`), enabling connector writes
+(`connector_write`) and write-mode runs under `review_before_write` (`write_run`)
+create pending approvals in the UI/CLI today. Startup-service
 installation is confirmed interactively by the CLI before anything is written. The
 remaining `ApprovalKind`s — installing software, changing global configs, destructive
 commands, sending data to external services — are declared for connectors and the

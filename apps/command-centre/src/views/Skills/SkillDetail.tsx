@@ -37,13 +37,20 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
 
   const run = useMutation({
     mutationFn: () =>
-      api.post<{ runId: string }>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, {
+      api.post<{ runId: string | null }>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, {
         provider,
         model: model.trim() || null,
         effort,
         inputs,
       }),
-    onSuccess: (res) => navigate(`/runs/${res.runId}`),
+    onSuccess: (res) => {
+      if (!res.runId) {
+        toast(t("runs.approvalPending"), "info");
+        navigate("/settings?tab=security");
+        return;
+      }
+      navigate(`/runs/${res.runId}`);
+    },
     onError: (err) => toast(errorMessage(err), "danger"),
   });
 
@@ -212,7 +219,7 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
                 </Button>
               </div>
             </div>
-            <pre className={`skill-source${lineNumbers ? " numbered" : ""}`} tabIndex={0} aria-label="SKILL.md">
+            <pre className={`skill-source${lineNumbers ? " numbered" : ""}`} tabIndex={0} role="region" aria-label="SKILL.md">
               <code>
                 {lines.map((line, i) => (
                   <span className="line" key={i}>

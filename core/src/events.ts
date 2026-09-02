@@ -46,7 +46,7 @@ export class EventBus {
         fn(event);
       } catch (err) {
         // A misbehaving listener must never break the emitter.
-        // eslint-disable-next-line no-console
+         
         console.error("[events] listener threw", err);
       }
     }

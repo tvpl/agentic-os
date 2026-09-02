@@ -37,8 +37,26 @@ export const PROFILES: Record<SecurityProfile, ProfileCapabilities> = {
   },
 };
 
+export type WriteOrigin = "manual" | "skill" | "routine" | "api";
+export type WriteDecision = "allow" | "approval" | "refuse";
+
+/**
+ * The run-level write policy, derived from the profile capabilities:
+ * - `read_only`            → write runs are refused;
+ * - `review_before_write`  → interactive write runs wait for a human approval;
+ * - `controlled_write`     → interactive write runs apply immediately, routines cannot write;
+ * - `approved_automation`  → routines may also write, unattended.
+ */
+export function writeDecision(profile: SecurityProfile, origin: WriteOrigin): WriteDecision {
+  const caps = PROFILES[profile];
+  if (!caps.writeFiles) return "refuse";
+  if (origin === "routine") return caps.unattendedWrites ? "allow" : "refuse";
+  return caps.autoApplyWrites ? "allow" : "approval";
+}
+
 /** Actions that always require an explicit human approval, whatever the profile. */
 export type ApprovalKind =
+  | "write_run"
   | "install_software"
   | "change_global_config"
   | "destructive_command"

@@ -10,7 +10,7 @@ import {
   type RunMode,
 } from "@mordomo/core";
 import type { AppContext } from "../context.js";
-import { grantedRoots, httpError } from "./common.js";
+import { gateWrite, grantedRoots, httpError, launchSkillRun, type SkillRunInput } from "./common.js";
 import { IdParam, SlugParams } from "./params.js";
 
 const RunSkillBody = z.object({
@@ -96,7 +96,7 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
    * Run a skill headlessly (the "button"). Returns immediately with the run id;
    * progress streams via /api/runs/:id/stream.
    */
-  app.post("/api/skills/:slug/run", async (req) => {
+  app.post("/api/skills/:slug/run", async (req, reply) => {
     const { slug } = SlugParams.parse(req.params);
     const body = RunSkillBody.parse(req.body ?? {});
     const skill = ctx.skills.load(slug);
@@ -115,22 +115,21 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
 
     const cwd = body.cwd ? resolveInsideRoots(grantedRoots(ctx), body.cwd) : ctx.paths.home;
     const mode: RunMode = skill.mode === "write" ? "write" : "read_only";
-    const run = ctx.runs.create({
-      origin: "skill",
+    const input: SkillRunInput = {
+      slug,
+      inputs: body.inputs,
       provider,
-      prompt: `(skill: ${slug})`,
-      cwd,
       model: body.model !== undefined ? body.model : (skill.recommendedModel ?? settings.providers[provider].defaultModel),
       effort: body.effort ?? (skill.recommendedEffort !== "default" ? skill.recommendedEffort : settings.providers[provider].defaultEffort),
-      mode,
+      cwd,
       timeoutMs: body.timeoutMs ?? settings.limits.defaultTimeoutMs,
-      profile: skill.mode === "write" ? settings.securityProfile : "read_only",
-      skillSlug: slug,
-    });
-    const prompt = ctx.skills.buildRunPrompt(skill, body.inputs, path.join(ctx.paths.artifacts, run.id));
-    ctx.runs.execute(run.id, prompt, mode).catch((err: unknown) => {
-      req.log.error({ err, runId: run.id, msg: "skill run failed to execute" });
-    });
-    return { runId: run.id, status: "queued" };
+    };
+    const gate = gateWrite(ctx, mode, "skill", `Write-mode skill run: /${slug} with ${provider}`, { kind: "skill", input });
+    if (gate.pendingApproval) {
+      reply.code(202);
+      return { runId: null, status: "waiting_approval", pendingApproval: gate.pendingApproval };
+    }
+    const { runId } = launchSkillRun(ctx, input, (err, id) => req.log.error({ err, runId: id, msg: "skill run failed to execute" }));
+    return { runId, status: "queued" };
   });
 }

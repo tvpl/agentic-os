@@ -1,4 +1,5 @@
 import path from "node:path";
+import { writeDecision } from "../security/profiles.js";
 import { Cron } from "croner";
 import type { Db } from "../db/db.js";
 import type { MordomoPaths } from "../paths.js";
@@ -174,7 +175,9 @@ export class RoutineScheduler {
 
     const settings = this.getSettings();
     let skillSlug: string | null = null;
-    let mode: "read_only" | "write" = routine.profile === "read_only" ? "read_only" : "write";
+    // Routines write only when the global profile allows unattended writes (audit item 39).
+    let mode: "read_only" | "write" =
+      routine.profile !== "read_only" && writeDecision(settings.securityProfile, "routine") === "allow" ? "write" : "read_only";
     let buildPrompt: (runId: string) => string;
     if (routine.skillSlug) {
       const skill = this.skills.load(routine.skillSlug);
@@ -199,7 +202,7 @@ export class RoutineScheduler {
         effort: routine.effort,
         mode,
         timeoutMs: routine.timeoutMs,
-        profile: routine.profile,
+        profile: mode === "write" ? routine.profile : "read_only",
         skillSlug,
         routineId: routine.id,
         parentRunId,

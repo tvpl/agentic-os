@@ -233,13 +233,13 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
 
   if (ctx.restoredAtBoot) {
     app.log.info({ backup: ctx.restoredAtBoot.name, msg: "applied staged restore at boot" });
-    // eslint-disable-next-line no-console
+     
     console.log(`[mordomo] applied staged restore of backup ${ctx.restoredAtBoot.name}`);
   }
   const recovered = ctx.runs.recoverInterrupted();
   if (recovered > 0) {
     app.log.info({ recovered, msg: "marked orphaned runs as interrupted" });
-    // eslint-disable-next-line no-console
+     
     console.log(`[mordomo] marked ${recovered} orphaned run(s) as interrupted`);
   }
   ctx.scheduler.start();
@@ -277,7 +277,7 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   };
   const onSignal = (signal: NodeJS.Signals) => {
     app.log.info({ signal, msg: "shutdown requested" });
-    // eslint-disable-next-line no-console
+     
     console.log(`[mordomo] ${signal} received — shutting down`);
     process.exitCode = 0;
     close().catch((err: unknown) => {
@@ -287,7 +287,7 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   };
   const onRejection = (reason: unknown) => {
     app.log.error({ err: reason, msg: "unhandledRejection" });
-    // eslint-disable-next-line no-console
+     
     console.error("[mordomo] unhandled rejection:", reason);
   };
   process.on("SIGTERM", onSignal);

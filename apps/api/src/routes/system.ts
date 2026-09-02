@@ -18,7 +18,7 @@ import {
 } from "@mordomo/core";
 import { clearRestorePending, readRestorePending, writeRestorePending, type AppContext } from "../context.js";
 import { runDoctor } from "../doctor.js";
-import { grantedRoots, httpError } from "./common.js";
+import { grantedRoots, httpError, launchPromptRun, launchSkillRun, type PromptRunInput, type SkillRunInput } from "./common.js";
 import { BackupNameParams, UuidParams } from "./params.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -236,10 +236,18 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
     const approval = ctx.approvals.resolve(id, decision);
     if (!approval) throw httpError(404, "Approval not found");
     // Act on approved effects we know how to apply.
+    let runId: string | null = null;
     if (approval.status === "approved" && approval.kind === "expose_port") {
       ctx.settingsStore.update({ bindAddress: String(approval.payload.bindAddress ?? "127.0.0.1") });
     }
-    return approval;
+    if (approval.status === "approved" && approval.kind === "write_run") {
+      const payload = approval.payload as { kind?: string; input?: unknown };
+      const onError = (err: unknown, id: string) => req.log.error({ err, runId: id, msg: "approved run failed to execute" });
+      if (payload.kind === "prompt" && payload.input) runId = launchPromptRun(ctx, payload.input as PromptRunInput, onError).runId;
+      else if (payload.kind === "skill" && payload.input) runId = launchSkillRun(ctx, payload.input as SkillRunInput, onError).runId;
+    }
+    events.emit("approval.resolved", { id: approval.id, kind: approval.kind, status: approval.status, runId });
+    return { ...approval, runId };
   });
 
   // ---- Backups ---------------------------------------------------------------

@@ -44,7 +44,7 @@ export default function RunList() {
 
   const quickRun = useMutation({
     mutationFn: () =>
-      api.post<{ runId: string }>("/api/runs", {
+      api.post<{ runId: string | null; pendingApproval?: { id: string } | null }>("/api/runs", {
         prompt: prompt.trim(),
         mode: "read_only",
         ...(provider ? { provider } : {}),
@@ -52,6 +52,11 @@ export default function RunList() {
       }),
     onSuccess: (res) => {
       setPrompt("");
+      if (!res.runId) {
+        toast(t("runs.approvalPending"), "info");
+        navigate("/settings?tab=security");
+        return;
+      }
       navigate(`/runs/${res.runId}`);
     },
     onError: (err: Error) => toast(err.message, "danger"),

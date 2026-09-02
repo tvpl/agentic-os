@@ -2,7 +2,7 @@
   "name": "mordomo-os",
   "version": "0.1.0",
   "private": true,
-  "description": "MordomoOS — a local, vendor-neutral agentic operating system (ARMS) over Claude Code, Cursor Agent and OpenAI Codex.",
+  "description": "MordomoOS \u2014 a local, vendor-neutral agentic operating system (ARMS) over Claude Code, Cursor Agent and OpenAI Codex.",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -28,7 +28,8 @@
     "test:unit": "vitest run",
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
     "prepare": "husky",
-    "mordomo": "node apps/api/dist/cli.js"
+    "mordomo": "node apps/api/dist/cli.js",
+    "test:ui": "npm run test -w apps/command-centre"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
