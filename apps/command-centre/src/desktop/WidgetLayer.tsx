@@ -58,7 +58,7 @@ export default function WidgetLayer({ layout, widgets, editMode, onLayoutChange,
               start(id, "move", e, box);
             }}
           >
-            <div className="widget-inner">
+            <div className="widget-inner" role="region" aria-label={widget.title} tabIndex={0}>
               <h2>
                 {widget.icon} {widget.title}
               </h2>

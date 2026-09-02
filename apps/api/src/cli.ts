@@ -17,6 +17,7 @@ import {
   EffortLevel,
   ProviderId,
   type IndexStats,
+  type IndexProgress,
   type Settings,
 } from "@mordomo/core";
 import { AppContext } from "./context.js";
@@ -884,35 +885,17 @@ To remove the code too, simply delete the repository folder afterwards.`);
 
 // ---------------------------------------------------------------- index ----
 
-/** Shape of the optional non-blocking indexer (added by the memory front); detected at runtime. */
-interface AsyncCapableIndexer {
-  indexAllAsync?: (options?: { onProgress?: (progress: unknown) => void }) => Promise<IndexStats>;
+function describeProgress(progress: IndexProgress): string {
+  const parts = [`${progress.scanned} scanned`, `+${progress.added}`, `~${progress.updated}`, `-${progress.removed}`];
+  if (typeof progress.total === "number") parts.unshift(`${Math.round((progress.scanned / Math.max(1, progress.total)) * 100)}%`);
+  return parts.join(" ");
 }
 
-function describeProgress(progress: unknown): string | null {
-  if (!progress || typeof progress !== "object") return null;
-  const rec = progress as Record<string, unknown>;
-  const parts: string[] = [];
-  if (typeof rec.scanned === "number") parts.push(`${rec.scanned} scanned`);
-  if (typeof rec.added === "number") parts.push(`+${rec.added}`);
-  if (typeof rec.updated === "number") parts.push(`~${rec.updated}`);
-  if (typeof rec.file === "string") parts.push(path.basename(rec.file));
-  if (typeof rec.current === "string") parts.push(path.basename(rec.current));
-  return parts.length ? parts.join(" · ") : null;
-}
-
-/** Use the async, sliced indexer when the core provides one; otherwise the blocking one. */
-async function runIndex(ctx: AppContext, onMessage?: (message: string) => void): Promise<IndexStats> {
-  const indexer = ctx.indexer as unknown as AsyncCapableIndexer;
-  if (typeof indexer.indexAllAsync === "function") {
-    return indexer.indexAllAsync({
-      onProgress: (progress) => {
-        const text = describeProgress(progress);
-        if (text && onMessage) onMessage(`Indexing… ${text}`);
-      },
-    });
-  }
-  return ctx.indexer.indexAll();
+/** The sliced, non-blocking indexer with a progress spinner. */
+function runIndex(ctx: AppContext, onMessage?: (message: string) => void): Promise<IndexStats> {
+  return ctx.indexer.indexAllAsync((progress) => {
+    if (onMessage) onMessage(`Indexing… ${describeProgress(progress)}`);
+  });
 }
 
 async function cmdIndex(args: CliArgs): Promise<void> {

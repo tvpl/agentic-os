@@ -1,6 +1,10 @@
+import fs from "node:fs";
 import { defineConfig, devices } from "@playwright/test";
 
 const BASE_URL = "http://127.0.0.1:4777";
+// Prefer a pre-installed Chromium (containers without `playwright install`); otherwise Playwright's own.
+const PREINSTALLED = process.env.PLAYWRIGHT_CHROMIUM_PATH ?? "/opt/pw-browsers/chromium";
+const executablePath = fs.existsSync(PREINSTALLED) ? PREINSTALLED : undefined;
 
 export default defineConfig({
   testDir: ".",
@@ -16,6 +20,7 @@ export default defineConfig({
     : "list",
   use: {
     baseURL: BASE_URL,
+    ...(executablePath ? { launchOptions: { executablePath } } : {}),
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },

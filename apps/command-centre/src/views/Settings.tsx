@@ -98,8 +98,8 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
           <h1>{t("settings.title")}</h1>
         </div>
       </div>
-      <Tabs tabs={tabs} active={tab} onChange={(id) => setTab(id as TabId)} ariaLabel={t("settings.title")} />
-      <div className="tab-panel" role="tabpanel">
+      <Tabs id="settings-tabs" tabs={tabs} active={tab} onChange={(id) => setTab(id as TabId)} ariaLabel={t("settings.title")} />
+      <div className="tab-panel" role="tabpanel" id={`settings-tabs-panel-${tab}`} aria-labelledby={`settings-tabs-tab-${tab}`}>
         {tab === "identity" && <IdentityTab s={s} put={put} setLang={setLang} />}
         {tab === "providers" && <ProvidersTab s={s} put={put} />}
         {tab === "memory" && <MemoryTab s={s} put={put} />}

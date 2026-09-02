@@ -210,10 +210,13 @@ export interface TabsProps {
   active: string;
   onChange: (id: string) => void;
   ariaLabel?: string;
+  /** Id base shared with the panel: render the panel as `<div id={`${id}-panel-${active}`} role="tabpanel" aria-labelledby={`${id}-tab-${active}`}>`. */
+  id?: string;
 }
 
-export function Tabs({ tabs, active, onChange, ariaLabel }: TabsProps) {
-  const base = useId();
+export function Tabs({ tabs, active, onChange, ariaLabel, id }: TabsProps) {
+  const generated = useId();
+  const base = id ?? generated;
   const listRef = useRef<HTMLDivElement>(null);
   const onKey = (e: KeyboardEvent<HTMLButtonElement>) => {
     const i = tabs.findIndex((tab) => tab.id === active);
