@@ -1,14 +1,6 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  forceCenter,
-  forceCollide,
-  forceLink,
-  forceManyBody,
-  forceSimulation,
-  type Simulation,
-  type SimulationNodeDatum,
-} from "d3-force";
+import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation } from "d3-force";
 import { ArrowLeft, Copy, ExternalLink, Maximize2, Minus, Plus, RefreshCw, Scan, Tv, X } from "lucide-react";
 import {
   api,
@@ -23,6 +15,29 @@ import { I18nContext, useT } from "../i18n";
 import { useOsMeta } from "../queries";
 import { formatBytes, timeAgo, useToast } from "../components/ui";
 import { LAUNCHER_EVENT } from "../App";
+import {
+  APP_COLOR,
+  DEFAULT_SETTINGS,
+  GROUP_COLORS,
+  RING,
+  ROUTINE_COLOR,
+  SKILL_COLOR,
+  TWO_PI,
+  WORLD_EXTENT,
+  buildWorld,
+  clampZoom,
+  createWorld,
+  groupOfNode,
+  setMatched,
+  type BrainSettings,
+  type FileNode,
+  type Hub,
+  type LayoutKind,
+  type ViewKind,
+} from "../brain/engine/world";
+import { layoutFiles } from "../brain/engine/layouts";
+import { stepWorld, tweenTransform } from "../brain/engine/physics";
+import { hitTest as engineHitTest, screenToWorld } from "../brain/engine/hitTest";
 
 /* ============================================================================
    Second Brain v3 — the ARMS universe, alive.
@@ -33,60 +48,6 @@ import { LAUNCHER_EVENT } from "../App";
    a navigable minimap, and presentation mode (p) that hides all chrome.
 ============================================================================ */
 
-type LayoutKind = "force" | "circle" | "hex" | "rings";
-type ViewKind = "areas" | "folders";
-
-interface FileNode extends GraphNode, SimulationNodeDatum {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  tx: number;
-  ty: number;
-  baseAngle: number;
-  baseRadius: number;
-  phase: number;
-  group: string;
-  r: number;
-}
-
-interface Hub {
-  key: string;
-  color: string;
-  count: number;
-  x: number;
-  y: number;
-  baseAngle: number;
-  expanded: boolean;
-}
-
-interface OrbNode {
-  kind: "skill" | "routine" | "app";
-  id: string;
-  label: string;
-  sub: string;
-  baseAngle: number;
-  radius: number;
-  x: number;
-  y: number;
-  active: boolean;
-  official?: boolean;
-}
-
-interface Effect {
-  x: number;
-  y: number;
-  start: number;
-  color: string;
-}
-
-interface Comet {
-  runId: string;
-  skillSlug: string | null;
-  seed: number;
-  trail: Array<{ x: number; y: number }>;
-}
-
 interface PreviewState {
   node: FileNode;
   content: string | null;
@@ -95,37 +56,8 @@ interface PreviewState {
   related: Array<{ id: number; name: string; why: string }>;
 }
 
-const GROUP_COLORS = [
-  "#c084fc", "#f472b6", "#22d3ee", "#fde047",
-  "#4ade80", "#fb923c", "#a5b4fc", "#f87171",
-  "#5eead4", "#fbbf24",
-];
-const RING = { skills: 92, hubs: 178, filesInner: 150, routines: 318, apps: 372, labelPad: 14 };
-const SKILL_COLOR = "#fb923c";
-const ROUTINE_COLOR = "#fbbf24";
-const APP_COLOR = "#7dd3fc";
-const TWO_PI = Math.PI * 2;
 const BAKE_KEY = "mordomo.brain.settings";
-const WORLD_EXTENT = RING.apps * 2.35; // world width the minimap and fit-view assume
 
-interface BrainSettings {
-  layout: LayoutKind;
-  view: ViewKind;
-  spin: number;
-  showNames: boolean;
-  linkSpring: number;
-  nodeScale: number;
-  clusterSize: number;
-}
-const DEFAULT_SETTINGS: BrainSettings = {
-  layout: "rings",
-  view: "areas",
-  spin: 0.16,
-  showNames: false,
-  linkSpring: 0.05,
-  nodeScale: 1,
-  clusterSize: 1,
-};
 function loadBaked(): BrainSettings {
   try {
     const raw = localStorage.getItem(BAKE_KEY);
@@ -172,30 +104,7 @@ export default function SecondBrain() {
   const [liveCount, setLiveCount] = useState(0);
   const [hover, setHover] = useState<{ x: number; y: number; title: string; sub: string } | null>(null);
 
-  const world = useRef({
-    files: [] as FileNode[],
-    edges: [] as Array<{ a: number; b: number }>,
-    hubs: [] as Hub[],
-    orbs: [] as OrbNode[],
-    effects: [] as Effect[],
-    comets: [] as Comet[],
-    transform: { x: 0, y: 0, k: 1 },
-    target: { x: 0, y: 0, k: 1 },
-    theta: 0,
-    layout: baked.layout as LayoutKind,
-    spin: baked.spin,
-    nodeScale: baked.nodeScale,
-    clusterSize: baked.clusterSize,
-    filterGroup: null as string | null,
-    matched: null as Set<number> | null,
-    selectedId: null as number | null,
-    selectedEdges: new Set<number>(),
-    showNames: baked.showNames,
-    hoverKey: null as string | null,
-    colorOf: new Map<string, string>(),
-    sim: null as Simulation<FileNode, undefined> | null,
-    linkSpring: baked.linkSpring,
-  });
+  const world = useRef(createWorld(baked));
 
   /* ---------- data ---------- */
   const load = useCallback(async () => {
@@ -276,101 +185,22 @@ export default function SecondBrain() {
     };
   }, []);
 
-  const groupOf = useCallback(
-    (n: GraphNode): string => {
-      if (view === "areas") return n.area ?? "unsorted";
-      const seg = n.rel.split(/[\\/]/)[0] ?? "";
-      return n.rel.includes("/") || n.rel.includes("\\") ? seg : "(root)";
-    },
-    [view],
-  );
+  const groupOf = useCallback((n: GraphNode): string => groupOfNode(n, view), [view]);
 
-  /* ---------- build world ---------- */
+  /* ---------- build world (engine) ---------- */
   useEffect(() => {
     if (!graph) return;
     const w = world.current;
-    const groups = new Map<string, number>();
-    for (const n of graph.nodes) groups.set(groupOf(n), (groups.get(groupOf(n)) ?? 0) + 1);
-    const groupKeys = [...groups.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
-    w.colorOf = new Map(groupKeys.map((k, i) => [k, GROUP_COLORS[i % GROUP_COLORS.length]!]));
-
-    const prevExpanded = new Map(w.hubs.map((h) => [h.key, h.expanded]));
-    w.hubs = groupKeys.map((key, gi) => ({
-      key,
-      color: w.colorOf.get(key)!,
-      count: groups.get(key) ?? 0,
-      x: 0,
-      y: 0,
-      baseAngle: (gi / Math.max(1, groupKeys.length)) * TWO_PI - Math.PI / 2,
-      expanded: prevExpanded.get(key) ?? true,
-    }));
-
-    let seed = 3;
-    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    const prev = new Map(w.files.map((n) => [n.id, n]));
-    w.files = graph.nodes.map((n) => {
-      const old = prev.get(n.id);
-      return {
-        ...n,
-        group: groupOf(n),
-        x: old?.x ?? (rand() - 0.5) * 60,
-        y: old?.y ?? (rand() - 0.5) * 60,
-        vx: 0,
-        vy: 0,
-        tx: 0,
-        ty: 0,
-        baseAngle: 0,
-        baseRadius: 0,
-        phase: rand() * TWO_PI,
-        r: 1.7 + Math.min(2.6, Math.log10(Math.max(10, n.size)) - 1) * 0.9,
-      };
+    buildWorld(w, {
+      graph,
+      skills,
+      routines,
+      connectors,
+      groupOf,
+      labels: { skills: t("brain.ring.skills"), routines: t("brain.ring.routines"), apps: t("brain.ring.apps") },
     });
-    const indexOf = new Map(w.files.map((n, i) => [n.id, i]));
-    w.edges = graph.edges
-      .filter((e) => e.kind === "markdown-link")
-      .map((e) => ({ a: indexOf.get(e.source) ?? -1, b: indexOf.get(e.target) ?? -1 }))
-      .filter((e) => e.a >= 0 && e.b >= 0);
-    w.selectedEdges = new Set();
-
-    w.orbs = [
-      ...skills.map((s, i): OrbNode => ({
-        kind: "skill",
-        id: s.slug,
-        label: `/${s.slug}`,
-        sub: t("brain.ring.skills"),
-        baseAngle: (i / Math.max(1, skills.length)) * TWO_PI - Math.PI / 2,
-        radius: RING.skills,
-        x: 0,
-        y: 0,
-        active: s.enabled,
-      })),
-      ...routines.map((r, i): OrbNode => ({
-        kind: "routine",
-        id: r.id,
-        label: r.name,
-        sub: t("brain.ring.routines"),
-        baseAngle: (i / Math.max(1, routines.length)) * TWO_PI + 0.35,
-        radius: RING.routines,
-        x: 0,
-        y: 0,
-        active: r.enabled,
-      })),
-      ...connectors.map((c, i): OrbNode => ({
-        kind: "app",
-        id: c.id,
-        label: c.name,
-        sub: t("brain.ring.apps"),
-        baseAngle: (i / Math.max(1, connectors.length)) * TWO_PI + 0.12,
-        radius: RING.apps,
-        x: 0,
-        y: 0,
-        active: c.status === "healthy" || c.status === "configured",
-        official: c.official,
-      })),
-    ];
     layoutFiles(w);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, skills, routines, connectors, groupOf]);
+  }, [graph, skills, routines, connectors, groupOf, t]);
 
   useEffect(() => {
     const w = world.current;
@@ -392,28 +222,20 @@ export default function SecondBrain() {
   }, [layout, view]);
 
   useEffect(() => {
-    const w = world.current;
-    if (!debounced.trim()) {
-      w.matched = null;
-      return;
-    }
-    const q = debounced.toLowerCase();
-    w.matched = new Set(
-      w.files.filter((n) => n.name.toLowerCase().includes(q) || n.rel.toLowerCase().includes(q)).map((n) => n.id),
-    );
+    setMatched(world.current, debounced);
   }, [debounced]);
 
   /* ---------- zoom helpers (animated via target transform) ---------- */
   const zoomBy = useCallback((factor: number) => {
     const tg = world.current.target;
-    tg.k = Math.min(9, Math.max(0.3, tg.k * factor));
+    tg.k = clampZoom(tg.k * factor);
   }, []);
   const zoomFit = useCallback(() => {
     const canvas = canvasRef.current;
     const w = world.current;
     const rect = canvas?.getBoundingClientRect();
     const k = rect ? Math.min(rect.width, rect.height) / WORLD_EXTENT : 1;
-    w.target = { x: 0, y: 0, k: Math.max(0.3, k) };
+    w.target = { x: 0, y: 0, k: clampZoom(k) };
   }, []);
   const zoomReset = useCallback(() => {
     world.current.target = { x: 0, y: 0, k: 1 };
@@ -684,15 +506,8 @@ export default function SecondBrain() {
       const cx = cw / 2;
       const cy = ch / 2;
       const tr = w.transform;
-      const tg = w.target;
       const tNow = now / 1000;
-      if (!reduceMotion) w.theta += w.spin * dt * 0.45;
-
-      // tween transform toward its target (animated zoom / centering)
-      const tf = Math.min(1, dt * 7);
-      tr.x += (tg.x - tr.x) * tf;
-      tr.y += (tg.y - tr.y) * tf;
-      tr.k += (tg.k - tr.k) * tf;
+      tweenTransform(w, dt);
 
       const { accentCol, textDim, faint } = tokens;
       const styles = { getPropertyValue: (name: string) => tokens.vars[name] ?? "" };
@@ -700,39 +515,7 @@ export default function SecondBrain() {
       ctx.clearRect(0, 0, cw, ch);
       if (bgCanvas) ctx.drawImage(bgCanvas, 0, 0, cw, ch);
 
-      // advance files — springy physics with overshoot for explosions
-      if (w.layout === "force") {
-        w.sim?.tick();
-      } else {
-        const cos = Math.cos(w.theta);
-        const sin = Math.sin(w.theta);
-        const f = Math.min(2.2, dt * 60);
-        const damp = Math.pow(0.86, f);
-        for (const n of w.files) {
-          const bx = Math.cos(n.baseAngle) * n.baseRadius;
-          const by = Math.sin(n.baseAngle) * n.baseRadius;
-          n.tx = bx * cos - by * sin;
-          n.ty = bx * sin + by * cos;
-          n.vx = n.vx * damp + (n.tx - n.x) * 0.045 * f;
-          n.vy = n.vy * damp + (n.ty - n.y) * 0.045 * f;
-          n.x += n.vx * f;
-          n.y += n.vy * f;
-        }
-      }
-      const cosT = Math.cos(w.theta);
-      const sinT = Math.sin(w.theta);
-      for (const hub of w.hubs) {
-        const bx = Math.cos(hub.baseAngle) * RING.hubs;
-        const by = Math.sin(hub.baseAngle) * RING.hubs;
-        hub.x = bx * cosT - by * sinT;
-        hub.y = bx * sinT + by * cosT;
-      }
-      for (const orb of w.orbs) {
-        const speed = orb.kind === "skill" ? -0.35 : orb.kind === "routine" ? 0.5 : 0.22;
-        const a = orb.baseAngle + w.theta * speed;
-        orb.x = Math.cos(a) * orb.radius;
-        orb.y = Math.sin(a) * orb.radius;
-      }
+      stepWorld(w, dt, !reduceMotion);
 
       ctx.save();
       ctx.translate(cx + tr.x, cy + tr.y);
@@ -1089,38 +872,8 @@ export default function SecondBrain() {
     let moved = false;
     let start = { x: 0, y: 0 };
 
-    const toWorld = (clientX: number, clientY: number) => {
-      const rect = canvas.getBoundingClientRect();
-      const tr = w.transform;
-      return {
-        x: (clientX - rect.left - rect.width / 2 - tr.x) / tr.k,
-        y: (clientY - rect.top - rect.height / 2 - tr.y) / tr.k,
-        sx: clientX - rect.left,
-        sy: clientY - rect.top,
-      };
-    };
-
-    const hitTest = (wx: number, wy: number): { file?: FileNode; hub?: Hub; orb?: OrbNode } => {
-      for (const hub of w.hubs) {
-        if (Math.hypot(wx - hub.x, wy - hub.y) < 17) return { hub };
-      }
-      for (const orb of w.orbs) {
-        if (Math.hypot(wx - orb.x, wy - orb.y) < (orb.kind === "app" ? 17 : 13)) return { orb };
-      }
-      const tol = 9 / w.transform.k + 4;
-      let best: FileNode | undefined;
-      let bestD = tol * tol;
-      for (const n of w.files) {
-        const dx = wx - n.x;
-        const dy = wy - n.y;
-        const d = dx * dx + dy * dy;
-        if (d < bestD) {
-          bestD = d;
-          best = n;
-        }
-      }
-      return { file: best };
-    };
+    const toWorld = (clientX: number, clientY: number) => screenToWorld(w.transform, canvas.getBoundingClientRect(), clientX, clientY);
+    const hitTest = (wx: number, wy: number) => engineHitTest(w, wx, wy);
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -1496,79 +1249,6 @@ export default function SecondBrain() {
 /* ---------------------------------------------------------------------------
    File layout: nebulas around each hub, shaped by the chosen layout.
 --------------------------------------------------------------------------- */
-function layoutFiles(w: {
-  files: FileNode[];
-  hubs: Hub[];
-  layout: LayoutKind;
-  clusterSize: number;
-}): void {
-  const byGroup = new Map<string, FileNode[]>();
-  for (const n of w.files) {
-    const list = byGroup.get(n.group) ?? [];
-    list.push(n);
-    byGroup.set(n.group, list);
-  }
-  const cs = w.clusterSize;
-
-  for (const hub of w.hubs) {
-    const list = (byGroup.get(hub.key) ?? []).slice().sort((a, b) => b.mtime - a.mtime);
-    if (list.length === 0) continue;
-    const hubX = Math.cos(hub.baseAngle) * RING.hubs;
-    const hubY = Math.sin(hub.baseAngle) * RING.hubs;
-
-    if (!hub.expanded) {
-      list.forEach((n, i) => {
-        const rr = 20 + (i % 3) * 5;
-        const aa = (i / Math.max(1, list.length)) * TWO_PI;
-        const x = hubX + Math.cos(aa) * rr * 0.8;
-        const y = hubY + Math.sin(aa) * rr * 0.8;
-        n.baseRadius = Math.hypot(x, y);
-        n.baseAngle = Math.atan2(y, x);
-      });
-      continue;
-    }
-
-    if (w.layout === "hex") {
-      const HEX = 13 * cs;
-      const cols = Math.max(3, Math.ceil(Math.sqrt(list.length) * 1.25));
-      list.forEach((n, i) => {
-        const row = Math.floor(i / cols);
-        const col = i % cols;
-        const localX = (col - cols / 2) * HEX + (row % 2 ? HEX / 2 : 0);
-        const localY = 46 + row * HEX * 0.87;
-        const ang = hub.baseAngle + Math.PI / 2;
-        const x = hubX + localX * Math.cos(ang) + Math.cos(hub.baseAngle) * localY;
-        const y = hubY + localX * Math.sin(ang) + Math.sin(hub.baseAngle) * localY;
-        n.baseRadius = Math.hypot(x, y);
-        n.baseAngle = Math.atan2(y, x);
-      });
-    } else if (w.layout === "circle") {
-      const clusterR = (16 + Math.sqrt(list.length) * 7.5) * cs;
-      const centerR = RING.hubs + clusterR + 26;
-      const gx = Math.cos(hub.baseAngle) * centerR;
-      const gy = Math.sin(hub.baseAngle) * centerR;
-      list.forEach((n, i) => {
-        const rr = clusterR * Math.sqrt((i + 0.5) / list.length);
-        const aa = i * 2.399963;
-        const x = gx + Math.cos(aa) * rr;
-        const y = gy + Math.sin(aa) * rr;
-        n.baseRadius = Math.hypot(x, y);
-        n.baseAngle = Math.atan2(y, x);
-      });
-    } else {
-      const sector = TWO_PI / Math.max(1, w.hubs.length);
-      const span = sector * 0.9;
-      list.forEach((n, i) => {
-        const tFrac = (i + 0.5) / list.length;
-        const rr = (RING.filesInner + (RING.routines - 42 - RING.filesInner) * Math.pow(tFrac, 0.72)) * (0.82 + 0.36 * ((i * 0.618) % 1)) * (0.7 + 0.3 * cs);
-        const aa = hub.baseAngle - span / 2 + span * ((i * 0.381966) % 1);
-        n.baseRadius = Math.min(rr, RING.routines - 26);
-        n.baseAngle = aa;
-      });
-    }
-  }
-}
-
 /* ---------------------------------------------------------------------------
    Crafted canvas glyphs
 --------------------------------------------------------------------------- */
