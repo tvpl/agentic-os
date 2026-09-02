@@ -7,9 +7,17 @@ import path from "node:path";
  * - executable allowlist (basenames + optional pinned absolute paths).
  * - cwd must be provided explicitly by the caller (already containment-checked).
  * - timeout kills the whole process group.
+ * - stdout/stderr are accumulated in memory only up to a bounded tail
+ *   (`MAX_CAPTURED_BYTES` each); streaming callbacks still see every chunk.
  */
 
 const BASE_ALLOWLIST = new Set(["claude", "cursor-agent", "codex", "node"]);
+
+/** Tail of stdout/stderr kept in memory for `SpawnResult` (1 MiB each). */
+export const MAX_CAPTURED_BYTES = 1024 * 1024;
+
+/** Grace between SIGTERM and SIGKILL for cancel/timeout. */
+const DEFAULT_KILL_GRACE_MS = 5000;
 
 export class ExecutableNotAllowedError extends Error {
   constructor(exe: string) {
@@ -32,17 +40,22 @@ export interface SpawnOptions {
 export interface SpawnResult {
   exitCode: number | null;
   signal: NodeJS.Signals | null;
+  /** Captured stdout; only the last `MAX_CAPTURED_BYTES` when `stdoutTruncated`. */
   stdout: string;
   stderr: string;
   timedOut: boolean;
   durationMs: number;
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
 }
 
 export interface SpawnHandle {
   child: ChildProcess;
   result: Promise<SpawnResult>;
   /** Kill the whole process group (SIGTERM, then SIGKILL after grace). */
-  cancel: (reason?: string) => void;
+  cancel: (reason?: string, graceMs?: number) => void;
+  /** Send one signal to the whole process group, no grace. */
+  kill: (signal: NodeJS.Signals) => void;
 }
 
 export function assertAllowed(executable: string, allowPaths: string[] = []): void {
@@ -50,6 +63,43 @@ export function assertAllowed(executable: string, allowPaths: string[] = []): vo
   if (BASE_ALLOWLIST.has(base)) return;
   if (allowPaths.some((p) => path.resolve(p) === path.resolve(executable))) return;
   throw new ExecutableNotAllowedError(executable);
+}
+
+/** Signal a process group by pid (falls back to the single process). */
+export function killProcessGroup(pid: number, signal: NodeJS.Signals): boolean {
+  try {
+    if (process.platform === "win32") process.kill(pid, signal);
+    else process.kill(-pid, signal);
+    return true;
+  } catch {
+    try {
+      process.kill(pid, signal);
+      return true;
+    } catch {
+      return false; /* already gone */
+    }
+  }
+}
+
+/** Bounded accumulator: keeps roughly the last `max` characters, amortized. */
+class TailBuffer {
+  private buf = "";
+  truncated = false;
+  constructor(private readonly max: number) {}
+  push(chunk: string): void {
+    this.buf += chunk;
+    if (this.buf.length > this.max * 2) {
+      this.buf = this.buf.slice(-this.max);
+      this.truncated = true;
+    }
+  }
+  value(): string {
+    if (this.buf.length > this.max) {
+      this.truncated = true;
+      this.buf = this.buf.slice(-this.max);
+    }
+    return this.buf;
+  }
 }
 
 export function safeSpawn(executable: string, args: string[], opts: SpawnOptions): SpawnHandle {
@@ -64,23 +114,24 @@ export function safeSpawn(executable: string, args: string[], opts: SpawnOptions
     windowsHide: true,
   });
 
-  let stdout = "";
-  let stderr = "";
+  const stdout = new TailBuffer(MAX_CAPTURED_BYTES);
+  const stderr = new TailBuffer(MAX_CAPTURED_BYTES);
   let timedOut = false;
   let settled = false;
+  const pendingKills = new Set<NodeJS.Timeout>();
 
   const killTree = (signal: NodeJS.Signals) => {
-    if (child.pid == null) return;
-    try {
-      if (process.platform === "win32") child.kill(signal);
-      else process.kill(-child.pid, signal);
-    } catch {
-      try {
-        child.kill(signal);
-      } catch {
-        /* already gone */
-      }
-    }
+    if (child.pid == null || settled) return;
+    killProcessGroup(child.pid, signal);
+  };
+
+  const scheduleKill = (signal: NodeJS.Signals, delayMs: number) => {
+    const t = setTimeout(() => {
+      pendingKills.delete(t);
+      killTree(signal);
+    }, delayMs);
+    t.unref();
+    pendingKills.add(t);
   };
 
   let timeout: NodeJS.Timeout | undefined;
@@ -88,7 +139,7 @@ export function safeSpawn(executable: string, args: string[], opts: SpawnOptions
     timeout = setTimeout(() => {
       timedOut = true;
       killTree("SIGTERM");
-      setTimeout(() => killTree("SIGKILL"), 5000).unref();
+      scheduleKill("SIGKILL", DEFAULT_KILL_GRACE_MS);
     }, opts.timeoutMs);
     timeout.unref();
   }
@@ -96,41 +147,58 @@ export function safeSpawn(executable: string, args: string[], opts: SpawnOptions
   child.stdout?.setEncoding("utf8");
   child.stderr?.setEncoding("utf8");
   child.stdout?.on("data", (chunk: string) => {
-    stdout += chunk;
+    stdout.push(chunk);
     opts.onStdout?.(chunk);
   });
   child.stderr?.on("data", (chunk: string) => {
-    stderr += chunk;
+    stderr.push(chunk);
     opts.onStderr?.(chunk);
   });
 
   if (opts.stdin != null) {
+    // The child may exit before reading stdin (EPIPE); that is not our error.
+    child.stdin?.on("error", () => undefined);
     child.stdin?.write(opts.stdin);
   }
   child.stdin?.end();
 
+  const settle = () => {
+    settled = true;
+    if (timeout) clearTimeout(timeout);
+    for (const t of pendingKills) clearTimeout(t);
+    pendingKills.clear();
+  };
+
   const result = new Promise<SpawnResult>((resolve, reject) => {
     child.on("error", (err) => {
       if (settled) return;
-      settled = true;
-      if (timeout) clearTimeout(timeout);
+      settle();
       reject(err);
     });
     child.on("close", (exitCode, signal) => {
       if (settled) return;
-      settled = true;
-      if (timeout) clearTimeout(timeout);
-      resolve({ exitCode, signal, stdout, stderr, timedOut, durationMs: Date.now() - started });
+      settle();
+      resolve({
+        exitCode,
+        signal,
+        stdout: stdout.value(),
+        stderr: stderr.value(),
+        timedOut,
+        durationMs: Date.now() - started,
+        stdoutTruncated: stdout.truncated,
+        stderrTruncated: stderr.truncated,
+      });
     });
   });
 
   return {
     child,
     result,
-    cancel: () => {
+    cancel: (_reason?: string, graceMs = DEFAULT_KILL_GRACE_MS) => {
       killTree("SIGTERM");
-      setTimeout(() => killTree("SIGKILL"), 5000).unref();
+      scheduleKill("SIGKILL", graceMs);
     },
+    kill: (signal) => killTree(signal),
   };
 }
 

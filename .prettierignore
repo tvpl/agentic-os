@@ -1,0 +1,22 @@
+# Build output and dependencies
+dist/
+node_modules/
+coverage/
+playwright-report/
+test-results/
+tests/.tmp/
+*.tsbuildinfo
+package-lock.json
+
+# Machine-local data and user content (never reformatted)
+config/
+logs/
+artifacts/
+memory/
+skills/
+routines/
+connectors/
+
+# Long-form documents keep their authored wrapping
+docs/
+CHANGELOG.md

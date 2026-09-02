@@ -1,8 +1,26 @@
+import type Database from "better-sqlite3";
+
 /**
  * Versioned migrations. Never edit an existing entry after release — append a new one.
  * The runner backs up the database file before applying anything.
+ *
+ * A migration is either plain SQL (`sql`) or a function (`up`) for changes
+ * that need to inspect the schema first (SQLite has no `ADD COLUMN IF NOT EXISTS`).
  */
-export const MIGRATIONS: ReadonlyArray<{ version: number; name: string; sql: string }> = [
+export interface Migration {
+  version: number;
+  name: string;
+  sql?: string;
+  up?: (db: Database.Database) => void;
+}
+
+/** True when `table` already has a column named `column`. */
+export function hasColumn(db: Database.Database, table: string, column: string): boolean {
+  const cols = db.pragma(`table_info(${table})`) as Array<{ name: string }>;
+  return cols.some((c) => c.name === column);
+}
+
+export const MIGRATIONS: ReadonlyArray<Migration> = [
   {
     version: 1,
     name: "initial-schema",
@@ -100,5 +118,23 @@ CREATE TABLE meta (
   value TEXT NOT NULL
 );
 `,
+  },
+  {
+    version: 2,
+    name: "run-lineage-and-pid",
+    // Retries create a new run per attempt linked to the first one through
+    // parent_run_id. `pid` already exists in v1 but is guarded here too so a
+    // database created by hand or partially migrated still ends up consistent.
+    // Status gains `timed_out` (no DDL: status is free text).
+    up(db) {
+      if (!hasColumn(db, "runs", "parent_run_id")) {
+        db.exec("ALTER TABLE runs ADD COLUMN parent_run_id TEXT");
+      }
+      if (!hasColumn(db, "runs", "pid")) {
+        db.exec("ALTER TABLE runs ADD COLUMN pid INTEGER");
+      }
+      db.exec("CREATE INDEX IF NOT EXISTS idx_runs_parent ON runs(parent_run_id)");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_run_events_ts ON run_events(ts)");
+    },
   },
 ];

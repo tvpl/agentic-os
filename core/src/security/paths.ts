@@ -7,6 +7,11 @@ export function isInside(parent: string, child: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
+/** True when `candidate` is inside (or equal to) at least one of `roots`. */
+export function isInsideAny(roots: string[], candidate: string): boolean {
+  return roots.some((root) => isInside(root, candidate));
+}
+
 /**
  * Resolve a user-supplied path and require containment inside one of the
  * granted roots. Follows symlinks (realpath) so a link cannot escape the root.
@@ -23,8 +28,13 @@ export function resolveInsideRoots(roots: string[], candidate: string): string {
 }
 
 export class PathAccessError extends Error {
-  constructor(public readonly attempted: string) {
-    super(`Path is outside the granted folders: ${attempted}`);
+  /** HTTP status the API should map this to. */
+  readonly statusCode = 403;
+  constructor(
+    public readonly attempted: string,
+    message?: string,
+  ) {
+    super(message ?? `Path is outside the granted folders: ${attempted}`);
     this.name = "PathAccessError";
   }
 }

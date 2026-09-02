@@ -1,20 +1,16 @@
 import type { AgentRun, RunEvent, SafeInvocation } from "./types.js";
-import { safeSpawn, type SpawnHandle } from "../spawn/safeSpawn.js";
+import { safeSpawn } from "../spawn/safeSpawn.js";
 
 /**
  * Shared streaming execution used by all adapters: spawns the invocation,
  * feeds stdout lines to an adapter-specific parser and normalizes lifecycle
- * events. Registers the handle so cancel(runId) works from anywhere.
+ * events.
+ *
+ * Cancellation comes from `run.signal` (owned by the RunManager): if it is
+ * already aborted nothing is spawned; if it aborts later the process group is
+ * killed. If the consumer stops iterating early (return/throw), the generator's
+ * cleanup kills the child instead of waiting for it to finish on its own.
  */
-
-const activeHandles = new Map<string, SpawnHandle>();
-
-export function cancelRunProcess(runId: string): boolean {
-  const handle = activeHandles.get(runId);
-  if (!handle) return false;
-  handle.cancel();
-  return true;
-}
 
 export interface LineParser {
   /** Return events for a stdout line, or null to fall through to raw text. */
@@ -29,6 +25,21 @@ export async function* executeInvocation(
   parser: LineParser,
   allowPaths: string[] = [],
 ): AsyncIterable<RunEvent> {
+  const signal = run.signal;
+  if (signal?.aborted) {
+    // Cancel arrived before spawn (e.g. during buildInvocation): do not spawn.
+    yield {
+      type: "result",
+      ts: Date.now(),
+      exitCode: null,
+      summary: "Cancelled before the provider process was started.",
+      durationMs: 0,
+      timedOut: false,
+      cancelled: true,
+    };
+    return;
+  }
+
   const queue: RunEvent[] = [];
   let notify: (() => void) | null = null;
   let finished = false;
@@ -63,12 +74,30 @@ export async function* executeInvocation(
       if (text) push({ type: "text", ts: Date.now(), stream: "stderr", text });
     },
   });
-  activeHandles.set(run.runId, handle);
+
+  let cancelRequested = false;
+  const onAbort = () => {
+    cancelRequested = true;
+    handle.cancel("cancelled");
+  };
+  if (signal) {
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  }
+
   push({ type: "started", ts: Date.now(), pid: handle.child.pid ?? null });
 
   const done = handle.result
     .then((res) => {
       if (lineBuffer.trim()) handleStdout("\n");
+      if (res.stdoutTruncated || res.stderrTruncated) {
+        push({
+          type: "text",
+          ts: Date.now(),
+          stream: "stderr",
+          text: "[mordomo] captured output exceeded the in-memory cap; only the tail was kept for the summary.",
+        });
+      }
       push({
         type: "result",
         ts: Date.now(),
@@ -76,6 +105,7 @@ export async function* executeInvocation(
         summary: parser.summarize(res.stdout, res.stderr, res.exitCode),
         durationMs: res.durationMs,
         timedOut: res.timedOut,
+        cancelled: cancelRequested && res.exitCode !== 0,
       });
     })
     .catch((err: Error) => {
@@ -83,7 +113,6 @@ export async function* executeInvocation(
     })
     .finally(() => {
       finished = true;
-      activeHandles.delete(run.runId);
       notify?.();
     });
 
@@ -99,6 +128,11 @@ export async function* executeInvocation(
       yield queue.shift() as RunEvent;
     }
   } finally {
+    signal?.removeEventListener("abort", onAbort);
+    if (!finished) {
+      // Consumer abandoned the stream: never leave the child running.
+      handle.cancel("consumer abandoned the event stream");
+    }
     await done;
   }
 }

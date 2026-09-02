@@ -4,6 +4,8 @@ import { z } from "zod";
 import { ProviderId } from "../config/schema.js";
 import type { MordomoPaths } from "../paths.js";
 import { atomicWrite } from "../config/store.js";
+import { resolveInsideDir } from "../security/ids.js";
+import type { StoreProblem } from "../routines/store.js";
 
 export const ConnectorSchema = z.object({
   id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
@@ -29,36 +31,50 @@ export const ConnectorSchema = z.object({
 export type Connector = z.infer<typeof ConnectorSchema>;
 
 export class ConnectorRegistry {
+  private problems: StoreProblem[] = [];
+
   constructor(private readonly paths: MordomoPaths) {}
 
+  /** Files skipped by the most recent `list()` call, with the reason. */
+  lastProblems(): StoreProblem[] {
+    return [...this.problems];
+  }
+
+  /** Path for an id, validated (regex + containment). Throws InvalidIdError (400). */
+  private fileFor(id: string): string {
+    return resolveInsideDir(this.paths.connectors, id, ".json", "connector id");
+  }
+
   list(): Connector[] {
+    this.problems = [];
     if (!fs.existsSync(this.paths.connectors)) return [];
     const out: Connector[] = [];
     for (const file of fs.readdirSync(this.paths.connectors)) {
       if (!file.endsWith(".json")) continue;
+      const full = path.join(this.paths.connectors, file);
       try {
-        out.push(ConnectorSchema.parse(JSON.parse(fs.readFileSync(path.join(this.paths.connectors, file), "utf8"))));
+        out.push(ConnectorSchema.parse(JSON.parse(fs.readFileSync(full, "utf8"))));
       } catch (err) {
-        throw new Error(`Invalid connector file ${file}: ${(err as Error).message}`);
+        this.problems.push({ file: full, error: (err as Error).message });
       }
     }
     return out.sort((a, b) => a.name.localeCompare(b.name));
   }
 
   get(id: string): Connector | null {
-    const file = path.join(this.paths.connectors, `${id}.json`);
+    const file = this.fileFor(id);
     if (!fs.existsSync(file)) return null;
     return ConnectorSchema.parse(JSON.parse(fs.readFileSync(file, "utf8")));
   }
 
   save(connector: Connector): Connector {
     const parsed = ConnectorSchema.parse(connector);
-    atomicWrite(path.join(this.paths.connectors, `${parsed.id}.json`), JSON.stringify(parsed, null, 2) + "\n");
+    atomicWrite(this.fileFor(parsed.id), JSON.stringify(parsed, null, 2) + "\n");
     return parsed;
   }
 
   remove(id: string): boolean {
-    const file = path.join(this.paths.connectors, `${id}.json`);
+    const file = this.fileFor(id);
     if (!fs.existsSync(file)) return false;
     fs.unlinkSync(file);
     return true;
