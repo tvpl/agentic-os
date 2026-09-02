@@ -89,3 +89,8 @@ export const useOsRun = (id: string, o?: ApiQueryOptions<RunRecord>) => useApiQu
 export const useOsMetrics = (o?: ApiQueryOptions<Metrics>) => useApiQuery<Metrics>(qk.metrics, "/api/metrics", o);
 export const useOsArtifacts = (o?: ApiQueryOptions<ArtifactEntry[]>) => useApiQuery<ArtifactEntry[]>(qk.artifacts, "/api/artifacts/recent", o);
 export const useOsConnectors = (o?: ApiQueryOptions<Connector[]>) => useApiQuery<Connector[]>(qk.connectors, "/api/connectors", o);
+export interface SettingsView {
+  dashboardLayout?: Record<string, { x: number; y: number; w: number; h: number; visible: boolean }>;
+  [key: string]: unknown;
+}
+export const useOsSettings = (o?: ApiQueryOptions<SettingsView>) => useApiQuery<SettingsView>(qk.settings, "/api/settings", o);

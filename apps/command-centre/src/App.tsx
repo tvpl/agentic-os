@@ -36,10 +36,8 @@ import { ConfirmProvider } from "./hooks/useConfirm";
 import { useEventStream } from "./hooks/useEventStream";
 
 // Desktop is the landing surface and stays in the main chunk.
-// TODO(orchestrator): switch to `import Desktop from "./desktop"` once F2 lands src/desktop/index.tsx.
-import Desktop from "./views/Desktop";
-// TODO(orchestrator): switch to `lazy(() => import("./runs"))` once F2 lands src/runs/index.tsx.
-const Runs = lazy(() => import("./views/Runs"));
+import Desktop from "./desktop";
+const Runs = lazy(() => import("./runs"));
 // TODO(orchestrator): switch to `lazy(() => import("./brain"))` once F3 lands src/brain/index.tsx.
 const SecondBrain = lazy(() => import("./views/SecondBrain"));
 const Skills = lazy(() => import("./views/Skills"));
