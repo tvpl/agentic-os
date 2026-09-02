@@ -7,7 +7,7 @@ import { IdParams } from "./params.js";
 export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get("/api/connectors", async () => ctx.connectors.list());
 
-  app.get("/api/connectors/audit", async () => runAudit(ctx.connectors));
+  app.get("/api/connectors/audit", async () => runAudit(ctx.connectors, undefined, [...new Set(ctx.providers.manifests().flatMap((m) => m.homeConfigFiles))]));
 
   app.put("/api/connectors/:id", async (req) => {
     const { id } = IdParams.parse(req.params);

@@ -2,6 +2,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Connector, ConnectorRegistry } from "./registry.js";
+import { builtinManifests } from "../agents/registry.js";
+
+/** Home-relative config files declared by the provider manifests (the registry can pass its own list). */
+export function defaultConfigFiles(): string[] {
+  return [...new Set(builtinManifests().flatMap((m) => m.homeConfigFiles))];
+}
 
 /**
  * Connector auditor (ARMS Applications L1).
@@ -34,14 +40,9 @@ export interface AuditReport {
 
 const CREDENTIAL_KEYS = /token|secret|key|password|auth|bearer|cookie/i;
 
-export function discoverMcpServers(homeOverride?: string): { servers: DiscoveredMcpServer[]; scannedFiles: string[] } {
+export function discoverMcpServers(homeOverride?: string, configFiles: string[] = defaultConfigFiles()): { servers: DiscoveredMcpServer[]; scannedFiles: string[] } {
   const home = homeOverride ?? os.homedir();
-  const candidates = [
-    path.join(home, ".claude.json"),
-    path.join(home, ".claude", "settings.json"),
-    path.join(home, ".cursor", "mcp.json"),
-    path.join(home, ".codex", "config.toml"),
-  ];
+  const candidates = configFiles.map((rel) => path.join(home, rel));
   const servers: DiscoveredMcpServer[] = [];
   const scannedFiles: string[] = [];
   for (const file of candidates) {
@@ -110,8 +111,8 @@ function sanitizeTarget(target: string): string {
     .replace(/\/\/[^@/]+@/, "//[hidden]@");
 }
 
-export function runAudit(registry: ConnectorRegistry, homeOverride?: string): AuditReport {
-  const { servers, scannedFiles } = discoverMcpServers(homeOverride);
+export function runAudit(registry: ConnectorRegistry, homeOverride?: string, configFiles?: string[]): AuditReport {
+  const { servers, scannedFiles } = discoverMcpServers(homeOverride, configFiles);
   const connectors = registry.list();
 
   const discoveredNames = new Set(servers.map((s) => s.name.toLowerCase()));

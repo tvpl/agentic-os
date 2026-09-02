@@ -16,6 +16,9 @@ import {
   type RunEvent,
   type SafeInvocation,
   type ValidationResult,
+  BUILTIN_MANIFESTS,
+  type ProviderManifest,
+  type AdapterFactoryOptions,
 } from "@mordomo/core";
 
 /**
@@ -24,8 +27,15 @@ import {
  * writes) with an explicit allow-rule only for the run's artifacts directory.
  * Write runs use acceptEdits. bypassPermissions is never used.
  */
+export const claudeManifest: ProviderManifest = BUILTIN_MANIFESTS.claude;
+
+/** Factory used by the provider registry (`apps/api/src/providers.ts`). */
+export const createClaudeAdapter = (opts: AdapterFactoryOptions): AgentAdapter =>
+  new ClaudeAdapter({ binaryPath: opts.binaryPath, ...(opts.homeDir ? { homeDir: opts.homeDir } : {}) });
+
 export class ClaudeAdapter implements AgentAdapter {
   readonly id = "claude" as const;
+  readonly manifest = claudeManifest;
   private detection: DetectionResult | null = null;
 
   constructor(private readonly opts: { binaryPath?: string | null; homeDir?: string } = {}) {}
@@ -145,9 +155,9 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 
   execute(run: AgentRun): AsyncIterable<RunEvent> {
-    const self = this;
+    const build = (r: AgentRun) => this.buildInvocation(r);
     return (async function* () {
-      const invocation = await self.buildInvocation(run);
+      const invocation = await build(run);
       yield* executeInvocation(run, invocation, claudeStreamParser(), [invocation.executable]);
     })();
   }

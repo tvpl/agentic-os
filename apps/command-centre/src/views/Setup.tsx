@@ -113,7 +113,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
                   {(providers.data ?? []).map((prov) => (
                     <label key={prov.id} className="check">
                       <input type="checkbox" checked={enabled[prov.id]} disabled={!prov.health.installed} onChange={(e) => setEnabled({ ...enabled, [prov.id]: e.target.checked })} />
-                      <strong>{prov.id}</strong>
+                      <strong>{prov.displayName ?? prov.id}</strong>
                       <span className={`dot ${prov.health.installed ? (prov.health.ok ? "ok" : "warn") : "danger"}`} />
                       <span className="meta">{prov.health.installed ? (prov.health.version ?? t("setup.installed")) : prov.health.detail}</span>
                     </label>

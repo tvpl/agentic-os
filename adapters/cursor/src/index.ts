@@ -16,6 +16,9 @@ import {
   type RunEvent,
   type SafeInvocation,
   type ValidationResult,
+  BUILTIN_MANIFESTS,
+  type ProviderManifest,
+  type AdapterFactoryOptions,
 } from "@mordomo/core";
 
 /**
@@ -24,8 +27,15 @@ import {
  * Write runs pass --force (Cursor's explicit opt-in for applying changes
  * without interactive approval); read-only runs never do.
  */
+export const cursorManifest: ProviderManifest = BUILTIN_MANIFESTS.cursor;
+
+/** Factory used by the provider registry (`apps/api/src/providers.ts`). */
+export const createCursorAdapter = (opts: AdapterFactoryOptions): AgentAdapter =>
+  new CursorAdapter({ binaryPath: opts.binaryPath, ...(opts.homeDir ? { homeDir: opts.homeDir } : {}) });
+
 export class CursorAdapter implements AgentAdapter {
   readonly id = "cursor" as const;
+  readonly manifest = cursorManifest;
   private detection: DetectionResult | null = null;
 
   constructor(private readonly opts: { binaryPath?: string | null; homeDir?: string } = {}) {}
@@ -127,7 +137,7 @@ export class CursorAdapter implements AgentAdapter {
   }
 
   execute(run: AgentRun): AsyncIterable<RunEvent> {
-    const self = this;
+    const build = (r: AgentRun) => this.buildInvocation(r);
     return (async function* () {
       if (run.mode === "read_only") {
         // cursor-agent has no sandbox flag; constrain via the prompt contract
@@ -137,7 +147,7 @@ export class CursorAdapter implements AgentAdapter {
           prompt: `${run.prompt}\n\nIMPORTANT: this is a READ-ONLY run. Do not modify, create or delete any file outside ${run.artifactsDir}.`,
         };
       }
-      const invocation = await self.buildInvocation(run);
+      const invocation = await build(run);
       yield* executeInvocation(run, invocation, cursorStreamParser(), [invocation.executable]);
     })();
   }

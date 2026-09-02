@@ -16,6 +16,9 @@ import {
   type RunEvent,
   type SafeInvocation,
   type ValidationResult,
+  BUILTIN_MANIFESTS,
+  type ProviderManifest,
+  type AdapterFactoryOptions,
 } from "@mordomo/core";
 
 /**
@@ -23,8 +26,15 @@ import {
  * Read-only runs use `--sandbox read-only`; write runs use
  * `--sandbox workspace-write`. `danger-full-access` is never used.
  */
+export const codexManifest: ProviderManifest = BUILTIN_MANIFESTS.codex;
+
+/** Factory used by the provider registry (`apps/api/src/providers.ts`). */
+export const createCodexAdapter = (opts: AdapterFactoryOptions): AgentAdapter =>
+  new CodexAdapter({ binaryPath: opts.binaryPath, ...(opts.homeDir ? { homeDir: opts.homeDir } : {}) });
+
 export class CodexAdapter implements AgentAdapter {
   readonly id = "codex" as const;
+  readonly manifest = codexManifest;
   private detection: DetectionResult | null = null;
 
   constructor(private readonly opts: { binaryPath?: string | null; homeDir?: string } = {}) {}
@@ -125,9 +135,9 @@ export class CodexAdapter implements AgentAdapter {
   }
 
   execute(run: AgentRun): AsyncIterable<RunEvent> {
-    const self = this;
+    const build = (r: AgentRun) => this.buildInvocation(r);
     return (async function* () {
-      const invocation = await self.buildInvocation(run);
+      const invocation = await build(run);
       yield* executeInvocation(run, invocation, codexStreamParser(), [invocation.executable]);
     })();
   }

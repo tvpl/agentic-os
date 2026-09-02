@@ -4,16 +4,20 @@ import path from "node:path";
 import type { MordomoPaths } from "../paths.js";
 import type { Settings, ProviderId } from "../config/schema.js";
 import type { Skill } from "../skills/types.js";
+import { builtinManifests, type ProviderManifest } from "../agents/registry.js";
 import { unifiedDiff } from "./diff.js";
 
 /**
  * Configuration compiler / synchronizer.
  *
  * One canonical source (skills/, memory/ routers, settings) is compiled into the
- * native files of each provider:
+ * native files of each provider, as declared by its manifest's `layout`
+ * (`core/src/agents/registry.ts`). With the built-in manifests:
  *   Claude  → CLAUDE.md, .claude/skills/<slug>/**
  *   Cursor  → AGENTS.md, .cursor/rules/mordomo.mdc, .cursor/commands/<slug>.md
  *   Codex   → AGENTS.md, .agents/skills/<slug>/**
+ * An instructions file used by more than one enabled provider is emitted once
+ * as a "shared" file.
  *
  * Managed copies, not symlinks (portable to Windows). A manifest of content
  * hashes (config/sync-manifest.json) records everything we wrote, so:
@@ -57,6 +61,7 @@ export class SyncCompiler {
     private readonly paths: MordomoPaths,
     private readonly getSettings: () => Settings,
     private readonly listSkills: () => Skill[],
+    private readonly getManifests: () => ProviderManifest[] = builtinManifests,
   ) {}
 
   private loadManifest(): Manifest {
@@ -72,79 +77,48 @@ export class SyncCompiler {
     fs.writeFileSync(this.paths.syncManifest, JSON.stringify(manifest, null, 2) + "\n", "utf8");
   }
 
-  /** Compute the desired file set for the enabled providers in targetDir. */
+  /** Compute the desired file set for the enabled providers in targetDir, driven by the provider manifests. */
   private desiredFiles(targetDir: string): Array<{ filePath: string; content: string; provider: SyncAction["provider"] }> {
     const settings = this.getSettings();
     const skills = this.listSkills().filter((s) => s.enabled);
     const files: Array<{ filePath: string; content: string; provider: SyncAction["provider"] }> = [];
     const routerBody = this.routerBody();
+    const enabled = this.getManifests().filter((m) => settings.providers[m.id]?.enabled);
 
-    const claudeOn = settings.providers.claude.enabled;
-    const cursorOn = settings.providers.cursor.enabled;
-    const codexOn = settings.providers.codex.enabled;
-
-    if (claudeOn) {
+    // Instructions files: one per distinct file name; shared when several providers use it.
+    const byInstructions = new Map<string, ProviderManifest[]>();
+    for (const m of enabled) byInstructions.set(m.layout.instructionsFile, [...(byInstructions.get(m.layout.instructionsFile) ?? []), m]);
+    for (const [file, owners] of byInstructions) {
       files.push({
-        filePath: path.join(targetDir, "CLAUDE.md"),
-        content: this.agentsFileContent("Claude Code", routerBody, skills),
-        provider: "claude",
+        filePath: path.join(targetDir, file),
+        content: this.agentsFileContent(owners.map((m) => m.displayName).join(" / "), routerBody, skills),
+        provider: owners.length === 1 ? owners[0]!.id : "shared",
       });
-      for (const skill of skills.filter((s) => s.providers.includes("claude"))) {
-        files.push({
-          filePath: path.join(targetDir, ".claude", "skills", skill.slug, "SKILL.md"),
-          content: this.claudeSkillFile(skill),
-          provider: "claude",
-        });
-        for (const res of skill.resources) {
-          files.push({
-            filePath: path.join(targetDir, ".claude", "skills", skill.slug, res),
-            content: fs.readFileSync(path.join(skill.dir, res), "utf8"),
-            provider: "claude",
-          });
+    }
+
+    for (const m of enabled) {
+      const mine = skills.filter((s) => s.providers.includes(m.id));
+      if (m.layout.rulesFile) {
+        files.push({ filePath: path.join(targetDir, m.layout.rulesFile), content: this.rulesFile(routerBody), provider: m.id });
+      }
+      if (m.layout.skillsDir) {
+        for (const skill of mine) {
+          files.push({ filePath: path.join(targetDir, m.layout.skillsDir, skill.slug, "SKILL.md"), content: this.skillFile(skill), provider: m.id });
+          for (const res of skill.resources) {
+            files.push({
+              filePath: path.join(targetDir, m.layout.skillsDir, skill.slug, res),
+              content: fs.readFileSync(path.join(skill.dir, res), "utf8"),
+              provider: m.id,
+            });
+          }
+        }
+      }
+      if (m.layout.commandsDir) {
+        for (const skill of mine) {
+          files.push({ filePath: path.join(targetDir, m.layout.commandsDir, `${skill.slug}.md`), content: this.commandFile(skill), provider: m.id });
         }
       }
     }
-
-    if (cursorOn || codexOn) {
-      files.push({
-        filePath: path.join(targetDir, "AGENTS.md"),
-        content: this.agentsFileContent("Cursor Agent / Codex", routerBody, skills),
-        provider: "shared",
-      });
-    }
-
-    if (cursorOn) {
-      files.push({
-        filePath: path.join(targetDir, ".cursor", "rules", "mordomo.mdc"),
-        content: this.cursorRule(routerBody),
-        provider: "cursor",
-      });
-      for (const skill of skills.filter((s) => s.providers.includes("cursor"))) {
-        files.push({
-          filePath: path.join(targetDir, ".cursor", "commands", `${skill.slug}.md`),
-          content: this.cursorCommand(skill),
-          provider: "cursor",
-        });
-      }
-    }
-
-    if (codexOn) {
-      for (const skill of skills.filter((s) => s.providers.includes("codex"))) {
-        files.push({
-          filePath: path.join(targetDir, ".agents", "skills", skill.slug, "SKILL.md"),
-          content: this.claudeSkillFile(skill), // same open format (name/description frontmatter + body)
-          provider: "codex",
-        });
-        for (const res of skill.resources) {
-          files.push({
-            filePath: path.join(targetDir, ".agents", "skills", skill.slug, res),
-            content: fs.readFileSync(path.join(skill.dir, res), "utf8"),
-            provider: "codex",
-          });
-        }
-      }
-    }
-
     return files;
   }
 
@@ -267,7 +241,8 @@ export class SyncCompiler {
     ].join("\n");
   }
 
-  private claudeSkillFile(skill: Skill): string {
+  /** Open skill-folder format (name/description frontmatter + body), shared by Claude and Codex. */
+  private skillFile(skill: Skill): string {
     const lines = [
       "---",
       `name: ${skill.slug}`,
@@ -287,7 +262,7 @@ export class SyncCompiler {
     return lines.join("\n") + "\n";
   }
 
-  private cursorRule(routerBody: string): string {
+  private rulesFile(routerBody: string): string {
     return [
       "---",
       "description: MordomoOS workspace map and ground rules",
@@ -306,7 +281,7 @@ export class SyncCompiler {
     ].join("\n") + "\n";
   }
 
-  private cursorCommand(skill: Skill): string {
+  private commandFile(skill: Skill): string {
     return [
       `# /${skill.slug} — ${skill.name}`,
       "",

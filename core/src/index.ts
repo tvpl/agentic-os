@@ -105,3 +105,14 @@ export { unifiedDiff } from "./sync/diff.js";
 export { createBackup, listBackups, restoreBackup, type BackupInfo, type BackupOptions } from "./backup.js";
 export * from "./events.js";
 export { InvalidIdError, ID_PATTERN, isValidId, assertValidId, resolveInsideDir } from "./security/ids.js"; export { isInsideAny } from "./security/paths.js"; export { HARD_BLOCKED_DIRS, isHardBlockedPath, isBinaryBuffer, makeWorkspaceFilter, type WorkspaceFilter } from "./memory/excludes.js"; export { checkWorkspacePath, resolveOpenablePath, type WorkspacePathCheck } from "./memory/preview.js"; export { rotateFile, pruneRotated } from "./logs/jsonl.js"; export { type StoreProblem } from "./routines/store.js"; export { deepMergeSettings, type SettingsPatch } from "./config/store.js"; export { INDEX_CHUNK_SIZE, type IndexProgress } from "./memory/indexer.js"; // B3 exports
+export {
+  ProviderRegistry,
+  ProviderRegistryError,
+  BUILTIN_MANIFESTS,
+  builtinManifests,
+  type ProviderManifest,
+  type ProviderCapabilities,
+  type ProviderNativeLayout,
+  type AdapterFactory,
+  type AdapterFactoryOptions,
+} from "./agents/registry.js";

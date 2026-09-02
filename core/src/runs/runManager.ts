@@ -92,6 +92,7 @@ const HEAD_KEEP = 500;
 /** Queue depth allowed before create() refuses with 429 = maxConcurrentRuns * this. */
 const QUEUE_DEPTH_FACTOR = 10;
 
+/** Fallback when an adapter carries no manifest (tests with stubs). */
 const WRITE_TOOLS = /^(write|edit|multiedit|notebookedit|create_file|apply_patch|str_replace)/i;
 
 interface ActiveRun {
@@ -370,7 +371,7 @@ export class RunManager {
           events.emit("run.started", { runId, pid: event.pid });
         }
         this.persistEvent(runId, event, active);
-        if (event.type === "tool_use" && WRITE_TOOLS.test(event.tool)) {
+        if (event.type === "tool_use" && (adapter.manifest?.writeToolPattern ?? WRITE_TOOLS).test(event.tool)) {
           const m = event.detail.match(/(?:^|[\s"'])(\/[^\s"']+|[A-Za-z]:\\[^\s"']+)/);
           if (m?.[1]) filesChanged.add(m[1]);
         }

@@ -181,7 +181,13 @@ function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
         <div key={prov.id} className="provider-row">
           <div className="provider-head">
             <div>
-              <strong>{prov.id}</strong> <span className={`dot ${prov.health.ok ? "ok" : prov.health.installed ? "warn" : "danger"}`} />
+              <strong>{prov.displayName ?? prov.id}</strong> <span className="mono small">{prov.id}</span>{" "}
+              <span className={`dot ${prov.health.ok ? "ok" : prov.health.installed ? "warn" : "danger"}`} />
+              {prov.capabilities && !prov.capabilities.enforcesReadOnly && (
+                <Badge kind="state" tone="warn" title={t("settings.promptLevelReadOnlyHint")}>
+                  {t("settings.promptLevelReadOnly")}
+                </Badge>
+              )}
               <div className="meta">{prov.health.installed ? `${prov.health.version ?? t("setup.installed")} · ${t("settings.auth")}: ${prov.health.authenticated ? t("settings.authOk") : t("settings.authUnknown")}` : prov.health.detail}</div>
             </div>
             <div className="row-actions">

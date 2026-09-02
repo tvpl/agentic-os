@@ -18,15 +18,18 @@ import {
   type Db,
   type HealthStatus,
   type MordomoPaths,
+  type ProviderCapabilities,
   type ProviderId,
+  type ProviderRegistry,
   type Settings,
 } from "@mordomo/core";
-import { ClaudeAdapter } from "@mordomo/adapter-claude";
-import { CursorAdapter } from "@mordomo/adapter-cursor";
-import { CodexAdapter } from "@mordomo/adapter-codex";
+import { buildProviderRegistry } from "./providers.js";
 
 export interface ProviderSnapshot {
   id: ProviderId;
+  displayName: string;
+  capabilities: ProviderCapabilities;
+  installHint: string;
   enabled: boolean;
   isDefault: boolean;
   health: HealthStatus;
@@ -103,12 +106,8 @@ export function applyPendingRestore(paths: MordomoPaths): { applied: RestorePend
   return { applied: pending };
 }
 
-function buildAdapters(settings: Settings): Record<ProviderId, AgentAdapter> {
-  return {
-    claude: new ClaudeAdapter({ binaryPath: settings.providers.claude.binaryPath }),
-    cursor: new CursorAdapter({ binaryPath: settings.providers.cursor.binaryPath }),
-    codex: new CodexAdapter({ binaryPath: settings.providers.codex.binaryPath }),
-  };
+function buildAdapters(registry: ProviderRegistry, settings: Settings): Record<ProviderId, AgentAdapter> {
+  return registry.createAll((id) => settings.providers[id]?.binaryPath ?? null);
 }
 
 export class AppContext {
@@ -123,6 +122,8 @@ export class AppContext {
   readonly connectors: ConnectorRegistry;
   readonly sync: SyncCompiler;
   readonly approvals: ApprovalStore;
+  /** Registered providers (manifests + factories); the single place the API learns which providers exist. */
+  readonly providers: ProviderRegistry;
   readonly startedAt = Date.now();
   /** Restore applied at boot (see `applyPendingRestore`), for the startup log. */
   readonly restoredAtBoot: RestorePending | null = null;
@@ -138,7 +139,8 @@ export class AppContext {
     }
     this.settingsStore = new SettingsStore(this.paths);
     this.db = openDb(this.paths).db;
-    this.adapterRecord = buildAdapters(this.settingsStore.load());
+    this.providers = buildProviderRegistry();
+    this.adapterRecord = buildAdapters(this.providers, this.settingsStore.load());
     this.skills = new SkillCatalog(this.paths);
     // The adapter callback reads the CURRENT record, so `reloadAdapters()`
     // takes effect for the next run without rebuilding the RunManager.
@@ -147,7 +149,7 @@ export class AppContext {
     this.routines = new RoutineStore(this.paths);
     this.scheduler = new RoutineScheduler(this.db, this.paths, this.routines, this.runs, this.skills, () => this.settings());
     this.connectors = new ConnectorRegistry(this.paths);
-    this.sync = new SyncCompiler(this.paths, () => this.settings(), () => this.skills.list());
+    this.sync = new SyncCompiler(this.paths, () => this.settings(), () => this.skills.list(), () => this.providers.manifests());
     this.approvals = new ApprovalStore(this.db);
   }
 
@@ -158,7 +160,7 @@ export class AppContext {
 
   /** Re-create the provider adapters from the settings on disk (binaryPath etc.). */
   reloadAdapters(): void {
-    this.adapterRecord = buildAdapters(this.settings());
+    this.adapterRecord = buildAdapters(this.providers, this.settings());
     this.invalidateProviderCache();
   }
 
@@ -173,7 +175,8 @@ export class AppContext {
   async providerSnapshot(force = false): Promise<ProviderSnapshot[]> {
     const settings = this.settings();
     const out: ProviderSnapshot[] = [];
-    for (const id of ["claude", "cursor", "codex"] as ProviderId[]) {
+    for (const id of this.providers.ids()) {
+      const manifest = this.providers.manifest(id);
       const cached = this.healthCache.get(id);
       let health: HealthStatus;
       if (!force && cached && Date.now() - cached.at < 60_000) {
@@ -184,6 +187,9 @@ export class AppContext {
       }
       out.push({
         id,
+        displayName: manifest.displayName,
+        capabilities: manifest.capabilities,
+        installHint: manifest.installHint,
         enabled: settings.providers[id].enabled,
         isDefault: settings.defaultProvider === id,
         health,

@@ -194,8 +194,19 @@ export interface ModelishOption {
   recommendedFor?: string;
 }
 
+export interface ProviderCapabilities {
+  enforcesReadOnly: boolean;
+  supportsEffort: boolean;
+  promptTransport: "stdin" | "argv";
+  streaming: boolean;
+}
+
 export interface ProviderSnapshot {
   id: ProviderId;
+  /** From the provider manifest (older servers omit these). */
+  displayName?: string;
+  capabilities?: ProviderCapabilities;
+  installHint?: string;
   enabled: boolean;
   isDefault: boolean;
   defaultModel: string | null;

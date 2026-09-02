@@ -1,4 +1,5 @@
 import type { EffortLevel, ProviderId, SecurityProfile } from "../config/schema.js";
+import type { ProviderManifest } from "./registry.js";
 
 export interface DetectionResult {
   installed: boolean;
@@ -90,6 +91,8 @@ export type RunEvent =
  */
 export interface AgentAdapter {
   readonly id: ProviderId;
+  /** Static description of the provider (capabilities, native layout, write tools). */
+  readonly manifest: ProviderManifest;
   detect(): Promise<DetectionResult>;
   authenticate(): Promise<AuthStatus>;
   listModels(): Promise<ModelOption[]>;
