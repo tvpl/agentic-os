@@ -207,7 +207,7 @@ export function Modal({ title, onClose, children, narrow = false, initialFocus }
   useDialog(ref, onClose, { initialFocus });
   return (
     <DialogPortal>
-      <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
         <div className={`modal${narrow ? " narrow" : ""}`} role="dialog" aria-modal="true" aria-label={title} ref={ref} tabIndex={-1}>
           <div className="modal-head">
             <h2>{title}</h2>

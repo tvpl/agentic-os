@@ -103,7 +103,7 @@ export interface SegmentedProps<T extends string> {
 /** Radio-group semantics: arrow keys move the selection, one tab stop. */
 export function Segmented<T extends string>({ options, value, onChange, ariaLabel, size = "md", className }: SegmentedProps<T>) {
   const groupRef = useRef<HTMLDivElement>(null);
-  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+  const onKey = (e: KeyboardEvent<HTMLButtonElement>) => {
     const enabled = options.filter((o) => !o.disabled);
     const i = enabled.findIndex((o) => o.value === value);
     let next = -1;
@@ -124,7 +124,6 @@ export function Segmented<T extends string>({ options, value, onChange, ariaLabe
       className={["segmented", size === "sm" ? "sm" : "", className ?? ""].filter(Boolean).join(" ")}
       role="radiogroup"
       aria-label={ariaLabel}
-      onKeyDown={onKey}
     >
       {options.map((o) => {
         const active = o.value === value;
@@ -138,6 +137,7 @@ export function Segmented<T extends string>({ options, value, onChange, ariaLabe
             disabled={o.disabled}
             className={active ? "active" : undefined}
             onClick={() => onChange(o.value)}
+            onKeyDown={onKey}
           >
             {o.label}
           </button>
@@ -215,7 +215,7 @@ export interface TabsProps {
 export function Tabs({ tabs, active, onChange, ariaLabel }: TabsProps) {
   const base = useId();
   const listRef = useRef<HTMLDivElement>(null);
-  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+  const onKey = (e: KeyboardEvent<HTMLButtonElement>) => {
     const i = tabs.findIndex((tab) => tab.id === active);
     let next = -1;
     if (e.key === "ArrowRight") next = (i + 1) % tabs.length;
@@ -229,7 +229,7 @@ export function Tabs({ tabs, active, onChange, ariaLabel }: TabsProps) {
     listRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
   };
   return (
-    <div ref={listRef} className="tabs" role="tablist" aria-label={ariaLabel} onKeyDown={onKey}>
+    <div ref={listRef} className="tabs" role="tablist" aria-label={ariaLabel}>
       {tabs.map((tab) => {
         const selected = tab.id === active;
         return (
@@ -242,6 +242,7 @@ export function Tabs({ tabs, active, onChange, ariaLabel }: TabsProps) {
             aria-controls={`${base}-panel-${tab.id}`}
             tabIndex={selected ? 0 : -1}
             onClick={() => onChange(tab.id)}
+            onKeyDown={onKey}
           >
             {tab.label}
           </button>

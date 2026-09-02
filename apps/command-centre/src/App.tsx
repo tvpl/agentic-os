@@ -379,16 +379,8 @@ export function Launcher({ onClose, meta, closing = false }: { onClose: () => vo
   const listId = "launcher-results";
   return (
     <DialogPortal>
-      <div
-        className={`launcher${closing ? " closing" : ""}`}
-        onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("os.menu")}
-        ref={ref}
-        tabIndex={-1}
-      >
-        <div className="launcher-panel">
+      <div className={`launcher${closing ? " closing" : ""}`} role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+        <div className="launcher-panel" role="dialog" aria-modal="true" aria-label={t("os.menu")} ref={ref} tabIndex={-1}>
           <div style={{ textAlign: "center", marginBottom: 22 }}>
             <span className="os-brand">
               <span className="line1">
