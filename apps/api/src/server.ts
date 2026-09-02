@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import Fastify, { LogController, type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import fastifyStatic from "@fastify/static";
 import { ZodError } from "zod";
 import { JsonlLogger, PathAccessError, redactSecrets } from "@mordomo/core";
@@ -115,7 +115,9 @@ function buildLoggerOptions(ctx: AppContext) {
 export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   const app = Fastify({
     logger: buildLoggerOptions(ctx),
-    disableRequestLogging: true,
+    // Our own onResponse hook writes the request line; Fastify's default
+    // "incoming request"/"request completed" pair would double it.
+    logController: new LogController({ disableRequestLogging: true }),
     bodyLimit: 5 * 1024 * 1024,
   });
   const token = ctx.token();
