@@ -20,6 +20,7 @@ import {
   type Skill,
 } from "../api";
 import { I18nContext, useT } from "../i18n";
+import { useOsMeta } from "../queries";
 import { formatBytes, timeAgo, useToast } from "../components/ui";
 import { LAUNCHER_EVENT } from "../App";
 
@@ -145,6 +146,8 @@ export default function SecondBrain() {
   const minimapRef = useRef<HTMLCanvasElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const baked = useMemo(loadBaked, []);
+  const meta = useOsMeta();
+  const [listOpen, setListOpen] = useState(false);
 
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -422,8 +425,10 @@ export default function SecondBrain() {
   }, []);
 
   /* ---------- selection ---------- */
+  const selectToken = useRef(0);
   const select = useCallback(async (node: FileNode | null, focus = false) => {
     const w = world.current;
+    const token = ++selectToken.current;
     w.selectedId = node?.id ?? null;
     w.selectedEdges = new Set(
       node
@@ -443,6 +448,7 @@ export default function SecondBrain() {
         ),
         api.get<Array<{ file: { id: number; name: string }; why: string }>>(`/api/memory/related?id=${node.id}`),
       ]);
+      if (token !== selectToken.current) return; // a newer selection won the race
       setPreview({
         node,
         content: pv.content,
@@ -451,6 +457,7 @@ export default function SecondBrain() {
         related: rel.map((r) => ({ id: r.file.id, name: r.file.name, why: r.why })),
       });
     } catch (err) {
+      if (token !== selectToken.current) return;
       setPreview({ node, content: null, kind: "error", message: (err as Error).message, related: [] });
     }
   }, [centerOn]);
@@ -517,16 +524,20 @@ export default function SecondBrain() {
     const onKey = (e: KeyboardEvent) => {
       const inField = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName ?? "");
       if (inField) return;
-      if (e.key === "/") {
+      const mod = e.ctrlKey || e.metaKey;
+      if (e.key === "/" && !mod && !e.altKey) {
         e.preventDefault();
         searchRef.current?.focus();
-      } else if (e.key === "p") {
+      } else if (e.key === "p" && !mod && !e.altKey) {
         setPresenting((v) => !v);
-      } else if (e.key === "+" || e.key === "=") {
+      } else if (mod && (e.key === "+" || e.key === "=")) {
+        e.preventDefault();
         zoomBy(1.25);
-      } else if (e.key === "-") {
+      } else if (mod && e.key === "-") {
+        e.preventDefault();
         zoomBy(0.8);
-      } else if (e.key === "0") {
+      } else if (mod && e.key === "0") {
+        e.preventDefault();
         zoomReset();
       }
     };
@@ -558,6 +569,29 @@ export default function SecondBrain() {
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const sprites = new Map<string, HTMLCanvasElement>();
     let bgCanvas: HTMLCanvasElement | null = null;
+    // Theme tokens are read once per theme change, never per frame (audit item 30/31).
+    const readTokens = () => {
+      const s = getComputedStyle(document.documentElement);
+      const light = document.documentElement.dataset.theme === "light";
+      return {
+        light,
+        blend: (light ? "source-over" : "lighter") as GlobalCompositeOperation,
+        accentCol: s.getPropertyValue("--accent").trim() || "#f97316",
+        textDim: s.getPropertyValue("--text-dim").trim() || "#b3aa96",
+        faint: s.getPropertyValue("--text-faint").trim() || "#7d7462",
+        star: light ? "#3b3630" : "#efe9da",
+        hex: light ? "rgba(32,28,20,0.05)" : "rgba(240,230,210,0.03)",
+        vars: {
+          "--font": s.getPropertyValue("--font").trim() || s.getPropertyValue("--font-body").trim() || "ui-sans-serif, system-ui, sans-serif",
+          "--mono": s.getPropertyValue("--mono").trim() || s.getPropertyValue("--font-mono").trim() || "ui-monospace, monospace",
+        } as Record<string, string>,
+      };
+    };
+    let tokens = readTokens();
+    const themeObserver = new MutationObserver(() => {
+      tokens = readTokens();
+    });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "style"] });
     let raf = 0;
     let last = performance.now();
     let running = true;
@@ -587,14 +621,14 @@ export default function SecondBrain() {
       const bc = bgCanvas.getContext("2d")!;
       let seed = 11;
       const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-      bc.fillStyle = "#efe9da";
+      bc.fillStyle = tokens.star;
       for (let i = 0; i < 220; i++) {
         bc.globalAlpha = 0.06 + rand() * 0.22;
         bc.fillRect(rand() * width, rand() * height, 1.2, 1.2);
       }
       bc.globalAlpha = 1;
       const hexR = 34;
-      bc.strokeStyle = "rgba(240,230,210,0.03)";
+      bc.strokeStyle = tokens.hex;
       bc.lineWidth = 1;
       for (let row = 0; row * hexR * 1.5 < height + hexR; row++) {
         for (let col = 0; col * hexR * Math.sqrt(3) < width + hexR; col++) {
@@ -660,10 +694,8 @@ export default function SecondBrain() {
       tr.y += (tg.y - tr.y) * tf;
       tr.k += (tg.k - tr.k) * tf;
 
-      const styles = getComputedStyle(document.documentElement);
-      const accentCol = styles.getPropertyValue("--accent").trim() || "#f97316";
-      const textDim = styles.getPropertyValue("--text-dim").trim() || "#b3aa96";
-      const faint = styles.getPropertyValue("--text-faint").trim() || "#7d7462";
+      const { accentCol, textDim, faint } = tokens;
+      const styles = { getPropertyValue: (name: string) => tokens.vars[name] ?? "" };
 
       ctx.clearRect(0, 0, cw, ch);
       if (bgCanvas) ctx.drawImage(bgCanvas, 0, 0, cw, ch);
@@ -740,7 +772,7 @@ export default function SecondBrain() {
       }
       ctx.globalAlpha = 1;
 
-      ctx.globalCompositeOperation = "lighter";
+      ctx.globalCompositeOperation = tokens.blend;
 
       // hub fan lines
       for (const hub of w.hubs) {
@@ -794,9 +826,10 @@ export default function SecondBrain() {
 
       // FILE particles (additive)
       let labelBudget = 240;
+      const hubByKey = new Map(w.hubs.map((h) => [h.key, h] as const));
       for (const n of w.files) {
         const color = w.colorOf.get(n.group) ?? "#94a3b8";
-        const hub = w.hubs.find((h) => h.key === n.group);
+        const hub = hubByKey.get(n.group);
         const collapsedDim = hub && !hub.expanded ? 0.35 : 1;
         const dimByFilter = w.filterGroup !== null && n.group !== w.filterGroup;
         const dimBySearch = w.matched !== null && !w.matched.has(n.id);
@@ -818,7 +851,7 @@ export default function SecondBrain() {
           ctx.fillStyle = textDim;
           ctx.font = `${10 / tr.k}px ${styles.getPropertyValue("--mono") || "monospace"}`;
           ctx.fillText(n.name.length > 26 ? n.name.slice(0, 24) + "…" : n.name, n.x + size + 5 / tr.k, n.y + 3 / tr.k);
-          ctx.globalCompositeOperation = "lighter";
+          ctx.globalCompositeOperation = tokens.blend;
         }
       }
 
@@ -993,8 +1026,8 @@ export default function SecondBrain() {
       running = false;
       cancelAnimationFrame(raf);
       ro.disconnect();
+      themeObserver.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t]);
 
   /* ---------- minimap navigation ---------- */
@@ -1125,6 +1158,9 @@ export default function SecondBrain() {
       const p = toWorld(e.clientX, e.clientY);
       const hit = hitTest(p.x, p.y);
       w.hoverKey = hit.hub ? `hub:${hit.hub.key}` : hit.orb ? `${hit.orb.kind}:${hit.orb.id}` : null;
+      const hoverId = w.hoverKey ?? (hit.file ? `file:${hit.file.id}` : null);
+      if (hoverId === lastHoverId) return;
+      lastHoverId = hoverId;
       if (hit.hub) {
         setHover({ x: p.sx + 14, y: p.sy + 10, title: hit.hub.key, sub: `${hit.hub.count} ${t("brain.files")} — ${t("brain.clickToFilter")}` });
       } else if (hit.orb) {
@@ -1160,6 +1196,7 @@ export default function SecondBrain() {
       if (hit.file) void select(hit.file, true);
       else world.current.target = { x: 0, y: 0, k: 1 };
     };
+    let lastHoverId: string | null = null;
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("pointerdown", onDown);
     canvas.addEventListener("pointermove", onMove);
@@ -1195,13 +1232,17 @@ export default function SecondBrain() {
   };
 
   return (
-    <div className={`brain2${presenting ? " presenting" : ""}`}>
-      <canvas ref={canvasRef} aria-label={t("brain.title")} role="img" />
+    <div className={`brain2${presenting ? " presenting" : ""}${preview ? " has-preview" : ""}`}>
+      <canvas ref={canvasRef} aria-label={t("brain.title")} role="img" aria-describedby="brain-count" />
+      <span id="brain-count" className="sr-only">{total} {t("brain.sub")}</span>
+      {listOpen && !presenting && graph && (
+        <FileList graph={graph} groupOf={groupOf} selectedId={preview?.node.id ?? null} onSelect={selectById} onClose={() => setListOpen(false)} />
+      )}
 
       <div className="brain2-topbar">
         <div>
           <div className="brain2-brand">
-            <span className="primary" style={{ color: "var(--accent)" }}>Mordomo</span>
+            <span className="primary accent-text">{(meta.data?.name ?? "Mordomo").replace(/\s*os$/i, "")}</span>
             <span className="secondary">{t("brain.title")}</span>
           </div>
           <div className="brain2-brand">
@@ -1244,7 +1285,8 @@ export default function SecondBrain() {
           <input
             ref={searchRef}
             className="input"
-            placeholder={`${t("brain.searchPh")} ( / )`}
+            placeholder={t("brain.searchPh")}
+            title={`${t("brain.searchPh")} ( / )`}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             aria-label={t("common.search")}
@@ -1276,6 +1318,28 @@ export default function SecondBrain() {
               <button className={view === "folders" ? "active" : ""} onClick={() => { setView("folders"); setFilterGroup(null); }}>{t("brain.view.folders")}</button>
             </div>
           </div>
+          <div className="row">
+            <button className="btn sm" onClick={() => setAllExpanded(true)}>{t("brain.expandAll")}</button>
+            <button className="btn sm" onClick={() => setAllExpanded(false)}>{t("brain.collapseAll")}</button>
+          </div>
+          <div className="row">
+            <button
+              className="btn sm"
+              onClick={() => {
+                zoomReset();
+                setFilterGroup(null);
+                setQuery("");
+                void select(null);
+              }}
+            >
+              {t("brain.reset")}
+            </button>
+            <button className={`btn sm${listOpen ? " outline-accent" : ""}`} onClick={() => setListOpen((v) => !v)} aria-pressed={listOpen}>
+              {t("brain.listView")}
+            </button>
+          </div>
+          <details className="brain2-advanced">
+          <summary className="hud-label">{t("brain.advanced")}</summary>
           <div>
             <div className="hud-label">{t("brain.spin")}</div>
             <div className="slider-row">
@@ -1308,24 +1372,8 @@ export default function SecondBrain() {
               <span className="val">{nodeScale.toFixed(2)}</span>
             </div>
           </div>
-          <div className="row">
-            <button className="btn sm" onClick={() => setAllExpanded(true)}>{t("brain.expandAll")}</button>
-            <button className="btn sm" onClick={() => setAllExpanded(false)}>{t("brain.collapseAll")}</button>
-          </div>
-          <div className="row">
-            <button
-              className="btn sm"
-              onClick={() => {
-                zoomReset();
-                setFilterGroup(null);
-                setQuery("");
-                void select(null);
-              }}
-            >
-              {t("brain.reset")}
-            </button>
-            <button className="btn sm outline-accent" onClick={bake}>{t("brain.bake")}</button>
-          </div>
+          <button className="btn sm outline-accent" onClick={bake}>{t("brain.bake")}</button>
+          </details>
           {filterGroup && (
             <button className="btn sm outline-accent" onClick={() => setFilterGroup(null)}>
               <X aria-hidden /> {filterGroup}
@@ -1685,4 +1733,93 @@ function drawPixelCore(
   });
   ctx.shadowBlur = 0;
   ctx.restore();
+}
+
+
+/* ---------------------------------------------------------------------------
+   Accessible list view: the same nodes as the canvas, keyboard-navigable
+   (audit item 43). Arrow keys move between files, Enter opens the preview.
+--------------------------------------------------------------------------- */
+function FileList({
+  graph,
+  groupOf,
+  selectedId,
+  onSelect,
+  onClose,
+}: {
+  graph: GraphData;
+  groupOf: (n: GraphNode) => string;
+  selectedId: number | null;
+  onSelect: (id: number) => void;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const [filter, setFilter] = useState("");
+  const groups = useMemo(() => {
+    const needle = filter.trim().toLowerCase();
+    const map = new Map<string, GraphNode[]>();
+    for (const n of graph.nodes) {
+      if (needle && !n.name.toLowerCase().includes(needle) && !n.path.toLowerCase().includes(needle)) continue;
+      const g = groupOf(n);
+      const list = map.get(g) ?? [];
+      list.push(n);
+      map.set(g, list);
+    }
+    return [...map.entries()]
+      .sort((a, b) => b[1].length - a[1].length)
+      .map(([key, nodes]) => ({ key, nodes: nodes.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 400) }));
+  }, [graph, groupOf, filter]);
+
+  const onKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const items = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>("button[data-file]"));
+    const idx = items.findIndex((b) => b === document.activeElement);
+    const next = items[(idx + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length];
+    if (next) {
+      e.preventDefault();
+      next.focus();
+    }
+  };
+
+  return (
+    <aside className="brain2-list" aria-label={t("brain.listView")}>
+      <div className="brain2-list-head">
+        <input className="input sm" placeholder={t("common.search")} value={filter} onChange={(e) => setFilter(e.target.value)} aria-label={t("common.search")} />
+        <button className="btn ghost sm" onClick={onClose} aria-label={t("common.close")}>
+          ✕
+        </button>
+      </div>
+      <div
+        className="brain2-list-body"
+        role="listbox"
+        tabIndex={0}
+        onKeyDown={onKey}
+        aria-label={t("brain.listView")}
+        aria-activedescendant={selectedId != null ? `bl-${selectedId}` : undefined}
+      >
+        {groups.map((g) => (
+          <div key={g.key} role="group" aria-label={g.key}>
+            <div className="hud-label brain2-list-group">
+              {g.key} <span className="count">{g.nodes.length}</span>
+            </div>
+            {g.nodes.map((n) => (
+              <button
+                key={n.id}
+                id={`bl-${n.id}`}
+                role="option"
+                aria-selected={n.id === selectedId}
+                data-file
+                className={`brain2-list-item${n.id === selectedId ? " selected" : ""}`}
+                onClick={() => onSelect(n.id)}
+                title={n.path}
+              >
+                <span className="truncate">{n.name}</span>
+              </button>
+            ))}
+          </div>
+        ))}
+        {groups.length === 0 && <p className="widget-muted">{t("common.empty")}</p>}
+      </div>
+    </aside>
+  );
 }
