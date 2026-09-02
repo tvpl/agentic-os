@@ -32,3 +32,6 @@ config/sync-manifest.json
 logs/*.log
 memory/ROUTER.md
 memory/areas/
+
+# Playwright
+test-results/

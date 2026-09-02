@@ -8,7 +8,7 @@
    runtime, so never use var(--accent) directly as a text colour.
 
    Scales: spacing --s-1…--s-8 (4px base), type --fs-1…--fs-8, z-index
-   --z-*, motion --dur-*/--ease-*, radius --r-*. Reduced motion is honoured by
+   --z-…, motion --dur-… and --ease-…, radius --r-…. Reduced motion is honoured by
    the global kill-switch below and every entrance animation is additionally
    wrapped in @media (prefers-reduced-motion: no-preference).
 

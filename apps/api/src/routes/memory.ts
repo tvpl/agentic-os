@@ -9,7 +9,6 @@ import {
   relatedFiles,
   resolveInsideRoots,
   searchFiles,
-  type IndexStats,
 } from "@mordomo/core";
 import type { AppContext } from "../context.js";
 import { grantedRoots, httpError } from "./common.js";
@@ -22,13 +21,8 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   });
 
   app.post("/api/memory/index", async () => {
-    // B3 contract: indexAllAsync() runs in chunks without blocking the event
-    // loop. TODO(B3): drop the guard once it has landed in core.
-    const indexer = ctx.indexer as unknown as { indexAllAsync?: () => Promise<IndexStats> };
-    const stats =
-      typeof indexer.indexAllAsync === "function"
-        ? await indexer.indexAllAsync.call(ctx.indexer)
-        : ctx.indexer.indexAll();
+    // Chunked, non-blocking indexing: emits index.progress / index.finished on the bus.
+    const stats = await ctx.indexer.indexAllAsync();
     return { stats };
   });
 

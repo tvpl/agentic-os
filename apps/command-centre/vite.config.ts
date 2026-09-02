@@ -42,7 +42,7 @@ export default defineConfig({
     rolldownOptions: {
       output: {
         // One long-lived vendor chunk; routes are lazy so the main chunk stays small.
-        advancedChunks: {
+        codeSplitting: {
           groups: [
             {
               name: "vendor",
