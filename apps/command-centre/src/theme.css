@@ -1253,3 +1253,13 @@ input[type="range"]::-moz-range-thumb {
 .label { display: block; font-size: var(--fs-1); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); margin-bottom: var(--s-1); }
 fieldset.field { border: 0; padding: 0; margin: 0 0 var(--s-3); }
 @media (max-width: 700px) { .stepper { flex-direction: column; } .folder-add { grid-template-columns: 1fr; } }
+
+/* ==== post-review fixes ==== */
+.microapp-row .ma-text { display: grid; gap: 2px; min-width: 0; }
+.microapp-row .ma-name, .microapp-row .ma-desc { display: block; }
+@media (max-width: 899px) {
+  .desktop .now-panel { display: none; }
+  .desktop .os-brand .byline, .desktop .os-brand .os-tools { display: none; }
+  .desktop .os-brand .name { font-size: var(--fs-5); }
+  .desktop .os-topbar .side .hud-label { font-size: var(--fs-1); }
+}

@@ -63,3 +63,12 @@ Itens 29 (strings fixas → dicionário; chave própria para "Nome"), `key` no `
 ## Onda 3: verificação final
 
 Build, 100% dos testes, lint limpo, capturas de tela contra o servidor real nas mesmas rotas do relatório, atualização do status de cada item no relatório, commit e push.
+
+## Estado final (2 de setembro de 2026)
+
+| Onda | Estado |
+|---|---|
+| 0 | Concluída |
+| 1 (B1–B4, F1–F4) | Concluída. F2, F3 e F4 foram finalizadas pelo orquestrador após interrupções por limite de sessão; o rascunho não integrado do motor do cérebro (`brain/engine`) foi descartado. |
+| 2 | Concluída, exceto o registro de providers (item 36), adiado com justificativa no relatório (seção 13.2). |
+| 3 | Concluída: 149 testes de backend, 16 de frontend, 16 cenários e2e, lint e build limpos, capturas em `img-after/`. |

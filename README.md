@@ -89,8 +89,10 @@ Server bound to `127.0.0.1` with a local token (CSRF/DNS-rebinding safe), argv-o
 process spawning against an executable allowlist, path containment with symlink
 resolution, secret-file blocklist and log redaction, read-only run modes enforced
 per provider (`--sandbox read-only`, permission rules, no `--force`), and explicit
-approval gates for anything risky (installs, global config changes, new folders,
-connector writes, startup services, exposing ports, sending data out).
+approval gates for the risky actions that exist today (connector writes, exposing
+ports, write-mode runs under `review_before_write`), and security profiles that are
+enforced per run (`read_only` → `review_before_write` → `controlled_write` →
+`approved_automation`).
 Details: [docs/security.md](docs/security.md).
 
 ## License

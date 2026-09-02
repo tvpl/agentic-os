@@ -450,3 +450,58 @@ Ideias que cabem na visão ARMS e se apoiam no que já existe:
 - "Reproduzido" significa que o comportamento foi observado nesta sessão contra o servidor real, não inferido do código.
 - As capturas em `img/` foram geradas com Playwright contra a build de produção servida pela API, com o repositório indexando a si mesmo.
 - Este documento não altera nenhum código do produto. Ele foi adicionado em `docs/audit-2026-09/` para servir de base a issues e PRs.
+
+## 13. Status da remediação (2 de setembro de 2026)
+
+Este relatório foi executado nas ondas descritas em [`PLANO.md`](PLANO.md). O que segue é o estado verificado no commit final da branch `claude/os-technical-ui-analysis-y1pop9`, com as mesmas telas recapturadas em `img-after/`.
+
+### 13.1 Verificação
+
+| Verificação | Antes | Depois |
+|---|---|---|
+| Testes de backend (Vitest) | 70 | 149, incluindo scheduler, backup com WAL, traversal, CLI, perfis de segurança |
+| Testes de frontend | 0 | 16 (grade do desktop, cron, contraste, paridade i18n) |
+| E2E (Playwright + axe) | script sem baseline, não ligado a nenhum script | 16 cenários verdes: todas as rotas sem erro de console, chrome sem sobrepor ações, launcher com busca, desktop empilhado no celular, run em streaming até concluir, axe sem violações sérias |
+| `npm audit` | 1 crítica, 2 altas, 3 moderadas | 0 |
+| Lint | inexistente | ESLint 9 (typescript-eslint, react-hooks, jsx-a11y) limpo; Prettier; husky + lint-staged |
+| CI | inexistente | GitHub Actions: typecheck, lint, test, build e audit em Node 20/22 × Ubuntu/macOS/Windows; job e2e separado |
+| Bundle inicial | 367 kB em um único chunk | 60 kB no chunk principal + vendor de 237 kB; cada app carregada sob demanda |
+
+### 13.2 Itens do plano (seção 10)
+
+| Itens | Estado |
+|---|---|
+| 1–19 (corrigir agora) | **Todos fechados.** Traversal (rotas e stores), backup online, restore em staging, shutdown gracioso, croner com promise e guarda, adapters recarregados nas mudanças de settings com deep-merge, zod → 400, Host IPv6 e `timingSafeEqual`, preview com exclusões e blocklist de diretórios, cancelamento pela saída real, retries como runs novas, chrome em fluxo normal, `useT` memoizado, focus trap, SSE com cleanup, desktop sem tela em branco, contraste derivado do accent, dependências atualizadas, docs alinhadas. |
+| 20–35 (melhorar em seguida) | **Todos fechados.** Indexação em transação e fatiada com progresso, cache de settings, isolamento por arquivo nos stores, retenção e `Last-Event-ID`, CLI com `parseArgs` e pidfile com identidade, log de requisições, TanStack Query com cache compartilhado, `/api/events` invalidando o cache, `React.lazy` por rota, strings no dicionário, custo de canvas reduzido, tema claro nos canvases, tokens e primitivas, desktop responsivo, timeline virtualizada, harness de testes e CI. |
+| 36 (registro de providers) | **Adiado.** Exige trocar o enum em `schema.ts`, o compilador e o auditor ao mesmo tempo; sem ganho funcional imediato e com risco alto de regressão sem um quarto provider real para validar. |
+| 37 (máquina de estados da run) | Fechado: `transition()` é o único escritor de status, `timed_out` distinto, cancelamento por `AbortSignal` sem registro global. |
+| 38 (trabalho longo fora da thread HTTP) | Parcial: a indexação roda em fatias com `setImmediate` e publica progresso; backup e sync-apply continuam síncronos. |
+| 39 (semântica dos perfis) | Fechado: `read_only` recusa escrita, `review_before_write` cria aprovação `write_run` (202) e a run parte na aprovação, rotinas só escrevem sob `approved_automation`. |
+| 40 (motor do cérebro como pacote) | **Adiado.** O renderizador atual recebeu as correções de custo e de tema; a extração para worker fica para uma iteração com regressão visual automatizada. |
+| 41 (dividir componentes-deus) | Fechado para Desktop e Runs; Segundo Cérebro permanece em um arquivo, com a lista acessível e o painel separados em componentes. |
+| 42 (Storybook) | **Adiado.** |
+| 43 (vista acessível do grafo) | Fechado: lista pesquisável e navegável por teclado sincronizada com a seleção do canvas. |
+
+### 13.3 O que as capturas mostram
+
+![Desktop depois](img-after/01-desktop.jpg)
+
+O centro do desktop agora informa: execuções ativas com a ferramenta atual, próxima rotina com contagem regressiva e últimos artefatos. Os chips orbitais mostram nome e idade do arquivo. Cada widget carrega, falha e se recupera sozinho.
+
+![Skills depois](img-after/06-skills-overlap.jpg)
+
+O chrome "Voltar ao OS / Menu" virou uma barra em fluxo normal com o nome do app; "Nova skill" está visível. A lista ganhou busca, filtros por modo, provider e favoritas.
+
+![Run depois](img-after/08-run-detail.jpg)
+
+O detalhe da run tem título real, badges de contexto e uma linha do tempo virtualizada com ícone por tipo de evento e autoscroll pausável.
+
+![Configurações depois](img-after/10-settings.jpg)
+
+Configurações em seis abas, com validação inline, confirmações e o perfil de segurança explicado.
+
+### 13.4 Pendências conhecidas
+
+- O rótulo do anel "APLICAÇÕES" ainda pode ser cortado pelo badge de um conector quando os dois coincidem no mesmo ângulo.
+- O tema claro do Segundo Cérebro melhorou (fundo e mistura por token), mas os sprites de brilho continuam desenhados para fundo escuro.
+- Itens 36, 40 e 42 seguem no roadmap (seção 11) como evolução, não como dívida bloqueante.
