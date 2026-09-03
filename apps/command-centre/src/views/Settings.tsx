@@ -1,8 +1,14 @@
 import { useContext, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { CheckCircle2, Download, RefreshCw, Stethoscope } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type DoctorReport, type ProviderId, type ProviderSnapshot } from "../api";
-import { I18nContext, useT, type Lang } from "../i18n";
-import { ErrorBox, Loading, formatBytes, timeAgo, useApi, useToast } from "../components/ui";
+import { I18nContext, useLocale, useT, type Lang } from "../i18n";
+import { qk, useApiQuery, useOsProviders } from "../queries";
+import { ErrorBox, Skeleton, formatBytes, timeAgo, useToast } from "../components/ui";
+import { Badge, Button, EmptyState, Field, Tabs } from "../components/primitives";
+import { useConfirm } from "../hooks/useConfirm";
+import { errorMessage, isAbsolutePath, isOffline } from "./shared";
 
 interface SettingsShape {
   systemName: string;
@@ -34,47 +40,56 @@ interface BackupInfo {
   sizeBytes: number;
 }
 
+type TabId = "identity" | "providers" | "memory" | "security" | "backups" | "diagnostics";
+const TAB_IDS: TabId[] = ["identity", "providers", "memory", "security", "backups", "diagnostics"];
+const PROFILES = ["read_only", "review_before_write", "controlled_write", "approved_automation"] as const;
+
 export default function Settings({ onMetaChanged }: { onMetaChanged: () => void }) {
   const t = useT();
-  const { lang, setLang } = useContext(I18nContext);
   const toast = useToast();
-  const [doctor, setDoctor] = useState<DoctorReport | null>(null);
-  const [doctorBusy, setDoctorBusy] = useState(false);
+  const { setLang } = useContext(I18nContext);
+  const qc = useQueryClient();
+  const [params, setParams] = useSearchParams();
+  const requested = params.get("tab") as TabId | null;
+  const [tab, setTabState] = useState<TabId>(requested && TAB_IDS.includes(requested) ? requested : "identity");
+  const setTab = (id: TabId) => {
+    setTabState(id);
+    setParams(id === "identity" ? {} : { tab: id }, { replace: true });
+  };
+  const settings = useApiQuery<SettingsShape>(qk.settings, "/api/settings");
 
-  const settingsApi = useApi<SettingsShape>(() => api.get("/api/settings"));
-  const providersApi = useApi<ProviderSnapshot[]>(() => api.get("/api/providers"));
-  const approvalsApi = useApi<Approval[]>(() => api.get("/api/approvals"));
-  const backupsApi = useApi<BackupInfo[]>(() => api.get("/api/backups"));
+  const save = useMutation({
+    mutationFn: ({ patch }: { patch: Partial<SettingsShape>; silent?: boolean }) => api.put<{ settings: SettingsShape; pendingApproval: Approval | null }>("/api/settings", patch),
+    onSuccess: (res, vars) => {
+      if (res.pendingApproval) toast(res.pendingApproval.description, "info");
+      else if (!vars.silent) toast(t("common.saved"), "ok");
+      qc.setQueryData(qk.settings, res.settings);
+      qc.invalidateQueries({ queryKey: qk.settings }).catch(() => undefined);
+      qc.invalidateQueries({ queryKey: qk.approvals }).catch(() => undefined);
+      qc.invalidateQueries({ queryKey: qk.providers }).catch(() => undefined);
+      onMetaChanged();
+    },
+    onError: (err: Error) => {
+      toast(err.message, "danger");
+      // Inputs are keyed by the saved value, so a refetch reverts what failed.
+      qc.invalidateQueries({ queryKey: qk.settings }).catch(() => undefined);
+    },
+  });
+  const put = (patch: Partial<SettingsShape>, silent = false) => save.mutateAsync({ patch, silent }).catch(() => undefined);
 
-  if (settingsApi.loading && !settingsApi.data) return <div className="page"><Loading /></div>;
-  if (settingsApi.error && !settingsApi.data)
-    return <div className="page"><ErrorBox message={settingsApi.error} offline={settingsApi.offline} onRetry={settingsApi.reload} /></div>;
-  const s = settingsApi.data;
+  if (settings.isPending && !settings.data) return <div className="page"><Skeleton lines={8} /></div>;
+  if (settings.error && !settings.data) return <div className="page"><ErrorBox message={errorMessage(settings.error)} offline={isOffline(settings.error)} onRetry={() => void settings.refetch()} /></div>;
+  const s = settings.data;
   if (!s) return null;
 
-  const save = async (patch: Partial<SettingsShape>, silent = false) => {
-    try {
-      const res = await api.put<{ settings: SettingsShape; pendingApproval: Approval | null }>("/api/settings", patch);
-      if (res.pendingApproval) toast(res.pendingApproval.description, "info");
-      else if (!silent) toast(t("common.save") + " ✓", "ok");
-      settingsApi.reload();
-      approvalsApi.reload();
-      onMetaChanged();
-    } catch (err) {
-      toast((err as Error).message, "danger");
-    }
-  };
-
-  const runDoctor = async () => {
-    setDoctorBusy(true);
-    try {
-      setDoctor(await api.get<DoctorReport>("/api/doctor"));
-    } catch (err) {
-      toast((err as Error).message, "danger");
-    } finally {
-      setDoctorBusy(false);
-    }
-  };
+  const tabs: Array<{ id: TabId; label: string }> = [
+    { id: "identity", label: t("settings.identity") },
+    { id: "providers", label: t("settings.providers") },
+    { id: "memory", label: t("settings.memory") },
+    { id: "security", label: t("settings.security") },
+    { id: "backups", label: t("settings.backups") },
+    { id: "diagnostics", label: t("settings.doctor") },
+  ];
 
   return (
     <div className="page">
@@ -83,322 +98,387 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
           <h1>{t("settings.title")}</h1>
         </div>
       </div>
-
-      <div className="grid grid-2" style={{ alignItems: "start" }}>
-        <div>
-          {/* Identity */}
-          <div className="card">
-            <h2>{t("settings.identity")}</h2>
-            <div className="field">
-              <label htmlFor="st-name">{t("settings.name")}</label>
-              <input id="st-name" className="input" defaultValue={s.systemName} onBlur={(e) => e.target.value !== s.systemName && save({ systemName: e.target.value })} />
-            </div>
-            <div className="grid grid-2">
-              <div className="field">
-                <label htmlFor="st-theme">{t("settings.theme")}</label>
-                <select id="st-theme" className="input" value={s.theme} onChange={(e) => save({ theme: e.target.value as SettingsShape["theme"] }, true)}>
-                  <option value="dark">{t("settings.dark")}</option>
-                  <option value="light">{t("settings.light")}</option>
-                  <option value="system">{t("settings.system")}</option>
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="st-lang">{t("settings.language")}</label>
-                <select
-                  id="st-lang"
-                  className="input"
-                  value={s.language}
-                  onChange={(e) => {
-                    setLang(e.target.value as Lang);
-                    void save({ language: e.target.value as Lang }, true);
-                  }}
-                >
-                  <option value="en">English</option>
-                  <option value="pt-BR">Português (Brasil)</option>
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="st-accent">{t("settings.accent")}</label>
-                <input id="st-accent" type="color" className="input" style={{ height: 36, padding: 3 }} value={s.accentColor} onChange={(e) => save({ accentColor: e.target.value }, true)} />
-              </div>
-              <div className="field">
-                <label htmlFor="st-port">{t("settings.port")}</label>
-                <input id="st-port" type="number" className="input" defaultValue={s.port} onBlur={(e) => Number(e.target.value) !== s.port && save({ port: Number(e.target.value) })} />
-                <span className="hint">127.0.0.1 only — restart to apply</span>
-              </div>
-            </div>
-            <div className="field">
-              <label htmlFor="st-tz">{t("settings.timezone")}</label>
-              <input id="st-tz" className="input" defaultValue={s.timezone} onBlur={(e) => e.target.value !== s.timezone && save({ timezone: e.target.value })} />
-            </div>
-            <p className="hint" style={{ color: "var(--text-faint)" }}>
-              {t("settings.dataDir")}: <span className="mono">MORDOMO_HOME</span> — {t("settings.dataDirHint")}
-            </p>
-          </div>
-
-          {/* Providers */}
-          <div className="card">
-            <h2>{t("settings.providers")}</h2>
-            {(providersApi.data ?? []).map((prov) => (
-              <div key={prov.id} style={{ borderBottom: "1px solid var(--border)", padding: "10px 0" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <div>
-                    <strong>{prov.id}</strong>{" "}
-                    <span className={`dot ${prov.health.ok ? "ok" : prov.health.installed ? "warn" : "danger"}`} />
-                    <div className="meta">
-                      {prov.health.installed ? `${prov.health.version ?? "installed"} · auth: ${String(prov.health.authenticated)}` : prov.health.detail}
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    {prov.isDefault && <span className="badge info">{t("dash.default")}</span>}
-                    <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
-                      <input
-                        type="checkbox"
-                        checked={s.providers[prov.id].enabled}
-                        onChange={(e) =>
-                          save({ providers: { ...s.providers, [prov.id]: { ...s.providers[prov.id], enabled: e.target.checked } } })
-                        }
-                      />
-                      {t("common.enabled")}
-                    </label>
-                    <button
-                      className="btn sm"
-                      onClick={async () => {
-                        const res = await api.post<{ run: { status: string; durationMs: number | null }; passed: boolean }>(`/api/providers/${prov.id}/smoke`);
-                        toast(`${prov.id}: ${res.passed ? "OK" : res.run.status}`, res.passed ? "ok" : "danger");
-                        providersApi.reload();
-                      }}
-                      disabled={!s.providers[prov.id].enabled || !prov.health.installed}
-                    >
-                      smoke test
-                    </button>
-                  </div>
-                </div>
-                <div className="grid grid-2" style={{ marginTop: 8 }}>
-                  <input
-                    className="input mono"
-                    placeholder={t("skills.model")}
-                    aria-label={`${prov.id} model`}
-                    defaultValue={s.providers[prov.id].defaultModel ?? ""}
-                    onBlur={(e) =>
-                      save({ providers: { ...s.providers, [prov.id]: { ...s.providers[prov.id], defaultModel: e.target.value || null } } }, true)
-                    }
-                  />
-                  <select
-                    className="input"
-                    aria-label={`${prov.id} effort`}
-                    value={s.providers[prov.id].defaultEffort}
-                    onChange={(e) =>
-                      save({ providers: { ...s.providers, [prov.id]: { ...s.providers[prov.id], defaultEffort: e.target.value } } }, true)
-                    }
-                  >
-                    {["default", "low", "medium", "high"].map((e2) => <option key={e2} value={e2}>{t("skills.effort")}: {e2}</option>)}
-                  </select>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Security */}
-          <div className="card">
-            <h2>{t("settings.security")}</h2>
-            <div className="field">
-              <label htmlFor="st-profile">{t("settings.profile")}</label>
-              <select id="st-profile" className="input" value={s.securityProfile} onChange={(e) => save({ securityProfile: e.target.value })}>
-                {["read_only", "review_before_write", "controlled_write", "approved_automation"].map((prof) => (
-                  <option key={prof} value={prof}>{t(`profile.${prof}` as Parameters<typeof t>[0])}</option>
-                ))}
-              </select>
-            </div>
-            <h2 style={{ marginTop: 14 }}>{t("settings.approvals")}</h2>
-            {(approvalsApi.data ?? []).length === 0 ? (
-              <p style={{ color: "var(--text-faint)", margin: 0 }}>{t("settings.noApprovals")}</p>
-            ) : (
-              (approvalsApi.data ?? []).map((a) => (
-                <div className="list-row" key={a.id}>
-                  <div>
-                    <span className="badge warn">{a.kind}</span>
-                    <div style={{ fontSize: 13, marginTop: 4 }}>{a.description}</div>
-                  </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button
-                      className="btn sm primary"
-                      onClick={async () => {
-                        await api.post(`/api/approvals/${a.id}/resolve`, { decision: "approved" });
-                        approvalsApi.reload();
-                        settingsApi.reload();
-                      }}
-                    >
-                      {t("settings.approve")}
-                    </button>
-                    <button
-                      className="btn sm danger"
-                      onClick={async () => {
-                        await api.post(`/api/approvals/${a.id}/resolve`, { decision: "denied" });
-                        approvalsApi.reload();
-                      }}
-                    >
-                      {t("settings.deny")}
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div>
-          {/* Memory */}
-          <div className="card">
-            <h2>{t("settings.memory")}</h2>
-            <FolderEditor s={s} onSave={save} />
-            <div className="field" style={{ marginTop: 10 }}>
-              <label htmlFor="st-areas">{t("settings.areas")}</label>
-              <input
-                id="st-areas"
-                className="input"
-                defaultValue={s.areas.join(", ")}
-                onBlur={(e) => {
-                  const areas = e.target.value.split(",").map((a) => a.trim()).filter(Boolean);
-                  if (areas.join() !== s.areas.join()) void save({ areas });
-                }}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="st-excludes">{t("settings.excludes")}</label>
-              <textarea
-                id="st-excludes"
-                className="input mono"
-                style={{ minHeight: 90, fontSize: 12 }}
-                defaultValue={s.excludes.join("\n")}
-                onBlur={(e) => {
-                  const excludes = e.target.value.split("\n").map((x) => x.trim()).filter(Boolean);
-                  if (excludes.join() !== s.excludes.join()) void save({ excludes });
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Backups */}
-          <div className="card">
-            <h2>{t("settings.backups")}</h2>
-            <button
-              className="btn"
-              onClick={async () => {
-                const b = await api.post<BackupInfo>("/api/backups", {});
-                toast(`${b.name} (${formatBytes(b.sizeBytes)})`, "ok");
-                backupsApi.reload();
-              }}
-            >
-              <Download aria-hidden /> {t("settings.newBackup")}
-            </button>
-            <div style={{ marginTop: 10 }}>
-              {(backupsApi.data ?? []).slice(0, 6).map((b) => (
-                <div className="list-row" key={b.name}>
-                  <div className="truncate">
-                    <span className="mono" style={{ fontSize: 12 }}>{b.name}</span>
-                    <div className="meta">{timeAgo(b.createdAt, lang)} · {formatBytes(b.sizeBytes)}</div>
-                  </div>
-                  <button
-                    className="btn sm"
-                    onClick={async () => {
-                      if (!window.confirm(`${t("settings.restore")} ${b.name}?`)) return;
-                      const res = await api.post<{ note: string }>(`/api/backups/${b.name}/restore`);
-                      toast(res.note, "info");
-                    }}
-                  >
-                    {t("settings.restore")}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Doctor */}
-          <div className="card">
-            <h2>{t("settings.doctor")}</h2>
-            <button className="btn" onClick={runDoctor} disabled={doctorBusy}>
-              {doctorBusy ? <span className="spinner" aria-hidden /> : <Stethoscope aria-hidden />} {t("settings.runDoctor")}
-            </button>
-            {doctor && (
-              <div style={{ marginTop: 10 }}>
-                {doctor.checks.map((c) => (
-                  <div className="list-row" key={c.id}>
-                    <div className="truncate">
-                      <span className={`dot ${c.status === "ok" ? "ok" : c.status === "warn" ? "warn" : c.status === "fail" ? "danger" : "dim"}`} style={{ marginRight: 8 }} />
-                      {c.label}
-                      <div className="meta truncate" title={c.detail}>{c.detail}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+      <Tabs id="settings-tabs" tabs={tabs} active={tab} onChange={(id) => setTab(id as TabId)} ariaLabel={t("settings.title")} />
+      <div className="tab-panel" role="tabpanel" id={`settings-tabs-panel-${tab}`} aria-labelledby={`settings-tabs-tab-${tab}`}>
+        {tab === "identity" && <IdentityTab s={s} put={put} setLang={setLang} />}
+        {tab === "providers" && <ProvidersTab s={s} put={put} />}
+        {tab === "memory" && <MemoryTab s={s} put={put} />}
+        {tab === "security" && <SecurityTab s={s} put={put} />}
+        {tab === "backups" && <BackupsTab />}
+        {tab === "diagnostics" && <DiagnosticsTab />}
       </div>
     </div>
   );
 }
 
-function FolderEditor({ s, onSave }: { s: { indexedFolders: Array<{ path: string; area: string | null; enabled: boolean }>; areas: string[] }; onSave: (patch: Record<string, unknown>) => Promise<void> }) {
+type Put = (patch: Partial<SettingsShape>, silent?: boolean) => Promise<unknown>;
+
+function IdentityTab({ s, put, setLang }: { s: SettingsShape; put: Put; setLang: (l: Lang) => void }) {
   const t = useT();
+  return (
+    <div className="card stack">
+      <Field label={t("settings.name")} htmlFor="st-name">
+        <input key={s.systemName} id="st-name" className="input" defaultValue={s.systemName} onBlur={(e) => e.target.value.trim() && e.target.value !== s.systemName && void put({ systemName: e.target.value.trim() })} />
+      </Field>
+      <div className="grid grid-2">
+        <Field label={t("settings.theme")} htmlFor="st-theme">
+          <select id="st-theme" className="input" value={s.theme} onChange={(e) => void put({ theme: e.target.value as SettingsShape["theme"] }, true)}>
+            <option value="dark">{t("settings.dark")}</option>
+            <option value="light">{t("settings.light")}</option>
+            <option value="system">{t("settings.system")}</option>
+          </select>
+        </Field>
+        <Field label={t("settings.language")} htmlFor="st-lang">
+          <select
+            id="st-lang"
+            className="input"
+            value={s.language}
+            onChange={(e) => {
+              setLang(e.target.value as Lang);
+              void put({ language: e.target.value as Lang }, true);
+            }}
+          >
+            <option value="en">English</option>
+            <option value="pt-BR">Português (Brasil)</option>
+          </select>
+        </Field>
+        <Field label={t("settings.accent")} htmlFor="st-accent">
+          <input id="st-accent" type="color" className="input" style={{ height: 36, padding: 3 }} value={s.accentColor} onChange={(e) => void put({ accentColor: e.target.value }, true)} />
+        </Field>
+        <Field label={t("settings.port")} htmlFor="st-port" hint={t("settings.portHint")}>
+          <input key={s.port} id="st-port" type="number" min={1024} max={65535} className="input" defaultValue={s.port} onBlur={(e) => Number(e.target.value) !== s.port && void put({ port: Number(e.target.value) })} />
+        </Field>
+      </div>
+      <Field label={t("settings.timezone")} htmlFor="st-tz" hint={t("settings.timezoneHint")}>
+        <input key={s.timezone} id="st-tz" className="input" defaultValue={s.timezone} onBlur={(e) => e.target.value !== s.timezone && void put({ timezone: e.target.value })} />
+      </Field>
+      <Field label={t("settings.dataDir")} htmlFor="st-home" hint={t("settings.dataDirHint")}>
+        <input id="st-home" className="input mono" readOnly value="MORDOMO_HOME" />
+      </Field>
+    </div>
+  );
+}
+
+function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
+  const t = useT();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const providers = useOsProviders();
+  const smoke = useMutation({
+    mutationFn: (id: ProviderId) => api.post<{ run: { status: string; durationMs: number | null }; passed: boolean }>(`/api/providers/${id}/smoke`),
+    onSuccess: (res, id) => {
+      toast(`${id}: ${res.passed ? t("settings.smokeOk") : res.run.status}`, res.passed ? "ok" : "danger");
+      qc.invalidateQueries({ queryKey: qk.providers }).catch(() => undefined);
+    },
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
+  const patchProvider = (id: ProviderId, patch: Partial<SettingsShape["providers"][ProviderId]>, silent = false) => put({ providers: { ...s.providers, [id]: { ...s.providers[id], ...patch } } }, silent);
+
+  if (providers.isPending && !providers.data) return <div className="card"><Skeleton lines={6} /></div>;
+  return (
+    <div className="card stack">
+      {(providers.data ?? []).map((prov: ProviderSnapshot) => (
+        <div key={prov.id} className="provider-row">
+          <div className="provider-head">
+            <div>
+              <strong>{prov.displayName ?? prov.id}</strong> <span className="mono small">{prov.id}</span>{" "}
+              <span className={`dot ${prov.health.ok ? "ok" : prov.health.installed ? "warn" : "danger"}`} />
+              {prov.capabilities && !prov.capabilities.enforcesReadOnly && (
+                <Badge kind="state" tone="warn" title={t("settings.promptLevelReadOnlyHint")}>
+                  {t("settings.promptLevelReadOnly")}
+                </Badge>
+              )}
+              <div className="meta">{prov.health.installed ? `${prov.health.version ?? t("setup.installed")} · ${t("settings.auth")}: ${prov.health.authenticated ? t("settings.authOk") : t("settings.authUnknown")}` : prov.health.detail}</div>
+            </div>
+            <div className="row-actions">
+              {prov.isDefault && <Badge kind="state" tone="info">{t("dash.default")}</Badge>}
+              <label className="check">
+                <input type="checkbox" checked={s.providers[prov.id].enabled} onChange={(e) => void patchProvider(prov.id, { enabled: e.target.checked })} />
+                {t("common.enabled")}
+              </label>
+              <Button size="sm" variant="secondary" onClick={() => smoke.mutate(prov.id)} disabled={!s.providers[prov.id].enabled || !prov.health.installed} loading={smoke.isPending && smoke.variables === prov.id}>
+                {t("settings.smokeTest")}
+              </Button>
+            </div>
+          </div>
+          <div className="grid grid-2">
+            <Field label={t("skills.model")} htmlFor={`st-model-${prov.id}`} hint={t("settings.modelHint")}>
+              <input key={s.providers[prov.id].defaultModel ?? ""} id={`st-model-${prov.id}`} className="input mono" defaultValue={s.providers[prov.id].defaultModel ?? ""} onBlur={(e) => (e.target.value || null) !== s.providers[prov.id].defaultModel && void patchProvider(prov.id, { defaultModel: e.target.value || null }, true)} />
+            </Field>
+            <Field label={t("skills.effort")} htmlFor={`st-effort-${prov.id}`}>
+              <select id={`st-effort-${prov.id}`} className="input" value={s.providers[prov.id].defaultEffort} onChange={(e) => void patchProvider(prov.id, { defaultEffort: e.target.value }, true)}>
+                {["default", "low", "medium", "high"].map((e2) => (
+                  <option key={e2} value={e2}>
+                    {t(`effort.${e2}` as "effort.low")}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
+  const t = useT();
+  const confirm = useConfirm();
   const [newPath, setNewPath] = useState("");
   const [newArea, setNewArea] = useState("");
+  const [pathError, setPathError] = useState<string | null>(null);
+  const addFolder = useMutation({
+    mutationFn: () => api.put("/api/settings", { indexedFolders: [...s.indexedFolders, { path: newPath.trim(), area: newArea || null, enabled: true }] }),
+    onSuccess: () => {
+      setNewPath("");
+      setNewArea("");
+      void put({}, true);
+    },
+    onError: (err: Error) => setPathError(err.message),
+  });
+  const removeFolder = async (path: string) => {
+    if (await confirm({ title: t("settings.removeFolder"), body: path, danger: true, confirmLabel: t("common.delete") })) void put({ indexedFolders: s.indexedFolders.filter((x) => x.path !== path) });
+  };
+  const pathOk = !newPath.trim() || isAbsolutePath(newPath);
+
   return (
-    <>
+    <div className="card stack">
       <div className="field">
-        <label>{t("settings.folders")}</label>
-        {s.indexedFolders.length === 0 && <span className="hint">—</span>}
+        <span className="label">{t("settings.folders")}</span>
+        {s.indexedFolders.length === 0 && <p className="widget-muted">{t("settings.noFolders")}</p>}
         {s.indexedFolders.map((f, i) => (
-          <div key={f.path} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <span className="mono truncate" style={{ flex: 1, fontSize: 12 }}>{f.path}</span>
+          <div key={f.path} className="folder-row">
+            <span className="mono truncate" title={f.path}>
+              {f.path}
+            </span>
             <select
-              className="input"
-              style={{ width: 130 }}
+              className="input sm"
               value={f.area ?? ""}
               aria-label={`${t("brain.filterArea")} ${f.path}`}
               onChange={(e) => {
                 const folders = [...s.indexedFolders];
                 folders[i] = { ...f, area: e.target.value || null };
-                void onSave({ indexedFolders: folders });
+                void put({ indexedFolders: folders }, true);
               }}
             >
               <option value="">—</option>
-              {s.areas.map((a) => <option key={a} value={a}>{a}</option>)}
+              {s.areas.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
             </select>
-            <button
-              className="btn ghost sm"
-              aria-label={`${t("common.delete")} ${f.path}`}
-              onClick={() => void onSave({ indexedFolders: s.indexedFolders.filter((x) => x.path !== f.path) })}
-            >
+            <Button size="sm" variant="ghost" aria-label={`${t("common.delete")} ${f.path}`} title={t("common.delete")} onClick={() => void removeFolder(f.path)}>
               ✕
-            </button>
+            </Button>
           </div>
         ))}
       </div>
-      <div style={{ display: "flex", gap: 6 }}>
-        <input className="input mono" placeholder={t("settings.folderPh")} value={newPath} onChange={(e) => setNewPath(e.target.value)} aria-label={t("settings.addFolder")} />
-        <select className="input" style={{ width: 130 }} value={newArea} onChange={(e) => setNewArea(e.target.value)} aria-label={t("brain.filterArea")}>
-          <option value="">—</option>
-          {s.areas.map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
-        <button
-          className="btn sm"
-          disabled={!newPath.trim()}
-          onClick={async () => {
-            await onSave({
-              indexedFolders: [...s.indexedFolders, { path: newPath.trim(), area: newArea || null, enabled: true }],
-            });
-            setNewPath("");
-            setNewArea("");
-          }}
-        >
-          <CheckCircle2 aria-hidden /> {t("settings.addFolder")}
-        </button>
-      </div>
-      <p className="hint" style={{ marginTop: 6 }}>
+      <Field label={t("settings.addFolder")} htmlFor="st-newfolder" hint={t("settings.folderHint")} error={pathError ?? (pathOk ? undefined : t("settings.folderAbsolute"))}>
+        <div className="folder-add">
+          <input
+            id="st-newfolder"
+            className="input mono"
+            placeholder={t("settings.folderPh")}
+            value={newPath}
+            aria-invalid={!pathOk || Boolean(pathError)}
+            onChange={(e) => {
+              setNewPath(e.target.value);
+              setPathError(null);
+            }}
+          />
+          <select className="input" value={newArea} onChange={(e) => setNewArea(e.target.value)} aria-label={t("brain.filterArea")}>
+            <option value="">—</option>
+            {s.areas.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+          <Button size="sm" variant="primary" icon={<CheckCircle2 aria-hidden />} disabled={!newPath.trim() || !pathOk} loading={addFolder.isPending} onClick={() => addFolder.mutate()}>
+            {t("settings.addFolder")}
+          </Button>
+        </div>
+      </Field>
+      <p className="hint">
         <RefreshCw size={11} style={{ verticalAlign: -1 }} aria-hidden /> {t("brain.refresh")}: {t("nav.brain")} → {t("brain.refresh")}
       </p>
-    </>
+      <Field label={t("settings.areas")} htmlFor="st-areas" hint={t("settings.areasHint")}>
+        <input
+          key={s.areas.join()}
+          id="st-areas"
+          className="input"
+          defaultValue={s.areas.join(", ")}
+          onBlur={(e) => {
+            const areas = e.target.value.split(",").map((a) => a.trim()).filter(Boolean);
+            if (areas.length && areas.join() !== s.areas.join()) void put({ areas });
+          }}
+        />
+      </Field>
+      <Field label={t("settings.excludes")} htmlFor="st-excludes" hint={t("settings.excludesHint")}>
+        <textarea
+          key={s.excludes.join()}
+          id="st-excludes"
+          className="input mono"
+          rows={8}
+          defaultValue={s.excludes.join("\n")}
+          onBlur={(e) => {
+            const excludes = e.target.value.split("\n").map((x) => x.trim()).filter(Boolean);
+            if (excludes.join() !== s.excludes.join()) void put({ excludes });
+          }}
+        />
+      </Field>
+    </div>
+  );
+}
+
+function SecurityTab({ s, put }: { s: SettingsShape; put: Put }) {
+  const t = useT();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const approvals = useApiQuery<Approval[]>(qk.approvals, "/api/approvals");
+  const resolve = useMutation({
+    mutationFn: ({ id, decision }: { id: string; decision: "approved" | "denied" }) => api.post(`/api/approvals/${encodeURIComponent(id)}/resolve`, { decision }),
+    onSuccess: (_r, vars) => {
+      toast(vars.decision === "approved" ? t("settings.approved") : t("settings.denied"), "ok");
+      qc.invalidateQueries({ queryKey: qk.approvals }).catch(() => undefined);
+      qc.invalidateQueries({ queryKey: qk.settings }).catch(() => undefined);
+      qc.invalidateQueries({ queryKey: qk.connectors }).catch(() => undefined);
+    },
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
+  return (
+    <div className="stack">
+      <div className="card stack">
+        <Field label={t("settings.profile")} htmlFor="st-profile" hint={t("settings.profileHint")}>
+          <select id="st-profile" className="input" value={s.securityProfile} onChange={(e) => void put({ securityProfile: e.target.value })}>
+            {PROFILES.map((prof) => (
+              <option key={prof} value={prof}>
+                {t(`profile.${prof}`)}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <ul className="plain-list profile-list">
+          {PROFILES.map((prof) => (
+            <li key={prof} className={prof === s.securityProfile ? "active" : ""}>
+              <strong>{t(`profile.${prof}`)}</strong>
+              <span className="meta">{t(`profile.${prof}.desc` as "profile.read_only.desc")}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="card">
+        <h2>{t("settings.approvals")}</h2>
+        {approvals.isPending ? (
+          <Skeleton lines={2} />
+        ) : (approvals.data ?? []).length === 0 ? (
+          <p className="widget-muted">{t("settings.noApprovals")}</p>
+        ) : (
+          (approvals.data ?? []).map((a) => (
+            <div className="list-row" key={a.id}>
+              <div>
+                <Badge kind="state" tone="warn">{a.kind}</Badge>
+                <div className="approval-desc">{a.description}</div>
+              </div>
+              <div className="row-actions">
+                <Button size="sm" variant="primary" onClick={() => resolve.mutate({ id: a.id, decision: "approved" })} loading={resolve.isPending && resolve.variables?.id === a.id}>
+                  {t("settings.approve")}
+                </Button>
+                <Button size="sm" variant="danger" onClick={() => resolve.mutate({ id: a.id, decision: "denied" })}>
+                  {t("settings.deny")}
+                </Button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BackupsTab() {
+  const t = useT();
+  const locale = useLocale();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const qc = useQueryClient();
+  const backups = useApiQuery<BackupInfo[]>(qk.backups, "/api/backups");
+  const create = useMutation({
+    mutationFn: () => api.post<BackupInfo>("/api/backups", {}),
+    onSuccess: (b) => {
+      toast(`${b.name} (${formatBytes(b.sizeBytes)})`, "ok");
+      qc.invalidateQueries({ queryKey: qk.backups }).catch(() => undefined);
+    },
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
+  const restore = useMutation({
+    mutationFn: (name: string) => api.post<{ note?: string; message?: string; staged?: boolean }>(`/api/backups/${encodeURIComponent(name)}/restore`),
+    onSuccess: (res) => toast(res.note ?? res.message ?? t("settings.restored"), "info"),
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
+  const onRestore = async (b: BackupInfo) => {
+    if (await confirm({ title: `${t("settings.restore")} ${b.name}?`, body: t("settings.restoreBody"), danger: true, confirmLabel: t("settings.restore") })) restore.mutate(b.name);
+  };
+  return (
+    <div className="card stack">
+      <div>
+        <Button variant="primary" icon={<Download aria-hidden />} onClick={() => create.mutate()} loading={create.isPending}>
+          {t("settings.newBackup")}
+        </Button>
+      </div>
+      {backups.isPending ? (
+        <Skeleton lines={3} />
+      ) : (backups.data ?? []).length === 0 ? (
+        <EmptyState title={t("settings.noBackups")} body={t("settings.noBackupsBody")} />
+      ) : (
+        (backups.data ?? []).slice(0, 8).map((b) => (
+          <div className="list-row" key={b.name}>
+            <div className="truncate">
+              <span className="mono small">{b.name}</span>
+              <div className="meta">
+                {timeAgo(b.createdAt, locale)} · {formatBytes(b.sizeBytes)}
+              </div>
+            </div>
+            <Button size="sm" variant="secondary" onClick={() => void onRestore(b)} loading={restore.isPending && restore.variables === b.name}>
+              {t("settings.restore")}
+            </Button>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function DiagnosticsTab() {
+  const t = useT();
+  const toast = useToast();
+  const doctor = useMutation({
+    mutationFn: () => api.get<DoctorReport>("/api/doctor"),
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
+  return (
+    <div className="card stack">
+      <div>
+        <Button variant="primary" icon={<Stethoscope aria-hidden />} onClick={() => doctor.mutate()} loading={doctor.isPending}>
+          {t("settings.runDoctor")}
+        </Button>
+      </div>
+      {doctor.data && (
+        <div>
+          {doctor.data.checks.map((c) => (
+            <div className="list-row" key={c.id}>
+              <div className="truncate">
+                <span className={`dot ${c.status === "ok" ? "ok" : c.status === "warn" ? "warn" : c.status === "fail" ? "danger" : "dim"}`} style={{ marginRight: 8 }} />
+                {c.label}
+                <div className="meta truncate" title={c.detail}>
+                  {c.detail}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

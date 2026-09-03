@@ -1,8 +1,12 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import Fastify, { LogController, type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import fastifyStatic from "@fastify/static";
+import { ZodError } from "zod";
+import { JsonlLogger, PathAccessError, redactSecrets } from "@mordomo/core";
 import { AppContext } from "./context.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerSkillRoutes } from "./routes/skills.js";
@@ -11,6 +15,8 @@ import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerRoutineRoutes } from "./routes/routines.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
 import { registerMicroappRoutes } from "./routes/microapps.js";
+import { registerEventRoutes } from "./routes/events.js";
+import { closeAllSse } from "./routes/sse.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -21,24 +27,112 @@ export interface ServerHandle {
   close: () => Promise<void>;
 }
 
+/** Uniform error envelope. `message` is duplicated at the top level for older clients. */
+export interface ApiErrorBody {
+  error: { code: string; message: string; issues?: unknown[] };
+  message: string;
+}
+
+export function errorBody(code: string, message: string, issues?: unknown[]): ApiErrorBody {
+  return { error: issues ? { code, message, issues } : { code, message }, message };
+}
+
+// ---- Host / token checks (docs/security.md, threats T1/T2) -----------------
+
+const ALLOWED_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/**
+ * Only loopback hosts may talk to the API (DNS-rebinding defence). Parsed with
+ * `new URL` so bracketed IPv6 and ports are handled; a missing Host is refused.
+ */
+export function isAllowedHost(hostHeader: string | string[] | undefined): boolean {
+  const raw = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader;
+  if (!raw || !raw.trim()) return false;
+  let url: URL;
+  try {
+    url = new URL(`http://${raw.trim()}`);
+  } catch {
+    return false;
+  }
+  // Reject anything that smuggled userinfo/path into the header.
+  if (url.username || url.password || url.pathname !== "/" || url.search || url.hash) return false;
+  return ALLOWED_HOSTNAMES.has(url.hostname.toLowerCase());
+}
+
+export function tokenMatches(supplied: unknown, expected: string): boolean {
+  if (typeof supplied !== "string" || supplied.length === 0) return false;
+  const a = Buffer.from(supplied, "utf8");
+  const b = Buffer.from(expected, "utf8");
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+/** Strip the token from a URL before it reaches any log line. */
+export function safeUrl(url: string): string {
+  return url.replace(/([?&]token=)[^&#]*/gi, "$1[REDACTED]");
+}
+
+const STATUS_CODES: Record<number, string> = {
+  400: "bad_request",
+  401: "unauthorized",
+  403: "forbidden",
+  404: "not_found",
+  409: "conflict",
+  413: "payload_too_large",
+  415: "unsupported_media_type",
+  422: "unprocessable",
+  429: "too_many_requests",
+};
+
+// ---- Request log: logs/api.jsonl through the secret redactor ---------------
+
+function buildLoggerOptions(ctx: AppContext) {
+  const limits = ctx.settings().limits;
+  const jsonl = new JsonlLogger(ctx.paths.logs, "api", limits.logMaxFileBytes, limits.logRetentionDays);
+  const stream = new Writable({
+    write(chunk: Buffer | string, _enc, cb) {
+      for (const line of chunk.toString().split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          jsonl.append(JSON.parse(redactSecrets(line)) as Record<string, unknown>);
+        } catch {
+          /* never let logging break a request */
+        }
+      }
+      cb();
+    },
+  });
+  return {
+    level: "info",
+    base: null,
+    timestamp: false as const,
+    messageKey: "msg",
+    formatters: { level: (label: string) => ({ level: label }) },
+    stream,
+  };
+}
+
 export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false, bodyLimit: 5 * 1024 * 1024 });
+  const app = Fastify({
+    logger: buildLoggerOptions(ctx),
+    // Our own onResponse hook writes the request line; Fastify's default
+    // "incoming request"/"request completed" pair would double it.
+    logController: new LogController({ disableRequestLogging: true }),
+    bodyLimit: 5 * 1024 * 1024,
+  });
   const token = ctx.token();
 
-  // ---- Security layer (see docs/security.md, threats T1/T2) -----------------
   app.addHook("onRequest", async (req: FastifyRequest, reply: FastifyReply) => {
-    // Host-header validation blocks DNS-rebinding style access.
-    const host = (req.headers.host ?? "").split(":")[0];
-    if (host && !["127.0.0.1", "localhost", "[::1]", "::1"].includes(host)) {
-      return reply.code(403).send({ error: "Forbidden host" });
+    if (!isAllowedHost(req.headers.host)) {
+      return reply.code(403).send(errorBody("forbidden_host", "Forbidden host"));
     }
     if (req.url.startsWith("/api/")) {
       const isMeta = req.url === "/api/meta";
       const supplied =
         (req.headers["x-mordomo-token"] as string | undefined) ??
         (req.query as Record<string, string | undefined>)?.token;
-      if (!isMeta && supplied !== token) {
-        return reply.code(401).send({ error: "Missing or invalid local token" });
+      if (!isMeta && !tokenMatches(supplied, token)) {
+        return reply.code(401).send(errorBody("unauthorized", "Missing or invalid local token"));
       }
     }
   });
@@ -54,9 +148,36 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
     return payload;
   });
 
-  app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
-    const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
-    reply.code(status).send({ error: err.message });
+  app.addHook("onResponse", async (req, reply) => {
+    req.log.info({
+      method: req.method,
+      url: safeUrl(req.url),
+      status: reply.statusCode,
+      ms: Math.round(reply.elapsedTime * 10) / 10,
+      reqId: req.id,
+    });
+  });
+
+  app.setErrorHandler((err: Error & { statusCode?: number; code?: string; validation?: unknown }, req, reply) => {
+    if (err instanceof ZodError) {
+      const message = err.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+      return reply.code(400).send(errorBody("validation", message, err.issues));
+    }
+    if (err instanceof PathAccessError || err.name === "PathAccessError") {
+      return reply.code(403).send(errorBody("forbidden_path", err.message));
+    }
+    const status = typeof err.statusCode === "number" && err.statusCode >= 400 && err.statusCode <= 599 ? err.statusCode : 500;
+    if (status < 500) {
+      const code = typeof err.code === "string" && err.code ? err.code : (STATUS_CODES[status] ?? "error");
+      return reply.code(status).send(errorBody(code, err.message));
+    }
+    // Never leak internals (paths, stack, SQL) to the client; keep them in the log.
+    req.log.error({ err, reqId: req.id, url: safeUrl(req.url), msg: "unhandled error" });
+    return reply.code(500).send(errorBody("internal", "Internal error"));
+  });
+
+  app.addHook("onClose", async () => {
+    closeAllSse();
   });
 
   // ---- API routes -----------------------------------------------------------
@@ -67,6 +188,7 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   registerRoutineRoutes(app, ctx);
   registerConnectorRoutes(app, ctx);
   registerMicroappRoutes(app, ctx);
+  registerEventRoutes(app, ctx);
 
   // ---- Command Centre static UI --------------------------------------------
   const uiDist = path.resolve(here, "..", "..", "command-centre", "dist");
@@ -90,7 +212,7 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
     };
     app.get("/", serveIndex);
     app.setNotFoundHandler((req, reply) => {
-      if (req.url.startsWith("/api/")) return reply.code(404).send({ error: "Not found" });
+      if (req.url.startsWith("/api/")) return reply.code(404).send(errorBody("not_found", "Not found"));
       return serveIndex(req, reply);
     });
   } else {
@@ -98,19 +220,26 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
       name: "MordomoOS API",
       note: "Command Centre UI build not found. Run: npm run build -w apps/command-centre",
     }));
+    app.setNotFoundHandler((_req, reply) => reply.code(404).send(errorBody("not_found", "Not found")));
   }
 
   return app;
 }
 
 export async function startServer(homeOverride?: string): Promise<ServerHandle> {
-  const ctx = new AppContext(homeOverride);
+  const ctx = new AppContext(homeOverride, { applyPendingRestore: true });
   const settings = ctx.settings();
   const app = await buildServer(ctx);
 
+  if (ctx.restoredAtBoot) {
+    app.log.info({ backup: ctx.restoredAtBoot.name, msg: "applied staged restore at boot" });
+     
+    console.log(`[mordomo] applied staged restore of backup ${ctx.restoredAtBoot.name}`);
+  }
   const recovered = ctx.runs.recoverInterrupted();
   if (recovered > 0) {
-    // eslint-disable-next-line no-console
+    app.log.info({ recovered, msg: "marked orphaned runs as interrupted" });
+     
     console.log(`[mordomo] marked ${recovered} orphaned run(s) as interrupted`);
   }
   ctx.scheduler.start();
@@ -122,14 +251,48 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   fs.mkdirSync(ctx.paths.run, { recursive: true });
   fs.writeFileSync(pidFile, JSON.stringify({ pid: process.pid, port: settings.port, startedAt: Date.now() }));
 
-  const close = async () => {
-    try {
-      fs.unlinkSync(pidFile);
-    } catch {
-      /* already gone */
-    }
-    await app.close();
-    ctx.close();
+  // ---- Lifecycle: idempotent close, signal + unhandledRejection safety net ---
+  let closing: Promise<void> | null = null;
+  const close = (): Promise<void> => {
+    if (closing) return closing;
+    closing = (async () => {
+      process.off("SIGTERM", onSignal);
+      process.off("SIGINT", onSignal);
+      process.off("unhandledRejection", onRejection);
+      try {
+        fs.unlinkSync(pidFile);
+      } catch {
+        /* already gone */
+      }
+      // Cancel/await active runs BEFORE the DB closes (audit item 4).
+      try {
+        await ctx.runs.shutdown(10_000);
+      } catch (err) {
+        app.log.error({ err, msg: "run shutdown failed" });
+      }
+      await app.close();
+      ctx.close();
+    })();
+    return closing;
   };
+  const onSignal = (signal: NodeJS.Signals) => {
+    app.log.info({ signal, msg: "shutdown requested" });
+     
+    console.log(`[mordomo] ${signal} received — shutting down`);
+    process.exitCode = 0;
+    close().catch((err: unknown) => {
+      app.log.error({ err, msg: "shutdown failed" });
+      process.exitCode = 1;
+    });
+  };
+  const onRejection = (reason: unknown) => {
+    app.log.error({ err: reason, msg: "unhandledRejection" });
+     
+    console.error("[mordomo] unhandled rejection:", reason);
+  };
+  process.on("SIGTERM", onSignal);
+  process.on("SIGINT", onSignal);
+  process.on("unhandledRejection", onRejection);
+
   return { app, ctx, url, close };
 }

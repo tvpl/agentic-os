@@ -7,9 +7,11 @@ import {
   listFacets,
   previewFile,
   relatedFiles,
+  resolveInsideRoots,
   searchFiles,
 } from "@mordomo/core";
 import type { AppContext } from "../context.js";
+import { grantedRoots, httpError } from "./common.js";
 
 export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get("/api/memory/status", async () => {
@@ -19,7 +21,8 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   });
 
   app.post("/api/memory/index", async () => {
-    const stats = ctx.indexer.indexAll();
+    // Chunked, non-blocking indexing: emits index.progress / index.finished on the bus.
+    const stats = await ctx.indexer.indexAllAsync();
     return { stats };
   });
 
@@ -61,7 +64,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     try {
       return previewFile(ctx.settings(), [ctx.paths.home], p);
     } catch (err) {
-      throw Object.assign(new Error((err as Error).message), { statusCode: 403 });
+      throw httpError(403, (err as Error).message, "forbidden_path");
     }
   });
 
@@ -71,17 +74,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
    */
   app.post("/api/memory/open", async (req) => {
     const { p } = z.object({ p: z.string() }).parse(req.body);
-    const roots = [
-      ...ctx.settings().indexedFolders.filter((f) => f.enabled).map((f) => f.path),
-      ctx.paths.home,
-    ];
-    let resolved: string;
-    try {
-      const { resolveInsideRoots } = await import("@mordomo/core");
-      resolved = resolveInsideRoots(roots, p);
-    } catch (err) {
-      throw Object.assign(new Error((err as Error).message), { statusCode: 403 });
-    }
+    const resolved = resolveInsideRoots(grantedRoots(ctx), p); // PathAccessError → 403
     const { spawn } = await import("node:child_process");
     const [exe, args] =
       process.platform === "darwin"

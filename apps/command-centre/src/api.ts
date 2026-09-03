@@ -1,46 +1,136 @@
 /** Typed-ish fetch layer for the local MordomoOS API. */
 
-const token =
+const TOKEN =
   document.querySelector<HTMLMetaElement>('meta[name="mordomo-token"]')?.content ?? "";
 
+/** Local token (injected into the page by the API server / the Vite dev plugin). */
+export function getToken(): string {
+  return TOKEN;
+}
+
+export interface ApiIssue {
+  path?: Array<string | number>;
+  message: string;
+  code?: string;
+}
+
+/**
+ * Error thrown for non-2xx responses, timeouts ("timeout") and network
+ * failures ("network"). `code` comes from the API envelope
+ * `{ error: { code, message, issues? }, message }`; the legacy
+ * `{ error: string }` shape is still accepted (code "error").
+ */
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    public readonly code: string = "error",
+    public readonly issues: ApiIssue[] = [],
   ) {
     super(message);
+    this.name = "ApiError";
+  }
+  /** True for network / timeout failures where the service could not be reached. */
+  get unreachable(): boolean {
+    return this.status === 0;
   }
 }
 
-async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
-  const res = await fetch(url, {
-    method,
-    headers: {
-      "x-mordomo-token": token,
-      ...(body !== undefined ? { "content-type": "application/json" } : {}),
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    let message = res.statusText;
-    try {
-      message = ((await res.json()) as { error?: string }).error ?? message;
-    } catch {
-      /* non-JSON error */
+export interface RequestOptions {
+  signal?: AbortSignal;
+  /** Milliseconds before the request is aborted (default 30 s). */
+  timeoutMs?: number;
+}
+
+const DEFAULT_TIMEOUT_MS = 30_000;
+
+interface ErrorEnvelope {
+  error?: string | { code?: string; message?: string; issues?: ApiIssue[] };
+  message?: string;
+}
+
+async function parseError(res: Response): Promise<ApiError> {
+  let message = res.statusText || `HTTP ${res.status}`;
+  let code = "error";
+  let issues: ApiIssue[] = [];
+  try {
+    const body = (await res.json()) as ErrorEnvelope;
+    if (body && typeof body.error === "object" && body.error) {
+      message = body.error.message ?? body.message ?? message;
+      code = body.error.code ?? code;
+      issues = Array.isArray(body.error.issues) ? body.error.issues : [];
+    } else if (typeof body?.error === "string") {
+      message = body.error;
+    } else if (typeof body?.message === "string") {
+      message = body.message;
     }
-    throw new ApiError(res.status, message);
+  } catch {
+    /* non-JSON error body */
   }
+  return new ApiError(res.status, message, code, issues);
+}
+
+async function request<T>(method: string, url: string, body?: unknown, opts: RequestOptions = {}): Promise<T> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  const forward = () => controller.abort();
+  if (opts.signal) {
+    if (opts.signal.aborted) controller.abort();
+    else opts.signal.addEventListener("abort", forward, { once: true });
+  }
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: {
+        "x-mordomo-token": TOKEN,
+        ...(body !== undefined ? { "content-type": "application/json" } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (timedOut) throw new ApiError(0, "Request timed out", "timeout");
+    if (err instanceof DOMException && err.name === "AbortError") throw err; // caller aborted
+    throw new ApiError(0, err instanceof Error ? err.message : String(err), "network");
+  } finally {
+    window.clearTimeout(timer);
+    opts.signal?.removeEventListener("abort", forward);
+  }
+  if (!res.ok) throw await parseError(res);
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
+/** One event from `/api/events` (mirrors core/src/events.ts `OsEvent`). */
+export interface OsEvent<T = unknown> {
+  id?: number;
+  type: string;
+  ts?: number;
+  payload: T;
+}
+
+export interface StreamOptions {
+  /** Named SSE event types to subscribe to in addition to unnamed `message` events. */
+  types?: readonly string[];
+  onOpen?: () => void;
+  /** Called when the browser gives up (readyState CLOSED) or on a hard error. */
+  onError?: () => void;
+}
+
 export const api = {
-  get: <T>(url: string) => request<T>("GET", url),
-  post: <T>(url: string, body?: unknown) => request<T>("POST", url, body),
-  put: <T>(url: string, body?: unknown) => request<T>("PUT", url, body),
-  del: <T>(url: string) => request<T>("DELETE", url),
+  get: <T>(url: string, opts?: RequestOptions) => request<T>("GET", url, undefined, opts),
+  post: <T>(url: string, body?: unknown, opts?: RequestOptions) => request<T>("POST", url, body, opts),
+  put: <T>(url: string, body?: unknown, opts?: RequestOptions) => request<T>("PUT", url, body, opts),
+  del: <T>(url: string, opts?: RequestOptions) => request<T>("DELETE", url, undefined, opts),
+
   /** SSE stream of run events; EventSource cannot set headers → token in query. */
   streamRun(runId: string, onEvent: (data: Record<string, unknown>) => void): () => void {
-    const source = new EventSource(`/api/runs/${runId}/stream?token=${token}`);
+    const source = new EventSource(`/api/runs/${encodeURIComponent(runId)}/stream?token=${TOKEN}`);
     source.onmessage = (e) => {
       try {
         onEvent(JSON.parse(e.data as string) as Record<string, unknown>);
@@ -48,11 +138,44 @@ export const api = {
         /* ignore malformed */
       }
     };
-    source.onerror = () => source.close();
+    source.onerror = () => {
+      if (source.readyState === EventSource.CLOSED) source.close();
+    };
+    return () => source.close();
+  },
+
+  /**
+   * SSE stream of OS events (`/api/events`). The browser handles
+   * `Last-Event-ID` on its automatic reconnects; `onError` fires when the
+   * connection is closed for good so callers can back off and reopen.
+   */
+  streamEvents(onEvent: (event: OsEvent) => void, opts: StreamOptions = {}): () => void {
+    const source = new EventSource(`/api/events?token=${TOKEN}`);
+    const handle = (raw: MessageEvent, fallbackType?: string) => {
+      try {
+        const parsed = JSON.parse(raw.data as string) as Partial<OsEvent> | null;
+        if (!parsed || typeof parsed !== "object") return;
+        const type = typeof parsed.type === "string" ? parsed.type : fallbackType;
+        if (!type) return;
+        onEvent({ id: parsed.id, type, ts: parsed.ts, payload: parsed.payload });
+      } catch {
+        /* ignore malformed */
+      }
+    };
+    source.onmessage = (e) => handle(e);
+    for (const type of opts.types ?? []) {
+      source.addEventListener(type, (e) => handle(e as MessageEvent, type));
+    }
+    source.onopen = () => opts.onOpen?.();
+    source.onerror = () => {
+      if (source.readyState === EventSource.CLOSED) {
+        source.close();
+        opts.onError?.();
+      }
+    };
     return () => source.close();
   },
 };
-
 // ---- shared shapes (mirror the API responses we rely on) --------------------
 export type ProviderId = "claude" | "cursor" | "codex";
 
@@ -71,8 +194,19 @@ export interface ModelishOption {
   recommendedFor?: string;
 }
 
+export interface ProviderCapabilities {
+  enforcesReadOnly: boolean;
+  supportsEffort: boolean;
+  promptTransport: "stdin" | "argv";
+  streaming: boolean;
+}
+
 export interface ProviderSnapshot {
   id: ProviderId;
+  /** From the provider manifest (older servers omit these). */
+  displayName?: string;
+  capabilities?: ProviderCapabilities;
+  installHint?: string;
   enabled: boolean;
   isDefault: boolean;
   defaultModel: string | null;

@@ -1,8 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { X } from "lucide-react";
 import { useT } from "../i18n";
 import { ApiError } from "../api";
+import { DialogPortal, useDialog } from "./dialog";
 
-/* ---------- data fetching ---------- */
+/* ---------- data fetching (legacy; prefer useApiQuery from ../queries) ---------- */
 export function useApi<T>(fetcher: () => Promise<T>, deps: unknown[] = []): {
   data: T | null;
   error: string | null;
@@ -17,6 +19,8 @@ export function useApi<T>(fetcher: () => Promise<T>, deps: unknown[] = []): {
   const [tick, setTick] = useState(0);
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
+  // Serialise the deps so the effect has a static dependency list.
+  const depsKey = deps.map((d) => (typeof d === "object" && d !== null ? JSON.stringify(d) : String(d))).join(" ");
 
   useEffect(() => {
     let cancelled = false;
@@ -29,52 +33,102 @@ export function useApi<T>(fetcher: () => Promise<T>, deps: unknown[] = []): {
         setError(null);
         setOffline(false);
       })
-      .catch((err: Error) => {
+      .catch((err: unknown) => {
         if (cancelled) return;
-        if (err instanceof ApiError) setError(err.message);
-        else {
-          setOffline(true);
-          setError(err.message);
-        }
+        const message = err instanceof Error ? err.message : String(err);
+        // Only unreachable-service errors are "offline"; a TypeError from a
+        // bug is a bug and is shown as such.
+        setOffline(err instanceof ApiError && err.unreachable);
+        setError(message);
       })
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick, ...deps]);
+  }, [tick, depsKey]);
 
   return { data, error, offline, loading, reload: useCallback(() => setTick((t) => t + 1), []) };
 }
 
 /* ---------- toasts ---------- */
+type ToastKind = "ok" | "danger" | "info";
 interface Toast {
   id: number;
   text: string;
-  kind: "ok" | "danger" | "info";
+  kind: ToastKind;
+  ms: number;
+  leaving: boolean;
 }
-const ToastContext = createContext<(text: string, kind?: Toast["kind"]) => void>(() => {});
-export function useToast(): (text: string, kind?: Toast["kind"]) => void {
+type PushToast = (text: string, kind?: ToastKind) => void;
+const ToastContext = createContext<PushToast>(() => {});
+export function useToast(): PushToast {
   return useContext(ToastContext);
 }
+
+const TOAST_MS: Record<ToastKind, number> = { ok: 4200, info: 4200, danger: 8000 };
+const TOAST_EXIT_MS = 160;
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const push = useCallback((text: string, kind: Toast["kind"] = "info") => {
-    const id = Date.now() + Math.random();
-    setToasts((prev) => [...prev, { id, text, kind }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4200);
+  const timers = useRef(new Map<number, number>());
+
+  const remove = useCallback((id: number) => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+      return;
+    }
+    setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, leaving: true } : t)));
+    window.setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), TOAST_EXIT_MS);
   }, []);
+
+  const push = useCallback<PushToast>(
+    (text, kind = "info") => {
+      const id = Date.now() + Math.random();
+      const ms = TOAST_MS[kind];
+      setToasts((prev) => [...prev, { id, text, kind, ms, leaving: false }]);
+      timers.current.set(id, window.setTimeout(() => remove(id), ms));
+    },
+    [remove],
+  );
+
+  useEffect(() => {
+    const map = timers.current;
+    return () => map.forEach((timer) => window.clearTimeout(timer));
+  }, []);
+
+  const polite = toasts.filter((t) => t.kind !== "danger");
+  const assertive = toasts.filter((t) => t.kind === "danger");
   return (
     <ToastContext.Provider value={push}>
       {children}
-      <div className="toast-wrap" role="status" aria-live="polite">
-        {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.kind}`}>
-            {t.text}
-          </div>
-        ))}
+      <div className="toast-wrap">
+        <div role="status" aria-live="polite" style={{ display: "contents" }}>
+          {polite.map((t) => (
+            <ToastItem key={t.id} toast={t} onClose={() => remove(t.id)} />
+          ))}
+        </div>
+        <div role="alert" aria-live="assertive" style={{ display: "contents" }}>
+          {assertive.map((t) => (
+            <ToastItem key={t.id} toast={t} onClose={() => remove(t.id)} />
+          ))}
+        </div>
       </div>
     </ToastContext.Provider>
+  );
+}
+
+function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
+  const t = useT();
+  const style = { "--toast-ms": `${toast.ms}ms` } as CSSProperties;
+  return (
+    <div className={`toast ${toast.kind}${toast.leaving ? " leaving" : ""}`} style={style}>
+      <span className="toast-text">{toast.text}</span>
+      <button type="button" className="btn ghost sm icon-only toast-close" onClick={onClose} aria-label={t("common.dismiss")}>
+        <X aria-hidden />
+      </button>
+      <span className="toast-progress" aria-hidden />
+    </div>
   );
 }
 
@@ -88,6 +142,35 @@ export function Loading() {
   );
 }
 
+/** Content-shaped placeholder; prefer over `Loading` inside cards and tables. */
+export function Skeleton({
+  lines = 3,
+  height,
+  className,
+  page = false,
+}: {
+  lines?: number;
+  height?: number;
+  className?: string;
+  /** Full-page variant used as the route Suspense fallback. */
+  page?: boolean;
+}) {
+  const t = useT();
+  const style = height ? ({ "--skeleton-h": `${height}px` } as CSSProperties) : undefined;
+  return (
+    <div
+      className={["skeleton", page ? "page-skeleton" : "", className ?? ""].filter(Boolean).join(" ")}
+      role="status"
+      aria-label={t("common.loading")}
+      style={style}
+    >
+      {Array.from({ length: lines }, (_, i) => (
+        <span key={i} className="skeleton-line" />
+      ))}
+    </div>
+  );
+}
+
 export function ErrorBox({ message, offline, onRetry }: { message: string; offline?: boolean; onRetry?: () => void }) {
   const t = useT();
   return (
@@ -95,7 +178,7 @@ export function ErrorBox({ message, offline, onRetry }: { message: string; offli
       <strong>{offline ? t("common.offline") : t("common.error")}</strong>
       {!offline && <div style={{ marginTop: 4 }}>{message}</div>}
       {onRetry && (
-        <button className="btn sm" style={{ marginTop: 10 }} onClick={onRetry}>
+        <button type="button" className="btn sm" style={{ marginTop: 10 }} onClick={onRetry}>
           {t("common.retry")}
         </button>
       )}
@@ -108,27 +191,34 @@ export function Empty({ children }: { children: ReactNode }) {
 }
 
 /* ---------- modal ---------- */
-export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export interface ModalProps {
+  title: string;
+  /** May be an inline arrow; it is read through a ref, so re-renders never steal focus. */
+  onClose: () => void;
+  children: ReactNode;
+  narrow?: boolean;
+  /** Override the initial focus target (default: first field, else the dialog itself). */
+  initialFocus?: () => HTMLElement | null | undefined;
+}
+
+export function Modal({ title, onClose, children, narrow = false, initialFocus }: ModalProps) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    ref.current?.querySelector<HTMLElement>("input, select, textarea, button")?.focus();
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useDialog(ref, onClose, { initialFocus });
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={title} ref={ref}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2>{title}</h2>
-          <button className="btn ghost sm" onClick={onClose} aria-label={t("common.close")}>
-            ✕
-          </button>
+    <DialogPortal>
+      <div className="modal-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+        <div className={`modal${narrow ? " narrow" : ""}`} role="dialog" aria-modal="true" aria-label={title} ref={ref} tabIndex={-1}>
+          <div className="modal-head">
+            <h2>{title}</h2>
+            <button type="button" className="btn ghost sm icon-only" onClick={onClose} aria-label={t("common.close")} data-dialog-close>
+              <X aria-hidden />
+            </button>
+          </div>
+          {children}
         </div>
-        {children}
       </div>
-    </div>
+    </DialogPortal>
   );
 }
 
@@ -136,7 +226,15 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
 export function StatusBadge({ status }: { status: string }) {
   const t = useT();
   const kind =
-    status === "done" ? "ok" : status === "running" || status === "queued" ? "info" : status === "failed" ? "danger" : status === "cancelled" || status === "interrupted" ? "warn" : "dim";
+    status === "done"
+      ? "ok"
+      : status === "running" || status === "queued"
+        ? "info"
+        : status === "failed"
+          ? "danger"
+          : status === "cancelled" || status === "interrupted"
+            ? "warn"
+            : "dim";
   const key = `status.${status}` as Parameters<typeof t>[0];
   const label = t(key);
   return <span className={`badge ${kind}`}>{label === key ? status : label}</span>;

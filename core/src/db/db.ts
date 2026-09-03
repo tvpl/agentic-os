@@ -48,7 +48,8 @@ function migrate(db: Db, paths: MordomoPaths): MigrationResult {
 
   const apply = db.transaction(() => {
     for (const m of pending) {
-      db.exec(m.sql);
+      if (m.sql) db.exec(m.sql);
+      if (m.up) m.up(db);
       db.pragma(`user_version = ${m.version}`);
     }
   });

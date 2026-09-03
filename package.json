@@ -2,11 +2,11 @@
   "name": "mordomo-os",
   "version": "0.1.0",
   "private": true,
-  "description": "MordomoOS — a local, vendor-neutral agentic operating system (ARMS) over Claude Code, Cursor Agent and OpenAI Codex.",
+  "description": "MordomoOS \u2014 a local, vendor-neutral agentic operating system (ARMS) over Claude Code, Cursor Agent and OpenAI Codex.",
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "workspaces": [
     "core",
@@ -19,15 +19,41 @@
   "scripts": {
     "build": "tsc -b core adapters/claude adapters/cursor adapters/codex apps/api && npm run build -w apps/command-centre",
     "build:server": "tsc -b core adapters/claude adapters/cursor adapters/codex apps/api",
-    "typecheck": "tsc -b core adapters/claude adapters/cursor adapters/codex apps/api --noEmit false && npm run typecheck -w apps/command-centre",
+    "typecheck": "tsc -b core adapters/claude adapters/cursor adapters/codex apps/api && npm run typecheck -w apps/command-centre",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "mordomo": "node apps/api/dist/cli.js"
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
+    "prepare": "husky",
+    "mordomo": "node apps/api/dist/cli.js",
+    "test:ui": "npm run test -w apps/command-centre",
+    "gallery": "vite --config apps/command-centre/vite.config.ts apps/command-centre --open /gallery.html"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^22.10.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.4.1",
+    "playwright-core": "^1.49.0",
+    "prettier": "^3.9.6",
     "typescript": "^5.6.0",
-    "vitest": "^2.1.0",
-    "playwright-core": "^1.49.0"
+    "typescript-eslint": "^8.69.0",
+    "vitest": "^4.1.11"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs,cjs}": [
+      "eslint --max-warnings=0",
+      "prettier --write"
+    ],
+    "*.{json,md,css,html,yml,yaml}": "prettier --write --ignore-unknown"
   }
 }

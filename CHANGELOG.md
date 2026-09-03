@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.4.0 — 2026-09-02
+
+Hardening release: the September audit (`docs/audit-2026-09/`) executed end to end.
+
+- **Security**: every `:id`/`:slug` route parameter validated (path traversal in
+  `DELETE /api/routines` and `/api/connectors` closed, also at the store level);
+  Host header parsed with `new URL` (IPv6, missing Host refused); token compared
+  in constant time; preview/open honour the exclusion list plus a hard directory
+  blocklist (`.git`, `.aws`, `.ssh`, …); skill import and sync targets contained;
+  path containment resolves symlinked parents even for files that do not exist
+  yet (a symlinked directory cannot smuggle a new file outside the roots);
+  security profiles are enforced (`read_only` refuses write runs,
+  `review_before_write` creates a `write_run` approval, routines write only under
+  `approved_automation`); zod errors return 400 with a structured envelope.
+- **Data**: backups use SQLite's online backup API (no more empty copies while
+  WAL is open); API restores are staged and applied at boot; migration v2 adds
+  `parent_run_id` and `pid`; run/event retention; `Last-Event-ID` on SSE.
+- **Runtime**: graceful shutdown cancels active runs before closing the DB;
+  run lifecycle is an explicit state machine (`timed_out` distinct); cancellation
+  via `AbortSignal`; retries create a new run per attempt; croner `protect` works;
+  scheduler errors never crash the process; adapters reload when settings change;
+  partial settings updates deep-merge; settings cached by mtime; indexer runs in
+  transactions, in slices, with progress events; stores skip corrupt files.
+- **API**: `/api/events` SSE firehose, request log (`logs/api.jsonl`), real
+  `/api/health`, version read from `package.json`, `npm audit` in `doctor`.
+- **CLI**: `node:util.parseArgs`, validated `--provider/--effort`, pidfile
+  identity (command line checked on Linux, macOS and Windows), quoted startup
+  units, `service.out.log` rotation, `index` progress.
+- **Command Centre**: app chrome in normal flow (no more hidden primary
+  buttons); memoised `useT`; modals and launcher with focus trap, restore and
+  animations; launcher search; ErrorBoundary and `React.lazy` per route (main
+  chunk 367 kB → 60 kB); TanStack Query with one shared cache invalidated by the
+  event stream (no more 4/5/10 s polling); desktop split into widgets with
+  per-widget loading/error, a "Now" panel (active runs, next routine, latest
+  artifacts), layout persistence without races, stacked layout below 900 px,
+  keyboard move/resize; runs with a virtualized event timeline, filters and
+  cancel; Second Brain with modifier-guarded zoom keys, preview race fix, hub
+  lookup map, theme-aware palette, collapsed advanced controls, left-docked
+  preview and a keyboard-navigable file list; Routines with cron validation and
+  next-runs preview; Settings in tabs; 3-step Setup; Pixel Studio draft and
+  unsaved-work guard; design tokens (spacing, type, z-index, motion), primitives,
+  accent-derived contrast (AA), light-theme canvases, i18n parity enforced by test.
+- **Providers**: `ProviderRegistry` with manifests + factories; the sync
+  compiler, connector auditor, run manager write detection and API
+  composition are generic over the registry; `/api/providers` exposes
+  `displayName`, `capabilities` and `installHint`.
+- **Second Brain engine**: world model, layouts, physics and hit testing
+  extracted into pure modules (`src/brain/engine/`) with unit tests.
+- **Component gallery**: `gallery.html` (`npm run gallery`) renders primitives
+  and widgets with fixtures in both themes; Playwright screenshot baselines.
+- **Tooling**: ESLint 9 + Prettier + husky/lint-staged, GitHub Actions CI
+  (Node 22/24 × three OSes + e2e), frontend unit tests, Playwright smoke with
+  axe; `npm audit` clean (fastify/static, vite, vitest updated). Node 22 is
+  the minimum: Node 20 is end-of-life and better-sqlite3 12 ships no prebuilt
+  binaries for it.
+
 ## 0.3.0 — 2026-08-31
 
 The OS release: it stops being a web page and becomes a desktop.

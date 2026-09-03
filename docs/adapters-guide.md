@@ -43,10 +43,15 @@ streamed events (`started`, `assistant`, `tool_use`, `permission`, `text`,
    silently run writable. Never use full-bypass flags.
 4. Map `effort` only if the provider supports it; otherwise ignore it and say
    so in `detect().notes`.
-5. Register it: add the id to `ProviderId` in `core/src/config/schema.ts`, the
-   provider entry in `SettingsSchema.providers`, and construct it in
-   `apps/api/src/context.ts`. Add export targets to `core/src/sync/compiler.ts`
-   if the provider has native config files.
+5. Describe and register it. Export a `ProviderManifest` (identity, binary,
+   `installHint`, `capabilities`, native `layout`, `homeConfigFiles`,
+   `writeToolPattern` — see `core/src/agents/registry.ts`) and a factory
+   `create<Name>Adapter(opts)`; give the class a `readonly manifest`. Then add
+   the id to `ProviderId` in `core/src/config/schema.ts` (settings validation
+   and its `BUILTIN_MANIFESTS` entry) and register the pair in
+   `apps/api/src/providers.ts`. The sync compiler, the connector auditor, the
+   run manager's write detection and `/api/providers` all read the manifest —
+   nothing else in core or in the API changes.
 6. Test it against a **fake CLI**: add an executable script to
    `tests/fixtures/fake-bin/` that answers `--version`, `--help` and emits the
    provider's real streaming shapes; add its basename to the spawn allowlist in

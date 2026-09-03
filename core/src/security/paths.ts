@@ -7,14 +7,18 @@ export function isInside(parent: string, child: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
+/** True when `candidate` is inside (or equal to) at least one of `roots`. */
+export function isInsideAny(roots: string[], candidate: string): boolean {
+  return roots.some((root) => isInside(root, candidate));
+}
+
 /**
  * Resolve a user-supplied path and require containment inside one of the
  * granted roots. Follows symlinks (realpath) so a link cannot escape the root.
  * Throws on violation — callers turn this into a 403.
  */
 export function resolveInsideRoots(roots: string[], candidate: string): string {
-  const resolved = path.resolve(candidate);
-  const real = fs.existsSync(resolved) ? fs.realpathSync(resolved) : resolved;
+  const real = realpathLenient(path.resolve(candidate));
   for (const root of roots) {
     const realRoot = fs.existsSync(root) ? fs.realpathSync(root) : path.resolve(root);
     if (isInside(realRoot, real)) return real;
@@ -22,9 +26,31 @@ export function resolveInsideRoots(roots: string[], candidate: string): string {
   throw new PathAccessError(candidate);
 }
 
+/**
+ * `realpath` for paths that may not exist yet: symlinks are resolved in the
+ * deepest existing ancestor and the missing tail is re-appended, so a symlinked
+ * parent directory cannot smuggle a new file outside the granted roots.
+ */
+function realpathLenient(absolute: string): string {
+  let head = absolute;
+  const tail: string[] = [];
+  while (!fs.existsSync(head)) {
+    const parent = path.dirname(head);
+    if (parent === head) return absolute;
+    tail.unshift(path.basename(head));
+    head = parent;
+  }
+  return path.join(fs.realpathSync(head), ...tail);
+}
+
 export class PathAccessError extends Error {
-  constructor(public readonly attempted: string) {
-    super(`Path is outside the granted folders: ${attempted}`);
+  /** HTTP status the API should map this to. */
+  readonly statusCode = 403;
+  constructor(
+    public readonly attempted: string,
+    message?: string,
+  ) {
+    super(message ?? `Path is outside the granted folders: ${attempted}`);
     this.name = "PathAccessError";
   }
 }

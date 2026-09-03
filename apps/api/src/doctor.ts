@@ -1,5 +1,6 @@
 import fs from "node:fs";
-import { checkRouters, type ProviderId } from "@mordomo/core";
+import path from "node:path";
+import { checkRouters, probe, type ProviderId } from "@mordomo/core";
 import type { AppContext } from "./context.js";
 
 export interface DoctorCheck {
@@ -17,7 +18,99 @@ export interface DoctorReport {
   generatedAt: number;
 }
 
-export async function runDoctor(ctx: AppContext): Promise<DoctorReport> {
+export interface DoctorOptions {
+  /** Run `npm audit` against the MordomoOS home (20 s budget). Default true. */
+  npmAudit?: boolean;
+}
+
+/**
+ * `npm audit --json --audit-level=high` run through safeSpawn: `npm` itself is
+ * not on the executable allowlist, so the Node binary runs npm's CLI script.
+ * Never fatal — offline, missing npm or a missing lockfile all report "skip"/"warn".
+ */
+export async function npmAuditCheck(home: string, timeoutMs = 20_000): Promise<DoctorCheck> {
+  const id = "npm-audit";
+  const label = "Dependency audit (npm audit)";
+  if (process.env.MORDOMO_SKIP_NPM_AUDIT === "1") {
+    return { id, label, status: "skip", detail: "Skipped (MORDOMO_SKIP_NPM_AUDIT=1)" };
+  }
+  if (!fs.existsSync(path.join(home, "package-lock.json"))) {
+    return { id, label, status: "skip", detail: `No package-lock.json in ${home}` };
+  }
+  const npmCli = path.join(
+    path.dirname(process.execPath),
+    "..",
+    "lib",
+    "node_modules",
+    "npm",
+    "bin",
+    "npm-cli.js",
+  );
+  if (!fs.existsSync(npmCli)) {
+    return { id, label, status: "skip", detail: "npm CLI not found next to the Node binary" };
+  }
+  try {
+    const res = await probe(
+      process.execPath,
+      [npmCli, "audit", "--json", "--audit-level=high"],
+      home,
+      timeoutMs,
+    );
+    if (res.timedOut) {
+      return {
+        id,
+        label,
+        status: "warn",
+        detail: `npm audit timed out after ${Math.round(timeoutMs / 1000)} s (offline?)`,
+      };
+    }
+    interface AuditJson {
+      metadata?: { vulnerabilities?: Record<string, number> };
+      error?: { summary?: string };
+    }
+    let report: AuditJson | null;
+    try {
+      report = JSON.parse(res.stdout) as AuditJson;
+    } catch {
+      report = null;
+    }
+    if (!report) {
+      return {
+        id,
+        label,
+        status: "warn",
+        detail: `npm audit produced no JSON (exit ${res.exitCode}): ${res.stderr.trim().slice(0, 200) || "no output"}`,
+      };
+    }
+    if (report.error) {
+      return {
+        id,
+        label,
+        status: "warn",
+        detail: `npm audit failed: ${report.error.summary ?? "unknown error"}`,
+      };
+    }
+    const v: Record<string, number> = report.metadata?.vulnerabilities ?? {};
+    const high = (v.high ?? 0) + (v.critical ?? 0);
+    const total = Object.values(v).reduce((a: number, b: number) => a + b, 0);
+    return {
+      id,
+      label,
+      status: high > 0 ? "fail" : total > 0 ? "warn" : "ok",
+      detail:
+        total === 0
+          ? "No known vulnerabilities"
+          : `${total} advisory(ies): ${Object.entries(v)
+              .filter(([, n]) => n > 0)
+              .map(([k, n]) => `${n} ${k}`)
+              .join(", ")}`,
+    };
+  } catch (err) {
+    return { id, label, status: "skip", detail: `Could not run npm audit: ${(err as Error).message}` };
+  }
+}
+
+export async function runDoctor(ctx: AppContext, opts: DoctorOptions = {}): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [];
   const settings = ctx.settings();
 
@@ -25,8 +118,8 @@ export async function runDoctor(ctx: AppContext): Promise<DoctorReport> {
   checks.push({
     id: "node",
     label: "Node.js version",
-    status: Number(major) >= 20 ? "ok" : "fail",
-    detail: `v${process.versions.node} (requires >= 20)`,
+    status: Number(major) >= 22 ? "ok" : "fail",
+    detail: `v${process.versions.node} (requires >= 22)`,
   });
 
   try {
@@ -62,14 +155,21 @@ export async function runDoctor(ctx: AppContext): Promise<DoctorReport> {
 
   const indexed = settings.indexedFolders.filter((f) => f.enabled);
   if (indexed.length === 0) {
-    checks.push({ id: "memory-folders", label: "Indexed folders", status: "warn", detail: "No folders selected — the Second Brain is empty. Add folders in Settings." });
+    checks.push({
+      id: "memory-folders",
+      label: "Indexed folders",
+      status: "warn",
+      detail: "No folders selected — the Second Brain is empty. Add folders in Settings.",
+    });
   } else {
     const missing = indexed.filter((f) => !fs.existsSync(f.path));
     checks.push({
       id: "memory-folders",
       label: "Indexed folders",
       status: missing.length ? "warn" : "ok",
-      detail: missing.length ? `Missing: ${missing.map((f) => f.path).join(", ")}` : `${indexed.length} folder(s) indexed`,
+      detail: missing.length
+        ? `Missing: ${missing.map((f) => f.path).join(", ")}`
+        : `${indexed.length} folder(s) indexed`,
     });
   }
 
@@ -88,7 +188,10 @@ export async function runDoctor(ctx: AppContext): Promise<DoctorReport> {
     id: "routers",
     label: "Memory routers",
     status: routerIssues.length === 0 ? "ok" : "warn",
-    detail: routerIssues.length === 0 ? "Routers present, no broken pointers" : routerIssues.map((i) => i.problem).join(" | "),
+    detail:
+      routerIssues.length === 0
+        ? "Routers present, no broken pointers"
+        : routerIssues.map((i) => i.problem).join(" | "),
   });
 
   const skills = ctx.skills.list();
@@ -100,7 +203,8 @@ export async function runDoctor(ctx: AppContext): Promise<DoctorReport> {
     detail:
       skills.length === 0
         ? "No skills in the catalog"
-        : `${skills.length} skill(s)` + (thick.length ? ` — thick (split recommended): ${thick.map((s) => s.slug).join(", ")}` : ""),
+        : `${skills.length} skill(s)` +
+          (thick.length ? ` — thick (split recommended): ${thick.map((s) => s.slug).join(", ")}` : ""),
   });
 
   const routineStatus = ctx.scheduler.status();
@@ -132,6 +236,8 @@ export async function runDoctor(ctx: AppContext): Promise<DoctorReport> {
         ? "Server bound to 127.0.0.1 (local only)"
         : `Server configured to bind ${settings.bindAddress} — make sure this is intentional and protected`,
   });
+
+  if (opts.npmAudit !== false) checks.push(await npmAuditCheck(ctx.paths.home));
 
   return {
     checks,

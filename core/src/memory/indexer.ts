@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Db } from "../db/db.js";
 import type { Settings } from "../config/schema.js";
-import { makeExcludeMatcher, isSecretFile } from "../security/paths.js";
+import { events } from "../events.js";
+import { isBinaryBuffer, makeWorkspaceFilter } from "./excludes.js";
 
 const TEXT_EXTENSIONS = new Set([
   ".md", ".markdown", ".txt", ".json", ".yaml", ".yml", ".toml", ".csv",
@@ -11,13 +12,30 @@ const TEXT_EXTENSIONS = new Set([
   ".html", ".css", ".scss", ".sql", ".xml", ".ini", ".cfg", ".conf", ".log",
 ]);
 
+/** Files processed per transaction / per event-loop turn in `indexAllAsync`. */
+export const INDEX_CHUNK_SIZE = 200;
+const PENDING_LINKS_KEY = "index.pending_links";
+const LAST_INDEX_KEY = "last_index";
+
 export interface IndexStats {
   scanned: number;
   added: number;
   updated: number;
   removed: number;
   skippedExcluded: number;
+  /** Files whose bytes were not indexed because they looked binary (NUL in first 8 KiB). */
+  skippedBinary: number;
   durationMs: number;
+}
+
+/** Payload of `index.progress` events and of the `indexAllAsync` callback. */
+export interface IndexProgress {
+  scanned: number;
+  /** Known once the scan phase finished. */
+  total?: number;
+  added: number;
+  updated: number;
+  removed: number;
 }
 
 export interface FileRow {
@@ -36,110 +54,210 @@ export interface FileRow {
   tags: string[];
 }
 
+interface Candidate {
+  root: string;
+  full: string;
+  rel: string;
+  area: string | null;
+}
+
+/** Unresolved markdown links: target absolute path → ids of the source files pointing at it. */
+type PendingLinks = Map<string, number[]>;
+
 /**
  * Incremental workspace indexer.
- * - honours the exclusion list BEFORE reading anything;
+ * - honours the exclusion policy (settings excludes, hard blocklist, secret
+ *   files) BEFORE reading anything;
  * - never moves, renames or rewrites indexed files;
- * - re-reads content only when size/mtime changed;
- * - extracts markdown titles, tags (#tag) and [links](…) for the graph.
+ * - re-reads content only when size/mtime (or owning root/area) changed;
+ * - binary detection is content-based (NUL byte in the first 8 KiB);
+ * - markdown links are extracted per file when it is (re)indexed and stored
+ *   in `file_links`; links to files not indexed yet wait in a pending map so
+ *   they resolve as soon as the target appears — nothing is re-read wholesale;
+ * - every chunk of upserts/removals runs in one transaction;
+ * - nested indexed roots are deterministic: the longest root owns the file.
+ *
+ * `indexAll()` is synchronous (CLI, tests); `indexAllAsync()` runs the same
+ * steps in chunks, yielding to the event loop between them and emitting
+ * `index.progress` / `index.finished` on the shared event bus.
  */
 export class MemoryIndexer {
+  private running = false;
+  private inFlight: Promise<IndexStats> | null = null;
+
   constructor(
     private readonly db: Db,
     private readonly getSettings: () => Settings,
   ) {}
 
+  /** True while an index run (sync or async) is in progress. */
+  isIndexing(): boolean {
+    return this.running;
+  }
+
   indexAll(): IndexStats {
-    const started = Date.now();
-    const settings = this.getSettings();
-    const stats: IndexStats = { scanned: 0, added: 0, updated: 0, removed: 0, skippedExcluded: 0, durationMs: 0 };
-    const exclude = makeExcludeMatcher(settings.excludes);
-    const seen = new Set<string>();
+    const gen = this.steps(undefined);
+    let step = gen.next();
+    while (!step.done) step = gen.next();
+    return step.value;
+  }
 
-    const folders = settings.indexedFolders.filter((f) => f.enabled);
-    for (const folder of folders) {
-      const root = path.resolve(folder.path);
-      if (!fs.existsSync(root)) continue;
-      this.walk(root, root, folder.area, exclude, seen, stats, settings.limits.maxIndexedFileBytes);
-    }
-
-    // Remove rows for files that no longer exist or whose root was unselected.
-    const activeRoots = folders.map((f) => path.resolve(f.path));
-    const all = this.db.prepare("SELECT id, path, root FROM files").all() as Array<{
-      id: number;
-      path: string;
-      root: string;
-    }>;
-    const removeStmt = this.db.prepare("DELETE FROM files WHERE id = ?");
-    const removeFts = this.db.prepare("DELETE FROM files_fts WHERE rowid = ?");
-    const removeLinks = this.db.prepare("DELETE FROM file_links WHERE src_id = ? OR dst_id = ?");
-    for (const row of all) {
-      if (!seen.has(row.path) || !activeRoots.includes(path.resolve(row.root))) {
-        if (seen.has(row.path)) continue;
-        removeStmt.run(row.id);
-        removeFts.run(row.id);
-        removeLinks.run(row.id, row.id);
-        stats.removed++;
+  /**
+   * Same work as `indexAll`, but chunked: between chunks the event loop gets a
+   * turn (SSE, scheduler and routes keep responding). Concurrent calls share
+   * the in-flight run instead of starting a second one.
+   */
+  indexAllAsync(onProgress?: (p: IndexProgress) => void): Promise<IndexStats> {
+    if (this.inFlight) return this.inFlight;
+    const run = (async () => {
+      const gen = this.steps(onProgress);
+      let step = gen.next();
+      while (!step.done) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        step = gen.next();
       }
-    }
-
-    this.rebuildMarkdownLinks();
-    stats.durationMs = Date.now() - started;
-    this.db
-      .prepare("INSERT INTO meta (key, value) VALUES ('last_index', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-      .run(JSON.stringify({ at: Date.now(), stats }));
-    return stats;
+      return step.value;
+    })();
+    this.inFlight = run.finally(() => {
+      this.inFlight = null;
+    });
+    return this.inFlight;
   }
 
   lastIndex(): { at: number; stats: IndexStats } | null {
-    const row = this.db.prepare("SELECT value FROM meta WHERE key = 'last_index'").get() as
+    const row = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(LAST_INDEX_KEY) as
       | { value: string }
       | undefined;
     return row ? (JSON.parse(row.value) as { at: number; stats: IndexStats }) : null;
   }
 
-  private walk(
-    root: string,
-    dir: string,
-    area: string | null,
-    exclude: (rel: string) => boolean,
-    seen: Set<string>,
-    stats: IndexStats,
-    maxBytes: number,
-  ): void {
-    let entries: fs.Dirent[];
+  /** The whole run as a generator; each `yield` is a safe point to give the loop a turn. */
+  private *steps(onProgress: ((p: IndexProgress) => void) | undefined): Generator<void, IndexStats> {
+    if (this.running) throw new Error("An index run is already in progress.");
+    this.running = true;
     try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const full = path.join(dir, entry.name);
-      const rel = path.relative(root, full);
-      if (exclude(rel) || isSecretFile(entry.name)) {
-        stats.skippedExcluded++;
-        continue;
+      const started = Date.now();
+      const settings = this.getSettings();
+      const stats: IndexStats = {
+        scanned: 0, added: 0, updated: 0, removed: 0, skippedExcluded: 0, skippedBinary: 0, durationMs: 0,
+      };
+      const filter = makeWorkspaceFilter(settings.excludes);
+      const maxBytes = settings.limits.maxIndexedFileBytes;
+
+      // Deterministic root set: de-duplicated by resolved path (first entry
+      // wins for the area). A directory that is itself another enabled root is
+      // skipped by the parent walk, so the longest (most specific) root owns it.
+      const rootArea = new Map<string, string | null>();
+      for (const f of settings.indexedFolders) {
+        if (!f.enabled) continue;
+        const r = path.resolve(f.path);
+        if (!rootArea.has(r)) rootArea.set(r, f.area);
       }
-      if (entry.isSymbolicLink()) continue; // symlinks could escape the root
-      if (entry.isDirectory()) {
-        this.walk(root, full, area, exclude, seen, stats, maxBytes);
-        continue;
+      const roots = [...rootArea.keys()].sort();
+      const rootSet = new Set(roots);
+
+      const emit = (total?: number) => {
+        const p: IndexProgress = {
+          scanned: stats.scanned,
+          ...(total !== undefined ? { total } : {}),
+          added: stats.added,
+          updated: stats.updated,
+          removed: stats.removed,
+        };
+        onProgress?.(p);
+        events.emit("index.progress", p);
+      };
+
+      // Phase 1: scan (no content is read here).
+      const candidates: Candidate[] = [];
+      let dirsSinceYield = 0;
+      for (const root of roots) {
+        if (!fs.existsSync(root)) continue;
+        if (filter.reasonToSkip("", root)) {
+          stats.skippedExcluded++;
+          continue;
+        }
+        const area = rootArea.get(root) ?? null;
+        const stack = [root];
+        while (stack.length > 0) {
+          const dir = stack.pop()!;
+          let entries: fs.Dirent[];
+          try {
+            entries = fs.readdirSync(dir, { withFileTypes: true });
+          } catch {
+            continue;
+          }
+          for (const entry of entries) {
+            const full = path.join(dir, entry.name);
+            const rel = path.relative(root, full);
+            if (filter.isExcluded(rel, full)) {
+              stats.skippedExcluded++;
+              continue;
+            }
+            if (entry.isSymbolicLink()) continue; // symlinks could escape the root
+            if (entry.isDirectory()) {
+              if (rootSet.has(full)) continue; // owned by the nested root
+              stack.push(full);
+              continue;
+            }
+            if (!entry.isFile()) continue;
+            stats.scanned++;
+            candidates.push({ root, full, rel, area });
+          }
+          if (++dirsSinceYield >= 50) {
+            dirsSinceYield = 0;
+            emit();
+            yield;
+          }
+        }
       }
-      if (!entry.isFile()) continue;
-      stats.scanned++;
-      seen.add(full);
-      this.upsertFile(root, full, rel, area, stats, maxBytes);
+
+      // Phase 2: upserts, one transaction per chunk.
+      const pending = this.loadPendingLinks();
+      const seen = new Set<string>();
+      const total = candidates.length;
+      const upsertChunk = this.db.transaction((chunk: Candidate[]) => {
+        for (const c of chunk) {
+          seen.add(c.full);
+          this.upsertFile(c, stats, maxBytes, pending);
+        }
+      });
+      for (let i = 0; i < candidates.length; i += INDEX_CHUNK_SIZE) {
+        upsertChunk(candidates.slice(i, i + INDEX_CHUNK_SIZE));
+        emit(total);
+        yield;
+      }
+
+      // Phase 3: rows whose file vanished or whose root is no longer indexed.
+      const all = this.db.prepare("SELECT id, path FROM files").all() as Array<{ id: number; path: string }>;
+      const stale = all.filter((row) => !seen.has(row.path));
+      const removeChunk = this.db.transaction((rows: Array<{ id: number; path: string }>) => {
+        for (const row of rows) this.removeFile(row.id, row.path, pending, stats);
+      });
+      for (let i = 0; i < stale.length; i += INDEX_CHUNK_SIZE) {
+        removeChunk(stale.slice(i, i + INDEX_CHUNK_SIZE));
+        emit(total);
+        yield;
+      }
+
+      stats.durationMs = Date.now() - started;
+      const finish = this.db.transaction(() => {
+        this.savePendingLinks(pending);
+        this.db
+          .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+          .run(LAST_INDEX_KEY, JSON.stringify({ at: Date.now(), stats }));
+      });
+      finish();
+      emit(total);
+      events.emit("index.finished", { stats });
+      return stats;
+    } finally {
+      this.running = false;
     }
   }
 
-  private upsertFile(
-    root: string,
-    full: string,
-    rel: string,
-    area: string | null,
-    stats: IndexStats,
-    maxBytes: number,
-  ): void {
+  private upsertFile(c: Candidate, stats: IndexStats, maxBytes: number, pending: PendingLinks): void {
+    const { root, full, rel, area } = c;
     let stat: fs.Stats;
     try {
       stat = fs.statSync(full);
@@ -147,18 +265,28 @@ export class MemoryIndexer {
       return;
     }
     const existing = this.db
-      .prepare("SELECT id, size, mtime FROM files WHERE path = ?")
-      .get(full) as { id: number; size: number; mtime: number } | undefined;
+      .prepare("SELECT id, size, mtime, root, area FROM files WHERE path = ?")
+      .get(full) as { id: number; size: number; mtime: number; root: string; area: string | null } | undefined;
     const mtime = Math.floor(stat.mtimeMs);
-    if (existing && existing.size === stat.size && existing.mtime === mtime) return;
+    if (
+      existing &&
+      existing.size === stat.size &&
+      existing.mtime === mtime &&
+      existing.root === root &&
+      (existing.area ?? null) === area
+    ) {
+      return;
+    }
 
     const ext = path.extname(full).toLowerCase();
     let content = "";
     let title: string | null = null;
     let tags: string[] = [];
-    if (TEXT_EXTENSIONS.has(ext) && stat.size <= maxBytes) {
+    if ((TEXT_EXTENSIONS.has(ext) || ext === "") && stat.size <= maxBytes) {
       try {
-        content = fs.readFileSync(full, "utf8");
+        const buf = fs.readFileSync(full);
+        if (isBinaryBuffer(buf)) stats.skippedBinary++;
+        else content = buf.toString("utf8");
       } catch {
         content = "";
       }
@@ -169,69 +297,129 @@ export class MemoryIndexer {
     }
 
     const now = Date.now();
+    const name = path.basename(full);
+    let id: number;
     if (existing) {
+      id = existing.id;
       this.db
-        .prepare("UPDATE files SET size = ?, mtime = ?, indexed_at = ?, title = ?, tags = ?, area = ? WHERE id = ?")
-        .run(stat.size, mtime, now, title, JSON.stringify(tags), area, existing.id);
-      this.db.prepare("DELETE FROM files_fts WHERE rowid = ?").run(existing.id);
+        .prepare(
+          "UPDATE files SET root = ?, rel = ?, dir = ?, size = ?, mtime = ?, indexed_at = ?, title = ?, tags = ?, area = ? WHERE id = ?",
+        )
+        .run(root, rel, path.dirname(full), stat.size, mtime, now, title, JSON.stringify(tags), area, id);
+      this.db.prepare("DELETE FROM files_fts WHERE rowid = ?").run(id);
       this.db
         .prepare("INSERT INTO files_fts (rowid, name, rel, content) VALUES (?, ?, ?, ?)")
-        .run(existing.id, path.basename(full), rel, content.slice(0, 200_000));
+        .run(id, name, rel, content.slice(0, 200_000));
       stats.updated++;
     } else {
       const info = this.db
         .prepare(
           "INSERT INTO files (root, path, rel, name, ext, dir, area, size, mtime, indexed_at, title, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .run(
-          root,
-          full,
-          rel,
-          path.basename(full),
-          ext,
-          path.dirname(full),
-          area,
-          stat.size,
-          mtime,
-          now,
-          title,
-          JSON.stringify(tags),
-        );
+        .run(root, full, rel, name, ext, path.dirname(full), area, stat.size, mtime, now, title, JSON.stringify(tags));
+      id = Number(info.lastInsertRowid);
       this.db
         .prepare("INSERT INTO files_fts (rowid, name, rel, content) VALUES (?, ?, ?, ?)")
-        .run(info.lastInsertRowid, path.basename(full), rel, content.slice(0, 200_000));
+        .run(id, name, rel, content.slice(0, 200_000));
       stats.added++;
+      // Markdown files indexed earlier that point at this path get their link now.
+      const waiting = pending.get(full);
+      if (waiting) {
+        for (const src of waiting) this.insertLink(src, id);
+        pending.delete(full);
+      }
+    }
+    if (ext === ".md" || ext === ".markdown") {
+      this.refreshLinks(id, full, content, pending);
     }
   }
 
-  /** Extract markdown links between indexed files (relation kind: markdown-link). */
-  private rebuildMarkdownLinks(): void {
-    this.db.prepare("DELETE FROM file_links WHERE kind = 'markdown-link'").run();
-    const mdFiles = this.db
-      .prepare("SELECT id, path, dir FROM files WHERE ext IN ('.md', '.markdown')")
-      .all() as Array<{ id: number; path: string; dir: string }>;
-    const byPath = new Map<string, number>();
-    for (const f of this.db.prepare("SELECT id, path FROM files").all() as Array<{ id: number; path: string }>) {
-      byPath.set(path.resolve(f.path), f.id);
-    }
-    const insert = this.db.prepare(
-      "INSERT OR IGNORE INTO file_links (src_id, dst_id, kind) VALUES (?, ?, 'markdown-link')",
-    );
-    for (const md of mdFiles) {
-      let content: string;
+  /** Recompute the outgoing markdown links of one file (called only when it changed). */
+  private refreshLinks(id: number, full: string, content: string, pending: PendingLinks): void {
+    this.db.prepare("DELETE FROM file_links WHERE src_id = ? AND kind = 'markdown-link'").run(id);
+    dropSource(pending, id);
+    const dir = path.dirname(full);
+    const lookup = this.db.prepare("SELECT id FROM files WHERE path = ?");
+    const targets = new Set<string>();
+    for (const match of content.matchAll(/\[[^\]]*\]\(([^)#?\s]+)\)/g)) {
+      const target = match[1]!;
+      if (/^[a-z]+:\/\//i.test(target)) continue;
+      let decoded: string;
       try {
-        content = fs.readFileSync(md.path, "utf8");
+        decoded = decodeURIComponent(target);
       } catch {
         continue;
       }
-      for (const match of content.matchAll(/\[[^\]]*\]\(([^)#?\s]+)\)/g)) {
-        const target = match[1]!;
-        if (/^[a-z]+:\/\//i.test(target)) continue;
-        const resolved = path.resolve(md.dir, decodeURIComponent(target));
-        const dstId = byPath.get(resolved);
-        if (dstId && dstId !== md.id) insert.run(md.id, dstId);
+      const resolved = path.resolve(dir, decoded);
+      if (resolved === full) continue;
+      targets.add(resolved);
+    }
+    for (const resolved of targets) {
+      const dst = lookup.get(resolved) as { id: number } | undefined;
+      if (dst) {
+        this.insertLink(id, dst.id);
+      } else {
+        const list = pending.get(resolved) ?? [];
+        if (!list.includes(id)) list.push(id);
+        pending.set(resolved, list);
       }
     }
+  }
+
+  private insertLink(src: number, dst: number): void {
+    if (src === dst) return;
+    this.db
+      .prepare("INSERT OR IGNORE INTO file_links (src_id, dst_id, kind) VALUES (?, ?, 'markdown-link')")
+      .run(src, dst);
+  }
+
+  private removeFile(id: number, filePath: string, pending: PendingLinks, stats: IndexStats): void {
+    // Remember who linked here so the edge comes back if the file reappears.
+    const inbound = this.db
+      .prepare("SELECT src_id FROM file_links WHERE dst_id = ? AND kind = 'markdown-link'")
+      .all(id) as Array<{ src_id: number }>;
+    if (inbound.length > 0) {
+      const list = pending.get(filePath) ?? [];
+      for (const { src_id } of inbound) if (!list.includes(src_id)) list.push(src_id);
+      pending.set(filePath, list);
+    }
+    this.db.prepare("DELETE FROM files WHERE id = ?").run(id);
+    this.db.prepare("DELETE FROM files_fts WHERE rowid = ?").run(id);
+    this.db.prepare("DELETE FROM file_links WHERE src_id = ? OR dst_id = ?").run(id, id);
+    dropSource(pending, id);
+    stats.removed++;
+  }
+
+  private loadPendingLinks(): PendingLinks {
+    const row = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(PENDING_LINKS_KEY) as
+      | { value: string }
+      | undefined;
+    const out: PendingLinks = new Map();
+    if (!row) return out;
+    try {
+      for (const [target, srcs] of Object.entries(JSON.parse(row.value) as Record<string, number[]>)) {
+        if (Array.isArray(srcs) && srcs.length > 0) out.set(target, srcs.filter((n) => Number.isInteger(n)));
+      }
+    } catch {
+      /* corrupt map: start clean; links re-resolve as files change */
+    }
+    return out;
+  }
+
+  private savePendingLinks(pending: PendingLinks): void {
+    const obj: Record<string, number[]> = {};
+    for (const [target, srcs] of pending) if (srcs.length > 0) obj[target] = srcs;
+    this.db
+      .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .run(PENDING_LINKS_KEY, JSON.stringify(obj));
+  }
+}
+
+function dropSource(pending: PendingLinks, id: number): void {
+  for (const [target, srcs] of pending) {
+    const kept = srcs.filter((s) => s !== id);
+    if (kept.length === 0) pending.delete(target);
+    else if (kept.length !== srcs.length) pending.set(target, kept);
   }
 }
 

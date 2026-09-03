@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
@@ -9,6 +10,8 @@ import {
   type RunMode,
 } from "@mordomo/core";
 import type { AppContext } from "../context.js";
+import { gateWrite, grantedRoots, httpError, launchSkillRun, type SkillRunInput } from "./common.js";
+import { IdParam, SlugParams } from "./params.js";
 
 const RunSkillBody = z.object({
   provider: ProviderId.optional(),
@@ -26,40 +29,36 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
   });
 
   app.get("/api/skills/:slug", async (req) => {
-    const { slug } = z.object({ slug: z.string() }).parse(req.params);
+    const { slug } = SlugParams.parse(req.params);
     const skill = ctx.skills.load(slug);
-    if (!skill) throw Object.assign(new Error("Skill not found"), { statusCode: 404 });
+    if (!skill) throw httpError(404, "Skill not found");
     return { ...skill, favorite: ctx.settings().favoriteSkills.includes(slug) };
   });
 
   const SaveBody = z.object({ frontmatter: SkillFrontmatterSchema, body: z.string().min(1) });
   app.post("/api/skills", async (req) => {
     const { frontmatter, body } = SaveBody.parse(req.body);
-    if (ctx.skills.load(frontmatter.slug)) {
-      throw Object.assign(new Error(`Skill "${frontmatter.slug}" already exists`), { statusCode: 409 });
-    }
+    if (ctx.skills.load(frontmatter.slug)) throw httpError(409, `Skill "${frontmatter.slug}" already exists`);
     return ctx.skills.save(frontmatter, body);
   });
 
   app.put("/api/skills/:slug", async (req) => {
-    const { slug } = z.object({ slug: z.string() }).parse(req.params);
+    const { slug } = SlugParams.parse(req.params);
     const { frontmatter, body } = SaveBody.parse(req.body);
-    if (frontmatter.slug !== slug) {
-      throw Object.assign(new Error("Slug in body must match URL"), { statusCode: 400 });
-    }
-    if (!ctx.skills.load(slug)) throw Object.assign(new Error("Skill not found"), { statusCode: 404 });
+    if (frontmatter.slug !== slug) throw httpError(400, "Slug in body must match URL");
+    if (!ctx.skills.load(slug)) throw httpError(404, "Skill not found");
     return ctx.skills.save(frontmatter, body);
   });
 
   app.post("/api/skills/:slug/toggle", async (req) => {
-    const { slug } = z.object({ slug: z.string() }).parse(req.params);
+    const { slug } = SlugParams.parse(req.params);
     const skill = ctx.skills.load(slug);
-    if (!skill) throw Object.assign(new Error("Skill not found"), { statusCode: 404 });
+    if (!skill) throw httpError(404, "Skill not found");
     return ctx.skills.setEnabled(slug, !skill.enabled);
   });
 
   app.post("/api/skills/:slug/favorite", async (req) => {
-    const { slug } = z.object({ slug: z.string() }).parse(req.params);
+    const { slug } = SlugParams.parse(req.params);
     const s = ctx.settings();
     const favorites = s.favoriteSkills.includes(slug)
       ? s.favoriteSkills.filter((f) => f !== slug)
@@ -69,62 +68,68 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
   });
 
   app.delete("/api/skills/:slug", async (req) => {
-    const { slug } = z.object({ slug: z.string() }).parse(req.params);
-    if (!ctx.skills.load(slug)) throw Object.assign(new Error("Skill not found"), { statusCode: 404 });
+    const { slug } = SlugParams.parse(req.params);
+    if (!ctx.skills.load(slug)) throw httpError(404, "Skill not found");
     ctx.skills.remove(slug);
     return { deleted: slug };
   });
 
+  /** Import a skill directory — only from inside the home or an enabled indexed folder. */
   app.post("/api/skills/import", async (req) => {
-    const { sourceDir, slug } = z.object({ sourceDir: z.string(), slug: z.string().optional() }).parse(req.body);
-    return ctx.skills.importFrom(sourceDir, slug);
+    const { sourceDir, slug } = z.object({ sourceDir: z.string().min(1), slug: IdParam.optional() }).parse(req.body);
+    const resolved = resolveInsideRoots(grantedRoots(ctx), sourceDir); // PathAccessError → 403
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(resolved);
+    } catch {
+      throw httpError(400, "Source directory does not exist");
+    }
+    if (!stat.isDirectory()) throw httpError(400, "Source must be a directory");
+    if (!fs.existsSync(path.join(resolved, "SKILL.md"))) throw httpError(400, "No SKILL.md found in the source directory");
+    const finalSlug = (slug ?? path.basename(resolved)).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+    if (!finalSlug) throw httpError(400, "Cannot derive a slug from the source directory name");
+    if (ctx.skills.load(finalSlug)) throw httpError(409, `Skill "${finalSlug}" already exists in the catalog`);
+    return ctx.skills.importFrom(resolved, finalSlug);
   });
 
   /**
    * Run a skill headlessly (the "button"). Returns immediately with the run id;
    * progress streams via /api/runs/:id/stream.
    */
-  app.post("/api/skills/:slug/run", async (req) => {
-    const { slug } = z.object({ slug: z.string() }).parse(req.params);
+  app.post("/api/skills/:slug/run", async (req, reply) => {
+    const { slug } = SlugParams.parse(req.params);
     const body = RunSkillBody.parse(req.body ?? {});
     const skill = ctx.skills.load(slug);
-    if (!skill) throw Object.assign(new Error("Skill not found"), { statusCode: 404 });
-    if (!skill.enabled) throw Object.assign(new Error("Skill is disabled"), { statusCode: 400 });
+    if (!skill) throw httpError(404, "Skill not found");
+    if (!skill.enabled) throw httpError(400, "Skill is disabled");
 
     const settings = ctx.settings();
     const provider = body.provider ?? settings.defaultProvider;
-    if (!settings.providers[provider].enabled) {
-      throw Object.assign(new Error(`Provider ${provider} is not enabled`), { statusCode: 400 });
-    }
-    if (!skill.providers.includes(provider)) {
-      throw Object.assign(new Error(`Skill ${slug} does not support provider ${provider}`), { statusCode: 400 });
-    }
+    if (!settings.providers[provider].enabled) throw httpError(400, `Provider ${provider} is not enabled`);
+    if (!skill.providers.includes(provider)) throw httpError(400, `Skill ${slug} does not support provider ${provider}`);
     for (const input of skill.inputs) {
       if (input.required && !body.inputs[input.name]?.trim()) {
-        throw Object.assign(new Error(`Missing required input: ${input.label}`), { statusCode: 400 });
+        throw httpError(400, `Missing required input: ${input.label}`);
       }
     }
 
-    let cwd = ctx.paths.home;
-    if (body.cwd) {
-      const roots = [ctx.paths.home, ...settings.indexedFolders.filter((f) => f.enabled).map((f) => f.path)];
-      cwd = resolveInsideRoots(roots, body.cwd);
-    }
+    const cwd = body.cwd ? resolveInsideRoots(grantedRoots(ctx), body.cwd) : ctx.paths.home;
     const mode: RunMode = skill.mode === "write" ? "write" : "read_only";
-    const run = ctx.runs.create({
-      origin: "skill",
+    const input: SkillRunInput = {
+      slug,
+      inputs: body.inputs,
       provider,
-      prompt: `(skill: ${slug})`,
-      cwd,
       model: body.model !== undefined ? body.model : (skill.recommendedModel ?? settings.providers[provider].defaultModel),
       effort: body.effort ?? (skill.recommendedEffort !== "default" ? skill.recommendedEffort : settings.providers[provider].defaultEffort),
-      mode,
+      cwd,
       timeoutMs: body.timeoutMs ?? settings.limits.defaultTimeoutMs,
-      profile: skill.mode === "write" ? settings.securityProfile : "read_only",
-      skillSlug: slug,
-    });
-    const prompt = ctx.skills.buildRunPrompt(skill, body.inputs, path.join(ctx.paths.artifacts, run.id));
-    void ctx.runs.execute(run.id, prompt, mode);
-    return { runId: run.id, status: "queued" };
+    };
+    const gate = gateWrite(ctx, mode, "skill", `Write-mode skill run: /${slug} with ${provider}`, { kind: "skill", input });
+    if (gate.pendingApproval) {
+      reply.code(202);
+      return { runId: null, status: "waiting_approval", pendingApproval: gate.pendingApproval };
+    }
+    const { runId } = launchSkillRun(ctx, input, (err, id) => req.log.error({ err, runId: id, msg: "skill run failed to execute" }));
+    return { runId, status: "queued" };
   });
 }

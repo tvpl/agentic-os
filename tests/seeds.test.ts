@@ -129,7 +129,9 @@ describe("routine scheduler (manual fire, against fake CLI)", () => {
       const runs = new RunManager(db, paths, () => settingsStore.load(), () => new ClaudeAdapter({ binaryPath: path.join(FAKE_BIN, "claude") }));
       const scheduler = new RoutineScheduler(db, paths, routines, runs, skills, () => settingsStore.load());
 
-      const record = await scheduler.fire("daily-workspace-digest", "manual", null);
+      const { runId } = await scheduler.fire("daily-workspace-digest", { reason: "manual" });
+      await scheduler.drain();
+      const record = runs.get(runId);
       expect(record).not.toBeNull();
       expect(record!.status).toBe("done");
       expect(record!.origin).toBe("routine");

@@ -1,4 +1,5 @@
 import type { EffortLevel, ProviderId, SecurityProfile } from "../config/schema.js";
+import type { ProviderManifest } from "./registry.js";
 
 export interface DetectionResult {
   installed: boolean;
@@ -49,6 +50,13 @@ export interface AgentRun {
   /** Directory where the run should place produced artifacts. */
   artifactsDir: string;
   extraEnv?: Record<string, string>;
+  /**
+   * Cancellation signal owned by the RunManager. When aborted before the
+   * provider process is spawned, nothing is spawned; when aborted later, the
+   * whole process group is terminated. Adapters just pass the run through to
+   * `executeInvocation`, which honours it.
+   */
+  signal?: AbortSignal;
 }
 
 export interface SafeInvocation {
@@ -65,17 +73,31 @@ export type RunEvent =
   | { type: "assistant"; ts: number; text: string }
   | { type: "tool_use"; ts: number; tool: string; detail: string }
   | { type: "permission"; ts: number; detail: string }
-  | { type: "result"; ts: number; exitCode: number | null; summary: string; durationMs: number; timedOut: boolean }
+  | {
+      type: "result";
+      ts: number;
+      exitCode: number | null;
+      summary: string;
+      durationMs: number;
+      timedOut: boolean;
+      /** True when the process ended because cancellation was requested (or was never spawned because of it). */
+      cancelled?: boolean;
+    }
   | { type: "error"; ts: number; message: string };
 
+/**
+ * Provider adapter. Cancellation is not part of this contract: the RunManager
+ * owns the cancel registry and delivers it through `AgentRun.signal`.
+ */
 export interface AgentAdapter {
   readonly id: ProviderId;
+  /** Static description of the provider (capabilities, native layout, write tools). */
+  readonly manifest: ProviderManifest;
   detect(): Promise<DetectionResult>;
   authenticate(): Promise<AuthStatus>;
   listModels(): Promise<ModelOption[]>;
   validateConfig(): Promise<ValidationResult>;
   buildInvocation(run: AgentRun): Promise<SafeInvocation>;
   execute(run: AgentRun): AsyncIterable<RunEvent>;
-  cancel(runId: string): Promise<void>;
   healthCheck(): Promise<HealthStatus>;
 }

@@ -3,26 +3,51 @@ import path from "node:path";
 import matter from "gray-matter";
 import type { MordomoPaths } from "../paths.js";
 import { SkillFrontmatterSchema, type Skill, type SkillFrontmatter } from "./types.js";
+import { isValidId, resolveInsideDir } from "../security/ids.js";
+import type { StoreProblem } from "../routines/store.js";
 
 /** A SKILL.md body at or above this many lines is flagged "thick" (ARMS S-L2). */
 export const THICK_LINE_THRESHOLD = 150;
 
 export class SkillCatalog {
+  private problems: StoreProblem[] = [];
+
   constructor(private readonly paths: MordomoPaths) {}
 
+  /** Skill folders skipped by the most recent `list()` call, with the reason. */
+  lastProblems(): StoreProblem[] {
+    return [...this.problems];
+  }
+
+  /** Directory for a slug, validated (regex + containment). Throws InvalidIdError (400). */
+  private dirFor(slug: string): string {
+    return resolveInsideDir(this.paths.skills, slug, "", "skill slug");
+  }
+
   list(): Skill[] {
+    this.problems = [];
     if (!fs.existsSync(this.paths.skills)) return [];
     const skills: Skill[] = [];
     for (const entry of fs.readdirSync(this.paths.skills, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
-      const skill = this.load(entry.name);
-      if (skill) skills.push(skill);
+      const full = path.join(this.paths.skills, entry.name);
+      if (!isValidId(entry.name)) {
+        this.problems.push({ file: full, error: `Folder name is not a valid skill slug: ${entry.name}` });
+        continue;
+      }
+      try {
+        const skill = this.load(entry.name);
+        if (skill) skills.push(skill);
+      } catch (err) {
+        // One broken SKILL.md must not hide the whole catalog.
+        this.problems.push({ file: path.join(full, "SKILL.md"), error: (err as Error).message });
+      }
     }
     return skills.sort((a, b) => a.name.localeCompare(b.name));
   }
 
   load(slug: string): Skill | null {
-    const dir = path.join(this.paths.skills, slug);
+    const dir = this.dirFor(slug);
     const skillFile = path.join(dir, "SKILL.md");
     if (!fs.existsSync(skillFile)) return null;
     const raw = fs.readFileSync(skillFile, "utf8");
@@ -60,7 +85,7 @@ export class SkillCatalog {
   }
 
   save(front: SkillFrontmatter, body: string): Skill {
-    const dir = path.join(this.paths.skills, front.slug);
+    const dir = this.dirFor(front.slug);
     fs.mkdirSync(dir, { recursive: true });
     const { slug: _omit, ...frontWithoutSlug } = front;
     const content = matter.stringify(body.trim() + "\n", frontWithoutSlug);
@@ -77,7 +102,7 @@ export class SkillCatalog {
   }
 
   remove(slug: string): void {
-    const dir = path.join(this.paths.skills, slug);
+    const dir = this.dirFor(slug);
     if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true });
   }
 
@@ -94,7 +119,7 @@ export class SkillCatalog {
       .toLowerCase()
       .replace(/[^a-z0-9-]+/g, "-")
       .replace(/^-+|-+$/g, "");
-    const targetDir = path.join(this.paths.skills, finalSlug);
+    const targetDir = this.dirFor(finalSlug);
     if (fs.existsSync(targetDir)) {
       throw new Error(`Skill "${finalSlug}" already exists in the catalog.`);
     }

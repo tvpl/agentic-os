@@ -4,10 +4,10 @@ import path from "node:path";
 export default defineConfig({
   resolve: {
     alias: {
-      "@mordomo/core": path.resolve(__dirname, "core/src/index.ts"),
-      "@mordomo/adapter-claude": path.resolve(__dirname, "adapters/claude/src/index.ts"),
-      "@mordomo/adapter-cursor": path.resolve(__dirname, "adapters/cursor/src/index.ts"),
-      "@mordomo/adapter-codex": path.resolve(__dirname, "adapters/codex/src/index.ts"),
+      "@mordomo/core": path.resolve(import.meta.dirname, "core/src/index.ts"),
+      "@mordomo/adapter-claude": path.resolve(import.meta.dirname, "adapters/claude/src/index.ts"),
+      "@mordomo/adapter-cursor": path.resolve(import.meta.dirname, "adapters/cursor/src/index.ts"),
+      "@mordomo/adapter-codex": path.resolve(import.meta.dirname, "adapters/codex/src/index.ts"),
     },
   },
   test: {

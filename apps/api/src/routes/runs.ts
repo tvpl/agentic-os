@@ -4,6 +4,11 @@ import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import { ProviderId, EffortLevel, resolveInsideRoots, isInside } from "@mordomo/core";
 import type { AppContext } from "../context.js";
+import { gateWrite, grantedRoots, httpError, launchPromptRun, type PromptRunInput } from "./common.js";
+import { UuidParams } from "./params.js";
+import { lastEventId, openSse } from "./sse.js";
+
+const ACTIVE_STATUSES = new Set(["queued", "running", "waiting_approval"]);
 
 export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get("/api/runs", async (req) => {
@@ -17,14 +22,14 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
   });
 
   app.get("/api/runs/:id", async (req) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const { id } = UuidParams.parse(req.params);
     const run = ctx.runs.get(id);
-    if (!run) throw Object.assign(new Error("Run not found"), { statusCode: 404 });
+    if (!run) throw httpError(404, "Run not found");
     return { run, events: ctx.runs.eventsFor(id).map((e) => e.event) };
   });
 
   /** Manual prompt run (Command Centre "Run a prompt" box). */
-  app.post("/api/runs", async (req) => {
+  app.post("/api/runs", async (req, reply) => {
     const body = z
       .object({
         prompt: z.string().min(1).max(20_000),
@@ -38,71 +43,78 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
       .parse(req.body);
     const settings = ctx.settings();
     const provider = body.provider ?? settings.defaultProvider;
-    if (!settings.providers[provider].enabled) {
-      throw Object.assign(new Error(`Provider ${provider} is not enabled`), { statusCode: 400 });
-    }
-    let cwd = ctx.paths.home;
-    if (body.cwd) {
-      const roots = [ctx.paths.home, ...settings.indexedFolders.filter((f) => f.enabled).map((f) => f.path)];
-      cwd = resolveInsideRoots(roots, body.cwd);
-    }
-    if (body.mode === "write" && settings.securityProfile === "read_only") {
-      throw Object.assign(new Error("The current security profile is read-only; enable writes in Settings first."), { statusCode: 403 });
-    }
-    const run = ctx.runs.create({
-      origin: "manual",
-      provider,
+    if (!settings.providers[provider].enabled) throw httpError(400, `Provider ${provider} is not enabled`);
+    const cwd = body.cwd ? resolveInsideRoots(grantedRoots(ctx), body.cwd) : ctx.paths.home;
+    const input: PromptRunInput = {
       prompt: body.prompt,
-      cwd,
+      provider,
       model: body.model !== undefined ? body.model : settings.providers[provider].defaultModel,
       effort: body.effort ?? settings.providers[provider].defaultEffort,
       mode: body.mode,
+      cwd,
       timeoutMs: body.timeoutMs ?? settings.limits.defaultTimeoutMs,
-      profile: body.mode === "write" ? settings.securityProfile : "read_only",
-    });
-    const artifactsNote = `\n\nIf you produce files, write them into: ${path.join(ctx.paths.artifacts, run.id)}`;
-    void ctx.runs.execute(run.id, body.prompt + artifactsNote, body.mode);
-    return { runId: run.id, status: "queued" };
+    };
+    const gate = gateWrite(ctx, body.mode, "manual", `Write-mode prompt run with ${provider}: "${body.prompt.slice(0, 80)}"`, { kind: "prompt", input });
+    if (gate.pendingApproval) {
+      reply.code(202);
+      return { runId: null, status: "waiting_approval", pendingApproval: gate.pendingApproval };
+    }
+    const { runId } = launchPromptRun(ctx, input, (err, id) => req.log.error({ err, runId: id, msg: "run failed to execute" }));
+    return { runId, status: "queued" };
   });
 
   app.post("/api/runs/:id/cancel", async (req) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const { id } = UuidParams.parse(req.params);
     const ok = await ctx.runs.cancel(id);
     return { cancelled: ok };
   });
 
-  /** Live event stream (SSE). EventSource cannot set headers → token comes via query. */
+  /**
+   * Live event stream (SSE). EventSource cannot set headers → token comes via
+   * query. Frames carry the run_events DB id, so a reconnect with
+   * `Last-Event-ID` resumes after the last frame the client saw.
+   */
   app.get("/api/runs/:id/stream", async (req, reply) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-    const run = ctx.runs.get(id);
-    if (!run) throw Object.assign(new Error("Run not found"), { statusCode: 404 });
+    const { id } = UuidParams.parse(req.params);
+    if (!ctx.runs.get(id)) throw httpError(404, "Run not found");
 
-    reply.raw.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    });
-    const send = (data: unknown) => reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+    const ch = openSse(req, reply);
+    let lastId = lastEventId(req) ?? 0;
+    let finished = false;
 
-    // Replay history first, then follow live events.
-    for (const { event } of ctx.runs.eventsFor(id)) send(event);
-    const current = ctx.runs.get(id)!;
-    if (!["queued", "running", "waiting_approval"].includes(current.status)) {
-      send({ type: "run_state", ts: Date.now(), status: current.status, error: current.error });
-      reply.raw.end();
-      return reply;
-    }
-    const unsubscribe = ctx.runs.onEvent(id, (event) => {
-      send(event);
-      if (event.type === "result" || event.type === "error") {
-        const final = ctx.runs.get(id);
-        send({ type: "run_state", ts: Date.now(), status: final?.status, error: final?.error });
-        unsubscribe();
-        reply.raw.end();
+    // Drain persisted events after `lastId` (they carry ids; dedup by id).
+    const flush = () => {
+      for (;;) {
+        const rows = ctx.runs.eventsFor(id, lastId);
+        for (const row of rows) {
+          ch.send({ id: row.id, data: row.event });
+          lastId = row.id;
+        }
+        if (rows.length < 2000) break;
       }
+    };
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      const final = ctx.runs.get(id);
+      ch.send({ data: { type: "run_state", ts: Date.now(), status: final?.status, error: final?.error } });
+      ch.end();
+    };
+
+    // Subscribe first so nothing persisted between replay and follow is lost.
+    const unsubscribe = ctx.runs.onEvent(id, (event) => {
+      if (ch.closed) return;
+      const before = lastId;
+      flush();
+      // Events that are emitted but not persisted (e.g. "[queued]") have no id.
+      if (lastId === before) ch.send({ data: event });
+      if (event.type === "result" || event.type === "error") finish();
     });
-    req.raw.on("close", unsubscribe);
+    ch.onClose(unsubscribe);
+
+    flush();
+    const current = ctx.runs.get(id);
+    if (!current || !ACTIVE_STATUSES.has(current.status)) finish();
     return reply;
   });
 
@@ -149,16 +161,14 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
   /** Read one artifact (text) — strictly inside the artifacts dir. */
   app.get("/api/artifacts/file", async (req) => {
     const { p } = z.object({ p: z.string() }).parse(req.query);
-    let resolved: string;
+    const resolved = resolveInsideRoots([ctx.paths.artifacts], p); // PathAccessError → 403
+    if (!isInside(ctx.paths.artifacts, resolved)) throw httpError(403, "Outside artifacts directory");
+    let stat: fs.Stats;
     try {
-      resolved = resolveInsideRoots([ctx.paths.artifacts], p);
-    } catch (err) {
-      throw Object.assign(new Error((err as Error).message), { statusCode: 403 });
+      stat = fs.statSync(resolved);
+    } catch {
+      throw httpError(404, "Artifact not found");
     }
-    if (!isInside(ctx.paths.artifacts, resolved)) {
-      throw Object.assign(new Error("Outside artifacts directory"), { statusCode: 403 });
-    }
-    const stat = fs.statSync(resolved);
     if (stat.size > 2 * 1024 * 1024) {
       return { path: resolved, content: null, note: "Artifact larger than 2 MB — open it from disk." };
     }
