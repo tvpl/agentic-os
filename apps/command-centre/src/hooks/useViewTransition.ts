@@ -30,6 +30,8 @@ export function prefersReducedMotion(): boolean {
 export interface TransitionOptions {
   /** Element that morphs into the destination's `os-app` element. */
   morph?: HTMLElement | null;
+  /** Runs inside the same synchronous update as the navigation (e.g. close the palette so its tile is gone in the new snapshot). */
+  before?: () => void;
 }
 
 /**
@@ -68,8 +70,9 @@ export function useOsNavigate(): OsNavigate {
   const navigate = useNavigate();
   return useCallback<OsNavigate>(
     (to, opts = {}) => {
-      const { morph, ...navOpts } = opts;
+      const { morph, before, ...navOpts } = opts;
       const go = () => {
+        before?.();
         if (typeof to === "number") navigate(to);
         else navigate(to, navOpts);
       };

@@ -485,6 +485,59 @@ canvas.dimmed { opacity: 0.55; transition: opacity var(--dur-slow) var(--ease-st
 .launcher-result .lr-kind { margin-left: auto; font-size: var(--fs-1); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
 .launcher-hint { margin-top: var(--s-6); color: var(--text-faint); font-size: var(--fs-2); text-align: center; }
 
+/* command palette (extends the launcher classes) */
+.launcher-panel.palette { width: min(720px, 100%); display: flex; flex-direction: column; max-height: calc(100vh - 2 * var(--s-6)); }
+.palette-brand { text-align: center; margin-bottom: var(--s-5); }
+.palette-crumbs { display: flex; align-items: center; gap: var(--s-3); margin: 0 auto var(--s-4); width: min(560px, 100%); }
+.palette-crumb { font-size: var(--fs-1); font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+.palette .launcher-search { width: min(560px, 100%); margin-bottom: var(--s-4); }
+.palette-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--s-4); padding: 2px; scroll-padding: var(--s-2); }
+.palette-section .launcher-section { display: flex; align-items: center; justify-content: center; gap: var(--s-2); }
+.palette-section.tiles .launcher-grid { padding: var(--s-2) 0 var(--s-1); }
+.palette .launcher-results { width: min(560px, 100%); }
+.palette-row .pr-text { min-width: 0; flex: 1; }
+.palette-row .lr-sub { max-width: 100%; }
+.palette-row .pr-right { display: inline-flex; align-items: center; gap: var(--s-1); margin-left: auto; flex-shrink: 0; }
+.palette-row .pr-badges { display: inline-flex; align-items: center; gap: var(--s-1); }
+.palette-row .pr-chevron { width: 14px; height: 14px; color: var(--text-faint); }
+.palette-row.selected .pr-chevron { color: var(--accent-text); }
+.palette-row:active { transform: scale(0.99); transition: transform 80ms var(--ease-standard); }
+.pr-swatch { display: inline-flex; gap: 2px; }
+.pr-swatch i { width: 8px; height: 16px; border-radius: 2px; display: inline-block; border: 1px solid var(--border-strong); }
+.palette-empty { margin: var(--s-2) 0; color: var(--text-faint); font-size: var(--fs-2); text-align: center; }
+.palette-form { width: min(560px, 100%); margin: 0 auto var(--s-3); display: grid; gap: var(--s-2); }
+.palette-form .modal-intro { margin-bottom: var(--s-1); }
+.palette-form-row { display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: center; gap: var(--s-3); }
+.palette-form-row .label { margin: 0; }
+.palette-form-row select.input.sm { min-height: 30px; }
+.palette-footer { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px; margin-top: var(--s-4); }
+.palette-footer .kbd { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; }
+.palette-footer .kbd svg { width: 11px; height: 11px; }
+.palette-help { margin-left: var(--s-2); }
+
+/* shortcuts sheet */
+.shortcuts-modal { width: min(760px, 100%); }
+.shortcuts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--s-4) var(--s-6); }
+.shortcut-group h3 { margin: 0 0 var(--s-2); }
+.shortcut-row { display: grid; grid-template-columns: minmax(120px, auto) 1fr; gap: var(--s-3); align-items: center; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-3); }
+.shortcut-row:last-child { border-bottom: 0; }
+.shortcut-keys { display: flex; flex-wrap: wrap; gap: 4px; }
+.shortcut-combo { display: inline-flex; gap: 2px; }
+.shortcut-combo + .shortcut-combo::before { content: "/"; color: var(--text-faint); margin: 0 3px; }
+.shortcut-label { color: var(--text-dim); }
+
+/* popover primitive (anchored, non-modal; see primitives.tsx) */
+.popover {
+  position: fixed; z-index: var(--z-drawer);
+  min-width: 180px; max-width: min(380px, calc(100vw - 16px));
+  padding: var(--s-3);
+  background: var(--bg-raise); border: 1px solid var(--border-strong);
+  border-radius: var(--r-3);
+  box-shadow: var(--shadow-drawer), 0 0 24px var(--accent-soft);
+  transform-origin: var(--popover-origin, top center);
+  outline: none;
+}
+
 /* fullscreen app frame: chrome is in normal flow (sticky), never fixed */
 .app-frame { position: absolute; inset: 0; overflow-y: auto; background: var(--bg); display: flex; flex-direction: column; }
 .app-frame-chrome {

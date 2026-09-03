@@ -5,22 +5,25 @@
  * look at a component in every state before wiring it into a view.
  *
  * Open with `npm run gallery` (Vite dev) or `/gallery.html?theme=light` on the
- * built app. Each story section has a stable `#story-<id>` for screenshots.
+ * built app (`&preset=forest|ocean|mono` picks a theme preset). Each story section has a stable `#story-<id>` for screenshots.
  */
-import { StrictMode, useMemo, useState, type ReactNode } from "react";
+import { StrictMode, useMemo, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Play, Sparkles, Trash2 } from "lucide-react";
+import { Bell, Play, Sparkles, Trash2 } from "lucide-react";
 import "../theme.css";
 import "./gallery.css";
 import { I18nContext, type Lang } from "../i18n";
 import { qk } from "../queries";
-import { accentContrast, ensureContrast } from "../color";
+import { applyAccentTokens, applyPreset, isPresetId } from "../theme";
 import { ToastProvider, Modal, StatusBadge, Skeleton, useToast } from "../components/ui";
-import { Badge, Button, EmptyState, Field, Segmented, Tabs } from "../components/primitives";
+import { Badge, Button, EmptyState, Field, Popover, Segmented, Tabs } from "../components/primitives";
+import { CommandPalette } from "../components/CommandPalette";
+import { ShortcutsHelp } from "../components/ShortcutsHelp";
 import { ConfirmProvider, useConfirm } from "../hooks/useConfirm";
-import type { ArtifactEntry, Metrics, RoutineStatus, RunRecord, Skill } from "../api";
+import { NotificationsProvider, useNotifications } from "../hooks/useNotifications";
+import type { ArtifactEntry, Meta, Metrics, RoutineStatus, RunRecord, Skill } from "../api";
 import TodayWidget from "../desktop/widgets/TodayWidget";
 import WorkspaceWidget from "../desktop/widgets/WorkspaceWidget";
 import DeckWidget from "../desktop/widgets/DeckWidget";
@@ -95,14 +98,12 @@ function seededClient(): QueryClient {
 }
 
 /* ---------- shell ---------- */
-function applyTheme(theme: "dark" | "light") {
+const META: Meta = { name: "Mordomo OS", theme: "dark", accentColor: "#f97316", language: "en", setupCompleted: true, version: "gallery" };
+
+function applyTheme(theme: "dark" | "light", preset: string) {
   document.documentElement.dataset.theme = theme;
-  const bg = theme === "dark" ? "#0b0a08" : "#f5f3ee";
-  const accent = "#f97316";
-  const root = document.documentElement.style;
-  root.setProperty("--accent", accent);
-  root.setProperty("--accent-contrast", accentContrast(accent));
-  root.setProperty("--accent-text", ensureContrast(accent, bg, 4.5));
+  const p = applyPreset(isPresetId(preset) ? preset : "hud-orange", { persist: false, accent: false, theme });
+  applyAccentTokens(p.accent, theme, p.bg[theme]);
 }
 
 function Story({ id, title, children }: { id: string; title: string; children: ReactNode }) {
@@ -146,6 +147,47 @@ function Dialogs() {
           </div>
         </Modal>
       )}
+    </>
+  );
+}
+
+function Overlays() {
+  const [pop, setPop] = useState(false);
+  const [palette, setPalette] = useState(false);
+  const [help, setHelp] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  const { items, unread, notify, markAllRead } = useNotifications();
+  return (
+    <>
+      <Row label="popover">
+        <Button ref={anchor} onClick={() => setPop((v) => !v)} aria-expanded={pop}>
+          Open popover
+        </Button>
+        <Popover open={pop} onClose={() => setPop(false)} anchor={anchor} ariaLabel="Model and effort">
+          <div className="stack-sm">
+            <span className="hud-label">Model × effort</span>
+            <Segmented ariaLabel="Effort" size="sm" value="medium" onChange={() => undefined} options={["low", "medium", "high"].map((v) => ({ value: v, label: v }))} />
+            <Button size="sm" variant="primary" onClick={() => setPop(false)}>
+              Apply
+            </Button>
+          </div>
+        </Popover>
+      </Row>
+      <Row label="palette">
+        <Button onClick={() => setPalette(true)}>Command palette</Button>
+        <Button onClick={() => setHelp(true)}>Shortcuts sheet</Button>
+        {palette && <CommandPalette meta={META} onClose={() => setPalette(false)} onMetaChanged={() => undefined} onShortcuts={() => setHelp(true)} />}
+        {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
+      </Row>
+      <Row label="notifications">
+        <Button icon={<Bell aria-hidden />} onClick={() => notify({ kind: "run", title: "Run finished", body: "digest · 25.2 s", href: "/runs", tone: "ok" })}>
+          Push ({unread} unread)
+        </Button>
+        <Button variant="ghost" onClick={markAllRead}>
+          Mark all read
+        </Button>
+        <span className="small">{items.length} in feed</span>
+      </Row>
     </>
   );
 }
@@ -234,6 +276,10 @@ function Gallery() {
         <Dialogs />
       </Story>
 
+      <Story id="overlays" title="Popover, command palette, shortcuts, notifications">
+        <Overlays />
+      </Story>
+
       <Story id="widgets" title="Desktop widgets">
         <div className="story-widgets">
           {[
@@ -271,7 +317,7 @@ function Root() {
   const params = new URLSearchParams(location.search);
   const theme = params.get("theme") === "light" ? "light" : "dark";
   const lang = (params.get("lang") === "pt-BR" ? "pt-BR" : "en") as Lang;
-  applyTheme(theme);
+  applyTheme(theme, params.get("preset") ?? "hud-orange");
   document.documentElement.lang = lang;
   const client = useMemo(seededClient, []);
   const i18n = useMemo(() => ({ lang, setLang: () => undefined }), [lang]);
@@ -280,9 +326,11 @@ function Root() {
       <I18nContext.Provider value={i18n}>
         <ToastProvider>
           <ConfirmProvider>
-            <HashRouter>
-              <Gallery />
-            </HashRouter>
+            <NotificationsProvider>
+              <HashRouter>
+                <Gallery />
+              </HashRouter>
+            </NotificationsProvider>
           </ConfirmProvider>
         </ToastProvider>
       </I18nContext.Provider>

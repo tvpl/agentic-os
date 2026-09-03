@@ -369,7 +369,7 @@ export function Popover({ open, onClose, anchor, children, placement = "bottom-s
       if (!n || el.contains(n) || (a && a.contains(n))) return;
       onCloseRef.current();
     };
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.preventDefault();
       e.stopPropagation();

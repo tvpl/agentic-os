@@ -94,7 +94,7 @@ export const en = {
   "shell.route.missing": "This app is not installed in this build yet.",
   "shell.route.artifacts": "Artifacts",
   "shell.route.generations": "Generations",
-} as const;
+};
 
 export const ptBR = {
   "shell.palette.title": "Paleta de comandos",
