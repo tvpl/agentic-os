@@ -82,6 +82,7 @@ tests/  docs/  scripts/
 - [Backup, restore & uninstall](docs/backup-restore-uninstall.md)
 - [Windows / WSL](docs/windows.md) · [Always-on VPS + Syncthing (optional)](docs/vps-syncthing.md)
 - [Product spec](docs/product-spec.md) · [Validation report](docs/validation-report.md)
+- [Análise: vídeo RoboNuggets/RUBRIC × MordomoOS × open-source (set. 2026)](docs/analysis-2026-09/README.md) · [Audit Sept 2026](docs/audit-2026-09/README.md)
 
 ## Security in one paragraph
 
