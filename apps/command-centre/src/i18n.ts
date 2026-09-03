@@ -501,7 +501,8 @@ const en = {
   ...appsL.en,
   ...backendL.en,
 };
-type Dict = typeof en;
+/** Every string is widened to `string`: locale modules may use `as const`. */
+type Dict = { [K in keyof typeof en]: string };
 
 const basePtBR = {
   ...baseEn,
