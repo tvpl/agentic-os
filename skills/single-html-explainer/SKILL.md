@@ -23,9 +23,10 @@ recommendedModel: null
 recommendedEffort: medium
 mode: read_only
 enabled: true
-version: 1.0.0
+version: 1.1.0
 changelog:
   - "1.0.0 — initial version (MordomoOS seed)"
+  - "1.1.0 — brand/style reference moved into resources/brand.html"
 guardrails:
   - Output is ONE .html file in the artifacts directory; no external CSS/JS/fonts/CDNs.
   - If the subject is a folder, read only non-secret files inside it.
@@ -48,8 +49,10 @@ Create `explainer.html` (one file, self-contained) about the given subject.
    matter for the audience (default: technical).
 2. Draft the narrative first: title → one-paragraph "why this matters" →
    sections with concrete details → a short FAQ or glossary if useful.
-3. Build `explainer.html` in the artifacts directory: semantic HTML, embedded
-   CSS (system font stack, comfortable line length, light/dark via
-   `prefers-color-scheme`), inline SVG only if a diagram genuinely helps.
+3. Read `resources/brand.html` before this step and copy its tokens (palette,
+   type scale, card/tag/table blocks) inline into `explainer.html` in the
+   artifacts directory: semantic HTML, embedded CSS (system font stack,
+   comfortable line length, light/dark via `prefers-color-scheme`), inline SVG
+   only if a diagram genuinely helps.
 4. Verify: valid structure, no external references, headings hierarchical.
 5. Reply with the artifact path and a one-line description of each section.

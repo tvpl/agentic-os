@@ -1,38 +1,11 @@
 /* ==== F-APPS: Skills detail, Settings extras, Setup steps, Pixel Studio ====
    Only tokens from theme.css; animations gated behind reduced-motion. */
 
-/* ---- SKILL.md body (also defined in theme.css by F-SHELL; kept here so the
-   view works regardless of load order) ------------------------------------ */
-.skill-body {
-  display: block;
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: var(--fs-2);
-  line-height: 1.6;
-  color: var(--text);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  background: color-mix(in srgb, var(--bg) 80%, transparent);
-  border: 1px solid var(--border);
-  border-radius: var(--r-2);
-  padding: var(--s-3) var(--s-4);
-  max-height: 60vh;
-  overflow: auto;
-  tab-size: 2;
-}
-.skill-body.numbered { counter-reset: line; }
-.skill-body.numbered .line::before {
-  counter-increment: line;
-  content: counter(line);
-  display: inline-block;
-  width: 3ch;
-  margin-right: var(--s-2);
-  color: var(--text-faint);
-  text-align: right;
-  user-select: none;
-}
-.skill-body .line { display: block; }
+/* ---- SKILL.md body ------------------------------------------------------
+   `.skill-body` (mono, --fs-2, pre-wrap, numbered gutter) lives in theme.css
+   and is owned by F-SHELL; only the focus ring is added here. ------------- */
 .skill-body:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.skill-body .line { display: block; }
 
 /* ---- rendered markdown ------------------------------------------------- */
 .apps-md { font-size: var(--fs-3); line-height: var(--lh-body); color: var(--text); max-height: 60vh; overflow: auto; padding: var(--s-2) var(--s-1); }

@@ -1,6 +1,6 @@
 import { useContext, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { CheckCircle2, Download, RefreshCw, Stethoscope } from "lucide-react";
+import { ArrowRight, Bell, BellOff, Check, CheckCircle2, Download, Eye, EyeOff, Plus, RefreshCw, Stethoscope, TerminalSquare, Trash2, Webhook, X } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type DoctorReport, type ProviderId, type ProviderSnapshot } from "../api";
 import { I18nContext, useLocale, useT, type Lang } from "../i18n";
@@ -8,7 +8,12 @@ import { qk, useApiQuery, useOsProviders } from "../queries";
 import { ErrorBox, Skeleton, formatBytes, timeAgo, useToast } from "../components/ui";
 import { Badge, Button, EmptyState, Field, Tabs } from "../components/primitives";
 import { useConfirm } from "../hooks/useConfirm";
-import { errorMessage, isAbsolutePath, isOffline } from "./shared";
+import { getNotifySound, setNotifySound } from "../hooks/useNotifications";
+import { PRESETS, applyPreset, type PresetId } from "../theme";
+import { DEFAULT_LAYOUT, WIDGET_ORDER, baseId, isWidgetId, type WidgetBox } from "../desktop/defaultLayout";
+import { WIDGET_REGISTRY } from "../desktop/registry";
+import { errorMessage, isAbsolutePath, isOffline, slugify } from "./shared";
+import "./apps.css";
 
 interface SettingsShape {
   systemName: string;
@@ -24,6 +29,27 @@ interface SettingsShape {
   excludes: string[];
   areas: string[];
   setupCompleted: boolean;
+  /** Theme preset id (F-SHELL `PRESETS`). */
+  themePreset: PresetId;
+  microApps: MicroApp[];
+  dashboardLayout: Record<string, WidgetBox>;
+  routines: { allowWebhooks: boolean; heartbeatIntervalMinutes: number; heartbeatOkToken: string };
+  connectors: { dataCacheTtlMs: number; dataTimeoutMs: number; allowedCommands: string[] };
+}
+
+/** Micro app row (mirrors `MicroAppSchema` in core/src/config/schema.ts). */
+export interface MicroApp {
+  id: string;
+  name: string;
+  description: string;
+  href: string;
+}
+
+/** Internal route ("/pixel") or an http(s) URL — same rule the desktop widget applies. */
+export function isValidMicroAppHref(href: string): boolean {
+  const h = href.trim();
+  if (h.startsWith("/")) return !h.startsWith("//");
+  return /^https?:\/\/\S+$/i.test(h);
 }
 
 interface Approval {
@@ -40,8 +66,8 @@ interface BackupInfo {
   sizeBytes: number;
 }
 
-type TabId = "identity" | "providers" | "memory" | "security" | "backups" | "diagnostics";
-const TAB_IDS: TabId[] = ["identity", "providers", "memory", "security", "backups", "diagnostics"];
+type TabId = "identity" | "theme" | "providers" | "memory" | "desktop" | "security" | "notifications" | "backups" | "diagnostics";
+const TAB_IDS: TabId[] = ["identity", "theme", "providers", "memory", "desktop", "security", "notifications", "backups", "diagnostics"];
 const PROFILES = ["read_only", "review_before_write", "controlled_write", "approved_automation"] as const;
 
 export default function Settings({ onMetaChanged }: { onMetaChanged: () => void }) {
@@ -84,9 +110,12 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
 
   const tabs: Array<{ id: TabId; label: string }> = [
     { id: "identity", label: t("settings.identity") },
+    { id: "theme", label: t("apps.settings.tabTheme") },
     { id: "providers", label: t("settings.providers") },
     { id: "memory", label: t("settings.memory") },
+    { id: "desktop", label: t("apps.settings.tabDesktop") },
     { id: "security", label: t("settings.security") },
+    { id: "notifications", label: t("apps.settings.tabNotifications") },
     { id: "backups", label: t("settings.backups") },
     { id: "diagnostics", label: t("settings.doctor") },
   ];
@@ -101,9 +130,12 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
       <Tabs id="settings-tabs" tabs={tabs} active={tab} onChange={(id) => setTab(id as TabId)} ariaLabel={t("settings.title")} />
       <div className="tab-panel" role="tabpanel" id={`settings-tabs-panel-${tab}`} aria-labelledby={`settings-tabs-tab-${tab}`}>
         {tab === "identity" && <IdentityTab s={s} put={put} setLang={setLang} />}
+        {tab === "theme" && <ThemeTab s={s} put={put} />}
         {tab === "providers" && <ProvidersTab s={s} put={put} />}
         {tab === "memory" && <MemoryTab s={s} put={put} />}
+        {tab === "desktop" && <DesktopTab s={s} put={put} />}
         {tab === "security" && <SecurityTab s={s} put={put} />}
+        {tab === "notifications" && <NotificationsTab />}
         {tab === "backups" && <BackupsTab />}
         {tab === "diagnostics" && <DiagnosticsTab />}
       </div>
@@ -268,9 +300,7 @@ function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
                 </option>
               ))}
             </select>
-            <Button size="sm" variant="ghost" aria-label={`${t("common.delete")} ${f.path}`} title={t("common.delete")} onClick={() => void removeFolder(f.path)}>
-              ✕
-            </Button>
+            <Button size="sm" variant="ghost" icon={<X aria-hidden />} aria-label={`${t("common.delete")} ${f.path}`} title={t("common.delete")} onClick={() => void removeFolder(f.path)} />
           </div>
         ))}
       </div>
@@ -301,7 +331,7 @@ function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
         </div>
       </Field>
       <p className="hint">
-        <RefreshCw size={11} style={{ verticalAlign: -1 }} aria-hidden /> {t("brain.refresh")}: {t("nav.brain")} → {t("brain.refresh")}
+        <RefreshCw size={11} style={{ verticalAlign: -1 }} aria-hidden /> {t("brain.refresh")}: {t("nav.brain")} <ArrowRight size={11} style={{ verticalAlign: -1 }} aria-hidden /> {t("brain.refresh")}
       </p>
       <Field label={t("settings.areas")} htmlFor="st-areas" hint={t("settings.areasHint")}>
         <input
@@ -367,6 +397,40 @@ function SecurityTab({ s, put }: { s: SettingsShape; put: Put }) {
             </li>
           ))}
         </ul>
+      </div>
+      <div className="card stack">
+        <h2>{t("apps.settings.automation")}</h2>
+        <div className="apps-sound">
+          <div className="min0">
+            <strong>
+              <Webhook aria-hidden style={{ verticalAlign: -2, marginRight: 6 }} /> {t("apps.settings.webhooks")}
+            </strong>
+            <p className="hint">{t("apps.settings.webhooksHint")}</p>
+          </div>
+          <Button
+            variant={s.routines.allowWebhooks ? "outline" : "secondary"}
+            aria-pressed={s.routines.allowWebhooks}
+            onClick={() => void put({ routines: { ...s.routines, allowWebhooks: !s.routines.allowWebhooks } })}
+          >
+            {s.routines.allowWebhooks ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
+          </Button>
+        </div>
+        <Field label={t("apps.settings.allowedCommands")} htmlFor="st-allowed-cmds" hint={t("apps.settings.allowedCommandsHint")}>
+          <input
+            key={s.connectors.allowedCommands.join()}
+            id="st-allowed-cmds"
+            className="input mono"
+            placeholder="npx, /usr/local/bin/mcp-server"
+            defaultValue={s.connectors.allowedCommands.join(", ")}
+            onBlur={(e) => {
+              const list = e.target.value.split(",").map((x) => x.trim()).filter(Boolean);
+              if (list.join() !== s.connectors.allowedCommands.join()) void put({ connectors: { ...s.connectors, allowedCommands: list } });
+            }}
+          />
+        </Field>
+        <p className="hint">
+          <TerminalSquare size={11} style={{ verticalAlign: -1 }} aria-hidden /> {t("apps.settings.allowedCommandsExample")}
+        </p>
       </div>
       <div className="card">
         <h2>{t("settings.approvals")}</h2>
@@ -479,6 +543,174 @@ function DiagnosticsTab() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------- theme presets ---- */
+
+function ThemeTab({ s, put }: { s: SettingsShape; put: Put }) {
+  const t = useT();
+  const toast = useToast();
+  const current = s.themePreset;
+  const pick = (id: PresetId) => {
+    const preset = applyPreset(id);
+    toast(t("apps.settings.presetApplied", { name: preset.label }), "ok");
+    void put({ themePreset: id, accentColor: preset.accent }, true);
+  };
+  return (
+    <div className="card stack">
+      <div>
+        <h2>{t("apps.settings.presets")}</h2>
+        <p className="hint">{t("apps.settings.presetsHint")}</p>
+      </div>
+      <div className="apps-presets">
+        {PRESETS.map((preset) => (
+          <button key={preset.id} type="button" className="apps-preset" aria-pressed={preset.id === current} onClick={() => pick(preset.id)}>
+            <span className="swatch" aria-hidden>
+              {preset.swatch.map((c, i) => (
+                <span key={i} style={{ background: c }} />
+              ))}
+            </span>
+            <span className="name">
+              {preset.label}
+              {preset.id === current && <Check aria-hidden />}
+            </span>
+            <span className="accent mono">{preset.accent}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------- desktop: widgets + micro apps -- */
+
+function DesktopTab({ s, put }: { s: SettingsShape; put: Put }) {
+  const t = useT();
+  const layout = s.dashboardLayout ?? {};
+  const ids = [...new Set([...WIDGET_ORDER, ...Object.keys(layout)])].filter((id) => isWidgetId(baseId(id)));
+
+  const toggleWidget = (id: string) => {
+    const base = baseId(id);
+    const fallback = (isWidgetId(base) ? DEFAULT_LAYOUT[base] : undefined) ?? { x: 0, y: 0, w: 6, h: 4, visible: true };
+    const box: WidgetBox = layout[id] ?? { ...fallback, visible: false };
+    void put({ dashboardLayout: { ...layout, [id]: { ...box, visible: !(box.visible ?? true) } } }, true);
+  };
+
+  return (
+    <div className="stack">
+      <div className="card stack">
+        <div>
+          <h2>{t("apps.settings.widgets")}</h2>
+          <p className="hint">{t("apps.settings.widgetsHint")}</p>
+        </div>
+        <div className="apps-widgets">
+          {ids.map((id) => {
+            const base = baseId(id);
+            const def = isWidgetId(base) ? WIDGET_REGISTRY[base] : undefined;
+            const visible = layout[id]?.visible ?? true;
+            return (
+              <button key={id} type="button" className="apps-widget-toggle" aria-pressed={visible} onClick={() => toggleWidget(id)}>
+                {visible ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
+                <span className="truncate">{def ? t(def.titleKey) : id}</span>
+                <span className="id">{id}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <MicroAppsCard s={s} put={put} />
+    </div>
+  );
+}
+
+function MicroAppsCard({ s, put }: { s: SettingsShape; put: Put }) {
+  const t = useT();
+  const [rows, setRows] = useState<MicroApp[]>(() => s.microApps ?? []);
+
+  const commit = (next: MicroApp[]) => {
+    setRows(next);
+    const clean = next.filter((r) => r.name.trim() !== "" && isValidMicroAppHref(r.href));
+    void put({ microApps: clean }, true);
+  };
+  const patchRow = (i: number, patch: Partial<MicroApp>) => {
+    const next = rows.map((r, j) => (j === i ? { ...r, ...patch } : r));
+    setRows(next);
+  };
+  const addRow = () => {
+    const id = `app-${rows.length + 1}`;
+    setRows([...rows, { id, name: "", description: "", href: "" }]);
+  };
+
+  return (
+    <div className="card stack">
+      <div>
+        <h2>{t("apps.settings.microApps")}</h2>
+        <p className="hint">{t("apps.settings.microAppsHint")}</p>
+      </div>
+      {rows.length === 0 && <p className="widget-muted">{t("apps.settings.noMicroApps")}</p>}
+      {rows.map((row, i) => {
+        const hrefOk = row.href.trim() === "" || isValidMicroAppHref(row.href);
+        return (
+          <div className="apps-ma-row" key={i}>
+            <Field label={t("apps.settings.maName")} htmlFor={`ma-name-${i}`}>
+              <input
+                id={`ma-name-${i}`}
+                className="input"
+                value={row.name}
+                onChange={(e) => patchRow(i, { name: e.target.value, id: slugify(e.target.value) || row.id })}
+                onBlur={() => commit(rows)}
+              />
+            </Field>
+            <Field label={t("apps.settings.maDesc")} htmlFor={`ma-desc-${i}`}>
+              <input id={`ma-desc-${i}`} className="input" value={row.description} onChange={(e) => patchRow(i, { description: e.target.value })} onBlur={() => commit(rows)} />
+            </Field>
+            <Field label={t("apps.settings.maHref")} htmlFor={`ma-href-${i}`} error={hrefOk ? undefined : t("apps.settings.maHrefInvalid")}>
+              <input id={`ma-href-${i}`} className="input mono" value={row.href} aria-invalid={!hrefOk} placeholder="/pixel" onChange={(e) => patchRow(i, { href: e.target.value })} onBlur={() => commit(rows)} />
+            </Field>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<Trash2 aria-hidden />}
+              aria-label={`${t("common.delete")} ${row.name || row.id}`}
+              title={t("common.delete")}
+              onClick={() => commit(rows.filter((_, j) => j !== i))}
+            />
+          </div>
+        );
+      })}
+      <div>
+        <Button size="sm" icon={<Plus aria-hidden />} onClick={addRow}>
+          {t("apps.settings.addMicroApp")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------- notifications ----- */
+
+function NotificationsTab() {
+  const t = useT();
+  const [sound, setSound] = useState(() => getNotifySound());
+  const toggle = () => {
+    const next = !sound;
+    setNotifySound(next);
+    setSound(next);
+  };
+  return (
+    <div className="card stack">
+      <div className="apps-sound">
+        <div className="min0">
+          <strong>{t("apps.settings.sound")}</strong>
+          <p className="hint">{t("apps.settings.soundHint")}</p>
+        </div>
+        <Button variant={sound ? "outline" : "secondary"} aria-pressed={sound} icon={sound ? <Bell aria-hidden /> : <BellOff aria-hidden />} onClick={toggle}>
+          {sound ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
+        </Button>
+      </div>
+      <p className="hint">{t("apps.settings.notificationsHint")}</p>
     </div>
   );
 }

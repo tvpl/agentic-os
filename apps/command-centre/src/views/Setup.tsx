@@ -1,16 +1,26 @@
 import { useContext, useEffect, useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Link } from "react-router-dom";
+import { CalendarDays, Check, Copy, ExternalLink, Eye, EyeOff, Mail, Plug } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
-import { api, type ProviderId, type ProviderSnapshot } from "../api";
+import { api, type Connector, type ProviderId, type ProviderSnapshot } from "../api";
 import { I18nContext, useT, type Lang } from "../i18n";
-import { useApiQuery } from "../queries";
+import { qk, useApiQuery } from "../queries";
 import { ErrorBox, Skeleton, useToast } from "../components/ui";
-import { Button, Field } from "../components/primitives";
+import { Badge, Button, Field } from "../components/primitives";
+import { PRESETS, applyPreset, type PresetId } from "../theme";
+import { DEFAULT_LAYOUT, WIDGET_ORDER, type LayoutMap } from "../desktop/defaultLayout";
+import { WIDGET_REGISTRY } from "../desktop/registry";
 import { copyText, errorMessage, isAbsolutePath, isOffline } from "./shared";
+import "./apps.css";
+
+/** Connectors offered in the "connect data" step (the widgets that read them). */
+const DATA_KINDS = /calendar|mail|email/i;
+const LAST_STEP = 4;
 
 /**
- * In-UI setup for when the guided terminal setup was skipped: three steps
- * (providers → identity → folders). Everything is editable later in Settings.
+ * In-UI setup for when the guided terminal setup was skipped: five steps
+ * (providers → identity → folders → connect data → your desktop).
+ * Everything is editable later in Settings.
  */
 export default function Setup({ onDone }: { onDone: () => void }) {
   const t = useT();
@@ -25,6 +35,8 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   const [folder, setFolder] = useState("");
   const [folderError, setFolderError] = useState<string | null>(null);
   const [phase, setPhase] = useState<"idle" | "saving" | "indexing">("idle");
+  const [preset, setPreset] = useState<PresetId>("hud-orange");
+  const [widgets, setWidgets] = useState<Set<string>>(() => new Set(WIDGET_ORDER.filter((id) => DEFAULT_LAYOUT[id]?.visible)));
 
   useEffect(() => {
     if (!providers.data || enabled) return;
@@ -44,6 +56,12 @@ export default function Setup({ onDone }: { onDone: () => void }) {
       for (const id of ["claude", "cursor", "codex"] as ProviderId[]) provSettings[id] = { ...provSettings[id], enabled: enabled[id] };
       const chosenDefault = enabled[defaultProvider] ? defaultProvider : ((Object.entries(enabled).find(([, v]) => v)?.[0] as ProviderId | undefined) ?? "claude");
       const folders = current.indexedFolders as Array<Record<string, unknown>>;
+      const chosenPreset = PRESETS.find((p) => p.id === preset) ?? PRESETS[0]!;
+      const dashboardLayout: LayoutMap = {};
+      for (const id of WIDGET_ORDER) {
+        const box = DEFAULT_LAYOUT[id];
+        if (box) dashboardLayout[id] = { ...box, visible: widgets.has(id) };
+      }
       await api.put("/api/settings", {
         systemName: name.trim() || "MordomoOS",
         language: lang,
@@ -51,6 +69,9 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         defaultProvider: chosenDefault,
         providers: provSettings,
         indexedFolders: folder.trim() ? [...folders, { path: folder.trim(), area: null, enabled: true }] : folders,
+        themePreset: chosenPreset.id,
+        accentColor: chosenPreset.accent,
+        dashboardLayout,
         setupCompleted: true,
       });
       if (folder.trim()) {
@@ -68,7 +89,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     },
   });
 
-  const steps = [t("setup.stepProviders"), t("setup.stepIdentity"), t("setup.stepFolders")];
+  const steps = [t("setup.stepProviders"), t("setup.stepIdentity"), t("setup.stepFolders"), t("apps.setup.stepConnect"), t("apps.setup.stepDesktop")];
   const anyEnabled = enabled ? Object.values(enabled).some(Boolean) : false;
   const folderOk = !folder.trim() || isAbsolutePath(folder);
 
@@ -167,13 +188,32 @@ export default function Setup({ onDone }: { onDone: () => void }) {
                 />
               </Field>
             )}
+            {step === 3 && <ConnectStep />}
+            {step === 4 && (
+              <DesktopStep
+                preset={preset}
+                onPreset={(id) => {
+                  setPreset(id);
+                  applyPreset(id);
+                }}
+                widgets={widgets}
+                onToggleWidget={(id) =>
+                  setWidgets((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(id)) next.delete(id);
+                    else next.add(id);
+                    return next;
+                  })
+                }
+              />
+            )}
             <div className="modal-actions">
               {step > 0 && (
                 <Button variant="secondary" onClick={() => setStep((s) => s - 1)} disabled={finish.isPending}>
                   {t("common.back")}
                 </Button>
               )}
-              {step < 2 ? (
+              {step < LAST_STEP ? (
                 <Button variant="primary" onClick={() => setStep((s) => s + 1)} disabled={step === 0 && !anyEnabled}>
                   {t("common.next")}
                 </Button>
@@ -185,6 +225,107 @@ export default function Setup({ onDone }: { onDone: () => void }) {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------- connect data step ---- */
+
+function ConnectStep() {
+  const t = useT();
+  const connectors = useApiQuery<Connector[]>(qk.connectors, "/api/connectors");
+  const relevant = (connectors.data ?? []).filter((c) => DATA_KINDS.test(c.kind) || DATA_KINDS.test(c.id));
+  return (
+    <div className="stack">
+      <p className="hint">{t("apps.setup.connectHint")}</p>
+      {connectors.isPending && !connectors.data ? (
+        <Skeleton lines={3} />
+      ) : relevant.length === 0 ? (
+        <p className="widget-muted">{t("apps.setup.noConnectors")}</p>
+      ) : (
+        <ul className="apps-conn-list">
+          {relevant.map((c) => (
+            <ConnectorRow key={c.id} connector={c} />
+          ))}
+        </ul>
+      )}
+      <Link className="btn sm" to="/connectors">
+        <Plug aria-hidden /> {t("apps.setup.openConnectors")} <ExternalLink aria-hidden />
+      </Link>
+    </div>
+  );
+}
+
+function ConnectorRow({ connector }: { connector: Connector }) {
+  const t = useT();
+  const setup = useApiQuery<{ id: string; steps: string[] }>(["connector-setup", connector.id], `/api/connectors/${encodeURIComponent(connector.id)}/setup`, { staleTime: 60_000 });
+  const configured = connector.status === "configured";
+  return (
+    <li>
+      <div className="apps-conn-row">
+        {/mail|email/i.test(connector.kind) || /mail|email/i.test(connector.id) ? <Mail aria-hidden /> : <CalendarDays aria-hidden />}
+        <span className="name truncate">{connector.name}</span>
+        <Badge kind="state" tone={configured ? "ok" : "dim"}>
+          {t(configured ? "apps.setup.status.configured" : "apps.setup.status.not_configured")}
+        </Badge>
+      </div>
+      {(setup.data?.steps ?? []).length > 0 && (
+        <ol className="plain-list meta">
+          {(setup.data?.steps ?? []).map((line, i) => (
+            <li key={i} className="mono">
+              {line}
+            </li>
+          ))}
+        </ol>
+      )}
+    </li>
+  );
+}
+
+/* ------------------------------------------------------- your desktop ------ */
+
+function DesktopStep({
+  preset,
+  onPreset,
+  widgets,
+  onToggleWidget,
+}: {
+  preset: PresetId;
+  onPreset: (id: PresetId) => void;
+  widgets: ReadonlySet<string>;
+  onToggleWidget: (id: string) => void;
+}) {
+  const t = useT();
+  return (
+    <div className="stack">
+      <p className="hint">{t("apps.setup.desktopHint")}</p>
+      <div className="apps-presets">
+        {PRESETS.map((p) => (
+          <button key={p.id} type="button" className="apps-preset" aria-pressed={p.id === preset} onClick={() => onPreset(p.id)}>
+            <span className="swatch" aria-hidden>
+              {p.swatch.map((c, i) => (
+                <span key={i} style={{ background: c }} />
+              ))}
+            </span>
+            <span className="name">
+              {p.label}
+              {p.id === preset && <Check aria-hidden />}
+            </span>
+            <span className="accent mono">{p.accent}</span>
+          </button>
+        ))}
+      </div>
+      <div className="apps-widgets">
+        {WIDGET_ORDER.map((id) => {
+          const on = widgets.has(id);
+          return (
+            <button key={id} type="button" className="apps-widget-toggle" aria-pressed={on} onClick={() => onToggleWidget(id)}>
+              {on ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
+              <span className="truncate">{t(WIDGET_REGISTRY[id].titleKey)}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

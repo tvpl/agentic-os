@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, beforeAll, afterAll, vi } from "vitest";
 import path from "node:path";
 import {
   RoutineScheduler,
@@ -42,7 +42,8 @@ let runs: RunManager;
 let store: RoutineStore;
 let scheduler: RoutineScheduler;
 
-const adapterFor = (_id: ProviderId): AgentAdapter => new ClaudeAdapter({ binaryPath: path.join(FAKE_BIN, "claude") });
+const adapterFor = (_id: ProviderId): AgentAdapter =>
+  new ClaudeAdapter({ binaryPath: path.join(FAKE_BIN, "claude") });
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function routine(overrides: Partial<Routine> & { id: string }): Routine {
@@ -55,7 +56,9 @@ beforeEach(() => {
   settings = new SettingsStore(ctx.paths);
   runs = new RunManager(db, ctx.paths, () => settings.load(), adapterFor);
   store = new RoutineStore(ctx.paths);
-  scheduler = new RoutineScheduler(db, ctx.paths, store, runs, new SkillCatalog(ctx.paths), () => settings.load());
+  scheduler = new RoutineScheduler(db, ctx.paths, store, runs, new SkillCatalog(ctx.paths), () =>
+    settings.load(),
+  );
 });
 
 afterEach(async () => {
@@ -89,7 +92,12 @@ describe("routines v2 · schema and validation", () => {
         routine({
           id: "g",
           kind: "heartbeat",
-          heartbeat: { intervalMinutes: 10, quiet: true, okToken: "OK", activeHours: { start: "09:00", end: "09:00", tz: "" } },
+          heartbeat: {
+            intervalMinutes: 10,
+            quiet: true,
+            okToken: "OK",
+            activeHours: { start: "09:00", end: "09:00", tz: "" },
+          },
         }),
       ),
     ).toThrow(/at least one minute/);
@@ -97,17 +105,35 @@ describe("routines v2 · schema and validation", () => {
   });
 
   it("refuses an on-exit routine that would trigger on its own skill", () => {
-    const r = routine({ id: "loop", skillSlug: "digest", prompt: null, kind: "on-exit", onExit: { skillSlug: "digest", statuses: ["done"] } });
+    const r = routine({
+      id: "loop",
+      skillSlug: "digest",
+      prompt: null,
+      kind: "on-exit",
+      onExit: { skillSlug: "digest", statuses: ["done"] },
+    });
     expect(() => validateRoutine(r, validateCron)).toThrow(/infinite loop/i);
   });
 
   it("refuses webhook delivery unless the settings flag allows it, and validates the URL", () => {
-    const r = routine({ id: "hook", kind: "every", every: { value: 5, unit: "minutes" }, delivery: "webhook", webhookUrl: "https://example.test/x" });
+    const r = routine({
+      id: "hook",
+      kind: "every",
+      every: { value: 5, unit: "minutes" },
+      delivery: "webhook",
+      webhookUrl: "https://example.test/x",
+    });
     expect(() => validateRoutine(r, validateCron)).toThrow(/allowWebhooks/);
     expect(() => validateRoutine(r, validateCron, { allowWebhooks: true })).not.toThrow();
-    expect(() => validateRoutine({ ...r, webhookUrl: null }, validateCron, { allowWebhooks: true })).toThrow(/needs "webhookUrl"/);
-    expect(() => validateRoutine({ ...r, webhookUrl: "ftp://x/y" }, validateCron, { allowWebhooks: true })).toThrow(/http\(s\)/);
-    expect(() => validateRoutine({ ...r, webhookUrl: "not a url" }, validateCron, { allowWebhooks: true })).toThrow(/Invalid webhookUrl/);
+    expect(() => validateRoutine({ ...r, webhookUrl: null }, validateCron, { allowWebhooks: true })).toThrow(
+      /needs "webhookUrl"/,
+    );
+    expect(() =>
+      validateRoutine({ ...r, webhookUrl: "ftp://x/y" }, validateCron, { allowWebhooks: true }),
+    ).toThrow(/http\(s\)/);
+    expect(() =>
+      validateRoutine({ ...r, webhookUrl: "not a url" }, validateCron, { allowWebhooks: true }),
+    ).toThrow(/Invalid webhookUrl/);
   });
 
   it("requires a remote name for a remote runner", () => {
@@ -117,7 +143,13 @@ describe("routines v2 · schema and validation", () => {
   });
 
   it("the store refuses a webhook routine by default", () => {
-    const r = routine({ id: "hooked", kind: "every", every: { value: 5, unit: "minutes" }, delivery: "webhook", webhookUrl: "https://x.test/y" });
+    const r = routine({
+      id: "hooked",
+      kind: "every",
+      every: { value: 5, unit: "minutes" },
+      delivery: "webhook",
+      webhookUrl: "https://x.test/y",
+    });
     expect(() => store.save(r)).toThrow(/allowWebhooks/);
     expect(() => store.save(r, { allowWebhooks: true })).not.toThrow();
   });
@@ -161,20 +193,34 @@ describe("routines v2 · nextRunAt per kind", () => {
       kind: "heartbeat",
       createdAt: created,
       timezone: "UTC",
-      heartbeat: { intervalMinutes: 60, quiet: true, okToken: "HEARTBEAT_OK", activeHours: { start: "09:00", end: "17:00", tz: "UTC" } },
+      heartbeat: {
+        intervalMinutes: 60,
+        quiet: true,
+        okToken: "HEARTBEAT_OK",
+        activeHours: { start: "09:00", end: "17:00", tz: "UTC" },
+      },
     });
     expect(nextHeartbeatRun(day, at("2026-09-03T03:00:00Z"), "UTC")).toBe(at("2026-09-03T09:00:00Z"));
     expect(nextHeartbeatRun(day, at("2026-09-03T17:00:00Z"), "UTC")).toBe(at("2026-09-04T09:00:00Z"));
 
-    const night = { ...day, heartbeat: { ...day.heartbeat!, activeHours: { start: "22:00", end: "06:00", tz: "UTC" } } };
+    const night = {
+      ...day,
+      heartbeat: { ...day.heartbeat!, activeHours: { start: "22:00", end: "06:00", tz: "UTC" } },
+    };
     expect(nextHeartbeatRun(night, at("2026-09-03T12:00:00Z"), "UTC")).toBe(at("2026-09-03T22:00:00Z"));
-    expect(isWithinActiveHours(at("2026-09-03T23:30:00Z"), { start: "22:00", end: "06:00", tz: "UTC" }, "UTC")).toBe(true);
-    expect(isWithinActiveHours(at("2026-09-03T12:00:00Z"), { start: "22:00", end: "06:00", tz: "UTC" }, "UTC")).toBe(false);
+    expect(
+      isWithinActiveHours(at("2026-09-03T23:30:00Z"), { start: "22:00", end: "06:00", tz: "UTC" }, "UTC"),
+    ).toBe(true);
+    expect(
+      isWithinActiveHours(at("2026-09-03T12:00:00Z"), { start: "22:00", end: "06:00", tz: "UTC" }, "UTC"),
+    ).toBe(false);
     expect(isWithinActiveHours(at("2026-09-03T12:00:00Z"), null, "UTC")).toBe(true);
   });
 
   it("a disabled routine never reports a next run", () => {
-    expect(nextRunAt(routine({ id: "off", kind: "every", every: { value: 1, unit: "hours" }, enabled: false }))).toBeNull();
+    expect(
+      nextRunAt(routine({ id: "off", kind: "every", every: { value: 1, unit: "hours" }, enabled: false })),
+    ).toBeNull();
   });
 
   it("startOfDayIn respects the timezone", () => {
@@ -214,7 +260,14 @@ describe("routines v2 · scheduler", () => {
   });
 
   it("catches a missed one-shot up when the policy says so", async () => {
-    store.save(routine({ id: "boot-once", kind: "at", at: new Date(Date.now() - 60_000).toISOString(), missedPolicy: "run_on_boot" }));
+    store.save(
+      routine({
+        id: "boot-once",
+        kind: "at",
+        at: new Date(Date.now() - 60_000).toISOString(),
+        missedPolicy: "run_on_boot",
+      }),
+    );
     scheduler.start();
     await wait(80);
     scheduler.stop();
@@ -232,7 +285,11 @@ describe("routines v2 · scheduler", () => {
       }),
     );
     store.save(
-      routine({ id: "after-other", kind: "on-exit", onExit: { skillSlug: "something-else", statuses: ["queued"] } }),
+      routine({
+        id: "after-other",
+        kind: "on-exit",
+        onExit: { skillSlug: "something-else", statuses: ["queued"] },
+      }),
     );
     scheduler.start();
     const trigger = runs.create({
@@ -258,52 +315,70 @@ describe("routines v2 · scheduler", () => {
     expect(scheduler.history("after-other")).toHaveLength(0);
   }, 15_000);
 
-  it.skipIf(!FAKE_CLIS_RUNNABLE)("marks a heartbeat fire quiet when the summary carries the OK token", async () => {
-    // The fake CLI always answers "All done. …", so that string is our OK token.
-    store.save(
-      routine({
-        id: "hb-quiet",
-        kind: "heartbeat",
-        heartbeat: { intervalMinutes: 60, quiet: true, okToken: "All done", activeHours: null },
-      }),
-    );
-    await scheduler.fire("hb-quiet");
-    await scheduler.drain();
-    expect(scheduler.history("hb-quiet")[0]!.outcome).toBe("quiet");
-  }, 20_000);
-
-  it.skipIf(!FAKE_CLIS_RUNNABLE)("raises an alert when a heartbeat fire does not carry the token", async () => {
-    store.save(
-      routine({
-        id: "hb-alert",
-        kind: "heartbeat",
-        heartbeat: { intervalMinutes: 60, quiet: true, okToken: "HEARTBEAT_OK", activeHours: null },
-      }),
-    );
-    const alerts: unknown[] = [];
-    const off = events.subscribe((e) => e.type === ("routine.alert" as typeof e.type) && alerts.push(e.payload));
-    try {
-      await scheduler.fire("hb-alert");
+  it.skipIf(!FAKE_CLIS_RUNNABLE)(
+    "marks a heartbeat fire quiet when the summary carries the OK token",
+    async () => {
+      // The fake CLI always answers "All done. …", so that string is our OK token.
+      store.save(
+        routine({
+          id: "hb-quiet",
+          kind: "heartbeat",
+          heartbeat: { intervalMinutes: 60, quiet: true, okToken: "All done", activeHours: null },
+        }),
+      );
+      await scheduler.fire("hb-quiet");
       await scheduler.drain();
-    } finally {
-      off();
-    }
-    expect(scheduler.history("hb-alert")[0]!.outcome).toBe("alert");
-    expect(alerts).toHaveLength(1);
-  }, 20_000);
+      expect(scheduler.history("hb-quiet")[0]!.outcome).toBe("quiet");
+    },
+    20_000,
+  );
 
-  it.skipIf(!FAKE_CLIS_RUNNABLE)("tags routine runs with the routine id and honours the isolated context", async () => {
-    store.save(routine({ id: "iso", kind: "every", every: { value: 60, unit: "minutes" }, context: "isolated" }));
-    const { runId } = await scheduler.fire("iso");
-    await scheduler.drain();
-    const record = runs.get(runId)!;
-    expect(record.routineId).toBe("iso");
-    expect(record.origin).toBe("routine");
-    expect(record.cwd).not.toBe(ctx.paths.home);
-  }, 20_000);
+  it.skipIf(!FAKE_CLIS_RUNNABLE)(
+    "raises an alert when a heartbeat fire does not carry the token",
+    async () => {
+      store.save(
+        routine({
+          id: "hb-alert",
+          kind: "heartbeat",
+          heartbeat: { intervalMinutes: 60, quiet: true, okToken: "HEARTBEAT_OK", activeHours: null },
+        }),
+      );
+      const alerts: unknown[] = [];
+      const off = events.subscribe(
+        (e) => e.type === ("routine.alert" as typeof e.type) && alerts.push(e.payload),
+      );
+      try {
+        await scheduler.fire("hb-alert");
+        await scheduler.drain();
+      } finally {
+        off();
+      }
+      expect(scheduler.history("hb-alert")[0]!.outcome).toBe("alert");
+      expect(alerts).toHaveLength(1);
+    },
+    20_000,
+  );
+
+  it.skipIf(!FAKE_CLIS_RUNNABLE)(
+    "tags routine runs with the routine id and honours the isolated context",
+    async () => {
+      store.save(
+        routine({ id: "iso", kind: "every", every: { value: 60, unit: "minutes" }, context: "isolated" }),
+      );
+      const { runId } = await scheduler.fire("iso");
+      await scheduler.drain();
+      const record = runs.get(runId)!;
+      expect(record.routineId).toBe("iso");
+      expect(record.origin).toBe("routine");
+      expect(record.cwd).not.toBe(ctx.paths.home);
+    },
+    20_000,
+  );
 
   it("keeps a silent delivery out of the event bus", async () => {
-    store.save(routine({ id: "quiet", kind: "every", every: { value: 60, unit: "minutes" }, delivery: "none" }));
+    store.save(
+      routine({ id: "quiet", kind: "every", every: { value: 60, unit: "minutes" }, delivery: "none" }),
+    );
     const seen: unknown[] = [];
     const off = events.subscribe((e) => e.type === "routine.fired" && seen.push(e.payload));
     try {
@@ -319,7 +394,15 @@ describe("routines v2 · scheduler", () => {
 describe("routines v2 · runner, summary and hygiene", () => {
   it("reports the runner from the routine file and the service probe", () => {
     store.save(routine({ id: "local-one", kind: "every", every: { value: 60, unit: "minutes" } }));
-    store.save(routine({ id: "remote-one", kind: "every", every: { value: 60, unit: "minutes" }, runner: "remote", remoteName: "hermes" }));
+    store.save(
+      routine({
+        id: "remote-one",
+        kind: "every",
+        every: { value: 60, unit: "minutes" },
+        runner: "remote",
+        remoteName: "hermes",
+      }),
+    );
     const byId = new Map(scheduler.status().map((r) => [r.id, r]));
     expect(byId.get("remote-one")!.runner).toBe("remote");
     // No OS unit is installed inside a temp home, so a non-remote routine is local.
@@ -327,18 +410,35 @@ describe("routines v2 · runner, summary and hygiene", () => {
   });
 
   it("summarises fired/total today and the counts per runner and kind", async () => {
-    store.save(routine({ id: "a", kind: "every", every: { value: 60, unit: "minutes" } }));
-    store.save(routine({ id: "b", kind: "cron", schedule: "0 3 1 1 *" })); // far away: not due today
-    store.save(routine({ id: "c", kind: "every", every: { value: 60, unit: "minutes" }, runner: "remote", remoteName: "hermes" }));
-    await scheduler.fire("a");
-    await scheduler.drain();
-    const summary = scheduler.summary();
-    expect(summary.firedToday).toBe(1);
-    expect(summary.totalToday).toBeGreaterThanOrEqual(2);
-    expect(summary.byRunner).toMatchObject({ local: 2, remote: 1 });
-    expect(summary.byKind).toMatchObject({ every: 2, cron: 1 });
-    expect(scheduler.status().find((r) => r.id === "a")!.firedToday).toBe(true);
-    expect(scheduler.status().find((r) => r.id === "b")!.firedToday).toBe(false);
+    // Pin the clock to midday UTC: "due today" is a wall-clock question, and an
+    // hourly routine created in the last hour of the day is genuinely due
+    // tomorrow. Only Date is faked so the scheduler's real timers still run.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-03T12:00:00Z"));
+    try {
+      store.save(routine({ id: "a", kind: "every", every: { value: 60, unit: "minutes" } }));
+      store.save(routine({ id: "b", kind: "cron", schedule: "0 3 1 1 *" })); // far away: not due today
+      store.save(
+        routine({
+          id: "c",
+          kind: "every",
+          every: { value: 60, unit: "minutes" },
+          runner: "remote",
+          remoteName: "hermes",
+        }),
+      );
+      await scheduler.fire("a");
+      await scheduler.drain();
+      const summary = scheduler.summary();
+      expect(summary.firedToday).toBe(1);
+      expect(summary.totalToday).toBeGreaterThanOrEqual(2);
+      expect(summary.byRunner).toMatchObject({ local: 2, remote: 1 });
+      expect(summary.byKind).toMatchObject({ every: 2, cron: 1 });
+      expect(scheduler.status().find((r) => r.id === "a")!.firedToday).toBe(true);
+      expect(scheduler.status().find((r) => r.id === "b")!.firedToday).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   }, 20_000);
 
   it("lists silent routines with the reason", async () => {
@@ -349,17 +449,21 @@ describe("routines v2 · runner, summary and hygiene", () => {
     await Promise.resolve();
   });
 
-  it.skipIf(!FAKE_CLIS_RUNNABLE)("counts failures inside the window as the reason", async () => {
-    process.env.FAKE_CLAUDE_FAIL = "1";
-    try {
-      store.save(routine({ id: "flaky", kind: "every", every: { value: 60, unit: "minutes" } }));
-      await scheduler.fire("flaky");
-      await scheduler.drain();
-      const entry = scheduler.silent(30).find((s) => s.id === "flaky")!;
-      expect(entry.reason).toBe("failures");
-      expect(entry.failuresInWindow).toBeGreaterThan(0);
-    } finally {
-      delete process.env.FAKE_CLAUDE_FAIL;
-    }
-  }, 20_000);
+  it.skipIf(!FAKE_CLIS_RUNNABLE)(
+    "counts failures inside the window as the reason",
+    async () => {
+      process.env.FAKE_CLAUDE_FAIL = "1";
+      try {
+        store.save(routine({ id: "flaky", kind: "every", every: { value: 60, unit: "minutes" } }));
+        await scheduler.fire("flaky");
+        await scheduler.drain();
+        const entry = scheduler.silent(30).find((s) => s.id === "flaky")!;
+        expect(entry.reason).toBe("failures");
+        expect(entry.failuresInWindow).toBeGreaterThan(0);
+      } finally {
+        delete process.env.FAKE_CLAUDE_FAIL;
+      }
+    },
+    20_000,
+  );
 });
