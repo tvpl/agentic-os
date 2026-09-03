@@ -1,0 +1,43 @@
+{
+  "id": "service-heartbeat",
+  "name": "Service heartbeat",
+  "skillSlug": null,
+  "prompt": "Check that the MordomoOS workspace is healthy: the index is not stale, no run has been stuck for more than an hour and the disk has room. Report only what needs attention.",
+  "inputs": {},
+  "kind": "heartbeat",
+  "schedule": "",
+  "at": null,
+  "every": null,
+  "onExit": null,
+  "heartbeat": {
+    "intervalMinutes": 60,
+    "activeHours": {
+      "start": "08:00",
+      "end": "20:00",
+      "tz": ""
+    },
+    "quiet": true,
+    "okToken": "HEARTBEAT_OK"
+  },
+  "timezone": "America/Sao_Paulo",
+  "runner": "local",
+  "remoteName": null,
+  "context": "isolated",
+  "delivery": "announce",
+  "webhookUrl": null,
+  "provider": "claude",
+  "model": null,
+  "effort": "low",
+  "workingDir": null,
+  "missedPolicy": "skip",
+  "timeoutMs": 300000,
+  "maxAttempts": 1,
+  "backoffMs": 60000,
+  "retryOnTimeout": false,
+  "artifactsSubdir": null,
+  "notify": true,
+  "profile": "read_only",
+  "enabled": false,
+  "endedReason": null,
+  "createdAt": 1756857600000
+}

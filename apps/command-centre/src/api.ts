@@ -296,25 +296,74 @@ export interface RunUsage {
   model?: string;
 }
 
+/** Routines v2 schedule kinds (F-BACKEND); a v1 routine reads as `cron`. */
+export type RoutineKind = "cron" | "at" | "every" | "on-exit" | "heartbeat";
+/** Where a routine actually runs: this desktop, the installed OS service, or a remote box. */
+export type RoutineRunner = "local" | "service" | "remote";
+export type RoutineContext = "isolated" | "main";
+export type RoutineDelivery = "announce" | "webhook" | "none";
+
+export interface RoutineEvery {
+  value: number;
+  unit: "minutes" | "hours";
+}
+export interface RoutineOnExit {
+  skillSlug: string;
+  statuses: string[];
+}
+export interface RoutineActiveHours {
+  start: string;
+  end: string;
+  tz: string;
+}
+export interface RoutineHeartbeat {
+  intervalMinutes: number;
+  activeHours: RoutineActiveHours | null;
+  quiet: boolean;
+  okToken: string;
+}
+
 export interface RoutineStatus {
   id: string;
   name: string;
   skillSlug: string | null;
   prompt: string | null;
+  /**
+   * Schedule kind; everything below `schedule` belongs to exactly one kind.
+   * The routines-v2 fields are optional so a v1 server (and the component
+   * gallery fixtures) still typecheck: absent means `cron` / the default.
+   */
+  kind?: RoutineKind;
   schedule: string;
+  /** ISO datetime for `kind: "at"`. */
+  at?: string | null;
+  every?: RoutineEvery | null;
+  onExit?: RoutineOnExit | null;
+  heartbeat?: RoutineHeartbeat | null;
   timezone: string;
+  /** Effective runner as resolved by the scheduler (not necessarily what the file declares). */
+  runner?: RoutineRunner;
+  remoteName?: string | null;
+  context?: RoutineContext;
+  delivery?: RoutineDelivery;
+  webhookUrl?: string | null;
   provider: ProviderId;
   model: string | null;
   effort: string;
   missedPolicy: string;
   enabled: boolean;
+  /** Why the routine disabled itself, e.g. `run_once_fired`. */
+  endedReason?: string | null;
   nextRunAt: number | null;
   lastFiredAt: number | null;
   lastStatus: string | null;
+  /** True when the routine already fired today (settings timezone). */
+  firedToday?: boolean;
   recentFailures: number;
   healthy: boolean;
   timeoutMs: number;
   maxAttempts: number;
+  retryOnTimeout?: boolean;
   profile: string;
   inputs: Record<string, string>;
   notify: boolean;
@@ -340,6 +389,10 @@ export interface Connector {
   status: string;
   notes: string;
   compatibleProviders: ProviderId[];
+  /** Last successful read through `GET /api/connectors/:id/data`. */
+  lastUsedAt?: number | null;
+  /** Present when the connector declares a read-only data mapping. */
+  dataMapping?: { transport?: string; command?: string | null; url?: string | null; env?: string[]; install?: string | null } | null;
 }
 
 export interface GraphNode {
@@ -438,6 +491,10 @@ export interface ConnectorData {
   message?: string;
   items: ConnectorDataItem[];
   summary?: Record<string, number>;
+  /** Copyable setup checklist (install command, env var NAMES, allowlist step). Never a secret value. */
+  setup?: string[];
+  /** Tool names the MCP server advertised, for the "Test read" panel. */
+  tools?: string[];
 }
 
 /** `Metrics.cost` (F-RUNS contract), read defensively by the Cost widget. */
@@ -722,4 +779,39 @@ export interface MemoryPreview {
   kind: "text" | "binary" | "blocked" | "too-large";
   content: string | null;
   message: string | null;
+}
+
+// ---- backend ----
+/** `GET /api/routines/summary` — the dashboard footer ("n/m fired today", counts per runner). */
+export interface RoutineSummary {
+  firedToday: number;
+  totalToday: number;
+  byRunner: Record<string, number>;
+  byKind: Record<string, number>;
+}
+
+/** One entry of `GET /api/routines/silent?days=30` (hygiene input). */
+export interface SilentRoutine {
+  id: string;
+  name: string;
+  enabled: boolean;
+  kind: RoutineKind;
+  lastFiredAt: number | null;
+  lastStatus: string | null;
+  failuresInWindow: number;
+  reason: "never_fired" | "no_fire_in_window" | "failures";
+}
+
+/** One row of `GET /api/routines/:id/history`. */
+export interface RoutineHistoryEntry {
+  id: number;
+  runId: string | null;
+  scheduledFor: number | null;
+  firedAt: number;
+  status: string;
+  note: string | null;
+  /** Heartbeat outcome: `quiet` when the OK token was printed, `alert` otherwise. */
+  outcome: "quiet" | "alert" | null;
+  runStatus: string | null;
+  durationMs: number | null;
 }

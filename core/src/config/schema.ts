@@ -135,8 +135,8 @@ export const SettingsSchema = z.object({
     })
     .default({}),
   favoriteSkills: z.array(z.string()).default([]),
-  /** Theme preset id (see apps/command-centre/src/theme.ts); absent = default HUD preset. */
-  themePreset: z.string().optional(),
+  /** Theme preset id (see apps/command-centre/src/theme.ts); the shell reads `settings.themePreset`. */
+  themePreset: z.enum(["hud-orange", "forest", "ocean", "mono"]).default("hud-orange"),
   /** User-defined micro apps listed on the desktop. */
   microApps: z.array(MicroAppSchema).default([]),
   /** Routine engine defaults (F-BACKEND: routines v2). */
@@ -180,6 +180,12 @@ export const SettingsSchema = z.object({
         w: z.number().int().min(2).max(24),
         h: z.number().int().min(2).max(40),
         visible: z.boolean().default(true),
+        /**
+         * Per-widget configuration (timezones, day counts, item limits …).
+         * Opaque to the core: the widget that owns the id defines the shape,
+         * so the record must survive a settings round-trip untouched.
+         */
+        config: z.record(z.unknown()).optional(),
       }),
     )
     .default({}),

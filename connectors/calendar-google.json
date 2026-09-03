@@ -6,18 +6,80 @@
   "maintainer": "nspady (community)",
   "official": false,
   "authMethod": "oauth",
-  "permissions": ["read events", "create events (opt-in)"],
-  "readOperations": ["list events", "search events", "free/busy"],
-  "writeOperations": ["create event", "update event"],
+  "permissions": [
+    "read events",
+    "create events (opt-in)"
+  ],
+  "readOperations": [
+    "list events",
+    "search events",
+    "free/busy"
+  ],
+  "writeOperations": [
+    "create event",
+    "update event"
+  ],
   "writeEnabled": false,
   "risks": [
     "Community-maintained: review the code before installing.",
     "Write access can modify your real agenda — keep read-only until trusted."
   ],
-  "compatibleProviders": ["claude", "cursor", "codex"],
+  "compatibleProviders": [
+    "claude",
+    "cursor",
+    "codex"
+  ],
   "status": "not_configured",
   "lastUsedAt": null,
   "lastHealthCheckAt": null,
   "notes": "Enables morning-brief routines that include today's agenda.",
-  "entryPoint": null
+  "entryPoint": null,
+  "dataMapping": {
+    "transport": "mcp",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@cocal/google-calendar-mcp"
+    ],
+    "env": [
+      "GOOGLE_OAUTH_CREDENTIALS"
+    ],
+    "url": null,
+    "headers": {},
+    "tools": {
+      "list": {
+        "name": "list-events",
+        "args": {
+          "calendarId": "primary",
+          "timeMin": "{todayStart}",
+          "timeMax": "{todayEnd}",
+          "timeZone": "{tz}"
+        },
+        "parse": "json",
+        "path": "",
+        "fields": {
+          "id": "id",
+          "title": "summary",
+          "subtitle": "location",
+          "ts": "start",
+          "tag": "organizer.displayName",
+          "href": "htmlLink",
+          "flagged": {
+            "path": "status",
+            "includesAny": [
+              "tentative"
+            ]
+          }
+        }
+      }
+    },
+    "install": "npm i -g @cocal/google-calendar-mcp  (or run it through npx, as configured here)",
+    "setup": [
+      "Create an OAuth desktop client in Google Cloud and download the credentials JSON.",
+      "Export GOOGLE_OAUTH_CREDENTIALS=<path to that JSON> in the environment of the MordomoOS service (never in a routine file).",
+      "Run the server once by hand to complete the browser consent flow; the token is cached by the server itself.",
+      "Allowlist the executable: add \"npx\" to settings.connectors.allowedCommands.",
+      "MordomoOS only ever calls the read tool declared above; writes stay behind the approval gate."
+    ]
+  }
 }

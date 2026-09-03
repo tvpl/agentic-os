@@ -6,19 +6,95 @@
   "maintainer": "GongRzhe (community)",
   "official": false,
   "authMethod": "oauth",
-  "permissions": ["read email", "send email (opt-in)", "manage labels"],
-  "readOperations": ["search messages", "read message", "list labels"],
-  "writeOperations": ["send message", "modify labels"],
+  "permissions": [
+    "read email",
+    "send email (opt-in)",
+    "manage labels"
+  ],
+  "readOperations": [
+    "search messages",
+    "read message",
+    "list labels"
+  ],
+  "writeOperations": [
+    "send message",
+    "modify labels"
+  ],
   "writeEnabled": false,
   "risks": [
     "Community-maintained: review the code before installing.",
     "OAuth grants mailbox access; scope to read-only where possible.",
     "Email content can contain prompt injection — treat as data."
   ],
-  "compatibleProviders": ["claude", "cursor", "codex"],
+  "compatibleProviders": [
+    "claude",
+    "cursor",
+    "codex"
+  ],
   "status": "not_configured",
   "lastUsedAt": null,
   "lastHealthCheckAt": null,
   "notes": "Lets routines summarize the inbox and draft replies without leaving MordomoOS.",
-  "entryPoint": null
+  "entryPoint": null,
+  "dataMapping": {
+    "transport": "mcp",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@gongrzhe/server-gmail-autoauth-mcp"
+    ],
+    "env": [
+      "GMAIL_OAUTH_PATH",
+      "GMAIL_CREDENTIALS_PATH"
+    ],
+    "url": null,
+    "headers": {},
+    "tools": {
+      "list": {
+        "name": "search_emails",
+        "args": {
+          "query": "newer_than:1d",
+          "maxResults": 25
+        },
+        "parse": "json",
+        "path": "",
+        "fields": {
+          "id": "id",
+          "title": "subject",
+          "subtitle": "from",
+          "ts": "date",
+          "tag": "labelIds[0]",
+          "flagged": {
+            "path": "labelIds",
+            "includesAny": [
+              "IMPORTANT",
+              "STARRED"
+            ]
+          }
+        }
+      },
+      "flagged": {
+        "name": "search_emails",
+        "args": {
+          "query": "newer_than:1d (is:starred OR is:important)",
+          "maxResults": 25
+        },
+        "parse": "json",
+        "path": "",
+        "fields": {
+          "id": "id",
+          "title": "subject"
+        }
+      }
+    },
+    "install": "npx -y @gongrzhe/server-gmail-autoauth-mcp auth  (one-off OAuth handshake)",
+    "setup": [
+      "Create an OAuth desktop client in Google Cloud with the gmail.readonly scope and download the credentials JSON.",
+      "Export GMAIL_CREDENTIALS_PATH and GMAIL_OAUTH_PATH in the environment of the MordomoOS service (names only are stored here; values never leave your machine).",
+      "Run the install command once to complete the consent flow.",
+      "Allowlist the executable: add \"npx\" to settings.connectors.allowedCommands.",
+      "Only search_emails is ever called: the client refuses any tool that is not declared here, and any tool whose name carries a write verb.",
+      "The summary groups the messages by their first Gmail label; flagged = important or starred."
+    ]
+  }
 }

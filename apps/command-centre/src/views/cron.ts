@@ -148,3 +148,179 @@ export function timeZoneOptions(): string[] {
     return ["UTC"];
   }
 }
+
+/* -------------------------------------------------------------------------
+ * Routines v2: schedule kinds beyond cron.
+ *
+ * Mirrors core/src/routines/schedule.ts so the editor can preview the next
+ * fires without a round-trip. The server (croner + that module) stays the
+ * source of truth; this is a preview.
+ * ---------------------------------------------------------------------- */
+
+export type ScheduleKind = "cron" | "at" | "every" | "on-exit" | "heartbeat";
+
+export interface ScheduleEvery {
+  value: number;
+  unit: "minutes" | "hours";
+}
+export interface ScheduleActiveHours {
+  start: string;
+  end: string;
+  tz?: string;
+}
+export interface ScheduleHeartbeat {
+  intervalMinutes: number;
+  activeHours?: ScheduleActiveHours | null;
+  okToken?: string;
+}
+export interface ScheduleOnExit {
+  skillSlug: string;
+  statuses?: string[];
+}
+
+/** The subset of a routine `nextFires`/`describeSchedule` need. */
+export interface SchedulableRoutine {
+  kind?: ScheduleKind;
+  schedule?: string;
+  timezone?: string;
+  at?: string | null;
+  every?: ScheduleEvery | null;
+  onExit?: ScheduleOnExit | null;
+  heartbeat?: ScheduleHeartbeat | null;
+  createdAt?: number;
+  enabled?: boolean;
+}
+
+export const MINUTE_MS = 60_000;
+
+export function intervalMs(every: ScheduleEvery): number {
+  return Math.max(1, Math.floor(every.value)) * (every.unit === "hours" ? 60 * MINUTE_MS : MINUTE_MS);
+}
+
+/** Next slot strictly after `now` on the grid `anchor + k·interval`. */
+export function nextIntervalSlot(anchor: number, interval: number, now: number): number {
+  if (interval <= 0) return now + MINUTE_MS;
+  if (now < anchor) return anchor;
+  return anchor + (Math.floor((now - anchor) / interval) + 1) * interval;
+}
+
+function hhmmToMinutes(value: string): number {
+  const [h, m] = value.split(":").map(Number);
+  return (Number.isFinite(h) ? h! : 0) * 60 + (Number.isFinite(m) ? m! : 0);
+}
+
+/** Wall-clock minutes since midnight of `instant` in `tz` (UTC when the zone is unknown). */
+export function wallMinutes(instant: number, tz: string | undefined): number {
+  const w = wallParts(instant, isValidTimeZone(tz ?? "") ? tz : "UTC");
+  return w.h * 60 + w.mi;
+}
+
+/** Whether `instant` falls inside the window (windows that wrap past midnight are supported). */
+export function isWithinActiveHours(
+  instant: number,
+  hours: ScheduleActiveHours | null | undefined,
+  fallbackTz: string | undefined,
+): boolean {
+  if (!hours) return true;
+  const now = wallMinutes(instant, hours.tz || fallbackTz);
+  const start = hhmmToMinutes(hours.start);
+  const end = hhmmToMinutes(hours.end);
+  if (start === end) return true;
+  if (start < end) return now >= start && now < end;
+  return now >= start || now < end;
+}
+
+/**
+ * Next `count` firing instants after `from` for any schedule kind.
+ * `on-exit` is event-driven and never returns fires.
+ */
+export function nextFires(routine: SchedulableRoutine, from = Date.now(), count = 5): number[] {
+  const kind = routine.kind ?? "cron";
+  const tz = routine.timezone || undefined;
+  const anchor = routine.createdAt ?? from;
+  switch (kind) {
+    case "cron": {
+      const expr = (routine.schedule ?? "").trim();
+      if (!expr || !isValidCron(expr) || !isValidTimeZone(routine.timezone ?? "")) return [];
+      try {
+        return nextCronRuns(expr, tz, count, from);
+      } catch {
+        return [];
+      }
+    }
+    case "at": {
+      const ms = routine.at ? Date.parse(routine.at) : NaN;
+      return Number.isFinite(ms) && ms > from ? [ms] : [];
+    }
+    case "every": {
+      if (!routine.every) return [];
+      const step = intervalMs(routine.every);
+      const out: number[] = [];
+      let next = nextIntervalSlot(anchor, step, from);
+      for (let i = 0; i < count; i++) {
+        out.push(next);
+        next += step;
+      }
+      return out;
+    }
+    case "heartbeat": {
+      const hb = routine.heartbeat;
+      if (!hb || !(hb.intervalMinutes > 0)) return [];
+      const step = hb.intervalMinutes * MINUTE_MS;
+      const out: number[] = [];
+      let candidate = nextIntervalSlot(anchor, step, from);
+      const limit = from + 3 * 86_400_000;
+      for (let i = 0; i < 10_000 && out.length < count && candidate <= limit; i++) {
+        if (isWithinActiveHours(candidate, hb.activeHours, routine.timezone)) out.push(candidate);
+        candidate += step;
+      }
+      return out;
+    }
+    case "on-exit":
+      return [];
+  }
+}
+
+/** Translation hook: `describeSchedule` asks for these keys with the given params. */
+export type ScheduleDescribe = (key: string, params?: Record<string, string | number>) => string;
+
+/**
+ * One-line, human description of a routine's schedule.
+ * `t` is the caller's translator (keys live in locales/backend.ts); with no
+ * translator the raw key is returned, which keeps this function pure and
+ * testable.
+ */
+export function describeSchedule(routine: SchedulableRoutine, t: ScheduleDescribe = (k) => k): string {
+  const kind = routine.kind ?? "cron";
+  switch (kind) {
+    case "cron": {
+      const expr = (routine.schedule ?? "").trim();
+      if (!expr) return t("backend.sched.cron.none");
+      return isValidCron(expr)
+        ? t("backend.sched.cron", { expr })
+        : t("backend.sched.cron.invalid", { expr });
+    }
+    case "at": {
+      const ms = routine.at ? Date.parse(routine.at) : NaN;
+      if (!Number.isFinite(ms)) return t("backend.sched.at.invalid");
+      return t("backend.sched.at", { when: new Date(ms).toISOString().slice(0, 16).replace("T", " ") });
+    }
+    case "every": {
+      if (!routine.every) return t("backend.sched.every.none");
+      const { value, unit } = routine.every;
+      return t(unit === "hours" ? "backend.sched.every.hours" : "backend.sched.every.minutes", { n: value });
+    }
+    case "on-exit": {
+      const slug = routine.onExit?.skillSlug;
+      return slug ? t("backend.sched.onExit", { skill: slug }) : t("backend.sched.onExit.none");
+    }
+    case "heartbeat": {
+      const hb = routine.heartbeat;
+      if (!hb) return t("backend.sched.heartbeat.none");
+      const hours = hb.activeHours;
+      return hours
+        ? t("backend.sched.heartbeat.hours", { n: hb.intervalMinutes, start: hours.start, end: hours.end })
+        : t("backend.sched.heartbeat", { n: hb.intervalMinutes });
+    }
+  }
+}

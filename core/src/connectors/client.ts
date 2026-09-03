@@ -204,11 +204,11 @@ export class McpStdioClient {
     return { text, isError: Boolean(res?.isError), raw: res?.structuredContent ?? null };
   }
 
-  /** Kill the whole process group and fail anything still pending. */
-  close(): void {
+  /** Kill the whole process group and fail anything still pending with `reason`. */
+  close(reason = "MCP client closed."): void {
     if (this.closed) return;
     this.closed = true;
-    this.failAll(new McpProtocolError("MCP client closed."));
+    this.failAll(new McpProtocolError(reason));
     const pid = this.child?.pid;
     if (pid != null && !this.exited) {
       killProcessGroup(pid, "SIGTERM");
@@ -560,8 +560,23 @@ function notConfigured(connector: Connector, message: string, opts: FetchOptions
   return { status: "not_configured", syncedAt: null, message, items: [], setup: setupChecklist(connector, opts) };
 }
 
-function summaryFromItems(items: ConnectorItem[]): Record<string, number> {
-  return { total: items.length, flagged: items.filter((i) => i.flagged).length };
+/**
+ * Generic summary: totals plus a count per `tag` (the mapping decides what a
+ * tag is — a Gmail label, a calendar name, a project). At most `maxTags`
+ * groups, biggest first, so a widget footer stays readable.
+ */
+export function summaryFromItems(items: ConnectorItem[], maxTags = 6): Record<string, number> {
+  const byTag = new Map<string, number>();
+  for (const item of items) {
+    const tag = item.tag?.trim();
+    if (!tag) continue;
+    byTag.set(tag, (byTag.get(tag) ?? 0) + 1);
+  }
+  const out: Record<string, number> = { total: items.length, flagged: items.filter((i) => i.flagged).length };
+  for (const [tag, n] of [...byTag.entries()].sort((a, b) => b[1] - a[1]).slice(0, maxTags)) {
+    if (tag !== "total" && tag !== "flagged") out[tag] = n;
+  }
+  return out;
 }
 
 /**
@@ -572,8 +587,10 @@ function summaryFromItems(items: ConnectorItem[]): Record<string, number> {
 export async function fetchConnectorData(connector: Connector, opts: FetchOptions = {}): Promise<ConnectorData> {
   const mapping = connector.dataMapping;
   if (!mapping) return notConfigured(connector, "This connector has no read-only data mapping yet.", opts);
+  // A mapping with a URL and no command is an HTTP GET whatever `transport` says.
+  const transport = mapping.transport === "api" || (!mapping.command && mapping.url) ? "api" : "mcp";
   try {
-    if (mapping.transport === "api") return await fetchApiData(connector, mapping, opts);
+    if (transport === "api") return await fetchApiData(connector, mapping, opts);
     return await fetchMcpData(connector, mapping, opts);
   } catch (err) {
     return {
@@ -672,7 +689,8 @@ async function fetchMcpData(connector: Connector, mapping: DataMapping, opts: Fe
     { cwd: opts.cwd ?? process.cwd(), env: minimalEnv(mapping.env), allowPaths, requestTimeoutMs: timeoutMs },
     allowedTools(mapping),
   );
-  const hardStop = setTimeout(() => client.close(), timeoutMs);
+  // Whole-operation guard: whichever timer wins, the caller sees a timeout.
+  const hardStop = setTimeout(() => client.close(`Timed out after ${timeoutMs} ms reading this connector.`), timeoutMs);
   hardStop.unref();
   try {
     await client.start();
@@ -736,4 +754,70 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
       },
     );
   });
+}
+
+// --------------------------------------------------------------- caching --
+
+interface CacheEntry {
+  at: number;
+  data: ConnectorData;
+}
+
+/**
+ * Per-connector TTL cache for `GET /api/connectors/:id/data`.
+ *
+ * Reads spawn a child process and talk to a remote service, so the default
+ * 5-minute TTL keeps widget polling (every 5 min, several widgets) from
+ * hammering it. `?refresh=1` bypasses the cache; an in-flight read is shared
+ * so concurrent widgets never spawn two servers for the same connector.
+ * Only successful (`ok`) reads are cached: an error must be retried.
+ */
+export class ConnectorDataCache {
+  private readonly entries = new Map<string, CacheEntry>();
+  private readonly inflight = new Map<string, Promise<ConnectorData>>();
+
+  constructor(private readonly ttlMs: number = 5 * 60_000) {}
+
+  get(id: string, now = Date.now()): ConnectorData | null {
+    const hit = this.entries.get(id);
+    if (!hit) return null;
+    if (this.ttlMs <= 0 || now - hit.at > this.ttlMs) {
+      this.entries.delete(id);
+      return null;
+    }
+    return hit.data;
+  }
+
+  set(id: string, data: ConnectorData, now = Date.now()): void {
+    if (data.status !== "ok") return;
+    this.entries.set(id, { at: now, data });
+  }
+
+  invalidate(id?: string): void {
+    if (id === undefined) this.entries.clear();
+    else this.entries.delete(id);
+  }
+
+  /**
+   * Cached read: returns the cached value unless `refresh`, otherwise runs
+   * `load` (deduplicated per id) and caches a successful result.
+   */
+  async read(id: string, load: () => Promise<ConnectorData>, refresh = false, now = Date.now()): Promise<ConnectorData> {
+    if (!refresh) {
+      const hit = this.get(id, now);
+      if (hit) return hit;
+    }
+    const pending = this.inflight.get(id);
+    if (pending) return pending;
+    const task = load()
+      .then((data) => {
+        this.set(id, data, Date.now());
+        return data;
+      })
+      .finally(() => {
+        if (this.inflight.get(id) === task) this.inflight.delete(id);
+      });
+    this.inflight.set(id, task);
+    return task;
+  }
 }
