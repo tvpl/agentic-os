@@ -52,10 +52,13 @@ export function defaultUi(settings: BrainSettings = DEFAULT_SETTINGS): BrainUi {
   };
 }
 
-const isLayout = (v: unknown): v is LayoutKind => typeof v === "string" && (LAYOUTS as readonly string[]).includes(v);
+const isLayout = (v: unknown): v is LayoutKind =>
+  typeof v === "string" && (LAYOUTS as readonly string[]).includes(v);
 const isView = (v: unknown): v is ViewKind => v === "areas" || v === "folders";
-const isKind = (v: unknown): v is EdgeKind => typeof v === "string" && (EDGE_KINDS as readonly string[]).includes(v);
-const num = (v: unknown, min: number, max: number): number | undefined => (typeof v === "number" && Number.isFinite(v) && v >= min && v <= max ? v : undefined);
+const isKind = (v: unknown): v is EdgeKind =>
+  typeof v === "string" && (EDGE_KINDS as readonly string[]).includes(v);
+const num = (v: unknown, min: number, max: number): number | undefined =>
+  typeof v === "number" && Number.isFinite(v) && v >= min && v <= max ? v : undefined;
 
 /** Validate an untrusted blob (server `settings.brain`, localStorage) into a partial settings object. */
 export function parseBrainSettings(raw: unknown): Partial<BrainSettings> {
@@ -82,10 +85,19 @@ export function parseBrainSettings(raw: unknown): Partial<BrainSettings> {
     const o = ws as Record<string, unknown>;
     const pinned = Array.isArray(o.pinned)
       ? o.pinned
-          .filter((p): p is { id: number; x: number; y: number } => !!p && typeof p === "object" && typeof (p as { id?: unknown }).id === "number" && typeof (p as { x?: unknown }).x === "number" && typeof (p as { y?: unknown }).y === "number")
+          .filter(
+            (p): p is { id: number; x: number; y: number } =>
+              !!p &&
+              typeof p === "object" &&
+              typeof (p as { id?: unknown }).id === "number" &&
+              typeof (p as { x?: unknown }).x === "number" &&
+              typeof (p as { y?: unknown }).y === "number",
+          )
           .map((p) => ({ id: p.id, x: p.x, y: p.y }))
       : [];
-    const collapsed = Array.isArray(o.collapsed) ? o.collapsed.filter((c): c is string => typeof c === "string") : [];
+    const collapsed = Array.isArray(o.collapsed)
+      ? o.collapsed.filter((c): c is string => typeof c === "string")
+      : [];
     out.workspace = { pinned, collapsed };
   }
   return out;
@@ -120,11 +132,22 @@ export function urlControlledKeys(params: URLSearchParams): Set<keyof BrainSetti
   return keys;
 }
 
-const list = (v: string | null): string[] => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : []);
+const list = (v: string | null): string[] =>
+  v
+    ? v
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
 
 /** Overlay the hash query on a base state. Unknown or malformed values are ignored. */
 export function uiFromParams(params: URLSearchParams, base: BrainUi): BrainUi {
-  const ui: BrainUi = { ...base, filters: { ...base.filters }, edgeKinds: [...base.edgeKinds], groups: [...base.groups] };
+  const ui: BrainUi = {
+    ...base,
+    filters: { ...base.filters },
+    edgeKinds: [...base.edgeKinds],
+    groups: [...base.groups],
+  };
   const sel = params.get("sel");
   if (sel !== null && /^\d+$/.test(sel)) ui.sel = Number(sel);
   const layout = params.get("layout");
@@ -178,7 +201,7 @@ export function paramsFromUi(ui: BrainUi): URLSearchParams {
 export function encodeGroups(groups: QueryGroup[]): string {
   return groups
     .filter((g) => g.query.trim())
-    .map((g) => `${g.query.replace(/[|~]/g, "").trim()}~${g.color.replace("#", "")}`)
+    .map((g) => `${g.query.replace(/[|~]/g, "").trim()}~${g.color.replace("#", "").toLowerCase()}`)
     .join("|");
 }
 

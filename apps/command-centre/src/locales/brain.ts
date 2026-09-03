@@ -38,8 +38,10 @@ export const en = {
   "brain.timeline.play": "Play",
   "brain.timeline.pause": "Pause",
   "brain.workspace": "Workspace mode (save pins and collapsed hubs)",
-  "brain.workspace.hint": "While on, pinned files and collapsed hubs are saved to the server as you change them.",
+  "brain.workspace.hint":
+    "While on, pinned files and collapsed hubs are saved to the server as you change them.",
   "brain.savedServer": "Saved to the server — this view is now the default everywhere.",
+  "brain.savedLocal": "Saved on this device only — the server could not be reached.",
   "brain.hygiene": "Hygiene",
   "brain.hygiene.orphans": "Orphans (no edges)",
   "brain.hygiene.stale": "Untouched for 90 days",
@@ -58,6 +60,7 @@ export const en = {
   "brain.dragHint": "drag to pin",
   "brain.planet": "sub-folder",
   "brain.clickToSelect": "Select this file in the graph",
+  "brain.hub.hint": "click to open or close · double-click to filter",
   "brain.moreN": "+{n} more",
   "brain.selected": "selected",
 } as const;
@@ -97,8 +100,10 @@ export const ptBR = {
   "brain.timeline.play": "Reproduzir",
   "brain.timeline.pause": "Pausar",
   "brain.workspace": "Modo workspace (salvar pins e hubs recolhidos)",
-  "brain.workspace.hint": "Enquanto ativo, arquivos fixados e hubs recolhidos são salvos no servidor conforme você muda.",
+  "brain.workspace.hint":
+    "Enquanto ativo, arquivos fixados e hubs recolhidos são salvos no servidor conforme você muda.",
   "brain.savedServer": "Salvo no servidor — esta visão agora é o padrão em todo lugar.",
+  "brain.savedLocal": "Salvo só neste dispositivo — não foi possível falar com o servidor.",
   "brain.hygiene": "Higiene",
   "brain.hygiene.orphans": "Órfãos (sem arestas)",
   "brain.hygiene.stale": "Sem alteração há 90 dias",
@@ -117,6 +122,7 @@ export const ptBR = {
   "brain.dragHint": "arraste para fixar",
   "brain.planet": "subpasta",
   "brain.clickToSelect": "Selecionar este arquivo no grafo",
+  "brain.hub.hint": "clique para abrir ou fechar · duplo clique para filtrar",
   "brain.moreN": "+{n} mais",
   "brain.selected": "selecionado",
 } satisfies Record<keyof typeof en, string>;

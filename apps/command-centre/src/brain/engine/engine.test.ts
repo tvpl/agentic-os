@@ -1,10 +1,26 @@
 import { describe, expect, it } from "vitest";
 import type { GraphData } from "../../api";
-import { applyPlan, easeSpring, frameSector, planExplosion, startLayoutTween, tripPosition, tripsActive } from "./explosion";
+import {
+  applyPlan,
+  easeSpring,
+  frameSector,
+  planExplosion,
+  startLayoutTween,
+  tripPosition,
+  tripsActive,
+} from "./explosion";
 import { applyVisibility, hygiene, neighbourhood, relationsOf, timelineRange, updateFocus } from "./graph";
 import { hitTest, screenToWorld, zoomAt } from "./hitTest";
+import { setHubsExpanded, toggleHub } from "./hubs";
 import { computeSectors, dirRuns, layoutFiles, orderFiles, targetOf } from "./layouts";
-import { DIM_ALPHA, alphasSettled, maxDisplacement, stepWorld, transformSettled, tweenTransform } from "./physics";
+import {
+  DIM_ALPHA,
+  alphasSettled,
+  maxDisplacement,
+  stepWorld,
+  transformSettled,
+  tweenTransform,
+} from "./physics";
 import {
   DEFAULT_SETTINGS,
   RING,
@@ -56,7 +72,15 @@ function graph(n: number, areas = ["Worker", "Docs"]): GraphData {
 
 function world(n = 40, layout = DEFAULT_SETTINGS.layout): World {
   const w = createWorld({ ...DEFAULT_SETTINGS, layout });
-  buildWorld(w, { graph: graph(n), skills: [], routines: [], connectors: [], groupOf: (node) => groupOfNode(node, "areas"), labels: { skills: "Skills", routines: "Routines", apps: "Apps" }, now: NOW });
+  buildWorld(w, {
+    graph: graph(n),
+    skills: [],
+    routines: [],
+    connectors: [],
+    groupOf: (node) => groupOfNode(node, "areas"),
+    labels: { skills: "Skills", routines: "Routines", apps: "Apps" },
+    now: NOW,
+  });
   layoutFiles(w);
   return w;
 }
@@ -79,7 +103,15 @@ describe("world", () => {
     w.files[0]!.x = 123;
     w.files[0]!.pinned = true;
     w.hubs[1]!.expanded = false;
-    buildWorld(w, { graph: graph(6), skills: [], routines: [], connectors: [], groupOf: (n) => groupOfNode(n, "areas"), labels: { skills: "", routines: "", apps: "" }, now: NOW });
+    buildWorld(w, {
+      graph: graph(6),
+      skills: [],
+      routines: [],
+      connectors: [],
+      groupOf: (n) => groupOfNode(n, "areas"),
+      labels: { skills: "", routines: "", apps: "" },
+      now: NOW,
+    });
     expect(w.files[0]!.x).toBe(123);
     expect(w.files[0]!.pinned).toBe(true);
     expect(w.files[0]!.fx).toBe(123);
@@ -271,7 +303,9 @@ describe("layouts", () => {
   it("is deterministic", () => {
     const a = world(25);
     const b = world(25);
-    expect(a.files.map((n) => [n.baseAngle, n.baseRadius])).toEqual(b.files.map((n) => [n.baseAngle, n.baseRadius]));
+    expect(a.files.map((n) => [n.baseAngle, n.baseRadius])).toEqual(
+      b.files.map((n) => [n.baseAngle, n.baseRadius]),
+    );
     expect(a.planets).toEqual(b.planets);
   });
 });
@@ -308,7 +342,17 @@ describe("physics", () => {
 
   it("spin advances theta and rotates hubs, planets and orbs consistently", () => {
     const w = world(9, "arcs");
-    w.orbs.push({ kind: "skill", id: "s", label: "/s", sub: "", baseAngle: 0, radius: RING.skills, x: 0, y: 0, active: true });
+    w.orbs.push({
+      kind: "skill",
+      id: "s",
+      label: "/s",
+      sub: "",
+      baseAngle: 0,
+      radius: RING.skills,
+      x: 0,
+      y: 0,
+      active: true,
+    });
     w.spin = 1;
     stepWorld(w, 1, true);
     expect(w.theta).toBeCloseTo(0.45);
@@ -367,7 +411,17 @@ describe("local mode, timeline and hygiene", () => {
     w.localHops = 1;
     setSelected(w, 1);
     applyVisibility(w);
-    expect(w.files.map((n) => n.visible)).toEqual([true, true, false, false, false, false, false, false, false]);
+    expect(w.files.map((n) => n.visible)).toEqual([
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
     w.localHops = 2;
     applyVisibility(w);
     expect(w.files[2]!.visible).toBe(true);
@@ -516,9 +570,21 @@ describe("hit testing", () => {
     stepWorld(w, 0, false);
     const hub = w.hubs[0]!;
     expect(hitTest(w, hub.x + 5, hub.y - 5).hub?.key).toBe(hub.key);
-    w.orbs.push({ kind: "app", id: "a", label: "A", sub: "", baseAngle: 0, radius: RING.apps, x: RING.apps, y: 0, active: true });
+    w.orbs.push({
+      kind: "app",
+      id: "a",
+      label: "A",
+      sub: "",
+      baseAngle: 0,
+      radius: RING.apps,
+      x: RING.apps,
+      y: 0,
+      active: true,
+    });
     expect(hitTest(w, RING.apps + 10, 0).orb?.id).toBe("a");
-    w.planets = [{ hubKey: hub.key, dir: "/d", label: "d", count: 2, baseAngle: 0, baseRadius: 0, x: -200, y: -200 }];
+    w.planets = [
+      { hubKey: hub.key, dir: "/d", label: "d", count: 2, baseAngle: 0, baseRadius: 0, x: -200, y: -200 },
+    ];
     expect(hitTest(w, -203, -200).planet?.label).toBe("d");
     const file = w.files[0]!;
     file.x = 40;
@@ -538,5 +604,38 @@ describe("hit testing", () => {
     expect(target.k).toBe(2);
     // The world point under the cursor (100, 0) must stay under it.
     expect(screenToWorld(target, rect, 310, 170).x).toBeCloseTo(100, 6);
+  });
+});
+
+describe("hub expand / collapse", () => {
+  it("toggling a hub fans its files, records the burst and (in focus mode) closes the others", () => {
+    const w = world(30);
+    for (let i = 0; i < 200; i++) stepWorld(w, 1 / 60, false);
+    const [first, second] = w.hubs;
+    expect(first!.expanded && second!.expanded).toBe(true);
+    // Collapse the first one: only it changes, its files ease back to the halo.
+    expect(toggleHub(w, first!, { focusMode: true, now: 5 }).map((h) => h.key)).toEqual([first!.key]);
+    expect(first!.expanded).toBe(false);
+    expect(second!.expanded).toBe(true);
+    expect(w.effects.at(-1)).toEqual({ x: first!.x, y: first!.y, start: 5, color: first!.color });
+    expect(w.files.filter((n) => n.group === first!.key).every((n) => n.trip?.kind === "ease")).toBe(true);
+    // Re-open it under focus mode: the other hub closes with it.
+    const changed = toggleHub(w, first!, { focusMode: true, now: 6 });
+    expect(changed.map((h) => h.key)).toEqual([first!.key, second!.key]);
+    expect(first!.expanded).toBe(true);
+    expect(first!.everExpanded).toBe(true);
+    expect(second!.expanded).toBe(false);
+    expect(w.files.filter((n) => n.group === first!.key).every((n) => n.trip?.kind === "spring")).toBe(true);
+    for (let i = 0; i < 120; i++) stepWorld(w, 1 / 60, false);
+    expect(tripsActive(w.files)).toBe(false);
+  });
+
+  it("setHubsExpanded moves every hub at once and reports nothing to do the second time", () => {
+    const w = world(12);
+    expect(setHubsExpanded(w, false).length).toBe(w.hubs.length);
+    expect(w.hubs.every((h) => !h.expanded)).toBe(true);
+    expect(setHubsExpanded(w, false)).toEqual([]);
+    expect(setHubsExpanded(w, true).length).toBe(w.hubs.length);
+    expect(w.hubs.every((h) => h.expanded && h.everExpanded)).toBe(true);
   });
 });
