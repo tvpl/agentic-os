@@ -188,22 +188,20 @@ describe("startup service plan quoting", () => {
   const cli = path.join(home, "apps", "api", "dist", "cli.js");
 
   it("systemd: ExecStart and Environment are quoted per systemd rules", () => {
-    const plan = planStartupService(paths, node, "linux", "/home/ana maria");
+    const linuxHome = "/home/ana maria";
+    const unitPath = path.join(linuxHome, ".config", "systemd", "user", "mordomo.service");
+    const plan = planStartupService(paths, node, "linux", linuxHome);
     const unit = plan.files[0]!.content;
     expect(unit).toContain(`ExecStart=${systemdQuote(node)} ${systemdQuote(cli)} start --foreground`);
     expect(unit).toContain(`Environment=${systemdQuote(`MORDOMO_HOME=${home}`)}`);
-    expect(plan.files[0]!.path).toBe("/home/ana maria/.config/systemd/user/mordomo.service");
+    expect(plan.files[0]!.path).toBe(unitPath);
     // argv arrays are what the CLI spawns: no splitting on spaces.
     expect(plan.installArgv).toEqual([
       ["systemctl", "--user", "daemon-reload"],
       ["systemctl", "--user", "enable", "--now", "mordomo.service"],
     ]);
-    expect(plan.uninstallArgv[1]).toEqual([
-      "rm",
-      "-f",
-      "/home/ana maria/.config/systemd/user/mordomo.service",
-    ]);
-    expect(plan.uninstallCommands[1]).toBe("rm -f '/home/ana maria/.config/systemd/user/mordomo.service'");
+    expect(plan.uninstallArgv[1]).toEqual(["rm", "-f", unitPath]);
+    expect(plan.uninstallCommands[1]).toBe(`rm -f '${unitPath}'`);
   });
 
   it("systemd: doubles % and escapes quotes/backslashes", () => {
@@ -211,17 +209,15 @@ describe("startup service plan quoting", () => {
   });
 
   it("launchd: ProgramArguments stay one string per argument and are XML-escaped", () => {
-    const plan = planStartupService(paths, node, "darwin", "/Users/ana maria");
+    const macHome = "/Users/ana maria";
+    const plistPath = path.join(macHome, "Library", "LaunchAgents", "com.mordomo.service.plist");
+    const plan = planStartupService(paths, node, "darwin", macHome);
     const plist = plan.files[0]!.content;
     expect(plist).toContain(`<string>${node}</string>`);
     expect(plist).toContain(`<string>${cli}</string>`);
     expect(plist).toContain(`<key>MORDOMO_HOME</key><string>${home}</string>`);
-    expect(plan.installArgv).toEqual([
-      ["launchctl", "load", "-w", "/Users/ana maria/Library/LaunchAgents/com.mordomo.service.plist"],
-    ]);
-    expect(plan.installCommands[0]).toBe(
-      "launchctl load -w '/Users/ana maria/Library/LaunchAgents/com.mordomo.service.plist'",
-    );
+    expect(plan.installArgv).toEqual([["launchctl", "load", "-w", plistPath]]);
+    expect(plan.installCommands[0]).toBe(`launchctl load -w '${plistPath}'`);
     expect(xmlEscape(`R&D <"x">`)).toBe("R&amp;D &lt;&quot;x&quot;&gt;");
     const weird = planStartupService(resolvePaths("/tmp/a&b"), node, "darwin", "/Users/x");
     expect(weird.files[0]!.content).toContain("<string>/tmp/a&amp;b</string>");

@@ -245,19 +245,43 @@ function writePidFile(ctx: Pick<AppContext, "paths">, port: number): PidInfo {
   return info;
 }
 
+/**
+ * Run the first candidate executable that exists and exits 0, without relying on PATH
+ * (services and tests may run with a minimal one). Returns trimmed stdout or null.
+ */
+function firstOutput(candidates: string[], args: string[], timeout: number): string | null {
+  for (const bin of candidates) {
+    try {
+      const res = spawnSync(bin, args, { encoding: "utf8", timeout, windowsHide: true });
+      if (res.error || res.status !== 0) continue;
+      const text = res.stdout.trim();
+      if (text.length > 0) return text;
+    } catch {
+      /* try the next candidate */
+    }
+  }
+  return null;
+}
+
+const PS_CANDIDATES = ["/bin/ps", "/usr/bin/ps", "ps"];
+const POWERSHELL_CANDIDATES = [
+  path.join(
+    process.env.SystemRoot ?? "C:\\Windows",
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  ),
+  "powershell.exe",
+];
+
 /** Process start time in epoch ms via `ps -o lstart=` (POSIX), or null when unavailable. */
 function processStartTime(pid: number): number | null {
   if (process.platform === "win32") return null;
-  try {
-    const res = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 });
-    if (res.status !== 0) return null;
-    const text = res.stdout.trim();
-    if (!text) return null;
-    const ms = Date.parse(text);
-    return Number.isNaN(ms) ? null : ms;
-  } catch {
-    return null;
-  }
+  const text = firstOutput(PS_CANDIDATES, ["-o", "lstart=", "-p", String(pid)], 2000);
+  if (text === null) return null;
+  const ms = Date.parse(text);
+  return Number.isNaN(ms) ? null : ms;
 }
 
 /**
@@ -272,26 +296,19 @@ function processCommandLine(pid: number): string | null {
       /* /proc unavailable (container, hardened kernel) — fall back to ps below */
     }
   }
-  try {
-    const res =
-      process.platform === "win32"
-        ? spawnSync(
-            "powershell.exe",
-            [
-              "-NoProfile",
-              "-NonInteractive",
-              "-Command",
-              `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CommandLine`,
-            ],
-            { encoding: "utf8", timeout: 10_000, windowsHide: true },
-          )
-        : spawnSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 });
-    if (res.status !== 0) return null;
-    const text = res.stdout.trim();
-    return text.length > 0 ? text : null;
-  } catch {
-    return null;
+  if (process.platform === "win32") {
+    return firstOutput(
+      POWERSHELL_CANDIDATES,
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CommandLine`,
+      ],
+      10_000,
+    );
   }
+  return firstOutput(PS_CANDIDATES, ["-o", "command=", "-p", String(pid)], 2000);
 }
 
 /**

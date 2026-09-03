@@ -78,7 +78,12 @@ describe("route param validation (audit #1)", () => {
       const res = await app.inject({ method: "DELETE", url, headers: auth() });
       expect(res.statusCode, url).toBe(400);
     }
-    const put = await app.inject({ method: "PUT", url: "/api/connectors/..%2Fvictim", headers: auth(), payload: {} });
+    const put = await app.inject({
+      method: "PUT",
+      url: "/api/connectors/..%2Fvictim",
+      headers: auth(),
+      payload: {},
+    });
     expect(put.statusCode).toBe(400);
     expect(fs.existsSync(victim)).toBe(true);
     const tooLong = "a".repeat(82);
@@ -90,16 +95,35 @@ describe("route param validation (audit #1)", () => {
   });
 
   it("rejects non-uuid run and approval ids", async () => {
-    expect((await app.inject({ method: "GET", url: "/api/runs/..%2Fx", headers: auth() })).statusCode).toBe(400);
-    expect((await app.inject({ method: "POST", url: "/api/approvals/nope/resolve", headers: auth(), payload: { decision: "denied" } })).statusCode).toBe(400);
-    expect((await app.inject({ method: "POST", url: "/api/backups/..%2Fetc/restore", headers: auth() })).statusCode).toBe(400);
+    expect((await app.inject({ method: "GET", url: "/api/runs/..%2Fx", headers: auth() })).statusCode).toBe(
+      400,
+    );
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/approvals/nope/resolve",
+          headers: auth(),
+          payload: { decision: "denied" },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (await app.inject({ method: "POST", url: "/api/backups/..%2Fetc/restore", headers: auth() }))
+        .statusCode,
+    ).toBe(400);
   });
 });
 
 // ---------------------------------------------------------------------------
 describe("error envelope (audit #7)", () => {
   it("zod errors → 400 { error: { code: validation, issues } } + message", async () => {
-    const res = await app.inject({ method: "PUT", url: "/api/settings", headers: auth(), payload: { port: 80 } });
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers: auth(),
+      payload: { port: 80 },
+    });
     expect(res.statusCode).toBe(400);
     const body = res.json();
     expect(body.error.code).toBe("validation");
@@ -111,7 +135,10 @@ describe("error envelope (audit #7)", () => {
   it("unknown errors → 500 without leaking the message", async () => {
     const res = await app.inject({ method: "GET", url: "/api/__boom", headers: auth() });
     expect(res.statusCode).toBe(500);
-    expect(res.json()).toEqual({ error: { code: "internal", message: "Internal error" }, message: "Internal error" });
+    expect(res.json()).toEqual({
+      error: { code: "internal", message: "Internal error" },
+      message: "Internal error",
+    });
     expect(res.body).not.toContain("secret path");
     expect(res.body).not.toContain(home);
   });
@@ -160,7 +187,13 @@ describe("host and token checks (audit #8)", () => {
     expect(tokenMatches(token + "x", token)).toBe(false);
     expect(tokenMatches(undefined, token)).toBe(false);
     expect(tokenMatches("", token)).toBe(false);
-    const wrong = await app.inject({ method: "GET", url: "/api/settings", headers: { "x-mordomo-token": token.slice(0, -1) + "0" } });
+    // Flip the last character so the wrong token can never equal the real one by chance.
+    const flipped = token.slice(0, -1) + (token.endsWith("0") ? "1" : "0");
+    const wrong = await app.inject({
+      method: "GET",
+      url: "/api/settings",
+      headers: { "x-mordomo-token": flipped },
+    });
     expect(wrong.statusCode).toBe(401);
     const viaQuery = await app.inject({ method: "GET", url: `/api/settings?token=${token}` });
     expect(viaQuery.statusCode).toBe(200);
@@ -171,7 +204,10 @@ describe("host and token checks (audit #8)", () => {
 describe("settings deep-merge + adapter reload (audit #6)", () => {
   it("deepMergeSettings keeps sibling fields and replaces arrays", () => {
     const current = ctx.settings();
-    const patch = SettingsPatchSchema.parse({ providers: { claude: { enabled: false } }, limits: { maxConcurrentRuns: 2 } });
+    const patch = SettingsPatchSchema.parse({
+      providers: { claude: { enabled: false } },
+      limits: { maxConcurrentRuns: 2 },
+    });
     const merged = deepMergeSettings(current, patch);
     expect(merged.providers.claude.enabled).toBe(false);
     expect(merged.providers.claude.binaryPath).toBe(current.providers.claude.binaryPath);
@@ -211,13 +247,33 @@ describe("settings deep-merge + adapter reload (audit #6)", () => {
 
   it("validates new indexedFolders: absolute, existing directory, not inside config/", async () => {
     const keep = ctx.settings().indexedFolders;
-    const rel = await app.inject({ method: "PUT", url: "/api/settings", headers: auth(), payload: { indexedFolders: [...keep, { path: "relative/dir" }] } });
+    const rel = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers: auth(),
+      payload: { indexedFolders: [...keep, { path: "relative/dir" }] },
+    });
     expect(rel.statusCode).toBe(400);
-    const missing = await app.inject({ method: "PUT", url: "/api/settings", headers: auth(), payload: { indexedFolders: [...keep, { path: path.join(home, "nope") }] } });
+    const missing = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers: auth(),
+      payload: { indexedFolders: [...keep, { path: path.join(home, "nope") }] },
+    });
     expect(missing.statusCode).toBe(400);
-    const file = await app.inject({ method: "PUT", url: "/api/settings", headers: auth(), payload: { indexedFolders: [...keep, { path: path.join(workspace, "notes.md") }] } });
+    const file = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers: auth(),
+      payload: { indexedFolders: [...keep, { path: path.join(workspace, "notes.md") }] },
+    });
     expect(file.statusCode).toBe(400);
-    const cfg = await app.inject({ method: "PUT", url: "/api/settings", headers: auth(), payload: { indexedFolders: [...keep, { path: ctx.paths.config }] } });
+    const cfg = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers: auth(),
+      payload: { indexedFolders: [...keep, { path: ctx.paths.config }] },
+    });
     expect(cfg.statusCode).toBe(400);
     expect(cfg.json().error.message).toContain("config");
     expect(ctx.settings().indexedFolders).toEqual(keep);
@@ -230,7 +286,12 @@ describe("containment (audit #9)", () => {
     const outside = fs.mkdtempSync(path.join(path.dirname(home), "outside-skill-"));
     try {
       fs.writeFileSync(path.join(outside, "SKILL.md"), "---\nname: X\n---\nbody");
-      const res = await app.inject({ method: "POST", url: "/api/skills/import", headers: auth(), payload: { sourceDir: outside } });
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/skills/import",
+        headers: auth(),
+        payload: { sourceDir: outside },
+      });
       expect(res.statusCode).toBe(403);
       expect(res.json().error.code).toBe("forbidden_path");
       expect(fs.existsSync(path.join(ctx.paths.skills, path.basename(outside)))).toBe(false);
@@ -242,22 +303,49 @@ describe("containment (audit #9)", () => {
   it("skills/import works from inside an indexed folder", async () => {
     const src = path.join(workspace, "imported-skill");
     fs.mkdirSync(src);
-    fs.writeFileSync(path.join(src, "SKILL.md"), "---\nname: Imported\ndescription: test\n---\nDo the thing.\n");
-    const res = await app.inject({ method: "POST", url: "/api/skills/import", headers: auth(), payload: { sourceDir: src } });
+    fs.writeFileSync(
+      path.join(src, "SKILL.md"),
+      "---\nname: Imported\ndescription: test\n---\nDo the thing.\n",
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/skills/import",
+      headers: auth(),
+      payload: { sourceDir: src },
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().slug).toBe("imported-skill");
-    const dup = await app.inject({ method: "POST", url: "/api/skills/import", headers: auth(), payload: { sourceDir: src } });
+    const dup = await app.inject({
+      method: "POST",
+      url: "/api/skills/import",
+      headers: auth(),
+      payload: { sourceDir: src },
+    });
     expect(dup.statusCode).toBe(409);
-    const badSlug = await app.inject({ method: "POST", url: "/api/skills/import", headers: auth(), payload: { sourceDir: src, slug: "../x" } });
+    const badSlug = await app.inject({
+      method: "POST",
+      url: "/api/skills/import",
+      headers: auth(),
+      payload: { sourceDir: src, slug: "../x" },
+    });
     expect(badSlug.statusCode).toBe(400);
   });
 
   it("sync plan/apply refuse a target outside the granted roots", async () => {
     const outside = fs.mkdtempSync(path.join(path.dirname(home), "outside-sync-"));
     try {
-      const plan = await app.inject({ method: "GET", url: `/api/sync/plan?target=${encodeURIComponent(outside)}`, headers: auth() });
+      const plan = await app.inject({
+        method: "GET",
+        url: `/api/sync/plan?target=${encodeURIComponent(outside)}`,
+        headers: auth(),
+      });
       expect(plan.statusCode).toBe(403);
-      const apply = await app.inject({ method: "POST", url: "/api/sync/apply", headers: auth(), payload: { target: outside } });
+      const apply = await app.inject({
+        method: "POST",
+        url: "/api/sync/apply",
+        headers: auth(),
+        payload: { target: outside },
+      });
       expect(apply.statusCode).toBe(403);
       expect(fs.readdirSync(outside)).toEqual([]);
     } finally {
@@ -265,7 +353,11 @@ describe("containment (audit #9)", () => {
     }
     const inside = path.join(workspace, "sync-target");
     fs.mkdirSync(inside);
-    const ok = await app.inject({ method: "GET", url: `/api/sync/plan?target=${encodeURIComponent(inside)}`, headers: auth() });
+    const ok = await app.inject({
+      method: "GET",
+      url: `/api/sync/plan?target=${encodeURIComponent(inside)}`,
+      headers: auth(),
+    });
     expect(ok.statusCode).toBe(200);
   });
 });
@@ -280,7 +372,12 @@ describe("backup restore is staged, never against the open DB (audit #3)", () =>
 
     const res = await app.inject({ method: "POST", url: `/api/backups/${name}/restore`, headers: auth() });
     expect(res.statusCode).toBe(202);
-    expect(res.json()).toMatchObject({ staged: true, restored: false, name, apply: "mordomo stop && mordomo start" });
+    expect(res.json()).toMatchObject({
+      staged: true,
+      restored: false,
+      name,
+      apply: "mordomo stop && mordomo start",
+    });
     expect(ctx.db.open).toBe(true);
     expect(fs.statSync(ctx.paths.dbFile).mtimeMs).toBe(dbBefore);
     const pending = readRestorePending(ctx.paths);
@@ -290,11 +387,19 @@ describe("backup restore is staged, never against the open DB (audit #3)", () =>
     const health = await app.inject({ method: "GET", url: "/api/health", headers: auth() });
     expect(health.json().restorePending.name).toBe(name);
 
-    const cancel = await app.inject({ method: "DELETE", url: "/api/backups/restore-pending", headers: auth() });
+    const cancel = await app.inject({
+      method: "DELETE",
+      url: "/api/backups/restore-pending",
+      headers: auth(),
+    });
     expect(cancel.json().cancelled).toBe(name);
     expect(readRestorePending(ctx.paths)).toBeNull();
 
-    const missing = await app.inject({ method: "POST", url: "/api/backups/full-does-not-exist/restore", headers: auth() });
+    const missing = await app.inject({
+      method: "POST",
+      url: "/api/backups/full-does-not-exist/restore",
+      headers: auth(),
+    });
     expect(missing.statusCode).toBe(404);
   });
 
@@ -307,10 +412,19 @@ describe("backup restore is staged, never against the open DB (audit #3)", () =>
       boot.settingsStore.save(s);
       const bootApp = await buildServer(boot);
       const t = boot.token();
-      const created = await bootApp.inject({ method: "POST", url: "/api/backups", headers: { "x-mordomo-token": t }, payload: {} });
+      const created = await bootApp.inject({
+        method: "POST",
+        url: "/api/backups",
+        headers: { "x-mordomo-token": t },
+        payload: {},
+      });
       const name = created.json().name as string;
       boot.settingsStore.update({ systemName: "AfterBackup" });
-      const staged = await bootApp.inject({ method: "POST", url: `/api/backups/${name}/restore`, headers: { "x-mordomo-token": t } });
+      const staged = await bootApp.inject({
+        method: "POST",
+        url: `/api/backups/${name}/restore`,
+        headers: { "x-mordomo-token": t },
+      });
       expect(staged.statusCode).toBe(202);
       await bootApp.close();
       boot.close();
@@ -349,7 +463,10 @@ describe("health, version and request log (audit #25)", () => {
     expect(fs.existsSync(file)).toBe(true);
     const raw = fs.readFileSync(file, "utf8");
     expect(raw).not.toContain(token);
-    const lines = raw.trim().split("\n").map((l) => JSON.parse(l));
+    const lines = raw
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
     const metrics = lines.find((l) => typeof l.url === "string" && l.url.startsWith("/api/metrics"));
     expect(metrics).toBeTruthy();
     expect(metrics).toMatchObject({ method: "GET", status: 200 });
@@ -379,7 +496,11 @@ describe("SSE streams (audit #23, #27)", () => {
     base = `http://127.0.0.1:${typeof addr === "object" && addr ? addr.port : 0}`;
   });
 
-  async function readSse(url: string, headers: Record<string, string>, ms: number): Promise<{ status: number; text: string; contentType: string }> {
+  async function readSse(
+    url: string,
+    headers: Record<string, string>,
+    ms: number,
+  ): Promise<{ status: number; text: string; contentType: string }> {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), ms);
     try {
@@ -420,7 +541,12 @@ describe("SSE streams (audit #23, #27)", () => {
   });
 
   it("/api/runs/:id/stream sends id: lines and honours Last-Event-ID", async () => {
-    const run = await app.inject({ method: "POST", url: "/api/skills/workspace-digest/run", headers: auth(), payload: { inputs: { focus: "x" } } });
+    const run = await app.inject({
+      method: "POST",
+      url: "/api/skills/workspace-digest/run",
+      headers: auth(),
+      payload: { inputs: { focus: "x" } },
+    });
     const { runId } = run.json();
     for (let i = 0; i < 50; i++) {
       const r = await app.inject({ method: "GET", url: `/api/runs/${runId}`, headers: auth() });
@@ -435,7 +561,11 @@ describe("SSE streams (audit #23, #27)", () => {
     expect(full.text).toContain('"type":"run_state"');
 
     const resumeFrom = ids[ids.length - 2]!;
-    const resumed = await readSse(`${base}/api/runs/${runId}/stream?token=${token}`, { "Last-Event-ID": String(resumeFrom) }, 3000);
+    const resumed = await readSse(
+      `${base}/api/runs/${runId}/stream?token=${token}`,
+      { "Last-Event-ID": String(resumeFrom) },
+      3000,
+    );
     const resumedIds = [...resumed.text.matchAll(/^id: (\d+)$/gm)].map((m) => Number(m[1]));
     expect(resumedIds).toEqual(ids.filter((id) => id > resumeFrom));
     expect(resumed.text).toContain('"type":"run_state"');
@@ -455,7 +585,11 @@ describe("SSE streams (audit #23, #27)", () => {
     expect(out.text).toContain(`id: ${live.id}\nevent: routine.changed\n`);
     expect(out.text).toContain('"keys":["b"]');
 
-    const viaHeader = await readSse(`${base}/api/events?token=${token}`, { "Last-Event-ID": String(a.id) }, 400);
+    const viaHeader = await readSse(
+      `${base}/api/events?token=${token}`,
+      { "Last-Event-ID": String(a.id) },
+      400,
+    );
     expect(viaHeader.text).toContain(`id: ${b.id}\n`);
     const noResume = await readSse(`${base}/api/events?token=${token}`, {}, 400);
     expect(noResume.text).not.toContain(`id: ${b.id}\n`);
