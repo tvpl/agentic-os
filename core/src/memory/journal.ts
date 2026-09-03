@@ -197,15 +197,27 @@ interface RunFinishedPayload {
   durationMs?: number | null;
 }
 
+/** Installed hooks per bus, keyed by memory dir — so a second install is a no-op. */
+const installed = new WeakMap<EventBus, Map<string, () => void>>();
+
 /**
  * Subscribe the journal to the event bus: every finished run leaves one line
- * under "Runs". Also registers `memory/` on the indexer when given. Returns
- * the unsubscribe function. Registration (apps/api/src/context.ts):
+ * under "Runs". Also registers `memory/` on the indexer when given, so the
+ * journal is searchable and recallable. Returns the unsubscribe function.
+ *
+ * Idempotent per (bus, memory dir): installing twice returns the first
+ * disposer and never double-writes, so the API and the context may both call
+ * it. Registration (apps/api/src/context.ts, end of the constructor):
  *   `installJournalHooks(events, this.paths, { indexer: this.indexer });`
  */
 export function installJournalHooks(bus: EventBus, paths: MordomoPaths, opts: JournalHookOptions = {}): () => void {
   if (opts.indexer) opts.indexer.addImplicitRoot({ path: paths.memory, area: opts.area ?? null, enabled: true });
-  return bus.subscribe((event: OsEvent) => {
+  const key = path.resolve(paths.memory);
+  const perBus = installed.get(bus) ?? new Map<string, () => void>();
+  installed.set(bus, perBus);
+  const already = perBus.get(key);
+  if (already) return already;
+  const unsubscribe = bus.subscribe((event: OsEvent) => {
     if (event.type !== "run.finished") return;
     const p = event.payload as Partial<RunFinishedPayload> | undefined;
     if (!p || typeof p.runId !== "string") return;
@@ -216,4 +228,10 @@ export function installJournalHooks(bus: EventBus, paths: MordomoPaths, opts: Jo
       /* the journal must never break a run */
     }
   });
+  const dispose = () => {
+    perBus.delete(key);
+    unsubscribe();
+  };
+  perBus.set(key, dispose);
+  return dispose;
 }

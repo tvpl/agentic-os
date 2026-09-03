@@ -7,8 +7,10 @@ import {
   buildGraph,
   checkRouters,
   ensureJournal,
+  events,
   factStats,
   generateRouters,
+  installJournalHooks,
   isJournalDate,
   journalSections,
   listFacets,
@@ -33,6 +35,14 @@ import { grantedRoots, httpError } from "./common.js";
 const JournalDateParam = z.string().refine(isJournalDate, { message: "expected YYYY-MM-DD" });
 
 export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): void {
+  // Journal hooks: `memory/` becomes an indexed root (journal notes are
+  // searchable and recallable) and every finished run leaves one line under
+  // "Runs". Idempotent, so adding the same call to AppContext later is safe.
+  const disposeJournalHooks = installJournalHooks(events, ctx.paths, { indexer: ctx.indexer });
+  app.addHook("onClose", async () => {
+    disposeJournalHooks();
+  });
+
   app.get("/api/memory/status", async () => {
     const last = ctx.indexer.lastIndex();
     const facets = listFacets(ctx.db);
@@ -130,13 +140,19 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
         record: z.coerce.boolean().optional(),
       })
       .parse(req.query);
-    const result = recall(ctx.db, ctx.paths, ctx.settings(), q.q, { k: q.k, area: q.area, excerptChars: q.excerptChars });
+    const result = recall(ctx.db, ctx.paths, ctx.settings(), q.q, {
+      k: q.k,
+      area: q.area,
+      excerptChars: q.excerptChars,
+    });
     if (q.record !== false) recordRecall(ctx.db, result);
     return result;
   });
 
   app.get("/api/memory/recall/stats", async (req) => {
-    const { limit } = z.object({ limit: z.coerce.number().int().min(1).max(500).optional() }).parse(req.query);
+    const { limit } = z
+      .object({ limit: z.coerce.number().int().min(1).max(500).optional() })
+      .parse(req.query);
     return recallStats(ctx.db, limit);
   });
 
@@ -181,7 +197,13 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       ctx.db,
       ctx.paths,
       ctx.settings(),
-      { skills: ctx.skills.list(), routines: ctx.routines.list(), connectors: ctx.connectors.list() },
+      {
+        skills: ctx.skills.list(),
+        routines: ctx.routines.list(),
+        connectors: ctx.connectors.list(),
+        // Same verdict as GET /api/routines/silent, so both views agree.
+        silent: ctx.scheduler.silent(q.silentRoutineDays ?? 30),
+      },
       q,
     );
   });
@@ -226,7 +248,10 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   /** Dataview-style query over inline `key:: value` fields: `where=key`, `key:value` or `key:~substring`. */
   app.get("/api/memory/query", async (req) => {
     const q = z
-      .object({ where: z.string().min(1).max(500), limit: z.coerce.number().int().min(1).max(1000).optional() })
+      .object({
+        where: z.string().min(1).max(500),
+        limit: z.coerce.number().int().min(1).max(1000).optional(),
+      })
       .parse(req.query);
     return { where: q.where, files: queryFilesByField(ctx.db, q) };
   });

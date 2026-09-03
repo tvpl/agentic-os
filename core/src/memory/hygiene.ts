@@ -2,7 +2,7 @@ import path from "node:path";
 import type { Db } from "../db/db.js";
 import type { MordomoPaths } from "../paths.js";
 import type { Settings } from "../config/schema.js";
-import type { Routine } from "../routines/types.js";
+import type { Routine, SilentRoutine } from "../routines/types.js";
 import type { Connector } from "../connectors/registry.js";
 import { checkRouters } from "./routers.js";
 
@@ -42,6 +42,13 @@ export interface HygieneSources {
   skills: Array<{ slug: string; name: string; enabled?: boolean }>;
   routines: Routine[];
   connectors: Connector[];
+  /**
+   * Silent routines as the scheduler sees them (`RoutineScheduler.silent(days)`,
+   * the same source as `GET /api/routines/silent`). When given it wins over the
+   * local history query, so both views agree; `routines` is then only used as a
+   * fallback for callers without a scheduler (CLI, tests).
+   */
+  silent?: SilentRoutine[];
 }
 
 export interface HygieneOptions {
@@ -127,23 +134,41 @@ export function memoryHygiene(
     items.push({ kind: "skill-never-run", id: s.slug, name: s.name, detail: s.enabled === false ? "Never run (disabled)." : "Never run.", action: "open" });
   }
 
-  // 5. Silent routines: no firing within `silentRoutineDays` (routine store read-only; history from the DB).
-  const lastFire = db.prepare(
-    "SELECT MAX(fired_at) m FROM routine_history WHERE routine_id = ? AND status IN ('fired','caught_up')",
-  );
-  const silentCutoff = now - silentRoutineDays * DAY;
-  const silent: Array<{ routine: Routine; last: number | null }> = [];
-  for (const routine of sources.routines) {
-    const last = (lastFire.get(routine.id) as { m: number | null }).m;
-    if (last !== null && last >= silentCutoff) continue;
-    if (last === null && routine.createdAt >= silentCutoff) continue; // too young to judge
-    silent.push({ routine, last });
-  }
-  counts["silent-routine"] = silent.length;
-  for (const { routine, last } of silent.slice(0, perKind)) {
-    const state = routine.enabled ? "enabled" : "paused";
-    const detail = last === null ? `Never fired (${state}, created ${daysAgo(routine.createdAt, now)} d ago).` : `Last fired ${daysAgo(last, now)} d ago (${state}).`;
-    items.push({ kind: "silent-routine", id: routine.id, name: routine.name, detail, action: "archive" });
+  // 5. Silent routines — the scheduler's verdict when we have it.
+  if (sources.silent) {
+    counts["silent-routine"] = sources.silent.length;
+    for (const r of sources.silent.slice(0, perKind)) {
+      const state = r.enabled ? "enabled" : "paused";
+      const detail =
+        r.reason === "failures"
+          ? `${r.failuresInWindow} failed run(s) in the last ${silentRoutineDays} d (${state}).`
+          : r.reason === "never_fired"
+            ? `Never fired (${state}).`
+            : `No successful run in the last ${silentRoutineDays} d${r.lastFiredAt === null ? "" : `, last fired ${daysAgo(r.lastFiredAt, now)} d ago`} (${state}).`;
+      items.push({ kind: "silent-routine", id: r.id, name: r.name, detail, action: "archive" });
+    }
+  } else {
+    // Fallback without a scheduler: firings straight from the history table.
+    const lastFire = db.prepare(
+      "SELECT MAX(fired_at) m FROM routine_history WHERE routine_id = ? AND status IN ('fired','caught_up')",
+    );
+    const silentCutoff = now - silentRoutineDays * DAY;
+    const silent: Array<{ routine: Routine; last: number | null }> = [];
+    for (const routine of sources.routines) {
+      const last = (lastFire.get(routine.id) as { m: number | null }).m;
+      if (last !== null && last >= silentCutoff) continue;
+      if (last === null && routine.createdAt >= silentCutoff) continue; // too young to judge
+      silent.push({ routine, last });
+    }
+    counts["silent-routine"] = silent.length;
+    for (const { routine, last } of silent.slice(0, perKind)) {
+      const state = routine.enabled ? "enabled" : "paused";
+      const detail =
+        last === null
+          ? `Never fired (${state}, created ${daysAgo(routine.createdAt, now)} d ago).`
+          : `Last fired ${daysAgo(last, now)} d ago (${state}).`;
+      items.push({ kind: "silent-routine", id: routine.id, name: routine.name, detail, action: "archive" });
+    }
   }
 
   // 6. Connectors unused for `unusedConnectorDays` (registry `lastUsedAt`).

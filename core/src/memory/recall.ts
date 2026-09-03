@@ -234,7 +234,11 @@ function scoreCandidates(db: Db, paths: MordomoPaths, settings: Settings, keywor
       byId.set(file.id, entry);
     }
   }
-  const areaSlugs = new Map(settings.areas.map((a) => [areaSlug(a), a] as const));
+  // Area slugs named by the question, memoised: the configured areas are seeded
+  // up front (they are the common case) and any other area a row carries is
+  // resolved once, so the boost costs one pass over the keywords per slug.
+  const isKeywordArea = (slug: string): boolean => keywords.some((kw) => slug.includes(kw) || kw.includes(slug));
+  const areaNamed = new Map<string, boolean>(settings.areas.map((a) => [areaSlug(a), isKeywordArea(areaSlug(a))]));
   const pointers = routerPointers(paths);
   for (const entry of byId.values()) {
     const { file } = entry;
@@ -265,7 +269,12 @@ function scoreCandidates(db: Db, paths: MordomoPaths, settings: Settings, keywor
     }
     if (file.area) {
       const slug = areaSlug(file.area);
-      if (keywords.some((kw) => slug.includes(kw) || kw.includes(slug))) {
+      let named = areaNamed.get(slug);
+      if (named === undefined) {
+        named = isKeywordArea(slug);
+        areaNamed.set(slug, named);
+      }
+      if (named) {
         entry.score += 4;
         entry.reasons.push(`area "${file.area}" named in the question`);
       }
@@ -426,6 +435,7 @@ export function recall(db: Db, paths: MordomoPaths, settings: Settings, question
   const lookup = db.prepare("SELECT * FROM files WHERE path = ?");
 
   for (const cand of scored.slice(0, k)) {
+    if (openedPaths.has(cand.file.path)) continue; // already reached by a pointer — never read a file twice
     openedPaths.add(cand.file.path);
     const file = openFile(cand.file, keywords, maxBytes);
     opened++;

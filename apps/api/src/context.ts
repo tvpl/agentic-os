@@ -11,6 +11,8 @@ import {
   SkillCatalog,
   SyncCompiler,
   ensureDirs,
+  events,
+  installJournalHooks,
   openDb,
   resolvePaths,
   restoreBackup,
@@ -65,7 +67,11 @@ export function readRestorePending(paths: MordomoPaths): RestorePending | null {
   try {
     const raw = JSON.parse(fs.readFileSync(marker, "utf8")) as Partial<RestorePending>;
     if (typeof raw.name !== "string" || typeof raw.stagedAt !== "number") return null;
-    return { name: raw.name, stagedAt: raw.stagedAt, stagedPath: path.join(restorePendingDir(paths), raw.name) };
+    return {
+      name: raw.name,
+      stagedAt: raw.stagedAt,
+      stagedPath: path.join(restorePendingDir(paths), raw.name),
+    };
   } catch {
     return null;
   }
@@ -78,7 +84,10 @@ export function writeRestorePending(paths: MordomoPaths, name: string): RestoreP
   fs.mkdirSync(dir, { recursive: true });
   fs.cpSync(path.join(paths.backups, name), stagedPath, { recursive: true });
   const info: RestorePending = { name, stagedAt: Date.now(), stagedPath };
-  fs.writeFileSync(path.join(dir, RESTORE_MARKER), JSON.stringify({ name, stagedAt: info.stagedAt }, null, 2) + "\n");
+  fs.writeFileSync(
+    path.join(dir, RESTORE_MARKER),
+    JSON.stringify({ name, stagedAt: info.stagedAt }, null, 2) + "\n",
+  );
   return info;
 }
 
@@ -144,14 +153,33 @@ export class AppContext {
     this.skills = new SkillCatalog(this.paths);
     // The adapter callback reads the CURRENT record, so `reloadAdapters()`
     // takes effect for the next run without rebuilding the RunManager.
-    this.runs = new RunManager(this.db, this.paths, () => this.settings(), (id) => this.adapters[id]);
+    this.runs = new RunManager(
+      this.db,
+      this.paths,
+      () => this.settings(),
+      (id) => this.adapters[id],
+    );
     this.indexer = new MemoryIndexer(this.db, () => this.settings());
     this.routines = new RoutineStore(this.paths);
-    this.scheduler = new RoutineScheduler(this.db, this.paths, this.routines, this.runs, this.skills, () => this.settings());
+    this.scheduler = new RoutineScheduler(this.db, this.paths, this.routines, this.runs, this.skills, () =>
+      this.settings(),
+    );
     this.connectors = new ConnectorRegistry(this.paths);
-    this.sync = new SyncCompiler(this.paths, () => this.settings(), () => this.skills.list(), () => this.providers.manifests());
+    this.sync = new SyncCompiler(
+      this.paths,
+      () => this.settings(),
+      () => this.skills.list(),
+      () => this.providers.manifests(),
+    );
     this.approvals = new ApprovalStore(this.db);
+    // The daily journal listens for finished runs. Installing it here (and not
+    // only when the HTTP routes are registered) means CLI paths — `mordomo
+    // index`, `mordomo run` — also index `memory/journal/**` and log their run
+    // line. The install is idempotent, so the route-level one is a no-op.
+    this.disposeJournalHooks = installJournalHooks(events, this.paths, { indexer: this.indexer });
   }
+
+  private readonly disposeJournalHooks: () => void;
 
   /** Live adapters — rebuilt by `reloadAdapters()` whenever settings change. */
   get adapters(): Record<ProviderId, AgentAdapter> {
@@ -221,6 +249,7 @@ export class AppContext {
   }
 
   close(): void {
+    this.disposeJournalHooks();
     this.scheduler.stop();
     if (this.db.open) this.db.close();
   }
