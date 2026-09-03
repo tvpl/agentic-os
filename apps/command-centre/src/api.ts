@@ -1,7 +1,6 @@
 /** Typed-ish fetch layer for the local MordomoOS API. */
 
-const TOKEN =
-  document.querySelector<HTMLMetaElement>('meta[name="mordomo-token"]')?.content ?? "";
+const TOKEN = document.querySelector<HTMLMetaElement>('meta[name="mordomo-token"]')?.content ?? "";
 
 /** Local token (injected into the page by the API server / the Vite dev plugin). */
 export function getToken(): string {
@@ -70,7 +69,12 @@ async function parseError(res: Response): Promise<ApiError> {
   return new ApiError(res.status, message, code, issues);
 }
 
-async function request<T>(method: string, url: string, body?: unknown, opts: RequestOptions = {}): Promise<T> {
+async function request<T>(
+  method: string,
+  url: string,
+  body?: unknown,
+  opts: RequestOptions = {},
+): Promise<T> {
   const controller = new AbortController();
   let timedOut = false;
   const timer = window.setTimeout(() => {
@@ -225,7 +229,14 @@ export interface Skill {
   name: string;
   description: string;
   triggers: string[];
-  inputs: Array<{ name: string; label: string; type: string; required: boolean; placeholder?: string; options?: string[] }>;
+  inputs: Array<{
+    name: string;
+    label: string;
+    type: string;
+    required: boolean;
+    placeholder?: string;
+    options?: string[];
+  }>;
   providers: ProviderId[];
   recommendedModel: string | null;
   recommendedEffort: string;
@@ -461,6 +472,17 @@ export interface ApprovalRecord {
   resolvedAt: number | null;
 }
 
+/** Absolute URL of `GET /api/artifacts/raw` for a file (token in the query: `<img>` cannot set headers). */
+export function artifactRawUrl(absolutePath: string): string {
+  return `/api/artifacts/raw?p=${encodeURIComponent(absolutePath)}&token=${encodeURIComponent(TOKEN)}`;
+}
+
+/** Can `/api/artifacts/raw` serve this file inline? (mirrors the server allow-list) */
+export function isRawViewable(file: string): boolean {
+  const ext = file.slice(file.lastIndexOf(".")).toLowerCase();
+  return [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".mp4", ".webm"].includes(ext);
+}
+
 /** Micro app entry persisted in `settings.microApps` when the schema has it (else route-only list). */
 export interface MicroAppEntry {
   id: string;
@@ -591,7 +613,8 @@ export interface JournalDay {
   dates?: string[];
 }
 
-export type HygieneKind = "orphan" | "dangling-link" | "stale" | "skill-never-run" | "silent-routine" | "unused-connector";
+export type HygieneKind =
+  "orphan" | "dangling-link" | "stale" | "skill-never-run" | "silent-routine" | "unused-connector";
 export type HygieneAction = "open" | "disconnect" | "archive" | "link";
 
 export interface HygieneItem {
@@ -650,7 +673,14 @@ export interface RunUsageEvent extends RunUsage {
 /** `GET /api/runs/:id/diff?file=` */
 export type RunDiffResult =
   | { kind: "git"; file: string; repoRoot: string; diff: string; truncated: boolean; unchanged: boolean }
-  | { kind: "snapshot"; file: string; content: string | null; truncated: boolean; untracked: boolean; message: string | null }
+  | {
+      kind: "snapshot";
+      file: string;
+      content: string | null;
+      truncated: boolean;
+      untracked: boolean;
+      message: string | null;
+    }
   | { kind: "unavailable"; file: string; message: string };
 
 /** `POST /api/runs` and `POST /api/skills/:slug/run` */

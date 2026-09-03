@@ -5,11 +5,11 @@
  * click → /routines.
  */
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { CalendarClock } from "lucide-react";
 import type { RoutineStatus } from "../../api";
 import { useLocale, useT } from "../../i18n";
 import { EmptyState, Segmented } from "../../components/primitives";
+import { useOsNavigate } from "../../hooks/useViewTransition";
 import { isValidCron, nextCronRuns } from "../../views/cron";
 import { useDesktopRoutines, useTicker } from "../data";
 import { cfgString, type WidgetProps } from "../widgetTypes";
@@ -27,7 +27,12 @@ export interface AgendaFire {
 }
 
 /** Fires in [from, from+span) for every enabled routine; paused ones contribute their `nextRunAt` only. */
-export function agendaFires(routines: RoutineStatus[], from: number, spanMs: number, perRoutine = 12): AgendaFire[] {
+export function agendaFires(
+  routines: RoutineStatus[],
+  from: number,
+  spanMs: number,
+  perRoutine = 12,
+): AgendaFire[] {
   const out: AgendaFire[] = [];
   const to = from + spanMs;
   for (const r of routines) {
@@ -50,7 +55,12 @@ export default function AgendaWidget({ config }: WidgetProps) {
   const routines = useDesktopRoutines();
   return (
     <WidgetGate queries={[routines]} lines={2}>
-      {routines.data && <AgendaBody routines={routines.data} defaultSpan={cfgString(config, "span", "24h") === "7d" ? "7d" : "24h"} />}
+      {routines.data && (
+        <AgendaBody
+          routines={routines.data}
+          defaultSpan={cfgString(config, "span", "24h") === "7d" ? "7d" : "24h"}
+        />
+      )}
     </WidgetGate>
   );
 }
@@ -58,7 +68,7 @@ export default function AgendaWidget({ config }: WidgetProps) {
 function AgendaBody({ routines, defaultSpan }: { routines: RoutineStatus[]; defaultSpan: Span }) {
   const t = useT();
   const locale = useLocale();
-  const navigate = useNavigate();
+  const navigate = useOsNavigate();
   const now = useTicker(30_000);
   const [span, setSpan] = useState<Span>(defaultSpan);
   const [hover, setHover] = useState<number | null>(null);
@@ -74,19 +84,32 @@ function AgendaBody({ routines, defaultSpan }: { routines: RoutineStatus[]; defa
       for (let i = 0; i <= 24; i += 3) {
         const at = first.getTime() + i * 3_600_000;
         if (at < from || at > from + spanMs) continue;
-        out.push({ pct: ((at - from) / spanMs) * 100, label: new Date(at).toLocaleTimeString(locale, { hour: "2-digit" }) });
+        out.push({
+          pct: ((at - from) / spanMs) * 100,
+          label: new Date(at).toLocaleTimeString(locale, { hour: "2-digit" }),
+        });
       }
     } else {
       for (let d = 0; d < 7; d++) {
         const at = from + d * 86_400_000;
-        out.push({ pct: (d / 7) * 100, label: new Date(at).toLocaleDateString(locale, { weekday: "short" }) });
+        out.push({
+          pct: (d / 7) * 100,
+          label: new Date(at).toLocaleDateString(locale, { weekday: "short" }),
+        });
       }
     }
     return out;
   }, [span, from, spanMs, locale]);
 
   if (routines.length === 0) {
-    return <EmptyState className="compact" icon={<CalendarClock aria-hidden />} title={t("board.empty")} body={t("board.emptyBody")} />;
+    return (
+      <EmptyState
+        className="compact"
+        icon={<CalendarClock aria-hidden />}
+        title={t("board.empty")}
+        body={t("board.emptyBody")}
+      />
+    );
   }
   const nowPct = Math.max(0, Math.min(100, ((now - from) / spanMs) * 100));
   const fmt = (at: number) =>
@@ -98,11 +121,25 @@ function AgendaBody({ routines, defaultSpan }: { routines: RoutineStatus[]; defa
     <div className="agenda">
       <div className="agenda-head">
         <span className="hud-label">{t("desktop.agenda.upcoming", { n: fires.length })}</span>
-        <Segmented size="sm" ariaLabel={t("desktop.agenda.span")} value={span} onChange={setSpan} options={[{ value: "24h", label: "24h" }, { value: "7d", label: "7d" }]} />
+        <Segmented
+          size="sm"
+          ariaLabel={t("desktop.agenda.span")}
+          value={span}
+          onChange={setSpan}
+          options={[
+            { value: "24h", label: "24h" },
+            { value: "7d", label: "7d" },
+          ]}
+        />
       </div>
-      <div className="agenda-track" role="list" aria-label={t("desktop.agenda.title")}>
+      <div className="agenda-track" aria-label={t("desktop.agenda.title")}>
         {ticks.map((tick) => (
-          <span key={tick.label + tick.pct} className="agenda-tick" style={{ left: `${tick.pct}%` }} aria-hidden>
+          <span
+            key={tick.label + tick.pct}
+            className="agenda-tick"
+            style={{ left: `${tick.pct}%` }}
+            aria-hidden
+          >
             {tick.label}
           </span>
         ))}
@@ -111,7 +148,6 @@ function AgendaBody({ routines, defaultSpan }: { routines: RoutineStatus[]; defa
           <button
             key={`${f.id}-${f.at}`}
             type="button"
-            role="listitem"
             className={`agenda-dot runner-${f.runner}${f.enabled ? "" : " paused"}${hover === i ? " hover" : ""}`}
             style={{ left: `${((f.at - from) / spanMs) * 100}%` }}
             aria-label={`${f.name} · ${fmt(f.at)}`}
@@ -123,7 +159,11 @@ function AgendaBody({ routines, defaultSpan }: { routines: RoutineStatus[]; defa
           />
         ))}
         {hovered && (
-          <div className="agenda-tip" role="tooltip" style={{ left: `${Math.min(80, ((hovered.at - from) / spanMs) * 100)}%` }}>
+          <div
+            className="agenda-tip"
+            role="tooltip"
+            style={{ left: `${Math.min(80, ((hovered.at - from) / spanMs) * 100)}%` }}
+          >
             <strong className="truncate">{hovered.name}</strong>
             <span className="mono">{fmt(hovered.at)}</span>
           </div>

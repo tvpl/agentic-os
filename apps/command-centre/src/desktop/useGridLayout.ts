@@ -17,7 +17,17 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type RefO
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { qk } from "../queries";
-import { COLS, GRID_PAD, GRID_TOP, STACK_BREAKPOINT, computeRows, layoutsEqual, normalizeLayout, type LayoutMap, type WidgetBox } from "./defaultLayout";
+import {
+  COLS,
+  GRID_PAD,
+  GRID_TOP,
+  STACK_BREAKPOINT,
+  computeRows,
+  layoutsEqual,
+  normalizeLayout,
+  type LayoutMap,
+  type WidgetBox,
+} from "./defaultLayout";
 import { beginDrag, dragOffsetPx, dragTarget, nudgeBox, settleDrag, type DragSession } from "./dragReducer";
 
 export { clampMove, clampResize } from "./dragReducer";
@@ -38,7 +48,12 @@ export function useGridMetrics(ref: RefObject<HTMLElement>): GridMetrics {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const measure = () => setSize((prev) => (prev.w === el.clientWidth && prev.h === el.clientHeight ? prev : { w: el.clientWidth, h: el.clientHeight }));
+    const measure = () =>
+      setSize((prev) =>
+        prev.w === el.clientWidth && prev.h === el.clientHeight
+          ? prev
+          : { w: el.clientWidth, h: el.clientHeight },
+      );
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -198,7 +213,13 @@ export interface WidgetDrag {
   mode: DragSession["mode"] | null;
   /** Target cell while dragging (updates only when the cell changes). */
   target: WidgetBox | null;
-  start: (id: string, mode: DragSession["mode"], e: { clientX: number; clientY: number; pointerId?: number }, box: WidgetBox, el: HTMLElement) => void;
+  start: (
+    id: string,
+    mode: DragSession["mode"],
+    e: { clientX: number; clientY: number; pointerId?: number },
+    box: WidgetBox,
+    el: HTMLElement,
+  ) => void;
   /** Arrow keys move by one cell; with Shift they resize by one cell. */
   nudge: (id: string, key: string, shift: boolean) => boolean;
 }
@@ -261,9 +282,13 @@ export function useWidgetDrag(
       elRef.current = null;
       if (s && el) {
         beforeRef.current?.(); // rects with the drag transform still applied
+        const m = metricsRef.current;
         el.style.transform = "";
-        el.style.width = "";
-        el.style.height = "";
+        // Restore exactly the geometry React last rendered: clearing to "" would
+        // leave the element sizeless when the settled box equals the origin box
+        // (React only writes a style property when its own value changes).
+        el.style.width = `${s.origin.w * m.cellW - 8}px`;
+        el.style.height = `${s.origin.h * m.cellH - 8}px`;
         const settled = settleDrag(layoutRef.current, s.id, s.target, metricsRef.current);
         if (!layoutsEqual(settled.layout, layoutRef.current)) commitRef.current(settled.layout);
       }

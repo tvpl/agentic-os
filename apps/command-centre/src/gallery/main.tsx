@@ -36,54 +36,207 @@ import type { RunEventView } from "../runs/useRunStream";
 
 /* ---------- fixtures (plainly synthetic; the gallery never talks to the API) ---------- */
 const NOW = Date.UTC(2026, 8, 2, 14, 30);
-const skills: Skill[] = ["workspace-digest", "code-review", "daily-tech-news", "brainstorm", "sdd-plan"].map((slug, i) => ({
-  slug,
-  name: slug.replace(/-/g, " "),
-  description: `Fixture skill ${i + 1}.`,
-  triggers: [`/${slug}`],
-  inputs: [],
-  providers: ["claude", "cursor", "codex"],
-  recommendedModel: i % 2 ? "claude-sonnet-5" : null,
-  recommendedEffort: ["low", "medium", "high", "default"][i % 4]!,
-  mode: i === 1 ? "write" : "read_only",
-  enabled: true,
-  version: "1.0.0",
-  guardrails: [],
-  successCriteria: [],
-  resources: [],
-  bodyLineCount: 16,
-  thick: false,
-  favorite: i === 0,
-  body: "",
-  skillFile: `/ws/skills/${slug}/SKILL.md`,
-}));
+const skills: Skill[] = ["workspace-digest", "code-review", "daily-tech-news", "brainstorm", "sdd-plan"].map(
+  (slug, i) => ({
+    slug,
+    name: slug.replace(/-/g, " "),
+    description: `Fixture skill ${i + 1}.`,
+    triggers: [`/${slug}`],
+    inputs: [],
+    providers: ["claude", "cursor", "codex"],
+    recommendedModel: i % 2 ? "claude-sonnet-5" : null,
+    recommendedEffort: ["low", "medium", "high", "default"][i % 4]!,
+    mode: i === 1 ? "write" : "read_only",
+    enabled: true,
+    version: "1.0.0",
+    guardrails: [],
+    successCriteria: [],
+    resources: [],
+    bodyLineCount: 16,
+    thick: false,
+    favorite: i === 0,
+    body: "",
+    skillFile: `/ws/skills/${slug}/SKILL.md`,
+  }),
+);
 const routines: RoutineStatus[] = [
-  { id: "digest", name: "Daily workspace digest", skillSlug: "workspace-digest", prompt: null, schedule: "30 7 * * 1-5", timezone: "America/Sao_Paulo", provider: "claude", model: null, effort: "low", missedPolicy: "skip", enabled: true, nextRunAt: NOW + 3_600_000, lastFiredAt: NOW - 82_800_000, lastStatus: "done", recentFailures: 0, healthy: true, timeoutMs: 600_000, maxAttempts: 1, profile: "read_only", inputs: {}, notify: true, backoffMs: 60_000, workingDir: null, artifactsSubdir: null, createdAt: NOW - 86_400_000 * 10 },
-  { id: "news", name: "Tech news briefing", skillSlug: "daily-tech-news", prompt: null, schedule: "0 9 * * *", timezone: "", provider: "codex", model: null, effort: "medium", missedPolicy: "run_on_boot", enabled: false, nextRunAt: null, lastFiredAt: NOW - 3 * 86_400_000, lastStatus: "failed", recentFailures: 2, healthy: false, timeoutMs: 600_000, maxAttempts: 2, profile: "read_only", inputs: {}, notify: true, backoffMs: 60_000, workingDir: null, artifactsSubdir: null, createdAt: NOW - 86_400_000 * 30 },
+  {
+    id: "digest",
+    name: "Daily workspace digest",
+    skillSlug: "workspace-digest",
+    prompt: null,
+    schedule: "30 7 * * 1-5",
+    timezone: "America/Sao_Paulo",
+    provider: "claude",
+    model: null,
+    effort: "low",
+    missedPolicy: "skip",
+    enabled: true,
+    nextRunAt: NOW + 3_600_000,
+    lastFiredAt: NOW - 82_800_000,
+    lastStatus: "done",
+    recentFailures: 0,
+    healthy: true,
+    timeoutMs: 600_000,
+    maxAttempts: 1,
+    profile: "read_only",
+    inputs: {},
+    notify: true,
+    backoffMs: 60_000,
+    workingDir: null,
+    artifactsSubdir: null,
+    createdAt: NOW - 86_400_000 * 10,
+  },
+  {
+    id: "news",
+    name: "Tech news briefing",
+    skillSlug: "daily-tech-news",
+    prompt: null,
+    schedule: "0 9 * * *",
+    timezone: "",
+    provider: "codex",
+    model: null,
+    effort: "medium",
+    missedPolicy: "run_on_boot",
+    enabled: false,
+    nextRunAt: null,
+    lastFiredAt: NOW - 3 * 86_400_000,
+    lastStatus: "failed",
+    recentFailures: 2,
+    healthy: false,
+    timeoutMs: 600_000,
+    maxAttempts: 2,
+    profile: "read_only",
+    inputs: {},
+    notify: true,
+    backoffMs: 60_000,
+    workingDir: null,
+    artifactsSubdir: null,
+    createdAt: NOW - 86_400_000 * 30,
+  },
 ];
 const runs: RunRecord[] = [
-  { id: "11111111-1111-4111-8111-111111111111", createdAt: NOW - 120_000, finishedAt: null, origin: "skill", provider: "claude", model: "claude-sonnet-5", status: "running", durationMs: null, promptSummary: "(skill: code-review)", skillSlug: "code-review", routineId: null, error: null, artifacts: [], exitCode: null },
-  { id: "22222222-2222-4222-8222-222222222222", createdAt: NOW - 3_600_000, finishedAt: NOW - 3_500_000, origin: "manual", provider: "claude", model: null, status: "done", durationMs: 25_200, promptSummary: "Summarise the workspace and list the newest files.", skillSlug: null, routineId: null, error: null, artifacts: ["digest.md"], exitCode: 0 },
-  { id: "33333333-3333-4333-8333-333333333333", createdAt: NOW - 7_200_000, finishedAt: NOW - 7_100_000, origin: "routine", provider: "codex", model: null, status: "failed", durationMs: 61_000, promptSummary: "(skill: daily-tech-news)", skillSlug: "daily-tech-news", routineId: "news", error: "Provider exited with code 1.", artifacts: [], exitCode: 1 },
+  {
+    id: "11111111-1111-4111-8111-111111111111",
+    createdAt: NOW - 120_000,
+    finishedAt: null,
+    origin: "skill",
+    provider: "claude",
+    model: "claude-sonnet-5",
+    status: "running",
+    durationMs: null,
+    promptSummary: "(skill: code-review)",
+    skillSlug: "code-review",
+    routineId: null,
+    error: null,
+    artifacts: [],
+    exitCode: null,
+  },
+  {
+    id: "22222222-2222-4222-8222-222222222222",
+    createdAt: NOW - 3_600_000,
+    finishedAt: NOW - 3_500_000,
+    origin: "manual",
+    provider: "claude",
+    model: null,
+    status: "done",
+    durationMs: 25_200,
+    promptSummary: "Summarise the workspace and list the newest files.",
+    skillSlug: null,
+    routineId: null,
+    error: null,
+    artifacts: ["digest.md"],
+    exitCode: 0,
+  },
+  {
+    id: "33333333-3333-4333-8333-333333333333",
+    createdAt: NOW - 7_200_000,
+    finishedAt: NOW - 7_100_000,
+    origin: "routine",
+    provider: "codex",
+    model: null,
+    status: "failed",
+    durationMs: 61_000,
+    promptSummary: "(skill: daily-tech-news)",
+    skillSlug: "daily-tech-news",
+    routineId: "news",
+    error: "Provider exited with code 1.",
+    artifacts: [],
+    exitCode: 1,
+  },
 ];
-const metrics: Metrics = { total: 42, last7d: 12, successRate: 0.83, avgDurationMs: 43_900, byProvider: [{ provider: "claude", count: 30, success: 27 }, { provider: "codex", count: 12, success: 8 }], running: 1, failedRecent: 1 };
+const metrics: Metrics = {
+  total: 42,
+  last7d: 12,
+  successRate: 0.83,
+  avgDurationMs: 43_900,
+  byProvider: [
+    { provider: "claude", count: 30, success: 27 },
+    { provider: "codex", count: 12, success: 8 },
+  ],
+  running: 1,
+  failedRecent: 1,
+};
 const artifacts: ArtifactEntry[] = [
-  { runId: runs[1]!.id, file: "digest.md", path: "/ws/artifacts/2222/digest.md", createdAt: NOW - 3_500_000, origin: "manual", skillSlug: null, provider: "claude", sizeBytes: 2_048 },
-  { runId: runs[1]!.id, file: "changed-files.txt", path: "/ws/artifacts/2222/changed-files.txt", createdAt: NOW - 3_400_000, origin: "manual", skillSlug: null, provider: "claude", sizeBytes: 512 },
+  {
+    runId: runs[1]!.id,
+    file: "digest.md",
+    path: "/ws/artifacts/2222/digest.md",
+    createdAt: NOW - 3_500_000,
+    origin: "manual",
+    skillSlug: null,
+    provider: "claude",
+    sizeBytes: 2_048,
+  },
+  {
+    runId: runs[1]!.id,
+    file: "changed-files.txt",
+    path: "/ws/artifacts/2222/changed-files.txt",
+    createdAt: NOW - 3_400_000,
+    origin: "manual",
+    skillSlug: null,
+    provider: "claude",
+    sizeBytes: 512,
+  },
 ];
-const memoryStatus = { facets: { total: 156, areas: [{ area: "Worker", count: 113 }, { area: "Documentos", count: 29 }, { area: "Projetos", count: 14 }] } };
+const memoryStatus = {
+  facets: {
+    total: 156,
+    areas: [
+      { area: "Worker", count: 113 },
+      { area: "Documentos", count: 29 },
+      { area: "Projetos", count: 14 },
+    ],
+  },
+};
 const events: RunEventView[] = [
   { type: "started", ts: NOW - 120_000, pid: 4242 },
   { type: "assistant", ts: NOW - 118_000, text: "Reading the diff first, then the tests." },
-  { type: "tool_use", ts: NOW - 117_000, tool: "Read", detail: '{"file_path":"/ws/core/src/runs/runManager.ts"}' },
+  {
+    type: "tool_use",
+    ts: NOW - 117_000,
+    tool: "Read",
+    detail: '{"file_path":"/ws/core/src/runs/runManager.ts"}',
+  },
   { type: "text", ts: NOW - 116_000, stream: "stdout", text: "runManager.ts: 812 lines" },
   { type: "text", ts: NOW - 115_000, stream: "stderr", text: "warning: large file" },
   { type: "permission", ts: NOW - 110_000, detail: "Bash(rm:*) is disallowed by the read-only profile." },
-  { type: "result", ts: NOW - 60_000, exitCode: 0, summary: "3 findings, none blocking.", durationMs: 60_000, timedOut: false },
+  {
+    type: "result",
+    ts: NOW - 60_000,
+    exitCode: 0,
+    summary: "3 findings, none blocking.",
+    durationMs: 60_000,
+    timedOut: false,
+  },
 ];
 
 function seededClient(): QueryClient {
-  const qc = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false, refetchOnWindowFocus: false, refetchInterval: false } } });
+  const qc = new QueryClient({
+    defaultOptions: {
+      queries: { staleTime: Infinity, retry: false, refetchOnWindowFocus: false, refetchInterval: false },
+    },
+  });
   qc.setQueryData(qk.skills, skills);
   qc.setQueryData(qk.routines, routines);
   qc.setQueryData(qk.runs({ limit: 200 }), runs);
@@ -91,14 +244,40 @@ function seededClient(): QueryClient {
   qc.setQueryData(qk.metrics, metrics);
   qc.setQueryData(qk.artifacts, artifacts);
   qc.setQueryData(qk.memoryStatus, memoryStatus);
-  qc.setQueryData(qk.approvals, [{ id: "a1", kind: "write_run", description: "Write-mode prompt run with claude" }]);
-  qc.setQueryData(qk.providers, [{ id: "claude", displayName: "Claude Code", enabled: true, isDefault: true, defaultModel: null, defaultEffort: "default", health: { ok: true, installed: true, authenticated: true, version: "2.1.0", detail: "", checkedAt: NOW } }]);
+  qc.setQueryData(qk.approvals, [
+    { id: "a1", kind: "write_run", description: "Write-mode prompt run with claude" },
+  ]);
+  qc.setQueryData(qk.providers, [
+    {
+      id: "claude",
+      displayName: "Claude Code",
+      enabled: true,
+      isDefault: true,
+      defaultModel: null,
+      defaultEffort: "default",
+      health: {
+        ok: true,
+        installed: true,
+        authenticated: true,
+        version: "2.1.0",
+        detail: "",
+        checkedAt: NOW,
+      },
+    },
+  ]);
   for (const r of runs) qc.setQueryData(qk.run(r.id), { run: r, events: r.id === runs[0]!.id ? events : [] });
   return qc;
 }
 
 /* ---------- shell ---------- */
-const META: Meta = { name: "Mordomo OS", theme: "dark", accentColor: "#f97316", language: "en", setupCompleted: true, version: "gallery" };
+const META: Meta = {
+  name: "Mordomo OS",
+  theme: "dark",
+  accentColor: "#f97316",
+  language: "en",
+  setupCompleted: true,
+  version: "gallery",
+};
 
 function applyTheme(theme: "dark" | "light", preset: string) {
   document.documentElement.dataset.theme = theme;
@@ -133,7 +312,13 @@ function Dialogs() {
       <Row label="triggers">
         <Button onClick={() => toast("Saved.", "ok")}>Toast ok</Button>
         <Button onClick={() => toast("Something failed.", "danger")}>Toast danger</Button>
-        <Button onClick={() => void confirm({ title: "Delete routine?", body: "This cannot be undone.", danger: true })}>Confirm</Button>
+        <Button
+          onClick={() =>
+            void confirm({ title: "Delete routine?", body: "This cannot be undone.", danger: true })
+          }
+        >
+          Confirm
+        </Button>
         <Button onClick={() => setModal(true)}>Modal</Button>
       </Row>
       {modal && (
@@ -142,8 +327,12 @@ function Dialogs() {
             <input id="g-name" className="input" defaultValue="Weekly report" />
           </Field>
           <div className="modal-actions">
-            <Button variant="secondary" onClick={() => setModal(false)}>Cancel</Button>
-            <Button variant="primary" onClick={() => setModal(false)}>Save</Button>
+            <Button variant="secondary" onClick={() => setModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={() => setModal(false)}>
+              Save
+            </Button>
           </div>
         </Modal>
       )}
@@ -166,7 +355,13 @@ function Overlays() {
         <Popover open={pop} onClose={() => setPop(false)} anchor={anchor} ariaLabel="Model and effort">
           <div className="stack-sm">
             <span className="hud-label">Model × effort</span>
-            <Segmented ariaLabel="Effort" size="sm" value="medium" onChange={() => undefined} options={["low", "medium", "high"].map((v) => ({ value: v, label: v }))} />
+            <Segmented
+              ariaLabel="Effort"
+              size="sm"
+              value="medium"
+              onChange={() => undefined}
+              options={["low", "medium", "high"].map((v) => ({ value: v, label: v }))}
+            />
             <Button size="sm" variant="primary" onClick={() => setPop(false)}>
               Apply
             </Button>
@@ -176,11 +371,23 @@ function Overlays() {
       <Row label="palette">
         <Button onClick={() => setPalette(true)}>Command palette</Button>
         <Button onClick={() => setHelp(true)}>Shortcuts sheet</Button>
-        {palette && <CommandPalette meta={META} onClose={() => setPalette(false)} onMetaChanged={() => undefined} onShortcuts={() => setHelp(true)} />}
+        {palette && (
+          <CommandPalette
+            meta={META}
+            onClose={() => setPalette(false)}
+            onMetaChanged={() => undefined}
+            onShortcuts={() => setHelp(true)}
+          />
+        )}
         {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
       </Row>
       <Row label="notifications">
-        <Button icon={<Bell aria-hidden />} onClick={() => notify({ kind: "run", title: "Run finished", body: "digest · 25.2 s", href: "/runs", tone: "ok" })}>
+        <Button
+          icon={<Bell aria-hidden />}
+          onClick={() =>
+            notify({ kind: "run", title: "Run finished", body: "digest · 25.2 s", href: "/runs", tone: "ok" })
+          }
+        >
           Push ({unread} unread)
         </Button>
         <Button variant="ghost" onClick={markAllRead}>
@@ -206,10 +413,18 @@ function Gallery() {
         {(["primary", "secondary", "outline", "ghost", "danger"] as const).map((variant) => (
           <Row key={variant} label={variant}>
             <Button variant={variant}>Label</Button>
-            <Button variant={variant} icon={<Play aria-hidden />}>With icon</Button>
-            <Button variant={variant} size="sm">Small</Button>
-            <Button variant={variant} loading>Loading</Button>
-            <Button variant={variant} disabled>Disabled</Button>
+            <Button variant={variant} icon={<Play aria-hidden />}>
+              With icon
+            </Button>
+            <Button variant={variant} size="sm">
+              Small
+            </Button>
+            <Button variant={variant} loading>
+              Loading
+            </Button>
+            <Button variant={variant} disabled>
+              Disabled
+            </Button>
             <Button variant={variant} size="sm" icon={<Trash2 aria-hidden />} aria-label="Icon only" />
           </Row>
         ))}
@@ -218,7 +433,9 @@ function Gallery() {
       <Story id="badges" title="Badges and status">
         <Row label="state">
           {(["ok", "warn", "danger", "info", "accent", "dim"] as const).map((tone) => (
-            <Badge key={tone} kind="state" tone={tone}>{tone}</Badge>
+            <Badge key={tone} kind="state" tone={tone}>
+              {tone}
+            </Badge>
           ))}
         </Row>
         <Row label="meta">
@@ -227,7 +444,16 @@ function Gallery() {
           <Badge kind="meta">+2</Badge>
         </Row>
         <Row label="run status">
-          {["queued", "running", "waiting_approval", "done", "failed", "timed_out", "cancelled", "interrupted"].map((s) => (
+          {[
+            "queued",
+            "running",
+            "waiting_approval",
+            "done",
+            "failed",
+            "timed_out",
+            "cancelled",
+            "interrupted",
+          ].map((s) => (
             <StatusBadge key={s} status={s} />
           ))}
         </Row>
@@ -255,17 +481,39 @@ function Gallery() {
 
       <Story id="controls" title="Segmented and tabs">
         <Row label="segmented">
-          <Segmented ariaLabel="Layout" value={seg} onChange={setSeg} options={["force", "circle", "hex", "rings"].map((v) => ({ value: v, label: v }))} />
-          <Segmented ariaLabel="Size" size="sm" value={seg} onChange={setSeg} options={["force", "circle", "hex", "rings"].map((v) => ({ value: v, label: v }))} />
+          <Segmented
+            ariaLabel="Layout"
+            value={seg}
+            onChange={setSeg}
+            options={["force", "circle", "hex", "rings"].map((v) => ({ value: v, label: v }))}
+          />
+          <Segmented
+            ariaLabel="Size"
+            size="sm"
+            value={seg}
+            onChange={setSeg}
+            options={["force", "circle", "hex", "rings"].map((v) => ({ value: v, label: v }))}
+          />
         </Row>
         <Row label="tabs">
-          <Tabs id="g-tabs" ariaLabel="Settings" active={tab} onChange={setTab} tabs={["identity", "providers", "memory", "security"].map((id) => ({ id, label: id }))} />
+          <Tabs
+            id="g-tabs"
+            ariaLabel="Settings"
+            active={tab}
+            onChange={setTab}
+            tabs={["identity", "providers", "memory", "security"].map((id) => ({ id, label: id }))}
+          />
         </Row>
       </Story>
 
       <Story id="states" title="Empty and loading states">
         <div className="grid grid-2">
-          <EmptyState icon={<Sparkles aria-hidden />} title="No routines yet" body="A routine runs a skill or prompt on a schedule." action={<Button variant="primary">New routine</Button>} />
+          <EmptyState
+            icon={<Sparkles aria-hidden />}
+            title="No routines yet"
+            body="A routine runs a skill or prompt on a schedule."
+            action={<Button variant="primary">New routine</Button>}
+          />
           <div className="card">
             <Skeleton lines={5} />
           </div>
@@ -285,9 +533,9 @@ function Gallery() {
           {[
             ["Today", <TodayWidget key="t" />],
             ["Workspace", <WorkspaceWidget key="w" />],
-            ["Skills deck", <DeckWidget key="d" onRun={() => undefined} onConfig={() => undefined} />],
+            ["Skills deck", <DeckWidget key="d" />],
             ["Routines", <BoardWidget key="b" />],
-            ["Pulse", <PulseWidget key="p" onRunSkill={() => undefined} />],
+            ["Pulse", <PulseWidget key="p" />],
             ["Needs attention", <AttentionWidget key="a" />],
           ].map(([title, node]) => (
             <section key={String(title)} className="widget story-widget" aria-label={String(title)}>

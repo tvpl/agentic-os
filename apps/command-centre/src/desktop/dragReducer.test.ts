@@ -44,7 +44,8 @@ describe("drag reducer", () => {
     expect(next.c).toEqual(layout.c);
     expect(next.hidden).toEqual(layout.hidden);
     const visible = Object.values(next).filter((b) => b.visible);
-    for (let i = 0; i < visible.length; i++) for (let j = i + 1; j < visible.length; j++) expect(overlaps(visible[i]!, visible[j]!)).toBe(false);
+    for (let i = 0; i < visible.length; i++)
+      for (let j = i + 1; j < visible.length; j++) expect(overlaps(visible[i]!, visible[j]!)).toBe(false);
   });
 
   it("settleDrag keeps a neighbour in place when there is no room below", () => {
@@ -62,5 +63,29 @@ describe("drag reducer", () => {
     expect(nudgeBox(box, "ArrowDown", true, m)).toMatchObject({ w: 4, h: 4 });
     expect(nudgeBox(box, "Enter", false, m)).toBeNull();
     expect(nudgeBox({ ...box, x: 0 }, "ArrowLeft", false, m)).toBeNull();
+  });
+});
+
+describe("drag reducer: per-widget config survives every move", () => {
+  const withConfig = { x: 0, y: 0, w: 4, h: 3, visible: true, config: { days: 14 } };
+
+  it("dragTarget, clampMove and clampResize carry `config` through", () => {
+    const s = beginDrag("a", "move", 0, 0, withConfig);
+    expect(dragTarget(s, 100, 80, m).config).toEqual({ days: 14 });
+    const r = beginDrag("a", "resize", 0, 0, withConfig);
+    expect(dragTarget(r, 100, 80, m).config).toEqual({ days: 14 });
+  });
+
+  it("nudgeBox keeps `config` and settleDrag keeps it on the moved and displaced widgets", () => {
+    const nudged = nudgeBox(withConfig, "ArrowRight", false, m);
+    expect(nudged?.config).toEqual({ days: 14 });
+    const layout: LayoutMap = {
+      a: withConfig,
+      b: { x: 0, y: 4, w: 4, h: 3, visible: true, config: { rows: 6 } },
+    };
+    const { layout: next, displaced } = settleDrag(layout, "a", { ...withConfig, y: 3 }, m);
+    expect(displaced).toEqual(["b"]);
+    expect(next.a!.config).toEqual({ days: 14 });
+    expect(next.b!.config).toEqual({ rows: 6 });
   });
 });

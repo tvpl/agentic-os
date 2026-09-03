@@ -10,7 +10,16 @@ import { useT } from "../i18n";
 import type { ProviderId, ProviderSnapshot, Skill } from "../api";
 import { DialogPortal, useDialog, usePresence } from "../components/dialog";
 import { Segmented } from "../components/primitives";
-import { EFFORTS, pickProvider, shortModel, skillEffort, useEffortLabels, useProviderModels, useSaveSkillMatrix, type Effort } from "./SkillMatrixModal";
+import {
+  EFFORTS,
+  pickProvider,
+  shortModel,
+  skillEffort,
+  useEffortLabels,
+  useProviderModels,
+  useSaveSkillMatrix,
+  type Effort,
+} from "./SkillMatrixModal";
 import { modelFamily } from "./data";
 
 export interface ModelEffortPopoverProps {
@@ -26,7 +35,14 @@ const WIDTH = 300;
 const ROW_H = 30;
 const LABEL_W = 64;
 
-export default function ModelEffortPopover({ skill, providers, anchor, open, onClose, onSaved }: ModelEffortPopoverProps) {
+export default function ModelEffortPopover({
+  skill,
+  providers,
+  anchor,
+  open,
+  onClose,
+  onSaved,
+}: ModelEffortPopoverProps) {
   const t = useT();
   const labels = useEffortLabels();
   const ref = useRef<HTMLDivElement>(null);
@@ -36,7 +52,11 @@ export default function ModelEffortPopover({ skill, providers, anchor, open, onC
   const models = useProviderModels(provider);
   const [model, setModel] = useState<string | null>(skill.recommendedModel ?? null);
   const [effort, setEffort] = useState<Effort>(skillEffort(skill));
-  const [pos, setPos] = useState<{ left: number; top: number; below: boolean }>({ left: 0, top: 0, below: true });
+  const [pos, setPos] = useState<{ left: number; top: number; below: boolean }>({
+    left: 0,
+    top: 0,
+    below: true,
+  });
   const save = useSaveSkillMatrix(skill, onSaved);
 
   useDialog(ref, onClose, { initialFocus: () => ref.current });
@@ -57,7 +77,10 @@ export default function ModelEffortPopover({ skill, providers, anchor, open, onC
   }, [open, onClose]);
 
   if (!mounted) return null;
-  const rows: Array<{ id: string | null; label: string }> = [{ id: null, label: "AUTO" }, ...(models.data ?? []).map((m) => ({ id: m.id, label: shortModel(m.id) }))];
+  const rows: Array<{ id: string | null; label: string }> = [
+    { id: null, label: "AUTO" },
+    ...(models.data ?? []).map((m) => ({ id: m.id, label: shortModel(m.id) })),
+  ];
   const rowIdx = Math.max(
     0,
     rows.findIndex((r) => r.id === model),
@@ -86,9 +109,19 @@ export default function ModelEffortPopover({ skill, providers, anchor, open, onC
           <span className="mono me-skill">/{skill.slug}</span>
         </div>
         {enabled.length > 1 && (
-          <Segmented size="sm" ariaLabel={t("skills.provider")} value={provider} onChange={setProvider} options={enabled.map((p) => ({ value: p.id, label: p.id }))} className="me-provider" />
+          <Segmented
+            size="sm"
+            ariaLabel={t("skills.provider")}
+            value={provider}
+            onChange={setProvider}
+            options={enabled.map((p) => ({ value: p.id, label: p.id }))}
+            className="me-provider"
+          />
         )}
-        <div className="me-matrix" style={{ "--me-label-w": `${LABEL_W}px`, "--me-row-h": `${ROW_H}px` } as React.CSSProperties}>
+        <div
+          className="me-matrix"
+          style={{ "--me-label-w": `${LABEL_W}px`, "--me-row-h": `${ROW_H}px` } as React.CSSProperties}
+        >
           <div className="me-cols" aria-hidden>
             <span />
             {EFFORTS.map((e) => (
@@ -101,7 +134,9 @@ export default function ModelEffortPopover({ skill, providers, anchor, open, onC
             <div
               className={`me-bar model-${family}`}
               aria-hidden
-              style={{ transform: `translateY(${rowIdx * ROW_H}px) scaleX(${(effortIdx + 1) / EFFORTS.length})` }}
+              style={{
+                transform: `translateY(${rowIdx * ROW_H}px) scaleX(${(effortIdx + 1) / EFFORTS.length})`,
+              }}
             />
             {rows.map((row, ri) => (
               <div key={row.id ?? "auto"} className={`me-row${ri === rowIdx ? " active" : ""}`} role="row">
@@ -117,7 +152,7 @@ export default function ModelEffortPopover({ skill, providers, anchor, open, onC
                       role="gridcell"
                       className={`me-cell${selected ? " selected" : ""}${ri === rowIdx && ei <= effortIdx ? " filled" : ""}`}
                       aria-label={`${row.label} · ${labels[e]}`}
-                      aria-pressed={selected}
+                      aria-selected={selected}
                       disabled={save.isPending}
                       onClick={() => pick(row.id, e)}
                     >
