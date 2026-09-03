@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   BUILTIN_MANIFESTS,
   ProviderId,
@@ -29,7 +30,10 @@ describe("provider registry", () => {
   });
 
   it("registers factories and creates adapters carrying their manifest", () => {
-    const registry = new ProviderRegistry().register(claudeManifest, createClaudeAdapter).register(cursorManifest, createCursorAdapter).register(codexManifest, createCodexAdapter);
+    const registry = new ProviderRegistry()
+      .register(claudeManifest, createClaudeAdapter)
+      .register(cursorManifest, createCursorAdapter)
+      .register(codexManifest, createCodexAdapter);
     expect(registry.ids()).toEqual(["claude", "cursor", "codex"]);
     const adapters = registry.createAll((id) => (id === "claude" ? path.join(FAKE_BIN, "claude") : null));
     expect(adapters.claude).toBeInstanceOf(ClaudeAdapter);
@@ -49,7 +53,7 @@ describe("provider registry", () => {
   it("the sync compiler emits files from manifests, sharing AGENTS.md between Cursor and Codex", () => {
     const { paths, cleanup } = makeTempHome("mordomo-registry-");
     try {
-      const repoSkills = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "skills");
+      const repoSkills = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "skills");
       fs.cpSync(repoSkills, paths.skills, { recursive: true });
       const store = new SettingsStore(paths);
       const settings = store.load();
@@ -61,24 +65,48 @@ describe("provider registry", () => {
       const target = path.join(paths.home, "project");
       fs.mkdirSync(target);
 
-      const withManifests = new SyncCompiler(paths, () => store.load(), () => catalog.list(), builtinManifests);
+      const withManifests = new SyncCompiler(
+        paths,
+        () => store.load(),
+        () => catalog.list(),
+        builtinManifests,
+      );
       const plan = withManifests.plan(target);
-      const rel = plan.actions.map((a) => ({ file: path.relative(target, a.filePath), provider: a.provider }));
+      const rel = plan.actions.map((a) => ({
+        file: path.relative(target, a.filePath),
+        provider: a.provider,
+      }));
       expect(rel).toContainEqual({ file: "CLAUDE.md", provider: "claude" });
       expect(rel).toContainEqual({ file: "AGENTS.md", provider: "shared" });
       expect(rel.filter((r) => r.file === "AGENTS.md")).toHaveLength(1);
-      expect(rel.some((r) => r.file === path.join(".cursor", "rules", "mordomo.mdc") && r.provider === "cursor")).toBe(true);
-      expect(rel.some((r) => r.file.startsWith(path.join(".agents", "skills")) && r.provider === "codex")).toBe(true);
-      expect(rel.some((r) => r.file.startsWith(path.join(".claude", "skills")) && r.provider === "claude")).toBe(true);
+      expect(
+        rel.some((r) => r.file === path.join(".cursor", "rules", "mordomo.mdc") && r.provider === "cursor"),
+      ).toBe(true);
+      expect(
+        rel.some((r) => r.file.startsWith(path.join(".agents", "skills")) && r.provider === "codex"),
+      ).toBe(true);
+      expect(
+        rel.some((r) => r.file.startsWith(path.join(".claude", "skills")) && r.provider === "claude"),
+      ).toBe(true);
 
       // A custom manifest with a different layout is honoured without touching the compiler.
       const custom: ProviderManifest = {
         ...codexManifest,
         id: "codex",
         displayName: "Custom Codex",
-        layout: { instructionsFile: "CUSTOM.md", skillsDir: ".custom/skills", rulesFile: null, commandsDir: ".custom/commands" },
+        layout: {
+          instructionsFile: "CUSTOM.md",
+          skillsDir: ".custom/skills",
+          rulesFile: null,
+          commandsDir: ".custom/commands",
+        },
       };
-      const withCustom = new SyncCompiler(paths, () => store.load(), () => catalog.list(), () => [BUILTIN_MANIFESTS.claude, custom]);
+      const withCustom = new SyncCompiler(
+        paths,
+        () => store.load(),
+        () => catalog.list(),
+        () => [BUILTIN_MANIFESTS.claude, custom],
+      );
       const files = withCustom.plan(target).actions.map((a) => path.relative(target, a.filePath));
       expect(files).toContain("CUSTOM.md");
       expect(files.some((f) => f.startsWith(path.join(".custom", "commands")))).toBe(true);
@@ -92,7 +120,10 @@ describe("provider registry", () => {
     const { paths, cleanup } = makeTempHome("mordomo-audit-");
     try {
       fs.mkdirSync(path.join(paths.home, ".custom"), { recursive: true });
-      fs.writeFileSync(path.join(paths.home, ".custom", "mcp.json"), JSON.stringify({ mcpServers: { demo: { command: "demo-mcp --token=abc" } } }));
+      fs.writeFileSync(
+        path.join(paths.home, ".custom", "mcp.json"),
+        JSON.stringify({ mcpServers: { demo: { command: "demo-mcp --token=abc" } } }),
+      );
       const viaDefault = discoverMcpServers(paths.home);
       expect(viaDefault.scannedFiles).toEqual([]);
       const viaManifest = discoverMcpServers(paths.home, [".custom/mcp.json"]);

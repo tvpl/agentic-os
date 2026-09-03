@@ -9,6 +9,8 @@ Hardening release: the September audit (`docs/audit-2026-09/`) executed end to e
   Host header parsed with `new URL` (IPv6, missing Host refused); token compared
   in constant time; preview/open honour the exclusion list plus a hard directory
   blocklist (`.git`, `.aws`, `.ssh`, …); skill import and sync targets contained;
+  path containment resolves symlinked parents even for files that do not exist
+  yet (a symlinked directory cannot smuggle a new file outside the roots);
   security profiles are enforced (`read_only` refuses write runs,
   `review_before_write` creates a `write_run` approval, routines write only under
   `approved_automation`); zod errors return 400 with a structured envelope.
@@ -24,7 +26,8 @@ Hardening release: the September audit (`docs/audit-2026-09/`) executed end to e
 - **API**: `/api/events` SSE firehose, request log (`logs/api.jsonl`), real
   `/api/health`, version read from `package.json`, `npm audit` in `doctor`.
 - **CLI**: `node:util.parseArgs`, validated `--provider/--effort`, pidfile
-  identity, quoted startup units, `service.out.log` rotation, `index` progress.
+  identity (command line checked on Linux, macOS and Windows), quoted startup
+  units, `service.out.log` rotation, `index` progress.
 - **Command Centre**: app chrome in normal flow (no more hidden primary
   buttons); memoised `useT`; modals and launcher with focus trap, restore and
   animations; launcher search; ErrorBoundary and `React.lazy` per route (main
@@ -48,8 +51,10 @@ Hardening release: the September audit (`docs/audit-2026-09/`) executed end to e
 - **Component gallery**: `gallery.html` (`npm run gallery`) renders primitives
   and widgets with fixtures in both themes; Playwright screenshot baselines.
 - **Tooling**: ESLint 9 + Prettier + husky/lint-staged, GitHub Actions CI
-  (Node 20/22 × three OSes + e2e), frontend unit tests, Playwright smoke with
-  axe; `npm audit` clean (fastify/static, vite, vitest updated).
+  (Node 22/24 × three OSes + e2e), frontend unit tests, Playwright smoke with
+  axe; `npm audit` clean (fastify/static, vite, vitest updated). Node 22 is
+  the minimum: Node 20 is end-of-life and better-sqlite3 12 ships no prebuilt
+  binaries for it.
 
 ## 0.3.0 — 2026-08-31
 

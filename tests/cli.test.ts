@@ -181,17 +181,17 @@ describe.skipIf(!distReady)("mordomo CLI (built apps/api/dist/cli.js)", () => {
 });
 
 describe("startup service plan quoting", () => {
-  const home = path.join("/Users", "Ana Maria", "My Projects", "mordomo os");
-  const node = path.join("/Applications", "Node Tools", "bin", "node");
+  // Resolved like the CLI does at runtime, so the expectations hold on Windows too.
+  const home = path.resolve("/Users", "Ana Maria", "My Projects", "mordomo os");
+  const node = path.resolve("/Applications", "Node Tools", "bin", "node");
   const paths = resolvePaths(home);
+  const cli = path.join(home, "apps", "api", "dist", "cli.js");
 
   it("systemd: ExecStart and Environment are quoted per systemd rules", () => {
     const plan = planStartupService(paths, node, "linux", "/home/ana maria");
     const unit = plan.files[0]!.content;
-    expect(unit).toContain(
-      `ExecStart="${node}" "${path.join(home, "apps", "api", "dist", "cli.js")}" start --foreground`,
-    );
-    expect(unit).toContain(`Environment="MORDOMO_HOME=${home}"`);
+    expect(unit).toContain(`ExecStart=${systemdQuote(node)} ${systemdQuote(cli)} start --foreground`);
+    expect(unit).toContain(`Environment=${systemdQuote(`MORDOMO_HOME=${home}`)}`);
     expect(plan.files[0]!.path).toBe("/home/ana maria/.config/systemd/user/mordomo.service");
     // argv arrays are what the CLI spawns: no splitting on spaces.
     expect(plan.installArgv).toEqual([
@@ -214,7 +214,7 @@ describe("startup service plan quoting", () => {
     const plan = planStartupService(paths, node, "darwin", "/Users/ana maria");
     const plist = plan.files[0]!.content;
     expect(plist).toContain(`<string>${node}</string>`);
-    expect(plist).toContain(`<string>${path.join(home, "apps", "api", "dist", "cli.js")}</string>`);
+    expect(plist).toContain(`<string>${cli}</string>`);
     expect(plist).toContain(`<key>MORDOMO_HOME</key><string>${home}</string>`);
     expect(plan.installArgv).toEqual([
       ["launchctl", "load", "-w", "/Users/ana maria/Library/LaunchAgents/com.mordomo.service.plist"],

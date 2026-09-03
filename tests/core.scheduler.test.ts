@@ -19,7 +19,7 @@ import {
   type RunRecord,
 } from "@mordomo/core";
 import { ClaudeAdapter } from "@mordomo/adapter-claude";
-import { FAKE_BIN, makeTempHome, withFakeBinPath } from "./helpers.js";
+import { FAKE_BIN, FAKE_CLIS_RUNNABLE, makeTempHome, withFakeBinPath } from "./helpers.js";
 
 let restorePath: () => void;
 beforeAll(() => {
@@ -34,7 +34,8 @@ let runs: RunManager;
 let store: RoutineStore;
 let scheduler: RoutineScheduler;
 
-const adapterFor = (_id: ProviderId): AgentAdapter => new ClaudeAdapter({ binaryPath: path.join(FAKE_BIN, "claude") });
+const adapterFor = (_id: ProviderId): AgentAdapter =>
+  new ClaudeAdapter({ binaryPath: path.join(FAKE_BIN, "claude") });
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function routine(overrides: Partial<Routine> & { id: string }): Routine {
@@ -53,7 +54,9 @@ beforeEach(() => {
   settings = new SettingsStore(ctx.paths);
   runs = new RunManager(db, ctx.paths, () => settings.load(), adapterFor);
   store = new RoutineStore(ctx.paths);
-  scheduler = new RoutineScheduler(db, ctx.paths, store, runs, new SkillCatalog(ctx.paths), () => settings.load());
+  scheduler = new RoutineScheduler(db, ctx.paths, store, runs, new SkillCatalog(ctx.paths), () =>
+    settings.load(),
+  );
 });
 
 afterEach(async () => {
@@ -67,7 +70,7 @@ afterEach(async () => {
 });
 
 describe("routine scheduler", () => {
-  it("fire() resolves with the real run id before the run finishes", async () => {
+  it.skipIf(!FAKE_CLIS_RUNNABLE)("fire() resolves with the real run id before the run finishes", async () => {
     store.save(routine({ id: "manual" }));
     const fired: unknown[] = [];
     const off = events.subscribe((e) => e.type === "routine.fired" && fired.push(e.payload));
@@ -104,17 +107,21 @@ describe("routine scheduler", () => {
     expect(scheduler.history("broken")[0]!.note).toContain("missing");
   }, 10_000);
 
-  it("skips ticks while a previous firing is still in flight", async () => {
-    process.env.FAKE_CLAUDE_HANG = "1";
-    store.save(routine({ id: "slow", schedule: "* * * * * *", timeoutMs: 60_000 }));
-    scheduler.start();
-    await wait(2600);
-    scheduler.stop();
-    const history = scheduler.history("slow");
-    expect(history.filter((h) => h.status === "fired")).toHaveLength(1);
-    expect(history.filter((h) => h.status === "skipped").length).toBeGreaterThanOrEqual(1);
-    await expect(scheduler.fire("slow")).rejects.toMatchObject({ statusCode: 409 });
-  }, 15_000);
+  it.skipIf(!FAKE_CLIS_RUNNABLE)(
+    "skips ticks while a previous firing is still in flight",
+    async () => {
+      process.env.FAKE_CLAUDE_HANG = "1";
+      store.save(routine({ id: "slow", schedule: "* * * * * *", timeoutMs: 60_000 }));
+      scheduler.start();
+      await wait(2600);
+      scheduler.stop();
+      const history = scheduler.history("slow");
+      expect(history.filter((h) => h.status === "fired")).toHaveLength(1);
+      expect(history.filter((h) => h.status === "skipped").length).toBeGreaterThanOrEqual(1);
+      await expect(scheduler.fire("slow")).rejects.toMatchObject({ statusCode: 409 });
+    },
+    15_000,
+  );
 
   it("retries as a new run linked by parentRunId", async () => {
     process.env.FAKE_CLAUDE_FAIL = "1";
@@ -152,7 +159,9 @@ describe("routine scheduler", () => {
     settings.update({ timezone: "America/Sao_Paulo" });
     store.save(routine({ id: "tz", schedule: "0 12 * * *", timezone: "" }));
     const status = scheduler.status().find((r) => r.id === "tz")!;
-    const expected = new Cron("0 12 * * *", { timezone: "America/Sao_Paulo", paused: true }).nextRun()!.getTime();
+    const expected = new Cron("0 12 * * *", { timezone: "America/Sao_Paulo", paused: true })
+      .nextRun()!
+      .getTime();
     const utc = new Cron("0 12 * * *", { timezone: "UTC", paused: true }).nextRun()!.getTime();
     expect(status.nextRunAt).toBe(expected);
     expect(status.nextRunAt).not.toBe(utc);
@@ -168,7 +177,12 @@ describe("retry policy (fake run manager)", () => {
       create(input: { parentRunId?: string | null; attempts?: number }) {
         const id = `r${++n}`;
         created.push({ id, parentRunId: input.parentRunId ?? null, attempts: input.attempts ?? 1 });
-        const rec = { id, status: "queued", parentRunId: input.parentRunId ?? null, attempts: input.attempts ?? 1 } as RunRecord;
+        const rec = {
+          id,
+          status: "queued",
+          parentRunId: input.parentRunId ?? null,
+          attempts: input.attempts ?? 1,
+        } as RunRecord;
         records.set(id, rec);
         return rec;
       },
@@ -188,7 +202,9 @@ describe("retry policy (fake run manager)", () => {
       [true, 3],
     ] as const) {
       const { fake, created } = fakeRuns(["timed_out"]);
-      const s = new RoutineScheduler(db, ctx.paths, store, fake, new SkillCatalog(ctx.paths), () => settings.load());
+      const s = new RoutineScheduler(db, ctx.paths, store, fake, new SkillCatalog(ctx.paths), () =>
+        settings.load(),
+      );
       store.save(routine({ id: `t-${retryOnTimeout}`, maxAttempts: 3, backoffMs: 0, retryOnTimeout }));
       await s.fire(`t-${retryOnTimeout}`);
       await s.drain();
@@ -198,7 +214,9 @@ describe("retry policy (fake run manager)", () => {
 
   it("stop() cancels the backoff sleep", async () => {
     const { fake, created } = fakeRuns(["failed"]);
-    const s = new RoutineScheduler(db, ctx.paths, store, fake, new SkillCatalog(ctx.paths), () => settings.load());
+    const s = new RoutineScheduler(db, ctx.paths, store, fake, new SkillCatalog(ctx.paths), () =>
+      settings.load(),
+    );
     s.start();
     store.save(routine({ id: "backoff", maxAttempts: 3, backoffMs: 60_000 }));
     await s.fire("backoff");
@@ -215,16 +233,26 @@ describe("previousScheduledTime", () => {
   const at = (iso: string) => new Date(iso).getTime();
 
   it("finds the last slot before now for frequent schedules without walking a week", () => {
-    expect(previousScheduledTime("*/5 * * * *", "UTC", at("2026-09-01T10:03:00Z"))).toBe(at("2026-09-01T10:00:00Z"));
-    expect(previousScheduledTime("* * * * *", "UTC", at("2026-09-01T10:03:30Z"))).toBe(at("2026-09-01T10:03:00Z"));
+    expect(previousScheduledTime("*/5 * * * *", "UTC", at("2026-09-01T10:03:00Z"))).toBe(
+      at("2026-09-01T10:00:00Z"),
+    );
+    expect(previousScheduledTime("* * * * *", "UTC", at("2026-09-01T10:03:30Z"))).toBe(
+      at("2026-09-01T10:03:00Z"),
+    );
     // Exactly on a slot: the previous one is strictly before now.
-    expect(previousScheduledTime("*/5 * * * *", "UTC", at("2026-09-01T10:05:00Z"))).toBe(at("2026-09-01T10:00:00Z"));
+    expect(previousScheduledTime("*/5 * * * *", "UTC", at("2026-09-01T10:05:00Z"))).toBe(
+      at("2026-09-01T10:00:00Z"),
+    );
   });
 
   it("handles gaps larger than the typical period", () => {
     // Sunday 2026-09-06: last weekday 09:00 was Friday 2026-09-04.
-    expect(previousScheduledTime("0 9 * * 1-5", "UTC", at("2026-09-06T12:00:00Z"))).toBe(at("2026-09-04T09:00:00Z"));
-    expect(previousScheduledTime("0 3 1 * *", "UTC", at("2026-09-15T00:00:00Z"))).toBe(at("2026-09-01T03:00:00Z"));
+    expect(previousScheduledTime("0 9 * * 1-5", "UTC", at("2026-09-06T12:00:00Z"))).toBe(
+      at("2026-09-04T09:00:00Z"),
+    );
+    expect(previousScheduledTime("0 3 1 * *", "UTC", at("2026-09-15T00:00:00Z"))).toBe(
+      at("2026-09-01T03:00:00Z"),
+    );
   });
 
   it("returns null for invalid schedules", () => {

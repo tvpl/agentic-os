@@ -37,14 +37,32 @@ export async function npmAuditCheck(home: string, timeoutMs = 20_000): Promise<D
   if (!fs.existsSync(path.join(home, "package-lock.json"))) {
     return { id, label, status: "skip", detail: `No package-lock.json in ${home}` };
   }
-  const npmCli = path.join(path.dirname(process.execPath), "..", "lib", "node_modules", "npm", "bin", "npm-cli.js");
+  const npmCli = path.join(
+    path.dirname(process.execPath),
+    "..",
+    "lib",
+    "node_modules",
+    "npm",
+    "bin",
+    "npm-cli.js",
+  );
   if (!fs.existsSync(npmCli)) {
     return { id, label, status: "skip", detail: "npm CLI not found next to the Node binary" };
   }
   try {
-    const res = await probe(process.execPath, [npmCli, "audit", "--json", "--audit-level=high"], home, timeoutMs);
+    const res = await probe(
+      process.execPath,
+      [npmCli, "audit", "--json", "--audit-level=high"],
+      home,
+      timeoutMs,
+    );
     if (res.timedOut) {
-      return { id, label, status: "warn", detail: `npm audit timed out after ${Math.round(timeoutMs / 1000)} s (offline?)` };
+      return {
+        id,
+        label,
+        status: "warn",
+        detail: `npm audit timed out after ${Math.round(timeoutMs / 1000)} s (offline?)`,
+      };
     }
     interface AuditJson {
       metadata?: { vulnerabilities?: Record<string, number> };
@@ -57,10 +75,20 @@ export async function npmAuditCheck(home: string, timeoutMs = 20_000): Promise<D
       report = null;
     }
     if (!report) {
-      return { id, label, status: "warn", detail: `npm audit produced no JSON (exit ${res.exitCode}): ${res.stderr.trim().slice(0, 200) || "no output"}` };
+      return {
+        id,
+        label,
+        status: "warn",
+        detail: `npm audit produced no JSON (exit ${res.exitCode}): ${res.stderr.trim().slice(0, 200) || "no output"}`,
+      };
     }
     if (report.error) {
-      return { id, label, status: "warn", detail: `npm audit failed: ${report.error.summary ?? "unknown error"}` };
+      return {
+        id,
+        label,
+        status: "warn",
+        detail: `npm audit failed: ${report.error.summary ?? "unknown error"}`,
+      };
     }
     const v: Record<string, number> = report.metadata?.vulnerabilities ?? {};
     const high = (v.high ?? 0) + (v.critical ?? 0);
@@ -72,7 +100,10 @@ export async function npmAuditCheck(home: string, timeoutMs = 20_000): Promise<D
       detail:
         total === 0
           ? "No known vulnerabilities"
-          : `${total} advisory(ies): ${Object.entries(v).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k}`).join(", ")}`,
+          : `${total} advisory(ies): ${Object.entries(v)
+              .filter(([, n]) => n > 0)
+              .map(([k, n]) => `${n} ${k}`)
+              .join(", ")}`,
     };
   } catch (err) {
     return { id, label, status: "skip", detail: `Could not run npm audit: ${(err as Error).message}` };
@@ -87,8 +118,8 @@ export async function runDoctor(ctx: AppContext, opts: DoctorOptions = {}): Prom
   checks.push({
     id: "node",
     label: "Node.js version",
-    status: Number(major) >= 20 ? "ok" : "fail",
-    detail: `v${process.versions.node} (requires >= 20)`,
+    status: Number(major) >= 22 ? "ok" : "fail",
+    detail: `v${process.versions.node} (requires >= 22)`,
   });
 
   try {
@@ -124,14 +155,21 @@ export async function runDoctor(ctx: AppContext, opts: DoctorOptions = {}): Prom
 
   const indexed = settings.indexedFolders.filter((f) => f.enabled);
   if (indexed.length === 0) {
-    checks.push({ id: "memory-folders", label: "Indexed folders", status: "warn", detail: "No folders selected — the Second Brain is empty. Add folders in Settings." });
+    checks.push({
+      id: "memory-folders",
+      label: "Indexed folders",
+      status: "warn",
+      detail: "No folders selected — the Second Brain is empty. Add folders in Settings.",
+    });
   } else {
     const missing = indexed.filter((f) => !fs.existsSync(f.path));
     checks.push({
       id: "memory-folders",
       label: "Indexed folders",
       status: missing.length ? "warn" : "ok",
-      detail: missing.length ? `Missing: ${missing.map((f) => f.path).join(", ")}` : `${indexed.length} folder(s) indexed`,
+      detail: missing.length
+        ? `Missing: ${missing.map((f) => f.path).join(", ")}`
+        : `${indexed.length} folder(s) indexed`,
     });
   }
 
@@ -150,7 +188,10 @@ export async function runDoctor(ctx: AppContext, opts: DoctorOptions = {}): Prom
     id: "routers",
     label: "Memory routers",
     status: routerIssues.length === 0 ? "ok" : "warn",
-    detail: routerIssues.length === 0 ? "Routers present, no broken pointers" : routerIssues.map((i) => i.problem).join(" | "),
+    detail:
+      routerIssues.length === 0
+        ? "Routers present, no broken pointers"
+        : routerIssues.map((i) => i.problem).join(" | "),
   });
 
   const skills = ctx.skills.list();
@@ -162,7 +203,8 @@ export async function runDoctor(ctx: AppContext, opts: DoctorOptions = {}): Prom
     detail:
       skills.length === 0
         ? "No skills in the catalog"
-        : `${skills.length} skill(s)` + (thick.length ? ` — thick (split recommended): ${thick.map((s) => s.slug).join(", ")}` : ""),
+        : `${skills.length} skill(s)` +
+          (thick.length ? ` — thick (split recommended): ${thick.map((s) => s.slug).join(", ")}` : ""),
   });
 
   const routineStatus = ctx.scheduler.status();

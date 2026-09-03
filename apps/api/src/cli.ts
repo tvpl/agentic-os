@@ -261,25 +261,54 @@ function processStartTime(pid: number): number | null {
 }
 
 /**
+ * Command line of `pid`, or null when the platform gives us no way to read it.
+ * Linux: procfs. macOS/BSD: `ps -o command=`. Windows: a CIM query via PowerShell.
+ */
+function processCommandLine(pid: number): string | null {
+  if (process.platform === "linux") {
+    try {
+      return fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(/\0/g, " ");
+    } catch {
+      /* /proc unavailable (container, hardened kernel) — fall back to ps below */
+    }
+  }
+  try {
+    const res =
+      process.platform === "win32"
+        ? spawnSync(
+            "powershell.exe",
+            [
+              "-NoProfile",
+              "-NonInteractive",
+              "-Command",
+              `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CommandLine`,
+            ],
+            { encoding: "utf8", timeout: 10_000, windowsHide: true },
+          )
+        : spawnSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 });
+    if (res.status !== 0) return null;
+    const text = res.stdout.trim();
+    return text.length > 0 ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Does `info.pid` still belong to the MordomoOS service that wrote the pidfile?
  * A bare `kill(pid, 0)` is not enough: PIDs are recycled, so a stale pidfile
- * could point at an unrelated process. On Linux the kernel tells us the
- * command line; elsewhere we compare the process start time with the pidfile.
+ * could point at an unrelated process. The command line is the primary check
+ * on every platform; the process start time (POSIX) is the fallback.
  */
 export function isServiceProcess(info: PidInfo): boolean {
+  if (!Number.isInteger(info.pid) || info.pid <= 0) return false;
   try {
     process.kill(info.pid, 0);
   } catch {
     return false;
   }
-  if (process.platform === "linux") {
-    try {
-      const cmdline = fs.readFileSync(`/proc/${info.pid}/cmdline`, "utf8");
-      return cmdline.includes("cli.js");
-    } catch {
-      /* /proc unavailable (container, hardened kernel) — fall back below */
-    }
-  }
+  const cmdline = processCommandLine(info.pid);
+  if (cmdline !== null) return cmdline.includes("cli.js");
   const started = processStartTime(info.pid);
   if (started !== null && Number.isFinite(info.startedAt)) {
     // The process must predate its own pidfile (1 s tolerance: `lstart` has second granularity).
@@ -886,8 +915,14 @@ To remove the code too, simply delete the repository folder afterwards.`);
 // ---------------------------------------------------------------- index ----
 
 function describeProgress(progress: IndexProgress): string {
-  const parts = [`${progress.scanned} scanned`, `+${progress.added}`, `~${progress.updated}`, `-${progress.removed}`];
-  if (typeof progress.total === "number") parts.unshift(`${Math.round((progress.scanned / Math.max(1, progress.total)) * 100)}%`);
+  const parts = [
+    `${progress.scanned} scanned`,
+    `+${progress.added}`,
+    `~${progress.updated}`,
+    `-${progress.removed}`,
+  ];
+  if (typeof progress.total === "number")
+    parts.unshift(`${Math.round((progress.scanned / Math.max(1, progress.total)) * 100)}%`);
   return parts.join(" ");
 }
 

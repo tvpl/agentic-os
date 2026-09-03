@@ -18,6 +18,12 @@ if (process.platform !== "win32") {
   }
 }
 
+/**
+ * The fake CLIs under fixtures/fake-bin are bash scripts: tests that need a
+ * run to actually succeed (or hang) cannot execute them on Windows.
+ */
+export const FAKE_CLIS_RUNNABLE = process.platform !== "win32";
+
 /** Create an isolated MordomoOS home in a temp dir. */
 export function makeTempHome(prefix = "mordomo-test-"): { paths: MordomoPaths; cleanup: () => void } {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), prefix));

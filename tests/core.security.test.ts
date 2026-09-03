@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   redactSecrets,
@@ -81,14 +82,24 @@ describe("path containment", () => {
     }
   });
 
-  it("refuses symlink escapes", () => {
+  it("refuses symlink escapes, including files that do not exist yet", () => {
     const { paths, cleanup } = makeTempHome();
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-outside-"));
     try {
+      fs.writeFileSync(path.join(outside, "secret.txt"), "shh");
       const link = path.join(paths.home, "sneaky");
-      fs.symlinkSync("/etc", link);
-      expect(() => resolveInsideRoots([paths.home], path.join(link, "passwd"))).toThrow(PathAccessError);
+      fs.symlinkSync(outside, link, process.platform === "win32" ? "junction" : "dir");
+      expect(() => resolveInsideRoots([paths.home], path.join(link, "secret.txt"))).toThrow(PathAccessError);
+      // A write target under a symlinked directory must not pass just because it is missing.
+      expect(() => resolveInsideRoots([paths.home], path.join(link, "new", "note.md"))).toThrow(
+        PathAccessError,
+      );
+      expect(resolveInsideRoots([paths.home], path.join(paths.home, "new", "note.md"))).toBe(
+        path.join(fs.realpathSync(paths.home), "new", "note.md"),
+      );
     } finally {
       cleanup();
+      fs.rmSync(outside, { recursive: true, force: true });
     }
   });
 

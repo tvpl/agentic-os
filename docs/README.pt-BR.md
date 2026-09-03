@@ -7,7 +7,7 @@ O MordomoOS é o seu sistema operacional agentic local: uma camada única sobre
 
 ## Instalação
 
-Pré-requisitos: Node.js ≥ 20 e git.
+Pré-requisitos: Node.js ≥ 22 e git.
 
 ```bash
 git clone <este-repo> mordomo-os && cd mordomo-os

@@ -18,13 +18,29 @@ export function isInsideAny(roots: string[], candidate: string): boolean {
  * Throws on violation — callers turn this into a 403.
  */
 export function resolveInsideRoots(roots: string[], candidate: string): string {
-  const resolved = path.resolve(candidate);
-  const real = fs.existsSync(resolved) ? fs.realpathSync(resolved) : resolved;
+  const real = realpathLenient(path.resolve(candidate));
   for (const root of roots) {
     const realRoot = fs.existsSync(root) ? fs.realpathSync(root) : path.resolve(root);
     if (isInside(realRoot, real)) return real;
   }
   throw new PathAccessError(candidate);
+}
+
+/**
+ * `realpath` for paths that may not exist yet: symlinks are resolved in the
+ * deepest existing ancestor and the missing tail is re-appended, so a symlinked
+ * parent directory cannot smuggle a new file outside the granted roots.
+ */
+function realpathLenient(absolute: string): string {
+  let head = absolute;
+  const tail: string[] = [];
+  while (!fs.existsSync(head)) {
+    const parent = path.dirname(head);
+    if (parent === head) return absolute;
+    tail.unshift(path.basename(head));
+    head = parent;
+  }
+  return path.join(fs.realpathSync(head), ...tail);
 }
 
 export class PathAccessError extends Error {

@@ -24,7 +24,7 @@ into artifacts.
 
 ## Quick start
 
-Requirements: Node.js ≥ 20, git. macOS/Linux first-class; Windows via
+Requirements: Node.js ≥ 22, git. macOS/Linux first-class; Windows via
 PowerShell or WSL ([docs/windows.md](docs/windows.md)).
 
 ```bash
