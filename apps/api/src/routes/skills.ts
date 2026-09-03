@@ -13,6 +13,9 @@ import type { AppContext } from "../context.js";
 import { gateWrite, grantedRoots, httpError, launchSkillRun, type SkillRunInput } from "./common.js";
 import { IdParam, SlugParams } from "./params.js";
 
+/** Previews stream at most this much (brand PDFs are a few MB; nothing in a skill should be bigger). */
+const MAX_RESOURCE_BYTES = 25 * 1024 * 1024;
+
 const RunSkillBody = z.object({
   provider: ProviderId.optional(),
   model: z.string().nullable().optional(),
@@ -48,6 +51,41 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
     if (frontmatter.slug !== slug) throw httpError(400, "Slug in body must match URL");
     if (!ctx.skills.load(slug)) throw httpError(404, "Skill not found");
     return ctx.skills.save(frontmatter, body);
+  });
+
+  /**
+   * Serve one resource file from inside a skill folder (brand HTML, images,
+   * PDFs, reference markdown). Only files the catalog scan listed are
+   * served — never SKILL.md, symlinks, hidden files or anything outside the
+   * folder — with an explicit content type, `nosniff`, and a script-free CSP
+   * so HTML previews render in a sandboxed iframe without running code.
+   */
+  app.get("/api/skills/:slug/resource", async (req, reply) => {
+    const { slug } = SlugParams.parse(req.params);
+    const { rel } = z.object({ rel: z.string().min(1).max(512) }).parse(req.query ?? {});
+    if (!ctx.skills.load(slug)) throw httpError(404, "Skill not found");
+    const hit = ctx.skills.resolveResource(slug, rel);
+    if (!hit) throw httpError(404, "Resource not found");
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(hit.absPath);
+    } catch {
+      throw httpError(404, "Resource not found");
+    }
+    if (!stat.isFile()) throw httpError(404, "Resource not found");
+    if (stat.size > MAX_RESOURCE_BYTES) throw httpError(413, "Resource too large to preview");
+    reply.header("content-type", hit.contentType);
+    reply.header("x-content-type-options", "nosniff");
+    reply.header("cache-control", "private, no-store");
+    if (hit.resource.kind === "html" || hit.resource.kind === "image") {
+      // Inline styles/fonts/images from the same skill only; no scripts, no frames, no network.
+      reply.header(
+        "content-security-policy",
+        "default-src 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; media-src 'self'; form-action 'none'; base-uri 'none'; sandbox",
+      );
+    }
+    if (hit.resource.kind === "other") reply.header("content-disposition", `attachment; filename="${hit.resource.name.replace(/["\\\r\n]/g, "_")}"`);
+    return reply.send(fs.createReadStream(hit.absPath));
   });
 
   app.post("/api/skills/:slug/toggle", async (req) => {

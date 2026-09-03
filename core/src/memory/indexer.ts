@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { Db } from "../db/db.js";
-import type { Settings } from "../config/schema.js";
+import type { IndexedFolder, Settings } from "../config/schema.js";
 import { events } from "../events.js";
 import { isBinaryBuffer, makeWorkspaceFilter } from "./excludes.js";
+import { fieldsFromDb, parseInlineFields } from "./fields.js";
 
 const TEXT_EXTENSIONS = new Set([
   ".md", ".markdown", ".txt", ".json", ".yaml", ".yml", ".toml", ".csv",
@@ -52,6 +53,8 @@ export interface FileRow {
   indexedAt: number;
   title: string | null;
   tags: string[];
+  /** Dataview-style `key:: value` inline fields (markdown only). */
+  fields: Record<string, string>;
 }
 
 interface Candidate {
@@ -84,11 +87,27 @@ type PendingLinks = Map<string, number[]>;
 export class MemoryIndexer {
   private running = false;
   private inFlight: Promise<IndexStats> | null = null;
+  private implicitRoots: IndexedFolder[] = [];
 
   constructor(
     private readonly db: Db,
     private readonly getSettings: () => Settings,
   ) {}
+
+  /**
+   * Roots indexed in addition to `settings.indexedFolders` (the MordomoOS
+   * `memory/` folder — journal, MEMORY.md — is registered this way by
+   * `installJournalHooks`). Same exclusion policy, same incremental rules.
+   */
+  addImplicitRoot(folder: IndexedFolder): void {
+    const resolved = path.resolve(folder.path);
+    if (this.implicitRoots.some((r) => path.resolve(r.path) === resolved)) return;
+    this.implicitRoots.push({ ...folder, path: resolved });
+  }
+
+  listImplicitRoots(): IndexedFolder[] {
+    return this.implicitRoots.map((r) => ({ ...r }));
+  }
 
   /** True while an index run (sync or async) is in progress. */
   isIndexing(): boolean {
@@ -148,7 +167,7 @@ export class MemoryIndexer {
       // wins for the area). A directory that is itself another enabled root is
       // skipped by the parent walk, so the longest (most specific) root owns it.
       const rootArea = new Map<string, string | null>();
-      for (const f of settings.indexedFolders) {
+      for (const f of [...settings.indexedFolders, ...this.implicitRoots]) {
         if (!f.enabled) continue;
         const r = path.resolve(f.path);
         if (!rootArea.has(r)) rootArea.set(r, f.area);
@@ -282,6 +301,7 @@ export class MemoryIndexer {
     let content = "";
     let title: string | null = null;
     let tags: string[] = [];
+    let fields: Record<string, string> = {};
     if ((TEXT_EXTENSIONS.has(ext) || ext === "") && stat.size <= maxBytes) {
       try {
         const buf = fs.readFileSync(full);
@@ -293,8 +313,10 @@ export class MemoryIndexer {
       if (ext === ".md" || ext === ".markdown") {
         title = content.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? null;
         tags = [...new Set([...content.matchAll(/(?:^|\s)#([\p{L}\d_-]{2,30})\b/gu)].map((m) => m[1]!))].slice(0, 20);
+        fields = parseInlineFields(content);
       }
     }
+    const fieldsJson = JSON.stringify(fields);
 
     const now = Date.now();
     const name = path.basename(full);
@@ -303,9 +325,9 @@ export class MemoryIndexer {
       id = existing.id;
       this.db
         .prepare(
-          "UPDATE files SET root = ?, rel = ?, dir = ?, size = ?, mtime = ?, indexed_at = ?, title = ?, tags = ?, area = ? WHERE id = ?",
+          "UPDATE files SET root = ?, rel = ?, dir = ?, size = ?, mtime = ?, indexed_at = ?, title = ?, tags = ?, area = ?, fields = ? WHERE id = ?",
         )
-        .run(root, rel, path.dirname(full), stat.size, mtime, now, title, JSON.stringify(tags), area, id);
+        .run(root, rel, path.dirname(full), stat.size, mtime, now, title, JSON.stringify(tags), area, fieldsJson, id);
       this.db.prepare("DELETE FROM files_fts WHERE rowid = ?").run(id);
       this.db
         .prepare("INSERT INTO files_fts (rowid, name, rel, content) VALUES (?, ?, ?, ?)")
@@ -314,9 +336,9 @@ export class MemoryIndexer {
     } else {
       const info = this.db
         .prepare(
-          "INSERT INTO files (root, path, rel, name, ext, dir, area, size, mtime, indexed_at, title, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO files (root, path, rel, name, ext, dir, area, size, mtime, indexed_at, title, tags, fields) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .run(root, full, rel, name, ext, path.dirname(full), area, stat.size, mtime, now, title, JSON.stringify(tags));
+        .run(root, full, rel, name, ext, path.dirname(full), area, stat.size, mtime, now, title, JSON.stringify(tags), fieldsJson);
       id = Number(info.lastInsertRowid);
       this.db
         .prepare("INSERT INTO files_fts (rowid, name, rel, content) VALUES (?, ?, ?, ?)")
@@ -438,5 +460,6 @@ export function fileRowFromDb(row: Record<string, unknown>): FileRow {
     indexedAt: row.indexed_at as number,
     title: (row.title as string | null) ?? null,
     tags: JSON.parse((row.tags as string) ?? "[]") as string[],
+    fields: fieldsFromDb(row.fields),
   };
 }

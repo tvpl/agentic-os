@@ -158,12 +158,42 @@ export class CodexAdapter implements AgentAdapter {
   }
 }
 
+function num(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * Token usage from a Codex JSONL payload. Accepts both spellings the CLI has
+ * used (`input_tokens`/`output_tokens`/`cached_input_tokens` and the older
+ * `token_usage` info blocks). Returns null when no counts are present.
+ */
+export function parseCodexUsage(raw: unknown): { inputTokens: number; outputTokens: number; cacheReadTokens: number } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const u = raw as Record<string, unknown>;
+  if (u.input_tokens == null && u.output_tokens == null) return null;
+  return {
+    inputTokens: num(u.input_tokens),
+    outputTokens: num(u.output_tokens),
+    cacheReadTokens: num(u.cached_input_tokens ?? u.cache_read_input_tokens),
+  };
+}
+
 /**
  * Codex --json emits JSONL events; shapes vary across versions
  * ("item.completed" items, or msg-typed events). Parse defensively.
+ * Exported for tests.
  */
-function codexStreamParser(): LineParser {
+export function codexStreamParser(): LineParser {
   let lastMessage = "";
+  let model: string | null = null;
+  const usageEvent = (ts: number, parsed: NonNullable<ReturnType<typeof parseCodexUsage>>): RunEvent => ({
+    type: "usage",
+    ts,
+    scope: "total",
+    ...parsed,
+    costUsd: null, // Codex reports tokens but never a price
+    ...(model ? { model } : {}),
+  });
   return {
     parseLine(line: string): RunEvent[] | null {
       let obj: Record<string, unknown>;
@@ -174,6 +204,13 @@ function codexStreamParser(): LineParser {
       }
       const ts = Date.now();
       const type = String(obj.type ?? "");
+      if (typeof obj.model === "string") model = obj.model;
+
+      // Newer shape: {"type":"turn.completed","usage":{"input_tokens":..,"output_tokens":..}}
+      if (type === "turn.completed") {
+        const parsed = parseCodexUsage(obj.usage);
+        return parsed ? [usageEvent(ts, parsed)] : [];
+      }
 
       // Newer shape: {"type":"item.completed","item":{"item_type"/"type": "...", "text": ...}}
       const item = obj.item as Record<string, unknown> | undefined;
@@ -214,9 +251,15 @@ function codexStreamParser(): LineParser {
         if (msgType === "error" && typeof msg.message === "string") {
           return [{ type: "permission", ts, detail: msg.message.slice(0, 400) }];
         }
+        // Older shape: {"msg":{"type":"token_count","info":{"total_token_usage":{...},"last_token_usage":{...}}}}
+        if (msgType === "token_count") {
+          const info = msg.info as Record<string, unknown> | undefined;
+          const parsed = parseCodexUsage(info?.total_token_usage ?? msg.total_token_usage ?? msg.token_usage ?? info?.token_usage);
+          return parsed ? [usageEvent(ts, parsed)] : [];
+        }
         return [];
       }
-      if (type === "turn.completed" || type === "thread.started") return [];
+      if (type === "thread.started") return [];
       return [];
     },
     summarize(stdout: string): string {

@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { Cron } from "croner";
 import type { MordomoPaths } from "../paths.js";
-import { RoutineSchema, type Routine } from "./types.js";
+import { RoutineSchema, validateRoutine, type Routine, type RoutineValidationOptions } from "./types.js";
+import { nextRunFor } from "./schedule.js";
 import { atomicWrite } from "../config/store.js";
 import { resolveInsideDir } from "../security/ids.js";
 
@@ -52,12 +53,14 @@ export class RoutineStore {
     return RoutineSchema.parse(JSON.parse(fs.readFileSync(file, "utf8")));
   }
 
-  save(routine: Routine): Routine {
+  /**
+   * Validate (shape + semantics for the schedule kind) and write the file.
+   * `opts.allowWebhooks` mirrors `settings.routines.allowWebhooks`; callers
+   * without settings (CLI helpers, tests) keep webhook delivery refused.
+   */
+  save(routine: Routine, opts: RoutineValidationOptions = {}): Routine {
     const parsed = RoutineSchema.parse(routine);
-    validateCron(parsed.schedule, parsed.timezone);
-    if (!parsed.skillSlug && !parsed.prompt) {
-      throw new Error("A routine needs a skill or a prompt.");
-    }
+    validateRoutine(parsed, validateCron, opts);
     atomicWrite(this.fileFor(parsed.id), JSON.stringify(parsed, null, 2) + "\n");
     return parsed;
   }
@@ -69,19 +72,23 @@ export class RoutineStore {
     return true;
   }
 
-  duplicate(id: string): Routine {
+  duplicate(id: string, opts: RoutineValidationOptions = {}): Routine {
     const source = this.get(id);
     if (!source) throw new Error(`unknown routine: ${id}`);
     let candidate = `${id}-copy`;
     let n = 2;
     while (this.get(candidate)) candidate = `${id}-copy-${n++}`;
-    return this.save({
-      ...source,
-      id: candidate,
-      name: `${source.name} (copy)`,
-      enabled: false,
-      createdAt: Date.now(),
-    });
+    return this.save(
+      {
+        ...source,
+        id: candidate,
+        name: `${source.name} (copy)`,
+        enabled: false,
+        endedReason: null,
+        createdAt: Date.now(),
+      },
+      opts,
+    );
   }
 }
 
@@ -94,14 +101,19 @@ export function validateCron(expression: string, timezone: string): void {
   }
 }
 
-export function nextRunAt(routine: Routine): number | null {
-  if (!routine.enabled) return null;
+/** croner-backed "next cron slot after `from`" (null on invalid expressions). */
+export function cronNextAfter(schedule: string, timezone: string, from: number): number | null {
   try {
-    const job = new Cron(routine.schedule, { timezone: routine.timezone || undefined, paused: true });
-    const next = job.nextRun();
+    const job = new Cron(schedule, { timezone: timezone || undefined, paused: true });
+    const next = job.nextRun(new Date(from));
     job.stop();
     return next ? next.getTime() : null;
   } catch {
     return null;
   }
+}
+
+/** Next firing for any schedule kind (no settings: the routine's own timezone, else UTC). */
+export function nextRunAt(routine: Routine, now = Date.now(), fallbackTz = "UTC"): number | null {
+  return nextRunFor(routine, now, fallbackTz, cronNextAfter);
 }

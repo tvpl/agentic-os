@@ -1,31 +1,36 @@
 /**
- * Pointer picking in world space: hubs first, then orbs, then the nearest
- * file within a zoom-aware tolerance. Pure.
+ * Pointer picking in world space: hubs first, then planets, then orbs, then
+ * the nearest visible file within a zoom-aware tolerance. Pure.
  */
-import type { FileNode, Hub, OrbNode, Transform, World } from "./world";
+import type { FileNode, Hub, OrbNode, Planet, Transform, World } from "./world";
 
-export type Hit = { file?: FileNode; hub?: Hub; orb?: OrbNode };
+export type Hit = { file?: FileNode; hub?: Hub; orb?: OrbNode; planet?: Planet };
 
 export const HUB_HIT_RADIUS = 17;
 export const APP_HIT_RADIUS = 17;
 export const ORB_HIT_RADIUS = 13;
+export const PLANET_HIT_RADIUS = 7;
 
 /** Tolerance (world units) for picking a file at zoom `k`: generous when zoomed out. */
 export function fileTolerance(k: number): number {
   return 9 / k + 4;
 }
 
-export function hitTest(w: Pick<World, "hubs" | "orbs" | "files" | "transform">, wx: number, wy: number): Hit {
+export function hitTest(w: Pick<World, "hubs" | "orbs" | "files" | "transform"> & Partial<Pick<World, "planets">>, wx: number, wy: number): Hit {
   for (const hub of w.hubs) {
     if (Math.hypot(wx - hub.x, wy - hub.y) < HUB_HIT_RADIUS) return { hub };
   }
   for (const orb of w.orbs) {
     if (Math.hypot(wx - orb.x, wy - orb.y) < (orb.kind === "app" ? APP_HIT_RADIUS : ORB_HIT_RADIUS)) return { orb };
   }
+  for (const planet of w.planets ?? []) {
+    if (Math.hypot(wx - planet.x, wy - planet.y) < PLANET_HIT_RADIUS) return { planet };
+  }
   const tol = fileTolerance(w.transform.k);
   let best: FileNode | undefined;
   let bestD = tol * tol;
   for (const n of w.files) {
+    if (n.visAlpha < 0.2) continue;
     const dx = wx - n.x;
     const dy = wy - n.y;
     const d = dx * dx + dy * dy;

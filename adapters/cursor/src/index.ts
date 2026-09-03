@@ -168,9 +168,35 @@ export class CursorAdapter implements AgentAdapter {
   }
 }
 
-/** Cursor stream-json closely mirrors Claude Code's; parse defensively. */
-function cursorStreamParser(): LineParser {
+function num(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * Best-effort usage from a cursor-agent JSON line: a `usage` block on the
+ * message or on the result (`input_tokens`/`output_tokens`, or camelCase).
+ * Returns null when nothing usable is present — Cursor often reports none.
+ */
+export function parseCursorUsage(raw: unknown): { inputTokens: number; outputTokens: number; cacheReadTokens: number } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const u = raw as Record<string, unknown>;
+  const input = u.input_tokens ?? u.inputTokens ?? u.prompt_tokens;
+  const output = u.output_tokens ?? u.outputTokens ?? u.completion_tokens;
+  if (input == null && output == null) return null;
+  return { inputTokens: num(input), outputTokens: num(output), cacheReadTokens: num(u.cache_read_input_tokens ?? u.cachedTokens) };
+}
+
+/** Cursor stream-json closely mirrors Claude Code's; parse defensively. Exported for tests. */
+export function cursorStreamParser(): LineParser {
   let lastText = "";
+  const usageEvent = (ts: number, scope: "turn" | "total", parsed: NonNullable<ReturnType<typeof parseCursorUsage>>, model: unknown): RunEvent => ({
+    type: "usage",
+    ts,
+    scope,
+    ...parsed,
+    costUsd: null,
+    ...(typeof model === "string" ? { model } : {}),
+  });
   return {
     parseLine(line: string): RunEvent[] | null {
       let obj: Record<string, unknown>;
@@ -182,8 +208,10 @@ function cursorStreamParser(): LineParser {
       const ts = Date.now();
       const type = obj.type as string;
       if (type === "assistant") {
-        const message = obj.message as { content?: Array<Record<string, unknown>> } | undefined;
+        const message = obj.message as { content?: Array<Record<string, unknown>>; usage?: unknown; model?: unknown } | undefined;
         const events: RunEvent[] = [];
+        const turn = parseCursorUsage(message?.usage ?? obj.usage);
+        if (turn) events.push(usageEvent(ts, "turn", turn, message?.model ?? obj.model));
         for (const block of message?.content ?? []) {
           if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
             lastText = block.text;
@@ -201,7 +229,8 @@ function cursorStreamParser(): LineParser {
       }
       if (type === "result") {
         if (typeof obj.result === "string") lastText = obj.result;
-        return [];
+        const total = parseCursorUsage(obj.usage);
+        return total ? [usageEvent(ts, "total", total, obj.model)] : [];
       }
       if (type === "system") return [];
       // Unknown JSON shape: surface something readable.

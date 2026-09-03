@@ -2,12 +2,75 @@ import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
 import type { MordomoPaths } from "../paths.js";
-import { SkillFrontmatterSchema, type Skill, type SkillFrontmatter } from "./types.js";
+import { SkillFrontmatterSchema, type Skill, type SkillFrontmatter, type SkillResource, type SkillResourceKind } from "./types.js";
 import { isValidId, resolveInsideDir } from "../security/ids.js";
+import { isInside } from "../security/paths.js";
 import type { StoreProblem } from "../routines/store.js";
 
 /** A SKILL.md body at or above this many lines is flagged "thick" (ARMS S-L2). */
 export const THICK_LINE_THRESHOLD = 150;
+
+/** Resource scan stops after this many files (deep folders must not stall the catalog). */
+export const MAX_SKILL_RESOURCES = 200;
+
+const RESOURCE_KINDS: Record<string, SkillResourceKind> = {
+  ".md": "markdown",
+  ".markdown": "markdown",
+  ".mdx": "markdown",
+  ".html": "html",
+  ".htm": "html",
+  ".png": "image",
+  ".jpg": "image",
+  ".jpeg": "image",
+  ".gif": "image",
+  ".webp": "image",
+  ".svg": "image",
+  ".avif": "image",
+  ".pdf": "pdf",
+};
+
+const RESOURCE_MIME: Record<string, string> = {
+  ".md": "text/markdown; charset=utf-8",
+  ".markdown": "text/markdown; charset=utf-8",
+  ".mdx": "text/markdown; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".htm": "text/html; charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".avif": "image/avif",
+  ".pdf": "application/pdf",
+  ".txt": "text/plain; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".csv": "text/csv; charset=utf-8",
+  ".yaml": "text/plain; charset=utf-8",
+  ".yml": "text/plain; charset=utf-8",
+};
+
+/** Classify a resource by extension (unknown → "other"). */
+export function skillResourceKind(name: string): SkillResourceKind {
+  return RESOURCE_KINDS[path.extname(name).toLowerCase()] ?? "other";
+}
+
+/** Content type used when serving a resource (unknown → octet-stream, never sniffed). */
+export function skillResourceContentType(name: string): string {
+  return RESOURCE_MIME[path.extname(name).toLowerCase()] ?? "application/octet-stream";
+}
+
+/**
+ * A resource `rel` as accepted by the API: POSIX-relative, no `..`, no
+ * absolute or drive prefix, no backslashes, no hidden segments.
+ */
+export function isSafeResourceRel(rel: unknown): rel is string {
+  if (typeof rel !== "string" || rel.length === 0 || rel.length > 512) return false;
+  if (rel.includes("\\") || rel.includes("\0") || rel.startsWith("/")) return false;
+  const segments = rel.split("/");
+  return segments.every((seg) => seg.length > 0 && seg !== "." && seg !== ".." && !seg.startsWith(".") && !/^[A-Za-z]:$/.test(seg));
+}
 
 export class SkillCatalog {
   private problems: StoreProblem[] = [];
@@ -57,31 +120,80 @@ export class SkillCatalog {
       throw new Error(`Skill "${slug}" has invalid frontmatter: ${front.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
     }
     const body = parsed.content.trim();
-    const resources = this.listResources(dir);
+    const resourceFiles = this.listResources(dir);
     const bodyLineCount = body.split("\n").length;
     return {
       ...front.data,
       body,
       dir,
       skillFile,
-      resources,
+      resources: resourceFiles.map((r) => r.rel),
+      resourceFiles,
       bodyLineCount,
       thick: bodyLineCount >= THICK_LINE_THRESHOLD,
     };
   }
 
-  private listResources(dir: string): string[] {
-    const out: string[] = [];
+  /**
+   * Every regular file under the skill folder except SKILL.md, sorted by
+   * `rel`. Symlinks and hidden entries are skipped (a link could point outside
+   * the folder), and the walk stops at MAX_SKILL_RESOURCES entries.
+   */
+  private listResources(dir: string): SkillResource[] {
+    const out: SkillResource[] = [];
+    const root = path.resolve(dir);
     const walk = (current: string, prefix: string) => {
-      for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(current, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (out.length >= MAX_SKILL_RESOURCES) return;
+        if (entry.name.startsWith(".")) continue;
         if (entry.name === "SKILL.md" && prefix === "") continue;
+        if (entry.isSymbolicLink()) continue;
+        const full = path.join(current, entry.name);
+        if (!isInside(root, full)) continue;
         const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) walk(path.join(current, entry.name), rel);
-        else out.push(rel);
+        if (entry.isDirectory()) walk(full, rel);
+        else if (entry.isFile()) {
+          let size = 0;
+          try {
+            size = fs.statSync(full).size;
+          } catch {
+            continue;
+          }
+          out.push({ name: entry.name, rel, kind: skillResourceKind(entry.name), size });
+        }
       }
     };
-    walk(dir, "");
-    return out.sort();
+    walk(root, "");
+    return out.sort((a, b) => a.rel.localeCompare(b.rel));
+  }
+
+  /**
+   * Absolute path of one listed resource, or null when `rel` is not a safe
+   * relative path, is not in the scan (so never SKILL.md, symlinks or hidden
+   * files), or resolves outside the skill folder. Never throws for bad input
+   * other than an invalid slug (InvalidIdError → 400).
+   */
+  resolveResource(slug: string, rel: unknown): { absPath: string; resource: SkillResource; contentType: string } | null {
+    const dir = this.dirFor(slug);
+    if (!isSafeResourceRel(rel)) return null;
+    const resource = this.listResources(dir).find((r) => r.rel === rel);
+    if (!resource) return null;
+    const absPath = path.resolve(dir, ...rel.split("/"));
+    if (!isInside(path.resolve(dir), absPath)) return null;
+    let real: string;
+    try {
+      real = fs.realpathSync(absPath);
+    } catch {
+      return null;
+    }
+    if (!isInside(fs.realpathSync(dir), real)) return null;
+    return { absPath: real, resource, contentType: skillResourceContentType(resource.name) };
   }
 
   save(front: SkillFrontmatter, body: string): Skill {

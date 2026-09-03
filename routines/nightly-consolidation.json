@@ -1,0 +1,22 @@
+{
+  "id": "nightly-consolidation",
+  "name": "Nightly memory consolidation",
+  "skillSlug": "consolidate-memory",
+  "prompt": null,
+  "inputs": { "days": "7" },
+  "schedule": "0 3 * * *",
+  "timezone": "America/Sao_Paulo",
+  "provider": "claude",
+  "model": null,
+  "effort": "medium",
+  "workingDir": null,
+  "missedPolicy": "skip",
+  "timeoutMs": 900000,
+  "maxAttempts": 1,
+  "backoffMs": 120000,
+  "artifactsSubdir": null,
+  "notify": true,
+  "profile": "review_before_write",
+  "enabled": false,
+  "createdAt": 1756857600000
+}

@@ -235,6 +235,8 @@ export interface Skill {
   guardrails: string[];
   successCriteria: string[];
   resources: string[];
+  /** Rich resource entries (kind + size); older servers omit it. */
+  resourceFiles?: SkillResource[];
   bodyLineCount: number;
   thick: boolean;
   favorite?: boolean;
@@ -245,18 +247,42 @@ export interface Skill {
 export interface RunRecord {
   id: string;
   createdAt: number;
+  startedAt?: number | null;
   finishedAt: number | null;
   origin: string;
   provider: ProviderId;
   model: string | null;
+  effort?: string;
   status: string;
   durationMs: number | null;
+  cwd?: string | null;
   promptSummary: string;
   skillSlug: string | null;
   routineId: string | null;
+  parentRunId?: string | null;
+  pid?: number | null;
   error: string | null;
   artifacts: string[];
+  /** Absolute paths the run's write tools touched (from the RunManager). */
+  filesChanged?: string[];
   exitCode: number | null;
+  attempts?: number;
+  timeoutMs?: number | null;
+  /** `read_only` for read-only runs, else the security profile the run ran under. */
+  permissionProfile?: string | null;
+  /** Token usage and provider-reported cost (null until a provider reports it). */
+  usage?: RunUsage | null;
+}
+
+/** Token usage persisted on a run (F-RUNS contract). */
+export interface RunUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  /** null = tokens known but the provider gives no price. */
+  costUsd?: number | null;
+  model?: string;
 }
 
 export interface RoutineStatus {
@@ -352,4 +378,287 @@ export interface Metrics {
   byProvider: Array<{ provider: string; count: number; success: number }>;
   running: number;
   failedRecent: number;
+  /** Spend and token throughput (F-RUNS); older servers omit it. */
+  cost?: MetricsCost;
+  /** Last 24 hourly buckets, oldest first (tokens sparkline). */
+  usageSeries?: UsageSeriesPoint[];
 }
+
+// ---- desktop ----
+export type ArtifactKind = "image" | "video" | "html" | "markdown" | "code" | "other";
+
+/** One row of `/api/artifacts/list` (gallery, search mode, Generations). */
+export interface ArtifactListItem {
+  id: string;
+  file: string;
+  path: string;
+  runId: string | null;
+  skillSlug: string | null;
+  createdAt: number;
+  kind: ArtifactKind;
+  title: string;
+  /** Folder under artifacts/ (first path segment), e.g. the run id or "pixel-studio". */
+  folder: string;
+  sizeBytes: number;
+  /** True when `/api/artifacts/raw?p=` can render it inline (png/jpg/svg/webp/gif/mp4/webm). */
+  thumbnail: boolean;
+}
+
+export interface ArtifactListResponse {
+  items: ArtifactListItem[];
+  total: number;
+  skills: string[];
+  folders: string[];
+}
+
+/** `GET /api/connectors/:id/data` (F-BACKEND contract; the desktop copes with its absence). */
+export interface ConnectorDataItem {
+  id: string;
+  title: string;
+  subtitle?: string;
+  ts?: number;
+  flagged?: boolean;
+  tag?: string;
+  href?: string;
+}
+export interface ConnectorData {
+  status: "not_configured" | "ok" | "error";
+  syncedAt: number | null;
+  message?: string;
+  items: ConnectorDataItem[];
+  summary?: Record<string, number>;
+}
+
+/** `Metrics.cost` (F-RUNS contract), read defensively by the Cost widget. */
+export interface MetricsCost {
+  todayUsd: number;
+  weekUsd: number;
+  tokensToday: number;
+  burnRatePerHour: number;
+  block5h?: { usedPct: number; resetsAt: number };
+}
+
+export type NotificationKind = "approval" | "run" | "routine" | "index" | "system";
+export interface NotificationItem {
+  id: string;
+  kind: NotificationKind;
+  title: string;
+  body?: string;
+  ts: number;
+  read: boolean;
+  href?: string;
+  approvalId?: string;
+}
+
+/** A pending approval as returned by `GET /api/approvals`. */
+export interface ApprovalRecord {
+  id: string;
+  createdAt: number;
+  kind: string;
+  description: string;
+  payload: Record<string, unknown>;
+  status: "pending" | "approved" | "denied" | "expired";
+  resolvedAt: number | null;
+}
+
+/** Micro app entry persisted in `settings.microApps` when the schema has it (else route-only list). */
+export interface MicroAppEntry {
+  id: string;
+  name: string;
+  url: string;
+  description?: string;
+}
+
+// ---- apps ----
+export type SkillResourceKind = "markdown" | "html" | "image" | "pdf" | "other";
+
+/** One file inside a skill folder other than SKILL.md (served by `GET /api/skills/:slug/resource?rel=`). */
+export interface SkillResource {
+  name: string;
+  rel: string;
+  kind: SkillResourceKind;
+  size: number;
+}
+
+/** A user-defined micro app persisted in `settings.microApps`. */
+export interface MicroApp {
+  id: string;
+  name: string;
+  description: string;
+  /** Internal route ("/pixel") or an http(s) URL. */
+  href: string;
+}
+
+/** Response of `POST /api/skills/:slug/run` (202 when an approval is pending). */
+export interface SkillRunResponse {
+  runId: string | null;
+  status: "queued" | "waiting_approval";
+  pendingApproval?: ApprovalRecord | null;
+}
+
+// ---- shell ----
+/** `/api/memory/search` hit (the palette's Files section uses only these fields). */
+export interface MemorySearchHit {
+  id: number;
+  name: string;
+  rel: string;
+  path?: string;
+  ext?: string;
+  area?: string | null;
+  mtime?: number;
+}
+
+/** `POST /api/skills/:slug/run` and `POST /api/runs` response. */
+export interface RunLaunchResponse {
+  runId: string | null;
+  status: "queued" | "waiting_approval" | string;
+  pendingApproval?: { id: string; kind: string; description: string } | null;
+}
+
+/** `POST /api/backups` response (mirrors core BackupInfo). */
+export interface BackupCreated {
+  name: string;
+  path: string;
+  createdAt: number;
+  sizeBytes: number;
+}
+
+/** Payloads of the OS events the notification store understands. */
+export interface ApprovalRequestedPayload {
+  id: string;
+  kind: string;
+  description: string;
+}
+export interface ApprovalResolvedPayload {
+  id: string;
+  kind: string;
+  status: "approved" | "denied" | string;
+  runId: string | null;
+}
+export interface RunFinishedPayload {
+  runId: string;
+  status: string;
+  durationMs: number | null;
+}
+export interface RoutineFiredPayload {
+  routineId: string;
+  runId: string;
+}
+
+// ---- memory ----
+// F-MEMORY: layered recall, daily journal, hygiene, bi-temporal facts, inline fields.
+// `GraphNode` gains optional inline fields through declaration merging (append-only).
+export interface GraphNode {
+  fields?: Record<string, string>;
+}
+
+export interface RecallContext {
+  path: string;
+  section: string;
+  excerpt: string;
+  score: number;
+  why: string;
+  via?: string;
+}
+
+export interface RecallResult {
+  question: string;
+  keywords: string[];
+  answerContext: RecallContext[];
+  tokensEstimate: number;
+  candidatesConsidered: number;
+  opened: number;
+  candidates: Array<{ path: string; score: number; why: string }>;
+  durationMs: number;
+}
+
+export interface RecallStats {
+  totalRecalls: number;
+  totalTokens: number;
+  paths: Array<{ path: string; count: number; lastAt: number }>;
+  lastAt: number | null;
+}
+
+export type JournalSection = "Today" | "Decisions" | "Open loops" | "Runs";
+
+export interface JournalDay {
+  date: string;
+  path: string;
+  content: string;
+  created: boolean;
+  sections: Array<{ name: string; lines: string[] }>;
+  /** Present on the single-day response. */
+  dates?: string[];
+}
+
+export type HygieneKind = "orphan" | "dangling-link" | "stale" | "skill-never-run" | "silent-routine" | "unused-connector";
+export type HygieneAction = "open" | "disconnect" | "archive" | "link";
+
+export interface HygieneItem {
+  kind: HygieneKind;
+  id: string;
+  name: string;
+  detail: string;
+  action: HygieneAction;
+}
+
+export interface HygieneReport {
+  generatedAt: number;
+  counts: Record<HygieneKind, number>;
+  items: HygieneItem[];
+  thresholds: { staleDays: number; silentRoutineDays: number; unusedConnectorDays: number };
+}
+
+export interface Fact {
+  id: number;
+  subject: string;
+  predicate: string;
+  object: string;
+  validFrom: number;
+  validTo: number | null;
+  sourceRunId: string | null;
+  sourcePath: string | null;
+  createdAt: number;
+}
+
+export interface FactsResponse {
+  facts: Fact[];
+  stats: { open: number; expired: number; subjects: number };
+}
+
+export interface FieldQueryResponse {
+  where: string;
+  files: Array<GraphNode & { root: string; indexedAt: number; fields: Record<string, string> }>;
+}
+
+// ---- runs ----
+/** One hourly bucket of `Metrics.usageSeries`. */
+export interface UsageSeriesPoint {
+  ts: number;
+  tokens: number;
+  usd: number;
+}
+
+/** `usage` frame of `/api/runs/:id/stream` (mirrors core `RunUsageEvent`). */
+export interface RunUsageEvent extends RunUsage {
+  type: "usage";
+  ts: number;
+  /** `total` replaces the sum of previous `turn` events. */
+  scope?: "turn" | "total";
+}
+
+/** `GET /api/runs/:id/diff?file=` */
+export type RunDiffResult =
+  | { kind: "git"; file: string; repoRoot: string; diff: string; truncated: boolean; unchanged: boolean }
+  | { kind: "snapshot"; file: string; content: string | null; truncated: boolean; untracked: boolean; message: string | null }
+  | { kind: "unavailable"; file: string; message: string };
+
+/** `POST /api/runs` and `POST /api/skills/:slug/run` */
+export interface LaunchRunResponse {
+  runId: string | null;
+  status: "queued" | "waiting_approval";
+  pendingApproval?: ApprovalRecord | null;
+}
+
+/** `POST /api/approvals/:id/resolve` */
+export type ResolveApprovalResponse = ApprovalRecord & { runId: string | null };

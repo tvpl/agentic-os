@@ -83,7 +83,36 @@ export type RunEvent =
       /** True when the process ended because cancellation was requested (or was never spawned because of it). */
       cancelled?: boolean;
     }
-  | { type: "error"; ts: number; message: string };
+  | { type: "error"; ts: number; message: string }
+  | ({ type: "usage"; ts: number } & RunUsageEvent);
+
+/**
+ * Token/cost usage reported by a provider. `scope` tells the RunManager how to
+ * fold several events into the run's usage: a `total` snapshot replaces
+ * everything seen so far (Claude's `result`, Codex's `turn.completed`),
+ * while `turn` events (one per assistant message) are summed until a total
+ * arrives. Missing scope means `turn`.
+ */
+export interface RunUsageEvent {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  /** Provider-reported cost in USD; null when the provider gives tokens but no price. */
+  costUsd?: number | null;
+  model?: string;
+  scope?: "turn" | "total";
+}
+
+/** Usage persisted on the run row (sum of turns, or the provider's total). */
+export interface RunUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  costUsd?: number | null;
+  model?: string;
+}
 
 /**
  * Provider adapter. Cancellation is not part of this contract: the RunManager

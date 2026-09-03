@@ -1,0 +1,68 @@
+/** Memory layer v2 barrel: recall, journal, hygiene, facts, inline fields. */
+export {
+  recall,
+  extractKeywords,
+  stemLite,
+  splitSections,
+  scoreSection,
+  routerPointers,
+  recordRecall,
+  recallStats,
+  type RecallOptions,
+  type RecallContext,
+  type RecallCandidate,
+  type RecallResult,
+  type RecallStats,
+  type RecallPathStat,
+  type Section,
+} from "./recall.js";
+export {
+  JOURNAL_SECTIONS,
+  journalDir,
+  journalPath,
+  journalTemplate,
+  localDateString,
+  isJournalDate,
+  shiftDate,
+  ensureJournal,
+  readJournal,
+  appendJournal,
+  listJournalDates,
+  recentJournals,
+  journalSections,
+  installJournalHooks,
+  type JournalSection,
+  type JournalEntry,
+  type JournalDay,
+  type JournalHookOptions,
+} from "./journal.js";
+export {
+  memoryHygiene,
+  type HygieneKind,
+  type HygieneAction,
+  type HygieneItem,
+  type HygieneReport,
+  type HygieneSources,
+  type HygieneOptions,
+} from "./hygiene.js";
+export {
+  assertFact,
+  retractFact,
+  queryFacts,
+  factStats,
+  type Fact,
+  type AssertFactInput,
+  type AssertFactResult,
+  type FactQuery,
+} from "./facts.js";
+export {
+  parseInlineFields,
+  normalizeFieldKey,
+  parseWhere,
+  queryFilesByField,
+  fieldsFromDb,
+  MAX_FIELDS_PER_FILE,
+  type FieldQuery,
+  type FieldHit,
+} from "./fields.js";
+export { renderJournalBlock, DEFAULT_JOURNAL_BUDGET_TOKENS } from "./routers.js";

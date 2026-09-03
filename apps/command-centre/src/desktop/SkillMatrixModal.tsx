@@ -1,7 +1,8 @@
 /**
  * Model × Effort matrix. `ModelEffortMatrix` is the reusable controlled grid
  * (also used by the Runs "run a prompt" box); `SkillMatrixModal` wraps it and
- * persists the choice to the canonical skill.
+ * persists the choice to the canonical skill. `useSaveSkillMatrix` is the
+ * shared persistence used by the modal and by the anchored deck popover.
  */
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -31,6 +32,34 @@ export function useEffortLabels(): Record<Effort, string> {
 export function useProviderModels(provider: ProviderId) {
   // Provider models are not part of `qk` yet; nested under the providers key so `settings.changed` invalidates them.
   return useApiQuery<ModelishOption[]>([...qk.providers, provider, "models"], `/api/providers/${provider}/models`, { staleTime: 60_000 });
+}
+
+export function skillEffort(skill: Skill): Effort {
+  return (EFFORTS as readonly string[]).includes(skill.recommendedEffort) ? (skill.recommendedEffort as Effort) : "default";
+}
+
+/** Persist `recommendedModel` / `recommendedEffort` on the canonical skill (same PUT as the skill editor). */
+export function useSaveSkillMatrix(skill: Skill, onSaved: (model: string | null, effort: Effort) => void) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const labels = useEffortLabels();
+  return useMutation({
+    mutationFn: async ({ model, effort }: { model: string | null; effort: Effort }) => {
+      const { body, skillFile: _f, resources: _r, bodyLineCount: _c, thick: _t, favorite: _v, ...front } = skill as Skill & Record<string, unknown>;
+      delete (front as Record<string, unknown>).dir;
+      await api.put(`/api/skills/${encodeURIComponent(skill.slug)}`, {
+        frontmatter: { ...front, recommendedModel: model, recommendedEffort: effort },
+        body,
+      });
+      return { model, effort };
+    },
+    onSuccess: ({ model, effort }) => {
+      qc.invalidateQueries({ queryKey: qk.skills }).catch(() => undefined);
+      toast(`/${skill.slug}: ${shortModel(model)} · ${labels[effort]}`, "ok");
+      onSaved(model, effort);
+    },
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
 }
 
 export interface ModelEffortMatrixProps {
@@ -87,6 +116,12 @@ export function ModelEffortMatrix({ provider, model, effort, onPick, busy = fals
   );
 }
 
+/** Providers enabled for this skill, with the default one first. */
+export function pickProvider(skill: Skill, providers: ProviderSnapshot[]): { enabled: ProviderSnapshot[]; initial: ProviderId } {
+  const enabled = providers.filter((p) => p.enabled && skill.providers.includes(p.id));
+  return { enabled, initial: providers.find((p) => p.isDefault && enabled.includes(p))?.id ?? enabled[0]?.id ?? "claude" };
+}
+
 export default function SkillMatrixModal({
   skill,
   providers,
@@ -99,31 +134,9 @@ export default function SkillMatrixModal({
   onSaved: () => void;
 }) {
   const t = useT();
-  const toast = useToast();
-  const qc = useQueryClient();
-  const labels = useEffortLabels();
-  const enabled = providers.filter((p) => p.enabled && skill.providers.includes(p.id));
-  const [provider, setProvider] = useState<ProviderId>(providers.find((p) => p.isDefault && enabled.includes(p))?.id ?? enabled[0]?.id ?? "claude");
-
-  const save = useMutation({
-    mutationFn: async ({ model, effort }: { model: string | null; effort: Effort }) => {
-      const { body, skillFile: _f, resources: _r, bodyLineCount: _c, thick: _t, favorite: _v, ...front } = skill as Skill & Record<string, unknown>;
-      delete (front as Record<string, unknown>).dir;
-      await api.put(`/api/skills/${encodeURIComponent(skill.slug)}`, {
-        frontmatter: { ...front, recommendedModel: model, recommendedEffort: effort },
-        body,
-      });
-      return { model, effort };
-    },
-    onSuccess: ({ model, effort }) => {
-      qc.invalidateQueries({ queryKey: qk.skills }).catch(() => undefined);
-      toast(`/${skill.slug}: ${shortModel(model)} · ${labels[effort]}`, "ok");
-      onSaved();
-    },
-    onError: (err: Error) => toast(err.message, "danger"),
-  });
-
-  const currentEffort = (EFFORTS as readonly string[]).includes(skill.recommendedEffort) ? (skill.recommendedEffort as Effort) : "default";
+  const { enabled, initial } = pickProvider(skill, providers);
+  const [provider, setProvider] = useState<ProviderId>(initial);
+  const save = useSaveSkillMatrix(skill, onSaved);
 
   return (
     <Modal title={`/${skill.slug} — ${t("matrix.title")}`} onClose={onClose}>
@@ -141,7 +154,7 @@ export default function SkillMatrixModal({
       <ModelEffortMatrix
         provider={provider}
         model={skill.recommendedModel ?? null}
-        effort={currentEffort}
+        effort={skillEffort(skill)}
         busy={save.isPending}
         onPick={(model, effort) => save.mutate({ model, effort })}
       />

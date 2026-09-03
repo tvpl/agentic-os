@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { ProviderId, EffortLevel, resolveInsideRoots, isInside } from "@mordomo/core";
+import { ProviderId, EffortLevel, resolveInsideRoots, isInside, findOnPath, previewFile, safeSpawn } from "@mordomo/core";
 import type { AppContext } from "../context.js";
 import { gateWrite, grantedRoots, httpError, launchPromptRun, type PromptRunInput } from "./common.js";
 import { UuidParams } from "./params.js";
@@ -11,13 +11,16 @@ import { lastEventId, openSse } from "./sse.js";
 const ACTIVE_STATUSES = new Set(["queued", "running", "waiting_approval"]);
 
 export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
-  app.get("/api/runs", async (req) => {
+  app.get("/api/runs", async (req, reply) => {
     const q = z
       .object({
         limit: z.coerce.number().int().min(1).max(200).default(50),
-        status: z.enum(["queued", "running", "waiting_approval", "done", "failed", "cancelled", "interrupted"]).optional(),
+        offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
+        status: z.enum(["queued", "running", "waiting_approval", "done", "failed", "cancelled", "timed_out", "interrupted"]).optional(),
       })
       .parse(req.query);
+    // Body stays a plain array (other views depend on it); the total for pagination travels in a header.
+    reply.header("x-total-count", String(ctx.runs.count({ status: q.status })));
     return ctx.runs.list(q);
   });
 
@@ -61,6 +64,25 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     }
     const { runId } = launchPromptRun(ctx, input, (err, id) => req.log.error({ err, runId: id, msg: "run failed to execute" }));
     return { runId, status: "queued" };
+  });
+
+  /**
+   * Diff of one file touched by a run. When the file lives in a git work tree
+   * the response is `git diff HEAD` for that path (argv-only spawn of the git
+   * binary found on PATH, pinned through the allowlist's `allowPaths`);
+   * otherwise (or for untracked files) a containment-checked snapshot with the
+   * same rules as `/api/memory/preview`.
+   */
+  app.get("/api/runs/:id/diff", async (req) => {
+    const { id } = UuidParams.parse(req.params);
+    const { file } = z.object({ file: z.string().min(1).max(4096) }).parse(req.query);
+    const run = ctx.runs.get(id);
+    if (!run) throw httpError(404, "Run not found");
+    const cwd = run.cwd ?? ctx.paths.home;
+    const target = path.isAbsolute(file) ? file : path.join(cwd, file);
+    const roots = [...grantedRoots(ctx), ctx.paths.artifacts];
+    const resolved = resolveInsideRoots(roots, target); // PathAccessError → 403
+    return runFileDiff(ctx, resolved, roots);
   });
 
   app.post("/api/runs/:id/cancel", async (req) => {
@@ -174,4 +196,68 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     }
     return { path: resolved, content: fs.readFileSync(resolved, "utf8"), sizeBytes: stat.size };
   });
+}
+
+export type RunDiffResult =
+  | { kind: "git"; file: string; repoRoot: string; diff: string; truncated: boolean; unchanged: boolean }
+  | { kind: "snapshot"; file: string; content: string | null; truncated: boolean; untracked: boolean; message: string | null }
+  | { kind: "unavailable"; file: string; message: string };
+
+/** Nearest ancestor containing `.git` (directory or worktree file), or null. */
+export function findGitRoot(start: string): string | null {
+  let dir = start;
+  for (;;) {
+    if (fs.existsSync(path.join(dir, ".git"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+const DIFF_MAX_CHARS = 512 * 1024;
+const GIT_TIMEOUT_MS = 10_000;
+
+async function git(gitPath: string, cwd: string, args: string[]): Promise<{ exitCode: number | null; stdout: string; truncated: boolean }> {
+  const handle = safeSpawn(gitPath, ["-c", "core.quotepath=off", ...args], {
+    cwd,
+    allowPaths: [gitPath],
+    timeoutMs: GIT_TIMEOUT_MS,
+    env: { GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", GIT_PAGER: "cat" },
+  });
+  const res = await handle.result;
+  return { exitCode: res.exitCode, stdout: res.stdout, truncated: res.stdoutTruncated };
+}
+
+async function runFileDiff(ctx: AppContext, resolved: string, roots: string[]): Promise<RunDiffResult> {
+  const snapshot = (untracked: boolean): RunDiffResult => {
+    if (!fs.existsSync(resolved)) return { kind: "unavailable", file: resolved, message: "File no longer exists." };
+    let preview: ReturnType<typeof previewFile>;
+    try {
+      preview = previewFile(ctx.settings(), roots, resolved);
+    } catch (err) {
+      throw httpError(403, (err as Error).message, "forbidden_path");
+    }
+    if (preview.kind !== "text") return { kind: "unavailable", file: resolved, message: preview.message ?? "Not previewable." };
+    return { kind: "snapshot", file: resolved, content: preview.content, truncated: preview.truncated, untracked, message: preview.message };
+  };
+
+  const repoRoot = findGitRoot(path.dirname(resolved));
+  const gitPath = findOnPath("git");
+  if (!repoRoot || !gitPath) return snapshot(false);
+  const rel = path.relative(repoRoot, resolved);
+  try {
+    // HEAD may not exist yet (fresh repository): fall back to the index diff.
+    let out = await git(gitPath, repoRoot, ["diff", "--no-color", "--no-ext-diff", "HEAD", "--", rel]);
+    if (out.exitCode !== 0) out = await git(gitPath, repoRoot, ["diff", "--no-color", "--no-ext-diff", "--", rel]);
+    if (out.exitCode !== 0) return snapshot(false);
+    if (out.stdout.trim() === "") {
+      const status = await git(gitPath, repoRoot, ["status", "--porcelain", "--untracked-files=all", "--", rel]);
+      if (status.stdout.startsWith("??")) return snapshot(true);
+      return { kind: "git", file: resolved, repoRoot, diff: "", truncated: false, unchanged: true };
+    }
+    const truncated = out.truncated || out.stdout.length > DIFF_MAX_CHARS;
+    return { kind: "git", file: resolved, repoRoot, diff: out.stdout.slice(0, DIFF_MAX_CHARS), truncated, unchanged: false };
+  } catch {
+    return snapshot(false);
+  }
 }

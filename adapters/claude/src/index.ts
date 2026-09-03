@@ -178,10 +178,42 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 }
 
-/** Parser for Claude Code's stream-json (one JSON object per line). */
-function claudeStreamParser(): LineParser {
+function num(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * Usage block of a Claude Code stream-json message (`assistant.message.usage`
+ * or `result.usage`). Returns null when the block carries no token counts.
+ */
+export function parseClaudeUsage(raw: unknown): { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const u = raw as Record<string, unknown>;
+  if (u.input_tokens == null && u.output_tokens == null) return null;
+  return {
+    inputTokens: num(u.input_tokens),
+    outputTokens: num(u.output_tokens),
+    cacheReadTokens: num(u.cache_read_input_tokens),
+    cacheWriteTokens: num(u.cache_creation_input_tokens),
+  };
+}
+
+/** Model with the most output tokens in a `result.modelUsage` map (null when absent). */
+export function dominantModel(modelUsage: unknown): string | null {
+  if (!modelUsage || typeof modelUsage !== "object") return null;
+  let best: { model: string; out: number } | null = null;
+  for (const [model, stats] of Object.entries(modelUsage as Record<string, unknown>)) {
+    const out = num((stats as Record<string, unknown> | null)?.outputTokens);
+    if (!best || out > best.out) best = { model, out };
+  }
+  return best?.model ?? null;
+}
+
+/** Parser for Claude Code's stream-json (one JSON object per line). Exported for tests. */
+export function claudeStreamParser(): LineParser {
   let lastAssistantText = "";
   let resultText = "";
+  let sessionModel: string | null = null;
   return {
     parseLine(line: string): RunEvent[] | null {
       let obj: Record<string, unknown>;
@@ -194,13 +226,20 @@ function claudeStreamParser(): LineParser {
       const type = obj.type as string;
       if (type === "system") {
         const subtype = (obj.subtype as string) ?? "";
+        if (subtype === "init" && typeof obj.model === "string") sessionModel = obj.model;
         return subtype === "init"
           ? [{ type: "text", ts, stream: "stdout", text: `[claude session started: model=${(obj.model as string) ?? "?"}]` }]
           : [];
       }
       if (type === "assistant" || type === "user") {
-        const message = obj.message as { content?: Array<Record<string, unknown>> } | undefined;
+        const message = obj.message as { content?: Array<Record<string, unknown>>; usage?: unknown; model?: unknown } | undefined;
         const events: RunEvent[] = [];
+        // Per-turn usage (context meter): one event per assistant message.
+        const turn = type === "assistant" ? parseClaudeUsage(message?.usage) : null;
+        if (turn) {
+          const model = typeof message?.model === "string" ? message.model : sessionModel;
+          events.push({ type: "usage", ts, scope: "turn", ...turn, costUsd: null, ...(model ? { model } : {}) });
+        }
         for (const block of message?.content ?? []) {
           if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
             lastAssistantText = block.text;
@@ -221,7 +260,27 @@ function claudeStreamParser(): LineParser {
       }
       if (type === "result") {
         resultText = typeof obj.result === "string" ? obj.result : lastAssistantText;
-        return []; // lifecycle result event is emitted by the runner with exit code
+        // Session totals: tokens + cost. The lifecycle `result` event itself is
+        // emitted by the runner with the exit code.
+        const total = parseClaudeUsage(obj.usage);
+        const cost = typeof obj.total_cost_usd === "number" ? obj.total_cost_usd : null;
+        if (total || cost != null) {
+          const model = dominantModel(obj.modelUsage) ?? sessionModel;
+          return [
+            {
+              type: "usage",
+              ts,
+              scope: "total",
+              inputTokens: total?.inputTokens ?? 0,
+              outputTokens: total?.outputTokens ?? 0,
+              cacheReadTokens: total?.cacheReadTokens ?? 0,
+              cacheWriteTokens: total?.cacheWriteTokens ?? 0,
+              costUsd: cost,
+              ...(model ? { model } : {}),
+            },
+          ];
+        }
+        return [];
       }
       return [];
     },

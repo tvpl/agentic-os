@@ -14,6 +14,8 @@ export interface GraphNode {
   mtime: number;
   title: string | null;
   tags: string[];
+  /** Inline `key:: value` fields (only present when the file has any). */
+  fields?: Record<string, string>;
 }
 
 export interface GraphEdge {
@@ -114,6 +116,7 @@ export function buildGraph(
       mtime: f.mtime,
       title: f.title,
       tags: f.tags,
+      ...(Object.keys(f.fields).length > 0 ? { fields: f.fields } : {}),
     })),
     edges,
     truncated: totalFiles > files.length,

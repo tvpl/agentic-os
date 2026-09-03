@@ -116,3 +116,4 @@ export {
   type AdapterFactory,
   type AdapterFactoryOptions,
 } from "./agents/registry.js";
+export * from "./memory/v2.js"; // F-MEMORY: recall, journal, hygiene, facts, inline fields

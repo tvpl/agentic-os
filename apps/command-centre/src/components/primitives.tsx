@@ -4,13 +4,19 @@
  */
 import {
   forwardRef,
+  useEffect,
   useId,
+  useLayoutEffect,
   useRef,
+  useState,
   type ButtonHTMLAttributes,
+  type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { useT } from "../i18n";
+import { DialogPortal, usePresence } from "./dialog";
 import { Modal, Skeleton } from "./ui";
 
 export { Skeleton };
@@ -272,5 +278,120 @@ export function Badge({ kind, tone = "dim", children, className, title }: BadgeP
     <span className={["badge", tone, kind === "meta" ? "meta" : "", className ?? ""].filter(Boolean).join(" ")} title={title}>
       {children}
     </span>
+  );
+}
+
+/* ---------- Popover ---------- */
+export type PopoverPlacement = "bottom-start" | "bottom-end" | "bottom" | "top-start" | "top-end" | "top";
+
+export interface PopoverProps {
+  open: boolean;
+  onClose: () => void;
+  /** The trigger: a ref or the element itself. The popover is anchored to it and focus returns to it on close. */
+  anchor: RefObject<HTMLElement | null> | HTMLElement | null;
+  children: ReactNode;
+  placement?: PopoverPlacement;
+  /** Gap between anchor and popover in px (default 6). */
+  offset?: number;
+  ariaLabel?: string;
+  className?: string;
+  /** Where focus lands on open; default: first focusable, else the popover. */
+  initialFocus?: () => HTMLElement | null | undefined;
+  /** Matching width with the anchor (menus under inputs). */
+  matchWidth?: boolean;
+}
+
+function resolveAnchor(anchor: PopoverProps["anchor"]): HTMLElement | null {
+  if (!anchor) return null;
+  return anchor instanceof HTMLElement ? anchor : anchor.current;
+}
+
+/**
+ * Anchored, non-modal floating panel: outside click and Escape close it,
+ * `spring-in` on open, `fade-out` on close (via usePresence), focus goes in
+ * on open and back to the anchor on close. Rendered through #modal-root so it
+ * floats above widgets; it never pushes the depth layer.
+ */
+export function Popover({ open, onClose, anchor, children, placement = "bottom-start", offset = 6, ariaLabel, className, initialFocus, matchWidth = false }: PopoverProps) {
+  const { mounted, closing } = usePresence(open, 160);
+  const ref = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const [pos, setPos] = useState<CSSProperties>({ visibility: "hidden" });
+
+  // Position: measure the anchor and flip when it would overflow the viewport.
+  useLayoutEffect(() => {
+    if (!mounted) return;
+    const el = ref.current;
+    const a = resolveAnchor(anchor);
+    if (!el || !a) return;
+    const update = () => {
+      const r = a.getBoundingClientRect();
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      let wantTop = placement.startsWith("top");
+      if (!wantTop && r.bottom + offset + h > vh && r.top - offset - h >= 0) wantTop = true;
+      if (wantTop && r.top - offset - h < 0 && r.bottom + offset + h <= vh) wantTop = false;
+      const top = wantTop ? r.top - offset - h : r.bottom + offset;
+      let left: number;
+      if (placement.endsWith("end")) left = r.right - w;
+      else if (placement === "bottom" || placement === "top") left = r.left + r.width / 2 - w / 2;
+      else left = r.left;
+      left = Math.max(8, Math.min(left, vw - w - 8));
+      setPos({
+        top: Math.round(Math.max(8, top)),
+        left: Math.round(left),
+        width: matchWidth ? Math.round(r.width) : undefined,
+        "--popover-origin": wantTop ? "bottom center" : "top center",
+      } as CSSProperties);
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [mounted, anchor, placement, offset, matchWidth]);
+
+  // Focus in on open, back to the anchor on close; outside click + Escape close.
+  useEffect(() => {
+    if (!open || !mounted) return;
+    const el = ref.current;
+    if (!el) return;
+    const a = resolveAnchor(anchor);
+    const target = initialFocus?.() ?? el.querySelector<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])') ?? el;
+    const raf = requestAnimationFrame(() => target.focus({ preventScroll: true }));
+    const onPointer = (e: PointerEvent) => {
+      const n = e.target as Node | null;
+      if (!n || el.contains(n) || (a && a.contains(n))) return;
+      onCloseRef.current();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      onCloseRef.current();
+    };
+    document.addEventListener("pointerdown", onPointer, true);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener("pointerdown", onPointer, true);
+      document.removeEventListener("keydown", onKey, true);
+      if (a && a.isConnected && (document.activeElement === document.body || el.contains(document.activeElement))) a.focus({ preventScroll: true });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initialFocus is read once per open
+  }, [open, mounted, anchor]);
+
+  if (!mounted) return null;
+  return (
+    <DialogPortal>
+      <div ref={ref} role="dialog" aria-label={ariaLabel} tabIndex={-1} className={["popover", closing ? "closing" : "", className ?? ""].filter(Boolean).join(" ")} style={pos}>
+        {children}
+      </div>
+    </DialogPortal>
   );
 }

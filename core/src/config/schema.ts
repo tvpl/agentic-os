@@ -66,6 +66,15 @@ export const DEFAULT_EXCLUDES = [
   ".gnupg",
 ];
 
+/** A user-defined micro app shown in the desktop "Micro apps" widget (href = route or URL). */
+export const MicroAppSchema = z.object({
+  id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,40}$/),
+  name: z.string().min(1),
+  description: z.string().default(""),
+  href: z.string().min(1),
+});
+export type MicroApp = z.infer<typeof MicroAppSchema>;
+
 export const SettingsSchema = z.object({
   version: z.number().default(1),
   systemName: z.string().default("MordomoOS"),
@@ -105,6 +114,42 @@ export const SettingsSchema = z.object({
     })
     .default({}),
   favoriteSkills: z.array(z.string()).default([]),
+  /** Theme preset id (see apps/command-centre/src/theme.ts); absent = default HUD preset. */
+  themePreset: z.string().optional(),
+  /** User-defined micro apps listed on the desktop. */
+  microApps: z.array(MicroAppSchema).default([]),
+  /** Routine engine defaults (F-BACKEND: routines v2). */
+  routines: z
+    .object({
+      /** `delivery: "webhook"` is refused at validation unless this is on. */
+      allowWebhooks: z.boolean().default(false),
+      /** Default interval for new heartbeat routines (minutes). */
+      heartbeatIntervalMinutes: z.number().int().min(1).default(30),
+      /** Token a heartbeat run must print to be considered quiet. */
+      heartbeatOkToken: z.string().min(1).default("HEARTBEAT_OK"),
+    })
+    .default({}),
+  /** Read-only connector data client (F-BACKEND: `GET /api/connectors/:id/data`). */
+  connectors: z
+    .object({
+      /** Cache TTL for connector data reads. */
+      dataCacheTtlMs: z.number().int().min(0).default(5 * 60_000),
+      /** Hard timeout for one data read (spawn + protocol + tool call). */
+      dataTimeoutMs: z.number().int().min(1000).default(30_000),
+      /**
+       * Extra executables connector mappings may spawn: absolute paths or bare
+       * names resolved on PATH (e.g. "npx"). The base allowlist stays as-is.
+       */
+      allowedCommands: z.array(z.string()).default([]),
+    })
+    .default({}),
+  /** Second-brain memory options (journal injection into the master router, …). */
+  memory: z
+    .object({
+      /** Token budget for today's + yesterday's journal inside memory/ROUTER.md (chars/4). */
+      journalBudgetTokens: z.number().int().min(100).max(20_000).default(1200),
+    })
+    .default({}),
   /** Command Centre desktop widget layout (24-col grid units), per widget id. */
   dashboardLayout: z
     .record(

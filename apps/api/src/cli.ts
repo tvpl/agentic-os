@@ -13,6 +13,8 @@ import {
   restoreBackup,
   generateRouters,
   planStartupService,
+  recall,
+  recordRecall,
   DEFAULT_EXCLUDES,
   EffortLevel,
   ProviderId,
@@ -46,6 +48,7 @@ const COMMANDS = [
   "sync",
   "run",
   "service",
+  "recall",
   "help",
 ] as const;
 type Command = (typeof COMMANDS)[number];
@@ -83,6 +86,7 @@ const COMMAND_OPTIONS: Record<Command, readonly OptionName[]> = {
   sync: ["apply", "approve", "diff"],
   run: ["provider", "model", "effort", "input", "json"],
   service: ["yes"],
+  recall: ["json"],
   help: [],
 };
 
@@ -406,6 +410,8 @@ async function main(): Promise<void> {
       return cmdRun(args);
     case "service":
       return cmdService(args);
+    case "recall":
+      return cmdRecall(args);
     default:
       printHelp();
   }
@@ -425,6 +431,7 @@ ${pc.bold("MordomoOS")} — local agentic OS over Claude Code, Cursor Agent and 
                            (--apply to write, --diff to show conflicts, --approve <file> per conflict)
   mordomo run <skill>      Run a skill headlessly (--provider ${ProviderId.options.join("|")}, --model <m>,
                            --effort ${EffortLevel.options.join("|")}, --input k=v ...)
+  mordomo recall <question>  Layered memory retrieval: only the sections worth reading (--json)
   mordomo backup           Create a backup (--list to list, --include-artifacts to include outputs)
   mordomo restore <name>   Restore a backup (a safety backup is taken first)
   mordomo service          Startup service: mordomo service install | remove | plan  (--yes skips confirmation)
@@ -961,6 +968,37 @@ async function cmdIndex(args: CliArgs): Promise<void> {
   else if (args.json) console.log(JSON.stringify(stats));
   else console.log(`${pc.green("●")} ${summary}`);
   ctx.close();
+}
+
+// --------------------------------------------------------------- recall ----
+
+/** `mordomo recall "<question>"`: the same layered retrieval as GET /api/memory/recall, offline (no token needed). */
+async function cmdRecall(args: CliArgs): Promise<void> {
+  const question = args.positionals.join(" ").trim();
+  if (!question) {
+    console.error(pc.red('Usage: mordomo recall "<question>" [--json]'));
+    process.exit(EXIT_USAGE);
+  }
+  const ctx = new AppContext();
+  try {
+    const result = recall(ctx.db, ctx.paths, ctx.settings(), question);
+    recordRecall(ctx.db, result);
+    if (args.json) {
+      console.log(JSON.stringify(result));
+      return;
+    }
+    console.log(
+      `${pc.bold("recall")} keywords: ${result.keywords.join(", ") || "(none)"} · ${result.candidatesConsidered} candidates scored, ${result.opened} opened, ~${result.tokensEstimate} tokens`,
+    );
+    if (result.answerContext.length === 0) console.log(pc.dim("No indexed section matched. Run `mordomo index` if the workspace changed."));
+    for (const c of result.answerContext) {
+      console.log(`\n${pc.green("●")} ${c.path} § ${pc.bold(c.section)} ${pc.dim(`(score ${c.score})`)}`);
+      console.log(pc.dim(`  why: ${c.why}`));
+      console.log(c.excerpt.split("\n").map((l) => `  ${l}`).join("\n"));
+    }
+  } finally {
+    ctx.close();
+  }
 }
 
 // ----------------------------------------------------------------- sync ----
