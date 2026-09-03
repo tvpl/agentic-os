@@ -75,6 +75,27 @@ export const MicroAppSchema = z.object({
 });
 export type MicroApp = z.infer<typeof MicroAppSchema>;
 
+/** Second Brain preferences: every field optional so older clients keep working; the frontend validates values. */
+export const BrainSettingsSchema = z.object({
+  layout: z.string().optional(),
+  view: z.string().optional(),
+  spin: z.number().min(0).max(1).optional(),
+  showNames: z.boolean().optional(),
+  linkSpring: z.number().optional(),
+  nodeScale: z.number().optional(),
+  clusterSize: z.number().optional(),
+  edgeKinds: z.array(z.string()).optional(),
+  localHops: z.number().int().min(1).max(3).optional(),
+  focusMode: z.boolean().optional(),
+  workspace: z
+    .object({
+      pinned: z.array(z.object({ id: z.number().int(), x: z.number(), y: z.number() })).default([]),
+      collapsed: z.array(z.string()).default([]),
+    })
+    .optional(),
+});
+export type BrainSettings = z.infer<typeof BrainSettingsSchema>;
+
 export const SettingsSchema = z.object({
   version: z.number().default(1),
   systemName: z.string().default("MordomoOS"),
@@ -162,6 +183,8 @@ export const SettingsSchema = z.object({
       }),
     )
     .default({}),
+  /** Second Brain view preferences (Command Centre); the shape is owned by the frontend (`brain/engine/world.ts` BrainSettings). */
+  brain: BrainSettingsSchema.default({}),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 

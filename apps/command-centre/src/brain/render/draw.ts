@@ -130,7 +130,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
   const showLabels = w.showNames || k > 1.9;
   for (const n of w.files) {
     if (n.visAlpha <= 0.01) continue;
-    const color = n.tint ?? w.colorOf.get(n.group) ?? "#94a3b8";
+    const color = n.tint ?? w.colorOf.get(n.group) ?? tokens.particle;
     const hub = hubByKey.get(n.group);
     const collapsedDim = hub && !hub.expanded ? 0.35 : 1;
     const dimByFilter = w.filterGroup !== null && n.group !== w.filterGroup;
@@ -446,7 +446,7 @@ export function drawMinimap(
       for (let i = 0; i < w.files.length; i += 2) {
         const n = w.files[i]!;
         if (n.visAlpha < 0.3) continue;
-        lc.fillStyle = n.tint ?? w.colorOf.get(n.group) ?? "#94a3b8";
+        lc.fillStyle = n.tint ?? w.colorOf.get(n.group) ?? o.tokens.particle;
         lc.globalAlpha = w.filterGroup && n.group !== w.filterGroup ? 0.25 : 0.9;
         lc.fillRect(cssW / 2 + n.x * scale, cssH / 2 + n.y * scale, 1.4, 1.4);
       }

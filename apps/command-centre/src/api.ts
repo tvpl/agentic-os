@@ -662,3 +662,34 @@ export interface LaunchRunResponse {
 
 /** `POST /api/approvals/:id/resolve` */
 export type ResolveApprovalResponse = ApprovalRecord & { runId: string | null };
+
+// ---- brain ----
+/** Second Brain preferences persisted in `settings.brain` (validated client-side by brain/state.ts). */
+export interface BrainSettingsPayload {
+  layout?: string;
+  view?: string;
+  spin?: number;
+  showNames?: boolean;
+  linkSpring?: number;
+  nodeScale?: number;
+  clusterSize?: number;
+  edgeKinds?: string[];
+  localHops?: number;
+  focusMode?: boolean;
+  workspace?: { pinned: Array<{ id: number; x: number; y: number }>; collapsed: string[] };
+}
+
+/** Payload of the `index.progress` SSE event (mirrors core/src/memory/indexer.ts IndexProgress). */
+export interface IndexProgressPayload {
+  scanned: number;
+  total?: number;
+  added: number;
+  updated: number;
+  removed: number;
+}
+
+export interface MemoryPreview {
+  kind: "text" | "binary" | "blocked" | "too-large";
+  content: string | null;
+  message: string | null;
+}
