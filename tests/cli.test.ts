@@ -219,9 +219,10 @@ describe("startup service plan quoting", () => {
     expect(plan.installArgv).toEqual([["launchctl", "load", "-w", plistPath]]);
     expect(plan.installCommands[0]).toBe(`launchctl load -w '${plistPath}'`);
     expect(xmlEscape(`R&D <"x">`)).toBe("R&amp;D &lt;&quot;x&quot;&gt;");
-    const weird = planStartupService(resolvePaths("/tmp/a&b"), node, "darwin", "/Users/x");
-    expect(weird.files[0]!.content).toContain("<string>/tmp/a&amp;b</string>");
-    expect(weird.files[0]!.content).not.toContain("<string>/tmp/a&b</string>");
+    const weirdHome = path.resolve("/tmp/a&b");
+    const weird = planStartupService(resolvePaths(weirdHome), node, "darwin", "/Users/x");
+    expect(weird.files[0]!.content).toContain(`<string>${xmlEscape(weirdHome)}</string>`);
+    expect(weird.files[0]!.content).not.toContain(`<string>${weirdHome}</string>`);
   });
 
   it("windows: Task Scheduler script quotes paths with spaces and single quotes", () => {
