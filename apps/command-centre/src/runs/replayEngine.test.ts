@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildReplayModel, replaySummary, stateAt } from "./replayEngine";
+import { buildReplayModel, layoutNodes, particlePoint, replaySummary, stateAt } from "./replayEngine";
 
 const events = [
   { type: "started", ts: 1000, pid: 1 },
@@ -35,14 +35,43 @@ describe("replay engine", () => {
     expect(mid.flights).toHaveLength(1);
     expect(mid.flights[0]?.progress).toBeCloseTo(0.5, 5);
     expect(mid.delivered).toBe(0);
-    const later = stateAt(m, 1000);
+    // p0: 200 → 500 (flight 300), p1: 500 → 1200 (flight clamped to 700).
+    const later = stateAt(m, 1300);
     expect(later.delivered).toBe(2);
-    expect(later.arrivals.get("tool:Read")).toBe(200);
+    expect(later.arrivals.get("tool:Read")).toBe(100); // most recent arrival wins
+    expect(stateAt(m, 1000).delivered).toBe(1);
     expect(stateAt(m, 10_000).delivered).toBe(5);
   });
 
   it("marks failures and copes with empty input", () => {
     expect(buildReplayModel([]).nodes).toHaveLength(1);
     expect(buildReplayModel([{ type: "error", ts: 5, message: "x" }]).ok).toBe(false);
+  });
+});
+
+describe("layout", () => {
+  const m = buildReplayModel(events);
+  it("places the prompt left, tools in the middle column and the result right", () => {
+    const placed = layoutNodes(m, 400, 200, 40);
+    expect(placed.get("prompt")).toMatchObject({ x: 40, y: 100 });
+    expect(placed.get("result")).toMatchObject({ x: 360, y: 100 });
+    expect(placed.get("tool:Read")?.x).toBe(200);
+    expect(placed.get("tool:Read")?.y).toBe(40);
+    expect(placed.get("tool:Edit")?.y).toBe(160);
+    expect(placed.get("assistant")!.x).toBeLessThan(placed.get("result")!.x);
+  });
+
+  it("centres a single tool and interpolates particles between nodes", () => {
+    const single = buildReplayModel([
+      { type: "tool_use", ts: 0, tool: "Read" },
+      { type: "result", ts: 1000, exitCode: 0 },
+    ]);
+    const placed = layoutNodes(single, 400, 200, 40);
+    expect(placed.get("tool:Read")?.y).toBe(100);
+    const flights = stateAt(single, 0).flights;
+    expect(flights).toHaveLength(1);
+    const mid = particlePoint({ particle: flights[0]!.particle, progress: 0.5 }, placed);
+    expect(mid).toEqual({ x: 120, y: 100 });
+    expect(particlePoint({ particle: { ...flights[0]!.particle, to: "nope" }, progress: 0.5 }, placed)).toBeNull();
   });
 });

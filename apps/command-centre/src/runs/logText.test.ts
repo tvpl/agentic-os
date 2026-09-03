@@ -15,13 +15,18 @@ describe("log text", () => {
       { type: "started", ts: 1_700_000_000_000, pid: 7 },
       { type: "result", ts: 1_700_000_001_500, exitCode: 0, summary: "line1\nline2" },
     ]);
+    // 1 line for `started` + 3 for the result (head + two summary lines).
     const lines = text.split("\n");
-    expect(lines).toHaveLength(3);
+    expect(lines).toHaveLength(4);
     expect(lines[0]).toContain("+0.0s");
     expect(lines[0]).toContain("started pid=7");
     expect(lines[1]).toContain("+1.5s");
-    expect(lines[2]!.trim()).toBe("line2");
+    expect(lines[1]).toContain("result exit=0");
+    expect(lines[2]!.trim()).toBe("line1");
+    expect(lines[3]!.trim()).toBe("line2");
+    // Continuation lines are indented past the stamp, never re-stamped.
     expect(lines[2]!.startsWith("   ")).toBe(true);
+    expect(lines[3]!.startsWith("   ")).toBe(true);
     expect(relativeOffset(2500, 1000)).toBe("+1.5s");
   });
 

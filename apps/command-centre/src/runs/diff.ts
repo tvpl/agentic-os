@@ -64,3 +64,34 @@ export function displayPath(file: string, base: string | null | undefined): stri
   if (base && file.startsWith(base.endsWith("/") ? base : `${base}/`)) return file.slice(base.length + (base.endsWith("/") ? 0 : 1));
   return file;
 }
+
+/** `GET /api/runs/:id/diff?file=` (mirrors `RunDiffResult` in apps/api/src/routes/runs.ts). */
+export type RunDiff =
+  | { kind: "git"; file: string; repoRoot: string; diff: string; truncated: boolean; unchanged: boolean }
+  | { kind: "snapshot"; file: string; content: string | null; truncated: boolean; untracked: boolean; message: string | null }
+  | { kind: "unavailable"; file: string; message: string };
+
+export interface DiffView {
+  lines: DiffLine[];
+  added: number;
+  removed: number;
+  /** Reason there is nothing to show (unchanged file, unavailable, binary). */
+  note: string | null;
+  truncated: boolean;
+  /** How the backend produced it, for the badge next to the file name. */
+  source: "git" | "snapshot" | "none";
+}
+
+/** One shape for the viewer, whichever branch the backend took. */
+export function diffToView(result: RunDiff): DiffView {
+  if (result.kind === "unavailable") return { lines: [], added: 0, removed: 0, note: result.message, truncated: false, source: "none" };
+  if (result.kind === "snapshot") {
+    const lines = result.content == null ? [] : snapshotToLines(result.content);
+    return { lines, ...diffStats(lines), note: result.message, truncated: result.truncated, source: "snapshot" };
+  }
+  if (result.unchanged || result.diff.trim() === "") {
+    return { lines: [], added: 0, removed: 0, note: null, truncated: false, source: "git" };
+  }
+  const lines = parseUnifiedDiff(result.diff);
+  return { lines, ...diffStats(lines), note: null, truncated: result.truncated, source: "git" };
+}

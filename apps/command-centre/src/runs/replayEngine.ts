@@ -136,3 +136,52 @@ export function stateAt(model: ReplayModel, t: number): ReplayState {
 export function replaySummary(model: ReplayModel): Array<{ label: string; count: number; kind: ReplayNodeKind }> {
   return model.nodes.filter((n) => n.kind !== "prompt").map((n) => ({ label: n.label, count: n.count, kind: n.kind }));
 }
+
+export interface PlacedNode extends ReplayNode {
+  x: number;
+  y: number;
+}
+
+/**
+ * Deterministic layout for the canvas: prompt on the left, tools stacked in
+ * the middle column, assistant and result on the right. Pure so the drawing
+ * code stays a projection of the model (and so it can be tested).
+ */
+export function layoutNodes(model: ReplayModel, width: number, height: number, pad = 48): Map<string, PlacedNode> {
+  const out = new Map<string, PlacedNode>();
+  const columnX = {
+    prompt: pad,
+    tool: width / 2,
+    assistant: width - pad - (width - 2 * pad) * 0.18,
+    result: width - pad,
+    usage: width / 2,
+  } as const;
+  const tools = model.nodes.filter((n) => n.kind === "tool");
+  const usable = Math.max(1, height - 2 * pad);
+  tools.forEach((node, i) => {
+    const y = tools.length === 1 ? height / 2 : pad + (usable * i) / (tools.length - 1);
+    out.set(node.id, { ...node, x: columnX.tool, y });
+  });
+  for (const node of model.nodes) {
+    if (node.kind === "tool") continue;
+    const y = node.kind === "usage" ? height - pad / 2 : height / 2;
+    out.set(node.id, { ...node, x: columnX[node.kind], y });
+  }
+  return out;
+}
+
+/** Position of a particle at `t`, given the placed nodes (null when off-screen). */
+export function particlePoint(
+  flight: Flight,
+  nodes: ReadonlyMap<string, PlacedNode>,
+): { x: number; y: number } | null {
+  const from = nodes.get(flight.particle.from);
+  const to = nodes.get(flight.particle.to);
+  if (!from || !to) return null;
+  const e = easeInOut(Math.max(0, Math.min(1, flight.progress)));
+  return { x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e };
+}
+
+function easeInOut(p: number): number {
+  return p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2;
+}

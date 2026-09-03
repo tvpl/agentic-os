@@ -29,8 +29,7 @@ export interface RunDetailPayload {
   events: RunEventView[];
 }
 
-export const ACTIVE_RUN_STATUSES: readonly string[] = ["queued", "running", "waiting_approval"];
-export const isRunActive = (status: string | undefined): boolean => status !== undefined && ACTIVE_RUN_STATUSES.includes(status);
+export { ACTIVE_RUN_STATUSES, isRunActive, isRunFailed } from "./status";
 
 export function isNotFound(err: unknown): boolean {
   return err instanceof ApiError && err.status === 404;

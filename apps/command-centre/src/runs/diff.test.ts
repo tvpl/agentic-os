@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diffStats, displayPath, parseUnifiedDiff, snapshotToLines } from "./diff";
+import { diffStats, diffToView, displayPath, parseUnifiedDiff, snapshotToLines } from "./diff";
 
 const SAMPLE = `diff --git a/a.txt b/a.txt
 index 1..2 100644
@@ -48,5 +48,22 @@ describe("snapshotToLines / displayPath", () => {
     expect(displayPath("/home/u/proj/src/a.ts", "/home/u/proj/")).toBe("src/a.ts");
     expect(displayPath("/etc/x", "/home/u/proj")).toBe("/etc/x");
     expect(displayPath("/etc/x", null)).toBe("/etc/x");
+  });
+});
+
+describe("diffToView", () => {
+  it("normalizes the three backend shapes", () => {
+    const git = diffToView({ kind: "git", file: "/r/a.txt", repoRoot: "/r", diff: SAMPLE, truncated: false, unchanged: false });
+    expect(git).toMatchObject({ added: 2, removed: 1, source: "git", note: null, truncated: false });
+    expect(git.lines).toHaveLength(10);
+
+    const snap = diffToView({ kind: "snapshot", file: "/r/n.txt", content: "a\nb\n", truncated: true, untracked: true, message: "new file" });
+    expect(snap).toMatchObject({ added: 2, removed: 0, source: "snapshot", note: "new file", truncated: true });
+
+    expect(diffToView({ kind: "unavailable", file: "/r/x", message: "gone" })).toEqual({ lines: [], added: 0, removed: 0, note: "gone", truncated: false, source: "none" });
+  });
+
+  it("shows an unchanged file as an empty git view", () => {
+    expect(diffToView({ kind: "git", file: "/r/a", repoRoot: "/r", diff: "", truncated: false, unchanged: true })).toEqual({ lines: [], added: 0, removed: 0, note: null, truncated: false, source: "git" });
   });
 });

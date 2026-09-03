@@ -180,6 +180,26 @@ describe("run manager usage persistence and cost metrics", () => {
     expect(m.usageSeries[23]?.usd).toBeCloseTo(0.25, 6);
   });
 
+  it("writes usage on the row while the run is still streaming", async () => {
+    const store = new SettingsStore(home.paths);
+    const now = Date.now();
+    let midRun: unknown;
+    manager = new RunManager(db, home.paths, () => store.load(), () => ({
+      id: "claude",
+      execute: (run: AgentRun) =>
+        (async function* () {
+          yield { type: "started", ts: now, pid: null } as RunEvent;
+          yield { type: "usage", ts: now, scope: "turn", inputTokens: 5, outputTokens: 6, costUsd: 0.05 } as RunEvent;
+          // The manager has folded and persisted the frame before it asks for the next event.
+          midRun = manager.get(run.runId)?.usage;
+          yield { type: "result", ts: now, exitCode: 0, summary: "ok", durationMs: 1, timedOut: false } as RunEvent;
+        })(),
+    }) as unknown as AgentAdapter);
+    const run = manager.create(input());
+    await manager.execute(run.id, "x", "read_only");
+    expect(midRun).toMatchObject({ inputTokens: 5, outputTokens: 6, costUsd: 0.05 });
+  });
+
   it("keeps usage null and metrics at zero when no provider reports it", async () => {
     const store = new SettingsStore(home.paths);
     manager = new RunManager(db, home.paths, () => store.load(), () =>
