@@ -13,6 +13,7 @@ export type OsEventType =
   | "run.event"
   | "run.finished"
   | "routine.fired"
+  | "routine.alert"
   | "routine.changed"
   | "index.progress"
   | "index.finished"
@@ -46,7 +47,7 @@ export class EventBus {
         fn(event);
       } catch (err) {
         // A misbehaving listener must never break the emitter.
-         
+
         console.error("[events] listener threw", err);
       }
     }

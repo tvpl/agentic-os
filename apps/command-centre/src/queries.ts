@@ -32,7 +32,8 @@ export const qk = {
   artifacts: ["artifacts"] as const,
   connectors: ["connectors"] as const,
   memoryStatus: ["memory", "status"] as const,
-  memoryGraph: (params?: Record<string, string | number | undefined>) => ["memory", "graph", params ?? {}] as const,
+  memoryGraph: (params?: Record<string, string | number | undefined>) =>
+    ["memory", "graph", params ?? {}] as const,
   approvals: ["approvals"] as const,
   backups: ["backups"] as const,
   doctor: ["doctor"] as const,
@@ -45,6 +46,7 @@ export const invalidationMap: Record<string, readonly (readonly unknown[])[]> = 
   "run.event": [["run"]],
   "run.finished": [["runs"], ["run"], ["metrics"], ["artifacts"], ["routines"]],
   "routine.fired": [["routines"], ["runs"]],
+  "routine.alert": [["routines"]],
   "routine.changed": [["routines"]],
   "index.progress": [["memory", "status"]],
   "index.finished": [["memory"]],
@@ -57,7 +59,10 @@ export const invalidationMap: Record<string, readonly (readonly unknown[])[]> = 
 /** Named SSE event types the stream subscribes to. */
 export const OS_EVENT_TYPES: readonly string[] = Object.keys(invalidationMap);
 
-export type ApiQueryOptions<T> = Omit<UseQueryOptions<T, Error, T, readonly unknown[]>, "queryKey" | "queryFn">;
+export type ApiQueryOptions<T> = Omit<
+  UseQueryOptions<T, Error, T, readonly unknown[]>,
+  "queryKey" | "queryFn"
+>;
 
 /** Thin wrapper: GET an API path into the cache under a key (request is aborted when the query is cancelled). */
 export function useApiQuery<T>(key: readonly unknown[], path: string, options: ApiQueryOptions<T> = {}) {
@@ -70,27 +75,39 @@ export function useApiQuery<T>(key: readonly unknown[], path: string, options: A
 
 export function useInvalidate() {
   const qc = useQueryClient();
-  return (...keys: readonly (readonly unknown[])[]) => Promise.all(keys.map((k) => qc.invalidateQueries({ queryKey: k })));
+  return (...keys: readonly (readonly unknown[])[]) =>
+    Promise.all(keys.map((k) => qc.invalidateQueries({ queryKey: k })));
 }
 
 /* ---- shared "useOs*" hooks: one cache entry per resource ------------------ */
 export const useOsMeta = (o?: ApiQueryOptions<Meta>) => useApiQuery<Meta>(qk.meta, "/api/meta", o);
-export const useOsProviders = (o?: ApiQueryOptions<ProviderSnapshot[]>) => useApiQuery<ProviderSnapshot[]>(qk.providers, "/api/providers", o);
-export const useOsSkills = (o?: ApiQueryOptions<Skill[]>) => useApiQuery<Skill[]>(qk.skills, "/api/skills", o);
-export const useOsRoutines = (o?: ApiQueryOptions<RoutineStatus[]>) => useApiQuery<RoutineStatus[]>(qk.routines, "/api/routines", o);
-export const useOsRuns = (params: { limit?: number; status?: string; origin?: string } = {}, o?: ApiQueryOptions<RunRecord[]>) => {
+export const useOsProviders = (o?: ApiQueryOptions<ProviderSnapshot[]>) =>
+  useApiQuery<ProviderSnapshot[]>(qk.providers, "/api/providers", o);
+export const useOsSkills = (o?: ApiQueryOptions<Skill[]>) =>
+  useApiQuery<Skill[]>(qk.skills, "/api/skills", o);
+export const useOsRoutines = (o?: ApiQueryOptions<RoutineStatus[]>) =>
+  useApiQuery<RoutineStatus[]>(qk.routines, "/api/routines", o);
+export const useOsRuns = (
+  params: { limit?: number; status?: string; origin?: string } = {},
+  o?: ApiQueryOptions<RunRecord[]>,
+) => {
   const qs = Object.entries(params)
     .filter(([, v]) => v !== undefined && v !== "")
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
     .join("&");
   return useApiQuery<RunRecord[]>(qk.runs(params), `/api/runs${qs ? `?${qs}` : ""}`, o);
 };
-export const useOsRun = (id: string, o?: ApiQueryOptions<RunRecord>) => useApiQuery<RunRecord>(qk.run(id), `/api/runs/${encodeURIComponent(id)}`, o);
-export const useOsMetrics = (o?: ApiQueryOptions<Metrics>) => useApiQuery<Metrics>(qk.metrics, "/api/metrics", o);
-export const useOsArtifacts = (o?: ApiQueryOptions<ArtifactEntry[]>) => useApiQuery<ArtifactEntry[]>(qk.artifacts, "/api/artifacts/recent", o);
-export const useOsConnectors = (o?: ApiQueryOptions<Connector[]>) => useApiQuery<Connector[]>(qk.connectors, "/api/connectors", o);
+export const useOsRun = (id: string, o?: ApiQueryOptions<RunRecord>) =>
+  useApiQuery<RunRecord>(qk.run(id), `/api/runs/${encodeURIComponent(id)}`, o);
+export const useOsMetrics = (o?: ApiQueryOptions<Metrics>) =>
+  useApiQuery<Metrics>(qk.metrics, "/api/metrics", o);
+export const useOsArtifacts = (o?: ApiQueryOptions<ArtifactEntry[]>) =>
+  useApiQuery<ArtifactEntry[]>(qk.artifacts, "/api/artifacts/recent", o);
+export const useOsConnectors = (o?: ApiQueryOptions<Connector[]>) =>
+  useApiQuery<Connector[]>(qk.connectors, "/api/connectors", o);
 export interface SettingsView {
   dashboardLayout?: Record<string, { x: number; y: number; w: number; h: number; visible: boolean }>;
   [key: string]: unknown;
 }
-export const useOsSettings = (o?: ApiQueryOptions<SettingsView>) => useApiQuery<SettingsView>(qk.settings, "/api/settings", o);
+export const useOsSettings = (o?: ApiQueryOptions<SettingsView>) =>
+  useApiQuery<SettingsView>(qk.settings, "/api/settings", o);

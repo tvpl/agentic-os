@@ -14,7 +14,7 @@ import type { Routine, RoutineRunner, RoutineStatus, RoutineSummary, SilentRouti
 import { isHeartbeatOk, nextRunFor, startOfDayIn } from "./schedule.js";
 import { isStartupServiceInstalled, type StartupPlatform } from "./osIntegration.js";
 import { JsonlLogger } from "../logs/jsonl.js";
-import { events, type OsEvent, type OsEventType } from "../events.js";
+import { events, type OsEvent } from "../events.js";
 
 /**
  * Internal scheduler (documented fallback + default engine).
@@ -486,8 +486,7 @@ export class RoutineScheduler {
       const excerpt = summary.replace(/\s+/g, " ").slice(0, 200);
       this.updateNote(routine.id, first.id, quiet ? `${HEARTBEAT_NOTE_QUIET} ${excerpt}` : `${HEARTBEAT_NOTE_ALERT} ${excerpt}`);
       if (!quiet && routine.delivery !== "none") {
-        // `routine.alert` is not in OsEventType yet (events.ts is owned elsewhere); the bus forwards any type.
-        events.emit("routine.alert" as OsEventType, {
+        events.emit("routine.alert", {
           routineId: routine.id,
           runId: final.id,
           status: final.status,
