@@ -3,7 +3,16 @@
  * particles, planets, effects, comets, orbs, hubs and the core. Pure drawing
  * over the world; no React, no DOM reads (tokens and sprites are passed in).
  */
-import { APP_COLOR, RING, ROUTINE_COLOR, SKILL_COLOR, TWO_PI, WORLD_EXTENT, type EdgeKind, type World } from "../engine/world";
+import {
+  APP_COLOR,
+  RING,
+  ROUTINE_COLOR,
+  SKILL_COLOR,
+  TWO_PI,
+  WORLD_EXTENT,
+  type EdgeKind,
+  type World,
+} from "../engine/world";
 import { drawClock, drawFolderGlyph, drawPixelCore, drawPlanet, quadPoint } from "./glyphs";
 import type { SpriteSet } from "./sprites";
 import type { CanvasTokens } from "./tokens";
@@ -14,7 +23,12 @@ export interface RingDef {
   color: string;
 }
 
-export function makeRingDefs(labels: { skills: string; memory: string; routines: string; apps: string }): RingDef[] {
+export function makeRingDefs(labels: {
+  skills: string;
+  memory: string;
+  routines: string;
+  apps: string;
+}): RingDef[] {
   return [
     { r: RING.skills, label: labels.skills.toUpperCase(), color: SKILL_COLOR },
     { r: RING.hubs + 60, label: labels.memory.toUpperCase(), color: "#c084fc" },
@@ -64,12 +78,6 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
     ctx.globalAlpha = 0.18 * ringAlpha;
     ctx.lineWidth = 1 / k;
     ctx.stroke();
-    ctx.font = `800 ${15 / Math.max(0.7, k)}px ${font}`;
-    ctx.fillStyle = ring.color;
-    ctx.globalAlpha = 0.72 * ringAlpha;
-    ctx.textAlign = "center";
-    ctx.fillText(ring.label, 0, -ring.r + RING.labelPad / k - 4);
-    ctx.textAlign = "start";
   }
   ctx.globalAlpha = 0.5 * ringAlpha;
   ctx.fillStyle = faint;
@@ -87,7 +95,13 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
     for (const hub of w.hubs) {
       if (!hub.expanded) continue;
       ctx.beginPath();
-      ctx.arc(0, 0, RING.filesInner + 4, hub.sectorStart + w.theta, hub.sectorStart + hub.sectorSpan + w.theta);
+      ctx.arc(
+        0,
+        0,
+        RING.filesInner + 4,
+        hub.sectorStart + w.theta,
+        hub.sectorStart + hub.sectorSpan + w.theta,
+      );
       ctx.strokeStyle = hub.color;
       ctx.globalAlpha = 0.28 * ringAlpha;
       ctx.lineWidth = 1 / k;
@@ -152,7 +166,15 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
       ctx.stroke();
       ctx.globalCompositeOperation = tokens.blend;
     }
-    const wantLabel = selected || (w.matched?.has(n.id) ?? false) || (showLabels && !dimByFilter && !dimBySearch && collapsedDim === 1 && n.hoverAlpha > 0.5 && labelBudget > 0);
+    const wantLabel =
+      selected ||
+      (w.matched?.has(n.id) ?? false) ||
+      (showLabels &&
+        !dimByFilter &&
+        !dimBySearch &&
+        collapsedDim === 1 &&
+        n.hoverAlpha > 0.5 &&
+        labelBudget > 0);
     if (wantLabel && labelBudget > 0) {
       labelBudget--;
       ctx.globalCompositeOperation = "source-over";
@@ -182,14 +204,22 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
       const pr = rr * 0.85;
       const ps = 2.4 * alpha;
       ctx.globalAlpha = alpha;
-      ctx.drawImage(sprites.glow(fx.color), fx.x + Math.cos(a) * pr - ps * 2, fx.y + Math.sin(a) * pr - ps * 2, ps * 4, ps * 4);
+      ctx.drawImage(
+        sprites.glow(fx.color),
+        fx.x + Math.cos(a) * pr - ps * 2,
+        fx.y + Math.sin(a) * pr - ps * 2,
+        ps * 4,
+        ps * 4,
+      );
     }
   }
   ctx.globalAlpha = 1;
 
   // ---- live agent comets ----
   for (const comet of w.comets) {
-    const targetOrb = comet.skillSlug ? w.orbs.find((orb) => orb.kind === "skill" && orb.id === comet.skillSlug) : undefined;
+    const targetOrb = comet.skillSlug
+      ? w.orbs.find((orb) => orb.kind === "skill" && orb.id === comet.skillSlug)
+      : undefined;
     const tx2 = targetOrb ? targetOrb.x : Math.cos(comet.seed + tNow * 0.4) * RING.hubs * 0.7;
     const ty2 = targetOrb ? targetOrb.y : Math.sin(comet.seed + tNow * 0.4) * RING.hubs * 0.7;
     const cycle = (tNow * 0.4 + comet.seed) % 2;
@@ -224,7 +254,17 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
     if (!hub || !hub.expanded) continue;
     const dim = w.filterGroup !== null && p.hubKey !== w.filterGroup ? 0.15 : 1;
     const hovered = w.hoverKey === `planet:${p.hubKey}:${p.dir}`;
-    drawPlanet(ctx, p.x, p.y, hub.color, p.count, k, mono, hovered ? accent : textDim, dim * (hovered ? 1 : 0.85));
+    drawPlanet(
+      ctx,
+      p.x,
+      p.y,
+      hub.color,
+      p.count,
+      k,
+      mono,
+      hovered ? accent : textDim,
+      dim * (hovered ? 1 : 0.85),
+    );
   }
 
   // ---- structure orbs ----
@@ -242,7 +282,17 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
         ctx.textAlign = "start";
       }
     } else if (orb.kind === "routine") {
-      drawClock(ctx, orb.x, orb.y, hovered ? 10 : 8, ROUTINE_COLOR, orb.active, k, reduceMotion ? 0 : tNow, sprites);
+      drawClock(
+        ctx,
+        orb.x,
+        orb.y,
+        hovered ? 10 : 8,
+        ROUTINE_COLOR,
+        orb.active,
+        k,
+        reduceMotion ? 0 : tNow,
+        sprites,
+      );
       if (hovered) {
         ctx.fillStyle = accent;
         ctx.font = `700 ${10.5 / k}px ${font}`;
@@ -252,7 +302,13 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
       }
     } else {
       const s = hovered ? 22 : 18;
-      ctx.drawImage(sprites.hex(orb.label, APP_COLOR, !!orb.official, orb.active, hovered), orb.x - s, orb.y - s, s * 2, s * 2);
+      ctx.drawImage(
+        sprites.hex(orb.label, APP_COLOR, !!orb.official, orb.active, hovered),
+        orb.x - s,
+        orb.y - s,
+        s * 2,
+        s * 2,
+      );
       if (hovered) {
         ctx.fillStyle = accent;
         ctx.font = `700 ${10.5 / k}px ${font}`;
@@ -304,6 +360,24 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
   ctx.font = `800 ${11 / k}px ${font}`;
   ctx.textAlign = "center";
   ctx.fillText(o.coreLabel, 0, 36 / k);
+
+  // ---- ring labels, drawn last: orbs ride these rings and would otherwise
+  // cover the word. A short band of the page background keeps them readable.
+  for (const ring of o.ringDefs) {
+    const size = 15 / Math.max(0.7, k);
+    ctx.font = `800 ${size}px ${font}`;
+    ctx.textAlign = "center";
+    const ly = -ring.r + RING.labelPad / k - 4;
+    const bw = ctx.measureText(ring.label).width + size * 0.9;
+    ctx.globalAlpha = 0.88 * ringAlpha;
+    ctx.fillStyle = tokens.bg;
+    ctx.fillRect(-bw / 2, ly - size * 0.86, bw, size * 1.18);
+    ctx.fillStyle = ring.color;
+    ctx.globalAlpha = 0.82 * ringAlpha;
+    ctx.fillText(ring.label, 0, ly);
+  }
+  ctx.textAlign = "start";
+  ctx.globalAlpha = 1;
   ctx.textAlign = "start";
 
   ctx.restore();
@@ -311,7 +385,12 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
 
 const KIND_ORDER: EdgeKind[] = ["same-area", "other", "same-dir", "markdown-link"];
 
-function drawEdges(ctx: CanvasRenderingContext2D, w: World, o: FrameOptions, hubByKey: Map<string, World["hubs"][number]>): void {
+function drawEdges(
+  ctx: CanvasRenderingContext2D,
+  w: World,
+  o: FrameOptions,
+  hubByKey: Map<string, World["hubs"][number]>,
+): void {
   const { tokens, sprites, reduceMotion, tNow } = o;
   const k = w.transform.k;
   const accent = tokens.accent;
@@ -339,7 +418,10 @@ function drawEdges(ctx: CanvasRenderingContext2D, w: World, o: FrameOptions, hub
       const a = w.files[e.a];
       const b = w.files[e.b];
       if (!a || !b) continue;
-      const vis = Math.min(a.visAlpha, b.visAlpha) * Math.max(a.hoverAlpha, b.hoverAlpha) * (a.hoverAlpha > 0.5 && b.hoverAlpha > 0.5 ? 1 : 0.35);
+      const vis =
+        Math.min(a.visAlpha, b.visAlpha) *
+        Math.max(a.hoverAlpha, b.hoverAlpha) *
+        (a.hoverAlpha > 0.5 && b.hoverAlpha > 0.5 ? 1 : 0.35);
       if (vis <= 0.02) continue;
       const isSel = w.selectedEdges.has(i);
       if (kind === "markdown-link") {
@@ -478,7 +560,7 @@ export function buildBackground(width: number, height: number, tokens: CanvasTok
   const bc = bg.getContext("2d");
   if (!bc) return bg;
   let seed = 11;
-  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   bc.fillStyle = tokens.star;
   for (let i = 0; i < 220; i++) {
     bc.globalAlpha = 0.06 + rand() * 0.22;
@@ -504,7 +586,14 @@ export function buildBackground(width: number, height: number, tokens: CanvasTok
       bc.stroke();
     }
   }
-  const glow = bc.createRadialGradient(width / 2, height / 2, 10, width / 2, height / 2, Math.min(width, height) * 0.55);
+  const glow = bc.createRadialGradient(
+    width / 2,
+    height / 2,
+    10,
+    width / 2,
+    height / 2,
+    Math.min(width, height) * 0.55,
+  );
   glow.addColorStop(0, tokens.accent + "1f");
   glow.addColorStop(0.4, tokens.light ? "#c084fc14" : "#2b0f4d22");
   glow.addColorStop(1, "transparent");

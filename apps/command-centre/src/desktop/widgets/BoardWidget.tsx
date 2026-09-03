@@ -127,6 +127,9 @@ function BoardBody({
           >
             <span
               className={`board-runner runner-${runner}`}
+              // A bare <span> may not carry aria-label; role="img" makes the
+              // icon-only badge a labelled graphic instead.
+              role="img"
               title={t("desktop.board.runnerLabel", { runner: t(RUNNER_KEY[runner]) })}
               aria-label={t(RUNNER_KEY[runner])}
             >

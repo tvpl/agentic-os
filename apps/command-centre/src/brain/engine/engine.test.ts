@@ -239,6 +239,31 @@ describe("layouts", () => {
     });
   }
 
+  it("arcs: a lone group whose files fit one row wraps its whole sector instead of bunching at the centre", () => {
+    const w = world(40, "arcs");
+    // Collapse everything into one group so the single hub owns ~the full ring.
+    for (const n of w.files) n.group = "solo";
+    w.hubs = [{ ...w.hubs[0]!, key: "solo", count: w.files.length, expanded: true }];
+    layoutFiles(w);
+    const hub = w.hubs[0]!;
+    const members = w.files.filter((n) => n.group === "solo");
+    const angles = members.map((n) => n.baseAngle).sort((a, b) => a - b);
+    const used = angles[angles.length - 1]! - angles[0]!;
+    // The files wrap most of the sector instead of packing into a short arc at
+    // its centre (sub-folder planets take a few slots, so not quite all of it).
+    expect(used).toBeGreaterThan(hub.sectorSpan * 0.75);
+    // One row: every radius is the same.
+    expect(new Set(members.map((n) => n.baseRadius.toFixed(6))).size).toBe(1);
+    // Evenly pitched: gaps are one slot wide, or two where a planet sits between.
+    const gaps = angles.slice(1).map((a, i) => a - angles[i]!);
+    const unit = Math.min(...gaps);
+    for (const g of gaps) expect(Math.round(g / unit)).toBeLessThanOrEqual(2);
+    for (const n of members) {
+      expect(n.baseAngle).toBeGreaterThanOrEqual(hub.sectorStart - 1e-9);
+      expect(n.baseAngle).toBeLessThanOrEqual(hub.sectorStart + hub.sectorSpan + 1e-9);
+    }
+  });
+
   it("arcs: sectors are proportional to sqrt(count), files sit on rows of increasing radius in dir/mtime order", () => {
     const sectors = computeSectors([
       { key: "a", count: 400 },

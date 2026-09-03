@@ -6,7 +6,13 @@
  */
 import { RING, TWO_PI, type FileNode, type Hub, type LayoutKind, type Planet } from "./world";
 
-export type LayoutWorld = { files: FileNode[]; hubs: Hub[]; planets: Planet[]; layout: LayoutKind; clusterSize: number };
+export type LayoutWorld = {
+  files: FileNode[];
+  hubs: Hub[];
+  planets: Planet[];
+  layout: LayoutKind;
+  clusterSize: number;
+};
 
 /** Golden-angle spiral used by the circle layout. */
 const GOLDEN_ANGLE = 2.399963;
@@ -27,7 +33,9 @@ export function orderFiles(list: ReadonlyArray<FileNode>): FileNode[] {
  * department reads as large without starving a 50-file one. Sectors are laid
  * clockwise from the top in hub order and separated by a small gap.
  */
-export function computeSectors(hubs: ReadonlyArray<Pick<Hub, "key" | "count">>): Array<{ key: string; start: number; span: number; centre: number }> {
+export function computeSectors(
+  hubs: ReadonlyArray<Pick<Hub, "key" | "count">>,
+): Array<{ key: string; start: number; span: number; centre: number }> {
   if (hubs.length === 0) return [];
   const weights = hubs.map((h) => Math.sqrt(Math.max(1, h.count)));
   const total = weights.reduce((a, b) => a + b, 0);
@@ -97,7 +105,11 @@ export function layoutFiles(w: LayoutWorld): void {
         const localX = (col - cols / 2) * HEX + (row % 2 ? HEX / 2 : 0);
         const localY = 46 + row * HEX * 0.87;
         const ang = hub.baseAngle + Math.PI / 2;
-        setPolar(n, hubX + localX * Math.cos(ang) + Math.cos(hub.baseAngle) * localY, hubY + localX * Math.sin(ang) + Math.sin(hub.baseAngle) * localY);
+        setPolar(
+          n,
+          hubX + localX * Math.cos(ang) + Math.cos(hub.baseAngle) * localY,
+          hubY + localX * Math.sin(ang) + Math.sin(hub.baseAngle) * localY,
+        );
       });
     } else if (w.layout === "circle") {
       const clusterR = (16 + Math.sqrt(list.length) * 7.5) * cs;
@@ -114,7 +126,10 @@ export function layoutFiles(w: LayoutWorld): void {
       const span = hub.sectorSpan * 0.9;
       list.forEach((n, i) => {
         const tFrac = (i + 0.5) / list.length;
-        const rr = (RING.filesInner + (RING.routines - 42 - RING.filesInner) * Math.pow(tFrac, 0.72)) * (0.82 + 0.36 * ((i * 0.618) % 1)) * (0.7 + 0.3 * cs);
+        const rr =
+          (RING.filesInner + (RING.routines - 42 - RING.filesInner) * Math.pow(tFrac, 0.72)) *
+          (0.82 + 0.36 * ((i * 0.618) % 1)) *
+          (0.7 + 0.3 * cs);
         n.baseRadius = Math.min(rr, RING.routines - 26);
         n.baseAngle = hub.baseAngle - span / 2 + span * ((i * 0.381966) % 1);
       });
@@ -142,7 +157,9 @@ function layoutArcs(hub: Hub, list: FileNode[], cs: number, planets: Planet[]): 
       .slice(0, MAX_PLANETS)
       .map((r) => r.dir),
   );
-  const slots: Array<{ kind: "file"; node: FileNode } | { kind: "planet"; run: { dir: string; count: number } }> = [];
+  const slots: Array<
+    { kind: "file"; node: FileNode } | { kind: "planet"; run: { dir: string; count: number } }
+  > = [];
   for (const run of runs) {
     if (planetDirs.has(run.dir)) slots.push({ kind: "planet", run });
     for (const n of run.files) slots.push({ kind: "file", node: n });
@@ -153,9 +170,13 @@ function layoutArcs(hub: Hub, list: FileNode[], cs: number, planets: Planet[]): 
     const radius = RING.filesInner + 14 + row * rowStep;
     const perRow = Math.max(1, Math.floor((span * radius) / spacing));
     const count = Math.min(perRow, slots.length - i);
-    // Centre a partial last row inside the sector so the arc reads balanced.
-    const pitch = spacing / radius;
-    const offset = (span - pitch * (count - 1)) / 2;
+    // A single row holding the whole group spreads across its sector: packing
+    // it at fixed spacing would bunch a lone department into a short arc at
+    // the sector's centre instead of wrapping the ring. Any later (partial)
+    // row stays centred so it reads balanced under the full rows above it.
+    const onlyRow = row === 0 && count === slots.length && count > 1;
+    const pitch = onlyRow ? span / count : spacing / radius;
+    const offset = onlyRow ? pitch / 2 : (span - pitch * (count - 1)) / 2;
     for (let j = 0; j < count; j++) {
       const angle = start + offset + pitch * j;
       const slot = slots[i + j]!;
@@ -163,7 +184,16 @@ function layoutArcs(hub: Hub, list: FileNode[], cs: number, planets: Planet[]): 
         slot.node.baseAngle = angle;
         slot.node.baseRadius = radius;
       } else {
-        planets.push({ hubKey: hub.key, dir: slot.run.dir, label: lastSegment(slot.run.dir), count: slot.run.count, baseAngle: angle, baseRadius: radius, x: 0, y: 0 });
+        planets.push({
+          hubKey: hub.key,
+          dir: slot.run.dir,
+          label: lastSegment(slot.run.dir),
+          count: slot.run.count,
+          baseAngle: angle,
+          baseRadius: radius,
+          x: 0,
+          y: 0,
+        });
       }
     }
     i += count;
@@ -172,7 +202,9 @@ function layoutArcs(hub: Hub, list: FileNode[], cs: number, planets: Planet[]): 
 }
 
 /** Consecutive files of the same directory (list must already be in arc order). */
-export function dirRuns(list: ReadonlyArray<FileNode>): Array<{ dir: string; count: number; files: FileNode[] }> {
+export function dirRuns(
+  list: ReadonlyArray<FileNode>,
+): Array<{ dir: string; count: number; files: FileNode[] }> {
   const runs: Array<{ dir: string; count: number; files: FileNode[] }> = [];
   for (const n of list) {
     const last = runs[runs.length - 1];
@@ -207,7 +239,16 @@ function centroidPlanets(hub: Hub, list: FileNode[]): Planet[] {
       }
       const cx = sx / files.length;
       const cy = sy / files.length;
-      return { hubKey: hub.key, dir, label: lastSegment(dir), count: files.length, baseAngle: Math.atan2(cy, cx), baseRadius: Math.hypot(cx, cy), x: 0, y: 0 };
+      return {
+        hubKey: hub.key,
+        dir,
+        label: lastSegment(dir),
+        count: files.length,
+        baseAngle: Math.atan2(cy, cx),
+        baseRadius: Math.hypot(cx, cy),
+        x: 0,
+        y: 0,
+      };
     });
 }
 

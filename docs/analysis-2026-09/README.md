@@ -353,6 +353,35 @@ Critério de "pronto" para cada bloco: captura de tela nas mesmas rotas de `docs
 
 ---
 
+## 7. Estado da implementação (3 de setembro de 2026)
+
+Este relatório foi executado. As sete frentes abaixo estão implementadas,
+verificadas e na branch `claude/os-second-brain-analysis-gd34p9`; o CHANGELOG
+0.5.0 lista o que mudou em cada uma. Capturas de tela em
+[`img/`](img/): [desktop](img/desktop-dashboard.png) ·
+[cérebro](img/desktop-brain.png) · demais rotas e larguras no mesmo diretório.
+
+| Frente | Entregue | Itens do mapa |
+|---|---|---|
+| Segundo Cérebro | Arestas tipadas com legenda e toggles, layout Arcos como padrão, explosão dirigida com enquadramento, grafo local por saltos, filtros por extensão/tag/data/tamanho, grupos por consulta, preview em markdown navegável com relações por tipo, arrastar e fixar nós, linha do tempo, estado na URL, loop com dirty flag | 6-8, 11-13, 16, 31-40, 43, 59, 60 |
+| Desktop | Globo icosférico 3D real, anel de artefatos numerado com rótulos e modo de busca, arrasto por transform com FLIP, registro de widgets com galeria e configuração, widgets de prompt, inbox, agenda, calendário, e-mail e custo, painel Agora nunca vazio, galerias de artefatos e gerações | 1-5, 19, 21-28, 55-58, 62, 63 |
+| Shell | Paleta de comandos ⌘K com páginas aninhadas, saída animada de modais, transições de rota, depth push, estados pressionados, notificações com não lidos e som, quatro presets de tema, tokens de canvas | 2-5, 9, 13, 14, 20, 29, 30, 61 |
+| Execuções | Tokens e custo nos três adapters com migração e métricas, diffs por arquivo, aprovações inline, executar de novo, continuar, copiar log, busca na timeline, medidor de contexto, replay com scrubber | 44-49 |
+| Rotinas e conectores | Cinco tipos de agendamento incluindo heartbeat, contexto e entrega, runner por rotina e resumo do dia, cliente MCP somente leitura com cache e mapeamentos para Google Calendar e Gmail | 26, 27, 50, 58 |
+| Memória | Recall por camadas com contagem de candidatos versus abertos, journal diário injetado no router com orçamento, higiene em seis categorias, fatos bitemporais, campos inline consultáveis | 40-42, 51-54 |
+| Apps | Corpo do SKILL.md legível com gutter e markdown, recursos de skill com preview por tipo, presets de tema e visibilidade de widgets nas configurações, Pixel Studio com redo, frames, pincel e onion skin | 1, 10, 29, 30 |
+
+Portões na última execução: `npm run lint` limpo, `npm run typecheck` sem erros,
+291 testes de backend, 185 de frontend e 34 verificações end-to-end, incluindo
+axe sem violações sérias.
+
+Fora de escopo desta rodada, por dependerem de decisão de produto ou de custo de
+infraestrutura: arestas semânticas por embeddings (item 41), consolidação
+noturna automática além da skill e da rotina desabilitada (item 52), e widgets
+declarativos por JSON (item 24).
+
+---
+
 ## 6. Fontes
 
 - Vídeo analisado: https://www.youtube.com/watch?v=8NSyI-npJCU (transcrição integral, thumbnail, storyboard, e quatro gravações de tela do vídeo em reprodução fornecidas pelo usuário, cobrindo 1:50 a 2:45). Vídeo complementar: https://www.youtube.com/watch?v=VoKiKvgpk78. Post: https://robonuggets.beehiiv.com/p/the-new-agentic-os-format-for-claude-5-models. Produto: https://www.getrubric.app/. Curso (índice de módulos do "Command Centre"): https://robonuggets-agentic-ai-foundations.vercel.app/.
