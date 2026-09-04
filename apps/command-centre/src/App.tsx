@@ -12,7 +12,7 @@ import {
 import { HashRouter, Link, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, BrainCircuit, LayoutGrid, ListTree, Menu, Sparkles } from "lucide-react";
-import { api, type Meta } from "./api";
+import { api, needsPairing, setDeviceToken, type Meta } from "./api";
 import { I18nContext, useT, type Lang, type TKey } from "./i18n";
 import { qk, useOsSettings } from "./queries";
 import {
@@ -172,7 +172,9 @@ function AppInner() {
         <ConfirmProvider>
           <NotificationsProvider>
             <HashRouter>
-              {meta.setupCompleted ? (
+              {needsPairing() ? (
+                <PairingScreen meta={meta} />
+              ) : meta.setupCompleted ? (
                 <>
                   <OsShell meta={meta} onMetaChanged={loadMeta} />
                   <BootSequence meta={meta} />
@@ -262,6 +264,74 @@ function BootSequence({ meta }: { meta: Meta }) {
   }, [show]);
   if (!show) return null;
   return <BootScreen phase="ready" meta={meta} />;
+}
+
+/**
+ * A remote browser without a credential (plan Onda 3 §1): exchange the
+ * six-digit code shown on the desktop for this device's own token.
+ */
+function PairingScreen({ meta }: { meta: Meta }) {
+  const t = useT();
+  const [code, setCode] = useState("");
+  const [name, setName] = useState(() =>
+    typeof navigator !== "undefined" ? navigator.platform || "device" : "device",
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    if (!/^\d{6}$/.test(code) || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.post<{ token: string }>("/api/pair/claim", { code, name });
+      setDeviceToken(res.token);
+      location.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="pairing-screen">
+      <div className="card pairing-card">
+        <div className="hud-label accent">{meta.name}</div>
+        <h2>{t("shell.pair.title")}</h2>
+        <p className="hint">{t("shell.pair.body")}</p>
+        <label className="pairing-field">
+          <span className="hud-label">{t("shell.pair.code")}</span>
+          <input
+            className="input pairing-code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            onKeyDown={(e) => e.key === "Enter" && void submit()}
+            aria-label={t("shell.pair.code")}
+          />
+        </label>
+        <label className="pairing-field">
+          <span className="hud-label">{t("shell.pair.name")}</span>
+          <input
+            className="input"
+            value={name}
+            maxLength={80}
+            onChange={(e) => setName(e.target.value)}
+            aria-label={t("shell.pair.name")}
+          />
+        </label>
+        {error && <p className="hint warn">{t("shell.pair.failed")}</p>}
+        <button
+          type="button"
+          className="btn primary"
+          disabled={code.length !== 6 || busy}
+          onClick={() => void submit()}
+        >
+          {t("shell.pair.submit")}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function OfflineCard({ onRetry }: { onRetry: () => void }) {

@@ -253,4 +253,23 @@ CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
 `);
     },
   },
+  {
+    version: 7,
+    name: "devices",
+    // Paired devices (Onda 3): remote access carries a per-device bearer token
+    // instead of the local token. Only the SHA-256 of the token is kept.
+    up(db) {
+      db.exec(`
+CREATE TABLE IF NOT EXISTS devices (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at INTEGER NOT NULL,
+  last_seen_at INTEGER,
+  expires_at INTEGER,
+  revoked_at INTEGER
+);
+`);
+    },
+  },
 ];

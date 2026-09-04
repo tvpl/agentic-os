@@ -106,6 +106,13 @@ export const en = {
     "Scanlines, corner brackets, the radar sweep and the reactor arcs around the core. 0 turns the layer off.",
   "shell.hud.off": "Off",
   "shell.hud.full": "Full",
+  "shell.pair.title": "Pair this device",
+  "shell.pair.body":
+    "Open Settings › Security › Remote access on the computer running MordomoOS and type the six-digit code it shows.",
+  "shell.pair.code": "Pairing code",
+  "shell.pair.name": "Device name",
+  "shell.pair.submit": "Pair",
+  "shell.pair.failed": "Wrong or expired code — start a new pairing on the desktop.",
 };
 
 export const ptBR = {
@@ -210,4 +217,11 @@ export const ptBR = {
     "Scanlines, brackets nos cantos, a varredura de radar e os arcos do reator em volta do núcleo. 0 desliga a camada.",
   "shell.hud.off": "Desligado",
   "shell.hud.full": "Máximo",
+  "shell.pair.title": "Parear este dispositivo",
+  "shell.pair.body":
+    "Abra Configurações › Segurança › Acesso remoto no computador que roda o MordomoOS e digite o código de seis dígitos que ele mostra.",
+  "shell.pair.code": "Código de pareamento",
+  "shell.pair.name": "Nome do dispositivo",
+  "shell.pair.submit": "Parear",
+  "shell.pair.failed": "Código errado ou expirado — inicie um novo pareamento no desktop.",
 } satisfies Record<keyof typeof en, string>;

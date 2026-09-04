@@ -20,6 +20,7 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   api,
+  type DeviceRecord,
   type DoctorReport,
   type MicroApp,
   type ProviderId,
@@ -194,7 +195,12 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
         {tab === "memory" && <MemoryTab s={s} put={put} />}
         {tab === "desktop" && <DesktopTab s={s} put={put} />}
         {tab === "security" && <SecurityTab s={s} put={put} />}
-        {tab === "notifications" && <NotificationsTab />}
+        {tab === "notifications" && (
+          <>
+            <NotificationsTab />
+            <SentinelsCard s={s} put={put} />
+          </>
+        )}
         {tab === "backups" && <BackupsTab />}
         {tab === "diagnostics" && <DiagnosticsTab />}
       </div>
@@ -602,6 +608,7 @@ function SecurityTab({ s, put }: { s: SettingsShape; put: Put }) {
           ))}
         </ul>
       </div>
+      <RemoteAccess s={s} put={put} />
       <div className="card stack">
         <h2>{t("apps.settings.automation")}</h2>
         <div className="apps-sound">
@@ -1034,6 +1041,290 @@ function NotificationsTab() {
       <OutsideTabToggles />
       <p className="hint">{t("apps.settings.notificationsHint")}</p>
     </div>
+  );
+}
+
+/* ------------------------------------------------- remote access (Onda 3) ---- */
+
+function RemoteAccess({ s, put }: { s: SettingsShape; put: Put }) {
+  const t = useT();
+  const locale = useLocale();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const qc = useQueryClient();
+  const remote = s.remote ?? { enabled: false, allowedHosts: [], deviceTtlDays: 90 };
+  const devices = useApiQuery<{ devices: DeviceRecord[] }>(qk.devices, "/api/devices");
+  const [pairing, setPairing] = useState<{ code: string; expiresAt: number } | null>(null);
+  const start = useMutation({
+    mutationFn: () => api.post<{ code: string; expiresAt: number }>("/api/pair/start", {}),
+    onSuccess: (res) => setPairing(res),
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
+  const revoke = useMutation({
+    mutationFn: (id: string) => api.del(`/api/devices/${encodeURIComponent(id)}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.devices }).catch(() => undefined),
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
+  const save = (patch: Partial<typeof remote>) => void put({ remote: { ...remote, ...patch } }, true);
+  const active = (devices.data?.devices ?? []).filter((d) => d.revokedAt === null);
+  return (
+    <div className="card stack">
+      <div className="apps-sound">
+        <div className="min0">
+          <h2>{t("apps.settings.remote")}</h2>
+          <p className="hint">{t("apps.settings.remoteHint")}</p>
+        </div>
+        <Button
+          variant={remote.enabled ? "outline" : "secondary"}
+          aria-pressed={remote.enabled}
+          onClick={() => save({ enabled: !remote.enabled })}
+        >
+          {remote.enabled ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
+        </Button>
+      </div>
+      <Field
+        label={t("apps.settings.remoteHosts")}
+        htmlFor="st-remote-hosts"
+        hint={t("apps.settings.remoteHostsHint")}
+      >
+        <input
+          id="st-remote-hosts"
+          className="input"
+          defaultValue={remote.allowedHosts.join(", ")}
+          placeholder="mordomo.tail1234.ts.net, 192.168.0.12"
+          onBlur={(e) => {
+            const hosts = e.target.value
+              .split(/[,\s]+/)
+              .map((h) => h.trim())
+              .filter(Boolean);
+            if (hosts.join(",") !== remote.allowedHosts.join(",")) save({ allowedHosts: hosts });
+          }}
+        />
+      </Field>
+      <Field
+        label={t("apps.settings.remoteTtl")}
+        htmlFor="st-remote-ttl"
+        hint={t("apps.settings.remoteTtlHint")}
+      >
+        <input
+          id="st-remote-ttl"
+          className="input"
+          type="number"
+          min={0}
+          defaultValue={remote.deviceTtlDays}
+          onBlur={(e) => {
+            const v = Math.max(0, Math.round(Number(e.target.value) || 0));
+            if (v !== remote.deviceTtlDays) save({ deviceTtlDays: v });
+          }}
+        />
+      </Field>
+      <div className="apps-sound">
+        <div className="min0">
+          <strong>{t("apps.settings.pairDevice")}</strong>
+          <p className="hint">{t("apps.settings.pairDeviceHint")}</p>
+        </div>
+        <Button
+          variant="primary"
+          loading={start.isPending}
+          disabled={!remote.enabled}
+          onClick={() => start.mutate()}
+        >
+          {t("apps.settings.pairStart")}
+        </Button>
+      </div>
+      {pairing && (
+        <div className="pairing-code-box" role="status">
+          <span className="pairing-code-big mono">{pairing.code}</span>
+          <span className="hint">
+            {t("apps.settings.pairExpires", {
+              time: new Date(pairing.expiresAt).toLocaleTimeString(locale, {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+            })}
+          </span>
+        </div>
+      )}
+      {active.length > 0 && (
+        <ul className="plain-list device-list">
+          {active.map((d) => (
+            <li key={d.id}>
+              <strong>{d.name}</strong>
+              <span className="meta mono">
+                {d.lastSeenAt ? timeAgo(d.lastSeenAt, locale) : t("apps.settings.deviceNeverSeen")}
+                {d.expiresAt
+                  ? ` · ${t("apps.settings.deviceExpires", { date: new Date(d.expiresAt).toLocaleDateString(locale) })}`
+                  : ""}
+              </span>
+              <Button
+                size="sm"
+                variant="danger"
+                icon={<Trash2 aria-hidden />}
+                loading={revoke.isPending && revoke.variables === d.id}
+                onClick={async () => {
+                  if (await confirm({ title: t("apps.settings.deviceRevoke"), body: d.name, danger: true }))
+                    revoke.mutate(d.id);
+                }}
+              >
+                {t("apps.settings.deviceRevoke")}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/* --------------------------------------------- sentinels and channels (Onda 2) ---- */
+
+type SentinelKey =
+  "fsWatch" | "repeatedFailure" | "silentRoutine" | "connectorDelta" | "repeatDetector" | "triage";
+const SENTINEL_KEYS: SentinelKey[] = [
+  "repeatedFailure",
+  "silentRoutine",
+  "connectorDelta",
+  "repeatDetector",
+  "fsWatch",
+  "triage",
+];
+
+function SentinelsCard({ s, put }: { s: SettingsShape; put: Put }) {
+  const t = useT();
+  const toast = useToast();
+  const sentinels = s.sentinels;
+  const channels = s.channels;
+  const test = useMutation({
+    mutationFn: () => api.post<{ ok: boolean; error?: string }>("/api/channels/telegram/test", {}),
+    onSuccess: (res) =>
+      toast(
+        res.ok ? t("apps.settings.telegramOk") : `${t("apps.settings.telegramFailed")}: ${res.error ?? ""}`,
+        res.ok ? "ok" : "danger",
+      ),
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
+  if (!sentinels || !channels) return null;
+  const toggle = (key: SentinelKey) =>
+    void put(
+      { sentinels: { ...sentinels, [key]: { ...sentinels[key], enabled: !sentinels[key].enabled } } },
+      true,
+    );
+  const tg = channels.telegram;
+  const saveTg = (patch: Partial<typeof tg>) =>
+    void put({ channels: { ...channels, telegram: { ...tg, ...patch } } }, true);
+  return (
+    <>
+      <div className="card stack">
+        <div>
+          <h2>{t("apps.settings.sentinels")}</h2>
+          <p className="hint">{t("apps.settings.sentinelsHint")}</p>
+        </div>
+        {SENTINEL_KEYS.map((key) => (
+          <div className="apps-sound" key={key}>
+            <div className="min0">
+              <strong>{t(`apps.settings.sentinel.${key}`)}</strong>
+              <p className="hint">{t(`apps.settings.sentinel.${key}Hint`)}</p>
+            </div>
+            <Button
+              variant={sentinels[key].enabled ? "outline" : "secondary"}
+              aria-pressed={sentinels[key].enabled}
+              onClick={() => toggle(key)}
+            >
+              {sentinels[key].enabled ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
+            </Button>
+          </div>
+        ))}
+        <div className="grid-2">
+          <Field label={t("apps.settings.triageModel")} htmlFor="st-triage-model">
+            <input
+              id="st-triage-model"
+              className="input"
+              defaultValue={sentinels.triage.model}
+              onBlur={(e) =>
+                e.target.value.trim() !== sentinels.triage.model &&
+                void put(
+                  {
+                    sentinels: {
+                      ...sentinels,
+                      triage: { ...sentinels.triage, model: e.target.value.trim() || "haiku" },
+                    },
+                  },
+                  true,
+                )
+              }
+            />
+          </Field>
+          <Field label={t("apps.settings.triageBudget")} htmlFor="st-triage-budget">
+            <input
+              id="st-triage-budget"
+              className="input"
+              type="number"
+              min={0}
+              step={0.05}
+              defaultValue={sentinels.triage.dailyBudgetUsd}
+              onBlur={(e) => {
+                const v = Math.max(0, Number(e.target.value) || 0);
+                if (v !== sentinels.triage.dailyBudgetUsd)
+                  void put(
+                    { sentinels: { ...sentinels, triage: { ...sentinels.triage, dailyBudgetUsd: v } } },
+                    true,
+                  );
+              }}
+            />
+          </Field>
+        </div>
+      </div>
+      <div className="card stack">
+        <div className="apps-sound">
+          <div className="min0">
+            <h2>{t("apps.settings.telegram")}</h2>
+            <p className="hint">{t("apps.settings.telegramHint", { env: tg.botTokenEnv })}</p>
+          </div>
+          <Button
+            variant={tg.enabled ? "outline" : "secondary"}
+            aria-pressed={tg.enabled}
+            onClick={() => saveTg({ enabled: !tg.enabled })}
+          >
+            {tg.enabled ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
+          </Button>
+        </div>
+        <div className="grid-2">
+          <Field label={t("apps.settings.telegramChat")} htmlFor="st-tg-chat">
+            <input
+              id="st-tg-chat"
+              className="input"
+              defaultValue={tg.chatId}
+              placeholder="123456789 or @channel"
+              onBlur={(e) => e.target.value.trim() !== tg.chatId && saveTg({ chatId: e.target.value.trim() })}
+            />
+          </Field>
+          <Field label={t("apps.settings.telegramMinTone")} htmlFor="st-tg-tone">
+            <select
+              id="st-tg-tone"
+              className="input"
+              value={tg.minTone}
+              onChange={(e) => saveTg({ minTone: e.target.value as typeof tg.minTone })}
+            >
+              {(["info", "warn", "danger"] as const).map((tone) => (
+                <option key={tone} value={tone}>
+                  {tone}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <div>
+          <Button
+            variant="outline"
+            loading={test.isPending}
+            disabled={!tg.enabled || !tg.chatId}
+            onClick={() => test.mutate()}
+          >
+            {t("apps.settings.telegramTest")}
+          </Button>
+        </div>
+      </div>
+    </>
   );
 }
 

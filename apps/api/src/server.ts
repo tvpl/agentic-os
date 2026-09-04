@@ -18,6 +18,7 @@ import { registerSkillRoutes } from "./routes/skills.js";
 import { registerRunRoutes } from "./routes/runs.js";
 import { registerSessionRoutes } from "./routes/sessions.js";
 import { registerNotificationRoutes } from "./routes/notifications.js";
+import { registerDeviceRoutes } from "./routes/devices.js";
 import { registerChannelRoutes } from "./routes/channels.js";
 import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerRoutineRoutes } from "./routes/routines.js";
@@ -53,7 +54,10 @@ const ALLOWED_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
  * Only loopback hosts may talk to the API (DNS-rebinding defence). Parsed with
  * `new URL` so bracketed IPv6 and ports are handled; a missing Host is refused.
  */
-export function isAllowedHost(hostHeader: string | string[] | undefined): boolean {
+export function isAllowedHost(
+  hostHeader: string | string[] | undefined,
+  extraHosts: readonly string[] = [],
+): boolean {
   const raw = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader;
   if (!raw || !raw.trim()) return false;
   let url: URL;
@@ -64,7 +68,25 @@ export function isAllowedHost(hostHeader: string | string[] | undefined): boolea
   }
   // Reject anything that smuggled userinfo/path into the header.
   if (url.username || url.password || url.pathname !== "/" || url.search || url.hash) return false;
-  return ALLOWED_HOSTNAMES.has(url.hostname.toLowerCase());
+  const host = url.hostname.toLowerCase();
+  if (ALLOWED_HOSTNAMES.has(host)) return true;
+  // Remote access (Onda 3): hosts the user listed, matched on the host name
+  // (with or without the port they wrote).
+  return extraHosts.some((h) => {
+    const entry = h.trim().toLowerCase();
+    if (!entry) return false;
+    try {
+      const u = new URL(`http://${entry}`);
+      return u.hostname === host && (!u.port || u.port === url.port);
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** Loopback requests get the local token injected into the page; remote ones pair instead. */
+export function isLoopbackHost(hostHeader: string | string[] | undefined): boolean {
+  return isAllowedHost(hostHeader);
 }
 
 export function tokenMatches(supplied: unknown, expected: string): boolean {
@@ -131,15 +153,21 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   const token = ctx.token();
 
   app.addHook("onRequest", async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!isAllowedHost(req.headers.host)) {
+    const remote = ctx.settings().remote;
+    const extraHosts = remote.enabled ? remote.allowedHosts : [];
+    if (!isAllowedHost(req.headers.host, extraHosts)) {
       return reply.code(403).send(errorBody("forbidden_host", "Forbidden host"));
     }
     if (req.url.startsWith("/api/")) {
-      const isMeta = req.url === "/api/meta";
+      // Unauthenticated: the meta line the shell boots from, and claiming a pairing code.
+      const open = req.url === "/api/meta" || (req.method === "POST" && req.url === "/api/pair/claim");
       const supplied =
         (req.headers["x-mordomo-token"] as string | undefined) ??
         (req.query as Record<string, string | undefined>)?.token;
-      if (!isMeta && !tokenMatches(supplied, token)) {
+      const ok =
+        tokenMatches(supplied, token) ||
+        (remote.enabled && typeof supplied === "string" && ctx.devices.verify(supplied) !== null);
+      if (!open && !ok) {
         return reply.code(401).send(errorBody("unauthorized", "Missing or invalid local token"));
       }
     }
@@ -199,6 +227,7 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   registerRunRoutes(app, ctx);
   registerSessionRoutes(app, ctx);
   registerNotificationRoutes(app, ctx);
+  registerDeviceRoutes(app, ctx);
   registerChannelRoutes(app, ctx);
   registerMemoryRoutes(app, ctx);
   registerRoutineRoutes(app, ctx);
@@ -215,14 +244,17 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
       wildcard: false,
       index: false,
     });
-    const serveIndex = (_req: FastifyRequest, reply: FastifyReply) => {
-      // The local token is injected into the same-origin page only; foreign
-      // origins cannot read it (CORS) nor send it (custom header + no CORS).
+    const serveIndex = (req: FastifyRequest, reply: FastifyReply) => {
+      // The local token is injected into the same-origin page only, and only
+      // when the page is opened from this machine; a remote device pairs and
+      // keeps its own token in the browser. Foreign origins cannot read the
+      // meta (CORS) nor send it (custom header + no CORS).
+      const inject = isLoopbackHost(req.headers.host) ? token : "";
       const html = fs
         .readFileSync(indexFile, "utf8")
         .replace(
           /<meta name="mordomo-token" content=""\s*\/?>/,
-          `<meta name="mordomo-token" content="${token}" />`,
+          `<meta name="mordomo-token" content="${inject}" />`,
         );
       reply.type("text/html; charset=utf-8").send(html);
     };

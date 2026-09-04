@@ -1,10 +1,41 @@
 /** Typed-ish fetch layer for the local MordomoOS API. */
 
-const TOKEN = document.querySelector<HTMLMetaElement>('meta[name="mordomo-token"]')?.content ?? "";
+const DEVICE_TOKEN_KEY = "mordomo.deviceToken";
 
-/** Local token (injected into the page by the API server / the Vite dev plugin). */
+function readDeviceToken(): string {
+  try {
+    return localStorage.getItem(DEVICE_TOKEN_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The local token is injected into the page when it is opened from this
+ * machine; a paired device (plan Onda 3 §1) keeps its own token in the
+ * browser instead. Either way every API call carries it in the same header.
+ */
+const TOKEN =
+  document.querySelector<HTMLMetaElement>('meta[name="mordomo-token"]')?.content || readDeviceToken();
+
+/** Local token (injected into the page by the API server / the Vite dev plugin) or the paired-device token. */
 export function getToken(): string {
   return TOKEN;
+}
+
+/** Store (or clear) the paired-device token; the page reloads to pick it up. */
+export function setDeviceToken(token: string | null): void {
+  try {
+    if (token) localStorage.setItem(DEVICE_TOKEN_KEY, token);
+    else localStorage.removeItem(DEVICE_TOKEN_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** True when this page has no credential at all (remote, not yet paired). */
+export function needsPairing(): boolean {
+  return TOKEN.length === 0;
 }
 
 export interface ApiIssue {
@@ -492,7 +523,36 @@ export interface SettingsDoc {
     /** Daily spend budget in USD (0 = no budget). */
     dailyBudgetUsd?: number;
     [key: string]: unknown;
+  }; /** Remote access (Onda 3): paired devices from the listed hosts. */
+  remote?: { enabled: boolean; allowedHosts: string[]; deviceTtlDays: number };
+  /** Sentinels and triage (Onda 2). */
+  sentinels?: {
+    fsWatch: { enabled: boolean; debounceMs: number };
+    repeatedFailure: { enabled: boolean; threshold: number; windowHours: number };
+    silentRoutine: { enabled: boolean; factor: number };
+    connectorDelta: { enabled: boolean; maxItems: number };
+    repeatDetector: { enabled: boolean; days: number; minRuns: number; similarity: number };
+    triage: { enabled: boolean; model: string; dailyBudgetUsd: number; timeoutMs: number };
   };
+  /** External delivery channels (Onda 2). */
+  channels?: {
+    telegram: {
+      enabled: boolean;
+      botTokenEnv: string;
+      chatId: string;
+      minTone: "ok" | "info" | "warn" | "danger";
+    };
+  };
+}
+
+/** `GET /api/devices` */
+export interface DeviceRecord {
+  id: string;
+  name: string;
+  createdAt: number;
+  lastSeenAt: number | null;
+  expiresAt: number | null;
+  revokedAt: number | null;
 }
 
 /** Micro app row (mirrors `MicroAppSchema` in core/src/config/schema.ts). */

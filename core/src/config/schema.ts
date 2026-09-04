@@ -216,6 +216,19 @@ export const SettingsSchema = z.object({
       codex: ProviderSettingsSchema.default({}),
     })
     .default({}),
+  /**
+   * Remote access (Onda 3): paired devices may call the API from the listed
+   * hosts. `bindAddress` must also leave loopback (an `expose_port` approval).
+   */
+  remote: z
+    .object({
+      enabled: z.boolean().default(false),
+      /** Host names / IPs (optionally with port) the server answers to besides loopback. */
+      allowedHosts: z.array(z.string().min(1).max(253)).default([]),
+      /** Lifetime of a device token in days (0 = never expires). */
+      deviceTtlDays: z.number().int().min(0).default(90),
+    })
+    .default({}),
   indexedFolders: z.array(IndexedFolderSchema).default([]),
   excludes: z.array(z.string()).default(DEFAULT_EXCLUDES),
   areas: z

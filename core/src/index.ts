@@ -316,3 +316,11 @@ export {
   type SentinelSettings,
   type ChannelSettings,
 } from "./config/schema.js";
+export {
+  DeviceStore,
+  hashToken,
+  PAIRING_TTL_MS,
+  PAIRING_MAX_ATTEMPTS,
+  type DeviceRecord,
+  type PairingCode,
+} from "./security/devices.js";

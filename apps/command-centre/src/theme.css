@@ -4748,6 +4748,34 @@ fieldset.field {
   }
 }
 
+/* ==== pairing (remote device without a credential) ========================= */
+.pairing-screen {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: var(--s-6);
+}
+.pairing-card {
+  width: min(420px, 100%);
+  display: grid;
+  gap: var(--s-3);
+}
+.pairing-card h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-6);
+}
+.pairing-field {
+  display: grid;
+  gap: var(--s-1);
+}
+.pairing-code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-7);
+  letter-spacing: 0.3em;
+  text-align: center;
+}
+
 /* ==== mobile bottom navigation ============================================= */
 .mobile-nav {
   display: none;

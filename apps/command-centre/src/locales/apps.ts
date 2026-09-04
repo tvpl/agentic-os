@@ -73,6 +73,49 @@ export const en = {
     "Comma-separated. Absolute paths or bare names resolved on PATH; a connector may only spawn what is listed here.",
   "apps.settings.allowedCommandsExample":
     'An MCP connector installed with npx needs "npx" on this list before it can read anything.',
+  "apps.settings.remote": "Remote access",
+  "apps.settings.remoteHint":
+    "Let paired devices (your phone, a laptop) use the OS through a host you list — a Tailscale name or a LAN address. The server must also bind beyond loopback (Identity › Port asks for that approval).",
+  "apps.settings.remoteHosts": "Allowed hosts",
+  "apps.settings.remoteHostsHint":
+    "Host names or addresses the server answers to, besides 127.0.0.1. Comma separated.",
+  "apps.settings.remoteTtl": "Device token lifetime (days)",
+  "apps.settings.remoteTtlHint": "0 never expires. Revoke a device below at any time.",
+  "apps.settings.pairDevice": "Pair a device",
+  "apps.settings.pairDeviceHint": "Open the OS on the other device and type the code it asks for.",
+  "apps.settings.pairStart": "Show a code",
+  "apps.settings.pairExpires": "Valid until {time}, single use.",
+  "apps.settings.deviceNeverSeen": "never used",
+  "apps.settings.deviceExpires": "expires {date}",
+  "apps.settings.deviceRevoke": "Revoke",
+  "apps.settings.sentinels": "Sentinels",
+  "apps.settings.sentinelsHint":
+    "Observers that need no model: they write to the inbox, and the ones marked for triage ask a cheap model whether to bother you.",
+  "apps.settings.sentinel.repeatedFailure": "Repeated failure",
+  "apps.settings.sentinel.repeatedFailureHint": "The same skill or prompt failed twice in 24 hours.",
+  "apps.settings.sentinel.silentRoutine": "Silent routine",
+  "apps.settings.sentinel.silentRoutineHint": "An enabled routine has not fired for twice its interval.",
+  "apps.settings.sentinel.connectorDelta": "New connector items",
+  "apps.settings.sentinel.connectorDeltaHint": "New e-mails or events since the last hourly check.",
+  "apps.settings.sentinel.repeatDetector": "Did it twice → skill",
+  "apps.settings.sentinel.repeatDetectorHint":
+    "Similar manual prompts within 30 days become a skill suggestion.",
+  "apps.settings.sentinel.fsWatch": "Folder watch",
+  "apps.settings.sentinel.fsWatchHint":
+    "Re-index when the indexed folders change (off by default on big trees).",
+  "apps.settings.sentinel.triage": "Triage with a model",
+  "apps.settings.sentinel.triageHint":
+    "A short read-only run decides ignore / notify / propose, within its own daily budget.",
+  "apps.settings.triageModel": "Triage model",
+  "apps.settings.triageBudget": "Triage budget per day (USD)",
+  "apps.settings.telegram": "Telegram",
+  "apps.settings.telegramHint":
+    "Sends inbox rows to a chat. The bot token is read from the environment variable {env}, never stored.",
+  "apps.settings.telegramChat": "Chat id",
+  "apps.settings.telegramMinTone": "Lowest tone to send",
+  "apps.settings.telegramTest": "Send a test message",
+  "apps.settings.telegramOk": "Telegram message sent.",
+  "apps.settings.telegramFailed": "Telegram failed",
   "apps.settings.desktopNotify": "System notifications",
   "apps.settings.desktopNotifyHint":
     "Approvals, failures and alerts reach you as system notifications when this tab is not in front. The browser asks for permission once.",
@@ -187,6 +230,50 @@ export const ptBR = {
     "Separados por vírgula. Caminhos absolutos ou nomes resolvidos no PATH; um conector só pode iniciar o que estiver aqui.",
   "apps.settings.allowedCommandsExample":
     'Um conector MCP instalado com npx precisa de "npx" nesta lista antes de conseguir ler qualquer coisa.',
+  "apps.settings.remote": "Acesso remoto",
+  "apps.settings.remoteHint":
+    "Deixe dispositivos pareados (celular, notebook) usarem o OS por um host que você listar — um nome do Tailscale ou um endereço da rede local. O servidor também precisa sair do loopback (Identidade › Porta pede essa aprovação).",
+  "apps.settings.remoteHosts": "Hosts permitidos",
+  "apps.settings.remoteHostsHint":
+    "Nomes ou endereços aos quais o servidor responde além de 127.0.0.1. Separados por vírgula.",
+  "apps.settings.remoteTtl": "Validade do token do dispositivo (dias)",
+  "apps.settings.remoteTtlHint": "0 nunca expira. Revogue um dispositivo abaixo a qualquer momento.",
+  "apps.settings.pairDevice": "Parear um dispositivo",
+  "apps.settings.pairDeviceHint": "Abra o OS no outro dispositivo e digite o código que ele pedir.",
+  "apps.settings.pairStart": "Mostrar um código",
+  "apps.settings.pairExpires": "Válido até {time}, uso único.",
+  "apps.settings.deviceNeverSeen": "nunca usado",
+  "apps.settings.deviceExpires": "expira {date}",
+  "apps.settings.deviceRevoke": "Revogar",
+  "apps.settings.sentinels": "Sentinelas",
+  "apps.settings.sentinelsHint":
+    "Observadores sem modelo: escrevem no inbox, e os marcados para triagem perguntam a um modelo barato se vale te incomodar.",
+  "apps.settings.sentinel.repeatedFailure": "Falha repetida",
+  "apps.settings.sentinel.repeatedFailureHint": "A mesma skill ou prompt falhou duas vezes em 24 horas.",
+  "apps.settings.sentinel.silentRoutine": "Rotina silenciosa",
+  "apps.settings.sentinel.silentRoutineHint":
+    "Uma rotina habilitada não dispara há duas vezes o intervalo dela.",
+  "apps.settings.sentinel.connectorDelta": "Itens novos em conectores",
+  "apps.settings.sentinel.connectorDeltaHint": "E-mails ou eventos novos desde a última checagem horária.",
+  "apps.settings.sentinel.repeatDetector": "Fez duas vezes → skill",
+  "apps.settings.sentinel.repeatDetectorHint":
+    "Prompts manuais parecidos em 30 dias viram sugestão de skill.",
+  "apps.settings.sentinel.fsWatch": "Vigiar pastas",
+  "apps.settings.sentinel.fsWatchHint":
+    "Reindexa quando as pastas indexadas mudam (desligado por padrão em árvores grandes).",
+  "apps.settings.sentinel.triage": "Triagem com modelo",
+  "apps.settings.sentinel.triageHint":
+    "Uma execução curta somente leitura decide ignorar / notificar / propor, dentro do próprio orçamento diário.",
+  "apps.settings.triageModel": "Modelo da triagem",
+  "apps.settings.triageBudget": "Orçamento da triagem por dia (US$)",
+  "apps.settings.telegram": "Telegram",
+  "apps.settings.telegramHint":
+    "Envia linhas do inbox para um chat. O token do bot é lido da variável de ambiente {env}, nunca armazenado.",
+  "apps.settings.telegramChat": "Id do chat",
+  "apps.settings.telegramMinTone": "Tom mínimo para enviar",
+  "apps.settings.telegramTest": "Enviar mensagem de teste",
+  "apps.settings.telegramOk": "Mensagem enviada ao Telegram.",
+  "apps.settings.telegramFailed": "Telegram falhou",
   "apps.settings.desktopNotify": "Notificações do sistema",
   "apps.settings.desktopNotifyHint":
     "Aprovações, falhas e alertas chegam como notificação do sistema quando esta aba não está na frente. O navegador pede permissão uma vez.",

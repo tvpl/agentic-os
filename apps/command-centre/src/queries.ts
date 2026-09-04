@@ -30,6 +30,7 @@ export const qk = {
   runs: (params?: Record<string, string | number | undefined>) => ["runs", params ?? {}] as const,
   run: (id: string) => ["run", id] as const,
   sessions: ["sessions"] as const,
+  devices: ["devices"] as const,
   session: (id: string) => ["sessions", id] as const,
   metrics: ["metrics"] as const,
   artifacts: ["artifacts"] as const,
