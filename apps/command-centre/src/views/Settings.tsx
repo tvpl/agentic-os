@@ -1,6 +1,22 @@
 import { useContext, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowRight, Bell, BellOff, Check, CheckCircle2, Download, Eye, EyeOff, Plus, RefreshCw, Stethoscope, TerminalSquare, Trash2, Webhook, X } from "lucide-react";
+import {
+  ArrowRight,
+  Bell,
+  BellOff,
+  Check,
+  CheckCircle2,
+  Download,
+  Eye,
+  EyeOff,
+  Plus,
+  RefreshCw,
+  Stethoscope,
+  TerminalSquare,
+  Trash2,
+  Webhook,
+  X,
+} from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type DoctorReport, type ProviderId, type ProviderSnapshot } from "../api";
 import { I18nContext, useLocale, useT, type Lang } from "../i18n";
@@ -9,7 +25,14 @@ import { ErrorBox, Skeleton, formatBytes, timeAgo, useToast } from "../component
 import { Badge, Button, EmptyState, Field, Tabs } from "../components/primitives";
 import { useConfirm } from "../hooks/useConfirm";
 import { getNotifySound, setNotifySound } from "../hooks/useNotifications";
-import { PRESETS, applyPreset, type PresetId } from "../theme";
+import {
+  PRESETS,
+  applyHudIntensity,
+  applyPreset,
+  currentHudIntensity,
+  readStoredHudIntensity,
+  type PresetId,
+} from "../theme";
 import { DEFAULT_LAYOUT, WIDGET_ORDER, baseId, isWidgetId, type WidgetBox } from "../desktop/defaultLayout";
 import { WIDGET_REGISTRY } from "../desktop/registry";
 import { errorMessage, isAbsolutePath, isOffline, slugify } from "./shared";
@@ -24,7 +47,10 @@ interface SettingsShape {
   timezone: string;
   defaultProvider: ProviderId;
   securityProfile: string;
-  providers: Record<ProviderId, { enabled: boolean; defaultModel: string | null; defaultEffort: string; binaryPath: string | null }>;
+  providers: Record<
+    ProviderId,
+    { enabled: boolean; defaultModel: string | null; defaultEffort: string; binaryPath: string | null }
+  >;
   indexedFolders: Array<{ path: string; area: string | null; enabled: boolean }>;
   excludes: string[];
   areas: string[];
@@ -66,8 +92,27 @@ interface BackupInfo {
   sizeBytes: number;
 }
 
-type TabId = "identity" | "theme" | "providers" | "memory" | "desktop" | "security" | "notifications" | "backups" | "diagnostics";
-const TAB_IDS: TabId[] = ["identity", "theme", "providers", "memory", "desktop", "security", "notifications", "backups", "diagnostics"];
+type TabId =
+  | "identity"
+  | "theme"
+  | "providers"
+  | "memory"
+  | "desktop"
+  | "security"
+  | "notifications"
+  | "backups"
+  | "diagnostics";
+const TAB_IDS: TabId[] = [
+  "identity",
+  "theme",
+  "providers",
+  "memory",
+  "desktop",
+  "security",
+  "notifications",
+  "backups",
+  "diagnostics",
+];
 const PROFILES = ["read_only", "review_before_write", "controlled_write", "approved_automation"] as const;
 
 export default function Settings({ onMetaChanged }: { onMetaChanged: () => void }) {
@@ -77,7 +122,9 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
   const requested = params.get("tab") as TabId | null;
-  const [tab, setTabState] = useState<TabId>(requested && TAB_IDS.includes(requested) ? requested : "identity");
+  const [tab, setTabState] = useState<TabId>(
+    requested && TAB_IDS.includes(requested) ? requested : "identity",
+  );
   const setTab = (id: TabId) => {
     setTabState(id);
     setParams(id === "identity" ? {} : { tab: id }, { replace: true });
@@ -85,7 +132,8 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
   const settings = useApiQuery<SettingsShape>(qk.settings, "/api/settings");
 
   const save = useMutation({
-    mutationFn: ({ patch }: { patch: Partial<SettingsShape>; silent?: boolean }) => api.put<{ settings: SettingsShape; pendingApproval: Approval | null }>("/api/settings", patch),
+    mutationFn: ({ patch }: { patch: Partial<SettingsShape>; silent?: boolean }) =>
+      api.put<{ settings: SettingsShape; pendingApproval: Approval | null }>("/api/settings", patch),
     onSuccess: (res, vars) => {
       if (res.pendingApproval) toast(res.pendingApproval.description, "info");
       else if (!vars.silent) toast(t("common.saved"), "ok");
@@ -101,10 +149,25 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
       qc.invalidateQueries({ queryKey: qk.settings }).catch(() => undefined);
     },
   });
-  const put = (patch: Partial<SettingsShape>, silent = false) => save.mutateAsync({ patch, silent }).catch(() => undefined);
+  const put = (patch: Partial<SettingsShape>, silent = false) =>
+    save.mutateAsync({ patch, silent }).catch(() => undefined);
 
-  if (settings.isPending && !settings.data) return <div className="page"><Skeleton lines={8} /></div>;
-  if (settings.error && !settings.data) return <div className="page"><ErrorBox message={errorMessage(settings.error)} offline={isOffline(settings.error)} onRetry={() => void settings.refetch()} /></div>;
+  if (settings.isPending && !settings.data)
+    return (
+      <div className="page">
+        <Skeleton lines={8} />
+      </div>
+    );
+  if (settings.error && !settings.data)
+    return (
+      <div className="page">
+        <ErrorBox
+          message={errorMessage(settings.error)}
+          offline={isOffline(settings.error)}
+          onRetry={() => void settings.refetch()}
+        />
+      </div>
+    );
   const s = settings.data;
   if (!s) return null;
 
@@ -127,8 +190,19 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
           <h1>{t("settings.title")}</h1>
         </div>
       </div>
-      <Tabs id="settings-tabs" tabs={tabs} active={tab} onChange={(id) => setTab(id as TabId)} ariaLabel={t("settings.title")} />
-      <div className="tab-panel" role="tabpanel" id={`settings-tabs-panel-${tab}`} aria-labelledby={`settings-tabs-tab-${tab}`}>
+      <Tabs
+        id="settings-tabs"
+        tabs={tabs}
+        active={tab}
+        onChange={(id) => setTab(id as TabId)}
+        ariaLabel={t("settings.title")}
+      />
+      <div
+        className="tab-panel"
+        role="tabpanel"
+        id={`settings-tabs-panel-${tab}`}
+        aria-labelledby={`settings-tabs-tab-${tab}`}
+      >
         {tab === "identity" && <IdentityTab s={s} put={put} setLang={setLang} />}
         {tab === "theme" && <ThemeTab s={s} put={put} />}
         {tab === "providers" && <ProvidersTab s={s} put={put} />}
@@ -150,11 +224,26 @@ function IdentityTab({ s, put, setLang }: { s: SettingsShape; put: Put; setLang:
   return (
     <div className="card stack">
       <Field label={t("settings.name")} htmlFor="st-name">
-        <input key={s.systemName} id="st-name" className="input" defaultValue={s.systemName} onBlur={(e) => e.target.value.trim() && e.target.value !== s.systemName && void put({ systemName: e.target.value.trim() })} />
+        <input
+          key={s.systemName}
+          id="st-name"
+          className="input"
+          defaultValue={s.systemName}
+          onBlur={(e) =>
+            e.target.value.trim() &&
+            e.target.value !== s.systemName &&
+            void put({ systemName: e.target.value.trim() })
+          }
+        />
       </Field>
       <div className="grid grid-2">
         <Field label={t("settings.theme")} htmlFor="st-theme">
-          <select id="st-theme" className="input" value={s.theme} onChange={(e) => void put({ theme: e.target.value as SettingsShape["theme"] }, true)}>
+          <select
+            id="st-theme"
+            className="input"
+            value={s.theme}
+            onChange={(e) => void put({ theme: e.target.value as SettingsShape["theme"] }, true)}
+          >
             <option value="dark">{t("settings.dark")}</option>
             <option value="light">{t("settings.light")}</option>
             <option value="system">{t("settings.system")}</option>
@@ -175,14 +264,36 @@ function IdentityTab({ s, put, setLang }: { s: SettingsShape; put: Put; setLang:
           </select>
         </Field>
         <Field label={t("settings.accent")} htmlFor="st-accent">
-          <input id="st-accent" type="color" className="input" style={{ height: 36, padding: 3 }} value={s.accentColor} onChange={(e) => void put({ accentColor: e.target.value }, true)} />
+          <input
+            id="st-accent"
+            type="color"
+            className="input"
+            style={{ height: 36, padding: 3 }}
+            value={s.accentColor}
+            onChange={(e) => void put({ accentColor: e.target.value }, true)}
+          />
         </Field>
         <Field label={t("settings.port")} htmlFor="st-port" hint={t("settings.portHint")}>
-          <input key={s.port} id="st-port" type="number" min={1024} max={65535} className="input" defaultValue={s.port} onBlur={(e) => Number(e.target.value) !== s.port && void put({ port: Number(e.target.value) })} />
+          <input
+            key={s.port}
+            id="st-port"
+            type="number"
+            min={1024}
+            max={65535}
+            className="input"
+            defaultValue={s.port}
+            onBlur={(e) => Number(e.target.value) !== s.port && void put({ port: Number(e.target.value) })}
+          />
         </Field>
       </div>
       <Field label={t("settings.timezone")} htmlFor="st-tz" hint={t("settings.timezoneHint")}>
-        <input key={s.timezone} id="st-tz" className="input" defaultValue={s.timezone} onBlur={(e) => e.target.value !== s.timezone && void put({ timezone: e.target.value })} />
+        <input
+          key={s.timezone}
+          id="st-tz"
+          className="input"
+          defaultValue={s.timezone}
+          onBlur={(e) => e.target.value !== s.timezone && void put({ timezone: e.target.value })}
+        />
       </Field>
       <Field label={t("settings.dataDir")} htmlFor="st-home" hint={t("settings.dataDirHint")}>
         <input id="st-home" className="input mono" readOnly value="MORDOMO_HOME" />
@@ -197,16 +308,28 @@ function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
   const qc = useQueryClient();
   const providers = useOsProviders();
   const smoke = useMutation({
-    mutationFn: (id: ProviderId) => api.post<{ run: { status: string; durationMs: number | null }; passed: boolean }>(`/api/providers/${id}/smoke`),
+    mutationFn: (id: ProviderId) =>
+      api.post<{ run: { status: string; durationMs: number | null }; passed: boolean }>(
+        `/api/providers/${id}/smoke`,
+      ),
     onSuccess: (res, id) => {
       toast(`${id}: ${res.passed ? t("settings.smokeOk") : res.run.status}`, res.passed ? "ok" : "danger");
       qc.invalidateQueries({ queryKey: qk.providers }).catch(() => undefined);
     },
     onError: (err: Error) => toast(err.message, "danger"),
   });
-  const patchProvider = (id: ProviderId, patch: Partial<SettingsShape["providers"][ProviderId]>, silent = false) => put({ providers: { ...s.providers, [id]: { ...s.providers[id], ...patch } } }, silent);
+  const patchProvider = (
+    id: ProviderId,
+    patch: Partial<SettingsShape["providers"][ProviderId]>,
+    silent = false,
+  ) => put({ providers: { ...s.providers, [id]: { ...s.providers[id], ...patch } } }, silent);
 
-  if (providers.isPending && !providers.data) return <div className="card"><Skeleton lines={6} /></div>;
+  if (providers.isPending && !providers.data)
+    return (
+      <div className="card">
+        <Skeleton lines={6} />
+      </div>
+    );
   return (
     <div className="card stack">
       {(providers.data ?? []).map((prov: ProviderSnapshot) => (
@@ -220,25 +343,57 @@ function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
                   {t("settings.promptLevelReadOnly")}
                 </Badge>
               )}
-              <div className="meta">{prov.health.installed ? `${prov.health.version ?? t("setup.installed")} · ${t("settings.auth")}: ${prov.health.authenticated ? t("settings.authOk") : t("settings.authUnknown")}` : prov.health.detail}</div>
+              <div className="meta">
+                {prov.health.installed
+                  ? `${prov.health.version ?? t("setup.installed")} · ${t("settings.auth")}: ${prov.health.authenticated ? t("settings.authOk") : t("settings.authUnknown")}`
+                  : prov.health.detail}
+              </div>
             </div>
             <div className="row-actions">
-              {prov.isDefault && <Badge kind="state" tone="info">{t("dash.default")}</Badge>}
+              {prov.isDefault && (
+                <Badge kind="state" tone="info">
+                  {t("dash.default")}
+                </Badge>
+              )}
               <label className="check">
-                <input type="checkbox" checked={s.providers[prov.id].enabled} onChange={(e) => void patchProvider(prov.id, { enabled: e.target.checked })} />
+                <input
+                  type="checkbox"
+                  checked={s.providers[prov.id].enabled}
+                  onChange={(e) => void patchProvider(prov.id, { enabled: e.target.checked })}
+                />
                 {t("common.enabled")}
               </label>
-              <Button size="sm" variant="secondary" onClick={() => smoke.mutate(prov.id)} disabled={!s.providers[prov.id].enabled || !prov.health.installed} loading={smoke.isPending && smoke.variables === prov.id}>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => smoke.mutate(prov.id)}
+                disabled={!s.providers[prov.id].enabled || !prov.health.installed}
+                loading={smoke.isPending && smoke.variables === prov.id}
+              >
                 {t("settings.smokeTest")}
               </Button>
             </div>
           </div>
           <div className="grid grid-2">
             <Field label={t("skills.model")} htmlFor={`st-model-${prov.id}`} hint={t("settings.modelHint")}>
-              <input key={s.providers[prov.id].defaultModel ?? ""} id={`st-model-${prov.id}`} className="input mono" defaultValue={s.providers[prov.id].defaultModel ?? ""} onBlur={(e) => (e.target.value || null) !== s.providers[prov.id].defaultModel && void patchProvider(prov.id, { defaultModel: e.target.value || null }, true)} />
+              <input
+                key={s.providers[prov.id].defaultModel ?? ""}
+                id={`st-model-${prov.id}`}
+                className="input mono"
+                defaultValue={s.providers[prov.id].defaultModel ?? ""}
+                onBlur={(e) =>
+                  (e.target.value || null) !== s.providers[prov.id].defaultModel &&
+                  void patchProvider(prov.id, { defaultModel: e.target.value || null }, true)
+                }
+              />
             </Field>
             <Field label={t("skills.effort")} htmlFor={`st-effort-${prov.id}`}>
-              <select id={`st-effort-${prov.id}`} className="input" value={s.providers[prov.id].defaultEffort} onChange={(e) => void patchProvider(prov.id, { defaultEffort: e.target.value }, true)}>
+              <select
+                id={`st-effort-${prov.id}`}
+                className="input"
+                value={s.providers[prov.id].defaultEffort}
+                onChange={(e) => void patchProvider(prov.id, { defaultEffort: e.target.value }, true)}
+              >
                 {["default", "low", "medium", "high"].map((e2) => (
                   <option key={e2} value={e2}>
                     {t(`effort.${e2}` as "effort.low")}
@@ -260,7 +415,10 @@ function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
   const [newArea, setNewArea] = useState("");
   const [pathError, setPathError] = useState<string | null>(null);
   const addFolder = useMutation({
-    mutationFn: () => api.put("/api/settings", { indexedFolders: [...s.indexedFolders, { path: newPath.trim(), area: newArea || null, enabled: true }] }),
+    mutationFn: () =>
+      api.put("/api/settings", {
+        indexedFolders: [...s.indexedFolders, { path: newPath.trim(), area: newArea || null, enabled: true }],
+      }),
     onSuccess: () => {
       setNewPath("");
       setNewArea("");
@@ -269,7 +427,15 @@ function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
     onError: (err: Error) => setPathError(err.message),
   });
   const removeFolder = async (path: string) => {
-    if (await confirm({ title: t("settings.removeFolder"), body: path, danger: true, confirmLabel: t("common.delete") })) void put({ indexedFolders: s.indexedFolders.filter((x) => x.path !== path) });
+    if (
+      await confirm({
+        title: t("settings.removeFolder"),
+        body: path,
+        danger: true,
+        confirmLabel: t("common.delete"),
+      })
+    )
+      void put({ indexedFolders: s.indexedFolders.filter((x) => x.path !== path) });
   };
   const pathOk = !newPath.trim() || isAbsolutePath(newPath);
 
@@ -300,11 +466,23 @@ function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
                 </option>
               ))}
             </select>
-            <Button size="sm" variant="ghost" icon={<X aria-hidden />} aria-label={`${t("common.delete")} ${f.path}`} title={t("common.delete")} onClick={() => void removeFolder(f.path)} />
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<X aria-hidden />}
+              aria-label={`${t("common.delete")} ${f.path}`}
+              title={t("common.delete")}
+              onClick={() => void removeFolder(f.path)}
+            />
           </div>
         ))}
       </div>
-      <Field label={t("settings.addFolder")} htmlFor="st-newfolder" hint={t("settings.folderHint")} error={pathError ?? (pathOk ? undefined : t("settings.folderAbsolute"))}>
+      <Field
+        label={t("settings.addFolder")}
+        htmlFor="st-newfolder"
+        hint={t("settings.folderHint")}
+        error={pathError ?? (pathOk ? undefined : t("settings.folderAbsolute"))}
+      >
         <div className="folder-add">
           <input
             id="st-newfolder"
@@ -317,7 +495,12 @@ function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
               setPathError(null);
             }}
           />
-          <select className="input" value={newArea} onChange={(e) => setNewArea(e.target.value)} aria-label={t("brain.filterArea")}>
+          <select
+            className="input"
+            value={newArea}
+            onChange={(e) => setNewArea(e.target.value)}
+            aria-label={t("brain.filterArea")}
+          >
             <option value="">—</option>
             {s.areas.map((a) => (
               <option key={a} value={a}>
@@ -325,13 +508,22 @@ function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
               </option>
             ))}
           </select>
-          <Button size="sm" variant="primary" icon={<CheckCircle2 aria-hidden />} disabled={!newPath.trim() || !pathOk} loading={addFolder.isPending} onClick={() => addFolder.mutate()}>
+          <Button
+            size="sm"
+            variant="primary"
+            icon={<CheckCircle2 aria-hidden />}
+            disabled={!newPath.trim() || !pathOk}
+            loading={addFolder.isPending}
+            onClick={() => addFolder.mutate()}
+          >
             {t("settings.addFolder")}
           </Button>
         </div>
       </Field>
       <p className="hint">
-        <RefreshCw size={11} style={{ verticalAlign: -1 }} aria-hidden /> {t("brain.refresh")}: {t("nav.brain")} <ArrowRight size={11} style={{ verticalAlign: -1 }} aria-hidden /> {t("brain.refresh")}
+        <RefreshCw size={11} style={{ verticalAlign: -1 }} aria-hidden /> {t("brain.refresh")}:{" "}
+        {t("nav.brain")} <ArrowRight size={11} style={{ verticalAlign: -1 }} aria-hidden />{" "}
+        {t("brain.refresh")}
       </p>
       <Field label={t("settings.areas")} htmlFor="st-areas" hint={t("settings.areasHint")}>
         <input
@@ -340,7 +532,10 @@ function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
           className="input"
           defaultValue={s.areas.join(", ")}
           onBlur={(e) => {
-            const areas = e.target.value.split(",").map((a) => a.trim()).filter(Boolean);
+            const areas = e.target.value
+              .split(",")
+              .map((a) => a.trim())
+              .filter(Boolean);
             if (areas.length && areas.join() !== s.areas.join()) void put({ areas });
           }}
         />
@@ -353,7 +548,10 @@ function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
           rows={8}
           defaultValue={s.excludes.join("\n")}
           onBlur={(e) => {
-            const excludes = e.target.value.split("\n").map((x) => x.trim()).filter(Boolean);
+            const excludes = e.target.value
+              .split("\n")
+              .map((x) => x.trim())
+              .filter(Boolean);
             if (excludes.join() !== s.excludes.join()) void put({ excludes });
           }}
         />
@@ -368,7 +566,8 @@ function SecurityTab({ s, put }: { s: SettingsShape; put: Put }) {
   const qc = useQueryClient();
   const approvals = useApiQuery<Approval[]>(qk.approvals, "/api/approvals");
   const resolve = useMutation({
-    mutationFn: ({ id, decision }: { id: string; decision: "approved" | "denied" }) => api.post(`/api/approvals/${encodeURIComponent(id)}/resolve`, { decision }),
+    mutationFn: ({ id, decision }: { id: string; decision: "approved" | "denied" }) =>
+      api.post(`/api/approvals/${encodeURIComponent(id)}/resolve`, { decision }),
     onSuccess: (_r, vars) => {
       toast(vars.decision === "approved" ? t("settings.approved") : t("settings.denied"), "ok");
       qc.invalidateQueries({ queryKey: qk.approvals }).catch(() => undefined);
@@ -381,7 +580,12 @@ function SecurityTab({ s, put }: { s: SettingsShape; put: Put }) {
     <div className="stack">
       <div className="card stack">
         <Field label={t("settings.profile")} htmlFor="st-profile" hint={t("settings.profileHint")}>
-          <select id="st-profile" className="input" value={s.securityProfile} onChange={(e) => void put({ securityProfile: e.target.value })}>
+          <select
+            id="st-profile"
+            className="input"
+            value={s.securityProfile}
+            onChange={(e) => void put({ securityProfile: e.target.value })}
+          >
             {PROFILES.map((prof) => (
               <option key={prof} value={prof}>
                 {t(`profile.${prof}`)}
@@ -403,19 +607,26 @@ function SecurityTab({ s, put }: { s: SettingsShape; put: Put }) {
         <div className="apps-sound">
           <div className="min0">
             <strong>
-              <Webhook aria-hidden style={{ verticalAlign: -2, marginRight: 6 }} /> {t("apps.settings.webhooks")}
+              <Webhook aria-hidden style={{ verticalAlign: -2, marginRight: 6 }} />{" "}
+              {t("apps.settings.webhooks")}
             </strong>
             <p className="hint">{t("apps.settings.webhooksHint")}</p>
           </div>
           <Button
             variant={s.routines.allowWebhooks ? "outline" : "secondary"}
             aria-pressed={s.routines.allowWebhooks}
-            onClick={() => void put({ routines: { ...s.routines, allowWebhooks: !s.routines.allowWebhooks } })}
+            onClick={() =>
+              void put({ routines: { ...s.routines, allowWebhooks: !s.routines.allowWebhooks } })
+            }
           >
             {s.routines.allowWebhooks ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
           </Button>
         </div>
-        <Field label={t("apps.settings.allowedCommands")} htmlFor="st-allowed-cmds" hint={t("apps.settings.allowedCommandsHint")}>
+        <Field
+          label={t("apps.settings.allowedCommands")}
+          htmlFor="st-allowed-cmds"
+          hint={t("apps.settings.allowedCommandsHint")}
+        >
           <input
             key={s.connectors.allowedCommands.join()}
             id="st-allowed-cmds"
@@ -423,13 +634,18 @@ function SecurityTab({ s, put }: { s: SettingsShape; put: Put }) {
             placeholder="npx, /usr/local/bin/mcp-server"
             defaultValue={s.connectors.allowedCommands.join(", ")}
             onBlur={(e) => {
-              const list = e.target.value.split(",").map((x) => x.trim()).filter(Boolean);
-              if (list.join() !== s.connectors.allowedCommands.join()) void put({ connectors: { ...s.connectors, allowedCommands: list } });
+              const list = e.target.value
+                .split(",")
+                .map((x) => x.trim())
+                .filter(Boolean);
+              if (list.join() !== s.connectors.allowedCommands.join())
+                void put({ connectors: { ...s.connectors, allowedCommands: list } });
             }}
           />
         </Field>
         <p className="hint">
-          <TerminalSquare size={11} style={{ verticalAlign: -1 }} aria-hidden /> {t("apps.settings.allowedCommandsExample")}
+          <TerminalSquare size={11} style={{ verticalAlign: -1 }} aria-hidden />{" "}
+          {t("apps.settings.allowedCommandsExample")}
         </p>
       </div>
       <div className="card">
@@ -442,14 +658,25 @@ function SecurityTab({ s, put }: { s: SettingsShape; put: Put }) {
           (approvals.data ?? []).map((a) => (
             <div className="list-row" key={a.id}>
               <div>
-                <Badge kind="state" tone="warn">{a.kind}</Badge>
+                <Badge kind="state" tone="warn">
+                  {a.kind}
+                </Badge>
                 <div className="approval-desc">{a.description}</div>
               </div>
               <div className="row-actions">
-                <Button size="sm" variant="primary" onClick={() => resolve.mutate({ id: a.id, decision: "approved" })} loading={resolve.isPending && resolve.variables?.id === a.id}>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => resolve.mutate({ id: a.id, decision: "approved" })}
+                  loading={resolve.isPending && resolve.variables?.id === a.id}
+                >
                   {t("settings.approve")}
                 </Button>
-                <Button size="sm" variant="danger" onClick={() => resolve.mutate({ id: a.id, decision: "denied" })}>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => resolve.mutate({ id: a.id, decision: "denied" })}
+                >
                   {t("settings.deny")}
                 </Button>
               </div>
@@ -477,17 +704,33 @@ function BackupsTab() {
     onError: (err: Error) => toast(err.message, "danger"),
   });
   const restore = useMutation({
-    mutationFn: (name: string) => api.post<{ note?: string; message?: string; staged?: boolean }>(`/api/backups/${encodeURIComponent(name)}/restore`),
+    mutationFn: (name: string) =>
+      api.post<{ note?: string; message?: string; staged?: boolean }>(
+        `/api/backups/${encodeURIComponent(name)}/restore`,
+      ),
     onSuccess: (res) => toast(res.note ?? res.message ?? t("settings.restored"), "info"),
     onError: (err: Error) => toast(err.message, "danger"),
   });
   const onRestore = async (b: BackupInfo) => {
-    if (await confirm({ title: `${t("settings.restore")} ${b.name}?`, body: t("settings.restoreBody"), danger: true, confirmLabel: t("settings.restore") })) restore.mutate(b.name);
+    if (
+      await confirm({
+        title: `${t("settings.restore")} ${b.name}?`,
+        body: t("settings.restoreBody"),
+        danger: true,
+        confirmLabel: t("settings.restore"),
+      })
+    )
+      restore.mutate(b.name);
   };
   return (
     <div className="card stack">
       <div>
-        <Button variant="primary" icon={<Download aria-hidden />} onClick={() => create.mutate()} loading={create.isPending}>
+        <Button
+          variant="primary"
+          icon={<Download aria-hidden />}
+          onClick={() => create.mutate()}
+          loading={create.isPending}
+        >
           {t("settings.newBackup")}
         </Button>
       </div>
@@ -504,7 +747,12 @@ function BackupsTab() {
                 {timeAgo(b.createdAt, locale)} · {formatBytes(b.sizeBytes)}
               </div>
             </div>
-            <Button size="sm" variant="secondary" onClick={() => void onRestore(b)} loading={restore.isPending && restore.variables === b.name}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => void onRestore(b)}
+              loading={restore.isPending && restore.variables === b.name}
+            >
               {t("settings.restore")}
             </Button>
           </div>
@@ -524,7 +772,12 @@ function DiagnosticsTab() {
   return (
     <div className="card stack">
       <div>
-        <Button variant="primary" icon={<Stethoscope aria-hidden />} onClick={() => doctor.mutate()} loading={doctor.isPending}>
+        <Button
+          variant="primary"
+          icon={<Stethoscope aria-hidden />}
+          onClick={() => doctor.mutate()}
+          loading={doctor.isPending}
+        >
           {t("settings.runDoctor")}
         </Button>
       </div>
@@ -533,7 +786,10 @@ function DiagnosticsTab() {
           {doctor.data.checks.map((c) => (
             <div className="list-row" key={c.id}>
               <div className="truncate">
-                <span className={`dot ${c.status === "ok" ? "ok" : c.status === "warn" ? "warn" : c.status === "fail" ? "danger" : "dim"}`} style={{ marginRight: 8 }} />
+                <span
+                  className={`dot ${c.status === "ok" ? "ok" : c.status === "warn" ? "warn" : c.status === "fail" ? "danger" : "dim"}`}
+                  style={{ marginRight: 8 }}
+                />
                 {c.label}
                 <div className="meta truncate" title={c.detail}>
                   {c.detail}
@@ -558,15 +814,45 @@ function ThemeTab({ s, put }: { s: SettingsShape; put: Put }) {
     toast(t("apps.settings.presetApplied", { name: preset.label }), "ok");
     void put({ themePreset: id, accentColor: preset.accent }, true);
   };
+  const [hud, setHud] = useState(() => readStoredHudIntensity() ?? currentHudIntensity());
+  const onHud = (v: number) => {
+    setHud(v);
+    applyHudIntensity(v);
+  };
   return (
     <div className="card stack">
       <div>
         <h2>{t("apps.settings.presets")}</h2>
         <p className="hint">{t("apps.settings.presetsHint")}</p>
       </div>
+      <div className="field">
+        <label htmlFor="hud-intensity">
+          {t("shell.hud.intensity")} · <span className="mono">{Math.round(hud * 100)}%</span>
+        </label>
+        <div className="hud-slider">
+          <span className="hint">{t("shell.hud.off")}</span>
+          <input
+            id="hud-intensity"
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={hud}
+            onChange={(e) => onHud(parseFloat(e.target.value))}
+          />
+          <span className="hint">{t("shell.hud.full")}</span>
+        </div>
+        <p className="hint">{t("shell.hud.intensityHint")}</p>
+      </div>
       <div className="apps-presets">
         {PRESETS.map((preset) => (
-          <button key={preset.id} type="button" className="apps-preset" aria-pressed={preset.id === current} onClick={() => pick(preset.id)}>
+          <button
+            key={preset.id}
+            type="button"
+            className="apps-preset"
+            aria-pressed={preset.id === current}
+            onClick={() => pick(preset.id)}
+          >
             <span className="swatch" aria-hidden>
               {preset.swatch.map((c, i) => (
                 <span key={i} style={{ background: c }} />
@@ -593,7 +879,13 @@ function DesktopTab({ s, put }: { s: SettingsShape; put: Put }) {
 
   const toggleWidget = (id: string) => {
     const base = baseId(id);
-    const fallback = (isWidgetId(base) ? DEFAULT_LAYOUT[base] : undefined) ?? { x: 0, y: 0, w: 6, h: 4, visible: true };
+    const fallback = (isWidgetId(base) ? DEFAULT_LAYOUT[base] : undefined) ?? {
+      x: 0,
+      y: 0,
+      w: 6,
+      h: 4,
+      visible: true,
+    };
     const box: WidgetBox = layout[id] ?? { ...fallback, visible: false };
     void put({ dashboardLayout: { ...layout, [id]: { ...box, visible: !(box.visible ?? true) } } }, true);
   };
@@ -611,7 +903,13 @@ function DesktopTab({ s, put }: { s: SettingsShape; put: Put }) {
             const def = isWidgetId(base) ? WIDGET_REGISTRY[base] : undefined;
             const visible = layout[id]?.visible ?? true;
             return (
-              <button key={id} type="button" className="apps-widget-toggle" aria-pressed={visible} onClick={() => toggleWidget(id)}>
+              <button
+                key={id}
+                type="button"
+                className="apps-widget-toggle"
+                aria-pressed={visible}
+                onClick={() => toggleWidget(id)}
+              >
                 {visible ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
                 <span className="truncate">{def ? t(def.titleKey) : id}</span>
                 <span className="id">{id}</span>
@@ -664,10 +962,28 @@ function MicroAppsCard({ s, put }: { s: SettingsShape; put: Put }) {
               />
             </Field>
             <Field label={t("apps.settings.maDesc")} htmlFor={`ma-desc-${i}`}>
-              <input id={`ma-desc-${i}`} className="input" value={row.description} onChange={(e) => patchRow(i, { description: e.target.value })} onBlur={() => commit(rows)} />
+              <input
+                id={`ma-desc-${i}`}
+                className="input"
+                value={row.description}
+                onChange={(e) => patchRow(i, { description: e.target.value })}
+                onBlur={() => commit(rows)}
+              />
             </Field>
-            <Field label={t("apps.settings.maHref")} htmlFor={`ma-href-${i}`} error={hrefOk ? undefined : t("apps.settings.maHrefInvalid")}>
-              <input id={`ma-href-${i}`} className="input mono" value={row.href} aria-invalid={!hrefOk} placeholder="/pixel" onChange={(e) => patchRow(i, { href: e.target.value })} onBlur={() => commit(rows)} />
+            <Field
+              label={t("apps.settings.maHref")}
+              htmlFor={`ma-href-${i}`}
+              error={hrefOk ? undefined : t("apps.settings.maHrefInvalid")}
+            >
+              <input
+                id={`ma-href-${i}`}
+                className="input mono"
+                value={row.href}
+                aria-invalid={!hrefOk}
+                placeholder="/pixel"
+                onChange={(e) => patchRow(i, { href: e.target.value })}
+                onBlur={() => commit(rows)}
+              />
             </Field>
             <Button
               size="sm"
@@ -706,7 +1022,12 @@ function NotificationsTab() {
           <strong>{t("apps.settings.sound")}</strong>
           <p className="hint">{t("apps.settings.soundHint")}</p>
         </div>
-        <Button variant={sound ? "outline" : "secondary"} aria-pressed={sound} icon={sound ? <Bell aria-hidden /> : <BellOff aria-hidden />} onClick={toggle}>
+        <Button
+          variant={sound ? "outline" : "secondary"}
+          aria-pressed={sound}
+          icon={sound ? <Bell aria-hidden /> : <BellOff aria-hidden />}
+          onClick={toggle}
+        >
           {sound ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
         </Button>
       </div>

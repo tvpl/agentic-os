@@ -96,6 +96,19 @@ export const BrainSettingsSchema = z.object({
 });
 export type BrainSettings = z.infer<typeof BrainSettingsSchema>;
 
+/**
+ * The machine's IANA timezone, or "UTC" when the runtime cannot resolve one.
+ * Used as the settings default so a non-interactive setup does not leave the
+ * clock and the routines in different zones.
+ */
+export function detectTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
 export const SettingsSchema = z.object({
   version: z.number().default(1),
   systemName: z.string().default("MordomoOS"),
@@ -107,7 +120,7 @@ export const SettingsSchema = z.object({
     .default("#f97316"),
   port: z.number().int().min(1024).max(65535).default(4777),
   bindAddress: z.string().default("127.0.0.1"),
-  timezone: z.string().default("UTC"),
+  timezone: z.string().default(() => detectTimezone()),
   autostart: z.boolean().default(false),
   setupCompleted: z.boolean().default(false),
   defaultProvider: ProviderId.default("claude"),
@@ -132,11 +145,19 @@ export const SettingsSchema = z.object({
       logMaxFileBytes: z.number().int().min(65536).default(5 * 1024 * 1024),
       maxIndexedFileBytes: z.number().int().min(1024).default(2 * 1024 * 1024),
       previewMaxBytes: z.number().int().min(1024).default(256 * 1024),
+      /** Finished runs older than this are deleted by `RunManager.prune()`. */
+      runRetentionDays: z.number().int().min(1).default(90),
+      /** Hard cap on finished runs kept, newest first (0 = no cap). */
+      runRetentionMax: z.number().int().min(0).default(2000),
+      /** Rows kept in `routine_history`. */
+      routineHistoryRetentionDays: z.number().int().min(1).default(90),
+      /** A pending approval older than this is swept to `expired`. */
+      approvalTtlDays: z.number().int().min(1).default(7),
     })
     .default({}),
   favoriteSkills: z.array(z.string()).default([]),
   /** Theme preset id (see apps/command-centre/src/theme.ts); the shell reads `settings.themePreset`. */
-  themePreset: z.enum(["hud-orange", "forest", "ocean", "mono"]).default("hud-orange"),
+  themePreset: z.enum(["hud-orange", "jarvis", "forest", "ocean", "mono"]).default("hud-orange"),
   /** User-defined micro apps listed on the desktop. */
   microApps: z.array(MicroAppSchema).default([]),
   /** Routine engine defaults (F-BACKEND: routines v2). */

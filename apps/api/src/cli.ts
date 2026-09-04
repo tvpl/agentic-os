@@ -16,6 +16,7 @@ import {
   recall,
   recordRecall,
   DEFAULT_EXCLUDES,
+  detectTimezone,
   EffortLevel,
   ProviderId,
   type IndexStats,
@@ -489,9 +490,12 @@ async function cmdSetup(args: CliArgs): Promise<void> {
       const firstEnabled = ProviderId.options.find((i) => settings.providers[i].enabled);
       if (firstEnabled) settings.defaultProvider = firstEnabled;
     }
+    // A stored (or defaulted) "UTC" means nobody ever chose a zone: use the
+    // machine's, so the clock and the routines agree after `setup --defaults`.
+    if (!settings.timezone || settings.timezone === "UTC") settings.timezone = detectTimezone();
     settings.setupCompleted = true;
     settings = ctx.settingsStore.save(settings);
-    p.log.success("Applied defaults (non-interactive mode).");
+    p.log.success(`Applied defaults (non-interactive mode). Timezone: ${settings.timezone}.`);
   } else {
     // 2. Enable providers
     const enabled = await p.multiselect({
@@ -633,9 +637,8 @@ async function cmdSetup(args: CliArgs): Promise<void> {
     if (Number.isInteger(portNum) && portNum >= 1024 && portNum <= 65535) settings.port = portNum;
     const tz = await p.text({
       message: "Timezone for routines?",
-      defaultValue:
-        settings.timezone === "UTC" ? Intl.DateTimeFormat().resolvedOptions().timeZone : settings.timezone,
-      placeholder: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      defaultValue: settings.timezone === "UTC" ? detectTimezone() : settings.timezone,
+      placeholder: detectTimezone(),
     });
     if (p.isCancel(tz)) return cancel();
     settings.timezone = (tz as string) || settings.timezone;
@@ -990,11 +993,17 @@ async function cmdRecall(args: CliArgs): Promise<void> {
     console.log(
       `${pc.bold("recall")} keywords: ${result.keywords.join(", ") || "(none)"} · ${result.candidatesConsidered} candidates scored, ${result.opened} opened, ~${result.tokensEstimate} tokens`,
     );
-    if (result.answerContext.length === 0) console.log(pc.dim("No indexed section matched. Run `mordomo index` if the workspace changed."));
+    if (result.answerContext.length === 0)
+      console.log(pc.dim("No indexed section matched. Run `mordomo index` if the workspace changed."));
     for (const c of result.answerContext) {
       console.log(`\n${pc.green("●")} ${c.path} § ${pc.bold(c.section)} ${pc.dim(`(score ${c.score})`)}`);
       console.log(pc.dim(`  why: ${c.why}`));
-      console.log(c.excerpt.split("\n").map((l) => `  ${l}`).join("\n"));
+      console.log(
+        c.excerpt
+          .split("\n")
+          .map((l) => `  ${l}`)
+          .join("\n"),
+      );
     }
   } finally {
     ctx.close();

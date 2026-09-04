@@ -3,7 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import Fastify, { LogController, type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import Fastify, {
+  LogController,
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
+} from "fastify";
 import fastifyStatic from "@fastify/static";
 import { ZodError } from "zod";
 import { JsonlLogger, PathAccessError, redactSecrets } from "@mordomo/core";
@@ -158,23 +163,28 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
     });
   });
 
-  app.setErrorHandler((err: Error & { statusCode?: number; code?: string; validation?: unknown }, req, reply) => {
-    if (err instanceof ZodError) {
-      const message = err.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
-      return reply.code(400).send(errorBody("validation", message, err.issues));
-    }
-    if (err instanceof PathAccessError || err.name === "PathAccessError") {
-      return reply.code(403).send(errorBody("forbidden_path", err.message));
-    }
-    const status = typeof err.statusCode === "number" && err.statusCode >= 400 && err.statusCode <= 599 ? err.statusCode : 500;
-    if (status < 500) {
-      const code = typeof err.code === "string" && err.code ? err.code : (STATUS_CODES[status] ?? "error");
-      return reply.code(status).send(errorBody(code, err.message));
-    }
-    // Never leak internals (paths, stack, SQL) to the client; keep them in the log.
-    req.log.error({ err, reqId: req.id, url: safeUrl(req.url), msg: "unhandled error" });
-    return reply.code(500).send(errorBody("internal", "Internal error"));
-  });
+  app.setErrorHandler(
+    (err: Error & { statusCode?: number; code?: string; validation?: unknown }, req, reply) => {
+      if (err instanceof ZodError) {
+        const message = err.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+        return reply.code(400).send(errorBody("validation", message, err.issues));
+      }
+      if (err instanceof PathAccessError || err.name === "PathAccessError") {
+        return reply.code(403).send(errorBody("forbidden_path", err.message));
+      }
+      const status =
+        typeof err.statusCode === "number" && err.statusCode >= 400 && err.statusCode <= 599
+          ? err.statusCode
+          : 500;
+      if (status < 500) {
+        const code = typeof err.code === "string" && err.code ? err.code : (STATUS_CODES[status] ?? "error");
+        return reply.code(status).send(errorBody(code, err.message));
+      }
+      // Never leak internals (paths, stack, SQL) to the client; keep them in the log.
+      req.log.error({ err, reqId: req.id, url: safeUrl(req.url), msg: "unhandled error" });
+      return reply.code(500).send(errorBody("internal", "Internal error"));
+    },
+  );
 
   app.addHook("onClose", async () => {
     closeAllSse();
@@ -233,16 +243,29 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
 
   if (ctx.restoredAtBoot) {
     app.log.info({ backup: ctx.restoredAtBoot.name, msg: "applied staged restore at boot" });
-     
+
     console.log(`[mordomo] applied staged restore of backup ${ctx.restoredAtBoot.name}`);
   }
   const recovered = ctx.runs.recoverInterrupted();
   if (recovered > 0) {
     app.log.info({ recovered, msg: "marked orphaned runs as interrupted" });
-     
+
     console.log(`[mordomo] marked ${recovered} orphaned run(s) as interrupted`);
   }
   ctx.scheduler.start();
+
+  // Approvals nobody answered expire on their own: sweep at boot, then hourly.
+  const sweepApprovals = () => {
+    try {
+      const expired = ctx.expireStaleApprovals();
+      if (expired > 0) app.log.info({ expired, msg: "expired stale approvals" });
+    } catch (err) {
+      app.log.error({ err, msg: "approval sweep failed" });
+    }
+  };
+  sweepApprovals();
+  const approvalSweep = setInterval(sweepApprovals, 3_600_000);
+  approvalSweep.unref?.();
 
   await app.listen({ port: settings.port, host: settings.bindAddress });
   const url = `http://127.0.0.1:${settings.port}`;
@@ -259,6 +282,7 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
       process.off("SIGTERM", onSignal);
       process.off("SIGINT", onSignal);
       process.off("unhandledRejection", onRejection);
+      clearInterval(approvalSweep);
       try {
         fs.unlinkSync(pidFile);
       } catch {
@@ -277,7 +301,7 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   };
   const onSignal = (signal: NodeJS.Signals) => {
     app.log.info({ signal, msg: "shutdown requested" });
-     
+
     console.log(`[mordomo] ${signal} received — shutting down`);
     process.exitCode = 0;
     close().catch((err: unknown) => {
@@ -287,7 +311,7 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   };
   const onRejection = (reason: unknown) => {
     app.log.error({ err: reason, msg: "unhandledRejection" });
-     
+
     console.error("[mordomo] unhandled rejection:", reason);
   };
   process.on("SIGTERM", onSignal);

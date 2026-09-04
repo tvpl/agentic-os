@@ -76,7 +76,9 @@ export default function PromptWidget({ config }: WidgetProps) {
       }),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["runs"] }).catch(() => undefined);
-      if (res.runId) {
+      // Since 0.5.1 a gated run is parked as `waiting_approval` with its own id:
+      // decide by status, never by the presence of a run id.
+      if (res.status !== "waiting_approval" && res.runId) {
         setPrompt("");
         setPendingApproval(null);
         navigate(`/runs/${res.runId}`);

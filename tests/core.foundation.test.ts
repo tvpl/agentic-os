@@ -3,7 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   SettingsStore,
-
+  defaultSettings,
+  detectTimezone,
   openDb,
   SkillCatalog,
   SkillFrontmatterSchema,
@@ -38,6 +39,24 @@ describe("settings store", () => {
       // Idempotent: saving the same object changes nothing.
       store.save(reloaded);
       expect(store.load()).toEqual(reloaded);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("defaults the timezone to the machine zone and keeps an explicit one", () => {
+    const { paths, cleanup } = makeTempHome();
+    try {
+      const machine = detectTimezone();
+      expect(machine).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+      // Fresh settings follow the machine, so `setup --defaults` does not leave
+      // the clock and the routines in different zones.
+      expect(defaultSettings().timezone).toBe(machine);
+      const store = new SettingsStore(paths);
+      expect(store.load().timezone).toBe(machine);
+      // A zone the user chose survives a reload untouched.
+      expect(store.update({ timezone: "America/Sao_Paulo" }).timezone).toBe("America/Sao_Paulo");
+      expect(store.load().timezone).toBe("America/Sao_Paulo");
     } finally {
       cleanup();
     }
@@ -119,7 +138,9 @@ describe("database migrations", () => {
       first.db.close();
       const second = openDb(paths);
       expect(second.migration.fromVersion).toBe(second.migration.toVersion);
-      expect((second.db.prepare("SELECT value FROM meta WHERE key='x'").get() as { value: string }).value).toBe("1");
+      expect(
+        (second.db.prepare("SELECT value FROM meta WHERE key='x'").get() as { value: string }).value,
+      ).toBe("1");
       second.db.close();
     } finally {
       cleanup();
@@ -147,7 +168,12 @@ describe("skill catalog", () => {
       const thickBody = Array.from({ length: 200 }, (_, i) => `line ${i}`).join("\n");
       const thick = catalog.save({ ...front, slug: "thick-skill", name: "Thick" }, thickBody);
       expect(thick.thick).toBe(true);
-      expect(catalog.list().map((s) => s.slug).sort()).toEqual(["test-skill", "thick-skill"]);
+      expect(
+        catalog
+          .list()
+          .map((s) => s.slug)
+          .sort(),
+      ).toEqual(["test-skill", "thick-skill"]);
     } finally {
       cleanup();
     }
@@ -187,7 +213,17 @@ describe("file-backed stores: id validation and per-file isolation", () => {
       store.save(routine as never);
       const victim = path.join(paths.home, "victim.json");
       fs.writeFileSync(victim, "{}");
-      for (const bad of ["../victim", "..%2Fvictim", "a/b", "a\\b", "..", ".hidden", "UPPER", "", "x".repeat(90)]) {
+      for (const bad of [
+        "../victim",
+        "..%2Fvictim",
+        "a/b",
+        "a\\b",
+        "..",
+        ".hidden",
+        "UPPER",
+        "",
+        "x".repeat(90),
+      ]) {
         expect(() => store.remove(bad), bad).toThrow(InvalidIdError);
         expect(() => store.get(bad), bad).toThrow(InvalidIdError);
       }
@@ -264,7 +300,10 @@ describe("file-backed stores: id validation and per-file isolation", () => {
       fs.mkdirSync(path.join(paths.skills, "broken"));
       fs.writeFileSync(path.join(paths.skills, "broken", "SKILL.md"), "---\nname: 1\n---\nbody");
       fs.mkdirSync(path.join(paths.skills, "Bad Name"));
-      fs.writeFileSync(path.join(paths.skills, "Bad Name", "SKILL.md"), "---\nname: x\ndescription: y\n---\nbody");
+      fs.writeFileSync(
+        path.join(paths.skills, "Bad Name", "SKILL.md"),
+        "---\nname: x\ndescription: y\n---\nbody",
+      );
       expect(catalog.list().map((s) => s.slug)).toEqual(["ok"]);
       const problems = catalog.lastProblems();
       expect(problems.length).toBe(2);
@@ -318,13 +357,14 @@ describe("sync compiler", () => {
       settings.providers.cursor.enabled = true;
       settings = store.save(settings);
       const catalog = new SkillCatalog(paths);
-      catalog.save(
-        SkillFrontmatterSchema.parse({ name: "S", slug: "s1", description: "d" }),
-        "Body.",
-      );
+      catalog.save(SkillFrontmatterSchema.parse({ name: "S", slug: "s1", description: "d" }), "Body.");
       const target = path.join(paths.home, "workspace");
       fs.mkdirSync(target);
-      const compiler = new SyncCompiler(paths, () => store.load(), () => catalog.list());
+      const compiler = new SyncCompiler(
+        paths,
+        () => store.load(),
+        () => catalog.list(),
+      );
 
       // 1st plan: everything is a create
       const plan1 = compiler.plan(target);
@@ -382,7 +422,10 @@ describe("backup and restore", () => {
       const store = new SettingsStore(paths);
       store.update({ systemName: "MordomoOS-test" });
       const catalog = new SkillCatalog(paths);
-      catalog.save(SkillFrontmatterSchema.parse({ name: "Keep", slug: "keep-me", description: "d" }), "Body.");
+      catalog.save(
+        SkillFrontmatterSchema.parse({ name: "Keep", slug: "keep-me", description: "d" }),
+        "Body.",
+      );
       const backup = await createBackup(paths, db);
       db.close(); // restore requires a closed database
       expect(listBackups(paths).some((b) => b.name === backup.name)).toBe(true);

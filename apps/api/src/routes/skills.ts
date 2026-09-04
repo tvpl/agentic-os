@@ -96,7 +96,10 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
       reply.header("cache-control", "private, no-store");
       // Anything the panel cannot preview inline is offered as a download.
       if (hit.resource.kind === "other" || hit.resource.kind === "pdf") {
-        reply.header("content-disposition", `${hit.resource.kind === "pdf" ? "inline" : "attachment"}; filename="${hit.resource.name.replace(/["\\\r\n]/g, "_")}"`);
+        reply.header(
+          "content-disposition",
+          `${hit.resource.kind === "pdf" ? "inline" : "attachment"}; filename="${hit.resource.name.replace(/["\\\r\n]/g, "_")}"`,
+        );
       }
       return reply.send(fs.createReadStream(hit.absPath));
     },
@@ -128,7 +131,9 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
 
   /** Import a skill directory — only from inside the home or an enabled indexed folder. */
   app.post("/api/skills/import", async (req) => {
-    const { sourceDir, slug } = z.object({ sourceDir: z.string().min(1), slug: IdParam.optional() }).parse(req.body);
+    const { sourceDir, slug } = z
+      .object({ sourceDir: z.string().min(1), slug: IdParam.optional() })
+      .parse(req.body);
     const resolved = resolveInsideRoots(grantedRoots(ctx), sourceDir); // PathAccessError → 403
     let stat: fs.Stats;
     try {
@@ -137,10 +142,15 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
       throw httpError(400, "Source directory does not exist");
     }
     if (!stat.isDirectory()) throw httpError(400, "Source must be a directory");
-    if (!fs.existsSync(path.join(resolved, "SKILL.md"))) throw httpError(400, "No SKILL.md found in the source directory");
-    const finalSlug = (slug ?? path.basename(resolved)).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+    if (!fs.existsSync(path.join(resolved, "SKILL.md")))
+      throw httpError(400, "No SKILL.md found in the source directory");
+    const finalSlug = (slug ?? path.basename(resolved))
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-+|-+$/g, "");
     if (!finalSlug) throw httpError(400, "Cannot derive a slug from the source directory name");
-    if (ctx.skills.load(finalSlug)) throw httpError(409, `Skill "${finalSlug}" already exists in the catalog`);
+    if (ctx.skills.load(finalSlug))
+      throw httpError(409, `Skill "${finalSlug}" already exists in the catalog`);
     return ctx.skills.importFrom(resolved, finalSlug);
   });
 
@@ -158,7 +168,8 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
     const settings = ctx.settings();
     const provider = body.provider ?? settings.defaultProvider;
     if (!settings.providers[provider].enabled) throw httpError(400, `Provider ${provider} is not enabled`);
-    if (!skill.providers.includes(provider)) throw httpError(400, `Skill ${slug} does not support provider ${provider}`);
+    if (!skill.providers.includes(provider))
+      throw httpError(400, `Skill ${slug} does not support provider ${provider}`);
     for (const input of skill.inputs) {
       if (input.required && !body.inputs[input.name]?.trim()) {
         throw httpError(400, `Missing required input: ${input.label}`);
@@ -171,17 +182,30 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
       slug,
       inputs: body.inputs,
       provider,
-      model: body.model !== undefined ? body.model : (skill.recommendedModel ?? settings.providers[provider].defaultModel),
-      effort: body.effort ?? (skill.recommendedEffort !== "default" ? skill.recommendedEffort : settings.providers[provider].defaultEffort),
+      model:
+        body.model !== undefined
+          ? body.model
+          : (skill.recommendedModel ?? settings.providers[provider].defaultModel),
+      effort:
+        body.effort ??
+        (skill.recommendedEffort !== "default"
+          ? skill.recommendedEffort
+          : settings.providers[provider].defaultEffort),
       cwd,
       timeoutMs: body.timeoutMs ?? settings.limits.defaultTimeoutMs,
     };
-    const gate = gateWrite(ctx, mode, "skill", `Write-mode skill run: /${slug} with ${provider}`, { kind: "skill", input });
+    const gate = gateWrite(ctx, mode, "skill", `Write-mode skill run: /${slug} with ${provider}`, {
+      kind: "skill",
+      input,
+    });
     if (gate.pendingApproval) {
+      // 202 + the parked run row: the write is visible in Runs as `waiting_approval`.
       reply.code(202);
-      return { runId: null, status: "waiting_approval", pendingApproval: gate.pendingApproval };
+      return { runId: gate.runId, status: "waiting_approval", pendingApproval: gate.pendingApproval };
     }
-    const { runId } = launchSkillRun(ctx, input, (err, id) => req.log.error({ err, runId: id, msg: "skill run failed to execute" }));
+    const { runId } = launchSkillRun(ctx, input, (err, id) =>
+      req.log.error({ err, runId: id, msg: "skill run failed to execute" }),
+    );
     return { runId, status: "queued" };
   });
 }

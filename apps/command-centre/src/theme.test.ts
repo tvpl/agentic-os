@@ -1,6 +1,15 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_PRESET, PRESETS, PRESET_STORAGE_KEY, applyPreset, getPreset, isPresetId, nextPreset, readStoredPreset } from "./theme";
+import {
+  DEFAULT_PRESET,
+  PRESETS,
+  PRESET_STORAGE_KEY,
+  applyPreset,
+  getPreset,
+  isPresetId,
+  nextPreset,
+  readStoredPreset,
+} from "./theme";
 
 describe("theme presets", () => {
   beforeEach(() => {
@@ -41,7 +50,7 @@ describe("theme presets", () => {
     expect(applyPreset("mono").displayWeight).toBe(700);
     expect(document.documentElement.style.getPropertyValue("--display-weight")).toBe("700");
     expect(nextPreset(PRESETS[PRESETS.length - 1]!.id).id).toBe(PRESETS[0]!.id);
-    expect(nextPreset("hud-orange").id).toBe("forest");
+    expect(nextPreset("hud-orange").id).toBe("jarvis");
   });
 
   it("ignores garbage in localStorage", () => {

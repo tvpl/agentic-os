@@ -1,11 +1,28 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
-import { HashRouter, Route, Routes, useLocation } from "react-router-dom";
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ComponentType,
+  type ReactNode,
+} from "react";
+import { HashRouter, Link, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Menu } from "lucide-react";
+import { ArrowLeft, BrainCircuit, LayoutGrid, ListTree, Menu, Sparkles } from "lucide-react";
 import { api, type Meta } from "./api";
 import { I18nContext, useT, type Lang, type TKey } from "./i18n";
 import { qk, useOsSettings } from "./queries";
-import { applyAccentTokens, applyPreset, isPresetId, readStoredPreset } from "./theme";
+import {
+  applyAccentTokens,
+  applyHudIntensity,
+  applyPreset,
+  isPresetId,
+  readStoredHudIntensity,
+  readStoredPreset,
+} from "./theme";
 import { Skeleton, ToastProvider } from "./components/ui";
 import { useDialogDepth, usePresence } from "./components/dialog";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -34,7 +51,10 @@ const PixelStudio = lazy(() => import("./views/PixelStudio"));
  * them): resolve to a placeholder instead of breaking the bundle. Vite needs
  * static path strings, hence the glob with an explicit list.
  */
-const optionalViews = import.meta.glob<{ default: ComponentType }>(["./views/Artifacts.tsx", "./views/Generations.tsx"]);
+const optionalViews = import.meta.glob<{ default: ComponentType }>([
+  "./views/Artifacts.tsx",
+  "./views/Generations.tsx",
+]);
 function lazyOptional(path: string, name: TKey): ComponentType {
   const loader = optionalViews[path];
   const placeholder = { default: () => <MissingApp name={name} /> };
@@ -123,6 +143,8 @@ function AppInner() {
       document.documentElement.dataset.theme = theme;
       applyPreset(presetId, { accent: false, persist: isPresetId(serverPreset) });
       applyAccentTokens(meta.accentColor, theme);
+      const hud = readStoredHudIntensity();
+      if (hud !== null) applyHudIntensity(hud, { persist: false });
     };
     apply();
     document.title = meta.name;
@@ -142,7 +164,7 @@ function AppInner() {
       </I18nContext.Provider>
     );
   }
-  if (!meta) return null;
+  if (!meta) return <BootScreen phase="connecting" />;
 
   return (
     <I18nContext.Provider value={i18nValue}>
@@ -151,7 +173,10 @@ function AppInner() {
           <NotificationsProvider>
             <HashRouter>
               {meta.setupCompleted ? (
-                <OsShell meta={meta} onMetaChanged={loadMeta} />
+                <>
+                  <OsShell meta={meta} onMetaChanged={loadMeta} />
+                  <BootSequence meta={meta} />
+                </>
               ) : (
                 <Suspense fallback={<Skeleton page lines={6} />}>
                   <Setup onDone={loadMeta} />
@@ -163,6 +188,80 @@ function AppInner() {
       </ToastProvider>
     </I18nContext.Provider>
   );
+}
+
+const BOOT_SESSION_KEY = "mordomo.booted";
+const BOOT_MS = 1100;
+
+/**
+ * Boot sequence (plan §6.4): the first paint of the session is never a blank
+ * frame. While the meta request is in flight the screen shows the core
+ * lighting up; once the shell is mounted three telemetry lines type in and
+ * the overlay fades out. Plays once per browser session; skipped entirely
+ * under `prefers-reduced-motion` and when the HUD intensity is 0.
+ */
+function BootScreen({ phase, meta }: { phase: "connecting" | "ready"; meta?: Meta }) {
+  const t = useT();
+  const lines = [
+    t("shell.boot.memory"),
+    t("shell.boot.skills"),
+    meta ? `${t("shell.boot.provider")} · ${meta.name}` : t("shell.boot.provider"),
+  ];
+  return (
+    <div
+      className={`boot-screen ${phase}`}
+      role="status"
+      aria-live="polite"
+      aria-label={t("shell.boot.label")}
+    >
+      <div className="boot-core" aria-hidden>
+        <span className="ring r1" />
+        <span className="ring r2" />
+        <span className="ring r3" />
+        <span className="dot" />
+      </div>
+      <div className="boot-lines" aria-hidden={phase === "connecting"}>
+        {lines.map((line, i) => (
+          <div className="boot-line" style={{ "--i": i } as CSSProperties} key={line}>
+            {line}
+          </div>
+        ))}
+        <div className="boot-line final" style={{ "--i": lines.length } as CSSProperties}>
+          {meta ? `— ${meta.name.toUpperCase()} ONLINE —` : t("shell.boot.connecting")}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BootSequence({ meta }: { meta: Meta }) {
+  const [show, setShow] = useState(() => {
+    try {
+      if (sessionStorage.getItem(BOOT_SESSION_KEY)) return false;
+    } catch {
+      /* private mode: boot every time, which is fine */
+    }
+    if (
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
+      return false;
+    const hud =
+      parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--hud-intensity")) || 0;
+    return hud > 0;
+  });
+  useEffect(() => {
+    if (!show) return;
+    try {
+      sessionStorage.setItem(BOOT_SESSION_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+    const id = window.setTimeout(() => setShow(false), BOOT_MS);
+    return () => window.clearTimeout(id);
+  }, [show]);
+  if (!show) return null;
+  return <BootScreen phase="ready" meta={meta} />;
 }
 
 function OfflineCard({ onRetry }: { onRetry: () => void }) {
@@ -239,11 +338,19 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
   const { connected } = useEventStream();
   const depth = useDialogDepth();
 
-  const openPalette = useCallback((initial?: PaletteOpenDetail) => setPalette({ open: true, instant: false, initial }), []);
-  const closePalette = useCallback((opts?: { instant?: boolean }) => setPalette((p) => (p.open ? { ...p, open: false, instant: !!opts?.instant } : p)), []);
+  const openPalette = useCallback(
+    (initial?: PaletteOpenDetail) => setPalette({ open: true, instant: false, initial }),
+    [],
+  );
+  const closePalette = useCallback(
+    (opts?: { instant?: boolean }) =>
+      setPalette((p) => (p.open ? { ...p, open: false, instant: !!opts?.instant } : p)),
+    [],
+  );
 
   useEffect(() => {
-    const onLauncher = (e: Event) => openPalette((e as CustomEvent<PaletteOpenDetail | undefined>).detail ?? undefined);
+    const onLauncher = (e: Event) =>
+      openPalette((e as CustomEvent<PaletteOpenDetail | undefined>).detail ?? undefined);
     const onShortcuts = () => setHelp(true);
     window.addEventListener(LAUNCHER_EVENT, onLauncher);
     window.addEventListener(SHORTCUTS_EVENT, onShortcuts);
@@ -292,7 +399,11 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
   );
 
   return (
-    <div className="os-root" data-depth={depth > 0 ? "pushed" : undefined} data-palette={paletteVisible ? "open" : undefined}>
+    <div
+      className="os-root"
+      data-depth={depth > 0 ? "pushed" : undefined}
+      data-palette={paletteVisible ? "open" : undefined}
+    >
       <div className="depth-layer">
         <Routes>
           <Route
@@ -337,7 +448,47 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
       <div className={`sse-dot${connected ? "" : " off"}`} title={t("common.reconnecting")} aria-hidden>
         <span className="dot warn" />
       </div>
+      {/* HUD instrumentation layer: scanlines, vignette and corner brackets (CSS only, --hud-intensity). */}
+      <div className="hud-overlay" aria-hidden>
+        <span className="hud-bracket tl" />
+        <span className="hud-bracket tr" />
+        <span className="hud-bracket bl" />
+        <span className="hud-bracket br" />
+      </div>
+      <MobileNav onMenu={() => openPalette()} />
     </div>
+  );
+}
+
+/** Bottom navigation below the stack breakpoint (plan Onda 3 §2, first slice). */
+function MobileNav({ onMenu }: { onMenu: () => void }) {
+  const t = useT();
+  const { pathname } = useLocation();
+  const segment = pathname.split("/")[1] ?? "";
+  const items: Array<{ to: string; key: TKey; icon: ReactNode; seg: string }> = [
+    { to: "/", key: "nav.dashboard", icon: <LayoutGrid aria-hidden />, seg: "" },
+    { to: "/brain", key: "nav.brain", icon: <BrainCircuit aria-hidden />, seg: "brain" },
+    { to: "/skills", key: "nav.skills", icon: <Sparkles aria-hidden />, seg: "skills" },
+    { to: "/runs", key: "nav.runs", icon: <ListTree aria-hidden />, seg: "runs" },
+  ];
+  return (
+    <nav className="mobile-nav" aria-label={t("shell.nav.label")}>
+      {items.map((item) => (
+        <Link
+          key={item.to}
+          to={item.to}
+          className={segment === item.seg ? "active" : undefined}
+          aria-current={segment === item.seg ? "page" : undefined}
+        >
+          {item.icon}
+          <span>{t(item.key)}</span>
+        </Link>
+      ))}
+      <button type="button" onClick={onMenu}>
+        <Menu aria-hidden />
+        <span>{t("os.menu")}</span>
+      </button>
+    </nav>
   );
 }
 
@@ -359,7 +510,11 @@ export function AppFrame({ children, title }: { children: ReactNode; title?: str
           {name && <span className="app-frame-title">{name}</span>}
         </div>
         <div className="right">
-          <button type="button" className="os-chip" onClick={() => window.dispatchEvent(new CustomEvent(LAUNCHER_EVENT))}>
+          <button
+            type="button"
+            className="os-chip"
+            onClick={() => window.dispatchEvent(new CustomEvent(LAUNCHER_EVENT))}
+          >
             <Menu aria-hidden /> {t("os.menu")}
           </button>
         </div>

@@ -90,7 +90,7 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
         inputs,
       }),
     onSuccess: (res) => {
-      if (!res.runId) {
+      if (res.status === "waiting_approval" || !res.runId) {
         // The security profile put the run on hold: decide it here (analysis 4.3 item 21).
         setPending(res.pendingApproval ?? null);
         toast(t("runs.approvalPending"), "info");

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import {
+  ApprovalStore,
   RunManager,
   SettingsStore,
   openDb,
@@ -97,7 +98,8 @@ describe("run manager", () => {
       expect(log).toContain("run_finished");
       expect(log).not.toContain("SuperSecretValue99");
 
-      for (const type of ["run.created", "run.started", "run.event", "run.finished"]) expect(seen).toContain(type);
+      for (const type of ["run.created", "run.started", "run.event", "run.finished"])
+        expect(seen).toContain(type);
     } finally {
       unsubscribe();
     }
@@ -222,7 +224,12 @@ describe("run manager", () => {
     expect(first.parentRunId).toBeNull();
     expect(retry.parentRunId).toBe(first.id);
     expect(retry.attempts).toBe(2);
-    expect(manager.list({ parentRunId: first.id }).map((r) => r.id).sort()).toEqual([first.id, retry.id].sort());
+    expect(
+      manager
+        .list({ parentRunId: first.id })
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual([first.id, retry.id].sort());
   });
 
   it("prunes expired events and caps events per run keeping head and tail", () => {
@@ -239,12 +246,83 @@ describe("run manager", () => {
     const result = manager.prune({ keepDays: 30, keepEvents: 5000 });
     expect(result.eventsExpired).toBe(1);
     expect(result.eventsCapped).toBe(1000);
-    const rows = db.prepare("SELECT data FROM run_events WHERE run_id = ? ORDER BY id").all(run.id) as Array<{ data: string }>;
+    const rows = db.prepare("SELECT data FROM run_events WHERE run_id = ? ORDER BY id").all(run.id) as Array<{
+      data: string;
+    }>;
     expect(rows.length).toBe(5001); // 500 head + 4500 tail + truncation marker
     expect(JSON.parse(rows[0]!.data).i).toBe(0);
     expect(JSON.parse(rows[499]!.data).i).toBe(499);
     expect(JSON.parse(rows[500]!.data).i).toBe(1500);
     expect(JSON.parse(rows[5000]!.data).text).toContain("pruned");
+  });
+
+  it("prunes finished runs by age and count, trims routine_history and keeps approved-gated runs", () => {
+    const day = 86_400_000;
+    const finish = (id: string, at: number) =>
+      db
+        .prepare("UPDATE runs SET status = 'done', finished_at = ?, created_at = ? WHERE id = ?")
+        .run(at, at, id);
+    const insertEvent = db.prepare(
+      "INSERT INTO run_events (run_id, ts, type, data) VALUES (?, ?, 'text', '{}')",
+    );
+
+    const ancient = manager.create(input({ prompt: "ancient" }));
+    finish(ancient.id, Date.now() - 200 * day);
+    insertEvent.run(ancient.id, Date.now());
+    const recent = manager.create(input({ prompt: "recent" }));
+    finish(recent.id, Date.now() - day);
+    const live = manager.create(input({ prompt: "still queued" })); // status stays 'queued'
+    // An old run still referenced by a pending approval must survive.
+    const gated = manager.create(input({ prompt: "gated", status: "waiting_approval" }));
+    db.prepare("UPDATE runs SET status = 'cancelled', finished_at = ?, created_at = ? WHERE id = ?").run(
+      Date.now() - 200 * day,
+      Date.now() - 200 * day,
+      gated.id,
+    );
+    new ApprovalStore(db).request("write_run", "gated write", { kind: "prompt", runId: gated.id });
+
+    db.prepare("INSERT INTO routine_history (routine_id, fired_at, status) VALUES ('r', ?, 'fired')").run(
+      Date.now() - 200 * day,
+    );
+    db.prepare("INSERT INTO routine_history (routine_id, fired_at, status) VALUES ('r', ?, 'fired')").run(
+      Date.now(),
+    );
+
+    const result = manager.prune({ keepRunDays: 90, keepHistoryDays: 90, keepRuns: 0, vacuum: false });
+    expect(result.runsDeleted).toBe(1);
+    expect(result.historyDeleted).toBe(1);
+    expect(result.vacuumed).toBe(false);
+    expect(manager.get(ancient.id)).toBeNull();
+    expect(manager.eventsFor(ancient.id)).toHaveLength(0);
+    expect(manager.get(recent.id)).not.toBeNull();
+    expect(manager.get(live.id)?.status).toBe("queued");
+    expect(manager.get(gated.id)).not.toBeNull(); // pinned by the pending approval
+    expect((db.prepare("SELECT COUNT(*) c FROM routine_history").get() as { c: number }).c).toBe(1);
+
+    // Newest-N cap: only finished, unpinned runs are considered.
+    expect(
+      manager.prune({ keepRuns: 1, keepRunDays: 3650, keepHistoryDays: 3650, vacuum: false }).runsDeleted,
+    ).toBe(0);
+    expect(manager.get(recent.id)).not.toBeNull();
+
+    // The weekly VACUUM only runs once per interval.
+    expect(manager.prune({ vacuum: true }).vacuumed).toBe(true);
+    expect(manager.prune().vacuumed).toBe(false);
+  });
+
+  it("waiting_approval runs become queued when approved and cancellable when not", async () => {
+    const run = manager.create(input({ status: "waiting_approval" }));
+    expect(run.status).toBe("waiting_approval");
+    // execute() ignores a run that is not queued yet.
+    expect((await manager.execute(run.id, "x", "read_only")).status).toBe("waiting_approval");
+    expect(manager.markApproved(run.id)).toBe(true);
+    expect(manager.get(run.id)?.status).toBe("queued");
+    expect(manager.markApproved(run.id)).toBe(false);
+
+    const denied = manager.create(input({ status: "waiting_approval" }));
+    expect(await manager.cancel(denied.id, "Write approval denied")).toBe(true);
+    expect(manager.get(denied.id)?.status).toBe("cancelled");
+    expect(manager.get(denied.id)?.error).toBe("Write approval denied");
   });
 
   it("kills the child when the event stream consumer abandons it", async () => {

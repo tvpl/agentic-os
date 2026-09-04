@@ -14,13 +14,15 @@ export const GRID_PAD = 16;
 /** Below this viewport width the desktop stacks widgets in one column. */
 export const STACK_BREAKPOINT = 900;
 /** Target row height; rows = max(MIN_ROWS, floor(available / ROW_TARGET_PX)). */
-export const ROW_TARGET_PX = 40;
+export const ROW_TARGET_PX = 38;
 /**
- * The default layout needs 18 rows. Guaranteeing at least 18 rows means the
- * default fits at 1024×768 (656px available → 36px per row) instead of being
- * clipped as it was with the old 44px rows (14 rows).
+ * The default layout needs 20 rows: the left and right columns are sized to
+ * their content (micro apps 7, today 8, workspace 5 / deck 10, routines 5,
+ * pulse 5) and the prompt + attention strip sits at the bottom of the centre
+ * column. Guaranteeing 20 rows keeps that composition at 1024×768 (656px
+ * available → 32.8px per row); widgets scroll internally when shorter.
  */
-export const MIN_ROWS = 18;
+export const MIN_ROWS = 20;
 export const MIN_W = 3;
 export const MIN_H = 2;
 
@@ -65,20 +67,67 @@ export function isWidgetId(id: string): id is WidgetId {
 }
 
 export const DEFAULT_LAYOUT: LayoutMap = {
-  microapps: { x: 0, y: 0, w: 5, h: 6, visible: true },
-  today: { x: 0, y: 6, w: 5, h: 7, visible: true },
-  workspace: { x: 0, y: 13, w: 5, h: 5, visible: true },
-  deck: { x: 19, y: 0, w: 5, h: 9, visible: true },
-  routines: { x: 19, y: 9, w: 5, h: 5, visible: true },
-  pulse: { x: 19, y: 14, w: 5, h: 4, visible: true },
-  prompt: { x: 6, y: 13, w: 12, h: 3, visible: true },
-  attention: { x: 6, y: 16, w: 12, h: 2, visible: true },
+  microapps: { x: 0, y: 0, w: 5, h: 7, visible: true },
+  today: { x: 0, y: 7, w: 5, h: 8, visible: true },
+  workspace: { x: 0, y: 15, w: 5, h: 5, visible: true },
+  deck: { x: 19, y: 0, w: 5, h: 10, visible: true },
+  routines: { x: 19, y: 10, w: 5, h: 5, visible: true },
+  pulse: { x: 19, y: 15, w: 5, h: 5, visible: true },
+  prompt: { x: 6, y: 15, w: 12, h: 3, visible: true },
+  attention: { x: 6, y: 18, w: 12, h: 2, visible: true },
   inbox: { x: 6, y: 0, w: 6, h: 4, visible: false },
   agenda: { x: 12, y: 0, w: 6, h: 3, visible: false },
   calendar: { x: 6, y: 4, w: 5, h: 5, visible: false },
   email: { x: 13, y: 4, w: 5, h: 5, visible: false },
-  cost: { x: 19, y: 14, w: 5, h: 4, visible: false },
+  cost: { x: 19, y: 15, w: 5, h: 5, visible: false },
 };
+
+/** Pixel rectangle of the desktop area left free by the visible widgets. */
+export interface FreeRegion {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+/**
+ * The region between the left and right widget columns and above the
+ * widgets that span the centre: where the core, the Now panel and the
+ * artifact ring live. Widgets whose box ends in the left half push the left
+ * edge in, boxes that start in the right half push the right edge in, and a
+ * box crossing the middle column pushes the top or bottom edge depending on
+ * which half of the grid it sits in. Pure so it can be unit-tested.
+ */
+export function freeRegion(
+  layout: LayoutMap,
+  m: { width: number; height: number; rows: number; cellW: number; cellH: number },
+  cols = COLS,
+): FreeRegion {
+  let left = GRID_PAD;
+  let right = m.width - GRID_PAD;
+  let top = GRID_TOP;
+  let bottom = m.height - GRID_PAD;
+  const mid = cols / 2;
+  for (const box of Object.values(layout)) {
+    if (!box.visible) continue;
+    const px = { left: GRID_PAD + box.x * m.cellW, top: GRID_TOP + box.y * m.cellH };
+    const pxRight = px.left + box.w * m.cellW;
+    const pxBottom = px.top + box.h * m.cellH;
+    if (box.x + box.w <= mid) left = Math.max(left, pxRight);
+    else if (box.x >= mid) right = Math.min(right, px.left);
+    else if (box.y + box.h / 2 >= m.rows / 2) bottom = Math.min(bottom, px.top);
+    else top = Math.max(top, pxBottom);
+  }
+  if (right - left < 200) {
+    left = GRID_PAD;
+    right = m.width - GRID_PAD;
+  }
+  if (bottom - top < 160) {
+    top = GRID_TOP;
+    bottom = m.height - GRID_PAD;
+  }
+  return { left, right, top, bottom };
+}
 
 export function computeRows(availableHeightPx: number): number {
   return Math.max(MIN_ROWS, Math.floor(availableHeightPx / ROW_TARGET_PX));
@@ -93,16 +142,26 @@ export function overlaps(a: WidgetBox, b: WidgetBox): boolean {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
 
-const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** Clamp one box into a rows×cols grid (size first, then position). `config` is carried through untouched. */
-export function clampBox(box: Partial<WidgetBox> | undefined, fallback: WidgetBox, rows: number, cols = COLS): WidgetBox {
+export function clampBox(
+  box: Partial<WidgetBox> | undefined,
+  fallback: WidgetBox,
+  rows: number,
+  cols = COLS,
+): WidgetBox {
   const w = clampInt(box?.w, MIN_W, cols, fallback.w);
   const h = clampInt(box?.h, MIN_H, rows, fallback.h);
   const x = clampInt(box?.x, 0, cols - w, fallback.x);
   const y = clampInt(box?.y, 0, rows - h, fallback.y);
   const visible = typeof box?.visible === "boolean" ? box.visible : fallback.visible;
-  const config = isPlainObject(box?.config) ? box.config : isPlainObject(fallback.config) ? fallback.config : undefined;
+  const config = isPlainObject(box?.config)
+    ? box.config
+    : isPlainObject(fallback.config)
+      ? fallback.config
+      : undefined;
   return config ? { x, y, w, h, visible, config } : { x, y, w, h, visible };
 }
 
@@ -125,7 +184,11 @@ export function orderedIds(ids: Iterable<string>): string[] {
  * down until it is free. If it cannot fit below, it stays at the bottom
  * (a visible overlap beats a widget lost off-screen).
  */
-export function normalizeLayout(persisted: Partial<Record<string, Partial<WidgetBox>>> | undefined, rows: number, cols = COLS): LayoutMap {
+export function normalizeLayout(
+  persisted: Partial<Record<string, Partial<WidgetBox>>> | undefined,
+  rows: number,
+  cols = COLS,
+): LayoutMap {
   const out: LayoutMap = {};
   for (const id of WIDGET_ORDER) out[id] = clampBox(persisted?.[id], DEFAULT_LAYOUT[id]!, rows, cols);
   for (const id of Object.keys(persisted ?? {})) {
@@ -183,7 +246,13 @@ export function nextDuplicateId(layout: LayoutMap, base: WidgetId): string {
 }
 
 /** First free spot (scanning rows then columns) for a w×h box; falls back to the bottom-left. */
-export function findFreeSpot(layout: LayoutMap, w: number, h: number, rows: number, cols = COLS): { x: number; y: number } {
+export function findFreeSpot(
+  layout: LayoutMap,
+  w: number,
+  h: number,
+  rows: number,
+  cols = COLS,
+): { x: number; y: number } {
   const taken = Object.values(layout).filter((b) => b.visible);
   for (let y = 0; y + h <= rows; y++) {
     for (let x = 0; x + w <= cols; x++) {

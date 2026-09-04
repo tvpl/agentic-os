@@ -83,29 +83,51 @@ export class ClaudeAdapter implements AgentAdapter {
     // Presence checks only — never read, print or store credential values.
     const home = this.opts.homeDir ?? os.homedir();
     if (fs.existsSync(path.join(home, ".claude", ".credentials.json"))) {
-      return { authenticated: true, method: "session", detail: "Claude Code session credentials are present." };
+      return {
+        authenticated: true,
+        method: "session",
+        detail: "Claude Code session credentials are present.",
+      };
     }
     if (process.env.ANTHROPIC_API_KEY) {
-      return { authenticated: true, method: "api-key", detail: "ANTHROPIC_API_KEY is set in the environment." };
+      return {
+        authenticated: true,
+        method: "api-key",
+        detail: "ANTHROPIC_API_KEY is set in the environment.",
+      };
     }
     if (fs.existsSync(path.join(home, ".claude"))) {
       return {
         authenticated: "unknown",
         method: null,
-        detail: "~/.claude exists but no portable credential marker was found (macOS keychain auth is not detectable). The smoke test will confirm.",
+        detail:
+          "~/.claude exists but no portable credential marker was found (macOS keychain auth is not detectable). The smoke test will confirm.",
       };
     }
-    return { authenticated: false, method: null, detail: "Not logged in. Run `claude` once to authenticate." };
+    return {
+      authenticated: false,
+      method: null,
+      detail: "Not logged in. Run `claude` once to authenticate.",
+    };
   }
 
   async listModels(): Promise<ModelOption[]> {
+    // One row per family: the CLI aliases ride along on the concrete id so the
+    // model matrix does not show every family twice.
     return [
-      { id: "sonnet", label: "Claude Sonnet (alias)", recommendedFor: "day-to-day work" },
-      { id: "opus", label: "Claude Opus (alias)", recommendedFor: "hard reasoning" },
-      { id: "haiku", label: "Claude Haiku (alias)", recommendedFor: "cheap/fast runs" },
-      { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
-      { id: "claude-opus-5", label: "Claude Opus 5" },
-      { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+      {
+        id: "claude-sonnet-5",
+        label: "Claude Sonnet 5",
+        aliases: ["sonnet"],
+        recommendedFor: "day-to-day work",
+      },
+      { id: "claude-opus-5", label: "Claude Opus 5", aliases: ["opus"], recommendedFor: "hard reasoning" },
+      {
+        id: "claude-haiku-4-5-20251001",
+        label: "Claude Haiku 4.5",
+        aliases: ["haiku"],
+        recommendedFor: "cheap/fast runs",
+      },
     ];
   }
 
@@ -127,9 +149,7 @@ export class ClaudeAdapter implements AgentAdapter {
       // Headless default mode auto-denies permission prompts; writes are only
       // pre-approved inside the artifacts directory. Claude Code permission
       // rules address absolute paths with a leading double slash.
-      const artifactsRule = run.artifactsDir.startsWith("/")
-        ? `/${run.artifactsDir}`
-        : run.artifactsDir;
+      const artifactsRule = run.artifactsDir.startsWith("/") ? `/${run.artifactsDir}` : run.artifactsDir;
       args.push(
         "--permission-mode",
         "default",
@@ -186,7 +206,9 @@ function num(value: unknown): number {
  * Usage block of a Claude Code stream-json message (`assistant.message.usage`
  * or `result.usage`). Returns null when the block carries no token counts.
  */
-export function parseClaudeUsage(raw: unknown): { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number } | null {
+export function parseClaudeUsage(
+  raw: unknown,
+): { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number } | null {
   if (!raw || typeof raw !== "object") return null;
   const u = raw as Record<string, unknown>;
   if (u.input_tokens == null && u.output_tokens == null) return null;
@@ -228,17 +250,32 @@ export function claudeStreamParser(): LineParser {
         const subtype = (obj.subtype as string) ?? "";
         if (subtype === "init" && typeof obj.model === "string") sessionModel = obj.model;
         return subtype === "init"
-          ? [{ type: "text", ts, stream: "stdout", text: `[claude session started: model=${(obj.model as string) ?? "?"}]` }]
+          ? [
+              {
+                type: "text",
+                ts,
+                stream: "stdout",
+                text: `[claude session started: model=${(obj.model as string) ?? "?"}]`,
+              },
+            ]
           : [];
       }
       if (type === "assistant" || type === "user") {
-        const message = obj.message as { content?: Array<Record<string, unknown>>; usage?: unknown; model?: unknown } | undefined;
+        const message = obj.message as
+          { content?: Array<Record<string, unknown>>; usage?: unknown; model?: unknown } | undefined;
         const events: RunEvent[] = [];
         // Per-turn usage (context meter): one event per assistant message.
         const turn = type === "assistant" ? parseClaudeUsage(message?.usage) : null;
         if (turn) {
           const model = typeof message?.model === "string" ? message.model : sessionModel;
-          events.push({ type: "usage", ts, scope: "turn", ...turn, costUsd: null, ...(model ? { model } : {}) });
+          events.push({
+            type: "usage",
+            ts,
+            scope: "turn",
+            ...turn,
+            costUsd: null,
+            ...(model ? { model } : {}),
+          });
         }
         for (const block of message?.content ?? []) {
           if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
@@ -253,7 +290,11 @@ export function claudeStreamParser(): LineParser {
               detail: input.length > 400 ? input.slice(0, 400) + "…" : input,
             });
           } else if (block.type === "tool_result" && block.is_error) {
-            events.push({ type: "permission", ts, detail: `Tool call denied or failed: ${JSON.stringify(block.content ?? "").slice(0, 300)}` });
+            events.push({
+              type: "permission",
+              ts,
+              detail: `Tool call denied or failed: ${JSON.stringify(block.content ?? "").slice(0, 300)}`,
+            });
           }
         }
         return events;

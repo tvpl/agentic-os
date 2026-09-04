@@ -13,14 +13,7 @@ import { events } from "../events.js";
 
 export type RunOrigin = "manual" | "skill" | "routine" | "api";
 export type RunStatus =
-  | "queued"
-  | "running"
-  | "waiting_approval"
-  | "done"
-  | "failed"
-  | "cancelled"
-  | "timed_out"
-  | "interrupted";
+  "queued" | "running" | "waiting_approval" | "done" | "failed" | "cancelled" | "timed_out" | "interrupted";
 
 export const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set([
   "done",
@@ -98,6 +91,11 @@ export interface CreateRunInput {
   routineId?: string | null;
   parentRunId?: string | null;
   attempts?: number;
+  /**
+   * Initial status. `waiting_approval` makes a write run gated by an approval
+   * visible in the Runs list; `markApproved()` moves it to `queued`.
+   */
+  status?: Extract<RunStatus, "queued" | "waiting_approval">;
 }
 
 export interface PruneOptions {
@@ -105,12 +103,27 @@ export interface PruneOptions {
   keepDays?: number;
   /** Max events kept per run: the first 500 plus the most recent ones (default 5000). */
   keepEvents?: number;
+  /** Delete finished runs older than this many days (default: settings.limits.runRetentionDays). */
+  keepRunDays?: number;
+  /** Keep at most this many finished runs, newest first; 0 = no cap (default: settings.limits.runRetentionMax). */
+  keepRuns?: number;
+  /** Delete routine_history rows older than this many days (default: settings.limits.routineHistoryRetentionDays). */
+  keepHistoryDays?: number;
+  /** Force (true) or skip (false) the weekly `PRAGMA optimize` + `VACUUM`. */
+  vacuum?: boolean;
 }
 
 export interface PruneResult {
   eventsExpired: number;
   eventsCapped: number;
+  /** Runs whose event log was capped (head + tail kept). */
   runsCapped: number;
+  /** Finished runs deleted by age or by the newest-N cap. */
+  runsDeleted: number;
+  /** `routine_history` rows deleted by age. */
+  historyDeleted: number;
+  /** Whether this call ran `PRAGMA optimize` + `VACUUM`. */
+  vacuumed: boolean;
 }
 
 /** Events kept per run (first HEAD_KEEP + tail). Applied live and on prune(). */
@@ -118,6 +131,12 @@ const DEFAULT_EVENT_CAP = 5000;
 const HEAD_KEEP = 500;
 /** Queue depth allowed before create() refuses with 429 = maxConcurrentRuns * this. */
 const QUEUE_DEPTH_FACTOR = 10;
+/** How often prune() may compact the database file. */
+const VACUUM_INTERVAL_MS = 7 * 86_400_000;
+/** `meta` key holding the last `VACUUM` timestamp. */
+const LAST_VACUUM_KEY = "last_vacuum";
+/** Runs whose rows and events retention must never touch. */
+const LIVE_STATUSES = "('queued','running','waiting_approval')";
 
 /** Fallback when an adapter carries no manifest (tests with stubs). */
 const WRITE_TOOLS = /^(write|edit|multiedit|notebookedit|create_file|apply_patch|str_replace)/i;
@@ -154,12 +173,7 @@ export class RunManager {
     opts: { eventCap?: number; pruneOnBoot?: boolean } = {},
   ) {
     const s = getSettings();
-    this.logger = new JsonlLogger(
-      paths.logs,
-      "runs",
-      s.limits.logMaxFileBytes,
-      s.limits.logRetentionDays,
-    );
+    this.logger = new JsonlLogger(paths.logs, "runs", s.limits.logMaxFileBytes, s.limits.logRetentionDays);
     this.emitter.setMaxListeners(100);
     this.eventCap = opts.eventCap ?? DEFAULT_EVENT_CAP;
     if (opts.pruneOnBoot !== false) {
@@ -170,7 +184,6 @@ export class RunManager {
       }
     }
   }
-
 
   /** Logging must never throw, even after the logs dir is gone (late background tasks). */
   private log(record: Record<string, unknown>): void {
@@ -183,14 +196,21 @@ export class RunManager {
 
   // ------------------------------------------------------------ retention --
 
-  /** Expire old events and cap events per run. Called on construction; safe to call anytime. */
+  /**
+   * Retention: expire old events, cap events per run, delete finished runs
+   * past `runRetentionDays`/`runRetentionMax`, trim `routine_history` and —
+   * at most once a week — `PRAGMA optimize` + `VACUUM`. Runs that are live or
+   * still referenced by a pending approval are never deleted. Called on
+   * construction; safe to call anytime.
+   */
   prune(opts: PruneOptions = {}): PruneResult {
-    const keepDays = opts.keepDays ?? this.getSettings().limits.logRetentionDays;
+    const limits = this.getSettings().limits;
+    const keepDays = opts.keepDays ?? limits.logRetentionDays;
     const keepEvents = Math.max(opts.keepEvents ?? this.eventCap, HEAD_KEEP + 1);
     const cutoff = Date.now() - keepDays * 86_400_000;
     const eventsExpired = this.db
       .prepare(
-        "DELETE FROM run_events WHERE ts < ? AND run_id NOT IN (SELECT id FROM runs WHERE status IN ('queued','running'))",
+        `DELETE FROM run_events WHERE ts < ? AND run_id NOT IN (SELECT id FROM runs WHERE status IN ${LIVE_STATUSES})`,
       )
       .run(cutoff).changes;
 
@@ -211,26 +231,112 @@ export class RunManager {
         .prepare("DELETE FROM run_events WHERE run_id = ? AND id >= ? AND id < ?")
         .run(runId, headEnd.id, tailStart.id).changes;
       if (removed > 0) {
-        this.db
-          .prepare("INSERT INTO run_events (run_id, ts, type, data) VALUES (?, ?, ?, ?)")
-          .run(
-            runId,
-            Date.now(),
-            "text",
-            JSON.stringify({
-              type: "text",
-              ts: Date.now(),
-              stream: "stderr",
-              text: `[mordomo] ${removed} intermediate events pruned by retention (kept first ${HEAD_KEEP} and last ${tail}).`,
-            }),
-          );
+        this.db.prepare("INSERT INTO run_events (run_id, ts, type, data) VALUES (?, ?, ?, ?)").run(
+          runId,
+          Date.now(),
+          "text",
+          JSON.stringify({
+            type: "text",
+            ts: Date.now(),
+            stream: "stderr",
+            text: `[mordomo] ${removed} intermediate events pruned by retention (kept first ${HEAD_KEEP} and last ${tail}).`,
+          }),
+        );
       }
       return removed;
     });
     for (const row of heavy) eventsCapped += capOne(row.run_id);
-    const result = { eventsExpired, eventsCapped, runsCapped: heavy.length };
-    if (eventsExpired || eventsCapped) this.log({ event: "pruned", ...result, keepDays, keepEvents });
+
+    const runsDeleted = this.pruneRuns(
+      opts.keepRunDays ?? limits.runRetentionDays,
+      opts.keepRuns ?? limits.runRetentionMax,
+    );
+    const historyDeleted = this.db
+      .prepare("DELETE FROM routine_history WHERE fired_at < ?")
+      .run(Date.now() - (opts.keepHistoryDays ?? limits.routineHistoryRetentionDays) * 86_400_000).changes;
+    const vacuumed = this.maybeVacuum(opts.vacuum);
+
+    const result = {
+      eventsExpired,
+      eventsCapped,
+      runsCapped: heavy.length,
+      runsDeleted,
+      historyDeleted,
+      vacuumed,
+    };
+    if (eventsExpired || eventsCapped || runsDeleted || historyDeleted || vacuumed) {
+      this.log({ event: "pruned", ...result, keepDays, keepEvents });
+    }
     return result;
+  }
+
+  /**
+   * Delete finished runs (and their events) older than `keepDays`, then keep
+   * only the newest `keepMax` of the ones that remain. A run linked to a
+   * pending approval stays, whatever its age.
+   */
+  private pruneRuns(keepDays: number, keepMax: number): number {
+    // Payload link written by the API when a write run is gated (`payload.runId`).
+    const pinned = `
+      SELECT json_extract(payload, '$.runId') FROM approvals
+      WHERE status = 'pending' AND json_extract(payload, '$.runId') IS NOT NULL`;
+    const deletable = `
+      SELECT id FROM runs
+      WHERE status NOT IN ${LIVE_STATUSES} AND id NOT IN (${pinned})`;
+    const ids = [
+      ...(this.db
+        .prepare(`${deletable} AND COALESCE(finished_at, created_at) < ?`)
+        .all(Date.now() - keepDays * 86_400_000) as Array<{ id: string }>),
+      ...(keepMax > 0
+        ? (this.db.prepare(`${deletable} ORDER BY created_at DESC LIMIT -1 OFFSET ?`).all(keepMax) as Array<{
+            id: string;
+          }>)
+        : []),
+    ].map((r) => r.id);
+    if (ids.length === 0) return 0;
+    const unique = [...new Set(ids)];
+    const deleteRun = this.db.transaction((batch: string[]) => {
+      const placeholders = batch.map(() => "?").join(", ");
+      this.db.prepare(`DELETE FROM run_events WHERE run_id IN (${placeholders})`).run(...batch);
+      return this.db.prepare(`DELETE FROM runs WHERE id IN (${placeholders})`).run(...batch).changes;
+    });
+    let deleted = 0;
+    // SQLite caps the number of bound parameters; delete in chunks.
+    for (let i = 0; i < unique.length; i += 400) deleted += deleteRun(unique.slice(i, i + 400));
+    return deleted;
+  }
+
+  /**
+   * `PRAGMA optimize` + `VACUUM`, at most once every `VACUUM_INTERVAL_MS`. The
+   * timestamp lives in the `meta` key/value table; a database that never
+   * vacuumed only records "now" so a fresh install does not compact an empty file.
+   */
+  private maybeVacuum(force?: boolean): boolean {
+    if (force === false) return false;
+    const row = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(LAST_VACUUM_KEY) as
+      { value: string } | undefined;
+    const last = row ? Number(row.value) : NaN;
+    const now = Date.now();
+    const due = force === true || (Number.isFinite(last) && now - last >= VACUUM_INTERVAL_MS);
+    const stamp = () =>
+      this.db
+        .prepare(
+          "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        )
+        .run(LAST_VACUUM_KEY, String(now));
+    if (!due) {
+      if (!row) stamp();
+      return false;
+    }
+    try {
+      this.db.pragma("optimize");
+      this.db.exec("VACUUM");
+    } catch (err) {
+      this.log({ event: "vacuum_failed", error: (err as Error).message });
+      return false;
+    }
+    stamp();
+    return true;
   }
 
   // ------------------------------------------------------------- recovery --
@@ -277,17 +383,20 @@ export class RunManager {
     ).c;
     if (queued >= maxQueued) {
       throw Object.assign(
-        new Error(`Too many queued runs (${queued}); limit is ${maxQueued}. Wait for running work to finish.`),
+        new Error(
+          `Too many queued runs (${queued}); limit is ${maxQueued}. Wait for running work to finish.`,
+        ),
         { statusCode: 429 },
       );
     }
     const id = crypto.randomUUID();
     const now = Date.now();
+    const status = input.status ?? "queued";
     const promptSummary = redactSecrets(input.prompt.slice(0, 500));
     this.db
       .prepare(
         `INSERT INTO runs (id, created_at, origin, provider, model, effort, status, cwd, prompt_summary, skill_slug, routine_id, parent_run_id, attempts, timeout_ms, permission_profile)
-         VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -296,6 +405,7 @@ export class RunManager {
         input.provider,
         input.model,
         input.effort,
+        status,
         input.cwd,
         promptSummary,
         input.skillSlug ?? null,
@@ -308,7 +418,12 @@ export class RunManager {
     const record = this.get(id);
     if (!record) throw new Error("run insert failed");
     events.emit("run.created", { runId: id, origin: input.origin, provider: input.provider });
-    this.emit(id, { type: "text", ts: now, stream: "stdout", text: "[queued]" });
+    this.emit(id, {
+      type: "text",
+      ts: now,
+      stream: "stdout",
+      text: status === "waiting_approval" ? "[waiting for approval]" : "[queued]",
+    });
     return record;
   }
 
@@ -404,7 +519,10 @@ export class RunManager {
           this.writeUsage(runId, usage.value());
         }
         this.persistEvent(runId, event, active);
-        if (event.type === "tool_use" && (adapter.manifest?.writeToolPattern ?? WRITE_TOOLS).test(event.tool)) {
+        if (
+          event.type === "tool_use" &&
+          (adapter.manifest?.writeToolPattern ?? WRITE_TOOLS).test(event.tool)
+        ) {
           const m = event.detail.match(/(?:^|[\s"'])(\/[^\s"']+|[A-Za-z]:\\[^\s"']+)/);
           if (m?.[1]) filesChanged.add(m[1]);
         }
@@ -550,30 +668,51 @@ export class RunManager {
    * settled as cancelled. False when the run is unknown, already finished, or
    * already being cancelled.
    */
-  async cancel(runId: string): Promise<boolean> {
+  async cancel(runId: string, reason?: string): Promise<boolean> {
     const active = this.activeRuns.get(runId);
     if (active) {
       if (active.controller.signal.aborted) return false;
       active.controller.abort({ reason: "user" });
-      this.persistEvent(runId, { type: "permission", ts: Date.now(), detail: "Cancellation requested by user" }, active);
+      this.persistEvent(
+        runId,
+        { type: "permission", ts: Date.now(), detail: reason ?? "Cancellation requested by user" },
+        active,
+      );
       return true;
     }
     const record = this.get(runId);
-    if (!record || record.status !== "queued") return false;
-    // Created but execute() not yet called (or a stale queued row).
-    const ok = this.settle(runId, ["queued"], "cancelled", { duration_ms: 0, error: "Cancelled while queued" });
+    if (!record || (record.status !== "queued" && record.status !== "waiting_approval")) return false;
+    // Created but execute() not yet called (a stale queued row, or a write run
+    // whose approval was denied/expired).
+    const summary =
+      reason ??
+      (record.status === "waiting_approval"
+        ? "Cancelled while waiting for approval"
+        : "Cancelled while queued");
+    const ok = this.settle(runId, ["queued", "waiting_approval"], "cancelled", {
+      duration_ms: 0,
+      error: summary,
+    });
     if (ok) {
       this.emit(runId, {
         type: "result",
         ts: Date.now(),
         exitCode: null,
-        summary: "Cancelled while queued",
+        summary,
         durationMs: 0,
         timedOut: false,
         cancelled: true,
       });
     }
     return ok;
+  }
+
+  /**
+   * Release a run created as `waiting_approval` (a human approved the gated
+   * write). False when the row is gone or no longer waiting.
+   */
+  markApproved(runId: string): boolean {
+    return this.transition(runId, ["waiting_approval"], "queued");
   }
 
   /**
@@ -630,18 +769,24 @@ export class RunManager {
         return;
       }
     }
-    insert.run(runId, safe.ts, safe.type, JSON.stringify(safe));
-    this.emit(runId, safe);
+    const info = insert.run(runId, safe.ts, safe.type, JSON.stringify(safe));
+    this.emit(runId, safe, Number(info.lastInsertRowid));
   }
 
-  onEvent(runId: string, listener: (event: RunEvent) => void): () => void {
+  /**
+   * Subscribe to one run's events. `eventId` is the `run_events` row id when
+   * the event was persisted (undefined for live-only events such as
+   * `[queued]`), so a listener can stream it without querying the database
+   * and still dedupe against a `Last-Event-ID` replay.
+   */
+  onEvent(runId: string, listener: (event: RunEvent, eventId?: number) => void): () => void {
     const key = `run:${runId}`;
     this.emitter.on(key, listener);
     return () => this.emitter.off(key, listener);
   }
 
-  private emit(runId: string, event: RunEvent): void {
-    this.emitter.emit(`run:${runId}`, event);
+  private emit(runId: string, event: RunEvent, eventId?: number): void {
+    this.emitter.emit(`run:${runId}`, event, eventId);
     this.emitter.emit("run:*", { runId, event });
     events.emit("run.event", { runId, event });
   }
@@ -666,7 +811,15 @@ export class RunManager {
     }
   }
 
-  list(opts: { limit?: number; offset?: number; status?: RunStatus; origin?: RunOrigin; parentRunId?: string } = {}): RunRecord[] {
+  list(
+    opts: {
+      limit?: number;
+      offset?: number;
+      status?: RunStatus;
+      origin?: RunOrigin;
+      parentRunId?: string;
+    } = {},
+  ): RunRecord[] {
     const clauses: string[] = [];
     const params: unknown[] = [];
     if (opts.status) {
@@ -738,7 +891,9 @@ export class RunManager {
       )
       .all(weekAgo) as Array<{ provider: string; count: number; success: number }>;
     const running = (
-      this.db.prepare("SELECT COUNT(*) c FROM runs WHERE status IN ('running','queued')").get() as { c: number }
+      this.db.prepare("SELECT COUNT(*) c FROM runs WHERE status IN ('running','queued')").get() as {
+        c: number;
+      }
     ).c;
     const failedRecent = (
       this.db
@@ -768,7 +923,10 @@ export class RunManager {
       "SELECT SUM(cost_usd) usd, SUM(COALESCE(input_tokens,0) + COALESCE(output_tokens,0) + COALESCE(cache_read_tokens,0) + COALESCE(cache_write_tokens,0)) tokens FROM runs WHERE created_at >= ?",
       midnight.getTime(),
     );
-    const week = sum("SELECT SUM(cost_usd) usd, 0 tokens FROM runs WHERE created_at >= ?", now - 7 * 86_400_000);
+    const week = sum(
+      "SELECT SUM(cost_usd) usd, 0 tokens FROM runs WHERE created_at >= ?",
+      now - 7 * 86_400_000,
+    );
     const hour = sum(
       "SELECT SUM(cost_usd) usd, 0 tokens FROM runs WHERE COALESCE(finished_at, started_at, created_at) >= ?",
       now - 3_600_000,
@@ -790,7 +948,11 @@ export class RunManager {
         "SELECT created_at ts, COALESCE(input_tokens,0) + COALESCE(output_tokens,0) + COALESCE(cache_read_tokens,0) + COALESCE(cache_write_tokens,0) tokens, COALESCE(cost_usd,0) usd FROM runs WHERE created_at >= ? AND (input_tokens IS NOT NULL OR cost_usd IS NOT NULL)",
       )
       .all(start) as Array<{ ts: number; tokens: number; usd: number }>;
-    const series: UsageSeriesPoint[] = Array.from({ length: hours }, (_, i) => ({ ts: start + i * bucketMs, tokens: 0, usd: 0 }));
+    const series: UsageSeriesPoint[] = Array.from({ length: hours }, (_, i) => ({
+      ts: start + i * bucketMs,
+      tokens: 0,
+      usd: 0,
+    }));
     for (const row of rows) {
       const idx = Math.floor((row.ts - start) / bucketMs);
       const point = series[idx];
@@ -803,24 +965,36 @@ export class RunManager {
 
   // --------------------------------------------------------- concurrency --
 
-  private acquireSlot(): Promise<void> {
-    const max = this.getSettings().limits.maxConcurrentRuns;
-    if (this.active < max) {
-      this.active++;
-      return Promise.resolve();
-    }
-    return new Promise((resolve) => {
-      this.waiting.push(() => {
+  /**
+   * Take a slot. The limit is re-read on every attempt, so a waiter woken
+   * after `limits.maxConcurrentRuns` was lowered goes back to waiting instead
+   * of running over the new limit. Shutdown always wins, otherwise the
+   * waiters it wakes could never settle.
+   */
+  private async acquireSlot(): Promise<void> {
+    for (let attempt = 0; ; attempt++) {
+      if (this.shuttingDown || this.active < this.getSettings().limits.maxConcurrentRuns) {
         this.active++;
-        resolve();
+        return;
+      }
+      await new Promise<void>((resolve) => {
+        // A retry keeps its place at the head of the queue (still FIFO).
+        if (attempt === 0) this.waiting.push(resolve);
+        else this.waiting.unshift(resolve);
       });
-    });
+    }
   }
 
+  /** Free a slot; wake one waiter only if the CURRENT limit has room for it. */
   private releaseSlot(): void {
-    this.active--;
-    const next = this.waiting.shift();
-    if (next) next();
+    this.active = Math.max(0, this.active - 1);
+    let max = Number.POSITIVE_INFINITY;
+    try {
+      max = this.getSettings().limits.maxConcurrentRuns;
+    } catch {
+      /* unreadable settings must not stall the queue */
+    }
+    if (this.active < max) this.waiting.shift()?.();
   }
 }
 
@@ -922,7 +1096,7 @@ export class UsageFolder {
             : piece.costUsd === null || prev.costUsd === null
               ? { costUsd: null }
               : {}),
-          ...(piece.model ?? prev.model ? { model: piece.model ?? prev.model } : {}),
+          ...((piece.model ?? prev.model) ? { model: piece.model ?? prev.model } : {}),
         }
       : piece;
   }

@@ -8,6 +8,7 @@ export {
   IndexedFolderSchema,
   DEFAULT_EXCLUDES,
   defaultSettings,
+  detectTimezone,
   type Settings,
   type ProviderSettings,
   type IndexedFolder,
@@ -24,7 +25,14 @@ export {
   isSecretFile,
   SECRET_FILE_PATTERNS,
 } from "./security/paths.js";
-export { PROFILES, writeDecision, type ProfileCapabilities, type ApprovalKind, type WriteDecision, type WriteOrigin } from "./security/profiles.js";
+export {
+  PROFILES,
+  writeDecision,
+  type ProfileCapabilities,
+  type ApprovalKind,
+  type WriteDecision,
+  type WriteOrigin,
+} from "./security/profiles.js";
 export { ApprovalStore, type Approval } from "./security/approvals.js";
 export {
   safeSpawn,
@@ -67,10 +75,7 @@ export { searchFiles, listFacets, type SearchFilters, type SearchHit } from "./m
 export { buildGraph, relatedFiles, type GraphData, type GraphNode, type GraphEdge } from "./memory/graph.js";
 export { previewFile, type PreviewResult } from "./memory/preview.js";
 export { generateRouters, checkRouters, areaSlug, type RouterIssue } from "./memory/routers.js";
-export {
-  SkillCatalog,
-  THICK_LINE_THRESHOLD,
-} from "./skills/catalog.js";
+export { SkillCatalog, THICK_LINE_THRESHOLD } from "./skills/catalog.js";
 export {
   SkillFrontmatterSchema,
   SkillInputSchema,
@@ -95,16 +100,24 @@ export {
   type AuditReport,
   type DiscoveredMcpServer,
 } from "./connectors/auditor.js";
-export {
-  SyncCompiler,
-  type SyncPlan,
-  type SyncAction,
-  type SyncApplyResult,
-} from "./sync/compiler.js";
+export { SyncCompiler, type SyncPlan, type SyncAction, type SyncApplyResult } from "./sync/compiler.js";
 export { unifiedDiff } from "./sync/diff.js";
 export { createBackup, listBackups, restoreBackup, type BackupInfo, type BackupOptions } from "./backup.js";
 export * from "./events.js";
-export { InvalidIdError, ID_PATTERN, isValidId, assertValidId, resolveInsideDir } from "./security/ids.js"; export { isInsideAny } from "./security/paths.js"; export { HARD_BLOCKED_DIRS, isHardBlockedPath, isBinaryBuffer, makeWorkspaceFilter, type WorkspaceFilter } from "./memory/excludes.js"; export { checkWorkspacePath, resolveOpenablePath, type WorkspacePathCheck } from "./memory/preview.js"; export { rotateFile, pruneRotated } from "./logs/jsonl.js"; export { type StoreProblem } from "./routines/store.js"; export { deepMergeSettings, type SettingsPatch } from "./config/store.js"; export { INDEX_CHUNK_SIZE, type IndexProgress } from "./memory/indexer.js"; // B3 exports
+export { InvalidIdError, ID_PATTERN, isValidId, assertValidId, resolveInsideDir } from "./security/ids.js";
+export { isInsideAny } from "./security/paths.js";
+export {
+  HARD_BLOCKED_DIRS,
+  isHardBlockedPath,
+  isBinaryBuffer,
+  makeWorkspaceFilter,
+  type WorkspaceFilter,
+} from "./memory/excludes.js";
+export { checkWorkspacePath, resolveOpenablePath, type WorkspacePathCheck } from "./memory/preview.js";
+export { rotateFile, pruneRotated } from "./logs/jsonl.js";
+export { type StoreProblem } from "./routines/store.js";
+export { deepMergeSettings, type SettingsPatch } from "./config/store.js";
+export { INDEX_CHUNK_SIZE, type IndexProgress } from "./memory/indexer.js"; // B3 exports
 export {
   ProviderRegistry,
   ProviderRegistryError,

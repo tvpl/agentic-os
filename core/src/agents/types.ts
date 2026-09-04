@@ -17,9 +17,16 @@ export interface AuthStatus {
 }
 
 export interface ModelOption {
+  /** Concrete model id passed to the CLI. */
   id: string;
   label: string;
   recommendedFor?: string;
+  /**
+   * Short names the provider accepts for this same model (e.g. "sonnet").
+   * They are attached here instead of being listed as separate models so the
+   * UI shows one row per family; runs may still pass an alias as `model`.
+   */
+  aliases?: string[];
 }
 
 export interface ValidationResult {

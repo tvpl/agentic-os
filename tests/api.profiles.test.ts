@@ -74,14 +74,16 @@ describe("security profiles", () => {
     const body = res.json() as {
       runId: string | null;
       status: string;
-      pendingApproval: { id: string; kind: string };
+      pendingApproval: { id: string; kind: string; expiresAt: number };
     };
-    expect(body.runId).toBeNull();
     expect(body.status).toBe("waiting_approval");
     expect(body.pendingApproval.kind).toBe("write_run");
-    expect(ctx.runs.list({ limit: 50 }).some((r) => r.promptSummary.includes("change something"))).toBe(
-      false,
-    );
+    expect(body.pendingApproval.expiresAt).toBeGreaterThan(Date.now());
+    // The gated write is visible in Runs as a `waiting_approval` row, not launched.
+    expect(body.runId).toMatch(/^[0-9a-f-]{36}$/);
+    const parked = ctx.runs.get(body.runId!);
+    expect(parked?.status).toBe("waiting_approval");
+    expect(parked?.promptSummary).toContain("change something");
 
     const pending = await app.inject({ method: "GET", url: "/api/approvals", headers: auth() });
     expect((pending.json() as Array<{ id: string }>).some((a) => a.id === body.pendingApproval.id)).toBe(
@@ -96,9 +98,38 @@ describe("security profiles", () => {
     });
     expect(resolved.statusCode).toBe(200);
     const runId = (resolved.json() as { runId: string | null }).runId;
-    expect(runId).toMatch(/^[0-9a-f-]{36}$/);
+    // The parked row is reused, not duplicated.
+    expect(runId).toBe(body.runId);
     const run = ctx.runs.get(runId!);
     expect(run?.permissionProfile).toBe("review_before_write");
+    expect(run?.status).not.toBe("waiting_approval");
+  });
+
+  it("resolving an expired approval fails with a clear error", async () => {
+    setProfile("review_before_write");
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      headers: auth(),
+      payload: { prompt: "too late", mode: "write" },
+    });
+    const { runId, pendingApproval } = res.json() as { runId: string; pendingApproval: { id: string } };
+    // Age the approval past the TTL (settings.limits.approvalTtlDays, 7 days).
+    ctx.db
+      .prepare("UPDATE approvals SET created_at = ? WHERE id = ?")
+      .run(Date.now() - 8 * 86_400_000, pendingApproval.id);
+
+    const resolved = await app.inject({
+      method: "POST",
+      url: `/api/approvals/${pendingApproval.id}/resolve`,
+      headers: auth(),
+      payload: { decision: "approved" },
+    });
+    expect(resolved.statusCode).toBe(409);
+    expect(resolved.json().error.code).toBe("approval_expired");
+    expect(ctx.approvals.get(pendingApproval.id)?.status).toBe("expired");
+    // The sweep cancelled the run the expired approval was gating.
+    expect(ctx.runs.get(runId)?.status).toBe("cancelled");
   });
 
   it("denying a write_run approval launches nothing", async () => {
@@ -109,15 +140,19 @@ describe("security profiles", () => {
       headers: auth(),
       payload: { prompt: "denied one", mode: "write" },
     });
-    const id = (res.json() as { pendingApproval: { id: string } }).pendingApproval.id;
+    const body = res.json() as { runId: string; pendingApproval: { id: string } };
     const resolved = await app.inject({
       method: "POST",
-      url: `/api/approvals/${id}/resolve`,
+      url: `/api/approvals/${body.pendingApproval.id}/resolve`,
       headers: auth(),
       payload: { decision: "denied" },
     });
     expect((resolved.json() as { runId: string | null; status: string }).runId).toBeNull();
-    expect(ctx.runs.list({ limit: 50 }).some((r) => r.promptSummary.includes("denied one"))).toBe(false);
+    // Nothing was executed: the parked row is cancelled, never queued.
+    expect(ctx.runs.get(body.runId)?.status).toBe("cancelled");
+    expect(ctx.runs.list({ status: "queued" }).some((r) => r.promptSummary.includes("denied one"))).toBe(
+      false,
+    );
   });
 
   it("controlled_write launches write runs immediately", async () => {

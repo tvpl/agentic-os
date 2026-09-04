@@ -18,16 +18,23 @@ import {
 } from "@mordomo/core";
 import { clearRestorePending, readRestorePending, writeRestorePending, type AppContext } from "../context.js";
 import { runDoctor } from "../doctor.js";
-import { grantedRoots, httpError, launchPromptRun, launchSkillRun, type PromptRunInput, type SkillRunInput } from "./common.js";
+import {
+  grantedRoots,
+  httpError,
+  launchPromptRun,
+  launchSkillRun,
+  type PromptRunInput,
+  type SkillRunInput,
+} from "./common.js";
 import { BackupNameParams, UuidParams } from "./params.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-/** Version from apps/api/package.json (falls back to the repo root package.json). */
+/** Version from the repository root package.json (falls back to apps/api's own). */
 export function readPackageVersion(): string {
   for (const candidate of [
-    path.resolve(here, "..", "..", "package.json"),
     path.resolve(here, "..", "..", "..", "..", "package.json"),
+    path.resolve(here, "..", "..", "package.json"),
   ]) {
     try {
       const pkg = JSON.parse(fs.readFileSync(candidate, "utf8")) as { version?: unknown };
@@ -45,7 +52,11 @@ export const PKG_VERSION = readPackageVersion();
 const ProviderPatch = ProviderSettingsSchema.partial();
 export const SettingsPatchSchema = SettingsSchema.partial().extend({
   providers: z
-    .object({ claude: ProviderPatch.optional(), cursor: ProviderPatch.optional(), codex: ProviderPatch.optional() })
+    .object({
+      claude: ProviderPatch.optional(),
+      cursor: ProviderPatch.optional(),
+      codex: ProviderPatch.optional(),
+    })
     .optional(),
   limits: SettingsSchema.shape.limits.removeDefault().partial().optional(),
 });
@@ -55,7 +66,10 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-function mergeObjects(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
+function mergeObjects(
+  base: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
   const out: Record<string, unknown> = { ...base };
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
@@ -143,7 +157,24 @@ export function artifactKind(file: string): ArtifactKind {
   if ([".mp4", ".webm", ".mov"].includes(ext)) return "video";
   if ([".html", ".htm"].includes(ext)) return "html";
   if ([".md", ".markdown"].includes(ext)) return "markdown";
-  if ([".ts", ".tsx", ".js", ".mjs", ".py", ".sh", ".json", ".css", ".yaml", ".yml", ".sql", ".go", ".rs"].includes(ext)) return "code";
+  if (
+    [
+      ".ts",
+      ".tsx",
+      ".js",
+      ".mjs",
+      ".py",
+      ".sh",
+      ".json",
+      ".css",
+      ".yaml",
+      ".yml",
+      ".sql",
+      ".go",
+      ".rs",
+    ].includes(ext)
+  )
+    return "code";
   return "other";
 }
 
@@ -168,7 +199,12 @@ export function artifactTitle(abs: string, kind: ArtifactKind): string {
     const m = /^\s*#{1,3}\s+(.+?)\s*#*\s*$/m.exec(head);
     if (m?.[1]) return m[1].trim().slice(0, 160);
     const line = head.split(/\r?\n/).find((l) => l.trim() && !l.trim().startsWith("---"));
-    return line ? line.trim().replace(/^[#>*\-\s]+/, "").slice(0, 160) || base : base;
+    return line
+      ? line
+          .trim()
+          .replace(/^[#>*\-\s]+/, "")
+          .slice(0, 160) || base
+      : base;
   }
   const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(head);
   if (m?.[1]) return m[1].replace(/\s+/g, " ").trim().slice(0, 160) || base;
@@ -186,13 +222,21 @@ const ArtifactListQuery = z.object({
 type ArtifactListQueryT = z.infer<typeof ArtifactListQuery>;
 
 /** Walk artifacts/ (bounded), merge run metadata by relative path, filter and sort newest first. */
-export function listArtifacts(ctx: AppContext, q: ArtifactListQueryT): { items: ArtifactListItem[]; total: number; skills: string[]; folders: string[] } {
+export function listArtifacts(
+  ctx: AppContext,
+  q: ArtifactListQueryT,
+): { items: ArtifactListItem[]; total: number; skills: string[]; folders: string[] } {
   const root = ctx.paths.artifacts;
   const byRel = new Map<string, { runId: string; skillSlug: string | null; createdAt: number }>();
   for (const run of ctx.runs.list({ limit: 500 })) {
     for (const rel of run.artifacts) {
       const key = rel.split(path.sep).join("/");
-      if (!byRel.has(key)) byRel.set(key, { runId: run.id, skillSlug: run.skillSlug, createdAt: run.finishedAt ?? run.createdAt });
+      if (!byRel.has(key))
+        byRel.set(key, {
+          runId: run.id,
+          skillSlug: run.skillSlug,
+          createdAt: run.finishedAt ?? run.createdAt,
+        });
     }
   }
 
@@ -249,7 +293,8 @@ export function listArtifacts(ctx: AppContext, q: ArtifactListQueryT): { items: 
     if (q.folder && i.folder !== q.folder) return false;
     if (q.kind && i.kind !== q.kind) return false;
     if (q.since !== undefined && i.createdAt < q.since) return false;
-    if (needle && !`${i.title} ${i.file} ${i.skillSlug ?? ""} ${i.folder}`.toLowerCase().includes(needle)) return false;
+    if (needle && !`${i.title} ${i.file} ${i.skillSlug ?? ""} ${i.folder}`.toLowerCase().includes(needle))
+      return false;
     return true;
   });
   filtered.sort((a, b) => b.createdAt - a.createdAt);
@@ -370,7 +415,9 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
     );
     const runEvents = ctx.runs.eventsFor(run.id);
     const sawOk = runEvents.some(
-      (e) => (e.event.type === "assistant" || e.event.type === "result") && JSON.stringify(e.event).includes("MORDOMO_OK"),
+      (e) =>
+        (e.event.type === "assistant" || e.event.type === "result") &&
+        JSON.stringify(e.event).includes("MORDOMO_OK"),
     );
     return { run: finished, passed: finished.status === "done" && sawOk };
   });
@@ -384,27 +431,45 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
   app.post("/api/approvals/:id/resolve", async (req) => {
     const { id } = UuidParams.parse(req.params);
     const { decision } = z.object({ decision: z.enum(["approved", "denied"]) }).parse(req.body);
+    // Sweep first: an approval past its TTL is expired here (cancelling the run
+    // it gated), so resolving it answers 409 instead of silently acting on it.
+    ctx.expireStaleApprovals();
     const approval = ctx.approvals.resolve(id, decision);
     if (!approval) throw httpError(404, "Approval not found");
     // Act on approved effects we know how to apply.
     let runId: string | null = null;
+    const gatedRunId = typeof approval.payload.runId === "string" ? approval.payload.runId : null;
     if (approval.status === "approved" && approval.kind === "expose_port") {
       ctx.settingsStore.update({ bindAddress: String(approval.payload.bindAddress ?? "127.0.0.1") });
     }
     if (approval.status === "approved" && approval.kind === "write_run") {
       const payload = approval.payload as { kind?: string; input?: unknown };
-      const onError = (err: unknown, id: string) => req.log.error({ err, runId: id, msg: "approved run failed to execute" });
-      if (payload.kind === "prompt" && payload.input) runId = launchPromptRun(ctx, payload.input as PromptRunInput, onError).runId;
-      else if (payload.kind === "skill" && payload.input) runId = launchSkillRun(ctx, payload.input as SkillRunInput, onError).runId;
+      const onError = (err: unknown, id: string) =>
+        req.log.error({ err, runId: id, msg: "approved run failed to execute" });
+      if (payload.kind === "prompt" && payload.input)
+        runId = launchPromptRun(ctx, payload.input as PromptRunInput, onError, gatedRunId).runId;
+      else if (payload.kind === "skill" && payload.input)
+        runId = launchSkillRun(ctx, payload.input as SkillRunInput, onError, gatedRunId).runId;
     }
-    events.emit("approval.resolved", { id: approval.id, kind: approval.kind, status: approval.status, runId });
+    // Denied: the run parked in `waiting_approval` is cancelled, not left hanging.
+    if (approval.status === "denied" && gatedRunId) {
+      await ctx.runs.cancel(gatedRunId, "Write approval denied");
+    }
+    events.emit("approval.resolved", {
+      id: approval.id,
+      kind: approval.kind,
+      status: approval.status,
+      runId,
+    });
     return { ...approval, runId };
   });
 
   // ---- Backups ---------------------------------------------------------------
   app.get("/api/backups", async () => listBackups(ctx.paths));
   app.post("/api/backups", async (req) => {
-    const { includeArtifacts } = z.object({ includeArtifacts: z.boolean().default(false) }).parse(req.body ?? {});
+    const { includeArtifacts } = z
+      .object({ includeArtifacts: z.boolean().default(false) })
+      .parse(req.body ?? {});
     return createBackup(ctx.paths, ctx.db, { includeArtifacts });
   });
 
@@ -417,10 +482,14 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
   app.post("/api/backups/:name/restore", async (req, reply) => {
     const { name } = BackupNameParams.parse(req.params);
     const src = path.join(ctx.paths.backups, name);
-    if (!isInside(ctx.paths.backups, src) || !fs.existsSync(src)) throw httpError(404, `Backup not found: ${name}`);
+    if (!isInside(ctx.paths.backups, src) || !fs.existsSync(src))
+      throw httpError(404, `Backup not found: ${name}`);
     const active = ctx.activeRunCount();
     if (active.running + active.queued > 0) {
-      throw httpError(409, `Cannot restore while ${active.running + active.queued} run(s) are active. Wait or cancel them first.`);
+      throw httpError(
+        409,
+        `Cannot restore while ${active.running + active.queued} run(s) are active. Wait or cancel them first.`,
+      );
     }
     const staged = writeRestorePending(ctx.paths, name);
     reply.code(202);

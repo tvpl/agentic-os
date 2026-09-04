@@ -171,7 +171,7 @@ export class AppContext {
       () => this.skills.list(),
       () => this.providers.manifests(),
     );
-    this.approvals = new ApprovalStore(this.db);
+    this.approvals = new ApprovalStore(this.db, () => this.settings().limits.approvalTtlDays * 86_400_000);
     // The daily journal listens for finished runs. Installing it here (and not
     // only when the HTTP routes are registered) means CLI paths — `mordomo
     // index`, `mordomo run` — also index `memory/journal/**` and log their run
@@ -235,17 +235,29 @@ export class AppContext {
   /** Runs that are executing or waiting for a slot (a restore must not run under them). */
   activeRunCount(): { running: number; queued: number } {
     return {
-      running: this.runs.list({ status: "running", limit: 200 }).length,
-      queued: this.runs.list({ status: "queued", limit: 200 }).length,
+      running: this.runs.count({ status: "running" }),
+      queued: this.runs.count({ status: "queued" }),
     };
   }
 
   /** Whether the cron scheduler is started. */
-  schedulerRunning(): boolean | null {
-    // TODO(B2): replace with `scheduler.isRunning()` once core exposes it.
-    const s = this.scheduler as unknown as { isRunning?: () => boolean; running?: boolean };
-    if (typeof s.isRunning === "function") return s.isRunning();
-    return typeof s.running === "boolean" ? s.running : null;
+  schedulerRunning(): boolean {
+    return this.scheduler.isRunning();
+  }
+
+  /**
+   * Sweep approvals past their TTL and cancel the runs they were gating.
+   * Called on boot and hourly by the service. Returns how many expired.
+   */
+  expireStaleApprovals(): number {
+    const expired = this.approvals.expireStale();
+    for (const approval of expired) {
+      const runId = approval.payload.runId;
+      if (typeof runId !== "string") continue;
+      void this.runs.cancel(runId, `Approval expired after ${this.settings().limits.approvalTtlDays} days`);
+    }
+    if (expired.length > 0) events.emit("approval.expired", { count: expired.length });
+    return expired.length;
   }
 
   close(): void {

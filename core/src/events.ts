@@ -19,6 +19,7 @@ export type OsEventType =
   | "index.finished"
   | "approval.requested"
   | "approval.resolved"
+  | "approval.expired"
   | "settings.changed"
   | "backup.created";
 
