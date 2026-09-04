@@ -1,0 +1,161 @@
+/*
+ * F-BACKEND: routines v2 editor + connector data panels.
+ * Only tokens from theme.css; entrance motion is gated behind
+ * prefers-reduced-motion and animates transform/opacity only.
+ */
+
+.rt-head-counts {
+  display: flex;
+  gap: var(--s-3);
+  align-items: center;
+  flex-wrap: wrap;
+  color: var(--text-dim);
+  font-size: var(--fs-2);
+}
+.rt-head-counts .rt-count {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.rt-head-counts svg {
+  width: 14px;
+  height: 14px;
+}
+
+.rt-badges {
+  display: inline-flex;
+  gap: var(--s-1);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.rt-runner {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.rt-runner svg {
+  width: 13px;
+  height: 13px;
+}
+.rt-runner.runner-remote {
+  color: var(--accent);
+}
+
+.routine-card.fired-today .routine-title {
+  opacity: 0.72;
+}
+
+.rt-kind-hint {
+  color: var(--text-faint);
+  font-size: var(--fs-2);
+  margin: calc(var(--s-1) * -1) 0 var(--s-2);
+}
+
+.rt-fires {
+  display: grid;
+  gap: var(--s-1);
+  margin: var(--s-2) 0 var(--s-3);
+}
+.rt-fires ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-4);
+  font-size: var(--fs-3);
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.rt-inline {
+  display: flex;
+  gap: var(--s-2);
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.rt-inline > * {
+  flex: 1 1 120px;
+}
+
+.rt-outcome-quiet {
+  color: var(--text-faint);
+}
+.rt-outcome-alert {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---- connectors ---- */
+
+.conn-data {
+  margin-top: var(--s-2);
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: var(--s-2);
+}
+.conn-data-head {
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.conn-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.conn-items li {
+  display: flex;
+  gap: var(--s-2);
+  align-items: baseline;
+  font-size: var(--fs-3);
+  border-left: 2px solid var(--border-strong);
+  padding-left: var(--s-2);
+}
+.conn-items li.flagged {
+  border-left-color: var(--accent);
+}
+.conn-items .conn-item-sub {
+  color: var(--text-faint);
+  font-size: var(--fs-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conn-checklist {
+  margin: 0;
+  padding-left: 1.1em;
+  display: grid;
+  gap: 4px;
+  color: var(--text-dim);
+  font-size: var(--fs-2);
+}
+.conn-checklist li {
+  overflow-wrap: anywhere;
+}
+.conn-summary-chips {
+  display: flex;
+  gap: var(--s-1);
+  flex-wrap: wrap;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .conn-data,
+  .rt-fires ul li {
+    animation: backend-rise var(--dur-base) var(--ease-out) both;
+  }
+  @keyframes backend-rise {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}

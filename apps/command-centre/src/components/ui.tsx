@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { X } from "lucide-react";
 import { useT } from "../i18n";
 import { ApiError } from "../api";
-import { DialogPortal, useDialog } from "./dialog";
+import { DialogPortal, useDialog, usePresence } from "./dialog";
 
 /* ---------- data fetching (legacy; prefer useApiQuery from ../queries) ---------- */
 export function useApi<T>(fetcher: () => Promise<T>, deps: unknown[] = []): {
@@ -193,25 +193,72 @@ export function Empty({ children }: { children: ReactNode }) {
 /* ---------- modal ---------- */
 export interface ModalProps {
   title: string;
-  /** May be an inline arrow; it is read through a ref, so re-renders never steal focus. */
+  /**
+   * Called after the exit animation when the user closes the modal (X, Esc,
+   * backdrop). May be an inline arrow; it is read through a ref.
+   */
   onClose: () => void;
   children: ReactNode;
   narrow?: boolean;
   /** Override the initial focus target (default: first field, else the dialog itself). */
   initialFocus?: () => HTMLElement | null | undefined;
+  /**
+   * Controlled presence: pass `open={false}` instead of unmounting to get the
+   * exit animation when the parent closes the modal itself (after a save).
+   * Conditional mounting (`{open && <Modal/>}`) still works and animates the
+   * user-initiated closes.
+   */
+  open?: boolean;
+  className?: string;
 }
 
-export function Modal({ title, onClose, children, narrow = false, initialFocus }: ModalProps) {
+const MODAL_EXIT_MS = 160;
+
+export function Modal({ open = true, ...props }: ModalProps) {
+  const { mounted, closing } = usePresence(open, MODAL_EXIT_MS);
+  if (!mounted) return null;
+  return <ModalFrame {...props} exiting={closing} />;
+}
+
+function ModalFrame({ title, onClose, children, narrow = false, initialFocus, exiting, className }: Omit<ModalProps, "open"> & { exiting: boolean }) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
-  useDialog(ref, onClose, { initialFocus });
+  const [closing, setClosing] = useState(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const timer = useRef<number | undefined>(undefined);
+
+  // User-initiated close: play the exit, then tell the parent.
+  const requestClose = useCallback(() => {
+    if (timer.current !== undefined) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      onCloseRef.current();
+      return;
+    }
+    setClosing(true);
+    timer.current = window.setTimeout(() => {
+      timer.current = undefined;
+      onCloseRef.current();
+    }, MODAL_EXIT_MS);
+  }, []);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  useDialog(ref, requestClose, { initialFocus });
+  const out = closing || exiting;
   return (
     <DialogPortal>
-      <div className="modal-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-        <div className={`modal${narrow ? " narrow" : ""}`} role="dialog" aria-modal="true" aria-label={title} ref={ref} tabIndex={-1}>
+      <div className={`modal-backdrop${out ? " closing" : ""}`} role="presentation" onMouseDown={(e) => e.target === e.currentTarget && requestClose()}>
+        <div
+          className={["modal", narrow ? "narrow" : "", className ?? ""].filter(Boolean).join(" ")}
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+          ref={ref}
+          tabIndex={-1}
+        >
           <div className="modal-head">
             <h2>{title}</h2>
-            <button type="button" className="btn ghost sm icon-only" onClick={onClose} aria-label={t("common.close")} data-dialog-close>
+            <button type="button" className="btn ghost sm icon-only" onClick={requestClose} aria-label={t("common.close")} data-dialog-close>
               <X aria-hidden />
             </button>
           </div>

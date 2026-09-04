@@ -137,4 +137,53 @@ CREATE TABLE meta (
       db.exec("CREATE INDEX IF NOT EXISTS idx_run_events_ts ON run_events(ts)");
     },
   },
+  {
+    version: 3,
+    name: "memory-facts-and-inline-fields",
+    // Bi-temporal facts (Graphiti-style: contradictions invalidate, never
+    // delete) and Dataview-style `key:: value` inline fields parsed from
+    // markdown at index time (JSON object on the files row).
+    up(db) {
+      db.exec(`
+CREATE TABLE IF NOT EXISTS facts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  subject TEXT NOT NULL,
+  predicate TEXT NOT NULL,
+  object TEXT NOT NULL,
+  valid_from INTEGER NOT NULL,
+  valid_to INTEGER,
+  source_run_id TEXT,
+  source_path TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_facts_subject ON facts(subject, predicate);
+CREATE INDEX IF NOT EXISTS idx_facts_valid ON facts(valid_from, valid_to);
+`);
+      if (!hasColumn(db, "files", "fields")) {
+        db.exec("ALTER TABLE files ADD COLUMN fields TEXT NOT NULL DEFAULT '{}'");
+      }
+    },
+  },
+  {
+    version: 4,
+    name: "run-usage-and-cost",
+    // Token usage and provider-reported cost per run (F-RUNS). `usage_model`
+    // is the model the provider actually billed, which may differ from the
+    // requested `model` (aliases such as "sonnet"). All nullable: older runs
+    // and providers without usage reporting simply leave them empty.
+    up(db) {
+      const columns: Array<[string, string]> = [
+        ["input_tokens", "INTEGER"],
+        ["output_tokens", "INTEGER"],
+        ["cache_read_tokens", "INTEGER"],
+        ["cache_write_tokens", "INTEGER"],
+        ["cost_usd", "REAL"],
+        ["usage_model", "TEXT"],
+      ];
+      for (const [name, type] of columns) {
+        if (!hasColumn(db, "runs", name)) db.exec(`ALTER TABLE runs ADD COLUMN ${name} ${type}`);
+      }
+      db.exec("CREATE INDEX IF NOT EXISTS idx_runs_finished ON runs(finished_at)");
+    },
+  },
 ];

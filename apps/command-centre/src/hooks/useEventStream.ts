@@ -3,12 +3,50 @@
  * Every event invalidates the query keys listed in `invalidationMap`, so
  * views stop polling. Reconnects with exponential backoff (1 s → 30 s).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api } from "../api";
+import { api, type OsEvent } from "../api";
 import { OS_EVENT_TYPES, invalidationMap } from "../queries";
 
 const MAX_BACKOFF_MS = 30_000;
+
+/* ---- fan-out: one connection, many consumers (notifications, widgets) ---- */
+export type OsEventListener = (event: OsEvent) => void;
+const listeners = new Set<OsEventListener>();
+
+/** Subscribe to every OS event the shell stream receives. Returns the unsubscribe. */
+export function subscribeOsEvents(fn: OsEventListener): () => void {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+
+function fanOut(event: OsEvent) {
+  for (const fn of listeners) {
+    try {
+      fn(event);
+    } catch (err) {
+      console.error("[events] listener threw", err);
+    }
+  }
+}
+
+/**
+ * React to specific OS event types. The handler is read through a ref, so an
+ * inline arrow is fine and never re-subscribes.
+ */
+export function useOsEvent(types: string | readonly string[], handler: OsEventListener): void {
+  const ref = useRef(handler);
+  ref.current = handler;
+  const key = Array.isArray(types) ? types.join("|") : String(types);
+  useEffect(() => {
+    const wanted = new Set(key.split("|"));
+    return subscribeOsEvents((event) => {
+      if (wanted.has(event.type)) ref.current(event);
+    });
+  }, [key]);
+}
 
 export function useEventStream(enabled = true): { connected: boolean } {
   const qc = useQueryClient();
@@ -25,6 +63,7 @@ export function useEventStream(enabled = true): { connected: boolean } {
       if (stopped) return;
       close = api.streamEvents(
         (event) => {
+          fanOut(event);
           const keys = invalidationMap[event.type];
           if (!keys) return;
           for (const key of keys) {

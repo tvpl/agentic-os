@@ -52,6 +52,30 @@ Dashboard and in the run's page.
   secret-blocked; copy the full path or open the file explicitly. "Related
   files" explains *why* two files are connected (markdown link, same folder).
 
+### 3.1 Recall, journal and consolidation
+
+- **Recall instead of grep**: `mordomo recall "what did we decide about the Q3
+  budget?"` (or the `/recall` skill, or `GET /api/memory/recall?q=&k=`) scores
+  the index without opening files, opens only the best 3, and returns the
+  matching **sections** with a token estimate — far cheaper than letting an
+  agent read whole files.
+- **Daily journal**: `memory/journal/YYYY-MM-DD.md` is created on first access
+  each day with *Today / Decisions / Open loops / Runs*; finished runs log
+  themselves, and today + yesterday are injected into `memory/ROUTER.md` under
+  `settings.memory.journalBudgetTokens` (default 1200).
+- **Consolidation**: the `consolidate-memory` skill promotes recurring journal
+  notes into `memory/MEMORY.md` and never deletes — contradicted lines move to
+  *Superseded* and facts get a `valid_to`. The routine *Nightly memory
+  consolidation* (03:00) ships **disabled**; enable it when you trust it.
+- **Hygiene**: Second Brain → Hygiene (or `GET /api/memory/hygiene`) lists
+  orphan notes, broken router pointers, files untouched for 90 days, skills
+  never run, silent routines and connectors unused for 30 days.
+- **Inline fields**: write `owner:: Ana` in any note and query it with
+  `GET /api/memory/query?where=owner:Ana`.
+
+Full details, including how to measure the token saving before and after:
+[docs/memory-guide.md](./memory-guide.md).
+
 ## 4. Routines (scheduled work)
 
 Routines → New routine: name, a skill (or free prompt), cron schedule +

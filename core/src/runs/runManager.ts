@@ -5,7 +5,7 @@ import { EventEmitter } from "node:events";
 import type { Db } from "../db/db.js";
 import type { MordomoPaths } from "../paths.js";
 import type { Settings, ProviderId, EffortLevel, SecurityProfile } from "../config/schema.js";
-import type { AgentAdapter, AgentRun, RunEvent, RunMode } from "../agents/types.js";
+import type { AgentAdapter, AgentRun, RunEvent, RunMode, RunUsage, RunUsageEvent } from "../agents/types.js";
 import { JsonlLogger } from "../logs/jsonl.js";
 import { redactSecrets } from "../security/redact.js";
 import { killProcessGroup } from "../spawn/safeSpawn.js";
@@ -55,6 +55,33 @@ export interface RunRecord {
   attempts: number;
   timeoutMs: number | null;
   permissionProfile: SecurityProfile | null;
+  /** Token usage and provider-reported cost; null until a provider reports it. */
+  usage: RunUsage | null;
+}
+
+/** `Metrics.cost` — spend and token throughput derived from the runs table. */
+export interface CostMetrics {
+  /** Cost of runs created since local midnight. */
+  todayUsd: number;
+  /** Cost of runs created in the last 7 days. */
+  weekUsd: number;
+  /** Input + output + cache tokens of runs created since local midnight. */
+  tokensToday: number;
+  /** Cost of runs that finished (or started) in the last 60 minutes. */
+  burnRatePerHour: number;
+  /**
+   * Only present when a usage budget is configured in settings
+   * (`settings.usage.blockBudgetTokens`); the schema has no such setting
+   * today, so this is omitted.
+   */
+  block5h?: { usedPct: number; resetsAt: number };
+}
+
+/** Hourly buckets (oldest first) for the tokens sparkline in the Runs header. */
+export interface UsageSeriesPoint {
+  ts: number;
+  tokens: number;
+  usd: number;
 }
 
 export interface CreateRunInput {
@@ -363,12 +390,18 @@ export class RunManager {
       const filesChanged = new Set<string>();
       let resultEvent: Extract<RunEvent, { type: "result" }> | null = null;
       let errorEvent: Extract<RunEvent, { type: "error" }> | null = null;
+      const usage = new UsageFolder();
 
       for await (const event of adapter.execute(agentRun)) {
         if (event.type === "started") {
           active.pid = event.pid;
           this.db.prepare("UPDATE runs SET pid = ? WHERE id = ?").run(event.pid, runId);
           events.emit("run.started", { runId, pid: event.pid });
+        }
+        if (event.type === "usage") {
+          usage.fold(event);
+          // Live cost on the row so the list/badges update while the run is going.
+          this.writeUsage(runId, usage.value());
         }
         this.persistEvent(runId, event, active);
         if (event.type === "tool_use" && (adapter.manifest?.writeToolPattern ?? WRITE_TOOLS).test(event.tool)) {
@@ -420,6 +453,7 @@ export class RunManager {
         error,
         artifacts_json: JSON.stringify(artifacts),
         files_changed_json: JSON.stringify([...filesChanged]),
+        ...usagePatch(usage.value()),
       });
       this.emit(runId, {
         type: "result",
@@ -443,6 +477,18 @@ export class RunManager {
     } finally {
       this.releaseSlot();
     }
+  }
+
+  // --------------------------------------------------------------- usage --
+
+  /** Persist the folded usage on the run row (no status change). */
+  private writeUsage(runId: string, usage: RunUsage | null): void {
+    if (!usage) return;
+    const patch = usagePatch(usage);
+    const columns = Object.keys(patch);
+    this.db
+      .prepare(`UPDATE runs SET ${columns.map((c) => `${c} = ?`).join(", ")} WHERE id = ?`)
+      .run(...columns.map((c) => patch[c] ?? null), runId);
   }
 
   // ---------------------------------------------------------- transitions --
@@ -620,7 +666,7 @@ export class RunManager {
     }
   }
 
-  list(opts: { limit?: number; status?: RunStatus; origin?: RunOrigin; parentRunId?: string } = {}): RunRecord[] {
+  list(opts: { limit?: number; offset?: number; status?: RunStatus; origin?: RunOrigin; parentRunId?: string } = {}): RunRecord[] {
     const clauses: string[] = [];
     const params: unknown[] = [];
     if (opts.status) {
@@ -637,9 +683,25 @@ export class RunManager {
     }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const rows = this.db
-      .prepare(`SELECT * FROM runs ${where} ORDER BY created_at DESC LIMIT ?`)
-      .all(...params, opts.limit ?? 50) as RawRun[];
+      .prepare(`SELECT * FROM runs ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+      .all(...params, opts.limit ?? 50, Math.max(0, opts.offset ?? 0)) as RawRun[];
     return rows.map(fromRow);
+  }
+
+  /** Total rows matching the same filters as `list()` (for pagination). */
+  count(opts: { status?: RunStatus; origin?: RunOrigin } = {}): number {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (opts.status) {
+      clauses.push("status = ?");
+      params.push(opts.status);
+    }
+    if (opts.origin) {
+      clauses.push("origin = ?");
+      params.push(opts.origin);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    return (this.db.prepare(`SELECT COUNT(*) c FROM runs ${where}`).get(...params) as { c: number }).c;
   }
 
   eventsFor(runId: string, afterId = 0): Array<{ id: number; event: RunEvent }> {
@@ -657,6 +719,8 @@ export class RunManager {
     byProvider: Array<{ provider: string; count: number; success: number }>;
     running: number;
     failedRecent: number;
+    cost: CostMetrics;
+    usageSeries: UsageSeriesPoint[];
   } {
     const weekAgo = Date.now() - 7 * 86_400_000;
     const total = (this.db.prepare("SELECT COUNT(*) c FROM runs").get() as { c: number }).c;
@@ -689,7 +753,52 @@ export class RunManager {
       byProvider,
       running,
       failedRecent,
+      cost: this.costMetrics(),
+      usageSeries: this.usageSeries(),
     };
+  }
+
+  /** Spend/token aggregates; every value is 0 when no provider reported usage. */
+  costMetrics(now = Date.now()): CostMetrics {
+    const midnight = new Date(now);
+    midnight.setHours(0, 0, 0, 0);
+    const sum = (sql: string, ...params: unknown[]) =>
+      this.db.prepare(sql).get(...params) as { usd: number | null; tokens: number | null };
+    const today = sum(
+      "SELECT SUM(cost_usd) usd, SUM(COALESCE(input_tokens,0) + COALESCE(output_tokens,0) + COALESCE(cache_read_tokens,0) + COALESCE(cache_write_tokens,0)) tokens FROM runs WHERE created_at >= ?",
+      midnight.getTime(),
+    );
+    const week = sum("SELECT SUM(cost_usd) usd, 0 tokens FROM runs WHERE created_at >= ?", now - 7 * 86_400_000);
+    const hour = sum(
+      "SELECT SUM(cost_usd) usd, 0 tokens FROM runs WHERE COALESCE(finished_at, started_at, created_at) >= ?",
+      now - 3_600_000,
+    );
+    return {
+      todayUsd: round6(today.usd ?? 0),
+      weekUsd: round6(week.usd ?? 0),
+      tokensToday: today.tokens ?? 0,
+      burnRatePerHour: round6(hour.usd ?? 0),
+    };
+  }
+
+  /** Last 24 hourly buckets of tokens/cost (oldest first; empty hours are zero). */
+  usageSeries(now = Date.now(), hours = 24): UsageSeriesPoint[] {
+    const bucketMs = 3_600_000;
+    const start = Math.floor(now / bucketMs) * bucketMs - (hours - 1) * bucketMs;
+    const rows = this.db
+      .prepare(
+        "SELECT created_at ts, COALESCE(input_tokens,0) + COALESCE(output_tokens,0) + COALESCE(cache_read_tokens,0) + COALESCE(cache_write_tokens,0) tokens, COALESCE(cost_usd,0) usd FROM runs WHERE created_at >= ? AND (input_tokens IS NOT NULL OR cost_usd IS NOT NULL)",
+      )
+      .all(start) as Array<{ ts: number; tokens: number; usd: number }>;
+    const series: UsageSeriesPoint[] = Array.from({ length: hours }, (_, i) => ({ ts: start + i * bucketMs, tokens: 0, usd: 0 }));
+    for (const row of rows) {
+      const idx = Math.floor((row.ts - start) / bucketMs);
+      const point = series[idx];
+      if (!point) continue;
+      point.tokens += row.tokens;
+      point.usd = round6(point.usd + row.usd);
+    }
+    return series;
   }
 
   // --------------------------------------------------------- concurrency --
@@ -763,6 +872,95 @@ interface RawRun {
   attempts: number;
   timeout_ms: number | null;
   permission_profile: string | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  cache_read_tokens?: number | null;
+  cache_write_tokens?: number | null;
+  cost_usd?: number | null;
+  usage_model?: string | null;
+}
+
+function round6(n: number): number {
+  return Math.round(n * 1e6) / 1e6;
+}
+
+/**
+ * Folds `usage` events into one figure: `total` snapshots replace the sum of
+ * previous `turn` events (Claude reports both per-message usage and a final
+ * total; Codex reports a total per turn). Exported for tests.
+ */
+export class UsageFolder {
+  private turns: RunUsage | null = null;
+  private total: RunUsage | null = null;
+
+  fold(event: RunUsageEvent): void {
+    const piece: RunUsage = {
+      inputTokens: num(event.inputTokens),
+      outputTokens: num(event.outputTokens),
+      ...(event.cacheReadTokens != null ? { cacheReadTokens: num(event.cacheReadTokens) } : {}),
+      ...(event.cacheWriteTokens != null ? { cacheWriteTokens: num(event.cacheWriteTokens) } : {}),
+      ...(event.costUsd !== undefined ? { costUsd: event.costUsd } : {}),
+      ...(event.model ? { model: event.model } : {}),
+    };
+    if (event.scope === "total") {
+      this.total = piece;
+      return;
+    }
+    const prev = this.turns;
+    this.turns = prev
+      ? {
+          inputTokens: prev.inputTokens + piece.inputTokens,
+          outputTokens: prev.outputTokens + piece.outputTokens,
+          ...(prev.cacheReadTokens != null || piece.cacheReadTokens != null
+            ? { cacheReadTokens: (prev.cacheReadTokens ?? 0) + (piece.cacheReadTokens ?? 0) }
+            : {}),
+          ...(prev.cacheWriteTokens != null || piece.cacheWriteTokens != null
+            ? { cacheWriteTokens: (prev.cacheWriteTokens ?? 0) + (piece.cacheWriteTokens ?? 0) }
+            : {}),
+          ...(prev.costUsd != null || piece.costUsd != null
+            ? { costUsd: round6((prev.costUsd ?? 0) + (piece.costUsd ?? 0)) }
+            : piece.costUsd === null || prev.costUsd === null
+              ? { costUsd: null }
+              : {}),
+          ...(piece.model ?? prev.model ? { model: piece.model ?? prev.model } : {}),
+        }
+      : piece;
+  }
+
+  value(): RunUsage | null {
+    if (!this.total) return this.turns;
+    // A total without a model still benefits from the model seen on turns.
+    if (!this.total.model && this.turns?.model) return { ...this.total, model: this.turns.model };
+    return this.total;
+  }
+}
+
+function num(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+/** Row patch for the usage columns (all null when usage is null). */
+function usagePatch(usage: RunUsage | null): Record<string, number | string | null> {
+  return {
+    input_tokens: usage ? usage.inputTokens : null,
+    output_tokens: usage ? usage.outputTokens : null,
+    cache_read_tokens: usage?.cacheReadTokens ?? null,
+    cache_write_tokens: usage?.cacheWriteTokens ?? null,
+    cost_usd: usage?.costUsd ?? null,
+    usage_model: usage?.model ?? null,
+  };
+}
+
+function usageFromRow(row: RawRun): RunUsage | null {
+  if (row.input_tokens == null && row.output_tokens == null && row.cost_usd == null) return null;
+  return {
+    inputTokens: row.input_tokens ?? 0,
+    outputTokens: row.output_tokens ?? 0,
+    ...(row.cache_read_tokens != null ? { cacheReadTokens: row.cache_read_tokens } : {}),
+    ...(row.cache_write_tokens != null ? { cacheWriteTokens: row.cache_write_tokens } : {}),
+    costUsd: row.cost_usd ?? null,
+    ...(row.usage_model ? { model: row.usage_model } : {}),
+  };
 }
 
 function fromRow(row: RawRun): RunRecord {
@@ -790,6 +988,7 @@ function fromRow(row: RawRun): RunRecord {
     attempts: row.attempts,
     timeoutMs: row.timeout_ms,
     permissionProfile: row.permission_profile as SecurityProfile | null,
+    usage: usageFromRow(row),
   };
 }
 

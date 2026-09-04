@@ -1,9 +1,11 @@
 /** Small shared helpers for the desktop: queries with the desktop's cadence, tickers, palettes. */
 import { useEffect, useState } from "react";
-import { useOsArtifacts, useOsRoutines, useOsRuns } from "../queries";
+import { ApiError, type ArtifactListResponse, type ConnectorData } from "../api";
+import { qk, useApiQuery, useOsArtifacts, useOsRoutines, useOsRuns } from "../queries";
 
 export const ACTIVE_STATUSES = ["queued", "running", "waiting_approval"] as const;
-export const isActiveStatus = (status: string): boolean => (ACTIVE_STATUSES as readonly string[]).includes(status);
+export const isActiveStatus = (status: string): boolean =>
+  (ACTIVE_STATUSES as readonly string[]).includes(status);
 
 /**
  * `/api/events` invalidates these on every run/routine change; the 30 s
@@ -26,7 +28,9 @@ export function useTicker(ms: number): number {
 export function sameLocalDay(a: number, b: number): boolean {
   const da = new Date(a);
   const db = new Date(b);
-  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+  return (
+    da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate()
+  );
 }
 
 /** "1h 05m 09s" / "12m 09s" / "42s" / "3d 4h" — locale-neutral units. */
@@ -55,4 +59,118 @@ export function shortAge(ts: number, now = Date.now()): string {
 
 export const AREA_COLORS = ["#c084fc", "#f472b6", "#fb923c", "#22d3ee", "#fde047", "#4ade80", "#a5b4fc"];
 /** Same hues, darkened for a light ground where additive glow is off. */
-export const AREA_COLORS_LIGHT = ["#7e22ce", "#be185d", "#c2410c", "#0e7490", "#a16207", "#15803d", "#4338ca"];
+export const AREA_COLORS_LIGHT = [
+  "#7e22ce",
+  "#be185d",
+  "#c2410c",
+  "#0e7490",
+  "#a16207",
+  "#15803d",
+  "#4338ca",
+];
+
+/* ---- desktop additions -------------------------------------------------- */
+const NOT_CONFIGURED: ConnectorData = { status: "not_configured", syncedAt: null, items: [] };
+
+/**
+ * `GET /api/connectors/:id/data` (F-BACKEND). A 404 (route not landed yet)
+ * or any hard failure degrades to `not_configured`, never to a blank widget.
+ */
+export function useConnectorData(id: string) {
+  const q = useApiQuery<ConnectorData>(
+    [...qk.connectors, id, "data"],
+    `/api/connectors/${encodeURIComponent(id)}/data`,
+    {
+      staleTime: 60_000,
+      refetchInterval: 5 * 60_000,
+      retry: false,
+    },
+  );
+  const missing =
+    q.isError && q.error instanceof ApiError && (q.error.status === 404 || q.error.status === 501);
+  const data: ConnectorData | undefined =
+    q.data ??
+    (q.isError
+      ? missing
+        ? NOT_CONFIGURED
+        : { status: "error", syncedAt: null, items: [], message: q.error?.message }
+      : undefined);
+  return { ...q, data, isPending: q.isPending && !q.isError, isError: false as const };
+}
+
+/** Model family for colouring: Haiku green, Sonnet blue, Opus purple, Fable orange, other = accent. */
+export type ModelFamily = "haiku" | "sonnet" | "opus" | "fable" | "other";
+export function modelFamily(model: string | null | undefined): ModelFamily {
+  const m = (model ?? "").toLowerCase();
+  if (m.includes("haiku")) return "haiku";
+  if (m.includes("sonnet")) return "sonnet";
+  if (m.includes("opus")) return "opus";
+  if (m.includes("fable")) return "fable";
+  return "other";
+}
+
+/** Start of the local day for `ts`. */
+export function startOfDay(ts: number): number {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/* ---- graph + artifact sources for the wallpaper ring ---------------------- */
+export interface GraphNodeLite {
+  area: string | null;
+  name: string;
+  path: string;
+  title?: string | null;
+  mtime: number;
+}
+
+/**
+ * The wallpaper's node sample: one cache entry shared by the particle core
+ * and the orbital ring (`maxNodes=700` keeps the payload small).
+ */
+export function useDesktopGraph() {
+  return useApiQuery<{ nodes: GraphNodeLite[] }>(
+    qk.memoryGraph({ maxNodes: 700 }),
+    "/api/memory/graph?maxNodes=700",
+    { staleTime: 60_000 },
+  );
+}
+
+/** Files touched most recently, newest first (fallbacks for the Now panel and the ring). */
+export function recentFiles(nodes: readonly GraphNodeLite[], limit: number, since?: number): GraphNodeLite[] {
+  return nodes
+    .filter((n) => since === undefined || n.mtime >= since)
+    .slice()
+    .sort((a, b) => b.mtime - a.mtime)
+    .slice(0, limit);
+}
+
+/**
+ * `GET /api/artifacts/list`. Search mode and the gallery share this cache;
+ * an older server without the route degrades to an empty list, never to an
+ * error card.
+ */
+export function useArtifactList(
+  params: { q?: string; skill?: string; kind?: string; folder?: string; since?: number; limit?: number } = {},
+  enabled = true,
+) {
+  const qs = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== "" && v !== "all")
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+    .join("&");
+  const q = useApiQuery<ArtifactListResponse>(
+    [...qk.artifacts, "list", params],
+    `/api/artifacts/list${qs ? `?${qs}` : ""}`,
+    {
+      staleTime: 30_000,
+      retry: false,
+      enabled,
+    },
+  );
+  const missing =
+    q.isError && q.error instanceof ApiError && (q.error.status === 404 || q.error.status === 501);
+  const data: ArtifactListResponse | undefined =
+    q.data ?? (missing ? { items: [], total: 0, skills: [], folders: [] } : undefined);
+  return { ...q, data, isError: q.isError && !missing };
+}

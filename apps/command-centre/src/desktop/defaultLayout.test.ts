@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { COLS, DEFAULT_LAYOUT, MIN_ROWS, WIDGET_ORDER, clampBox, computeRows, layoutsEqual, normalizeLayout, overlaps } from "./defaultLayout";
+import {
+  COLS,
+  DEFAULT_LAYOUT,
+  MIN_ROWS,
+  WIDGET_ORDER,
+  clampBox,
+  computeRows,
+  layoutsEqual,
+  normalizeLayout,
+  overlaps,
+} from "./defaultLayout";
 
 describe("desktop layout maths", () => {
   it("default layout fits inside the minimum grid (1024x768 regression)", () => {
@@ -23,14 +33,81 @@ describe("desktop layout maths", () => {
   });
 
   it("normalizeLayout drops unknown ids, keeps visibility and resolves overlaps", () => {
-    const out = normalizeLayout({ ghost: { x: 0, y: 0, w: 4, h: 4 }, today: { x: 0, y: 0, w: 5, h: 6, visible: true } }, 18);
+    const out = normalizeLayout(
+      { ghost: { x: 0, y: 0, w: 4, h: 4 }, today: { x: 0, y: 0, w: 5, h: 6, visible: true } },
+      18,
+    );
     expect(Object.keys(out)).toEqual([...WIDGET_ORDER]);
     const visible = WIDGET_ORDER.filter((id) => out[id]!.visible).map((id) => out[id]!);
-    for (let i = 0; i < visible.length; i++) for (let j = i + 1; j < visible.length; j++) expect(overlaps(visible[i]!, visible[j]!)).toBe(false);
+    for (let i = 0; i < visible.length; i++)
+      for (let j = i + 1; j < visible.length; j++) expect(overlaps(visible[i]!, visible[j]!)).toBe(false);
   });
 
   it("layoutsEqual is structural", () => {
     expect(layoutsEqual(DEFAULT_LAYOUT, { ...DEFAULT_LAYOUT })).toBe(true);
-    expect(layoutsEqual(DEFAULT_LAYOUT, { ...DEFAULT_LAYOUT, deck: { ...DEFAULT_LAYOUT.deck!, x: 1 } })).toBe(false);
+    expect(layoutsEqual(DEFAULT_LAYOUT, { ...DEFAULT_LAYOUT, deck: { ...DEFAULT_LAYOUT.deck!, x: 1 } })).toBe(
+      false,
+    );
+  });
+});
+
+describe("desktop layout: config and duplicates", () => {
+  it("normalizeLayout keeps per-widget config and duplicate ids of known widgets", async () => {
+    const { findFreeSpot, nextDuplicateId, baseId } = await import("./defaultLayout");
+    const out = normalizeLayout(
+      {
+        today: { x: 0, y: 6, w: 5, h: 7, visible: true, config: { zones: ["UTC", "Europe/London"] } },
+        "today:2": { x: 6, y: 0, w: 5, h: 5, visible: true, config: { zones: ["Asia/Tokyo"] } },
+        "nope:2": { x: 0, y: 0, w: 4, h: 4, visible: true },
+        bogus: { x: 0, y: 0, w: 4, h: 4, visible: true },
+      },
+      18,
+    );
+    expect(out.today!.config).toEqual({ zones: ["UTC", "Europe/London"] });
+    expect(out["today:2"]).toBeDefined();
+    expect(out["today:2"]!.config).toEqual({ zones: ["Asia/Tokyo"] });
+    expect(out["nope:2"]).toBeUndefined();
+    expect(out.bogus).toBeUndefined();
+    expect(baseId("today:2")).toBe("today");
+    expect(nextDuplicateId(out, "today")).toBe("today:3");
+    const spot = findFreeSpot(out, 4, 3, 18);
+    const visible = Object.values(out).filter((b) => b.visible);
+    for (const b of visible) expect(overlaps({ ...spot, w: 4, h: 3, visible: true }, b)).toBe(false);
+  });
+
+  it("clampBox drops a non-object config and layoutsEqual compares config", () => {
+    const b = clampBox(
+      { x: 0, y: 0, w: 4, h: 4, config: "nope" as unknown as Record<string, unknown> },
+      DEFAULT_LAYOUT.today!,
+      18,
+    );
+    expect(b.config).toBeUndefined();
+    const a = { ...DEFAULT_LAYOUT, today: { ...DEFAULT_LAYOUT.today!, config: { days: 7 } } };
+    const c = { ...DEFAULT_LAYOUT, today: { ...DEFAULT_LAYOUT.today!, config: { days: 14 } } };
+    expect(layoutsEqual(a, a)).toBe(true);
+    expect(layoutsEqual(a, c)).toBe(false);
+    expect(layoutsEqual(a, DEFAULT_LAYOUT)).toBe(false);
+  });
+});
+
+describe("desktop layout: config survives normalisation", () => {
+  it("keeps config on a box that had to be clamped and on a hidden widget", () => {
+    const out = normalizeLayout(
+      {
+        pulse: { x: 99, y: 99, w: 99, h: 99, visible: true, config: { days: 21 } },
+        inbox: { x: 0, y: 0, w: 6, h: 4, visible: false, config: { limit: 12 } },
+      },
+      18,
+    );
+    expect(out.pulse!.config).toEqual({ days: 21 });
+    expect(out.pulse!.x + out.pulse!.w).toBeLessThanOrEqual(COLS);
+    expect(out.inbox!.visible).toBe(false);
+    expect(out.inbox!.config).toEqual({ limit: 12 });
+  });
+
+  it("a widget with no stored config stays config-free (no empty objects persisted)", () => {
+    const out = normalizeLayout({ deck: { x: 19, y: 0, w: 5, h: 9, visible: true } }, 18);
+    expect(out.deck!.config).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(out.deck!, "config")).toBe(false);
   });
 });

@@ -116,3 +116,64 @@ export {
   type AdapterFactory,
   type AdapterFactoryOptions,
 } from "./agents/registry.js";
+export * from "./memory/v2.js"; // F-MEMORY: recall, journal, hygiene, facts, inline fields
+// F-BACKEND: routines v2 (schedule kinds, runner, summary) + read-only connector data client
+export {
+  ScheduleKind,
+  RoutineRunner,
+  RoutineContext,
+  RoutineDelivery,
+  validateRoutine,
+  type Every,
+  type OnExit,
+  type ActiveHours,
+  type Heartbeat,
+  type RoutineSummary,
+  type SilentRoutine,
+  type RoutineValidationOptions,
+} from "./routines/types.js";
+export {
+  nextRunFor,
+  nextAtRun,
+  nextEveryRun,
+  nextHeartbeatRun,
+  nextIntervalSlot,
+  intervalMs,
+  isWithinActiveHours,
+  startOfDayIn,
+  isHeartbeatOk,
+  wallMinutes,
+} from "./routines/schedule.js";
+export { cronNextAfter } from "./routines/store.js";
+export { isStartupServiceInstalled } from "./routines/osIntegration.js";
+export type { HistoryEntry, SchedulerOptions } from "./routines/scheduler.js";
+export {
+  DataMappingSchema,
+  ToolMappingSchema,
+  type DataMapping,
+  type ToolMapping,
+  type ItemFields,
+  type FieldSpec,
+} from "./connectors/registry.js";
+export {
+  fetchConnectorData,
+  setupChecklist,
+  ConnectorDataCache,
+  McpStdioClient,
+  McpProtocolError,
+  ReadOnlyViolationError,
+  isWriteLikeTool,
+  allowedTools,
+  parseToolText,
+  itemsFromParsed,
+  resolvePath,
+  renderArgs,
+  substituteEnv,
+  minimalEnv,
+  allowPathsFrom,
+  resolveCommand,
+  type ConnectorData,
+  type ConnectorItem,
+  type FetchOptions,
+  type McpTool,
+} from "./connectors/client.js";

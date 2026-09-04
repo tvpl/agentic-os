@@ -1,13 +1,40 @@
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import { RoutineSchema, events } from "@mordomo/core";
 import type { AppContext } from "../context.js";
 import { httpError } from "./common.js";
 import { IdParams } from "./params.js";
 
+const SilentQuery = z.object({ days: z.coerce.number().int().min(1).max(365).default(30) });
+
 export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): void {
   const changed = (id: string, action: string) => events.emit("routine.changed", { id, action });
+  /**
+   * Webhook delivery is a settings-level opt-in: `settings.routines.allowWebhooks`.
+   * The store refuses `delivery: "webhook"` when it is off, which surfaces as a 400.
+   */
+  const saveOpts = () => ({ allowWebhooks: ctx.settings().routines.allowWebhooks });
+  /** Semantic routine errors from core carry no statusCode: they are user input problems. */
+  const save = <T>(fn: () => T): T => {
+    try {
+      return fn();
+    } catch (err) {
+      const e = err as Error & { statusCode?: number };
+      if (e.statusCode) throw e;
+      throw httpError(400, e.message);
+    }
+  };
 
   app.get("/api/routines", async () => ctx.scheduler.status());
+
+  /** Dashboard footer: "n/m fired today" plus the routine count per runner and kind. */
+  app.get("/api/routines/summary", async () => ctx.scheduler.summary());
+
+  /** Hygiene input: routines that never fired, went quiet, or keep failing inside the window. */
+  app.get("/api/routines/silent", async (req) => {
+    const { days } = SilentQuery.parse(req.query ?? {});
+    return { days, routines: ctx.scheduler.silent(days) };
+  });
 
   app.post("/api/routines", async (req) => {
     const routine = RoutineSchema.parse(req.body);
@@ -15,7 +42,7 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
     if (routine.skillSlug && !ctx.skills.load(routine.skillSlug)) {
       throw httpError(400, `Unknown skill: ${routine.skillSlug}`);
     }
-    const saved = ctx.routines.save(routine);
+    const saved = save(() => ctx.routines.save(routine, saveOpts()));
     ctx.scheduler.reload();
     changed(saved.id, "created");
     return saved;
@@ -28,7 +55,7 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
     if (routine.skillSlug && !ctx.skills.load(routine.skillSlug)) {
       throw httpError(400, `Unknown skill: ${routine.skillSlug}`);
     }
-    const saved = ctx.routines.save(routine);
+    const saved = save(() => ctx.routines.save(routine, saveOpts()));
     ctx.scheduler.reload();
     changed(id, "updated");
     return saved;
@@ -38,7 +65,9 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
     const { id } = IdParams.parse(req.params);
     const routine = ctx.routines.get(id);
     if (!routine) throw httpError(404, "Routine not found");
-    const saved = ctx.routines.save({ ...routine, enabled: !routine.enabled });
+    // Re-enabling a one-shot that already fired clears the reason it ended.
+    const enabled = !routine.enabled;
+    const saved = save(() => ctx.routines.save({ ...routine, enabled, endedReason: enabled ? null : routine.endedReason }, saveOpts()));
     ctx.scheduler.reload();
     changed(id, saved.enabled ? "enabled" : "disabled");
     return saved;
@@ -47,7 +76,7 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
   app.post("/api/routines/:id/duplicate", async (req) => {
     const { id } = IdParams.parse(req.params);
     if (!ctx.routines.get(id)) throw httpError(404, "Routine not found");
-    const copy = ctx.routines.duplicate(id);
+    const copy = save(() => ctx.routines.duplicate(id, saveOpts()));
     ctx.scheduler.reload();
     changed(copy.id, "created");
     return copy;

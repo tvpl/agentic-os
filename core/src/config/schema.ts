@@ -66,6 +66,36 @@ export const DEFAULT_EXCLUDES = [
   ".gnupg",
 ];
 
+/** A user-defined micro app shown in the desktop "Micro apps" widget (href = route or URL). */
+export const MicroAppSchema = z.object({
+  id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,40}$/),
+  name: z.string().min(1),
+  description: z.string().default(""),
+  href: z.string().min(1),
+});
+export type MicroApp = z.infer<typeof MicroAppSchema>;
+
+/** Second Brain preferences: every field optional so older clients keep working; the frontend validates values. */
+export const BrainSettingsSchema = z.object({
+  layout: z.string().optional(),
+  view: z.string().optional(),
+  spin: z.number().min(0).max(1).optional(),
+  showNames: z.boolean().optional(),
+  linkSpring: z.number().optional(),
+  nodeScale: z.number().optional(),
+  clusterSize: z.number().optional(),
+  edgeKinds: z.array(z.string()).optional(),
+  localHops: z.number().int().min(1).max(3).optional(),
+  focusMode: z.boolean().optional(),
+  workspace: z
+    .object({
+      pinned: z.array(z.object({ id: z.number().int(), x: z.number(), y: z.number() })).default([]),
+      collapsed: z.array(z.string()).default([]),
+    })
+    .optional(),
+});
+export type BrainSettings = z.infer<typeof BrainSettingsSchema>;
+
 export const SettingsSchema = z.object({
   version: z.number().default(1),
   systemName: z.string().default("MordomoOS"),
@@ -105,6 +135,42 @@ export const SettingsSchema = z.object({
     })
     .default({}),
   favoriteSkills: z.array(z.string()).default([]),
+  /** Theme preset id (see apps/command-centre/src/theme.ts); the shell reads `settings.themePreset`. */
+  themePreset: z.enum(["hud-orange", "forest", "ocean", "mono"]).default("hud-orange"),
+  /** User-defined micro apps listed on the desktop. */
+  microApps: z.array(MicroAppSchema).default([]),
+  /** Routine engine defaults (F-BACKEND: routines v2). */
+  routines: z
+    .object({
+      /** `delivery: "webhook"` is refused at validation unless this is on. */
+      allowWebhooks: z.boolean().default(false),
+      /** Default interval for new heartbeat routines (minutes). */
+      heartbeatIntervalMinutes: z.number().int().min(1).default(30),
+      /** Token a heartbeat run must print to be considered quiet. */
+      heartbeatOkToken: z.string().min(1).default("HEARTBEAT_OK"),
+    })
+    .default({}),
+  /** Read-only connector data client (F-BACKEND: `GET /api/connectors/:id/data`). */
+  connectors: z
+    .object({
+      /** Cache TTL for connector data reads. */
+      dataCacheTtlMs: z.number().int().min(0).default(5 * 60_000),
+      /** Hard timeout for one data read (spawn + protocol + tool call). */
+      dataTimeoutMs: z.number().int().min(1000).default(30_000),
+      /**
+       * Extra executables connector mappings may spawn: absolute paths or bare
+       * names resolved on PATH (e.g. "npx"). The base allowlist stays as-is.
+       */
+      allowedCommands: z.array(z.string()).default([]),
+    })
+    .default({}),
+  /** Second-brain memory options (journal injection into the master router, …). */
+  memory: z
+    .object({
+      /** Token budget for today's + yesterday's journal inside memory/ROUTER.md (chars/4). */
+      journalBudgetTokens: z.number().int().min(100).max(20_000).default(1200),
+    })
+    .default({}),
   /** Command Centre desktop widget layout (24-col grid units), per widget id. */
   dashboardLayout: z
     .record(
@@ -114,9 +180,17 @@ export const SettingsSchema = z.object({
         w: z.number().int().min(2).max(24),
         h: z.number().int().min(2).max(40),
         visible: z.boolean().default(true),
+        /**
+         * Per-widget configuration (timezones, day counts, item limits …).
+         * Opaque to the core: the widget that owns the id defines the shape,
+         * so the record must survive a settings round-trip untouched.
+         */
+        config: z.record(z.unknown()).optional(),
       }),
     )
     .default({}),
+  /** Second Brain view preferences (Command Centre); the shape is owned by the frontend (`brain/engine/world.ts` BrainSettings). */
+  brain: BrainSettingsSchema.default({}),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 

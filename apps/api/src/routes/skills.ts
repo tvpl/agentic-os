@@ -13,6 +13,13 @@ import type { AppContext } from "../context.js";
 import { gateWrite, grantedRoots, httpError, launchSkillRun, type SkillRunInput } from "./common.js";
 import { IdParam, SlugParams } from "./params.js";
 
+/** Previews stream at most this much (brand PDFs are a few MB; nothing in a skill should be bigger). */
+const MAX_RESOURCE_BYTES = 25 * 1024 * 1024;
+
+/** Inline styles/fonts/images from the same skill only; no scripts, no frames, no network. */
+const RESOURCE_CSP =
+  "default-src 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; media-src 'self'; form-action 'none'; base-uri 'none'; sandbox";
+
 const RunSkillBody = z.object({
   provider: ProviderId.optional(),
   model: z.string().nullable().optional(),
@@ -49,6 +56,51 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
     if (!ctx.skills.load(slug)) throw httpError(404, "Skill not found");
     return ctx.skills.save(frontmatter, body);
   });
+
+  /**
+   * Serve one resource file from inside a skill folder (brand HTML, images,
+   * PDFs, reference markdown). Only files the catalog scan listed are
+   * served — never SKILL.md, symlinks, hidden files or anything outside the
+   * folder — with an explicit content type and `nosniff`.
+   *
+   * The route-level `onSend` runs after the server-wide security headers, so
+   * it is where the resource CSP wins: a script-free, network-free, sandboxed
+   * policy, plus `X-Frame-Options: SAMEORIGIN` so the panel can show an HTML
+   * resource in its own sandboxed iframe (the global `DENY` would block it).
+   */
+  app.get(
+    "/api/skills/:slug/resource",
+    {
+      onSend: async (_req, reply, payload) => {
+        reply.header("content-security-policy", RESOURCE_CSP);
+        reply.header("x-frame-options", "SAMEORIGIN");
+        reply.header("x-content-type-options", "nosniff");
+        return payload;
+      },
+    },
+    async (req, reply) => {
+      const { slug } = SlugParams.parse(req.params);
+      const { rel } = z.object({ rel: z.string().min(1).max(512) }).parse(req.query ?? {});
+      if (!ctx.skills.load(slug)) throw httpError(404, "Skill not found");
+      const hit = ctx.skills.resolveResource(slug, rel);
+      if (!hit) throw httpError(404, "Resource not found");
+      let stat: fs.Stats;
+      try {
+        stat = fs.statSync(hit.absPath);
+      } catch {
+        throw httpError(404, "Resource not found");
+      }
+      if (!stat.isFile()) throw httpError(404, "Resource not found");
+      if (stat.size > MAX_RESOURCE_BYTES) throw httpError(413, "Resource too large to preview");
+      reply.header("content-type", hit.contentType);
+      reply.header("cache-control", "private, no-store");
+      // Anything the panel cannot preview inline is offered as a download.
+      if (hit.resource.kind === "other" || hit.resource.kind === "pdf") {
+        reply.header("content-disposition", `${hit.resource.kind === "pdf" ? "inline" : "attachment"}; filename="${hit.resource.name.replace(/["\\\r\n]/g, "_")}"`);
+      }
+      return reply.send(fs.createReadStream(hit.absPath));
+    },
+  );
 
   app.post("/api/skills/:slug/toggle", async (req) => {
     const { slug } = SlugParams.parse(req.params);

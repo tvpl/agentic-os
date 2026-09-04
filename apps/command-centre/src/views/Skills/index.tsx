@@ -1,4 +1,5 @@
 import { Link, useParams } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import { useOsProviders, useOsSkills } from "../../queries";
 import { ErrorBox, Skeleton } from "../../components/ui";
 import { EmptyState } from "../../components/primitives";
@@ -47,7 +48,7 @@ export default function Skills() {
             body={<span className="mono">/{slug}</span>}
             action={
               <Link className="btn" to="/skills">
-                ← {t("skills.title")}
+                <ArrowLeft aria-hidden /> {t("skills.title")}
               </Link>
             }
           />

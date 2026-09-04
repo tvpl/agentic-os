@@ -1,8 +1,14 @@
 import { createContext, useCallback, useContext } from "react";
+import * as brainL from "./locales/brain";
+import * as desktopL from "./locales/desktop";
+import * as shellL from "./locales/shell";
+import * as runsL from "./locales/runs";
+import * as appsL from "./locales/apps";
+import * as backendL from "./locales/backend";
 
 export type Lang = "en" | "pt-BR";
 
-const en = {
+const baseEn = {
   "nav.dashboard": "Dashboard",
   "nav.skills": "Skills",
   "nav.brain": "Second Brain",
@@ -54,7 +60,8 @@ const en = {
   "skills.runNow": "Run",
   "skills.lines": "lines",
   "skills.export": "Export to providers",
-  "skills.exportHint": "Compiles skills + routers to CLAUDE.md / AGENTS.md / .claude / .cursor / .agents in a folder you choose.",
+  "skills.exportHint":
+    "Compiles skills + routers to CLAUDE.md / AGENTS.md / .claude / .cursor / .agents in a folder you choose.",
   "skills.guardrails": "Guardrails",
   "skills.success": "Success criteria",
   "skills.resources": "Resource files",
@@ -144,11 +151,13 @@ const en = {
   "settings.syncPlan": "Preview sync",
   "settings.syncApply": "Apply",
   "settings.syncTarget": "Target folder",
-  "settings.conflicts": "Conflicts need per-file approval — files you edited by hand are never overwritten silently.",
+  "settings.conflicts":
+    "Conflicts need per-file approval — files you edited by hand are never overwritten silently.",
   "settings.port": "Port",
   "settings.timezone": "Timezone",
   "settings.dataDir": "Data directory (MORDOMO_HOME)",
-  "settings.dataDirHint": "To move the data directory, set MORDOMO_HOME before starting the service. All state lives in files + SQLite there.",
+  "settings.dataDirHint":
+    "To move the data directory, set MORDOMO_HOME before starting the service. All state lives in files + SQLite there.",
   "setup.welcome": "Welcome",
   "setup.start": "Start setup",
   "setup.notDone": "Setup has not been completed yet. The fastest path is the guided terminal setup:",
@@ -316,7 +325,8 @@ const en = {
   "now.noRoutine": "No routine enabled.",
   "now.tool": "Tool",
   "now.cancelTitle": "Cancel this run?",
-  "now.cancelBody": "The agent process will be stopped. Files already written stay in the artifacts directory.",
+  "now.cancelBody":
+    "The agent process will be stopped. Files already written stay in the artifacts directory.",
   "pulse.empty": "No runs yet",
   "pulse.emptyBody": "Metrics appear after the first run.",
   "pulse.runSkill": "Run a skill",
@@ -408,13 +418,17 @@ const en = {
   "conn.requestWrite": "Request write access",
   "conn.write": "write",
   "conn.writeEnabled": "Write access enabled.",
-  "conn.writeGateBody": "Enabling writes for {name} creates a pending approval. Nothing is written until you approve it in Settings › Security.",
+  "conn.writeGateBody":
+    "Enabling writes for {name} creates a pending approval. Nothing is written until you approve it in Settings › Security.",
   "conn.writeOps": "write",
   "conn.writeRequested": "Approval requested — review it in Settings › Security.",
   "profile.read_only.desc": "Agents can read the workspace and only write inside the artifacts directory.",
-  "profile.review_before_write.desc": "Write runs are allowed; a human reviews the changes afterwards. Currently behaves like Controlled write (backend gating is per run mode).",
-  "profile.controlled_write.desc": "Write runs may edit files inside the artifacts directory and indexed folders (provider permission rules).",
-  "profile.approved_automation.desc": "Routines may run in write mode without a human in the loop. Currently behaves like Controlled write.",
+  "profile.review_before_write.desc":
+    "Write runs are allowed; a human reviews the changes afterwards. Currently behaves like Controlled write (backend gating is per run mode).",
+  "profile.controlled_write.desc":
+    "Write runs may edit files inside the artifacts directory and indexed folders (provider permission rules).",
+  "profile.approved_automation.desc":
+    "Routines may run in write mode without a human in the loop. Currently behaves like Controlled write.",
   "routines.attemptsHint": "Retries create a new run linked to the first one; timeouts are not retried.",
   "routines.cronHint": "minute hour day month weekday — e.g. 30 7 * * 1-5",
   "routines.cronInvalid": "Invalid cron expression.",
@@ -452,12 +466,14 @@ const en = {
   "settings.portHint": "127.0.0.1 only — restart the service to apply.",
   "settings.profileHint": "Applies to manual runs; routines carry their own profile.",
   "settings.removeFolder": "Remove this folder from the index?",
-  "settings.restoreBody": "The current settings and database are replaced by the backup. The service must be restarted afterwards.",
+  "settings.restoreBody":
+    "The current settings and database are replaced by the backup. The service must be restarted afterwards.",
   "settings.restored": "Restore requested.",
   "settings.smokeOk": "OK",
   "settings.smokeTest": "Smoke test",
   "settings.promptLevelReadOnly": "read-only: prompt-level",
-  "settings.promptLevelReadOnlyHint": "This CLI has no sandbox flag: read-only is only requested in the prompt, not enforced.",
+  "settings.promptLevelReadOnlyHint":
+    "This CLI has no sandbox flag: read-only is only requested in the prompt, not enforced.",
   "settings.timezoneHint": "IANA name, e.g. America/Sao_Paulo. Routines without a timezone inherit it.",
   "setup.folderHint": "Optional: one folder to index now. You can add more in Settings.",
   "setup.indexing": "Indexing…",
@@ -470,14 +486,26 @@ const en = {
   "skills.readOnly": "read-only",
   "pixel.draftRestored": "Draft restored from your last session.",
   "pixel.leaveTitle": "Leave with unsaved pixels?",
-  "pixel.leaveBody": "Your drawing is kept as a draft in this browser, but it has not been saved to the artifacts.",
+  "pixel.leaveBody":
+    "Your drawing is kept as a draft in this browser, but it has not been saved to the artifacts.",
   "pixel.leave": "Leave",
 };
 
-type Dict = typeof en;
+/** Merged dictionaries: the base strings plus one module per frontier (see ./locales). */
+const en = {
+  ...baseEn,
+  ...brainL.en,
+  ...desktopL.en,
+  ...shellL.en,
+  ...runsL.en,
+  ...appsL.en,
+  ...backendL.en,
+};
+/** Every string is widened to `string`: locale modules may use `as const`. */
+type Dict = { [K in keyof typeof en]: string };
 
-const ptBR: Dict = {
-  ...en,
+const basePtBR = {
+  ...baseEn,
   "nav.dashboard": "Painel",
   "nav.skills": "Skills",
   "nav.brain": "Segundo Cérebro",
@@ -529,7 +557,8 @@ const ptBR: Dict = {
   "skills.runNow": "Executar",
   "skills.lines": "linhas",
   "skills.export": "Exportar para provedores",
-  "skills.exportHint": "Compila skills + routers para CLAUDE.md / AGENTS.md / .claude / .cursor / .agents na pasta que você escolher.",
+  "skills.exportHint":
+    "Compila skills + routers para CLAUDE.md / AGENTS.md / .claude / .cursor / .agents na pasta que você escolher.",
   "skills.guardrails": "Guardrails",
   "skills.success": "Critérios de sucesso",
   "skills.resources": "Arquivos de recurso",
@@ -556,7 +585,8 @@ const ptBR: Dict = {
   "brain.blocked": "Este arquivo está na lista de segredos e nunca é lido.",
   "brain.binary": "Arquivo binário — sem prévia.",
   "routines.title": "Rotinas",
-  "routines.sub": "Trabalho agendado. Uma rotina é um prompt ou skill que seu agente executa em horários definidos.",
+  "routines.sub":
+    "Trabalho agendado. Uma rotina é um prompt ou skill que seu agente executa em horários definidos.",
   "routines.new": "Nova rotina",
   "routines.next": "Próxima execução",
   "routines.last": "Última execução",
@@ -619,11 +649,13 @@ const ptBR: Dict = {
   "settings.syncPlan": "Prever sincronização",
   "settings.syncApply": "Aplicar",
   "settings.syncTarget": "Pasta de destino",
-  "settings.conflicts": "Conflitos exigem aprovação por arquivo — nada editado à mão é sobrescrito em silêncio.",
+  "settings.conflicts":
+    "Conflitos exigem aprovação por arquivo — nada editado à mão é sobrescrito em silêncio.",
   "settings.port": "Porta",
   "settings.timezone": "Fuso horário",
   "settings.dataDir": "Diretório de dados (MORDOMO_HOME)",
-  "settings.dataDirHint": "Para mover o diretório de dados, defina MORDOMO_HOME antes de iniciar o serviço. Todo o estado vive em arquivos + SQLite lá.",
+  "settings.dataDirHint":
+    "Para mover o diretório de dados, defina MORDOMO_HOME antes de iniciar o serviço. Todo o estado vive em arquivos + SQLite lá.",
   "setup.welcome": "Bem-vindo",
   "setup.start": "Iniciar setup",
   "setup.notDone": "O setup ainda não foi concluído. O caminho mais rápido é o setup guiado no terminal:",
@@ -711,7 +743,8 @@ const ptBR: Dict = {
   "pixel.title": "Pixel Studio",
   "pixel.sub": "Desenhe, anime e exporte pixel art — direto para seus artefatos.",
   "pixel.grid": "Tamanho da grade",
-  "pixel.gridConfirm": "Reduzir a grade vai cortar os pixels fora do novo tamanho em todos os frames. Continuar?",
+  "pixel.gridConfirm":
+    "Reduzir a grade vai cortar os pixels fora do novo tamanho em todos os frames. Continuar?",
   "pixel.onion": "Onion skin",
   "pixel.tools": "Ferramentas",
   "pixel.tool.pencil": "Lápis",
@@ -791,14 +824,16 @@ const ptBR: Dict = {
   "now.noRoutine": "Nenhuma rotina habilitada.",
   "now.tool": "Ferramenta",
   "now.cancelTitle": "Cancelar esta execução?",
-  "now.cancelBody": "O processo do agente será interrompido. Arquivos já gravados permanecem na pasta de artefatos.",
+  "now.cancelBody":
+    "O processo do agente será interrompido. Arquivos já gravados permanecem na pasta de artefatos.",
   "pulse.empty": "Nenhuma execução ainda",
   "pulse.emptyBody": "As métricas aparecem após a primeira execução.",
   "pulse.runSkill": "Executar uma skill",
   "runs.backToList": "Voltar às execuções",
   "runs.binaryOrLarge": "Binário ou grande demais para prévia.",
   "runs.cancelled": "Execução cancelada.",
-  "runs.approvalPending": "Esta execução com escrita precisa da sua aprovação: revise em Configurações › Segurança.",
+  "runs.approvalPending":
+    "Esta execução com escrita precisa da sua aprovação: revise em Configurações › Segurança.",
   "runs.cwd": "Diretório de trabalho",
   "runs.elapsed": "Decorrido",
   "runs.model": "Modelo",
@@ -823,7 +858,8 @@ const ptBR: Dict = {
   "skills.lineNumbers": "Números de linha",
   "skills.noMatch": "Nenhuma skill corresponde",
   "skills.noMatchBody": "Tente outro termo ou limpe os filtros.",
-  "skills.noProviderBody": "Nenhum provider habilitado. Habilite Claude, Cursor ou Codex em Configurações › Provedores.",
+  "skills.noProviderBody":
+    "Nenhum provider habilitado. Habilite Claude, Cursor ou Codex em Configurações › Provedores.",
   "skills.noProviderTitle": "Nenhum provider disponível",
   "skills.notFound": "Skill não encontrada",
   "skills.openProviders": "Abrir configurações de provedores",
@@ -877,26 +913,32 @@ const ptBR: Dict = {
   "conn.emptyTitle": "Nenhum conector registrado",
   "conn.healthy": "Saudável",
   "conn.noRecommendations": "Nada a recomendar no momento.",
-  "conn.nothingDiscovered": "Nada descoberto ({n} arquivos de configuração verificados; credenciais nunca são lidas).",
+  "conn.nothingDiscovered":
+    "Nada descoberto ({n} arquivos de configuração verificados; credenciais nunca são lidas).",
   "conn.ops": "operações",
   "conn.readOps": "leitura",
   "conn.requestWrite": "Solicitar escrita",
   "conn.write": "escrita",
   "conn.writeEnabled": "Escrita habilitada.",
-  "conn.writeGateBody": "Habilitar escrita para {name} cria uma aprovação pendente. Nada é escrito até você aprovar em Configurações › Segurança.",
+  "conn.writeGateBody":
+    "Habilitar escrita para {name} cria uma aprovação pendente. Nada é escrito até você aprovar em Configurações › Segurança.",
   "conn.writeOps": "escrita",
   "conn.writeRequested": "Aprovação solicitada — revise em Configurações › Segurança.",
   "profile.read_only.desc": "Agentes leem o workspace e só escrevem dentro da pasta de artefatos.",
-  "profile.review_before_write.desc": "Runs de escrita são permitidas; um humano revisa as mudanças depois. Hoje se comporta como Escrita controlada (o backend limita por modo de run).",
-  "profile.controlled_write.desc": "Runs de escrita podem editar arquivos na pasta de artefatos e nas pastas indexadas (regras de permissão do provider).",
-  "profile.approved_automation.desc": "Rotinas podem rodar em modo de escrita sem humano no circuito. Hoje se comporta como Escrita controlada.",
+  "profile.review_before_write.desc":
+    "Runs de escrita são permitidas; um humano revisa as mudanças depois. Hoje se comporta como Escrita controlada (o backend limita por modo de run).",
+  "profile.controlled_write.desc":
+    "Runs de escrita podem editar arquivos na pasta de artefatos e nas pastas indexadas (regras de permissão do provider).",
+  "profile.approved_automation.desc":
+    "Rotinas podem rodar em modo de escrita sem humano no circuito. Hoje se comporta como Escrita controlada.",
   "routines.attemptsHint": "Tentativas criam uma run nova ligada à primeira; timeouts não são repetidos.",
   "routines.cronHint": "minuto hora dia mês dia-da-semana — ex.: 30 7 * * 1-5",
   "routines.cronInvalid": "Expressão cron inválida.",
   "routines.deleteBody": "O arquivo da rotina e o histórico são removidos. Runs já registradas são mantidas.",
   "routines.deleted": "Rotina excluída.",
   "routines.duplicated": "Rotina duplicada (pausada).",
-  "routines.emptyBody": "Uma rotina executa uma skill ou prompt em horários definidos, mesmo com a UI fechada.",
+  "routines.emptyBody":
+    "Uma rotina executa uma skill ou prompt em horários definidos, mesmo com a UI fechada.",
   "routines.emptyTitle": "Nenhuma rotina ainda",
   "routines.enabledHint": "rotinas pausadas nunca disparam",
   "routines.nextRuns": "Próximas execuções",
@@ -919,7 +961,8 @@ const ptBR: Dict = {
   "settings.denied": "Negado.",
   "settings.excludesHint": "Um glob por linha. .git, .ssh, .aws e arquivos de segredo são sempre excluídos.",
   "settings.folderAbsolute": "Use um caminho absoluto.",
-  "settings.folderHint": "Caminho absoluto de uma pasta existente. A indexação começa na próxima atualização.",
+  "settings.folderHint":
+    "Caminho absoluto de uma pasta existente. A indexação começa na próxima atualização.",
   "settings.modelHint": "Vazio = padrão do provedor.",
   "settings.noBackups": "Nenhum backup ainda",
   "settings.noBackupsBody": "Um backup copia configurações, banco de dados, skills, rotinas e conectores.",
@@ -927,12 +970,14 @@ const ptBR: Dict = {
   "settings.portHint": "Somente 127.0.0.1 — reinicie o serviço para aplicar.",
   "settings.profileHint": "Vale para runs manuais; rotinas têm o próprio perfil.",
   "settings.removeFolder": "Remover esta pasta do índice?",
-  "settings.restoreBody": "As configurações e o banco atuais são substituídos pelo backup. O serviço precisa ser reiniciado depois.",
+  "settings.restoreBody":
+    "As configurações e o banco atuais são substituídos pelo backup. O serviço precisa ser reiniciado depois.",
   "settings.restored": "Restauração solicitada.",
   "settings.smokeOk": "OK",
   "settings.smokeTest": "Smoke test",
   "settings.promptLevelReadOnly": "somente leitura: só no prompt",
-  "settings.promptLevelReadOnlyHint": "Este CLI não tem sandbox: o modo somente leitura é apenas pedido no prompt, não imposto.",
+  "settings.promptLevelReadOnlyHint":
+    "Este CLI não tem sandbox: o modo somente leitura é apenas pedido no prompt, não imposto.",
   "settings.timezoneHint": "Nome IANA, ex.: America/Sao_Paulo. Rotinas sem fuso herdam este.",
   "setup.folderHint": "Opcional: uma pasta para indexar agora. Você pode adicionar mais em Configurações.",
   "setup.indexing": "Indexando…",
@@ -947,6 +992,16 @@ const ptBR: Dict = {
   "pixel.leaveTitle": "Sair com pixels não salvos?",
   "pixel.leaveBody": "Seu desenho fica como rascunho neste navegador, mas não foi salvo nos artefatos.",
   "pixel.leave": "Sair",
+};
+
+const ptBR: Dict = {
+  ...basePtBR,
+  ...brainL.ptBR,
+  ...desktopL.ptBR,
+  ...shellL.ptBR,
+  ...runsL.ptBR,
+  ...appsL.ptBR,
+  ...backendL.ptBR,
 };
 
 export const dictionaries: Record<Lang, Dict> = { en, "pt-BR": ptBR };

@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.5.0 — 2026-09-03
+
+The September analysis (`docs/analysis-2026-09/`) executed end to end: the frame
+by frame study of the RUBRIC "Agentic OS" plus the open-source state of the art,
+turned into code across seven frontiers.
+
+- **Second Brain**: the view dropped from 1505 to 470 lines over pure modules.
+  All three edge kinds survive to the canvas with their own stroke, legend entry
+  and toggle (only markdown links used to make it). New **Arcs** layout, the
+  default: each area gets a sector proportional to the square root of its size
+  and its files ride concentric arcs ordered by folder and date, with sub-folders
+  as counted planets. Hovering a file lights its neighbours; **Local** mode keeps
+  only what is within N hops. Filters by extension, tag, date and size, plus
+  query groups that recolour matches. Hub clicks explode deterministically with
+  camera framing instead of a random burst. Markdown previews render with
+  clickable file and skill links and a relations card grouped by kind. Nodes drag
+  and pin, the timeline scrubs the graph by date, and selection, layout and
+  filters live in the URL. The render loop only runs at 60 fps while something
+  moves, drops to 12 at rest and stops when the tab is hidden.
+- **Desktop**: the wallpaper is a real 3D wireframe icosphere rotating on two
+  axes with depth-based edge alpha, over a particle core drawn from pre-rendered
+  glow sprites. The artifact ring numbers its chips, labels them on hover and
+  reveals every label on demand; a search mode dims the desktop, counts matches,
+  rings only the hits and opens a detail modal while the background recedes.
+  Widgets drag by transform with FLIP neighbours and a snap on release. A widget
+  registry brings an add gallery, per-widget configuration and duplication. New
+  Prompt, Inbox, Agenda, Calendar, E-mail and Cost widgets; the routines board
+  shows a runner per row and the count fired today; the Now panel is never empty.
+  Artifacts and Generations galleries with thumbnails, filters and a lightbox.
+- **Shell**: the launcher became a command palette (⌘K) with nested pages,
+  actions, skills, files and runs. Modals animate out, routes cross-fade through
+  the View Transitions API, dialogs push the background back, and every
+  interactive surface has a pressed state. Notifications collect from the event
+  stream with unread counts and an optional sound. Four theme presets.
+- **Runs**: adapters parse token usage and cost from the provider streams and a
+  migration persists them per run; `/api/metrics` reports today, week, tokens and
+  burn rate. Run detail gained cost badges, a changed-files card with git diffs,
+  run again, continue, copy log, timeline search, a context meter and a canvas
+  replay with a scrubber. Approvals resolve inline instead of redirecting.
+- **Routines and connectors**: five schedule kinds (`cron`, `at`, `every`,
+  `on-exit`, `heartbeat`) with execution context, delivery and active hours; a
+  runner and a fired-today summary. A read-only MCP stdio client behind argv-only
+  spawning feeds `GET /api/connectors/:id/data`, with mappings for Google
+  Calendar and Gmail, so the calendar and e-mail widgets can show real items.
+- **Memory**: layered recall scores candidates from the index and routers without
+  opening files, opens only the best few, picks the matching section and follows
+  one pointer, reporting how many candidates it weighed against how many it read.
+  A daily journal is created on demand, fed by finished runs and injected into the
+  master router under a token budget. Hygiene reports orphans, dangling links,
+  stale files, unrun skills, silent routines and unused connectors. Facts are
+  bi-temporal: a new assertion closes the previous one instead of deleting it.
+  Inline `key:: value` fields are indexed and queryable.
+- **Skills and settings**: the SKILL.md body no longer renders in the faint
+  file-path style; it gets a mono block with a line gutter, a copy button and a
+  rendered-markdown toggle. Skills carry rich resources served containment-safe
+  with per-kind previews. Settings gained theme presets, widget visibility, micro
+  apps, the notification sound and the webhook and connector allowlists. Pixel
+  Studio gained redo, frame keys, brush sizes, onion skin and a sprite sheet.
+- **Quality**: 291 backend tests, 185 frontend tests and 34 end-to-end checks
+  pass; lint and typecheck are clean. The theme boot script moved into the bundle
+  so it stops violating the Content Security Policy.
+
 ## 0.4.0 — 2026-09-02
 
 Hardening release: the September audit (`docs/audit-2026-09/`) executed end to end.

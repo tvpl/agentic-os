@@ -1,13 +1,14 @@
-import { useState } from "react";
-import { Plug, Search, ShieldCheck } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type Connector } from "../api";
-import { useT } from "../i18n";
+import { useRef, useState } from "react";
+import { CheckCircle2, ListChecks, Plug, RefreshCw, Search, ShieldCheck, Star } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, type Connector, type ConnectorData } from "../api";
+import { useLocale, useT } from "../i18n";
 import { qk, useOsConnectors } from "../queries";
-import { ErrorBox, Skeleton, useToast } from "../components/ui";
+import { ErrorBox, Skeleton, timeAgo, useToast } from "../components/ui";
 import { Badge, Button, EmptyState } from "../components/primitives";
 import { useConfirm } from "../hooks/useConfirm";
 import { errorMessage, isOffline } from "./shared";
+import "./backend.css";
 
 interface AuditReport {
   discovered: Array<{ source: string; name: string; transport: string; target: string }>;
@@ -149,6 +150,7 @@ export default function Connectors() {
                 </p>
                 <p className="meta mono break-all">{c.origin}</p>
               </details>
+              <ConnectorDataPanel connector={c} />
               {!c.writeEnabled && c.writeOperations.length > 0 && (
                 <Button size="sm" variant="outline" icon={<ShieldCheck aria-hidden />} style={{ marginTop: 8 }} onClick={() => void onRequestWrite(c)} loading={requestWrite.isPending && requestWrite.variables?.id === c.id}>
                   {t("conn.requestWrite")}
@@ -157,6 +159,142 @@ export default function Connectors() {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Read-only data status per connector: the setup checklist (install command,
+ * env var NAMES, how to allowlist the executable) is always available, and
+ * "Test read" calls the declared read-only tool once and shows the first
+ * three items. Nothing in this panel can write.
+ */
+function ConnectorDataPanel({ connector }: { connector: Connector }) {
+  const t = useT();
+  const locale = useLocale();
+  const [tested, setTested] = useState(false);
+  // Kept in a ref so the very first "Test read" already bypasses the server cache.
+  const refresh = useRef(false);
+  const base = `/api/connectors/${encodeURIComponent(connector.id)}`;
+  const hasMapping = Boolean(connector.dataMapping);
+
+  const setup = useQuery<{ steps: string[] }>({
+    queryKey: [...qk.connectors, connector.id, "setup"],
+    queryFn: ({ signal }) => api.get<{ steps: string[] }>(`${base}/setup`, { signal }),
+    enabled: hasMapping,
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+
+  const data = useQuery<ConnectorData>({
+    queryKey: [...qk.connectors, connector.id, "data"],
+    queryFn: ({ signal }) => api.get<ConnectorData>(`${base}/data${refresh.current ? "?refresh=1" : ""}`, { signal }),
+    enabled: false,
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const test = () => {
+    refresh.current = true;
+    setTested(true);
+    void data.refetch();
+  };
+
+  const d = data.data;
+  const tone = d?.status === "ok" ? "ok" : d?.status === "error" ? "danger" : "dim";
+  const label =
+    d?.status === "ok"
+      ? t("backend.conn.dataOk")
+      : d?.status === "error"
+        ? t("backend.conn.dataError")
+        : t("backend.conn.dataNotConfigured");
+  const steps = d?.setup ?? setup.data?.steps ?? [];
+
+  return (
+    <div className="conn-data">
+      <div className="conn-data-head">
+        <span className="hud-label">{t("backend.conn.data")}</span>
+        <span className="rt-badges">
+          {d && (
+            <Badge kind="state" tone={tone}>
+              {label}
+            </Badge>
+          )}
+          {connector.lastUsedAt ? (
+            <span className="meta">{t("backend.conn.syncedAt", { ago: timeAgo(connector.lastUsedAt, locale) })}</span>
+          ) : null}
+          {hasMapping && (
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={tested ? <RefreshCw aria-hidden /> : <ListChecks aria-hidden />}
+              onClick={test}
+              loading={data.isFetching}
+              aria-label={`${t("backend.conn.testRead")} — ${connector.name}`}
+              title={t("backend.conn.testReadHint")}
+            >
+              {tested ? t("backend.conn.refresh") : t("backend.conn.testRead")}
+            </Button>
+          )}
+        </span>
+      </div>
+
+      {!hasMapping && <p className="meta">{t("backend.conn.noMapping")}</p>}
+      {hasMapping && !tested && <p className="meta">{t("backend.conn.readOnly")}</p>}
+
+      {tested && data.isFetching && !d && <Skeleton lines={3} />}
+      {tested && data.error && <ErrorBox message={errorMessage(data.error)} onRetry={() => void data.refetch()} />}
+      {d?.message && <p className="meta">{d.message}</p>}
+
+      {d?.status === "ok" && (
+        <>
+          {d.summary && Object.keys(d.summary).length > 0 && (
+            <div className="conn-summary-chips">
+              {Object.entries(d.summary).map(([k, n]) => (
+                <Badge kind="meta" key={k}>
+                  {k}: {n}
+                </Badge>
+              ))}
+            </div>
+          )}
+          {d.items.length === 0 ? (
+            <p className="meta">{t("backend.conn.noItems")}</p>
+          ) : (
+            <>
+              <span className="hud-label">{t("backend.conn.firstItems", { n: Math.min(3, d.items.length) })}</span>
+              <ul className="conn-items">
+                {d.items.slice(0, 3).map((item) => (
+                  <li key={item.id} className={item.flagged ? "flagged" : undefined}>
+                    {item.flagged && <Star aria-hidden width={12} height={12} />}
+                    <span>{item.title}</span>
+                    {item.subtitle && <span className="conn-item-sub">{item.subtitle}</span>}
+                    {item.ts ? <span className="conn-item-sub">{timeAgo(item.ts, locale)}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {d.tools && d.tools.length > 0 && (
+            <p className="meta mono break-all">
+              {t("backend.conn.tools")}: {d.tools.slice(0, 8).join(", ")}
+            </p>
+          )}
+          <p className="meta">
+            <CheckCircle2 aria-hidden width={12} height={12} /> {t("backend.conn.readOnly")}
+          </p>
+        </>
+      )}
+
+      {hasMapping && steps.length > 0 && (
+        <details open={d ? d.status !== "ok" : false}>
+          <summary className="conn-summary">{t("backend.conn.checklist")}</summary>
+          <ol className="conn-checklist">
+            {steps.map((step, i) => (
+              <li key={i}>{step}</li>
+            ))}
+          </ol>
+        </details>
       )}
     </div>
   );

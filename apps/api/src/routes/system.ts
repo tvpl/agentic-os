@@ -105,6 +105,157 @@ function resolveSyncTarget(ctx: AppContext, target: string | undefined): string 
   return resolveInsideRoots(grantedRoots(ctx), target);
 }
 
+// ---- Artifacts list -----------------------------------------------------------
+
+export type ArtifactKind = "image" | "video" | "html" | "markdown" | "code" | "other";
+
+export interface ArtifactListItem {
+  id: string;
+  file: string;
+  path: string;
+  runId: string | null;
+  skillSlug: string | null;
+  createdAt: number;
+  kind: ArtifactKind;
+  title: string;
+  folder: string;
+  sizeBytes: number;
+  thumbnail: boolean;
+}
+
+const RAW_MIME: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+};
+const RAW_MAX_BYTES = 25 * 1024 * 1024;
+const TITLE_SCAN_BYTES = 16 * 1024;
+const LIST_MAX_FILES = 5000;
+
+export function artifactKind(file: string): ArtifactKind {
+  const ext = path.extname(file).toLowerCase();
+  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].includes(ext)) return "image";
+  if ([".mp4", ".webm", ".mov"].includes(ext)) return "video";
+  if ([".html", ".htm"].includes(ext)) return "html";
+  if ([".md", ".markdown"].includes(ext)) return "markdown";
+  if ([".ts", ".tsx", ".js", ".mjs", ".py", ".sh", ".json", ".css", ".yaml", ".yml", ".sql", ".go", ".rs"].includes(ext)) return "code";
+  return "other";
+}
+
+/** Title for a file: first `# heading` of a .md, `<title>` of an .html, else the base name. Reads at most 16 KB. */
+export function artifactTitle(abs: string, kind: ArtifactKind): string {
+  const base = path.basename(abs);
+  if (kind !== "markdown" && kind !== "html") return base;
+  let head = "";
+  try {
+    const fd = fs.openSync(abs, "r");
+    try {
+      const buf = Buffer.alloc(TITLE_SCAN_BYTES);
+      const n = fs.readSync(fd, buf, 0, TITLE_SCAN_BYTES, 0);
+      head = buf.subarray(0, n).toString("utf8");
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return base;
+  }
+  if (kind === "markdown") {
+    const m = /^\s*#{1,3}\s+(.+?)\s*#*\s*$/m.exec(head);
+    if (m?.[1]) return m[1].trim().slice(0, 160);
+    const line = head.split(/\r?\n/).find((l) => l.trim() && !l.trim().startsWith("---"));
+    return line ? line.trim().replace(/^[#>*\-\s]+/, "").slice(0, 160) || base : base;
+  }
+  const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(head);
+  if (m?.[1]) return m[1].replace(/\s+/g, " ").trim().slice(0, 160) || base;
+  return base;
+}
+
+const ArtifactListQuery = z.object({
+  q: z.string().max(200).optional(),
+  skill: z.string().max(100).optional(),
+  folder: z.string().max(200).optional(),
+  kind: z.enum(["image", "video", "html", "markdown", "code", "other"]).optional(),
+  since: z.coerce.number().int().min(0).optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(200),
+});
+type ArtifactListQueryT = z.infer<typeof ArtifactListQuery>;
+
+/** Walk artifacts/ (bounded), merge run metadata by relative path, filter and sort newest first. */
+export function listArtifacts(ctx: AppContext, q: ArtifactListQueryT): { items: ArtifactListItem[]; total: number; skills: string[]; folders: string[] } {
+  const root = ctx.paths.artifacts;
+  const byRel = new Map<string, { runId: string; skillSlug: string | null; createdAt: number }>();
+  for (const run of ctx.runs.list({ limit: 500 })) {
+    for (const rel of run.artifacts) {
+      const key = rel.split(path.sep).join("/");
+      if (!byRel.has(key)) byRel.set(key, { runId: run.id, skillSlug: run.skillSlug, createdAt: run.finishedAt ?? run.createdAt });
+    }
+  }
+
+  const items: ArtifactListItem[] = [];
+  const walk = (dir: string, depth: number) => {
+    if (items.length >= LIST_MAX_FILES || depth > 6) return;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const abs = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(abs, depth + 1);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      let stat: fs.Stats;
+      try {
+        stat = fs.statSync(abs);
+      } catch {
+        continue;
+      }
+      const rel = path.relative(root, abs).split(path.sep).join("/");
+      const meta = byRel.get(rel);
+      const kind = artifactKind(entry.name);
+      const folder = rel.split("/")[0] ?? "";
+      items.push({
+        id: rel,
+        file: meta ? rel.split("/").slice(1).join("/") || entry.name : rel,
+        path: abs,
+        runId: meta?.runId ?? null,
+        skillSlug: meta?.skillSlug ?? null,
+        createdAt: meta?.createdAt ?? stat.mtimeMs,
+        kind,
+        title: artifactTitle(abs, kind),
+        folder,
+        sizeBytes: stat.size,
+        thumbnail: Boolean(RAW_MIME[path.extname(entry.name).toLowerCase()]),
+      });
+      if (items.length >= LIST_MAX_FILES) return;
+    }
+  };
+  if (fs.existsSync(root)) walk(root, 0);
+
+  const skills = [...new Set(items.map((i) => i.skillSlug).filter((s): s is string => !!s))].sort();
+  const folders = [...new Set(items.map((i) => i.folder).filter(Boolean))].sort();
+  const needle = q.q?.trim().toLowerCase();
+  const filtered = items.filter((i) => {
+    if (q.skill && i.skillSlug !== q.skill) return false;
+    if (q.folder && i.folder !== q.folder) return false;
+    if (q.kind && i.kind !== q.kind) return false;
+    if (q.since !== undefined && i.createdAt < q.since) return false;
+    if (needle && !`${i.title} ${i.file} ${i.skillSlug ?? ""} ${i.folder}`.toLowerCase().includes(needle)) return false;
+    return true;
+  });
+  filtered.sort((a, b) => b.createdAt - a.createdAt);
+  return { items: filtered.slice(0, q.limit), total: filtered.length, skills, folders };
+}
+
 export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): void {
   // Public (no token): only non-sensitive branding needed before the UI boots.
   app.get("/api/meta", async () => {
@@ -302,6 +453,33 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
       .parse(req.body ?? {});
     const plan = ctx.sync.plan(resolveSyncTarget(ctx, body.target));
     return ctx.sync.apply(plan, body.approvedConflicts);
+  });
+
+  // ---- Artifacts gallery (desktop search, /artifacts, /generations) --------
+  app.get("/api/artifacts/list", async (req) => {
+    const q = ArtifactListQuery.parse(req.query);
+    return listArtifacts(ctx, q);
+  });
+
+  /** Binary artifact (images / video) for thumbnails — strictly inside the artifacts dir, allow-listed types only. */
+  app.get("/api/artifacts/raw", async (req, reply) => {
+    const { p } = z.object({ p: z.string() }).parse(req.query);
+    const resolved = resolveInsideRoots([ctx.paths.artifacts], p); // PathAccessError → 403
+    if (!isInside(ctx.paths.artifacts, resolved)) throw httpError(403, "Outside artifacts directory");
+    const mime = RAW_MIME[path.extname(resolved).toLowerCase()];
+    if (!mime) throw httpError(415, "Not a previewable artifact type");
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(resolved);
+    } catch {
+      throw httpError(404, "Artifact not found");
+    }
+    if (!stat.isFile()) throw httpError(404, "Artifact not found");
+    if (stat.size > RAW_MAX_BYTES) throw httpError(413, "Artifact larger than 25 MB — open it from disk.");
+    reply.header("content-type", mime);
+    reply.header("cache-control", "private, max-age=300");
+    reply.header("x-content-type-options", "nosniff");
+    return reply.send(fs.createReadStream(resolved));
   });
 
   app.get("/api/startup-plan", async () => planStartupService(ctx.paths, process.execPath));

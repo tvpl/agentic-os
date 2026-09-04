@@ -1,10 +1,17 @@
 /**
  * Grid metrics (rows/cols/cell size, stacked breakpoint), the local layout
- * state with debounced persistence, and drag/resize/keyboard interactions.
+ * state with debounced persistence, and the drag/resize/keyboard hook.
  *
  * The local layout is the source of truth while the user edits: the server
  * copy is only adopted when nothing is in flight and nothing is dirty, so a
  * refetch can never silently revert an in-progress or failed-but-local edit.
+ *
+ * Drag path (audit 2.2 §3): pointermove never touches React state. The
+ * dragged element gets `transform: translate3d()` (or width/height while
+ * resizing) written inside one rAF per frame; the only state update is the
+ * target cell, and only when it changes. On pointerup the reducer settles
+ * the layout (neighbours pushed down) and WidgetLayer FLIP-animates every
+ * widget that moved, including the dragged one snapping into its cell.
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -14,8 +21,6 @@ import {
   COLS,
   GRID_PAD,
   GRID_TOP,
-  MIN_H,
-  MIN_W,
   STACK_BREAKPOINT,
   computeRows,
   layoutsEqual,
@@ -23,6 +28,9 @@ import {
   type LayoutMap,
   type WidgetBox,
 } from "./defaultLayout";
+import { beginDrag, dragOffsetPx, dragTarget, nudgeBox, settleDrag, type DragSession } from "./dragReducer";
+
+export { clampMove, clampResize } from "./dragReducer";
 
 export interface GridMetrics {
   width: number;
@@ -40,7 +48,12 @@ export function useGridMetrics(ref: RefObject<HTMLElement>): GridMetrics {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const measure = () => setSize((prev) => (prev.w === el.clientWidth && prev.h === el.clientHeight ? prev : { w: el.clientWidth, h: el.clientHeight }));
+    const measure = () =>
+      setSize((prev) =>
+        prev.w === el.clientWidth && prev.h === el.clientHeight
+          ? prev
+          : { w: el.clientWidth, h: el.clientHeight },
+      );
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -70,6 +83,43 @@ export function boxToPx(box: WidgetBox, m: GridMetrics): CSSProperties {
 }
 
 const PERSIST_DEBOUNCE_MS = 300;
+const CONFIG_MIRROR_KEY = "mordomo.desktop.widgetConfig";
+
+/**
+ * Per-widget `config` mirrored in localStorage: the server settings schema
+ * may not carry `config` yet (it strips unknown keys), so the mirror keeps
+ * user choices alive until it does. Server wins when present.
+ */
+function readConfigMirror(): Record<string, Record<string, unknown>> {
+  try {
+    const raw = localStorage.getItem(CONFIG_MIRROR_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, Record<string, unknown>>) : {};
+  } catch {
+    return {};
+  }
+}
+function writeConfigMirror(layout: LayoutMap) {
+  try {
+    const out: Record<string, Record<string, unknown>> = {};
+    for (const [id, box] of Object.entries(layout)) if (box.config) out[id] = box.config;
+    localStorage.setItem(CONFIG_MIRROR_KEY, JSON.stringify(out));
+  } catch {
+    /* ignore */
+  }
+}
+function mergeMirror(layout: LayoutMap): LayoutMap {
+  const mirror = readConfigMirror();
+  let changed = false;
+  const out: LayoutMap = { ...layout };
+  for (const [id, cfg] of Object.entries(mirror)) {
+    const box = out[id];
+    if (box && !box.config) {
+      out[id] = { ...box, config: cfg };
+      changed = true;
+    }
+  }
+  return changed ? out : layout;
+}
 
 export interface LayoutState {
   layout: LayoutMap;
@@ -92,7 +142,7 @@ export function useLayoutState({
   onError: (err: Error) => void;
 }): LayoutState {
   const qc = useQueryClient();
-  const [layout, setLayout] = useState<LayoutMap>(() => normalizeLayout(serverLayout, rows));
+  const [layout, setLayout] = useState<LayoutMap>(() => mergeMirror(normalizeLayout(serverLayout, rows)));
   const [dirty, setDirty] = useState(false);
   const latestRef = useRef(layout);
   const timerRef = useRef<number>();
@@ -112,7 +162,7 @@ export function useLayoutState({
   // Adopt the server layout only when idle: not editing, nothing pending, nothing dirty.
   useEffect(() => {
     if (editing || isPending || dirty || !serverLayout) return;
-    const next = normalizeLayout(serverLayout, rows);
+    const next = mergeMirror(normalizeLayout(serverLayout, rows));
     setLayout((prev) => (layoutsEqual(prev, next) ? prev : next));
   }, [serverLayout, rows, editing, isPending, dirty]);
 
@@ -133,6 +183,7 @@ export function useLayoutState({
       latestRef.current = next;
       setLayout(next);
       setDirty(true);
+      writeConfigMirror(next);
       window.clearTimeout(timerRef.current);
       timerRef.current = window.setTimeout(() => mutate(next), PERSIST_DEBOUNCE_MS);
     },
@@ -156,45 +207,94 @@ export function useLayoutState({
 /* ---------------------------------------------------------------------------
    Drag, resize and keyboard nudging (edit mode only).
 --------------------------------------------------------------------------- */
-export interface DragState {
-  id: string;
-  mode: "move" | "resize";
-  px: number;
-  py: number;
-  box: WidgetBox;
+export interface WidgetDrag {
+  /** Id of the widget being dragged (one re-render at start / end). */
+  draggingId: string | null;
+  mode: DragSession["mode"] | null;
+  /** Target cell while dragging (updates only when the cell changes). */
+  target: WidgetBox | null;
+  start: (
+    id: string,
+    mode: DragSession["mode"],
+    e: { clientX: number; clientY: number; pointerId?: number },
+    box: WidgetBox,
+    el: HTMLElement,
+  ) => void;
+  /** Arrow keys move by one cell; with Shift they resize by one cell. */
+  nudge: (id: string, key: string, shift: boolean) => boolean;
 }
 
-export function clampMove(box: WidgetBox, x: number, y: number, m: Pick<GridMetrics, "cols" | "rows">): WidgetBox {
-  return { ...box, x: Math.max(0, Math.min(m.cols - box.w, x)), y: Math.max(0, Math.min(m.rows - box.h, y)) };
-}
+export function useWidgetDrag(
+  layout: LayoutMap,
+  metrics: GridMetrics,
+  commit: (next: LayoutMap) => void,
+  /** Called right before the settled layout is committed (WidgetLayer snapshots rects for FLIP). */
+  onBeforeCommit?: () => void,
+): WidgetDrag {
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [mode, setMode] = useState<DragSession["mode"] | null>(null);
+  const [target, setTarget] = useState<WidgetBox | null>(null);
+  const sessionRef = useRef<DragSession | null>(null);
+  const elRef = useRef<HTMLElement | null>(null);
+  const rafRef = useRef(0);
+  const lastPointer = useRef({ x: 0, y: 0 });
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const metricsRef = useRef(metrics);
+  metricsRef.current = metrics;
+  const commitRef = useRef(commit);
+  commitRef.current = commit;
+  const beforeRef = useRef(onBeforeCommit);
+  beforeRef.current = onBeforeCommit;
 
-export function clampResize(box: WidgetBox, w: number, h: number, m: Pick<GridMetrics, "cols" | "rows">): WidgetBox {
-  return { ...box, w: Math.max(MIN_W, Math.min(m.cols - box.x, w)), h: Math.max(MIN_H, Math.min(m.rows - box.y, h)) };
-}
-
-export function useWidgetDrag(layout: LayoutMap, metrics: GridMetrics, commit: (next: LayoutMap) => void) {
-  const [drag, setDrag] = useState<DragState | null>(null);
-  const [ghost, setGhost] = useState<WidgetBox | null>(null);
-  const ghostRef = useRef<WidgetBox | null>(null);
+  const applyFrame = useCallback(() => {
+    rafRef.current = 0;
+    const s = sessionRef.current;
+    const el = elRef.current;
+    if (!s || !el) return;
+    const m = metricsRef.current;
+    const { dx, dy } = dragOffsetPx(s, lastPointer.current.x, lastPointer.current.y);
+    if (s.mode === "move") {
+      el.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+    } else {
+      el.style.width = `${Math.max(m.cellW * 3 - 8, s.origin.w * m.cellW - 8 + dx)}px`;
+      el.style.height = `${Math.max(m.cellH * 2 - 8, s.origin.h * m.cellH - 8 + dy)}px`;
+    }
+    const next = dragTarget(s, lastPointer.current.x, lastPointer.current.y, m);
+    if (next !== s.target) {
+      s.target = next;
+      setTarget(next);
+    }
+  }, []);
 
   useEffect(() => {
-    if (!drag) return;
+    if (!draggingId) return;
     const onMove = (e: PointerEvent) => {
-      const dx = e.clientX - drag.px;
-      const dy = e.clientY - drag.py;
-      const next =
-        drag.mode === "move"
-          ? clampMove(drag.box, Math.round(drag.box.x + dx / metrics.cellW), Math.round(drag.box.y + dy / metrics.cellH), metrics)
-          : clampResize(drag.box, Math.round(drag.box.w + dx / metrics.cellW), Math.round(drag.box.h + dy / metrics.cellH), metrics);
-      ghostRef.current = next;
-      setGhost(next);
+      lastPointer.current = { x: e.clientX, y: e.clientY };
+      if (!rafRef.current) rafRef.current = requestAnimationFrame(applyFrame);
     };
     const onUp = () => {
-      const g = ghostRef.current;
-      if (g) commit({ ...layout, [drag.id]: g });
-      ghostRef.current = null;
-      setDrag(null);
-      setGhost(null);
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+      const s = sessionRef.current;
+      const el = elRef.current;
+      sessionRef.current = null;
+      elRef.current = null;
+      if (s && el) {
+        beforeRef.current?.(); // rects with the drag transform still applied
+        const m = metricsRef.current;
+        el.style.transform = "";
+        // Restore exactly the geometry React last rendered: clearing to "" would
+        // leave the element sizeless when the settled box equals the origin box
+        // (React only writes a style property when its own value changes).
+        el.style.width = `${s.origin.w * m.cellW - 8}px`;
+        el.style.height = `${s.origin.h * m.cellH - 8}px`;
+        const settled = settleDrag(layoutRef.current, s.id, s.target, metricsRef.current);
+        if (!layoutsEqual(settled.layout, layoutRef.current)) commitRef.current(settled.layout);
+      }
+      setDraggingId(null);
+      setMode(null);
+      setTarget(null);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp, { once: true });
@@ -203,29 +303,32 @@ export function useWidgetDrag(layout: LayoutMap, metrics: GridMetrics, commit: (
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
     };
-  }, [drag, metrics, layout, commit]);
+  }, [draggingId, applyFrame]);
 
-  const start = useCallback((id: string, mode: DragState["mode"], e: { clientX: number; clientY: number }, box: WidgetBox) => {
-    ghostRef.current = box;
-    setDrag({ id, mode, px: e.clientX, py: e.clientY, box });
-    setGhost(box);
+  const start = useCallback<WidgetDrag["start"]>((id, dragMode, e, box, el) => {
+    sessionRef.current = beginDrag(id, dragMode, e.clientX, e.clientY, box);
+    elRef.current = el;
+    lastPointer.current = { x: e.clientX, y: e.clientY };
+    setDraggingId(id);
+    setMode(dragMode);
+    setTarget(box);
   }, []);
 
-  /** Arrow keys move by one cell; with Shift they resize by one cell. */
   const nudge = useCallback(
     (id: string, key: string, shift: boolean): boolean => {
       const box = layout[id];
       if (!box) return false;
-      const delta: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
-      const d = delta[key];
-      if (!d) return false;
-      const next = shift ? clampResize(box, box.w + d[0], box.h + d[1], metrics) : clampMove(box, box.x + d[0], box.y + d[1], metrics);
-      if (next.x !== box.x || next.y !== box.y || next.w !== box.w || next.h !== box.h) commit({ ...layout, [id]: next });
+      const next = nudgeBox(box, key, shift, metrics);
+      if (!next) return key.startsWith("Arrow");
+      onBeforeCommit?.();
+      commit(settleDrag(layout, id, next, metrics).layout);
       return true;
     },
-    [layout, metrics, commit],
+    [layout, metrics, commit, onBeforeCommit],
   );
 
-  return { drag, ghost, start, nudge };
+  return { draggingId, mode, target, start, nudge };
 }

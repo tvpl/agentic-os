@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>MordomoOS explainer style reference</title>
+    <style>
+      /* The palette and type scale every explainer page should copy inline.
+         Self-contained on purpose: no fonts, no CSS, no scripts from the network. */
+      :root {
+        --bg: #0b0a08;
+        --surface: #131109;
+        --border: #2a2620;
+        --text: #f2ede6;
+        --text-dim: #a9a196;
+        --accent: #f97316;
+        --ok: #4ade80;
+        --warn: #fbbf24;
+        --danger: #f87171;
+        --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        --measure: 68ch;
+      }
+      @media (prefers-color-scheme: light) {
+        :root { --bg: #f5f3ee; --surface: #fffdf8; --border: #e0dad0; --text: #16130f; --text-dim: #5d564c; }
+      }
+      body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font-body); line-height: 1.6; }
+      main { max-width: var(--measure); margin: 0 auto; padding: 48px 20px 96px; }
+      h1 { font-size: 2.2rem; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 8px; }
+      h2 { font-size: 1.35rem; margin: 40px 0 8px; }
+      h3 { font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); margin: 28px 0 6px; }
+      p, li { font-size: 1rem; }
+      a { color: var(--accent); text-underline-offset: 2px; }
+      code, pre { font-family: var(--font-mono); font-size: 0.92em; }
+      pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; overflow-x: auto; }
+      .lede { font-size: 1.15rem; color: var(--text-dim); }
+      .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin: 16px 0; }
+      .tag { display: inline-block; font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); }
+      .tag.ok { color: var(--ok); border-color: var(--ok); }
+      .tag.warn { color: var(--warn); border-color: var(--warn); }
+      .tag.danger { color: var(--danger); border-color: var(--danger); }
+      table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+      th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+      th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); }
+      figure { margin: 20px 0; }
+      figcaption { color: var(--text-dim); font-size: 0.88rem; margin-top: 6px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Style reference</h1>
+      <p class="lede">Copy these tokens and blocks inline into the explainer page. Nothing here loads from the network.</p>
+
+      <h2>Blocks</h2>
+      <div class="card">
+        <span class="tag">context</span>
+        <p>A card carries one idea: a decision, a component, a risk.</p>
+      </div>
+      <div class="card">
+        <span class="tag ok">works</span> <span class="tag warn">to confirm</span> <span class="tag danger">breaks</span>
+        <p>Use tags for status; never invent a fact to fill a section — mark it “to confirm”.</p>
+      </div>
+
+      <h2>Table</h2>
+      <table>
+        <thead><tr><th>Piece</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td>Title</td><td>What the page is about, in five words.</td></tr>
+          <tr><td>Why this matters</td><td>One paragraph, before any detail.</td></tr>
+          <tr><td>Sections</td><td>Concrete details, one idea each.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Code</h2>
+      <pre><code>&lt;section&gt;
+  &lt;h2&gt;Section title&lt;/h2&gt;
+  &lt;p&gt;One idea, in plain language.&lt;/p&gt;
+&lt;/section&gt;</code></pre>
+
+      <figure>
+        <svg viewBox="0 0 320 60" width="100%" height="60" role="img" aria-label="Flow: input, skill, artifact">
+          <rect x="2" y="14" width="90" height="32" rx="6" fill="none" stroke="#a9a196" />
+          <rect x="115" y="14" width="90" height="32" rx="6" fill="none" stroke="#f97316" />
+          <rect x="228" y="14" width="90" height="32" rx="6" fill="none" stroke="#a9a196" />
+          <text x="47" y="34" font-size="12" fill="#a9a196" text-anchor="middle">input</text>
+          <text x="160" y="34" font-size="12" fill="#f97316" text-anchor="middle">skill</text>
+          <text x="273" y="34" font-size="12" fill="#a9a196" text-anchor="middle">artifact</text>
+          <path d="M92 30 h23 M205 30 h23" stroke="#a9a196" stroke-width="1.5" />
+        </svg>
+        <figcaption>Inline SVG only when a diagram genuinely helps.</figcaption>
+      </figure>
+    </main>
+  </body>
+</html>

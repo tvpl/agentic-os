@@ -30,12 +30,28 @@ export const SkillFrontmatterSchema = z.object({
 });
 export type SkillFrontmatter = z.infer<typeof SkillFrontmatterSchema>;
 
+export type SkillResourceKind = "markdown" | "html" | "image" | "pdf" | "other";
+
+/** One file inside the skill folder other than SKILL.md (brand HTML, images, PDFs, reference markdown…). */
+export interface SkillResource {
+  /** Basename, e.g. "brand.html". */
+  name: string;
+  /** Path relative to the skill folder, POSIX separators, e.g. "resources/brand.html". */
+  rel: string;
+  kind: SkillResourceKind;
+  /** Size in bytes. */
+  size: number;
+}
+
 export interface Skill extends SkillFrontmatter {
   /** Markdown body of SKILL.md (the router / procedure). */
   body: string;
   dir: string;
   skillFile: string;
+  /** Relative paths of every resource file (legacy flat list; same order as `resourceFiles`). */
   resources: string[];
+  /** Rich resource entries (kind + size), capped at MAX_SKILL_RESOURCES, symlinks excluded. */
+  resourceFiles: SkillResource[];
   bodyLineCount: number;
   thick: boolean;
 }

@@ -3,7 +3,7 @@
  * focus, focus restore, Escape handled on the dialog (never leaking to the
  * OS shell) and `inert` on everything behind the top-most dialog.
  */
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 const FOCUSABLE =
@@ -12,6 +12,25 @@ const FIELD = 'input:not([disabled]):not([type="hidden"]), select:not([disabled]
 
 /** Open dialogs, bottom → top. Only the top one traps focus. */
 const stack: HTMLElement[] = [];
+
+/* ---- depth store: how many dialogs are open (drives the depth push) ---- */
+const depthListeners = new Set<() => void>();
+function notifyDepth() {
+  for (const fn of depthListeners) fn();
+}
+export function getDialogDepth(): number {
+  return stack.length;
+}
+export function subscribeDialogDepth(fn: () => void): () => void {
+  depthListeners.add(fn);
+  return () => {
+    depthListeners.delete(fn);
+  };
+}
+/** Number of open dialogs (Modal, Confirm, palette). The shell sets `data-depth="pushed"` when > 0. */
+export function useDialogDepth(): number {
+  return useSyncExternalStore(subscribeDialogDepth, getDialogDepth, () => 0);
+}
 
 function syncInert() {
   const top = stack[stack.length - 1];
@@ -67,6 +86,7 @@ export function useDialog(ref: RefObject<HTMLElement>, onClose: () => void, opts
     const entry = portalChild ?? el;
     stack.push(entry);
     syncInert();
+    notifyDepth();
 
     const target =
       initialRef.current?.() ??
@@ -108,6 +128,7 @@ export function useDialog(ref: RefObject<HTMLElement>, onClose: () => void, opts
       const i = stack.lastIndexOf(entry);
       if (i >= 0) stack.splice(i, 1);
       syncInert();
+      notifyDepth();
       if (previous && previous.isConnected && typeof previous.focus === "function") previous.focus({ preventScroll: true });
     };
   }, [ref]);
