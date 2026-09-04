@@ -8,6 +8,7 @@
 import { useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-query";
 import {
   api,
+  type SettingsDoc,
   type ArtifactEntry,
   type Connector,
   type Meta,
@@ -28,6 +29,8 @@ export const qk = {
   routineHistory: (id: string) => ["routines", id, "history"] as const,
   runs: (params?: Record<string, string | number | undefined>) => ["runs", params ?? {}] as const,
   run: (id: string) => ["run", id] as const,
+  sessions: ["sessions"] as const,
+  session: (id: string) => ["sessions", id] as const,
   metrics: ["metrics"] as const,
   artifacts: ["artifacts"] as const,
   connectors: ["connectors"] as const,
@@ -44,7 +47,9 @@ export const invalidationMap: Record<string, readonly (readonly unknown[])[]> = 
   "run.created": [["runs"], ["metrics"]],
   "run.started": [["runs"], ["run"]],
   "run.event": [["run"]],
-  "run.finished": [["runs"], ["run"], ["metrics"], ["artifacts"], ["routines"]],
+  "run.finished": [["runs"], ["run"], ["metrics"], ["artifacts"], ["routines"], ["sessions"]],
+  "session.created": [["sessions"]],
+  "session.updated": [["sessions"]],
   "routine.fired": [["routines"], ["runs"]],
   "routine.alert": [["routines"]],
   "routine.changed": [["routines"]],
@@ -105,9 +110,7 @@ export const useOsArtifacts = (o?: ApiQueryOptions<ArtifactEntry[]>) =>
   useApiQuery<ArtifactEntry[]>(qk.artifacts, "/api/artifacts/recent", o);
 export const useOsConnectors = (o?: ApiQueryOptions<Connector[]>) =>
   useApiQuery<Connector[]>(qk.connectors, "/api/connectors", o);
-export interface SettingsView {
-  dashboardLayout?: Record<string, { x: number; y: number; w: number; h: number; visible: boolean }>;
-  [key: string]: unknown;
-}
+/** Every settings field, optional (an older server may omit some), plus room for fields this build does not know. */
+export type SettingsView = Partial<SettingsDoc> & { [key: string]: unknown };
 export const useOsSettings = (o?: ApiQueryOptions<SettingsView>) =>
   useApiQuery<SettingsView>(qk.settings, "/api/settings", o);

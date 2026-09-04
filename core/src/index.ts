@@ -49,6 +49,8 @@ export type {
   AgentAdapter,
   AgentRun,
   RunEvent,
+  RunUsage,
+  RunUsageEvent,
   RunMode,
   SafeInvocation,
   DetectionResult,
@@ -70,6 +72,15 @@ export {
   type PruneOptions,
   type PruneResult,
 } from "./runs/runManager.js";
+export {
+  SessionStore,
+  sessionTitle,
+  type SessionRecord,
+  type SessionSummary,
+  type LastRunSummary,
+  type CreateSessionInput,
+  type RecordRunInput,
+} from "./runs/sessionStore.js";
 export { MemoryIndexer, fileRowFromDb, type IndexStats, type FileRow } from "./memory/indexer.js";
 export { searchFiles, listFacets, type SearchFilters, type SearchHit } from "./memory/search.js";
 export { buildGraph, relatedFiles, type GraphData, type GraphNode, type GraphEdge } from "./memory/graph.js";
@@ -103,6 +114,23 @@ export {
 export { SyncCompiler, type SyncPlan, type SyncAction, type SyncApplyResult } from "./sync/compiler.js";
 export { unifiedDiff } from "./sync/diff.js";
 export { createBackup, listBackups, restoreBackup, type BackupInfo, type BackupOptions } from "./backup.js";
+export {
+  NotificationStore,
+  NOTIFICATION_KINDS,
+  DEDUPE_MS,
+  type NotificationKind,
+  type NotificationTone,
+  type NotificationRecord,
+  type NotificationInput,
+} from "./notifications/store.js";
+export {
+  installNotificationRecorder,
+  toNotification,
+  budgetDedupeKey,
+  localDay,
+  type BudgetCrossedPayload,
+  type NotificationRecorderOptions,
+} from "./notifications/recorder.js";
 export * from "./events.js";
 export { InvalidIdError, ID_PATTERN, isValidId, assertValidId, resolveInsideDir } from "./security/ids.js";
 export { isInsideAny } from "./security/paths.js";

@@ -16,6 +16,8 @@ import { AppContext } from "./context.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerSkillRoutes } from "./routes/skills.js";
 import { registerRunRoutes } from "./routes/runs.js";
+import { registerSessionRoutes } from "./routes/sessions.js";
+import { registerNotificationRoutes } from "./routes/notifications.js";
 import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerRoutineRoutes } from "./routes/routines.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
@@ -194,6 +196,8 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   registerSystemRoutes(app, ctx);
   registerSkillRoutes(app, ctx);
   registerRunRoutes(app, ctx);
+  registerSessionRoutes(app, ctx);
+  registerNotificationRoutes(app, ctx);
   registerMemoryRoutes(app, ctx);
   registerRoutineRoutes(app, ctx);
   registerConnectorRoutes(app, ctx);
@@ -254,13 +258,20 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   }
   ctx.scheduler.start();
 
-  // Approvals nobody answered expire on their own: sweep at boot, then hourly.
+  // Approvals nobody answered expire on their own, and the daily budget is
+  // checked on the same beat: sweep at boot, then hourly.
   const sweepApprovals = () => {
     try {
       const expired = ctx.expireStaleApprovals();
       if (expired > 0) app.log.info({ expired, msg: "expired stale approvals" });
     } catch (err) {
       app.log.error({ err, msg: "approval sweep failed" });
+    }
+    try {
+      const level = ctx.checkDailyBudget();
+      if (level !== null) app.log.info({ level, msg: "daily budget threshold crossed" });
+    } catch (err) {
+      app.log.error({ err, msg: "budget check failed" });
     }
   };
   sweepApprovals();

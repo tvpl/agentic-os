@@ -25,7 +25,8 @@ import {
   type Skill,
 } from "../api";
 import { useLocale, useT, type TKey } from "../i18n";
-import { qk, useOsProviders, useOsSettings } from "../queries";
+import { qk, useOsMetrics, useOsProviders, useOsSettings } from "../queries";
+import { budgetState } from "./budget";
 import { useToast } from "../components/ui";
 import { Button, Popover } from "../components/primitives";
 import { useConfirm } from "../hooks/useConfirm";
@@ -161,6 +162,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     [runs.data],
   );
   const coreState = useCoreState(activeRuns);
+  useBudgetNotifications();
 
   /* ---- the free region between the widget columns anchors the core ------ */
   const focus = useMemo<CoreFocus | null>(() => {
@@ -168,9 +170,10 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     const r = freeRegion(layout, metrics);
     const cx = (r.left + r.right) / 2;
     const cy = (r.top + r.bottom) / 2;
-    // The ring hugs the free region but never collapses onto the Now panel.
-    const rx = Math.max(230, (r.right - r.left) / 2 - 34);
-    const ry = Math.max(190, (r.bottom - r.top) / 2 - 30);
+    // The ring hugs the free region (chips are 46px plus their count badge)
+    // but never collapses onto the Now panel, which shrinks to fit inside it.
+    const rx = Math.max(210, (r.right - r.left) / 2 - 44);
+    const ry = Math.max(170, (r.bottom - r.top) / 2 - 44);
     return { cx, cy, rx, ry };
   }, [layout, metrics]);
 
@@ -314,7 +317,11 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         data-core={coreState}
         style={
           focus
-            ? ({ "--core-x": `${focus.cx}px`, "--core-y": `${focus.cy}px` } as React.CSSProperties)
+            ? ({
+                "--core-x": `${focus.cx}px`,
+                "--core-y": `${focus.cy}px`,
+                "--core-ry": `${focus.ry}px`,
+              } as React.CSSProperties)
             : undefined
         }
       >
@@ -527,6 +534,39 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
       </div>
     </DesktopActionsProvider>
   );
+}
+
+/**
+ * Budget crossings (plan Onda 2 §5) land in the inbox once per day per level:
+ * 80 % warns, 100 % flags the day as over budget. The rule itself is pure
+ * (`budgetState`); this only decides when to speak.
+ */
+function useBudgetNotifications() {
+  const t = useT();
+  const metrics = useOsMetrics({ refetchInterval: 60_000 });
+  const settings = useOsSettings();
+  const { notify } = useNotifications();
+  const budget = budgetState(settings.data?.limits?.dailyBudgetUsd, metrics.data?.cost?.todayUsd);
+  const tone = budget.tone;
+  const pct = Math.round(budget.ratio * 100);
+  useEffect(() => {
+    if (tone !== "warn" && tone !== "over") return;
+    const day = new Date().toISOString().slice(0, 10);
+    const key = `budget:${day}:${tone}`;
+    try {
+      if (localStorage.getItem(`mordomo.${key}`)) return;
+      localStorage.setItem(`mordomo.${key}`, "1");
+    } catch {
+      /* private mode: notify every load, which is still correct */
+    }
+    notify({
+      kind: "system",
+      tone: tone === "over" ? "danger" : "warn",
+      title: t(tone === "over" ? "dash.budgetOver" : "dash.budgetWarn", { pct }),
+      href: "/settings?tab=security",
+      dedupeKey: key,
+    });
+  }, [tone, pct, notify, t]);
 }
 
 /** Short-lived overrides (ms) for the finer core states fed by `run.event`. */

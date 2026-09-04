@@ -10,6 +10,7 @@ import { JsonlLogger } from "../logs/jsonl.js";
 import { redactSecrets } from "../security/redact.js";
 import { killProcessGroup } from "../spawn/safeSpawn.js";
 import { events } from "../events.js";
+import { SessionStore } from "./sessionStore.js";
 
 export type RunOrigin = "manual" | "skill" | "routine" | "api";
 export type RunStatus =
@@ -41,6 +42,8 @@ export interface RunRecord {
   routineId: string | null;
   /** First run of a retry chain (null for the first attempt). */
   parentRunId: string | null;
+  /** Conversation this run belongs to (`sessions.id`), or null for a one-shot run. */
+  sessionId: string | null;
   pid: number | null;
   error: string | null;
   artifacts: string[];
@@ -90,6 +93,12 @@ export interface CreateRunInput {
   skillSlug?: string | null;
   routineId?: string | null;
   parentRunId?: string | null;
+  /**
+   * Continue a conversation: the run inherits the session's provider-side id
+   * (so the adapter resumes instead of starting over) and folds its usage back
+   * into the session's counters when it finishes.
+   */
+  sessionId?: string | null;
   attempts?: number;
   /**
    * Initial status. `waiting_approval` makes a write run gated by an approval
@@ -157,6 +166,8 @@ interface ActiveRun {
  * a late event can never overwrite a terminal status.
  */
 export class RunManager {
+  /** Conversations these runs may belong to (`runs.session_id`). */
+  readonly sessions: SessionStore;
   private readonly emitter = new EventEmitter();
   private readonly logger: JsonlLogger;
   private active = 0;
@@ -173,6 +184,7 @@ export class RunManager {
     opts: { eventCap?: number; pruneOnBoot?: boolean } = {},
   ) {
     const s = getSettings();
+    this.sessions = new SessionStore(db);
     this.logger = new JsonlLogger(paths.logs, "runs", s.limits.logMaxFileBytes, s.limits.logRetentionDays);
     this.emitter.setMaxListeners(100);
     this.eventCap = opts.eventCap ?? DEFAULT_EVENT_CAP;
@@ -395,8 +407,8 @@ export class RunManager {
     const promptSummary = redactSecrets(input.prompt.slice(0, 500));
     this.db
       .prepare(
-        `INSERT INTO runs (id, created_at, origin, provider, model, effort, status, cwd, prompt_summary, skill_slug, routine_id, parent_run_id, attempts, timeout_ms, permission_profile)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO runs (id, created_at, origin, provider, model, effort, status, cwd, prompt_summary, skill_slug, routine_id, parent_run_id, session_id, attempts, timeout_ms, permission_profile)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -411,13 +423,19 @@ export class RunManager {
         input.skillSlug ?? null,
         input.routineId ?? null,
         input.parentRunId ?? null,
+        input.sessionId ?? null,
         input.attempts ?? 1,
         input.timeoutMs,
         input.profile,
       );
     const record = this.get(id);
     if (!record) throw new Error("run insert failed");
-    events.emit("run.created", { runId: id, origin: input.origin, provider: input.provider });
+    events.emit("run.created", {
+      runId: id,
+      origin: input.origin,
+      provider: input.provider,
+      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+    });
     this.emit(id, {
       type: "text",
       ts: now,
@@ -489,6 +507,10 @@ export class RunManager {
       const adapter = this.getAdapter(record.provider);
       const artifactsDir = path.join(this.paths.artifacts, runId);
       fs.mkdirSync(artifactsDir, { recursive: true });
+      // A run that continues a conversation hands the adapter the id the
+      // provider itself uses; the first run of a session has none yet, so the
+      // adapter starts (and names) a fresh provider conversation.
+      const session = record.sessionId ? this.sessions.get(record.sessionId) : null;
       const agentRun: AgentRun = {
         runId,
         prompt,
@@ -499,6 +521,8 @@ export class RunManager {
         timeoutMs: record.timeoutMs ?? this.getSettings().limits.defaultTimeoutMs,
         profile: record.permissionProfile ?? this.getSettings().securityProfile,
         artifactsDir,
+        ...(record.sessionId ? { sessionId: record.sessionId } : {}),
+        ...(session?.providerSessionId ? { resume: { providerSessionId: session.providerSessionId } } : {}),
         signal,
       };
 
@@ -512,6 +536,10 @@ export class RunManager {
           active.pid = event.pid;
           this.db.prepare("UPDATE runs SET pid = ? WHERE id = ?").run(event.pid, runId);
           events.emit("run.started", { runId, pid: event.pid });
+        }
+        if (event.type === "session" && record.sessionId) {
+          // Last one wins: a resumed conversation may fork into a new id.
+          this.sessions.captureProviderSessionId(record.sessionId, event.providerSessionId);
         }
         if (event.type === "usage") {
           usage.fold(event);
@@ -573,6 +601,7 @@ export class RunManager {
         files_changed_json: JSON.stringify([...filesChanged]),
         ...usagePatch(usage.value()),
       });
+      if (record.sessionId) this.foldIntoSession(record.sessionId, runId, usage.value());
       this.emit(runId, {
         type: "result",
         ts: Date.now(),
@@ -594,6 +623,21 @@ export class RunManager {
       return this.get(runId)!;
     } finally {
       this.releaseSlot();
+    }
+  }
+
+  // ------------------------------------------------------------ sessions --
+
+  /**
+   * Move the conversation forward: one more turn, the run's tokens/cost added
+   * to the session accumulators and `last_run_id`/`updated_at` refreshed.
+   * Never fatal — a missing session must not fail an otherwise good run.
+   */
+  private foldIntoSession(sessionId: string, runId: string, usage: RunUsage | null): void {
+    try {
+      this.sessions.recordRun(sessionId, { runId, usage });
+    } catch (err) {
+      this.log({ event: "session_update_failed", runId, sessionId, error: (err as Error).message });
     }
   }
 
@@ -818,6 +862,8 @@ export class RunManager {
       status?: RunStatus;
       origin?: RunOrigin;
       parentRunId?: string;
+      /** Only the runs of one conversation (newest first, like every other listing). */
+      sessionId?: string;
     } = {},
   ): RunRecord[] {
     const clauses: string[] = [];
@@ -833,6 +879,10 @@ export class RunManager {
     if (opts.parentRunId) {
       clauses.push("(parent_run_id = ? OR id = ?)");
       params.push(opts.parentRunId, opts.parentRunId);
+    }
+    if (opts.sessionId) {
+      clauses.push("session_id = ?");
+      params.push(opts.sessionId);
     }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const rows = this.db
@@ -1039,6 +1089,7 @@ interface RawRun {
   skill_slug: string | null;
   routine_id: string | null;
   parent_run_id: string | null;
+  session_id?: string | null;
   pid: number | null;
   error: string | null;
   artifacts_json: string;
@@ -1155,6 +1206,7 @@ function fromRow(row: RawRun): RunRecord {
     skillSlug: row.skill_slug,
     routineId: row.routine_id,
     parentRunId: row.parent_run_id ?? null,
+    sessionId: row.session_id ?? null,
     pid: row.pid ?? null,
     error: row.error,
     artifacts: JSON.parse(row.artifacts_json) as string[],

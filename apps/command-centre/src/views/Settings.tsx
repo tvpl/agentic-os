@@ -18,7 +18,16 @@ import {
   X,
 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type DoctorReport, type ProviderId, type ProviderSnapshot } from "../api";
+import {
+  api,
+  type DoctorReport,
+  type MicroApp,
+  type ProviderId,
+  type ProviderSnapshot,
+  type SettingsDoc,
+} from "../api";
+
+type SettingsShape = SettingsDoc;
 import { I18nContext, useLocale, useT, type Lang } from "../i18n";
 import { qk, useApiQuery, useOsProviders } from "../queries";
 import { ErrorBox, Skeleton, formatBytes, timeAgo, useToast } from "../components/ui";
@@ -37,39 +46,6 @@ import { DEFAULT_LAYOUT, WIDGET_ORDER, baseId, isWidgetId, type WidgetBox } from
 import { WIDGET_REGISTRY } from "../desktop/registry";
 import { errorMessage, isAbsolutePath, isOffline, slugify } from "./shared";
 import "./apps.css";
-
-interface SettingsShape {
-  systemName: string;
-  language: Lang;
-  theme: "dark" | "light" | "system";
-  accentColor: string;
-  port: number;
-  timezone: string;
-  defaultProvider: ProviderId;
-  securityProfile: string;
-  providers: Record<
-    ProviderId,
-    { enabled: boolean; defaultModel: string | null; defaultEffort: string; binaryPath: string | null }
-  >;
-  indexedFolders: Array<{ path: string; area: string | null; enabled: boolean }>;
-  excludes: string[];
-  areas: string[];
-  setupCompleted: boolean;
-  /** Theme preset id (F-SHELL `PRESETS`). */
-  themePreset: PresetId;
-  microApps: MicroApp[];
-  dashboardLayout: Record<string, WidgetBox>;
-  routines: { allowWebhooks: boolean; heartbeatIntervalMinutes: number; heartbeatOkToken: string };
-  connectors: { dataCacheTtlMs: number; dataTimeoutMs: number; allowedCommands: string[] };
-}
-
-/** Micro app row (mirrors `MicroAppSchema` in core/src/config/schema.ts). */
-export interface MicroApp {
-  id: string;
-  name: string;
-  description: string;
-  href: string;
-}
 
 /** Internal route ("/pixel") or an http(s) URL — same rule the desktop widget applies. */
 export function isValidMicroAppHref(href: string): boolean {
@@ -592,6 +568,21 @@ function SecurityTab({ s, put }: { s: SettingsShape; put: Put }) {
               </option>
             ))}
           </select>
+        </Field>
+        <Field label={t("apps.settings.budget")} htmlFor="st-budget" hint={t("apps.settings.budgetHint")}>
+          <input
+            id="st-budget"
+            className="input"
+            type="number"
+            min={0}
+            step={0.5}
+            defaultValue={s.limits?.dailyBudgetUsd ?? 0}
+            onBlur={(e) => {
+              const v = Math.max(0, Number(e.target.value) || 0);
+              if (v !== (s.limits?.dailyBudgetUsd ?? 0))
+                void put({ limits: { ...(s.limits ?? {}), dailyBudgetUsd: v } });
+            }}
+          />
         </Field>
         <ul className="plain-list profile-list">
           {PROFILES.map((prof) => (

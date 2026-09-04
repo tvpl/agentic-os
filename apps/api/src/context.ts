@@ -4,19 +4,24 @@ import {
   ApprovalStore,
   ConnectorRegistry,
   MemoryIndexer,
+  NotificationStore,
   RoutineScheduler,
   RoutineStore,
   RunManager,
   SettingsStore,
   SkillCatalog,
   SyncCompiler,
+  budgetDedupeKey,
   ensureDirs,
   events,
   installJournalHooks,
+  installNotificationRecorder,
+  localDay,
   openDb,
   resolvePaths,
   restoreBackup,
   type AgentAdapter,
+  type BudgetCrossedPayload,
   type Db,
   type HealthStatus,
   type MordomoPaths,
@@ -131,6 +136,8 @@ export class AppContext {
   readonly connectors: ConnectorRegistry;
   readonly sync: SyncCompiler;
   readonly approvals: ApprovalStore;
+  /** Persisted inbox (Onda 2): approvals, failed runs, alerts, budget warnings. */
+  readonly notifications: NotificationStore;
   /** Registered providers (manifests + factories); the single place the API learns which providers exist. */
   readonly providers: ProviderRegistry;
   readonly startedAt = Date.now();
@@ -177,9 +184,17 @@ export class AppContext {
     // index`, `mordomo run` — also index `memory/journal/**` and log their run
     // line. The install is idempotent, so the route-level one is a no-op.
     this.disposeJournalHooks = installJournalHooks(events, this.paths, { indexer: this.indexer });
+    // The inbox listens on the same bus: approvals, failed runs, heartbeat
+    // alerts and budget thresholds become rows that survive a closed tab.
+    this.notifications = new NotificationStore(this.db);
+    this.disposeNotificationRecorder = installNotificationRecorder(events, this.notifications, {
+      runs: this.runs,
+      routines: this.routines,
+    });
   }
 
   private readonly disposeJournalHooks: () => void;
+  private readonly disposeNotificationRecorder: () => void;
 
   /** Live adapters — rebuilt by `reloadAdapters()` whenever settings change. */
   get adapters(): Record<ProviderId, AgentAdapter> {
@@ -260,8 +275,29 @@ export class AppContext {
     return expired.length;
   }
 
+  /**
+   * Warn once a day when today's spend crosses 80 % or 100 % of
+   * `settings.limits.dailyBudgetUsd` (0 = no budget). Called at boot and
+   * hourly by the service; the `budget.crossed` event becomes an inbox row
+   * through the recorder. Returns the level announced, or null.
+   */
+  checkDailyBudget(now = Date.now()): 80 | 100 | null {
+    const budgetUsd = this.settings().limits.dailyBudgetUsd;
+    if (!(budgetUsd > 0)) return null;
+    const spentUsd = this.runs.costMetrics(now).todayUsd;
+    const level = spentUsd >= budgetUsd ? 100 : spentUsd >= budgetUsd * 0.8 ? 80 : null;
+    if (level === null) return null;
+    const day = localDay(now);
+    // Once per day per level, even across restarts: the row is the ledger.
+    if (this.notifications.hasDedupeKey(budgetDedupeKey(day, level))) return null;
+    const payload: BudgetCrossedPayload = { level, day, spentUsd, budgetUsd };
+    events.emit("budget.crossed", payload);
+    return level;
+  }
+
   close(): void {
     this.disposeJournalHooks();
+    this.disposeNotificationRecorder();
     this.scheduler.stop();
     if (this.db.open) this.db.close();
   }

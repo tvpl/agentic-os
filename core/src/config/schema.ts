@@ -153,6 +153,8 @@ export const SettingsSchema = z.object({
       routineHistoryRetentionDays: z.number().int().min(1).default(90),
       /** A pending approval older than this is swept to `expired`. */
       approvalTtlDays: z.number().int().min(1).default(7),
+      /** Daily spend budget in USD across every provider (0 = no budget). The desktop warns at 80 %. */
+      dailyBudgetUsd: z.number().min(0).default(0),
     })
     .default({}),
   favoriteSkills: z.array(z.string()).default([]),

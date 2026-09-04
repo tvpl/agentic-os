@@ -58,6 +58,17 @@ export interface AgentRun {
   artifactsDir: string;
   extraEnv?: Record<string, string>;
   /**
+   * Conversation this run belongs to (`sessions.id`). Set by the RunManager
+   * from the run row; adapters use it only to decide whether the provider's
+   * own session id is worth pinning down.
+   */
+  sessionId?: string;
+  /**
+   * Provider-side conversation to continue. Absent on the first run of a
+   * session (nothing to resume yet) and whenever the provider cannot resume.
+   */
+  resume?: { providerSessionId: string };
+  /**
    * Cancellation signal owned by the RunManager. When aborted before the
    * provider process is spawned, nothing is spawned; when aborted later, the
    * whole process group is terminated. Adapters just pass the run through to
@@ -80,6 +91,14 @@ export type RunEvent =
   | { type: "assistant"; ts: number; text: string }
   | { type: "tool_use"; ts: number; tool: string; detail: string }
   | { type: "permission"; ts: number; detail: string }
+  /**
+   * The provider told us which conversation this run belongs to (Claude's
+   * `session_id`, Codex's `thread_id`). Emitted up front when the adapter
+   * chose the id itself and again from the stream as confirmation — the last
+   * one wins, which is also how a resumed conversation that forks into a new
+   * provider session gets recorded.
+   */
+  | { type: "session"; ts: number; providerSessionId: string }
   | {
       type: "result";
       ts: number;

@@ -3,6 +3,8 @@
 if [[ "$1" == "--version" ]]; then echo "codex-cli 0.99.0-fake"; exit 0; fi
 if [[ "$1" == "exec" && "$2" == "--help" ]]; then
   echo "Run Codex non-interactively"
+  echo "Commands:"
+  echo "  resume                 resume a previous session by id"
   echo "  --json                 output JSONL events"
   echo "  --sandbox <mode>       read-only|workspace-write|danger-full-access"
   echo "  --model <model>        model"

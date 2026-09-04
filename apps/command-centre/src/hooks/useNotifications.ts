@@ -9,8 +9,25 @@
  * single SSE connection through `subscribeOsEvents`. The reducer and the
  * event mapper are pure and tested (useNotifications.test.ts).
  */
-import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
-import type { ApprovalRequestedPayload, ApprovalResolvedPayload, OsEvent, RoutineFiredPayload, RunFinishedPayload } from "../api";
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  type ReactNode,
+} from "react";
+import {
+  api,
+  type ApprovalRequestedPayload,
+  type ApprovalResolvedPayload,
+  type OsEvent,
+  type RoutineFiredPayload,
+  type RunFinishedPayload,
+} from "../api";
 import { useT } from "../i18n";
 import { subscribeOsEvents } from "./useEventStream";
 
@@ -32,7 +49,11 @@ export interface NotificationItem {
   dedupeKey?: string;
 }
 
-export type NotificationInput = Omit<NotificationItem, "id" | "ts" | "read"> & { id?: string; ts?: number; read?: boolean };
+export type NotificationInput = Omit<NotificationItem, "id" | "ts" | "read"> & {
+  id?: string;
+  ts?: number;
+  read?: boolean;
+};
 
 export const MAX_NOTIFICATIONS = 200;
 export const MAX_READ_IDS = 400;
@@ -47,6 +68,8 @@ export interface NotificationsState {
 
 export type NotificationsAction =
   | { type: "push"; item: NotificationItem }
+  /** Items the server kept (oldest first); existing ids win, read flags merge. */
+  | { type: "seed"; items: NotificationItem[] }
   | { type: "markRead"; id: string }
   | { type: "markAllRead" }
   | { type: "resolveApproval"; approvalId: string };
@@ -54,17 +77,32 @@ export type NotificationsAction =
 export const initialNotificationsState: NotificationsState = { items: [], readIds: new Set() };
 
 /** Pure reducer: newest first, bounded, deduped by id and by `dedupeKey`. */
-export function notificationsReducer(state: NotificationsState, action: NotificationsAction): NotificationsState {
+export function notificationsReducer(
+  state: NotificationsState,
+  action: NotificationsAction,
+): NotificationsState {
   switch (action.type) {
     case "push": {
       const incoming = { ...action.item, read: action.item.read || state.readIds.has(action.item.id) };
       if (state.items.some((i) => i.id === incoming.id)) return state;
       let items = state.items;
       if (incoming.dedupeKey) {
-        const prev = items.find((i) => i.dedupeKey === incoming.dedupeKey && Math.abs(incoming.ts - i.ts) <= DEDUPE_MS);
+        const prev = items.find(
+          (i) => i.dedupeKey === incoming.dedupeKey && Math.abs(incoming.ts - i.ts) <= DEDUPE_MS,
+        );
         if (prev) items = items.filter((i) => i !== prev);
       }
       items = [incoming, ...items].slice(0, MAX_NOTIFICATIONS);
+      return { ...state, items };
+    }
+    case "seed": {
+      if (action.items.length === 0) return state;
+      const known = new Set(state.items.map((i) => i.id));
+      const fresh = action.items
+        .filter((i) => !known.has(i.id))
+        .map((i) => ({ ...i, read: i.read || state.readIds.has(i.id) }));
+      if (fresh.length === 0) return state;
+      const items = [...state.items, ...fresh].sort((a, b) => b.ts - a.ts).slice(0, MAX_NOTIFICATIONS);
       return { ...state, items };
     }
     case "markRead": {
@@ -72,7 +110,10 @@ export function notificationsReducer(state: NotificationsState, action: Notifica
       if (!item || item.read) return state;
       const readIds = new Set(state.readIds);
       readIds.add(action.id);
-      return { items: state.items.map((i) => (i.id === action.id ? { ...i, read: true } : i)), readIds: bound(readIds) };
+      return {
+        items: state.items.map((i) => (i.id === action.id ? { ...i, read: true } : i)),
+        readIds: bound(readIds),
+      };
     }
     case "markAllRead": {
       if (state.items.every((i) => i.read)) return state;
@@ -81,11 +122,16 @@ export function notificationsReducer(state: NotificationsState, action: Notifica
       return { items: state.items.map((i) => (i.read ? i : { ...i, read: true })), readIds: bound(readIds) };
     }
     case "resolveApproval": {
-      const hit = state.items.filter((i) => i.approvalId === action.approvalId && i.kind === "approval" && !i.read);
+      const hit = state.items.filter(
+        (i) => i.approvalId === action.approvalId && i.kind === "approval" && !i.read,
+      );
       if (hit.length === 0) return state;
       const readIds = new Set(state.readIds);
       for (const i of hit) readIds.add(i.id);
-      return { items: state.items.map((i) => (hit.includes(i) ? { ...i, read: true } : i)), readIds: bound(readIds) };
+      return {
+        items: state.items.map((i) => (hit.includes(i) ? { ...i, read: true } : i)),
+        readIds: bound(readIds),
+      };
     }
     default:
       return state;
@@ -122,7 +168,10 @@ export function loadReadIds(store: Pick<Storage, "getItem"> | null = storage()):
   }
 }
 
-export function saveReadIds(ids: ReadonlySet<string>, store: Pick<Storage, "setItem"> | null = storage()): void {
+export function saveReadIds(
+  ids: ReadonlySet<string>,
+  store: Pick<Storage, "setItem"> | null = storage(),
+): void {
   try {
     store?.setItem(READ_STORAGE_KEY, JSON.stringify(Array.from(ids).slice(-MAX_READ_IDS)));
   } catch {
@@ -156,7 +205,10 @@ export type NotificationTextKey =
   | "shell.notif.indexBody"
   | "shell.notif.backupCreated"
   | "shell.notif.settingsChanged";
-export type NotificationTranslate = (key: NotificationTextKey, vars?: Record<string, string | number>) => string;
+export type NotificationTranslate = (
+  key: NotificationTextKey,
+  vars?: Record<string, string | number>,
+) => string;
 
 const FAILED = new Set(["failed", "timed_out"]);
 
@@ -175,7 +227,15 @@ export function eventToNotification(event: OsEvent, t: NotificationTranslate): N
   switch (event.type) {
     case "approval.requested": {
       const p = (event.payload ?? {}) as Partial<ApprovalRequestedPayload>;
-      return { ...base, kind: "approval", tone: "warn", title: t("shell.notif.approvalTitle"), body: p.description, approvalId: p.id, href: "/settings?tab=security" };
+      return {
+        ...base,
+        kind: "approval",
+        tone: "warn",
+        title: t("shell.notif.approvalTitle"),
+        body: p.description,
+        approvalId: p.id,
+        href: "/settings?tab=security",
+      };
     }
     case "approval.resolved": {
       const p = (event.payload ?? {}) as Partial<ApprovalResolvedPayload>;
@@ -218,19 +278,60 @@ export function eventToNotification(event: OsEvent, t: NotificationTranslate): N
     }
     case "routine.fired": {
       const p = (event.payload ?? {}) as Partial<RoutineFiredPayload>;
-      return { ...base, kind: "routine", tone: "info", title: t("shell.notif.routineFired"), body: p.routineId, runId: p.runId, href: p.runId ? `/runs/${p.runId}` : "/routines" };
+      return {
+        ...base,
+        kind: "routine",
+        tone: "info",
+        title: t("shell.notif.routineFired"),
+        body: p.routineId,
+        runId: p.runId,
+        href: p.runId ? `/runs/${p.runId}` : "/routines",
+      };
     }
     case "index.finished": {
-      const stats = ((event.payload as { stats?: Record<string, unknown> } | null)?.stats ?? {}) as Record<string, unknown>;
-      const n = typeof stats.files === "number" ? stats.files : typeof stats.indexed === "number" ? stats.indexed : typeof stats.total === "number" ? stats.total : null;
-      return { ...base, kind: "index", tone: "ok", title: t("shell.notif.indexFinished"), body: n == null ? undefined : t("shell.notif.indexBody", { n }), href: "/brain", read: true };
+      const stats = ((event.payload as { stats?: Record<string, unknown> } | null)?.stats ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const n =
+        typeof stats.files === "number"
+          ? stats.files
+          : typeof stats.indexed === "number"
+            ? stats.indexed
+            : typeof stats.total === "number"
+              ? stats.total
+              : null;
+      return {
+        ...base,
+        kind: "index",
+        tone: "ok",
+        title: t("shell.notif.indexFinished"),
+        body: n == null ? undefined : t("shell.notif.indexBody", { n }),
+        href: "/brain",
+        read: true,
+      };
     }
     case "backup.created": {
       const p = (event.payload ?? {}) as { name?: string };
-      return { ...base, kind: "system", tone: "ok", title: t("shell.notif.backupCreated"), body: p.name, href: "/settings?tab=backups" };
+      return {
+        ...base,
+        kind: "system",
+        tone: "ok",
+        title: t("shell.notif.backupCreated"),
+        body: p.name,
+        href: "/settings?tab=backups",
+      };
     }
     case "settings.changed":
-      return { ...base, kind: "system", tone: "info", title: t("shell.notif.settingsChanged"), href: "/settings", read: true, dedupeKey: "settings.changed" };
+      return {
+        ...base,
+        kind: "system",
+        tone: "info",
+        title: t("shell.notif.settingsChanged"),
+        href: "/settings",
+        read: true,
+        dedupeKey: "settings.changed",
+      };
     default:
       return null;
   }
@@ -243,7 +344,9 @@ let audio: AudioContext | null = null;
 export function playBlip(tone: NotificationTone = "info"): void {
   if (!getNotifySound()) return;
   try {
-    const Ctx = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const Ctx =
+      window.AudioContext ??
+      (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
     audio ??= new Ctx();
     if (audio.state === "suspended") void audio.resume();
@@ -276,8 +379,47 @@ export interface NotificationsApi {
   notify: (input: NotificationInput) => string;
 }
 
+/** Row shape of `GET /api/notifications` (servers since 0.6; older servers 404 and the feed stays local). */
+export interface ServerNotification {
+  id: string;
+  kind: NotificationKind;
+  title: string;
+  body?: string | null;
+  ts: number;
+  read: boolean;
+  href?: string | null;
+  approvalId?: string | null;
+  runId?: string | null;
+  tone?: NotificationTone | null;
+}
+
+export function fromServer(row: ServerNotification): NotificationItem {
+  return {
+    id: row.id,
+    kind: row.kind,
+    title: row.title,
+    body: row.body ?? undefined,
+    ts: row.ts,
+    read: row.read,
+    href: row.href ?? undefined,
+    approvalId: row.approvalId ?? undefined,
+    runId: row.runId ?? undefined,
+    tone: row.tone ?? undefined,
+  };
+}
+
+const SERVER_PATH = "/api/notifications";
+/** Ids the server minted (`n_…`) vs. ids derived from live events / local pushes. */
+const isServerId = (id: string) => id.startsWith("n_");
+
 const noop = () => undefined;
-const NotificationsContext = createContext<NotificationsApi>({ items: [], unread: 0, markRead: noop, markAllRead: noop, notify: () => "" });
+const NotificationsContext = createContext<NotificationsApi>({
+  items: [],
+  unread: 0,
+  markRead: noop,
+  markAllRead: noop,
+  notify: () => "",
+});
 
 let localSeq = 0;
 
@@ -285,18 +427,37 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const t = useT();
   const tRef = useRef(t);
   tRef.current = t;
-  const [state, dispatch] = useReducer(notificationsReducer, undefined, () => ({ items: [], readIds: loadReadIds() }));
+  const [state, dispatch] = useReducer(notificationsReducer, undefined, () => ({
+    items: [],
+    readIds: loadReadIds(),
+  }));
 
   useEffect(() => saveReadIds(state.readIds), [state.readIds]);
+
+  // Seed from the server so the feed survives a closed tab; live events keep it current.
+  useEffect(() => {
+    const ctrl = new AbortController();
+    api
+      .get<{ items: ServerNotification[] }>(`${SERVER_PATH}?limit=${MAX_NOTIFICATIONS}`, {
+        signal: ctrl.signal,
+      })
+      .then((res) => {
+        if (Array.isArray(res?.items)) dispatch({ type: "seed", items: res.items.map(fromServer) });
+      })
+      .catch(() => undefined);
+    return () => ctrl.abort();
+  }, []);
 
   useEffect(
     () =>
       subscribeOsEvents((event) => {
         const item = eventToNotification(event, (key, vars) => tRef.current(key, vars));
         if (!item) return;
-        if (event.type === "approval.resolved" && item.approvalId) dispatch({ type: "resolveApproval", approvalId: item.approvalId });
+        if (event.type === "approval.resolved" && item.approvalId)
+          dispatch({ type: "resolveApproval", approvalId: item.approvalId });
         dispatch({ type: "push", item });
-        if (!item.read && (item.tone === "danger" || (item.kind === "approval" && item.tone === "warn"))) playBlip(item.tone);
+        if (!item.read && (item.tone === "danger" || (item.kind === "approval" && item.tone === "warn")))
+          playBlip(item.tone);
       }),
     [],
   );
@@ -308,8 +469,14 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     if (!item.read && item.tone === "danger") playBlip("danger");
     return id;
   }, []);
-  const markRead = useCallback((id: string) => dispatch({ type: "markRead", id }), []);
-  const markAllRead = useCallback(() => dispatch({ type: "markAllRead" }), []);
+  const markRead = useCallback((id: string) => {
+    dispatch({ type: "markRead", id });
+    if (isServerId(id)) api.post(`${SERVER_PATH}/read`, { ids: [id] }).catch(() => undefined);
+  }, []);
+  const markAllRead = useCallback(() => {
+    dispatch({ type: "markAllRead" });
+    api.post(`${SERVER_PATH}/read`, { all: true }).catch(() => undefined);
+  }, []);
 
   const value = useMemo<NotificationsApi>(
     () => ({ items: state.items, unread: unreadCount(state.items), markRead, markAllRead, notify }),

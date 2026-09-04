@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -26,6 +27,12 @@ import {
  * Read-only runs stay in the default permission mode (headless auto-denies
  * writes) with an explicit allow-rule only for the run's artifacts directory.
  * Write runs use acceptEdits. bypassPermissions is never used.
+ *
+ * Conversations: `--resume <session-id>` continues a previous run's session;
+ * a first run names its own session with `--session-id <uuid>` so the id is
+ * known before the CLI prints anything. Both flags are only used when the
+ * installed CLI advertises them (`--help` probe), so an older binary simply
+ * starts a fresh conversation.
  */
 export const claudeManifest: ProviderManifest = BUILTIN_MANIFESTS.claude;
 
@@ -42,6 +49,11 @@ export class ClaudeAdapter implements AgentAdapter {
 
   private binary(): string {
     return this.opts.binaryPath ?? findOnPath("claude") ?? "claude";
+  }
+
+  /** Cached `--help`/`--version` probe (detect() itself always re-probes). */
+  private async ensureDetection(): Promise<DetectionResult> {
+    return this.detection ?? (await this.detect());
   }
 
   async detect(): Promise<DetectionResult> {
@@ -141,8 +153,22 @@ export class ClaudeAdapter implements AgentAdapter {
     return { ok: issues.length === 0, issues };
   }
 
-  async buildInvocation(run: AgentRun): Promise<SafeInvocation> {
+  /**
+   * `newSessionId` names the conversation this run starts (ignored when the
+   * run resumes one). `execute()` passes the id it already announced through
+   * the `session` event; direct callers get a fresh uuid.
+   */
+  async buildInvocation(run: AgentRun, newSessionId: string = crypto.randomUUID()): Promise<SafeInvocation> {
+    const detection = await this.ensureDetection();
     const args = ["-p", "--output-format", "stream-json", "--verbose"];
+    const resumeId = run.resume?.providerSessionId;
+    if (resumeId && detection.supportedFlags.includes("--resume")) {
+      args.push("--resume", resumeId);
+    } else if (!resumeId && detection.supportedFlags.includes("--session-id")) {
+      // Name the new conversation up front: the id is then known even if the
+      // run dies before the CLI emits its `system`/`init` line.
+      args.push("--session-id", newSessionId);
+    }
     if (run.model) args.push("--model", run.model);
     args.push("--add-dir", run.artifactsDir);
     if (run.mode === "read_only") {
@@ -170,14 +196,29 @@ export class ClaudeAdapter implements AgentAdapter {
       args,
       env,
       stdin: run.prompt,
-      description: `claude -p (${run.mode}, model=${run.model ?? "default"})`,
+      description: `claude -p (${run.mode}, model=${run.model ?? "default"}${resumeId ? ", resumed" : ""})`,
     };
   }
 
   execute(run: AgentRun): AsyncIterable<RunEvent> {
-    const build = (r: AgentRun) => this.buildInvocation(r);
+    const build = (r: AgentRun, sessionId: string) => this.buildInvocation(r, sessionId);
+    const detect = () => this.ensureDetection();
     return (async function* () {
-      const invocation = await build(run);
+      const resumeId = run.resume?.providerSessionId;
+      const providerSessionId = resumeId ?? crypto.randomUUID();
+      const detection = await detect();
+      const invocation = await build(run, providerSessionId);
+      if (resumeId && !detection.supportedFlags.includes("--resume")) {
+        yield {
+          type: "text",
+          ts: Date.now(),
+          stream: "stderr",
+          text: "[mordomo] resumeSupported: false — the installed claude does not advertise --resume; starting a fresh conversation.",
+        } as RunEvent;
+      } else if (invocation.args.includes("--session-id") || invocation.args.includes("--resume")) {
+        // Known before the first line of output; the stream confirms it later.
+        yield { type: "session", ts: Date.now(), providerSessionId };
+      }
       yield* executeInvocation(run, invocation, claudeStreamParser(), [invocation.executable]);
     })();
   }
@@ -236,6 +277,9 @@ export function claudeStreamParser(): LineParser {
   let lastAssistantText = "";
   let resultText = "";
   let sessionModel: string | null = null;
+  // Every stream-json line repeats `session_id`; only report it when it changes
+  // so the event log gets one `session` event, not one per line.
+  let seenSessionId: string | null = null;
   return {
     parseLine(line: string): RunEvent[] | null {
       let obj: Record<string, unknown>;
@@ -246,11 +290,17 @@ export function claudeStreamParser(): LineParser {
       }
       const ts = Date.now();
       const type = obj.type as string;
+      const sessionEvents: RunEvent[] = [];
+      if (typeof obj.session_id === "string" && obj.session_id && obj.session_id !== seenSessionId) {
+        seenSessionId = obj.session_id;
+        sessionEvents.push({ type: "session", ts, providerSessionId: obj.session_id });
+      }
       if (type === "system") {
         const subtype = (obj.subtype as string) ?? "";
         if (subtype === "init" && typeof obj.model === "string") sessionModel = obj.model;
         return subtype === "init"
           ? [
+              ...sessionEvents,
               {
                 type: "text",
                 ts,
@@ -258,12 +308,12 @@ export function claudeStreamParser(): LineParser {
                 text: `[claude session started: model=${(obj.model as string) ?? "?"}]`,
               },
             ]
-          : [];
+          : sessionEvents;
       }
       if (type === "assistant" || type === "user") {
         const message = obj.message as
           { content?: Array<Record<string, unknown>>; usage?: unknown; model?: unknown } | undefined;
-        const events: RunEvent[] = [];
+        const events: RunEvent[] = [...sessionEvents];
         // Per-turn usage (context meter): one event per assistant message.
         const turn = type === "assistant" ? parseClaudeUsage(message?.usage) : null;
         if (turn) {
@@ -308,6 +358,7 @@ export function claudeStreamParser(): LineParser {
         if (total || cost != null) {
           const model = dominantModel(obj.modelUsage) ?? sessionModel;
           return [
+            ...sessionEvents,
             {
               type: "usage",
               ts,
@@ -321,9 +372,9 @@ export function claudeStreamParser(): LineParser {
             },
           ];
         }
-        return [];
+        return sessionEvents;
       }
-      return [];
+      return sessionEvents;
     },
     summarize(): string {
       return (resultText || lastAssistantText).slice(0, 2000);

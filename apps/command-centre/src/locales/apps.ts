@@ -12,11 +12,13 @@ export const en = {
   "apps.skills.copyBody": "Copy",
   "apps.skills.copiedBody": "SKILL.md copied.",
   "apps.skills.thickTitle": "Thick skill — {lines} lines",
-  "apps.skills.thickBody": "Move references, templates and examples into resources/ and keep SKILL.md as a short router that says which file to read for which job.",
+  "apps.skills.thickBody":
+    "Move references, templates and examples into resources/ and keep SKILL.md as a short router that says which file to read for which job.",
   "apps.skills.splitPrompt": "Copy split-assistant prompt",
   "apps.skills.splitCopied": "Prompt copied — paste it into a run to split this skill.",
   "apps.skills.noResources": "No resource files",
-  "apps.skills.noResourcesBody": "Add brand HTML, images, PDFs or reference markdown under resources/ — they are previewed here and the run prompt points the agent to them.",
+  "apps.skills.noResourcesBody":
+    "Add brand HTML, images, PDFs or reference markdown under resources/ — they are previewed here and the run prompt points the agent to them.",
   "apps.skills.resourceCount": "{n} file(s)",
   "apps.skills.preview": "Preview",
   "apps.skills.openNewTab": "Open in new tab",
@@ -33,7 +35,8 @@ export const en = {
   "apps.skills.customModel": "Custom model id",
   "apps.skills.clearInputs": "Clear inputs",
   "apps.skills.approvalTitle": "Approval needed",
-  "apps.skills.approvalBody": "This run writes files under your security profile. Approve here to launch it now, or deny to cancel.",
+  "apps.skills.approvalBody":
+    "This run writes files under your security profile. Approve here to launch it now, or deny to cancel.",
   "apps.skills.approvalLaunched": "Approved — run started.",
   "apps.skills.approvalDenied": "Denied — nothing was run.",
   "apps.skills.approvalGone": "This approval was already resolved elsewhere.",
@@ -42,13 +45,19 @@ export const en = {
   "apps.settings.tabTheme": "Theme",
   "apps.settings.tabDesktop": "Desktop",
   "apps.settings.tabNotifications": "Notifications",
+  "apps.settings.budget": "Daily budget (USD)",
+  "apps.settings.budgetHint":
+    "Spend across every provider per day. The desktop warns at 80 % and flags the day as over budget at 100 %. 0 disables it.",
   "apps.settings.presets": "Theme preset",
-  "apps.settings.presetsHint": "A preset sets the accent and the surface family. The accent can still be fine-tuned under Identity.",
+  "apps.settings.presetsHint":
+    "A preset sets the accent and the surface family. The accent can still be fine-tuned under Identity.",
   "apps.settings.presetApplied": "Preset applied: {name}",
   "apps.settings.widgets": "Dashboard widgets",
-  "apps.settings.widgetsHint": "Choose which widgets the desktop shows. Position and size are edited on the desktop itself.",
+  "apps.settings.widgetsHint":
+    "Choose which widgets the desktop shows. Position and size are edited on the desktop itself.",
   "apps.settings.microApps": "Micro apps",
-  "apps.settings.microAppsHint": "Extra entries for the desktop Micro apps widget: internal routes (/pixel) or http(s) URLs.",
+  "apps.settings.microAppsHint":
+    "Extra entries for the desktop Micro apps widget: internal routes (/pixel) or http(s) URLs.",
   "apps.settings.noMicroApps": "No custom micro apps yet.",
   "apps.settings.addMicroApp": "Add micro app",
   "apps.settings.maName": "Name",
@@ -57,12 +66,16 @@ export const en = {
   "apps.settings.maHrefInvalid": "Use an internal route (/pixel) or an http(s) URL.",
   "apps.settings.automation": "Automation & connectors",
   "apps.settings.webhooks": "Webhook delivery",
-  "apps.settings.webhooksHint": "Routines can only deliver their result to an http(s) webhook while this is on. Off by default: a routine result leaves this machine only when you say so.",
+  "apps.settings.webhooksHint":
+    "Routines can only deliver their result to an http(s) webhook while this is on. Off by default: a routine result leaves this machine only when you say so.",
   "apps.settings.allowedCommands": "Connector executables allowlist",
-  "apps.settings.allowedCommandsHint": "Comma-separated. Absolute paths or bare names resolved on PATH; a connector may only spawn what is listed here.",
-  "apps.settings.allowedCommandsExample": "An MCP connector installed with npx needs \"npx\" on this list before it can read anything.",
+  "apps.settings.allowedCommandsHint":
+    "Comma-separated. Absolute paths or bare names resolved on PATH; a connector may only spawn what is listed here.",
+  "apps.settings.allowedCommandsExample":
+    'An MCP connector installed with npx needs "npx" on this list before it can read anything.',
   "apps.settings.sound": "Notification sound",
-  "apps.settings.soundHint": "Play a short sound when a run finishes or an approval is requested. Stored in this browser only.",
+  "apps.settings.soundHint":
+    "Play a short sound when a run finishes or an approval is requested. Stored in this browser only.",
   "apps.settings.soundOn": "On",
   "apps.settings.soundOff": "Off",
   "apps.settings.notificationsHint": "Notifications appear in the Inbox widget and in the top-bar bell.",
@@ -75,10 +88,12 @@ export const en = {
   // ---- Setup ----
   "apps.setup.stepConnect": "Connect data",
   "apps.setup.stepDesktop": "Your desktop",
-  "apps.setup.connectHint": "Calendar and e-mail widgets read through connectors. Nothing needs to be configured now — the checklist stays available under Connectors.",
+  "apps.setup.connectHint":
+    "Calendar and e-mail widgets read through connectors. Nothing needs to be configured now — the checklist stays available under Connectors.",
   "apps.setup.openConnectors": "Open the connectors checklist",
   "apps.setup.noConnectors": "No calendar or e-mail connector is registered.",
-  "apps.setup.desktopHint": "Pick a look and the widgets you want on the desktop. Everything can change later in Settings.",
+  "apps.setup.desktopHint":
+    "Pick a look and the widgets you want on the desktop. Everything can change later in Settings.",
   "apps.setup.status.not_configured": "not configured",
   "apps.setup.status.configured": "configured",
   // ---- Pixel Studio ----
@@ -91,7 +106,8 @@ export const en = {
   "apps.pixel.nextFrame": "Next frame",
   "apps.pixel.exportMeta": "Sprite sheet + JSON",
   "apps.pixel.shortcuts": "Shortcuts",
-  "apps.pixel.shortcutsBody": "1-4 tools · [ ] frames · + - brush · x swap · o onion · ⌘Z undo · ⌘⇧Z / ⌘Y redo",
+  "apps.pixel.shortcutsBody":
+    "1-4 tools · [ ] frames · + - brush · x swap · o onion · ⌘Z undo · ⌘⇧Z / ⌘Y redo",
 } as const;
 
 export const ptBR = {
@@ -102,11 +118,13 @@ export const ptBR = {
   "apps.skills.copyBody": "Copiar",
   "apps.skills.copiedBody": "SKILL.md copiado.",
   "apps.skills.thickTitle": "Skill grossa — {lines} linhas",
-  "apps.skills.thickBody": "Mova referências, modelos e exemplos para resources/ e deixe o SKILL.md como um roteador curto que diz qual arquivo ler para cada tarefa.",
+  "apps.skills.thickBody":
+    "Mova referências, modelos e exemplos para resources/ e deixe o SKILL.md como um roteador curto que diz qual arquivo ler para cada tarefa.",
   "apps.skills.splitPrompt": "Copiar prompt do assistente de divisão",
   "apps.skills.splitCopied": "Prompt copiado — cole numa execução para dividir esta skill.",
   "apps.skills.noResources": "Sem arquivos de recurso",
-  "apps.skills.noResourcesBody": "Adicione HTML de marca, imagens, PDFs ou markdown de referência em resources/ — eles aparecem aqui em preview e o prompt da execução aponta o agente para eles.",
+  "apps.skills.noResourcesBody":
+    "Adicione HTML de marca, imagens, PDFs ou markdown de referência em resources/ — eles aparecem aqui em preview e o prompt da execução aponta o agente para eles.",
   "apps.skills.resourceCount": "{n} arquivo(s)",
   "apps.skills.preview": "Preview",
   "apps.skills.openNewTab": "Abrir em nova aba",
@@ -123,7 +141,8 @@ export const ptBR = {
   "apps.skills.customModel": "Id de modelo personalizado",
   "apps.skills.clearInputs": "Limpar campos",
   "apps.skills.approvalTitle": "Aprovação necessária",
-  "apps.skills.approvalBody": "Esta execução escreve arquivos sob o seu perfil de segurança. Aprove aqui para iniciar agora, ou negue para cancelar.",
+  "apps.skills.approvalBody":
+    "Esta execução escreve arquivos sob o seu perfil de segurança. Aprove aqui para iniciar agora, ou negue para cancelar.",
   "apps.skills.approvalLaunched": "Aprovado — execução iniciada.",
   "apps.skills.approvalDenied": "Negado — nada foi executado.",
   "apps.skills.approvalGone": "Esta aprovação já foi resolvida em outro lugar.",
@@ -131,13 +150,19 @@ export const ptBR = {
   "apps.settings.tabTheme": "Tema",
   "apps.settings.tabDesktop": "Desktop",
   "apps.settings.tabNotifications": "Notificações",
+  "apps.settings.budget": "Orçamento diário (US$)",
+  "apps.settings.budgetHint":
+    "Gasto somado de todos os provedores por dia. O desktop avisa aos 80 % e marca o dia como estourado aos 100 %. 0 desliga.",
   "apps.settings.presets": "Preset de tema",
-  "apps.settings.presetsHint": "Um preset define o accent e a família de superfícies. O accent ainda pode ser ajustado em Identidade.",
+  "apps.settings.presetsHint":
+    "Um preset define o accent e a família de superfícies. O accent ainda pode ser ajustado em Identidade.",
   "apps.settings.presetApplied": "Preset aplicado: {name}",
   "apps.settings.widgets": "Widgets do painel",
-  "apps.settings.widgetsHint": "Escolha quais widgets o desktop mostra. Posição e tamanho são editados no próprio desktop.",
+  "apps.settings.widgetsHint":
+    "Escolha quais widgets o desktop mostra. Posição e tamanho são editados no próprio desktop.",
   "apps.settings.microApps": "Micro apps",
-  "apps.settings.microAppsHint": "Entradas extras para o widget Micro apps do desktop: rotas internas (/pixel) ou URLs http(s).",
+  "apps.settings.microAppsHint":
+    "Entradas extras para o widget Micro apps do desktop: rotas internas (/pixel) ou URLs http(s).",
   "apps.settings.noMicroApps": "Nenhum micro app personalizado ainda.",
   "apps.settings.addMicroApp": "Adicionar micro app",
   "apps.settings.maName": "Nome",
@@ -146,12 +171,16 @@ export const ptBR = {
   "apps.settings.maHrefInvalid": "Use uma rota interna (/pixel) ou uma URL http(s).",
   "apps.settings.automation": "Automação e conectores",
   "apps.settings.webhooks": "Entrega por webhook",
-  "apps.settings.webhooksHint": "As rotinas só entregam o resultado num webhook http(s) enquanto isto estiver ligado. Desligado por padrão: o resultado de uma rotina só sai desta máquina quando você quiser.",
+  "apps.settings.webhooksHint":
+    "As rotinas só entregam o resultado num webhook http(s) enquanto isto estiver ligado. Desligado por padrão: o resultado de uma rotina só sai desta máquina quando você quiser.",
   "apps.settings.allowedCommands": "Executáveis permitidos aos conectores",
-  "apps.settings.allowedCommandsHint": "Separados por vírgula. Caminhos absolutos ou nomes resolvidos no PATH; um conector só pode iniciar o que estiver aqui.",
-  "apps.settings.allowedCommandsExample": "Um conector MCP instalado com npx precisa de \"npx\" nesta lista antes de conseguir ler qualquer coisa.",
+  "apps.settings.allowedCommandsHint":
+    "Separados por vírgula. Caminhos absolutos ou nomes resolvidos no PATH; um conector só pode iniciar o que estiver aqui.",
+  "apps.settings.allowedCommandsExample":
+    'Um conector MCP instalado com npx precisa de "npx" nesta lista antes de conseguir ler qualquer coisa.',
   "apps.settings.sound": "Som de notificação",
-  "apps.settings.soundHint": "Toca um som curto quando uma execução termina ou uma aprovação é pedida. Guardado só neste navegador.",
+  "apps.settings.soundHint":
+    "Toca um som curto quando uma execução termina ou uma aprovação é pedida. Guardado só neste navegador.",
   "apps.settings.soundOn": "Ligado",
   "apps.settings.soundOff": "Desligado",
   "apps.settings.notificationsHint": "As notificações aparecem no widget Inbox e no sino da barra superior.",
@@ -163,10 +192,12 @@ export const ptBR = {
   "apps.widget.cost": "Custo",
   "apps.setup.stepConnect": "Conectar dados",
   "apps.setup.stepDesktop": "Seu desktop",
-  "apps.setup.connectHint": "Os widgets de calendário e e-mail leem através de conectores. Nada precisa ser configurado agora — o checklist continua disponível em Conectores.",
+  "apps.setup.connectHint":
+    "Os widgets de calendário e e-mail leem através de conectores. Nada precisa ser configurado agora — o checklist continua disponível em Conectores.",
   "apps.setup.openConnectors": "Abrir o checklist de conectores",
   "apps.setup.noConnectors": "Nenhum conector de calendário ou e-mail está registrado.",
-  "apps.setup.desktopHint": "Escolha um visual e os widgets que quer no desktop. Tudo pode mudar depois em Configurações.",
+  "apps.setup.desktopHint":
+    "Escolha um visual e os widgets que quer no desktop. Tudo pode mudar depois em Configurações.",
   "apps.setup.status.not_configured": "não configurado",
   "apps.setup.status.configured": "configurado",
   "apps.pixel.redo": "Refazer",
@@ -178,5 +209,6 @@ export const ptBR = {
   "apps.pixel.nextFrame": "Próximo quadro",
   "apps.pixel.exportMeta": "Sprite sheet + JSON",
   "apps.pixel.shortcuts": "Atalhos",
-  "apps.pixel.shortcutsBody": "1-4 ferramentas · [ ] quadros · + - pincel · x trocar · o onion · ⌘Z desfazer · ⌘⇧Z / ⌘Y refazer",
+  "apps.pixel.shortcutsBody":
+    "1-4 ferramentas · [ ] quadros · + - pincel · x trocar · o onion · ⌘Z desfazer · ⌘⇧Z / ⌘Y refazer",
 } satisfies Record<keyof typeof en, string>;

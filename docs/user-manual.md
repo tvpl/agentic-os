@@ -102,6 +102,34 @@ operations, risks and health. Enabling write operations always creates a
 pending approval in Settings. Install/authenticate steps are never performed
 without you.
 
+## 5.1 The Console (talk to the agent)
+
+The **Console** widget on the desktop is a conversation, not a one-shot
+prompt. Every message continues the same session: MordomoOS resumes the
+provider's own conversation (`claude --resume`, `codex exec resume`), so the
+agent remembers what you said two turns ago. The thread shows each turn — what
+you asked, the reply, how many tools it used, what it cost — and streams while
+the agent works. **Stop** cancels the running turn, **New conversation** starts
+fresh, **Open run** jumps to the full log. A bare `/slug` still runs the skill.
+Sessions are listed by `GET /api/sessions` and continue with
+`POST /api/sessions/:id/continue`.
+
+## 5.2 Budget and the inbox
+
+Set a **daily budget** (Settings › Security). The Cost widget shows the bar,
+"Needs attention" flags 80 % and 100 %, and the inbox gets one row per day per
+level. The inbox itself is persisted on the server: approvals, failed runs,
+routine alerts and budget crossings survive a closed tab and are read from
+`GET /api/notifications` on load.
+
+## 5.3 The HUD
+
+The desktop core reacts to what the agent does — thinking, using a tool,
+answering, alerting, done — and a HUD layer adds scanlines, corner brackets,
+a radar sweep and telemetry. **Settings › Theme › HUD intensity** scales all
+of it (0 turns it off); the **JARVIS** preset is the cyan-on-black look.
+`prefers-reduced-motion` disables every animation.
+
 ## 6. Runs & observability
 
 Runs page: every execution with status

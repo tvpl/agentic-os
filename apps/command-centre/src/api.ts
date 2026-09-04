@@ -392,7 +392,13 @@ export interface Connector {
   /** Last successful read through `GET /api/connectors/:id/data`. */
   lastUsedAt?: number | null;
   /** Present when the connector declares a read-only data mapping. */
-  dataMapping?: { transport?: string; command?: string | null; url?: string | null; env?: string[]; install?: string | null } | null;
+  dataMapping?: {
+    transport?: string;
+    command?: string | null;
+    url?: string | null;
+    env?: string[];
+    install?: string | null;
+  } | null;
 }
 
 export interface GraphNode {
@@ -446,6 +452,55 @@ export interface Metrics {
   cost?: MetricsCost;
   /** Last 24 hourly buckets, oldest first (tokens sparkline). */
   usageSeries?: UsageSeriesPoint[];
+}
+
+// ---- settings ----
+/**
+ * The settings document as `GET /api/settings` returns it (mirrors
+ * `SettingsSchema` in core/src/config/schema.ts). Fields older servers may
+ * omit are optional on `SettingsView`, the shape the shared hook exposes.
+ */
+export interface SettingsDoc {
+  systemName: string;
+  language: "en" | "pt-BR";
+  theme: "dark" | "light" | "system";
+  accentColor: string;
+  port: number;
+  timezone: string;
+  defaultProvider: ProviderId;
+  securityProfile: string;
+  providers: Record<
+    ProviderId,
+    { enabled: boolean; defaultModel: string | null; defaultEffort: string; binaryPath: string | null }
+  >;
+  indexedFolders: Array<{ path: string; area: string | null; enabled: boolean }>;
+  excludes: string[];
+  areas: string[];
+  setupCompleted: boolean;
+  /** Theme preset id (F-SHELL `PRESETS`). */
+  themePreset: string;
+  microApps: MicroApp[];
+  dashboardLayout: Record<
+    string,
+    { x: number; y: number; w: number; h: number; visible: boolean; config?: Record<string, unknown> }
+  >;
+  routines: { allowWebhooks: boolean; heartbeatIntervalMinutes: number; heartbeatOkToken: string };
+  connectors: { dataCacheTtlMs: number; dataTimeoutMs: number; allowedCommands: string[] };
+  limits?: {
+    maxConcurrentRuns?: number;
+    defaultTimeoutMs?: number;
+    /** Daily spend budget in USD (0 = no budget). */
+    dailyBudgetUsd?: number;
+    [key: string]: unknown;
+  };
+}
+
+/** Micro app row (mirrors `MicroAppSchema` in core/src/config/schema.ts). */
+export interface MicroApp {
+  id: string;
+  name: string;
+  description: string;
+  href: string;
 }
 
 // ---- desktop ----
@@ -745,6 +800,30 @@ export interface LaunchRunResponse {
   runId: string | null;
   status: "queued" | "waiting_approval";
   pendingApproval?: ApprovalRecord | null;
+  /** Conversation the run belongs to (servers since 0.6). */
+  sessionId?: string | null;
+}
+
+// ---- sessions (Onda 1) ----
+/** A conversation with one provider: runs that continue each other via the provider's own resume. */
+export interface SessionRecord {
+  id: string;
+  provider: ProviderId;
+  providerSessionId: string | null;
+  cwd: string | null;
+  profile: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  lastRunId: string | null;
+  turns: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+export interface SessionDetail {
+  session: SessionRecord;
+  runs: RunRecord[];
 }
 
 /** `POST /api/approvals/:id/resolve` */

@@ -22,6 +22,15 @@ export interface ProviderCapabilities {
   promptTransport: "stdin" | "argv";
   /** The CLI streams structured events (tool calls, results) rather than plain text. */
   streaming: boolean;
+  /**
+   * How the CLI continues a previous conversation:
+   * `flag` — an option on the normal invocation (`claude --resume <id>`);
+   * `subcommand` — a dedicated verb (`codex exec resume <id>`);
+   * `none` — the CLI cannot resume, so every run starts a fresh conversation.
+   * Adapters treat anything but `none` as best effort: when the installed CLI
+   * does not advertise it, the run starts fresh and says so in a text event.
+   */
+  resume: "flag" | "subcommand" | "none";
 }
 
 /** Where the compiled views of the canonical skills/routers live for a provider (paths relative to the target dir). */
@@ -75,9 +84,12 @@ export class ProviderRegistry {
   register(manifest: ProviderManifest, factory: AdapterFactory): this {
     const parsed = ProviderId.safeParse(manifest.id);
     if (!parsed.success) {
-      throw new ProviderRegistryError(`Provider id "${manifest.id}" is not declared in ProviderId (core/src/config/schema.ts).`);
+      throw new ProviderRegistryError(
+        `Provider id "${manifest.id}" is not declared in ProviderId (core/src/config/schema.ts).`,
+      );
     }
-    if (this.entries.has(manifest.id)) throw new ProviderRegistryError(`Provider "${manifest.id}" is already registered.`);
+    if (this.entries.has(manifest.id))
+      throw new ProviderRegistryError(`Provider "${manifest.id}" is already registered.`);
     this.entries.set(manifest.id, { manifest, factory });
     return this;
   }
@@ -107,7 +119,10 @@ export class ProviderRegistry {
   }
 
   /** Create one adapter per registered provider from a `binaryPath` lookup. */
-  createAll(binaryPathOf: (id: ProviderId) => string | null, homeDir?: string): Record<ProviderId, AgentAdapter> {
+  createAll(
+    binaryPathOf: (id: ProviderId) => string | null,
+    homeDir?: string,
+  ): Record<ProviderId, AgentAdapter> {
     const out = {} as Record<ProviderId, AgentAdapter>;
     for (const id of this.ids()) out[id] = this.create(id, { binaryPath: binaryPathOf(id), homeDir });
     return out;
@@ -121,8 +136,19 @@ export const BUILTIN_MANIFESTS: Record<ProviderId, ProviderManifest> = {
     displayName: "Claude Code",
     binary: "claude",
     installHint: "npm install -g @anthropic-ai/claude-code",
-    capabilities: { enforcesReadOnly: true, supportsEffort: true, promptTransport: "stdin", streaming: true },
-    layout: { instructionsFile: "CLAUDE.md", skillsDir: ".claude/skills", rulesFile: null, commandsDir: null },
+    capabilities: {
+      enforcesReadOnly: true,
+      supportsEffort: true,
+      promptTransport: "stdin",
+      streaming: true,
+      resume: "flag",
+    },
+    layout: {
+      instructionsFile: "CLAUDE.md",
+      skillsDir: ".claude/skills",
+      rulesFile: null,
+      commandsDir: null,
+    },
     homeConfigFiles: [".claude.json", ".claude/settings.json"],
     writeToolPattern: /^(write|edit|multiedit|notebookedit|create_file)/i,
   },
@@ -131,8 +157,20 @@ export const BUILTIN_MANIFESTS: Record<ProviderId, ProviderManifest> = {
     displayName: "Cursor Agent",
     binary: "cursor-agent",
     installHint: "curl https://cursor.com/install -fsS | bash",
-    capabilities: { enforcesReadOnly: false, supportsEffort: false, promptTransport: "argv", streaming: true },
-    layout: { instructionsFile: "AGENTS.md", skillsDir: null, rulesFile: ".cursor/rules/mordomo.mdc", commandsDir: ".cursor/commands" },
+    capabilities: {
+      enforcesReadOnly: false,
+      supportsEffort: false,
+      promptTransport: "argv",
+      streaming: true,
+      // No resume flag is documented for cursor-agent -p; runs always start fresh.
+      resume: "none",
+    },
+    layout: {
+      instructionsFile: "AGENTS.md",
+      skillsDir: null,
+      rulesFile: ".cursor/rules/mordomo.mdc",
+      commandsDir: ".cursor/commands",
+    },
     homeConfigFiles: [".cursor/mcp.json"],
     writeToolPattern: /^(write|edit|multiedit|create_file|str_replace)/i,
   },
@@ -141,11 +179,23 @@ export const BUILTIN_MANIFESTS: Record<ProviderId, ProviderManifest> = {
     displayName: "OpenAI Codex",
     binary: "codex",
     installHint: "npm install -g @openai/codex",
-    capabilities: { enforcesReadOnly: true, supportsEffort: true, promptTransport: "argv", streaming: true },
-    layout: { instructionsFile: "AGENTS.md", skillsDir: ".agents/skills", rulesFile: null, commandsDir: null },
+    capabilities: {
+      enforcesReadOnly: true,
+      supportsEffort: true,
+      promptTransport: "argv",
+      streaming: true,
+      resume: "subcommand",
+    },
+    layout: {
+      instructionsFile: "AGENTS.md",
+      skillsDir: ".agents/skills",
+      rulesFile: null,
+      commandsDir: null,
+    },
     homeConfigFiles: [".codex/config.toml"],
     writeToolPattern: /^(apply_patch|write|edit|create_file)/i,
   },
 };
 
-export const builtinManifests = (): ProviderManifest[] => ProviderId.options.map((id) => BUILTIN_MANIFESTS[id]);
+export const builtinManifests = (): ProviderManifest[] =>
+  ProviderId.options.map((id) => BUILTIN_MANIFESTS[id]);

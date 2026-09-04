@@ -73,7 +73,7 @@ export const DEFAULT_LAYOUT: LayoutMap = {
   deck: { x: 19, y: 0, w: 5, h: 10, visible: true },
   routines: { x: 19, y: 10, w: 5, h: 5, visible: true },
   pulse: { x: 19, y: 15, w: 5, h: 5, visible: true },
-  prompt: { x: 6, y: 15, w: 12, h: 3, visible: true },
+  prompt: { x: 6, y: 12, w: 12, h: 6, visible: true },
   attention: { x: 6, y: 18, w: 12, h: 2, visible: true },
   inbox: { x: 6, y: 0, w: 6, h: 4, visible: false },
   agenda: { x: 12, y: 0, w: 6, h: 3, visible: false },

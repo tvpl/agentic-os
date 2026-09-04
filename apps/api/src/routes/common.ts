@@ -1,7 +1,9 @@
 import path from "node:path";
 import {
   events,
+  resolveInsideRoots,
   writeDecision,
+  type Approval,
   type CreateRunInput,
   type EffortLevel,
   type ProviderId,
@@ -39,6 +41,12 @@ export interface PromptRunInput {
   mode: RunMode;
   cwd: string;
   timeoutMs: number;
+  /**
+   * Conversation this run belongs to. `submitPromptRun` fills it in before the
+   * write gate, so a run parked for approval resumes the same conversation
+   * when a human releases it.
+   */
+  sessionId?: string;
 }
 
 export interface SkillRunInput {
@@ -60,6 +68,22 @@ export interface WriteGate {
   pendingApproval: ReturnType<AppContext["approvals"]["request"]> | null;
   /** Run row parked in `waiting_approval` and linked to that approval. */
   runId: string | null;
+}
+
+/**
+ * The write policy check `gateWrite` starts with, on its own: callers that
+ * need to know a write is refused *before* they create anything (a session,
+ * for instance) use this instead of duplicating the rule.
+ */
+export function assertWriteAllowed(ctx: AppContext, mode: RunMode, origin: WriteOrigin): void {
+  if (mode !== "write") return;
+  if (writeDecision(ctx.settings().securityProfile, origin) === "refuse") {
+    throw httpError(
+      403,
+      "The current security profile does not allow write runs; change it in Settings › Security.",
+      "profile_refused",
+    );
+  }
 }
 
 /** The run row a gated write is parked in until a human decides. */
@@ -84,14 +108,8 @@ export function gateWrite(
   payload: GatedRunPayload,
 ): WriteGate {
   if (mode !== "write") return { pendingApproval: null, runId: null };
+  assertWriteAllowed(ctx, mode, origin);
   const decision = writeDecision(ctx.settings().securityProfile, origin);
-  if (decision === "refuse") {
-    throw httpError(
-      403,
-      "The current security profile does not allow write runs; change it in Settings › Security.",
-      "profile_refused",
-    );
-  }
   if (decision === "approval") {
     const runId = createGatedRun(ctx, payload);
     const approval = ctx.approvals.request("write_run", description, { ...payload, runId });
@@ -111,6 +129,7 @@ function promptRunFields(input: PromptRunInput): Omit<CreateRunInput, "profile">
     effort: input.effort,
     mode: input.mode,
     timeoutMs: input.timeoutMs,
+    ...(input.sessionId ? { sessionId: input.sessionId } : {}),
   };
 }
 
@@ -173,4 +192,103 @@ export function launchSkillRun(
   const prompt = ctx.skills.buildRunPrompt(skill, input.inputs, path.join(ctx.paths.artifacts, runId));
   ctx.runs.execute(runId, prompt, mode).catch((err: unknown) => onError(err, runId));
   return { runId };
+}
+
+// ------------------------------------------------------------- sessions --
+
+/**
+ * The conversation a prompt run belongs to: the one the caller asked to
+ * continue, or a fresh one titled after the prompt. Creating it here (before
+ * the write gate) means a run parked in `waiting_approval` already carries its
+ * session, so releasing it continues the same conversation.
+ */
+export function ensureSession(ctx: AppContext, input: PromptRunInput): string {
+  if (input.sessionId) return input.sessionId;
+  return ctx.runs.sessions.create({
+    provider: input.provider,
+    cwd: input.cwd,
+    profile: input.mode === "write" ? ctx.settings().securityProfile : "read_only",
+    title: input.prompt,
+  }).id;
+}
+
+/** Body accepted by `POST /api/runs` and `POST /api/sessions/:id/continue`. */
+export interface PromptRunRequest {
+  prompt: string;
+  provider?: ProviderId;
+  model?: string | null;
+  effort?: EffortLevel;
+  mode: RunMode;
+  cwd?: string;
+  timeoutMs?: number;
+  /** Continue this conversation instead of starting a new one. */
+  sessionId?: string;
+}
+
+export interface PromptRunResponse {
+  statusCode: number;
+  body: {
+    runId: string | null;
+    sessionId: string;
+    status: "queued" | "waiting_approval";
+    pendingApproval?: Approval;
+  };
+}
+
+/**
+ * One place where a prompt run is created, whether it comes from the prompt
+ * box or from "continue this conversation": resolve the session's defaults
+ * (provider and cwd, unless the caller overrides them), apply the write gate,
+ * then launch. 202 + `waiting_approval` when the profile wants a human first.
+ */
+export function submitPromptRun(
+  ctx: AppContext,
+  body: PromptRunRequest,
+  onError: (err: unknown, runId: string) => void,
+): PromptRunResponse {
+  const settings = ctx.settings();
+  const session = body.sessionId ? ctx.runs.sessions.get(body.sessionId) : null;
+  if (body.sessionId && !session) throw httpError(404, "Session not found");
+  const provider = body.provider ?? session?.provider ?? settings.defaultProvider;
+  const providerSettings = settings.providers[provider];
+  if (!providerSettings?.enabled) throw httpError(400, `Provider ${provider} is not enabled`);
+  // A session's cwd is re-checked against the *current* roots: a folder that
+  // was granted when the conversation started may have been revoked since.
+  const roots = grantedRoots(ctx);
+  const requested = body.cwd ?? session?.cwd ?? null;
+  const cwd = requested ? resolveInsideRoots(roots, requested) : ctx.paths.home;
+  const input: PromptRunInput = {
+    prompt: body.prompt,
+    provider,
+    model: body.model !== undefined ? body.model : providerSettings.defaultModel,
+    effort: body.effort ?? providerSettings.defaultEffort,
+    mode: body.mode,
+    cwd,
+    timeoutMs: body.timeoutMs ?? settings.limits.defaultTimeoutMs,
+    ...(body.sessionId ? { sessionId: body.sessionId } : {}),
+  };
+  // Refused writes must not leave an empty conversation behind.
+  assertWriteAllowed(ctx, body.mode, "manual");
+  input.sessionId = ensureSession(ctx, input);
+  const gate = gateWrite(
+    ctx,
+    body.mode,
+    "manual",
+    `Write-mode prompt run with ${provider}: "${body.prompt.slice(0, 80)}"`,
+    { kind: "prompt", input },
+  );
+  if (gate.pendingApproval) {
+    // 202 + the parked run row: the write is visible in Runs as `waiting_approval`.
+    return {
+      statusCode: 202,
+      body: {
+        runId: gate.runId,
+        sessionId: input.sessionId,
+        status: "waiting_approval",
+        pendingApproval: gate.pendingApproval,
+      },
+    };
+  }
+  const { runId } = launchPromptRun(ctx, input, onError);
+  return { statusCode: 200, body: { runId, sessionId: input.sessionId, status: "queued" } };
 }

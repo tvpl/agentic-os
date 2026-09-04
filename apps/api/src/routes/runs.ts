@@ -13,8 +13,8 @@ import {
   type RunEvent,
 } from "@mordomo/core";
 import type { AppContext } from "../context.js";
-import { gateWrite, grantedRoots, httpError, launchPromptRun, type PromptRunInput } from "./common.js";
-import { UuidParams } from "./params.js";
+import { grantedRoots, httpError, submitPromptRun } from "./common.js";
+import { UuidParam, UuidParams } from "./params.js";
 import { lastEventId, openSse } from "./sse.js";
 
 const ACTIVE_STATUSES = new Set(["queued", "running", "waiting_approval"]);
@@ -51,7 +51,12 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     return { run, events: ctx.runs.eventsFor(id).map((e) => e.event) };
   });
 
-  /** Manual prompt run (Command Centre "Run a prompt" box). */
+  /**
+   * Manual prompt run (Command Centre "Run a prompt" box). `sessionId`
+   * continues an existing conversation; without it a new one is started and
+   * returned, so the caller can continue it later. The old response fields
+   * (`runId`, `status`, `pendingApproval`) are unchanged.
+   */
   app.post("/api/runs", async (req, reply) => {
     const body = z
       .object({
@@ -62,37 +67,14 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
         mode: z.enum(["read_only", "write"]).default("read_only"),
         cwd: z.string().optional(),
         timeoutMs: z.number().int().min(10_000).max(3_600_000).optional(),
+        sessionId: UuidParam.optional(),
       })
       .parse(req.body);
-    const settings = ctx.settings();
-    const provider = body.provider ?? settings.defaultProvider;
-    if (!settings.providers[provider].enabled) throw httpError(400, `Provider ${provider} is not enabled`);
-    const cwd = body.cwd ? resolveInsideRoots(grantedRoots(ctx), body.cwd) : ctx.paths.home;
-    const input: PromptRunInput = {
-      prompt: body.prompt,
-      provider,
-      model: body.model !== undefined ? body.model : settings.providers[provider].defaultModel,
-      effort: body.effort ?? settings.providers[provider].defaultEffort,
-      mode: body.mode,
-      cwd,
-      timeoutMs: body.timeoutMs ?? settings.limits.defaultTimeoutMs,
-    };
-    const gate = gateWrite(
-      ctx,
-      body.mode,
-      "manual",
-      `Write-mode prompt run with ${provider}: "${body.prompt.slice(0, 80)}"`,
-      { kind: "prompt", input },
-    );
-    if (gate.pendingApproval) {
-      // 202 + the parked run row: the write is visible in Runs as `waiting_approval`.
-      reply.code(202);
-      return { runId: gate.runId, status: "waiting_approval", pendingApproval: gate.pendingApproval };
-    }
-    const { runId } = launchPromptRun(ctx, input, (err, id) =>
+    const result = submitPromptRun(ctx, body, (err, id) =>
       req.log.error({ err, runId: id, msg: "run failed to execute" }),
     );
-    return { runId, status: "queued" };
+    if (result.statusCode !== 200) reply.code(result.statusCode);
+    return result.body;
   });
 
   /**

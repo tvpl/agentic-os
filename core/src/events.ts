@@ -20,8 +20,14 @@ export type OsEventType =
   | "approval.requested"
   | "approval.resolved"
   | "approval.expired"
+  | "session.created"
+  | "session.updated"
   | "settings.changed"
-  | "backup.created";
+  | "backup.created"
+  /** A row was appended to the persisted inbox (payload: the notification). */
+  | "notification.created"
+  /** Today's spend passed a share of `settings.limits.dailyBudgetUsd`. */
+  | "budget.crossed";
 
 export interface OsEvent<T = unknown> {
   /** Monotonic id (per process) so SSE clients can resume with Last-Event-ID. */

@@ -370,6 +370,29 @@ pre,
   font-size: var(--fs-2);
 }
 
+/* the primary action "charges" on press: a radial fill that resolves on release */
+.btn.primary {
+  position: relative;
+  overflow: hidden;
+}
+.btn.primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.35), transparent 70%);
+  opacity: 0;
+  transform: scale(0.2);
+  transition:
+    opacity var(--dur-fast) var(--ease-standard),
+    transform var(--dur-fast) var(--ease-standard);
+  pointer-events: none;
+}
+.btn.primary:active::after {
+  opacity: 1;
+  transform: scale(1.4);
+}
+
 /* HUD lettering — uppercase tracked labels are never below --fs-1 (11px) */
 .hud-label {
   font-size: var(--fs-1);
@@ -454,6 +477,49 @@ pre,
   to {
     opacity: 1;
     transform: none;
+  }
+}
+@keyframes hud-wipe {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+/* the bevel line doubles as the scan line while the widget wipes in */
+@keyframes hud-scanline {
+  from {
+    top: 0;
+    opacity: 1;
+    height: 2px;
+    background: var(--accent);
+  }
+  to {
+    top: 100%;
+    opacity: 0;
+    height: 2px;
+    background: var(--accent);
+  }
+}
+@keyframes hud-iris {
+  from {
+    clip-path: circle(12% at 50% 40%);
+    opacity: 0.6;
+  }
+  to {
+    clip-path: circle(120% at 50% 40%);
+    opacity: 1;
+  }
+}
+@keyframes hud-transmit {
+  from {
+    top: 0;
+    opacity: 0.9;
+  }
+  to {
+    top: 100%;
+    opacity: 0;
   }
 }
 @keyframes scale-in-96 {
@@ -602,6 +668,34 @@ canvas.dimmed {
   .enter-fade-up {
     animation: fade-up var(--dur-slow) var(--ease-out) both;
     animation-delay: var(--enter-delay, 0ms);
+  }
+  /* desktop widgets materialise: the fade-up plus a top-to-bottom wipe (plan §6.6) */
+  .desktop .widget.enter-fade-up {
+    animation:
+      fade-up var(--dur-slow) var(--ease-out) both,
+      hud-wipe 420ms var(--ease-emphasized) both;
+    animation-delay: var(--enter-delay, 0ms);
+  }
+  .desktop .widget.enter-fade-up::after {
+    animation: hud-scanline 420ms var(--ease-emphasized) both;
+    animation-delay: var(--enter-delay, 0ms);
+  }
+  /* the command palette opens as an iris from the centre */
+  .launcher-panel.palette {
+    animation: hud-iris 260ms var(--ease-emphasized) both;
+  }
+  /* toasts arrive as a transmission: a scan line sweeps the card once */
+  .toast::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 1px;
+    background: var(--accent);
+    opacity: 0.8;
+    animation: hud-transmit 520ms var(--ease-out) both;
+    pointer-events: none;
   }
   .enter-fade {
     animation: fade-in var(--dur-base) var(--ease-out) both;
@@ -2864,7 +2958,18 @@ input[type="range"]::-moz-range-thumb {
   word-break: break-word;
 }
 
-/* clock widget */
+/* clock widget (sizing lives here, not in desktop.css, so the gallery and
+   any host that renders the widget without the desktop stylesheet agree) */
+.mini-clock {
+  width: 40px;
+  height: 40px;
+  flex: none;
+}
+.clock-main {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
 .clock-time {
   font-family: var(--font-display);
   font-size: var(--fs-hero);
@@ -2883,9 +2988,17 @@ input[type="range"]::-moz-range-thumb {
 }
 .clock-zones {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
   gap: var(--s-2);
   margin-top: var(--s-2);
+}
+.clock-zones .zone {
+  min-width: 0;
+}
+.clock-zones .zone > * {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .clock-zones .zone .z-time {
   font-family: var(--font-mono);
@@ -2976,9 +3089,16 @@ input[type="range"]::-moz-range-thumb {
 .microapp-row .ma-name {
   font-weight: 700;
   font-size: var(--fs-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .microapp-row .ma-desc {
   font-size: var(--fs-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
   color: var(--text-faint);
 }
 .microapp-row .ma-arrow {
@@ -3089,7 +3209,8 @@ input[type="range"]::-moz-range-thumb {
   top: var(--core-y, 52%);
   transform: translate(-50%, -50%);
   width: min(420px, 38vw);
-  max-height: min(60vh, 420px);
+  /* stays inside the ring: chips sit at --core-ry from the centre */
+  max-height: min(60vh, calc(var(--core-ry, 220px) * 2 - 60px));
   overflow-y: auto;
   scrollbar-width: thin;
   z-index: var(--z-widget);
@@ -3100,6 +3221,18 @@ input[type="range"]::-moz-range-thumb {
   border: 1px solid var(--border);
   background: var(--surface);
   box-shadow: var(--shadow);
+}
+/* wide desktops: two columns keep the panel short so it sits inside the ring */
+@media (min-width: 1280px) {
+  .now-panel {
+    width: min(560px, 42vw);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--s-5);
+    align-items: start;
+  }
+  .now-panel > .now-head {
+    grid-column: 1 / -1;
+  }
 }
 .now-panel.live {
   border-color: var(--accent-line);
@@ -3143,7 +3276,8 @@ input[type="range"]::-moz-range-thumb {
   flex: 1;
   min-width: 0;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  /* every column may shrink: a long status badge or meta never spills into the neighbour column */
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, auto);
   align-items: center;
   gap: var(--s-2);
   padding: var(--s-2);
@@ -3169,6 +3303,14 @@ input[type="range"]::-moz-range-thumb {
 .now-run-meta {
   font-size: var(--fs-2);
   color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.now-run-main > .badge {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .now-run-tool {
@@ -3332,13 +3474,17 @@ input[type="range"]::-moz-range-thumb {
   text-align: right;
 }
 .attention-row {
-  display: grid;
-  grid-template-columns: auto 1fr;
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--s-2);
-  align-items: start;
-  padding: var(--s-2) 0;
+  align-items: center;
+  padding: 2px 0;
   border-bottom: 1px solid var(--border);
   font-size: var(--fs-3);
+  min-width: 0;
+}
+.attention-row > * {
+  max-width: 100%;
 }
 .attention-row:last-child {
   border-bottom: 0;
