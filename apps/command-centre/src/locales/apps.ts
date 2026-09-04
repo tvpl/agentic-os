@@ -73,6 +73,15 @@ export const en = {
     "Comma-separated. Absolute paths or bare names resolved on PATH; a connector may only spawn what is listed here.",
   "apps.settings.allowedCommandsExample":
     'An MCP connector installed with npx needs "npx" on this list before it can read anything.',
+  "apps.settings.desktopNotify": "System notifications",
+  "apps.settings.desktopNotifyHint":
+    "Approvals, failures and alerts reach you as system notifications when this tab is not in front. The browser asks for permission once.",
+  "apps.settings.desktopDenied":
+    "The browser refused notifications for this site; allow them in the address bar.",
+  "apps.settings.desktopUnsupported": "This browser has no notification API.",
+  "apps.settings.voiceNotify": "Spoken alerts",
+  "apps.settings.voiceNotifyHint": "Reads approvals and failures aloud with the browser's own voice.",
+  "apps.settings.voiceSample": "Mordomo online.",
   "apps.settings.sound": "Notification sound",
   "apps.settings.soundHint":
     "Play a short sound when a run finishes or an approval is requested. Stored in this browser only.",
@@ -178,6 +187,15 @@ export const ptBR = {
     "Separados por vírgula. Caminhos absolutos ou nomes resolvidos no PATH; um conector só pode iniciar o que estiver aqui.",
   "apps.settings.allowedCommandsExample":
     'Um conector MCP instalado com npx precisa de "npx" nesta lista antes de conseguir ler qualquer coisa.',
+  "apps.settings.desktopNotify": "Notificações do sistema",
+  "apps.settings.desktopNotifyHint":
+    "Aprovações, falhas e alertas chegam como notificação do sistema quando esta aba não está na frente. O navegador pede permissão uma vez.",
+  "apps.settings.desktopDenied":
+    "O navegador recusou notificações para este site; permita na barra de endereço.",
+  "apps.settings.desktopUnsupported": "Este navegador não tem API de notificações.",
+  "apps.settings.voiceNotify": "Alertas falados",
+  "apps.settings.voiceNotifyHint": "Lê aprovações e falhas em voz alta com a voz do próprio navegador.",
+  "apps.settings.voiceSample": "Mordomo online.",
   "apps.settings.sound": "Som de notificação",
   "apps.settings.soundHint":
     "Toca um som curto quando uma execução termina ou uma aprovação é pedida. Guardado só neste navegador.",

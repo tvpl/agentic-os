@@ -219,3 +219,100 @@ export {
   type FetchOptions,
   type McpTool,
 } from "./connectors/client.js";
+// Onda 2: sentinels (cheap observers), their triage run and the Telegram channel
+export {
+  SENTINEL_IDS,
+  emitSentinel,
+  sentinelDay,
+  sentinelDedupeKey,
+  type SentinelId,
+  type SentinelSeverity,
+  type SentinelFiredPayload,
+  type DedupeLookup,
+} from "./sentinels/types.js";
+export { readMetaJson, writeMetaJson } from "./sentinels/meta.js";
+export { SentinelRunner, type SentinelRunnerDeps, type HourlyReport } from "./sentinels/runner.js";
+export {
+  checkRepeatedFailure,
+  repeatedFailureAlert,
+  recentFailures,
+  failureKey,
+  failureLabel,
+  type FailureRun,
+  type RepeatedFailureDeps,
+} from "./sentinels/repeatedFailure.js";
+export {
+  checkSilentRoutines,
+  silentRoutineAlerts,
+  candidatesFromStatus,
+  expectedIntervalMs,
+  type SilentRoutineCandidate,
+  type SilentRoutineDeps,
+} from "./sentinels/silentRoutine.js";
+export {
+  checkConnectorDeltas,
+  diffConnectorItems,
+  connectorDeltaPayload,
+  connectorMetaKey,
+  hashId,
+  hashIds,
+  type ConnectorDelta,
+  type ConnectorDeltaMark,
+  type ConnectorDeltaDeps,
+} from "./sentinels/connectorDelta.js";
+export { FsWatchSentinel, fsWatchPayload, type FsWatchDeps } from "./sentinels/fsWatch.js";
+export {
+  installSentinelTriage,
+  triageSentinel,
+  triageSpendToday,
+  buildTriagePrompt,
+  parseTriageDecision,
+  triageNotification,
+  type TriageAction,
+  type TriageDecision,
+  type TriageOutcome,
+  type TriageDeps,
+  type TriageRunner,
+  type TriageInbox,
+} from "./sentinels/triage.js";
+export {
+  detectRepeatedPrompts,
+  groupPrompts,
+  normalizeTokens,
+  jaccard,
+  hashTokens,
+  skillCoversGroup,
+  isoWeek,
+  repeatDedupeKey,
+  repeatNotification,
+  promptHead,
+  manualPromptRuns,
+  MAX_COMPARED_TOKENS,
+  DEFAULT_SIMILARITY,
+  SKILL_OVERLAP_TOKENS,
+  type RepeatRun,
+  type RepeatGroup,
+  type RepeatDetectorDeps,
+} from "./skills/repeatDetector.js";
+export {
+  installTelegramChannel,
+  deliverToTelegram,
+  sendTelegramMessage,
+  formatNotification,
+  localLink,
+  telegramToken,
+  toneAtLeast,
+  sendMessageUrl,
+  TELEGRAM_API_HOST,
+  TELEGRAM_API_ORIGIN,
+  TELEGRAM_TIMEOUT_MS,
+  type TelegramChannelDeps,
+  type TelegramSendOptions,
+  type TelegramSendResult,
+} from "./channels/telegram.js";
+export {
+  SentinelSettingsSchema,
+  ChannelSettingsSchema,
+  type SentinelSettings,
+  type ChannelSettings,
+} from "./config/schema.js";

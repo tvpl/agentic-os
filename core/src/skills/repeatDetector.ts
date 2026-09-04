@@ -111,15 +111,25 @@ export function hashTokens(tokens: readonly string[]): string {
 }
 
 /**
+ * Words that are shared by everything and mean nothing: they are ignored when
+ * deciding whether a skill already covers a group, so "summarise the files in
+ * my folder" is not "covered" by any skill whose description says "the".
+ */
+const COVERAGE_STOPWORDS = new Set([
+  "the", "a", "an", "and", "or", "of", "in", "on", "to", "for", "with", "my", "me", "please",
+  "it", "is", "are", "this", "that", "from", "by", "at", "as", "all", "any", "into", "run",
+]);
+
+/**
  * True when a skill already covers this group: its name plus description
- * shares at least `minShared` tokens with the group's vocabulary.
+ * shares at least `minShared` meaningful tokens with the group's vocabulary.
  */
 export function skillCoversGroup(
   group: Pick<RepeatGroup, "tokens">,
   skills: ReadonlyArray<{ name: string; description: string }>,
   minShared = SKILL_OVERLAP_TOKENS,
 ): boolean {
-  const groupTokens = new Set(group.tokens);
+  const groupTokens = new Set(group.tokens.filter(isMeaningful));
   return skills.some((skill) => {
     const skillTokens = new Set(normalizeTokens(`${skill.name} ${skill.description}`, 200));
     let shared = 0;
@@ -128,6 +138,10 @@ export function skillCoversGroup(
     }
     return false;
   });
+}
+
+function isMeaningful(token: string): boolean {
+  return token.length > 2 && !COVERAGE_STOPWORDS.has(token);
 }
 
 /** ISO week label (`2026-W36`) — the row is offered again next week, not tomorrow. */

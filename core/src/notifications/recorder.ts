@@ -1,5 +1,6 @@
 import type { EventBus, OsEvent } from "../events.js";
-import type { NotificationInput, NotificationStore } from "./store.js";
+import type { SentinelFiredPayload, SentinelSeverity } from "../sentinels/types.js";
+import type { NotificationInput, NotificationStore, NotificationTone } from "./store.js";
 
 /**
  * Bus → inbox. The recorder is the only thing that writes notification rows in
@@ -10,8 +11,8 @@ import type { NotificationInput, NotificationStore } from "./store.js";
  * progress, routine fires and settings saves stay live-only (the Command Centre
  * shows them from the SSE stream) — persisting them would flood the table for
  * no benefit. Only things that need attention later survive a restart:
- * approvals, failed runs, heartbeat alerts, budget thresholds, plus two
- * informational rows (index and backup) that start read.
+ * approvals, failed runs, heartbeat alerts, budget thresholds, sentinel
+ * findings, plus two informational rows (index and backup) that start read.
  *
  * Titles are plain English: the UI does not translate server rows.
  *
@@ -47,6 +48,13 @@ export interface BudgetCrossedPayload {
 }
 
 const FAILED_STATUSES = new Set(["failed", "timed_out"]);
+
+/** `sentinel.fired` severity → inbox tone. */
+const SEVERITY_TONE: Record<SentinelSeverity, NotificationTone> = {
+  info: "info",
+  warn: "warn",
+  danger: "danger",
+};
 
 /** Installed recorders per bus, keyed by store — so a second install is a no-op. */
 const installed = new WeakMap<EventBus, Map<NotificationStore, () => void>>();
@@ -160,6 +168,21 @@ export function toNotification(
         body: str(payload.name),
         href: "/settings?tab=backups",
         read: true,
+        ts,
+      };
+    }
+    case "sentinel.fired": {
+      // Sentinels (Onda 2) already decided what a human should read; the
+      // recorder only maps severity to tone and carries the dedupe key over.
+      const p = payload as unknown as Partial<SentinelFiredPayload>;
+      if (typeof p.title !== "string" || !p.title) return null;
+      return {
+        kind: "system",
+        tone: SEVERITY_TONE[p.severity ?? "info"] ?? "info",
+        title: p.title,
+        body: str(p.body),
+        href: str(p.href) ?? "/",
+        dedupeKey: str(p.dedupeKey),
         ts,
       };
     }

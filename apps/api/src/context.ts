@@ -9,6 +9,7 @@ import {
   RoutineScheduler,
   RoutineStore,
   RunManager,
+  SentinelRunner,
   SettingsStore,
   SkillCatalog,
   SyncCompiler,
@@ -17,6 +18,7 @@ import {
   events,
   installJournalHooks,
   installNotificationRecorder,
+  installTelegramChannel,
   localDay,
   openDb,
   resolvePaths,
@@ -141,6 +143,12 @@ export class AppContext {
   readonly approvals: ApprovalStore;
   /** Persisted inbox (Onda 2): approvals, failed runs, alerts, budget warnings. */
   readonly notifications: NotificationStore;
+  /**
+   * Sentinels (Onda 2): the cheap observers plus the triage listener. Built
+   * here, started and stopped with the scheduler in `startServer`; its hourly
+   * pass runs inside the service's existing hourly sweep (`selfSchedule: false`).
+   */
+  readonly sentinels: SentinelRunner;
   /** Registered providers (manifests + factories); the single place the API learns which providers exist. */
   readonly providers: ProviderRegistry;
   readonly startedAt = Date.now();
@@ -198,10 +206,29 @@ export class AppContext {
       runs: this.runs,
       routines: this.routines,
     });
+    // Alerts leave the tab: rows at or above `channels.telegram.minTone` are
+    // posted to Telegram. The bot token is read from the environment at send
+    // time; failures are logged at most once an hour and never thrown.
+    this.disposeTelegramChannel = installTelegramChannel(events, { getSettings: () => this.settings() });
+    // The observers themselves. Nothing is watched or polled until `start()`.
+    this.sentinels = new SentinelRunner({
+      db: this.db,
+      paths: this.paths,
+      getSettings: () => this.settings(),
+      runs: this.runs,
+      notifications: this.notifications,
+      scheduler: this.scheduler,
+      connectors: this.connectors,
+      skills: this.skills,
+      indexer: this.indexer,
+      bus: events,
+      selfSchedule: false,
+    });
   }
 
   private readonly disposeJournalHooks: () => void;
   private readonly disposeNotificationRecorder: () => void;
+  private readonly disposeTelegramChannel: () => void;
 
   /** Live adapters — rebuilt by `reloadAdapters()` whenever settings change. */
   get adapters(): Record<ProviderId, AgentAdapter> {
@@ -331,6 +358,8 @@ export class AppContext {
   close(): void {
     this.disposeJournalHooks();
     this.disposeNotificationRecorder();
+    this.disposeTelegramChannel();
+    this.sentinels.stop();
     this.scheduler.stop();
     if (this.db.open) this.db.close();
   }

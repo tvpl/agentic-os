@@ -18,6 +18,7 @@ import { registerSkillRoutes } from "./routes/skills.js";
 import { registerRunRoutes } from "./routes/runs.js";
 import { registerSessionRoutes } from "./routes/sessions.js";
 import { registerNotificationRoutes } from "./routes/notifications.js";
+import { registerChannelRoutes } from "./routes/channels.js";
 import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerRoutineRoutes } from "./routes/routines.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
@@ -198,6 +199,7 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   registerRunRoutes(app, ctx);
   registerSessionRoutes(app, ctx);
   registerNotificationRoutes(app, ctx);
+  registerChannelRoutes(app, ctx);
   registerMemoryRoutes(app, ctx);
   registerRoutineRoutes(app, ctx);
   registerConnectorRoutes(app, ctx);
@@ -257,6 +259,9 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
     console.log(`[mordomo] marked ${recovered} orphaned run(s) as interrupted`);
   }
   ctx.scheduler.start();
+  // The sentinels observe on the same lifecycle as the scheduler; their hourly
+  // pass rides the sweep below instead of arming a timer of its own.
+  ctx.sentinels.start();
 
   // Approvals nobody answered expire on their own, and the daily budget is
   // checked on the same beat: sweep at boot, then hourly.
@@ -273,6 +278,17 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
     } catch (err) {
       app.log.error({ err, msg: "budget check failed" });
     }
+    // Silent routines, connector deltas and the did-it-twice detector. Async,
+    // and it settles on its own: the sweep never waits for a connector read.
+    void ctx.sentinels
+      .hourly()
+      .then((report) => {
+        const fired = report.silentRoutines.length + report.connectorDeltas.length;
+        if (fired > 0 || report.repeatSuggestions > 0) {
+          app.log.info({ ...report, msg: "sentinel sweep" });
+        }
+      })
+      .catch((err: unknown) => app.log.error({ err, msg: "sentinel sweep failed" }));
   };
   sweepApprovals();
   const approvalSweep = setInterval(sweepApprovals, 3_600_000);
@@ -294,6 +310,7 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
       process.off("SIGINT", onSignal);
       process.off("unhandledRejection", onRejection);
       clearInterval(approvalSweep);
+      ctx.sentinels.stop();
       try {
         fs.unlinkSync(pidFile);
       } catch {

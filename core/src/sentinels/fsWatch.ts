@@ -71,7 +71,7 @@ export class FsWatchSentinel {
       if (this.watchers.has(root)) continue;
       try {
         const watcher = watch(root, { recursive: true, persistent: false }, (_event, filename) => {
-          const rel = typeof filename === "string" ? filename : filename?.toString();
+          const rel = typeof filename === "string" ? filename : null;
           if (!rel) return;
           if (filter.isExcluded(rel, path.join(root, rel))) return;
           this.record(root, rel);

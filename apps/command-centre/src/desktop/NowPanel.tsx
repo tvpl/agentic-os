@@ -7,11 +7,14 @@
  * files changed in the last 24 h taken from the graph's `mtime`.
  */
 import { Link } from "react-router-dom";
-import { Activity, CalendarClock, FileText, Play, Square } from "lucide-react";
+import { useState } from "react";
+import { Activity, CalendarClock, FileText, Play, Sparkles, Square } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type ArtifactEntry, type RoutineStatus, type RunRecord } from "../api";
 import { useLocale, useT } from "../i18n";
-import { qk } from "../queries";
+import { qk, useOsConnectors, useOsSettings } from "../queries";
+import { isConfigured } from "./widgets/MicroAppsWidget";
+import { nextStep, type StepId } from "./nextStep";
 import { StatusBadge, timeAgo, useToast } from "../components/ui";
 import { Button } from "../components/primitives";
 import { useConfirm } from "../hooks/useConfirm";
@@ -62,6 +65,8 @@ export default function NowPanel() {
         <span className="hud-label">{t("now.title")}</span>
         {active.length > 0 && <span className="badge info">{t("dash.running")}</span>}
       </header>
+
+      <NextStep runs={runs.data ?? []} routines={routines.data ?? []} />
 
       <div className="now-section">
         <div className="now-label">
@@ -253,5 +258,77 @@ function ChangedFileRow({ file }: { file: GraphNodeLite }) {
       <span className="truncate mono">{file.name}</span>
       <span className="now-run-meta">{timeAgo(file.mtime, locale)}</span>
     </Link>
+  );
+}
+
+/* ---- onboarding (plan Onda 2 §7): one next step until the OS is really in use ---- */
+const NEXT_DISMISS_KEY = "mordomo.next.dismissed";
+
+function readDismissed(): Set<StepId> {
+  try {
+    const raw = localStorage.getItem(NEXT_DISMISS_KEY);
+    return new Set(raw ? (JSON.parse(raw) as StepId[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+const STEP_LINK: Record<StepId, string> = {
+  folder: "/settings?tab=folders",
+  run: "/skills/workspace-digest",
+  routine: "/routines",
+  budget: "/settings?tab=security",
+  connector: "/connectors",
+};
+
+function NextStep({ runs, routines }: { runs: RunRecord[]; routines: RoutineStatus[] }) {
+  const t = useT();
+  const settings = useOsSettings();
+  const connectors = useOsConnectors({ staleTime: 60_000, retry: false });
+  const [dismissed, setDismissed] = useState<ReadonlySet<StepId>>(() => readDismissed());
+  const folders = Array.isArray(settings.data?.indexedFolders)
+    ? settings.data.indexedFolders.filter((f) => f.enabled !== false).length
+    : 0;
+  const step = settings.data
+    ? nextStep(
+        {
+          folders,
+          runs: runs.length,
+          routinesEnabled: routines.filter((r) => r.enabled).length,
+          budgetUsd: settings.data.limits?.dailyBudgetUsd ?? 0,
+          connectorsConfigured: (connectors.data ?? []).filter((c) => isConfigured(c.status)).length,
+        },
+        dismissed,
+      )
+    : null;
+  if (!step) return null;
+  const dismiss = () => {
+    const next = new Set(dismissed);
+    next.add(step);
+    setDismissed(next);
+    try {
+      localStorage.setItem(NEXT_DISMISS_KEY, JSON.stringify([...next]));
+    } catch {
+      /* ignore */
+    }
+  };
+  return (
+    <div className="now-section now-next">
+      <div className="now-label">
+        <Sparkles aria-hidden /> {t("desktop.next.title")}
+      </div>
+      <div className="now-next-body">
+        <strong>{t(`desktop.next.${step}`)}</strong>
+        <p className="now-muted">{t(`desktop.next.${step}Body`)}</p>
+        <div className="now-next-actions">
+          <Link to={STEP_LINK[step]} className="btn sm primary">
+            {t("desktop.next.go")}
+          </Link>
+          <button type="button" className="btn sm ghost" onClick={dismiss}>
+            {t("desktop.next.dismiss")}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

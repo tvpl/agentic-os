@@ -30,6 +30,7 @@ import {
 } from "../api";
 import { useT } from "../i18n";
 import { subscribeOsEvents } from "./useEventStream";
+import { showSystemNotification, speak } from "./systemNotify";
 
 export type NotificationKind = "approval" | "run" | "routine" | "index" | "system";
 export type NotificationTone = "ok" | "warn" | "danger" | "info";
@@ -456,8 +457,21 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         if (event.type === "approval.resolved" && item.approvalId)
           dispatch({ type: "resolveApproval", approvalId: item.approvalId });
         dispatch({ type: "push", item });
-        if (!item.read && (item.tone === "danger" || (item.kind === "approval" && item.tone === "warn")))
+        if (!item.read && (item.tone === "danger" || (item.kind === "approval" && item.tone === "warn"))) {
           playBlip(item.tone);
+          // Outside the tab (plan Onda 2 §4): a system notification when the
+          // page is hidden, a spoken line when the voice toggle is on.
+          showSystemNotification({
+            title: item.title,
+            body: item.body,
+            href: item.href,
+            tag: item.dedupeKey ?? item.id,
+          });
+          speak(
+            item.body ? `${item.title}. ${item.body}` : item.title,
+            document.documentElement.lang || "en",
+          );
+        }
       }),
     [],
   );

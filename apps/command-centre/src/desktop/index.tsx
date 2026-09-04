@@ -56,6 +56,7 @@ import {
   useDesktopRuns,
 } from "./data";
 import { InboxList } from "./widgets/InboxWidget";
+import { LISTENING_EVENT } from "./widgets/PromptWidget";
 import "./desktop.css";
 
 /** One-click accent presets, cycled by the palette tool and persisted. */
@@ -614,7 +615,14 @@ export function useCoreState(activeRuns: number): CoreState {
     );
   });
   useOsEvent(["approval.requested", "routine.alert"], () => hold("alert", ALERT_HOLD_MS));
+  const [listening, setListening] = useState(false);
+  useEffect(() => {
+    const on = (e: Event) => setListening(Boolean((e as CustomEvent<boolean>).detail));
+    window.addEventListener(LISTENING_EVENT, on);
+    return () => window.removeEventListener(LISTENING_EVENT, on);
+  }, []);
 
+  if (listening) return "listening";
   if (override && override.until > Date.now()) return override.state;
   return activeRuns > 0 ? "thinking" : "idle";
 }

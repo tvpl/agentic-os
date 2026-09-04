@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, MessageSquarePlus, Play, ShieldAlert, Square, X } from "lucide-react";
+import { Check, MessageSquarePlus, Mic, MicOff, Play, ShieldAlert, Square, Volume2, X } from "lucide-react";
 import {
   api,
   ApiError,
@@ -22,7 +22,8 @@ import {
   type SessionDetail,
   type Skill,
 } from "../../api";
-import { useT } from "../../i18n";
+import { useLocale, useT } from "../../i18n";
+import { listen, speak, speechRecognitionAvailable } from "../../hooks/systemNotify";
 import { qk, useOsProviders, useOsSettings, useOsSkills } from "../../queries";
 import { Button, Segmented } from "../../components/primitives";
 import { formatDuration, useToast } from "../../components/ui";
@@ -101,8 +102,12 @@ function storeSession(id: string | null) {
   }
 }
 
+/** Fired on `window` while the microphone listens; the core shows the Listening state. */
+export const LISTENING_EVENT = "mordomo:listening";
+
 export default function PromptWidget({ config }: WidgetProps) {
   const t = useT();
+  const locale = useLocale();
   const toast = useToast();
   const qc = useQueryClient();
   const actions = useDesktopActions();
@@ -123,6 +128,32 @@ export default function PromptWidget({ config }: WidgetProps) {
     storeSession(id);
   };
   const [pendingApproval, setPendingApproval] = useState<{ id: string; description: string } | null>(null);
+
+  /* ---- voice (plan Onda 3 §3): hold the mic, the transcript lands in the prompt ---- */
+  const [listening, setListening] = useState(false);
+  const stopListening = useRef<(() => void) | null>(null);
+  const canListen = useMemo(() => speechRecognitionAvailable(), []);
+  const toggleListening = () => {
+    if (listening) {
+      stopListening.current?.();
+      return;
+    }
+    const stop = listen(
+      locale,
+      (text) => setPrompt((p) => (p.trim() ? `${p.trimEnd()} ${text}` : text)),
+      () => {
+        setListening(false);
+        stopListening.current = null;
+        window.dispatchEvent(new CustomEvent(LISTENING_EVENT, { detail: false }));
+        inputRef.current?.focus();
+      },
+    );
+    if (!stop) return;
+    stopListening.current = stop;
+    setListening(true);
+    window.dispatchEvent(new CustomEvent(LISTENING_EVENT, { detail: true }));
+  };
+  useEffect(() => () => stopListening.current?.(), []);
 
   const enabled = (providers.data ?? []).filter((p) => p.enabled);
   const defaultProvider = enabled.find((p) => p.isDefault)?.id ?? enabled[0]?.id;
@@ -317,6 +348,18 @@ export default function PromptWidget({ config }: WidgetProps) {
             }
           }}
         />
+        {canListen && (
+          <button
+            type="button"
+            className={`os-tool console-mic${listening ? " active" : ""}`}
+            aria-pressed={listening}
+            aria-label={listening ? t("desktop.console.micStop") : t("desktop.console.mic")}
+            title={listening ? t("desktop.console.micStop") : t("desktop.console.mic")}
+            onClick={toggleListening}
+          >
+            {listening ? <MicOff aria-hidden /> : <Mic aria-hidden />}
+          </button>
+        )}
         <Button
           variant="primary"
           size="sm"
@@ -427,6 +470,7 @@ function Turn({
   stopping: boolean;
 }) {
   const t = useT();
+  const locale = useLocale();
   const cost = run.usage?.costUsd;
   const failed = run.status === "failed" || run.status === "timed_out" || run.status === "interrupted";
   return (
@@ -456,9 +500,22 @@ function Turn({
               <Square aria-hidden /> {t("desktop.console.stop")}
             </button>
           ) : (
-            <Link to={`/runs/${run.id}`} className="console-link">
-              {t("desktop.console.open")} →
-            </Link>
+            <>
+              {reply?.text && (
+                <button
+                  type="button"
+                  className="console-link"
+                  onClick={() => speak(reply.text, locale, { force: true })}
+                  aria-label={t("desktop.console.read")}
+                  title={t("desktop.console.read")}
+                >
+                  <Volume2 aria-hidden /> {t("desktop.console.read")}
+                </button>
+              )}
+              <Link to={`/runs/${run.id}`} className="console-link">
+                {t("desktop.console.open")} →
+              </Link>
+            </>
           )}
         </div>
       </div>

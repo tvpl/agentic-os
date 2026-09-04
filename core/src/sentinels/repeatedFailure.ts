@@ -79,12 +79,16 @@ export function repeatedFailureAlert(
   };
 }
 
-/** Failed/timed-out runs created since `since` (newest first). */
+/**
+ * Failed/timed-out runs created since `since` (newest first). Triage runs
+ * (origin `sentinel`) are excluded on purpose: a sentinel whose own triage
+ * fails must not become a new finding, which would feed itself.
+ */
 export function recentFailures(db: Db, since: number, limit = 200): FailureRun[] {
   const rows = db
     .prepare(
       `SELECT id, skill_slug, prompt_summary, created_at FROM runs
-       WHERE status IN ('failed','timed_out') AND created_at >= ?
+       WHERE status IN ('failed','timed_out') AND origin <> 'sentinel' AND created_at >= ?
        ORDER BY created_at DESC LIMIT ?`,
     )
     .all(since, limit) as Array<{

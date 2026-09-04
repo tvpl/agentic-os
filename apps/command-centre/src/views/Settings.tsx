@@ -35,6 +35,15 @@ import { Badge, Button, EmptyState, Field, Tabs } from "../components/primitives
 import { useConfirm } from "../hooks/useConfirm";
 import { getNotifySound, setNotifySound } from "../hooks/useNotifications";
 import {
+  getDesktopNotify,
+  getVoiceNotify,
+  notifyPermission,
+  requestNotifyPermission,
+  setDesktopNotify,
+  setVoiceNotify,
+  speak,
+} from "../hooks/systemNotify";
+import {
   PRESETS,
   applyHudIntensity,
   applyPreset,
@@ -1022,7 +1031,77 @@ function NotificationsTab() {
           {sound ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
         </Button>
       </div>
+      <OutsideTabToggles />
       <p className="hint">{t("apps.settings.notificationsHint")}</p>
     </div>
+  );
+}
+
+/** System notifications (permission-gated) and spoken alerts. */
+function OutsideTabToggles() {
+  const t = useT();
+  const locale = useLocale();
+  const toast = useToast();
+  const [desktop, setDesktop] = useState(() => getDesktopNotify());
+  const [voice, setVoice] = useState(() => getVoiceNotify());
+  const [perm, setPerm] = useState(() => notifyPermission());
+  const toggleDesktop = async () => {
+    if (desktop) {
+      setDesktopNotify(false);
+      setDesktop(false);
+      return;
+    }
+    const granted = await requestNotifyPermission();
+    setPerm(granted);
+    if (granted !== "granted") {
+      toast(
+        granted === "unsupported" ? t("apps.settings.desktopUnsupported") : t("apps.settings.desktopDenied"),
+        "info",
+      );
+      return;
+    }
+    setDesktopNotify(true);
+    setDesktop(true);
+  };
+  const toggleVoice = () => {
+    const next = !voice;
+    setVoiceNotify(next);
+    setVoice(next);
+    if (next) speak(t("apps.settings.voiceSample"), locale, { force: true });
+  };
+  return (
+    <>
+      <div className="apps-sound">
+        <div className="min0">
+          <strong>{t("apps.settings.desktopNotify")}</strong>
+          <p className="hint">
+            {t("apps.settings.desktopNotifyHint")}
+            {perm === "denied" && ` ${t("apps.settings.desktopDenied")}`}
+          </p>
+        </div>
+        <Button
+          variant={desktop ? "outline" : "secondary"}
+          aria-pressed={desktop}
+          icon={desktop ? <Bell aria-hidden /> : <BellOff aria-hidden />}
+          onClick={() => void toggleDesktop()}
+        >
+          {desktop ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
+        </Button>
+      </div>
+      <div className="apps-sound">
+        <div className="min0">
+          <strong>{t("apps.settings.voiceNotify")}</strong>
+          <p className="hint">{t("apps.settings.voiceNotifyHint")}</p>
+        </div>
+        <Button
+          variant={voice ? "outline" : "secondary"}
+          aria-pressed={voice}
+          icon={voice ? <Bell aria-hidden /> : <BellOff aria-hidden />}
+          onClick={toggleVoice}
+        >
+          {voice ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
+        </Button>
+      </div>
+    </>
   );
 }
