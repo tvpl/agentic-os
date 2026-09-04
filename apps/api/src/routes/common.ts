@@ -47,6 +47,8 @@ export interface PromptRunInput {
    * when a human releases it.
    */
   sessionId?: string;
+  /** Squad (Onda 3): the run this one was fanned out from. */
+  parentRunId?: string;
 }
 
 export interface SkillRunInput {
@@ -130,6 +132,7 @@ function promptRunFields(input: PromptRunInput): Omit<CreateRunInput, "profile">
     mode: input.mode,
     timeoutMs: input.timeoutMs,
     ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+    ...(input.parentRunId ? { parentRunId: input.parentRunId } : {}),
   };
 }
 
@@ -223,6 +226,8 @@ export interface PromptRunRequest {
   timeoutMs?: number;
   /** Continue this conversation instead of starting a new one. */
   sessionId?: string;
+  /** Fan out from this run (a child of a squad). */
+  parentRunId?: string;
 }
 
 export interface PromptRunResponse {
@@ -266,6 +271,7 @@ export function submitPromptRun(
     cwd,
     timeoutMs: body.timeoutMs ?? settings.limits.defaultTimeoutMs,
     ...(body.sessionId ? { sessionId: body.sessionId } : {}),
+    ...(body.parentRunId ? { parentRunId: body.parentRunId } : {}),
   };
   // Refused writes must not leave an empty conversation behind.
   assertWriteAllowed(ctx, body.mode, "manual");

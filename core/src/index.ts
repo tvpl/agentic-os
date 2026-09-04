@@ -324,3 +324,11 @@ export {
   type DeviceRecord,
   type PairingCode,
 } from "./security/devices.js";
+export {
+  SkillRegistry,
+  parseIndex,
+  type RegistryEntry,
+  type RegistryIndex,
+  type RegistrySkill,
+  type Fetcher,
+} from "./skills/registry.js";

@@ -229,6 +229,12 @@ export const SettingsSchema = z.object({
       deviceTtlDays: z.number().int().min(0).default(90),
     })
     .default({}),
+  /** Skill registries (Onda 3): https index URLs the marketplace lists and installs from. */
+  marketplace: z
+    .object({
+      registries: z.array(z.string().url().startsWith("https://")).default([]),
+    })
+    .default({}),
   indexedFolders: z.array(IndexedFolderSchema).default([]),
   excludes: z.array(z.string()).default(DEFAULT_EXCLUDES),
   areas: z

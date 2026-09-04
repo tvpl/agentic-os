@@ -547,6 +547,27 @@ function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
           }}
         />
       </Field>
+      <Field
+        label={t("apps.settings.registries")}
+        htmlFor="st-registries"
+        hint={t("apps.settings.registriesHint")}
+      >
+        <input
+          key={(s.marketplace?.registries ?? []).join()}
+          id="st-registries"
+          className="input mono"
+          placeholder="https://example.com/mordomo-skills/index.json"
+          defaultValue={(s.marketplace?.registries ?? []).join(", ")}
+          onBlur={(e) => {
+            const registries = e.target.value
+              .split(/[,\s]+/)
+              .map((x) => x.trim())
+              .filter((x) => x.startsWith("https://"));
+            if (registries.join() !== (s.marketplace?.registries ?? []).join())
+              void put({ marketplace: { registries } }, true);
+          }}
+        />
+      </Field>
     </div>
   );
 }

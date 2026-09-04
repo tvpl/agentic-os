@@ -33,6 +33,7 @@ import {
   type ProviderRegistry,
   type Settings,
   DeviceStore,
+  SkillRegistry,
   type SecurityProfile,
   type PermissionBroker,
 } from "@mordomo/core";
@@ -146,6 +147,8 @@ export class AppContext {
   readonly notifications: NotificationStore;
   /** Paired devices for remote access (Onda 3). */
   readonly devices: DeviceStore;
+  /** Skill registries (Onda 3): cached indexes and verified staging. */
+  readonly skillRegistry: SkillRegistry;
   /**
    * Sentinels (Onda 2): the cheap observers plus the triage listener. Built
    * here, started and stopped with the scheduler in `startServer`; its hourly
@@ -195,6 +198,7 @@ export class AppContext {
     );
     this.approvals = new ApprovalStore(this.db, () => this.settings().limits.approvalTtlDays * 86_400_000);
     this.devices = new DeviceStore(this.db);
+    this.skillRegistry = new SkillRegistry();
     // The daily journal listens for finished runs. Installing it here (and not
     // only when the HTTP routes are registered) means CLI paths — `mordomo
     // index`, `mordomo run` — also index `memory/journal/**` and log their run

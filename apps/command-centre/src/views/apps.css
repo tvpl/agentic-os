@@ -583,3 +583,31 @@
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--s-3);
 }
+
+.market {
+  display: grid;
+  gap: var(--s-3);
+}
+.market-head {
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
+}
+.market-head .input {
+  flex: 1;
+}
+.market-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s-3);
+  align-items: center;
+  padding: var(--s-3) 0;
+  border-top: 1px solid var(--border);
+}
+.market-list .meta {
+  color: var(--text-faint);
+  font-size: var(--fs-2);
+}
+.market-list p.hint {
+  margin: 2px 0;
+}

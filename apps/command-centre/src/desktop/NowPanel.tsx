@@ -274,7 +274,7 @@ function readDismissed(): Set<StepId> {
 }
 
 const STEP_LINK: Record<StepId, string> = {
-  folder: "/settings?tab=folders",
+  folder: "/settings?tab=memory",
   run: "/skills/workspace-digest",
   routine: "/routines",
   budget: "/settings?tab=security",

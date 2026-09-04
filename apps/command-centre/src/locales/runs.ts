@@ -33,6 +33,16 @@ export const en = {
   "runs.approve.approved": "Approved — the run has started.",
   "runs.approve.denied": "Denied.",
   "runs.approve.queued": "This write run needs your approval — decide it right here.",
+  "runs.squad.title": "Squad",
+  "runs.squad.hint":
+    "Fan this run out into sub-agents: one prompt per paragraph, each a run of its own with the same folder and provider.",
+  "runs.squad.fanOut": "Fan out",
+  "runs.squad.placeholder": "One prompt per paragraph (up to 8)…",
+  "runs.squad.write": "Write mode",
+  "runs.squad.count": "{n} sub-agent(s)",
+  "runs.squad.launch": "Launch",
+  "runs.squad.started": "{n} sub-agent(s) started.",
+  "runs.squad.parked": "{n} sub-agent(s) waiting for your approval.",
   "runs.toolApprove.title": "The agent is asking permission",
   "runs.toolApprove.hint":
     "The run is paused on this tool call. Approve to let it run, deny to refuse it — the agent continues either way.",
@@ -123,6 +133,16 @@ export const ptBR = {
   "runs.approve.approved": "Aprovada — a execução começou.",
   "runs.approve.denied": "Negada.",
   "runs.approve.queued": "Esta execução com escrita precisa da sua aprovação — decida aqui mesmo.",
+  "runs.squad.title": "Esquadrão",
+  "runs.squad.hint":
+    "Divida esta execução em subagentes: um prompt por parágrafo, cada um vira uma execução própria com a mesma pasta e provedor.",
+  "runs.squad.fanOut": "Dividir",
+  "runs.squad.placeholder": "Um prompt por parágrafo (até 8)…",
+  "runs.squad.write": "Modo de escrita",
+  "runs.squad.count": "{n} subagente(s)",
+  "runs.squad.launch": "Lançar",
+  "runs.squad.started": "{n} subagente(s) iniciados.",
+  "runs.squad.parked": "{n} subagente(s) aguardando sua aprovação.",
   "runs.toolApprove.title": "O agente pede permissão",
   "runs.toolApprove.hint":
     "A execução está pausada nesta chamada de tool. Aprove para deixá-la rodar ou negue — o agente continua de qualquer forma.",

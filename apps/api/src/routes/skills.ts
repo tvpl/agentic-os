@@ -154,6 +154,49 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
     return ctx.skills.importFrom(resolved, finalSlug);
   });
 
+  /** Marketplace (plan Onda 3 §6): every skill the configured registries offer. */
+  app.get("/api/skills/registry", async () => {
+    const registries = ctx.settings().marketplace.registries;
+    const { entries, errors } = await ctx.skillRegistry.catalog(registries);
+    const installed = new Set(ctx.skills.list().map((s) => s.slug));
+    return {
+      registries,
+      errors,
+      skills: entries.map((e) => ({ ...e, files: Object.keys(e.files), installed: installed.has(e.slug) })),
+    };
+  });
+
+  /**
+   * Install a registry skill: every file is downloaded and its SHA-256
+   * verified before the catalog is touched; an existing skill is only
+   * replaced with `force`, and then its folder is kept as a `.bak` first.
+   */
+  app.post("/api/skills/install", async (req) => {
+    const body = z
+      .object({ slug: IdParam, registry: z.string().url().optional(), force: z.boolean().default(false) })
+      .parse(req.body);
+    const registries = ctx.settings().marketplace.registries;
+    const wanted = body.registry ? registries.filter((r) => r === body.registry) : registries;
+    if (wanted.length === 0) throw httpError(400, "Registry is not configured");
+    const { entries } = await ctx.skillRegistry.catalog(wanted);
+    const entry = entries.find((e) => e.slug === body.slug);
+    if (!entry) throw httpError(404, "Skill not found in the registries");
+    const existing = ctx.skills.load(body.slug);
+    if (existing && !body.force)
+      throw httpError(409, `Skill "${body.slug}" already exists — pass force to replace it`);
+    const staged = await ctx.skillRegistry.stage(entry);
+    try {
+      if (existing) {
+        const dir = path.join(ctx.paths.skills, body.slug);
+        if (fs.existsSync(dir)) fs.renameSync(dir, `${dir}.bak-${Date.now()}`);
+      }
+      const skill = ctx.skills.importFrom(staged, body.slug);
+      return { installed: true, skill, version: entry.version, registry: entry.registry };
+    } finally {
+      fs.rmSync(staged, { recursive: true, force: true });
+    }
+  });
+
   /**
    * Run a skill headlessly (the "button"). Returns immediately with the run id;
    * progress streams via /api/runs/:id/stream.

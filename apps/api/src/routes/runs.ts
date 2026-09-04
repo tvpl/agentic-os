@@ -78,6 +78,50 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
   });
 
   /**
+   * Squad (plan Onda 3 §5): fan several prompts out as children of a run.
+   * Each child is an ordinary prompt run (same gate, its own session, its own
+   * artifacts) that carries `parentRunId`; the parent's page shows the tree.
+   */
+  app.post("/api/runs/:id/children", async (req, reply) => {
+    const { id } = UuidParams.parse(req.params);
+    const parent = ctx.runs.get(id);
+    if (!parent) throw httpError(404, "Run not found");
+    const body = z
+      .object({
+        prompts: z.array(z.string().min(1).max(20_000)).min(1).max(8),
+        provider: ProviderId.optional(),
+        model: z.string().nullable().optional(),
+        effort: EffortLevel.optional(),
+        mode: z.enum(["read_only", "write"]).default("read_only"),
+        cwd: z.string().optional(),
+        timeoutMs: z.number().int().min(10_000).max(3_600_000).optional(),
+      })
+      .parse(req.body);
+    const results = body.prompts.map((prompt) =>
+      submitPromptRun(
+        ctx,
+        {
+          ...body,
+          prompt,
+          cwd: body.cwd ?? parent.cwd ?? undefined,
+          provider: body.provider ?? parent.provider,
+          parentRunId: id,
+        },
+        (err, runId) => req.log.error({ err, runId, parentRunId: id, msg: "child run failed to execute" }),
+      ),
+    );
+    if (results.some((r) => r.statusCode === 202)) reply.code(202);
+    return { runs: results.map((r) => r.body) };
+  });
+
+  /** The children of a run (a squad), newest first. */
+  app.get("/api/runs/:id/children", async (req) => {
+    const { id } = UuidParams.parse(req.params);
+    if (!ctx.runs.get(id)) throw httpError(404, "Run not found");
+    return ctx.runs.list({ parentRunId: id, limit: 50 }).filter((r) => r.id !== id);
+  });
+
+  /**
    * Diff of one file touched by a run. When the file lives in a git work tree
    * the response is `git diff HEAD` for that path (argv-only spawn of the git
    * binary found on PATH, pinned through the allowlist's `allowPaths`);

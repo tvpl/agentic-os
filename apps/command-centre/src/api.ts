@@ -525,6 +525,8 @@ export interface SettingsDoc {
     [key: string]: unknown;
   }; /** Remote access (Onda 3): paired devices from the listed hosts. */
   remote?: { enabled: boolean; allowedHosts: string[]; deviceTtlDays: number };
+  /** Skill registries (Onda 3). */
+  marketplace?: { registries: string[] };
   /** Sentinels and triage (Onda 2). */
   sentinels?: {
     fsWatch: { enabled: boolean; debounceMs: number };

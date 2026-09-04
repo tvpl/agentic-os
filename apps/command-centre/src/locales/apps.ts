@@ -73,6 +73,20 @@ export const en = {
     "Comma-separated. Absolute paths or bare names resolved on PATH; a connector may only spawn what is listed here.",
   "apps.settings.allowedCommandsExample":
     'An MCP connector installed with npx needs "npx" on this list before it can read anything.',
+  "skills.market.title": "Marketplace",
+  "skills.market.search": "Search the registries…",
+  "skills.market.refresh": "Refresh",
+  "skills.market.install": "Install",
+  "skills.market.reinstall": "Reinstall",
+  "skills.market.installed": "Installed {name}.",
+  "skills.market.files": "{n} file(s)",
+  "skills.market.empty": "Nothing matches.",
+  "skills.market.noRegistry": "No registry configured",
+  "skills.market.noRegistryBody":
+    "Add an https index URL under Settings › Memory & folders › Skill registries. Every file is digest-checked before it lands in the catalog.",
+  "apps.settings.registries": "Skill registries",
+  "apps.settings.registriesHint":
+    "https URLs of registry indexes, comma separated. Files are only fetched from the registry's own host and verified by SHA-256.",
   "apps.settings.remote": "Remote access",
   "apps.settings.remoteHint":
     "Let paired devices (your phone, a laptop) use the OS through a host you list — a Tailscale name or a LAN address. The server must also bind beyond loopback (Identity › Port asks for that approval).",
@@ -230,6 +244,20 @@ export const ptBR = {
     "Separados por vírgula. Caminhos absolutos ou nomes resolvidos no PATH; um conector só pode iniciar o que estiver aqui.",
   "apps.settings.allowedCommandsExample":
     'Um conector MCP instalado com npx precisa de "npx" nesta lista antes de conseguir ler qualquer coisa.',
+  "skills.market.title": "Marketplace",
+  "skills.market.search": "Buscar nos registros…",
+  "skills.market.refresh": "Atualizar",
+  "skills.market.install": "Instalar",
+  "skills.market.reinstall": "Reinstalar",
+  "skills.market.installed": "{name} instalada.",
+  "skills.market.files": "{n} arquivo(s)",
+  "skills.market.empty": "Nada corresponde.",
+  "skills.market.noRegistry": "Nenhum registro configurado",
+  "skills.market.noRegistryBody":
+    "Adicione uma URL https de índice em Configurações › Memória & pastas › Registros de skills. Cada arquivo tem o digest conferido antes de entrar no catálogo.",
+  "apps.settings.registries": "Registros de skills",
+  "apps.settings.registriesHint":
+    "URLs https de índices de registro, separadas por vírgula. Os arquivos só são baixados do host do próprio registro e conferidos por SHA-256.",
   "apps.settings.remote": "Acesso remoto",
   "apps.settings.remoteHint":
     "Deixe dispositivos pareados (celular, notebook) usarem o OS por um host que você listar — um nome do Tailscale ou um endereço da rede local. O servidor também precisa sair do loopback (Identidade › Porta pede essa aprovação).",
