@@ -53,17 +53,46 @@ describe("snapshotToLines / displayPath", () => {
 
 describe("diffToView", () => {
   it("normalizes the three backend shapes", () => {
-    const git = diffToView({ kind: "git", file: "/r/a.txt", repoRoot: "/r", diff: SAMPLE, truncated: false, unchanged: false });
+    const git = diffToView({
+      kind: "git",
+      file: "/r/a.txt",
+      repoRoot: "/r",
+      diff: SAMPLE,
+      truncated: false,
+      unchanged: false,
+    });
     expect(git).toMatchObject({ added: 2, removed: 1, source: "git", note: null, truncated: false });
     expect(git.lines).toHaveLength(10);
 
-    const snap = diffToView({ kind: "snapshot", file: "/r/n.txt", content: "a\nb\n", truncated: true, untracked: true, message: "new file" });
-    expect(snap).toMatchObject({ added: 2, removed: 0, source: "snapshot", note: "new file", truncated: true });
+    const snap = diffToView({
+      kind: "snapshot",
+      file: "/r/n.txt",
+      content: "a\nb\n",
+      truncated: true,
+      untracked: true,
+      message: "new file",
+    });
+    expect(snap).toMatchObject({
+      added: 2,
+      removed: 0,
+      source: "snapshot",
+      note: "new file",
+      truncated: true,
+    });
 
-    expect(diffToView({ kind: "unavailable", file: "/r/x", message: "gone" })).toEqual({ lines: [], added: 0, removed: 0, note: "gone", truncated: false, source: "none" });
+    expect(diffToView({ kind: "unavailable", file: "/r/x", message: "gone" })).toEqual({
+      lines: [],
+      added: 0,
+      removed: 0,
+      note: "gone",
+      truncated: false,
+      source: "none",
+    });
   });
 
   it("shows an unchanged file as an empty git view", () => {
-    expect(diffToView({ kind: "git", file: "/r/a", repoRoot: "/r", diff: "", truncated: false, unchanged: true })).toEqual({ lines: [], added: 0, removed: 0, note: null, truncated: false, source: "git" });
+    expect(
+      diffToView({ kind: "git", file: "/r/a", repoRoot: "/r", diff: "", truncated: false, unchanged: true }),
+    ).toEqual({ lines: [], added: 0, removed: 0, note: null, truncated: false, source: "git" });
   });
 });

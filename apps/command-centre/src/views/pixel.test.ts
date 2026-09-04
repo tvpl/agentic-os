@@ -16,9 +16,15 @@ describe("pixel studio brush", () => {
     expect(brushCells(3, 2, 16, 1)).toEqual([2 * 16 + 3]);
     expect(brushCells(3, 2, 16, 2)).toHaveLength(4);
     expect(brushCells(5, 5, 16, 3)).toEqual([
-      4 * 16 + 4, 4 * 16 + 5, 4 * 16 + 6,
-      5 * 16 + 4, 5 * 16 + 5, 5 * 16 + 6,
-      6 * 16 + 4, 6 * 16 + 5, 6 * 16 + 6,
+      4 * 16 + 4,
+      4 * 16 + 5,
+      4 * 16 + 6,
+      5 * 16 + 4,
+      5 * 16 + 5,
+      5 * 16 + 6,
+      6 * 16 + 4,
+      6 * 16 + 5,
+      6 * 16 + 6,
     ]);
   });
 

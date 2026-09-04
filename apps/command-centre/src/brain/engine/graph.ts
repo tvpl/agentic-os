@@ -5,7 +5,11 @@
 import type { EdgeKind, FileNode, Hub, World, WorldEdge } from "./world";
 
 /** Breadth-first set of file indices within `hops` of `start` over the enabled-kind adjacency. */
-export function neighbourhood(adjacency: ReadonlyArray<ReadonlyArray<number>>, start: number, hops: number): Set<number> {
+export function neighbourhood(
+  adjacency: ReadonlyArray<ReadonlyArray<number>>,
+  start: number,
+  hops: number,
+): Set<number> {
   const seen = new Set<number>([start]);
   let frontier = [start];
   for (let h = 0; h < hops && frontier.length > 0; h++) {
@@ -56,7 +60,10 @@ export function applyVisibility(w: World): void {
 }
 
 /** Edges of a node grouped by kind with counts and the neighbour ids (relations card, item 33). */
-export function relationsOf(w: Pick<World, "files" | "edges">, id: number): Array<{ kind: EdgeKind; count: number; entries: Array<{ id: number; name: string; why: string }> }> {
+export function relationsOf(
+  w: Pick<World, "files" | "edges">,
+  id: number,
+): Array<{ kind: EdgeKind; count: number; entries: Array<{ id: number; name: string; why: string }> }> {
   const idx = indexOfId(w.files, id);
   if (idx < 0) return [];
   const byKind = new Map<EdgeKind, Array<{ id: number; name: string; why: string }>>();

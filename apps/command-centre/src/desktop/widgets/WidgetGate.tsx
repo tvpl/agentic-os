@@ -11,7 +11,15 @@ import { ApiError } from "../../api";
 
 type AnyQuery = Pick<UseQueryResult<unknown, Error>, "data" | "isPending" | "isError" | "error" | "refetch">;
 
-export function WidgetGate({ queries, lines = 3, children }: { queries: AnyQuery[]; lines?: number; children: ReactNode }) {
+export function WidgetGate({
+  queries,
+  lines = 3,
+  children,
+}: {
+  queries: AnyQuery[];
+  lines?: number;
+  children: ReactNode;
+}) {
   const t = useT();
   const failed = queries.find((q) => q.isError && q.data === undefined);
   if (failed) {

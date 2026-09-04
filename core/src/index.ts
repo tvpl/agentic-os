@@ -85,6 +85,12 @@ export {
 export { MemoryIndexer, fileRowFromDb, type IndexStats, type FileRow } from "./memory/indexer.js";
 export { searchFiles, listFacets, type SearchFilters, type SearchHit } from "./memory/search.js";
 export { buildGraph, relatedFiles, type GraphData, type GraphNode, type GraphEdge } from "./memory/graph.js";
+export {
+  relatedEdges,
+  relatedFromTexts,
+  tokenize as tokenizeForRelated,
+  type RelatedEdge,
+} from "./memory/related.js";
 export { previewFile, type PreviewResult } from "./memory/preview.js";
 export { generateRouters, checkRouters, areaSlug, type RouterIssue } from "./memory/routers.js";
 export { SkillCatalog, THICK_LINE_THRESHOLD } from "./skills/catalog.js";

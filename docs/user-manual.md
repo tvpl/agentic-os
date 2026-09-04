@@ -32,6 +32,15 @@ Language (English/Português) and theme (dark/light/system) live in
   a backup.
 - **Import**: `POST /api/skills/import` or copy a folder with a SKILL.md into
   `skills/` — it is validated on load.
+- **Marketplace**: Skills → Marketplace lists skills from the registries in
+  Settings › Memory; every file is sha256-checked and staged before it lands
+  in `skills/` (an existing slug asks before being replaced).
+- **Agent notes**: each skill can carry a `NOTES.md` next to SKILL.md. Add a
+  line from a finished run's page (*Note for the skill*) or from the skill's
+  **Notes** tab; the catalog folds the file into every run prompt, so lessons
+  compound without editing the procedure itself.
+- **Squads**: a run's page can fan out into up to 8 sub-agents (one prompt per
+  paragraph); children are listed under the parent and follow its profile.
 
 Every run writes its outputs to `artifacts/<run-id>/`; artifacts appear on the
 Dashboard and in the run's page.
@@ -50,7 +59,12 @@ Dashboard and in the run's page.
 - **Second Brain**: graph (zoom with the wheel, drag to pan, click a node) or
   grid; search as you type; filter by area/type; preview is text-only and
   secret-blocked; copy the full path or open the file explicitly. "Related
-  files" explains *why* two files are connected (markdown link, same folder).
+  files" explains *why* two files are connected (markdown link, same folder,
+  similar content).
+- **Similar content** edges come from a TF-IDF cosine over the indexed text
+  (no model, no network; top 3 per file). They are off by default — toggle
+  them in the legend; the count is always shown. The force layout runs in a
+  Web Worker, so large graphs never freeze the page.
 
 ### 3.1 Recall, journal and consolidation
 
@@ -66,7 +80,9 @@ Dashboard and in the run's page.
 - **Consolidation**: the `consolidate-memory` skill promotes recurring journal
   notes into `memory/MEMORY.md` and never deletes — contradicted lines move to
   *Superseded* and facts get a `valid_to`. The routine *Nightly memory
-  consolidation* (03:00) ships **disabled**; enable it when you trust it.
+  consolidation* (03:00) ships **enabled** under `review_before_write`: it
+  runs, parks its write for your approval in the inbox, and nothing changes
+  until you say so. Disable it in Routines if you prefer a manual cadence.
 - **Hygiene**: Second Brain → Hygiene (or `GET /api/memory/hygiene`) lists
   orphan notes, broken router pointers, files untouched for 90 days, skills
   never run, silent routines and connectors unused for 30 days.
@@ -128,7 +144,16 @@ The desktop core reacts to what the agent does — thinking, using a tool,
 answering, alerting, done — and a HUD layer adds scanlines, corner brackets,
 a radar sweep and telemetry. **Settings › Theme › HUD intensity** scales all
 of it (0 turns it off); the **JARVIS** preset is the cyan-on-black look.
-`prefers-reduced-motion` disables every animation.
+`prefers-reduced-motion` disables every animation. With the sound toggle on
+(Settings › Notifications) the HUD also plays a short ack when a run starts,
+a chord when it finishes and a low tone when it fails; **System
+notifications** and **Spoken alerts** cover the time the tab is hidden.
+Sentinels (repeated failures, silent routines, connector changes, the
+"did it twice" nudge, folder watch) live in the same tab, with optional
+Telegram delivery.
+
+The Console has a microphone (speech → prompt) and *Read aloud* on every
+reply; the core turns to *listening* while the mic is open.
 
 ## 6. Runs & observability
 
@@ -146,6 +171,16 @@ Settings → Security: `read_only` → `review_before_write` → `controlled_wri
 approval: installing software, changing global configs, destructive commands,
 accessing new folders, connector writes, startup services, exposing ports,
 sending data to external services. Pending approvals appear in Settings.
+
+Under `review_before_write` and `controlled_write` the agent's own tool
+prompts (write a file, run a command) are brokered to you **mid-run**: the
+run page and the Console show the tool and its input with Allow / Deny, and
+the run continues the moment you answer (timeout: `limits.toolApprovalTimeoutMs`).
+
+**Remote access** (Settings › Security): off by default. When enabled, a
+phone or laptop pairs with a 6-digit code and gets its own token (expiry and
+revoke list there); the Command Centre installs as a PWA and keeps its shell
+offline. Only paired devices are accepted on non-loopback hosts.
 
 ## 8. The 7-day adoption plan (from the ARMS guide)
 

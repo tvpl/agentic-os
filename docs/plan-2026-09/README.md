@@ -373,26 +373,33 @@ Sugestão de sequência para as próximas 2 semanas: itens 1–8 e 16 e 28 (toda
 
 ---
 
-## 8. Estado da implementação (04/09/2026, v0.6.0)
+## 8. Estado da implementação (04/09/2026, v0.7.0)
 
-Executado na mesma sessão em que o plano foi escrito (ver `CHANGELOG.md`
-0.6.0):
+Todo o plano foi executado na mesma sessão em que foi escrito (ver
+`CHANGELOG.md` 0.6.0 e 0.7.0). Nenhum item ficou pendente:
 
 - **Onda 0 completa** (itens 1–4, 16, 28 e todos os de dívida da tabela 5).
-- **Harmonia do desktop**: layout de 20 linhas, widgets sem corte, escala de
-  tipo única para os números, anel e painel Agora ancorados na área livre,
-  coluna empilhada e navegação inferior no celular, tema claro redesenhado.
-- **HUD Mordomo** (§6.2–6.7, 6.9): núcleo reativo a eventos, overlay com
-  `--hud-intensity`, telemetria, boot, fontes empacotadas, preset JARVIS,
-  micro-interações (widgets, paleta, toasts, botão). Som e voz (§6.7, 6.8)
-  ficam para a Onda 3.
-- **Onda 1**: sessões, `--resume` (Claude por flag, Codex por subcomando,
-  Cursor sem suporte), Console conversacional. Aprovação de tool no meio do
-  run (1.3) e transcript → journal (1.5) ficam abertos.
-- **Onda 2 (parcial)**: orçamento diário com alerta e notificação, inbox
-  persistido no servidor. Sentinelas, triagem, notificações fora da aba,
-  Telegram e onboarding dia 1 ficam abertos.
-- Ondas 3 e 4 não iniciadas.
+- **Harmonia do desktop** e **HUD Mordomo** (§6 inteiro, incluindo som §6.7 e
+  voz §6.8): layout de 20 linhas, widgets sem corte, escala única, núcleo
+  reativo, overlay com `--hud-intensity`, telemetria, boot, preset JARVIS,
+  cues sonoros de início/fim/falha, microfone e leitura em voz no Console.
+- **Onda 1 completa**: sessões, `--resume`, Console conversacional, aprovação
+  de tool no meio do run via MCP (`mordomo mcp permission`), `mordomo mcp`
+  para qualquer cliente, transcript → journal com gist.
+- **Onda 2 completa**: orçamento diário, inbox persistido, sentinelas
+  (falha repetida, rotina silenciosa, delta de conector, "fez duas vezes",
+  fs-watch) com triagem barata, notificações de sistema e faladas fora da
+  aba, Telegram, próximo passo do dia 1 no painel Agora.
+- **Onda 3 completa**: pareamento de dispositivos para acesso remoto, PWA,
+  voz no Console, esquadrões (fan-out de sub-agentes com lista de filhos),
+  marketplace de skills verificado.
+- **Onda 4 completa**: consolidação noturna habilitada por padrão (com
+  revisão), arestas "conteúdo parecido" no Second Brain (TF-IDF, sem
+  dependências), notas do agente por skill (`NOTES.md` lido em todo run),
+  física do grafo em Web Worker e colisão de rótulos.
+
+Próximos passos ficam fora deste plano: medir as métricas da §9 em uso real
+por uma semana e ajustar limiares (sentinelas, similaridade, orçamento).
 
 ## 9. Métricas de sucesso e riscos
 

@@ -23,7 +23,10 @@ export default function EmailWidget({ config }: WidgetProps) {
   const items = data.data?.items ?? [];
   const recent = items.filter((i) => !i.ts || i.ts >= dayAgo).length;
   const count = useTweenNumber(recent);
-  const flagged = items.filter((i) => i.flagged).sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0)).slice(0, limit);
+  const flagged = items
+    .filter((i) => i.flagged)
+    .sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0))
+    .slice(0, limit);
   const mix = Object.entries(data.data?.summary ?? {}).filter(([, n]) => n > 0);
   const total = mix.reduce((s, [, n]) => s + n, 0);
   return (
@@ -58,7 +61,14 @@ export default function EmailWidget({ config }: WidgetProps) {
             <p className="widget-muted">{t("desktop.email.nothingFlagged")}</p>
           ) : (
             flagged.map((m) => (
-              <a key={m.id} className="email-row" href={m.href} target={m.href ? "_blank" : undefined} rel="noreferrer" title={m.subtitle}>
+              <a
+                key={m.id}
+                className="email-row"
+                href={m.href}
+                target={m.href ? "_blank" : undefined}
+                rel="noreferrer"
+                title={m.subtitle}
+              >
                 <span className="email-dot" aria-hidden />
                 <span className="truncate">{m.title}</span>
                 {m.tag && <span className="badge dim">{m.tag}</span>}
@@ -71,13 +81,22 @@ export default function EmailWidget({ config }: WidgetProps) {
               <div className="hud-label">{t("desktop.email.mix")}</div>
               <div className="email-bar" role="img" aria-label={mix.map(([k, n]) => `${n} ${k}`).join(" · ")}>
                 {mix.map(([k, n], i) => (
-                  <span key={k} className="email-seg" style={{ flexGrow: n, background: AREA_COLORS[i % AREA_COLORS.length] }} title={`${n} ${k}`} />
+                  <span
+                    key={k}
+                    className="email-seg"
+                    style={{ flexGrow: n, background: AREA_COLORS[i % AREA_COLORS.length] }}
+                    title={`${n} ${k}`}
+                  />
                 ))}
               </div>
               <div className="email-legend">
                 {mix.map(([k, n], i) => (
                   <span key={k} className="email-key">
-                    <span className="email-swatch" style={{ background: AREA_COLORS[i % AREA_COLORS.length] }} aria-hidden />
+                    <span
+                      className="email-swatch"
+                      style={{ background: AREA_COLORS[i % AREA_COLORS.length] }}
+                      aria-hidden
+                    />
                     <span className="tnum">{n}</span> {k}
                   </span>
                 ))}

@@ -21,6 +21,7 @@ import FilesChanged from "./FilesChanged";
 import Replay from "./Replay";
 import { ApprovalCard, ToolApprovalCard, useApprovals } from "./Approvals";
 import { SquadCard } from "./Squad";
+import { SkillNoteCard } from "./SkillNote";
 import { approvalForRun, toolApprovalsForRun } from "./approvals";
 import { eventsToText } from "./logText";
 import { followUpPrompt } from "./policy";
@@ -431,6 +432,8 @@ export default function RunDetail({ id }: { id: string }) {
       </div>
 
       <SquadCard run={run} />
+
+      <SkillNoteCard run={run} />
 
       <FilesChanged runId={id} files={run.filesChanged ?? []} cwd={run.cwd} />
 

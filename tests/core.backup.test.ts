@@ -29,7 +29,9 @@ describe("backup", () => {
       try {
         const count = (copy.prepare("SELECT COUNT(*) c FROM meta").get() as { c: number }).c;
         expect(count).toBe(50);
-        expect(copy.pragma("user_version", { simple: true })).toBe(db.pragma("user_version", { simple: true }));
+        expect(copy.pragma("user_version", { simple: true })).toBe(
+          db.pragma("user_version", { simple: true }),
+        );
       } finally {
         copy.close();
       }

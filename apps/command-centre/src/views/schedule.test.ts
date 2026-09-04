@@ -41,7 +41,11 @@ describe("nextFires (routines v2 preview)", () => {
 
   it("walks the interval grid from createdAt", () => {
     const created = at("2026-09-03T00:00:00Z");
-    const r: SchedulableRoutine = { kind: "every", every: { value: 15, unit: "minutes" }, createdAt: created };
+    const r: SchedulableRoutine = {
+      kind: "every",
+      every: { value: 15, unit: "minutes" },
+      createdAt: created,
+    };
     expect(nextFires(r, at("2026-09-03T00:07:00Z"), 3)).toEqual([
       at("2026-09-03T00:15:00Z"),
       at("2026-09-03T00:30:00Z"),
@@ -105,14 +109,26 @@ describe("describeSchedule", () => {
     expect(describeSchedule({ kind: "cron", schedule: "bogus" }, t)).toContain("Invalid cron");
     expect(describeSchedule({ kind: "at", at: "2026-09-03T10:00:00Z" }, t)).toBe("Once, at 2026-09-03 10:00");
     expect(describeSchedule({ kind: "at", at: null }, t)).toBe("No valid date and time yet");
-    expect(describeSchedule({ kind: "every", every: { value: 15, unit: "minutes" } }, t)).toBe("Every 15 min");
+    expect(describeSchedule({ kind: "every", every: { value: 15, unit: "minutes" } }, t)).toBe(
+      "Every 15 min",
+    );
     expect(describeSchedule({ kind: "every", every: { value: 3, unit: "hours" } }, t)).toBe("Every 3 h");
     expect(describeSchedule({ kind: "every", every: null }, t)).toBe("No interval yet");
-    expect(describeSchedule({ kind: "on-exit", onExit: { skillSlug: "digest" } }, t)).toBe("After every run of /digest");
+    expect(describeSchedule({ kind: "on-exit", onExit: { skillSlug: "digest" } }, t)).toBe(
+      "After every run of /digest",
+    );
     expect(describeSchedule({ kind: "on-exit", onExit: null }, t)).toBe("No trigger skill yet");
-    expect(describeSchedule({ kind: "heartbeat", heartbeat: { intervalMinutes: 30 } }, t)).toBe("Heartbeat every 30 min");
+    expect(describeSchedule({ kind: "heartbeat", heartbeat: { intervalMinutes: 30 } }, t)).toBe(
+      "Heartbeat every 30 min",
+    );
     expect(
-      describeSchedule({ kind: "heartbeat", heartbeat: { intervalMinutes: 30, activeHours: { start: "08:00", end: "20:00" } } }, t),
+      describeSchedule(
+        {
+          kind: "heartbeat",
+          heartbeat: { intervalMinutes: 30, activeHours: { start: "08:00", end: "20:00" } },
+        },
+        t,
+      ),
     ).toBe("Heartbeat every 30 min, 08:00–20:00");
     expect(describeSchedule({ kind: "heartbeat", heartbeat: null }, t)).toBe("No heartbeat settings yet");
   });

@@ -36,7 +36,12 @@ export function parseUnifiedDiff(diff: string): DiffLine[] {
     } else if (raw.startsWith("\\")) {
       out.push({ kind: "meta", text: raw, oldNo: null, newNo: null });
     } else {
-      out.push({ kind: "ctx", text: raw.startsWith(" ") ? raw.slice(1) : raw, oldNo: oldNo++, newNo: newNo++ });
+      out.push({
+        kind: "ctx",
+        text: raw.startsWith(" ") ? raw.slice(1) : raw,
+        oldNo: oldNo++,
+        newNo: newNo++,
+      });
     }
   }
   return out;
@@ -61,14 +66,22 @@ export function diffStats(lines: readonly DiffLine[]): { added: number; removed:
 
 /** Short display name for an absolute path relative to a base (cwd/repo), else the basename. */
 export function displayPath(file: string, base: string | null | undefined): string {
-  if (base && file.startsWith(base.endsWith("/") ? base : `${base}/`)) return file.slice(base.length + (base.endsWith("/") ? 0 : 1));
+  if (base && file.startsWith(base.endsWith("/") ? base : `${base}/`))
+    return file.slice(base.length + (base.endsWith("/") ? 0 : 1));
   return file;
 }
 
 /** `GET /api/runs/:id/diff?file=` (mirrors `RunDiffResult` in apps/api/src/routes/runs.ts). */
 export type RunDiff =
   | { kind: "git"; file: string; repoRoot: string; diff: string; truncated: boolean; unchanged: boolean }
-  | { kind: "snapshot"; file: string; content: string | null; truncated: boolean; untracked: boolean; message: string | null }
+  | {
+      kind: "snapshot";
+      file: string;
+      content: string | null;
+      truncated: boolean;
+      untracked: boolean;
+      message: string | null;
+    }
   | { kind: "unavailable"; file: string; message: string };
 
 export interface DiffView {
@@ -84,10 +97,17 @@ export interface DiffView {
 
 /** One shape for the viewer, whichever branch the backend took. */
 export function diffToView(result: RunDiff): DiffView {
-  if (result.kind === "unavailable") return { lines: [], added: 0, removed: 0, note: result.message, truncated: false, source: "none" };
+  if (result.kind === "unavailable")
+    return { lines: [], added: 0, removed: 0, note: result.message, truncated: false, source: "none" };
   if (result.kind === "snapshot") {
     const lines = result.content == null ? [] : snapshotToLines(result.content);
-    return { lines, ...diffStats(lines), note: result.message, truncated: result.truncated, source: "snapshot" };
+    return {
+      lines,
+      ...diffStats(lines),
+      note: result.message,
+      truncated: result.truncated,
+      source: "snapshot",
+    };
   }
   if (result.unchanged || result.diff.trim() === "") {
     return { lines: [], added: 0, removed: 0, note: null, truncated: false, source: "git" };

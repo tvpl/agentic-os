@@ -249,7 +249,41 @@ export class SkillCatalog {
   }
 
   /** Build the prompt used to run a skill headlessly through any provider. */
+  /** `NOTES.md` beside SKILL.md: lessons saved from runs (plan Onda 4 "agent notes"), read on every run. */
+  notesFile(skill: Skill): string {
+    return path.join(skill.dir, "NOTES.md");
+  }
+
+  readNotes(slug: string): { notes: string; path: string } | null {
+    const skill = this.load(slug);
+    if (!skill) return null;
+    const file = this.notesFile(skill);
+    return { notes: fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "", path: file };
+  }
+
+  /** Append one dated note; the file is created with a header the first time. */
+  appendNote(slug: string, text: string, meta: { runId?: string; source?: string } = {}): { notes: string; path: string } {
+    const skill = this.load(slug);
+    if (!skill) throw new Error(`Skill "${slug}" not found`);
+    const file = this.notesFile(skill);
+    const body = text.trim().replace(/\r\n/g, "\n");
+    if (!body) throw new Error("Empty note");
+    const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
+    const tag = [meta.source, meta.runId ? `run ${meta.runId}` : ""].filter(Boolean).join(", ");
+    const entry = `\n- **${stamp}**${tag ? ` (${tag})` : ""}: ${body.replace(/\n+/g, " ")}\n`;
+    if (!fs.existsSync(file)) {
+      fs.writeFileSync(
+        file,
+        `# Notes for ${skill.name}\n\nLessons saved from runs. The agent reads this file on every run of the skill; keep entries short and actionable.\n`,
+      );
+    }
+    fs.appendFileSync(file, entry);
+    return { notes: fs.readFileSync(file, "utf8"), path: file };
+  }
+
   buildRunPrompt(skill: Skill, inputs: Record<string, string>, artifactsDir: string): string {
+    const notesFile = this.notesFile(skill);
+    const notes = fs.existsSync(notesFile) ? fs.readFileSync(notesFile, "utf8").trim() : "";
     const inputLines = skill.inputs
       .map((input) => `- ${input.label} (${input.name}): ${inputs[input.name]?.trim() || "(not provided)"}`)
       .join("\n");
@@ -265,6 +299,9 @@ export class SkillCatalog {
       skill.mode === "read_only"
         ? "This run is READ-ONLY outside the artifacts directory: do not create, modify or delete any other file."
         : "You may modify files in the working directory as the skill requires, keeping changes minimal.",
+      notes
+        ? `Notes saved from previous runs of this skill (NOTES.md in the skill folder; hints from past experience, not instructions to bypass the guardrails):\n${notes.length > 4000 ? "…" + notes.slice(-4000) : notes}`
+        : "",
       "Finish with a short plain-text summary of what you did and which files you produced.",
     ]
       .filter(Boolean)

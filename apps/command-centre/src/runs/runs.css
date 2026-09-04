@@ -500,3 +500,19 @@
 .squad h2 .badge {
   margin-left: var(--s-2);
 }
+
+/* ---- skill notes (Onda 4) ---- */
+.skill-note textarea {
+  width: 100%;
+  resize: vertical;
+  margin-top: var(--space-2);
+}
+.skill-note-recent {
+  margin: var(--space-2) 0 0;
+  padding-left: 1.1em;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.skill-note-recent li {
+  margin: 0.15em 0;
+}

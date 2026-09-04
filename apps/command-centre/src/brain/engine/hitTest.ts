@@ -16,12 +16,17 @@ export function fileTolerance(k: number): number {
   return 9 / k + 4;
 }
 
-export function hitTest(w: Pick<World, "hubs" | "orbs" | "files" | "transform"> & Partial<Pick<World, "planets">>, wx: number, wy: number): Hit {
+export function hitTest(
+  w: Pick<World, "hubs" | "orbs" | "files" | "transform"> & Partial<Pick<World, "planets">>,
+  wx: number,
+  wy: number,
+): Hit {
   for (const hub of w.hubs) {
     if (Math.hypot(wx - hub.x, wy - hub.y) < HUB_HIT_RADIUS) return { hub };
   }
   for (const orb of w.orbs) {
-    if (Math.hypot(wx - orb.x, wy - orb.y) < (orb.kind === "app" ? APP_HIT_RADIUS : ORB_HIT_RADIUS)) return { orb };
+    if (Math.hypot(wx - orb.x, wy - orb.y) < (orb.kind === "app" ? APP_HIT_RADIUS : ORB_HIT_RADIUS))
+      return { orb };
   }
   for (const planet of w.planets ?? []) {
     if (Math.hypot(wx - planet.x, wy - planet.y) < PLANET_HIT_RADIUS) return { planet };
@@ -50,14 +55,26 @@ export interface ScreenPoint {
 }
 
 /** Canvas-relative pointer position → world coordinates (plus the screen offset for tooltips). */
-export function screenToWorld(tr: Transform, rect: { left: number; top: number; width: number; height: number }, clientX: number, clientY: number): ScreenPoint {
+export function screenToWorld(
+  tr: Transform,
+  rect: { left: number; top: number; width: number; height: number },
+  clientX: number,
+  clientY: number,
+): ScreenPoint {
   const sx = clientX - rect.left;
   const sy = clientY - rect.top;
   return { x: (sx - rect.width / 2 - tr.x) / tr.k, y: (sy - rect.height / 2 - tr.y) / tr.k, sx, sy };
 }
 
 /** Zoom by `factor` keeping the point under the cursor fixed. */
-export function zoomAt(target: Transform, rect: { left: number; top: number; width: number; height: number }, clientX: number, clientY: number, factor: number, clamp: (k: number) => number): void {
+export function zoomAt(
+  target: Transform,
+  rect: { left: number; top: number; width: number; height: number },
+  clientX: number,
+  clientY: number,
+  factor: number,
+  clamp: (k: number) => number,
+): void {
   const k = clamp(target.k * factor);
   const mx = clientX - rect.left - rect.width / 2;
   const my = clientY - rect.top - rect.height / 2;

@@ -156,6 +156,9 @@
   border-top-color: var(--accent);
   box-shadow: 0 0 6px var(--accent-glow);
 }
+.brain-kind-swatch.related {
+  border-top: 2px dashed var(--ok, #4ade80);
+}
 .brain-kind-swatch.same-dir {
   border-top: 2px dotted var(--info);
 }

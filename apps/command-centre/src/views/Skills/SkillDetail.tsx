@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -18,7 +18,7 @@ import {
   Settings2,
 } from "lucide-react";
 import { api, getToken, type ApprovalRecord, type ProviderId, type ProviderSnapshot, type Skill, type SkillResource } from "../../api";
-import { qk, useInvalidate } from "../../queries";
+import { qk, useApiQuery, useInvalidate } from "../../queries";
 import { useT } from "../../i18n";
 import { formatBytes, useToast } from "../../components/ui";
 import { Badge, Button, EmptyState, Field, Segmented, Tabs } from "../../components/primitives";
@@ -64,7 +64,7 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
   const [inputs, setInputs] = useState<Record<string, string>>(() => draft?.inputs ?? {});
   const [pending, setPending] = useState<ApprovalRecord | null>(null);
 
-  const [pane, setPane] = useState<"body" | "resources">("body");
+  const [pane, setPane] = useState<"body" | "resources" | "notes">("body");
   const [view, setView] = useState<"source" | "rendered">("source");
   const [lineNumbers, setLineNumbers] = useState(true);
 
@@ -349,10 +349,11 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
               id="skill-panes"
               ariaLabel={skill.name}
               active={pane}
-              onChange={(id) => setPane(id as "body" | "resources")}
+              onChange={(id) => setPane(id as "body" | "resources" | "notes")}
               tabs={[
                 { id: "body", label: `SKILL.md · ${skill.bodyLineCount} ${t("skills.lines")}` },
                 { id: "resources", label: `${t("apps.skills.tabResources")} (${resources.length})` },
+                { id: "notes", label: t("skills.notes.tab") },
               ]}
             />
             <div className="tab-panel" role="tabpanel" id={`skill-panes-panel-${pane}`} aria-labelledby={`skill-panes-tab-${pane}`}>
@@ -400,13 +401,51 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
                     <Button size="sm" variant="ghost" icon={<Copy aria-hidden />} aria-label={t("brain.copyPath")} title={t("brain.copyPath")} onClick={() => void copyPath()} />
                   </p>
                 </>
-              ) : (
+              ) : pane === "resources" ? (
                 <ResourcesPane slug={skill.slug} resources={resources} />
+              ) : (
+                <NotesPane slug={skill.slug} />
               )}
             </div>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- notes */
+
+/** NOTES.md beside SKILL.md: lessons saved from run pages, read on every run (Onda 4). */
+function NotesPane({ slug }: { slug: string }) {
+  const t = useT();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const notes = useApiQuery<{ notes: string; path: string }>(qk.skillNotes(slug), `/api/skills/${encodeURIComponent(slug)}/notes`);
+  const [text, setText] = useState("");
+  const add = useMutation({
+    mutationFn: (body: string) => api.post<{ notes: string }>(`/api/skills/${encodeURIComponent(slug)}/notes`, { text: body }),
+    onSuccess: () => {
+      setText("");
+      qc.invalidateQueries({ queryKey: qk.skillNotes(slug) }).catch(() => undefined);
+    },
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
+  const body = notes.data?.notes ?? "";
+  return (
+    <div className="skill-notes">
+      {body.trim() ? <Markdown source={body} /> : <p className="widget-muted">{t("skills.notes.empty")}</p>}
+      <textarea rows={2} value={text} maxLength={4000} placeholder={t("skills.notes.placeholder")} onChange={(e) => setText(e.target.value)} />
+      <div className="head-actions">
+        <Button size="sm" variant="primary" disabled={!text.trim() || add.isPending} onClick={() => add.mutate(text)}>
+          {t("skills.notes.add")}
+        </Button>
+      </div>
+      {notes.data?.path && (
+        <p className="mono file-path" title={notes.data.path}>
+          {notes.data.path}
+        </p>
+      )}
     </div>
   );
 }

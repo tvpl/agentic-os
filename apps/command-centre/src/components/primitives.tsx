@@ -35,7 +35,17 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = "secondary", size = "md", icon, loading = false, className, children, disabled, type = "button", ...rest },
+  {
+    variant = "secondary",
+    size = "md",
+    icon,
+    loading = false,
+    className,
+    children,
+    disabled,
+    type = "button",
+    ...rest
+  },
   ref,
 ) {
   const cls = [
@@ -49,7 +59,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     .filter(Boolean)
     .join(" ");
   return (
-    <button ref={ref} type={type} className={cls} disabled={disabled || loading} aria-busy={loading || undefined} {...rest}>
+    <button
+      ref={ref}
+      type={type}
+      className={cls}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      {...rest}
+    >
       {icon}
       {children}
       {loading && (
@@ -107,7 +124,14 @@ export interface SegmentedProps<T extends string> {
 }
 
 /** Radio-group semantics: arrow keys move the selection, one tab stop. */
-export function Segmented<T extends string>({ options, value, onChange, ariaLabel, size = "md", className }: SegmentedProps<T>) {
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  ariaLabel,
+  size = "md",
+  className,
+}: SegmentedProps<T>) {
   const groupRef = useRef<HTMLDivElement>(null);
   const onKey = (e: KeyboardEvent<HTMLButtonElement>) => {
     const enabled = options.filter((o) => !o.disabled);
@@ -166,18 +190,37 @@ export interface ConfirmDialogProps {
   onCancel: () => void;
 }
 
-export function ConfirmDialog({ title, body, confirmLabel, cancelLabel, danger = false, loading = false, onConfirm, onCancel }: ConfirmDialogProps) {
+export function ConfirmDialog({
+  title,
+  body,
+  confirmLabel,
+  cancelLabel,
+  danger = false,
+  loading = false,
+  onConfirm,
+  onCancel,
+}: ConfirmDialogProps) {
   const t = useT();
   const confirmRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   return (
-    <Modal title={title} onClose={onCancel} narrow initialFocus={() => (danger ? cancelRef.current : confirmRef.current)}>
+    <Modal
+      title={title}
+      onClose={onCancel}
+      narrow
+      initialFocus={() => (danger ? cancelRef.current : confirmRef.current)}
+    >
       {body && <div className="modal-body">{body}</div>}
       <div className="modal-actions">
         <Button ref={cancelRef} variant="ghost" onClick={onCancel} disabled={loading}>
           {cancelLabel ?? t("common.cancel")}
         </Button>
-        <Button ref={confirmRef} variant={danger ? "danger" : "primary"} onClick={onConfirm} loading={loading}>
+        <Button
+          ref={confirmRef}
+          variant={danger ? "danger" : "primary"}
+          onClick={onConfirm}
+          loading={loading}
+        >
           {confirmLabel ?? t("common.confirm")}
         </Button>
       </div>
@@ -275,7 +318,10 @@ export interface BadgeProps {
 
 export function Badge({ kind, tone = "dim", children, className, title }: BadgeProps) {
   return (
-    <span className={["badge", tone, kind === "meta" ? "meta" : "", className ?? ""].filter(Boolean).join(" ")} title={title}>
+    <span
+      className={["badge", tone, kind === "meta" ? "meta" : "", className ?? ""].filter(Boolean).join(" ")}
+      title={title}
+    >
       {children}
     </span>
   );
@@ -312,7 +358,18 @@ function resolveAnchor(anchor: PopoverProps["anchor"]): HTMLElement | null {
  * on open and back to the anchor on close. Rendered through #modal-root so it
  * floats above widgets; it never pushes the depth layer.
  */
-export function Popover({ open, onClose, anchor, children, placement = "bottom-start", offset = 6, ariaLabel, className, initialFocus, matchWidth = false }: PopoverProps) {
+export function Popover({
+  open,
+  onClose,
+  anchor,
+  children,
+  placement = "bottom-start",
+  offset = 6,
+  ariaLabel,
+  className,
+  initialFocus,
+  matchWidth = false,
+}: PopoverProps) {
   const { mounted, closing } = usePresence(open, 160);
   const ref = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -362,7 +419,12 @@ export function Popover({ open, onClose, anchor, children, placement = "bottom-s
     const el = ref.current;
     if (!el) return;
     const a = resolveAnchor(anchor);
-    const target = initialFocus?.() ?? el.querySelector<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])') ?? el;
+    const target =
+      initialFocus?.() ??
+      el.querySelector<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ??
+      el;
     const raf = requestAnimationFrame(() => target.focus({ preventScroll: true }));
     const onPointer = (e: PointerEvent) => {
       const n = e.target as Node | null;
@@ -381,7 +443,12 @@ export function Popover({ open, onClose, anchor, children, placement = "bottom-s
       cancelAnimationFrame(raf);
       document.removeEventListener("pointerdown", onPointer, true);
       document.removeEventListener("keydown", onKey, true);
-      if (a && a.isConnected && (document.activeElement === document.body || el.contains(document.activeElement))) a.focus({ preventScroll: true });
+      if (
+        a &&
+        a.isConnected &&
+        (document.activeElement === document.body || el.contains(document.activeElement))
+      )
+        a.focus({ preventScroll: true });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initialFocus is read once per open
   }, [open, mounted, anchor]);
@@ -389,7 +456,14 @@ export function Popover({ open, onClose, anchor, children, placement = "bottom-s
   if (!mounted) return null;
   return (
     <DialogPortal>
-      <div ref={ref} role="dialog" aria-label={ariaLabel} tabIndex={-1} className={["popover", closing ? "closing" : "", className ?? ""].filter(Boolean).join(" ")} style={pos}>
+      <div
+        ref={ref}
+        role="dialog"
+        aria-label={ariaLabel}
+        tabIndex={-1}
+        className={["popover", closing ? "closing" : "", className ?? ""].filter(Boolean).join(" ")}
+        style={pos}
+      >
         {children}
       </div>
     </DialogPortal>

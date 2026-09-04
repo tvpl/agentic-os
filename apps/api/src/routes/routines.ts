@@ -67,7 +67,12 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
     if (!routine) throw httpError(404, "Routine not found");
     // Re-enabling a one-shot that already fired clears the reason it ended.
     const enabled = !routine.enabled;
-    const saved = save(() => ctx.routines.save({ ...routine, enabled, endedReason: enabled ? null : routine.endedReason }, saveOpts()));
+    const saved = save(() =>
+      ctx.routines.save(
+        { ...routine, enabled, endedReason: enabled ? null : routine.endedReason },
+        saveOpts(),
+      ),
+    );
     ctx.scheduler.reload();
     changed(id, saved.enabled ? "enabled" : "disabled");
     return saved;

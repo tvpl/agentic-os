@@ -26,7 +26,9 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   const t = useT();
   const toast = useToast();
   const { lang, setLang } = useContext(I18nContext);
-  const providers = useApiQuery<ProviderSnapshot[]>(["providers", "force"], "/api/providers?force=1", { staleTime: 60_000 });
+  const providers = useApiQuery<ProviderSnapshot[]>(["providers", "force"], "/api/providers?force=1", {
+    staleTime: 60_000,
+  });
   const [step, setStep] = useState(0);
   const [enabled, setEnabled] = useState<Record<ProviderId, boolean> | null>(null);
   const [defaultProvider, setDefaultProvider] = useState<ProviderId>("claude");
@@ -36,7 +38,9 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   const [folderError, setFolderError] = useState<string | null>(null);
   const [phase, setPhase] = useState<"idle" | "saving" | "indexing">("idle");
   const [preset, setPreset] = useState<PresetId>("hud-orange");
-  const [widgets, setWidgets] = useState<Set<string>>(() => new Set(WIDGET_ORDER.filter((id) => DEFAULT_LAYOUT[id]?.visible)));
+  const [widgets, setWidgets] = useState<Set<string>>(
+    () => new Set(WIDGET_ORDER.filter((id) => DEFAULT_LAYOUT[id]?.visible)),
+  );
 
   useEffect(() => {
     if (!providers.data || enabled) return;
@@ -44,7 +48,8 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     for (const s of providers.data) next[s.id] = s.health.installed;
     setEnabled(next);
     const firstInstalled = providers.data.find((s) => s.health.installed)?.id;
-    if (firstInstalled && !providers.data.find((s) => s.id === "claude")?.health.installed) setDefaultProvider(firstInstalled);
+    if (firstInstalled && !providers.data.find((s) => s.id === "claude")?.health.installed)
+      setDefaultProvider(firstInstalled);
   }, [providers.data, enabled]);
 
   const finish = useMutation({
@@ -53,8 +58,11 @@ export default function Setup({ onDone }: { onDone: () => void }) {
       setPhase("saving");
       const current = await api.get<Record<string, unknown>>("/api/settings");
       const provSettings = current.providers as Record<ProviderId, Record<string, unknown>>;
-      for (const id of ["claude", "cursor", "codex"] as ProviderId[]) provSettings[id] = { ...provSettings[id], enabled: enabled[id] };
-      const chosenDefault = enabled[defaultProvider] ? defaultProvider : ((Object.entries(enabled).find(([, v]) => v)?.[0] as ProviderId | undefined) ?? "claude");
+      for (const id of ["claude", "cursor", "codex"] as ProviderId[])
+        provSettings[id] = { ...provSettings[id], enabled: enabled[id] };
+      const chosenDefault = enabled[defaultProvider]
+        ? defaultProvider
+        : ((Object.entries(enabled).find(([, v]) => v)?.[0] as ProviderId | undefined) ?? "claude");
       const folders = current.indexedFolders as Array<Record<string, unknown>>;
       const chosenPreset = PRESETS.find((p) => p.id === preset) ?? PRESETS[0]!;
       const dashboardLayout: LayoutMap = {};
@@ -68,7 +76,9 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         theme,
         defaultProvider: chosenDefault,
         providers: provSettings,
-        indexedFolders: folder.trim() ? [...folders, { path: folder.trim(), area: null, enabled: true }] : folders,
+        indexedFolders: folder.trim()
+          ? [...folders, { path: folder.trim(), area: null, enabled: true }]
+          : folders,
         themePreset: chosenPreset.id,
         accentColor: chosenPreset.accent,
         dashboardLayout,
@@ -89,7 +99,13 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     },
   });
 
-  const steps = [t("setup.stepProviders"), t("setup.stepIdentity"), t("setup.stepFolders"), t("apps.setup.stepConnect"), t("apps.setup.stepDesktop")];
+  const steps = [
+    t("setup.stepProviders"),
+    t("setup.stepIdentity"),
+    t("setup.stepFolders"),
+    t("apps.setup.stepConnect"),
+    t("apps.setup.stepDesktop"),
+  ];
   const anyEnabled = enabled ? Object.values(enabled).some(Boolean) : false;
   const folderOk = !folder.trim() || isAbsolutePath(folder);
 
@@ -102,7 +118,18 @@ export default function Setup({ onDone }: { onDone: () => void }) {
             <p className="sub">{t("setup.notDone")}</p>
             <div className="setup-cmd">
               <pre className="preview-pre tight">npx mordomo setup</pre>
-              <Button size="sm" variant="ghost" icon={<Copy aria-hidden />} aria-label={t("brain.copyPath")} title={t("brain.copyPath")} onClick={() => void copyText("npx mordomo setup").then((ok) => toast(ok ? t("brain.copied") : t("skills.copyFailed"), ok ? "ok" : "danger"))} />
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<Copy aria-hidden />}
+                aria-label={t("brain.copyPath")}
+                title={t("brain.copyPath")}
+                onClick={() =>
+                  void copyText("npx mordomo setup").then((ok) =>
+                    toast(ok ? t("brain.copied") : t("skills.copyFailed"), ok ? "ok" : "danger"),
+                  )
+                }
+              />
             </div>
             <p className="sub">{t("setup.orUi")}</p>
           </div>
@@ -110,7 +137,11 @@ export default function Setup({ onDone }: { onDone: () => void }) {
 
         <ol className="stepper" aria-label={t("setup.progress")}>
           {steps.map((label, i) => (
-            <li key={label} className={i === step ? "current" : i < step ? "done" : ""} aria-current={i === step ? "step" : undefined}>
+            <li
+              key={label}
+              className={i === step ? "current" : i < step ? "done" : ""}
+              aria-current={i === step ? "step" : undefined}
+            >
               <span className="step-n">{i < step ? <Check aria-hidden /> : i + 1}</span>
               <span>{label}</span>
             </li>
@@ -123,7 +154,11 @@ export default function Setup({ onDone }: { onDone: () => void }) {
           </div>
         ) : providers.error && !providers.data ? (
           <div className="card">
-            <ErrorBox message={errorMessage(providers.error)} offline={isOffline(providers.error)} onRetry={() => void providers.refetch()} />
+            <ErrorBox
+              message={errorMessage(providers.error)}
+              offline={isOffline(providers.error)}
+              onRetry={() => void providers.refetch()}
+            />
           </div>
         ) : !enabled ? null : (
           <div className="card">
@@ -133,16 +168,32 @@ export default function Setup({ onDone }: { onDone: () => void }) {
                   <legend className="label">{t("settings.providers")}</legend>
                   {(providers.data ?? []).map((prov) => (
                     <label key={prov.id} className="check">
-                      <input type="checkbox" checked={enabled[prov.id]} disabled={!prov.health.installed} onChange={(e) => setEnabled({ ...enabled, [prov.id]: e.target.checked })} />
+                      <input
+                        type="checkbox"
+                        checked={enabled[prov.id]}
+                        disabled={!prov.health.installed}
+                        onChange={(e) => setEnabled({ ...enabled, [prov.id]: e.target.checked })}
+                      />
                       <strong>{prov.displayName ?? prov.id}</strong>
-                      <span className={`dot ${prov.health.installed ? (prov.health.ok ? "ok" : "warn") : "danger"}`} />
-                      <span className="meta">{prov.health.installed ? (prov.health.version ?? t("setup.installed")) : prov.health.detail}</span>
+                      <span
+                        className={`dot ${prov.health.installed ? (prov.health.ok ? "ok" : "warn") : "danger"}`}
+                      />
+                      <span className="meta">
+                        {prov.health.installed
+                          ? (prov.health.version ?? t("setup.installed"))
+                          : prov.health.detail}
+                      </span>
                     </label>
                   ))}
                   {!anyEnabled && <p className="hint warn">{t("setup.noProvider")}</p>}
                 </fieldset>
                 <Field label={t("dash.default")} htmlFor="su-default">
-                  <select id="su-default" className="input" value={defaultProvider} onChange={(e) => setDefaultProvider(e.target.value as ProviderId)}>
+                  <select
+                    id="su-default"
+                    className="input"
+                    value={defaultProvider}
+                    onChange={(e) => setDefaultProvider(e.target.value as ProviderId)}
+                  >
                     {(providers.data ?? [])
                       .filter((p) => enabled[p.id])
                       .map((p) => (
@@ -157,16 +208,31 @@ export default function Setup({ onDone }: { onDone: () => void }) {
             {step === 1 && (
               <div className="grid grid-2">
                 <Field label={t("settings.name")} htmlFor="su-name">
-                  <input id="su-name" className="input" value={name} onChange={(e) => setName(e.target.value)} />
+                  <input
+                    id="su-name"
+                    className="input"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
                 </Field>
                 <Field label={t("settings.language")} htmlFor="su-lang">
-                  <select id="su-lang" className="input" value={lang} onChange={(e) => setLang(e.target.value as Lang)}>
+                  <select
+                    id="su-lang"
+                    className="input"
+                    value={lang}
+                    onChange={(e) => setLang(e.target.value as Lang)}
+                  >
                     <option value="en">English</option>
                     <option value="pt-BR">Português (Brasil)</option>
                   </select>
                 </Field>
                 <Field label={t("settings.theme")} htmlFor="su-theme">
-                  <select id="su-theme" className="input" value={theme} onChange={(e) => setTheme(e.target.value as "dark" | "light")}>
+                  <select
+                    id="su-theme"
+                    className="input"
+                    value={theme}
+                    onChange={(e) => setTheme(e.target.value as "dark" | "light")}
+                  >
                     <option value="dark">{t("settings.dark")}</option>
                     <option value="light">{t("settings.light")}</option>
                   </select>
@@ -174,7 +240,12 @@ export default function Setup({ onDone }: { onDone: () => void }) {
               </div>
             )}
             {step === 2 && (
-              <Field label={t("settings.folders")} htmlFor="su-folder" hint={t("setup.folderHint")} error={folderError ?? (folderOk ? undefined : t("settings.folderAbsolute"))}>
+              <Field
+                label={t("settings.folders")}
+                htmlFor="su-folder"
+                hint={t("setup.folderHint")}
+                error={folderError ?? (folderOk ? undefined : t("settings.folderAbsolute"))}
+              >
                 <input
                   id="su-folder"
                   className="input mono"
@@ -214,11 +285,20 @@ export default function Setup({ onDone }: { onDone: () => void }) {
                 </Button>
               )}
               {step < LAST_STEP ? (
-                <Button variant="primary" onClick={() => setStep((s) => s + 1)} disabled={step === 0 && !anyEnabled}>
+                <Button
+                  variant="primary"
+                  onClick={() => setStep((s) => s + 1)}
+                  disabled={step === 0 && !anyEnabled}
+                >
                   {t("common.next")}
                 </Button>
               ) : (
-                <Button variant="primary" onClick={() => finish.mutate()} disabled={!anyEnabled || !folderOk} loading={finish.isPending}>
+                <Button
+                  variant="primary"
+                  onClick={() => finish.mutate()}
+                  disabled={!anyEnabled || !folderOk}
+                  loading={finish.isPending}
+                >
                   {phase === "indexing" ? t("setup.indexing") : t("setup.finish")}
                 </Button>
               )}
@@ -259,12 +339,20 @@ function ConnectStep() {
 
 function ConnectorRow({ connector }: { connector: Connector }) {
   const t = useT();
-  const setup = useApiQuery<{ id: string; steps: string[] }>(["connector-setup", connector.id], `/api/connectors/${encodeURIComponent(connector.id)}/setup`, { staleTime: 60_000 });
+  const setup = useApiQuery<{ id: string; steps: string[] }>(
+    ["connector-setup", connector.id],
+    `/api/connectors/${encodeURIComponent(connector.id)}/setup`,
+    { staleTime: 60_000 },
+  );
   const configured = connector.status === "configured";
   return (
     <li>
       <div className="apps-conn-row">
-        {/mail|email/i.test(connector.kind) || /mail|email/i.test(connector.id) ? <Mail aria-hidden /> : <CalendarDays aria-hidden />}
+        {/mail|email/i.test(connector.kind) || /mail|email/i.test(connector.id) ? (
+          <Mail aria-hidden />
+        ) : (
+          <CalendarDays aria-hidden />
+        )}
         <span className="name truncate">{connector.name}</span>
         <Badge kind="state" tone={configured ? "ok" : "dim"}>
           {t(configured ? "apps.setup.status.configured" : "apps.setup.status.not_configured")}
@@ -302,7 +390,13 @@ function DesktopStep({
       <p className="hint">{t("apps.setup.desktopHint")}</p>
       <div className="apps-presets">
         {PRESETS.map((p) => (
-          <button key={p.id} type="button" className="apps-preset" aria-pressed={p.id === preset} onClick={() => onPreset(p.id)}>
+          <button
+            key={p.id}
+            type="button"
+            className="apps-preset"
+            aria-pressed={p.id === preset}
+            onClick={() => onPreset(p.id)}
+          >
             <span className="swatch" aria-hidden>
               {p.swatch.map((c, i) => (
                 <span key={i} style={{ background: c }} />
@@ -320,7 +414,13 @@ function DesktopStep({
         {WIDGET_ORDER.map((id) => {
           const on = widgets.has(id);
           return (
-            <button key={id} type="button" className="apps-widget-toggle" aria-pressed={on} onClick={() => onToggleWidget(id)}>
+            <button
+              key={id}
+              type="button"
+              className="apps-widget-toggle"
+              aria-pressed={on}
+              onClick={() => onToggleWidget(id)}
+            >
               {on ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
               <span className="truncate">{t(WIDGET_REGISTRY[id].titleKey)}</span>
             </button>

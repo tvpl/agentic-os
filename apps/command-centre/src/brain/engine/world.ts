@@ -8,15 +8,16 @@
  * makes every rule here unit testable and keeps the render loop free of
  * component re-renders.
  */
-import type { Simulation, SimulationNodeDatum } from "d3-force";
+import type { SimulationNodeDatum } from "d3-force";
+import type { ForceEngine } from "./force";
 import type { Connector, GraphData, GraphNode, RoutineStatus, Skill } from "../../api";
 
 export type LayoutKind = "arcs" | "force" | "circle" | "hex" | "rings";
 export type ViewKind = "areas" | "folders";
 export type OrbKind = "skill" | "routine" | "app";
 /** Edge kinds produced by `/api/memory/graph`. Unknown kinds are kept under "other". */
-export type EdgeKind = "markdown-link" | "same-dir" | "same-area" | "other";
-export const EDGE_KINDS: readonly EdgeKind[] = ["markdown-link", "same-dir", "same-area", "other"];
+export type EdgeKind = "markdown-link" | "related" | "same-dir" | "same-area" | "other";
+export const EDGE_KINDS: readonly EdgeKind[] = ["markdown-link", "related", "same-dir", "same-area", "other"];
 export type ModifiedRange = "24h" | "7d" | "30d" | "all";
 export type SizeRange = "any" | "small" | "medium" | "large";
 
@@ -176,8 +177,26 @@ export const DEFAULT_SETTINGS: BrainSettings = {
 
 export const LAYOUTS: readonly LayoutKind[] = ["arcs", "force", "circle", "hex", "rings"];
 
-export const GROUP_COLORS = ["#c084fc", "#f472b6", "#22d3ee", "#fde047", "#4ade80", "#fb923c", "#a5b4fc", "#f87171", "#5eead4", "#fbbf24"];
-export const RING = { skills: 92, hubs: 178, filesInner: 150, routines: 318, apps: 372, labelPad: 14 } as const;
+export const GROUP_COLORS = [
+  "#c084fc",
+  "#f472b6",
+  "#22d3ee",
+  "#fde047",
+  "#4ade80",
+  "#fb923c",
+  "#a5b4fc",
+  "#f87171",
+  "#5eead4",
+  "#fbbf24",
+];
+export const RING = {
+  skills: 92,
+  hubs: 178,
+  filesInner: 150,
+  routines: 318,
+  apps: 372,
+  labelPad: 14,
+} as const;
 /** Angular speed of each orb ring relative to the spin parameter. */
 export const RING_SPEED = { skill: -0.35, routine: 0.5, app: 0.22 } as const;
 export const SKILL_COLOR = "#fb923c";
@@ -231,7 +250,8 @@ export interface World {
   showNames: boolean;
   hoverKey: string | null;
   colorOf: Map<string, string>;
-  sim: Simulation<FileNode, undefined> | null;
+  /** Force layout driver (worker-backed when available); null outside the force layout. */
+  sim: ForceEngine | null;
   linkSpring: number;
   /** 0..1 fade of the ring guides after a layout switch. */
   ringFade: number;
@@ -282,7 +302,7 @@ export function createWorld(settings: BrainSettings = DEFAULT_SETTINGS): World {
 /** Deterministic PRNG (Park–Miller) so layouts are reproducible in tests. */
 export function seededRandom(seed: number): () => number {
   let s = seed;
-  return () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  return () => (s = (s * 16807) % 2147483647) / 2147483647;
 }
 
 /** The group a graph node belongs to in the given view: its area, or its first folder segment. */
@@ -297,7 +317,9 @@ export function clampZoom(k: number): number {
 }
 
 export function normalizeEdgeKind(kind: string): EdgeKind {
-  return kind === "markdown-link" || kind === "same-dir" || kind === "same-area" ? kind : "other";
+  return kind === "markdown-link" || kind === "related" || kind === "same-dir" || kind === "same-area"
+    ? kind
+    : "other";
 }
 
 const DAY_MS = 86_400_000;
@@ -336,7 +358,9 @@ export function buildWorld(w: World, src: WorldSources): void {
   const now = src.now ?? Date.now();
   const groups = new Map<string, number>();
   for (const n of graph.nodes) groups.set(groupOf(n), (groups.get(groupOf(n)) ?? 0) + 1);
-  const groupKeys = [...groups.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k]) => k);
+  const groupKeys = [...groups.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([k]) => k);
   w.colorOf = new Map(groupKeys.map((k, i) => [k, GROUP_COLORS[i % GROUP_COLORS.length]!]));
 
   const prevHubs = new Map(w.hubs.map((h) => [h.key, h]));
@@ -387,53 +411,52 @@ export function buildWorld(w: World, src: WorldSources): void {
   });
   const indexOf = new Map(w.files.map((n, i) => [n.id, i]));
   w.edges = graph.edges
-    .map((e): WorldEdge => ({ a: indexOf.get(e.source) ?? -1, b: indexOf.get(e.target) ?? -1, kind: normalizeEdgeKind(e.kind), why: e.why }))
+    .map((e): WorldEdge => ({
+      a: indexOf.get(e.source) ?? -1,
+      b: indexOf.get(e.target) ?? -1,
+      kind: normalizeEdgeKind(e.kind),
+      why: e.why,
+    }))
     .filter((e) => e.a >= 0 && e.b >= 0 && e.a !== e.b);
   w.selectedEdges = new Set();
   w.focusSet = null;
   refreshGraphDerived(w, now);
 
   w.orbs = [
-    ...skills.map(
-      (s, i): OrbNode => ({
-        kind: "skill",
-        id: s.slug,
-        label: `/${s.slug}`,
-        sub: labels.skills,
-        baseAngle: (i / Math.max(1, skills.length)) * TWO_PI - Math.PI / 2,
-        radius: RING.skills,
-        x: 0,
-        y: 0,
-        active: s.enabled,
-      }),
-    ),
-    ...routines.map(
-      (r, i): OrbNode => ({
-        kind: "routine",
-        id: r.id,
-        label: r.name,
-        sub: labels.routines,
-        baseAngle: (i / Math.max(1, routines.length)) * TWO_PI + 0.35,
-        radius: RING.routines,
-        x: 0,
-        y: 0,
-        active: r.enabled,
-      }),
-    ),
-    ...connectors.map(
-      (c, i): OrbNode => ({
-        kind: "app",
-        id: c.id,
-        label: c.name,
-        sub: labels.apps,
-        baseAngle: (i / Math.max(1, connectors.length)) * TWO_PI + 0.12,
-        radius: RING.apps,
-        x: 0,
-        y: 0,
-        active: c.status === "healthy" || c.status === "configured",
-        official: c.official,
-      }),
-    ),
+    ...skills.map((s, i): OrbNode => ({
+      kind: "skill",
+      id: s.slug,
+      label: `/${s.slug}`,
+      sub: labels.skills,
+      baseAngle: (i / Math.max(1, skills.length)) * TWO_PI - Math.PI / 2,
+      radius: RING.skills,
+      x: 0,
+      y: 0,
+      active: s.enabled,
+    })),
+    ...routines.map((r, i): OrbNode => ({
+      kind: "routine",
+      id: r.id,
+      label: r.name,
+      sub: labels.routines,
+      baseAngle: (i / Math.max(1, routines.length)) * TWO_PI + 0.35,
+      radius: RING.routines,
+      x: 0,
+      y: 0,
+      active: r.enabled,
+    })),
+    ...connectors.map((c, i): OrbNode => ({
+      kind: "app",
+      id: c.id,
+      label: c.name,
+      sub: labels.apps,
+      baseAngle: (i / Math.max(1, connectors.length)) * TWO_PI + 0.12,
+      radius: RING.apps,
+      x: 0,
+      y: 0,
+      active: c.status === "healthy" || c.status === "configured",
+      official: c.official,
+    })),
   ];
 }
 
@@ -470,7 +493,12 @@ export function setMatched(w: World, query: string, now: number = Date.now()): v
   applyFilters(w, now);
 }
 
-const RANGE_MS: Record<ModifiedRange, number> = { "24h": DAY_MS, "7d": 7 * DAY_MS, "30d": 30 * DAY_MS, all: Infinity };
+const RANGE_MS: Record<ModifiedRange, number> = {
+  "24h": DAY_MS,
+  "7d": 7 * DAY_MS,
+  "30d": 30 * DAY_MS,
+  all: Infinity,
+};
 
 export function sizeInRange(size: number, range: SizeRange): boolean {
   if (range === "any") return true;
@@ -482,7 +510,13 @@ export function sizeInRange(size: number, range: SizeRange): boolean {
 /** True when any search, chip or range filter is active. */
 export function filtersActive(w: Pick<World, "query" | "filters">): boolean {
   const f = w.filters;
-  return w.query.trim() !== "" || f.exts.length > 0 || f.tags.length > 0 || f.modified !== "all" || f.size !== "any";
+  return (
+    w.query.trim() !== "" ||
+    f.exts.length > 0 ||
+    f.tags.length > 0 ||
+    f.modified !== "all" ||
+    f.size !== "any"
+  );
 }
 
 /**
@@ -514,7 +548,9 @@ export function applyFilters(w: World, now: number = Date.now()): void {
 
 /** Obsidian-style groups: the first query whose substring matches the path tints the node. */
 export function applyGroups(w: Pick<World, "files" | "groups">): void {
-  const groups = w.groups.filter((g) => g.query.trim() !== "").map((g) => ({ q: g.query.trim().toLowerCase(), color: g.color }));
+  const groups = w.groups
+    .filter((g) => g.query.trim() !== "")
+    .map((g) => ({ q: g.query.trim().toLowerCase(), color: g.color }));
   for (const n of w.files) {
     n.tint = null;
     if (groups.length === 0) continue;
@@ -544,7 +580,10 @@ export function setSelected(w: World, id: number | null): void {
 }
 
 /** Extension and tag facets of the loaded graph (top N by count), for the filter chips. */
-export function facetsOf(files: ReadonlyArray<Pick<GraphNode, "ext" | "tags">>, top = 8): { exts: Array<[string, number]>; tags: Array<[string, number]> } {
+export function facetsOf(
+  files: ReadonlyArray<Pick<GraphNode, "ext" | "tags">>,
+  top = 8,
+): { exts: Array<[string, number]>; tags: Array<[string, number]> } {
   const exts = new Map<string, number>();
   const tags = new Map<string, number>();
   for (const n of files) {
@@ -552,6 +591,7 @@ export function facetsOf(files: ReadonlyArray<Pick<GraphNode, "ext" | "tags">>, 
     exts.set(ext, (exts.get(ext) ?? 0) + 1);
     for (const t of n.tags) tags.set(t, (tags.get(t) ?? 0) + 1);
   }
-  const sort = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, top);
+  const sort = (m: Map<string, number>) =>
+    [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, top);
   return { exts: sort(exts), tags: sort(tags) };
 }

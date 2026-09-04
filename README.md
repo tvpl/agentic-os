@@ -46,17 +46,17 @@ PATH (or `alias mordomo="npx --prefix /path/to/mordomo-os mordomo"`).
 
 ## Commands
 
-| Command | What it does |
-|---|---|
-| `mordomo setup` | Guided configuration: detects providers (with `--help` capability probing), auth (never printing tokens), folders, exclusions, identity, optional autostart (approval-gated), read-only smoke tests, final diagnostic. Idempotent. |
-| `mordomo doctor` | Full diagnostic: providers, auth, DB, index, routers, routines health, security posture. |
-| `mordomo start` / `stop` / `status` | Manage the local service + Command Centre. |
-| `mordomo index` | Re-index the workspace and regenerate memory routers. |
-| `mordomo sync [dir] --apply` | Compile canonical skills/routers into `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.cursor/`, `.agents/` (backup + diff + per-file conflict approval). |
-| `mordomo run <skill>` | Run a skill headlessly from the terminal. |
-| `mordomo backup` / `restore <name>` | Backup/restore settings, DB, skills, memory, routines, connectors. |
-| `mordomo service install` | Optional startup service (systemd --user / launchd / Task Scheduler) — always asks first. |
-| `mordomo uninstall` | Stops everything; **data is preserved by default** (`--purge` to remove state). |
+| Command                             | What it does                                                                                                                                                                                                                       |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mordomo setup`                     | Guided configuration: detects providers (with `--help` capability probing), auth (never printing tokens), folders, exclusions, identity, optional autostart (approval-gated), read-only smoke tests, final diagnostic. Idempotent. |
+| `mordomo doctor`                    | Full diagnostic: providers, auth, DB, index, routers, routines health, security posture.                                                                                                                                           |
+| `mordomo start` / `stop` / `status` | Manage the local service + Command Centre.                                                                                                                                                                                         |
+| `mordomo index`                     | Re-index the workspace and regenerate memory routers.                                                                                                                                                                              |
+| `mordomo sync [dir] --apply`        | Compile canonical skills/routers into `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.cursor/`, `.agents/` (backup + diff + per-file conflict approval).                                                                                   |
+| `mordomo run <skill>`               | Run a skill headlessly from the terminal.                                                                                                                                                                                          |
+| `mordomo backup` / `restore <name>` | Backup/restore settings, DB, skills, memory, routines, connectors.                                                                                                                                                                 |
+| `mordomo service install`           | Optional startup service (systemd --user / launchd / Task Scheduler) — always asks first.                                                                                                                                          |
+| `mordomo uninstall`                 | Stops everything; **data is preserved by default** (`--purge` to remove state).                                                                                                                                                    |
 
 ## What's inside
 

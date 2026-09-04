@@ -30,7 +30,7 @@ import { budgetState } from "./budget";
 import { useToast } from "../components/ui";
 import { Button, Popover } from "../components/primitives";
 import { useConfirm } from "../hooks/useConfirm";
-import { useNotifications } from "../hooks/useNotifications";
+import { playCue, useNotifications } from "../hooks/useNotifications";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import { useOsEvent } from "../hooks/useEventStream";
 import { LAUNCHER_EVENT, TOGGLE_EDIT_EVENT } from "../App";
@@ -607,8 +607,10 @@ export function useCoreState(activeRuns: number): CoreState {
     else if (ev.type === "assistant") hold("responding", RESPOND_HOLD_MS);
     else if (ev.type === "error") hold("alert", ALERT_HOLD_MS);
   });
+  useOsEvent("run.started", () => playCue("ack"));
   useOsEvent("run.finished", (e) => {
     const status = (e.payload as { status?: string } | undefined)?.status;
+    playCue(status === "done" ? "done" : status === "cancelled" ? "done" : "alert");
     hold(
       status === "done" ? "done" : status === "cancelled" ? "done" : "alert",
       status === "done" ? DONE_HOLD_MS : ALERT_HOLD_MS,

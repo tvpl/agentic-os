@@ -39,7 +39,15 @@ export function redactSecrets(input: string): string {
   // Key/value pairs: keep the key name (and its quoting) for debuggability.
   out = out.replace(
     CREDENTIAL_PAIR,
-    (m, key: string, sep: string, dq: string | undefined, sq: string | undefined, open: string | undefined, bare: string | undefined) => {
+    (
+      m,
+      key: string,
+      sep: string,
+      dq: string | undefined,
+      sq: string | undefined,
+      open: string | undefined,
+      bare: string | undefined,
+    ) => {
       const value = dq ?? sq ?? bare ?? "";
       if (value.startsWith("[REDACTED")) return m; // already handled above
       const label = "[REDACTED:credential-pair]";

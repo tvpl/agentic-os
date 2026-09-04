@@ -1,15 +1,72 @@
 /* Gallery chrome only; every component keeps its production styles from theme.css. */
-.gallery { max-width: 1100px; margin: 0 auto; padding: var(--s-6) var(--s-5) var(--s-8); background: var(--bg); color: var(--text); }
-.gallery-head { margin-bottom: var(--s-6); }
-.gallery-head h1 { margin: 0 0 var(--s-1); font-size: var(--fs-7); }
-.gallery-head p { margin: 0; color: var(--text-dim); }
-.story { padding: var(--s-5); margin-bottom: var(--s-5); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raise); }
-.story-title { margin: 0 0 var(--s-4); font-size: var(--fs-5); }
-.story-body { display: grid; gap: var(--s-3); }
-.story-row { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: var(--s-3); align-items: center; }
-.story-label { font-family: var(--font-mono); font-size: var(--fs-1); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); }
-.story-items { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
-.story-widgets { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--s-4); }
-.story-widget { position: relative; height: 300px; }
-.story-now { position: relative; height: 320px; }
-.story-now .now-panel { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.gallery {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--s-6) var(--s-5) var(--s-8);
+  background: var(--bg);
+  color: var(--text);
+}
+.gallery-head {
+  margin-bottom: var(--s-6);
+}
+.gallery-head h1 {
+  margin: 0 0 var(--s-1);
+  font-size: var(--fs-7);
+}
+.gallery-head p {
+  margin: 0;
+  color: var(--text-dim);
+}
+.story {
+  padding: var(--s-5);
+  margin-bottom: var(--s-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raise);
+}
+.story-title {
+  margin: 0 0 var(--s-4);
+  font-size: var(--fs-5);
+}
+.story-body {
+  display: grid;
+  gap: var(--s-3);
+}
+.story-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: center;
+}
+.story-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-1);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.story-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  align-items: center;
+}
+.story-widgets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--s-4);
+}
+.story-widget {
+  position: relative;
+  height: 300px;
+}
+.story-now {
+  position: relative;
+  height: 320px;
+}
+.story-now .now-panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}

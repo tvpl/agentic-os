@@ -105,6 +105,23 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
     },
   );
 
+  /** Agent notes (Onda 4): a NOTES.md beside SKILL.md, read on every run, appended from run pages. */
+  app.get("/api/skills/:slug/notes", async (req) => {
+    const { slug } = SlugParams.parse(req.params);
+    const out = ctx.skills.readNotes(slug);
+    if (!out) throw httpError(404, "Skill not found");
+    return out;
+  });
+
+  app.post("/api/skills/:slug/notes", async (req) => {
+    const { slug } = SlugParams.parse(req.params);
+    const body = z
+      .object({ text: z.string().trim().min(1).max(4000), runId: z.string().max(80).optional() })
+      .parse(req.body);
+    if (!ctx.skills.load(slug)) throw httpError(404, "Skill not found");
+    return ctx.skills.appendNote(slug, body.text, { runId: body.runId, source: "command centre" });
+  });
+
   app.post("/api/skills/:slug/toggle", async (req) => {
     const { slug } = SlugParams.parse(req.params);
     const skill = ctx.skills.load(slug);

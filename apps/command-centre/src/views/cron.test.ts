@@ -12,7 +12,8 @@ describe("cron helper", () => {
   });
 
   it("rejects malformed expressions", () => {
-    for (const bad of ["", "* * * *", "60 * * * *", "* 24 * * *", "* * 0 * *", "a b c d e", "*/0 * * * *"]) expect(isValidCron(bad)).toBe(false);
+    for (const bad of ["", "* * * *", "60 * * * *", "* 24 * * *", "* * 0 * *", "a b c d e", "*/0 * * * *"])
+      expect(isValidCron(bad)).toBe(false);
     expect(isValidCron("30 7 * * 1-5")).toBe(true);
   });
 

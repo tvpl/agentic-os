@@ -27,11 +27,23 @@ beforeAll(async () => {
   const dir = path.join(ctx.paths.artifacts, "pixel-studio");
   fs.mkdirSync(dir, { recursive: true });
   // 1×1 transparent PNG
-  fs.writeFileSync(path.join(dir, "hero.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64"));
+  fs.writeFileSync(
+    path.join(dir, "hero.png"),
+    Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+      "base64",
+    ),
+  );
   const reports = path.join(ctx.paths.artifacts, "run-abc");
   fs.mkdirSync(reports, { recursive: true });
-  fs.writeFileSync(path.join(reports, "report.md"), "---\nfront: matter\n---\n\n# Thro brand candidates\n\nbody\n");
-  fs.writeFileSync(path.join(reports, "page.html"), "<!doctype html><html><head><title>OS restyle — 10 brand candidates</title></head><body></body></html>");
+  fs.writeFileSync(
+    path.join(reports, "report.md"),
+    "---\nfront: matter\n---\n\n# Thro brand candidates\n\nbody\n",
+  );
+  fs.writeFileSync(
+    path.join(reports, "page.html"),
+    "<!doctype html><html><head><title>OS restyle — 10 brand candidates</title></head><body></body></html>",
+  );
   fs.writeFileSync(path.join(reports, "notes.txt"), "plain");
   fs.writeFileSync(path.join(ctx.paths.artifacts, ".hidden.png"), "x");
 });
@@ -56,8 +68,12 @@ describe("artifact helpers", () => {
   });
 
   it("reads markdown headings and html titles", () => {
-    expect(artifactTitle(path.join(ctx.paths.artifacts, "run-abc", "report.md"), "markdown")).toBe("Thro brand candidates");
-    expect(artifactTitle(path.join(ctx.paths.artifacts, "run-abc", "page.html"), "html")).toBe("OS restyle — 10 brand candidates");
+    expect(artifactTitle(path.join(ctx.paths.artifacts, "run-abc", "report.md"), "markdown")).toBe(
+      "Thro brand candidates",
+    );
+    expect(artifactTitle(path.join(ctx.paths.artifacts, "run-abc", "page.html"), "html")).toBe(
+      "OS restyle — 10 brand candidates",
+    );
     expect(artifactTitle(path.join(ctx.paths.artifacts, "run-abc", "notes.txt"), "other")).toBe("notes.txt");
     expect(artifactTitle("/nowhere/x.md", "markdown")).toBe("x.md");
   });
@@ -82,9 +98,17 @@ describe("GET /api/artifacts/list + /raw", () => {
     expect(q.json().items.map((i: { file: string }) => i.file)).toEqual(["run-abc/report.md"]);
     const kind = await app.inject({ method: "GET", url: "/api/artifacts/list?kind=image", headers: auth() });
     expect(kind.json().total).toBe(1);
-    const folder = await app.inject({ method: "GET", url: "/api/artifacts/list?folder=run-abc", headers: auth() });
+    const folder = await app.inject({
+      method: "GET",
+      url: "/api/artifacts/list?folder=run-abc",
+      headers: auth(),
+    });
     expect(folder.json().total).toBe(3);
-    const future = await app.inject({ method: "GET", url: `/api/artifacts/list?since=${Date.now() + 60_000}`, headers: auth() });
+    const future = await app.inject({
+      method: "GET",
+      url: `/api/artifacts/list?since=${Date.now() + 60_000}`,
+      headers: auth(),
+    });
     expect(future.json().total).toBe(0);
     const bad = await app.inject({ method: "GET", url: "/api/artifacts/list?kind=nope", headers: auth() });
     expect(bad.statusCode).toBe(400);
@@ -92,17 +116,37 @@ describe("GET /api/artifacts/list + /raw", () => {
 
   it("serves raw images inside artifacts/ only, with the right content type", async () => {
     const p = path.join(ctx.paths.artifacts, "pixel-studio", "hero.png");
-    const ok = await app.inject({ method: "GET", url: `/api/artifacts/raw?p=${encodeURIComponent(p)}`, headers: auth() });
+    const ok = await app.inject({
+      method: "GET",
+      url: `/api/artifacts/raw?p=${encodeURIComponent(p)}`,
+      headers: auth(),
+    });
     expect(ok.statusCode).toBe(200);
     expect(ok.headers["content-type"]).toBe("image/png");
     expect(ok.rawPayload.length).toBeGreaterThan(20);
-    const outside = await app.inject({ method: "GET", url: `/api/artifacts/raw?p=${encodeURIComponent("/etc/passwd")}`, headers: auth() });
+    const outside = await app.inject({
+      method: "GET",
+      url: `/api/artifacts/raw?p=${encodeURIComponent("/etc/passwd")}`,
+      headers: auth(),
+    });
     expect(outside.statusCode).toBe(403);
-    const traversal = await app.inject({ method: "GET", url: `/api/artifacts/raw?p=${encodeURIComponent(path.join(ctx.paths.artifacts, "..", "config", "settings.json"))}`, headers: auth() });
+    const traversal = await app.inject({
+      method: "GET",
+      url: `/api/artifacts/raw?p=${encodeURIComponent(path.join(ctx.paths.artifacts, "..", "config", "settings.json"))}`,
+      headers: auth(),
+    });
     expect(traversal.statusCode).toBe(403);
-    const text = await app.inject({ method: "GET", url: `/api/artifacts/raw?p=${encodeURIComponent(path.join(ctx.paths.artifacts, "run-abc", "notes.txt"))}`, headers: auth() });
+    const text = await app.inject({
+      method: "GET",
+      url: `/api/artifacts/raw?p=${encodeURIComponent(path.join(ctx.paths.artifacts, "run-abc", "notes.txt"))}`,
+      headers: auth(),
+    });
     expect(text.statusCode).toBe(415);
-    const missing = await app.inject({ method: "GET", url: `/api/artifacts/raw?p=${encodeURIComponent(path.join(ctx.paths.artifacts, "nope.png"))}`, headers: auth() });
+    const missing = await app.inject({
+      method: "GET",
+      url: `/api/artifacts/raw?p=${encodeURIComponent(path.join(ctx.paths.artifacts, "nope.png"))}`,
+      headers: auth(),
+    });
     expect(missing.statusCode).toBe(404);
   });
 });

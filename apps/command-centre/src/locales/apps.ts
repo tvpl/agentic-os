@@ -76,6 +76,11 @@ export const en = {
   "skills.market.title": "Marketplace",
   "skills.market.search": "Search the registries…",
   "skills.market.refresh": "Refresh",
+  "skills.notes.tab": "Notes",
+  "skills.notes.empty":
+    "No notes yet. Save a lesson from a run page, or add one here; the agent reads NOTES.md on every run.",
+  "skills.notes.placeholder": "A short, actionable note for the next run…",
+  "skills.notes.add": "Add note",
   "skills.market.install": "Install",
   "skills.market.reinstall": "Reinstall",
   "skills.market.installed": "Installed {name}.",
@@ -247,6 +252,11 @@ export const ptBR = {
   "skills.market.title": "Marketplace",
   "skills.market.search": "Buscar nos registros…",
   "skills.market.refresh": "Atualizar",
+  "skills.notes.tab": "Notas",
+  "skills.notes.empty":
+    "Ainda sem notas. Salve uma lição pela página de uma execução ou adicione aqui; o agente lê o NOTES.md em toda execução.",
+  "skills.notes.placeholder": "Uma nota curta e prática para a próxima execução…",
+  "skills.notes.add": "Adicionar nota",
   "skills.market.install": "Instalar",
   "skills.market.reinstall": "Reinstalar",
   "skills.market.installed": "{name} instalada.",

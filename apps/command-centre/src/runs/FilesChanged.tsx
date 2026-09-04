@@ -31,7 +31,13 @@ export default function FilesChanged({ runId, files, cwd }: FilesChangedProps) {
       <ul className="plain-list file-list">
         {files.map((file) => (
           <li key={file}>
-            <FileRow runId={runId} file={file} cwd={cwd} open={open === file} onToggle={() => setOpen((cur) => (cur === file ? null : file))} />
+            <FileRow
+              runId={runId}
+              file={file}
+              cwd={cwd}
+              open={open === file}
+              onToggle={() => setOpen((cur) => (cur === file ? null : file))}
+            />
           </li>
         ))}
       </ul>
@@ -39,13 +45,28 @@ export default function FilesChanged({ runId, files, cwd }: FilesChangedProps) {
   );
 }
 
-function FileRow({ runId, file, cwd, open, onToggle }: { runId: string; file: string; cwd: string | null | undefined; open: boolean; onToggle: () => void }) {
+function FileRow({
+  runId,
+  file,
+  cwd,
+  open,
+  onToggle,
+}: {
+  runId: string;
+  file: string;
+  cwd: string | null | undefined;
+  open: boolean;
+  onToggle: () => void;
+}) {
   const t = useT();
   const toast = useToast();
   const id = `diff-${hash(file)}`;
   const diff = useQuery<RunDiff, Error>({
     queryKey: ["run", runId, "diff", file],
-    queryFn: ({ signal }) => api.get<RunDiff>(`/api/runs/${encodeURIComponent(runId)}/diff?file=${encodeURIComponent(file)}`, { signal }),
+    queryFn: ({ signal }) =>
+      api.get<RunDiff>(`/api/runs/${encodeURIComponent(runId)}/diff?file=${encodeURIComponent(file)}`, {
+        signal,
+      }),
     enabled: open,
     staleTime: 30_000,
     retry: (count, err) => !(err instanceof ApiError && err.status < 500) && count < 1,
@@ -54,7 +75,12 @@ function FileRow({ runId, file, cwd, open, onToggle }: { runId: string; file: st
 
   const copy = async () => {
     if (!diff.data) return;
-    const text = diff.data.kind === "git" ? diff.data.diff : diff.data.kind === "snapshot" ? (diff.data.content ?? "") : "";
+    const text =
+      diff.data.kind === "git"
+        ? diff.data.diff
+        : diff.data.kind === "snapshot"
+          ? (diff.data.content ?? "")
+          : "";
     try {
       await navigator.clipboard.writeText(text);
       toast(t("common.copied"), "ok");
@@ -65,13 +91,22 @@ function FileRow({ runId, file, cwd, open, onToggle }: { runId: string; file: st
 
   return (
     <div className={`file-row ${open ? "open" : ""}`}>
-      <button type="button" className="file-row-head" aria-expanded={open} aria-controls={id} onClick={onToggle}>
+      <button
+        type="button"
+        className="file-row-head"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={onToggle}
+      >
         <ChevronRight className="file-chevron" aria-hidden />
         <span className="mono truncate" title={file}>
           {displayPath(file, cwd)}
         </span>
         {view && (
-          <span className="file-stats mono" aria-label={t("runs.files.stats", { added: view.added, removed: view.removed })}>
+          <span
+            className="file-stats mono"
+            aria-label={t("runs.files.stats", { added: view.added, removed: view.removed })}
+          >
             <span className="add">+{view.added}</span>
             <span className="del">−{view.removed}</span>
           </span>
@@ -86,7 +121,13 @@ function FileRow({ runId, file, cwd, open, onToggle }: { runId: string; file: st
           ) : view ? (
             <>
               <div className="file-diff-bar">
-                <Badge kind="meta">{view.source === "git" ? t("runs.files.git") : view.source === "snapshot" ? t("runs.files.snapshot") : t("runs.files.none")}</Badge>
+                <Badge kind="meta">
+                  {view.source === "git"
+                    ? t("runs.files.git")
+                    : view.source === "snapshot"
+                      ? t("runs.files.snapshot")
+                      : t("runs.files.none")}
+                </Badge>
                 {view.truncated && <span className="hint warn">{t("runs.files.truncated")}</span>}
                 <Button size="sm" variant="ghost" icon={<Copy aria-hidden />} onClick={() => void copy()}>
                   {t("common.copy")}
@@ -131,7 +172,9 @@ function DiffBody({ lines }: { lines: readonly DiffLine[] }) {
           ))}
         </tbody>
       </table>
-      {lines.length > shown.length && <p className="hint">{t("runs.files.more", { n: lines.length - shown.length })}</p>}
+      {lines.length > shown.length && (
+        <p className="hint">{t("runs.files.more", { n: lines.length - shown.length })}</p>
+      )}
     </div>
   );
 }

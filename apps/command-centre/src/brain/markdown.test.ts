@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { collectReferences, inlineText, isPathLike, parseInline, parseMarkdown, resolveReference } from "./markdown";
+import {
+  collectReferences,
+  inlineText,
+  isPathLike,
+  parseInline,
+  parseMarkdown,
+  resolveReference,
+} from "./markdown";
 
 const DOC = `# Content router
 
@@ -27,7 +34,16 @@ describe("parseMarkdown", () => {
   const blocks = parseMarkdown(DOC);
 
   it("produces headings, paragraphs, lists, quotes, code and rules — never HTML", () => {
-    expect(blocks.map((b) => b.type)).toEqual(["heading", "paragraph", "heading", "list", "list", "quote", "code", "hr"]);
+    expect(blocks.map((b) => b.type)).toEqual([
+      "heading",
+      "paragraph",
+      "heading",
+      "list",
+      "list",
+      "quote",
+      "code",
+      "hr",
+    ]);
     const h = blocks[0]!;
     expect(h.type === "heading" && h.level).toBe(1);
     const p = blocks[1]!;
@@ -55,9 +71,17 @@ describe("parseMarkdown", () => {
     const bullets = blocks[4]!;
     if (bullets.type !== "list") throw new Error();
     expect(bullets.items.map((i) => i.label)).toEqual(["Skills", "Files", "Reference"]);
-    expect(bullets.items[0]!.children.filter((n) => n.type === "skill").map((n) => n.type === "skill" && n.slug)).toEqual(["clean-up", "summarize"]);
-    expect(bullets.items[1]!.children.filter((n) => n.type === "path").map((n) => n.type === "path" && n.text)).toEqual(["content/CONTENT.md", "./assets/logo.png"]);
-    expect(bullets.items[2]!.children).toContainEqual({ type: "link", text: "Weekly plan", href: "Weekly plan" });
+    expect(
+      bullets.items[0]!.children.filter((n) => n.type === "skill").map((n) => n.type === "skill" && n.slug),
+    ).toEqual(["clean-up", "summarize"]);
+    expect(
+      bullets.items[1]!.children.filter((n) => n.type === "path").map((n) => n.type === "path" && n.text),
+    ).toEqual(["content/CONTENT.md", "./assets/logo.png"]);
+    expect(bullets.items[2]!.children).toContainEqual({
+      type: "link",
+      text: "Weekly plan",
+      href: "Weekly plan",
+    });
   });
 
   it("keeps unbalanced markers literal and tolerates empty input", () => {

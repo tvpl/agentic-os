@@ -18,8 +18,18 @@ let plain: string;
 let hasGit = true;
 
 const auth = () => ({ "x-mordomo-token": token });
-const gitEnv = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null", HOME: process.env.HOME ?? "/tmp" };
-const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd, env: gitEnv, stdio: ["ignore", "pipe", "pipe"] }).toString();
+const gitEnv = {
+  ...process.env,
+  GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_CONFIG_SYSTEM: "/dev/null",
+  HOME: process.env.HOME ?? "/tmp",
+};
+const git = (cwd: string, ...args: string[]) =>
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
+    cwd,
+    env: gitEnv,
+    stdio: ["ignore", "pipe", "pipe"],
+  }).toString();
 
 beforeAll(async () => {
   restorePath = withFakeBinPath();
@@ -86,28 +96,52 @@ describe("GET /api/runs/:id/diff", () => {
     expect(body.diff).toContain("+2");
     expect(body.diff).toContain("+four");
 
-    const abs = await app.inject({ method: "GET", url: `/api/runs/${id}/diff?file=${encodeURIComponent(path.join(repo, "a.txt"))}`, headers: auth() });
+    const abs = await app.inject({
+      method: "GET",
+      url: `/api/runs/${id}/diff?file=${encodeURIComponent(path.join(repo, "a.txt"))}`,
+      headers: auth(),
+    });
     expect(abs.json().kind).toBe("git");
   });
 
   it("returns a snapshot for untracked files and for non-git folders", async () => {
     const id = makeRun(hasGit ? repo : plain);
     if (hasGit) {
-      const untracked = await app.inject({ method: "GET", url: `/api/runs/${id}/diff?file=new.txt`, headers: auth() });
+      const untracked = await app.inject({
+        method: "GET",
+        url: `/api/runs/${id}/diff?file=new.txt`,
+        headers: auth(),
+      });
       expect(untracked.json()).toMatchObject({ kind: "snapshot", untracked: true, content: "brand new\n" });
     }
     const plainRun = makeRun(plain);
-    const res = await app.inject({ method: "GET", url: `/api/runs/${plainRun}/diff?file=notes.md`, headers: auth() });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/runs/${plainRun}/diff?file=notes.md`,
+      headers: auth(),
+    });
     expect(res.json()).toMatchObject({ kind: "snapshot", untracked: false, content: "# notes\nline\n" });
   });
 
   it("refuses paths outside the granted roots and unknown runs", async () => {
     const id = makeRun(plain);
-    const outside = await app.inject({ method: "GET", url: `/api/runs/${id}/diff?file=${encodeURIComponent("/etc/hostname")}`, headers: auth() });
+    const outside = await app.inject({
+      method: "GET",
+      url: `/api/runs/${id}/diff?file=${encodeURIComponent("/etc/hostname")}`,
+      headers: auth(),
+    });
     expect(outside.statusCode).toBe(403);
-    const missing = await app.inject({ method: "GET", url: `/api/runs/${id}/diff?file=nope.md`, headers: auth() });
+    const missing = await app.inject({
+      method: "GET",
+      url: `/api/runs/${id}/diff?file=nope.md`,
+      headers: auth(),
+    });
     expect(missing.json().kind).toBe("unavailable");
-    const unknown = await app.inject({ method: "GET", url: `/api/runs/00000000-0000-4000-8000-000000000000/diff?file=a`, headers: auth() });
+    const unknown = await app.inject({
+      method: "GET",
+      url: `/api/runs/00000000-0000-4000-8000-000000000000/diff?file=a`,
+      headers: auth(),
+    });
     expect(unknown.statusCode).toBe(404);
   });
 
@@ -125,7 +159,11 @@ describe("GET /api/runs pagination and metrics cost", () => {
     expect(page.statusCode).toBe(200);
     expect(page.json()).toHaveLength(1);
     expect(page.headers["x-total-count"]).toBe(String(total));
-    const end = await app.inject({ method: "GET", url: `/api/runs?limit=5&offset=${total}`, headers: auth() });
+    const end = await app.inject({
+      method: "GET",
+      url: `/api/runs?limit=5&offset=${total}`,
+      headers: auth(),
+    });
     expect(end.json()).toHaveLength(0);
   });
 
@@ -135,7 +173,12 @@ describe("GET /api/runs pagination and metrics cost", () => {
     expect(one.json().run).toHaveProperty("usage", null);
     expect(one.json().run).toHaveProperty("filesChanged");
     const metrics = await app.inject({ method: "GET", url: "/api/metrics", headers: auth() });
-    expect(metrics.json().cost).toMatchObject({ todayUsd: 0, weekUsd: 0, tokensToday: 0, burnRatePerHour: 0 });
+    expect(metrics.json().cost).toMatchObject({
+      todayUsd: 0,
+      weekUsd: 0,
+      tokensToday: 0,
+      burnRatePerHour: 0,
+    });
     expect(metrics.json().usageSeries).toHaveLength(24);
   });
 });

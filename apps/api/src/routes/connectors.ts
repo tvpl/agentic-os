@@ -1,6 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { ConnectorDataCache, ConnectorSchema, fetchConnectorData, runAudit, setupChecklist } from "@mordomo/core";
+import {
+  ConnectorDataCache,
+  ConnectorSchema,
+  fetchConnectorData,
+  runAudit,
+  setupChecklist,
+} from "@mordomo/core";
 import type { AppContext } from "../context.js";
 import { httpError } from "./common.js";
 import { IdParams } from "./params.js";
@@ -13,7 +19,11 @@ export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): 
 
   app.get("/api/connectors", async () => ctx.connectors.list());
 
-  app.get("/api/connectors/audit", async () => runAudit(ctx.connectors, undefined, [...new Set(ctx.providers.manifests().flatMap((m) => m.homeConfigFiles))]));
+  app.get("/api/connectors/audit", async () =>
+    runAudit(ctx.connectors, undefined, [
+      ...new Set(ctx.providers.manifests().flatMap((m) => m.homeConfigFiles)),
+    ]),
+  );
 
   /**
    * Read-only connector data (F-BACKEND item 27): today's calendar, recent
@@ -40,7 +50,11 @@ export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): 
     // A successful read is a use: record it so the registry shows freshness.
     if (data.status === "ok" && connector.lastUsedAt !== data.syncedAt) {
       try {
-        ctx.connectors.save({ ...connector, lastUsedAt: data.syncedAt, status: connector.status === "not_configured" ? "configured" : connector.status });
+        ctx.connectors.save({
+          ...connector,
+          lastUsedAt: data.syncedAt,
+          status: connector.status === "not_configured" ? "configured" : connector.status,
+        });
       } catch {
         /* the read succeeded; a bookkeeping failure must not fail the request */
       }
@@ -53,7 +67,10 @@ export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): 
     const { id } = IdParams.parse(req.params);
     const connector = ctx.connectors.get(id);
     if (!connector) throw httpError(404, "Connector not found");
-    return { id, steps: setupChecklist(connector, { allowedCommands: ctx.settings().connectors.allowedCommands }) };
+    return {
+      id,
+      steps: setupChecklist(connector, { allowedCommands: ctx.settings().connectors.allowedCommands }),
+    };
   });
 
   app.put("/api/connectors/:id", async (req) => {
@@ -70,7 +87,10 @@ export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): 
         `Enable WRITE operations for connector "${existing.name}" (${existing.writeOperations.join(", ") || "unspecified"}).`,
         { connectorId: id },
       );
-      return { connector: ctx.connectors.save({ ...updated, writeEnabled: false }), pendingApproval: approval };
+      return {
+        connector: ctx.connectors.save({ ...updated, writeEnabled: false }),
+        pendingApproval: approval,
+      };
     }
     return { connector: ctx.connectors.save(updated), pendingApproval: null };
   });

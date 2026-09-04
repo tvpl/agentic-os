@@ -33,6 +33,12 @@ export const en = {
   "runs.approve.approved": "Approved — the run has started.",
   "runs.approve.denied": "Denied.",
   "runs.approve.queued": "This write run needs your approval — decide it right here.",
+  "runs.note.title": "Note for the skill",
+  "runs.note.hint": "One lesson from this run for the skill's NOTES.md. The agent reads it on every run.",
+  "runs.note.placeholder": "What should the next run know?",
+  "runs.note.save": "Save note",
+  "runs.note.saved": "Note saved to /{slug}",
+  "runs.note.count": "{n} notes",
   "runs.squad.title": "Squad",
   "runs.squad.hint":
     "Fan this run out into sub-agents: one prompt per paragraph, each a run of its own with the same folder and provider.",
@@ -133,6 +139,13 @@ export const ptBR = {
   "runs.approve.approved": "Aprovada — a execução começou.",
   "runs.approve.denied": "Negada.",
   "runs.approve.queued": "Esta execução com escrita precisa da sua aprovação — decida aqui mesmo.",
+  "runs.note.title": "Nota para a skill",
+  "runs.note.hint":
+    "Uma lição desta execução para o NOTES.md da skill. O agente lê o arquivo em toda execução.",
+  "runs.note.placeholder": "O que a próxima execução precisa saber?",
+  "runs.note.save": "Salvar nota",
+  "runs.note.saved": "Nota salva em /{slug}",
+  "runs.note.count": "{n} notas",
   "runs.squad.title": "Esquadrão",
   "runs.squad.hint":
     "Divida esta execução em subagentes: um prompt por parágrafo, cada um vira uma execução própria com a mesma pasta e provedor.",

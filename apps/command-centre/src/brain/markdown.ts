@@ -90,7 +90,12 @@ export function parseMarkdown(src: string): Block[] {
         let text = m.text;
         i++;
         // Lazy continuation lines (indented, non-blank, not a new item).
-        while (i < lines.length && lines[i]!.trim() !== "" && /^\s+/.test(lines[i]!) && !listLine(lines[i]!)) {
+        while (
+          i < lines.length &&
+          lines[i]!.trim() !== "" &&
+          /^\s+/.test(lines[i]!) &&
+          !listLine(lines[i]!)
+        ) {
           text += " " + lines[i]!.trim();
           i++;
         }
@@ -104,7 +109,15 @@ export function parseMarkdown(src: string): Block[] {
     while (i < lines.length) {
       const l = lines[i]!;
       const t = l.trim();
-      if (t === "" || /^#{1,6}\s/.test(t) || /^(`{3,}|~{3,})/.test(t) || t.startsWith(">") || listLine(l) || /^(-{3,}|\*{3,}|_{3,})$/.test(t)) break;
+      if (
+        t === "" ||
+        /^#{1,6}\s/.test(t) ||
+        /^(`{3,}|~{3,})/.test(t) ||
+        t.startsWith(">") ||
+        listLine(l) ||
+        /^(-{3,}|\*{3,}|_{3,})$/.test(t)
+      )
+        break;
       parts.push(t);
       i++;
     }
@@ -178,7 +191,11 @@ export function parseInline(src: string): Inline[] {
       const double = src.startsWith(ch + ch, i);
       const marker = double ? ch + ch : ch;
       const end = src.indexOf(marker, i + marker.length);
-      if (end > i + marker.length && !/\s/.test(src[i + marker.length] ?? " ") && !/\s/.test(src[end - 1] ?? " ")) {
+      if (
+        end > i + marker.length &&
+        !/\s/.test(src[i + marker.length] ?? " ") &&
+        !/\s/.test(src[end - 1] ?? " ")
+      ) {
         flush();
         const inner = parseInline(src.slice(i + marker.length, end));
         out.push(double ? { type: "strong", children: inner } : { type: "em", children: inner });
@@ -278,7 +295,10 @@ export function collectReferences(blocks: Block[]): string[] {
  * exact `rel`, then `rel` suffix match, then bare file name (with or without
  * `.md`). Returns the node id or null.
  */
-export function resolveReference(ref: string, files: ReadonlyArray<{ id: number; rel: string; name: string }>): number | null {
+export function resolveReference(
+  ref: string,
+  files: ReadonlyArray<{ id: number; rel: string; name: string }>,
+): number | null {
   const clean = ref.replace(/^\.\//, "").replace(/#.*$/, "").replace(/\\/g, "/").trim();
   if (!clean) return null;
   const lower = clean.toLowerCase();
@@ -289,7 +309,8 @@ export function resolveReference(ref: string, files: ReadonlyArray<{ id: number;
     if (rel === lower) return f.id;
     if (suffix === null && (rel.endsWith("/" + lower) || rel.endsWith(lower))) suffix = f.id;
     const name = f.name.toLowerCase();
-    if (byName === null && (name === lower || name === lower + ".md" || name.replace(/\.md$/, "") === lower)) byName = f.id;
+    if (byName === null && (name === lower || name === lower + ".md" || name.replace(/\.md$/, "") === lower))
+      byName = f.id;
   }
   return suffix ?? byName;
 }

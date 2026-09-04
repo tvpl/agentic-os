@@ -33,6 +33,7 @@ export const qk = {
   devices: ["devices"] as const,
   runChildren: (id: string) => ["run", id, "children"] as const,
   skillRegistry: ["skills", "registry"] as const,
+  skillNotes: (slug: string) => ["skills", slug, "notes"] as const,
   session: (id: string) => ["sessions", id] as const,
   metrics: ["metrics"] as const,
   artifacts: ["artifacts"] as const,

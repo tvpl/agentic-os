@@ -77,9 +77,16 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
         dir: z.string().optional(),
         q: z.string().optional(),
         maxNodes: z.coerce.number().int().min(10).max(4000).optional(),
+        related: z.coerce.boolean().optional(),
       })
       .parse(req.query);
-    return buildGraph(ctx.db, { area: q.area, dir: q.dir, query: q.q, maxNodes: q.maxNodes });
+    return buildGraph(ctx.db, {
+      area: q.area,
+      dir: q.dir,
+      query: q.q,
+      maxNodes: q.maxNodes,
+      related: q.related,
+    });
   });
 
   app.get("/api/memory/related", async (req) => {

@@ -25,7 +25,12 @@ describe("replay engine", () => {
     expect(m.particles[2]).toMatchObject({ from: "tool:Read", to: "tool:Edit" });
     expect(m.particles[4]).toMatchObject({ from: "assistant", to: "result", flight: 700 });
     expect(m.ok).toBe(true);
-    expect(replaySummary(m).map((s) => `${s.label}×${s.count}`)).toEqual(["Read×2", "Edit×1", "assistant×1", "result×1"]);
+    expect(replaySummary(m).map((s) => `${s.label}×${s.count}`)).toEqual([
+      "Read×2",
+      "Edit×1",
+      "assistant×1",
+      "result×1",
+    ]);
   });
 
   it("reports flights in progress and arrivals", () => {
@@ -72,6 +77,8 @@ describe("layout", () => {
     expect(flights).toHaveLength(1);
     const mid = particlePoint({ particle: flights[0]!.particle, progress: 0.5 }, placed);
     expect(mid).toEqual({ x: 120, y: 100 });
-    expect(particlePoint({ particle: { ...flights[0]!.particle, to: "nope" }, progress: 0.5 }, placed)).toBeNull();
+    expect(
+      particlePoint({ particle: { ...flights[0]!.particle, to: "nope" }, progress: 0.5 }, placed),
+    ).toBeNull();
   });
 });

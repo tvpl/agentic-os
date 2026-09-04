@@ -7,7 +7,12 @@ export function relativeOffset(ts: number, firstTs: number): string {
 
 export function absoluteTime(ts: number, locale = "en-GB"): string {
   const d = new Date(ts);
-  const time = d.toLocaleTimeString(locale, { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const time = d.toLocaleTimeString(locale, {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
   return `${time}.${String(d.getMilliseconds()).padStart(3, "0")}`;
 }
 
@@ -42,7 +47,10 @@ export function eventsToText(events: readonly RunEventView[], locale = "en-GB"):
     .map((e) => {
       const stamp = `${absoluteTime(e.ts, locale)} ${relativeOffset(e.ts, first).padStart(8)}`;
       const body = eventBody(e).split("\n");
-      return [`${stamp}  ${body[0] ?? ""}`, ...body.slice(1).map((l) => `${" ".repeat(stamp.length + 2)}${l}`)].join("\n");
+      return [
+        `${stamp}  ${body[0] ?? ""}`,
+        ...body.slice(1).map((l) => `${" ".repeat(stamp.length + 2)}${l}`),
+      ].join("\n");
     })
     .join("\n");
 }

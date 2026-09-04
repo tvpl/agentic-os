@@ -28,15 +28,35 @@ export interface DragSession {
   target: WidgetBox;
 }
 
-export function clampMove(box: WidgetBox, x: number, y: number, m: Pick<GridDims, "cols" | "rows">): WidgetBox {
+export function clampMove(
+  box: WidgetBox,
+  x: number,
+  y: number,
+  m: Pick<GridDims, "cols" | "rows">,
+): WidgetBox {
   return { ...box, x: Math.max(0, Math.min(m.cols - box.w, x)), y: Math.max(0, Math.min(m.rows - box.h, y)) };
 }
 
-export function clampResize(box: WidgetBox, w: number, h: number, m: Pick<GridDims, "cols" | "rows">): WidgetBox {
-  return { ...box, w: Math.max(MIN_W, Math.min(m.cols - box.x, w)), h: Math.max(MIN_H, Math.min(m.rows - box.y, h)) };
+export function clampResize(
+  box: WidgetBox,
+  w: number,
+  h: number,
+  m: Pick<GridDims, "cols" | "rows">,
+): WidgetBox {
+  return {
+    ...box,
+    w: Math.max(MIN_W, Math.min(m.cols - box.x, w)),
+    h: Math.max(MIN_H, Math.min(m.rows - box.y, h)),
+  };
 }
 
-export function beginDrag(id: string, mode: DragSession["mode"], px: number, py: number, box: WidgetBox): DragSession {
+export function beginDrag(
+  id: string,
+  mode: DragSession["mode"],
+  px: number,
+  py: number,
+  box: WidgetBox,
+): DragSession {
   return { id, mode, px, py, origin: box, target: box };
 }
 
@@ -47,7 +67,12 @@ export function dragTarget(s: DragSession, clientX: number, clientY: number, m: 
   const next =
     s.mode === "move"
       ? clampMove(s.origin, Math.round(s.origin.x + dx / m.cellW), Math.round(s.origin.y + dy / m.cellH), m)
-      : clampResize(s.origin, Math.round(s.origin.w + dx / m.cellW), Math.round(s.origin.h + dy / m.cellH), m);
+      : clampResize(
+          s.origin,
+          Math.round(s.origin.w + dx / m.cellW),
+          Math.round(s.origin.h + dy / m.cellH),
+          m,
+        );
   return sameGeometry(next, s.target) ? s.target : next;
 }
 
@@ -66,7 +91,12 @@ export function sameGeometry(a: WidgetBox, b: WidgetBox): boolean {
  * free row, cascading. Widgets that cannot fit stay where they were.
  * Returns the new layout plus the ids that were displaced.
  */
-export function settleDrag(layout: LayoutMap, id: string, target: WidgetBox, m: Pick<GridDims, "rows">): { layout: LayoutMap; displaced: string[] } {
+export function settleDrag(
+  layout: LayoutMap,
+  id: string,
+  target: WidgetBox,
+  m: Pick<GridDims, "rows">,
+): { layout: LayoutMap; displaced: string[] } {
   const out: LayoutMap = { ...layout, [id]: target };
   const displaced: string[] = [];
   const others = Object.keys(out)
@@ -94,10 +124,22 @@ export function settleDrag(layout: LayoutMap, id: string, target: WidgetBox, m: 
 }
 
 /** Arrow keys move by one cell; with Shift they resize by one cell. Returns null for other keys / no change. */
-export function nudgeBox(box: WidgetBox, key: string, shift: boolean, m: Pick<GridDims, "cols" | "rows">): WidgetBox | null {
-  const delta: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+export function nudgeBox(
+  box: WidgetBox,
+  key: string,
+  shift: boolean,
+  m: Pick<GridDims, "cols" | "rows">,
+): WidgetBox | null {
+  const delta: Record<string, [number, number]> = {
+    ArrowLeft: [-1, 0],
+    ArrowRight: [1, 0],
+    ArrowUp: [0, -1],
+    ArrowDown: [0, 1],
+  };
   const d = delta[key];
   if (!d) return null;
-  const next = shift ? clampResize(box, box.w + d[0], box.h + d[1], m) : clampMove(box, box.x + d[0], box.y + d[1], m);
+  const next = shift
+    ? clampResize(box, box.w + d[0], box.h + d[1], m)
+    : clampMove(box, box.x + d[0], box.y + d[1], m);
   return sameGeometry(next, box) ? null : next;
 }

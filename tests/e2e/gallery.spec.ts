@@ -6,7 +6,17 @@
  */
 import { test, expect } from "@playwright/test";
 
-const SECTIONS = ["buttons", "badges", "fields", "controls", "states", "dialogs", "widgets", "now", "timeline"];
+const SECTIONS = [
+  "buttons",
+  "badges",
+  "fields",
+  "controls",
+  "states",
+  "dialogs",
+  "widgets",
+  "now",
+  "timeline",
+];
 
 for (const theme of ["dark", "light"] as const) {
   test.describe(`gallery · ${theme}`, () => {
@@ -24,7 +34,10 @@ for (const theme of ["dark", "light"] as const) {
       test(`section ${id}`, async ({ page }) => {
         const section = page.locator(`#story-${id}`);
         await expect(section).toBeVisible();
-        await expect(section).toHaveScreenshot(`${id}-${theme}.png`, { animations: "disabled", maxDiffPixelRatio: 0.02 });
+        await expect(section).toHaveScreenshot(`${id}-${theme}.png`, {
+          animations: "disabled",
+          maxDiffPixelRatio: 0.02,
+        });
       });
     }
   });

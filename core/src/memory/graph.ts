@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { Db } from "../db/db.js";
 import { fileRowFromDb, type FileRow } from "./indexer.js";
+import { relatedEdges } from "./related.js";
 
 export interface GraphNode {
   id: number;
@@ -21,7 +22,7 @@ export interface GraphNode {
 export interface GraphEdge {
   source: number;
   target: number;
-  kind: "markdown-link" | "same-dir" | "same-area";
+  kind: "markdown-link" | "same-dir" | "same-area" | "related";
   /** Human explanation of why the two files are related. */
   why: string;
 }
@@ -40,7 +41,7 @@ export interface GraphData {
  */
 export function buildGraph(
   db: Db,
-  opts: { area?: string; dir?: string; query?: string; maxNodes?: number } = {},
+  opts: { area?: string; dir?: string; query?: string; maxNodes?: number; related?: boolean } = {},
 ): GraphData {
   const maxNodes = Math.min(opts.maxNodes ?? 400, 4000);
   const clauses: string[] = [];
@@ -99,6 +100,22 @@ export function buildGraph(
         target: group[i]!.id,
         kind: "same-dir",
         why: `Both live in ${path.basename(dir) || dir}/.`,
+      });
+    }
+  }
+
+  // Related-by-content edges (Onda 4): TF-IDF cosine over the indexed text,
+  // top-3 per file. Off by default in the canvas legend; always computed so
+  // the count shows, unless the caller opts out (`related: false`).
+  if (opts.related !== false) {
+    for (const r of relatedEdges(db, files)) {
+      edges.push({
+        source: r.source,
+        target: r.target,
+        kind: "related",
+        why: r.terms.length
+          ? `Similar content (${Math.round(r.score * 100)}%): ${r.terms.join(", ")}.`
+          : `Similar content (${Math.round(r.score * 100)}%).`,
       });
     }
   }

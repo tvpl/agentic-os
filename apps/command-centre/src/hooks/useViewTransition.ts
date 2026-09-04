@@ -20,11 +20,19 @@ interface ViewTransitionLike {
 type StartViewTransition = (update: () => void | Promise<void>) => ViewTransitionLike;
 
 export function supportsViewTransition(): boolean {
-  return typeof document !== "undefined" && typeof (document as Document & { startViewTransition?: StartViewTransition }).startViewTransition === "function";
+  return (
+    typeof document !== "undefined" &&
+    typeof (document as Document & { startViewTransition?: StartViewTransition }).startViewTransition ===
+      "function"
+  );
 }
 
 export function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
 }
 
 export interface TransitionOptions {

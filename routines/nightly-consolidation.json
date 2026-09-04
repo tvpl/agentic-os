@@ -31,6 +31,6 @@
   "artifactsSubdir": null,
   "notify": true,
   "profile": "review_before_write",
-  "enabled": false,
+  "enabled": true,
   "createdAt": 1756857600000
 }

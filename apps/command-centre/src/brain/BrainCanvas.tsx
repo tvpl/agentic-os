@@ -8,9 +8,22 @@
 import { useEffect, useRef, type MutableRefObject, type RefObject } from "react";
 import { tripsActive } from "./engine/explosion";
 import { hitTest as engineHitTest, screenToWorld, zoomAt, type Hit } from "./engine/hitTest";
-import { alphasSettled, maxDisplacement, stepWorld, transformSettled, tweenTransform } from "./engine/physics";
+import {
+  alphasSettled,
+  maxDisplacement,
+  stepWorld,
+  transformSettled,
+  tweenTransform,
+} from "./engine/physics";
 import { clampZoom, type FileNode, type World } from "./engine/world";
-import { buildBackground, createMinimapState, drawFrame, drawMinimap, makeRingDefs, type RingDef } from "./render/draw";
+import {
+  buildBackground,
+  createMinimapState,
+  drawFrame,
+  drawMinimap,
+  makeRingDefs,
+  type RingDef,
+} from "./render/draw";
 import { createSprites } from "./render/sprites";
 import { readCanvasTokens } from "./render/tokens";
 
@@ -41,7 +54,18 @@ export interface BrainCanvasProps {
 const IDLE_INTERVAL_MS = 83;
 const WHEEL_ZOOM_PER_PX = 0.0065;
 
-export function BrainCanvas({ world, canvasRef, minimapRef, viewRef, invalidateRef, ringLabels, coreLabel, ariaLabel, describedBy, handlers }: BrainCanvasProps) {
+export function BrainCanvas({
+  world,
+  canvasRef,
+  minimapRef,
+  viewRef,
+  invalidateRef,
+  ringLabels,
+  coreLabel,
+  ariaLabel,
+  describedBy,
+  handlers,
+}: BrainCanvasProps) {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
   const ringDefsRef = useRef<RingDef[]>(makeRingDefs(ringLabels));
@@ -102,7 +126,10 @@ export function BrainCanvas({ world, canvasRef, minimapRef, viewRef, invalidateR
       minimap.layerStamp = "";
       invalidateRef.current++;
     });
-    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-accent", "style", "class"] });
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme", "data-accent", "style", "class"],
+    });
 
     let raf = 0;
     let last = performance.now();
@@ -150,7 +177,14 @@ export function BrainCanvas({ world, canvasRef, minimapRef, viewRef, invalidateR
         coreLabel: coreLabelRef.current,
       });
       const mini = minimapRef.current;
-      if (mini) drawMinimap(mini, w, minimap, { tokens, viewW: rect.width, viewH: rect.height, filesMoved: moving, dpr });
+      if (mini)
+        drawMinimap(mini, w, minimap, {
+          tokens,
+          viewW: rect.width,
+          viewH: rect.height,
+          filesMoved: moving,
+          dpr,
+        });
     };
 
     const start = () => {
@@ -198,13 +232,20 @@ export function BrainCanvas({ world, canvasRef, minimapRef, viewRef, invalidateR
     let lastHoverId: string | null = null;
 
     const rectOf = () => canvas.getBoundingClientRect();
-    const toWorld = (clientX: number, clientY: number) => screenToWorld(w.transform, rectOf(), clientX, clientY);
+    const toWorld = (clientX: number, clientY: number) =>
+      screenToWorld(w.transform, rectOf(), clientX, clientY);
     const hitAt = (clientX: number, clientY: number): Hit & { sx: number; sy: number } => {
       const p = toWorld(clientX, clientY);
       return { ...engineHitTest(w, p.x, p.y), sx: p.sx, sy: p.sy };
     };
     const hoverKeyOf = (hit: Hit): string | null =>
-      hit.hub ? `hub:${hit.hub.key}` : hit.orb ? `${hit.orb.kind}:${hit.orb.id}` : hit.planet ? `planet:${hit.planet.hubKey}:${hit.planet.dir}` : null;
+      hit.hub
+        ? `hub:${hit.hub.key}`
+        : hit.orb
+          ? `${hit.orb.kind}:${hit.orb.id}`
+          : hit.planet
+            ? `planet:${hit.planet.hubKey}:${hit.planet.dir}`
+            : null;
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -213,10 +254,13 @@ export function BrainCanvas({ world, canvasRef, minimapRef, viewRef, invalidateR
       // Trackpad pinch arrives as ctrlKey + wheel; ⌘/ctrl + wheel is zoom too. A
       // classic mouse wheel (line deltas or large integer steps with no deltaX)
       // keeps zooming; a plain two-finger trackpad scroll pans (item 43).
-      const mouseWheel = e.deltaMode !== 0 || (Math.abs(e.deltaY) >= 40 && e.deltaX === 0 && Number.isInteger(e.deltaY));
+      const mouseWheel =
+        e.deltaMode !== 0 || (Math.abs(e.deltaY) >= 40 && e.deltaX === 0 && Number.isInteger(e.deltaY));
       if (e.ctrlKey || e.metaKey || mouseWheel) {
         const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY;
-        const factor = Math.exp(-delta * (e.ctrlKey || e.metaKey ? WHEEL_ZOOM_PER_PX * 1.6 : WHEEL_ZOOM_PER_PX));
+        const factor = Math.exp(
+          -delta * (e.ctrlKey || e.metaKey ? WHEEL_ZOOM_PER_PX * 1.6 : WHEEL_ZOOM_PER_PX),
+        );
         zoomAt(tg, rect, e.clientX, e.clientY, factor, clampZoom);
       } else {
         tg.x -= e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
@@ -369,5 +413,13 @@ export function BrainCanvas({ world, canvasRef, minimapRef, viewRef, invalidateR
     };
   }, [canvasRef, world, invalidateRef]);
 
-  return <canvas ref={canvasRef} className="brain-canvas" aria-label={ariaLabel} role="img" aria-describedby={describedBy} />;
+  return (
+    <canvas
+      ref={canvasRef}
+      className="brain-canvas"
+      aria-label={ariaLabel}
+      role="img"
+      aria-describedby={describedBy}
+    />
+  );
 }

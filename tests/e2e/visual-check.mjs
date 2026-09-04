@@ -29,9 +29,7 @@ const widths = [
   ["tablet", 768, 1000],
 ];
 
-const executablePath = fs.existsSync("/opt/pw-browsers/chromium")
-  ? "/opt/pw-browsers/chromium"
-  : undefined;
+const executablePath = fs.existsSync("/opt/pw-browsers/chromium") ? "/opt/pw-browsers/chromium" : undefined;
 const browser = await chromium.launch({ executablePath });
 const consoleErrors = [];
 let failures = 0;

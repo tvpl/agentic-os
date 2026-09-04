@@ -35,19 +35,40 @@ export interface PreviewPanelProps {
 }
 
 const MD_EXT = new Set([".md", ".markdown", ".mdx", ".mdown"]);
-const KIND_KEYS: Record<EdgeKind, "brain.kind.markdown-link" | "brain.kind.same-dir" | "brain.kind.same-area" | "brain.kind.other"> = {
+const KIND_KEYS: Record<
+  EdgeKind,
+  | "brain.kind.markdown-link"
+  | "brain.kind.related"
+  | "brain.kind.same-dir"
+  | "brain.kind.same-area"
+  | "brain.kind.other"
+> = {
   "markdown-link": "brain.kind.markdown-link",
+  related: "brain.kind.related",
   "same-dir": "brain.kind.same-dir",
   "same-area": "brain.kind.same-area",
   other: "brain.kind.other",
 };
 
-export function PreviewPanel({ preview, world, skills, lang, onClose, onSelectId, onSkill, onUnpin, onDangling }: PreviewPanelProps) {
+export function PreviewPanel({
+  preview,
+  world,
+  skills,
+  lang,
+  onClose,
+  onSelectId,
+  onSkill,
+  onUnpin,
+  onDangling,
+}: PreviewPanelProps) {
   const t = useT();
   const toast = useToast();
   const { node } = preview;
   const isMarkdown = MD_EXT.has(node.ext.toLowerCase());
-  const blocks = useMemo<Block[] | null>(() => (isMarkdown && preview.kind === "text" && preview.content ? parseMarkdown(preview.content) : null), [isMarkdown, preview.kind, preview.content]);
+  const blocks = useMemo<Block[] | null>(
+    () => (isMarkdown && preview.kind === "text" && preview.content ? parseMarkdown(preview.content) : null),
+    [isMarkdown, preview.kind, preview.content],
+  );
   const files = world.files;
 
   const resolve = useMemo(() => {
@@ -88,7 +109,13 @@ export function PreviewPanel({ preview, world, skills, lang, onClose, onSelectId
         case "skill": {
           const known = skills.has(n.slug);
           return known ? (
-            <button key={key} type="button" className="brain-md-chip skill" onClick={() => onSkill(n.slug)} title={t("brain.ring.skills")}>
+            <button
+              key={key}
+              type="button"
+              className="brain-md-chip skill"
+              onClick={() => onSkill(n.slug)}
+              title={t("brain.ring.skills")}
+            >
               /{n.slug}
             </button>
           ) : (
@@ -98,7 +125,13 @@ export function PreviewPanel({ preview, world, skills, lang, onClose, onSelectId
         case "path": {
           const id = resolve(n.text);
           return id !== null ? (
-            <button key={key} type="button" className="brain-md-link" onClick={() => onSelectId(id, true)} title={t("brain.clickToSelect")}>
+            <button
+              key={key}
+              type="button"
+              className="brain-md-link"
+              onClick={() => onSelectId(id, true)}
+              title={t("brain.clickToSelect")}
+            >
               {n.text}
             </button>
           ) : (
@@ -111,7 +144,13 @@ export function PreviewPanel({ preview, world, skills, lang, onClose, onSelectId
           const id = resolve(n.href);
           if (id !== null) {
             return (
-              <button key={key} type="button" className="brain-md-link" onClick={() => onSelectId(id, true)} title={n.href}>
+              <button
+                key={key}
+                type="button"
+                className="brain-md-link"
+                onClick={() => onSelectId(id, true)}
+                title={n.href}
+              >
                 {n.text}
               </button>
             );
@@ -158,9 +197,16 @@ export function PreviewPanel({ preview, world, skills, lang, onClose, onSelectId
             <Tag key={i}>
               {b.items.map((item, j) => (
                 <li key={j} className={item.label ? "labelled" : undefined}>
-                  {item.checked !== null && <span className={`brain-md-task${item.checked ? " done" : ""}`} aria-label={item.checked ? "done" : "todo"} />}
+                  {item.checked !== null && (
+                    <span
+                      className={`brain-md-task${item.checked ? " done" : ""}`}
+                      aria-label={item.checked ? "done" : "todo"}
+                    />
+                  )}
                   {item.label && <span className="brain-md-label">{item.label}</span>}
-                  <span className={item.label ? "brain-md-chips" : undefined}>{renderInline(item.children, `l${i}-${j}`)}</span>
+                  <span className={item.label ? "brain-md-chips" : undefined}>
+                    {renderInline(item.children, `l${i}-${j}`)}
+                  </span>
                 </li>
               ))}
             </Tag>
@@ -187,7 +233,11 @@ export function PreviewPanel({ preview, world, skills, lang, onClose, onSelectId
           {t("brain.degree")} {degree}
         </span>
         {node.pinned && (
-          <button className="badge accent brain-badge-btn" onClick={() => onUnpin(node)} title={t("brain.unpin")}>
+          <button
+            className="badge accent brain-badge-btn"
+            onClick={() => onUnpin(node)}
+            title={t("brain.unpin")}
+          >
             <Pin aria-hidden /> {t("brain.pinned")}
           </button>
         )}
@@ -202,7 +252,14 @@ export function PreviewPanel({ preview, world, skills, lang, onClose, onSelectId
         >
           <Copy aria-hidden /> {t("brain.copyPath")}
         </button>
-        <button className="btn sm" onClick={() => void api.post("/api/memory/open", { p: node.path }).catch((e: Error) => toast(e.message, "danger"))}>
+        <button
+          className="btn sm"
+          onClick={() =>
+            void api
+              .post("/api/memory/open", { p: node.path })
+              .catch((e: Error) => toast(e.message, "danger"))
+          }
+        >
           <ExternalLink aria-hidden /> {t("brain.openEditor")}
         </button>
       </div>
@@ -218,11 +275,18 @@ export function PreviewPanel({ preview, world, skills, lang, onClose, onSelectId
               </summary>
               <div className="brain-relation-list">
                 {r.entries.slice(0, 12).map((e, i) => (
-                  <button key={`${e.id}-${i}`} className="brain-md-link" onClick={() => onSelectId(e.id, true)} title={e.why || e.name}>
+                  <button
+                    key={`${e.id}-${i}`}
+                    className="brain-md-link"
+                    onClick={() => onSelectId(e.id, true)}
+                    title={e.why || e.name}
+                  >
                     {e.name}
                   </button>
                 ))}
-                {r.entries.length > 12 && <span className="brain-more">{t("brain.moreN", { n: r.entries.length - 12 })}</span>}
+                {r.entries.length > 12 && (
+                  <span className="brain-more">{t("brain.moreN", { n: r.entries.length - 12 })}</span>
+                )}
               </div>
             </details>
           ))}
@@ -237,7 +301,9 @@ export function PreviewPanel({ preview, world, skills, lang, onClose, onSelectId
         ) : preview.kind === "text" ? (
           <pre className="preview-pre">{preview.content}</pre>
         ) : (
-          <p className="brain-preview-note">{preview.kind === "blocked" ? t("brain.blocked") : (preview.message ?? t("brain.binary"))}</p>
+          <p className="brain-preview-note">
+            {preview.kind === "blocked" ? t("brain.blocked") : (preview.message ?? t("brain.binary"))}
+          </p>
         )}
       </div>
     </aside>

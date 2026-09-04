@@ -92,7 +92,12 @@ describe("read-only guard", () => {
   });
 
   it("refuses a tool call outside the read-only set", async () => {
-    const client = new McpStdioClient(NODE, [FAKE_MCP, "ok"], { cwd: here, allowPaths: [NODE] }, new Set(["list_events"]));
+    const client = new McpStdioClient(
+      NODE,
+      [FAKE_MCP, "ok"],
+      { cwd: here, allowPaths: [NODE] },
+      new Set(["list_events"]),
+    );
     try {
       await client.start();
       await expect(client.callTool("delete_event", {})).rejects.toBeInstanceOf(ReadOnlyViolationError);
@@ -105,7 +110,12 @@ describe("read-only guard", () => {
 
 describe("MCP stdio client", () => {
   it("runs initialize → tools/list → tools/call against the fake server", async () => {
-    const client = new McpStdioClient(NODE, [FAKE_MCP, "ok"], { cwd: here, allowPaths: [NODE] }, new Set(["list_events"]));
+    const client = new McpStdioClient(
+      NODE,
+      [FAKE_MCP, "ok"],
+      { cwd: here, allowPaths: [NODE] },
+      new Set(["list_events"]),
+    );
     try {
       const { serverName } = await client.start();
       expect(serverName).toBe("fake-mcp");
@@ -140,10 +150,18 @@ describe("fetchConnectorData (MCP)", () => {
   }, 15_000);
 
   it("renders {today} style placeholders into the tool arguments", async () => {
-    const client = new McpStdioClient(NODE, [FAKE_MCP, "ok"], { cwd: here, allowPaths: [NODE] }, new Set(["list_events"]));
+    const client = new McpStdioClient(
+      NODE,
+      [FAKE_MCP, "ok"],
+      { cwd: here, allowPaths: [NODE] },
+      new Set(["list_events"]),
+    );
     try {
       await client.start();
-      const res = await client.callTool("list_events", renderArgs({ timeMin: "{todayStart}", tz: "{tz}" }, "UTC", OPTS.now));
+      const res = await client.callTool(
+        "list_events",
+        renderArgs({ timeMin: "{todayStart}", tz: "{tz}" }, "UTC", OPTS.now),
+      );
       expect(JSON.parse(res.text).args).toEqual({ timeMin: "2026-09-03T00:00:00", tz: "UTC" });
     } finally {
       client.close();
@@ -200,16 +218,25 @@ describe("fetchConnectorData (MCP)", () => {
     expect(noMapping.status).toBe("not_configured");
     expect(noMapping.items).toEqual([]);
 
-    const missingEnv = await fetchConnectorData(connector(mapping("ok", { env: ["MORDOMO_TEST_ABSENT_VAR"] })), OPTS);
+    const missingEnv = await fetchConnectorData(
+      connector(mapping("ok", { env: ["MORDOMO_TEST_ABSENT_VAR"] })),
+      OPTS,
+    );
     expect(missingEnv.status).toBe("not_configured");
     expect(missingEnv.message).toContain("MORDOMO_TEST_ABSENT_VAR");
 
     // An executable outside the base allowlist and outside settings.connectors.allowedCommands.
-    const notAllowed = await fetchConnectorData(connector(mapping("ok", { command: FAKE_MCP })), { ...OPTS, allowedCommands: [] });
+    const notAllowed = await fetchConnectorData(connector(mapping("ok", { command: FAKE_MCP })), {
+      ...OPTS,
+      allowedCommands: [],
+    });
     expect(notAllowed.status).toBe("not_configured");
     expect(notAllowed.message).toMatch(/allowlist/i);
 
-    const missingCommand = await fetchConnectorData(connector(mapping("ok", { command: "definitely-not-installed-xyz" })), OPTS);
+    const missingCommand = await fetchConnectorData(
+      connector(mapping("ok", { command: "definitely-not-installed-xyz" })),
+      OPTS,
+    );
     expect(missingCommand.status).toBe("not_configured");
     expect(missingCommand.message).toMatch(/not found on PATH/);
   }, 20_000);
@@ -225,7 +252,13 @@ describe("fetchConnectorData (api transport)", () => {
       url,
       headers: { authorization: "Bearer $MORDOMO_TEST_TOKEN" },
       tools: {
-        list: { name: "GET", args: {}, parse: "json", path: "items", fields: { id: "id", title: "name", tag: "kind" } },
+        list: {
+          name: "GET",
+          args: {},
+          parse: "json",
+          path: "items",
+          fields: { id: "id", title: "name", tag: "kind" },
+        },
       },
       install: null,
       setup: [],
@@ -240,11 +273,22 @@ describe("fetchConnectorData (api transport)", () => {
     let seen: { url: string; headers: Record<string, string> } | null = null;
     const fetchImpl = (async (url: string, init: { headers: Record<string, string> }) => {
       seen = { url, headers: init.headers };
-      return new Response(JSON.stringify({ items: [{ id: "a", name: "Alpha", kind: "x" }, { id: "b", name: "Beta", kind: "x" }] }), {
-        status: 200,
-      });
+      return new Response(
+        JSON.stringify({
+          items: [
+            { id: "a", name: "Alpha", kind: "x" },
+            { id: "b", name: "Beta", kind: "x" },
+          ],
+        }),
+        {
+          status: 200,
+        },
+      );
     }) as unknown as typeof fetch;
-    const data = await fetchConnectorData(connector(apiMapping("https://example.test/feed"), "fake-api"), { ...OPTS, fetchImpl });
+    const data = await fetchConnectorData(connector(apiMapping("https://example.test/feed"), "fake-api"), {
+      ...OPTS,
+      fetchImpl,
+    });
     expect(data.status).toBe("ok");
     expect(data.items.map((i) => i.title)).toEqual(["Alpha", "Beta"]);
     expect(data.summary).toMatchObject({ total: 2, x: 2 });
@@ -252,7 +296,10 @@ describe("fetchConnectorData (api transport)", () => {
   });
 
   it("is not_configured while an env var of the URL or headers is missing", async () => {
-    const data = await fetchConnectorData(connector(apiMapping("https://example.test/feed"), "fake-api"), OPTS);
+    const data = await fetchConnectorData(
+      connector(apiMapping("https://example.test/feed"), "fake-api"),
+      OPTS,
+    );
     expect(data.status).toBe("not_configured");
     expect(data.message).toContain("MORDOMO_TEST_TOKEN");
   });
@@ -260,7 +307,10 @@ describe("fetchConnectorData (api transport)", () => {
   it("turns a non-2xx response into an error without echoing the URL", async () => {
     process.env.MORDOMO_TEST_TOKEN = "sekret";
     const fetchImpl = (async () => new Response("nope", { status: 503 })) as unknown as typeof fetch;
-    const data = await fetchConnectorData(connector(apiMapping("https://example.test/feed"), "fake-api"), { ...OPTS, fetchImpl });
+    const data = await fetchConnectorData(connector(apiMapping("https://example.test/feed"), "fake-api"), {
+      ...OPTS,
+      fetchImpl,
+    });
     expect(data.status).toBe("error");
     expect(data.message).toContain("503");
     expect(data.message).not.toContain("example.test");
@@ -286,8 +336,15 @@ describe("mapping helpers", () => {
   });
 
   it("caps the number of items it maps", () => {
-    const parsed = parseToolText(JSON.stringify({ rows: Array.from({ length: 100 }, (_, i) => ({ id: `${i}` })) }), "json");
-    const items = itemsFromParsed(parsed, { name: "x", args: {}, parse: "json", path: "rows", fields: { id: "id" } }, 5);
+    const parsed = parseToolText(
+      JSON.stringify({ rows: Array.from({ length: 100 }, (_, i) => ({ id: `${i}` })) }),
+      "json",
+    );
+    const items = itemsFromParsed(
+      parsed,
+      { name: "x", args: {}, parse: "json", path: "rows", fields: { id: "id" } },
+      5,
+    );
     expect(items).toHaveLength(5);
   });
 
@@ -303,7 +360,9 @@ describe("mapping helpers", () => {
   });
 
   it("builds a setup checklist that names env vars but never values", () => {
-    const steps = setupChecklist(connector(mapping("ok", { env: ["GOOGLE_OAUTH_CREDENTIALS"] })), { allowedCommands: [] });
+    const steps = setupChecklist(connector(mapping("ok", { env: ["GOOGLE_OAUTH_CREDENTIALS"] })), {
+      allowedCommands: [],
+    });
     expect(steps.join("\n")).toContain("GOOGLE_OAUTH_CREDENTIALS");
     expect(steps.join("\n")).toContain("npm i -g fake-mcp");
     expect(steps.join("\n")).toContain("Run the auth flow once.");

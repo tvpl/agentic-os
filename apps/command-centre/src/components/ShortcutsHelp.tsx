@@ -51,14 +51,27 @@ const GROUPS: Group[] = [
       { keys: [["P"]], label: "shell.shortcuts.brainPresent" },
       { keys: [["F"]], label: "shell.shortcuts.brainFilters" },
       { keys: [["L"]], label: "shell.shortcuts.brainList" },
-      { keys: [[MOD, "+"], [MOD, "−"], [MOD, "0"]], label: "shell.shortcuts.brainZoom" },
+      {
+        keys: [
+          [MOD, "+"],
+          [MOD, "−"],
+          [MOD, "0"],
+        ],
+        label: "shell.shortcuts.brainZoom",
+      },
     ],
   },
   {
     title: "shell.shortcuts.pixel",
     rows: [
       { keys: [["1"], ["2"], ["3"], ["4"]], label: "shell.shortcuts.pixelTools" },
-      { keys: [[MOD, "Z"], [MOD, "Shift", "Z"]], label: "shell.shortcuts.pixelUndo" },
+      {
+        keys: [
+          [MOD, "Z"],
+          [MOD, "Shift", "Z"],
+        ],
+        label: "shell.shortcuts.pixelUndo",
+      },
       { keys: [["["], ["]"]], label: "shell.shortcuts.pixelFrames" },
     ],
   },

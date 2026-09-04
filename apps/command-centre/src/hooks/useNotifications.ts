@@ -371,6 +371,56 @@ export function playBlip(tone: NotificationTone = "info"): void {
   }
 }
 
+/**
+ * HUD cues (plan Onda 4): a rising "ack" when a run starts, a settled chord
+ * when it finishes, a low "alert" on failure. Same toggle as the blip; the
+ * inbox already blips for approvals so callers should not double up.
+ */
+export type CueKind = "ack" | "done" | "alert";
+let lastCue = 0;
+export function playCue(kind: CueKind): void {
+  if (!getNotifySound()) return;
+  const t = Date.now();
+  if (t - lastCue < 250) return; // burst guard (squads start several runs at once)
+  lastCue = t;
+  try {
+    const Ctx =
+      window.AudioContext ??
+      (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    audio ??= new Ctx();
+    if (audio.state === "suspended") void audio.resume();
+    const now = audio.currentTime;
+    const notes: Array<[number, number, number]> =
+      kind === "ack"
+        ? [[523, 0, 0.09]]
+        : kind === "done"
+          ? [
+              [659, 0, 0.14],
+              [988, 0.07, 0.18],
+            ]
+          : [
+              [311, 0, 0.16],
+              [233, 0.12, 0.2],
+            ];
+    for (const [freq, delay, len] of notes) {
+      const osc = audio.createOscillator();
+      const gain = audio.createGain();
+      osc.type = kind === "alert" ? "triangle" : "sine";
+      osc.frequency.value = freq;
+      const t0 = now + delay;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(kind === "ack" ? 0.05 : 0.07, t0 + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+      osc.connect(gain).connect(audio.destination);
+      osc.start(t0);
+      osc.stop(t0 + len + 0.02);
+    }
+  } catch {
+    /* no audio */
+  }
+}
+
 /* ---- context -------------------------------------------------------------- */
 export interface NotificationsApi {
   items: NotificationItem[];

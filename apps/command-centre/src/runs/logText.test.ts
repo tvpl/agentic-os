@@ -6,7 +6,9 @@ describe("log text", () => {
     expect(eventBody({ type: "text", ts: 1, stream: "stderr", text: "boom" })).toBe("stderr: boom");
     expect(eventBody({ type: "tool_use", ts: 1, tool: "Read", detail: "{}" })).toBe("tool Read {}");
     expect(eventBody({ type: "result", ts: 1, exitCode: 0, summary: "done" })).toBe("result exit=0\ndone");
-    expect(eventBody({ type: "usage", ts: 1, inputTokens: 5, outputTokens: 6, costUsd: 0.1, model: "m" })).toBe("usage in=5 out=6 $0.1 m");
+    expect(
+      eventBody({ type: "usage", ts: 1, inputTokens: 5, outputTokens: 6, costUsd: 0.1, model: "m" }),
+    ).toBe("usage in=5 out=6 $0.1 m");
     expect(eventBody({ type: "weird", ts: 1 })).toContain("weird");
   });
 

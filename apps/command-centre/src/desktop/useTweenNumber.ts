@@ -24,7 +24,10 @@ export function useTweenNumber(value: number, durationMs = 300): number {
     const target = Number.isFinite(value) ? value : 0;
     const from = shownRef.current;
     if (from === target) return;
-    const reduce = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduce =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduce || typeof requestAnimationFrame !== "function") {
       shownRef.current = target;
       setShown(target);

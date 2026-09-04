@@ -93,14 +93,38 @@ export default function Routines() {
     onError: (err: Error) => toast(err.message, "danger"),
   });
 
-  if (routines.isPending && !routines.data) return <div className="page"><Skeleton lines={6} /></div>;
-  if (routines.error && !routines.data) return <div className="page"><ErrorBox message={errorMessage(routines.error)} offline={isOffline(routines.error)} onRetry={() => void routines.refetch()} /></div>;
+  if (routines.isPending && !routines.data)
+    return (
+      <div className="page">
+        <Skeleton lines={6} />
+      </div>
+    );
+  if (routines.error && !routines.data)
+    return (
+      <div className="page">
+        <ErrorBox
+          message={errorMessage(routines.error)}
+          offline={isOffline(routines.error)}
+          onRetry={() => void routines.refetch()}
+        />
+      </div>
+    );
   const list = routines.data ?? [];
   const counts = summary.data;
 
   const remove = async (r: RoutineStatus) => {
-    if (await confirm({ title: `${t("common.delete")} "${r.name}"?`, body: t("routines.deleteBody"), danger: true, confirmLabel: t("common.delete") })) {
-      act.mutate({ fn: () => api.del(`/api/routines/${encodeURIComponent(r.id)}`), okMsg: t("routines.deleted") });
+    if (
+      await confirm({
+        title: `${t("common.delete")} "${r.name}"?`,
+        body: t("routines.deleteBody"),
+        danger: true,
+        confirmLabel: t("common.delete"),
+      })
+    ) {
+      act.mutate({
+        fn: () => api.del(`/api/routines/${encodeURIComponent(r.id)}`),
+        okMsg: t("routines.deleted"),
+      });
     }
   };
   const testRun = (r: RoutineStatus) =>
@@ -163,7 +187,11 @@ export default function Routines() {
                       <RunnerIcon runner={runner} />
                       {r.remoteName ?? t(RUNNER_KEY(runner))}
                     </Badge>
-                    {!r.healthy && <Badge kind="state" tone="danger">{t("routines.failing")}</Badge>}
+                    {!r.healthy && (
+                      <Badge kind="state" tone="danger">
+                        {t("routines.failing")}
+                      </Badge>
+                    )}
                     {!r.enabled && (
                       <Badge kind="meta">
                         {r.endedReason === "run_once_fired"
@@ -182,28 +210,74 @@ export default function Routines() {
                   <span className="mono">{describeSchedule(r, (k, vars) => t(k as TKey, vars))}</span>
                   {kind !== "on-exit" && <> · {r.timezone || t("routines.tzInherited")}</>} · {r.provider}
                   {r.context === "isolated" && <> · {t("backend.context.isolated")}</>}
-                  {r.delivery && r.delivery !== "announce" && <> · {t(`backend.delivery.${r.delivery}` as TKey)}</>}
+                  {r.delivery && r.delivery !== "announce" && (
+                    <> · {t(`backend.delivery.${r.delivery}` as TKey)}</>
+                  )}
                 </div>
                 <div className="routine-meta">
                   {t("routines.next")}: {r.enabled && r.nextRunAt ? timeAgo(r.nextRunAt, locale) : "—"}
                   {" · "}
                   {t("routines.last")}: {r.lastFiredAt ? timeAgo(r.lastFiredAt, locale) : t("common.never")}
-                  {r.lastStatus ? <> <StatusBadge status={r.lastStatus} /></> : null}
+                  {r.lastStatus ? (
+                    <>
+                      {" "}
+                      <StatusBadge status={r.lastStatus} />
+                    </>
+                  ) : null}
                 </div>
               </div>
               <div className="row-actions">
-                <Button size="sm" variant="primary" icon={<Zap aria-hidden />} onClick={() => testRun(r)} loading={act.isPending}>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={<Zap aria-hidden />}
+                  onClick={() => testRun(r)}
+                  loading={act.isPending}
+                >
                   {t("routines.testRun")}
                 </Button>
-                <Button size="sm" variant="secondary" icon={r.enabled ? <Pause aria-hidden /> : <Play aria-hidden />} onClick={() => act.mutate({ fn: () => api.post(`/api/routines/${encodeURIComponent(r.id)}/toggle`) })}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={r.enabled ? <Pause aria-hidden /> : <Play aria-hidden />}
+                  onClick={() =>
+                    act.mutate({ fn: () => api.post(`/api/routines/${encodeURIComponent(r.id)}/toggle`) })
+                  }
+                >
                   {r.enabled ? t("routines.pause") : t("routines.resume")}
                 </Button>
-                <Button size="sm" variant="secondary" icon={<Pencil aria-hidden />} aria-label={`${t("common.edit")} ${r.name}`} title={t("common.edit")} onClick={() => setEditing(r)} />
-                <Button size="sm" variant="secondary" icon={<Copy aria-hidden />} aria-label={t("routines.duplicate")} title={t("routines.duplicate")} onClick={() => act.mutate({ fn: () => api.post(`/api/routines/${encodeURIComponent(r.id)}/duplicate`), okMsg: t("routines.duplicated") })} />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<Pencil aria-hidden />}
+                  aria-label={`${t("common.edit")} ${r.name}`}
+                  title={t("common.edit")}
+                  onClick={() => setEditing(r)}
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<Copy aria-hidden />}
+                  aria-label={t("routines.duplicate")}
+                  title={t("routines.duplicate")}
+                  onClick={() =>
+                    act.mutate({
+                      fn: () => api.post(`/api/routines/${encodeURIComponent(r.id)}/duplicate`),
+                      okMsg: t("routines.duplicated"),
+                    })
+                  }
+                />
                 <Button size="sm" variant="secondary" onClick={() => setHistoryFor(r)}>
                   {t("routines.history")}
                 </Button>
-                <Button size="sm" variant="danger" icon={<Trash2 aria-hidden />} aria-label={`${t("common.delete")} ${r.name}`} title={t("common.delete")} onClick={() => void remove(r)} />
+                <Button
+                  size="sm"
+                  variant="danger"
+                  icon={<Trash2 aria-hidden />}
+                  aria-label={`${t("common.delete")} ${r.name}`}
+                  title={t("common.delete")}
+                  onClick={() => void remove(r)}
+                />
               </div>
             </div>
           );
@@ -324,7 +398,10 @@ function RoutineModal({
     }),
     [form, routine?.createdAt],
   );
-  const preview = useMemo(() => (kindOk && tzOk ? nextFires(draft, Date.now(), 5) : []), [draft, kindOk, tzOk]);
+  const preview = useMemo(
+    () => (kindOk && tzOk ? nextFires(draft, Date.now(), 5) : []),
+    [draft, kindOk, tzOk],
+  );
   const zones = useMemo(() => {
     const all = timeZoneOptions();
     const q = tzQuery.trim().toLowerCase();
@@ -333,7 +410,12 @@ function RoutineModal({
 
   const save = useMutation({
     mutationFn: async () => {
-      const id = form.id || form.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      const id =
+        form.id ||
+        form.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
       const payload = {
         id,
         name: form.name,
@@ -344,9 +426,7 @@ function RoutineModal({
         at: form.kind === "at" && form.at ? new Date(form.at).toISOString() : null,
         every: form.kind === "every" ? { value: form.everyValue, unit: form.everyUnit } : null,
         onExit:
-          form.kind === "on-exit"
-            ? { skillSlug: form.onExitSkill, statuses: form.onExitStatuses }
-            : null,
+          form.kind === "on-exit" ? { skillSlug: form.onExitSkill, statuses: form.onExitStatuses } : null,
         heartbeat:
           form.kind === "heartbeat"
             ? {
@@ -399,11 +479,25 @@ function RoutineModal({
   return (
     <Modal title={routine ? form.name : t("routines.new")} onClose={onClose}>
       <div className="grid grid-2">
-        <Field label={t("routines.name")} htmlFor="rt-name" error={!nameOk && form.name !== "" ? t("common.required") : undefined}>
-          <input id="rt-name" className="input" value={form.name} onChange={(e) => set({ name: e.target.value })} />
+        <Field
+          label={t("routines.name")}
+          htmlFor="rt-name"
+          error={!nameOk && form.name !== "" ? t("common.required") : undefined}
+        >
+          <input
+            id="rt-name"
+            className="input"
+            value={form.name}
+            onChange={(e) => set({ name: e.target.value })}
+          />
         </Field>
         <Field label={t("routines.skill")} htmlFor="rt-skill" hint={t("routines.skillHint")}>
-          <select id="rt-skill" className="input" value={form.skillSlug} onChange={(e) => set({ skillSlug: e.target.value })}>
+          <select
+            id="rt-skill"
+            className="input"
+            value={form.skillSlug}
+            onChange={(e) => set({ skillSlug: e.target.value })}
+          >
             <option value="">{t("routines.promptOnly")}</option>
             {enabledSkills.map((s) => (
               <option key={s.slug} value={s.slug}>
@@ -415,7 +509,13 @@ function RoutineModal({
       </div>
       {!form.skillSlug && (
         <Field label={t("runs.prompt")} htmlFor="rt-prompt">
-          <textarea id="rt-prompt" className="input" rows={3} value={form.prompt} onChange={(e) => set({ prompt: e.target.value })} />
+          <textarea
+            id="rt-prompt"
+            className="input"
+            rows={3}
+            value={form.prompt}
+            onChange={(e) => set({ prompt: e.target.value })}
+          />
         </Field>
       )}
 
@@ -432,29 +532,78 @@ function RoutineModal({
 
       {form.kind === "cron" && (
         <div className="grid grid-2">
-          <Field label={t("routines.schedule")} htmlFor="rt-cron" hint={t("routines.cronHint")} error={cronOk ? undefined : t("routines.cronInvalid")}>
-            <input id="rt-cron" className="input mono" value={form.schedule} onChange={(e) => set({ schedule: e.target.value })} aria-invalid={!cronOk} />
+          <Field
+            label={t("routines.schedule")}
+            htmlFor="rt-cron"
+            hint={t("routines.cronHint")}
+            error={cronOk ? undefined : t("routines.cronInvalid")}
+          >
+            <input
+              id="rt-cron"
+              className="input mono"
+              value={form.schedule}
+              onChange={(e) => set({ schedule: e.target.value })}
+              aria-invalid={!cronOk}
+            />
           </Field>
-          <TimezoneField form={form} set={set} tzOk={tzOk} tzQuery={tzQuery} setTzQuery={setTzQuery} zones={zones} />
+          <TimezoneField
+            form={form}
+            set={set}
+            tzOk={tzOk}
+            tzQuery={tzQuery}
+            setTzQuery={setTzQuery}
+            zones={zones}
+          />
         </div>
       )}
 
       {form.kind === "at" && (
         <div className="grid grid-2">
-          <Field label={t("backend.at.label")} htmlFor="rt-at" hint={t("backend.kind.atHint")} error={Number.isFinite(atMs) || !form.at ? undefined : t("backend.sched.at.invalid")}>
-            <input id="rt-at" type="datetime-local" className="input" value={form.at} onChange={(e) => set({ at: e.target.value })} aria-invalid={form.at !== "" && !Number.isFinite(atMs)} />
+          <Field
+            label={t("backend.at.label")}
+            htmlFor="rt-at"
+            hint={t("backend.kind.atHint")}
+            error={Number.isFinite(atMs) || !form.at ? undefined : t("backend.sched.at.invalid")}
+          >
+            <input
+              id="rt-at"
+              type="datetime-local"
+              className="input"
+              value={form.at}
+              onChange={(e) => set({ at: e.target.value })}
+              aria-invalid={form.at !== "" && !Number.isFinite(atMs)}
+            />
           </Field>
-          <TimezoneField form={form} set={set} tzOk={tzOk} tzQuery={tzQuery} setTzQuery={setTzQuery} zones={zones} />
+          <TimezoneField
+            form={form}
+            set={set}
+            tzOk={tzOk}
+            tzQuery={tzQuery}
+            setTzQuery={setTzQuery}
+            zones={zones}
+          />
         </div>
       )}
 
       {form.kind === "every" && (
         <div className="rt-inline">
           <Field label={t("backend.every.label")} htmlFor="rt-every">
-            <input id="rt-every" type="number" min={1} className="input" value={form.everyValue} onChange={(e) => set({ everyValue: Math.max(1, Number(e.target.value) || 1) })} />
+            <input
+              id="rt-every"
+              type="number"
+              min={1}
+              className="input"
+              value={form.everyValue}
+              onChange={(e) => set({ everyValue: Math.max(1, Number(e.target.value) || 1) })}
+            />
           </Field>
           <Field label={t("backend.every.unit")} htmlFor="rt-every-unit">
-            <select id="rt-every-unit" className="input" value={form.everyUnit} onChange={(e) => set({ everyUnit: e.target.value as "minutes" | "hours" })}>
+            <select
+              id="rt-every-unit"
+              className="input"
+              value={form.everyUnit}
+              onChange={(e) => set({ everyUnit: e.target.value as "minutes" | "hours" })}
+            >
               <option value="minutes">{t("backend.every.minutes")}</option>
               <option value="hours">{t("backend.every.hours")}</option>
             </select>
@@ -464,8 +613,20 @@ function RoutineModal({
 
       {form.kind === "on-exit" && (
         <div className="grid grid-2">
-          <Field label={t("backend.onExit.skill")} htmlFor="rt-onexit" hint={t("backend.onExit.hint")} error={form.onExitSkill && form.onExitSkill === form.skillSlug ? t("backend.onExit.hint") : undefined}>
-            <select id="rt-onexit" className="input" value={form.onExitSkill} onChange={(e) => set({ onExitSkill: e.target.value })}>
+          <Field
+            label={t("backend.onExit.skill")}
+            htmlFor="rt-onexit"
+            hint={t("backend.onExit.hint")}
+            error={
+              form.onExitSkill && form.onExitSkill === form.skillSlug ? t("backend.onExit.hint") : undefined
+            }
+          >
+            <select
+              id="rt-onexit"
+              className="input"
+              value={form.onExitSkill}
+              onChange={(e) => set({ onExitSkill: e.target.value })}
+            >
               <option value="">—</option>
               {enabledSkills.map((s) => (
                 <option key={s.slug} value={s.slug}>
@@ -502,34 +663,79 @@ function RoutineModal({
         <>
           <div className="rt-inline">
             <Field label={t("backend.hb.interval")} htmlFor="rt-hb">
-              <input id="rt-hb" type="number" min={1} className="input" value={form.hbInterval} onChange={(e) => set({ hbInterval: Math.max(1, Number(e.target.value) || 1) })} />
+              <input
+                id="rt-hb"
+                type="number"
+                min={1}
+                className="input"
+                value={form.hbInterval}
+                onChange={(e) => set({ hbInterval: Math.max(1, Number(e.target.value) || 1) })}
+              />
             </Field>
             <Field label={t("backend.hb.token")} htmlFor="rt-hb-token" hint={t("backend.hb.tokenHint")}>
-              <input id="rt-hb-token" className="input mono" value={form.hbToken} onChange={(e) => set({ hbToken: e.target.value })} />
+              <input
+                id="rt-hb-token"
+                className="input mono"
+                value={form.hbToken}
+                onChange={(e) => set({ hbToken: e.target.value })}
+              />
             </Field>
           </div>
           <label className="check">
-            <input type="checkbox" checked={form.hbActive} onChange={(e) => set({ hbActive: e.target.checked })} />
+            <input
+              type="checkbox"
+              checked={form.hbActive}
+              onChange={(e) => set({ hbActive: e.target.checked })}
+            />
             <span>{t("backend.hb.activeHours")}</span>
           </label>
           {form.hbActive && (
             <>
               <div className="rt-inline">
                 <Field label={t("backend.hb.start")} htmlFor="rt-hb-start">
-                  <input id="rt-hb-start" type="time" className="input" value={form.hbStart} onChange={(e) => set({ hbStart: e.target.value })} />
+                  <input
+                    id="rt-hb-start"
+                    type="time"
+                    className="input"
+                    value={form.hbStart}
+                    onChange={(e) => set({ hbStart: e.target.value })}
+                  />
                 </Field>
                 <Field label={t("backend.hb.end")} htmlFor="rt-hb-end">
-                  <input id="rt-hb-end" type="time" className="input" value={form.hbEnd} onChange={(e) => set({ hbEnd: e.target.value })} />
+                  <input
+                    id="rt-hb-end"
+                    type="time"
+                    className="input"
+                    value={form.hbEnd}
+                    onChange={(e) => set({ hbEnd: e.target.value })}
+                  />
                 </Field>
-                <Field label={t("backend.hb.tz")} htmlFor="rt-hb-tz" error={isValidTimeZone(form.hbTz) ? undefined : t("routines.tzInvalid")}>
-                  <input id="rt-hb-tz" className="input mono" placeholder={form.timezone || "UTC"} value={form.hbTz} onChange={(e) => set({ hbTz: e.target.value })} />
+                <Field
+                  label={t("backend.hb.tz")}
+                  htmlFor="rt-hb-tz"
+                  error={isValidTimeZone(form.hbTz) ? undefined : t("routines.tzInvalid")}
+                >
+                  <input
+                    id="rt-hb-tz"
+                    className="input mono"
+                    placeholder={form.timezone || "UTC"}
+                    value={form.hbTz}
+                    onChange={(e) => set({ hbTz: e.target.value })}
+                  />
                 </Field>
               </div>
               {overnight && <p className="rt-kind-hint">{t("backend.hb.overnight")}</p>}
             </>
           )}
           <div className="grid grid-2">
-            <TimezoneField form={form} set={set} tzOk={tzOk} tzQuery={tzQuery} setTzQuery={setTzQuery} zones={zones} />
+            <TimezoneField
+              form={form}
+              set={set}
+              tzOk={tzOk}
+              tzQuery={tzQuery}
+              setTzQuery={setTzQuery}
+              zones={zones}
+            />
           </div>
         </>
       )}
@@ -537,12 +743,18 @@ function RoutineModal({
       <div className="notice rt-fires" aria-live="polite">
         <span className="hud-label">{t("backend.nextFires")}</span>
         {preview.length === 0 ? (
-          <span className="widget-muted">{form.kind === "on-exit" ? t("backend.noFires") : t("routines.noUpcoming")}</span>
+          <span className="widget-muted">
+            {form.kind === "on-exit" ? t("backend.noFires") : t("routines.noUpcoming")}
+          </span>
         ) : (
           <ul>
             {preview.map((ts) => (
               <li key={ts} className="mono">
-                {new Date(ts).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short", timeZone: form.timezone || undefined })}
+                {new Date(ts).toLocaleString(locale, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                  timeZone: form.timezone || undefined,
+                })}
               </li>
             ))}
           </ul>
@@ -551,7 +763,12 @@ function RoutineModal({
 
       <div className="grid grid-2">
         <Field label={t("backend.runner")} htmlFor="rt-runner" hint={t("backend.runner.hint")}>
-          <select id="rt-runner" className="input" value={form.runner} onChange={(e) => set({ runner: e.target.value as RoutineRunner })}>
+          <select
+            id="rt-runner"
+            className="input"
+            value={form.runner}
+            onChange={(e) => set({ runner: e.target.value as RoutineRunner })}
+          >
             {RUNNERS.map((r) => (
               <option key={r} value={r}>
                 {t(RUNNER_KEY(r))}
@@ -560,18 +777,38 @@ function RoutineModal({
           </select>
         </Field>
         {form.runner === "remote" && (
-          <Field label={t("backend.remoteName")} htmlFor="rt-remote" hint={t("backend.remoteNameHint")} error={form.remoteName.trim() ? undefined : t("common.required")}>
-            <input id="rt-remote" className="input" value={form.remoteName} onChange={(e) => set({ remoteName: e.target.value })} />
+          <Field
+            label={t("backend.remoteName")}
+            htmlFor="rt-remote"
+            hint={t("backend.remoteNameHint")}
+            error={form.remoteName.trim() ? undefined : t("common.required")}
+          >
+            <input
+              id="rt-remote"
+              className="input"
+              value={form.remoteName}
+              onChange={(e) => set({ remoteName: e.target.value })}
+            />
           </Field>
         )}
         <Field label={t("backend.context")} htmlFor="rt-context" hint={t("backend.context.hint")}>
-          <select id="rt-context" className="input" value={form.context} onChange={(e) => set({ context: e.target.value as "main" | "isolated" })}>
+          <select
+            id="rt-context"
+            className="input"
+            value={form.context}
+            onChange={(e) => set({ context: e.target.value as "main" | "isolated" })}
+          >
             <option value="main">{t("backend.context.main")}</option>
             <option value="isolated">{t("backend.context.isolated")}</option>
           </select>
         </Field>
         <Field label={t("backend.delivery")} htmlFor="rt-delivery" hint={t("backend.delivery.hint")}>
-          <select id="rt-delivery" className="input" value={form.delivery} onChange={(e) => set({ delivery: e.target.value as RoutineDelivery })}>
+          <select
+            id="rt-delivery"
+            className="input"
+            value={form.delivery}
+            onChange={(e) => set({ delivery: e.target.value as RoutineDelivery })}
+          >
             {DELIVERIES.map((d) => (
               <option key={d} value={d} disabled={d === "webhook" && !allowWebhooks}>
                 {t(`backend.delivery.${d}` as TKey)}
@@ -586,15 +823,36 @@ function RoutineModal({
           label={t("backend.webhookUrl")}
           htmlFor="rt-webhook"
           hint={allowWebhooks ? undefined : t("backend.webhookOff")}
-          error={webhookOk ? undefined : allowWebhooks ? t("backend.webhookInvalid") : t("backend.webhookOff")}
+          error={
+            webhookOk ? undefined : allowWebhooks ? t("backend.webhookInvalid") : t("backend.webhookOff")
+          }
         >
-          <input id="rt-webhook" className="input mono" value={form.webhookUrl} onChange={(e) => set({ webhookUrl: e.target.value })} aria-invalid={!webhookOk} />
+          <input
+            id="rt-webhook"
+            className="input mono"
+            value={form.webhookUrl}
+            onChange={(e) => set({ webhookUrl: e.target.value })}
+            aria-invalid={!webhookOk}
+          />
         </Field>
       )}
 
       <div className="grid grid-2">
-        <Field label={t("skills.provider")} htmlFor="rt-provider" hint={enabledProviders.length && !enabledProviders.includes(form.provider) ? t("routines.providerDisabled") : undefined}>
-          <select id="rt-provider" className="input" value={form.provider} onChange={(e) => set({ provider: e.target.value as ProviderId })}>
+        <Field
+          label={t("skills.provider")}
+          htmlFor="rt-provider"
+          hint={
+            enabledProviders.length && !enabledProviders.includes(form.provider)
+              ? t("routines.providerDisabled")
+              : undefined
+          }
+        >
+          <select
+            id="rt-provider"
+            className="input"
+            value={form.provider}
+            onChange={(e) => set({ provider: e.target.value as ProviderId })}
+          >
             {(["claude", "cursor", "codex"] as ProviderId[]).map((p) => (
               <option key={p} value={p}>
                 {p}
@@ -604,20 +862,45 @@ function RoutineModal({
           </select>
         </Field>
         <Field label={t("routines.missed")} htmlFor="rt-missed">
-          <select id="rt-missed" className="input" value={form.missedPolicy} onChange={(e) => set({ missedPolicy: e.target.value })}>
+          <select
+            id="rt-missed"
+            className="input"
+            value={form.missedPolicy}
+            onChange={(e) => set({ missedPolicy: e.target.value })}
+          >
             <option value="skip">{t("routines.missed.skip")}</option>
             <option value="run_on_boot">{t("routines.missed.run_on_boot")}</option>
           </select>
         </Field>
         <Field label={t("routines.timeoutMin")} htmlFor="rt-timeout">
-          <input id="rt-timeout" type="number" className="input" min={1} value={Math.round(form.timeoutMs / 60000)} onChange={(e) => set({ timeoutMs: Math.max(1, Number(e.target.value)) * 60000 })} />
+          <input
+            id="rt-timeout"
+            type="number"
+            className="input"
+            min={1}
+            value={Math.round(form.timeoutMs / 60000)}
+            onChange={(e) => set({ timeoutMs: Math.max(1, Number(e.target.value)) * 60000 })}
+          />
         </Field>
         <Field label={t("routines.attempts")} htmlFor="rt-attempts" hint={t("routines.attemptsHint")}>
-          <input id="rt-attempts" type="number" className="input" min={1} max={5} value={form.maxAttempts} onChange={(e) => set({ maxAttempts: Math.min(5, Math.max(1, Number(e.target.value))) })} />
+          <input
+            id="rt-attempts"
+            type="number"
+            className="input"
+            min={1}
+            max={5}
+            value={form.maxAttempts}
+            onChange={(e) => set({ maxAttempts: Math.min(5, Math.max(1, Number(e.target.value))) })}
+          />
         </Field>
       </div>
       <Field label={t("settings.profile")} htmlFor="rt-profile">
-        <select id="rt-profile" className="input" value={form.profile} onChange={(e) => set({ profile: e.target.value })}>
+        <select
+          id="rt-profile"
+          className="input"
+          value={form.profile}
+          onChange={(e) => set({ profile: e.target.value })}
+        >
           {PROFILES.map((prof) => (
             <option key={prof} value={prof}>
               {t(`profile.${prof}`)}
@@ -660,11 +943,30 @@ function TimezoneField({
 }) {
   const t = useT();
   return (
-    <Field label={t("settings.timezone")} htmlFor="rt-tz" hint={t("routines.tzHint")} error={tzOk ? undefined : t("routines.tzInvalid")}>
-      <input className="input sm" placeholder={t("common.search")} value={tzQuery} onChange={(e) => setTzQuery(e.target.value)} aria-label={`${t("common.search")} ${t("settings.timezone")}`} />
-      <select id="rt-tz" className="input" value={form.timezone} onChange={(e) => set({ timezone: e.target.value })} size={1}>
+    <Field
+      label={t("settings.timezone")}
+      htmlFor="rt-tz"
+      hint={t("routines.tzHint")}
+      error={tzOk ? undefined : t("routines.tzInvalid")}
+    >
+      <input
+        className="input sm"
+        placeholder={t("common.search")}
+        value={tzQuery}
+        onChange={(e) => setTzQuery(e.target.value)}
+        aria-label={`${t("common.search")} ${t("settings.timezone")}`}
+      />
+      <select
+        id="rt-tz"
+        className="input"
+        value={form.timezone}
+        onChange={(e) => set({ timezone: e.target.value })}
+        size={1}
+      >
         <option value="">{t("routines.tzInherited")}</option>
-        {!zones.includes(form.timezone) && form.timezone && <option value={form.timezone}>{form.timezone}</option>}
+        {!zones.includes(form.timezone) && form.timezone && (
+          <option value={form.timezone}>{form.timezone}</option>
+        )}
         {zones.map((z) => (
           <option key={z} value={z}>
             {z}
@@ -679,7 +981,10 @@ function HistoryModal({ routine, onClose }: { routine: RoutineStatus; onClose: (
   const t = useT();
   const locale = useLocale();
   const navigate = useNavigate();
-  const history = useApiQuery<RoutineHistoryEntry[]>(qk.routineHistory(routine.id), `/api/routines/${encodeURIComponent(routine.id)}/history`);
+  const history = useApiQuery<RoutineHistoryEntry[]>(
+    qk.routineHistory(routine.id),
+    `/api/routines/${encodeURIComponent(routine.id)}/history`,
+  );
   const heartbeat = routineKind(routine) === "heartbeat";
   return (
     <Modal title={`${t("routines.history")} — ${routine.name}`} onClose={onClose}>
@@ -714,7 +1019,14 @@ function HistoryModal({ routine, onClose }: { routine: RoutineStatus; onClose: (
                   )}
                   <td>
                     {h.runId ? (
-                      <Button size="sm" variant="ghost" onClick={() => { onClose(); navigate(`/runs/${h.runId}`); }}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          onClose();
+                          navigate(`/runs/${h.runId}`);
+                        }}
+                      >
                         {t("runs.title")} →
                       </Button>
                     ) : (

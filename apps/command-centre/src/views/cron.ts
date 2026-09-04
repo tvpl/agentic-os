@@ -18,7 +18,13 @@ export interface CronSpec {
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const DAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
-function parseField(raw: string, min: number, max: number, names: string[] | null, label: string): { set: Set<number>; any: boolean } {
+function parseField(
+  raw: string,
+  min: number,
+  max: number,
+  names: string[] | null,
+  label: string,
+): { set: Set<number>; any: boolean } {
   const set = new Set<number>();
   const val = (token: string): number => {
     const lower = token.toLowerCase();
@@ -66,7 +72,15 @@ export function parseCron(expr: string): CronSpec {
   const dom = parseField(fields[2]!, 1, 31, null, "day");
   const month = parseField(fields[3]!, 1, 12, MONTHS, "month");
   const dow = parseField(fields[4]!, 0, 7, DAYS, "weekday");
-  return { minute: minute.set, hour: hour.set, dom: dom.set, month: month.set, dow: dow.set, domAny: dom.any, dowAny: dow.any };
+  return {
+    minute: minute.set,
+    hour: hour.set,
+    dom: dom.set,
+    month: month.set,
+    dow: dow.set,
+    domAny: dom.any,
+    dowAny: dow.any,
+  };
 }
 
 export function isValidCron(expr: string): boolean {
@@ -110,7 +124,14 @@ function wallParts(instant: number, tz: string | undefined): WallParts {
   });
   const p: Record<string, string> = {};
   for (const part of fmt.formatToParts(new Date(instant))) p[part.type] = part.value;
-  return { y: Number(p.year), mo: Number(p.month), d: Number(p.day), h: Number(p.hour) % 24, mi: Number(p.minute), dow: DAYS.indexOf((p.weekday ?? "sun").toLowerCase()) };
+  return {
+    y: Number(p.year),
+    mo: Number(p.month),
+    d: Number(p.day),
+    h: Number(p.hour) % 24,
+    mi: Number(p.minute),
+    dow: DAYS.indexOf((p.weekday ?? "sun").toLowerCase()),
+  };
 }
 
 /** Next `count` firing instants (ms) after `from`, or [] when nothing matches within ~400 days. */
@@ -125,7 +146,8 @@ export function nextCronRuns(expr: string, tz: string | undefined, count = 3, fr
     if (!spec.month.has(w.mo)) continue;
     const domOk = spec.dom.has(w.d);
     const dowOk = spec.dow.has(w.dow);
-    const dayOk = spec.domAny && spec.dowAny ? true : spec.domAny ? dowOk : spec.dowAny ? domOk : domOk || dowOk;
+    const dayOk =
+      spec.domAny && spec.dowAny ? true : spec.domAny ? dowOk : spec.dowAny ? domOk : domOk || dowOk;
     if (!dayOk) continue;
     for (const h of [...spec.hour].sort((a, b) => a - b)) {
       for (const mi of [...spec.minute].sort((a, b) => a - b)) {

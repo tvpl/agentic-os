@@ -611,3 +611,13 @@
 .market-list p.hint {
   margin: 2px 0;
 }
+
+/* ---- skill notes tab (Onda 4) ---- */
+.skill-notes textarea {
+  width: 100%;
+  resize: vertical;
+  margin-top: var(--space-3);
+}
+.skill-notes .head-actions {
+  margin-top: var(--space-2);
+}

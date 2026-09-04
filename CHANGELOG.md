@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.7.0 — 2026-09-04
+
+Every remaining item of the evolution plan (`docs/plan-2026-09/`): the rest
+of Onda 1 and 2, Onda 3 and Onda 4. Nothing in the plan is pending.
+
+- **Tool approvals mid-run** (Onda 1): in `review_before_write` and
+  `controlled_write`, the Claude adapter runs with `--permission-prompt-tool`
+  pointed at a MordomoOS MCP server (`mordomo mcp permission`) that turns
+  each tool prompt into a `tool_use` approval; the run page and the Console
+  show the card while the run waits, with Allow / Deny. `mordomo mcp` also
+  serves the memory (recall, facts, journal), skills and inbox as MCP tools
+  for any client. Journal lines carry the skill or prompt head, session id,
+  files changed and a reply gist.
+- **Sentinels and triage** (Onda 2): repeated-failure, silent-routine,
+  connector-delta, repeat-detector (the *did it twice* nudge that offers to
+  save a prompt as a skill), fs-watch and a cheap-model triage, each with a
+  toggle in Settings › Notifications; Telegram delivery with a test button;
+  the inbox becomes a system notification and, optionally, a spoken line
+  when the tab is hidden. The Now panel shows the **next step** for a fresh
+  install (folder → run → routine → budget → connector).
+- **Remote access and the shell** (Onda 3): device pairing (6-digit code,
+  per-device tokens with expiry, revoke list) behind `settings.remote`, a
+  pairing screen on non-loopback hosts; the Command Centre installs as a
+  **PWA** (manifest, service worker, icons) and keeps working offline for
+  the shell; voice in the Console (mic → prompt, Read aloud per reply, the
+  core shows *listening*); **squads** — fan a run out into up to 8 sub-agents
+  from its page, with a children list; a verified **skill marketplace**
+  (registries in Settings › Memory, sha256-checked, staged before install).
+- **Second Brain and skills** (Onda 4): *Similar content* edges from a
+  dependency-free TF-IDF cosine over the indexed text (top-3 per file, off
+  by default in the legend, counted always); the force layout runs in a
+  **Web Worker** with positions applied per frame (inline fallback where
+  workers are missing); labels no longer overlap (greedy collision, selected
+  and matched files win). **Agent notes**: every skill gets a `NOTES.md`
+  appended from run pages (*Note for the skill*) or the skill's Notes tab,
+  and folded into every run prompt. The nightly memory consolidation ships
+  **enabled** (03:00, `review_before_write`, so it parks for approval).
+- **HUD sound**: a short ack when a run starts, a chord when it finishes, a
+  low tone on failure — same toggle as the inbox blip, burst-guarded for
+  squads.
+- APIs added: `GET/POST /api/approvals/tool`, `GET /api/approvals/:id`,
+  `POST /api/runs/:id/children`, `GET /api/runs/:id/children`,
+  `GET /api/skills/registry`, `POST /api/skills/install`,
+  `GET/POST /api/skills/:slug/notes`, `POST /api/pair/start`,
+  `POST /api/pair/claim`, `GET/DELETE /api/devices`,
+  `POST /api/channels/telegram/test`, `/api/memory/graph?related=`.
+  Settings added: `limits.toolApprovalTimeoutMs`, `remote`, `marketplace`,
+  `sentinels`, `channels`. Migration 7 (`devices`).
+
 ## 0.6.0 — 2026-09-04
 
 The evolution plan (`docs/plan-2026-09/`) executed: Onda 0 in full, the

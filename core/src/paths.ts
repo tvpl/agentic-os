@@ -11,10 +11,7 @@ import { fileURLToPath } from "node:url";
 function findRepoRoot(startDir: string): string {
   let dir = startDir;
   for (let i = 0; i < 10; i++) {
-    if (
-      fs.existsSync(path.join(dir, "package.json")) &&
-      fs.existsSync(path.join(dir, "core"))
-    ) {
+    if (fs.existsSync(path.join(dir, "package.json")) && fs.existsSync(path.join(dir, "core"))) {
       return dir;
     }
     const parent = path.dirname(dir);
@@ -45,9 +42,7 @@ export interface MordomoPaths {
 }
 
 export function resolvePaths(homeOverride?: string): MordomoPaths {
-  const home = path.resolve(
-    homeOverride ?? process.env.MORDOMO_HOME ?? findRepoRoot(moduleDir),
-  );
+  const home = path.resolve(homeOverride ?? process.env.MORDOMO_HOME ?? findRepoRoot(moduleDir));
   const config = path.join(home, "config");
   const db = path.join(config, "db");
   return {

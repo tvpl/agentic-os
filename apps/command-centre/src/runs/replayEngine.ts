@@ -67,13 +67,27 @@ export function buildReplayModel(events: readonly RunEventView[]): ReplayModel {
         const tool = String(e.tool ?? "tool");
         const id = `tool:${tool}`;
         touch(id, tool, "tool", at);
-        particles.push({ id: seq++, from: last === id ? "prompt" : last, to: id, at, flight: flightFor(i, at), kind: "tool" });
+        particles.push({
+          id: seq++,
+          from: last === id ? "prompt" : last,
+          to: id,
+          at,
+          flight: flightFor(i, at),
+          kind: "tool",
+        });
         last = id;
         break;
       }
       case "assistant":
         touch("assistant", "assistant", "assistant", at);
-        particles.push({ id: seq++, from: last, to: "assistant", at, flight: flightFor(i, at), kind: "assistant" });
+        particles.push({
+          id: seq++,
+          from: last,
+          to: "assistant",
+          at,
+          flight: flightFor(i, at),
+          kind: "assistant",
+        });
         last = "assistant";
         break;
       case "usage":
@@ -133,8 +147,12 @@ export function stateAt(model: ReplayModel, t: number): ReplayState {
 }
 
 /** Static summary for reduced motion: tools with counts, in first-use order. */
-export function replaySummary(model: ReplayModel): Array<{ label: string; count: number; kind: ReplayNodeKind }> {
-  return model.nodes.filter((n) => n.kind !== "prompt").map((n) => ({ label: n.label, count: n.count, kind: n.kind }));
+export function replaySummary(
+  model: ReplayModel,
+): Array<{ label: string; count: number; kind: ReplayNodeKind }> {
+  return model.nodes
+    .filter((n) => n.kind !== "prompt")
+    .map((n) => ({ label: n.label, count: n.count, kind: n.kind }));
 }
 
 export interface PlacedNode extends ReplayNode {
@@ -147,7 +165,12 @@ export interface PlacedNode extends ReplayNode {
  * the middle column, assistant and result on the right. Pure so the drawing
  * code stays a projection of the model (and so it can be tested).
  */
-export function layoutNodes(model: ReplayModel, width: number, height: number, pad = 48): Map<string, PlacedNode> {
+export function layoutNodes(
+  model: ReplayModel,
+  width: number,
+  height: number,
+  pad = 48,
+): Map<string, PlacedNode> {
   const out = new Map<string, PlacedNode>();
   const columnX = {
     prompt: pad,

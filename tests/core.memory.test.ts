@@ -92,7 +92,10 @@ describe("memory indexer", () => {
     fs.mkdirSync(path.join(workspace, ".git"), { recursive: true });
     fs.writeFileSync(path.join(workspace, ".git", "config"), "[core]\n\trepositoryformatversion = 0\n");
     fs.mkdirSync(path.join(workspace, ".aws"), { recursive: true });
-    fs.writeFileSync(path.join(workspace, ".aws", "credentials"), "[default]\naws_access_key_id = AKIAAAAAAAAAAAAAAAAA\n");
+    fs.writeFileSync(
+      path.join(workspace, ".aws", "credentials"),
+      "[default]\naws_access_key_id = AKIAAAAAAAAAAAAAAAAA\n",
+    );
     store.update({ excludes: [] });
     new MemoryIndexer(db, () => store.load()).indexAll();
     const rows = db.prepare("SELECT path FROM files").all() as Array<{ path: string }>;
@@ -118,12 +121,21 @@ describe("memory indexer", () => {
 
   it("keeps markdown links incremental: added later, restored after delete, dropped on edit", () => {
     const indexer = new MemoryIndexer(db, () => store.load());
-    fs.writeFileSync(path.join(workspace, "hub.md"), "# Hub\n\n[later](./later.md) and [notes](./notes.md)\n");
+    fs.writeFileSync(
+      path.join(workspace, "hub.md"),
+      "# Hub\n\n[later](./later.md) and [notes](./notes.md)\n",
+    );
     indexer.indexAll();
     const idOf = (name: string) =>
       (db.prepare("SELECT id FROM files WHERE name = ?").get(name) as { id: number } | undefined)?.id;
     const linkCount = (src: number, dst: number) =>
-      (db.prepare("SELECT COUNT(*) c FROM file_links WHERE src_id = ? AND dst_id = ? AND kind = 'markdown-link'").get(src, dst) as { c: number }).c;
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) c FROM file_links WHERE src_id = ? AND dst_id = ? AND kind = 'markdown-link'",
+          )
+          .get(src, dst) as { c: number }
+      ).c;
     const hub = idOf("hub.md")!;
     expect(linkCount(hub, idOf("notes.md")!)).toBe(1);
 
@@ -158,7 +170,9 @@ describe("memory indexer", () => {
     const indexer = new MemoryIndexer(db, () => store.load());
     indexer.indexAll();
     const budget = db.prepare("SELECT root, area, rel FROM files WHERE name = 'budget-2026.md'").get() as {
-      root: string; area: string; rel: string;
+      root: string;
+      area: string;
+      rel: string;
     };
     expect(budget.root).toBe(nested);
     expect(budget.area).toBe("Finanças");
@@ -173,7 +187,10 @@ describe("memory indexer", () => {
       ],
     });
     expect(indexer.indexAll().updated).toBe(1);
-    const again = db.prepare("SELECT root, area FROM files WHERE name = 'budget-2026.md'").get() as { root: string; area: string };
+    const again = db.prepare("SELECT root, area FROM files WHERE name = 'budget-2026.md'").get() as {
+      root: string;
+      area: string;
+    };
     expect(again.root).toBe(workspace);
     expect(again.area).toBe("Documentos");
   });
@@ -246,12 +263,25 @@ describe("graph and relations", () => {
     const insert = db.prepare(
       "INSERT INTO files (root, path, rel, name, ext, dir, area, size, mtime, indexed_at, title, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '[]')",
     );
-    const link = db.prepare("INSERT OR IGNORE INTO file_links (src_id, dst_id, kind) VALUES (?, ?, 'markdown-link')");
+    const link = db.prepare(
+      "INSERT OR IGNORE INTO file_links (src_id, dst_id, kind) VALUES (?, ?, 'markdown-link')",
+    );
     db.transaction(() => {
       for (let i = 0; i < 1500; i++) {
         const dir = path.join(workspace, `d${i % 30}`);
         const p = path.join(dir, `f${i}.md`);
-        const info = insert.run(workspace, p, path.relative(workspace, p), `f${i}.md`, ".md", dir, "Finanças", 10, i, i);
+        const info = insert.run(
+          workspace,
+          p,
+          path.relative(workspace, p),
+          `f${i}.md`,
+          ".md",
+          dir,
+          "Finanças",
+          10,
+          i,
+          i,
+        );
         const id = Number(info.lastInsertRowid);
         if (id > 1) link.run(id, id - 1);
       }
@@ -296,15 +326,23 @@ describe("preview", () => {
     let settings = store.load();
     expect(previewFile(settings, [], path.join(workspace, ".git", "config")).kind).toBe("blocked");
     expect(previewFile(settings, [], path.join(workspace, ".aws", "credentials")).kind).toBe("blocked");
-    expect(previewFile(settings, [], path.join(workspace, "node_modules", "junk", "index.js")).kind).toBe("blocked");
+    expect(previewFile(settings, [], path.join(workspace, "node_modules", "junk", "index.js")).kind).toBe(
+      "blocked",
+    );
     expect(previewFile(settings, [], path.join(workspace, "private", "diary.md")).kind).toBe("text");
 
     store.update({ excludes: ["private"] });
     settings = store.load();
     expect(previewFile(settings, [], path.join(workspace, "private", "diary.md")).kind).toBe("blocked");
-    expect(() => resolveOpenablePath(settings, [], path.join(workspace, "private", "diary.md"))).toThrow(PathAccessError);
-    expect(() => resolveOpenablePath(settings, [], path.join(workspace, ".git", "config"))).toThrow(PathAccessError);
-    expect(resolveOpenablePath(settings, [], path.join(workspace, "notes.md"))).toBe(fs.realpathSync(path.join(workspace, "notes.md")));
+    expect(() => resolveOpenablePath(settings, [], path.join(workspace, "private", "diary.md"))).toThrow(
+      PathAccessError,
+    );
+    expect(() => resolveOpenablePath(settings, [], path.join(workspace, ".git", "config"))).toThrow(
+      PathAccessError,
+    );
+    expect(resolveOpenablePath(settings, [], path.join(workspace, "notes.md"))).toBe(
+      fs.realpathSync(path.join(workspace, "notes.md")),
+    );
   });
 
   it("detects binary content by bytes and previews extension-less text", () => {
