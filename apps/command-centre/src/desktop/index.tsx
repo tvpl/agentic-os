@@ -418,7 +418,11 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
               }
               title={t("desktop.inbox.title")}
               aria-expanded={bellAnchor !== null}
-              onClick={(e) => setBellAnchor((prev) => (prev ? null : e.currentTarget))}
+              onClick={(e) => {
+                // Read the anchor now: a batched updater runs after the synthetic event is released.
+                const anchor = e.currentTarget;
+                setBellAnchor((prev) => (prev ? null : anchor));
+              }}
             >
               <Bell aria-hidden />
               {notifications.unread > 0 && (
