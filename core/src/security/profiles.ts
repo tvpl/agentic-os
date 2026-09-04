@@ -57,6 +57,8 @@ export function writeDecision(profile: SecurityProfile, origin: WriteOrigin): Wr
 /** Actions that always require an explicit human approval, whatever the profile. */
 export type ApprovalKind =
   | "write_run"
+  /** A tool call inside a running agent (permission prompt brokered by MCP). */
+  | "tool_use"
   | "install_software"
   | "change_global_config"
   | "destructive_command"

@@ -45,6 +45,13 @@ export interface HealthStatus {
 
 export type RunMode = "read_only" | "write";
 
+/** Command line of the permission MCP server (spawned by the provider CLI, not by us). */
+export interface PermissionBroker {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
 export interface AgentRun {
   runId: string;
   prompt: string;
@@ -68,6 +75,12 @@ export interface AgentRun {
    * session (nothing to resume yet) and whenever the provider cannot resume.
    */
   resume?: { providerSessionId: string };
+  /**
+   * How the provider CLI can ask a human before a tool runs (plan Onda 1 §3):
+   * an MCP server command the CLI spawns, which turns each prompt into a
+   * MordomoOS approval. Absent when the profile answers prompts itself.
+   */
+  permissionBroker?: PermissionBroker;
   /**
    * Cancellation signal owned by the RunManager. When aborted before the
    * provider process is spawned, nothing is spawned; when aborted later, the

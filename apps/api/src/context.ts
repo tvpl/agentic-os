@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   ApprovalStore,
   ConnectorRegistry,
@@ -29,6 +30,8 @@ import {
   type ProviderId,
   type ProviderRegistry,
   type Settings,
+  type SecurityProfile,
+  type PermissionBroker,
 } from "@mordomo/core";
 import { buildProviderRegistry } from "./providers.js";
 
@@ -165,6 +168,7 @@ export class AppContext {
       this.paths,
       () => this.settings(),
       (id) => this.adapters[id],
+      { permissionBroker: (run) => this.permissionBrokerFor(run) },
     );
     this.indexer = new MemoryIndexer(this.db, () => this.settings());
     this.routines = new RoutineStore(this.paths);
@@ -183,7 +187,10 @@ export class AppContext {
     // only when the HTTP routes are registered) means CLI paths — `mordomo
     // index`, `mordomo run` — also index `memory/journal/**` and log their run
     // line. The install is idempotent, so the route-level one is a no-op.
-    this.disposeJournalHooks = installJournalHooks(events, this.paths, { indexer: this.indexer });
+    this.disposeJournalHooks = installJournalHooks(events, this.paths, {
+      indexer: this.indexer,
+      runs: { get: (id) => this.runs.get(id), lastReply: (id) => this.runs.lastAssistantText(id) },
+    });
     // The inbox listens on the same bus: approvals, failed runs, heartbeat
     // alerts and budget thresholds become rows that survive a closed tab.
     this.notifications = new NotificationStore(this.db);
@@ -209,6 +216,32 @@ export class AppContext {
 
   settings(): Settings {
     return this.settingsStore.load();
+  }
+
+  /**
+   * The permission MCP server for a write run: `mordomo mcp permission`,
+   * spawned by the provider CLI with the local URL, the local token and the
+   * run id in its environment. Profiles that answer prompts themselves
+   * (approved_automation) and read-only runs get none.
+   */
+  permissionBrokerFor(run: {
+    id: string;
+    permissionProfile: SecurityProfile | null;
+  }): PermissionBroker | null {
+    const settings = this.settings();
+    const profile = run.permissionProfile ?? settings.securityProfile;
+    if (profile !== "review_before_write" && profile !== "controlled_write") return null;
+    return {
+      command: process.execPath,
+      args: [fileURLToPath(new URL("./cli.js", import.meta.url)), "mcp", "permission"],
+      env: {
+        MORDOMO_URL: `http://127.0.0.1:${settings.port}`,
+        MORDOMO_TOKEN: this.token(),
+        MORDOMO_RUN_ID: run.id,
+        MORDOMO_APPROVAL_TIMEOUT_MS: String(settings.limits.toolApprovalTimeoutMs ?? 600_000),
+        ...(this.paths.home ? { MORDOMO_HOME: this.paths.home } : {}),
+      },
+    };
   }
 
   token(): string {

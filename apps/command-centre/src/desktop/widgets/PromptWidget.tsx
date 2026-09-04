@@ -27,6 +27,8 @@ import { qk, useOsProviders, useOsSettings, useOsSkills } from "../../queries";
 import { Button, Segmented } from "../../components/primitives";
 import { formatDuration, useToast } from "../../components/ui";
 import { useRunStream, type RunDetailPayload, type RunEventView } from "../../runs/useRunStream";
+import { ToolApprovalCard, useApprovals } from "../../runs/Approvals";
+import { toolApprovalsForRun } from "../../runs/approvals";
 import { useDesktopActions } from "../actions";
 import { isActiveStatus } from "../data";
 import { cfgString, type WidgetProps } from "../widgetTypes";
@@ -168,6 +170,9 @@ export default function PromptWidget({ config }: WidgetProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [details.map((d) => d.dataUpdatedAt).join(","), finishedIds.join(",")]);
   const live = useMemo(() => replyFromEvents(stream.events), [stream.events]);
+  // Tool prompts the running turn is waiting on (the CLI is paused until answered).
+  const approvals = useApprovals({ enabled: active !== undefined, refetchInterval: active ? 3000 : false });
+  const toolApprovals = toolApprovalsForRun(approvals.data, active?.id);
 
   // Keep the newest turn in view as it streams.
   useEffect(() => {
@@ -269,6 +274,10 @@ export default function PromptWidget({ config }: WidgetProps) {
           />
         ))}
       </div>
+
+      {toolApprovals.map((a) => (
+        <ToolApprovalCard key={a.id} approval={a} />
+      ))}
 
       {suggestions.length > 0 && (
         <div className="promptw-suggest" role="listbox" aria-label={t("desktop.prompt.skills")}>

@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { EventEmitter } from "node:events";
+import type { PermissionBroker } from "../agents/types.js";
 import type { Db } from "../db/db.js";
 import type { MordomoPaths } from "../paths.js";
 import type { Settings, ProviderId, EffortLevel, SecurityProfile } from "../config/schema.js";
@@ -12,7 +13,7 @@ import { killProcessGroup } from "../spawn/safeSpawn.js";
 import { events } from "../events.js";
 import { SessionStore } from "./sessionStore.js";
 
-export type RunOrigin = "manual" | "skill" | "routine" | "api";
+export type RunOrigin = "manual" | "skill" | "routine" | "api" | "sentinel";
 export type RunStatus =
   "queued" | "running" | "waiting_approval" | "done" | "failed" | "cancelled" | "timed_out" | "interrupted";
 
@@ -165,7 +166,11 @@ interface ActiveRun {
  * status change goes through `transition()` with an allowed set of sources so
  * a late event can never overwrite a terminal status.
  */
+/** Builds the permission MCP command for a run, or null to let the CLI decide alone. */
+export type PermissionBrokerFactory = (run: RunRecord) => PermissionBroker | null;
+
 export class RunManager {
+  private readonly permissionBroker: PermissionBrokerFactory | null;
   /** Conversations these runs may belong to (`runs.session_id`). */
   readonly sessions: SessionStore;
   private readonly emitter = new EventEmitter();
@@ -181,8 +186,9 @@ export class RunManager {
     private readonly paths: MordomoPaths,
     private readonly getSettings: () => Settings,
     private readonly getAdapter: (id: ProviderId) => AgentAdapter,
-    opts: { eventCap?: number; pruneOnBoot?: boolean } = {},
+    opts: { eventCap?: number; pruneOnBoot?: boolean; permissionBroker?: PermissionBrokerFactory } = {},
   ) {
+    this.permissionBroker = opts.permissionBroker ?? null;
     const s = getSettings();
     this.sessions = new SessionStore(db);
     this.logger = new JsonlLogger(paths.logs, "runs", s.limits.logMaxFileBytes, s.limits.logRetentionDays);
@@ -523,6 +529,7 @@ export class RunManager {
         artifactsDir,
         ...(record.sessionId ? { sessionId: record.sessionId } : {}),
         ...(session?.providerSessionId ? { resume: { providerSessionId: session.providerSessionId } } : {}),
+        ...(this.permissionBroker && mode === "write" ? brokerFor(this.permissionBroker, record) : {}),
         signal,
       };
 
@@ -823,6 +830,18 @@ export class RunManager {
    * `[queued]`), so a listener can stream it without querying the database
    * and still dedupe against a `Last-Event-ID` replay.
    */
+  /**
+   * Record an event on a live run from outside the adapter stream (a brokered
+   * permission prompt, an approval answer). Persisted and emitted like any
+   * other event; ignored for runs that are not active.
+   */
+  annotate(runId: string, event: RunEvent): boolean {
+    const active = this.activeRuns.get(runId);
+    if (!active) return false;
+    this.persistEvent(runId, event, active);
+    return true;
+  }
+
   onEvent(runId: string, listener: (event: RunEvent, eventId?: number) => void): () => void {
     const key = `run:${runId}`;
     this.emitter.on(key, listener);
@@ -841,6 +860,20 @@ export class RunManager {
   }
 
   // ------------------------------------------------------------- queries --
+
+  /** The last assistant message persisted for a run (null when none / capped away). */
+  lastAssistantText(id: string): string | null {
+    const row = this.db
+      .prepare("SELECT data FROM run_events WHERE run_id = ? AND type = 'assistant' ORDER BY id DESC LIMIT 1")
+      .get(id) as { data: string } | undefined;
+    if (!row) return null;
+    try {
+      const ev = JSON.parse(row.data) as { text?: unknown };
+      return typeof ev.text === "string" && ev.text.trim() ? ev.text : null;
+    } catch {
+      return null;
+    }
+  }
 
   get(id: string): RunRecord | null {
     const row = this.db.prepare("SELECT * FROM runs WHERE id = ?").get(id) as RawRun | undefined;
@@ -1235,4 +1268,16 @@ function listFilesRecursive(dir: string): string[] {
   };
   walk(dir, "");
   return out;
+}
+
+function brokerFor(
+  factory: PermissionBrokerFactory,
+  record: RunRecord,
+): { permissionBroker?: PermissionBroker } {
+  try {
+    const broker = factory(record);
+    return broker ? { permissionBroker: broker } : {};
+  } catch {
+    return {};
+  }
 }

@@ -189,6 +189,11 @@ export interface JournalHookOptions {
   indexer?: MemoryIndexer;
   /** Area label for memory/ files in the index (null = unassigned). */
   area?: string | null;
+  /** Run lookups for a richer journal line (skill, files, reply gist). */
+  runs?: {
+    get(id: string): { skillSlug: string | null; promptSummary: string; sessionId?: string | null; filesChanged?: string[] } | null;
+    lastReply?(id: string): string | null;
+  };
 }
 
 interface RunFinishedPayload {
@@ -210,6 +215,32 @@ const installed = new WeakMap<EventBus, Map<string, () => void>>();
  * it. Registration (apps/api/src/context.ts, end of the constructor):
  *   `installJournalHooks(events, this.paths, { indexer: this.indexer });`
  */
+/** What a finished run leaves in the journal: the skill or prompt head, files it changed, the gist of the reply. */
+export function runJournalLine(
+  p: Partial<RunFinishedPayload>,
+  secs: string,
+  runs?: JournalHookOptions["runs"],
+): string {
+  const base = `run ${p.runId} → ${p.status ?? "finished"}${secs}`;
+  const run = runs?.get(String(p.runId));
+  if (!run) return base;
+  const what = run.skillSlug ? `/${run.skillSlug}` : oneLine(run.promptSummary, 80);
+  const parts = [what];
+  if (run.sessionId) parts.push(`session ${run.sessionId.slice(0, 8)}`);
+  if (run.filesChanged && run.filesChanged.length > 0) {
+    const names = run.filesChanged.slice(0, 4).map((f) => f.split(/[\\/]/).pop() ?? f);
+    parts.push(`files: ${names.join(", ")}${run.filesChanged.length > 4 ? ` +${run.filesChanged.length - 4}` : ""}`);
+  }
+  const reply = runs?.lastReply?.(String(p.runId));
+  if (reply) parts.push(`reply: ${oneLine(reply, 140)}`);
+  return `${base} · ${parts.join(" · ")}`;
+}
+
+function oneLine(text: string, max: number): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat;
+}
+
 export function installJournalHooks(bus: EventBus, paths: MordomoPaths, opts: JournalHookOptions = {}): () => void {
   if (opts.indexer) opts.indexer.addImplicitRoot({ path: paths.memory, area: opts.area ?? null, enabled: true });
   const key = path.resolve(paths.memory);
@@ -223,7 +254,7 @@ export function installJournalHooks(bus: EventBus, paths: MordomoPaths, opts: Jo
     if (!p || typeof p.runId !== "string") return;
     const secs = typeof p.durationMs === "number" ? ` in ${Math.round(p.durationMs / 1000)}s` : "";
     try {
-      appendJournal(paths, { section: "Runs", text: `run ${p.runId} → ${p.status ?? "finished"}${secs}` });
+      appendJournal(paths, { section: "Runs", text: runJournalLine(p, secs, opts.runs) });
     } catch {
       /* the journal must never break a run */
     }

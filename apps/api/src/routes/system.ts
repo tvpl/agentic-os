@@ -428,6 +428,51 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
   });
 
   app.get("/api/approvals", async () => ctx.approvals.list("pending"));
+  /** One approval by id, any status (the permission tool polls this). */
+  app.get("/api/approvals/:id", async (req) => {
+    const { id } = UuidParams.parse(req.params);
+    const approval = ctx.approvals.get(id);
+    if (!approval) throw httpError(404, "Approval not found");
+    return approval;
+  });
+  /**
+   * A tool prompt raised inside a running agent (plan Onda 1 §3): the
+   * permission MCP server parks it here; the Console, the run page and the
+   * inbox offer Approve / Deny; the server answers the CLI when resolved.
+   */
+  app.post("/api/approvals/tool", async (req) => {
+    const body = z
+      .object({
+        runId: z.string().uuid(),
+        toolName: z.string().min(1).max(200),
+        input: z.record(z.unknown()).default({}),
+        toolUseId: z.string().max(200).optional(),
+      })
+      .parse(req.body);
+    const run = ctx.runs.get(body.runId);
+    if (!run) throw httpError(404, "Run not found");
+    if (run.status !== "running" && run.status !== "queued") throw httpError(409, "Run is not active");
+    const detail = summarizeToolInput(body.toolName, body.input);
+    const description = `${body.toolName}: ${detail}`;
+    const approval = ctx.approvals.request("tool_use", description, {
+      runId: body.runId,
+      toolName: body.toolName,
+      input: body.input,
+      ...(body.toolUseId ? { toolUseId: body.toolUseId } : {}),
+    });
+    ctx.runs.annotate(body.runId, {
+      type: "permission",
+      ts: Date.now(),
+      detail: `${description} (approval ${approval.id})`,
+    });
+    events.emit("approval.requested", {
+      id: approval.id,
+      kind: approval.kind,
+      description,
+      runId: body.runId,
+    });
+    return approval;
+  });
   app.post("/api/approvals/:id/resolve", async (req) => {
     const { id } = UuidParams.parse(req.params);
     const { decision } = z.object({ decision: z.enum(["approved", "denied"]) }).parse(req.body);
@@ -568,4 +613,21 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
     };
     return JSON.parse(redactSecrets(JSON.stringify(bundle)));
   });
+}
+
+/** One line a human can decide on: the command, the file, the URL — never the whole payload. */
+export function summarizeToolInput(tool: string, input: Record<string, unknown>): string {
+  const pick = (...keys: string[]): string | null => {
+    for (const k of keys) {
+      const v = input[k];
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+    return null;
+  };
+  const text =
+    pick("command", "file_path", "path", "url", "pattern", "query", "notebook_path") ??
+    JSON.stringify(input).slice(0, 200);
+  const flat = text.replace(/\s+/g, " ");
+  const head = flat.length > 160 ? `${flat.slice(0, 159)}…` : flat;
+  return tool.toLowerCase() === "bash" ? `$ ${head}` : head;
 }

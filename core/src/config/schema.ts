@@ -109,6 +109,90 @@ export function detectTimezone(): string {
   }
 }
 
+/**
+ * Sentinels and the triage run they may launch (Onda 2, items 1 and 2).
+ * Everything is optional with a default, so a settings file written before
+ * this existed keeps working and gains the defaults on the next save.
+ */
+export const SentinelSettingsSchema = z.object({
+  /** Watch the enabled indexed folders and re-index after a quiet period. Off by default (cost on big trees). */
+  fsWatch: z
+    .object({
+      enabled: z.boolean().default(false),
+      /** Quiet period after the last change before the alert + re-index fire. */
+      debounceMs: z.number().int().min(1_000).max(600_000).default(30_000),
+    })
+    .default({}),
+  /** The same skill (or the same prompt head) failing repeatedly inside the window. */
+  repeatedFailure: z
+    .object({
+      enabled: z.boolean().default(true),
+      /** Failures needed inside the window before the sentinel fires. */
+      threshold: z.number().int().min(2).max(50).default(2),
+      windowHours: z.number().int().min(1).max(168).default(24),
+    })
+    .default({}),
+  /** An enabled routine whose last run is older than `factor` × its expected interval. */
+  silentRoutine: z
+    .object({
+      enabled: z.boolean().default(true),
+      factor: z.number().min(1).max(20).default(2),
+    })
+    .default({}),
+  /** New items in a connector's read mapping since the previous hourly check. */
+  connectorDelta: z
+    .object({
+      enabled: z.boolean().default(true),
+      /** Items read per connector per check. */
+      maxItems: z.number().int().min(1).max(500).default(50),
+    })
+    .default({}),
+  /** "You did this twice — make it a skill?" (Onda 4, item 2). */
+  repeatDetector: z
+    .object({
+      enabled: z.boolean().default(true),
+      /** How far back manual prompt runs are grouped. */
+      days: z.number().int().min(1).max(365).default(30),
+      /** Runs needed in a group before it is proposed. */
+      minRuns: z.number().int().min(2).max(20).default(2),
+      /** Jaccard threshold on the normalized token sets. */
+      similarity: z.number().min(0.1).max(1).default(0.6),
+    })
+    .default({}),
+  /** Short, cheap run that answers a `triage: true` sentinel with ignore/notify/propose. */
+  triage: z
+    .object({
+      enabled: z.boolean().default(true),
+      /** Model alias or id for the triage run (cheap on purpose). */
+      model: z.string().default("haiku"),
+      /** Spend cap for triage runs in one local day (0 = no triage). */
+      dailyBudgetUsd: z.number().min(0).default(0.25),
+      timeoutMs: z.number().int().min(10_000).max(600_000).default(90_000),
+    })
+    .default({}),
+});
+export type SentinelSettings = z.infer<typeof SentinelSettingsSchema>;
+
+/**
+ * External delivery channels. The bot token is NEVER stored: only the NAME of
+ * the environment variable that holds it (`process.env[botTokenEnv]`), the
+ * same rule connector mappings follow.
+ */
+export const ChannelSettingsSchema = z.object({
+  telegram: z
+    .object({
+      enabled: z.boolean().default(false),
+      /** Environment variable holding the bot token. */
+      botTokenEnv: z.string().default("MORDOMO_TELEGRAM_TOKEN"),
+      /** Chat the bot posts to (a user id or a @channel). */
+      chatId: z.string().default(""),
+      /** Lowest inbox tone that is worth a message. */
+      minTone: z.enum(["ok", "info", "warn", "danger"]).default("warn"),
+    })
+    .default({}),
+});
+export type ChannelSettings = z.infer<typeof ChannelSettingsSchema>;
+
 export const SettingsSchema = z.object({
   version: z.number().default(1),
   systemName: z.string().default("MordomoOS"),
@@ -155,6 +239,8 @@ export const SettingsSchema = z.object({
       approvalTtlDays: z.number().int().min(1).default(7),
       /** Daily spend budget in USD across every provider (0 = no budget). The desktop warns at 80 %. */
       dailyBudgetUsd: z.number().min(0).default(0),
+      /** How long a brokered tool prompt waits for a human before it is denied. */
+      toolApprovalTimeoutMs: z.number().int().min(10_000).default(600_000),
     })
     .default({}),
   favoriteSkills: z.array(z.string()).default([]),
@@ -212,6 +298,14 @@ export const SettingsSchema = z.object({
       }),
     )
     .default({}),
+  /**
+   * Sentinels (Onda 2, item 1): cheap observers that need no LLM. Every
+   * sentinel is togglable on its own; `fsWatch` is off by default because a
+   * recursive watch over a large tree costs real memory and wakeups.
+   */
+  sentinels: SentinelSettingsSchema.default({}),
+  /** External delivery channels (Onda 2, item 4). Tokens live in the environment, never here. */
+  channels: ChannelSettingsSchema.default({}),
   /** Second Brain view preferences (Command Centre); the shape is owned by the frontend (`brain/engine/world.ts` BrainSettings). */
   brain: BrainSettingsSchema.default({}),
 });

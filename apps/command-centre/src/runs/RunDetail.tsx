@@ -19,8 +19,8 @@ import { useTicker } from "../desktop/data";
 import EventTimeline, { type EventTimelineHandle } from "./EventTimeline";
 import FilesChanged from "./FilesChanged";
 import Replay from "./Replay";
-import { ApprovalCard, useApprovals } from "./Approvals";
-import { approvalForRun } from "./approvals";
+import { ApprovalCard, ToolApprovalCard, useApprovals } from "./Approvals";
+import { approvalForRun, toolApprovalsForRun } from "./approvals";
 import { eventsToText } from "./logText";
 import { followUpPrompt } from "./policy";
 import { contextWindowFor } from "./models";
@@ -43,7 +43,10 @@ export default function RunDetail({ id }: { id: string }) {
   const active = isRunActive(run?.status);
   const stream = useRunStream(id, active);
   const historic = record.data?.events;
-  const events = useMemo(() => (stream.events.length > 0 ? stream.events : (historic ?? [])), [stream.events, historic]);
+  const events = useMemo(
+    () => (stream.events.length > 0 ? stream.events : (historic ?? [])),
+    [stream.events, historic],
+  );
   const now = useTicker(active ? 1000 : 60_000);
   const [preview, setPreview] = useState<{ path: string; content: string | null } | null>(null);
   const [tab, setTab] = useState<DetailTab>("timeline");
@@ -55,8 +58,16 @@ export default function RunDetail({ id }: { id: string }) {
 
   const artifacts = useOsArtifacts();
   const mine = (artifacts.data ?? []).filter((a) => a.runId === id);
-  const approvals = useApprovals({ enabled: run?.status === "waiting_approval" || pendingApprovalId !== null });
-  const approval = (run ? approvalForRun(approvals.data, run) : null) ?? (approvals.data ?? []).find((a) => a.id === pendingApprovalId && a.status === "pending") ?? null;
+  const running = run?.status === "running" || run?.status === "queued";
+  const approvals = useApprovals({
+    enabled: run?.status === "waiting_approval" || pendingApprovalId !== null || running,
+    refetchInterval: running ? 4000 : 30_000,
+  });
+  const toolApprovals = toolApprovalsForRun(approvals.data, run?.id);
+  const approval =
+    (run ? approvalForRun(approvals.data, run) : null) ??
+    (approvals.data ?? []).find((a) => a.id === pendingApprovalId && a.status === "pending") ??
+    null;
 
   const usage = useMemo(() => run?.usage ?? foldUsage(events), [run?.usage, events]);
   const contextTokens = useMemo(() => contextUsed(events), [events]);
@@ -72,7 +83,15 @@ export default function RunDetail({ id }: { id: string }) {
     onError: (err: Error) => toast(err.message, "danger"),
   });
   const onCancel = async () => {
-    if (await confirm({ title: t("now.cancelTitle"), body: t("now.cancelBody"), danger: true, confirmLabel: t("runs.cancel") })) cancel.mutate();
+    if (
+      await confirm({
+        title: t("now.cancelTitle"),
+        body: t("now.cancelBody"),
+        danger: true,
+        confirmLabel: t("runs.cancel"),
+      })
+    )
+      cancel.mutate();
   };
 
   const launch = useMutation({
@@ -101,7 +120,8 @@ export default function RunDetail({ id }: { id: string }) {
   });
 
   const open = useMutation({
-    mutationFn: (p: string) => api.get<{ path: string; content: string | null }>(`/api/artifacts/file?p=${encodeURIComponent(p)}`),
+    mutationFn: (p: string) =>
+      api.get<{ path: string; content: string | null }>(`/api/artifacts/file?p=${encodeURIComponent(p)}`),
     onSuccess: setPreview,
     onError: (err: Error) => toast(err.message, "danger"),
   });
@@ -170,7 +190,15 @@ export default function RunDetail({ id }: { id: string }) {
   if (record.isError && !run) {
     return (
       <div className="page">
-        <ErrorBox message={record.error.message} offline={record.error.name === "ApiError" && "unreachable" in record.error && Boolean(record.error.unreachable)} onRetry={() => void record.refetch()} />
+        <ErrorBox
+          message={record.error.message}
+          offline={
+            record.error.name === "ApiError" &&
+            "unreachable" in record.error &&
+            Boolean(record.error.unreachable)
+          }
+          onRetry={() => void record.refetch()}
+        />
       </div>
     );
   }
@@ -183,8 +211,11 @@ export default function RunDetail({ id }: { id: string }) {
   }
 
   const title = run.skillSlug ? `/${run.skillSlug}` : run.promptSummary.slice(0, 80) || t("runs.title");
-  const duration = active ? formatCountdown(now - (run.startedAt ?? run.createdAt)) : formatDuration(run.durationMs);
-  const contextPct = contextTokens != null && contextWindow ? Math.min(100, (contextTokens / contextWindow) * 100) : null;
+  const duration = active
+    ? formatCountdown(now - (run.startedAt ?? run.createdAt))
+    : formatDuration(run.durationMs);
+  const contextPct =
+    contextTokens != null && contextWindow ? Math.min(100, (contextTokens / contextWindow) * 100) : null;
 
   return (
     <div className="page run-detail">
@@ -224,7 +255,8 @@ export default function RunDetail({ id }: { id: string }) {
                   {formatUsd(usage.costUsd)}
                 </Badge>
                 <Badge kind="meta" title={t("runs.usage.tokensTitle")}>
-                  ↑{formatTokens(usage.inputTokens)} ↓{formatTokens(usage.outputTokens)} · {formatTokens(totalTokens(usage))}
+                  ↑{formatTokens(usage.inputTokens)} ↓{formatTokens(usage.outputTokens)} ·{" "}
+                  {formatTokens(totalTokens(usage))}
                 </Badge>
               </>
             )}
@@ -235,7 +267,14 @@ export default function RunDetail({ id }: { id: string }) {
               <span className="mono dim">{t("runs.usage.na")}</span>
             ) : (
               <>
-                <span className="context-track" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(contextPct)} aria-label={t("runs.usage.context")}>
+                <span
+                  className="context-track"
+                  role="meter"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(contextPct)}
+                  aria-label={t("runs.usage.context")}
+                >
                   <span className="context-fill" style={{ transform: `scaleX(${contextPct / 100})` }} />
                 </span>
                 <span className="mono tnum">
@@ -250,29 +289,66 @@ export default function RunDetail({ id }: { id: string }) {
               <code className="mono truncate" title={run.cwd}>
                 {run.cwd}
               </code>
-              <Button size="sm" variant="ghost" icon={<Copy aria-hidden />} aria-label={t("brain.copyPath")} title={t("brain.copyPath")} onClick={() => void copy(run.cwd!)} />
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<Copy aria-hidden />}
+                aria-label={t("brain.copyPath")}
+                title={t("brain.copyPath")}
+                onClick={() => void copy(run.cwd!)}
+              />
             </div>
           )}
           <p className="run-id mono">{run.id}</p>
         </div>
         <div className="run-actions">
           {active && (
-            <Button variant="danger" icon={<Square aria-hidden />} onClick={() => void onCancel()} loading={cancel.isPending}>
+            <Button
+              variant="danger"
+              icon={<Square aria-hidden />}
+              onClick={() => void onCancel()}
+              loading={cancel.isPending}
+            >
               {t("runs.cancel")}
             </Button>
           )}
-          <Button variant="secondary" icon={<RefreshCw aria-hidden />} onClick={runAgain} loading={launch.isPending && followUp === null} title={t("runs.actions.againTitle")}>
+          <Button
+            variant="secondary"
+            icon={<RefreshCw aria-hidden />}
+            onClick={runAgain}
+            loading={launch.isPending && followUp === null}
+            title={t("runs.actions.againTitle")}
+          >
             {t("runs.actions.again")}
           </Button>
-          <Button variant="secondary" icon={<CornerDownRight aria-hidden />} onClick={startFollowUp} title={t("runs.actions.continueTitle")}>
+          <Button
+            variant="secondary"
+            icon={<CornerDownRight aria-hidden />}
+            onClick={startFollowUp}
+            title={t("runs.actions.continueTitle")}
+          >
             {t("runs.actions.continue")}
           </Button>
-          <Button variant="ghost" icon={<ClipboardList aria-hidden />} onClick={copyLog} disabled={events.length === 0} title={t("runs.actions.copyLogTitle")}>
+          <Button
+            variant="ghost"
+            icon={<ClipboardList aria-hidden />}
+            onClick={copyLog}
+            disabled={events.length === 0}
+            title={t("runs.actions.copyLogTitle")}
+          >
             {t("runs.actions.copyLog")}
           </Button>
         </div>
       </div>
 
+      {toolApprovals.length > 0 && (
+        <div className="card approvals-card tool">
+          <h2>{t("runs.toolApprove.title")}</h2>
+          {toolApprovals.map((a) => (
+            <ToolApprovalCard key={a.id} approval={a} />
+          ))}
+        </div>
+      )}
       {approval && (
         <div className="card approvals-card">
           <h2>{t("runs.approve.title")}</h2>
@@ -306,12 +382,18 @@ export default function RunDetail({ id }: { id: string }) {
             placeholder={t("runs.actions.continuePh")}
             onChange={(e) => setFollowUp(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && followUp.trim()) launch.mutate(followUpPrompt(run.promptSummary, followUp));
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && followUp.trim())
+                launch.mutate(followUpPrompt(run.promptSummary, followUp));
               if (e.key === "Escape") setFollowUp(null);
             }}
           />
           <div className="row-actions">
-            <Button variant="primary" disabled={!followUp.trim()} loading={launch.isPending} onClick={() => launch.mutate(followUpPrompt(run.promptSummary, followUp))}>
+            <Button
+              variant="primary"
+              disabled={!followUp.trim()}
+              loading={launch.isPending}
+              onClick={() => launch.mutate(followUpPrompt(run.promptSummary, followUp))}
+            >
               {t("common.run")}
             </Button>
             <Button variant="ghost" onClick={() => setFollowUp(null)}>
@@ -340,7 +422,11 @@ export default function RunDetail({ id }: { id: string }) {
             ]}
           />
         </div>
-        {tab === "timeline" ? <EventTimeline ref={timelineRef} events={events} live={stream.live} searchable /> : <Replay events={events} />}
+        {tab === "timeline" ? (
+          <EventTimeline ref={timelineRef} events={events} live={stream.live} searchable />
+        ) : (
+          <Replay events={events} />
+        )}
       </div>
 
       <FilesChanged runId={id} files={run.filesChanged ?? []} cwd={run.cwd} />
@@ -350,7 +436,13 @@ export default function RunDetail({ id }: { id: string }) {
         {mine.length === 0 && run.artifacts.length === 0 ? (
           <p className="widget-muted">{t("runs.noArtifacts")}</p>
         ) : (
-          (mine.length > 0 ? mine : run.artifacts.map((rel) => ({ file: rel.split("/").slice(1).join("/") || rel, path: null as string | null }))).map((a) => (
+          (mine.length > 0
+            ? mine
+            : run.artifacts.map((rel) => ({
+                file: rel.split("/").slice(1).join("/") || rel,
+                path: null as string | null,
+              }))
+          ).map((a) => (
             <div className="list-row artifact-row" key={a.file}>
               <span className="mono truncate" title={a.path ?? a.file}>
                 {a.file}
@@ -358,17 +450,31 @@ export default function RunDetail({ id }: { id: string }) {
               <span className="artifact-actions">
                 {a.path && (
                   <>
-                    <Button size="sm" variant="outline" onClick={() => open.mutate(a.path!)} loading={open.isPending && open.variables === a.path}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => open.mutate(a.path!)}
+                      loading={open.isPending && open.variables === a.path}
+                    >
                       {t("common.open")}
                     </Button>
-                    <Button size="sm" variant="ghost" icon={<Copy aria-hidden />} aria-label={t("brain.copyPath")} title={t("brain.copyPath")} onClick={() => void copy(a.path!)} />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      icon={<Copy aria-hidden />}
+                      aria-label={t("brain.copyPath")}
+                      title={t("brain.copyPath")}
+                      onClick={() => void copy(a.path!)}
+                    />
                   </>
                 )}
               </span>
             </div>
           ))
         )}
-        {preview && <pre className="preview-pre artifact-preview">{preview.content ?? t("runs.binaryOrLarge")}</pre>}
+        {preview && (
+          <pre className="preview-pre artifact-preview">{preview.content ?? t("runs.binaryOrLarge")}</pre>
+        )}
       </div>
     </div>
   );

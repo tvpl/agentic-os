@@ -46,6 +46,7 @@ export {
   type SpawnHandle,
 } from "./spawn/safeSpawn.js";
 export type {
+  PermissionBroker,
   AgentAdapter,
   AgentRun,
   RunEvent,

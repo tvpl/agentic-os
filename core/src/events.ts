@@ -27,7 +27,14 @@ export type OsEventType =
   /** A row was appended to the persisted inbox (payload: the notification). */
   | "notification.created"
   /** Today's spend passed a share of `settings.limits.dailyBudgetUsd`. */
-  | "budget.crossed";
+  | "budget.crossed"
+  /**
+   * A sentinel observed something worth a look (Onda 2, item 1). Payload:
+   * `SentinelFiredPayload` (core/src/sentinels/types.ts). The notification
+   * recorder turns it into an inbox row; the triage listener may answer it
+   * with a short, cheap run when `triage` is set.
+   */
+  | "sentinel.fired";
 
 export interface OsEvent<T = unknown> {
   /** Monotonic id (per process) so SSE clients can resume with Last-Event-ID. */

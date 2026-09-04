@@ -33,6 +33,9 @@ export const en = {
   "runs.approve.approved": "Approved — the run has started.",
   "runs.approve.denied": "Denied.",
   "runs.approve.queued": "This write run needs your approval — decide it right here.",
+  "runs.toolApprove.title": "The agent is asking permission",
+  "runs.toolApprove.hint":
+    "The run is paused on this tool call. Approve to let it run, deny to refuse it — the agent continues either way.",
 
   /* ---- run detail ------------------------------------------------------ */
   "runs.actions.again": "Run again",
@@ -113,12 +116,16 @@ export const ptBR = {
   /* ---- aprovações ------------------------------------------------------ */
   "runs.approve.title": "Aguardando a sua aprovação",
   "runs.approve.badge": "execução com escrita",
-  "runs.approve.hint": "Aprove para iniciar a execução agora, ou negue para descartá-la. Nada roda enquanto isso.",
+  "runs.approve.hint":
+    "Aprove para iniciar a execução agora, ou negue para descartá-la. Nada roda enquanto isso.",
   "runs.approve.approve": "Aprovar",
   "runs.approve.deny": "Negar",
   "runs.approve.approved": "Aprovada — a execução começou.",
   "runs.approve.denied": "Negada.",
   "runs.approve.queued": "Esta execução com escrita precisa da sua aprovação — decida aqui mesmo.",
+  "runs.toolApprove.title": "O agente pede permissão",
+  "runs.toolApprove.hint":
+    "A execução está pausada nesta chamada de tool. Aprove para deixá-la rodar ou negue — o agente continua de qualquer forma.",
 
   /* ---- detalhe da execução --------------------------------------------- */
   "runs.actions.again": "Executar de novo",

@@ -24,6 +24,9 @@ import {
   type Settings,
 } from "@mordomo/core";
 import { AppContext } from "./context.js";
+import { PKG_VERSION } from "./routes/system.js";
+import { servePermissionTool } from "./mcp/permission.js";
+import { httpApi, serveMordomoMcp } from "./mcp/mordomo.js";
 import { startServer } from "./server.js";
 import { runDoctor } from "./doctor.js";
 
@@ -50,6 +53,7 @@ const COMMANDS = [
   "run",
   "service",
   "recall",
+  "mcp",
   "help",
 ] as const;
 type Command = (typeof COMMANDS)[number];
@@ -88,6 +92,7 @@ const COMMAND_OPTIONS: Record<Command, readonly OptionName[]> = {
   run: ["provider", "model", "effort", "input", "json"],
   service: ["yes"],
   recall: ["json"],
+  mcp: [],
   help: [],
 };
 
@@ -413,6 +418,8 @@ async function main(): Promise<void> {
       return cmdService(args);
     case "recall":
       return cmdRecall(args);
+    case "mcp":
+      return cmdMcp(args);
     default:
       printHelp();
   }
@@ -433,6 +440,7 @@ ${pc.bold("MordomoOS")} — local agentic OS over Claude Code, Cursor Agent and 
   mordomo run <skill>      Run a skill headlessly (--provider ${ProviderId.options.join("|")}, --model <m>,
                            --effort ${EffortLevel.options.join("|")}, --input k=v ...)
   mordomo recall <question>  Layered memory retrieval: only the sections worth reading (--json)
+  mordomo mcp              Serve MordomoOS as an MCP server (stdio) to Claude/Cursor/Codex
   mordomo backup           Create a backup (--list to list, --include-artifacts to include outputs)
   mordomo restore <name>   Restore a backup (a safety backup is taken first)
   mordomo service          Startup service: mordomo service install | remove | plan  (--yes skips confirmation)
@@ -976,6 +984,27 @@ async function cmdIndex(args: CliArgs): Promise<void> {
 // --------------------------------------------------------------- recall ----
 
 /** `mordomo recall "<question>"`: the same layered retrieval as GET /api/memory/recall, offline (no token needed). */
+/**
+ * `mordomo mcp` serves MordomoOS to the CLIs as an MCP server (recall, skills,
+ * journal, facts, inbox) over stdio; `mordomo mcp permission` is the
+ * permission prompt tool the API wires into write runs.
+ */
+async function cmdMcp(args: CliArgs): Promise<void> {
+  const sub = args.positionals[0] ?? "serve";
+  if (sub === "permission") {
+    await servePermissionTool(PKG_VERSION);
+    return;
+  }
+  const ctx = new AppContext();
+  try {
+    const settings = ctx.settings();
+    const api = httpApi(process.env.MORDOMO_URL ?? `http://127.0.0.1:${settings.port}`, ctx.token());
+    await serveMordomoMcp(api, PKG_VERSION);
+  } finally {
+    ctx.close();
+  }
+}
+
 async function cmdRecall(args: CliArgs): Promise<void> {
   const question = args.positionals.join(" ").trim();
   if (!question) {

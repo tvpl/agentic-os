@@ -184,6 +184,22 @@ export class ClaudeAdapter implements AgentAdapter {
         "--disallowedTools",
         "Bash(rm:*),Bash(sudo:*)",
       );
+    } else if (run.permissionBroker) {
+      // Every prompt the CLI would raise goes to a human through the
+      // MordomoOS approval flow (plan Onda 1 §3): review_before_write reviews
+      // edits too, controlled_write pre-approves edits and reviews the rest.
+      const broker = run.permissionBroker;
+      const mcp = {
+        mcpServers: { mordomo: { command: broker.command, args: broker.args, env: broker.env } },
+      };
+      args.push(
+        "--permission-mode",
+        run.profile === "review_before_write" ? "default" : "acceptEdits",
+        "--permission-prompt-tool",
+        "mcp__mordomo__approve",
+        "--mcp-config",
+        JSON.stringify(mcp),
+      );
     } else {
       args.push("--permission-mode", "acceptEdits");
     }
@@ -196,7 +212,7 @@ export class ClaudeAdapter implements AgentAdapter {
       args,
       env,
       stdin: run.prompt,
-      description: `claude -p (${run.mode}, model=${run.model ?? "default"}${resumeId ? ", resumed" : ""})`,
+      description: `claude -p (${run.mode}, model=${run.model ?? "default"}${resumeId ? ", resumed" : ""}${run.permissionBroker && run.mode === "write" ? ", brokered" : ""})`,
     };
   }
 
