@@ -231,6 +231,27 @@ phone or laptop pairs with a 6-digit code and gets its own token (expiry and
 revoke list there); the Command Centre installs as a PWA and keeps its shell
 offline. Only paired devices are accepted on non-loopback hosts.
 
+## 7.1 Remote access
+
+Settings › Security › **Remote access** answers to the hosts you list and
+lets a phone or laptop pair with a six-digit code shown on the desktop; each
+device gets its own token (revocable, with a lifetime). Three ways to reach
+it safely:
+
+- **Built-in TLS**: turn on **TLS for remote devices** and restart. A
+  second https listener (port + 1) serves a self-signed certificate
+  generated into `config/tls/` for the allowed hosts; the pairing screen
+  shows its SHA-256 so the phone can compare with the desktop before
+  trusting it. Loopback stays plain http on the main port, so the CLI and
+  the MCP broker never change.
+- **Tailscale** (recommended for a home network): keep remote access on
+  plain http and add your tailnet name to the allowed hosts — the tunnel is
+  already encrypted and authenticated.
+- **Caddy / a reverse proxy**: terminate a real certificate in front of the
+  http port and forward with the original `Host` header.
+
+Never expose the plain http port on the open internet.
+
 ## 8. The 7-day adoption plan (from the ARMS guide)
 
 1. **Day 1 — Skills**: run `workspace-digest`; create one skill from your most

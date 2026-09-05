@@ -112,6 +112,9 @@ export const en = {
   "shell.pair.code": "Pairing code",
   "shell.pair.name": "Device name",
   "shell.pair.submit": "Pair",
+  "shell.pair.fingerprint": "Certificate SHA-256:",
+  "shell.pair.fingerprintTitle":
+    "Compare with Settings › Security › Remote access on the desktop before trusting this connection.",
   "shell.pair.failed": "Wrong or expired code — start a new pairing on the desktop.",
 };
 
@@ -223,5 +226,8 @@ export const ptBR = {
   "shell.pair.code": "Código de pareamento",
   "shell.pair.name": "Nome do dispositivo",
   "shell.pair.submit": "Parear",
+  "shell.pair.fingerprint": "SHA-256 do certificado:",
+  "shell.pair.fingerprintTitle":
+    "Compare com Configurações › Segurança › Acesso remoto no desktop antes de confiar nesta conexão.",
   "shell.pair.failed": "Código errado ou expirado — inicie um novo pareamento no desktop.",
 } satisfies Record<keyof typeof en, string>;

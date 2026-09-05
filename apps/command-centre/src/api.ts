@@ -221,6 +221,8 @@ export interface Meta {
   language: "en" | "pt-BR";
   setupCompleted: boolean;
   version: string;
+  /** Remote TLS listener (self-signed): shown on the pairing screen so a device can check the fingerprint. */
+  tls?: { port: number; fingerprint: string; hosts: string[] } | null;
 }
 
 export interface ModelishOption {
@@ -548,7 +550,12 @@ export interface SettingsDoc {
     dailyBudgetUsd?: number;
     [key: string]: unknown;
   }; /** Remote access (Onda 3): paired devices from the listed hosts. */
-  remote?: { enabled: boolean; allowedHosts: string[]; deviceTtlDays: number };
+  remote?: {
+    enabled: boolean;
+    allowedHosts: string[];
+    deviceTtlDays: number;
+    tls?: { enabled: boolean; port: number | null };
+  };
   /** Skill registries (Onda 3). */
   marketplace?: { registries: string[] };
   /** Sentinels and triage (Onda 2). */

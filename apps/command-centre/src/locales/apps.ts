@@ -126,6 +126,13 @@ export const en = {
   "apps.settings.remoteHosts": "Allowed hosts",
   "apps.settings.remoteHostsHint":
     "Host names or addresses the server answers to, besides 127.0.0.1. Comma separated.",
+  "apps.settings.remoteTls": "TLS for remote devices",
+  "apps.settings.remoteTlsHint":
+    "A second https listener (port {port}) with a self-signed certificate for the allowed hosts; loopback stays plain http. Restart the service after changing it. Phones show the fingerprint below on the pairing screen.",
+  "apps.settings.remoteTlsFingerprint": "Certificate SHA-256",
+  "apps.settings.remoteTlsOff": "Turn on remote access and TLS, then restart, to get a certificate.",
+  "apps.settings.remoteTlsAlt":
+    "Prefer a real certificate? Put Caddy or Tailscale in front of the plain http port instead.",
   "apps.settings.remoteTtl": "Device token lifetime (days)",
   "apps.settings.remoteTtlHint": "0 never expires. Revoke a device below at any time.",
   "apps.settings.pairDevice": "Pair a device",
@@ -345,6 +352,13 @@ export const ptBR = {
   "apps.settings.remoteHosts": "Hosts permitidos",
   "apps.settings.remoteHostsHint":
     "Nomes ou endereços aos quais o servidor responde além de 127.0.0.1. Separados por vírgula.",
+  "apps.settings.remoteTls": "TLS para dispositivos remotos",
+  "apps.settings.remoteTlsHint":
+    "Um segundo listener https (porta {port}) com certificado autoassinado para os hosts permitidos; o loopback continua em http. Reinicie o serviço depois de mudar. O celular mostra a impressão digital abaixo na tela de pareamento.",
+  "apps.settings.remoteTlsFingerprint": "SHA-256 do certificado",
+  "apps.settings.remoteTlsOff": "Ligue o acesso remoto e o TLS e reinicie para gerar um certificado.",
+  "apps.settings.remoteTlsAlt":
+    "Prefere um certificado real? Coloque Caddy ou Tailscale na frente da porta http.",
   "apps.settings.remoteTtl": "Validade do token do dispositivo (dias)",
   "apps.settings.remoteTtlHint": "0 nunca expira. Revogue um dispositivo abaixo a qualquer momento.",
   "apps.settings.pairDevice": "Parear um dispositivo",

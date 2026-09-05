@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import https from "node:https";
 import path from "node:path";
 import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -11,7 +12,15 @@ import Fastify, {
 } from "fastify";
 import fastifyStatic from "@fastify/static";
 import { ZodError } from "zod";
-import { JsonlLogger, PathAccessError, TelegramPoller, redactSecrets } from "@mordomo/core";
+import {
+  JsonlLogger,
+  PathAccessError,
+  TelegramPoller,
+  certificateHosts,
+  ensureTlsMaterial,
+  redactSecrets,
+  type TlsMaterial,
+} from "@mordomo/core";
 import { AppContext } from "./context.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerSkillRoutes } from "./routes/skills.js";
@@ -36,6 +45,8 @@ export interface ServerHandle {
   ctx: AppContext;
   url: string;
   close: () => Promise<void>;
+  /** The https URL for remote devices when remote.tls is on. */
+  tlsUrl: string | null;
 }
 
 /** Uniform error envelope. `message` is duplicated at the top level for older clients. */
@@ -277,6 +288,24 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   return app;
 }
 
+/**
+ * TLS listener plan: only with remote access AND remote.tls on. The
+ * certificate names every allowed host and is kept in config/tls/.
+ */
+export function tlsListenerFor(
+  ctx: AppContext,
+): { port: number; hosts: string[]; material: TlsMaterial } | null {
+  const s = ctx.settings();
+  if (!s.remote.enabled || !s.remote.tls.enabled) return null;
+  const hosts = s.remote.allowedHosts.filter((h) => h.trim());
+  const material = ensureTlsMaterial(ctx.paths.config, hosts);
+  return {
+    port: s.remote.tls.port ?? s.port + 1,
+    hosts: certificateHosts(hosts).filter((h) => !["localhost", "127.0.0.1", "::1"].includes(h)),
+    material,
+  };
+}
+
 export async function startServer(homeOverride?: string): Promise<ServerHandle> {
   const ctx = new AppContext(homeOverride, { applyPendingRestore: true });
   const settings = ctx.settings();
@@ -346,6 +375,22 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   await app.listen({ port: settings.port, host: settings.bindAddress });
   const url = `http://127.0.0.1:${settings.port}`;
 
+  // Remote access over TLS (follow-up 10): a second listener with the
+  // self-signed certificate, sharing the same request handler. Loopback keeps
+  // plain http on `port` so local clients (CLI, MCP broker) never change.
+  let tlsServer: https.Server | null = null;
+  const tls = tlsListenerFor(ctx);
+  if (tls) {
+    tlsServer = https.createServer({ key: tls.material.keyPem, cert: tls.material.certPem }, (req, res) => {
+      app.server.emit("request", req, res);
+    });
+    await new Promise<void>((resolve, reject) => {
+      tlsServer!.once("error", reject);
+      tlsServer!.listen(tls.port, settings.bindAddress, () => resolve());
+    });
+    app.log.info({ port: tls.port, fingerprint: tls.material.fingerprint, msg: "tls listener up" });
+  }
+
   const pidFile = path.join(ctx.paths.run, "server.pid");
   fs.mkdirSync(ctx.paths.run, { recursive: true });
   fs.writeFileSync(pidFile, JSON.stringify({ pid: process.pid, port: settings.port, startedAt: Date.now() }));
@@ -355,6 +400,7 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   const close = (): Promise<void> => {
     if (closing) return closing;
     closing = (async () => {
+      if (tlsServer) await new Promise<void>((r) => tlsServer!.close(() => r()));
       process.off("SIGTERM", onSignal);
       process.off("SIGINT", onSignal);
       process.off("unhandledRejection", onRejection);
@@ -395,5 +441,5 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   process.on("SIGINT", onSignal);
   process.on("unhandledRejection", onRejection);
 
-  return { app, ctx, url, close };
+  return { app, ctx, url, tlsUrl: tls ? `https://${tls.hosts[0] ?? "localhost"}:${tls.port}` : null, close };
 }

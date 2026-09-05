@@ -238,6 +238,17 @@ export const SettingsSchema = z.object({
       allowedHosts: z.array(z.string().min(1).max(253)).default([]),
       /** Lifetime of a device token in days (0 = never expires). */
       deviceTtlDays: z.number().int().min(0).default(90),
+      /**
+       * A second, https listener for remote devices with a self-signed
+       * certificate generated into config/tls/ (loopback stays plain http on
+       * `port`). `port` null = settings.port + 1.
+       */
+      tls: z
+        .object({
+          enabled: z.boolean().default(false),
+          port: z.number().int().min(1).max(65535).nullable().default(null),
+        })
+        .default({}),
     })
     .default({}),
   /** Skill registries (Onda 3): https index URLs the marketplace lists and installs from. */

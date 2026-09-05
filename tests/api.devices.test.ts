@@ -1,4 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import type { FastifyInstance } from "fastify";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer, isAllowedHost } from "../apps/api/src/server.js";
@@ -122,5 +125,33 @@ describe("pairing", () => {
       expect(local.body).toContain(`content="${token}"`);
       expect(remote.body).not.toContain(token);
     }
+  });
+});
+
+describe("remote TLS", () => {
+  it("exposes the certificate fingerprint in /api/meta only when remote + tls are on, and keeps the files", async () => {
+    const before = await app.inject({ method: "GET", url: "/api/meta" });
+    expect((before.json() as { tls: unknown }).tls).toBeNull();
+    ctx.settingsStore.update({
+      remote: {
+        enabled: true,
+        allowedHosts: ["mordomo.local:4777", "10.0.0.5"],
+        deviceTtlDays: 30,
+        tls: { enabled: true, port: null },
+      },
+    });
+    const after = await app.inject({ method: "GET", url: "/api/meta" });
+    const tls = (after.json() as { tls: { port: number; fingerprint: string; hosts: string[] } }).tls;
+    expect(tls.port).toBe(ctx.settings().port + 1);
+    expect(tls.fingerprint).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
+    expect(tls.hosts).toEqual(["mordomo.local", "10.0.0.5"]);
+    const certFile = path.join(ctx.paths.config, "tls", "cert.pem");
+    expect(fs.existsSync(certFile)).toBe(true);
+    const cert = new crypto.X509Certificate(fs.readFileSync(certFile));
+    expect(cert.checkHost("mordomo.local")).toBe("mordomo.local");
+    expect(cert.fingerprint256).toBe(tls.fingerprint);
+    ctx.settingsStore.update({
+      remote: { enabled: false, allowedHosts: [], deviceTtlDays: 30, tls: { enabled: false, port: null } },
+    });
   });
 });

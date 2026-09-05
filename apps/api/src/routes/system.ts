@@ -20,6 +20,16 @@ import {
 import { clearRestorePending, readRestorePending, writeRestorePending, type AppContext } from "../context.js";
 import { runDoctor } from "../doctor.js";
 import { resolveApproval } from "../approvalActions.js";
+import { tlsListenerFor } from "../server.js";
+
+function tlsInfo(ctx: AppContext): { port: number; fingerprint: string; hosts: string[] } | null {
+  try {
+    const t = tlsListenerFor(ctx);
+    return t ? { port: t.port, fingerprint: t.material.fingerprint, hosts: t.hosts } : null;
+  } catch {
+    return null;
+  }
+}
 import { grantedRoots, httpError } from "./common.js";
 import { BackupNameParams, UuidParams } from "./params.js";
 
@@ -307,6 +317,8 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
       language: s.language,
       setupCompleted: s.setupCompleted,
       version: PKG_VERSION,
+      // Remote TLS (follow-up 10): the pairing screen shows the fingerprint so a phone can check what it trusts.
+      tls: tlsInfo(ctx),
     };
   });
 

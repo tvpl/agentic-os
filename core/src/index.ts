@@ -385,3 +385,10 @@ export {
   type SigningKeys,
 } from "./skills/publish.js";
 export { splitRegistryUrl } from "./skills/registry.js";
+export {
+  certificateHosts,
+  createSelfSignedCertificate,
+  ensureTlsMaterial,
+  fingerprintOf,
+  type TlsMaterial,
+} from "./security/tls.js";

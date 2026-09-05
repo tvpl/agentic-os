@@ -794,7 +794,9 @@ async function cmdStart(args: CliArgs): Promise<void> {
     // The server writes a minimal pidfile; enrich it with identity so `status`/`stop`
     // can tell a recycled PID from the real service.
     writePidFile(handle.ctx, handle.ctx.settings().port);
-    console.log(`[mordomo] ${handle.ctx.settings().systemName} running at ${handle.url}`);
+    console.log(
+      `[mordomo] ${handle.ctx.settings().systemName} running at ${handle.url}${handle.tlsUrl ? ` · remote: ${handle.tlsUrl}` : ""}`,
+    );
     let closing = false;
     const shutdown = () => {
       if (closing) return;

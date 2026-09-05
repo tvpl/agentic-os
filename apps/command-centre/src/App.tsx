@@ -297,6 +297,11 @@ function PairingScreen({ meta }: { meta: Meta }) {
         <div className="hud-label accent">{meta.name}</div>
         <h2>{t("shell.pair.title")}</h2>
         <p className="hint">{t("shell.pair.body")}</p>
+        {meta.tls?.fingerprint && location.protocol === "https:" && (
+          <p className="hint mono pairing-fingerprint" title={t("shell.pair.fingerprintTitle")}>
+            {t("shell.pair.fingerprint")} {meta.tls.fingerprint}
+          </p>
+        )}
         <label className="pairing-field">
           <span className="hud-label">{t("shell.pair.code")}</span>
           <input

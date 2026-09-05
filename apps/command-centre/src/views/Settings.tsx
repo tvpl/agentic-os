@@ -30,7 +30,7 @@ import {
 
 type SettingsShape = SettingsDoc;
 import { I18nContext, useLocale, useT, type Lang } from "../i18n";
-import { qk, useApiQuery, useOsProviders } from "../queries";
+import { qk, useApiQuery, useOsMeta, useOsProviders } from "../queries";
 import { TrendsTab } from "./Trends";
 import { ErrorBox, Skeleton, formatBytes, timeAgo, useToast } from "../components/ui";
 import { Badge, Button, EmptyState, Field, Tabs } from "../components/primitives";
@@ -1083,6 +1083,8 @@ function RemoteAccess({ s, put }: { s: SettingsShape; put: Put }) {
   const confirm = useConfirm();
   const qc = useQueryClient();
   const remote = s.remote ?? { enabled: false, allowedHosts: [], deviceTtlDays: 90 };
+  const tls = remote.tls ?? { enabled: false, port: null };
+  const meta = useOsMeta();
   const devices = useApiQuery<{ devices: DeviceRecord[] }>(qk.devices, "/api/devices");
   const [pairing, setPairing] = useState<{ code: string; expiresAt: number } | null>(null);
   const start = useMutation({
@@ -1148,6 +1150,31 @@ function RemoteAccess({ s, put }: { s: SettingsShape; put: Put }) {
           }}
         />
       </Field>
+      <div className="apps-sound">
+        <div className="min0">
+          <strong>{t("apps.settings.remoteTls")}</strong>
+          <p className="hint">{t("apps.settings.remoteTlsHint", { port: tls.port ?? s.port + 1 })}</p>
+          {meta.data?.tls ? (
+            <p className="hint mono">
+              {t("apps.settings.remoteTlsFingerprint")}: {meta.data.tls.fingerprint}
+            </p>
+          ) : (
+            <p className="hint">
+              {tls.enabled && remote.enabled
+                ? t("apps.settings.remoteTlsOff")
+                : t("apps.settings.remoteTlsAlt")}
+            </p>
+          )}
+        </div>
+        <Button
+          variant={tls.enabled ? "outline" : "secondary"}
+          aria-pressed={tls.enabled}
+          disabled={!remote.enabled}
+          onClick={() => save({ tls: { ...tls, enabled: !tls.enabled } })}
+        >
+          {tls.enabled ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
+        </Button>
+      </div>
       <div className="apps-sound">
         <div className="min0">
           <strong>{t("apps.settings.pairDevice")}</strong>
