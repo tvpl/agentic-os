@@ -28,8 +28,10 @@ import {
  * without interactive approval); read-only runs never do.
  *
  * Conversations: none. The installed `cursor-agent --help` advertises no
- * resume/continue flag, so the manifest declares `resume: "none"` and a run
- * asked to continue a session says `resumeSupported: false` and starts fresh.
+ * resume/continue flag, so the manifest declares `resume: "none"`; the run
+ * manager then emulates the session (earlier turns folded into the prompt)
+ * and never asks this adapter to resume. The warning below only fires for a
+ * caller that bypasses the run manager.
  */
 export const cursorManifest: ProviderManifest = BUILTIN_MANIFESTS.cursor;
 

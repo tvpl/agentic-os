@@ -130,6 +130,12 @@ fresh, **Open run** jumps to the full log. A bare `/slug` still runs the skill.
 Sessions are listed by `GET /api/sessions` and continue with
 `POST /api/sessions/:id/continue`.
 
+Providers that cannot resume a conversation natively (cursor-agent has no
+resume flag; older Codex builds lack `exec resume`) still keep the thread:
+MordomoOS folds the earlier turns of the session into the next prompt as a
+quoted transcript (newest six turns, capped) and marks the run with a
+"session emulated" line in its log.
+
 ## 5.2 Budget and the inbox
 
 Set a **daily budget** (Settings › Security). The Cost widget shows the bar,

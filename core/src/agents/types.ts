@@ -168,4 +168,12 @@ export interface AgentAdapter {
   buildInvocation(run: AgentRun): Promise<SafeInvocation>;
   execute(run: AgentRun): AsyncIterable<RunEvent>;
   healthCheck(): Promise<HealthStatus>;
+  /**
+   * Whether the installed CLI can resume a provider conversation natively.
+   * Absent means "as the manifest says" (`capabilities.resume !== "none"`);
+   * an adapter whose answer depends on the installed version overrides it.
+   * When false, the run manager emulates the session by folding the earlier
+   * turns into the prompt.
+   */
+  supportsResume?(): Promise<boolean>;
 }

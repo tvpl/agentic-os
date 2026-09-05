@@ -124,6 +124,13 @@ export class CodexAdapter implements AgentAdapter {
     return { ok: issues.length === 0, issues };
   }
 
+  /** The installed `codex exec` advertises `resume` (detected once). */
+  async supportsResume(): Promise<boolean> {
+    if (this.manifest.capabilities.resume !== "subcommand") return false;
+    if (!this.detection) await this.detect();
+    return this.resumeSupported;
+  }
+
   /** True when this run asked to resume and the installed CLI can do it. */
   private async canResume(run: AgentRun): Promise<boolean> {
     if (!run.resume?.providerSessionId) return false;

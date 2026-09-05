@@ -12,6 +12,7 @@ import { redactSecrets } from "../security/redact.js";
 import { killProcessGroup } from "../spawn/safeSpawn.js";
 import { events } from "../events.js";
 import { SessionStore } from "./sessionStore.js";
+import { emulatedPrompt } from "./emulatedSession.js";
 
 export type RunOrigin = "manual" | "skill" | "routine" | "api" | "sentinel";
 export type RunStatus =
@@ -517,9 +518,30 @@ export class RunManager {
       // provider itself uses; the first run of a session has none yet, so the
       // adapter starts (and names) a fresh provider conversation.
       const session = record.sessionId ? this.sessions.get(record.sessionId) : null;
+      // A provider that cannot resume natively (cursor-agent; an old codex)
+      // still keeps the thread: the earlier turns are folded into the prompt.
+      let effectivePrompt = prompt;
+      let resume = session?.providerSessionId ? { providerSessionId: session.providerSessionId } : null;
+      let emulatedTurns = 0;
+      if (record.sessionId && session) {
+        const native =
+          adapter.manifest.capabilities.resume !== "none" &&
+          (adapter.supportsResume ? await adapter.supportsResume() : true);
+        if (!native) {
+          resume = null;
+          const prior = this.list({ sessionId: record.sessionId, limit: 50 })
+            .filter((r) => r.id !== runId && r.status === "done")
+            .reverse();
+          const turns = prior.map((r) => ({ prompt: r.promptSummary, reply: this.lastAssistantText(r.id) }));
+          if (turns.length > 0) {
+            effectivePrompt = emulatedPrompt(turns, prompt);
+            emulatedTurns = turns.length;
+          }
+        }
+      }
       const agentRun: AgentRun = {
         runId,
-        prompt,
+        prompt: effectivePrompt,
         cwd: record.cwd ?? this.paths.home,
         model: record.model,
         effort: record.effort,
@@ -528,10 +550,23 @@ export class RunManager {
         profile: record.permissionProfile ?? this.getSettings().securityProfile,
         artifactsDir,
         ...(record.sessionId ? { sessionId: record.sessionId } : {}),
-        ...(session?.providerSessionId ? { resume: { providerSessionId: session.providerSessionId } } : {}),
+        ...(resume ? { resume } : {}),
         ...(this.permissionBroker && mode === "write" ? brokerFor(this.permissionBroker, record) : {}),
         signal,
       };
+
+      if (emulatedTurns > 0) {
+        this.persistEvent(
+          runId,
+          {
+            type: "text",
+            ts: Date.now(),
+            stream: "stderr",
+            text: `[mordomo] session emulated: ${emulatedTurns} earlier turn(s) folded into the prompt (the provider cannot resume natively).`,
+          },
+          active,
+        );
+      }
 
       const filesChanged = new Set<string>();
       let resultEvent: Extract<RunEvent, { type: "result" }> | null = null;

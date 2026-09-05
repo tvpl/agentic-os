@@ -12,6 +12,7 @@ import {
   type ProviderId,
 } from "@mordomo/core";
 import { ClaudeAdapter } from "@mordomo/adapter-claude";
+import { CursorAdapter } from "@mordomo/adapter-cursor";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "./helpers.js";
 
 let restorePath: () => void;
@@ -26,7 +27,8 @@ let manager: RunManager;
 let sessions: SessionStore;
 let store: SettingsStore;
 
-function adapterFor(_id: ProviderId): AgentAdapter {
+function adapterFor(id: ProviderId): AgentAdapter {
+  if (id === "cursor") return new CursorAdapter({ binaryPath: path.join(FAKE_BIN, "cursor-agent") });
   return new ClaudeAdapter({ binaryPath: path.join(FAKE_BIN, "claude") });
 }
 
@@ -208,5 +210,43 @@ describe("run manager × sessions (fake claude CLI)", () => {
       .filter((e) => e.type === "session");
     expect(sessionEvents.length).toBeGreaterThan(0);
     expect(sessionEvents.every((e) => e.providerSessionId === afterFirst.providerSessionId)).toBe(true);
+  });
+});
+
+describe("run manager × emulated sessions (fake cursor-agent, no resume flag)", () => {
+  it("folds the earlier turns into the prompt instead of starting fresh", async () => {
+    const session = sessions.create({
+      provider: "cursor",
+      cwd: ctx.paths.home,
+      profile: "read_only",
+      title: "c",
+    });
+    const mk = (prompt: string) =>
+      manager.create({
+        origin: "manual",
+        provider: "cursor",
+        prompt,
+        cwd: ctx.paths.home,
+        model: null,
+        effort: "default",
+        mode: "read_only",
+        timeoutMs: 30_000,
+        profile: "read_only",
+        sessionId: session.id,
+      });
+    const first = mk("Remember the code ORCHID-42.");
+    await manager.execute(first.id, "Remember the code ORCHID-42.", "read_only");
+    const firstEvents = manager.eventsFor(first.id).map((e) => e.event);
+    expect(firstEvents.some((e) => e.type === "text" && /session emulated/.test(e.text))).toBe(false);
+
+    const second = mk("What was the code?");
+    await manager.execute(second.id, "What was the code?", "read_only");
+    const evs = manager.eventsFor(second.id).map((e) => e.event);
+    expect(evs.some((e) => e.type === "text" && /session emulated: 1 earlier turn/.test(e.text))).toBe(true);
+    // The fake CLI only says this when the folded transcript reached its prompt.
+    expect(evs.some((e) => e.type === "assistant" && /Recalled ORCHID-42/.test(e.text))).toBe(true);
+    // No "starting fresh" warning any more: the adapter was not asked to resume.
+    expect(evs.some((e) => e.type === "text" && /resumeSupported: false/.test(e.text))).toBe(false);
+    expect(sessions.get(session.id)!.turns).toBe(2);
   });
 });
