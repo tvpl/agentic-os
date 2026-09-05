@@ -36,6 +36,9 @@ import {
   SkillRegistry,
   type SecurityProfile,
   type PermissionBroker,
+  PushStore,
+  type TelegramPoller,
+  installPushChannel,
 } from "@mordomo/core";
 import { buildProviderRegistry } from "./providers.js";
 
@@ -218,6 +221,12 @@ export class AppContext {
     // posted to Telegram. The bot token is read from the environment at send
     // time; failures are logged at most once an hour and never thrown.
     this.disposeTelegramChannel = installTelegramChannel(events, { getSettings: () => this.settings() });
+    // Web Push to installed PWAs: same rows, encrypted to each subscription.
+    this.push = new PushStore(this.db, this.paths.config);
+    this.disposePushChannel = installPushChannel(events, {
+      getSettings: () => this.settings(),
+      store: this.push,
+    });
     // The observers themselves. Nothing is watched or polled until `start()`.
     this.sentinels = new SentinelRunner({
       db: this.db,
@@ -237,6 +246,11 @@ export class AppContext {
   private readonly disposeJournalHooks: () => void;
   private readonly disposeNotificationRecorder: () => void;
   private readonly disposeTelegramChannel: () => void;
+  private readonly disposePushChannel: () => void;
+  /** Web Push subscriptions and the VAPID pair. */
+  readonly push: PushStore;
+  /** Telegram inbound poller; created and started by the server (needs the approval actions). */
+  telegramPoller: TelegramPoller | null = null;
 
   /** Live adapters — rebuilt by `reloadAdapters()` whenever settings change. */
   get adapters(): Record<ProviderId, AgentAdapter> {
@@ -367,6 +381,8 @@ export class AppContext {
     this.disposeJournalHooks();
     this.disposeNotificationRecorder();
     this.disposeTelegramChannel();
+    this.disposePushChannel();
+    this.telegramPoller?.stop();
     this.sentinels.stop();
     this.scheduler.stop();
     if (this.db.open) this.db.close();

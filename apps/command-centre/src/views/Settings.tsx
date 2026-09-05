@@ -1,4 +1,4 @@
-import { useContext, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   ArrowRight,
@@ -43,6 +43,10 @@ import {
   setDesktopNotify,
   setVoiceNotify,
   speak,
+  disablePush,
+  enablePush,
+  pushSubscribed,
+  pushSupported,
 } from "../hooks/systemNotify";
 import {
   PRESETS,
@@ -1334,6 +1338,28 @@ function SentinelsCard({ s, put }: { s: SettingsShape; put: Put }) {
             </select>
           </Field>
         </div>
+        <div className="apps-sound">
+          <div className="min0">
+            <strong>{t("apps.settings.telegramInbound")}</strong>
+            <p className="hint">
+              {t("apps.settings.telegramInboundHint")}
+              {tg.inbound && (
+                <>
+                  {" "}
+                  <TelegramStatus />
+                </>
+              )}
+            </p>
+          </div>
+          <Button
+            variant={tg.inbound ? "outline" : "secondary"}
+            aria-pressed={tg.inbound}
+            disabled={!tg.enabled}
+            onClick={() => saveTg({ inbound: !tg.inbound })}
+          >
+            {tg.inbound ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
+          </Button>
+        </div>
         <div>
           <Button
             variant="outline"
@@ -1345,7 +1371,117 @@ function SentinelsCard({ s, put }: { s: SettingsShape; put: Put }) {
           </Button>
         </div>
       </div>
+      <PushServerCard s={s} put={put} />
     </>
+  );
+}
+
+function TelegramStatus() {
+  const t = useT();
+  const status = useApiQuery<{
+    inbound: boolean;
+    polling: boolean;
+    lastPollAt: number;
+    lastError: string | null;
+    handled: number;
+  }>(qk.telegramStatus, "/api/channels/telegram/status", { refetchInterval: 30_000 });
+  if (!status.data) return null;
+  return (
+    <span className={status.data.lastError ? "text-danger" : "text-muted"}>
+      {status.data.polling && status.data.inbound
+        ? t("apps.settings.telegramPolling", { n: status.data.handled })
+        : t("apps.settings.telegramIdle")}
+      {status.data.lastError ? ` · ${status.data.lastError}` : ""}
+    </span>
+  );
+}
+
+/** The server side of Web Push: on/off, minimum tone, subscribed devices and a test. */
+function PushServerCard({ s, put }: { s: SettingsShape; put: Put }) {
+  const t = useT();
+  const toast = useToast();
+  const channels = s.channels;
+  const qc = useQueryClient();
+  const subs = useApiQuery<Array<{ id: string; label: string | null; createdAt: number; failures: number }>>(
+    qk.pushSubscriptions,
+    "/api/push/subscriptions",
+  );
+  const test = useMutation({
+    mutationFn: () => api.post<{ ok: boolean; error?: string }>("/api/push/test", {}),
+    onSuccess: (res) => {
+      toast(
+        res.ok
+          ? t("apps.settings.telegramOk").replace("Telegram", "Push")
+          : `${t("apps.settings.pushFailed")}: ${res.error ?? ""}`,
+        res.ok ? "ok" : "danger",
+      );
+      qc.invalidateQueries({ queryKey: qk.pushSubscriptions }).catch(() => undefined);
+    },
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.del(`/api/push/subscriptions/${encodeURIComponent(id)}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.pushSubscriptions }).catch(() => undefined),
+  });
+  if (!channels) return null;
+  const push = channels.push;
+  const save = (patch: Partial<typeof push>) =>
+    void put({ channels: { ...channels, push: { ...push, ...patch } } }, true);
+  return (
+    <div className="card stack">
+      <div className="apps-sound">
+        <div className="min0">
+          <h2>{t("apps.settings.pushServer")}</h2>
+          <p className="hint">{t("apps.settings.pushServerHint")}</p>
+        </div>
+        <Button
+          variant={push.enabled ? "outline" : "secondary"}
+          aria-pressed={push.enabled}
+          onClick={() => save({ enabled: !push.enabled })}
+        >
+          {push.enabled ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
+        </Button>
+      </div>
+      <div className="grid-2">
+        <Field label={t("apps.settings.telegramMinTone")} htmlFor="st-push-tone">
+          <select
+            id="st-push-tone"
+            className="input"
+            value={push.minTone}
+            onChange={(e) => save({ minTone: e.target.value as typeof push.minTone })}
+          >
+            {(["info", "warn", "danger"] as const).map((tone) => (
+              <option key={tone} value={tone}>
+                {tone}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <div className="stack-sm">
+          <span className="hint">{t("apps.settings.pushDevices", { n: subs.data?.length ?? 0 })}</span>
+          <ul className="device-list">
+            {(subs.data ?? []).map((d) => (
+              <li key={d.id}>
+                <span>{d.label ?? d.id}</span>
+                <Button size="sm" variant="ghost" onClick={() => remove.mutate(d.id)}>
+                  {t("apps.settings.pushRemove")}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <div>
+        <Button
+          variant="outline"
+          loading={test.isPending}
+          disabled={!push.enabled}
+          onClick={() => test.mutate()}
+        >
+          {t("apps.settings.pushTest")}
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -1357,6 +1493,36 @@ function OutsideTabToggles() {
   const [desktop, setDesktop] = useState(() => getDesktopNotify());
   const [voice, setVoice] = useState(() => getVoiceNotify());
   const [perm, setPerm] = useState(() => notifyPermission());
+  const [push, setPush] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  useEffect(() => {
+    void pushSubscribed().then(setPush);
+  }, []);
+  const togglePush = async () => {
+    setPushBusy(true);
+    try {
+      if (push) {
+        await disablePush();
+        setPush(false);
+        return;
+      }
+      const r = await enablePush();
+      if (!r.ok) {
+        toast(
+          r.reason === "unsupported"
+            ? t("apps.settings.pushUnsupported")
+            : r.reason === "denied"
+              ? t("apps.settings.desktopDenied")
+              : t("apps.settings.pushFailed"),
+          "info",
+        );
+        return;
+      }
+      setPush(true);
+    } finally {
+      setPushBusy(false);
+    }
+  };
   const toggleDesktop = async () => {
     if (desktop) {
       setDesktopNotify(false);
@@ -1412,6 +1578,22 @@ function OutsideTabToggles() {
           onClick={toggleVoice}
         >
           {voice ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
+        </Button>
+      </div>
+      <div className="apps-sound">
+        <div className="min0">
+          <strong>{t("apps.settings.pushNotify")}</strong>
+          <p className="hint">{t("apps.settings.pushNotifyHint")}</p>
+        </div>
+        <Button
+          variant={push ? "outline" : "secondary"}
+          aria-pressed={push}
+          disabled={!pushSupported()}
+          loading={pushBusy}
+          icon={push ? <Bell aria-hidden /> : <BellOff aria-hidden />}
+          onClick={() => void togglePush()}
+        >
+          {push ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
         </Button>
       </div>
     </>

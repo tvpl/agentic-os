@@ -138,6 +138,22 @@ level. The inbox itself is persisted on the server: approvals, failed runs,
 routine alerts and budget crossings survive a closed tab and are read from
 `GET /api/notifications` on load.
 
+### 5.2.1 Alerts that reach you outside the tab
+
+- **Telegram** (Settings › Notifications): set the bot token in the
+  environment variable named there, paste your chat id, pick the lowest tone.
+  Turn on **Answer from the phone** and every alert about an approval
+  carries **Approve / Deny** buttons; `/pending` lists what waits and
+  `/approve <id>` / `/deny <id>` work as text. Only your chat id is honoured;
+  anyone else who finds the bot gets silence. Decisions go through the same
+  code path as the button in the Command Centre.
+- **Push notifications**: install the Command Centre as an app (browser menu
+  → Install), then turn on **Push notifications** in Settings › Notifications
+  and the **Push channel** on the server side. Alerts arrive with the app
+  closed. Payloads are encrypted end to end (RFC 8291) with keys the server
+  generates once into `config/vapid.json`; the push service only relays
+  ciphertext. Subscribed devices are listed and can be removed.
+
 ## 5.3 The HUD
 
 The desktop core reacts to what the agent does — thinking, using a tool,

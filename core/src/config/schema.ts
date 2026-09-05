@@ -188,6 +188,17 @@ export const ChannelSettingsSchema = z.object({
       chatId: z.string().default(""),
       /** Lowest inbox tone that is worth a message. */
       minTone: z.enum(["ok", "info", "warn", "danger"]).default("warn"),
+      /** Long-poll the bot for replies: approve / deny from the phone. Only the configured chat is honoured. */
+      inbound: z.boolean().default(false),
+    })
+    .default({}),
+  /** Web Push to installed PWAs (VAPID keys live in config/vapid.json, subscriptions in SQLite). */
+  push: z
+    .object({
+      enabled: z.boolean().default(false),
+      minTone: z.enum(["ok", "info", "warn", "danger"]).default("warn"),
+      /** Contact the push service may use (`mailto:` or `https:`). */
+      subject: z.string().default("mailto:mordomo@localhost"),
     })
     .default({}),
 });

@@ -18,14 +18,8 @@ import {
 } from "@mordomo/core";
 import { clearRestorePending, readRestorePending, writeRestorePending, type AppContext } from "../context.js";
 import { runDoctor } from "../doctor.js";
-import {
-  grantedRoots,
-  httpError,
-  launchPromptRun,
-  launchSkillRun,
-  type PromptRunInput,
-  type SkillRunInput,
-} from "./common.js";
+import { resolveApproval } from "../approvalActions.js";
+import { grantedRoots, httpError } from "./common.js";
 import { BackupNameParams, UuidParams } from "./params.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -476,37 +470,10 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
   app.post("/api/approvals/:id/resolve", async (req) => {
     const { id } = UuidParams.parse(req.params);
     const { decision } = z.object({ decision: z.enum(["approved", "denied"]) }).parse(req.body);
-    // Sweep first: an approval past its TTL is expired here (cancelling the run
-    // it gated), so resolving it answers 409 instead of silently acting on it.
-    ctx.expireStaleApprovals();
-    const approval = ctx.approvals.resolve(id, decision);
-    if (!approval) throw httpError(404, "Approval not found");
-    // Act on approved effects we know how to apply.
-    let runId: string | null = null;
-    const gatedRunId = typeof approval.payload.runId === "string" ? approval.payload.runId : null;
-    if (approval.status === "approved" && approval.kind === "expose_port") {
-      ctx.settingsStore.update({ bindAddress: String(approval.payload.bindAddress ?? "127.0.0.1") });
-    }
-    if (approval.status === "approved" && approval.kind === "write_run") {
-      const payload = approval.payload as { kind?: string; input?: unknown };
-      const onError = (err: unknown, id: string) =>
-        req.log.error({ err, runId: id, msg: "approved run failed to execute" });
-      if (payload.kind === "prompt" && payload.input)
-        runId = launchPromptRun(ctx, payload.input as PromptRunInput, onError, gatedRunId).runId;
-      else if (payload.kind === "skill" && payload.input)
-        runId = launchSkillRun(ctx, payload.input as SkillRunInput, onError, gatedRunId).runId;
-    }
-    // Denied: the run parked in `waiting_approval` is cancelled, not left hanging.
-    if (approval.status === "denied" && gatedRunId) {
-      await ctx.runs.cancel(gatedRunId, "Write approval denied");
-    }
-    events.emit("approval.resolved", {
-      id: approval.id,
-      kind: approval.kind,
-      status: approval.status,
-      runId,
-    });
-    return { ...approval, runId };
+    const onError = (err: unknown, runId: string) =>
+      req.log.error({ err, runId, msg: "approved run failed to execute" });
+    const result = await resolveApproval(ctx, id, decision, onError);
+    return { ...ctx.approvals.get(id)!, runId: result.runId };
   });
 
   // ---- Backups ---------------------------------------------------------------

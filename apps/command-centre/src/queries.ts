@@ -34,6 +34,8 @@ export const qk = {
   runChildren: (id: string) => ["run", id, "children"] as const,
   skillRegistry: ["skills", "registry"] as const,
   skillNotes: (slug: string) => ["skills", slug, "notes"] as const,
+  telegramStatus: ["channels", "telegram", "status"] as const,
+  pushSubscriptions: ["push", "subscriptions"] as const,
   session: (id: string) => ["sessions", id] as const,
   metrics: ["metrics"] as const,
   artifacts: ["artifacts"] as const,

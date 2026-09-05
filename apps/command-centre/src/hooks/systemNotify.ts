@@ -5,6 +5,8 @@
  * speechSynthesis. Both are opt-in toggles kept in localStorage; both are
  * no-ops where the browser lacks the API.
  */
+import { api } from "../api";
+
 const DESKTOP_KEY = "mordomo.notifications.desktop";
 const VOICE_KEY = "mordomo.notifications.voice";
 
@@ -172,4 +174,105 @@ export function listen(lang: string, onText: (text: string) => void, onEnd: () =
       /* ignore */
     }
   };
+}
+
+/* ---- Web Push (the PWA hears about alerts while closed) ------------------ */
+
+export function pushSupported(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window &&
+    typeof Notification !== "undefined"
+  );
+}
+
+async function registration(): Promise<ServiceWorkerRegistration | null> {
+  if (!pushSupported()) return null;
+  try {
+    return await navigator.serviceWorker.ready;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether this browser currently holds a push subscription. */
+export async function pushSubscribed(): Promise<boolean> {
+  const reg = await registration();
+  if (!reg) return false;
+  try {
+    return (await reg.pushManager.getSubscription()) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function toApplicationServerKey(b64url: string): Uint8Array<ArrayBuffer> {
+  const pad = "=".repeat((4 - (b64url.length % 4)) % 4);
+  const raw = atob((b64url + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  const out = new Uint8Array(new ArrayBuffer(raw.length));
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+/** Ask permission, subscribe with the server's VAPID key and register the subscription. */
+export async function enablePush(
+  label?: string,
+): Promise<{ ok: boolean; reason?: "unsupported" | "denied" | "failed" }> {
+  if (!pushSupported()) return { ok: false, reason: "unsupported" };
+  const perm = await requestNotifyPermission();
+  if (perm !== "granted") return { ok: false, reason: "denied" };
+  const reg = await registration();
+  if (!reg) return { ok: false, reason: "unsupported" };
+  try {
+    const { publicKey } = await api.get<{ publicKey: string }>("/api/push/vapid");
+    const sub =
+      (await reg.pushManager.getSubscription()) ??
+      (await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: toApplicationServerKey(publicKey),
+      }));
+    await api.post("/api/push/subscribe", { subscription: sub.toJSON(), label: label ?? deviceLabel() });
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "failed" };
+  }
+}
+
+export async function disablePush(): Promise<void> {
+  const reg = await registration();
+  if (!reg) return;
+  try {
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) return;
+    await api.post("/api/push/unsubscribe", { endpoint: sub.endpoint }).catch(() => undefined);
+    await sub.unsubscribe();
+  } catch {
+    /* ignore */
+  }
+}
+
+function deviceLabel(): string {
+  const ua = navigator.userAgent;
+  const os = /Android/.test(ua)
+    ? "Android"
+    : /iPhone|iPad/.test(ua)
+      ? "iOS"
+      : /Mac/.test(ua)
+        ? "macOS"
+        : /Windows/.test(ua)
+          ? "Windows"
+          : /Linux/.test(ua)
+            ? "Linux"
+            : "Device";
+  const browser = /Edg\//.test(ua)
+    ? "Edge"
+    : /Chrome\//.test(ua)
+      ? "Chrome"
+      : /Firefox\//.test(ua)
+        ? "Firefox"
+        : /Safari\//.test(ua)
+          ? "Safari"
+          : "Browser";
+  return `${os} · ${browser}`;
 }

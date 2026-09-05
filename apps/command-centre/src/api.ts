@@ -543,7 +543,9 @@ export interface SettingsDoc {
       botTokenEnv: string;
       chatId: string;
       minTone: "ok" | "info" | "warn" | "danger";
+      inbound: boolean;
     };
+    push: { enabled: boolean; minTone: "ok" | "info" | "warn" | "danger"; subject: string };
   };
 }
 

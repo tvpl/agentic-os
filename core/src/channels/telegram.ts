@@ -2,6 +2,7 @@ import type { Settings } from "../config/schema.js";
 import type { EventBus, OsEvent } from "../events.js";
 import type { NotificationRecord, NotificationTone } from "../notifications/store.js";
 import { redactSecrets } from "../security/redact.js";
+import { approvalKeyboard } from "./telegramInbound.js";
 
 /**
  * Telegram delivery (Onda 2, item 4): the first way an alert leaves the tab.
@@ -45,6 +46,8 @@ export interface TelegramSendOptions {
   text: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  /** Telegram `reply_markup` (inline keyboard) — used for approval buttons. */
+  replyMarkup?: Record<string, unknown>;
 }
 
 /** POST one message. Resolves with `{ ok: false, error }` instead of throwing. */
@@ -62,6 +65,7 @@ export async function sendTelegramMessage(opts: TelegramSendOptions): Promise<Te
         chat_id: opts.chatId,
         text: opts.text.slice(0, MAX_MESSAGE_CHARS),
         disable_web_page_preview: true,
+        ...(opts.replyMarkup ? { reply_markup: opts.replyMarkup } : {}),
       }),
       signal: controller.signal,
       redirect: "error",
@@ -133,6 +137,8 @@ export async function deliverToTelegram(
     token,
     chatId: cfg.chatId,
     text: formatNotification(row, settings.port),
+    // With inbound on, an approval row carries Approve / Deny buttons.
+    ...(cfg.inbound && row.approvalId ? { replyMarkup: approvalKeyboard(row.approvalId) } : {}),
     ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
   });
 }

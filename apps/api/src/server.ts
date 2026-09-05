@@ -11,7 +11,7 @@ import Fastify, {
 } from "fastify";
 import fastifyStatic from "@fastify/static";
 import { ZodError } from "zod";
-import { JsonlLogger, PathAccessError, redactSecrets } from "@mordomo/core";
+import { JsonlLogger, PathAccessError, TelegramPoller, redactSecrets } from "@mordomo/core";
 import { AppContext } from "./context.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerSkillRoutes } from "./routes/skills.js";
@@ -20,6 +20,8 @@ import { registerSessionRoutes } from "./routes/sessions.js";
 import { registerNotificationRoutes } from "./routes/notifications.js";
 import { registerDeviceRoutes } from "./routes/devices.js";
 import { registerChannelRoutes } from "./routes/channels.js";
+import { registerPushRoutes } from "./routes/push.js";
+import { resolveApprovalForChat } from "./approvalActions.js";
 import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerRoutineRoutes } from "./routes/routines.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
@@ -229,6 +231,7 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   registerNotificationRoutes(app, ctx);
   registerDeviceRoutes(app, ctx);
   registerChannelRoutes(app, ctx);
+  registerPushRoutes(app, ctx);
   registerMemoryRoutes(app, ctx);
   registerRoutineRoutes(app, ctx);
   registerConnectorRoutes(app, ctx);
@@ -294,6 +297,15 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   // The sentinels observe on the same lifecycle as the scheduler; their hourly
   // pass rides the sweep below instead of arming a timer of its own.
   ctx.sentinels.start();
+  // Telegram inbound: approve / deny from the phone through the same code path as the UI button.
+  ctx.telegramPoller = new TelegramPoller({
+    getSettings: () => ctx.settings(),
+    resolve: (id, decision) => resolveApprovalForChat(ctx, id, decision),
+    pending: () =>
+      ctx.approvals.list("pending").map((a) => ({ id: a.id, kind: a.kind, description: a.description })),
+    onError: (message) => app.log.warn({ msg: `telegram inbound: ${message}` }),
+  });
+  ctx.telegramPoller.start();
 
   // Approvals nobody answered expire on their own, and the daily budget is
   // checked on the same beat: sweep at boot, then hourly.

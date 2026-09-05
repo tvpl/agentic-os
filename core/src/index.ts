@@ -338,3 +338,29 @@ export {
   type RegistrySkill,
   type Fetcher,
 } from "./skills/registry.js";
+export {
+  TelegramPoller,
+  approvalKeyboard,
+  parseCommand,
+  type InboundDeps,
+  type PendingApprovalView,
+  type TelegramUpdate,
+} from "./channels/telegramInbound.js";
+export {
+  b64url,
+  decryptPayload,
+  encryptPayload,
+  generateVapidKeys,
+  sendWebPush,
+  vapidAuthorization,
+  verifyVapidToken,
+  type PushSubscriptionJson,
+  type VapidKeys,
+} from "./channels/webpush.js";
+export {
+  deliverPush,
+  installPushChannel,
+  pushPayload,
+  type PushChannelDeps,
+} from "./channels/pushChannel.js";
+export { PushStore, type PushSubscriptionRecord } from "./notifications/pushStore.js";

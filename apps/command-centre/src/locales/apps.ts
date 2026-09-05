@@ -135,6 +135,21 @@ export const en = {
   "apps.settings.telegramTest": "Send a test message",
   "apps.settings.telegramOk": "Telegram message sent.",
   "apps.settings.telegramFailed": "Telegram failed",
+  "apps.settings.telegramInbound": "Answer from the phone",
+  "apps.settings.telegramInboundHint":
+    "The bot polls for replies: alerts carry Approve / Deny buttons, and /pending lists what waits. Only your chat id is honoured.",
+  "apps.settings.telegramPolling": "Polling · {n} handled",
+  "apps.settings.telegramIdle": "Not polling",
+  "apps.settings.pushNotify": "Push notifications",
+  "apps.settings.pushNotifyHint":
+    "Install the app and get alerts even with it closed. Encrypted end to end; nothing readable leaves this machine.",
+  "apps.settings.pushServer": "Push channel (server)",
+  "apps.settings.pushServerHint": "Send inbox rows at or above the minimum tone to every subscribed device.",
+  "apps.settings.pushUnsupported": "This browser cannot receive push notifications.",
+  "apps.settings.pushFailed": "Could not subscribe this browser.",
+  "apps.settings.pushTest": "Send a test push",
+  "apps.settings.pushDevices": "{n} devices subscribed",
+  "apps.settings.pushRemove": "Remove",
   "apps.settings.desktopNotify": "System notifications",
   "apps.settings.desktopNotifyHint":
     "Approvals, failures and alerts reach you as system notifications when this tab is not in front. The browser asks for permission once.",
@@ -312,6 +327,22 @@ export const ptBR = {
   "apps.settings.telegramTest": "Enviar mensagem de teste",
   "apps.settings.telegramOk": "Mensagem enviada ao Telegram.",
   "apps.settings.telegramFailed": "Telegram falhou",
+  "apps.settings.telegramInbound": "Responder pelo celular",
+  "apps.settings.telegramInboundHint":
+    "O bot busca respostas: alertas trazem botões Aprovar / Negar, e /pending lista o que espera. Só o seu id de chat é aceito.",
+  "apps.settings.telegramPolling": "Escutando · {n} tratados",
+  "apps.settings.telegramIdle": "Sem escuta",
+  "apps.settings.pushNotify": "Notificações push",
+  "apps.settings.pushNotifyHint":
+    "Instale o app e receba alertas mesmo com ele fechado. Criptografado de ponta a ponta; nada legível sai desta máquina.",
+  "apps.settings.pushServer": "Canal push (servidor)",
+  "apps.settings.pushServerHint":
+    "Envia itens do inbox a partir do tom mínimo para todos os dispositivos inscritos.",
+  "apps.settings.pushUnsupported": "Este navegador não recebe notificações push.",
+  "apps.settings.pushFailed": "Não foi possível inscrever este navegador.",
+  "apps.settings.pushTest": "Enviar push de teste",
+  "apps.settings.pushDevices": "{n} dispositivos inscritos",
+  "apps.settings.pushRemove": "Remover",
   "apps.settings.desktopNotify": "Notificações do sistema",
   "apps.settings.desktopNotifyHint":
     "Aprovações, falhas e alertas chegam como notificação do sistema quando esta aba não está na frente. O navegador pede permissão uma vez.",

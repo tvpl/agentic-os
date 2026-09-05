@@ -272,4 +272,25 @@ CREATE TABLE IF NOT EXISTS devices (
 `);
     },
   },
+  {
+    version: 8,
+    name: "push_subscriptions",
+    // Web Push subscriptions (one per installed PWA). The endpoint is the
+    // push service URL the browser handed out; p256dh/auth are the receiver
+    // keys every payload is encrypted to.
+    up(db) {
+      db.exec(`
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id TEXT PRIMARY KEY,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  label TEXT,
+  created_at INTEGER NOT NULL,
+  last_ok_at INTEGER,
+  failures INTEGER NOT NULL DEFAULT 0
+);
+`);
+    },
+  },
 ];

@@ -73,6 +73,27 @@ self.addEventListener("message", (event) => {
   );
 });
 
+// Web Push from the server (encrypted end to end; see core/src/channels/webpush.ts).
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { title: event.data ? event.data.text() : "" };
+  }
+  if (!data || typeof data.title !== "string" || !data.title) return;
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: typeof data.body === "string" ? data.body : undefined,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      tag: typeof data.tag === "string" ? data.tag : undefined,
+      requireInteraction: data.tone === "danger" || !!data.approvalId,
+      data: { href: typeof data.href === "string" ? data.href : "/" },
+    }),
+  );
+});
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const href = (event.notification.data && event.notification.data.href) || "/";

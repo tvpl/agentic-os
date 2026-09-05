@@ -12,6 +12,18 @@ import type { AppContext } from "../context.js";
  * is read from `process.env` at send time and never returned.
  */
 export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): void {
+  /** Inbound poller health for the Settings card. */
+  app.get("/api/channels/telegram/status", async () => {
+    const p = ctx.telegramPoller;
+    return {
+      inbound: p?.enabled() ?? false,
+      polling: p?.active ?? false,
+      lastPollAt: p?.lastPollAt ?? 0,
+      lastError: p?.lastError ?? null,
+      handled: p?.handled ?? 0,
+    };
+  });
+
   app.post("/api/channels/telegram/test", async () => {
     const settings = ctx.settings();
     const cfg = settings.channels.telegram;
