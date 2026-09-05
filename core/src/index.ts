@@ -364,3 +364,12 @@ export {
   type PushChannelDeps,
 } from "./channels/pushChannel.js";
 export { PushStore, type PushSubscriptionRecord } from "./notifications/pushStore.js";
+export {
+  MetricsHistory,
+  dailyPoints,
+  localDay as metricsLocalDay,
+  HOUR_MS,
+  type MetricsSample,
+  type DailyPoint,
+  type SampleSource,
+} from "./metrics/history.js";

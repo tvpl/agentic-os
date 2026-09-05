@@ -31,6 +31,7 @@ import {
 type SettingsShape = SettingsDoc;
 import { I18nContext, useLocale, useT, type Lang } from "../i18n";
 import { qk, useApiQuery, useOsProviders } from "../queries";
+import { TrendsTab } from "./Trends";
 import { ErrorBox, Skeleton, formatBytes, timeAgo, useToast } from "../components/ui";
 import { Badge, Button, EmptyState, Field, Tabs } from "../components/primitives";
 import { useConfirm } from "../hooks/useConfirm";
@@ -91,7 +92,8 @@ type TabId =
   | "security"
   | "notifications"
   | "backups"
-  | "diagnostics";
+  | "diagnostics"
+  | "trends";
 const TAB_IDS: TabId[] = [
   "identity",
   "theme",
@@ -102,6 +104,7 @@ const TAB_IDS: TabId[] = [
   "notifications",
   "backups",
   "diagnostics",
+  "trends",
 ];
 const PROFILES = ["read_only", "review_before_write", "controlled_write", "approved_automation"] as const;
 
@@ -169,6 +172,7 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
     { id: "desktop", label: t("apps.settings.tabDesktop") },
     { id: "security", label: t("settings.security") },
     { id: "notifications", label: t("apps.settings.tabNotifications") },
+    { id: "trends", label: t("apps.settings.tabTrends") },
     { id: "backups", label: t("settings.backups") },
     { id: "diagnostics", label: t("settings.doctor") },
   ];
@@ -205,6 +209,7 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
             <SentinelsCard s={s} put={put} />
           </>
         )}
+        {tab === "trends" && <TrendsTab />}
         {tab === "backups" && <BackupsTab />}
         {tab === "diagnostics" && <DiagnosticsTab />}
       </div>

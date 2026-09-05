@@ -166,6 +166,13 @@ cap for providers that report cost while running.
   generates once into `config/vapid.json`; the push service only relays
   ciphertext. Subscribed devices are listed and can be removed.
 
+### 5.2.2 Trends
+
+**Settings › Trends** charts the numbers the desktop shows live — spend,
+runs, failures, tokens, inbox unread, approval wait — from one sample per
+hour (`metrics_samples`, 90 days), folded per day, with a table view. The
+first sample lands at boot; the plan's §9 targets are measured here.
+
 ## 5.3 The HUD
 
 The desktop core reacts to what the agent does — thinking, using a tool,

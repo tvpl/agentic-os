@@ -15,6 +15,7 @@ import {
   redactSecrets,
   resolveInsideRoots,
   type Settings,
+  dailyPoints,
 } from "@mordomo/core";
 import { clearRestorePending, readRestorePending, writeRestorePending, type AppContext } from "../context.js";
 import { runDoctor } from "../doctor.js";
@@ -419,6 +420,13 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
   app.get("/api/doctor", async (req) => {
     const { audit } = z.object({ audit: z.enum(["0", "1"]).optional() }).parse(req.query);
     return runDoctor(ctx, { npmAudit: audit !== "0" });
+  });
+
+  /** Hourly samples of the last N days plus their daily fold (Settings › Trends). */
+  app.get("/api/metrics/history", async (req) => {
+    const q = z.object({ days: z.coerce.number().int().min(1).max(90).default(14) }).parse(req.query ?? {});
+    const samples = ctx.metricsHistory.series(q.days);
+    return { days: q.days, samples, daily: dailyPoints(samples) };
   });
 
   app.get("/api/approvals", async () => ctx.approvals.list("pending"));

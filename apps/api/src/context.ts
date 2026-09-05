@@ -39,6 +39,8 @@ import {
   PushStore,
   type TelegramPoller,
   installPushChannel,
+  MetricsHistory,
+  type MetricsSample,
 } from "@mordomo/core";
 import { buildProviderRegistry } from "./providers.js";
 
@@ -223,6 +225,7 @@ export class AppContext {
     this.disposeTelegramChannel = installTelegramChannel(events, { getSettings: () => this.settings() });
     // Web Push to installed PWAs: same rows, encrypted to each subscription.
     this.push = new PushStore(this.db, this.paths.config);
+    this.metricsHistory = new MetricsHistory(this.db);
     this.disposePushChannel = installPushChannel(events, {
       getSettings: () => this.settings(),
       store: this.push,
@@ -249,6 +252,8 @@ export class AppContext {
   private readonly disposePushChannel: () => void;
   /** Web Push subscriptions and the VAPID pair. */
   readonly push: PushStore;
+  /** Hourly metrics snapshots (Settings › Trends). */
+  readonly metricsHistory: MetricsHistory;
   /** Telegram inbound poller; created and started by the server (needs the approval actions). */
   telegramPoller: TelegramPoller | null = null;
 
@@ -375,6 +380,38 @@ export class AppContext {
     const payload: BudgetCrossedPayload = { level, day, spentUsd, budgetUsd };
     events.emit("budget.crossed", payload);
     return level;
+  }
+
+  /** One hourly snapshot of the live numbers into `metrics_samples` (the sweep calls this). */
+  sampleMetrics(now = Date.now()): MetricsSample {
+    const m = this.runs.metrics();
+    const dayAgo = now - 86_400_000;
+    const last24 = this.db
+      .prepare(
+        "SELECT COUNT(*) c, SUM(CASE WHEN status IN ('failed','timed_out') THEN 1 ELSE 0 END) f FROM runs WHERE created_at >= ?",
+      )
+      .get(dayAgo) as { c: number; f: number | null };
+    const wait = this.db
+      .prepare(
+        "SELECT AVG(resolved_at - created_at) w FROM approvals WHERE resolved_at IS NOT NULL AND resolved_at >= ?",
+      )
+      .get(dayAgo) as { w: number | null };
+    return this.metricsHistory.sample(
+      {
+        runs: {
+          total: m.total,
+          last24h: last24.c,
+          failed24h: last24.f ?? 0,
+          costTodayUsd: m.cost.todayUsd,
+          tokensToday: m.cost.tokensToday,
+          spendWeekUsd: m.cost.weekUsd,
+        },
+        inboxUnread: this.notifications.unreadCount(),
+        approvalsPending: this.approvals.list("pending").length,
+        approvalWaitAvgMs: wait.w == null ? null : Math.round(wait.w),
+      },
+      now,
+    );
   }
 
   close(): void {

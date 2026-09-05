@@ -322,6 +322,11 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
     } catch (err) {
       app.log.error({ err, msg: "budget check failed" });
     }
+    try {
+      ctx.sampleMetrics();
+    } catch (err) {
+      app.log.error({ err, msg: "metrics sample failed" });
+    }
     // Silent routines, connector deltas and the did-it-twice detector. Async,
     // and it settles on its own: the sweep never waits for a connector read.
     void ctx.sentinels

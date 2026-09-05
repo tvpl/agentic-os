@@ -328,4 +328,26 @@ CREATE INDEX IF NOT EXISTS idx_file_related_dst ON file_related(dst_id);
       db.exec("ALTER TABLE runs ADD COLUMN max_cost_usd REAL");
     },
   },
+  {
+    version: 11,
+    name: "metrics_samples",
+    // Hourly snapshots (follow-up 8): the plan's §9 targets are measurable only
+    // with a history. One row per hour bucket, pruned after 90 days.
+    up(db) {
+      db.exec(`
+CREATE TABLE IF NOT EXISTS metrics_samples (
+  ts INTEGER PRIMARY KEY,
+  runs_total INTEGER NOT NULL,
+  runs_24h INTEGER NOT NULL,
+  failed_24h INTEGER NOT NULL,
+  cost_today_usd REAL NOT NULL,
+  tokens_today INTEGER NOT NULL,
+  spend_week_usd REAL NOT NULL,
+  inbox_unread INTEGER NOT NULL,
+  approvals_pending INTEGER NOT NULL,
+  approval_wait_avg_ms INTEGER
+);
+`);
+    },
+  },
 ];

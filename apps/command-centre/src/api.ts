@@ -491,6 +491,24 @@ export interface Metrics {
   usageSeries?: UsageSeriesPoint[];
 }
 
+/** `GET /api/metrics/history`: hourly samples and their per-day fold (Settings › Trends). */
+export interface MetricsDailyPoint {
+  day: string;
+  spendUsd: number;
+  tokens: number;
+  runs: number;
+  failed: number;
+  inboxUnread: number;
+  approvalsPending: number;
+  approvalWaitAvgMs: number | null;
+  samples: number;
+}
+export interface MetricsHistory {
+  days: number;
+  samples: Array<{ ts: number }>;
+  daily: MetricsDailyPoint[];
+}
+
 // ---- settings ----
 /**
  * The settings document as `GET /api/settings` returns it (mirrors
