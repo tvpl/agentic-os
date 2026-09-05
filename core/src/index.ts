@@ -373,3 +373,15 @@ export {
   type DailyPoint,
   type SampleSource,
 } from "./metrics/history.js";
+export {
+  canonicalJson,
+  ensureSigningKeys,
+  generateSigningKeys,
+  publishRegistry,
+  signIndex,
+  verifyIndex,
+  type PublishOptions,
+  type PublishResult,
+  type SigningKeys,
+} from "./skills/publish.js";
+export { splitRegistryUrl } from "./skills/registry.js";

@@ -91,6 +91,11 @@ export const en = {
   "skills.market.title": "Marketplace",
   "skills.market.search": "Search the registries…",
   "skills.market.refresh": "Refresh",
+  "skills.market.signed": "signed ✓",
+  "skills.market.signedTitle": "The registry index carries a valid Ed25519 signature.",
+  "skills.market.unsigned": "unsigned",
+  "skills.market.unsignedTitle":
+    "No signature on this registry. Pin the publisher's key with #key= on the URL to require one.",
   "skills.notes.tab": "Notes",
   "skills.notes.empty":
     "No notes yet. Save a lesson from a run page, or add one here; the agent reads NOTES.md on every run.",
@@ -114,7 +119,7 @@ export const en = {
     "Add an https index URL under Settings › Memory & folders › Skill registries. Every file is digest-checked before it lands in the catalog.",
   "apps.settings.registries": "Skill registries",
   "apps.settings.registriesHint":
-    "https URLs of registry indexes, comma separated. Files are only fetched from the registry's own host and verified by SHA-256.",
+    "One https:// or file:// index.json per line. Append #key=<public key> to require the publisher's Ed25519 signature (mordomo skills key prints yours).",
   "apps.settings.remote": "Remote access",
   "apps.settings.remoteHint":
     "Let paired devices (your phone, a laptop) use the OS through a host you list — a Tailscale name or a LAN address. The server must also bind beyond loopback (Identity › Port asks for that approval).",
@@ -305,6 +310,11 @@ export const ptBR = {
   "skills.market.title": "Marketplace",
   "skills.market.search": "Buscar nos registros…",
   "skills.market.refresh": "Atualizar",
+  "skills.market.signed": "assinado ✓",
+  "skills.market.signedTitle": "O índice do registro traz uma assinatura Ed25519 válida.",
+  "skills.market.unsigned": "sem assinatura",
+  "skills.market.unsignedTitle":
+    "Este registro não tem assinatura. Fixe a chave do publicador com #key= na URL para exigir uma.",
   "skills.notes.tab": "Notas",
   "skills.notes.empty":
     "Ainda sem notas. Salve uma lição pela página de uma execução ou adicione aqui; o agente lê o NOTES.md em toda execução.",
@@ -328,7 +338,7 @@ export const ptBR = {
     "Adicione uma URL https de índice em Configurações › Memória & pastas › Registros de skills. Cada arquivo tem o digest conferido antes de entrar no catálogo.",
   "apps.settings.registries": "Registros de skills",
   "apps.settings.registriesHint":
-    "URLs https de índices de registro, separadas por vírgula. Os arquivos só são baixados do host do próprio registro e conferidos por SHA-256.",
+    "Um index.json https:// ou file:// por linha. Acrescente #key=<chave pública> para exigir a assinatura Ed25519 do publicador (mordomo skills key mostra a sua).",
   "apps.settings.remote": "Acesso remoto",
   "apps.settings.remoteHint":
     "Deixe dispositivos pareados (celular, notebook) usarem o OS por um host que você listar — um nome do Tailscale ou um endereço da rede local. O servidor também precisa sair do loopback (Identidade › Porta pede essa aprovação).",

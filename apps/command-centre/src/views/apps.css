@@ -719,3 +719,7 @@
   text-align: left;
   font-family: var(--font-mono);
 }
+
+.text-ok {
+  color: var(--ok, #4ade80);
+}

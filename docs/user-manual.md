@@ -45,6 +45,20 @@ Language (English/Português) and theme (dark/light/system) live in
 Every run writes its outputs to `artifacts/<run-id>/`; artifacts appear on the
 Dashboard and in the run's page.
 
+### 2.1 Sharing skills: the marketplace
+
+- **Install**: Skills → Marketplace lists every registry from Settings › Memory
+  › Registries (an `https://` or `file://` `index.json`). Every file is
+  downloaded and its SHA-256 checked before the catalog is touched; a
+  mismatch refuses the install with the reason.
+- **Publish**: `mordomo skills publish [dir] --out <registry-dir>` copies your
+  skills (never `NOTES.md`) into the folder with an `index.json` signed by the
+  Ed25519 key generated once into `config/registry-signing.json`. Serve the
+  folder over https or sync it (a shared drive works: use the `file://` URL).
+  The command prints the registry URL with `#key=<your public key>`; a
+  consumer that keeps that fragment refuses an index that is unsigned,
+  tampered or signed by anyone else. `mordomo skills key` prints the key.
+
 ## 3. Memory & the Second Brain
 
 - Choose folders in **Settings → Memory** (each can map to an area: Worker,

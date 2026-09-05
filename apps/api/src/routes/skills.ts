@@ -217,7 +217,12 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
     return {
       registries,
       errors,
-      skills: entries.map((e) => ({ ...e, files: Object.keys(e.files), installed: installed.has(e.slug) })),
+      skills: entries.map((e) => ({
+        ...e,
+        files: Object.keys(e.files),
+        installed: installed.has(e.slug),
+        verified: e.verified,
+      })),
     };
   });
 

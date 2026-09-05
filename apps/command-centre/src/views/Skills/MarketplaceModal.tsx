@@ -24,6 +24,8 @@ interface RegistrySkillRow {
   homepage?: string;
   registry: string;
   registryName: string;
+  /** Ed25519 signature: true valid, false invalid, null unsigned. */
+  verified?: boolean | null;
   installed: boolean;
 }
 interface RegistryResponse {
@@ -85,7 +87,10 @@ export default function MarketplaceModal({ onClose }: { onClose: () => void }) {
                   <p className="hint">{s.description}</p>
                   <span className="meta">
                     {s.registryName}
-                    {s.author ? ` · ${s.author}` : ""} · {t("skills.market.files", { n: s.files.length })}
+                    {s.author ? ` · ${s.author}` : ""} · {t("skills.market.files", { n: s.files.length })} ·{" "}
+                    <span className={s.verified ? "text-ok" : "text-muted"} title={t(s.verified ? "skills.market.signedTitle" : "skills.market.unsignedTitle")}>
+                      {t(s.verified ? "skills.market.signed" : "skills.market.unsigned")}
+                    </span>
                   </span>
                 </div>
                 <Button size="sm" variant={s.installed ? "outline" : "primary"} icon={<Download aria-hidden />} loading={install.isPending && install.variables?.slug === s.slug} onClick={() => install.mutate(s)}>

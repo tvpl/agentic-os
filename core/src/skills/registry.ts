@@ -11,6 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyIndex } from "./publish.js";
 
 export interface RegistrySkillFile {
   url: string;
@@ -30,10 +31,27 @@ export interface RegistrySkill {
 export interface RegistryIndex {
   name: string;
   skills: RegistrySkill[];
+  /** Ed25519 signature outcome: true (valid), false (present but invalid), null (unsigned). */
+  verified: boolean | null;
+  publicKey: string | null;
 }
 export interface RegistryEntry extends RegistrySkill {
   registry: string;
   registryName: string;
+  verified: boolean | null;
+}
+
+/**
+ * A registry URL may pin the publisher's key in its fragment:
+ * `https://host/index.json#key=<base64url ed25519>`. The fragment never goes
+ * on the wire; without it a signed index is verified against its own key and
+ * an unsigned one is accepted (and shown as unverified).
+ */
+export function splitRegistryUrl(registryUrl: string): { url: string; key: string | null } {
+  const hash = registryUrl.indexOf("#");
+  if (hash < 0) return { url: registryUrl, key: null };
+  const params = new URLSearchParams(registryUrl.slice(hash + 1));
+  return { url: registryUrl.slice(0, hash), key: params.get("key") };
 }
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -83,9 +101,11 @@ function sameOrigin(a: string, b: string): boolean {
   }
 }
 
-/** Validate an index document without trusting its shape. */
-export function parseIndex(raw: unknown, registryUrl: string): RegistryIndex {
+/** Validate an index document without trusting its shape. `pinnedKey` makes a valid signature by that key mandatory. */
+export function parseIndex(raw: unknown, registryUrl: string, pinnedKey: string | null = null): RegistryIndex {
   if (!raw || typeof raw !== "object") throw new Error("Registry index is not an object");
+  const sig = verifyIndex(raw, pinnedKey ?? undefined);
+  if (pinnedKey && !sig.verified) throw new Error(`Registry signature: ${sig.reason ?? "invalid"}`);
   const doc = raw as { name?: unknown; skills?: unknown };
   const name = typeof doc.name === "string" && doc.name.trim() ? doc.name.trim().slice(0, 80) : new URL(registryUrl).host;
   if (!Array.isArray(doc.skills)) throw new Error("Registry index has no skills array");
@@ -114,7 +134,7 @@ export function parseIndex(raw: unknown, registryUrl: string): RegistryIndex {
       ...(typeof s.homepage === "string" && s.homepage.startsWith("https://") ? { homepage: s.homepage.slice(0, 300) } : {}),
     });
   }
-  return { name, skills };
+  return { name, skills, verified: sig.signed ? sig.verified : null, publicKey: sig.publicKey };
 }
 
 export class SkillRegistry {
@@ -129,9 +149,10 @@ export class SkillRegistry {
     if (!isRegistryUrl(registryUrl)) throw new Error("Registries must be https:// or file:// URLs");
     const hit = this.cache.get(registryUrl);
     if (hit && !force && now - hit.at < this.ttlMs) return hit.index;
-    const res = await this.fetcher(registryUrl);
-    if (!res.ok) throw new Error(`Registry ${registryUrl} answered ${res.status}`);
-    const index = parseIndex(JSON.parse(Buffer.from(res.bytes).toString("utf8")), registryUrl);
+    const { url, key } = splitRegistryUrl(registryUrl);
+    const res = await this.fetcher(url);
+    if (!res.ok) throw new Error(`Registry ${url} answered ${res.status}`);
+    const index = parseIndex(JSON.parse(Buffer.from(res.bytes).toString("utf8")), url, key);
     this.cache.set(registryUrl, { at: now, index });
     return index;
   }
@@ -146,7 +167,7 @@ export class SkillRegistry {
     for (const registry of registries) {
       try {
         const idx = await this.index(registry, Date.now(), opts.force === true);
-        for (const s of idx.skills) entries.push({ ...s, registry, registryName: idx.name });
+        for (const s of idx.skills) entries.push({ ...s, registry, registryName: idx.name, verified: idx.verified });
       } catch (err) {
         errors.push({ registry, error: err instanceof Error ? err.message : String(err) });
       }

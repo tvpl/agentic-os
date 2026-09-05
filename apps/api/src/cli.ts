@@ -22,6 +22,9 @@ import {
   type IndexStats,
   type IndexProgress,
   type Settings,
+  ensureSigningKeys,
+  publishRegistry,
+  type MordomoPaths,
 } from "@mordomo/core";
 import { AppContext } from "./context.js";
 import { PKG_VERSION } from "./routes/system.js";
@@ -54,6 +57,7 @@ const COMMANDS = [
   "service",
   "recall",
   "mcp",
+  "skills",
   "help",
 ] as const;
 type Command = (typeof COMMANDS)[number];
@@ -75,6 +79,10 @@ const OPTION_SPECS = {
   model: { type: "string" },
   effort: { type: "string" },
   input: { type: "string", multiple: true },
+  out: { type: "string" },
+  "base-url": { type: "string" },
+  name: { type: "string" },
+  unsigned: { type: "boolean" },
 } as const satisfies ParseArgsConfig["options"];
 type OptionName = keyof typeof OPTION_SPECS;
 
@@ -93,6 +101,7 @@ const COMMAND_OPTIONS: Record<Command, readonly OptionName[]> = {
   service: ["yes"],
   recall: ["json"],
   mcp: [],
+  skills: ["out", "base-url", "name", "unsigned", "json"],
   help: [],
 };
 
@@ -114,6 +123,10 @@ export interface CliArgs {
   model: string | undefined;
   effort: EffortLevel | undefined;
   inputs: Record<string, string>;
+  out: string | undefined;
+  baseUrl: string | undefined;
+  name: string | undefined;
+  unsigned: boolean;
 }
 
 class UsageError extends Error {}
@@ -197,6 +210,10 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
     apply: values.apply === true,
     diff: values.diff === true,
     approve: (values.approve as string[] | undefined) ?? [],
+    out: values.out as string | undefined,
+    baseUrl: values["base-url"] as string | undefined,
+    name: values.name as string | undefined,
+    unsigned: values.unsigned === true,
     provider,
     model: values.model as string | undefined,
     effort,
@@ -223,6 +240,10 @@ function emptyArgs(command: Command): CliArgs {
     model: undefined,
     effort: undefined,
     inputs: {},
+    out: undefined,
+    baseUrl: undefined,
+    name: undefined,
+    unsigned: false,
   };
 }
 
@@ -420,6 +441,8 @@ async function main(): Promise<void> {
       return cmdRecall(args);
     case "mcp":
       return cmdMcp(args);
+    case "skills":
+      return cmdSkills(args);
     default:
       printHelp();
   }
@@ -437,6 +460,9 @@ ${pc.bold("MordomoOS")} — local agentic OS over Claude Code, Cursor Agent and 
   mordomo index            Re-index the workspace and regenerate memory routers
   mordomo sync [dir]       Compile canonical skills/routers to provider-native files
                            (--apply to write, --diff to show conflicts, --approve <file> per conflict)
+  mordomo skills publish [dir] --out <registry-dir> [--base-url <url>] [--name <n>] [--unsigned]
+                           Build a signed skill registry (index.json + files) from a skills folder
+  mordomo skills key       Print this machine's registry signing public key
   mordomo run <skill>      Run a skill headlessly (--provider ${ProviderId.options.join("|")}, --model <m>,
                            --effort ${EffortLevel.options.join("|")}, --input k=v ...)
   mordomo recall <question>  Layered memory retrieval: only the sections worth reading (--json)
@@ -989,6 +1015,67 @@ async function cmdIndex(args: CliArgs): Promise<void> {
  * journal, facts, inbox) over stdio; `mordomo mcp permission` is the
  * permission prompt tool the API wires into write runs.
  */
+/**
+ * `mordomo skills publish [dir]`: the producer side of the marketplace. Copies
+ * every skill of `dir` (default: this home's skills/) into `--out`, writes
+ * index.json with a SHA-256 per file and signs it with the key generated
+ * once into config/registry-signing.json. `mordomo skills key` prints the
+ * public key a consumer pins with `#key=` on the registry URL.
+ */
+async function cmdSkills(args: CliArgs): Promise<void> {
+  const sub = args.positionals[0];
+  const ctx = new AppContext();
+  const paths = ctx.paths;
+  try {
+    await runSkillsCommand(args, sub, paths);
+  } finally {
+    ctx.close();
+  }
+}
+
+async function runSkillsCommand(args: CliArgs, sub: string | undefined, paths: MordomoPaths): Promise<void> {
+  if (sub === "key") {
+    const keys = ensureSigningKeys(paths.config);
+    console.log(args.json ? JSON.stringify({ publicKey: keys.publicKey }) : keys.publicKey);
+    return;
+  }
+  if (sub !== "publish") {
+    console.error(
+      "Usage: mordomo skills publish [dir] --out <registry-dir> [--base-url <url>] [--name <n>] [--unsigned]\n       mordomo skills key",
+    );
+    process.exitCode = 2;
+    return;
+  }
+  if (!args.out) {
+    console.error(pc.red("--out <registry-dir> is required"));
+    process.exitCode = 2;
+    return;
+  }
+  const skillsDir = path.resolve(args.positionals[1] ?? paths.skills);
+  const keys = args.unsigned ? undefined : ensureSigningKeys(paths.config);
+  const result = publishRegistry({
+    skillsDir,
+    outDir: args.out,
+    baseUrl: args.baseUrl,
+    name: args.name,
+    keys,
+  });
+  if (args.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  console.log(
+    `${pc.green("●")} Published ${result.skills.length} skill(s) to ${result.indexFile}${result.signed ? " (signed)" : " (unsigned)"}`,
+  );
+  for (const s of result.skills) console.log(`  /${s.slug} v${s.version} · ${s.files} file(s)`);
+  for (const k of result.skipped) console.log(pc.yellow(`  skipped ${k.dir}: ${k.reason}`));
+  console.log(`\nRegistry URL for Settings › Memory › Registries:\n  ${result.registryUrl}`);
+  if (result.signed)
+    console.log(
+      pc.dim("The #key= fragment pins your public key: consumers refuse an index signed by anyone else."),
+    );
+}
+
 async function cmdMcp(args: CliArgs): Promise<void> {
   const sub = args.positionals[0] ?? "serve";
   if (sub === "permission") {
