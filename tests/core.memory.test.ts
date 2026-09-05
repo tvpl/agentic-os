@@ -386,3 +386,98 @@ describe("routers", () => {
     expect(issues.some((i) => i.problem.includes("Missing index"))).toBe(true);
   });
 });
+
+describe("related-by-content edges at index time", () => {
+  const seed = () => {
+    fs.writeFileSync(
+      path.join(workspace, "invoice-a.md"),
+      "# Invoice\n\nClient Acme, hourly consulting rate, payment terms, invoice number, due date, hourly rate agreed.\n",
+    );
+    fs.writeFileSync(
+      path.join(workspace, "invoice-b.md"),
+      "# Follow-up\n\nAcme invoice follow-up: payment terms agreed, hourly consulting rate confirmed, invoice sent, due date reminder.\n",
+    );
+    fs.writeFileSync(
+      path.join(workspace, "bread-a.md"),
+      "# Sourdough\n\nStarter notes: flour hydration, levain feeding schedule, oven temperature, crust colour, hydration again.\n",
+    );
+    fs.writeFileSync(
+      path.join(workspace, "bread-b.md"),
+      "# Baking log\n\nHydration at 78 percent, levain doubled, oven preheated, crust colour good, flour blend.\n",
+    );
+  };
+
+  it("stores term vectors and neighbours, serves them to the graph, and refreshes incrementally", () => {
+    seed();
+    const indexer = new MemoryIndexer(db, () => store.load());
+    const stats = indexer.indexAll();
+    expect(stats.related).toBeGreaterThan(0);
+    const terms = (db.prepare("SELECT COUNT(*) c FROM file_terms").get() as { c: number }).c;
+    expect(terms).toBeGreaterThanOrEqual(4);
+    const rows = db.prepare("SELECT src_id, dst_id, score, terms FROM file_related").all() as Array<{
+      src_id: number;
+      dst_id: number;
+      score: number;
+      terms: string;
+    }>;
+    expect(rows.length).toBeGreaterThan(0);
+    const nameOf = new Map(
+      (db.prepare("SELECT id, name FROM files").all() as Array<{ id: number; name: string }>).map((r) => [
+        r.id,
+        r.name,
+      ]),
+    );
+    const pairs = rows.map((r) => [nameOf.get(r.src_id), nameOf.get(r.dst_id)].sort().join("+"));
+    expect(pairs).toContain("invoice-a.md+invoice-b.md");
+    expect(pairs).toContain("bread-a.md+bread-b.md");
+    expect(pairs).not.toContain("bread-a.md+invoice-a.md");
+
+    // The graph reads the stored rows (no request-time tokenising) with the same "why".
+    const graph = buildGraph(db, {});
+    const related = graph.edges.filter((e) => e.kind === "related");
+    expect(related.length).toBe(rows.length);
+    expect(related[0]!.why).toMatch(/Similar content \(\d+%\)/);
+    const invoiceA = graph.nodes.find((n) => n.name === "invoice-a.md")!;
+    expect(
+      relatedFiles(db, invoiceA.id).some(
+        (r) => r.file.name === "invoice-b.md" && /Similar content/.test(r.why),
+      ),
+    ).toBe(true);
+
+    // Touch one file: only its neighbourhood is recomputed, the rest keeps its stamp.
+    const before = new Map(rows.map((r) => [`${r.src_id}:${r.dst_id}`, r.score]));
+    const stampBefore = (db.prepare("SELECT MAX(updated_at) m FROM file_related").get() as { m: number }).m;
+    const later = Date.now() + 5000;
+    fs.writeFileSync(
+      path.join(workspace, "bread-b.md"),
+      "# Baking log\n\nHydration at 78 percent, levain doubled, oven preheated, crust colour good, flour blend, and the invoice for the oven.\n",
+    );
+    fs.utimesSync(path.join(workspace, "bread-b.md"), new Date(later), new Date(later));
+    const second = indexer.indexAll();
+    expect(second.updated).toBe(1);
+    const after = db.prepare("SELECT src_id, dst_id, score FROM file_related").all() as Array<{
+      src_id: number;
+      dst_id: number;
+      score: number;
+    }>;
+    const breadB = [...nameOf.entries()].find(([, n]) => n === "bread-b.md")![0];
+    const untouched = after.filter((r) => r.src_id !== breadB && r.dst_id !== breadB);
+    for (const r of untouched) expect(before.get(`${r.src_id}:${r.dst_id}`)).toBe(r.score);
+    expect(untouched.length).toBeGreaterThan(0);
+    void stampBefore;
+
+    // Removing a file drops its terms and edges.
+    fs.rmSync(path.join(workspace, "bread-b.md"));
+    indexer.indexAll();
+    expect(
+      (db.prepare("SELECT COUNT(*) c FROM file_terms WHERE file_id = ?").get(breadB) as { c: number }).c,
+    ).toBe(0);
+    expect(
+      (
+        db
+          .prepare("SELECT COUNT(*) c FROM file_related WHERE src_id = ? OR dst_id = ?")
+          .get(breadB, breadB) as { c: number }
+      ).c,
+    ).toBe(0);
+  });
+});

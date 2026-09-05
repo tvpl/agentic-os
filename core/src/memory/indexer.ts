@@ -3,6 +3,7 @@ import path from "node:path";
 import type { Db } from "../db/db.js";
 import type { IndexedFolder, Settings } from "../config/schema.js";
 import { events } from "../events.js";
+import { relatedFromTerms, termFrequencies } from "./related.js";
 import { isBinaryBuffer, makeWorkspaceFilter } from "./excludes.js";
 import { fieldsFromDb, parseInlineFields } from "./fields.js";
 
@@ -26,6 +27,8 @@ export interface IndexStats {
   skippedExcluded: number;
   /** Files whose bytes were not indexed because they looked binary (NUL in first 8 KiB). */
   skippedBinary: number;
+  /** Related-by-content edges (re)computed for the files that changed. */
+  related: number;
   durationMs: number;
 }
 
@@ -88,6 +91,8 @@ export class MemoryIndexer {
   private running = false;
   private inFlight: Promise<IndexStats> | null = null;
   private implicitRoots: IndexedFolder[] = [];
+  /** Ids added or updated during the current pass (their related edges are refreshed at the end). */
+  private touched = new Set<number>();
 
   constructor(
     private readonly db: Db,
@@ -158,7 +163,7 @@ export class MemoryIndexer {
       const started = Date.now();
       const settings = this.getSettings();
       const stats: IndexStats = {
-        scanned: 0, added: 0, updated: 0, removed: 0, skippedExcluded: 0, skippedBinary: 0, durationMs: 0,
+        scanned: 0, added: 0, updated: 0, removed: 0, skippedExcluded: 0, skippedBinary: 0, related: 0, durationMs: 0,
       };
       const filter = makeWorkspaceFilter(settings.excludes);
       const maxBytes = settings.limits.maxIndexedFileBytes;
@@ -259,6 +264,10 @@ export class MemoryIndexer {
         yield;
       }
 
+      // Phase 4: related-by-content edges for what changed (IDF over the whole corpus).
+      stats.related = this.refreshRelated(this.touched);
+      this.touched = new Set();
+
       stats.durationMs = Date.now() - started;
       const finish = this.db.transaction(() => {
         this.savePendingLinks(pending);
@@ -332,6 +341,7 @@ export class MemoryIndexer {
       this.db
         .prepare("INSERT INTO files_fts (rowid, name, rel, content) VALUES (?, ?, ?, ?)")
         .run(id, name, rel, content.slice(0, 200_000));
+      this.storeTerms(id, name, content);
       stats.updated++;
     } else {
       const info = this.db
@@ -343,6 +353,7 @@ export class MemoryIndexer {
       this.db
         .prepare("INSERT INTO files_fts (rowid, name, rel, content) VALUES (?, ?, ?, ?)")
         .run(id, name, rel, content.slice(0, 200_000));
+      this.storeTerms(id, name, content);
       stats.added++;
       // Markdown files indexed earlier that point at this path get their link now.
       const waiting = pending.get(full);
@@ -408,8 +419,55 @@ export class MemoryIndexer {
     this.db.prepare("DELETE FROM files WHERE id = ?").run(id);
     this.db.prepare("DELETE FROM files_fts WHERE rowid = ?").run(id);
     this.db.prepare("DELETE FROM file_links WHERE src_id = ? OR dst_id = ?").run(id, id);
+    this.db.prepare("DELETE FROM file_terms WHERE file_id = ?").run(id);
+    this.db.prepare("DELETE FROM file_related WHERE src_id = ? OR dst_id = ?").run(id, id);
+    this.touched.delete(id);
     dropSource(pending, id);
     stats.removed++;
+  }
+
+  /** Top terms of a file (first 20k chars), kept for the related-edge refresh. */
+  private storeTerms(id: number, name: string, content: string): void {
+    const body = content.slice(0, 20_000);
+    this.touched.add(id);
+    if (body.trim().length < 40) {
+      this.db.prepare("DELETE FROM file_terms WHERE file_id = ?").run(id);
+      return;
+    }
+    const tf = termFrequencies(`${name}\n${body}`, 80);
+    this.db
+      .prepare(
+        "INSERT INTO file_terms (file_id, terms, updated_at) VALUES (?, ?, ?) ON CONFLICT(file_id) DO UPDATE SET terms = excluded.terms, updated_at = excluded.updated_at",
+      )
+      .run(id, JSON.stringify([...tf.entries()]), Date.now());
+  }
+
+  /**
+   * Recompute the cosine neighbours of the changed files against the whole
+   * corpus (top-3, symmetric) and replace their rows. Returns the edge count.
+   */
+  refreshRelated(changed: ReadonlySet<number>): number {
+    if (changed.size === 0) return 0;
+    const rows = this.db.prepare("SELECT file_id, terms FROM file_terms").all() as Array<{ file_id: number; terms: string }>;
+    if (rows.length < 2) return 0;
+    const docs = rows.map((r) => ({ id: r.file_id, tf: new Map<string, number>(JSON.parse(r.terms) as Array<[string, number]>) }));
+    // A full pass (every file changed) recomputes everything; a small delta only its own neighbourhoods.
+    const focus = changed.size >= rows.length ? undefined : changed;
+    const edges = relatedFromTerms(docs, { topK: 3, minSim: 0.18 }, focus);
+    const now = Date.now();
+    const write = this.db.transaction(() => {
+      if (!focus) this.db.prepare("DELETE FROM file_related").run();
+      else {
+        const del = this.db.prepare("DELETE FROM file_related WHERE src_id = ? OR dst_id = ?");
+        for (const id of changed) del.run(id, id);
+      }
+      const ins = this.db.prepare(
+        "INSERT OR REPLACE INTO file_related (src_id, dst_id, score, terms, updated_at) VALUES (?, ?, ?, ?, ?)",
+      );
+      for (const e of edges) ins.run(e.source, e.target, e.score, JSON.stringify(e.terms), now);
+    });
+    write();
+    return edges.length;
   }
 
   private loadPendingLinks(): PendingLinks {

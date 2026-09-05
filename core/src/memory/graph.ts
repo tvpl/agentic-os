@@ -108,7 +108,7 @@ export function buildGraph(
   // top-3 per file. Off by default in the canvas legend; always computed so
   // the count shows, unless the caller opts out (`related: false`).
   if (opts.related !== false) {
-    for (const r of relatedEdges(db, files)) {
+    for (const r of storedOrComputedRelated(db, files)) {
       edges.push({
         source: r.source,
         target: r.target,
@@ -141,6 +141,38 @@ export function buildGraph(
   };
 }
 
+/**
+ * Rows the indexer stored (`file_related`) when it has any; otherwise the
+ * request-time computation (an index made before migration 9, until the next
+ * pass rebuilds it).
+ */
+function storedOrComputedRelated(
+  db: Db,
+  files: ReadonlyArray<{ id: number; mtime: number }>,
+): Array<{ source: number; target: number; score: number; terms: string[] }> {
+  const total = (db.prepare("SELECT COUNT(*) c FROM file_related").get() as { c: number }).c;
+  if (total === 0) return relatedEdges(db, files);
+  const ids = files.map((f) => f.id);
+  const out: Array<{ source: number; target: number; score: number; terms: string[] }> = [];
+  for (let i = 0; i < ids.length; i += 400) {
+    const chunk = ids.slice(i, i + 400);
+    const marks = chunk.map(() => "?").join(",");
+    const rows = db
+      .prepare(`SELECT src_id, dst_id, score, terms FROM file_related WHERE src_id IN (${marks}) AND dst_id IN (${marks})`)
+      .all(...chunk, ...chunk) as Array<{ src_id: number; dst_id: number; score: number; terms: string }>;
+    for (const r of rows) {
+      let terms: string[] = [];
+      try {
+        terms = JSON.parse(r.terms) as string[];
+      } catch {
+        /* keep empty */
+      }
+      out.push({ source: r.src_id, target: r.dst_id, score: r.score, terms });
+    }
+  }
+  return out;
+}
+
 export function relatedFiles(db: Db, fileId: number): Array<{ file: FileRow; why: string }> {
   const links = db
     .prepare(
@@ -162,6 +194,27 @@ export function relatedFiles(db: Db, fileId: number): Array<{ file: FileRow; why
           : link.kind === "same-dir"
             ? "They share the same folder."
             : "They belong to the same area.",
+    });
+  }
+  const related = db
+    .prepare(
+      `SELECT CASE WHEN src_id = ? THEN dst_id ELSE src_id END AS other, score, terms
+       FROM file_related WHERE src_id = ? OR dst_id = ? ORDER BY score DESC LIMIT 10`,
+    )
+    .all(fileId, fileId, fileId) as Array<{ other: number; score: number; terms: string }>;
+  for (const r of related) {
+    if (out.some((o) => o.file.id === r.other)) continue;
+    const row = db.prepare("SELECT * FROM files WHERE id = ?").get(r.other) as Record<string, unknown> | undefined;
+    if (!row) continue;
+    let terms: string[] = [];
+    try {
+      terms = JSON.parse(r.terms) as string[];
+    } catch {
+      /* keep empty */
+    }
+    out.push({
+      file: fileRowFromDb(row),
+      why: `Similar content (${Math.round(r.score * 100)}%)${terms.length ? `: ${terms.join(", ")}` : ""}.`,
     });
   }
   return out;

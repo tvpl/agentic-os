@@ -293,4 +293,30 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 `);
     },
   },
+  {
+    version: 9,
+    name: "file_terms_and_related",
+    // Related-by-content edges computed at index time (follow-up 5): every
+    // indexed file keeps its top TF terms; the indexer recomputes the cosine
+    // neighbours of the files that changed and stores them here, so the graph
+    // reads rows instead of re-tokenising the corpus on every request.
+    up(db) {
+      db.exec(`
+CREATE TABLE IF NOT EXISTS file_terms (
+  file_id INTEGER PRIMARY KEY,
+  terms TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS file_related (
+  src_id INTEGER NOT NULL,
+  dst_id INTEGER NOT NULL,
+  score REAL NOT NULL,
+  terms TEXT NOT NULL DEFAULT '[]',
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (src_id, dst_id)
+);
+CREATE INDEX IF NOT EXISTS idx_file_related_dst ON file_related(dst_id);
+`);
+    },
+  },
 ];

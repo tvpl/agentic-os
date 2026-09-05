@@ -66,7 +66,8 @@ interface Doc {
   vec: Map<string, number>;
 }
 
-function termFrequencies(text: string, maxTerms: number): Map<string, number> {
+/** Top `maxTerms` terms of a text by raw frequency (what the indexer stores per file). */
+export function termFrequencies(text: string, maxTerms = 80): Map<string, number> {
   const tf = new Map<string, number>();
   for (const tok of tokenize(text)) tf.set(tok, (tf.get(tok) ?? 0) + 1);
   if (tf.size <= maxTerms) return tf;
@@ -78,13 +79,30 @@ export function relatedFromTexts(
   docs: ReadonlyArray<{ id: number; text: string }>,
   opts: RelatedOptions = {},
 ): RelatedEdge[] {
+  const maxTerms = opts.maxTerms ?? 80;
+  return relatedFromTerms(
+    docs.map((d) => ({ id: d.id, tf: termFrequencies(d.text, maxTerms) })),
+    opts,
+  );
+}
+
+/**
+ * The same computation from stored term maps. With `onlyFor`, edges are
+ * produced only where at least one endpoint is in the set (incremental
+ * refresh after an index pass); the IDF still comes from the whole corpus.
+ */
+export function relatedFromTerms(
+  docs: ReadonlyArray<{ id: number; tf: Map<string, number> }>,
+  opts: RelatedOptions = {},
+  onlyFor?: ReadonlySet<number>,
+): RelatedEdge[] {
   const topK = opts.topK ?? 3;
   const minSim = opts.minSim ?? 0.18;
-  const maxTerms = opts.maxTerms ?? 80;
   const n = docs.length;
   if (n < 2) return [];
 
-  const tfs = docs.map((d) => termFrequencies(d.text, maxTerms));
+  const tfs = docs.map((d) => d.tf);
+  const focus = onlyFor ? new Set(docs.map((d, i) => (onlyFor.has(d.id) ? i : -1)).filter((i) => i >= 0)) : null;
   const df = new Map<string, number>();
   for (const tf of tfs) for (const term of tf.keys()) df.set(term, (df.get(term) ?? 0) + 1);
 
@@ -119,6 +137,7 @@ export function relatedFromTexts(
       const [i, wi] = list[a]!;
       for (let b = a + 1; b < list.length; b++) {
         const [j, wj] = list[b]!;
+        if (focus && !focus.has(i) && !focus.has(j)) continue;
         const row = sims.get(i) ?? new Map<number, number>();
         row.set(j, (row.get(j) ?? 0) + wi * wj);
         sims.set(i, row);
