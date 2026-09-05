@@ -34,6 +34,8 @@ if [[ "$FAKE_CLAUDE_HANG" == "1" ]]; then sleep 300; exit 1; fi
 echo "{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"fake-sonnet\",\"session_id\":\"$SESSION_ID\"}"
 echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Working on it."}]}}'
 echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/x"}}]}}'
+# "[[sleep:N]]" in the prompt keeps the run alive N seconds (e2e: approvals, squads mid-flight).
+if [[ "$PROMPT" =~ \[\[sleep:([0-9]+)\]\] ]]; then sleep "${BASH_REMATCH[1]}"; fi
 if [[ "$FAKE_CLAUDE_FAIL" == "1" ]]; then
   echo '{"type":"result","subtype":"error","is_error":true,"result":"boom"}'
   exit 1

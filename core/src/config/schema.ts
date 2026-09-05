@@ -243,7 +243,14 @@ export const SettingsSchema = z.object({
   /** Skill registries (Onda 3): https index URLs the marketplace lists and installs from. */
   marketplace: z
     .object({
-      registries: z.array(z.string().url().startsWith("https://")).default([]),
+      registries: z
+        .array(
+          z
+            .string()
+            .url()
+            .refine((u) => u.startsWith("https://") || u.startsWith("file://"), "Registries must be https:// or file:// URLs"),
+        )
+        .default([]),
     })
     .default({}),
   indexedFolders: z.array(IndexedFolderSchema).default([]),

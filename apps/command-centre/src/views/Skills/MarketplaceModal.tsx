@@ -5,7 +5,7 @@
  */
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Download, RefreshCw } from "lucide-react";
 import { api } from "../../api";
 import { qk, useApiQuery, useInvalidate } from "../../queries";
@@ -38,6 +38,12 @@ export default function MarketplaceModal({ onClose }: { onClose: () => void }) {
   const invalidate = useInvalidate();
   const [q, setQ] = useState("");
   const catalog = useApiQuery<RegistryResponse>(qk.skillRegistry, "/api/skills/registry", { staleTime: 60_000, retry: false });
+  const qc = useQueryClient();
+  // Refresh bypasses the server-side index cache, not only the client one.
+  const refresh = useMutation({
+    mutationFn: () => api.get<RegistryResponse>("/api/skills/registry?refresh=1"),
+    onSuccess: (data) => qc.setQueryData(qk.skillRegistry, data),
+  });
   const install = useMutation({
     mutationFn: (row: RegistrySkillRow) => api.post("/api/skills/install", { slug: row.slug, registry: row.registry, force: row.installed }),
     onSuccess: async (_r, row) => {
@@ -56,7 +62,7 @@ export default function MarketplaceModal({ onClose }: { onClose: () => void }) {
       <div className="market">
         <div className="market-head">
           <input className="input" value={q} placeholder={t("skills.market.search")} aria-label={t("skills.market.search")} onChange={(e) => setQ(e.target.value)} />
-          <Button size="sm" variant="ghost" icon={<RefreshCw aria-hidden />} loading={catalog.isFetching} onClick={() => void catalog.refetch()}>
+          <Button size="sm" variant="ghost" icon={<RefreshCw aria-hidden />} loading={catalog.isFetching || refresh.isPending} onClick={() => refresh.mutate()}>
             {t("skills.market.refresh")}
           </Button>
         </div>

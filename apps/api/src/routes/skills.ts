@@ -172,9 +172,11 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
   });
 
   /** Marketplace (plan Onda 3 §6): every skill the configured registries offer. */
-  app.get("/api/skills/registry", async () => {
+  app.get("/api/skills/registry", async (req) => {
+    // `?refresh=1` bypasses the 10-minute index cache (the modal's Refresh button).
+    const q = z.object({ refresh: z.coerce.boolean().optional() }).parse(req.query ?? {});
     const registries = ctx.settings().marketplace.registries;
-    const { entries, errors } = await ctx.skillRegistry.catalog(registries);
+    const { entries, errors } = await ctx.skillRegistry.catalog(registries, { force: q.refresh === true });
     const installed = new Set(ctx.skills.list().map((s) => s.slug));
     return {
       registries,
@@ -201,7 +203,14 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
     const existing = ctx.skills.load(body.slug);
     if (existing && !body.force)
       throw httpError(409, `Skill "${body.slug}" already exists — pass force to replace it`);
-    const staged = await ctx.skillRegistry.stage(entry);
+    // A digest mismatch or unreachable file surfaces as a 502 with the reason
+    // (the modal shows it); nothing has touched the catalog at that point.
+    let staged: string;
+    try {
+      staged = await ctx.skillRegistry.stage(entry);
+    } catch (err) {
+      throw httpError(400, `Verification failed — ${(err as Error).message}`, "verification_failed");
+    }
     try {
       if (existing) {
         const dir = path.join(ctx.paths.skills, body.slug);

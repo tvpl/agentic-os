@@ -10,6 +10,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export interface RegistrySkillFile {
   url: string;
@@ -43,16 +44,39 @@ const FETCH_TIMEOUT_MS = 15_000;
 
 export type Fetcher = (url: string) => Promise<{ ok: boolean; status: number; bytes: Uint8Array }>;
 
+/** https for the network; `file://` for a local or synced folder (what `mordomo skills publish` writes). */
+export function isRegistryUrl(url: string): boolean {
+  return url.startsWith("https://") || url.startsWith("file://");
+}
+
 export const defaultFetcher: Fetcher = async (url) => {
+  if (url.startsWith("file://")) {
+    try {
+      const bytes = fs.readFileSync(fileURLToPath(url));
+      return { ok: true, status: 200, bytes: new Uint8Array(bytes) };
+    } catch {
+      return { ok: false, status: 404, bytes: new Uint8Array() };
+    }
+  }
   const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), redirect: "error" });
   const buf = new Uint8Array(await res.arrayBuffer());
   return { ok: res.ok, status: res.status, bytes: buf };
 };
 
+/**
+ * A skill file must live where its index lives: same https host, or — for a
+ * file registry — inside the directory of the index file.
+ */
 function sameOrigin(a: string, b: string): boolean {
   try {
     const ua = new URL(a);
     const ub = new URL(b);
+    if (ua.protocol === "file:" && ub.protocol === "file:") {
+      const dir = path.dirname(fileURLToPath(ub));
+      const file = fileURLToPath(ua);
+      const rel = path.relative(dir, file);
+      return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+    }
     return ua.protocol === "https:" && ub.protocol === "https:" && ua.host === ub.host;
   } catch {
     return false;
@@ -101,10 +125,10 @@ export class SkillRegistry {
     private readonly ttlMs = 10 * 60_000,
   ) {}
 
-  async index(registryUrl: string, now = Date.now()): Promise<RegistryIndex> {
-    if (!registryUrl.startsWith("https://")) throw new Error("Registries must be https URLs");
+  async index(registryUrl: string, now = Date.now(), force = false): Promise<RegistryIndex> {
+    if (!isRegistryUrl(registryUrl)) throw new Error("Registries must be https:// or file:// URLs");
     const hit = this.cache.get(registryUrl);
-    if (hit && now - hit.at < this.ttlMs) return hit.index;
+    if (hit && !force && now - hit.at < this.ttlMs) return hit.index;
     const res = await this.fetcher(registryUrl);
     if (!res.ok) throw new Error(`Registry ${registryUrl} answered ${res.status}`);
     const index = parseIndex(JSON.parse(Buffer.from(res.bytes).toString("utf8")), registryUrl);
@@ -113,12 +137,15 @@ export class SkillRegistry {
   }
 
   /** Every skill of every registry, tagged with where it came from; a failing registry is skipped with its error. */
-  async catalog(registries: readonly string[]): Promise<{ entries: RegistryEntry[]; errors: Array<{ registry: string; error: string }> }> {
+  async catalog(
+    registries: readonly string[],
+    opts: { force?: boolean } = {},
+  ): Promise<{ entries: RegistryEntry[]; errors: Array<{ registry: string; error: string }> }> {
     const entries: RegistryEntry[] = [];
     const errors: Array<{ registry: string; error: string }> = [];
     for (const registry of registries) {
       try {
-        const idx = await this.index(registry);
+        const idx = await this.index(registry, Date.now(), opts.force === true);
         for (const s of idx.skills) entries.push({ ...s, registry, registryName: idx.name });
       } catch (err) {
         errors.push({ registry, error: err instanceof Error ? err.message : String(err) });
