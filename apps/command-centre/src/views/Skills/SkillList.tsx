@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { Plus, Search, Sparkles, Star, Upload } from "lucide-react";
+import { Plus, Search, Sparkles, Star, Upload, Store } from "lucide-react";
 import { api, type ProviderId, type Skill } from "../../api";
 import { qk, useInvalidate } from "../../queries";
 import { useT } from "../../i18n";
@@ -9,6 +9,7 @@ import { useToast } from "../../components/ui";
 import { Badge, Button, EmptyState, Segmented } from "../../components/primitives";
 import { errorMessage } from "../shared";
 import NewSkillModal from "./NewSkillModal";
+import MarketplaceModal from "./MarketplaceModal";
 import ExportModal from "./ExportModal";
 
 type ModeFilter = "all" | "read_only" | "write";
@@ -20,8 +21,12 @@ export default function SkillList({ skills }: { skills: Skill[] }) {
   const t = useT();
   const toast = useToast();
   const invalidate = useInvalidate();
-  const [showNew, setShowNew] = useState(false);
+  // `/skills?new=1&prompt=…` (the did-it-twice suggestion) opens the modal pre-filled.
+  const [params, setParams] = useSearchParams();
+  const [showNew, setShowNew] = useState(() => params.get("new") === "1");
+  const initialPrompt = params.get("prompt") ?? undefined;
   const [showExport, setShowExport] = useState(false);
+  const [showMarket, setShowMarket] = useState(false);
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<ModeFilter>("all");
   const [provider, setProvider] = useState<ProviderFilter>("all");
@@ -64,6 +69,9 @@ export default function SkillList({ skills }: { skills: Skill[] }) {
           <p className="sub">{t("skills.sub")}</p>
         </div>
         <div className="head-actions">
+          <Button icon={<Store aria-hidden />} onClick={() => setShowMarket(true)}>
+            {t("skills.market.title")}
+          </Button>
           <Button icon={<Upload aria-hidden />} onClick={() => setShowExport(true)}>
             {t("skills.export")}
           </Button>
@@ -156,11 +164,19 @@ export default function SkillList({ skills }: { skills: Skill[] }) {
 
       {showNew && (
         <NewSkillModal
-          onClose={() => setShowNew(false)}
-          onCreated={() => setShowNew(false)}
+          initialPrompt={initialPrompt}
+          onClose={() => {
+            setShowNew(false);
+            if (params.has("new")) setParams({});
+          }}
+          onCreated={() => {
+            setShowNew(false);
+            if (params.has("new")) setParams({});
+          }}
         />
       )}
       {showExport && <ExportModal onClose={() => setShowExport(false)} />}
+      {showMarket && <MarketplaceModal onClose={() => setShowMarket(false)} />}
     </div>
   );
 }

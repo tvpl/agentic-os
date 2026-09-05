@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, type OsEvent } from "../api";
 import { OS_EVENT_TYPES, invalidationMap } from "../queries";
+import { createCoalescer } from "./coalesce";
 
 const MAX_BACKOFF_MS = 30_000;
 
@@ -59,6 +60,15 @@ export function useEventStream(enabled = true): { connected: boolean } {
     let close: (() => void) | null = null;
     let timer: number | undefined;
 
+    // One invalidation per key per 300 ms, trailing edge: a streaming reply
+    // fires `run.event` many times a second and must not become a refetch storm.
+    const invalidate = createCoalescer<string>((serialized) => {
+      qc.invalidateQueries({ queryKey: JSON.parse(serialized) as readonly unknown[] }).catch(() => {
+        /* invalidation never rejects in practice */
+      });
+    }, 300);
+    let wasConnected = false;
+
     const connect = () => {
       if (stopped) return;
       close = api.streamEvents(
@@ -66,17 +76,16 @@ export function useEventStream(enabled = true): { connected: boolean } {
           fanOut(event);
           const keys = invalidationMap[event.type];
           if (!keys) return;
-          for (const key of keys) {
-            qc.invalidateQueries({ queryKey: key }).catch(() => {
-              /* invalidation never rejects in practice */
-            });
-          }
+          for (const key of keys) invalidate.push(JSON.stringify(key));
         },
         {
           types: OS_EVENT_TYPES,
           onOpen: () => {
             attempt = 0;
             setConnected(true);
+            // After a dropped connection every view may be stale: refresh all once.
+            if (wasConnected) qc.invalidateQueries().catch(() => undefined);
+            wasConnected = true;
           },
           onError: () => {
             setConnected(false);
@@ -95,6 +104,7 @@ export function useEventStream(enabled = true): { connected: boolean } {
     return () => {
       stopped = true;
       window.clearTimeout(timer);
+      invalidate.clear();
       close?.();
     };
   }, [enabled, qc]);

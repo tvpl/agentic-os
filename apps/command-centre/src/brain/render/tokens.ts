@@ -35,7 +35,12 @@ export function readCanvasTokens(root: HTMLElement = document.documentElement): 
   const s = getComputedStyle(root);
   const v = (name: string, fallback: string) => s.getPropertyValue(name).trim() || fallback;
   const theme = root.dataset.theme;
-  const light = theme === "light" || (theme !== "dark" && typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: light)").matches && theme === "system");
+  const light =
+    theme === "light" ||
+    (theme !== "dark" &&
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-color-scheme: light)").matches &&
+      theme === "system");
   return {
     light,
     blend: light ? "source-over" : "lighter",

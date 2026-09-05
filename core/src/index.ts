@@ -8,6 +8,7 @@ export {
   IndexedFolderSchema,
   DEFAULT_EXCLUDES,
   defaultSettings,
+  detectTimezone,
   type Settings,
   type ProviderSettings,
   type IndexedFolder,
@@ -24,7 +25,14 @@ export {
   isSecretFile,
   SECRET_FILE_PATTERNS,
 } from "./security/paths.js";
-export { PROFILES, writeDecision, type ProfileCapabilities, type ApprovalKind, type WriteDecision, type WriteOrigin } from "./security/profiles.js";
+export {
+  PROFILES,
+  writeDecision,
+  type ProfileCapabilities,
+  type ApprovalKind,
+  type WriteDecision,
+  type WriteOrigin,
+} from "./security/profiles.js";
 export { ApprovalStore, type Approval } from "./security/approvals.js";
 export {
   safeSpawn,
@@ -38,9 +46,12 @@ export {
   type SpawnHandle,
 } from "./spawn/safeSpawn.js";
 export type {
+  PermissionBroker,
   AgentAdapter,
   AgentRun,
   RunEvent,
+  RunUsage,
+  RunUsageEvent,
   RunMode,
   SafeInvocation,
   DetectionResult,
@@ -62,15 +73,27 @@ export {
   type PruneOptions,
   type PruneResult,
 } from "./runs/runManager.js";
+export {
+  SessionStore,
+  sessionTitle,
+  type SessionRecord,
+  type SessionSummary,
+  type LastRunSummary,
+  type CreateSessionInput,
+  type RecordRunInput,
+} from "./runs/sessionStore.js";
 export { MemoryIndexer, fileRowFromDb, type IndexStats, type FileRow } from "./memory/indexer.js";
 export { searchFiles, listFacets, type SearchFilters, type SearchHit } from "./memory/search.js";
 export { buildGraph, relatedFiles, type GraphData, type GraphNode, type GraphEdge } from "./memory/graph.js";
+export {
+  relatedEdges,
+  relatedFromTexts,
+  tokenize as tokenizeForRelated,
+  type RelatedEdge,
+} from "./memory/related.js";
 export { previewFile, type PreviewResult } from "./memory/preview.js";
 export { generateRouters, checkRouters, areaSlug, type RouterIssue } from "./memory/routers.js";
-export {
-  SkillCatalog,
-  THICK_LINE_THRESHOLD,
-} from "./skills/catalog.js";
+export { SkillCatalog, THICK_LINE_THRESHOLD } from "./skills/catalog.js";
 export {
   SkillFrontmatterSchema,
   SkillInputSchema,
@@ -95,16 +118,41 @@ export {
   type AuditReport,
   type DiscoveredMcpServer,
 } from "./connectors/auditor.js";
-export {
-  SyncCompiler,
-  type SyncPlan,
-  type SyncAction,
-  type SyncApplyResult,
-} from "./sync/compiler.js";
+export { SyncCompiler, type SyncPlan, type SyncAction, type SyncApplyResult } from "./sync/compiler.js";
 export { unifiedDiff } from "./sync/diff.js";
 export { createBackup, listBackups, restoreBackup, type BackupInfo, type BackupOptions } from "./backup.js";
+export {
+  NotificationStore,
+  NOTIFICATION_KINDS,
+  DEDUPE_MS,
+  type NotificationKind,
+  type NotificationTone,
+  type NotificationRecord,
+  type NotificationInput,
+} from "./notifications/store.js";
+export {
+  installNotificationRecorder,
+  toNotification,
+  budgetDedupeKey,
+  localDay,
+  type BudgetCrossedPayload,
+  type NotificationRecorderOptions,
+} from "./notifications/recorder.js";
 export * from "./events.js";
-export { InvalidIdError, ID_PATTERN, isValidId, assertValidId, resolveInsideDir } from "./security/ids.js"; export { isInsideAny } from "./security/paths.js"; export { HARD_BLOCKED_DIRS, isHardBlockedPath, isBinaryBuffer, makeWorkspaceFilter, type WorkspaceFilter } from "./memory/excludes.js"; export { checkWorkspacePath, resolveOpenablePath, type WorkspacePathCheck } from "./memory/preview.js"; export { rotateFile, pruneRotated } from "./logs/jsonl.js"; export { type StoreProblem } from "./routines/store.js"; export { deepMergeSettings, type SettingsPatch } from "./config/store.js"; export { INDEX_CHUNK_SIZE, type IndexProgress } from "./memory/indexer.js"; // B3 exports
+export { InvalidIdError, ID_PATTERN, isValidId, assertValidId, resolveInsideDir } from "./security/ids.js";
+export { isInsideAny } from "./security/paths.js";
+export {
+  HARD_BLOCKED_DIRS,
+  isHardBlockedPath,
+  isBinaryBuffer,
+  makeWorkspaceFilter,
+  type WorkspaceFilter,
+} from "./memory/excludes.js";
+export { checkWorkspacePath, resolveOpenablePath, type WorkspacePathCheck } from "./memory/preview.js";
+export { rotateFile, pruneRotated } from "./logs/jsonl.js";
+export { type StoreProblem } from "./routines/store.js";
+export { deepMergeSettings, type SettingsPatch } from "./config/store.js";
+export { INDEX_CHUNK_SIZE, type IndexProgress } from "./memory/indexer.js"; // B3 exports
 export {
   ProviderRegistry,
   ProviderRegistryError,
@@ -177,3 +225,170 @@ export {
   type FetchOptions,
   type McpTool,
 } from "./connectors/client.js";
+// Onda 2: sentinels (cheap observers), their triage run and the Telegram channel
+export {
+  SENTINEL_IDS,
+  emitSentinel,
+  sentinelDay,
+  sentinelDedupeKey,
+  type SentinelId,
+  type SentinelSeverity,
+  type SentinelFiredPayload,
+  type DedupeLookup,
+} from "./sentinels/types.js";
+export { readMetaJson, writeMetaJson } from "./sentinels/meta.js";
+export { SentinelRunner, type SentinelRunnerDeps, type HourlyReport } from "./sentinels/runner.js";
+export {
+  checkRepeatedFailure,
+  repeatedFailureAlert,
+  recentFailures,
+  failureKey,
+  failureLabel,
+  type FailureRun,
+  type RepeatedFailureDeps,
+} from "./sentinels/repeatedFailure.js";
+export {
+  checkSilentRoutines,
+  silentRoutineAlerts,
+  candidatesFromStatus,
+  expectedIntervalMs,
+  type SilentRoutineCandidate,
+  type SilentRoutineDeps,
+} from "./sentinels/silentRoutine.js";
+export {
+  checkConnectorDeltas,
+  diffConnectorItems,
+  connectorDeltaPayload,
+  connectorMetaKey,
+  hashId,
+  hashIds,
+  type ConnectorDelta,
+  type ConnectorDeltaMark,
+  type ConnectorDeltaDeps,
+} from "./sentinels/connectorDelta.js";
+export { FsWatchSentinel, fsWatchPayload, type FsWatchDeps } from "./sentinels/fsWatch.js";
+export {
+  installSentinelTriage,
+  triageSentinel,
+  triageSpendToday,
+  buildTriagePrompt,
+  parseTriageDecision,
+  triageNotification,
+  type TriageAction,
+  type TriageDecision,
+  type TriageOutcome,
+  type TriageDeps,
+  type TriageRunner,
+  type TriageInbox,
+} from "./sentinels/triage.js";
+export {
+  detectRepeatedPrompts,
+  groupPrompts,
+  normalizeTokens,
+  jaccard,
+  hashTokens,
+  skillCoversGroup,
+  isoWeek,
+  repeatDedupeKey,
+  repeatNotification,
+  promptHead,
+  manualPromptRuns,
+  MAX_COMPARED_TOKENS,
+  DEFAULT_SIMILARITY,
+  SKILL_OVERLAP_TOKENS,
+  type RepeatRun,
+  type RepeatGroup,
+  type RepeatDetectorDeps,
+} from "./skills/repeatDetector.js";
+export {
+  installTelegramChannel,
+  deliverToTelegram,
+  sendTelegramMessage,
+  formatNotification,
+  localLink,
+  telegramToken,
+  toneAtLeast,
+  sendMessageUrl,
+  TELEGRAM_API_HOST,
+  TELEGRAM_API_ORIGIN,
+  TELEGRAM_TIMEOUT_MS,
+  type TelegramChannelDeps,
+  type TelegramSendOptions,
+  type TelegramSendResult,
+} from "./channels/telegram.js";
+export {
+  SentinelSettingsSchema,
+  ChannelSettingsSchema,
+  type SentinelSettings,
+  type ChannelSettings,
+} from "./config/schema.js";
+export {
+  DeviceStore,
+  hashToken,
+  PAIRING_TTL_MS,
+  PAIRING_MAX_ATTEMPTS,
+  type DeviceRecord,
+  type PairingCode,
+} from "./security/devices.js";
+export {
+  SkillRegistry,
+  parseIndex,
+  type RegistryEntry,
+  type RegistryIndex,
+  type RegistrySkill,
+  type Fetcher,
+} from "./skills/registry.js";
+export {
+  TelegramPoller,
+  approvalKeyboard,
+  parseCommand,
+  type InboundDeps,
+  type PendingApprovalView,
+  type TelegramUpdate,
+} from "./channels/telegramInbound.js";
+export {
+  b64url,
+  decryptPayload,
+  encryptPayload,
+  generateVapidKeys,
+  sendWebPush,
+  vapidAuthorization,
+  verifyVapidToken,
+  type PushSubscriptionJson,
+  type VapidKeys,
+} from "./channels/webpush.js";
+export {
+  deliverPush,
+  installPushChannel,
+  pushPayload,
+  type PushChannelDeps,
+} from "./channels/pushChannel.js";
+export { PushStore, type PushSubscriptionRecord } from "./notifications/pushStore.js";
+export {
+  MetricsHistory,
+  dailyPoints,
+  localDay as metricsLocalDay,
+  HOUR_MS,
+  type MetricsSample,
+  type DailyPoint,
+  type SampleSource,
+} from "./metrics/history.js";
+export {
+  canonicalJson,
+  ensureSigningKeys,
+  generateSigningKeys,
+  publishRegistry,
+  signIndex,
+  verifyIndex,
+  type PublishOptions,
+  type PublishResult,
+  type SigningKeys,
+} from "./skills/publish.js";
+export { splitRegistryUrl } from "./skills/registry.js";
+export {
+  certificateHosts,
+  createSelfSignedCertificate,
+  ensureTlsMaterial,
+  fingerprintOf,
+  type TlsMaterial,
+} from "./security/tls.js";

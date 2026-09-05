@@ -32,9 +32,32 @@ Language (English/Português) and theme (dark/light/system) live in
   a backup.
 - **Import**: `POST /api/skills/import` or copy a folder with a SKILL.md into
   `skills/` — it is validated on load.
+- **Marketplace**: Skills → Marketplace lists skills from the registries in
+  Settings › Memory; every file is sha256-checked and staged before it lands
+  in `skills/` (an existing slug asks before being replaced).
+- **Agent notes**: each skill can carry a `NOTES.md` next to SKILL.md. Add a
+  line from a finished run's page (*Note for the skill*) or from the skill's
+  **Notes** tab; the catalog folds the file into every run prompt, so lessons
+  compound without editing the procedure itself.
+- **Squads**: a run's page can fan out into up to 8 sub-agents (one prompt per
+  paragraph); children are listed under the parent and follow its profile.
 
 Every run writes its outputs to `artifacts/<run-id>/`; artifacts appear on the
 Dashboard and in the run's page.
+
+### 2.1 Sharing skills: the marketplace
+
+- **Install**: Skills → Marketplace lists every registry from Settings › Memory
+  › Registries (an `https://` or `file://` `index.json`). Every file is
+  downloaded and its SHA-256 checked before the catalog is touched; a
+  mismatch refuses the install with the reason.
+- **Publish**: `mordomo skills publish [dir] --out <registry-dir>` copies your
+  skills (never `NOTES.md`) into the folder with an `index.json` signed by the
+  Ed25519 key generated once into `config/registry-signing.json`. Serve the
+  folder over https or sync it (a shared drive works: use the `file://` URL).
+  The command prints the registry URL with `#key=<your public key>`; a
+  consumer that keeps that fragment refuses an index that is unsigned,
+  tampered or signed by anyone else. `mordomo skills key` prints the key.
 
 ## 3. Memory & the Second Brain
 
@@ -50,7 +73,12 @@ Dashboard and in the run's page.
 - **Second Brain**: graph (zoom with the wheel, drag to pan, click a node) or
   grid; search as you type; filter by area/type; preview is text-only and
   secret-blocked; copy the full path or open the file explicitly. "Related
-  files" explains *why* two files are connected (markdown link, same folder).
+  files" explains *why* two files are connected (markdown link, same folder,
+  similar content).
+- **Similar content** edges come from a TF-IDF cosine over the indexed text
+  (no model, no network; top 3 per file). They are off by default — toggle
+  them in the legend; the count is always shown. The force layout runs in a
+  Web Worker, so large graphs never freeze the page.
 
 ### 3.1 Recall, journal and consolidation
 
@@ -66,7 +94,9 @@ Dashboard and in the run's page.
 - **Consolidation**: the `consolidate-memory` skill promotes recurring journal
   notes into `memory/MEMORY.md` and never deletes — contradicted lines move to
   *Superseded* and facts get a `valid_to`. The routine *Nightly memory
-  consolidation* (03:00) ships **disabled**; enable it when you trust it.
+  consolidation* (03:00) ships **enabled** under `review_before_write`: it
+  runs, parks its write for your approval in the inbox, and nothing changes
+  until you say so. Disable it in Routines if you prefer a manual cadence.
 - **Hygiene**: Second Brain → Hygiene (or `GET /api/memory/hygiene`) lists
   orphan notes, broken router pointers, files untouched for 90 days, skills
   never run, silent routines and connectors unused for 30 days.
@@ -102,6 +132,78 @@ operations, risks and health. Enabling write operations always creates a
 pending approval in Settings. Install/authenticate steps are never performed
 without you.
 
+## 5.1 The Console (talk to the agent)
+
+The **Console** widget on the desktop is a conversation, not a one-shot
+prompt. Every message continues the same session: MordomoOS resumes the
+provider's own conversation (`claude --resume`, `codex exec resume`), so the
+agent remembers what you said two turns ago. The thread shows each turn — what
+you asked, the reply, how many tools it used, what it cost — and streams while
+the agent works. **Stop** cancels the running turn, **New conversation** starts
+fresh, **Open run** jumps to the full log. A bare `/slug` still runs the skill.
+Sessions are listed by `GET /api/sessions` and continue with
+`POST /api/sessions/:id/continue`.
+
+Providers that cannot resume a conversation natively (cursor-agent has no
+resume flag; older Codex builds lack `exec resume`) still keep the thread:
+MordomoOS folds the earlier turns of the session into the next prompt as a
+quoted transcript (newest six turns, capped) and marks the run with a
+"session emulated" line in its log.
+
+## 5.2 Budget and the inbox
+
+Set a **daily budget** (Settings › Security). The Cost widget shows the bar,
+"Needs attention" flags 80 % and 100 %, and the inbox gets one row per day per
+level. The inbox itself is persisted on the server: approvals, failed runs,
+routine alerts and budget crossings survive a closed tab and are read from
+`GET /api/notifications` on load.
+
+Budgets also exist per routine (**Daily budget** in the routine editor) and
+per skill (`budgetUsd` in the SKILL.md frontmatter, shown as a badge). A
+fire or a run past its cap is skipped and refused with the reason, flagged
+once a day in the inbox, and the remaining amount rides on each run as its
+cap for providers that report cost while running.
+
+### 5.2.1 Alerts that reach you outside the tab
+
+- **Telegram** (Settings › Notifications): set the bot token in the
+  environment variable named there, paste your chat id, pick the lowest tone.
+  Turn on **Answer from the phone** and every alert about an approval
+  carries **Approve / Deny** buttons; `/pending` lists what waits and
+  `/approve <id>` / `/deny <id>` work as text. Only your chat id is honoured;
+  anyone else who finds the bot gets silence. Decisions go through the same
+  code path as the button in the Command Centre.
+- **Push notifications**: install the Command Centre as an app (browser menu
+  → Install), then turn on **Push notifications** in Settings › Notifications
+  and the **Push channel** on the server side. Alerts arrive with the app
+  closed. Payloads are encrypted end to end (RFC 8291) with keys the server
+  generates once into `config/vapid.json`; the push service only relays
+  ciphertext. Subscribed devices are listed and can be removed.
+
+### 5.2.2 Trends
+
+**Settings › Trends** charts the numbers the desktop shows live — spend,
+runs, failures, tokens, inbox unread, approval wait — from one sample per
+hour (`metrics_samples`, 90 days), folded per day, with a table view. The
+first sample lands at boot; the plan's §9 targets are measured here.
+
+## 5.3 The HUD
+
+The desktop core reacts to what the agent does — thinking, using a tool,
+answering, alerting, done — and a HUD layer adds scanlines, corner brackets,
+a radar sweep and telemetry. **Settings › Theme › HUD intensity** scales all
+of it (0 turns it off); the **JARVIS** preset is the cyan-on-black look.
+`prefers-reduced-motion` disables every animation. With the sound toggle on
+(Settings › Notifications) the HUD also plays a short ack when a run starts,
+a chord when it finishes and a low tone when it fails; **System
+notifications** and **Spoken alerts** cover the time the tab is hidden.
+Sentinels (repeated failures, silent routines, connector changes, the
+"did it twice" nudge, folder watch) live in the same tab, with optional
+Telegram delivery.
+
+The Console has a microphone (speech → prompt) and *Read aloud* on every
+reply; the core turns to *listening* while the mic is open.
+
 ## 6. Runs & observability
 
 Runs page: every execution with status
@@ -118,6 +220,54 @@ Settings → Security: `read_only` → `review_before_write` → `controlled_wri
 approval: installing software, changing global configs, destructive commands,
 accessing new folders, connector writes, startup services, exposing ports,
 sending data to external services. Pending approvals appear in Settings.
+
+Under `review_before_write` and `controlled_write` the agent's own tool
+prompts (write a file, run a command) are brokered to you **mid-run**: the
+run page and the Console show the tool and its input with Allow / Deny, and
+the run continues the moment you answer (timeout: `limits.toolApprovalTimeoutMs`).
+
+**Remote access** (Settings › Security): off by default. When enabled, a
+phone or laptop pairs with a 6-digit code and gets its own token (expiry and
+revoke list there); the Command Centre installs as a PWA and keeps its shell
+offline. Only paired devices are accepted on non-loopback hosts.
+
+## 7.1 Remote access
+
+Settings › Security › **Remote access** answers to the hosts you list and
+lets a phone or laptop pair with a six-digit code shown on the desktop; each
+device gets its own token (revocable, with a lifetime). Three ways to reach
+it safely:
+
+- **Built-in TLS**: turn on **TLS for remote devices** and restart. A
+  second https listener (port + 1) serves a self-signed certificate
+  generated into `config/tls/` for the allowed hosts; the pairing screen
+  shows its SHA-256 so the phone can compare with the desktop before
+  trusting it. Loopback stays plain http on the main port, so the CLI and
+  the MCP broker never change.
+- **Tailscale** (recommended for a home network): keep remote access on
+  plain http and add your tailnet name to the allowed hosts — the tunnel is
+  already encrypted and authenticated.
+- **Caddy / a reverse proxy**: terminate a real certificate in front of the
+  http port and forward with the original `Host` header.
+
+Never expose the plain http port on the open internet.
+
+## 7.2 Windows checklist
+
+MordomoOS is validated on Linux and macOS in this release; on Windows keep
+these in mind:
+
+- `mordomo service plan` prints the Task Scheduler command before anything is
+  installed; paths with spaces are quoted for you.
+- Secrets on disk (`config/token`, `config/vapid.json`,
+  `config/registry-signing.json`, `config/tls/key.pem`) are written with
+  POSIX mode 0600; NTFS ignores it, so keep `MORDOMO_HOME` inside your user
+  profile and out of shared folders.
+- The fake provider CLIs the test suite uses are bash scripts; the tests
+  that need them skip on Windows.
+- Pairing, push, Telegram and TLS behave the same; the service binds to
+  `bindAddress` on the main port and to the TLS port when enabled — allow
+  both in Windows Defender Firewall for remote devices.
 
 ## 8. The 7-day adoption plan (from the ARMS guide)
 

@@ -65,10 +65,14 @@ export function useGridMetrics(ref: RefObject<HTMLElement>): GridMetrics {
   const cellH = (size.h - GRID_TOP - GRID_PAD) / rows;
   const stacked = size.w < STACK_BREAKPOINT;
 
+  // The edit-mode grid background reads these; scoped to the grid element so
+  // a resize never touches <html style> (which would rebuild canvas assets).
   useEffect(() => {
-    document.documentElement.style.setProperty("--cell-w", `${cellW}px`);
-    document.documentElement.style.setProperty("--cell-h", `${cellH}px`);
-  }, [cellW, cellH]);
+    const el = ref.current;
+    if (!el) return;
+    el.style.setProperty("--cell-w", `${cellW}px`);
+    el.style.setProperty("--cell-h", `${cellH}px`);
+  }, [ref, cellW, cellH]);
 
   return { width: size.w, height: size.h, cols: COLS, rows, cellW, cellH, stacked };
 }

@@ -23,9 +23,27 @@ const TOOLS = [
 
 const EVENTS = {
   events: [
-    { id: "e1", summary: "Standup", start: { dateTime: "2026-09-03T09:00:00Z" }, status: "confirmed", calendar: "work" },
-    { id: "e2", summary: "Design review", start: { dateTime: "2026-09-03T14:00:00Z" }, status: "tentative", calendar: "work" },
-    { id: "e3", summary: "Dentist", start: { dateTime: "2026-09-03T18:30:00Z" }, status: "confirmed", calendar: "personal" },
+    {
+      id: "e1",
+      summary: "Standup",
+      start: { dateTime: "2026-09-03T09:00:00Z" },
+      status: "confirmed",
+      calendar: "work",
+    },
+    {
+      id: "e2",
+      summary: "Design review",
+      start: { dateTime: "2026-09-03T14:00:00Z" },
+      status: "tentative",
+      calendar: "work",
+    },
+    {
+      id: "e3",
+      summary: "Dentist",
+      start: { dateTime: "2026-09-03T18:30:00Z" },
+      status: "confirmed",
+      calendar: "personal",
+    },
   ],
 };
 
@@ -84,7 +102,11 @@ function handle(line) {
       const name = msg.params?.name;
       if (MODE === "slow") return; // never answers: the client must time out
       if (MODE === "toolerror") {
-        send({ jsonrpc: "2.0", id: msg.id, result: { isError: true, content: [{ type: "text", text: "upstream refused" }] } });
+        send({
+          jsonrpc: "2.0",
+          id: msg.id,
+          result: { isError: true, content: [{ type: "text", text: "upstream refused" }] },
+        });
         return;
       }
       if (name === "delete_event") {
@@ -93,7 +115,13 @@ function handle(line) {
         return;
       }
       if (MODE === "malformed") {
-        send({ jsonrpc: "2.0", id: msg.id, result: { content: [{ type: "text", text: "Standup at 9\nDesign review at 14\nDentist at 18:30" }] } });
+        send({
+          jsonrpc: "2.0",
+          id: msg.id,
+          result: {
+            content: [{ type: "text", text: "Standup at 9\nDesign review at 14\nDentist at 18:30" }],
+          },
+        });
         return;
       }
       const args = msg.params?.arguments ?? {};
@@ -105,7 +133,11 @@ function handle(line) {
       return;
     }
     default:
-      send({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: `Method not found: ${msg.method}` } });
+      send({
+        jsonrpc: "2.0",
+        id: msg.id,
+        error: { code: -32601, message: `Method not found: ${msg.method}` },
+      });
   }
 }
 

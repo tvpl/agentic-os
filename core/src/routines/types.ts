@@ -99,6 +99,8 @@ export const RoutineSchema = z.object({
   missedPolicy: z.enum(["skip", "run_on_boot"]).default("skip"),
   timeoutMs: z.number().int().min(10_000).default(15 * 60_000),
   maxAttempts: z.number().int().min(1).max(5).default(1),
+  /** Daily spend cap for this routine's runs in USD (0 = none). A fire past the cap is skipped and alerted once a day. */
+  budgetUsd: z.number().min(0).default(0),
   backoffMs: z.number().int().min(0).default(60_000),
   /** Timeouts are not retried unless the routine opts in (a hung task rarely improves on retry). */
   retryOnTimeout: z.boolean().default(false),

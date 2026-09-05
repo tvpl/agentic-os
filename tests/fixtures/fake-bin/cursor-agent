@@ -14,6 +14,11 @@ case "$1" in
     echo "Logged in as fake@example.com"; exit 0 ;;
 esac
 echo '{"type":"system","subtype":"init"}'
+# The prompt is the last argument; echo a marker when a folded transcript reached us (emulated sessions test).
+PROMPT="${@: -1}"
+if [[ "$PROMPT" == *"ORCHID-42"* && "$PROMPT" == *"Earlier in this conversation"* ]]; then
+  echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Recalled ORCHID-42 from the folded transcript."}]}}'
+fi
 echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Cursor fake reply."}]}}'
 echo '{"type":"result","result":"Cursor run finished."}'
 exit 0

@@ -13,7 +13,9 @@ describe("writePolicyFor", () => {
 
 describe("followUpPrompt", () => {
   it("keeps the previous request as context", () => {
-    expect(followUpPrompt("  do a thing  ", " now do the next one ")).toBe("Previous request:\ndo a thing\n\nFollow-up:\nnow do the next one");
+    expect(followUpPrompt("  do a thing  ", " now do the next one ")).toBe(
+      "Previous request:\ndo a thing\n\nFollow-up:\nnow do the next one",
+    );
   });
 });
 

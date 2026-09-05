@@ -1,10 +1,41 @@
 /** Typed-ish fetch layer for the local MordomoOS API. */
 
-const TOKEN = document.querySelector<HTMLMetaElement>('meta[name="mordomo-token"]')?.content ?? "";
+const DEVICE_TOKEN_KEY = "mordomo.deviceToken";
 
-/** Local token (injected into the page by the API server / the Vite dev plugin). */
+function readDeviceToken(): string {
+  try {
+    return localStorage.getItem(DEVICE_TOKEN_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The local token is injected into the page when it is opened from this
+ * machine; a paired device (plan Onda 3 §1) keeps its own token in the
+ * browser instead. Either way every API call carries it in the same header.
+ */
+const TOKEN =
+  document.querySelector<HTMLMetaElement>('meta[name="mordomo-token"]')?.content || readDeviceToken();
+
+/** Local token (injected into the page by the API server / the Vite dev plugin) or the paired-device token. */
 export function getToken(): string {
   return TOKEN;
+}
+
+/** Store (or clear) the paired-device token; the page reloads to pick it up. */
+export function setDeviceToken(token: string | null): void {
+  try {
+    if (token) localStorage.setItem(DEVICE_TOKEN_KEY, token);
+    else localStorage.removeItem(DEVICE_TOKEN_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** True when this page has no credential at all (remote, not yet paired). */
+export function needsPairing(): boolean {
+  return TOKEN.length === 0;
 }
 
 export interface ApiIssue {
@@ -190,6 +221,8 @@ export interface Meta {
   language: "en" | "pt-BR";
   setupCompleted: boolean;
   version: string;
+  /** Remote TLS listener (self-signed): shown on the pairing screen so a device can check the fingerprint. */
+  tls?: { port: number; fingerprint: string; hosts: string[] } | null;
 }
 
 export interface ModelishOption {
@@ -228,6 +261,8 @@ export interface Skill {
   slug: string;
   name: string;
   description: string;
+  /** Daily spend cap for runs of this skill in USD (0 = none). */
+  budgetUsd?: number;
   triggers: string[];
   inputs: Array<{
     name: string;
@@ -258,6 +293,8 @@ export interface Skill {
 export interface RunRecord {
   id: string;
   createdAt: number;
+  /** Spend cap for this run (remaining routine/skill budget at launch). */
+  maxCostUsd?: number | null;
   startedAt?: number | null;
   finishedAt: number | null;
   origin: string;
@@ -363,6 +400,8 @@ export interface RoutineStatus {
   healthy: boolean;
   timeoutMs: number;
   maxAttempts: number;
+  /** Daily spend cap in USD (0 = none). */
+  budgetUsd?: number;
   retryOnTimeout?: boolean;
   profile: string;
   inputs: Record<string, string>;
@@ -392,7 +431,13 @@ export interface Connector {
   /** Last successful read through `GET /api/connectors/:id/data`. */
   lastUsedAt?: number | null;
   /** Present when the connector declares a read-only data mapping. */
-  dataMapping?: { transport?: string; command?: string | null; url?: string | null; env?: string[]; install?: string | null } | null;
+  dataMapping?: {
+    transport?: string;
+    command?: string | null;
+    url?: string | null;
+    env?: string[];
+    install?: string | null;
+  } | null;
 }
 
 export interface GraphNode {
@@ -446,6 +491,111 @@ export interface Metrics {
   cost?: MetricsCost;
   /** Last 24 hourly buckets, oldest first (tokens sparkline). */
   usageSeries?: UsageSeriesPoint[];
+}
+
+/** `GET /api/metrics/history`: hourly samples and their per-day fold (Settings › Trends). */
+export interface MetricsDailyPoint {
+  day: string;
+  spendUsd: number;
+  tokens: number;
+  runs: number;
+  failed: number;
+  inboxUnread: number;
+  approvalsPending: number;
+  approvalWaitAvgMs: number | null;
+  samples: number;
+}
+export interface MetricsHistory {
+  days: number;
+  samples: Array<{ ts: number }>;
+  daily: MetricsDailyPoint[];
+}
+
+// ---- settings ----
+/**
+ * The settings document as `GET /api/settings` returns it (mirrors
+ * `SettingsSchema` in core/src/config/schema.ts). Fields older servers may
+ * omit are optional on `SettingsView`, the shape the shared hook exposes.
+ */
+export interface SettingsDoc {
+  systemName: string;
+  language: "en" | "pt-BR";
+  theme: "dark" | "light" | "system";
+  accentColor: string;
+  port: number;
+  timezone: string;
+  defaultProvider: ProviderId;
+  securityProfile: string;
+  providers: Record<
+    ProviderId,
+    { enabled: boolean; defaultModel: string | null; defaultEffort: string; binaryPath: string | null }
+  >;
+  indexedFolders: Array<{ path: string; area: string | null; enabled: boolean }>;
+  excludes: string[];
+  areas: string[];
+  setupCompleted: boolean;
+  /** Theme preset id (F-SHELL `PRESETS`). */
+  themePreset: string;
+  microApps: MicroApp[];
+  dashboardLayout: Record<
+    string,
+    { x: number; y: number; w: number; h: number; visible: boolean; config?: Record<string, unknown> }
+  >;
+  routines: { allowWebhooks: boolean; heartbeatIntervalMinutes: number; heartbeatOkToken: string };
+  connectors: { dataCacheTtlMs: number; dataTimeoutMs: number; allowedCommands: string[] };
+  limits?: {
+    maxConcurrentRuns?: number;
+    defaultTimeoutMs?: number;
+    /** Daily spend budget in USD (0 = no budget). */
+    dailyBudgetUsd?: number;
+    [key: string]: unknown;
+  }; /** Remote access (Onda 3): paired devices from the listed hosts. */
+  remote?: {
+    enabled: boolean;
+    allowedHosts: string[];
+    deviceTtlDays: number;
+    tls?: { enabled: boolean; port: number | null };
+  };
+  /** Skill registries (Onda 3). */
+  marketplace?: { registries: string[] };
+  /** Sentinels and triage (Onda 2). */
+  sentinels?: {
+    fsWatch: { enabled: boolean; debounceMs: number };
+    repeatedFailure: { enabled: boolean; threshold: number; windowHours: number };
+    silentRoutine: { enabled: boolean; factor: number };
+    connectorDelta: { enabled: boolean; maxItems: number };
+    repeatDetector: { enabled: boolean; days: number; minRuns: number; similarity: number };
+    triage: { enabled: boolean; model: string; dailyBudgetUsd: number; timeoutMs: number };
+  };
+  /** External delivery channels (Onda 2). */
+  channels?: {
+    telegram: {
+      enabled: boolean;
+      botTokenEnv: string;
+      chatId: string;
+      minTone: "ok" | "info" | "warn" | "danger";
+      inbound: boolean;
+    };
+    push: { enabled: boolean; minTone: "ok" | "info" | "warn" | "danger"; subject: string };
+  };
+}
+
+/** `GET /api/devices` */
+export interface DeviceRecord {
+  id: string;
+  name: string;
+  createdAt: number;
+  lastSeenAt: number | null;
+  expiresAt: number | null;
+  revokedAt: number | null;
+}
+
+/** Micro app row (mirrors `MicroAppSchema` in core/src/config/schema.ts). */
+export interface MicroApp {
+  id: string;
+  name: string;
+  description: string;
+  href: string;
 }
 
 // ---- desktop ----
@@ -745,6 +895,30 @@ export interface LaunchRunResponse {
   runId: string | null;
   status: "queued" | "waiting_approval";
   pendingApproval?: ApprovalRecord | null;
+  /** Conversation the run belongs to (servers since 0.6). */
+  sessionId?: string | null;
+}
+
+// ---- sessions (Onda 1) ----
+/** A conversation with one provider: runs that continue each other via the provider's own resume. */
+export interface SessionRecord {
+  id: string;
+  provider: ProviderId;
+  providerSessionId: string | null;
+  cwd: string | null;
+  profile: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  lastRunId: string | null;
+  turns: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+export interface SessionDetail {
+  session: SessionRecord;
+  runs: RunRecord[];
 }
 
 /** `POST /api/approvals/:id/resolve` */

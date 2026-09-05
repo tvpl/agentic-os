@@ -1,11 +1,23 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { X } from "lucide-react";
 import { useT } from "../i18n";
 import { ApiError } from "../api";
 import { DialogPortal, useDialog, usePresence } from "./dialog";
 
 /* ---------- data fetching (legacy; prefer useApiQuery from ../queries) ---------- */
-export function useApi<T>(fetcher: () => Promise<T>, deps: unknown[] = []): {
+export function useApi<T>(
+  fetcher: () => Promise<T>,
+  deps: unknown[] = [],
+): {
   data: T | null;
   error: string | null;
   offline: boolean;
@@ -20,7 +32,9 @@ export function useApi<T>(fetcher: () => Promise<T>, deps: unknown[] = []): {
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
   // Serialise the deps so the effect has a static dependency list.
-  const depsKey = deps.map((d) => (typeof d === "object" && d !== null ? JSON.stringify(d) : String(d))).join(" ");
+  const depsKey = deps
+    .map((d) => (typeof d === "object" && d !== null ? JSON.stringify(d) : String(d)))
+    .join(" ");
 
   useEffect(() => {
     let cancelled = false;
@@ -87,7 +101,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       const id = Date.now() + Math.random();
       const ms = TOAST_MS[kind];
       setToasts((prev) => [...prev, { id, text, kind, ms, leaving: false }]);
-      timers.current.set(id, window.setTimeout(() => remove(id), ms));
+      timers.current.set(
+        id,
+        window.setTimeout(() => remove(id), ms),
+      );
     },
     [remove],
   );
@@ -124,7 +141,12 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
   return (
     <div className={`toast ${toast.kind}${toast.leaving ? " leaving" : ""}`} style={style}>
       <span className="toast-text">{toast.text}</span>
-      <button type="button" className="btn ghost sm icon-only toast-close" onClick={onClose} aria-label={t("common.dismiss")}>
+      <button
+        type="button"
+        className="btn ghost sm icon-only toast-close"
+        onClick={onClose}
+        aria-label={t("common.dismiss")}
+      >
         <X aria-hidden />
       </button>
       <span className="toast-progress" aria-hidden />
@@ -171,7 +193,15 @@ export function Skeleton({
   );
 }
 
-export function ErrorBox({ message, offline, onRetry }: { message: string; offline?: boolean; onRetry?: () => void }) {
+export function ErrorBox({
+  message,
+  offline,
+  onRetry,
+}: {
+  message: string;
+  offline?: boolean;
+  onRetry?: () => void;
+}) {
   const t = useT();
   return (
     <div className="error-box" role="alert">
@@ -220,7 +250,15 @@ export function Modal({ open = true, ...props }: ModalProps) {
   return <ModalFrame {...props} exiting={closing} />;
 }
 
-function ModalFrame({ title, onClose, children, narrow = false, initialFocus, exiting, className }: Omit<ModalProps, "open"> & { exiting: boolean }) {
+function ModalFrame({
+  title,
+  onClose,
+  children,
+  narrow = false,
+  initialFocus,
+  exiting,
+  className,
+}: Omit<ModalProps, "open"> & { exiting: boolean }) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const [closing, setClosing] = useState(false);
@@ -247,7 +285,11 @@ function ModalFrame({ title, onClose, children, narrow = false, initialFocus, ex
   const out = closing || exiting;
   return (
     <DialogPortal>
-      <div className={`modal-backdrop${out ? " closing" : ""}`} role="presentation" onMouseDown={(e) => e.target === e.currentTarget && requestClose()}>
+      <div
+        className={`modal-backdrop${out ? " closing" : ""}`}
+        role="presentation"
+        onMouseDown={(e) => e.target === e.currentTarget && requestClose()}
+      >
         <div
           className={["modal", narrow ? "narrow" : "", className ?? ""].filter(Boolean).join(" ")}
           role="dialog"
@@ -258,7 +300,13 @@ function ModalFrame({ title, onClose, children, narrow = false, initialFocus, ex
         >
           <div className="modal-head">
             <h2>{title}</h2>
-            <button type="button" className="btn ghost sm icon-only" onClick={requestClose} aria-label={t("common.close")} data-dialog-close>
+            <button
+              type="button"
+              className="btn ghost sm icon-only"
+              onClick={requestClose}
+              aria-label={t("common.close")}
+              data-dialog-close
+            >
               <X aria-hidden />
             </button>
           </div>

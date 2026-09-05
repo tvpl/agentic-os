@@ -50,10 +50,22 @@ export const MAX_RECENTS = 8;
 
 /** PICO-8 palette — 16 well-loved retro colors. */
 const PALETTE = [
-  "#000000", "#1d2b53", "#7e2553", "#008751",
-  "#ab5236", "#5f574f", "#c2c3c7", "#fff1e8",
-  "#ff004d", "#ffa300", "#ffec27", "#00e436",
-  "#29adff", "#83769c", "#ff77a8", "#ffccaa",
+  "#000000",
+  "#1d2b53",
+  "#7e2553",
+  "#008751",
+  "#ab5236",
+  "#5f574f",
+  "#c2c3c7",
+  "#fff1e8",
+  "#ff004d",
+  "#ffa300",
+  "#ffec27",
+  "#00e436",
+  "#29adff",
+  "#83769c",
+  "#ff77a8",
+  "#ffccaa",
 ];
 
 function makeFrame(size: GridSize): Frame {
@@ -237,7 +249,6 @@ interface Snapshot {
   current: number;
 }
 
-
 export default function PixelStudio() {
   const t = usePixelT();
   const toast = useToast();
@@ -290,7 +301,8 @@ export default function PixelStudio() {
   useEffect(() => {
     const id = window.setTimeout(() => {
       try {
-        if (frames.some((f) => f.some((c) => c !== null))) localStorage.setItem(DRAFT_KEY, JSON.stringify({ size, frames, current }));
+        if (frames.some((f) => f.some((c) => c !== null)))
+          localStorage.setItem(DRAFT_KEY, JSON.stringify({ size, frames, current }));
         else localStorage.removeItem(DRAFT_KEY);
       } catch {
         /* storage blocked */
@@ -305,7 +317,12 @@ export default function PixelStudio() {
       if ((e.target as Element | null)?.closest?.('[role="dialog"]')) return;
       e.stopPropagation();
       e.preventDefault();
-      void confirm({ title: t("pixel.leaveTitle"), body: t("pixel.leaveBody"), danger: true, confirmLabel: t("pixel.leave") }).then((ok) => {
+      void confirm({
+        title: t("pixel.leaveTitle"),
+        body: t("pixel.leaveBody"),
+        danger: true,
+        confirmLabel: t("pixel.leave"),
+      }).then((ok) => {
         if (ok) {
           dirtyRef.current = false;
           navigate("/");
@@ -324,7 +341,10 @@ export default function PixelStudio() {
   }, [confirm, navigate, t]);
 
   /* ---------- undo ---------- */
-  const snapshot = useCallback((): Snapshot => ({ frames: cloneFrames(frames), size, current }), [frames, size, current]);
+  const snapshot = useCallback(
+    (): Snapshot => ({ frames: cloneFrames(frames), size, current }),
+    [frames, size, current],
+  );
 
   const pushUndo = useCallback(() => {
     dirtyRef.current = true;
@@ -544,7 +564,8 @@ export default function PixelStudio() {
 
   const deleteFrame = async () => {
     if (frames.length <= 1) return;
-    if (!(await confirm({ title: t("pixel.deleteConfirm"), danger: true, confirmLabel: t("common.delete") }))) return;
+    if (!(await confirm({ title: t("pixel.deleteConfirm"), danger: true, confirmLabel: t("common.delete") })))
+      return;
     pushUndo();
     setFrames((prev) => prev.filter((_, i) => i !== current));
     setCurrent(Math.max(0, current - 1));
@@ -561,7 +582,8 @@ export default function PixelStudio() {
   };
 
   /* ---------- export ---------- */
-  const exportPng = () => downloadFile(frameToPngDataUrl(frame, size, EXPORT_SCALE), `${saveName || "sprite"}.png`);
+  const exportPng = () =>
+    downloadFile(frameToPngDataUrl(frame, size, EXPORT_SCALE), `${saveName || "sprite"}.png`);
 
   const exportSheet = () =>
     downloadFile(sheetToPngDataUrl(frames, size, EXPORT_SCALE), `${saveName || "sprite"}.sheet.png`);
@@ -681,7 +703,12 @@ export default function PixelStudio() {
               </button>
             </div>
             <div className="pxs-brush" role="group" aria-label={t("apps.pixel.brush")}>
-              <button className="btn sm" onClick={() => setBrush((b) => clampBrush(b - 1))} disabled={brush <= 1} aria-label={`${t("apps.pixel.brush")} -`}>
+              <button
+                className="btn sm"
+                onClick={() => setBrush((b) => clampBrush(b - 1))}
+                disabled={brush <= 1}
+                aria-label={`${t("apps.pixel.brush")} -`}
+              >
                 <Minus aria-hidden />
               </button>
               <span className="pxs-brush-dots" aria-hidden>
@@ -692,7 +719,12 @@ export default function PixelStudio() {
               <span className="mono" aria-live="polite">
                 {t("apps.pixel.brush")} {brush}
               </span>
-              <button className="btn sm" onClick={() => setBrush((b) => clampBrush(b + 1))} disabled={brush >= MAX_BRUSH} aria-label={`${t("apps.pixel.brush")} +`}>
+              <button
+                className="btn sm"
+                onClick={() => setBrush((b) => clampBrush(b + 1))}
+                disabled={brush >= MAX_BRUSH}
+                aria-label={`${t("apps.pixel.brush")} +`}
+              >
                 <Plus aria-hidden />
               </button>
             </div>
@@ -749,7 +781,14 @@ export default function PixelStudio() {
             </div>
             <div className="pxs-recent" role="group" aria-label={t("apps.pixel.recent")}>
               {recents.map((c) => (
-                <button key={c} className={`pxs-swatch${color === c ? " active" : ""}`} style={{ background: c }} onClick={() => chooseColor(c)} aria-label={c} title={c} />
+                <button
+                  key={c}
+                  className={`pxs-swatch${color === c ? " active" : ""}`}
+                  style={{ background: c }}
+                  onClick={() => chooseColor(c)}
+                  aria-label={c}
+                  title={c}
+                />
               ))}
             </div>
             <p className="pxs-shortcuts">
@@ -808,10 +847,20 @@ export default function PixelStudio() {
               </button>
             </div>
             <div className="pxs-frame-nav">
-              <button className="btn sm" onClick={() => setCurrent((c) => stepFrame(c, frames.length, -1))} disabled={frames.length <= 1} aria-label={t("apps.pixel.prevFrame")}>
+              <button
+                className="btn sm"
+                onClick={() => setCurrent((c) => stepFrame(c, frames.length, -1))}
+                disabled={frames.length <= 1}
+                aria-label={t("apps.pixel.prevFrame")}
+              >
                 <ChevronLeft aria-hidden /> <span className="kbd pxs-key">[</span>
               </button>
-              <button className="btn sm" onClick={() => setCurrent((c) => stepFrame(c, frames.length, 1))} disabled={frames.length <= 1} aria-label={t("apps.pixel.nextFrame")}>
+              <button
+                className="btn sm"
+                onClick={() => setCurrent((c) => stepFrame(c, frames.length, 1))}
+                disabled={frames.length <= 1}
+                aria-label={t("apps.pixel.nextFrame")}
+              >
                 <span className="kbd pxs-key">]</span> <ChevronRight aria-hidden />
               </button>
             </div>
@@ -819,13 +868,23 @@ export default function PixelStudio() {
 
           <div className="card">
             <h2>{t("pixel.preview")}</h2>
-            <PreviewBoxes label={t("brain.preview")} frames={frames} size={size} playing={playing} fps={fps} current={current} />
+            <PreviewBoxes
+              label={t("brain.preview")}
+              frames={frames}
+              size={size}
+              playing={playing}
+              fps={fps}
+              current={current}
+            />
             <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8 }}>
               <button className="btn primary sm" onClick={() => setPlaying((v) => !v)}>
-                {playing ? <Pause aria-hidden /> : <Play aria-hidden />} {playing ? t("pixel.pause") : t("pixel.play")}
+                {playing ? <Pause aria-hidden /> : <Play aria-hidden />}{" "}
+                {playing ? t("pixel.pause") : t("pixel.play")}
               </button>
               <label className="pxs-fps" style={{ flex: 1 }}>
-                <span className="mono">{fps} {t("pixel.fps")}</span>
+                <span className="mono">
+                  {fps} {t("pixel.fps")}
+                </span>
                 <input
                   type="range"
                   min={2}
@@ -870,7 +929,12 @@ export default function PixelStudio() {
               />
               <span className="hint">{t("pixel.nameHint")}</span>
             </div>
-            <button className="btn primary" onClick={saveToArtifacts} disabled={saving} style={{ width: "100%", justifyContent: "center" }}>
+            <button
+              className="btn primary"
+              onClick={saveToArtifacts}
+              disabled={saving}
+              style={{ width: "100%", justifyContent: "center" }}
+            >
               {saving ? <span className="spinner" aria-hidden /> : <Save aria-hidden />} {t("pixel.saveBtn")}
             </button>
           </div>
@@ -939,7 +1003,13 @@ function PreviewBoxes({
         <canvas ref={ref1x} width={size} height={size} style={{ width: size, height: size }} aria-hidden />
       </div>
       <div className="pxs-preview-box pxs-checker">
-        <canvas ref={ref4x} width={size} height={size} style={{ width: size * 4, height: size * 4 }} aria-label={label} />
+        <canvas
+          ref={ref4x}
+          width={size}
+          height={size}
+          style={{ width: size * 4, height: size * 4 }}
+          aria-label={label}
+        />
       </div>
     </div>
   );

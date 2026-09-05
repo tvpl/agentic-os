@@ -165,7 +165,7 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: <Terminal aria-hidden />,
     Component: PromptWidget,
     box: box("prompt"),
-    min: { w: 6, h: 3 },
+    min: { w: 6, h: 4 },
     configSchema: [
       {
         key: "mode",

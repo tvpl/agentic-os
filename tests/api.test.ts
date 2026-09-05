@@ -74,18 +74,33 @@ describe("settings & providers", () => {
   it("round-trips settings and validates bad ports", async () => {
     const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth() });
     expect(get.statusCode).toBe(200);
-    const bad = await app.inject({ method: "PUT", url: "/api/settings", headers: auth(), payload: { port: 80 } });
+    const bad = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers: auth(),
+      payload: { port: 80 },
+    });
     expect(bad.statusCode).toBe(400); // zod rejects privileged ports (<1024)
     expect(bad.json().error.code).toBe("validation");
     expect(bad.json().error.issues.length).toBeGreaterThan(0);
     expect(typeof bad.json().message).toBe("string");
-    const ok = await app.inject({ method: "PUT", url: "/api/settings", headers: auth(), payload: { accentColor: "#22c55e" } });
+    const ok = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers: auth(),
+      payload: { accentColor: "#22c55e" },
+    });
     expect(ok.statusCode).toBe(200);
     expect(ok.json().settings.accentColor).toBe("#22c55e");
   });
 
   it("gates exposing the server beyond localhost behind an approval", async () => {
-    const res = await app.inject({ method: "PUT", url: "/api/settings", headers: auth(), payload: { bindAddress: "0.0.0.0" } });
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers: auth(),
+      payload: { bindAddress: "0.0.0.0" },
+    });
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.settings.bindAddress).toBe("127.0.0.1"); // unchanged!
@@ -178,7 +193,11 @@ describe("memory API", () => {
     const idx = await app.inject({ method: "POST", url: "/api/memory/index", headers: auth() });
     expect(idx.json().stats.added).toBeGreaterThan(0);
 
-    const search = await app.inject({ method: "GET", url: "/api/memory/search?q=trimestral", headers: auth() });
+    const search = await app.inject({
+      method: "GET",
+      url: "/api/memory/search?q=trimestral",
+      headers: auth(),
+    });
     const hits = search.json() as Array<{ name: string }>;
     expect(hits[0]!.name).toBe("plan.md");
 
@@ -217,20 +236,36 @@ describe("memory API", () => {
 describe("routines API", () => {
   it("lists seed routine as paused and manually test-runs it", async () => {
     const list = await app.inject({ method: "GET", url: "/api/routines", headers: auth() });
-    const routine = (list.json() as Array<{ id: string; enabled: boolean }>).find((r) => r.id === "daily-workspace-digest")!;
+    const routine = (list.json() as Array<{ id: string; enabled: boolean }>).find(
+      (r) => r.id === "daily-workspace-digest",
+    )!;
     expect(routine.enabled).toBe(false);
 
-    const run = await app.inject({ method: "POST", url: "/api/routines/daily-workspace-digest/run", headers: auth() });
+    const run = await app.inject({
+      method: "POST",
+      url: "/api/routines/daily-workspace-digest/run",
+      headers: auth(),
+    });
     expect(run.statusCode).toBe(200);
-    const history = await app.inject({ method: "GET", url: "/api/routines/daily-workspace-digest/history", headers: auth() });
+    const history = await app.inject({
+      method: "GET",
+      url: "/api/routines/daily-workspace-digest/history",
+      headers: auth(),
+    });
     expect(history.json().length).toBeGreaterThan(0);
   });
 
   it("toggles a routine and computes next run", async () => {
-    const on = await app.inject({ method: "POST", url: "/api/routines/daily-workspace-digest/toggle", headers: auth() });
+    const on = await app.inject({
+      method: "POST",
+      url: "/api/routines/daily-workspace-digest/toggle",
+      headers: auth(),
+    });
     expect(on.json().enabled).toBe(true);
     const list = await app.inject({ method: "GET", url: "/api/routines", headers: auth() });
-    const routine = (list.json() as Array<{ id: string; nextRunAt: number | null }>).find((r) => r.id === "daily-workspace-digest")!;
+    const routine = (list.json() as Array<{ id: string; nextRunAt: number | null }>).find(
+      (r) => r.id === "daily-workspace-digest",
+    )!;
     expect(routine.nextRunAt).toBeGreaterThan(Date.now());
     await app.inject({ method: "POST", url: "/api/routines/daily-workspace-digest/toggle", headers: auth() });
   });
@@ -262,9 +297,18 @@ describe("sync + artifacts + doctor", () => {
   it("plans and applies a sync into a target dir", async () => {
     const target = path.join(ctx.paths.home, "export-target");
     fs.mkdirSync(target, { recursive: true });
-    const plan = await app.inject({ method: "GET", url: `/api/sync/plan?target=${encodeURIComponent(target)}`, headers: auth() });
+    const plan = await app.inject({
+      method: "GET",
+      url: `/api/sync/plan?target=${encodeURIComponent(target)}`,
+      headers: auth(),
+    });
     expect(plan.json().actions.length).toBeGreaterThan(0);
-    const apply = await app.inject({ method: "POST", url: "/api/sync/apply", headers: auth(), payload: { target } });
+    const apply = await app.inject({
+      method: "POST",
+      url: "/api/sync/apply",
+      headers: auth(),
+      payload: { target },
+    });
     expect(apply.json().written.length).toBeGreaterThan(0);
     expect(fs.existsSync(path.join(target, "CLAUDE.md"))).toBe(true);
   });

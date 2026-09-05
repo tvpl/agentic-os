@@ -4,7 +4,11 @@ import path from "node:path";
 import type { FastifyInstance } from "fastify";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
-import { MAX_SKILL_RESOURCES, skillResourceContentType, skillResourceKind } from "../core/src/skills/catalog.js";
+import {
+  MAX_SKILL_RESOURCES,
+  skillResourceContentType,
+  skillResourceKind,
+} from "../core/src/skills/catalog.js";
 import { makeTempHome } from "./helpers.js";
 
 /**
@@ -73,7 +77,13 @@ describe("skill resource catalog", () => {
     const skill = ctx.skills.load("brandy");
     expect(skill).not.toBeNull();
     const rels = skill!.resourceFiles.map((r) => r.rel);
-    expect(rels).toEqual(["README.md", "resources/brand.html", "resources/data.bin", "resources/deep/notes.md", "resources/logo.png"]);
+    expect(rels).toEqual([
+      "README.md",
+      "resources/brand.html",
+      "resources/data.bin",
+      "resources/deep/notes.md",
+      "resources/logo.png",
+    ]);
     expect(rels).not.toContain("SKILL.md");
     expect(rels).not.toContain(".hidden.md");
     expect(rels).not.toContain("escape.md");
@@ -97,14 +107,20 @@ describe("skill resource catalog", () => {
   it("caps the scan so a deep folder cannot stall the catalog", () => {
     const dir = path.join(skillsDir, "many");
     fs.mkdirSync(path.join(dir, "files"), { recursive: true });
-    fs.writeFileSync(path.join(dir, "SKILL.md"), SKILL_MD.replace("slug: brandy", "slug: many").replace("name: Brandy", "name: Many"));
-    for (let i = 0; i < MAX_SKILL_RESOURCES + 25; i++) fs.writeFileSync(path.join(dir, "files", `f${String(i).padStart(4, "0")}.md`), "x");
+    fs.writeFileSync(
+      path.join(dir, "SKILL.md"),
+      SKILL_MD.replace("slug: brandy", "slug: many").replace("name: Brandy", "name: Many"),
+    );
+    for (let i = 0; i < MAX_SKILL_RESOURCES + 25; i++)
+      fs.writeFileSync(path.join(dir, "files", `f${String(i).padStart(4, "0")}.md`), "x");
     expect(ctx.skills.load("many")!.resourceFiles.length).toBe(MAX_SKILL_RESOURCES);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
   it("resolves only listed relative paths, never an escape", () => {
-    expect(ctx.skills.resolveResource("brandy", "resources/brand.html")?.contentType).toBe("text/html; charset=utf-8");
+    expect(ctx.skills.resolveResource("brandy", "resources/brand.html")?.contentType).toBe(
+      "text/html; charset=utf-8",
+    );
     expect(ctx.skills.resolveResource("brandy", "SKILL.md")).toBeNull();
     expect(ctx.skills.resolveResource("brandy", "../outside.md")).toBeNull();
     expect(ctx.skills.resolveResource("brandy", "resources/../../outside.md")).toBeNull();
@@ -117,7 +133,11 @@ describe("skill resource catalog", () => {
 
 describe("GET /api/skills/:slug/resource", () => {
   it("serves a markdown resource as text with nosniff", async () => {
-    const res = await app.inject({ method: "GET", url: "/api/skills/brandy/resource?rel=resources/deep/notes.md", headers: auth() });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/skills/brandy/resource?rel=resources/deep/notes.md",
+      headers: auth(),
+    });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toBe("text/markdown; charset=utf-8");
     expect(res.headers["x-content-type-options"]).toBe("nosniff");
@@ -125,7 +145,11 @@ describe("GET /api/skills/:slug/resource", () => {
   });
 
   it("serves HTML with a script-free CSP so the preview iframe cannot execute anything", async () => {
-    const res = await app.inject({ method: "GET", url: "/api/skills/brandy/resource?rel=resources/brand.html", headers: auth() });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/skills/brandy/resource?rel=resources/brand.html",
+      headers: auth(),
+    });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toBe("text/html; charset=utf-8");
     const csp = String(res.headers["content-security-policy"]);
@@ -135,22 +159,44 @@ describe("GET /api/skills/:slug/resource", () => {
   });
 
   it("serves images inline and unknown types as a download", async () => {
-    const png = await app.inject({ method: "GET", url: "/api/skills/brandy/resource?rel=resources/logo.png", headers: auth() });
+    const png = await app.inject({
+      method: "GET",
+      url: "/api/skills/brandy/resource?rel=resources/logo.png",
+      headers: auth(),
+    });
     expect(png.statusCode).toBe(200);
     expect(png.headers["content-type"]).toBe("image/png");
     expect(png.headers["content-disposition"]).toBeUndefined();
-    const bin = await app.inject({ method: "GET", url: "/api/skills/brandy/resource?rel=resources/data.bin", headers: auth() });
+    const bin = await app.inject({
+      method: "GET",
+      url: "/api/skills/brandy/resource?rel=resources/data.bin",
+      headers: auth(),
+    });
     expect(bin.statusCode).toBe(200);
     expect(String(bin.headers["content-disposition"])).toContain("attachment");
   });
 
   it("refuses traversal, SKILL.md, unknown files and unknown skills", async () => {
-    for (const rel of ["../outside.md", "resources/../../outside.md", "SKILL.md", "missing.md", "/etc/passwd"]) {
-      const res = await app.inject({ method: "GET", url: `/api/skills/brandy/resource?rel=${encodeURIComponent(rel)}`, headers: auth() });
+    for (const rel of [
+      "../outside.md",
+      "resources/../../outside.md",
+      "SKILL.md",
+      "missing.md",
+      "/etc/passwd",
+    ]) {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/skills/brandy/resource?rel=${encodeURIComponent(rel)}`,
+        headers: auth(),
+      });
       expect(res.statusCode).toBe(404);
       expect(res.body).not.toContain("TOP SECRET");
     }
-    const missingSkill = await app.inject({ method: "GET", url: "/api/skills/nope/resource?rel=a.md", headers: auth() });
+    const missingSkill = await app.inject({
+      method: "GET",
+      url: "/api/skills/nope/resource?rel=a.md",
+      headers: auth(),
+    });
     expect(missingSkill.statusCode).toBe(404);
   });
 

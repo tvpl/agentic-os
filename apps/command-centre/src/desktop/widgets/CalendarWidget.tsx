@@ -35,7 +35,9 @@ export function SyncedAt({ data }: { data: ConnectorData }) {
   if (!data.syncedAt) return null;
   return (
     <div className="conn-synced hud-label">
-      {t("desktop.connector.synced", { time: new Date(data.syncedAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) })}
+      {t("desktop.connector.synced", {
+        time: new Date(data.syncedAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
+      })}
     </div>
   );
 }
@@ -48,7 +50,13 @@ export default function CalendarWidget({ config }: WidgetProps) {
   const now = useTicker(30_000);
   return (
     <WidgetGate queries={[data]} lines={3}>
-      {data.data && data.data.status === "not_configured" && <ConnectorSetup id={id} title={t("desktop.calendar.setupTitle")} body={t("desktop.calendar.setupBody")} />}
+      {data.data && data.data.status === "not_configured" && (
+        <ConnectorSetup
+          id={id}
+          title={t("desktop.calendar.setupTitle")}
+          body={t("desktop.calendar.setupBody")}
+        />
+      )}
       {data.data && data.data.status === "error" && (
         <div className="widget-error" role="alert">
           <strong>{t("widget.error")}</strong>
@@ -71,12 +79,22 @@ export default function CalendarWidget({ config }: WidgetProps) {
                 const past = !!e.ts && e.ts < now;
                 return (
                   <div key={e.id} className={`cal-row${past ? " past" : ""}`}>
-                    <span className="cal-time mono">{e.ts ? new Date(e.ts).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) : "—"}</span>
+                    <span className="cal-time mono">
+                      {e.ts
+                        ? new Date(e.ts).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })
+                        : "—"}
+                    </span>
                     <span className="cal-title truncate" title={e.subtitle}>
                       {e.title}
                     </span>
                     {e.href && (
-                      <a className="cal-open" href={e.href} target="_blank" rel="noreferrer" aria-label={`${t("common.open")}: ${e.title}`}>
+                      <a
+                        className="cal-open"
+                        href={e.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`${t("common.open")}: ${e.title}`}
+                      >
                         <ExternalLink aria-hidden />
                       </a>
                     )}

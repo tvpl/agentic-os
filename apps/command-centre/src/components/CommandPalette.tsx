@@ -9,7 +9,16 @@
  * Open it with `window.dispatchEvent(new CustomEvent(LAUNCHER_EVENT, { detail }))`
  * (see `PaletteOpenDetail`) or ⌘K / ⌘M.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import {
@@ -40,7 +49,18 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
-import { api, type BackupCreated, type DoctorReport, type MemorySearchHit, type Meta, type ModelishOption, type ProviderId, type RunLaunchResponse, type RunRecord, type Skill } from "../api";
+import {
+  api,
+  type BackupCreated,
+  type DoctorReport,
+  type MemorySearchHit,
+  type Meta,
+  type ModelishOption,
+  type ProviderId,
+  type RunLaunchResponse,
+  type RunRecord,
+  type Skill,
+} from "../api";
 import { useT, type TKey } from "../i18n";
 import { qk, useApiQuery, useOsProviders, useOsRuns, useOsSkills } from "../queries";
 import { PRESETS, applyAccentTokens, applyPreset, type PresetId } from "../theme";
@@ -105,11 +125,19 @@ const SECTION_LABEL: Record<Exclude<Section, "page">, TKey> = {
 function shortModel(model: string | null): string {
   if (!model) return "AUTO";
   const m = model.toLowerCase();
-  for (const name of ["opus", "sonnet", "haiku", "fable", "gpt-5.2", "gpt-5", "o4"]) if (m.includes(name)) return name.toUpperCase();
+  for (const name of ["opus", "sonnet", "haiku", "fable", "gpt-5.2", "gpt-5", "o4"])
+    if (m.includes(name)) return name.toUpperCase();
   return model.slice(0, 10).toUpperCase();
 }
 
-export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, onShortcuts, initial }: CommandPaletteProps) {
+export function CommandPalette({
+  meta,
+  closing = false,
+  onClose,
+  onMetaChanged,
+  onShortcuts,
+  initial,
+}: CommandPaletteProps) {
   const t = useT();
   const lang = useI18nLang();
   const toast = useToast();
@@ -157,7 +185,13 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
         await fn();
         if (closeAfter) close();
       } catch (err) {
-        toast(t("shell.action.failed", { action: label, error: err instanceof Error ? err.message : String(err) }), "danger");
+        toast(
+          t("shell.action.failed", {
+            action: label,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+          "danger",
+        );
       } finally {
         setBusy(null);
       }
@@ -172,8 +206,11 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
         go(`/skills/${encodeURIComponent(skill.slug)}`);
         return;
       }
-      const res = await api.post<RunLaunchResponse>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, { inputs: {}, ...opts });
-      if (!res.runId) {
+      const res = await api.post<RunLaunchResponse>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, {
+        inputs: {},
+        ...opts,
+      });
+      if (res.status === "waiting_approval" || !res.runId) {
         toast(t("runs.approvalPending"), "info");
         go("/settings?tab=security");
         return;
@@ -189,13 +226,31 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
     () =>
       (
         [
-          ["brain", "/brain", <BrainCircuit aria-hidden />, t("nav.brain"), ["memory", "graph", "brain", "cerebro", "files"]],
+          [
+            "brain",
+            "/brain",
+            <BrainCircuit aria-hidden />,
+            t("nav.brain"),
+            ["memory", "graph", "brain", "cerebro", "files"],
+          ],
           ["skills", "/skills", <Sparkles aria-hidden />, t("nav.skills"), ["sop", "commands"]],
-          ["routines", "/routines", <CalendarClock aria-hidden />, t("nav.routines"), ["cron", "schedule", "agenda"]],
+          [
+            "routines",
+            "/routines",
+            <CalendarClock aria-hidden />,
+            t("nav.routines"),
+            ["cron", "schedule", "agenda"],
+          ],
           ["runs", "/runs", <ListTree aria-hidden />, t("nav.runs"), ["history", "logs", "execucoes"]],
           ["connectors", "/connectors", <Plug aria-hidden />, t("nav.connectors"), ["mcp", "integrations"]],
           ["pixel", "/pixel", <Grid3x3 aria-hidden />, t("nav.pixel"), ["pixel", "art", "sprite"]],
-          ["settings", "/settings", <SettingsIcon aria-hidden />, t("nav.settings"), ["preferences", "config", "configuracoes"]],
+          [
+            "settings",
+            "/settings",
+            <SettingsIcon aria-hidden />,
+            t("nav.settings"),
+            ["preferences", "config", "configuracoes"],
+          ],
           ["home", "/", <LayoutGrid aria-hidden />, t("nav.dashboard"), ["desktop", "home", "os"]],
         ] as Array<[string, string, ReactNode, string, string[]]>
       ).map(([id, to, icon, label, keywords]) => ({
@@ -211,7 +266,14 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
 
   /* ---------- actions ---------- */
   const actions = useMemo<Row[]>(() => {
-    const act = (id: string, label: TKey, icon: ReactNode, keywords: string[], primary: Row["primary"], extra: Partial<Row> = {}): Row => ({
+    const act = (
+      id: string,
+      label: TKey,
+      icon: ReactNode,
+      keywords: string[],
+      primary: Row["primary"],
+      extra: Partial<Row> = {},
+    ): Row => ({
       id: `action:${id}`,
       section: "actions",
       label: t(label),
@@ -222,64 +284,131 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
       ...extra,
     });
     return [
-      act("reindex", "shell.action.reindex", <RefreshCw aria-hidden />, ["index", "rebuild", "memory", "reindexar"], () =>
-        void runAction("action:reindex", t("shell.action.reindex"), async () => {
-          await api.post("/api/memory/index");
-          toast(t("shell.action.reindexDone"), "ok");
-          await qc.invalidateQueries({ queryKey: ["memory"] });
-        }),
+      act(
+        "reindex",
+        "shell.action.reindex",
+        <RefreshCw aria-hidden />,
+        ["index", "rebuild", "memory", "reindexar"],
+        () =>
+          void runAction("action:reindex", t("shell.action.reindex"), async () => {
+            await api.post("/api/memory/index");
+            toast(t("shell.action.reindexDone"), "ok");
+            await qc.invalidateQueries({ queryKey: ["memory"] });
+          }),
       ),
-      act("backup", "shell.action.backup", <Archive aria-hidden />, ["backup", "export", "save"], () =>
-        void runAction("action:backup", t("shell.action.backup"), async () => {
-          const res = await api.post<BackupCreated>("/api/backups", {});
-          toast(t("shell.action.backupDone", { name: res.name }), "ok");
-          await qc.invalidateQueries({ queryKey: qk.backups });
-        }),
+      act(
+        "backup",
+        "shell.action.backup",
+        <Archive aria-hidden />,
+        ["backup", "export", "save"],
+        () =>
+          void runAction("action:backup", t("shell.action.backup"), async () => {
+            const res = await api.post<BackupCreated>("/api/backups", {});
+            toast(t("shell.action.backupDone", { name: res.name }), "ok");
+            await qc.invalidateQueries({ queryKey: qk.backups });
+          }),
       ),
-      act("doctor", "shell.action.doctor", <Stethoscope aria-hidden />, ["doctor", "health", "diagnostics", "check", "diagnostico"], () =>
-        void runAction("action:doctor", t("shell.action.doctor"), async () => {
-          const rep = await api.get<DoctorReport>("/api/doctor?audit=0");
-          const text = t("shell.action.doctorDone", { ok: rep.ok, warn: rep.warn, fail: rep.fail });
-          toast(text, rep.fail > 0 ? "danger" : "ok");
-          notify({ kind: "system", title: t("shell.action.doctor"), body: text, href: "/settings?tab=diagnostics", tone: rep.fail > 0 ? "danger" : "ok" });
-          qc.setQueryData(qk.doctor, rep);
-          go("/settings?tab=diagnostics");
-        }, false),
+      act(
+        "doctor",
+        "shell.action.doctor",
+        <Stethoscope aria-hidden />,
+        ["doctor", "health", "diagnostics", "check", "diagnostico"],
+        () =>
+          void runAction(
+            "action:doctor",
+            t("shell.action.doctor"),
+            async () => {
+              const rep = await api.get<DoctorReport>("/api/doctor?audit=0");
+              const text = t("shell.action.doctorDone", { ok: rep.ok, warn: rep.warn, fail: rep.fail });
+              toast(text, rep.fail > 0 ? "danger" : "ok");
+              notify({
+                kind: "system",
+                title: t("shell.action.doctor"),
+                body: text,
+                href: "/settings?tab=diagnostics",
+                tone: rep.fail > 0 ? "danger" : "ok",
+              });
+              qc.setQueryData(qk.doctor, rep);
+              go("/settings?tab=diagnostics");
+            },
+            false,
+          ),
       ),
-      act("new-skill", "shell.action.newSkill", <Plus aria-hidden />, ["skill", "create", "nova"], (el) => go("/skills?new=1", el)),
-      act("toggle-edit", "shell.action.toggleEdit", <Pencil aria-hidden />, ["edit", "layout", "widgets", "editar"], () => {
-        const fire = () => window.dispatchEvent(new Event(TOGGLE_EDIT_EVENT));
-        if (pathname === "/") {
-          fire();
+      act("new-skill", "shell.action.newSkill", <Plus aria-hidden />, ["skill", "create", "nova"], (el) =>
+        go("/skills?new=1", el),
+      ),
+      act(
+        "toggle-edit",
+        "shell.action.toggleEdit",
+        <Pencil aria-hidden />,
+        ["edit", "layout", "widgets", "editar"],
+        () => {
+          const fire = () => window.dispatchEvent(new Event(TOGGLE_EDIT_EVENT));
+          if (pathname === "/") {
+            fire();
+            close();
+          } else {
+            go("/");
+            requestAnimationFrame(() => requestAnimationFrame(fire));
+          }
+        },
+      ),
+      act(
+        "toggle-theme",
+        "shell.action.toggleTheme",
+        <SunMoon aria-hidden />,
+        ["dark", "light", "theme", "tema", "escuro", "claro"],
+        () =>
+          void runAction("action:toggle-theme", t("shell.action.toggleTheme"), async () => {
+            const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+            await api.put("/api/settings", { theme: next });
+            onMetaChanged();
+            toast(t("shell.palette.themeToggled", { theme: next }), "ok");
+          }),
+      ),
+      act(
+        "presets",
+        "shell.action.presets",
+        <Palette aria-hidden />,
+        ["preset", "accent", "colour", "color", "cor", "forest", "ocean", "mono"],
+        () => setPage({ kind: "theme" }),
+        {
+          nested: () => setPage({ kind: "theme" }),
+          right: <ChevronRight aria-hidden className="pr-chevron" />,
+        },
+      ),
+      act("brain", "shell.action.brain", <BrainCircuit aria-hidden />, ["brain", "memory", "graph"], (el) =>
+        go("/brain", el),
+      ),
+      act(
+        "shortcuts",
+        "shell.action.shortcuts",
+        <Keyboard aria-hidden />,
+        ["keys", "help", "atalhos", "?"],
+        () => {
           close();
-        } else {
-          go("/");
-          requestAnimationFrame(() => requestAnimationFrame(fire));
-        }
-      }),
-      act("toggle-theme", "shell.action.toggleTheme", <SunMoon aria-hidden />, ["dark", "light", "theme", "tema", "escuro", "claro"], () =>
-        void runAction("action:toggle-theme", t("shell.action.toggleTheme"), async () => {
-          const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
-          await api.put("/api/settings", { theme: next });
-          onMetaChanged();
-          toast(t("shell.palette.themeToggled", { theme: next }), "ok");
-        }),
+          onShortcuts();
+        },
       ),
-      act("presets", "shell.action.presets", <Palette aria-hidden />, ["preset", "accent", "colour", "color", "cor", "forest", "ocean", "mono"], () => setPage({ kind: "theme" }), {
-        nested: () => setPage({ kind: "theme" }),
-        right: <ChevronRight aria-hidden className="pr-chevron" />,
-      }),
-      act("brain", "shell.action.brain", <BrainCircuit aria-hidden />, ["brain", "memory", "graph"], (el) => go("/brain", el)),
-      act("shortcuts", "shell.action.shortcuts", <Keyboard aria-hidden />, ["keys", "help", "atalhos", "?"], () => {
-        close();
-        onShortcuts();
-      }),
-      act("sound", "shell.action.sound", sound ? <Volume2 aria-hidden /> : <VolumeX aria-hidden />, ["sound", "audio", "notification", "som"], () => {
-        const next = !sound;
-        setNotifySound(next);
-        setSound(next);
-        toast(t(next ? "shell.action.soundOn" : "shell.action.soundOff"), "ok");
-      }, { right: <Badge kind="meta" tone={sound ? "ok" : "dim"}>{sound ? "on" : "off"}</Badge> }),
+      act(
+        "sound",
+        "shell.action.sound",
+        sound ? <Volume2 aria-hidden /> : <VolumeX aria-hidden />,
+        ["sound", "audio", "notification", "som"],
+        () => {
+          const next = !sound;
+          setNotifySound(next);
+          setSound(next);
+          toast(t(next ? "shell.action.soundOn" : "shell.action.soundOff"), "ok");
+        },
+        {
+          right: (
+            <Badge kind="meta" tone={sound ? "ok" : "dim"}>
+              {sound ? "on" : "off"}
+            </Badge>
+          ),
+        },
+      ),
     ];
   }, [t, busy, runAction, toast, qc, notify, go, pathname, close, onMetaChanged, onShortcuts, sound]);
 
@@ -297,7 +426,9 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
           keywords: [s.slug, s.description, ...s.triggers],
           right: (
             <span className="pr-badges">
-              {s.inputs.some((i) => i.required) && <Badge kind="meta">{t("shell.palette.needsInputs")}</Badge>}
+              {s.inputs.some((i) => i.required) && (
+                <Badge kind="meta">{t("shell.palette.needsInputs")}</Badge>
+              )}
               <Badge kind="meta" tone={s.mode === "write" ? "warn" : "ok"}>
                 {t(s.mode === "write" ? "skills.mode.write" : "skills.mode.read_only")}
               </Badge>
@@ -325,7 +456,9 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
     setFilesLoading(true);
     const timer = window.setTimeout(() => {
       api
-        .get<MemorySearchHit[]>(`/api/memory/search?q=${encodeURIComponent(needle)}&limit=8`, { signal: controller.signal })
+        .get<MemorySearchHit[]>(`/api/memory/search?q=${encodeURIComponent(needle)}&limit=8`, {
+          signal: controller.signal,
+        })
         .then((hits) => {
           setFiles(Array.isArray(hits) ? hits : []);
           setFilesLoading(false);
@@ -381,17 +514,27 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
     if (def && runSkill.providers.includes(def) && enabled.has(def)) return def;
     return runSkill.providers.find((p) => enabled.has(p)) ?? runSkill.providers[0] ?? null;
   }, [runSkill, providers.data]);
-  const models = useApiQuery<ModelishOption[]>([...qk.providers, runProvider ?? "none", "models"], `/api/providers/${runProvider ?? "claude"}/models`, {
-    enabled: runProvider !== null,
-    staleTime: 60_000,
-  });
+  const models = useApiQuery<ModelishOption[]>(
+    [...qk.providers, runProvider ?? "none", "models"],
+    `/api/providers/${runProvider ?? "claude"}/models`,
+    {
+      enabled: runProvider !== null,
+      staleTime: 60_000,
+    },
+  );
   useEffect(() => {
     if (!runSkill) return;
     setModel(runSkill.recommendedModel);
-    setEffort((EFFORTS as readonly string[]).includes(runSkill.recommendedEffort) ? (runSkill.recommendedEffort as Effort) : "default");
+    setEffort(
+      (EFFORTS as readonly string[]).includes(runSkill.recommendedEffort)
+        ? (runSkill.recommendedEffort as Effort)
+        : "default",
+    );
   }, [runSkill]);
 
-  const originalPreset = useRef<PresetId>((document.documentElement.dataset.preset as PresetId | undefined) ?? "hud-orange");
+  const originalPreset = useRef<PresetId>(
+    (document.documentElement.dataset.preset as PresetId | undefined) ?? "hud-orange",
+  );
   const committedPreset = useRef(false);
   const revertPreset = useCallback(() => {
     if (committedPreset.current) return;
@@ -414,7 +557,13 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
           sub: `${runProvider ?? "?"} · ${shortModel(model)} · ${t(`effort.${effort}` as TKey)}`,
           icon: <Play aria-hidden />,
           busy: busy === "page:run-now",
-          primary: () => void runAction("page:run-now", t("shell.palette.runNow"), () => launchSkill(skill, { provider: runProvider ?? undefined, model, effort }), false),
+          primary: () =>
+            void runAction(
+              "page:run-now",
+              t("shell.palette.runNow"),
+              () => launchSkill(skill, { provider: runProvider ?? undefined, model, effort }),
+              false,
+            ),
         },
         {
           id: "page:open-skill",
@@ -440,7 +589,12 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
             ))}
           </span>
         ),
-        right: originalPreset.current === p.id ? <Badge kind="meta" tone="accent">{t("shell.palette.current")}</Badge> : undefined,
+        right:
+          originalPreset.current === p.id ? (
+            <Badge kind="meta" tone="accent">
+              {t("shell.palette.current")}
+            </Badge>
+          ) : undefined,
         primary: () =>
           void runAction(`theme:${p.id}`, p.label, async () => {
             committedPreset.current = true;
@@ -456,7 +610,13 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
 
   /* ---------- flat list ---------- */
   const sections = useMemo<Array<{ section: Section; rows: Row[] }>>(() => {
-    if (page.kind !== "root") return [{ section: page.kind === "theme" ? "themes" : "page", rows: rankItems(pageRows, needle).map((r) => r.item) }];
+    if (page.kind !== "root")
+      return [
+        {
+          section: page.kind === "theme" ? "themes" : "page",
+          rows: rankItems(pageRows, needle).map((r) => r.item),
+        },
+      ];
     if (!needle) {
       const base: Array<{ section: Section; rows: Row[] }> = [
         { section: "apps", rows: apps },
@@ -500,7 +660,9 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       if (rows.length === 0) return;
       e.preventDefault();
-      setSelected((i) => (e.key === "ArrowDown" ? (i + 1) % rows.length : (i - 1 + rows.length) % rows.length));
+      setSelected((i) =>
+        e.key === "ArrowDown" ? (i + 1) % rows.length : (i - 1 + rows.length) % rows.length,
+      );
     } else if (e.key === "Enter") {
       if (!current) return;
       e.preventDefault();
@@ -520,15 +682,31 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
     }
   };
 
-  const placeholder = page.kind === "run" ? t("shell.palette.runPage", { slug: page.skill.slug }) : page.kind === "theme" ? t("shell.palette.themes") : t("shell.palette.placeholder");
+  const placeholder =
+    page.kind === "run"
+      ? t("shell.palette.runPage", { slug: page.skill.slug })
+      : page.kind === "theme"
+        ? t("shell.palette.themes")
+        : t("shell.palette.placeholder");
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
   const mod = isMac ? "⌘" : "Ctrl";
   let flatIndex = -1;
 
   return (
     <DialogPortal>
-      <div className={`launcher${closing ? " closing" : ""}`} role="presentation" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-        <div className="launcher-panel palette" role="dialog" aria-modal="true" aria-label={t("shell.palette.title")} ref={ref} tabIndex={-1}>
+      <div
+        className={`launcher${closing ? " closing" : ""}`}
+        role="presentation"
+        onMouseDown={(e) => e.target === e.currentTarget && close()}
+      >
+        <div
+          className="launcher-panel palette"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("shell.palette.title")}
+          ref={ref}
+          tabIndex={-1}
+        >
           {page.kind === "root" ? (
             <div className="palette-brand">
               <span className="os-brand">
@@ -544,10 +722,19 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
             </div>
           ) : (
             <div className="palette-crumbs">
-              <button type="button" className="os-chip" onClick={back} aria-label={t("shell.palette.hintBack")}>
+              <button
+                type="button"
+                className="os-chip"
+                onClick={back}
+                aria-label={t("shell.palette.hintBack")}
+              >
                 <ArrowLeft aria-hidden /> {t("shell.palette.hintBack")}
               </button>
-              <span className="palette-crumb">{page.kind === "run" ? t("shell.palette.runPage", { slug: page.skill.slug }) : t("shell.palette.themes")}</span>
+              <span className="palette-crumb">
+                {page.kind === "run"
+                  ? t("shell.palette.runPage", { slug: page.skill.slug })
+                  : t("shell.palette.themes")}
+              </span>
             </div>
           )}
           <div className="launcher-search">
@@ -578,7 +765,13 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
                 <label className="label" htmlFor="palette-model">
                   {t("shell.palette.model")}
                 </label>
-                <select id="palette-model" className="input sm" value={model ?? ""} onChange={(e) => setModel(e.target.value || null)} disabled={models.isPending && runProvider !== null}>
+                <select
+                  id="palette-model"
+                  className="input sm"
+                  value={model ?? ""}
+                  onChange={(e) => setModel(e.target.value || null)}
+                  disabled={models.isPending && runProvider !== null}
+                >
                   <option value="">{t("shell.palette.auto")}</option>
                   {(models.data ?? []).map((m) => (
                     <option key={m.id} value={m.id}>
@@ -602,7 +795,9 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
 
           <div className="palette-list" id={listId} role="listbox" aria-label={t("shell.palette.title")}>
             {rows.length === 0 && !filesLoading && (
-              <p className="palette-empty">{needle ? t("shell.palette.noResults", { query: needle }) : t("common.empty")}</p>
+              <p className="palette-empty">
+                {needle ? t("shell.palette.noResults", { query: needle }) : t("common.empty")}
+              </p>
             )}
             {sections.map(({ section, rows: sectionRows }) => {
               const tiles = section === "apps" && !needle && page.kind === "root";
@@ -654,7 +849,9 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
                             onMouseEnter={() => setSelected(idx)}
                             onClick={(e) => row.primary(e.currentTarget)}
                           >
-                            <span className="lr-icon">{row.busy ? <span className="spinner sm" /> : row.icon}</span>
+                            <span className="lr-icon">
+                              {row.busy ? <span className="spinner sm" /> : row.icon}
+                            </span>
                             <span className="pr-text">
                               <div className="lr-name">{row.label}</div>
                               {row.sub && <div className="lr-sub">{row.sub}</div>}
@@ -663,7 +860,9 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
                           </button>
                         );
                       })}
-                      {section === "files" && filesLoading && sectionRows.length === 0 && <p className="palette-empty">{t("shell.palette.searching")}</p>}
+                      {section === "files" && filesLoading && sectionRows.length === 0 && (
+                        <p className="palette-empty">{t("shell.palette.searching")}</p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -689,7 +888,16 @@ export function CommandPalette({ meta, closing = false, onClose, onMetaChanged, 
             </span>{" "}
             {t("shell.palette.runSkill")} · <span className="kbd">Esc</span> {t("shell.palette.hintClose")}
             {page.kind === "root" && (
-              <Button variant="ghost" size="sm" className="palette-help" icon={<Keyboard aria-hidden />} onClick={() => { close(); onShortcuts(); }}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="palette-help"
+                icon={<Keyboard aria-hidden />}
+                onClick={() => {
+                  close();
+                  onShortcuts();
+                }}
+              >
                 ?
               </Button>
             )}

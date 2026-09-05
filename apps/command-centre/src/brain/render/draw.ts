@@ -142,6 +142,16 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
   // ---- file particles (additive) ----
   let labelBudget = 240;
   const showLabels = w.showNames || k > 1.9;
+  // Greedy label collision (Onda 4): a label that would overlap one already
+  // placed this frame is skipped; selected and matched files always win.
+  const placed: number[] = [];
+  const labelH = 12 / k;
+  const overlaps = (x1: number, y1: number, x2: number, y2: number): boolean => {
+    for (let i = 0; i < placed.length; i += 4) {
+      if (x1 < placed[i + 2]! && x2 > placed[i]! && y1 < placed[i + 3]! && y2 > placed[i + 1]!) return true;
+    }
+    return false;
+  };
   for (const n of w.files) {
     if (n.visAlpha <= 0.01) continue;
     const color = n.tint ?? w.colorOf.get(n.group) ?? tokens.particle;
@@ -176,13 +186,22 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
         n.hoverAlpha > 0.5 &&
         labelBudget > 0);
     if (wantLabel && labelBudget > 0) {
-      labelBudget--;
-      ctx.globalCompositeOperation = "source-over";
-      ctx.globalAlpha = (selected ? 1 : 0.7) * n.visAlpha;
-      ctx.fillStyle = textDim;
+      const text = n.name.length > 26 ? n.name.slice(0, 24) + "…" : n.name;
       ctx.font = `${10 / k}px ${mono}`;
-      ctx.fillText(n.name.length > 26 ? n.name.slice(0, 24) + "…" : n.name, n.x + size + 5 / k, n.y + 3 / k);
-      ctx.globalCompositeOperation = tokens.blend;
+      const x1 = n.x + size + 5 / k;
+      const y1 = n.y - 7 / k;
+      const x2 = x1 + ctx.measureText(text).width;
+      const y2 = y1 + labelH;
+      const priority = selected || (w.matched?.has(n.id) ?? false);
+      if (priority || !overlaps(x1, y1, x2, y2)) {
+        labelBudget--;
+        placed.push(x1, y1, x2, y2);
+        ctx.globalCompositeOperation = "source-over";
+        ctx.globalAlpha = (selected ? 1 : 0.7) * n.visAlpha;
+        ctx.fillStyle = textDim;
+        ctx.fillText(text, x1, n.y + 3 / k);
+        ctx.globalCompositeOperation = tokens.blend;
+      }
     }
   }
   ctx.globalAlpha = 1;
@@ -383,7 +402,8 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
   ctx.restore();
 }
 
-const KIND_ORDER: EdgeKind[] = ["same-area", "other", "same-dir", "markdown-link"];
+const KIND_ORDER: EdgeKind[] = ["same-area", "other", "same-dir", "related", "markdown-link"];
+const RELATED_COLOR = "#4ade80";
 
 function drawEdges(
   ctx: CanvasRenderingContext2D,
@@ -412,6 +432,7 @@ function drawEdges(
   for (const kind of KIND_ORDER) {
     if (!drawn.has(kind)) continue;
     if (kind === "same-dir") ctx.setLineDash([1.5 / k, 3.5 / k]);
+    else if (kind === "related") ctx.setLineDash([5 / k, 4 / k]);
     for (let i = 0; i < w.edges.length; i++) {
       const e = w.edges[i]!;
       if (e.kind !== kind) continue;
@@ -445,6 +466,17 @@ function drawEdges(
           ctx.globalAlpha = 0.9 * vis;
           ctx.drawImage(sprites.glow(accent), px - ps * 2, py - ps * 2, ps * 4, ps * 4);
         }
+      } else if (kind === "related") {
+        // Similar content: a soft green dashed arc so it reads apart from links.
+        const mx = ((a.x + b.x) / 2) * 1.08;
+        const my = ((a.y + b.y) / 2) * 1.08;
+        ctx.strokeStyle = RELATED_COLOR;
+        ctx.globalAlpha = (isSel ? 0.85 : 0.3) * vis;
+        ctx.lineWidth = (isSel ? 1.4 : 0.9) / k;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.quadraticCurveTo(mx, my, b.x, b.y);
+        ctx.stroke();
       } else if (kind === "same-dir") {
         ctx.strokeStyle = hubByKey.get(a.group)?.color ?? tokens.faint;
         ctx.globalAlpha = (isSel ? 0.8 : 0.28) * vis;

@@ -26,7 +26,8 @@ export function FileList({
     const needle = filter.trim().toLowerCase();
     const map = new Map<string, GraphNode[]>();
     for (const n of graph.nodes) {
-      if (needle && !n.name.toLowerCase().includes(needle) && !n.path.toLowerCase().includes(needle)) continue;
+      if (needle && !n.name.toLowerCase().includes(needle) && !n.path.toLowerCase().includes(needle))
+        continue;
       const g = groupOf(n);
       const list = map.get(g) ?? [];
       list.push(n);
@@ -34,7 +35,10 @@ export function FileList({
     }
     return [...map.entries()]
       .sort((a, b) => b[1].length - a[1].length)
-      .map(([key, nodes]) => ({ key, nodes: nodes.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 400) }));
+      .map(([key, nodes]) => ({
+        key,
+        nodes: nodes.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 400),
+      }));
   }, [graph, groupOf, filter]);
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -51,12 +55,25 @@ export function FileList({
   return (
     <aside className="brain2-list" aria-label={t("brain.listView")}>
       <div className="brain2-list-head">
-        <input className="input sm" placeholder={t("common.search")} value={filter} onChange={(e) => setFilter(e.target.value)} aria-label={t("common.search")} />
+        <input
+          className="input sm"
+          placeholder={t("common.search")}
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          aria-label={t("common.search")}
+        />
         <button className="btn ghost sm icon-only" onClick={onClose} aria-label={t("common.close")}>
           <X aria-hidden />
         </button>
       </div>
-      <div className="brain2-list-body" role="listbox" tabIndex={0} onKeyDown={onKey} aria-label={t("brain.listView")} aria-activedescendant={selectedId != null ? `bl-${selectedId}` : undefined}>
+      <div
+        className="brain2-list-body"
+        role="listbox"
+        tabIndex={0}
+        onKeyDown={onKey}
+        aria-label={t("brain.listView")}
+        aria-activedescendant={selectedId != null ? `bl-${selectedId}` : undefined}
+      >
         {groups.map((g) => (
           <div key={g.key} role="group" aria-label={g.key}>
             <div className="hud-label brain2-list-group">

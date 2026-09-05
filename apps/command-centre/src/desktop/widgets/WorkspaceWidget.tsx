@@ -15,7 +15,9 @@ interface MemoryStatus {
 export default function WorkspaceWidget({ config }: WidgetProps) {
   const t = useT();
   const locale = useLocale();
-  const status = useApiQuery<MemoryStatus>(qk.memoryStatus, "/api/memory/status", { refetchInterval: 60_000 });
+  const status = useApiQuery<MemoryStatus>(qk.memoryStatus, "/api/memory/status", {
+    refetchInterval: 300_000,
+  });
   const total = status.data?.facets.total ?? 0;
   const shown = useTweenNumber(total, 400);
   const areas = status.data?.facets.areas ?? [];
@@ -30,7 +32,7 @@ export default function WorkspaceWidget({ config }: WidgetProps) {
           title={t("desktop.workspace.empty")}
           body={t("desktop.workspace.emptyBody")}
           action={
-            <Link to="/settings?tab=folders" className="btn sm primary">
+            <Link to="/settings?tab=memory" className="btn sm primary">
               {t("desktop.workspace.addFolder")}
             </Link>
           }
@@ -42,7 +44,13 @@ export default function WorkspaceWidget({ config }: WidgetProps) {
             <span className="label">{t("widget.filesIndexed")}</span>
           </div>
           {areas.slice(0, rows).map((a, i) => (
-            <AreaRow key={a.area} area={a.area} count={a.count} max={max} color={AREA_COLORS[i % AREA_COLORS.length]!} />
+            <AreaRow
+              key={a.area}
+              area={a.area}
+              count={a.count}
+              max={max}
+              color={AREA_COLORS[i % AREA_COLORS.length]!}
+            />
           ))}
         </>
       )}

@@ -10,7 +10,14 @@ import {
   type RunMode,
 } from "@mordomo/core";
 import type { AppContext } from "../context.js";
-import { gateWrite, grantedRoots, httpError, launchSkillRun, type SkillRunInput } from "./common.js";
+import {
+  gateWrite,
+  grantedRoots,
+  httpError,
+  launchSkillRun,
+  submitPromptRun,
+  type SkillRunInput,
+} from "./common.js";
 import { IdParam, SlugParams } from "./params.js";
 
 /** Previews stream at most this much (brand PDFs are a few MB; nothing in a skill should be bigger). */
@@ -96,11 +103,60 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
       reply.header("cache-control", "private, no-store");
       // Anything the panel cannot preview inline is offered as a download.
       if (hit.resource.kind === "other" || hit.resource.kind === "pdf") {
-        reply.header("content-disposition", `${hit.resource.kind === "pdf" ? "inline" : "attachment"}; filename="${hit.resource.name.replace(/["\\\r\n]/g, "_")}"`);
+        reply.header(
+          "content-disposition",
+          `${hit.resource.kind === "pdf" ? "inline" : "attachment"}; filename="${hit.resource.name.replace(/["\\\r\n]/g, "_")}"`,
+        );
       }
       return reply.send(fs.createReadStream(hit.absPath));
     },
   );
+
+  /** Agent notes (Onda 4): a NOTES.md beside SKILL.md, read on every run, appended from run pages. */
+  app.get("/api/skills/:slug/notes", async (req) => {
+    const { slug } = SlugParams.parse(req.params);
+    const out = ctx.skills.readNotes(slug);
+    if (!out) throw httpError(404, "Skill not found");
+    return out;
+  });
+
+  app.post("/api/skills/:slug/notes", async (req) => {
+    const { slug } = SlugParams.parse(req.params);
+    const body = z
+      .object({ text: z.string().trim().min(1).max(4000), runId: z.string().max(80).optional() })
+      .parse(req.body);
+    if (!ctx.skills.load(slug)) throw httpError(404, "Skill not found");
+    return ctx.skills.appendNote(slug, body.text, {
+      runId: body.runId,
+      source: "command centre",
+      max: ctx.settings().limits.skillNotesMax,
+    });
+  });
+
+  /**
+   * Promote notes into the skill: a write-mode run (parked for approval under
+   * review_before_write) that folds recurring lessons into SKILL.md and moves
+   * the applied entries to NOTES.archive.md.
+   */
+  app.post("/api/skills/:slug/notes/promote", async (req, reply) => {
+    const { slug } = SlugParams.parse(req.params);
+    const skill = ctx.skills.load(slug);
+    if (!skill) throw httpError(404, "Skill not found");
+    const notes = ctx.skills.readNotes(slug)!;
+    if (!notes.notes.trim() || !/^- /m.test(notes.notes)) throw httpError(400, "No notes to promote");
+    const prompt = [
+      `Maintain the MordomoOS skill "${skill.name}" in ${skill.dir}.`,
+      `Read ${notes.path} (lessons saved from runs) and ${skill.skillFile}.`,
+      "Fold the lessons that recur or clearly last into SKILL.md — the procedure, guardrails or success criteria — with minimal edits, keeping SKILL.md under 60 lines and its frontmatter intact.",
+      `Move every note you applied to ${ctx.skills.archiveFile(skill)} (append, keep the date, mark each one (promoted)); leave one-off notes in NOTES.md.`,
+      "Do not touch any other file. Finish with a short summary of what changed.",
+    ].join("\n");
+    const result = submitPromptRun(ctx, { prompt, mode: "write", cwd: skill.dir }, (err, runId) =>
+      req.log.error({ err, runId, msg: "notes promotion run failed to execute" }),
+    );
+    if (result.statusCode !== 200) reply.code(result.statusCode);
+    return result.body;
+  });
 
   app.post("/api/skills/:slug/toggle", async (req) => {
     const { slug } = SlugParams.parse(req.params);
@@ -128,7 +184,9 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
 
   /** Import a skill directory — only from inside the home or an enabled indexed folder. */
   app.post("/api/skills/import", async (req) => {
-    const { sourceDir, slug } = z.object({ sourceDir: z.string().min(1), slug: IdParam.optional() }).parse(req.body);
+    const { sourceDir, slug } = z
+      .object({ sourceDir: z.string().min(1), slug: IdParam.optional() })
+      .parse(req.body);
     const resolved = resolveInsideRoots(grantedRoots(ctx), sourceDir); // PathAccessError → 403
     let stat: fs.Stats;
     try {
@@ -137,11 +195,73 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
       throw httpError(400, "Source directory does not exist");
     }
     if (!stat.isDirectory()) throw httpError(400, "Source must be a directory");
-    if (!fs.existsSync(path.join(resolved, "SKILL.md"))) throw httpError(400, "No SKILL.md found in the source directory");
-    const finalSlug = (slug ?? path.basename(resolved)).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+    if (!fs.existsSync(path.join(resolved, "SKILL.md")))
+      throw httpError(400, "No SKILL.md found in the source directory");
+    const finalSlug = (slug ?? path.basename(resolved))
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-+|-+$/g, "");
     if (!finalSlug) throw httpError(400, "Cannot derive a slug from the source directory name");
-    if (ctx.skills.load(finalSlug)) throw httpError(409, `Skill "${finalSlug}" already exists in the catalog`);
+    if (ctx.skills.load(finalSlug))
+      throw httpError(409, `Skill "${finalSlug}" already exists in the catalog`);
     return ctx.skills.importFrom(resolved, finalSlug);
+  });
+
+  /** Marketplace (plan Onda 3 §6): every skill the configured registries offer. */
+  app.get("/api/skills/registry", async (req) => {
+    // `?refresh=1` bypasses the 10-minute index cache (the modal's Refresh button).
+    const q = z.object({ refresh: z.coerce.boolean().optional() }).parse(req.query ?? {});
+    const registries = ctx.settings().marketplace.registries;
+    const { entries, errors } = await ctx.skillRegistry.catalog(registries, { force: q.refresh === true });
+    const installed = new Set(ctx.skills.list().map((s) => s.slug));
+    return {
+      registries,
+      errors,
+      skills: entries.map((e) => ({
+        ...e,
+        files: Object.keys(e.files),
+        installed: installed.has(e.slug),
+        verified: e.verified,
+      })),
+    };
+  });
+
+  /**
+   * Install a registry skill: every file is downloaded and its SHA-256
+   * verified before the catalog is touched; an existing skill is only
+   * replaced with `force`, and then its folder is kept as a `.bak` first.
+   */
+  app.post("/api/skills/install", async (req) => {
+    const body = z
+      .object({ slug: IdParam, registry: z.string().url().optional(), force: z.boolean().default(false) })
+      .parse(req.body);
+    const registries = ctx.settings().marketplace.registries;
+    const wanted = body.registry ? registries.filter((r) => r === body.registry) : registries;
+    if (wanted.length === 0) throw httpError(400, "Registry is not configured");
+    const { entries } = await ctx.skillRegistry.catalog(wanted);
+    const entry = entries.find((e) => e.slug === body.slug);
+    if (!entry) throw httpError(404, "Skill not found in the registries");
+    const existing = ctx.skills.load(body.slug);
+    if (existing && !body.force)
+      throw httpError(409, `Skill "${body.slug}" already exists — pass force to replace it`);
+    // A digest mismatch or unreachable file surfaces as a 502 with the reason
+    // (the modal shows it); nothing has touched the catalog at that point.
+    let staged: string;
+    try {
+      staged = await ctx.skillRegistry.stage(entry);
+    } catch (err) {
+      throw httpError(400, `Verification failed — ${(err as Error).message}`, "verification_failed");
+    }
+    try {
+      if (existing) {
+        const dir = path.join(ctx.paths.skills, body.slug);
+        if (fs.existsSync(dir)) fs.renameSync(dir, `${dir}.bak-${Date.now()}`);
+      }
+      const skill = ctx.skills.importFrom(staged, body.slug);
+      return { installed: true, skill, version: entry.version, registry: entry.registry };
+    } finally {
+      fs.rmSync(staged, { recursive: true, force: true });
+    }
   });
 
   /**
@@ -158,7 +278,8 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
     const settings = ctx.settings();
     const provider = body.provider ?? settings.defaultProvider;
     if (!settings.providers[provider].enabled) throw httpError(400, `Provider ${provider} is not enabled`);
-    if (!skill.providers.includes(provider)) throw httpError(400, `Skill ${slug} does not support provider ${provider}`);
+    if (!skill.providers.includes(provider))
+      throw httpError(400, `Skill ${slug} does not support provider ${provider}`);
     for (const input of skill.inputs) {
       if (input.required && !body.inputs[input.name]?.trim()) {
         throw httpError(400, `Missing required input: ${input.label}`);
@@ -171,17 +292,30 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
       slug,
       inputs: body.inputs,
       provider,
-      model: body.model !== undefined ? body.model : (skill.recommendedModel ?? settings.providers[provider].defaultModel),
-      effort: body.effort ?? (skill.recommendedEffort !== "default" ? skill.recommendedEffort : settings.providers[provider].defaultEffort),
+      model:
+        body.model !== undefined
+          ? body.model
+          : (skill.recommendedModel ?? settings.providers[provider].defaultModel),
+      effort:
+        body.effort ??
+        (skill.recommendedEffort !== "default"
+          ? skill.recommendedEffort
+          : settings.providers[provider].defaultEffort),
       cwd,
       timeoutMs: body.timeoutMs ?? settings.limits.defaultTimeoutMs,
     };
-    const gate = gateWrite(ctx, mode, "skill", `Write-mode skill run: /${slug} with ${provider}`, { kind: "skill", input });
+    const gate = gateWrite(ctx, mode, "skill", `Write-mode skill run: /${slug} with ${provider}`, {
+      kind: "skill",
+      input,
+    });
     if (gate.pendingApproval) {
+      // 202 + the parked run row: the write is visible in Runs as `waiting_approval`.
       reply.code(202);
-      return { runId: null, status: "waiting_approval", pendingApproval: gate.pendingApproval };
+      return { runId: gate.runId, status: "waiting_approval", pendingApproval: gate.pendingApproval };
     }
-    const { runId } = launchSkillRun(ctx, input, (err, id) => req.log.error({ err, runId: id, msg: "skill run failed to execute" }));
+    const { runId } = launchSkillRun(ctx, input, (err, id) =>
+      req.log.error({ err, runId: id, msg: "skill run failed to execute" }),
+    );
     return { runId, status: "queued" };
   });
 }

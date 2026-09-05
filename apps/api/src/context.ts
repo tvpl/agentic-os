@@ -1,22 +1,30 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   ApprovalStore,
   ConnectorRegistry,
   MemoryIndexer,
+  NotificationStore,
   RoutineScheduler,
   RoutineStore,
   RunManager,
+  SentinelRunner,
   SettingsStore,
   SkillCatalog,
   SyncCompiler,
+  budgetDedupeKey,
   ensureDirs,
   events,
   installJournalHooks,
+  installNotificationRecorder,
+  installTelegramChannel,
+  localDay,
   openDb,
   resolvePaths,
   restoreBackup,
   type AgentAdapter,
+  type BudgetCrossedPayload,
   type Db,
   type HealthStatus,
   type MordomoPaths,
@@ -24,6 +32,15 @@ import {
   type ProviderId,
   type ProviderRegistry,
   type Settings,
+  DeviceStore,
+  SkillRegistry,
+  type SecurityProfile,
+  type PermissionBroker,
+  PushStore,
+  type TelegramPoller,
+  installPushChannel,
+  MetricsHistory,
+  type MetricsSample,
 } from "@mordomo/core";
 import { buildProviderRegistry } from "./providers.js";
 
@@ -131,6 +148,18 @@ export class AppContext {
   readonly connectors: ConnectorRegistry;
   readonly sync: SyncCompiler;
   readonly approvals: ApprovalStore;
+  /** Persisted inbox (Onda 2): approvals, failed runs, alerts, budget warnings. */
+  readonly notifications: NotificationStore;
+  /** Paired devices for remote access (Onda 3). */
+  readonly devices: DeviceStore;
+  /** Skill registries (Onda 3): cached indexes and verified staging. */
+  readonly skillRegistry: SkillRegistry;
+  /**
+   * Sentinels (Onda 2): the cheap observers plus the triage listener. Built
+   * here, started and stopped with the scheduler in `startServer`; its hourly
+   * pass runs inside the service's existing hourly sweep (`selfSchedule: false`).
+   */
+  readonly sentinels: SentinelRunner;
   /** Registered providers (manifests + factories); the single place the API learns which providers exist. */
   readonly providers: ProviderRegistry;
   readonly startedAt = Date.now();
@@ -158,6 +187,7 @@ export class AppContext {
       this.paths,
       () => this.settings(),
       (id) => this.adapters[id],
+      { permissionBroker: (run) => this.permissionBrokerFor(run) },
     );
     this.indexer = new MemoryIndexer(this.db, () => this.settings());
     this.routines = new RoutineStore(this.paths);
@@ -171,15 +201,61 @@ export class AppContext {
       () => this.skills.list(),
       () => this.providers.manifests(),
     );
-    this.approvals = new ApprovalStore(this.db);
+    this.approvals = new ApprovalStore(this.db, () => this.settings().limits.approvalTtlDays * 86_400_000);
+    this.devices = new DeviceStore(this.db);
+    this.skillRegistry = new SkillRegistry();
     // The daily journal listens for finished runs. Installing it here (and not
     // only when the HTTP routes are registered) means CLI paths — `mordomo
     // index`, `mordomo run` — also index `memory/journal/**` and log their run
     // line. The install is idempotent, so the route-level one is a no-op.
-    this.disposeJournalHooks = installJournalHooks(events, this.paths, { indexer: this.indexer });
+    this.disposeJournalHooks = installJournalHooks(events, this.paths, {
+      indexer: this.indexer,
+      runs: { get: (id) => this.runs.get(id), lastReply: (id) => this.runs.lastAssistantText(id) },
+    });
+    // The inbox listens on the same bus: approvals, failed runs, heartbeat
+    // alerts and budget thresholds become rows that survive a closed tab.
+    this.notifications = new NotificationStore(this.db);
+    this.disposeNotificationRecorder = installNotificationRecorder(events, this.notifications, {
+      runs: this.runs,
+      routines: this.routines,
+    });
+    // Alerts leave the tab: rows at or above `channels.telegram.minTone` are
+    // posted to Telegram. The bot token is read from the environment at send
+    // time; failures are logged at most once an hour and never thrown.
+    this.disposeTelegramChannel = installTelegramChannel(events, { getSettings: () => this.settings() });
+    // Web Push to installed PWAs: same rows, encrypted to each subscription.
+    this.push = new PushStore(this.db, this.paths.config);
+    this.metricsHistory = new MetricsHistory(this.db);
+    this.disposePushChannel = installPushChannel(events, {
+      getSettings: () => this.settings(),
+      store: this.push,
+    });
+    // The observers themselves. Nothing is watched or polled until `start()`.
+    this.sentinels = new SentinelRunner({
+      db: this.db,
+      paths: this.paths,
+      getSettings: () => this.settings(),
+      runs: this.runs,
+      notifications: this.notifications,
+      scheduler: this.scheduler,
+      connectors: this.connectors,
+      skills: this.skills,
+      indexer: this.indexer,
+      bus: events,
+      selfSchedule: false,
+    });
   }
 
   private readonly disposeJournalHooks: () => void;
+  private readonly disposeNotificationRecorder: () => void;
+  private readonly disposeTelegramChannel: () => void;
+  private readonly disposePushChannel: () => void;
+  /** Web Push subscriptions and the VAPID pair. */
+  readonly push: PushStore;
+  /** Hourly metrics snapshots (Settings › Trends). */
+  readonly metricsHistory: MetricsHistory;
+  /** Telegram inbound poller; created and started by the server (needs the approval actions). */
+  telegramPoller: TelegramPoller | null = null;
 
   /** Live adapters — rebuilt by `reloadAdapters()` whenever settings change. */
   get adapters(): Record<ProviderId, AgentAdapter> {
@@ -194,6 +270,32 @@ export class AppContext {
 
   settings(): Settings {
     return this.settingsStore.load();
+  }
+
+  /**
+   * The permission MCP server for a write run: `mordomo mcp permission`,
+   * spawned by the provider CLI with the local URL, the local token and the
+   * run id in its environment. Profiles that answer prompts themselves
+   * (approved_automation) and read-only runs get none.
+   */
+  permissionBrokerFor(run: {
+    id: string;
+    permissionProfile: SecurityProfile | null;
+  }): PermissionBroker | null {
+    const settings = this.settings();
+    const profile = run.permissionProfile ?? settings.securityProfile;
+    if (profile !== "review_before_write" && profile !== "controlled_write") return null;
+    return {
+      command: process.execPath,
+      args: [fileURLToPath(new URL("./cli.js", import.meta.url)), "mcp", "permission"],
+      env: {
+        MORDOMO_URL: `http://127.0.0.1:${settings.port}`,
+        MORDOMO_TOKEN: this.token(),
+        MORDOMO_RUN_ID: run.id,
+        MORDOMO_APPROVAL_TIMEOUT_MS: String(settings.limits.toolApprovalTimeoutMs ?? 600_000),
+        ...(this.paths.home ? { MORDOMO_HOME: this.paths.home } : {}),
+      },
+    };
   }
 
   token(): string {
@@ -235,21 +337,90 @@ export class AppContext {
   /** Runs that are executing or waiting for a slot (a restore must not run under them). */
   activeRunCount(): { running: number; queued: number } {
     return {
-      running: this.runs.list({ status: "running", limit: 200 }).length,
-      queued: this.runs.list({ status: "queued", limit: 200 }).length,
+      running: this.runs.count({ status: "running" }),
+      queued: this.runs.count({ status: "queued" }),
     };
   }
 
   /** Whether the cron scheduler is started. */
-  schedulerRunning(): boolean | null {
-    // TODO(B2): replace with `scheduler.isRunning()` once core exposes it.
-    const s = this.scheduler as unknown as { isRunning?: () => boolean; running?: boolean };
-    if (typeof s.isRunning === "function") return s.isRunning();
-    return typeof s.running === "boolean" ? s.running : null;
+  schedulerRunning(): boolean {
+    return this.scheduler.isRunning();
+  }
+
+  /**
+   * Sweep approvals past their TTL and cancel the runs they were gating.
+   * Called on boot and hourly by the service. Returns how many expired.
+   */
+  expireStaleApprovals(): number {
+    const expired = this.approvals.expireStale();
+    for (const approval of expired) {
+      const runId = approval.payload.runId;
+      if (typeof runId !== "string") continue;
+      void this.runs.cancel(runId, `Approval expired after ${this.settings().limits.approvalTtlDays} days`);
+    }
+    if (expired.length > 0) events.emit("approval.expired", { count: expired.length });
+    return expired.length;
+  }
+
+  /**
+   * Warn once a day when today's spend crosses 80 % or 100 % of
+   * `settings.limits.dailyBudgetUsd` (0 = no budget). Called at boot and
+   * hourly by the service; the `budget.crossed` event becomes an inbox row
+   * through the recorder. Returns the level announced, or null.
+   */
+  checkDailyBudget(now = Date.now()): 80 | 100 | null {
+    const budgetUsd = this.settings().limits.dailyBudgetUsd;
+    if (!(budgetUsd > 0)) return null;
+    const spentUsd = this.runs.costMetrics(now).todayUsd;
+    const level = spentUsd >= budgetUsd ? 100 : spentUsd >= budgetUsd * 0.8 ? 80 : null;
+    if (level === null) return null;
+    const day = localDay(now);
+    // Once per day per level, even across restarts: the row is the ledger.
+    if (this.notifications.hasDedupeKey(budgetDedupeKey(day, level))) return null;
+    const payload: BudgetCrossedPayload = { level, day, spentUsd, budgetUsd };
+    events.emit("budget.crossed", payload);
+    return level;
+  }
+
+  /** One hourly snapshot of the live numbers into `metrics_samples` (the sweep calls this). */
+  sampleMetrics(now = Date.now()): MetricsSample {
+    const m = this.runs.metrics();
+    const dayAgo = now - 86_400_000;
+    const last24 = this.db
+      .prepare(
+        "SELECT COUNT(*) c, SUM(CASE WHEN status IN ('failed','timed_out') THEN 1 ELSE 0 END) f FROM runs WHERE created_at >= ?",
+      )
+      .get(dayAgo) as { c: number; f: number | null };
+    const wait = this.db
+      .prepare(
+        "SELECT AVG(resolved_at - created_at) w FROM approvals WHERE resolved_at IS NOT NULL AND resolved_at >= ?",
+      )
+      .get(dayAgo) as { w: number | null };
+    return this.metricsHistory.sample(
+      {
+        runs: {
+          total: m.total,
+          last24h: last24.c,
+          failed24h: last24.f ?? 0,
+          costTodayUsd: m.cost.todayUsd,
+          tokensToday: m.cost.tokensToday,
+          spendWeekUsd: m.cost.weekUsd,
+        },
+        inboxUnread: this.notifications.unreadCount(),
+        approvalsPending: this.approvals.list("pending").length,
+        approvalWaitAvgMs: wait.w == null ? null : Math.round(wait.w),
+      },
+      now,
+    );
   }
 
   close(): void {
     this.disposeJournalHooks();
+    this.disposeNotificationRecorder();
+    this.disposeTelegramChannel();
+    this.disposePushChannel();
+    this.telegramPoller?.stop();
+    this.sentinels.stop();
     this.scheduler.stop();
     if (this.db.open) this.db.close();
   }

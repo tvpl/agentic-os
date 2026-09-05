@@ -394,6 +394,25 @@ export class RoutineScheduler {
         ].join("\n\n");
     }
 
+    // Budgets (follow-up 7): the routine's own daily cap and the skill's. A
+    // fire past either is recorded as skipped and alerted once a day; the
+    // remaining amount rides on the run as its cap.
+    const caps: number[] = [];
+    const budgets: Array<{ label: string; budgetUsd: number; spent: number }> = [];
+    if (routine.budgetUsd > 0) budgets.push({ label: `routine "${routine.name}"`, budgetUsd: routine.budgetUsd, spent: this.runs.spentTodayUsd({ routineId: routine.id }) });
+    const skillBudget = skillSlug ? (this.skills.load(skillSlug)?.budgetUsd ?? 0) : 0;
+    if (skillSlug && skillBudget > 0) budgets.push({ label: `skill /${skillSlug}`, budgetUsd: skillBudget, spent: this.runs.spentTodayUsd({ skillSlug }) });
+    for (const b of budgets) {
+      if (b.spent >= b.budgetUsd) {
+        const note = `Daily budget of US$ ${b.budgetUsd.toFixed(2)} for ${b.label} exhausted (spent US$ ${b.spent.toFixed(2)}); skipped.`;
+        if (!opts.historyAlreadyRecorded) this.recordHistory(routine.id, null, scheduledFor, "skipped", note);
+        if (!this.alertedForBudgetToday(routine.id)) events.emit("routine.alert", { routineId: routine.id, runId: null, summary: note });
+        throw Object.assign(new Error(note), { statusCode: 409, code: "budget_exhausted" });
+      }
+      caps.push(b.budgetUsd - b.spent);
+    }
+    const maxCostUsd = caps.length > 0 ? Math.min(...caps) : null;
+
     const cwd = routine.context === "isolated" ? this.isolatedCwd(routine) : (routine.workingDir ?? this.paths.home);
     const createRun = (attempt: number, parentRunId: string | null) =>
       this.runs.create({
@@ -410,6 +429,7 @@ export class RoutineScheduler {
         routineId: routine.id,
         parentRunId,
         attempts: attempt,
+        maxCostUsd,
       });
 
     const first = createRun(1, null);
@@ -570,7 +590,22 @@ export class RoutineScheduler {
       .run(routineId, runId, scheduledFor, Date.now(), status, note);
   }
 
+  /** One budget alert per routine per day: the second skip of the day stays in the history only. */
+  private alertedForBudgetToday(routineId: string): boolean {
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    const row = this.db
+      .prepare("SELECT COUNT(*) c FROM routine_history WHERE routine_id = ? AND fired_at >= ? AND status = 'skipped' AND note LIKE 'Daily budget%'")
+      .get(routineId, midnight.getTime()) as { c: number };
+    return row.c > 1; // the row for this skip was just written
+  }
+
   /** recordHistory that never throws (used from error paths, possibly after the DB closed). */
+  /** A budget skip is already in the history as "skipped"; it must not also show as failed_to_fire. */
+  private isBudgetSkip(note: string | null): boolean {
+    return typeof note === "string" && note.startsWith("Daily budget of");
+  }
+
   private safeHistory(
     routineId: string,
     runId: string | null,
@@ -578,6 +613,7 @@ export class RoutineScheduler {
     status: string,
     note: string | null,
   ): void {
+    if (status === "failed_to_fire" && this.isBudgetSkip(note)) return; // fire() already recorded the skip
     try {
       this.recordHistory(routineId, runId, scheduledFor, status, note);
     } catch (err) {

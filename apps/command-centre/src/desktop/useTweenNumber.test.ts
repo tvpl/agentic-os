@@ -28,7 +28,11 @@ describe("useTweenNumber", () => {
       return frames.length;
     });
     vi.stubGlobal("cancelAnimationFrame", () => undefined);
-    vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => undefined, removeEventListener: () => undefined }));
+    vi.stubGlobal("matchMedia", () => ({
+      matches: false,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -58,7 +62,11 @@ describe("useTweenNumber", () => {
   });
 
   it("jumps straight to the target under reduced motion", () => {
-    vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener: () => undefined, removeEventListener: () => undefined }));
+    vi.stubGlobal("matchMedia", () => ({
+      matches: true,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
     const { result, rerender } = renderHook(({ v }) => useTweenNumber(v, 300), { initialProps: { v: 1 } });
     rerender({ v: 9 });
     expect(result.current).toBe(9);

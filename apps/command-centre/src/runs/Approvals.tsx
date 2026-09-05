@@ -10,11 +10,14 @@ import { useLocale, useT } from "../i18n";
 import { qk, useApiQuery, type ApiQueryOptions } from "../queries";
 import { timeAgo, useToast } from "../components/ui";
 import { Badge, Button } from "../components/primitives";
-import { approvalLabel, approvalTarget, writeRunApprovals } from "./approvals";
+import { approvalLabel, approvalTarget, toolApprovalParts, writeRunApprovals } from "./approvals";
 
 /** Pending approvals (shared cache key with Settings › Security). */
 export function useApprovals(options: ApiQueryOptions<ApprovalRecord[]> = {}) {
-  return useApiQuery<ApprovalRecord[]>(qk.approvals, "/api/approvals", { refetchInterval: 30_000, ...options });
+  return useApiQuery<ApprovalRecord[]>(qk.approvals, "/api/approvals", {
+    refetchInterval: 300_000,
+    ...options,
+  });
 }
 
 export interface ResolveResult extends ApprovalRecord {
@@ -73,10 +76,22 @@ export function ApprovalCard({ approval, onLaunched, compact = false }: Approval
         )}
       </div>
       <div className="approval-inline-actions">
-        <Button size="sm" variant="primary" icon={<ShieldCheck aria-hidden />} loading={pending && resolve.variables?.decision === "approved"} onClick={() => resolve.mutate({ id: approval.id, decision: "approved" })}>
+        <Button
+          size="sm"
+          variant="primary"
+          icon={<ShieldCheck aria-hidden />}
+          loading={pending && resolve.variables?.decision === "approved"}
+          onClick={() => resolve.mutate({ id: approval.id, decision: "approved" })}
+        >
           {t("runs.approve.approve")}
         </Button>
-        <Button size="sm" variant="danger" icon={<ShieldX aria-hidden />} loading={pending && resolve.variables?.decision === "denied"} onClick={() => resolve.mutate({ id: approval.id, decision: "denied" })}>
+        <Button
+          size="sm"
+          variant="danger"
+          icon={<ShieldX aria-hidden />}
+          loading={pending && resolve.variables?.decision === "denied"}
+          onClick={() => resolve.mutate({ id: approval.id, decision: "denied" })}
+        >
           {t("runs.approve.deny")}
         </Button>
       </div>
@@ -85,7 +100,13 @@ export function ApprovalCard({ approval, onLaunched, compact = false }: Approval
 }
 
 /** Every pending write-run approval, as a card above the run table. */
-export function ApprovalsCard({ approvals, onLaunched }: { approvals: readonly ApprovalRecord[] | undefined; onLaunched?: (runId: string | null) => void }) {
+export function ApprovalsCard({
+  approvals,
+  onLaunched,
+}: {
+  approvals: readonly ApprovalRecord[] | undefined;
+  onLaunched?: (runId: string | null) => void;
+}) {
   const t = useT();
   const pending = writeRunApprovals(approvals);
   if (pending.length === 0) return null;
@@ -96,6 +117,55 @@ export function ApprovalsCard({ approvals, onLaunched }: { approvals: readonly A
       {pending.map((a) => (
         <ApprovalCard key={a.id} approval={a} onLaunched={onLaunched} />
       ))}
+    </div>
+  );
+}
+
+/**
+ * A tool prompt raised inside a running agent (plan Onda 1 §3): the CLI is
+ * paused on this decision. Approve lets the tool run, Deny answers the CLI
+ * with a refusal; either way the run continues.
+ */
+export function ToolApprovalCard({ approval }: { approval: ApprovalRecord }) {
+  const t = useT();
+  const locale = useLocale();
+  const resolve = useResolveApproval();
+  const { tool, detail } = toolApprovalParts(approval);
+  const pending = resolve.isPending && resolve.variables?.id === approval.id;
+  return (
+    <div className="approval-inline tool" role="group" aria-label={t("runs.toolApprove.title")}>
+      <div className="approval-inline-main">
+        <div className="approval-inline-head">
+          <Badge kind="state" tone="warn">
+            {tool}
+          </Badge>
+          <span className="mono truncate" title={detail}>
+            {detail}
+          </span>
+          <span className="approval-inline-when">{timeAgo(approval.createdAt, locale)}</span>
+        </div>
+        <p className="approval-inline-desc">{t("runs.toolApprove.hint")}</p>
+      </div>
+      <div className="approval-inline-actions">
+        <Button
+          size="sm"
+          variant="primary"
+          icon={<ShieldCheck aria-hidden />}
+          loading={pending && resolve.variables?.decision === "approved"}
+          onClick={() => resolve.mutate({ id: approval.id, decision: "approved" })}
+        >
+          {t("runs.approve.approve")}
+        </Button>
+        <Button
+          size="sm"
+          variant="danger"
+          icon={<ShieldX aria-hidden />}
+          loading={pending && resolve.variables?.decision === "denied"}
+          onClick={() => resolve.mutate({ id: approval.id, decision: "denied" })}
+        >
+          {t("runs.approve.deny")}
+        </Button>
+      </div>
     </div>
   );
 }

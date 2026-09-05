@@ -12,6 +12,7 @@
  */
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   type CSSProperties,
@@ -54,7 +55,12 @@ export default function WidgetLayer({
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const metrics = useGridMetrics(ref);
-  onMetrics?.(metrics);
+  const onMetricsRef = useRef(onMetrics);
+  onMetricsRef.current = onMetrics;
+  // Reported after commit (never during render: the parent stores it in state).
+  useEffect(() => {
+    onMetricsRef.current?.(metrics);
+  }, [metrics]);
 
   const elements = useRef(new Map<string, HTMLElement>());
   const rects = useRef(new Map<string, { left: number; top: number }>());

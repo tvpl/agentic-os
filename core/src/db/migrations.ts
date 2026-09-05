@@ -186,4 +186,168 @@ CREATE INDEX IF NOT EXISTS idx_facts_valid ON facts(valid_from, valid_to);
       db.exec("CREATE INDEX IF NOT EXISTS idx_runs_finished ON runs(finished_at)");
     },
   },
+  {
+    version: 5,
+    name: "sessions",
+    // Conversations (Onda 1): a session groups the runs that continue one
+    // provider-side conversation. `provider_session_id` is what the CLI is
+    // asked to resume (`claude --resume`, `codex exec resume`); it stays NULL
+    // until the first run of the session reports it. Counters are
+    // accumulators, kept in step by the RunManager as each run finishes.
+    // `runs.session_id` is intentionally not a foreign key: deleting a session
+    // must keep its runs (the column is cleared instead).
+    up(db) {
+      db.exec(`
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  provider_session_id TEXT,
+  cwd TEXT,
+  profile TEXT,
+  title TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  last_run_id TEXT,
+  turns INTEGER NOT NULL DEFAULT 0,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cost_usd REAL NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_provider ON sessions(provider);
+`);
+      if (!hasColumn(db, "runs", "session_id")) {
+        db.exec("ALTER TABLE runs ADD COLUMN session_id TEXT");
+      }
+      db.exec("CREATE INDEX IF NOT EXISTS idx_runs_session ON runs(session_id)");
+    },
+  },
+  {
+    version: 6,
+    name: "notifications",
+    // Unified inbox (Onda 2): the notification feed used to live only in the
+    // browser's localStorage, so a closed tab lost every approval request and
+    // every failed run. Rows are written by the recorder that listens on the
+    // event bus; the Command Centre seeds its feed from `GET /api/notifications`
+    // and keeps it current over SSE. `dedupe_key` lets a repeated announcement
+    // (a settings save, a budget threshold) replace the previous row instead of
+    // stacking. Neither `approval_id` nor `run_id` is a foreign key: a
+    // notification is a historical record and must outlive what it points at.
+    up(db) {
+      db.exec(`
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('approval','run','routine','index','system')),
+  tone TEXT,                          -- ok | warn | danger | info (null = neutral)
+  title TEXT NOT NULL,
+  body TEXT,
+  href TEXT,
+  approval_id TEXT,
+  run_id TEXT,
+  ts INTEGER NOT NULL,
+  read INTEGER NOT NULL DEFAULT 0,
+  dedupe_key TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_ts ON notifications(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
+`);
+    },
+  },
+  {
+    version: 7,
+    name: "devices",
+    // Paired devices (Onda 3): remote access carries a per-device bearer token
+    // instead of the local token. Only the SHA-256 of the token is kept.
+    up(db) {
+      db.exec(`
+CREATE TABLE IF NOT EXISTS devices (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at INTEGER NOT NULL,
+  last_seen_at INTEGER,
+  expires_at INTEGER,
+  revoked_at INTEGER
+);
+`);
+    },
+  },
+  {
+    version: 8,
+    name: "push_subscriptions",
+    // Web Push subscriptions (one per installed PWA). The endpoint is the
+    // push service URL the browser handed out; p256dh/auth are the receiver
+    // keys every payload is encrypted to.
+    up(db) {
+      db.exec(`
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id TEXT PRIMARY KEY,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  label TEXT,
+  created_at INTEGER NOT NULL,
+  last_ok_at INTEGER,
+  failures INTEGER NOT NULL DEFAULT 0
+);
+`);
+    },
+  },
+  {
+    version: 9,
+    name: "file_terms_and_related",
+    // Related-by-content edges computed at index time (follow-up 5): every
+    // indexed file keeps its top TF terms; the indexer recomputes the cosine
+    // neighbours of the files that changed and stores them here, so the graph
+    // reads rows instead of re-tokenising the corpus on every request.
+    up(db) {
+      db.exec(`
+CREATE TABLE IF NOT EXISTS file_terms (
+  file_id INTEGER PRIMARY KEY,
+  terms TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS file_related (
+  src_id INTEGER NOT NULL,
+  dst_id INTEGER NOT NULL,
+  score REAL NOT NULL,
+  terms TEXT NOT NULL DEFAULT '[]',
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (src_id, dst_id)
+);
+CREATE INDEX IF NOT EXISTS idx_file_related_dst ON file_related(dst_id);
+`);
+    },
+  },
+  {
+    version: 10,
+    name: "runs_max_cost",
+    // Per-run spend cap (follow-up 7): the remaining routine/skill budget at
+    // launch; a provider that reports cost mid-run is cut when it is crossed.
+    up(db) {
+      db.exec("ALTER TABLE runs ADD COLUMN max_cost_usd REAL");
+    },
+  },
+  {
+    version: 11,
+    name: "metrics_samples",
+    // Hourly snapshots (follow-up 8): the plan's §9 targets are measurable only
+    // with a history. One row per hour bucket, pruned after 90 days.
+    up(db) {
+      db.exec(`
+CREATE TABLE IF NOT EXISTS metrics_samples (
+  ts INTEGER PRIMARY KEY,
+  runs_total INTEGER NOT NULL,
+  runs_24h INTEGER NOT NULL,
+  failed_24h INTEGER NOT NULL,
+  cost_today_usd REAL NOT NULL,
+  tokens_today INTEGER NOT NULL,
+  spend_week_usd REAL NOT NULL,
+  inbox_unread INTEGER NOT NULL,
+  approvals_pending INTEGER NOT NULL,
+  approval_wait_avg_ms INTEGER
+);
+`);
+    },
+  },
 ];

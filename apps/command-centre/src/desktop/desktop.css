@@ -598,8 +598,8 @@
   gap: var(--s-3);
 }
 .mini-clock {
-  width: 46px;
-  height: 46px;
+  width: 40px;
+  height: 40px;
   flex: none;
 }
 .mc-face {
@@ -626,7 +626,7 @@
   fill: var(--accent);
 }
 .clock-zones .zone {
-  min-width: 62px;
+  min-width: 0;
 }
 .clock-zones .zone .z-day {
   font-size: var(--fs-1);
@@ -637,8 +637,8 @@
 }
 .q-grid {
   display: grid;
-  gap: 3px;
-  margin-top: var(--s-3);
+  gap: 2px;
+  margin-top: var(--s-2);
 }
 .q-grid .q-row {
   display: flex;
@@ -681,6 +681,10 @@
   min-width: 0;
   resize: none;
   font-family: var(--font-body);
+  /* one line that grows with the text (up to ~4 lines) */
+  field-sizing: content;
+  min-height: 38px;
+  max-height: 112px;
 }
 .promptw-row {
   display: flex;
@@ -739,6 +743,146 @@
   display: grid;
   flex: 1;
   min-width: 120px;
+  font-size: var(--fs-2);
+}
+
+/* ------------------------------------------------------------ console ---- */
+.promptw.console {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-height: 0;
+}
+.console-thread {
+  flex: 1;
+  min-height: 40px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  display: grid;
+  gap: var(--s-2);
+  align-content: end;
+  padding-right: 2px;
+}
+.console-empty {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--fs-2);
+  max-width: 60ch;
+}
+.console-turn {
+  display: grid;
+  gap: 6px;
+}
+.console-msg {
+  display: grid;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: var(--r-3);
+  font-size: var(--fs-3);
+  line-height: var(--lh-body);
+  max-width: 92%;
+}
+.console-msg p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.console-msg.you {
+  justify-self: end;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-bottom-right-radius: 3px;
+}
+.console-msg.agent {
+  justify-self: start;
+  background: var(--bg-raise-2);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 3px;
+}
+.console-turn.failed .console-msg.agent {
+  border-color: var(--danger);
+}
+.console-turn.streaming .console-msg.agent {
+  border-color: var(--accent-line);
+}
+.console-who {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.console-msg.you .console-who {
+  color: var(--accent-text);
+  text-align: right;
+}
+.console-thinking {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--text-dim);
+}
+.console-muted {
+  color: var(--text-faint);
+}
+.console-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  align-items: center;
+  margin-top: 4px;
+  font-size: var(--fs-1);
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+}
+.console-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-text);
+  cursor: pointer;
+  text-decoration: none;
+}
+.console-link.danger {
+  color: var(--danger);
+}
+.console-link svg {
+  width: 11px;
+  height: 11px;
+}
+.console-meta {
+  font-size: var(--fs-1);
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+}
+
+.console-mic {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-2);
+  border: 1px solid var(--border-strong);
+}
+.console-mic.active {
+  color: var(--accent-text);
+  border-color: var(--accent);
+  box-shadow: 0 0 14px var(--accent-glow);
+  animation: pulse-ring 1.2s ease-in-out infinite;
+}
+/* a brokered tool prompt inside the thread */
+.promptw.console .approval-inline.tool {
+  margin: 0;
+}
+.promptw.console .approval-inline-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.promptw.console .approval-inline-desc {
   font-size: var(--fs-2);
 }
 
@@ -1098,6 +1242,34 @@
   width: 28px;
   height: 28px;
   color: var(--text-faint);
+}
+/* text artifacts show their first lines as the thumbnail */
+.art-peek {
+  align-self: start;
+  justify-self: stretch;
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1.35;
+  color: var(--text-faint);
+  text-align: left;
+  mask-image: linear-gradient(to bottom, #000 60%, transparent);
+}
+.art-peek > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.art-peek > .head {
+  color: var(--text);
+  font-weight: 700;
+  font-size: 11px;
+  margin-bottom: 2px;
 }
 .art-info {
   display: grid;

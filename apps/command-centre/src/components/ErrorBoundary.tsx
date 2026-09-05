@@ -51,12 +51,21 @@ function ErrorFallback({ error, name, onRetry }: { error: Error; name?: string; 
         <h3>{t("error.title")}</h3>
         <p style={{ color: "var(--text-dim)" }}>{t("error.body", { name: name ?? t("os.agenticOs") })}</p>
         <details>
-          <summary className="hud-label" style={{ cursor: "pointer" }}>{t("error.details")}</summary>
-          <pre>{error.message}{error.stack ? `\n${error.stack}` : ""}</pre>
+          <summary className="hud-label" style={{ cursor: "pointer" }}>
+            {t("error.details")}
+          </summary>
+          <pre>
+            {error.message}
+            {error.stack ? `\n${error.stack}` : ""}
+          </pre>
         </details>
         <div className="modal-actions">
-          <Button variant="ghost" onClick={() => window.location.reload()}>{t("error.reload")}</Button>
-          <Button variant="primary" icon={<RefreshCw aria-hidden />} onClick={onRetry}>{t("common.retry")}</Button>
+          <Button variant="ghost" onClick={() => window.location.reload()}>
+            {t("error.reload")}
+          </Button>
+          <Button variant="primary" icon={<RefreshCw aria-hidden />} onClick={onRetry}>
+            {t("common.retry")}
+          </Button>
         </div>
       </div>
     </div>

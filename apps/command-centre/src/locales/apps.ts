@@ -12,11 +12,13 @@ export const en = {
   "apps.skills.copyBody": "Copy",
   "apps.skills.copiedBody": "SKILL.md copied.",
   "apps.skills.thickTitle": "Thick skill — {lines} lines",
-  "apps.skills.thickBody": "Move references, templates and examples into resources/ and keep SKILL.md as a short router that says which file to read for which job.",
+  "apps.skills.thickBody":
+    "Move references, templates and examples into resources/ and keep SKILL.md as a short router that says which file to read for which job.",
   "apps.skills.splitPrompt": "Copy split-assistant prompt",
   "apps.skills.splitCopied": "Prompt copied — paste it into a run to split this skill.",
   "apps.skills.noResources": "No resource files",
-  "apps.skills.noResourcesBody": "Add brand HTML, images, PDFs or reference markdown under resources/ — they are previewed here and the run prompt points the agent to them.",
+  "apps.skills.noResourcesBody":
+    "Add brand HTML, images, PDFs or reference markdown under resources/ — they are previewed here and the run prompt points the agent to them.",
   "apps.skills.resourceCount": "{n} file(s)",
   "apps.skills.preview": "Preview",
   "apps.skills.openNewTab": "Open in new tab",
@@ -33,7 +35,8 @@ export const en = {
   "apps.skills.customModel": "Custom model id",
   "apps.skills.clearInputs": "Clear inputs",
   "apps.skills.approvalTitle": "Approval needed",
-  "apps.skills.approvalBody": "This run writes files under your security profile. Approve here to launch it now, or deny to cancel.",
+  "apps.skills.approvalBody":
+    "This run writes files under your security profile. Approve here to launch it now, or deny to cancel.",
   "apps.skills.approvalLaunched": "Approved — run started.",
   "apps.skills.approvalDenied": "Denied — nothing was run.",
   "apps.skills.approvalGone": "This approval was already resolved elsewhere.",
@@ -42,13 +45,34 @@ export const en = {
   "apps.settings.tabTheme": "Theme",
   "apps.settings.tabDesktop": "Desktop",
   "apps.settings.tabNotifications": "Notifications",
+  "apps.settings.tabTrends": "Trends",
+  "trends.title": "Trends",
+  "trends.hint":
+    "One sample per hour of what the desktop shows live, folded per day. Sampling starts at boot; give it a few days.",
+  "trends.days": "Last {n} days",
+  "trends.spend": "Spend per day (US$)",
+  "trends.runs": "Runs per day",
+  "trends.failed": "Failed per day",
+  "trends.tokens": "Tokens per day",
+  "trends.unread": "Inbox unread (end of day)",
+  "trends.wait": "Approval wait (mean, min)",
+  "trends.table": "Table",
+  "trends.chart": "Chart",
+  "trends.empty": "No samples yet — the first one lands within the hour.",
+  "trends.samples": "{n} samples",
+  "apps.settings.budget": "Daily budget (USD)",
+  "apps.settings.budgetHint":
+    "Spend across every provider per day. The desktop warns at 80 % and flags the day as over budget at 100 %. 0 disables it.",
   "apps.settings.presets": "Theme preset",
-  "apps.settings.presetsHint": "A preset sets the accent and the surface family. The accent can still be fine-tuned under Identity.",
+  "apps.settings.presetsHint":
+    "A preset sets the accent and the surface family. The accent can still be fine-tuned under Identity.",
   "apps.settings.presetApplied": "Preset applied: {name}",
   "apps.settings.widgets": "Dashboard widgets",
-  "apps.settings.widgetsHint": "Choose which widgets the desktop shows. Position and size are edited on the desktop itself.",
+  "apps.settings.widgetsHint":
+    "Choose which widgets the desktop shows. Position and size are edited on the desktop itself.",
   "apps.settings.microApps": "Micro apps",
-  "apps.settings.microAppsHint": "Extra entries for the desktop Micro apps widget: internal routes (/pixel) or http(s) URLs.",
+  "apps.settings.microAppsHint":
+    "Extra entries for the desktop Micro apps widget: internal routes (/pixel) or http(s) URLs.",
   "apps.settings.noMicroApps": "No custom micro apps yet.",
   "apps.settings.addMicroApp": "Add micro app",
   "apps.settings.maName": "Name",
@@ -57,12 +81,122 @@ export const en = {
   "apps.settings.maHrefInvalid": "Use an internal route (/pixel) or an http(s) URL.",
   "apps.settings.automation": "Automation & connectors",
   "apps.settings.webhooks": "Webhook delivery",
-  "apps.settings.webhooksHint": "Routines can only deliver their result to an http(s) webhook while this is on. Off by default: a routine result leaves this machine only when you say so.",
+  "apps.settings.webhooksHint":
+    "Routines can only deliver their result to an http(s) webhook while this is on. Off by default: a routine result leaves this machine only when you say so.",
   "apps.settings.allowedCommands": "Connector executables allowlist",
-  "apps.settings.allowedCommandsHint": "Comma-separated. Absolute paths or bare names resolved on PATH; a connector may only spawn what is listed here.",
-  "apps.settings.allowedCommandsExample": "An MCP connector installed with npx needs \"npx\" on this list before it can read anything.",
+  "apps.settings.allowedCommandsHint":
+    "Comma-separated. Absolute paths or bare names resolved on PATH; a connector may only spawn what is listed here.",
+  "apps.settings.allowedCommandsExample":
+    'An MCP connector installed with npx needs "npx" on this list before it can read anything.',
+  "skills.market.title": "Marketplace",
+  "skills.market.search": "Search the registries…",
+  "skills.market.refresh": "Refresh",
+  "skills.market.signed": "signed ✓",
+  "skills.market.signedTitle": "The registry index carries a valid Ed25519 signature.",
+  "skills.market.unsigned": "unsigned",
+  "skills.market.unsignedTitle":
+    "No signature on this registry. Pin the publisher's key with #key= on the URL to require one.",
+  "skills.notes.tab": "Notes",
+  "skills.notes.empty":
+    "No notes yet. Save a lesson from a run page, or add one here; the agent reads NOTES.md on every run.",
+  "skills.notes.placeholder": "A short, actionable note for the next run…",
+  "skills.notes.add": "Add note",
+  "skills.budget": "US$ {usd}/day",
+  "skills.budgetTitle": "Daily spend cap for runs of this skill (budgetUsd in SKILL.md)",
+  "skills.notes.archived": "{n} older notes archived in NOTES.archive.md.",
+  "skills.notes.promote": "Promote into SKILL.md",
+  "skills.notes.promoteHint":
+    "A write run folds recurring lessons into SKILL.md and archives the applied notes. Parked for your approval under review profiles.",
+  "skills.notes.promoteParked": "Promotion run parked — approve it to let it edit SKILL.md.",
+  "skills.notes.promoteStarted": "Promotion run started.",
+  "skills.market.install": "Install",
+  "skills.market.reinstall": "Reinstall",
+  "skills.market.installed": "Installed {name}.",
+  "skills.market.files": "{n} file(s)",
+  "skills.market.empty": "Nothing matches.",
+  "skills.market.noRegistry": "No registry configured",
+  "skills.market.noRegistryBody":
+    "Add an https index URL under Settings › Memory & folders › Skill registries. Every file is digest-checked before it lands in the catalog.",
+  "apps.settings.registries": "Skill registries",
+  "apps.settings.registriesHint":
+    "One https:// or file:// index.json per line. Append #key=<public key> to require the publisher's Ed25519 signature (mordomo skills key prints yours).",
+  "apps.settings.remote": "Remote access",
+  "apps.settings.remoteHint":
+    "Let paired devices (your phone, a laptop) use the OS through a host you list — a Tailscale name or a LAN address. The server must also bind beyond loopback (Identity › Port asks for that approval).",
+  "apps.settings.remoteHosts": "Allowed hosts",
+  "apps.settings.remoteHostsHint":
+    "Host names or addresses the server answers to, besides 127.0.0.1. Comma separated.",
+  "apps.settings.remoteTls": "TLS for remote devices",
+  "apps.settings.remoteTlsHint":
+    "A second https listener (port {port}) with a self-signed certificate for the allowed hosts; loopback stays plain http. Restart the service after changing it. Phones show the fingerprint below on the pairing screen.",
+  "apps.settings.remoteTlsFingerprint": "Certificate SHA-256",
+  "apps.settings.remoteTlsOff": "Turn on remote access and TLS, then restart, to get a certificate.",
+  "apps.settings.remoteTlsAlt":
+    "Prefer a real certificate? Put Caddy or Tailscale in front of the plain http port instead.",
+  "apps.settings.remoteTtl": "Device token lifetime (days)",
+  "apps.settings.remoteTtlHint": "0 never expires. Revoke a device below at any time.",
+  "apps.settings.pairDevice": "Pair a device",
+  "apps.settings.pairDeviceHint": "Open the OS on the other device and type the code it asks for.",
+  "apps.settings.pairStart": "Show a code",
+  "apps.settings.pairExpires": "Valid until {time}, single use.",
+  "apps.settings.deviceNeverSeen": "never used",
+  "apps.settings.deviceExpires": "expires {date}",
+  "apps.settings.deviceRevoke": "Revoke",
+  "apps.settings.sentinels": "Sentinels",
+  "apps.settings.sentinelsHint":
+    "Observers that need no model: they write to the inbox, and the ones marked for triage ask a cheap model whether to bother you.",
+  "apps.settings.sentinel.repeatedFailure": "Repeated failure",
+  "apps.settings.sentinel.repeatedFailureHint": "The same skill or prompt failed twice in 24 hours.",
+  "apps.settings.sentinel.silentRoutine": "Silent routine",
+  "apps.settings.sentinel.silentRoutineHint": "An enabled routine has not fired for twice its interval.",
+  "apps.settings.sentinel.connectorDelta": "New connector items",
+  "apps.settings.sentinel.connectorDeltaHint": "New e-mails or events since the last hourly check.",
+  "apps.settings.sentinel.repeatDetector": "Did it twice → skill",
+  "apps.settings.sentinel.repeatDetectorHint":
+    "Similar manual prompts within 30 days become a skill suggestion.",
+  "apps.settings.sentinel.fsWatch": "Folder watch",
+  "apps.settings.sentinel.fsWatchHint":
+    "Re-index when the indexed folders change (off by default on big trees).",
+  "apps.settings.sentinel.triage": "Triage with a model",
+  "apps.settings.sentinel.triageHint":
+    "A short read-only run decides ignore / notify / propose, within its own daily budget.",
+  "apps.settings.triageModel": "Triage model",
+  "apps.settings.triageBudget": "Triage budget per day (USD)",
+  "apps.settings.telegram": "Telegram",
+  "apps.settings.telegramHint":
+    "Sends inbox rows to a chat. The bot token is read from the environment variable {env}, never stored.",
+  "apps.settings.telegramChat": "Chat id",
+  "apps.settings.telegramMinTone": "Lowest tone to send",
+  "apps.settings.telegramTest": "Send a test message",
+  "apps.settings.telegramOk": "Telegram message sent.",
+  "apps.settings.telegramFailed": "Telegram failed",
+  "apps.settings.telegramInbound": "Answer from the phone",
+  "apps.settings.telegramInboundHint":
+    "The bot polls for replies: alerts carry Approve / Deny buttons, and /pending lists what waits. Only your chat id is honoured.",
+  "apps.settings.telegramPolling": "Polling · {n} handled",
+  "apps.settings.telegramIdle": "Not polling",
+  "apps.settings.pushNotify": "Push notifications",
+  "apps.settings.pushNotifyHint":
+    "Install the app and get alerts even with it closed. Encrypted end to end; nothing readable leaves this machine.",
+  "apps.settings.pushServer": "Push channel (server)",
+  "apps.settings.pushServerHint": "Send inbox rows at or above the minimum tone to every subscribed device.",
+  "apps.settings.pushUnsupported": "This browser cannot receive push notifications.",
+  "apps.settings.pushFailed": "Could not subscribe this browser.",
+  "apps.settings.pushTest": "Send a test push",
+  "apps.settings.pushDevices": "{n} devices subscribed",
+  "apps.settings.pushRemove": "Remove",
+  "apps.settings.desktopNotify": "System notifications",
+  "apps.settings.desktopNotifyHint":
+    "Approvals, failures and alerts reach you as system notifications when this tab is not in front. The browser asks for permission once.",
+  "apps.settings.desktopDenied":
+    "The browser refused notifications for this site; allow them in the address bar.",
+  "apps.settings.desktopUnsupported": "This browser has no notification API.",
+  "apps.settings.voiceNotify": "Spoken alerts",
+  "apps.settings.voiceNotifyHint": "Reads approvals and failures aloud with the browser's own voice.",
+  "apps.settings.voiceSample": "Mordomo online.",
   "apps.settings.sound": "Notification sound",
-  "apps.settings.soundHint": "Play a short sound when a run finishes or an approval is requested. Stored in this browser only.",
+  "apps.settings.soundHint":
+    "Play a short sound when a run finishes or an approval is requested. Stored in this browser only.",
   "apps.settings.soundOn": "On",
   "apps.settings.soundOff": "Off",
   "apps.settings.notificationsHint": "Notifications appear in the Inbox widget and in the top-bar bell.",
@@ -75,10 +209,12 @@ export const en = {
   // ---- Setup ----
   "apps.setup.stepConnect": "Connect data",
   "apps.setup.stepDesktop": "Your desktop",
-  "apps.setup.connectHint": "Calendar and e-mail widgets read through connectors. Nothing needs to be configured now — the checklist stays available under Connectors.",
+  "apps.setup.connectHint":
+    "Calendar and e-mail widgets read through connectors. Nothing needs to be configured now — the checklist stays available under Connectors.",
   "apps.setup.openConnectors": "Open the connectors checklist",
   "apps.setup.noConnectors": "No calendar or e-mail connector is registered.",
-  "apps.setup.desktopHint": "Pick a look and the widgets you want on the desktop. Everything can change later in Settings.",
+  "apps.setup.desktopHint":
+    "Pick a look and the widgets you want on the desktop. Everything can change later in Settings.",
   "apps.setup.status.not_configured": "not configured",
   "apps.setup.status.configured": "configured",
   // ---- Pixel Studio ----
@@ -91,7 +227,8 @@ export const en = {
   "apps.pixel.nextFrame": "Next frame",
   "apps.pixel.exportMeta": "Sprite sheet + JSON",
   "apps.pixel.shortcuts": "Shortcuts",
-  "apps.pixel.shortcutsBody": "1-4 tools · [ ] frames · + - brush · x swap · o onion · ⌘Z undo · ⌘⇧Z / ⌘Y redo",
+  "apps.pixel.shortcutsBody":
+    "1-4 tools · [ ] frames · + - brush · x swap · o onion · ⌘Z undo · ⌘⇧Z / ⌘Y redo",
 } as const;
 
 export const ptBR = {
@@ -102,11 +239,13 @@ export const ptBR = {
   "apps.skills.copyBody": "Copiar",
   "apps.skills.copiedBody": "SKILL.md copiado.",
   "apps.skills.thickTitle": "Skill grossa — {lines} linhas",
-  "apps.skills.thickBody": "Mova referências, modelos e exemplos para resources/ e deixe o SKILL.md como um roteador curto que diz qual arquivo ler para cada tarefa.",
+  "apps.skills.thickBody":
+    "Mova referências, modelos e exemplos para resources/ e deixe o SKILL.md como um roteador curto que diz qual arquivo ler para cada tarefa.",
   "apps.skills.splitPrompt": "Copiar prompt do assistente de divisão",
   "apps.skills.splitCopied": "Prompt copiado — cole numa execução para dividir esta skill.",
   "apps.skills.noResources": "Sem arquivos de recurso",
-  "apps.skills.noResourcesBody": "Adicione HTML de marca, imagens, PDFs ou markdown de referência em resources/ — eles aparecem aqui em preview e o prompt da execução aponta o agente para eles.",
+  "apps.skills.noResourcesBody":
+    "Adicione HTML de marca, imagens, PDFs ou markdown de referência em resources/ — eles aparecem aqui em preview e o prompt da execução aponta o agente para eles.",
   "apps.skills.resourceCount": "{n} arquivo(s)",
   "apps.skills.preview": "Preview",
   "apps.skills.openNewTab": "Abrir em nova aba",
@@ -123,7 +262,8 @@ export const ptBR = {
   "apps.skills.customModel": "Id de modelo personalizado",
   "apps.skills.clearInputs": "Limpar campos",
   "apps.skills.approvalTitle": "Aprovação necessária",
-  "apps.skills.approvalBody": "Esta execução escreve arquivos sob o seu perfil de segurança. Aprove aqui para iniciar agora, ou negue para cancelar.",
+  "apps.skills.approvalBody":
+    "Esta execução escreve arquivos sob o seu perfil de segurança. Aprove aqui para iniciar agora, ou negue para cancelar.",
   "apps.skills.approvalLaunched": "Aprovado — execução iniciada.",
   "apps.skills.approvalDenied": "Negado — nada foi executado.",
   "apps.skills.approvalGone": "Esta aprovação já foi resolvida em outro lugar.",
@@ -131,13 +271,34 @@ export const ptBR = {
   "apps.settings.tabTheme": "Tema",
   "apps.settings.tabDesktop": "Desktop",
   "apps.settings.tabNotifications": "Notificações",
+  "apps.settings.tabTrends": "Tendências",
+  "trends.title": "Tendências",
+  "trends.hint":
+    "Uma amostra por hora do que o desktop mostra ao vivo, dobrada por dia. A coleta começa no boot; dê alguns dias.",
+  "trends.days": "Últimos {n} dias",
+  "trends.spend": "Gasto por dia (US$)",
+  "trends.runs": "Execuções por dia",
+  "trends.failed": "Falhas por dia",
+  "trends.tokens": "Tokens por dia",
+  "trends.unread": "Inbox não lido (fim do dia)",
+  "trends.wait": "Espera por aprovação (média, min)",
+  "trends.table": "Tabela",
+  "trends.chart": "Gráfico",
+  "trends.empty": "Ainda sem amostras — a primeira chega dentro de uma hora.",
+  "trends.samples": "{n} amostras",
+  "apps.settings.budget": "Orçamento diário (US$)",
+  "apps.settings.budgetHint":
+    "Gasto somado de todos os provedores por dia. O desktop avisa aos 80 % e marca o dia como estourado aos 100 %. 0 desliga.",
   "apps.settings.presets": "Preset de tema",
-  "apps.settings.presetsHint": "Um preset define o accent e a família de superfícies. O accent ainda pode ser ajustado em Identidade.",
+  "apps.settings.presetsHint":
+    "Um preset define o accent e a família de superfícies. O accent ainda pode ser ajustado em Identidade.",
   "apps.settings.presetApplied": "Preset aplicado: {name}",
   "apps.settings.widgets": "Widgets do painel",
-  "apps.settings.widgetsHint": "Escolha quais widgets o desktop mostra. Posição e tamanho são editados no próprio desktop.",
+  "apps.settings.widgetsHint":
+    "Escolha quais widgets o desktop mostra. Posição e tamanho são editados no próprio desktop.",
   "apps.settings.microApps": "Micro apps",
-  "apps.settings.microAppsHint": "Entradas extras para o widget Micro apps do desktop: rotas internas (/pixel) ou URLs http(s).",
+  "apps.settings.microAppsHint":
+    "Entradas extras para o widget Micro apps do desktop: rotas internas (/pixel) ou URLs http(s).",
   "apps.settings.noMicroApps": "Nenhum micro app personalizado ainda.",
   "apps.settings.addMicroApp": "Adicionar micro app",
   "apps.settings.maName": "Nome",
@@ -146,12 +307,124 @@ export const ptBR = {
   "apps.settings.maHrefInvalid": "Use uma rota interna (/pixel) ou uma URL http(s).",
   "apps.settings.automation": "Automação e conectores",
   "apps.settings.webhooks": "Entrega por webhook",
-  "apps.settings.webhooksHint": "As rotinas só entregam o resultado num webhook http(s) enquanto isto estiver ligado. Desligado por padrão: o resultado de uma rotina só sai desta máquina quando você quiser.",
+  "apps.settings.webhooksHint":
+    "As rotinas só entregam o resultado num webhook http(s) enquanto isto estiver ligado. Desligado por padrão: o resultado de uma rotina só sai desta máquina quando você quiser.",
   "apps.settings.allowedCommands": "Executáveis permitidos aos conectores",
-  "apps.settings.allowedCommandsHint": "Separados por vírgula. Caminhos absolutos ou nomes resolvidos no PATH; um conector só pode iniciar o que estiver aqui.",
-  "apps.settings.allowedCommandsExample": "Um conector MCP instalado com npx precisa de \"npx\" nesta lista antes de conseguir ler qualquer coisa.",
+  "apps.settings.allowedCommandsHint":
+    "Separados por vírgula. Caminhos absolutos ou nomes resolvidos no PATH; um conector só pode iniciar o que estiver aqui.",
+  "apps.settings.allowedCommandsExample":
+    'Um conector MCP instalado com npx precisa de "npx" nesta lista antes de conseguir ler qualquer coisa.',
+  "skills.market.title": "Marketplace",
+  "skills.market.search": "Buscar nos registros…",
+  "skills.market.refresh": "Atualizar",
+  "skills.market.signed": "assinado ✓",
+  "skills.market.signedTitle": "O índice do registro traz uma assinatura Ed25519 válida.",
+  "skills.market.unsigned": "sem assinatura",
+  "skills.market.unsignedTitle":
+    "Este registro não tem assinatura. Fixe a chave do publicador com #key= na URL para exigir uma.",
+  "skills.notes.tab": "Notas",
+  "skills.notes.empty":
+    "Ainda sem notas. Salve uma lição pela página de uma execução ou adicione aqui; o agente lê o NOTES.md em toda execução.",
+  "skills.notes.placeholder": "Uma nota curta e prática para a próxima execução…",
+  "skills.notes.add": "Adicionar nota",
+  "skills.budget": "US$ {usd}/dia",
+  "skills.budgetTitle": "Teto diário de gasto das execuções desta skill (budgetUsd no SKILL.md)",
+  "skills.notes.archived": "{n} notas antigas arquivadas em NOTES.archive.md.",
+  "skills.notes.promote": "Promover para o SKILL.md",
+  "skills.notes.promoteHint":
+    "Uma execução de escrita incorpora as lições recorrentes ao SKILL.md e arquiva as notas aplicadas. Fica aguardando sua aprovação nos perfis com revisão.",
+  "skills.notes.promoteParked": "Execução de promoção estacionada — aprove para ela editar o SKILL.md.",
+  "skills.notes.promoteStarted": "Execução de promoção iniciada.",
+  "skills.market.install": "Instalar",
+  "skills.market.reinstall": "Reinstalar",
+  "skills.market.installed": "{name} instalada.",
+  "skills.market.files": "{n} arquivo(s)",
+  "skills.market.empty": "Nada corresponde.",
+  "skills.market.noRegistry": "Nenhum registro configurado",
+  "skills.market.noRegistryBody":
+    "Adicione uma URL https de índice em Configurações › Memória & pastas › Registros de skills. Cada arquivo tem o digest conferido antes de entrar no catálogo.",
+  "apps.settings.registries": "Registros de skills",
+  "apps.settings.registriesHint":
+    "Um index.json https:// ou file:// por linha. Acrescente #key=<chave pública> para exigir a assinatura Ed25519 do publicador (mordomo skills key mostra a sua).",
+  "apps.settings.remote": "Acesso remoto",
+  "apps.settings.remoteHint":
+    "Deixe dispositivos pareados (celular, notebook) usarem o OS por um host que você listar — um nome do Tailscale ou um endereço da rede local. O servidor também precisa sair do loopback (Identidade › Porta pede essa aprovação).",
+  "apps.settings.remoteHosts": "Hosts permitidos",
+  "apps.settings.remoteHostsHint":
+    "Nomes ou endereços aos quais o servidor responde além de 127.0.0.1. Separados por vírgula.",
+  "apps.settings.remoteTls": "TLS para dispositivos remotos",
+  "apps.settings.remoteTlsHint":
+    "Um segundo listener https (porta {port}) com certificado autoassinado para os hosts permitidos; o loopback continua em http. Reinicie o serviço depois de mudar. O celular mostra a impressão digital abaixo na tela de pareamento.",
+  "apps.settings.remoteTlsFingerprint": "SHA-256 do certificado",
+  "apps.settings.remoteTlsOff": "Ligue o acesso remoto e o TLS e reinicie para gerar um certificado.",
+  "apps.settings.remoteTlsAlt":
+    "Prefere um certificado real? Coloque Caddy ou Tailscale na frente da porta http.",
+  "apps.settings.remoteTtl": "Validade do token do dispositivo (dias)",
+  "apps.settings.remoteTtlHint": "0 nunca expira. Revogue um dispositivo abaixo a qualquer momento.",
+  "apps.settings.pairDevice": "Parear um dispositivo",
+  "apps.settings.pairDeviceHint": "Abra o OS no outro dispositivo e digite o código que ele pedir.",
+  "apps.settings.pairStart": "Mostrar um código",
+  "apps.settings.pairExpires": "Válido até {time}, uso único.",
+  "apps.settings.deviceNeverSeen": "nunca usado",
+  "apps.settings.deviceExpires": "expira {date}",
+  "apps.settings.deviceRevoke": "Revogar",
+  "apps.settings.sentinels": "Sentinelas",
+  "apps.settings.sentinelsHint":
+    "Observadores sem modelo: escrevem no inbox, e os marcados para triagem perguntam a um modelo barato se vale te incomodar.",
+  "apps.settings.sentinel.repeatedFailure": "Falha repetida",
+  "apps.settings.sentinel.repeatedFailureHint": "A mesma skill ou prompt falhou duas vezes em 24 horas.",
+  "apps.settings.sentinel.silentRoutine": "Rotina silenciosa",
+  "apps.settings.sentinel.silentRoutineHint":
+    "Uma rotina habilitada não dispara há duas vezes o intervalo dela.",
+  "apps.settings.sentinel.connectorDelta": "Itens novos em conectores",
+  "apps.settings.sentinel.connectorDeltaHint": "E-mails ou eventos novos desde a última checagem horária.",
+  "apps.settings.sentinel.repeatDetector": "Fez duas vezes → skill",
+  "apps.settings.sentinel.repeatDetectorHint":
+    "Prompts manuais parecidos em 30 dias viram sugestão de skill.",
+  "apps.settings.sentinel.fsWatch": "Vigiar pastas",
+  "apps.settings.sentinel.fsWatchHint":
+    "Reindexa quando as pastas indexadas mudam (desligado por padrão em árvores grandes).",
+  "apps.settings.sentinel.triage": "Triagem com modelo",
+  "apps.settings.sentinel.triageHint":
+    "Uma execução curta somente leitura decide ignorar / notificar / propor, dentro do próprio orçamento diário.",
+  "apps.settings.triageModel": "Modelo da triagem",
+  "apps.settings.triageBudget": "Orçamento da triagem por dia (US$)",
+  "apps.settings.telegram": "Telegram",
+  "apps.settings.telegramHint":
+    "Envia linhas do inbox para um chat. O token do bot é lido da variável de ambiente {env}, nunca armazenado.",
+  "apps.settings.telegramChat": "Id do chat",
+  "apps.settings.telegramMinTone": "Tom mínimo para enviar",
+  "apps.settings.telegramTest": "Enviar mensagem de teste",
+  "apps.settings.telegramOk": "Mensagem enviada ao Telegram.",
+  "apps.settings.telegramFailed": "Telegram falhou",
+  "apps.settings.telegramInbound": "Responder pelo celular",
+  "apps.settings.telegramInboundHint":
+    "O bot busca respostas: alertas trazem botões Aprovar / Negar, e /pending lista o que espera. Só o seu id de chat é aceito.",
+  "apps.settings.telegramPolling": "Escutando · {n} tratados",
+  "apps.settings.telegramIdle": "Sem escuta",
+  "apps.settings.pushNotify": "Notificações push",
+  "apps.settings.pushNotifyHint":
+    "Instale o app e receba alertas mesmo com ele fechado. Criptografado de ponta a ponta; nada legível sai desta máquina.",
+  "apps.settings.pushServer": "Canal push (servidor)",
+  "apps.settings.pushServerHint":
+    "Envia itens do inbox a partir do tom mínimo para todos os dispositivos inscritos.",
+  "apps.settings.pushUnsupported": "Este navegador não recebe notificações push.",
+  "apps.settings.pushFailed": "Não foi possível inscrever este navegador.",
+  "apps.settings.pushTest": "Enviar push de teste",
+  "apps.settings.pushDevices": "{n} dispositivos inscritos",
+  "apps.settings.pushRemove": "Remover",
+  "apps.settings.desktopNotify": "Notificações do sistema",
+  "apps.settings.desktopNotifyHint":
+    "Aprovações, falhas e alertas chegam como notificação do sistema quando esta aba não está na frente. O navegador pede permissão uma vez.",
+  "apps.settings.desktopDenied":
+    "O navegador recusou notificações para este site; permita na barra de endereço.",
+  "apps.settings.desktopUnsupported": "Este navegador não tem API de notificações.",
+  "apps.settings.voiceNotify": "Alertas falados",
+  "apps.settings.voiceNotifyHint": "Lê aprovações e falhas em voz alta com a voz do próprio navegador.",
+  "apps.settings.voiceSample": "Mordomo online.",
   "apps.settings.sound": "Som de notificação",
-  "apps.settings.soundHint": "Toca um som curto quando uma execução termina ou uma aprovação é pedida. Guardado só neste navegador.",
+  "apps.settings.soundHint":
+    "Toca um som curto quando uma execução termina ou uma aprovação é pedida. Guardado só neste navegador.",
   "apps.settings.soundOn": "Ligado",
   "apps.settings.soundOff": "Desligado",
   "apps.settings.notificationsHint": "As notificações aparecem no widget Inbox e no sino da barra superior.",
@@ -163,10 +436,12 @@ export const ptBR = {
   "apps.widget.cost": "Custo",
   "apps.setup.stepConnect": "Conectar dados",
   "apps.setup.stepDesktop": "Seu desktop",
-  "apps.setup.connectHint": "Os widgets de calendário e e-mail leem através de conectores. Nada precisa ser configurado agora — o checklist continua disponível em Conectores.",
+  "apps.setup.connectHint":
+    "Os widgets de calendário e e-mail leem através de conectores. Nada precisa ser configurado agora — o checklist continua disponível em Conectores.",
   "apps.setup.openConnectors": "Abrir o checklist de conectores",
   "apps.setup.noConnectors": "Nenhum conector de calendário ou e-mail está registrado.",
-  "apps.setup.desktopHint": "Escolha um visual e os widgets que quer no desktop. Tudo pode mudar depois em Configurações.",
+  "apps.setup.desktopHint":
+    "Escolha um visual e os widgets que quer no desktop. Tudo pode mudar depois em Configurações.",
   "apps.setup.status.not_configured": "não configurado",
   "apps.setup.status.configured": "configurado",
   "apps.pixel.redo": "Refazer",
@@ -178,5 +453,6 @@ export const ptBR = {
   "apps.pixel.nextFrame": "Próximo quadro",
   "apps.pixel.exportMeta": "Sprite sheet + JSON",
   "apps.pixel.shortcuts": "Atalhos",
-  "apps.pixel.shortcutsBody": "1-4 ferramentas · [ ] quadros · + - pincel · x trocar · o onion · ⌘Z desfazer · ⌘⇧Z / ⌘Y refazer",
+  "apps.pixel.shortcutsBody":
+    "1-4 ferramentas · [ ] quadros · + - pincel · x trocar · o onion · ⌘Z desfazer · ⌘⇧Z / ⌘Y refazer",
 } satisfies Record<keyof typeof en, string>;

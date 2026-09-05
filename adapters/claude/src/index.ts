@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -26,6 +27,12 @@ import {
  * Read-only runs stay in the default permission mode (headless auto-denies
  * writes) with an explicit allow-rule only for the run's artifacts directory.
  * Write runs use acceptEdits. bypassPermissions is never used.
+ *
+ * Conversations: `--resume <session-id>` continues a previous run's session;
+ * a first run names its own session with `--session-id <uuid>` so the id is
+ * known before the CLI prints anything. Both flags are only used when the
+ * installed CLI advertises them (`--help` probe), so an older binary simply
+ * starts a fresh conversation.
  */
 export const claudeManifest: ProviderManifest = BUILTIN_MANIFESTS.claude;
 
@@ -42,6 +49,11 @@ export class ClaudeAdapter implements AgentAdapter {
 
   private binary(): string {
     return this.opts.binaryPath ?? findOnPath("claude") ?? "claude";
+  }
+
+  /** Cached `--help`/`--version` probe (detect() itself always re-probes). */
+  private async ensureDetection(): Promise<DetectionResult> {
+    return this.detection ?? (await this.detect());
   }
 
   async detect(): Promise<DetectionResult> {
@@ -83,29 +95,51 @@ export class ClaudeAdapter implements AgentAdapter {
     // Presence checks only — never read, print or store credential values.
     const home = this.opts.homeDir ?? os.homedir();
     if (fs.existsSync(path.join(home, ".claude", ".credentials.json"))) {
-      return { authenticated: true, method: "session", detail: "Claude Code session credentials are present." };
+      return {
+        authenticated: true,
+        method: "session",
+        detail: "Claude Code session credentials are present.",
+      };
     }
     if (process.env.ANTHROPIC_API_KEY) {
-      return { authenticated: true, method: "api-key", detail: "ANTHROPIC_API_KEY is set in the environment." };
+      return {
+        authenticated: true,
+        method: "api-key",
+        detail: "ANTHROPIC_API_KEY is set in the environment.",
+      };
     }
     if (fs.existsSync(path.join(home, ".claude"))) {
       return {
         authenticated: "unknown",
         method: null,
-        detail: "~/.claude exists but no portable credential marker was found (macOS keychain auth is not detectable). The smoke test will confirm.",
+        detail:
+          "~/.claude exists but no portable credential marker was found (macOS keychain auth is not detectable). The smoke test will confirm.",
       };
     }
-    return { authenticated: false, method: null, detail: "Not logged in. Run `claude` once to authenticate." };
+    return {
+      authenticated: false,
+      method: null,
+      detail: "Not logged in. Run `claude` once to authenticate.",
+    };
   }
 
   async listModels(): Promise<ModelOption[]> {
+    // One row per family: the CLI aliases ride along on the concrete id so the
+    // model matrix does not show every family twice.
     return [
-      { id: "sonnet", label: "Claude Sonnet (alias)", recommendedFor: "day-to-day work" },
-      { id: "opus", label: "Claude Opus (alias)", recommendedFor: "hard reasoning" },
-      { id: "haiku", label: "Claude Haiku (alias)", recommendedFor: "cheap/fast runs" },
-      { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
-      { id: "claude-opus-5", label: "Claude Opus 5" },
-      { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+      {
+        id: "claude-sonnet-5",
+        label: "Claude Sonnet 5",
+        aliases: ["sonnet"],
+        recommendedFor: "day-to-day work",
+      },
+      { id: "claude-opus-5", label: "Claude Opus 5", aliases: ["opus"], recommendedFor: "hard reasoning" },
+      {
+        id: "claude-haiku-4-5-20251001",
+        label: "Claude Haiku 4.5",
+        aliases: ["haiku"],
+        recommendedFor: "cheap/fast runs",
+      },
     ];
   }
 
@@ -119,17 +153,29 @@ export class ClaudeAdapter implements AgentAdapter {
     return { ok: issues.length === 0, issues };
   }
 
-  async buildInvocation(run: AgentRun): Promise<SafeInvocation> {
+  /**
+   * `newSessionId` names the conversation this run starts (ignored when the
+   * run resumes one). `execute()` passes the id it already announced through
+   * the `session` event; direct callers get a fresh uuid.
+   */
+  async buildInvocation(run: AgentRun, newSessionId: string = crypto.randomUUID()): Promise<SafeInvocation> {
+    const detection = await this.ensureDetection();
     const args = ["-p", "--output-format", "stream-json", "--verbose"];
+    const resumeId = run.resume?.providerSessionId;
+    if (resumeId && detection.supportedFlags.includes("--resume")) {
+      args.push("--resume", resumeId);
+    } else if (!resumeId && detection.supportedFlags.includes("--session-id")) {
+      // Name the new conversation up front: the id is then known even if the
+      // run dies before the CLI emits its `system`/`init` line.
+      args.push("--session-id", newSessionId);
+    }
     if (run.model) args.push("--model", run.model);
     args.push("--add-dir", run.artifactsDir);
     if (run.mode === "read_only") {
       // Headless default mode auto-denies permission prompts; writes are only
       // pre-approved inside the artifacts directory. Claude Code permission
       // rules address absolute paths with a leading double slash.
-      const artifactsRule = run.artifactsDir.startsWith("/")
-        ? `/${run.artifactsDir}`
-        : run.artifactsDir;
+      const artifactsRule = run.artifactsDir.startsWith("/") ? `/${run.artifactsDir}` : run.artifactsDir;
       args.push(
         "--permission-mode",
         "default",
@@ -137,6 +183,22 @@ export class ClaudeAdapter implements AgentAdapter {
         `Write(${artifactsRule}/**),Edit(${artifactsRule}/**)`,
         "--disallowedTools",
         "Bash(rm:*),Bash(sudo:*)",
+      );
+    } else if (run.permissionBroker) {
+      // Every prompt the CLI would raise goes to a human through the
+      // MordomoOS approval flow (plan Onda 1 §3): review_before_write reviews
+      // edits too, controlled_write pre-approves edits and reviews the rest.
+      const broker = run.permissionBroker;
+      const mcp = {
+        mcpServers: { mordomo: { command: broker.command, args: broker.args, env: broker.env } },
+      };
+      args.push(
+        "--permission-mode",
+        run.profile === "review_before_write" ? "default" : "acceptEdits",
+        "--permission-prompt-tool",
+        "mcp__mordomo__approve",
+        "--mcp-config",
+        JSON.stringify(mcp),
       );
     } else {
       args.push("--permission-mode", "acceptEdits");
@@ -150,14 +212,29 @@ export class ClaudeAdapter implements AgentAdapter {
       args,
       env,
       stdin: run.prompt,
-      description: `claude -p (${run.mode}, model=${run.model ?? "default"})`,
+      description: `claude -p (${run.mode}, model=${run.model ?? "default"}${resumeId ? ", resumed" : ""}${run.permissionBroker && run.mode === "write" ? ", brokered" : ""})`,
     };
   }
 
   execute(run: AgentRun): AsyncIterable<RunEvent> {
-    const build = (r: AgentRun) => this.buildInvocation(r);
+    const build = (r: AgentRun, sessionId: string) => this.buildInvocation(r, sessionId);
+    const detect = () => this.ensureDetection();
     return (async function* () {
-      const invocation = await build(run);
+      const resumeId = run.resume?.providerSessionId;
+      const providerSessionId = resumeId ?? crypto.randomUUID();
+      const detection = await detect();
+      const invocation = await build(run, providerSessionId);
+      if (resumeId && !detection.supportedFlags.includes("--resume")) {
+        yield {
+          type: "text",
+          ts: Date.now(),
+          stream: "stderr",
+          text: "[mordomo] resumeSupported: false — the installed claude does not advertise --resume; starting a fresh conversation.",
+        } as RunEvent;
+      } else if (invocation.args.includes("--session-id") || invocation.args.includes("--resume")) {
+        // Known before the first line of output; the stream confirms it later.
+        yield { type: "session", ts: Date.now(), providerSessionId };
+      }
       yield* executeInvocation(run, invocation, claudeStreamParser(), [invocation.executable]);
     })();
   }
@@ -186,7 +263,9 @@ function num(value: unknown): number {
  * Usage block of a Claude Code stream-json message (`assistant.message.usage`
  * or `result.usage`). Returns null when the block carries no token counts.
  */
-export function parseClaudeUsage(raw: unknown): { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number } | null {
+export function parseClaudeUsage(
+  raw: unknown,
+): { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number } | null {
   if (!raw || typeof raw !== "object") return null;
   const u = raw as Record<string, unknown>;
   if (u.input_tokens == null && u.output_tokens == null) return null;
@@ -214,6 +293,9 @@ export function claudeStreamParser(): LineParser {
   let lastAssistantText = "";
   let resultText = "";
   let sessionModel: string | null = null;
+  // Every stream-json line repeats `session_id`; only report it when it changes
+  // so the event log gets one `session` event, not one per line.
+  let seenSessionId: string | null = null;
   return {
     parseLine(line: string): RunEvent[] | null {
       let obj: Record<string, unknown>;
@@ -224,21 +306,42 @@ export function claudeStreamParser(): LineParser {
       }
       const ts = Date.now();
       const type = obj.type as string;
+      const sessionEvents: RunEvent[] = [];
+      if (typeof obj.session_id === "string" && obj.session_id && obj.session_id !== seenSessionId) {
+        seenSessionId = obj.session_id;
+        sessionEvents.push({ type: "session", ts, providerSessionId: obj.session_id });
+      }
       if (type === "system") {
         const subtype = (obj.subtype as string) ?? "";
         if (subtype === "init" && typeof obj.model === "string") sessionModel = obj.model;
         return subtype === "init"
-          ? [{ type: "text", ts, stream: "stdout", text: `[claude session started: model=${(obj.model as string) ?? "?"}]` }]
-          : [];
+          ? [
+              ...sessionEvents,
+              {
+                type: "text",
+                ts,
+                stream: "stdout",
+                text: `[claude session started: model=${(obj.model as string) ?? "?"}]`,
+              },
+            ]
+          : sessionEvents;
       }
       if (type === "assistant" || type === "user") {
-        const message = obj.message as { content?: Array<Record<string, unknown>>; usage?: unknown; model?: unknown } | undefined;
-        const events: RunEvent[] = [];
+        const message = obj.message as
+          { content?: Array<Record<string, unknown>>; usage?: unknown; model?: unknown } | undefined;
+        const events: RunEvent[] = [...sessionEvents];
         // Per-turn usage (context meter): one event per assistant message.
         const turn = type === "assistant" ? parseClaudeUsage(message?.usage) : null;
         if (turn) {
           const model = typeof message?.model === "string" ? message.model : sessionModel;
-          events.push({ type: "usage", ts, scope: "turn", ...turn, costUsd: null, ...(model ? { model } : {}) });
+          events.push({
+            type: "usage",
+            ts,
+            scope: "turn",
+            ...turn,
+            costUsd: null,
+            ...(model ? { model } : {}),
+          });
         }
         for (const block of message?.content ?? []) {
           if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
@@ -253,7 +356,11 @@ export function claudeStreamParser(): LineParser {
               detail: input.length > 400 ? input.slice(0, 400) + "…" : input,
             });
           } else if (block.type === "tool_result" && block.is_error) {
-            events.push({ type: "permission", ts, detail: `Tool call denied or failed: ${JSON.stringify(block.content ?? "").slice(0, 300)}` });
+            events.push({
+              type: "permission",
+              ts,
+              detail: `Tool call denied or failed: ${JSON.stringify(block.content ?? "").slice(0, 300)}`,
+            });
           }
         }
         return events;
@@ -267,6 +374,7 @@ export function claudeStreamParser(): LineParser {
         if (total || cost != null) {
           const model = dominantModel(obj.modelUsage) ?? sessionModel;
           return [
+            ...sessionEvents,
             {
               type: "usage",
               ts,
@@ -280,9 +388,9 @@ export function claudeStreamParser(): LineParser {
             },
           ];
         }
-        return [];
+        return sessionEvents;
       }
-      return [];
+      return sessionEvents;
     },
     summarize(): string {
       return (resultText || lastAssistantText).slice(0, 2000);

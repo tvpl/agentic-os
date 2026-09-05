@@ -12,7 +12,9 @@ export function formatUsd(v: number | null | undefined, locale = "en-GB"): strin
   if (v == null || !Number.isFinite(v)) return "—";
   if (v === 0) return "$0";
   const digits = v >= 1 ? 2 : v >= 0.01 ? 3 : 4;
-  const s = new Intl.NumberFormat(locale, { minimumFractionDigits: 0, maximumFractionDigits: digits }).format(v);
+  const s = new Intl.NumberFormat(locale, { minimumFractionDigits: 0, maximumFractionDigits: digits }).format(
+    v,
+  );
   return `$${s}`;
 }
 
@@ -92,8 +94,11 @@ export function foldUsage(events: readonly RunEventView[]): RunUsage | null {
           outputTokens: turns.outputTokens + piece.outputTokens,
           cacheReadTokens: (turns.cacheReadTokens ?? 0) + (piece.cacheReadTokens ?? 0),
           cacheWriteTokens: (turns.cacheWriteTokens ?? 0) + (piece.cacheWriteTokens ?? 0),
-          costUsd: turns.costUsd == null && piece.costUsd == null ? null : (turns.costUsd ?? 0) + (piece.costUsd ?? 0),
-          ...(piece.model ?? turns.model ? { model: piece.model ?? turns.model } : {}),
+          costUsd:
+            turns.costUsd == null && piece.costUsd == null
+              ? null
+              : (turns.costUsd ?? 0) + (piece.costUsd ?? 0),
+          ...((piece.model ?? turns.model) ? { model: piece.model ?? turns.model } : {}),
         }
       : piece;
   }

@@ -4,7 +4,16 @@
  * delay in arc order and a spring or eased curve toward its live target.
  */
 import { orderFiles, targetOf } from "./layouts";
-import { EXPLOSION_S, LAYOUT_TWEEN_S, RING, clampZoom, type FileNode, type Hub, type Trip, type World } from "./world";
+import {
+  EXPLOSION_S,
+  LAYOUT_TWEEN_S,
+  RING,
+  clampZoom,
+  type FileNode,
+  type Hub,
+  type Trip,
+  type World,
+} from "./world";
 
 /** Stagger between consecutive files of a fan (seconds); capped so big hubs stay snappy. */
 const FAN_STAGGER = 0.004;
@@ -20,7 +29,10 @@ export interface ExplosionPlan {
  * to their targets with a spring overshoot in arc order (dir, then mtime);
  * on collapse they ease back into the halo from where they are.
  */
-export function planExplosion(w: Pick<World, "files" | "time">, hub: Pick<Hub, "key" | "x" | "y" | "expanded">): ExplosionPlan {
+export function planExplosion(
+  w: Pick<World, "files" | "time">,
+  hub: Pick<Hub, "key" | "x" | "y" | "expanded">,
+): ExplosionPlan {
   const members = orderFiles(w.files.filter((n) => n.group === hub.key));
   const stagger = Math.min(FAN_STAGGER, FAN_MAX_STAGGER_TOTAL / Math.max(1, members.length));
   const trips: ExplosionPlan["trips"] = [];

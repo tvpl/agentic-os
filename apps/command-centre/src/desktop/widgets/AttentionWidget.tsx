@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
 import { useT } from "../../i18n";
-import { qk, useApiQuery } from "../../queries";
+import { qk, useApiQuery, useOsMetrics, useOsSettings } from "../../queries";
+import { budgetState } from "../budget";
 import { StatusBadge } from "../../components/ui";
-import { isActiveStatus, useDesktopRoutines, useDesktopRuns } from "../data";
+import { useDesktopRoutines, useDesktopRuns } from "../data";
 import { WidgetGate } from "./WidgetGate";
 
 interface Approval {
@@ -16,16 +17,23 @@ export default function AttentionWidget() {
   const routines = useDesktopRoutines();
   const runs = useDesktopRuns();
   // Approvals are optional: a failure here only hides the approvals chip.
-  const approvals = useApiQuery<Approval[]>(qk.approvals, "/api/approvals", { refetchInterval: 60_000 });
+  const approvals = useApiQuery<Approval[]>(qk.approvals, "/api/approvals", { refetchInterval: 300_000 });
 
-  const failures = (runs.data ?? []).filter((r) => r.status === "failed" || r.status === "timed_out").slice(0, 3);
+  const failures = (runs.data ?? [])
+    .filter((r) => r.status === "failed" || r.status === "timed_out")
+    .slice(0, 3);
   const unhealthy = (routines.data ?? []).filter((r) => !r.healthy);
-  const running = (runs.data ?? []).filter((r) => isActiveStatus(r.status));
+  // Runs in progress live in the Now panel: attention means failure,
+  // approval or an unhealthy routine — never "something is happening".
   const pending = approvals.data?.length ?? 0;
+  const metrics = useOsMetrics({ refetchInterval: 300_000 });
+  const settings = useOsSettings();
+  const budget = budgetState(settings.data?.limits?.dailyBudgetUsd, metrics.data?.cost?.todayUsd);
+  const budgetHot = budget.tone === "warn" || budget.tone === "over";
 
   return (
     <WidgetGate queries={[routines, runs]} lines={1}>
-      {failures.length === 0 && unhealthy.length === 0 && running.length === 0 && pending === 0 ? (
+      {failures.length === 0 && unhealthy.length === 0 && pending === 0 && !budgetHot ? (
         <p className="attention-clear">{t("dash.allClear")}</p>
       ) : (
         <div className="attention-row">
@@ -34,11 +42,16 @@ export default function AttentionWidget() {
               {t("dash.pendingApprovals", { n: pending })}
             </Link>
           )}
-          {running.map((r) => (
-            <Link key={r.id} to={`/runs/${r.id}`} className="badge info plain">
-              <span className="spinner sm" aria-hidden /> {r.skillSlug ?? r.provider}
+          {budgetHot && (
+            <Link
+              to="/settings?tab=security"
+              className={`badge ${budget.tone === "over" ? "danger" : "warn"} plain`}
+            >
+              {t(budget.tone === "over" ? "dash.budgetOver" : "dash.budgetWarn", {
+                pct: Math.round(budget.ratio * 100),
+              })}
             </Link>
-          ))}
+          )}
           {unhealthy.map((r) => (
             <Link key={r.id} to="/routines" className="badge danger plain">
               {r.name} · {r.recentFailures}×
@@ -46,7 +59,8 @@ export default function AttentionWidget() {
           ))}
           {failures.map((r) => (
             <Link key={r.id} to={`/runs/${r.id}`} className="attention-failure">
-              <StatusBadge status={r.status} /> <span className="truncate">{r.skillSlug ?? r.promptSummary.slice(0, 42)}</span>
+              <StatusBadge status={r.status} />{" "}
+              <span className="truncate">{r.skillSlug ?? r.promptSummary.slice(0, 42)}</span>
             </Link>
           ))}
         </div>

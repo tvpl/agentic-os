@@ -21,6 +21,8 @@ export const SkillFrontmatterSchema = z.object({
   recommendedModel: z.string().nullable().default(null),
   recommendedEffort: EffortLevel.default("default"),
   mode: z.enum(["read_only", "write"]).default("read_only"),
+  /** Daily spend cap for runs of this skill in USD (0 = none). */
+  budgetUsd: z.number().min(0).default(0),
   enabled: z.boolean().default(true),
   version: z.string().default("1.0.0"),
   changelog: z.array(z.string()).default([]),

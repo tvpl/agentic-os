@@ -1,16 +1,36 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import https from "node:https";
 import path from "node:path";
 import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import Fastify, { LogController, type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import Fastify, {
+  LogController,
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
+} from "fastify";
 import fastifyStatic from "@fastify/static";
 import { ZodError } from "zod";
-import { JsonlLogger, PathAccessError, redactSecrets } from "@mordomo/core";
+import {
+  JsonlLogger,
+  PathAccessError,
+  TelegramPoller,
+  certificateHosts,
+  ensureTlsMaterial,
+  redactSecrets,
+  type TlsMaterial,
+} from "@mordomo/core";
 import { AppContext } from "./context.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerSkillRoutes } from "./routes/skills.js";
 import { registerRunRoutes } from "./routes/runs.js";
+import { registerSessionRoutes } from "./routes/sessions.js";
+import { registerNotificationRoutes } from "./routes/notifications.js";
+import { registerDeviceRoutes } from "./routes/devices.js";
+import { registerChannelRoutes } from "./routes/channels.js";
+import { registerPushRoutes } from "./routes/push.js";
+import { resolveApprovalForChat } from "./approvalActions.js";
 import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerRoutineRoutes } from "./routes/routines.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
@@ -25,6 +45,8 @@ export interface ServerHandle {
   ctx: AppContext;
   url: string;
   close: () => Promise<void>;
+  /** The https URL for remote devices when remote.tls is on. */
+  tlsUrl: string | null;
 }
 
 /** Uniform error envelope. `message` is duplicated at the top level for older clients. */
@@ -45,7 +67,10 @@ const ALLOWED_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
  * Only loopback hosts may talk to the API (DNS-rebinding defence). Parsed with
  * `new URL` so bracketed IPv6 and ports are handled; a missing Host is refused.
  */
-export function isAllowedHost(hostHeader: string | string[] | undefined): boolean {
+export function isAllowedHost(
+  hostHeader: string | string[] | undefined,
+  extraHosts: readonly string[] = [],
+): boolean {
   const raw = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader;
   if (!raw || !raw.trim()) return false;
   let url: URL;
@@ -56,7 +81,25 @@ export function isAllowedHost(hostHeader: string | string[] | undefined): boolea
   }
   // Reject anything that smuggled userinfo/path into the header.
   if (url.username || url.password || url.pathname !== "/" || url.search || url.hash) return false;
-  return ALLOWED_HOSTNAMES.has(url.hostname.toLowerCase());
+  const host = url.hostname.toLowerCase();
+  if (ALLOWED_HOSTNAMES.has(host)) return true;
+  // Remote access (Onda 3): hosts the user listed, matched on the host name
+  // (with or without the port they wrote).
+  return extraHosts.some((h) => {
+    const entry = h.trim().toLowerCase();
+    if (!entry) return false;
+    try {
+      const u = new URL(`http://${entry}`);
+      return u.hostname === host && (!u.port || u.port === url.port);
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** Loopback requests get the local token injected into the page; remote ones pair instead. */
+export function isLoopbackHost(hostHeader: string | string[] | undefined): boolean {
+  return isAllowedHost(hostHeader);
 }
 
 export function tokenMatches(supplied: unknown, expected: string): boolean {
@@ -123,15 +166,21 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   const token = ctx.token();
 
   app.addHook("onRequest", async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!isAllowedHost(req.headers.host)) {
+    const remote = ctx.settings().remote;
+    const extraHosts = remote.enabled ? remote.allowedHosts : [];
+    if (!isAllowedHost(req.headers.host, extraHosts)) {
       return reply.code(403).send(errorBody("forbidden_host", "Forbidden host"));
     }
     if (req.url.startsWith("/api/")) {
-      const isMeta = req.url === "/api/meta";
+      // Unauthenticated: the meta line the shell boots from, and claiming a pairing code.
+      const open = req.url === "/api/meta" || (req.method === "POST" && req.url === "/api/pair/claim");
       const supplied =
         (req.headers["x-mordomo-token"] as string | undefined) ??
         (req.query as Record<string, string | undefined>)?.token;
-      if (!isMeta && !tokenMatches(supplied, token)) {
+      const ok =
+        tokenMatches(supplied, token) ||
+        (remote.enabled && typeof supplied === "string" && ctx.devices.verify(supplied) !== null);
+      if (!open && !ok) {
         return reply.code(401).send(errorBody("unauthorized", "Missing or invalid local token"));
       }
     }
@@ -158,23 +207,28 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
     });
   });
 
-  app.setErrorHandler((err: Error & { statusCode?: number; code?: string; validation?: unknown }, req, reply) => {
-    if (err instanceof ZodError) {
-      const message = err.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
-      return reply.code(400).send(errorBody("validation", message, err.issues));
-    }
-    if (err instanceof PathAccessError || err.name === "PathAccessError") {
-      return reply.code(403).send(errorBody("forbidden_path", err.message));
-    }
-    const status = typeof err.statusCode === "number" && err.statusCode >= 400 && err.statusCode <= 599 ? err.statusCode : 500;
-    if (status < 500) {
-      const code = typeof err.code === "string" && err.code ? err.code : (STATUS_CODES[status] ?? "error");
-      return reply.code(status).send(errorBody(code, err.message));
-    }
-    // Never leak internals (paths, stack, SQL) to the client; keep them in the log.
-    req.log.error({ err, reqId: req.id, url: safeUrl(req.url), msg: "unhandled error" });
-    return reply.code(500).send(errorBody("internal", "Internal error"));
-  });
+  app.setErrorHandler(
+    (err: Error & { statusCode?: number; code?: string; validation?: unknown }, req, reply) => {
+      if (err instanceof ZodError) {
+        const message = err.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+        return reply.code(400).send(errorBody("validation", message, err.issues));
+      }
+      if (err instanceof PathAccessError || err.name === "PathAccessError") {
+        return reply.code(403).send(errorBody("forbidden_path", err.message));
+      }
+      const status =
+        typeof err.statusCode === "number" && err.statusCode >= 400 && err.statusCode <= 599
+          ? err.statusCode
+          : 500;
+      if (status < 500) {
+        const code = typeof err.code === "string" && err.code ? err.code : (STATUS_CODES[status] ?? "error");
+        return reply.code(status).send(errorBody(code, err.message));
+      }
+      // Never leak internals (paths, stack, SQL) to the client; keep them in the log.
+      req.log.error({ err, reqId: req.id, url: safeUrl(req.url), msg: "unhandled error" });
+      return reply.code(500).send(errorBody("internal", "Internal error"));
+    },
+  );
 
   app.addHook("onClose", async () => {
     closeAllSse();
@@ -184,6 +238,11 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   registerSystemRoutes(app, ctx);
   registerSkillRoutes(app, ctx);
   registerRunRoutes(app, ctx);
+  registerSessionRoutes(app, ctx);
+  registerNotificationRoutes(app, ctx);
+  registerDeviceRoutes(app, ctx);
+  registerChannelRoutes(app, ctx);
+  registerPushRoutes(app, ctx);
   registerMemoryRoutes(app, ctx);
   registerRoutineRoutes(app, ctx);
   registerConnectorRoutes(app, ctx);
@@ -199,14 +258,17 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
       wildcard: false,
       index: false,
     });
-    const serveIndex = (_req: FastifyRequest, reply: FastifyReply) => {
-      // The local token is injected into the same-origin page only; foreign
-      // origins cannot read it (CORS) nor send it (custom header + no CORS).
+    const serveIndex = (req: FastifyRequest, reply: FastifyReply) => {
+      // The local token is injected into the same-origin page only, and only
+      // when the page is opened from this machine; a remote device pairs and
+      // keeps its own token in the browser. Foreign origins cannot read the
+      // meta (CORS) nor send it (custom header + no CORS).
+      const inject = isLoopbackHost(req.headers.host) ? token : "";
       const html = fs
         .readFileSync(indexFile, "utf8")
         .replace(
           /<meta name="mordomo-token" content=""\s*\/?>/,
-          `<meta name="mordomo-token" content="${token}" />`,
+          `<meta name="mordomo-token" content="${inject}" />`,
         );
       reply.type("text/html; charset=utf-8").send(html);
     };
@@ -226,6 +288,24 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   return app;
 }
 
+/**
+ * TLS listener plan: only with remote access AND remote.tls on. The
+ * certificate names every allowed host and is kept in config/tls/.
+ */
+export function tlsListenerFor(
+  ctx: AppContext,
+): { port: number; hosts: string[]; material: TlsMaterial } | null {
+  const s = ctx.settings();
+  if (!s.remote.enabled || !s.remote.tls.enabled) return null;
+  const hosts = s.remote.allowedHosts.filter((h) => h.trim());
+  const material = ensureTlsMaterial(ctx.paths.config, hosts);
+  return {
+    port: s.remote.tls.port ?? s.port + 1,
+    hosts: certificateHosts(hosts).filter((h) => !["localhost", "127.0.0.1", "::1"].includes(h)),
+    material,
+  };
+}
+
 export async function startServer(homeOverride?: string): Promise<ServerHandle> {
   const ctx = new AppContext(homeOverride, { applyPendingRestore: true });
   const settings = ctx.settings();
@@ -233,19 +313,83 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
 
   if (ctx.restoredAtBoot) {
     app.log.info({ backup: ctx.restoredAtBoot.name, msg: "applied staged restore at boot" });
-     
+
     console.log(`[mordomo] applied staged restore of backup ${ctx.restoredAtBoot.name}`);
   }
   const recovered = ctx.runs.recoverInterrupted();
   if (recovered > 0) {
     app.log.info({ recovered, msg: "marked orphaned runs as interrupted" });
-     
+
     console.log(`[mordomo] marked ${recovered} orphaned run(s) as interrupted`);
   }
   ctx.scheduler.start();
+  // The sentinels observe on the same lifecycle as the scheduler; their hourly
+  // pass rides the sweep below instead of arming a timer of its own.
+  ctx.sentinels.start();
+  // Telegram inbound: approve / deny from the phone through the same code path as the UI button.
+  ctx.telegramPoller = new TelegramPoller({
+    getSettings: () => ctx.settings(),
+    resolve: (id, decision) => resolveApprovalForChat(ctx, id, decision),
+    pending: () =>
+      ctx.approvals.list("pending").map((a) => ({ id: a.id, kind: a.kind, description: a.description })),
+    onError: (message) => app.log.warn({ msg: `telegram inbound: ${message}` }),
+  });
+  ctx.telegramPoller.start();
+
+  // Approvals nobody answered expire on their own, and the daily budget is
+  // checked on the same beat: sweep at boot, then hourly.
+  const sweepApprovals = () => {
+    try {
+      const expired = ctx.expireStaleApprovals();
+      if (expired > 0) app.log.info({ expired, msg: "expired stale approvals" });
+    } catch (err) {
+      app.log.error({ err, msg: "approval sweep failed" });
+    }
+    try {
+      const level = ctx.checkDailyBudget();
+      if (level !== null) app.log.info({ level, msg: "daily budget threshold crossed" });
+    } catch (err) {
+      app.log.error({ err, msg: "budget check failed" });
+    }
+    try {
+      ctx.sampleMetrics();
+    } catch (err) {
+      app.log.error({ err, msg: "metrics sample failed" });
+    }
+    // Silent routines, connector deltas and the did-it-twice detector. Async,
+    // and it settles on its own: the sweep never waits for a connector read.
+    void ctx.sentinels
+      .hourly()
+      .then((report) => {
+        const fired = report.silentRoutines.length + report.connectorDeltas.length;
+        if (fired > 0 || report.repeatSuggestions > 0) {
+          app.log.info({ ...report, msg: "sentinel sweep" });
+        }
+      })
+      .catch((err: unknown) => app.log.error({ err, msg: "sentinel sweep failed" }));
+  };
+  sweepApprovals();
+  const approvalSweep = setInterval(sweepApprovals, 3_600_000);
+  approvalSweep.unref?.();
 
   await app.listen({ port: settings.port, host: settings.bindAddress });
   const url = `http://127.0.0.1:${settings.port}`;
+
+  // Remote access over TLS (follow-up 10): a second listener with the
+  // self-signed certificate, sharing the same request handler. Loopback keeps
+  // plain http on `port` so local clients (CLI, MCP broker) never change.
+  let tlsServer: https.Server | null = null;
+  const tls = tlsListenerFor(ctx);
+  if (tls) {
+    tlsServer = https.createServer({ key: tls.material.keyPem, cert: tls.material.certPem }, (req, res) => {
+      app.server.emit("request", req, res);
+    });
+    await new Promise<void>((resolve, reject) => {
+      tlsServer!.once("error", reject);
+      tlsServer!.listen(tls.port, settings.bindAddress, () => resolve());
+    });
+    app.log.info({ port: tls.port, fingerprint: tls.material.fingerprint, msg: "tls listener up" });
+  }
 
   const pidFile = path.join(ctx.paths.run, "server.pid");
   fs.mkdirSync(ctx.paths.run, { recursive: true });
@@ -256,9 +400,12 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   const close = (): Promise<void> => {
     if (closing) return closing;
     closing = (async () => {
+      if (tlsServer) await new Promise<void>((r) => tlsServer!.close(() => r()));
       process.off("SIGTERM", onSignal);
       process.off("SIGINT", onSignal);
       process.off("unhandledRejection", onRejection);
+      clearInterval(approvalSweep);
+      ctx.sentinels.stop();
       try {
         fs.unlinkSync(pidFile);
       } catch {
@@ -277,7 +424,7 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   };
   const onSignal = (signal: NodeJS.Signals) => {
     app.log.info({ signal, msg: "shutdown requested" });
-     
+
     console.log(`[mordomo] ${signal} received — shutting down`);
     process.exitCode = 0;
     close().catch((err: unknown) => {
@@ -287,12 +434,12 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   };
   const onRejection = (reason: unknown) => {
     app.log.error({ err: reason, msg: "unhandledRejection" });
-     
+
     console.error("[mordomo] unhandled rejection:", reason);
   };
   process.on("SIGTERM", onSignal);
   process.on("SIGINT", onSignal);
   process.on("unhandledRejection", onRejection);
 
-  return { app, ctx, url, close };
+  return { app, ctx, url, tlsUrl: tls ? `https://${tls.hosts[0] ?? "localhost"}:${tls.port}` : null, close };
 }

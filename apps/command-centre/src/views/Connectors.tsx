@@ -31,9 +31,16 @@ export default function Connectors() {
   });
 
   const requestWrite = useMutation({
-    mutationFn: (c: Connector) => api.put<{ pendingApproval: { id: string } | null }>(`/api/connectors/${encodeURIComponent(c.id)}`, { ...c, writeEnabled: true }),
+    mutationFn: (c: Connector) =>
+      api.put<{ pendingApproval: { id: string } | null }>(`/api/connectors/${encodeURIComponent(c.id)}`, {
+        ...c,
+        writeEnabled: true,
+      }),
     onSuccess: (res) => {
-      toast(res.pendingApproval ? t("conn.writeRequested") : t("conn.writeEnabled"), res.pendingApproval ? "info" : "ok");
+      toast(
+        res.pendingApproval ? t("conn.writeRequested") : t("conn.writeEnabled"),
+        res.pendingApproval ? "info" : "ok",
+      );
       qc.invalidateQueries({ queryKey: qk.connectors }).catch(() => undefined);
       qc.invalidateQueries({ queryKey: qk.approvals }).catch(() => undefined);
     },
@@ -41,11 +48,32 @@ export default function Connectors() {
   });
 
   const onRequestWrite = async (c: Connector) => {
-    if (await confirm({ title: t("conn.writeGate"), body: t("conn.writeGateBody", { name: c.name }), confirmLabel: t("conn.requestWrite") })) requestWrite.mutate(c);
+    if (
+      await confirm({
+        title: t("conn.writeGate"),
+        body: t("conn.writeGateBody", { name: c.name }),
+        confirmLabel: t("conn.requestWrite"),
+      })
+    )
+      requestWrite.mutate(c);
   };
 
-  if (connectors.isPending && !connectors.data) return <div className="page"><Skeleton lines={6} /></div>;
-  if (connectors.error && !connectors.data) return <div className="page"><ErrorBox message={errorMessage(connectors.error)} offline={isOffline(connectors.error)} onRetry={() => void connectors.refetch()} /></div>;
+  if (connectors.isPending && !connectors.data)
+    return (
+      <div className="page">
+        <Skeleton lines={6} />
+      </div>
+    );
+  if (connectors.error && !connectors.data)
+    return (
+      <div className="page">
+        <ErrorBox
+          message={errorMessage(connectors.error)}
+          offline={isOffline(connectors.error)}
+          onRetry={() => void connectors.refetch()}
+        />
+      </div>
+    );
   const list = connectors.data ?? [];
 
   return (
@@ -55,7 +83,12 @@ export default function Connectors() {
           <h1>{t("conn.title")}</h1>
           <p className="sub">{t("conn.sub")}</p>
         </div>
-        <Button variant="primary" icon={<Search aria-hidden />} onClick={() => runAudit.mutate()} loading={runAudit.isPending}>
+        <Button
+          variant="primary"
+          icon={<Search aria-hidden />}
+          onClick={() => runAudit.mutate()}
+          loading={runAudit.isPending}
+        >
           {t("conn.audit")}
         </Button>
       </div>
@@ -84,7 +117,9 @@ export default function Connectors() {
           </div>
           <div className="card">
             <h2>{t("conn.recommend")}</h2>
-            {audit.recommendations.length === 0 && <p className="widget-muted">{t("conn.noRecommendations")}</p>}
+            {audit.recommendations.length === 0 && (
+              <p className="widget-muted">{t("conn.noRecommendations")}</p>
+            )}
             {audit.recommendations.map((r) => (
               <div className="list-row" key={r.connector.id}>
                 <div>
@@ -103,15 +138,31 @@ export default function Connectors() {
       )}
 
       {list.length === 0 ? (
-        <EmptyState icon={<Plug aria-hidden />} title={t("conn.emptyTitle")} body={t("conn.emptyBody")} action={<Button variant="primary" onClick={() => runAudit.mutate()}>{t("conn.audit")}</Button>} />
+        <EmptyState
+          icon={<Plug aria-hidden />}
+          title={t("conn.emptyTitle")}
+          body={t("conn.emptyBody")}
+          action={
+            <Button variant="primary" onClick={() => runAudit.mutate()}>
+              {t("conn.audit")}
+            </Button>
+          }
+        />
       ) : (
         <div className="grid grid-2" style={{ marginTop: 14 }}>
           {list.map((c) => (
             <div className="card" key={c.id} style={{ margin: 0 }}>
               <div className="card-head-row">
                 <h3 className="tight">{c.name}</h3>
-                <Badge kind="state" tone={c.status === "healthy" ? "ok" : c.status === "not_configured" ? "dim" : "warn"}>
-                  {c.status === "not_configured" ? t("conn.notConfigured") : c.status === "healthy" ? t("conn.healthy") : c.status}
+                <Badge
+                  kind="state"
+                  tone={c.status === "healthy" ? "ok" : c.status === "not_configured" ? "dim" : "warn"}
+                >
+                  {c.status === "not_configured"
+                    ? t("conn.notConfigured")
+                    : c.status === "healthy"
+                      ? t("conn.healthy")
+                      : c.status}
                 </Badge>
               </div>
               <p className="skill-desc">{c.notes}</p>
@@ -152,7 +203,14 @@ export default function Connectors() {
               </details>
               <ConnectorDataPanel connector={c} />
               {!c.writeEnabled && c.writeOperations.length > 0 && (
-                <Button size="sm" variant="outline" icon={<ShieldCheck aria-hidden />} style={{ marginTop: 8 }} onClick={() => void onRequestWrite(c)} loading={requestWrite.isPending && requestWrite.variables?.id === c.id}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  icon={<ShieldCheck aria-hidden />}
+                  style={{ marginTop: 8 }}
+                  onClick={() => void onRequestWrite(c)}
+                  loading={requestWrite.isPending && requestWrite.variables?.id === c.id}
+                >
                   {t("conn.requestWrite")}
                 </Button>
               )}
@@ -189,7 +247,8 @@ function ConnectorDataPanel({ connector }: { connector: Connector }) {
 
   const data = useQuery<ConnectorData>({
     queryKey: [...qk.connectors, connector.id, "data"],
-    queryFn: ({ signal }) => api.get<ConnectorData>(`${base}/data${refresh.current ? "?refresh=1" : ""}`, { signal }),
+    queryFn: ({ signal }) =>
+      api.get<ConnectorData>(`${base}/data${refresh.current ? "?refresh=1" : ""}`, { signal }),
     enabled: false,
     retry: false,
     staleTime: 60_000,
@@ -222,7 +281,9 @@ function ConnectorDataPanel({ connector }: { connector: Connector }) {
             </Badge>
           )}
           {connector.lastUsedAt ? (
-            <span className="meta">{t("backend.conn.syncedAt", { ago: timeAgo(connector.lastUsedAt, locale) })}</span>
+            <span className="meta">
+              {t("backend.conn.syncedAt", { ago: timeAgo(connector.lastUsedAt, locale) })}
+            </span>
           ) : null}
           {hasMapping && (
             <Button
@@ -244,7 +305,9 @@ function ConnectorDataPanel({ connector }: { connector: Connector }) {
       {hasMapping && !tested && <p className="meta">{t("backend.conn.readOnly")}</p>}
 
       {tested && data.isFetching && !d && <Skeleton lines={3} />}
-      {tested && data.error && <ErrorBox message={errorMessage(data.error)} onRetry={() => void data.refetch()} />}
+      {tested && data.error && (
+        <ErrorBox message={errorMessage(data.error)} onRetry={() => void data.refetch()} />
+      )}
       {d?.message && <p className="meta">{d.message}</p>}
 
       {d?.status === "ok" && (
@@ -262,7 +325,9 @@ function ConnectorDataPanel({ connector }: { connector: Connector }) {
             <p className="meta">{t("backend.conn.noItems")}</p>
           ) : (
             <>
-              <span className="hud-label">{t("backend.conn.firstItems", { n: Math.min(3, d.items.length) })}</span>
+              <span className="hud-label">
+                {t("backend.conn.firstItems", { n: Math.min(3, d.items.length) })}
+              </span>
               <ul className="conn-items">
                 {d.items.slice(0, 3).map((item) => (
                   <li key={item.id} className={item.flagged ? "flagged" : undefined}>

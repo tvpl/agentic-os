@@ -6,7 +6,17 @@
 import { TWO_PI } from "../engine/world";
 import type { SpriteSet } from "./sprites";
 
-export function drawClock(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string, active: boolean, k: number, tNow: number, sprites: SpriteSet): void {
+export function drawClock(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+  active: boolean,
+  k: number,
+  tNow: number,
+  sprites: SpriteSet,
+): void {
   ctx.save();
   ctx.translate(x, y);
   ctx.globalAlpha = active ? 1 : 0.45;
@@ -27,12 +37,21 @@ export function drawClock(ctx: CanvasRenderingContext2D, x: number, y: number, s
   ctx.moveTo(0, 0);
   ctx.lineTo(Math.cos(minuteA - Math.PI / 2) * size * 0.72, Math.sin(minuteA - Math.PI / 2) * size * 0.72);
   ctx.moveTo(0, 0);
-  ctx.lineTo(Math.cos(minuteA / 12 - Math.PI / 2) * size * 0.45, Math.sin(minuteA / 12 - Math.PI / 2) * size * 0.45);
+  ctx.lineTo(
+    Math.cos(minuteA / 12 - Math.PI / 2) * size * 0.45,
+    Math.sin(minuteA / 12 - Math.PI / 2) * size * 0.45,
+  );
   ctx.stroke();
   ctx.restore();
 }
 
-export function drawFolderGlyph(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string): void {
+export function drawFolderGlyph(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+): void {
   ctx.save();
   ctx.translate(x - size / 2, y - size / 2);
   ctx.fillStyle = color;
@@ -43,7 +62,17 @@ export function drawFolderGlyph(ctx: CanvasRenderingContext2D, x: number, y: num
 }
 
 /** Sub-folder "planet": a small ringed disc with its file count beside it. */
-export function drawPlanet(ctx: CanvasRenderingContext2D, x: number, y: number, color: string, count: number, k: number, font: string, ink: string, alpha: number): void {
+export function drawPlanet(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  color: string,
+  count: number,
+  k: number,
+  font: string,
+  ink: string,
+  alpha: number,
+): void {
   const r = 3.6;
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -67,9 +96,25 @@ export function drawPlanet(ctx: CanvasRenderingContext2D, x: number, y: number, 
   ctx.restore();
 }
 
-const CORE_PIXELS = ["01111110", "01000010", "01011010", "01000010", "01100110", "01000010", "01111110", "00000000"];
+const CORE_PIXELS = [
+  "01111110",
+  "01000010",
+  "01011010",
+  "01000010",
+  "01100110",
+  "01000010",
+  "01111110",
+  "00000000",
+];
 
-export function drawPixelCore(ctx: CanvasRenderingContext2D, color: string, k: number, tNow: number, agentsActive: boolean, sprites: SpriteSet): void {
+export function drawPixelCore(
+  ctx: CanvasRenderingContext2D,
+  color: string,
+  k: number,
+  tNow: number,
+  agentsActive: boolean,
+  sprites: SpriteSet,
+): void {
   const px = 4.4 / Math.max(0.6, Math.min(k, 2));
   const half = (CORE_PIXELS.length * px) / 2;
   const pulse = tNow === 0 ? 0.5 : 0.4 + 0.25 * Math.sin(tNow * (agentsActive ? 5 : 2));
@@ -99,7 +144,15 @@ export function drawPixelCore(ctx: CanvasRenderingContext2D, color: string, k: n
   ctx.restore();
 }
 
-export function quadPoint(ax: number, ay: number, cx: number, cy: number, bx: number, by: number, u: number): [number, number] {
+export function quadPoint(
+  ax: number,
+  ay: number,
+  cx: number,
+  cy: number,
+  bx: number,
+  by: number,
+  u: number,
+): [number, number] {
   const v = 1 - u;
   return [v * v * ax + 2 * v * u * cx + u * u * bx, v * v * ay + 2 * v * u * cy + u * u * by];
 }

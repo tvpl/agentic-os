@@ -40,7 +40,11 @@ export function lastEventId(req: FastifyRequest): number | null {
   return Number.isInteger(n) && n >= 0 ? n : null;
 }
 
-export function openSse(req: FastifyRequest, reply: FastifyReply, opts: { heartbeatMs?: number } = {}): SseChannel {
+export function openSse(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  opts: { heartbeatMs?: number } = {},
+): SseChannel {
   reply.hijack();
   const raw = reply.raw;
   raw.writeHead(200, {

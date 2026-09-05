@@ -4,8 +4,7 @@ import path from "node:path";
 /** Dependency-free `which`: locate an executable on PATH. */
 export function findOnPath(name: string): string | null {
   const pathVar = process.env.PATH ?? "";
-  const exts =
-    process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""];
+  const exts = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""];
   for (const dir of pathVar.split(path.delimiter)) {
     if (!dir) continue;
     for (const ext of exts) {

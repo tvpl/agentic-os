@@ -26,16 +26,27 @@ export function shortModel(model: string | null): string {
 
 export function useEffortLabels(): Record<Effort, string> {
   const t = useT();
-  return { low: t("effort.low"), medium: t("effort.medium"), high: t("effort.high"), default: t("effort.default") };
+  return {
+    low: t("effort.low"),
+    medium: t("effort.medium"),
+    high: t("effort.high"),
+    default: t("effort.default"),
+  };
 }
 
 export function useProviderModels(provider: ProviderId) {
   // Provider models are not part of `qk` yet; nested under the providers key so `settings.changed` invalidates them.
-  return useApiQuery<ModelishOption[]>([...qk.providers, provider, "models"], `/api/providers/${provider}/models`, { staleTime: 60_000 });
+  return useApiQuery<ModelishOption[]>(
+    [...qk.providers, provider, "models"],
+    `/api/providers/${provider}/models`,
+    { staleTime: 60_000 },
+  );
 }
 
 export function skillEffort(skill: Skill): Effort {
-  return (EFFORTS as readonly string[]).includes(skill.recommendedEffort) ? (skill.recommendedEffort as Effort) : "default";
+  return (EFFORTS as readonly string[]).includes(skill.recommendedEffort)
+    ? (skill.recommendedEffort as Effort)
+    : "default";
 }
 
 /** Persist `recommendedModel` / `recommendedEffort` on the canonical skill (same PUT as the skill editor). */
@@ -45,7 +56,15 @@ export function useSaveSkillMatrix(skill: Skill, onSaved: (model: string | null,
   const labels = useEffortLabels();
   return useMutation({
     mutationFn: async ({ model, effort }: { model: string | null; effort: Effort }) => {
-      const { body, skillFile: _f, resources: _r, bodyLineCount: _c, thick: _t, favorite: _v, ...front } = skill as Skill & Record<string, unknown>;
+      const {
+        body,
+        skillFile: _f,
+        resources: _r,
+        bodyLineCount: _c,
+        thick: _t,
+        favorite: _v,
+        ...front
+      } = skill as Skill & Record<string, unknown>;
       delete (front as Record<string, unknown>).dir;
       await api.put(`/api/skills/${encodeURIComponent(skill.slug)}`, {
         frontmatter: { ...front, recommendedModel: model, recommendedEffort: effort },
@@ -74,7 +93,10 @@ export interface ModelEffortMatrixProps {
 export function ModelEffortMatrix({ provider, model, effort, onPick, busy = false }: ModelEffortMatrixProps) {
   const labels = useEffortLabels();
   const models = useProviderModels(provider);
-  const rows: Array<{ id: string | null; label: string }> = [{ id: null, label: "AUTO" }, ...(models.data ?? []).map((m) => ({ id: m.id, label: shortModel(m.id) }))];
+  const rows: Array<{ id: string | null; label: string }> = [
+    { id: null, label: "AUTO" },
+    ...(models.data ?? []).map((m) => ({ id: m.id, label: shortModel(m.id) })),
+  ];
   return (
     <table className="matrix">
       <thead>
@@ -117,9 +139,15 @@ export function ModelEffortMatrix({ provider, model, effort, onPick, busy = fals
 }
 
 /** Providers enabled for this skill, with the default one first. */
-export function pickProvider(skill: Skill, providers: ProviderSnapshot[]): { enabled: ProviderSnapshot[]; initial: ProviderId } {
+export function pickProvider(
+  skill: Skill,
+  providers: ProviderSnapshot[],
+): { enabled: ProviderSnapshot[]; initial: ProviderId } {
   const enabled = providers.filter((p) => p.enabled && skill.providers.includes(p.id));
-  return { enabled, initial: providers.find((p) => p.isDefault && enabled.includes(p))?.id ?? enabled[0]?.id ?? "claude" };
+  return {
+    enabled,
+    initial: providers.find((p) => p.isDefault && enabled.includes(p))?.id ?? enabled[0]?.id ?? "claude",
+  };
 }
 
 export default function SkillMatrixModal({

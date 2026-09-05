@@ -15,19 +15,31 @@ import {
   redactSecrets,
   resolveInsideRoots,
   type Settings,
+  dailyPoints,
 } from "@mordomo/core";
 import { clearRestorePending, readRestorePending, writeRestorePending, type AppContext } from "../context.js";
 import { runDoctor } from "../doctor.js";
-import { grantedRoots, httpError, launchPromptRun, launchSkillRun, type PromptRunInput, type SkillRunInput } from "./common.js";
+import { resolveApproval } from "../approvalActions.js";
+import { tlsListenerFor } from "../server.js";
+
+function tlsInfo(ctx: AppContext): { port: number; fingerprint: string; hosts: string[] } | null {
+  try {
+    const t = tlsListenerFor(ctx);
+    return t ? { port: t.port, fingerprint: t.material.fingerprint, hosts: t.hosts } : null;
+  } catch {
+    return null;
+  }
+}
+import { grantedRoots, httpError } from "./common.js";
 import { BackupNameParams, UuidParams } from "./params.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-/** Version from apps/api/package.json (falls back to the repo root package.json). */
+/** Version from the repository root package.json (falls back to apps/api's own). */
 export function readPackageVersion(): string {
   for (const candidate of [
-    path.resolve(here, "..", "..", "package.json"),
     path.resolve(here, "..", "..", "..", "..", "package.json"),
+    path.resolve(here, "..", "..", "package.json"),
   ]) {
     try {
       const pkg = JSON.parse(fs.readFileSync(candidate, "utf8")) as { version?: unknown };
@@ -45,7 +57,11 @@ export const PKG_VERSION = readPackageVersion();
 const ProviderPatch = ProviderSettingsSchema.partial();
 export const SettingsPatchSchema = SettingsSchema.partial().extend({
   providers: z
-    .object({ claude: ProviderPatch.optional(), cursor: ProviderPatch.optional(), codex: ProviderPatch.optional() })
+    .object({
+      claude: ProviderPatch.optional(),
+      cursor: ProviderPatch.optional(),
+      codex: ProviderPatch.optional(),
+    })
     .optional(),
   limits: SettingsSchema.shape.limits.removeDefault().partial().optional(),
 });
@@ -55,7 +71,10 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-function mergeObjects(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
+function mergeObjects(
+  base: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
   const out: Record<string, unknown> = { ...base };
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
@@ -143,7 +162,24 @@ export function artifactKind(file: string): ArtifactKind {
   if ([".mp4", ".webm", ".mov"].includes(ext)) return "video";
   if ([".html", ".htm"].includes(ext)) return "html";
   if ([".md", ".markdown"].includes(ext)) return "markdown";
-  if ([".ts", ".tsx", ".js", ".mjs", ".py", ".sh", ".json", ".css", ".yaml", ".yml", ".sql", ".go", ".rs"].includes(ext)) return "code";
+  if (
+    [
+      ".ts",
+      ".tsx",
+      ".js",
+      ".mjs",
+      ".py",
+      ".sh",
+      ".json",
+      ".css",
+      ".yaml",
+      ".yml",
+      ".sql",
+      ".go",
+      ".rs",
+    ].includes(ext)
+  )
+    return "code";
   return "other";
 }
 
@@ -168,7 +204,12 @@ export function artifactTitle(abs: string, kind: ArtifactKind): string {
     const m = /^\s*#{1,3}\s+(.+?)\s*#*\s*$/m.exec(head);
     if (m?.[1]) return m[1].trim().slice(0, 160);
     const line = head.split(/\r?\n/).find((l) => l.trim() && !l.trim().startsWith("---"));
-    return line ? line.trim().replace(/^[#>*\-\s]+/, "").slice(0, 160) || base : base;
+    return line
+      ? line
+          .trim()
+          .replace(/^[#>*\-\s]+/, "")
+          .slice(0, 160) || base
+      : base;
   }
   const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(head);
   if (m?.[1]) return m[1].replace(/\s+/g, " ").trim().slice(0, 160) || base;
@@ -186,13 +227,21 @@ const ArtifactListQuery = z.object({
 type ArtifactListQueryT = z.infer<typeof ArtifactListQuery>;
 
 /** Walk artifacts/ (bounded), merge run metadata by relative path, filter and sort newest first. */
-export function listArtifacts(ctx: AppContext, q: ArtifactListQueryT): { items: ArtifactListItem[]; total: number; skills: string[]; folders: string[] } {
+export function listArtifacts(
+  ctx: AppContext,
+  q: ArtifactListQueryT,
+): { items: ArtifactListItem[]; total: number; skills: string[]; folders: string[] } {
   const root = ctx.paths.artifacts;
   const byRel = new Map<string, { runId: string; skillSlug: string | null; createdAt: number }>();
   for (const run of ctx.runs.list({ limit: 500 })) {
     for (const rel of run.artifacts) {
       const key = rel.split(path.sep).join("/");
-      if (!byRel.has(key)) byRel.set(key, { runId: run.id, skillSlug: run.skillSlug, createdAt: run.finishedAt ?? run.createdAt });
+      if (!byRel.has(key))
+        byRel.set(key, {
+          runId: run.id,
+          skillSlug: run.skillSlug,
+          createdAt: run.finishedAt ?? run.createdAt,
+        });
     }
   }
 
@@ -249,7 +298,8 @@ export function listArtifacts(ctx: AppContext, q: ArtifactListQueryT): { items: 
     if (q.folder && i.folder !== q.folder) return false;
     if (q.kind && i.kind !== q.kind) return false;
     if (q.since !== undefined && i.createdAt < q.since) return false;
-    if (needle && !`${i.title} ${i.file} ${i.skillSlug ?? ""} ${i.folder}`.toLowerCase().includes(needle)) return false;
+    if (needle && !`${i.title} ${i.file} ${i.skillSlug ?? ""} ${i.folder}`.toLowerCase().includes(needle))
+      return false;
     return true;
   });
   filtered.sort((a, b) => b.createdAt - a.createdAt);
@@ -267,6 +317,8 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
       language: s.language,
       setupCompleted: s.setupCompleted,
       version: PKG_VERSION,
+      // Remote TLS (follow-up 10): the pairing screen shows the fingerprint so a phone can check what it trusts.
+      tls: tlsInfo(ctx),
     };
   });
 
@@ -370,7 +422,9 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
     );
     const runEvents = ctx.runs.eventsFor(run.id);
     const sawOk = runEvents.some(
-      (e) => (e.event.type === "assistant" || e.event.type === "result") && JSON.stringify(e.event).includes("MORDOMO_OK"),
+      (e) =>
+        (e.event.type === "assistant" || e.event.type === "result") &&
+        JSON.stringify(e.event).includes("MORDOMO_OK"),
     );
     return { run: finished, passed: finished.status === "done" && sawOk };
   });
@@ -380,31 +434,74 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
     return runDoctor(ctx, { npmAudit: audit !== "0" });
   });
 
+  /** Hourly samples of the last N days plus their daily fold (Settings › Trends). */
+  app.get("/api/metrics/history", async (req) => {
+    const q = z.object({ days: z.coerce.number().int().min(1).max(90).default(14) }).parse(req.query ?? {});
+    const samples = ctx.metricsHistory.series(q.days);
+    return { days: q.days, samples, daily: dailyPoints(samples) };
+  });
+
   app.get("/api/approvals", async () => ctx.approvals.list("pending"));
+  /** One approval by id, any status (the permission tool polls this). */
+  app.get("/api/approvals/:id", async (req) => {
+    const { id } = UuidParams.parse(req.params);
+    const approval = ctx.approvals.get(id);
+    if (!approval) throw httpError(404, "Approval not found");
+    return approval;
+  });
+  /**
+   * A tool prompt raised inside a running agent (plan Onda 1 §3): the
+   * permission MCP server parks it here; the Console, the run page and the
+   * inbox offer Approve / Deny; the server answers the CLI when resolved.
+   */
+  app.post("/api/approvals/tool", async (req) => {
+    const body = z
+      .object({
+        runId: z.string().uuid(),
+        toolName: z.string().min(1).max(200),
+        input: z.record(z.unknown()).default({}),
+        toolUseId: z.string().max(200).optional(),
+      })
+      .parse(req.body);
+    const run = ctx.runs.get(body.runId);
+    if (!run) throw httpError(404, "Run not found");
+    if (run.status !== "running" && run.status !== "queued") throw httpError(409, "Run is not active");
+    const detail = summarizeToolInput(body.toolName, body.input);
+    const description = `${body.toolName}: ${detail}`;
+    const approval = ctx.approvals.request("tool_use", description, {
+      runId: body.runId,
+      toolName: body.toolName,
+      input: body.input,
+      ...(body.toolUseId ? { toolUseId: body.toolUseId } : {}),
+    });
+    ctx.runs.annotate(body.runId, {
+      type: "permission",
+      ts: Date.now(),
+      detail: `${description} (approval ${approval.id})`,
+    });
+    events.emit("approval.requested", {
+      id: approval.id,
+      kind: approval.kind,
+      description,
+      runId: body.runId,
+    });
+    return approval;
+  });
   app.post("/api/approvals/:id/resolve", async (req) => {
     const { id } = UuidParams.parse(req.params);
     const { decision } = z.object({ decision: z.enum(["approved", "denied"]) }).parse(req.body);
-    const approval = ctx.approvals.resolve(id, decision);
-    if (!approval) throw httpError(404, "Approval not found");
-    // Act on approved effects we know how to apply.
-    let runId: string | null = null;
-    if (approval.status === "approved" && approval.kind === "expose_port") {
-      ctx.settingsStore.update({ bindAddress: String(approval.payload.bindAddress ?? "127.0.0.1") });
-    }
-    if (approval.status === "approved" && approval.kind === "write_run") {
-      const payload = approval.payload as { kind?: string; input?: unknown };
-      const onError = (err: unknown, id: string) => req.log.error({ err, runId: id, msg: "approved run failed to execute" });
-      if (payload.kind === "prompt" && payload.input) runId = launchPromptRun(ctx, payload.input as PromptRunInput, onError).runId;
-      else if (payload.kind === "skill" && payload.input) runId = launchSkillRun(ctx, payload.input as SkillRunInput, onError).runId;
-    }
-    events.emit("approval.resolved", { id: approval.id, kind: approval.kind, status: approval.status, runId });
-    return { ...approval, runId };
+    const onError = (err: unknown, runId: string) =>
+      req.log.error({ err, runId, msg: "approved run failed to execute" });
+    const result = await resolveApproval(ctx, id, decision, onError);
+    return { ...ctx.approvals.get(id)!, runId: result.runId };
   });
 
   // ---- Backups ---------------------------------------------------------------
   app.get("/api/backups", async () => listBackups(ctx.paths));
   app.post("/api/backups", async (req) => {
-    const { includeArtifacts } = z.object({ includeArtifacts: z.boolean().default(false) }).parse(req.body ?? {});
+    const { includeArtifacts } = z
+      .object({ includeArtifacts: z.boolean().default(false) })
+      .parse(req.body ?? {});
     return createBackup(ctx.paths, ctx.db, { includeArtifacts });
   });
 
@@ -417,10 +514,14 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
   app.post("/api/backups/:name/restore", async (req, reply) => {
     const { name } = BackupNameParams.parse(req.params);
     const src = path.join(ctx.paths.backups, name);
-    if (!isInside(ctx.paths.backups, src) || !fs.existsSync(src)) throw httpError(404, `Backup not found: ${name}`);
+    if (!isInside(ctx.paths.backups, src) || !fs.existsSync(src))
+      throw httpError(404, `Backup not found: ${name}`);
     const active = ctx.activeRunCount();
     if (active.running + active.queued > 0) {
-      throw httpError(409, `Cannot restore while ${active.running + active.queued} run(s) are active. Wait or cancel them first.`);
+      throw httpError(
+        409,
+        `Cannot restore while ${active.running + active.queued} run(s) are active. Wait or cancel them first.`,
+      );
     }
     const staged = writeRestorePending(ctx.paths, name);
     reply.code(202);
@@ -499,4 +600,21 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
     };
     return JSON.parse(redactSecrets(JSON.stringify(bundle)));
   });
+}
+
+/** One line a human can decide on: the command, the file, the URL — never the whole payload. */
+export function summarizeToolInput(tool: string, input: Record<string, unknown>): string {
+  const pick = (...keys: string[]): string | null => {
+    for (const k of keys) {
+      const v = input[k];
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+    return null;
+  };
+  const text =
+    pick("command", "file_path", "path", "url", "pattern", "query", "notebook_path") ??
+    JSON.stringify(input).slice(0, 200);
+  const flat = text.replace(/\s+/g, " ");
+  const head = flat.length > 160 ? `${flat.slice(0, 159)}…` : flat;
+  return tool.toLowerCase() === "bash" ? `$ ${head}` : head;
 }

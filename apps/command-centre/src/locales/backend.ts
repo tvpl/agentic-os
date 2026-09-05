@@ -54,7 +54,8 @@ export const en = {
   "backend.context": "Session",
   "backend.context.main": "Main workspace",
   "backend.context.isolated": "Isolated",
-  "backend.context.hint": "Isolated runs get a fresh temporary working directory; artifacts still land in artifacts/<run>.",
+  "backend.context.hint":
+    "Isolated runs get a fresh temporary working directory; artifacts still land in artifacts/<run>.",
   "backend.delivery": "Delivery",
   "backend.delivery.announce": "Announce",
   "backend.delivery.webhook": "Webhook",
@@ -70,7 +71,8 @@ export const en = {
   "backend.runner.local": "This desktop",
   "backend.runner.service": "Installed service",
   "backend.runner.remote": "Remote",
-  "backend.runner.hint": "Local and service are detected automatically; pick Remote for a routine a VPS owns.",
+  "backend.runner.hint":
+    "Local and service are detected automatically; pick Remote for a routine a VPS owns.",
   "backend.remoteName": "Remote name",
   "backend.remoteNameHint": "The label of the machine that runs it, e.g. the VPS hostname.",
 

@@ -32,7 +32,9 @@ for (const [name, route] of ROUTES) {
   test(`route ${name} renders cleanly`, async ({ page }) => {
     const errors = await open(page, route);
     expect(errors, errors.join("\n")).toEqual([]);
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
     expect(overflow).toBeLessThanOrEqual(2);
   });
 }
@@ -69,19 +71,35 @@ test("desktop stacks widgets on a phone", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page, "/#/");
   await expect(page.locator(".desktop-widgets.stacked")).toBeVisible();
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
   expect(overflow).toBeLessThanOrEqual(2);
 });
 
 test("run detail streams a fake run to completion", async ({ page }) => {
   await open(page, "/#/runs");
-  await page.getByLabel(/prompt/i).first().fill("hello from e2e");
-  await page.getByRole("button", { name: /^run|executar/i }).first().click();
+  await page
+    .getByLabel(/prompt/i)
+    .first()
+    .fill("hello from e2e");
+  await page
+    .getByRole("button", { name: /^run|executar/i })
+    .first()
+    .click();
   await expect(page).toHaveURL(/#\/runs\/[0-9a-f-]{36}/);
   await expect(page.locator(".run-title .badge")).toHaveText(/done|conclu/i, { timeout: 20_000 });
 });
 
-for (const [name, route] of [["desktop", "/#/"], ["skills", "/#/skills"], ["settings", "/#/settings"]] as const) {
+for (const [name, route] of [
+  ["desktop", "/#/"],
+  ["skills", "/#/skills"],
+  ["settings", "/#/settings"],
+  ["brain", "/#/brain"],
+  ["runs", "/#/runs"],
+  ["routines", "/#/routines"],
+  ["connectors", "/#/connectors"],
+] as const) {
   test(`axe: no serious violations on ${name}`, async ({ page }) => {
     await open(page, route);
     const results = await new AxeBuilder({ page }).disableRules(["color-contrast"]).analyze();

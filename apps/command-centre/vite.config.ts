@@ -19,7 +19,10 @@ function devToken(): Plugin {
       try {
         const token = readFileSync(path.resolve(here, "../../config/token"), "utf8").trim();
         if (!token) return html;
-        return html.replace(/<meta name="mordomo-token" content=""\s*\/?>/, `<meta name="mordomo-token" content="${token}" />`);
+        return html.replace(
+          /<meta name="mordomo-token" content=""\s*\/?>/,
+          `<meta name="mordomo-token" content="${token}" />`,
+        );
       } catch {
         return html; // no token yet (setup not run): leave the tag empty
       }

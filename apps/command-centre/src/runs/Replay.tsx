@@ -10,7 +10,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pause, Play, RotateCcw } from "lucide-react";
 import { useT } from "../i18n";
 import { Button, Segmented } from "../components/primitives";
-import { buildReplayModel, layoutNodes, particlePoint, replaySummary, stateAt, type PlacedNode, type ReplayModel } from "./replayEngine";
+import {
+  buildReplayModel,
+  layoutNodes,
+  particlePoint,
+  replaySummary,
+  stateAt,
+  type PlacedNode,
+  type ReplayModel,
+} from "./replayEngine";
 import type { RunEventView } from "./useRunStream";
 
 const SPEEDS = [1, 4, 16] as const;
@@ -21,7 +29,11 @@ export interface ReplayProps {
 }
 
 function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
 }
 
 export default function Replay({ events }: ReplayProps) {
@@ -96,7 +108,8 @@ export default function Replay({ events }: ReplayProps) {
       const since = state.arrivals.get(node.id);
       const glow = since === undefined ? 0 : Math.max(0, 1 - since / 900);
       const seen = node.firstAt <= timeRef.current;
-      const colour = node.kind === "result" ? (model.ok === false ? danger : ok) : node.kind === "tool" ? info : accent;
+      const colour =
+        node.kind === "result" ? (model.ok === false ? danger : ok) : node.kind === "tool" ? info : accent;
       const r = radius(node);
       ctx.globalAlpha = seen ? 1 : 0.28;
       ctx.beginPath();
@@ -117,7 +130,8 @@ export default function Replay({ events }: ReplayProps) {
     for (const flight of state.flights) {
       const point = particlePoint(flight, placed);
       if (!point) continue;
-      const colour = flight.particle.kind === "error" ? danger : flight.particle.kind === "result" ? ok : accent;
+      const colour =
+        flight.particle.kind === "error" ? danger : flight.particle.kind === "result" ? ok : accent;
       ctx.beginPath();
       ctx.arc(point.x, point.y, 3, 0, Math.PI * 2);
       ctx.fillStyle = colour;
@@ -205,7 +219,14 @@ export default function Replay({ events }: ReplayProps) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target as HTMLElement | null;
       const tag = el?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "BUTTON" || el?.isContentEditable) return;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        tag === "BUTTON" ||
+        el?.isContentEditable
+      )
+        return;
       const step = Math.max(200, model.duration / 40);
       if (e.key === " ") {
         e.preventDefault();
@@ -237,13 +258,33 @@ export default function Replay({ events }: ReplayProps) {
       {reduced ? (
         <ReplaySummary model={model} />
       ) : (
-        <canvas ref={canvasRef} className="replay-canvas" aria-label={t("runs.replay.canvasLabel", { n: summary.length })} role="img" />
+        <canvas
+          ref={canvasRef}
+          className="replay-canvas"
+          aria-label={t("runs.replay.canvasLabel", { n: summary.length })}
+          role="img"
+        />
       )}
       <div className="replay-controls">
-        <Button size="sm" variant="secondary" icon={playing ? <Pause aria-hidden /> : <Play aria-hidden />} aria-pressed={playing} onClick={toggle} disabled={reduced}>
+        <Button
+          size="sm"
+          variant="secondary"
+          icon={playing ? <Pause aria-hidden /> : <Play aria-hidden />}
+          aria-pressed={playing}
+          onClick={toggle}
+          disabled={reduced}
+        >
           {playing ? t("runs.replay.pause") : t("runs.replay.play")}
         </Button>
-        <Button size="sm" variant="ghost" icon={<RotateCcw aria-hidden />} aria-label={t("runs.replay.restart")} title={t("runs.replay.restart")} onClick={() => seek(0)} disabled={reduced} />
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<RotateCcw aria-hidden />}
+          aria-label={t("runs.replay.restart")}
+          title={t("runs.replay.restart")}
+          onClick={() => seek(0)}
+          disabled={reduced}
+        />
         <input
           className="replay-scrub"
           type="range"
@@ -297,7 +338,13 @@ function radius(node: PlacedNode): number {
 function withAlpha(colour: string, alpha: number): string {
   const hex = colour.replace("#", "");
   if (hex.length === 3 || hex.length === 6) {
-    const full = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
+    const full =
+      hex.length === 3
+        ? hex
+            .split("")
+            .map((c) => c + c)
+            .join("")
+        : hex;
     const n = Number.parseInt(full, 16);
     if (Number.isFinite(n)) return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
   }

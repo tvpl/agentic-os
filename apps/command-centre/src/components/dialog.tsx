@@ -3,7 +3,15 @@
  * focus, focus restore, Escape handled on the dialog (never leaking to the
  * OS shell) and `inert` on everything behind the top-most dialog.
  */
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
 
 const FOCUSABLE =
@@ -69,7 +77,11 @@ export interface UseDialogOptions {
  * `onClose` may be an inline arrow: it is read through a ref, so the effect
  * runs once per mount and focus is never stolen on parent re-renders.
  */
-export function useDialog(ref: RefObject<HTMLElement>, onClose: () => void, opts: UseDialogOptions = {}): void {
+export function useDialog(
+  ref: RefObject<HTMLElement>,
+  onClose: () => void,
+  opts: UseDialogOptions = {},
+): void {
   const onCloseRef = useRef(onClose);
   const initialRef = useRef(opts.initialFocus);
   useLayoutEffect(() => {
@@ -129,7 +141,8 @@ export function useDialog(ref: RefObject<HTMLElement>, onClose: () => void, opts
       if (i >= 0) stack.splice(i, 1);
       syncInert();
       notifyDepth();
-      if (previous && previous.isConnected && typeof previous.focus === "function") previous.focus({ preventScroll: true });
+      if (previous && previous.isConnected && typeof previous.focus === "function")
+        previous.focus({ preventScroll: true });
     };
   }, [ref]);
 }

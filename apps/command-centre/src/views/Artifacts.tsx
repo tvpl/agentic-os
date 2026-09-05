@@ -19,7 +19,8 @@ import {
   Images,
   Search,
 } from "lucide-react";
-import { artifactRawUrl, type ArtifactKind, type ArtifactListItem } from "../api";
+import { api, artifactRawUrl, type ArtifactKind, type ArtifactListItem } from "../api";
+import { useQuery } from "@tanstack/react-query";
 import { useLocale, useT, type TKey } from "../i18n";
 import { Button, EmptyState, Segmented } from "../components/primitives";
 import { Modal, Skeleton, formatBytes, useToast } from "../components/ui";
@@ -54,7 +55,46 @@ export function ArtifactThumb({ item }: { item: ArtifactListItem }) {
     );
   if (item.kind === "html") return <Globe aria-hidden />;
   if (item.kind === "code") return <FileCode aria-hidden />;
+  if (item.kind === "markdown" || item.kind === "other") return <TextPeek item={item} />;
   return <FileText aria-hidden />;
+}
+
+const PEEK_LINES = 9;
+const PEEK_MAX_BYTES = 256 * 1024;
+
+/**
+ * First lines of a text artifact as the thumbnail (plan Onda 0): a markdown
+ * digest is recognisable at a glance instead of a generic file glyph. Only
+ * small files are fetched; anything else keeps the glyph.
+ */
+function TextPeek({ item }: { item: ArtifactListItem }) {
+  const small = item.sizeBytes > 0 && item.sizeBytes <= PEEK_MAX_BYTES;
+  const file = useQuery({
+    queryKey: ["artifact", "peek", item.path],
+    queryFn: ({ signal }) =>
+      api.get<{ content: string | null }>(`/api/artifacts/file?p=${encodeURIComponent(item.path)}`, {
+        signal,
+      }),
+    enabled: small,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const text = file.data?.content;
+  if (!small || !text) return <FileText aria-hidden />;
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^#+\s*/, "").trimEnd())
+    .filter((l) => l.length > 0)
+    .slice(0, PEEK_LINES);
+  return (
+    <span className="art-peek" aria-hidden>
+      {lines.map((l, i) => (
+        <span key={i} className={i === 0 ? "head" : undefined}>
+          {l}
+        </span>
+      ))}
+    </span>
+  );
 }
 
 export interface ArtifactGalleryProps {
@@ -175,7 +215,8 @@ export function ArtifactGallery({ only, emptyTitle, emptyBody }: ArtifactGallery
                   {new Date(item.createdAt).toLocaleDateString(locale, {
                     day: "2-digit",
                     month: "short",
-                  })} · {formatBytes(item.sizeBytes)}
+                  })}{" "}
+                  · {formatBytes(item.sizeBytes)}
                 </span>
               </span>
             </button>

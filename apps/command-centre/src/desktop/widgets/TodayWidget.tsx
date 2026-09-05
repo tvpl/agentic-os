@@ -45,12 +45,8 @@ function TodayBody({ routines, analog, seconds, quarterGrid, zones }: TodayBodyP
   const locale = useLocale();
   const now = new Date(useTicker(1000));
   const week = isoWeek(now);
-  const dateLine = now.toLocaleDateString(locale, {
-    month: "short",
-    day: "2-digit",
-    year: "numeric",
-    weekday: "short",
-  });
+  // Weekday, day and month only: the year never earns a second line here.
+  const dateLine = now.toLocaleDateString(locale, { weekday: "short", day: "2-digit", month: "short" });
   const upcoming = routines
     .filter((r) => r.enabled && r.nextRunAt)
     .sort((a, b) => (a.nextRunAt ?? 0) - (b.nextRunAt ?? 0))
@@ -58,9 +54,15 @@ function TodayBody({ routines, analog, seconds, quarterGrid, zones }: TodayBodyP
 
   return (
     <>
-      <div className="hud-label accent">
-        {t("clock.week")}
-        {week} | {dateLine}
+      <div className="hud-label accent clock-date">
+        <span className="tnum">
+          {t("clock.week")}
+          {week}
+        </span>
+        <span className="sep" aria-hidden>
+          ·
+        </span>
+        <span>{dateLine}</span>
       </div>
       <div className="clock-main">
         {analog && <AnalogClock date={now} />}

@@ -11,8 +11,8 @@ export const isActiveStatus = (status: string): boolean =>
  * `/api/events` invalidates these on every run/routine change; the 30 s
  * interval is only a fallback for a dropped SSE connection.
  */
-export const useDesktopRuns = () => useOsRuns({ limit: 200 }, { refetchInterval: 30_000 });
-export const useDesktopRoutines = () => useOsRoutines({ refetchInterval: 30_000 });
+export const useDesktopRuns = () => useOsRuns({ limit: 200 }, { refetchInterval: 300_000 });
+export const useDesktopRoutines = () => useOsRoutines({ refetchInterval: 300_000 });
 export const useDesktopArtifacts = () => useOsArtifacts();
 
 /** Re-renders every `ms`; returns Date.now(). */

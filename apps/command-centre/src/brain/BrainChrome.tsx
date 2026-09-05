@@ -49,9 +49,14 @@ export interface BrainChromeProps {
 
 const KIND_KEYS: Record<
   EdgeKind,
-  "brain.kind.markdown-link" | "brain.kind.same-dir" | "brain.kind.same-area" | "brain.kind.other"
+  | "brain.kind.markdown-link"
+  | "brain.kind.related"
+  | "brain.kind.same-dir"
+  | "brain.kind.same-area"
+  | "brain.kind.other"
 > = {
   "markdown-link": "brain.kind.markdown-link",
+  related: "brain.kind.related",
   "same-dir": "brain.kind.same-dir",
   "same-area": "brain.kind.same-area",
   other: "brain.kind.other",

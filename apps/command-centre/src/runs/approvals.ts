@@ -42,7 +42,10 @@ export function writeRunApprovals(approvals: readonly ApprovalRecord[] | undefin
  * prompt that starts with the run's stored summary (the summary is truncated
  * server-side). Runs that are not `waiting_approval` never match.
  */
-export function approvalForRun(approvals: readonly ApprovalRecord[] | undefined, run: Pick<RunRecord, "status" | "skillSlug" | "promptSummary">): ApprovalRecord | null {
+export function approvalForRun(
+  approvals: readonly ApprovalRecord[] | undefined,
+  run: Pick<RunRecord, "status" | "skillSlug" | "promptSummary">,
+): ApprovalRecord | null {
   if (run.status !== "waiting_approval") return null;
   for (const approval of writeRunApprovals(approvals)) {
     const target = approvalTarget(approval);
@@ -64,4 +67,22 @@ export function approvalLabel(approval: ApprovalRecord, fallback: string): strin
   const prompt = target.prompt ?? approval.description ?? "";
   const firstLine = prompt.split("\n")[0]?.trim() ?? "";
   return firstLine.slice(0, 120) || fallback;
+}
+
+/** Tool prompts brokered from inside a run (kind `tool_use`), pending, for that run. */
+export function toolApprovalsForRun(
+  approvals: readonly ApprovalRecord[] | undefined,
+  runId: string | null | undefined,
+): ApprovalRecord[] {
+  if (!runId) return [];
+  return (approvals ?? []).filter(
+    (a) => a.kind === "tool_use" && a.status === "pending" && a.payload?.runId === runId,
+  );
+}
+
+/** Tool name and the one-line detail the server summarised. */
+export function toolApprovalParts(approval: ApprovalRecord): { tool: string; detail: string } {
+  const tool = typeof approval.payload?.toolName === "string" ? approval.payload.toolName : "tool";
+  const idx = approval.description.indexOf(": ");
+  return { tool, detail: idx >= 0 ? approval.description.slice(idx + 2) : approval.description };
 }

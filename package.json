@@ -1,8 +1,8 @@
 {
   "name": "mordomo-os",
-  "version": "0.5.0",
+  "version": "0.8.0",
   "private": true,
-  "description": "MordomoOS \u2014 a local, vendor-neutral agentic operating system (ARMS) over Claude Code, Cursor Agent and OpenAI Codex.",
+  "description": "MordomoOS — a local, vendor-neutral agentic operating system (ARMS) over Claude Code, Cursor Agent and OpenAI Codex.",
   "license": "MIT",
   "type": "module",
   "engines": {

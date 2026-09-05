@@ -42,7 +42,32 @@ interface Tokens {
   particle: string;
   line: string;
   accent: string;
+  warn: string;
+  ok: string;
+  /** 0 = plain wallpaper, 1 = full HUD (reactor arcs, radar sweep, ticks). */
+  hud: number;
   light: boolean;
+}
+
+/**
+ * What the core is doing, as seen from the event stream. `thinking` is any
+ * active run without a finer signal; `tool` / `responding` are short-lived
+ * overrides fired by `run.event`; `alert` and `done` are terminal flashes.
+ */
+export type CoreState = "idle" | "listening" | "thinking" | "tool" | "responding" | "alert" | "done";
+
+/** Where the core sits and how far the ring reaches, in px (desktop free region). */
+export interface CoreFocus {
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+}
+
+interface Blip {
+  angle: number;
+  /** 0 → 1 travel from the core outwards */
+  p: number;
 }
 interface LoopState {
   points: Point[];
@@ -52,7 +77,41 @@ interface LoopState {
   /** performance.now() until which the scene counts as "changing" */
   dirtyUntil: number;
   redraw: () => void;
+  coreState: CoreState;
+  /** performance.now() when coreState last changed */
+  stateSince: number;
+  focus: CoreFocus | null;
+  blips: Blip[];
+  /** smoothed values so state changes ease instead of jumping */
+  spin: number;
+  converge: number;
+  tint: number;
 }
+
+/** Colour with alpha from a hex/rgb token (canvas has no color-mix). */
+function withAlpha(color: string, alpha: number): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(color.trim());
+  if (m) {
+    const n = parseInt(m[1]!, 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+  }
+  const rgb = /^rgba?\(([^)]+)\)$/.exec(color.trim());
+  if (rgb) {
+    const [r, g, b] = rgb[1]!.split(",").map((v) => parseFloat(v));
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return color;
+}
+
+const sameTokens = (a: Tokens, b: Tokens) =>
+  a.star === b.star &&
+  a.particle === b.particle &&
+  a.line === b.line &&
+  a.accent === b.accent &&
+  a.warn === b.warn &&
+  a.ok === b.ok &&
+  a.hud === b.hud &&
+  a.light === b.light;
 
 function readTokens(): Tokens {
   const el = document.documentElement;
@@ -63,6 +122,9 @@ function readTokens(): Tokens {
     particle: get("--canvas-particle", "#94a3b8"),
     line: get("--canvas-line", "#403a26"),
     accent: get("--accent", "#f97316"),
+    warn: get("--warn", "#fbbf24"),
+    ok: get("--ok", "#4ade80"),
+    hud: Math.max(0, Math.min(1, parseFloat(get("--hud-intensity", "0.6")) || 0)),
     light: el.dataset.theme === "light",
   };
 }
@@ -128,6 +190,10 @@ export interface WallpaperProps {
   /** Keys of the chips that match the current search. */
   matched: ReadonlySet<string>;
   revealLabels: boolean;
+  /** Live state of the core (from the event stream); defaults to idle / thinking by activeRuns. */
+  coreState?: CoreState;
+  /** Centre and ring radii; when absent the wallpaper uses its own centre. */
+  focus?: CoreFocus | null;
   onOpenBrain: () => void;
   onChipActivate: (chip: RingChip) => void;
 }
@@ -141,6 +207,8 @@ export default function Wallpaper({
   searching,
   matched,
   revealLabels,
+  coreState = "idle",
+  focus = null,
   onOpenBrain,
   onChipActivate,
 }: WallpaperProps) {
@@ -155,9 +223,17 @@ export default function Wallpaper({
     labels: runLabels,
     dirtyUntil: 0,
     redraw: () => undefined,
+    coreState: "idle",
+    stateSince: 0,
+    focus: null,
+    blips: [],
+    spin: 0,
+    converge: 0,
+    tint: 0,
   });
   stateRef.current.activeRuns = activeRuns;
   stateRef.current.labels = runLabels;
+  stateRef.current.focus = focus;
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [hoverKey, setHoverKey] = useState<string | null>(null);
 
@@ -205,7 +281,18 @@ export default function Wallpaper({
   useEffect(() => {
     stateRef.current.dirtyUntil = performance.now() + 1500;
     stateRef.current.redraw();
-  }, [activeRuns]);
+  }, [activeRuns, focus]);
+
+  // State changes wake the loop; `tool` also launches a blip from the core.
+  useEffect(() => {
+    const st = stateRef.current;
+    if (st.coreState === coreState) return;
+    st.coreState = coreState;
+    st.stateSince = performance.now();
+    if (coreState === "tool") st.blips.push({ angle: Math.random() * TWO_PI, p: 0 });
+    st.dirtyUntil = performance.now() + 2500;
+    st.redraw();
+  }, [coreState]);
 
   // The render loop. Mounted once; everything dynamic goes through stateRef.
   useEffect(() => {
@@ -251,13 +338,41 @@ export default function Wallpaper({
     const projected = MESH.vertices.map(() => ({ x: 0, y: 0, depth: 0, scale: 1 }));
     const order: number[] = [];
 
+    let lastFrame = 0;
     const draw = (now: number) => {
-      const cx = w / 2;
-      const cy = h * 0.54;
+      const f = state.focus;
+      const cx = f ? f.cx : w / 2;
+      const cy = f ? f.cy : h * 0.54;
       const tSec = now / 1000;
+      const dt = Math.min(0.05, lastFrame ? (now - lastFrame) / 1000 : 0.016);
+      lastFrame = now;
       const spin = reduceMotion ? 0.9 : tSec;
       ctx.clearRect(0, 0, w, h);
-      const R = Math.min(w, h) * 0.3;
+      const R = f ? Math.max(90, Math.min(f.rx, f.ry) * 0.62) : Math.min(w, h) * 0.3;
+
+      // ---- core state → eased parameters (never a jump between frames) ----
+      const cs = state.coreState;
+      const busy = cs === "thinking" || cs === "tool" || cs === "responding" || state.activeRuns > 0;
+      const targetSpin =
+        cs === "thinking"
+          ? 1.4
+          : cs === "tool"
+            ? 1
+            : cs === "alert"
+              ? 0.9
+              : cs === "responding"
+                ? 0.5
+                : busy
+                  ? 0.7
+                  : 0.08;
+      const targetConverge = cs === "thinking" ? 1 : cs === "tool" ? 0.4 : 0;
+      const targetTint = cs === "alert" ? 1 : cs === "done" ? -1 : 0;
+      const k = reduceMotion ? 1 : 1 - Math.pow(0.02, dt);
+      state.spin += (targetSpin - state.spin) * k;
+      state.converge += (targetConverge - state.converge) * k;
+      state.tint += (targetTint - state.tint) * k;
+      const stateColor = state.tint > 0.02 ? tokens.warn : state.tint < -0.02 ? tokens.ok : tokens.accent;
+      const hud = tokens.hud;
 
       // static hex weave
       if (weave) {
@@ -310,9 +425,22 @@ export default function Wallpaper({
       }
       ctx.globalAlpha = 1;
 
+      // ---- radar sweep (HUD): a faint cone that turns faster while busy ----
+      if (hud > 0 && !reduceMotion && typeof ctx.createConicGradient === "function") {
+        const sweepA = (tSec * (0.5 + state.spin * 1.2)) % TWO_PI;
+        const sweep = ctx.createConicGradient(sweepA, cx, cy);
+        sweep.addColorStop(0, withAlpha(stateColor, 0));
+        sweep.addColorStop(0.86, withAlpha(stateColor, 0));
+        sweep.addColorStop(1, withAlpha(stateColor, 0.09 * hud * (busy ? 1.6 : 1)));
+        ctx.fillStyle = sweep;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, R * 1.5, R * 1.5 * 0.94, 0, 0, TWO_PI);
+        ctx.fill();
+      }
+
       // ---- slow counter-rotating tick ring ----
       const ringR = R * 1.24;
-      const ringA = -spin * 0.04;
+      const ringA = -spin * 0.04 * (1 + state.spin * 4);
       ctx.lineWidth = 1;
       ctx.beginPath();
       for (let i = 0; i < 72; i++) {
@@ -328,11 +456,37 @@ export default function Wallpaper({
       ctx.stroke();
       ctx.globalAlpha = 1;
 
+      // ---- reactor: segmented arcs whose speed and colour follow the core state ----
+      if (hud > 0 && (busy || state.spin > 0.12 || Math.abs(state.tint) > 0.02)) {
+        const arcs: Array<[number, number, number, number]> = [
+          [R * 1.08, 3, 0.7, 1],
+          [R * 0.92, 5, 0.35, -1.4],
+          [R * 0.76, 2, 0.55, 0.6],
+        ];
+        const base = reduceMotion ? 0.9 : tSec * state.spin;
+        ctx.lineCap = "butt";
+        for (let i = 0; i < arcs.length; i++) {
+          const [r, n, fill, dir] = arcs[i]!;
+          ctx.lineWidth = i === 0 ? 2.2 : 1.2;
+          ctx.strokeStyle = stateColor;
+          ctx.globalAlpha =
+            (i === 0 ? 0.75 : 0.45) * hud * Math.min(1, state.spin * 3 + Math.abs(state.tint));
+          const off = base * dir * (1 + i * 0.3);
+          for (let sIdx = 0; sIdx < n; sIdx++) {
+            const a0 = off + (sIdx / n) * TWO_PI;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, r, r * 0.94, 0, a0, a0 + (fill / n) * TWO_PI);
+            ctx.stroke();
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
+
       // live agents: pulsing halo + orbiting comet while runs are active
-      if (state.activeRuns > 0) {
+      if (state.activeRuns > 0 || busy) {
         const haloR = R * 0.74;
         const pulse = reduceMotion ? 0.5 : 0.35 + 0.25 * Math.sin(tSec * 4);
-        ctx.strokeStyle = tokens.accent;
+        ctx.strokeStyle = stateColor;
         ctx.globalAlpha = pulse;
         ctx.lineWidth = 1.6;
         ctx.beginPath();
@@ -343,7 +497,7 @@ export default function Wallpaper({
           const trailA = ca - i * 0.09;
           ctx.globalAlpha = (1 - i / 7) * 0.85;
           const sz = 3.4 - i * 0.4;
-          ctx.fillStyle = i === 0 ? tokens.star : tokens.accent;
+          ctx.fillStyle = i === 0 ? tokens.star : stateColor;
           ctx.beginPath();
           ctx.arc(
             cx + Math.cos(trailA) * haloR,
@@ -357,11 +511,63 @@ export default function Wallpaper({
         ctx.globalAlpha = 1;
       }
 
+      // responding: radial pulses in step with the streamed text
+      if (cs === "responding" && !reduceMotion) {
+        for (let i = 0; i < 3; i++) {
+          const ph = (tSec * 0.9 + i / 3) % 1;
+          ctx.strokeStyle = stateColor;
+          ctx.globalAlpha = (1 - ph) * 0.45 * hud;
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, R * (0.3 + ph), R * (0.3 + ph) * 0.94, 0, 0, TWO_PI);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // tool blips: a spark leaves the core towards the ring and fades
+      if (state.blips.length > 0) {
+        const alive: Blip[] = [];
+        for (const b of state.blips) {
+          b.p += reduceMotion ? 1 : dt * 0.9;
+          if (b.p < 1) alive.push(b);
+          const rr = R * (0.3 + b.p * 1.0);
+          const x = cx + Math.cos(b.angle) * rr;
+          const y = cy + Math.sin(b.angle) * rr * 0.94;
+          ctx.strokeStyle = stateColor;
+          ctx.globalAlpha = (1 - b.p) * 0.9;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(b.angle) * (rr - 14), cy + Math.sin(b.angle) * (rr - 14) * 0.94);
+          ctx.lineTo(x, y);
+          ctx.stroke();
+          ctx.fillStyle = tokens.star;
+          ctx.beginPath();
+          ctx.arc(x, y, 2, 0, TWO_PI);
+          ctx.fill();
+        }
+        state.blips = alive;
+        ctx.globalAlpha = 1;
+      }
+
+      // done / alert flash: one expanding ring right after the state change
+      const sinceState = (now - state.stateSince) / 700;
+      if ((cs === "done" || cs === "alert") && sinceState < 1) {
+        const fl = 1 - sinceState;
+        ctx.strokeStyle = stateColor;
+        ctx.globalAlpha = fl * 0.8;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, R * (1.1 + (1 - fl) * 0.7), R * (1.1 + (1 - fl) * 0.7) * 0.94, 0, 0, TWO_PI);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
       // ---- particle core: depth-sorted glow sprites, twinkle and drift ----
       ctx.globalCompositeOperation = tokens.light ? "source-over" : "lighter";
-      // accent core glow
-      const coreScale = R * (reduceMotion ? 1 : 1 + 0.02 * Math.sin(tSec * 0.6));
-      ctx.globalAlpha = tokens.light ? 0.1 : 0.22;
+      // accent core glow (breathes slowly at rest, brighter while busy)
+      const coreScale = R * (reduceMotion ? 1 : 1 + 0.02 * Math.sin(tSec * (TWO_PI / 6)));
+      ctx.globalAlpha = (tokens.light ? 0.1 : 0.22) * (1 + state.spin * 0.5);
       ctx.drawImage(core, cx - coreScale * 0.55, cy - coreScale * 0.55, coreScale * 1.1, coreScale * 1.1);
       ctx.globalAlpha = 1;
 
@@ -380,7 +586,7 @@ export default function Wallpaper({
         return pt.y * sinX + z1 * cosX;
       };
       order.sort((a, b) => zOf(a) - zOf(b));
-      const pr = R * 0.82;
+      const pr = R * (0.82 - state.converge * 0.4);
       for (const i of order) {
         const pt = pts[i]!;
         const drift = reduceMotion ? 0 : 0.02 * Math.sin(tSec * 0.35 + pt.p);
@@ -420,7 +626,14 @@ export default function Wallpaper({
     const frame = (now: number) => {
       if (!running) return;
       raf = requestAnimationFrame(frame);
-      const changing = state.activeRuns > 0 || state.hover || now < state.dirtyUntil;
+      const cs = state.coreState;
+      const changing =
+        state.activeRuns > 0 ||
+        state.hover ||
+        now < state.dirtyUntil ||
+        (cs !== "idle" && cs !== "listening") ||
+        state.blips.length > 0 ||
+        state.spin > 0.1;
       const minInterval = changing ? 0 : 1000 / IDLE_FPS;
       if (now - lastDraw < minInterval) return;
       lastDraw = now;
@@ -452,13 +665,20 @@ export default function Wallpaper({
     const ro = new ResizeObserver(resize);
     ro.observe(wrap);
 
+    // Theme / accent / preset changes rebuild the raster assets; any other
+    // <html style> write (a CSS variable set by a layout hook) is ignored.
     const mo = new MutationObserver(() => {
-      tokens = readTokens();
+      const next = readTokens();
+      if (sameTokens(next, tokens)) return;
+      tokens = next;
       buildAssets();
       state.dirtyUntil = performance.now() + 500;
       if (!running) staticFrame();
     });
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "style"] });
+    mo.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme", "data-preset", "style"],
+    });
 
     const onVisibility = () => (document.hidden ? stop() : start());
     document.addEventListener("visibilitychange", onVisibility);
@@ -487,18 +707,21 @@ export default function Wallpaper({
     };
   }, []);
 
+  const centre = focus ?? { cx: size.w / 2, cy: size.h * 0.54, rx: 0, ry: 0 };
   const placed = useMemo(() => {
-    const R = Math.min(size.w * 0.62, size.h * 0.92) * 0.46;
+    const fallback = Math.min(size.w * 0.62, size.h * 0.92) * 0.46;
+    const rx = focus ? focus.rx : fallback;
+    const ry = focus ? focus.ry : fallback * 0.86;
     return chips.map((chip, i) => {
       const a = chipAngle(i, chips.length);
       return {
         chip,
-        dx: Math.cos(a) * R,
-        dy: Math.sin(a) * R * 0.86,
+        dx: Math.cos(a) * rx,
+        dy: Math.sin(a) * ry,
         side: Math.cos(a) >= 0 ? "right" : "left",
       };
     });
-  }, [chips, size]);
+  }, [chips, size, focus]);
 
   const hover = (key: string | null) => {
     stateRef.current.hover = key !== null;
@@ -511,7 +734,7 @@ export default function Wallpaper({
       <button
         type="button"
         className="orbital-core-btn"
-        style={{ top: "54%" }}
+        style={{ left: centre.cx, top: centre.cy }}
         onClick={onOpenBrain}
         onPointerEnter={() => hover("core")}
         onPointerLeave={() => hover(null)}
@@ -520,7 +743,7 @@ export default function Wallpaper({
       />
       <div
         className={`orbit-ring${searching ? " searching" : ""}${hoverKey ? " paused" : ""}`}
-        style={{ left: size.w / 2, top: size.h * 0.54 }}
+        style={{ left: centre.cx, top: centre.cy }}
       >
         {placed.map(({ chip, dx, dy, side }) => {
           const isMatch = matched.has(chip.key);

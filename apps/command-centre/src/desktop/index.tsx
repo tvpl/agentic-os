@@ -19,23 +19,27 @@ import {
   api,
   type ArtifactEntry,
   type ArtifactListItem,
+  type LaunchRunResponse,
   type Meta,
   type ProviderId,
   type Skill,
 } from "../api";
 import { useLocale, useT, type TKey } from "../i18n";
-import { qk, useOsProviders, useOsSettings } from "../queries";
+import { qk, useOsMetrics, useOsProviders, useOsSettings } from "../queries";
+import { budgetState } from "./budget";
 import { useToast } from "../components/ui";
 import { Button, Popover } from "../components/primitives";
 import { useConfirm } from "../hooks/useConfirm";
-import { useNotifications } from "../hooks/useNotifications";
+import { playCue, useNotifications } from "../hooks/useNotifications";
 import { useOsNavigate } from "../hooks/useViewTransition";
+import { useOsEvent } from "../hooks/useEventStream";
 import { LAUNCHER_EVENT, TOGGLE_EDIT_EVENT } from "../App";
-import { DEFAULT_LAYOUT, type LayoutMap, type WidgetConfig } from "./defaultLayout";
-import { useLayoutState } from "./useGridLayout";
+import { DEFAULT_LAYOUT, freeRegion, type LayoutMap, type WidgetConfig } from "./defaultLayout";
+import { useLayoutState, type GridMetrics } from "./useGridLayout";
 import WidgetLayer, { type WidgetSpec } from "./WidgetLayer";
-import Wallpaper from "./Wallpaper";
+import Wallpaper, { type CoreFocus, type CoreState } from "./Wallpaper";
 import NowPanel from "./NowPanel";
+import HudTelemetry from "./HudTelemetry";
 import ModelEffortPopover from "./ModelEffortPopover";
 import AddWidgetGallery from "./AddWidgetGallery";
 import WidgetConfigPopover from "./WidgetConfigPopover";
@@ -52,6 +56,7 @@ import {
   useDesktopRuns,
 } from "./data";
 import { InboxList } from "./widgets/InboxWidget";
+import { LISTENING_EVENT } from "./widgets/PromptWidget";
 import "./desktop.css";
 
 /** One-click accent presets, cycled by the palette tool and persisted. */
@@ -84,7 +89,8 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   const confirm = useConfirm();
   const qc = useQueryClient();
   const [editMode, setEditMode] = useState(false);
-  const [rows, setRows] = useState(18);
+  const [metrics, setMetrics] = useState<GridMetrics | null>(null);
+  const rows = metrics?.rows ?? 20;
 
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
@@ -152,7 +158,26 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     [runs.data, locale],
   );
 
-  const activeRuns = (runs.data ?? []).filter((r) => isActiveStatus(r.status)).length;
+  const activeRuns = useMemo(
+    () => (runs.data ?? []).filter((r) => isActiveStatus(r.status)).length,
+    [runs.data],
+  );
+  const coreState = useCoreState(activeRuns);
+  useBudgetNotifications();
+
+  /* ---- the free region between the widget columns anchors the core ------ */
+  const focus = useMemo<CoreFocus | null>(() => {
+    if (!metrics || metrics.stacked) return null;
+    const r = freeRegion(layout, metrics);
+    const cx = (r.left + r.right) / 2;
+    const cy = (r.top + r.bottom) / 2;
+    // The ring hugs the free region (chips are 46px plus their count badge)
+    // but never collapses onto the Now panel, which shrinks to fit inside it.
+    const rx = Math.max(210, (r.right - r.left) / 2 - 44);
+    const ry = Math.max(170, (r.bottom - r.top) / 2 - 44);
+    return { cx, cy, rx, ry };
+  }, [layout, metrics]);
+
   const runningSkills = useMemo(
     () =>
       new Set(
@@ -188,11 +213,10 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   const runSkill = useMutation({
     mutationFn: async (skill: Skill) => {
       if (skill.inputs.some((i) => i.required)) return { navigateTo: `/skills/${skill.slug}` };
-      const res = await api.post<{ runId: string | null }>(
-        `/api/skills/${encodeURIComponent(skill.slug)}/run`,
-        { inputs: {} },
-      );
-      if (!res.runId) {
+      const res = await api.post<LaunchRunResponse>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, {
+        inputs: {},
+      });
+      if (res.status === "waiting_approval" || !res.runId) {
         toast(t("runs.approvalPending"), "info");
         return { navigateTo: "/settings?tab=security" };
       }
@@ -291,6 +315,16 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
       <div
         className={`desktop${editMode ? " edit-mode" : ""}${searching ? " searching" : ""}`}
         data-depth={detail ? "pushed" : undefined}
+        data-core={coreState}
+        style={
+          focus
+            ? ({
+                "--core-x": `${focus.cx}px`,
+                "--core-y": `${focus.cy}px`,
+                "--core-ry": `${focus.ry}px`,
+              } as React.CSSProperties)
+            : undefined
+        }
       >
         <Wallpaper
           chips={chips}
@@ -301,6 +335,8 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
           searching={searching}
           matched={matched}
           revealLabels={revealLabels}
+          coreState={coreState}
+          focus={focus}
           onOpenBrain={() => navigate("/brain")}
           onChipActivate={(chip) => {
             if (searching) setDetail(chip);
@@ -311,12 +347,13 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
 
         <div className="depth-layer desktop-depth">
           <NowPanel />
+          <HudTelemetry activeRuns={activeRuns} />
           <WidgetLayer
             layout={layout}
             widgets={widgets}
             editMode={editMode}
             onLayoutChange={commit}
-            onMetrics={(m) => m.rows !== rows && setRows(m.rows)}
+            onMetrics={setMetrics}
             onConfigure={(id, anchor) => setConfigFor({ id, anchor })}
           />
         </div>
@@ -382,7 +419,11 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
               }
               title={t("desktop.inbox.title")}
               aria-expanded={bellAnchor !== null}
-              onClick={(e) => setBellAnchor((prev) => (prev ? null : e.currentTarget))}
+              onClick={(e) => {
+                // Read the anchor now: a batched updater runs after the synthetic event is released.
+                const anchor = e.currentTarget;
+                setBellAnchor((prev) => (prev ? null : anchor));
+              }}
             >
               <Bell aria-hidden />
               {notifications.unread > 0 && (
@@ -498,6 +539,94 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
       </div>
     </DesktopActionsProvider>
   );
+}
+
+/**
+ * Budget crossings (plan Onda 2 §5) land in the inbox once per day per level:
+ * 80 % warns, 100 % flags the day as over budget. The rule itself is pure
+ * (`budgetState`); this only decides when to speak.
+ */
+function useBudgetNotifications() {
+  const t = useT();
+  const metrics = useOsMetrics({ refetchInterval: 300_000 });
+  const settings = useOsSettings();
+  const { notify } = useNotifications();
+  const budget = budgetState(settings.data?.limits?.dailyBudgetUsd, metrics.data?.cost?.todayUsd);
+  const tone = budget.tone;
+  const pct = Math.round(budget.ratio * 100);
+  useEffect(() => {
+    if (tone !== "warn" && tone !== "over") return;
+    const day = new Date().toISOString().slice(0, 10);
+    const key = `budget:${day}:${tone}`;
+    try {
+      if (localStorage.getItem(`mordomo.${key}`)) return;
+      localStorage.setItem(`mordomo.${key}`, "1");
+    } catch {
+      /* private mode: notify every load, which is still correct */
+    }
+    notify({
+      kind: "system",
+      tone: tone === "over" ? "danger" : "warn",
+      title: t(tone === "over" ? "dash.budgetOver" : "dash.budgetWarn", { pct }),
+      href: "/settings?tab=security",
+      dedupeKey: key,
+    });
+  }, [tone, pct, notify, t]);
+}
+
+/** Short-lived overrides (ms) for the finer core states fed by `run.event`. */
+const TOOL_HOLD_MS = 1600;
+const RESPOND_HOLD_MS = 1400;
+const ALERT_HOLD_MS = 4000;
+const DONE_HOLD_MS = 1300;
+
+/**
+ * Derives the core state from the event stream: an active run means
+ * thinking; tool calls, streamed text, failures, approvals and completions
+ * override it for a moment and then fall back.
+ */
+export function useCoreState(activeRuns: number): CoreState {
+  const [override, setOverride] = useState<{ state: CoreState; until: number } | null>(null);
+  const timer = useRef<number | undefined>(undefined);
+
+  const hold = useCallback((state: CoreState, ms: number) => {
+    const until = Date.now() + ms;
+    setOverride({ state, until });
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(
+      () => setOverride((o) => (o && o.until <= Date.now() ? null : o)),
+      ms + 20,
+    );
+  }, []);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  useOsEvent("run.event", (e) => {
+    const ev = (e.payload as { event?: { type?: string; stream?: string } } | undefined)?.event;
+    if (!ev) return;
+    if (ev.type === "tool_use") hold("tool", TOOL_HOLD_MS);
+    else if (ev.type === "assistant") hold("responding", RESPOND_HOLD_MS);
+    else if (ev.type === "error") hold("alert", ALERT_HOLD_MS);
+  });
+  useOsEvent("run.started", () => playCue("ack"));
+  useOsEvent("run.finished", (e) => {
+    const status = (e.payload as { status?: string } | undefined)?.status;
+    playCue(status === "done" ? "done" : status === "cancelled" ? "done" : "alert");
+    hold(
+      status === "done" ? "done" : status === "cancelled" ? "done" : "alert",
+      status === "done" ? DONE_HOLD_MS : ALERT_HOLD_MS,
+    );
+  });
+  useOsEvent(["approval.requested", "routine.alert"], () => hold("alert", ALERT_HOLD_MS));
+  const [listening, setListening] = useState(false);
+  useEffect(() => {
+    const on = (e: Event) => setListening(Boolean((e as CustomEvent<boolean>).detail));
+    window.addEventListener(LISTENING_EVENT, on);
+    return () => window.removeEventListener(LISTENING_EVENT, on);
+  }, []);
+
+  if (listening) return "listening";
+  if (override && override.until > Date.now()) return override.state;
+  return activeRuns > 0 ? "thinking" : "idle";
 }
 
 function Tool({

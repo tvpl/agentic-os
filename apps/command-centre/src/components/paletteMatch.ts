@@ -18,12 +18,7 @@ export interface Ranked<T> {
 
 /** Lowercase, strip diacritics and collapse whitespace. */
 export function normalize(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
+  return text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -40,7 +35,8 @@ export function fuzzyScore(query: string, text: string): number {
   if (!t) return 0;
   if (t.startsWith(q)) return 100 + Math.max(0, 10 - Math.floor((t.length - q.length) / 4));
   const idx = t.indexOf(q);
-  if (idx > 0) return t[idx - 1] === " " || t[idx - 1] === "-" || t[idx - 1] === "/" || t[idx - 1] === "." ? 85 : 70;
+  if (idx > 0)
+    return t[idx - 1] === " " || t[idx - 1] === "-" || t[idx - 1] === "/" || t[idx - 1] === "." ? 85 : 70;
   // subsequence: every query char in order
   let ti = 0;
   let gaps = 0;
@@ -66,7 +62,11 @@ export function scoreItem(item: Matchable, query: string): number {
 }
 
 /** Rank and filter; an empty query keeps the input order. */
-export function rankItems<T extends Matchable>(items: readonly T[], query: string, limit = Infinity): Ranked<T>[] {
+export function rankItems<T extends Matchable>(
+  items: readonly T[],
+  query: string,
+  limit = Infinity,
+): Ranked<T>[] {
   const q = normalize(query);
   if (!q) return items.slice(0, limit).map((item) => ({ item, score: 1 }));
   const out: Ranked<T>[] = [];

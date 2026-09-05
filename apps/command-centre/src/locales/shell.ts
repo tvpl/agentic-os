@@ -22,7 +22,8 @@ export const en = {
   "shell.palette.hintClose": "close",
   "shell.palette.runSkill": "Run skill",
   "shell.palette.runPage": "Run /{slug}",
-  "shell.palette.runPageIntro": "Pick a model and an effort level, then run. Read-only skills run immediately; write skills may ask for approval.",
+  "shell.palette.runPageIntro":
+    "Pick a model and an effort level, then run. Read-only skills run immediately; write skills may ask for approval.",
   "shell.palette.runNow": "Run now",
   "shell.palette.model": "Model",
   "shell.palette.effort": "Effort",
@@ -94,6 +95,27 @@ export const en = {
   "shell.route.missing": "This app is not installed in this build yet.",
   "shell.route.artifacts": "Artifacts",
   "shell.route.generations": "Generations",
+  "shell.boot.label": "Starting",
+  "shell.boot.connecting": "connecting to the local service…",
+  "shell.boot.memory": "MEMORY · index · routers",
+  "shell.boot.skills": "SKILLS · catalog · routines",
+  "shell.boot.provider": "PROVIDER",
+  "shell.nav.label": "Main navigation",
+  "shell.hud.intensity": "HUD intensity",
+  "shell.hud.intensityHint":
+    "Scanlines, corner brackets, the radar sweep and the reactor arcs around the core. 0 turns the layer off.",
+  "shell.hud.off": "Off",
+  "shell.hud.full": "Full",
+  "shell.pair.title": "Pair this device",
+  "shell.pair.body":
+    "Open Settings › Security › Remote access on the computer running MordomoOS and type the six-digit code it shows.",
+  "shell.pair.code": "Pairing code",
+  "shell.pair.name": "Device name",
+  "shell.pair.submit": "Pair",
+  "shell.pair.fingerprint": "Certificate SHA-256:",
+  "shell.pair.fingerprintTitle":
+    "Compare with Settings › Security › Remote access on the desktop before trusting this connection.",
+  "shell.pair.failed": "Wrong or expired code — start a new pairing on the desktop.",
 };
 
 export const ptBR = {
@@ -114,7 +136,8 @@ export const ptBR = {
   "shell.palette.hintClose": "fechar",
   "shell.palette.runSkill": "Executar skill",
   "shell.palette.runPage": "Executar /{slug}",
-  "shell.palette.runPageIntro": "Escolha modelo e esforço e execute. Skills somente-leitura rodam na hora; skills de escrita podem pedir aprovação.",
+  "shell.palette.runPageIntro":
+    "Escolha modelo e esforço e execute. Skills somente-leitura rodam na hora; skills de escrita podem pedir aprovação.",
   "shell.palette.runNow": "Executar agora",
   "shell.palette.model": "Modelo",
   "shell.palette.effort": "Esforço",
@@ -186,4 +209,25 @@ export const ptBR = {
   "shell.route.missing": "Este app ainda não está instalado nesta build.",
   "shell.route.artifacts": "Artefatos",
   "shell.route.generations": "Gerações",
+  "shell.boot.label": "Iniciando",
+  "shell.boot.connecting": "conectando ao serviço local…",
+  "shell.boot.memory": "MEMÓRIA · índice · routers",
+  "shell.boot.skills": "SKILLS · catálogo · rotinas",
+  "shell.boot.provider": "PROVEDOR",
+  "shell.nav.label": "Navegação principal",
+  "shell.hud.intensity": "Intensidade do HUD",
+  "shell.hud.intensityHint":
+    "Scanlines, brackets nos cantos, a varredura de radar e os arcos do reator em volta do núcleo. 0 desliga a camada.",
+  "shell.hud.off": "Desligado",
+  "shell.hud.full": "Máximo",
+  "shell.pair.title": "Parear este dispositivo",
+  "shell.pair.body":
+    "Abra Configurações › Segurança › Acesso remoto no computador que roda o MordomoOS e digite o código de seis dígitos que ele mostra.",
+  "shell.pair.code": "Código de pareamento",
+  "shell.pair.name": "Nome do dispositivo",
+  "shell.pair.submit": "Parear",
+  "shell.pair.fingerprint": "SHA-256 do certificado:",
+  "shell.pair.fingerprintTitle":
+    "Compare com Configurações › Segurança › Acesso remoto no desktop antes de confiar nesta conexão.",
+  "shell.pair.failed": "Código errado ou expirado — inicie um novo pareamento no desktop.",
 } satisfies Record<keyof typeof en, string>;

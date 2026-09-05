@@ -451,7 +451,8 @@ describe("health, version and request log (audit #25)", () => {
     expect(typeof body.pendingApprovals).toBe("number");
     expect(typeof body.lastEventId).toBe("number");
     expect(body.version).toMatch(/^\d+\.\d+\.\d+/);
-    const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "apps", "api", "package.json"), "utf8"));
+    // The single source of truth is the repository root package.json.
+    const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
     expect(body.version).toBe(pkg.version);
   });
 

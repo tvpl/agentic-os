@@ -26,6 +26,12 @@ import {
  * when the installed version supports it (confirmed by --help probing).
  * Write runs pass --force (Cursor's explicit opt-in for applying changes
  * without interactive approval); read-only runs never do.
+ *
+ * Conversations: none. The installed `cursor-agent --help` advertises no
+ * resume/continue flag, so the manifest declares `resume: "none"`; the run
+ * manager then emulates the session (earlier turns folded into the prompt)
+ * and never asks this adapter to resume. The warning below only fires for a
+ * caller that bypasses the run manager.
  */
 export const cursorManifest: ProviderManifest = BUILTIN_MANIFESTS.cursor;
 
@@ -93,9 +99,17 @@ export class CursorAdapter implements AgentAdapter {
       if (/not logged in|unauthenticated|login required/.test(out)) {
         return { authenticated: false, method: null, detail: "Not logged in. Run `cursor-agent login`." };
       }
-      return { authenticated: "unknown", method: null, detail: "Could not determine login state from `cursor-agent status`." };
+      return {
+        authenticated: "unknown",
+        method: null,
+        detail: "Could not determine login state from `cursor-agent status`.",
+      };
     } catch (err) {
-      return { authenticated: "unknown", method: null, detail: `status probe failed: ${(err as Error).message}` };
+      return {
+        authenticated: "unknown",
+        method: null,
+        detail: `status probe failed: ${(err as Error).message}`,
+      };
     }
   }
 
@@ -138,7 +152,16 @@ export class CursorAdapter implements AgentAdapter {
 
   execute(run: AgentRun): AsyncIterable<RunEvent> {
     const build = (r: AgentRun) => this.buildInvocation(r);
+    const canResume = this.manifest.capabilities.resume !== "none";
     return (async function* () {
+      if (run.resume?.providerSessionId && !canResume) {
+        yield {
+          type: "text",
+          ts: Date.now(),
+          stream: "stderr",
+          text: "[mordomo] resumeSupported: false — cursor-agent has no resume flag; starting a fresh conversation.",
+        } as RunEvent;
+      }
       if (run.mode === "read_only") {
         // cursor-agent has no sandbox flag; constrain via the prompt contract
         // and never pass --force, so changes are not auto-applied.
@@ -177,19 +200,30 @@ function num(value: unknown): number {
  * message or on the result (`input_tokens`/`output_tokens`, or camelCase).
  * Returns null when nothing usable is present — Cursor often reports none.
  */
-export function parseCursorUsage(raw: unknown): { inputTokens: number; outputTokens: number; cacheReadTokens: number } | null {
+export function parseCursorUsage(
+  raw: unknown,
+): { inputTokens: number; outputTokens: number; cacheReadTokens: number } | null {
   if (!raw || typeof raw !== "object") return null;
   const u = raw as Record<string, unknown>;
   const input = u.input_tokens ?? u.inputTokens ?? u.prompt_tokens;
   const output = u.output_tokens ?? u.outputTokens ?? u.completion_tokens;
   if (input == null && output == null) return null;
-  return { inputTokens: num(input), outputTokens: num(output), cacheReadTokens: num(u.cache_read_input_tokens ?? u.cachedTokens) };
+  return {
+    inputTokens: num(input),
+    outputTokens: num(output),
+    cacheReadTokens: num(u.cache_read_input_tokens ?? u.cachedTokens),
+  };
 }
 
 /** Cursor stream-json closely mirrors Claude Code's; parse defensively. Exported for tests. */
 export function cursorStreamParser(): LineParser {
   let lastText = "";
-  const usageEvent = (ts: number, scope: "turn" | "total", parsed: NonNullable<ReturnType<typeof parseCursorUsage>>, model: unknown): RunEvent => ({
+  const usageEvent = (
+    ts: number,
+    scope: "turn" | "total",
+    parsed: NonNullable<ReturnType<typeof parseCursorUsage>>,
+    model: unknown,
+  ): RunEvent => ({
     type: "usage",
     ts,
     scope,
@@ -208,7 +242,8 @@ export function cursorStreamParser(): LineParser {
       const ts = Date.now();
       const type = obj.type as string;
       if (type === "assistant") {
-        const message = obj.message as { content?: Array<Record<string, unknown>>; usage?: unknown; model?: unknown } | undefined;
+        const message = obj.message as
+          { content?: Array<Record<string, unknown>>; usage?: unknown; model?: unknown } | undefined;
         const events: RunEvent[] = [];
         const turn = parseCursorUsage(message?.usage ?? obj.usage);
         if (turn) events.push(usageEvent(ts, "turn", turn, message?.model ?? obj.model));

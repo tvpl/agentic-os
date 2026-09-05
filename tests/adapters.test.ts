@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { ClaudeAdapter } from "@mordomo/adapter-claude";
+import { ClaudeAdapter, claudeStreamParser } from "@mordomo/adapter-claude";
 import { CursorAdapter } from "@mordomo/adapter-cursor";
 import { CodexAdapter } from "@mordomo/adapter-codex";
 import type { AgentRun, RunEvent } from "@mordomo/core";
@@ -71,6 +71,46 @@ describe("claude adapter (against fake CLI)", () => {
     expect(result.summary).toContain("All done");
   });
 
+  it("names a new conversation with --session-id and resumes one with --resume", async () => {
+    await adapter.detect();
+    const fresh = await adapter.buildInvocation(makeRun());
+    expect(fresh.args).toContain("--session-id");
+    expect(fresh.args[fresh.args.indexOf("--session-id") + 1]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(fresh.args).not.toContain("--resume");
+
+    const resumed = await adapter.buildInvocation(
+      makeRun({ sessionId: "local-session", resume: { providerSessionId: "abc-123" } }),
+    );
+    expect(resumed.args).toContain("--resume");
+    expect(resumed.args[resumed.args.indexOf("--resume") + 1]).toBe("abc-123");
+    expect(resumed.args).not.toContain("--session-id");
+  });
+
+  it("emits a session event before the process and from the stream", async () => {
+    const events = await collect(adapter.execute(makeRun({ resume: { providerSessionId: "abc-123" } })));
+    const sessionEvents = events.filter((e) => e.type === "session") as Array<
+      Extract<RunEvent, { type: "session" }>
+    >;
+    // Announced up front, then confirmed by the CLI's init line (same id, so
+    // the parser reports it once).
+    expect(sessionEvents.map((e) => e.providerSessionId)).toEqual(["abc-123", "abc-123"]);
+    expect(events.indexOf(sessionEvents[0]!)).toBeLessThan(events.findIndex((e) => e.type === "started"));
+  });
+
+  it("parses session_id out of a stream-json init line", () => {
+    const parser = claudeStreamParser();
+    const parsed = parser.parseLine('{"type":"system","subtype":"init","session_id":"abc"}');
+    expect(parsed).toEqual([
+      { type: "session", ts: expect.any(Number), providerSessionId: "abc" },
+      { type: "text", ts: expect.any(Number), stream: "stdout", text: "[claude session started: model=?]" },
+    ]);
+    // The id repeats on every line; it is only reported when it changes.
+    expect(parser.parseLine('{"type":"assistant","session_id":"abc","message":{"content":[]}}')).toEqual([]);
+    expect(parser.parseLine('{"type":"assistant","session_id":"def","message":{"content":[]}}')).toEqual([
+      { type: "session", ts: expect.any(Number), providerSessionId: "def" },
+    ]);
+  });
+
   it("reports authentication without exposing credentials", async () => {
     const { paths, cleanup } = makeTempHome();
     try {
@@ -110,6 +150,14 @@ describe("cursor adapter (against fake CLI)", () => {
     expect(wr.args).toContain("--force");
   });
 
+  it("says resumeSupported: false instead of resuming", async () => {
+    await adapter.detect();
+    const events = await collect(adapter.execute(makeRun({ resume: { providerSessionId: "x" } })));
+    const note = events.find((e) => e.type === "text" && e.text.includes("resumeSupported: false"));
+    expect(note).toBeDefined();
+    expect(events.some((e) => e.type === "session")).toBe(false);
+  });
+
   it("streams events", async () => {
     const events = await collect(adapter.execute(makeRun()));
     expect(events.some((e) => e.type === "assistant")).toBe(true);
@@ -134,6 +182,22 @@ describe("codex adapter (against fake CLI)", () => {
     expect(inv.args).toContain("--sandbox");
     expect(inv.args[inv.args.indexOf("--sandbox") + 1]).toBe("read-only");
     expect(inv.args.join(" ")).not.toContain("danger-full-access");
+  });
+
+  it("resumes through `exec resume <id>` when the CLI advertises it", async () => {
+    await adapter.detect();
+    const inv = await adapter.buildInvocation(makeRun({ resume: { providerSessionId: "thread-9" } }));
+    expect(inv.args.slice(0, 2)).toEqual(["exec", "resume"]);
+    expect(inv.args[inv.args.length - 2]).toBe("thread-9"); // session id, then the prompt
+    expect(inv.args[inv.args.length - 1]).toBe("Say OK");
+    const fresh = await adapter.buildInvocation(makeRun());
+    expect(fresh.args).not.toContain("resume");
+  });
+
+  it("reports the thread id as a session event", async () => {
+    const events = await collect(adapter.execute(makeRun()));
+    const session = events.find((e) => e.type === "session") as Extract<RunEvent, { type: "session" }>;
+    expect(session.providerSessionId).toBe("fake");
   });
 
   it("parses codex JSONL events", async () => {

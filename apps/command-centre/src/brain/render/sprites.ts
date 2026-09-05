@@ -28,7 +28,11 @@ export const HEX_SIZE = 96;
 
 export function createSprites(tokens: CanvasTokens): SpriteSet {
   const cache = new Map<string, HTMLCanvasElement>();
-  const make = (key: string, size: number, paint: (c: CanvasRenderingContext2D) => void): HTMLCanvasElement => {
+  const make = (
+    key: string,
+    size: number,
+    paint: (c: CanvasRenderingContext2D) => void,
+  ): HTMLCanvasElement => {
     let s = cache.get(key);
     if (s) return s;
     s = document.createElement("canvas");
@@ -131,7 +135,11 @@ export function createSprites(tokens: CanvasTokens): SpriteSet {
 }
 
 export function initials(name: string): string {
-  const words = name.replace(/\(.*?\)/g, "").trim().split(/[\s-]+/).filter(Boolean);
+  const words = name
+    .replace(/\(.*?\)/g, "")
+    .trim()
+    .split(/[\s-]+/)
+    .filter(Boolean);
   if (words.length >= 2) return (words[0]![0]! + words[1]![0]!).toUpperCase();
   return (name.slice(0, 2) || "?").toUpperCase();
 }

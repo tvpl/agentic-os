@@ -117,7 +117,11 @@ describe("routine scheduler (manual fire, against fake CLI)", () => {
     const { paths, cleanup } = makeTempHome();
     try {
       // seed a skill + routine into temp home
-      fs.cpSync(path.join(repoPaths.skills, "workspace-digest"), path.join(paths.skills, "workspace-digest"), { recursive: true });
+      fs.cpSync(
+        path.join(repoPaths.skills, "workspace-digest"),
+        path.join(paths.skills, "workspace-digest"),
+        { recursive: true },
+      );
       fs.copyFileSync(
         path.join(repoPaths.routines, "daily-workspace-digest.json"),
         path.join(paths.routines, "daily-workspace-digest.json"),
@@ -126,7 +130,12 @@ describe("routine scheduler (manual fire, against fake CLI)", () => {
       const settingsStore = new SettingsStore(paths);
       const skills = new SkillCatalog(paths);
       const routines = new RoutineStore(paths);
-      const runs = new RunManager(db, paths, () => settingsStore.load(), () => new ClaudeAdapter({ binaryPath: path.join(FAKE_BIN, "claude") }));
+      const runs = new RunManager(
+        db,
+        paths,
+        () => settingsStore.load(),
+        () => new ClaudeAdapter({ binaryPath: path.join(FAKE_BIN, "claude") }),
+      );
       const scheduler = new RoutineScheduler(db, paths, routines, runs, skills, () => settingsStore.load());
 
       const { runId } = await scheduler.fire("daily-workspace-digest", { reason: "manual" });

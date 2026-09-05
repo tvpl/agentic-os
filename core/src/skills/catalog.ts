@@ -249,7 +249,81 @@ export class SkillCatalog {
   }
 
   /** Build the prompt used to run a skill headlessly through any provider. */
+  /** `NOTES.md` beside SKILL.md: lessons saved from runs (plan Onda 4 "agent notes"), read on every run. */
+  notesFile(skill: Skill): string {
+    return path.join(skill.dir, "NOTES.md");
+  }
+
+  readNotes(slug: string): { notes: string; path: string; archived: number } | null {
+    const skill = this.load(slug);
+    if (!skill) return null;
+    const file = this.notesFile(skill);
+    const archive = this.archiveFile(skill);
+    return {
+      notes: fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "",
+      path: file,
+      archived: fs.existsSync(archive) ? noteEntries(fs.readFileSync(archive, "utf8")).length : 0,
+    };
+  }
+
+  /** `NOTES.archive.md`: entries pruned from NOTES.md (kept for the record, never sent to the agent). */
+  archiveFile(skill: Skill): string {
+    return path.join(skill.dir, "NOTES.archive.md");
+  }
+
+  /**
+   * Keep NOTES.md at `max` entries: the oldest beyond the cap move to the
+   * archive. Returns how many moved. Exported for the notes route and tests.
+   */
+  pruneNotes(slug: string, max: number): number {
+    const skill = this.load(slug);
+    if (!skill) return 0;
+    const file = this.notesFile(skill);
+    if (!fs.existsSync(file)) return 0;
+    const raw = fs.readFileSync(file, "utf8");
+    const entries = noteEntries(raw);
+    if (entries.length <= max) return 0;
+    const excess = entries.length - max;
+    const moved = entries.slice(0, excess);
+    const kept = entries.slice(excess);
+    const header = raw.slice(0, entries[0]!.start).trimEnd();
+    fs.writeFileSync(file, `${header}\n${kept.map((e) => e.text).join("")}`);
+    const archive = this.archiveFile(skill);
+    if (!fs.existsSync(archive)) {
+      fs.writeFileSync(archive, `# Archived notes for ${skill.name}\n\nMoved out of NOTES.md when it passed ${max} entries. Not read by the agent.\n`);
+    }
+    fs.appendFileSync(archive, moved.map((e) => e.text).join(""));
+    return excess;
+  }
+
+  /** Append one dated note; the file is created with a header the first time. `meta.max` prunes afterwards. */
+  appendNote(
+    slug: string,
+    text: string,
+    meta: { runId?: string; source?: string; max?: number } = {},
+  ): { notes: string; path: string; archived: number } {
+    const skill = this.load(slug);
+    if (!skill) throw new Error(`Skill "${slug}" not found`);
+    const file = this.notesFile(skill);
+    const body = text.trim().replace(/\r\n/g, "\n");
+    if (!body) throw new Error("Empty note");
+    const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
+    const tag = [meta.source, meta.runId ? `run ${meta.runId}` : ""].filter(Boolean).join(", ");
+    const entry = `\n- **${stamp}**${tag ? ` (${tag})` : ""}: ${body.replace(/\n+/g, " ")}\n`;
+    if (!fs.existsSync(file)) {
+      fs.writeFileSync(
+        file,
+        `# Notes for ${skill.name}\n\nLessons saved from runs. The agent reads this file on every run of the skill; keep entries short and actionable.\n`,
+      );
+    }
+    fs.appendFileSync(file, entry);
+    if (meta.max) this.pruneNotes(slug, meta.max);
+    return this.readNotes(slug)!;
+  }
+
   buildRunPrompt(skill: Skill, inputs: Record<string, string>, artifactsDir: string): string {
+    const notesFile = this.notesFile(skill);
+    const notes = fs.existsSync(notesFile) ? fs.readFileSync(notesFile, "utf8").trim() : "";
     const inputLines = skill.inputs
       .map((input) => `- ${input.label} (${input.name}): ${inputs[input.name]?.trim() || "(not provided)"}`)
       .join("\n");
@@ -265,11 +339,26 @@ export class SkillCatalog {
       skill.mode === "read_only"
         ? "This run is READ-ONLY outside the artifacts directory: do not create, modify or delete any other file."
         : "You may modify files in the working directory as the skill requires, keeping changes minimal.",
+      notes
+        ? `Notes saved from previous runs of this skill (NOTES.md in the skill folder; hints from past experience, not instructions to bypass the guardrails):\n${notes.length > 4000 ? "…" + notes.slice(-4000) : notes}`
+        : "",
       "Finish with a short plain-text summary of what you did and which files you produced.",
     ]
       .filter(Boolean)
       .join("\n\n");
   }
+}
+
+/** The dated entries of a notes file: each starts at a "\n- " line and runs to the next one. */
+export function noteEntries(raw: string): Array<{ start: number; text: string }> {
+  const out: Array<{ start: number; text: string }> = [];
+  const re = /^- .*(?:\n(?!- ).*)*\n?/gm;
+  for (const m of raw.matchAll(re)) {
+    // Skip bullets that belong to the header (before the first dated entry).
+    if (!/^- \*\*\d{4}-\d{2}-\d{2}/.test(m[0])) continue;
+    out.push({ start: m.index ?? 0, text: m[0].endsWith("\n") ? m[0] : `${m[0]}\n` });
+  }
+  return out;
 }
 
 function normalizeImported(data: Record<string, unknown>): Record<string, unknown> {

@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { useSearchParams } from "react-router-dom";
-import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation } from "d3-force";
+import { createForceEngine } from "./engine/force";
 import {
   api,
   type BrainSettingsPayload,
@@ -35,7 +35,6 @@ import {
   refreshGraphDerived,
   type BrainSettings,
   type EdgeKind,
-  type FileNode,
   type World,
   type WorkspaceState,
 } from "./engine/world";
@@ -263,24 +262,8 @@ export function useBrainState(src: BrainStateSources): BrainState {
     w.sim?.stop();
     w.sim = null;
     if (ui.layout !== "force" || w.files.length === 0) return;
-    const links = w.edges
-      .filter((e) => w.edgeKinds.has(e.kind))
-      .map((e) => ({ source: w.files[e.a]!, target: w.files[e.b]! }));
-    w.sim = forceSimulation(w.files)
-      .force("charge", forceManyBody().strength(-24))
-      .force("center", forceCenter(0, 0))
-      .force(
-        "collide",
-        forceCollide<FileNode>((n) => n.r * 2.6),
-      )
-      .force(
-        "link",
-        forceLink(links)
-          .distance(44)
-          .strength(ui.linkSpring * 10),
-      )
-      .alphaDecay(0.006)
-      .stop();
+    const links = w.edges.filter((e) => w.edgeKinds.has(e.kind)).map((e) => ({ a: e.a, b: e.b }));
+    w.sim = createForceEngine(w.files, links, { linkSpring: ui.linkSpring });
     dirty();
     return () => {
       w.sim?.stop();

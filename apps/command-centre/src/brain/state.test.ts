@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "./engine/world";
-import { decodeGroups, defaultUi, encodeGroups, paramsFromUi, parseBrainSettings, sameParams, settingsFromUi, uiFromParams, urlControlledKeys } from "./state";
+import {
+  decodeGroups,
+  defaultUi,
+  encodeGroups,
+  paramsFromUi,
+  parseBrainSettings,
+  sameParams,
+  settingsFromUi,
+  uiFromParams,
+  urlControlledKeys,
+} from "./state";
 
 describe("brain ui state codecs", () => {
   it("round-trips the view state through the hash query, omitting defaults", () => {
@@ -25,7 +35,9 @@ describe("brain ui state codecs", () => {
   });
 
   it("ignores malformed url values", () => {
-    const p = new URLSearchParams("sel=abc&layout=nope&view=x&hops=9&mod=yesterday&size=huge&kinds=bogus,same-dir");
+    const p = new URLSearchParams(
+      "sel=abc&layout=nope&view=x&hops=9&mod=yesterday&size=huge&kinds=bogus,same-dir",
+    );
     const ui = uiFromParams(p, defaultUi());
     expect(ui.sel).toBeNull();
     expect(ui.layout).toBe(DEFAULT_SETTINGS.layout);
@@ -34,7 +46,9 @@ describe("brain ui state codecs", () => {
     expect(ui.filters.modified).toBe("all");
     expect(ui.filters.size).toBe("any");
     expect(ui.edgeKinds).toEqual(["same-dir"]);
-    expect([...urlControlledKeys(p)]).toEqual(["layout", "view", "edgeKinds", "hops"].map((k) => (k === "hops" ? "localHops" : k)));
+    expect([...urlControlledKeys(p)]).toEqual(
+      ["layout", "view", "edgeKinds", "hops"].map((k) => (k === "hops" ? "localHops" : k)),
+    );
   });
 
   it("validates server / localStorage blobs field by field", () => {

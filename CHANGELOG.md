@@ -1,5 +1,158 @@
 # Changelog
 
+## 0.8.0 — 2026-09-05
+
+The ten follow-ups proposed after the plan closed, in the order they were
+suggested, each shipped with its tests.
+
+- **Answer from the phone**: Telegram alerts about approvals carry Approve /
+  Deny buttons and `/pending`, `/approve`, `/deny` commands; a long poll on
+  the bot honours only the configured chat id and decides through the same
+  code path as the Command Centre button.
+- **Web Push**: RFC 8291 `aes128gcm` encryption and VAPID ES256 written on
+  `node:crypto` (matches the RFC test vector byte for byte); keys in
+  `config/vapid.json`, subscriptions in SQLite, dead endpoints dropped; the
+  installed PWA subscribes from Settings › Notifications and hears alerts
+  while closed.
+- **E2E coverage** for pairing, mid-run tool approval, squads and the
+  marketplace, driven through the UI against the fake CLI; `file://`
+  registries; marketplace Refresh bypasses the server cache; verification
+  failures answer with the reason.
+- **Event-driven cache**: SSE invalidations coalesced per key, a wider event
+  map, every remaining poll demoted to a slow fallback.
+- **Emulated sessions** where the provider cannot resume (cursor-agent,
+  older codex): earlier turns folded into the prompt, no more "starting
+  fresh".
+- **Related edges at index time**: term vectors and cosine neighbours stored
+  by the indexer (`file_terms`, `file_related`), refreshed incrementally for
+  the files that changed.
+- **Skill notes hygiene**: `limits.skillNotesMax` archives old entries to
+  `NOTES.archive.md`; a promote run folds recurring lessons into SKILL.md,
+  parked for approval under review profiles.
+- **Budgets per routine and per skill** with a cap on each run; fires and
+  runs past the cap are skipped or refused with the reason and flagged once
+  a day.
+- **Trends**: hourly metrics samples (90 days) and Settings › Trends with six
+  single-series charts and a table view — the plan's §9 targets are now
+  measurable.
+- **Marketplace publisher**: `mordomo skills publish` builds a registry with
+  SHA-256 per file and an Ed25519-signed index; `#key=` on a registry URL
+  pins the publisher; rows show signed ✓ / unsigned.
+- **Built-in TLS for remote devices**: a self-signed X.509 certificate
+  generated without dependencies, a second https listener for the allowed
+  hosts, the fingerprint on the pairing screen; loopback stays http.
+- Also: axe audits now cover Second Brain, Runs, Routines and Connectors;
+  the Windows checklist in the manual.
+- Migrations 8–11 (`push_subscriptions`, `file_terms` + `file_related`,
+  `runs.max_cost_usd`, `metrics_samples`). Settings added:
+  `channels.telegram.inbound`, `channels.push`, `limits.skillNotesMax`,
+  `remote.tls`; `routines.budgetUsd`, SKILL.md `budgetUsd`.
+- Not done, on purpose: rendering the Second Brain in an OffscreenCanvas
+  worker. It needs the whole draw pipeline and the world state to cross the
+  worker boundary every frame; with the physics already off the main thread
+  the remaining cost is bounded by the edge budget and the idle throttle.
+
+## 0.7.0 — 2026-09-04
+
+Every remaining item of the evolution plan (`docs/plan-2026-09/`): the rest
+of Onda 1 and 2, Onda 3 and Onda 4. Nothing in the plan is pending.
+
+- **Tool approvals mid-run** (Onda 1): in `review_before_write` and
+  `controlled_write`, the Claude adapter runs with `--permission-prompt-tool`
+  pointed at a MordomoOS MCP server (`mordomo mcp permission`) that turns
+  each tool prompt into a `tool_use` approval; the run page and the Console
+  show the card while the run waits, with Allow / Deny. `mordomo mcp` also
+  serves the memory (recall, facts, journal), skills and inbox as MCP tools
+  for any client. Journal lines carry the skill or prompt head, session id,
+  files changed and a reply gist.
+- **Sentinels and triage** (Onda 2): repeated-failure, silent-routine,
+  connector-delta, repeat-detector (the *did it twice* nudge that offers to
+  save a prompt as a skill), fs-watch and a cheap-model triage, each with a
+  toggle in Settings › Notifications; Telegram delivery with a test button;
+  the inbox becomes a system notification and, optionally, a spoken line
+  when the tab is hidden. The Now panel shows the **next step** for a fresh
+  install (folder → run → routine → budget → connector).
+- **Remote access and the shell** (Onda 3): device pairing (6-digit code,
+  per-device tokens with expiry, revoke list) behind `settings.remote`, a
+  pairing screen on non-loopback hosts; the Command Centre installs as a
+  **PWA** (manifest, service worker, icons) and keeps working offline for
+  the shell; voice in the Console (mic → prompt, Read aloud per reply, the
+  core shows *listening*); **squads** — fan a run out into up to 8 sub-agents
+  from its page, with a children list; a verified **skill marketplace**
+  (registries in Settings › Memory, sha256-checked, staged before install).
+- **Second Brain and skills** (Onda 4): *Similar content* edges from a
+  dependency-free TF-IDF cosine over the indexed text (top-3 per file, off
+  by default in the legend, counted always); the force layout runs in a
+  **Web Worker** with positions applied per frame (inline fallback where
+  workers are missing); labels no longer overlap (greedy collision, selected
+  and matched files win). **Agent notes**: every skill gets a `NOTES.md`
+  appended from run pages (*Note for the skill*) or the skill's Notes tab,
+  and folded into every run prompt. The nightly memory consolidation ships
+  **enabled** (03:00, `review_before_write`, so it parks for approval).
+- **HUD sound**: a short ack when a run starts, a chord when it finishes, a
+  low tone on failure — same toggle as the inbox blip, burst-guarded for
+  squads.
+- APIs added: `GET/POST /api/approvals/tool`, `GET /api/approvals/:id`,
+  `POST /api/runs/:id/children`, `GET /api/runs/:id/children`,
+  `GET /api/skills/registry`, `POST /api/skills/install`,
+  `GET/POST /api/skills/:slug/notes`, `POST /api/pair/start`,
+  `POST /api/pair/claim`, `GET/DELETE /api/devices`,
+  `POST /api/channels/telegram/test`, `/api/memory/graph?related=`.
+  Settings added: `limits.toolApprovalTimeoutMs`, `remote`, `marketplace`,
+  `sentinels`, `channels`. Migration 7 (`devices`).
+
+## 0.6.0 — 2026-09-04
+
+The evolution plan (`docs/plan-2026-09/`) executed: Onda 0 in full, the
+desktop harmony pass, the "HUD Mordomo" visual layer, sessions with a
+conversational Console (Onda 1) and the first slice of Onda 2 (budget,
+persisted inbox).
+
+- **Desktop harmony**: a 20-row, content-first default layout; widgets never
+  clip (scroll shadows on the frame, corner brackets on the non-scrolling
+  section, a 1px bevel on top); one hero size (`--fs-hero`) for every widget
+  figure, so the clock and the counters stop shouting; the ring, the core and
+  the Now panel anchor to the free region between the widget columns
+  (`freeRegion()`), so chips never hide behind widgets at 1024 or 1440; the
+  stacked column on phones grows with its content and gets a bottom
+  navigation; the byline hides under 1200px; the light theme drops the glow
+  and gets visible canvas lines.
+- **HUD layer**: the wallpaper core reacts to the event stream — thinking
+  (arcs and converging particles), tool (a blip leaves the core), responding
+  (radial pulses), alert (amber, brackets blink), done (a flash) — with a
+  radar sweep and reactor arcs; a CSS overlay adds scanlines, a vignette and
+  corner brackets, all scaled by `--hud-intensity` (slider in Settings ›
+  Theme, per-preset defaults, 0 turns it off); telemetry strips under the
+  top bar (runs, tokens/h, spend, memory, skills, routines); a boot sequence
+  replaces the blank first frame; the **JARVIS** preset (cyan on cold black);
+  Rajdhani and JetBrains Mono bundled as latin subsets; widgets materialise
+  with a wipe, the palette opens as an iris, toasts arrive as a transmission,
+  the primary button charges on press. Everything honours reduced motion.
+- **Sessions and the Console** (Onda 1): a `sessions` table, `runs.session_id`
+  and `--resume` in the Claude adapter (`--session-id` on the first turn),
+  `POST /api/runs { sessionId }`, `GET /api/sessions`, `GET /api/sessions/:id`,
+  `POST /api/sessions/:id/continue`, `DELETE /api/sessions/:id`. The desktop
+  Prompt became the **Console**: a thread of turns (what you asked, what the
+  agent answered, tool calls, cost, duration) that streams live, with Stop,
+  New conversation and a link to the full log.
+- **Budget and inbox** (Onda 2, first slice): `limits.dailyBudgetUsd` with a
+  bar in the Cost widget, rows in Needs attention at 80 % and 100 % and a
+  notification once per day per level; notifications persist server-side
+  (`GET /api/notifications`, `POST /api/notifications/read`) and seed the
+  feed on load, so closing the tab no longer loses them.
+- **Onda 0 fixes**: the machine timezone by default (also with
+  `setup --defaults`); the model list no longer duplicates aliases as rows;
+  `/api/meta` reports the root version and every workspace carries the same
+  version; `activeRunCount` uses `COUNT(*)`; the per-run stream sends events
+  straight to the client with a buffered replay for `Last-Event-ID`;
+  retention for finished runs and routine history with a weekly `VACUUM`;
+  approvals expire (`limits.approvalTtlDays`) and a gated run is parked as
+  `waiting_approval` with its own id; concurrency slots honour a lowered
+  limit; "Needs attention" no longer lists runs in progress; text artifacts
+  show their first lines as the thumbnail; the settings view is typed
+  (`SettingsDoc`); layout metrics are reported after commit, and a resize no
+  longer rebuilds the canvas sprites.
+
 ## 0.5.0 — 2026-09-03
 
 The September analysis (`docs/analysis-2026-09/`) executed end to end: the frame

@@ -25,8 +25,10 @@ const PAGE_SIZE = 50;
 
 function matchesStatus(run: RunRecord, filter: StatusFilter): boolean {
   if (filter === "all") return true;
-  if (filter === "running") return run.status === "running" || run.status === "queued" || run.status === "waiting_approval";
-  if (filter === "failed") return run.status === "failed" || run.status === "timed_out" || run.status === "interrupted";
+  if (filter === "running")
+    return run.status === "running" || run.status === "queued" || run.status === "waiting_approval";
+  if (filter === "failed")
+    return run.status === "failed" || run.status === "timed_out" || run.status === "interrupted";
   return run.status === filter;
 }
 
@@ -44,9 +46,13 @@ export default function RunList() {
   const qc = useQueryClient();
   const effortLabels = useEffortLabels();
   const [offset, setOffset] = useState(0);
-  const runs = useApiQuery<RunRecord[]>(qk.runs({ limit: PAGE_SIZE, offset }), `/api/runs?limit=${PAGE_SIZE}&offset=${offset}`, { refetchInterval: 30_000 });
+  const runs = useApiQuery<RunRecord[]>(
+    qk.runs({ limit: PAGE_SIZE, offset }),
+    `/api/runs?limit=${PAGE_SIZE}&offset=${offset}`,
+    { refetchInterval: 300_000 },
+  );
   const providers = useOsProviders();
-  const metrics = useOsMetrics({ refetchInterval: 60_000 });
+  const metrics = useOsMetrics({ refetchInterval: 300_000 });
   const settings = useOsSettings();
   const approvals = useApprovals();
 
@@ -64,7 +70,10 @@ export default function RunList() {
   const policy = writePolicyFor(conf.securityProfile);
   const write = writeMode && policy !== "refused";
 
-  const cwdOptions = useMemo(() => cwdSuggestions(conf.indexedFolders, runs.data), [conf.indexedFolders, runs.data]);
+  const cwdOptions = useMemo(
+    () => cwdSuggestions(conf.indexedFolders, runs.data),
+    [conf.indexedFolders, runs.data],
+  );
 
   const quickRun = useMutation({
     mutationFn: () =>
@@ -90,7 +99,9 @@ export default function RunList() {
   });
 
   const rows = useMemo(() => {
-    const list = (runs.data ?? []).filter((r) => matchesStatus(r, status) && (providerFilter === "all" || r.provider === providerFilter));
+    const list = (runs.data ?? []).filter(
+      (r) => matchesStatus(r, status) && (providerFilter === "all" || r.provider === providerFilter),
+    );
     return list.sort((a, b) => (sortAsc ? a.createdAt - b.createdAt : b.createdAt - a.createdAt));
   }, [runs.data, status, providerFilter, sortAsc]);
 
@@ -126,14 +137,25 @@ export default function RunList() {
                 }
               }}
             />
-            <Button variant="primary" icon={<Play aria-hidden />} disabled={!canRun} loading={quickRun.isPending} onClick={() => quickRun.mutate()}>
+            <Button
+              variant="primary"
+              icon={<Play aria-hidden />}
+              disabled={!canRun}
+              loading={quickRun.isPending}
+              onClick={() => quickRun.mutate()}
+            >
               {t("common.run")}
             </Button>
           </div>
           <p className="hint quick-hint">{t("runs.submitHint")}</p>
           <div className="quick-options">
             <Field label={t("runs.provider")} htmlFor="qr-provider">
-              <select id="qr-provider" className="input" value={provider} onChange={(e) => setProvider(e.target.value as ProviderId | "")}>
+              <select
+                id="qr-provider"
+                className="input"
+                value={provider}
+                onChange={(e) => setProvider(e.target.value as ProviderId | "")}
+              >
                 <option value="">{t("runs.defaultProvider")}</option>
                 {enabledProviders.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -181,11 +203,17 @@ export default function RunList() {
                   {t("runs.write.toggle")}
                 </Button>
                 <span className={`hint ${policy === "refused" ? "warn" : ""}`}>
-                  {policy === "refused" ? t("runs.write.refused") : policy === "approval" ? t("runs.write.approval") : t("runs.write.allowed")}
+                  {policy === "refused"
+                    ? t("runs.write.refused")
+                    : policy === "approval"
+                      ? t("runs.write.approval")
+                      : t("runs.write.allowed")}
                 </span>
               </div>
             </Field>
-            {enabledProviders.length === 0 && providers.data && <p className="hint warn">{t("skills.noProviderBody")}</p>}
+            {enabledProviders.length === 0 && providers.data && (
+              <p className="hint warn">{t("skills.noProviderBody")}</p>
+            )}
           </div>
         </div>
       </div>
@@ -198,9 +226,17 @@ export default function RunList() {
           size="sm"
           value={status}
           onChange={(v) => setStatus(v as StatusFilter)}
-          options={STATUS_FILTERS.map((s) => ({ value: s, label: s === "all" ? t("brain.all") : t(`status.${s}` as "status.running") }))}
+          options={STATUS_FILTERS.map((s) => ({
+            value: s,
+            label: s === "all" ? t("brain.all") : t(`status.${s}` as "status.running"),
+          }))}
         />
-        <select className="input sm" value={providerFilter} onChange={(e) => setProviderFilter(e.target.value)} aria-label={t("runs.provider")}>
+        <select
+          className="input sm"
+          value={providerFilter}
+          onChange={(e) => setProviderFilter(e.target.value)}
+          aria-label={t("runs.provider")}
+        >
           <option value="all">{t("brain.all")}</option>
           {(providers.data ?? []).map((p) => (
             <option key={p.id} value={p.id}>
@@ -248,7 +284,11 @@ export default function RunList() {
                   onKeyDown={(e) => e.key === "Enter" && navigate(`/runs/${r.id}`)}
                 >
                   <td className="truncate" style={{ maxWidth: 320 }}>
-                    {r.skillSlug ? <span className="mono">/{r.skillSlug}</span> : r.promptSummary.slice(0, 60)}
+                    {r.skillSlug ? (
+                      <span className="mono">/{r.skillSlug}</span>
+                    ) : (
+                      r.promptSummary.slice(0, 60)
+                    )}
                   </td>
                   <td>{r.provider}</td>
                   <td>
@@ -257,7 +297,9 @@ export default function RunList() {
                   <td>
                     <StatusBadge status={r.status} />
                   </td>
-                  <td className="num tabular">{r.usage?.costUsd != null ? formatUsd(r.usage.costUsd) : "—"}</td>
+                  <td className="num tabular">
+                    {r.usage?.costUsd != null ? formatUsd(r.usage.costUsd) : "—"}
+                  </td>
                   <td className="num tabular">{r.usage ? formatTokens(totalTokens(r.usage)) : "—"}</td>
                   <td className="tabular">{formatDuration(r.durationMs)}</td>
                   <td className="dim">{timeAgo(r.createdAt, locale)}</td>
@@ -270,11 +312,23 @@ export default function RunList() {
 
       {(offset > 0 || hasNext) && (
         <div className="pager" role="group" aria-label={t("runs.pagination")}>
-          <Button size="sm" variant="outline" icon={<ChevronLeft aria-hidden />} disabled={offset === 0} onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}>
+          <Button
+            size="sm"
+            variant="outline"
+            icon={<ChevronLeft aria-hidden />}
+            disabled={offset === 0}
+            onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
+          >
             {t("runs.prevPage")}
           </Button>
           <span className="pager-label mono">{t("runs.page", { n: page })}</span>
-          <Button size="sm" variant="outline" icon={<ChevronRight aria-hidden />} disabled={!hasNext} onClick={() => setOffset((o) => o + PAGE_SIZE)}>
+          <Button
+            size="sm"
+            variant="outline"
+            icon={<ChevronRight aria-hidden />}
+            disabled={!hasNext}
+            onClick={() => setOffset((o) => o + PAGE_SIZE)}
+          >
             {t("runs.nextPage")}
           </Button>
         </div>
@@ -284,7 +338,13 @@ export default function RunList() {
 }
 
 /** 24 hourly token buckets as an inline sparkline (no layout work per frame). */
-function TokensSpark({ series, todayUsd }: { series: Array<{ ts: number; tokens: number; usd: number }> | undefined; todayUsd: number | null }) {
+function TokensSpark({
+  series,
+  todayUsd,
+}: {
+  series: Array<{ ts: number; tokens: number; usd: number }> | undefined;
+  todayUsd: number | null;
+}) {
   const t = useT();
   const values = (series ?? []).map((p) => p.tokens);
   const total = values.reduce((a, b) => a + b, 0);
@@ -292,7 +352,14 @@ function TokensSpark({ series, todayUsd }: { series: Array<{ ts: number; tokens:
   const geo = sparkline(values, 120, 28);
   return (
     <div className="tokens-spark" title={t("runs.spark.title")}>
-      <svg viewBox="0 0 120 28" width="120" height="28" role="img" aria-label={t("runs.spark.aria", { n: formatTokens(total) })} preserveAspectRatio="none">
+      <svg
+        viewBox="0 0 120 28"
+        width="120"
+        height="28"
+        role="img"
+        aria-label={t("runs.spark.aria", { n: formatTokens(total) })}
+        preserveAspectRatio="none"
+      >
         <path d={geo.area} className="spark-area" />
         <path d={geo.line} className="spark-line" />
         {geo.last && <circle cx={geo.last.x} cy={geo.last.y} r={2} className="spark-dot" />}

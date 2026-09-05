@@ -7,16 +7,25 @@ import { Modal, useToast } from "../../components/ui";
 import { Button, Field } from "../../components/primitives";
 import { errorMessage, SLUG_RE, slugify } from "../shared";
 
-export default function NewSkillModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+export default function NewSkillModal({
+  onClose,
+  onCreated,
+  initialPrompt,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+  /** A prompt the user has typed twice (did-it-twice detector): pre-fills the body. */
+  initialPrompt?: string;
+}) {
   const t = useT();
   const toast = useToast();
   const invalidate = useInvalidate();
   const [name, setName] = useState("");
   const [slugValue, setSlugValue] = useState("");
   const [slugTouched, setSlugTouched] = useState(false);
-  const [description, setDescription] = useState("");
+  const [description, setDescription] = useState(() => (initialPrompt ? initialPrompt.split(/\r?\n/)[0]!.slice(0, 160) : ""));
   const [mode, setMode] = useState<"read_only" | "write">("read_only");
-  const [body, setBody] = useState(() => t("skills.bodyTemplate"));
+  const [body, setBody] = useState(() => (initialPrompt ? `${t("skills.bodyTemplate")}\n\n## Prompt\n\n${initialPrompt}\n` : t("skills.bodyTemplate")));
 
   const derived = slugify(name);
   const slug = slugValue.trim() || derived;

@@ -99,7 +99,7 @@ export default function SecondBrain() {
   const routinesQuery = useOsRoutines();
   const connectorsQuery = useOsConnectors();
   const settingsQuery = useOsSettings();
-  const runsQuery = useOsRuns({ limit: 12 }, { refetchInterval: 20_000 });
+  const runsQuery = useOsRuns({ limit: 12 }, { refetchInterval: 120_000 });
   const meta = useOsMeta();
 
   const graph = graphQuery.data ?? null;
@@ -239,17 +239,15 @@ export default function SecondBrain() {
     prevActive.current = active.map((r) => r.id);
     setLiveCount(active.length);
     const existing = new Map(w.comets.map((c) => [c.runId, c]));
-    w.comets = active
-      .slice(0, 4)
-      .map(
-        (r, i) =>
-          existing.get(r.id) ?? {
-            runId: r.id,
-            skillSlug: r.skillSlug,
-            seed: (i + 1) * 1.7 + (r.id.charCodeAt(0) % 7),
-            trail: [],
-          },
-      );
+    w.comets = active.slice(0, 4).map(
+      (r, i) =>
+        existing.get(r.id) ?? {
+          runId: r.id,
+          skillSlug: r.skillSlug,
+          seed: (i + 1) * 1.7 + (r.id.charCodeAt(0) % 7),
+          trail: [],
+        },
+    );
     dirty();
   }, [runs, world, dirty]);
 

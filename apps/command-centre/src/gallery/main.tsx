@@ -13,6 +13,7 @@ import { HashRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Bell, Play, Sparkles, Trash2 } from "lucide-react";
 import "../theme.css";
+import "../desktop/desktop.css";
 import "./gallery.css";
 import { I18nContext, type Lang } from "../i18n";
 import { qk } from "../queries";

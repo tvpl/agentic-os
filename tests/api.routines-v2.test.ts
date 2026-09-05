@@ -71,7 +71,9 @@ describe("routines v2 API", () => {
     expect(created.json().kind).toBe("every");
 
     const list = await app.inject({ method: "GET", url: "/api/routines", headers: auth() });
-    const row = (list.json() as Array<{ id: string; nextRunAt: number | null }>).find((r) => r.id === "api-every")!;
+    const row = (list.json() as Array<{ id: string; nextRunAt: number | null }>).find(
+      (r) => r.id === "api-every",
+    )!;
     expect(row.nextRunAt).toBeGreaterThan(Date.now());
     expect(row.nextRunAt).toBeLessThanOrEqual(Date.now() + 15 * 60_000);
   });
@@ -129,7 +131,12 @@ describe("routines v2 API", () => {
   it("summarises today's routines per runner and kind", async () => {
     const res = await app.inject({ method: "GET", url: "/api/routines/summary", headers: auth() });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { firedToday: number; totalToday: number; byRunner: Record<string, number>; byKind: Record<string, number> };
+    const body = res.json() as {
+      firedToday: number;
+      totalToday: number;
+      byRunner: Record<string, number>;
+      byKind: Record<string, number>;
+    };
     expect(typeof body.firedToday).toBe("number");
     expect(typeof body.totalToday).toBe("number");
     expect(body.byRunner.local).toBeGreaterThan(0);
@@ -176,34 +183,62 @@ describe("connector data API", () => {
   };
 
   it("reads a connector through the MCP client and caches the result", async () => {
-    const created = await app.inject({ method: "POST", url: "/api/connectors", headers: auth(), payload: mcpConnector });
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/connectors",
+      headers: auth(),
+      payload: mcpConnector,
+    });
     expect(created.statusCode).toBe(200);
 
-    const first = await app.inject({ method: "GET", url: "/api/connectors/fake-mcp-cal/data", headers: auth() });
+    const first = await app.inject({
+      method: "GET",
+      url: "/api/connectors/fake-mcp-cal/data",
+      headers: auth(),
+    });
     expect(first.statusCode).toBe(200);
-    const a = first.json() as { status: string; syncedAt: number; items: Array<{ title: string }>; summary: Record<string, number> };
+    const a = first.json() as {
+      status: string;
+      syncedAt: number;
+      items: Array<{ title: string }>;
+      summary: Record<string, number>;
+    };
     expect(a.status).toBe("ok");
     expect(a.items.map((i) => i.title)).toEqual(["Standup", "Design review", "Dentist"]);
     expect(a.summary).toMatchObject({ total: 3, work: 2, personal: 1 });
 
     // Inside the TTL the same payload comes back untouched.
-    const second = await app.inject({ method: "GET", url: "/api/connectors/fake-mcp-cal/data", headers: auth() });
+    const second = await app.inject({
+      method: "GET",
+      url: "/api/connectors/fake-mcp-cal/data",
+      headers: auth(),
+    });
     expect(second.json().syncedAt).toBe(a.syncedAt);
 
     // ?refresh=1 bypasses the cache.
     await new Promise((r) => setTimeout(r, 5));
-    const third = await app.inject({ method: "GET", url: "/api/connectors/fake-mcp-cal/data?refresh=1", headers: auth() });
+    const third = await app.inject({
+      method: "GET",
+      url: "/api/connectors/fake-mcp-cal/data?refresh=1",
+      headers: auth(),
+    });
     expect(third.json().syncedAt).toBeGreaterThan(a.syncedAt);
   }, 30_000);
 
   it("records lastUsedAt on the connector after a successful read", async () => {
     const list = await app.inject({ method: "GET", url: "/api/connectors", headers: auth() });
-    const row = (list.json() as Array<{ id: string; lastUsedAt: number | null }>).find((c) => c.id === "fake-mcp-cal")!;
+    const row = (list.json() as Array<{ id: string; lastUsedAt: number | null }>).find(
+      (c) => c.id === "fake-mcp-cal",
+    )!;
     expect(row.lastUsedAt).toBeGreaterThan(0);
   });
 
   it("answers not_configured with a setup checklist for a seed connector without credentials", async () => {
-    const res = await app.inject({ method: "GET", url: "/api/connectors/calendar-google/data", headers: auth() });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/connectors/calendar-google/data",
+      headers: auth(),
+    });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { status: string; items: unknown[]; setup: string[]; message: string };
     expect(body.status).toBe("not_configured");
@@ -212,7 +247,11 @@ describe("connector data API", () => {
   }, 30_000);
 
   it("exposes the setup checklist on its own, and 404s for an unknown connector", async () => {
-    const steps = await app.inject({ method: "GET", url: "/api/connectors/email-gmail/setup", headers: auth() });
+    const steps = await app.inject({
+      method: "GET",
+      url: "/api/connectors/email-gmail/setup",
+      headers: auth(),
+    });
     expect(steps.statusCode).toBe(200);
     expect((steps.json() as { steps: string[] }).steps.join(" ")).toContain("GMAIL_CREDENTIALS_PATH");
 
@@ -223,11 +262,26 @@ describe("connector data API", () => {
 
 describe("settings schema (cross-frontier requests)", () => {
   it("keeps per-widget config inside dashboardLayout across a round-trip", async () => {
-    const layout = { today: { x: 0, y: 0, w: 6, h: 6, visible: true, config: { zones: ["UTC", "America/Sao_Paulo"], limit: 5 } } };
-    const put = await app.inject({ method: "PUT", url: "/api/settings", headers: auth(), payload: { dashboardLayout: layout } });
+    const layout = {
+      today: {
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 6,
+        visible: true,
+        config: { zones: ["UTC", "America/Sao_Paulo"], limit: 5 },
+      },
+    };
+    const put = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers: auth(),
+      payload: { dashboardLayout: layout },
+    });
     expect(put.statusCode).toBe(200);
     const res = await app.inject({ method: "GET", url: "/api/settings", headers: auth() });
-    const saved = (res.json() as { dashboardLayout: Record<string, { config?: Record<string, unknown> }> }).dashboardLayout;
+    const saved = (res.json() as { dashboardLayout: Record<string, { config?: Record<string, unknown> }> })
+      .dashboardLayout;
     expect(saved.today!.config).toEqual({ zones: ["UTC", "America/Sao_Paulo"], limit: 5 });
   });
 
@@ -235,11 +289,21 @@ describe("settings schema (cross-frontier requests)", () => {
     const res = await app.inject({ method: "GET", url: "/api/settings", headers: auth() });
     expect(res.json().themePreset).toBe("hud-orange");
     for (const preset of ["forest", "ocean", "mono", "hud-orange"]) {
-      const put = await app.inject({ method: "PUT", url: "/api/settings", headers: auth(), payload: { themePreset: preset } });
+      const put = await app.inject({
+        method: "PUT",
+        url: "/api/settings",
+        headers: auth(),
+        payload: { themePreset: preset },
+      });
       expect(put.statusCode).toBe(200);
       expect(put.json().themePreset ?? preset).toBe(preset);
     }
-    const bad = await app.inject({ method: "PUT", url: "/api/settings", headers: auth(), payload: { themePreset: "neon" } });
+    const bad = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers: auth(),
+      payload: { themePreset: "neon" },
+    });
     expect(bad.statusCode).toBe(400);
   });
 });
