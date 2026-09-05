@@ -252,6 +252,23 @@ it safely:
 
 Never expose the plain http port on the open internet.
 
+## 7.2 Windows checklist
+
+MordomoOS is validated on Linux and macOS in this release; on Windows keep
+these in mind:
+
+- `mordomo service plan` prints the Task Scheduler command before anything is
+  installed; paths with spaces are quoted for you.
+- Secrets on disk (`config/token`, `config/vapid.json`,
+  `config/registry-signing.json`, `config/tls/key.pem`) are written with
+  POSIX mode 0600; NTFS ignores it, so keep `MORDOMO_HOME` inside your user
+  profile and out of shared folders.
+- The fake provider CLIs the test suite uses are bash scripts; the tests
+  that need them skip on Windows.
+- Pairing, push, Telegram and TLS behave the same; the service binds to
+  `bindAddress` on the main port and to the TLS port when enabled — allow
+  both in Windows Defender Firewall for remote devices.
+
 ## 8. The 7-day adoption plan (from the ARMS guide)
 
 1. **Day 1 — Skills**: run `workspace-digest`; create one skill from your most

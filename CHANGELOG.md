@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.8.0 — 2026-09-05
+
+The ten follow-ups proposed after the plan closed, in the order they were
+suggested, each shipped with its tests.
+
+- **Answer from the phone**: Telegram alerts about approvals carry Approve /
+  Deny buttons and `/pending`, `/approve`, `/deny` commands; a long poll on
+  the bot honours only the configured chat id and decides through the same
+  code path as the Command Centre button.
+- **Web Push**: RFC 8291 `aes128gcm` encryption and VAPID ES256 written on
+  `node:crypto` (matches the RFC test vector byte for byte); keys in
+  `config/vapid.json`, subscriptions in SQLite, dead endpoints dropped; the
+  installed PWA subscribes from Settings › Notifications and hears alerts
+  while closed.
+- **E2E coverage** for pairing, mid-run tool approval, squads and the
+  marketplace, driven through the UI against the fake CLI; `file://`
+  registries; marketplace Refresh bypasses the server cache; verification
+  failures answer with the reason.
+- **Event-driven cache**: SSE invalidations coalesced per key, a wider event
+  map, every remaining poll demoted to a slow fallback.
+- **Emulated sessions** where the provider cannot resume (cursor-agent,
+  older codex): earlier turns folded into the prompt, no more "starting
+  fresh".
+- **Related edges at index time**: term vectors and cosine neighbours stored
+  by the indexer (`file_terms`, `file_related`), refreshed incrementally for
+  the files that changed.
+- **Skill notes hygiene**: `limits.skillNotesMax` archives old entries to
+  `NOTES.archive.md`; a promote run folds recurring lessons into SKILL.md,
+  parked for approval under review profiles.
+- **Budgets per routine and per skill** with a cap on each run; fires and
+  runs past the cap are skipped or refused with the reason and flagged once
+  a day.
+- **Trends**: hourly metrics samples (90 days) and Settings › Trends with six
+  single-series charts and a table view — the plan's §9 targets are now
+  measurable.
+- **Marketplace publisher**: `mordomo skills publish` builds a registry with
+  SHA-256 per file and an Ed25519-signed index; `#key=` on a registry URL
+  pins the publisher; rows show signed ✓ / unsigned.
+- **Built-in TLS for remote devices**: a self-signed X.509 certificate
+  generated without dependencies, a second https listener for the allowed
+  hosts, the fingerprint on the pairing screen; loopback stays http.
+- Also: axe audits now cover Second Brain, Runs, Routines and Connectors;
+  the Windows checklist in the manual.
+- Migrations 8–11 (`push_subscriptions`, `file_terms` + `file_related`,
+  `runs.max_cost_usd`, `metrics_samples`). Settings added:
+  `channels.telegram.inbound`, `channels.push`, `limits.skillNotesMax`,
+  `remote.tls`; `routines.budgetUsd`, SKILL.md `budgetUsd`.
+- Not done, on purpose: rendering the Second Brain in an OffscreenCanvas
+  worker. It needs the whole draw pipeline and the world state to cross the
+  worker boundary every frame; with the physics already off the main thread
+  the remaining cost is bounded by the edge budget and the idle throttle.
+
 ## 0.7.0 — 2026-09-04
 
 Every remaining item of the evolution plan (`docs/plan-2026-09/`): the rest

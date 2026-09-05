@@ -95,6 +95,10 @@ for (const [name, route] of [
   ["desktop", "/#/"],
   ["skills", "/#/skills"],
   ["settings", "/#/settings"],
+  ["brain", "/#/brain"],
+  ["runs", "/#/runs"],
+  ["routines", "/#/routines"],
+  ["connectors", "/#/connectors"],
 ] as const) {
   test(`axe: no serious violations on ${name}`, async ({ page }) => {
     await open(page, route);

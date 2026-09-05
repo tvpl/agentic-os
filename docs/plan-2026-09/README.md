@@ -398,8 +398,18 @@ Todo o plano foi executado na mesma sessão em que foi escrito (ver
   dependências), notas do agente por skill (`NOTES.md` lido em todo run),
   física do grafo em Web Worker e colisão de rótulos.
 
-Próximos passos ficam fora deste plano: medir as métricas da §9 em uso real
-por uma semana e ajustar limiares (sentinelas, similaridade, orçamento).
+### 8.1 Pós-plano (05/09/2026, v0.8.0)
+
+Os dez passos sugeridos depois do fechamento foram executados na ordem
+proposta (ver `CHANGELOG.md` 0.8.0): aprovação pelo Telegram e Web Push,
+e2e dos fluxos novos, cache orientada a eventos, sessões emuladas no Cursor,
+arestas de conteúdo no índice, poda e promoção de notas, orçamentos por
+rotina e skill, histórico de métricas com aba Tendências, publicador do
+marketplace com assinatura e TLS embutido para acesso remoto. Ficou de fora,
+de propósito, a renderização do grafo em OffscreenCanvas (custo alto de
+cruzar o estado do mundo a cada frame para ganho pequeno depois da física no
+worker). As métricas da §9 agora têm histórico: o próximo passo é uma semana
+de uso real e o ajuste dos limiares.
 
 ## 9. Métricas de sucesso e riscos
 
