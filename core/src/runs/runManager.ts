@@ -42,6 +42,8 @@ export interface RunRecord {
   promptSummary: string;
   skillSlug: string | null;
   routineId: string | null;
+  /** Spend cap for this run (remaining routine/skill budget at launch); null = none. */
+  maxCostUsd: number | null;
   /** First run of a retry chain (null for the first attempt). */
   parentRunId: string | null;
   /** Conversation this run belongs to (`sessions.id`), or null for a one-shot run. */
@@ -95,6 +97,8 @@ export interface CreateRunInput {
   skillSlug?: string | null;
   routineId?: string | null;
   parentRunId?: string | null;
+  /** Spend cap for this run in USD (the remaining routine/skill budget); null = none. */
+  maxCostUsd?: number | null;
   /**
    * Continue a conversation: the run inherits the session's provider-side id
    * (so the adapter resumes instead of starting over) and folds its usage back
@@ -414,8 +418,8 @@ export class RunManager {
     const promptSummary = redactSecrets(input.prompt.slice(0, 500));
     this.db
       .prepare(
-        `INSERT INTO runs (id, created_at, origin, provider, model, effort, status, cwd, prompt_summary, skill_slug, routine_id, parent_run_id, session_id, attempts, timeout_ms, permission_profile)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO runs (id, created_at, origin, provider, model, effort, status, cwd, prompt_summary, skill_slug, routine_id, parent_run_id, session_id, attempts, timeout_ms, permission_profile, max_cost_usd)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -434,6 +438,7 @@ export class RunManager {
         input.attempts ?? 1,
         input.timeoutMs,
         input.profile,
+        input.maxCostUsd ?? null,
       );
     const record = this.get(id);
     if (!record) throw new Error("run insert failed");
@@ -587,6 +592,18 @@ export class RunManager {
           usage.fold(event);
           // Live cost on the row so the list/badges update while the run is going.
           this.writeUsage(runId, usage.value());
+          const cost = usage.value()?.costUsd ?? null;
+          if (
+            record.maxCostUsd != null &&
+            record.maxCostUsd > 0 &&
+            cost != null &&
+            cost >= record.maxCostUsd
+          ) {
+            void this.cancel(
+              runId,
+              `Budget exhausted: this run reached its cap of US$ ${record.maxCostUsd.toFixed(2)}.`,
+            );
+          }
         }
         this.persistEvent(runId, event, active);
         if (
@@ -932,6 +949,8 @@ export class RunManager {
       parentRunId?: string;
       /** Only the runs of one conversation (newest first, like every other listing). */
       sessionId?: string;
+      routineId?: string;
+      skillSlug?: string;
     } = {},
   ): RunRecord[] {
     const clauses: string[] = [];
@@ -939,6 +958,14 @@ export class RunManager {
     if (opts.status) {
       clauses.push("status = ?");
       params.push(opts.status);
+    }
+    if (opts.routineId) {
+      clauses.push("routine_id = ?");
+      params.push(opts.routineId);
+    }
+    if (opts.skillSlug) {
+      clauses.push("skill_slug = ?");
+      params.push(opts.skillSlug);
     }
     if (opts.origin) {
       clauses.push("origin = ?");
@@ -1029,6 +1056,31 @@ export class RunManager {
       cost: this.costMetrics(),
       usageSeries: this.usageSeries(),
     };
+  }
+
+  /** Today's spend (local midnight) for one routine or one skill — the per-routine / per-skill budgets. */
+  spentTodayUsd(filter: { routineId?: string | null; skillSlug?: string | null }, now = Date.now()): number {
+    const midnight = new Date(now);
+    midnight.setHours(0, 0, 0, 0);
+    const clauses = ["created_at >= ?"];
+    const params: unknown[] = [midnight.getTime()];
+    if (filter.routineId) {
+      clauses.push("routine_id = ?");
+      params.push(filter.routineId);
+    }
+    if (filter.skillSlug) {
+      clauses.push("skill_slug = ?");
+      params.push(filter.skillSlug);
+    }
+    const row = this.db
+      .prepare(`SELECT SUM(cost_usd) usd FROM runs WHERE ${clauses.join(" AND ")}`)
+      .get(...params) as { usd: number | null };
+    return round6(row.usd ?? 0);
+  }
+
+  /** Attach (or clear) the spend cap of a run before it executes. */
+  setMaxCostUsd(id: string, usd: number | null): void {
+    this.db.prepare("UPDATE runs SET max_cost_usd = ? WHERE id = ?").run(usd, id);
   }
 
   /** Spend/token aggregates; every value is 0 when no provider reported usage. */
@@ -1156,6 +1208,7 @@ interface RawRun {
   prompt_summary: string;
   skill_slug: string | null;
   routine_id: string | null;
+  max_cost_usd?: number | null;
   parent_run_id: string | null;
   session_id?: string | null;
   pid: number | null;
@@ -1273,6 +1326,7 @@ function fromRow(row: RawRun): RunRecord {
     promptSummary: row.prompt_summary,
     skillSlug: row.skill_slug,
     routineId: row.routine_id,
+    maxCostUsd: row.max_cost_usd ?? null,
     parentRunId: row.parent_run_id ?? null,
     sessionId: row.session_id ?? null,
     pid: row.pid ?? null,

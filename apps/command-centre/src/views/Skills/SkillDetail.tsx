@@ -163,6 +163,11 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
               <span className="mono">/{skill.slug}</span>
             </Badge>
             <Badge kind="meta">v{skill.version}</Badge>
+            {(skill.budgetUsd ?? 0) > 0 && (
+              <Badge kind="meta" title={t("skills.budgetTitle")}>
+                {t("skills.budget", { usd: (skill.budgetUsd ?? 0).toFixed(2) })}
+              </Badge>
+            )}
           </div>
         </div>
         <div className="head-actions">

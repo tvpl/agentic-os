@@ -430,6 +430,9 @@ const baseEn = {
   "profile.approved_automation.desc":
     "Routines may run in write mode without a human in the loop. Currently behaves like Controlled write.",
   "routines.attemptsHint": "Retries create a new run linked to the first one; timeouts are not retried.",
+  "routines.budget": "Daily budget (US$)",
+  "routines.budgetHint":
+    "Spend cap for this routine per day; a fire past it is skipped and flagged once. 0 disables it.",
   "routines.cronHint": "minute hour day month weekday — e.g. 30 7 * * 1-5",
   "routines.cronInvalid": "Invalid cron expression.",
   "routines.deleteBody": "The routine file and its history are removed. Runs already recorded are kept.",
@@ -932,6 +935,9 @@ const basePtBR = {
   "profile.approved_automation.desc":
     "Rotinas podem rodar em modo de escrita sem humano no circuito. Hoje se comporta como Escrita controlada.",
   "routines.attemptsHint": "Tentativas criam uma run nova ligada à primeira; timeouts não são repetidos.",
+  "routines.budget": "Orçamento diário (US$)",
+  "routines.budgetHint":
+    "Teto de gasto desta rotina por dia; um disparo acima dele é pulado e sinalizado uma vez. 0 desliga.",
   "routines.cronHint": "minuto hora dia mês dia-da-semana — ex.: 30 7 * * 1-5",
   "routines.cronInvalid": "Expressão cron inválida.",
   "routines.deleteBody": "O arquivo da rotina e o histórico são removidos. Runs já registradas são mantidas.",

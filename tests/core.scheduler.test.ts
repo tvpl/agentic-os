@@ -259,3 +259,36 @@ describe("previousScheduledTime", () => {
     expect(previousScheduledTime("not a cron", "UTC", Date.now())).toBeNull();
   });
 });
+
+describe("per-routine budgets", () => {
+  it("skips a fire once the routine's daily budget is spent, alerts once, and caps the next run", async () => {
+    store.save(routine({ id: "budgeted", budgetUsd: 0.5 }));
+    const alerts: unknown[] = [];
+    const off = events.subscribe((e) => {
+      if (e.type === "routine.alert") alerts.push(e.payload);
+    });
+    try {
+      // First fire: nothing spent yet; the run carries the remaining budget as its cap.
+      const first = await scheduler.fire("budgeted");
+      expect(runs.get(first.runId)!.maxCostUsd).toBeCloseTo(0.5, 6);
+      await wait(400);
+      // Pretend the provider billed US$ 0.6 for it.
+      db.prepare("UPDATE runs SET cost_usd = ? WHERE id = ?").run(0.6, first.runId);
+      expect(runs.spentTodayUsd({ routineId: "budgeted" })).toBeCloseTo(0.6, 6);
+
+      await expect(scheduler.fire("budgeted")).rejects.toMatchObject({
+        statusCode: 409,
+        code: "budget_exhausted",
+      });
+      await expect(scheduler.fire("budgeted")).rejects.toMatchObject({ code: "budget_exhausted" });
+      const history = scheduler.history("budgeted");
+      const skipped = history.filter((h) => h.status === "skipped" && /Daily budget/.test(h.note ?? ""));
+      expect(skipped).toHaveLength(2);
+      expect(history.some((h) => h.status === "failed_to_fire")).toBe(false);
+      expect(alerts).toHaveLength(1); // once a day, however many skips
+      expect(runs.list({ routineId: "budgeted" }).length).toBe(1);
+    } finally {
+      off();
+    }
+  });
+});

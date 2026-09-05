@@ -259,6 +259,8 @@ export interface Skill {
   slug: string;
   name: string;
   description: string;
+  /** Daily spend cap for runs of this skill in USD (0 = none). */
+  budgetUsd?: number;
   triggers: string[];
   inputs: Array<{
     name: string;
@@ -289,6 +291,8 @@ export interface Skill {
 export interface RunRecord {
   id: string;
   createdAt: number;
+  /** Spend cap for this run (remaining routine/skill budget at launch). */
+  maxCostUsd?: number | null;
   startedAt?: number | null;
   finishedAt: number | null;
   origin: string;
@@ -394,6 +398,8 @@ export interface RoutineStatus {
   healthy: boolean;
   timeoutMs: number;
   maxAttempts: number;
+  /** Daily spend cap in USD (0 = none). */
+  budgetUsd?: number;
   retryOnTimeout?: boolean;
   profile: string;
   inputs: Record<string, string>;

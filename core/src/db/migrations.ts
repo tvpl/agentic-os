@@ -319,4 +319,13 @@ CREATE INDEX IF NOT EXISTS idx_file_related_dst ON file_related(dst_id);
 `);
     },
   },
+  {
+    version: 10,
+    name: "runs_max_cost",
+    // Per-run spend cap (follow-up 7): the remaining routine/skill budget at
+    // launch; a provider that reports cost mid-run is cut when it is crossed.
+    up(db) {
+      db.exec("ALTER TABLE runs ADD COLUMN max_cost_usd REAL");
+    },
+  },
 ];

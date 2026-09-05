@@ -357,6 +357,7 @@ function RoutineModal({
     missedPolicy: routine?.missedPolicy ?? "skip",
     timeoutMs: routine?.timeoutMs ?? 600000,
     maxAttempts: routine?.maxAttempts ?? 1,
+    budgetUsd: routine?.budgetUsd ?? 0,
     profile: routine?.profile ?? "read_only",
     enabled: routine?.enabled ?? false,
   }));
@@ -447,6 +448,7 @@ function RoutineModal({
         missedPolicy: form.missedPolicy,
         timeoutMs: form.timeoutMs,
         maxAttempts: form.maxAttempts,
+        budgetUsd: form.budgetUsd,
         profile: form.profile,
         enabled: form.enabled,
         endedReason: form.enabled ? null : (routine?.endedReason ?? null),
@@ -891,6 +893,17 @@ function RoutineModal({
             max={5}
             value={form.maxAttempts}
             onChange={(e) => set({ maxAttempts: Math.min(5, Math.max(1, Number(e.target.value))) })}
+          />
+        </Field>
+        <Field label={t("routines.budget")} htmlFor="rt-budget" hint={t("routines.budgetHint")}>
+          <input
+            id="rt-budget"
+            type="number"
+            className="input"
+            min={0}
+            step={0.05}
+            value={form.budgetUsd}
+            onChange={(e) => set({ budgetUsd: Math.max(0, Number(e.target.value) || 0) })}
           />
         </Field>
       </div>

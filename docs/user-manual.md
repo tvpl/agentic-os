@@ -144,6 +144,12 @@ level. The inbox itself is persisted on the server: approvals, failed runs,
 routine alerts and budget crossings survive a closed tab and are read from
 `GET /api/notifications` on load.
 
+Budgets also exist per routine (**Daily budget** in the routine editor) and
+per skill (`budgetUsd` in the SKILL.md frontmatter, shown as a badge). A
+fire or a run past its cap is skipped and refused with the reason, flagged
+once a day in the inbox, and the remaining amount rides on each run as its
+cap for providers that report cost while running.
+
 ### 5.2.1 Alerts that reach you outside the tab
 
 - **Telegram** (Settings › Notifications): set the bot token in the

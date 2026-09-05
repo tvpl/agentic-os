@@ -81,6 +81,8 @@ export const en = {
     "No notes yet. Save a lesson from a run page, or add one here; the agent reads NOTES.md on every run.",
   "skills.notes.placeholder": "A short, actionable note for the next run…",
   "skills.notes.add": "Add note",
+  "skills.budget": "US$ {usd}/day",
+  "skills.budgetTitle": "Daily spend cap for runs of this skill (budgetUsd in SKILL.md)",
   "skills.notes.archived": "{n} older notes archived in NOTES.archive.md.",
   "skills.notes.promote": "Promote into SKILL.md",
   "skills.notes.promoteHint":
@@ -278,6 +280,8 @@ export const ptBR = {
     "Ainda sem notas. Salve uma lição pela página de uma execução ou adicione aqui; o agente lê o NOTES.md em toda execução.",
   "skills.notes.placeholder": "Uma nota curta e prática para a próxima execução…",
   "skills.notes.add": "Adicionar nota",
+  "skills.budget": "US$ {usd}/dia",
+  "skills.budgetTitle": "Teto diário de gasto das execuções desta skill (budgetUsd no SKILL.md)",
   "skills.notes.archived": "{n} notas antigas arquivadas em NOTES.archive.md.",
   "skills.notes.promote": "Promover para o SKILL.md",
   "skills.notes.promoteHint":

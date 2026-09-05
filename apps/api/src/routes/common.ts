@@ -191,7 +191,19 @@ export function launchSkillRun(
   if (!skill) throw httpError(404, "Skill not found");
   const mode: RunMode = skill.mode === "write" ? "write" : "read_only";
   const profile: SecurityProfile = mode === "write" ? ctx.settings().securityProfile : "read_only";
-  const runId = claimRun(ctx, approvedRunId, skillRunFields(ctx, input), profile);
+  // Per-skill daily budget (follow-up 7): refused when exhausted, otherwise the remainder caps the run.
+  let maxCostUsd: number | null = null;
+  if (skill.budgetUsd > 0) {
+    const spent = ctx.runs.spentTodayUsd({ skillSlug: skill.slug });
+    if (spent >= skill.budgetUsd)
+      throw httpError(
+        409,
+        `Daily budget of US$ ${skill.budgetUsd.toFixed(2)} for /${skill.slug} exhausted (spent US$ ${spent.toFixed(2)} today).`,
+        "budget_exhausted",
+      );
+    maxCostUsd = skill.budgetUsd - spent;
+  }
+  const runId = claimRun(ctx, approvedRunId, { ...skillRunFields(ctx, input), maxCostUsd }, profile);
   const prompt = ctx.skills.buildRunPrompt(skill, input.inputs, path.join(ctx.paths.artifacts, runId));
   ctx.runs.execute(runId, prompt, mode).catch((err: unknown) => onError(err, runId));
   return { runId };
