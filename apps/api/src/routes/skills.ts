@@ -10,7 +10,14 @@ import {
   type RunMode,
 } from "@mordomo/core";
 import type { AppContext } from "../context.js";
-import { gateWrite, grantedRoots, httpError, launchSkillRun, type SkillRunInput } from "./common.js";
+import {
+  gateWrite,
+  grantedRoots,
+  httpError,
+  launchSkillRun,
+  submitPromptRun,
+  type SkillRunInput,
+} from "./common.js";
 import { IdParam, SlugParams } from "./params.js";
 
 /** Previews stream at most this much (brand PDFs are a few MB; nothing in a skill should be bigger). */
@@ -119,7 +126,36 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
       .object({ text: z.string().trim().min(1).max(4000), runId: z.string().max(80).optional() })
       .parse(req.body);
     if (!ctx.skills.load(slug)) throw httpError(404, "Skill not found");
-    return ctx.skills.appendNote(slug, body.text, { runId: body.runId, source: "command centre" });
+    return ctx.skills.appendNote(slug, body.text, {
+      runId: body.runId,
+      source: "command centre",
+      max: ctx.settings().limits.skillNotesMax,
+    });
+  });
+
+  /**
+   * Promote notes into the skill: a write-mode run (parked for approval under
+   * review_before_write) that folds recurring lessons into SKILL.md and moves
+   * the applied entries to NOTES.archive.md.
+   */
+  app.post("/api/skills/:slug/notes/promote", async (req, reply) => {
+    const { slug } = SlugParams.parse(req.params);
+    const skill = ctx.skills.load(slug);
+    if (!skill) throw httpError(404, "Skill not found");
+    const notes = ctx.skills.readNotes(slug)!;
+    if (!notes.notes.trim() || !/^- /m.test(notes.notes)) throw httpError(400, "No notes to promote");
+    const prompt = [
+      `Maintain the MordomoOS skill "${skill.name}" in ${skill.dir}.`,
+      `Read ${notes.path} (lessons saved from runs) and ${skill.skillFile}.`,
+      "Fold the lessons that recur or clearly last into SKILL.md — the procedure, guardrails or success criteria — with minimal edits, keeping SKILL.md under 60 lines and its frontmatter intact.",
+      `Move every note you applied to ${ctx.skills.archiveFile(skill)} (append, keep the date, mark each one (promoted)); leave one-off notes in NOTES.md.`,
+      "Do not touch any other file. Finish with a short summary of what changed.",
+    ].join("\n");
+    const result = submitPromptRun(ctx, { prompt, mode: "write", cwd: skill.dir }, (err, runId) =>
+      req.log.error({ err, runId, msg: "notes promotion run failed to execute" }),
+    );
+    if (result.statusCode !== 200) reply.code(result.statusCode);
+    return result.body;
   });
 
   app.post("/api/skills/:slug/toggle", async (req) => {

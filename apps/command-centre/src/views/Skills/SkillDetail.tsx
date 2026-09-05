@@ -421,7 +421,8 @@ function NotesPane({ slug }: { slug: string }) {
   const t = useT();
   const toast = useToast();
   const qc = useQueryClient();
-  const notes = useApiQuery<{ notes: string; path: string }>(qk.skillNotes(slug), `/api/skills/${encodeURIComponent(slug)}/notes`);
+  const navigate = useNavigate();
+  const notes = useApiQuery<{ notes: string; path: string; archived: number }>(qk.skillNotes(slug), `/api/skills/${encodeURIComponent(slug)}/notes`);
   const [text, setText] = useState("");
   const add = useMutation({
     mutationFn: (body: string) => api.post<{ notes: string }>(`/api/skills/${encodeURIComponent(slug)}/notes`, { text: body }),
@@ -431,14 +432,31 @@ function NotesPane({ slug }: { slug: string }) {
     },
     onError: (err: Error) => toast(err.message, "danger"),
   });
+  // A write-mode run that folds recurring notes into SKILL.md (parked for approval under review profiles).
+  const promote = useMutation({
+    mutationFn: () => api.post<{ runId?: string; status?: string; run?: { id: string; status: string } }>(`/api/skills/${encodeURIComponent(slug)}/notes/promote`, {}),
+    onSuccess: (res) => {
+      const status = res.status ?? res.run?.status ?? "";
+      const id = res.runId ?? res.run?.id;
+      toast(status === "waiting_approval" ? t("skills.notes.promoteParked") : t("skills.notes.promoteStarted"), "ok");
+      qc.invalidateQueries({ queryKey: ["runs"] }).catch(() => undefined);
+      if (id) navigate(`/runs/${id}`);
+    },
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
   const body = notes.data?.notes ?? "";
+  const hasEntries = /^- /m.test(body);
   return (
     <div className="skill-notes">
       {body.trim() ? <Markdown source={body} /> : <p className="widget-muted">{t("skills.notes.empty")}</p>}
+      {(notes.data?.archived ?? 0) > 0 && <p className="hint">{t("skills.notes.archived", { n: notes.data!.archived })}</p>}
       <textarea rows={2} value={text} maxLength={4000} placeholder={t("skills.notes.placeholder")} onChange={(e) => setText(e.target.value)} />
       <div className="head-actions">
         <Button size="sm" variant="primary" disabled={!text.trim() || add.isPending} onClick={() => add.mutate(text)}>
           {t("skills.notes.add")}
+        </Button>
+        <Button size="sm" variant="outline" disabled={!hasEntries || promote.isPending} loading={promote.isPending} title={t("skills.notes.promoteHint")} onClick={() => promote.mutate()}>
+          {t("skills.notes.promote")}
         </Button>
       </div>
       {notes.data?.path && (

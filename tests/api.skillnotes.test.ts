@@ -4,7 +4,7 @@ import path from "node:path";
 import type { FastifyInstance } from "fastify";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
-import { makeTempHome } from "./helpers.js";
+import { FAKE_BIN, makeTempHome } from "./helpers.js";
 
 /** Agent notes: NOTES.md beside SKILL.md, appended over HTTP and folded into the run prompt. */
 
@@ -28,6 +28,10 @@ beforeAll(async () => {
   ctx = new AppContext(home);
   const settings = ctx.settings();
   settings.setupCompleted = true;
+  settings.limits.skillNotesMax = 5;
+  settings.securityProfile = "review_before_write";
+  settings.providers.claude.enabled = true;
+  settings.providers.claude.binaryPath = path.join(FAKE_BIN, "claude");
   ctx.settingsStore.save(settings);
   token = ctx.token();
   app = await buildServer(ctx);
@@ -92,5 +96,56 @@ describe("skill notes", () => {
     expect(bad.statusCode).toBe(400);
     const missing = await app.inject({ method: "GET", url: "/api/skills/nope/notes", headers: auth() });
     expect(missing.statusCode).toBe(404);
+  });
+
+  it("archives the oldest entries beyond limits.skillNotesMax", async () => {
+    for (let i = 0; i < 6; i++) {
+      await app.inject({
+        method: "POST",
+        url: "/api/skills/noted/notes",
+        headers: auth(),
+        payload: { text: `lesson number ${i}` },
+      });
+    }
+    const res = (
+      await app.inject({ method: "GET", url: "/api/skills/noted/notes", headers: auth() })
+    ).json() as {
+      notes: string;
+      archived: number;
+    };
+    const bullets = res.notes.split("\n").filter((l) => l.startsWith("- "));
+    expect(bullets).toHaveLength(5);
+    expect(res.notes).not.toContain("Always check the invoice number twice."); // the oldest moved out
+    expect(res.notes).toContain("lesson number 5");
+    expect(res.notes.startsWith("# Notes for Noted")).toBe(true);
+    expect(res.archived).toBe(3);
+    const archive = fs.readFileSync(path.join(home, "skills", "noted", "NOTES.archive.md"), "utf8");
+    expect(archive).toContain("Always check the invoice number twice.");
+    expect(archive).toContain("Second line");
+    expect(archive).toContain("lesson number 0");
+    expect(archive).not.toContain("lesson number 5");
+  });
+
+  it("promotes notes through a write run that parks for approval", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/skills/noted/notes/promote",
+      headers: auth(),
+      payload: {},
+    });
+    expect(res.statusCode).toBe(202);
+    const text = res.body;
+    expect(text).toContain("waiting_approval");
+    const approvals = (
+      await app.inject({ method: "GET", url: "/api/approvals", headers: auth() })
+    ).json() as Array<{ description: string }>;
+    expect(approvals.some((a) => /Write-mode prompt run/.test(a.description))).toBe(true);
+    const none = await app.inject({
+      method: "POST",
+      url: "/api/skills/nope/notes/promote",
+      headers: auth(),
+      payload: {},
+    });
+    expect(none.statusCode).toBe(404);
   });
 });

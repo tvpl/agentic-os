@@ -261,6 +261,8 @@ export const SettingsSchema = z.object({
   limits: z
     .object({
       maxConcurrentRuns: z.number().int().min(1).max(16).default(3),
+      /** Entries kept in a skill's NOTES.md; older ones move to NOTES.archive.md. */
+      skillNotesMax: z.number().int().min(5).max(500).default(40),
       defaultTimeoutMs: z.number().int().min(10_000).default(15 * 60_000),
       logRetentionDays: z.number().int().min(1).default(30),
       logMaxFileBytes: z.number().int().min(65536).default(5 * 1024 * 1024),

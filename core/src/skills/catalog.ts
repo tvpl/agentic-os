@@ -254,15 +254,54 @@ export class SkillCatalog {
     return path.join(skill.dir, "NOTES.md");
   }
 
-  readNotes(slug: string): { notes: string; path: string } | null {
+  readNotes(slug: string): { notes: string; path: string; archived: number } | null {
     const skill = this.load(slug);
     if (!skill) return null;
     const file = this.notesFile(skill);
-    return { notes: fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "", path: file };
+    const archive = this.archiveFile(skill);
+    return {
+      notes: fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "",
+      path: file,
+      archived: fs.existsSync(archive) ? noteEntries(fs.readFileSync(archive, "utf8")).length : 0,
+    };
   }
 
-  /** Append one dated note; the file is created with a header the first time. */
-  appendNote(slug: string, text: string, meta: { runId?: string; source?: string } = {}): { notes: string; path: string } {
+  /** `NOTES.archive.md`: entries pruned from NOTES.md (kept for the record, never sent to the agent). */
+  archiveFile(skill: Skill): string {
+    return path.join(skill.dir, "NOTES.archive.md");
+  }
+
+  /**
+   * Keep NOTES.md at `max` entries: the oldest beyond the cap move to the
+   * archive. Returns how many moved. Exported for the notes route and tests.
+   */
+  pruneNotes(slug: string, max: number): number {
+    const skill = this.load(slug);
+    if (!skill) return 0;
+    const file = this.notesFile(skill);
+    if (!fs.existsSync(file)) return 0;
+    const raw = fs.readFileSync(file, "utf8");
+    const entries = noteEntries(raw);
+    if (entries.length <= max) return 0;
+    const excess = entries.length - max;
+    const moved = entries.slice(0, excess);
+    const kept = entries.slice(excess);
+    const header = raw.slice(0, entries[0]!.start).trimEnd();
+    fs.writeFileSync(file, `${header}\n${kept.map((e) => e.text).join("")}`);
+    const archive = this.archiveFile(skill);
+    if (!fs.existsSync(archive)) {
+      fs.writeFileSync(archive, `# Archived notes for ${skill.name}\n\nMoved out of NOTES.md when it passed ${max} entries. Not read by the agent.\n`);
+    }
+    fs.appendFileSync(archive, moved.map((e) => e.text).join(""));
+    return excess;
+  }
+
+  /** Append one dated note; the file is created with a header the first time. `meta.max` prunes afterwards. */
+  appendNote(
+    slug: string,
+    text: string,
+    meta: { runId?: string; source?: string; max?: number } = {},
+  ): { notes: string; path: string; archived: number } {
     const skill = this.load(slug);
     if (!skill) throw new Error(`Skill "${slug}" not found`);
     const file = this.notesFile(skill);
@@ -278,7 +317,8 @@ export class SkillCatalog {
       );
     }
     fs.appendFileSync(file, entry);
-    return { notes: fs.readFileSync(file, "utf8"), path: file };
+    if (meta.max) this.pruneNotes(slug, meta.max);
+    return this.readNotes(slug)!;
   }
 
   buildRunPrompt(skill: Skill, inputs: Record<string, string>, artifactsDir: string): string {
@@ -307,6 +347,18 @@ export class SkillCatalog {
       .filter(Boolean)
       .join("\n\n");
   }
+}
+
+/** The dated entries of a notes file: each starts at a "\n- " line and runs to the next one. */
+export function noteEntries(raw: string): Array<{ start: number; text: string }> {
+  const out: Array<{ start: number; text: string }> = [];
+  const re = /^- .*(?:\n(?!- ).*)*\n?/gm;
+  for (const m of raw.matchAll(re)) {
+    // Skip bullets that belong to the header (before the first dated entry).
+    if (!/^- \*\*\d{4}-\d{2}-\d{2}/.test(m[0])) continue;
+    out.push({ start: m.index ?? 0, text: m[0].endsWith("\n") ? m[0] : `${m[0]}\n` });
+  }
+  return out;
 }
 
 function normalizeImported(data: Record<string, unknown>): Record<string, unknown> {
