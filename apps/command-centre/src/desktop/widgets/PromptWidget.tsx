@@ -167,7 +167,7 @@ export default function PromptWidget({ config }: WidgetProps) {
       api.get<SessionDetail>(`/api/sessions/${encodeURIComponent(sessionId ?? "")}`, { signal }),
     enabled: sessionId !== null,
     retry: false,
-    refetchInterval: (q) => (q.state.data?.runs.some((r) => isActiveStatus(r.status)) ? 4000 : false),
+    refetchInterval: (q) => (q.state.data?.runs.some((r) => isActiveStatus(r.status)) ? 20_000 : false),
   });
   // A session the server no longer knows (older server, pruned, deleted) is dropped quietly.
   useEffect(() => {
@@ -202,7 +202,7 @@ export default function PromptWidget({ config }: WidgetProps) {
   }, [details.map((d) => d.dataUpdatedAt).join(","), finishedIds.join(",")]);
   const live = useMemo(() => replyFromEvents(stream.events), [stream.events]);
   // Tool prompts the running turn is waiting on (the CLI is paused until answered).
-  const approvals = useApprovals({ enabled: active !== undefined, refetchInterval: active ? 3000 : false });
+  const approvals = useApprovals({ enabled: active !== undefined, refetchInterval: active ? 30_000 : false });
   const toolApprovals = toolApprovalsForRun(approvals.data, active?.id);
 
   // Keep the newest turn in view as it streams.

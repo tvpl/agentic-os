@@ -15,7 +15,7 @@ import { WidgetGate } from "./WidgetGate";
 import type { WidgetProps } from "../widgetTypes";
 
 export default function CostWidget(_props: WidgetProps) {
-  const metrics = useOsMetrics({ refetchInterval: 60_000 });
+  const metrics = useOsMetrics({ refetchInterval: 300_000 });
   const settings = useOsSettings();
   const budget = settings.data?.limits?.dailyBudgetUsd;
   return (

@@ -17,7 +17,7 @@ export default function AttentionWidget() {
   const routines = useDesktopRoutines();
   const runs = useDesktopRuns();
   // Approvals are optional: a failure here only hides the approvals chip.
-  const approvals = useApiQuery<Approval[]>(qk.approvals, "/api/approvals", { refetchInterval: 60_000 });
+  const approvals = useApiQuery<Approval[]>(qk.approvals, "/api/approvals", { refetchInterval: 300_000 });
 
   const failures = (runs.data ?? [])
     .filter((r) => r.status === "failed" || r.status === "timed_out")
@@ -26,7 +26,7 @@ export default function AttentionWidget() {
   // Runs in progress live in the Now panel: attention means failure,
   // approval or an unhealthy routine — never "something is happening".
   const pending = approvals.data?.length ?? 0;
-  const metrics = useOsMetrics({ refetchInterval: 60_000 });
+  const metrics = useOsMetrics({ refetchInterval: 300_000 });
   const settings = useOsSettings();
   const budget = budgetState(settings.data?.limits?.dailyBudgetUsd, metrics.data?.cost?.todayUsd);
   const budgetHot = budget.tone === "warn" || budget.tone === "over";

@@ -16,7 +16,7 @@ export default function WorkspaceWidget({ config }: WidgetProps) {
   const t = useT();
   const locale = useLocale();
   const status = useApiQuery<MemoryStatus>(qk.memoryStatus, "/api/memory/status", {
-    refetchInterval: 60_000,
+    refetchInterval: 300_000,
   });
   const total = status.data?.facets.total ?? 0;
   const shown = useTweenNumber(total, 400);

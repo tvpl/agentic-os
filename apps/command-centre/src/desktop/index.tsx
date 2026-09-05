@@ -548,7 +548,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
  */
 function useBudgetNotifications() {
   const t = useT();
-  const metrics = useOsMetrics({ refetchInterval: 60_000 });
+  const metrics = useOsMetrics({ refetchInterval: 300_000 });
   const settings = useOsSettings();
   const { notify } = useNotifications();
   const budget = budgetState(settings.data?.limits?.dailyBudgetUsd, metrics.data?.cost?.todayUsd);

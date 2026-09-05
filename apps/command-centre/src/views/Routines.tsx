@@ -69,12 +69,12 @@ export default function Routines() {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const routines = useOsRoutines({ refetchInterval: 30_000 });
+  const routines = useOsRoutines({ refetchInterval: 300_000 });
   const skills = useOsSkills();
   const settings = useOsSettings();
   // The summary endpoint is optional: a server without it just hides the counts.
   const summary = useApiQuery<RoutineSummary>([...qk.routines, "summary"], "/api/routines/summary", {
-    refetchInterval: 60_000,
+    refetchInterval: 300_000,
     retry: false,
   });
   const [editing, setEditing] = useState<RoutineStatus | "new" | null>(null);

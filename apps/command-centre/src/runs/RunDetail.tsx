@@ -39,7 +39,7 @@ export default function RunDetail({ id }: { id: string }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const record = useRunQuery(id, {
-    refetchInterval: (q) => (isRunActive(q.state.data?.run.status) ? 5000 : false),
+    refetchInterval: (q) => (isRunActive(q.state.data?.run.status) ? 20_000 : false),
   });
   const run = record.data?.run;
   const active = isRunActive(run?.status);
@@ -63,7 +63,7 @@ export default function RunDetail({ id }: { id: string }) {
   const running = run?.status === "running" || run?.status === "queued";
   const approvals = useApprovals({
     enabled: run?.status === "waiting_approval" || pendingApprovalId !== null || running,
-    refetchInterval: running ? 4000 : 30_000,
+    refetchInterval: running ? 30_000 : 120_000,
   });
   const toolApprovals = toolApprovalsForRun(approvals.data, run?.id);
   const approval =

@@ -117,7 +117,7 @@ function ActiveRunRow({ run, now }: { run: RunRecord; now: number }) {
   const qc = useQueryClient();
   const navigate = useOsNavigate();
   // Per-run record for the current tool; `/api/events` invalidates it on run.event, 5 s is the fallback.
-  const detail = useRunQuery(run.id, { refetchInterval: 5000 });
+  const detail = useRunQuery(run.id, { refetchInterval: 30_000 });
   const events = detail.data?.events ?? [];
   let tool: string | null = null;
   for (let i = events.length - 1; i >= 0; i--) {

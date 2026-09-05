@@ -1384,7 +1384,7 @@ function TelegramStatus() {
     lastPollAt: number;
     lastError: string | null;
     handled: number;
-  }>(qk.telegramStatus, "/api/channels/telegram/status", { refetchInterval: 30_000 });
+  }>(qk.telegramStatus, "/api/channels/telegram/status", { refetchInterval: 60_000 });
   if (!status.data) return null;
   return (
     <span className={status.data.lastError ? "text-danger" : "text-muted"}>

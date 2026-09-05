@@ -29,7 +29,7 @@ export function InboxList({ limit, unreadOnly = false }: InboxListProps) {
   const { items, unread, markRead, markAllRead } = useNotifications();
   // Pending approvals decide which items still deserve the inline buttons.
   const approvals = useApiQuery<ApprovalRecord[]>(qk.approvals, "/api/approvals", {
-    refetchInterval: 60_000,
+    refetchInterval: 300_000,
     retry: false,
   });
   const pending = new Set((approvals.data ?? []).map((a) => a.id));

@@ -23,9 +23,9 @@ function compact(n: number, locale: string): string {
 export default function HudTelemetry({ activeRuns }: { activeRuns: number }) {
   const t = useT();
   const locale = useLocale();
-  const metrics = useOsMetrics({ refetchInterval: 60_000 });
+  const metrics = useOsMetrics({ refetchInterval: 300_000 });
   const memory = useApiQuery<MemoryStatus>(qk.memoryStatus, "/api/memory/status", {
-    refetchInterval: 120_000,
+    refetchInterval: 300_000,
   });
   const skills = useOsSkills();
   const routines = useDesktopRoutines();

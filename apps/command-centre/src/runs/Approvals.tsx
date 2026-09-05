@@ -15,7 +15,7 @@ import { approvalLabel, approvalTarget, toolApprovalParts, writeRunApprovals } f
 /** Pending approvals (shared cache key with Settings › Security). */
 export function useApprovals(options: ApiQueryOptions<ApprovalRecord[]> = {}) {
   return useApiQuery<ApprovalRecord[]>(qk.approvals, "/api/approvals", {
-    refetchInterval: 30_000,
+    refetchInterval: 300_000,
     ...options,
   });
 }

@@ -99,7 +99,7 @@ export default function SecondBrain() {
   const routinesQuery = useOsRoutines();
   const connectorsQuery = useOsConnectors();
   const settingsQuery = useOsSettings();
-  const runsQuery = useOsRuns({ limit: 12 }, { refetchInterval: 20_000 });
+  const runsQuery = useOsRuns({ limit: 12 }, { refetchInterval: 120_000 });
   const meta = useOsMeta();
 
   const graph = graphQuery.data ?? null;

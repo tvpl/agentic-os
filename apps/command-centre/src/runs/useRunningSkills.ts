@@ -8,7 +8,7 @@ import { useOsRuns } from "../queries";
 import { runningSkillMap } from "./runningSkills";
 
 export function useRunningSkills(): Map<string, string> {
-  const runs = useOsRuns({ limit: 50 }, { refetchInterval: 30_000 });
+  const runs = useOsRuns({ limit: 50 }, { refetchInterval: 300_000 });
   return useMemo(() => runningSkillMap(runs.data), [runs.data]);
 }
 

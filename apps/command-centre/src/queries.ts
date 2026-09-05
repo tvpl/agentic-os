@@ -51,20 +51,25 @@ export const qk = {
 /** Which query keys an OS event should invalidate (consumed by useEventStream). */
 export const invalidationMap: Record<string, readonly (readonly unknown[])[]> = {
   "run.created": [["runs"], ["metrics"]],
-  "run.started": [["runs"], ["run"]],
-  "run.event": [["run"]],
+  "run.started": [["runs"], ["run"], ["sessions"]],
+  // Streams many times a second while a reply arrives: the stream coalesces these.
+  "run.event": [["run"], ["sessions"]],
   "run.finished": [["runs"], ["run"], ["metrics"], ["artifacts"], ["routines"], ["sessions"]],
   "session.created": [["sessions"]],
   "session.updated": [["sessions"]],
   "routine.fired": [["routines"], ["runs"]],
-  "routine.alert": [["routines"]],
+  "routine.alert": [["routines"], ["notifications"]],
   "routine.changed": [["routines"]],
   "index.progress": [["memory", "status"]],
-  "index.finished": [["memory"]],
-  "approval.requested": [["approvals"]],
-  "approval.resolved": [["approvals"], ["settings"], ["connectors"]],
+  "index.finished": [["memory"], ["metrics"]],
+  "approval.requested": [["approvals"], ["run"], ["notifications"]],
+  "approval.resolved": [["approvals"], ["run"], ["runs"], ["settings"], ["connectors"], ["notifications"]],
+  "approval.expired": [["approvals"], ["run"], ["runs"]],
   "settings.changed": [["settings"], ["meta"], ["providers"]],
   "backup.created": [["backups"]],
+  "notification.created": [["notifications"], ["metrics"]],
+  "budget.crossed": [["metrics"], ["notifications"]],
+  "sentinel.fired": [["notifications"]],
 };
 
 /** Named SSE event types the stream subscribes to. */

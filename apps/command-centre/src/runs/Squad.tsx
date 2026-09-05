@@ -23,7 +23,7 @@ export function SquadCard({ run }: { run: RunRecord }) {
     `/api/runs/${encodeURIComponent(run.id)}/children`,
     {
       refetchInterval: (q) =>
-        (q.state.data ?? []).some((r) => r.status === "running" || r.status === "queued") ? 4000 : false,
+        (q.state.data ?? []).some((r) => r.status === "running" || r.status === "queued") ? 30_000 : false,
     },
   );
   const [open, setOpen] = useState(false);

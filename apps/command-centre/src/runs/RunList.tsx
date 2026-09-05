@@ -49,10 +49,10 @@ export default function RunList() {
   const runs = useApiQuery<RunRecord[]>(
     qk.runs({ limit: PAGE_SIZE, offset }),
     `/api/runs?limit=${PAGE_SIZE}&offset=${offset}`,
-    { refetchInterval: 30_000 },
+    { refetchInterval: 300_000 },
   );
   const providers = useOsProviders();
-  const metrics = useOsMetrics({ refetchInterval: 60_000 });
+  const metrics = useOsMetrics({ refetchInterval: 300_000 });
   const settings = useOsSettings();
   const approvals = useApprovals();
 

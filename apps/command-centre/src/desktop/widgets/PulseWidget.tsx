@@ -13,7 +13,7 @@ import { WidgetGate } from "./WidgetGate";
 
 export default function PulseWidget({ config }: WidgetProps) {
   const { focusDeck } = useDesktopActions();
-  const metrics = useOsMetrics({ refetchInterval: 60_000 });
+  const metrics = useOsMetrics({ refetchInterval: 300_000 });
   const runs = useDesktopRuns();
   const days = Math.max(7, Math.min(30, cfgNumber(config, "days", 14)));
   return (
