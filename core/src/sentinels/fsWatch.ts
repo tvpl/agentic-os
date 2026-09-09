@@ -30,6 +30,7 @@ export interface FsWatchDeps {
 export function fsWatchPayload(folder: string, changed: number): SentinelFiredPayload {
   return {
     sentinel: "fsWatch",
+    messageParams: { count: changed, folder },
     title: `${changed} file${changed === 1 ? "" : "s"} changed in ${path.basename(folder) || folder}`,
     body: `${changed} file${changed === 1 ? "" : "s"} changed under ${folder}; the memory index is catching up.`,
     severity: "info",

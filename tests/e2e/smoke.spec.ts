@@ -22,7 +22,9 @@ async function open(page: Page, route: string): Promise<string[]> {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
   page.on("console", (m) => m.type() === "error" && errors.push(`console: ${m.text()}`));
-  await page.goto(route);
+  const response = await page.goto(route);
+  expect(response?.ok(), "app document must load successfully").toBe(true);
+  await expect(page.locator(".os-root")).toBeVisible();
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(400);
   return errors;

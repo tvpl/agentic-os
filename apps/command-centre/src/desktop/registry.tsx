@@ -38,6 +38,7 @@ import InboxWidget from "./widgets/InboxWidget";
 import AgendaWidget from "./widgets/AgendaWidget";
 import CalendarWidget from "./widgets/CalendarWidget";
 import EmailWidget from "./widgets/EmailWidget";
+import NowPanel from "./NowPanel";
 import CostWidget from "./widgets/CostWidget";
 
 export interface WidgetDefinition {
@@ -69,6 +70,14 @@ const TZ_OPTIONS = [
 ].map((value) => ({ value, label: value.split("/").pop()!.replace(/_/g, " ") }));
 
 export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
+  now: {
+    id: "now",
+    titleKey: "now.title",
+    icon: <Activity aria-hidden />,
+    Component: NowPanel,
+    box: box("now"),
+    min: { w: 6, h: 4 },
+  },
   microapps: {
     id: "microapps",
     titleKey: "desktop.widget.microapps",

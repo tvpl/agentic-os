@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, beforeAll, afterAll, vi } from "vitest";
 import path from "node:path";
 import { Cron } from "croner";
 import {
@@ -196,6 +196,23 @@ describe("retry policy (fake run manager)", () => {
     return { fake: fake as unknown as RunManager, created };
   }
 
+  it("never repeats a failed write with potentially partial effects", async () => {
+    const { fake, created } = fakeRuns(["failed"]);
+    const config = settings.load();
+    config.securityProfile = "approved_automation";
+    settings.save(config);
+    const s = new RoutineScheduler(db, ctx.paths, store, fake, new SkillCatalog(ctx.paths), () =>
+      settings.load(),
+    );
+    store.save(
+      routine({ id: "partial-write", profile: "approved_automation", maxAttempts: 3, backoffMs: 0 }),
+    );
+    await s.fire("partial-write");
+    await s.drain();
+    expect(created).toHaveLength(1);
+    expect(s.history("partial-write")[0]!.note).toContain("write may have partially completed");
+  });
+
   it("does not retry a timeout unless retryOnTimeout is set", async () => {
     for (const [retryOnTimeout, expected] of [
       [false, 1],
@@ -211,6 +228,33 @@ describe("retry policy (fake run manager)", () => {
       expect(created).toHaveLength(expected);
     }
   });
+
+  it.each(["pause", "edit", "delete"] as const)(
+    "does not retry stale configuration after %s during backoff",
+    async (action) => {
+      vi.useFakeTimers();
+      const { fake, created } = fakeRuns(["failed"]);
+      const s = new RoutineScheduler(db, ctx.paths, store, fake, new SkillCatalog(ctx.paths), () =>
+        settings.load(),
+      );
+      const original = routine({ id: "changed", maxAttempts: 3, backoffMs: 1000 });
+      store.save(original);
+      try {
+        await s.fire(original.id);
+        if (action === "delete") store.remove(original.id);
+        else
+          store.save({ ...original, ...(action === "pause" ? { enabled: false } : { prompt: "new task" }) });
+        await vi.advanceTimersByTimeAsync(10_000);
+        await s.drain();
+        expect(created).toHaveLength(1);
+        expect(s.history(original.id)[0]?.note).toContain("Retry cancelled");
+      } finally {
+        s.stop();
+        await s.drain();
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it("stop() cancels the backoff sleep", async () => {
     const { fake, created } = fakeRuns(["failed"]);

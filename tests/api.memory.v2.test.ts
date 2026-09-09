@@ -303,3 +303,26 @@ describe("memory v2 API — inline field query", () => {
     expect(invalid.statusCode).toBe(400);
   });
 });
+
+describe("memory index scan failure", () => {
+  it("returns an actionable conflict and keeps the previous index available", async () => {
+    const root = path.dirname(path.dirname(budgetPath));
+    const offline = root + "-offline";
+    const before = ctx.indexer.lastIndex();
+    fs.renameSync(root, offline);
+    try {
+      const result = await app.inject({ method: "POST", url: "/api/memory/index", headers: auth() });
+      expect(result.statusCode).toBe(409);
+      expect(result.json().error.code).toBe("index_scan_incomplete");
+      expect(result.json().message).toContain("previous index was preserved");
+      expect(ctx.indexer.lastIndex()).toEqual(before);
+      expect(
+        (ctx.db.prepare("SELECT COUNT(*) AS n FROM files WHERE path = ?").get(budgetPath) as { n: number }).n,
+      ).toBe(1);
+    } finally {
+      fs.renameSync(offline, root);
+    }
+    const retry = await app.inject({ method: "POST", url: "/api/memory/index", headers: auth() });
+    expect(retry.statusCode).toBe(200);
+  });
+});

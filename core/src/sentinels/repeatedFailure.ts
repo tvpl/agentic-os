@@ -70,6 +70,7 @@ export function repeatedFailureAlert(
   const label = failureLabel(trigger);
   return {
     sentinel: "repeatedFailure",
+    messageParams: { label, count: matching.length },
     title: `${label} failed ${matching.length} times`,
     body: `The same work failed ${matching.length} times in the last 24 hours. The last attempt was ${label}.`,
     severity: "warn",

@@ -152,6 +152,72 @@ describe("run manager", () => {
     expect(manager.eventsFor(run.id).some((e) => e.event.type === "started")).toBe(false);
   });
 
+  it("settles a queued run if settings cannot be read while acquiring capacity", async () => {
+    let unavailable = false;
+    manager = new RunManager(
+      db,
+      ctx.paths,
+      () => {
+        if (unavailable) throw new Error("fixture settings unavailable");
+        return store.load();
+      },
+      adapterFor,
+    );
+    const run = manager.create(input());
+    unavailable = true;
+    const result = await manager.execute(run.id, "x", "read_only");
+    expect(result.status).toBe("failed");
+    expect(manager.get(run.id)?.error).toContain("settings unavailable");
+    expect(manager.activeRunIds()).toEqual([]);
+    unavailable = false;
+    const next = manager.create(input());
+    expect((await manager.execute(next.id, "x", "read_only")).status).toBe("done");
+  });
+
+  it("settles a cancelled slot waiter before the running task finishes without freeing its slot", async () => {
+    store.update({ limits: { ...store.load().limits, maxConcurrentRuns: 1 } });
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let calls = 0;
+    const adapter = adapterFor("claude");
+    adapter.execute = async function* () {
+      calls++;
+      if (calls === 1) {
+        started.resolve();
+        await release.promise;
+      }
+      yield { type: "result", ts: Date.now(), exitCode: 0, summary: "OK", durationMs: 1 };
+    };
+    manager = new RunManager(
+      db,
+      ctx.paths,
+      () => store.load(),
+      () => adapter,
+    );
+    const first = manager.create(input());
+    const firstDone = manager.execute(first.id, "first", "read_only");
+    await started.promise;
+    const queued = manager.create(input());
+    const queuedDone = manager.execute(queued.id, "cancel", "read_only");
+    const next = manager.create(input());
+    const nextDone = manager.execute(next.id, "next", "read_only");
+    try {
+      expect(await manager.cancel(queued.id)).toBe(true);
+      // Drain continuations with the first adapter still held at the barrier.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(manager.get(queued.id)?.status).toBe("cancelled");
+      expect(manager.get(first.id)?.status).toBe("running");
+      expect(manager.get(next.id)?.status).toBe("queued");
+      expect(calls).toBe(1);
+    } finally {
+      release.resolve();
+      await Promise.all([firstDone, queuedDone, nextDone]);
+    }
+    expect(calls).toBe(2);
+    expect(manager.get(next.id)?.status).toBe("done");
+    expect(manager.activeRunIds()).toEqual([]);
+  });
+
   it("cancels a queued run that execute() has not picked up yet", async () => {
     const run = manager.create(input());
     expect(await manager.cancel(run.id)).toBe(true);
@@ -187,7 +253,7 @@ describe("run manager", () => {
     expect((await manager.execute(late.id, "x", "read_only")).status).toBe("interrupted");
   }, 20_000);
 
-  it("recovers interrupted runs on boot and terminates live orphans", async () => {
+  it("recovers interrupted rows without signalling an unverified persisted PID", async () => {
     const orphan = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
       detached: true,
       stdio: "ignore",
@@ -199,10 +265,10 @@ describe("run manager", () => {
     try {
       expect(manager.recoverInterrupted()).toBe(2);
       expect(manager.get(stale.id)!.status).toBe("interrupted");
-      expect(manager.get(stale.id)!.error).toContain("SIGTERM");
+      expect(manager.get(stale.id)!.error).toContain("ownership could not be verified");
       expect(manager.get(queued.id)!.status).toBe("interrupted");
       await wait(300);
-      expect(alive(orphan.pid!)).toBe(false);
+      expect(alive(orphan.pid!)).toBe(true);
     } finally {
       try {
         process.kill(orphan.pid!, "SIGKILL");
@@ -358,5 +424,30 @@ describe("run manager", () => {
     expect(metrics.total).toBe(1);
     expect(metrics.successRate).toBe(1);
     expect(metrics.byProvider[0]).toMatchObject({ provider: "claude", count: 1, success: 1 });
+  });
+});
+
+describe("daily budget reservations", () => {
+  it("reserves queued work across midnight and releases only known unused cost", () => {
+    const run = manager.create(input({ skillSlug: "budgeted", maxCostUsd: 2 }));
+    expect(manager.spentTodayUsd({ skillSlug: "budgeted" })).toBe(0);
+    expect(manager.committedTodayUsd({ skillSlug: "budgeted" })).toBe(2);
+    db.prepare("UPDATE runs SET created_at = ? WHERE id = ?").run(Date.now() - 86_400_000, run.id);
+    expect(manager.committedTodayUsd({ skillSlug: "budgeted" })).toBe(2);
+    db.prepare("UPDATE runs SET created_at = ?, status = 'failed', started_at = ? WHERE id = ?").run(
+      Date.now(),
+      Date.now(),
+      run.id,
+    );
+    expect(manager.committedTodayUsd({ skillSlug: "budgeted" })).toBe(2);
+    db.prepare("UPDATE runs SET cost_usd = 0.25 WHERE id = ?").run(run.id);
+    expect(manager.committedTodayUsd({ skillSlug: "budgeted" })).toBe(0.25);
+    expect(manager.committedTodayUsd({ skillSlug: "another" })).toBe(0);
+  });
+
+  it("releases a cancelled reservation that never started", () => {
+    const run = manager.create(input({ routineId: "budgeted", maxCostUsd: 2 }));
+    db.prepare("UPDATE runs SET status = 'cancelled' WHERE id = ?").run(run.id);
+    expect(manager.committedTodayUsd({ routineId: "budgeted" })).toBe(0);
   });
 });

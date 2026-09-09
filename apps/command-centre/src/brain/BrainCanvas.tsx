@@ -1,3 +1,4 @@
+import { useWorkspace } from "../components/Workspace";
 /**
  * The Second Brain canvas: owns the render loop (dirty-flagged, throttled to
  * ≤ 12 fps when nothing moves, paused while the tab is hidden), the theme
@@ -72,6 +73,7 @@ export function BrainCanvas({
   const coreLabelRef = useRef(coreLabel);
   const draggingRef = useRef(false);
 
+  const { economy } = useWorkspace();
   // Ring guides are rebuilt only when the language changes, never per frame (A.1).
   useEffect(() => {
     ringDefsRef.current = makeRingDefs(ringLabels);
@@ -90,9 +92,9 @@ export function BrainCanvas({
     if (!ctx) return;
     const w = world.current;
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    let reduceMotion = motionQuery.matches;
+    let reduceMotion = economy || motionQuery.matches;
     const onMotion = () => {
-      reduceMotion = motionQuery.matches;
+      reduceMotion = economy || motionQuery.matches;
       invalidateRef.current++;
     };
     motionQuery.addEventListener("change", onMotion);
@@ -156,8 +158,9 @@ export function BrainCanvas({
     const frame = (now: number) => {
       if (!running) return;
       raf = requestAnimationFrame(frame);
+      if (economy && now - lastDraw < 1000 / 30) return;
       const moving = isMoving();
-      if (!isActive(moving) && now - lastDraw < IDLE_INTERVAL_MS) return;
+      if (!isActive(moving) && now - lastDraw < (economy ? 1000 : IDLE_INTERVAL_MS)) return;
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
       lastDraw = now;
@@ -214,7 +217,7 @@ export function BrainCanvas({
       motionQuery.removeEventListener("change", onMotion);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [canvasRef, minimapRef, world, viewRef, invalidateRef]);
+  }, [canvasRef, minimapRef, world, viewRef, invalidateRef, economy]);
 
   /* ---------- pointer interaction ---------- */
   useEffect(() => {

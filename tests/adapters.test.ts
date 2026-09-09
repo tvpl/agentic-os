@@ -120,7 +120,7 @@ describe("claude adapter (against fake CLI)", () => {
       fs.mkdirSync(path.join(paths.home, ".claude"), { recursive: true });
       fs.writeFileSync(path.join(paths.home, ".claude", ".credentials.json"), "{}");
       const after = await isolated.authenticate();
-      expect(after.authenticated).toBe(true);
+      expect(after.authenticated).toBe("unknown");
       expect(after.method).toBe("session");
     } finally {
       cleanup();

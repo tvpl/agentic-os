@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
+import { GUARDIAN_SOURCE } from "./guardian.js";
 
 /**
  * Controlled child-process layer.
@@ -18,6 +19,12 @@ export const MAX_CAPTURED_BYTES = 1024 * 1024;
 
 /** Grace between SIGTERM and SIGKILL for cancel/timeout. */
 const DEFAULT_KILL_GRACE_MS = 5000;
+const ownedKillers = new Map<number, (signal: NodeJS.Signals) => void>();
+
+/** Capture a live handle's killer; callers must retain this closure, not re-resolve a PID later. */
+export function ownedProcessKiller(pid: number): ((signal: NodeJS.Signals) => void) | undefined {
+  return ownedKillers.get(pid);
+}
 
 export class ExecutableNotAllowedError extends Error {
   constructor(exe: string) {
@@ -105,13 +112,42 @@ class TailBuffer {
 export function safeSpawn(executable: string, args: string[], opts: SpawnOptions): SpawnHandle {
   assertAllowed(executable, opts.allowPaths);
   const started = Date.now();
-  const child = spawn(executable, args, {
-    cwd: opts.cwd,
-    env: { ...process.env, ...opts.env },
-    stdio: ["pipe", "pipe", "pipe"],
-    detached: process.platform !== "win32", // own process group → group kill works
-    shell: false,
-    windowsHide: true,
+  const supervised = process.platform !== "win32";
+  const child = spawn(
+    supervised ? process.execPath : executable,
+    supervised ? ["-e", GUARDIAN_SOURCE, executable, ...args] : args,
+    {
+      cwd: opts.cwd,
+      env: { ...process.env, ...opts.env },
+      stdio: supervised ? ["pipe", "pipe", "pipe", "ipc"] : ["pipe", "pipe", "pipe"],
+      detached: process.platform !== "win32", // own process group → group kill works
+      shell: false,
+      windowsHide: true,
+    },
+  );
+  let providerOutcome: { exitCode: number | null; signal: NodeJS.Signals | null } | undefined;
+  child.on("message", (message: unknown) => {
+    if (!message || typeof message !== "object") return;
+    const result = message as Record<string, unknown>;
+    if (result.type === "provider_error" && typeof result.message === "string") {
+      child.emit(
+        "error",
+        Object.assign(new Error(result.message), {
+          code: typeof result.code === "string" ? result.code : undefined,
+        }),
+      );
+      return;
+    }
+    if (
+      result.type !== "provider_exit" ||
+      !(result.exitCode === null || Number.isInteger(result.exitCode)) ||
+      !(result.signal === null || typeof result.signal === "string")
+    )
+      return;
+    providerOutcome = {
+      exitCode: result.exitCode as number | null,
+      signal: result.signal as NodeJS.Signals | null,
+    };
   });
 
   const stdout = new TailBuffer(MAX_CAPTURED_BYTES);
@@ -121,8 +157,14 @@ export function safeSpawn(executable: string, args: string[], opts: SpawnOptions
   const pendingKills = new Set<NodeJS.Timeout>();
 
   const killTree = (signal: NodeJS.Signals) => {
-    if (child.pid == null || settled) return;
-    killProcessGroup(child.pid, signal);
+    if (child.pid == null || settled || child.exitCode !== null || child.signalCode !== null) return;
+    if (supervised) {
+      try {
+        process.kill(-child.pid, signal);
+      } catch {
+        /* owned group already gone */
+      }
+    } else killProcessGroup(child.pid, signal);
   };
 
   const scheduleKill = (signal: NodeJS.Signals, delayMs: number) => {
@@ -133,6 +175,7 @@ export function safeSpawn(executable: string, args: string[], opts: SpawnOptions
     t.unref();
     pendingKills.add(t);
   };
+  if (child.pid != null) ownedKillers.set(child.pid, killTree);
 
   let timeout: NodeJS.Timeout | undefined;
   if (opts.timeoutMs && opts.timeoutMs > 0) {
@@ -164,6 +207,7 @@ export function safeSpawn(executable: string, args: string[], opts: SpawnOptions
 
   const settle = () => {
     settled = true;
+    if (child.pid != null && ownedKillers.get(child.pid) === killTree) ownedKillers.delete(child.pid);
     if (timeout) clearTimeout(timeout);
     for (const t of pendingKills) clearTimeout(t);
     pendingKills.clear();
@@ -177,10 +221,12 @@ export function safeSpawn(executable: string, args: string[], opts: SpawnOptions
     });
     child.on("close", (exitCode, signal) => {
       if (settled) return;
+      // The guardian cleans the group before reporting completion. Never
+      // signal its numeric PID after close, when the OS may recycle it.
       settle();
       resolve({
-        exitCode,
-        signal,
+        exitCode: providerOutcome ? providerOutcome.exitCode : exitCode,
+        signal: providerOutcome ? providerOutcome.signal : signal,
         stdout: stdout.value(),
         stderr: stderr.value(),
         timedOut,
@@ -195,6 +241,7 @@ export function safeSpawn(executable: string, args: string[], opts: SpawnOptions
     child,
     result,
     cancel: (_reason?: string, graceMs = DEFAULT_KILL_GRACE_MS) => {
+      if (settled) return;
       killTree("SIGTERM");
       scheduleKill("SIGKILL", graceMs);
     },

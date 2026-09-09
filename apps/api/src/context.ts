@@ -168,6 +168,7 @@ export class AppContext {
 
   private adapterRecord: Record<ProviderId, AgentAdapter>;
   private healthCache = new Map<ProviderId, { at: number; health: HealthStatus }>();
+  private healthInFlight = new Map<ProviderId, Promise<HealthStatus>>();
 
   constructor(homeOverride?: string, opts: AppContextOptions = {}) {
     this.paths = resolvePaths(homeOverride);
@@ -307,14 +308,7 @@ export class AppContext {
     const out: ProviderSnapshot[] = [];
     for (const id of this.providers.ids()) {
       const manifest = this.providers.manifest(id);
-      const cached = this.healthCache.get(id);
-      let health: HealthStatus;
-      if (!force && cached && Date.now() - cached.at < 60_000) {
-        health = cached.health;
-      } else {
-        health = await this.adapters[id].healthCheck();
-        this.healthCache.set(id, { at: Date.now(), health });
-      }
+      const health = await this.providerHealth(id, force);
       out.push({
         id,
         displayName: manifest.displayName,
@@ -330,8 +324,31 @@ export class AppContext {
     return out;
   }
 
+  private providerHealth(id: ProviderId, force: boolean): Promise<HealthStatus> {
+    const cached = this.healthCache.get(id);
+    if (!force && cached && Date.now() - cached.at < 60_000) return Promise.resolve(cached.health);
+    const pending = this.healthInFlight.get(id);
+    if (pending) return pending;
+    const adapter = this.adapters[id];
+    const request = Promise.resolve()
+      .then(() => adapter.healthCheck())
+      .then((health) => {
+        // An invalidation/reload may replace this request while its CLI is running.
+        if (this.healthInFlight.get(id) === request) {
+          this.healthCache.set(id, { at: Date.now(), health });
+        }
+        return health;
+      })
+      .finally(() => {
+        if (this.healthInFlight.get(id) === request) this.healthInFlight.delete(id);
+      });
+    this.healthInFlight.set(id, request);
+    return request;
+  }
+
   invalidateProviderCache(): void {
     this.healthCache.clear();
+    this.healthInFlight.clear();
   }
 
   /** Runs that are executing or waiting for a slot (a restore must not run under them). */

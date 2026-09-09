@@ -34,14 +34,15 @@ import { playCue, useNotifications } from "../hooks/useNotifications";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import { useOsEvent } from "../hooks/useEventStream";
 import { LAUNCHER_EVENT, TOGGLE_EDIT_EVENT } from "../App";
+import { useWorkspace } from "../components/Workspace";
 import { DEFAULT_LAYOUT, freeRegion, type LayoutMap, type WidgetConfig } from "./defaultLayout";
 import { useLayoutState, type GridMetrics } from "./useGridLayout";
 import WidgetLayer, { type WidgetSpec } from "./WidgetLayer";
 import Wallpaper, { type CoreFocus, type CoreState } from "./Wallpaper";
-import NowPanel from "./NowPanel";
 import HudTelemetry from "./HudTelemetry";
 import ModelEffortPopover from "./ModelEffortPopover";
 import AddWidgetGallery from "./AddWidgetGallery";
+import { LayoutPresets } from "./LayoutPresets";
 import WidgetConfigPopover from "./WidgetConfigPopover";
 import { ArtifactModal, SearchBar } from "./ArtifactSearch";
 import { DesktopActionsProvider, type DesktopActions } from "./actions";
@@ -88,7 +89,9 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   const toast = useToast();
   const confirm = useConfirm();
   const qc = useQueryClient();
+  const { mode: workspaceMode, setMode: setWorkspaceMode } = useWorkspace();
   const [editMode, setEditMode] = useState(false);
+  const [presetsOpen, setPresetsOpen] = useState(false);
   const [metrics, setMetrics] = useState<GridMetrics | null>(null);
   const rows = metrics?.rows ?? 20;
 
@@ -114,7 +117,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   const ringList = useArtifactList({ limit: RING_CHIPS });
   const searchList = useArtifactList({ q: debounced, limit: 40 }, searching && debounced.trim().length >= 2);
 
-  const { layout, commit, saving } = useLayoutState({
+  const { layout, commit, saving, conflict, resolveConflict } = useLayoutState({
     serverLayout: settings.data?.dashboardLayout,
     rows,
     editing: editMode,
@@ -168,7 +171,9 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   /* ---- the free region between the widget columns anchors the core ------ */
   const focus = useMemo<CoreFocus | null>(() => {
     if (!metrics || metrics.stacked) return null;
-    const r = freeRegion(layout, metrics);
+    const r = freeRegion(workspaceMode === "explore" ? {} : layout, metrics);
+    // Hidden windows must not constrain the map. Reserve the introduction above it.
+    if (workspaceMode === "explore") r.top = Math.min(340, metrics.height * 0.4);
     const cx = (r.left + r.right) / 2;
     const cy = (r.top + r.bottom) / 2;
     // The ring hugs the free region (chips are 46px plus their count badge)
@@ -176,7 +181,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     const rx = Math.max(210, (r.right - r.left) / 2 - 44);
     const ry = Math.max(170, (r.bottom - r.top) / 2 - 44);
     return { cx, cy, rx, ry };
-  }, [layout, metrics]);
+  }, [layout, metrics, workspaceMode]);
 
   const runningSkills = useMemo(
     () =>
@@ -240,10 +245,13 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   }, []);
 
   useEffect(() => {
-    const onToggleEdit = () => setEditMode((v) => !v);
+    const onToggleEdit = () => {
+      setWorkspaceMode("overview");
+      setEditMode((v) => !v);
+    };
     window.addEventListener(TOGGLE_EDIT_EVENT, onToggleEdit);
     return () => window.removeEventListener(TOGGLE_EDIT_EVENT, onToggleEdit);
-  }, []);
+  }, [setWorkspaceMode]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -307,7 +315,8 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     commit({ ...layout, [id]: updated });
   };
 
-  const defaultProvider = providers.data?.find((p) => p.isDefault)?.id ?? meta.name;
+  const activeProvider = providers.data?.find((p) => p.isDefault);
+  const defaultProvider = activeProvider?.id ?? t("common.loading");
   const configDef = configFor ? widgetDefinition(configFor.id) : undefined;
 
   return (
@@ -331,7 +340,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
           nodes={nodes}
           activeRuns={activeRuns}
           runLabels={runLabels}
-          dimmed={!searching}
+          dimmed={!searching && workspaceMode !== "explore"}
           searching={searching}
           matched={matched}
           revealLabels={revealLabels}
@@ -345,11 +354,21 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
           }}
         />
 
+        {workspaceMode === "explore" && (
+          <div className="explore-intro">
+            <span className="hud-label accent">{t("desktop.explore.eyebrow")}</span>
+            <h1>{t("desktop.explore.title")}</h1>
+            <p>{t("desktop.explore.body")}</p>
+            <Button variant="primary" onClick={() => navigate("/brain")}>
+              {t("desktop.explore.open")} →
+            </Button>
+          </div>
+        )}
         <div className="depth-layer desktop-depth">
-          <NowPanel />
           <HudTelemetry activeRuns={activeRuns} />
           <WidgetLayer
             layout={layout}
+            workspaceMode={workspaceMode}
             widgets={widgets}
             editMode={editMode}
             onLayoutChange={commit}
@@ -360,7 +379,10 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
 
         <div className="os-topbar">
           <div className="side">
-            <span className="dot ok" aria-hidden />
+            <span
+              className={`dot ${activeProvider?.health.ok ? "ok" : activeProvider?.health.installed ? "warn" : "dim"}`}
+              aria-hidden
+            />
             <span className="hud-label">
               {t("dash.activeProvider")}: <span className="accent-text">{defaultProvider}</span>
             </span>
@@ -377,7 +399,14 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
             </div>
             <div className="byline">{t("dash.brainSub")}</div>
             <div className="os-tools">
-              <Tool active={editMode} label={t("os.edit")} onClick={() => setEditMode((v) => !v)}>
+              <Tool
+                active={editMode}
+                label={t("os.edit")}
+                onClick={() => {
+                  setWorkspaceMode("overview");
+                  setEditMode((v) => !v);
+                }}
+              >
                 <Pencil aria-hidden />
               </Tool>
               <Tool
@@ -456,9 +485,23 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
           <SearchBar query={query} matches={matched.size} onQuery={setQuery} onClose={closeSearch} />
         )}
 
-        {editMode && (
+        {(editMode || conflict) && (
           <div className="edit-bar enter-fade-up" role="toolbar" aria-label={t("os.edit")}>
+            {conflict && (
+              <>
+                <span role="alert">{t("os.layoutConflict")}</span>
+                <Button size="sm" disabled={saving} onClick={() => void resolveConflict(false)}>
+                  {t("os.layoutUseServer")}
+                </Button>
+                <Button size="sm" disabled={saving} onClick={() => void resolveConflict(true)}>
+                  {t("os.layoutKeepMine")}
+                </Button>
+              </>
+            )}
             <span className="hud-label">{t("os.editHint")}</span>
+            <Button size="sm" onClick={() => setPresetsOpen(true)}>
+              {t("os.layoutPresets")}
+            </Button>
             <Button
               ref={addButtonRef}
               size="sm"
@@ -482,6 +525,9 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
           </div>
         )}
 
+        {presetsOpen && (
+          <LayoutPresets layout={layout} rows={rows} onApply={commit} onClose={() => setPresetsOpen(false)} />
+        )}
         {addAnchor && (
           <AddWidgetGallery
             layout={layout}

@@ -23,6 +23,9 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.get("/api/runs", async (req, reply) => {
     const q = z
       .object({
+        provider: ProviderId.optional(),
+        statusGroup: z.enum(["active", "failed"]).optional(),
+        order: z.enum(["asc", "desc"]).default("desc"),
         limit: z.coerce.number().int().min(1).max(200).default(50),
         offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
         status: z
@@ -40,7 +43,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
       })
       .parse(req.query);
     // Body stays a plain array (other views depend on it); the total for pagination travels in a header.
-    reply.header("x-total-count", String(ctx.runs.count({ status: q.status })));
+    reply.header("x-total-count", String(ctx.runs.count(q)));
     return ctx.runs.list(q);
   });
 
@@ -60,6 +63,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.post("/api/runs", async (req, reply) => {
     const body = z
       .object({
+        submissionId: z.string().uuid().optional(),
         prompt: z.string().min(1).max(20_000),
         provider: ProviderId.optional(),
         model: z.string().nullable().optional(),

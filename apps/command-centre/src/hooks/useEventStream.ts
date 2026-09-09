@@ -84,7 +84,10 @@ export function useEventStream(enabled = true): { connected: boolean } {
             attempt = 0;
             setConnected(true);
             // After a dropped connection every view may be stale: refresh all once.
-            if (wasConnected) qc.invalidateQueries().catch(() => undefined);
+            if (wasConnected) {
+              qc.invalidateQueries().catch(() => undefined);
+              fanOut({ type: "stream.reconnected", ts: Date.now(), payload: {} });
+            }
             wasConnected = true;
           },
           onError: () => {

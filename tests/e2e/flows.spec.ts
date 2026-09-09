@@ -10,7 +10,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { test, expect, chromium, type APIRequestContext, type Page } from "@playwright/test";
 
-const BASE = "http://127.0.0.1:4777";
+const PORT = process.env.MORDOMO_E2E_PORT ?? "4788";
+const BASE = `http://127.0.0.1:${PORT}`;
 const token = () => process.env.MORDOMO_TOKEN ?? "";
 const home = () => process.env.MORDOMO_HOME ?? "";
 const headers = () => ({ "x-mordomo-token": token(), "content-type": "application/json" });
@@ -62,12 +63,14 @@ test("a remote device pairs with a code and reaches the desktop", async ({ reque
   });
   // A non-loopback host name that resolves here: the shell must show the pairing screen, not inject the token.
   const browser = await chromium.launch({
-    executablePath: fs.existsSync("/opt/pw-browsers/chromium") ? "/opt/pw-browsers/chromium" : undefined,
+    executablePath:
+      process.env.PLAYWRIGHT_CHROMIUM_PATH ??
+      (fs.existsSync("/opt/pw-browsers/chromium") ? "/opt/pw-browsers/chromium" : undefined),
     args: ["--host-resolver-rules=MAP mordomo.test 127.0.0.1"],
   });
   try {
     const page = await browser.newPage();
-    const errors = await open(page, "http://mordomo.test:4777/#/");
+    const errors = await open(page, `http://mordomo.test:${PORT}/#/`);
     await expect(page.locator(".pairing-screen")).toBeVisible();
     expect(await page.content()).not.toContain(token());
     const { code } = await api<{ code: string }>(request, "post", "/api/pair/start", {});

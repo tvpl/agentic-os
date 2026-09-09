@@ -5,33 +5,40 @@ description: >-
   which are actually invoked, and where delegation would help.
 triggers:
   - /agent-usage-report
-  - "agent usage"
-  - "uso dos agents"
+  - agent usage
+  - uso dos agents
 inputs:
   - name: project
     label: Project directory
     type: path
     required: true
     placeholder: /path/to/project
-providers: [claude, cursor, codex]
+providers:
+  - claude
+  - cursor
+  - codex
 recommendedModel: null
 recommendedEffort: medium
 mode: read_only
+budgetUsd: 0
 enabled: true
 version: 1.0.0
 changelog:
-  - "1.0.0 — initial version (MordomoOS seed)"
+  - 1.0.0 — initial version (MordomoOS seed)
 guardrails:
   - Read-only outside the artifacts directory.
   - Only inspect the given project directory; never wander into other folders.
   - Evidence first — never claim an agent is unused without checking references.
 successCriteria:
-  - A report artifact lists every defined agent/subagent with its purpose, tools and usage evidence.
-  - At least one concrete delegation recommendation (or an explicit "setup is already good").
+  - >-
+    A report artifact lists every defined agent/subagent with its purpose, tools
+    and usage evidence.
+  - >-
+    At least one concrete delegation recommendation (or an explicit "setup is
+    already good").
 examples:
-  - "Run on a repo before restructuring its .claude/agents."
+  - Run on a repo before restructuring its .claude/agents.
 ---
-
 # Agent Usage Report
 
 Map the agent landscape of one project and report how well it is used.

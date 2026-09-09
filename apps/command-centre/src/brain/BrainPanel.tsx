@@ -1,12 +1,15 @@
+import { usePanelPreference } from "./usePanelPreference";
 /**
  * Control panel of the Second Brain: search, layout / view, typed-edge
  * toggles, local mode, filters, query groups, timeline, expand / collapse,
  * advanced sliders, workspace mode, bake, hygiene and the minimap.
  * Presentational: state comes from the parent as `ui` + `patch`.
  */
-import { useId, type RefObject } from "react";
+import { useEffect, useId, useRef, type RefObject } from "react";
 import {
   ChevronsDownUp,
+  PanelRightClose,
+  PanelRightOpen,
   ChevronsUpDown,
   Eraser,
   List,
@@ -106,6 +109,25 @@ export function BrainPanel(p: BrainPanelProps) {
   const t = useT();
   const { ui, patch } = p;
   const ids = useId();
+  const [collapsed, setCollapsed] = usePanelPreference("controls", false);
+  const focusSearch = useRef(false);
+  useEffect(() => {
+    if (!collapsed) {
+      if (focusSearch.current) p.searchRef.current?.focus();
+      focusSearch.current = false;
+      return;
+    }
+    const revealSearch = (event: KeyboardEvent) => {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+      if ((event.target as HTMLElement)?.closest("input, textarea, select, [contenteditable=true]")) return;
+      focusSearch.current = true;
+      setCollapsed(false);
+    };
+    window.addEventListener("keydown", revealSearch);
+    return () => {
+      window.removeEventListener("keydown", revealSearch);
+    };
+  }, [collapsed, p.searchRef, setCollapsed]);
   const filtersOn =
     ui.filters.exts.length > 0 ||
     ui.filters.tags.length > 0 ||
@@ -117,7 +139,18 @@ export function BrainPanel(p: BrainPanelProps) {
     new Date(ms).toLocaleDateString(p.lang, { year: "2-digit", month: "short", day: "numeric" });
 
   return (
-    <div className="brain2-panel" aria-label={t("brain.controls")}>
+    <div className={`brain2-panel${collapsed ? " collapsed" : ""}`} aria-label={t("brain.controls")}>
+      <button
+        type="button"
+        className="os-chip brain-panel-toggle"
+        onClick={() => setCollapsed(!collapsed)}
+        aria-expanded={!collapsed}
+        aria-label={t("brain.controls")}
+        title={t("brain.controls")}
+      >
+        {collapsed ? <PanelRightOpen aria-hidden /> : <PanelRightClose aria-hidden />}
+        {!collapsed && t("brain.controls")}
+      </button>
       <input
         ref={p.searchRef}
         className="input"

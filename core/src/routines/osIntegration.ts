@@ -219,7 +219,19 @@ export function isStartupServiceInstalled(
 ): boolean {
   try {
     const plan = planStartupService(paths, process.execPath, platform, homeDir);
-    return plan.files.some((f) => fs.existsSync(f.path));
+    // A user-level service may belong to another Mordomo home. Do not label
+    // this workspace as protected by that service merely because its file exists.
+    return plan.files.some((f) => {
+      if (!fs.existsSync(f.path)) return false;
+      const content = fs.readFileSync(f.path, "utf8");
+      if (platform === "darwin") {
+        return content.includes(`<key>MORDOMO_HOME</key><string>${xmlEscape(paths.home)}</string>`);
+      }
+      if (platform === "linux") {
+        return content.split(/\r?\n/).some(line => line.trim() === `Environment=${systemdQuote(`MORDOMO_HOME=${paths.home}`)}`);
+      }
+      return content === f.content;
+    });
   } catch {
     return false;
   }

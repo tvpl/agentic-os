@@ -61,11 +61,6 @@ export default function NowPanel() {
 
   return (
     <section className={`now-panel${active.length > 0 ? " live" : ""}`} aria-label={t("now.title")}>
-      <header className="now-head">
-        <span className="hud-label">{t("now.title")}</span>
-        {active.length > 0 && <span className="badge info">{t("dash.running")}</span>}
-      </header>
-
       <NextStep runs={runs.data ?? []} routines={routines.data ?? []} />
 
       <div className="now-section">

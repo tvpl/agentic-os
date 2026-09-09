@@ -1,7 +1,7 @@
 /**
  * The widget layer: absolute 24-column grid on wide viewports, a single
- * scrollable column below the stack breakpoint. Drag / resize / hide only in
- * edit mode; arrow keys nudge (Shift resizes) the focused widget grip.
+ * scrollable column below the stack breakpoint. Move in edit mode; resize,
+ * maximize and hide directly. Arrow keys nudge (Shift resizes) the focused grip.
  *
  * Motion (audit 2.2 §3 and §4): the dragged widget is moved with
  * `translate3d` written in one rAF per pointer frame (never React state);
@@ -15,12 +15,15 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useState,
   type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { GripVertical, Settings2, X } from "lucide-react";
+import { GripVertical, Maximize2, Minimize2, Settings2, X } from "lucide-react";
 import { useT } from "../i18n";
+import { getDialogDepth } from "../components/dialog";
+import { useWorkspace, type WorkspaceMode } from "../components/Workspace";
 import { orderedIds, type LayoutMap } from "./defaultLayout";
 import { boxToPx, useGridMetrics, useWidgetDrag, type GridMetrics } from "./useGridLayout";
 
@@ -34,6 +37,7 @@ export interface WidgetSpec {
 
 export interface WidgetLayerProps {
   layout: LayoutMap;
+  workspaceMode?: WorkspaceMode;
   widgets: Record<string, WidgetSpec>;
   editMode: boolean;
   onLayoutChange: (next: LayoutMap) => void;
@@ -46,6 +50,7 @@ const FLIP_MS = 200;
 
 export default function WidgetLayer({
   layout,
+  workspaceMode = "overview",
   widgets,
   editMode,
   onLayoutChange,
@@ -53,6 +58,21 @@ export default function WidgetLayer({
   onConfigure,
 }: WidgetLayerProps) {
   const t = useT();
+  const { setMode: setWorkspaceMode } = useWorkspace();
+  const [maximized, setMaximized] = useState<string | null>(null);
+  useEffect(() => setMaximized(null), [workspaceMode]);
+  useEffect(() => {
+    if (!maximized && workspaceMode !== "focus") return;
+    const restore = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape" && getDialogDepth() === 0) {
+        event.stopPropagation();
+        setMaximized(null);
+        if (workspaceMode === "focus") setWorkspaceMode("overview");
+      }
+    };
+    window.addEventListener("keydown", restore, true);
+    return () => window.removeEventListener("keydown", restore, true);
+  }, [maximized, workspaceMode, setWorkspaceMode]);
   const ref = useRef<HTMLDivElement>(null);
   const metrics = useGridMetrics(ref);
   const onMetricsRef = useRef(onMetrics);
@@ -75,7 +95,13 @@ export default function WidgetLayer({
     }
   }, []);
 
-  const { draggingId, mode, target, start, nudge } = useWidgetDrag(layout, metrics, onLayoutChange, snapshot);
+  const {
+    draggingId,
+    mode: dragMode,
+    target,
+    start,
+    nudge,
+  } = useWidgetDrag(layout, metrics, onLayoutChange, snapshot);
   /** The widget that was just released snaps with a spring; neighbours ease. */
   const snapRef = useRef<string | null>(null);
 
@@ -111,7 +137,10 @@ export default function WidgetLayer({
     snapRef.current = null;
   });
 
-  const ids = orderedIds(Object.keys(layout)).filter((id) => widgets[id] && layout[id]?.visible);
+  const mode = metrics.stacked ? "overview" : workspaceMode;
+  const ids = orderedIds(Object.keys(layout)).filter(
+    (id) => widgets[id] && (layout[id]?.visible || (mode === "focus" && id === "prompt")),
+  );
 
   const onGripKey = (id: string, e: KeyboardEvent<HTMLElement>) => {
     if (!editMode) return;
@@ -119,6 +148,8 @@ export default function WidgetLayer({
   };
 
   const hide = (id: string) => {
+    setMaximized(null);
+    if (workspaceMode === "focus") setWorkspaceMode("overview");
     snapshot();
     onLayoutChange({ ...layout, [id]: { ...layout[id]!, visible: false } });
   };
@@ -137,6 +168,17 @@ export default function WidgetLayer({
         const style: CSSProperties = metrics.stacked
           ? ({ "--enter-delay": `${index * 40}ms` } as CSSProperties)
           : ({ ...boxToPx(boxed, metrics), "--enter-delay": `${index * 40}ms` } as CSSProperties);
+        if (maximized === id || (mode === "focus" && id === "prompt"))
+          Object.assign(style, {
+            position: "fixed",
+            left: mode === "focus" ? "10vw" : 20,
+            top: 100,
+            width: mode === "focus" ? "80vw" : "calc(100vw - 40px)",
+            height: "calc(100dvh - 196px)",
+            zIndex: 30,
+          });
+        else if (maximized || mode !== "overview") style.visibility = "hidden";
+        if (mode === "explore") style.visibility = "hidden";
         const dragging = draggingId === id;
         return (
           <section
@@ -148,13 +190,15 @@ export default function WidgetLayer({
                 rects.current.delete(id);
               }
             }}
-            className={`widget enter-fade-up${editMode ? " editing" : ""}${dragging ? ` dragging ${mode ?? ""}` : ""}`}
+            data-widget-id={id}
+            className={`widget${boxed.h <= 2 && maximized !== id ? " compact" : ""}${maximized === id ? " maximized" : ""} enter-fade-up${editMode ? " editing" : ""}${dragging ? ` dragging ${dragMode ?? ""}` : ""}`}
             style={style}
             aria-label={widget.title}
             onPointerDown={(e) => {
-              if (!editMode || metrics.stacked || e.button !== 0) return;
+              if (!editMode || mode !== "overview" || metrics.stacked || e.button !== 0) return;
               const targetEl = e.target as HTMLElement;
               if (
+                targetEl.closest("button:not(.widget-grip), a, input, textarea, select") ||
                 targetEl.closest(".widget-resize") ||
                 targetEl.closest(".widget-hide") ||
                 targetEl.closest(".widget-config")
@@ -168,23 +212,50 @@ export default function WidgetLayer({
           >
             <div className="widget-inner" role="region" aria-label={widget.title} tabIndex={0}>
               <h2>
-                {widget.icon} {widget.title}
+                {widget.icon} <span className="widget-title">{widget.title}</span>
+                <span className="widget-window-actions">
+                  <button
+                    type="button"
+                    className="os-tool"
+                    aria-label={`${t(maximized === id || mode === "focus" ? "desktop.window.restore" : "desktop.window.maximize")}: ${widget.title}`}
+                    onClick={() => {
+                      if (mode === "focus") setWorkspaceMode("overview");
+                      else setMaximized(maximized === id ? null : id);
+                    }}
+                  >
+                    {maximized === id || mode === "focus" ? (
+                      <Minimize2 aria-hidden />
+                    ) : (
+                      <Maximize2 aria-hidden />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="os-tool"
+                    aria-label={`${t("os.hideWidget")}: ${widget.title}`}
+                    onClick={() => hide(id)}
+                  >
+                    <X aria-hidden />
+                  </button>
+                </span>
               </h2>
               {widget.node}
             </div>
-            {editMode && (
+            {mode === "overview" && (editMode || !maximized) && (
               <>
-                <button
-                  type="button"
-                  className="widget-grip"
-                  aria-label={`${t("os.moveWidget")}: ${widget.title}`}
-                  title={t("os.moveWidget")}
-                  aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowUp"
-                  onKeyDown={(e) => onGripKey(id, e)}
-                >
-                  <GripVertical aria-hidden />
-                </button>
-                {widget.configurable && onConfigure && (
+                {editMode && (
+                  <button
+                    type="button"
+                    className="widget-grip"
+                    aria-label={`${t("os.moveWidget")}: ${widget.title}`}
+                    title={t("os.moveWidget")}
+                    aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowUp"
+                    onKeyDown={(e) => onGripKey(id, e)}
+                  >
+                    <GripVertical aria-hidden />
+                  </button>
+                )}
+                {editMode && widget.configurable && onConfigure && (
                   <button
                     type="button"
                     className="widget-config"
@@ -195,15 +266,6 @@ export default function WidgetLayer({
                     <Settings2 aria-hidden />
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="widget-hide"
-                  aria-label={`${t("os.hideWidget")}: ${widget.title}`}
-                  title={t("os.hideWidget")}
-                  onClick={() => hide(id)}
-                >
-                  <X aria-hidden />
-                </button>
                 {!metrics.stacked && (
                   <button
                     type="button"

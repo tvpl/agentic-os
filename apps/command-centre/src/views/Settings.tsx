@@ -1,3 +1,5 @@
+import { useWorkspace, type RenderProfile } from "../components/Workspace";
+import { PROVIDER_LOGIN_COMMANDS } from "../runs/authRecovery";
 import { useContext, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -59,7 +61,7 @@ import {
 } from "../theme";
 import { DEFAULT_LAYOUT, WIDGET_ORDER, baseId, isWidgetId, type WidgetBox } from "../desktop/defaultLayout";
 import { WIDGET_REGISTRY } from "../desktop/registry";
-import { errorMessage, isAbsolutePath, isOffline, slugify } from "./shared";
+import { copyText, errorMessage, isAbsolutePath, isOffline, slugify } from "./shared";
 import "./apps.css";
 
 /** Internal route ("/pixel") or an http(s) URL — same rule the desktop widget applies. */
@@ -307,6 +309,11 @@ function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
   const toast = useToast();
   const qc = useQueryClient();
   const providers = useOsProviders();
+  const recheck = useMutation({
+    mutationFn: () => api.get<ProviderSnapshot[]>("/api/providers?force=1"),
+    onSuccess: (data) => qc.setQueryData(qk.providers, data),
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
   const smoke = useMutation({
     mutationFn: (id: ProviderId) =>
       api.post<{ run: { status: string; durationMs: number | null }; passed: boolean }>(
@@ -332,6 +339,11 @@ function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
     );
   return (
     <div className="card stack">
+      <div className="row-actions">
+        <Button variant="secondary" onClick={() => recheck.mutate()} loading={recheck.isPending}>
+          <RefreshCw aria-hidden /> {t("settings.verifyProviders")}
+        </Button>
+      </div>
       {(providers.data ?? []).map((prov: ProviderSnapshot) => (
         <div key={prov.id} className="provider-row">
           <div className="provider-head">
@@ -345,7 +357,7 @@ function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
               )}
               <div className="meta">
                 {prov.health.installed
-                  ? `${prov.health.version ?? t("setup.installed")} · ${t("settings.auth")}: ${prov.health.authenticated ? t("settings.authOk") : t("settings.authUnknown")}`
+                  ? `${prov.health.version ?? t("setup.installed")} · ${t("settings.auth")}: ${prov.health.authenticated === true ? t("settings.authOk") : prov.health.authenticated === false ? t("settings.authRequired") : t("settings.authUnknown")}`
                   : prov.health.detail}
               </div>
             </div>
@@ -374,6 +386,22 @@ function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
               </Button>
             </div>
           </div>
+          {prov.health.installed && prov.health.authenticated !== true && (
+            <div className="auth-recovery">
+              <p>{t("settings.authRecoveryHint")}</p>
+              <code>{PROVIDER_LOGIN_COMMANDS[prov.id]}</code>{" "}
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={async () => {
+                  const copied = await copyText(PROVIDER_LOGIN_COMMANDS[prov.id]);
+                  toast(t(copied ? "common.copied" : "skills.copyFailed"), copied ? "ok" : "danger");
+                }}
+              >
+                {t("settings.copyLoginCommand")}
+              </Button>
+            </div>
+          )}
           <div className="grid grid-2">
             <Field label={t("skills.model")} htmlFor={`st-model-${prov.id}`} hint={t("settings.modelHint")}>
               <input
@@ -843,6 +871,7 @@ function DiagnosticsTab() {
 /* ------------------------------------------------------- theme presets ---- */
 
 function ThemeTab({ s, put }: { s: SettingsShape; put: Put }) {
+  const { renderProfile, setRenderProfile } = useWorkspace();
   const t = useT();
   const toast = useToast();
   const current = s.themePreset;
@@ -862,6 +891,19 @@ function ThemeTab({ s, put }: { s: SettingsShape; put: Put }) {
         <h2>{t("apps.settings.presets")}</h2>
         <p className="hint">{t("apps.settings.presetsHint")}</p>
       </div>
+      <Field label={t("settings.renderProfile")} htmlFor="render-profile">
+        <select
+          id="render-profile"
+          className="input"
+          value={renderProfile}
+          onChange={(e) => setRenderProfile(e.target.value as RenderProfile)}
+        >
+          <option value="auto">{t("settings.renderAuto")}</option>
+          <option value="immersive">{t("settings.renderImmersive")}</option>
+          <option value="economy">{t("settings.renderEconomy")}</option>
+        </select>
+        <p className="hint">{t("settings.renderHint")}</p>
+      </Field>
       <div className="field">
         <label htmlFor="hud-intensity">
           {t("shell.hud.intensity")} · <span className="mono">{Math.round(hud * 100)}%</span>

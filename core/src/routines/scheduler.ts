@@ -94,6 +94,7 @@ export class RoutineScheduler {
   /** Background firing per routine: in-flight guard + what stop() drains. */
   private readonly inflight = new Map<string, Promise<void>>();
   private abort = new AbortController();
+  private readonly retryWaiters = new Map<string, { routine: Routine; controller: AbortController }>();
   private readonly logger: JsonlLogger;
   private serviceProbe: { at: number; installed: boolean } | null = null;
   private readonly opts: SchedulerOptions;
@@ -158,6 +159,9 @@ export class RoutineScheduler {
 
   /** Re-read routine files and rebuild cron jobs / timers. Call after any CRUD change. */
   reload(): void {
+    for (const waiter of this.retryWaiters.values()) {
+      if (!this.sameRoutine(waiter.routine)) waiter.controller.abort();
+    }
     if (!this.running) return;
     this.clearJobs();
     const now = Date.now();
@@ -397,21 +401,23 @@ export class RoutineScheduler {
     // Budgets (follow-up 7): the routine's own daily cap and the skill's. A
     // fire past either is recorded as skipped and alerted once a day; the
     // remaining amount rides on the run as its cap.
+    const remainingBudget = () => {
     const caps: number[] = [];
     const budgets: Array<{ label: string; budgetUsd: number; spent: number }> = [];
-    if (routine.budgetUsd > 0) budgets.push({ label: `routine "${routine.name}"`, budgetUsd: routine.budgetUsd, spent: this.runs.spentTodayUsd({ routineId: routine.id }) });
+    if (routine.budgetUsd > 0) budgets.push({ label: `routine "${routine.name}"`, budgetUsd: routine.budgetUsd, spent: this.runs.committedTodayUsd({ routineId: routine.id }) });
     const skillBudget = skillSlug ? (this.skills.load(skillSlug)?.budgetUsd ?? 0) : 0;
-    if (skillSlug && skillBudget > 0) budgets.push({ label: `skill /${skillSlug}`, budgetUsd: skillBudget, spent: this.runs.spentTodayUsd({ skillSlug }) });
+    if (skillSlug && skillBudget > 0) budgets.push({ label: `skill /${skillSlug}`, budgetUsd: skillBudget, spent: this.runs.committedTodayUsd({ skillSlug }) });
     for (const b of budgets) {
       if (b.spent >= b.budgetUsd) {
-        const note = `Daily budget of US$ ${b.budgetUsd.toFixed(2)} for ${b.label} exhausted (spent US$ ${b.spent.toFixed(2)}); skipped.`;
+        const note = `Daily budget of US$ ${b.budgetUsd.toFixed(2)} for ${b.label} exhausted (spent or reserved US$ ${b.spent.toFixed(2)}); skipped.`;
         if (!opts.historyAlreadyRecorded) this.recordHistory(routine.id, null, scheduledFor, "skipped", note);
-        if (!this.alertedForBudgetToday(routine.id)) events.emit("routine.alert", { routineId: routine.id, runId: null, summary: note });
+        if (!this.alertedForBudgetToday(routine.id)) events.emit("routine.alert", { routineId: routine.id, runId: null, summary: note, reason: "budget", spentUsd: b.spent, budgetUsd: b.budgetUsd });
         throw Object.assign(new Error(note), { statusCode: 409, code: "budget_exhausted" });
       }
       caps.push(b.budgetUsd - b.spent);
     }
-    const maxCostUsd = caps.length > 0 ? Math.min(...caps) : null;
+    return caps.length > 0 ? Math.min(...caps) : null;
+    };
 
     const cwd = routine.context === "isolated" ? this.isolatedCwd(routine) : (routine.workingDir ?? this.paths.home);
     const createRun = (attempt: number, parentRunId: string | null) =>
@@ -429,7 +435,7 @@ export class RoutineScheduler {
         routineId: routine.id,
         parentRunId,
         attempts: attempt,
-        maxCostUsd,
+        maxCostUsd: remainingBudget(),
       });
 
     const first = createRun(1, null);
@@ -484,8 +490,30 @@ export class RoutineScheduler {
       const retryable =
         record.status === "failed" || (record.status === "timed_out" && routine.retryOnTimeout);
       if (!retryable || attempt >= routine.maxAttempts || this.abort.signal.aborted) return record;
-      const ok = await sleep(routine.backoffMs * attempt, this.abort.signal);
-      if (!ok) return record;
+      const permanentFailure = /authenticat|oauth|unauthorized|invalid.api.key|permission.denied|budget.exhausted/i.test(record.error ?? "");
+      if (mode === "write" || permanentFailure) {
+        this.recordHistory(routine.id, record.id, scheduledFor, "skipped",
+          mode === "write"
+            ? "Retry blocked: a write may have partially completed. Review the execution before running it again."
+            : "Retry blocked: authentication, permission or budget requires attention.");
+        return record;
+      }
+      const controller = new AbortController();
+      this.retryWaiters.set(routine.id, { routine, controller });
+      let ok: boolean;
+      try {
+        ok = this.sameRoutine(routine) && await sleep(
+          routine.backoffMs * attempt, AbortSignal.any([this.abort.signal, controller.signal]),
+        );
+      } finally {
+        if (this.retryWaiters.get(routine.id)?.controller === controller) this.retryWaiters.delete(routine.id);
+      }
+      if (this.abort.signal.aborted) return record;
+      if (!ok || !this.sameRoutine(routine)) {
+        this.recordHistory(routine.id, record.id, scheduledFor, "skipped",
+          "Retry cancelled: routine changed, paused, removed or became unreadable. The current attempt was preserved.");
+        return record;
+      }
       attempt++;
       current = createRun(attempt, first.id);
       this.recordHistory(
@@ -495,6 +523,16 @@ export class RoutineScheduler {
         "fired",
         `Retry ${attempt}/${routine.maxAttempts} after ${record.status} (run ${record.id}).`,
       );
+    }
+  }
+
+  /** A retry belongs to the exact configuration that created its first attempt. */
+  private sameRoutine(routine: Routine): boolean {
+    try {
+      const latest = this.store.get(routine.id);
+      return latest !== null && latest.enabled === routine.enabled && JSON.stringify(latest) === JSON.stringify(routine);
+    } catch {
+      return false;
     }
   }
 

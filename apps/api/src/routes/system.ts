@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { isDeepStrictEqual } from "node:util";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -56,6 +57,7 @@ export const PKG_VERSION = readPackageVersion();
 
 const ProviderPatch = ProviderSettingsSchema.partial();
 export const SettingsPatchSchema = SettingsSchema.partial().extend({
+  dashboardLayoutBase: SettingsSchema.shape.dashboardLayout.removeDefault().optional(),
   providers: z
     .object({
       claude: ProviderPatch.optional(),
@@ -342,8 +344,18 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
   app.get("/api/settings", async () => ctx.settings());
 
   app.put("/api/settings", async (req) => {
-    const patch = SettingsPatchSchema.parse(req.body);
+    const { dashboardLayoutBase, ...patch } = SettingsPatchSchema.parse(req.body);
     const before = ctx.settings();
+    if (
+      patch.dashboardLayout &&
+      dashboardLayoutBase !== undefined &&
+      !isDeepStrictEqual(dashboardLayoutBase, before.dashboardLayout)
+    ) {
+      throw Object.assign(
+        new Error("Layout changed in another window. Reload it or explicitly save your local version."),
+        { statusCode: 409, code: "layout_conflict" },
+      );
+    }
 
     // Approval-gated transitions (docs/security.md).
     let pendingApproval = null;
@@ -566,7 +578,7 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
   app.get("/api/artifacts/raw", async (req, reply) => {
     const { p } = z.object({ p: z.string() }).parse(req.query);
     const resolved = resolveInsideRoots([ctx.paths.artifacts], p); // PathAccessError → 403
-    if (!isInside(ctx.paths.artifacts, resolved)) throw httpError(403, "Outside artifacts directory");
+    // resolveInsideRoots already checks real paths, including macOS /var -> /private/var.
     const mime = RAW_MIME[path.extname(resolved).toLowerCase()];
     if (!mime) throw httpError(415, "Not a previewable artifact type");
     let stat: fs.Stats;

@@ -23,7 +23,7 @@ import { useT } from "../../i18n";
 import { formatBytes, useToast } from "../../components/ui";
 import { Badge, Button, EmptyState, Field, Segmented, Tabs } from "../../components/primitives";
 import { ModelEffortMatrix, skillEffort, type Effort } from "../../desktop/SkillMatrixModal";
-import { ApprovalCard } from "../../runs/Approvals";
+import { ApprovalCard } from "../../runs/ApprovalCards";
 import { copyText, errorMessage } from "../shared";
 import Markdown from "./Markdown";
 import { canPreviewInline, groupByFolder, resourceUrl, resourcesOf, MAX_INLINE_TEXT_BYTES } from "./resources";

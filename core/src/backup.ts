@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import Database from "better-sqlite3";
+import { MIGRATIONS } from "./db/migrations.js";
 import path from "node:path";
 import type { MordomoPaths } from "./paths.js";
 import type { Db } from "./db/db.js";
@@ -35,45 +37,57 @@ export async function createBackup(
   opts: BackupOptions = {},
 ): Promise<BackupInfo> {
   const { dest, dbFile } = snapshotFiles(paths, opts);
-  if (db.open) {
-    await db.backup(dbFile);
-  } else if (fs.existsSync(paths.dbFile)) {
-    // Closed handle: the file is quiescent and any WAL was checkpointed on close.
-    fs.copyFileSync(paths.dbFile, dbFile);
+  try {
+    if (db.open) {
+      await db.backup(dbFile);
+    } else if (fs.existsSync(paths.dbFile)) {
+      // Closed handle: the file is quiescent and WAL checkpointed on close.
+      fs.copyFileSync(paths.dbFile, dbFile);
+    }
+    const info = finalize(dest);
+    events.emit("backup.created", info);
+    return info;
+  } catch (error) {
+    fs.rmSync(dest, { recursive: true, force: true });
+    throw error;
   }
-  const info = finalize(dest);
-  events.emit("backup.created", info);
-  return info;
 }
 
 /** Copy every file set except the database into a fresh backup directory. */
 function snapshotFiles(paths: MordomoPaths, opts: BackupOptions): { dest: string; dbFile: string } {
-  const name = `full-${new Date().toISOString().replace(/[:.]/g, "-")}`;
-  const dest = path.join(paths.backups, name);
-  fs.mkdirSync(dest, { recursive: true });
-
-  for (const set of BACKUP_SETS) {
-    const src = paths[set];
-    if (fs.existsSync(src)) fs.cpSync(src, path.join(dest, set), { recursive: true });
+  const prefix = `.pending-full-${new Date().toISOString().replace(/[:.]/g, "-")}-`;
+  fs.mkdirSync(paths.backups, { recursive: true });
+  const dest = fs.mkdtempSync(path.join(paths.backups, prefix));
+  try {
+    for (const set of BACKUP_SETS) {
+      const src = paths[set];
+      if (fs.existsSync(src)) fs.cpSync(src, path.join(dest, set), { recursive: true });
+    }
+    if (fs.existsSync(paths.settingsFile)) {
+      fs.mkdirSync(path.join(dest, "config"), { recursive: true });
+      fs.copyFileSync(paths.settingsFile, path.join(dest, "config", "settings.json"));
+    }
+    if (fs.existsSync(paths.syncManifest)) {
+      fs.mkdirSync(path.join(dest, "config"), { recursive: true });
+      fs.copyFileSync(paths.syncManifest, path.join(dest, "config", "sync-manifest.json"));
+    }
+    const dbDir = path.join(dest, "config", "db");
+    fs.mkdirSync(dbDir, { recursive: true });
+    if (opts.includeArtifacts && fs.existsSync(paths.artifacts)) {
+      fs.cpSync(paths.artifacts, path.join(dest, "artifacts"), { recursive: true });
+    }
+    return { dest, dbFile: path.join(dbDir, "mordomo.db") };
+  } catch (error) {
+    fs.rmSync(dest, { recursive: true, force: true });
+    throw error;
   }
-  if (fs.existsSync(paths.settingsFile)) {
-    fs.mkdirSync(path.join(dest, "config"), { recursive: true });
-    fs.copyFileSync(paths.settingsFile, path.join(dest, "config", "settings.json"));
-  }
-  if (fs.existsSync(paths.syncManifest)) {
-    fs.mkdirSync(path.join(dest, "config"), { recursive: true });
-    fs.copyFileSync(paths.syncManifest, path.join(dest, "config", "sync-manifest.json"));
-  }
-  const dbDir = path.join(dest, "config", "db");
-  fs.mkdirSync(dbDir, { recursive: true });
-  if (opts.includeArtifacts && fs.existsSync(paths.artifacts)) {
-    fs.cpSync(paths.artifacts, path.join(dest, "artifacts"), { recursive: true });
-  }
-  return { dest, dbFile: path.join(dbDir, "mordomo.db") };
 }
 
 function finalize(dest: string): BackupInfo {
-  return { name: path.basename(dest), path: dest, createdAt: Date.now(), sizeBytes: dirSize(dest) };
+  const sizeBytes = dirSize(dest);
+  const published = path.join(path.dirname(dest), path.basename(dest).replace(/^\.pending-/, ""));
+  fs.renameSync(dest, published);
+  return { name: path.basename(published), path: published, createdAt: Date.now(), sizeBytes };
 }
 
 export function listBackups(paths: MordomoPaths): BackupInfo[] {
@@ -100,31 +114,107 @@ export function listBackups(paths: MordomoPaths): BackupInfo[] {
  */
 export function restoreBackup(paths: MordomoPaths, name: string): { safetyBackup: BackupInfo } {
   const src = path.join(paths.backups, name);
-  if (!fs.existsSync(src) || !path.resolve(src).startsWith(path.resolve(paths.backups))) {
+  if (!/^full-[A-Za-z0-9-]{1,80}$/.test(name) || !fs.existsSync(src) || fs.lstatSync(src).isSymbolicLink()) {
     throw new Error(`Backup not found: ${name}`);
   }
-  // Safety backup by plain copy: valid only because the DB is closed.
-  const { dest, dbFile } = snapshotFiles(paths, {});
-  if (fs.existsSync(paths.dbFile)) fs.copyFileSync(paths.dbFile, dbFile);
-  const safetyBackup = finalize(dest);
-
-  for (const set of BACKUP_SETS) {
-    const from = path.join(src, set);
-    if (!fs.existsSync(from)) continue;
-    fs.rmSync(paths[set], { recursive: true, force: true });
-    fs.cpSync(from, paths[set], { recursive: true });
+  // Validate before touching live files or publishing a safety snapshot.
+  let candidate: Database.Database | undefined;
+  try {
+    candidate = new Database(path.join(src, "config", "db", "mordomo.db"), {
+      readonly: true,
+      fileMustExist: true,
+    });
+    const version = candidate.pragma("user_version", { simple: true }) as number;
+    if (
+      version < 1 ||
+      version > Math.max(...MIGRATIONS.map((migration) => migration.version)) ||
+      candidate.pragma("quick_check", { simple: true }) !== "ok"
+    )
+      throw new Error("Unsupported or damaged database");
+  } catch {
+    throw new Error(
+      "Invalid backup database. Choose a complete, compatible backup; current files were not changed.",
+    );
+  } finally {
+    candidate?.close();
   }
-  const settingsBackup = path.join(src, "config", "settings.json");
-  if (fs.existsSync(settingsBackup)) fs.copyFileSync(settingsBackup, paths.settingsFile);
-  const manifestBackup = path.join(src, "config", "sync-manifest.json");
-  if (fs.existsSync(manifestBackup)) fs.copyFileSync(manifestBackup, paths.syncManifest);
-  const dbBackup = path.join(src, "config", "db", "mordomo.db");
-  if (fs.existsSync(dbBackup)) {
-    fs.copyFileSync(dbBackup, paths.dbFile);
-    for (const suffix of ["-wal", "-shm"]) {
-      const sidecar = paths.dbFile + suffix;
-      if (fs.existsSync(sidecar)) fs.unlinkSync(sidecar);
+  // Safety backup by plain copy: valid only because the DB is closed.
+  const includeArtifacts = fs.existsSync(path.join(src, "artifacts"));
+  const { dest, dbFile } = snapshotFiles(paths, { includeArtifacts });
+  let safetyBackup: BackupInfo;
+  try {
+    if (fs.existsSync(paths.dbFile)) fs.copyFileSync(paths.dbFile, dbFile);
+    safetyBackup = finalize(dest);
+  } catch (error) {
+    fs.rmSync(dest, { recursive: true, force: true });
+    throw error;
+  }
+
+  // Prepare every replacement before moving live data. In particular ENOSPC
+  // during copying must not leave an emptied skills/memory directory behind.
+  const staging = fs.mkdtempSync(path.join(paths.home, ".restore-"));
+  const entries: Array<{
+    source: string | null;
+    target: string;
+    staged: string;
+    old: string;
+    moved: boolean;
+    installed: boolean;
+  }> = [];
+  const add = (source: string | null, target: string) => {
+    if (source && !fs.existsSync(source)) return;
+    const index = entries.length;
+    entries.push({
+      source,
+      target,
+      staged: path.join(staging, `new-${index}`),
+      old: path.join(staging, `old-${index}`),
+      moved: false,
+      installed: false,
+    });
+  };
+  for (const set of BACKUP_SETS) add(path.join(src, set), paths[set]);
+  if (includeArtifacts) add(path.join(src, "artifacts"), paths.artifacts);
+  add(path.join(src, "config", "settings.json"), paths.settingsFile);
+  add(path.join(src, "config", "sync-manifest.json"), paths.syncManifest);
+  add(path.join(src, "config", "db", "mordomo.db"), paths.dbFile);
+  for (const suffix of ["-wal", "-shm"]) add(null, paths.dbFile + suffix);
+  let preserveStaging = false;
+  try {
+    for (const entry of entries) {
+      if (entry.source) fs.cpSync(entry.source, entry.staged, { recursive: true });
     }
+    for (const entry of entries) {
+      fs.mkdirSync(path.dirname(entry.target), { recursive: true });
+      if (fs.existsSync(entry.target)) {
+        fs.renameSync(entry.target, entry.old);
+        entry.moved = true;
+      }
+      if (entry.source) {
+        fs.renameSync(entry.staged, entry.target);
+        entry.installed = true;
+      }
+    }
+  } catch (error) {
+    const failures: unknown[] = [];
+    for (const entry of [...entries].reverse()) {
+      try {
+        if (entry.installed) fs.rmSync(entry.target, { recursive: true, force: true });
+        if (entry.moved) fs.renameSync(entry.old, entry.target);
+      } catch (rollbackError) {
+        failures.push(rollbackError);
+      }
+    }
+    if (failures.length) {
+      preserveStaging = true;
+      throw new AggregateError(
+        [error, ...failures],
+        `Restore rollback requires recovery. Preserved files: ${staging}; safety backup: ${safetyBackup.name}`,
+      );
+    }
+    throw error;
+  } finally {
+    if (!preserveStaging) fs.rmSync(staging, { recursive: true, force: true });
   }
   return { safetyBackup };
 }

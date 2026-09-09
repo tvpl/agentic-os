@@ -1,3 +1,4 @@
+import { useWorkspace } from "../components/Workspace";
 /**
  * Desktop wallpaper: a wireframe icosphere rotating in pseudo-3D over a
  * static hex weave, a particle core coloured by memory area inside it, a slow
@@ -212,6 +213,7 @@ export default function Wallpaper({
   onOpenBrain,
   onChipActivate,
 }: WallpaperProps) {
+  const { economy } = useWorkspace();
   const t = useT();
   const locale = useLocale();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -303,7 +305,7 @@ export default function Wallpaper({
     if (!ctx) return;
     const state = stateRef.current;
     const motionMq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    let reduceMotion = motionMq.matches;
+    let reduceMotion = economy || motionMq.matches;
     let tokens = readTokens();
     let w = wrap.clientWidth;
     let h = wrap.clientHeight;
@@ -683,7 +685,7 @@ export default function Wallpaper({
     const onVisibility = () => (document.hidden ? stop() : start());
     document.addEventListener("visibilitychange", onVisibility);
     const onMotion = () => {
-      reduceMotion = motionMq.matches;
+      reduceMotion = economy || motionMq.matches;
       if (reduceMotion) {
         stop();
         staticFrame();
@@ -705,7 +707,7 @@ export default function Wallpaper({
       motionMq.removeEventListener("change", onMotion);
       state.redraw = () => undefined;
     };
-  }, []);
+  }, [economy]);
 
   const centre = focus ?? { cx: size.w / 2, cy: size.h * 0.54, rx: 0, ry: 0 };
   const placed = useMemo(() => {

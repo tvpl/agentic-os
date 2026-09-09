@@ -1,0 +1,233 @@
+/* A quiet, persistent navigation surface; animation remains optional. */
+.workspace-dock {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 20px;
+  background: var(--bg-raise-2);
+  box-shadow:
+    0 12px 40px #0006,
+    inset 0 1px 0 color-mix(in srgb, var(--text) 8%, transparent);
+}
+.dock-apps,
+.dock-modes {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.dock-app,
+.dock-collapse,
+.dock-modes button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 12px;
+  font: inherit;
+}
+.dock-app {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  transition:
+    transform 180ms var(--ease-standard),
+    background 180ms;
+}
+.dock-app svg {
+  width: 20px;
+  height: 20px;
+}
+.dock-app.active,
+.dock-modes button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+[data-theme="light"] .dock-app.active,
+[data-theme="light"] .dock-modes button[aria-pressed="true"] {
+  color: var(--text);
+}
+.dock-app:hover {
+  transform: translateY(-4px);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.dock-tooltip {
+  position: absolute;
+  bottom: 54px;
+  pointer-events: none;
+  opacity: 0;
+  white-space: nowrap;
+  background: var(--bg-raise-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: var(--fs-2);
+  transition: opacity 120ms;
+}
+.dock-app:hover .dock-tooltip,
+.dock-app:focus-visible .dock-tooltip {
+  opacity: 1;
+}
+.dock-modes {
+  border-left: 1px solid var(--border);
+  padding-left: 12px;
+}
+.dock-modes button {
+  gap: 6px;
+  padding: 10px;
+  font-size: var(--fs-2);
+}
+.dock-modes svg,
+.dock-collapse svg {
+  width: 16px;
+  height: 16px;
+}
+.dock-collapse {
+  width: 28px;
+  height: 32px;
+}
+.workspace-dock button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.workspace-dock.collapsed {
+  padding: 4px 16px;
+  border-radius: 12px;
+}
+.explore-intro {
+  position: absolute;
+  left: 50%;
+  top: 120px;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 3;
+  width: min(640px, 70vw);
+}
+.explore-intro h1 {
+  font-size: clamp(24px, 3vw, 40px);
+  margin: 8px 0;
+  letter-spacing: -0.04em;
+}
+.explore-intro p {
+  color: var(--text-dim);
+  margin: 10px auto 20px;
+  max-width: 52ch;
+  line-height: 1.6;
+}
+.explore-intro .btn {
+  gap: 10px;
+}
+@media (min-width: 900px) {
+  .app-frame .app-frame-body {
+    padding-bottom: 100px;
+  }
+  .brain2 .brain2-panel,
+  .brain2 .brain2-list,
+  .brain2 .brain2-preview {
+    bottom: 96px;
+  }
+  .brain2 .zoom-stack,
+  .brain2 .brain2-legend {
+    bottom: 96px;
+  }
+  .brain2 .brain-layout-pill {
+    bottom: 104px;
+  }
+  .os-root[data-palette="open"] .workspace-dock {
+    visibility: hidden;
+  }
+}
+@media (max-width: 899px) {
+  .workspace-dock,
+  .explore-intro {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-dock * {
+    transition: none !important;
+  }
+}
+
+/* Let the data and controls carry the hierarchy; keep the futuristic texture subtle. */
+.os-root .hud-overlay::before {
+  opacity: 0.2;
+}
+.os-root .hud-overlay::after {
+  opacity: 0.5;
+}
+.desktop .widget-inner {
+  border-color: color-mix(in srgb, var(--text) 12%, transparent);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  box-shadow: 0 8px 24px #0002;
+  padding: 14px 16px;
+}
+.desktop .widget-inner > h2 {
+  color: var(--text-dim);
+  letter-spacing: 0.11em;
+}
+.desktop .widget::before {
+  opacity: 0.25;
+  border-radius: 12px;
+}
+.desktop .widget:hover::before,
+.desktop .widget:focus-within::before {
+  opacity: 0.8;
+}
+.desktop .now-next {
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+.desktop .microapp-row {
+  border-radius: 10px;
+  transition:
+    background 140ms,
+    transform 140ms;
+}
+.desktop .microapp-row:hover {
+  background: var(--accent-soft);
+  transform: translateX(3px);
+}
+.desktop .widget-window-actions .os-tool {
+  color: var(--text-faint);
+}
+.desktop .widget:hover .widget-window-actions .os-tool,
+.desktop .widget:focus-within .widget-window-actions .os-tool {
+  color: var(--accent-text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .desktop .microapp-row {
+    transition: none;
+  }
+  .desktop .microapp-row:hover {
+    transform: none;
+  }
+}
+.explore-intro {
+  animation: workspace-reveal 240ms ease-out both;
+}
+@keyframes workspace-reveal {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .explore-intro {
+    animation: none;
+  }
+}

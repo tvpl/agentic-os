@@ -85,6 +85,7 @@ export function connectorDeltaPayload(
 ): SentinelFiredPayload {
   return {
     sentinel: "connectorDelta",
+    messageParams: { count, name: connector.name },
     title: `${count} new item${count === 1 ? "" : "s"} in ${connector.name}`,
     body: `The read-only mapping of ${connector.name} returned ${count} item${
       count === 1 ? "" : "s"

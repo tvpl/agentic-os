@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import { defineConfig, devices } from "@playwright/test";
 
-const BASE_URL = "http://127.0.0.1:4777";
+const PORT = Number(process.env.MORDOMO_E2E_PORT ?? 4788);
+const BASE_URL = `http://127.0.0.1:${PORT}`;
 // Prefer a pre-installed Chromium (containers without `playwright install`); otherwise Playwright's own.
 const PREINSTALLED = process.env.PLAYWRIGHT_CHROMIUM_PATH ?? "/opt/pw-browsers/chromium";
 const executablePath = fs.existsSync(PREINSTALLED) ? PREINSTALLED : undefined;
@@ -32,8 +33,8 @@ export default defineConfig({
     command: "node tests/e2e/serve.mjs",
     cwd: "../..",
     // TCP readiness: every API route (including /api/health) needs the local token.
-    port: 4777,
-    reuseExistingServer: !process.env.CI,
+    port: PORT,
+    reuseExistingServer: false,
     timeout: 60_000,
     stdout: "pipe",
     stderr: "pipe",
