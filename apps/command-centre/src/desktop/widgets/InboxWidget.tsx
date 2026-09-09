@@ -13,6 +13,7 @@ import { EmptyState } from "../../components/primitives";
 import { timeAgo, useToast } from "../../components/ui";
 import { useNotifications, type NotificationItem } from "../../hooks/useNotifications";
 import { useOsNavigate } from "../../hooks/useViewTransition";
+import { notificationText } from "../../hooks/notificationText";
 import { cfgBool, cfgNumber, type WidgetProps } from "../widgetTypes";
 
 export interface InboxListProps {
@@ -75,6 +76,7 @@ export function InboxList({ limit, unreadOnly = false }: InboxListProps) {
         </button>
       </div>
       {shown.map((item) => {
+        const text = notificationText(item.title, item.body, locale, item);
         const actionable = item.kind === "approval" && item.approvalId && pending.has(item.approvalId);
         return (
           <div
@@ -83,8 +85,8 @@ export function InboxList({ limit, unreadOnly = false }: InboxListProps) {
           >
             <span className="inbox-dot" aria-hidden />
             <button type="button" className="inbox-main" onClick={() => open(item)}>
-              <span className="inbox-title truncate">{item.title}</span>
-              {item.body && <span className="inbox-body truncate">{item.body}</span>}
+              <span className="inbox-title">{text.title}</span>
+              {text.body && <span className="inbox-body">{text.body}</span>}
             </button>
             <span className="inbox-age mono">{timeAgo(item.ts, locale)}</span>
             {actionable ? (

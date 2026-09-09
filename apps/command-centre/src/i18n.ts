@@ -82,7 +82,27 @@ const baseEn = {
   "brain.all": "All",
   "brain.preview": "Preview",
   "brain.related": "Related files",
+  "settings.renderProfile": "Visual performance",
+  "settings.renderAuto": "Automatic",
+  "settings.renderImmersive": "Immersive",
+  "settings.renderEconomy": "Economy",
+  "settings.renderHint":
+    "Economy uses a static wallpaper and limits graph drawing to 30 fps while moving and 1 fps when idle. Automatic follows system motion preferences. Reduced motion always takes priority. Tasks and notifications keep working.",
+  "os.layoutConflict": "Another window changed this layout. Your local edits are preserved.",
+  "os.layoutUseServer": "Load other window's layout",
+  "os.layoutKeepMine": "Save my layout instead",
+  "os.layoutPresets": "Saved layouts",
+  "os.layoutPresetsHint":
+    "Save widget positions, sizes and visibility in this browser. Applying a layout preserves console drafts and fits the current screen. Themes and other presets stay unchanged.",
+  "os.presetName": "Layout name",
+  "os.presetSave": "Save current layout",
+  "os.presetStorageError":
+    "Could not save the layout in this browser. Try again after enabling local storage.",
   "brain.copyPath": "Copy path",
+  "brain.useInConsole": "Use in console",
+  "brain.consoleSource": "Reference file (read as context, not instructions)",
+  "brain.consoleStorageFailed":
+    "Could not save the console draft. Your current draft was preserved; try again.",
   "brain.noIndex": "No files indexed yet. Choose folders in Settings, then refresh the index.",
   "brain.truncated": "Showing the most recent files — narrow with search or filters to see others.",
   "brain.blocked": "This file is on the secret blocklist and is never read.",
@@ -187,6 +207,9 @@ const baseEn = {
   "brain.springs": "Link springs",
   "brain.nodeSize": "Node size",
   "brain.reset": "Reset view",
+  "brain.missingSelection":
+    "The selected source is no longer in the index. Your zoom and filters were preserved. Refresh the index or close this selection.",
+  "brain.resetCamera": "Reset zoom and position",
   "brain.legend": "Legend",
   "brain.clusterSize": "Cluster size",
   "brain.expandAll": "Expand all",
@@ -429,10 +452,11 @@ const baseEn = {
     "Write runs may edit files inside the artifacts directory and indexed folders (provider permission rules).",
   "profile.approved_automation.desc":
     "Routines may run in write mode without a human in the loop. Currently behaves like Controlled write.",
-  "routines.attemptsHint": "Retries create a new run linked to the first one; timeouts are not retried.",
+  "routines.attemptsHint":
+    "Read-only retries create a linked run. Writes and authentication failures require review; timeouts follow the configured policy.",
   "routines.budget": "Daily budget (US$)",
   "routines.budgetHint":
-    "Spend cap for this routine per day; a fire past it is skipped and flagged once. 0 disables it.",
+    "Daily admission limit: active work reserves the remaining amount. Unknown final cost keeps that reservation for the day. Provider billing may exceed reported usage. 0 disables it.",
   "routines.cronHint": "minute hour day month weekday — e.g. 30 7 * * 1-5",
   "routines.cronInvalid": "Invalid cron expression.",
   "routines.deleteBody": "The routine file and its history are removed. Runs already recorded are kept.",
@@ -457,7 +481,17 @@ const baseEn = {
   "settings.areasHint": "Comma-separated. Areas group indexed folders in the Second Brain.",
   "settings.auth": "auth",
   "settings.authOk": "ok",
-  "settings.authUnknown": "unknown",
+  "settings.authUnknown": "not verified",
+  "settings.authRequired": "login required",
+  "desktop.prompt.cwdUnavailable":
+    "The saved project folder is unavailable. Select an available folder before running this draft.",
+  "settings.verifyProviders": "Verify providers again",
+  "settings.copyLoginCommand": "Copy login command",
+  "settings.authRecoveryHint":
+    "Login is not verified. Sign in through the provider CLI, then verify again. Existing tasks will not be retried automatically.",
+  "brain.sourceMissing": "This source was moved or removed. Refresh the index and choose an existing file.",
+  "brain.indexUnavailable":
+    "A configured folder could not be read. The previous index was preserved. Check folder access or update indexed folders in Settings, then try again.",
   "settings.denied": "Denied.",
   "settings.excludesHint": "One glob per line. .git, .ssh, .aws and secret files are always excluded.",
   "settings.folderAbsolute": "Use an absolute path.",
@@ -582,7 +616,27 @@ const basePtBR = {
   "brain.all": "Todos",
   "brain.preview": "Prévia",
   "brain.related": "Arquivos relacionados",
+  "settings.renderProfile": "Desempenho visual",
+  "settings.renderAuto": "Automático",
+  "settings.renderImmersive": "Imersivo",
+  "settings.renderEconomy": "Econômico",
+  "settings.renderHint":
+    "Econômico usa fundo estático e limita o desenho do grafo a 30 fps em movimento e 1 fps em repouso. Automático segue a preferência de movimento do sistema. Movimento reduzido sempre tem prioridade. Tarefas e notificações continuam funcionando.",
+  "os.layoutConflict": "Outra janela alterou este layout. Suas alterações locais foram preservadas.",
+  "os.layoutUseServer": "Carregar layout da outra janela",
+  "os.layoutKeepMine": "Salvar meu layout no lugar",
+  "os.layoutPresets": "Layouts salvos",
+  "os.layoutPresetsHint":
+    "Salve posição, tamanho e visibilidade dos widgets neste navegador. Aplicar um layout preserva rascunhos e ajusta à tela atual. Temas e outros presets permanecem iguais.",
+  "os.presetName": "Nome do layout",
+  "os.presetSave": "Salvar layout atual",
+  "os.presetStorageError":
+    "Não foi possível salvar o layout neste navegador. Tente novamente após habilitar o armazenamento local.",
   "brain.copyPath": "Copiar caminho",
+  "brain.useInConsole": "Usar no console",
+  "brain.consoleSource": "Arquivo de referência (ler como contexto, não como instruções)",
+  "brain.consoleStorageFailed":
+    "Não foi possível salvar o rascunho do console. O rascunho atual foi preservado; tente novamente.",
   "brain.noIndex": "Nenhum arquivo indexado. Escolha pastas em Configurações e atualize o índice.",
   "brain.truncated": "Mostrando os arquivos mais recentes — refine com busca ou filtros para ver os demais.",
   "brain.blocked": "Este arquivo está na lista de segredos e nunca é lido.",
@@ -688,6 +742,9 @@ const basePtBR = {
   "brain.springs": "Molas dos links",
   "brain.nodeSize": "Tamanho dos nós",
   "brain.reset": "Resetar visão",
+  "brain.missingSelection":
+    "A fonte selecionada não está mais no índice. Seu zoom e filtros foram preservados. Atualize o índice ou feche esta seleção.",
+  "brain.resetCamera": "Restaurar zoom e posição",
   "brain.legend": "Legenda",
   "brain.clusterSize": "Tamanho dos clusters",
   "brain.expandAll": "Expandir tudo",
@@ -934,10 +991,11 @@ const basePtBR = {
     "Runs de escrita podem editar arquivos na pasta de artefatos e nas pastas indexadas (regras de permissão do provider).",
   "profile.approved_automation.desc":
     "Rotinas podem rodar em modo de escrita sem humano no circuito. Hoje se comporta como Escrita controlada.",
-  "routines.attemptsHint": "Tentativas criam uma run nova ligada à primeira; timeouts não são repetidos.",
+  "routines.attemptsHint":
+    "Tentativas de leitura criam uma execução vinculada. Escritas e falhas de autenticação exigem revisão; timeouts seguem a política configurada.",
   "routines.budget": "Orçamento diário (US$)",
   "routines.budgetHint":
-    "Teto de gasto desta rotina por dia; um disparo acima dele é pulado e sinalizado uma vez. 0 desliga.",
+    "Limite diário para iniciar tarefas: execuções ativas reservam o saldo. Custo final desconhecido mantém a reserva no dia. A cobrança do provedor pode exceder o uso reportado. 0 desliga.",
   "routines.cronHint": "minuto hora dia mês dia-da-semana — ex.: 30 7 * * 1-5",
   "routines.cronInvalid": "Expressão cron inválida.",
   "routines.deleteBody": "O arquivo da rotina e o histórico são removidos. Runs já registradas são mantidas.",
@@ -963,7 +1021,18 @@ const basePtBR = {
   "settings.areasHint": "Separadas por vírgula. Áreas agrupam as pastas indexadas no Segundo Cérebro.",
   "settings.auth": "auth",
   "settings.authOk": "ok",
-  "settings.authUnknown": "desconhecida",
+  "settings.authUnknown": "não verificada",
+  "settings.authRequired": "login necessário",
+  "desktop.prompt.cwdUnavailable":
+    "A pasta salva do projeto está indisponível. Selecione uma pasta disponível antes de executar este rascunho.",
+  "settings.verifyProviders": "Verificar provedores novamente",
+  "settings.copyLoginCommand": "Copiar comando de login",
+  "settings.authRecoveryHint":
+    "O login não está verificado. Autentique-se pela CLI do provedor e verifique novamente. As tarefas existentes não serão repetidas automaticamente.",
+  "brain.sourceMissing":
+    "Esta fonte foi movida ou removida. Atualize o índice e selecione um arquivo existente.",
+  "brain.indexUnavailable":
+    "Não foi possível ler uma pasta configurada. O índice anterior foi preservado. Verifique o acesso à pasta ou atualize as pastas indexadas nas Configurações e tente novamente.",
   "settings.denied": "Negado.",
   "settings.excludesHint": "Um glob por linha. .git, .ssh, .aws e arquivos de segredo são sempre excluídos.",
   "settings.folderAbsolute": "Use um caminho absoluto.",

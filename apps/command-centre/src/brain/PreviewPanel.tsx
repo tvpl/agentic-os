@@ -1,13 +1,17 @@
+import { errorMessage } from "../views/shared";
 /**
  * Preview panel: markdown rendered as navigation (item 59) — every path or
  * link that resolves to a graph node becomes a button that selects it, every
  * `/skill` token that matches a skill orb highlights that orb — plus the
  * relations card (edges grouped by kind with counts, item 33).
  */
-import { useEffect, useMemo, type ReactNode } from "react";
-import { Copy, ExternalLink, Pin, X } from "lucide-react";
-import { api } from "../api";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Copy, ExternalLink, Pin, Terminal, X } from "lucide-react";
+import { api, type MemoryPreview } from "../api";
 import { formatBytes, timeAgo, useToast } from "../components/ui";
+import { useWorkspace } from "../components/Workspace";
+import { useOsNavigate } from "../hooks/useViewTransition";
+import { readConsoleDraft, storeConsoleDraft, withConsoleReference } from "../desktop/consoleDraft";
 import { useT } from "../i18n";
 import { relationsOf } from "./engine/graph";
 import type { EdgeKind, FileNode, World } from "./engine/world";
@@ -63,6 +67,27 @@ export function PreviewPanel({
 }: PreviewPanelProps) {
   const t = useT();
   const toast = useToast();
+  const navigate = useOsNavigate();
+  const { setMode } = useWorkspace();
+  const [sending, setSending] = useState(false);
+  const sendToConsole = async () => {
+    if (sending) return;
+    setSending(true);
+    try {
+      const latest = await api.get<MemoryPreview>(
+        `/api/memory/preview?p=${encodeURIComponent(preview.node.path)}`,
+      );
+      if (latest.kind === "blocked") throw new Error(t("brain.blocked"));
+      const draft = withConsoleReference(readConsoleDraft(), preview.node.path, t("brain.consoleSource"));
+      if (!storeConsoleDraft(draft)) throw new Error(t("brain.consoleStorageFailed"));
+      setMode("focus");
+      navigate("/");
+    } catch (error) {
+      toast(errorMessage(error, t), "danger");
+    } finally {
+      setSending(false);
+    }
+  };
   const { node } = preview;
   const isMarkdown = MD_EXT.has(node.ext.toLowerCase());
   const blocks = useMemo<Block[] | null>(
@@ -245,9 +270,20 @@ export function PreviewPanel({
       <div className="brain-preview-actions">
         <button
           className="btn sm"
+          disabled={
+            sending || preview.kind === "loading" || preview.kind === "blocked" || preview.kind === "error"
+          }
+          onClick={() => void sendToConsole()}
+        >
+          <Terminal aria-hidden /> {t("brain.useInConsole")}
+        </button>
+        <button
+          className="btn sm"
           onClick={() => {
-            void navigator.clipboard.writeText(node.path);
-            toast(t("common.copied"), "ok");
+            void navigator.clipboard
+              .writeText(node.path)
+              .then(() => toast(t("common.copied"), "ok"))
+              .catch((error: Error) => toast(errorMessage(error, t), "danger"));
           }}
         >
           <Copy aria-hidden /> {t("brain.copyPath")}

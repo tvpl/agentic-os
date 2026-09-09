@@ -377,6 +377,9 @@ function openFile(file: FileRow, keywords: string[], maxBytes: number): OpenedFi
   const sections = splitSections(content, md);
   let best: OpenedFile["best"] = null;
   sections.forEach((section, index) => {
+    // A matching title is navigation metadata, not usable answer context.
+    // Keep sections intact for pointers, but select excerpts with actual text.
+    if (!section.body.trim()) return;
     const s = scoreSection(section, keywords);
     if (!best || s.score > best.score) best = { section, score: s.score, matched: s.matched, index };
   });

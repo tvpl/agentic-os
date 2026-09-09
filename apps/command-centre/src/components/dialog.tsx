@@ -63,7 +63,11 @@ function syncInert() {
 
 export function focusables(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-    (el) => !el.hasAttribute("inert") && el.offsetParent !== null,
+    (el) =>
+      !el.closest("[inert]") &&
+      !el.matches(":disabled") &&
+      el.offsetParent !== null &&
+      getComputedStyle(el).visibility !== "hidden",
   );
 }
 
@@ -102,7 +106,7 @@ export function useDialog(
 
     const target =
       initialRef.current?.() ??
-      el.querySelector<HTMLElement>(FIELD) ??
+      focusables(el).find((candidate) => candidate.matches(FIELD)) ??
       focusables(el).find((f) => !f.hasAttribute("data-dialog-close")) ??
       el;
     const raf = requestAnimationFrame(() => target.focus({ preventScroll: true }));
@@ -133,10 +137,12 @@ export function useDialog(
         first.focus();
       }
     };
-    el.addEventListener("keydown", onKey);
+    // A focused control can be disabled or removed after an async action,
+    // returning focus to body. The top dialog still owns Escape and Tab.
+    document.addEventListener("keydown", onKey);
     return () => {
       cancelAnimationFrame(raf);
-      el.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey);
       const i = stack.lastIndexOf(entry);
       if (i >= 0) stack.splice(i, 1);
       syncInert();

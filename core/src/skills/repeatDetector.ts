@@ -172,6 +172,8 @@ export function repeatNotification(group: RepeatGroup, at = Date.now()): Notific
     kind: "system",
     tone: "info",
     title: "You did this twice — make it a skill?",
+    messageKey: "skill.repeat",
+    messageParams: { count: group.count },
     body: `${group.count}× "${promptHead(group.prompt)}"`,
     href: `/skills?new=1&prompt=${encodeURIComponent(promptHead(group.prompt, 500))}`,
     dedupeKey: repeatDedupeKey(group.hash, at),

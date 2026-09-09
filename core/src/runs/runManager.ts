@@ -9,7 +9,7 @@ import type { Settings, ProviderId, EffortLevel, SecurityProfile } from "../conf
 import type { AgentAdapter, AgentRun, RunEvent, RunMode, RunUsage, RunUsageEvent } from "../agents/types.js";
 import { JsonlLogger } from "../logs/jsonl.js";
 import { redactSecrets } from "../security/redact.js";
-import { killProcessGroup } from "../spawn/safeSpawn.js";
+import { ownedProcessKiller } from "../spawn/safeSpawn.js";
 import { events } from "../events.js";
 import { SessionStore } from "./sessionStore.js";
 import { emulatedPrompt } from "./emulatedSession.js";
@@ -157,6 +157,7 @@ const LIVE_STATUSES = "('queued','running','waiting_approval')";
 const WRITE_TOOLS = /^(write|edit|multiedit|notebookedit|create_file|apply_patch|str_replace)/i;
 
 interface ActiveRun {
+  forceKill?: (signal: NodeJS.Signals) => void;
   controller: AbortController;
   pid: number | null;
   promise: Promise<RunRecord>;
@@ -365,29 +366,27 @@ export class RunManager {
   // ------------------------------------------------------------- recovery --
 
   /**
-   * Mark runs orphaned by a crash/restart. If the recorded pid still points at
-   * a live provider process from the previous service instance, its process
-   * group gets SIGTERM before the row is marked `interrupted`.
+   * Mark runs orphaned by a crash/restart. A persisted PID is not a process
+   * identity: it may now belong to unrelated work. Only live handles owned by
+   * this manager are safe to cancel (see cancel/shutdown). Recovery records
+   * unverified live PIDs for inspection instead of signalling their group.
    */
   recoverInterrupted(): number {
     const rows = this.db
-      .prepare("SELECT id, pid, provider, error FROM runs WHERE status IN ('running', 'queued')")
-      .all() as Array<{ id: string; pid: number | null; provider: string; error: string | null }>;
+      .prepare("SELECT id, pid, error FROM runs WHERE status IN ('running', 'queued')")
+      .all() as Array<{ id: string; pid: number | null; error: string | null }>;
     let changed = 0;
     for (const row of rows) {
       if (this.activeRuns.has(row.id)) continue; // owned by this process
       let note = "Interrupted by service restart";
-      if (row.pid != null && isAlive(row.pid) && looksLikeProvider(row.pid, row.provider)) {
-        const signalled = killProcessGroup(row.pid, "SIGTERM");
-        note = signalled
-          ? `Interrupted by service restart; orphaned process ${row.pid} was sent SIGTERM`
-          : note;
-        this.log({ event: "orphan_terminated", runId: row.id, pid: row.pid, signalled });
+      if (row.pid != null && isAlive(row.pid)) {
+        note += `; process ${row.pid} was not signalled because ownership could not be verified`;
+        this.log({ event: "orphan_unverified", runId: row.id, pid: row.pid });
       }
       if (
         this.transition(row.id, ["running", "queued"], "interrupted", {
           finished_at: Date.now(),
-          error: row.error ?? note,
+          error: row.error ? `${row.error}; ${note}` : note,
         })
       ) {
         changed++;
@@ -498,10 +497,12 @@ export class RunManager {
     mode: RunMode,
     active: ActiveRun,
   ): Promise<RunRecord> {
-    await this.acquireSlot();
-    const startedAt = Date.now();
+    let acquired = false;
+    let startedAt = Date.now();
     const signal = active.controller.signal;
     try {
+      acquired = await this.acquireSlot(signal);
+      startedAt = Date.now();
       if (this.shuttingDown) active.shutdown = true;
       if (this.shuttingDown || signal.aborted) {
         this.settle(runId, ["queued"], active.shutdown ? "interrupted" : "cancelled", {
@@ -581,6 +582,7 @@ export class RunManager {
       for await (const event of adapter.execute(agentRun)) {
         if (event.type === "started") {
           active.pid = event.pid;
+          active.forceKill = event.pid == null ? undefined : ownedProcessKiller(event.pid);
           this.db.prepare("UPDATE runs SET pid = ? WHERE id = ?").run(event.pid, runId);
           events.emit("run.started", { runId, pid: event.pid });
         }
@@ -681,7 +683,7 @@ export class RunManager {
       this.persistEvent(runId, { type: "error", ts: Date.now(), message }, active);
       return this.get(runId)!;
     } finally {
-      this.releaseSlot();
+      if (acquired) this.releaseSlot();
     }
   }
 
@@ -833,7 +835,7 @@ export class RunManager {
     // Wake queued waiters so their run() settles as interrupted immediately.
     for (const wake of this.waiting.splice(0)) wake();
     const hardKill = setTimeout(() => {
-      for (const a of entries) if (a.pid != null) killProcessGroup(a.pid, "SIGKILL");
+      for (const a of entries) a.forceKill?.("SIGKILL");
     }, graceMs + 250);
     hardKill.unref();
     await Promise.allSettled(entries.map((a) => a.promise));
@@ -945,6 +947,9 @@ export class RunManager {
       limit?: number;
       offset?: number;
       status?: RunStatus;
+      statusGroup?: "active" | "failed";
+      provider?: ProviderId;
+      order?: "asc" | "desc";
       origin?: RunOrigin;
       parentRunId?: string;
       /** Only the runs of one conversation (newest first, like every other listing). */
@@ -955,6 +960,17 @@ export class RunManager {
   ): RunRecord[] {
     const clauses: string[] = [];
     const params: unknown[] = [];
+    if (opts.statusGroup) {
+      clauses.push(
+        opts.statusGroup === "active"
+          ? "status IN ('queued', 'running', 'waiting_approval')"
+          : "status IN ('failed', 'timed_out', 'interrupted')",
+      );
+    }
+    if (opts.provider) {
+      clauses.push("provider = ?");
+      params.push(opts.provider);
+    }
     if (opts.status) {
       clauses.push("status = ?");
       params.push(opts.status);
@@ -981,15 +997,35 @@ export class RunManager {
     }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const rows = this.db
-      .prepare(`SELECT * FROM runs ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+      .prepare(
+        `SELECT * FROM runs ${where} ORDER BY created_at ${opts.order === "asc" ? "ASC" : "DESC"}, id ${opts.order === "asc" ? "ASC" : "DESC"} LIMIT ? OFFSET ?`,
+      )
       .all(...params, opts.limit ?? 50, Math.max(0, opts.offset ?? 0)) as RawRun[];
     return rows.map(fromRow);
   }
 
   /** Total rows matching the same filters as `list()` (for pagination). */
-  count(opts: { status?: RunStatus; origin?: RunOrigin } = {}): number {
+  count(
+    opts: {
+      status?: RunStatus;
+      origin?: RunOrigin;
+      statusGroup?: "active" | "failed";
+      provider?: ProviderId;
+    } = {},
+  ): number {
     const clauses: string[] = [];
     const params: unknown[] = [];
+    if (opts.statusGroup) {
+      clauses.push(
+        opts.statusGroup === "active"
+          ? "status IN ('queued', 'running', 'waiting_approval')"
+          : "status IN ('failed', 'timed_out', 'interrupted')",
+      );
+    }
+    if (opts.provider) {
+      clauses.push("provider = ?");
+      params.push(opts.provider);
+    }
     if (opts.status) {
       clauses.push("status = ?");
       params.push(opts.status);
@@ -1078,6 +1114,37 @@ export class RunManager {
     return round6(row.usd ?? 0);
   }
 
+  /** Budget admission includes outstanding reservations, not only reported spend.
+   * Unknown terminal usage retains its cap for the day: unknown is not free.
+   * Called synchronously with create/claim by the single owning API process.
+   */
+  committedTodayUsd(
+    filter: { routineId?: string | null; skillSlug?: string | null },
+    now = Date.now(),
+  ): number {
+    const midnight = new Date(now);
+    midnight.setHours(0, 0, 0, 0);
+    const clauses = ["(created_at >= ? OR status IN ('queued', 'running', 'waiting_approval'))"];
+    const params: unknown[] = [midnight.getTime()];
+    if (filter.routineId) {
+      clauses.push("routine_id = ?");
+      params.push(filter.routineId);
+    }
+    if (filter.skillSlug) {
+      clauses.push("skill_slug = ?");
+      params.push(filter.skillSlug);
+    }
+    const row = this.db
+      .prepare(
+        `SELECT SUM(CASE
+      WHEN status IN ('queued', 'running', 'waiting_approval') THEN MAX(COALESCE(max_cost_usd, 0), COALESCE(cost_usd, 0))
+      WHEN started_at IS NOT NULL AND cost_usd IS NULL THEN COALESCE(max_cost_usd, 0)
+      ELSE COALESCE(cost_usd, 0) END) usd FROM runs WHERE ${clauses.join(" AND ")}`,
+      )
+      .get(...params) as { usd: number | null };
+    return round6(row.usd ?? 0);
+  }
+
   /** Attach (or clear) the spend cap of a run before it executes. */
   setMaxCostUsd(id: string, usd: number | null): void {
     this.db.prepare("UPDATE runs SET max_cost_usd = ? WHERE id = ?").run(usd, id);
@@ -1141,16 +1208,26 @@ export class RunManager {
    * of running over the new limit. Shutdown always wins, otherwise the
    * waiters it wakes could never settle.
    */
-  private async acquireSlot(): Promise<void> {
+  private async acquireSlot(signal: AbortSignal): Promise<boolean> {
     for (let attempt = 0; ; attempt++) {
-      if (this.shuttingDown || this.active < this.getSettings().limits.maxConcurrentRuns) {
+      if (signal.aborted || this.shuttingDown) return false;
+      if (this.active < this.getSettings().limits.maxConcurrentRuns) {
         this.active++;
-        return;
+        return true;
       }
       await new Promise<void>((resolve) => {
+        const wake = () => {
+          signal.removeEventListener("abort", wake);
+          const index = this.waiting.indexOf(wake);
+          if (index !== -1) this.waiting.splice(index, 1);
+          resolve();
+        };
+        // Cancellation removes this waiter without taking or freeing a slot.
+        signal.addEventListener("abort", wake, { once: true });
         // A retry keeps its place at the head of the queue (still FIFO).
-        if (attempt === 0) this.waiting.push(resolve);
-        else this.waiting.unshift(resolve);
+        if (attempt === 0) this.waiting.push(wake);
+        else this.waiting.unshift(wake);
+        if (signal.aborted) wake();
       });
     }
   }
@@ -1174,21 +1251,6 @@ function isAlive(pid: number): boolean {
     return true;
   } catch (err) {
     return (err as NodeJS.ErrnoException).code === "EPERM";
-  }
-}
-
-/**
- * Guard against pid reuse before signalling an orphan: on Linux the command
- * line must mention a provider binary (or node, which hosts the CLIs). Where
- * /proc is unavailable we trust the recorded pid.
- */
-function looksLikeProvider(pid: number, provider: string): boolean {
-  if (process.platform !== "linux") return true;
-  try {
-    const cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(/\0/g, " ");
-    return [provider, "claude", "cursor-agent", "codex", "node"].some((n) => cmdline.includes(n));
-  } catch {
-    return true;
   }
 }
 

@@ -28,6 +28,7 @@ import { useDialogDepth, usePresence } from "./components/dialog";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { EmptyState } from "./components/primitives";
 import { CommandPalette, TOGGLE_EDIT_EVENT, type PaletteOpenDetail } from "./components/CommandPalette";
+import { WorkspaceDock, WorkspaceProvider } from "./components/Workspace";
 import { ShortcutsHelp } from "./components/ShortcutsHelp";
 import { ConfirmProvider } from "./hooks/useConfirm";
 import { useEventStream } from "./hooks/useEventStream";
@@ -171,12 +172,15 @@ function AppInner() {
       <ToastProvider>
         <ConfirmProvider>
           <NotificationsProvider>
-            <HashRouter>
+            {/* Route changes are urgent; animation is handled by useOsNavigate. */}
+            <HashRouter useTransitions={false}>
               {needsPairing() ? (
                 <PairingScreen meta={meta} />
               ) : meta.setupCompleted ? (
                 <>
-                  <OsShell meta={meta} onMetaChanged={loadMeta} />
+                  <WorkspaceProvider>
+                    <OsShell meta={meta} onMetaChanged={loadMeta} />
+                  </WorkspaceProvider>
                   <BootSequence meta={meta} />
                 </>
               ) : (
@@ -530,6 +534,7 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
         <span className="hud-bracket bl" />
         <span className="hud-bracket br" />
       </div>
+      <WorkspaceDock />
       <MobileNav onMenu={() => openPalette()} />
     </div>
   );

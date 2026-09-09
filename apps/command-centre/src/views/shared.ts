@@ -1,7 +1,15 @@
 /** Small helpers shared by the F4 views (Skills, Routines, Settings, Connectors, Setup, Pixel Studio). */
 import { ApiError } from "../api";
 
-export function errorMessage(err: unknown): string {
+export function errorMessage(
+  err: unknown,
+  translate?: (key: "brain.indexUnavailable" | "brain.sourceMissing") => string,
+): string {
+  if (err instanceof ApiError && err.code === "index_scan_incomplete" && translate) {
+    return translate("brain.indexUnavailable");
+  }
+  if (err instanceof ApiError && err.code === "source_missing" && translate)
+    return translate("brain.sourceMissing");
   if (err instanceof Error) return err.message;
   return String(err);
 }

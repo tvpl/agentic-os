@@ -1,4 +1,5 @@
 import path from "node:path";
+import { createHash } from "node:crypto";
 import {
   events,
   resolveInsideRoots,
@@ -162,7 +163,10 @@ function claimRun(
   fields: Omit<CreateRunInput, "profile">,
   profile: SecurityProfile,
 ): string {
-  if (approvedRunId && ctx.runs.markApproved(approvedRunId)) return approvedRunId;
+  if (approvedRunId && ctx.runs.markApproved(approvedRunId)) {
+    ctx.runs.setMaxCostUsd(approvedRunId, fields.maxCostUsd ?? null);
+    return approvedRunId;
+  }
   return ctx.runs.create({ ...fields, profile }).id;
 }
 
@@ -194,11 +198,11 @@ export function launchSkillRun(
   // Per-skill daily budget (follow-up 7): refused when exhausted, otherwise the remainder caps the run.
   let maxCostUsd: number | null = null;
   if (skill.budgetUsd > 0) {
-    const spent = ctx.runs.spentTodayUsd({ skillSlug: skill.slug });
+    const spent = ctx.runs.committedTodayUsd({ skillSlug: skill.slug });
     if (spent >= skill.budgetUsd)
       throw httpError(
         409,
-        `Daily budget of US$ ${skill.budgetUsd.toFixed(2)} for /${skill.slug} exhausted (spent US$ ${spent.toFixed(2)} today).`,
+        `Daily budget of US$ ${skill.budgetUsd.toFixed(2)} for /${skill.slug} exhausted (spent or reserved US$ ${spent.toFixed(2)} today).`,
         "budget_exhausted",
       );
     maxCostUsd = skill.budgetUsd - spent;
@@ -229,6 +233,7 @@ export function ensureSession(ctx: AppContext, input: PromptRunInput): string {
 
 /** Body accepted by `POST /api/runs` and `POST /api/sessions/:id/continue`. */
 export interface PromptRunRequest {
+  submissionId?: string;
   prompt: string;
   provider?: ProviderId;
   model?: string | null;
@@ -259,6 +264,50 @@ export interface PromptRunResponse {
  * then launch. 202 + `waiting_approval` when the profile wants a human first.
  */
 export function submitPromptRun(
+  ctx: AppContext,
+  body: PromptRunRequest,
+  onError: (err: unknown, runId: string) => void,
+): PromptRunResponse {
+  if (!body.submissionId) return createPromptSubmission(ctx, body, onError);
+  const { submissionId, ...payload } = body;
+  const hash = createHash("sha256")
+    .update(JSON.stringify(payload, Object.keys(payload).sort()))
+    .digest("hex");
+  const receipt = ctx.db
+    .prepare("SELECT request_hash, response FROM prompt_submissions WHERE id = ?")
+    .get(submissionId) as { request_hash: string; response: string | null } | undefined;
+  if (receipt) {
+    if (receipt.request_hash !== hash)
+      throw httpError(409, "Submission identity was reused with different content.", "submission_conflict");
+    if (!receipt.response)
+      throw httpError(
+        409,
+        "This submission has an uncertain result. Check execution history before submitting again.",
+        "submission_uncertain",
+      );
+    return JSON.parse(receipt.response) as PromptRunResponse;
+  }
+  // Reserve durably before creating any run. A crash between reservation and
+  // receipt refuses replay rather than risking a second external side effect.
+  ctx.db
+    .prepare("INSERT INTO prompt_submissions(id, request_hash, created_at) VALUES (?, ?, ?)")
+    .run(submissionId, hash, Date.now());
+  let result: PromptRunResponse;
+  try {
+    result = createPromptSubmission(ctx, payload, onError);
+  } catch (error) {
+    ctx.db.prepare("DELETE FROM prompt_submissions WHERE id = ?").run(submissionId);
+    throw error;
+  }
+  // Deliberately outside the catch: failure to write the receipt is uncertain,
+  // and must never release the reservation of a run already dispatched.
+  ctx.db
+    .prepare("UPDATE prompt_submissions SET response = ? WHERE id = ?")
+    .run(JSON.stringify(result), submissionId);
+  return result;
+}
+
+function createPromptSubmission(
   ctx: AppContext,
   body: PromptRunRequest,
   onError: (err: unknown, runId: string) => void,

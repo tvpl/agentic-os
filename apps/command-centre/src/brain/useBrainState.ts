@@ -7,8 +7,17 @@
  * The view (`views/SecondBrain.tsx`) stays a thin container: it owns the
  * queries, the selection/preview, the canvas handlers and the layout.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
 import { useSearchParams } from "react-router-dom";
+import { loadBrainNavigation, saveBrainNavigation } from "./navigationSnapshot";
 import { createForceEngine } from "./engine/force";
 import {
   api,
@@ -99,40 +108,64 @@ export function workspaceOf(w: World): WorkspaceState {
 export function useBrainState(src: BrainStateSources): BrainState {
   const { graph, skills, routines, connectors, ringLabels, timeline, serverBlob, dirty } = src;
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [navigation] = useState(() => (searchParams.size === 0 ? loadBrainNavigation() : null));
   const [boot] = useState<BrainSettings>(() => ({ ...DEFAULT_SETTINGS, ...loadLocalSettings() }));
-  const [world] = useState<MutableRefObject<World>>(() => ({ current: createWorld(boot) }));
-  const [ui, setUi] = useState<BrainUi>(() => defaultUi(boot));
+  const [world] = useState<MutableRefObject<World>>(() => {
+    const current = createWorld(boot);
+    if (navigation) {
+      current.target = { ...navigation.camera };
+      current.transform = { ...navigation.camera };
+    }
+    return { current };
+  });
+  const [ui, setUi] = useState<BrainUi>(() =>
+    uiFromParams(navigation ? new URLSearchParams(navigation.params) : searchParams, defaultUi(boot)),
+  );
   const uiRef = useRef(ui);
   uiRef.current = ui;
-  const patch = useCallback((p: Partial<BrainUi>) => setUi((cur) => ({ ...cur, ...p })), []);
+  const pushHistory = useRef(false);
+  const patch = useCallback((p: Partial<BrainUi>) => {
+    if (p.sel !== undefined && p.sel !== uiRef.current.sel) pushHistory.current = true;
+    setUi((cur) => ({ ...cur, ...p }));
+  }, []);
   const [version, setVersion] = useState(0);
 
+  useEffect(() => {
+    const save = () => saveBrainNavigation(new URLSearchParams(paramStamp.current), world.current.target);
+    window.addEventListener("pagehide", save);
+    return () => {
+      save();
+      window.removeEventListener("pagehide", save);
+    };
+  }, [world]);
+
   /* ---------- URL ⇄ state ---------- */
-  const [searchParams, setSearchParams] = useSearchParams();
   const lockedKeys = useRef<Set<keyof BrainSettings> | null>(null);
-  lockedKeys.current ??= urlControlledKeys(searchParams);
+  lockedKeys.current ??= urlControlledKeys(
+    navigation ? new URLSearchParams(navigation.params) : searchParams,
+  );
   const focusRef = useRef(searchParams.has("sel"));
-  const paramStamp = useRef("");
+  const paramStamp = useRef(searchParams.toString());
 
-  useEffect(() => {
+  // A single synchronisation effect prevents an incoming Back/Forward URL
+  // from being overwritten by the previous render's UI state.
+  useLayoutEffect(() => {
     const stamp = searchParams.toString();
-    if (stamp === paramStamp.current) return;
-    paramStamp.current = stamp;
-    // A selection that arrives through the URL (command palette, shared link)
-    // is framed by the camera; one made on the canvas is not.
-    const sel = searchParams.get("sel");
-    if (sel !== null && sel !== String(uiRef.current.sel)) focusRef.current = true;
-    setUi((cur) => uiFromParams(searchParams, cur));
-  }, [searchParams]);
-
-  useEffect(() => {
-    const next = paramsFromUi(ui);
-    if (sameParams(next, searchParams)) {
-      paramStamp.current = searchParams.toString();
+    if (stamp !== paramStamp.current) {
+      paramStamp.current = stamp;
+      pushHistory.current = false;
+      const sel = searchParams.get("sel");
+      if (sel !== null && sel !== String(uiRef.current.sel)) focusRef.current = true;
+      setUi((cur) => uiFromParams(searchParams, defaultUi(settingsFromUi(cur))));
       return;
     }
+    const next = paramsFromUi(ui);
+    if (sameParams(next, searchParams)) return;
     paramStamp.current = next.toString();
-    setSearchParams(next, { replace: true });
+    const replace = !pushHistory.current;
+    pushHistory.current = false;
+    setSearchParams(next, { replace });
   }, [ui, searchParams, setSearchParams]);
 
   /* ---------- persistence: localStorage always, server on demand ---------- */

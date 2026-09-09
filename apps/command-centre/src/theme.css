@@ -166,9 +166,9 @@
   --text: #201c14;
   --text-dim: #5d564a;
   --text-faint: #6f6757; /* 5.05:1 on --bg */
-  --ok: #15803d;
+  --ok: #166534;
   --ok-bg: rgba(21, 128, 61, 0.09);
-  --warn: #a16207;
+  --warn: #854d0e;
   --warn-bg: rgba(161, 98, 7, 0.09);
   --danger: #b91c1c;
   --danger-bg: rgba(185, 28, 28, 0.08);
@@ -214,6 +214,7 @@
   --display-weight: 800;
 }
 [data-theme="light"][data-preset="jarvis"] {
+  --warn: #854d0e;
   --bg: #eef3f8;
   --bg-raise: #fafcfe;
   --bg-raise-2: #e2eaf2;
@@ -1538,7 +1539,10 @@ canvas.dimmed {
 }
 .edit-bar {
   position: absolute;
-  bottom: 18px;
+  bottom: 100px;
+  width: min(960px, calc(100% - 32px));
+  max-height: calc(100% - 196px);
+  overflow-y: auto;
   left: 50%;
   transform: translateX(-50%);
   z-index: var(--z-chrome);
@@ -2191,6 +2195,10 @@ textarea.input {
   color: var(--text-faint);
   font-size: var(--fs-2);
 }
+.modal .hint,
+.modal .modal-hint {
+  color: var(--text-dim);
+}
 .req {
   color: var(--danger);
   font-weight: 800;
@@ -2198,9 +2206,39 @@ textarea.input {
 }
 .modal-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--s-2);
   margin-top: var(--s-4);
+}
+@media (max-width: 760px), (max-height: 600px) {
+  .modal-backdrop {
+    padding: 12px;
+  }
+  .modal {
+    max-height: calc(100dvh - 24px);
+    padding: 16px;
+  }
+  .modal-head {
+    position: sticky;
+    top: -16px;
+    z-index: 2;
+    background: var(--bg-raise);
+    padding-top: 8px;
+  }
+  .modal-head h2 {
+    overflow-wrap: anywhere;
+  }
+  .modal-head > button {
+    flex-shrink: 0;
+  }
+  .modal-actions {
+    position: sticky;
+    bottom: -16px;
+    background: var(--bg-raise);
+    padding: 12px 0;
+    z-index: 2;
+  }
 }
 
 /* toasts */

@@ -34,6 +34,8 @@ export interface NotificationRecord {
   id: string;
   kind: NotificationKind;
   tone: NotificationTone | null;
+  messageKey?: string | null;
+  messageParams?: Record<string, string | number | boolean> | null;
   title: string;
   body: string | null;
   href: string | null;
@@ -48,6 +50,8 @@ export interface NotificationRecord {
 export interface NotificationInput {
   kind: NotificationKind;
   tone?: NotificationTone | null;
+  messageKey?: string | null;
+  messageParams?: Record<string, string | number | boolean> | null;
   title: string;
   body?: string | null;
   href?: string | null;
@@ -87,8 +91,8 @@ export class NotificationStore {
     const id = `n_${crypto.randomUUID()}`;
     this.db
       .prepare(
-        `INSERT INTO notifications (id, kind, tone, title, body, href, approval_id, run_id, ts, read, dedupe_key)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO notifications (id, kind, tone, title, body, href, approval_id, run_id, ts, read, dedupe_key, message_key, message_params)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -102,6 +106,19 @@ export class NotificationStore {
         ts,
         input.read ? 1 : 0,
         dedupeKey,
+        clamp(input.messageKey, 100),
+        input.messageParams
+          ? JSON.stringify(
+              Object.fromEntries(
+                Object.entries(input.messageParams)
+                  .slice(0, 20)
+                  .map(([key, value]) => [
+                    key,
+                    typeof value === "string" ? (clamp(value, BODY_MAX) ?? "") : value,
+                  ]),
+              ),
+            )
+          : null,
       );
     const record = this.get(id);
     if (!record) throw new Error("notification insert failed");
@@ -132,11 +149,15 @@ export class NotificationStore {
       for (const id of list) updated += stmt.run(id).changes;
       return updated;
     });
-    return tx(ids) as number;
+    const updated = tx(ids) as number;
+    if (updated) events.emit("notification.read", { ids });
+    return updated;
   }
 
   markAllRead(): number {
-    return this.db.prepare("UPDATE notifications SET read = 1 WHERE read = 0").run().changes;
+    const updated = this.db.prepare("UPDATE notifications SET read = 1 WHERE read = 0").run().changes;
+    if (updated) events.emit("notification.read", { all: true });
+    return updated;
   }
 
   unreadCount(): number {
@@ -180,6 +201,8 @@ function clamp(raw: string | null | undefined, max: number): string | null {
 }
 
 interface RawRow {
+  message_key: string | null;
+  message_params: string | null;
   id: string;
   kind: string;
   tone: string | null;
@@ -199,6 +222,8 @@ function fromRow(row: RawRow): NotificationRecord {
     kind: row.kind as NotificationKind,
     tone: (row.tone as NotificationTone | null) ?? null,
     title: row.title,
+    messageKey: row.message_key ?? null,
+    messageParams: readMessageParams(row.message_params),
     body: row.body,
     href: row.href,
     approvalId: row.approval_id,
@@ -207,4 +232,22 @@ function fromRow(row: RawRow): NotificationRecord {
     read: row.read !== 0,
     dedupeKey: row.dedupe_key,
   };
+}
+
+function readMessageParams(raw: string | null): Record<string, string | number | boolean> | null {
+  if (!raw) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    return Object.fromEntries(
+      Object.entries(value).filter(
+        ([, item]) =>
+          typeof item === "string" ||
+          typeof item === "boolean" ||
+          (typeof item === "number" && Number.isFinite(item)),
+      ),
+    );
+  } catch {
+    return null;
+  }
 }

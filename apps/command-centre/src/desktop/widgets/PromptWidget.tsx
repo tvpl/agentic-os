@@ -1,3 +1,4 @@
+import { loadPromptSubmission, savePromptSubmission } from "../promptSubmission";
 /**
  * The Console (plan Onda 1 §4): the desktop prompt became a conversation.
  * Every submit continues the same session — the server resumes the
@@ -28,11 +29,13 @@ import { qk, useOsProviders, useOsSettings, useOsSkills } from "../../queries";
 import { Button, Segmented } from "../../components/primitives";
 import { formatDuration, useToast } from "../../components/ui";
 import { useRunStream, type RunDetailPayload, type RunEventView } from "../../runs/useRunStream";
-import { ToolApprovalCard, useApprovals } from "../../runs/Approvals";
+import { ToolApprovalCard, useApprovals } from "../../runs/ApprovalCards";
 import { toolApprovalsForRun } from "../../runs/approvals";
+import { authRecovery } from "../../runs/authRecovery";
 import { useDesktopActions } from "../actions";
 import { isActiveStatus } from "../data";
 import { cfgString, type WidgetProps } from "../widgetTypes";
+import { readConsoleDraft, storeConsoleDraft } from "../consoleDraft";
 
 type Mode = "read_only" | "write";
 
@@ -117,12 +120,15 @@ export default function PromptWidget({ config }: WidgetProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
 
-  const [prompt, setPrompt] = useState("");
+  const [initialDraft] = useState(readConsoleDraft);
+  const [prompt, setPrompt] = useState(initialDraft.text);
   const [mode, setMode] = useState<Mode>(
     cfgString(config, "mode", "read_only") === "write" ? "write" : "read_only",
   );
-  const [cwd, setCwd] = useState("");
-  const [sessionId, setSessionIdState] = useState<string | null>(readStoredSession);
+  const [cwd, setCwd] = useState(initialDraft.cwd);
+  const [sessionId, setSessionIdState] = useState<string | null>(() =>
+    initialDraft.sessionId === undefined ? readStoredSession() : initialDraft.sessionId,
+  );
   const setSessionId = (id: string | null) => {
     setSessionIdState(id);
     storeSession(id);
@@ -169,6 +175,9 @@ export default function PromptWidget({ config }: WidgetProps) {
     retry: false,
     refetchInterval: (q) => (q.state.data?.runs.some((r) => isActiveStatus(r.status)) ? 20_000 : false),
   });
+  useEffect(() => {
+    storeConsoleDraft({ text: prompt, cwd: session.data?.session.cwd ?? cwd, sessionId });
+  }, [prompt, cwd, sessionId, session.data?.session.cwd]);
   // A session the server no longer knows (older server, pruned, deleted) is dropped quietly.
   useEffect(() => {
     if (session.error instanceof ApiError && (session.error.status === 404 || session.error.status === 400))
@@ -212,22 +221,33 @@ export default function PromptWidget({ config }: WidgetProps) {
   }, [turns.length, live.text, live.tools]);
 
   /* ---- mutations -------------------------------------------------------- */
+  const submission = useRef(loadPromptSubmission());
+  const submitting = useRef(false);
   const launch = useMutation({
     mutationFn: (): Promise<LaunchRunResponse> => {
       const text = prompt.trim();
+      const fingerprint = JSON.stringify({ text, mode, sessionId, cwd, defaultProvider });
+      if (submission.current?.fingerprint !== fingerprint)
+        submission.current = { fingerprint, id: crypto.randomUUID() };
+      savePromptSubmission(submission.current);
+      const submissionId = submission.current.id;
       if (sessionId)
         return api.post<LaunchRunResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/continue`, {
           prompt: text,
+          submissionId,
           mode,
         });
       return api.post<LaunchRunResponse>("/api/runs", {
         prompt: text,
+        submissionId,
         mode,
         ...(cwd ? { cwd } : {}),
         ...(defaultProvider ? { provider: defaultProvider as ProviderId } : {}),
       });
     },
     onSuccess: (res) => {
+      submission.current = null;
+      savePromptSubmission(null);
       qc.invalidateQueries({ queryKey: ["runs"] }).catch(() => undefined);
       qc.invalidateQueries({ queryKey: ["sessions"] }).catch(() => undefined);
       if (res.sessionId && res.sessionId !== sessionId) setSessionId(res.sessionId);
@@ -240,7 +260,18 @@ export default function PromptWidget({ config }: WidgetProps) {
       setPrompt("");
       setPendingApproval(null);
     },
-    onError: (err: Error) => toast(err.message, "danger"),
+    onError: (err: Error) =>
+      toast(
+        err instanceof ApiError && err.code === "submission_uncertain"
+          ? t("desktop.prompt.submissionUncertain")
+          : err instanceof ApiError && err.code === "submission_conflict"
+            ? t("desktop.prompt.submissionConflict")
+            : err.message,
+        "danger",
+      ),
+    onSettled: () => {
+      submitting.current = false;
+    },
   });
 
   const resolve = useMutation({
@@ -266,10 +297,18 @@ export default function PromptWidget({ config }: WidgetProps) {
     onError: (err: Error) => toast(err.message, "danger"),
   });
 
-  const canRun = prompt.trim().length > 0 && !launch.isPending && enabled.length > 0 && !active;
+  const cwdUnavailable =
+    sessionId === null && cwd !== "" && (!settings.data || !folders.some((folder) => folder.path === cwd));
+  const canRun =
+    prompt.trim().length > 0 &&
+    !launch.isPending &&
+    enabled.length > 0 &&
+    !active &&
+    !cwdUnavailable &&
+    (!sessionId || (!session.isPending && !session.error));
 
   const submit = () => {
-    if (!canRun) return;
+    if (!canRun || submitting.current) return;
     // A bare "/slug" runs the skill itself rather than sending the text.
     const bare = /^\/([a-z0-9-]+)$/i.exec(prompt.trim());
     const skill = bare
@@ -280,6 +319,7 @@ export default function PromptWidget({ config }: WidgetProps) {
       actions.runSkill(skill);
       return;
     }
+    submitting.current = true;
     launch.mutate();
   };
 
@@ -292,6 +332,11 @@ export default function PromptWidget({ config }: WidgetProps) {
 
   return (
     <div className="promptw console">
+      {cwdUnavailable && settings.data && (
+        <p role="status" className="dim">
+          {t("desktop.prompt.cwdUnavailable")}
+        </p>
+      )}
       <div className="console-thread" ref={threadRef} aria-live="polite">
         {!hasThread && <p className="console-empty">{t("desktop.console.empty")}</p>}
         {turns.map((run) => (
@@ -396,6 +441,11 @@ export default function PromptWidget({ config }: WidgetProps) {
             aria-label={t("desktop.prompt.cwd")}
           >
             <option value="">{t("desktop.prompt.cwdHome")}</option>
+            {cwdUnavailable && (
+              <option value={cwd} disabled>
+                {cwd}
+              </option>
+            )}
             {folders.map((f) => (
               <option key={f.path} value={f.path}>
                 {f.label}
@@ -472,6 +522,7 @@ function Turn({
   const t = useT();
   const locale = useLocale();
   const cost = run.usage?.costUsd;
+  const recovery = authRecovery(run.provider, `${run.error ?? ""} ${reply?.text ?? ""}`);
   const failed = run.status === "failed" || run.status === "timed_out" || run.status === "interrupted";
   return (
     <div className={`console-turn${streaming ? " streaming" : ""}${failed ? " failed" : ""}`}>
@@ -490,6 +541,15 @@ function Turn({
           </p>
         ) : (
           <p className="console-muted">{run.error ?? t("desktop.console.noReply")}</p>
+        )}
+        {recovery && (
+          <div className="auth-recovery" role="alert">
+            <strong>{t("desktop.auth.title")}</strong>
+            <p>{t("desktop.auth.body", { command: recovery })}</p>
+            <code>{recovery}</code>
+            {" · "}
+            <Link to="/settings?tab=providers">{t("desktop.auth.settings")}</Link>
+          </div>
         )}
         <div className="console-foot mono">
           {reply && reply.tools > 0 && <span>{t("desktop.console.tools", { n: reply.tools })}</span>}

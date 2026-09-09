@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -51,6 +51,52 @@ afterEach(() => {
 });
 
 describe("memory indexer", () => {
+  it("preserves the previous snapshot when directory enumeration fails", async () => {
+    const indexer = new MemoryIndexer(db, () => store.load());
+    indexer.indexAll();
+    const before = db.prepare("SELECT * FROM files ORDER BY id").all();
+    const lastIndex = indexer.lastIndex();
+    const scan = vi.spyOn(fs, "readdirSync").mockImplementation(() => {
+      throw Object.assign(new Error("fixture permission denied"), { code: "EACCES" });
+    });
+    const terminal: unknown[] = [];
+    const unsubscribe = events.subscribe((event) => {
+      if (event.type === "index.failed" || event.type === "index.finished") terminal.push(event);
+    });
+    try {
+      await expect(indexer.indexAllAsync()).rejects.toThrow(/scan incomplete/i);
+      expect(terminal).toEqual([
+        expect.objectContaining({
+          type: "index.failed",
+          payload: { code: "index_scan_incomplete", previousIndexPreserved: true },
+        }),
+      ]);
+      expect(db.prepare("SELECT * FROM files ORDER BY id").all()).toEqual(before);
+      expect(indexer.lastIndex()).toEqual(lastIndex);
+      expect(indexer.isIndexing()).toBe(false);
+    } finally {
+      unsubscribe();
+      scan.mockRestore();
+    }
+    expect((await indexer.indexAllAsync()).removed).toBe(0);
+  });
+
+  it("does not mistake an unavailable configured root for intentionally removed files", () => {
+    const indexer = new MemoryIndexer(db, () => store.load());
+    indexer.indexAll();
+    const detached = workspace + "-detached";
+    fs.renameSync(workspace, detached);
+    try {
+      expect(() => indexer.indexAll()).toThrow(/scan incomplete/i);
+      expect((db.prepare("SELECT COUNT(*) AS n FROM files").get() as { n: number }).n).toBe(2);
+      // Removing the root from configuration remains an intentional purge.
+      store.update({ indexedFolders: [] });
+      expect(indexer.indexAll().removed).toBe(2);
+    } finally {
+      fs.renameSync(detached, workspace);
+    }
+  });
+
   it("indexes real files, honours exclusions and never reads secrets", () => {
     const indexer = new MemoryIndexer(db, () => store.load());
     const stats = indexer.indexAll();

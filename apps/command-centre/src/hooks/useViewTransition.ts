@@ -63,6 +63,8 @@ export function withViewTransition(update: () => void, opts: TransitionOptions =
   };
   try {
     const vt = doc.startViewTransition(update);
+    // Duplicate morph names can reject ready even though the DOM update succeeds.
+    void vt.ready.catch(() => undefined);
     return vt.finished.then(cleanup, cleanup);
   } catch {
     cleanup();

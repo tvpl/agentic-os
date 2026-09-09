@@ -93,11 +93,12 @@ export class CursorAdapter implements AgentAdapter {
       // `cursor-agent status` prints login state without exposing tokens.
       const res = await probe(binaryPath, ["status"], os.tmpdir());
       const out = (res.stdout + res.stderr).toLowerCase();
-      if (res.exitCode === 0 && /logged in|authenticated/.test(out)) {
-        return { authenticated: true, method: "session", detail: "cursor-agent reports an active login." };
-      }
-      if (/not logged in|unauthenticated|login required/.test(out)) {
+      // Negated status contains the positive substring: inspect it first.
+      if (/not logged in|unauthenticated|not authenticated|login required/.test(out)) {
         return { authenticated: false, method: null, detail: "Not logged in. Run `cursor-agent login`." };
+      }
+      if (res.exitCode === 0 && /\blogged in\b|\bauthenticated\b/.test(out)) {
+        return { authenticated: true, method: "session", detail: "cursor-agent reports an active login." };
       }
       return {
         authenticated: "unknown",
@@ -181,7 +182,7 @@ export class CursorAdapter implements AgentAdapter {
       ? await this.authenticate()
       : { authenticated: false as const, method: null, detail: "not installed" };
     return {
-      ok: detection.installed && auth.authenticated !== false,
+      ok: detection.installed && auth.authenticated === true,
       installed: detection.installed,
       authenticated: auth.authenticated,
       version: detection.version,

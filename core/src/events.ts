@@ -17,6 +17,7 @@ export type OsEventType =
   | "routine.changed"
   | "index.progress"
   | "index.finished"
+  | "index.failed"
   | "approval.requested"
   | "approval.resolved"
   | "approval.expired"
@@ -26,6 +27,7 @@ export type OsEventType =
   | "backup.created"
   /** A row was appended to the persisted inbox (payload: the notification). */
   | "notification.created"
+  | "notification.read"
   /** Today's spend passed a share of `settings.limits.dailyBudgetUsd`. */
   | "budget.crossed"
   /**
@@ -50,20 +52,30 @@ export class EventBus {
   private listeners = new Set<OsEventListener>();
   private seq = 0;
   private readonly ring: OsEvent[] = [];
+  private readonly pending: OsEvent[] = [];
+  private dispatching = false;
   constructor(private readonly ringSize = 500) {}
 
   emit<T>(type: OsEventType, payload: T): OsEvent<T> {
     const event: OsEvent<T> = { id: ++this.seq, type, ts: Date.now(), payload };
     this.ring.push(event);
     if (this.ring.length > this.ringSize) this.ring.shift();
-    for (const fn of this.listeners) {
-      try {
-        fn(event);
-      } catch (err) {
-        // A misbehaving listener must never break the emitter.
-
-        console.error("[events] listener threw", err);
+    this.pending.push(event);
+    if (this.dispatching) return event;
+    this.dispatching = true;
+    try {
+      while (this.pending.length) {
+        const next = this.pending.shift()!;
+        for (const fn of this.listeners) {
+          try {
+            fn(next);
+          } catch (err) {
+            console.error("[events] listener threw", err);
+          }
+        }
       }
+    } finally {
+      this.dispatching = false;
     }
     return event;
   }

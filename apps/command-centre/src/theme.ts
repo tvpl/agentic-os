@@ -143,7 +143,7 @@ export function applyAccentTokens(accent: string, theme: ThemeMode = currentThem
   const ground = bg ?? getPreset(document.documentElement.dataset.preset).bg[theme];
   root.setProperty("--accent", valid);
   root.setProperty("--accent-contrast", accentContrast(valid));
-  root.setProperty("--accent-text", ensureContrast(valid, ground, 4.5));
+  root.setProperty("--accent-text", ensureContrast(valid, ground, theme === "light" ? 5.5 : 4.5));
 }
 
 export interface ApplyPresetOptions {

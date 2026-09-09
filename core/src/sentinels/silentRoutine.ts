@@ -104,6 +104,13 @@ export function silentRoutineAlerts(
     const reason = reasons.get(c.id);
     out.push({
       sentinel: "silentRoutine",
+      messageParams: {
+        name: c.name,
+        hours,
+        interval: formatMs(c.expectedIntervalMs),
+        neverRun: c.lastFiredAt === null,
+        failed: reason === "failures",
+      },
       title: `Routine "${c.name}" went quiet`,
       body:
         c.lastFiredAt === null

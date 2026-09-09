@@ -1,3 +1,4 @@
+import { errorMessage } from "../views/shared";
 /**
  * Command palette (analysis item 20): the launcher grown into a cmdk-like
  * surface without dependencies. Sections: Apps (tiles when the query is
@@ -188,7 +189,7 @@ export function CommandPalette({
         toast(
           t("shell.action.failed", {
             action: label,
-            error: err instanceof Error ? err.message : String(err),
+            error: errorMessage(err, t),
           }),
           "danger",
         );

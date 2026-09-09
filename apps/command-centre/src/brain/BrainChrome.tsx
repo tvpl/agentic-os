@@ -3,7 +3,7 @@
  * indexing progress, the zoom stack, the legend (groups, rings and edge-kind
  * toggles), the layout pill and the hover tooltip. Presentational only.
  */
-import { type CSSProperties } from "react";
+import { type CSSProperties, type ReactNode } from "react";
 import { ArrowLeft, Diamond, Maximize2, Menu, Minus, Plus, RefreshCw, Scan, Tv, X, Zap } from "lucide-react";
 import type { IndexProgressPayload } from "../api";
 import { LAUNCHER_EVENT } from "../App";
@@ -35,6 +35,7 @@ export interface BrainChromeProps {
   onRefresh: () => void;
   liveCount: number;
   onNavigate: (to: string) => void;
+  zoomReadout?: ReactNode;
   zoom: { in: () => void; out: () => void; fit: () => void; reset: () => void };
   legend: Array<{ key: string; count: number; color: string }>;
   legendOpen: boolean;
@@ -149,6 +150,7 @@ export function BrainChrome(p: BrainChromeProps) {
 
       {!presenting && (
         <div className="zoom-stack">
+          {p.zoomReadout}
           <button
             className="os-tool"
             onClick={p.zoom.in}
@@ -176,8 +178,8 @@ export function BrainChrome(p: BrainChromeProps) {
           <button
             className="os-tool"
             onClick={p.zoom.reset}
-            aria-label={t("brain.reset")}
-            title={`${t("brain.reset")} (⌘0)`}
+            aria-label={t("brain.resetCamera")}
+            title={`${t("brain.resetCamera")} (⌘0)`}
           >
             <Scan aria-hidden />
           </button>

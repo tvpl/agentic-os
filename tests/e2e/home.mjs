@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 
 export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const E2E_HOME = path.join(REPO_ROOT, "tests", ".tmp", "e2e-home");
-export const E2E_PORT = 4777;
+export const E2E_PORT = Number(process.env.MORDOMO_E2E_PORT ?? 4788);
 export const FAKE_BIN = path.join(REPO_ROOT, "tests", "fixtures", "fake-bin");
 export const CLI = path.join(REPO_ROOT, "apps", "api", "dist", "cli.js");
 

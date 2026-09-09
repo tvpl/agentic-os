@@ -115,12 +115,14 @@ export class SessionStore {
     }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const rows = this.db
-      .prepare(`SELECT * FROM sessions ${where} ORDER BY updated_at DESC, created_at DESC LIMIT ? OFFSET ?`)
+      .prepare(
+        `SELECT * FROM sessions ${where} ORDER BY updated_at DESC, created_at DESC, rowid DESC LIMIT ? OFFSET ?`,
+      )
       .all(...params, opts.limit ?? 50, Math.max(0, opts.offset ?? 0)) as RawSession[];
     const counts = this.db.prepare("SELECT COUNT(*) c FROM runs WHERE session_id = ?");
     const lastRun = this.db.prepare(
       `SELECT id, status, created_at, finished_at, duration_ms, model, prompt_summary
-       FROM runs WHERE session_id = ? ORDER BY created_at DESC LIMIT 1`,
+       FROM runs WHERE session_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     );
     return rows.map((row) => {
       const record = fromRow(row);

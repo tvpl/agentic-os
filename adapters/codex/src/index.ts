@@ -98,10 +98,18 @@ export class CodexAdapter implements AgentAdapter {
   async authenticate(): Promise<AuthStatus> {
     const home = this.opts.homeDir ?? os.homedir();
     if (fs.existsSync(path.join(home, ".codex", "auth.json"))) {
-      return { authenticated: true, method: "session", detail: "Codex auth.json is present." };
+      return {
+        authenticated: "unknown",
+        method: "session",
+        detail: "Codex credentials are present; session validity has not been verified.",
+      };
     }
     if (process.env.OPENAI_API_KEY) {
-      return { authenticated: true, method: "api-key", detail: "OPENAI_API_KEY is set in the environment." };
+      return {
+        authenticated: "unknown",
+        method: "api-key",
+        detail: "OPENAI_API_KEY is configured; validity has not been verified.",
+      };
     }
     return { authenticated: false, method: null, detail: "Not logged in. Run `codex login`." };
   }
@@ -197,7 +205,7 @@ export class CodexAdapter implements AgentAdapter {
       ? await this.authenticate()
       : { authenticated: false as const, method: null, detail: "not installed" };
     return {
-      ok: detection.installed && auth.authenticated !== false,
+      ok: detection.installed && auth.authenticated === true,
       installed: detection.installed,
       authenticated: auth.authenticated,
       version: detection.version,

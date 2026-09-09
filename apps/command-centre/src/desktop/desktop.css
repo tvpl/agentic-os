@@ -1308,3 +1308,99 @@
 .tnum {
   font-variant-numeric: tabular-nums;
 }
+
+/* Window chrome stays available while the content scrolls. */
+.desktop .widget-inner {
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+}
+.widget-inner > h2 {
+  flex: none;
+  min-height: 28px;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface);
+  letter-spacing: 0.12em;
+}
+.widget-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.widget-window-actions {
+  display: flex;
+  gap: 2px;
+}
+.widget-window-actions .os-tool {
+  width: 26px;
+  height: 26px;
+  padding: 5px;
+}
+.widget-inner > .console {
+  height: auto;
+  flex: 1;
+  min-height: 170px;
+}
+.console-thread {
+  display: flex;
+  flex-direction: column;
+  align-content: normal;
+}
+.console-thread > :first-child {
+  margin-top: auto;
+}
+.console-turn {
+  flex: none;
+}
+.desktop .widget-inner > .now-panel {
+  display: grid;
+  position: static;
+  transform: none;
+  width: auto;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.desktop .widget.maximized {
+  transition: none;
+  animation: none;
+  transform: none !important;
+}
+.widget.maximized .widget-inner {
+  box-shadow: 0 24px 80px #0008;
+}
+.widget-resize {
+  opacity: 0.5;
+}
+.widget:hover .widget-resize,
+.widget-resize:focus-visible {
+  opacity: 1;
+}
+.auth-recovery {
+  padding: 10px;
+  border: 1px solid var(--accent-line);
+  border-radius: 8px;
+  background: var(--accent-soft);
+}
+.auth-recovery p {
+  margin: 6px 0;
+}
+
+.desktop .widget.compact .widget-inner {
+  padding: 6px 10px;
+}
+.desktop .widget.compact .widget-inner > h2 {
+  min-height: 22px;
+  margin-bottom: 4px;
+}
+.desktop .widget.compact .widget-window-actions .os-tool {
+  width: 22px;
+  height: 22px;
+  padding: 4px;
+}

@@ -93,7 +93,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     onSuccess: () => onDone(),
     onError: (err: Error) => {
       setPhase("idle");
-      const msg = err.message;
+      const msg = errorMessage(err, t);
       if (/folder/i.test(msg) || /pasta/i.test(msg)) setFolderError(msg);
       toast(msg, "danger");
     },

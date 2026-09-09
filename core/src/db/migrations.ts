@@ -350,4 +350,31 @@ CREATE TABLE IF NOT EXISTS metrics_samples (
 `);
     },
   },
+  {
+    version: 12,
+    name: "prompt_submission_receipts",
+    up(db) {
+      db.exec(`
+CREATE TABLE prompt_submissions (
+  id TEXT PRIMARY KEY,
+  request_hash TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  response TEXT
+);
+`);
+    },
+  },
+  {
+    version: 13,
+    name: "notification_messages_and_history_indexes",
+    up(db) {
+      db.exec(`
+ALTER TABLE notifications ADD COLUMN message_key TEXT;
+ALTER TABLE notifications ADD COLUMN message_params TEXT;
+CREATE INDEX IF NOT EXISTS idx_runs_history_order ON runs(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_runs_status_history ON runs(status, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_runs_provider_history ON runs(provider, created_at DESC, id DESC);
+`);
+    },
+  },
 ];

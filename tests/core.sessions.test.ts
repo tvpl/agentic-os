@@ -123,6 +123,8 @@ describe("session store", () => {
     });
     sessions.recordRun(newer.id, { runId: run.id, usage: null });
 
+    // Multiple writes may share the same millisecond; newest insertion breaks ties.
+    db.prepare("UPDATE sessions SET updated_at = ?, created_at = ?").run(1000, 1000);
     const list = sessions.list();
     expect(list.map((s) => s.id)).toEqual([newer.id, older.id]);
     expect(list[0]?.runCount).toBe(1);

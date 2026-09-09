@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
+import Database from "better-sqlite3";
 import path from "node:path";
 import {
   SettingsStore,
@@ -129,6 +130,24 @@ describe("settings store", () => {
 });
 
 describe("database migrations", () => {
+  it("refuses a newer database without changing its version or contents", () => {
+    const { paths, cleanup } = makeTempHome();
+    try {
+      const original = openDb(paths).db;
+      original.prepare("INSERT INTO meta (key, value) VALUES ('future', 'keep')").run();
+      original.pragma("user_version = 9999");
+      original.close();
+      const before = fs.readFileSync(paths.dbFile);
+      expect(() => openDb(paths)).toThrow(/newer.*database|database.*newer/i);
+      expect(fs.readFileSync(paths.dbFile)).toEqual(before);
+      const raw = new Database(paths.dbFile, { readonly: true });
+      expect(raw.pragma("user_version", { simple: true })).toBe(9999);
+      expect(raw.prepare("SELECT value FROM meta WHERE key='future'").get()).toEqual({ value: "keep" });
+      raw.close();
+    } finally {
+      cleanup();
+    }
+  });
   it("applies migrations and is reopen-safe", () => {
     const { paths, cleanup } = makeTempHome();
     try {

@@ -29,6 +29,7 @@ import {
   type RunFinishedPayload,
 } from "../api";
 import { useT } from "../i18n";
+import { notificationText } from "./notificationText";
 import { subscribeOsEvents } from "./useEventStream";
 import { showSystemNotification, speak } from "./systemNotify";
 
@@ -36,6 +37,8 @@ export type NotificationKind = "approval" | "run" | "routine" | "index" | "syste
 export type NotificationTone = "ok" | "warn" | "danger" | "info";
 
 export interface NotificationItem {
+  messageKey?: string | null;
+  messageParams?: Record<string, string | number | boolean> | null;
   id: string;
   kind: NotificationKind;
   title: string;
@@ -102,8 +105,12 @@ export function notificationsReducer(
       const fresh = action.items
         .filter((i) => !known.has(i.id))
         .map((i) => ({ ...i, read: i.read || state.readIds.has(i.id) }));
-      if (fresh.length === 0) return state;
-      const items = [...state.items, ...fresh].sort((a, b) => b.ts - a.ts).slice(0, MAX_NOTIFICATIONS);
+      const incoming = new Map(action.items.map((item) => [item.id, item]));
+      const existing = state.items.map((item) => {
+        const row = incoming.get(item.id);
+        return row ? { ...item, ...row, read: item.read || row.read || state.readIds.has(item.id) } : item;
+      });
+      const items = [...existing, ...fresh].sort((a, b) => b.ts - a.ts).slice(0, MAX_NOTIFICATIONS);
       return { ...state, items };
     }
     case "markRead": {
@@ -432,6 +439,9 @@ export interface NotificationsApi {
 
 /** Row shape of `GET /api/notifications` (servers since 0.6; older servers 404 and the feed stays local). */
 export interface ServerNotification {
+  dedupeKey?: string | null;
+  messageKey?: string | null;
+  messageParams?: Record<string, string | number | boolean> | null;
   id: string;
   kind: NotificationKind;
   title: string;
@@ -449,6 +459,8 @@ export function fromServer(row: ServerNotification): NotificationItem {
     id: row.id,
     kind: row.kind,
     title: row.title,
+    messageKey: row.messageKey,
+    messageParams: row.messageParams,
     body: row.body ?? undefined,
     ts: row.ts,
     read: row.read,
@@ -456,6 +468,7 @@ export function fromServer(row: ServerNotification): NotificationItem {
     approvalId: row.approvalId ?? undefined,
     runId: row.runId ?? undefined,
     tone: row.tone ?? undefined,
+    dedupeKey: row.dedupeKey ?? undefined,
   };
 }
 
@@ -476,6 +489,7 @@ let localSeq = 0;
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const t = useT();
+  const serverInbox = useRef<boolean | null>(null);
   const tRef = useRef(t);
   tRef.current = t;
   const [state, dispatch] = useReducer(notificationsReducer, undefined, () => ({
@@ -493,16 +507,64 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         signal: ctrl.signal,
       })
       .then((res) => {
-        if (Array.isArray(res?.items)) dispatch({ type: "seed", items: res.items.map(fromServer) });
+        if (Array.isArray(res?.items)) {
+          serverInbox.current = true;
+          dispatch({ type: "seed", items: res.items.map(fromServer) });
+        }
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!ctrl.signal.aborted) serverInbox.current = false;
+      });
     return () => ctrl.abort();
   }, []);
 
   useEffect(
     () =>
       subscribeOsEvents((event) => {
-        const item = eventToNotification(event, (key, vars) => tRef.current(key, vars));
+        if (event.type === "notification.read") {
+          const payload = event.payload as { all?: boolean; ids?: string[] };
+          if (payload?.all) dispatch({ type: "markAllRead" });
+          else if (Array.isArray(payload?.ids))
+            for (const id of payload.ids) dispatch({ type: "markRead", id });
+          return;
+        }
+        if (event.type === "stream.reconnected") {
+          void api
+            .get<{ items: ServerNotification[] }>(`${SERVER_PATH}?limit=${MAX_NOTIFICATIONS}`)
+            .then((res) => {
+              if (Array.isArray(res.items)) {
+                serverInbox.current = true;
+                dispatch({ type: "seed", items: res.items.map(fromServer) });
+              }
+            })
+            .catch(() => undefined);
+          return;
+        }
+        let item: NotificationItem | null;
+        if (event.type === "notification.created") {
+          const row = event.payload as ServerNotification;
+          if (!row || typeof row.id !== "string" || !row.id.startsWith("n_") || typeof row.title !== "string")
+            return;
+          serverInbox.current = true;
+          item = fromServer(row);
+        } else {
+          const persisted =
+            [
+              "approval.requested",
+              "index.finished",
+              "index.failed",
+              "backup.created",
+              "routine.alert",
+              "budget.crossed",
+              "sentinel.fired",
+            ].includes(event.type) ||
+            (event.type === "run.finished" &&
+              ["failed", "timed_out"].includes(
+                String((event.payload as Partial<RunFinishedPayload>)?.status),
+              ));
+          if (persisted && serverInbox.current !== false) return;
+          item = eventToNotification(event, (key, vars) => tRef.current(key, vars));
+        }
         if (!item) return;
         if (event.type === "approval.resolved" && item.approvalId)
           dispatch({ type: "resolveApproval", approvalId: item.approvalId });
@@ -511,14 +573,15 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           playBlip(item.tone);
           // Outside the tab (plan Onda 2 §4): a system notification when the
           // page is hidden, a spoken line when the voice toggle is on.
+          const text = notificationText(item.title, item.body, document.documentElement.lang || "en", item);
           showSystemNotification({
-            title: item.title,
-            body: item.body,
+            title: text.title,
+            body: text.body,
             href: item.href,
             tag: item.dedupeKey ?? item.id,
           });
           speak(
-            item.body ? `${item.title}. ${item.body}` : item.title,
+            text.body ? `${text.title}. ${text.body}` : text.title,
             document.documentElement.lang || "en",
           );
         }

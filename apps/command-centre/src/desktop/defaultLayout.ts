@@ -11,6 +11,8 @@
 export const COLS = 24;
 export const GRID_TOP = 96;
 export const GRID_PAD = 16;
+/** Space reserved for the persistent app dock. */
+export const GRID_BOTTOM = 100;
 /** Below this viewport width the desktop stacks widgets in one column. */
 export const STACK_BREAKPOINT = 900;
 /** Target row height; rows = max(MIN_ROWS, floor(available / ROW_TARGET_PX)). */
@@ -41,6 +43,7 @@ export type LayoutMap = Record<string, WidgetBox>;
 
 /** Registered widget ids, in render / tab order. */
 export const WIDGET_ORDER = [
+  "now",
   "microapps",
   "today",
   "workspace",
@@ -67,13 +70,14 @@ export function isWidgetId(id: string): id is WidgetId {
 }
 
 export const DEFAULT_LAYOUT: LayoutMap = {
+  now: { x: 6, y: 1, w: 12, h: 7, visible: true },
   microapps: { x: 0, y: 0, w: 5, h: 7, visible: true },
   today: { x: 0, y: 7, w: 5, h: 8, visible: true },
   workspace: { x: 0, y: 15, w: 5, h: 5, visible: true },
   deck: { x: 19, y: 0, w: 5, h: 10, visible: true },
   routines: { x: 19, y: 10, w: 5, h: 5, visible: true },
   pulse: { x: 19, y: 15, w: 5, h: 5, visible: true },
-  prompt: { x: 6, y: 12, w: 12, h: 6, visible: true },
+  prompt: { x: 6, y: 10, w: 12, h: 8, visible: true },
   attention: { x: 6, y: 18, w: 12, h: 2, visible: true },
   inbox: { x: 6, y: 0, w: 6, h: 4, visible: false },
   agenda: { x: 12, y: 0, w: 6, h: 3, visible: false },
@@ -106,7 +110,7 @@ export function freeRegion(
   let left = GRID_PAD;
   let right = m.width - GRID_PAD;
   let top = GRID_TOP;
-  let bottom = m.height - GRID_PAD;
+  let bottom = m.height - GRID_BOTTOM;
   const mid = cols / 2;
   for (const box of Object.values(layout)) {
     if (!box.visible) continue;
@@ -124,7 +128,7 @@ export function freeRegion(
   }
   if (bottom - top < 160) {
     top = GRID_TOP;
-    bottom = m.height - GRID_PAD;
+    bottom = m.height - GRID_BOTTOM;
   }
   return { left, right, top, bottom };
 }

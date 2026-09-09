@@ -44,6 +44,7 @@ export class ClaudeAdapter implements AgentAdapter {
   readonly id = "claude" as const;
   readonly manifest = claudeManifest;
   private detection: DetectionResult | null = null;
+  private authCommandSupported = false;
 
   constructor(private readonly opts: { binaryPath?: string | null; homeDir?: string } = {}) {}
 
@@ -57,6 +58,7 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 
   async detect(): Promise<DetectionResult> {
+    this.authCommandSupported = false;
     const binaryPath = this.opts.binaryPath ?? findOnPath("claude");
     if (!binaryPath) {
       return {
@@ -79,6 +81,7 @@ export class ClaudeAdapter implements AgentAdapter {
     try {
       const h = await probe(binaryPath, ["--help"], os.tmpdir());
       supportedFlags = parseHelpFlags(h.stdout + h.stderr);
+      this.authCommandSupported = /^\s*auth(?:\s|\[|$)/m.test(h.stdout);
       for (const required of ["--print", "--output-format", "--model"]) {
         if (!supportedFlags.includes(required)) {
           notes.push(`Installed claude does not advertise ${required}; headless runs may fail.`);
@@ -92,20 +95,55 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 
   async authenticate(): Promise<AuthStatus> {
-    // Presence checks only — never read, print or store credential values.
+    // Only invoke the status subcommand when the binary advertises it. Older
+    // CLIs may interpret unknown commands as prompts. Never expose raw status
+    // JSON (it can contain account identifiers), stderr or credential values.
+    await this.ensureDetection();
+    if (this.authCommandSupported && !this.opts.homeDir) {
+      try {
+        const result = await probe(this.binary(), ["auth", "status", "--json"], os.tmpdir(), 5000);
+        if (!result.timedOut) {
+          const status: unknown = JSON.parse(result.stdout);
+          if (status && typeof status === "object" && "loggedIn" in status) {
+            if (status.loggedIn === false)
+              return {
+                authenticated: false,
+                method: null,
+                detail: "Claude Code reports no active login. Run `claude auth login`.",
+              };
+            if (status.loggedIn === true && result.exitCode === 0)
+              return {
+                authenticated: true,
+                method: "cli-status",
+                detail:
+                  "Claude Code reports an active login; execution availability is checked when running a task.",
+              };
+          }
+        }
+      } catch {
+        /* Unsupported, malformed or inaccessible status is unverified. */
+      }
+      return {
+        authenticated: "unknown",
+        method: "cli-status",
+        detail: "Claude Code login could not be verified. Check authentication and verify again.",
+      };
+    }
+    // Fallback presence checks never read or validate credentials. A custom
+    // home must not accidentally probe the personal account of this process.
     const home = this.opts.homeDir ?? os.homedir();
     if (fs.existsSync(path.join(home, ".claude", ".credentials.json"))) {
       return {
-        authenticated: true,
+        authenticated: "unknown",
         method: "session",
-        detail: "Claude Code session credentials are present.",
+        detail: "Claude Code credentials are present; session validity has not been verified.",
       };
     }
     if (process.env.ANTHROPIC_API_KEY) {
       return {
-        authenticated: true,
+        authenticated: "unknown",
         method: "api-key",
-        detail: "ANTHROPIC_API_KEY is set in the environment.",
+        detail: "ANTHROPIC_API_KEY is configured; validity has not been verified.",
       };
     }
     if (fs.existsSync(path.join(home, ".claude"))) {
@@ -119,7 +157,7 @@ export class ClaudeAdapter implements AgentAdapter {
     return {
       authenticated: false,
       method: null,
-      detail: "Not logged in. Run `claude` once to authenticate.",
+      detail: "No local login marker found. Run `claude auth login` to authenticate.",
     };
   }
 
@@ -245,7 +283,7 @@ export class ClaudeAdapter implements AgentAdapter {
       ? await this.authenticate()
       : { authenticated: false as const, method: null, detail: "not installed" };
     return {
-      ok: detection.installed && auth.authenticated !== false,
+      ok: detection.installed && auth.authenticated === true,
       installed: detection.installed,
       authenticated: auth.authenticated,
       version: detection.version,

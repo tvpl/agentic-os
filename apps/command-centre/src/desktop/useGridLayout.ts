@@ -13,13 +13,14 @@
  * the layout (neighbours pushed down) and WidgetLayer FLIP-animates every
  * widget that moved, including the dragged one snapping into its cell.
  */
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api";
+import { api, ApiError, type SettingsDoc } from "../api";
 import { qk } from "../queries";
 import {
   COLS,
   GRID_PAD,
+  GRID_BOTTOM,
   GRID_TOP,
   STACK_BREAKPOINT,
   computeRows,
@@ -60,9 +61,9 @@ export function useGridMetrics(ref: RefObject<HTMLElement>): GridMetrics {
     return () => ro.disconnect();
   }, [ref]);
 
-  const rows = computeRows(size.h - GRID_TOP - GRID_PAD);
+  const rows = computeRows(size.h - GRID_TOP - GRID_BOTTOM);
   const cellW = (size.w - GRID_PAD * 2) / COLS;
-  const cellH = (size.h - GRID_TOP - GRID_PAD) / rows;
+  const cellH = (size.h - GRID_TOP - GRID_BOTTOM) / rows;
   const stacked = size.w < STACK_BREAKPOINT;
 
   // The edit-mode grid background reads these; scoped to the grid element so
@@ -74,7 +75,12 @@ export function useGridMetrics(ref: RefObject<HTMLElement>): GridMetrics {
     el.style.setProperty("--cell-h", `${cellH}px`);
   }, [ref, cellW, cellH]);
 
-  return { width: size.w, height: size.h, cols: COLS, rows, cellW, cellH, stacked };
+  // Consumers report these metrics to the desktop. A new object on every render
+  // causes parent -> child -> effect -> parent feedback, starving navigation.
+  return useMemo(
+    () => ({ width: size.w, height: size.h, cols: COLS, rows, cellW, cellH, stacked }),
+    [size.w, size.h, rows, cellW, cellH, stacked],
+  );
 }
 
 export function boxToPx(box: WidgetBox, m: GridMetrics): CSSProperties {
@@ -132,6 +138,8 @@ export interface LayoutState {
   saving: boolean;
   /** Local changes not yet confirmed by the server. */
   dirty: boolean;
+  conflict: boolean;
+  resolveConflict: (keepLocal: boolean) => Promise<void>;
 }
 
 export function useLayoutState({
@@ -148,24 +156,37 @@ export function useLayoutState({
   const qc = useQueryClient();
   const [layout, setLayout] = useState<LayoutMap>(() => mergeMirror(normalizeLayout(serverLayout, rows)));
   const [dirty, setDirty] = useState(false);
+  const [conflict, setConflict] = useState(false);
+  const baseRef = useRef(serverLayout ?? {});
   const latestRef = useRef(layout);
   const timerRef = useRef<number>();
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
 
   const mutation = useMutation({
-    mutationFn: (next: LayoutMap) => api.put("/api/settings", { dashboardLayout: next }),
-    onSuccess: (_data, vars) => {
+    scope: { id: "desktop-layout" },
+    mutationFn: (next: LayoutMap) =>
+      api.put<{ settings: SettingsDoc }>("/api/settings", {
+        dashboardLayout: next,
+        dashboardLayoutBase: baseRef.current,
+      }),
+    onSuccess: (data, vars) => {
+      baseRef.current = data.settings?.dashboardLayout ?? vars;
+      setConflict(false);
       if (vars === latestRef.current) setDirty(false);
       qc.invalidateQueries({ queryKey: qk.settings }).catch(() => undefined);
     },
-    onError: (err: Error) => onErrorRef.current(err),
+    onError: (err: Error) => {
+      if (err instanceof ApiError && err.code === "layout_conflict") setConflict(true);
+      else onErrorRef.current(err);
+    },
   });
   const { mutate, isPending } = mutation;
 
   // Adopt the server layout only when idle: not editing, nothing pending, nothing dirty.
   useEffect(() => {
     if (editing || isPending || dirty || !serverLayout) return;
+    baseRef.current = serverLayout;
     const next = mergeMirror(normalizeLayout(serverLayout, rows));
     setLayout((prev) => (layoutsEqual(prev, next) ? prev : next));
   }, [serverLayout, rows, editing, isPending, dirty]);
@@ -189,7 +210,10 @@ export function useLayoutState({
       setDirty(true);
       writeConfigMirror(next);
       window.clearTimeout(timerRef.current);
-      timerRef.current = window.setTimeout(() => mutate(next), PERSIST_DEBOUNCE_MS);
+      timerRef.current = window.setTimeout(() => {
+        timerRef.current = undefined;
+        mutate(next);
+      }, PERSIST_DEBOUNCE_MS);
     },
     [mutate],
   );
@@ -199,13 +223,33 @@ export function useLayoutState({
     () => () => {
       if (timerRef.current !== undefined) {
         window.clearTimeout(timerRef.current);
+        timerRef.current = undefined;
         mutate(latestRef.current);
       }
     },
     [mutate],
   );
 
-  return { layout, commit, saving: isPending, dirty };
+  const resolveConflict = async (keepLocal: boolean) => {
+    try {
+      const current = await api.get<SettingsDoc>("/api/settings");
+      baseRef.current = current.dashboardLayout;
+      qc.setQueryData(qk.settings, current);
+      if (keepLocal) mutate(latestRef.current);
+      else {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = undefined;
+        const next = mergeMirror(normalizeLayout(current.dashboardLayout, rows));
+        latestRef.current = next;
+        setLayout(next);
+        setDirty(false);
+        setConflict(false);
+      }
+    } catch (error) {
+      onErrorRef.current(error as Error);
+    }
+  };
+  return { layout, commit, saving: isPending, dirty, conflict, resolveConflict };
 }
 
 /* ---------------------------------------------------------------------------

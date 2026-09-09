@@ -32,6 +32,7 @@ export type SentinelSeverity = "info" | "warn" | "danger";
 /** Payload of `sentinel.fired`. */
 export interface SentinelFiredPayload {
   sentinel: SentinelId;
+  messageParams?: Record<string, string | number | boolean>;
   title: string;
   body: string;
   severity: SentinelSeverity;

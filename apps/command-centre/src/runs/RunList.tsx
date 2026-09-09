@@ -4,17 +4,18 @@
  * tokens sparkline from `/api/metrics`, filter chips, a paginated table with
  * cost per run, and empty/skeleton states.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Pencil, Play } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { loadPromptSubmission, savePromptSubmission } from "../desktop/promptSubmission";
 import { api, type ProviderId, type RunRecord } from "../api";
 import { useLocale, useT } from "../i18n";
 import { qk, useApiQuery, useOsMetrics, useOsProviders, useOsSettings } from "../queries";
 import { ErrorBox, Skeleton, StatusBadge, formatDuration, timeAgo, useToast } from "../components/ui";
 import { Badge, Button, EmptyState, Field, Segmented } from "../components/primitives";
 import { EFFORTS, useEffortLabels, type Effort } from "../desktop/SkillMatrixModal";
-import { ApprovalsCard, useApprovals } from "./Approvals";
+import { ApprovalsCard, useApprovals } from "./ApprovalCards";
 import { cwdSuggestions, writePolicyFor } from "./policy";
 import { sparkline } from "./sparkline";
 import { formatTokens, formatUsd, totalTokens } from "./usage";
@@ -22,15 +23,6 @@ import { formatTokens, formatUsd, totalTokens } from "./usage";
 const STATUS_FILTERS = ["all", "running", "done", "failed", "cancelled"] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
 const PAGE_SIZE = 50;
-
-function matchesStatus(run: RunRecord, filter: StatusFilter): boolean {
-  if (filter === "all") return true;
-  if (filter === "running")
-    return run.status === "running" || run.status === "queued" || run.status === "waiting_approval";
-  if (filter === "failed")
-    return run.status === "failed" || run.status === "timed_out" || run.status === "interrupted";
-  return run.status === filter;
-}
 
 /** Settings fields this view reads (the shared hook types them loosely). */
 interface RunsSettings {
@@ -46,11 +38,6 @@ export default function RunList() {
   const qc = useQueryClient();
   const effortLabels = useEffortLabels();
   const [offset, setOffset] = useState(0);
-  const runs = useApiQuery<RunRecord[]>(
-    qk.runs({ limit: PAGE_SIZE, offset }),
-    `/api/runs?limit=${PAGE_SIZE}&offset=${offset}`,
-    { refetchInterval: 300_000 },
-  );
   const providers = useOsProviders();
   const metrics = useOsMetrics({ refetchInterval: 300_000 });
   const settings = useOsSettings();
@@ -64,6 +51,21 @@ export default function RunList() {
   const [status, setStatus] = useState<StatusFilter>("all");
   const [providerFilter, setProviderFilter] = useState<string>("all");
   const [sortAsc, setSortAsc] = useState(false);
+  const filters = {
+    limit: PAGE_SIZE + 1,
+    offset,
+    ...(providerFilter !== "all" ? { provider: providerFilter } : {}),
+    ...(status === "running"
+      ? { statusGroup: "active" }
+      : status === "failed"
+        ? { statusGroup: "failed" }
+        : status !== "all"
+          ? { status }
+          : {}),
+    order: sortAsc ? "asc" : "desc",
+  };
+  const query = new URLSearchParams(Object.entries(filters).map(([key, value]) => [key, String(value)]));
+  const runs = useApiQuery<RunRecord[]>(qk.runs(filters), `/api/runs?${query}`, { refetchInterval: 300_000 });
 
   const enabledProviders = (providers.data ?? []).filter((p) => p.enabled);
   const conf = (settings.data ?? {}) as RunsSettings;
@@ -75,17 +77,36 @@ export default function RunList() {
     [conf.indexedFolders, runs.data],
   );
 
+  const submitting = useRef(false);
+  const submission = useRef(loadPromptSubmission("run-list"));
+  const submittedText = useRef("");
   const quickRun = useMutation({
-    mutationFn: () =>
-      api.post<{ runId: string | null; pendingApproval?: { id: string } | null }>("/api/runs", {
+    mutationFn: () => {
+      const payload = {
         prompt: prompt.trim(),
         mode: write ? "write" : "read_only",
         ...(provider ? { provider } : {}),
         ...(effort !== "default" ? { effort } : {}),
         ...(cwd ? { cwd } : {}),
-      }),
+      };
+      const fingerprint = JSON.stringify(payload);
+      if (submission.current?.fingerprint !== fingerprint) {
+        submission.current = { fingerprint, id: crypto.randomUUID() };
+        savePromptSubmission(submission.current, "run-list");
+      }
+      submittedText.current = payload.prompt;
+      return api.post<{ runId: string | null; pendingApproval?: { id: string } | null }>("/api/runs", {
+        ...payload,
+        submissionId: submission.current.id,
+      });
+    },
+    onSettled: () => {
+      submitting.current = false;
+    },
     onSuccess: (res) => {
-      setPrompt("");
+      setPrompt((value) => (value.trim() === submittedText.current ? "" : value));
+      submission.current = null;
+      savePromptSubmission(null, "run-list");
       qc.invalidateQueries({ queryKey: ["runs"] }).catch(() => undefined);
       if (!res.runId) {
         // The profile asked for a human decision: the card below now shows it.
@@ -98,15 +119,15 @@ export default function RunList() {
     onError: (err: Error) => toast(err.message, "danger"),
   });
 
-  const rows = useMemo(() => {
-    const list = (runs.data ?? []).filter(
-      (r) => matchesStatus(r, status) && (providerFilter === "all" || r.provider === providerFilter),
-    );
-    return list.sort((a, b) => (sortAsc ? a.createdAt - b.createdAt : b.createdAt - a.createdAt));
-  }, [runs.data, status, providerFilter, sortAsc]);
+  const launch = () => {
+    if (submitting.current || !prompt.trim()) return;
+    submitting.current = true;
+    quickRun.mutate();
+  };
+  const rows = (runs.data ?? []).slice(0, PAGE_SIZE);
 
   const canRun = prompt.trim().length > 0 && !quickRun.isPending && enabledProviders.length > 0;
-  const hasNext = (runs.data ?? []).length === PAGE_SIZE;
+  const hasNext = (runs.data ?? []).length > PAGE_SIZE;
   const page = Math.floor(offset / PAGE_SIZE) + 1;
 
   return (
@@ -133,7 +154,7 @@ export default function RunList() {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canRun) {
                   e.preventDefault();
-                  quickRun.mutate();
+                  launch();
                 }
               }}
             />
@@ -142,7 +163,7 @@ export default function RunList() {
               icon={<Play aria-hidden />}
               disabled={!canRun}
               loading={quickRun.isPending}
-              onClick={() => quickRun.mutate()}
+              onClick={launch}
             >
               {t("common.run")}
             </Button>
@@ -225,7 +246,10 @@ export default function RunList() {
           ariaLabel={t("runs.status")}
           size="sm"
           value={status}
-          onChange={(v) => setStatus(v as StatusFilter)}
+          onChange={(v) => {
+            setStatus(v as StatusFilter);
+            setOffset(0);
+          }}
           options={STATUS_FILTERS.map((s) => ({
             value: s,
             label: s === "all" ? t("brain.all") : t(`status.${s}` as "status.running"),
@@ -234,7 +258,10 @@ export default function RunList() {
         <select
           className="input sm"
           value={providerFilter}
-          onChange={(e) => setProviderFilter(e.target.value)}
+          onChange={(e) => {
+            setProviderFilter(e.target.value);
+            setOffset(0);
+          }}
           aria-label={t("runs.provider")}
         >
           <option value="all">{t("brain.all")}</option>
@@ -266,7 +293,14 @@ export default function RunList() {
                 <th className="num">{t("runs.tokens")}</th>
                 <th>{t("runs.duration")}</th>
                 <th aria-sort={sortAsc ? "ascending" : "descending"}>
-                  <button type="button" className="th-sort" onClick={() => setSortAsc((v) => !v)}>
+                  <button
+                    type="button"
+                    className="th-sort"
+                    onClick={() => {
+                      setSortAsc((v) => !v);
+                      setOffset(0);
+                    }}
+                  >
                     {t("runs.when")} {sortAsc ? "↑" : "↓"}
                   </button>
                 </th>

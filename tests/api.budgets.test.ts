@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { describe, expect, it, vi, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import type { FastifyInstance } from "fastify";
@@ -81,4 +81,37 @@ describe("skill budgets", () => {
     expect(second.body).toContain("budget_exhausted");
     expect(ctx.runs.list({ skillSlug: "capped" })).toHaveLength(1);
   });
+});
+
+it("concurrent skill requests cannot allocate the same remaining budget", async () => {
+  const tmp = makeTempHome();
+  const directory = path.join(tmp.paths.home, "skills", "reserved");
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(
+    path.join(directory, "SKILL.md"),
+    "---\nname: Reserved\nslug: reserved\ndescription: Budget concurrency fixture\nbudgetUsd: 1\n---\nRead only.",
+  );
+  const local = new AppContext(tmp.paths.home);
+  const settings = local.settings();
+  settings.providers.claude.enabled = true;
+  local.settingsStore.save(settings);
+  const execute = vi.spyOn(local.runs, "execute").mockImplementation(async (id) => local.runs.get(id)!);
+  const server = await buildServer(local);
+  try {
+    const send = () =>
+      server.inject({
+        method: "POST",
+        url: "/api/skills/reserved/run",
+        headers: { "x-mordomo-token": local.token() },
+        payload: {},
+      });
+    const responses = await Promise.all([send(), send()]);
+    expect(responses.map((r) => r.statusCode).sort()).toEqual([200, 409]);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(local.runs.committedTodayUsd({ skillSlug: "reserved" })).toBe(1);
+  } finally {
+    await server.close();
+    local.close();
+    tmp.cleanup();
+  }
 });

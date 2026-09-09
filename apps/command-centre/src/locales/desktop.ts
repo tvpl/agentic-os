@@ -4,6 +4,25 @@
  * the `satisfies` clause and by i18n.test.ts).
  */
 export const en = {
+  "desktop.dock.title": "Workspace navigation",
+  "desktop.dock.expand": "Expand dock",
+  "desktop.dock.collapse": "Collapse dock",
+  "desktop.mode.title": "Workspace mode",
+  "desktop.mode.overview": "Overview",
+  "desktop.mode.focus": "Focus",
+  "desktop.mode.explore": "Explore",
+  "desktop.explore.eyebrow": "Your living workspace",
+  "desktop.explore.title": "A universe of connections.",
+  "desktop.explore.body":
+    "Explore files, skills and routines. Open the Second Brain to zoom in, follow connections and turn context into action.",
+  "desktop.explore.open": "Enter the Second Brain",
+
+  "desktop.window.maximize": "Maximize",
+  "desktop.window.restore": "Restore",
+  "desktop.auth.title": "Provider authentication needs attention",
+  "desktop.auth.body":
+    "Open a terminal, run {command}, complete sign-in, then retry. Your conversation is preserved.",
+  "desktop.auth.settings": "Check provider",
   /* ---- widget registry ---- */
   "desktop.widget.microapps": "Micro apps",
   "desktop.widget.today": "Today",
@@ -75,6 +94,10 @@ export const en = {
   "desktop.now.enabled": "Routine enabled",
   "desktop.now.noSummary": "no summary",
 
+  "desktop.prompt.submissionUncertain":
+    "Submission result is uncertain. Open Runs and check the history before sending a new task.",
+  "desktop.prompt.submissionConflict":
+    "This submission identity belongs to different content. Edit the draft before sending a new task.",
   /* ---- prompt widget ---- */
   "desktop.prompt.placeholder": "Ask the agent… (⌘↵ to run, / for a skill)",
   "desktop.prompt.run": "Run",
@@ -222,6 +245,25 @@ export const en = {
 } as const;
 
 export const ptBR = {
+  "desktop.dock.title": "Navegação do workspace",
+  "desktop.dock.expand": "Expandir dock",
+  "desktop.dock.collapse": "Recolher dock",
+  "desktop.mode.title": "Modo do workspace",
+  "desktop.mode.overview": "Visão geral",
+  "desktop.mode.focus": "Foco",
+  "desktop.mode.explore": "Explorar",
+  "desktop.explore.eyebrow": "Seu workspace vivo",
+  "desktop.explore.title": "Um universo de conexões.",
+  "desktop.explore.body":
+    "Explore arquivos, skills e rotinas. Entre no Segundo Cérebro para aproximar, seguir conexões e transformar contexto em ação.",
+  "desktop.explore.open": "Entrar no Segundo Cérebro",
+
+  "desktop.window.maximize": "Maximizar",
+  "desktop.window.restore": "Restaurar",
+  "desktop.auth.title": "A autenticação do provedor precisa de atenção",
+  "desktop.auth.body":
+    "Abra um terminal, execute {command}, conclua o login e tente novamente. Sua conversa foi preservada.",
+  "desktop.auth.settings": "Verificar provedor",
   "desktop.widget.microapps": "Micro apps",
   "desktop.widget.today": "Hoje",
   "desktop.widget.workspace": "Workspace",
@@ -289,6 +331,10 @@ export const ptBR = {
   "desktop.now.enabled": "Rotina habilitada",
   "desktop.now.noSummary": "sem resumo",
 
+  "desktop.prompt.submissionUncertain":
+    "O resultado do envio é incerto. Abra Execuções e confira o histórico antes de enviar uma nova tarefa.",
+  "desktop.prompt.submissionConflict":
+    "A identidade deste envio pertence a outro conteúdo. Edite o rascunho antes de enviar uma nova tarefa.",
   "desktop.prompt.placeholder": "Peça ao agente… (⌘↵ para executar, / para uma skill)",
   "desktop.prompt.run": "Executar",
   "desktop.prompt.readOnly": "Somente leitura",

@@ -1,3 +1,5 @@
+import { usePanelPreference } from "../brain/usePanelPreference";
+import { errorMessage } from "./shared";
 /**
  * Second Brain — the thin container.
  *
@@ -29,6 +31,7 @@ import { BrainPanel } from "../brain/BrainPanel";
 import { FileList } from "../brain/FileList";
 import { PreviewPanel, type PreviewState } from "../brain/PreviewPanel";
 import { useBrainState, workspaceOf } from "../brain/useBrainState";
+import { ZoomReadout } from "../brain/ZoomReadout";
 import { useCamera, useMinimapNav } from "../brain/camera";
 import { frameSector } from "../brain/engine/explosion";
 import { applyVisibility, updateFocus } from "../brain/engine/graph";
@@ -78,8 +81,9 @@ export default function SecondBrain() {
   }, []);
 
   const [presenting, setPresenting] = useState(false);
-  const [legendOpen, setLegendOpen] = useState(true);
-  const [listOpen, setListOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = usePanelPreference("legend", true);
+  const [listOpen, setListOpen] = usePanelPreference("files", false);
+  const [missingSelection, setMissingSelection] = useState(false);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [hits, setHits] = useState<Array<{ id: number; name: string; rel: string }>>([]);
@@ -159,7 +163,10 @@ export default function SecondBrain() {
     applyVisibility(w);
     updateFocus(w);
     dirty();
+    const token = ++previewToken.current;
+    let cancelled = false;
     const node = ui.sel === null ? undefined : w.files.find((n) => n.id === ui.sel);
+    setMissingSelection(ui.sel !== null && version > 0 && !node);
     if (!node) {
       setPreview(null);
       setDangling([]);
@@ -169,19 +176,21 @@ export default function SecondBrain() {
       wantFocus.current = false;
       centerOn(node.x, node.y);
     }
-    const token = ++previewToken.current;
     setPreview({ node, content: null, kind: "loading", message: null });
     void api
       .get<MemoryPreview>(`/api/memory/preview?p=${encodeURIComponent(node.path)}`)
       .then((pv) => {
-        if (token === previewToken.current)
+        if (!cancelled && token === previewToken.current)
           setPreview({ node, content: pv.content, kind: pv.kind, message: pv.message });
       })
       .catch((err: Error) => {
-        if (token === previewToken.current)
-          setPreview({ node, content: null, kind: "error", message: err.message });
+        if (!cancelled && token === previewToken.current)
+          setPreview({ node, content: null, kind: "error", message: errorMessage(err, t) });
       });
-  }, [ui.sel, version, world, dirty, centerOn, wantFocus]);
+    return () => {
+      cancelled = true;
+    };
+  }, [ui.sel, version, world, dirty, centerOn, wantFocus, t]);
 
   /* ---------- search-as-you-type (server hits) ---------- */
   useEffect(() => {
@@ -253,7 +262,7 @@ export default function SecondBrain() {
 
   /* ---------- indexing ---------- */
   useOsEvent("index.progress", (e) => setProgress(e.payload as IndexProgressPayload));
-  useOsEvent("index.finished", () => {
+  useOsEvent(["index.finished", "index.failed"], () => {
     setProgress(null);
     void invalidate(qk.memoryGraph(GRAPH_PARAMS), qk.memoryStatus);
   });
@@ -267,7 +276,7 @@ export default function SecondBrain() {
         await invalidate(qk.memoryGraph(GRAPH_PARAMS), qk.memoryStatus);
         toast(t("brain.indexed", { n: res.stats.scanned, added: res.stats.added }), "ok");
       } catch (err) {
-        toast((err as Error).message, "danger");
+        toast(errorMessage(err, t), "danger");
       } finally {
         setRefreshing(false);
         setProgress(null);
@@ -426,7 +435,7 @@ export default function SecondBrain() {
     };
     window.addEventListener("keydown", onEsc, true);
     return () => window.removeEventListener("keydown", onEsc, true);
-  }, [listOpen, presenting, selectId, uiRef]);
+  }, [listOpen, presenting, selectId, uiRef, setListOpen]);
 
   /* ---------- layout pill ---------- */
   const layoutLabel = t(LAYOUT_KEYS[ui.layout]);
@@ -467,7 +476,9 @@ export default function SecondBrain() {
   const total = graph?.totalFiles ?? 0;
 
   return (
-    <div className={`brain2${presenting ? " presenting" : ""}${preview ? " has-preview" : ""}`}>
+    <div
+      className={`brain2${presenting ? " presenting" : ""}${preview ? " has-preview" : ""}${listOpen ? " has-list" : ""}`}
+    >
       <BrainCanvas
         world={world}
         canvasRef={canvasRef}
@@ -485,6 +496,17 @@ export default function SecondBrain() {
         {preview ? ` — ${preview.node.name} ${t("brain.selected")}` : ""}
       </span>
 
+      {missingSelection && !presenting && (
+        <div className="brain-missing-source" role="status">
+          <p>{t("brain.missingSelection")}</p>
+          <button className="btn sm" disabled={refreshing} onClick={refresh}>
+            {t("brain.refresh")}
+          </button>
+          <button className="btn ghost sm" onClick={() => selectId(null)}>
+            {t("common.close")}
+          </button>
+        </div>
+      )}
       <BrainChrome
         systemName={meta.data?.name ?? "Mordomo"}
         total={total}
@@ -502,6 +524,7 @@ export default function SecondBrain() {
         liveCount={liveCount}
         onNavigate={navigate}
         zoom={camera.controls}
+        zoomReadout={<ZoomReadout world={world} />}
         legend={brain.legend}
         legendOpen={legendOpen}
         setLegendOpen={setLegendOpen}

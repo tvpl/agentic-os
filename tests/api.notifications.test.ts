@@ -32,6 +32,21 @@ afterAll(async () => {
 const auth = () => ({ "x-mordomo-token": token });
 
 describe("notifications API", () => {
+  it("persists index failures with recovery guidance and a brain destination", async () => {
+    events.emit("index.failed", { code: "index_scan_incomplete", previousIndexPreserved: true });
+    const res = await app.inject({ method: "GET", url: "/api/notifications", headers: auth() });
+    expect(res.json().items).toContainEqual(
+      expect.objectContaining({
+        kind: "index",
+        tone: "warn",
+        title: "Index failed",
+        read: false,
+        href: "/brain",
+        body: "Previous index preserved. Check configured folders and retry.",
+      }),
+    );
+  });
+
   it("records an approval request from the bus and serves it", async () => {
     events.emit("approval.requested", { id: "ap-1", kind: "write_run", description: "Write to notes.md" });
     const res = await app.inject({ method: "GET", url: "/api/notifications", headers: auth() });

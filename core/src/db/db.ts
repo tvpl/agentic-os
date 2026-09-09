@@ -15,10 +15,20 @@ export interface MigrationResult {
 export function openDb(paths: MordomoPaths): { db: Db; migration: MigrationResult } {
   fs.mkdirSync(path.dirname(paths.dbFile), { recursive: true });
   const db = new Database(paths.dbFile);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-  const migration = migrate(db, paths);
-  return { db, migration };
+  try {
+    if (currentVersion(db) > Math.max(...MIGRATIONS.map((migration) => migration.version))) {
+      throw new Error(
+        "This database was created by a newer MordomoOS version. Use that version or restore a compatible backup.",
+      );
+    }
+    db.pragma("journal_mode = WAL");
+    db.pragma("foreign_keys = ON");
+    const migration = migrate(db, paths);
+    return { db, migration };
+  } catch (error) {
+    db.close();
+    throw error;
+  }
 }
 
 function currentVersion(db: Db): number {

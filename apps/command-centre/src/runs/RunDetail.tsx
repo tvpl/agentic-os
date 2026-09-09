@@ -19,7 +19,7 @@ import { useTicker } from "../desktop/data";
 import EventTimeline, { type EventTimelineHandle } from "./EventTimeline";
 import FilesChanged from "./FilesChanged";
 import Replay from "./Replay";
-import { ApprovalCard, ToolApprovalCard, useApprovals } from "./Approvals";
+import { ApprovalCard, ToolApprovalCard, useApprovals } from "./ApprovalCards";
 import { SquadCard } from "./Squad";
 import { SkillNoteCard } from "./SkillNote";
 import { approvalForRun, toolApprovalsForRun } from "./approvals";

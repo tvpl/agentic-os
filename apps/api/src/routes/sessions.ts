@@ -38,6 +38,7 @@ export function registerSessionRoutes(app: FastifyInstance, ctx: AppContext): vo
     const { id } = UuidParams.parse(req.params);
     const body = z
       .object({
+        submissionId: z.string().uuid().optional(),
         prompt: z.string().min(1).max(20_000),
         mode: z.enum(["read_only", "write"]).default("read_only"),
         effort: EffortLevel.optional(),

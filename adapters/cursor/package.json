@@ -9,6 +9,6 @@
     ".": "./dist/index.js"
   },
   "dependencies": {
-    "@mordomo/core": "0.6.0"
+    "@mordomo/core": "0.8.0"
   }
 }

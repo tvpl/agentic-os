@@ -100,6 +100,12 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     try {
       return previewFile(ctx.settings(), [ctx.paths.home], p);
     } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT")
+        throw httpError(
+          404,
+          "The source was moved or removed. Refresh the index and select an existing file.",
+          "source_missing",
+        );
       throw httpError(403, (err as Error).message, "forbidden_path");
     }
   });

@@ -14,7 +14,7 @@ import type { NotificationInput, NotificationStore, NotificationTone } from "./s
  * approvals, failed runs, heartbeat alerts, budget thresholds, sentinel
  * findings, plus two informational rows (index and backup) that start read.
  *
- * Titles are plain English: the UI does not translate server rows.
+ * Titles are stable English templates; the UI localizes known system templates.
  *
  * Registration (apps/api/src/context.ts, end of the constructor):
  *   `installNotificationRecorder(events, this.notifications, { … })`
@@ -87,7 +87,50 @@ export function installNotificationRecorder(
 
   const unsubscribe = bus.subscribe((event: OsEvent) => {
     const input = toNotification(event, opts);
-    if (input) record(input);
+    if (input) {
+      const payload = (event.payload ?? {}) as Record<string, unknown>;
+      // Never infer localization from user-authored title text for new rows.
+      input.messageKey = event.type;
+      input.messageParams = {};
+      if (event.type === "sentinel.fired" && typeof payload.sentinel === "string") {
+        input.messageKey = `sentinel.${payload.sentinel}`;
+        const params = payload.messageParams;
+        if (params && typeof params === "object" && !Array.isArray(params)) {
+          for (const [key, value] of Object.entries(params)) {
+            if (
+              typeof value === "string" ||
+              typeof value === "boolean" ||
+              (typeof value === "number" && Number.isFinite(value))
+            )
+              input.messageParams[key] = value;
+          }
+        }
+      }
+      for (const key of [
+        "status",
+        "previousIndexPreserved",
+        "level",
+        "spentUsd",
+        "budgetUsd",
+        "reason",
+      ] as const) {
+        const value = payload[key];
+        if (
+          typeof value === "string" ||
+          typeof value === "boolean" ||
+          (typeof value === "number" && Number.isFinite(value))
+        )
+          input.messageParams[key] = value;
+      }
+      if (event.type === "index.finished") {
+        const stats = (payload.stats ?? {}) as Record<string, unknown>;
+        for (const key of ["scanned", "added", "updated", "removed", "errors"]) {
+          const value = stats[key];
+          if (typeof value === "number" && Number.isFinite(value)) input.messageParams[key] = value;
+        }
+      }
+      record(input);
+    }
   });
   const dispose = () => {
     perBus.delete(store);
@@ -145,6 +188,19 @@ export function toNotification(
         body: str(payload.summary),
         href: "/routines",
         runId: str(payload.runId),
+        ts,
+      };
+    }
+    case "index.failed": {
+      return {
+        kind: "index",
+        tone: "warn",
+        title: "Index failed",
+        body:
+          payload.previousIndexPreserved === true
+            ? "Previous index preserved. Check configured folders and retry."
+            : "Index update interrupted. Check diagnostics and retry.",
+        href: "/brain",
         ts,
       };
     }

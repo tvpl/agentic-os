@@ -19,6 +19,16 @@ export const INDEX_CHUNK_SIZE = 200;
 const PENDING_LINKS_KEY = "index.pending_links";
 const LAST_INDEX_KEY = "last_index";
 
+/** An incomplete scan cannot prove that previously indexed files disappeared. */
+export class IncompleteIndexScanError extends Error {
+  readonly code = "index_scan_incomplete";
+  readonly statusCode = 409;
+  constructor() {
+    super("Index scan incomplete: a configured folder could not be read. The previous index was preserved. Check folder access or remove unavailable roots from settings, then retry.");
+    this.name = "IncompleteIndexScanError";
+  }
+}
+
 export interface IndexStats {
   scanned: number;
   added: number;
@@ -196,7 +206,6 @@ export class MemoryIndexer {
       const candidates: Candidate[] = [];
       let dirsSinceYield = 0;
       for (const root of roots) {
-        if (!fs.existsSync(root)) continue;
         if (filter.reasonToSkip("", root)) {
           stats.skippedExcluded++;
           continue;
@@ -209,7 +218,9 @@ export class MemoryIndexer {
           try {
             entries = fs.readdirSync(dir, { withFileTypes: true });
           } catch {
-            continue;
+            // Scanning precedes every upsert/removal, so aborting here preserves
+            // the entire previous snapshot, including FTS and relationships.
+            throw new IncompleteIndexScanError();
           }
           for (const entry of entries) {
             const full = path.join(dir, entry.name);
@@ -279,6 +290,12 @@ export class MemoryIndexer {
       emit(total);
       events.emit("index.finished", { stats });
       return stats;
+    } catch (error) {
+      events.emit("index.failed", {
+        code: error instanceof IncompleteIndexScanError ? error.code : "index_failed",
+        previousIndexPreserved: error instanceof IncompleteIndexScanError,
+      });
+      throw error;
     } finally {
       this.running = false;
     }
