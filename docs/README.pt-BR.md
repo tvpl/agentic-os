@@ -7,18 +7,34 @@ O MordomoOS é o seu sistema operacional agentic local: uma camada única sobre
 
 ## Instalação
 
-Pré-requisitos: Node.js ≥ 22 e git.
+**App empacotado** (sem Node.js, sem terminal): baixe o arquivo da sua
+plataforma, extraia e abra o **MordomoOS** (`MordomoOS.app`, `MordomoOS` ou
+`MordomoOS.cmd`). O serviço local inicia e o navegador abre a tela de
+configuração, que detecta Claude Code, Cursor Agent e Codex no computador e
+mostra como instalar ou fazer login em cada um. Seus dados ficam no seu perfil
+de usuário (`~/Library/Application Support/MordomoOS`, `~/.local/share/mordomo-os`
+ou `%LOCALAPPDATA%\MordomoOS`). Detalhes por plataforma: [install.md](install.md).
+
+No macOS o app não é notarizado: na primeira abertura use o botão direito →
+Abrir → Abrir (ou `xattr -dr com.apple.quarantine MordomoOS.app`).
+
+**A partir do código-fonte** — pré-requisitos: Node.js ≥ 22 e git.
 
 ```bash
 git clone <este-repo> mordomo-os && cd mordomo-os
-scripts/setup.sh        # instala, compila e abre o setup guiado
+scripts/setup.sh        # instala, compila e abre o setup guiado no terminal
+npx mordomo launch      # ou: inicia o serviço e abre o navegador (o setup acontece lá)
 ```
 
-O setup detecta os três provedores, confirma flags suportadas via `--help`,
-verifica autenticação **sem nunca exibir tokens**, deixa você escolher
-provedores/modelos/esforço, pastas indexadas, exclusões, nome/tema/porta/idioma
-e (só com sua aprovação) a inicialização automática. Pode ser re-executado
-quantas vezes quiser — nunca destrói dados.
+O setup detecta os três provedores (no PATH e nas pastas usuais de instalação),
+confirma flags suportadas via `--help`, verifica autenticação **sem nunca
+exibir tokens**, deixa você escolher provedores/modelos/esforço, pastas
+indexadas, exclusões, nome/tema/porta/idioma e (só com sua aprovação) a
+inicialização automática. Pode ser re-executado quantas vezes quiser — nunca
+destrói dados.
+
+Para gerar o distribuível você mesmo: `npm run dist` (um único bundle
+minificado, sem fontes; veja [install.md](install.md#building-a-distributable)).
 
 ## Dia a dia
 

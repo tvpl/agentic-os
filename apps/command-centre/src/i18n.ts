@@ -520,6 +520,15 @@ const baseEn = {
   "setup.stepFolders": "Folders",
   "setup.stepIdentity": "Identity",
   "setup.stepProviders": "Providers",
+  "setup.intro": "Let's set up the essentials in a few steps. Everything can be changed later in Settings.",
+  "setup.terminalOption": "Prefer the terminal?",
+  "setup.providersHint":
+    "MordomoOS works through the coding agents installed on this computer. Install the ones you use and sign in once.",
+  "setup.notInstalled": "not found on this computer",
+  "setup.installHint": "Install it with the command below, then click “Detect again”.",
+  "setup.loginHint":
+    "Installed, but not signed in. Run the command below in a terminal, then click “Detect again”.",
+  "setup.detectAgain": "Detect again",
   "skills.readOnly": "read-only",
   "pixel.draftRestored": "Draft restored from your last session.",
   "pixel.leaveTitle": "Leave with unsaved pixels?",
@@ -1062,6 +1071,16 @@ const basePtBR = {
   "setup.stepFolders": "Pastas",
   "setup.stepIdentity": "Identidade",
   "setup.stepProviders": "Provedores",
+  "setup.intro":
+    "Vamos configurar o essencial em poucos passos. Tudo pode ser alterado depois em Configurações.",
+  "setup.terminalOption": "Prefere o terminal?",
+  "setup.providersHint":
+    "O MordomoOS trabalha por meio dos agentes de código instalados neste computador. Instale os que você usa e faça login uma vez.",
+  "setup.notInstalled": "não encontrado neste computador",
+  "setup.installHint": "Instale com o comando abaixo e depois clique em “Detectar novamente”.",
+  "setup.loginHint":
+    "Instalado, mas sem login. Execute o comando abaixo em um terminal e clique em “Detectar novamente”.",
+  "setup.detectAgain": "Detectar novamente",
   "skills.readOnly": "somente leitura",
   "pixel.draftRestored": "Rascunho restaurado da última sessão.",
   "pixel.leaveTitle": "Sair com pixels não salvos?",

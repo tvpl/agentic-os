@@ -3,7 +3,6 @@ import fs from "node:fs";
 import https from "node:https";
 import path from "node:path";
 import { Writable } from "node:stream";
-import { fileURLToPath } from "node:url";
 import Fastify, {
   LogController,
   type FastifyInstance,
@@ -22,6 +21,7 @@ import {
   type TlsMaterial,
 } from "@mordomo/core";
 import { AppContext } from "./context.js";
+import { uiDistCandidates } from "./entry.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerSkillRoutes } from "./routes/skills.js";
 import { registerRunRoutes } from "./routes/runs.js";
@@ -127,8 +127,6 @@ const STATUS_CODES: Record<number, string> = {
 };
 
 // ---- Request log: logs/api.jsonl through the secret redactor ---------------
-
-const here = path.dirname(fileURLToPath(import.meta.url));
 
 function buildLoggerOptions(ctx: AppContext) {
   const limits = ctx.settings().limits;
@@ -255,7 +253,10 @@ export async function buildServer(
   registerObjectiveRoutes(app, ctx);
 
   // ---- Command Centre static UI --------------------------------------------
-  const uiDist = options.uiDist ?? path.resolve(here, "..", "..", "command-centre", "dist");
+  const uiDist =
+    options.uiDist ??
+    uiDistCandidates().find((dir) => fs.existsSync(path.join(dir, "index.html"))) ??
+    uiDistCandidates()[0]!;
   const indexFile = path.join(uiDist, "index.html");
   if (fs.existsSync(indexFile)) {
     await app.register(fastifyStatic, {

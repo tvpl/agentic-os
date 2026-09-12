@@ -1,7 +1,8 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarDays, Check, Copy, ExternalLink, Eye, EyeOff, Mail, Plug } from "lucide-react";
+import { CalendarDays, Check, Copy, ExternalLink, Eye, EyeOff, Mail, Plug, RefreshCw } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
+import { PROVIDER_LOGIN_COMMANDS } from "../runs/authRecovery";
 import { api, type Connector, type ProviderId, type ProviderSnapshot } from "../api";
 import { I18nContext, useT, type Lang } from "../i18n";
 import { qk, useApiQuery } from "../queries";
@@ -30,7 +31,18 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     staleTime: 60_000,
   });
   const [step, setStep] = useState(0);
+  // "Detect again": re-probe one CLI (a fresh install or login) and refresh the list.
+  const redetect = useMutation({
+    mutationFn: (id: ProviderId) => api.post(`/api/providers/${id}/detect`),
+    onSettled: () => void providers.refetch(),
+    onError: (err: Error) => toast(errorMessage(err, t), "danger"),
+  });
+  const copyCommand = async (command: string) => {
+    const ok = await copyText(command);
+    toast(ok ? t("common.copied") : t("skills.copyFailed"), ok ? "ok" : "danger");
+  };
   const [enabled, setEnabled] = useState<Record<ProviderId, boolean> | null>(null);
+  const installedRef = useRef<Partial<Record<ProviderId, boolean>>>({});
   const [defaultProvider, setDefaultProvider] = useState<ProviderId>("claude");
   const [name, setName] = useState("MordomoOS");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
@@ -43,7 +55,24 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   );
 
   useEffect(() => {
-    if (!providers.data || enabled) return;
+    if (!providers.data) return;
+    if (enabled) {
+      // A CLI detected after "Detect again" joins the enabled set and a vanished
+      // one leaves it; a choice the user made about an unchanged CLI is kept.
+      const next = { ...enabled };
+      let changed = false;
+      for (const s of providers.data) {
+        const was = installedRef.current[s.id];
+        if (was !== undefined && was !== s.health.installed) {
+          next[s.id] = s.health.installed;
+          changed = true;
+        }
+        installedRef.current[s.id] = s.health.installed;
+      }
+      if (changed) setEnabled(next);
+      return;
+    }
+    for (const s of providers.data) installedRef.current[s.id] = s.health.installed;
     const next: Record<ProviderId, boolean> = { claude: false, cursor: false, codex: false };
     for (const s of providers.data) next[s.id] = s.health.installed;
     setEnabled(next);
@@ -115,23 +144,26 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         <div className="page-head" style={{ marginTop: 32 }}>
           <div>
             <h1>{t("setup.welcome")} 👋</h1>
-            <p className="sub">{t("setup.notDone")}</p>
-            <div className="setup-cmd">
-              <pre className="preview-pre tight">npx mordomo setup</pre>
-              <Button
-                size="sm"
-                variant="ghost"
-                icon={<Copy aria-hidden />}
-                aria-label={t("brain.copyPath")}
-                title={t("brain.copyPath")}
-                onClick={() =>
-                  void copyText("npx mordomo setup").then((ok) =>
-                    toast(ok ? t("brain.copied") : t("skills.copyFailed"), ok ? "ok" : "danger"),
-                  )
-                }
-              />
-            </div>
-            <p className="sub">{t("setup.orUi")}</p>
+            <p className="sub">{t("setup.intro")}</p>
+            <details className="setup-terminal">
+              <summary>{t("setup.terminalOption")}</summary>
+              <p className="sub">{t("setup.notDone")}</p>
+              <div className="setup-cmd">
+                <pre className="preview-pre tight">npx mordomo setup</pre>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={<Copy aria-hidden />}
+                  aria-label={t("brain.copyPath")}
+                  title={t("brain.copyPath")}
+                  onClick={() =>
+                    void copyText("npx mordomo setup").then((ok) =>
+                      toast(ok ? t("brain.copied") : t("skills.copyFailed"), ok ? "ok" : "danger"),
+                    )
+                  }
+                />
+              </div>
+            </details>
           </div>
         </div>
 
@@ -166,25 +198,66 @@ export default function Setup({ onDone }: { onDone: () => void }) {
               <>
                 <fieldset className="field">
                   <legend className="label">{t("settings.providers")}</legend>
-                  {(providers.data ?? []).map((prov) => (
-                    <label key={prov.id} className="check">
-                      <input
-                        type="checkbox"
-                        checked={enabled[prov.id]}
-                        disabled={!prov.health.installed}
-                        onChange={(e) => setEnabled({ ...enabled, [prov.id]: e.target.checked })}
-                      />
-                      <strong>{prov.displayName ?? prov.id}</strong>
-                      <span
-                        className={`dot ${prov.health.installed ? (prov.health.ok ? "ok" : "warn") : "danger"}`}
-                      />
-                      <span className="meta">
-                        {prov.health.installed
-                          ? (prov.health.version ?? t("setup.installed"))
-                          : prov.health.detail}
-                      </span>
-                    </label>
-                  ))}
+                  <p className="hint">{t("setup.providersHint")}</p>
+                  {(providers.data ?? []).map((prov) => {
+                    const installed = prov.health.installed;
+                    const loggedIn = prov.health.authenticated === true;
+                    const command = installed ? PROVIDER_LOGIN_COMMANDS[prov.id] : prov.installHint;
+                    const busy = redetect.isPending && redetect.variables === prov.id;
+                    return (
+                      <div key={prov.id} className="setup-provider" data-testid={`setup-provider-${prov.id}`}>
+                        <label className="check">
+                          <input
+                            type="checkbox"
+                            checked={enabled[prov.id]}
+                            disabled={!installed}
+                            onChange={(e) => setEnabled({ ...enabled, [prov.id]: e.target.checked })}
+                          />
+                          <strong>{prov.displayName ?? prov.id}</strong>
+                          <span className={`dot ${installed ? (loggedIn ? "ok" : "warn") : "danger"}`} />
+                          <span className="meta">
+                            {installed
+                              ? `${prov.health.version ?? t("setup.installed")} · ${
+                                  loggedIn
+                                    ? t("settings.authOk")
+                                    : prov.health.authenticated === false
+                                      ? t("settings.authRequired")
+                                      : t("settings.authUnknown")
+                                }`
+                              : t("setup.notInstalled")}
+                          </span>
+                        </label>
+                        {(!installed || !loggedIn) && (
+                          <div className="setup-provider-help">
+                            <p className="hint">{t(installed ? "setup.loginHint" : "setup.installHint")}</p>
+                            {command && (
+                              <div className="setup-cmd">
+                                <pre className="preview-pre tight">{command}</pre>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  icon={<Copy aria-hidden />}
+                                  aria-label={t("common.copy")}
+                                  title={t("common.copy")}
+                                  onClick={() => void copyCommand(command)}
+                                />
+                              </div>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              icon={<RefreshCw aria-hidden />}
+                              loading={busy}
+                              disabled={redetect.isPending}
+                              onClick={() => redetect.mutate(prov.id)}
+                            >
+                              {t("setup.detectAgain")}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                   {!anyEnabled && <p className="hint warn">{t("setup.noProvider")}</p>}
                 </fieldset>
                 <Field label={t("dash.default")} htmlFor="su-default">

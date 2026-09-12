@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   executeInvocation,
-  findOnPath,
+  findExecutable,
   parseHelpFlags,
   probe,
   type AgentAdapter,
@@ -47,18 +47,20 @@ export class CursorAdapter implements AgentAdapter {
   constructor(private readonly opts: { binaryPath?: string | null; homeDir?: string } = {}) {}
 
   private binary(): string {
-    return this.opts.binaryPath ?? findOnPath("cursor-agent") ?? "cursor-agent";
+    return this.opts.binaryPath ?? findExecutable("cursor-agent") ?? "cursor-agent";
   }
 
   async detect(): Promise<DetectionResult> {
-    const binaryPath = this.opts.binaryPath ?? findOnPath("cursor-agent");
+    const binaryPath = this.opts.binaryPath ?? findExecutable("cursor-agent");
     if (!binaryPath) {
       return {
         installed: false,
         binaryPath: null,
         version: null,
         supportedFlags: [],
-        notes: ["`cursor-agent` was not found on PATH. Install: curl https://cursor.com/install -fsS | bash"],
+        notes: [
+          "`cursor-agent` was not found on PATH or in the usual install folders. Install: curl https://cursor.com/install -fsS | bash",
+        ],
       };
     }
     const notes: string[] = [];
@@ -87,7 +89,7 @@ export class CursorAdapter implements AgentAdapter {
   }
 
   async authenticate(): Promise<AuthStatus> {
-    const binaryPath = this.opts.binaryPath ?? findOnPath("cursor-agent");
+    const binaryPath = this.opts.binaryPath ?? findExecutable("cursor-agent");
     if (!binaryPath) return { authenticated: false, method: null, detail: "cursor-agent is not installed." };
     try {
       // `cursor-agent status` prints login state without exposing tokens.

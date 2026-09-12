@@ -2,11 +2,17 @@
 
 ## 1. First contact
 
-After `scripts/setup.sh` (or `npm install && npm run build && npx mordomo setup`):
+Install the packaged app or a source checkout ([install.md](install.md)). Then:
 
 ```bash
-mordomo start        # → http://127.0.0.1:4777
+mordomo launch       # starts the service if needed and opens http://127.0.0.1:4777
+mordomo start        # the same, without opening the browser
 ```
+
+The first visit shows the **setup screen**: which provider CLIs were found on
+this computer (with the install or login command for the missing ones and a
+*Detect again* button), your name/theme/language, one folder to index, data
+connectors and the desktop look. Everything is editable later in Settings.
 
 The Command Centre opens on the **Dashboard**: active provider + quick
 Claude/Cursor/Codex switcher, favorite skills with Run buttons, routines and

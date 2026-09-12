@@ -36,14 +36,20 @@ import { BackupNameParams, UuidParams } from "./params.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-/** Version from the repository root package.json (falls back to apps/api's own). */
+/**
+ * Version from the repository root package.json, apps/api's own, or the
+ * manifest a packaged install writes next to `lib/`. Only MordomoOS manifests
+ * count, so an unrelated package.json above the install folder is ignored.
+ */
 export function readPackageVersion(): string {
   for (const candidate of [
     path.resolve(here, "..", "..", "..", "..", "package.json"),
     path.resolve(here, "..", "..", "package.json"),
+    path.resolve(here, "..", "package.json"),
   ]) {
     try {
-      const pkg = JSON.parse(fs.readFileSync(candidate, "utf8")) as { version?: unknown };
+      const pkg = JSON.parse(fs.readFileSync(candidate, "utf8")) as { name?: unknown; version?: unknown };
+      if (pkg.name !== "mordomo-os" && pkg.name !== "@mordomo/api") continue;
       if (typeof pkg.version === "string" && pkg.version) return pkg.version;
     } catch {
       /* try next */

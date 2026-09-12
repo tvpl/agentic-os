@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   executeInvocation,
-  findOnPath,
+  findExecutable,
   parseHelpFlags,
   probe,
   type AgentAdapter,
@@ -49,7 +49,7 @@ export class ClaudeAdapter implements AgentAdapter {
   constructor(private readonly opts: { binaryPath?: string | null; homeDir?: string } = {}) {}
 
   private binary(): string {
-    return this.opts.binaryPath ?? findOnPath("claude") ?? "claude";
+    return this.opts.binaryPath ?? findExecutable("claude") ?? "claude";
   }
 
   /** Cached `--help`/`--version` probe (detect() itself always re-probes). */
@@ -59,14 +59,16 @@ export class ClaudeAdapter implements AgentAdapter {
 
   async detect(): Promise<DetectionResult> {
     this.authCommandSupported = false;
-    const binaryPath = this.opts.binaryPath ?? findOnPath("claude");
+    const binaryPath = this.opts.binaryPath ?? findExecutable("claude");
     if (!binaryPath) {
       return {
         installed: false,
         binaryPath: null,
         version: null,
         supportedFlags: [],
-        notes: ["`claude` was not found on PATH. Install: npm install -g @anthropic-ai/claude-code"],
+        notes: [
+          "`claude` was not found on PATH or in the usual install folders. Install: npm install -g @anthropic-ai/claude-code",
+        ],
       };
     }
     const notes: string[] = [];

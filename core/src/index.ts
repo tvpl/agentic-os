@@ -1,4 +1,4 @@
-export { resolvePaths, ensureDirs, type MordomoPaths } from "./paths.js";
+export { resolvePaths, ensureDirs, defaultUserDataDir, seedHome, type MordomoPaths } from "./paths.js";
 export {
   SettingsSchema,
   ProviderId,
@@ -61,7 +61,13 @@ export type {
   HealthStatus,
 } from "./agents/types.js";
 export { executeInvocation, type LineParser } from "./agents/baseExec.js";
-export { findOnPath, parseHelpFlags } from "./spawn/which.js";
+export {
+  augmentedPath,
+  findExecutable,
+  findOnPath,
+  parseHelpFlags,
+  providerSearchDirs,
+} from "./spawn/which.js";
 export { JsonlLogger } from "./logs/jsonl.js";
 export {
   RunManager,

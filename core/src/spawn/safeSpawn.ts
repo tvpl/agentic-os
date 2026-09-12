@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import { GUARDIAN_SOURCE } from "./guardian.js";
+import { augmentedPath } from "./which.js";
 
 /**
  * Controlled child-process layer.
@@ -118,7 +119,9 @@ export function safeSpawn(executable: string, args: string[], opts: SpawnOptions
     supervised ? ["-e", GUARDIAN_SOURCE, executable, ...args] : args,
     {
       cwd: opts.cwd,
-      env: { ...process.env, ...opts.env },
+      // Services run with a bare PATH: make sure the CLI (and the node/git it
+      // shells out to) is reachable, without overriding an explicit PATH.
+      env: { ...process.env, PATH: augmentedPath(), ...opts.env },
       stdio: supervised ? ["pipe", "pipe", "pipe", "ipc"] : ["pipe", "pipe", "pipe"],
       detached: process.platform !== "win32", // own process group → group kill works
       shell: false,
