@@ -4,14 +4,8 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./theme.css";
 
-// Installable shell (plan Onda 3 §2). Registration failures are silent: the
-// page works the same without a worker (file:// previews, old browsers).
-if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => undefined);
-  });
-}
-
+// The independent boot script registers the service worker even when a
+// stale cached bundle prevents this module from executing.
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />

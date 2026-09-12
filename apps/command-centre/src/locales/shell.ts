@@ -5,6 +5,7 @@
  * `satisfies` clause and by i18n.test.ts).
  */
 export const en = {
+  "shell.action.onboarding": "Interactive OS guide",
   "shell.palette.title": "Command palette",
   "shell.palette.placeholder": "Type a command, app, skill or file…",
   "shell.palette.apps": "Apps",
@@ -119,6 +120,7 @@ export const en = {
 };
 
 export const ptBR = {
+  "shell.action.onboarding": "Guia interativo do OS",
   "shell.palette.title": "Paleta de comandos",
   "shell.palette.placeholder": "Digite um comando, app, skill ou arquivo…",
   "shell.palette.apps": "Apps",

@@ -260,7 +260,14 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (
+        e.defaultPrevented ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.altKey ||
+        document.documentElement.dataset.onboarding
+      )
+        return;
       const el = e.target instanceof Element ? e.target : null;
       if (el?.closest('[role="dialog"]')) return;
       const editable =

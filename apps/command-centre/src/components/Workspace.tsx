@@ -128,7 +128,12 @@ export function WorkspaceDock() {
               </button>
             ))}
           </div>
-          <div className="dock-modes" role="group" aria-label={t("desktop.mode.title")}>
+          <div
+            className="dock-modes"
+            data-onboarding="modes"
+            role="group"
+            aria-label={t("desktop.mode.title")}
+          >
             {MODES.map((value) => {
               const Icon = MODE_ICONS[value];
               return (

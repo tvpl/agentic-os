@@ -39,8 +39,6 @@ import { registerEventRoutes } from "./routes/events.js";
 import { registerObjectiveRoutes } from "./routes/objectives.js";
 import { closeAllSse } from "./routes/sse.js";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-
 export interface ServerHandle {
   app: FastifyInstance;
   ctx: AppContext;
@@ -130,6 +128,8 @@ const STATUS_CODES: Record<number, string> = {
 
 // ---- Request log: logs/api.jsonl through the secret redactor ---------------
 
+const here = path.dirname(fileURLToPath(import.meta.url));
+
 function buildLoggerOptions(ctx: AppContext) {
   const limits = ctx.settings().limits;
   const jsonl = new JsonlLogger(ctx.paths.logs, "api", limits.logMaxFileBytes, limits.logRetentionDays);
@@ -156,7 +156,10 @@ function buildLoggerOptions(ctx: AppContext) {
   };
 }
 
-export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
+export async function buildServer(
+  ctx: AppContext,
+  options: { uiDist?: string } = {},
+): Promise<FastifyInstance> {
   const app = Fastify({
     logger: buildLoggerOptions(ctx),
     // Our own onResponse hook writes the request line; Fastify's default
@@ -252,12 +255,14 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   registerObjectiveRoutes(app, ctx);
 
   // ---- Command Centre static UI --------------------------------------------
-  const uiDist = path.resolve(here, "..", "..", "command-centre", "dist");
+  const uiDist = options.uiDist ?? path.resolve(here, "..", "..", "command-centre", "dist");
   const indexFile = path.join(uiDist, "index.html");
   if (fs.existsSync(indexFile)) {
     await app.register(fastifyStatic, {
       root: uiDist,
-      wildcard: false,
+      // Vite replaces hashed assets on rebuild. Resolve files at request time
+      // instead of freezing the list of routes when the daemon starts.
+      wildcard: true,
       index: false,
     });
     const serveIndex = (req: FastifyRequest, reply: FastifyReply) => {
@@ -272,11 +277,21 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
           /<meta name="mordomo-token" content=""\s*\/?>/,
           `<meta name="mordomo-token" content="${inject}" />`,
         );
-      reply.type("text/html; charset=utf-8").send(html);
+      reply.header("Cache-Control", "no-store").type("text/html; charset=utf-8").send(html);
     };
     app.get("/", serveIndex);
+    app.get("/index.html", serveIndex);
     app.setNotFoundHandler((req, reply) => {
-      if (req.url.startsWith("/api/")) return reply.code(404).send(errorBody("not_found", "Not found"));
+      const pathname = req.url.split("?")[0]!;
+      if (
+        pathname.startsWith("/api/") ||
+        /^\/(?:assets|fonts|icons)(?:\/|$)/.test(pathname) ||
+        path.posix.extname(pathname)
+      ) {
+        // Returning the SPA here makes browsers reject JS with a MIME error
+        // and allows service workers to cache HTML under a hashed asset URL.
+        return reply.header("Cache-Control", "no-store").code(404).send(errorBody("not_found", "Not found"));
+      }
       return serveIndex(req, reply);
     });
   } else {

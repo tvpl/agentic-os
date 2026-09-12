@@ -5,6 +5,7 @@ import path from "node:path";
 import { createBackup, ensureDirs, resolvePaths, restoreBackup } from "@mordomo/core";
 import { AppContext } from "../../apps/api/dist/context.js";
 import { startServer } from "../../apps/api/dist/server.js";
+import { returningUserState } from "./returning-user";
 
 test("a backup restored into an emptied home has usable files and sessions in the browser", async ({
   browser,
@@ -37,7 +38,10 @@ test("a backup restored into an emptied home has usable files and sessions in th
   fs.cpSync(path.join(container, "snapshot"), path.join(paths.backups, snapshot.name), { recursive: true });
   restoreBackup(paths, snapshot.name);
   const server = await startServer(home);
-  const context = await browser.newContext({ baseURL: "http://127.0.0.1:4794" });
+  const context = await browser.newContext({
+    baseURL: "http://127.0.0.1:4794",
+    storageState: returningUserState("http://127.0.0.1:4794"),
+  });
   try {
     const page = await context.newPage();
     await page.goto("/#/brain");

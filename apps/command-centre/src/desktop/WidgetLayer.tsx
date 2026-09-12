@@ -64,6 +64,7 @@ export default function WidgetLayer({
   useEffect(() => {
     if (!maximized && workspaceMode !== "focus") return;
     const restore = (event: globalThis.KeyboardEvent) => {
+      if (document.documentElement.dataset.onboarding) return;
       if (event.key === "Escape" && getDialogDepth() === 0) {
         event.stopPropagation();
         setMaximized(null);

@@ -1,3 +1,4 @@
+import { OnboardingButton } from "../onboarding/Onboarding";
 import { useWorkspace, type RenderProfile } from "../components/Workspace";
 import { PROVIDER_LOGIN_COMMANDS } from "../runs/authRecovery";
 import { useContext, useEffect, useState } from "react";
@@ -120,6 +121,9 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
   const [tab, setTabState] = useState<TabId>(
     requested && TAB_IDS.includes(requested) ? requested : "identity",
   );
+  useEffect(() => {
+    setTabState(requested && TAB_IDS.includes(requested) ? requested : "identity");
+  }, [requested]);
   const setTab = (id: TabId) => {
     setTabState(id);
     setParams(id === "identity" ? {} : { tab: id }, { replace: true });
@@ -185,6 +189,7 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
         <div>
           <h1>{t("settings.title")}</h1>
         </div>
+        <OnboardingButton />
       </div>
       <Tabs
         id="settings-tabs"

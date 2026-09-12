@@ -35,6 +35,7 @@ import { authRecovery } from "../../runs/authRecovery";
 import { useDesktopActions } from "../actions";
 import { isActiveStatus } from "../data";
 import { cfgString, type WidgetProps } from "../widgetTypes";
+import { ONBOARDING_DRAFT_EVENT } from "../../onboarding/state";
 import { readConsoleDraft, storeConsoleDraft } from "../consoleDraft";
 
 type Mode = "read_only" | "write";
@@ -122,6 +123,11 @@ export default function PromptWidget({ config }: WidgetProps) {
 
   const [initialDraft] = useState(readConsoleDraft);
   const [prompt, setPrompt] = useState(initialDraft.text);
+  useEffect(() => {
+    const refresh = () => setPrompt(readConsoleDraft().text);
+    window.addEventListener(ONBOARDING_DRAFT_EVENT, refresh);
+    return () => window.removeEventListener(ONBOARDING_DRAFT_EVENT, refresh);
+  }, []);
   const [mode, setMode] = useState<Mode>(
     cfgString(config, "mode", "read_only") === "write" ? "write" : "read_only",
   );

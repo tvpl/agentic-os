@@ -1,3 +1,4 @@
+import { openOnboarding } from "../onboarding/state";
 import { errorMessage } from "../views/shared";
 /**
  * Command palette (analysis item 20): the launcher grown into a cmdk-like
@@ -285,6 +286,16 @@ export function CommandPalette({
       ...extra,
     });
     return [
+      act(
+        "onboarding",
+        "shell.action.onboarding",
+        <Sparkles aria-hidden />,
+        ["tour", "guide", "onboarding", "guia", "ajuda", "help", "tutorial"],
+        () => {
+          close();
+          openOnboarding();
+        },
+      ),
       act(
         "reindex",
         "shell.action.reindex",

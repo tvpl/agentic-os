@@ -37,6 +37,7 @@ import { useOsNavigate } from "./hooks/useViewTransition";
 
 // Desktop is the landing surface and stays in the main chunk.
 import Desktop from "./desktop";
+import { Onboarding } from "./onboarding/Onboarding";
 const Runs = lazy(() => import("./runs"));
 // TODO(orchestrator): switch to `lazy(() => import("./brain"))` once F3 lands src/brain/index.tsx.
 const SecondBrain = lazy(() => import("./views/SecondBrain"));
@@ -384,7 +385,7 @@ function RouteSurface({ name, children }: { name: string; children: ReactNode })
   return (
     <ErrorBoundary name={key ? t(key) : t("nav.dashboard")} resetKey={pathname}>
       <Suspense fallback={<PageFallback />}>
-        <div className="route-surface" key={segment}>
+        <div className="route-surface" key={segment} data-onboarding={name}>
           {children}
         </div>
       </Suspense>
@@ -442,7 +443,7 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       // Dialogs handle their own Escape (and stop propagation); never navigate from inside one.
-      if (ev.defaultPrevented) return;
+      if (ev.defaultPrevented || document.documentElement.dataset.onboarding) return;
       const target = ev.target instanceof Element ? ev.target : null;
       if (target?.closest('[role="dialog"]')) return;
       const inField = isEditableTarget();
@@ -536,6 +537,7 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
       </div>
       <WorkspaceDock />
       <MobileNav onMenu={() => openPalette()} />
+      <Onboarding />
     </div>
   );
 }

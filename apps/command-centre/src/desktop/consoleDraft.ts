@@ -7,6 +7,8 @@ export interface ConsoleDraft {
 }
 const KEY = "mordomo.console.workspaceDraft.v1";
 const LEGACY_KEY = "mordomo.console.draft";
+// Route-to-route handoffs must still work when storage is disabled or full.
+let pendingDraft: ConsoleDraft | null = null;
 
 export function parseConsoleDraft(raw: string | null, legacy: string | null): ConsoleDraft {
   try {
@@ -31,6 +33,7 @@ export function parseConsoleDraft(raw: string | null, legacy: string | null): Co
   return { text: legacy ?? "", cwd: "" };
 }
 export function readConsoleDraft(): ConsoleDraft {
+  if (pendingDraft) return { ...pendingDraft };
   try {
     return parseConsoleDraft(sessionStorage.getItem(KEY), sessionStorage.getItem(LEGACY_KEY));
   } catch {
@@ -38,9 +41,11 @@ export function readConsoleDraft(): ConsoleDraft {
   }
 }
 export function storeConsoleDraft(draft: ConsoleDraft): boolean {
+  pendingDraft = { ...draft };
   try {
     sessionStorage.setItem(KEY, JSON.stringify({ version: 1, ...draft, sessionId: draft.sessionId ?? null }));
     sessionStorage.removeItem(LEGACY_KEY);
+    pendingDraft = null;
     return true;
   } catch {
     /* Keep in-memory state when browser storage is unavailable. */
