@@ -425,6 +425,9 @@ export class RoutineScheduler {
         origin: "routine",
         provider: routine.provider,
         prompt: routine.prompt ?? `(skill: ${skillSlug})`,
+        request: skillSlug
+          ? { version: 1, kind: "skill", skillSlug, inputs: routine.inputs, mode }
+          : { version: 1, kind: "prompt", prompt: routine.prompt ?? "", mode },
         cwd,
         model: routine.model ?? settings.providers[routine.provider].defaultModel,
         effort: routine.effort,

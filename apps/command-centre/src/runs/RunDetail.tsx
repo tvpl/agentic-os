@@ -11,7 +11,7 @@ import { ArrowLeft, ClipboardList, Copy, CornerDownRight, FileText, RefreshCw, S
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useLocale, useT } from "../i18n";
-import { useOsArtifacts } from "../queries";
+import { useOsArtifacts, useOsObjectives } from "../queries";
 import { ErrorBox, Skeleton, StatusBadge, formatDuration, timeAgo, useToast } from "../components/ui";
 import { Badge, Button, EmptyState, Segmented } from "../components/primitives";
 import { useConfirm } from "../hooks/useConfirm";
@@ -24,7 +24,7 @@ import { SquadCard } from "./Squad";
 import { SkillNoteCard } from "./SkillNote";
 import { approvalForRun, toolApprovalsForRun } from "./approvals";
 import { eventsToText } from "./logText";
-import { followUpPrompt } from "./policy";
+import { authRecovery } from "./authRecovery";
 import { contextWindowFor } from "./models";
 import { contextUsed, foldUsage, formatTokens, formatUsd, totalTokens } from "./usage";
 import { isNotFound, isRunActive, useRunQuery, useRunStream } from "./useRunStream";
@@ -59,7 +59,10 @@ export default function RunDetail({ id }: { id: string }) {
   const followUpRef = useRef<HTMLTextAreaElement>(null);
 
   const artifacts = useOsArtifacts();
+  const objectives = useOsObjectives({ staleTime: 10_000 });
   const mine = (artifacts.data ?? []).filter((a) => a.runId === id);
+  const objective = objectives.data?.find((candidate) => candidate.steps.some((step) => step.runId === id));
+  const objectiveStep = objective?.steps.find((step) => step.runId === id);
   const running = run?.status === "running" || run?.status === "queued";
   const approvals = useApprovals({
     enabled: run?.status === "waiting_approval" || pendingApprovalId !== null || running,
@@ -96,28 +99,59 @@ export default function RunDetail({ id }: { id: string }) {
       cancel.mutate();
   };
 
-  const launch = useMutation({
-    mutationFn: (prompt: string) =>
-      api.post<{ runId: string | null; pendingApproval?: { id: string } | null }>("/api/runs", {
-        prompt,
-        mode: run?.permissionProfile && run.permissionProfile !== "read_only" ? "write" : "read_only",
-        ...(run?.provider ? { provider: run.provider } : {}),
-        ...(run?.model ? { model: run.model } : {}),
-        ...(run?.effort && run.effort !== "default" ? { effort: run.effort } : {}),
-        ...(run?.cwd ? { cwd: run.cwd } : {}),
+  const receiptIds = useRef<Record<string, string>>({});
+  const receipt = (action: string) => (receiptIds.current[action] ??= crypto.randomUUID());
+  type LaunchResponse = {
+    runId: string | null;
+    sessionId?: string;
+    status?: string;
+    pendingApproval?: { id: string } | null;
+  };
+  const onLaunched = (res: LaunchResponse, action: string) => {
+    delete receiptIds.current[action];
+    setFollowUp(null);
+    qc.invalidateQueries({ queryKey: ["runs"] }).catch(() => undefined);
+    if (res.status === "waiting_approval") {
+      setPendingApprovalId(res.pendingApproval?.id ?? null);
+      qc.invalidateQueries({ queryKey: ["approvals"] }).catch(() => undefined);
+      toast(t("runs.approve.queued"), "info");
+      return;
+    }
+    setPendingApprovalId(null);
+    if (res.runId) navigate(`/runs/${res.runId}`);
+  };
+  const repeat = useMutation({
+    mutationFn: () =>
+      api.post<LaunchResponse>(`/api/runs/${encodeURIComponent(id)}/retry`, {
+        submissionId: receipt("retry"),
       }),
     onSuccess: (res) => {
-      setFollowUp(null);
-      qc.invalidateQueries({ queryKey: ["runs"] }).catch(() => undefined);
-      if (!res.runId) {
-        setPendingApprovalId(res.pendingApproval?.id ?? null);
-        qc.invalidateQueries({ queryKey: ["approvals"] }).catch(() => undefined);
-        toast(t("runs.approve.queued"), "info");
-        return;
-      }
-      setPendingApprovalId(null);
-      navigate(`/runs/${res.runId}`);
+      onLaunched(res, "retry");
     },
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
+  const continueRun = useMutation({
+    mutationFn: (prompt: string) =>
+      run?.sessionId
+        ? api.post<LaunchResponse>(`/api/sessions/${encodeURIComponent(run.sessionId)}/continue`, {
+            submissionId: receipt("continue"),
+            prompt,
+            mode: run.request?.mode ?? "read_only",
+            model: run.model,
+            effort: run.effort,
+            ...(run.timeoutMs ? { timeoutMs: run.timeoutMs } : {}),
+          })
+        : api.post<LaunchResponse>("/api/runs", {
+            submissionId: receipt("continue"),
+            prompt,
+            mode: run?.request?.mode ?? "read_only",
+            provider: run?.provider,
+            model: run?.model,
+            effort: run?.effort,
+            cwd: run?.cwd,
+            ...(run?.timeoutMs ? { timeoutMs: run.timeoutMs } : {}),
+          }),
+    onSuccess: (res) => onLaunched(res, "continue"),
     onError: (err: Error) => toast(err.message, "danger"),
   });
 
@@ -139,7 +173,7 @@ export default function RunDetail({ id }: { id: string }) {
 
   const copyLog = () => void copy(eventsToText(events, locale));
   const runAgain = () => {
-    if (run) launch.mutate(run.promptSummary);
+    if (run?.request) repeat.mutate();
   };
   const startFollowUp = () => {
     setTab("timeline");
@@ -218,6 +252,7 @@ export default function RunDetail({ id }: { id: string }) {
     : formatDuration(run.durationMs);
   const contextPct =
     contextTokens != null && contextWindow ? Math.min(100, (contextTokens / contextWindow) * 100) : null;
+  const recovery = authRecovery(run.provider, run.failure?.message ?? run.error);
 
   return (
     <div className="page run-detail">
@@ -318,7 +353,8 @@ export default function RunDetail({ id }: { id: string }) {
             variant="secondary"
             icon={<RefreshCw aria-hidden />}
             onClick={runAgain}
-            loading={launch.isPending && followUp === null}
+            loading={repeat.isPending}
+            disabled={!run.request}
             title={t("runs.actions.againTitle")}
           >
             {t("runs.actions.again")}
@@ -342,6 +378,65 @@ export default function RunDetail({ id }: { id: string }) {
           </Button>
         </div>
       </div>
+
+      {objective && objectiveStep && (
+        <div className="card run-objective">
+          <span className="hud-label">{t("runs.objective.title")}</span>
+          <strong>{objective.title}</strong>
+          <div className="run-objective-chain" aria-label={t("runs.objective.chain")}>
+            {objective.steps.map((step) => (
+              <span
+                key={step.id}
+                className={step.id === objectiveStep.id ? "current" : ""}
+                title={step.blockedReason ?? step.nextAction ?? step.status}
+              >
+                {step.position + 1}. {step.title} · {step.status}
+              </span>
+            ))}
+          </div>
+          {objectiveStep.evidence?.verified && (
+            <p className="hint">
+              {t("runs.objective.evidence", { n: objectiveStep.evidence.artifacts.length })}
+            </p>
+          )}
+        </div>
+      )}
+
+      {!active && (
+        <div className={`card run-outcome${run.failure ? " failed" : ""}`}>
+          <div>
+            <span className="hud-label">{t("runs.outcome.title")}</span>
+            <strong>
+              {run.status === "done"
+                ? t("runs.outcome.completed")
+                : (run.failure?.message ?? run.error ?? run.status)}
+            </strong>
+          </div>
+          <div className="run-outcome-facts">
+            {run.failure && (
+              <Badge kind="state" tone="danger">
+                {run.failure.code}
+              </Badge>
+            )}
+            <span>{t("runs.outcome.files", { n: run.filesChanged?.length ?? 0 })}</span>
+            <span>{t("runs.outcome.artifacts", { n: run.artifacts?.length ?? 0 })}</span>
+            {run.failure?.effectsUncertain && (
+              <Badge kind="state" tone="warn">
+                {t("runs.outcome.uncertain")}
+              </Badge>
+            )}
+          </div>
+          {run.failure && (
+            <p className="hint">
+              {run.failure.effectsUncertain
+                ? t("runs.outcome.reconcile")
+                : run.failure.recoverable
+                  ? t("runs.outcome.retry")
+                  : t("runs.outcome.fix")}
+            </p>
+          )}
+        </div>
+      )}
 
       {toolApprovals.length > 0 && (
         <div className="card approvals-card tool">
@@ -368,6 +463,13 @@ export default function RunDetail({ id }: { id: string }) {
       {run.error && (
         <div className="error-box run-error" role="alert">
           {run.error}
+          {recovery && (
+            <div className="auth-recovery">
+              <strong>{t("desktop.auth.title")}</strong>
+              <p>{t("desktop.auth.body", { command: recovery })}</p>
+              <code>{recovery}</code> · <Link to="/settings?tab=providers">{t("desktop.auth.settings")}</Link>
+            </div>
+          )}
         </div>
       )}
 
@@ -385,7 +487,7 @@ export default function RunDetail({ id }: { id: string }) {
             onChange={(e) => setFollowUp(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && followUp.trim())
-                launch.mutate(followUpPrompt(run.promptSummary, followUp));
+                continueRun.mutate(followUp);
               if (e.key === "Escape") setFollowUp(null);
             }}
           />
@@ -393,8 +495,8 @@ export default function RunDetail({ id }: { id: string }) {
             <Button
               variant="primary"
               disabled={!followUp.trim()}
-              loading={launch.isPending}
-              onClick={() => launch.mutate(followUpPrompt(run.promptSummary, followUp))}
+              loading={continueRun.isPending}
+              onClick={() => continueRun.mutate(followUp)}
             >
               {t("common.run")}
             </Button>
@@ -406,8 +508,17 @@ export default function RunDetail({ id }: { id: string }) {
       )}
 
       <div className="card">
-        <h2>{t("runs.prompt")}</h2>
-        <pre className="preview-pre prompt-pre">{run.promptSummary}</pre>
+        <h2 id="run-prompt-heading">{t("runs.prompt")}</h2>
+        <pre
+          className="preview-pre prompt-pre"
+          role="region"
+          aria-labelledby="run-prompt-heading"
+          tabIndex={0}
+        >
+          {run.request?.kind === "prompt" || run.request?.kind === "system"
+            ? run.request.prompt
+            : run.promptSummary}
+        </pre>
       </div>
 
       <div className="card">

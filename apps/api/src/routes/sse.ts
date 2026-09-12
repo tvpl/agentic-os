@@ -43,7 +43,7 @@ export function lastEventId(req: FastifyRequest): number | null {
 export function openSse(
   req: FastifyRequest,
   reply: FastifyReply,
-  opts: { heartbeatMs?: number } = {},
+  opts: { heartbeatMs?: number; maxBufferedBytes?: number } = {},
 ): SseChannel {
   reply.hijack();
   const raw = reply.raw;
@@ -61,9 +61,36 @@ export function openSse(
   raw.flushHeaders?.();
 
   let closed = false;
+  let blocked = false;
+  let bufferedBytes = 0;
+  const pending: string[] = [];
+  const maxBufferedBytes = opts.maxBufferedBytes ?? 1_048_576;
   const cleanups: Array<() => void> = [];
+  const write = (value: string) => {
+    if (closed) return;
+    if (blocked) {
+      const bytes = Buffer.byteLength(value);
+      if (bufferedBytes + bytes > maxBufferedBytes) {
+        channel.end();
+        return;
+      }
+      pending.push(value);
+      bufferedBytes += bytes;
+      return;
+    }
+    blocked = !raw.write(value);
+  };
+  const drain = () => {
+    blocked = false;
+    while (!closed && !blocked && pending.length > 0) {
+      const value = pending.shift()!;
+      bufferedBytes -= Buffer.byteLength(value);
+      blocked = !raw.write(value);
+    }
+  };
+  raw.on("drain", drain);
   const heartbeat = setInterval(() => {
-    if (!closed) raw.write(`: ping ${Date.now()}\n\n`);
+    write(`: ping ${Date.now()}\n\n`);
   }, opts.heartbeatMs ?? 15_000);
   heartbeat.unref?.();
 
@@ -71,6 +98,9 @@ export function openSse(
     if (closed) return;
     closed = true;
     clearInterval(heartbeat);
+    raw.off("drain", drain);
+    pending.length = 0;
+    bufferedBytes = 0;
     OPEN_CHANNELS.delete(channel);
     for (const fn of cleanups.splice(0)) {
       try {
@@ -91,10 +121,10 @@ export function openSse(
       if (frame.id !== undefined) out += `id: ${frame.id}\n`;
       if (frame.event) out += `event: ${frame.event}\n`;
       out += `data: ${JSON.stringify(frame.data)}\n\n`;
-      raw.write(out);
+      write(out);
     },
     comment(text) {
-      if (!closed) raw.write(`: ${text.replace(/\r?\n/g, " ")}\n\n`);
+      write(`: ${text.replace(/\r?\n/g, " ")}\n\n`);
     },
     end() {
       if (closed) return;

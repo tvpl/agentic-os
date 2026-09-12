@@ -48,6 +48,7 @@ import { ArtifactModal, SearchBar } from "./ArtifactSearch";
 import { DesktopActionsProvider, type DesktopActions } from "./actions";
 import { WIDGET_REGISTRY, defaultConfig, widgetDefinition } from "./registry";
 import { buildRingChips, chipMatches, type RingChip } from "./ringChips";
+import { baseCoreState } from "./coreState";
 import {
   isActiveStatus,
   recentFiles,
@@ -165,7 +166,11 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     () => (runs.data ?? []).filter((r) => isActiveStatus(r.status)).length,
     [runs.data],
   );
-  const coreState = useCoreState(activeRuns);
+  const executingRuns = useMemo(
+    () => (runs.data ?? []).filter((r) => r.status === "running").length,
+    [runs.data],
+  );
+  const coreState = useCoreState(runs.data ?? []);
   useBudgetNotifications();
 
   /* ---- the free region between the widget columns anchors the core ------ */
@@ -338,7 +343,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         <Wallpaper
           chips={chips}
           nodes={nodes}
-          activeRuns={activeRuns}
+          activeRuns={executingRuns}
           runLabels={runLabels}
           dimmed={!searching && workspaceMode !== "explore"}
           searching={searching}
@@ -385,6 +390,8 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
             />
             <span className="hud-label">
               {t("dash.activeProvider")}: <span className="accent-text">{defaultProvider}</span>
+              {" · "}
+              <span className="core-state-label">{t(`desktop.core.${coreState}`)}</span>
             </span>
           </div>
           <div className="os-brand">
@@ -631,7 +638,7 @@ const DONE_HOLD_MS = 1300;
  * thinking; tool calls, streamed text, failures, approvals and completions
  * override it for a moment and then fall back.
  */
-export function useCoreState(activeRuns: number): CoreState {
+export function useCoreState(runs: ReadonlyArray<{ status: string }>): CoreState {
   const [override, setOverride] = useState<{ state: CoreState; until: number } | null>(null);
   const timer = useRef<number | undefined>(undefined);
 
@@ -656,9 +663,15 @@ export function useCoreState(activeRuns: number): CoreState {
   useOsEvent("run.started", () => playCue("ack"));
   useOsEvent("run.finished", (e) => {
     const status = (e.payload as { status?: string } | undefined)?.status;
-    playCue(status === "done" ? "done" : status === "cancelled" ? "done" : "alert");
+    playCue(status === "done" || status === "cancelled" ? "done" : "alert");
     hold(
-      status === "done" ? "done" : status === "cancelled" ? "done" : "alert",
+      status === "done"
+        ? "done"
+        : status === "cancelled"
+          ? "cancelled"
+          : status === "interrupted"
+            ? "interrupted"
+            : "alert",
       status === "done" ? DONE_HOLD_MS : ALERT_HOLD_MS,
     );
   });
@@ -672,7 +685,7 @@ export function useCoreState(activeRuns: number): CoreState {
 
   if (listening) return "listening";
   if (override && override.until > Date.now()) return override.state;
-  return activeRuns > 0 ? "thinking" : "idle";
+  return baseCoreState(runs);
 }
 
 function Tool({

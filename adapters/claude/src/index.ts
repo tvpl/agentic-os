@@ -392,8 +392,19 @@ export function claudeStreamParser(): LineParser {
               ts,
               tool: String(block.name ?? "tool"),
               detail: input.length > 400 ? input.slice(0, 400) + "…" : input,
+              ...(typeof block.id === "string" ? { callId: block.id } : {}),
+              phase: "start",
             });
           } else if (block.type === "tool_result" && block.is_error) {
+            events.push({
+              type: "tool_use",
+              ts,
+              tool: "tool_result",
+              detail: JSON.stringify(block.content ?? "").slice(0, 300),
+              ...(typeof block.tool_use_id === "string" ? { callId: block.tool_use_id } : {}),
+              phase: "end",
+              outcome: block.is_error ? "error" : "ok",
+            });
             events.push({
               type: "permission",
               ts,

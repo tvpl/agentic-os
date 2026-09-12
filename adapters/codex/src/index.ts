@@ -311,6 +311,17 @@ export function codexStreamParser(): LineParser {
                 0,
                 400,
               ),
+              ...(typeof item.id === "string" ? { callId: item.id } : {}),
+              phase: type === "item.completed" ? "end" : "start",
+              ...(type === "item.completed"
+                ? {
+                    outcome: String(item.status ?? "")
+                      .toLowerCase()
+                      .includes("fail")
+                      ? ("error" as const)
+                      : ("ok" as const),
+                  }
+                : {}),
             },
           ];
         }

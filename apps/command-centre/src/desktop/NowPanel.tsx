@@ -8,11 +8,11 @@
  */
 import { Link } from "react-router-dom";
 import { useState } from "react";
-import { Activity, CalendarClock, FileText, Play, Sparkles, Square } from "lucide-react";
+import { Activity, CalendarClock, FileText, Play, Sparkles, Square, Target } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type ArtifactEntry, type RoutineStatus, type RunRecord } from "../api";
+import { api, type ArtifactEntry, type Objective, type RoutineStatus, type RunRecord } from "../api";
 import { useLocale, useT } from "../i18n";
-import { qk, useOsConnectors, useOsSettings } from "../queries";
+import { qk, useOsConnectors, useOsObjectives, useOsSettings } from "../queries";
 import { isConfigured } from "./widgets/MicroAppsWidget";
 import { nextStep, type StepId } from "./nextStep";
 import { StatusBadge, timeAgo, useToast } from "../components/ui";
@@ -46,10 +46,16 @@ export default function NowPanel() {
   const routines = useDesktopRoutines();
   const artifacts = useDesktopArtifacts();
   const graph = useDesktopGraph();
+  const objectives = useOsObjectives({ refetchInterval: 30_000 });
   const now = useTicker(1000);
 
   const active = (runs.data ?? []).filter((r) => isActiveStatus(r.status)).slice(0, 3);
-  const finished = (runs.data ?? []).filter((r) => !isActiveStatus(r.status)).slice(0, 3);
+  const hasCurrentObjective = (objectives.data ?? []).some((objective) =>
+    ["active", "blocked"].includes(objective.status),
+  );
+  const finished = (runs.data ?? [])
+    .filter((r) => !isActiveStatus(r.status))
+    .slice(0, hasCurrentObjective ? 1 : 3);
   const enabledNext = (routines.data ?? [])
     .filter((r) => r.enabled && r.nextRunAt)
     .sort((a, b) => (a.nextRunAt ?? 0) - (b.nextRunAt ?? 0))[0];
@@ -61,7 +67,7 @@ export default function NowPanel() {
 
   return (
     <section className={`now-panel${active.length > 0 ? " live" : ""}`} aria-label={t("now.title")}>
-      <NextStep runs={runs.data ?? []} routines={routines.data ?? []} />
+      {hasCurrentObjective && <ObjectiveWork objectives={objectives.data ?? []} />}
 
       <div className="now-section">
         <div className="now-label">
@@ -75,6 +81,10 @@ export default function NowPanel() {
           <p className="now-muted">{t("now.idle")}</p>
         )}
       </div>
+
+      {!hasCurrentObjective && <ObjectiveWork objectives={objectives.data ?? []} />}
+
+      <NextStep runs={runs.data ?? []} routines={routines.data ?? []} />
 
       <div className="now-section">
         <div className="now-label">
@@ -102,6 +112,72 @@ export default function NowPanel() {
         )}
       </div>
     </section>
+  );
+}
+
+function ObjectiveWork({ objectives }: { objectives: Objective[] }) {
+  const t = useT();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const current =
+    objectives.find((objective) => objective.status === "blocked") ??
+    objectives.find((objective) => objective.status === "active") ??
+    objectives.find((objective) => objective.status === "completed");
+  const dispatch = useMutation({
+    mutationFn: () =>
+      api.post<{ dispatched: unknown[] }>(`/api/objectives/${encodeURIComponent(current!.id)}/dispatch`, {
+        limit: 2,
+      }),
+    onSuccess: (result) => {
+      toast(t("desktop.objectives.dispatchedCount", { n: result.dispatched.length }), "ok");
+      qc.invalidateQueries({ queryKey: qk.objectives }).catch(() => undefined);
+      qc.invalidateQueries({ queryKey: ["runs"] }).catch(() => undefined);
+    },
+    onError: (error: Error) => toast(error.message, "danger"),
+  });
+  if (!current) return null;
+  const blocked = current.steps.find((step) => step.status === "blocked");
+  const active = current.steps.find((step) =>
+    ["dispatched", "waiting_approval", "verifying"].includes(step.status),
+  );
+  const pending = current.steps.find((step) => step.status === "pending");
+  const verifiedStep = [...current.steps].reverse().find((step) => step.status === "verified");
+  const focus = blocked ?? active ?? pending ?? verifiedStep;
+  const verified = current.steps.filter((step) => step.status === "verified").length;
+  return (
+    <div className={`now-section now-objective${blocked ? " blocked" : ""}`}>
+      <div className="now-label">
+        <Target aria-hidden /> {t("desktop.objectives.title")}
+      </div>
+      <div className="now-run-main plain">
+        <span className="now-run-title truncate" title={current.description}>
+          {current.title}
+        </span>
+        <span className="now-run-meta mono">
+          {verified}/{current.steps.length}
+        </span>
+      </div>
+      {focus && (
+        <div className="now-objective-step">
+          <span className="truncate">{focus.title}</span>
+          <span className="now-run-meta">
+            {focus.blockedReason ?? focus.nextAction ?? t(`desktop.objectives.${focus.status}`)}
+          </span>
+        </div>
+      )}
+      <div className="now-next-actions">
+        {focus?.runId && (
+          <Link className="btn sm secondary" to={`/runs/${focus.runId}`}>
+            {t("desktop.objectives.inspect")}
+          </Link>
+        )}
+        {!blocked && pending && (
+          <Button size="sm" variant="primary" loading={dispatch.isPending} onClick={() => dispatch.mutate()}>
+            {t("desktop.objectives.continue")}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -179,7 +255,10 @@ function FinishedRunRow({ run }: { run: RunRecord }) {
     <Link to={`/runs/${run.id}`} className="now-run-main plain" title={run.promptSummary}>
       <StatusBadge status={run.status} />
       <span className="now-run-title truncate">{runSummary(run, t("desktop.now.noSummary"))}</span>
-      <span className="now-run-meta mono">{timeAgo(run.finishedAt ?? run.createdAt, locale)}</span>
+      <span className="now-run-meta mono">
+        {run.failure?.code ? `${run.failure.code} · ` : ""}
+        {timeAgo(run.finishedAt ?? run.createdAt, locale)}
+      </span>
     </Link>
   );
 }
@@ -288,7 +367,7 @@ function NextStep({ runs, routines }: { runs: RunRecord[]; routines: RoutineStat
     ? nextStep(
         {
           folders,
-          runs: runs.length,
+          successfulRuns: runs.filter((run) => run.status === "done").length,
           routinesEnabled: routines.filter((r) => r.enabled).length,
           budgetUsd: settings.data.limits?.dailyBudgetUsd ?? 0,
           connectorsConfigured: (connectors.data ?? []).filter((c) => isConfigured(c.status)).length,

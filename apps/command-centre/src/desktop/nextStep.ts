@@ -7,7 +7,7 @@ export type StepId = "folder" | "run" | "routine" | "budget" | "connector";
 
 export interface OnboardingState {
   folders: number;
-  runs: number;
+  successfulRuns: number;
   routinesEnabled: number;
   budgetUsd: number;
   connectorsConfigured: number;
@@ -17,7 +17,7 @@ export interface OnboardingState {
 export function nextStep(state: OnboardingState, dismissed: ReadonlySet<StepId>): StepId | null {
   const order: Array<[StepId, boolean]> = [
     ["folder", state.folders === 0],
-    ["run", state.runs === 0],
+    ["run", state.successfulRuns === 0],
     ["routine", state.routinesEnabled === 0],
     ["budget", state.budgetUsd <= 0],
     ["connector", state.connectorsConfigured === 0],

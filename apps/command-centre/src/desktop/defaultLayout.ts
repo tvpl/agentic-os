@@ -70,15 +70,15 @@ export function isWidgetId(id: string): id is WidgetId {
 }
 
 export const DEFAULT_LAYOUT: LayoutMap = {
-  now: { x: 6, y: 1, w: 12, h: 7, visible: true },
+  now: { x: 6, y: 0, w: 12, h: 7, visible: true },
   microapps: { x: 0, y: 0, w: 5, h: 7, visible: true },
   today: { x: 0, y: 7, w: 5, h: 8, visible: true },
   workspace: { x: 0, y: 15, w: 5, h: 5, visible: true },
   deck: { x: 19, y: 0, w: 5, h: 10, visible: true },
   routines: { x: 19, y: 10, w: 5, h: 5, visible: true },
   pulse: { x: 19, y: 15, w: 5, h: 5, visible: true },
-  prompt: { x: 6, y: 10, w: 12, h: 8, visible: true },
-  attention: { x: 6, y: 18, w: 12, h: 2, visible: true },
+  prompt: { x: 6, y: 7, w: 12, h: 9, visible: true },
+  attention: { x: 6, y: 16, w: 12, h: 4, visible: true },
   inbox: { x: 6, y: 0, w: 6, h: 4, visible: false },
   agenda: { x: 12, y: 0, w: 6, h: 3, visible: false },
   calendar: { x: 6, y: 4, w: 5, h: 5, visible: false },
@@ -184,9 +184,9 @@ export function orderedIds(ids: Iterable<string>): string[] {
  * Merge a persisted layout over the defaults and make it valid for the
  * current grid: unknown ids dropped (duplicates of known widgets kept),
  * boxes clamped, `config` preserved, and — if clamping made two visible
- * widgets overlap — the later one (in WIDGET_ORDER, then by y) is pushed
- * down until it is free. If it cannot fit below, it stays at the bottom
- * (a visible overlap beats a widget lost off-screen).
+ * widgets overlap — the later one (in WIDGET_ORDER, then by y) moves to the
+ * nearest free grid position. If the grid is completely full, its requested
+ * position is retained so the widget is not lost off-screen.
  */
 export function normalizeLayout(
   persisted: Partial<Record<string, Partial<WidgetBox>>> | undefined,
@@ -208,14 +208,22 @@ export function normalizeLayout(
   for (const id of ids) {
     const box = out[id]!;
     if (!box.visible) continue;
-    let y = box.y;
-    let guard = 0;
-    while (placed.some((p) => overlaps({ ...box, y }, p)) && y + box.h < rows && guard++ < rows) y += 1;
-    if (placed.some((p) => overlaps({ ...box, y }, p))) {
-      // No free slot below: try the original spot and accept the overlap.
-      y = box.y;
+    if (placed.some((p) => overlaps(box, p))) {
+      let nearest: WidgetBox | undefined;
+      let nearestScore = Number.POSITIVE_INFINITY;
+      for (let y = 0; y + box.h <= rows; y++) {
+        for (let x = 0; x + box.w <= cols; x++) {
+          const candidate = { ...box, x, y };
+          if (placed.some((p) => overlaps(candidate, p))) continue;
+          const score = Math.abs(x - box.x) + Math.abs(y - box.y);
+          if (score < nearestScore) {
+            nearest = candidate;
+            nearestScore = score;
+          }
+        }
+      }
+      if (nearest) out[id] = nearest;
     }
-    out[id] = { ...box, y };
     placed.push(out[id]!);
   }
   return out;

@@ -12,6 +12,7 @@ import {
   type ArtifactEntry,
   type Connector,
   type Meta,
+  type Objective,
   type Metrics,
   type ProviderSnapshot,
   type RoutineStatus,
@@ -46,6 +47,7 @@ export const qk = {
   approvals: ["approvals"] as const,
   backups: ["backups"] as const,
   doctor: ["doctor"] as const,
+  objectives: ["objectives"] as const,
 };
 
 /** Which query keys an OS event should invalidate (consumed by useEventStream). */
@@ -72,6 +74,7 @@ export const invalidationMap: Record<string, readonly (readonly unknown[])[]> = 
   "notification.created": [["notifications"], ["metrics"]],
   "budget.crossed": [["metrics"], ["notifications"]],
   "sentinel.fired": [["notifications"]],
+  "objective.changed": [["objectives"]],
 };
 
 /** Named SSE event types the stream subscribes to. */
@@ -123,6 +126,8 @@ export const useOsArtifacts = (o?: ApiQueryOptions<ArtifactEntry[]>) =>
   useApiQuery<ArtifactEntry[]>(qk.artifacts, "/api/artifacts/recent", o);
 export const useOsConnectors = (o?: ApiQueryOptions<Connector[]>) =>
   useApiQuery<Connector[]>(qk.connectors, "/api/connectors", o);
+export const useOsObjectives = (o?: ApiQueryOptions<Objective[]>) =>
+  useApiQuery<Objective[]>(qk.objectives, "/api/objectives", o);
 /** Every settings field, optional (an older server may omit some), plus room for fields this build does not know. */
 export type SettingsView = Partial<SettingsDoc> & { [key: string]: unknown };
 export const useOsSettings = (o?: ApiQueryOptions<SettingsView>) =>

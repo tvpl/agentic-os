@@ -377,4 +377,67 @@ CREATE INDEX IF NOT EXISTS idx_runs_provider_history ON runs(provider, created_a
 `);
     },
   },
+  {
+    version: 14,
+    name: "durable-run-request",
+    // The short prompt_summary is presentation metadata. Repeating work needs
+    // the complete, typed request that originally produced the run.
+    up(db) {
+      if (!hasColumn(db, "runs", "request_json")) {
+        db.exec("ALTER TABLE runs ADD COLUMN request_json TEXT");
+      }
+      if (!hasColumn(db, "runs", "failure_json")) {
+        db.exec("ALTER TABLE runs ADD COLUMN failure_json TEXT");
+      }
+      db.exec(`
+CREATE TABLE IF NOT EXISTS run_action_receipts (
+  id TEXT PRIMARY KEY,
+  action TEXT NOT NULL,
+  source_run_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  response TEXT
+);
+`);
+    },
+  },
+  {
+    version: 15,
+    name: "durable-objectives",
+    up(db) {
+      db.exec(`
+CREATE TABLE IF NOT EXISTS objectives (
+  id TEXT PRIMARY KEY,
+  project TEXT,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK (status IN ('active','blocked','completed','cancelled')),
+  context_json TEXT NOT NULL DEFAULT '{}',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS objective_steps (
+  id TEXT PRIMARY KEY,
+  objective_id TEXT NOT NULL REFERENCES objectives(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  request_json TEXT NOT NULL,
+  dependencies_json TEXT NOT NULL DEFAULT '[]',
+  resource_keys_json TEXT NOT NULL DEFAULT '[]',
+  expected_artifacts_json TEXT NOT NULL DEFAULT '[]',
+  priority INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL CHECK (status IN ('pending','dispatched','waiting_approval','verifying','verified','blocked','cancelled')),
+  run_id TEXT,
+  attempt INTEGER NOT NULL DEFAULT 0,
+  effects_uncertain INTEGER NOT NULL DEFAULT 0,
+  blocked_reason TEXT,
+  next_action TEXT,
+  evidence_json TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_objective_steps_ready ON objective_steps(objective_id, status, priority DESC, position);
+CREATE INDEX IF NOT EXISTS idx_objective_steps_run ON objective_steps(run_id);
+`);
+    },
+  },
 ];

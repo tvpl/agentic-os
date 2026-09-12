@@ -106,6 +106,17 @@ export const en = {
   "runs.replay.speed": "Playback speed",
   "runs.replay.summary": "Steps of the run",
   "runs.replay.canvasLabel": "Replay of the run with {n} steps; space plays, arrows seek.",
+  "runs.outcome.title": "Outcome",
+  "runs.outcome.completed": "Process completed",
+  "runs.outcome.files": "{n} file(s) changed",
+  "runs.outcome.artifacts": "{n} artifact(s)",
+  "runs.outcome.uncertain": "effects uncertain",
+  "runs.outcome.reconcile": "Inspect the workspace or external system before retrying this operation.",
+  "runs.outcome.retry": "The request can be retried after inspecting the failure.",
+  "runs.outcome.fix": "Resolve the indicated cause before retrying.",
+  "runs.objective.title": "Objective and causal chain",
+  "runs.objective.chain": "Objective steps in dependency order",
+  "runs.objective.evidence": "Evidence verified with {n} hashed artifact(s).",
 } as const;
 
 export const ptBR = {
@@ -213,4 +224,15 @@ export const ptBR = {
   "runs.replay.speed": "Velocidade da reprodução",
   "runs.replay.summary": "Etapas da execução",
   "runs.replay.canvasLabel": "Replay da execução com {n} etapas; espaço reproduz, setas navegam.",
+  "runs.outcome.title": "Resultado",
+  "runs.outcome.completed": "Processo concluído",
+  "runs.outcome.files": "{n} arquivo(s) alterado(s)",
+  "runs.outcome.artifacts": "{n} artefato(s)",
+  "runs.outcome.uncertain": "efeitos incertos",
+  "runs.outcome.reconcile": "Inspecione o workspace ou sistema externo antes de repetir esta operação.",
+  "runs.outcome.retry": "O pedido pode ser repetido após inspecionar a falha.",
+  "runs.outcome.fix": "Resolva a causa indicada antes de repetir.",
+  "runs.objective.title": "Objetivo e cadeia causal",
+  "runs.objective.chain": "Etapas do objetivo em ordem de dependência",
+  "runs.objective.evidence": "Evidência verificada com {n} artefato(s) com hash.",
 } satisfies Record<keyof typeof en, string>;

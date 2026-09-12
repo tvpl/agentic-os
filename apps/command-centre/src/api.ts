@@ -305,11 +305,23 @@ export interface RunRecord {
   durationMs: number | null;
   cwd?: string | null;
   promptSummary: string;
+  request?:
+    | { version: 1; kind: "prompt" | "system"; prompt: string; mode: "read_only" | "write" }
+    | {
+        version: 1;
+        kind: "skill";
+        skillSlug: string;
+        inputs: Record<string, string>;
+        mode: "read_only" | "write";
+      }
+    | null;
   skillSlug: string | null;
   routineId: string | null;
   parentRunId?: string | null;
+  sessionId?: string | null;
   pid?: number | null;
   error: string | null;
+  failure?: { code: string; message: string; recoverable: boolean; effectsUncertain: boolean } | null;
   artifacts: string[];
   /** Absolute paths the run's write tools touched (from the RunManager). */
   filesChanged?: string[];
@@ -623,6 +635,38 @@ export interface ArtifactListResponse {
   total: number;
   skills: string[];
   folders: string[];
+}
+
+export type ObjectiveStepStatus =
+  "pending" | "dispatched" | "waiting_approval" | "verifying" | "verified" | "blocked" | "cancelled";
+export interface ObjectiveStep {
+  id: string;
+  objectiveId: string;
+  position: number;
+  title: string;
+  status: ObjectiveStepStatus;
+  runId: string | null;
+  attempt: number;
+  effectsUncertain: boolean;
+  blockedReason: string | null;
+  nextAction: string | null;
+  priority: number;
+  evidence: null | {
+    verified: boolean;
+    checkedAt: number;
+    missingExpected: string[];
+    artifacts: Array<{ path: string; bytes: number; sha256: string }>;
+  };
+}
+export interface Objective {
+  id: string;
+  project: string | null;
+  title: string;
+  description: string;
+  status: "active" | "blocked" | "completed" | "cancelled";
+  createdAt: number;
+  updatedAt: number;
+  steps: ObjectiveStep[];
 }
 
 /** `GET /api/connectors/:id/data` (F-BACKEND contract; the desktop copes with its absence). */

@@ -69,6 +69,9 @@ export {
   type RunRecord,
   type RunStatus,
   type RunOrigin,
+  type RunRequestSpec,
+  type RunFailure,
+  classifyRunFailure,
   type CreateRunInput,
   type PruneOptions,
   type PruneResult,
@@ -82,6 +85,16 @@ export {
   type CreateSessionInput,
   type RecordRunInput,
 } from "./runs/sessionStore.js";
+export {
+  ObjectiveStore,
+  type Objective,
+  type ObjectiveStatus,
+  type ObjectiveStep,
+  type ObjectiveStepStatus,
+  type ObjectiveContext,
+  type StepEvidence,
+  type CreateObjectiveInput,
+} from "./objectives/objectiveStore.js";
 export { MemoryIndexer, fileRowFromDb, type IndexStats, type FileRow } from "./memory/indexer.js";
 export { searchFiles, listFacets, type SearchFilters, type SearchHit } from "./memory/search.js";
 export { buildGraph, relatedFiles, type GraphData, type GraphNode, type GraphEdge } from "./memory/graph.js";

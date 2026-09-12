@@ -1356,6 +1356,7 @@
 }
 .desktop .widget-inner > .now-panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   position: static;
   transform: none;
   width: auto;
@@ -1366,6 +1367,20 @@
   border-radius: 0;
   box-shadow: none;
   background: transparent;
+}
+.now-objective {
+  border-left: 2px solid var(--accent);
+  padding-left: 10px;
+}
+.now-objective.blocked {
+  border-left-color: var(--danger);
+}
+.now-objective-step {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: baseline;
+  margin-top: 4px;
 }
 .desktop .widget.maximized {
   transition: none;
