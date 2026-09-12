@@ -115,8 +115,33 @@ What `scripts/package.mjs` does:
 7. archives to `release/` (`.zip` on macOS/Windows, `.tar.gz` on Linux).
 
 Cross-targets (`--platform`, `--arch`) fetch the matching SQLite prebuild with
-`prebuild-install`; build on the target platform when you can, and always try
+`prebuild-install` and the matching Node binary; the Linux package built this
+way was run inside a clean Debian container (bundled Node, SQLite addon, UI,
+seeds, `stop`). Build on the target platform when you can, and always try
 the archive on a clean machine before publishing.
+
+### Signing and notarization (macOS)
+
+```bash
+security find-identity -v -p codesigning                 # your "Developer ID Application: …"
+xcrun notarytool store-credentials mordomo --apple-id … --team-id … --password …
+node scripts/package.mjs --sign "Developer ID Application: Name (TEAMID)" --notarize mordomo
+```
+
+`--sign` signs the app with the hardened runtime; `--notarize` submits the
+zip, waits for Apple, staples the ticket and rebuilds the archive. Without
+these the app is ad-hoc signed and Gatekeeper asks once. Windows: sign
+`MordomoOS.cmd` is not meaningful (it is a script); sign `runtime\node.exe`
+only if your policy requires it (`signtool sign /fd SHA256 …`).
+
+### Releases from CI
+
+`.github/workflows/release.yml` builds macOS (arm64, x64), Linux (x64, arm64)
+and Windows (x64) on a `v*` tag or by hand, smoke-tests every package
+(`launch --no-browser`, MIME types, `stop`), uploads the archives and opens a
+**draft** GitHub release with `SHA256SUMS.txt`. Add the `MACOS_*` / `APPLE_*`
+secrets described at the top of the workflow to get signed and notarized
+macOS builds. `ci.yml` also runs `npm run dist:quick` on every push.
 
 On code privacy: a minified bundle keeps casual readers out and ships none of
 the source, comments or types. JavaScript that runs on the user's machine can
@@ -128,6 +153,12 @@ running the engine on a server you control.
 - Packaged: replace the app/folder with the new one, then `mordomo restart`
   (or open the app again). Data and settings are untouched.
 - Source: `git pull && npm install && npm run build && mordomo restart`.
+- Settings › Identity shows the running version, whether it is a packaged app
+  or a checkout, the data folder and the process id. **Check now** asks the
+  public releases page once (an anonymous request, nothing about you is sent);
+  the checkbox repeats it at most daily. Off by default.
+- An open tab survives an update: the first navigation after a rebuild reloads
+  the page once instead of showing a broken route.
 
 `mordomo restart` also restarts the login service (launchd/systemd/Task
 Scheduler): a service started before a rebuild keeps serving the old build —
@@ -146,4 +177,14 @@ in the browser console.
   `codex login`, `cursor-agent login`) in a terminal, then *Detect again*.
 - **Port 4777 busy** → `mordomo status` tells whether another MordomoOS
   answers there; change the port in Settings › Identity.
+- **Which MordomoOS am I looking at?** Settings › Identity shows the data
+  folder and build serving this page; `mordomo status` says when another
+  MordomoOS answers on the port.
+- **Cursor** installed but "not found" → the editor is not the agent: install
+  `cursor-agent` (the hint on the providers step says so).
+- **The CLI is somewhere unusual** → Settings › Providers › *Binary path*
+  takes an absolute path; leave it empty to search automatically.
+- **Reporting a problem** → Settings › Diagnostics › *Export diagnostics*
+  saves a JSON with settings (secrets removed), doctor checks, metrics and the
+  last 30 run summaries.
 - Logs: `<home>/logs/service.out.log`.

@@ -61,3 +61,26 @@ does not ship the source.
 - A minified bundle is not encryption; the docs say so.
 - Rollback: `git checkout -- .` on the listed files removes everything (the
   onboarding files are additions); `mordomo restart` reloads the service.
+
+## Second pass (same day): the follow-up list
+
+| # | Item | Result |
+| --- | --- | --- |
+| 1 | Real `claude` login + smoke | **Needs the user**: `claude auth login` is interactive; nothing was run |
+| 2 | Two commits | `b1aa8c3` onboarding/boot recovery, `17b9d9f` installer/discovery; this pass is a third commit |
+| 3 | Linux / Windows packages | `mordomo-os-0.8.0-linux-arm64.tar.gz` run in a clean Debian container (launch, MIME, doctor, 14 seeds, stop); `MordomoOS-0.8.0-windows-x64.zip` built with the win32 SQLite DLL and node.exe, **not executed** (no Windows machine) |
+| 4 | Signing / notarization | `--sign`, `--notarize` in the packager and the release workflow; **needs Apple credentials** to exercise |
+| 5 | CI release matrix | `release.yml` (5 targets, smoke, draft release, checksums); `ci.yml` packager smoke; YAML linted, **not run** (needs a push) |
+| 6 | Update check | opt-in `GET /api/updates` (+ `?force=1`), Settings toggle and button; unit + route tests; live check answered "no published release yet" (404) |
+| 7 | Doctor / export in UI | Diagnostics tab gained *Export diagnostics* (redacted JSON download) |
+| 8 | Which home is serving | `GET /api/system/info`; Identity tab shows home, version, packaged/source, login service, pid |
+| 9 | Cursor IDE | `cursorIdeInstalled()` note when the editor exists without `cursor-agent` |
+| 10 | Binary path in UI | Providers tab field, absolute-path validation, re-verifies on save |
+| 11 | E2E of the wizard | `tests/e2e/setup-wizard.spec.ts`: fresh home, fake CLIs on PATH, Detect again keeps the user's choice, settings persisted with pinned binaries |
+| 12 | Clean-machine test | Linux container only; macOS/Windows clean machines **not available** |
+
+Found and fixed on the way: an open tab broke on the first navigation after a
+rebuild ("Failed to fetch dynamically imported module") — route chunks now
+reload the page once (`src/lazyRoute.ts`); the browser setup did not pin the
+detected binaries the way the terminal setup does — it now calls
+`/api/providers/:id/detect` before saving.

@@ -264,6 +264,12 @@ export const SettingsSchema = z.object({
         .default([]),
     })
     .default({}),
+  /** Update check against the public releases (off by default: it is the one outbound request the OS makes on its own). */
+  updates: z
+    .object({
+      check: z.boolean().default(false),
+    })
+    .default({}),
   indexedFolders: z.array(IndexedFolderSchema).default([]),
   excludes: z.array(z.string()).default(DEFAULT_EXCLUDES),
   areas: z

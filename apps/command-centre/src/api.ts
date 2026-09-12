@@ -484,6 +484,35 @@ export interface ArtifactEntry {
   sizeBytes: number | null;
 }
 
+export interface SystemInfo {
+  version: string;
+  home: string;
+  packaged: boolean;
+  entry: string;
+  node: string;
+  execPath: string;
+  platform: string;
+  arch: string;
+  pid: number;
+  startedAt: number;
+  serviceInstalled: boolean;
+  releases: string;
+}
+
+export interface UpdateCheck {
+  enabled: boolean;
+  current: string;
+  url: string;
+  status: {
+    current: string;
+    latest: string | null;
+    url: string;
+    upToDate: boolean | null;
+    checkedAt: number;
+    error: string | null;
+  } | null;
+}
+
 export interface DoctorReport {
   checks: Array<{ id: string; label: string; status: "ok" | "warn" | "fail" | "skip"; detail: string }>;
   ok: number;
@@ -570,6 +599,7 @@ export interface SettingsDoc {
   };
   /** Skill registries (Onda 3). */
   marketplace?: { registries: string[] };
+  updates?: { check: boolean };
   /** Sentinels and triage (Onda 2). */
   sentinels?: {
     fsWatch: { enabled: boolean; debounceMs: number };

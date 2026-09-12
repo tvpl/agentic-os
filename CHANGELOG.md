@@ -28,6 +28,19 @@
   apps with a safe practice draft handed to the console at the end;
   reopened from Settings or the command palette.
 - Setup scripts require Node.js ≥ 22 (as `engines` and `doctor` already did).
+- **Release pipeline**: `release.yml` packages macOS/Linux/Windows on a tag,
+  smoke-tests each archive and drafts a GitHub release with checksums;
+  optional Developer ID signing and notarization (`--sign`, `--notarize`).
+  CI runs the packager on every push.
+- **Settings › Identity**: version, packaged/source, data folder and pid;
+  opt-in release check (`updates.check`, `GET /api/updates`,
+  `GET /api/system/info`). **Settings › Providers**: editable binary path.
+  **Settings › Diagnostics**: export a redacted diagnostics JSON.
+- Cursor: when the editor is installed but `cursor-agent` is not, the hint
+  says so instead of "not found".
+- Route chunks reload the page once after an update instead of failing with
+  "Failed to fetch dynamically imported module".
+- E2E: a fresh home configured entirely from the browser (setup wizard).
 
 ## 0.8.0 — 2026-09-05
 

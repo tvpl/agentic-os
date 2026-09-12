@@ -59,7 +59,9 @@ export class CursorAdapter implements AgentAdapter {
         version: null,
         supportedFlags: [],
         notes: [
-          "`cursor-agent` was not found on PATH or in the usual install folders. Install: curl https://cursor.com/install -fsS | bash",
+          cursorIdeInstalled()
+            ? "Cursor (the editor) is installed but its terminal agent `cursor-agent` is not. Install it: curl https://cursor.com/install -fsS | bash"
+            : "`cursor-agent` was not found on PATH or in the usual install folders. Install: curl https://cursor.com/install -fsS | bash",
         ],
       };
     }
@@ -291,4 +293,39 @@ export function cursorConfigDir(homeDir?: string): string {
 }
 export function hasCursorCliConfig(homeDir?: string): boolean {
   return fs.existsSync(path.join(cursorConfigDir(homeDir), "cli.json"));
+}
+
+/** The Cursor editor itself (not the agent CLI) — a hint that the user is a Cursor user. */
+export function cursorIdeInstalled(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = os.homedir(),
+): boolean {
+  const candidates =
+    platform === "darwin"
+      ? ["/Applications/Cursor.app", path.join(home, "Applications", "Cursor.app")]
+      : platform === "win32"
+        ? [
+            path.join(
+              env.LOCALAPPDATA ?? path.join(home, "AppData", "Local"),
+              "Programs",
+              "cursor",
+              "Cursor.exe",
+            ),
+          ]
+        : [
+            "/usr/bin/cursor",
+            "/usr/local/bin/cursor",
+            "/opt/cursor",
+            path.join(home, ".local", "bin", "cursor"),
+          ];
+  const present = candidates.some((c) => {
+    try {
+      fs.statSync(c);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  return present || findExecutable("cursor", env) !== null;
 }

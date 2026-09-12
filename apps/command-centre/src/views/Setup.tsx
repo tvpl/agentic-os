@@ -85,6 +85,14 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     mutationFn: async () => {
       if (!enabled) return;
       setPhase("saving");
+      // Pin the detected binaries (what the terminal setup does) so a login
+      // service with a bare PATH keeps finding them; then read the settings
+      // the detection just updated.
+      await Promise.all(
+        (Object.entries(enabled) as Array<[ProviderId, boolean]>)
+          .filter(([, on]) => on)
+          .map(([id]) => api.post(`/api/providers/${id}/detect`).catch(() => undefined)),
+      );
       const current = await api.get<Record<string, unknown>>("/api/settings");
       const provSettings = current.providers as Record<ProviderId, Record<string, unknown>>;
       for (const id of ["claude", "cursor", "codex"] as ProviderId[])

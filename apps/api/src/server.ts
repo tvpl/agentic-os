@@ -22,6 +22,7 @@ import {
 } from "@mordomo/core";
 import { AppContext } from "./context.js";
 import { uiDistCandidates } from "./entry.js";
+import { type UpdateChecker } from "./updates.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerSkillRoutes } from "./routes/skills.js";
 import { registerRunRoutes } from "./routes/runs.js";
@@ -156,7 +157,7 @@ function buildLoggerOptions(ctx: AppContext) {
 
 export async function buildServer(
   ctx: AppContext,
-  options: { uiDist?: string } = {},
+  options: { uiDist?: string; updates?: UpdateChecker } = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: buildLoggerOptions(ctx),
@@ -237,7 +238,7 @@ export async function buildServer(
   });
 
   // ---- API routes -----------------------------------------------------------
-  registerSystemRoutes(app, ctx);
+  registerSystemRoutes(app, ctx, { updates: options.updates });
   registerSkillRoutes(app, ctx);
   registerRunRoutes(app, ctx);
   registerSessionRoutes(app, ctx);

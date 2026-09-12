@@ -20,7 +20,9 @@ next executions, recent artifacts, in-progress runs, failures needing
 attention, and 7-day metrics. The Second Brain card is the centrepiece.
 
 Language (English/Português) and theme (dark/light/system) live in
-**Settings → Identity**.
+**Settings → Identity**, next to the running version, the data folder and an
+opt-in check for new releases. **Settings → Diagnostics** runs the doctor and
+exports a redacted diagnostics file for bug reports.
 
 ## 2. Skills (your SOPs as commands)
 

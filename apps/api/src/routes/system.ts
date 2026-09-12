@@ -17,9 +17,12 @@ import {
   resolveInsideRoots,
   type Settings,
   dailyPoints,
+  isStartupServiceInstalled,
 } from "@mordomo/core";
 import { clearRestorePending, readRestorePending, writeRestorePending, type AppContext } from "../context.js";
 import { runDoctor } from "../doctor.js";
+import { cliEntry } from "../entry.js";
+import { RELEASES_PAGE, UpdateChecker } from "../updates.js";
 import { resolveApproval } from "../approvalActions.js";
 import { tlsListenerFor } from "../server.js";
 
@@ -314,7 +317,46 @@ export function listArtifacts(
   return { items: filtered.slice(0, q.limit), total: filtered.length, skills, folders };
 }
 
-export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): void {
+export interface SystemRouteOptions {
+  /** Release checker (tests inject a fake fetch). */
+  updates?: UpdateChecker;
+}
+
+export function registerSystemRoutes(
+  app: FastifyInstance,
+  ctx: AppContext,
+  opts: SystemRouteOptions = {},
+): void {
+  const updates = opts.updates ?? new UpdateChecker(PKG_VERSION);
+
+  /**
+   * Where this service runs from: the answer to "which MordomoOS am I looking
+   * at?" when a checkout and a packaged app share a machine. Token-protected
+   * (paths are not for the pre-auth page).
+   */
+  app.get("/api/system/info", async () => ({
+    version: PKG_VERSION,
+    home: ctx.paths.home,
+    packaged: /\.mjs$/.test(cliEntry()),
+    entry: cliEntry(),
+    node: process.versions.node,
+    execPath: process.execPath,
+    platform: process.platform,
+    arch: process.arch,
+    pid: process.pid,
+    startedAt: ctx.startedAt,
+    serviceInstalled: isStartupServiceInstalled(ctx.paths),
+    releases: RELEASES_PAGE,
+  }));
+
+  /** Release check: only when enabled in settings, or explicitly asked for (`?force=1`). */
+  app.get("/api/updates", async (req) => {
+    const force = (req.query as { force?: string }).force === "1";
+    const enabled = ctx.settings().updates.check;
+    if (!enabled && !force) return { enabled, current: PKG_VERSION, url: RELEASES_PAGE, status: null };
+    return { enabled, current: PKG_VERSION, url: RELEASES_PAGE, status: await updates.check(force) };
+  });
+
   // Public (no token): only non-sensitive branding needed before the UI boots.
   app.get("/api/meta", async () => {
     const s = ctx.settings();

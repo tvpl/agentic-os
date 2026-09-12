@@ -29,6 +29,8 @@ import {
   type ProviderId,
   type ProviderSnapshot,
   type SettingsDoc,
+  type SystemInfo,
+  type UpdateCheck,
 } from "../api";
 
 type SettingsShape = SettingsDoc;
@@ -302,14 +304,77 @@ function IdentityTab({ s, put, setLang }: { s: SettingsShape; put: Put; setLang:
           onBlur={(e) => e.target.value !== s.timezone && void put({ timezone: e.target.value })}
         />
       </Field>
-      <Field label={t("settings.dataDir")} htmlFor="st-home" hint={t("settings.dataDirHint")}>
-        <input id="st-home" className="input mono" readOnly value="MORDOMO_HOME" />
-      </Field>
+      <SystemInfoFields s={s} put={put} />
     </div>
   );
 }
 
+/** Which MordomoOS answers here (home, build), plus the opt-in release check. */
+function SystemInfoFields({ s, put }: { s: SettingsShape; put: Put }) {
+  const t = useT();
+  const info = useApiQuery<SystemInfo>(["system", "info"], "/api/system/info", { staleTime: 60_000 });
+  const updates = useApiQuery<UpdateCheck>(["updates"], "/api/updates", { staleTime: 60_000 });
+  const check = useMutation({
+    mutationFn: () => api.get<UpdateCheck>("/api/updates?force=1"),
+  });
+  const result = check.data ?? updates.data;
+  const status = result?.status ?? null;
+  return (
+    <>
+      <Field label={t("settings.dataDir")} htmlFor="st-home" hint={t("settings.dataDirHint")}>
+        <input
+          id="st-home"
+          className="input mono"
+          readOnly
+          value={info.data?.home ?? ""}
+          placeholder="MORDOMO_HOME"
+          data-testid="settings-home"
+        />
+      </Field>
+      {info.data && (
+        <p className="meta" data-testid="settings-build">
+          {t("settings.buildLine", {
+            version: info.data.version,
+            kind: t(info.data.packaged ? "settings.buildPackaged" : "settings.buildSource"),
+            service: t(info.data.serviceInstalled ? "settings.serviceOn" : "settings.serviceOff"),
+            pid: info.data.pid,
+          })}
+        </p>
+      )}
+      <div className="row-actions" style={{ alignItems: "center", flexWrap: "wrap" }}>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={s.updates?.check ?? false}
+            onChange={(e) => void put({ updates: { check: e.target.checked } }, true)}
+          />
+          {t("settings.updatesAuto")}
+        </label>
+        <Button size="sm" variant="secondary" onClick={() => check.mutate()} loading={check.isPending}>
+          {t("settings.updatesCheck")}
+        </Button>
+        {check.error && <span className="hint warn">{errorMessage(check.error as Error, t)}</span>}
+        {status && (
+          <span className="meta" data-testid="settings-updates" role="status">
+            {status.error
+              ? t("settings.updatesError", { error: status.error })
+              : status.upToDate
+                ? t("settings.updatesCurrent", { version: status.current })
+                : t("settings.updatesAvailable", { version: status.latest ?? "?" })}{" "}
+            {status.upToDate === false && (
+              <a href={status.url} target="_blank" rel="noreferrer">
+                {t("settings.updatesOpen")}
+              </a>
+            )}
+          </span>
+        )}
+      </div>
+    </>
+  );
+}
+
 function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
+  const [binaryDraft, setBinaryDraft] = useState<Partial<Record<ProviderId, string>>>({});
   const t = useT();
   const toast = useToast();
   const qc = useQueryClient();
@@ -433,6 +498,33 @@ function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
                   </option>
                 ))}
               </select>
+            </Field>
+            <Field
+              label={t("settings.binaryPath")}
+              htmlFor={`st-bin-${prov.id}`}
+              hint={t("settings.binaryPathHint")}
+              error={
+                binaryDraft[prov.id] !== undefined &&
+                binaryDraft[prov.id] &&
+                !isAbsolutePath(binaryDraft[prov.id]!)
+                  ? t("settings.folderAbsolute")
+                  : undefined
+              }
+            >
+              <input
+                key={s.providers[prov.id].binaryPath ?? ""}
+                id={`st-bin-${prov.id}`}
+                className="input mono"
+                placeholder={t("settings.binaryPathAuto")}
+                defaultValue={s.providers[prov.id].binaryPath ?? ""}
+                onChange={(e) => setBinaryDraft((d) => ({ ...d, [prov.id]: e.target.value }))}
+                onBlur={(e) => {
+                  const value = e.target.value.trim();
+                  if (value && !isAbsolutePath(value)) return;
+                  if ((value || null) !== (s.providers[prov.id].binaryPath ?? null))
+                    void patchProvider(prov.id, { binaryPath: value || null }).then(() => recheck.mutate());
+                }}
+              />
             </Field>
           </div>
         </div>
@@ -839,9 +931,26 @@ function DiagnosticsTab() {
     mutationFn: () => api.get<DoctorReport>("/api/doctor"),
     onError: (err: Error) => toast(err.message, "danger"),
   });
+  // A redacted JSON (settings without secrets, doctor, metrics, recent runs) to attach to a bug report.
+  const exportDiag = useMutation({
+    mutationFn: async () => {
+      const bundle = await api.get<Record<string, unknown>>("/api/diagnostics/export");
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `mordomo-diagnostics-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
+    onSuccess: () => toast(t("settings.exportDiagnosticsDone"), "ok"),
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
   return (
     <div className="card stack">
-      <div>
+      <div className="row-actions">
         <Button
           variant="primary"
           icon={<Stethoscope aria-hidden />}
@@ -850,7 +959,16 @@ function DiagnosticsTab() {
         >
           {t("settings.runDoctor")}
         </Button>
+        <Button
+          variant="secondary"
+          icon={<Download aria-hidden />}
+          onClick={() => exportDiag.mutate()}
+          loading={exportDiag.isPending}
+        >
+          {t("settings.exportDiagnostics")}
+        </Button>
       </div>
+      <p className="hint">{t("settings.exportDiagnosticsHint")}</p>
       {doctor.data && (
         <div>
           {doctor.data.checks.map((c) => (

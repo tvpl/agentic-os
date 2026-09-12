@@ -37,16 +37,17 @@ import { useOsNavigate } from "./hooks/useViewTransition";
 
 // Desktop is the landing surface and stays in the main chunk.
 import Desktop from "./desktop";
+import { lazyRoute } from "./lazyRoute";
 import { Onboarding } from "./onboarding/Onboarding";
-const Runs = lazy(() => import("./runs"));
-// TODO(orchestrator): switch to `lazy(() => import("./brain"))` once F3 lands src/brain/index.tsx.
-const SecondBrain = lazy(() => import("./views/SecondBrain"));
-const Skills = lazy(() => import("./views/Skills"));
-const Routines = lazy(() => import("./views/Routines"));
-const Connectors = lazy(() => import("./views/Connectors"));
-const Settings = lazy(() => import("./views/Settings"));
-const Setup = lazy(() => import("./views/Setup"));
-const PixelStudio = lazy(() => import("./views/PixelStudio"));
+const Runs = lazyRoute(() => import("./runs"));
+// TODO(orchestrator): switch to `lazyRoute(() => import("./brain"))` once F3 lands src/brain/index.tsx.
+const SecondBrain = lazyRoute(() => import("./views/SecondBrain"));
+const Skills = lazyRoute(() => import("./views/Skills"));
+const Routines = lazyRoute(() => import("./views/Routines"));
+const Connectors = lazyRoute(() => import("./views/Connectors"));
+const Settings = lazyRoute(() => import("./views/Settings"));
+const Setup = lazyRoute(() => import("./views/Setup"));
+const PixelStudio = lazyRoute(() => import("./views/PixelStudio"));
 
 /**
  * Routes whose module may not exist yet in this build (other frontiers land
