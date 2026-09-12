@@ -3,9 +3,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
-import { FAKE_BIN, makeTempHome, withFakeBinPath } from "./helpers.js";
+import { FAKE_BIN, FAKE_CLIS_RUNNABLE, makeTempHome, withFakeBinPath } from "./helpers.js";
 
-describe("objective API", () => {
+describe.skipIf(!FAKE_CLIS_RUNNABLE)("objective API", () => {
   let app: FastifyInstance, ctx: AppContext, token: string, cleanup: () => void, restorePath: () => void;
   beforeAll(async () => {
     restorePath = withFakeBinPath();
