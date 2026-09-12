@@ -60,6 +60,8 @@ export interface SkillRunInput {
   effort: EffortLevel;
   cwd: string;
   timeoutMs: number;
+  /** First run in the lineage when this is a deliberate retry. */
+  parentRunId?: string | null;
 }
 
 /** What an approved `write_run` approval replays (also its stored payload shape). */
@@ -127,6 +129,7 @@ function promptRunFields(input: PromptRunInput): Omit<CreateRunInput, "profile">
     origin: "manual",
     provider: input.provider,
     prompt: input.prompt,
+    request: { version: 1, kind: "prompt", prompt: input.prompt, mode: input.mode },
     cwd: input.cwd,
     model: input.model,
     effort: input.effort,
@@ -144,12 +147,20 @@ function skillRunFields(ctx: AppContext, input: SkillRunInput): Omit<CreateRunIn
     origin: "skill",
     provider: input.provider,
     prompt: `(skill: ${input.slug})`,
+    request: {
+      version: 1,
+      kind: "skill",
+      skillSlug: input.slug,
+      inputs: input.inputs,
+      mode: skill.mode === "write" ? "write" : "read_only",
+    },
     cwd: input.cwd,
     model: input.model,
     effort: input.effort,
     mode: skill.mode === "write" ? "write" : "read_only",
     timeoutMs: input.timeoutMs,
     skillSlug: input.slug,
+    parentRunId: input.parentRunId ?? null,
   };
 }
 

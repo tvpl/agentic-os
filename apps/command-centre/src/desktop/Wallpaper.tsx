@@ -55,7 +55,18 @@ interface Tokens {
  * active run without a finer signal; `tool` / `responding` are short-lived
  * overrides fired by `run.event`; `alert` and `done` are terminal flashes.
  */
-export type CoreState = "idle" | "listening" | "thinking" | "tool" | "responding" | "alert" | "done";
+export type CoreState =
+  | "idle"
+  | "listening"
+  | "queued"
+  | "thinking"
+  | "tool"
+  | "responding"
+  | "waiting"
+  | "alert"
+  | "done"
+  | "cancelled"
+  | "interrupted";
 
 /** Where the core sits and how far the ring reaches, in px (desktop free region). */
 export interface CoreFocus {
@@ -362,13 +373,18 @@ export default function Wallpaper({
             ? 1
             : cs === "alert"
               ? 0.9
-              : cs === "responding"
-                ? 0.5
-                : busy
-                  ? 0.7
-                  : 0.08;
+              : cs === "queued"
+                ? 0.16
+                : cs === "waiting"
+                  ? 0.06
+                  : cs === "responding"
+                    ? 0.5
+                    : busy
+                      ? 0.7
+                      : 0.08;
       const targetConverge = cs === "thinking" ? 1 : cs === "tool" ? 0.4 : 0;
-      const targetTint = cs === "alert" ? 1 : cs === "done" ? -1 : 0;
+      const targetTint =
+        cs === "alert" || cs === "waiting" || cs === "interrupted" ? 1 : cs === "done" ? -1 : 0;
       const k = reduceMotion ? 1 : 1 - Math.pow(0.02, dt);
       state.spin += (targetSpin - state.spin) * k;
       state.converge += (targetConverge - state.converge) * k;

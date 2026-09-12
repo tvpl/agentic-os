@@ -13,7 +13,14 @@ import {
   type RunEvent,
 } from "@mordomo/core";
 import type { AppContext } from "../context.js";
-import { grantedRoots, httpError, submitPromptRun } from "./common.js";
+import {
+  gateWrite,
+  grantedRoots,
+  httpError,
+  launchSkillRun,
+  submitPromptRun,
+  type SkillRunInput,
+} from "./common.js";
 import { UuidParam, UuidParams } from "./params.js";
 import { lastEventId, openSse } from "./sse.js";
 
@@ -44,7 +51,9 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
       .parse(req.query);
     // Body stays a plain array (other views depend on it); the total for pagination travels in a header.
     reply.header("x-total-count", String(ctx.runs.count(q)));
-    return ctx.runs.list(q);
+    // Complete requests may contain private context and are needed only on the
+    // detail/retry path. Keep list payloads compact and summary-only.
+    return ctx.runs.list(q).map(({ request: _request, ...run }) => run);
   });
 
   app.get("/api/runs/:id", async (req) => {
@@ -148,6 +157,95 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     const { id } = UuidParams.parse(req.params);
     const ok = await ctx.runs.cancel(id);
     return { cancelled: ok };
+  });
+
+  /** Repeat the complete typed request retained with a run. */
+  app.post("/api/runs/:id/retry", async (req, reply) => {
+    const { id } = UuidParams.parse(req.params);
+    const { submissionId } = z.object({ submissionId: z.string().uuid() }).parse(req.body);
+    const source = ctx.runs.get(id);
+    if (!source) throw httpError(404, "Run not found");
+    if (!source.request) {
+      throw httpError(409, "This older run has no complete request to repeat safely.", "request_unavailable");
+    }
+    const prior = ctx.db
+      .prepare("SELECT action, source_run_id, response FROM run_action_receipts WHERE id = ?")
+      .get(submissionId) as { action: string; source_run_id: string; response: string | null } | undefined;
+    if (prior) {
+      if (prior.action !== "retry" || prior.source_run_id !== id)
+        throw httpError(409, "Submission identity was reused for another action.", "submission_conflict");
+      if (!prior.response)
+        throw httpError(
+          409,
+          "This retry has an uncertain result. Check execution history.",
+          "submission_uncertain",
+        );
+      return JSON.parse(prior.response);
+    }
+    ctx.db
+      .prepare(
+        "INSERT INTO run_action_receipts(id, action, source_run_id, created_at) VALUES (?, 'retry', ?, ?)",
+      )
+      .run(submissionId, id, Date.now());
+    let result: Record<string, unknown>;
+    try {
+      const lineage = source.parentRunId ?? source.id;
+      if (source.request.kind === "skill") {
+        const skill = ctx.skills.load(source.request.skillSlug);
+        if (!skill)
+          throw httpError(
+            409,
+            `Skill "${source.request.skillSlug}" is no longer available.`,
+            "skill_unavailable",
+          );
+        const retryMode = skill.mode === "write" ? "write" : "read_only";
+        const input: SkillRunInput = {
+          slug: source.request.skillSlug,
+          inputs: source.request.inputs,
+          provider: source.provider,
+          model: source.model,
+          effort: source.effort,
+          cwd: source.cwd ?? ctx.paths.home,
+          timeoutMs: source.timeoutMs ?? ctx.settings().limits.defaultTimeoutMs,
+          parentRunId: lineage,
+        };
+        const gated = gateWrite(ctx, retryMode, "skill", `Repeat /${input.slug} with ${source.provider}`, {
+          kind: "skill",
+          input,
+        });
+        result = gated.pendingApproval
+          ? { runId: gated.runId, status: "waiting_approval", pendingApproval: gated.pendingApproval }
+          : {
+              ...launchSkillRun(ctx, input, (err, runId) => req.log.error({ err, runId, retryOf: id })),
+              status: "queued",
+            };
+      } else {
+        const repeated = submitPromptRun(
+          ctx,
+          {
+            submissionId,
+            prompt: source.request.prompt,
+            provider: source.provider,
+            model: source.model,
+            effort: source.effort,
+            mode: source.request.mode,
+            cwd: source.cwd ?? ctx.paths.home,
+            timeoutMs: source.timeoutMs ?? ctx.settings().limits.defaultTimeoutMs,
+            parentRunId: lineage,
+          },
+          (err, runId) => req.log.error({ err, runId, retryOf: id }),
+        );
+        if (repeated.statusCode !== 200) reply.code(repeated.statusCode);
+        result = repeated.body;
+      }
+    } catch (error) {
+      ctx.db.prepare("DELETE FROM run_action_receipts WHERE id = ?").run(submissionId);
+      throw error;
+    }
+    ctx.db
+      .prepare("UPDATE run_action_receipts SET response = ? WHERE id = ?")
+      .run(JSON.stringify(result), submissionId);
+    return result;
   });
 
   /**

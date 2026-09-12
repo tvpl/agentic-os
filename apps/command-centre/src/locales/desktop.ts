@@ -4,6 +4,17 @@
  * the `satisfies` clause and by i18n.test.ts).
  */
 export const en = {
+  "desktop.core.idle": "ready",
+  "desktop.core.listening": "listening",
+  "desktop.core.queued": "queued",
+  "desktop.core.thinking": "running",
+  "desktop.core.tool": "using tool",
+  "desktop.core.responding": "responding",
+  "desktop.core.waiting": "waiting for approval",
+  "desktop.core.alert": "needs attention",
+  "desktop.core.done": "completed",
+  "desktop.core.cancelled": "cancelled",
+  "desktop.core.interrupted": "interrupted",
   "desktop.dock.title": "Workspace navigation",
   "desktop.dock.expand": "Expand dock",
   "desktop.dock.collapse": "Collapse dock",
@@ -93,6 +104,17 @@ export const en = {
   "desktop.now.enable": "Enable",
   "desktop.now.enabled": "Routine enabled",
   "desktop.now.noSummary": "no summary",
+  "desktop.objectives.title": "Current objective",
+  "desktop.objectives.inspect": "Inspect run",
+  "desktop.objectives.continue": "Run ready steps",
+  "desktop.objectives.dispatchedCount": "{n} step(s) dispatched",
+  "desktop.objectives.pending": "Ready to run",
+  "desktop.objectives.dispatched": "Running",
+  "desktop.objectives.waiting_approval": "Waiting for approval",
+  "desktop.objectives.verifying": "Verifying evidence",
+  "desktop.objectives.verified": "Evidence verified",
+  "desktop.objectives.blocked": "Blocked",
+  "desktop.objectives.cancelled": "Cancelled",
 
   "desktop.prompt.submissionUncertain":
     "Submission result is uncertain. Open Runs and check the history before sending a new task.",
@@ -245,6 +267,17 @@ export const en = {
 } as const;
 
 export const ptBR = {
+  "desktop.core.idle": "pronto",
+  "desktop.core.listening": "ouvindo",
+  "desktop.core.queued": "na fila",
+  "desktop.core.thinking": "executando",
+  "desktop.core.tool": "usando ferramenta",
+  "desktop.core.responding": "respondendo",
+  "desktop.core.waiting": "aguardando aprovação",
+  "desktop.core.alert": "precisa de atenção",
+  "desktop.core.done": "concluído",
+  "desktop.core.cancelled": "cancelado",
+  "desktop.core.interrupted": "interrompido",
   "desktop.dock.title": "Navegação do workspace",
   "desktop.dock.expand": "Expandir dock",
   "desktop.dock.collapse": "Recolher dock",
@@ -330,6 +363,17 @@ export const ptBR = {
   "desktop.now.enable": "Habilitar",
   "desktop.now.enabled": "Rotina habilitada",
   "desktop.now.noSummary": "sem resumo",
+  "desktop.objectives.title": "Objetivo atual",
+  "desktop.objectives.inspect": "Inspecionar execução",
+  "desktop.objectives.continue": "Executar etapas prontas",
+  "desktop.objectives.dispatchedCount": "{n} etapa(s) iniciada(s)",
+  "desktop.objectives.pending": "Pronta para executar",
+  "desktop.objectives.dispatched": "Em execução",
+  "desktop.objectives.waiting_approval": "Aguardando aprovação",
+  "desktop.objectives.verifying": "Verificando evidências",
+  "desktop.objectives.verified": "Evidência verificada",
+  "desktop.objectives.blocked": "Bloqueada",
+  "desktop.objectives.cancelled": "Cancelada",
 
   "desktop.prompt.submissionUncertain":
     "O resultado do envio é incerto. Abra Execuções e confira o histórico antes de enviar uma nova tarefa.",

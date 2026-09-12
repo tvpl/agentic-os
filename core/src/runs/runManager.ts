@@ -26,6 +26,27 @@ export const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set([
   "interrupted",
 ]);
 
+/** Complete local request used to reproduce a run without relying on its UI summary. */
+export type RunRequestSpec =
+  | { version: 1; kind: "prompt"; prompt: string; mode: RunMode }
+  | { version: 1; kind: "skill"; skillSlug: string; inputs: Record<string, string>; mode: RunMode }
+  | { version: 1; kind: "system"; prompt: string; mode: RunMode };
+
+export interface RunFailure {
+  code:
+    | "authentication"
+    | "permission"
+    | "budget"
+    | "timeout"
+    | "cancelled"
+    | "interrupted"
+    | "provider"
+    | "unknown";
+  message: string;
+  recoverable: boolean;
+  effectsUncertain: boolean;
+}
+
 export interface RunRecord {
   id: string;
   createdAt: number;
@@ -40,6 +61,8 @@ export interface RunRecord {
   durationMs: number | null;
   cwd: string | null;
   promptSummary: string;
+  /** Complete typed request. Null for runs created before migration 14. */
+  request: RunRequestSpec | null;
   skillSlug: string | null;
   routineId: string | null;
   /** Spend cap for this run (remaining routine/skill budget at launch); null = none. */
@@ -50,6 +73,7 @@ export interface RunRecord {
   sessionId: string | null;
   pid: number | null;
   error: string | null;
+  failure: RunFailure | null;
   artifacts: string[];
   filesChanged: string[];
   attempts: number;
@@ -88,6 +112,8 @@ export interface CreateRunInput {
   origin: RunOrigin;
   provider: ProviderId;
   prompt: string;
+  /** Complete typed request retained locally for safe repeat/continue flows. */
+  request?: RunRequestSpec | null;
   cwd: string;
   model: string | null;
   effort: EffortLevel;
@@ -164,6 +190,7 @@ interface ActiveRun {
   /** Set when the abort came from shutdown(): final status is `interrupted`, not `cancelled`. */
   shutdown: boolean;
   persistedEvents: number;
+  toolStartedAt: Map<string, number>;
 }
 
 /**
@@ -183,6 +210,9 @@ export class RunManager {
   private readonly logger: JsonlLogger;
   private active = 0;
   private readonly waiting: Array<() => void> = [];
+  /** Provider conversations are sequential even when the global pool has room. */
+  private readonly busySessions = new Set<string>();
+  private readonly sessionWaiters = new Map<string, Array<() => void>>();
   private readonly activeRuns = new Map<string, ActiveRun>();
   private shuttingDown = false;
   private readonly eventCap: number;
@@ -417,8 +447,8 @@ export class RunManager {
     const promptSummary = redactSecrets(input.prompt.slice(0, 500));
     this.db
       .prepare(
-        `INSERT INTO runs (id, created_at, origin, provider, model, effort, status, cwd, prompt_summary, skill_slug, routine_id, parent_run_id, session_id, attempts, timeout_ms, permission_profile, max_cost_usd)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO runs (id, created_at, origin, provider, model, effort, status, cwd, prompt_summary, request_json, skill_slug, routine_id, parent_run_id, session_id, attempts, timeout_ms, permission_profile, max_cost_usd)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -430,6 +460,7 @@ export class RunManager {
         status,
         input.cwd,
         promptSummary,
+        input.request ? JSON.stringify(input.request) : null,
         input.skillSlug ?? null,
         input.routineId ?? null,
         input.parentRunId ?? null,
@@ -479,6 +510,7 @@ export class RunManager {
       promise: Promise.resolve(record),
       shutdown: false,
       persistedEvents: 0,
+      toolStartedAt: new Map(),
     };
     this.activeRuns.set(runId, active);
     active.promise = this.run(runId, record, prompt, mode, active)
@@ -498,16 +530,33 @@ export class RunManager {
     active: ActiveRun,
   ): Promise<RunRecord> {
     let acquired = false;
+    let sessionAcquired = false;
     let startedAt = Date.now();
     const signal = active.controller.signal;
     try {
+      if (record.sessionId) {
+        sessionAcquired = await this.acquireSession(record.sessionId, signal);
+        if (!sessionAcquired) {
+          const status = active.shutdown ? "interrupted" : "cancelled";
+          const message = active.shutdown ? "Interrupted by service shutdown" : "Cancelled before start";
+          this.settle(runId, ["queued"], active.shutdown ? "interrupted" : "cancelled", {
+            duration_ms: 0,
+            error: message,
+            failure_json: JSON.stringify(classifyRunFailure(message, status)),
+          });
+          return this.get(runId)!;
+        }
+      }
       acquired = await this.acquireSlot(signal);
       startedAt = Date.now();
       if (this.shuttingDown) active.shutdown = true;
       if (this.shuttingDown || signal.aborted) {
+        const status = active.shutdown ? "interrupted" : "cancelled";
+        const message = active.shutdown ? "Interrupted by service shutdown" : "Cancelled before start";
         this.settle(runId, ["queued"], active.shutdown ? "interrupted" : "cancelled", {
           duration_ms: 0,
-          error: active.shutdown ? "Interrupted by service shutdown" : "Cancelled before start",
+          error: message,
+          failure_json: JSON.stringify(classifyRunFailure(message, status)),
         });
         return this.get(runId)!;
       }
@@ -649,8 +698,10 @@ export class RunManager {
         status = "done";
       } else {
         status = "failed";
+        const summary = redactSecrets(resultEvent?.summary?.trim() ?? "");
         error = resultEvent
-          ? `Provider exited with code ${resultEvent.exitCode}. Check the run events for the underlying message.`
+          ? summary ||
+            `Provider exited with code ${resultEvent.exitCode}. Check the run events for the underlying message.`
           : "Provider produced no result event.";
       }
 
@@ -658,6 +709,7 @@ export class RunManager {
         exit_code: resultEvent?.exitCode ?? null,
         duration_ms: durationMs,
         error,
+        failure_json: error ? JSON.stringify(classifyRunFailure(error, status, mode === "write")) : null,
         artifacts_json: JSON.stringify(artifacts),
         files_changed_json: JSON.stringify([...filesChanged]),
         ...usagePatch(usage.value()),
@@ -679,11 +731,13 @@ export class RunManager {
       this.settle(runId, ["running", "queued"], status, {
         duration_ms: Date.now() - startedAt,
         error: message,
+        failure_json: JSON.stringify(classifyRunFailure(message, status, mode === "write")),
       });
       this.persistEvent(runId, { type: "error", ts: Date.now(), message }, active);
       return this.get(runId)!;
     } finally {
       if (acquired) this.releaseSlot();
+      if (sessionAcquired && record.sessionId) this.releaseSession(record.sessionId);
     }
   }
 
@@ -797,6 +851,7 @@ export class RunManager {
     const ok = this.settle(runId, ["queued", "waiting_approval"], "cancelled", {
       duration_ms: 0,
       error: summary,
+      failure_json: JSON.stringify(classifyRunFailure(summary, "cancelled")),
     });
     if (ok) {
       this.emit(runId, {
@@ -834,6 +889,8 @@ export class RunManager {
     }
     // Wake queued waiters so their run() settles as interrupted immediately.
     for (const wake of this.waiting.splice(0)) wake();
+    for (const queue of this.sessionWaiters.values()) for (const wake of queue.splice(0)) wake();
+    this.sessionWaiters.clear();
     const hardKill = setTimeout(() => {
       for (const a of entries) a.forceKill?.("SIGKILL");
     }, graceMs + 250);
@@ -851,7 +908,25 @@ export class RunManager {
   // -------------------------------------------------------------- events --
 
   private persistEvent(runId: string, event: RunEvent, active?: ActiveRun): void {
-    const safe = JSON.parse(redactSecrets(JSON.stringify(event))) as RunEvent;
+    if (active && event.type === "tool_use" && event.callId) {
+      const callId = event.callId;
+      if (event.phase === "start") active.toolStartedAt.set(callId, event.ts);
+      else if (event.phase === "end" && event.durationMs == null) {
+        const startedAt = active.toolStartedAt.get(callId);
+        if (startedAt != null) event = { ...event, durationMs: Math.max(0, event.ts - startedAt) };
+        active.toolStartedAt.delete(callId);
+      }
+    }
+    const sequence = active ? active.persistedEvents + 1 : undefined;
+    const safe = JSON.parse(
+      redactSecrets(
+        JSON.stringify({
+          ...event,
+          attemptId: event.attemptId ?? runId,
+          ...(event.sequence == null && sequence != null ? { sequence } : {}),
+        }),
+      ),
+    ) as RunEvent;
     const insert = this.db.prepare("INSERT INTO run_events (run_id, ts, type, data) VALUES (?, ?, ?, ?)");
     if (active) {
       active.persistedEvents++;
@@ -1119,7 +1194,7 @@ export class RunManager {
    * Called synchronously with create/claim by the single owning API process.
    */
   committedTodayUsd(
-    filter: { routineId?: string | null; skillSlug?: string | null },
+    filter: { routineId?: string | null; skillSlug?: string | null; origin?: RunOrigin },
     now = Date.now(),
   ): number {
     const midnight = new Date(now);
@@ -1133,6 +1208,10 @@ export class RunManager {
     if (filter.skillSlug) {
       clauses.push("skill_slug = ?");
       params.push(filter.skillSlug);
+    }
+    if (filter.origin) {
+      clauses.push("origin = ?");
+      params.push(filter.origin);
     }
     const row = this.db
       .prepare(
@@ -1232,6 +1311,36 @@ export class RunManager {
     }
   }
 
+  private async acquireSession(sessionId: string, signal: AbortSignal): Promise<boolean> {
+    for (;;) {
+      if (signal.aborted || this.shuttingDown) return false;
+      if (!this.busySessions.has(sessionId)) {
+        this.busySessions.add(sessionId);
+        return true;
+      }
+      await new Promise<void>((resolve) => {
+        const wake = () => {
+          signal.removeEventListener("abort", wake);
+          const queue = this.sessionWaiters.get(sessionId);
+          const index = queue?.indexOf(wake) ?? -1;
+          if (queue && index !== -1) queue.splice(index, 1);
+          if (queue?.length === 0) this.sessionWaiters.delete(sessionId);
+          resolve();
+        };
+        const queue = this.sessionWaiters.get(sessionId) ?? [];
+        queue.push(wake);
+        this.sessionWaiters.set(sessionId, queue);
+        signal.addEventListener("abort", wake, { once: true });
+        if (signal.aborted) wake();
+      });
+    }
+  }
+
+  private releaseSession(sessionId: string): void {
+    this.busySessions.delete(sessionId);
+    this.sessionWaiters.get(sessionId)?.shift()?.();
+  }
+
   /** Free a slot; wake one waiter only if the CURRENT limit has room for it. */
   private releaseSlot(): void {
     this.active = Math.max(0, this.active - 1);
@@ -1268,6 +1377,8 @@ interface RawRun {
   duration_ms: number | null;
   cwd: string | null;
   prompt_summary: string;
+  request_json?: string | null;
+  failure_json?: string | null;
   skill_slug: string | null;
   routine_id: string | null;
   max_cost_usd?: number | null;
@@ -1386,6 +1497,7 @@ function fromRow(row: RawRun): RunRecord {
     durationMs: row.duration_ms,
     cwd: row.cwd,
     promptSummary: row.prompt_summary,
+    request: parseRequest(row.request_json),
     skillSlug: row.skill_slug,
     routineId: row.routine_id,
     maxCostUsd: row.max_cost_usd ?? null,
@@ -1393,6 +1505,7 @@ function fromRow(row: RawRun): RunRecord {
     sessionId: row.session_id ?? null,
     pid: row.pid ?? null,
     error: row.error,
+    failure: parseFailure(row.failure_json),
     artifacts: JSON.parse(row.artifacts_json) as string[],
     filesChanged: JSON.parse(row.files_changed_json) as string[],
     attempts: row.attempts,
@@ -1400,6 +1513,62 @@ function fromRow(row: RawRun): RunRecord {
     permissionProfile: row.permission_profile as SecurityProfile | null,
     usage: usageFromRow(row),
   };
+}
+
+function parseRequest(raw: string | null | undefined): RunRequestSpec | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Partial<RunRequestSpec>;
+    if (value.version !== 1 || !value.kind || !value.mode) return null;
+    if ((value.kind === "prompt" || value.kind === "system") && typeof value.prompt === "string") {
+      return value as RunRequestSpec;
+    }
+    if (
+      value.kind === "skill" &&
+      typeof value.skillSlug === "string" &&
+      value.inputs &&
+      typeof value.inputs === "object"
+    ) {
+      return value as RunRequestSpec;
+    }
+  } catch {
+    // Older or hand-authored rows remain readable; their repeat action is unavailable.
+  }
+  return null;
+}
+
+function parseFailure(raw: string | null | undefined): RunFailure | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as RunFailure;
+    return value && typeof value.code === "string" && typeof value.message === "string" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function classifyRunFailure(message: string, status: RunStatus, effectsUncertain = false): RunFailure {
+  const text = redactSecrets(message.trim());
+  let code: RunFailure["code"] = "unknown";
+  let recoverable = true;
+  if (status === "timed_out") code = "timeout";
+  else if (status === "cancelled") code = "cancelled";
+  else if (status === "interrupted") code = "interrupted";
+  else if (
+    /(?:failed to authenticate|oauth session expired|not logged in|authentication (?:failed|required)|invalid api key|token (?:has )?expired)/i.test(
+      text,
+    )
+  ) {
+    code = "authentication";
+    recoverable = false;
+  } else if (/permission.denied|permission denied|approval denied|not allowed/i.test(text)) {
+    code = "permission";
+    recoverable = false;
+  } else if (/budget.exhausted|budget .*exhausted|cost limit/i.test(text)) {
+    code = "budget";
+    recoverable = false;
+  } else if (/provider|exited with code/i.test(text)) code = "provider";
+  return { code, message: text, recoverable, effectsUncertain };
 }
 
 function listFilesRecursive(dir: string): string[] {

@@ -42,6 +42,7 @@ export interface TriageRunner {
   create(input: CreateRunInput): RunRecord;
   execute(runId: string, prompt: string, mode: "read_only" | "write"): Promise<RunRecord>;
   lastAssistantText(id: string): string | null;
+  committedTodayUsd?(filter: { origin?: "sentinel" }, now?: number): number;
 }
 
 /** Just the slice of the inbox triage needs. */
@@ -171,7 +172,9 @@ export async function triageSentinel(
   const triage = settings.sentinels.triage;
   if (!triage.enabled || !(triage.dailyBudgetUsd > 0)) return none("disabled");
   const now = deps.now?.() ?? Date.now();
-  if (triageSpendToday(deps.db, now) >= triage.dailyBudgetUsd) return none("budget_exhausted");
+  const committed =
+    deps.runs.committedTodayUsd?.({ origin: "sentinel" }, now) ?? triageSpendToday(deps.db, now);
+  if (committed >= triage.dailyBudgetUsd) return none("budget_exhausted");
   const provider = settings.defaultProvider;
   if (!settings.providers[provider]?.enabled) return none("provider_unavailable");
 
@@ -182,12 +185,14 @@ export async function triageSentinel(
       origin: "sentinel",
       provider,
       prompt,
+      request: { version: 1, kind: "system", prompt, mode: "read_only" },
       cwd: deps.cwd,
       model: triage.model || null,
       effort: "low",
       mode: "read_only",
       timeoutMs: triage.timeoutMs,
       profile: "read_only",
+      maxCostUsd: triage.dailyBudgetUsd - committed,
     });
   } catch (err) {
     deps.onError?.(err);

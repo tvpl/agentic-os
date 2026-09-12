@@ -6,6 +6,7 @@ import {
   ConnectorRegistry,
   MemoryIndexer,
   NotificationStore,
+  ObjectiveStore,
   RoutineScheduler,
   RoutineStore,
   RunManager,
@@ -141,6 +142,7 @@ export class AppContext {
   readonly settingsStore: SettingsStore;
   readonly db: Db;
   readonly runs: RunManager;
+  readonly objectives: ObjectiveStore;
   readonly skills: SkillCatalog;
   readonly indexer: MemoryIndexer;
   readonly routines: RoutineStore;
@@ -190,6 +192,8 @@ export class AppContext {
       (id) => this.adapters[id],
       { permissionBroker: (run) => this.permissionBrokerFor(run) },
     );
+    this.objectives = new ObjectiveStore(this.db, this.paths);
+    this.objectives.recover(this.runs);
     this.indexer = new MemoryIndexer(this.db, () => this.settings());
     this.routines = new RoutineStore(this.paths);
     this.scheduler = new RoutineScheduler(this.db, this.paths, this.routines, this.runs, this.skills, () =>
@@ -220,6 +224,12 @@ export class AppContext {
       runs: this.runs,
       routines: this.routines,
     });
+    this.disposeObjectiveSync = events.subscribe((event) => {
+      if (event.type !== "run.finished") return;
+      const runId = (event.payload as { runId?: string }).runId;
+      const run = runId ? this.runs.get(runId) : null;
+      if (run) this.objectives.syncRun(run, this.runs);
+    });
     // Alerts leave the tab: rows at or above `channels.telegram.minTone` are
     // posted to Telegram. The bot token is read from the environment at send
     // time; failures are logged at most once an hour and never thrown.
@@ -249,6 +259,7 @@ export class AppContext {
 
   private readonly disposeJournalHooks: () => void;
   private readonly disposeNotificationRecorder: () => void;
+  private readonly disposeObjectiveSync: () => void;
   private readonly disposeTelegramChannel: () => void;
   private readonly disposePushChannel: () => void;
   /** Web Push subscriptions and the VAPID pair. */
@@ -434,6 +445,7 @@ export class AppContext {
   close(): void {
     this.disposeJournalHooks();
     this.disposeNotificationRecorder();
+    this.disposeObjectiveSync();
     this.disposeTelegramChannel();
     this.disposePushChannel();
     this.telegramPoller?.stop();

@@ -43,6 +43,12 @@ describe("desktop layout maths", () => {
       for (let j = i + 1; j < visible.length; j++) expect(overlaps(visible[i]!, visible[j]!)).toBe(false);
   });
 
+  it("moves a partial centre layout sideways before it can cover the console", () => {
+    const out = normalizeLayout({ now: { x: 4, y: 1, w: 6, h: 6, visible: true } }, MIN_ROWS);
+    expect(out.now).toMatchObject({ x: 5, y: 1, w: 6, h: 6 });
+    expect(overlaps(out.now!, out.prompt!)).toBe(false);
+  });
+
   it("layoutsEqual is structural", () => {
     expect(layoutsEqual(DEFAULT_LAYOUT, { ...DEFAULT_LAYOUT })).toBe(true);
     expect(layoutsEqual(DEFAULT_LAYOUT, { ...DEFAULT_LAYOUT, deck: { ...DEFAULT_LAYOUT.deck!, x: 1 } })).toBe(

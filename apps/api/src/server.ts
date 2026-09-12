@@ -36,6 +36,7 @@ import { registerRoutineRoutes } from "./routes/routines.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
 import { registerMicroappRoutes } from "./routes/microapps.js";
 import { registerEventRoutes } from "./routes/events.js";
+import { registerObjectiveRoutes } from "./routes/objectives.js";
 import { closeAllSse } from "./routes/sse.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -248,6 +249,7 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   registerConnectorRoutes(app, ctx);
   registerMicroappRoutes(app, ctx);
   registerEventRoutes(app, ctx);
+  registerObjectiveRoutes(app, ctx);
 
   // ---- Command Centre static UI --------------------------------------------
   const uiDist = path.resolve(here, "..", "..", "command-centre", "dist");

@@ -553,6 +553,14 @@ pre,
     transform: none;
   }
 }
+@keyframes modal-in {
+  from {
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    transform: none;
+  }
+}
 @keyframes scale-out-98 {
   from {
     opacity: 1;
@@ -732,11 +740,8 @@ canvas.dimmed {
     animation: none;
   }
 
-  .modal-backdrop {
-    animation: fade-in var(--dur-base) var(--ease-out) both;
-  }
   .modal {
-    animation: scale-in-98 var(--dur-base) var(--ease-emphasized) both;
+    animation: modal-in var(--dur-base) var(--ease-emphasized) both;
   }
   .modal-backdrop.closing {
     animation: fade-out var(--dur-exit) var(--ease-standard) both;
@@ -3672,6 +3677,49 @@ input[type="range"]::-moz-range-thumb {
 }
 .run-error {
   margin-bottom: var(--s-4);
+}
+.run-outcome {
+  display: grid;
+  gap: 10px;
+  border-left: 3px solid var(--ok);
+}
+.run-outcome.failed {
+  border-left-color: var(--danger);
+}
+.run-outcome > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+.run-outcome-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+}
+.run-objective {
+  display: grid;
+  gap: 8px;
+}
+.run-objective-chain {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 3px;
+}
+.run-objective-chain span {
+  flex: none;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: var(--fs-1);
+}
+.run-objective-chain span.current {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--accent-soft);
 }
 .prompt-pre {
   max-height: 200px;

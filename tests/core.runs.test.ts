@@ -122,7 +122,8 @@ describe("run manager", () => {
     const run = manager.create(input());
     const finished = await manager.execute(run.id, "x", "read_only");
     expect(finished.status).toBe("failed");
-    expect(finished.error).toContain("exited with code 1");
+    expect(finished.error).toBe("boom");
+    expect(finished.failure).toMatchObject({ code: "unknown", message: "boom", recoverable: true });
   });
 
   it("cancels a running run and reports whether anything was cancelled", async () => {

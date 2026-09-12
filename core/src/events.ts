@@ -23,6 +23,7 @@ export type OsEventType =
   | "approval.expired"
   | "session.created"
   | "session.updated"
+  | "objective.changed"
   | "settings.changed"
   | "backup.created"
   /** A row was appended to the persisted inbox (payload: the notification). */

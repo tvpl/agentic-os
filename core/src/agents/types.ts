@@ -98,11 +98,20 @@ export interface SafeInvocation {
   description: string;
 }
 
-export type RunEvent =
+export type RunEvent = (
   | { type: "started"; ts: number; pid: number | null }
   | { type: "text"; ts: number; stream: "stdout" | "stderr"; text: string }
   | { type: "assistant"; ts: number; text: string }
-  | { type: "tool_use"; ts: number; tool: string; detail: string }
+  | {
+      type: "tool_use";
+      ts: number;
+      tool: string;
+      detail: string;
+      callId?: string;
+      phase?: "start" | "end";
+      durationMs?: number;
+      outcome?: "ok" | "error" | "denied";
+    }
   | { type: "permission"; ts: number; detail: string }
   /**
    * The provider told us which conversation this run belongs to (Claude's
@@ -123,7 +132,11 @@ export type RunEvent =
       cancelled?: boolean;
     }
   | { type: "error"; ts: number; message: string }
-  | ({ type: "usage"; ts: number } & RunUsageEvent);
+  | ({ type: "usage"; ts: number } & RunUsageEvent)
+) & {
+  /** Stable execution attempt id. */ attemptId?: string;
+  /** Monotonic within this attempt. */ sequence?: number;
+};
 
 /**
  * Token/cost usage reported by a provider. `scope` tells the RunManager how to
