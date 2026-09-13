@@ -4,6 +4,13 @@
  *
  *   node scripts/package.mjs [--out release] [--skip-build] [--node <version>|none]
  *                            [--platform darwin|linux|win32] [--arch arm64|x64] [--no-archive]
+ *                            [--sign "<Developer ID Application: …>"] [--notarize <notarytool-profile>]
+ *
+ * macOS signing: without --sign the app gets an ad-hoc signature (Gatekeeper
+ * asks once). With a Developer ID identity (`security find-identity -v -p
+ * codesigning`, the name or its SHA-1) the bundle is signed with the hardened
+ * runtime; add --notarize <profile> (a keychain profile created with `xcrun
+ * notarytool store-credentials`) to submit the zip, wait, and staple the ticket.
  *
  * Output (per platform) — nothing in it is source code:
  *   lib/mordomo.mjs            the whole API + CLI as one minified bundle
@@ -144,6 +151,17 @@ if (args.archive !== false) {
       ROOT,
     );
   else run("zip", ["-qr", "-y", archive, label], stageRoot);
+  if (args.notarize) {
+    if (platform !== "darwin" || process.platform !== "darwin")
+      fail("--notarize needs a macOS build on macOS");
+    if (!args.sign) fail("--notarize needs --sign with a Developer ID identity");
+    log(`Notarizing with keychain profile ${args.notarize} (this waits for Apple)…`);
+    run("xcrun", ["notarytool", "submit", archive, "--keychain-profile", args.notarize, "--wait"], ROOT);
+    run("xcrun", ["stapler", "staple", path.join(stage, "MordomoOS.app")], ROOT);
+    fs.rmSync(archive, { force: true });
+    run("ditto", ["-c", "-k", "--keepParent", stage, archive], ROOT);
+    log("Notarization ticket stapled; archive rebuilt.");
+  }
   log(`Done: ${archive} (${(fs.statSync(archive).size / 1024 / 1024).toFixed(1)} MB)`);
 } else {
   log(`Done: ${stage}`);
@@ -224,16 +242,23 @@ fi
 </plist>
 `,
     );
-    // The bundled node is signed by the Node.js project; an ad-hoc signature on the
-    // app makes the bundle self-consistent. Gatekeeper still asks on first open.
+    // Without an identity: an ad-hoc signature keeps the bundle self-consistent
+    // (Gatekeeper still asks on first open). With one: Developer ID + hardened
+    // runtime + secure timestamp, so the app can be notarized. Nested code
+    // (the Node binary) is signed first, then the bundle.
     if (process.platform === "darwin" && commandExists("codesign")) {
-      const res = spawnSync(
-        "codesign",
-        ["--force", "--deep", "--sign", "-", path.join(stage, "MordomoOS.app")],
-        { stdio: "ignore" },
-      );
-      if (res.status !== 0) log("(codesign skipped)");
-    }
+      const app = path.join(stage, "MordomoOS.app");
+      const identity = args.sign ?? "-";
+      const flags = args.sign ? ["--options", "runtime", "--timestamp"] : [];
+      const targets = [path.join(payload, "runtime", "bin", "node"), app].filter((p) => fs.existsSync(p));
+      for (const target of targets) {
+        const res = spawnSync("codesign", ["--force", ...flags, "--sign", identity, target], {
+          stdio: "inherit",
+        });
+        if (res.status !== 0) fail(`codesign failed for ${path.relative(stage, target)}`);
+      }
+      if (args.sign) log(`Signed with ${args.sign}`);
+    } else if (args.sign) fail("--sign needs macOS with codesign");
     writeExecutable(
       path.join(stage, "mordomo"),
       `#!/bin/sh
@@ -456,6 +481,8 @@ function parseArgs(argv) {
     else if (a === "--node") out.node = next();
     else if (a === "--platform") out.platform = next();
     else if (a === "--arch") out.arch = next();
+    else if (a === "--sign") out.sign = next();
+    else if (a === "--notarize") out.notarize = next();
     else if (a === "--skip-build") out.skipBuild = true;
     else if (a === "--no-archive") out.archive = false;
     else if (a === "--help" || a === "-h") {
