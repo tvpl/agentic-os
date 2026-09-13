@@ -69,7 +69,7 @@ does not ship the source.
 | 1 | Real `claude` login + smoke | **Needs the user**: `claude auth login` is interactive; nothing was run |
 | 2 | Two commits | `b1aa8c3` onboarding/boot recovery, `17b9d9f` installer/discovery; this pass is a third commit |
 | 3 | Linux / Windows packages | `mordomo-os-0.8.0-linux-arm64.tar.gz` run in a clean Debian container (launch, MIME, doctor, 14 seeds, stop); `MordomoOS-0.8.0-windows-x64.zip` built with the win32 SQLite DLL and node.exe, **not executed** (no Windows machine) |
-| 4 | Signing / notarization | `--sign`, `--notarize` in the packager and the release workflow; **needs Apple credentials** to exercise |
+| 4 | Signing / notarization | Done with the user's Developer ID Application certificate and a `notarytool` keychain profile: first submission **Invalid** (the SQLite addon was unsigned and without timestamp), packager now signs every Mach-O and checks the notary answer; second submission **Accepted**, ticket stapled, `spctl --assess` on a quarantined copy reports *Notarized Developer ID* |
 | 5 | CI release matrix | `release.yml` (5 targets, smoke, draft release, checksums); `ci.yml` packager smoke; YAML linted, **not run** (needs a push) |
 | 6 | Update check | opt-in `GET /api/updates` (+ `?force=1`), Settings toggle and button; unit + route tests; live check answered "no published release yet" (404) |
 | 7 | Doctor / export in UI | Diagnostics tab gained *Export diagnostics* (redacted JSON download) |
@@ -84,3 +84,14 @@ rebuild ("Failed to fetch dynamically imported module") — route chunks now
 reload the page once (`src/lazyRoute.ts`); the browser setup did not pin the
 detected binaries the way the terminal setup does — it now calls
 `/api/providers/:id/detect` before saving.
+
+Third finding, caught only by running the notarized bundle: with the
+hardened runtime the Node binary died at startup with SIGTRAP (133) — V8
+needs the `allow-jit` / `allow-unsigned-executable-memory` entitlements.
+The packager now signs Node with them and starts the signed runtime once
+before uploading (third submission Accepted; `launch`, MIME types, doctor
+and `stop` verified from the notarized stage and from a fresh extraction of
+the zip). A quarantined copy started from this session's shell still gets
+133 and the sandbox cannot clear the flag; Gatekeeper's own assessment of
+that copy is *accepted · Notarized Developer ID*, and the CLI shim explains
+the exit code.

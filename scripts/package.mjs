@@ -156,7 +156,41 @@ if (args.archive !== false) {
       fail("--notarize needs a macOS build on macOS");
     if (!args.sign) fail("--notarize needs --sign with a Developer ID identity");
     log(`Notarizing with keychain profile ${args.notarize} (this waits for Apple)…`);
-    run("xcrun", ["notarytool", "submit", archive, "--keychain-profile", args.notarize, "--wait"], ROOT);
+    const submit = spawnSync(
+      "xcrun",
+      [
+        "notarytool",
+        "submit",
+        archive,
+        "--keychain-profile",
+        args.notarize,
+        "--wait",
+        "--output-format",
+        "json",
+      ],
+      { cwd: ROOT, encoding: "utf8" },
+    );
+    let result = { id: null, status: null };
+    try {
+      result = JSON.parse(submit.stdout.trim().split("\n").pop() ?? "{}");
+    } catch {
+      /* fall through: reported below */
+    }
+    log(`Notary service: ${result.status ?? "no answer"}${result.id ? ` (submission ${result.id})` : ""}`);
+    if (result.status !== "Accepted") {
+      if (result.id) {
+        const details = spawnSync(
+          "xcrun",
+          ["notarytool", "log", result.id, "--keychain-profile", args.notarize],
+          {
+            cwd: ROOT,
+            encoding: "utf8",
+          },
+        );
+        console.error(details.stdout || details.stderr);
+      } else console.error(submit.stderr || submit.stdout);
+      fail("Notarization was not accepted — the archive was left unsigned by Apple (see the log above)");
+    }
     run("xcrun", ["stapler", "staple", path.join(stage, "MordomoOS.app")], ROOT);
     fs.rmSync(archive, { force: true });
     run("ditto", ["-c", "-k", "--keepParent", stage, archive], ROOT);
@@ -201,7 +235,17 @@ else
   echo "Node.js 22 or newer is required: https://nodejs.org" >&2
   exit 1
 fi
-exec "$NODE" "$DIR/lib/mordomo.mjs" "$@"
+"$NODE" "$DIR/lib/mordomo.mjs" "$@"
+status=$?
+# macOS stops a downloaded binary started from a terminal (SIGTRAP, 133)
+# until the app has been opened once and Gatekeeper has verified it.
+if [ "$status" -eq 133 ] && [ "$(uname)" = "Darwin" ]; then
+  echo "macOS stopped the bundled runtime (signal 133)." >&2
+  echo "If this copy was just downloaded, open MordomoOS.app once (double-click, then Open) so macOS can verify it, or run:" >&2
+  echo "  xattr -dr com.apple.quarantine '$DIR/../..'" >&2
+  echo "If it still fails, the build was signed without the JIT entitlements: rebuild with scripts/package.mjs." >&2
+fi
+exit $status
 `;
   fs.mkdirSync(path.join(payload, "bin"), { recursive: true });
   writeExecutable(path.join(payload, "bin", "mordomo"), sh);
@@ -250,12 +294,50 @@ fi
       const app = path.join(stage, "MordomoOS.app");
       const identity = args.sign ?? "-";
       const flags = args.sign ? ["--options", "runtime", "--timestamp"] : [];
-      const targets = [path.join(payload, "runtime", "bin", "node"), app].filter((p) => fs.existsSync(p));
+      // Every Mach-O in the payload must carry the Developer ID signature and a
+      // timestamp or the notary service rejects the archive: the Node binary,
+      // the SQLite addon, anything else that looks like native code, then the app.
+      // The hardened runtime forbids JIT unless the binary carries the JIT
+      // entitlements; V8 needs them or Node dies with SIGTRAP at startup.
+      const entitlements = path.join(os.tmpdir(), `mordomo-${process.pid}-entitlements.plist`);
+      fs.writeFileSync(
+        entitlements,
+        `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key><true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>
+</dict>
+</plist>
+`,
+      );
+      const nodeBinary = path.join(payload, "runtime", "bin", "node");
+      const targets = [...machObjects(payload), app];
       for (const target of targets) {
-        const res = spawnSync("codesign", ["--force", ...flags, "--sign", identity, target], {
-          stdio: "inherit",
-        });
+        const withEntitlements = args.sign && target === nodeBinary;
+        const res = spawnSync(
+          "codesign",
+          [
+            "--force",
+            ...flags,
+            ...(withEntitlements ? ["--entitlements", entitlements] : []),
+            "--sign",
+            identity,
+            target,
+          ],
+          { stdio: "inherit" },
+        );
         if (res.status !== 0) fail(`codesign failed for ${path.relative(stage, target)}`);
+      }
+      fs.rmSync(entitlements, { force: true });
+      if (args.sign && fs.existsSync(nodeBinary)) {
+        // Prove the signed runtime still starts before spending a notarization round trip.
+        const probe = spawnSync(nodeBinary, ["-e", "process.exit(42)"], { stdio: "ignore" });
+        if (probe.status !== 42)
+          fail(
+            `the signed Node runtime does not start (status ${probe.status}, signal ${probe.signal}) — check the entitlements`,
+          );
       }
       if (args.sign) log(`Signed with ${args.sign}`);
     } else if (args.sign) fail("--sign needs macOS with codesign");
@@ -289,6 +371,21 @@ Terminal=false
 Categories=Development;Utility;
 `,
   );
+}
+
+/** Native binaries under `dir` (the Node runtime, `.node` addons, dylibs), deepest first. */
+function machObjects(dir) {
+  const out = [];
+  const walk = (d) => {
+    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+      const full = path.join(d, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.(node|dylib)$/.test(entry.name) || full.endsWith(path.join("runtime", "bin", "node")))
+        out.push(full);
+    }
+  };
+  walk(dir);
+  return out;
 }
 
 function makeIcns(resources) {
@@ -340,9 +437,10 @@ EN
 ${
   platform === "darwin"
     ? `
-macOS: the app is not notarized. On the first open, right-click MordomoOS.app → Open → Open
-(or run: xattr -dr com.apple.quarantine MordomoOS.app). Move the app to /Applications first
-if you plan to enable "start at login" from Settings.
+macOS: open MordomoOS.app once from the Finder before using ./mordomo in a terminal —
+macOS verifies a downloaded app on its first open (a notarized build opens directly;
+an unsigned one needs right-click → Open). Move the app to /Applications first if you
+plan to enable "start at login" from Settings.
 `
     : ""
 }
@@ -358,8 +456,9 @@ PT-BR
 ${
   platform === "darwin"
     ? `
-macOS: o app não é notarizado. Na primeira abertura, clique com o botão direito em MordomoOS.app → Abrir → Abrir
-(ou execute: xattr -dr com.apple.quarantine MordomoOS.app). Mova o app para /Applications antes de
+macOS: abra o MordomoOS.app uma vez pelo Finder antes de usar ./mordomo no terminal —
+o macOS verifica um app baixado na primeira abertura (um build notarizado abre direto;
+um não assinado exige botão direito → Abrir). Mova o app para /Applications antes de
 ativar "iniciar no login" nas Configurações.
 `
     : ""

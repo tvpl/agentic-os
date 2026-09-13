@@ -26,11 +26,15 @@ distributable* below) and extract it.
 
 1. Move `MordomoOS.app` to `/Applications` (optional, but do it before enabling
    *start at login*).
-2. The app is not notarized. On the first open, **right-click → Open → Open**,
-   or remove the quarantine flag once:
+2. Open the app once from the Finder. Official builds are signed with a
+   Developer ID and notarized, so macOS verifies them and opens directly. A
+   build you made yourself without `--sign` is only ad-hoc signed: use
+   **right-click → Open → Open** the first time, or remove the quarantine flag:
    ```bash
    xattr -dr com.apple.quarantine /Applications/MordomoOS.app
    ```
+   Until that first open, the `mordomo` script refuses to start from a
+   terminal (macOS stops quarantined binaries with signal 133) and says so.
 3. Open MordomoOS. The local service starts in the background and the browser
    opens the setup screen. The app has no window of its own: it lives in the
    browser; quit the service with `mordomo stop` or from Settings.
@@ -128,9 +132,15 @@ xcrun notarytool store-credentials mordomo --apple-id … --team-id … --passwo
 node scripts/package.mjs --sign "Developer ID Application: Name (TEAMID)" --notarize mordomo
 ```
 
-`--sign` signs the app with the hardened runtime; `--notarize` submits the
-zip, waits for Apple, staples the ticket and rebuilds the archive. Without
-these the app is ad-hoc signed and Gatekeeper asks once. Windows: sign
+`--sign` signs every native binary (the Node runtime, the SQLite addon) and
+the app with the hardened runtime and a secure timestamp — the Node binary
+with the JIT entitlements (`allow-jit`, `allow-unsigned-executable-memory`)
+that V8 needs under the hardened runtime, and the packager starts the signed
+runtime once to prove it before uploading; `--notarize`
+submits the zip, waits for Apple, prints the notary log when the answer is
+not *Accepted*, staples the ticket and rebuilds the archive. Without these
+the app is ad-hoc signed and Gatekeeper asks once. Verified on 2026-09-12:
+`spctl --assess` reports *Notarized Developer ID* on a quarantined download. Windows: sign
 `MordomoOS.cmd` is not meaningful (it is a script); sign `runtime\node.exe`
 only if your policy requires it (`signtool sign /fd SHA256 …`).
 
