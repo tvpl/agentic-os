@@ -548,6 +548,20 @@ const baseEn = {
   "setup.loginHint":
     "Installed, but not signed in. Run the command below in a terminal, then click “Detect again”.",
   "setup.detectAgain": "Detect again",
+  "setup.notReadyHint":
+    "No enabled provider is signed in yet. You can continue, but runs will fail until you sign in.",
+  "gate.title": "Connect your AI first",
+  "gate.body":
+    "MordomoOS runs through the coding agent installed on this computer. Every enabled provider is either missing or signed out, so nothing can run yet. Fix one below, then check again.",
+  "gate.noProvider": "No provider is enabled. Turn one on in Settings › Providers.",
+  "gate.installHint": "Install it with this command in a terminal, then click Detect again.",
+  "gate.loginHint": "Sign in with this command in a terminal, then click Detect again.",
+  "gate.recheck": "Check again",
+  "gate.skip": "Continue anyway",
+  "gate.openSettings": "Open Settings",
+  "gate.state.not_installed": "not installed",
+  "gate.state.login_required": "login required",
+  "gate.state.unverified": "login not verified",
   "skills.readOnly": "read-only",
   "pixel.draftRestored": "Draft restored from your last session.",
   "pixel.leaveTitle": "Leave with unsaved pixels?",
@@ -1119,6 +1133,20 @@ const basePtBR = {
   "setup.loginHint":
     "Instalado, mas sem login. Execute o comando abaixo em um terminal e clique em “Detectar novamente”.",
   "setup.detectAgain": "Detectar novamente",
+  "setup.notReadyHint":
+    "Nenhum provedor habilitado está com login. Você pode continuar, mas as execuções vão falhar até fazer login.",
+  "gate.title": "Conecte sua IA primeiro",
+  "gate.body":
+    "O MordomoOS trabalha por meio do agente de código instalado neste computador. Todos os provedores habilitados estão ausentes ou sem login, então nada pode rodar ainda. Resolva um deles abaixo e verifique de novo.",
+  "gate.noProvider": "Nenhum provedor está habilitado. Ative um em Configurações › Provedores.",
+  "gate.installHint": "Instale com este comando em um terminal e depois clique em Detectar novamente.",
+  "gate.loginHint": "Faça login com este comando em um terminal e depois clique em Detectar novamente.",
+  "gate.recheck": "Verificar de novo",
+  "gate.skip": "Continuar mesmo assim",
+  "gate.openSettings": "Abrir Configurações",
+  "gate.state.not_installed": "não instalado",
+  "gate.state.login_required": "login necessário",
+  "gate.state.unverified": "login não verificado",
   "skills.readOnly": "somente leitura",
   "pixel.draftRestored": "Rascunho restaurado da última sessão.",
   "pixel.leaveTitle": "Sair com pixels não salvos?",

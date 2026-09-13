@@ -1314,6 +1314,10 @@
   display: flex;
   flex-direction: column;
   border-radius: 12px;
+  /* A widget is a window: its content scrolls inside the box and never
+     spills over the neighbouring widget when the grid is tight. */
+  overflow: hidden auto;
+  scrollbar-width: thin;
 }
 .widget-inner > h2 {
   flex: none;
@@ -1361,7 +1365,7 @@
   transform: none;
   width: auto;
   max-height: none;
-  overflow: visible;
+  overflow: hidden auto;
   padding: 0;
   border: 0;
   border-radius: 0;

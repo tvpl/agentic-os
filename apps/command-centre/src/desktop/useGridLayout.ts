@@ -22,7 +22,7 @@ import {
   GRID_PAD,
   GRID_BOTTOM,
   GRID_TOP,
-  STACK_BREAKPOINT,
+  shouldStack,
   computeRows,
   layoutsEqual,
   normalizeLayout,
@@ -64,7 +64,7 @@ export function useGridMetrics(ref: RefObject<HTMLElement>): GridMetrics {
   const rows = computeRows(size.h - GRID_TOP - GRID_BOTTOM);
   const cellW = (size.w - GRID_PAD * 2) / COLS;
   const cellH = (size.h - GRID_TOP - GRID_BOTTOM) / rows;
-  const stacked = size.w < STACK_BREAKPOINT;
+  const stacked = shouldStack(size.w, size.h);
 
   // The edit-mode grid background reads these; scoped to the grid element so
   // a resize never touches <html style> (which would rebuild canvas assets).

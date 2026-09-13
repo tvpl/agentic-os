@@ -49,6 +49,7 @@ import { DesktopActionsProvider, type DesktopActions } from "./actions";
 import { WIDGET_REGISTRY, defaultConfig, widgetDefinition } from "./registry";
 import { buildRingChips, chipMatches, type RingChip } from "./ringChips";
 import { baseCoreState } from "./coreState";
+import { providerProblem } from "../components/providerReadiness";
 import {
   isActiveStatus,
   recentFiles,
@@ -398,7 +399,13 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
             <span className="hud-label">
               {t("dash.activeProvider")}: <span className="accent-text">{defaultProvider}</span>
               {" · "}
-              <span className="core-state-label">{t(`desktop.core.${coreState}`)}</span>
+              {activeProvider && providerProblem(activeProvider) ? (
+                <span className="core-state-label warn-text" data-testid="provider-state">
+                  {t(`gate.state.${providerProblem(activeProvider)!}`)}
+                </span>
+              ) : (
+                <span className="core-state-label">{t(`desktop.core.${coreState}`)}</span>
+              )}
             </span>
           </div>
           <div className="os-brand">

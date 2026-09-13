@@ -253,9 +253,14 @@ exit $status
   if (platform === "darwin") {
     const contents = path.join(stage, "MordomoOS.app", "Contents");
     fs.mkdirSync(path.join(contents, "MacOS"), { recursive: true });
-    writeExecutable(
-      path.join(contents, "MacOS", "MordomoOS"),
-      `#!/bin/sh
+    // Native shell: a WKWebView window compiled from scripts/macos-app/main.swift.
+    // Without swiftc (or on another host) the launcher falls back to a script
+    // that starts the service and opens the default browser.
+    const nativeShell = buildNativeShell(path.join(contents, "MacOS", "MordomoOS"));
+    if (!nativeShell)
+      writeExecutable(
+        path.join(contents, "MacOS", "MordomoOS"),
+        `#!/bin/sh
 # Double-click entry point: start the local service and open the Command Centre.
 RES="$(CDPATH= cd -- "$(dirname -- "$0")/../Resources" && pwd)"
 if ! "$RES/bin/mordomo" launch >/tmp/mordomo-launch.log 2>&1; then
@@ -263,7 +268,7 @@ if ! "$RES/bin/mordomo" launch >/tmp/mordomo-launch.log 2>&1; then
   exit 1
 fi
 `,
-    );
+      );
     const icns = makeIcns(path.join(contents, "Resources"));
     fs.writeFileSync(
       path.join(contents, "Info.plist"),
@@ -280,8 +285,11 @@ fi
   <key>CFBundleExecutable</key><string>MordomoOS</string>
   ${icns ? "<key>CFBundleIconFile</key><string>MordomoOS</string>" : ""}
   <key>LSMinimumSystemVersion</key><string>12.0</string>
-  <key>LSUIElement</key><true/>
+  ${nativeShell ? "" : "<key>LSUIElement</key><true/>"}
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
+  <key>NSMicrophoneUsageDescription</key><string>The console can take voice input for the agent.</string>
+  <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
 </dict>
 </plist>
 `,
@@ -388,6 +396,25 @@ function machObjects(dir) {
   return out;
 }
 
+/** Compile the Swift shell for the target architecture; false when swiftc is unavailable. */
+function buildNativeShell(output) {
+  if (process.platform !== "darwin" || !commandExists("swiftc")) return false;
+  const source = path.join(ROOT, "scripts", "macos-app", "main.swift");
+  const target = `${arch === "x64" ? "x86_64" : arch}-apple-macos12.0`;
+  log(`Compiling the native macOS shell (${target})…`);
+  const res = spawnSync(
+    "swiftc",
+    ["-O", "-target", target, "-framework", "Cocoa", "-framework", "WebKit", "-o", output, source],
+    { stdio: "inherit" },
+  );
+  if (res.status !== 0)
+    fail(
+      "swiftc failed — fix scripts/macos-app/main.swift or package on a host without swiftc for the script launcher",
+    );
+  fs.chmodSync(output, 0o755);
+  return true;
+}
+
 function makeIcns(resources) {
   if (process.platform !== "darwin" || !commandExists("iconutil") || !commandExists("sips")) return false;
   const source = path.join(ROOT, "apps", "command-centre", "public", "icons", "icon-512.png");
@@ -427,7 +454,7 @@ function readme() {
 
 EN
 --
-1. Open ${app}. The local service starts and your browser opens http://127.0.0.1:4777.
+1. Open ${app}. ${platform === "darwin" ? "The local service starts and the Command Centre opens in its own window (View → Open in Browser if you prefer the browser)." : "The local service starts and your browser opens http://127.0.0.1:4777."}
 2. The setup screen detects Claude Code, Cursor Agent and Codex on this computer,
    shows how to install or sign in to each one, and lets you pick folders and a look.
 3. Your data (settings, memory, artifacts, logs) is kept in your user profile, not here:
@@ -449,7 +476,7 @@ Uninstall: ${cli} uninstall (keeps your data; add --purge to remove it), then de
 
 PT-BR
 -----
-1. Abra ${app}. O serviço local inicia e o navegador abre http://127.0.0.1:4777.
+1. Abra ${app}. ${platform === "darwin" ? "O serviço local inicia e o Command Centre abre na própria janela do app (View → Open in Browser se preferir o navegador)." : "O serviço local inicia e o navegador abre http://127.0.0.1:4777."}
 2. A tela de configuração detecta Claude Code, Cursor Agent e Codex neste computador,
    mostra como instalar ou fazer login em cada um e permite escolher pastas e o visual.
 3. Seus dados (configurações, memória, artefatos, logs) ficam no seu perfil de usuário, não aqui.

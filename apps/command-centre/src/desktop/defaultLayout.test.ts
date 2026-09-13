@@ -6,6 +6,7 @@ import {
   WIDGET_ORDER,
   clampBox,
   computeRows,
+  shouldStack,
   layoutsEqual,
   normalizeLayout,
   overlaps,
@@ -20,6 +21,13 @@ describe("desktop layout maths", () => {
     }
   });
 
+  it("stacks when the viewport is too narrow or too short for readable rows", () => {
+    expect(shouldStack(1440, 900)).toBe(false);
+    expect(shouldStack(1280, 720)).toBe(false);
+    expect(shouldStack(1000, 900)).toBe(true); // side columns cannot show their titles
+    expect(shouldStack(1400, 620)).toBe(true); // rows would be ~21 px: widgets would overflow
+    expect(shouldStack(390, 844)).toBe(true);
+  });
   it("computeRows never goes below MIN_ROWS", () => {
     expect(computeRows(100)).toBe(MIN_ROWS);
     expect(computeRows(2000)).toBeGreaterThan(MIN_ROWS);

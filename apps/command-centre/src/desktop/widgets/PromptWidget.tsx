@@ -26,6 +26,8 @@ import {
 import { useLocale, useT } from "../../i18n";
 import { listen, speak, speechRecognitionAvailable } from "../../hooks/systemNotify";
 import { qk, useOsProviders, useOsSettings, useOsSkills } from "../../queries";
+import { PROVIDER_LOGIN_COMMANDS } from "../../runs/authRecovery";
+import { providerProblem } from "../../components/providerReadiness";
 import { Button, Segmented } from "../../components/primitives";
 import { formatDuration, useToast } from "../../components/ui";
 import { useRunStream, type RunDetailPayload, type RunEventView } from "../../runs/useRunStream";
@@ -313,8 +315,26 @@ export default function PromptWidget({ config }: WidgetProps) {
     !cwdUnavailable &&
     (!sessionId || (!session.isPending && !session.error));
 
+  // Pre-flight: a provider that definitely cannot run gets a notice, not a failed run.
+  const [preflight, setPreflight] = useState<{
+    id: ProviderId;
+    command: string | null;
+    problem: string;
+  } | null>(null);
   const submit = () => {
     if (!canRun || submitting.current) return;
+    const target = enabled.find((p) => p.id === defaultProvider);
+    const problem = target ? providerProblem(target) : null;
+    if (target && (problem === "not_installed" || problem === "login_required")) {
+      setPreflight({
+        id: target.id,
+        problem,
+        command:
+          problem === "not_installed" ? (target.installHint ?? null) : PROVIDER_LOGIN_COMMANDS[target.id],
+      });
+      return;
+    }
+    setPreflight(null);
     // A bare "/slug" runs the skill itself rather than sending the text.
     const bare = /^\/([a-z0-9-]+)$/i.exec(prompt.trim());
     const skill = bare
@@ -480,6 +500,15 @@ export default function PromptWidget({ config }: WidgetProps) {
 
       {enabled.length === 0 && providers.data && (
         <p className="hint warn">{t("desktop.prompt.noProvider")}</p>
+      )}
+      {preflight && (
+        <div className="auth-recovery" role="alert" data-testid="console-preflight">
+          <strong>{t(`gate.state.${preflight.problem as "login_required"}`)}</strong>
+          <p>{t(preflight.problem === "not_installed" ? "gate.installHint" : "gate.loginHint")}</p>
+          {preflight.command && <code>{preflight.command}</code>}
+          {" · "}
+          <Link to="/settings?tab=providers">{t("desktop.auth.settings")}</Link>
+        </div>
       )}
 
       {pendingApproval && (

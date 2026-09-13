@@ -42,6 +42,24 @@
 - Route chunks reload the page once after an update instead of failing with
   "Failed to fetch dynamically imported module".
 - E2E: a fresh home configured entirely from the browser (setup wizard).
+- **Native macOS app**: `MordomoOS.app` is a WKWebView window compiled from
+  `scripts/macos-app/main.swift` (no Electron, ~170 KB). It starts the
+  service through the bundled CLI, shows the Command Centre in its own
+  window, opens external links in the browser, grants the microphone to the
+  console, and offers *Quit* (service keeps running) or *Stop the background
+  service and quit*. `--snapshot` renders the window to a PNG for build
+  checks. Linux and Windows keep the browser launcher.
+- **Configure the AI first**: when every enabled provider is definitely
+  unable to run (not installed, or the CLI refuses its login) the OS opens
+  with a "Connect your AI first" screen (install/login command, Detect again,
+  Check again, Continue anyway) before the tour; the top bar says *login
+  required* instead of *ready*; the console refuses to start a run for such a
+  provider and shows the login command instead of a failed run; the setup
+  wizard warns when nothing is signed in yet.
+- **Desktop layout**: the grid stacks into one scrollable column when the
+  window is narrower than 1024 px or too short for readable rows (widgets no
+  longer overflow onto their neighbours in a small window); widget content
+  scrolls inside its box.
 
 ## 0.8.0 — 2026-09-05
 

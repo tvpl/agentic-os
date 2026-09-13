@@ -13,6 +13,10 @@ The first visit shows the **setup screen**: which provider CLIs were found on
 this computer (with the install or login command for the missing ones and a
 *Detect again* button), your name/theme/language, one folder to index, data
 connectors and the desktop look. Everything is editable later in Settings.
+If none of the enabled providers can run yet (not installed, or signed out),
+the OS opens with **Connect your AI first** and the top bar reads *login
+required* until a `claude auth login` / `codex login` / `cursor-agent login`
+succeeds; the console will not start a run before that.
 
 The Command Centre opens on the **Dashboard**: active provider + quick
 Claude/Cursor/Codex switcher, favorite skills with Run buttons, routines and

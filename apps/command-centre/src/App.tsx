@@ -39,6 +39,7 @@ import { useOsNavigate } from "./hooks/useViewTransition";
 import Desktop from "./desktop";
 import { lazyRoute } from "./lazyRoute";
 import { Onboarding } from "./onboarding/Onboarding";
+import { ProviderGate } from "./components/ProviderGate";
 const Runs = lazyRoute(() => import("./runs"));
 // TODO(orchestrator): switch to `lazyRoute(() => import("./brain"))` once F3 lands src/brain/index.tsx.
 const SecondBrain = lazyRoute(() => import("./views/SecondBrain"));
@@ -538,6 +539,7 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
       </div>
       <WorkspaceDock />
       <MobileNav onMenu={() => openPalette()} />
+      <ProviderGate />
       <Onboarding />
     </div>
   );

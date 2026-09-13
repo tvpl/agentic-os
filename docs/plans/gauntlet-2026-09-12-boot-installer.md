@@ -95,3 +95,16 @@ the zip). A quarantined copy started from this session's shell still gets
 133 and the sandbox cannot clear the flag; Gatekeeper's own assessment of
 that copy is *accepted · Notarized Developer ID*, and the CLI shim explains
 the exit code.
+
+## Third pass: window, layout, "configure the AI first"
+
+| Criterion | Reproduction | Initial | Fix | Final |
+| --- | --- | --- | --- | --- |
+| The app is a window, not a browser tab | open `MordomoOS.app` | shell script + `open` → browser | Swift WKWebView shell compiled by the packager (`scripts/macos-app/main.swift`), signed with the bundle | `--snapshot` renders the Command Centre at 1440×900 inside the app |
+| Widgets never overlap in a small window | 1000×620 CSS viewport (a Retina window at 2000×1250 px) | rows of ~21 px, "Now" content spilled over the console | stack below 1024 px wide or when rows would be < 24 px; widget bodies scroll | screenshot at 1000×620: one readable column; unit tests for `shouldStack` |
+| The AI is configured before the first run | provider signed out | header "ready", run fails with an auth error afterwards | provider gate, honest header state, console pre-flight, setup hint | `tests/e2e/provider-gate.spec.ts` (3) |
+
+Real provider run: with the user's `claude` signed in, `POST
+/api/providers/claude/smoke` passed (status `done`, 3.8 s, read-only
+profile) — the first real provider execution of this work; earlier smoke
+runs had failed with "authentication".

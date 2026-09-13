@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { DialogPortal, useDialogDepth } from "../components/dialog";
+import { PROVIDER_GATE_EVENT } from "../components/providerReadiness";
 import { useWorkspace, type WorkspaceMode } from "../components/Workspace";
 import { readConsoleDraft, storeConsoleDraft } from "../desktop/consoleDraft";
 import { useLang } from "../i18n";
@@ -98,9 +99,17 @@ export function Onboarding() {
     pause,
   );
 
+  // The "configure your AI" gate comes first; the tour waits until it closes.
+  const [gateOpen, setGateOpen] = useState(() => Boolean(document.documentElement.dataset.providerGate));
+  useEffect(() => {
+    const onGate = (event: Event) =>
+      setGateOpen(Boolean((event as CustomEvent<{ open: boolean }>).detail?.open));
+    window.addEventListener(PROVIDER_GATE_EVENT, onGate);
+    return () => window.removeEventListener(PROVIDER_GATE_EVENT, onGate);
+  }, []);
   // Wait for the boot sequence and any existing dialog. Skips/completions never auto-open again.
   useEffect(() => {
-    if (autoOpened.current || depth > 0 || !["new", "active"].includes(progress.status)) return;
+    if (autoOpened.current || depth > 0 || gateOpen || !["new", "active"].includes(progress.status)) return;
     const timer = window.setTimeout(() => {
       autoOpened.current = true;
       setScreen(
@@ -108,7 +117,7 @@ export function Onboarding() {
       );
     }, 1400);
     return () => window.clearTimeout(timer);
-  }, [depth, progress.status, progress.step]);
+  }, [depth, gateOpen, progress.status, progress.step]);
   useEffect(() => {
     const open = () => {
       autoOpened.current = true;

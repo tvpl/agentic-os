@@ -35,10 +35,14 @@ distributable* below) and extract it.
    ```
    Until that first open, the `mordomo` script refuses to start from a
    terminal (macOS stops quarantined binaries with signal 133) and says so.
-3. Open MordomoOS. The local service starts in the background and the browser
-   opens the setup screen. The app has no window of its own: it lives in the
-   browser; quit the service with `mordomo stop` or from Settings.
-4. Terminal (optional): the `mordomo` script next to the app is the CLI
+3. Open MordomoOS. The local service starts in the background and the
+   Command Centre opens in the app's own window (a native WebKit window, no
+   Electron). *View → Open in Browser* shows the same page in your browser.
+   Closing the window or *Quit* leaves the service running for routines;
+   *Stop the background service and quit* stops it.
+4. First run: the setup screen, then, if no enabled provider is installed and
+   signed in, a "Connect your AI first" screen with the exact command to run.
+5. Terminal (optional): the `mordomo` script next to the app is the CLI
    (`./mordomo status`). Add it to your PATH if you use it often.
 
 ### Linux

@@ -13,8 +13,19 @@ export const GRID_TOP = 96;
 export const GRID_PAD = 16;
 /** Space reserved for the persistent app dock. */
 export const GRID_BOTTOM = 100;
-/** Below this viewport width the desktop stacks widgets in one column. */
-export const STACK_BREAKPOINT = 900;
+/**
+ * Below this viewport width the desktop stacks widgets in one column. The
+ * three-column composition needs ~1024 px: narrower than that the side
+ * columns cannot even show their titles.
+ */
+export const STACK_BREAKPOINT = 1024;
+/**
+ * Shortest usable grid row. When the viewport cannot give MIN_ROWS rows of
+ * this height (a small laptop window, a half-height browser), squeezing the
+ * grid makes widgets overflow onto their neighbours; the stacked column with
+ * its own scrolling is the honest layout instead.
+ */
+export const MIN_CELL_H = 24;
 /** Target row height; rows = max(MIN_ROWS, floor(available / ROW_TARGET_PX)). */
 export const ROW_TARGET_PX = 38;
 /**
@@ -135,6 +146,11 @@ export function freeRegion(
 
 export function computeRows(availableHeightPx: number): number {
   return Math.max(MIN_ROWS, Math.floor(availableHeightPx / ROW_TARGET_PX));
+}
+
+/** Stack into one scrollable column: too narrow for three columns, or too short for readable rows. */
+export function shouldStack(widthPx: number, heightPx: number): boolean {
+  return widthPx < STACK_BREAKPOINT || (heightPx - GRID_TOP - GRID_BOTTOM) / MIN_ROWS < MIN_CELL_H;
 }
 
 const clampInt = (v: unknown, min: number, max: number, fallback: number): number => {

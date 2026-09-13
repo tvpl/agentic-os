@@ -2171,6 +2171,61 @@ textarea.input {
 .modal.narrow {
   width: min(440px, 100%);
 }
+.provider-gate-backdrop {
+  z-index: calc(var(--z-modal) + 1);
+}
+.provider-gate {
+  width: min(720px, 100%);
+}
+.provider-gate-head {
+  display: flex;
+  gap: var(--s-3);
+  align-items: flex-start;
+}
+.provider-gate-head > svg {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  color: var(--accent);
+  margin-top: 2px;
+}
+.provider-gate-head h2 {
+  margin-bottom: 6px;
+}
+.provider-gate-head .sub {
+  margin: 0;
+  color: var(--text-dim);
+}
+.provider-gate-list {
+  list-style: none;
+  margin: var(--s-4) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-2);
+}
+.provider-gate-row {
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  background: var(--bg-raise-2);
+  display: grid;
+  gap: var(--s-2);
+}
+.provider-gate-row-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+.provider-gate-row .setup-cmd {
+  margin-top: 0;
+}
+.provider-gate-actions {
+  flex-wrap: wrap;
+}
+.warn-text {
+  color: var(--warn, #f59e0b);
+}
 .modal-head {
   display: flex;
   justify-content: space-between;
@@ -3167,7 +3222,8 @@ input[type="range"]::-moz-range-thumb {
 .desktop-widgets.stacked {
   position: relative;
   inset: auto;
-  padding: calc(var(--s-6) * 2 + 40px) var(--s-4) var(--s-8);
+  /* bottom padding clears the fixed dock so the last card can scroll into view */
+  padding: calc(var(--s-6) * 2 + 40px) var(--s-4) calc(var(--s-8) + 100px);
   display: flex;
   flex-direction: column;
   gap: var(--s-4);

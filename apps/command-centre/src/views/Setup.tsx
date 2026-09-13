@@ -267,6 +267,12 @@ export default function Setup({ onDone }: { onDone: () => void }) {
                     );
                   })}
                   {!anyEnabled && <p className="hint warn">{t("setup.noProvider")}</p>}
+                  {anyEnabled &&
+                    !(providers.data ?? []).some((p) => enabled[p.id] && p.health.authenticated === true) && (
+                      <p className="hint warn" data-testid="setup-not-ready">
+                        {t("setup.notReadyHint")}
+                      </p>
+                    )}
                 </fieldset>
                 <Field label={t("dash.default")} htmlFor="su-default">
                   <select
