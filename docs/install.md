@@ -146,12 +146,15 @@ only if your policy requires it (`signtool sign /fd SHA256 …`).
 
 ### Releases from CI
 
-`.github/workflows/release.yml` builds macOS (arm64, x64), Linux (x64, arm64)
-and Windows (x64) on a `v*` tag or by hand, smoke-tests every package
-(`launch --no-browser`, MIME types, `stop`), uploads the archives and opens a
-**draft** GitHub release with `SHA256SUMS.txt`. Add the `MACOS_*` / `APPLE_*`
-secrets described at the top of the workflow to get signed and notarized
-macOS builds. `ci.yml` also runs `npm run dist:quick` on every push.
+Nothing runs in GitHub Actions on its own: both workflows are manual
+(`workflow_dispatch`). `.github/workflows/release.yml`, when you trigger it
+from the Actions tab with a tag, builds macOS (arm64, x64), Linux (x64,
+arm64) and Windows (x64), smoke-tests every package (`launch --no-browser`,
+MIME types, `stop`), uploads the archives and opens a **draft** GitHub
+release with `SHA256SUMS.txt`; add the `MACOS_*` / `APPLE_*` secrets
+described at the top of the workflow if you want it to sign and notarize.
+`ci.yml` runs the test suites and `npm run dist:quick` on demand. The
+signed and notarized release is otherwise produced locally, as above.
 
 On code privacy: a minified bundle keeps casual readers out and ships none of
 the source, comments or types. JavaScript that runs on the user's machine can

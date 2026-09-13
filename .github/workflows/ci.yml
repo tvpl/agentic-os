@@ -1,9 +1,9 @@
 name: CI
 
+# Manual only: nothing runs on push or pull request. Trigger it from the
+# Actions tab when you want a full check on a clean machine.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}

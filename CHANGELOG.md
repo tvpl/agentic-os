@@ -28,10 +28,11 @@
   apps with a safe practice draft handed to the console at the end;
   reopened from Settings or the command palette.
 - Setup scripts require Node.js ≥ 22 (as `engines` and `doctor` already did).
-- **Release pipeline**: `release.yml` packages macOS/Linux/Windows on a tag,
-  smoke-tests each archive and drafts a GitHub release with checksums;
-  optional Developer ID signing and notarization (`--sign`, `--notarize`).
-  CI runs the packager on every push.
+- **Release pipeline** (manual only, nothing runs in CI on its own):
+  `release.yml` packages macOS/Linux/Windows when triggered from the
+  Actions tab, smoke-tests each archive and drafts a GitHub release with
+  checksums; Developer ID signing and notarization (`--sign`, `--notarize`)
+  verified locally. `ci.yml` is on demand as well.
 - **Settings › Identity**: version, packaged/source, data folder and pid;
   opt-in release check (`updates.check`, `GET /api/updates`,
   `GET /api/system/info`). **Settings › Providers**: editable binary path.

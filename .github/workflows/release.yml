@@ -1,7 +1,8 @@
 name: Release
 
 # Builds the packaged distributable for every platform and attaches the
-# archives to a GitHub release. Trigger by pushing a tag (`v0.9.0`) or by hand.
+# archives to a GitHub release. Manual only: nothing runs on push or tag;
+# trigger it from the Actions tab and give it the tag to build.
 #
 # Optional secrets for macOS (without them the app is ad-hoc signed and users
 # must right-click → Open once):
@@ -10,8 +11,6 @@ name: Release
 #   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD  — notarytool credentials
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
@@ -127,7 +126,7 @@ jobs:
     name: GitHub release
     needs: package
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
+    if: inputs.tag != '' || startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/download-artifact@v4
         with:
