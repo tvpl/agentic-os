@@ -10,6 +10,10 @@ guardrails:
   - Não encerrar processos de outros projetos nem apagar caches globais.
 successCriteria:
   - Diagnóstico e comparação antes/depois, ou limitação da medição, registrados.
+i18n:
+  en:
+    name: "Claude Code Mobile Optimizer"
+    description: "Diagnoses Claude Code slowness and RAM usage in mobile projects, separating context, MCP, watchers, builds and simulators. Applies measured, reversible tweaks when asked."
 ---
 
 # Otimizar Claude Code e ambiente mobile

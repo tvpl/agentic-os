@@ -4,7 +4,11 @@ test("a named layout restores cards without losing the console draft", async ({ 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await request.put("/api/settings", {
     headers: { "x-mordomo-token": process.env.MORDOMO_TOKEN! },
-    data: { language: "en", dashboardLayout: { now: { x: 4, y: 1, w: 6, h: 6, visible: true } } },
+    // Stage pixels (redesign F4a); a far-left window so nothing covers its chrome.
+    data: {
+      language: "en",
+      dashboardLayout: { now: { x: 24, y: 24, w: 420, h: 320, z: 1, visible: true } },
+    },
   });
   await page.goto("/#/");
   const now = page.locator('[data-widget-id="now"]');
@@ -33,7 +37,7 @@ test("a named layout restores cards without losing the console draft", async ({ 
     .click();
   await page
     .getByRole("navigation", { name: "Workspace navigation" })
-    .getByRole("button", { name: "Overview", exact: true })
+    .getByRole("button", { name: "Dashboard", exact: true })
     .click();
   await expect(now).toBeVisible();
   await expect(prompt).toHaveValue("Keep my working context");

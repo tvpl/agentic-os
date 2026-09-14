@@ -30,6 +30,10 @@ successCriteria:
   - No item is older than 48 hours unless explicitly marked as context.
 examples:
   - "Morning run via the daily routine, with topics 'coding agents'."
+i18n:
+  pt-BR:
+    name: "Notícias de Tech e IA"
+    description: "Pesquisa as notícias de tecnologia e IA do dia, seleciona o que importa e produz um briefing curto em artefato, com fontes."
 ---
 
 # Daily Tech & AI News

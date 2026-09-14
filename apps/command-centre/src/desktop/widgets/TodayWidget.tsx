@@ -9,10 +9,21 @@ import type { RoutineStatus } from "../../api";
 import { useLocale, useT } from "../../i18n";
 import { useDesktopRoutines, useTicker } from "../data";
 import { cfgBool, cfgString, type WidgetProps } from "../widgetTypes";
+import { useWidgetSize } from "../widgetSize";
 import { WidgetGate } from "./WidgetGate";
 
 export default function TodayWidget({ config }: WidgetProps) {
   const routines = useDesktopRoutines();
+  const size = useWidgetSize();
+  // The box decides what fits: "what's next" is always kept, the decorative
+  // parts (quarter grid, then the zones) drop out first as the box shrinks.
+  // The analog face sits beside the digital time and costs no rows, so it
+  // stays down to the widget's minimum height (WIDGET_MIN.today) and is only
+  // ever removed by its own config toggle.
+  const roomy = size.expanded || size.stacked;
+  const showQuarter = roomy || size.h >= 9;
+  const showZones = roomy || size.h >= 6;
+  const upcomingMax = roomy || size.h >= 9 ? 3 : size.h >= 6 ? 2 : 1;
   return (
     <WidgetGate queries={[routines]} lines={4}>
       {routines.data && (
@@ -20,7 +31,9 @@ export default function TodayWidget({ config }: WidgetProps) {
           routines={routines.data}
           analog={cfgBool(config, "analog", true)}
           seconds={cfgBool(config, "seconds", true)}
-          quarterGrid={cfgBool(config, "quarterGrid", true)}
+          quarterGrid={cfgBool(config, "quarterGrid", true) && showQuarter}
+          showZones={showZones}
+          upcomingMax={upcomingMax}
           zones={[
             cfgString(config, "zone1", "America/Los_Angeles"),
             cfgString(config, "zone2", "America/New_York"),
@@ -37,10 +50,20 @@ interface TodayBodyProps {
   analog: boolean;
   seconds: boolean;
   quarterGrid: boolean;
+  showZones: boolean;
+  upcomingMax: number;
   zones: string[];
 }
 
-function TodayBody({ routines, analog, seconds, quarterGrid, zones }: TodayBodyProps) {
+function TodayBody({
+  routines,
+  analog,
+  seconds,
+  quarterGrid,
+  showZones,
+  upcomingMax,
+  zones,
+}: TodayBodyProps) {
   const t = useT();
   const locale = useLocale();
   const now = new Date(useTicker(1000));
@@ -50,7 +73,7 @@ function TodayBody({ routines, analog, seconds, quarterGrid, zones }: TodayBodyP
   const upcoming = routines
     .filter((r) => r.enabled && r.nextRunAt)
     .sort((a, b) => (a.nextRunAt ?? 0) - (b.nextRunAt ?? 0))
-    .slice(0, 3);
+    .slice(0, upcomingMax);
 
   return (
     <>
@@ -75,12 +98,13 @@ function TodayBody({ routines, analog, seconds, quarterGrid, zones }: TodayBodyP
           })}
         </div>
       </div>
-      <div className="clock-zones" aria-label={t("desktop.today.zones")}>
-        {zones.filter(Boolean).map((zone) => (
-          <ZoneColumn key={zone} zone={zone} now={now} locale={locale} />
-        ))}
-      </div>
-      {quarterGrid && <QuarterGrid week={week} label={t("desktop.today.quarter")} />}
+      {showZones && (
+        <div className="clock-zones" aria-label={t("desktop.today.zones")}>
+          {zones.filter(Boolean).map((zone) => (
+            <ZoneColumn key={zone} zone={zone} now={now} locale={locale} />
+          ))}
+        </div>
+      )}
       <div className="hud-label whats-next">{t("dash.whatsNext")}</div>
       {upcoming.length === 0 ? (
         <p className="widget-muted">{t("dash.noNext")}</p>
@@ -98,6 +122,7 @@ function TodayBody({ routines, analog, seconds, quarterGrid, zones }: TodayBodyP
           </div>
         ))
       )}
+      {quarterGrid && <QuarterGrid week={week} label={t("desktop.today.quarter")} />}
     </>
   );
 }

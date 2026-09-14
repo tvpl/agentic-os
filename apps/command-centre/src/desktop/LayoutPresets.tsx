@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { Modal, useToast } from "../components/ui";
 import { useT } from "../i18n";
-import { normalizeLayout, type LayoutMap } from "./defaultLayout";
+import { normalizeWindows } from "./defaultWindows";
+import type { Size, WindowMap } from "./windowModel";
 
 const PREFIX = "mordomo.layoutPreset.v1.";
 interface Preset {
   id: string;
   name: string;
-  layout: LayoutMap;
+  layout: WindowMap;
 }
 function readPresets(): Preset[] {
   const presets: Preset[] = [];
@@ -55,13 +56,13 @@ function readPresets(): Preset[] {
 /** Device-local presets; separate keys prevent one tab replacing another's catalogue. */
 export function LayoutPresets({
   layout,
-  rows,
+  stage,
   onApply,
   onClose,
 }: {
-  layout: LayoutMap;
-  rows: number;
-  onApply: (layout: LayoutMap) => void;
+  layout: WindowMap;
+  stage: Size;
+  onApply: (layout: WindowMap) => void;
   onClose: () => void;
 }) {
   const t = useT();
@@ -117,7 +118,7 @@ export function LayoutPresets({
             <button
               className="btn"
               onClick={() => {
-                onApply(normalizeLayout(preset.layout, rows));
+                onApply(normalizeWindows(preset.layout, stage));
                 onClose();
               }}
             >

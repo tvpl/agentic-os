@@ -19,7 +19,8 @@ import {
 } from "lucide-react";
 import { api, getToken, type ApprovalRecord, type ProviderId, type ProviderSnapshot, type Skill, type SkillResource } from "../../api";
 import { qk, useApiQuery, useInvalidate } from "../../queries";
-import { useT } from "../../i18n";
+import { useLang, useT } from "../../i18n";
+import { localizeSkill } from "./localize";
 import { formatBytes, useToast } from "../../components/ui";
 import { Badge, Button, EmptyState, Field, Segmented, Tabs } from "../../components/primitives";
 import { ModelEffortMatrix, skillEffort, type Effort } from "../../desktop/SkillMatrixModal";
@@ -45,6 +46,7 @@ interface RunResponse {
 
 export default function SkillDetail({ skill, providers }: { skill: Skill; providers: ProviderSnapshot[] }) {
   const t = useT();
+  const { name: skillName, description: skillDescription } = localizeSkill(skill, useLang());
   const toast = useToast();
   const navigate = useNavigate();
   const invalidate = useInvalidate();
@@ -76,7 +78,7 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
     mutationFn: () => api.post(`/api/skills/${encodeURIComponent(skill.slug)}/toggle`),
     onSuccess: async () => {
       await invalidate(qk.skills);
-      toast(skill.enabled ? t("skills.pausedToast", { name: skill.name }) : t("skills.enabledToast", { name: skill.name }), "ok");
+      toast(skill.enabled ? t("skills.pausedToast", { name: skillName }) : t("skills.enabledToast", { name: skillName }), "ok");
     },
     onError: (err) => toast(errorMessage(err), "danger"),
   });
@@ -148,8 +150,8 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
               <ArrowLeft aria-hidden /> {t("skills.title")}
             </Link>
           </p>
-          <h1>{skill.name}</h1>
-          <p className="sub">{skill.description}</p>
+          <h1>{skillName}</h1>
+          <p className="sub">{skillDescription}</p>
           <div className="badge-row">
             <Badge kind="state" tone={skill.mode === "write" ? "warn" : "info"}>
               {t(skill.mode === "write" ? "skills.mode.write" : "skills.mode.read_only")}
@@ -352,7 +354,7 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
           <div className="card">
             <Tabs
               id="skill-panes"
-              ariaLabel={skill.name}
+              ariaLabel={skillName}
               active={pane}
               onChange={(id) => setPane(id as "body" | "resources" | "notes")}
               tabs={[

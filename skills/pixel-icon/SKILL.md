@@ -40,6 +40,10 @@ successCriteria:
   - Icons stay legible at 16px.
 examples:
   - "Subject: 'run, pause, gear, spark' — 12px grid, orange on transparent."
+i18n:
+  pt-BR:
+    name: "Ícones Pixel Art"
+    description: "Cria um pequeno conjunto de ícones em pixel art como SVGs nítidos e autocontidos — para o Command Centre, um projeto ou qualquer coisa que precise de uma marca retrofuturista."
 ---
 
 # Pixel Icon Maker

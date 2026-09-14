@@ -9,7 +9,9 @@ import { qk, useApiQuery } from "../queries";
 import { ErrorBox, Skeleton, useToast } from "../components/ui";
 import { Badge, Button, Field } from "../components/primitives";
 import { PRESETS, applyPreset, type PresetId } from "../theme";
-import { DEFAULT_LAYOUT, WIDGET_ORDER, type LayoutMap } from "../desktop/defaultLayout";
+import { WIDGET_ORDER } from "../desktop/defaultLayout";
+import { DEFAULT_SPECS, defaultWindows } from "../desktop/defaultWindows";
+import type { WindowMap } from "../desktop/windowModel";
 import { WIDGET_REGISTRY } from "../desktop/registry";
 import { copyText, errorMessage, isAbsolutePath, isOffline } from "./shared";
 import "./apps.css";
@@ -51,7 +53,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   const [phase, setPhase] = useState<"idle" | "saving" | "indexing">("idle");
   const [preset, setPreset] = useState<PresetId>("hud-orange");
   const [widgets, setWidgets] = useState<Set<string>>(
-    () => new Set(WIDGET_ORDER.filter((id) => DEFAULT_LAYOUT[id]?.visible)),
+    () => new Set(WIDGET_ORDER.filter((id) => DEFAULT_SPECS[id]?.visible)),
   );
 
   useEffect(() => {
@@ -102,9 +104,15 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         : ((Object.entries(enabled).find(([, v]) => v)?.[0] as ProviderId | undefined) ?? "claude");
       const folders = current.indexedFolders as Array<Record<string, unknown>>;
       const chosenPreset = PRESETS.find((p) => p.id === preset) ?? PRESETS[0]!;
-      const dashboardLayout: LayoutMap = {};
+      // Materialised for the window the wizard is running in; the desktop
+      // clamps it again for whatever stage it opens on.
+      const composed = defaultWindows({
+        w: Math.max(640, window.innerWidth - 24),
+        h: Math.max(420, window.innerHeight - 200),
+      });
+      const dashboardLayout: WindowMap = {};
       for (const id of WIDGET_ORDER) {
-        const box = DEFAULT_LAYOUT[id];
+        const box = composed[id];
         if (box) dashboardLayout[id] = { ...box, visible: widgets.has(id) };
       }
       await api.put("/api/settings", {

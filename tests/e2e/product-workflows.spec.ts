@@ -1,43 +1,59 @@
 import { test, expect } from "@playwright/test";
 
-test("workspace modes preserve the console draft and layout, dock follows app navigation", async ({
-  page,
-}) => {
+test("spaces keep their own windows and the dock follows app navigation", async ({ page, request }) => {
+  const reset = () =>
+    request.put("/api/settings", {
+      headers: { "x-mordomo-token": process.env.MORDOMO_TOKEN! },
+      data: { dashboardLayout: {}, spaces: {}, activeSpace: "work" },
+    });
+  await reset();
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
   const dock = page.getByRole("navigation", { name: "Workspace navigation" });
   const consoleWidget = page.locator('[data-widget-id="prompt"]');
+  const today = page.locator('[data-widget-id="today"]');
   await consoleWidget.locator("textarea").fill("Continue this after exploring");
-  const before = await consoleWidget.boundingBox();
-  await dock.getByRole("button", { name: "Focus", exact: true }).click();
-  await expect.poll(async () => (await consoleWidget.boundingBox())!.width).toBeGreaterThan(before!.width);
-  await expect(page.locator('[data-widget-id="microapps"]')).not.toBeVisible();
-  const focused = (await consoleWidget.boundingBox())!;
-  expect(focused.y + focused.height).toBeLessThan((await dock.boundingBox())!.y);
-  await page.screenshot({ animations: "disabled", path: "artifacts/qa-workspace-focus.png" });
-  await dock.getByRole("button", { name: "Explore", exact: true }).click();
-  await expect(page.locator(".explore-intro")).toBeVisible();
-  await expect(consoleWidget).not.toBeVisible();
-  await page.reload();
-  await expect(page.locator(".explore-intro")).toBeVisible();
-  await page.screenshot({ animations: "disabled", path: "artifacts/qa-workspace-explore.png" });
-  await page.getByRole("button", { name: /Enter the Second Brain/ }).click();
+
+  // Rearrange Work, then leave it.
+  const header = today.locator(".widget-inner > h2");
+  const g = (await header.boundingBox())!;
+  await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(g.x + g.width / 2 + 300, g.y + g.height / 2 + 140, { steps: 10 });
+  await page.mouse.up();
+  await expect.poll(async () => (await today.boundingBox())!.x).toBeGreaterThan(240);
+  const arranged = (await today.boundingBox())!;
+
+  await dock.getByRole("button", { name: "Research", exact: true }).click();
+  // A fresh space starts from the default composition, not the one just left.
+  await expect.poll(async () => (await today.boundingBox())!.x).toBeLessThan(40);
+  // The draft belongs to the console, not to a space.
+  await expect(consoleWidget.locator("textarea")).toHaveValue("Continue this after exploring");
+
+  // The Second Brain is still one click away, from the dock.
+  await dock.getByRole("button", { name: "Second Brain", exact: true }).click();
   await expect(page.locator(".brain2")).toBeVisible();
   await page.getByRole("button", { name: "Zoom in", exact: true }).click();
   await expect
     .poll(async () => Number((await page.locator(".zoom-readout").innerText()).replace("%", "")))
     .toBeGreaterThan(110);
   await page.screenshot({ animations: "disabled", path: "artifacts/qa-workspace-brain.png" });
-  await dock.getByRole("button", { name: "Overview", exact: true }).click();
-  await expect(consoleWidget.locator("textarea")).toHaveValue("Continue this after exploring");
-  await expect
-    .poll(async () => Math.abs((await consoleWidget.boundingBox())!.width - before!.width))
-    .toBeLessThan(2);
+
+  // Back to Work: the arrangement is where it was left, across a reload too.
+  await dock.getByRole("button", { name: "Work", exact: true }).click();
+  await expect.poll(async () => (await today.boundingBox())!.x).toBeCloseTo(arranged.x, -1);
+  await page.reload();
+  await expect(page.locator(".boot-screen")).toHaveCount(0);
+  await expect.poll(async () => (await today.boundingBox())!.x).toBeCloseTo(arranged.x, -1);
+  await page.screenshot({ animations: "disabled", path: "artifacts/qa-workspace-overview.png" });
+
   await dock.getByRole("button", { name: "Collapse dock" }).click();
   await expect(dock.getByRole("button", { name: "Second Brain", exact: true })).toHaveCount(0);
   await dock.getByRole("button", { name: "Expand dock" }).click();
-  await page.screenshot({ animations: "disabled", path: "artifacts/qa-workspace-overview.png" });
+
+  await page.goto("about:blank");
+  await reset();
 });
 
 test("Pixel Studio draws, undoes, adds frames, exports PNG and saves a viewable artifact", async ({

@@ -9,7 +9,8 @@ it("accepts one layout writer and rejects a stale second writer without overwrit
   const app = await buildServer(ctx);
   const headers = { "x-mordomo-token": ctx.token() };
   const base = ctx.settings().dashboardLayout;
-  const box = { x: 1, y: 1, w: 6, h: 4, visible: true };
+  // Pixels of the stage, not grid units (redesign F4).
+  const box = { x: 40, y: 40, w: 420, h: 300, z: 1, visible: true };
   try {
     const responses = await Promise.all(
       [true, false].map((visible) =>
@@ -30,10 +31,10 @@ it("accepts one layout writer and rejects a stale second writer without overwrit
       method: "PUT",
       url: "/api/settings",
       headers,
-      payload: { dashboardLayoutBase: saved, dashboardLayout: { now: { ...box, x: 2 } } },
+      payload: { dashboardLayoutBase: saved, dashboardLayout: { now: { ...box, x: 120 } } },
     });
     expect(retry.statusCode).toBe(200);
-    expect(ctx.settings().dashboardLayout.now?.x).toBe(2);
+    expect(ctx.settings().dashboardLayout.now?.x).toBe(120);
   } finally {
     await app.close();
     ctx.close();

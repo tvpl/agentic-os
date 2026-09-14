@@ -16,6 +16,16 @@ export interface DesktopActions {
   focusDeck: () => void;
   /** Ids of the skills that have a run in flight right now. */
   runningSkills: ReadonlySet<string>;
+  /**
+   * Document windows currently on the stage, newest first. The console shows
+   * them as context chips and resolves `@ref` against them, so what is open
+   * is what the agent can be pointed at (redesign F5).
+   */
+  openDocs: ReadonlyArray<{ id: string; ref: string; path: string }>;
+  /** Open a file as a window on the stage (idempotent: focuses an open one). */
+  openDoc: (path: string) => void;
+  /** Insert `@ref` for a document window into the console draft. */
+  referenceDoc: (id: string) => void;
 }
 
 const noop = () => undefined;
@@ -24,6 +34,9 @@ const DesktopActionsContext = createContext<DesktopActions>({
   configureSkill: noop,
   focusDeck: noop,
   runningSkills: new Set<string>(),
+  openDocs: [],
+  openDoc: noop,
+  referenceDoc: noop,
 });
 
 export function DesktopActionsProvider({ value, children }: { value: DesktopActions; children: ReactNode }) {

@@ -257,10 +257,15 @@ export interface ProviderSnapshot {
   };
 }
 
+/** Localized display name/description keyed by UI language (e.g. "pt-BR"). */
+export type SkillI18n = Record<string, { name?: string; description?: string }>;
+
 export interface Skill {
   slug: string;
   name: string;
   description: string;
+  /** Optional translations; the canonical `name`/`description` are what providers receive. */
+  i18n?: SkillI18n;
   /** Daily spend cap for runs of this skill in USD (0 = none). */
   budgetUsd?: number;
   triggers: string[];
@@ -497,6 +502,10 @@ export interface SystemInfo {
   startedAt: number;
   serviceInstalled: boolean;
   releases: string;
+  /** Build files on disk vs. the running process (absent on older servers). */
+  build?: { installedAt: number; startedAt: number; stale: boolean };
+  /** Other MordomoOS service processes still alive on this machine. */
+  siblings?: Array<{ pid: number; command: string }>;
 }
 
 export interface UpdateCheck {
@@ -558,6 +567,20 @@ export interface MetricsHistory {
  * `SettingsSchema` in core/src/config/schema.ts). Fields older servers may
  * omit are optional on `SettingsView`, the shape the shared hook exposes.
  */
+export type WindowLayoutDoc = Record<
+  string,
+  {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    z: number;
+    visible: boolean;
+    minimized?: boolean;
+    config?: Record<string, unknown>;
+  }
+>;
+
 export interface SettingsDoc {
   systemName: string;
   language: "en" | "pt-BR";
@@ -578,10 +601,12 @@ export interface SettingsDoc {
   /** Theme preset id (F-SHELL `PRESETS`). */
   themePreset: string;
   microApps: MicroApp[];
-  dashboardLayout: Record<
-    string,
-    { x: number; y: number; w: number; h: number; visible: boolean; config?: Record<string, unknown> }
-  >;
+  /** Stage pixels with a stacking order (redesign F4): see `windowModel.ts`. */
+  dashboardLayout: WindowLayoutDoc;
+  /** Named spaces, each remembering its own arrangement (redesign F6). */
+  spaces?: Record<string, { name: string; layout: WindowLayoutDoc }>;
+  /** Id of the space `dashboardLayout` currently belongs to. */
+  activeSpace?: string;
   routines: { allowWebhooks: boolean; heartbeatIntervalMinutes: number; heartbeatOkToken: string };
   connectors: { dataCacheTtlMs: number; dataTimeoutMs: number; allowedCommands: string[] };
   limits?: {

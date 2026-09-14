@@ -64,6 +64,7 @@ import {
   type Skill,
 } from "../api";
 import { useT, type TKey } from "../i18n";
+import { localizeSkill } from "../views/Skills/localize";
 import { qk, useApiQuery, useOsProviders, useOsRuns, useOsSkills } from "../queries";
 import { PRESETS, applyAccentTokens, applyPreset, type PresetId } from "../theme";
 import { useOsNavigate } from "../hooks/useViewTransition";
@@ -429,29 +430,32 @@ export function CommandPalette({
     () =>
       (skills.data ?? [])
         .filter((s) => s.enabled)
-        .map((s) => ({
-          id: `skill:${s.slug}`,
-          section: "skills" as const,
-          label: s.name,
-          sub: `/${s.slug}${s.description ? ` · ${s.description}` : ""}`,
-          icon: <Sparkles aria-hidden />,
-          keywords: [s.slug, s.description, ...s.triggers],
-          right: (
-            <span className="pr-badges">
-              {s.inputs.some((i) => i.required) && (
-                <Badge kind="meta">{t("shell.palette.needsInputs")}</Badge>
-              )}
-              <Badge kind="meta" tone={s.mode === "write" ? "warn" : "ok"}>
-                {t(s.mode === "write" ? "skills.mode.write" : "skills.mode.read_only")}
-              </Badge>
-              <ChevronRight aria-hidden className="pr-chevron" />
-            </span>
-          ),
-          primary: (el) => go(`/skills/${encodeURIComponent(s.slug)}`, el),
-          secondary: () => void runAction(`skill:${s.slug}`, `/${s.slug}`, () => launchSkill(s), false),
-          nested: () => setPage({ kind: "run", skill: s }),
-        })),
-    [skills.data, t, go, runAction, launchSkill],
+        .map((s): Row => {
+          const loc = localizeSkill(s, lang);
+          return {
+            id: `skill:${s.slug}`,
+            section: "skills" as const,
+            label: loc.name,
+            sub: `/${s.slug}${loc.description ? ` · ${loc.description}` : ""}`,
+            icon: <Sparkles aria-hidden />,
+            keywords: [s.slug, s.name, s.description, loc.name, loc.description, ...s.triggers],
+            right: (
+              <span className="pr-badges">
+                {s.inputs.some((i) => i.required) && (
+                  <Badge kind="meta">{t("shell.palette.needsInputs")}</Badge>
+                )}
+                <Badge kind="meta" tone={s.mode === "write" ? "warn" : "ok"}>
+                  {t(s.mode === "write" ? "skills.mode.write" : "skills.mode.read_only")}
+                </Badge>
+                <ChevronRight aria-hidden className="pr-chevron" />
+              </span>
+            ),
+            primary: (el) => go(`/skills/${encodeURIComponent(s.slug)}`, el),
+            secondary: () => void runAction(`skill:${s.slug}`, `/${s.slug}`, () => launchSkill(s), false),
+            nested: () => setPage({ kind: "run", skill: s }),
+          };
+        }),
+    [skills.data, t, lang, go, runAction, launchSkill],
   );
 
   /* ---------- files (debounced server search) ---------- */

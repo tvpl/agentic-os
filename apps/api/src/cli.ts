@@ -29,6 +29,14 @@ import {
 } from "@mordomo/core";
 import { AppContext } from "./context.js";
 import { cliEntry } from "./entry.js";
+import {
+  installedBuildTime,
+  isOlderService,
+  listServiceProcesses,
+  orphanProcesses,
+  terminate,
+  type ProbedServer,
+} from "./instances.js";
 import { PKG_VERSION } from "./routes/system.js";
 import { servePermissionTool } from "./mcp/permission.js";
 import { httpApi, serveMordomoMcp } from "./mcp/mordomo.js";
@@ -877,16 +885,24 @@ async function waitForPidFile(ctx: Pick<AppContext, "paths">, ticks: number): Pr
  * a server started by another checkout, by hand, or whose pidfile was removed.
  * `/api/meta` needs no token and identifies the app by name and version.
  */
-export async function probeServer(
-  port: number,
-  timeoutMs = 1500,
-): Promise<{ name: string; version: string } | null> {
+export async function probeServer(port: number, timeoutMs = 1500): Promise<ProbedServer | null> {
   try {
     const res = await fetch(`http://127.0.0.1:${port}/api/meta`, { signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) return null;
-    const meta = (await res.json()) as { name?: unknown; version?: unknown };
+    const meta = (await res.json()) as {
+      name?: unknown;
+      version?: unknown;
+      entry?: unknown;
+      build?: { stale?: unknown; installedAt?: unknown };
+    };
     if (typeof meta.version !== "string") return null;
-    return { name: typeof meta.name === "string" ? meta.name : "MordomoOS", version: meta.version };
+    return {
+      name: typeof meta.name === "string" ? meta.name : "MordomoOS",
+      version: meta.version,
+      stale: typeof meta.build?.stale === "boolean" ? meta.build.stale : undefined,
+      installedAt: typeof meta.build?.installedAt === "number" ? meta.build.installedAt : undefined,
+      entry: typeof meta.entry === "string" ? meta.entry : undefined,
+    };
   } catch {
     return null;
   }
@@ -919,6 +935,15 @@ async function cmdLaunch(args: CliArgs): Promise<void> {
   const ctx = new AppContext();
   const port = ctx.settings().port;
   const url = `http://127.0.0.1:${port}`;
+  // An older build already answering is replaced before the window opens:
+  // "open the app" must always mean "open this version of the app".
+  const answering = await probeServer(port);
+  if (answering && isOlderService(answering, installedBuildTime())) {
+    console.log(
+      `${pc.yellow("!")} An older MordomoOS build is running (pid file: ${readPidInfo(ctx)?.pid ?? "?"}); restarting it with the current build…`,
+    );
+    await cmdRestart({ keepOpen: true });
+  }
   let running = readPidInfo(ctx) !== null || (await probeServer(port)) !== null;
   if (!running) {
     const info = await startDetached(ctx);
@@ -941,20 +966,31 @@ async function cmdLaunch(args: CliArgs): Promise<void> {
  * current build. Under a login service (launchd/systemd/Task Scheduler) the
  * service manager restarts it; otherwise a fresh detached process is spawned.
  */
-async function cmdRestart(): Promise<void> {
+async function cmdRestart(opts: { keepOpen?: boolean } = {}): Promise<void> {
   const ctx = new AppContext();
   const info = readPidInfo(ctx);
   const port = ctx.settings().port;
+  // Leftover service processes (a lost port race, another checkout's build)
+  // go first: the new service must not lose the port to one of them.
+  const leftovers = orphanProcesses(listServiceProcesses(), info?.pid ?? null);
+  if (leftovers.length > 0) {
+    const stopped = await terminate(leftovers);
+    if (stopped.length > 0)
+      console.log(`${pc.yellow("!")} Stopped leftover service process(es): ${stopped.join(", ")}`);
+  }
   if (!info) {
     const foreign = await probeServer(port);
-    if (foreign) {
+    if (foreign && leftovers.length === 0) {
       console.log(
         `${pc.yellow("!")} ${foreign.name} ${foreign.version} answers on port ${port} but was not started from this home.\n` +
           `  Stop it where it was started (or with your login service manager), then run: mordomo start`,
       );
       ctx.close();
+      if (opts.keepOpen) return;
       process.exit(1);
     }
+    for (let i = 0; i < 40 && (await probeServer(port, 500)); i++)
+      await new Promise((r) => setTimeout(r, 250));
   } else {
     try {
       process.kill(info.pid, "SIGTERM");

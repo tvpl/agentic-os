@@ -39,6 +39,10 @@ successCriteria:
   - No file outside the returned sections was read (say so explicitly if you had to).
 examples:
   - "Question: which folder holds the 2026 budget and what is the Q3 number?"
+i18n:
+  pt-BR:
+    name: "Recuperar da Memória"
+    description: "Responde a uma pergunta a partir do segundo cérebro com recuperação em camadas: pontua o índice sem abrir arquivos, abre só os melhores e lê apenas as seções relevantes. Use antes de fazer grep ou ler arquivos de memória à mão."
 ---
 
 # Recall

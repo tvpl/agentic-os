@@ -78,6 +78,20 @@ describe("system info and update routes", () => {
     expect(info.entry).toMatch(/cli\.js$|mordomo\.mjs$|entry\.ts$/);
     expect(typeof info.serviceInstalled).toBe("boolean");
     expect(info.packaged).toBe(false);
+    // Build freshness and leftover processes: shape only (the values depend on the machine).
+    expect(info.build).toMatchObject({ startedAt: ctx.startedAt });
+    expect(typeof info.build.stale).toBe("boolean");
+    expect(Array.isArray(info.siblings)).toBe(true);
+    for (const s of info.siblings) expect(s.pid).not.toBe(process.pid);
+  });
+  it("exposes the build stamp pre-auth on /api/meta so `mordomo launch` can compare builds", async () => {
+    const meta = (await app.inject("/api/meta")).json();
+    expect(meta.build).toMatchObject({ startedAt: ctx.startedAt });
+    expect(typeof meta.entry).toBe("string");
+  });
+  it("restart and reap are token-protected", async () => {
+    expect((await app.inject({ method: "POST", url: "/api/system/restart" })).statusCode).toBe(401);
+    expect((await app.inject({ method: "POST", url: "/api/system/reap" })).statusCode).toBe(401);
   });
   it("does not contact the network unless enabled or forced", async () => {
     const off = (await app.inject({ url: "/api/updates", headers: headers() })).json();

@@ -22,6 +22,7 @@ import {
 } from "@mordomo/core";
 import { AppContext } from "./context.js";
 import { uiDistCandidates } from "./entry.js";
+import { instanceSnapshot, orphanProcesses, portHolder, terminate } from "./instances.js";
 import { type UpdateChecker } from "./updates.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerSkillRoutes } from "./routes/skills.js";
@@ -165,6 +166,10 @@ export async function buildServer(
     // "incoming request"/"request completed" pair would double it.
     logController: new LogController({ disableRequestLogging: true }),
     bodyLimit: 5 * 1024 * 1024,
+    // On close, drop idle keep-alive and SSE connections instead of waiting
+    // for them: a browser tab holding `/api/events` open must not keep an old
+    // service alive after a restart (that is how leftover processes were born).
+    forceCloseConnections: true,
   });
   const token = ctx.token();
 
@@ -325,6 +330,28 @@ export function tlsListenerFor(
   };
 }
 
+/**
+ * Listen, retrying while the port is still held by a service we just asked to
+ * stop (graceful shutdown can take a few seconds). Any other error is fatal.
+ */
+async function listenWithRetry(
+  app: FastifyInstance,
+  port: number,
+  host: string,
+  attempts: number,
+): Promise<void> {
+  for (let i = 1; ; i++) {
+    try {
+      await app.listen({ port, host });
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== "EADDRINUSE" || i >= attempts) throw err;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+}
+
 export async function startServer(homeOverride?: string): Promise<ServerHandle> {
   const ctx = new AppContext(homeOverride, { applyPendingRestore: true });
   const settings = ctx.settings();
@@ -391,7 +418,29 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   const approvalSweep = setInterval(sweepApprovals, 3_600_000);
   approvalSweep.unref?.();
 
-  await app.listen({ port: settings.port, host: settings.bindAddress });
+  // A service that is starting is the one that should be running on its port.
+  // Take the port first; only when it is busy do we stop what holds it — the
+  // process listening there if it is a MordomoOS service, plus leftovers of
+  // this same install (a lost port race, a restart still shutting down) — and
+  // retry. Other homes and checkouts on other ports are never touched.
+  try {
+    await app.listen({ port: settings.port, host: settings.bindAddress });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EADDRINUSE") throw err;
+    const snap = await instanceSnapshot(process.pid, 0);
+    const holder = portHolder(settings.port);
+    const holding = snap.processes.filter((p) => p.pid === holder);
+    const leftovers = [
+      ...holding,
+      ...orphanProcesses(snap.processes, null, process.pid, undefined, snap.listening).filter(
+        (p) => p.pid !== holder,
+      ),
+    ];
+    if (leftovers.length === 0) throw err; // something else owns the port: report, never kill
+    const stopped = await terminate(leftovers);
+    app.log.warn({ pids: stopped, port: settings.port, msg: "stopped MordomoOS processes holding the port" });
+    await listenWithRetry(app, settings.port, settings.bindAddress, 40);
+  }
   const url = `http://127.0.0.1:${settings.port}`;
 
   // Remote access over TLS (follow-up 10): a second listener with the

@@ -43,6 +43,12 @@ test("a backup restored into an emptied home has usable files and sessions in th
     storageState: returningUserState("http://127.0.0.1:4794"),
   });
   try {
+    // Every provider is disabled in this home, so the "connect your AI first"
+    // gate would cover the page: model a user who chose "Continue anyway".
+    await context.addInitScript(
+      (k: string) => sessionStorage.setItem(k, "1"),
+      "mordomo.providerGate.skipped.v1",
+    );
     const page = await context.newPage();
     await page.goto("/#/brain");
     await page.getByRole("button", { name: "List view", exact: true }).click();

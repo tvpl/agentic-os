@@ -1,30 +1,35 @@
 /**
  * The OS desktop: a fullscreen surface. The icosphere wallpaper sits under a
  * "Now" panel and the ring of artifact chips; widgets float above on a
- * 24-column grid (stacked below 900 px) and can be dragged, resized,
+ * 24-column grid (stacked below 1024 px) and can be dragged, resized,
  * configured, added and hidden in edit mode. Layout persists in settings.
  *
  * Every widget owns its queries through the registry, so one failing endpoint
  * degrades only that widget; the desktop itself never renders blank.
  *
  * Modes: edit (grid + gallery + per-widget gear) and search (widgets fade to
- * 30 %, only matching chips keep their ring, a detail modal pushes the
- * desktop back). Both are reachable from the tool row, the keyboard and the
+ * 30 %, and choosing a match lands the file on the stage as a document
+ * window). Both are reachable from the tool row, the keyboard and the
  * command palette (`mordomo:toggle-edit`).
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bell, Grid2x2, Info, LayoutGrid, Palette, Pencil, Plus, Search, Tag } from "lucide-react";
 import {
-  api,
-  type ArtifactEntry,
-  type ArtifactListItem,
-  type LaunchRunResponse,
-  type Meta,
-  type ProviderId,
-  type Skill,
-} from "../api";
-import { useLocale, useT, type TKey } from "../i18n";
+  Bell,
+  Columns3,
+  Copy,
+  FileText,
+  Grid2x2,
+  Info,
+  LayoutGrid,
+  Palette,
+  Pencil,
+  Plus,
+  Search,
+  Telescope,
+} from "lucide-react";
+import { api, type LaunchRunResponse, type Meta, type ProviderId, type Skill } from "../api";
+import { useT, type TKey } from "../i18n";
 import { qk, useOsMetrics, useOsProviders, useOsSettings } from "../queries";
 import { budgetState } from "./budget";
 import { useToast } from "../components/ui";
@@ -34,94 +39,78 @@ import { playCue, useNotifications } from "../hooks/useNotifications";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import { useOsEvent } from "../hooks/useEventStream";
 import { LAUNCHER_EVENT, TOGGLE_EDIT_EVENT } from "../App";
-import { useWorkspace } from "../components/Workspace";
-import { DEFAULT_LAYOUT, freeRegion, type LayoutMap, type WidgetConfig } from "./defaultLayout";
-import { useLayoutState, type GridMetrics } from "./useGridLayout";
+import { SWITCH_SPACE_EVENT, takePendingSpace } from "../components/Workspace";
+import { DEFAULT_SPACE, switchSpace, type SpaceMap } from "./spaces";
+import { DOC_BOX, defaultWindows, docId, docPath, isDocId } from "./defaultWindows";
+import DocWindow from "./DocWindow";
+import { CONSOLE_DRAFT_EVENT, CONSOLE_REFS_EVENT, readConsoleDraft, storeConsoleDraft } from "./consoleDraft";
+import { cascade, placeNew, tile, topZ, type WindowMap } from "./windowModel";
+import { useWindowLayout, type StageMetrics } from "./useWindowLayout";
 import WidgetLayer, { type WidgetSpec } from "./WidgetLayer";
-import Wallpaper, { type CoreFocus, type CoreState } from "./Wallpaper";
-import HudTelemetry from "./HudTelemetry";
+import AgentPresence from "./AgentPresence";
+import AmbientStrip from "./AmbientStrip";
+import AppRail from "./AppRail";
 import ModelEffortPopover from "./ModelEffortPopover";
 import AddWidgetGallery from "./AddWidgetGallery";
 import { LayoutPresets } from "./LayoutPresets";
 import WidgetConfigPopover from "./WidgetConfigPopover";
-import { ArtifactModal, SearchBar } from "./ArtifactSearch";
+import { SearchBar, type ArtifactHit } from "./ArtifactSearch";
 import { DesktopActionsProvider, type DesktopActions } from "./actions";
-import { WIDGET_REGISTRY, defaultConfig, widgetDefinition } from "./registry";
-import { buildRingChips, chipMatches, type RingChip } from "./ringChips";
-import { baseCoreState } from "./coreState";
+import { WIDGET_REGISTRY, defaultConfig, hasSurface, widgetDefinition } from "./registry";
+import { baseCoreState, type CoreState } from "./coreState";
 import { providerProblem } from "../components/providerReadiness";
-import {
-  isActiveStatus,
-  recentFiles,
-  useArtifactList,
-  useDesktopArtifacts,
-  useDesktopGraph,
-  useDesktopRuns,
-} from "./data";
+import { isActiveStatus, useArtifactList, useDesktopRuns } from "./data";
 import { InboxList } from "./widgets/InboxWidget";
 import { LISTENING_EVENT } from "./widgets/PromptWidget";
 import "./desktop.css";
 
 /** One-click accent presets, cycled by the palette tool and persisted. */
 const ACCENT_PRESETS = ["#f97316", "#22d3ee", "#a78bfa", "#4ade80", "#f43f5e", "#fbbf24"];
-const RING_CHIPS = 22;
 const SEARCH_DEBOUNCE_MS = 220;
-
-/** `/api/artifacts/recent` rows in the shape the ring wants (older servers, or before the first list call). */
-function fromRecent(entries: readonly ArtifactEntry[]): ArtifactListItem[] {
-  return entries.map((a) => ({
-    id: `${a.runId}/${a.file}`,
-    file: a.file,
-    path: a.path,
-    runId: a.runId,
-    skillSlug: a.skillSlug,
-    createdAt: a.createdAt,
-    kind: "other" as const,
-    title: a.file,
-    folder: a.runId,
-    sizeBytes: a.sizeBytes ?? 0,
-    thumbnail: false,
-  }));
-}
 
 export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaChanged?: () => void }) {
   const t = useT();
-  const locale = useLocale();
   const navigate = useOsNavigate();
   const toast = useToast();
   const confirm = useConfirm();
   const qc = useQueryClient();
-  const { mode: workspaceMode, setMode: setWorkspaceMode } = useWorkspace();
   const [editMode, setEditMode] = useState(false);
   const [presetsOpen, setPresetsOpen] = useState(false);
-  const [metrics, setMetrics] = useState<GridMetrics | null>(null);
-  const rows = metrics?.rows ?? 20;
+  const [metrics, setMetrics] = useState<StageMetrics | null>(null);
+  const stage = useMemo(() => ({ w: metrics?.w ?? 1200, h: metrics?.h ?? 700 }), [metrics?.w, metrics?.h]);
 
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
-  const [revealLabels, setRevealLabels] = useState(false);
-  const [detail, setDetail] = useState<RingChip | null>(null);
 
   const [deckPopover, setDeckPopover] = useState<{ skill: Skill; anchor: HTMLElement } | null>(null);
   const [configFor, setConfigFor] = useState<{ id: string; anchor: HTMLElement } | null>(null);
   const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
+  /** Expanded widget, owned here so the ambient strip can open a surface. */
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  /** Camera pulled back over the whole stage. */
+  const [overview, setOverview] = useState(false);
+  /** Paths the console draft points at; the layer tethers to their windows. */
+  const [activeRefs, setActiveRefs] = useState<readonly string[]>([]);
+  useEffect(() => {
+    const onRefs = (e: Event) => setActiveRefs((e as CustomEvent<string[]>).detail ?? []);
+    window.addEventListener(CONSOLE_REFS_EVENT, onRefs);
+    return () => window.removeEventListener(CONSOLE_REFS_EVENT, onRefs);
+  }, []);
   const [bellAnchor, setBellAnchor] = useState<HTMLElement | null>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
 
   const settings = useOsSettings();
   const providers = useOsProviders();
   const runs = useDesktopRuns();
-  const recent = useDesktopArtifacts();
-  const graph = useDesktopGraph();
   const notifications = useNotifications();
 
-  const ringList = useArtifactList({ limit: RING_CHIPS });
   const searchList = useArtifactList({ q: debounced, limit: 40 }, searching && debounced.trim().length >= 2);
 
-  const { layout, commit, saving, conflict, resolveConflict } = useLayoutState({
+  const { layout, commit, saving, conflict, resolveConflict } = useWindowLayout({
     serverLayout: settings.data?.dashboardLayout,
-    rows,
+    stage,
+    spaceId: settings.data?.activeSpace,
     editing: editMode,
     onError: (err) => toast(`${t("os.layoutSaveFailed")}: ${err.message}`, "danger"),
   });
@@ -131,63 +120,26 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     return () => window.clearTimeout(id);
   }, [query]);
 
-  /* ---- chips ------------------------------------------------------------ */
-  const nodes = useMemo(() => graph.data?.nodes ?? [], [graph.data]);
-  const files = useMemo(() => recentFiles(nodes, 12), [nodes]);
-  const baseArtifacts = useMemo(() => {
-    const listed = ringList.data?.items ?? [];
-    return listed.length > 0 ? listed : fromRecent(recent.data ?? []);
-  }, [ringList.data, recent.data]);
-
-  const chips = useMemo(() => {
-    const found = searching ? (searchList.data?.items ?? []) : [];
-    const merged = [...found, ...baseArtifacts];
-    return buildRingChips(merged, files, searching ? RING_CHIPS + 4 : RING_CHIPS);
-  }, [baseArtifacts, files, searching, searchList.data]);
-
-  const matched = useMemo(() => {
-    if (!searching || query.trim().length === 0) return new Set<string>();
-    const paths = new Set((searchList.data?.items ?? []).map((i) => i.path));
-    return new Set(chips.filter((c) => paths.has(c.path) || chipMatches(c, query)).map((c) => c.key));
-  }, [chips, searching, query, searchList.data]);
-
-  const runLabels = useMemo(
-    () =>
-      (runs.data ?? [])
-        .filter((r) => r.skillSlug)
-        .slice(0, 3)
-        .map(
-          (r) =>
-            `/${r.skillSlug!} · ${new Date(r.createdAt).toLocaleString(locale, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}`,
-        ),
-    [runs.data, locale],
-  );
+  /* ---- search results ---------------------------------------------------- */
+  const hits = useMemo<ArtifactHit[]>(() => {
+    if (!searching) return [];
+    return (searchList.data?.items ?? []).slice(0, 12).map((item) => ({
+      key: item.id || item.path,
+      label: item.file.split("/").pop() ?? item.file,
+      title: item.title || item.file,
+      path: item.path,
+      runId: item.runId,
+      skillSlug: item.skillSlug,
+      ts: item.createdAt,
+    }));
+  }, [searching, searchList.data]);
 
   const activeRuns = useMemo(
     () => (runs.data ?? []).filter((r) => isActiveStatus(r.status)).length,
     [runs.data],
   );
-  const executingRuns = useMemo(
-    () => (runs.data ?? []).filter((r) => r.status === "running").length,
-    [runs.data],
-  );
   const coreState = useCoreState(runs.data ?? []);
   useBudgetNotifications();
-
-  /* ---- the free region between the widget columns anchors the core ------ */
-  const focus = useMemo<CoreFocus | null>(() => {
-    if (!metrics || metrics.stacked) return null;
-    const r = freeRegion(workspaceMode === "explore" ? {} : layout, metrics);
-    // Hidden windows must not constrain the map. Reserve the introduction above it.
-    if (workspaceMode === "explore") r.top = Math.min(340, metrics.height * 0.4);
-    const cx = (r.left + r.right) / 2;
-    const cy = (r.top + r.bottom) / 2;
-    // The ring hugs the free region (chips are 46px plus their count badge)
-    // but never collapses onto the Now panel, which shrinks to fit inside it.
-    const rx = Math.max(210, (r.right - r.left) / 2 - 44);
-    const ry = Math.max(170, (r.bottom - r.top) / 2 - 44);
-    return { cx, cy, rx, ry };
-  }, [layout, metrics, workspaceMode]);
 
   const runningSkills = useMemo(
     () =>
@@ -238,8 +190,70 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     onError: (err: Error) => toast(err.message, "danger"),
   });
 
+  /**
+   * Switching space is one write: the arrangement being left is saved into
+   * its space and the target's comes back. Done here, not in the dock,
+   * because the live layout includes a drag the debounce has not persisted.
+   */
+  const saveSpaces = useMutation({
+    mutationFn: (patch: { spaces: SpaceMap; activeSpace: string; dashboardLayout: WindowMap }) =>
+      api.put("/api/settings", patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.settings }).catch(() => undefined);
+    },
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
+  const saveSpacesRef = useRef(saveSpaces.mutate);
+  saveSpacesRef.current = saveSpaces.mutate;
+  /**
+   * The spaces map, held locally as well as in settings. Two switches in a
+   * row happen faster than the settings query refetches, and reading the
+   * stale copy would recreate the space you just left from the defaults —
+   * losing the arrangement the switch was supposed to save.
+   */
+  const spacesRef = useRef<{ spaces: SpaceMap; active: string }>({ spaces: {}, active: DEFAULT_SPACE });
+  useEffect(() => {
+    if (!settings.data) return;
+    spacesRef.current = {
+      spaces: (settings.data.spaces as SpaceMap | undefined) ?? {},
+      active: settings.data.activeSpace ?? DEFAULT_SPACE,
+    };
+  }, [settings.data]);
+  const switchRef = useRef<(next: string) => void>(() => undefined);
+  switchRef.current = (next: string) => {
+    const { spaces, active } = spacesRef.current;
+    const out = switchSpace(spaces, active, layout, next, defaultWindows(stage));
+    if (out.activeSpace === active && out.layout === layout) return;
+    spacesRef.current = { spaces: out.spaces, active: out.activeSpace };
+    // A different desktop: nothing from the old one stays expanded over it.
+    setExpandedId(null);
+    setOverview(false);
+    commit(out.layout);
+    saveSpacesRef.current({
+      spaces: out.spaces,
+      activeSpace: out.activeSpace,
+      dashboardLayout: out.layout,
+    });
+  };
+  useEffect(() => {
+    const onSwitch = (e: Event) => {
+      takePendingSpace();
+      switchRef.current((e as CustomEvent<string>).detail);
+    };
+    window.addEventListener(SWITCH_SPACE_EVENT, onSwitch);
+    return () => window.removeEventListener(SWITCH_SPACE_EVENT, onSwitch);
+  }, []);
+  // A switch asked for from another app, before this desktop existed.
+  const ready = settings.data !== undefined && metrics !== null;
+  useEffect(() => {
+    if (!ready) return;
+    const pending = takePendingSpace();
+    if (pending) switchRef.current(pending);
+  }, [ready]);
+
   const resetLayout = async () => {
-    if (await confirm({ title: t("os.resetLayout"), body: t("os.resetLayoutBody") })) commit(DEFAULT_LAYOUT);
+    if (await confirm({ title: t("os.resetLayout"), body: t("os.resetLayoutBody") }))
+      commit(defaultWindows(stage));
   };
 
   /* ---- modes ------------------------------------------------------------ */
@@ -247,17 +261,15 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     setSearching(false);
     setQuery("");
     setDebounced("");
-    setDetail(null);
   }, []);
 
   useEffect(() => {
     const onToggleEdit = () => {
-      setWorkspaceMode("overview");
       setEditMode((v) => !v);
     };
     window.addEventListener(TOGGLE_EDIT_EVENT, onToggleEdit);
     return () => window.removeEventListener(TOGGLE_EDIT_EVENT, onToggleEdit);
-  }, [setWorkspaceMode]);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -279,31 +291,95 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         setSearching(true);
         return;
       }
+      // Tab stays keyboard navigation; the camera gets its own key.
+      if (e.key === "\\" && !editable) {
+        e.preventDefault();
+        setOverview((v) => !v);
+        return;
+      }
+      if (e.key === "Escape" && overview) {
+        e.preventDefault();
+        setOverview(false);
+        return;
+      }
       if (e.key === "Escape" && searching) {
         e.preventDefault();
         e.stopPropagation();
-        if (detail) setDetail(null);
-        else closeSearch();
+        closeSearch();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [searching, detail, closeSearch]);
+  }, [searching, overview, closeSearch]);
 
   /* ---- widgets from the registry --------------------------------------- */
+  /** Document windows on the stage, newest (highest) first. */
+  const openDocs = useMemo(
+    () =>
+      Object.entries(layout)
+        .filter(([id, box]) => isDocId(id) && box.visible && !box.minimized)
+        .sort((a, b) => b[1].z - a[1].z)
+        .map(([id]) => {
+          const path = docPath(id);
+          return { id, ref: path.split(/[\\/]/).pop() || path, path };
+        }),
+    [layout],
+  );
+
+  const openDoc = useCallback(
+    (path: string) => {
+      const id = docId(path);
+      const existing = layout[id];
+      if (existing) {
+        commit({ ...layout, [id]: { ...existing, visible: true, minimized: false, z: topZ(layout) + 1 } });
+        return;
+      }
+      const spot = placeNew(DOC_BOX, layout, stage);
+      commit({
+        ...layout,
+        [id]: { ...spot, ...DOC_BOX, z: topZ(layout) + 1, visible: true, minimized: false },
+      });
+    },
+    [layout, commit, stage],
+  );
+
+  /** Append `@name` to the console draft and put the caret back in it. */
+  const referenceDoc = useCallback((id: string) => {
+    const path = docPath(id);
+    const ref = path.split(/[\\/]/).pop() || path;
+    const draft = readConsoleDraft();
+    const text = draft.text.trimEnd();
+    storeConsoleDraft({ ...draft, text: `${text ? `${text} ` : ""}@${ref} ` });
+    window.dispatchEvent(new CustomEvent(CONSOLE_DRAFT_EVENT));
+  }, []);
+
   const actions = useMemo<DesktopActions>(
     () => ({
       runSkill: (skill) => runSkill.mutate(skill),
       configureSkill: (skill, anchor) => setDeckPopover({ skill, anchor }),
       focusDeck: () => document.querySelector<HTMLElement>(".deck-card .btn")?.focus(),
       runningSkills,
+      openDocs,
+      openDoc,
+      referenceDoc,
     }),
-    [runSkill, runningSkills],
+    [runSkill, runningSkills, openDocs, openDoc, referenceDoc],
   );
 
   const widgets = useMemo(() => {
     const out: Record<string, WidgetSpec> = {};
     for (const id of Object.keys(layout)) {
+      if (isDocId(id)) {
+        const path = docPath(id);
+        out[id] = {
+          title: path.split(/[\\/]/).pop() || path,
+          icon: <FileText aria-hidden />,
+          expandable: true,
+          surfaceMin: { w: 460, h: 340 },
+          node: <DocWindow instanceId={id} />,
+        };
+        continue;
+      }
       const def = widgetDefinition(id);
       if (!def) continue;
       const box = layout[id]!;
@@ -313,13 +389,15 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         title: t(def.titleKey),
         icon: def.icon,
         configurable: (def.configSchema?.length ?? 0) > 0,
+        expandable: hasSurface(def),
+        surfaceMin: def.surfaceMin,
         node: <Component instanceId={id} config={config} editing={editMode} />,
       };
     }
     return out;
   }, [layout, t, editMode]);
 
-  const setConfig = (id: string, next: WidgetConfig | undefined) => {
+  const setConfig = (id: string, next: Record<string, unknown> | undefined) => {
     const box = layout[id];
     if (!box) return;
     const updated = { ...box };
@@ -336,57 +414,33 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     <DesktopActionsProvider value={actions}>
       <div
         className={`desktop${editMode ? " edit-mode" : ""}${searching ? " searching" : ""}`}
-        data-depth={detail ? "pushed" : undefined}
         data-core={coreState}
-        style={
-          focus
-            ? ({
-                "--core-x": `${focus.cx}px`,
-                "--core-y": `${focus.cy}px`,
-                "--core-ry": `${focus.ry}px`,
-              } as React.CSSProperties)
-            : undefined
-        }
       >
-        <Wallpaper
-          chips={chips}
-          nodes={nodes}
-          activeRuns={executingRuns}
-          runLabels={runLabels}
-          dimmed={!searching && workspaceMode !== "explore"}
-          searching={searching}
-          matched={matched}
-          revealLabels={revealLabels}
-          coreState={coreState}
-          focus={focus}
-          onOpenBrain={() => navigate("/brain")}
-          onChipActivate={(chip) => {
-            if (searching) setDetail(chip);
-            else if (chip.runId) navigate(`/runs/${chip.runId}`);
-            else navigate("/brain");
-          }}
-        />
+        <AgentPresence />
 
-        {workspaceMode === "explore" && (
-          <div className="explore-intro">
-            <span className="hud-label accent">{t("desktop.explore.eyebrow")}</span>
-            <h1>{t("desktop.explore.title")}</h1>
-            <p>{t("desktop.explore.body")}</p>
-            <Button variant="primary" onClick={() => navigate("/brain")}>
-              {t("desktop.explore.open")} →
-            </Button>
-          </div>
-        )}
         <div className="depth-layer desktop-depth">
-          <HudTelemetry activeRuns={activeRuns} />
+          {!metrics?.stacked && <AppRail />}
+          <AmbientStrip
+            activeRuns={activeRuns}
+            onExpand={(id) => {
+              // A reading only opens what the layout actually holds; otherwise
+              // the strip would promise a panel that has no body to render.
+              if (layout[id]) setExpandedId(id);
+              else navigate("/settings");
+            }}
+          />
           <WidgetLayer
             layout={layout}
-            workspaceMode={workspaceMode}
             widgets={widgets}
             editMode={editMode}
             onLayoutChange={commit}
             onMetrics={setMetrics}
             onConfigure={(id, anchor) => setConfigFor({ id, anchor })}
+            expandedId={expandedId}
+            onExpandedChange={setExpandedId}
+            overview={overview}
+            onOverviewChange={setOverview}
+            tetherTo={activeRefs.map(docId)}
           />
         </div>
 
@@ -424,7 +478,6 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
                 active={editMode}
                 label={t("os.edit")}
                 onClick={() => {
-                  setWorkspaceMode("overview");
                   setEditMode((v) => !v);
                 }}
               >
@@ -437,12 +490,18 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
               >
                 <Search aria-hidden />
               </Tool>
+              <Tool label={t("desktop.arrange.tile")} onClick={() => commit(tile(layout, stage))}>
+                <Columns3 aria-hidden />
+              </Tool>
+              <Tool label={t("desktop.arrange.cascade")} onClick={() => commit(cascade(layout, stage))}>
+                <Copy aria-hidden />
+              </Tool>
               <Tool
-                active={revealLabels}
-                label={revealLabels ? t("desktop.ring.labelsOff") : t("desktop.ring.labels")}
-                onClick={() => setRevealLabels((v) => !v)}
+                active={overview}
+                label={t(overview ? "desktop.overview.exit" : "desktop.overview.enter")}
+                onClick={() => setOverview((v) => !v)}
               >
-                <Tag aria-hidden />
+                <Telescope aria-hidden />
               </Tool>
               <Tool
                 label={`${t("os.menu")} (⌘K)`}
@@ -503,7 +562,19 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         </div>
 
         {searching && (
-          <SearchBar query={query} matches={matched.size} onQuery={setQuery} onClose={closeSearch} />
+          <SearchBar
+            query={query}
+            matches={hits.length}
+            hits={hits}
+            onQuery={setQuery}
+            onPick={(hit) => {
+              // Search lands the file on the stage, where it can be referenced,
+              // instead of only showing a preview that closes with the modal.
+              openDoc(hit.path);
+              closeSearch();
+            }}
+            onClose={closeSearch}
+          />
         )}
 
         {(editMode || conflict) && (
@@ -547,14 +618,19 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         )}
 
         {presetsOpen && (
-          <LayoutPresets layout={layout} rows={rows} onApply={commit} onClose={() => setPresetsOpen(false)} />
+          <LayoutPresets
+            layout={layout}
+            stage={stage}
+            onApply={commit}
+            onClose={() => setPresetsOpen(false)}
+          />
         )}
         {addAnchor && (
           <AddWidgetGallery
             layout={layout}
-            rows={rows}
+            stage={stage}
             anchor={addAnchor}
-            onAdd={(next: LayoutMap) => commit(next)}
+            onAdd={(next: WindowMap) => commit(next)}
             onClose={() => setAddAnchor(null)}
           />
         )}
@@ -593,14 +669,6 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
             onSaved={() => {
               qc.invalidateQueries({ queryKey: qk.skills }).catch(() => undefined);
             }}
-          />
-        )}
-
-        {detail && (
-          <ArtifactModal
-            chip={detail}
-            onClose={() => setDetail(null)}
-            onOpenRun={(runId) => navigate(`/runs/${runId}`)}
           />
         )}
       </div>

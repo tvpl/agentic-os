@@ -9,6 +9,7 @@ import {
   type ComponentType,
   type ReactNode,
 } from "react";
+import ServiceHealthBanner from "./components/ServiceHealthBanner";
 import { HashRouter, Link, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, BrainCircuit, LayoutGrid, ListTree, Menu, Sparkles } from "lucide-react";
@@ -527,6 +528,7 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
         />
       )}
       {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
+      <ServiceHealthBanner name={meta.name} />
       <div className={`sse-dot${connected ? "" : " off"}`} title={t("common.reconnecting")} aria-hidden>
         <span className="dot warn" />
       </div>

@@ -133,6 +133,9 @@
   --r-4: 12px;
   --r-pill: 999px;
   --radius: 10px;
+  /* the window stage: below the top bar / ambient strip, above the dock */
+  --stage-top: 96px;
+  --stage-bottom: 100px;
   --radius-sm: 7px;
 
   /* layers --------------------------------------------------------------- */
@@ -190,7 +193,6 @@
 [data-theme="light"] .os-brand .name .accent {
   text-shadow: none;
 }
-[data-theme="light"] .orbit-chip.match,
 [data-theme="light"] .widget-grip {
   box-shadow: 0 1px 2px rgba(32, 28, 20, 0.2);
 }
@@ -678,11 +680,15 @@ canvas.dimmed {
     animation: fade-up var(--dur-slow) var(--ease-out) both;
     animation-delay: var(--enter-delay, 0ms);
   }
-  /* desktop widgets materialise: the fade-up plus a top-to-bottom wipe (plan §6.6) */
+  /* Desktop widgets materialise: the fade-up plus a top-to-bottom wipe.
+     `backwards`, never `both`: the class stays on the element for its whole
+     life, and a filled-forwards `transform: none` keeps overriding the inline
+     transform that drags a window and pulls the camera back — silently, since
+     the settled position still ends up right. */
   .desktop .widget.enter-fade-up {
     animation:
-      fade-up var(--dur-slow) var(--ease-out) both,
-      hud-wipe 420ms var(--ease-emphasized) both;
+      fade-up var(--dur-slow) var(--ease-out) backwards,
+      hud-wipe 420ms var(--ease-emphasized) backwards;
     animation-delay: var(--enter-delay, 0ms);
   }
   .desktop .widget.enter-fade-up::after {
@@ -840,6 +846,12 @@ canvas.dimmed {
   display: flex;
   gap: var(--s-2);
   align-items: center;
+  /* The side columns are as tall as the topbar row and mostly empty; without
+     this they swallow clicks aimed at the ambient strip underneath them. */
+  pointer-events: none;
+}
+.os-topbar .side > * {
+  pointer-events: auto;
 }
 .os-topbar .side.right {
   justify-content: flex-end;
@@ -1386,9 +1398,18 @@ canvas.dimmed {
 }
 .desktop-widgets {
   position: absolute;
-  inset: 0;
+  /* The stage is the area windows may use, not the whole desktop: it starts
+     below the top bar and the ambient strip and stops above the dock, so a
+     window can never be parked under the chrome that would cover its own
+     title bar. Window coordinates are relative to this box. */
+  inset: var(--stage-top) 0 var(--stage-bottom) 0;
   z-index: var(--z-widget);
   pointer-events: none;
+  /* A window parked against an edge must not give the desktop a scrollbar:
+     the page would then be wider than the viewport, and the stage measured
+     from it would grow with it — which made the fraction-based default
+     composition depend on where the last window happened to be. */
+  overflow: hidden;
 }
 .widget {
   position: absolute;
@@ -1406,15 +1427,17 @@ canvas.dimmed {
   border-radius: 4px;
   padding: 12px 14px 14px;
   /* scroll shadows: the surface colour covers the shadow until the content
-     actually scrolls, so a clipped widget always shows where it continues */
-  background:
+     actually scrolls, so a clipped widget always shows where it continues.
+     Kept in a token so a skin (desktop.css) can add its own layers under
+     them instead of repeating the stack. */
+  --widget-scroll-shadows:
     linear-gradient(var(--surface) 30%, transparent) center top / 100% 28px no-repeat local,
     linear-gradient(transparent, var(--surface) 70%) center bottom / 100% 28px no-repeat local,
     radial-gradient(farthest-side at 50% 0, rgba(0, 0, 0, 0.45), transparent) center top / 100% 12px no-repeat
       scroll,
     radial-gradient(farthest-side at 50% 100%, rgba(0, 0, 0, 0.45), transparent) center bottom / 100% 12px
-      no-repeat scroll,
-    var(--surface);
+      no-repeat scroll;
+  background: var(--widget-scroll-shadows), var(--surface);
 }
 .widget-inner > * {
   min-width: 0;
@@ -1484,8 +1507,11 @@ canvas.dimmed {
 }
 .widget.editing .widget-inner {
   border: 1.5px dashed var(--accent);
-  box-shadow: 0 0 22px var(--accent-soft);
   cursor: grab;
+}
+/* the edit glow sits on the frame: the body may be clipped (chamfer) and would swallow it */
+.widget.editing::before {
+  box-shadow: 0 0 22px var(--accent-soft);
 }
 .widget.editing.dragging .widget-inner {
   cursor: grabbing;
@@ -1531,16 +1557,21 @@ canvas.dimmed {
 }
 .widget-resize {
   position: absolute;
-  right: -7px;
-  bottom: -7px;
+  right: -3px;
+  bottom: -3px;
   z-index: 3;
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   cursor: nwse-resize;
-  border-right: 3px solid var(--accent);
-  border-bottom: 3px solid var(--accent);
-  border-radius: 0 0 4px 0;
+  border-right: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  border-radius: 0;
   filter: drop-shadow(0 0 6px var(--accent-glow));
+  opacity: 0.5;
+}
+.widget:hover .widget-resize,
+.widget-resize:focus-visible {
+  opacity: 1;
 }
 .edit-bar {
   position: absolute;
@@ -2475,288 +2506,6 @@ mark {
   border-radius: 2px;
 }
 
-/* ---- dashboard: orbital chips around the core ---- */
-.orbit-chip {
-  position: absolute;
-  width: 46px;
-  height: 46px;
-  margin: -23px 0 0 -23px;
-  border-radius: 50%;
-  border: 1.5px solid var(--border-strong);
-  background: color-mix(in srgb, var(--bg-raise) 88%, transparent);
-  color: var(--text-dim);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  transition:
-    transform var(--dur-fast) var(--ease-standard),
-    border-color var(--dur-fast) var(--ease-standard),
-    color var(--dur-fast) var(--ease-standard);
-  z-index: 3;
-  padding: 0;
-  font: inherit;
-}
-.orbit-chip:hover {
-  border-color: var(--accent);
-  color: var(--accent-text);
-  transform: scale(1.15);
-  box-shadow: 0 0 16px var(--accent-glow);
-  z-index: 4;
-}
-.orbit-chip svg {
-  width: 18px;
-  height: 18px;
-}
-.orbit-chip .day-tag {
-  position: absolute;
-  top: -9px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: var(--fs-1);
-  font-weight: 800;
-  font-family: var(--font-mono);
-  padding: 0 5px;
-  border-radius: 3px;
-  background: var(--bg-raise-2);
-  border: 1px solid var(--border-strong);
-  color: var(--text-dim);
-  letter-spacing: 0.04em;
-}
-.orbit-chip:hover .day-tag {
-  color: var(--accent-text);
-  border-color: var(--accent-line);
-}
-.orbit-tooltip {
-  position: absolute;
-  z-index: 6;
-  pointer-events: none;
-  background: var(--bg-raise-2);
-  border: 1px solid var(--accent-line);
-  border-radius: var(--r-2);
-  padding: 5px 9px;
-  font-size: var(--fs-2);
-  font-weight: 600;
-  max-width: 260px;
-  box-shadow: var(--shadow);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.orbital-core-btn {
-  position: absolute;
-  left: var(--core-x, 50%);
-  top: var(--core-y, 55%);
-  transform: translate(-50%, -50%);
-  width: 200px;
-  height: 200px;
-  border-radius: 50%;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  z-index: 2;
-}
-.orbital-core-btn:focus-visible {
-  outline-offset: -8px;
-  border-radius: 50%;
-}
-
-/* skills deck */
-.deck-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-.deck-card {
-  position: relative;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--bg-raise-2);
-  padding: var(--s-3);
-  transition: border-color var(--dur-fast) var(--ease-standard);
-  display: flex;
-  flex-direction: column;
-  min-height: 118px;
-}
-.deck-card:hover {
-  border-color: var(--accent-line);
-}
-.deck-card:active {
-  transform: scale(0.98);
-  transition: transform 80ms var(--ease-standard);
-}
-.deck-card .slug {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: var(--fs-2);
-  overflow-wrap: anywhere;
-  word-break: normal;
-  line-height: 1.35;
-}
-.deck-card .config {
-  font-size: var(--fs-1);
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  margin-top: 2px;
-}
-.deck-card .config .model {
-  color: var(--accent-text);
-}
-.deck-card .config .sep {
-  color: var(--text-faint);
-  margin: 0 4px;
-}
-.deck-card .config .effort {
-  color: var(--text-dim);
-}
-.deck-card .deck-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: auto;
-  padding-top: 10px;
-}
-.deck-icon {
-  width: 16px;
-  height: 16px;
-  color: var(--text-dim);
-  margin-bottom: 6px;
-}
-
-/* model × effort matrix */
-.matrix {
-  border-collapse: separate;
-  border-spacing: 0 6px;
-  width: 100%;
-}
-.matrix th {
-  font-size: var(--fs-1);
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-  padding: 4px 8px;
-  text-align: center;
-}
-.matrix td.model-name {
-  font-size: var(--fs-2);
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  padding-right: 14px;
-  white-space: nowrap;
-}
-.matrix td.cell {
-  text-align: center;
-  padding: 6px 8px;
-}
-.matrix .m-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--border-strong);
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  transition:
-    transform var(--dur-fast) var(--ease-standard),
-    background var(--dur-fast) var(--ease-standard),
-    box-shadow var(--dur-fast) var(--ease-standard);
-}
-.matrix .m-dot:hover {
-  transform: scale(1.5);
-  background: var(--text-dim);
-}
-.matrix .m-dot:active {
-  transform: scale(1.2);
-  transition-duration: 80ms;
-}
-.matrix .m-dot.selected {
-  background: var(--accent);
-  box-shadow: 0 0 10px var(--accent-glow);
-  transform: scale(1.35);
-}
-.matrix tr.active-row td.model-name {
-  color: var(--accent-text);
-}
-.matrix tr.active-row {
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--accent-soft) 20%,
-    var(--accent-soft) 90%,
-    transparent
-  );
-}
-
-/* routines board */
-.board-row {
-  display: grid;
-  grid-template-columns: 64px 1fr auto;
-  gap: 10px;
-  align-items: center;
-  padding: 7px var(--s-1);
-  border-bottom: 1px solid var(--border);
-}
-.board-row:last-child {
-  border-bottom: none;
-}
-.board-row {
-  border-radius: var(--r-2);
-  transition: background var(--dur-fast) var(--ease-standard);
-}
-.board-row:hover {
-  background: var(--bg-raise-2);
-}
-.board-row .time {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: var(--fs-2);
-  color: var(--text-faint);
-  padding: 1px 6px;
-  border-radius: 3px;
-  text-align: center;
-}
-.board-row.next .time {
-  background: var(--accent);
-  color: var(--accent-contrast);
-  position: relative;
-  isolation: isolate;
-}
-.board-row.next .time::after {
-  content: "";
-  position: absolute;
-  inset: -3px;
-  z-index: -1;
-  border-radius: inherit;
-  background: var(--accent-glow);
-  filter: blur(6px);
-  opacity: 0.45;
-  pointer-events: none;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .board-row.next .time::after {
-    animation: pulse-ring 2.4s ease-in-out infinite;
-  }
-}
-.board-row .status {
-  font-size: var(--fs-1);
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-.board-row.next .status {
-  color: var(--accent-text);
-}
-.board-row.fired {
-  opacity: 0.55;
-}
-.board-row.fired .name {
-  text-decoration: line-through;
-  text-decoration-color: var(--text-faint);
-}
-
 /* ---- second brain 2.0 ---- */
 .brain2 {
   position: relative;
@@ -3277,10 +3026,6 @@ input[type="range"]::-moz-range-thumb {
   .now-panel {
     display: none;
   }
-  .desktop-canvas .orbit-ring,
-  .desktop-canvas .orbital-core-btn {
-    display: none;
-  }
 }
 .widget-error {
   display: grid;
@@ -3301,15 +3046,12 @@ input[type="range"]::-moz-range-thumb {
   margin: var(--s-2) 0;
 }
 
-/* Now panel over the core */
+/* The Now panel is a window body now (the core it used to float over is
+   gone); the widget frame owns its box. */
 .now-panel {
-  position: absolute;
-  left: var(--core-x, 50%);
-  top: var(--core-y, 52%);
-  transform: translate(-50%, -50%);
-  width: min(420px, 38vw);
-  /* stays inside the ring: chips sit at --core-ry from the centre */
-  max-height: min(60vh, calc(var(--core-ry, 220px) * 2 - 60px));
+  position: static;
+  width: auto;
+  max-height: none;
   overflow-y: auto;
   scrollbar-width: thin;
   z-index: var(--z-widget);
@@ -3495,31 +3237,6 @@ input[type="range"]::-moz-range-thumb {
 }
 .deck-scroll.has-more {
   mask-image: linear-gradient(to bottom, #000 82%, transparent);
-}
-.deck-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
-  gap: var(--s-2);
-}
-.deck-card .slug {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.deck-card .config {
-  display: flex;
-  gap: var(--s-1);
-  font-size: var(--fs-1);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-  white-space: nowrap;
-  overflow: hidden;
-}
-.deck-card .config .model {
-  color: var(--accent-text);
 }
 .deck-more {
   margin-top: var(--s-2);
@@ -4765,40 +4482,93 @@ fieldset.field {
 }
 
 /* telemetry strips on the desktop edges (plan §6.3) */
-.hud-telemetry {
+/* ---------------------------------------------- ambient strip (F3) -----
+   The permanent line of state. Every reading carries a level and only
+   `warn` / `critical` take colour: an idle desktop has nothing lit, so
+   anything lit is worth a look. Readings that own a widget are buttons. */
+.ambient-strip {
   position: absolute;
-  z-index: var(--z-widget);
-  display: grid;
-  gap: 2px;
+  /* Chrome, not a widget: windows carry their own stacking order now, and at
+     the widget level a window could paint over the strip and swallow a click
+     aimed at it. */
+  z-index: var(--z-chrome);
+  top: 60px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-family: var(--font-mono);
   font-size: 10.5px;
   line-height: 1.4;
   letter-spacing: 0.06em;
-  color: var(--text-faint);
-  pointer-events: none;
-  opacity: calc(0.35 + var(--hud-intensity) * 0.65);
   text-transform: uppercase;
   white-space: nowrap;
 }
-.hud-telemetry b {
-  color: var(--accent-text);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.hud-telemetry i {
-  font-style: normal;
-  color: var(--warn);
-  font-variant-numeric: tabular-nums;
-}
-/* under the provider label / pills, above the grid (GRID_TOP = 96px) */
-.hud-telemetry.bl {
+.ambient-strip.bl {
   left: 18px;
-  top: 62px;
 }
-.hud-telemetry.br {
+.ambient-strip.br {
   right: 18px;
-  top: 62px;
-  text-align: right;
+}
+.ambient-strip .sig {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--r-1);
+  color: var(--text-faint);
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  transition:
+    color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+/* idle is the default and must never glow: that is the whole rule */
+.ambient-strip .sig[data-level="idle"] {
+  opacity: calc(0.45 + var(--hud-intensity) * 0.55);
+}
+.ambient-strip .sig[data-level="info"] {
+  color: var(--text-dim);
+}
+.ambient-strip .sig[data-level="warn"] {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 30%, transparent);
+  background: var(--warn-bg);
+}
+.ambient-strip .sig[data-level="critical"] {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 38%, transparent);
+  background: var(--danger-bg);
+}
+.ambient-strip .sig-k {
+  opacity: 0.75;
+}
+.ambient-strip .sig-v {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.ambient-strip .sig[data-level="idle"] .sig-v,
+.ambient-strip .sig[data-level="info"] .sig-v {
+  color: var(--accent-text);
+}
+.ambient-strip button.sig {
+  cursor: pointer;
+}
+.ambient-strip button.sig:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.ambient-strip button.sig.lit:hover {
+  border-color: currentColor;
+}
+@media (max-width: 899px) {
+  .ambient-strip {
+    display: none;
+  }
 }
 @media (max-width: 1199px) {
   .desktop .os-brand .byline {
@@ -4806,9 +4576,6 @@ fieldset.field {
   }
 }
 @media (max-width: 899px) {
-  .hud-telemetry {
-    display: none;
-  }
   .hud-bracket {
     display: none;
   }
@@ -5032,5 +4799,48 @@ fieldset.field {
   }
   .desktop .os-topbar .side .hud-label {
     font-size: var(--fs-1);
+  }
+}
+
+/* ---- service health banner (stale build / leftover processes) ---- */
+.service-banner {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-chrome);
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  max-width: min(880px, calc(100vw - 32px));
+  padding: var(--s-2) var(--s-3) var(--s-2) var(--s-4);
+  border: 1px solid var(--warn);
+  border-left-width: 3px;
+  border-radius: var(--r-3);
+  background: color-mix(in srgb, var(--surface) 94%, var(--warn));
+  box-shadow: var(--shadow-drawer);
+  font-size: var(--fs-3);
+}
+.service-banner-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.service-banner-text strong {
+  color: var(--warn);
+}
+.service-banner-text span {
+  color: var(--text-dim);
+}
+.service-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: none;
+}
+@media (max-width: 720px) {
+  .service-banner {
+    flex-direction: column;
+    align-items: stretch;
   }
 }

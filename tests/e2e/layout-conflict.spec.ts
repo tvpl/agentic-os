@@ -6,10 +6,14 @@ test("two browser contexts preserve competing layouts until an explicit resoluti
   browser,
 }) => {
   const headers = { "x-mordomo-token": process.env.MORDOMO_TOKEN! };
-  const box = { x: 4, y: 1, w: 6, h: 6, visible: true };
+  // Stage pixels (redesign F4a), side by side so both title bars are clickable.
+  const box = { x: 24, y: 24, w: 420, h: 300, z: 1, visible: true };
   await request.put("/api/settings", {
     headers,
-    data: { language: "en", dashboardLayout: { now: box, pulse: { ...box, x: 10, w: 4 } } },
+    data: {
+      language: "en",
+      dashboardLayout: { now: box, pulse: { ...box, x: 470, z: 2 } },
+    },
   });
   await page.goto("/#/");
   const other = await browser.newContext({ baseURL: new URL(page.url()).origin });

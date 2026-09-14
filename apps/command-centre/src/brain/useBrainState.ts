@@ -86,8 +86,8 @@ export interface BrainState {
   persistWorkspace: () => void;
   /** Persist the current settings; `toServer` also PUTs `settings.brain`. */
   persist: (settings: BrainSettings, toServer: boolean) => void;
-  /** Set when a selection arrives from the URL (deep link): the view should frame it. */
-  focusRef: MutableRefObject<boolean>;
+  /** Centre the camera on the next selection: true, or "dive" for a closer zoom (set by deep links and clicks). */
+  focusRef: MutableRefObject<boolean | "dive">;
   facets: { exts: Array<[string, number]>; tags: Array<[string, number]> };
   kindCounts: Map<EdgeKind, number>;
   legend: Array<{ key: string; count: number; color: string }>;
@@ -145,7 +145,7 @@ export function useBrainState(src: BrainStateSources): BrainState {
   lockedKeys.current ??= urlControlledKeys(
     navigation ? new URLSearchParams(navigation.params) : searchParams,
   );
-  const focusRef = useRef(searchParams.has("sel"));
+  const focusRef = useRef<boolean | "dive">(searchParams.has("sel"));
   const paramStamp = useRef(searchParams.toString());
 
   // A single synchronisation effect prevents an incoming Back/Forward URL

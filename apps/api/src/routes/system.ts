@@ -22,6 +22,15 @@ import {
 import { clearRestorePending, readRestorePending, writeRestorePending, type AppContext } from "../context.js";
 import { runDoctor } from "../doctor.js";
 import { cliEntry } from "../entry.js";
+import {
+  buildStatus,
+  installedBuildTime,
+  instanceSnapshot,
+  invalidateInstanceSnapshot,
+  orphanProcesses,
+  terminate,
+} from "../instances.js";
+import { spawn } from "node:child_process";
 import { RELEASES_PAGE, UpdateChecker } from "../updates.js";
 import { resolveApproval } from "../approvalActions.js";
 import { tlsListenerFor } from "../server.js";
@@ -334,20 +343,57 @@ export function registerSystemRoutes(
    * at?" when a checkout and a packaged app share a machine. Token-protected
    * (paths are not for the pre-auth page).
    */
-  app.get("/api/system/info", async () => ({
-    version: PKG_VERSION,
-    home: ctx.paths.home,
-    packaged: /\.mjs$/.test(cliEntry()),
-    entry: cliEntry(),
-    node: process.versions.node,
-    execPath: process.execPath,
-    platform: process.platform,
-    arch: process.arch,
-    pid: process.pid,
-    startedAt: ctx.startedAt,
-    serviceInstalled: isStartupServiceInstalled(ctx.paths),
-    releases: RELEASES_PAGE,
-  }));
+  app.get("/api/system/info", async () => {
+    const snap = await instanceSnapshot();
+    return {
+      version: PKG_VERSION,
+      home: ctx.paths.home,
+      packaged: /\.mjs$/.test(cliEntry()),
+      entry: cliEntry(),
+      node: process.versions.node,
+      execPath: process.execPath,
+      platform: process.platform,
+      arch: process.arch,
+      pid: process.pid,
+      startedAt: ctx.startedAt,
+      serviceInstalled: isStartupServiceInstalled(ctx.paths),
+      releases: RELEASES_PAGE,
+      // Is the build on disk newer than this process, and are there other
+      // service processes lingering? The UI turns either into a banner.
+      build: buildStatus(installedBuildTime(), ctx.startedAt),
+      siblings: orphanProcesses(snap.processes, process.pid, process.pid, undefined, snap.listening).map(
+        (p) => ({
+          pid: p.pid,
+          command: p.command,
+        }),
+      ),
+    };
+  });
+
+  /**
+   * Restart this service with the build on disk. The detached CLI child
+   * terminates us (or the login service does) and starts a fresh process;
+   * the UI polls `/api/meta` and reloads once it answers again.
+   */
+  app.post("/api/system/restart", async () => {
+    const child = spawn(process.execPath, [cliEntry(), "restart"], {
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env, MORDOMO_HOME: ctx.paths.home },
+    });
+    child.on("error", () => undefined);
+    child.unref();
+    return { ok: true, pid: process.pid };
+  });
+
+  /** Stop lingering sibling service processes (never this one). */
+  app.post("/api/system/reap", async () => {
+    const snap = await instanceSnapshot(process.pid, 0);
+    const orphans = orphanProcesses(snap.processes, process.pid, process.pid, undefined, snap.listening);
+    const stopped = await terminate(orphans);
+    invalidateInstanceSnapshot();
+    return { stopped };
+  });
 
   /** Release check: only when enabled in settings, or explicitly asked for (`?force=1`). */
   app.get("/api/updates", async (req) => {
@@ -369,6 +415,9 @@ export function registerSystemRoutes(
       version: PKG_VERSION,
       // Remote TLS (follow-up 10): the pairing screen shows the fingerprint so a phone can check what it trusts.
       tls: tlsInfo(ctx),
+      // Which build answers here (pre-auth on purpose: `mordomo launch` uses it to decide whether to restart an older service).
+      build: buildStatus(installedBuildTime(), ctx.startedAt),
+      entry: cliEntry(),
     };
   });
 

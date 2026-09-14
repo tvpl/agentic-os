@@ -38,6 +38,10 @@ successCriteria:
     already good").
 examples:
   - Run on a repo before restructuring its .claude/agents.
+i18n:
+  pt-BR:
+    name: "Relatório de Uso de Agentes"
+    description: "Analisa como agentes e subagentes são usados em um projeto: quais estão definidos, quais são de fato invocados e onde a delegação ajudaria."
 ---
 # Agent Usage Report
 

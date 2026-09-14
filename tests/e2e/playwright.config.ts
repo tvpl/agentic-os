@@ -32,7 +32,13 @@ export default defineConfig({
   expect: {
     toHaveScreenshot: { maxDiffPixelRatio: 0.02 },
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    // The native macOS shell is a WKWebView: opt in with MORDOMO_E2E_WEBKIT=1 after `npx playwright install webkit`.
+    ...(process.env.MORDOMO_E2E_WEBKIT === "1"
+      ? [{ name: "webkit", use: { ...devices["Desktop Safari"] } }]
+      : []),
+  ],
   webServer: {
     command: "node tests/e2e/serve.mjs",
     cwd: "../..",

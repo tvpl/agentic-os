@@ -33,6 +33,10 @@ successCriteria:
   - No line was removed from MEMORY.md; superseded facts appear under "Superseded" with a date.
 examples:
   - "Run with days=14 after a vacation."
+i18n:
+  pt-BR:
+    name: "Consolidar Memória"
+    description: "\"Sono\" noturno do segundo cérebro: promove notas duradouras dos últimos dias do diário para memory/MEMORY.md, escreve reflexões e registra fatos — nunca apaga nada, apenas substitui."
 ---
 
 # Consolidate Memory

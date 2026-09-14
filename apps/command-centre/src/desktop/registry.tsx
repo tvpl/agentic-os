@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import type { TKey } from "../i18n";
-import { DEFAULT_LAYOUT, MIN_H, MIN_W, baseId, type WidgetId } from "./defaultLayout";
+import { baseId, type WidgetId } from "./defaultLayout";
 import type { ConfigField, WidgetProps } from "./widgetTypes";
 import MicroAppsWidget from "./widgets/MicroAppsWidget";
 import TodayWidget from "./widgets/TodayWidget";
@@ -46,16 +46,28 @@ export interface WidgetDefinition {
   titleKey: TKey;
   icon: ReactNode;
   Component: ComponentType<WidgetProps>;
-  /** Default box for a freshly added instance. */
-  box: { w: number; h: number };
-  min: { w: number; h: number };
   configSchema?: readonly ConfigField[];
   /** May be added more than once ("today:2"). */
   duplicable?: boolean;
+  /**
+   * `false` when expanding cannot show more than the compact body already
+   * does — the clock is the whole datum, so a full-screen clock is 70 % empty
+   * space and a promise the widget cannot keep. The frame hides its maximize
+   * control for these (redesign F1).
+   */
+  hasSurface?: boolean;
+  /**
+   * Smallest box, in CSS pixels, where the expanded composition is honest.
+   * Read by the surface layer to decide between the full composition and the
+   * compact one centred with room to breathe, instead of stretching.
+   */
+  surfaceMin?: { w: number; h: number };
 }
 
-const box = (id: WidgetId) => ({ w: DEFAULT_LAYOUT[id]!.w, h: DEFAULT_LAYOUT[id]!.h });
-const min = { w: MIN_W, h: MIN_H };
+/** Widgets are expandable unless they opt out. */
+export function hasSurface(def: WidgetDefinition | undefined): boolean {
+  return def?.hasSurface !== false;
+}
 
 const TZ_OPTIONS = [
   "UTC",
@@ -72,28 +84,25 @@ const TZ_OPTIONS = [
 export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
   now: {
     id: "now",
+    surfaceMin: { w: 460, h: 320 },
     titleKey: "now.title",
     icon: <Activity aria-hidden />,
     Component: NowPanel,
-    box: box("now"),
-    min: { w: 6, h: 4 },
   },
   microapps: {
     id: "microapps",
     titleKey: "desktop.widget.microapps",
     icon: <Grid3x3 aria-hidden />,
     Component: MicroAppsWidget,
-    box: box("microapps"),
-    min,
   },
   today: {
     id: "today",
     titleKey: "desktop.widget.today",
     icon: <CalendarClock aria-hidden />,
     Component: TodayWidget,
-    box: box("today"),
-    min: { w: 4, h: 5 },
     duplicable: true,
+    // The time is the whole datum: expanding it adds nothing.
+    hasSurface: false,
     configSchema: [
       { key: "analog", kind: "toggle", labelKey: "desktop.cfg.analog", default: true },
       { key: "seconds", kind: "toggle", labelKey: "desktop.cfg.seconds", default: true },
@@ -126,55 +135,48 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     titleKey: "desktop.widget.workspace",
     icon: <BrainCircuit aria-hidden />,
     Component: WorkspaceWidget,
-    box: box("workspace"),
-    min,
     configSchema: [{ key: "rows", kind: "number", labelKey: "desktop.cfg.rows", min: 2, max: 8, default: 4 }],
   },
   deck: {
     id: "deck",
+    surfaceMin: { w: 420, h: 360 },
     titleKey: "desktop.widget.deck",
     icon: <Sparkles aria-hidden />,
     Component: DeckWidget,
-    box: box("deck"),
-    min: { w: 4, h: 5 },
   },
   routines: {
     id: "routines",
+    surfaceMin: { w: 400, h: 260 },
     titleKey: "desktop.widget.routines",
     icon: <CalendarClock aria-hidden />,
     Component: BoardWidget,
-    box: box("routines"),
-    min,
     configSchema: [
       { key: "limit", kind: "number", labelKey: "desktop.cfg.limit", min: 3, max: 12, default: 8 },
     ],
   },
   pulse: {
     id: "pulse",
+    surfaceMin: { w: 420, h: 340 },
     titleKey: "desktop.widget.pulse",
     icon: <Activity aria-hidden />,
     Component: PulseWidget,
-    box: box("pulse"),
-    min,
     configSchema: [
       { key: "days", kind: "number", labelKey: "desktop.cfg.days", min: 7, max: 30, default: 14 },
     ],
   },
   attention: {
     id: "attention",
+    surfaceMin: { w: 380, h: 220 },
     titleKey: "desktop.widget.attention",
     icon: <AlertTriangle aria-hidden />,
     Component: AttentionWidget,
-    box: box("attention"),
-    min,
   },
   prompt: {
     id: "prompt",
+    surfaceMin: { w: 520, h: 380 },
     titleKey: "desktop.widget.prompt",
     icon: <Terminal aria-hidden />,
     Component: PromptWidget,
-    box: box("prompt"),
-    min: { w: 6, h: 4 },
     configSchema: [
       {
         key: "mode",
@@ -193,8 +195,6 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     titleKey: "desktop.widget.inbox",
     icon: <Inbox aria-hidden />,
     Component: InboxWidget,
-    box: box("inbox"),
-    min,
     configSchema: [
       { key: "limit", kind: "number", labelKey: "desktop.cfg.limit", min: 3, max: 20, default: 8 },
       { key: "unreadOnly", kind: "toggle", labelKey: "desktop.cfg.unread", default: false },
@@ -205,8 +205,6 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     titleKey: "desktop.widget.agenda",
     icon: <Timer aria-hidden />,
     Component: AgendaWidget,
-    box: box("agenda"),
-    min,
     configSchema: [
       {
         key: "span",
@@ -225,8 +223,6 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     titleKey: "desktop.widget.calendar",
     icon: <CalendarDays aria-hidden />,
     Component: CalendarWidget,
-    box: box("calendar"),
-    min,
     configSchema: [
       {
         key: "connector",
@@ -242,8 +238,6 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     titleKey: "desktop.widget.email",
     icon: <Mail aria-hidden />,
     Component: EmailWidget,
-    box: box("email"),
-    min,
     configSchema: [
       {
         key: "connector",
@@ -260,8 +254,6 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     titleKey: "desktop.widget.cost",
     icon: <Coins aria-hidden />,
     Component: CostWidget,
-    box: box("cost"),
-    min,
   },
 };
 

@@ -1,6 +1,8 @@
 /**
  * Skills deck: scrollable, with a visible fade and a "n more" hint while
- * cards are below the fold; names never wrap letter-by-letter.
+ * cards are below the fold. A long name wraps onto a second line (breaking
+ * inside a word when nothing else fits: `overflow-wrap: anywhere`) and is
+ * clamped there; the slug stays on one line and truncates.
  *
  * RUBRIC 1.5: the MODEL · EFFORT line is coloured by model family, a card
  * with a run in flight shows a live indicator, and the gear opens the
@@ -10,7 +12,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Play, Settings2, Sparkles } from "lucide-react";
 import type { Skill } from "../../api";
-import { useT } from "../../i18n";
+import { useLang, useT } from "../../i18n";
+import { localizeSkill } from "../../views/Skills/localize";
 import { useOsSkills } from "../../queries";
 import { EmptyState } from "../../components/primitives";
 import { useDesktopActions } from "../actions";
@@ -30,6 +33,7 @@ export default function DeckWidget(_props: WidgetProps) {
 
 function DeckBody({ skills }: { skills: Skill[] }) {
   const t = useT();
+  const lang = useLang();
   const { runSkill, configureSkill, runningSkills } = useDesktopActions();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [below, setBelow] = useState(0);
@@ -96,8 +100,13 @@ function DeckBody({ skills }: { skills: Skill[] }) {
             return (
               <div className={`deck-card${running ? " running" : ""}`} key={s.slug}>
                 <Sparkles className="deck-icon" aria-hidden />
-                <Link to={`/skills/${s.slug}`} className="slug" title={`/${s.slug}`}>
-                  /{s.slug}
+                <Link
+                  to={`/skills/${s.slug}`}
+                  className="deck-name"
+                  title={`/${s.slug} · ${localizeSkill(s, lang).name}`}
+                >
+                  <span className="name">{localizeSkill(s, lang).name}</span>
+                  <span className="slug">/{s.slug}</span>
                 </Link>
                 <div className="config">
                   <span className={`model model-${modelFamily(s.recommendedModel)}`}>

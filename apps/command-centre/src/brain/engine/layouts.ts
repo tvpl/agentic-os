@@ -22,6 +22,24 @@ const ARC_SPACING = 7;
 const ARC_ROW = 8.5;
 /** Planets shown per hub at most (largest sub-folders first). */
 export const MAX_PLANETS = 8;
+/** File rows never reach past this radius: the routines / apps orbits stay clear (item: de-clutter). */
+export const ROW_MAX_RADIUS = RING.routines - 30;
+/** Innermost radius extra arc rows (and a circle cluster) may use before the packing gets denser. */
+export const ROW_MIN_RADIUS = RING.skills + 34;
+/** First arc row. */
+const ROW_FIRST_RADIUS = RING.filesInner + 14;
+/** Tightest arc pitch we accept before giving up on separation. */
+const ARC_MIN_SPACING = 1.6;
+
+/** Radius of the halo a collapsed hub gathers its files in: grows with sqrt(count), 16..60. */
+export function collapsedHaloRadius(count: number): number {
+  return Math.min(60, Math.max(16, 14 + 3.2 * Math.sqrt(Math.max(0, count))));
+}
+
+/** Number of concentric halo rings for a collapsed hub of `count` files (1..3). */
+export function collapsedHaloRings(count: number): number {
+  return count <= 12 ? 1 : count <= 60 ? 2 : 3;
+}
 
 /** Files of a group in "arc order": directory, then most recent first. */
 export function orderFiles(list: ReadonlyArray<FileNode>): FileNode[] {
@@ -82,11 +100,18 @@ export function layoutFiles(w: LayoutWorld): void {
     const hubY = Math.sin(hub.baseAngle) * RING.hubs;
 
     if (!hub.expanded) {
-      // Collapsed: a tight halo around the hub disc.
+      // Collapsed: a tight halo around the hub disc whose radius grows with
+      // the count, spread over 1–3 rings so a big hub reads as a dense
+      // corona rather than a blob.
+      const haloR = collapsedHaloRadius(list.length);
+      const rings = collapsedHaloRings(list.length);
       list.forEach((n, i) => {
-        const rr = 20 + (i % 3) * 5;
-        const aa = (i / Math.max(1, list.length)) * TWO_PI;
-        setPolar(n, hubX + Math.cos(aa) * rr * 0.8, hubY + Math.sin(aa) * rr * 0.8);
+        const ring = i % rings;
+        const j = Math.floor(i / rings);
+        const onRing = Math.ceil((list.length - ring) / rings);
+        const rr = rings === 1 ? haloR : haloR * (0.55 + 0.45 * (ring / (rings - 1)));
+        const aa = (j / Math.max(1, onRing)) * TWO_PI + ring * 0.37;
+        setPolar(n, hubX + Math.cos(aa) * rr, hubY + Math.sin(aa) * rr);
       });
       continue;
     }
@@ -99,21 +124,38 @@ export function layoutFiles(w: LayoutWorld): void {
     if (w.layout === "hex") {
       const HEX = 13 * cs;
       const cols = Math.max(3, Math.ceil(Math.sqrt(list.length) * 1.25));
-      list.forEach((n, i) => {
+      const ang = hub.baseAngle + Math.PI / 2;
+      const local = list.map((_, i): [number, number] => {
         const row = Math.floor(i / cols);
         const col = i % cols;
-        const localX = (col - cols / 2) * HEX + (row % 2 ? HEX / 2 : 0);
-        const localY = 46 + row * HEX * 0.87;
-        const ang = hub.baseAngle + Math.PI / 2;
+        return [(col - cols / 2) * HEX + (row % 2 ? HEX / 2 : 0), 46 + row * HEX * 0.87];
+      });
+      // The grid hangs off the hub; when its far corners would cross the
+      // routines orbit the whole grid shrinks toward the hub until it fits
+      // (a few deterministic passes: the bound is monotone in the scale).
+      let f = 1;
+      for (let pass = 0; pass < 8; pass++) {
+        let maxR = 0;
+        for (const [lx, ly] of local) {
+          const r = Math.hypot(
+            hubX + lx * f * Math.cos(ang) + Math.cos(hub.baseAngle) * ly * f,
+            hubY + lx * f * Math.sin(ang) + Math.sin(hub.baseAngle) * ly * f,
+          );
+          if (r > maxR) maxR = r;
+        }
+        if (maxR <= ROW_MAX_RADIUS) break;
+        f *= (0.96 * (ROW_MAX_RADIUS - RING.hubs)) / (maxR - RING.hubs);
+      }
+      list.forEach((n, i) => {
+        const [lx, ly] = local[i]!;
         setPolar(
           n,
-          hubX + localX * Math.cos(ang) + Math.cos(hub.baseAngle) * localY,
-          hubY + localX * Math.sin(ang) + Math.sin(hub.baseAngle) * localY,
+          hubX + lx * f * Math.cos(ang) + Math.cos(hub.baseAngle) * ly * f,
+          hubY + lx * f * Math.sin(ang) + Math.sin(hub.baseAngle) * ly * f,
         );
       });
     } else if (w.layout === "circle") {
-      const clusterR = (16 + Math.sqrt(list.length) * 7.5) * cs;
-      const centerR = RING.hubs + clusterR + 26;
+      const { clusterR, centerR } = circleCluster(list.length, cs);
       const gx = Math.cos(hub.baseAngle) * centerR;
       const gy = Math.sin(hub.baseAngle) * centerR;
       list.forEach((n, i) => {
@@ -137,6 +179,21 @@ export function layoutFiles(w: LayoutWorld): void {
     planets.push(...centroidPlanets(hub, list));
   }
   w.planets = planets;
+}
+
+/**
+ * Circle layout: radius of a group's golden-spiral disc and the ring radius
+ * its centre sits on. A small cluster sits just outside the hub ring; as the
+ * group grows the disc keeps its far edge on the orbit clamp and extends
+ * inward (toward the skills ring) instead of freezing at one size, so a
+ * 50-file and an 800-file group read differently. Only a group whose disc
+ * would span the whole file band is capped.
+ */
+export function circleCluster(count: number, cs: number): { clusterR: number; centerR: number } {
+  const natural = (16 + Math.sqrt(Math.max(0, count)) * 7.5) * cs;
+  const clusterR = Math.min(natural, (ROW_MAX_RADIUS - ROW_MIN_RADIUS) / 2);
+  const centerR = Math.min(RING.hubs + clusterR + 26, ROW_MAX_RADIUS - clusterR);
+  return { clusterR, centerR };
 }
 
 /**
@@ -164,18 +221,21 @@ function layoutArcs(hub: Hub, list: FileNode[], cs: number, planets: Planet[]): 
     if (planetDirs.has(run.dir)) slots.push({ kind: "planet", run });
     for (const n of run.files) slots.push({ kind: "file", node: n });
   }
+  const { radii, spacing: pitchSpacing } = planArcRows(slots.length, span, spacing, rowStep);
   let row = 0;
   let i = 0;
   while (i < slots.length) {
-    const radius = RING.filesInner + 14 + row * rowStep;
-    const perRow = Math.max(1, Math.floor((span * radius) / spacing));
+    // Past the planned rows (never for a sane plan) the last radius repeats:
+    // the orbit clamp matters more than a perfectly even last row.
+    const radius = radii[Math.min(row, radii.length - 1)]!;
+    const perRow = Math.max(1, Math.floor((span * radius) / pitchSpacing));
     const count = Math.min(perRow, slots.length - i);
     // A single row holding the whole group spreads across its sector: packing
     // it at fixed spacing would bunch a lone department into a short arc at
     // the sector's centre instead of wrapping the ring. Any later (partial)
     // row stays centred so it reads balanced under the full rows above it.
     const onlyRow = row === 0 && count === slots.length && count > 1;
-    const pitch = onlyRow ? span / count : spacing / radius;
+    const pitch = onlyRow ? span / count : pitchSpacing / radius;
     const offset = onlyRow ? pitch / 2 : (span - pitch * (count - 1)) / 2;
     for (let j = 0; j < count; j++) {
       const angle = start + offset + pitch * j;
@@ -199,6 +259,38 @@ function layoutArcs(hub: Hub, list: FileNode[], cs: number, planets: Planet[]): 
     i += count;
     row++;
   }
+}
+
+/**
+ * Row radii (ascending) and arc pitch for `n` slots in a sector of `span`
+ * radians. Rows start at the first file row and march outward until the
+ * orbit clamp; when that is not enough, rows are added inward first, then
+ * the pitch tightens until everything fits. Rows never cross the routines
+ * orbit.
+ */
+export function planArcRows(
+  n: number,
+  span: number,
+  spacing: number,
+  rowStep: number,
+): { radii: number[]; spacing: number } {
+  const outward: number[] = [];
+  for (let r = ROW_FIRST_RADIUS; r <= ROW_MAX_RADIUS + 1e-9; r += rowStep) outward.push(r);
+  const capacity = (radii: number[], sp: number) =>
+    radii.reduce((sum, r) => sum + Math.max(1, Math.floor((span * r) / sp)), 0);
+  let radii = outward;
+  if (capacity(radii, spacing) >= n) return { radii, spacing };
+  // Add rows inward (toward the skills ring) before packing tighter.
+  const inward: number[] = [];
+  for (let r = ROW_FIRST_RADIUS - rowStep; r >= ROW_MIN_RADIUS; r -= rowStep) inward.unshift(r);
+  radii = [...inward, ...outward];
+  let sp = spacing;
+  for (let guard = 0; guard < 12 && capacity(radii, sp) < n; guard++) {
+    const cap = capacity(radii, sp);
+    sp = Math.max(ARC_MIN_SPACING, sp * (cap / n) * 0.97);
+    if (sp === ARC_MIN_SPACING) break;
+  }
+  return { radii, spacing: sp };
 }
 
 /** Consecutive files of the same directory (list must already be in arc order). */

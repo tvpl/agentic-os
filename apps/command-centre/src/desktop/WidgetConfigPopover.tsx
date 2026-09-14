@@ -6,7 +6,7 @@
  */
 import { Popover } from "../components/primitives";
 import { useT, type TKey } from "../i18n";
-import type { WidgetConfig } from "./defaultLayout";
+import type { WidgetConfig } from "./widgetTypes";
 import { defaultConfig, type WidgetDefinition } from "./registry";
 import { cfgBool, cfgNumber, cfgString, type ConfigField } from "./widgetTypes";
 

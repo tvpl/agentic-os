@@ -3,17 +3,8 @@
  * Deterministic: no Math.random(); every particle gets a start point, a
  * delay in arc order and a spring or eased curve toward its live target.
  */
-import { orderFiles, targetOf } from "./layouts";
-import {
-  EXPLOSION_S,
-  LAYOUT_TWEEN_S,
-  RING,
-  clampZoom,
-  type FileNode,
-  type Hub,
-  type Trip,
-  type World,
-} from "./world";
+import { orderFiles } from "./layouts";
+import { EXPLOSION_S, LAYOUT_TWEEN_S, type FileNode, type Hub, type Trip, type World } from "./world";
 
 /** Stagger between consecutive files of a fan (seconds); capped so big hubs stay snappy. */
 const FAN_STAGGER = 0.004;
@@ -70,39 +61,6 @@ export function startLayoutTween(w: Pick<World, "files" | "time">): void {
     n.vx = 0;
     n.vy = 0;
   }
-}
-
-/**
- * Camera target that frames a hub and its files (rotated targets) inside a
- * viewport of `width × height` with padding; zoom is clamped and never below
- * the current one by more than a fit requires.
- */
-export function frameSector(
-  w: Pick<World, "files" | "theta">,
-  hub: Pick<Hub, "key" | "baseAngle">,
-  view: { width: number; height: number },
-  padding = 90,
-): { x: number; y: number; k: number } {
-  const members = w.files.filter((n) => n.group === hub.key);
-  const hx = Math.cos(hub.baseAngle + w.theta) * RING.hubs;
-  const hy = Math.sin(hub.baseAngle + w.theta) * RING.hubs;
-  let minX = hx;
-  let maxX = hx;
-  let minY = hy;
-  let maxY = hy;
-  for (const n of members) {
-    const [tx, ty] = targetOf(n, w.theta);
-    if (tx < minX) minX = tx;
-    if (tx > maxX) maxX = tx;
-    if (ty < minY) minY = ty;
-    if (ty > maxY) maxY = ty;
-  }
-  const bw = Math.max(40, maxX - minX + padding);
-  const bh = Math.max(40, maxY - minY + padding);
-  const k = clampZoom(Math.min(view.width / bw, view.height / bh, 4));
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
-  return { x: -cx * k, y: -cy * k, k };
 }
 
 /** Ease-out cubic (layout switch). */

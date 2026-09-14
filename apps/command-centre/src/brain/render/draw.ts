@@ -9,11 +9,26 @@ import {
   ROUTINE_COLOR,
   SKILL_COLOR,
   TWO_PI,
-  WORLD_EXTENT,
+  minimapExtentFor,
   type EdgeKind,
   type World,
 } from "../engine/world";
 import { drawClock, drawFolderGlyph, drawPixelCore, drawPlanet, quadPoint } from "./glyphs";
+import {
+  LABEL_FONT_PX,
+  LABEL_BASELINE_PX,
+  LabelPlacer,
+  LabelRanker,
+  LabelWidthCache,
+  RING_LABEL_ANGLES,
+  fileLabelBox,
+  labelAlpha,
+  placeHubLabel,
+  placeRanked,
+  planetLabelAlpha,
+  quantiseNow,
+  truncate,
+} from "./labels";
 import type { SpriteSet } from "./sprites";
 import type { CanvasTokens } from "./tokens";
 
@@ -48,11 +63,19 @@ export interface FrameOptions {
   ringDefs: RingDef[];
   background: HTMLCanvasElement | null;
   coreLabel: string;
+  /** Wall clock (ms) for recency ranking of labels; defaults to Date.now(). */
+  now?: number;
+  /** Frame-to-frame label scratch state (typed-array ranking, measured widths); module-shared when absent. */
+  labelRanker?: LabelRanker;
+  labelWidths?: LabelWidthCache;
 }
 
 /** Max edges drawn per frame; beyond it the faint kinds are dropped first. */
 const EDGE_BUDGET = 4000;
 const PULSE_BUDGET = 240;
+/** Fallback label scratch state for callers that do not keep their own. */
+const sharedRanker = new LabelRanker();
+const sharedWidths = new LabelWidthCache();
 
 export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptions): void {
   const { width: cw, height: ch, tNow, tokens, sprites, reduceMotion } = o;
@@ -140,19 +163,17 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
   drawEdges(ctx, w, o, hubByKey);
 
   // ---- file particles (additive) ----
-  let labelBudget = 240;
-  const showLabels = w.showNames || k > 1.9;
-  // Greedy label collision (Onda 4): a label that would overlap one already
-  // placed this frame is skipped; selected and matched files always win.
-  const placed: number[] = [];
-  const labelH = 12 / k;
-  const overlaps = (x1: number, y1: number, x2: number, y2: number): boolean => {
-    for (let i = 0; i < placed.length; i += 4) {
-      if (x1 < placed[i + 2]! && x2 > placed[i]! && y1 < placed[i + 3]! && y2 > placed[i + 1]!) return true;
-    }
-    return false;
-  };
-  for (const n of w.files) {
+  // Labels: an alpha ramp over zoom (no hard cut), then the budget goes to
+  // the most important files (selected > hover / focus neighbours > matched >
+  // pinned > degree > recency) with greedy collision; only the selected label
+  // may overlap others.
+  const lblAlpha = labelAlpha(k, w.showNames);
+  const ranker = o.labelRanker ?? sharedRanker;
+  ranker.begin(w.files.length);
+  const sizes = new Float32Array(w.files.length);
+  const alphas = new Float32Array(w.files.length);
+  for (let i = 0; i < w.files.length; i++) {
+    const n = w.files[i]!;
     if (n.visAlpha <= 0.01) continue;
     const color = n.tint ?? w.colorOf.get(n.group) ?? tokens.particle;
     const hub = hubByKey.get(n.group);
@@ -164,6 +185,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
     if (!reduceMotion && alpha > 0.2) alpha *= 0.75 + 0.25 * Math.sin(tNow * 1.5 + n.phase);
     const boost = selected ? 2.1 : w.matched?.has(n.id) ? 1.6 : 1;
     const size = n.r * w.nodeScale * boost * (1 + 0.12 * Math.sin(n.phase));
+    sizes[i] = size;
     ctx.globalAlpha = alpha;
     ctx.drawImage(sprites.glow(color), n.x - size * 2.6, n.y - size * 2.6, size * 5.2, size * 5.2);
     if (n.pinned) {
@@ -176,33 +198,38 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
       ctx.stroke();
       ctx.globalCompositeOperation = tokens.blend;
     }
-    const wantLabel =
-      selected ||
-      (w.matched?.has(n.id) ?? false) ||
-      (showLabels &&
-        !dimByFilter &&
-        !dimBySearch &&
-        collapsedDim === 1 &&
-        n.hoverAlpha > 0.5 &&
-        labelBudget > 0);
-    if (wantLabel && labelBudget > 0) {
-      const text = n.name.length > 26 ? n.name.slice(0, 24) + "…" : n.name;
-      ctx.font = `${10 / k}px ${mono}`;
-      const x1 = n.x + size + 5 / k;
-      const y1 = n.y - 7 / k;
-      const x2 = x1 + ctx.measureText(text).width;
-      const y2 = y1 + labelH;
-      const priority = selected || (w.matched?.has(n.id) ?? false);
-      if (priority || !overlaps(x1, y1, x2, y2)) {
-        labelBudget--;
-        placed.push(x1, y1, x2, y2);
-        ctx.globalCompositeOperation = "source-over";
-        ctx.globalAlpha = (selected ? 1 : 0.7) * n.visAlpha;
-        ctx.fillStyle = textDim;
-        ctx.fillText(text, x1, n.y + 3 / k);
-        ctx.globalCompositeOperation = tokens.blend;
-      }
+    const forced = selected || (w.matched?.has(n.id) ?? false) || w.hoverId === n.id;
+    const ramped = lblAlpha > 0 && !dimByFilter && !dimBySearch && collapsedDim === 1 && n.hoverAlpha > 0.5;
+    if (forced || ramped) {
+      alphas[i] = (forced ? 1 : lblAlpha) * n.visAlpha;
+      ranker.add(i);
     }
+  }
+  ctx.globalAlpha = 1;
+  const placer = new LabelPlacer();
+  if (ranker.size > 0) {
+    ctx.globalCompositeOperation = "source-over";
+    const baseFont = `${LABEL_FONT_PX}px ${mono}`;
+    const scaledFont = `${LABEL_FONT_PX / k}px ${mono}`;
+    const widths = o.labelWidths ?? sharedWidths;
+    ctx.font = scaledFont;
+    ctx.fillStyle = textDim;
+    const ranked = ranker.rank(w, w.files, quantiseNow(o.now ?? Date.now()));
+    placeRanked(ranked, (i) => {
+      const n = w.files[i]!;
+      const selected = w.selectedId === n.id;
+      const text = truncate(n.name, 26);
+      const x1 = n.x + sizes[i]! + 5 / k;
+      const width = widths.width(ctx, text, baseFont, scaledFont) / k;
+      const [bx1, by1, bx2, by2] = fileLabelBox(x1, n.y, width, k);
+      if (selected) placer.place(bx1, by1, bx2, by2);
+      else if (!placer.tryPlace(bx1, by1, bx2, by2)) return false;
+      ctx.globalAlpha = (selected ? 1 : 0.7) * alphas[i]!;
+      ctx.fillStyle = selected ? tokens.text : textDim;
+      ctx.fillText(text, x1, n.y + LABEL_BASELINE_PX / k);
+      return true;
+    });
+    ctx.globalCompositeOperation = tokens.blend;
   }
   ctx.globalAlpha = 1;
 
@@ -267,7 +294,8 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
 
-  // ---- sub-folder planets ----
+  // ---- sub-folder planets (count beside, folder name below once zoomed in) ----
+  const planetNameAlpha = planetLabelAlpha(k);
   for (const p of w.planets) {
     const hub = hubByKey.get(p.hubKey);
     if (!hub || !hub.expanded) continue;
@@ -284,6 +312,27 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
       hovered ? accent : textDim,
       dim * (hovered ? 1 : 0.85),
     );
+    const nameAlpha = hovered ? 1 : planetNameAlpha;
+    if (nameAlpha > 0) {
+      const name = truncate(p.label, 18);
+      ctx.font = `700 ${9 / k}px ${font}`;
+      ctx.textAlign = "center";
+      const width = ctx.measureText(name).width;
+      const y2 = p.y + 14 / k;
+      const box: [number, number, number, number] = [
+        p.x - width / 2,
+        y2 - 8 / k,
+        p.x + width / 2,
+        y2 + 2 / k,
+      ];
+      if (hovered || placer.tryPlace(...box)) {
+        ctx.globalAlpha = nameAlpha * dim * 0.85;
+        ctx.fillStyle = hovered ? accent : hub.color;
+        ctx.fillText(name, p.x, y2);
+      }
+      ctx.textAlign = "start";
+      ctx.globalAlpha = 1;
+    }
   }
 
   // ---- structure orbs ----
@@ -339,6 +388,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
   }
 
   // ---- memory hubs: halo sprite + disc + glyph + label with count beside it ----
+  const hubPlacer = new LabelPlacer();
   for (const hub of w.hubs) {
     const active = w.filterGroup === hub.key || w.hoverKey === `hub:${hub.key}`;
     const rr = active ? 13 : 10.5;
@@ -351,18 +401,26 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
     ctx.fillStyle = hub.color;
     ctx.fill();
     drawFolderGlyph(ctx, hub.x, hub.y, rr * 0.9, tokens.glyphInk);
-    const label = hub.key.toUpperCase();
-    const short = label.length > 16 ? label.slice(0, 15) + "…" : label;
+    const short = truncate(hub.key.toUpperCase(), 16);
     ctx.font = `800 ${11.5 / k}px ${font}`;
     ctx.textAlign = "center";
-    ctx.fillStyle = active ? accent : textDim;
     const labelW = ctx.measureText(short).width;
-    ctx.fillText(short, hub.x, hub.y - rr - 7 / k);
+    ctx.font = `800 ${9 / k}px ${mono}`;
+    const countW = ctx.measureText(String(hub.count)).width + 4 / k;
+    // Hub names are collision-aware: a name that would sit on another hub's
+    // label steps outward along the hub's radius (up to three label heights).
+    const labelH = 13 / k;
+    const spot = placeHubLabel(hubPlacer, hub, labelW + countW, labelH, rr + 7 / k);
+    ctx.font = `800 ${11.5 / k}px ${font}`;
+    ctx.fillStyle = active ? accent : textDim;
+    ctx.globalAlpha = spot.free ? 1 : 0.55;
+    ctx.fillText(short, spot.x - countW / 2, spot.y);
     ctx.font = `800 ${9 / k}px ${mono}`;
     ctx.fillStyle = faint;
     ctx.textAlign = "left";
-    ctx.fillText(String(hub.count), hub.x + labelW / 2 + 4 / k, hub.y - rr - 7 / k);
+    ctx.fillText(String(hub.count), spot.x - countW / 2 + labelW / 2 + 4 / k, spot.y);
     ctx.textAlign = "start";
+    ctx.globalAlpha = 1;
     if (!hub.expanded) {
       ctx.strokeStyle = hub.color;
       ctx.globalAlpha = 0.6;
@@ -382,19 +440,23 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
 
   // ---- ring labels, drawn last: orbs ride these rings and would otherwise
   // cover the word. A short band of the page background keeps them readable.
-  for (const ring of o.ringDefs) {
+  // Each ring gets its own angle so the four names never stack on one meridian.
+  o.ringDefs.forEach((ring, ri) => {
     const size = 15 / Math.max(0.7, k);
     ctx.font = `800 ${size}px ${font}`;
     ctx.textAlign = "center";
-    const ly = -ring.r + RING.labelPad / k - 4;
+    const a = RING_LABEL_ANGLES[ri % RING_LABEL_ANGLES.length]!;
+    const rad = ring.r - RING.labelPad / k + 4;
+    const lx = Math.cos(a) * rad;
+    const ly = Math.sin(a) * rad + size * 0.35;
     const bw = ctx.measureText(ring.label).width + size * 0.9;
     ctx.globalAlpha = 0.88 * ringAlpha;
     ctx.fillStyle = tokens.bg;
-    ctx.fillRect(-bw / 2, ly - size * 0.86, bw, size * 1.18);
+    ctx.fillRect(lx - bw / 2, ly - size * 0.86, bw, size * 1.18);
     ctx.fillStyle = ring.color;
     ctx.globalAlpha = 0.82 * ringAlpha;
-    ctx.fillText(ring.label, 0, ly);
-  }
+    ctx.fillText(ring.label, lx, ly);
+  });
   ctx.textAlign = "start";
   ctx.globalAlpha = 1;
   ctx.textAlign = "start";
@@ -536,7 +598,10 @@ export function drawMinimap(
   const needLayer = !st.layer || st.layerStamp !== layerStamp || o.filesMoved;
   if (!needLayer && st.rectStamp === rectStamp) return;
 
-  const scale = cssW / WORLD_EXTENT;
+  // The map covers the ring guides or the content, whichever reaches further
+  // (force / circle layouts spill past the apps orbit); nothing is clipped.
+  if (needLayer) w.minimapExtent = minimapExtentFor(w.files);
+  const scale = Math.min(cssW, cssH) / w.minimapExtent;
   if (needLayer) {
     if (!st.layer) st.layer = document.createElement("canvas");
     const layer = st.layer;

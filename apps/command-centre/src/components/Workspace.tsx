@@ -5,29 +5,18 @@ import {
   CalendarClock,
   ChevronDown,
   ChevronUp,
-  Compass,
-  Focus,
   Grid3x3,
+  Layers,
   LayoutDashboard,
   ListTree,
   Settings,
   Sparkles,
 } from "lucide-react";
 import { useT, type TKey } from "../i18n";
+import { useOsSettings } from "../queries";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import "./workspace.css";
 
-export type WorkspaceMode = "overview" | "focus" | "explore";
-const MODES: WorkspaceMode[] = ["overview", "focus", "explore"];
-const MODE_KEY = "mordomo.workspace.mode";
-function initialMode(): WorkspaceMode {
-  try {
-    const mode = localStorage.getItem(MODE_KEY);
-    return MODES.includes(mode as WorkspaceMode) ? (mode as WorkspaceMode) : "overview";
-  } catch {
-    return "overview";
-  }
-}
 export type RenderProfile = "auto" | "immersive" | "economy";
 function initialProfile(): RenderProfile {
   try {
@@ -38,20 +27,15 @@ function initialProfile(): RenderProfile {
   }
 }
 const WorkspaceContext = createContext<{
-  mode: WorkspaceMode;
-  setMode: (mode: WorkspaceMode) => void;
   renderProfile: RenderProfile;
   setRenderProfile: (profile: RenderProfile) => void;
   economy: boolean;
 }>({
-  mode: "overview",
-  setMode: () => undefined,
   renderProfile: "auto",
   setRenderProfile: () => undefined,
   economy: false,
 });
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const [mode, updateMode] = useState(initialMode);
   const [renderProfile, updateProfile] = useState(initialProfile);
   const [reduced, setReduced] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   useEffect(() => {
@@ -75,17 +59,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       delete document.documentElement.dataset.renderProfile;
     };
   }, [economy]);
-  const setMode = useCallback((next: WorkspaceMode) => {
-    updateMode(next);
-    try {
-      localStorage.setItem(MODE_KEY, next);
-    } catch {
-      /* session-only when storage is unavailable */
-    }
-  }, []);
   const value = useMemo(
-    () => ({ mode, setMode, renderProfile, setRenderProfile, economy }),
-    [mode, setMode, renderProfile, setRenderProfile, economy],
+    () => ({ renderProfile, setRenderProfile, economy }),
+    [renderProfile, setRenderProfile, economy],
   );
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
@@ -100,14 +76,68 @@ const APPS: Array<{ route: string; label: TKey; Icon: typeof BrainCircuit }> = [
   { route: "/pixel", label: "nav.pixel", Icon: Grid3x3 },
   { route: "/settings", label: "nav.settings", Icon: Settings },
 ];
-const MODE_ICONS = { overview: LayoutDashboard, focus: Focus, explore: Compass };
+
+/**
+ * The three desktop spaces (redesign F6). Each remembers its own windows, so
+ * switching is putting a context of work down and picking another up — which
+ * is what the old `overview` / `focus` / `explore` modes only pretended to
+ * be: they changed opacity and lost whatever you had arranged.
+ *
+ * The dock does not own the layout, so it asks: the desktop hears the event
+ * and performs the switch with the arrangement it has live, including a drag
+ * that has not been persisted yet.
+ */
+export const SWITCH_SPACE_EVENT = "mordomo:switch-space";
+
+/**
+ * A switch requested from another app: the dock navigates home first, so the
+ * desktop is not mounted yet and would never hear the event. The request is
+ * parked here and drained when the desktop comes up.
+ */
+let pendingSpace: string | null = null;
+export function requestSpace(id: string) {
+  pendingSpace = id;
+  window.dispatchEvent(new CustomEvent(SWITCH_SPACE_EVENT, { detail: id }));
+}
+export function takePendingSpace(): string | null {
+  const next = pendingSpace;
+  pendingSpace = null;
+  return next;
+}
+export const SPACE_IDS = ["work", "research", "ops"] as const;
+export type SpaceId = (typeof SPACE_IDS)[number];
+
+function SpaceSwitcher() {
+  const t = useT();
+  const navigate = useOsNavigate();
+  const { pathname } = useLocation();
+  const settings = useOsSettings();
+  const active = settings.data?.activeSpace ?? "work";
+  return (
+    <div className="dock-spaces" data-onboarding="modes" role="group" aria-label={t("desktop.space.title")}>
+      {SPACE_IDS.map((id) => (
+        <button
+          key={id}
+          type="button"
+          aria-pressed={active === id && pathname === "/"}
+          onClick={() => {
+            if (pathname !== "/") navigate("/");
+            requestSpace(id);
+          }}
+        >
+          <Layers aria-hidden />
+          <span>{t(`desktop.space.${id}`)}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 /** Persistent navigation: app changes never depend on reopening the launcher. */
 export function WorkspaceDock() {
   const t = useT();
   const navigate = useOsNavigate();
   const { pathname } = useLocation();
-  const { mode, setMode } = useWorkspace();
   const [collapsed, setCollapsed] = useState(false);
   return (
     <nav className={`workspace-dock${collapsed ? " collapsed" : ""}`} aria-label={t("desktop.dock.title")}>
@@ -128,30 +158,7 @@ export function WorkspaceDock() {
               </button>
             ))}
           </div>
-          <div
-            className="dock-modes"
-            data-onboarding="modes"
-            role="group"
-            aria-label={t("desktop.mode.title")}
-          >
-            {MODES.map((value) => {
-              const Icon = MODE_ICONS[value];
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={mode === value && pathname === "/"}
-                  onClick={() => {
-                    setMode(value);
-                    if (pathname !== "/") navigate("/");
-                  }}
-                >
-                  <Icon aria-hidden />
-                  <span>{t(`desktop.mode.${value}`)}</span>
-                </button>
-              );
-            })}
-          </div>
+          <SpaceSwitcher />
         </>
       )}
       <button

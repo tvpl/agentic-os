@@ -1,0 +1,225 @@
+/**
+ * Reading, clamping and persisting the desktop's window layout (redesign F4a).
+ *
+ * Ported from the grid's `useLayoutState`: the debounce, the optimistic
+ * commit, the conflict handshake and the config mirror are unchanged — only
+ * the geometry moved from grid cells to stage pixels. The one new rule is
+ * that a stage resize clamps but never persists: shrinking the app window
+ * must not silently rewrite the arrangement made on a larger screen.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ApiError, api, type SettingsDoc } from "../api";
+import { qk } from "../queries";
+import { minFor, normalizeWindows } from "./defaultWindows";
+import { clampLayout, layoutsEqual, type Size, type WindowMap } from "./windowModel";
+import { shouldStack } from "./defaultLayout";
+
+export interface StageMetrics extends Size {
+  /** Narrow viewport: windows collapse into one scrollable column. */
+  stacked: boolean;
+}
+
+/**
+ * The stage's own box, measured from its element. Memoized on the numbers so
+ * a consumer that reports it upward does not feed a parent → child → effect
+ * → parent loop on every render.
+ */
+export function useStageSize(ref: React.RefObject<HTMLElement>): StageMetrics {
+  const [size, setSize] = useState({ w: 1200, h: 700 });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () =>
+      setSize((prev) =>
+        prev.w === el.clientWidth && prev.h === el.clientHeight
+          ? prev
+          : { w: el.clientWidth, h: el.clientHeight },
+      );
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  const stacked = shouldStack(window.innerWidth, window.innerHeight);
+  return useMemo(() => ({ w: size.w, h: size.h, stacked }), [size.w, size.h, stacked]);
+}
+
+const PERSIST_DEBOUNCE_MS = 300;
+const CONFIG_MIRROR_KEY = "mordomo.desktop.widgetConfig";
+
+/**
+ * Per-widget `config` mirrored in localStorage: the server settings schema
+ * may not carry `config` yet (it strips unknown keys), so the mirror keeps
+ * user choices alive until it does. Server wins when present.
+ */
+function readConfigMirror(): Record<string, Record<string, unknown>> {
+  try {
+    const raw = localStorage.getItem(CONFIG_MIRROR_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, Record<string, unknown>>) : {};
+  } catch {
+    return {};
+  }
+}
+function writeConfigMirror(layout: WindowMap) {
+  try {
+    const out: Record<string, Record<string, unknown>> = {};
+    for (const [id, box] of Object.entries(layout)) if (box.config) out[id] = box.config;
+    localStorage.setItem(CONFIG_MIRROR_KEY, JSON.stringify(out));
+  } catch {
+    /* ignore */
+  }
+}
+function mergeMirror(layout: WindowMap): WindowMap {
+  const mirror = readConfigMirror();
+  let changed = false;
+  const out: WindowMap = { ...layout };
+  for (const [id, cfg] of Object.entries(mirror)) {
+    const box = out[id];
+    if (box && !box.config) {
+      out[id] = { ...box, config: cfg };
+      changed = true;
+    }
+  }
+  return changed ? out : layout;
+}
+
+export interface WindowLayoutState {
+  layout: WindowMap;
+  /** Apply a new layout locally and persist it (debounced). */
+  commit: (next: WindowMap) => void;
+  saving: boolean;
+  /** Local changes not yet confirmed by the server. */
+  dirty: boolean;
+  conflict: boolean;
+  resolveConflict: (keepLocal: boolean) => Promise<void>;
+}
+
+export function useWindowLayout({
+  serverLayout,
+  stage,
+  spaceId,
+  editing,
+  onError,
+}: {
+  serverLayout: Partial<Record<string, Partial<WindowMap[string]>>> | undefined;
+  stage: Size;
+  /**
+   * The space the layout belongs to. A switch replaces the whole arrangement,
+   * so the server's layout is adopted even when local edits are still in
+   * flight — otherwise the desktop would keep showing the space you left.
+   */
+  spaceId?: string;
+  editing: boolean;
+  onError: (err: Error) => void;
+}): WindowLayoutState {
+  const qc = useQueryClient();
+  const [layout, setLayout] = useState<WindowMap>(() => mergeMirror(normalizeWindows(serverLayout, stage)));
+  const [dirty, setDirty] = useState(false);
+  const [conflict, setConflict] = useState(false);
+  const baseRef = useRef(serverLayout ?? {});
+  const latestRef = useRef(layout);
+  const timerRef = useRef<number>();
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+
+  const mutation = useMutation({
+    scope: { id: "desktop-layout" },
+    mutationFn: (next: WindowMap) =>
+      api.put<{ settings: SettingsDoc }>("/api/settings", {
+        dashboardLayout: next,
+        dashboardLayoutBase: baseRef.current,
+      }),
+    onSuccess: (data, vars) => {
+      baseRef.current = data.settings?.dashboardLayout ?? vars;
+      setConflict(false);
+      if (vars === latestRef.current) setDirty(false);
+      qc.invalidateQueries({ queryKey: qk.settings }).catch(() => undefined);
+    },
+    onError: (err: Error) => {
+      if (err instanceof ApiError && err.code === "layout_conflict") setConflict(true);
+      else onErrorRef.current(err);
+    },
+  });
+  const { mutate, isPending } = mutation;
+
+  // A space switch adopts unconditionally: it is not a competing edit, it is
+  // a different desktop.
+  const spaceRef = useRef(spaceId);
+  useEffect(() => {
+    if (spaceId === spaceRef.current) return;
+    spaceRef.current = spaceId;
+    setDirty(false);
+    setLayout(normalizeWindows(serverLayout, stage));
+  }, [spaceId, serverLayout, stage]);
+
+  // Adopt the server layout only when idle: not editing, nothing pending, nothing dirty.
+  useEffect(() => {
+    if (editing || isPending || dirty || !serverLayout) return;
+    baseRef.current = serverLayout;
+    const next = mergeMirror(normalizeWindows(serverLayout, stage));
+    setLayout((prev) => (layoutsEqual(prev, next) ? prev : next));
+  }, [serverLayout, stage, editing, isPending, dirty]);
+
+  // The stage changed size: pull the windows back into view. Not a user
+  // edit, so it is never persisted — resizing the app must not rewrite the
+  // layout the user arranged on a bigger screen.
+  useEffect(() => {
+    setLayout((prev) => {
+      const next = clampLayout(prev, stage, minFor);
+      return layoutsEqual(prev, next) ? prev : next;
+    });
+  }, [stage]);
+
+  useEffect(() => {
+    latestRef.current = layout;
+  }, [layout]);
+
+  const commit = useCallback(
+    (next: WindowMap) => {
+      latestRef.current = next;
+      setLayout(next);
+      setDirty(true);
+      writeConfigMirror(next);
+      window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(() => {
+        timerRef.current = undefined;
+        mutate(next);
+      }, PERSIST_DEBOUNCE_MS);
+    },
+    [mutate],
+  );
+
+  // Flush a pending save on unmount (navigating away right after a drag).
+  useEffect(
+    () => () => {
+      if (timerRef.current !== undefined) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = undefined;
+        mutate(latestRef.current);
+      }
+    },
+    [mutate],
+  );
+
+  const resolveConflict = async (keepLocal: boolean) => {
+    try {
+      const current = await api.get<SettingsDoc>("/api/settings");
+      baseRef.current = current.dashboardLayout;
+      qc.setQueryData(qk.settings, current);
+      if (keepLocal) mutate(latestRef.current);
+      else {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = undefined;
+        const next = mergeMirror(normalizeWindows(current.dashboardLayout, stage));
+        latestRef.current = next;
+        setLayout(next);
+        setDirty(false);
+        setConflict(false);
+      }
+    } catch (error) {
+      onErrorRef.current(error as Error);
+    }
+  };
+  return { layout, commit, saving: isPending, dirty, conflict, resolveConflict };
+}

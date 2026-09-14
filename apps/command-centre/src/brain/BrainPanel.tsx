@@ -1,4 +1,3 @@
-import { usePanelPreference } from "./usePanelPreference";
 /**
  * Control panel of the Second Brain: search, layout / view, typed-edge
  * toggles, local mode, filters, query groups, timeline, expand / collapse,
@@ -57,6 +56,9 @@ export interface BrainPanelProps {
   onReset: () => void;
   listOpen: boolean;
   onToggleList: () => void;
+  /** Collapsed to its toggle chip (owned by the container: the camera needs the panel width). */
+  collapsed: boolean;
+  onCollapse: (collapsed: boolean) => void;
   onBake: () => void;
   hygiene: HygieneReport;
   dangling: string[];
@@ -109,7 +111,7 @@ export function BrainPanel(p: BrainPanelProps) {
   const t = useT();
   const { ui, patch } = p;
   const ids = useId();
-  const [collapsed, setCollapsed] = usePanelPreference("controls", false);
+  const { collapsed, onCollapse: setCollapsed } = p;
   const focusSearch = useRef(false);
   useEffect(() => {
     if (!collapsed) {

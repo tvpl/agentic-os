@@ -4,7 +4,8 @@ import { useMutation } from "@tanstack/react-query";
 import { Plus, Search, Sparkles, Star, Upload, Store } from "lucide-react";
 import { api, type ProviderId, type Skill } from "../../api";
 import { qk, useInvalidate } from "../../queries";
-import { useT } from "../../i18n";
+import { useLang, useT } from "../../i18n";
+import { localizeSkill, skillSearchText } from "./localize";
 import { useToast } from "../../components/ui";
 import { Badge, Button, EmptyState, Segmented } from "../../components/primitives";
 import { errorMessage } from "../shared";
@@ -19,6 +20,7 @@ const MAX_META_BADGES = 3;
 
 export default function SkillList({ skills }: { skills: Skill[] }) {
   const t = useT();
+  const lang = useLang();
   const toast = useToast();
   const invalidate = useInvalidate();
   // `/skills?new=1&prompt=…` (the did-it-twice suggestion) opens the modal pre-filled.
@@ -46,12 +48,11 @@ export default function SkillList({ skills }: { skills: Skill[] }) {
         (provider === "all" || s.providers.includes(provider)) &&
         (!favOnly || s.favorite) &&
         (!q ||
-          s.name.toLowerCase().includes(q) ||
           s.slug.includes(q) ||
-          s.description.toLowerCase().includes(q) ||
+          skillSearchText(s, lang).includes(q) ||
           s.triggers.some((tr) => tr.toLowerCase().includes(q))),
     );
-  }, [skills, query, mode, provider, favOnly]);
+  }, [skills, query, mode, provider, favOnly, lang]);
 
   const hasFilters = query.trim() !== "" || mode !== "all" || provider !== "all" || favOnly;
   const clearFilters = () => {
@@ -183,6 +184,7 @@ export default function SkillList({ skills }: { skills: Skill[] }) {
 
 function SkillCard({ skill: s, onFavorite, favoriteBusy }: { skill: Skill; onFavorite: () => void; favoriteBusy: boolean }) {
   const t = useT();
+  const { name, description } = localizeSkill(s, useLang());
   const meta: Array<{ key: string; label: string; tone?: "warn" }> = [
     { key: "lines", label: `${s.bodyLineCount} ${t("skills.lines")}` },
     ...s.providers.map((p) => ({ key: `p-${p}`, label: p })),
@@ -195,7 +197,7 @@ function SkillCard({ skill: s, onFavorite, favoriteBusy }: { skill: Skill; onFav
       <div className="skill-card-head">
         <div className="min0">
           <h3>
-            <Link to={`/skills/${s.slug}`}>{s.name}</Link>
+            <Link to={`/skills/${s.slug}`}>{name}</Link>
           </h3>
           <span className="mono skill-slug">/{s.slug}</span>
         </div>
@@ -203,13 +205,13 @@ function SkillCard({ skill: s, onFavorite, favoriteBusy }: { skill: Skill; onFav
           variant="ghost"
           size="sm"
           icon={<Star fill={s.favorite ? "currentColor" : "none"} color={s.favorite ? "var(--warn)" : "currentColor"} aria-hidden />}
-          aria-label={`${t("dash.favorites")}: ${s.name}`}
+          aria-label={`${t("dash.favorites")}: ${name}`}
           aria-pressed={!!s.favorite}
           loading={favoriteBusy}
           onClick={onFavorite}
         />
       </div>
-      <p className="skill-desc">{s.description.split("\n")[0]}</p>
+      <p className="skill-desc">{description.split("\n")[0]}</p>
       <div className="badge-row">
         <Badge kind="state" tone={s.mode === "write" ? "warn" : "info"}>
           {t(s.mode === "write" ? "skills.mode.write" : "skills.mode.read_only")}

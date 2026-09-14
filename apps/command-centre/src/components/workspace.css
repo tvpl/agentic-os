@@ -17,14 +17,14 @@
     inset 0 1px 0 color-mix(in srgb, var(--text) 8%, transparent);
 }
 .dock-apps,
-.dock-modes {
+.dock-spaces {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 .dock-app,
 .dock-collapse,
-.dock-modes button {
+.dock-spaces button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -48,12 +48,12 @@
   height: 20px;
 }
 .dock-app.active,
-.dock-modes button[aria-pressed="true"] {
+.dock-spaces button[aria-pressed="true"] {
   background: var(--accent-soft);
   color: var(--accent-text);
 }
 [data-theme="light"] .dock-app.active,
-[data-theme="light"] .dock-modes button[aria-pressed="true"] {
+[data-theme="light"] .dock-spaces button[aria-pressed="true"] {
   color: var(--text);
 }
 .dock-app:hover {
@@ -78,16 +78,16 @@
 .dock-app:focus-visible .dock-tooltip {
   opacity: 1;
 }
-.dock-modes {
+.dock-spaces {
   border-left: 1px solid var(--border);
   padding-left: 12px;
 }
-.dock-modes button {
+.dock-spaces button {
   gap: 6px;
   padding: 10px;
   font-size: var(--fs-2);
 }
-.dock-modes svg,
+.dock-spaces svg,
 .dock-collapse svg {
   width: 16px;
   height: 16px;
@@ -166,23 +166,10 @@
 .os-root .hud-overlay::after {
   opacity: 0.5;
 }
+/* Surface, edge, shadow and header typography of the desktop window are
+   owned by desktop.css (widget chrome); only the roomier padding lives here. */
 .desktop .widget-inner {
-  border-color: color-mix(in srgb, var(--text) 12%, transparent);
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
-  box-shadow: 0 8px 24px #0002;
   padding: 14px 16px;
-}
-.desktop .widget-inner > h2 {
-  color: var(--text-dim);
-  letter-spacing: 0.11em;
-}
-.desktop .widget::before {
-  opacity: 0.25;
-  border-radius: 12px;
-}
-.desktop .widget:hover::before,
-.desktop .widget:focus-within::before {
-  opacity: 0.8;
 }
 .desktop .now-next {
   border-radius: 10px;

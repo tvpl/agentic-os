@@ -1,16 +1,28 @@
+/**
+ * Fired when something outside the console changes the draft (a context
+ * reference, the onboarding hand-off). The console listens and re-reads.
+ */
+export const CONSOLE_DRAFT_EVENT = "mordomo:console-draft";
+
+/**
+ * Fired by the console when the set of `@references` in the draft changes.
+ * The desktop draws a tether to each referenced window, so the link the agent
+ * will receive is visible before the prompt is sent.
+ */
+export const CONSOLE_REFS_EVENT = "mordomo:console-refs";
+
 /** The text and its target must survive navigation together. */
 export interface ConsoleDraft {
   text: string;
   cwd: string;
-  /** Undefined only for legacy drafts without session ownership. */
+  /** Undefined when the draft predates an explicit conversation choice. */
   sessionId?: string | null;
 }
 const KEY = "mordomo.console.workspaceDraft.v1";
-const LEGACY_KEY = "mordomo.console.draft";
 // Route-to-route handoffs must still work when storage is disabled or full.
 let pendingDraft: ConsoleDraft | null = null;
 
-export function parseConsoleDraft(raw: string | null, legacy: string | null): ConsoleDraft {
+export function parseConsoleDraft(raw: string | null): ConsoleDraft {
   try {
     const value: unknown = raw ? JSON.parse(raw) : null;
     if (
@@ -30,12 +42,12 @@ export function parseConsoleDraft(raw: string | null, legacy: string | null): Co
   } catch {
     /* Invalid storage must not break the console. */
   }
-  return { text: legacy ?? "", cwd: "" };
+  return { text: "", cwd: "" };
 }
 export function readConsoleDraft(): ConsoleDraft {
   if (pendingDraft) return { ...pendingDraft };
   try {
-    return parseConsoleDraft(sessionStorage.getItem(KEY), sessionStorage.getItem(LEGACY_KEY));
+    return parseConsoleDraft(sessionStorage.getItem(KEY));
   } catch {
     return { text: "", cwd: "" };
   }
@@ -44,7 +56,6 @@ export function storeConsoleDraft(draft: ConsoleDraft): boolean {
   pendingDraft = { ...draft };
   try {
     sessionStorage.setItem(KEY, JSON.stringify({ version: 1, ...draft, sessionId: draft.sessionId ?? null }));
-    sessionStorage.removeItem(LEGACY_KEY);
     pendingDraft = null;
     return true;
   } catch {

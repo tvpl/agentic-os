@@ -115,9 +115,11 @@ export { generateRouters, checkRouters, areaSlug, type RouterIssue } from "./mem
 export { SkillCatalog, THICK_LINE_THRESHOLD } from "./skills/catalog.js";
 export {
   SkillFrontmatterSchema,
+  SkillI18nSchema,
   SkillInputSchema,
   type Skill,
   type SkillFrontmatter,
+  type SkillI18n,
   type SkillInput,
 } from "./skills/types.js";
 export { RoutineSchema, type Routine, type RoutineStatus } from "./routines/types.js";

@@ -11,6 +11,45 @@ export const SkillInputSchema = z.object({
 });
 export type SkillInput = z.infer<typeof SkillInputSchema>;
 
+const SkillI18nEntry = z.object({ name: z.string().optional(), description: z.string().optional() });
+
+/**
+ * Canonical UI language tag for a frontmatter key: `pt`, `pt_BR`, `PT-br`
+ * → `pt-BR`; `en`, `en-US`, `en_gb` → `en`. Unknown tags are lower-cased with
+ * their region upper-cased ("es-mx" → "es-MX").
+ */
+export function normalizeLangTag(raw: string): string {
+  const [lang = "", region] = raw.trim().replace(/_/g, "-").split("-");
+  const l = lang.toLowerCase();
+  if (l === "pt") return "pt-BR";
+  if (l === "en") return "en";
+  return region ? `${l}-${region.toUpperCase()}` : l;
+}
+
+/**
+ * Localized display name/description per UI language (e.g. "pt-BR"); the
+ * canonical fields stay what providers receive. Tolerant on purpose: a typo in
+ * a translation must never hide the whole skill from the catalog, so invalid
+ * entries are dropped (and language tags normalized) instead of rejected.
+ */
+export const SkillI18nSchema = z.preprocess((raw) => {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
+  const out: Record<string, { name?: string; description?: string }> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!key.trim() || typeof value !== "object" || value === null || Array.isArray(value)) continue;
+    // Field-level tolerance: keep the strings, drop anything else.
+    const entry: { name?: string; description?: string } = {};
+    const v = value as Record<string, unknown>;
+    if (typeof v.name === "string" && v.name.trim()) entry.name = v.name;
+    if (typeof v.description === "string" && v.description.trim()) entry.description = v.description;
+    if (!entry.name && !entry.description) continue;
+    const tag = normalizeLangTag(key);
+    out[tag] = { ...out[tag], ...entry };
+  }
+  return out;
+}, z.record(z.string(), SkillI18nEntry));
+export type SkillI18n = z.infer<typeof SkillI18nSchema>;
+
 export const SkillFrontmatterSchema = z.object({
   name: z.string(),
   slug: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
@@ -29,6 +68,7 @@ export const SkillFrontmatterSchema = z.object({
   guardrails: z.array(z.string()).default([]),
   successCriteria: z.array(z.string()).default([]),
   examples: z.array(z.string()).default([]),
+  i18n: SkillI18nSchema.optional(),
 });
 export type SkillFrontmatter = z.infer<typeof SkillFrontmatterSchema>;
 

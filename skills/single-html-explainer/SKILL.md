@@ -36,6 +36,10 @@ successCriteria:
   - Content is specific to the subject, not generic filler.
 examples:
   - "Explain the architecture of ./apps/api for a new contributor."
+i18n:
+  pt-BR:
+    name: "Explicador em HTML Único"
+    description: "Monta uma página HTML autocontida que explica um tema, projeto ou decisão com clareza — sem frameworks, sem chamadas de rede, pronta para abrir ou compartilhar."
 ---
 
 # Single-File HTML Explainer

@@ -1,27 +1,41 @@
 /**
- * Search mode over the artifact ring (analysis item 55). The magnifier (or
- * `/` while the desktop has focus) fades the widgets, greys the chips and
- * puts a single centred field on the core; only matching chips keep their
- * ring. Clicking one opens the detail modal — title, first lines, path and
- * open / reveal / close — while the desktop behind it is pushed back.
+ * Artifact search (analysis item 55). The magnifier — or `/` while the
+ * desktop has focus — fades the windows and puts a single centred field over
+ * the stage with its results under it. Choosing one opens the detail modal:
+ * title, first lines, path and open / reveal / close, with the desktop
+ * pushed back behind it.
+ *
+ * It used to highlight matching chips on the orbital ring; the ring is gone
+ * (redesign F4b), so the matches are a list you can actually read.
  */
-import { useEffect, useRef, useState } from "react";
-import { ExternalLink, FolderOpen, Search, X } from "lucide-react";
-import { api, artifactRawUrl, isRawViewable, type MemoryPreview } from "../api";
-import { useLocale, useT } from "../i18n";
-import { Button } from "../components/primitives";
-import { Modal, useToast } from "../components/ui";
-import type { RingChip } from "./ringChips";
+import { useEffect, useRef } from "react";
+import { Search, X } from "lucide-react";
+import { useT } from "../i18n";
+/** One search result: whatever the modal and the list need, nothing more. */
+export interface ArtifactHit {
+  key: string;
+  /** Base file name. */
+  label: string;
+  /** Human title (markdown heading / html title / file name). */
+  title: string;
+  path: string;
+  runId: string | null;
+  skillSlug: string | null;
+  ts: number;
+}
 
 export interface SearchBarProps {
   query: string;
   matches: number;
+  /** The matches themselves: without the ring there is nowhere else to show them. */
+  hits: readonly ArtifactHit[];
   onQuery: (q: string) => void;
+  onPick: (hit: ArtifactHit) => void;
   onClose: () => void;
 }
 
 /** The centred field: the term is shown in caps, with the match count under it. */
-export function SearchBar({ query, matches, onQuery, onClose }: SearchBarProps) {
+export function SearchBar({ query, matches, hits, onQuery, onPick, onClose }: SearchBarProps) {
   const t = useT();
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => ref.current?.focus(), []);
@@ -64,98 +78,18 @@ export function SearchBar({ query, matches, onQuery, onClose }: SearchBarProps) 
         </span>
         <span className="hud-label">{t("desktop.search.exit")}</span>
       </div>
-    </div>
-  );
-}
-
-const PREVIEW_LINES = 6;
-
-export function ArtifactModal({
-  chip,
-  onClose,
-  onOpenRun,
-}: {
-  chip: RingChip;
-  onClose: () => void;
-  onOpenRun: (runId: string) => void;
-}) {
-  const t = useT();
-  const locale = useLocale();
-  const toast = useToast();
-  const [preview, setPreview] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    api
-      .get<MemoryPreview>(`/api/memory/preview?p=${encodeURIComponent(chip.path)}`)
-      .then((res) => {
-        if (!alive) return;
-        const text =
-          res.kind === "text" && res.content
-            ? res.content
-                .split(/\r?\n/)
-                .filter((l) => l.trim())
-                .slice(0, PREVIEW_LINES)
-                .join("\n")
-            : "";
-        setPreview(text || null);
-      })
-      .catch(() => alive && setPreview(null));
-    return () => {
-      alive = false;
-    };
-  }, [chip.path]);
-
-  const folder = chip.path.slice(0, Math.max(chip.path.lastIndexOf("/"), chip.path.lastIndexOf("\\")));
-  const viewable = isRawViewable(chip.label);
-
-  const reveal = () => {
-    void navigator.clipboard?.writeText(folder).catch(() => undefined);
-    toast(t("desktop.search.revealed", { path: folder }), "ok");
-  };
-
-  return (
-    <Modal title={chip.title} onClose={onClose} className="art-modal" narrow>
-      <p className="modal-intro">
-        {chip.skillSlug ? `/${chip.skillSlug} · ` : ""}
-        {new Date(chip.ts).toLocaleString(locale, {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })}
-      </p>
-      {viewable ? (
-        <img className="art-modal-thumb" src={artifactRawUrl(chip.path)} alt={chip.title} loading="lazy" />
-      ) : (
-        <pre className="art-modal-preview mono">{preview ?? t("desktop.search.noPreview")}</pre>
+      {hits.length > 0 && (
+        <ul className="art-search-hits" aria-label={t("desktop.search.placeholder")}>
+          {hits.map((hit) => (
+            <li key={hit.key}>
+              <button type="button" className="art-hit" onClick={() => onPick(hit)}>
+                <span className="art-hit-title">{hit.title}</span>
+                <span className="art-hit-path">{hit.path}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
-      <p className="art-modal-path mono" title={chip.path}>
-        {chip.path}
-      </p>
-      <div className="head-actions">
-        {viewable ? (
-          <a className="btn sm primary" href={artifactRawUrl(chip.path)} target="_blank" rel="noreferrer">
-            <ExternalLink aria-hidden /> {t("desktop.search.openFile")}
-          </a>
-        ) : chip.runId ? (
-          <Button
-            size="sm"
-            variant="primary"
-            icon={<ExternalLink aria-hidden />}
-            onClick={() => onOpenRun(chip.runId!)}
-          >
-            {t("desktop.search.openRun")}
-          </Button>
-        ) : null}
-        <Button size="sm" variant="secondary" icon={<FolderOpen aria-hidden />} onClick={reveal}>
-          {t("desktop.search.reveal")}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onClose}>
-          {t("common.close")}
-        </Button>
-      </div>
-    </Modal>
+    </div>
   );
 }

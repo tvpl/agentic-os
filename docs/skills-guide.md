@@ -73,3 +73,20 @@ skill into:
 The compiler keeps a hash manifest; existing files it didn't write (or that you
 hand-edited) become **conflicts** that require per-file approval and are backed
 up before overwrite. The canonical skill never changes on export.
+
+## Localized name and description
+
+The UI runs in the language chosen in Settings, but `name` and `description`
+in the frontmatter are canonical (they are what the provider export compiles).
+To show a translated card, add an `i18n` block keyed by UI language:
+
+```yaml
+i18n:
+  pt-BR:
+    name: Revisão de Código
+    description: Revisa um diff, branch ou pasta...
+```
+
+Missing fields fall back to the canonical ones. Language tags are normalized
+(`pt`, `pt_BR` → `pt-BR`; `en-US` → `en`) and an invalid entry is dropped
+rather than rejecting the skill.

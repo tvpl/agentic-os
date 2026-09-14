@@ -1,68 +1,63 @@
 /**
- * Micro apps: the OS's own apps as rows (icon, name, one-line description,
- * arrow), then the connectors that exist but are not configured as ghosted
- * rows (`.ma-icon.ghost` / `.ma-name.dim`), then "+ Add app".
+ * Micro apps: the OS's own apps, then the connectors that exist but are not
+ * configured as ghosts (`.ma-icon.ghost` / `.ma-name.dim`), then "+ Add app".
+ *
+ * The box picks the shape: the "lg" height tier (9+ rows, maximized, stacked)
+ * gets descriptive rows (icon, name, one-line description, arrow; ~52 px
+ * each); every shorter tier gets icon tiles with the name only, which never
+ * clip. The description stays available to assistive tech in both shapes.
  */
 import { Link } from "react-router-dom";
-import { BrainCircuit, FolderOpen, Grid3x3, Images, Plug, Plus } from "lucide-react";
-import type { ReactNode } from "react";
+import { Plus } from "lucide-react";
+import { useId } from "react";
 import { useT } from "../../i18n";
-import { useOsConnectors } from "../../queries";
 import type { WidgetProps } from "../widgetTypes";
+import { heightTier, useWidgetSize } from "../widgetSize";
+import { useAppRows } from "../appRows";
 
-interface AppRow {
-  to: string;
-  icon: ReactNode;
-  name: string;
-  desc: string;
-  ghost?: boolean;
-}
-
-/** A connector counts as configured once its status leaves the "available" catalogue state. */
-export function isConfigured(status: string): boolean {
-  const s = status.toLowerCase();
-  return s === "connected" || s === "configured" || s === "ok" || s === "enabled";
-}
+export { isConfigured } from "../appRows";
 
 export default function MicroAppsWidget(_props: WidgetProps) {
   const t = useT();
-  const connectors = useOsConnectors({ staleTime: 60_000, retry: false });
+  const size = useWidgetSize();
+  const tier = heightTier(size);
+  const tiles = tier !== "lg";
+  const descId = useId();
+  const { apps, pending } = useAppRows(tier === "xs" ? 1 : 2);
 
-  const apps: AppRow[] = [
-    {
-      to: "/brain",
-      icon: <BrainCircuit aria-hidden />,
-      name: t("nav.brain"),
-      desc: t("microapp.brain.desc"),
-    },
-    { to: "/pixel", icon: <Grid3x3 aria-hidden />, name: t("nav.pixel"), desc: t("microapp.pixel.desc") },
-    {
-      to: "/generations",
-      icon: <Images aria-hidden />,
-      name: t("desktop.apps.generations"),
-      desc: t("desktop.apps.generationsDesc"),
-    },
-    {
-      to: "/artifacts",
-      icon: <FolderOpen aria-hidden />,
-      name: t("desktop.apps.artifacts"),
-      desc: t("desktop.apps.artifactsDesc"),
-    },
-  ];
-
-  const pending = (connectors.data ?? [])
-    .filter((c) => !isConfigured(c.status))
-    .slice(0, 2)
-    .map<AppRow>((c) => ({
-      to: `/connectors#${encodeURIComponent(c.id)}`,
-      icon: <Plug aria-hidden />,
-      name: c.name,
-      desc: t("microapp.notConfigured"),
-      ghost: true,
-    }));
+  if (tiles) {
+    return (
+      <div className="microapp-tiles" data-tier={tier}>
+        {[...apps, ...pending].map((row, i) => {
+          const id = `${descId}-${i}`;
+          return (
+            <Link
+              className={`microapp-tile${row.ghost ? " ghost" : ""}`}
+              to={row.to}
+              key={row.to}
+              title={row.desc}
+              aria-describedby={id}
+            >
+              <span className={`ma-icon${row.ghost ? " ghost" : ""}`}>{row.icon}</span>
+              <span className={`ma-name${row.ghost ? " dim" : ""}`}>{row.name}</span>
+              <span className="sr-only" id={id}>
+                {row.desc}
+              </span>
+            </Link>
+          );
+        })}
+        <Link className="microapp-tile add" to="/connectors" title={t("desktop.apps.add")}>
+          <span className="ma-icon ghost">
+            <Plus aria-hidden />
+          </span>
+          <span className="ma-name dim">{t("desktop.apps.add")}</span>
+        </Link>
+      </div>
+    );
+  }
 
   return (
-    <>
+    <div className="microapp-list" data-tier={tier}>
       {[...apps, ...pending].map((row) => (
         <Link className="microapp-row" to={row.to} key={row.to}>
           <span className={`ma-icon${row.ghost ? " ghost" : ""}`}>{row.icon}</span>
@@ -83,6 +78,6 @@ export default function MicroAppsWidget(_props: WidgetProps) {
           <span className="ma-name dim">{t("desktop.apps.add")}</span>
         </span>
       </Link>
-    </>
+    </div>
   );
 }

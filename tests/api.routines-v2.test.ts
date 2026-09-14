@@ -266,8 +266,8 @@ describe("settings schema (cross-frontier requests)", () => {
       today: {
         x: 0,
         y: 0,
-        w: 6,
-        h: 6,
+        w: 420,
+        h: 320,
         visible: true,
         config: { zones: ["UTC", "America/Sao_Paulo"], limit: 5 },
       },

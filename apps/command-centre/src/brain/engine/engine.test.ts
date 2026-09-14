@@ -1,18 +1,60 @@
 import { describe, expect, it } from "vitest";
 import type { GraphData } from "../../api";
+import { CLICK_CHAIN_MS, CLICK_CHAIN_PX, ClickChain, DOUBLE_CLICK_MS, shouldReuseClick } from "./clicks";
 import {
   applyPlan,
   easeSpring,
-  frameSector,
   planExplosion,
   startLayoutTween,
   tripPosition,
   tripsActive,
 } from "./explosion";
+import {
+  boundsOf,
+  cancelFlight,
+  centreTransform,
+  contentBounds,
+  fitToBounds,
+  flightAt,
+  hubBounds,
+  planFlight,
+  planetBounds,
+  reserveInsets,
+  restingPoint,
+  sectorBounds,
+  startFlight,
+  stepFlight,
+} from "./flight";
 import { applyVisibility, hygiene, neighbourhood, relationsOf, timelineRange, updateFocus } from "./graph";
-import { hitTest, screenToWorld, zoomAt } from "./hitTest";
+import { fileHittable, hitTest, screenToWorld, zoomAt } from "./hitTest";
 import { setHubsExpanded, toggleHub } from "./hubs";
-import { computeSectors, dirRuns, layoutFiles, orderFiles, targetOf } from "./layouts";
+import {
+  ROW_MAX_RADIUS,
+  ROW_MIN_RADIUS,
+  circleCluster,
+  collapsedHaloRadius,
+  collapsedHaloRings,
+  computeSectors,
+  dirRuns,
+  layoutFiles,
+  orderFiles,
+  planArcRows,
+  targetOf,
+} from "./layouts";
+import {
+  LABEL_ATTEMPT_CAP,
+  LABEL_BUDGET,
+  LabelPlacer,
+  LabelRanker,
+  LabelWidthCache,
+  fileLabelBox,
+  labelAlpha,
+  placeHubLabel,
+  placeRanked,
+  planetLabelAlpha,
+  quantiseNow,
+  rankLabels,
+} from "../render/labels";
 import {
   DIM_ALPHA,
   alphasSettled,
@@ -23,6 +65,7 @@ import {
 } from "./physics";
 import {
   DEFAULT_SETTINGS,
+  GROUP_COLORS,
   RING,
   TWO_PI,
   applyFilters,
@@ -32,6 +75,8 @@ import {
   createWorld,
   facetsOf,
   groupOfNode,
+  minimapExtentFor,
+  WORLD_EXTENT,
   nodeRadius,
   recencyBoost,
   refreshGraphDerived,
@@ -70,10 +115,16 @@ function graph(n: number, areas = ["Worker", "Docs"]): GraphData {
   };
 }
 
-function world(n = 40, layout = DEFAULT_SETTINGS.layout): World {
+function world(
+  n = 40,
+  areasOrLayout: string[] | typeof DEFAULT_SETTINGS.layout = DEFAULT_SETTINGS.layout,
+  layoutArg?: typeof DEFAULT_SETTINGS.layout,
+): World {
+  const areas = Array.isArray(areasOrLayout) ? areasOrLayout : undefined;
+  const layout = Array.isArray(areasOrLayout) ? (layoutArg ?? DEFAULT_SETTINGS.layout) : areasOrLayout;
   const w = createWorld({ ...DEFAULT_SETTINGS, layout });
   buildWorld(w, {
-    graph: graph(n),
+    graph: areas ? graph(n, areas) : graph(n),
     skills: [],
     routines: [],
     connectors: [],
@@ -319,10 +370,137 @@ describe("layouts", () => {
     const hub = w.hubs[0]!;
     const hx = Math.cos(hub.baseAngle) * RING.hubs;
     const hy = Math.sin(hub.baseAngle) * RING.hubs;
-    for (const n of w.files.filter((f) => f.group === hub.key)) {
+    const members = w.files.filter((f) => f.group === hub.key);
+    const haloR = collapsedHaloRadius(members.length);
+    for (const n of members) {
       const [tx, ty] = targetOf(n, 0);
-      expect(Math.hypot(tx - hx, ty - hy)).toBeLessThan(30);
+      expect(Math.hypot(tx - hx, ty - hy)).toBeLessThanOrEqual(haloR + 1e-6);
     }
+  });
+
+  it("collapsed halo radius grows with the count between 16 and 60, over 1–3 rings", () => {
+    expect(collapsedHaloRadius(0)).toBe(16);
+    expect(collapsedHaloRadius(1)).toBeGreaterThanOrEqual(16); // never tighter than the floor
+    const counts = [4, 25, 100, 400];
+    const radii = counts.map(collapsedHaloRadius);
+    for (let i = 1; i < radii.length; i++) expect(radii[i]!).toBeGreaterThan(radii[i - 1]!);
+    // sub-linear: quadrupling the count roughly doubles the growth past the base
+    expect((radii[2]! - 14) / (radii[1]! - 14)).toBeCloseTo(2, 1);
+    expect(collapsedHaloRadius(1200)).toBe(60);
+    expect(collapsedHaloRadius(50_000)).toBe(60); // clamped
+    expect(collapsedHaloRings(5)).toBe(1);
+    expect(collapsedHaloRings(40)).toBe(2);
+    expect(collapsedHaloRings(500)).toBe(3);
+    // A 1200-file hub is not a blob: files sit on three distinct rings, the outer one at the halo radius.
+    const w = world(1200, ["Big"]);
+    w.hubs[0]!.expanded = false;
+    layoutFiles(w);
+    const hub = w.hubs[0]!;
+    const hx = Math.cos(hub.baseAngle) * RING.hubs;
+    const hy = Math.sin(hub.baseAngle) * RING.hubs;
+    const dists = new Set(
+      w.files.map((n) => {
+        const [tx, ty] = targetOf(n, 0);
+        return Math.hypot(tx - hx, ty - hy).toFixed(3);
+      }),
+    );
+    expect(dists.size).toBe(3);
+    expect(Math.max(...[...dists].map(Number))).toBeCloseTo(60, 2);
+  });
+
+  it("arcs: rows never cross the routines orbit — a huge hub packs tighter and adds rows inward", () => {
+    const w = world(2500, ["Huge", "Tiny"]);
+    w.files.forEach((n, i) => {
+      if (i > 0) n.group = "Huge";
+    });
+    w.hubs[0]!.count = 2499;
+    w.hubs[1]!.count = 1;
+    layoutFiles(w);
+    for (const n of w.files) expect(n.baseRadius).toBeLessThanOrEqual(ROW_MAX_RADIUS + 1e-9);
+    // A 1500-file hub keeps every row (and planet) clear of the routines ring.
+    const big = world(1500, ["Big"], "arcs");
+    const rows = big.files.map((n) => n.baseRadius);
+    expect(Math.max(...rows)).toBeLessThan(RING.routines - 20);
+    for (const p of big.planets) expect(p.baseRadius).toBeLessThan(RING.routines - 20);
+    expect(new Set(rows.map((r) => r.toFixed(3))).size).toBeGreaterThan(5); // spread over many rows
+    // The plan reports the tightened pitch and the inward rows.
+    // A narrow sector (1.2 rad) that must hold 2 499 slots.
+    const span = 1.2;
+    const relaxed = planArcRows(50, span, 7, 8.5);
+    expect(relaxed.spacing).toBe(7);
+    expect(Math.min(...relaxed.radii)).toBe(RING.filesInner + 14);
+    const packed = planArcRows(2499, span, 7, 8.5);
+    expect(packed.spacing).toBeLessThan(7);
+    expect(Math.min(...packed.radii)).toBeLessThan(RING.filesInner + 14);
+    expect(Math.max(...packed.radii)).toBeLessThanOrEqual(ROW_MAX_RADIUS);
+    const capacity = packed.radii.reduce((sum, r) => sum + Math.floor((span * r) / packed.spacing), 0);
+    expect(capacity).toBeGreaterThanOrEqual(2499);
+    // An absurdly narrow sector stops at the minimum pitch but still never leaves the orbit clamp.
+    const floor = planArcRows(2499, 0.3, 7, 8.5);
+    expect(floor.spacing).toBeCloseTo(1.6);
+    expect(Math.max(...floor.radii)).toBeLessThanOrEqual(ROW_MAX_RADIUS);
+  });
+
+  it("hex: rows stay inside the routines orbit by widening the grid", () => {
+    const w = world(1500, ["Big"], "hex");
+    for (const n of w.files) expect(n.baseRadius).toBeLessThanOrEqual(ROW_MAX_RADIUS + 1e-9);
+  });
+
+  it("circle: a big group extends its disc inward instead of freezing at one size", () => {
+    const small = circleCluster(5, 1);
+    const mid = circleCluster(50, 1);
+    const big = circleCluster(800, 1);
+    // 13+ files used to share one 42-unit disc; now the disc keeps growing well past that.
+    expect(circleCluster(13, 1).clusterR).toBeGreaterThan(42);
+    expect(mid.clusterR).toBeGreaterThan(small.clusterR);
+    expect(big.clusterR).toBeGreaterThan(mid.clusterR);
+    expect(big.clusterR).toBeCloseTo((ROW_MAX_RADIUS - ROW_MIN_RADIUS) / 2);
+    expect(circleCluster(5000, 1).clusterR).toBe(big.clusterR); // only then capped
+    // A small disc sits just outside the hub ring; every disc's far edge stays on the orbit clamp.
+    expect(small.centerR - small.clusterR).toBeCloseTo(RING.hubs + 26);
+    for (const c of [small, mid, big])
+      expect(c.centerR + c.clusterR).toBeLessThanOrEqual(ROW_MAX_RADIUS + 1e-9);
+    expect(big.centerR - big.clusterR).toBeCloseTo(ROW_MIN_RADIUS);
+    // Through the layout: 50 and 800 files spread over discs of different radii.
+    const spread = (n: number) => {
+      const w = world(n, ["Big"], "circle");
+      const hub = w.hubs[0]!;
+      const c = circleCluster(n, w.clusterSize);
+      const gx = Math.cos(hub.baseAngle) * c.centerR;
+      const gy = Math.sin(hub.baseAngle) * c.centerR;
+      let far = 0;
+      for (const f of w.files) {
+        const [x, y] = targetOf(f, 0);
+        far = Math.max(far, Math.hypot(x - gx, y - gy));
+        expect(f.baseRadius).toBeLessThanOrEqual(ROW_MAX_RADIUS + 1e-9);
+      }
+      return far;
+    };
+    const r50 = spread(50);
+    const r800 = spread(800);
+    expect(r800).toBeGreaterThan(r50 * 1.1);
+  });
+
+  it("sixteen distinct group colours, the first ten unchanged", () => {
+    expect(GROUP_COLORS.length).toBe(16);
+    expect(new Set(GROUP_COLORS).size).toBe(16);
+    expect(GROUP_COLORS.slice(0, 10)).toEqual([
+      "#c084fc",
+      "#f472b6",
+      "#22d3ee",
+      "#fde047",
+      "#4ade80",
+      "#fb923c",
+      "#a5b4fc",
+      "#f87171",
+      "#5eead4",
+      "#fbbf24",
+    ]);
+    const w = world(
+      32,
+      Array.from({ length: 16 }, (_, i) => `G${i}`),
+    );
+    expect(new Set(w.hubs.map((h) => h.color)).size).toBe(16);
   });
 
   it("is deterministic", () => {
@@ -571,21 +749,78 @@ describe("directed explosion and layout tween", () => {
     expect(maxDisplacement(w)).toBeLessThan(1e-6);
   });
 
-  it("frameSector fits the hub and its files into the viewport", () => {
+  it("fitToBounds(sectorBounds) fits the hub and its files into the viewport, deterministically", () => {
     const w = world(40, "arcs");
     const hub = w.hubs[0]!;
-    const cam = frameSector(w, hub, { width: 800, height: 600 });
+    const view = { width: 800, height: 600 };
+    const cam = fitToBounds(sectorBounds(w, hub), view, { padding: 30, maxK: 4 });
     expect(cam.k).toBeGreaterThan(0.3);
     expect(cam.k).toBeLessThanOrEqual(4);
-    // every member's target lands inside the viewport
-    for (const n of w.files.filter((f) => f.group === hub.key)) {
-      const [tx, ty] = targetOf(n, w.theta);
-      const sx = tx * cam.k + cam.x;
-      const sy = ty * cam.k + cam.y;
-      expect(Math.abs(sx)).toBeLessThanOrEqual(400);
-      expect(Math.abs(sy)).toBeLessThanOrEqual(300);
+    // every member's target (and the hub disc) lands inside the viewport
+    const hx = Math.cos(hub.baseAngle + w.theta) * RING.hubs;
+    const hy = Math.sin(hub.baseAngle + w.theta) * RING.hubs;
+    const pts = w.files.filter((f) => f.group === hub.key).map((n) => targetOf(n, w.theta));
+    pts.push([hx, hy]);
+    for (const [tx, ty] of pts) {
+      expect(Math.abs(tx * cam.k + cam.x)).toBeLessThanOrEqual(400);
+      expect(Math.abs(ty * cam.k + cam.y)).toBeLessThanOrEqual(300);
     }
-    expect(frameSector(w, hub, { width: 800, height: 600 })).toEqual(cam);
+    expect(fitToBounds(sectorBounds(w, hub), view, { padding: 30, maxK: 4 })).toEqual(cam);
+  });
+});
+
+describe("click chain (double-click acts on what the first click hit)", () => {
+  const A = { id: "a" };
+  const B = { id: "b" };
+
+  it("shouldReuseClick: within the time window and a few pixels of the previous click only", () => {
+    const prev = { hit: A, at: 1000, x: 100, y: 100 };
+    expect(shouldReuseClick(null, 1100, 100, 100)).toBe(false);
+    expect(shouldReuseClick(prev, 1000 + CLICK_CHAIN_MS, 100 + CLICK_CHAIN_PX, 100)).toBe(true);
+    expect(shouldReuseClick(prev, 1000 + CLICK_CHAIN_MS + 1, 100, 100)).toBe(false);
+    expect(shouldReuseClick(prev, 1100, 100 + CLICK_CHAIN_PX + 1, 100)).toBe(false);
+    expect(shouldReuseClick(prev, 1100, 104, 104)).toBe(true); // hypot ≈ 5.66
+    expect(shouldReuseClick(prev, 900, 100, 100)).toBe(false); // clock went backwards
+    expect(shouldReuseClick(prev, 1500, 100, 100, { ms: 600 })).toBe(true);
+  });
+
+  it("the second press and the dblclick reuse the first click's hit while the scene moves under the pointer", () => {
+    const chain = new ClickChain<{ id: string }>();
+    let liveCalls = 0;
+    const live = () => {
+      liveCalls++;
+      return B; // the camera flight moved A away; a live hit-test now finds B
+    };
+    // Click 1: nothing to reuse, the live hit is A.
+    expect(chain.hitForPress(0, 100, 100, () => A)).toEqual({ hit: A, reused: false });
+    chain.record(A, 10, 100, 100);
+    // Press 2 (200 ms later, 3 px away): reuses A, no live hit-test.
+    expect(chain.hitForPress(210, 103, 101, live)).toEqual({ hit: A, reused: true });
+    expect(liveCalls).toBe(0);
+    chain.record(A, 220, 103, 101);
+    // The dblclick that follows acts on A as well and ends the chain.
+    expect(chain.hitForDoubleClick(230, live)).toBe(A);
+    expect(liveCalls).toBe(0);
+    expect(chain.current).toBeNull();
+    // A third press is a fresh click again.
+    expect(chain.hitForPress(240, 103, 101, live)).toEqual({ hit: B, reused: false });
+    expect(liveCalls).toBe(1);
+  });
+
+  it("a slow or distant second press, a drag or a pinch starts a fresh hit-test", () => {
+    const chain = new ClickChain<{ id: string }>();
+    chain.record(A, 0, 100, 100);
+    expect(chain.hitForPress(CLICK_CHAIN_MS + 50, 100, 100, () => B).reused).toBe(false);
+    chain.record(A, 0, 100, 100);
+    expect(chain.hitForPress(100, 140, 100, () => B).reused).toBe(false);
+    chain.record(A, 0, 100, 100);
+    chain.reset(); // a drag or pinch in between
+    expect(chain.hitForPress(100, 100, 100, () => B)).toEqual({ hit: B, reused: false });
+    // A dblclick long after the last click is hit-tested live.
+    chain.record(A, 0, 100, 100);
+    expect(chain.hitForDoubleClick(DOUBLE_CLICK_MS, () => B)).toBe(B);
+    chain.record(A, 0, 100, 100);
+    expect(chain.hitForDoubleClick(DOUBLE_CLICK_MS - 1, () => B)).toBe(A);
   });
 });
 
@@ -617,6 +852,34 @@ describe("hit testing", () => {
     expect(hitTest(w, 45, 41).file?.id).toBe(file.id);
     w.transform.k = 4;
     expect(hitTest(w, 60, 60).file).toBeUndefined();
+  });
+
+  it("fileHittable: faded, unmatched and out-of-group files are not clickable", () => {
+    const w = world(6);
+    const n = w.files[0]!;
+    n.visAlpha = 1;
+    expect(fileHittable(w, n)).toBe(true);
+    n.visAlpha = 0.3;
+    expect(fileHittable(w, n)).toBe(false);
+    n.visAlpha = 1;
+    w.matched = new Set([w.files[1]!.id]);
+    expect(fileHittable(w, n)).toBe(false);
+    expect(fileHittable(w, w.files[1]!)).toBe(true);
+    w.matched = null;
+    w.filterGroup = "Docs";
+    expect(n.group).toBe("Worker");
+    expect(fileHittable(w, n)).toBe(false);
+    expect(fileHittable(w, w.files[1]!)).toBe(true); // Docs
+    // hitTest honours it: the nearest file loses to a hittable one further away
+    stepWorld(w, 0, false);
+    n.x = 40;
+    n.y = 40;
+    const other = w.files[1]!;
+    other.x = 44;
+    other.y = 40;
+    expect(hitTest(w, 40, 40).file).toBe(other);
+    w.filterGroup = null;
+    expect(hitTest(w, 40, 40).file).toBe(n);
   });
 
   it("maps screen to world and zooms around the cursor", () => {
@@ -662,5 +925,361 @@ describe("hub expand / collapse", () => {
     expect(setHubsExpanded(w, false)).toEqual([]);
     expect(setHubsExpanded(w, true).length).toBe(w.hubs.length);
     expect(w.hubs.every((h) => h.expanded && h.everExpanded)).toBe(true);
+  });
+});
+
+describe("camera flights", () => {
+  const view = { width: 1000, height: 800 };
+
+  it("interpolates from the live transform to the target and lands exactly on it", () => {
+    const from = { x: 0, y: 0, k: 1 };
+    const to = { x: -400, y: 200, k: 2 };
+    const f = planFlight(from, to, view, 10, { duration: 0.5 });
+    expect(flightAt(f, 10).transform).toEqual(from);
+    expect(flightAt(f, 9).transform).toEqual(from);
+    const end = flightAt(f, 10.5);
+    expect(end.done).toBe(true);
+    expect(end.transform).toEqual(to);
+    // Monotone zoom on a short trip (no dip): k grows in log space.
+    const ks = [0.1, 0.25, 0.4, 0.5, 0.75, 0.9].map((u) => flightAt(f, 10 + u * 0.5).transform.k);
+    for (let i = 1; i < ks.length; i++) expect(ks[i]!).toBeGreaterThan(ks[i - 1]!);
+    expect(flightAt(f, 10.25).transform.k).toBeCloseTo(Math.sqrt(2), 6);
+  });
+
+  it("dips the zoom in the middle of a long pan and never below 0.3", () => {
+    const from = { x: 0, y: 0, k: 2 };
+    const to = { x: -5000, y: 0, k: 2 };
+    const f = planFlight(from, to, view, 0, { duration: 1 });
+    expect(f.dipK).toBeCloseTo(1.2);
+    expect(flightAt(f, 0.5).transform.k).toBeCloseTo(1.2, 6);
+    const tiny = planFlight({ x: 0, y: 0, k: 0.35 }, { x: -3000, y: 0, k: 0.35 }, view, 0);
+    expect(tiny.dipK).toBe(0.3);
+    // The world point under the centre travels straight from start to end.
+    const mid = flightAt(f, 0.5).transform;
+    expect(-mid.x / mid.k).toBeCloseTo(1250, 6);
+    // A short trip does not dip.
+    expect(planFlight(from, { x: -50, y: 0, k: 2 }, view, 0).dipK).toBeNull();
+  });
+
+  it("startFlight / stepFlight drive the world transform and keep the target glued to it", () => {
+    const w = createWorld();
+    w.time = 3;
+    startFlight(w, { x: -300, y: -100, k: 3 }, view, { duration: 0.4 });
+    expect(w.flight).not.toBeNull();
+    expect(w.target).toEqual(w.transform);
+    stepFlight(w, 3.2);
+    expect(w.transform.k).toBeGreaterThan(1);
+    expect(w.transform.k).toBeLessThan(3);
+    expect(w.target).toEqual(w.transform);
+    stepFlight(w, 3.5);
+    expect(w.flight).toBeNull();
+    expect(w.transform).toEqual({ x: -300, y: -100, k: 3 });
+    // Zero duration (reduced motion) jumps.
+    startFlight(w, { x: 0, y: 0, k: 1 }, view, { duration: 0 });
+    expect(w.flight).toBeNull();
+    expect(w.transform).toEqual({ x: 0, y: 0, k: 1 });
+    // A flight to the same place is not restarted.
+    startFlight(w, { x: -300, y: -100, k: 3 }, view);
+    const first = w.flight;
+    w.time = 3.1;
+    startFlight(w, { x: -300.1, y: -100, k: 3 }, view);
+    expect(w.flight).toBe(first);
+  });
+
+  it("cancelling mid-flight leaves the camera where it is (no jump) and a new flight restarts from there", () => {
+    const w = createWorld();
+    startFlight(w, { x: -800, y: 0, k: 2 }, view, { duration: 1 });
+    stepFlight(w, 0.5);
+    const mid = { ...w.transform };
+    cancelFlight(w);
+    expect(w.flight).toBeNull();
+    expect(w.transform).toEqual(mid);
+    expect(w.target).toEqual(mid);
+    w.time = 0.5;
+    startFlight(w, { x: 0, y: 0, k: 1 }, view, { duration: 1 });
+    expect(w.flight!.from).toEqual(mid);
+    stepFlight(w, 0.5);
+    expect(w.transform).toEqual(mid);
+    // Clamped zoom targets stay inside the zoom range.
+    startFlight(w, { x: 0, y: 0, k: 50 }, view);
+    expect(w.flight!.to.k).toBe(9);
+  });
+
+  it("fitToBounds honours panel insets: the content is centred in the free region", () => {
+    const bounds = { minX: -100, minY: -50, maxX: 100, maxY: 50 };
+    const plain = fitToBounds(bounds, view, { padding: 0 });
+    expect(plain.k).toBe(4); // capped
+    expect(plain.x).toBe(0);
+    expect(plain.y).toBe(0);
+    const wide = fitToBounds({ minX: -1000, minY: -100, maxX: 1000, maxY: 100 }, view, { padding: 0 });
+    expect(wide.k).toBeCloseTo(0.5);
+    // A 400 px preview on the left and a 300 px panel on the right leave a 300 px free band
+    // whose centre is 50 px left of the canvas centre.
+    const boxed = fitToBounds(bounds, view, {
+      padding: 0,
+      insets: { left: 400, right: 300, top: 0, bottom: 0 },
+    });
+    expect(boxed.k).toBeCloseTo(1.5);
+    expect(boxed.x).toBeCloseTo(50);
+    const centreX = (bounds.minX + bounds.maxX) / 2;
+    expect(centreX * boxed.k + boxed.x).toBeCloseTo(50);
+    // Off-centre content: the content centre lands at the free-region centre.
+    const off = fitToBounds({ minX: 200, minY: 200, maxX: 400, maxY: 300 }, view, {
+      padding: 10,
+      insets: { left: 0, right: 0, top: 100, bottom: 0 },
+    });
+    expect(300 * off.k + off.x).toBeCloseTo(0);
+    expect(250 * off.k + off.y).toBeCloseTo(50);
+    expect(fitToBounds(null, view, { insets: { left: 200 } })).toEqual({ x: 100, y: 0, k: 1 });
+    expect(centreTransform(100, 0, 2, { right: 100 })).toEqual({ x: -250, y: 0, k: 2 });
+  });
+
+  it("content, sector and planet bounds cover what is drawn", () => {
+    const w = world(60, "arcs");
+    stepWorld(w, 0, false);
+    const all = contentBounds(w)!;
+    for (const h of w.hubs) {
+      expect(h.x).toBeGreaterThanOrEqual(all.minX);
+      expect(h.x).toBeLessThanOrEqual(all.maxX);
+    }
+    const hub = w.hubs[0]!;
+    const sector = sectorBounds(w, hub);
+    for (const n of w.files.filter((f) => f.group === hub.key)) {
+      const [tx, ty] = targetOf(n, w.theta);
+      expect(tx).toBeGreaterThanOrEqual(sector.minX - 1e-9);
+      expect(tx).toBeLessThanOrEqual(sector.maxX + 1e-9);
+      expect(ty).toBeGreaterThanOrEqual(sector.minY - 1e-9);
+      expect(ty).toBeLessThanOrEqual(sector.maxY + 1e-9);
+    }
+    const planet = w.planets.find((p) => p.hubKey === hub.key)!;
+    const pb = planetBounds(w, planet);
+    const members = w.files.filter((n) => n.group === hub.key && n.dir === planet.dir);
+    expect(members.length).toBe(planet.count);
+    for (const n of members) {
+      const [tx, ty] = targetOf(n, w.theta);
+      expect(tx).toBeGreaterThanOrEqual(pb.minX - 1e-9);
+      expect(tx).toBeLessThanOrEqual(pb.maxX + 1e-9);
+      expect(ty).toBeGreaterThanOrEqual(pb.minY - 1e-9);
+      expect(ty).toBeLessThanOrEqual(pb.maxY + 1e-9);
+    }
+    expect(boundsOf([])).toBeNull();
+    expect(
+      boundsOf([
+        { x: NaN, y: 1 },
+        { x: 2, y: 3 },
+      ]),
+    ).toEqual({ minX: 2, minY: 3, maxX: 2, maxY: 3 });
+  });
+
+  it("hubBounds is the disc plus its halo, centred on the hub", () => {
+    expect(hubBounds({ x: 100, y: -50 })).toEqual({ minX: 40, minY: -110, maxX: 160, maxY: 10 });
+    expect(hubBounds({ x: 0, y: 0 }, 20)).toEqual({ minX: -20, minY: -20, maxX: 20, maxY: 20 });
+    const w = world(30);
+    stepWorld(w, 0, false);
+    const hub = w.hubs[0]!;
+    const b = hubBounds(hub, collapsedHaloRadius(hub.count));
+    expect((b.minX + b.maxX) / 2).toBeCloseTo(hub.x);
+    expect((b.minY + b.maxY) / 2).toBeCloseTo(hub.y);
+    const cam = fitToBounds(b, view, { padding: 40, maxK: 2.5 });
+    expect(cam.k).toBe(2.5);
+    expect(hub.x * cam.k + cam.x).toBeCloseTo(0);
+    expect(hub.y * cam.k + cam.y).toBeCloseTo(0);
+  });
+
+  it("minimap extent covers the ring guides, then grows with content that spills past them", () => {
+    const w = world(20);
+    stepWorld(w, 0, false);
+    expect(minimapExtentFor(w.files)).toBe(WORLD_EXTENT);
+    expect(minimapExtentFor([])).toBe(WORLD_EXTENT);
+    const far = w.files[0]!;
+    far.x = 900;
+    far.y = 0;
+    expect(minimapExtentFor(w.files)).toBe(900 * 2 + 60);
+    far.y = -1200;
+    expect(minimapExtentFor(w.files)).toBe(1200 * 2 + 60);
+    far.visAlpha = 0.1; // faded-out files do not stretch the map
+    expect(minimapExtentFor(w.files)).toBe(WORLD_EXTENT);
+  });
+
+  it("reserveInsets pushes each overlay panel out along its cheapest edge and ignores hidden ones", () => {
+    const canvas = { left: 0, top: 0, right: 1200, bottom: 800 };
+    const topbar = { left: 0, top: 0, right: 1200, bottom: 60 };
+    const preview = { left: 16, top: 76, right: 376, bottom: 784 };
+    const list = { left: 16, top: 76, right: 336, bottom: 784 };
+    const controls = { left: 916, top: 60, right: 1184, bottom: 700 };
+    const hidden = { left: 16, top: 76, right: 16, bottom: 76 }; // display:none → 0×0
+    expect(reserveInsets(canvas, [topbar, preview, controls, hidden], 16)).toEqual({
+      left: 392,
+      right: 300,
+      top: 76,
+      bottom: 16,
+    });
+    // The list beside the preview (wide viewports): the preview sits right of it and both count.
+    const besideList = { left: 348, top: 76, right: 708, bottom: 784 };
+    expect(reserveInsets(canvas, [topbar, list, besideList, controls], 16).left).toBe(724);
+    // A bottom sheet reserves the bottom band, a panel outside the canvas nothing.
+    const sheet = { left: 16, top: 500, right: 376, bottom: 784 };
+    expect(reserveInsets(canvas, [sheet], 0)).toEqual({ left: 0, right: 0, top: 0, bottom: 300 });
+    expect(reserveInsets(canvas, [{ left: 1300, top: 0, right: 1500, bottom: 800 }], 4)).toEqual({
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 4,
+    });
+    // Client coordinates: a canvas that does not start at the origin.
+    const shifted = { left: 200, top: 100, right: 1400, bottom: 900 };
+    expect(reserveInsets(shifted, [{ left: 200, top: 100, right: 1400, bottom: 160 }], 0).top).toBe(60);
+  });
+
+  it("restingPoint is the layout target mid-trip and the live point otherwise", () => {
+    const w = world(6);
+    const n = w.files[0]!;
+    n.x = 500;
+    n.y = 500;
+    w.theta = 0.3;
+    expect(restingPoint(w, n)).toEqual([500, 500]);
+    n.trip = { x0: 500, y0: 500, t0: 0, dur: 1, kind: "ease" };
+    expect(restingPoint(w, n)).toEqual(targetOf(n, 0.3));
+    n.pinned = true;
+    expect(restingPoint(w, n)).toEqual([500, 500]);
+  });
+});
+
+describe("labels", () => {
+  it("fade in over zoom instead of a hard cut", () => {
+    expect(labelAlpha(1.0, false)).toBe(0);
+    expect(labelAlpha(1.3, false)).toBe(0);
+    expect(labelAlpha(1.65, false)).toBeCloseTo(0.5);
+    expect(labelAlpha(2.0, false)).toBe(1);
+    expect(labelAlpha(0.5, true)).toBe(1);
+    expect(planetLabelAlpha(1.0)).toBe(0);
+    expect(planetLabelAlpha(1.6)).toBe(1);
+  });
+
+  it("rank: selected > hovered / focus neighbours > matched > pinned > degree > recency", () => {
+    const w = world(8);
+    const f = w.files;
+    for (const n of f) {
+      n.degree = 0;
+      n.mtime = NOW - 365 * 86_400_000;
+    }
+    f[0]!.mtime = NOW; // recent
+    f[1]!.degree = 40; // hub-like
+    f[2]!.pinned = true;
+    w.matched = new Set([f[3]!.id]);
+    w.focusSet = new Set([4]);
+    w.hoverId = f[5]!.id;
+    w.selectedId = f[6]!.id;
+    const order = rankLabels(w, f, [0, 1, 2, 3, 4, 5, 6, 7], NOW);
+    expect(order).toEqual([6, 5, 4, 3, 2, 1, 0, 7]);
+    // The frame ranker gives the same order in place, and can be reused frame after frame.
+    const ranker = new LabelRanker();
+    for (let frame = 0; frame < 2; frame++) {
+      ranker.begin(f.length);
+      for (const i of [7, 0, 1, 2, 3, 4, 5, 6]) ranker.add(i);
+      expect(ranker.size).toBe(8);
+      expect(Array.from(ranker.rank(w, f, NOW))).toEqual([6, 5, 4, 3, 2, 1, 0, 7]);
+    }
+    ranker.begin(f.length);
+    expect(ranker.size).toBe(0);
+    // Recency is quantised to the minute so scores hold still between frames.
+    const minute = Math.ceil(NOW / 60_000) * 60_000;
+    expect(quantiseNow(minute + 1)).toBe(minute);
+    expect(quantiseNow(minute + 59_999)).toBe(minute);
+    expect(quantiseNow(minute + 60_000)).toBe(minute + 60_000);
+  });
+
+  it("placement stops after the budget is filled or the attempt cap is reached", () => {
+    const ranked = Array.from({ length: 5000 }, (_, i) => i);
+    let attempts = 0;
+    expect(
+      placeRanked(ranked, () => {
+        attempts++;
+        return false; // everything collides
+      }),
+    ).toBe(0);
+    expect(attempts).toBe(LABEL_ATTEMPT_CAP);
+    expect(LABEL_ATTEMPT_CAP).toBe(LABEL_BUDGET * 4);
+    attempts = 0;
+    expect(
+      placeRanked(ranked, () => {
+        attempts++;
+        return true;
+      }),
+    ).toBe(LABEL_BUDGET);
+    expect(attempts).toBe(LABEL_BUDGET);
+    // Every other one collides: the budget still fills within the cap.
+    attempts = 0;
+    expect(placeRanked(ranked, (i) => (attempts++, i % 2 === 0))).toBe(LABEL_BUDGET);
+    expect(attempts).toBe(LABEL_BUDGET * 2 - 1);
+    // Fewer candidates than the cap: every one is tried.
+    attempts = 0;
+    expect(placeRanked([1, 2, 3], () => (attempts++, false), 10, 100)).toBe(0);
+    expect(attempts).toBe(3);
+  });
+
+  it("label widths are measured once per name at the base font and invalidated on a font change", () => {
+    const measured: string[] = [];
+    const ctx = {
+      font: "",
+      measureText: (text: string) => {
+        measured.push(`${ctx.font}|${text}`);
+        return { width: text.length * 6 };
+      },
+    };
+    const cache = new LabelWidthCache();
+    const base = "10px mono";
+    expect(cache.width(ctx, "readme.md", base, "5px mono")).toBe(54);
+    expect(ctx.font).toBe("5px mono"); // the zoomed font is restored after the miss
+    expect(cache.width(ctx, "readme.md", base, "2.5px mono")).toBe(54);
+    expect(cache.width(ctx, "notes.md", base, "2.5px mono")).toBe(48);
+    expect(measured).toEqual(["10px mono|readme.md", "10px mono|notes.md"]);
+    expect(cache.size).toBe(2);
+    cache.width(ctx, "readme.md", "10px serif", "5px serif");
+    expect(measured.length).toBe(3);
+    expect(cache.size).toBe(1);
+  });
+
+  it("collision boxes match the drawn glyphs and hub labels step outward when they overlap", () => {
+    const [x1, y1, x2, y2] = fileLabelBox(10, 20, 30, 2);
+    expect(x1).toBe(10);
+    expect(x2).toBe(40);
+    expect(y1).toBeCloseTo(20 + 1.5 - 4); // baseline − ascent
+    expect(y2).toBeCloseTo(20 + 1.5 + 1.25); // baseline + descent
+    const placer = new LabelPlacer();
+    expect(placer.tryPlace(0, 0, 10, 10)).toBe(true);
+    expect(placer.tryPlace(5, 5, 15, 15)).toBe(false);
+    expect(placer.tryPlace(10, 0, 20, 10)).toBe(true);
+    expect(placer.count).toBe(2);
+    // Two hubs on the same vertical: the second label is pushed outward along its radius.
+    const hubs = new LabelPlacer();
+    const a = placeHubLabel(hubs, { x: 0, y: -100 }, 40, 10, 12);
+    expect(a.free).toBe(true);
+    expect(a).toMatchObject({ x: 0, y: -112 });
+    const b = placeHubLabel(hubs, { x: 0, y: -104 }, 40, 10, 12);
+    expect(b.free).toBe(true);
+    expect(b.y).toBeLessThan(-120); // moved up (outward) by at least one label height
+    // A label that cannot find a free spot within three steps reports it.
+    const crowded = new LabelPlacer();
+    crowded.place(-100, -300, 100, 0);
+    const c = placeHubLabel(crowded, { x: 0, y: -100 }, 40, 10, 12);
+    expect(c.free).toBe(false);
+    expect(c.y).toBeCloseTo(-112 - 30);
+  });
+
+  it("zoomTarget scales from the flight destination while a flight is in progress", async () => {
+    const { zoomTarget } = await import("./flight");
+    const clamp = (k: number) => Math.max(0.3, Math.min(9, k));
+    const idle = { target: { x: 10, y: -20, k: 1 }, flight: null };
+    expect(zoomTarget(idle, 1.3, clamp)).toEqual({ x: 13, y: -26, k: 1.3 });
+    const flying = {
+      target: { x: 4, y: 4, k: 1.4 },
+      flight: { to: { x: 0, y: 0, k: 1 } } as unknown as NonNullable<typeof idle.flight>,
+    };
+    // Reset (flight to k = 1) then zoom in twice lands on 1.69 exactly, never on the mid-flight 1.4
+    const once = zoomTarget(flying as never, 1.3, clamp);
+    expect(once.k).toBeCloseTo(1.3, 10);
+    expect(zoomTarget({ target: once, flight: null }, 1.3, clamp).k).toBeCloseTo(1.69, 10);
+    expect(zoomTarget(idle, 100, clamp).k).toBe(9);
   });
 });

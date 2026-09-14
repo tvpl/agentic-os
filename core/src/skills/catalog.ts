@@ -369,7 +369,7 @@ function normalizeImported(data: Record<string, unknown>): Record<string, unknow
   // that would fail validation but keep recognised ones.
   const allowed = new Set([
     "triggers", "inputs", "providers", "recommendedModel", "recommendedEffort",
-    "mode", "enabled", "version", "changelog", "guardrails", "successCriteria", "examples",
+    "mode", "enabled", "version", "changelog", "guardrails", "successCriteria", "examples", "i18n",
   ]);
   for (const key of Object.keys(out)) {
     if (!allowed.has(key)) delete out[key];

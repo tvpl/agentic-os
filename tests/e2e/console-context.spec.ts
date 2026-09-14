@@ -12,7 +12,8 @@ test("draft keeps its selected project across app navigation and reload", async 
   const dock = page.getByRole("navigation", { name: "Workspace navigation" });
   await dock.getByRole("button", { name: "Pixel Studio", exact: true }).click();
   await expect(page.locator(".pxs-stage")).toBeVisible();
-  await dock.getByRole("button", { name: "Overview", exact: true }).click();
+  // Back to the desktop: the dock's Dashboard app, not a mode.
+  await dock.getByRole("button", { name: "Dashboard", exact: true }).click();
   await expect(picker).toHaveValue(folder!);
   await expect(widget.locator("textarea")).toHaveValue("Review the mobile workspace");
   await page.reload();

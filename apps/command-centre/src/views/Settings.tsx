@@ -62,9 +62,26 @@ import {
   readStoredHudIntensity,
   type PresetId,
 } from "../theme";
-import { DEFAULT_LAYOUT, WIDGET_ORDER, baseId, isWidgetId, type WidgetBox } from "../desktop/defaultLayout";
+import { WIDGET_ORDER, baseId, isWidgetId } from "../desktop/defaultLayout";
+import type { WindowBox } from "../desktop/windowModel";
 import { WIDGET_REGISTRY } from "../desktop/registry";
 import { copyText, errorMessage, isAbsolutePath, isOffline, slugify } from "./shared";
+import {
+  DraftField,
+  IdentityFields,
+  ReadOnlyPathField,
+  joinComma,
+  joinLines,
+  parseCommaList,
+  parseHttpsList,
+  parseLineList,
+  parseNonNegative,
+  parseOptionalText,
+  parseTokenList,
+  sameList,
+  type Put,
+  type SaveResult,
+} from "./SettingsFields";
 import "./apps.css";
 
 /** Internal route ("/pixel") or an http(s) URL — same rule the desktop widget applies. */
@@ -146,12 +163,17 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
     },
     onError: (err: Error) => {
       toast(err.message, "danger");
-      // Inputs are keyed by the saved value, so a refetch reverts what failed.
+      // Selects are controlled by the query, so a refetch reverts what failed;
+      // text fields keep the rejected draft and show the error inline.
       qc.invalidateQueries({ queryKey: qk.settings }).catch(() => undefined);
     },
   });
-  const put = (patch: Partial<SettingsShape>, silent = false) =>
-    save.mutateAsync({ patch, silent }).catch(() => undefined);
+  // Never rejects: fields show the message inline (and the toast above already fired).
+  const put: Put = (patch, silent = false) =>
+    save.mutateAsync({ patch, silent }).then(
+      (): SaveResult => ({ ok: true }),
+      (err: unknown): SaveResult => ({ ok: false, error: errorMessage(err) }),
+    );
 
   if (settings.isPending && !settings.data)
     return (
@@ -193,6 +215,9 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
         </div>
         <OnboardingButton />
       </div>
+      <p className="hint" data-testid="settings-autosave-note">
+        {t("settings.autosaveNote")}
+      </p>
       <Tabs
         id="settings-tabs"
         tabs={tabs}
@@ -226,84 +251,10 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
   );
 }
 
-type Put = (patch: Partial<SettingsShape>, silent?: boolean) => Promise<unknown>;
-
 function IdentityTab({ s, put, setLang }: { s: SettingsShape; put: Put; setLang: (l: Lang) => void }) {
-  const t = useT();
   return (
     <div className="card stack">
-      <Field label={t("settings.name")} htmlFor="st-name">
-        <input
-          key={s.systemName}
-          id="st-name"
-          className="input"
-          defaultValue={s.systemName}
-          onBlur={(e) =>
-            e.target.value.trim() &&
-            e.target.value !== s.systemName &&
-            void put({ systemName: e.target.value.trim() })
-          }
-        />
-      </Field>
-      <div className="grid grid-2">
-        <Field label={t("settings.theme")} htmlFor="st-theme">
-          <select
-            id="st-theme"
-            className="input"
-            value={s.theme}
-            onChange={(e) => void put({ theme: e.target.value as SettingsShape["theme"] }, true)}
-          >
-            <option value="dark">{t("settings.dark")}</option>
-            <option value="light">{t("settings.light")}</option>
-            <option value="system">{t("settings.system")}</option>
-          </select>
-        </Field>
-        <Field label={t("settings.language")} htmlFor="st-lang">
-          <select
-            id="st-lang"
-            className="input"
-            value={s.language}
-            onChange={(e) => {
-              setLang(e.target.value as Lang);
-              void put({ language: e.target.value as Lang }, true);
-            }}
-          >
-            <option value="en">English</option>
-            <option value="pt-BR">Português (Brasil)</option>
-          </select>
-        </Field>
-        <Field label={t("settings.accent")} htmlFor="st-accent">
-          <input
-            id="st-accent"
-            type="color"
-            className="input"
-            style={{ height: 36, padding: 3 }}
-            value={s.accentColor}
-            onChange={(e) => void put({ accentColor: e.target.value }, true)}
-          />
-        </Field>
-        <Field label={t("settings.port")} htmlFor="st-port" hint={t("settings.portHint")}>
-          <input
-            key={s.port}
-            id="st-port"
-            type="number"
-            min={1024}
-            max={65535}
-            className="input"
-            defaultValue={s.port}
-            onBlur={(e) => Number(e.target.value) !== s.port && void put({ port: Number(e.target.value) })}
-          />
-        </Field>
-      </div>
-      <Field label={t("settings.timezone")} htmlFor="st-tz" hint={t("settings.timezoneHint")}>
-        <input
-          key={s.timezone}
-          id="st-tz"
-          className="input"
-          defaultValue={s.timezone}
-          onBlur={(e) => e.target.value !== s.timezone && void put({ timezone: e.target.value })}
-        />
-      </Field>
+      <IdentityFields s={s} put={put} setLang={setLang} />
       <SystemInfoFields s={s} put={put} />
     </div>
   );
@@ -321,16 +272,14 @@ function SystemInfoFields({ s, put }: { s: SettingsShape; put: Put }) {
   const status = result?.status ?? null;
   return (
     <>
-      <Field label={t("settings.dataDir")} htmlFor="st-home" hint={t("settings.dataDirHint")}>
-        <input
-          id="st-home"
-          className="input mono"
-          readOnly
-          value={info.data?.home ?? ""}
-          placeholder="MORDOMO_HOME"
-          data-testid="settings-home"
-        />
-      </Field>
+      <ReadOnlyPathField
+        id="st-home"
+        label={t("settings.dataDir")}
+        hint={t("settings.dataDirHint")}
+        value={info.data?.home ?? ""}
+        placeholder="MORDOMO_HOME"
+        testId="settings-home"
+      />
       {info.data && (
         <p className="meta" data-testid="settings-build">
           {t("settings.buildLine", {
@@ -374,7 +323,6 @@ function SystemInfoFields({ s, put }: { s: SettingsShape; put: Put }) {
 }
 
 function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
-  const [binaryDraft, setBinaryDraft] = useState<Partial<Record<ProviderId, string>>>({});
   const t = useT();
   const toast = useToast();
   const qc = useQueryClient();
@@ -473,18 +421,16 @@ function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
             </div>
           )}
           <div className="grid grid-2">
-            <Field label={t("skills.model")} htmlFor={`st-model-${prov.id}`} hint={t("settings.modelHint")}>
-              <input
-                key={s.providers[prov.id].defaultModel ?? ""}
-                id={`st-model-${prov.id}`}
-                className="input mono"
-                defaultValue={s.providers[prov.id].defaultModel ?? ""}
-                onBlur={(e) =>
-                  (e.target.value || null) !== s.providers[prov.id].defaultModel &&
-                  void patchProvider(prov.id, { defaultModel: e.target.value || null }, true)
-                }
-              />
-            </Field>
+            <DraftField
+              id={`st-model-${prov.id}`}
+              label={t("skills.model")}
+              hint={t("settings.modelHint")}
+              className="mono"
+              serverValue={s.providers[prov.id].defaultModel}
+              format={(v) => v ?? ""}
+              parse={parseOptionalText}
+              save={(defaultModel) => patchProvider(prov.id, { defaultModel }, true)}
+            />
             <Field label={t("skills.effort")} htmlFor={`st-effort-${prov.id}`}>
               <select
                 id={`st-effort-${prov.id}`}
@@ -499,33 +445,24 @@ function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
                 ))}
               </select>
             </Field>
-            <Field
+            <DraftField
+              id={`st-bin-${prov.id}`}
               label={t("settings.binaryPath")}
-              htmlFor={`st-bin-${prov.id}`}
               hint={t("settings.binaryPathHint")}
-              error={
-                binaryDraft[prov.id] !== undefined &&
-                binaryDraft[prov.id] &&
-                !isAbsolutePath(binaryDraft[prov.id]!)
-                  ? t("settings.folderAbsolute")
-                  : undefined
-              }
-            >
-              <input
-                key={s.providers[prov.id].binaryPath ?? ""}
-                id={`st-bin-${prov.id}`}
-                className="input mono"
-                placeholder={t("settings.binaryPathAuto")}
-                defaultValue={s.providers[prov.id].binaryPath ?? ""}
-                onChange={(e) => setBinaryDraft((d) => ({ ...d, [prov.id]: e.target.value }))}
-                onBlur={(e) => {
-                  const value = e.target.value.trim();
-                  if (value && !isAbsolutePath(value)) return;
-                  if ((value || null) !== (s.providers[prov.id].binaryPath ?? null))
-                    void patchProvider(prov.id, { binaryPath: value || null }).then(() => recheck.mutate());
-                }}
-              />
-            </Field>
+              className="mono"
+              placeholder={t("settings.binaryPathAuto")}
+              serverValue={s.providers[prov.id].binaryPath}
+              format={(v) => v ?? ""}
+              parse={(text) => {
+                const value = text.trim() || null;
+                return value && !isAbsolutePath(value) ? { error: t("settings.folderAbsolute") } : { value };
+              }}
+              save={async (binaryPath) => {
+                const res = await patchProvider(prov.id, { binaryPath });
+                if (res.ok) recheck.mutate();
+                return res;
+              }}
+            />
           </div>
         </div>
       ))}
@@ -650,58 +587,40 @@ function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
         {t("nav.brain")} <ArrowRight size={11} style={{ verticalAlign: -1 }} aria-hidden />{" "}
         {t("brain.refresh")}
       </p>
-      <Field label={t("settings.areas")} htmlFor="st-areas" hint={t("settings.areasHint")}>
-        <input
-          key={s.areas.join()}
-          id="st-areas"
-          className="input"
-          defaultValue={s.areas.join(", ")}
-          onBlur={(e) => {
-            const areas = e.target.value
-              .split(",")
-              .map((a) => a.trim())
-              .filter(Boolean);
-            if (areas.length && areas.join() !== s.areas.join()) void put({ areas });
-          }}
-        />
-      </Field>
-      <Field label={t("settings.excludes")} htmlFor="st-excludes" hint={t("settings.excludesHint")}>
-        <textarea
-          key={s.excludes.join()}
-          id="st-excludes"
-          className="input mono"
-          rows={8}
-          defaultValue={s.excludes.join("\n")}
-          onBlur={(e) => {
-            const excludes = e.target.value
-              .split("\n")
-              .map((x) => x.trim())
-              .filter(Boolean);
-            if (excludes.join() !== s.excludes.join()) void put({ excludes });
-          }}
-        />
-      </Field>
-      <Field
+      <DraftField
+        id="st-areas"
+        label={t("settings.areas")}
+        hint={t("settings.areasHint")}
+        serverValue={s.areas}
+        format={joinComma}
+        equals={sameList}
+        parse={parseCommaList(t, { required: true })}
+        save={(areas) => put({ areas })}
+      />
+      <DraftField
+        id="st-excludes"
+        label={t("settings.excludes")}
+        hint={t("settings.excludesHint")}
+        className="mono"
+        rows={8}
+        serverValue={s.excludes}
+        format={joinLines}
+        equals={sameList}
+        parse={parseLineList}
+        save={(excludes) => put({ excludes })}
+      />
+      <DraftField
+        id="st-registries"
         label={t("apps.settings.registries")}
-        htmlFor="st-registries"
         hint={t("apps.settings.registriesHint")}
-      >
-        <input
-          key={(s.marketplace?.registries ?? []).join()}
-          id="st-registries"
-          className="input mono"
-          placeholder="https://example.com/mordomo-skills/index.json"
-          defaultValue={(s.marketplace?.registries ?? []).join(", ")}
-          onBlur={(e) => {
-            const registries = e.target.value
-              .split(/[,\s]+/)
-              .map((x) => x.trim())
-              .filter((x) => x.startsWith("https://"));
-            if (registries.join() !== (s.marketplace?.registries ?? []).join())
-              void put({ marketplace: { registries } }, true);
-          }}
-        />
-      </Field>
+        className="mono"
+        placeholder="https://example.com/mordomo-skills/index.json"
+        serverValue={s.marketplace?.registries ?? []}
+        format={joinComma}
+        equals={sameList}
+        parse={parseHttpsList(t)}
+        save={(registries) => put({ marketplace: { registries } }, true)}
+      />
     </div>
   );
 }
@@ -739,21 +658,17 @@ function SecurityTab({ s, put }: { s: SettingsShape; put: Put }) {
             ))}
           </select>
         </Field>
-        <Field label={t("apps.settings.budget")} htmlFor="st-budget" hint={t("apps.settings.budgetHint")}>
-          <input
-            id="st-budget"
-            className="input"
-            type="number"
-            min={0}
-            step={0.5}
-            defaultValue={s.limits?.dailyBudgetUsd ?? 0}
-            onBlur={(e) => {
-              const v = Math.max(0, Number(e.target.value) || 0);
-              if (v !== (s.limits?.dailyBudgetUsd ?? 0))
-                void put({ limits: { ...(s.limits ?? {}), dailyBudgetUsd: v } });
-            }}
-          />
-        </Field>
+        <DraftField
+          id="st-budget"
+          label={t("apps.settings.budget")}
+          hint={t("apps.settings.budgetHint")}
+          type="number"
+          min={0}
+          step={0.5}
+          serverValue={s.limits?.dailyBudgetUsd ?? 0}
+          parse={parseNonNegative(t)}
+          save={(dailyBudgetUsd) => put({ limits: { ...(s.limits ?? {}), dailyBudgetUsd } })}
+        />
         <ul className="plain-list profile-list">
           {PROFILES.map((prof) => (
             <li key={prof} className={prof === s.securityProfile ? "active" : ""}>
@@ -784,27 +699,18 @@ function SecurityTab({ s, put }: { s: SettingsShape; put: Put }) {
             {s.routines.allowWebhooks ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
           </Button>
         </div>
-        <Field
+        <DraftField
+          id="st-allowed-cmds"
           label={t("apps.settings.allowedCommands")}
-          htmlFor="st-allowed-cmds"
           hint={t("apps.settings.allowedCommandsHint")}
-        >
-          <input
-            key={s.connectors.allowedCommands.join()}
-            id="st-allowed-cmds"
-            className="input mono"
-            placeholder="npx, /usr/local/bin/mcp-server"
-            defaultValue={s.connectors.allowedCommands.join(", ")}
-            onBlur={(e) => {
-              const list = e.target.value
-                .split(",")
-                .map((x) => x.trim())
-                .filter(Boolean);
-              if (list.join() !== s.connectors.allowedCommands.join())
-                void put({ connectors: { ...s.connectors, allowedCommands: list } });
-            }}
-          />
-        </Field>
+          className="mono"
+          placeholder="npx, /usr/local/bin/mcp-server"
+          serverValue={s.connectors.allowedCommands}
+          format={joinComma}
+          equals={sameList}
+          parse={parseCommaList(t)}
+          save={(allowedCommands) => put({ connectors: { ...s.connectors, allowedCommands } })}
+        />
         <p className="hint">
           <TerminalSquare size={11} style={{ verticalAlign: -1 }} aria-hidden />{" "}
           {t("apps.settings.allowedCommandsExample")}
@@ -1080,15 +986,9 @@ function DesktopTab({ s, put }: { s: SettingsShape; put: Put }) {
   const ids = [...new Set([...WIDGET_ORDER, ...Object.keys(layout)])].filter((id) => isWidgetId(baseId(id)));
 
   const toggleWidget = (id: string) => {
-    const base = baseId(id);
-    const fallback = (isWidgetId(base) ? DEFAULT_LAYOUT[base] : undefined) ?? {
-      x: 0,
-      y: 0,
-      w: 6,
-      h: 4,
-      visible: true,
-    };
-    const box: WidgetBox = layout[id] ?? { ...fallback, visible: false };
+    // Geometry belongs to the desktop: a widget turned on here opens at a
+    // placeholder box and the window layer clamps and places it properly.
+    const box: WindowBox = layout[id] ?? { x: 24, y: 24, w: 420, h: 300, z: 1, visible: false };
     void put({ dashboardLayout: { ...layout, [id]: { ...box, visible: !(box.visible ?? true) } } }, true);
   };
 
@@ -1262,7 +1162,7 @@ function RemoteAccess({ s, put }: { s: SettingsShape; put: Put }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.devices }).catch(() => undefined),
     onError: (err: Error) => toast(err.message, "danger"),
   });
-  const save = (patch: Partial<typeof remote>) => void put({ remote: { ...remote, ...patch } }, true);
+  const save = (patch: Partial<typeof remote>) => put({ remote: { ...remote, ...patch } }, true);
   const active = (devices.data?.devices ?? []).filter((d) => d.revokedAt === null);
   return (
     <div className="card stack">
@@ -1274,47 +1174,32 @@ function RemoteAccess({ s, put }: { s: SettingsShape; put: Put }) {
         <Button
           variant={remote.enabled ? "outline" : "secondary"}
           aria-pressed={remote.enabled}
-          onClick={() => save({ enabled: !remote.enabled })}
+          onClick={() => void save({ enabled: !remote.enabled })}
         >
           {remote.enabled ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
         </Button>
       </div>
-      <Field
+      <DraftField
+        id="st-remote-hosts"
         label={t("apps.settings.remoteHosts")}
-        htmlFor="st-remote-hosts"
         hint={t("apps.settings.remoteHostsHint")}
-      >
-        <input
-          id="st-remote-hosts"
-          className="input"
-          defaultValue={remote.allowedHosts.join(", ")}
-          placeholder="mordomo.tail1234.ts.net, 192.168.0.12"
-          onBlur={(e) => {
-            const hosts = e.target.value
-              .split(/[,\s]+/)
-              .map((h) => h.trim())
-              .filter(Boolean);
-            if (hosts.join(",") !== remote.allowedHosts.join(",")) save({ allowedHosts: hosts });
-          }}
-        />
-      </Field>
-      <Field
+        placeholder="mordomo.tail1234.ts.net, 192.168.0.12"
+        serverValue={remote.allowedHosts}
+        format={joinComma}
+        equals={sameList}
+        parse={parseTokenList}
+        save={(allowedHosts) => save({ allowedHosts })}
+      />
+      <DraftField
+        id="st-remote-ttl"
         label={t("apps.settings.remoteTtl")}
-        htmlFor="st-remote-ttl"
         hint={t("apps.settings.remoteTtlHint")}
-      >
-        <input
-          id="st-remote-ttl"
-          className="input"
-          type="number"
-          min={0}
-          defaultValue={remote.deviceTtlDays}
-          onBlur={(e) => {
-            const v = Math.max(0, Math.round(Number(e.target.value) || 0));
-            if (v !== remote.deviceTtlDays) save({ deviceTtlDays: v });
-          }}
-        />
-      </Field>
+        type="number"
+        min={0}
+        serverValue={remote.deviceTtlDays}
+        parse={parseNonNegative(t, { integer: true })}
+        save={(deviceTtlDays) => save({ deviceTtlDays })}
+      />
       <div className="apps-sound">
         <div className="min0">
           <strong>{t("apps.settings.remoteTls")}</strong>
@@ -1335,7 +1220,7 @@ function RemoteAccess({ s, put }: { s: SettingsShape; put: Put }) {
           variant={tls.enabled ? "outline" : "secondary"}
           aria-pressed={tls.enabled}
           disabled={!remote.enabled}
-          onClick={() => save({ tls: { ...tls, enabled: !tls.enabled } })}
+          onClick={() => void save({ tls: { ...tls, enabled: !tls.enabled } })}
         >
           {tls.enabled ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
         </Button>
@@ -1433,7 +1318,7 @@ function SentinelsCard({ s, put }: { s: SettingsShape; put: Put }) {
     );
   const tg = channels.telegram;
   const saveTg = (patch: Partial<typeof tg>) =>
-    void put({ channels: { ...channels, telegram: { ...tg, ...patch } } }, true);
+    put({ channels: { ...channels, telegram: { ...tg, ...patch } } }, true);
   return (
     <>
       <div className="card stack">
@@ -1457,43 +1342,28 @@ function SentinelsCard({ s, put }: { s: SettingsShape; put: Put }) {
           </div>
         ))}
         <div className="grid-2">
-          <Field label={t("apps.settings.triageModel")} htmlFor="st-triage-model">
-            <input
-              id="st-triage-model"
-              className="input"
-              defaultValue={sentinels.triage.model}
-              onBlur={(e) =>
-                e.target.value.trim() !== sentinels.triage.model &&
-                void put(
-                  {
-                    sentinels: {
-                      ...sentinels,
-                      triage: { ...sentinels.triage, model: e.target.value.trim() || "haiku" },
-                    },
-                  },
-                  true,
-                )
-              }
-            />
-          </Field>
-          <Field label={t("apps.settings.triageBudget")} htmlFor="st-triage-budget">
-            <input
-              id="st-triage-budget"
-              className="input"
-              type="number"
-              min={0}
-              step={0.05}
-              defaultValue={sentinels.triage.dailyBudgetUsd}
-              onBlur={(e) => {
-                const v = Math.max(0, Number(e.target.value) || 0);
-                if (v !== sentinels.triage.dailyBudgetUsd)
-                  void put(
-                    { sentinels: { ...sentinels, triage: { ...sentinels.triage, dailyBudgetUsd: v } } },
-                    true,
-                  );
-              }}
-            />
-          </Field>
+          <DraftField
+            id="st-triage-model"
+            label={t("apps.settings.triageModel")}
+            placeholder="haiku"
+            serverValue={sentinels.triage.model}
+            parse={(text) => ({ value: text.trim() || "haiku" })}
+            save={(model) =>
+              put({ sentinels: { ...sentinels, triage: { ...sentinels.triage, model } } }, true)
+            }
+          />
+          <DraftField
+            id="st-triage-budget"
+            label={t("apps.settings.triageBudget")}
+            type="number"
+            min={0}
+            step={0.05}
+            serverValue={sentinels.triage.dailyBudgetUsd}
+            parse={parseNonNegative(t)}
+            save={(dailyBudgetUsd) =>
+              put({ sentinels: { ...sentinels, triage: { ...sentinels.triage, dailyBudgetUsd } } }, true)
+            }
+          />
         </div>
       </div>
       <div className="card stack">
@@ -1505,27 +1375,26 @@ function SentinelsCard({ s, put }: { s: SettingsShape; put: Put }) {
           <Button
             variant={tg.enabled ? "outline" : "secondary"}
             aria-pressed={tg.enabled}
-            onClick={() => saveTg({ enabled: !tg.enabled })}
+            onClick={() => void saveTg({ enabled: !tg.enabled })}
           >
             {tg.enabled ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
           </Button>
         </div>
         <div className="grid-2">
-          <Field label={t("apps.settings.telegramChat")} htmlFor="st-tg-chat">
-            <input
-              id="st-tg-chat"
-              className="input"
-              defaultValue={tg.chatId}
-              placeholder="123456789 or @channel"
-              onBlur={(e) => e.target.value.trim() !== tg.chatId && saveTg({ chatId: e.target.value.trim() })}
-            />
-          </Field>
+          <DraftField
+            id="st-tg-chat"
+            label={t("apps.settings.telegramChat")}
+            placeholder={t("settings.telegramChatPlaceholder")}
+            serverValue={tg.chatId}
+            parse={(text) => ({ value: text.trim() })}
+            save={(chatId) => saveTg({ chatId })}
+          />
           <Field label={t("apps.settings.telegramMinTone")} htmlFor="st-tg-tone">
             <select
               id="st-tg-tone"
               className="input"
               value={tg.minTone}
-              onChange={(e) => saveTg({ minTone: e.target.value as typeof tg.minTone })}
+              onChange={(e) => void saveTg({ minTone: e.target.value as typeof tg.minTone })}
             >
               {(["info", "warn", "danger"] as const).map((tone) => (
                 <option key={tone} value={tone}>
@@ -1552,7 +1421,7 @@ function SentinelsCard({ s, put }: { s: SettingsShape; put: Put }) {
             variant={tg.inbound ? "outline" : "secondary"}
             aria-pressed={tg.inbound}
             disabled={!tg.enabled}
-            onClick={() => saveTg({ inbound: !tg.inbound })}
+            onClick={() => void saveTg({ inbound: !tg.inbound })}
           >
             {tg.inbound ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
           </Button>

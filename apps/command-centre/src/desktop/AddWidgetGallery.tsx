@@ -1,32 +1,27 @@
 /**
  * "Add widget" gallery (analysis item 23): every registry entry that is not
- * on the desktop, plus a duplicate of the ones that allow it. Placing a
- * widget finds the first free slot for its default box, so nothing lands on
- * top of what is already there.
+ * on the desktop, plus a duplicate of the ones that allow it. A new window
+ * opens at the least-covered spot on the stage and on top of the stack, so
+ * it neither lands under what is already there nor hides it.
  */
 import { Plus } from "lucide-react";
 import { Popover } from "../components/primitives";
 import { useT } from "../i18n";
-import {
-  DEFAULT_LAYOUT,
-  WIDGET_ORDER,
-  findFreeSpot,
-  nextDuplicateId,
-  type LayoutMap,
-  type WidgetId,
-} from "./defaultLayout";
+import { WIDGET_ORDER, nextDuplicateId, type WidgetId } from "./defaultLayout";
+import { defaultWindows } from "./defaultWindows";
+import { placeNew, topZ, type Size, type WindowMap } from "./windowModel";
 import { WIDGET_REGISTRY } from "./registry";
 
 export interface AddWidgetGalleryProps {
-  layout: LayoutMap;
-  rows: number;
+  layout: WindowMap;
+  stage: Size;
   anchor: HTMLElement;
-  onAdd: (next: LayoutMap) => void;
+  onAdd: (next: WindowMap) => void;
   onClose: () => void;
 }
 
 /** Widgets that can be added right now: hidden instances first, then duplicable ones. */
-export function addableWidgets(layout: LayoutMap): Array<{ id: string; base: WidgetId; duplicate: boolean }> {
+export function addableWidgets(layout: WindowMap): Array<{ id: string; base: WidgetId; duplicate: boolean }> {
   const out: Array<{ id: string; base: WidgetId; duplicate: boolean }> = [];
   for (const base of WIDGET_ORDER) {
     const box = layout[base];
@@ -37,15 +32,19 @@ export function addableWidgets(layout: LayoutMap): Array<{ id: string; base: Wid
   return out;
 }
 
-export default function AddWidgetGallery({ layout, rows, anchor, onAdd, onClose }: AddWidgetGalleryProps) {
+export default function AddWidgetGallery({ layout, stage, anchor, onAdd, onClose }: AddWidgetGalleryProps) {
   const t = useT();
   const options = addableWidgets(layout);
 
   const add = (id: string, base: WidgetId) => {
-    const def = WIDGET_REGISTRY[base];
-    const spot = findFreeSpot(layout, def.box.w, def.box.h, rows);
-    const previous = layout[id] ?? DEFAULT_LAYOUT[base]!;
-    onAdd({ ...layout, [id]: { ...previous, ...spot, w: def.box.w, h: def.box.h, visible: true } });
+    const fallback = defaultWindows(stage)[base]!;
+    const previous = layout[id] ?? fallback;
+    const size = { w: previous.w || fallback.w, h: previous.h || fallback.h };
+    const spot = placeNew(size, layout, stage);
+    onAdd({
+      ...layout,
+      [id]: { ...previous, ...spot, ...size, z: topZ(layout) + 1, visible: true, minimized: false },
+    });
     onClose();
   };
 

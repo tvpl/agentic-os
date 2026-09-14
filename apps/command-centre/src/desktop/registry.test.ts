@@ -6,8 +6,10 @@
 import { describe, expect, it } from "vitest";
 import { dictionaries } from "../i18n";
 import { addableWidgets } from "./AddWidgetGallery";
-import { DEFAULT_LAYOUT, MIN_H, MIN_W, WIDGET_ORDER, type LayoutMap } from "./defaultLayout";
-import { WIDGET_REGISTRY, defaultConfig, widgetDefinition } from "./registry";
+import { WIDGET_ORDER } from "./defaultLayout";
+import { defaultWindows } from "./defaultWindows";
+import { MIN_H, MIN_W } from "./windowModel";
+import { WIDGET_REGISTRY, defaultConfig, hasSurface, widgetDefinition } from "./registry";
 
 describe("widget registry", () => {
   it("has exactly one entry per registered widget id", () => {
@@ -23,14 +25,11 @@ describe("widget registry", () => {
     }
   });
 
-  it("default boxes match the default layout and respect the minimum size", () => {
+  it("the first composition gives every widget a usable window", () => {
+    const layout = defaultWindows({ w: 1440, h: 704 });
     for (const id of WIDGET_ORDER) {
-      const def = WIDGET_REGISTRY[id];
-      expect(def.box).toEqual({ w: DEFAULT_LAYOUT[id]!.w, h: DEFAULT_LAYOUT[id]!.h });
-      expect(def.min.w).toBeGreaterThanOrEqual(MIN_W);
-      expect(def.min.h).toBeGreaterThanOrEqual(MIN_H);
-      expect(def.box.w).toBeGreaterThanOrEqual(def.min.w);
-      expect(def.box.h).toBeGreaterThanOrEqual(def.min.h);
+      expect(layout[id]!.w, `${id}.w`).toBeGreaterThanOrEqual(MIN_W);
+      expect(layout[id]!.h, `${id}.h`).toBeGreaterThanOrEqual(MIN_H);
     }
   });
 
@@ -61,6 +60,29 @@ describe("widget registry", () => {
     expect(defaultConfig(undefined)).toEqual({});
   });
 
+  it("declares a surface for every widget whose expansion adds something", () => {
+    // The clock is the exception the contract exists for: the time is the
+    // whole datum, so it must not offer an expand control.
+    expect(hasSurface(WIDGET_REGISTRY.today)).toBe(false);
+    for (const id of WIDGET_ORDER) {
+      if (id === "today") continue;
+      expect(hasSurface(WIDGET_REGISTRY[id]), `${id} should be expandable`).toBe(true);
+    }
+    // An unknown id must not accidentally read as "no surface".
+    expect(hasSurface(undefined)).toBe(true);
+  });
+
+  it("surface minimums are large enough to be honest and fit the grid box", () => {
+    for (const id of WIDGET_ORDER) {
+      const def = WIDGET_REGISTRY[id];
+      if (!def.surfaceMin) continue;
+      expect(hasSurface(def), `${id} declares a surfaceMin but no surface`).toBe(true);
+      // Smaller than this and the "expanded" view is just the compact one.
+      expect(def.surfaceMin.w, `${id}.surfaceMin.w`).toBeGreaterThanOrEqual(320);
+      expect(def.surfaceMin.h, `${id}.surfaceMin.h`).toBeGreaterThanOrEqual(200);
+    }
+  });
+
   it("resolves duplicate instance ids back to their base definition", () => {
     expect(widgetDefinition("today:2")).toBe(WIDGET_REGISTRY.today);
     expect(widgetDefinition("today")).toBe(WIDGET_REGISTRY.today);
@@ -68,7 +90,7 @@ describe("widget registry", () => {
   });
 
   it("the add gallery offers hidden widgets and duplicates of visible duplicable ones", () => {
-    const layout: LayoutMap = { ...DEFAULT_LAYOUT };
+    const layout = defaultWindows({ w: 1440, h: 704 });
     const options = addableWidgets(layout);
     const ids = options.map((o) => o.id);
     // `inbox` ships hidden, `today` ships visible and is duplicable.

@@ -40,3 +40,6 @@ test-results/
 # distributable staging and output (scripts/package.mjs)
 build/
 release/
+
+# Local dev-server config for the Claude desktop app
+.claude/

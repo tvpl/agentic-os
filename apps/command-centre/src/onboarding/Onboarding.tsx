@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { DialogPortal, useDialogDepth } from "../components/dialog";
 import { PROVIDER_GATE_EVENT } from "../components/providerReadiness";
-import { useWorkspace, type WorkspaceMode } from "../components/Workspace";
+import { SPACE_IDS, SWITCH_SPACE_EVENT } from "../components/Workspace";
 import { readConsoleDraft, storeConsoleDraft } from "../desktop/consoleDraft";
 import { useLang } from "../i18n";
 import { useOsProviders, useOsSettings } from "../queries";
@@ -38,7 +38,7 @@ import {
 import { useTourFocus, useTourTarget } from "./useTourSurface";
 import "./onboarding.css";
 
-const MODES: WorkspaceMode[] = ["overview", "focus", "explore"];
+const SPACES: string[] = [...SPACE_IDS];
 const CHAPTER_ICONS = [Compass, BrainCircuit, Rocket, Sparkles];
 const DRAFT_KEY = "mordomo.onboarding.draft.v1";
 function readPractice() {
@@ -54,9 +54,9 @@ export function Onboarding() {
   const navigate = useNavigate();
   const location = useLocation();
   const depth = useDialogDepth();
-  const { mode, setMode } = useWorkspace();
   const providers = useOsProviders();
   const settings = useOsSettings();
+  const activeSpace = settings.data?.activeSpace ?? "work";
   const [progress, setProgress] = useState(readProgress);
   const [screen, setScreen] = useState<"welcome" | "tour" | "complete" | null>(null);
   const [draft, setDraft] = useState(readPractice);
@@ -137,9 +137,9 @@ export function Onboarding() {
     if (navigatedStep.current === step.id) return;
     navigatedStep.current = step.id;
     setVariant("");
-    if (step.id === "console") setMode("focus");
+    // The console is a window now; the tour just points at the desktop.
     navigate(step.route, { replace: true });
-  }, [screen, step, navigate, setMode]);
+  }, [screen, step, navigate]);
   useLayoutEffect(() => {
     if (!screen) return;
     const resize = () => {
@@ -206,7 +206,6 @@ export function Onboarding() {
         text: [current.text.trimEnd(), draft.trim()].filter(Boolean).join("\n\n"),
       });
       window.dispatchEvent(new Event(ONBOARDING_DRAFT_EVENT));
-      setMode("focus");
     }
     update((p) => ({ ...p, status: "completed", practiced: draft.trim().length > 0 }));
     setScreen(null);
@@ -315,13 +314,13 @@ export function Onboarding() {
                   <div className="ob-activity">
                     <p>{c.modes}</p>
                     <div className="ob-choice-row">
-                      {MODES.map((value, i) => (
+                      {SPACES.map((value, i) => (
                         <button
                           type="button"
                           key={value}
-                          aria-pressed={mode === value}
+                          aria-pressed={activeSpace === value}
                           onClick={() => {
-                            setMode(value);
+                            window.dispatchEvent(new CustomEvent(SWITCH_SPACE_EVENT, { detail: value }));
                             setTriedMode(true);
                           }}
                         >
@@ -330,7 +329,7 @@ export function Onboarding() {
                       ))}
                     </div>
                     <p className="ob-feedback" role="status">
-                      {triedMode ? c.modeDone : c.modeHints[MODES.indexOf(mode)]}
+                      {triedMode ? c.modeDone : c.modeHints[Math.max(0, SPACES.indexOf(activeSpace))]}
                     </p>
                   </div>
                 )}

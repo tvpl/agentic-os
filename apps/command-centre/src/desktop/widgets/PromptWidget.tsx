@@ -38,7 +38,12 @@ import { useDesktopActions } from "../actions";
 import { isActiveStatus } from "../data";
 import { cfgString, type WidgetProps } from "../widgetTypes";
 import { ONBOARDING_DRAFT_EVENT } from "../../onboarding/state";
-import { readConsoleDraft, storeConsoleDraft } from "../consoleDraft";
+import {
+  readConsoleDraft,
+  storeConsoleDraft,
+  CONSOLE_DRAFT_EVENT,
+  CONSOLE_REFS_EVENT,
+} from "../consoleDraft";
 
 type Mode = "read_only" | "write";
 
@@ -53,6 +58,60 @@ const THREAD_TURNS = 8;
 const REPLY_MAX_CHARS = 900;
 
 /** Skills whose slug starts with the `/word` being typed (empty when not completing). */
+/**
+ * Documents matching the `@word` the caret is sitting in (redesign F5).
+ * Returns `null` when the caret is not in a reference at all, so the caller
+ * can tell "no matches" from "not referencing anything".
+ */
+export function docSuggestions<T extends { ref: string }>(
+  textBeforeCaret: string,
+  docs: readonly T[],
+  limit = 6,
+): T[] | null {
+  const m = /@([\w.-]*)$/.exec(textBeforeCaret);
+  if (!m) return null;
+  const needle = (m[1] ?? "").toLowerCase();
+  return docs.filter((d) => d.ref.toLowerCase().includes(needle)).slice(0, limit);
+}
+
+/**
+ * Puts a reference into the draft. When the caret sits inside a half-typed
+ * `@word` it completes that one; otherwise it appends — which is what a click
+ * on a context chip means, and what the first version silently failed to do
+ * on an empty prompt.
+ */
+export function completeReference(text: string, caret: number, ref: string): { text: string; caret: number } {
+  const before = text.slice(0, caret);
+  const m = /@([\w.-]*)$/.exec(before);
+  const inserted = `@${ref} `;
+  if (!m) {
+    const head = text.trimEnd();
+    const next = head ? `${head} ${inserted}` : inserted;
+    return { text: next, caret: next.length };
+  }
+  const start = before.length - m[0].length;
+  return { text: text.slice(0, start) + inserted + text.slice(caret), caret: start + inserted.length };
+}
+
+/**
+ * Turns the `@name` references in a prompt into paths the agent can read.
+ * The user sees a name; the model gets the file.
+ */
+export function resolveReferences(
+  text: string,
+  docs: readonly { ref: string; path: string }[],
+): { text: string; used: string[] } {
+  const used: string[] = [];
+  for (const doc of docs) {
+    const pattern = new RegExp(`@${doc.ref.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g");
+    if (!pattern.test(text)) continue;
+    used.push(doc.path);
+  }
+  if (used.length === 0) return { text, used };
+  const list = used.map((p) => `- ${JSON.stringify(p)}`).join("\n");
+  return { text: `${text.trimEnd()}\n\nReferenced files:\n${list}`, used };
+}
+
 export function skillSuggestions(prompt: string, skills: readonly Skill[], limit = 6): Skill[] {
   const m = /^\/([a-z0-9-]*)$/i.exec(prompt.trim());
   if (!m) return [];
@@ -128,7 +187,11 @@ export default function PromptWidget({ config }: WidgetProps) {
   useEffect(() => {
     const refresh = () => setPrompt(readConsoleDraft().text);
     window.addEventListener(ONBOARDING_DRAFT_EVENT, refresh);
-    return () => window.removeEventListener(ONBOARDING_DRAFT_EVENT, refresh);
+    window.addEventListener(CONSOLE_DRAFT_EVENT, refresh);
+    return () => {
+      window.removeEventListener(ONBOARDING_DRAFT_EVENT, refresh);
+      window.removeEventListener(CONSOLE_DRAFT_EVENT, refresh);
+    };
   }, []);
   const [mode, setMode] = useState<Mode>(
     cfgString(config, "mode", "read_only") === "write" ? "write" : "read_only",
@@ -173,6 +236,38 @@ export default function PromptWidget({ config }: WidgetProps) {
   const defaultProvider = enabled.find((p) => p.isDefault)?.id ?? enabled[0]?.id;
   const folders = useMemo(() => readFolders(settings.data), [settings.data]);
   const suggestions = useMemo(() => skillSuggestions(prompt, skills.data ?? []), [prompt, skills.data]);
+  /** Caret position, so `@` completion edits the reference being typed. */
+  const [caret, setCaret] = useState(0);
+  const refHits = useMemo(
+    () => docSuggestions(prompt.slice(0, caret), actions.openDocs),
+    [prompt, caret, actions.openDocs],
+  );
+  /**
+   * Publish which documents the draft points at. The desktop listens and
+   * draws the tethers; keeping it an event means the console does not need to
+   * know anything about the stage's geometry.
+   */
+  const referencedIds = useMemo(
+    () => resolveReferences(prompt, actions.openDocs).used,
+    [prompt, actions.openDocs],
+  );
+  const refsKey = referencedIds.join("|");
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(CONSOLE_REFS_EVENT, { detail: refsKey ? refsKey.split("|") : [] }));
+    return () => {
+      window.dispatchEvent(new CustomEvent(CONSOLE_REFS_EVENT, { detail: [] }));
+    };
+  }, [refsKey]);
+
+  const insertRef = (ref: string) => {
+    const next = completeReference(prompt, caret, ref);
+    setPrompt(next.text);
+    setCaret(next.caret);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(next.caret, next.caret);
+    });
+  };
 
   /* ---- the conversation ------------------------------------------------ */
   const session = useQuery({
@@ -218,6 +313,29 @@ export default function PromptWidget({ config }: WidgetProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [details.map((d) => d.dataUpdatedAt).join(","), finishedIds.join(",")]);
   const live = useMemo(() => replyFromEvents(stream.events), [stream.events]);
+
+  /**
+   * A finished run's artifact opens on the stage (redesign F5). This is the
+   * payoff: the thing the agent just made is in front of you and already
+   * referenceable, instead of a link that would take you off the desktop.
+   *
+   * Only runs that finish while the console is open, and only once each — a
+   * refetch must not reopen a window the user deliberately closed.
+   */
+  const openedFor = useRef(new Set<string>());
+  const openDocRef = useRef(actions.openDoc);
+  openDocRef.current = actions.openDoc;
+  useEffect(() => {
+    finishedIds.forEach((id, i) => {
+      if (openedFor.current.has(id)) return;
+      const run = details[i]?.data?.run;
+      if (!run) return;
+      openedFor.current.add(id);
+      const artifact = run.artifacts?.[0];
+      if (artifact) openDocRef.current(artifact);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [details.map((d) => d.dataUpdatedAt).join(","), finishedIds.join(",")]);
   // Tool prompts the running turn is waiting on (the CLI is paused until answered).
   const approvals = useApprovals({ enabled: active !== undefined, refetchInterval: active ? 30_000 : false });
   const toolApprovals = toolApprovalsForRun(approvals.data, active?.id);
@@ -233,7 +351,8 @@ export default function PromptWidget({ config }: WidgetProps) {
   const submitting = useRef(false);
   const launch = useMutation({
     mutationFn: (): Promise<LaunchRunResponse> => {
-      const text = prompt.trim();
+      // The user writes `@plan.md`; the agent receives the path behind it.
+      const { text } = resolveReferences(prompt.trim(), actions.openDocs);
       const fingerprint = JSON.stringify({ text, mode, sessionId, cwd, defaultProvider });
       if (submission.current?.fingerprint !== fingerprint)
         submission.current = { fingerprint, id: crypto.randomUUID() };
@@ -381,7 +500,42 @@ export default function PromptWidget({ config }: WidgetProps) {
         <ToolApprovalCard key={a.id} approval={a} />
       ))}
 
-      {suggestions.length > 0 && (
+      {actions.openDocs.length > 0 && (
+        <div className="console-context" aria-label={t("desktop.doc.context")}>
+          <span className="hud-label">{t("desktop.doc.context")}</span>
+          {actions.openDocs.map((doc) => (
+            <button
+              key={doc.id}
+              type="button"
+              className="context-chip mono"
+              title={doc.path}
+              onClick={() => insertRef(doc.ref)}
+            >
+              @{doc.ref}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {refHits !== null && refHits.length > 0 && (
+        <div className="promptw-suggest" role="listbox" aria-label={t("desktop.doc.context")}>
+          {refHits.map((doc) => (
+            <button
+              key={doc.id}
+              type="button"
+              role="option"
+              aria-selected={false}
+              className="promptw-sugg mono"
+              title={doc.path}
+              onClick={() => insertRef(doc.ref)}
+            >
+              @{doc.ref}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {refHits === null && suggestions.length > 0 && (
         <div className="promptw-suggest" role="listbox" aria-label={t("desktop.prompt.skills")}>
           {suggestions.map((s) => (
             <button
@@ -406,14 +560,24 @@ export default function PromptWidget({ config }: WidgetProps) {
           value={prompt}
           placeholder={t("desktop.prompt.placeholder")}
           aria-label={t("desktop.prompt.placeholder")}
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(e) => {
+            setPrompt(e.target.value);
+            setCaret(e.target.selectionStart ?? e.target.value.length);
+          }}
+          onSelect={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
           onKeyDown={(e) => {
             if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
               e.preventDefault();
               submit();
               return;
             }
-            if (e.key === "Tab" && suggestions.length > 0) {
+            // While a reference is being typed, Tab completes it instead of a skill.
+            if (e.key === "Tab" && refHits && refHits.length > 0) {
+              e.preventDefault();
+              insertRef(refHits[0]!.ref);
+              return;
+            }
+            if (e.key === "Tab" && refHits === null && suggestions.length > 0) {
               e.preventDefault();
               complete(suggestions[0]!.slug);
             }

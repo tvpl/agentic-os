@@ -1,5 +1,6 @@
 /** Shared widget prop / config-schema types (no React runtime, no cycles). */
-import type { WidgetConfig } from "./defaultLayout";
+/** Per-widget settings declared by a registry `configSchema`. */
+export type WidgetConfig = Record<string, unknown>;
 
 export interface WidgetProps {
   /** Instance id in the layout ("today" or "today:2"). */

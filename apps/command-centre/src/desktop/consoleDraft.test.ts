@@ -3,20 +3,18 @@ import { parseConsoleDraft } from "./consoleDraft";
 
 it("restores the draft together with its project and session ownership", () => {
   const draft = { version: 1, text: "Update this", cwd: "/projects/mobile", sessionId: "session-a" };
-  expect(parseConsoleDraft(JSON.stringify(draft), "obsolete")).toEqual({
+  expect(parseConsoleDraft(JSON.stringify(draft))).toEqual({
     text: draft.text,
     cwd: draft.cwd,
     sessionId: draft.sessionId,
   });
 });
 it("keeps an explicit new conversation separate from the global last session", () => {
-  expect(
-    parseConsoleDraft('{"version":1,"text":"new","cwd":"","sessionId":null}', null).sessionId,
-  ).toBeNull();
+  expect(parseConsoleDraft('{"version":1,"text":"new","cwd":"","sessionId":null}').sessionId).toBeNull();
 });
-it("migrates legacy text and tolerates malformed storage", () => {
+it("tolerates malformed storage instead of throwing at the console", () => {
   for (const raw of [null, "broken", "[]", '{"version":2}', '{"version":1,"text":3}']) {
-    expect(parseConsoleDraft(raw, "keep me")).toEqual({ text: "keep me", cwd: "" });
+    expect(parseConsoleDraft(raw)).toEqual({ text: "", cwd: "" });
   }
 });
 

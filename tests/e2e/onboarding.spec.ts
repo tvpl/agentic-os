@@ -33,7 +33,13 @@ test("interactive journey visits real apps, practices safely and hands off a dra
   const writes: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("request", (request) => {
-    if (request.url().includes("/api/") && ["POST", "PUT", "DELETE", "PATCH"].includes(request.method()))
+    // Switching space is a settings write, and the tour teaches it on purpose.
+    // What must stay untouched is the user's work: runs, skills, routines.
+    if (
+      request.url().includes("/api/") &&
+      !request.url().includes("/api/settings") &&
+      ["POST", "PUT", "DELETE", "PATCH"].includes(request.method())
+    )
       writes.push(request.url());
   });
   await page.addInitScript(() =>
@@ -46,14 +52,15 @@ test("interactive journey visits real apps, practices safely and hands off a dra
   const guide = page.getByTestId("onboarding");
   await guide.getByRole("button", { name: "Let's get started" }).click();
   await guide.getByRole("button", { name: "Next step", exact: true }).click();
-  const realModes = page.locator('[data-onboarding="modes"]');
-  await realModes.getByRole("button", { name: "Focus", exact: true }).click();
-  await expect(realModes.getByRole("button", { name: "Focus", exact: true })).toHaveAttribute(
+  // The tour now teaches spaces (redesign F6), not the old display modes.
+  const realSpaces = page.locator('[data-onboarding="modes"]');
+  await realSpaces.getByRole("button", { name: "Research", exact: true }).click();
+  await expect(realSpaces.getByRole("button", { name: "Research", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  await expect(guide.getByRole("status")).toContainText("desktop has adapted");
-  await guide.getByRole("button", { name: "Explore", exact: true }).click();
+  await expect(guide.getByRole("status")).toContainText("as you left it");
+  await guide.getByRole("button", { name: "Ops", exact: true }).click();
   await guide.getByRole("button", { name: "Next step", exact: true }).click();
   await guide.getByRole("button", { name: "Use an example" }).click();
   await expect(guide.getByLabel("Practice draft")).toContainText("Do not change anything");
