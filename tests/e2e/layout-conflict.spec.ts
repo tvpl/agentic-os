@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { stageBoxes } from "./stage";
 
 test("two browser contexts preserve competing layouts until an explicit resolution", async ({
   page,
@@ -7,13 +8,13 @@ test("two browser contexts preserve competing layouts until an explicit resoluti
 }) => {
   const headers = { "x-mordomo-token": process.env.MORDOMO_TOKEN! };
   // Stage pixels (redesign F4a), side by side so both title bars are clickable.
-  const box = { x: 24, y: 24, w: 420, h: 300, z: 1, visible: true };
-  await request.put("/api/settings", {
-    headers,
-    data: {
-      language: "en",
-      dashboardLayout: { now: box, pulse: { ...box, x: 470, z: 2 } },
-    },
+  // Seeded through the stage helper so the app panels a neighbouring spec
+  // left open (G2) are parked first — one of them over the Now plate meant
+  // the ✕ under test was never reachable.
+  await request.put("/api/settings", { headers, data: { language: "en" } });
+  await stageBoxes(request, {
+    now: { x: 24, y: 24, w: 420, h: 300 },
+    pulse: { x: 470, y: 24, w: 420, h: 300 },
   });
   await page.goto("/#/");
   const other = await browser.newContext({ baseURL: new URL(page.url()).origin });

@@ -14,6 +14,7 @@ import { errorMessage } from "../views/shared";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -24,6 +25,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import {
+  Activity,
   Archive,
   ArrowDown,
   ArrowLeft,
@@ -80,6 +82,8 @@ export const RESET_LAYOUT_EVENT = "mordomo:reset-layout";
 
 /** Fired by the palette's "Skill deck" action; the desktop fans the radial deck out. */
 export const OPEN_DECK_EVENT = "mordomo:open-deck";
+/** Fired by the palette to put a registered instrument panel on the stage (`detail` = its id). */
+export const OPEN_PANEL_EVENT = "mordomo:open-panel";
 
 /** `detail` of the LAUNCHER_EVENT CustomEvent: open with a query or straight on a skill's run page. */
 export interface PaletteOpenDetail {
@@ -153,6 +157,12 @@ export function CommandPalette({
   const { notify } = useNotifications();
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Focus on mount, synchronously: the dialog's own initial focus lands a
+  // frame later, and keys typed in that frame went to whatever panel had
+  // focus behind the palette (G2 put live apps there).
+  useLayoutEffect(() => {
+    inputRef.current?.focus();
+  }, []);
   const [query, setQuery] = useState(initial?.query ?? "");
   const [selected, setSelected] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
@@ -352,6 +362,22 @@ export function CommandPalette({
       ),
       act("new-skill", "shell.action.newSkill", <Plus aria-hidden />, ["skill", "create", "nova"], (el) =>
         go("/skills?new=1", el),
+      ),
+      act(
+        "now",
+        "now.title",
+        <Activity aria-hidden />,
+        ["now", "objective", "objetivo", "agora", "steps"],
+        () => {
+          const fire = () => window.dispatchEvent(new CustomEvent(OPEN_PANEL_EVENT, { detail: "now" }));
+          if (pathname === "/") {
+            fire();
+            close();
+          } else {
+            go("/");
+            requestAnimationFrame(() => requestAnimationFrame(fire));
+          }
+        },
       ),
       act(
         "skill-deck",

@@ -2,7 +2,7 @@ import { OnboardingButton } from "../onboarding/Onboarding";
 import { useWorkspace, type RenderProfile } from "../components/Workspace";
 import { PROVIDER_LOGIN_COMMANDS } from "../runs/authRecovery";
 import { useContext, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { usePanelSearchParams } from "../desktop/appRoute";
 import {
   ArrowRight,
   Bell,
@@ -135,7 +135,7 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
   const toast = useToast();
   const { setLang } = useContext(I18nContext);
   const qc = useQueryClient();
-  const [params, setParams] = useSearchParams();
+  const [params, setParams] = usePanelSearchParams();
   const requested = params.get("tab") as TabId | null;
   const [tab, setTabState] = useState<TabId>(
     requested && TAB_IDS.includes(requested) ? requested : "identity",

@@ -131,6 +131,13 @@ export function useWindowLayout({
     onSuccess: (data, vars) => {
       baseRef.current = data.settings?.dashboardLayout ?? vars;
       setConflict(false);
+      // The response is the document the server now holds: put it in the
+      // cache *before* `dirty` clears. Otherwise the adoption effect below
+      // runs against the previous fetch and, for one refetch, hands the
+      // desktop a layout that is one edit behind — harmless when a layout
+      // was only geometry, fatal now that a panel's config carries live app
+      // state (the brain read its selection as "gone", then as "new").
+      if (data.settings) qc.setQueryData(qk.settings, data.settings);
       if (vars === latestRef.current) setDirty(false);
       qc.invalidateQueries({ queryKey: qk.settings }).catch(() => undefined);
     },

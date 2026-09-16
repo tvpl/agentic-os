@@ -1,6 +1,8 @@
+import { resetStage } from "./stage";
 import { test, expect } from "@playwright/test";
 
-test("draft keeps its selected project across app navigation and reload", async ({ page }) => {
+test("draft keeps its selected project across app navigation and reload", async ({ page, request }) => {
+  await resetStage(request);
   await page.goto("/#/");
   const widget = page.locator('[data-panel="prompt"]');
   const picker = widget.locator("select.promptw-cwd");
@@ -56,7 +58,9 @@ test("a draft whose project disappeared cannot silently run in the home director
 
 test("brain reference reaches the console without replacing the draft or executing a task", async ({
   page,
+  request,
 }) => {
+  await resetStage(request);
   let launches = 0;
   page.on("request", (request) => {
     if (
@@ -80,8 +84,10 @@ test("brain reference reaches the console without replacing the draft or executi
   const sourcePath = await source.getAttribute("title");
   await source.click();
   await page.getByRole("button", { name: "Use in console", exact: true }).click();
+  // The console is on the stage already (G2): the reference arrives by event
+  // after the preview is fetched, so the read has to wait for it.
+  await expect.poll(() => widget.locator("textarea").inputValue()).toContain(JSON.stringify(sourcePath));
   await expect(widget.locator("textarea")).toHaveValue(new RegExp("^Keep my existing request"));
-  expect(await widget.locator("textarea").inputValue()).toContain(JSON.stringify(sourcePath));
   await expect(picker).toHaveValue(folder!);
   await expect(widget).toBeVisible();
   expect(launches).toBe(0);

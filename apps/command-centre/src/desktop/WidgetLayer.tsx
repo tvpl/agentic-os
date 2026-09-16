@@ -275,6 +275,10 @@ export default function WidgetLayer({
       typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     for (const [id, el] of elements.current) {
+      // A FLIP still playing must not be measured: its rect is mid-flight,
+      // and inverting it again would set the plate oscillating for as long
+      // as anything keeps the layer re-rendering (a live app panel does).
+      if (el.style.transition) continue;
       const prev = rects.current.get(id);
       const r = el.getBoundingClientRect();
       const next = { left: r.left, top: r.top };
@@ -292,6 +296,8 @@ export default function WidgetLayer({
           el.style.transition = "";
           el.style.transform = "";
           el.removeEventListener("transitionend", done);
+          const settled = el.getBoundingClientRect();
+          rects.current.set(id, { left: settled.left, top: settled.top });
         };
         el.addEventListener("transitionend", done);
       }

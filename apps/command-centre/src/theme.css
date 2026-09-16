@@ -1403,8 +1403,12 @@ canvas.dimmed {
   width: min(960px, calc(100% - 32px));
   max-height: calc(100% - 196px);
   overflow-y: auto;
-  left: 50%;
-  transform: translateX(-50%);
+  /* Centred by margins, not by a transform: the entrance animation's
+     final keyframe (`transform: none`) would pin a transformed bar off
+     centre — half of it hung past the viewport, unreachable. */
+  left: 0;
+  right: 0;
+  margin-inline: auto;
   z-index: var(--z-chrome);
   display: flex;
   gap: var(--s-2);

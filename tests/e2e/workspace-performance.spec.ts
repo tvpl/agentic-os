@@ -2,23 +2,29 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 
 test("baseline: 200 warm workspace navigations measured inside the browser", async ({ page }) => {
-  test.setTimeout(90000);
+  // 200 dock round-trips through a live desktop (G2: panels, not pages) take longer than 200 page loads did.
+  test.setTimeout(240000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
   const dock = page.getByRole("navigation", { name: "Workspace navigation" });
+  // Both apps are panels on the stage now (G2): a dock click brings one to
+  // the front rather than swapping pages, so what is measured is click →
+  // that app's panel on top with its content ready.
+  const ready = (name: string) =>
+    name === "Second Brain"
+      ? '.panel.on[data-panel="app:brain"] .brain2-panel input'
+      : '.panel.on[data-panel="app:pixel"] .pxs-stage canvas';
   for (const name of ["Second Brain", "Pixel Studio"]) {
     await dock.getByRole("button", { name, exact: true }).click();
-    await expect(
-      page.locator(name === "Second Brain" ? ".brain2-panel input" : ".pxs-stage canvas").first(),
-    ).toBeVisible();
+    await expect(page.locator(ready(name)).first()).toBeVisible();
   }
   // Measure browser click dispatch -> target ready for interaction, not the
   // round-trip time of Playwright's command. Data comes from the isolated home.
   const records: Array<{ target: string; durationMs: number }> = [];
   for (let i = 0; i < 200; i++) {
     const name = i % 2 === 0 ? "Second Brain" : "Pixel Studio";
-    const selector = i % 2 === 0 ? ".brain2-panel input" : ".pxs-stage canvas";
+    const selector = ready(name);
     const measured = page.evaluate(
       ({ name, selector }) =>
         new Promise<number>((resolve) => {

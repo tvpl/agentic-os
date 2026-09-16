@@ -227,6 +227,21 @@ export default function SecondBrain() {
   }, [presenting, preview, listOpen, controlsCollapsed, refreshInsets]);
   const camera = useCamera(world, viewRef, insetsRef, dirty, reduceMotionRef, refreshInsets);
   const { centerOn, fitToBounds } = camera;
+  /**
+   * "Reset zoom and position" means it: a flight still playing and a dive
+   * still queued for the selection would both steer the camera away again a
+   * moment later — inside a plate, where the preview pane lands mid-canvas,
+   * that is exactly what happened.
+   */
+  const resetCamera = useCallback(() => {
+    cancelFlight(world.current);
+    wantFocus.current = false;
+    camera.reset();
+  }, [camera, world, wantFocus]);
+  const zoomControls = useMemo(
+    () => ({ ...camera.controls, reset: resetCamera }),
+    [camera.controls, resetCamera],
+  );
   const zoomBus = useZoomBus();
 
   /* ---------- selection + preview ---------- */
@@ -542,7 +557,7 @@ export default function SecondBrain() {
         camera.by(0.8);
       } else if (mod && e.key === "0") {
         e.preventDefault();
-        camera.reset();
+        resetCamera();
       } else if (inField || mod || e.altKey) {
         /* typing: single-key shortcuts stay off */
       } else if (e.key === "/") {
@@ -555,7 +570,7 @@ export default function SecondBrain() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [camera, patch, uiRef]);
+  }, [camera, patch, uiRef, resetCamera]);
 
   // Esc closes the preview, then the list, then presentation mode — and only
   // then bubbles to the shell (which leaves the view).
@@ -596,7 +611,9 @@ export default function SecondBrain() {
   }, [world, uiRef, toast, t, invalidate]);
 
   const reset = useCallback(() => {
-    camera.reset();
+    // A flight in progress (the dive to a just-selected file) would keep
+    // steering the camera after the reset; it ends here.
+    resetCamera();
     setTimeline({ value: null, playing: false });
     patch({
       sel: null,
@@ -606,7 +623,7 @@ export default function SecondBrain() {
       groups: [],
       local: false,
     });
-  }, [camera, patch]);
+  }, [resetCamera, patch]);
 
   const total = graph?.totalFiles ?? 0;
 
@@ -660,7 +677,7 @@ export default function SecondBrain() {
         onRefresh={refresh}
         liveCount={liveCount}
         onNavigate={navigate}
-        zoom={camera.controls}
+        zoom={zoomControls}
         zoomReadout={<ZoomReadout world={world} bus={zoomBus} />}
         legend={brain.legend}
         legendOpen={legendOpen}

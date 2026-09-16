@@ -16,6 +16,7 @@
  * destination now, not a first impression.
  */
 import { WIDGET_ORDER, type WidgetId } from "./defaultLayout";
+import { APPS, appKindOf } from "./apps";
 import {
   ARC_MARGIN,
   MIN_H,
@@ -85,6 +86,7 @@ export const WINDOW_MIN: Partial<Record<string, Size>> = {
 
 export function minFor(id: string | undefined): Size {
   if (id && isDocId(id)) return { w: 320, h: 220 };
+  if (id && appKindOf(id)) return { w: 420, h: 320 };
   return (id && WINDOW_MIN[id]) || { w: MIN_W, h: MIN_H };
 }
 
@@ -157,6 +159,17 @@ export function normalizeWindows(
           visible: true,
           ...saved,
         } as WindowMap[string],
+        stage,
+        minFor(id),
+      );
+      continue;
+    }
+    const app = appKindOf(id);
+    if (app) {
+      // An app the user had open: kept, at its own size when the stored box
+      // is unreadable.
+      out[id] = clampIntoStage(
+        { x: 40, y: 40, ...APPS[app].size, z: 1, visible: true, ...saved } as WindowMap[string],
         stage,
         minFor(id),
       );

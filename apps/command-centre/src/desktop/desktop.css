@@ -2201,6 +2201,15 @@ body.window-dragging .app-rail {
    and three controls that only show themselves when the plate is attended.
    The focused plate glows; the others step back. Geometry, drag and z-order
    are the layer's; everything here is skin. */
+/* Nothing on the desktop may scroll the stage: `hidden` still lets a
+   `scrollIntoView` drag the whole desktop sideways (an e2e click on a control
+   at the edge of a wide plate did exactly that); `clip` cannot be scrolled. */
+.desktop,
+.desktop-depth,
+.desktop-widgets:not(.stacked) {
+  overflow: clip;
+}
+
 .panel {
   --cut: 12px;
   --panel-clip: polygon(
@@ -2367,10 +2376,73 @@ body.window-dragging .app-rail {
 .panel-body:focus-visible {
   outline-offset: -3px;
 }
-/* An app fills its plate edge to edge; the view brings its own padding. */
+/* An app fills its plate edge to edge; the view brings its own padding and
+   scrolls inside the plate. */
 .panel[data-kind="app"] .panel-body {
   padding: 0;
   overflow: hidden;
+  position: relative;
+}
+.app-panel {
+  position: absolute;
+  inset: 0;
+  /* The views' breakpoints were written against the viewport; in a plate
+     they have to answer to the plate. */
+  container-type: inline-size;
+  overflow: hidden auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+  display: flex;
+  flex-direction: column;
+}
+.app-panel > * {
+  min-width: 0;
+}
+/* The pages were laid out for a 1240 px column; in a plate they take the
+   plate. The brain sized itself to the viewport; in a plate it is the plate. */
+.app-panel .page {
+  max-width: none;
+  padding: 14px 18px 40px;
+}
+.app-panel .brain2 {
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+}
+/* Its side panes were sized against the viewport; in a plate, against the plate. */
+.app-panel .brain2-preview {
+  width: min(360px, 42cqw);
+}
+.app-panel .brain2-list {
+  width: min(320px, 40cqw);
+}
+/* In a plate the preview pane reaches the corner the zoom stack lives in;
+   the stack stays on top — it is the one control that must always answer. */
+.app-panel .brain2 .zoom-stack {
+  z-index: 100;
+}
+/* The plate already says what the app is: the page's own title would say it
+   twice. Its subtitle and actions stay. */
+.app-panel .page-head h1 {
+  display: none;
+}
+.app-panel .page-head {
+  margin-bottom: var(--s-3);
+}
+/* A routine card in a plate wraps its actions under the text; wrapped, they
+   must not stretch to the line's height (the screenshot showed 150 px tall
+   buttons). */
+.app-panel .routine-card .row-actions {
+  align-self: flex-start;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+/* Pixel Studio's three columns need ~900 px; narrower than that the plate
+   stacks them, the way the page did below 980 px of viewport. */
+@container (max-width: 960px) {
+  .app-panel .pxs-layout {
+    grid-template-columns: 1fr;
+  }
 }
 /* ---- grip ---- */
 .panel-grip {

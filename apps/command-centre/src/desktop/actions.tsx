@@ -7,6 +7,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 import type { Skill } from "../api";
 import type { OpenPanel } from "./panelKinds";
+import type { AppKind, AppLocation } from "./apps";
 
 export interface DesktopActions {
   /** Launch a skill (may navigate to the skill page when it needs inputs). */
@@ -25,6 +26,8 @@ export interface DesktopActions {
   openPanels: ReadonlyArray<OpenPanel>;
   /** Open a file as a panel on the stage (idempotent: focuses an open one). */
   openDoc: (path: string) => void;
+  /** Open one of the OS's apps as a panel on the stage, optionally at a path inside it. */
+  openApp: (kind: AppKind, at?: Partial<AppLocation>) => void;
   /** Insert `@ref` for a panel into the console draft. */
   referencePanel: (id: string) => void;
 }
@@ -37,6 +40,7 @@ const DesktopActionsContext = createContext<DesktopActions>({
   runningSkills: new Set<string>(),
   openPanels: [],
   openDoc: noop,
+  openApp: noop,
   referencePanel: noop,
 });
 

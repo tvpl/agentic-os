@@ -13,24 +13,13 @@
  * never disagree.
  */
 import { useMemo, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
-import {
-  Activity,
-  AlertTriangle,
-  BrainCircuit,
-  CalendarClock,
-  Coins,
-  FolderOpen,
-  Images,
-  Plug,
-  Sparkles,
-  Terminal,
-} from "lucide-react";
+import { Activity, AlertTriangle, CalendarClock, Coins, Terminal } from "lucide-react";
 import { useT } from "../i18n";
 import { qk, useApiQuery, useOsMetrics, useOsSettings, useOsSkills } from "../queries";
 import { budgetState } from "./budget";
 import { useDesktopRoutines, useDesktopRuns } from "./data";
 import { useAppRows } from "./appRows";
+import { APPS, type AppKind } from "./apps";
 import {
   attentionItems,
   attentionSignal,
@@ -101,14 +90,13 @@ export interface DesktopPodsProps {
   activeRuns: number;
   /** Opens a widget's surface; the desktop decides whether it can. */
   onExpand: (widgetId: string) => void;
-  /** Fans the radial deck out over the console. */
-  onOpenDeck: () => void;
+  /** Opens one of the OS's apps as a panel on the stage. */
+  onOpenApp: (kind: AppKind) => void;
 }
 
-export default function DesktopPods({ activeRuns, onExpand, onOpenDeck }: DesktopPodsProps) {
+export default function DesktopPods({ activeRuns, onExpand, onOpenApp }: DesktopPodsProps) {
   const t = useT();
-  const navigate = useNavigate();
-  const { apps, pending } = useAppRows(3);
+  const { pending } = useAppRows(3);
   const metrics = useOsMetrics({ refetchInterval: 300_000 });
   const skills = useOsSkills();
   const routines = useDesktopRoutines();
@@ -168,7 +156,9 @@ export default function DesktopPods({ activeRuns, onExpand, onOpenDeck }: Deskto
         value: runsSig.value,
         level: runsSig.level,
         live: activeRuns > 0,
-        onOpen: () => onExpand("now"),
+        // The prototype's runs pod opens the Runs app; the objective panel
+        // (`now`) stays one palette action away.
+        onOpen: () => onOpenApp("runs"),
       },
       {
         id: "routines",
@@ -189,47 +179,56 @@ export default function DesktopPods({ activeRuns, onExpand, onOpenDeck }: Deskto
         onOpen: () => onExpand("cost"),
       },
     ];
-  }, [runs.data, routines.data, settings.data, metrics.data, approvals.data, activeRuns, t, onExpand]);
+  }, [
+    runs.data,
+    routines.data,
+    settings.data,
+    metrics.data,
+    approvals.data,
+    activeRuns,
+    t,
+    onExpand,
+    onOpenApp,
+  ]);
 
   const left = useMemo<Pod[]>(() => {
-    const appIcons: Record<string, ReactNode> = {
-      "/brain": <BrainCircuit aria-hidden />,
-      "/pixel": <Images aria-hidden />,
-      "/generations": <Images aria-hidden />,
-      "/artifacts": <FolderOpen aria-hidden />,
-    };
-    const out: Pod[] = apps.map((row) => ({
-      id: row.to,
-      icon: appIcons[row.to] ?? row.icon,
-      name: row.name,
-      detail: row.desc,
-      level: "idle" as const,
-      onOpen: () => navigate(row.to),
-    }));
-    out.splice(1, 0, {
-      id: "/skills",
-      icon: <Sparkles aria-hidden />,
-      name: t("nav.skills"),
-      detail: t("desktop.pods.skills", { n: (skills.data ?? []).filter((s) => s.enabled).length }),
-      value: String((skills.data ?? []).filter((s) => s.enabled).length),
-      level: "idle",
-      // The pod fans the deck out rather than leaving the desktop: running a
-      // skill is a desktop action, managing them is what /skills is for.
-      onOpen: onOpenDeck,
+    // The prototype's left arc: brain, skills, artifacts, generations,
+    // connectors, settings — plus Pixel Studio, until G5 lets the HUD be
+    // edited. Every pod opens its app as a panel on the stage.
+    const order: AppKind[] = [
+      "brain",
+      "skills",
+      "artifacts",
+      "generations",
+      "connectors",
+      "settings",
+      "pixel",
+    ];
+    const enabled = (skills.data ?? []).filter((s) => s.enabled).length;
+    return order.map((kind) => {
+      const def = APPS[kind];
+      const Icon = def.Icon;
+      const pod: Pod = {
+        id: `app:${kind}`,
+        icon: <Icon aria-hidden />,
+        name: t(def.titleKey),
+        detail: t(def.descKey),
+        level: "idle",
+        onOpen: () => onOpenApp(kind),
+      };
+      if (kind === "skills") {
+        pod.detail = t("desktop.pods.skills", { n: enabled });
+        pod.value = String(enabled);
+      }
+      if (kind === "connectors" && pending.length > 0) {
+        pod.detail = t("microapp.notConfigured");
+        pod.count = pending.length;
+        pod.soft = true;
+        pod.level = "warn";
+      }
+      return pod;
     });
-    if (pending.length > 0)
-      out.push({
-        id: "/connectors",
-        icon: <Plug aria-hidden />,
-        name: t("desktop.apps.add"),
-        detail: t("microapp.notConfigured"),
-        count: pending.length,
-        soft: true,
-        level: "warn",
-        onOpen: () => navigate("/connectors"),
-      });
-    return out;
-  }, [apps, pending, skills.data, navigate, onOpenDeck, t]);
+  }, [pending, skills.data, onOpenApp, t]);
 
   return (
     <>

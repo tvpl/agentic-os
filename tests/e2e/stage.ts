@@ -11,6 +11,19 @@
 import { expect, type APIRequestContext, type Locator } from "@playwright/test";
 import { WIDGET_ORDER } from "../../apps/command-centre/src/desktop/defaultLayout";
 
+/** The apps and their routes (`desktop/apps.tsx`); listed here because that module pulls in the views. */
+const APP_ROUTES: Array<[string, string]> = [
+  ["brain", "/brain"],
+  ["skills", "/skills"],
+  ["artifacts", "/artifacts"],
+  ["generations", "/generations"],
+  ["connectors", "/connectors"],
+  ["settings", "/settings"],
+  ["routines", "/routines"],
+  ["runs", "/runs"],
+  ["pixel", "/pixel"],
+];
+
 /** Boxes are laid out on a plain grid: specs measure windows against themselves. */
 const COL_W = 320;
 const ROW_H = 260;
@@ -52,9 +65,15 @@ export async function stageBoxes(
   // whatever a neighbouring spec put there. Every known id is named: the ones
   // asked for are placed, the rest are explicitly off the stage.
   const ids = Object.keys(boxes);
-  const dashboardLayout: Record<string, ReturnType<typeof box>> = {};
+  const dashboardLayout: Record<string, ReturnType<typeof box> & { config?: Record<string, string> }> = {};
   WIDGET_ORDER.forEach((id, i) => {
     dashboardLayout[id] = { ...box(i), visible: false };
+  });
+  // App panels persist their own path and query (the brain's zoom and
+  // selection live there — G2). The merge keeps whatever a neighbouring spec
+  // left in them, so every app is parked and sent back to its root here.
+  APP_ROUTES.forEach(([kind, route], i) => {
+    dashboardLayout[`app:${kind}`] = { ...box(i), visible: false, config: { path: route, search: "" } };
   });
   ids.forEach((id, i) => {
     dashboardLayout[id] = { ...boxes[id]!, z: i + 1, visible: true, minimized: false };
@@ -77,9 +96,12 @@ export async function stageBoxes(
 export async function resetStage(request: APIRequestContext): Promise<void> {
   // An empty record is how "no user layout" is expressed, but the merge would
   // keep the old one, so the defaults are written out explicitly.
-  const dashboardLayout: Record<string, ReturnType<typeof box>> = {};
+  const dashboardLayout: Record<string, ReturnType<typeof box> & { config?: Record<string, string> }> = {};
   WIDGET_ORDER.forEach((id, i) => {
     dashboardLayout[id] = { ...box(i), visible: id === "prompt" };
+  });
+  APP_ROUTES.forEach(([kind, route], i) => {
+    dashboardLayout[`app:${kind}`] = { ...box(i), visible: false, config: { path: route, search: "" } };
   });
   const res = await request.put("/api/settings", {
     headers: { "x-mordomo-token": process.env.MORDOMO_TOKEN! },

@@ -1,31 +1,38 @@
 import { test, expect } from "@playwright/test";
 import { resetStage, stageBoxes, stageWith } from "./stage";
 
-test("apps and onboarding navigate to usable content without reload", async ({ page }) => {
+test("apps open as panels on the stage and nothing leaves the desktop", async ({ page, request }) => {
+  await resetStage(request);
   await page.setViewportSize({ width: 1440, height: 1000 });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/#/");
-  // The apps live on the left arc now (redesign F7): one pod, one app.
-  await page.locator('.pod-arc.l .pod[data-pod="/brain"]').click();
-  await expect(page.locator(".brain2")).toBeVisible();
-  await expect(page.locator(".desktop")).toHaveCount(0);
-  await page.getByRole("button", { name: /zoom in|aproximar/i }).click();
-  await page.locator(".brain-panel-toggle").click();
-  await expect(page.locator(".brain2-panel")).toHaveClass(/collapsed/);
-  await page.keyboard.press("/");
-  await expect(page.locator(".brain2-panel input").first()).toBeFocused();
-  await page.getByRole("button", { name: /back to.*os|voltar ao os/i }).click();
-  await page.locator('.pod-arc.l .pod[data-pod="/pixel"]').click();
-  await expect(page.locator(".app-frame-title")).toHaveText(/Pixel Studio/);
-  await expect(page.locator("canvas").first()).toBeVisible();
-  await page.getByRole("button", { name: /back to.*os|voltar ao os/i }).click();
-  const step = page.locator(".now-next-actions a");
-  if (await step.count()) {
-    await step.click();
-    await expect(page.locator(".desktop")).toHaveCount(0);
-    await expect(page.locator(".app-frame")).toBeVisible();
-  }
+  await expect(page.locator(".boot-screen")).toHaveCount(0);
+  // A pod opens its app as a panel (G2): the desktop stays, the URL stays.
+  await page.locator('.pod-arc.l .pod[data-pod="app:brain"]').click();
+  const brain = page.locator('[data-panel="app:brain"]');
+  await expect(brain).toBeVisible();
+  await expect(brain.locator(".brain2")).toBeVisible();
+  await expect(page.locator(".desktop")).toHaveCount(1);
+  await expect(page).toHaveURL(/#\/$/);
+  // The app's own controls keep working inside the plate.
+  await brain.getByRole("button", { name: /zoom in|aproximar/i }).click();
+  await brain.locator(".brain-panel-toggle").click();
+  await expect(brain.locator(".brain2-panel")).toHaveClass(/collapsed/);
+  // Its page chrome is gone: the plate is the frame now.
+  await expect(brain.getByRole("button", { name: /back to.*os|voltar ao os/i })).toHaveCount(0);
+  await brain.getByRole("button", { name: /^close|^fechar/i }).click();
+  await expect(brain).toHaveCount(0);
+  await page.locator('.pod-arc.l .pod[data-pod="app:pixel"]').click();
+  const pixel = page.locator('[data-panel="app:pixel"]');
+  await expect(pixel.locator(".panel-title")).toHaveText(/Pixel Studio/);
+  await expect(pixel.locator("canvas").first()).toBeVisible();
+  // A route is a deep link into a panel: the same app, the same plate.
+  await page.goto("/#/settings?tab=security");
+  const settings = page.locator('[data-panel="app:settings"]');
+  await expect(settings).toBeVisible();
+  await expect(settings.locator("#settings-tabs-panel-security")).toBeVisible();
+  await expect(page).toHaveURL(/#\/$/);
   expect(errors).toEqual([]);
 });
 
@@ -148,8 +155,8 @@ test("the skill deck fans out over the console and runs what is picked", async (
   await stageWith(request, "prompt");
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
-  // The skills pod fans the deck out rather than leaving the desktop.
-  await page.locator('.pod-arc.l .pod[data-pod="/skills"]').click();
+  // ⌘J fans the deck out over the console (the skills pod opens the Skills app since G2).
+  await page.keyboard.press("ControlOrMeta+j");
   const deck = page.locator(".skill-deck");
   await expect(deck).toHaveClass(/open/);
   await expect(deck.locator(".deck-skill")).toHaveCount(1);
@@ -215,8 +222,9 @@ test("Portuguese notification opens its destination, not just its read state", a
   await page.locator(".bell").click();
   await expect(page.locator(".bell-pop")).toContainText("Indexação concluída");
   await page.locator(".bell-pop .inbox-main").click();
-  await expect(page.locator(".brain2")).toBeVisible();
-  await expect(page.locator(".desktop")).toHaveCount(0);
+  // `/brain` is a deep link into the brain panel: the desktop stays (G2).
+  await expect(page.locator('[data-panel="app:brain"] .brain2')).toBeVisible();
+  await expect(page.locator(".desktop")).toHaveCount(1);
 });
 
 test("expired Claude authentication explains recovery and opens provider settings", async ({ page }) => {
@@ -240,7 +248,10 @@ test("expired Claude authentication explains recovery and opens provider setting
   await page.goto("/#/");
   await expect(page.locator(".auth-recovery")).toContainText("claude auth login");
   await page.locator(".auth-recovery a").click();
-  await expect(page).toHaveURL(/#\/settings\?tab=providers/);
-  await expect(page.locator(".app-frame-title")).toHaveText(/settings/i);
-  await expect(page.locator(".desktop")).toHaveCount(0);
+  // The link is a deep link into the Settings panel, on the providers tab.
+  const settings = page.locator('[data-panel="app:settings"]');
+  await expect(settings).toBeVisible();
+  await expect(settings.locator("#settings-tabs-panel-providers")).toBeVisible();
+  await expect(page).toHaveURL(/#\/$/);
+  await expect(page.locator(".desktop")).toHaveCount(1);
 });

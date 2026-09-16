@@ -31,6 +31,7 @@ import { EmptyState } from "./components/primitives";
 import {
   CommandPalette,
   OPEN_DECK_EVENT,
+  OPEN_PANEL_EVENT,
   RESET_LAYOUT_EVENT,
   type PaletteOpenDetail,
 } from "./components/CommandPalette";
@@ -44,6 +45,7 @@ import { useOsNavigate } from "./hooks/useViewTransition";
 // Desktop is the landing surface and stays in the main chunk.
 import Desktop from "./desktop";
 import { lazyRoute } from "./lazyRoute";
+import { shouldStack } from "./desktop/defaultLayout";
 import { Onboarding } from "./onboarding/Onboarding";
 import { ProviderGate } from "./components/ProviderGate";
 const Runs = lazyRoute(() => import("./runs"));
@@ -93,7 +95,7 @@ function MissingApp({ name }: { name: TKey }) {
 export const LAUNCHER_EVENT = "mordomo:launcher";
 /** Fire this event to open the keyboard-shortcuts sheet. */
 export const SHORTCUTS_EVENT = "mordomo:shortcuts";
-export { RESET_LAYOUT_EVENT, OPEN_DECK_EVENT };
+export { RESET_LAYOUT_EVENT, OPEN_DECK_EVENT, OPEN_PANEL_EVENT };
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -382,18 +384,47 @@ function PageFallback() {
 }
 
 /**
+ * Below the stack breakpoint the desktop is a single column and floating
+ * panels make no sense, so the apps stay full pages there (G2). The same
+ * rule the desktop itself applies to its stage.
+ */
+function useStacked(): boolean {
+  const read = () => shouldStack(window.innerWidth, window.innerHeight);
+  const [stacked, setStacked] = useState(read);
+  useEffect(() => {
+    const onResize = () => setStacked(read());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return stacked;
+}
+
+/**
  * Route wrapper: error boundary (reset on navigation), lazy suspense and a
  * 160 ms fade keyed on the app segment (intra-app navigation does not refade).
  */
-function RouteSurface({ name, children }: { name: string; children: ReactNode }) {
+function RouteSurface({
+  name,
+  children,
+  stable = false,
+}: {
+  name: string;
+  children: ReactNode;
+  /**
+   * The desktop is rendered for every app route (G2: apps open as panels and
+   * the URL is a deep link), so it must not be re-keyed — and re-mounted — on
+   * the way from `/brain` back to `/`.
+   */
+  stable?: boolean;
+}) {
   const t = useT();
   const { pathname } = useLocation();
   const key = ROUTE_TITLE[name];
   const segment = pathname.split("/")[1] ?? "";
   return (
-    <ErrorBoundary name={key ? t(key) : t("nav.dashboard")} resetKey={pathname}>
+    <ErrorBoundary name={key ? t(key) : t("nav.dashboard")} resetKey={stable ? undefined : pathname}>
       <Suspense fallback={<PageFallback />}>
-        <div className="route-surface" key={segment} data-onboarding={name}>
+        <div className="route-surface" key={stable ? "desktop" : segment} data-onboarding={name}>
           {children}
         </div>
       </Suspense>
@@ -477,12 +508,22 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
     return () => window.removeEventListener("keydown", onKey);
   }, [palette.open, location.pathname, navigate, openPalette, closePalette, depth]);
 
-  // Close the palette on navigation.
-  useEffect(() => closePalette(), [location.pathname, closePalette]);
+  // Close the palette on navigation — to a page. A deep link bouncing back
+  // to `/` (G2: an app opened as a panel) is not a place the user went; a
+  // palette opened in the same instant must survive it.
+  useEffect(() => {
+    if (location.pathname !== "/") closePalette();
+  }, [location.pathname, closePalette]);
 
   const framed = (name: string, node: ReactNode) => (
     <RouteSurface name={name}>
       <AppFrame>{node}</AppFrame>
+    </RouteSurface>
+  );
+  const stacked = useStacked();
+  const desktop = (
+    <RouteSurface name="desktop" stable>
+      <Desktop meta={meta} onMetaChanged={onMetaChanged} />
     </RouteSurface>
   );
 
@@ -494,32 +535,36 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
     >
       <div className="depth-layer">
         <Routes>
-          <Route
-            path="/"
-            element={
-              <RouteSurface name="desktop">
-                <Desktop meta={meta} onMetaChanged={onMetaChanged} />
-              </RouteSurface>
-            }
-          />
-          <Route
-            path="/brain"
-            element={
-              <RouteSurface name="brain">
-                <SecondBrain />
-              </RouteSurface>
-            }
-          />
-          <Route path="/skills" element={framed("skills", <Skills />)} />
-          <Route path="/skills/:slug" element={framed("skills", <Skills />)} />
-          <Route path="/routines" element={framed("routines", <Routines />)} />
-          <Route path="/runs" element={framed("runs", <Runs />)} />
-          <Route path="/runs/:id" element={framed("runs", <Runs />)} />
-          <Route path="/connectors" element={framed("connectors", <Connectors />)} />
-          <Route path="/pixel" element={framed("pixel", <PixelStudio />)} />
-          <Route path="/artifacts" element={framed("artifacts", <Artifacts />)} />
-          <Route path="/generations" element={framed("generations", <Generations />)} />
-          <Route path="/settings" element={framed("settings", <Settings onMetaChanged={onMetaChanged} />)} />
+          <Route path="/" element={desktop} />
+          {stacked ? (
+            <>
+              <Route
+                path="/brain"
+                element={
+                  <RouteSurface name="brain">
+                    <SecondBrain />
+                  </RouteSurface>
+                }
+              />
+              <Route path="/skills" element={framed("skills", <Skills />)} />
+              <Route path="/skills/:slug" element={framed("skills", <Skills />)} />
+              <Route path="/routines" element={framed("routines", <Routines />)} />
+              <Route path="/runs" element={framed("runs", <Runs />)} />
+              <Route path="/runs/:id" element={framed("runs", <Runs />)} />
+              <Route path="/connectors" element={framed("connectors", <Connectors />)} />
+              <Route path="/pixel" element={framed("pixel", <PixelStudio />)} />
+              <Route path="/artifacts" element={framed("artifacts", <Artifacts />)} />
+              <Route path="/generations" element={framed("generations", <Generations />)} />
+              <Route
+                path="/settings"
+                element={framed("settings", <Settings onMetaChanged={onMetaChanged} />)}
+              />
+            </>
+          ) : (
+            // Wide enough for panels: every app route is a deep link the
+            // desktop answers by opening the app on the stage (G2).
+            <Route path="/*" element={desktop} />
+          )}
         </Routes>
       </div>
       {paletteVisible && (

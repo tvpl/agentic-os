@@ -10,7 +10,12 @@ import { Copy, ExternalLink, Pin, Terminal, X } from "lucide-react";
 import { api, type MemoryPreview } from "../api";
 import { formatBytes, timeAgo, useToast } from "../components/ui";
 import { useOsNavigate } from "../hooks/useViewTransition";
-import { readConsoleDraft, storeConsoleDraft, withConsoleReference } from "../desktop/consoleDraft";
+import {
+  readConsoleDraft,
+  storeConsoleDraft,
+  withConsoleReference,
+  CONSOLE_DRAFT_EVENT,
+} from "../desktop/consoleDraft";
 import { useT } from "../i18n";
 import { relationsOf } from "./engine/graph";
 import type { EdgeKind, FileNode, World } from "./engine/world";
@@ -78,7 +83,10 @@ export function PreviewPanel({
       if (latest.kind === "blocked") throw new Error(t("brain.blocked"));
       const draft = withConsoleReference(readConsoleDraft(), preview.node.path, t("brain.consoleSource"));
       if (!storeConsoleDraft(draft)) throw new Error(t("brain.consoleStorageFailed"));
-      // The console is a window on the desktop now; there is no mode to enter.
+      // The console is on the stage already (G2: the brain is a panel beside
+      // it), so it has to be told the draft changed rather than re-reading it
+      // on mount; then the desktop comes to the front.
+      window.dispatchEvent(new CustomEvent(CONSOLE_DRAFT_EVENT));
       navigate("/");
     } catch (error) {
       toast(errorMessage(error, t), "danger");

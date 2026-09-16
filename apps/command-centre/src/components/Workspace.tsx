@@ -164,6 +164,10 @@ function DockTasks() {
           className={`dock-task${p.minimized ? " parked" : ""}${p.id === topId ? " on" : ""}`}
           data-task={p.id}
           aria-pressed={p.id === topId}
+          // Named as a task, not as the app: the dock still lists the apps
+          // by their own names until G5, and a screen reader (or a test)
+          // must be able to tell "open Runs" from "the Runs panel".
+          aria-label={`${t("desktop.dock.panels")}: ${p.title}`}
           title={p.title}
           onClick={() =>
             requestPanelAction(p.id, p.minimized ? "restore" : p.id === topId ? "minimize" : "focus")

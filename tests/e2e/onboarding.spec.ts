@@ -21,7 +21,8 @@ test("first visit can skip, stays dismissed after reload, and resumes from Setti
   await guide.getByRole("button", { name: "Next step", exact: true }).click();
   await expect(guide.getByRole("heading", { name: "A space that moves with you." })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page).toHaveURL(/#\/settings$/);
+  // `/settings` opened the Settings panel and handed the URL back (G2).
+  await expect(page.locator('[data-panel="app:settings"]')).toBeVisible();
   await expect(page.locator(".os-root")).not.toHaveAttribute("inert");
   await page.getByRole("button", { name: "OS guide", exact: true }).click();
   await guide.getByRole("button", { name: "Continue where I left off" }).click();
@@ -67,13 +68,13 @@ test("interactive journey visits real apps, practices safely and hands off a dra
   await guide.getByLabel("Practice draft").fill("Summarize this folder without changing files.");
   await page.screenshot({ animations: "disabled", path: test.info().outputPath("console-practice.png") });
   await guide.getByRole("button", { name: "Next step", exact: true }).click();
-  await expect(page).toHaveURL(/#\/settings\?tab=providers$/);
+  await expect(page.locator('[data-panel="app:settings"]')).toBeVisible();
   await expect(page.locator("#settings-tabs-panel-providers")).toBeVisible();
   await page.reload();
   await expect(guide.getByRole("heading", { name: "Choose who works with you." })).toBeVisible();
   for (const route of ["brain", "skills", "runs"]) {
     await guide.getByRole("button", { name: "Next step", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`#/${route}$`));
+    await expect(page.locator(`[data-panel="app:${route}"]`)).toBeVisible();
     await expect(page.locator(".ob-spotlight")).toBeVisible();
   }
   await guide.getByRole("button", { name: "Approve without checking" }).click();
@@ -82,11 +83,11 @@ test("interactive journey visits real apps, practices safely and hands off a dra
   await expect(guide.getByRole("status")).toContainText("Exactly");
   await guide.getByRole("button", { name: "Next step", exact: true }).click();
   await guide.getByRole("button", { name: "View generations" }).click();
-  await expect(page).toHaveURL(/#\/generations$/);
+  await expect(page.locator('[data-panel="app:generations"]')).toBeVisible();
   await expect(page.locator('[data-onboarding="generations"]')).toBeVisible();
   for (const route of ["routines", "connectors", "pixel", "settings"]) {
     await guide.getByRole("button", { name: "Next step", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`#/${route}`));
+    await expect(page.locator(`[data-panel="app:${route}"]`)).toBeVisible();
   }
   await guide.getByRole("button", { name: "Security", exact: true }).click();
   await expect(page.locator("#settings-tabs-panel-security")).toBeVisible();

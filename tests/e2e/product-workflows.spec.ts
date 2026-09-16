@@ -119,14 +119,15 @@ test("routine lifecycle: create, edit, enable, execute, inspect history and dele
 test("every launcher app opens usable content", async ({ page }) => {
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
+  // Every app is a panel on the stage now (G2); the desktop never goes away.
   for (const [name, target] of [
-    ["Second Brain", ".brain2"],
-    ["Skills", ".app-frame"],
-    ["Routines", ".app-frame"],
-    ["Runs", ".app-frame"],
-    ["Connectors", ".app-frame"],
-    ["Pixel Studio", ".pxs-stage"],
-    ["Settings", ".app-frame"],
+    ["Second Brain", '[data-panel="app:brain"] .brain2'],
+    ["Skills", '[data-panel="app:skills"] .page'],
+    ["Routines", '[data-panel="app:routines"] .page'],
+    ["Runs", '[data-panel="app:runs"] .page'],
+    ["Connectors", '[data-panel="app:connectors"] .page'],
+    ["Pixel Studio", '[data-panel="app:pixel"] .pxs-stage'],
+    ["Settings", '[data-panel="app:settings"] .page'],
     ["Dashboard", ".desktop"],
   ]) {
     await page.keyboard.press("Control+M");

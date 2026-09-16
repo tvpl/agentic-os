@@ -16,7 +16,7 @@ import {
   useState,
   type MutableRefObject,
 } from "react";
-import { useSearchParams } from "react-router-dom";
+import { usePanelSearchParams } from "../desktop/appRoute";
 import { loadBrainNavigation, saveBrainNavigation } from "./navigationSnapshot";
 import { createForceEngine } from "./engine/force";
 import {
@@ -108,7 +108,8 @@ export function workspaceOf(w: World): WorkspaceState {
 export function useBrainState(src: BrainStateSources): BrainState {
   const { graph, skills, routines, connectors, ringLabels, timeline, serverBlob, dirty } = src;
 
-  const [searchParams, setSearchParams] = useSearchParams();
+  // The panel's own query when the brain is a panel, the URL's when it is a page (G2).
+  const [searchParams, setSearchParams] = usePanelSearchParams();
   const [navigation] = useState(() => (searchParams.size === 0 ? loadBrainNavigation() : null));
   const [boot] = useState<BrainSettings>(() => ({ ...DEFAULT_SETTINGS, ...loadLocalSettings() }));
   const [world] = useState<MutableRefObject<World>>(() => {

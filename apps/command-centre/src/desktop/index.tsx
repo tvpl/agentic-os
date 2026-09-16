@@ -25,14 +25,17 @@ import { useConfirm } from "../hooks/useConfirm";
 import { playCue, useNotifications } from "../hooks/useNotifications";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import { useOsEvent } from "../hooks/useEventStream";
-import { LAUNCHER_EVENT, OPEN_DECK_EVENT, RESET_LAYOUT_EVENT } from "../App";
+import { LAUNCHER_EVENT, OPEN_DECK_EVENT, OPEN_PANEL_EVENT, RESET_LAYOUT_EVENT } from "../App";
 import { PANEL_ACTION_EVENT, panelKind, publishPanels, type OpenPanel, type PanelAction } from "./panelKinds";
+import { APPS, appForPath, appId, appKindOf, appLocationOf, type AppKind, type AppLocation } from "./apps";
+import AppPanel from "./AppPanel";
+import { useLocation } from "react-router-dom";
 import { SWITCH_SPACE_EVENT, takePendingSpace } from "../components/Workspace";
 import { DEFAULT_SPACE, switchSpace, type SpaceMap } from "./spaces";
-import { DOC_BOX, defaultWindows, docId, docPath, isDocId } from "./defaultWindows";
+import { DOC_BOX, defaultWindows, docId, docPath, isDocId, minFor } from "./defaultWindows";
 import DocWindow from "./DocWindow";
 import { CONSOLE_DRAFT_EVENT, CONSOLE_REFS_EVENT, readConsoleDraft, storeConsoleDraft } from "./consoleDraft";
-import { cascade, placeNew, tile, topZ, type WindowMap } from "./windowModel";
+import { cascade, clampIntoStage, placeNew, tile, topZ, type WindowMap } from "./windowModel";
 import { useWindowLayout, type StageMetrics } from "./useWindowLayout";
 import WidgetLayer, { type WidgetSpec } from "./WidgetLayer";
 import AgentPresence from "./AgentPresence";
@@ -320,6 +323,12 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         out.push({ id, kind, ref: name, title: name, path, minimized: box.minimized ?? false });
         continue;
       }
+      const app = appKindOf(id);
+      if (app) {
+        const def = APPS[app];
+        out.push({ id, kind, ref: t(def.refKey), title: t(def.titleKey), minimized: box.minimized ?? false });
+        continue;
+      }
       const def = widgetDefinition(id);
       if (!def) continue;
       out.push({ id, kind, ref: t(def.refKey), title: t(def.titleKey), minimized: box.minimized ?? false });
@@ -347,7 +356,11 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
       const spot = placeNew(DOC_BOX, layout, stage);
       commit({
         ...layout,
-        [id]: { ...spot, ...DOC_BOX, z: topZ(layout) + 1, visible: true, minimized: false },
+        [id]: clampIntoStage(
+          { ...spot, ...DOC_BOX, z: topZ(layout) + 1, visible: true, minimized: false },
+          stage,
+          minFor(id),
+        ),
       });
     },
     [layout, commit, stage],
@@ -380,6 +393,77 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     [layout, commit, stage],
   );
 
+  /**
+   * An app on the stage. Opening one that is already there raises it and,
+   * when a path was asked for, moves it there; a new one lands where there is
+   * room. The path and query live in the panel's `config`, so a reload or a
+   * space switch brings the app back where it was.
+   */
+  const openApp = useCallback(
+    (kind: AppKind, at?: Partial<AppLocation>) => {
+      const id = appId(kind);
+      const def = APPS[kind];
+      const existing = layout[id];
+      const config: Record<string, unknown> = { ...(existing?.config ?? {}) };
+      if (at?.pathname !== undefined) config.path = at.pathname;
+      if (at?.search !== undefined) config.search = at.search;
+      if (existing) {
+        commit({
+          ...layout,
+          [id]: { ...existing, visible: true, minimized: false, z: topZ(layout) + 1, config },
+        });
+        return;
+      }
+      const spot = placeNew(def.size, layout, stage);
+      // Fitted to the stage it opens on: the default box is a wish, not a
+      // right, and a plate wider than the stage would hang off its edge.
+      const box = clampIntoStage(
+        { ...spot, ...def.size, z: topZ(layout) + 1, visible: true, minimized: false, config },
+        stage,
+        minFor(id),
+      );
+      commit({ ...layout, [id]: box });
+    },
+    [layout, commit, stage],
+  );
+  const openAppRef = useRef(openApp);
+  openAppRef.current = openApp;
+
+  /**
+   * Deep links (G2): the app routes still exist — notifications, the palette,
+   * every `Link` inside an app — but they open the app as a panel and hand the
+   * URL back to the desktop. The desktop stays mounted through it (App renders
+   * it for every app route), so nothing re-materialises.
+   */
+  const location = useLocation();
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  useEffect(() => {
+    const def = appForPath(location.pathname);
+    if (!def) return;
+    // A bare link to an app that is already open at that path ("Second
+    // Brain" in the dock, again) is a request to see it, not to reset it:
+    // its query — the brain's selection and zoom — is left alone. A deeper
+    // path or an explicit query is a request to go there.
+    const current = appLocationOf(def, layoutRef.current[appId(def.kind)]?.config);
+    const same = current.pathname === location.pathname && location.search === "";
+    openAppRef.current(def.kind, same ? undefined : { pathname: location.pathname, search: location.search });
+    navigate("/", { replace: true });
+  }, [location.pathname, location.search, navigate]);
+
+  /** Move an app panel to a path or query inside it (the view asked, via its route hooks). */
+  const setAppLocation = useCallback(
+    (id: string, next: Partial<AppLocation>) => {
+      const box = layout[id];
+      if (!box) return;
+      const config: Record<string, unknown> = { ...(box.config ?? {}) };
+      if (next.pathname !== undefined) config.path = next.pathname;
+      if (next.search !== undefined) config.search = next.search;
+      commit({ ...layout, [id]: { ...box, config } });
+    },
+    [layout, commit],
+  );
+
   /** Append `@name` to the console draft and put the caret back in it. */
   const referencePanel = useCallback(
     (id: string) => {
@@ -402,9 +486,20 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
       if (action === "minimize") commit({ ...layout, [id]: { ...box, minimized: true } });
       else commit({ ...layout, [id]: { ...box, visible: true, minimized: false, z: topZ(layout) + 1 } });
     };
+    const onOpenPanel = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      const box = layout[id];
+      if (!box) return;
+      const spot = box.visible && !box.minimized ? {} : placeNew({ w: box.w, h: box.h }, layout, stage);
+      commit({ ...layout, [id]: { ...box, ...spot, visible: true, minimized: false, z: topZ(layout) + 1 } });
+    };
     window.addEventListener(PANEL_ACTION_EVENT, onAction);
-    return () => window.removeEventListener(PANEL_ACTION_EVENT, onAction);
-  }, [layout, commit]);
+    window.addEventListener(OPEN_PANEL_EVENT, onOpenPanel);
+    return () => {
+      window.removeEventListener(PANEL_ACTION_EVENT, onAction);
+      window.removeEventListener(OPEN_PANEL_EVENT, onOpenPanel);
+    };
+  }, [layout, commit, stage]);
 
   const actions = useMemo<DesktopActions>(
     () => ({
@@ -414,9 +509,10 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
       runningSkills,
       openPanels: stagePanels,
       openDoc,
+      openApp,
       referencePanel,
     }),
-    [runSkill, runningSkills, stagePanels, openDoc, referencePanel],
+    [runSkill, runningSkills, stagePanels, openDoc, openApp, referencePanel],
   );
 
   const widgets = useMemo(() => {
@@ -434,6 +530,27 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         };
         continue;
       }
+      const app = appKindOf(id);
+      if (app) {
+        const def = APPS[app];
+        const Icon = def.Icon;
+        out[id] = {
+          title: t(def.titleKey),
+          refName: t(def.refKey),
+          icon: <Icon aria-hidden />,
+          expandable: true,
+          surfaceMin: { w: 760, h: 540 },
+          node: (
+            <AppPanel
+              kind={app}
+              location={appLocationOf(def, layout[id]!.config)}
+              onLocation={(next) => setAppLocation(id, next)}
+              onMetaChanged={onMetaChanged}
+            />
+          ),
+        };
+        continue;
+      }
       const def = widgetDefinition(id);
       if (!def) continue;
       const Component = def.Component;
@@ -447,7 +564,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
       };
     }
     return out;
-  }, [layout, t]);
+  }, [layout, t, setAppLocation, onMetaChanged]);
 
   const activeProvider = providers.data?.find((p) => p.isDefault);
   const defaultProvider = activeProvider?.id ?? t("common.loading");
@@ -464,7 +581,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
           {!metrics?.stacked && (
             <DesktopPods
               activeRuns={activeRuns}
-              onOpenDeck={() => setDeckOpen(true)}
+              onOpenApp={(kind) => openApp(kind)}
               onExpand={(id) => {
                 // A pod only opens what the layout actually holds; otherwise it
                 // would promise a panel that has no body to render.

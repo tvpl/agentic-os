@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { usePanelSearchParams } from "../../desktop/appRoute";
 import { useMutation } from "@tanstack/react-query";
 import { Plus, Search, Sparkles, Star, Upload, Store } from "lucide-react";
 import { api, type ProviderId, type Skill } from "../../api";
@@ -24,7 +25,7 @@ export default function SkillList({ skills }: { skills: Skill[] }) {
   const toast = useToast();
   const invalidate = useInvalidate();
   // `/skills?new=1&prompt=…` (the did-it-twice suggestion) opens the modal pre-filled.
-  const [params, setParams] = useSearchParams();
+  const [params, setParams] = usePanelSearchParams();
   const [showNew, setShowNew] = useState(() => params.get("new") === "1");
   const initialPrompt = params.get("prompt") ?? undefined;
   const [showExport, setShowExport] = useState(false);

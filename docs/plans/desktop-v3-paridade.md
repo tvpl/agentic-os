@@ -657,6 +657,63 @@ Portão visual: `artifacts/g1-lado-a-lado.png`. Inventário: linhas 1, 2 (parcia
 `run` ainda sem corpo), 6 (parcial: bandeja e `@`), 8 (parcial: painéis abertos), 10 e 17
 marcadas.
 
+## G2 entregue — apps como painéis
+
+Segundo bloco do [plano de ajuste](desktop-v3-ajuste.md). Os nove apps — Cérebro, Skills,
+Artefatos, Gerações, Conectores, Ajustes, Rotinas, Execuções, Pixel Studio — abrem **no
+palco**, como placas de tipo `app`. Nenhum clique no desktop muda de rota.
+
+**Entrou:** `desktop/apps.tsx` (o `APPDEF` do protótipo com as views de produção atrás),
+`desktop/appRoute.ts` (o painel carrega o próprio caminho e query, persistidos no `config` da
+janela; `usePanelParams` e `usePanelSearchParams` caem para o roteador no modo empilhado, onde
+os apps continuam páginas) e `desktop/AppPanel.tsx` (a view montada de borda a borda, com
+error boundary próprio). O desktop fica montado em **todas** as rotas de app: `/settings?tab=security`
+é um deep link — abre o painel na aba e devolve a URL para `/`. Um `Link` dentro de um app
+faz a mesma coisa. Os pods da esquerda seguem o arco do protótipo (cérebro, skills, artefatos,
+gerações, conectores, ajustes; Pixel fica até o G5); o pod Execuções da direita abre o app;
+`now` virou uma ação da paleta. O Cérebro grava seleção e zoom na query do painel — sobrevive a
+reload e troca de espaço.
+
+### Defeitos encontrados nesta passagem
+
+1. **View transition aninhada.** O rebote do deep link usava `useOsNavigate` dentro do
+   callback de outra transição: a paleta e a lista de execuções "não estabilizavam". O rebote é
+   um `navigate` cru do roteador.
+2. **A paleta fechava no rebote.** O efeito "fechar ao navegar" disparava na volta para `/`.
+   Só fecha quando a rota é uma página.
+3. **O palco rolava.** Um `scrollIntoView` do Playwright num controle na borda de uma placa
+   larga arrastou o desktop 92 px para a esquerda — `overflow: hidden` deixa rolar por script;
+   `clip` não. E `openApp` passou a caber a placa no palco antes de posicioná-la.
+4. **Layout um passo atrás.** O `onSuccess` do PUT limpava `dirty` antes de o cache de
+   settings ter o documento novo; por um refetch o desktop adotava o layout anterior. Era
+   invisível quando layout era só geometria; com o `config` carregando a seleção do Cérebro,
+   virou "seleção sumiu, seleção nova, mergulho". O cache recebe a resposta do PUT primeiro.
+5. **Reset que não resetava.** "Reset zoom and position" deixava um voo em curso e um mergulho
+   enfileirado seguirem; agora cancela os dois, por qualquer caminho (botão, ⌘0, reset do
+   painel).
+6. **Barra de conflito descentrada.** `translateX(-50%)` anulado pelo keyframe final da
+   animação de entrada — metade da barra ficava fora da viewport, e o teste só passava porque
+   o Playwright rolava o desktop até ela. Centrada por margens.
+7. **Foco da paleta.** O foco inicial chegava um quadro depois; teclas digitadas nesse quadro
+   iam para o painel atrás. Foco síncrono no mount.
+8. **Prévia do Cérebro no meio do canvas** e ações das rotinas esticadas dentro da placa:
+   larguras relativas à placa (`cqw`) e `align-self` nas ações.
+9. **Fixtures e2e** vazando estado de app entre specs (a query persistida do Cérebro): os
+   helpers estacionam e zeram todos os `app:*`; as specs do Cérebro passaram a resetar o palco;
+   `data-widget-id`, "Back to OS" e `app-frame` saíram das asserções.
+
+### Gates
+
+| Gate | Resultado |
+|---|---|
+| `npm test` (raiz) | 62 arquivos · 492 testes |
+| `npm run test -w apps/command-centre` | 45 arquivos · 331 testes |
+| `npx playwright test` (suíte inteira) | 107 passaram · 2 pulados · 0 falhas |
+| `typecheck` · `eslint` · `prettier` | limpos |
+
+Portão visual: `artifacts/g2-lado-a-lado.png`. Inventário: linhas 3 e 11 marcadas; linha 12
+(paleta abre painéis) marcada por consequência do deep link.
+
 ## Revisão final
 
 Uma varredura no arco inteiro F1–F6 encontrou **código especulativo meu**: `tile`, `cascade`,

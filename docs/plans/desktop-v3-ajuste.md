@@ -87,7 +87,7 @@ O primitivo. Sem ele, nada do resto tem onde morar.
 Portão: palco limpo com o console; abrir Pulso pelo pod → placa com íris, `@pulso` no
 cabeçalho, chip na bandeja.
 
-### G2 — Apps como painéis
+### G2 — Apps como painéis ✅ (registro em `desktop-v3-paridade.md`)
 
 - `desktop/apps.ts`: `APPDEF` com `kind: "app"`, `ref`, título, tamanho inicial e o
   componente da view existente: `Artifacts`, `Runs`, `Routines`, `Connectors`, `Generations`,

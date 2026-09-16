@@ -1,3 +1,4 @@
+import { resetStage } from "./stage";
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
@@ -5,6 +6,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { E2E_HOME } from "./home.mjs";
 
 test("removing a selected source preserves zoom and offers recovery", async ({ page, request }) => {
+  await resetStage(request);
   const file = path.join(E2E_HOME, "memory", "vanishing-source.md");
   const headers = { "x-mordomo-token": process.env.MORDOMO_TOKEN! };
   fs.writeFileSync(file, "# Vanishing source\nThis isolated source will be removed.");
