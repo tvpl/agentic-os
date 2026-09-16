@@ -735,6 +735,27 @@ body.window-dragging .app-rail {
   color: var(--text-faint);
 }
 
+/* --------------------------------------------------- living field (F7) --
+   The workspace itself as the desktop's ground: dim, drifting, and clickable.
+   It sits under every window and over nothing, so it never competes for a
+   pixel the user needs. */
+.living-field {
+  position: absolute;
+  inset: var(--stage-top) 0 var(--stage-bottom) 0;
+  z-index: var(--z-base);
+  display: block;
+  width: 100%;
+  height: calc(100% - var(--stage-top) - var(--stage-bottom));
+  opacity: 0.95;
+}
+[data-theme="light"] .living-field {
+  opacity: 0.55;
+}
+/* Search dims the desktop; the field goes with it. */
+.desktop.searching .living-field {
+  opacity: 0.2;
+}
+
 /* ------------------------------------------------- agent presence (F4b) --
    What survives of the icosphere: a warm breath behind the console that says
    the agent is busy without words. One element, no canvas, and an idle
@@ -2363,4 +2384,189 @@ body.window-dragging .app-rail {
 }
 .deck-card .deck-name:hover .name {
   color: var(--accent-text);
+}
+
+/* ------------------------------------------------- skill deck (F7) ------
+   The radial deck, ported from the prototype. It is anchored to the console,
+   not to the viewport centre: the skills fan out from where the hand already
+   is. The origin is a zero-sized point and every skill is translated onto the
+   arc, so the fan is one transform per button — cheap, and reversible. */
+.skill-deck {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--stage-bottom) + 152px);
+  width: 0;
+  height: 0;
+  z-index: var(--z-modal);
+}
+.deck-scrim {
+  position: fixed;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  cursor: default;
+  background: color-mix(in srgb, var(--bg) 30%, transparent);
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-standard);
+}
+.skill-deck.open .deck-scrim {
+  opacity: 1;
+}
+.deck-rim {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 484px;
+  height: 484px;
+  margin: -242px 0 0 -242px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-slow) var(--ease-standard);
+}
+.deck-rim.b {
+  width: 382px;
+  height: 382px;
+  margin: -191px 0 0 -191px;
+  border-style: dashed;
+  border-color: var(--accent-line);
+}
+.skill-deck.open .deck-rim {
+  opacity: 0.8;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .skill-deck.open .deck-rim {
+    animation: deck-rim-spin 70s linear infinite;
+  }
+}
+@keyframes deck-rim-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.deck-skill {
+  position: absolute;
+  width: 70px;
+  height: 62px;
+  margin: -31px 0 0 -35px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text-dim);
+  opacity: 0;
+  transform: translate(0, 0) scale(0.4);
+  transition:
+    opacity var(--dur-base) var(--ease-standard) var(--delay, 0ms),
+    transform var(--dur-slow) var(--ease-spring) var(--delay, 0ms),
+    color var(--dur-fast) var(--ease-standard);
+}
+.skill-deck.open .deck-skill {
+  opacity: 1;
+  transform: translate(var(--dx), var(--dy)) scale(1);
+}
+/* Closing collapses everything at once: a staggered fan-in reads as lag. */
+.skill-deck:not(.open) .deck-skill {
+  transition-delay: 0ms;
+}
+.deck-skill .hex {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    150deg,
+    color-mix(in srgb, var(--accent) 34%, var(--border-strong)),
+    color-mix(in srgb, var(--border-strong) 80%, transparent)
+  );
+  clip-path: polygon(25% 2%, 75% 2%, 100% 50%, 75% 98%, 25% 98%, 0 50%);
+  transition: background var(--dur-base) var(--ease-standard);
+}
+.deck-skill .hex::after {
+  content: "";
+  position: absolute;
+  inset: 1.5px;
+  background: linear-gradient(150deg, var(--bg-raise-2), var(--bg));
+  clip-path: polygon(25% 2%, 75% 2%, 100% 50%, 75% 98%, 25% 98%, 0 50%);
+}
+.deck-skill .ic {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+}
+.deck-skill .ic svg {
+  width: 17px;
+  height: 17px;
+}
+.deck-skill .nm {
+  position: relative;
+  z-index: 1;
+  max-width: 62px;
+  margin-top: 3px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.05;
+  /* A slug can be long; two lines, then an ellipsis. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+}
+.deck-skill:hover,
+.deck-skill:focus-visible {
+  color: var(--text);
+}
+.deck-skill:hover .hex,
+.deck-skill:focus-visible .hex {
+  background: linear-gradient(150deg, var(--accent), var(--accent-line));
+}
+/* The overflow seat is a door, not a skill: it stays quiet until hovered. */
+.deck-skill.more .hex {
+  background: color-mix(in srgb, var(--border-strong) 70%, transparent);
+}
+.deck-skill.live .hex {
+  background: linear-gradient(150deg, var(--accent), var(--accent-line));
+  animation: deck-live 1.6s var(--ease-standard) infinite;
+}
+@keyframes deck-live {
+  50% {
+    opacity: 0.55;
+  }
+}
+.deck-hint,
+.deck-empty {
+  position: absolute;
+  left: 50%;
+  top: 26px;
+  width: 260px;
+  margin: 0 0 0 -130px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-faint);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-base) var(--ease-standard);
+  unicode-bidi: plaintext;
+}
+.deck-empty {
+  top: -8px;
+  color: var(--text-dim);
+}
+.skill-deck.open .deck-hint,
+.skill-deck.open .deck-empty {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .deck-skill {
+    transition: opacity var(--dur-fast) linear;
+    transform: translate(var(--dx), var(--dy)) scale(1);
+  }
 }

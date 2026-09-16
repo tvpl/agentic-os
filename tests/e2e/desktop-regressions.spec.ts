@@ -5,11 +5,8 @@ test("microapps and onboarding navigate to usable content without reload", async
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/#/");
-  // The apps live in the rail now: it opens on hover, focus or its toggle.
-  const rail = page.locator(".app-rail");
-  await rail.hover();
-  await expect(rail).toHaveClass(/open/);
-  await rail.locator('.rail-item[href="#/brain"]').click();
+  // The apps live on the left arc now (redesign F7): one pod, one app.
+  await page.locator('.pod-arc.l .pod[data-pod="/brain"]').click();
   await expect(page.locator(".brain2")).toBeVisible();
   await expect(page.locator(".desktop")).toHaveCount(0);
   await page.getByRole("button", { name: /zoom in|aproximar/i }).click();
@@ -18,8 +15,7 @@ test("microapps and onboarding navigate to usable content without reload", async
   await page.keyboard.press("/");
   await expect(page.locator(".brain2-panel input").first()).toBeFocused();
   await page.getByRole("button", { name: /back to.*os|voltar ao os/i }).click();
-  await rail.hover();
-  await rail.locator('.rail-item[href="#/pixel"]').click();
+  await page.locator('.pod-arc.l .pod[data-pod="/pixel"]').click();
   await expect(page.locator(".app-frame-title")).toHaveText(/Pixel Studio/);
   await expect(page.locator("canvas").first()).toBeVisible();
   await page.getByRole("button", { name: /back to.*os|voltar ao os/i }).click();
@@ -88,7 +84,7 @@ test("console maximizes, restores, resizes and Now stays hidden after reload", a
   await expect(page.locator('[data-widget-id="now"]')).toBeVisible();
 });
 
-test("the ambient strip lights only what needs a decision", async ({ page }) => {
+test("the pods light only what needs a decision", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   // Two runs the user has to look at; everything else is calm.
   await page.route("**/api/runs?*", (route) =>
@@ -103,25 +99,65 @@ test("the ambient strip lights only what needs a decision", async ({ page }) => 
   await expect(page.locator(".boot-screen")).toHaveCount(0);
   // Two of two runs failed, so two readings earn colour: the decisions to make
   // and the success rate. Everything else stays muted.
-  const lit = page.locator(".ambient-strip .sig.lit");
-  await expect(lit).toHaveCount(2);
-  await expect(page.locator('.ambient-strip .sig[title*="need a decision"]')).toHaveAttribute(
-    "data-level",
-    "warn",
-  );
-  await expect(page.locator('.ambient-strip .sig[title*="runs succeeded"]')).toHaveAttribute(
-    "data-level",
-    "critical",
-  );
-  // Every other reading stays muted: an unlit strip is the resting state.
-  const levels = await page.$$eval(".ambient-strip .sig:not(.lit)", (els) =>
+  await expect(page.locator('.pod-arc.r .pod[data-pod="attention"]')).toHaveAttribute("data-level", "warn");
+  await expect(page.locator('.pod-arc.r .pod[data-pod="pulse"]')).toHaveAttribute("data-level", "critical");
+  // Every other reading stays muted: an unlit arc is the resting state.
+  const levels = await page.$$eval(".pod-arc.r .pod:not(.lit)", (els) =>
     els.map((e) => e.getAttribute("data-level")),
   );
-  expect(levels.length).toBeGreaterThan(3);
+  expect(levels.length).toBeGreaterThan(1);
   expect(levels.every((l) => l === "idle" || l === "info")).toBe(true);
   // A lit reading is an entry point, not a label.
-  await page.locator('.ambient-strip .sig[title*="need a decision"]').click();
-  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.locator('.pod-arc.r .pod[data-pod="attention"]').click();
+  await expect(page.locator(".surface")).toBeVisible();
+});
+
+test("the skill deck fans out over the console and runs what is picked", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route("**/api/skills", (route) =>
+    route.fulfill({
+      json: [
+        {
+          slug: "smoke-test",
+          name: "Smoke test",
+          description: "",
+          triggers: [],
+          inputs: [],
+          providers: [],
+          recommendedModel: null,
+          recommendedEffort: "medium",
+          mode: "read_only",
+          enabled: true,
+          version: "1",
+          guardrails: [],
+          successCriteria: [],
+          resources: [],
+          bodyLineCount: 0,
+          thick: false,
+          body: "",
+          skillFile: "smoke-test/SKILL.md",
+        },
+      ],
+    }),
+  );
+  await page.goto("/#/");
+  await expect(page.locator(".boot-screen")).toHaveCount(0);
+  // The skills pod fans the deck out rather than leaving the desktop.
+  await page.locator('.pod-arc.l .pod[data-pod="/skills"]').click();
+  const deck = page.locator(".skill-deck");
+  await expect(deck).toHaveClass(/open/);
+  await expect(deck.locator(".deck-skill")).toHaveCount(1);
+  // The desktop stays visible behind it: the deck is a layer, not a page.
+  await expect(page.locator('[data-widget-id="prompt"]')).toBeVisible();
+  await page.screenshot({ path: "artifacts/qa-deck.png" });
+  await page.keyboard.press("Escape");
+  await expect(deck).toHaveCount(0);
+  // ⌘J is the same gesture from the keyboard, console focus included.
+  await page.locator('[data-widget-id="prompt"] textarea').click();
+  await page.keyboard.press("ControlOrMeta+j");
+  await expect(page.locator(".skill-deck")).toHaveClass(/open/);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".skill-deck")).toHaveCount(0);
 });
 
 test("Portuguese notification opens its destination, not just its read state", async ({ page }) => {

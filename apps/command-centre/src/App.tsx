@@ -28,7 +28,12 @@ import { Skeleton, ToastProvider } from "./components/ui";
 import { useDialogDepth, usePresence } from "./components/dialog";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { EmptyState } from "./components/primitives";
-import { CommandPalette, TOGGLE_EDIT_EVENT, type PaletteOpenDetail } from "./components/CommandPalette";
+import {
+  CommandPalette,
+  OPEN_DECK_EVENT,
+  TOGGLE_EDIT_EVENT,
+  type PaletteOpenDetail,
+} from "./components/CommandPalette";
 import { WorkspaceDock, WorkspaceProvider } from "./components/Workspace";
 import { ShortcutsHelp } from "./components/ShortcutsHelp";
 import { ConfirmProvider } from "./hooks/useConfirm";
@@ -88,7 +93,7 @@ function MissingApp({ name }: { name: TKey }) {
 export const LAUNCHER_EVENT = "mordomo:launcher";
 /** Fire this event to open the keyboard-shortcuts sheet. */
 export const SHORTCUTS_EVENT = "mordomo:shortcuts";
-export { TOGGLE_EDIT_EVENT };
+export { TOGGLE_EDIT_EVENT, OPEN_DECK_EVENT };
 
 const queryClient = new QueryClient({
   defaultOptions: {

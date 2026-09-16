@@ -101,9 +101,11 @@ export interface DesktopPodsProps {
   activeRuns: number;
   /** Opens a widget's surface; the desktop decides whether it can. */
   onExpand: (widgetId: string) => void;
+  /** Fans the radial deck out over the console. */
+  onOpenDeck: () => void;
 }
 
-export default function DesktopPods({ activeRuns, onExpand }: DesktopPodsProps) {
+export default function DesktopPods({ activeRuns, onExpand, onOpenDeck }: DesktopPodsProps) {
   const t = useT();
   const navigate = useNavigate();
   const { apps, pending } = useAppRows(3);
@@ -211,7 +213,9 @@ export default function DesktopPods({ activeRuns, onExpand }: DesktopPodsProps) 
       detail: t("desktop.pods.skills", { n: (skills.data ?? []).filter((s) => s.enabled).length }),
       value: String((skills.data ?? []).filter((s) => s.enabled).length),
       level: "idle",
-      onOpen: () => navigate("/skills"),
+      // The pod fans the deck out rather than leaving the desktop: running a
+      // skill is a desktop action, managing them is what /skills is for.
+      onOpen: onOpenDeck,
     });
     if (pending.length > 0)
       out.push({
@@ -225,7 +229,7 @@ export default function DesktopPods({ activeRuns, onExpand }: DesktopPodsProps) 
         onOpen: () => navigate("/connectors"),
       });
     return out;
-  }, [apps, pending, skills.data, navigate, t]);
+  }, [apps, pending, skills.data, navigate, onOpenDeck, t]);
 
   return (
     <>

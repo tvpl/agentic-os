@@ -27,7 +27,9 @@ test("spaces keep their own windows and the dock follows app navigation", async 
 
   await dock.getByRole("button", { name: "Research", exact: true }).click();
   // A fresh space starts from the default composition, not the one just left.
-  await expect.poll(async () => (await today.boundingBox())!.x).toBeLessThan(40);
+  // The default column now begins at the pod arc (ARC_MARGIN = 78), not at the
+  // stage edge, so this asserts "back home", not "flush left".
+  await expect.poll(async () => (await today.boundingBox())!.x).toBeLessThan(arranged.x - 200);
   // The draft belongs to the console, not to a space.
   await expect(consoleWidget.locator("textarea")).toHaveValue("Continue this after exploring");
 

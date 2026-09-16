@@ -78,6 +78,9 @@ import { useI18nLang } from "./paletteLang";
 /** Fired by the palette's "Toggle edit mode" action; the desktop listens and toggles its edit mode. */
 export const TOGGLE_EDIT_EVENT = "mordomo:toggle-edit";
 
+/** Fired by the palette's "Skill deck" action; the desktop fans the radial deck out. */
+export const OPEN_DECK_EVENT = "mordomo:open-deck";
+
 /** `detail` of the LAUNCHER_EVENT CustomEvent: open with a query or straight on a skill's run page. */
 export interface PaletteOpenDetail {
   query?: string;
@@ -349,6 +352,24 @@ export function CommandPalette({
       ),
       act("new-skill", "shell.action.newSkill", <Plus aria-hidden />, ["skill", "create", "nova"], (el) =>
         go("/skills?new=1", el),
+      ),
+      act(
+        "skill-deck",
+        "desktop.deck.open",
+        <Sparkles aria-hidden />,
+        ["skill", "deck", "run", "executar", "radial"],
+        () => {
+          // The deck only exists on the desktop, so the action has to land
+          // there first — same two-frame handoff as edit mode.
+          const fire = () => window.dispatchEvent(new Event(OPEN_DECK_EVENT));
+          if (pathname === "/") {
+            fire();
+            close();
+          } else {
+            go("/");
+            requestAnimationFrame(() => requestAnimationFrame(fire));
+          }
+        },
       ),
       act(
         "toggle-edit",

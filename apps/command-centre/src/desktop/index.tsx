@@ -38,7 +38,7 @@ import { useConfirm } from "../hooks/useConfirm";
 import { playCue, useNotifications } from "../hooks/useNotifications";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import { useOsEvent } from "../hooks/useEventStream";
-import { LAUNCHER_EVENT, TOGGLE_EDIT_EVENT } from "../App";
+import { LAUNCHER_EVENT, OPEN_DECK_EVENT, TOGGLE_EDIT_EVENT } from "../App";
 import { SWITCH_SPACE_EVENT, takePendingSpace } from "../components/Workspace";
 import { DEFAULT_SPACE, switchSpace, type SpaceMap } from "./spaces";
 import { DOC_BOX, defaultWindows, docId, docPath, isDocId } from "./defaultWindows";
@@ -48,7 +48,9 @@ import { cascade, placeNew, tile, topZ, type WindowMap } from "./windowModel";
 import { useWindowLayout, type StageMetrics } from "./useWindowLayout";
 import WidgetLayer, { type WidgetSpec } from "./WidgetLayer";
 import AgentPresence from "./AgentPresence";
+import LivingField from "./LivingField";
 import DesktopPods from "./DesktopPods";
+import SkillDeck from "./SkillDeck";
 import ModelEffortPopover from "./ModelEffortPopover";
 import AddWidgetGallery from "./AddWidgetGallery";
 import { LayoutPresets } from "./LayoutPresets";
@@ -89,6 +91,8 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   const [expandedId, setExpandedId] = useState<string | null>(null);
   /** Camera pulled back over the whole stage. */
   const [overview, setOverview] = useState(false);
+  /** The radial skill deck, fanned out over the console. */
+  const [deckOpen, setDeckOpen] = useState(false);
   /** Paths the console draft points at; the layer tethers to their windows. */
   const [activeRefs, setActiveRefs] = useState<readonly string[]>([]);
   useEffect(() => {
@@ -266,20 +270,26 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     const onToggleEdit = () => {
       setEditMode((v) => !v);
     };
+    const onOpenDeck = () => setDeckOpen(true);
     window.addEventListener(TOGGLE_EDIT_EVENT, onToggleEdit);
-    return () => window.removeEventListener(TOGGLE_EDIT_EVENT, onToggleEdit);
+    window.addEventListener(OPEN_DECK_EVENT, onOpenDeck);
+    return () => {
+      window.removeEventListener(TOGGLE_EDIT_EVENT, onToggleEdit);
+      window.removeEventListener(OPEN_DECK_EVENT, onOpenDeck);
+    };
   }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (
-        e.defaultPrevented ||
-        e.metaKey ||
-        e.ctrlKey ||
-        e.altKey ||
-        document.documentElement.dataset.onboarding
-      )
+      if (e.defaultPrevented || document.documentElement.dataset.onboarding) return;
+      // The deck is a command, so unlike the camera and search it keeps a
+      // modifier and works from inside the console too.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        setDeckOpen((v) => !v);
         return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target instanceof Element ? e.target : null;
       if (el?.closest('[role="dialog"]')) return;
       const editable =
@@ -415,12 +425,15 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         className={`desktop${editMode ? " edit-mode" : ""}${searching ? " searching" : ""}`}
         data-core={coreState}
       >
+        {!metrics?.stacked && <LivingField onOpenFile={(path) => openDoc(path)} />}
         <AgentPresence />
+        <SkillDeck open={deckOpen} onClose={() => setDeckOpen(false)} />
 
         <div className="depth-layer desktop-depth">
           {!metrics?.stacked && (
             <DesktopPods
               activeRuns={activeRuns}
+              onOpenDeck={() => setDeckOpen(true)}
               onExpand={(id) => {
                 // A pod only opens what the layout actually holds; otherwise it
                 // would promise a panel that has no body to render.
