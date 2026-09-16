@@ -533,10 +533,22 @@ function Gallery() {
             ["Pulse", <PulseWidget key="p" />],
             ["Needs attention", <AttentionWidget key="a" />],
           ].map(([title, node]) => (
-            <section key={String(title)} className="widget story-widget" aria-label={String(title)}>
-              <div className="widget-inner">
-                <h2>{title}</h2>
-                {node}
+            <section
+              key={String(title)}
+              className="panel on story-widget"
+              data-kind="surface"
+              aria-label={String(title)}
+            >
+              <div className="panel-in">
+                <div className="panel-head">
+                  <span className="panel-glyph" aria-hidden>
+                    ◉
+                  </span>
+                  <span className="panel-title">{title}</span>
+                  <span className="panel-ref mono">@{String(title).toLowerCase().replace(/\s+/g, "-")}</span>
+                  <span className="panel-sp" />
+                </div>
+                <div className="panel-body">{node}</div>
               </div>
             </section>
           ))}

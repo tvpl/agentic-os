@@ -14,7 +14,7 @@
   transition: opacity 300ms var(--ease-standard);
 }
 .desktop-depth > .now-panel,
-.desktop-depth .widget {
+.desktop-depth .panel {
   pointer-events: auto;
 }
 /* Only the pressable readings take the pointer: the strip itself must not
@@ -429,16 +429,16 @@
 }
 
 /* ------------------------------------------------------- widget layer ---- */
-.widget {
+.panel {
   transition:
     width var(--dur-base) var(--ease-emphasized),
     height var(--dur-base) var(--ease-emphasized);
 }
-.widget.dragging {
+.panel.dragging {
   transition: none;
   z-index: 6;
 }
-.desktop-widgets.stacked .widget {
+.desktop-widgets.stacked .panel {
   transition: none;
 }
 /* Camera pulled back (F4b): the stage darkens so the windows read as a map,
@@ -449,7 +449,7 @@
 [data-theme="light"] .desktop-widgets.overview {
   background: rgba(245, 243, 238, 0.42);
 }
-.desktop-widgets.overview .widget {
+.desktop-widgets.overview .panel {
   transition:
     transform var(--dur-slow) var(--ease-emphasized),
     width var(--dur-slow) var(--ease-emphasized),
@@ -457,13 +457,14 @@
 }
 /* A window in the overview is a target, not a document: its own chrome would
    invite clicks that mean something else. */
-.desktop-widgets.overview .widget-window-actions,
-.desktop-widgets.overview .widget-resize,
-.desktop-widgets.overview .widget-more-cue {
+.desktop-widgets.overview .panel-b,
+.desktop-widgets.overview .panel-ref,
+.desktop-widgets.overview .panel-grip,
+.desktop-widgets.overview .panel-more {
   opacity: 0;
   pointer-events: none;
 }
-.desktop-widgets.overview .widget-inner {
+.desktop-widgets.overview .panel-body {
   overflow: hidden;
 }
 
@@ -590,11 +591,11 @@
   animation: fade-in var(--dur-fast) var(--ease-standard);
 }
 /* A window is dragged by its title bar, always — no mode to enter first. */
-.desktop-widgets:not(.stacked) .widget-inner > h2 {
+.desktop-widgets:not(.stacked) .panel-head {
   cursor: grab;
 }
 body.window-dragging,
-body.window-dragging .widget-inner > h2 {
+body.window-dragging .panel-head {
   cursor: grabbing;
 }
 /* The descendants have their own `user-select`, so the rule has to reach
@@ -607,7 +608,7 @@ body.window-dragging * {
 body.window-dragging .app-rail {
   pointer-events: none;
 }
-.widget.dragging {
+.panel.dragging {
   will-change: transform;
 }
 .drop-target {
@@ -621,36 +622,7 @@ body.window-dragging .app-rail {
     transform var(--dur-fast) var(--ease-standard),
     opacity var(--dur-fast) var(--ease-standard);
 }
-.widget-config {
-  position: absolute;
-  top: -11px;
-  right: 38px;
-  z-index: 3;
-  width: 22px;
-  height: 22px;
-  border-radius: var(--r-2);
-  display: grid;
-  place-items: center;
-  background: var(--bg-raise-2);
-  color: var(--text-dim);
-  border: 1px solid var(--border-strong);
-  cursor: pointer;
-  padding: 0;
-}
-.widget-config:hover {
-  color: var(--accent-text);
-  border-color: var(--accent-line);
-}
-.widget-config svg,
-.widget-hide svg,
-.widget-grip svg {
-  width: 13px;
-  height: 13px;
-}
-
 /* --------------------------------------------------- add / config popovers */
-.widget-config-pop,
-.add-gallery,
 .bell-pop {
   min-width: 240px;
   max-width: 340px;
@@ -1851,63 +1823,10 @@ body.window-dragging .app-rail {
   font-variant-numeric: tabular-nums;
 }
 
-/* Window chrome stays available while the content scrolls. */
-.desktop .widget-inner {
-  display: flex;
-  flex-direction: column;
-  /* A widget is a window: its content scrolls inside the box and never
-     spills over the neighbouring widget when the grid is tight. */
-  overflow: hidden auto;
-  scrollbar-width: thin;
-  /* Chamfered instrument panel (HUD 2.2): the body is clipped to the
-     chamfer and wears a slightly lighter glass surface with a top highlight
-     under the theme's scroll shadows. */
-  border-radius: 0;
-  border-color: color-mix(in srgb, var(--text) 14%, transparent);
-  clip-path: polygon(
-    var(--chamfer) 0,
-    100% 0,
-    100% calc(100% - var(--chamfer)),
-    calc(100% - var(--chamfer)) 100%,
-    0 100%,
-    0 var(--chamfer)
-  );
-  background:
-    var(--widget-scroll-shadows),
-    linear-gradient(180deg, color-mix(in srgb, var(--text) 4%, transparent), transparent 42%) no-repeat scroll,
-    color-mix(in srgb, var(--surface) 97%, transparent);
-}
-/* the clip would swallow the outward focus ring: draw it just inside the edge */
-.desktop .widget-inner:focus-visible {
-  outline-offset: -3px;
-}
-.widget-inner > h2 {
-  flex: none;
-  min-height: 28px;
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  background: var(--surface);
-  letter-spacing: 0.12em;
-}
-.widget-title {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.widget-window-actions {
-  display: flex;
-  gap: 2px;
-}
-.widget-window-actions .os-tool {
-  width: 26px;
-  height: 26px;
-  padding: 5px;
-}
 /* The console scrolls itself; this floor (thread + field + button row) is
    what the prompt's WIDGET_MIN (9 rows) guarantees on the minimum grid
    (28.6 px rows, ~72 px of frame chrome), so the frame never scrolls too. */
-.widget-inner > .console {
+.panel-body > .console {
   height: auto;
   flex: 1;
   min-height: 170px;
@@ -1923,7 +1842,7 @@ body.window-dragging .app-rail {
 .console-turn {
   flex: none;
 }
-.desktop .widget-inner > .now-panel {
+.desktop .panel-body > .now-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   position: static;
@@ -1961,26 +1880,13 @@ body.window-dragging .app-rail {
   margin: 6px 0;
 }
 
-.desktop .widget.compact .widget-inner {
-  padding: 6px 10px;
-}
-.desktop .widget.compact .widget-inner > h2 {
-  min-height: 22px;
-  margin-bottom: 4px;
-}
-.desktop .widget.compact .widget-window-actions .os-tool {
-  width: 22px;
-  height: 22px;
-  padding: 4px;
-}
-
 /* ------------------------------------------------ "more below" cue ------ */
 /* The frame (not the scrolling body) owns the cue, so it never scrolls away.
-   `data-overflow="more"` is set by WidgetLayer when the body can scroll and
+   `data-overflow="more"` is set by the layer when the body can scroll and
    is not yet at its end; "end" keeps the fade off but the chevron hidden.
    Hidden with `visibility` (not only opacity) so the idle cue is neither
    hit-testable nor in the accessibility tree; the opacity still fades. */
-.widget-more-cue {
+.panel-more {
   position: absolute;
   left: 50%;
   bottom: 6px;
@@ -2004,35 +1910,35 @@ body.window-dragging .app-rail {
     transform 160ms var(--ease-standard),
     visibility 0s linear 160ms;
 }
-.widget-more-cue svg {
+.panel-more svg {
   width: 13px;
   height: 13px;
 }
-.widget[data-overflow="more"] .widget-more-cue {
+.panel[data-overflow="more"] .panel-more {
   opacity: 0.9;
   visibility: visible;
   transform: translate(-50%, 0);
   pointer-events: auto;
   transition-delay: 0s;
 }
-.widget[data-overflow="more"] .widget-more-cue:hover {
+.panel[data-overflow="more"] .panel-more:hover {
   opacity: 1;
   box-shadow: 0 0 12px var(--accent-glow);
 }
 /* a stronger bottom fade than the default scroll shadow while there is more;
    a body that scrolls itself (the console) is never masked */
-.widget[data-overflow="more"] > .widget-inner:not(:has(> .console)) {
+.panel[data-overflow="more"] > .panel-in > .panel-body:not(:has(> .console)) {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), rgba(0, 0, 0, 0.25));
 }
-.desktop-widgets.stacked .widget-more-cue,
-.widget:has(> .widget-inner > .console) .widget-more-cue {
+.desktop-widgets.stacked .panel-more,
+.panel:has(> .panel-in > .panel-body > .console) .panel-more {
   display: none;
 }
 /* the chevron bobs only while the widget is attended: an always-on animation
    over a scrolling surface would repaint every widget forever */
 @media (prefers-reduced-motion: no-preference) {
-  .widget[data-overflow="more"]:hover .widget-more-cue svg,
-  .widget[data-overflow="more"]:focus-within .widget-more-cue svg {
+  .panel[data-overflow="more"]:hover .panel-more svg,
+  .panel[data-overflow="more"]:focus-within .panel-more svg {
     animation: cue-bob 1.6s ease-in-out infinite;
   }
 }
@@ -2156,99 +2062,398 @@ body.window-dragging .app-rail {
   text-decoration: underline;
 }
 
-/* ---------------------------------------------- widget chrome (HUD 2.2) -- */
-/* Chamfered instrument panels: the body (`.desktop .widget-inner`, above) is
-   clipped to the chamfer; the frame's ::before draws the two accent edges on
-   the chamfered corners, the two remaining brackets on the square ones and
-   the drop shadow; the header gets a hairline rule that lights up on hover.
-   The shadow is a box-shadow on the static frame rather than a filter on the
-   widget: a filter would composite the scrolling body on every frame. */
-.desktop .widget {
-  --chamfer: 10px;
-  --widget-drop-shadow: 0 10px 22px rgba(0, 0, 0, 0.35);
+/* ------------------------------------------- instrument content (G1) ------
+   The prototype's vocabulary for what goes inside a surface: metric tiles,
+   a bar per day, a caption, and rows made of a tag, a thing and a way in. */
+.mt {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+  margin-bottom: 13px;
 }
-.desktop .widget::before {
-  border-radius: 0;
-  opacity: 0.55;
-  box-shadow: var(--widget-drop-shadow);
-  background:
-    linear-gradient(var(--accent-line), var(--accent-line)) top right / 18px 1px,
-    linear-gradient(var(--accent-line), var(--accent-line)) top right / 1px 18px,
-    linear-gradient(var(--accent-line), var(--accent-line)) bottom left / 18px 1px,
-    linear-gradient(var(--accent-line), var(--accent-line)) bottom left / 1px 18px,
-    linear-gradient(
-        -45deg,
-        transparent calc(50% - 0.5px),
-        var(--accent-line) calc(50% - 0.5px),
-        var(--accent-line) calc(50% + 0.5px),
-        transparent calc(50% + 0.5px)
-      )
-      top left / var(--chamfer) var(--chamfer),
-    linear-gradient(
-        -45deg,
-        transparent calc(50% - 0.5px),
-        var(--accent-line) calc(50% - 0.5px),
-        var(--accent-line) calc(50% + 0.5px),
-        transparent calc(50% + 0.5px)
-      )
-      bottom right / var(--chamfer) var(--chamfer);
-  background-repeat: no-repeat;
-  transition: opacity 160ms var(--ease-standard);
+.mt > div {
+  border: 1px solid var(--border);
+  padding: 9px 11px;
+  background: color-mix(in srgb, var(--bg-raise-2) 45%, transparent);
+  clip-path: polygon(0 7px, 7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%);
 }
-.desktop .widget:hover::before,
-.desktop .widget:focus-within::before {
-  opacity: 1;
-}
-.desktop .widget.editing::before {
-  opacity: 1;
-  box-shadow:
-    0 0 22px var(--accent-soft),
-    var(--widget-drop-shadow);
-}
-.desktop .widget::after {
-  left: var(--chamfer);
-  right: 8px;
-  background: linear-gradient(
-    90deg,
-    var(--accent-line),
-    color-mix(in srgb, var(--text) 10%, transparent) 40%,
-    transparent
-  );
-  opacity: 0.8;
-}
-.desktop .widget-inner > h2 {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  margin: -2px -4px var(--s-3);
-  padding: 2px 4px 6px;
-  background: linear-gradient(color-mix(in srgb, var(--surface) 97%, transparent) 78%, transparent);
-  color: var(--text-dim);
+.mt .k {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 9.5px;
   letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
-.desktop .widget-inner > h2::after {
+.mt .v {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 24px;
+  line-height: 1.15;
+  margin-top: 2px;
+}
+.mt .bad .v {
+  color: var(--danger);
+}
+.mt .good .v {
+  color: var(--ok);
+}
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 84px;
+  border-bottom: 1px solid var(--border);
+}
+.bars i {
+  flex: 1;
+  background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 20%, transparent));
+  opacity: 0.8;
+  transition: height var(--dur-slow) var(--ease-standard);
+}
+.bars i.f {
+  background: linear-gradient(180deg, var(--danger), color-mix(in srgb, var(--danger) 18%, transparent));
+}
+.cp {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 11px 0 6px;
+}
+.rw {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  font-size: 12px;
+  min-width: 0;
+}
+.rw .sp {
+  flex: 1;
+}
+.rw .dm {
+  color: var(--text-faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.rw .truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  unicode-bidi: plaintext;
+}
+.tg {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 9.5px;
+  padding: 1px 6px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.tg.f {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+.tg.t {
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  color: var(--warn);
+}
+.tg.o {
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  color: var(--ok);
+}
+.go {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 11px;
+  border: 1px solid var(--accent-line);
+  color: var(--accent);
+  font-size: 11px;
+  background: none;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+.go:hover,
+.go:focus-visible {
+  background: var(--accent-soft);
+}
+.dm-note {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+/* ------------------------------------------------------- panel (G1) ------
+   The one primitive on the stage, ported from the prototype's `.pan`. Not a
+   system window — a plate: a 1 px gradient rim, a chamfered body, an iris on
+   arrival, a header that carries the kind's glyph, the title and the `@ref`,
+   and three controls that only show themselves when the plate is attended.
+   The focused plate glows; the others step back. Geometry, drag and z-order
+   are the layer's; everything here is skin. */
+.panel {
+  --cut: 12px;
+  --panel-clip: polygon(
+    0 var(--cut),
+    var(--cut) 0,
+    calc(100% - var(--cut)) 0,
+    100% var(--cut),
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    var(--cut) 100%,
+    0 calc(100% - var(--cut))
+  );
+  position: absolute;
+  pointer-events: auto;
+  padding: 1px;
+  background: linear-gradient(
+    155deg,
+    var(--border-strong),
+    color-mix(in srgb, var(--border) 55%, transparent)
+  );
+  clip-path: var(--panel-clip);
+  will-change: transform;
+  transition:
+    background var(--dur-base) var(--ease-standard),
+    filter var(--dur-base) var(--ease-standard),
+    opacity var(--dur-base) var(--ease-standard),
+    width var(--dur-base) var(--ease-emphasized),
+    height var(--dur-base) var(--ease-emphasized);
+}
+.panel-in {
+  position: absolute;
+  inset: 1px;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--bg-raise) 93%, transparent),
+    color-mix(in srgb, var(--bg) 90%, transparent)
+  );
+  backdrop-filter: blur(16px) saturate(1.1);
+  clip-path: var(--panel-clip);
+}
+.panel.on {
+  background: linear-gradient(155deg, var(--accent), var(--accent-line));
+  filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.8))
+    drop-shadow(0 0 26px color-mix(in srgb, var(--accent) 22%, transparent));
+}
+.panel.off {
+  opacity: 0.86;
+  filter: saturate(0.7) brightness(0.92);
+}
+[data-theme="light"] .panel.on {
+  filter: drop-shadow(0 14px 30px rgba(0, 0, 0, 0.18))
+    drop-shadow(0 0 20px color-mix(in srgb, var(--accent) 16%, transparent));
+}
+[data-theme="light"] .panel.off {
+  opacity: 0.92;
+  filter: saturate(0.85);
+}
+/* ---- header ---- */
+.panel-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 30px;
+  padding: 0 10px 0 16px;
+  user-select: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+.panel-glyph {
+  font-size: 12px;
+  opacity: 0.8;
+  display: inline-grid;
+  place-items: center;
+}
+.panel-glyph svg {
+  width: 13px;
+  height: 13px;
+  color: var(--accent-text);
+}
+.panel-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  unicode-bidi: plaintext;
+}
+.panel.on .panel-title {
+  color: var(--text);
+}
+.panel-ref {
+  font-size: 10px;
+  line-height: 15px;
+  padding: 0 7px;
+  border: 1px solid var(--accent-line);
+  color: var(--accent);
+  background: none;
+  cursor: pointer;
+  opacity: 0.75;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+  transition:
+    opacity var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard);
+}
+.panel-ref:hover,
+.panel-ref:focus-visible {
+  opacity: 1;
+  background: var(--accent-soft);
+}
+.panel-sp {
+  flex: 1;
+}
+.panel-b {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+.panel-b svg {
+  width: 12px;
+  height: 12px;
+}
+.panel:hover .panel-b,
+.panel.on .panel-b,
+.panel:focus-within .panel-b {
+  opacity: 1;
+}
+.panel-b:hover,
+.panel-b:focus-visible {
+  color: var(--accent);
+}
+.panel-b.x:hover,
+.panel-b.x:focus-visible {
+  color: var(--danger);
+}
+/* ---- body ---- */
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  padding: 13px 16px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.panel-body > * {
+  min-width: 0;
+}
+.panel-body:focus-visible {
+  outline-offset: -3px;
+}
+/* An app fills its plate edge to edge; the view brings its own padding. */
+.panel[data-kind="app"] .panel-body {
+  padding: 0;
+  overflow: hidden;
+}
+/* ---- grip ---- */
+.panel-grip {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  z-index: 2;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: nwse-resize;
+}
+.panel-grip::after {
   content: "";
   position: absolute;
-  left: 4px;
-  right: 4px;
-  bottom: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    var(--accent-line),
-    color-mix(in srgb, var(--text) 8%, transparent) 55%,
-    transparent
-  );
-  opacity: 0.45;
-  transition: opacity 160ms var(--ease-standard);
+  right: 5px;
+  bottom: 5px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--border-strong);
+  border-bottom: 1.5px solid var(--border-strong);
 }
-.desktop .widget:hover .widget-inner > h2::after,
-.desktop .widget:focus-within .widget-inner > h2::after {
-  opacity: 1;
+.panel:hover .panel-grip::after,
+.panel-grip:focus-visible::after {
+  border-color: var(--accent);
 }
-.desktop .widget-inner > h2 svg {
-  filter: drop-shadow(0 0 6px var(--accent-glow));
+/* ---- motion: the brackets open, then the body ---- */
+/* The entrance never touches the section's own transform: that channel
+   belongs to the drag and the camera, and a keyframe on it would pin the
+   plate in place mid-drag (the bug F4b found the hard way). The scale rides
+   on `.panel-in` instead. */
+@media (prefers-reduced-motion: no-preference) {
+  .panel.new {
+    animation: panel-matz 520ms var(--ease-standard);
+  }
+  .panel.new .panel-in {
+    animation:
+      panel-iris 520ms var(--ease-standard),
+      panel-grow 520ms var(--ease-spring);
+  }
+  .panel.bye {
+    animation: panel-bye 170ms var(--ease-standard) forwards;
+  }
+  .panel.park {
+    animation: panel-park 210ms var(--ease-standard) forwards;
+  }
 }
+@keyframes panel-matz {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes panel-grow {
+  from {
+    transform: scale(0.9);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+@keyframes panel-iris {
+  from {
+    clip-path: polygon(0 50%, 100% 50%, 100% 50%, 0 50%);
+  }
+}
+@keyframes panel-bye {
+  to {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+@keyframes panel-park {
+  to {
+    opacity: 0;
+    transform: translateY(40vh) scale(0.42);
+  }
+}
+
 /* ------------------------------------------------------- surface (F2) ---
    The expanded widget is a dialog over a veil, not a widget stretched to the
    viewport: the desktop stays visible (blurred) behind, which is what gives
@@ -2349,9 +2554,6 @@ body.window-dragging .app-rail {
       opacity: 0;
     }
   }
-}
-[data-theme="light"] .desktop .widget {
-  --widget-drop-shadow: 0 8px 18px rgba(0, 0, 0, 0.14);
 }
 
 /* ------------------------------------------------ deck: name + slug ----- */

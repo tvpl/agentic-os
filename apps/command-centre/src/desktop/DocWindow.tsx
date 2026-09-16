@@ -66,7 +66,7 @@ export default function DocWindow({ instanceId }: WidgetProps) {
         <button
           type="button"
           className="btn sm ghost"
-          onClick={() => actions.referenceDoc(instanceId ?? "")}
+          onClick={() => actions.referencePanel(instanceId ?? "")}
           title={t("desktop.doc.reference")}
         >
           @ {t("desktop.doc.reference")}

@@ -63,7 +63,7 @@ Seis blocos, cada um com um portão visual: ao fim de cada um eu ponho o print d
 lado do protótipo a 1440×900 e **não chamo de pronto** enquanto os dois não lerem igual.
 Foi a verificação que faltou.
 
-### G1 — O painel
+### G1 — O painel ✅ (`ab97a1e` + casca; registro em `desktop-v3-paridade.md`)
 
 O primitivo. Sem ele, nada do resto tem onde morar.
 

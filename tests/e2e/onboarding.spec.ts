@@ -125,7 +125,7 @@ test("mobile, Portuguese, reduced motion, keyboard and accessible welcome", asyn
   await expect(guide.getByRole("textbox")).toBeVisible();
   await expect(page.locator(".ob-spotlight")).toBeVisible();
   await expect
-    .poll(async () => (await page.locator('[data-widget-id="prompt"]').boundingBox())?.y)
+    .poll(async () => (await page.locator('[data-panel="prompt"]').boundingBox())?.y)
     .toBeLessThan(150);
   await page.screenshot({ animations: "disabled", path: test.info().outputPath("practice-mobile.png") });
   await page.keyboard.press("Tab");

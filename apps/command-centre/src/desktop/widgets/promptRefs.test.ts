@@ -7,9 +7,9 @@ import { describe, expect, it } from "vitest";
 import { completeReference, docSuggestions, resolveReferences } from "./PromptWidget";
 
 const docs = [
-  { ref: "plan.md", path: "/runs/1/plan.md" },
-  { ref: "report.md", path: "/runs/2/report.md" },
-  { ref: "notes.txt", path: "/notes.txt" },
+  { id: "doc:/runs/1/plan.md", ref: "plan.md", path: "/runs/1/plan.md" },
+  { id: "doc:/runs/2/report.md", ref: "report.md", path: "/runs/2/report.md" },
+  { id: "doc:/notes.txt", ref: "notes.txt", path: "/notes.txt" },
 ];
 
 describe("docSuggestions", () => {
@@ -59,14 +59,14 @@ describe("resolveReferences", () => {
 
   it("appends the paths behind the names the user typed", () => {
     const out = resolveReferences("summarise @plan.md", docs);
-    expect(out.used).toEqual(["/runs/1/plan.md"]);
+    expect(out.used).toEqual(["doc:/runs/1/plan.md"]);
     expect(out.text).toContain("summarise @plan.md");
     expect(out.text).toContain('- "/runs/1/plan.md"');
   });
 
   it("resolves several references and keeps the user's own words first", () => {
     const out = resolveReferences("compare @plan.md with @report.md", docs);
-    expect(out.used).toEqual(["/runs/1/plan.md", "/runs/2/report.md"]);
+    expect(out.used).toEqual(["doc:/runs/1/plan.md", "doc:/runs/2/report.md"]);
     expect(out.text.startsWith("compare @plan.md with @report.md")).toBe(true);
   });
 
@@ -76,8 +76,16 @@ describe("resolveReferences", () => {
   });
 
   it("treats a name with regex characters as literal text", () => {
-    const odd = [{ ref: "a+b(c).md", path: "/odd/a+b(c).md" }];
-    expect(resolveReferences("open @a+b(c).md", odd).used).toEqual(["/odd/a+b(c).md"]);
+    const odd = [{ id: "doc:/odd/a+b(c).md", ref: "a+b(c).md", path: "/odd/a+b(c).md" }];
+    expect(resolveReferences("open @a+b(c).md", odd).used).toEqual(["doc:/odd/a+b(c).md"]);
     expect(resolveReferences("open @axbxcx.md", odd).used).toEqual([]);
+  });
+
+  it("names a panel that has no file, so the agent still knows what was meant", () => {
+    const panels = [...docs, { id: "pulse", ref: "pulse", title: "Pulse" }];
+    const out = resolveReferences("why is @pulse low? see @plan.md", panels);
+    expect(out.used).toEqual(["doc:/runs/1/plan.md", "pulse"]);
+    expect(out.text).toContain('Referenced files:\n- "/runs/1/plan.md"');
+    expect(out.text).toContain("Referenced panels open on the desktop:\n- pulse (Pulse)");
   });
 });

@@ -20,8 +20,8 @@ test("two browser contexts preserve competing layouts until an explicit resoluti
   try {
     const second = await other.newPage();
     await second.goto("/#/");
-    await expect(page.locator('[data-widget-id="now"]')).toBeVisible();
-    await expect(second.locator('[data-widget-id="pulse"]')).toBeVisible();
+    await expect(page.locator('[data-panel="now"]')).toBeVisible();
+    await expect(second.locator('[data-panel="pulse"]')).toBeVisible();
     // The edit mode that used to freeze the second window's base is gone
     // (G1). What makes a conflict real is that the second window has not
     // seen the first one's write: keep its settings refetch from landing.
@@ -35,23 +35,23 @@ test("two browser contexts preserve competing layouts until an explicit resoluti
       (r) => r.url().endsWith("/api/settings") && r.request().method() === "PUT" && r.ok(),
     );
     await page
-      .locator('[data-widget-id="now"]')
-      .getByRole("button", { name: /hide widget|close/i })
+      .locator('[data-panel="now"]')
+      .getByRole("button", { name: /^close|^fechar/i })
       .click();
     await saved;
     await second
-      .locator('[data-widget-id="pulse"]')
-      .getByRole("button", { name: /hide widget|close/i })
+      .locator('[data-panel="pulse"]')
+      .getByRole("button", { name: /^close|^fechar/i })
       .click();
     const conflict = second.getByText("Another window changed this layout. Your local edits are preserved.");
     await expect(conflict).toBeVisible();
-    await expect(second.locator('[data-widget-id="now"]')).toBeVisible();
+    await expect(second.locator('[data-panel="now"]')).toBeVisible();
     await second.unroute("**/api/settings");
     await second.getByRole("button", { name: "Save my layout instead", exact: true }).click();
     await expect(conflict).toHaveCount(0);
     await second.reload();
-    await expect(second.locator('[data-widget-id="now"]')).toBeVisible();
-    await expect(second.locator('[data-widget-id="pulse"]')).toHaveCount(0);
+    await expect(second.locator('[data-panel="now"]')).toBeVisible();
+    await expect(second.locator('[data-panel="pulse"]')).toHaveCount(0);
   } finally {
     await other.close();
   }

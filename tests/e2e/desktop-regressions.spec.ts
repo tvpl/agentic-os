@@ -40,7 +40,7 @@ test("console maximizes, restores, resizes and Now stays hidden after reload", a
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/#/");
-  const consoleWidget = page.locator('[data-widget-id="prompt"]');
+  const consoleWidget = page.locator('[data-panel="prompt"]');
   const input = consoleWidget.locator("textarea");
   await input.fill("Keep my draft");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
@@ -56,7 +56,7 @@ test("console maximizes, restores, resizes and Now stays hidden after reload", a
   // Capped by the widget's declared ceiling, not by the window.
   expect(surfaceBox.width).toBeLessThan(1440 - 40);
   // The rest of the desktop stays on screen behind the veil.
-  await expect(page.locator('[data-widget-id="now"]')).toBeVisible();
+  await expect(page.locator('[data-panel="now"]')).toBeVisible();
   // The body moved into the surface and carried the draft with it.
   await expect(surface.locator("textarea")).toHaveValue("Keep my draft");
   await page.screenshot({ path: "artifacts/qa-console.png" });
@@ -66,19 +66,19 @@ test("console maximizes, restores, resizes and Now stays hidden after reload", a
   await expect(input).toHaveValue("Keep my draft");
   // Polled: closing plays a 200 ms FLIP, so an immediate read catches it mid-flight.
   await expect.poll(async () => (await consoleWidget.boundingBox())!.width).toBeCloseTo(original!.width, 0);
-  await consoleWidget.locator(".widget-resize").focus();
+  await consoleWidget.locator(".panel-grip").focus();
   // The console sits at its minimum height by default, so shrink its width.
   await page.keyboard.press("ArrowLeft");
   await expect.poll(async () => (await consoleWidget.boundingBox())!.width).toBeLessThan(original!.width);
   await page
-    .locator('[data-widget-id="now"]')
-    .getByRole("button", { name: /hide widget|ocultar widget/i })
+    .locator('[data-panel="now"]')
+    .getByRole("button", { name: /^close|^fechar/i })
     .click();
-  await expect(page.locator('[data-widget-id="now"]')).toHaveCount(0);
+  await expect(page.locator('[data-panel="now"]')).toHaveCount(0);
   await page.waitForTimeout(1000); // persisted layout mutation is debounced
   await page.reload();
   await expect(consoleWidget).toBeVisible();
-  await expect(page.locator('[data-widget-id="now"]')).toHaveCount(0);
+  await expect(page.locator('[data-panel="now"]')).toHaveCount(0);
 
   // The e2e home is shared by every later spec, so this one hands the desktop
   // back the way it found it.
@@ -112,9 +112,9 @@ test("the pods light only what needs a decision", async ({ page, request }) => {
   expect(levels.every((l) => l === "idle" || l === "info")).toBe(true);
   // A lit reading is an entry point, not a label: the pod puts its panel on the
   // stage (F7), which is also how most windows arrive now that it opens clear.
-  await expect(page.locator('[data-widget-id="attention"]')).toHaveCount(0);
+  await expect(page.locator('[data-panel="attention"]')).toHaveCount(0);
   await page.locator('.pod-arc.r .pod[data-pod="attention"]').click();
-  await expect(page.locator('[data-widget-id="attention"]')).toBeVisible();
+  await expect(page.locator('[data-panel="attention"]')).toBeVisible();
 });
 
 test("the skill deck fans out over the console and runs what is picked", async ({ page, request }) => {
@@ -154,12 +154,12 @@ test("the skill deck fans out over the console and runs what is picked", async (
   await expect(deck).toHaveClass(/open/);
   await expect(deck.locator(".deck-skill")).toHaveCount(1);
   // The desktop stays visible behind it: the deck is a layer, not a page.
-  await expect(page.locator('[data-widget-id="prompt"]')).toBeVisible();
+  await expect(page.locator('[data-panel="prompt"]')).toBeVisible();
   await page.screenshot({ path: "artifacts/qa-deck.png" });
   await page.keyboard.press("Escape");
   await expect(deck).toHaveCount(0);
   // ⌘J is the same gesture from the keyboard, console focus included.
-  await page.locator('[data-widget-id="prompt"] textarea').click();
+  await page.locator('[data-panel="prompt"] textarea').click();
   await page.keyboard.press("ControlOrMeta+j");
   await expect(page.locator(".skill-deck")).toHaveClass(/open/);
   await page.keyboard.press("Escape");

@@ -26,6 +26,7 @@ import { playCue, useNotifications } from "../hooks/useNotifications";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import { useOsEvent } from "../hooks/useEventStream";
 import { LAUNCHER_EVENT, OPEN_DECK_EVENT, RESET_LAYOUT_EVENT } from "../App";
+import { PANEL_ACTION_EVENT, panelKind, publishPanels, type OpenPanel, type PanelAction } from "./panelKinds";
 import { SWITCH_SPACE_EVENT, takePendingSpace } from "../components/Workspace";
 import { DEFAULT_SPACE, switchSpace, type SpaceMap } from "./spaces";
 import { DOC_BOX, defaultWindows, docId, docPath, isDocId } from "./defaultWindows";
@@ -303,16 +304,36 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
 
   /* ---- widgets from the registry --------------------------------------- */
   /** Document windows on the stage, newest (highest) first. */
-  const openDocs = useMemo(
-    () =>
-      Object.entries(layout)
-        .filter(([id, box]) => isDocId(id) && box.visible && !box.minimized)
-        .sort((a, b) => b[1].z - a[1].z)
-        .map(([id]) => {
-          const path = docPath(id);
-          return { id, ref: path.split(/[\\/]/).pop() || path, path };
-        }),
-    [layout],
+  /**
+   * Every panel on the stage, top of the stack first — what the console can
+   * point the agent at, and what the dock lists. Published to the panel store
+   * as well, because the dock lives outside this route.
+   */
+  const openPanels = useMemo<OpenPanel[]>(() => {
+    const out: OpenPanel[] = [];
+    for (const [id, box] of Object.entries(layout)) {
+      if (!box.visible) continue;
+      const kind = panelKind(id);
+      if (isDocId(id)) {
+        const path = docPath(id);
+        const name = path.split(/[\\/]/).pop() || path;
+        out.push({ id, kind, ref: name, title: name, path, minimized: box.minimized ?? false });
+        continue;
+      }
+      const def = widgetDefinition(id);
+      if (!def) continue;
+      out.push({ id, kind, ref: t(def.refKey), title: t(def.titleKey), minimized: box.minimized ?? false });
+    }
+    return out.sort((a, b) => (layout[b.id]?.z ?? 0) - (layout[a.id]?.z ?? 0));
+  }, [layout, t]);
+  useEffect(() => {
+    publishPanels(openPanels);
+    return () => publishPanels([]);
+  }, [openPanels]);
+  /** The console only sees what is actually on the stage — and never itself. */
+  const stagePanels = useMemo(
+    () => openPanels.filter((p) => !p.minimized && p.id !== "prompt"),
+    [openPanels],
   );
 
   const openDoc = useCallback(
@@ -360,14 +381,30 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   );
 
   /** Append `@name` to the console draft and put the caret back in it. */
-  const referenceDoc = useCallback((id: string) => {
-    const path = docPath(id);
-    const ref = path.split(/[\\/]/).pop() || path;
-    const draft = readConsoleDraft();
-    const text = draft.text.trimEnd();
-    storeConsoleDraft({ ...draft, text: `${text ? `${text} ` : ""}@${ref} ` });
-    window.dispatchEvent(new CustomEvent(CONSOLE_DRAFT_EVENT));
-  }, []);
+  const referencePanel = useCallback(
+    (id: string) => {
+      const panel = openPanels.find((p) => p.id === id);
+      if (!panel) return;
+      const draft = readConsoleDraft();
+      const text = draft.text.trimEnd();
+      storeConsoleDraft({ ...draft, text: `${text ? `${text} ` : ""}@${panel.ref} ` });
+      window.dispatchEvent(new CustomEvent(CONSOLE_DRAFT_EVENT));
+    },
+    [openPanels],
+  );
+
+  /** The dock's task buttons: focus, park, restore — the same layout, edited here. */
+  useEffect(() => {
+    const onAction = (e: Event) => {
+      const { id, action } = (e as CustomEvent<{ id: string; action: PanelAction }>).detail;
+      const box = layout[id];
+      if (!box) return;
+      if (action === "minimize") commit({ ...layout, [id]: { ...box, minimized: true } });
+      else commit({ ...layout, [id]: { ...box, visible: true, minimized: false, z: topZ(layout) + 1 } });
+    };
+    window.addEventListener(PANEL_ACTION_EVENT, onAction);
+    return () => window.removeEventListener(PANEL_ACTION_EVENT, onAction);
+  }, [layout, commit]);
 
   const actions = useMemo<DesktopActions>(
     () => ({
@@ -375,11 +412,11 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
       configureSkill: (skill, anchor) => setDeckPopover({ skill, anchor }),
       focusDeck: () => document.querySelector<HTMLElement>(".deck-card .btn")?.focus(),
       runningSkills,
-      openDocs,
+      openPanels: stagePanels,
       openDoc,
-      referenceDoc,
+      referencePanel,
     }),
-    [runSkill, runningSkills, openDocs, openDoc, referenceDoc],
+    [runSkill, runningSkills, stagePanels, openDoc, referencePanel],
   );
 
   const widgets = useMemo(() => {
@@ -389,6 +426,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         const path = docPath(id);
         out[id] = {
           title: path.split(/[\\/]/).pop() || path,
+          refName: path.split(/[\\/]/).pop() || path,
           icon: <FileText aria-hidden />,
           expandable: true,
           surfaceMin: { w: 460, h: 340 },
@@ -401,6 +439,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
       const Component = def.Component;
       out[id] = {
         title: t(def.titleKey),
+        refName: t(def.refKey),
         icon: def.icon,
         expandable: hasSurface(def),
         surfaceMin: def.surfaceMin,
@@ -442,7 +481,8 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
             onExpandedChange={setExpandedId}
             overview={overview}
             onOverviewChange={setOverview}
-            tetherTo={activeRefs.map(docId)}
+            onReference={referencePanel}
+            tetherTo={activeRefs}
           />
         </div>
 

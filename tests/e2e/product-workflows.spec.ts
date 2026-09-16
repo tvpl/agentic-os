@@ -8,12 +8,12 @@ test("spaces keep their own windows and the dock follows app navigation", async 
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
   const dock = page.getByRole("navigation", { name: "Workspace navigation" });
-  const consoleWidget = page.locator('[data-widget-id="prompt"]');
-  const routines = page.locator('[data-widget-id="routines"]');
+  const consoleWidget = page.locator('[data-panel="prompt"]');
+  const routines = page.locator('[data-panel="routines"]');
   await consoleWidget.locator("textarea").fill("Continue this after exploring");
 
   // Rearrange Work, then leave it.
-  const header = routines.locator(".widget-inner > h2");
+  const header = routines.locator(".panel-title");
   await settled(routines);
   const g = (await header.boundingBox())!;
   await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);

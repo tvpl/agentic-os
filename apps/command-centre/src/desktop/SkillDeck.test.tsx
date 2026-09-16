@@ -48,9 +48,9 @@ function setup(skills: Skill[], over: Partial<DesktopActions> = {}) {
     configureSkill: () => undefined,
     focusDeck: () => undefined,
     runningSkills: new Set<string>(),
-    openDocs: [],
+    openPanels: [],
     openDoc: () => undefined,
-    referenceDoc: () => undefined,
+    referencePanel: () => undefined,
     ...over,
   };
   render(

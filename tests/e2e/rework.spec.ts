@@ -38,9 +38,9 @@ test("a widget cannot be resized below its declared minimum", async ({ page, req
   await stageBoxes(request, { now: { x: 120, y: 40, w: 560, h: 420 } });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/#/");
-  const now = page.locator('[data-widget-id="now"]');
+  const now = page.locator('[data-panel="now"]');
   await expect(now).toBeVisible();
-  const handle = now.locator(".widget-resize");
+  const handle = now.locator(".panel-grip");
   await handle.focus();
   const before = (await now.boundingBox())!;
   // Arrow keys on the grip shrink the window; far more presses than it can take.

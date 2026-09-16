@@ -218,3 +218,82 @@
     animation: none;
   }
 }
+
+/* ------------------------------------------------- open panels (G1) ------
+   One button per panel on the stage, between the apps and the spaces. A
+   parked panel is dashed; the focused one carries the accent; a live trace
+   keeps a small pulse. Wide titles truncate rather than push the spaces out. */
+.dock-tasks {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+.dock-task {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 25px;
+  padding: 0 10px;
+  max-width: 180px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+  transition:
+    color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard);
+}
+.dock-task:hover {
+  border-color: var(--accent-line);
+  color: var(--text);
+}
+.dock-task.on {
+  border-color: var(--accent-line);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+/* Amber on the light soft fill is 2:1; the active task reads in ink instead,
+   the same way the active app and space already do. */
+[data-theme="light"] .dock-task.on {
+  color: var(--text);
+}
+.dock-task.parked {
+  opacity: 0.6;
+  border-style: dashed;
+}
+.dock-task .dock-glyph {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.dock-task-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  unicode-bidi: plaintext;
+}
+.dock-live {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 7px var(--accent-glow);
+  animation: dock-pip 1.4s ease-in-out infinite;
+}
+@keyframes dock-pip {
+  50% {
+    opacity: 0.2;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dock-live {
+    animation: none;
+  }
+}

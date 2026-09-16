@@ -30,6 +30,7 @@ const layout: WindowMap = {
 
 const spec = (title: string, expandable?: boolean): WidgetSpec => ({
   title,
+  refName: title.toLowerCase(),
   icon: null,
   node: <p>body of {title}</p>,
   expandable,
@@ -76,7 +77,7 @@ describe("widget frame honours the surface contract", () => {
     const { container } = setup();
     fireEvent.click(screen.getByLabelText(/Maximize: Pulse|Expandir: Pulse/i));
     // The old maximize hid every sibling with visibility:hidden.
-    const sections = [...container.querySelectorAll<HTMLElement>("section.widget")];
+    const sections = [...container.querySelectorAll<HTMLElement>("section.panel")];
     expect(sections.length).toBe(2);
     for (const section of sections) expect(section.style.visibility).not.toBe("hidden");
     expect(screen.getByTestId("surface-veil")).toBeTruthy();
@@ -111,7 +112,7 @@ describe("widget frame honours the surface contract", () => {
   it("still lets both widgets be hidden", () => {
     setup();
     // Removing the expand control must not remove the rest of the frame.
-    expect(screen.getAllByRole("button", { name: /Hide|Ocultar/i }).length).toBe(2);
+    expect(screen.getAllByRole("button", { name: /^Close|^Fechar/i }).length).toBe(2);
     expect(screen.getByText("body of Today")).toBeTruthy();
   });
 });

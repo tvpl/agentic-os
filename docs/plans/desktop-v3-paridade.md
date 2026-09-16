@@ -608,6 +608,55 @@ asserções mediam propriedades do default e não do comportamento — "algo enc
 geral" passava porque as janelas padrão eram grandes; agora a spec semeia um palco lotado de
 propósito, que é para isso que a câmera existe.
 
+## G1 entregue — o painel
+
+Primeiro bloco do [plano de ajuste](desktop-v3-ajuste.md). Dois commits: `ab97a1e` (as
+remoções) e o deste registro (a casca).
+
+**Saiu:** Hoje/fusos, Workspace, Micro apps, Agenda, Calendário, Email, o deck em card, a
+galeria de widgets, os presets, o popover de configuração, a barra e o modo de edição, os
+`configSchema`, 20 chaves de i18n. O registro ficou com os sete instrumentos, cada um com o
+`@ref` que o console resolve.
+
+**Entrou:** `desktop/Panel.tsx` — a placa do protótipo: aro em gradiente de 1 px, corpo
+chanfrado com `--cut`, cabeçalho com glifo por tipo · título · `@ref` · ▁ ⤢ ✕, íris na
+chegada, `bye` na saída, queda para o dock ao recolher, `on` na do topo e `off` nas outras.
+`desktop/panelKinds.ts` lê o tipo do id (`doc:` → artefato, `app:` → app, `run:` → run,
+registro → superfície) e guarda a store de painéis abertos que o dock lê. O dock ganhou o
+grupo **painéis abertos** (recolhido = tracejado; clique alterna foco / recolher /
+restaurar). A bandeja e o `@` do console passaram a ver **todo painel** no palco, não só
+documentos; `resolveReferences` devolve ids e nomeia para o agente o painel que não tem
+arquivo. Pulso e Atenção ganharam os blocos do protótipo (`.mt`, `.bars`, `.rw`, `.tg`, `.go`).
+
+### Defeitos encontrados nesta passagem
+
+1. **Console fechável sem volta.** O ✕ genérico fechava o console e nada o reabria (um
+   script meu fez exatamente isso no install real; restaurado pela ação do dock). O console
+   não tem ✕ nem ▁ até o G4 tirá-lo do layout.
+2. **Entrada pinava o arrasto.** A materialização escalava o `transform` da própria placa —
+   o mesmo canal do arrasto e da câmera, o mesmo bug que o F4b já tinha achado. A escala foi
+   para `.panel-in`; a placa só anima opacidade.
+3. **Centro do cabeçalho é o `@ref`.** As specs arrastavam pelo centro do cabeçalho, que
+   agora cai no chip — um botão, portanto não é alça. Passaram a arrastar pelo título.
+4. **O console referenciava a si mesmo.** `@console` na própria bandeja; excluído.
+5. **Contraste no tema claro.** Âmbar sobre o preenchimento suave do dock dava 2:1; a tarefa
+   ativa usa a tinta do texto, como o app e o espaço ativos já faziam.
+6. **História da galeria** montava a casca antiga; refeita na placa e snapshots regenerados
+   de propósito.
+
+### Gates
+
+| Gate | Resultado |
+|---|---|
+| `npm test` (raiz) | 62 arquivos · 492 testes |
+| `npm run test -w apps/command-centre` | 45 arquivos · 331 testes |
+| `npx playwright test` (suíte inteira) | 107 passaram · 2 pulados · 0 falhas |
+| `typecheck` · `eslint` · `prettier` | limpos |
+
+Portão visual: `artifacts/g1-lado-a-lado.png`. Inventário: linhas 1, 2 (parcial: `app` e
+`run` ainda sem corpo), 6 (parcial: bandeja e `@`), 8 (parcial: painéis abertos), 10 e 17
+marcadas.
+
 ## Revisão final
 
 Uma varredura no arco inteiro F1–F6 encontrou **código especulativo meu**: `tile`, `cascade`,

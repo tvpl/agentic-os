@@ -3,12 +3,10 @@
  * order on wide viewports, a single scrollable column below the stack
  * breakpoint.
  *
- * The grid is gone. A window is dragged by its title bar at any time — edit
- * mode is no longer a prerequisite for moving your own desktop — it is raised
- * when you touch it, it may overlap its neighbours, and dropping it against
- * an edge snaps it to half or full stage. Edit mode now only carries the
- * things that are genuinely edits to the *set* of windows: the per-widget
- * gear and the gallery.
+ * The grid is gone. A panel is dragged by its header at any time, it is
+ * raised when you touch it, it may overlap its neighbours, and dropping it
+ * against an edge snaps it to half or full stage. The chrome itself is
+ * `Panel` (redesign G1): this file owns geometry, stacking and motion.
  *
  * Motion: the dragged window is moved with `translate3d` written in one rAF
  * per pointer frame (never React state); only the settled box is committed,
@@ -26,9 +24,9 @@ import {
   type MutableRefObject,
   type ReactNode,
 } from "react";
-import { ChevronDown, Maximize2, Minimize2, X } from "lucide-react";
-import { useT } from "../i18n";
 import { orderedIds } from "./defaultLayout";
+import Panel from "./Panel";
+import { panelKind } from "./panelKinds";
 import { useStageSize, type StageMetrics } from "./useWindowLayout";
 import { useWindowDrag } from "./useWindowDrag";
 import { overviewSlots, raise, tetherOrigin, tetherPath, tetherTarget, type WindowMap } from "./windowModel";
@@ -38,7 +36,9 @@ import type { Box } from "./surfaceSize";
 
 export interface WidgetSpec {
   title: string;
-  icon: ReactNode;
+  /** The `@name` the console resolves this panel by. */
+  refName: string;
+  icon?: ReactNode;
   node: ReactNode;
   /** Honest minimum of the expanded composition, in CSS px (registry `surfaceMin`). */
   surfaceMin?: Box;
@@ -69,9 +69,15 @@ export interface WidgetLayerProps {
    * to each, so the link the agent will receive is visible before sending.
    */
   tetherTo?: readonly string[];
+  /** The header's `@ref` was clicked: put the reference into the console. */
+  onReference?: (id: string) => void;
 }
 
 const FLIP_MS = 200;
+/** The materialisation (iris + scale), the exit and the drop to the dock — desktop.css. */
+const MATERIALIZE_MS = 540;
+const EXIT_MS = 170;
+const PARK_MS = 210;
 
 /**
  * Provides the widget's box to its body. The value is memoized on the
@@ -119,16 +125,17 @@ function idsKey(layout: WindowMap, maximized: string | null, stacked: boolean): 
 function selfScrolling(inner: HTMLElement): boolean {
   return inner.querySelector(":scope > .console") !== null;
 }
+const BODY = ":scope > .panel-in > .panel-body";
 
 /**
  * Marks each widget with `data-overflow` ("more" / "end" / absent) so the
  * frame can show a "there is more below" cue: one ResizeObserver over every
- * `.widget-inner` and its content, plus a scroll listener per widget.
+ * panel body and its content, plus a scroll listener per panel.
  */
 function useOverflowCue(elements: MutableRefObject<Map<string, HTMLElement>>, key: string) {
   useEffect(() => {
     const measure = (section: HTMLElement) => {
-      const inner = section.querySelector<HTMLElement>(":scope > .widget-inner");
+      const inner = section.querySelector<HTMLElement>(BODY);
       if (!inner) return;
       const overflow = !selfScrolling(inner) && inner.scrollHeight - inner.clientHeight > 4;
       const atEnd = inner.scrollTop + inner.clientHeight >= inner.scrollHeight - 4;
@@ -141,13 +148,13 @@ function useOverflowCue(elements: MutableRefObject<Map<string, HTMLElement>>, ke
     const sections = [...elements.current.values()];
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        const section = (entry.target as HTMLElement).closest<HTMLElement>(".widget");
+        const section = (entry.target as HTMLElement).closest<HTMLElement>(".panel");
         if (section) measure(section);
       }
     });
     const cleanups: Array<() => void> = [];
     for (const section of sections) {
-      const inner = section.querySelector<HTMLElement>(":scope > .widget-inner");
+      const inner = section.querySelector<HTMLElement>(BODY);
       if (!inner) continue;
       if (selfScrolling(inner)) {
         delete section.dataset.overflow;
@@ -184,8 +191,8 @@ export default function WidgetLayer({
   overview = false,
   onOverviewChange,
   tetherTo,
+  onReference,
 }: WidgetLayerProps) {
-  const t = useT();
   const [ownMaximized, setOwnMaximized] = useState<string | null>(null);
   const controlled = expandedId !== undefined;
   const maximized = controlled ? expandedId : ownMaximized;
@@ -320,12 +327,73 @@ export default function WidgetLayer({
       })
       .filter((t): t is { id: string; d: string } => t !== null);
   }, [tetherTo, layout, slots, metrics.stacked]);
-  const ids = orderedIds(Object.keys(layout)).filter((id) => widgets[id] && layout[id]?.visible);
+  const ids = orderedIds(Object.keys(layout)).filter(
+    (id) => widgets[id] && layout[id]?.visible && !layout[id]?.minimized,
+  );
+  const idsKeyNow = ids.join("|");
+  /** The top of the stack glows; everyone else steps back. */
+  let topId: string | null = null;
+  for (const id of ids) if (topId === null || layout[id]!.z > layout[topId]!.z) topId = id;
 
-  const hide = (id: string) => {
+  /**
+   * Materialisation: a panel that was not on the stage a moment ago plays
+   * its entrance. Tracked by presence, not by mount, so a panel that was
+   * parked and restored materialises again — it *is* arriving again.
+   */
+  const seen = useRef(new Set<string>());
+  const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => {
+    const arrived = ids.filter((id) => !seen.current.has(id));
+    seen.current = new Set(ids);
+    if (arrived.length === 0) return;
+    setFresh((prev) => new Set([...prev, ...arrived]));
+    const timer = window.setTimeout(() => {
+      setFresh((prev) => {
+        const next = new Set(prev);
+        for (const id of arrived) next.delete(id);
+        return next;
+      });
+    }, MATERIALIZE_MS);
+    return () => window.clearTimeout(timer);
+    // `ids` is a fresh array every render; its content is what matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKeyNow]);
+
+  /** Panels mid-exit or mid-drop: the layout still holds them until the motion ends. */
+  const [leaving, setLeaving] = useState<ReadonlySet<string>>(() => new Set());
+  const [parking, setParking] = useState<ReadonlySet<string>>(() => new Set());
+  const reduceMotion = () =>
+    typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const withMotion = (id: string, set: typeof setLeaving, ms: number, apply: () => void) => {
+    if (reduceMotion()) {
+      apply();
+      return;
+    }
+    set((prev) => new Set([...prev, id]));
+    window.setTimeout(() => {
+      set((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      apply();
+    }, ms);
+  };
+  /** ✕: the panel plays its exit, then leaves the layout. */
+  const close = (id: string) => {
     setMaximized(null);
-    snapshot();
-    onLayoutChange({ ...layout, [id]: { ...layout[id]!, visible: false } });
+    withMotion(id, setLeaving, EXIT_MS, () => {
+      snapshot();
+      onLayoutChange({ ...layout, [id]: { ...layout[id]!, visible: false } });
+    });
+  };
+  /** ▁: the panel drops towards the dock, then is parked there. */
+  const minimize = (id: string) => {
+    setMaximized(null);
+    withMotion(id, setParking, PARK_MS, () => {
+      snapshot();
+      onLayoutChange({ ...layout, [id]: { ...layout[id]!, minimized: true } });
+    });
   };
 
   return (
@@ -369,7 +437,7 @@ export default function WidgetLayer({
           });
         const dragging = draggingId === id;
         return (
-          <section
+          <Panel
             key={id}
             ref={(el) => {
               if (el) elements.current.set(id, el);
@@ -378,10 +446,22 @@ export default function WidgetLayer({
                 rects.current.delete(id);
               }
             }}
-            data-widget-id={id}
-            className={`widget${boxed.h <= 140 && maximized !== id ? " compact" : ""} enter-fade-up${dragging ? ` dragging ${dragMode ?? ""}` : ""}`}
+            id={id}
+            kind={panelKind(id)}
+            title={widget.title}
+            refName={widget.refName}
+            icon={widget.icon}
+            on={!metrics.stacked && id === topId}
+            fresh={fresh.has(id)}
+            leaving={leaving.has(id)}
+            parking={parking.has(id)}
+            dragging={dragging}
+            dragMode={dragMode}
+            stacked={metrics.stacked}
+            expandable={widget.expandable !== false}
+            closable={id !== "prompt"}
+            expanded={maximized === id}
             style={style}
-            aria-label={widget.title}
             onPointerDown={(e) => {
               // In the overview a window is a target, not a thing to drag:
               // picking one is how you leave the camera view.
@@ -391,102 +471,44 @@ export default function WidgetLayer({
                 onLayoutChange(raise(layout, id));
                 return;
               }
-              // Touching a window raises it, always — that is the one thing a
+              // Touching a panel raises it, always — that is the one thing a
               // window manager must never make you enter a mode for.
               if (metrics.stacked || e.button !== 0) return;
-              if (layout[id] && layout[id]!.z !== Math.max(...Object.values(layout).map((b) => b.z)))
-                onLayoutChange(raise(layout, id));
+              if (id !== topId) onLayoutChange(raise(layout, id));
               const targetEl = e.target as HTMLElement;
-              // Dragging starts on the title bar only: the body belongs to
-              // the widget, and its buttons and fields must keep working.
-              if (!targetEl.closest(".widget-inner > h2")) return;
+              // Dragging starts on the header only: the body belongs to the
+              // panel, and its buttons and fields must keep working.
+              if (!targetEl.closest(".panel-head")) return;
               if (targetEl.closest("button, a, input, textarea, select")) return;
               e.preventDefault();
               skipFlip.current.add(id);
               snapRef.current = id;
               start(id, "move", e, boxed);
             }}
+            onReference={() => onReference?.(id)}
+            onMinimize={() => minimize(id)}
+            onExpand={() => setMaximized(maximized === id ? null : id)}
+            onClose={() => close(id)}
+            onResizeKey={(e) => {
+              if (nudge(id, e.key, true)) e.preventDefault();
+            }}
+            onResizeStart={(e) => {
+              if (e.button !== 0) return;
+              e.preventDefault();
+              e.stopPropagation();
+              skipFlip.current.add(id);
+              snapRef.current = id;
+              start(id, "resize", e, boxed);
+            }}
+            onScrollMore={() => {
+              const inner = elements.current.get(id)?.querySelector<HTMLElement>(BODY);
+              inner?.scrollBy({ top: inner.clientHeight * 0.7, behavior: "smooth" });
+            }}
           >
-            <div
-              className="widget-inner"
-              role="region"
-              aria-label={widget.title}
-              tabIndex={0}
-              // While expanded the body lives in the surface; the frame stays
-              // behind the veil so the desktop still reads as a desktop.
-              aria-hidden={maximized === id || undefined}
-            >
-              <h2>
-                {widget.icon} <span className="widget-title">{widget.title}</span>
-                <span className="widget-window-actions">
-                  {(widget.expandable !== false || maximized === id) && (
-                    <button
-                      type="button"
-                      className="os-tool"
-                      aria-label={`${t(maximized === id ? "desktop.window.restore" : "desktop.window.maximize")}: ${widget.title}`}
-                      onClick={() => setMaximized(maximized === id ? null : id)}
-                    >
-                      {maximized === id ? <Minimize2 aria-hidden /> : <Maximize2 aria-hidden />}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="os-tool"
-                    aria-label={`${t("os.hideWidget")}: ${widget.title}`}
-                    onClick={() => hide(id)}
-                  >
-                    <X aria-hidden />
-                  </button>
-                </span>
-              </h2>
-              {maximized === id ? null : (
-                <SizedWidget box={boxed} metrics={metrics} expanded={false}>
-                  {widget.node}
-                </SizedWidget>
-              )}
-            </div>
-            {/* A pointer-only affordance: the region above is focusable and scrolls with the
-                keyboard, so the cue stays out of the accessibility tree (it is also
-                `visibility: hidden` until the body overflows). */}
-            <button
-              type="button"
-              className="widget-more-cue"
-              tabIndex={-1}
-              aria-hidden
-              title={t("widget.scrollMore")}
-              onClick={(e) => {
-                const inner = (e.currentTarget.parentElement as HTMLElement).querySelector<HTMLElement>(
-                  ":scope > .widget-inner",
-                );
-                inner?.scrollBy({ top: inner.clientHeight * 0.7, behavior: "smooth" });
-              }}
-            >
-              <ChevronDown aria-hidden />
-            </button>
-            {!maximized && (
-              <>
-                {!metrics.stacked && (
-                  <button
-                    type="button"
-                    className="widget-resize"
-                    aria-label={`${t("os.resizeWidget")}: ${widget.title}`}
-                    title={t("os.resizeWidget")}
-                    onKeyDown={(e) => {
-                      if (nudge(id, e.key, true)) e.preventDefault();
-                    }}
-                    onPointerDown={(e) => {
-                      if (e.button !== 0) return;
-                      e.preventDefault();
-                      e.stopPropagation();
-                      skipFlip.current.add(id);
-                      snapRef.current = id;
-                      start(id, "resize", e, boxed);
-                    }}
-                  />
-                )}
-              </>
-            )}
-          </section>
+            <SizedWidget box={boxed} metrics={metrics} expanded={false}>
+              {widget.node}
+            </SizedWidget>
+          </Panel>
         );
       })}
       {maximized && widgets[maximized] && (
@@ -495,7 +517,7 @@ export default function WidgetLayer({
           icon={widgets[maximized]!.icon}
           min={widgets[maximized]!.surfaceMin}
           onClose={() => setMaximized(null)}
-          onHide={() => hide(maximized)}
+          onHide={maximized === "prompt" ? undefined : () => close(maximized)}
         >
           {widgets[maximized]!.node}
         </Surface>

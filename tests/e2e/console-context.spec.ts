@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test("draft keeps its selected project across app navigation and reload", async ({ page }) => {
   await page.goto("/#/");
-  const widget = page.locator('[data-widget-id="prompt"]');
+  const widget = page.locator('[data-panel="prompt"]');
   const picker = widget.locator("select.promptw-cwd");
   await expect(picker.locator("option")).not.toHaveCount(1);
   const folder = await picker.locator("option").nth(1).getAttribute("value");
@@ -46,7 +46,7 @@ test("a draft whose project disappeared cannot silently run in the home director
     ),
   );
   await page.goto("/#/");
-  const widget = page.locator('[data-widget-id="prompt"]');
+  const widget = page.locator('[data-panel="prompt"]');
   await expect(widget.getByText(/saved project folder is unavailable/)).toBeVisible();
   await expect(widget.getByRole("button", { name: "Run", exact: true })).toBeDisabled();
   await widget.locator("select.promptw-cwd").selectOption("");
@@ -66,7 +66,7 @@ test("brain reference reaches the console without replacing the draft or executi
       launches++;
   });
   await page.goto("/#/");
-  const widget = page.locator('[data-widget-id="prompt"]');
+  const widget = page.locator('[data-panel="prompt"]');
   await widget.locator("textarea").fill("Keep my existing request");
   const picker = widget.locator("select.promptw-cwd");
   const folder = await picker.locator("option").nth(1).getAttribute("value");

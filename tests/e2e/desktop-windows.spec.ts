@@ -20,10 +20,9 @@ test("windows drag by their title bar, raise, snap to an edge and persist", asyn
   await page.waitForTimeout(600);
   await page.reload();
   await expect(page.locator(".boot-screen")).toHaveCount(0);
-  const routines = page.locator('[data-widget-id="routines"]');
-  const header = routines.locator(".widget-inner > h2");
-  const zOf = (id: string) =>
-    page.$eval(`[data-widget-id="${id}"]`, (e) => Number(getComputedStyle(e).zIndex));
+  const routines = page.locator('[data-panel="routines"]');
+  const header = routines.locator(".panel-title");
+  const zOf = (id: string) => page.$eval(`[data-panel="${id}"]`, (e) => Number(getComputedStyle(e).zIndex));
 
   await settled(routines);
   const before = (await routines.boundingBox())!;
@@ -91,7 +90,7 @@ test("the camera pulls back over the stage and a pick returns to it", async ({ p
   await expect(page.locator(".agent-presence")).toHaveCount(1);
 
   const stage = page.locator(".desktop-widgets");
-  const pulse = page.locator('[data-widget-id="pulse"]');
+  const pulse = page.locator('[data-panel="pulse"]');
   await settled(pulse);
   const before = (await pulse.boundingBox())!;
   await page.keyboard.press("\\");
@@ -103,12 +102,12 @@ test("the camera pulls back over the stage and a pick returns to it", async ({ p
   // would have passed on the untouched default composition, which already
   // does not overlap — and did, while the transform was being wiped.
   const scaled = await page.$$eval(
-    "section.widget",
+    "section.panel",
     (els) => els.filter((e) => (e as HTMLElement).style.transform.includes("scale")).length,
   );
   expect(scaled).toBeGreaterThan(3);
   const shrunk = await page.$$eval(
-    "section.widget",
+    "section.panel",
     (els) =>
       els.filter((e) => {
         const r = e.getBoundingClientRect();
@@ -122,10 +121,8 @@ test("the camera pulls back over the stage and a pick returns to it", async ({ p
   await expect(stage).not.toHaveClass(/overview/);
   await expect.poll(async () => (await pulse.boundingBox())!.x).toBeCloseTo(before.x, -1);
   expect((await pulse.boundingBox())!.width).toBeCloseTo(before.width, -1);
-  const z = await page.$$eval("section.widget", (els) =>
-    Object.fromEntries(
-      els.map((e) => [e.getAttribute("data-widget-id"), Number(getComputedStyle(e).zIndex)]),
-    ),
+  const z = await page.$$eval("section.panel", (els) =>
+    Object.fromEntries(els.map((e) => [e.getAttribute("data-panel"), Number(getComputedStyle(e).zIndex)])),
   );
   expect(z.pulse).toBe(Math.max(...Object.values(z as Record<string, number>)));
 
@@ -169,7 +166,7 @@ test("artifact search lists its matches now that the ring is gone", async ({ pag
   // Choosing a match lands the file on the stage (redesign F5) rather than in
   // a modal that closes with itself.
   await hit.click();
-  await expect(page.locator('[data-widget-id="doc:/runs/1/plan.md"]')).toBeVisible();
+  await expect(page.locator('[data-panel="doc:/runs/1/plan.md"]')).toBeVisible();
 });
 
 test("a window follows the pointer while it is dragged, not only on release", async ({ page, request }) => {
@@ -178,8 +175,8 @@ test("a window follows the pointer while it is dragged, not only on release", as
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
-  const routines = page.locator('[data-widget-id="routines"]');
-  const header = routines.locator(".widget-inner > h2");
+  const routines = page.locator('[data-panel="routines"]');
+  const header = routines.locator(".panel-title");
   await settled(routines);
   const g = (await header.boundingBox())!;
   const before = (await routines.boundingBox())!;

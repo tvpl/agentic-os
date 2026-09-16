@@ -197,9 +197,6 @@
 [data-theme="light"] .os-brand .name .accent {
   text-shadow: none;
 }
-[data-theme="light"] .widget-grip {
-  box-shadow: 0 1px 2px rgba(32, 28, 20, 0.2);
-}
 
 /* ---- theme presets (theme.ts applies data-preset on <html>) ------------ */
 [data-preset="jarvis"] {
@@ -682,21 +679,6 @@ canvas.dimmed {
   /* Desktop widgets: set --enter-delay per widget for a stagger (F2). */
   .enter-fade-up {
     animation: fade-up var(--dur-slow) var(--ease-out) both;
-    animation-delay: var(--enter-delay, 0ms);
-  }
-  /* Desktop widgets materialise: the fade-up plus a top-to-bottom wipe.
-     `backwards`, never `both`: the class stays on the element for its whole
-     life, and a filled-forwards `transform: none` keeps overriding the inline
-     transform that drags a window and pulls the camera back — silently, since
-     the settled position still ends up right. */
-  .desktop .widget.enter-fade-up {
-    animation:
-      fade-up var(--dur-slow) var(--ease-out) backwards,
-      hud-wipe 420ms var(--ease-emphasized) backwards;
-    animation-delay: var(--enter-delay, 0ms);
-  }
-  .desktop .widget.enter-fade-up::after {
-    animation: hud-scanline 420ms var(--ease-emphasized) both;
     animation-delay: var(--enter-delay, 0ms);
   }
   /* the command palette opens as an iris from the centre */
@@ -1415,168 +1397,6 @@ canvas.dimmed {
      composition depend on where the last window happened to be. */
   overflow: hidden;
 }
-.widget {
-  position: absolute;
-  pointer-events: auto;
-}
-.widget-inner {
-  position: absolute;
-  inset: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 12px 14px 14px;
-  /* scroll shadows: the surface colour covers the shadow until the content
-     actually scrolls, so a clipped widget always shows where it continues.
-     Kept in a token so a skin (desktop.css) can add its own layers under
-     them instead of repeating the stack. */
-  --widget-scroll-shadows:
-    linear-gradient(var(--surface) 30%, transparent) center top / 100% 28px no-repeat local,
-    linear-gradient(transparent, var(--surface) 70%) center bottom / 100% 28px no-repeat local,
-    radial-gradient(farthest-side at 50% 0, rgba(0, 0, 0, 0.45), transparent) center top / 100% 12px no-repeat
-      scroll,
-    radial-gradient(farthest-side at 50% 100%, rgba(0, 0, 0, 0.45), transparent) center bottom / 100% 12px
-      no-repeat scroll;
-  background: var(--widget-scroll-shadows), var(--surface);
-}
-.widget-inner > * {
-  min-width: 0;
-}
-/* corner brackets live on the non-scrolling frame, so they never scroll away */
-.widget::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  border-radius: 4px;
-  background:
-    linear-gradient(var(--accent-line), var(--accent-line)) top left / 14px 1px,
-    linear-gradient(var(--accent-line), var(--accent-line)) top left / 1px 14px,
-    linear-gradient(var(--accent-line), var(--accent-line)) top right / 14px 1px,
-    linear-gradient(var(--accent-line), var(--accent-line)) top right / 1px 14px,
-    linear-gradient(var(--accent-line), var(--accent-line)) bottom left / 14px 1px,
-    linear-gradient(var(--accent-line), var(--accent-line)) bottom left / 1px 14px,
-    linear-gradient(var(--accent-line), var(--accent-line)) bottom right / 14px 1px,
-    linear-gradient(var(--accent-line), var(--accent-line)) bottom right / 1px 14px;
-  background-repeat: no-repeat;
-  opacity: 0.65;
-}
-/* a 1px light on the top edge: the instrument-panel bevel */
-.widget::after {
-  content: "";
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  top: 0;
-  height: 1px;
-  pointer-events: none;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--text) 14%, transparent),
-    transparent
-  );
-}
-.widget-inner h2 {
-  margin: 0 0 var(--s-3);
-  font-size: var(--fs-1);
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--text-dim);
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* every hero figure inside a widget shares one size and weight */
-.widget-inner .stat .value {
-  font-size: var(--fs-hero);
-  font-weight: 700;
-}
-.widget-inner .stat .label {
-  font-size: var(--fs-1);
-}
-.widget-inner h2 svg {
-  width: 14px;
-  height: 14px;
-  color: var(--accent-text);
-}
-.widget.editing .widget-inner {
-  border: 1.5px dashed var(--accent);
-  cursor: grab;
-}
-/* the edit glow sits on the frame: the body may be clipped (chamfer) and would swallow it */
-.widget.editing::before {
-  box-shadow: 0 0 22px var(--accent-soft);
-}
-.widget.editing.dragging .widget-inner {
-  cursor: grabbing;
-  opacity: 0.85;
-}
-.widget-grip {
-  position: absolute;
-  top: -11px;
-  left: 10px;
-  z-index: 3;
-  width: 26px;
-  height: 22px;
-  border-radius: var(--r-2);
-  display: grid;
-  place-items: center;
-  background: var(--accent);
-  color: var(--accent-contrast);
-  border: none;
-  cursor: grab;
-  font-size: var(--fs-2);
-  font-weight: 900;
-  box-shadow: 0 0 12px var(--accent-glow);
-}
-.widget-hide {
-  position: absolute;
-  top: -11px;
-  right: 10px;
-  z-index: 3;
-  width: 22px;
-  height: 22px;
-  border-radius: var(--r-2);
-  display: grid;
-  place-items: center;
-  background: var(--bg-raise-2);
-  color: var(--text-dim);
-  border: 1px solid var(--border-strong);
-  cursor: pointer;
-  font-size: var(--fs-1);
-}
-.widget-hide:hover {
-  color: var(--danger);
-  border-color: var(--danger);
-}
-.widget-resize {
-  position: absolute;
-  right: -3px;
-  bottom: -3px;
-  z-index: 3;
-  width: 14px;
-  height: 14px;
-  cursor: nwse-resize;
-  border-right: 2px solid var(--accent);
-  border-bottom: 2px solid var(--accent);
-  border-radius: 0;
-  filter: drop-shadow(0 0 6px var(--accent-glow));
-  opacity: 0.5;
-}
-.widget:hover .widget-resize,
-.widget-resize:focus-visible {
-  opacity: 1;
-}
 .edit-bar {
   position: absolute;
   bottom: 100px;
@@ -1596,15 +1416,6 @@ canvas.dimmed {
   background: var(--surface);
   border: 1px solid var(--accent-line);
   box-shadow: 0 0 26px var(--accent-soft);
-}
-.desktop.edit-mode::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  pointer-events: none;
-  background: radial-gradient(color-mix(in srgb, var(--accent) 24%, transparent) 1px, transparent 1.4px) 0 0 /
-    var(--cell-w, 56px) var(--cell-h, 44px);
 }
 .main {
   flex: 1;
@@ -2983,10 +2794,8 @@ input[type="range"]::-moz-range-thumb {
   overflow-y: auto;
   height: 100%;
 }
-.desktop-widgets.stacked .widget {
+.desktop-widgets.stacked .panel {
   flex: none;
-}
-.desktop-widgets.stacked .widget {
   position: relative !important;
   left: auto !important;
   top: auto !important;
@@ -2994,10 +2803,13 @@ input[type="range"]::-moz-range-thumb {
   height: auto !important;
   min-height: 0;
 }
-/* in the stacked column the card grows with its content (capped, then scrolls) */
-.desktop-widgets.stacked .widget-inner {
+/* in the stacked column the plate grows with its content (capped, then scrolls) */
+.desktop-widgets.stacked .panel-in {
   position: relative;
   inset: auto;
+  height: auto;
+}
+.desktop-widgets.stacked .panel-body {
   max-height: 56vh;
 }
 .desktop-widgets.stacked ~ .os-topbar .os-brand .byline {

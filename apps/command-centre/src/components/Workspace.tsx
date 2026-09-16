@@ -1,4 +1,13 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { useLocation } from "react-router-dom";
 import {
   BrainCircuit,
@@ -15,6 +24,7 @@ import {
 import { useT, type TKey } from "../i18n";
 import { useOsSettings } from "../queries";
 import { useOsNavigate } from "../hooks/useViewTransition";
+import { PANEL_GLYPH, getPanels, requestPanelAction, subscribePanels } from "../desktop/panelKinds";
 import "./workspace.css";
 
 export type RenderProfile = "auto" | "immersive" | "economy";
@@ -133,6 +143,43 @@ function SpaceSwitcher() {
   );
 }
 
+/**
+ * The panels on the stage, as the prototype's dock shows them (G1): one
+ * button per open panel, a parked one dashed, a live trace with a pulse.
+ * Clicking the focused one parks it; a parked one comes back; any other
+ * comes to the front. The desktop owns the layout; this only asks.
+ */
+function DockTasks() {
+  const t = useT();
+  const { pathname } = useLocation();
+  const panels = useSyncExternalStore(subscribePanels, getPanels, () => []);
+  if (pathname !== "/" || panels.length === 0) return null;
+  const topId = panels.find((p) => !p.minimized)?.id ?? null;
+  return (
+    <div className="dock-tasks" role="group" aria-label={t("desktop.dock.panels")}>
+      {panels.map((p) => (
+        <button
+          key={p.id}
+          type="button"
+          className={`dock-task${p.minimized ? " parked" : ""}${p.id === topId ? " on" : ""}`}
+          data-task={p.id}
+          aria-pressed={p.id === topId}
+          title={p.title}
+          onClick={() =>
+            requestPanelAction(p.id, p.minimized ? "restore" : p.id === topId ? "minimize" : "focus")
+          }
+        >
+          {p.live && <span className="dock-live" aria-hidden />}
+          <span className="dock-glyph" aria-hidden>
+            {PANEL_GLYPH[p.kind]}
+          </span>
+          <span className="dock-task-name">{p.title}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Persistent navigation: app changes never depend on reopening the launcher. */
 export function WorkspaceDock() {
   const t = useT();
@@ -158,6 +205,7 @@ export function WorkspaceDock() {
               </button>
             ))}
           </div>
+          <DockTasks />
           <SpaceSwitcher />
         </>
       )}

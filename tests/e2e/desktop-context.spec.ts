@@ -49,7 +49,7 @@ test("a searched file lands on the stage and the console can point the agent at 
   await page.keyboard.press("/");
   await page.locator(".art-search-input").fill("plan");
   await page.locator(".art-hit").first().click();
-  const doc = page.locator('[data-widget-id="doc:/tmp/plan.md"]');
+  const doc = page.locator('[data-panel="doc:/tmp/plan.md"]');
   await expect(doc).toBeVisible();
   await expect(doc.locator(".doc-body")).toContainText("line two");
 
@@ -95,7 +95,7 @@ test("typing @ offers the open documents and Tab completes one", async ({ page, 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
-  await expect(page.locator('[data-widget-id="doc:/tmp/report.md"]')).toBeVisible();
+  await expect(page.locator('[data-panel="doc:/tmp/report.md"]')).toBeVisible();
 
   const input = page.locator(".promptw-input");
   // No reference yet, so no tether.

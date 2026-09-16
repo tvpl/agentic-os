@@ -52,7 +52,7 @@ export function useWindowDrag(
 
   const start = useCallback((id: string, dragMode: DragMode, e: React.PointerEvent, box: WindowBox) => {
     if (e.button !== 0) return;
-    const el = (e.currentTarget as HTMLElement).closest<HTMLElement>(".widget");
+    const el = (e.currentTarget as HTMLElement).closest<HTMLElement>(".panel");
     if (!el) return;
     e.preventDefault();
     // A drag begins with a raise: whatever you grab comes to the front.

@@ -94,22 +94,32 @@ export function completeReference(text: string, caret: number, ref: string): { t
 }
 
 /**
- * Turns the `@name` references in a prompt into paths the agent can read.
- * The user sees a name; the model gets the file.
+ * Turns the `@name` references in a prompt into something the agent can act
+ * on. The user sees a name; the model gets the file behind it. A panel with
+ * no file (an instrument, a trace) is still recognised — `used` carries its
+ * id so the desktop can tether to it — and is named for the agent by title,
+ * which is honest until G4 teaches each kind how to describe itself.
  */
 export function resolveReferences(
   text: string,
-  docs: readonly { ref: string; path: string }[],
+  panels: readonly { id: string; ref: string; path?: string; title?: string }[],
 ): { text: string; used: string[] } {
   const used: string[] = [];
-  for (const doc of docs) {
-    const pattern = new RegExp(`@${doc.ref.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g");
+  const files: string[] = [];
+  const named: string[] = [];
+  for (const panel of panels) {
+    const pattern = new RegExp(`@${panel.ref.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g");
     if (!pattern.test(text)) continue;
-    used.push(doc.path);
+    used.push(panel.id);
+    if (panel.path) files.push(panel.path);
+    else named.push(`${panel.ref} (${panel.title ?? panel.ref})`);
   }
   if (used.length === 0) return { text, used };
-  const list = used.map((p) => `- ${JSON.stringify(p)}`).join("\n");
-  return { text: `${text.trimEnd()}\n\nReferenced files:\n${list}`, used };
+  let out = text.trimEnd();
+  if (files.length) out += `\n\nReferenced files:\n${files.map((p) => `- ${JSON.stringify(p)}`).join("\n")}`;
+  if (named.length)
+    out += `\n\nReferenced panels open on the desktop:\n${named.map((n) => `- ${n}`).join("\n")}`;
+  return { text: out, used };
 }
 
 export function skillSuggestions(prompt: string, skills: readonly Skill[], limit = 6): Skill[] {
@@ -237,17 +247,17 @@ export default function PromptWidget(_props: WidgetProps) {
   /** Caret position, so `@` completion edits the reference being typed. */
   const [caret, setCaret] = useState(0);
   const refHits = useMemo(
-    () => docSuggestions(prompt.slice(0, caret), actions.openDocs),
-    [prompt, caret, actions.openDocs],
+    () => docSuggestions(prompt.slice(0, caret), actions.openPanels),
+    [prompt, caret, actions.openPanels],
   );
   /**
-   * Publish which documents the draft points at. The desktop listens and
+   * Publish which panels the draft points at. The desktop listens and
    * draws the tethers; keeping it an event means the console does not need to
    * know anything about the stage's geometry.
    */
   const referencedIds = useMemo(
-    () => resolveReferences(prompt, actions.openDocs).used,
-    [prompt, actions.openDocs],
+    () => resolveReferences(prompt, actions.openPanels).used,
+    [prompt, actions.openPanels],
   );
   const refsKey = referencedIds.join("|");
   useEffect(() => {
@@ -350,7 +360,7 @@ export default function PromptWidget(_props: WidgetProps) {
   const launch = useMutation({
     mutationFn: (): Promise<LaunchRunResponse> => {
       // The user writes `@plan.md`; the agent receives the path behind it.
-      const { text } = resolveReferences(prompt.trim(), actions.openDocs);
+      const { text } = resolveReferences(prompt.trim(), actions.openPanels);
       const fingerprint = JSON.stringify({ text, mode, sessionId, cwd, defaultProvider });
       if (submission.current?.fingerprint !== fingerprint)
         submission.current = { fingerprint, id: crypto.randomUUID() };
@@ -498,18 +508,18 @@ export default function PromptWidget(_props: WidgetProps) {
         <ToolApprovalCard key={a.id} approval={a} />
       ))}
 
-      {actions.openDocs.length > 0 && (
+      {actions.openPanels.length > 0 && (
         <div className="console-context" aria-label={t("desktop.doc.context")}>
           <span className="hud-label">{t("desktop.doc.context")}</span>
-          {actions.openDocs.map((doc) => (
+          {actions.openPanels.map((panel) => (
             <button
-              key={doc.id}
+              key={panel.id}
               type="button"
               className="context-chip mono"
-              title={doc.path}
-              onClick={() => insertRef(doc.ref)}
+              title={panel.path ?? panel.title}
+              onClick={() => insertRef(panel.ref)}
             >
-              @{doc.ref}
+              @{panel.ref}
             </button>
           ))}
         </div>
@@ -524,7 +534,7 @@ export default function PromptWidget(_props: WidgetProps) {
               role="option"
               aria-selected={false}
               className="promptw-sugg mono"
-              title={doc.path}
+              title={doc.path ?? doc.title}
               onClick={() => insertRef(doc.ref)}
             >
               @{doc.ref}
