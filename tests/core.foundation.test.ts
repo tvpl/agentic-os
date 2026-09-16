@@ -3,6 +3,7 @@ import fs from "node:fs";
 import Database from "better-sqlite3";
 import path from "node:path";
 import {
+  SettingsSchema,
   SettingsStore,
   defaultSettings,
   detectTimezone,
@@ -536,4 +537,28 @@ describe("backup and restore", () => {
     expect(junk.success).toBe(true);
     if (junk.success) expect(junk.data.i18n).toEqual({});
   });
+});
+
+it("a desktop layout this version cannot read never takes the settings down with it", () => {
+  // A layout saved before windows carried pixels (redesign F4): grid cells.
+  const legacy = {
+    systemName: "MordomoOS",
+    defaultProvider: "claude",
+    dashboardLayout: {
+      now: { x: 5, y: 0, w: 14, h: 8, visible: false },
+      microapps: { x: 0, y: 0, w: 5, h: 7, visible: true },
+    },
+    spaces: { work: { name: "Work", layout: { now: { x: 1, y: 1, w: 6, h: 4, visible: true } } } },
+  };
+  const parsed = SettingsSchema.parse(legacy);
+  // The layout is presentation: it degrades to the default composition…
+  expect(parsed.dashboardLayout).toEqual({});
+  expect(parsed.spaces.work!.layout).toEqual({});
+  // …while everything the user actually configured survives.
+  expect(parsed.systemName).toBe("MordomoOS");
+  expect(parsed.defaultProvider).toBe("claude");
+
+  // A readable layout still round-trips untouched.
+  const current = { dashboardLayout: { now: { x: 40, y: 40, w: 420, h: 300, z: 2, visible: true } } };
+  expect(SettingsSchema.parse(current).dashboardLayout.now).toMatchObject({ x: 40, w: 420, z: 2 });
 });

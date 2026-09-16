@@ -107,10 +107,13 @@ export default function AmbientStrip({ activeRuns, onExpand }: AmbientStripProps
   const skillCount = (skills.data ?? []).filter((s) => s.enabled).length;
 
   const runList = runs.data ?? [];
+  // "done" is the canonical success status (core/src/runs/runManager.ts).
+  // Guessing "succeeded" made the strip read 0 % while the Pulse widget read
+  // 29 % on the same runs — the disagreement the shared module exists to stop.
   const finished = runList.filter(
-    (r) => r.status === "succeeded" || r.status === "failed" || r.status === "timed_out",
+    (r) => r.status === "done" || r.status === "failed" || r.status === "timed_out",
   );
-  const succeeded = finished.filter((r) => r.status === "succeeded").length;
+  const succeeded = finished.filter((r) => r.status === "done").length;
 
   const routineList = routines.data ?? [];
   const dueToday = routineList.filter((r) => r.enabled).length;

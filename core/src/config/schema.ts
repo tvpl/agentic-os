@@ -204,7 +204,14 @@ export const ChannelSettingsSchema = z.object({
 });
 export type ChannelSettings = z.infer<typeof ChannelSettingsSchema>;
 
-/** One desktop window: stage pixels, stacking order and per-widget config. */
+/**
+ * One desktop window: stage pixels, stacking order and per-widget config.
+ *
+ * `.catch({})` is load-bearing: a layout is presentation, and a box this
+ * version cannot read must never invalidate the whole settings document and
+ * take the service down with it. An unreadable layout falls back to the
+ * default composition; providers, folders and identity survive untouched.
+ */
 const WindowLayoutSchema = z.record(
   z.object({
     x: z.number().int().min(-8000).max(16000),
@@ -224,6 +231,8 @@ const WindowLayoutSchema = z.record(
     config: z.record(z.unknown()).optional(),
   }),
 );
+/** The same record, but degrading to an empty layout instead of throwing. */
+const SafeWindowLayoutSchema = WindowLayoutSchema.catch({});
 
 export const SettingsSchema = z.object({
   version: z.number().default(1),
@@ -364,7 +373,7 @@ export const SettingsSchema = z.object({
    * to hang off the left edge; the frontend clamps everything back into view
    * when the viewport is smaller than the one that saved it.
    */
-  dashboardLayout: WindowLayoutSchema.default({}),
+  dashboardLayout: SafeWindowLayoutSchema.default({}),
   /**
    * Named desktop spaces (redesign F6): each one remembers which windows were
    * open and where. Switching space saves the current arrangement into the
@@ -375,7 +384,7 @@ export const SettingsSchema = z.object({
     .record(
       z.object({
         name: z.string().min(1).max(40),
-        layout: WindowLayoutSchema.default({}),
+        layout: SafeWindowLayoutSchema.default({}),
       }),
     )
     .default({}),
