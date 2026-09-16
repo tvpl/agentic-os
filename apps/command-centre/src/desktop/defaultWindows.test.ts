@@ -14,7 +14,7 @@ import {
   minFor,
   normalizeWindows,
 } from "./defaultWindows";
-import { KEEP_VISIBLE, MIN_H, MIN_W, STAGE_PAD } from "./windowModel";
+import { ARC_MARGIN, KEEP_VISIBLE, MIN_H, MIN_W, STAGE_PAD } from "./windowModel";
 
 const STAGES = [
   { w: 1440, h: 704 },
@@ -64,6 +64,8 @@ describe("the first composition", () => {
     const left = layout.today!;
     const centre = layout.now!;
     const right = layout.deck!;
+    // The composition is laid inside the arcs, not against the screen edges.
+    expect(left.x).toBeGreaterThanOrEqual(ARC_MARGIN);
     expect(left.x + left.w).toBeLessThanOrEqual(centre.x + 1);
     expect(centre.x + centre.w).toBeLessThanOrEqual(right.x + 1);
     // …and the console sits under the Now panel, not over it.

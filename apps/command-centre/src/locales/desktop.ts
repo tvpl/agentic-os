@@ -74,6 +74,9 @@ export const en = {
   /* ---- wallpaper ring + search ---- */
   "desktop.arrange.tile": "Spread the windows out",
   "desktop.arrange.cascade": "Stack the windows",
+  "desktop.pods.apps": "Apps",
+  "desktop.pods.readings": "Readings",
+  "desktop.pods.skills": "{n} skills ready to run",
   "desktop.space.title": "Desktop spaces",
   "desktop.space.work": "Work",
   "desktop.space.research": "Research",
@@ -335,6 +338,9 @@ export const ptBR = {
 
   "desktop.arrange.tile": "Distribuir as janelas",
   "desktop.arrange.cascade": "Empilhar as janelas",
+  "desktop.pods.apps": "Apps",
+  "desktop.pods.readings": "Leituras",
+  "desktop.pods.skills": "{n} skills prontas para executar",
   "desktop.space.title": "Espaços do desktop",
   "desktop.space.work": "Trabalho",
   "desktop.space.research": "Pesquisa",

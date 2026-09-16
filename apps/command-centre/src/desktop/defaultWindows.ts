@@ -10,7 +10,15 @@
  * the user can do to it afterwards.
  */
 import { WIDGET_ORDER, baseId, type WidgetId } from "./defaultLayout";
-import { MIN_H, MIN_W, clampIntoStage, normalizeZ, type Size, type WindowMap } from "./windowModel";
+import {
+  ARC_MARGIN,
+  MIN_H,
+  MIN_W,
+  clampIntoStage,
+  normalizeZ,
+  type Size,
+  type WindowMap,
+} from "./windowModel";
 
 /** Fractions of the stage: x, y, w, h in 0–1, plus the initial stacking order. */
 interface Spec {
@@ -79,12 +87,15 @@ export const DOC_BOX: Size = { w: 460, h: 340 };
 /** The first composition, materialised for the stage it will open on. */
 export function defaultWindows(stage: Size): WindowMap {
   const out: WindowMap = {};
+  // The pod arcs float over both edges: the first composition is laid out in
+  // the space between them, so nothing opens underneath a pod.
+  const usable = Math.max(320, stage.w - ARC_MARGIN * 2);
   WIDGET_ORDER.forEach((id, i) => {
     const spec = DEFAULT_SPECS[id];
     const box = {
-      x: Math.round(spec.fx * stage.w),
+      x: Math.round(ARC_MARGIN + spec.fx * usable),
       y: Math.round(spec.fy * stage.h),
-      w: Math.round(spec.fw * stage.w),
+      w: Math.round(spec.fw * usable),
       h: Math.round(spec.fh * stage.h),
       z: i + 1,
       visible: spec.visible,

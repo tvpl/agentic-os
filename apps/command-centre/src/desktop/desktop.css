@@ -27,6 +27,222 @@
   pointer-events: none;
 }
 
+/* ------------------------------------------------------- pods (F7) ------
+   The instruments as hexagons on two arcs, ported from the prototype. A pod
+   at rest is a warm outline; only `warn` and above take colour, so an idle
+   desktop has nothing lit and anything lit is worth a look. */
+.pod-arc {
+  position: absolute;
+  top: var(--stage-top);
+  bottom: var(--stage-bottom);
+  width: 78px;
+  z-index: var(--z-chrome);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 9px;
+  pointer-events: none;
+}
+.pod-arc.l {
+  left: 0;
+}
+.pod-arc.r {
+  right: 0;
+}
+/* The guide arc: a hint that the pods sit on a curve, not a column. */
+.pod-arc::before {
+  content: "";
+  position: absolute;
+  top: 12%;
+  bottom: 12%;
+  width: 150px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent);
+  border-radius: 50%;
+  opacity: 0.45;
+  pointer-events: none;
+  transition: opacity var(--dur-base) var(--ease-standard);
+}
+.pod-arc.l::before {
+  left: -92px;
+  border-right-color: var(--accent-line);
+}
+.pod-arc.r::before {
+  right: -92px;
+  border-left-color: var(--accent-line);
+}
+.pod-arc.near::before {
+  opacity: 0.8;
+}
+.pod {
+  position: relative;
+  width: 54px;
+  height: 47px;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text-dim);
+  transition:
+    transform var(--dur-base) var(--ease-spring),
+    color var(--dur-fast) var(--ease-standard);
+}
+.pod .hex {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    150deg,
+    color-mix(in srgb, var(--accent) 38%, var(--border-strong)),
+    color-mix(in srgb, var(--border-strong) 80%, transparent)
+  );
+  clip-path: polygon(25% 2%, 75% 2%, 100% 50%, 75% 98%, 25% 98%, 0 50%);
+  transition: background var(--dur-base) var(--ease-standard);
+}
+.pod .hex::after {
+  content: "";
+  position: absolute;
+  inset: 1.5px;
+  background: linear-gradient(150deg, var(--bg-raise-2), var(--bg));
+  clip-path: polygon(25% 2%, 75% 2%, 100% 50%, 75% 98%, 25% 98%, 0 50%);
+}
+.pod .ic {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+}
+.pod .ic svg {
+  width: 17px;
+  height: 17px;
+}
+.pod .mv {
+  position: relative;
+  z-index: 1;
+  margin-top: 1px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+/* Lit pods: the only ones that take colour. */
+.pod.lit[data-level="warn"] .hex {
+  background: linear-gradient(150deg, var(--warn), color-mix(in srgb, var(--warn) 40%, transparent));
+}
+.pod.lit[data-level="critical"] .hex {
+  background: linear-gradient(150deg, var(--danger), color-mix(in srgb, var(--danger) 40%, transparent));
+}
+.pod.lit[data-level="warn"] .mv {
+  color: var(--warn);
+}
+.pod.lit[data-level="critical"] .mv {
+  color: var(--danger);
+}
+.pod .ct {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  z-index: 2;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: var(--danger);
+  color: var(--bg);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.pod .ct.w {
+  background: var(--warn);
+}
+.pod:hover,
+.pod:focus-visible {
+  transform: scale(1.14);
+  color: var(--text);
+}
+.pod:hover .hex,
+.pod:focus-visible .hex {
+  background: linear-gradient(150deg, var(--accent), var(--accent-line));
+}
+.pod.live .hex {
+  background: linear-gradient(150deg, var(--accent), var(--accent-line));
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pod.live .hex {
+    animation: pod-live 1.6s ease-in-out infinite;
+  }
+  .pod .ct {
+    animation: pod-pip 2.2s ease-in-out infinite;
+  }
+  @keyframes pod-live {
+    50% {
+      filter: brightness(1.45);
+    }
+  }
+  @keyframes pod-pip {
+    50% {
+      opacity: 0.35;
+    }
+  }
+}
+.pod .tip {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  white-space: nowrap;
+  padding: 5px 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-3);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text);
+  opacity: 0;
+  pointer-events: none;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  transition:
+    opacity var(--dur-fast) var(--ease-standard),
+    transform var(--dur-base) var(--ease-emphasized);
+}
+.pod .tip.l {
+  left: 58px;
+  transform: translateY(-50%) translateX(-8px);
+}
+.pod .tip.r {
+  right: 58px;
+  transform: translateY(-50%) translateX(8px);
+}
+.pod:hover .tip,
+.pod:focus-visible .tip {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+.pod .tip .sub {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: var(--fs-1);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-faint);
+}
+/* The stacked desktop scrolls one column: fixed arcs would cover it. */
+@media (max-width: 1023px) {
+  .pod-arc {
+    display: none;
+  }
+}
+
 /* ------------------------------------------------------ app rail (F3) ----
    Costs a spine until reached for. Hover, focus or the toggle open it. */
 .app-rail {

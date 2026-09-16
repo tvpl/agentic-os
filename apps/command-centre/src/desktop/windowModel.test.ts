@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  ARC_MARGIN,
   KEEP_VISIBLE,
   MIN_H,
   MIN_W,
@@ -225,8 +226,11 @@ describe("overview", () => {
 });
 
 describe("placing a new window", () => {
-  it("fills an empty stage from the top-left", () => {
-    expect(placeNew({ w: 400, h: 300 }, {}, STAGE)).toEqual({ x: STAGE_PAD, y: STAGE_PAD });
+  it("fills an empty stage from the top-left, clear of the pod arc", () => {
+    expect(placeNew({ w: 400, h: 300 }, {}, STAGE)).toEqual({
+      x: ARC_MARGIN + STAGE_PAD,
+      y: STAGE_PAD,
+    });
   });
 
   it("avoids covering what is already open", () => {
@@ -239,7 +243,10 @@ describe("placing a new window", () => {
 
   it("ignores minimized windows when looking for room", () => {
     const layout: WindowMap = { a: box({ x: STAGE_PAD, y: STAGE_PAD, w: 900, h: 600, minimized: true }) };
-    expect(placeNew({ w: 400, h: 300 }, layout, STAGE)).toEqual({ x: STAGE_PAD, y: STAGE_PAD });
+    expect(placeNew({ w: 400, h: 300 }, layout, STAGE)).toEqual({
+      x: ARC_MARGIN + STAGE_PAD,
+      y: STAGE_PAD,
+    });
   });
 });
 

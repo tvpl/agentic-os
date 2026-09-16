@@ -136,6 +136,10 @@
   /* the window stage: below the top bar / ambient strip, above the dock */
   --stage-top: 96px;
   --stage-bottom: 100px;
+  /* the pod arcs float over the stage; placement keeps this margin clear so a
+     window is never dropped underneath one, but an arrangement the user made
+     is never reflowed by the arcs either */
+  --stage-side: 78px;
   --radius-sm: 7px;
 
   /* layers --------------------------------------------------------------- */

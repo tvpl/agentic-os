@@ -48,8 +48,7 @@ import { cascade, placeNew, tile, topZ, type WindowMap } from "./windowModel";
 import { useWindowLayout, type StageMetrics } from "./useWindowLayout";
 import WidgetLayer, { type WidgetSpec } from "./WidgetLayer";
 import AgentPresence from "./AgentPresence";
-import AmbientStrip from "./AmbientStrip";
-import AppRail from "./AppRail";
+import DesktopPods from "./DesktopPods";
 import ModelEffortPopover from "./ModelEffortPopover";
 import AddWidgetGallery from "./AddWidgetGallery";
 import { LayoutPresets } from "./LayoutPresets";
@@ -419,16 +418,17 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         <AgentPresence />
 
         <div className="depth-layer desktop-depth">
-          {!metrics?.stacked && <AppRail />}
-          <AmbientStrip
-            activeRuns={activeRuns}
-            onExpand={(id) => {
-              // A reading only opens what the layout actually holds; otherwise
-              // the strip would promise a panel that has no body to render.
-              if (layout[id]) setExpandedId(id);
-              else navigate("/settings");
-            }}
-          />
+          {!metrics?.stacked && (
+            <DesktopPods
+              activeRuns={activeRuns}
+              onExpand={(id) => {
+                // A pod only opens what the layout actually holds; otherwise it
+                // would promise a panel that has no body to render.
+                if (layout[id]) setExpandedId(id);
+                else navigate("/settings");
+              }}
+            />
+          )}
           <WidgetLayer
             layout={layout}
             widgets={widgets}

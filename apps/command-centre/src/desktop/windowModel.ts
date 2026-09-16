@@ -41,6 +41,12 @@ export const MIN_H = 120;
 /** Room kept clear at the stage edges so a window never hugs the chrome. */
 export const STAGE_PAD = 12;
 /**
+ * The pod arcs float over the stage's left and right edges. Placement keeps
+ * this margin clear so a new window is never dropped under one; a window the
+ * user drags there is still allowed to go, because it is their desktop.
+ */
+export const ARC_MARGIN = 78;
+/**
  * How much of a window must stay on stage when it is dragged to the edge.
  * A window can hang off the side — that is how people park things — but its
  * header has to remain grabbable or it is lost.
@@ -185,9 +191,11 @@ export function cascade(layout: WindowMap, stage: Size, step = 34): WindowMap {
 export function placeNew(size: Size, layout: WindowMap, stage: Size): { x: number; y: number } {
   const { w, h } = clampSize(size, { w: MIN_W, h: MIN_H }, stage);
   const live = Object.values(layout).filter((b) => b.visible && !b.minimized);
+  const left = ARC_MARGIN + STAGE_PAD;
+  const right = stage.w - ARC_MARGIN - STAGE_PAD;
   let best: { cost: number; x: number; y: number } | null = null;
   for (let y = STAGE_PAD; y + h <= stage.h - STAGE_PAD; y += 40) {
-    for (let x = STAGE_PAD; x + w <= stage.w - STAGE_PAD; x += 52) {
+    for (let x = left; x + w <= right; x += 52) {
       let cost = 0;
       for (const b of live) {
         const ox = Math.max(0, Math.min(x + w, b.x + b.w) - Math.max(x, b.x));
@@ -201,7 +209,7 @@ export function placeNew(size: Size, layout: WindowMap, stage: Size): { x: numbe
   if (best) return { x: best.x, y: best.y };
   // Stage smaller than the window: the clamp will sort it out.
   const n = live.length;
-  return { x: STAGE_PAD + n * 24, y: STAGE_PAD + n * 24 };
+  return { x: left + n * 24, y: STAGE_PAD + n * 24 };
 }
 
 /* ------------------------------------------------------------ overview --- */
