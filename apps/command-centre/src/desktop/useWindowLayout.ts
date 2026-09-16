@@ -87,7 +87,10 @@ function mergeMirror(layout: WindowMap): WindowMap {
 export interface WindowLayoutState {
   layout: WindowMap;
   /** Apply a new layout locally and persist it (debounced). */
-  commit: (next: WindowMap) => void;
+  /** Replace the layout, or derive it from the latest committed one (`prev`): two
+   *  commits in one tick — a form closing while its run opens — must not
+   *  overwrite each other from the same stale render. */
+  commit: (next: WindowMap | ((prev: WindowMap) => WindowMap)) => void;
   saving: boolean;
   /** Local changes not yet confirmed by the server. */
   dirty: boolean;
@@ -181,7 +184,8 @@ export function useWindowLayout({
   }, [layout]);
 
   const commit = useCallback(
-    (next: WindowMap) => {
+    (update: WindowMap | ((prev: WindowMap) => WindowMap)) => {
+      const next = typeof update === "function" ? update(latestRef.current) : update;
       latestRef.current = next;
       setLayout(next);
       setDirty(true);

@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useDesktopActions } from "../actions";
 import { useT } from "../../i18n";
 import { qk, useApiQuery, useOsMetrics, useOsSettings } from "../../queries";
 import { budgetState } from "../budget";
@@ -14,6 +15,7 @@ interface Approval {
 
 export default function AttentionWidget() {
   const t = useT();
+  const { openPanel, openRun } = useDesktopActions();
   const routines = useDesktopRoutines();
   const runs = useDesktopRuns();
   // Approvals are optional: a failure here only hides the approvals chip.
@@ -45,9 +47,9 @@ export default function AttentionWidget() {
               <span className="tg t">{t("desktop.core.waiting")}</span>
               <span className="truncate">{t("dash.pendingApprovals", { n: pending })}</span>
               <span className="sp" />
-              <Link to="/settings" className="go">
+              <button type="button" className="go" onClick={() => openPanel("approvals")}>
                 {t("desktop.prompt.approve")}
-              </Link>
+              </button>
             </div>
           )}
           {budgetHot && (
@@ -79,9 +81,9 @@ export default function AttentionWidget() {
               <StatusBadge status={r.status} />
               <span className="truncate">{r.skillSlug ?? r.promptSummary.slice(0, 42)}</span>
               <span className="sp" />
-              <Link to={`/runs/${r.id}`} className="go">
+              <button type="button" className="go" onClick={() => openRun(r.id)}>
                 trace
-              </Link>
+              </button>
             </div>
           ))}
         </div>

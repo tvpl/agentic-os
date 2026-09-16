@@ -322,28 +322,6 @@ export default function PromptWidget(_props: WidgetProps) {
   }, [details.map((d) => d.dataUpdatedAt).join(","), finishedIds.join(",")]);
   const live = useMemo(() => replyFromEvents(stream.events), [stream.events]);
 
-  /**
-   * A finished run's artifact opens on the stage (redesign F5). This is the
-   * payoff: the thing the agent just made is in front of you and already
-   * referenceable, instead of a link that would take you off the desktop.
-   *
-   * Only runs that finish while the console is open, and only once each — a
-   * refetch must not reopen a window the user deliberately closed.
-   */
-  const openedFor = useRef(new Set<string>());
-  const openDocRef = useRef(actions.openDoc);
-  openDocRef.current = actions.openDoc;
-  useEffect(() => {
-    finishedIds.forEach((id, i) => {
-      if (openedFor.current.has(id)) return;
-      const run = details[i]?.data?.run;
-      if (!run) return;
-      openedFor.current.add(id);
-      const artifact = run.artifacts?.[0];
-      if (artifact) openDocRef.current(artifact);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [details.map((d) => d.dataUpdatedAt).join(","), finishedIds.join(",")]);
   // Tool prompts the running turn is waiting on (the CLI is paused until answered).
   const approvals = useApprovals({ enabled: active !== undefined, refetchInterval: active ? 30_000 : false });
   const toolApprovals = toolApprovalsForRun(approvals.data, active?.id);
@@ -394,6 +372,9 @@ export default function PromptWidget(_props: WidgetProps) {
       }
       setPrompt("");
       setPendingApproval(null);
+      // The trace opens beside the console (G3): what the agent is doing is
+      // on the desk, and its result will land there too.
+      if (res.runId) actions.openRun(res.runId);
     },
     onError: (err: Error) =>
       toast(

@@ -29,7 +29,21 @@ import { LAUNCHER_EVENT, OPEN_DECK_EVENT, OPEN_PANEL_EVENT, RESET_LAYOUT_EVENT }
 import { PANEL_ACTION_EVENT, panelKind, publishPanels, type OpenPanel, type PanelAction } from "./panelKinds";
 import { APPS, appForPath, appId, appKindOf, appLocationOf, type AppKind, type AppLocation } from "./apps";
 import AppPanel from "./AppPanel";
-import { useLocation } from "react-router-dom";
+import RunPanel from "./RunPanel";
+import SkillInputsPanel from "./SkillInputsPanel";
+import {
+  FORM_BOX,
+  RUN_BOX,
+  formPanelId,
+  formSlugOf,
+  isFormPanelId,
+  isRunPanelId,
+  runIdOf,
+  runPanelId,
+  runPanelTitle,
+} from "./runPanels";
+import { isRunActive } from "../runs/useRunStream";
+import { useLocation, useNavigate as useRouterNavigate } from "react-router-dom";
 import { SWITCH_SPACE_EVENT, takePendingSpace } from "../components/Workspace";
 import { DEFAULT_SPACE, switchSpace, type SpaceMap } from "./spaces";
 import { DOC_BOX, defaultWindows, docId, docPath, isDocId, minFor } from "./defaultWindows";
@@ -159,20 +173,34 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     onError: (err: Error) => toast(err.message, "danger"),
   });
 
+  const openRunRef = useRef<(id: string) => void>(() => undefined);
+  const openSkillFormRef = useRef<(slug: string) => void>(() => undefined);
+  const openWindowRef = useRef<(id: string) => boolean>(() => false);
+
+  /** What running a skill from the desktop leads to: a form, a hold, or a trace. */
+  type RunOutcome = { form: string } | { approvals: true } | { run: string };
   const runSkill = useMutation({
-    mutationFn: async (skill: Skill) => {
-      if (skill.inputs.some((i) => i.required)) return { navigateTo: `/skills/${skill.slug}` };
+    mutationFn: async (skill: Skill): Promise<RunOutcome> => {
+      // A skill that needs inputs gets its form on the stage; one that can
+      // start now starts, and its trace opens as a panel (G3). Neither
+      // leaves the desktop.
+      if (skill.inputs.some((i) => i.required)) return { form: skill.slug };
       const res = await api.post<LaunchRunResponse>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, {
         inputs: {},
       });
-      if (res.status === "waiting_approval" || !res.runId) {
+      const runId = res.runId;
+      if (res.status === "waiting_approval" || !runId) {
         toast(t("runs.approvalPending"), "info");
-        return { navigateTo: "/settings?tab=security" };
+        return { approvals: true };
       }
       toast(`▶ /${skill.slug}`, "ok");
-      return { navigateTo: `/runs/${res.runId}` };
+      return { run: runId };
     },
-    onSuccess: ({ navigateTo }) => navigate(navigateTo),
+    onSuccess: (out) => {
+      if ("form" in out) openSkillFormRef.current(out.form);
+      else if ("approvals" in out) openWindowRef.current("approvals");
+      else openRunRef.current(out.run);
+    },
     onError: (err: Error) => toast(err.message, "danger"),
   });
 
@@ -329,12 +357,37 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         out.push({ id, kind, ref: t(def.refKey), title: t(def.titleKey), minimized: box.minimized ?? false });
         continue;
       }
+      if (isRunPanelId(id)) {
+        const rid = runIdOf(id);
+        const record = (runs.data ?? []).find((r) => r.id === rid);
+        const short = rid.length > 8 ? rid.slice(0, 8) : rid;
+        out.push({
+          id,
+          kind,
+          ref: `run-${short}`,
+          title: runPanelTitle(rid, record?.skillSlug),
+          minimized: box.minimized ?? false,
+          live: record ? isRunActive(record.status) : false,
+        });
+        continue;
+      }
+      if (isFormPanelId(id)) {
+        const slug = formSlugOf(id);
+        out.push({
+          id,
+          kind,
+          ref: slug,
+          title: t("desktop.form.title", { slug }),
+          minimized: box.minimized ?? false,
+        });
+        continue;
+      }
       const def = widgetDefinition(id);
       if (!def) continue;
       out.push({ id, kind, ref: t(def.refKey), title: t(def.titleKey), minimized: box.minimized ?? false });
     }
     return out.sort((a, b) => (layout[b.id]?.z ?? 0) - (layout[a.id]?.z ?? 0));
-  }, [layout, t]);
+  }, [layout, t, runs.data]);
   useEffect(() => {
     publishPanels(openPanels);
     return () => publishPanels([]);
@@ -343,27 +396,6 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   const stagePanels = useMemo(
     () => openPanels.filter((p) => !p.minimized && p.id !== "prompt"),
     [openPanels],
-  );
-
-  const openDoc = useCallback(
-    (path: string) => {
-      const id = docId(path);
-      const existing = layout[id];
-      if (existing) {
-        commit({ ...layout, [id]: { ...existing, visible: true, minimized: false, z: topZ(layout) + 1 } });
-        return;
-      }
-      const spot = placeNew(DOC_BOX, layout, stage);
-      commit({
-        ...layout,
-        [id]: clampIntoStage(
-          { ...spot, ...DOC_BOX, z: topZ(layout) + 1, visible: true, minimized: false },
-          stage,
-          minFor(id),
-        ),
-      });
-    },
-    [layout, commit, stage],
   );
 
   /**
@@ -429,6 +461,45 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   const openAppRef = useRef(openApp);
   openAppRef.current = openApp;
 
+  /** A panel with a fixed box: on the stage if it is not there, raised if it is. */
+  /**
+   * Open (or raise) a panel that is not in the layout yet — a document, a run's
+   * trace, a skill's form. Derived from the latest committed layout, not this
+   * render's, because these arrive in bursts: a form closing and its run
+   * opening in the same tick, three artifacts landing when a run settles.
+   */
+  const openSized = useCallback(
+    (id: string, size: { w: number; h: number }) => {
+      commit((prev) => {
+        const existing = prev[id];
+        if (existing)
+          return { ...prev, [id]: { ...existing, visible: true, minimized: false, z: topZ(prev) + 1 } };
+        const spot = placeNew(size, prev, stage);
+        return {
+          ...prev,
+          [id]: clampIntoStage(
+            { ...spot, ...size, z: topZ(prev) + 1, visible: true, minimized: false },
+            stage,
+            minFor(id),
+          ),
+        };
+      });
+    },
+    [commit, stage],
+  );
+  const openDoc = useCallback((path: string) => openSized(docId(path), DOC_BOX), [openSized]);
+  const openRun = useCallback((runId: string) => openSized(runPanelId(runId), RUN_BOX), [openSized]);
+  const openSkillForm = useCallback((slug: string) => openSized(formPanelId(slug), FORM_BOX), [openSized]);
+  openRunRef.current = openRun;
+  openSkillFormRef.current = openSkillForm;
+  /** A form is done once its run is off: it closes itself. */
+  const closePanel = useCallback(
+    (id: string) => {
+      commit((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id]!, visible: false } } : prev));
+    },
+    [commit],
+  );
+
   /**
    * Deep links (G2): the app routes still exist — notifications, the palette,
    * every `Link` inside an app — but they open the app as a panel and hand the
@@ -438,7 +509,20 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   const location = useLocation();
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
+  // The bounce is a plain router navigation on purpose: the link that got us
+  // here may itself be mid view-transition (`useOsNavigate`), and starting a
+  // second transition inside the first one's update callback freezes the
+  // document — the palette and the run list both hung on exactly that.
+  const routerNavigate = useRouterNavigate();
   useEffect(() => {
+    // A run's own route opens its trace panel, not the Runs app: that is
+    // what every "open run" link in the OS means now (G3).
+    const runMatch = /^\/runs\/([^/]+)$/.exec(location.pathname);
+    if (runMatch) {
+      openRunRef.current(decodeURIComponent(runMatch[1]!));
+      routerNavigate("/", { replace: true });
+      return;
+    }
     const def = appForPath(location.pathname);
     if (!def) return;
     // A bare link to an app that is already open at that path ("Second
@@ -448,8 +532,8 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     const current = appLocationOf(def, layoutRef.current[appId(def.kind)]?.config);
     const same = current.pathname === location.pathname && location.search === "";
     openAppRef.current(def.kind, same ? undefined : { pathname: location.pathname, search: location.search });
-    navigate("/", { replace: true });
-  }, [location.pathname, location.search, navigate]);
+    routerNavigate("/", { replace: true });
+  }, [location.pathname, location.search, routerNavigate]);
 
   /** Move an app panel to a path or query inside it (the view asked, via its route hooks). */
   const setAppLocation = useCallback(
@@ -476,6 +560,8 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     },
     [openPanels],
   );
+
+  openWindowRef.current = openWindow;
 
   /** The dock's task buttons: focus, park, restore — the same layout, edited here. */
   useEffect(() => {
@@ -510,9 +596,24 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
       openPanels: stagePanels,
       openDoc,
       openApp,
+      openRun,
+      openSkillForm,
+      openPanel: (id) => {
+        openWindow(id);
+      },
       referencePanel,
     }),
-    [runSkill, runningSkills, stagePanels, openDoc, openApp, referencePanel],
+    [
+      runSkill,
+      runningSkills,
+      stagePanels,
+      openDoc,
+      openApp,
+      openRun,
+      openSkillForm,
+      openWindow,
+      referencePanel,
+    ],
   );
 
   const widgets = useMemo(() => {
@@ -527,6 +628,28 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
           expandable: true,
           surfaceMin: { w: 460, h: 340 },
           node: <DocWindow instanceId={id} />,
+        };
+        continue;
+      }
+      if (isRunPanelId(id)) {
+        const rid = runIdOf(id);
+        const record = (runs.data ?? []).find((r) => r.id === rid);
+        out[id] = {
+          title: runPanelTitle(rid, record?.skillSlug),
+          refName: `run-${rid.length > 8 ? rid.slice(0, 8) : rid}`,
+          expandable: true,
+          surfaceMin: { w: 720, h: 520 },
+          node: <RunPanel runId={rid} />,
+        };
+        continue;
+      }
+      if (isFormPanelId(id)) {
+        const slug = formSlugOf(id);
+        out[id] = {
+          title: t("desktop.form.title", { slug }),
+          refName: slug,
+          expandable: false,
+          node: <SkillInputsPanel slug={slug} onDone={() => closePanel(id)} />,
         };
         continue;
       }
@@ -564,7 +687,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
       };
     }
     return out;
-  }, [layout, t, setAppLocation, onMetaChanged]);
+  }, [layout, t, setAppLocation, onMetaChanged, runs.data, closePanel]);
 
   const activeProvider = providers.data?.find((p) => p.isDefault);
   const defaultProvider = activeProvider?.id ?? t("common.loading");

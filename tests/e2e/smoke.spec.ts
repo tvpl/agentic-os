@@ -98,8 +98,10 @@ test("run detail streams a fake run to completion", async ({ page }) => {
     .getByRole("button", { name: /^run|executar/i })
     .first()
     .click();
-  // The run opens in the Runs panel (the trace panel comes with G3).
-  await expect(runs.locator(".run-title .badge")).toHaveText(/done|conclu/i, { timeout: 20_000 });
+  // The run's trace opens as its own panel beside the Runs app (G3).
+  const trace = page.locator('[data-panel^="run:"]');
+  await expect(trace).toHaveCount(1);
+  await expect(trace.locator(".run-title .badge")).toHaveText(/done|conclu/i, { timeout: 20_000 });
 });
 
 for (const [name, route] of [

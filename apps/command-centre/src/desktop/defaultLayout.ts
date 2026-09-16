@@ -24,7 +24,16 @@ export function shouldStack(width: number, height: number): boolean {
 }
 
 /** Registered widget ids, in render / tab order. */
-export const WIDGET_ORDER = ["now", "routines", "pulse", "attention", "prompt", "inbox", "cost"] as const;
+export const WIDGET_ORDER = [
+  "now",
+  "routines",
+  "pulse",
+  "attention",
+  "approvals",
+  "prompt",
+  "inbox",
+  "cost",
+] as const;
 export type WidgetId = (typeof WIDGET_ORDER)[number];
 
 export function isWidgetId(id: string): id is WidgetId {

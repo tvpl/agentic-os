@@ -51,6 +51,9 @@ function setup(skills: Skill[], over: Partial<DesktopActions> = {}) {
     openPanels: [],
     openDoc: () => undefined,
     openApp: () => undefined,
+    openRun: () => undefined,
+    openSkillForm: () => undefined,
+    openPanel: () => undefined,
     referencePanel: () => undefined,
     ...over,
   };

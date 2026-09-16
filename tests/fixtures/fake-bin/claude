@@ -44,5 +44,16 @@ if [[ -n "$FAKE_CLAUDE_ARTIFACT_DIR" ]]; then
   mkdir -p "$FAKE_CLAUDE_ARTIFACT_DIR"
   echo "artifact for: ${PROMPT:0:40}" > "$FAKE_CLAUDE_ARTIFACT_DIR/digest.md"
 fi
+# "[[artifact:NAME]]" in the prompt writes NAME into the run's own artifacts
+# directory — the one the OS names in the prompt ("… into: <dir>"), so the
+# file is listed as this run's result (e2e: a result opening on the stage).
+if [[ "$PROMPT" =~ \[\[artifact:([A-Za-z0-9._-]+)\]\] ]]; then
+  NAME="${BASH_REMATCH[1]}"
+  if [[ "$PROMPT" =~ into[^:]*:\ ([^[:space:]]+) ]]; then
+    RUN_DIR="${BASH_REMATCH[1]}"
+    mkdir -p "$RUN_DIR"
+    printf '# %s\n\nWritten by the fake provider for: %s\n' "$NAME" "${PROMPT:0:60}" > "$RUN_DIR/$NAME"
+  fi
+fi
 echo '{"type":"result","subtype":"success","is_error":false,"result":"All done. secret sk-test1234567890abcdefTOKEN should be redacted."}'
 exit 0

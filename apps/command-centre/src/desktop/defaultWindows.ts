@@ -17,6 +17,7 @@
  */
 import { WIDGET_ORDER, type WidgetId } from "./defaultLayout";
 import { APPS, appKindOf } from "./apps";
+import { FORM_BOX, RUN_BOX, isFormPanelId, isRunPanelId } from "./runPanels";
 import {
   ARC_MARGIN,
   MIN_H,
@@ -51,6 +52,7 @@ export const DEFAULT_SPECS: Record<WidgetId, Spec> = {
   prompt: { fx: SIDE, fy: 0.4, fw: CENTRE, fh: 0.45, visible: true },
   now: { fx: SIDE, fy: 0, fw: CENTRE, fh: 0.4, visible: false },
   attention: { fx: SIDE, fy: 0.85, fw: CENTRE, fh: 0.15, visible: false },
+  approvals: { fx: SIDE, fy: 0.1, fw: 0.34, fh: 0.4, visible: false },
   cost: { fx: 0, fy: 0.75, fw: SIDE, fh: 0.25, visible: false },
   routines: { fx: RIGHT, fy: 0.5, fw: SIDE, fh: 0.25, visible: false },
   pulse: { fx: RIGHT, fy: 0.75, fw: SIDE, fh: 0.25, visible: false },
@@ -87,6 +89,8 @@ export const WINDOW_MIN: Partial<Record<string, Size>> = {
 export function minFor(id: string | undefined): Size {
   if (id && isDocId(id)) return { w: 320, h: 220 };
   if (id && appKindOf(id)) return { w: 420, h: 320 };
+  if (id && isRunPanelId(id)) return { w: 420, h: 280 };
+  if (id && isFormPanelId(id)) return { w: 340, h: 240 };
   return (id && WINDOW_MIN[id]) || { w: MIN_W, h: MIN_H };
 }
 
@@ -159,6 +163,17 @@ export function normalizeWindows(
           visible: true,
           ...saved,
         } as WindowMap[string],
+        stage,
+        minFor(id),
+      );
+      continue;
+    }
+    if (isRunPanelId(id) || isFormPanelId(id)) {
+      // A trace or a form the user had open: kept, so the desk comes back
+      // as it was — a finished run's trace is still worth reading.
+      const size = isRunPanelId(id) ? RUN_BOX : FORM_BOX;
+      out[id] = clampIntoStage(
+        { x: 60, y: 60, ...size, z: 1, visible: true, ...saved } as WindowMap[string],
         stage,
         minFor(id),
       );

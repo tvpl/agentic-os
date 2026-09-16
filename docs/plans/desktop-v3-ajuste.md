@@ -106,7 +106,7 @@ cabeçalho, chip na bandeja.
 
 Portão: os 9 pods/apps abrem dentro do palco; nenhum clique no desktop muda a rota.
 
-### G3 — Execução no palco
+### G3 — Execução no palco ✅ (registro em `desktop-v3-paridade.md`)
 
 - `runSkill` deixa de navegar. Abre `run:<id>` (tipo `run`) com o trace ao vivo — o stream
   de eventos que `/runs/:id` já consome, num corpo `.tr` com cursor piscando; o pod Pulso

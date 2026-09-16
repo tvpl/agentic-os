@@ -2194,6 +2194,46 @@ body.window-dragging .app-rail {
   line-height: 1.6;
 }
 
+/* ---------------------------------------------- run + form panels (G3) --
+   A trace is the run's own detail in a plate: its "back to Runs" link is a
+   page's idea, the plate already has ✕. A form is a short column. */
+.run-panel .run-back {
+  display: none;
+}
+/* The plate carries the run's state: an accent line while it runs, a red one
+   when it fails — readable from across the stage, before the badge is. */
+.panel:has(.run-panel[data-run-status="running"]) > .panel-in > .panel-head,
+.panel:has(.run-panel[data-run-status="queued"]) > .panel-in > .panel-head {
+  border-bottom-color: var(--accent-line);
+}
+.panel:has(.run-panel[data-run-status="failed"]) > .panel-in > .panel-head,
+.panel:has(.run-panel[data-run-status="timed_out"]) > .panel-in > .panel-head {
+  border-bottom-color: var(--danger);
+}
+.run-panel .page {
+  padding: 8px 14px 24px;
+}
+.run-panel .page-head {
+  margin-bottom: var(--s-2);
+}
+.run-panel .page-head h1 {
+  display: flex;
+  font-size: var(--fs-3);
+}
+.skill-form {
+  display: grid;
+  gap: 10px;
+}
+.skill-form .input.bad {
+  border-color: var(--danger);
+}
+.skill-form-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
 /* ------------------------------------------------------- panel (G1) ------
    The one primitive on the stage, ported from the prototype's `.pan`. Not a
    system window — a plate: a 1 px gradient rim, a chamfered body, an iris on

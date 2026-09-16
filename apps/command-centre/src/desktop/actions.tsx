@@ -28,6 +28,12 @@ export interface DesktopActions {
   openDoc: (path: string) => void;
   /** Open one of the OS's apps as a panel on the stage, optionally at a path inside it. */
   openApp: (kind: AppKind, at?: Partial<AppLocation>) => void;
+  /** Open a run's trace as a panel on the stage (idempotent). */
+  openRun: (runId: string) => void;
+  /** Open the inputs form for a skill that needs them before it runs. */
+  openSkillForm: (slug: string) => void;
+  /** Put a registered instrument surface on the stage by id (`approvals`, `now`…). */
+  openPanel: (id: string) => void;
   /** Insert `@ref` for a panel into the console draft. */
   referencePanel: (id: string) => void;
 }
@@ -41,6 +47,9 @@ const DesktopActionsContext = createContext<DesktopActions>({
   openPanels: [],
   openDoc: noop,
   openApp: noop,
+  openRun: noop,
+  openSkillForm: noop,
+  openPanel: noop,
   referencePanel: noop,
 });
 

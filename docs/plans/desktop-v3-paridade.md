@@ -714,6 +714,67 @@ reload e troca de espaço.
 Portão visual: `artifacts/g2-lado-a-lado.png`. Inventário: linhas 3 e 11 marcadas; linha 12
 (paleta abre painéis) marcada por consequência do deep link.
 
+## G3 entregue — execução no palco
+
+Terceiro bloco do [plano de ajuste](desktop-v3-ajuste.md). Executar deixou de ser uma rota.
+Uma run é uma placa `run:<id>` (tipo `run`, título `run-1ad1836b · /skill`) com o trace ao vivo
+dentro — o mesmo `RunDetail` que a página `/runs/:id` mostrava, agora sem o "voltar" e sem o
+cabeçalho de página. Chega por qualquer caminho: o **Run** do console, uma skill escolhida no
+deck (⌘J), o "executar" do app de Skills, "Run again" e "Continue" dentro do próprio trace,
+"Test now" nas Rotinas, uma aprovação concedida, e o deep link `/runs/:id` (que abre a placa
+e devolve a URL para `/`). Enquanto corre, o pod Pulso pulsa, a tarefa no dock leva o ponto
+`live`, o `data-core` do desktop vai a `thinking`; a linha do cabeçalho da placa acompanha o
+estado (acento a correr, vermelho ao falhar).
+
+**Ao concluir**, cada artefato que a run escreveu abre como placa `artifact` ao lado (até três;
+o resto fica no app de Artefatos) e entra na bandeja do console — `@relatorio.md` funciona no
+prompt seguinte, como `@run-1ad1836b`.
+
+**Entradas obrigatórias** viram uma placa `form:<slug>` (`/code-review · inputs`): validação
+em linha (campo `aria-invalid`, alerta), "Run" dispara e a placa vai embora quando o trace chega.
+**Aprovação pendente** (skill em modo de escrita, `review_before_write`) abre a placa
+`approvals` — o instrumento que faltava no arco da direita — com aprovar/negar; aprovar abre o
+trace. `AttentionWidget` aponta para a mesma placa e para o trace da run que falhou.
+
+**Entrou:** `desktop/runPanels.ts` (ids, caixas, título), `desktop/RunPanel.tsx`,
+`desktop/SkillInputsPanel.tsx`, `desktop/widgets/ApprovalsWidget.tsx`, ações `openRun`,
+`openSkillForm` e `openPanel` em `useDesktopActions`, e a spec `tests/e2e/desktop-execution.spec.ts`
+(quatro cenários: console → trace → resultado → referência; formulário; aprovação; deep link).
+O provedor falso ganhou o marcador `[[artifact:nome]]`, que escreve o arquivo no diretório de
+artefatos da própria run — é o que deixa o portão "resultado abre como painel" ser um teste.
+
+### Defeitos encontrados nesta passagem
+
+1. **O formulário ficava aberto depois de disparar.** Fechar a placa do formulário e abrir a
+   do trace aconteciam no mesmo tick, os dois a partir do `layout` do mesmo render: o segundo
+   `commit` ressuscitava o primeiro. O mesmo aconteceria com três artefatos a abrir de uma vez.
+   `commit` aceita agora um atualizador sobre o **último** layout comprometido; `openSized`,
+   `openDoc` e `closePanel` usam-no.
+2. **O resultado abria duas vezes, uma delas quebrada.** O console ainda tinha o abridor de
+   artefato do F5, com o caminho relativo da run (`<id>/report.md`) — a placa dizia "Path is
+   outside the granted folders" ao lado da certa. Saiu; a placa do trace é quem abre o
+   resultado, com o caminho absoluto.
+3. **Deep link de run** usava o `navigate` com view transition dentro do efeito de rebote
+   (a mesma armadilha do G2) — é o `navigate` cru do roteador, e o efeito declara a
+   dependência.
+4. **Cache do navegador** serviu o bundle anterior numa verificação e fez o defeito 1 parecer
+   vivo depois de corrigido — registrado aqui porque é o tipo de coisa que faz "não mudou nada"
+   ser verdade e mentira ao mesmo tempo: sempre recarregar sem cache antes de julgar.
+
+### Gates
+
+| Gate | Resultado |
+|---|---|
+| `npm test` (raiz) | 62 arquivos · 492 testes |
+| `npm run test -w apps/command-centre` | 46 arquivos · 334 testes |
+| `npx playwright test` (suíte inteira) | 111 passaram · 2 pulados · 0 falhas (4 novos em `desktop-execution`) |
+| `typecheck` · `eslint` · `prettier` | limpos |
+
+Portão visual: `artifacts/g3-lado-a-lado.png` — o protótipo com `run-1 · /relatorio` e
+`relatorio.md` abertos pelo console, e o produto com o trace e `relatorio.md` abertos pelo
+mesmo gesto. Inventário: linhas 4 (run → trace + resultado como painéis) e 5 (entradas → formulário)
+marcadas; aprovações não tinham linha — entraram como o oitavo instrumento.
+
 ## Revisão final
 
 Uma varredura no arco inteiro F1–F6 encontrou **código especulativo meu**: `tile`, `cascade`,
