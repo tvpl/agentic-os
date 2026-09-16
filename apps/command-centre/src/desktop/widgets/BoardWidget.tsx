@@ -12,7 +12,7 @@ import type { RoutineStatus, RunRecord } from "../../api";
 import { useLocale, useT, type TKey } from "../../i18n";
 import { EmptyState } from "../../components/primitives";
 import { sameLocalDay, useDesktopRoutines, useDesktopRuns } from "../data";
-import { cfgNumber, type WidgetProps } from "../widgetTypes";
+import type { WidgetProps } from "../widgetTypes";
 import { useWidgetSize } from "../widgetSize";
 import { WidgetGate } from "./WidgetGate";
 
@@ -46,7 +46,7 @@ const RUNNER_KEY: Record<Runner, TKey> = {
   remote: "desktop.board.runner.remote",
 };
 
-export default function BoardWidget({ config }: WidgetProps) {
+export default function BoardWidget(_props: WidgetProps) {
   const routines = useDesktopRoutines();
   const runs = useDesktopRuns();
   const size = useWidgetSize();
@@ -61,7 +61,7 @@ export default function BoardWidget({ config }: WidgetProps) {
     roomy || size.heightPx <= 0
       ? Infinity
       : Math.max(2, Math.floor((size.heightPx - chrome) / (narrow ? 40 : 26)));
-  const limit = cfgNumber(config, "limit", 8);
+  const limit = 8;
   return (
     <WidgetGate queries={[routines, runs]} lines={3}>
       {routines.data && runs.data && (

@@ -75,8 +75,8 @@ import { DialogPortal, useDialog } from "./dialog";
 import { rankItems } from "./paletteMatch";
 import { useI18nLang } from "./paletteLang";
 
-/** Fired by the palette's "Toggle edit mode" action; the desktop listens and toggles its edit mode. */
-export const TOGGLE_EDIT_EVENT = "mordomo:toggle-edit";
+/** Fired by the palette's "Reset layout" action; the desktop listens and offers the default composition. */
+export const RESET_LAYOUT_EVENT = "mordomo:reset-layout";
 
 /** Fired by the palette's "Skill deck" action; the desktop fans the radial deck out. */
 export const OPEN_DECK_EVENT = "mordomo:open-deck";
@@ -372,12 +372,12 @@ export function CommandPalette({
         },
       ),
       act(
-        "toggle-edit",
-        "shell.action.toggleEdit",
+        "reset-layout",
+        "os.resetLayout",
         <Pencil aria-hidden />,
-        ["edit", "layout", "widgets", "editar"],
+        ["layout", "reset", "restaurar", "composição", "desktop"],
         () => {
-          const fire = () => window.dispatchEvent(new Event(TOGGLE_EDIT_EVENT));
+          const fire = () => window.dispatchEvent(new Event(RESET_LAYOUT_EVENT));
           if (pathname === "/") {
             fire();
             close();

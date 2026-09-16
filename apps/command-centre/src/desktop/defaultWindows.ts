@@ -15,7 +15,7 @@
  * below are still where each one lands when it is opened; they are a
  * destination now, not a first impression.
  */
-import { WIDGET_ORDER, baseId, type WidgetId } from "./defaultLayout";
+import { WIDGET_ORDER, type WidgetId } from "./defaultLayout";
 import {
   ARC_MARGIN,
   MIN_H,
@@ -50,17 +50,10 @@ export const DEFAULT_SPECS: Record<WidgetId, Spec> = {
   prompt: { fx: SIDE, fy: 0.4, fw: CENTRE, fh: 0.45, visible: true },
   now: { fx: SIDE, fy: 0, fw: CENTRE, fh: 0.4, visible: false },
   attention: { fx: SIDE, fy: 0.85, fw: CENTRE, fh: 0.15, visible: false },
-  today: { fx: 0, fy: 0, fw: SIDE, fh: 0.5, visible: false },
-  workspace: { fx: 0, fy: 0.5, fw: SIDE, fh: 0.25, visible: false },
   cost: { fx: 0, fy: 0.75, fw: SIDE, fh: 0.25, visible: false },
-  deck: { fx: RIGHT, fy: 0, fw: SIDE, fh: 0.5, visible: false },
   routines: { fx: RIGHT, fy: 0.5, fw: SIDE, fh: 0.25, visible: false },
   pulse: { fx: RIGHT, fy: 0.75, fw: SIDE, fh: 0.25, visible: false },
-  microapps: { fx: 0.06, fy: 0.06, fw: 0.2, fh: 0.35, visible: false },
   inbox: { fx: 0.24, fy: 0.06, fw: 0.28, fh: 0.3, visible: false },
-  agenda: { fx: 0.3, fy: 0.12, fw: 0.28, fh: 0.25, visible: false },
-  calendar: { fx: 0.36, fy: 0.18, fw: 0.28, fh: 0.35, visible: false },
-  email: { fx: 0.42, fy: 0.24, fw: 0.28, fh: 0.35, visible: false },
 };
 
 /** The console's own box: centred over the dock, capped so it never sprawls. */
@@ -86,16 +79,13 @@ function consoleBox(stage: Size): { x: number; y: number; w: number; h: number }
 export const WINDOW_MIN: Partial<Record<string, Size>> = {
   now: { w: 360, h: 200 },
   prompt: { w: 380, h: 260 },
-  today: { w: 260, h: 180 },
-  deck: { w: 260, h: 200 },
   routines: { w: 260, h: 150 },
-  microapps: { w: MIN_W, h: 150 },
   attention: { w: 300, h: MIN_H },
 };
 
 export function minFor(id: string | undefined): Size {
   if (id && isDocId(id)) return { w: 320, h: 220 };
-  return (id && WINDOW_MIN[baseId(id)]) || { w: MIN_W, h: MIN_H };
+  return (id && WINDOW_MIN[id]) || { w: MIN_W, h: MIN_H };
 }
 
 /**
@@ -139,8 +129,8 @@ export function defaultWindows(stage: Size): WindowMap {
 
 /**
  * A stored layout, made safe for the stage it is about to be drawn on: every
- * registered widget present (falling back to its default box), unknown ids
- * dropped, duplicates kept, and everything clamped back into view.
+ * registered panel present (falling back to its default box), documents kept,
+ * unknown ids dropped, and everything clamped back into view.
  */
 export function normalizeWindows(
   stored: Partial<Record<string, Partial<WindowMap[string]>>> | undefined,
@@ -172,14 +162,7 @@ export function normalizeWindows(
       );
       continue;
     }
-    const base = baseId(id);
-    // A duplicate ("today:2") of a known widget; anything else is stale.
-    if (id === base || !(WIDGET_ORDER as readonly string[]).includes(base)) continue;
-    out[id] = clampIntoStage(
-      { ...defaults[base as WidgetId]!, visible: false, ...saved } as WindowMap[string],
-      stage,
-      minFor(id),
-    );
+    // Anything else is a widget this version no longer has: dropped, not kept.
   }
   // Raising a window bumps the top of the stack; a long session would persist
   // ever-growing integers. Reading is where they get compacted back to 1..n.

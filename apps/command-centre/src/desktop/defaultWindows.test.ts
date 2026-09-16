@@ -91,15 +91,13 @@ describe("the first composition", () => {
 
   it("keeps the landing columns apart on a desktop stage", () => {
     const layout = defaultWindows({ w: 1440, h: 704 });
-    const left = layout.today!;
+    const left = layout.cost!;
     const centre = layout.now!;
-    const right = layout.deck!;
+    const right = layout.routines!;
     // The composition is laid inside the arcs, not against the screen edges.
     expect(left.x).toBeGreaterThanOrEqual(ARC_MARGIN);
     expect(left.x + left.w).toBeLessThanOrEqual(centre.x + 1);
     expect(centre.x + centre.w).toBeLessThanOrEqual(right.x + 1);
-    // …and the console sits under the Now panel, not over it.
-    expect(layout.prompt!.y).toBeGreaterThanOrEqual(centre.y + centre.h - 1);
   });
 });
 
@@ -110,15 +108,20 @@ describe("normalizing a stored layout", () => {
     const next = normalizeWindows({ now: { x: 100, y: 100, w: 500, h: 300 } }, stage);
     expect(Object.keys(next).sort()).toEqual([...WIDGET_ORDER].sort());
     expect(next.now).toMatchObject({ x: 100, y: 100, w: 500, h: 300 });
-    expect(next.deck).toMatchObject(defaultWindows(stage).deck!);
+    expect(next.routines).toMatchObject(defaultWindows(stage).routines!);
   });
 
-  it("drops a stale id but keeps a duplicate of a real widget", () => {
+  it("drops a stale id — a widget this version no longer has, or a ghost", () => {
     const next = normalizeWindows(
-      { "today:2": { x: 60, y: 60, w: 300, h: 200, visible: true }, ghost: { x: 0, y: 0, w: 300, h: 200 } },
+      {
+        today: { x: 60, y: 60, w: 300, h: 200, visible: true },
+        "today:2": { x: 60, y: 60, w: 300, h: 200, visible: true },
+        ghost: { x: 0, y: 0, w: 300, h: 200 },
+      },
       stage,
     );
-    expect(next["today:2"]).toMatchObject({ x: 60, y: 60, visible: true });
+    expect(next.today).toBeUndefined();
+    expect(next["today:2"]).toBeUndefined();
     expect(next.ghost).toBeUndefined();
   });
 
@@ -147,8 +150,11 @@ describe("normalizing a stored layout", () => {
     expect(minFor("doc:/a.md")).toMatchObject({ w: 320, h: 220 });
   });
 
-  it("keeps per-widget config through the round trip", () => {
-    const next = normalizeWindows({ today: { config: { analog: false } } }, stage);
-    expect(next.today!.config).toEqual({ analog: false });
+  it("keeps a minimized panel minimized: it is in the dock, not gone", () => {
+    const next = normalizeWindows(
+      { pulse: { x: 10, y: 10, w: 400, h: 300, visible: true, minimized: true } },
+      stage,
+    );
+    expect(next.pulse).toMatchObject({ visible: true, minimized: true });
   });
 });

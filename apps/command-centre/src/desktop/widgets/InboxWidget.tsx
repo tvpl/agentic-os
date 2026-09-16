@@ -14,7 +14,7 @@ import { timeAgo, useToast } from "../../components/ui";
 import { useNotifications, type NotificationItem } from "../../hooks/useNotifications";
 import { useOsNavigate } from "../../hooks/useViewTransition";
 import { notificationText } from "../../hooks/notificationText";
-import { cfgBool, cfgNumber, type WidgetProps } from "../widgetTypes";
+import type { WidgetProps } from "../widgetTypes";
 
 export interface InboxListProps {
   limit: number;
@@ -132,8 +132,6 @@ export function InboxList({ limit, unreadOnly = false }: InboxListProps) {
   );
 }
 
-export default function InboxWidget({ config }: WidgetProps) {
-  return (
-    <InboxList limit={cfgNumber(config, "limit", 8)} unreadOnly={cfgBool(config, "unreadOnly", false)} />
-  );
+export default function InboxWidget(_props: WidgetProps) {
+  return <InboxList limit={8} unreadOnly={false} />;
 }

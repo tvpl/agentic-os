@@ -22,23 +22,31 @@ test("two browser contexts preserve competing layouts until an explicit resoluti
     await second.goto("/#/");
     await expect(page.locator('[data-widget-id="now"]')).toBeVisible();
     await expect(second.locator('[data-widget-id="pulse"]')).toBeVisible();
-    // Keep both local bases while the first writer publishes its change.
-    await second.getByRole("button", { name: "Edit layout", exact: true }).click();
+    // The edit mode that used to freeze the second window's base is gone
+    // (G1). What makes a conflict real is that the second window has not
+    // seen the first one's write: keep its settings refetch from landing.
+    let settled = false;
+    await second.route("**/api/settings", (route) => {
+      if (route.request().method() === "GET" && settled) return route.abort();
+      return route.continue();
+    });
+    settled = true;
     const saved = page.waitForResponse(
       (r) => r.url().endsWith("/api/settings") && r.request().method() === "PUT" && r.ok(),
     );
     await page
       .locator('[data-widget-id="now"]')
-      .getByRole("button", { name: /hide widget/i })
+      .getByRole("button", { name: /hide widget|close/i })
       .click();
     await saved;
     await second
       .locator('[data-widget-id="pulse"]')
-      .getByRole("button", { name: /hide widget/i })
+      .getByRole("button", { name: /hide widget|close/i })
       .click();
     const conflict = second.getByText("Another window changed this layout. Your local edits are preserved.");
     await expect(conflict).toBeVisible();
     await expect(second.locator('[data-widget-id="now"]')).toBeVisible();
+    await second.unroute("**/api/settings");
     await second.getByRole("button", { name: "Save my layout instead", exact: true }).click();
     await expect(conflict).toHaveCount(0);
     await second.reload();

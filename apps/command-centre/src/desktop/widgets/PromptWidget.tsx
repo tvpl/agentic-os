@@ -36,7 +36,7 @@ import { toolApprovalsForRun } from "../../runs/approvals";
 import { authRecovery } from "../../runs/authRecovery";
 import { useDesktopActions } from "../actions";
 import { isActiveStatus } from "../data";
-import { cfgString, type WidgetProps } from "../widgetTypes";
+import type { WidgetProps } from "../widgetTypes";
 import { ONBOARDING_DRAFT_EVENT } from "../../onboarding/state";
 import {
   readConsoleDraft,
@@ -170,7 +170,7 @@ function storeSession(id: string | null) {
 /** Fired on `window` while the microphone listens; the core shows the Listening state. */
 export const LISTENING_EVENT = "mordomo:listening";
 
-export default function PromptWidget({ config }: WidgetProps) {
+export default function PromptWidget(_props: WidgetProps) {
   const t = useT();
   const locale = useLocale();
   const toast = useToast();
@@ -193,9 +193,7 @@ export default function PromptWidget({ config }: WidgetProps) {
       window.removeEventListener(CONSOLE_DRAFT_EVENT, refresh);
     };
   }, []);
-  const [mode, setMode] = useState<Mode>(
-    cfgString(config, "mode", "read_only") === "write" ? "write" : "read_only",
-  );
+  const [mode, setMode] = useState<Mode>("read_only");
   const [cwd, setCwd] = useState(initialDraft.cwd);
   const [sessionId, setSessionIdState] = useState<string | null>(() =>
     initialDraft.sessionId === undefined ? readStoredSession() : initialDraft.sessionId,

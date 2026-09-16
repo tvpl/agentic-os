@@ -31,7 +31,7 @@ import { EmptyState } from "./components/primitives";
 import {
   CommandPalette,
   OPEN_DECK_EVENT,
-  TOGGLE_EDIT_EVENT,
+  RESET_LAYOUT_EVENT,
   type PaletteOpenDetail,
 } from "./components/CommandPalette";
 import { WorkspaceDock, WorkspaceProvider } from "./components/Workspace";
@@ -93,7 +93,7 @@ function MissingApp({ name }: { name: TKey }) {
 export const LAUNCHER_EVENT = "mordomo:launcher";
 /** Fire this event to open the keyboard-shortcuts sheet. */
 export const SHORTCUTS_EVENT = "mordomo:shortcuts";
-export { TOGGLE_EDIT_EVENT, OPEN_DECK_EVENT };
+export { RESET_LAYOUT_EVENT, OPEN_DECK_EVENT };
 
 const queryClient = new QueryClient({
   defaultOptions: {

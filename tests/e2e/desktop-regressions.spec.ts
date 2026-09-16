@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { resetStage, stageBoxes, stageWith } from "./stage";
 
-test("microapps and onboarding navigate to usable content without reload", async ({ page }) => {
+test("apps and onboarding navigate to usable content without reload", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));

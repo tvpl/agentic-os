@@ -25,9 +25,6 @@ import { ShortcutsHelp } from "../components/ShortcutsHelp";
 import { ConfirmProvider, useConfirm } from "../hooks/useConfirm";
 import { NotificationsProvider, useNotifications } from "../hooks/useNotifications";
 import type { ArtifactEntry, Meta, Metrics, RoutineStatus, RunRecord, Skill } from "../api";
-import TodayWidget from "../desktop/widgets/TodayWidget";
-import WorkspaceWidget from "../desktop/widgets/WorkspaceWidget";
-import DeckWidget from "../desktop/widgets/DeckWidget";
 import BoardWidget from "../desktop/widgets/BoardWidget";
 import PulseWidget from "../desktop/widgets/PulseWidget";
 import AttentionWidget from "../desktop/widgets/AttentionWidget";
@@ -532,9 +529,6 @@ function Gallery() {
       <Story id="widgets" title="Desktop widgets">
         <div className="story-widgets">
           {[
-            ["Today", <TodayWidget key="t" />],
-            ["Workspace", <WorkspaceWidget key="w" />],
-            ["Skills deck", <DeckWidget key="d" />],
             ["Routines", <BoardWidget key="b" />],
             ["Pulse", <PulseWidget key="p" />],
             ["Needs attention", <AttentionWidget key="a" />],

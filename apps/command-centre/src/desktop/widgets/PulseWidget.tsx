@@ -8,14 +8,14 @@ import { EmptyState } from "../../components/primitives";
 import { useDesktopActions } from "../actions";
 import { useDesktopRuns } from "../data";
 import { useTweenNumber } from "../useTweenNumber";
-import { cfgNumber, type WidgetProps } from "../widgetTypes";
+import type { WidgetProps } from "../widgetTypes";
 import { WidgetGate } from "./WidgetGate";
 
-export default function PulseWidget({ config }: WidgetProps) {
+export default function PulseWidget(_props: WidgetProps) {
   const { focusDeck } = useDesktopActions();
   const metrics = useOsMetrics({ refetchInterval: 300_000 });
   const runs = useDesktopRuns();
-  const days = Math.max(7, Math.min(30, cfgNumber(config, "days", 14)));
+  const days = 14;
   return (
     <WidgetGate queries={[metrics, runs]} lines={3}>
       {metrics.data && runs.data && (

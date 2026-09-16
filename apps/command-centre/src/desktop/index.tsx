@@ -14,22 +14,9 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  Bell,
-  Columns3,
-  Copy,
-  FileText,
-  Grid2x2,
-  Info,
-  LayoutGrid,
-  Palette,
-  Pencil,
-  Plus,
-  Search,
-  Telescope,
-} from "lucide-react";
+import { Bell, Columns3, Copy, FileText, Info, LayoutGrid, Palette, Search, Telescope } from "lucide-react";
 import { api, type LaunchRunResponse, type Meta, type ProviderId, type Skill } from "../api";
-import { useT, type TKey } from "../i18n";
+import { useT } from "../i18n";
 import { qk, useOsMetrics, useOsProviders, useOsSettings } from "../queries";
 import { budgetState } from "./budget";
 import { useToast } from "../components/ui";
@@ -38,7 +25,7 @@ import { useConfirm } from "../hooks/useConfirm";
 import { playCue, useNotifications } from "../hooks/useNotifications";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import { useOsEvent } from "../hooks/useEventStream";
-import { LAUNCHER_EVENT, OPEN_DECK_EVENT, TOGGLE_EDIT_EVENT } from "../App";
+import { LAUNCHER_EVENT, OPEN_DECK_EVENT, RESET_LAYOUT_EVENT } from "../App";
 import { SWITCH_SPACE_EVENT, takePendingSpace } from "../components/Workspace";
 import { DEFAULT_SPACE, switchSpace, type SpaceMap } from "./spaces";
 import { DOC_BOX, defaultWindows, docId, docPath, isDocId } from "./defaultWindows";
@@ -53,12 +40,9 @@ import DesktopPods from "./DesktopPods";
 import SkillDeck from "./SkillDeck";
 import FirstRunHint from "./FirstRunHint";
 import ModelEffortPopover from "./ModelEffortPopover";
-import AddWidgetGallery from "./AddWidgetGallery";
-import { LayoutPresets } from "./LayoutPresets";
-import WidgetConfigPopover from "./WidgetConfigPopover";
 import { SearchBar, type ArtifactHit } from "./ArtifactSearch";
 import { DesktopActionsProvider, type DesktopActions } from "./actions";
-import { WIDGET_REGISTRY, defaultConfig, hasSurface, widgetDefinition } from "./registry";
+import { WIDGET_REGISTRY, hasSurface, widgetDefinition } from "./registry";
 import { baseCoreState, type CoreState } from "./coreState";
 import { providerProblem } from "../components/providerReadiness";
 import { isActiveStatus, useArtifactList, useDesktopRuns } from "./data";
@@ -76,8 +60,6 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   const toast = useToast();
   const confirm = useConfirm();
   const qc = useQueryClient();
-  const [editMode, setEditMode] = useState(false);
-  const [presetsOpen, setPresetsOpen] = useState(false);
   const [metrics, setMetrics] = useState<StageMetrics | null>(null);
   const stage = useMemo(() => ({ w: metrics?.w ?? 1200, h: metrics?.h ?? 700 }), [metrics?.w, metrics?.h]);
 
@@ -86,8 +68,6 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   const [debounced, setDebounced] = useState("");
 
   const [deckPopover, setDeckPopover] = useState<{ skill: Skill; anchor: HTMLElement } | null>(null);
-  const [configFor, setConfigFor] = useState<{ id: string; anchor: HTMLElement } | null>(null);
-  const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
   /** Expanded widget, owned here so the ambient strip can open a surface. */
   const [expandedId, setExpandedId] = useState<string | null>(null);
   /** Camera pulled back over the whole stage. */
@@ -102,7 +82,6 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     return () => window.removeEventListener(CONSOLE_REFS_EVENT, onRefs);
   }, []);
   const [bellAnchor, setBellAnchor] = useState<HTMLElement | null>(null);
-  const addButtonRef = useRef<HTMLButtonElement>(null);
 
   const settings = useOsSettings();
   const providers = useOsProviders();
@@ -115,7 +94,6 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     serverLayout: settings.data?.dashboardLayout,
     stage,
     spaceId: settings.data?.activeSpace,
-    editing: editMode,
     onError: (err) => toast(`${t("os.layoutSaveFailed")}: ${err.message}`, "danger"),
   });
 
@@ -268,16 +246,17 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   }, []);
 
   useEffect(() => {
-    const onToggleEdit = () => {
-      setEditMode((v) => !v);
-    };
+    const onReset = () => void resetLayout();
     const onOpenDeck = () => setDeckOpen(true);
-    window.addEventListener(TOGGLE_EDIT_EVENT, onToggleEdit);
+    window.addEventListener(RESET_LAYOUT_EVENT, onReset);
     window.addEventListener(OPEN_DECK_EVENT, onOpenDeck);
     return () => {
-      window.removeEventListener(TOGGLE_EDIT_EVENT, onToggleEdit);
+      window.removeEventListener(RESET_LAYOUT_EVENT, onReset);
       window.removeEventListener(OPEN_DECK_EVENT, onOpenDeck);
     };
+    // `resetLayout` closes over the live layout and the confirm hook; the
+    // listener reads the latest through the render it was registered in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -419,40 +398,24 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
       }
       const def = widgetDefinition(id);
       if (!def) continue;
-      const box = layout[id]!;
-      const config = { ...defaultConfig(def), ...(box.config ?? {}) };
       const Component = def.Component;
       out[id] = {
         title: t(def.titleKey),
         icon: def.icon,
-        configurable: (def.configSchema?.length ?? 0) > 0,
         expandable: hasSurface(def),
         surfaceMin: def.surfaceMin,
-        node: <Component instanceId={id} config={config} editing={editMode} />,
+        node: <Component instanceId={id} />,
       };
     }
     return out;
-  }, [layout, t, editMode]);
-
-  const setConfig = (id: string, next: Record<string, unknown> | undefined) => {
-    const box = layout[id];
-    if (!box) return;
-    const updated = { ...box };
-    if (next) updated.config = next;
-    else delete updated.config;
-    commit({ ...layout, [id]: updated });
-  };
+  }, [layout, t]);
 
   const activeProvider = providers.data?.find((p) => p.isDefault);
   const defaultProvider = activeProvider?.id ?? t("common.loading");
-  const configDef = configFor ? widgetDefinition(configFor.id) : undefined;
 
   return (
     <DesktopActionsProvider value={actions}>
-      <div
-        className={`desktop${editMode ? " edit-mode" : ""}${searching ? " searching" : ""}`}
-        data-core={coreState}
-      >
+      <div className={`desktop${searching ? " searching" : ""}`} data-core={coreState}>
         {!metrics?.stacked && <LivingField onOpenFile={(path) => openDoc(path)} />}
         <AgentPresence />
         {!metrics?.stacked && <FirstRunHint />}
@@ -473,10 +436,8 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
           <WidgetLayer
             layout={layout}
             widgets={widgets}
-            editMode={editMode}
             onLayoutChange={commit}
             onMetrics={setMetrics}
-            onConfigure={(id, anchor) => setConfigFor({ id, anchor })}
             expandedId={expandedId}
             onExpandedChange={setExpandedId}
             overview={overview}
@@ -515,15 +476,6 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
             </div>
             <div className="byline">{t("dash.brainSub")}</div>
             <div className="os-tools">
-              <Tool
-                active={editMode}
-                label={t("os.edit")}
-                onClick={() => {
-                  setEditMode((v) => !v);
-                }}
-              >
-                <Pencil aria-hidden />
-              </Tool>
               <Tool
                 active={searching}
                 label={t("desktop.search.open")}
@@ -618,73 +570,16 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
           />
         )}
 
-        {(editMode || conflict) && (
-          <div className="edit-bar enter-fade-up" role="toolbar" aria-label={t("os.edit")}>
-            {conflict && (
-              <>
-                <span role="alert">{t("os.layoutConflict")}</span>
-                <Button size="sm" disabled={saving} onClick={() => void resolveConflict(false)}>
-                  {t("os.layoutUseServer")}
-                </Button>
-                <Button size="sm" disabled={saving} onClick={() => void resolveConflict(true)}>
-                  {t("os.layoutKeepMine")}
-                </Button>
-              </>
-            )}
-            <span className="hud-label">{t("os.editHint")}</span>
-            <Button size="sm" onClick={() => setPresetsOpen(true)}>
-              {t("os.layoutPresets")}
+        {conflict && (
+          <div className="edit-bar enter-fade-up" role="toolbar" aria-label={t("os.layoutConflict")}>
+            <span role="alert">{t("os.layoutConflict")}</span>
+            <Button size="sm" disabled={saving} onClick={() => void resolveConflict(false)}>
+              {t("os.layoutUseServer")}
             </Button>
-            <Button
-              ref={addButtonRef}
-              size="sm"
-              variant="outline"
-              icon={<Plus aria-hidden />}
-              onClick={() => setAddAnchor(addButtonRef.current)}
-            >
-              {t("desktop.add.title")}
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon={<Grid2x2 aria-hidden />}
-              onClick={() => void resetLayout()}
-            >
-              {t("os.resetLayout")}
-            </Button>
-            <Button size="sm" variant="primary" loading={saving} onClick={() => setEditMode(false)}>
-              {t("os.done")}
+            <Button size="sm" disabled={saving} onClick={() => void resolveConflict(true)}>
+              {t("os.layoutKeepMine")}
             </Button>
           </div>
-        )}
-
-        {presetsOpen && (
-          <LayoutPresets
-            layout={layout}
-            stage={stage}
-            onApply={commit}
-            onClose={() => setPresetsOpen(false)}
-          />
-        )}
-        {addAnchor && (
-          <AddWidgetGallery
-            layout={layout}
-            stage={stage}
-            anchor={addAnchor}
-            onAdd={(next: WindowMap) => commit(next)}
-            onClose={() => setAddAnchor(null)}
-          />
-        )}
-
-        {configFor && configDef && (
-          <WidgetConfigPopover
-            definition={configDef}
-            title={t(configDef.titleKey as TKey)}
-            config={layout[configFor.id]?.config}
-            anchor={configFor.anchor}
-            onChange={(next) => setConfig(configFor.id, next)}
-            onClose={() => setConfigFor(null)}
-          />
         )}
 
         {bellAnchor && (

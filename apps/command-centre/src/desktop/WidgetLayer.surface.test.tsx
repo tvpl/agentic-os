@@ -41,7 +41,6 @@ function setup() {
     <WidgetLayer
       layout={layout}
       widgets={{ today: spec("Today", false), pulse: spec("Pulse") }}
-      editMode={false}
       onLayoutChange={() => undefined}
     />,
   );

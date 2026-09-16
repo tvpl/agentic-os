@@ -62,7 +62,7 @@ import {
   readStoredHudIntensity,
   type PresetId,
 } from "../theme";
-import { WIDGET_ORDER, baseId, isWidgetId } from "../desktop/defaultLayout";
+import { WIDGET_ORDER, isWidgetId } from "../desktop/defaultLayout";
 import type { WindowBox } from "../desktop/windowModel";
 import { WIDGET_REGISTRY } from "../desktop/registry";
 import { copyText, errorMessage, isAbsolutePath, isOffline, slugify } from "./shared";
@@ -983,7 +983,7 @@ function ThemeTab({ s, put }: { s: SettingsShape; put: Put }) {
 function DesktopTab({ s, put }: { s: SettingsShape; put: Put }) {
   const t = useT();
   const layout = s.dashboardLayout ?? {};
-  const ids = [...new Set([...WIDGET_ORDER, ...Object.keys(layout)])].filter((id) => isWidgetId(baseId(id)));
+  const ids = [...new Set([...WIDGET_ORDER, ...Object.keys(layout)])].filter((id) => isWidgetId(id));
 
   const toggleWidget = (id: string) => {
     // Geometry belongs to the desktop: a widget turned on here opens at a
@@ -1001,8 +1001,7 @@ function DesktopTab({ s, put }: { s: SettingsShape; put: Put }) {
         </div>
         <div className="apps-widgets">
           {ids.map((id) => {
-            const base = baseId(id);
-            const def = isWidgetId(base) ? WIDGET_REGISTRY[base] : undefined;
+            const def = isWidgetId(id) ? WIDGET_REGISTRY[id] : undefined;
             const visible = layout[id]?.visible ?? true;
             return (
               <button

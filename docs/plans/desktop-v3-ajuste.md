@@ -184,6 +184,14 @@ Só quatro. O resto eu decido e registro.
    fazer G4 (console) antes de G2 se você quiser sentir o console primeiro. **Recomendo a
    ordem como está.**
 
+## Decisões tomadas (15/09, por delegação sua)
+
+1. **Apagados**: Hoje/fusos, Workspace, Micro apps, Agenda, Calendário, Email, galeria de
+   widgets, presets, popover de configuração, barra de edição.
+2. **`now`** vira superfície, aberta pelo pod Execuções e pela paleta.
+3. **Rotas** ficam como deep links que abrem o painel no desktop.
+4. **Ordem**: G1 → G2 → G3 → G4 → G5 → G6.
+
 ## O que muda no meu método
 
 - Cada bloco termina com **print lado a lado** com o protótipo, na mesma resolução, antes de

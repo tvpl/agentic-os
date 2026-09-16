@@ -23,11 +23,10 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type KeyboardEvent,
   type MutableRefObject,
   type ReactNode,
 } from "react";
-import { ChevronDown, GripVertical, Maximize2, Minimize2, Settings2, X } from "lucide-react";
+import { ChevronDown, Maximize2, Minimize2, X } from "lucide-react";
 import { useT } from "../i18n";
 import { orderedIds } from "./defaultLayout";
 import { useStageSize, type StageMetrics } from "./useWindowLayout";
@@ -41,8 +40,6 @@ export interface WidgetSpec {
   title: string;
   icon: ReactNode;
   node: ReactNode;
-  /** Renders the gear in edit mode when true. */
-  configurable?: boolean;
   /** Honest minimum of the expanded composition, in CSS px (registry `surfaceMin`). */
   surfaceMin?: Box;
   /**
@@ -56,11 +53,8 @@ export interface WidgetSpec {
 export interface WidgetLayerProps {
   layout: WindowMap;
   widgets: Record<string, WidgetSpec>;
-  editMode: boolean;
   onLayoutChange: (next: WindowMap) => void;
   onMetrics?: (m: StageMetrics) => void;
-  /** Gear clicked in edit mode: open the per-widget config popover on `anchor`. */
-  onConfigure?: (id: string, anchor: HTMLElement) => void;
   /**
    * Expanded widget, when the host drives it (the ambient strip opens a
    * surface from outside the layer). Omit to let the layer own the state.
@@ -183,10 +177,8 @@ function useOverflowCue(elements: MutableRefObject<Map<string, HTMLElement>>, ke
 export default function WidgetLayer({
   layout,
   widgets,
-  editMode,
   onLayoutChange,
   onMetrics,
-  onConfigure,
   expandedId,
   onExpandedChange,
   overview = false,
@@ -330,11 +322,6 @@ export default function WidgetLayer({
   }, [tetherTo, layout, slots, metrics.stacked]);
   const ids = orderedIds(Object.keys(layout)).filter((id) => widgets[id] && layout[id]?.visible);
 
-  const onGripKey = (id: string, e: KeyboardEvent<HTMLElement>) => {
-    if (!editMode) return;
-    if (nudge(id, e.key, e.shiftKey)) e.preventDefault();
-  };
-
   const hide = (id: string) => {
     setMaximized(null);
     snapshot();
@@ -392,7 +379,7 @@ export default function WidgetLayer({
               }
             }}
             data-widget-id={id}
-            className={`widget${boxed.h <= 140 && maximized !== id ? " compact" : ""} enter-fade-up${editMode ? " editing" : ""}${dragging ? ` dragging ${dragMode ?? ""}` : ""}`}
+            className={`widget${boxed.h <= 140 && maximized !== id ? " compact" : ""} enter-fade-up${dragging ? ` dragging ${dragMode ?? ""}` : ""}`}
             style={style}
             aria-label={widget.title}
             onPointerDown={(e) => {
@@ -476,31 +463,8 @@ export default function WidgetLayer({
             >
               <ChevronDown aria-hidden />
             </button>
-            {(editMode || !maximized) && (
+            {!maximized && (
               <>
-                {editMode && (
-                  <button
-                    type="button"
-                    className="widget-grip"
-                    aria-label={`${t("os.moveWidget")}: ${widget.title}`}
-                    title={t("os.moveWidget")}
-                    aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowUp"
-                    onKeyDown={(e) => onGripKey(id, e)}
-                  >
-                    <GripVertical aria-hidden />
-                  </button>
-                )}
-                {editMode && widget.configurable && onConfigure && (
-                  <button
-                    type="button"
-                    className="widget-config"
-                    aria-label={`${t("desktop.config.title")}: ${widget.title}`}
-                    title={t("desktop.config.open")}
-                    onClick={(e) => onConfigure(id, e.currentTarget)}
-                  >
-                    <Settings2 aria-hidden />
-                  </button>
-                )}
                 {!metrics.stacked && (
                   <button
                     type="button"

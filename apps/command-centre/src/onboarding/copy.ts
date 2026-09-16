@@ -125,15 +125,15 @@ const ptBR: TourCopy = {
   steps: {
     desktop: {
       title: "Seu dia começa aqui.",
-      body: "O desktop reúne o que está acontecendo: tarefas, agenda, custos, notificações e atalhos. O núcleo ao fundo reage à atividade dos agentes.",
-      hint: "Use o lápis no topo para adicionar, mover e redimensionar widgets. Os presets oferecem outros pontos de partida.",
-      tags: ["Widgets", "Agenda e tarefas", "Custos e alertas"],
+      body: "O palco abre limpo. O fundo é a sua memória; os pods à esquerda abrem apps, os da direita abrem instrumentos — cada um vira um painel que você arrasta, encaixa e referencia no console.",
+      hint: "Um pod só acende quando algo pede decisão. Arraste um painel pelo título; solte na borda para encaixar.",
+      tags: ["Pods", "Painéis", "Campo vivo"],
     },
     modes: {
       title: "Um espaço que acompanha você.",
-      body: "O dock conecta os apps e muda o modo do desktop. Experimente Foco e veja a interface se reorganizar de verdade.",
-      hint: "Os modos mudam a visualização. Seus widgets continuam disponíveis na Visão geral.",
-      tags: ["Navegação", "Modos de trabalho"],
+      body: "O dock guarda os espaços — Trabalho, Pesquisa, Ops — e cada um lembra os próprios painéis. Trocar de espaço é pôr um contexto no chão e pegar outro.",
+      hint: "A Visão geral (\\) afasta a câmera e mostra todos os painéis de uma vez.",
+      tags: ["Navegação", "Espaços"],
     },
     console: {
       title: "Transforme intenção em ação.",
@@ -260,15 +260,15 @@ const en: TourCopy = {
   steps: {
     desktop: {
       title: "Your day starts here.",
-      body: "The desktop brings together tasks, agenda, costs, notifications and shortcuts. The core in the background reacts to agent activity.",
-      hint: "Use the pencil at the top to add, move and resize widgets. Layout presets offer other starting points.",
-      tags: ["Widgets", "Agenda and tasks", "Costs and alerts"],
+      body: "The stage opens clear. The ground is your memory; pods on the left open apps, pods on the right open instruments — each becomes a panel you drag, snap and reference from the console.",
+      hint: "A pod only lights up when something needs a decision. Drag a panel by its title; drop it on an edge to snap.",
+      tags: ["Pods", "Panels", "Living field"],
     },
     modes: {
       title: "A space that moves with you.",
-      body: "The dock connects your apps and switches desktop modes. Try Focus and watch the actual interface reorganize.",
-      hint: "Modes change the view. Your widgets stay available in Overview.",
-      tags: ["Navigation", "Work modes"],
+      body: "The dock holds the spaces — Work, Research, Ops — and each remembers its own panels. Switching spaces is putting one context down and picking up another.",
+      hint: "Overview (\\) pulls the camera back and shows every panel at once.",
+      tags: ["Navigation", "Spaces"],
     },
     console: {
       title: "Turn intention into action.",

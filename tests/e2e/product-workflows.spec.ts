@@ -3,31 +3,31 @@ import { resetStage, settled, stageWith } from "./stage";
 
 test("spaces keep their own windows and the dock follows app navigation", async ({ page, request }) => {
   // This spec drags a window between spaces, so it puts one on the stage.
-  await stageWith(request, "prompt", "today");
+  await stageWith(request, "prompt", "routines");
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
   const dock = page.getByRole("navigation", { name: "Workspace navigation" });
   const consoleWidget = page.locator('[data-widget-id="prompt"]');
-  const today = page.locator('[data-widget-id="today"]');
+  const routines = page.locator('[data-widget-id="routines"]');
   await consoleWidget.locator("textarea").fill("Continue this after exploring");
 
   // Rearrange Work, then leave it.
-  const header = today.locator(".widget-inner > h2");
-  await settled(today);
+  const header = routines.locator(".widget-inner > h2");
+  await settled(routines);
   const g = (await header.boundingBox())!;
   await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
   await page.mouse.down();
   await page.mouse.move(g.x + g.width / 2 + 300, g.y + g.height / 2 + 140, { steps: 10 });
   await page.mouse.up();
-  await expect.poll(async () => (await today.boundingBox())!.x).toBeGreaterThan(240);
-  const arranged = (await today.boundingBox())!;
+  await expect.poll(async () => (await routines.boundingBox())!.x).toBeGreaterThan(240);
+  const arranged = (await routines.boundingBox())!;
 
   await dock.getByRole("button", { name: "Research", exact: true }).click();
   // A fresh space starts from the default composition, not the one just left —
   // and since F7 the default composition is a clear stage, so the window that
   // was just dragged around Work is simply not here.
-  await expect(today).toHaveCount(0);
+  await expect(routines).toHaveCount(0);
   // The draft belongs to the console, not to a space.
   await expect(consoleWidget.locator("textarea")).toHaveValue("Continue this after exploring");
 
@@ -42,10 +42,10 @@ test("spaces keep their own windows and the dock follows app navigation", async 
 
   // Back to Work: the arrangement is where it was left, across a reload too.
   await dock.getByRole("button", { name: "Work", exact: true }).click();
-  await expect.poll(async () => (await today.boundingBox())!.x).toBeCloseTo(arranged.x, -1);
+  await expect.poll(async () => (await routines.boundingBox())!.x).toBeCloseTo(arranged.x, -1);
   await page.reload();
   await expect(page.locator(".boot-screen")).toHaveCount(0);
-  await expect.poll(async () => (await today.boundingBox())!.x).toBeCloseTo(arranged.x, -1);
+  await expect.poll(async () => (await routines.boundingBox())!.x).toBeCloseTo(arranged.x, -1);
   await page.screenshot({ animations: "disabled", path: "artifacts/qa-workspace-overview.png" });
 
   await dock.getByRole("button", { name: "Collapse dock" }).click();

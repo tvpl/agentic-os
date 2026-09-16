@@ -52,8 +52,10 @@ test("a widget cannot be resized below its declared minimum", async ({ page, req
   const after = (await now.boundingBox())!;
   expect(after.height).toBeGreaterThanOrEqual(200);
   expect(after.width).toBeLessThan(before.width);
-  await page.getByRole("button", { name: /edit layout|editar layout/i }).click();
-  await page.getByRole("button", { name: /reset layout|redefinir layout|resetar layout/i }).click();
+  // Reset lives in the palette now that the edit bar is gone (G1).
+  await page.keyboard.press("Control+k");
+  await page.getByRole("dialog").getByRole("combobox").fill("reset layout");
+  await page.getByRole("option", { name: /reset layout|resetar layout/i }).click();
   await page.getByRole("button", { name: /^(confirm|confirmar)$/i }).click();
   await page.waitForTimeout(600);
 });

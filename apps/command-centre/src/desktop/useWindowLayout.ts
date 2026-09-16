@@ -99,7 +99,6 @@ export function useWindowLayout({
   serverLayout,
   stage,
   spaceId,
-  editing,
   onError,
 }: {
   serverLayout: Partial<Record<string, Partial<WindowMap[string]>>> | undefined;
@@ -110,7 +109,6 @@ export function useWindowLayout({
    * flight — otherwise the desktop would keep showing the space you left.
    */
   spaceId?: string;
-  editing: boolean;
   onError: (err: Error) => void;
 }): WindowLayoutState {
   const qc = useQueryClient();
@@ -153,13 +151,13 @@ export function useWindowLayout({
     setLayout(normalizeWindows(serverLayout, stage));
   }, [spaceId, serverLayout, stage]);
 
-  // Adopt the server layout only when idle: not editing, nothing pending, nothing dirty.
+  // Adopt the server layout only when idle: nothing pending, nothing dirty.
   useEffect(() => {
-    if (editing || isPending || dirty || !serverLayout) return;
+    if (isPending || dirty || !serverLayout) return;
     baseRef.current = serverLayout;
     const next = mergeMirror(normalizeWindows(serverLayout, stage));
     setLayout((prev) => (layoutsEqual(prev, next) ? prev : next));
-  }, [serverLayout, stage, editing, isPending, dirty]);
+  }, [serverLayout, stage, isPending, dirty]);
 
   // The stage changed size: pull the windows back into view. Not a user
   // edit, so it is never persisted — resizing the app must not rewrite the
