@@ -93,11 +93,17 @@ describe("widget registry", () => {
     const layout = defaultWindows({ w: 1440, h: 704 });
     const options = addableWidgets(layout);
     const ids = options.map((o) => o.id);
-    // `inbox` ships hidden, `today` ships visible and is duplicable.
+    // Since F7 the stage opens clear, so everything but the console is hidden
+    // and the gallery offers it as itself.
     expect(ids).toContain("inbox");
-    expect(ids).toContain("today:2");
-    // `deck` is visible and not duplicable: it must not be offered.
-    expect(ids).not.toContain("deck");
-    expect(options.find((o) => o.id === "today:2")?.duplicate).toBe(true);
+    expect(ids).toContain("today");
+    expect(ids).toContain("deck");
+    // The console is the one window that ships visible, and it is not
+    // duplicable: a second console would split the conversation in two.
+    expect(ids).not.toContain("prompt");
+    // A visible duplicable widget is still offered as a copy.
+    const withToday = { ...layout, today: { ...layout.today!, visible: true } };
+    const duplicate = addableWidgets(withToday).find((o) => o.id === "today:2");
+    expect(duplicate?.duplicate).toBe(true);
   });
 });

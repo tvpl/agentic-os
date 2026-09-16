@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { resetStage, settled, stageBoxes, stageWith } from "./stage";
 
 /**
  * The window model (redesign F4a). Its own file because it rearranges the
@@ -6,14 +7,12 @@ import { expect, test } from "@playwright/test";
  * which is exactly the coupling that broke the neighbouring specs twice.
  */
 test("windows drag by their title bar, raise, snap to an edge and persist", async ({ page, request }) => {
-  const reset = () =>
-    request.put("/api/settings", {
-      headers: { "x-mordomo-token": process.env.MORDOMO_TOKEN! },
-      data: { dashboardLayout: {} },
-    });
+  const reset = () => resetStage(request);
   // This spec rearranges the desktop, so it owns its fixture at both ends:
   // it starts from the default composition and hands it back.
-  await reset();
+  // The stage opens clear (F7), so the windows this spec drags have to be put
+  // on it first.
+  await stageWith(request, "today", "cost", "pulse", "now");
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/#/");
   // The desktop persists with a 300 ms debounce; give a neighbouring spec's
@@ -26,6 +25,7 @@ test("windows drag by their title bar, raise, snap to an edge and persist", asyn
   const zOf = (id: string) =>
     page.$eval(`[data-widget-id="${id}"]`, (e) => Number(getComputedStyle(e).zIndex));
 
+  await settled(today);
   const before = (await today.boundingBox())!;
   const grip = (await header.boundingBox())!;
   const from = { x: grip.x + grip.width / 2, y: grip.y + grip.height / 2 };
@@ -70,12 +70,17 @@ test("windows drag by their title bar, raise, snap to an edge and persist", asyn
 });
 
 test("the camera pulls back over the stage and a pick returns to it", async ({ page, request }) => {
-  const reset = () =>
-    request.put("/api/settings", {
-      headers: { "x-mordomo-token": process.env.MORDOMO_TOKEN! },
-      data: { dashboardLayout: {} },
-    });
-  await reset();
+  const reset = () => resetStage(request);
+  // A crowded stage: five windows that overlap and run off the bottom. That is
+  // what the camera is for, and it is what makes "everything got smaller and
+  // nothing overlaps" a real assertion rather than a property of the default.
+  await stageBoxes(request, {
+    today: { x: 60, y: 30, w: 620, h: 460 },
+    cost: { x: 200, y: 140, w: 600, h: 440 },
+    pulse: { x: 340, y: 250, w: 620, h: 460 },
+    now: { x: 480, y: 330, w: 640, h: 460 },
+    routines: { x: 620, y: 420, w: 600, h: 440 },
+  });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
@@ -87,6 +92,7 @@ test("the camera pulls back over the stage and a pick returns to it", async ({ p
 
   const stage = page.locator(".desktop-widgets");
   const pulse = page.locator('[data-widget-id="pulse"]');
+  await settled(pulse);
   const before = (await pulse.boundingBox())!;
   await page.keyboard.press("\\");
   await expect(stage).toHaveClass(/overview/);
@@ -167,17 +173,14 @@ test("artifact search lists its matches now that the ring is gone", async ({ pag
 });
 
 test("a window follows the pointer while it is dragged, not only on release", async ({ page, request }) => {
-  const reset = () =>
-    request.put("/api/settings", {
-      headers: { "x-mordomo-token": process.env.MORDOMO_TOKEN! },
-      data: { dashboardLayout: {} },
-    });
-  await reset();
+  const reset = () => resetStage(request);
+  await stageWith(request, "today");
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
   const today = page.locator('[data-widget-id="today"]');
   const header = today.locator(".widget-inner > h2");
+  await settled(today);
   const g = (await header.boundingBox())!;
   const before = (await today.boundingBox())!;
   await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);

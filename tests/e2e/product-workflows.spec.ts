@@ -1,12 +1,9 @@
 import { test, expect } from "@playwright/test";
+import { resetStage, settled, stageWith } from "./stage";
 
 test("spaces keep their own windows and the dock follows app navigation", async ({ page, request }) => {
-  const reset = () =>
-    request.put("/api/settings", {
-      headers: { "x-mordomo-token": process.env.MORDOMO_TOKEN! },
-      data: { dashboardLayout: {}, spaces: {}, activeSpace: "work" },
-    });
-  await reset();
+  // This spec drags a window between spaces, so it puts one on the stage.
+  await stageWith(request, "prompt", "today");
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
@@ -17,6 +14,7 @@ test("spaces keep their own windows and the dock follows app navigation", async 
 
   // Rearrange Work, then leave it.
   const header = today.locator(".widget-inner > h2");
+  await settled(today);
   const g = (await header.boundingBox())!;
   await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
   await page.mouse.down();
@@ -26,10 +24,10 @@ test("spaces keep their own windows and the dock follows app navigation", async 
   const arranged = (await today.boundingBox())!;
 
   await dock.getByRole("button", { name: "Research", exact: true }).click();
-  // A fresh space starts from the default composition, not the one just left.
-  // The default column now begins at the pod arc (ARC_MARGIN = 78), not at the
-  // stage edge, so this asserts "back home", not "flush left".
-  await expect.poll(async () => (await today.boundingBox())!.x).toBeLessThan(arranged.x - 200);
+  // A fresh space starts from the default composition, not the one just left —
+  // and since F7 the default composition is a clear stage, so the window that
+  // was just dragged around Work is simply not here.
+  await expect(today).toHaveCount(0);
   // The draft belongs to the console, not to a space.
   await expect(consoleWidget.locator("textarea")).toHaveValue("Continue this after exploring");
 
@@ -55,7 +53,7 @@ test("spaces keep their own windows and the dock follows app navigation", async 
   await dock.getByRole("button", { name: "Expand dock" }).click();
 
   await page.goto("about:blank");
-  await reset();
+  await resetStage(request);
 });
 
 test("Pixel Studio draws, undoes, adds frames, exports PNG and saves a viewable artifact", async ({

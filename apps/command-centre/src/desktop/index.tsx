@@ -51,6 +51,7 @@ import AgentPresence from "./AgentPresence";
 import LivingField from "./LivingField";
 import DesktopPods from "./DesktopPods";
 import SkillDeck from "./SkillDeck";
+import FirstRunHint from "./FirstRunHint";
 import ModelEffortPopover from "./ModelEffortPopover";
 import AddWidgetGallery from "./AddWidgetGallery";
 import { LayoutPresets } from "./LayoutPresets";
@@ -352,6 +353,33 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     [layout, commit, stage],
   );
 
+  /**
+   * A pod's window: put it on the stage if it is not there, raise it if it is.
+   * The stage opens clear (F7), so a pod is how most windows arrive — opening
+   * one must not feel like a different gesture from focusing one.
+   */
+  const openWindow = useCallback(
+    (id: string) => {
+      const existing = layout[id];
+      if (!existing) return false;
+      if (existing.visible && !existing.minimized) {
+        // Already on the stage: raising it is the whole answer.
+        commit({ ...layout, [id]: { ...existing, z: topZ(layout) + 1 } });
+        return true;
+      }
+      // Its stored corner was chosen for a different composition and may now
+      // be under the console or under a window opened a moment ago, so a
+      // window arriving from a pod is placed against what is actually open.
+      const spot = placeNew({ w: existing.w, h: existing.h }, layout, stage);
+      commit({
+        ...layout,
+        [id]: { ...existing, ...spot, visible: true, minimized: false, z: topZ(layout) + 1 },
+      });
+      return true;
+    },
+    [layout, commit, stage],
+  );
+
   /** Append `@name` to the console draft and put the caret back in it. */
   const referenceDoc = useCallback((id: string) => {
     const path = docPath(id);
@@ -427,6 +455,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
       >
         {!metrics?.stacked && <LivingField onOpenFile={(path) => openDoc(path)} />}
         <AgentPresence />
+        {!metrics?.stacked && <FirstRunHint />}
         <SkillDeck open={deckOpen} onClose={() => setDeckOpen(false)} />
 
         <div className="depth-layer desktop-depth">
@@ -437,8 +466,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
               onExpand={(id) => {
                 // A pod only opens what the layout actually holds; otherwise it
                 // would promise a panel that has no body to render.
-                if (layout[id]) setExpandedId(id);
-                else navigate("/settings");
+                if (!openWindow(id)) navigate("/settings");
               }}
             />
           )}

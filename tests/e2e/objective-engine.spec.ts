@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { stageWith } from "./stage";
 
 test("an objective drives the Now panel and preserves its causal chain in run detail", async ({
   page,
@@ -36,11 +37,9 @@ test("an objective drives the Now panel and preserves its causal chain in run de
   });
   expect(created.ok()).toBe(true);
 
-  // The desktop layout is shared server state: another spec may have left a
-  // widget hidden or rearranged. Start from the default composition so this
-  // test asserts on the Now panel it expects.
-  const reset = await request.put("/api/settings", { headers, data: { dashboardLayout: {} } });
-  expect(reset.ok()).toBe(true);
+  // The desktop layout is shared server state, and the stage opens clear (F7):
+  // this spec asserts on the Now panel, so this spec puts it there.
+  await stageWith(request, "now");
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/");
   const panel = page.locator(".now-objective");

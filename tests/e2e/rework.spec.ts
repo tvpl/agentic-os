@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { stageBoxes } from "./stage";
 
 /**
  * Regressions for the 2026-09 rework: the service-health banner, per-widget
@@ -30,7 +31,11 @@ test("a stale build shows the service banner and its restart button calls the AP
   await expect(banner).toContainText(/restarting|reiniciando/i);
 });
 
-test("a widget cannot be resized below its declared minimum", async ({ page }) => {
+test("a widget cannot be resized below its declared minimum", async ({ page, request }) => {
+  // The stage opens clear (F7): the window under test has to be put on it, and
+  // comfortably above its own floor (WINDOW_MIN.now = 360 × 200) so that the
+  // shrinking has somewhere to go before it stops.
+  await stageBoxes(request, { now: { x: 120, y: 40, w: 560, h: 420 } });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/#/");
   const now = page.locator('[data-widget-id="now"]');

@@ -1,13 +1,19 @@
 /**
  * The desktop's first composition, and the smallest box each window may take
- * (redesign F4a).
+ * (redesign F4a, recomposed in F7).
  *
  * Positions are stored in pixels, but the *default* is expressed as fractions
  * of the stage: a first run on a 1280×800 laptop and on a 2560×1440 monitor
  * should both open composed, not with a 1440-pixel layout clamped into a
- * smaller screen. The fractions are the three-column composition the grid
- * used to produce, so nothing about the first impression changes — only what
- * the user can do to it afterwards.
+ * smaller screen.
+ *
+ * F7 changed what "composed" means. The fractions used to reproduce the old
+ * three-column grid, which is exactly why the running app still read as the
+ * dashboard it was meant to replace: nine panels, all open, before the user
+ * had asked for anything. The stage now opens clear — console, pods, dock and
+ * the memory field — and every other window is one pod away. The fractions
+ * below are still where each one lands when it is opened; they are a
+ * destination now, not a first impression.
  */
 import { WIDGET_ORDER, baseId, type WidgetId } from "./defaultLayout";
 import {
@@ -33,23 +39,44 @@ const SIDE = 5 / 24;
 const CENTRE = 14 / 24;
 const RIGHT = 19 / 24;
 
+/**
+ * Where each window lands when a pod opens it. Only the console is on the
+ * stage at first boot; the rest keep the columns they used to sit in, so
+ * opening three of them still composes instead of piling up at one corner.
+ */
 export const DEFAULT_SPECS: Record<WidgetId, Spec> = {
-  now: { fx: SIDE, fy: 0, fw: CENTRE, fh: 0.4, visible: true },
+  // The console is the one thing the desktop opens with: it is where you say
+  // what you want, and everything else answers it.
   prompt: { fx: SIDE, fy: 0.4, fw: CENTRE, fh: 0.45, visible: true },
-  attention: { fx: SIDE, fy: 0.85, fw: CENTRE, fh: 0.15, visible: true },
-  today: { fx: 0, fy: 0, fw: SIDE, fh: 0.5, visible: true },
-  workspace: { fx: 0, fy: 0.5, fw: SIDE, fh: 0.25, visible: true },
-  cost: { fx: 0, fy: 0.75, fw: SIDE, fh: 0.25, visible: true },
-  deck: { fx: RIGHT, fy: 0, fw: SIDE, fh: 0.5, visible: true },
-  routines: { fx: RIGHT, fy: 0.5, fw: SIDE, fh: 0.25, visible: true },
-  pulse: { fx: RIGHT, fy: 0.75, fw: SIDE, fh: 0.25, visible: true },
-  // Available from the gallery, not part of the first impression.
+  now: { fx: SIDE, fy: 0, fw: CENTRE, fh: 0.4, visible: false },
+  attention: { fx: SIDE, fy: 0.85, fw: CENTRE, fh: 0.15, visible: false },
+  today: { fx: 0, fy: 0, fw: SIDE, fh: 0.5, visible: false },
+  workspace: { fx: 0, fy: 0.5, fw: SIDE, fh: 0.25, visible: false },
+  cost: { fx: 0, fy: 0.75, fw: SIDE, fh: 0.25, visible: false },
+  deck: { fx: RIGHT, fy: 0, fw: SIDE, fh: 0.5, visible: false },
+  routines: { fx: RIGHT, fy: 0.5, fw: SIDE, fh: 0.25, visible: false },
+  pulse: { fx: RIGHT, fy: 0.75, fw: SIDE, fh: 0.25, visible: false },
   microapps: { fx: 0.06, fy: 0.06, fw: 0.2, fh: 0.35, visible: false },
   inbox: { fx: 0.24, fy: 0.06, fw: 0.28, fh: 0.3, visible: false },
   agenda: { fx: 0.3, fy: 0.12, fw: 0.28, fh: 0.25, visible: false },
   calendar: { fx: 0.36, fy: 0.18, fw: 0.28, fh: 0.35, visible: false },
   email: { fx: 0.42, fy: 0.24, fw: 0.28, fh: 0.35, visible: false },
 };
+
+/** The console's own box: centred over the dock, capped so it never sprawls. */
+const CONSOLE_MAX_W = 860;
+const CONSOLE_H = 280;
+
+function consoleBox(stage: Size): { x: number; y: number; w: number; h: number } {
+  const w = Math.min(CONSOLE_MAX_W, Math.max(minFor("prompt").w, stage.w - ARC_MARGIN * 2 - 64));
+  const h = Math.min(CONSOLE_H, Math.max(minFor("prompt").h, stage.h - 40));
+  return {
+    x: Math.round((stage.w - w) / 2),
+    y: Math.round(Math.max(0, stage.h - h - 12)),
+    w: Math.round(w),
+    h: Math.round(h),
+  };
+}
 
 /**
  * Smallest box per widget, in CSS pixels — what the body needs before it
@@ -100,6 +127,10 @@ export function defaultWindows(stage: Size): WindowMap {
       z: i + 1,
       visible: spec.visible,
       minimized: false,
+      // The console is anchored rather than placed on the grid, and it is the
+      // only window on the stage at first boot, so it owns the top of the
+      // stack too.
+      ...(id === "prompt" ? { ...consoleBox(stage), z: WIDGET_ORDER.length + 1 } : {}),
     };
     out[id] = clampIntoStage(box, stage, minFor(id));
   });

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { resetStage, stageBoxes, stageWith } from "./stage";
 
 test("microapps and onboarding navigate to usable content without reload", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -29,6 +30,14 @@ test("microapps and onboarding navigate to usable content without reload", async
 });
 
 test("console maximizes, restores, resizes and Now stays hidden after reload", async ({ page, request }) => {
+  // The console and one companion: this spec is about a surface opening over a
+  // desktop that is still there behind it, so there has to be something behind.
+  // The console is given room above its floor (WINDOW_MIN.prompt = 380 × 260),
+  // because the spec shrinks it and expects that to do something.
+  await stageBoxes(request, {
+    prompt: { x: 120, y: 60, w: 700, h: 420 },
+    now: { x: 860, y: 60, w: 420, h: 300 },
+  });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/#/");
   const consoleWidget = page.locator('[data-widget-id="prompt"]');
@@ -71,20 +80,14 @@ test("console maximizes, restores, resizes and Now stays hidden after reload", a
   await expect(consoleWidget).toBeVisible();
   await expect(page.locator('[data-widget-id="now"]')).toHaveCount(0);
 
-  // This spec deliberately leaves a widget hidden, and the e2e home is shared
-  // by every later spec — `objective-engine` then cannot find the Now panel it
-  // asserts on. Hand the desktop back at its default composition: an empty
-  // stored layout is how `normalizeLayout` expresses "no user layout".
-  const reset = await request.put("/api/settings", {
-    headers: { "x-mordomo-token": process.env.MORDOMO_TOKEN! },
-    data: { dashboardLayout: {} },
-  });
-  expect(reset.ok()).toBe(true);
-  await page.reload();
-  await expect(page.locator('[data-widget-id="now"]')).toBeVisible();
+  // The e2e home is shared by every later spec, so this one hands the desktop
+  // back the way it found it.
+  await page.goto("about:blank");
+  await resetStage(request);
 });
 
-test("the pods light only what needs a decision", async ({ page }) => {
+test("the pods light only what needs a decision", async ({ page, request }) => {
+  await resetStage(request);
   await page.setViewportSize({ width: 1440, height: 900 });
   // Two runs the user has to look at; everything else is calm.
   await page.route("**/api/runs?*", (route) =>
@@ -107,12 +110,14 @@ test("the pods light only what needs a decision", async ({ page }) => {
   );
   expect(levels.length).toBeGreaterThan(1);
   expect(levels.every((l) => l === "idle" || l === "info")).toBe(true);
-  // A lit reading is an entry point, not a label.
+  // A lit reading is an entry point, not a label: the pod puts its panel on the
+  // stage (F7), which is also how most windows arrive now that it opens clear.
+  await expect(page.locator('[data-widget-id="attention"]')).toHaveCount(0);
   await page.locator('.pod-arc.r .pod[data-pod="attention"]').click();
-  await expect(page.locator(".surface")).toBeVisible();
+  await expect(page.locator('[data-widget-id="attention"]')).toBeVisible();
 });
 
-test("the skill deck fans out over the console and runs what is picked", async ({ page }) => {
+test("the skill deck fans out over the console and runs what is picked", async ({ page, request }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.route("**/api/skills", (route) =>
     route.fulfill({
@@ -140,6 +145,7 @@ test("the skill deck fans out over the console and runs what is picked", async (
       ],
     }),
   );
+  await stageWith(request, "prompt");
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
   // The skills pod fans the deck out rather than leaving the desktop.
@@ -158,6 +164,28 @@ test("the skill deck fans out over the console and runs what is picked", async (
   await expect(page.locator(".skill-deck")).toHaveClass(/open/);
   await page.keyboard.press("Escape");
   await expect(page.locator(".skill-deck")).toHaveCount(0);
+});
+
+test("the ground carries the whole workspace, not only the indexed files", async ({ page, request }) => {
+  await resetStage(request);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/#/");
+  await expect(page.locator(".boot-screen")).toHaveCount(0);
+  const field = page.locator("canvas.living-field");
+  await expect(field).toBeVisible();
+  // Files alone came out as three faint dots on a real workspace; skills,
+  // routines and runs are memory too, and together they make a sky.
+  await expect.poll(async () => Number((await field.getAttribute("data-points")) ?? 0)).toBeGreaterThan(20);
+  // It has actually painted — a tab loaded in the background gets no animation
+  // frames, and a resize wipes the canvas, so both used to leave it blank.
+  const lit = await field.evaluate((el) => {
+    const canvas = el as HTMLCanvasElement;
+    const data = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height).data;
+    let n = 0;
+    for (let i = 3; i < data.length; i += 4) if (data[i]! > 20) n++;
+    return n;
+  });
+  expect(lit).toBeGreaterThan(1000);
 });
 
 test("Portuguese notification opens its destination, not just its read state", async ({ page }) => {

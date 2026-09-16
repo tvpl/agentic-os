@@ -2570,3 +2570,41 @@ body.window-dragging .app-rail {
     transform: translate(var(--dx), var(--dy)) scale(1);
   }
 }
+
+/* --------------------------------------------- first-run hint (F7) ------
+   One line over a clear stage, naming the gestures that fill it. It fades on
+   a timer and on the first gesture, so it never becomes furniture. */
+.first-run-hint {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--stage-top) + 28px);
+  transform: translateX(-50%);
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  text-align: center;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
+  z-index: var(--z-widget);
+  pointer-events: none;
+  max-width: min(720px, calc(100% - 200px));
+  unicode-bidi: plaintext;
+  animation: hint-in var(--dur-slow) var(--ease-standard) both;
+}
+@keyframes hint-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .first-run-hint {
+    animation: none;
+  }
+}
