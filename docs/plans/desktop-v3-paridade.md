@@ -528,6 +528,86 @@ desktop tem o layout ao vivo — incluindo um arrasto que o debounce ainda não 
 4. **Asserção de e2e boa demais.** O tour garantia "nenhuma escrita na API"; trocar de espaço
    persiste. Estreitei para "nada de runs, skills ou rotinas" em vez de afrouxar de vez.
 
+## F7 entregue — a camada visual do protótipo
+
+Este é o F que não estava no plano, e o único que veio de você rodar o sistema: *"o app que
+rodou, o layout e a proposta não tem nada a haver com o plano e protótipo que me mostrou"*.
+Estava certo. Do protótipo aprovado, F1–F6 entregaram o **comportamento** — janelas, câmera,
+contexto, espaços — e nada da **linguagem visual**. E havia um motivo concreto: o
+`defaultWindows.ts` reproduzia a grade de três colunas de propósito, com um comentário
+chamando isso de virtude — *"nothing about the first impression changes"*. Cada moldura nova
+foi pendurada no mesmo dashboard de nove painéis que o redesenho existia para substituir.
+
+Arquivos novos: `desktop/DesktopPods.tsx`, `desktop/LivingField.tsx`,
+`desktop/fieldPoints.ts` (+ teste), `desktop/SkillDeck.tsx` (+ teste),
+`desktop/FirstRunHint.tsx`, `tests/e2e/stage.ts`.
+Apagados: `desktop/AmbientStrip.tsx` (+ teste), `desktop/AppRail.tsx`.
+
+### Os pods
+
+A faixa ambiente provou a regra — `idle` nunca acende — mas manteve a forma errada: uma
+linha de números no topo, que é o que o dashboard já era. Os instrumentos viraram hexágonos
+em dois arcos: apps à esquerda, leituras à direita. Um pod dá corpo à mesma leitura — glifo,
+um valor, um contador quando há pendência — então um relance na borda responde "alguma coisa
+precisa de mim?" sem ler nada. Os níveis continuam vindo de `signal.ts`, então um pod e o
+painel atrás dele não podem discordar.
+
+### O deck radial
+
+"Onde eu aciono uma skill?" era a primeira pergunta que o desktop não respondia, e uma lista
+rolável dentro de um card não era a resposta. O arco abre sobre o console — onde a mão já
+está quando você vai pedir alguma coisa — e fecha no instante em que uma é escolhida. É um
+diálogo de verdade: renderiza fora da casca para que a casca possa ficar `inert`, e o
+`useDialog` dá Escape, focus trap e devolução de foco. Três entradas, porque uma skill nunca
+deve estar a mais de um gesto: o pod de skills, `⌘J` (que funciona de dentro do console, por
+isso mantém o modificador) e a paleta. O que não cabe no arco **não some**: o último assento
+diz quantas sobraram e as entrega à página de skills.
+
+### O palco abre limpo
+
+O padrão agora é o console sozinho. Toda outra janela chega quando um pod, o dock ou o agente
+a coloca lá — e é posicionada com `placeNew` contra o que está realmente aberto, não no canto
+que uma composição antiga escolheu para ela. As frações do `DEFAULT_SPECS` continuam
+existindo, mas passaram a ser **destino**, não primeira impressão.
+
+### O chão vira o workspace
+
+O campo desenhava um ponto por arquivo indexado, e numa máquina real isso deu três pontinhos
+apagados. A correção não foi inventar pontos — foi desenhar tudo o que o OS de fato sabe:
+skills, rotinas e execuções recentes são memória tanto quanto os arquivos. Uma run que falhou
+ou uma rotina doente **queima** em vez de brilhar, então o chão carrega o mesmo aviso que os
+pods. Uma linha acima dele nomeia os gestos uma vez e se aposenta — no timer e no primeiro
+gesto de verdade.
+
+### Defeitos encontrados nesta passagem
+
+1. **Quadro perdido em aba oculta.** Uma aba carregada em segundo plano não recebe animation
+   frames, então esperar o `requestAnimationFrame` deixava o chão em branco até a aba ganhar
+   foco pela primeira vez. O primeiro quadro passou a ser pintado de forma síncrona.
+2. **`ResizeObserver` apagando o próprio quadro.** Atribuir `canvas.width` limpa o canvas
+   **mesmo quando o valor não muda**, e o observer dispara uma vez no instante em que começa
+   a observar — apagando exatamente o quadro recém-pintado. Agora só redimensiona quando o
+   tamanho muda de fato, e repinta quando muda.
+3. **Campo agarrado no lugar da janela.** Uma spec pegava a barra de título logo após o
+   reload e o ponteiro caía no canvas atrás: a janela ainda estava animando para o lugar.
+   Virou um helper `settled()` que espera duas leituras iguais, em vez de um `waitForTimeout`
+   no escuro.
+4. **Colisão do pod com o console.** O primeiro `onExpand` reusava a caixa guardada, escolhida
+   para outra composição — `attention` (fy 0.85, centro) caía em cima do console ancorado.
+   Daí o `placeNew`.
+5. **Fixture e2e que semeava nada, em silêncio.** O schema degrada um layout ilegível para
+   `{}` em vez de lançar (a correção que impediu o serviço de cair). Uma entrada parcial no
+   fixture, portanto, não semeava nada e não avisava. O `stage.ts` escreve caixas completas e
+   lê de volta o que gravou.
+
+### Sobre as specs que quebraram
+
+Nove specs falharam ao abrir o palco limpo, e todas pelo mesmo motivo honesto: assumiam os
+nove painéis do default antigo. Cada uma passou a declarar a composição de que precisa. Duas
+asserções mediam propriedades do default e não do comportamento — "algo encolheu na visão
+geral" passava porque as janelas padrão eram grandes; agora a spec semeia um palco lotado de
+propósito, que é para isso que a câmera existe.
+
 ## Revisão final
 
 Uma varredura no arco inteiro F1–F6 encontrou **código especulativo meu**: `tile`, `cascade`,
@@ -546,24 +626,37 @@ Resolvido caso a caso, não em bloco:
 Também saíram 20 chaves de i18n órfãs dos modos, do explorar e do anel. Restam 12 órfãs
 pré-existentes, de antes deste trabalho.
 
-### Gates finais
+### Gates finais (após F7)
 
 | Gate | Resultado |
 |---|---|
-| `npm test` (raiz) | 62 arquivos · 491 testes |
-| `npm run test -w apps/command-centre` | 44 arquivos · 320 testes |
-| `npx playwright test` (suíte inteira) | 106 passaram · 2 pulados · 0 falhas |
+| `npm test` (raiz) | 62 arquivos · 492 testes |
+| `npm run test -w apps/command-centre` | 44 arquivos · 334 testes |
+| `npx playwright test` (suíte inteira) | 108 passaram · 0 falhas |
 | `typecheck` · `eslint` · `prettier` | limpos |
+
+Os números de F1–F6 acima ficaram como estavam: são o registro daquele momento, não uma
+contagem viva.
 
 ## Pacote para macOS
 
-`release/MordomoOS-0.8.0-macos-arm64.zip` (36,7 MB). Verificado sem tocar no serviço dele:
-extraído com `ditto`, assinatura íntegra (`valid on disk`, `satisfies its Designated
-Requirement`), subiu numa porta e num home isolados, serviu a UI com o MIME certo, a API
-respondeu, `doctor` deu 6 ok · 3 warn · 0 fail, e parou limpo. Os marcadores do trabalho novo
-(`ambient-strip`, `agent-presence`, `dock-spaces`, `context-chip`, `doc-window`, `tethers`,
-`snap-preview`, `app-rail`) estão todos no bundle.
+O `release/MordomoOS-0.8.0-macos-arm64.zip` que está no disco é **anterior ao F7** — foi
+gerado e verificado no fim do F6, e não contém os pods, o deck, o campo nem o palco limpo.
+Reempacotar está pendente de propósito, esperando o aceite visual.
+
+O que a verificação do pacote de F6 estabeleceu, e que continua valendo como método: extrair
+com `ditto` (não `unzip`), conferir a assinatura com `codesign`, subir numa porta e num home
+isolados — **nunca** rodar o `.app` de verdade durante o teste, porque ele abre o navegador e
+se acopla a qualquer coisa que responda na 4777. Naquela verificação: assinatura íntegra
+(`valid on disk`, `satisfies its Designated Requirement`), UI servida com o MIME certo, API
+respondendo, `doctor` 6 ok · 3 warn · 0 fail, parada limpa.
 
 Assinatura **ad-hoc**: `spctl` rejeita, o que só importa para uma cópia baixada (com atributo
 de quarentena). Aberto localmente, abre normalmente. Assinar com o Developer ID e notarizar
 está disponível no empacotador se for distribuir.
+
+## Uma nota sobre atualizar um install existente
+
+O palco limpo é o **padrão**, não uma migração. Um install que já tem um arranjo salvo
+continua abrindo com ele — apagar o arranjo de alguém em silêncio seria a decisão errada. O
+caminho é **Editar layout → Redefinir layout**, que agora devolve o palco limpo.
