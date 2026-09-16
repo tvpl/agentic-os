@@ -5,7 +5,7 @@ export const ONBOARDING_DRAFT_EVENT = "mordomo:onboarding-draft";
 export const TOUR_STEPS = [
   { id: "desktop", chapter: 0, route: "/", target: '[data-onboarding="desktop"]' },
   { id: "modes", chapter: 0, route: "/", target: '[data-onboarding="modes"]' },
-  { id: "console", chapter: 0, route: "/", target: '[data-panel="prompt"]' },
+  { id: "console", chapter: 0, route: "/", target: "[data-console]" },
   { id: "providers", chapter: 1, route: "/settings?tab=providers", target: "#settings-tabs-panel-providers" },
   { id: "brain", chapter: 1, route: "/brain", target: '[data-onboarding="brain"]' },
   { id: "skills", chapter: 1, route: "/skills", target: '[data-onboarding="skills"] .page' },

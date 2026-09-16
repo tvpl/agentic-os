@@ -46,6 +46,8 @@ export const STAGE_PAD = 12;
  * user drags there is still allowed to go, because it is their desktop.
  */
 export const ARC_MARGIN = 78;
+/** Height of the fixed console's band over the bottom of the stage (prototype BAND). */
+export const CONSOLE_BAND = 150;
 /**
  * How much of a window must stay on stage when it is dragged to the edge.
  * A window can hang off the side — that is how people park things — but its
@@ -189,12 +191,15 @@ export function cascade(layout: WindowMap, stage: Size, step = 34): WindowMap {
  * scattering. Cheap enough to run on every open (≈ 200 probes).
  */
 export function placeNew(size: Size, layout: WindowMap, stage: Size): { x: number; y: number } {
-  const { w, h } = clampSize(size, { w: MIN_W, h: MIN_H }, stage);
+  // The console is fixed over the bottom of the stage (G4): a new window is
+  // placed above its band, so nothing arrives underneath it.
+  const floor = Math.max(MIN_H + STAGE_PAD * 2, stage.h - CONSOLE_BAND);
+  const { w, h } = clampSize(size, { w: MIN_W, h: MIN_H }, { w: stage.w, h: floor });
   const live = Object.values(layout).filter((b) => b.visible && !b.minimized);
   const left = ARC_MARGIN + STAGE_PAD;
   const right = stage.w - ARC_MARGIN - STAGE_PAD;
   let best: { cost: number; x: number; y: number } | null = null;
-  for (let y = STAGE_PAD; y + h <= stage.h - STAGE_PAD; y += 40) {
+  for (let y = STAGE_PAD; y + h <= floor - STAGE_PAD; y += 40) {
     for (let x = left; x + w <= right; x += 52) {
       let cost = 0;
       for (const b of live) {
@@ -264,10 +269,6 @@ export interface Point {
 }
 
 /** Where a tether leaves the console: the middle of its top edge. */
-export function tetherOrigin(consoleBox: WindowBox): Point {
-  return { x: consoleBox.x + consoleBox.w / 2, y: consoleBox.y };
-}
-
 /**
  * Where a tether lands on a referenced window: the point on its outline
  * nearest the console, clamped to the edge so the line touches the window

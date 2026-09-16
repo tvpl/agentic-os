@@ -10,13 +10,13 @@ async function openDesktop(page: Page) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
-  await expect(page.locator('[data-panel="prompt"]')).toBeVisible();
+  await expect(page.locator("[data-console]")).toBeVisible();
 }
 
 test("console → trace panel → result panel → reference in the next prompt", async ({ page, request }) => {
   await resetStage(request);
   await openDesktop(page);
-  const consolePanel = page.locator('[data-panel="prompt"]');
+  const consolePanel = page.locator("[data-console]");
   // The fake provider writes `report.md` into this run's own artifacts directory.
   await consolePanel.locator("textarea").fill("write me a report [[artifact:report.md]]");
   await consolePanel
@@ -103,7 +103,7 @@ test("a write-mode skill waits in the approvals panel; approving opens its trace
 test("a run's route is a deep link into its trace panel", async ({ page, request }) => {
   await resetStage(request);
   await openDesktop(page);
-  const consolePanel = page.locator('[data-panel="prompt"]');
+  const consolePanel = page.locator("[data-console]");
   await consolePanel.locator("textarea").fill("hello from a deep link");
   await consolePanel
     .getByRole("button", { name: /^run|executar/i })

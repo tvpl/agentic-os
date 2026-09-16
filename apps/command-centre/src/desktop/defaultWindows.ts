@@ -42,14 +42,12 @@ const CENTRE = 14 / 24;
 const RIGHT = 19 / 24;
 
 /**
- * Where each window lands when a pod opens it. Only the console is on the
- * stage at first boot; the rest keep the columns they used to sit in, so
- * opening three of them still composes instead of piling up at one corner.
+ * Where each window lands when a pod opens it. Nothing is on the stage at
+ * first boot — the console is fixed over it (G4), not a window — and each
+ * instrument keeps the column it used to sit in, so opening three of them
+ * still composes instead of piling up at one corner.
  */
 export const DEFAULT_SPECS: Record<WidgetId, Spec> = {
-  // The console is the one thing the desktop opens with: it is where you say
-  // what you want, and everything else answers it.
-  prompt: { fx: SIDE, fy: 0.4, fw: CENTRE, fh: 0.45, visible: true },
   now: { fx: SIDE, fy: 0, fw: CENTRE, fh: 0.4, visible: false },
   attention: { fx: SIDE, fy: 0.85, fw: CENTRE, fh: 0.15, visible: false },
   approvals: { fx: SIDE, fy: 0.1, fw: 0.34, fh: 0.4, visible: false },
@@ -59,29 +57,12 @@ export const DEFAULT_SPECS: Record<WidgetId, Spec> = {
   inbox: { fx: 0.24, fy: 0.06, fw: 0.28, fh: 0.3, visible: false },
 };
 
-/** The console's own box: centred over the dock, capped so it never sprawls. */
-const CONSOLE_MAX_W = 860;
-const CONSOLE_H = 280;
-
-function consoleBox(stage: Size): { x: number; y: number; w: number; h: number } {
-  const w = Math.min(CONSOLE_MAX_W, Math.max(minFor("prompt").w, stage.w - ARC_MARGIN * 2 - 64));
-  const h = Math.min(CONSOLE_H, Math.max(minFor("prompt").h, stage.h - 40));
-  return {
-    x: Math.round((stage.w - w) / 2),
-    y: Math.round(Math.max(0, stage.h - h - 12)),
-    w: Math.round(w),
-    h: Math.round(h),
-  };
-}
-
 /**
  * Smallest box per widget, in CSS pixels — what the body needs before it
- * starts clipping. The console's floor is the one that matters: its thread,
- * field and button row need ~170 px of body under ~72 px of frame.
+ * starts clipping.
  */
 export const WINDOW_MIN: Partial<Record<string, Size>> = {
   now: { w: 360, h: 200 },
-  prompt: { w: 380, h: 260 },
   routines: { w: 260, h: 150 },
   attention: { w: 300, h: MIN_H },
 };
@@ -123,10 +104,6 @@ export function defaultWindows(stage: Size): WindowMap {
       z: i + 1,
       visible: spec.visible,
       minimized: false,
-      // The console is anchored rather than placed on the grid, and it is the
-      // only window on the stage at first boot, so it owns the top of the
-      // stack too.
-      ...(id === "prompt" ? { ...consoleBox(stage), z: WIDGET_ORDER.length + 1 } : {}),
     };
     out[id] = clampIntoStage(box, stage, minFor(id));
   });

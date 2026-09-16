@@ -9,7 +9,7 @@
  * instruments a pod on the right arc opens. Apps (kind `app`), documents
  * (`artifact`) and traces (`run`) are registered elsewhere.
  */
-import { Activity, AlertTriangle, CalendarClock, Coins, Inbox, ShieldCheck, Terminal } from "lucide-react";
+import { Activity, AlertTriangle, CalendarClock, Coins, Inbox, ShieldCheck } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import type { TKey } from "../i18n";
 import type { WidgetId } from "./defaultLayout";
@@ -18,7 +18,6 @@ import BoardWidget from "./widgets/BoardWidget";
 import PulseWidget from "./widgets/PulseWidget";
 import AttentionWidget from "./widgets/AttentionWidget";
 import ApprovalsWidget from "./widgets/ApprovalsWidget";
-import PromptWidget from "./widgets/PromptWidget";
 import InboxWidget from "./widgets/InboxWidget";
 import NowPanel from "./NowPanel";
 import CostWidget from "./widgets/CostWidget";
@@ -88,14 +87,6 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     refKey: "desktop.ref.approvals",
     icon: <ShieldCheck aria-hidden />,
     Component: ApprovalsWidget,
-  },
-  prompt: {
-    id: "prompt",
-    surfaceMin: { w: 520, h: 380 },
-    titleKey: "desktop.widget.prompt",
-    refKey: "desktop.ref.prompt",
-    icon: <Terminal aria-hidden />,
-    Component: PromptWidget,
   },
   inbox: {
     id: "inbox",

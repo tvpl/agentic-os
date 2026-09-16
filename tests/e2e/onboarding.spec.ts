@@ -97,7 +97,7 @@ test("interactive journey visits real apps, practices safely and hands off a dra
   await expect(guide).toContainText("12/12 areas explored");
   await guide.getByRole("button", { name: "Bring draft to console" }).click();
   await expect(guide).toHaveCount(0);
-  await expect(page.locator(".promptw-input")).toHaveValue(
+  await expect(page.locator(".cons-input")).toHaveValue(
     "Existing draft\n\nSummarize this folder without changing files.",
   );
   expect(writes).toEqual([]);
@@ -125,9 +125,7 @@ test("mobile, Portuguese, reduced motion, keyboard and accessible welcome", asyn
   for (let i = 0; i < 2; i++) await guide.getByRole("button", { name: "Próximo passo", exact: true }).click();
   await expect(guide.getByRole("textbox")).toBeVisible();
   await expect(page.locator(".ob-spotlight")).toBeVisible();
-  await expect
-    .poll(async () => (await page.locator('[data-panel="prompt"]').boundingBox())?.y)
-    .toBeLessThan(150);
+  await expect.poll(async () => (await page.locator("[data-console]").boundingBox())?.y).toBeLessThan(150);
   await page.screenshot({ animations: "disabled", path: test.info().outputPath("practice-mobile.png") });
   await page.keyboard.press("Tab");
   expect(await guide.evaluate((node) => node.contains(document.activeElement))).toBe(true);

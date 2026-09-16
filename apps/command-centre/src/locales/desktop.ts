@@ -164,7 +164,7 @@ export const en = {
   "desktop.prompt.submissionConflict":
     "This submission identity belongs to different content. Edit the draft before sending a new task.",
   /* ---- prompt widget ---- */
-  "desktop.prompt.placeholder": "Ask the agent… (⌘↵ to run, / for a skill)",
+  "desktop.prompt.placeholder": "Ask the agent…   @ references what is open · / opens the skill deck",
   "desktop.prompt.run": "Run",
   "desktop.prompt.readOnly": "Read only",
   "desktop.prompt.write": "Write",
@@ -195,6 +195,14 @@ export const en = {
   "desktop.console.mic": "Speak to the agent",
   "desktop.console.micStop": "Stop listening",
   "desktop.console.read": "Read aloud",
+  "desktop.console.model": "Model · effort for the next run",
+  "desktop.console.effort.low": "low",
+  "desktop.console.effort.medium": "medium",
+  "desktop.console.effort.high": "high",
+  "desktop.console.effort.default": "default",
+  "desktop.console.ac": "Open on the stage · referenceable",
+  "desktop.console.thread": "Show the conversation",
+  "desktop.console.threadHide": "Hide the conversation",
   "desktop.next.title": "Next step",
   "desktop.next.folder": "Point the memory at a real folder",
   "desktop.next.folderBody":
@@ -465,7 +473,7 @@ export const ptBR = {
     "O resultado do envio é incerto. Abra Execuções e confira o histórico antes de enviar uma nova tarefa.",
   "desktop.prompt.submissionConflict":
     "A identidade deste envio pertence a outro conteúdo. Edite o rascunho antes de enviar uma nova tarefa.",
-  "desktop.prompt.placeholder": "Peça ao agente… (⌘↵ para executar, / para uma skill)",
+  "desktop.prompt.placeholder": "Peça ao agente…   @ referencia o que está aberto · / abre o deck de skills",
   "desktop.prompt.run": "Executar",
   "desktop.prompt.readOnly": "Somente leitura",
   "desktop.prompt.write": "Escrita",
@@ -496,6 +504,14 @@ export const ptBR = {
   "desktop.console.mic": "Falar com o agente",
   "desktop.console.micStop": "Parar de ouvir",
   "desktop.console.read": "Ler em voz alta",
+  "desktop.console.model": "Modelo · esforço da próxima execução",
+  "desktop.console.effort.low": "baixo",
+  "desktop.console.effort.medium": "médio",
+  "desktop.console.effort.high": "alto",
+  "desktop.console.effort.default": "padrão",
+  "desktop.console.ac": "Aberto no palco · referenciável",
+  "desktop.console.thread": "Mostrar a conversa",
+  "desktop.console.threadHide": "Ocultar a conversa",
   "desktop.next.title": "Próximo passo",
   "desktop.next.folder": "Aponte a memória para uma pasta real",
   "desktop.next.folderBody":

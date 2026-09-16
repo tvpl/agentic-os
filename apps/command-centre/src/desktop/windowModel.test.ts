@@ -22,7 +22,6 @@ import {
   raise,
   snapBox,
   snapEdgeAt,
-  tetherOrigin,
   tetherPath,
   tetherTarget,
   tile,
@@ -251,14 +250,11 @@ describe("placing a new window", () => {
 });
 
 describe("tethers", () => {
-  const consoleBox = box({ x: 400, y: 500, w: 600, h: 200 });
-
-  it("leaves the console from the middle of its top edge", () => {
-    expect(tetherOrigin(consoleBox)).toEqual({ x: 700, y: 500 });
-  });
+  // The console is fixed over the stage (G4): the origin is a point read from
+  // the document, the middle of its top edge.
+  const from = { x: 700, y: 500 };
 
   it("lands on the edge facing the console, never in its middle", () => {
-    const from = tetherOrigin(consoleBox);
     const above = tetherTarget(box({ x: 600, y: 100, w: 200, h: 150 }), from);
     expect(above.y).toBe(250); // bottom edge: the window is above the console
     const below = tetherTarget(box({ x: 600, y: 760, w: 200, h: 150 }), from);
@@ -266,7 +262,6 @@ describe("tethers", () => {
   });
 
   it("stays inside the window it points at", () => {
-    const from = tetherOrigin(consoleBox);
     const target = box({ x: 40, y: 60, w: 200, h: 150 });
     const point = tetherTarget(target, from);
     expect(point.x).toBeGreaterThanOrEqual(target.x);

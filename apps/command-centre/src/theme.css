@@ -1399,7 +1399,8 @@ canvas.dimmed {
 }
 .edit-bar {
   position: absolute;
-  bottom: 100px;
+  /* above the fixed console (G4), never under it */
+  bottom: calc(var(--stage-bottom) + 160px);
   width: min(960px, calc(100% - 32px));
   max-height: calc(100% - 196px);
   overflow-y: auto;

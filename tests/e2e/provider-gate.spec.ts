@@ -47,8 +47,8 @@ test("a signed-out AI is configured before anything else, and the console refuse
   page.on("request", (request) => {
     if (request.method() === "POST" && /\/api\/runs$/.test(request.url())) runs.push(request.url());
   });
-  await page.locator(".promptw-input").fill("List the files in this folder");
-  await page.locator(".promptw-input").press("Meta+Enter");
+  await page.locator(".cons-input").fill("List the files in this folder");
+  await page.locator(".cons-input").press("Meta+Enter");
   await expect(page.getByTestId("console-preflight")).toContainText("claude auth login");
   expect(runs).toEqual([]);
 });

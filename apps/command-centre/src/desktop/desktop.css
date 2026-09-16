@@ -468,45 +468,6 @@
   overflow: hidden;
 }
 
-/* -------------------------------------------- console context (F5) ------
-   What is open on the stage, as chips over the field: clicking one writes
-   its reference into the prompt, so the thing you are looking at is the
-   thing you are talking about. */
-.console-context {
-  display: flex;
-  align-items: center;
-  gap: var(--s-1);
-  flex-wrap: wrap;
-  flex: none;
-  padding-bottom: var(--s-1);
-}
-.context-chip {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 var(--s-2);
-  border: 1px solid var(--border);
-  border-radius: var(--r-pill);
-  background: none;
-  color: var(--text-dim);
-  font-size: var(--fs-1);
-  cursor: pointer;
-  max-width: 190px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition:
-    color var(--dur-fast) var(--ease-standard),
-    border-color var(--dur-fast) var(--ease-standard),
-    background var(--dur-fast) var(--ease-standard);
-}
-.context-chip:hover,
-.context-chip:focus-visible {
-  color: var(--accent-text);
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-}
-
 /* ------------------------------------------- document window (F5) ------- */
 .doc-window {
   display: flex;
@@ -1181,62 +1142,6 @@ body.window-dragging .app-rail {
 }
 
 /* ------------------------------------------------------------- prompt ---- */
-.promptw {
-  display: grid;
-  gap: var(--s-2);
-}
-.promptw-field {
-  display: flex;
-  gap: var(--s-2);
-  align-items: flex-start;
-}
-.promptw-input {
-  flex: 1;
-  min-width: 0;
-  resize: none;
-  font-family: var(--font-body);
-  /* one line that grows with the text (up to ~4 lines) */
-  field-sizing: content;
-  min-height: 38px;
-  max-height: 112px;
-}
-.promptw-row {
-  display: flex;
-  gap: var(--s-2);
-  align-items: center;
-  flex-wrap: wrap;
-}
-.promptw-pill {
-  padding: 2px 8px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--accent-line);
-  color: var(--accent-text);
-  font-family: var(--font-mono);
-  font-size: var(--fs-1);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-.promptw-cwd {
-  max-width: 170px;
-}
-.promptw-suggest {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.promptw-sugg {
-  padding: 2px 8px;
-  border-radius: var(--r-2);
-  border: 1px solid var(--border-strong);
-  background: var(--bg-raise-2);
-  color: var(--text-dim);
-  font-size: var(--fs-2);
-  cursor: pointer;
-}
-.promptw-sugg:hover {
-  border-color: var(--accent-line);
-  color: var(--accent-text);
-}
 .promptw-approval {
   display: flex;
   align-items: center;
@@ -1261,29 +1166,6 @@ body.window-dragging .app-rail {
 }
 
 /* ------------------------------------------------------------ console ---- */
-.promptw.console {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  min-height: 0;
-}
-.console-thread {
-  flex: 1;
-  min-height: 40px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  display: grid;
-  gap: var(--s-2);
-  align-content: end;
-  padding-right: 2px;
-}
-.console-empty {
-  margin: 0;
-  color: var(--text-faint);
-  font-size: var(--fs-2);
-  max-width: 60ch;
-}
 .console-turn {
   display: grid;
   gap: 6px;
@@ -1375,28 +1257,15 @@ body.window-dragging .app-rail {
   letter-spacing: 0.04em;
 }
 
-.console-mic {
-  flex: none;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--r-2);
-  border: 1px solid var(--border-strong);
+/* a brokered tool prompt inside the console */
+.cons .approval-inline.tool {
+  margin: 8px 14px 0;
 }
-.console-mic.active {
-  color: var(--accent-text);
-  border-color: var(--accent);
-  box-shadow: 0 0 14px var(--accent-glow);
-  animation: pulse-ring 1.2s ease-in-out infinite;
-}
-/* a brokered tool prompt inside the thread */
-.promptw.console .approval-inline.tool {
-  margin: 0;
-}
-.promptw.console .approval-inline-head {
+.cons .approval-inline-head {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
 }
-.promptw.console .approval-inline-desc {
+.cons .approval-inline-desc {
   font-size: var(--fs-2);
 }
 
@@ -1823,25 +1692,6 @@ body.window-dragging .app-rail {
   font-variant-numeric: tabular-nums;
 }
 
-/* The console scrolls itself; this floor (thread + field + button row) is
-   what the prompt's WIDGET_MIN (9 rows) guarantees on the minimum grid
-   (28.6 px rows, ~72 px of frame chrome), so the frame never scrolls too. */
-.panel-body > .console {
-  height: auto;
-  flex: 1;
-  min-height: 170px;
-}
-.console-thread {
-  display: flex;
-  flex-direction: column;
-  align-content: normal;
-}
-.console-thread > :first-child {
-  margin-top: auto;
-}
-.console-turn {
-  flex: none;
-}
 .desktop .panel-body > .now-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1927,11 +1777,10 @@ body.window-dragging .app-rail {
 }
 /* a stronger bottom fade than the default scroll shadow while there is more;
    a body that scrolls itself (the console) is never masked */
-.panel[data-overflow="more"] > .panel-in > .panel-body:not(:has(> .console)) {
+.panel[data-overflow="more"] > .panel-in > .panel-body {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), rgba(0, 0, 0, 0.25));
 }
-.desktop-widgets.stacked .panel-more,
-.panel:has(> .panel-in > .panel-body > .console) .panel-more {
+.desktop-widgets.stacked .panel-more {
   display: none;
 }
 /* the chevron bobs only while the widget is attended: an always-on animation
@@ -2919,6 +2768,369 @@ body.window-dragging .app-rail {
 }
 @media (prefers-reduced-motion: reduce) {
   .first-run-hint {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------- console (G4) ----
+   The one fixed thing on the desktop: a chamfered plate over the dock, the
+   prototype's width, whose frame lights while a run is in flight. Not a
+   window — it never moves, never parks — and everything on the stage is
+   something it can point at. */
+.cons {
+  --cons-cut: 12px;
+  --cons-clip: polygon(
+    0 var(--cons-cut),
+    var(--cons-cut) 0,
+    calc(100% - var(--cons-cut)) 0,
+    100% var(--cons-cut),
+    100% calc(100% - var(--cons-cut)),
+    calc(100% - var(--cons-cut)) 100%,
+    var(--cons-cut) 100%,
+    0 calc(100% - var(--cons-cut))
+  );
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--stage-bottom) - 8px);
+  transform: translateX(-50%);
+  width: min(860px, calc(100vw - 220px));
+  z-index: var(--z-drawer);
+  padding: 1px;
+  background: linear-gradient(
+    160deg,
+    var(--accent-line),
+    color-mix(in srgb, var(--border-strong) 75%, transparent)
+  );
+  clip-path: var(--cons-clip);
+  transition: background var(--dur-base) var(--ease-standard);
+}
+.cons.busy {
+  background: linear-gradient(160deg, var(--accent), var(--accent-line));
+}
+.cons.stacked {
+  position: static;
+  transform: none;
+  width: auto;
+  margin: 12px 16px 0;
+}
+.cons-in {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(26, 23, 15, 0.95), rgba(9, 8, 6, 0.95));
+  backdrop-filter: blur(20px);
+  clip-path: var(--cons-clip);
+}
+[data-theme="light"] .cons-in {
+  background: linear-gradient(180deg, rgba(253, 252, 249, 0.97), rgba(237, 234, 226, 0.97));
+}
+.cons-h {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.cons-h.dim {
+  opacity: 0.35;
+}
+/* notices: an unavailable folder, no provider, a pre-flight problem, a pending approval */
+.cons-note {
+  margin: 8px 14px 0;
+  font-size: var(--fs-2);
+}
+.cons-note.warn {
+  color: var(--warn);
+}
+.cons .promptw-approval {
+  margin: 8px 14px 0;
+}
+/* the conversation, folded away behind the turns readout */
+.cons-thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding: 10px 14px 0;
+}
+.cons-thread > :first-child {
+  margin-top: auto;
+}
+.console-turn {
+  flex: none;
+}
+.cons-empty {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--fs-2);
+  max-width: 60ch;
+}
+/* the tray: one chip per open panel */
+.cons-tray {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px 0;
+  flex-wrap: wrap;
+  min-height: 19px;
+}
+.chp {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 21px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+  transition:
+    color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard);
+}
+.chp:hover,
+.chp:focus-visible,
+.chp.on {
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+/* the field row */
+.cons-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 9px;
+  padding: 8px 12px 10px 14px;
+}
+.cons-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  resize: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.5;
+  max-height: 120px;
+  min-height: 22px;
+  padding: 3px 0;
+}
+.cons-input::placeholder {
+  color: var(--text-faint);
+}
+.cbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 29px;
+  padding: 0 13px;
+  border: 1px solid var(--accent-line);
+  background: transparent;
+  color: var(--accent-text);
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  font-size: 12px;
+  cursor: pointer;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    filter var(--dur-fast) var(--ease-standard);
+}
+.cbtn:hover,
+.cons-skills[aria-expanded="true"] {
+  background: var(--accent-soft);
+}
+.cons .cons-send {
+  height: 29px;
+  border-radius: 0;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+.cons-mic {
+  flex: none;
+  width: 29px;
+  height: 29px;
+  border-radius: 0;
+  border: 1px solid var(--border-strong);
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+.cons-mic.active {
+  color: var(--accent-text);
+  border-color: var(--accent);
+  box-shadow: 0 0 14px var(--accent-glow);
+  animation: pulse-ring 1.2s ease-in-out infinite;
+}
+/* the control line */
+.cons-ctl {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 14px 9px;
+  flex-wrap: wrap;
+  font-size: 11px;
+}
+.cons-ctl .seg {
+  display: flex;
+  border: 1px solid var(--border);
+}
+.cons-ctl .seg button {
+  padding: 0 9px;
+  height: 21px;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard);
+}
+.cons-ctl .seg button[aria-checked="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.cons-ctl .seg button:not([aria-checked="true"]):hover {
+  color: var(--text-dim);
+}
+.cons-ctl .cc {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 21px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  max-width: 240px;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+  transition:
+    color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+.cons-ctl .cc:hover:not(:disabled):not(.static) {
+  border-color: var(--accent-line);
+  color: var(--text-dim);
+}
+.cons-ctl .cc:disabled,
+.cons-ctl .cc.static {
+  cursor: default;
+}
+.cons-ctl .cc:focus-within {
+  border-color: var(--accent-line);
+}
+.cons-cwd {
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: inherit;
+  font: inherit;
+  max-width: 170px;
+  cursor: pointer;
+}
+.cons-ctl .ro {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.cons-ctl .ro:hover,
+.cons-ctl .ro[aria-expanded="true"] {
+  color: var(--accent-text);
+}
+/* `@` completion, over the field */
+.cons-ac {
+  position: absolute;
+  left: 14px;
+  bottom: calc(100% + 6px);
+  min-width: 280px;
+  max-width: min(520px, calc(100% - 28px));
+  z-index: 2;
+  border: 1px solid var(--border-strong);
+  background: color-mix(in srgb, var(--bg-raise-2) 92%, transparent);
+  backdrop-filter: blur(18px);
+  animation: cons-pop var(--dur-base) var(--ease-standard);
+}
+@keyframes cons-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.cons-ac .cons-h {
+  padding: 8px 11px 4px;
+}
+.cons-ac button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 11px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.cons-ac button:hover,
+.cons-ac button.s {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.cons-ac .cons-ac-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cons-ac .r {
+  margin-left: auto;
+  color: var(--accent-text);
+  font-size: 10.5px;
+  flex: none;
+}
+/* the MODEL + EFFORT matrix over its control */
+.me-popover.cons-model {
+  top: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cons,
+  .cons-ac,
+  .chp,
+  .cbtn {
+    transition: none;
     animation: none;
   }
 }

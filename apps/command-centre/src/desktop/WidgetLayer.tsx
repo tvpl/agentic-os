@@ -29,7 +29,7 @@ import Panel from "./Panel";
 import { panelKind } from "./panelKinds";
 import { useStageSize, type StageMetrics } from "./useWindowLayout";
 import { useWindowDrag } from "./useWindowDrag";
-import { overviewSlots, raise, tetherOrigin, tetherPath, tetherTarget, type WindowMap } from "./windowModel";
+import { overviewSlots, raise, tetherPath, tetherTarget, type Point, type WindowMap } from "./windowModel";
 import { WidgetSizeContext, type WidgetSize } from "./widgetSize";
 import Surface from "./Surface";
 import type { Box } from "./surfaceSize";
@@ -69,6 +69,8 @@ export interface WidgetLayerProps {
    * to each, so the link the agent will receive is visible before sending.
    */
   tetherTo?: readonly string[];
+  /** Rendered first in the stacked column (the console on a narrow stage). */
+  stackedLead?: ReactNode;
   /** The header's `@ref` was clicked: put the reference into the console. */
   onReference?: (id: string) => void;
 }
@@ -115,6 +117,15 @@ function SizedWidget({
 }
 
 /** Cheap dependency key: re-measure overflow when the composition changes. */
+/** Where the tethers leave from: the fixed console's top edge, in stage pixels. */
+function consoleOrigin(root: HTMLElement | null): Point | null {
+  const el = document.querySelector<HTMLElement>("[data-console]");
+  if (!el || !root) return null;
+  const r = el.getBoundingClientRect();
+  const s = root.getBoundingClientRect();
+  return { x: r.left + r.width / 2 - s.left, y: r.top - s.top };
+}
+
 function idsKey(layout: WindowMap, maximized: string | null, stacked: boolean): string {
   return `${Object.entries(layout)
     .map(([id, b]) => `${id}:${b.w}x${b.h}:${b.visible ? 1 : 0}`)
@@ -191,6 +202,7 @@ export default function WidgetLayer({
   overview = false,
   onOverviewChange,
   tetherTo,
+  stackedLead,
   onReference,
 }: WidgetLayerProps) {
   const [ownMaximized, setOwnMaximized] = useState<string | null>(null);
@@ -322,13 +334,14 @@ export default function WidgetLayer({
    */
   const tethers = useMemo(() => {
     if (!tetherTo?.length || slots || metrics.stacked) return [];
-    const consoleBox = layout.prompt;
-    if (!consoleBox?.visible || consoleBox.minimized) return [];
-    const from = tetherOrigin(consoleBox);
+    // The console is fixed over the stage (G4): its top edge is read from the
+    // document rather than from a window box.
+    const from = consoleOrigin(ref.current);
+    if (!from) return [];
     return tetherTo
       .map((id) => {
         const box = layout[id];
-        if (!box?.visible || box.minimized || id === "prompt") return null;
+        if (!box?.visible || box.minimized) return null;
         return { id, d: tetherPath(from, tetherTarget(box, from)) };
       })
       .filter((t): t is { id: string; d: string } => t !== null);
@@ -407,6 +420,7 @@ export default function WidgetLayer({
       className={`desktop-widgets${metrics.stacked ? " stacked" : ""}${draggingId ? " dragging-any" : ""}${slots ? " overview" : ""}`}
       ref={ref}
     >
+      {metrics.stacked && stackedLead}
       {tethers.length > 0 && (
         <svg className="tethers" aria-hidden>
           {tethers.map((t) => (
@@ -465,7 +479,7 @@ export default function WidgetLayer({
             dragMode={dragMode}
             stacked={metrics.stacked}
             expandable={widget.expandable !== false}
-            closable={id !== "prompt"}
+            closable
             expanded={maximized === id}
             style={style}
             onPointerDown={(e) => {
@@ -523,7 +537,7 @@ export default function WidgetLayer({
           icon={widgets[maximized]!.icon}
           min={widgets[maximized]!.surfaceMin}
           onClose={() => setMaximized(null)}
-          onHide={maximized === "prompt" ? undefined : () => close(maximized)}
+          onHide={() => close(maximized)}
         >
           {widgets[maximized]!.node}
         </Surface>

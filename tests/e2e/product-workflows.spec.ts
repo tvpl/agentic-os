@@ -3,12 +3,12 @@ import { resetStage, settled, stageWith } from "./stage";
 
 test("spaces keep their own windows and the dock follows app navigation", async ({ page, request }) => {
   // This spec drags a window between spaces, so it puts one on the stage.
-  await stageWith(request, "prompt", "routines");
+  await stageWith(request, "routines");
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
   const dock = page.getByRole("navigation", { name: "Workspace navigation" });
-  const consoleWidget = page.locator('[data-panel="prompt"]');
+  const consoleWidget = page.locator("[data-console]");
   const routines = page.locator('[data-panel="routines"]');
   await consoleWidget.locator("textarea").fill("Continue this after exploring");
 

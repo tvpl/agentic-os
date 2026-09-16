@@ -65,7 +65,7 @@ import { baseCoreState, type CoreState } from "./coreState";
 import { providerProblem } from "../components/providerReadiness";
 import { isActiveStatus, useArtifactList, useDesktopRuns } from "./data";
 import { InboxList } from "./widgets/InboxWidget";
-import { LISTENING_EVENT } from "./widgets/PromptWidget";
+import Console, { LISTENING_EVENT } from "./console/Console";
 import "./desktop.css";
 
 /** One-click accent presets, cycled by the palette tool and persisted. */
@@ -393,10 +393,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     return () => publishPanels([]);
   }, [openPanels]);
   /** The console only sees what is actually on the stage — and never itself. */
-  const stagePanels = useMemo(
-    () => openPanels.filter((p) => !p.minimized && p.id !== "prompt"),
-    [openPanels],
-  );
+  const stagePanels = useMemo(() => openPanels.filter((p) => !p.minimized), [openPanels]);
 
   /**
    * A pod's window: put it on the stage if it is not there, raise it if it is.
@@ -691,6 +688,14 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
 
   const activeProvider = providers.data?.find((p) => p.isDefault);
   const defaultProvider = activeProvider?.id ?? t("common.loading");
+  const consoleNode = (
+    <Console
+      busy={activeRuns > 0}
+      deckOpen={deckOpen}
+      onToggleDeck={(open) => setDeckOpen((v) => open ?? !v)}
+      stacked={Boolean(metrics?.stacked)}
+    />
+  );
 
   return (
     <DesktopActionsProvider value={actions}>
@@ -723,8 +728,12 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
             onOverviewChange={setOverview}
             onReference={referencePanel}
             tetherTo={activeRefs}
+            // On a narrow stage the console flows first in the column; on
+            // the desk it is the fixed plate below (G4).
+            stackedLead={metrics?.stacked ? consoleNode : undefined}
           />
         </div>
+        {!metrics?.stacked && consoleNode}
 
         <div className="os-topbar">
           <div className="side">

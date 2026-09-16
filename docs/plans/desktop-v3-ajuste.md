@@ -123,7 +123,7 @@ Portão: os 9 pods/apps abrem dentro do palco; nenhum clique no desktop muda a r
 Portão: escrever no console → trace abre como painel → resultado abre como painel →
 `@relatorio` funciona no prompt seguinte.
 
-### G4 — Console fixo
+### G4 — Console fixo ✅ (registro em `desktop-v3-paridade.md`)
 
 - O console sai do `WidgetLayer` e vira `desktop/Console.tsx`, fixo em
   `bottom: dock + 12px`, `width: min(860px, 100vw − 220px)`, moldura que acende em `busy`.

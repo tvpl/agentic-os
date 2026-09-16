@@ -60,9 +60,10 @@ test("a searched file lands on the stage and the console can point the agent at 
   await expect(page.locator(".desktop-widgets.overview")).toHaveCount(0);
 
   // The context chip writes the reference into the draft.
-  const input = page.locator(".promptw-input");
-  await expect(page.locator(".context-chip")).toHaveText("@plan.md");
-  await page.locator(".context-chip").click();
+  const input = page.locator(".cons-input");
+  // The chip carries the panel's glyph before its reference (G4).
+  await expect(page.locator(".cons-tray .chp")).toHaveText(/@plan\.md$/);
+  await page.locator(".cons-tray .chp").click();
   await expect(input).toHaveValue("@plan.md ");
 
   // And the request carries the path behind the name the user typed.
@@ -97,12 +98,12 @@ test("typing @ offers the open documents and Tab completes one", async ({ page, 
   await expect(page.locator(".boot-screen")).toHaveCount(0);
   await expect(page.locator('[data-panel="doc:/tmp/report.md"]')).toBeVisible();
 
-  const input = page.locator(".promptw-input");
+  const input = page.locator(".cons-input");
   // No reference yet, so no tether.
   await expect(page.locator(".tethers path")).toHaveCount(0);
   await input.fill("look at @rep");
-  const option = page.locator('.promptw-suggest [role="option"]');
-  await expect(option).toHaveText("@report.md");
+  const option = page.locator('.cons-ac [role="option"]');
+  await expect(option).toContainText("@report.md");
   await input.press("Tab");
   await expect(input).toHaveValue("look at @report.md ");
   // A complete reference draws a line from the console to that window.

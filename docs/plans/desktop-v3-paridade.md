@@ -775,6 +775,69 @@ Portão visual: `artifacts/g3-lado-a-lado.png` — o protótipo com `run-1 · /r
 mesmo gesto. Inventário: linhas 4 (run → trace + resultado como painéis) e 5 (entradas → formulário)
 marcadas; aprovações não tinham linha — entraram como o oitavo instrumento.
 
+## G4 entregue — o console fixo
+
+Quarto bloco do [plano de ajuste](desktop-v3-ajuste.md). O console deixou de ser uma janela.
+É a única coisa fixa do desktop: uma placa chanfrada sobre o dock, centrada, `min(860px,
+100vw − 220px)` como no protótipo, com a moldura que acende (`.busy`) enquanto uma execução
+corre. Não tem barra de título, não estaciona, não fecha, não aparece na lista de painéis do
+dock — e tudo o que está no palco é algo que ela consegue apontar.
+
+**Entrou:** `desktop/console/` — `Console.tsx` (o container: rascunho, sessão, envio,
+aprovações), `ConsoleTray.tsx` (bandeja: um chip por painel aberto, de qualquer tipo, aceso
+quando o rascunho já o cita), `ConsoleThread.tsx` (a conversa, dobrada atrás do mostrador
+de turnos; abre sozinha enquanto um turno corre, com o Parar), `ConsoleControls.tsx` (a linha
+de controles do protótipo: modo · pasta · **modelo·esforço** · provedor · nova conversa ·
+turnos·custo) e `refs.ts` (as funções puras de `@` e `/`, com os testes que já existiam).
+O `PromptWidget` de 772 linhas saiu; `prompt` saiu do registro, do `WIDGET_ORDER`, do
+`DEFAULT_SPECS` e do layout persistido (um `prompt` guardado é descartado na leitura).
+
+O que mudou na mão: `@` completa **qualquer** painel — app, trace, formulário, instrumento,
+documento — num popover sobre o campo, com ↑↓, Enter/Tab e Esc; `/` num campo vazio abre o
+deck (e o botão ◈ Skills faz o mesmo, com `aria-expanded`); Enter envia, Shift+Enter quebra
+a linha, ⌘↵ continua enviando. Modelo e esforço da próxima execução ficam num popover com a
+mesma matriz das skills, persistidos por navegador, e vão no corpo de `POST /api/runs` e do
+`continue`. O provedor alterna entre os habilitados; numa conversa em curso, pasta e
+provedor ficam travados no que a sessão usa. As amarras saem do topo da placa — lidas do
+documento, não de uma caixa de janela — e `placeNew` reserva a faixa do console (150 px)
+para que nenhuma placa nova chegue por baixo dela. No modo empilhado (< 1024 px) o console
+flui como primeiro bloco da coluna, sem rolagem horizontal.
+
+### Defeitos encontrados nesta passagem
+
+1. **Placas novas nasciam debaixo do console.** O posicionador só conhecia os arcos; com a
+   placa fixa na base do palco, um trace de 460 px abria com o rodapé escondido. `placeNew`
+   ganhou o `CONSOLE_BAND` do protótipo.
+2. **A amarra apontava para uma janela que já não existe.** A origem vinha de `layout.prompt`;
+   agora é o meio da aresta superior do elemento `[data-console]`, em pixels do palco.
+3. **`aria-expanded` num `textarea` e `aria-pressed` num `radio`** — o lint de acessibilidade
+   apanhou os dois antes de qualquer teste; o segmentado de modo usa `aria-checked`.
+4. **Popover de modelo fora da tela.** Um corte de CSS por marcador levou 700 linhas de
+   estilos não relacionados junto (a base do `.me-popover` entre eles) e o popover ficou
+   `static`, abaixo do viewport. Restaurado do git e refeito com cortes limitados; fica
+   registrado porque é exatamente o tipo de estrago que só um print pega.
+5. **A recuperação de login sumia com a conversa dobrada.** O aviso "sessão expirada · `claude
+   auth login`" vivia dentro do turno; com o fio fechado por padrão, ficava invisível. Quando o
+   fio está dobrado, a recuperação do último turno é um aviso na própria placa, com o mesmo
+   deep link para Ajustes › Provedores.
+6. **A barra de conflito de layout ficava atrás do console.** Visível para o Playwright,
+   inclicável para qualquer pessoa. Subiu para acima da faixa do console.
+7. **"Return" não é "Enter"** no automatizador do navegador — não é defeito do produto, mas
+   custou uma rodada: a verificação de Enter → envio só vale com a tecla certa.
+
+### Gates
+
+| Gate | Resultado |
+|---|---|
+| `npm test` (raiz) | 62 arquivos · 492 testes |
+| `npm run test -w apps/command-centre` | 46 arquivos · 331 testes |
+| `npx playwright test` (suíte inteira) | 110 passaram · 2 pulados · 1 instável (`routine lifecycle`: o texto do prompt caiu no campo do nome do formulário de Rotinas; 3/3 isolado — fora do console) |
+| `typecheck` · `eslint` · `prettier` | limpos |
+
+Portão visual: `artifacts/g4-lado-a-lado.png` — protótipo e produto com um trace e o
+`relatorio.md` no palco e `@re` a meio no console, o popover de referência aberto nos dois.
+Inventário: linha 6 marcada.
+
 ## Revisão final
 
 Uma varredura no arco inteiro F1–F6 encontrou **código especulativo meu**: `tile`, `cascade`,

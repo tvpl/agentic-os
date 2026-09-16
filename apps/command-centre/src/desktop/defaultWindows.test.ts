@@ -53,34 +53,17 @@ describe("the first composition", () => {
     }
   });
 
-  it("opens the stage clear: the console, and nothing else", () => {
+  it("opens the stage clear: nothing at all — the console is fixed, not a window", () => {
     // The whole point of F7. A default that placed nine panels is why the
-    // running app still read as the dashboard it was meant to replace.
+    // running app still read as the dashboard it was meant to replace; since
+    // G4 the console is not a window either.
     for (const stage of STAGES) {
       const layout = defaultWindows(stage);
       const open = Object.entries(layout)
         .filter(([, box]) => box.visible)
         .map(([id]) => id);
-      expect(open, `@ ${stage.w}×${stage.h}`).toEqual(["prompt"]);
+      expect(open, `@ ${stage.w}×${stage.h}`).toEqual([]);
     }
-  });
-
-  it("anchors the console over the dock, centred and capped", () => {
-    for (const stage of STAGES) {
-      const box = defaultWindows(stage).prompt!;
-      // Centred within a pixel of rounding, and never sprawling the full width.
-      expect(Math.abs(box.x - (stage.w - box.w) / 2), `@ ${stage.w}`).toBeLessThanOrEqual(1);
-      expect(box.w, `@ ${stage.w}`).toBeLessThanOrEqual(860);
-      // Sitting on the floor of the stage, not floating in the middle of it.
-      expect(box.y + box.h, `@ ${stage.w}`).toBeLessThanOrEqual(stage.h);
-      expect(box.y + box.h, `@ ${stage.w}`).toBeGreaterThan(stage.h - 60);
-    }
-  });
-
-  it("puts the console at the top of the stack, since it is the only window", () => {
-    const layout = defaultWindows(STAGES[0]!);
-    const top = Math.max(...Object.values(layout).map((b) => b.z));
-    expect(layout.prompt!.z).toBe(top);
   });
 
   it("gives every window its own place in the stacking order", () => {

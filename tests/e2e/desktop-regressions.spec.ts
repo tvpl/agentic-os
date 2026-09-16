@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { resetStage, stageBoxes, stageWith } from "./stage";
+import { resetStage, stageBoxes } from "./stage";
 
 test("apps open as panels on the stage and nothing leaves the desktop", async ({ page, request }) => {
   await resetStage(request);
@@ -36,47 +36,36 @@ test("apps open as panels on the stage and nothing leaves the desktop", async ({
   expect(errors).toEqual([]);
 });
 
-test("console maximizes, restores, resizes and Now stays hidden after reload", async ({ page, request }) => {
-  // The console and one companion: this spec is about a surface opening over a
-  // desktop that is still there behind it, so there has to be something behind.
-  // The console is given room above its floor (WINDOW_MIN.prompt = 380 × 260),
-  // because the spec shrinks it and expects that to do something.
-  await stageBoxes(request, {
-    prompt: { x: 120, y: 60, w: 700, h: 420 },
-    now: { x: 860, y: 60, w: 420, h: 300 },
-  });
+test("the console is fixed over the stage and Now stays hidden after reload", async ({ page, request }) => {
+  // One companion on the stage: this spec is about the console keeping its
+  // place while the desktop around it changes, so there has to be something
+  // to change.
+  await stageBoxes(request, { now: { x: 860, y: 60, w: 420, h: 300 } });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/#/");
-  const consoleWidget = page.locator('[data-panel="prompt"]');
-  const input = consoleWidget.locator("textarea");
-  await input.fill("Keep my draft");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
+  const consolePlate = page.locator("[data-console]");
+  const input = consolePlate.locator("textarea");
+  await input.fill("Keep my draft");
   await page.screenshot({ path: "artifacts/qa-desktop.png" });
-  const original = await consoleWidget.boundingBox();
-  // Expanding opens a surface over the desktop (redesign F2): the widget is no
-  // longer stretched to the viewport and the desktop behind is not erased.
-  await consoleWidget.getByRole("button", { name: /^Maximize:/ }).click();
-  const surface = page.locator(".surface");
-  await expect(surface).toBeVisible();
-  const surfaceBox = (await surface.boundingBox())!;
-  expect(surfaceBox.width).toBeGreaterThan(0);
-  // Capped by the widget's declared ceiling, not by the window.
-  expect(surfaceBox.width).toBeLessThan(1440 - 40);
-  // The rest of the desktop stays on screen behind the veil.
-  await expect(page.locator('[data-panel="now"]')).toBeVisible();
-  // The body moved into the surface and carried the draft with it.
-  await expect(surface.locator("textarea")).toHaveValue("Keep my draft");
-  await page.screenshot({ path: "artifacts/qa-console.png" });
-  await page.keyboard.press("Escape");
-  await expect(surface).toHaveCount(0);
-  // …and back again, still intact.
-  await expect(input).toHaveValue("Keep my draft");
-  // Polled: closing plays a 200 ms FLIP, so an immediate read catches it mid-flight.
-  await expect.poll(async () => (await consoleWidget.boundingBox())!.width).toBeCloseTo(original!.width, 0);
-  await consoleWidget.locator(".panel-grip").focus();
-  // The console sits at its minimum height by default, so shrink its width.
-  await page.keyboard.press("ArrowLeft");
-  await expect.poll(async () => (await consoleWidget.boundingBox())!.width).toBeLessThan(original!.width);
+  // Not a window (G4): no title bar, no park, no close, not in the dock's
+  // panel list — and the prototype's geometry: centred over the dock, capped
+  // at 860 px, its whole body inside the viewport.
+  await expect(consolePlate.locator(".panel-head")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Open panels: Console$/ })).toHaveCount(0);
+  const box = (await consolePlate.boundingBox())!;
+  expect(Math.abs(box.x + box.width / 2 - 720)).toBeLessThanOrEqual(1);
+  expect(box.width).toBeLessThanOrEqual(860);
+  expect(box.y + box.height).toBeLessThanOrEqual(1000);
+  // The frame lights while a run is in flight and goes quiet when it ends.
+  await expect(consolePlate).not.toHaveClass(/\bbusy\b/);
+  await input.fill("hello [[sleep:3]]");
+  await input.press("Enter");
+  await expect(consolePlate).toHaveClass(/\bbusy\b/);
+  await expect(consolePlate).not.toHaveClass(/\bbusy\b/, { timeout: 20_000 });
+  // The draft was sent, so it is gone; the plate did not move an inch.
+  await expect(input).toHaveValue("");
+  await expect.poll(async () => (await consolePlate.boundingBox())!.x).toBeCloseTo(box.x, 0);
   await page
     .locator('[data-panel="now"]')
     .getByRole("button", { name: /^close|^fechar/i })
@@ -84,7 +73,7 @@ test("console maximizes, restores, resizes and Now stays hidden after reload", a
   await expect(page.locator('[data-panel="now"]')).toHaveCount(0);
   await page.waitForTimeout(1000); // persisted layout mutation is debounced
   await page.reload();
-  await expect(consoleWidget).toBeVisible();
+  await expect(consolePlate).toBeVisible();
   await expect(page.locator('[data-panel="now"]')).toHaveCount(0);
 
   // The e2e home is shared by every later spec, so this one hands the desktop
@@ -152,7 +141,7 @@ test("the skill deck fans out over the console and runs what is picked", async (
       ],
     }),
   );
-  await stageWith(request, "prompt");
+  await resetStage(request);
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
   // ⌘J fans the deck out over the console (the skills pod opens the Skills app since G2).
@@ -161,12 +150,12 @@ test("the skill deck fans out over the console and runs what is picked", async (
   await expect(deck).toHaveClass(/open/);
   await expect(deck.locator(".deck-skill")).toHaveCount(1);
   // The desktop stays visible behind it: the deck is a layer, not a page.
-  await expect(page.locator('[data-panel="prompt"]')).toBeVisible();
+  await expect(page.locator("[data-console]")).toBeVisible();
   await page.screenshot({ path: "artifacts/qa-deck.png" });
   await page.keyboard.press("Escape");
   await expect(deck).toHaveCount(0);
   // ⌘J is the same gesture from the keyboard, console focus included.
-  await page.locator('[data-panel="prompt"] textarea').click();
+  await page.locator("[data-console] textarea").click();
   await page.keyboard.press("ControlOrMeta+j");
   await expect(page.locator(".skill-deck")).toHaveClass(/open/);
   await page.keyboard.press("Escape");

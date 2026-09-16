@@ -4,7 +4,7 @@
  * boundary between "typing a name" and "sending a path" is pinned here.
  */
 import { describe, expect, it } from "vitest";
-import { completeReference, docSuggestions, resolveReferences } from "./PromptWidget";
+import { completeReference, docSuggestions, resolveReferences } from "./refs";
 
 const docs = [
   { id: "doc:/runs/1/plan.md", ref: "plan.md", path: "/runs/1/plan.md" },

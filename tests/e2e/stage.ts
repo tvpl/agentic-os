@@ -1,7 +1,6 @@
 /**
- * The desktop opens clear (redesign F7): the console is the only window on the
- * stage, and everything else arrives when a pod, the dock or the agent puts it
- * there. A spec that asserts on a panel therefore has to say which panels its
+ * The desktop opens clear (redesign F7): nothing is on the stage until a pod,
+ * the dock or the agent puts it there — the console is fixed over it (G4). A spec that asserts on a panel therefore has to say which panels its
  * composition needs, rather than inheriting nine of them from a default.
  *
  * Seeding through the settings API rather than through clicks keeps the
@@ -92,13 +91,13 @@ export async function stageBoxes(
   if (missing.length) throw new Error(`the stage did not keep: ${missing.join(", ")}`);
 }
 
-/** Hand the desktop back at its default composition: the console, alone. */
+/** Hand the desktop back at its default composition: a clear stage (the console is fixed, not a window — G4). */
 export async function resetStage(request: APIRequestContext): Promise<void> {
   // An empty record is how "no user layout" is expressed, but the merge would
   // keep the old one, so the defaults are written out explicitly.
   const dashboardLayout: Record<string, ReturnType<typeof box> & { config?: Record<string, string> }> = {};
   WIDGET_ORDER.forEach((id, i) => {
-    dashboardLayout[id] = { ...box(i), visible: id === "prompt" };
+    dashboardLayout[id] = { ...box(i), visible: false };
   });
   APP_ROUTES.forEach(([kind, route], i) => {
     dashboardLayout[`app:${kind}`] = { ...box(i), visible: false, config: { path: route, search: "" } };
