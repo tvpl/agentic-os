@@ -12,8 +12,6 @@ import { useLocation } from "react-router-dom";
 import {
   BrainCircuit,
   CalendarClock,
-  ChevronDown,
-  ChevronUp,
   Grid3x3,
   Layers,
   LayoutDashboard,
@@ -25,6 +23,8 @@ import { useT, type TKey } from "../i18n";
 import { useOsSettings } from "../queries";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import { PANEL_GLYPH, getPanels, requestPanelAction, subscribePanels } from "../desktop/panelKinds";
+import { requestDesktopAction, useDesktopModes } from "../desktop/desktopModes";
+import { shouldStack } from "../desktop/defaultLayout";
 import "./workspace.css";
 
 export type RenderProfile = "auto" | "immersive" | "economy";
@@ -123,12 +123,21 @@ function SpaceSwitcher() {
   const { pathname } = useLocation();
   const settings = useOsSettings();
   const active = settings.data?.activeSpace ?? "work";
+  const panels = useSyncExternalStore(subscribePanels, getPanels, () => []);
+  // How many panels a space holds (the prototype's `.n`): the active one is
+  // what is on the stage now, the others what they remember.
+  const count = (id: string): number => {
+    if (id === active && pathname === "/") return panels.length;
+    const layout = settings.data?.spaces?.[id]?.layout ?? {};
+    return Object.values(layout).filter((box) => box.visible !== false).length;
+  };
   return (
     <div className="dock-spaces" data-onboarding="modes" role="group" aria-label={t("desktop.space.title")}>
       {SPACE_IDS.map((id) => (
         <button
           key={id}
           type="button"
+          className="spc"
           aria-pressed={active === id && pathname === "/"}
           onClick={() => {
             if (pathname !== "/") navigate("/");
@@ -137,6 +146,11 @@ function SpaceSwitcher() {
         >
           <Layers aria-hidden />
           <span>{t(`desktop.space.${id}`)}</span>
+          {count(id) > 0 && (
+            <span className="n" aria-hidden>
+              {count(id)}
+            </span>
+          )}
         </button>
       ))}
     </div>
@@ -153,7 +167,7 @@ function DockTasks() {
   const t = useT();
   const { pathname } = useLocation();
   const panels = useSyncExternalStore(subscribePanels, getPanels, () => []);
-  if (pathname !== "/" || panels.length === 0) return null;
+  if (pathname !== "/" || panels.length === 0) return <div className="dock-tasks" aria-hidden />;
   const topId = panels.find((p) => !p.minimized)?.id ?? null;
   return (
     <div className="dock-tasks" role="group" aria-label={t("desktop.dock.panels")}>
@@ -184,43 +198,77 @@ function DockTasks() {
   );
 }
 
-/** Persistent navigation: app changes never depend on reopening the launcher. */
+/**
+ * The dock (redesign G5), as the prototype draws it on the desktop: spaces
+ * with their panel counts · the open panels · Edit HUD · Overview · Spread
+ * out. The apps are the pods on the left arc, not dock icons.
+ *
+ * On a narrow screen the apps are still pages (`useStacked`), so there the
+ * dock stays what it was: one icon per app, the way a phone navigates.
+ */
 export function WorkspaceDock() {
   const t = useT();
   const navigate = useOsNavigate();
   const { pathname } = useLocation();
-  const [collapsed, setCollapsed] = useState(false);
+  const modes = useDesktopModes();
+  const [stacked, setStacked] = useState(() => shouldStack(window.innerWidth, window.innerHeight));
+  useEffect(() => {
+    const onResize = () => setStacked(shouldStack(window.innerWidth, window.innerHeight));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  if (stacked || pathname !== "/") {
+    return (
+      <nav className="workspace-dock apps" aria-label={t("desktop.dock.title")}>
+        <div className="dock-apps">
+          {APPS.map(({ route, label, Icon }) => (
+            <button
+              type="button"
+              key={route}
+              className={`dock-app${pathname === route || (route !== "/" && pathname.startsWith(route + "/")) ? " active" : ""}`}
+              aria-label={t(label)}
+              aria-current={pathname === route ? "page" : undefined}
+              onClick={() => navigate(route)}
+            >
+              <Icon aria-hidden />
+              <span className="dock-tooltip">{t(label)}</span>
+            </button>
+          ))}
+        </div>
+        <SpaceSwitcher />
+      </nav>
+    );
+  }
   return (
-    <nav className={`workspace-dock${collapsed ? " collapsed" : ""}`} aria-label={t("desktop.dock.title")}>
-      {!collapsed && (
-        <>
-          <div className="dock-apps">
-            {APPS.map(({ route, label, Icon }) => (
-              <button
-                type="button"
-                key={route}
-                className={`dock-app${pathname === route || (route !== "/" && pathname.startsWith(route + "/")) ? " active" : ""}`}
-                aria-label={t(label)}
-                aria-current={pathname === route ? "page" : undefined}
-                onClick={() => navigate(route)}
-              >
-                <Icon aria-hidden />
-                <span className="dock-tooltip">{t(label)}</span>
-              </button>
-            ))}
-          </div>
-          <DockTasks />
-          <SpaceSwitcher />
-        </>
-      )}
+    <nav className="workspace-dock hud" aria-label={t("desktop.dock.title")}>
+      <SpaceSwitcher />
+      <span className="dv" aria-hidden />
+      <DockTasks />
+      <span className="sp" aria-hidden />
       <button
         type="button"
-        className="dock-collapse"
-        onClick={() => setCollapsed(!collapsed)}
-        aria-expanded={!collapsed}
-        aria-label={t(collapsed ? "desktop.dock.expand" : "desktop.dock.collapse")}
+        className="tl"
+        aria-pressed={modes.editing}
+        onClick={() => requestDesktopAction("hud")}
       >
-        {collapsed ? <ChevronUp aria-hidden /> : <ChevronDown aria-hidden />}
+        <span aria-hidden>⌗</span> {t("desktop.dock.editHud")}
+      </button>
+      <button
+        type="button"
+        className="tl"
+        aria-pressed={modes.overview}
+        title={t(modes.overview ? "desktop.overview.exit" : "desktop.overview.enter")}
+        onClick={() => requestDesktopAction("overview")}
+      >
+        <span aria-hidden>▣</span> {t("desktop.dock.overview")}
+      </button>
+      <button
+        type="button"
+        className="tl"
+        title={t("desktop.arrange.tile")}
+        onClick={() => requestDesktopAction("tile")}
+      >
+        <span aria-hidden>◫</span> {t("desktop.dock.tile")}
       </button>
     </nav>
   );

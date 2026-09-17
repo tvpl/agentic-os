@@ -1,4 +1,4 @@
-import { resetStage } from "./stage";
+import { openAppFromPalette, resetStage } from "./stage";
 import { test, expect } from "@playwright/test";
 
 test("draft keeps its selected project across app navigation and reload", async ({ page, request }) => {
@@ -11,11 +11,9 @@ test("draft keeps its selected project across app navigation and reload", async 
   expect(folder).toBeTruthy();
   await picker.selectOption(folder!);
   await widget.locator("textarea").fill("Review the mobile workspace");
-  const dock = page.getByRole("navigation", { name: "Workspace navigation" });
-  await dock.getByRole("button", { name: "Pixel Studio", exact: true }).click();
+  // An app opens as a panel over the desktop (G2): the console stays put.
+  await openAppFromPalette(page, "Pixel Studio");
   await expect(page.locator(".pxs-stage")).toBeVisible();
-  // Back to the desktop: the dock's Dashboard app, not a mode.
-  await dock.getByRole("button", { name: "Dashboard", exact: true }).click();
   await expect(picker).toHaveValue(folder!);
   await expect(widget.locator("textarea")).toHaveValue("Review the mobile workspace");
   await page.reload();
@@ -75,10 +73,7 @@ test("brain reference reaches the console without replacing the draft or executi
   const picker = widget.locator("select.cons-cwd");
   const folder = await picker.locator("option").nth(1).getAttribute("value");
   await picker.selectOption(folder!);
-  await page
-    .getByRole("navigation", { name: "Workspace navigation" })
-    .getByRole("button", { name: "Second Brain", exact: true })
-    .click();
+  await page.locator('.pod-arc.l .pod[data-pod="app:brain"]').click();
   await page.getByRole("button", { name: "List view", exact: true }).click();
   const source = page.locator(".brain2-list button[data-file]").first();
   const sourcePath = await source.getAttribute("title");

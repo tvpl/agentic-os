@@ -607,6 +607,8 @@ export interface SettingsDoc {
   spaces?: Record<string, { name: string; layout: WindowLayoutDoc }>;
   /** Id of the space `dashboardLayout` currently belongs to. */
   activeSpace?: string;
+  /** The pod arcs (redesign G5): instrument ids on the left and right, in order. */
+  hud?: { l: string[]; r: string[] };
   routines: { allowWebhooks: boolean; heartbeatIntervalMinutes: number; heartbeatOkToken: string };
   connectors: { dataCacheTtlMs: number; dataTimeoutMs: number; allowedCommands: string[] };
   limits?: {

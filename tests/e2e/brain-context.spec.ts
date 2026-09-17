@@ -1,4 +1,4 @@
-import { resetStage } from "./stage";
+import { resetStage, openAppFromPalette } from "./stage";
 import { test, expect, type Route } from "@playwright/test";
 
 test("a late file preview cannot reopen a selection the user already closed", async ({ page, request }) => {
@@ -39,10 +39,9 @@ test("brain keeps its selection while other apps open beside it", async ({ page 
   expect(second).not.toBe(first);
   await expect(brain.locator(".brain2-preview")).toBeVisible();
   await expect(page).toHaveURL(/#\/$/);
-  const dock = page.getByRole("navigation", { name: "Workspace navigation" });
-  await dock.getByRole("button", { name: "Pixel Studio", exact: true }).click();
+  await openAppFromPalette(page, "Pixel Studio");
   await expect(page.locator('[data-panel="app:pixel"] .pxs-stage')).toBeVisible();
-  await dock.getByRole("button", { name: "Second Brain", exact: true }).click();
+  await page.locator('.pod-arc.l .pod[data-pod="app:brain"]').click();
   await expect(brain.locator(".brain2-list")).toBeVisible();
   await expect(brain.locator(".brain2-preview")).toBeVisible();
   await expect(brain.locator(".brain2-preview")).toContainText(second.split("/").pop()!);
@@ -62,10 +61,9 @@ test("zoom, query and selected source survive leaving the brain", async ({ page 
   await brain.getByRole("button", { name: "Zoom in", exact: true }).click();
   await brain.getByRole("button", { name: "Zoom in", exact: true }).click();
   await expect(brain.getByLabel("Zoom", { exact: true })).toHaveText("169%");
-  const dock = page.getByRole("navigation", { name: "Workspace navigation" });
-  await dock.getByRole("button", { name: "Pixel Studio", exact: true }).click();
+  await openAppFromPalette(page, "Pixel Studio");
   await expect(page.locator('[data-panel="app:pixel"] .pxs-stage')).toBeVisible();
-  await dock.getByRole("button", { name: "Second Brain", exact: true }).click();
+  await page.locator('.pod-arc.l .pod[data-pod="app:brain"]').click();
   await expect(query).toHaveValue(name);
   await expect(brain.getByLabel("Zoom", { exact: true })).toHaveText("169%");
   await expect(brain.locator(".brain2-preview")).toContainText(name);

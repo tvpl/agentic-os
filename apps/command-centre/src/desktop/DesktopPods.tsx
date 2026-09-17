@@ -1,39 +1,24 @@
 /**
- * The pods (redesign F7): the desktop's instruments as hexagons on two arcs —
- * apps on the left, readings on the right.
+ * The pods (redesign F7, editable since G5): the desktop's instruments as
+ * hexagons on two arcs, drawn from `settings.hud`. A pod gives a reading a
+ * body — glyph, one value, a counter when something is pending — so a glance
+ * at the edge of the screen answers "does anything need me?" without reading.
  *
- * This replaces the ambient strip's line of text and the rail's drawer. The
- * strip proved the rule (`idle` never lights up) but kept the old shape: a row
- * of numbers at the top, which is what the dashboard already was. A pod gives
- * the same reading a body — glyph, one value, a counter when something is
- * pending — so a glance at the edge of the screen answers "does anything need
- * me?" without reading anything.
+ * Editing the HUD (the dock's "Edit HUD"): the pods wobble, ✕ removes one,
+ * the dashed + at the end of an arc opens the gallery of instruments that
+ * are not on an arc yet. The result is persisted by the desktop.
  *
  * Levels still come from `signal.ts`, so a pod and the panel behind it can
  * never disagree.
  */
-import { useMemo, useState, type ReactNode } from "react";
-import { Activity, AlertTriangle, CalendarClock, Coins, Terminal } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Activity, AlertTriangle, CalendarClock, Coins, Inbox, ShieldCheck, Terminal, X } from "lucide-react";
 import { useT } from "../i18n";
-import { qk, useApiQuery, useOsMetrics, useOsSettings, useOsSkills } from "../queries";
-import { budgetState } from "./budget";
-import { useDesktopRoutines, useDesktopRuns } from "./data";
-import { useAppRows } from "./appRows";
-import { APPS, type AppKind } from "./apps";
-import {
-  attentionItems,
-  attentionSignal,
-  costSignal,
-  isLit,
-  pulseSignal,
-  routinesSignal,
-  runsSignal,
-  type SignalValue,
-} from "./signal";
-
-interface Approval {
-  id: string;
-}
+import { DialogPortal, useDialog, usePresence } from "../components/dialog";
+import { APPS, appKindOf, type AppKind } from "./apps";
+import { freeInstruments, type Hud, type HudSide } from "./hud";
+import { isLit, type SignalValue } from "./signal";
+import type { DesktopSignals } from "./useSignals";
 
 export interface Pod {
   id: string;
@@ -54,204 +39,326 @@ export interface Pod {
   onOpen: () => void;
 }
 
-function PodButton({ pod, side }: { pod: Pod; side: "l" | "r" }) {
-  return (
-    <button
-      type="button"
-      className={`pod${isLit(pod.level) ? " lit" : ""}${pod.live ? " live" : ""}`}
-      data-level={pod.level}
-      data-pod={pod.id}
-      aria-label={`${pod.name}: ${pod.detail}`}
-      onClick={pod.onOpen}
-    >
-      <span className="hex" aria-hidden />
-      <span className="ic" aria-hidden>
-        {pod.icon}
-      </span>
-      {pod.value && (
-        <span className="mv" aria-hidden>
-          {pod.value}
-        </span>
-      )}
-      {pod.count ? (
-        <span className={`ct${pod.soft ? " w" : ""}`} aria-hidden>
-          {pod.count > 99 ? "99+" : pod.count}
-        </span>
-      ) : null}
-      <span className={`tip ${side}`} aria-hidden>
-        {pod.name}
-        <span className="sub">{pod.detail}</span>
-      </span>
-    </button>
-  );
-}
-
 export interface DesktopPodsProps {
-  activeRuns: number;
+  hud: Hud;
+  signals: DesktopSignals;
+  /** The HUD is being edited: pods wobble, ✕ removes, + adds. */
+  editing: boolean;
+  onHudChange: (next: Hud) => void;
   /** Opens a widget's surface; the desktop decides whether it can. */
   onExpand: (widgetId: string) => void;
   /** Opens one of the OS's apps as a panel on the stage. */
   onOpenApp: (kind: AppKind) => void;
 }
 
-export default function DesktopPods({ activeRuns, onExpand, onOpenApp }: DesktopPodsProps) {
+/** Everything the catalogue can turn into a pod, by id. */
+function usePodCatalogue(
+  signals: DesktopSignals,
+  onExpand: (id: string) => void,
+  onOpenApp: (kind: AppKind) => void,
+): (id: string) => Pod | null {
   const t = useT();
-  const { pending } = useAppRows(3);
-  const metrics = useOsMetrics({ refetchInterval: 300_000 });
-  const skills = useOsSkills();
-  const routines = useDesktopRoutines();
-  const runs = useDesktopRuns();
-  const settings = useOsSettings();
-  const approvals = useApiQuery<Approval[]>(qk.approvals, "/api/approvals", { refetchInterval: 300_000 });
-  const [hoverSide, setHoverSide] = useState<"l" | "r" | null>(null);
-
-  const right = useMemo<Pod[]>(() => {
-    const runList = runs.data ?? [];
-    // "done" is the canonical success status (core/src/runs/runManager.ts).
-    const finished = runList.filter(
-      (r) => r.status === "done" || r.status === "failed" || r.status === "timed_out",
-    );
-    const succeeded = finished.filter((r) => r.status === "done").length;
-    const routineList = routines.data ?? [];
-    const due = routineList.filter((r) => r.enabled).length;
-    const fired = routineList.filter((r) => r.enabled && r.healthy).length;
-    const budget = budgetState(settings.data?.limits?.dailyBudgetUsd, metrics.data?.cost?.todayUsd);
-    const attentionCount = attentionItems({
-      failures: runList.filter((r) => r.status === "failed" || r.status === "timed_out").length,
-      unhealthyRoutines: routineList.filter((r) => !r.healthy).length,
-      approvals: approvals.data?.length ?? 0,
-      budgetHot: budget.tone === "warn" || budget.tone === "over",
-    });
-
-    const pulse = pulseSignal(succeeded, finished.length);
-    const attention = attentionSignal(attentionCount);
-    const routineSig = routinesSignal(fired, due);
-    const cost = costSignal(settings.data?.limits?.dailyBudgetUsd, metrics.data?.cost?.todayUsd);
-    const runsSig = runsSignal(activeRuns);
-
-    return [
-      {
+  return useMemo(() => {
+    const readings: Record<string, () => Pod> = {
+      pulse: () => ({
         id: "pulse",
         icon: <Activity aria-hidden />,
         name: t("desktop.widget.pulse"),
-        detail: pulse.label,
-        value: pulse.value,
-        level: pulse.level,
+        detail: signals.pulse.label,
+        value: signals.pulse.value,
+        level: signals.pulse.level,
         onOpen: () => onExpand("pulse"),
-      },
-      {
+      }),
+      attention: () => ({
         id: "attention",
         icon: <AlertTriangle aria-hidden />,
         name: t("desktop.widget.attention"),
-        detail: attention.label,
-        count: attentionCount,
-        level: attention.level,
+        detail: signals.attention.label,
+        count: signals.attention.count,
+        level: signals.attention.level,
         onOpen: () => onExpand("attention"),
-      },
-      {
+      }),
+      runs: () => ({
         id: "runs",
         icon: <Terminal aria-hidden />,
         name: t("desktop.hud.runs"),
-        detail: runsSig.label,
-        value: runsSig.value,
-        level: runsSig.level,
-        live: activeRuns > 0,
-        // The prototype's runs pod opens the Runs app; the objective panel
-        // (`now`) stays one palette action away.
+        detail: signals.runs.label,
+        value: signals.runs.value,
+        level: signals.runs.level,
+        live: signals.activeRuns > 0,
+        // The prototype's runs pod opens the Runs app.
         onOpen: () => onOpenApp("runs"),
-      },
-      {
+      }),
+      routines: () => ({
         id: "routines",
         icon: <CalendarClock aria-hidden />,
         name: t("desktop.widget.routines"),
-        detail: routineSig.label,
-        value: routineSig.value,
-        level: routineSig.level,
+        detail: signals.routines.label,
+        value: signals.routines.value,
+        level: signals.routines.level,
         onOpen: () => onExpand("routines"),
-      },
-      {
+      }),
+      cost: () => ({
         id: "cost",
         icon: <Coins aria-hidden />,
         name: t("desktop.widget.cost"),
-        detail: cost.label,
-        value: cost.value,
-        level: cost.level,
+        detail: signals.cost.label,
+        value: signals.cost.value,
+        level: signals.cost.level,
         onOpen: () => onExpand("cost"),
-      },
-    ];
-  }, [
-    runs.data,
-    routines.data,
-    settings.data,
-    metrics.data,
-    approvals.data,
-    activeRuns,
-    t,
-    onExpand,
-    onOpenApp,
-  ]);
-
-  const left = useMemo<Pod[]>(() => {
-    // The prototype's left arc: brain, skills, artifacts, generations,
-    // connectors, settings — plus Pixel Studio, until G5 lets the HUD be
-    // edited. Every pod opens its app as a panel on the stage.
-    const order: AppKind[] = [
-      "brain",
-      "skills",
-      "artifacts",
-      "generations",
-      "connectors",
-      "settings",
-      "pixel",
-    ];
-    const enabled = (skills.data ?? []).filter((s) => s.enabled).length;
-    return order.map((kind) => {
-      const def = APPS[kind];
-      const Icon = def.Icon;
-      const pod: Pod = {
-        id: `app:${kind}`,
-        icon: <Icon aria-hidden />,
-        name: t(def.titleKey),
-        detail: t(def.descKey),
+      }),
+      inbox: () => ({
+        id: "inbox",
+        icon: <Inbox aria-hidden />,
+        name: t("desktop.widget.inbox"),
+        detail: t("desktop.inbox.title"),
         level: "idle",
-        onOpen: () => onOpenApp(kind),
-      };
-      if (kind === "skills") {
-        pod.detail = t("desktop.pods.skills", { n: enabled });
-        pod.value = String(enabled);
+        onOpen: () => onExpand("inbox"),
+      }),
+      approvals: () => ({
+        id: "approvals",
+        icon: <ShieldCheck aria-hidden />,
+        name: t("desktop.widget.approvals"),
+        detail: t("desktop.approvals.empty"),
+        count: signals.approvals,
+        soft: true,
+        level: signals.approvals > 0 ? "warn" : "idle",
+        onOpen: () => onExpand("approvals"),
+      }),
+      now: () => ({
+        id: "now",
+        icon: <Activity aria-hidden />,
+        name: t("now.title"),
+        detail: t("desktop.ref.now"),
+        level: "idle",
+        onOpen: () => onExpand("now"),
+      }),
+    };
+    return (id: string): Pod | null => {
+      const kind = appKindOf(id);
+      if (kind) {
+        const def = APPS[kind];
+        const Icon = def.Icon;
+        const pod: Pod = {
+          id,
+          icon: <Icon aria-hidden />,
+          name: t(def.titleKey),
+          detail: t(def.descKey),
+          level: "idle",
+          onOpen: () => onOpenApp(kind),
+        };
+        if (kind === "skills") {
+          pod.detail = t("desktop.pods.skills", { n: signals.skills });
+          pod.value = String(signals.skills);
+        }
+        if (kind === "connectors" && signals.pendingConnectors > 0) {
+          pod.detail = t("microapp.notConfigured");
+          pod.count = signals.pendingConnectors;
+          pod.soft = true;
+          pod.level = "warn";
+        }
+        return pod;
       }
-      if (kind === "connectors" && pending.length > 0) {
-        pod.detail = t("microapp.notConfigured");
-        pod.count = pending.length;
-        pod.soft = true;
-        pod.level = "warn";
-      }
-      return pod;
-    });
-  }, [pending, skills.data, onOpenApp, t]);
+      return readings[id]?.() ?? null;
+    };
+  }, [signals, onExpand, onOpenApp, t]);
+}
+
+function PodButton({
+  pod,
+  side,
+  editing,
+  onRemove,
+}: {
+  pod: Pod;
+  side: HudSide;
+  editing: boolean;
+  onRemove: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className={`pod-seat${editing ? " editing" : ""}`}>
+      <button
+        type="button"
+        className={`pod${isLit(pod.level) ? " lit" : ""}${pod.live ? " live" : ""}`}
+        data-level={pod.level}
+        data-pod={pod.id}
+        aria-label={`${pod.name}: ${pod.detail}`}
+        onClick={pod.onOpen}
+      >
+        <span className="hex" aria-hidden />
+        <span className="ic" aria-hidden>
+          {pod.icon}
+        </span>
+        {pod.value && (
+          <span className="mv" aria-hidden>
+            {pod.value}
+          </span>
+        )}
+        {pod.count ? (
+          <span className={`ct${pod.soft ? " w" : ""}`} aria-hidden>
+            {pod.count > 99 ? "99+" : pod.count}
+          </span>
+        ) : null}
+        <span className={`tip ${side}`} aria-hidden>
+          {pod.name}
+          <span className="sub">{pod.detail}</span>
+        </span>
+      </button>
+      {editing && (
+        <button
+          type="button"
+          className="pod-rm"
+          aria-label={`${t("desktop.hud.remove")}: ${pod.name}`}
+          title={t("desktop.hud.remove")}
+          onClick={onRemove}
+        >
+          <X aria-hidden />
+        </button>
+      )}
+    </div>
+  );
+}
+
+export default function DesktopPods({
+  hud,
+  signals,
+  editing,
+  onHudChange,
+  onExpand,
+  onOpenApp,
+}: DesktopPodsProps) {
+  const t = useT();
+  const podFor = usePodCatalogue(signals, onExpand, onOpenApp);
+  const [hoverSide, setHoverSide] = useState<HudSide | null>(null);
+  const [gallery, setGallery] = useState<HudSide | null>(null);
+  useEffect(() => {
+    if (!editing) setGallery(null);
+  }, [editing]);
+
+  const arc = (side: HudSide, label: string) => (
+    <nav
+      className={`pod-arc ${side}${hoverSide === side ? " near" : ""}`}
+      aria-label={label}
+      onPointerEnter={() => setHoverSide(side)}
+      onPointerLeave={() => setHoverSide(null)}
+    >
+      {hud[side].map((id) => {
+        const pod = podFor(id);
+        if (!pod) return null;
+        return (
+          <PodButton
+            key={id}
+            pod={pod}
+            side={side}
+            editing={editing}
+            onRemove={() => onHudChange({ ...hud, [side]: hud[side].filter((x) => x !== id) })}
+          />
+        );
+      })}
+      {editing && (
+        <div className="pod-seat editing">
+          <button
+            type="button"
+            className="pod add"
+            data-pod={`add:${side}`}
+            aria-label={t("desktop.hud.add")}
+            title={t("desktop.hud.add")}
+            onClick={() => setGallery(side)}
+          >
+            <span className="hex" aria-hidden />
+            <span className="ic" aria-hidden>
+              +
+            </span>
+          </button>
+        </div>
+      )}
+    </nav>
+  );
 
   return (
     <>
-      <nav
-        className={`pod-arc l${hoverSide === "l" ? " near" : ""}`}
-        aria-label={t("desktop.pods.apps")}
-        onPointerEnter={() => setHoverSide("l")}
-        onPointerLeave={() => setHoverSide(null)}
-      >
-        {left.map((pod) => (
-          <PodButton key={pod.id} pod={pod} side="l" />
-        ))}
-      </nav>
-      <nav
-        className={`pod-arc r${hoverSide === "r" ? " near" : ""}`}
-        aria-label={t("desktop.pods.readings")}
-        onPointerEnter={() => setHoverSide("r")}
-        onPointerLeave={() => setHoverSide(null)}
-      >
-        {right.map((pod) => (
-          <PodButton key={pod.id} pod={pod} side="r" />
-        ))}
-      </nav>
+      {arc("l", t("desktop.pods.apps"))}
+      {arc("r", t("desktop.pods.readings"))}
+      <HudGallery
+        side={gallery}
+        hud={hud}
+        podFor={podFor}
+        onPick={(id) => {
+          if (!gallery) return;
+          onHudChange({ ...hud, [gallery]: [...hud[gallery], id] });
+          setGallery(null);
+        }}
+        onClose={() => setGallery(null)}
+      />
     </>
+  );
+}
+
+/** "Add to the HUD": the instruments not on an arc, as a small grid. */
+function HudGallery({
+  side,
+  hud,
+  podFor,
+  onPick,
+  onClose,
+}: {
+  side: HudSide | null;
+  hud: Hud;
+  podFor: (id: string) => Pod | null;
+  onPick: (id: string) => void;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const ref = useRef<HTMLDivElement>(null);
+  const { mounted, closing } = usePresence(side !== null, 160);
+  useDialog(ref, onClose);
+  if (!mounted) return null;
+  const free = freeInstruments(hud)
+    .map((id) => podFor(id))
+    .filter((p): p is Pod => p !== null);
+  return (
+    <DialogPortal>
+      <div className={`hud-gallery${closing ? " closing" : ""}`}>
+        <button
+          type="button"
+          className="hud-gallery-scrim"
+          aria-label={t("common.close")}
+          onClick={onClose}
+        />
+        <div
+          ref={ref}
+          className="hud-gallery-box"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("desktop.hud.gallery")}
+          tabIndex={-1}
+        >
+          <div className="in">
+            <h4>{t("desktop.hud.gallery")}</h4>
+            {free.length === 0 ? (
+              <p className="dim">{t("desktop.hud.galleryEmpty")}</p>
+            ) : (
+              <div className="hud-gallery-grid">
+                {free.map((pod) => (
+                  <button
+                    key={pod.id}
+                    type="button"
+                    data-add={pod.id}
+                    title={pod.detail}
+                    onClick={() => onPick(pod.id)}
+                  >
+                    <span className="e" aria-hidden>
+                      {pod.icon}
+                    </span>
+                    {pod.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </DialogPortal>
   );
 }

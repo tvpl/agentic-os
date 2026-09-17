@@ -31,8 +31,8 @@ test("spaces keep their own windows and the dock follows app navigation", async 
   // The draft belongs to the console, not to a space.
   await expect(consoleWidget.locator("textarea")).toHaveValue("Continue this after exploring");
 
-  // The Second Brain is still one click away, from the dock.
-  await dock.getByRole("button", { name: "Second Brain", exact: true }).click();
+  // The Second Brain is still one click away, from its pod.
+  await page.locator('.pod-arc.l .pod[data-pod="app:brain"]').click();
   await expect(page.locator(".brain2")).toBeVisible();
   await page.getByRole("button", { name: "Zoom in", exact: true }).click();
   await expect
@@ -47,10 +47,6 @@ test("spaces keep their own windows and the dock follows app navigation", async 
   await expect(page.locator(".boot-screen")).toHaveCount(0);
   await expect.poll(async () => (await routines.boundingBox())!.x).toBeCloseTo(arranged.x, -1);
   await page.screenshot({ animations: "disabled", path: "artifacts/qa-workspace-overview.png" });
-
-  await dock.getByRole("button", { name: "Collapse dock" }).click();
-  await expect(dock.getByRole("button", { name: "Second Brain", exact: true })).toHaveCount(0);
-  await dock.getByRole("button", { name: "Expand dock" }).click();
 
   await page.goto("about:blank");
   await resetStage(request);
@@ -104,10 +100,8 @@ test("routine lifecycle: create, edit, enable, execute, inspect history and dele
   await expect(revised.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
   await revised.getByRole("button", { name: "Test now", exact: true }).click();
   await expect(page.locator(".run-title .badge")).toHaveText(/done/i, { timeout: 20000 });
-  await page
-    .getByRole("navigation", { name: "Workspace navigation" })
-    .getByRole("button", { name: "Routines", exact: true })
-    .click();
+  // The trace opened as a panel over the Routines app (G3): bring the app back to the front.
+  await page.locator('[data-panel="app:routines"] .panel-title').click();
   await revised.getByRole("button", { name: "History", exact: true }).click();
   await expect(page.getByRole("dialog").locator("tbody .badge").first()).toHaveText(/done/i);
   await page.keyboard.press("Escape");

@@ -838,6 +838,63 @@ Portão visual: `artifacts/g4-lado-a-lado.png` — protótipo e produto com um t
 `relatorio.md` no palco e `@re` a meio no console, o popover de referência aberto nos dois.
 Inventário: linha 6 marcada.
 
+## G5 entregue — faixa, dock e HUD editável
+
+Quinto bloco do [plano de ajuste](desktop-v3-ajuste.md). O topo, o rodapé e os arcos são os do
+protótipo, e os arcos são do usuário.
+
+**Faixa ambiente** (`desktop/AmbientStrip.tsx`, 32 px): `MORDOMO·OS` · provedor·estado · Dia
+US$ · Runs · Atenção · sino · relógio. Cada segmento tem `data-l` derivado de `signal.ts`
+(`idle` nunca acende) e os que têm para onde ir são botões: provedor → Ajustes › Provedores,
+Dia → Orçamento, Runs → app de Execuções, Atenção → Atenção. A barra de marca com os 8 ícones
+saiu: distribuir e visão geral estão no dock, buscar continua no `/`, a paleta no `⌘K`, a cor
+de destaque fica em Ajustes › Tema, o segmentado de provedores virou o controle do console (G4).
+`useDesktopSignals` deriva todas as leituras uma vez — faixa e pods leem o mesmo objeto.
+
+**Dock** (`components/Workspace.tsx`, 46 px, de borda a borda): espaços com a contagem de
+painéis · divisor · painéis abertos (recolhido = tracejado; run = ponto vivo; clique alterna
+foco/recolher/restaurar) · Editar HUD · Visão geral · Distribuir. Os apps não são mais ícones
+do dock: são os pods do arco esquerdo. Em tela estreita (< 1024 px), onde os apps ainda são
+páginas, o dock de ícones continua. O dock pede o modo por evento (`desktopModes.ts`) e lê o
+estado do desktop para marcar o botão pressionado.
+
+**HUD editável** (`desktop/hud.ts`, `DesktopPods.tsx`): "Editar HUD" faz os pods balançarem,
+✕ remove, o `+` tracejado no fim de cada arco abre "Adicionar ao HUD" com os instrumentos fora
+dos arcos — os 9 apps mais pulso, atenção, execuções, rotinas, caixa, orçamento, aprovações e
+agora. Esc sai da edição. Persistido em `settings.hud = { l, r }` (schema Zod com `.catch` do
+mesmo jeito que o layout; ids desconhecidos são ignorados na leitura). A composição inicial é
+a do protótipo: cérebro, skills, artefatos, gerações, conectores, ajustes à esquerda; pulso,
+atenção, execuções, rotinas, caixa à direita. Pixel Studio, orçamento e aprovações ficam na
+galeria, a dois cliques.
+
+`--stage-top` passou de 96 para 40 px e `--stage-bottom` de 100 para 46 px: o palco ganhou
+110 px de altura.
+
+### Defeitos encontrados nesta passagem
+
+1. **A API não conhecia `hud`.** O `PUT /api/settings` valida com o schema do core; sem o
+   campo, a chave era descartada em silêncio e a edição não sobrevivia ao reload. O campo
+   entrou no schema com `.catch` para o padrão — e o `dist` da API precisa ser reconstruído
+   junto com a UI (o servidor isolado dos e2e roda o `dist`).
+2. **Contagem no nome acessível.** A primeira versão punha "Research · 1" no `aria-label` do
+   espaço, o que quebrava o nome "Research" que as specs e os leitores de tela usam. A contagem
+   é um `span` decorativo.
+3. **Espaços fora do dock do celular.** O dock de ícones perdeu os espaços numa primeira
+   versão; o passo "modos" do onboarding aponta para eles. Voltaram.
+
+### Gates
+
+| Gate | Resultado |
+|---|---|
+| `npm test` (raiz) | 62 arquivos · 492 testes |
+| `npm run test -w apps/command-centre` | 47 arquivos · 339 testes |
+| `npx playwright test` (suíte inteira) | 112 passaram · 2 pulados · 1 falha (`provider-readiness` apontava para a barra antiga; corrigida e repassada com `desktop-hud`: 5/5) |
+| `typecheck` · `eslint` · `prettier` | limpos |
+
+Portão visual: `artifacts/g5-lado-a-lado.png` — protótipo e produto em repouso: faixa, arcos,
+console e dock. Inventário: linhas 7 (faixa), 8 (dock) e 9 (HUD editável) marcadas; a linha
+10 (superfícies de instrumento com `.mt`/`.rw`) já vinha do G1.
+
 ## Revisão final
 
 Uma varredura no arco inteiro F1–F6 encontrou **código especulativo meu**: `tile`, `cascade`,

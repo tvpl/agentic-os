@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { resetStage, stageBoxes } from "./stage";
+import { openAppFromPalette, resetStage, stageBoxes } from "./stage";
 
 test("apps open as panels on the stage and nothing leaves the desktop", async ({ page, request }) => {
   await resetStage(request);
@@ -23,7 +23,8 @@ test("apps open as panels on the stage and nothing leaves the desktop", async ({
   await expect(brain.getByRole("button", { name: /back to.*os|voltar ao os/i })).toHaveCount(0);
   await brain.getByRole("button", { name: /^close|^fechar/i }).click();
   await expect(brain).toHaveCount(0);
-  await page.locator('.pod-arc.l .pod[data-pod="app:pixel"]').click();
+  // Pixel Studio is not on the default HUD (G5): the launcher opens it.
+  await openAppFromPalette(page, "Pixel Studio");
   const pixel = page.locator('[data-panel="app:pixel"]');
   await expect(pixel.locator(".panel-title")).toHaveText(/Pixel Studio/);
   await expect(pixel.locator("canvas").first()).toBeVisible();

@@ -137,7 +137,7 @@ Portão: escrever no console → trace abre como painel → resultado abre como 
 
 Portão: console idêntico ao do protótipo; `@` lista tudo que está no palco.
 
-### G5 — Faixa, dock, HUD editável
+### G5 — Faixa, dock, HUD editável ✅ (registro em `desktop-v3-paridade.md`)
 
 - **Faixa ambiente** substitui a barra de marca: `MORDOMO·OS` · provedor·estado · Dia US$ ·
   Runs · Atenção · sino · relógio. Cada segmento tem `data-level` de `signal.ts` e abre a

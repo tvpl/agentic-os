@@ -17,11 +17,6 @@
 .desktop-depth .panel {
   pointer-events: auto;
 }
-/* Only the pressable readings take the pointer: the strip itself must not
-   cover the wallpaper it floats over. */
-.desktop-depth .ambient-strip button.sig {
-  pointer-events: auto;
-}
 .desktop.searching .desktop-depth {
   opacity: 0.3;
   pointer-events: none;
@@ -2791,7 +2786,7 @@ body.window-dragging .app-rail {
   );
   position: fixed;
   left: 50%;
-  bottom: calc(var(--stage-bottom) - 8px);
+  bottom: calc(var(--stage-bottom) + 12px);
   transform: translateX(-50%);
   width: min(860px, calc(100vw - 220px));
   z-index: var(--z-drawer);
@@ -3131,6 +3126,304 @@ body.window-dragging .app-rail {
   .chp,
   .cbtn {
     transition: none;
+    animation: none;
+  }
+}
+
+/* -------------------------------------------------- ambient strip (G5) ----
+   The prototype's top line: brand, provider and state, the day's readings,
+   the bell, the clock. `idle` never lights up. */
+.strip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  z-index: var(--z-drawer);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 12px 0 16px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg) 95%, transparent),
+    color-mix(in srgb, var(--bg) 45%, transparent)
+  );
+  border-bottom: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
+  backdrop-filter: blur(12px);
+  font-size: 11px;
+}
+.strip .bd {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.strip .bd b {
+  color: var(--accent-text);
+}
+.strip .gap {
+  flex: 1;
+}
+.sg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 21px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  transition:
+    color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard);
+}
+.sg .k {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+.sg .v {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+.sg .dt {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+}
+.sg[data-l="idle"] {
+  opacity: 0.6;
+}
+.sg[data-l="info"] {
+  color: var(--text-dim);
+}
+.sg[data-l="warn"] {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+}
+.sg[data-l="crit"] {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+.sg[data-l="warn"] .dt,
+.sg[data-l="crit"] .dt {
+  opacity: 1;
+  animation: strip-pip 1.8s ease-in-out infinite;
+}
+@keyframes strip-pip {
+  50% {
+    opacity: 0.2;
+  }
+}
+.sg[data-open] {
+  cursor: pointer;
+}
+.sg[data-open]:hover,
+.sg[data-open]:focus-visible {
+  color: var(--text);
+  background: var(--accent-soft);
+  opacity: 1;
+}
+.strip .bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 21px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-standard);
+}
+.strip .bell:hover,
+.strip .bell.has-unread {
+  color: var(--text);
+}
+.strip .bell svg {
+  width: 14px;
+  height: 14px;
+}
+.strip .bell .bc {
+  min-width: 14px;
+  height: 14px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--danger);
+  color: #1b0b0b;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 9.5px;
+  display: grid;
+  place-items: center;
+}
+
+/* ----------------------------------------------- HUD editing (G5) ------
+   Editing: the pods wobble, ✕ removes, the dashed + at the end of an arc
+   opens the gallery. */
+.pod-seat {
+  position: relative;
+  pointer-events: auto;
+}
+/* The instruments wobble; the + is a control and holds still. */
+.pod-seat.editing .pod:not(.add) {
+  animation: pod-wobble 2.4s ease-in-out infinite;
+}
+@keyframes pod-wobble {
+  0%,
+  100% {
+    transform: rotate(-1.4deg);
+  }
+  50% {
+    transform: rotate(1.4deg);
+  }
+}
+.pod-rm {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  z-index: 4;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 0;
+  padding: 0;
+  background: var(--danger);
+  color: #1b0b0b;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.pod-rm svg {
+  width: 11px;
+  height: 11px;
+}
+.pod.add {
+  opacity: 0.55;
+}
+.pod.add .hex {
+  background: none;
+}
+.pod.add .hex::after {
+  background: none;
+  border: 1px dashed var(--border-strong);
+  clip-path: none;
+  inset: 4px;
+}
+.pod.add .ic {
+  font-size: 18px;
+  font-weight: 600;
+}
+.hud-gallery {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: grid;
+  place-items: center;
+  animation: cons-pop var(--dur-base) var(--ease-standard);
+}
+.hud-gallery.closing {
+  opacity: 0;
+  transition: opacity 160ms var(--ease-standard);
+}
+.hud-gallery-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  cursor: default;
+  background: color-mix(in srgb, var(--bg) 40%, transparent);
+}
+.hud-gallery-box {
+  position: relative;
+  width: min(440px, calc(100vw - 32px));
+  padding: 1px;
+  background: linear-gradient(
+    155deg,
+    var(--accent-line),
+    color-mix(in srgb, var(--border-strong) 60%, transparent)
+  );
+  clip-path: polygon(
+    0 12px,
+    12px 0,
+    calc(100% - 12px) 0,
+    100% 12px,
+    100% calc(100% - 12px),
+    calc(100% - 12px) 100%,
+    12px 100%,
+    0 calc(100% - 12px)
+  );
+}
+.hud-gallery-box .in {
+  background: color-mix(in srgb, var(--bg-raise-2) 96%, transparent);
+  backdrop-filter: blur(18px);
+  padding: 15px 17px;
+  clip-path: polygon(
+    0 12px,
+    12px 0,
+    calc(100% - 12px) 0,
+    100% 12px,
+    100% calc(100% - 12px),
+    calc(100% - 12px) 100%,
+    12px 100%,
+    0 calc(100% - 12px)
+  );
+}
+.hud-gallery-box h4 {
+  margin: 0 0 11px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.hud-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+}
+.hud-gallery-grid button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 11px 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 10.5px;
+  text-align: center;
+  cursor: pointer;
+}
+.hud-gallery-grid button:hover,
+.hud-gallery-grid button:focus-visible {
+  border-color: var(--accent-line);
+  color: var(--text);
+  background: var(--accent-soft);
+}
+.hud-gallery-grid .e svg {
+  width: 18px;
+  height: 18px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pod-seat.editing .pod:not(.add),
+  .sg .dt,
+  .hud-gallery {
     animation: none;
   }
 }

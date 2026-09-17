@@ -297,3 +297,117 @@
     animation: none;
   }
 }
+
+/* ------------------------------------------------------ the dock (G5) ----
+   The prototype's bottom bar on the desktop: spaces with their panel counts,
+   the open panels, Edit HUD, Overview, Spread out. The floating pill of app
+   icons above is what the narrow screen keeps (`.workspace-dock.apps`). */
+.workspace-dock.hud {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  transform: none;
+  height: var(--stage-bottom);
+  padding: 0 12px;
+  gap: 12px;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
+  border-radius: 0;
+  background: linear-gradient(
+    0deg,
+    color-mix(in srgb, var(--bg) 97%, transparent),
+    color-mix(in srgb, var(--bg) 55%, transparent)
+  );
+  backdrop-filter: blur(14px);
+  box-shadow: none;
+  overflow: hidden;
+  z-index: var(--z-drawer);
+}
+.workspace-dock.hud .dock-spaces {
+  border: 0;
+  padding: 0;
+  gap: 4px;
+}
+.workspace-dock.hud .spc {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 27px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 12px;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+}
+.workspace-dock.hud .spc svg {
+  width: 13px;
+  height: 13px;
+}
+.workspace-dock.hud .spc:hover {
+  color: var(--text-dim);
+}
+.workspace-dock.hud .spc[aria-pressed="true"] {
+  color: var(--accent-text);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+[data-theme="light"] .workspace-dock.hud .spc[aria-pressed="true"] {
+  color: var(--text);
+}
+.workspace-dock.hud .spc .n {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  opacity: 0.7;
+}
+.workspace-dock.hud .dv {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+}
+.workspace-dock.hud .sp {
+  flex: 1;
+}
+.workspace-dock.hud .dock-tasks {
+  border: 0;
+  padding: 0;
+}
+.workspace-dock.hud .tl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 25px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  transition:
+    color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard);
+}
+.workspace-dock.hud .tl:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+.workspace-dock.hud .tl[aria-pressed="true"] {
+  color: var(--accent-text);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+[data-theme="light"] .workspace-dock.hud .tl[aria-pressed="true"] {
+  color: var(--text);
+}

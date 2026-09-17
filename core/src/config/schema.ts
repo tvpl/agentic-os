@@ -234,6 +234,22 @@ const WindowLayoutSchema = z.record(
 /** The same record, but degrading to an empty layout instead of throwing. */
 const SafeWindowLayoutSchema = WindowLayoutSchema.catch({});
 
+/**
+ * The HUD (redesign G5): which instruments sit on the left and right pod
+ * arcs, in order. Ids are the desktop's (`app:brain`, `pulse`, …); unknown
+ * ones are ignored on read. Same rule as the layout: presentation never
+ * invalidates the settings document, so an unreadable HUD is the default.
+ */
+export const DEFAULT_HUD = {
+  l: ["app:brain", "app:skills", "app:artifacts", "app:generations", "app:connectors", "app:settings"],
+  r: ["pulse", "attention", "runs", "routines", "inbox"],
+};
+const HudSchema = z.object({
+  l: z.array(z.string().min(1).max(60)).max(16).default(DEFAULT_HUD.l),
+  r: z.array(z.string().min(1).max(60)).max(16).default(DEFAULT_HUD.r),
+});
+const SafeHudSchema = HudSchema.catch(DEFAULT_HUD);
+
 export const SettingsSchema = z.object({
   version: z.number().default(1),
   systemName: z.string().default("MordomoOS"),
@@ -390,6 +406,8 @@ export const SettingsSchema = z.object({
     .default({}),
   /** Id of the space `dashboardLayout` currently belongs to. */
   activeSpace: z.string().min(1).max(60).default("work"),
+  /** The pod arcs (redesign G5): editable, persisted, one HUD for every space. */
+  hud: SafeHudSchema.default(DEFAULT_HUD),
   /**
    * Sentinels (Onda 2, item 1): cheap observers that need no LLM. Every
    * sentinel is togglable on its own; `fsWatch` is off by default because a

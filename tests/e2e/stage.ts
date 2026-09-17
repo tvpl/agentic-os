@@ -7,7 +7,7 @@
  * arrangement out of the assertion: the spec sets the stage, then tests the
  * one behaviour it is about.
  */
-import { expect, type APIRequestContext, type Locator } from "@playwright/test";
+import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { WIDGET_ORDER } from "../../apps/command-centre/src/desktop/defaultLayout";
 
 /** The apps and their routes (`desktop/apps.tsx`); listed here because that module pulls in the views. */
@@ -22,6 +22,12 @@ const APP_ROUTES: Array<[string, string]> = [
   ["runs", "/runs"],
   ["pixel", "/pixel"],
 ];
+
+/** The prototype's first composition of the pod arcs (`core/src/config/schema.ts`, G5). */
+export const DEFAULT_HUD = {
+  l: ["app:brain", "app:skills", "app:artifacts", "app:generations", "app:connectors", "app:settings"],
+  r: ["pulse", "attention", "runs", "routines", "inbox"],
+};
 
 /** Boxes are laid out on a plain grid: specs measure windows against themselves. */
 const COL_W = 320;
@@ -79,7 +85,7 @@ export async function stageBoxes(
   });
   const res = await request.put("/api/settings", {
     headers: { "x-mordomo-token": process.env.MORDOMO_TOKEN! },
-    data: { dashboardLayout, spaces: {}, activeSpace: "work" },
+    data: { dashboardLayout, spaces: {}, activeSpace: "work", hud: DEFAULT_HUD },
   });
   if (!res.ok()) throw new Error(`could not seed the stage: ${res.status()} ${await res.text()}`);
   // An unreadable layout degrades to `{}` instead of throwing (see the schema),
@@ -104,7 +110,9 @@ export async function resetStage(request: APIRequestContext): Promise<void> {
   });
   const res = await request.put("/api/settings", {
     headers: { "x-mordomo-token": process.env.MORDOMO_TOKEN! },
-    data: { dashboardLayout, spaces: {}, activeSpace: "work" },
+    // The pod arcs come back to the default too: a spec that edited the HUD
+    // must not leave the next one without its brain pod.
+    data: { dashboardLayout, spaces: {}, activeSpace: "work", hud: DEFAULT_HUD },
   });
   if (!res.ok()) throw new Error(`could not reset the stage: ${res.status()}`);
 }
@@ -127,4 +135,17 @@ export async function settled(window: Locator): Promise<void> {
       return stable;
     })
     .toBe(true);
+}
+
+/**
+ * Open one of the OS's apps as a panel through the launcher (⌘K / Ctrl+M).
+ * The dock lists open panels, not apps (G5), and only the default HUD's
+ * apps have a pod, so the launcher is the one door every app shares.
+ */
+export async function openAppFromPalette(page: Page, name: string): Promise<void> {
+  await page.keyboard.press("Control+M");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("option", { name, exact: true }).click();
+  await expect(page.locator(".launcher")).toHaveCount(0);
 }

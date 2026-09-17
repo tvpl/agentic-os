@@ -12,10 +12,10 @@
  * window). Both are reachable from the tool row, the keyboard and the
  * command palette (`mordomo:toggle-edit`).
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bell, Columns3, Copy, FileText, Info, LayoutGrid, Palette, Search, Telescope } from "lucide-react";
-import { api, type LaunchRunResponse, type Meta, type ProviderId, type Skill } from "../api";
+import { FileText } from "lucide-react";
+import { api, type LaunchRunResponse, type Meta, type Skill } from "../api";
 import { useT } from "../i18n";
 import { qk, useOsMetrics, useOsProviders, useOsSettings } from "../queries";
 import { budgetState } from "./budget";
@@ -25,7 +25,7 @@ import { useConfirm } from "../hooks/useConfirm";
 import { playCue, useNotifications } from "../hooks/useNotifications";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import { useOsEvent } from "../hooks/useEventStream";
-import { LAUNCHER_EVENT, OPEN_DECK_EVENT, OPEN_PANEL_EVENT, RESET_LAYOUT_EVENT } from "../App";
+import { OPEN_DECK_EVENT, OPEN_PANEL_EVENT, RESET_LAYOUT_EVENT } from "../App";
 import { PANEL_ACTION_EVENT, panelKind, publishPanels, type OpenPanel, type PanelAction } from "./panelKinds";
 import { APPS, appForPath, appId, appKindOf, appLocationOf, type AppKind, type AppLocation } from "./apps";
 import AppPanel from "./AppPanel";
@@ -49,12 +49,16 @@ import { DEFAULT_SPACE, switchSpace, type SpaceMap } from "./spaces";
 import { DOC_BOX, defaultWindows, docId, docPath, isDocId, minFor } from "./defaultWindows";
 import DocWindow from "./DocWindow";
 import { CONSOLE_DRAFT_EVENT, CONSOLE_REFS_EVENT, readConsoleDraft, storeConsoleDraft } from "./consoleDraft";
-import { cascade, clampIntoStage, placeNew, tile, topZ, type WindowMap } from "./windowModel";
+import { clampIntoStage, placeNew, tile, topZ, type WindowMap } from "./windowModel";
 import { useWindowLayout, type StageMetrics } from "./useWindowLayout";
 import WidgetLayer, { type WidgetSpec } from "./WidgetLayer";
 import AgentPresence from "./AgentPresence";
 import LivingField from "./LivingField";
 import DesktopPods from "./DesktopPods";
+import AmbientStrip from "./AmbientStrip";
+import { useDesktopSignals } from "./useSignals";
+import { DESKTOP_ACTION_EVENT, publishDesktopModes, type DesktopAction } from "./desktopModes";
+import { hudEquals, normalizeHud, type Hud } from "./hud";
 import SkillDeck from "./SkillDeck";
 import FirstRunHint from "./FirstRunHint";
 import ModelEffortPopover from "./ModelEffortPopover";
@@ -62,14 +66,11 @@ import { SearchBar, type ArtifactHit } from "./ArtifactSearch";
 import { DesktopActionsProvider, type DesktopActions } from "./actions";
 import { WIDGET_REGISTRY, hasSurface, widgetDefinition } from "./registry";
 import { baseCoreState, type CoreState } from "./coreState";
-import { providerProblem } from "../components/providerReadiness";
 import { isActiveStatus, useArtifactList, useDesktopRuns } from "./data";
 import { InboxList } from "./widgets/InboxWidget";
 import Console, { LISTENING_EVENT } from "./console/Console";
 import "./desktop.css";
 
-/** One-click accent presets, cycled by the palette tool and persisted. */
-const ACCENT_PRESETS = ["#f97316", "#22d3ee", "#a78bfa", "#4ade80", "#f43f5e", "#fbbf24"];
 const SEARCH_DEBOUNCE_MS = 220;
 
 export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaChanged?: () => void }) {
@@ -140,6 +141,32 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   );
   const coreState = useCoreState(runs.data ?? []);
   useBudgetNotifications();
+  const signals = useDesktopSignals(activeRuns);
+
+  /* ---- the HUD (G5): which instruments sit on the arcs, persisted ------- */
+  const storedHud = useMemo(() => normalizeHud(settings.data?.hud), [settings.data?.hud]);
+  const [hud, setHud] = useState<Hud>(storedHud);
+  useEffect(() => setHud(storedHud), [storedHud]);
+  const [editingHud, setEditingHud] = useState(false);
+  const saveHudMutation = useMutation({
+    mutationFn: (next: Hud) => api.put<{ settings: Record<string, unknown> }>("/api/settings", { hud: next }),
+    onSuccess: (data) => {
+      if (data?.settings) qc.setQueryData(qk.settings, data.settings);
+      else qc.invalidateQueries({ queryKey: qk.settings }).catch(() => undefined);
+    },
+    onError: (err: Error) => {
+      toast(err.message, "danger");
+      setHud(storedHud);
+    },
+  });
+  const saveHud = useCallback(
+    (next: Hud) => {
+      if (hudEquals(next, hud)) return;
+      setHud(next);
+      saveHudMutation.mutate(next);
+    },
+    [hud, saveHudMutation],
+  );
 
   const runningSkills = useMemo(
     () =>
@@ -150,28 +177,6 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   );
 
   /* ---- mutations -------------------------------------------------------- */
-  const accent = useMutation({
-    mutationFn: (next: string) => api.put("/api/settings", { accentColor: next }),
-    onSuccess: (_d, next) => {
-      onMetaChanged?.();
-      toast(`${t("settings.accent")}: ${next}`, "ok");
-    },
-    onError: (err: Error) => toast(err.message, "danger"),
-  });
-  const cycleAccent = () => {
-    const current = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
-    const idx = ACCENT_PRESETS.findIndex((c) => c.toLowerCase() === current.toLowerCase());
-    accent.mutate(ACCENT_PRESETS[(idx + 1) % ACCENT_PRESETS.length]!);
-  };
-
-  const switchDefault = useMutation({
-    mutationFn: (provider: ProviderId) => api.put("/api/providers/default", { provider }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: qk.providers }).catch(() => undefined);
-      qc.invalidateQueries({ queryKey: qk.meta }).catch(() => undefined);
-    },
-    onError: (err: Error) => toast(err.message, "danger"),
-  });
 
   const openRunRef = useRef<(id: string) => void>(() => undefined);
   const openSkillFormRef = useRef<(slug: string) => void>(() => undefined);
@@ -290,6 +295,34 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     // listener reads the latest through the render it was registered in.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // The dock asks for a mode (G5); the desktop owns it and tells the dock
+  // what is on, so the dock's buttons can show pressed.
+  const tileRef = useRef(() => undefined as void);
+  tileRef.current = () => commit(tile(layout, stage));
+  useEffect(() => {
+    const onAction = (e: Event) => {
+      const action = (e as CustomEvent<DesktopAction>).detail;
+      if (action === "overview") setOverview((v) => !v);
+      else if (action === "hud") setEditingHud((v) => !v);
+      else if (action === "tile") tileRef.current();
+    };
+    window.addEventListener(DESKTOP_ACTION_EVENT, onAction);
+    return () => window.removeEventListener(DESKTOP_ACTION_EVENT, onAction);
+  }, []);
+  useEffect(() => {
+    publishDesktopModes({ overview, editing: editingHud });
+    return () => publishDesktopModes({ overview: false, editing: false });
+  }, [overview, editingHud]);
+  // Escape leaves the HUD edit, like every other mode.
+  useEffect(() => {
+    if (!editingHud) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !(e.target instanceof Element && e.target.closest('[role="dialog"]')))
+        setEditingHud(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editingHud]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -687,7 +720,6 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   }, [layout, t, setAppLocation, onMetaChanged, runs.data, closePanel]);
 
   const activeProvider = providers.data?.find((p) => p.isDefault);
-  const defaultProvider = activeProvider?.id ?? t("common.loading");
   const consoleNode = (
     <Console
       busy={activeRuns > 0}
@@ -699,7 +731,10 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
 
   return (
     <DesktopActionsProvider value={actions}>
-      <div className={`desktop${searching ? " searching" : ""}`} data-core={coreState}>
+      <div
+        className={`desktop${searching ? " searching" : ""}${editingHud ? " editing" : ""}`}
+        data-core={coreState}
+      >
         {!metrics?.stacked && <LivingField onOpenFile={(path) => openDoc(path)} />}
         <AgentPresence />
         {!metrics?.stacked && <FirstRunHint />}
@@ -708,7 +743,10 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         <div className="depth-layer desktop-depth">
           {!metrics?.stacked && (
             <DesktopPods
-              activeRuns={activeRuns}
+              hud={hud}
+              signals={signals}
+              editing={editingHud}
+              onHudChange={saveHud}
               onOpenApp={(kind) => openApp(kind)}
               onExpand={(id) => {
                 // A pod only opens what the layout actually holds; otherwise it
@@ -735,113 +773,19 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         </div>
         {!metrics?.stacked && consoleNode}
 
-        <div className="os-topbar">
-          <div className="side">
-            <span
-              className={`dot ${activeProvider?.health.ok ? "ok" : activeProvider?.health.installed ? "warn" : "dim"}`}
-              aria-hidden
-            />
-            <span className="hud-label">
-              {t("dash.activeProvider")}: <span className="accent-text">{defaultProvider}</span>
-              {" · "}
-              {activeProvider && providerProblem(activeProvider) ? (
-                <span className="core-state-label warn-text" data-testid="provider-state">
-                  {t(`gate.state.${providerProblem(activeProvider)!}`)}
-                </span>
-              ) : (
-                <span className="core-state-label">{t(`desktop.core.${coreState}`)}</span>
-              )}
-            </span>
-          </div>
-          <div className="os-brand">
-            <div className="line1">
-              <span className="brand-mark" aria-hidden>
-                {meta.name.charAt(0).toUpperCase()}
-              </span>
-              <span className="name">
-                <span className="accent">{meta.name.replace(/\s*os$/i, "")}</span>{" "}
-                <span style={{ fontWeight: 400 }}>{t("dash.brand")}</span>
-              </span>
-            </div>
-            <div className="byline">{t("dash.brainSub")}</div>
-            <div className="os-tools">
-              <Tool
-                active={searching}
-                label={t("desktop.search.open")}
-                onClick={() => (searching ? closeSearch() : setSearching(true))}
-              >
-                <Search aria-hidden />
-              </Tool>
-              <Tool label={t("desktop.arrange.tile")} onClick={() => commit(tile(layout, stage))}>
-                <Columns3 aria-hidden />
-              </Tool>
-              <Tool label={t("desktop.arrange.cascade")} onClick={() => commit(cascade(layout, stage))}>
-                <Copy aria-hidden />
-              </Tool>
-              <Tool
-                active={overview}
-                label={t(overview ? "desktop.overview.exit" : "desktop.overview.enter")}
-                onClick={() => setOverview((v) => !v)}
-              >
-                <Telescope aria-hidden />
-              </Tool>
-              <Tool
-                label={`${t("os.menu")} (⌘K)`}
-                onClick={() => window.dispatchEvent(new CustomEvent(LAUNCHER_EVENT))}
-              >
-                <LayoutGrid aria-hidden />
-              </Tool>
-              <Tool label={t("settings.accent")} onClick={cycleAccent}>
-                <Palette aria-hidden />
-              </Tool>
-              <Tool label={t("nav.settings")} onClick={() => navigate("/settings")}>
-                <Info aria-hidden />
-              </Tool>
-            </div>
-          </div>
-          <div className="side right">
-            <button
-              type="button"
-              className={`os-tool bell${notifications.unread > 0 ? " has-unread" : ""}`}
-              aria-label={
-                notifications.unread > 0
-                  ? t("desktop.inbox.bell", { n: notifications.unread })
-                  : t("desktop.inbox.bellEmpty")
-              }
-              title={t("desktop.inbox.title")}
-              aria-expanded={bellAnchor !== null}
-              onClick={(e) => {
-                // Read the anchor now: a batched updater runs after the synthetic event is released.
-                const anchor = e.currentTarget;
-                setBellAnchor((prev) => (prev ? null : anchor));
-              }}
-            >
-              <Bell aria-hidden />
-              {notifications.unread > 0 && (
-                <span className="bell-count">{Math.min(99, notifications.unread)}</span>
-              )}
-            </button>
-            <div className="segmented sm" role="group" aria-label={t("dash.providers")}>
-              {(providers.data ?? []).map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={p.isDefault ? "active" : ""}
-                  disabled={!p.enabled || switchDefault.isPending}
-                  onClick={() => !p.isDefault && p.enabled && switchDefault.mutate(p.id)}
-                  title={p.enabled ? p.id : t("common.disabled")}
-                  aria-pressed={p.isDefault}
-                >
-                  <span
-                    className={`dot ${p.enabled ? (p.health.ok ? "ok" : p.health.installed ? "warn" : "danger") : "dim"}`}
-                    style={{ marginRight: 5 }}
-                  />
-                  {p.id}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+        <AmbientStrip
+          meta={meta}
+          provider={activeProvider}
+          coreState={coreState}
+          signals={signals}
+          unread={notifications.unread}
+          bellOpen={bellAnchor !== null}
+          onBell={(anchor) => setBellAnchor((prev) => (prev ? null : anchor))}
+          onOpenProvider={() => openApp("settings", { pathname: "/settings", search: "?tab=providers" })}
+          onOpenCost={() => openWindow("cost")}
+          onOpenRuns={() => openApp("runs")}
+          onOpenAttention={() => openWindow("attention")}
+        />
 
         {searching && (
           <SearchBar
@@ -993,31 +937,6 @@ export function useCoreState(runs: ReadonlyArray<{ status: string }>): CoreState
   if (listening) return "listening";
   if (override && override.until > Date.now()) return override.state;
   return baseCoreState(runs);
-}
-
-function Tool({
-  children,
-  label,
-  active,
-  onClick,
-}: {
-  children: ReactNode;
-  label: string;
-  active?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={`os-tool${active ? " active" : ""}`}
-      onClick={onClick}
-      aria-pressed={active}
-      aria-label={label}
-      title={label}
-    >
-      {children}
-    </button>
-  );
 }
 
 /** Registry ids, for tests and for the command palette. */
