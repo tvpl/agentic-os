@@ -25,7 +25,15 @@ const APP_ROUTES: Array<[string, string]> = [
 
 /** The prototype's first composition of the pod arcs (`core/src/config/schema.ts`, G5). */
 export const DEFAULT_HUD = {
-  l: ["app:brain", "app:skills", "app:artifacts", "app:generations", "app:connectors", "app:settings"],
+  l: [
+    "app:brain",
+    "app:skills",
+    "app:artifacts",
+    "app:generations",
+    "app:connectors",
+    "app:settings",
+    "app:pixel",
+  ],
   r: ["pulse", "attention", "runs", "routines", "inbox"],
 };
 

@@ -45,8 +45,9 @@ describe("editing", () => {
 
   it("offers exactly what is not on an arc", () => {
     const free = freeInstruments(DEFAULT_HUD);
-    expect(free).toContain("app:pixel");
+    expect(free).toContain("app:runs");
     expect(free).toContain("cost");
+    expect(free).not.toContain("app:pixel");
     expect(free).not.toContain("pulse");
     expect(freeInstruments({ l: [], r: [] }).length).toBeGreaterThan(free.length);
   });

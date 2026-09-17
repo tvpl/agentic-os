@@ -863,9 +863,9 @@ estado do desktop para marcar o botão pressionado.
 dos arcos — os 9 apps mais pulso, atenção, execuções, rotinas, caixa, orçamento, aprovações e
 agora. Esc sai da edição. Persistido em `settings.hud = { l, r }` (schema Zod com `.catch` do
 mesmo jeito que o layout; ids desconhecidos são ignorados na leitura). A composição inicial é
-a do protótipo: cérebro, skills, artefatos, gerações, conectores, ajustes à esquerda; pulso,
-atenção, execuções, rotinas, caixa à direita. Pixel Studio, orçamento e aprovações ficam na
-galeria, a dois cliques.
+a do protótipo mais o Pixel Studio, app do próprio OS: cérebro, skills, artefatos, gerações,
+conectores, ajustes e pixel à esquerda; pulso, atenção, execuções, rotinas, caixa à direita.
+Orçamento, aprovações e o app de execuções ficam na galeria, a dois cliques.
 
 `--stage-top` passou de 96 para 40 px e `--stage-bottom` de 100 para 46 px: o palco ganhou
 110 px de altura.

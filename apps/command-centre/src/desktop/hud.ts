@@ -15,9 +15,17 @@ export interface Hud {
 }
 export type HudSide = keyof Hud;
 
-/** The prototype's first composition: apps on the left, readings on the right. */
+/** The first composition: the prototype's arcs, plus Pixel Studio — the OS's own app — on the left. */
 export const DEFAULT_HUD: Hud = {
-  l: ["app:brain", "app:skills", "app:artifacts", "app:generations", "app:connectors", "app:settings"],
+  l: [
+    "app:brain",
+    "app:skills",
+    "app:artifacts",
+    "app:generations",
+    "app:connectors",
+    "app:settings",
+    "app:pixel",
+  ],
   r: ["pulse", "attention", "runs", "routines", "inbox"],
 };
 

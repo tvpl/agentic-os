@@ -241,7 +241,7 @@ const SafeWindowLayoutSchema = WindowLayoutSchema.catch({});
  * invalidates the settings document, so an unreadable HUD is the default.
  */
 export const DEFAULT_HUD = {
-  l: ["app:brain", "app:skills", "app:artifacts", "app:generations", "app:connectors", "app:settings"],
+  l: ["app:brain", "app:skills", "app:artifacts", "app:generations", "app:connectors", "app:settings", "app:pixel"],
   r: ["pulse", "attention", "runs", "routines", "inbox"],
 };
 const HudSchema = z.object({

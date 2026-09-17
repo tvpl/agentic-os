@@ -70,7 +70,7 @@ test("editing the HUD: ✕ removes a pod, + adds one from the gallery, and both 
   await openDesktop(page);
   const brain = page.locator('.pod-arc.l .pod[data-pod="app:brain"]');
   await expect(brain).toBeVisible();
-  await expect(page.locator('.pod-arc.l .pod[data-pod="app:pixel"]')).toHaveCount(0);
+  await expect(page.locator('.pod-arc.l .pod[data-pod="cost"]')).toHaveCount(0);
   const dock = page.getByRole("navigation", { name: "Workspace navigation" });
   const edit = dock.getByRole("button", { name: /Edit HUD|Editar HUD/ });
   await edit.click();
@@ -81,14 +81,14 @@ test("editing the HUD: ✕ removes a pod, + adds one from the gallery, and both 
     .getByRole("button", { name: /Remove from the HUD: Second Brain|Remover do HUD: Segundo Cérebro/ })
     .click();
   await expect(brain).toHaveCount(0);
-  // + on the left arc offers what is not on an arc; Pixel Studio joins the left.
+  // + on the left arc offers what is not on an arc; the budget reading joins the left.
   await page.locator('.pod-arc.l .pod[data-pod="add:l"]').click();
   const gallery = page.getByRole("dialog", { name: /Add to the HUD|Adicionar ao HUD/ });
   await expect(gallery).toBeVisible();
   await expect(gallery.locator('[data-add="app:brain"]')).toHaveCount(1);
-  await gallery.locator('[data-add="app:pixel"]').click();
+  await gallery.locator('[data-add="cost"]').click();
   await expect(gallery).toHaveCount(0);
-  await expect(page.locator('.pod-arc.l .pod[data-pod="app:pixel"]')).toBeVisible();
+  await expect(page.locator('.pod-arc.l .pod[data-pod="cost"]')).toBeVisible();
   // Escape leaves the edit; the pods stop wobbling and the ✕ go away.
   await page.keyboard.press("Escape");
   await expect(page.locator(".desktop")).not.toHaveClass(/\bediting\b/);
@@ -97,11 +97,11 @@ test("editing the HUD: ✕ removes a pod, + adds one from the gallery, and both 
   await page.waitForTimeout(600);
   await page.reload();
   await expect(page.locator(".boot-screen")).toHaveCount(0);
-  await expect(page.locator('.pod-arc.l .pod[data-pod="app:pixel"]')).toBeVisible();
+  await expect(page.locator('.pod-arc.l .pod[data-pod="cost"]')).toBeVisible();
   await expect(page.locator('.pod-arc.l .pod[data-pod="app:brain"]')).toHaveCount(0);
-  // The new pod is a real one: it opens its app.
-  await page.locator('.pod-arc.l .pod[data-pod="app:pixel"]').click();
-  await expect(page.locator('[data-panel="app:pixel"] .pxs-stage')).toBeVisible();
+  // The new pod is a real one: it opens its surface.
+  await page.locator('.pod-arc.l .pod[data-pod="cost"]').click();
+  await expect(page.locator('[data-panel="cost"]')).toBeVisible();
 
   await page.goto("about:blank");
 });

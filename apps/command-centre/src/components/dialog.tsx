@@ -109,7 +109,15 @@ export function useDialog(
       focusables(el).find((candidate) => candidate.matches(FIELD)) ??
       focusables(el).find((f) => !f.hasAttribute("data-dialog-close")) ??
       el;
-    const raf = requestAnimationFrame(() => target.focus({ preventScroll: true }));
+    // The frame can land late (a busy stage, a canvas repaint). If the user
+    // — or an automation — has already put focus on a field inside the
+    // dialog by then, that choice stands: stealing it mid-typing sent the
+    // second field's text into the first.
+    const raf = requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (active && active !== el && el.contains(active)) return;
+      target.focus({ preventScroll: true });
+    });
 
     const onKey = (e: KeyboardEvent) => {
       if (stack[stack.length - 1] !== entry) return;
