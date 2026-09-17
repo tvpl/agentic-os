@@ -57,7 +57,8 @@ export function ProviderGate() {
     skipProviderGate();
     setSkipped(true);
   };
-  useDialog(ref, skip);
+  // The gate stays mounted while closed: the dialog follows `open`.
+  useDialog(ref, skip, { open });
   if (!open) return null;
 
   const list = (providers.data ?? []).filter((p) => p.enabled);

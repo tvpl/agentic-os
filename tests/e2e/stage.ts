@@ -134,6 +134,9 @@ export async function resetStage(request: APIRequestContext): Promise<void> {
  * the title bar. Two identical reads in a row mean the entrance is over.
  */
 export async function settled(window: Locator): Promise<void> {
+  // The iris plays on the plate's inner frame, so the section's box can read
+  // as still while the panel is not yet grabbable: wait for `new` to clear.
+  await expect(window).not.toHaveClass(/\bnew\b/);
   let last = "";
   await expect
     .poll(async () => {

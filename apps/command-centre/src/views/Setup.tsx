@@ -9,10 +9,7 @@ import { qk, useApiQuery } from "../queries";
 import { ErrorBox, Skeleton, useToast } from "../components/ui";
 import { Badge, Button, Field } from "../components/primitives";
 import { PRESETS, applyPreset, type PresetId } from "../theme";
-import { WIDGET_ORDER } from "../desktop/defaultLayout";
-import { DEFAULT_SPECS, defaultWindows } from "../desktop/defaultWindows";
-import type { WindowMap } from "../desktop/windowModel";
-import { WIDGET_REGISTRY } from "../desktop/registry";
+import { DEFAULT_HUD, HUD_CATALOGUE, hudTitleKey, naturalSide, toggleInHud, type Hud } from "../desktop/hud";
 import { copyText, errorMessage, isAbsolutePath, isOffline } from "./shared";
 import "./apps.css";
 
@@ -52,9 +49,9 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   const [folderError, setFolderError] = useState<string | null>(null);
   const [phase, setPhase] = useState<"idle" | "saving" | "indexing">("idle");
   const [preset, setPreset] = useState<PresetId>("hud-orange");
-  const [widgets, setWidgets] = useState<Set<string>>(
-    () => new Set(WIDGET_ORDER.filter((id) => DEFAULT_SPECS[id]?.visible)),
-  );
+  // The HUD (G5): which instruments sit on the pod arcs. Starts as the
+  // default composition; the wizard's last step is where it becomes yours.
+  const [hud, setHud] = useState<Hud>(() => ({ l: [...DEFAULT_HUD.l], r: [...DEFAULT_HUD.r] }));
 
   useEffect(() => {
     if (!providers.data) return;
@@ -104,17 +101,6 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         : ((Object.entries(enabled).find(([, v]) => v)?.[0] as ProviderId | undefined) ?? "claude");
       const folders = current.indexedFolders as Array<Record<string, unknown>>;
       const chosenPreset = PRESETS.find((p) => p.id === preset) ?? PRESETS[0]!;
-      // Materialised for the window the wizard is running in; the desktop
-      // clamps it again for whatever stage it opens on.
-      const composed = defaultWindows({
-        w: Math.max(640, window.innerWidth - 24),
-        h: Math.max(420, window.innerHeight - 200),
-      });
-      const dashboardLayout: WindowMap = {};
-      for (const id of WIDGET_ORDER) {
-        const box = composed[id];
-        if (box) dashboardLayout[id] = { ...box, visible: widgets.has(id) };
-      }
       await api.put("/api/settings", {
         systemName: name.trim() || "MordomoOS",
         language: lang,
@@ -126,7 +112,8 @@ export default function Setup({ onDone }: { onDone: () => void }) {
           : folders,
         themePreset: chosenPreset.id,
         accentColor: chosenPreset.accent,
-        dashboardLayout,
+        // The stage opens clear (F7); the arcs open the way this step left them.
+        hud,
         setupCompleted: true,
       });
       if (folder.trim()) {
@@ -149,7 +136,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     t("setup.stepIdentity"),
     t("setup.stepFolders"),
     t("apps.setup.stepConnect"),
-    t("apps.setup.stepDesktop"),
+    t("apps.setup.stepDesktopHud"),
   ];
   const anyEnabled = enabled ? Object.values(enabled).some(Boolean) : false;
   const folderOk = !folder.trim() || isAbsolutePath(folder);
@@ -362,15 +349,8 @@ export default function Setup({ onDone }: { onDone: () => void }) {
                   setPreset(id);
                   applyPreset(id);
                 }}
-                widgets={widgets}
-                onToggleWidget={(id) =>
-                  setWidgets((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(id)) next.delete(id);
-                    else next.add(id);
-                    return next;
-                  })
-                }
+                hud={hud}
+                onToggle={(id) => setHud((prev) => toggleInHud(prev, id))}
               />
             )}
             <div className="modal-actions">
@@ -471,15 +451,36 @@ function ConnectorRow({ connector }: { connector: Connector }) {
 function DesktopStep({
   preset,
   onPreset,
-  widgets,
-  onToggleWidget,
+  hud,
+  onToggle,
 }: {
   preset: PresetId;
   onPreset: (id: PresetId) => void;
-  widgets: ReadonlySet<string>;
-  onToggleWidget: (id: string) => void;
+  hud: Hud;
+  onToggle: (id: string) => void;
 }) {
   const t = useT();
+  const on = (id: string) => hud.l.includes(id) || hud.r.includes(id);
+  const arc = (side: "l" | "r", label: string) => (
+    <div className="apps-hud-arc" role="group" aria-label={label}>
+      <span className="hud-label">{label}</span>
+      <div className="apps-widgets">
+        {HUD_CATALOGUE.filter((id) => naturalSide(id) === side).map((id) => (
+          <button
+            key={id}
+            type="button"
+            className="apps-widget-toggle"
+            aria-pressed={on(id)}
+            data-hud={id}
+            onClick={() => onToggle(id)}
+          >
+            {on(id) ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
+            <span className="truncate">{t(hudTitleKey(id))}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
   return (
     <div className="stack">
       <p className="hint">{t("apps.setup.desktopHint")}</p>
@@ -505,23 +506,8 @@ function DesktopStep({
           </button>
         ))}
       </div>
-      <div className="apps-widgets">
-        {WIDGET_ORDER.map((id) => {
-          const on = widgets.has(id);
-          return (
-            <button
-              key={id}
-              type="button"
-              className="apps-widget-toggle"
-              aria-pressed={on}
-              onClick={() => onToggleWidget(id)}
-            >
-              {on ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
-              <span className="truncate">{t(WIDGET_REGISTRY[id].titleKey)}</span>
-            </button>
-          );
-        })}
-      </div>
+      {arc("l", t("apps.setup.hudLeft"))}
+      {arc("r", t("apps.setup.hudRight"))}
     </div>
   );
 }

@@ -213,8 +213,11 @@ export const en = {
     "Calendar and e-mail widgets read through connectors. Nothing needs to be configured now — the checklist stays available under Connectors.",
   "apps.setup.openConnectors": "Open the connectors checklist",
   "apps.setup.noConnectors": "No calendar or e-mail connector is registered.",
+  "apps.setup.stepDesktopHud": "Build your HUD",
   "apps.setup.desktopHint":
-    "Pick a look and the widgets you want on the desktop. Everything can change later in Settings.",
+    "Pick a look and the instruments on your HUD: apps on the left arc, readings on the right. Everything can change later from the dock's Edit HUD.",
+  "apps.setup.hudLeft": "Left arc · apps",
+  "apps.setup.hudRight": "Right arc · readings",
   "apps.setup.status.not_configured": "not configured",
   "apps.setup.status.configured": "configured",
   // ---- Pixel Studio ----
@@ -440,8 +443,11 @@ export const ptBR = {
     "Os widgets de calendário e e-mail leem através de conectores. Nada precisa ser configurado agora — o checklist continua disponível em Conectores.",
   "apps.setup.openConnectors": "Abrir o checklist de conectores",
   "apps.setup.noConnectors": "Nenhum conector de calendário ou e-mail está registrado.",
+  "apps.setup.stepDesktopHud": "Monte seu HUD",
   "apps.setup.desktopHint":
-    "Escolha um visual e os widgets que quer no desktop. Tudo pode mudar depois em Configurações.",
+    "Escolha um visual e os instrumentos do seu HUD: apps no arco da esquerda, leituras no da direita. Tudo pode mudar depois em Editar HUD, no dock.",
+  "apps.setup.hudLeft": "Arco da esquerda · apps",
+  "apps.setup.hudRight": "Arco da direita · leituras",
   "apps.setup.status.not_configured": "não configurado",
   "apps.setup.status.configured": "configurado",
   "apps.pixel.redo": "Refazer",

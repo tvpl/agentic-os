@@ -7,7 +7,8 @@
  * persisted in `settings.hud`, so it survives a reload and a reinstall.
  * Everything here is pure: the pods component only renders what this says.
  */
-import { APP_KINDS, appId } from "./apps";
+import type { TKey } from "../i18n";
+import { APPS, APP_KINDS, appId, appKindOf } from "./apps";
 
 export interface Hud {
   l: string[];
@@ -91,4 +92,34 @@ export function addToHud(hud: Hud, side: HudSide, id: string): Hud {
 
 export function hudEquals(a: Hud, b: Hud): boolean {
   return a.l.join("|") === b.l.join("|") && a.r.join("|") === b.r.join("|");
+}
+
+const READING_TITLE: Record<ReadingId, TKey> = {
+  pulse: "desktop.widget.pulse",
+  attention: "desktop.widget.attention",
+  runs: "desktop.hud.runs",
+  routines: "desktop.widget.routines",
+  inbox: "desktop.widget.inbox",
+  cost: "desktop.widget.cost",
+  approvals: "desktop.widget.approvals",
+  now: "now.title",
+};
+
+/** The instrument's name, as a locale key. */
+export function hudTitleKey(id: string): TKey {
+  const kind = appKindOf(id);
+  if (kind) return APPS[kind].titleKey;
+  return READING_TITLE[id as ReadingId] ?? "desktop.widget.now";
+}
+
+/** Where an instrument goes when it is switched on: apps left, readings right. */
+export function naturalSide(id: string): HudSide {
+  return appKindOf(id) ? "l" : "r";
+}
+
+/** On → off, off → on (on its natural side). */
+export function toggleInHud(hud: Hud, id: string): Hud {
+  return hud.l.includes(id) || hud.r.includes(id)
+    ? removeFromHud(hud, id)
+    : addToHud(hud, naturalSide(id), id);
 }

@@ -99,9 +99,14 @@ test("routine lifecycle: create, edit, enable, execute, inspect history and dele
   await revised.getByRole("button", { name: "Enable", exact: true }).click();
   await expect(revised.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
   await revised.getByRole("button", { name: "Test now", exact: true }).click();
-  await expect(page.locator(".run-title .badge")).toHaveText(/done/i, { timeout: 20000 });
-  // The trace opened as a panel over the Routines app (G3): bring the app back to the front.
-  await page.locator('[data-panel="app:routines"] .panel-title').click();
+  // The trace "Test now" opened is the one on top; earlier traces may still be on the stage.
+  await expect(page.locator('section.panel.on[data-panel^="run:"] .run-title .badge')).toHaveText(/done/i, {
+    timeout: 20000,
+  });
+  // The trace opened as a panel over the Routines app (G3): its dock task
+  // brings the app back to the front, whatever covers it.
+  await page.getByRole("button", { name: "Open panels: Routines", exact: true }).click();
+  await expect(page.locator('[data-panel="app:routines"]')).toHaveClass(/\bon\b/);
   await revised.getByRole("button", { name: "History", exact: true }).click();
   await expect(page.getByRole("dialog").locator("tbody .badge").first()).toHaveText(/done/i);
   await page.keyboard.press("Escape");

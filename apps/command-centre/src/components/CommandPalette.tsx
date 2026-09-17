@@ -65,6 +65,7 @@ import {
   type RunRecord,
   type Skill,
 } from "../api";
+import { requestDesktopAction } from "../desktop/desktopModes";
 import { useT, type TKey } from "../i18n";
 import { localizeSkill } from "../views/Skills/localize";
 import { qk, useApiQuery, useOsProviders, useOsRuns, useOsSkills } from "../queries";
@@ -388,6 +389,22 @@ export function CommandPalette({
           // The deck only exists on the desktop, so the action has to land
           // there first — same two-frame handoff as edit mode.
           const fire = () => window.dispatchEvent(new Event(OPEN_DECK_EVENT));
+          if (pathname === "/") {
+            fire();
+            close();
+          } else {
+            go("/");
+            requestAnimationFrame(() => requestAnimationFrame(fire));
+          }
+        },
+      ),
+      act(
+        "edit-hud",
+        "desktop.dock.editHud",
+        <Pencil aria-hidden />,
+        ["hud", "pods", "arc", "arco", "editar", "edit", "instrument"],
+        () => {
+          const fire = () => requestDesktopAction("hud");
           if (pathname === "/") {
             fire();
             close();

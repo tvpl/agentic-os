@@ -154,7 +154,7 @@ Portão: console idêntico ao do protótipo; `@` lista tudo que está no palco.
 Portão: topo, rodapé e arcos idênticos ao protótipo; remover/adicionar pod sobrevive ao
 reload.
 
-### G6 — Amarras finais e paridade
+### G6 — Amarras finais e paridade ✅ (registro em `desktop-v3-paridade.md`)
 
 - Espaços guardam painéis de qualquer tipo (o `app:` reabre a view; o `run:` reabre o trace
   pelo id; o `doc:` já funciona).

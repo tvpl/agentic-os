@@ -895,6 +895,108 @@ Portão visual: `artifacts/g5-lado-a-lado.png` — protótipo e produto em repou
 console e dock. Inventário: linhas 7 (faixa), 8 (dock) e 9 (HUD editável) marcadas; a linha
 10 (superfícies de instrumento com `.mt`/`.rw`) já vinha do G1.
 
+## G6 entregue — amarras finais e paridade
+
+Sexto e último bloco do [plano de ajuste](desktop-v3-ajuste.md). Nada novo de grande porte:
+o bloco fecha o que os cinco anteriores deixaram em aberto e prova, com a suíte inteira, que
+o modelo se sustenta de ponta a ponta.
+
+- **Espaços guardam painéis de qualquer tipo.** Um app no seu caminho (`/settings?tab=security`),
+  um trace pelo id e um documento pelo caminho saem para Pesquisa e voltam para Trabalho
+  intactos, e sobrevivem ao reload (`desktop-parity.spec.ts`).
+- **Paleta**: apps, arquivos e execuções abrem painéis (deep links do G2/G3); "Editar HUD"
+  entrou como ação, com o mesmo aterrissar-no-desktop-primeiro do deck.
+- **Onboarding**: o passo 5 do assistente é "Monte seu HUD" — dois arcos com os instrumentos
+  reais, gravado em `settings.hud` no "Concluir".
+- **Modo empilhado (< 1024 px)**: o console primeiro, os painéis em coluna, sem rolagem
+  horizontal; os apps continuam páginas, pela navegação inferior do celular.
+- **Tema claro**: faixa, console, dock, chips e galeria escritos com tokens; verificado pela
+  spec (o fundo escuro não vaza para a faixa nem para o dock) e no print.
+- **Unit**: `Panel.test.tsx` (casca, `@ref`, recolher/expandir/fechar, `closable`),
+  `console/Console.test.tsx` (bandeja, `@` para qualquer painel, `/` abre o deck, moldura
+  ocupada), além dos que já cobriam `apps`, `hud` e `refs`.
+
+### Defeitos encontrados nesta passagem
+
+1. **Deep link a frio apagava o palco.** `openApp` e `openWindow` liam o layout do render em
+   que foram criados; um deep link disparado no mesmo tick em que o layout guardado chegava
+   construía sobre os padrões do boot e persistia isso — o documento que estava no palco
+   sumia. A `useWindowLayout` atualiza a referência "mais recente" no momento em que adota o
+   layout do servidor, `openApp`/`openWindow` constroem sobre ela, e o efeito de deep link
+   espera o layout estar carregado. Mesma família do defeito 1 do G3.
+2. **Enter logo após digitar lia o rascunho do render anterior.** `submit` decidia com o
+   `prompt` de antes da tecla; a automação bateu nisso, uma pessoa não bateria, mas a regra
+   é ler o que está no campo. O console lê o rascunho vivo por referência.
+3. **Placas nasciam e voltavam debaixo do console.** Uma caixa guardada num canto baixo do
+   palco (arrastada quando o console era janela, ou vinda de um palco mais alto) voltava
+   coberta pela faixa fixa do console — o "Salvar" do Pixel Studio e o "Editar" das Rotinas
+   ficavam inclicáveis. `clampSize` e `clampIntoStage` conhecem o `CONSOLE_BAND`: uma placa é
+   dimensionada e puxada para cima da faixa, como o posicionador do protótipo faz.
+4. **Deep link "mesmo caminho" lido do render errado.** A regra que preserva a query de um
+   link nu (o Cérebro reaberto pelo dock) lia o layout do render em curso; a frio esse layout
+   não tem o app, todo link parecia "o mesmo" e a placa reabria no caminho guardado (a lista de
+   skills abria no detalhe). Lê o layout mais recente.
+5. **Recarregar logo depois de abrir uma placa a perdia.** O `flush` no desmonte usava um
+   `fetch` comum, cortado pela navegação; e mesmo com `keepalive` o GET do boot chegava antes
+   do PUT. Em `pagehide` o layout pendente vai com `keepalive` **e** fica estacionado em
+   `sessionStorage`; o boot seguinte o adota e o reenvia.
+6. **Galeria do HUD e popover de modelo sem ciclo de diálogo.** Os dois chamavam `useDialog`
+   no mesmo componente que devolvia `null` antes de montar: o gancho registrava-se uma vez,
+   com o elemento ainda ausente, e Escape, foco preso e `inert` nunca entravam. Separados em
+   presença fora e diálogo dentro, como o deck faz.
+7. **O portão de provedor engolia o Escape de todo diálogo posterior.** Mesmo padrão do
+   item 6, com efeito pior: o portão fica montado fechado; se abre um instante no boot e
+   fecha, a entrada dele ficava no topo da pilha de diálogos e o "Novo skill" não fechava com
+   Escape — só dentro da suíte inteira, depois da spec que mexe nos provedores. `useDialog`
+   ganhou `open`: a entrada entra e sai da pilha com o elemento.
+8. **O Cérebro engolia o Escape de um diálogo noutra placa.** O listener de Escape do Cérebro
+   (fase de captura, na janela) fechava a própria seleção e parava a propagação para
+   qualquer Escape da página — com o Cérebro no palco vindo de uma spec anterior, o "Novo
+   skill" da placa de Skills não fechava. Só age quando a tecla vem de dentro da própria
+   placa (ou do corpo da página) e nunca com um diálogo aberto. A spec de arrasto ganhou um
+   `settled` que espera a materialização terminar, e as specs de trace passaram a olhar só
+   para a placa da run que abriram.
+9. **O `+` de Editar HUD e o Escape da paleta**: dois ajustes de teste, não de produto — o
+   `+` não balança (é controle, não instrumento) e o Escape só depois de a paleta ir embora,
+   porque a paleta em saída ainda é dona do Escape. E a spec espera o botão Executar ficar
+   ativo antes de Enter: o console não envia sem a lista de provedores.
+
+### Gates
+
+| Gate | Resultado |
+|---|---|
+| `npm test` (raiz) | 62 arquivos · 492 testes |
+| `npm run test -w apps/command-centre` | 49 arquivos · 347 testes |
+| `npx playwright test` (suíte inteira) | 116 passaram · 2 pulados · 0 falhas (passe final limpo, o quinto: cada um dos anteriores achou um defeito real de ordem entre specs — todos acima) |
+| `typecheck` · `eslint` · `prettier` | limpos |
+
+Portão visual: `artifacts/g6-lado-a-lado.png` — protótipo e produto no **tema claro**, com um
+trace e o `relatorio.md` abertos pelo console.
+
+### Inventário fechado
+
+| # | Subsistema | Estado |
+|---|---|---|
+| 1 | Painel | ✅ G1 |
+| 2 | Seis tipos de painel | ✅ G1–G3 (`artifact`, `image`, `app`, `run`, `surface`, `brain`) |
+| 3 | Apps como painéis | ✅ G2 |
+| 4 | Run → trace + resultado como painéis | ✅ G3 |
+| 5 | Entradas de skill → formulário | ✅ G3 |
+| 6 | Console fixo | ✅ G4 |
+| 7 | Faixa ambiente | ✅ G5 |
+| 8 | Dock | ✅ G5 |
+| 9 | HUD editável | ✅ G5 |
+| 10 | Superfícies de instrumento (`.mt`, barras, `.rw`) | ✅ G1 |
+| 11 | Pods à esquerda abrem painéis | ✅ G2 |
+| 12 | Paleta abre painéis | ✅ G2/G6 |
+| 13 | Onboarding · passo 5 "Monte seu HUD" | ✅ G6 |
+| 14 | Sino com contador | ✅ (na faixa, G5) |
+| 15 | Espaços guardam painéis | ✅ G6 |
+| 16 | Visão geral e Distribuir | ✅ (no dock, G5) |
+| 17 | Amarras a qualquer painel | ✅ G4 |
+| 18 | Campo vivo, pods, deck | ✅ F7/G5 |
+| 19 | O que não existe no protótipo | ✅ apagado, G1 |
+
 ## Revisão final
 
 Uma varredura no arco inteiro F1–F6 encontrou **código especulativo meu**: `tile`, `cascade`,
@@ -927,23 +1029,17 @@ contagem viva.
 
 ## Pacote para macOS
 
-O `release/MordomoOS-0.8.0-macos-arm64.zip` que está no disco é **anterior ao F7** — foi
-gerado e verificado no fim do F6, e não contém os pods, o deck, o campo nem o palco limpo.
-Reempacotar está pendente de propósito, esperando o aceite visual.
+`release/MordomoOS-0.8.0-macos-arm64.zip` foi **refeito em 17/09/2026** com o G6 (`npm run dist
+--skip-build`, 36,7 MB) e verificado no home isolado pelo método de sempre: extraído com
+`ditto`, assinatura ad-hoc íntegra (`codesign --verify --deep --strict`), CLI `mordomo launch
+--no-browser` numa porta livre, `/` servido como `text/html` e o bundle como
+`application/javascript`, `settings.hud` presente com a composição padrão num home novo,
+`doctor` 6 ok · 3 warn · 0 fail, `stop` limpo. O `.app` de verdade **não** foi executado, pelo
+motivo de sempre: abre o navegador e se acopla a qualquer coisa que responda na 4777.
 
-O que a verificação do pacote de F6 estabeleceu, e que continua valendo como método: extrair
-com `ditto` (não `unzip`), conferir a assinatura com `codesign`, subir numa porta e num home
-isolados — **nunca** rodar o `.app` de verdade durante o teste, porque ele abre o navegador e
-se acopla a qualquer coisa que responda na 4777. Naquela verificação: assinatura íntegra
-(`valid on disk`, `satisfies its Designated Requirement`), UI servida com o MIME certo, API
-respondendo, `doctor` 6 ok · 3 warn · 0 fail, parada limpa.
+O shim de terminal fica na raiz do pacote (`<pasta>/mordomo`), não em `bin/`; ele delega para
+`MordomoOS.app/Contents/Resources/bin/mordomo`.
 
 Assinatura **ad-hoc**: `spctl` rejeita, o que só importa para uma cópia baixada (com atributo
 de quarentena). Aberto localmente, abre normalmente. Assinar com o Developer ID e notarizar
 está disponível no empacotador se for distribuir.
-
-## Uma nota sobre atualizar um install existente
-
-O palco limpo é o **padrão**, não uma migração. Um install que já tem um arranjo salvo
-continua abrindo com ele — apagar o arranjo de alguém em silêncio seria a decisão errada. O
-caminho é **Editar layout → Redefinir layout**, que agora devolve o palco limpo.

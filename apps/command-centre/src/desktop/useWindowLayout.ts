@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ApiError, api, type SettingsDoc } from "../api";
+import { ApiError, api, getToken, type SettingsDoc } from "../api";
 import { qk } from "../queries";
 import { minFor, normalizeWindows } from "./defaultWindows";
 import { clampLayout, layoutsEqual, type Size, type WindowMap } from "./windowModel";
@@ -70,6 +70,35 @@ function writeConfigMirror(layout: WindowMap) {
     /* ignore */
   }
 }
+/**
+ * A layout that was still waiting for its debounced save when the page went
+ * away (a reload right after a drag or a deep link). Parked here so the next
+ * boot shows it at once — the keepalive save may land after the boot's GET —
+ * and re-sends it.
+ */
+const PENDING_KEY = "mordomo.desktop.pendingLayout.v1";
+const PENDING_MAX_AGE_MS = 30_000;
+function parkPendingLayout(layout: WindowMap) {
+  try {
+    sessionStorage.setItem(PENDING_KEY, JSON.stringify({ at: Date.now(), layout }));
+  } catch {
+    /* ignore */
+  }
+}
+function takePendingLayout(): WindowMap | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_KEY);
+    if (!raw) return null;
+    sessionStorage.removeItem(PENDING_KEY);
+    const parsed = JSON.parse(raw) as { at?: number; layout?: WindowMap };
+    if (!parsed.layout || typeof parsed.at !== "number" || Date.now() - parsed.at > PENDING_MAX_AGE_MS)
+      return null;
+    return parsed.layout;
+  } catch {
+    return null;
+  }
+}
+
 function mergeMirror(layout: WindowMap): WindowMap {
   const mirror = readConfigMirror();
   let changed = false;
@@ -91,6 +120,8 @@ export interface WindowLayoutState {
    *  commits in one tick — a form closing while its run opens — must not
    *  overwrite each other from the same stale render. */
   commit: (next: WindowMap | ((prev: WindowMap) => WindowMap)) => void;
+  /** The latest committed or adopted layout — what a commit in this tick builds on. */
+  latest: () => WindowMap;
   saving: boolean;
   /** Local changes not yet confirmed by the server. */
   dirty: boolean;
@@ -167,6 +198,10 @@ export function useWindowLayout({
     baseRef.current = serverLayout;
     const next = mergeMirror(normalizeWindows(serverLayout, stage));
     setLayout((prev) => (layoutsEqual(prev, next) ? prev : next));
+    // A commit in this same tick (a deep link opening its panel the moment
+    // the stored layout arrives) must build on what was just adopted, not on
+    // the defaults the desktop booted with — or the stored panels are lost.
+    latestRef.current = next;
   }, [serverLayout, stage, isPending, dirty]);
 
   // The stage changed size: pull the windows back into view. Not a user
@@ -210,6 +245,38 @@ export function useWindowLayout({
     },
     [mutate],
   );
+  // …and on a reload or a closed tab, where an ordinary fetch is cut off with
+  // the page: a `keepalive` request outlives the document, so a panel opened
+  // a moment before the reload is still there afterwards.
+  useEffect(() => {
+    const onHide = () => {
+      if (timerRef.current === undefined) return;
+      window.clearTimeout(timerRef.current);
+      timerRef.current = undefined;
+      try {
+        void fetch("/api/settings", {
+          method: "PUT",
+          keepalive: true,
+          headers: { "content-type": "application/json", "x-mordomo-token": getToken() },
+          body: JSON.stringify({ dashboardLayout: latestRef.current, dashboardLayoutBase: baseRef.current }),
+        });
+      } catch {
+        /* the page is going away; nothing to report to */
+      }
+      parkPendingLayout(latestRef.current);
+    };
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
+  }, []);
+  // The previous page left a layout that never reached the server: show it
+  // now and send it, instead of the stale one the boot's GET brought back.
+  useEffect(() => {
+    const pending = takePendingLayout();
+    if (!pending) return;
+    commit(normalizeWindows(pending, stage));
+    // Once, at boot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const resolveConflict = async (keepLocal: boolean) => {
     try {
@@ -230,5 +297,6 @@ export function useWindowLayout({
       onErrorRef.current(error as Error);
     }
   };
-  return { layout, commit, saving: isPending, dirty, conflict, resolveConflict };
+  const latest = useCallback(() => latestRef.current, []);
+  return { layout, commit, latest, saving: isPending, dirty, conflict, resolveConflict };
 }

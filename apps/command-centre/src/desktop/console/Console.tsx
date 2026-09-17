@@ -118,6 +118,11 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
   /* ---- the draft --------------------------------------------------------- */
   const [initialDraft] = useState(readConsoleDraft);
   const [prompt, setPrompt] = useState(initialDraft.text);
+  // What is in the field right now. A submit that follows a keystroke in the
+  // same tick must not read the previous render's draft (empty, or one
+  // character short) and decide there is nothing to send.
+  const promptRef = useRef(prompt);
+  promptRef.current = prompt;
   useEffect(() => {
     const refresh = () => setPrompt(readConsoleDraft().text);
     window.addEventListener(ONBOARDING_DRAFT_EVENT, refresh);
@@ -277,7 +282,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
   const launch = useMutation({
     mutationFn: (): Promise<LaunchRunResponse> => {
       // The user writes `@plan.md`; the agent receives the path behind it.
-      const { text } = resolveReferences(prompt.trim(), actions.openPanels);
+      const { text } = resolveReferences(promptRef.current.trim(), actions.openPanels);
       const fingerprint = JSON.stringify({ text, mode, sessionId, cwd, defaultProvider, choice });
       if (submission.current?.fingerprint !== fingerprint)
         submission.current = { fingerprint, id: crypto.randomUUID() };
@@ -360,13 +365,14 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
 
   const cwdUnavailable =
     sessionId === null && cwd !== "" && (!settings.data || !folders.some((folder) => folder.path === cwd));
-  const canRun =
-    prompt.trim().length > 0 &&
+  const runnable = (text: string) =>
+    text.trim().length > 0 &&
     !launch.isPending &&
     enabled.length > 0 &&
     !active &&
     !cwdUnavailable &&
     (!sessionId || (!session.isPending && !session.error));
+  const canRun = runnable(prompt);
 
   // Pre-flight: a provider that definitely cannot run gets a notice, not a failed run.
   const [preflight, setPreflight] = useState<{
@@ -375,7 +381,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
     problem: string;
   } | null>(null);
   const submit = () => {
-    if (!canRun || submitting.current) return;
+    if (!runnable(promptRef.current) || submitting.current) return;
     const target = enabled.find((p) => p.id === defaultProvider);
     const problem = target ? providerProblem(target) : null;
     if (target && (problem === "not_installed" || problem === "login_required")) {
@@ -389,7 +395,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
     }
     setPreflight(null);
     // A bare "/slug" runs the skill itself rather than sending the text.
-    const bare = /^\/([a-z0-9-]+)$/i.exec(prompt.trim());
+    const bare = /^\/([a-z0-9-]+)$/i.exec(promptRef.current.trim());
     const skill = bare
       ? (skills.data ?? []).find((s) => s.slug.toLowerCase() === bare[1]!.toLowerCase())
       : undefined;
@@ -512,6 +518,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
                 onToggleDeck(true);
                 return;
               }
+              promptRef.current = next;
               setPrompt(next);
               setCaret(e.target.selectionStart ?? next.length);
             }}

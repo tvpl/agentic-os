@@ -109,7 +109,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
 
   const searchList = useArtifactList({ q: debounced, limit: 40 }, searching && debounced.trim().length >= 2);
 
-  const { layout, commit, saving, conflict, resolveConflict } = useWindowLayout({
+  const { layout, commit, latest, saving, conflict, resolveConflict } = useWindowLayout({
     serverLayout: settings.data?.dashboardLayout,
     stage,
     spaceId: settings.data?.activeSpace,
@@ -435,24 +435,27 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
    */
   const openWindow = useCallback(
     (id: string) => {
-      const existing = layout[id];
+      // Read and write the latest layout, not this render's: a pod, a strip
+      // segment or a deep link can fire in the same tick the stored layout
+      // arrives, and building on the boot defaults would erase it.
+      const existing = latest()[id];
       if (!existing) return false;
-      if (existing.visible && !existing.minimized) {
-        // Already on the stage: raising it is the whole answer.
-        commit({ ...layout, [id]: { ...existing, z: topZ(layout) + 1 } });
-        return true;
-      }
-      // Its stored corner was chosen for a different composition and may now
-      // be under the console or under a window opened a moment ago, so a
-      // window arriving from a pod is placed against what is actually open.
-      const spot = placeNew({ w: existing.w, h: existing.h }, layout, stage);
-      commit({
-        ...layout,
-        [id]: { ...existing, ...spot, visible: true, minimized: false, z: topZ(layout) + 1 },
+      commit((prev) => {
+        const box = prev[id];
+        if (!box) return prev;
+        if (box.visible && !box.minimized) {
+          // Already on the stage: raising it is the whole answer.
+          return { ...prev, [id]: { ...box, z: topZ(prev) + 1 } };
+        }
+        // Its stored corner was chosen for a different composition and may now
+        // be under the console or under a window opened a moment ago, so a
+        // window arriving from a pod is placed against what is actually open.
+        const spot = placeNew({ w: box.w, h: box.h }, prev, stage);
+        return { ...prev, [id]: { ...box, ...spot, visible: true, minimized: false, z: topZ(prev) + 1 } };
       });
       return true;
     },
-    [layout, commit, stage],
+    [latest, commit, stage],
   );
 
   /**
@@ -465,28 +468,28 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     (kind: AppKind, at?: Partial<AppLocation>) => {
       const id = appId(kind);
       const def = APPS[kind];
-      const existing = layout[id];
-      const config: Record<string, unknown> = { ...(existing?.config ?? {}) };
-      if (at?.pathname !== undefined) config.path = at.pathname;
-      if (at?.search !== undefined) config.search = at.search;
-      if (existing) {
-        commit({
-          ...layout,
-          [id]: { ...existing, visible: true, minimized: false, z: topZ(layout) + 1, config },
-        });
-        return;
-      }
-      const spot = placeNew(def.size, layout, stage);
-      // Fitted to the stage it opens on: the default box is a wish, not a
-      // right, and a plate wider than the stage would hang off its edge.
-      const box = clampIntoStage(
-        { ...spot, ...def.size, z: topZ(layout) + 1, visible: true, minimized: false, config },
-        stage,
-        minFor(id),
-      );
-      commit({ ...layout, [id]: box });
+      commit((prev) => {
+        const existing = prev[id];
+        const config: Record<string, unknown> = { ...(existing?.config ?? {}) };
+        if (at?.pathname !== undefined) config.path = at.pathname;
+        if (at?.search !== undefined) config.search = at.search;
+        if (existing)
+          return {
+            ...prev,
+            [id]: { ...existing, visible: true, minimized: false, z: topZ(prev) + 1, config },
+          };
+        const spot = placeNew(def.size, prev, stage);
+        // Fitted to the stage it opens on: the default box is a wish, not a
+        // right, and a plate wider than the stage would hang off its edge.
+        const box = clampIntoStage(
+          { ...spot, ...def.size, z: topZ(prev) + 1, visible: true, minimized: false, config },
+          stage,
+          minFor(id),
+        );
+        return { ...prev, [id]: box };
+      });
     },
-    [layout, commit, stage],
+    [commit, stage],
   );
   const openAppRef = useRef(openApp);
   openAppRef.current = openApp;
@@ -544,7 +547,12 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   // second transition inside the first one's update callback freezes the
   // document — the palette and the run list both hung on exactly that.
   const routerNavigate = useRouterNavigate();
+  // A deep link on a cold load has to wait for the stored layout: opening a
+  // panel over the boot defaults and persisting that would erase every panel
+  // the user had on the stage.
+  const layoutReady = settings.data !== undefined;
   useEffect(() => {
+    if (!layoutReady) return;
     // A run's own route opens its trace panel, not the Runs app: that is
     // what every "open run" link in the OS means now (G3).
     const runMatch = /^\/runs\/([^/]+)$/.exec(location.pathname);
@@ -559,23 +567,30 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     // Brain" in the dock, again) is a request to see it, not to reset it:
     // its query — the brain's selection and zoom — is left alone. A deeper
     // path or an explicit query is a request to go there.
-    const current = appLocationOf(def, layoutRef.current[appId(def.kind)]?.config);
+    // Read from the latest layout, not this render's: on a cold load the
+    // render's layout is still the boot default, which has no app entry and
+    // would make every bare link look like "the same path".
+    const current = appLocationOf(def, latest()[appId(def.kind)]?.config);
     const same = current.pathname === location.pathname && location.search === "";
     openAppRef.current(def.kind, same ? undefined : { pathname: location.pathname, search: location.search });
     routerNavigate("/", { replace: true });
-  }, [location.pathname, location.search, routerNavigate]);
+  }, [layoutReady, location.pathname, location.search, routerNavigate, latest]);
 
   /** Move an app panel to a path or query inside it (the view asked, via its route hooks). */
   const setAppLocation = useCallback(
     (id: string, next: Partial<AppLocation>) => {
-      const box = layout[id];
-      if (!box) return;
-      const config: Record<string, unknown> = { ...(box.config ?? {}) };
-      if (next.pathname !== undefined) config.path = next.pathname;
-      if (next.search !== undefined) config.search = next.search;
-      commit({ ...layout, [id]: { ...box, config } });
+      // On the latest layout: a view writes its location from inside an
+      // effect, often in the same tick as another commit.
+      commit((prev) => {
+        const box = prev[id];
+        if (!box) return prev;
+        const config: Record<string, unknown> = { ...(box.config ?? {}) };
+        if (next.pathname !== undefined) config.path = next.pathname;
+        if (next.search !== undefined) config.search = next.search;
+        return { ...prev, [id]: { ...box, config } };
+      });
     },
-    [layout, commit],
+    [commit],
   );
 
   /** Append `@name` to the console draft and put the caret back in it. */

@@ -192,20 +192,47 @@ function ModelPopover({
   onChoice: (choice: ModelChoice) => void;
   onClose: () => void;
 }) {
+  // Presence out here, the dialog inside: `useDialog` registers on mount.
+  const { mounted, closing } = usePresence(open, 160);
+  if (!mounted) return null;
+  return (
+    <ModelPopoverBox
+      anchor={anchor}
+      provider={provider}
+      choice={choice}
+      onChoice={onChoice}
+      onClose={onClose}
+      closing={closing}
+    />
+  );
+}
+
+function ModelPopoverBox({
+  anchor,
+  provider,
+  choice,
+  onChoice,
+  onClose,
+  closing,
+}: {
+  anchor: HTMLElement;
+  provider: ProviderId;
+  choice: ModelChoice;
+  onChoice: (choice: ModelChoice) => void;
+  onClose: () => void;
+  closing: boolean;
+}) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
-  const { mounted, closing } = usePresence(open, 160);
   const [pos, setPos] = useState({ left: 0, bottom: 0 });
   useDialog(ref, onClose, { initialFocus: () => ref.current });
   useLayoutEffect(() => {
-    if (!open) return;
     const r = anchor.getBoundingClientRect();
     setPos({
       left: Math.max(8, Math.min(window.innerWidth - POP_W - 8, r.left)),
       bottom: window.innerHeight - r.top + 6,
     });
-  }, [open, anchor]);
-  if (!mounted) return null;
+  }, [anchor]);
   return (
     <DialogPortal>
       <div

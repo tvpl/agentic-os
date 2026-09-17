@@ -723,3 +723,12 @@
 .text-ok {
   color: var(--ok, #4ade80);
 }
+
+/* the wizard's HUD builder (G6): two arcs, one toggle per instrument */
+.apps-hud-arc {
+  display: grid;
+  gap: var(--s-1);
+}
+.apps-hud-arc > .hud-label {
+  margin-top: var(--s-2);
+}

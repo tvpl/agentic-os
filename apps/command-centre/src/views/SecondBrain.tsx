@@ -11,6 +11,7 @@ import { errorMessage } from "./shared";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, type GraphData, type IndexProgressPayload, type MemoryPreview, type RunRecord } from "../api";
 import { useToast } from "../components/ui";
+import { getDialogDepth } from "../components/dialog";
 import { useLang, useT } from "../i18n";
 import { useOsEvent } from "../hooks/useEventStream";
 import { useOsNavigate } from "../hooks/useViewTransition";
@@ -577,6 +578,14 @@ export default function SecondBrain() {
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      // The brain is one panel among others (G2): its Escape is only its own
+      // when it is where the key was pressed, and never while a dialog is
+      // open — a modal in another panel used to lose its Escape here.
+      if (getDialogDepth() > 0) return;
+      const target = e.target instanceof Node ? e.target : null;
+      const inside = target ? rootRef.current?.contains(target) : false;
+      const onPage = target === document.body || target === document.documentElement;
+      if (!inside && !onPage) return;
       if (uiRef.current.sel !== null) selectId(null);
       else if (listOpen) setListOpen(false);
       else if (presenting) setPresenting(false);

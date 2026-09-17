@@ -309,11 +309,29 @@ function HudGallery({
   onPick: (id: string) => void;
   onClose: () => void;
 }) {
+  // Presence out here, the dialog inside: `useDialog` registers on mount, so
+  // the element it guards has to mount with it (the deck does the same).
+  const { mounted, closing } = usePresence(side !== null, 160);
+  if (!mounted) return null;
+  return <HudGalleryBox hud={hud} podFor={podFor} onPick={onPick} onClose={onClose} closing={closing} />;
+}
+
+function HudGalleryBox({
+  hud,
+  podFor,
+  onPick,
+  onClose,
+  closing,
+}: {
+  hud: Hud;
+  podFor: (id: string) => Pod | null;
+  onPick: (id: string) => void;
+  onClose: () => void;
+  closing: boolean;
+}) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
-  const { mounted, closing } = usePresence(side !== null, 160);
   useDialog(ref, onClose);
-  if (!mounted) return null;
   const free = freeInstruments(hud)
     .map((id) => podFor(id))
     .filter((p): p is Pod => p !== null);

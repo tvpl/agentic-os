@@ -89,7 +89,9 @@ export function normalizeZ(layout: WindowMap): WindowMap {
 
 export function clampSize(size: Size, min: Size = { w: MIN_W, h: MIN_H }, stage?: Size): Size {
   const maxW = stage ? Math.max(min.w, stage.w - STAGE_PAD * 2) : Number.POSITIVE_INFINITY;
-  const maxH = stage ? Math.max(min.h, stage.h - STAGE_PAD * 2) : Number.POSITIVE_INFINITY;
+  // The console's band is not usable height (G4): a window is sized to fit
+  // above it, the way the prototype's placer does — never below its floor.
+  const maxH = stage ? Math.max(min.h, stage.h - CONSOLE_BAND - STAGE_PAD * 2) : Number.POSITIVE_INFINITY;
   return {
     w: Math.round(Math.min(maxW, Math.max(min.w, size.w))),
     h: Math.round(Math.min(maxH, Math.max(min.h, size.h))),
@@ -106,8 +108,12 @@ export function clampIntoStage(box: WindowBox, stage: Size, min: Size = { w: MIN
   const keep = Math.min(KEEP_VISIBLE, w);
   const x = Math.round(Math.min(Math.max(box.x, -(w - keep)), Math.max(0, stage.w - keep)));
   // The top edge never goes negative: a header dragged above the stage could
-  // not be grabbed back.
-  const y = Math.round(Math.min(Math.max(box.y, 0), Math.max(0, stage.h - 32)));
+  // not be grabbed back. And a window that fits above the console's band is
+  // kept above it (G4): a corner stored when the console was a window, or
+  // chosen for a taller stage, must not come back underneath the console.
+  const floor = stage.h - CONSOLE_BAND;
+  const maxY = h <= floor - STAGE_PAD ? floor - h : Math.max(0, stage.h - 32);
+  const y = Math.round(Math.min(Math.max(box.y, 0), Math.max(0, maxY)));
   return { ...box, x, y, w, h };
 }
 

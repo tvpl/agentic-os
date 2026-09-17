@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ARC_MARGIN,
+  CONSOLE_BAND,
   KEEP_VISIBLE,
   MIN_H,
   MIN_W,
@@ -73,9 +74,10 @@ describe("clamping keeps a window reachable", () => {
   });
 
   it("caps a window to the stage it is on", () => {
+    // Height stops above the console's band (G4), not at the stage's edge.
     expect(clampSize({ w: 5000, h: 5000 }, { w: MIN_W, h: MIN_H }, STAGE)).toEqual({
       w: STAGE.w - STAGE_PAD * 2,
-      h: STAGE.h - STAGE_PAD * 2,
+      h: STAGE.h - CONSOLE_BAND - STAGE_PAD * 2,
     });
   });
 
@@ -88,7 +90,12 @@ describe("clamping keeps a window reachable", () => {
 
   it("never lets the header go above the stage, where it could not be grabbed", () => {
     expect(clampIntoStage(box({ y: -400 }), STAGE).y).toBe(0);
-    expect(clampIntoStage(box({ y: 5000 }), STAGE).y).toBe(STAGE.h - 32);
+    // A window that fits above the console's band is kept above it (G4)…
+    const low = box({ y: 5000 });
+    expect(clampIntoStage(low, STAGE).y).toBe(STAGE.h - CONSOLE_BAND - low.h);
+    // …and one taller than that is sized down first, so it still lands above the band.
+    const tall = clampIntoStage(box({ y: 5000, h: STAGE.h - 40 }), STAGE);
+    expect(tall.y + tall.h).toBeLessThanOrEqual(STAGE.h - CONSOLE_BAND);
   });
 
   it("pulls a whole layout back when the window shrinks", () => {
