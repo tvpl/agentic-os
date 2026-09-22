@@ -33,6 +33,7 @@ import { useConfirm } from "../hooks/useConfirm";
 import { errorMessage, isOffline } from "./shared";
 import { describeSchedule, isValidCron, isValidTimeZone, nextFires, timeZoneOptions } from "./cron";
 import { naturalToCron } from "./naturalSchedule";
+import { RoutinesTimeline } from "./RoutinesTimeline";
 import "./backend.css";
 
 const KINDS: RoutineKind[] = ["cron", "at", "every", "on-exit", "heartbeat"];
@@ -158,6 +159,7 @@ export default function Routines() {
         </Button>
       </div>
 
+      {list.length > 0 && <RoutinesTimeline routines={list} />}
       {list.length === 0 ? (
         <EmptyState
           icon={<CalendarClock aria-hidden />}

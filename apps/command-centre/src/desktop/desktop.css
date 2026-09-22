@@ -4264,3 +4264,37 @@ body.window-dragging .app-rail {
   text-transform: none;
   letter-spacing: 0.02em;
 }
+
+/* Item 52: one search, grouped. */
+.art-search-groups {
+  display: grid;
+  gap: var(--s-2);
+  max-height: 50vh;
+  overflow: auto;
+}
+.art-group-label {
+  display: block;
+  margin: 4px 0 2px;
+}
+.art-search-hits li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.art-hit.on {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.art-hit-fly {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--agent-line);
+  background: none;
+  color: var(--agent-text);
+  cursor: pointer;
+}
+/* The search sits over the console, not under it. */
+.art-search {
+  z-index: calc(var(--z-drawer) + 1);
+}

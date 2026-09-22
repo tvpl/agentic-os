@@ -17,7 +17,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileText } from "lucide-react";
 import { api, type LaunchRunResponse, type Meta, type Skill } from "../api";
 import { useT } from "../i18n";
-import { qk, useOsMetrics, useOsProviders, useOsSettings } from "../queries";
+import { qk, useApiQuery, useOsMetrics, useOsProviders, useOsSettings, useOsSkills } from "../queries";
+import type { MemorySearchHit } from "../api";
 import { budgetState } from "./budget";
 import { useToast } from "../components/ui";
 import { Button, Popover } from "../components/primitives";
@@ -139,10 +140,20 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   }, [query]);
 
   /* ---- search results ---------------------------------------------------- */
+  // One search (refino item 52): artifacts, indexed files, runs, skills and
+  // notifications answer the same field, grouped.
+  const fileHits = useApiQuery<MemorySearchHit[]>(
+    ["memory", "search", debounced],
+    `/api/memory/search?q=${encodeURIComponent(debounced)}&limit=8`,
+    { enabled: searching && debounced.trim().length >= 2, retry: false },
+  );
+  const skillsForSearch = useOsSkills();
   const hits = useMemo<ArtifactHit[]>(() => {
     if (!searching) return [];
-    return (searchList.data?.items ?? []).slice(0, 12).map((item) => ({
-      key: item.id || item.path,
+    const q = debounced.trim().toLowerCase();
+    const out: ArtifactHit[] = (searchList.data?.items ?? []).slice(0, 8).map((item) => ({
+      key: `a:${item.id || item.path}`,
+      kind: "artifact" as const,
       label: item.file.split("/").pop() ?? item.file,
       title: item.title || item.file,
       path: item.path,
@@ -150,7 +161,75 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
       skillSlug: item.skillSlug,
       ts: item.createdAt,
     }));
-  }, [searching, searchList.data]);
+    for (const f of fileHits.data ?? [])
+      out.push({
+        key: `f:${f.id}`,
+        kind: "file",
+        label: f.name,
+        title: f.name,
+        path: f.path ?? f.rel,
+        runId: null,
+        skillSlug: null,
+        ts: f.mtime ?? 0,
+        nodeId: f.id,
+      });
+    if (q.length >= 2) {
+      for (const r of (runs.data ?? [])
+        .filter((r) => r.promptSummary.toLowerCase().includes(q) || (r.skillSlug ?? "").includes(q))
+        .slice(0, 5))
+        out.push({
+          key: `r:${r.id}`,
+          kind: "run",
+          label: r.id.slice(0, 8),
+          title: r.skillSlug ? `/${r.skillSlug}` : r.promptSummary.slice(0, 80),
+          path: `${r.provider} · ${r.status}`,
+          runId: r.id,
+          skillSlug: r.skillSlug,
+          ts: r.createdAt,
+        });
+      for (const sk of (skillsForSearch.data ?? [])
+        .filter(
+          (sk) =>
+            sk.enabled &&
+            (sk.slug.includes(q) ||
+              sk.name.toLowerCase().includes(q) ||
+              sk.description.toLowerCase().includes(q)),
+        )
+        .slice(0, 5))
+        out.push({
+          key: `s:${sk.slug}`,
+          kind: "skill",
+          label: sk.slug,
+          title: sk.name,
+          path: `/${sk.slug}`,
+          runId: null,
+          skillSlug: sk.slug,
+          ts: 0,
+        });
+      for (const n of notifications.items
+        .filter((n) => n.title.toLowerCase().includes(q) || (n.body ?? "").toLowerCase().includes(q))
+        .slice(0, 5))
+        out.push({
+          key: `n:${n.id}`,
+          kind: "notification",
+          label: n.title,
+          title: n.title,
+          path: n.body ?? "",
+          runId: n.runId ?? null,
+          skillSlug: null,
+          ts: n.ts,
+        });
+    }
+    return out;
+  }, [
+    searching,
+    debounced,
+    searchList.data,
+    fileHits.data,
+    runs.data,
+    skillsForSearch.data,
+    notifications.items,
+  ]);
 
   const activeRuns = useMemo(
     () => (runs.data ?? []).filter((r) => isActiveStatus(r.status)).length,
@@ -358,6 +437,12 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
       const editable =
         el instanceof HTMLElement &&
         (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
+      // ⌘F is the one search (refino item 52).
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setSearching(true);
+        return;
+      }
       // ⌘1…⌘6 switch spaces (refino item 50), from anywhere on the desk.
       if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && /^[1-6]$/.test(e.key)) {
         const { spaces, active } = spacesRef.current;
@@ -900,9 +985,25 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
             hits={hits}
             onQuery={setQuery}
             onPick={(hit) => {
-              // Search lands the file on the stage, where it can be referenced,
-              // instead of only showing a preview that closes with the modal.
-              openDoc(hit.path);
+              // Search lands the thing on the stage, where it can be referenced.
+              const kind = hit.kind ?? "artifact";
+              if (kind === "run" && hit.runId) openRun(hit.runId);
+              else if (kind === "skill" && hit.skillSlug) {
+                const sk = (skillsForSearch.data ?? []).find((x) => x.slug === hit.skillSlug);
+                if (sk) runSkill.mutate(sk);
+              } else if (kind === "notification") {
+                if (hit.runId) openRun(hit.runId);
+              } else if (kind === "file" && !hit.path.startsWith("/")) {
+                openApp("brain", { pathname: "/brain", search: `?sel=${hit.nodeId ?? ""}` });
+              } else openDoc(hit.path);
+              closeSearch();
+            }}
+            onFly={(hit) => {
+              openApp("brain", {
+                pathname: "/brain",
+                search:
+                  hit.nodeId !== undefined ? `?sel=${hit.nodeId}` : `?q=${encodeURIComponent(hit.label)}`,
+              });
               closeSearch();
             }}
             onClose={closeSearch}

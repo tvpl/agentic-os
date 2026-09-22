@@ -6,7 +6,7 @@ import { errorMessage } from "../views/shared";
  * relations card (edges grouped by kind with counts, item 33).
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Copy, ExternalLink, Pin, Terminal, X } from "lucide-react";
+import { Copy, ExternalLink, Pin, Sparkles, Terminal, X } from "lucide-react";
 import { api, type MemoryPreview } from "../api";
 import { formatBytes, timeAgo, useToast } from "../components/ui";
 import { useOsNavigate } from "../hooks/useViewTransition";
@@ -73,7 +73,7 @@ export function PreviewPanel({
   const toast = useToast();
   const navigate = useOsNavigate();
   const [sending, setSending] = useState(false);
-  const sendToConsole = async () => {
+  const sendToConsole = async (ask?: string) => {
     if (sending) return;
     setSending(true);
     try {
@@ -81,7 +81,13 @@ export function PreviewPanel({
         `/api/memory/preview?p=${encodeURIComponent(preview.node.path)}`,
       );
       if (latest.kind === "blocked") throw new Error(t("brain.blocked"));
-      const draft = withConsoleReference(readConsoleDraft(), preview.node.path, t("brain.consoleSource"));
+      const base = readConsoleDraft();
+      // "Ask for a summary" (refino item 24): the question comes with the file.
+      const draft = withConsoleReference(
+        ask ? { ...base, text: `${ask} ` } : base,
+        preview.node.path,
+        t("brain.consoleSource"),
+      );
       if (!storeConsoleDraft(draft)) throw new Error(t("brain.consoleStorageFailed"));
       // The console is on the stage already (G2: the brain is a panel beside
       // it), so it has to be told the draft changed rather than re-reading it
@@ -220,6 +226,27 @@ export function PreviewPanel({
               {b.text}
             </pre>
           );
+        case "table":
+          return (
+            <table key={i} className="brain-md-table">
+              <thead>
+                <tr>
+                  {b.header.map((cell, ci) => (
+                    <th key={ci}>{renderInline(cell, `b${i}h${ci}`)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {b.rows.map((row, ri) => (
+                  <tr key={ri}>
+                    {row.map((cell, ci) => (
+                      <td key={ci}>{renderInline(cell, `b${i}r${ri}c${ci}`)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          );
         case "hr":
           return <hr key={i} />;
         case "list": {
@@ -282,6 +309,15 @@ export function PreviewPanel({
           onClick={() => void sendToConsole()}
         >
           <Terminal aria-hidden /> {t("brain.useInConsole")}
+        </button>
+        <button
+          className="btn sm"
+          disabled={
+            sending || preview.kind === "loading" || preview.kind === "blocked" || preview.kind === "error"
+          }
+          onClick={() => void sendToConsole(t("brain.askSummary"))}
+        >
+          <Sparkles aria-hidden /> {t("brain.summarize")}
         </button>
         <button
           className="btn sm"

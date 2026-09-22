@@ -160,7 +160,8 @@ test("artifact search lists its matches now that the ring is gone", async ({ pag
   await expect(page.locator(".boot-screen")).toHaveCount(0);
   await page.keyboard.press("/");
   await page.locator(".art-search-input").fill("plan");
-  const hit = page.locator(".art-hit");
+  // One search, grouped (refino item 52): the artifact group holds the match.
+  const hit = page.locator(".art-search-group").first().locator(".art-hit");
   await expect(hit).toHaveCount(1);
   await expect(hit).toContainText("Redesign plan");
   // Choosing a match lands the file on the stage (redesign F5) rather than in

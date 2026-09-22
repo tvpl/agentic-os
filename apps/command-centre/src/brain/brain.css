@@ -783,3 +783,52 @@
   margin: 0 0 12px;
   color: var(--text);
 }
+
+/* Refino item 24: a table is a table. */
+.brain-md-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0 10px;
+  font-size: var(--fs-2);
+}
+.brain-md-table th,
+.brain-md-table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.brain-md-table th {
+  font-size: var(--fs-0);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+/* Refino item 26: the folded controls. */
+.brain2-more > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.brain2-more > summary::before {
+  content: "▸";
+  font-size: var(--fs-0);
+}
+.brain2-more[open] > summary::before {
+  content: "▾";
+}
+.brain2-more[open] {
+  display: grid;
+  gap: var(--s-3);
+}
+/* Refino item 27: in a narrow plate the brain is a map with a search, nothing more. */
+@container (max-width: 720px) {
+  .app-panel .brain2-panel .brain-section,
+  .app-panel .brain2-panel .brain2-more,
+  .app-panel .brain2-panel .brain2-advanced,
+  .app-panel .brain2-legend {
+    display: none;
+  }
+}

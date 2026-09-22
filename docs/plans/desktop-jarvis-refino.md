@@ -252,6 +252,19 @@ Entregue no mesmo branch, verificada no app real (dev server, pt-BR) e por 386 t
 | 45 | Artefatos do turno como cartões na conversa: abrir como painel e enviar por Telegram (`POST /api/channels/telegram/send`). "Fixar no HUD" é abrir como painel, que já persiste no layout. | `ConsoleThread.tsx`; `routes/channels.ts`. |
 | 46 | Runs filhas orbitam a run mãe no campo vivo (satélites), a partir de `parentRunId`. | `fieldPoints.ts`, `LivingField.tsx`. |
 
+### Registro da Onda 4 — 22/09/2026
+
+| Item | O que entrou | Como se prova |
+|------|--------------|---------------|
+| 24 | O markdown do preview perde comentários HTML e ganha tabelas de verdade; ação "Pedir um resumo" leva o arquivo ao console com a pergunta pronta; "usar no console" e relações continuam. | `markdown.test.ts`; `PreviewPanel.tsx`. |
+| 25 | Já existia no motor: rampa de rótulos por zoom, colisão gulosa, halos nos hubs, sprites por tipo e voo na busca. Registrado como atendido pelo código atual; nenhum teste novo. | `brain/render/labels.ts`, `engine/flight.ts`. |
+| 26 | Painel de controles com quatro coisas à vista (busca, layout, visão, ações) e o resto em "Mais controles", lembrado por sessão. | `BrainPanel.tsx`. |
+| 27 | Em plate com menos de 720 px o cérebro vira mapa com busca e ações: seções, dobra e legenda somem por container query. O vazamento de rótulos foi resolvido pelos painéis opacos da Onda 0. | `brain.css`; e2e `brain-context` passa no plate pequeno. |
+| 28 | Conector em três passos dentro do card: o que faz e pede, configurar (checklist com copiar), testar; teste bem-sucedido marca `configured` e o cabeçalho passa a dizer "Conectado · última leitura há N". | `ConnectorWizard.tsx`. |
+| 29 | Linha do tempo de rotinas acima da lista: 12 h para trás com pontos verdes ou vermelhos (clique abre a run) e 12 h para a frente; rotina com duas falhas seguidas ganha diagnóstico com "ver por quê". Edição por arrasto ficou de fora: o horário em palavras (item 42) cobre o caso comum. | `RoutinesTimeline.tsx`. |
+| 37 | Replay ganha "Pular para o erro"; scrub e velocidades já existiam. | `Replay.tsx`. |
+| 52 | Uma busca (`/` ou `⌘F`) responde com artefatos, arquivos indexados, execuções, skills e notificações agrupados; ↑↓ e Enter abrem, ⌥Enter voa até o arquivo no cérebro. | e2e `desktop-windows` (grupo de artefatos); no app cinco grupos para "consol". |
+
 Fora da onda, anotado para as seguintes: `costSignal` ainda formata "0.08" sem locale no tooltip (item 23); descrições dos conectores em inglês vêm do catálogo em `connectors/` (item 28); "Processo concluído" vem do backend (item 36).
 
 ---

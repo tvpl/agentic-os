@@ -4,7 +4,7 @@
  * advanced sliders, workspace mode, bake, hygiene and the minimap.
  * Presentational: state comes from the parent as `ui` + `patch`.
  */
-import { useEffect, useId, useRef, type RefObject } from "react";
+import { type RefObject, useEffect, useId, useRef, useState } from "react";
 import {
   ChevronsDownUp,
   PanelRightClose,
@@ -137,6 +137,20 @@ export function BrainPanel(p: BrainPanelProps) {
     ui.filters.size !== "any";
   const toggleIn = (list: string[], v: string) =>
     list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
+  const [moreOpen, setMoreOpen] = useState(() => {
+    try {
+      return sessionStorage.getItem("mordomo.brainPanel.more") === "true";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.setItem("mordomo.brainPanel.more", String(moreOpen));
+    } catch {
+      /* ignore */
+    }
+  }, [moreOpen]);
   const fmtDate = (ms: number) =>
     new Date(ms).toLocaleDateString(p.lang, { year: "2-digit", month: "short", day: "numeric" });
 
@@ -205,233 +219,245 @@ export function BrainPanel(p: BrainPanelProps) {
         />
       </section>
 
-      <section className="brain-section">
-        <div className="hud-label">{t("brain.edges")}</div>
-        <div className="brain-chips" role="group" aria-label={t("brain.edges")}>
-          {EDGE_KINDS.filter((k) => (p.kindCounts.get(k) ?? 0) > 0 || k === "markdown-link").map((k) => {
-            const on = ui.edgeKinds.includes(k);
-            return (
-              <button
-                key={k}
-                type="button"
-                role="switch"
-                aria-checked={on}
-                className={`brain-chip kind${on ? " on" : ""}`}
-                onClick={() => patch({ edgeKinds: toggleIn(ui.edgeKinds, k) as EdgeKind[] })}
-              >
-                <span className={`brain-kind-swatch ${k}`} aria-hidden />
-                {t(KIND_KEYS[k])}
-                <span className="count">{p.kindCounts.get(k) ?? 0}</span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="brain-section">
-        <div className="row">
-          <button
-            type="button"
-            className={`btn sm${ui.local ? " outline-accent" : ""}`}
-            aria-pressed={ui.local}
-            onClick={() => patch({ local: !ui.local })}
-            title={`${t("brain.local")} (f)`}
-          >
-            {t("brain.local")}
-          </button>
-          <label className="brain-inline-label" htmlFor={`${ids}-hops`}>
-            {t("brain.hops")}
-            <input
-              id={`${ids}-hops`}
-              type="range"
-              min={1}
-              max={3}
-              step={1}
-              value={ui.localHops}
-              onChange={(e) => patch({ localHops: Number(e.target.value) })}
-              className="brain-hops"
-            />
-            <span className="val">{ui.localHops}</span>
-          </label>
-        </div>
-        <p className="brain-hint">
-          {ui.local && ui.sel === null ? t("brain.local.hint") : t("brain.hover.hint")}
-        </p>
-      </section>
-
-      <section className="brain-section">
-        <div className="row">
-          <div className="hud-label">{t("brain.filters")}</div>
-          {filtersOn && (
-            <button
-              type="button"
-              className="btn ghost sm"
-              onClick={() => patch({ filters: { exts: [], tags: [], modified: "all", size: "any" } })}
-            >
-              <Eraser aria-hidden /> {t("brain.filters.clear")}
-            </button>
-          )}
-        </div>
-        {p.facets.exts.length > 0 && (
-          <div className="brain-chips" role="group" aria-label={t("brain.ext")}>
-            {p.facets.exts.map(([ext, count]) => {
-              const on = ui.filters.exts.includes(ext);
+      {/* Refino item 26: four things visible — search, layout, view, list — and the rest folded. */}
+      <details
+        className="brain2-more"
+        open={moreOpen}
+        onToggle={(e) => setMoreOpen((e.target as HTMLDetailsElement).open)}
+      >
+        <summary className="hud-label">{t("brain.more")}</summary>
+        <section className="brain-section">
+          <div className="hud-label">{t("brain.edges")}</div>
+          <div className="brain-chips" role="group" aria-label={t("brain.edges")}>
+            {EDGE_KINDS.filter((k) => (p.kindCounts.get(k) ?? 0) > 0 || k === "markdown-link").map((k) => {
+              const on = ui.edgeKinds.includes(k);
               return (
                 <button
-                  key={ext}
+                  key={k}
                   type="button"
-                  className={`brain-chip${on ? " on" : ""}`}
-                  aria-pressed={on}
-                  onClick={() => patch({ filters: { ...ui.filters, exts: toggleIn(ui.filters.exts, ext) } })}
+                  role="switch"
+                  aria-checked={on}
+                  className={`brain-chip kind${on ? " on" : ""}`}
+                  onClick={() => patch({ edgeKinds: toggleIn(ui.edgeKinds, k) as EdgeKind[] })}
                 >
-                  {ext}
-                  <span className="count">{count}</span>
+                  <span className={`brain-kind-swatch ${k}`} aria-hidden />
+                  {t(KIND_KEYS[k])}
+                  <span className="count">{p.kindCounts.get(k) ?? 0}</span>
                 </button>
               );
             })}
           </div>
-        )}
-        {p.facets.tags.length > 0 && (
-          <div className="brain-chips" role="group" aria-label={t("brain.tags")}>
-            {p.facets.tags.map(([tag, count]) => {
-              const on = ui.filters.tags.includes(tag);
-              return (
-                <button
-                  key={tag}
-                  type="button"
-                  className={`brain-chip tag${on ? " on" : ""}`}
-                  aria-pressed={on}
-                  onClick={() => patch({ filters: { ...ui.filters, tags: toggleIn(ui.filters.tags, tag) } })}
-                >
-                  #{tag}
-                  <span className="count">{count}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-        <div className="brain-subrow">
-          <span className="brain-inline-label">{t("brain.modified")}</span>
-          <Segmented<ModifiedRange>
-            size="sm"
-            ariaLabel={t("brain.modified")}
-            value={ui.filters.modified}
-            onChange={(modified) => patch({ filters: { ...ui.filters, modified } })}
-            options={MODIFIED_RANGES.map((m) => ({ value: m, label: t(MOD_KEYS[m]) }))}
-          />
-        </div>
-        <div className="brain-subrow">
-          <span className="brain-inline-label">{t("brain.size")}</span>
-          <Segmented<SizeRange>
-            size="sm"
-            ariaLabel={t("brain.size")}
-            value={ui.filters.size}
-            onChange={(size) => patch({ filters: { ...ui.filters, size } })}
-            options={SIZE_RANGES.map((s) => ({ value: s, label: t(SIZE_KEYS[s]) }))}
-          />
-        </div>
-      </section>
+        </section>
 
-      <section className="brain-section">
-        <div className="row">
-          <div className="hud-label">{t("brain.groups")}</div>
-          {ui.groups.length < 4 && (
-            <button
-              type="button"
-              className="btn ghost sm"
-              onClick={() =>
-                patch({
-                  groups: [
-                    ...ui.groups,
-                    { query: "", color: GROUP_PALETTE[ui.groups.length % GROUP_PALETTE.length]! },
-                  ],
-                })
-              }
-            >
-              <Plus aria-hidden /> {t("brain.groups.add")}
-            </button>
-          )}
-        </div>
-        {ui.groups.map((g, i) => (
-          <div className="brain-group-row" key={i}>
-            <input
-              type="color"
-              value={g.color}
-              aria-label={`${t("brain.groups")} ${i + 1}`}
-              onChange={(e) =>
-                patch({ groups: ui.groups.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)) })
-              }
-            />
-            <input
-              className="input sm"
-              placeholder={t("brain.groups.ph")}
-              value={g.query}
-              aria-label={`${t("brain.groups.ph")} ${i + 1}`}
-              onChange={(e) =>
-                patch({ groups: ui.groups.map((x, j) => (j === i ? { ...x, query: e.target.value } : x)) })
-              }
-            />
-            <button
-              type="button"
-              className="btn ghost sm icon-only"
-              aria-label={t("brain.groups.remove")}
-              onClick={() => patch({ groups: ui.groups.filter((_, j) => j !== i) })}
-            >
-              <X aria-hidden />
-            </button>
-          </div>
-        ))}
-      </section>
-
-      {p.timeline.range && (
-        <section className="brain-section brain-timeline">
+        <section className="brain-section">
           <div className="row">
-            <label className="brain-check" htmlFor={`${ids}-tl`}>
+            <button
+              type="button"
+              className={`btn sm${ui.local ? " outline-accent" : ""}`}
+              aria-pressed={ui.local}
+              onClick={() => patch({ local: !ui.local })}
+              title={`${t("brain.local")} (f)`}
+            >
+              {t("brain.local")}
+            </button>
+            <label className="brain-inline-label" htmlFor={`${ids}-hops`}>
+              {t("brain.hops")}
               <input
-                id={`${ids}-tl`}
-                type="checkbox"
-                checked={p.timeline.value !== null}
-                onChange={(e) => p.onTimeline(e.target.checked ? p.timeline.range![1] : null)}
+                id={`${ids}-hops`}
+                type="range"
+                min={1}
+                max={3}
+                step={1}
+                value={ui.localHops}
+                onChange={(e) => patch({ localHops: Number(e.target.value) })}
+                className="brain-hops"
               />
-              {t("brain.timeline")}
+              <span className="val">{ui.localHops}</span>
             </label>
-            {p.timeline.value !== null && (
+          </div>
+          <p className="brain-hint">
+            {ui.local && ui.sel === null ? t("brain.local.hint") : t("brain.hover.hint")}
+          </p>
+        </section>
+
+        <section className="brain-section">
+          <div className="row">
+            <div className="hud-label">{t("brain.filters")}</div>
+            {filtersOn && (
               <button
                 type="button"
-                className="btn ghost sm icon-only"
-                onClick={p.onTimelinePlay}
-                aria-label={p.timeline.playing ? t("brain.timeline.pause") : t("brain.timeline.play")}
-                aria-pressed={p.timeline.playing}
+                className="btn ghost sm"
+                onClick={() => patch({ filters: { exts: [], tags: [], modified: "all", size: "any" } })}
               >
-                {p.timeline.playing ? <Pause aria-hidden /> : <Play aria-hidden />}
+                <Eraser aria-hidden /> {t("brain.filters.clear")}
               </button>
             )}
           </div>
-          {p.timeline.value !== null && (
-            <div className="slider-row wide">
-              <input
-                type="range"
-                min={p.timeline.range[0]}
-                max={p.timeline.range[1]}
-                step={Math.max(1, Math.floor((p.timeline.range[1] - p.timeline.range[0]) / 400))}
-                value={p.timeline.value}
-                onChange={(e) => p.onTimeline(Number(e.target.value))}
-                aria-label={t("brain.timeline")}
-              />
-              <span className="val">{fmtDate(p.timeline.value)}</span>
+          {p.facets.exts.length > 0 && (
+            <div className="brain-chips" role="group" aria-label={t("brain.ext")}>
+              {p.facets.exts.map(([ext, count]) => {
+                const on = ui.filters.exts.includes(ext);
+                return (
+                  <button
+                    key={ext}
+                    type="button"
+                    className={`brain-chip${on ? " on" : ""}`}
+                    aria-pressed={on}
+                    onClick={() =>
+                      patch({ filters: { ...ui.filters, exts: toggleIn(ui.filters.exts, ext) } })
+                    }
+                  >
+                    {ext}
+                    <span className="count">{count}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
+          {p.facets.tags.length > 0 && (
+            <div className="brain-chips" role="group" aria-label={t("brain.tags")}>
+              {p.facets.tags.map(([tag, count]) => {
+                const on = ui.filters.tags.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    className={`brain-chip tag${on ? " on" : ""}`}
+                    aria-pressed={on}
+                    onClick={() =>
+                      patch({ filters: { ...ui.filters, tags: toggleIn(ui.filters.tags, tag) } })
+                    }
+                  >
+                    #{tag}
+                    <span className="count">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <div className="brain-subrow">
+            <span className="brain-inline-label">{t("brain.modified")}</span>
+            <Segmented<ModifiedRange>
+              size="sm"
+              ariaLabel={t("brain.modified")}
+              value={ui.filters.modified}
+              onChange={(modified) => patch({ filters: { ...ui.filters, modified } })}
+              options={MODIFIED_RANGES.map((m) => ({ value: m, label: t(MOD_KEYS[m]) }))}
+            />
+          </div>
+          <div className="brain-subrow">
+            <span className="brain-inline-label">{t("brain.size")}</span>
+            <Segmented<SizeRange>
+              size="sm"
+              ariaLabel={t("brain.size")}
+              value={ui.filters.size}
+              onChange={(size) => patch({ filters: { ...ui.filters, size } })}
+              options={SIZE_RANGES.map((s) => ({ value: s, label: t(SIZE_KEYS[s]) }))}
+            />
+          </div>
         </section>
-      )}
 
-      <div className="row">
-        <button className="btn sm" onClick={() => p.onExpandAll(true)}>
-          <ChevronsUpDown aria-hidden /> {t("brain.expandAll")}
-        </button>
-        <button className="btn sm" onClick={() => p.onExpandAll(false)}>
-          <ChevronsDownUp aria-hidden /> {t("brain.collapseAll")}
-        </button>
-      </div>
+        <section className="brain-section">
+          <div className="row">
+            <div className="hud-label">{t("brain.groups")}</div>
+            {ui.groups.length < 4 && (
+              <button
+                type="button"
+                className="btn ghost sm"
+                onClick={() =>
+                  patch({
+                    groups: [
+                      ...ui.groups,
+                      { query: "", color: GROUP_PALETTE[ui.groups.length % GROUP_PALETTE.length]! },
+                    ],
+                  })
+                }
+              >
+                <Plus aria-hidden /> {t("brain.groups.add")}
+              </button>
+            )}
+          </div>
+          {ui.groups.map((g, i) => (
+            <div className="brain-group-row" key={i}>
+              <input
+                type="color"
+                value={g.color}
+                aria-label={`${t("brain.groups")} ${i + 1}`}
+                onChange={(e) =>
+                  patch({ groups: ui.groups.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)) })
+                }
+              />
+              <input
+                className="input sm"
+                placeholder={t("brain.groups.ph")}
+                value={g.query}
+                aria-label={`${t("brain.groups.ph")} ${i + 1}`}
+                onChange={(e) =>
+                  patch({ groups: ui.groups.map((x, j) => (j === i ? { ...x, query: e.target.value } : x)) })
+                }
+              />
+              <button
+                type="button"
+                className="btn ghost sm icon-only"
+                aria-label={t("brain.groups.remove")}
+                onClick={() => patch({ groups: ui.groups.filter((_, j) => j !== i) })}
+              >
+                <X aria-hidden />
+              </button>
+            </div>
+          ))}
+        </section>
+
+        {p.timeline.range && (
+          <section className="brain-section brain-timeline">
+            <div className="row">
+              <label className="brain-check" htmlFor={`${ids}-tl`}>
+                <input
+                  id={`${ids}-tl`}
+                  type="checkbox"
+                  checked={p.timeline.value !== null}
+                  onChange={(e) => p.onTimeline(e.target.checked ? p.timeline.range![1] : null)}
+                />
+                {t("brain.timeline")}
+              </label>
+              {p.timeline.value !== null && (
+                <button
+                  type="button"
+                  className="btn ghost sm icon-only"
+                  onClick={p.onTimelinePlay}
+                  aria-label={p.timeline.playing ? t("brain.timeline.pause") : t("brain.timeline.play")}
+                  aria-pressed={p.timeline.playing}
+                >
+                  {p.timeline.playing ? <Pause aria-hidden /> : <Play aria-hidden />}
+                </button>
+              )}
+            </div>
+            {p.timeline.value !== null && (
+              <div className="slider-row wide">
+                <input
+                  type="range"
+                  min={p.timeline.range[0]}
+                  max={p.timeline.range[1]}
+                  step={Math.max(1, Math.floor((p.timeline.range[1] - p.timeline.range[0]) / 400))}
+                  value={p.timeline.value}
+                  onChange={(e) => p.onTimeline(Number(e.target.value))}
+                  aria-label={t("brain.timeline")}
+                />
+                <span className="val">{fmtDate(p.timeline.value)}</span>
+              </div>
+            )}
+          </section>
+        )}
+
+        <div className="row">
+          <button className="btn sm" onClick={() => p.onExpandAll(true)}>
+            <ChevronsUpDown aria-hidden /> {t("brain.expandAll")}
+          </button>
+          <button className="btn sm" onClick={() => p.onExpandAll(false)}>
+            <ChevronsDownUp aria-hidden /> {t("brain.collapseAll")}
+          </button>
+        </div>
+      </details>
       <div className="row">
         <button className="btn sm" onClick={p.onReset}>
           <RotateCcw aria-hidden /> {t("brain.reset")}
