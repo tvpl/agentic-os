@@ -66,6 +66,8 @@ import {
   type Skill,
 } from "../api";
 import { requestDesktopAction } from "../desktop/desktopModes";
+import { ARRANGE_VERBS, arrangeFor } from "../desktop/arrange";
+import { ARRANGE_EVENT } from "../desktop/panelKinds";
 import { useT, type TKey } from "../i18n";
 import { localizeSkill } from "../views/Skills/localize";
 import { qk, useApiQuery, useOsProviders, useOsRuns, useOsSkills } from "../queries";
@@ -705,14 +707,59 @@ export function CommandPalette({
       ];
       return base.filter((s) => s.rows.length > 0);
     }
+    // "organizar revisar código" → the desk composes itself (refino item 47).
+    const verb = ARRANGE_VERBS.exec(needle);
+    const arrangement = verb ? arrangeFor(verb[1]!) : null;
+    const arrangeRow: Row[] = verb
+      ? [
+          {
+            id: "action:arrange",
+            section: "actions",
+            label: arrangement
+              ? t("desktop.arrange.label", { intent: verb[1]! })
+              : t("desktop.arrange.unknown", { intent: verb[1]! }),
+            sub: arrangement ? arrangement.panels.join(" · ") : t("desktop.arrange.hint"),
+            icon: <LayoutGrid aria-hidden />,
+            primary: () => {
+              if (!arrangement) return;
+              const fire = () =>
+                window.dispatchEvent(new CustomEvent(ARRANGE_EVENT, { detail: arrangement.panels }));
+              if (pathname === "/") {
+                fire();
+                close();
+              } else {
+                go("/");
+                requestAnimationFrame(() => requestAnimationFrame(fire));
+              }
+            },
+          },
+        ]
+      : [];
     return [
       { section: "apps" as const, rows: rankItems(apps, needle).map((r) => r.item) },
-      { section: "actions" as const, rows: rankItems(actions, needle).map((r) => r.item) },
+      {
+        section: "actions" as const,
+        rows: [...arrangeRow, ...rankItems(actions, needle).map((r) => r.item)],
+      },
       { section: "skills" as const, rows: rankItems(skillRows, needle, 8).map((r) => r.item) },
       { section: "files" as const, rows: fileRows },
       { section: "runs" as const, rows: rankItems(runRows, needle, 8).map((r) => r.item) },
     ].filter((s) => s.rows.length > 0 || (s.section === "files" && filesLoading));
-  }, [page.kind, pageRows, needle, apps, actions, runRows, skillRows, fileRows, filesLoading]);
+  }, [
+    page.kind,
+    pageRows,
+    needle,
+    apps,
+    actions,
+    runRows,
+    skillRows,
+    fileRows,
+    filesLoading,
+    t,
+    pathname,
+    go,
+    close,
+  ]);
   const rows = useMemo(() => sections.flatMap((s) => s.rows), [sections]);
 
   useEffect(() => setSelected(0), [needle, page.kind]);

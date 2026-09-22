@@ -732,3 +732,100 @@
 .apps-hud-arc > .hud-label {
   margin-top: var(--s-2);
 }
+
+/* Settings by question (refino item 17): a vertical nav with search. */
+.settings-page {
+  /* A size container in a flex column with auto margins collapses to its
+     padding; the width has to be said. */
+  container-type: inline-size;
+  width: 100%;
+  box-sizing: border-box;
+}
+.settings-shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--s-6);
+  align-items: start;
+}
+.settings-nav {
+  position: sticky;
+  top: 0;
+  display: grid;
+  gap: var(--s-3);
+}
+.settings-search {
+  width: 100%;
+}
+.settings-group {
+  display: grid;
+  gap: 2px;
+  margin-bottom: var(--s-3);
+}
+.settings-group-label {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-0);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.settings-nav-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-3);
+  text-align: left;
+  cursor: pointer;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  transition:
+    color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard);
+}
+.settings-nav-item:hover,
+.settings-nav-item:focus-visible {
+  color: var(--text);
+  background: var(--bg-raise-2);
+}
+.settings-nav-item.on {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+.settings-autosave {
+  margin: 0;
+  font-size: var(--fs-1);
+}
+.settings-section-title {
+  margin: 0 0 var(--s-4);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-6);
+  letter-spacing: 0.02em;
+}
+@container (max-width: 640px) {
+  .settings-shell {
+    grid-template-columns: 1fr;
+  }
+  .settings-nav {
+    position: static;
+  }
+  .settings-nav [role="tablist"] {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .settings-group {
+    display: contents;
+  }
+  .settings-group-label {
+    display: none;
+  }
+  .settings-nav-item {
+    width: auto;
+  }
+}

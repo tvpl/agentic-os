@@ -5,14 +5,22 @@
  * shows or hides the conversation above the field.
  */
 import { useLayoutEffect, useRef, useState } from "react";
+import { Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type ProviderId, type ProviderSnapshot, type SessionDetail } from "../../api";
-import { useT } from "../../i18n";
-import { qk } from "../../queries";
-import { useToast } from "../../components/ui";
+import {
+  api,
+  type ProviderId,
+  type ProviderSnapshot,
+  type SessionDetail,
+  type SessionRecord,
+} from "../../api";
+import { useLocale, useT } from "../../i18n";
+import { qk, useApiQuery } from "../../queries";
+import { timeAgo, useToast } from "../../components/ui";
 import { DialogPortal, useDialog, usePresence } from "../../components/dialog";
 import { ModelEffortMatrix, shortModel, type Effort } from "../SkillMatrixModal";
 import type { FolderOption } from "./refs";
+import { shortTitle } from "./sessions";
 
 export type Mode = "read_only" | "write";
 
@@ -35,6 +43,7 @@ export function ConsoleControls({
   onChoice,
   session,
   onNewChat,
+  onPickSession,
   threadOpen,
   onToggleThread,
 }: {
@@ -52,6 +61,8 @@ export function ConsoleControls({
   onChoice: (choice: ModelChoice) => void;
   session: SessionDetail | undefined;
   onNewChat: () => void;
+  /** Resume a conversation from the list (refino item 49). */
+  onPickSession: (id: string) => void;
   threadOpen: boolean;
   onToggleThread: () => void;
 }) {
@@ -60,6 +71,8 @@ export function ConsoleControls({
   const qc = useQueryClient();
   const [modelOpen, setModelOpen] = useState(false);
   const modelBtn = useRef<HTMLButtonElement>(null);
+  const [convOpen, setConvOpen] = useState(false);
+  const convBtn = useRef<HTMLButtonElement>(null);
 
   // The provider control cycles the enabled providers; the default is what a
   // fresh conversation will use, so that is what it sets.
@@ -151,6 +164,32 @@ export function ConsoleControls({
         <span aria-hidden>●</span>
         {session?.session.provider ?? provider ?? "—"}
       </button>
+      <button
+        type="button"
+        className="cc"
+        ref={convBtn}
+        aria-haspopup="dialog"
+        aria-expanded={convOpen}
+        title={t("desktop.console.conversations")}
+        onClick={() => setConvOpen((v) => !v)}
+      >
+        <span aria-hidden>◷</span>
+        {session
+          ? shortTitle(session.session.title) || t("desktop.console.conversations")
+          : t("desktop.console.conversations")}
+      </button>
+      {convBtn.current && (
+        <ConversationsPopover
+          open={convOpen}
+          anchor={convBtn.current}
+          currentId={session?.session.id ?? null}
+          onPick={(id) => {
+            onPickSession(id);
+            setConvOpen(false);
+          }}
+          onClose={() => setConvOpen(false)}
+        />
+      )}
       <button type="button" className="cc" onClick={onNewChat} disabled={!session && turns === 0}>
         <span aria-hidden>＋</span>
         {t("desktop.console.newChat")}
@@ -261,3 +300,133 @@ function ModelPopoverBox({
     </DialogPortal>
   );
 }
+
+/** The conversations, newest first: resume, rename, forget (refino item 49). */
+function ConversationsPopover({
+  open,
+  anchor,
+  currentId,
+  onPick,
+  onClose,
+}: {
+  open: boolean;
+  anchor: HTMLElement;
+  currentId: string | null;
+  onPick: (id: string) => void;
+  onClose: () => void;
+}) {
+  const { mounted, closing } = usePresence(open, 160);
+  if (!mounted) return null;
+  return (
+    <ConversationsBox
+      anchor={anchor}
+      currentId={currentId}
+      onPick={onPick}
+      onClose={onClose}
+      closing={closing}
+    />
+  );
+}
+
+function ConversationsBox({
+  anchor,
+  currentId,
+  onPick,
+  onClose,
+  closing,
+}: {
+  anchor: HTMLElement;
+  currentId: string | null;
+  onPick: (id: string) => void;
+  onClose: () => void;
+  closing: boolean;
+}) {
+  const t = useT();
+  const locale = useLocale();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: 0, bottom: 0 });
+  useDialog(ref, onClose, { initialFocus: () => ref.current });
+  useLayoutEffect(() => {
+    const r = anchor.getBoundingClientRect();
+    setPos({
+      left: Math.max(8, Math.min(window.innerWidth - CONV_W - 8, r.left)),
+      bottom: window.innerHeight - r.top + 6,
+    });
+  }, [anchor]);
+  const sessions = useApiQuery<SessionRecord[]>(["sessions", "list", 20], "/api/sessions?limit=20", {
+    staleTime: 10_000,
+  });
+  const rename = useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) =>
+      api.patch(`/api/sessions/${encodeURIComponent(id)}`, { title }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }).catch(() => undefined),
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
+  const forget = useMutation({
+    mutationFn: (id: string) => api.del(`/api/sessions/${encodeURIComponent(id)}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }).catch(() => undefined),
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
+  const rows = sessions.data ?? [];
+  return (
+    <DialogPortal>
+      <div
+        ref={ref}
+        className={`me-popover above cons-conversations${closing ? " closing" : ""}`}
+        role="dialog"
+        aria-modal="false"
+        aria-label={t("desktop.console.conversations")}
+        tabIndex={-1}
+        style={{ left: pos.left, bottom: pos.bottom, width: CONV_W }}
+      >
+        <div className="me-head">
+          <span className="hud-label accent">{t("desktop.console.conversations")}</span>
+          <span className="mono me-skill">{rows.length}</span>
+        </div>
+        {rows.length === 0 ? (
+          <p className="dim conv-empty">{t("desktop.console.noConversations")}</p>
+        ) : (
+          <ul className="conv-list">
+            {rows.map((row) => (
+              <li key={row.id} className={row.id === currentId ? "on" : ""}>
+                <button type="button" className="conv-main" onClick={() => onPick(row.id)}>
+                  <span className="conv-title">{shortTitle(row.title) || row.id.slice(0, 8)}</span>
+                  <span className="conv-sub mono">
+                    {row.provider} · {t("desktop.console.turns", { n: row.turns })} · $
+                    {row.costUsd.toFixed(3)} · {timeAgo(row.updatedAt, locale)}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="conv-act"
+                  aria-label={t("desktop.console.rename")}
+                  title={t("desktop.console.rename")}
+                  onClick={() => {
+                    const next = window.prompt(t("desktop.console.rename"), row.title);
+                    if (next && next.trim() && next.trim() !== row.title)
+                      rename.mutate({ id: row.id, title: next.trim() });
+                  }}
+                >
+                  <Pencil aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  className="conv-act"
+                  aria-label={t("desktop.console.forget")}
+                  title={t("desktop.console.forget")}
+                  onClick={() => forget.mutate(row.id)}
+                >
+                  <Trash2 aria-hidden />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </DialogPortal>
+  );
+}
+
+const CONV_W = 360;

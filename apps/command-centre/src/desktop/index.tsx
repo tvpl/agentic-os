@@ -26,7 +26,14 @@ import { playCue, useNotifications } from "../hooks/useNotifications";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import { useOsEvent } from "../hooks/useEventStream";
 import { OPEN_DECK_EVENT, OPEN_PANEL_EVENT, RESET_LAYOUT_EVENT } from "../App";
-import { PANEL_ACTION_EVENT, panelKind, publishPanels, type OpenPanel, type PanelAction } from "./panelKinds";
+import {
+  PANEL_ACTION_EVENT,
+  panelKind,
+  publishPanels,
+  type OpenPanel,
+  type PanelAction,
+  ARRANGE_EVENT,
+} from "./panelKinds";
 import { APPS, appForPath, appId, appKindOf, appLocationOf, type AppKind, type AppLocation } from "./apps";
 import AppPanel from "./AppPanel";
 import RunPanel from "./RunPanel";
@@ -45,11 +52,21 @@ import {
 import { isRunActive } from "../runs/useRunStream";
 import { useLocation, useNavigate as useRouterNavigate } from "react-router-dom";
 import { SWITCH_SPACE_EVENT, takePendingSpace } from "../components/Workspace";
-import { DEFAULT_SPACE, switchSpace, type SpaceMap } from "./spaces";
+import { DEFAULT_SPACE, listSpaces, switchSpace, type SpaceMap } from "./spaces";
 import { DOC_BOX, defaultWindows, docId, docPath, isDocId, minFor } from "./defaultWindows";
 import DocWindow from "./DocWindow";
 import { CONSOLE_DRAFT_EVENT, CONSOLE_REFS_EVENT, readConsoleDraft, storeConsoleDraft } from "./consoleDraft";
-import { clampIntoStage, placeNew, tile, topZ, type WindowMap } from "./windowModel";
+import {
+  arrangeOnOpen,
+  clampIntoStage,
+  placeNew,
+  raise,
+  stackOrder,
+  tile,
+  topZ,
+  type WindowMap,
+  columns,
+} from "./windowModel";
 import { useWindowLayout, type StageMetrics } from "./useWindowLayout";
 import WidgetLayer, { type WidgetSpec } from "./WidgetLayer";
 import AgentPresence from "./AgentPresence";
@@ -179,6 +196,8 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   /* ---- mutations -------------------------------------------------------- */
 
   const openRunRef = useRef<(id: string) => void>(() => undefined);
+  const closePanelRef = useRef<(id: string) => void>(() => undefined);
+  const layoutRef = useRef<WindowMap>({});
   const openSkillFormRef = useRef<(slug: string) => void>(() => undefined);
   const openWindowRef = useRef<(id: string) => boolean>(() => false);
 
@@ -334,12 +353,42 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         setDeckOpen((v) => !v);
         return;
       }
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target instanceof Element ? e.target : null;
       if (el?.closest('[role="dialog"]')) return;
       const editable =
         el instanceof HTMLElement &&
         (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
+      // ⌘1…⌘6 switch spaces (refino item 50), from anywhere on the desk.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && /^[1-6]$/.test(e.key)) {
+        const { spaces, active } = spacesRef.current;
+        const ids = listSpaces(spaces, active).map((sp) => sp.id);
+        const target = ids[Number(e.key) - 1];
+        if (target) {
+          e.preventDefault();
+          switchRef.current(target);
+        }
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // The stack by keyboard: ] and [ raise the next and previous panel,
+      // F puts the top one in the cinema, Escape closes it.
+      if (!editable && (e.key === "]" || e.key === "[")) {
+        const order = stackOrder(layoutRef.current);
+        if (order.length > 1) {
+          e.preventDefault();
+          const next = e.key === "]" ? order[order.length - 1]! : order[1]!;
+          commit(raise(layoutRef.current, next));
+        }
+        return;
+      }
+      if (!editable && e.key.toLowerCase() === "f" && !searching && !overview) {
+        const top = stackOrder(layoutRef.current)[0];
+        if (top) {
+          e.preventDefault();
+          setExpandedId((cur) => (cur ? null : top));
+        }
+        return;
+      }
       if (e.key === "/" && !editable && !searching) {
         e.preventDefault();
         setSearching(true);
@@ -360,11 +409,25 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         e.preventDefault();
         e.stopPropagation();
         closeSearch();
+        return;
+      }
+      // With nothing else open, Escape closes the top panel (refino item 50).
+      if (e.key === "Escape" && !editable && !deckOpen && !editingHud) {
+        if (expandedId) {
+          e.preventDefault();
+          setExpandedId(null);
+          return;
+        }
+        const top = stackOrder(layoutRef.current)[0];
+        if (top) {
+          e.preventDefault();
+          closePanelRef.current(top);
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [searching, overview, closeSearch]);
+  }, [searching, overview, closeSearch, deckOpen, editingHud, expandedId, commit]);
 
   /* ---- widgets from the registry --------------------------------------- */
   /** Document windows on the stage, newest (highest) first. */
@@ -451,7 +514,10 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         // be under the console or under a window opened a moment ago, so a
         // window arriving from a pod is placed against what is actually open.
         const spot = placeNew({ w: box.w, h: box.h }, prev, stage);
-        return { ...prev, [id]: { ...box, ...spot, visible: true, minimized: false, z: topZ(prev) + 1 } };
+        return arrangeOnOpen(
+          { ...prev, [id]: { ...box, ...spot, visible: true, minimized: false, z: topZ(prev) + 1 } },
+          stage,
+        );
       });
       return true;
     },
@@ -486,7 +552,8 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
           stage,
           minFor(id),
         );
-        return { ...prev, [id]: box };
+        // Few panels reflow into columns (refino item 11); many keep their spots.
+        return arrangeOnOpen({ ...prev, [id]: box }, stage);
       });
     },
     [commit, stage],
@@ -508,14 +575,17 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         if (existing)
           return { ...prev, [id]: { ...existing, visible: true, minimized: false, z: topZ(prev) + 1 } };
         const spot = placeNew(size, prev, stage);
-        return {
-          ...prev,
-          [id]: clampIntoStage(
-            { ...spot, ...size, z: topZ(prev) + 1, visible: true, minimized: false },
-            stage,
-            minFor(id),
-          ),
-        };
+        return arrangeOnOpen(
+          {
+            ...prev,
+            [id]: clampIntoStage(
+              { ...spot, ...size, z: topZ(prev) + 1, visible: true, minimized: false },
+              stage,
+              minFor(id),
+            ),
+          },
+          stage,
+        );
       });
     },
     [commit, stage],
@@ -532,6 +602,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     },
     [commit],
   );
+  closePanelRef.current = closePanel;
 
   /**
    * Deep links (G2): the app routes still exist — notifications, the palette,
@@ -540,7 +611,6 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
    * it for every app route), so nothing re-materialises.
    */
   const location = useLocation();
-  const layoutRef = useRef(layout);
   layoutRef.current = layout;
   // The bounce is a plain router navigation on purpose: the link that got us
   // here may itself be mid view-transition (`useOsNavigate`), and starting a
@@ -607,6 +677,26 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   );
 
   openWindowRef.current = openWindow;
+
+  /** The palette composed a desk (refino item 47): open what it named, then columns or grid. */
+  useEffect(() => {
+    const onArrange = (e: Event) => {
+      const ids = (e as CustomEvent<string[]>).detail ?? [];
+      for (const id of ids) {
+        const app = appKindOf(id);
+        if (app) openAppRef.current(app);
+        else openWindowRef.current(id);
+      }
+      window.setTimeout(() => {
+        commit((prev) => {
+          const open = Object.values(prev).filter((b) => b.visible && !b.minimized).length;
+          return open <= 3 ? columns(prev, stage) : tile(prev, stage);
+        });
+      }, 0);
+    };
+    window.addEventListener(ARRANGE_EVENT, onArrange);
+    return () => window.removeEventListener(ARRANGE_EVENT, onArrange);
+  }, [commit, stage]);
 
   /** The dock's task buttons: focus, park, restore — the same layout, edited here. */
   useEffect(() => {

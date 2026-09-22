@@ -28,14 +28,14 @@ test("the strip reads the day and opens what it names; the dock lists what is op
   await openDesktop(page);
   const strip = page.locator("header.strip");
   await expect(strip).toBeVisible();
-  // Brand, provider·state, day, runs, attention, bell, clock — in that order.
+  // Brand, provider·state, space, day, runs, attention, bell, clock — in that order.
   await expect(strip.locator(".bd")).toContainText(/OS$/);
   const segments = strip.locator(".sg");
-  await expect(segments).toHaveCount(5);
-  for (const i of [0, 1, 2, 3, 4])
+  await expect(segments).toHaveCount(6);
+  for (const i of [0, 1, 2, 3, 4, 5])
     await expect(segments.nth(i)).toHaveAttribute("data-l", /^(idle|info|warn|crit)$/);
   await expect(strip.locator(".bell")).toBeVisible();
-  await expect(segments.nth(4).locator(".v")).toHaveText(/^\d{2}:\d{2}:\d{2}$/);
+  await expect(segments.nth(5).locator(".v")).toHaveText(/^\d{2}:\d{2}:\d{2}$/);
   // A segment with somewhere to go opens it on the stage.
   await strip.locator(".sg[data-open]").filter({ hasText: /runs/i }).click();
   await expect(page.locator('[data-panel="app:runs"]')).toBeVisible();

@@ -73,17 +73,34 @@ const THREAD_TURNS = 8;
 /** Fired on `window` while the microphone listens; the core shows the Listening state. */
 export const LISTENING_EVENT = "mordomo:listening";
 
-function readStoredSession(): string | null {
+/** Each space keeps its own conversation and mode (refino item 48). */
+const spaceKey = (base: string, space: string) => (space === "work" ? base : `${base}.${space}`);
+function readStoredSession(space = "work"): string | null {
   try {
-    return localStorage.getItem(SESSION_KEY);
+    return localStorage.getItem(spaceKey(SESSION_KEY, space));
   } catch {
     return null;
   }
 }
-function storeSession(id: string | null) {
+function storeSession(id: string | null, space = "work") {
   try {
-    if (id) localStorage.setItem(SESSION_KEY, id);
-    else localStorage.removeItem(SESSION_KEY);
+    if (id) localStorage.setItem(spaceKey(SESSION_KEY, space), id);
+    else localStorage.removeItem(spaceKey(SESSION_KEY, space));
+  } catch {
+    /* ignore */
+  }
+}
+const MODE_KEY = "mordomo.console.mode";
+function readStoredMode(space: string): Mode {
+  try {
+    return localStorage.getItem(spaceKey(MODE_KEY, space)) === "write" ? "write" : "read_only";
+  } catch {
+    return "read_only";
+  }
+}
+function storeMode(mode: Mode, space: string) {
+  try {
+    localStorage.setItem(spaceKey(MODE_KEY, space), mode);
   } catch {
     /* ignore */
   }
@@ -148,7 +165,12 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
       window.removeEventListener(CONSOLE_DRAFT_EVENT, refresh);
     };
   }, []);
-  const [mode, setMode] = useState<Mode>("read_only");
+  const space = settings.data?.activeSpace ?? "work";
+  const [mode, setModeState] = useState<Mode>(() => readStoredMode(space));
+  const setMode = (next: Mode) => {
+    setModeState(next);
+    storeMode(next, space);
+  };
   const [cwd, setCwd] = useState(initialDraft.cwd);
   const [choice, setChoiceState] = useState<ModelChoice>(readModelChoice);
   const setChoice = (next: ModelChoice) => {
@@ -156,12 +178,24 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
     storeModelChoice(next);
   };
   const [sessionId, setSessionIdState] = useState<string | null>(() =>
-    initialDraft.sessionId === undefined ? readStoredSession() : initialDraft.sessionId,
+    initialDraft.sessionId === undefined ? readStoredSession(space) : initialDraft.sessionId,
   );
-  const setSessionId = (id: string | null) => {
-    setSessionIdState(id);
-    storeSession(id);
-  };
+  const setSessionId = useCallback(
+    (id: string | null) => {
+      setSessionIdState(id);
+      storeSession(id, space);
+    },
+    [space],
+  );
+  // A space switch is a different desk: it brings its own conversation and mode.
+  const spaceRef = useRef(space);
+  useEffect(() => {
+    if (spaceRef.current === space) return;
+    spaceRef.current = space;
+    setSessionIdState(readStoredSession(space));
+    setModeState(readStoredMode(space));
+    setCwd("");
+  }, [space]);
   const [threadOpen, setThreadOpenState] = useState(() => {
     try {
       return localStorage.getItem(THREAD_KEY) !== "0";
@@ -344,7 +378,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
   useEffect(() => {
     if (session.error instanceof ApiError && (session.error.status === 404 || session.error.status === 400))
       setSessionId(null);
-  }, [session.error]);
+  }, [session.error, setSessionId]);
 
   const turns = useMemo(
     () => [...(session.data?.runs ?? [])].sort((a, b) => a.createdAt - b.createdAt).slice(-THREAD_TURNS),
@@ -719,6 +753,15 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
           onNewChat={() => {
             setSessionId(null);
             setThreadOpen(false);
+          }}
+          onPickSession={(id) => {
+            setSessionId(id);
+            setThreadOpen(true);
+            // Its context comes back with it: the last trace opens beside the console.
+            api
+              .get<SessionDetail>(`/api/sessions/${encodeURIComponent(id)}`)
+              .then((d) => d.session.lastRunId && actions.openRun(d.session.lastRunId))
+              .catch(() => undefined);
           }}
           threadOpen={threadOpen}
           onToggleThread={() => setThreadOpen((v) => !v)}

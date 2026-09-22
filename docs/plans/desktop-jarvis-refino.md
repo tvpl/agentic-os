@@ -217,6 +217,22 @@ Entregue no mesmo branch, verificada no app real (dev server, pt-BR) e por 386 t
 | 36 | `runs/humanize.ts`: cada evento vira frase ("li src/app.ts", "executei npm test", "pedi permissão"), com vocabulário para as ferramentas do Claude Code e formas genéricas dos outros adaptadores, JSON truncado tolerado. Timeline mostra a frase e esconde o JSON; o console narra as últimas ações da run viva. | `humanize.test.ts`; no app a timeline de uma run real leu "li skills/consolidate-memory/SKILL.md". |
 | 38 | Para aprovação de ferramenta `Edit`, `MultiEdit` ou `Write`, o cartão mostra o diff antes/depois do próprio input; para `write_run` mostra prompt ou skill e diretório, porque a run ainda não rodou e não há diff. "Aceitar 2 de 3 arquivos" não se aplica: cada aprovação brokerada é uma chamada, um arquivo. | `decision.test.ts` (`editPreview`, `previewLines`). |
 
+### Registro da Onda 2 — 22/09/2026
+
+| Item | O que entrou | Como se prova |
+|------|--------------|---------------|
+| 11 | `columns()` no modelo de janelas: até três painéis abrem lado a lado acima da faixa do console, o mais antigo à esquerda; a partir do quarto, `placeNew` como antes. Snap por arrasto já existia e ficou. | `windowModel.test.ts`; no app, o terceiro painel reflui os três. |
+| 12 | O app Execuções perdeu o formulário de prompt (o console é o único lugar de digitar); a lista é tabela acima de 760 px de container e cartões abaixo, com rótulos por célula. | `runs.css` (`@container`); `RunList.tsx`. |
+| 14 | Cabeçalho do run em três linhas: título e status; provedor · modelo · esforço · origem · quando; custo, tokens e duração como métricas com unidade. Nenhum chip além do status. | `RunDetail.tsx`, `.run-sheet-*`. |
+| 17 | `Settings.tsx` (1 666 linhas) virou `views/settings/*` por seção mais `shared.ts`; navegação vertical em cinco perguntas com busca por rótulo e palavras-chave; a busca aceita Enter para abrir a primeira. Ids `#settings-tabs-panel-*` mantidos para os e2e. | No app: 220 px de nav mais conteúdo; `?tab=` continua funcionando. |
+| 18 | `origin.ts` lembra o último pointer-down; um painel que nasce nos 900 ms seguintes cresce daquele ponto (`--ox/--oy` na keyframe `panel-grow`). Reduced motion desliga tudo como antes. | `WidgetLayer.tsx`, `desktop.css`. |
+| 23 | Custo, execuções e atenção na faixa carregam sparkline de 24 h e seta de tendência a partir de `/api/metrics/history?days=2`; um segmento novo mostra o espaço ativo e troca para o próximo ao clicar. | `AmbientStrip.tsx`; e2e do HUD atualizado para seis segmentos. |
+| 47 | Na paleta, "organizar revisar código" (ou arrange / arrumar / montar) vira uma linha que abre os painéis do tema e os dispõe em colunas ou grade. Vocabulário em pt e en, sem chamada de modelo. | `arrange.test.ts`; `ARRANGE_EVENT` em `panelKinds.ts`. |
+| 48 | Cada espaço guarda a própria conversa e o próprio modo (leitura ou escrita) em chaves por espaço; trocar de espaço troca os dois e limpa a pasta. O provedor continua global: é o padrão do sistema, não do espaço. | `Console.tsx` (`spaceKey`). |
+| 49 | Conversas no console: lista com nome de até seis palavras, turnos, custo e idade; retomar reabre a última run; renomear (`PATCH /api/sessions/:id`) e esquecer. | `sessions.test.ts`; rota nova em `routes/sessions.ts`. |
+| 50 | `⌘1–6` troca de espaço, `[` e `]` percorrem a pilha, `Esc` fecha o painel do topo quando nada mais está aberto, `F` cinema, `⌘⇧A/D` decide. Todos na folha de atalhos. | `index.tsx`, `ShortcutsHelp.tsx`. |
+| 51 | Cinema é o painel do topo expandido sobre o véu, com o console mantido; `F` liga e `Esc` desliga. | No app. |
+
 Fora da onda, anotado para as seguintes: `costSignal` ainda formata "0.08" sem locale no tooltip (item 23); descrições dos conectores em inglês vêm do catálogo em `connectors/` (item 28); "Processo concluído" vem do backend (item 36).
 
 ---

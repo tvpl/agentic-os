@@ -76,3 +76,6 @@ export function requestPanelAction(id: string, action: PanelAction): void {
     new CustomEvent<{ id: string; action: PanelAction }>(PANEL_ACTION_EVENT, { detail: { id, action } }),
   );
 }
+
+/** Fired with `detail: string[]` (panel ids): the desk opens them and lays them out (refino item 47). */
+export const ARRANGE_EVENT = "mordomo:arrange";

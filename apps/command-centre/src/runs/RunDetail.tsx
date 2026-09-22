@@ -5,6 +5,7 @@
  *
  * Keyboard: `r` run again, `c` continue with a follow-up, `/` search the log.
  */
+import "./runs.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, ClipboardList, Copy, CornerDownRight, FileText, RefreshCw, Square } from "lucide-react";
@@ -267,36 +268,55 @@ export default function RunDetail({ id }: { id: string }) {
             <span className={run.skillSlug ? "mono" : ""}>{title}</span>
             <StatusBadge status={run.status} />
           </h1>
-          <div className="run-meta">
-            <Badge kind="meta">{run.provider}</Badge>
+          {/* The sheet (refino item 14): who ran it on one line, what it cost on the next. */}
+          <p className="run-sheet-line mono">
+            <span>{run.provider}</span>
             {(usage?.model ?? run.model) && (
-              <Badge kind="meta" title={t("runs.model")}>
-                {usage?.model ?? run.model}
-              </Badge>
-            )}
-            {run.effort && (
-              <Badge kind="meta" title={t("skills.effort")}>
-                {t("skills.effort")}: {run.effort}
-              </Badge>
-            )}
-            <Badge kind="meta" className="num" title={active ? t("runs.elapsed") : t("table.duration")}>
-              {duration}
-            </Badge>
-            <Badge kind="meta" title={t("table.when")}>
-              {timeAgo(run.createdAt, locale)}
-            </Badge>
-            <Badge kind="meta">{run.origin}</Badge>
-            {usage && (
               <>
-                <Badge kind="state" tone="accent" title={t("runs.usage.costTitle")}>
-                  {formatUsd(usage.costUsd)}
-                </Badge>
-                <Badge kind="meta" className="num" title={t("runs.usage.tokensTitle")}>
-                  ↑{formatTokens(usage.inputTokens)} ↓{formatTokens(usage.outputTokens)} ·{" "}
-                  {formatTokens(totalTokens(usage))}
-                </Badge>
+                <span className="dot" aria-hidden>
+                  ·
+                </span>
+                <span title={t("runs.model")}>{usage?.model ?? run.model}</span>
               </>
             )}
+            {run.effort && (
+              <>
+                <span className="dot" aria-hidden>
+                  ·
+                </span>
+                <span title={t("skills.effort")}>
+                  {t("skills.effort").toLowerCase()} {run.effort}
+                </span>
+              </>
+            )}
+            <span className="dot" aria-hidden>
+              ·
+            </span>
+            <span>{run.origin}</span>
+            <span className="dot" aria-hidden>
+              ·
+            </span>
+            <span title={t("table.when")}>{timeAgo(run.createdAt, locale)}</span>
+          </p>
+          <div className="run-sheet-metrics">
+            {usage && (
+              <span className="run-metric">
+                <b className="tnum accent">{formatUsd(usage.costUsd)}</b>
+                <small>{t("runs.usage.costTitle")}</small>
+              </span>
+            )}
+            {usage && (
+              <span className="run-metric" title={t("runs.usage.tokensTitle")}>
+                <b className="tnum">
+                  ↑{formatTokens(usage.inputTokens)} ↓{formatTokens(usage.outputTokens)}
+                </b>
+                <small>{formatTokens(totalTokens(usage))} tokens</small>
+              </span>
+            )}
+            <span className="run-metric">
+              <b className="tnum">{duration}</b>
+              <small>{active ? t("runs.elapsed") : t("table.duration")}</small>
+            </span>
           </div>
           <div className="run-context">
             <span className="hud-label">{t("runs.usage.context")}</span>

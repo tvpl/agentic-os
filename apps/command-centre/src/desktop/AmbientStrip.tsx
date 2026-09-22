@@ -14,10 +14,34 @@ import { providerProblem } from "../components/providerReadiness";
 import type { CoreState } from "./coreState";
 import type { DesktopSignals } from "./useSignals";
 import type { SignalLevel } from "./signal";
+import { useApiQuery } from "../queries";
+import type { MetricsHistory } from "../api";
+import { sparkline } from "../runs/sparkline";
+import { useOsSettings } from "../queries";
+import { listSpaces, type SpaceMap } from "./spaces";
+import { requestSpace } from "../components/Workspace";
 
 /** The prototype's levels are shorter than ours; the tokens map one to one. */
 function stripLevel(level: SignalLevel): "idle" | "info" | "warn" | "crit" {
   return level === "critical" ? "crit" : level;
+}
+
+/** The last 24 hourly samples as a 44 × 12 line, with the trend as one arrow. */
+function Spark({ values }: { values: readonly number[] }) {
+  if (values.length < 3 || values.every((v) => v === 0)) return null;
+  const g = sparkline(values, 44, 12);
+  const a = values[values.length - 1]!;
+  const b = values[Math.max(0, values.length - 7)]!;
+  const trend = a > b * 1.05 ? "↑" : a < b * 0.95 ? "↓" : "→";
+  return (
+    <span className="sg-spark" aria-hidden>
+      <svg viewBox="0 0 44 12" width="44" height="12">
+        <path d={g.area} className="sg-spark-area" />
+        <path d={g.line} className="sg-spark-line" />
+      </svg>
+      <span className="sg-trend">{trend}</span>
+    </span>
+  );
 }
 
 function Segment({
@@ -27,6 +51,7 @@ function Segment({
   onOpen,
   title,
   testId,
+  series,
 }: {
   level: SignalLevel;
   label: string;
@@ -34,6 +59,8 @@ function Segment({
   onOpen?: () => void;
   title?: string;
   testId?: string;
+  /** Last 24 h, one number per hour (refino item 23). */
+  series?: readonly number[];
 }) {
   const body = (
     <>
@@ -42,6 +69,7 @@ function Segment({
       <span className="v" data-testid={testId}>
         {value}
       </span>
+      {series && <Spark values={series} />}
     </>
   );
   if (!onOpen)
@@ -100,6 +128,24 @@ export default function AmbientStrip({
 }: AmbientStripProps) {
   const t = useT();
   const locale = useLocale();
+  const history = useApiQuery<MetricsHistory>(["metrics", "history", 2], "/api/metrics/history?days=2", {
+    refetchInterval: 600_000,
+  });
+  const last24 = (history.data?.samples ?? []).slice(-24);
+  const series = {
+    cost: last24.map((m) => m.costTodayUsd),
+    runs: last24.map((m) => m.runs24h),
+    attention: last24.map((m) => m.failed24h + m.approvalsPending),
+  };
+  const settings = useOsSettings();
+  const spaceList = listSpaces(
+    (settings.data?.spaces as SpaceMap | undefined) ?? {},
+    settings.data?.activeSpace ?? "work",
+  );
+  const activeSpace = settings.data?.activeSpace ?? "work";
+  const spaceName = spaceList.find((sp) => sp.id === activeSpace)?.name ?? activeSpace;
+  const nextSpace =
+    spaceList[(spaceList.findIndex((sp) => sp.id === activeSpace) + 1) % Math.max(1, spaceList.length)];
   const problem = provider ? providerProblem(provider) : null;
   const providerLevel: SignalLevel = !provider
     ? "idle"
@@ -134,6 +180,13 @@ export default function AmbientStrip({
         title={t("dash.activeProvider")}
         onOpen={onOpenProvider}
       />
+      <Segment
+        level="idle"
+        label={t("desktop.strip.space")}
+        value={spaceName}
+        title={t("desktop.strip.spaceHint")}
+        onOpen={nextSpace && nextSpace.id !== activeSpace ? () => requestSpace(nextSpace.id) : undefined}
+      />
       <span className="gap" />
       <Segment
         level={signals.cost.level}
@@ -141,6 +194,7 @@ export default function AmbientStrip({
         value={`US$ ${signals.cost.todayUsd.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
         title={signals.cost.label}
         onOpen={onOpenCost}
+        series={series.cost}
       />
       <Segment
         level={signals.runs.level}
@@ -148,6 +202,7 @@ export default function AmbientStrip({
         value={signals.runs.value}
         title={signals.runs.label}
         onOpen={onOpenRuns}
+        series={series.runs}
       />
       <Segment
         level={signals.attention.level}
@@ -155,6 +210,7 @@ export default function AmbientStrip({
         value={String(signals.attention.count)}
         title={signals.attention.label}
         onOpen={onOpenAttention}
+        series={series.attention}
       />
       <button
         type="button"

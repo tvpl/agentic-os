@@ -32,6 +32,7 @@ import { useWindowDrag } from "./useWindowDrag";
 import { overviewSlots, raise, tetherPath, tetherTarget, type Point, type WindowMap } from "./windowModel";
 import { WidgetSizeContext, type WidgetSize } from "./widgetSize";
 import Surface from "./Surface";
+import { installOriginTracking, recentOrigin } from "./origin";
 import type { Box } from "./surfaceSize";
 
 export interface WidgetSpec {
@@ -361,15 +362,32 @@ export default function WidgetLayer({
    */
   const seen = useRef(new Set<string>());
   const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set());
+  /** Per fresh panel: where it grows from, as an offset from its own centre. */
+  const origins = useRef(new Map<string, { ox: number; oy: number }>());
+  useEffect(() => installOriginTracking(), []);
   useEffect(() => {
     const arrived = ids.filter((id) => !seen.current.has(id));
     seen.current = new Set(ids);
     if (arrived.length === 0) return;
+    const origin = recentOrigin();
+    const stageRect = ref.current?.getBoundingClientRect();
+    if (origin && stageRect) {
+      for (const id of arrived) {
+        const box = layout[id];
+        if (!box) continue;
+        const cx = stageRect.left + box.x + box.w / 2;
+        const cy = stageRect.top + box.y + box.h / 2;
+        origins.current.set(id, { ox: Math.round(origin.x - cx), oy: Math.round(origin.y - cy) });
+      }
+    }
     setFresh((prev) => new Set([...prev, ...arrived]));
     const timer = window.setTimeout(() => {
       setFresh((prev) => {
         const next = new Set(prev);
-        for (const id of arrived) next.delete(id);
+        for (const id of arrived) {
+          next.delete(id);
+          origins.current.delete(id);
+        }
         return next;
       });
     }, MATERIALIZE_MS);
@@ -448,6 +466,8 @@ export default function WidgetLayer({
               zIndex: boxed.z,
               "--enter-delay": `${index * 40}ms`,
             } as CSSProperties);
+        const from = fresh.has(id) ? origins.current.get(id) : undefined;
+        if (from) Object.assign(style, { "--ox": `${from.ox}px`, "--oy": `${from.oy}px` });
         const slot = slots?.[id];
         if (slot)
           Object.assign(style, {

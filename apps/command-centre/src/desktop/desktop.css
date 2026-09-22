@@ -2447,10 +2447,12 @@ body.window-dragging .app-rail {
 }
 @keyframes panel-grow {
   from {
-    transform: scale(0.9);
+    /* From where it was called (refino item 18): the pod, the chip, the
+       segment. Without an origin the vars are 0 and it simply grows. */
+    transform: translate(var(--ox, 0px), var(--oy, 0px)) scale(0.6);
   }
   to {
-    transform: scale(1);
+    transform: translate(0, 0) scale(1);
   }
 }
 @keyframes panel-iris {
@@ -3860,4 +3862,99 @@ body.window-dragging .app-rail {
 }
 .console-thinking.waiting {
   color: var(--warn);
+}
+
+/* Item 23: the strip's readings carry their last 24 h. */
+.sg-spark {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 2px;
+}
+.sg-spark svg {
+  display: block;
+  overflow: visible;
+}
+.sg-spark-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+  opacity: 0.8;
+}
+.sg-spark-area {
+  fill: currentColor;
+  opacity: 0.12;
+}
+.sg-trend {
+  font-size: var(--fs-0);
+  opacity: 0.8;
+}
+
+/* Item 49: conversations, above the console. */
+.cons-conversations .conv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow: auto;
+  display: grid;
+  gap: 2px;
+}
+.cons-conversations li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--border);
+}
+.cons-conversations li.on .conv-title {
+  color: var(--accent-text);
+}
+.conv-main {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.conv-main:hover,
+.conv-main:focus-visible {
+  background: var(--bg-raise-2);
+}
+.conv-title {
+  font-size: var(--fs-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conv-sub {
+  font-size: var(--fs-0);
+  color: var(--text-faint);
+}
+.conv-act {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.conv-act:hover {
+  color: var(--text);
+}
+.conv-act svg {
+  width: 13px;
+  height: 13px;
+}
+.conv-empty {
+  margin: var(--s-2) 0 0;
+  font-size: var(--fs-2);
 }

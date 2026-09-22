@@ -29,6 +29,9 @@ import {
   topZ,
   type WindowBox,
   type WindowMap,
+  columns,
+  arrangeOnOpen,
+  stackOrder,
 } from "./windowModel";
 
 const STAGE = { w: 1400, h: 700 };
@@ -293,5 +296,42 @@ describe("layoutsEqual", () => {
     );
     // An absent config and an explicitly empty one are the same window.
     expect(layoutsEqual({ a: box() }, { a: box({ minimized: false }) })).toBe(true);
+  });
+});
+
+describe("columns (refino item 11)", () => {
+  const stage = { w: 1400, h: 800 };
+  const box = (z: number, extra: Partial<WindowBox> = {}): WindowBox => ({
+    x: 0,
+    y: 0,
+    w: 300,
+    h: 200,
+    z,
+    visible: true,
+    ...extra,
+  });
+
+  it("lays two or three panels side by side above the console, oldest left", () => {
+    const out = columns({ a: box(2), b: box(1), c: box(3) }, stage);
+    expect(out.b!.x).toBeLessThan(out.a!.x);
+    expect(out.a!.x).toBeLessThan(out.c!.x);
+    expect(out.a!.w).toBe(out.b!.w);
+    expect(out.c!.x + out.c!.w).toBeLessThanOrEqual(stage.w - 78);
+    expect(out.a!.y + out.a!.h).toBeLessThanOrEqual(stage.h - 150);
+  });
+
+  it("reflows on open only while there are two or three panels", () => {
+    const one = { a: box(1) };
+    expect(arrangeOnOpen(one, stage)).toBe(one);
+    const three = { a: box(1), b: box(2), c: box(3) };
+    expect(arrangeOnOpen(three, stage)).not.toBe(three);
+    const four = { ...three, d: box(4) };
+    expect(arrangeOnOpen(four, stage)).toBe(four);
+    const parked = { a: box(1), b: box(2, { minimized: true }) };
+    expect(arrangeOnOpen(parked, stage)).toBe(parked);
+  });
+
+  it("orders the stack top first", () => {
+    expect(stackOrder({ a: box(1), b: box(3), c: box(2, { visible: false }) })).toEqual(["b", "a"]);
   });
 });

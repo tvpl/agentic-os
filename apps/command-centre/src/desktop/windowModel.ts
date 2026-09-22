@@ -174,6 +174,44 @@ export function tile(layout: WindowMap, stage: Size): WindowMap {
   return out;
 }
 
+/**
+ * Columns (refino item 11): every open window side by side above the console
+ * band, oldest on the left. The desk's default composition for one, two or
+ * three panels; past that, `placeNew` finds room instead.
+ */
+export function columns(layout: WindowMap, stage: Size): WindowMap {
+  const ids = Object.keys(layout)
+    .filter((id) => layout[id]!.visible && !layout[id]!.minimized)
+    .sort((a, b) => layout[a]!.z - layout[b]!.z);
+  if (ids.length === 0) return layout;
+  const left = ARC_MARGIN + STAGE_PAD;
+  const width = stage.w - 2 * (ARC_MARGIN + STAGE_PAD);
+  const floor = Math.max(MIN_H + STAGE_PAD * 2, stage.h - CONSOLE_BAND);
+  const w = Math.max(MIN_W, Math.floor((width - (ids.length - 1) * STAGE_PAD) / ids.length));
+  const h = Math.max(MIN_H, floor - STAGE_PAD * 2);
+  const out = { ...layout };
+  ids.forEach((id, i) => {
+    out[id] = { ...out[id]!, x: left + i * (w + STAGE_PAD), y: STAGE_PAD, w, h };
+  });
+  return out;
+}
+
+/** How many panels still reflow into columns when one more opens. */
+export const AUTO_COLUMNS_MAX = 3;
+
+/** After a panel opens: columns while there are few, otherwise as placed. */
+export function arrangeOnOpen(layout: WindowMap, stage: Size, max = AUTO_COLUMNS_MAX): WindowMap {
+  const open = Object.values(layout).filter((b) => b.visible && !b.minimized).length;
+  return open >= 2 && open <= max ? columns(layout, stage) : layout;
+}
+
+/** Ids on the stage, top of the stack first. */
+export function stackOrder(layout: WindowMap): string[] {
+  return Object.keys(layout)
+    .filter((id) => layout[id]!.visible && !layout[id]!.minimized)
+    .sort((a, b) => layout[b]!.z - layout[a]!.z);
+}
+
 /** Overlapping steps from the top-left, in stacking order. */
 export function cascade(layout: WindowMap, stage: Size, step = 34): WindowMap {
   const ids = Object.keys(layout)
