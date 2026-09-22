@@ -249,7 +249,7 @@ export default function RunDetail({ id }: { id: string }) {
   const title = run.skillSlug ? `/${run.skillSlug}` : run.promptSummary.slice(0, 80) || t("runs.title");
   const duration = active
     ? formatCountdown(now - (run.startedAt ?? run.createdAt))
-    : formatDuration(run.durationMs);
+    : formatDuration(run.durationMs, locale);
   const contextPct =
     contextTokens != null && contextWindow ? Math.min(100, (contextTokens / contextWindow) * 100) : null;
   const recovery = authRecovery(run.provider, run.failure?.message ?? run.error);
@@ -279,7 +279,7 @@ export default function RunDetail({ id }: { id: string }) {
                 {t("skills.effort")}: {run.effort}
               </Badge>
             )}
-            <Badge kind="meta" title={active ? t("runs.elapsed") : t("table.duration")}>
+            <Badge kind="meta" className="num" title={active ? t("runs.elapsed") : t("table.duration")}>
               {duration}
             </Badge>
             <Badge kind="meta" title={t("table.when")}>
@@ -291,7 +291,7 @@ export default function RunDetail({ id }: { id: string }) {
                 <Badge kind="state" tone="accent" title={t("runs.usage.costTitle")}>
                   {formatUsd(usage.costUsd)}
                 </Badge>
-                <Badge kind="meta" title={t("runs.usage.tokensTitle")}>
+                <Badge kind="meta" className="num" title={t("runs.usage.tokensTitle")}>
                   ↑{formatTokens(usage.inputTokens)} ↓{formatTokens(usage.outputTokens)} ·{" "}
                   {formatTokens(totalTokens(usage))}
                 </Badge>

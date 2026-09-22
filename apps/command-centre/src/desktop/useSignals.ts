@@ -4,19 +4,20 @@
  * a pod says 2 — levels come from `signal.ts`, the one definition of severity.
  */
 import { useMemo } from "react";
-import { useT } from "../i18n";
+import { useLocale, useT } from "../i18n";
 import { qk, useApiQuery, useOsMetrics, useOsSettings, useOsSkills } from "../queries";
 import { budgetState } from "./budget";
 import { useDesktopRoutines, useDesktopRuns } from "./data";
 import { useAppRows } from "./appRows";
 import {
-  attentionItems,
   attentionSignal,
   costSignal,
+  isFreshFailure,
   pulseSignal,
   routinesSignal,
   runsSignal,
-  type SignalValue,
+  withLabel,
+  type LabelledSignal,
 } from "./signal";
 
 interface Approval {
@@ -24,11 +25,11 @@ interface Approval {
 }
 
 export interface DesktopSignals {
-  pulse: SignalValue;
-  attention: SignalValue & { count: number };
-  runs: SignalValue;
-  routines: SignalValue;
-  cost: SignalValue & { todayUsd: number };
+  pulse: LabelledSignal;
+  attention: LabelledSignal & { count: number; stale: number };
+  runs: LabelledSignal;
+  routines: LabelledSignal;
+  cost: LabelledSignal & { todayUsd: number };
   approvals: number;
   /** Skills enabled, for the Skills pod. */
   skills: number;
@@ -40,6 +41,7 @@ export interface DesktopSignals {
 
 export function useDesktopSignals(activeRuns: number): DesktopSignals {
   const t = useT();
+  const locale = useLocale();
   const { pending } = useAppRows(3);
   const metrics = useOsMetrics({ refetchInterval: 300_000 });
   const skills = useOsSkills();
@@ -61,25 +63,39 @@ export function useDesktopSignals(activeRuns: number): DesktopSignals {
     const todayUsd = metrics.data?.cost?.todayUsd ?? 0;
     const budget = budgetState(budgetUsd, todayUsd);
     const approvalCount = approvals.data?.length ?? 0;
-    const attentionCount = attentionItems({
-      failures: runList.filter((r) => r.status === "failed" || r.status === "timed_out").length,
+    // A failure has a half-life (refino item 21): younger than a day it asks
+    // for a look; older it is listed but never lit, so last week's failures
+    // cannot paint today's HUD red.
+    const now = Date.now();
+    const failed = runList.filter((r) => r.status === "failed" || r.status === "timed_out");
+    const fresh = failed.filter((r) => isFreshFailure(r.finishedAt ?? r.createdAt, now)).length;
+    const attention = attentionSignal({
+      failures: fresh,
+      staleFailures: failed.length - fresh,
       unhealthyRoutines: routineList.filter((r) => !r.healthy).length,
       approvals: approvalCount,
-      budgetHot: budget.tone === "warn" || budget.tone === "over",
+      budgetHot: budget.tone === "warn",
+      budgetOver: budget.tone === "over",
     });
     return {
-      pulse: pulseSignal(succeeded, finished.length),
-      attention: { ...attentionSignal(attentionCount), count: attentionCount },
-      runs: runsSignal(activeRuns),
-      routines: routinesSignal(fired, due),
-      cost: { ...costSignal(budgetUsd, todayUsd), todayUsd },
+      pulse: withLabel(pulseSignal(succeeded, finished.length), t),
+      attention: { ...withLabel(attention, t), stale: failed.length - fresh },
+      runs: withLabel(runsSignal(activeRuns), t),
+      routines: withLabel(routinesSignal(fired, due), t),
+      cost: {
+        ...withLabel(
+          costSignal(budgetUsd, todayUsd, (n) =>
+            n.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          ),
+          t,
+        ),
+        todayUsd,
+      },
       approvals: approvalCount,
       skills: (skills.data ?? []).filter((s) => s.enabled).length,
       pendingConnectors: pending.length,
       activeRuns,
     };
-    // `t` is not read here, but the labels are user-facing and change with it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     runs.data,
     routines.data,
@@ -90,5 +106,6 @@ export function useDesktopSignals(activeRuns: number): DesktopSignals {
     pending,
     activeRuns,
     t,
+    locale,
   ]);
 }

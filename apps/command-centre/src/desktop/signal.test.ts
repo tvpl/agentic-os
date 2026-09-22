@@ -3,14 +3,18 @@
  * quiet, so the boundaries are pinned here rather than left to each widget.
  */
 import { describe, expect, it } from "vitest";
+import { dictionaries, tf } from "../i18n";
 import {
+  ATTENTION_FRESH_MS,
   attentionItems,
   attentionSignal,
   costSignal,
+  isFreshFailure,
   isLit,
   pulseSignal,
   routinesSignal,
   runsSignal,
+  withLabel,
 } from "./signal";
 
 describe("what lights up", () => {
@@ -56,16 +60,50 @@ describe("pulse", () => {
 });
 
 describe("attention", () => {
-  it("stays dark at zero and lights from the first item", () => {
-    expect(attentionSignal(0).level).toBe("idle");
-    expect(attentionSignal(1).level).toBe("warn");
-    expect(attentionSignal(4).level).toBe("warn");
-    expect(attentionSignal(5).level).toBe("critical");
+  const none = { failures: 0, unhealthyRoutines: 0, approvals: 0, budgetHot: false };
+
+  it("stays dark at zero and lights from the first fresh item", () => {
+    expect(attentionSignal(none).level).toBe("idle");
+    expect(attentionSignal({ ...none, failures: 1 }).level).toBe("warn");
+    expect(attentionSignal({ ...none, failures: 20 }).level).toBe("warn");
   });
 
-  it("writes a singular label for one item", () => {
-    expect(attentionSignal(1).label).toContain("1 item ");
-    expect(attentionSignal(3).label).toContain("3 items");
+  it("is red only for what a human has to decide", () => {
+    expect(attentionSignal({ ...none, failures: 20, unhealthyRoutines: 3 }).level).toBe("warn");
+    expect(attentionSignal({ ...none, approvals: 1 }).level).toBe("critical");
+    expect(attentionSignal({ ...none, budgetHot: true }).level).toBe("warn");
+    expect(attentionSignal({ ...none, budgetHot: true, budgetOver: true }).level).toBe("critical");
+  });
+
+  it("keeps stale failures off the counter and out of the colour", () => {
+    const s = attentionSignal({ ...none, staleFailures: 20 });
+    expect(s).toMatchObject({
+      level: "idle",
+      value: "0",
+      count: 0,
+      labelKey: "desktop.signal.attention.stale",
+    });
+    expect(s.labelVars).toEqual({ n: 20 });
+  });
+
+  it("still accepts a bare count for callers that only have one", () => {
+    expect(attentionSignal(3)).toMatchObject({ level: "warn", value: "3", count: 3 });
+  });
+
+  it("writes a singular label for one item, in both languages", () => {
+    const one = attentionSignal({ ...none, failures: 1 });
+    expect(withLabel(one, (k, v) => tf("en", k, v)).label).toBe("1 item worth a look");
+    expect(withLabel(one, (k, v) => tf("pt-BR", k, v)).label).toBe("1 item para olhar");
+    const three = attentionSignal({ ...none, failures: 3 });
+    expect(withLabel(three, (k, v) => tf("pt-BR", k, v)).label).toBe("3 itens para olhar");
+  });
+
+  it("ages a failure out after a day", () => {
+    const now = 10 * ATTENTION_FRESH_MS;
+    expect(isFreshFailure(now - 1000, now)).toBe(true);
+    expect(isFreshFailure(now - ATTENTION_FRESH_MS + 1, now)).toBe(true);
+    expect(isFreshFailure(now - ATTENTION_FRESH_MS, now)).toBe(false);
+    expect(isFreshFailure(null, now)).toBe(false);
   });
 });
 
@@ -81,10 +119,12 @@ describe("attentionItems", () => {
   it("counts a hot budget as exactly one item, not as its overspend", () => {
     expect(attentionItems({ ...none, budgetHot: true })).toBe(1);
     expect(attentionItems({ ...none, failures: 1, budgetHot: true })).toBe(2);
+    expect(attentionItems({ ...none, budgetHot: true, budgetOver: true })).toBe(1);
   });
 
-  it("ignores negative and fractional garbage", () => {
+  it("ignores negative and fractional garbage, and stale failures", () => {
     expect(attentionItems({ ...none, failures: -3, approvals: 1.7 })).toBe(1);
+    expect(attentionItems({ ...none, staleFailures: 9 })).toBe(0);
   });
 });
 
@@ -113,7 +153,18 @@ describe("every signal fits a pod", () => {
     ];
     for (const s of values) {
       expect(s.value.length, `"${s.value}" is too long for a glyph`).toBeLessThanOrEqual(5);
-      expect(s.label.length).toBeGreaterThan(0);
+      expect(s.labelKey in dictionaries.en, `${s.labelKey} is not a key`).toBe(true);
+      expect(s.labelKey in dictionaries["pt-BR"], `${s.labelKey} is not translated`).toBe(true);
     }
+  });
+
+  it("never leaves an English tooltip on a Portuguese desktop", () => {
+    const pt = (k: Parameters<typeof tf>[1], v?: Parameters<typeof tf>[2]) => tf("pt-BR", k, v);
+    expect(withLabel(runsSignal(0), pt).label).toBe("nada executando");
+    expect(withLabel(runsSignal(1), pt).label).toBe("1 execução em andamento");
+    expect(withLabel(runsSignal(2), pt).label).toBe("2 execuções em andamento");
+    expect(withLabel(costSignal(3, 0.08), pt).label).toBe("US$ 0.08 de 3.00 hoje");
+    const brl = (n: number) => n.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+    expect(withLabel(costSignal(3, 0.08, brl), pt).label).toBe("US$ 0,08 de 3,00 hoje");
   });
 });

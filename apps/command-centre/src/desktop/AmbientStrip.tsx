@@ -99,6 +99,7 @@ export default function AmbientStrip({
   onOpenAttention,
 }: AmbientStripProps) {
   const t = useT();
+  const locale = useLocale();
   const problem = provider ? providerProblem(provider) : null;
   const providerLevel: SignalLevel = !provider
     ? "idle"
@@ -137,7 +138,7 @@ export default function AmbientStrip({
       <Segment
         level={signals.cost.level}
         label={t("desktop.strip.day")}
-        value={`US$ ${signals.cost.todayUsd.toFixed(2)}`}
+        value={`US$ ${signals.cost.todayUsd.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
         title={signals.cost.label}
         onOpen={onOpenCost}
       />

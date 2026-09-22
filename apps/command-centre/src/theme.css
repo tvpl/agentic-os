@@ -101,6 +101,10 @@
   --s-8: 48px;
 
   /* type ----------------------------------------------------------------- */
+  /* Type scale (refino item 13): every font-size on the desktop is one of
+     these. --fs-0 is the HUD micro size — pod values, eyebrows, counters —
+     and nothing a person has to read at length. */
+  --fs-0: 10px;
   --fs-1: 11px;
   --fs-2: 12px;
   --fs-3: 13px;
@@ -1665,6 +1669,12 @@ textarea.input {
   background: var(--accent-soft);
 }
 /* metadata badges: outlined, dim text — state badges stay filled */
+/* A badge that holds a number keeps its case: "6.7 s" is a unit, "6.7 S" is a typo. */
+.badge.num {
+  text-transform: none;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
 .badge.meta {
   background: transparent;
   border-color: var(--border-strong);
@@ -3083,10 +3093,10 @@ input[type="range"]::-moz-range-thumb {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 9px;
+  font-size: var(--fs-0);
 }
 .chip-age {
-  font-size: 9px;
+  font-size: var(--fs-0);
   color: var(--text-faint);
 }
 
@@ -3855,7 +3865,7 @@ input[type="range"]::-moz-range-thumb {
   position: absolute;
   bottom: 1px;
   right: 3px;
-  font-size: 10px;
+  font-size: var(--fs-0);
   font-family: var(--mono);
   color: var(--text);
   text-shadow:
@@ -3881,7 +3891,7 @@ input[type="range"]::-moz-range-thumb {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--fs-2);
   color: var(--text-dim);
 }
 .pxs-fps input[type="range"] {
@@ -4226,7 +4236,7 @@ fieldset.field {
   align-items: center;
   gap: 10px;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-0);
   line-height: 1.4;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -4472,7 +4482,7 @@ fieldset.field {
     background: transparent;
     color: var(--text-dim);
     font: inherit;
-    font-size: 10px;
+    font-size: var(--fs-0);
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;

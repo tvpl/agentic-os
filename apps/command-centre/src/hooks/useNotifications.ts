@@ -330,16 +330,11 @@ export function eventToNotification(event: OsEvent, t: NotificationTranslate): N
         href: "/settings?tab=backups",
       };
     }
+    // Saving a setting is not news (refino item 20): the form already says
+    // "Saved" where the change happened, and seven of these in the bell made
+    // the one item that mattered invisible.
     case "settings.changed":
-      return {
-        ...base,
-        kind: "system",
-        tone: "info",
-        title: t("shell.notif.settingsChanged"),
-        href: "/settings",
-        read: true,
-        dedupeKey: "settings.changed",
-      };
+      return null;
     default:
       return null;
   }

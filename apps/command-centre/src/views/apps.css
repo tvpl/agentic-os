@@ -684,7 +684,7 @@
   stroke-dasharray: 3 3;
 }
 .trend-chart .axis-label {
-  font-size: 10px;
+  font-size: var(--fs-0);
   fill: var(--text-faint);
   font-family: var(--font-mono);
 }

@@ -200,6 +200,9 @@ function PodButton({
             {pod.count > 99 ? "99+" : pod.count}
           </span>
         ) : null}
+        <span className={`lb ${side}`} aria-hidden>
+          {pod.name}
+        </span>
         <span className={`tip ${side}`} aria-hidden>
           {pod.name}
           <span className="sub">{pod.detail}</span>

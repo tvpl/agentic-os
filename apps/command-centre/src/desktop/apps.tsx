@@ -112,7 +112,7 @@ export const APPS: Record<AppKind, AppDef> = {
     refKey: "desktop.ref.app.settings",
     descKey: "desktop.pods.settingsDesc",
     Icon: Settings,
-    size: { w: 760, h: 540 },
+    size: { w: 900, h: 620 },
     Component: lazyRoute(() => import("../views/Settings")),
   },
   routines: {

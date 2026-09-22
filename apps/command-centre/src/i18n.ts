@@ -1215,8 +1215,22 @@ export type TVars = Record<string, string | number>;
 /** Pure lookup with `{name}` interpolation — usable outside React (canvas loops, tests). */
 export function tf(lang: Lang, key: TKey, vars?: TVars): string {
   const raw = dictionaries[lang][key] ?? key;
-  if (!vars) return raw;
-  return raw.replace(/\{(\w+)\}/g, (match, name: string) => (name in vars ? String(vars[name]) : match));
+  if (!vars) return plural(raw, undefined);
+  return plural(raw, vars.n).replace(/\{(\w+)\}/g, (match, name: string) =>
+    name in vars ? String(vars[name]) : match,
+  );
+}
+
+/**
+ * Plural forms inline: `{n} turn[|s]` or `{n} item[ needs|s need] a decision`.
+ * The bracket picks its first half when `n` is exactly one and the second
+ * otherwise — the rule both languages share for counts. A string without a
+ * bracket is returned untouched, and a bracket without `n` reads as "other".
+ */
+export function plural(raw: string, n: string | number | undefined): string {
+  if (!raw.includes("[")) return raw;
+  const one = typeof n === "number" ? Math.abs(n) === 1 : n === "1";
+  return raw.replace(/\[([^\]|]*)\|([^\]]*)\]/g, (_m, a: string, b: string) => (one ? a : b));
 }
 
 /** BCP-47 locale for Intl.* for a UI language. */

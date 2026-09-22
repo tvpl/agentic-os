@@ -151,10 +151,8 @@ describe("eventToNotification", () => {
     expect(
       eventToNotification({ type: "backup.created", ts: 1, payload: { name: "2026-09-03.zip" } }, t),
     ).toMatchObject({ kind: "system", body: "2026-09-03.zip", href: "/settings?tab=backups" });
-    expect(eventToNotification({ type: "settings.changed", ts: 1, payload: {} }, t)).toMatchObject({
-      dedupeKey: "settings.changed",
-      read: true,
-    });
+    // A saved setting never reaches the bell.
+    expect(eventToNotification({ type: "settings.changed", ts: 1, payload: {} }, t)).toBeNull();
     expect(eventToNotification({ type: "run.event", ts: 1, payload: {} }, t)).toBeNull();
     expect(eventToNotification({ type: "index.progress", ts: 1, payload: {} }, t)).toBeNull();
   });

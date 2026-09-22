@@ -243,7 +243,7 @@
   background: none;
   color: var(--text-dim);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--fs-1);
   cursor: pointer;
   clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
   transition:
@@ -270,7 +270,7 @@
   border-style: dashed;
 }
 .dock-task .dock-glyph {
-  font-size: 12px;
+  font-size: var(--fs-2);
   opacity: 0.85;
 }
 .dock-task-name {
@@ -342,7 +342,7 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  font-size: 12px;
+  font-size: var(--fs-2);
   clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
 }
 .workspace-dock.hud .spc svg {
@@ -362,7 +362,7 @@
 }
 .workspace-dock.hud .spc .n {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-0);
   opacity: 0.7;
 }
 .workspace-dock.hud .dv {
@@ -390,7 +390,7 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: var(--fs-1);
   cursor: pointer;
   white-space: nowrap;
   clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
