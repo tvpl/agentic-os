@@ -89,7 +89,8 @@ test("a write-mode skill waits in the approvals panel; approving opens its trace
   await expect(approvals).toBeVisible();
   await expect(approvals).toHaveClass(/\bon\b/);
   await expect(approvals.locator(".panel-body")).toContainText(/consolidate-memory/);
-  await expect(page.locator(".desktop")).toHaveAttribute("data-core", "alert");
+  // A pending decision is "waiting for you", not an alarm (refino item 21).
+  await expect(page.locator(".desktop")).toHaveAttribute("data-core", "waiting");
   await approvals
     .getByRole("button", { name: /^approve|aprovar/i })
     .first()

@@ -1,3 +1,4 @@
+import { isQuiet, readQuietHours } from "./rhythm";
 /**
  * Notifications outside the tab (plan Onda 2 §4): system notifications via
  * the Notification API (through the service worker when it controls the
@@ -100,9 +101,11 @@ export function showSystemNotification(n: SystemNotice, opts: { force?: boolean 
 export function speak(
   text: string,
   lang: string,
-  opts: { force?: boolean; onEnd?: () => void } = {},
+  opts: { force?: boolean; onEnd?: () => void; byUser?: boolean } = {},
 ): boolean {
   if (!opts.force && !getVoiceNotify()) return false;
+  // Quiet hours (refino item 53): nothing spoken unless a person just asked.
+  if (!opts.byUser && isQuiet(readQuietHours())) return false;
   if (typeof speechSynthesis === "undefined" || typeof SpeechSynthesisUtterance === "undefined") return false;
   try {
     const u = new SpeechSynthesisUtterance(text.slice(0, 400));

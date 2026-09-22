@@ -193,3 +193,37 @@ export function routinesSignal(fired: number, due: number): SignalValue {
     labelVars: { ok, total },
   };
 }
+
+/**
+ * The service's own health (refino item 58): a failed doctor check is worth
+ * a look; a newer version too. Nothing here is red — the OS is running, or
+ * you would not be reading this.
+ */
+export function healthSignal(
+  doctor: { ok: number; warn: number; fail: number } | undefined,
+  updates: { status: { upToDate: boolean | null; latest: string | null } | null } | undefined,
+): SignalValue {
+  const fail = doctor?.fail ?? 0;
+  const newer = updates?.status?.upToDate === false && updates.status.latest;
+  if (fail > 0)
+    return {
+      level: "warn",
+      value: String(fail),
+      labelKey: "desktop.signal.health.fail",
+      labelVars: { n: fail },
+    };
+  if (newer)
+    return {
+      level: "warn",
+      value: "↑",
+      labelKey: "desktop.signal.health.update",
+      labelVars: { v: String(newer) },
+    };
+  if (!doctor) return { level: "idle", value: "—", labelKey: "desktop.signal.health.unknown" };
+  return {
+    level: "idle",
+    value: "ok",
+    labelKey: "desktop.signal.health.ok",
+    labelVars: { warn: doctor.warn },
+  };
+}

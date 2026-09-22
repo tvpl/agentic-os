@@ -27,6 +27,8 @@ export interface BriefingInput {
   pendingApprovals: number;
   todayUsd: number;
   now: number;
+  /** Morning and day open the day; evening and night close it (refino item 53). */
+  phase?: "morning" | "day" | "evening" | "night";
 }
 
 export interface Briefing {
@@ -46,9 +48,15 @@ export function localDay(at: number | Date = Date.now()): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
-/** Due when it was not shown today. */
-export function briefingDue(lastShown: string | null, now: number = Date.now()): boolean {
-  return lastShown !== localDay(now);
+/** Due when it was not shown today — and again once the evening comes. */
+export function briefingDue(lastShown: string | null, now: number = Date.now(), phase?: string): boolean {
+  return lastShown !== briefingKey(now, phase);
+}
+
+/** `YYYY-MM-DD` by day, `YYYY-MM-DD:night` once the day is closing. */
+export function briefingKey(now: number = Date.now(), phase?: string): string {
+  const day = localDay(now);
+  return phase === "evening" || phase === "night" ? `${day}:night` : day;
 }
 
 export function composeBriefing(input: BriefingInput, t: (key: TKey, vars?: TVars) => string): Briefing {
@@ -61,6 +69,18 @@ export function composeBriefing(input: BriefingInput, t: (key: TKey, vars?: TVar
     .filter((r) => r.enabled && typeof r.nextRunAt === "number" && r.nextRunAt > input.now)
     .sort((a, b) => (a.nextRunAt ?? 0) - (b.nextRunAt ?? 0))[0];
   const lines: string[] = [];
+  const night = input.phase === "evening" || input.phase === "night";
+  if (night) {
+    // Closing the day: what runs while you sleep.
+    const overnight = input.routines.filter(
+      (r) =>
+        r.enabled &&
+        typeof r.nextRunAt === "number" &&
+        r.nextRunAt > input.now &&
+        r.nextRunAt < input.now + 10 * 3_600_000,
+    ).length;
+    lines.push(t("desktop.briefing.goodNight", { n: overnight }));
+  } else if (input.phase === "morning") lines.push(t("desktop.briefing.goodMorning"));
 
   if (done > 0 || failed.length > 0) lines.push(t("desktop.briefing.ran", { done, failed: failed.length }));
   if (failed.length > 0) {
@@ -78,9 +98,8 @@ export function composeBriefing(input: BriefingInput, t: (key: TKey, vars?: TVar
   }
   if (input.todayUsd > 0) lines.push(t("desktop.briefing.cost", { usd: input.todayUsd.toFixed(2) }));
 
-  const quiet =
-    lines.length === 0 ||
-    (done === 0 && failed.length === 0 && unhealthy.length === 0 && input.pendingApprovals === 0);
+  const quiet = done === 0 && failed.length === 0 && unhealthy.length === 0 && input.pendingApprovals === 0;
+  if (quiet && !night && input.phase !== "morning") lines.unshift(t("desktop.briefing.quiet"));
   if (lines.length === 0) lines.push(t("desktop.briefing.quiet"));
   return { lines, spoken: lines.slice(0, 3).join(" "), quiet };
 }

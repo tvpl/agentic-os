@@ -16,6 +16,7 @@ import {
   CalendarClock,
   Coins,
   Eye,
+  HeartPulse,
   Inbox,
   Lightbulb,
   ShieldCheck,
@@ -36,6 +37,7 @@ import MissionWidget from "./widgets/MissionWidget";
 import SentinelsWidget from "./widgets/SentinelsWidget";
 import FactsWidget from "./widgets/FactsWidget";
 import JournalWidget from "./widgets/JournalWidget";
+import HealthWidget from "./widgets/HealthWidget";
 
 export interface WidgetDefinition {
   id: WidgetId;
@@ -148,6 +150,14 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     refKey: "desktop.ref.journal",
     icon: <BookOpen aria-hidden />,
     Component: JournalWidget,
+  },
+  health: {
+    id: "health",
+    surfaceMin: { w: 440, h: 320 },
+    titleKey: "desktop.widget.health",
+    refKey: "desktop.ref.health",
+    icon: <HeartPulse aria-hidden />,
+    Component: HealthWidget,
   },
 };
 

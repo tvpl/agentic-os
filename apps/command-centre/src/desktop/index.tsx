@@ -84,6 +84,7 @@ import { SearchBar, type ArtifactHit } from "./ArtifactSearch";
 import { DesktopActionsProvider, type DesktopActions } from "./actions";
 import { WIDGET_REGISTRY, hasSurface, widgetDefinition } from "./registry";
 import { baseCoreState, type CoreState } from "./coreState";
+import { useDayPhase } from "../hooks/useDayPhase";
 import { isActiveStatus, useArtifactList, useDesktopRuns } from "./data";
 import { InboxList } from "./widgets/InboxWidget";
 import Console, { LISTENING_EVENT } from "./console/Console";
@@ -236,6 +237,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     [runs.data],
   );
   const coreState = useCoreState(runs.data ?? []);
+  const phase = useDayPhase();
   useBudgetNotifications();
   const signals = useDesktopSignals(activeRuns);
 
@@ -924,6 +926,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
       <div
         className={`desktop${searching ? " searching" : ""}${editingHud ? " editing" : ""}`}
         data-core={coreState}
+        data-phase={phase}
       >
         {!metrics?.stacked && <LivingField onOpenFile={(path) => openDoc(path)} />}
         <AgentPresence />
@@ -976,6 +979,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
           onOpenRuns={() => openApp("runs")}
           onOpenAttention={() => openWindow("attention")}
           onOpenMission={() => openWindow("mission")}
+          onOpenSettings={(tab) => openApp("settings", { pathname: "/settings", search: `?tab=${tab}` })}
         />
 
         {searching && (
@@ -1133,7 +1137,11 @@ export function useCoreState(runs: ReadonlyArray<{ status: string }>): CoreState
       status === "done" ? DONE_HOLD_MS : ALERT_HOLD_MS,
     );
   });
-  useOsEvent(["approval.requested", "routine.alert"], () => hold("alert", ALERT_HOLD_MS));
+  useOsEvent("approval.requested", () => {
+    playCue("decide");
+    hold("waiting", ALERT_HOLD_MS);
+  });
+  useOsEvent("routine.alert", () => hold("alert", ALERT_HOLD_MS));
   const [listening, setListening] = useState(false);
   useEffect(() => {
     const on = (e: Event) => setListening(Boolean((e as CustomEvent<boolean>).detail));

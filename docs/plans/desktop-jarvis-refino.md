@@ -265,6 +265,23 @@ Entregue no mesmo branch, verificada no app real (dev server, pt-BR) e por 386 t
 | 37 | Replay ganha "Pular para o erro"; scrub e velocidades já existiam. | `Replay.tsx`. |
 | 52 | Uma busca (`/` ou `⌘F`) responde com artefatos, arquivos indexados, execuções, skills e notificações agrupados; ↑↓ e Enter abrem, ⌥Enter voa até o arquivo no cérebro. | e2e `desktop-windows` (grupo de artefatos); no app cinco grupos para "consol". |
 
+### Registro da Onda 5 — 22/09/2026
+
+| Item | O que entrou | Como se prova |
+|------|--------------|---------------|
+| 53 | Horário silencioso (padrão 22h–7h, editável em Configurações › Notificações): nada falado nem tocado, exceto quando a pessoa toca em "ler em voz alta". Fase do dia no desktop (`data-phase`): à noite o HUD e o campo escurecem. O resumo do dia volta uma vez à noite: "Boa noite. N rotinas rodam até de manhã; eu cuido delas." e de manhã abre com "Bom dia." | `rhythm.test.ts`, `briefing.test.ts`; no app às 02:31 a fase era `night` e o cartão abriu com "Boa noite". |
+| 54 | Já existiam três tons (reconhecido, concluído, alerta) com toggle; entrou o quarto, "decisão", em quadratura ascendente para aprovação pendente, e todos respeitam o horário silencioso. | `useNotifications.ts` (`playCue("decide")`). |
+| 55 | O perfil de renderização (auto / imersivo / econômico) já estava em Configurações › Tema; "auto" agora vira econômico sozinho quando a bateria descarrega abaixo de 50 %. | `Workspace.tsx` (`navigator.getBattery`). |
+| 56 | Aprovações por Telegram (`/approve`, `/deny`, botões) e alertas já existiam no backend; entrou o segmento "Telegram: ligado / ouvindo" na faixa, com clique para as configurações, e o resumo do dia enviado ao chat uma vez por chave quando o canal está ligado. | `AmbientStrip.tsx`, `Console.tsx`. |
+| 57 | Pareamento por código já existia em Configurações › Segurança; entrou o segmento "Dispositivos N" na faixa. QR ficou de fora: exigiria um codificador ou dependência nova; o código de seis caracteres cobre o caso. | `AmbientStrip.tsx`. |
+| 58 | Pod e painel **Saúde do sistema**: checks do doctor com os ruins primeiro, versão atual e nova versão com link, rodar o doctor de novo e reiniciar o serviço de dentro do app. O pod acende (âmbar) com check falhando ou atualização disponível, nunca vermelho. | `signal.test.ts` (`healthSignal`); no app: 10 ok · 0 avisos · 1 falha (provedor codex). |
+| 59 | O guia dos primeiros minutos já existia (tour em capítulos com atividades); com voz ou mãos livres ligados ele passa a ler cada passo em voz alta. O anel de progresso no core ficou de fora: o guia cobre o núcleo com um modal, e o próprio guia mostra o percentual. | `Onboarding.tsx`. |
+| 60 | Todos os itens novos usam as primitivas existentes (`Panel`, `Badge`, `Button`, `Field`, `EmptyState`) e os tokens; o teste de tipografia continua a barrar literais. A galeria não ganhou as primitivas novas (`DecisionDock`, `FailureFixCard`, `ConnectorWizard`, `RoutinesTimeline`): fica como dívida documentada. | `typography.test.ts`. |
+
+## 8. Fechamento — 22/09/2026
+
+As seis ondas foram entregues em cinco commits no branch `feature/onboarding`, cada uma com testes unitários (407 ao fim), lint, typecheck, e2e do desktop e conferência no app real. Os itens 25, 54, 55, 56, 57 e 59 encontraram parte do trabalho já feito no código e foram fechados com o que faltava, registrado acima. Ficaram de fora, com o motivo no registro da onda: QR de pareamento (57), anel de progresso do guia no core (59), edição de rotinas por arrasto (29), galeria das primitivas novas (60) e wake word (3, decisão 1 da seção 6 continua com o dono).
+
 Fora da onda, anotado para as seguintes: `costSignal` ainda formata "0.08" sem locale no tooltip (item 23); descrições dos conectores em inglês vêm do catálogo em `connectors/` (item 28); "Processo concluído" vem do backend (item 36).
 
 ---

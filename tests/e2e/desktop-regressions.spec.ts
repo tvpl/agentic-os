@@ -85,7 +85,9 @@ test("the console is fixed over the stage and Now stays hidden after reload", as
 test("the pods light only what needs a decision", async ({ page, request }) => {
   await resetStage(request);
   await page.setViewportSize({ width: 1440, height: 900 });
-  // Two runs the user has to look at; everything else is calm.
+  // Two runs the user has to look at; everything else is calm — including
+  // approvals, which would turn the reading red (refino item 21).
+  await page.route("**/api/approvals", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/runs?*", (route) =>
     route.fulfill({
       json: [

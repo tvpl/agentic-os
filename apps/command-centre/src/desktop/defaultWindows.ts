@@ -59,6 +59,7 @@ export const DEFAULT_SPECS: Record<WidgetId, Spec> = {
   sentinels: { fx: RIGHT, fy: 0.05, fw: SIDE, fh: 0.4, visible: false },
   facts: { fx: 0.24, fy: 0.4, fw: 0.3, fh: 0.35, visible: false },
   journal: { fx: 0.56, fy: 0.4, fw: 0.3, fh: 0.4, visible: false },
+  health: { fx: RIGHT, fy: 0.45, fw: SIDE, fh: 0.4, visible: false },
 };
 
 /**
@@ -73,6 +74,7 @@ export const WINDOW_MIN: Partial<Record<string, Size>> = {
   sentinels: { w: 320, h: 220 },
   facts: { w: 320, h: 200 },
   journal: { w: 320, h: 220 },
+  health: { w: 320, h: 220 },
 };
 
 export function minFor(id: string | undefined): Size {

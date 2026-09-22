@@ -27,7 +27,7 @@ export const DEFAULT_HUD: Hud = {
     "app:settings",
     "app:pixel",
   ],
-  r: ["pulse", "attention", "runs", "routines", "inbox"],
+  r: ["pulse", "attention", "runs", "routines", "inbox", "health"],
 };
 
 /** The readings that can be pods, besides the apps. */
@@ -44,6 +44,7 @@ export const READING_IDS = [
   "sentinels",
   "facts",
   "journal",
+  "health",
 ] as const;
 export type ReadingId = (typeof READING_IDS)[number];
 
@@ -111,6 +112,7 @@ const READING_TITLE: Record<ReadingId, TKey> = {
   sentinels: "desktop.widget.sentinels",
   facts: "desktop.widget.facts",
   journal: "desktop.widget.journal",
+  health: "desktop.widget.health",
 };
 
 /** The instrument's name, as a locale key. */

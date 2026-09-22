@@ -270,7 +270,7 @@ function Turn({
                 <button
                   type="button"
                   className="console-link"
-                  onClick={() => speak(reply.text, locale, { force: true })}
+                  onClick={() => speak(reply.text, locale, { force: true, byUser: true })}
                   aria-label={t("desktop.console.read")}
                   title={t("desktop.console.read")}
                 >

@@ -52,7 +52,8 @@ import {
 import { narrate } from "../../runs/humanize";
 import DecisionDock from "../DecisionDock";
 import { readHandsFree, spokenSummary, storeHandsFree } from "./voice";
-import { BRIEFING_KEY, briefingDue, composeBriefing, localDay } from "../briefing";
+import { BRIEFING_KEY, briefingDue, briefingKey, composeBriefing } from "../briefing";
+import { useDayPhase } from "../../hooks/useDayPhase";
 import { useDesktopRoutines, useDesktopRuns } from "../data";
 import { useApprovals } from "../../runs/ApprovalCards";
 import { useOsMetrics } from "../../queries";
@@ -291,8 +292,9 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
     }
   });
   const briefingReady = runsQ.data !== undefined && routinesQ.data !== undefined;
+  const phase = useDayPhase();
   const briefing = useMemo(() => {
-    if (!briefingReady || !briefingDue(briefingShown)) return null;
+    if (!briefingReady || !briefingDue(briefingShown, Date.now(), phase)) return null;
     return composeBriefing(
       {
         runs: runsQ.data ?? [],
@@ -300,18 +302,32 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
         pendingApprovals: (approvalsQ.data ?? []).filter((a) => a.status === "pending").length,
         todayUsd: metricsQ.data?.cost?.todayUsd ?? 0,
         now: Date.now(),
+        phase,
       },
       t,
     );
-  }, [briefingReady, briefingShown, runsQ.data, routinesQ.data, approvalsQ.data, metricsQ.data, t]);
+  }, [briefingReady, briefingShown, phase, runsQ.data, routinesQ.data, approvalsQ.data, metricsQ.data, t]);
   const briefingSpoken = useRef(false);
   useEffect(() => {
     if (!briefing || briefingSpoken.current) return;
     briefingSpoken.current = true;
     if (handsFreeRef.current || getVoiceNotify()) speak(briefing.spoken, locale, { force: true });
-  }, [briefing, locale]);
+    // Refino item 56: the same briefing reaches the phone, once per key.
+    if (settings.data?.channels?.telegram?.enabled) {
+      const key = briefingKey(Date.now(), phase);
+      try {
+        if (localStorage.getItem("mordomo.briefing.sent") === key) return;
+        localStorage.setItem("mordomo.briefing.sent", key);
+      } catch {
+        /* ignore */
+      }
+      void api
+        .post("/api/channels/telegram/send", { text: briefing.lines.join("\n") })
+        .catch(() => undefined);
+    }
+  }, [briefing, locale, settings.data?.channels?.telegram?.enabled, phase]);
   const dismissBriefing = () => {
-    const day = localDay();
+    const day = briefingKey(Date.now(), phase);
     setBriefingShown(day);
     try {
       localStorage.setItem(BRIEFING_KEY, day);

@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { getVoiceNotify, speak } from "../hooks/systemNotify";
+import { readHandsFree } from "../desktop/console/voice";
+import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -22,7 +24,7 @@ import { DialogPortal, useDialogDepth } from "../components/dialog";
 import { PROVIDER_GATE_EVENT } from "../components/providerReadiness";
 import { SPACE_IDS, SWITCH_SPACE_EVENT } from "../components/Workspace";
 import { readConsoleDraft, storeConsoleDraft } from "../desktop/consoleDraft";
-import { useLang } from "../i18n";
+import { useLang, useLocale } from "../i18n";
 import { useOsProviders, useOsSettings } from "../queries";
 import { tourCopy } from "./copy";
 import {
@@ -70,7 +72,15 @@ export function Onboarding() {
   const autoOpened = useRef(false);
   const navigatedStep = useRef<string | null>(null);
   const step = TOUR_STEPS[Math.min(progress.step, TOUR_STEPS.length - 1)]!;
+  const obLocale = useLocale();
   const info = c.steps[step.id];
+  // Refino item 59: with voice on, the guide reads each step as it comes.
+  const spokenStep = useRef<string | null>(null);
+  useEffect(() => {
+    if (screen !== "tour" || spokenStep.current === step.id) return;
+    spokenStep.current = step.id;
+    if (getVoiceNotify() || readHandsFree()) speak(`${info.title}. ${info.body}`, obLocale, { force: true });
+  }, [screen, step.id, info.title, info.body, obLocale]);
   const selector =
     screen !== "tour"
       ? null

@@ -36,6 +36,7 @@ export const WIDGET_ORDER = [
   "sentinels",
   "facts",
   "journal",
+  "health",
 ] as const;
 export type WidgetId = (typeof WIDGET_ORDER)[number];
 

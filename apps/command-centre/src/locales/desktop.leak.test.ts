@@ -20,6 +20,8 @@ const SHARED = new Set([
   "esc",
   "trace",
   "micro apps",
+  "mordomoos",
+  "telegram",
   "workspace",
   "console",
   "apps",

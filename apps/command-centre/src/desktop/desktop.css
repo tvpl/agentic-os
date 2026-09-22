@@ -4298,3 +4298,32 @@ body.window-dragging .app-rail {
 .art-search {
   z-index: calc(var(--z-drawer) + 1);
 }
+
+/* ------------------------------------------------ refino · Onda 5 ------ */
+/* Item 53: after sunset the desk turns down. */
+.desktop[data-phase="evening"] {
+  --hud-intensity: 0.4;
+}
+.desktop[data-phase="night"] {
+  --hud-intensity: 0.28;
+}
+.desktop[data-phase="night"] .living-field {
+  opacity: 0.6;
+}
+.desktop[data-phase="night"] .strip {
+  filter: brightness(0.85);
+}
+.quiet-hours {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Item 58: the system's health. */
+.health {
+  display: grid;
+  gap: 2px;
+}
+.health-check.ok {
+  opacity: 0.6;
+}

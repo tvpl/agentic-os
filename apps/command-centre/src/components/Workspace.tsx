@@ -1,12 +1,12 @@
 import {
   createContext,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
   useSyncExternalStore,
-  type ReactNode,
 } from "react";
 import { useLocation } from "react-router-dom";
 import {
@@ -54,7 +54,30 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     query.addEventListener("change", change);
     return () => query.removeEventListener("change", change);
   }, []);
-  const economy = reduced || renderProfile === "economy";
+  // Refino item 55: "auto" turns economical on a discharging battery.
+  const [onBattery, setOnBattery] = useState(false);
+  useEffect(() => {
+    const nav = navigator as Navigator & {
+      getBattery?: () => Promise<{
+        charging: boolean;
+        level: number;
+        addEventListener: (t: string, f: () => void) => void;
+      }>;
+    };
+    if (typeof nav.getBattery !== "function") return;
+    let cancelled = false;
+    void nav.getBattery().then((b) => {
+      if (cancelled) return;
+      const read = () => setOnBattery(!b.charging && b.level < 0.5);
+      read();
+      b.addEventListener("chargingchange", read);
+      b.addEventListener("levelchange", read);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const economy = reduced || renderProfile === "economy" || (renderProfile === "auto" && onBattery);
   const setRenderProfile = useCallback((profile: RenderProfile) => {
     updateProfile(profile);
     try {

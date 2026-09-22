@@ -1,3 +1,4 @@
+import { isQuiet, readQuietHours } from "./rhythm";
 /**
  * Notifications (analysis item 21): a bounded in-memory feed fed by the OS
  * event stream (approvals, runs, routines, index, backups, settings) plus
@@ -378,10 +379,11 @@ export function playBlip(tone: NotificationTone = "info"): void {
  * when it finishes, a low "alert" on failure. Same toggle as the blip; the
  * inbox already blips for approvals so callers should not double up.
  */
-export type CueKind = "ack" | "done" | "alert";
+export type CueKind = "ack" | "done" | "alert" | "decide";
 let lastCue = 0;
 export function playCue(kind: CueKind): void {
   if (!getNotifySound()) return;
+  if (isQuiet(readQuietHours())) return;
   const t = Date.now();
   if (t - lastCue < 250) return; // burst guard (squads start several runs at once)
   lastCue = t;
@@ -396,19 +398,25 @@ export function playCue(kind: CueKind): void {
     const notes: Array<[number, number, number]> =
       kind === "ack"
         ? [[523, 0, 0.09]]
-        : kind === "done"
+        : kind === "decide"
           ? [
-              [659, 0, 0.14],
-              [988, 0.07, 0.18],
+              [587, 0, 0.12],
+              [784, 0.1, 0.12],
+              [880, 0.2, 0.2],
             ]
-          : [
-              [311, 0, 0.16],
-              [233, 0.12, 0.2],
-            ];
+          : kind === "done"
+            ? [
+                [659, 0, 0.14],
+                [988, 0.07, 0.18],
+              ]
+            : [
+                [311, 0, 0.16],
+                [233, 0.12, 0.2],
+              ];
     for (const [freq, delay, len] of notes) {
       const osc = audio.createOscillator();
       const gain = audio.createGain();
-      osc.type = kind === "alert" ? "triangle" : "sine";
+      osc.type = kind === "alert" ? "triangle" : kind === "decide" ? "square" : "sine";
       osc.frequency.value = freq;
       const t0 = now + delay;
       gain.gain.setValueAtTime(0.0001, t0);

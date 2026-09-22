@@ -9,6 +9,7 @@ import {
   attentionItems,
   attentionSignal,
   costSignal,
+  healthSignal,
   isFreshFailure,
   isLit,
   pulseSignal,
@@ -166,5 +167,18 @@ describe("every signal fits a pod", () => {
     expect(withLabel(costSignal(3, 0.08), pt).label).toBe("US$ 0.08 de 3.00 hoje");
     const brl = (n: number) => n.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
     expect(withLabel(costSignal(3, 0.08, brl), pt).label).toBe("US$ 0,08 de 3,00 hoje");
+  });
+});
+
+describe("health (refino item 58)", () => {
+  it("warns on a failed check or a newer version, never red", () => {
+    expect(
+      healthSignal({ ok: 5, warn: 1, fail: 0 }, { status: { upToDate: true, latest: "1.0.0" } }).level,
+    ).toBe("idle");
+    expect(healthSignal({ ok: 5, warn: 1, fail: 2 }, undefined)).toMatchObject({ level: "warn", value: "2" });
+    expect(
+      healthSignal({ ok: 5, warn: 0, fail: 0 }, { status: { upToDate: false, latest: "1.1.0" } }),
+    ).toMatchObject({ level: "warn", value: "↑" });
+    expect(healthSignal(undefined, undefined).level).toBe("idle");
   });
 });

@@ -6,6 +6,7 @@
 import { useMemo } from "react";
 import { useLocale, useT } from "../i18n";
 import { qk, useApiQuery, useOsMetrics, useOsSettings, useOsSkills } from "../queries";
+import type { DoctorReport, UpdateCheck } from "../api";
 import { budgetState } from "./budget";
 import { useDesktopRoutines, useDesktopRuns } from "./data";
 import { useAppRows } from "./appRows";
@@ -15,6 +16,7 @@ import {
   isFreshFailure,
   pulseSignal,
   routinesSignal,
+  healthSignal,
   runsSignal,
   withLabel,
   type LabelledSignal,
@@ -37,6 +39,12 @@ export interface DesktopSignals {
   pendingConnectors: number;
   /** Runs in flight, for the live pods. */
   activeRuns: number;
+  /** The service's own health (refino item 58). */
+  health: LabelledSignal;
+  /** Telegram: off, on, or polling for replies (refino item 56). */
+  telegram: "off" | "on" | "polling";
+  /** Paired devices (refino item 57). */
+  devices: number;
 }
 
 export function useDesktopSignals(activeRuns: number): DesktopSignals {
@@ -49,6 +57,20 @@ export function useDesktopSignals(activeRuns: number): DesktopSignals {
   const runs = useDesktopRuns();
   const settings = useOsSettings();
   const approvals = useApiQuery<Approval[]>(qk.approvals, "/api/approvals", { refetchInterval: 300_000 });
+  const doctor = useApiQuery<DoctorReport>(qk.doctor, "/api/doctor?audit=0", { refetchInterval: 600_000 });
+  const updates = useApiQuery<UpdateCheck>(["updates"], "/api/updates", { refetchInterval: 1_800_000 });
+  const telegram = useApiQuery<{ inbound: boolean; polling: boolean }>(
+    ["channels", "telegram"],
+    "/api/channels/telegram/status",
+    {
+      refetchInterval: 300_000,
+      retry: false,
+    },
+  );
+  const devices = useApiQuery<{ devices: unknown[] }>(["devices"], "/api/devices", {
+    refetchInterval: 300_000,
+    retry: false,
+  });
   return useMemo<DesktopSignals>(() => {
     const runList = runs.data ?? [];
     // "done" is the canonical success status (core/src/runs/runManager.ts).
@@ -95,6 +117,13 @@ export function useDesktopSignals(activeRuns: number): DesktopSignals {
       skills: (skills.data ?? []).filter((s) => s.enabled).length,
       pendingConnectors: pending.length,
       activeRuns,
+      health: withLabel(healthSignal(doctor.data, updates.data), t),
+      telegram: !settings.data?.channels?.telegram?.enabled
+        ? "off"
+        : telegram.data?.polling
+          ? "polling"
+          : "on",
+      devices: devices.data?.devices.length ?? 0,
     };
   }, [
     runs.data,
@@ -107,5 +136,9 @@ export function useDesktopSignals(activeRuns: number): DesktopSignals {
     activeRuns,
     t,
     locale,
+    doctor.data,
+    updates.data,
+    telegram.data,
+    devices.data,
   ]);
 }

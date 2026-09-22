@@ -112,6 +112,7 @@ export interface AmbientStripProps {
   onOpenRuns: () => void;
   onOpenAttention: () => void;
   onOpenMission?: () => void;
+  onOpenSettings?: (tab: string) => void;
 }
 
 export default function AmbientStrip({
@@ -127,6 +128,7 @@ export default function AmbientStrip({
   onOpenRuns,
   onOpenAttention,
   onOpenMission,
+  onOpenSettings,
 }: AmbientStripProps) {
   const t = useT();
   const locale = useLocale();
@@ -226,6 +228,26 @@ export default function AmbientStrip({
         onOpen={onOpenAttention}
         series={series.attention}
       />
+      {signals.telegram !== "off" && (
+        <Segment
+          level={signals.telegram === "polling" ? "info" : "idle"}
+          label="Telegram"
+          value={
+            signals.telegram === "polling" ? t("desktop.strip.telegramLive") : t("desktop.strip.telegramOn")
+          }
+          title={t("desktop.strip.telegramHint")}
+          onOpen={onOpenSettings ? () => onOpenSettings("notifications") : undefined}
+        />
+      )}
+      {signals.devices > 0 && (
+        <Segment
+          level="idle"
+          label={t("desktop.strip.devices")}
+          value={String(signals.devices)}
+          title={t("desktop.strip.devicesHint")}
+          onOpen={onOpenSettings ? () => onOpenSettings("security") : undefined}
+        />
+      )}
       <button
         type="button"
         className={`bell${unread > 0 ? " has-unread" : ""}`}

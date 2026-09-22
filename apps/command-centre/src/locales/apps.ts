@@ -70,6 +70,11 @@ export const en = {
   "skills.scheduleLabel": "Also run it on a schedule",
   "skills.scheduleHint": "Leave empty to run it by hand only.",
   "skills.scheduled": "Scheduled: {cron}",
+  "apps.settings.quietHours": "Quiet hours",
+  "apps.settings.quietHoursHint":
+    'No voice and no sound between these hours. Tapping "read aloud" still speaks.',
+  "apps.settings.quietFrom": "From",
+  "apps.settings.quietTo": "Until",
   "apps.settings.tabTheme": "Theme",
   "apps.settings.tabDesktop": "Desktop",
   "apps.settings.tabNotifications": "Notifications",
@@ -327,6 +332,11 @@ export const ptBR = {
   "skills.scheduleLabel": "Também rodar em horário",
   "skills.scheduleHint": "Deixe vazio para rodar só à mão.",
   "skills.scheduled": "Agendada: {cron}",
+  "apps.settings.quietHours": "Horário silencioso",
+  "apps.settings.quietHoursHint":
+    'Sem voz e sem som entre estas horas. Tocar em "ler em voz alta" continua falando.',
+  "apps.settings.quietFrom": "De",
+  "apps.settings.quietTo": "Até",
   "apps.settings.tabTheme": "Tema",
   "apps.settings.tabDesktop": "Desktop",
   "apps.settings.tabNotifications": "Notificações",

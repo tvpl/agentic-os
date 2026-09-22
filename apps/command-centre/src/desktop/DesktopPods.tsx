@@ -12,7 +12,17 @@
  * never disagree.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Activity, AlertTriangle, CalendarClock, Coins, Inbox, ShieldCheck, Terminal, X } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  CalendarClock,
+  Coins,
+  HeartPulse,
+  Inbox,
+  ShieldCheck,
+  Terminal,
+  X,
+} from "lucide-react";
 import { useT } from "../i18n";
 import { DialogPortal, useDialog, usePresence } from "../components/dialog";
 import { APPS, appKindOf, type AppKind } from "./apps";
@@ -124,6 +134,15 @@ function usePodCatalogue(
         soft: true,
         level: signals.approvals > 0 ? "warn" : "idle",
         onOpen: () => onExpand("approvals"),
+      }),
+      health: () => ({
+        id: "health",
+        icon: <HeartPulse aria-hidden />,
+        name: t("desktop.widget.health"),
+        detail: signals.health.label,
+        value: signals.health.value,
+        level: signals.health.level,
+        onOpen: () => onExpand("health"),
       }),
       now: () => ({
         id: "now",

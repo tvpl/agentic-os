@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { tf, type TKey, type TVars } from "../i18n";
-import { briefingDue, composeBriefing, localDay } from "./briefing";
+import { briefingDue, briefingKey, composeBriefing, localDay } from "./briefing";
 
 const pt = (k: TKey, v?: TVars) => tf("pt-BR", k, v);
 const NOW = Date.UTC(2026, 8, 21, 12);
@@ -65,5 +65,29 @@ describe("briefing", () => {
     const b = composeBriefing({ now: NOW, todayUsd: 0, pendingApprovals: 0, runs: [], routines: [] }, pt);
     expect(b.quiet).toBe(true);
     expect(b.lines).toEqual(["Noite tranquila: nada rodou, nada falhou, nada espera por você."]);
+  });
+});
+
+describe("the day's rhythm (refino item 53)", () => {
+  it("is due again at night and greets by phase", () => {
+    expect(briefingDue(localDay(NOW), NOW, "night")).toBe(true);
+    expect(briefingDue(briefingKey(NOW, "night"), NOW, "night")).toBe(false);
+    const night = composeBriefing(
+      {
+        now: NOW,
+        todayUsd: 0,
+        pendingApprovals: 0,
+        runs: [],
+        routines: [{ name: "Nightly", enabled: true, healthy: true, nextRunAt: NOW + 3 * H }],
+        phase: "night",
+      },
+      pt,
+    );
+    expect(night.lines[0]).toBe("Boa noite. 1 rotina roda até de manhã; eu cuido dela.");
+    const morning = composeBriefing(
+      { now: NOW, todayUsd: 0, pendingApprovals: 0, runs: [], routines: [], phase: "morning" },
+      pt,
+    );
+    expect(morning.lines[0]).toBe("Bom dia.");
   });
 });

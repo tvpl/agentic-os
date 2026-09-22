@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api";
 
 import { useLocale, useT } from "../../i18n";
+import { readQuietHours, storeQuietHours, type QuietHours } from "../../hooks/rhythm";
 import { qk, useApiQuery } from "../../queries";
 import { useToast } from "../../components/ui";
 import { Button, Field } from "../../components/primitives";
@@ -110,14 +111,61 @@ function OutsideTabToggles() {
     setDesktopNotify(true);
     setDesktop(true);
   };
+  const [quiet, setQuiet] = useState(() => readQuietHours());
+  const updateQuiet = (patch: Partial<QuietHours>) => {
+    const next = { ...quiet, ...patch };
+    setQuiet(next);
+    storeQuietHours(next);
+  };
+  const hours = Array.from({ length: 24 }, (_, i) => i);
   const toggleVoice = () => {
     const next = !voice;
     setVoiceNotify(next);
     setVoice(next);
-    if (next) speak(t("apps.settings.voiceSample"), locale, { force: true });
+    if (next) speak(t("apps.settings.voiceSample"), locale, { force: true, byUser: true });
   };
   return (
     <>
+      <div className="apps-sound">
+        <div className="min0">
+          <strong>{t("apps.settings.quietHours")}</strong>
+          <p className="hint">{t("apps.settings.quietHoursHint")}</p>
+        </div>
+        <div className="row quiet-hours">
+          <Button
+            variant={quiet.enabled ? "outline" : "secondary"}
+            aria-pressed={quiet.enabled}
+            onClick={() => updateQuiet({ enabled: !quiet.enabled })}
+          >
+            {quiet.enabled ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
+          </Button>
+          <select
+            className="input sm"
+            aria-label={t("apps.settings.quietFrom")}
+            value={quiet.start}
+            onChange={(e) => updateQuiet({ start: Number(e.target.value) })}
+          >
+            {hours.map((h) => (
+              <option key={h} value={h}>
+                {String(h).padStart(2, "0")}:00
+              </option>
+            ))}
+          </select>
+          <span className="hint">→</span>
+          <select
+            className="input sm"
+            aria-label={t("apps.settings.quietTo")}
+            value={quiet.end}
+            onChange={(e) => updateQuiet({ end: Number(e.target.value) })}
+          >
+            {hours.map((h) => (
+              <option key={h} value={h}>
+                {String(h).padStart(2, "0")}:00
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
       <div className="apps-sound">
         <div className="min0">
           <strong>{t("apps.settings.desktopNotify")}</strong>
