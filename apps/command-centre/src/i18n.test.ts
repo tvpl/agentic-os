@@ -31,6 +31,9 @@ describe("i18n dictionaries", () => {
   it("leaves brackets alone when there is no count", () => {
     expect(plural("plain text", undefined)).toBe("plain text");
     expect(plural("{n} item[|s]", undefined)).toBe("{n} items");
+    expect(plural("{done} run[done?|s], {failed} fail[failed?s|]", { done: 1, failed: 2 })).toBe(
+      "{done} run, {failed} fail",
+    );
   });
 
   it("no plural key still uses the (s) shortcut in the desktop locale", () => {

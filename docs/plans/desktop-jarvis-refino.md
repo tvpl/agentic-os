@@ -201,6 +201,22 @@ Entregue no branch `feature/onboarding`, verificado no app real (dev server, 144
 | 30 | Plural inline `[um|outros]` no tradutor; rótulos dos sinais como chaves; "Runs" → "Execuções"; "Generations" → "Gerações"; `trace` → "abrir"; "6.7 S" → "17,1 s" com locale e sem caixa alta em badges numéricos. | `i18n.test.ts`, `locales/desktop.leak.test.ts` (nenhuma chave `desktop.*` igual em en e pt-BR fora da lista de palavras compartilhadas). |
 | 60 | Tokens de tipo fechados; primitivas existentes (`Panel`, `Badge`, `Tabs`) reutilizadas; helpers novos são puros e testados. | Galeria e primitivas seguem na Onda 2. |
 
+### Registro da Onda 1 — 21/09/2026
+
+Entregue no mesmo branch, verificada no app real (dev server, pt-BR) e por 386 testes unitários verdes.
+
+| Item | O que entrou | Como se prova |
+|------|--------------|---------------|
+| 1 | Thread aberta por padrão e lembrada; a resposta do agente cita painéis abertos e arquivos como chips que abrem o painel (`desktop/console/citations.ts`). O streaming é por mensagem do adaptador, não por token: o adaptador emite `assistant` por bloco, e a narração (item 36) preenche a espera. | `citations.test.ts`; no app o console abre com a conversa e sem formulário. |
+| 2 | O campo vivo reage a eventos reais: cada `tool_use`, `assistant` e `error` de uma run desenha um anel no ponto da run ou no núcleo sob o console; fim de run dá anel verde ou vermelho; o loop só acorda em taxa cheia enquanto há anel vivo. Cada `data-core` tem assinatura própria (ciano para ouvir, pensar e responder; âmbar para esperar; vermelho para alerta; verde para concluído). | `LivingField.tsx`; CSS `[data-core]`. |
+| 3 | Mãos livres no console: botão ao lado do microfone; transcrição forma acima do campo; frase final é enviada sem clique; ao terminar a run, o agente fala o resumo de uma ou duas frases e o microfone rearma. Sem wake word (decisão 1 pendente). | `voice.test.ts` (`spokenSummary`); `systemNotify.listen` com resultados intermediários. |
+| 4 | Resumo do dia na primeira abertura de cada dia local: o que rodou, o que falhou, o que espera, próxima rotina, gasto. Composto localmente, custo zero. "Entendi" zera o sino. Falado se mãos livres ou voz ativa. | `briefing.test.ts`; no app o cartão aparece e o sino vai a zero ao dispensar. |
+| 5 | Cartão de decisão fixo no console enquanto houver aprovação pendente: uma linha em palavras, aprovar, negar, abrir a run; `⌘⇧A` aprova e `⌘⇧D` nega de qualquer lugar. Substitui as notas inline e o painel de aprovações como caminho obrigatório. | `decision.test.ts`; no app uma run de escrita em espera mostrou o cartão e `⌘⇧D` negou. |
+| 9 | `>` num campo vazio abre a paleta de comandos, como `/` abre o deck. Placeholder de uma linha: "Peça ao agente · @ painel · / skill · > comando". `⌘K` continua abrindo a paleta. | No app. |
+| 19 | Tokens `--agent`, `--agent-text`, `--agent-soft`, `--agent-line` (ciano; variante clara). Aplicados às mensagens do agente, chips de citação, narração, presença e transcrição. | `theme.css`. |
+| 36 | `runs/humanize.ts`: cada evento vira frase ("li src/app.ts", "executei npm test", "pedi permissão"), com vocabulário para as ferramentas do Claude Code e formas genéricas dos outros adaptadores, JSON truncado tolerado. Timeline mostra a frase e esconde o JSON; o console narra as últimas ações da run viva. | `humanize.test.ts`; no app a timeline de uma run real leu "li skills/consolidate-memory/SKILL.md". |
+| 38 | Para aprovação de ferramenta `Edit`, `MultiEdit` ou `Write`, o cartão mostra o diff antes/depois do próprio input; para `write_run` mostra prompt ou skill e diretório, porque a run ainda não rodou e não há diff. "Aceitar 2 de 3 arquivos" não se aplica: cada aprovação brokerada é uma chamada, um arquivo. | `decision.test.ts` (`editPreview`, `previewLines`). |
+
 Fora da onda, anotado para as seguintes: `costSignal` ainda formata "0.08" sem locale no tooltip (item 23); descrições dos conectores em inglês vêm do catálogo em `connectors/` (item 28); "Processo concluído" vem do backend (item 36).
 
 ---

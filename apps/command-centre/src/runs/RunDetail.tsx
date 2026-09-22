@@ -536,7 +536,7 @@ export default function RunDetail({ id }: { id: string }) {
           />
         </div>
         {tab === "timeline" ? (
-          <EventTimeline ref={timelineRef} events={events} live={stream.live} searchable />
+          <EventTimeline ref={timelineRef} events={events} live={stream.live} cwd={run.cwd} searchable />
         ) : (
           <Replay events={events} />
         )}

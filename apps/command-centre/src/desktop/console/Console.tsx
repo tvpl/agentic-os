@@ -11,12 +11,18 @@
  * — but folded away behind the turns readout: the trace on the stage is the
  * answer now, the thread is the history.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Mic, MicOff, Play, ShieldAlert, X } from "lucide-react";
+import { Headphones, Mic, MicOff, Play } from "lucide-react";
 import { api, ApiError, type LaunchRunResponse, type ProviderId, type SessionDetail } from "../../api";
 import { useLocale, useT } from "../../i18n";
-import { listen, speechRecognitionAvailable } from "../../hooks/systemNotify";
+import {
+  getVoiceNotify,
+  listen,
+  speak,
+  speechRecognitionAvailable,
+  stopSpeaking,
+} from "../../hooks/systemNotify";
 import { qk, useOsProviders, useOsSettings, useOsSkills } from "../../queries";
 import { Link } from "react-router-dom";
 import { PROVIDER_LOGIN_COMMANDS, authRecovery } from "../../runs/authRecovery";
@@ -24,8 +30,6 @@ import { providerProblem } from "../../components/providerReadiness";
 import { Button } from "../../components/primitives";
 import { useToast } from "../../components/ui";
 import { useRunStream, type RunDetailPayload } from "../../runs/useRunStream";
-import { ToolApprovalCard, useApprovals } from "../../runs/ApprovalCards";
-import { toolApprovalsForRun } from "../../runs/approvals";
 import { loadPromptSubmission, savePromptSubmission } from "../promptSubmission";
 import { useDesktopActions } from "../actions";
 import { isActiveStatus } from "../data";
@@ -45,11 +49,23 @@ import {
   resolveReferences,
   skillSuggestions,
 } from "./refs";
+import { narrate } from "../../runs/humanize";
+import DecisionDock from "../DecisionDock";
+import { readHandsFree, spokenSummary, storeHandsFree } from "./voice";
+import { BRIEFING_KEY, briefingDue, composeBriefing, localDay } from "../briefing";
+import { useDesktopRoutines, useDesktopRuns } from "../data";
+import { useApprovals } from "../../runs/ApprovalCards";
+import { useOsMetrics } from "../../queries";
+import { useNotifications } from "../../hooks/useNotifications";
 import { ConsoleThread, type Reply } from "./ConsoleThread";
 import { ConsoleTray } from "./ConsoleTray";
 import { ConsoleControls, type Mode, type ModelChoice } from "./ConsoleControls";
 
 const SESSION_KEY = "mordomo.console.session";
+/** The thread is open by default (refino item 1): the console is a conversation, not a form. */
+const THREAD_KEY = "mordomo.console.thread";
+/** Fired on `window` to open the command palette; mirrors App.tsx's LAUNCHER_EVENT without importing the shell. */
+const LAUNCHER_EVENT = "mordomo:launcher";
 const MODEL_KEY = "mordomo.console.model.v1";
 /** Turns shown in the thread (older ones live in Runs). */
 const THREAD_TURNS = 8;
@@ -146,8 +162,23 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
     setSessionIdState(id);
     storeSession(id);
   };
-  const [pendingApproval, setPendingApproval] = useState<{ id: string; description: string } | null>(null);
-  const [threadOpen, setThreadOpen] = useState(false);
+  const [threadOpen, setThreadOpenState] = useState(() => {
+    try {
+      return localStorage.getItem(THREAD_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const setThreadOpen = (next: boolean | ((v: boolean) => boolean)) =>
+    setThreadOpenState((v) => {
+      const value = typeof next === "function" ? next(v) : next;
+      try {
+        localStorage.setItem(THREAD_KEY, value ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return value;
+    });
 
   // The field grows with the text, up to a few lines (prototype `grow()`).
   useEffect(() => {
@@ -157,31 +188,101 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [prompt]);
 
-  /* ---- voice (plan Onda 3 §3): hold the mic, the transcript lands in the prompt ---- */
+  /* ---- voice: hold the mic, the transcript lands in the prompt; hands-free
+     (refino item 3) keeps the loop going: the reply is spoken, then the mic
+     re-arms, and a finished sentence is sent without a click. ---- */
   const [listening, setListening] = useState(false);
+  const [interim, setInterim] = useState("");
+  const [handsFree, setHandsFreeState] = useState(readHandsFree);
+  const handsFreeRef = useRef(handsFree);
+  handsFreeRef.current = handsFree;
   const stopListening = useRef<(() => void) | null>(null);
   const canListen = useMemo(() => speechRecognitionAvailable(), []);
-  const toggleListening = () => {
-    if (listening) {
-      stopListening.current?.();
-      return;
-    }
+  const submitRef = useRef<() => void>(() => undefined);
+  const startListening = useCallback(() => {
+    if (stopListening.current) return;
     const stop = listen(
       locale,
-      (text) => setPrompt((p) => (p.trim() ? `${p.trimEnd()} ${text}` : text)),
+      (text) => {
+        setInterim("");
+        const next = promptRef.current.trim() ? `${promptRef.current.trimEnd()} ${text}` : text;
+        promptRef.current = next;
+        setPrompt(next);
+        // Hands-free: a finished sentence is the send.
+        if (handsFreeRef.current) window.setTimeout(() => submitRef.current(), 0);
+      },
       () => {
         setListening(false);
+        setInterim("");
         stopListening.current = null;
         window.dispatchEvent(new CustomEvent(LISTENING_EVENT, { detail: false }));
-        inputRef.current?.focus();
+        if (!handsFreeRef.current) inputRef.current?.focus();
       },
+      { onInterim: setInterim },
     );
     if (!stop) return;
     stopListening.current = stop;
     setListening(true);
     window.dispatchEvent(new CustomEvent(LISTENING_EVENT, { detail: true }));
+  }, [locale]);
+  const toggleListening = () => {
+    if (listening) stopListening.current?.();
+    else startListening();
+  };
+  const setHandsFree = (on: boolean) => {
+    setHandsFreeState(on);
+    storeHandsFree(on);
+    if (on) startListening();
+    else {
+      stopSpeaking();
+      stopListening.current?.();
+    }
   };
   useEffect(() => () => stopListening.current?.(), []);
+
+  /* ---- the day's briefing (refino item 4) ---------------------------------- */
+  const runsQ = useDesktopRuns();
+  const routinesQ = useDesktopRoutines();
+  const approvalsQ = useApprovals({ refetchInterval: 60_000 });
+  const metricsQ = useOsMetrics({ refetchInterval: 300_000 });
+  const notifications = useNotifications();
+  const [briefingShown, setBriefingShown] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(BRIEFING_KEY);
+    } catch {
+      return null;
+    }
+  });
+  const briefingReady = runsQ.data !== undefined && routinesQ.data !== undefined;
+  const briefing = useMemo(() => {
+    if (!briefingReady || !briefingDue(briefingShown)) return null;
+    return composeBriefing(
+      {
+        runs: runsQ.data ?? [],
+        routines: routinesQ.data ?? [],
+        pendingApprovals: (approvalsQ.data ?? []).filter((a) => a.status === "pending").length,
+        todayUsd: metricsQ.data?.cost?.todayUsd ?? 0,
+        now: Date.now(),
+      },
+      t,
+    );
+  }, [briefingReady, briefingShown, runsQ.data, routinesQ.data, approvalsQ.data, metricsQ.data, t]);
+  const briefingSpoken = useRef(false);
+  useEffect(() => {
+    if (!briefing || briefingSpoken.current) return;
+    briefingSpoken.current = true;
+    if (handsFreeRef.current || getVoiceNotify()) speak(briefing.spoken, locale, { force: true });
+  }, [briefing, locale]);
+  const dismissBriefing = () => {
+    const day = localDay();
+    setBriefingShown(day);
+    try {
+      localStorage.setItem(BRIEFING_KEY, day);
+    } catch {
+      /* ignore */
+    }
+    notifications.markAllRead();
+  };
 
   const enabled = (providers.data ?? []).filter((p) => p.enabled);
   const defaultProvider = enabled.find((p) => p.isDefault)?.id ?? enabled[0]?.id;
@@ -271,10 +372,28 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [details.map((d) => d.dataUpdatedAt).join(","), finishedIds.join(",")]);
   const live = useMemo(() => replyFromEvents(stream.events), [stream.events]);
-
-  // Tool prompts the running turn is waiting on (the CLI is paused until answered).
-  const approvals = useApprovals({ enabled: active !== undefined, refetchInterval: active ? 30_000 : false });
-  const toolApprovals = toolApprovalsForRun(approvals.data, active?.id);
+  // When the turn that was streaming settles, say the gist (hands-free or the
+  // voice toggle), then listen again if the loop is on.
+  const spokenFor = useRef<string | null>(null);
+  const lastActiveId = useRef<string | null>(null);
+  if (active) lastActiveId.current = active.id;
+  useEffect(() => {
+    const settled = lastActiveId.current;
+    if (active || !settled || spokenFor.current === settled) return;
+    const reply = replies.get(settled);
+    if (!reply?.text) return;
+    spokenFor.current = settled;
+    const gist = spokenSummary(reply.text);
+    if (!gist) return;
+    const loop = handsFreeRef.current;
+    if (!loop && !getVoiceNotify()) return;
+    speak(gist, locale, { force: true, onEnd: () => loop && handsFreeRef.current && startListening() });
+  }, [active, replies, locale, startListening]);
+  // What the agent is doing right now, in words (refino item 36).
+  const narration = useMemo(
+    () => narrate(stream.events, t, session.data?.session.cwd ?? cwd),
+    [stream.events, t, session.data?.session.cwd, cwd],
+  );
 
   /* ---- mutations -------------------------------------------------------- */
   const submission = useRef(loadPromptSubmission());
@@ -312,13 +431,13 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
       qc.invalidateQueries({ queryKey: ["sessions"] }).catch(() => undefined);
       if (res.sessionId && res.sessionId !== sessionId) setSessionId(res.sessionId);
       if (res.status === "waiting_approval") {
-        const approval = res.pendingApproval;
-        setPendingApproval(approval ? { id: approval.id, description: approval.description } : null);
-        if (!approval) toast(t("runs.approvalPending"), "info");
+        // The decision dock on the console picks it up (refino item 5); the
+        // draft stays in the field until the run is actually launched.
+        qc.invalidateQueries({ queryKey: qk.approvals }).catch(() => undefined);
+        if (!res.pendingApproval) toast(t("runs.approvalPending"), "info");
         return;
       }
       setPrompt("");
-      setPendingApproval(null);
       // The trace opens beside the console (G3): what the agent is doing is
       // on the desk, and its result will land there too.
       if (res.runId) actions.openRun(res.runId);
@@ -335,26 +454,6 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
     onSettled: () => {
       submitting.current = false;
     },
-  });
-
-  const resolve = useMutation({
-    mutationFn: ({ id, decision }: { id: string; decision: "approved" | "denied" }) =>
-      api.post<{ runId: string | null }>(`/api/approvals/${encodeURIComponent(id)}/resolve`, { decision }),
-    onSuccess: (res, vars) => {
-      setPendingApproval(null);
-      qc.invalidateQueries({ queryKey: qk.approvals }).catch(() => undefined);
-      qc.invalidateQueries({ queryKey: ["runs"] }).catch(() => undefined);
-      qc.invalidateQueries({ queryKey: ["sessions"] }).catch(() => undefined);
-      if (vars.decision === "approved") {
-        setPrompt("");
-        if (res.runId) actions.openRun(res.runId);
-      }
-      toast(
-        vars.decision === "approved" ? t("desktop.prompt.approved") : t("desktop.prompt.denied"),
-        vars.decision === "approved" ? "ok" : "info",
-      );
-    },
-    onError: (err: Error) => toast(err.message, "danger"),
   });
 
   const stop = useMutation({
@@ -408,6 +507,8 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
     launch.mutate();
   };
 
+  submitRef.current = submit;
+
   const complete = (slug: string) => {
     setPrompt(`/${slug} `);
     inputRef.current?.focus();
@@ -449,35 +550,22 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
             <Link to="/settings?tab=providers">{t("desktop.auth.settings")}</Link>
           </div>
         )}
-        {pendingApproval && (
-          <div className="promptw-approval cons-note spring-in" role="alert">
-            <ShieldAlert aria-hidden />
-            <div className="promptw-approval-text">
-              <strong>{t("desktop.prompt.approvalTitle")}</strong>
-              <span className="truncate">{pendingApproval.description}</span>
+        {briefing && (
+          <div className="console-msg agent briefing spring-in" role="status" data-testid="console-briefing">
+            <span className="console-who">{t("desktop.briefing.title")}</span>
+            <ul className="briefing-lines">
+              {briefing.lines.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            <div className="console-foot mono">
+              <button type="button" className="console-link" onClick={dismissBriefing}>
+                {t("desktop.briefing.dismiss")} ✓
+              </button>
             </div>
-            <Button
-              size="sm"
-              variant="primary"
-              icon={<Check aria-hidden />}
-              loading={resolve.isPending}
-              onClick={() => resolve.mutate({ id: pendingApproval.id, decision: "approved" })}
-            >
-              {t("desktop.prompt.approve")}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<X aria-hidden />}
-              onClick={() => resolve.mutate({ id: pendingApproval.id, decision: "denied" })}
-            >
-              {t("desktop.prompt.deny")}
-            </Button>
           </div>
         )}
-        {toolApprovals.map((a) => (
-          <ToolApprovalCard key={a.id} approval={a} />
-        ))}
+        <DecisionDock cwd={session.data?.session.cwd ?? cwd} />
         {recovery && (
           <div className="auth-recovery cons-note" role="alert">
             <strong>{t("desktop.auth.title")}</strong>
@@ -493,7 +581,9 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
             turns={threadTurns}
             activeId={active?.id}
             live={live}
+            narration={narration}
             replies={replies}
+            panels={actions.openPanels}
             onStop={(id) => stop.mutate(id)}
             stopping={stop.isPending}
           />
@@ -501,6 +591,12 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
 
         <ConsoleTray panels={actions.openPanels} referenced={referenced} onPick={insertRef} />
 
+        {(interim || (listening && handsFree)) && (
+          <p className="cons-interim mono" aria-live="polite">
+            <span className="cons-interim-dot" aria-hidden />
+            {interim || t("desktop.console.listening")}
+          </p>
+        )}
         <div className="cons-row">
           <textarea
             ref={inputRef}
@@ -513,9 +609,14 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
             aria-controls={acOpen ? "cons-ac" : undefined}
             onChange={(e) => {
               const next = e.target.value;
-              // `/` on an empty field is the deck, not a character.
+              // `/` on an empty field is the deck, not a character; `>` is the
+              // command palette (refino item 9: one field, four prefixes).
               if (next === "/" && prompt === "") {
                 onToggleDeck(true);
+                return;
+              }
+              if (next === ">" && prompt === "") {
+                window.dispatchEvent(new CustomEvent(LAUNCHER_EVENT, { detail: { query: "" } }));
                 return;
               }
               promptRef.current = next;
@@ -555,6 +656,18 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
               }
             }}
           />
+          {canListen && (
+            <button
+              type="button"
+              className={`os-tool cons-handsfree${handsFree ? " active" : ""}`}
+              aria-pressed={handsFree}
+              aria-label={handsFree ? t("desktop.console.handsFreeOff") : t("desktop.console.handsFree")}
+              title={handsFree ? t("desktop.console.handsFreeOff") : t("desktop.console.handsFree")}
+              onClick={() => setHandsFree(!handsFree)}
+            >
+              <Headphones aria-hidden />
+            </button>
+          )}
           {canListen && (
             <button
               type="button"

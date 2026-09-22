@@ -26,6 +26,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWorkspace } from "../components/Workspace";
+import { useOsEvent } from "../hooks/useEventStream";
 import { useT } from "../i18n";
 import { useOsSkills } from "../queries";
 import { useDesktopGraph, useDesktopRoutines, useDesktopRuns } from "./data";
@@ -33,6 +34,16 @@ import { fieldSeeds, placeField, type FieldKind, type FieldPoint } from "./field
 
 /** Idle frame rate: the field is ambient, not an animation. */
 const IDLE_FPS = 12;
+/** How long a ring lives, in ms. */
+const PULSE_MS = 900;
+
+interface Pulse {
+  runId: string;
+  /** Where the ring is born; null means the core, under the console. */
+  at: { x: number; y: number } | null;
+  t0: number;
+  kind: "tool" | "reply" | "alert" | "done";
+}
 
 /** One colour per kind, so the sky is legible without a legend. */
 const KIND_COLOURS: Record<FieldKind, string> = {
@@ -70,6 +81,37 @@ export default function LivingField({ onOpenFile }: LivingFieldProps) {
   const openRef = useRef(onOpenFile);
   openRef.current = onOpenFile;
 
+  // The field is the agent's body (refino item 2): every real event of a live
+  // run lands as a ring on that run's point — or at the core, under the
+  // console, when the run is not on the field yet. Rings are pure geometry
+  // per frame; the loop wakes to full rate only while one is alive.
+  const pulses = useRef<Pulse[]>([]);
+  const pointsRef = useRef<FieldPoint[]>([]);
+  useOsEvent("run.event", (e) => {
+    const p = e.payload as { runId?: string; event?: { type?: string; outcome?: string } } | undefined;
+    const type = p?.event?.type;
+    if (type !== "tool_use" && type !== "assistant" && type !== "error") return;
+    const at = pointsRef.current.find((pt) => pt.id === `run:${p?.runId}`);
+    pulses.current.push({
+      runId: p?.runId ?? "",
+      at: at ? { x: at.x, y: at.y } : null,
+      t0: performance.now(),
+      kind:
+        type === "error" || p?.event?.outcome === "error" ? "alert" : type === "assistant" ? "reply" : "tool",
+    });
+    if (pulses.current.length > 24) pulses.current.splice(0, pulses.current.length - 24);
+  });
+  useOsEvent("run.finished", (e) => {
+    const p = e.payload as { runId?: string; status?: string } | undefined;
+    const at = pointsRef.current.find((pt) => pt.id === `run:${p?.runId}`);
+    pulses.current.push({
+      runId: p?.runId ?? "",
+      at: at ? { x: at.x, y: at.y } : null,
+      t0: performance.now(),
+      kind: p?.status === "done" ? "done" : p?.status === "cancelled" ? "tool" : "alert",
+    });
+  });
+
   const points = useMemo<FieldPoint[]>(
     () =>
       placeField(
@@ -89,6 +131,8 @@ export default function LivingField({ onOpenFile }: LivingFieldProps) {
     [graph.data, skills.data, routines.data, runs.data, t],
   );
 
+  pointsRef.current = points;
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -99,8 +143,13 @@ export default function LivingField({ onOpenFile }: LivingFieldProps) {
     let line = "rgba(122,109,74,";
     let ink = "#f2eee3";
     let sub = "#8a8170";
+    let agent = "#22d3ee";
+    let ok = "#4ade80";
     const readTokens = () => {
       const light = document.documentElement.dataset.theme === "light";
+      const css = getComputedStyle(document.documentElement);
+      agent = css.getPropertyValue("--agent").trim() || agent;
+      ok = css.getPropertyValue("--ok").trim() || ok;
       palette = light ? KIND_COLOURS_LIGHT : KIND_COLOURS;
       line = light ? "rgba(120,110,92," : "rgba(122,109,74,";
       ink = light ? "#201c14" : "#f2eee3";
@@ -194,6 +243,36 @@ export default function LivingField({ onOpenFile }: LivingFieldProps) {
         ctx.globalAlpha = 1;
       });
 
+      // Rings: born at the event, gone in PULSE_MS. Drawn last so they sit
+      // over the weave; the core rings sit where the presence glows.
+      if (pulses.current.length > 0) {
+        const alive: Pulse[] = [];
+        for (const pulse of pulses.current) {
+          const age = (now - pulse.t0) / PULSE_MS;
+          if (age >= 1) continue;
+          alive.push(pulse);
+          const x = pulse.at?.x ?? cx;
+          const y = pulse.at?.y ?? h - 40;
+          const ease = 1 - Math.pow(1 - age, 3);
+          const radius = (pulse.at ? 6 : 24) + ease * (pulse.at ? 26 : 90);
+          ctx.globalAlpha = (1 - age) * (pulse.kind === "reply" ? 0.9 : 0.6);
+          ctx.strokeStyle =
+            pulse.kind === "alert"
+              ? HOT
+              : pulse.kind === "done"
+                ? ok
+                : pulse.kind === "reply"
+                  ? agent
+                  : palette.run;
+          ctx.lineWidth = pulse.kind === "reply" ? 2 : 1.25;
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+        pulses.current = alive;
+      }
+
       const h0 = points[hoverRef.current];
       if (h0) {
         ctx.font = "600 11px Rajdhani, system-ui, sans-serif";
@@ -219,8 +298,9 @@ export default function LivingField({ onOpenFile }: LivingFieldProps) {
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
       if (document.hidden) return;
-      // Ambient, not animated: one frame every ~83 ms is plenty.
-      if (!economy && now - last < 1000 / IDLE_FPS) return;
+      // Ambient, not animated: one frame every ~83 ms is plenty — unless a
+      // ring is alive, which is the one moment the field is meant to move.
+      if (!economy && pulses.current.length === 0 && now - last < 1000 / IDLE_FPS) return;
       paint(now);
     };
     raf = requestAnimationFrame(loop);

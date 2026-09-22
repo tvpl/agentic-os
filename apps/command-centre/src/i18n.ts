@@ -1216,21 +1216,29 @@ export type TVars = Record<string, string | number>;
 export function tf(lang: Lang, key: TKey, vars?: TVars): string {
   const raw = dictionaries[lang][key] ?? key;
   if (!vars) return plural(raw, undefined);
-  return plural(raw, vars.n).replace(/\{(\w+)\}/g, (match, name: string) =>
+  return plural(raw, vars).replace(/\{(\w+)\}/g, (match, name: string) =>
     name in vars ? String(vars[name]) : match,
   );
 }
 
 /**
- * Plural forms inline: `{n} turn[|s]` or `{n} item[ needs|s need] a decision`.
- * The bracket picks its first half when `n` is exactly one and the second
- * otherwise — the rule both languages share for counts. A string without a
- * bracket is returned untouched, and a bracket without `n` reads as "other".
+ * Plural forms inline: `{n} turn[|s]` or `{done} run[done?|s] finished`.
+ * The bracket picks its first half when the count is exactly one and the
+ * second otherwise — the rule both languages share. The count is `n` unless
+ * the bracket names another variable (`[name?one|other]`). A string without
+ * a bracket is returned untouched, and a bracket without a count reads as
+ * "other".
  */
-export function plural(raw: string, n: string | number | undefined): string {
+export function plural(raw: string, vars: TVars | undefined): string {
   if (!raw.includes("[")) return raw;
-  const one = typeof n === "number" ? Math.abs(n) === 1 : n === "1";
-  return raw.replace(/\[([^\]|]*)\|([^\]]*)\]/g, (_m, a: string, b: string) => (one ? a : b));
+  return raw.replace(
+    /\[(?:(\w+)\?)?([^\]|]*)\|([^\]]*)\]/g,
+    (_m, name: string | undefined, a: string, b: string) => {
+      const v = vars?.[name ?? "n"];
+      const one = typeof v === "number" ? Math.abs(v) === 1 : v === "1";
+      return one ? a : b;
+    },
+  );
 }
 
 /** BCP-47 locale for Intl.* for a UI language. */

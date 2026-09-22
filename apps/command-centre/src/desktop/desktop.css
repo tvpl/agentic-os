@@ -711,8 +711,7 @@ body.window-dragging .app-rail {
 .desktop[data-core="idle"] .agent-presence {
   opacity: 0.3;
 }
-.desktop[data-core="waiting"] .agent-presence,
-.desktop[data-core="alert"] .agent-presence {
+.desktop[data-core="waiting"] .agent-presence {
   background: radial-gradient(
     ellipse 52% 62% at 50% 100%,
     color-mix(in srgb, var(--warn) 22%, transparent),
@@ -720,11 +719,52 @@ body.window-dragging .app-rail {
   );
   opacity: 0.7;
 }
+.desktop[data-core="alert"] .agent-presence,
+.desktop[data-core="interrupted"] .agent-presence {
+  background: radial-gradient(
+    ellipse 52% 62% at 50% 100%,
+    color-mix(in srgb, var(--danger) 24%, transparent),
+    transparent 72%
+  );
+  opacity: 0.75;
+}
+/* The agent's own colour when it listens, thinks or answers (refino item 19). */
+.desktop[data-core="listening"] .agent-presence,
+.desktop[data-core="thinking"] .agent-presence,
+.desktop[data-core="tool"] .agent-presence,
+.desktop[data-core="responding"] .agent-presence {
+  background: radial-gradient(
+    ellipse 52% 62% at 50% 100%,
+    color-mix(in srgb, var(--agent) 22%, transparent),
+    transparent 72%
+  );
+}
+.desktop[data-core="listening"] .agent-presence {
+  opacity: 0.9;
+}
+.desktop[data-core="done"] .agent-presence {
+  background: radial-gradient(
+    ellipse 52% 62% at 50% 100%,
+    color-mix(in srgb, var(--ok) 22%, transparent),
+    transparent 72%
+  );
+  opacity: 0.8;
+}
+.desktop[data-core="cancelled"] .agent-presence,
+.desktop[data-core="queued"] .agent-presence {
+  opacity: 0.35;
+}
 @media (prefers-reduced-motion: no-preference) {
   .desktop[data-core="thinking"] .agent-presence,
   .desktop[data-core="tool"] .agent-presence,
   .desktop[data-core="responding"] .agent-presence {
     animation: agent-breathe 2.1s ease-in-out infinite;
+  }
+  .desktop[data-core="tool"] .agent-presence {
+    animation-duration: 0.9s;
+  }
+  .desktop[data-core="listening"] .agent-presence {
+    animation: agent-breathe 1.4s ease-in-out infinite;
   }
   @keyframes agent-breathe {
     0%,
@@ -1188,14 +1228,18 @@ body.window-dragging .app-rail {
 .console-msg.agent {
   justify-self: start;
   background: var(--bg-raise-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--agent-line);
   border-bottom-left-radius: 3px;
+}
+.console-msg.agent .console-who {
+  color: var(--agent-text);
 }
 .console-turn.failed .console-msg.agent {
   border-color: var(--danger);
 }
 .console-turn.streaming .console-msg.agent {
-  border-color: var(--accent-line);
+  border-color: var(--agent);
+  box-shadow: 0 0 0 1px var(--agent-soft);
 }
 .console-who {
   font-size: var(--fs-0);
@@ -3577,4 +3621,243 @@ body.window-dragging .app-rail {
 .app-panel .tabs {
   flex-wrap: wrap;
   overflow-x: visible;
+}
+
+/* ------------------------------------------------ refino · Onda 1 ------ */
+/* Item 36: the running turn narrates itself; the trace row leads with words. */
+.console-narration {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+}
+.console-narration li {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+}
+.console-narration li:last-child {
+  color: var(--text);
+}
+.console-narration code {
+  color: var(--agent-text);
+  font-size: var(--fs-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.console-narration .tone-warn {
+  color: var(--warn);
+}
+.console-narration .tone-danger {
+  color: var(--danger);
+}
+.ev-human {
+  margin-right: 6px;
+}
+.ev-human.tone-warn {
+  color: var(--warn);
+}
+.ev-human.tone-danger {
+  color: var(--danger);
+}
+.ev-subject {
+  color: var(--text);
+  margin-right: 8px;
+  overflow-wrap: anywhere;
+}
+.ev-tool .ev-tag.ev-tool-name {
+  opacity: 0.6;
+}
+
+/* Item 1: what the reply points at, as chips that open the panel. */
+.console-cites {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+.console-cite {
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid var(--agent-line);
+  background: var(--agent-soft);
+  color: var(--agent-text);
+  font-size: var(--fs-1);
+  cursor: pointer;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+.console-cite:hover,
+.console-cite:focus-visible {
+  background: color-mix(in srgb, var(--agent) 26%, transparent);
+}
+
+/* Item 9: one field; the placeholder never wraps. */
+.cons-input::placeholder {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Item 5 / 38: the decision, on the console, above the field. */
+.decision {
+  margin: 10px 14px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 8%, var(--bg-raise));
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  display: grid;
+  gap: 6px;
+}
+.decision-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--warn);
+}
+.decision-head svg {
+  width: 15px;
+  height: 15px;
+}
+.decision-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-0);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.decision-when,
+.decision-more {
+  font-size: var(--fs-0);
+  color: var(--text-faint);
+}
+.decision-more {
+  margin-left: auto;
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-pill);
+}
+.decision-ask {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  align-items: baseline;
+  font-size: var(--fs-3);
+}
+.decision-verb {
+  color: var(--text);
+}
+.decision-ask code {
+  color: var(--agent-text);
+  font-size: var(--fs-2);
+  overflow-wrap: anywhere;
+}
+.decision-ask code.dim {
+  color: var(--text-faint);
+}
+.decision-diff {
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+.decision-diff-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-1);
+  cursor: pointer;
+  text-align: left;
+}
+.decision-diff-head .dim {
+  color: var(--text-faint);
+}
+.decision-diff-head svg {
+  width: 13px;
+  height: 13px;
+  margin-left: auto;
+}
+.decision-diff-body {
+  margin: 0;
+  padding: 4px 8px 6px;
+  max-height: 160px;
+  overflow: auto;
+  font-size: var(--fs-1);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.decision-diff-body .dl.del {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+.decision-diff-body .dl.add {
+  color: var(--ok);
+  background: var(--ok-bg);
+}
+.decision-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.decision-actions .sp {
+  flex: 1;
+}
+.decision-keys {
+  font-size: var(--fs-0);
+  color: var(--text-faint);
+}
+
+/* Item 3: hands-free — the transcript forms above the field. */
+.cons-interim {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 14px 0;
+  font-size: var(--fs-2);
+  color: var(--agent-text);
+  min-height: 18px;
+}
+.cons-interim-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--agent);
+  box-shadow: 0 0 8px var(--agent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cons-interim-dot {
+    animation: pod-pip 1.2s ease-in-out infinite;
+  }
+}
+.cons-handsfree.active,
+.cons-mic.active {
+  color: var(--agent-text);
+  border-color: var(--agent-line);
+  background: var(--agent-soft);
+}
+
+/* Item 4: the briefing opens the day, in the agent's voice. */
+.cons .console-msg.briefing {
+  margin: 10px 14px 0;
+  max-width: none;
+}
+.briefing-lines {
+  margin: 2px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-3);
+}
+.console-thinking.waiting {
+  color: var(--warn);
 }
