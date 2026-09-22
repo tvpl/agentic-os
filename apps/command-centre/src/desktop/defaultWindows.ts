@@ -55,6 +55,10 @@ export const DEFAULT_SPECS: Record<WidgetId, Spec> = {
   routines: { fx: RIGHT, fy: 0.5, fw: SIDE, fh: 0.25, visible: false },
   pulse: { fx: RIGHT, fy: 0.75, fw: SIDE, fh: 0.25, visible: false },
   inbox: { fx: 0.24, fy: 0.06, fw: 0.28, fh: 0.3, visible: false },
+  mission: { fx: SIDE, fy: 0.05, fw: 0.36, fh: 0.45, visible: false },
+  sentinels: { fx: RIGHT, fy: 0.05, fw: SIDE, fh: 0.4, visible: false },
+  facts: { fx: 0.24, fy: 0.4, fw: 0.3, fh: 0.35, visible: false },
+  journal: { fx: 0.56, fy: 0.4, fw: 0.3, fh: 0.4, visible: false },
 };
 
 /**
@@ -65,6 +69,10 @@ export const WINDOW_MIN: Partial<Record<string, Size>> = {
   now: { w: 360, h: 200 },
   routines: { w: 260, h: 150 },
   attention: { w: 300, h: MIN_H },
+  mission: { w: 360, h: 240 },
+  sentinels: { w: 320, h: 220 },
+  facts: { w: 320, h: 200 },
+  journal: { w: 320, h: 220 },
 };
 
 export function minFor(id: string | undefined): Size {

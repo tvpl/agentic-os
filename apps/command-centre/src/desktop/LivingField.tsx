@@ -119,7 +119,10 @@ export default function LivingField({ onOpenFile }: LivingFieldProps) {
           files: graph.data?.nodes ?? [],
           skills: skills.data ?? [],
           routines: routines.data ?? [],
-          runs: runs.data ?? [],
+          runs: (runs.data ?? []).map((r) => ({
+            ...r,
+            parentRunId: (r as { parentRunId?: string | null }).parentRunId ?? null,
+          })),
           labels: {
             skill: t("nav.skills"),
             routine: t("desktop.widget.routines"),
@@ -198,6 +201,16 @@ export default function LivingField({ onOpenFile }: LivingFieldProps) {
         }
         p.x = cx + Math.cos(p.a) * p.r * rx;
         p.y = cy + Math.sin(p.a) * p.r * ry;
+      }
+      // Satellites (refino item 46): a child run circles its parent, close
+      // and quick, so a squad reads as one body with moons.
+      for (const p of points) {
+        if (!p.parentId) continue;
+        const parent = points.find((q) => q.id === p.parentId);
+        if (!parent) continue;
+        const ang = p.phase * 1.4;
+        p.x = parent.x + Math.cos(ang) * 14;
+        p.y = parent.y + Math.sin(ang) * 9;
       }
 
       // Edges between near neighbours: enough to read as a weave, never n². The

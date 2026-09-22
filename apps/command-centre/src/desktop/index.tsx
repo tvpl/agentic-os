@@ -890,6 +890,7 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
           onOpenCost={() => openWindow("cost")}
           onOpenRuns={() => openApp("runs")}
           onOpenAttention={() => openWindow("attention")}
+          onOpenMission={() => openWindow("mission")}
         />
 
         {searching && (

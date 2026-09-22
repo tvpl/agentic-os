@@ -40,6 +40,10 @@ export const READING_IDS = [
   "cost",
   "approvals",
   "now",
+  "mission",
+  "sentinels",
+  "facts",
+  "journal",
 ] as const;
 export type ReadingId = (typeof READING_IDS)[number];
 
@@ -103,6 +107,10 @@ const READING_TITLE: Record<ReadingId, TKey> = {
   cost: "desktop.widget.cost",
   approvals: "desktop.widget.approvals",
   now: "now.title",
+  mission: "desktop.widget.mission",
+  sentinels: "desktop.widget.sentinels",
+  facts: "desktop.widget.facts",
+  journal: "desktop.widget.journal",
 };
 
 /** The instrument's name, as a locale key. */

@@ -57,6 +57,9 @@ import { useDesktopRoutines, useDesktopRuns } from "../data";
 import { useApprovals } from "../../runs/ApprovalCards";
 import { useOsMetrics } from "../../queries";
 import { useNotifications } from "../../hooks/useNotifications";
+import { estimateRun } from "../estimate";
+import { budgetState } from "../budget";
+import type { Skill } from "../../api";
 import { ConsoleThread, type Reply } from "./ConsoleThread";
 import { ConsoleTray } from "./ConsoleTray";
 import { ConsoleControls, type Mode, type ModelChoice } from "./ConsoleControls";
@@ -318,6 +321,34 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
     notifications.markAllRead();
   };
 
+  /* ---- what it will cost, and whether it may run at all (refino item 39) ---- */
+  const bareSlug = /^\/([a-z0-9-]+)(?:\s|$)/i.exec(prompt.trim())?.[1] ?? null;
+  const estimate = useMemo(
+    () =>
+      estimateRun(runsQ.data ?? [], bareSlug ? { skillSlug: bareSlug } : { prompt: prompt.trim() || null }),
+    [runsQ.data, bareSlug, prompt],
+  );
+  const budget = budgetState(settings.data?.limits?.dailyBudgetUsd, metricsQ.data?.cost?.todayUsd);
+  const budgetBlocked = budget.tone === "over";
+
+  /* ---- a skill that needs inputs asks in the thread (refino item 40) ---- */
+  const [ask, setAsk] = useState<{ skill: Skill; values: Record<string, string> } | null>(null);
+  const askRun = useMutation({
+    mutationFn: ({ skill, values }: { skill: Skill; values: Record<string, string> }) =>
+      api.post<LaunchRunResponse>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, { inputs: values }),
+    onSuccess: (res) => {
+      setAsk(null);
+      setPrompt("");
+      qc.invalidateQueries({ queryKey: ["runs"] }).catch(() => undefined);
+      if (res.status === "waiting_approval" || !res.runId) {
+        qc.invalidateQueries({ queryKey: qk.approvals }).catch(() => undefined);
+        return;
+      }
+      actions.openRun(res.runId);
+    },
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
+
   const enabled = (providers.data ?? []).filter((p) => p.enabled);
   const defaultProvider = enabled.find((p) => p.isDefault)?.id ?? enabled[0]?.id;
   const folders = useMemo(() => readFolders(settings.data), [settings.data]);
@@ -500,6 +531,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
     sessionId === null && cwd !== "" && (!settings.data || !folders.some((folder) => folder.path === cwd));
   const runnable = (text: string) =>
     text.trim().length > 0 &&
+    !budgetBlocked &&
     !launch.isPending &&
     enabled.length > 0 &&
     !active &&
@@ -533,6 +565,11 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
       ? (skills.data ?? []).find((s) => s.slug.toLowerCase() === bare[1]!.toLowerCase())
       : undefined;
     if (skill) {
+      if (skill.inputs.some((i) => i.required)) {
+        // Ask for what is missing here, in the conversation, not in a form panel.
+        setAsk({ skill, values: {} });
+        return;
+      }
       setPrompt("");
       actions.runSkill(skill);
       return;
@@ -598,6 +635,80 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
               </button>
             </div>
           </div>
+        )}
+        {budgetBlocked && (
+          <p className="cons-note warn" role="status" data-testid="console-budget-blocked">
+            {t("desktop.budget.blocked")} <Link to="/settings?tab=security">{t("desktop.budget.raise")}</Link>
+          </p>
+        )}
+        {ask && (
+          <form
+            className="console-msg agent ask spring-in"
+            data-testid="console-ask"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const missing = ask.skill.inputs.filter(
+                (i) => i.required && !(ask.values[i.name] ?? "").trim(),
+              );
+              if (missing.length > 0) {
+                document.getElementById(`ask-${missing[0]!.name}`)?.focus();
+                return;
+              }
+              askRun.mutate(ask);
+            }}
+          >
+            <span className="console-who">{t("desktop.console.agent")}</span>
+            <p>
+              {t("desktop.ask.title")} · <span className="mono">/{ask.skill.slug}</span>
+            </p>
+            <div className="ask-fields">
+              {ask.skill.inputs.map((input) => {
+                const id = `ask-${input.name}`;
+                const value = ask.values[input.name] ?? "";
+                const set = (v: string) =>
+                  setAsk((cur) => (cur ? { ...cur, values: { ...cur.values, [input.name]: v } } : cur));
+                return (
+                  <label key={input.name} className="ask-field">
+                    <span className="ask-label">
+                      {input.label}
+                      {input.required && " *"}
+                    </span>
+                    {input.options && input.options.length > 0 ? (
+                      <select
+                        id={id}
+                        className="input sm"
+                        value={value}
+                        onChange={(e) => set(e.target.value)}
+                      >
+                        <option value="">—</option>
+                        {input.options.map((o) => (
+                          <option key={o} value={o}>
+                            {o}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        id={id}
+                        className="input sm"
+                        value={value}
+                        placeholder={input.placeholder ?? ""}
+                        onChange={(e) => set(e.target.value)}
+                      />
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+            <div className="console-foot mono">
+              <Button type="submit" size="sm" variant="primary" loading={askRun.isPending}>
+                {t("desktop.ask.run")}
+              </Button>
+              <button type="button" className="console-link" onClick={() => setAsk(null)}>
+                {t("desktop.ask.cancel")}
+              </button>
+            </div>
+          </form>
         )}
         <DecisionDock cwd={session.data?.session.cwd ?? cwd} />
         {recovery && (
@@ -765,6 +876,8 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked }: Conso
           }}
           threadOpen={threadOpen}
           onToggleThread={() => setThreadOpen((v) => !v)}
+          estimate={estimate}
+          budget={budget}
         />
 
         {acOpen && (

@@ -3958,3 +3958,309 @@ body.window-dragging .app-rail {
   margin: var(--s-2) 0 0;
   font-size: var(--fs-2);
 }
+
+/* ------------------------------------------------ refino · Onda 3 ------ */
+.sentinel-row.off {
+  opacity: 0.55;
+}
+.sentinel-eye svg {
+  width: 14px;
+  height: 14px;
+  color: var(--agent-text);
+}
+.sentinel-row.off .sentinel-eye svg {
+  color: var(--text-faint);
+}
+.sentinel-main {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.sentinel-name {
+  font-size: var(--fs-2);
+}
+.sentinel-hint {
+  font-size: var(--fs-0);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sentinels .go {
+  margin-top: var(--s-2);
+}
+.fact-text {
+  font-size: var(--fs-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.fact-text b {
+  color: var(--agent-text);
+  font-weight: 600;
+}
+.fact-object {
+  color: var(--text);
+}
+.journal {
+  display: grid;
+  gap: var(--s-2);
+}
+.journal-section .cp {
+  margin: 0 0 2px;
+}
+.journal-section ul {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-2);
+}
+.journal-add .input {
+  width: 100%;
+}
+.mission {
+  display: grid;
+  gap: var(--s-3);
+}
+.mission-card {
+  display: grid;
+  gap: 4px;
+}
+.mission-card.completed {
+  opacity: 0.6;
+}
+.mission-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mission-title {
+  font-weight: 600;
+  font-size: var(--fs-3);
+  min-width: 0;
+  flex: 1;
+}
+.mission-bar {
+  height: 3px;
+  background: var(--bg-raise-2);
+  overflow: hidden;
+}
+.mission-bar span {
+  display: block;
+  height: 100%;
+  background: var(--agent);
+  transition: width var(--dur-slow) var(--ease-standard);
+}
+.mission-steps {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+.mission-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-2);
+  min-width: 0;
+}
+.mission-steps li .sp {
+  flex: 1;
+}
+.mission-step-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  flex: none;
+}
+.mission-steps .step-verified .mission-step-dot {
+  background: var(--ok);
+}
+.mission-steps .step-dispatched .mission-step-dot,
+.mission-steps .step-verifying .mission-step-dot {
+  background: var(--agent);
+}
+.mission-steps .step-blocked .mission-step-dot,
+.mission-steps .step-failed .mission-step-dot {
+  background: var(--danger);
+}
+.mission-steps .step-waiting_approval .mission-step-dot {
+  background: var(--warn);
+}
+
+.console-memory {
+  margin-top: 6px;
+  font-size: var(--fs-1);
+  color: var(--text-dim);
+}
+.console-memory summary {
+  cursor: pointer;
+  color: var(--agent-text);
+}
+.console-learned {
+  margin: 6px 0 0;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: var(--fs-2);
+  color: var(--agent-text);
+}
+.console-artifacts {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+}
+.console-artifact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.console-artifact-open {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-2);
+  cursor: pointer;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+.console-artifact-open:hover {
+  border-color: var(--accent-line);
+}
+.failure-fix {
+  margin-top: var(--s-2);
+  padding: 8px 10px;
+  border-left: 2px solid var(--danger);
+  background: var(--danger-bg);
+  display: grid;
+  gap: 6px;
+}
+.failure-fix.compact {
+  padding: 6px 8px;
+}
+.failure-cause {
+  margin: 0;
+  font-size: var(--fs-2);
+}
+.failure-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.failure-actions code {
+  font-size: var(--fs-1);
+  color: var(--text-dim);
+}
+.run-recalled {
+  margin-top: var(--s-2);
+}
+.run-recalled ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-size: var(--fs-1);
+}
+
+/* Item 39: the cost before the run, and the day's budget, on the control row. */
+.cons-ctl .cc.estimate {
+  color: var(--agent-text);
+}
+.cons-ctl .cc.budget.warn {
+  color: var(--warn);
+}
+.cons-ctl .cc.budget.over {
+  color: var(--danger);
+}
+.cons-ctl .cc.warn {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+/* Item 40: the agent asks for inputs in the thread. */
+.cons .console-msg.ask {
+  margin: 10px 14px 0;
+  max-width: none;
+}
+.ask-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
+.ask-field {
+  display: grid;
+  gap: 2px;
+}
+.ask-label {
+  font-size: var(--fs-0);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* Item 7: the deck's centre is a search and the focused skill's card. */
+.deck-centre {
+  position: absolute;
+  left: 50%;
+  top: -70px;
+  width: 300px;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  text-align: center;
+  z-index: 1;
+}
+.deck-search {
+  width: 240px;
+  padding: 6px 10px;
+  border: 1px solid var(--agent-line);
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--fs-2);
+  outline: none;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+}
+.deck-search:focus {
+  border-color: var(--agent);
+}
+.deck-focus {
+  display: grid;
+  gap: 2px;
+  max-width: 300px;
+}
+.deck-focus-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-4);
+  color: var(--text);
+}
+.deck-focus-slug {
+  font-size: var(--fs-1);
+  color: var(--agent-text);
+}
+.deck-focus-desc {
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.deck-focus-last {
+  font-size: var(--fs-0);
+  color: var(--text-faint);
+}
+.deck-skill.focus .hex {
+  background: linear-gradient(150deg, var(--agent), var(--agent-line));
+}
+.deck-skill .nm {
+  max-width: 68px;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}

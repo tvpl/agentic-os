@@ -55,7 +55,8 @@ test("a skill with required inputs asks on the stage, then runs; the form leaves
   await page.keyboard.press("ControlOrMeta+j");
   const deck = page.locator(".skill-deck");
   await expect(deck).toHaveClass(/open/);
-  await deck.locator(".deck-skill", { hasText: /^code-review$/ }).click();
+  // The seat shows the skill's name; the title carries the slug.
+  await deck.locator('.deck-skill[title^="/code-review"]').click();
   const form = page.locator('[data-panel="form:code-review"]');
   await expect(form).toBeVisible();
   await expect(form.locator(".panel-title")).toHaveText("/code-review · inputs");
@@ -83,7 +84,7 @@ test("a write-mode skill waits in the approvals panel; approving opens its trace
   await resetStage(request);
   await openDesktop(page);
   await page.keyboard.press("ControlOrMeta+j");
-  await page.locator(".skill-deck .deck-skill", { hasText: /^consolidate-memory$/ }).click();
+  await page.locator('.skill-deck .deck-skill[title^="/consolidate-memory"]').click();
   const approvals = page.locator('[data-panel="approvals"]');
   await expect(approvals).toBeVisible();
   await expect(approvals).toHaveClass(/\bon\b/);

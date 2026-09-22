@@ -19,6 +19,10 @@ import { qk, useApiQuery } from "../../queries";
 import { timeAgo, useToast } from "../../components/ui";
 import { DialogPortal, useDialog, usePresence } from "../../components/dialog";
 import { ModelEffortMatrix, shortModel, type Effort } from "../SkillMatrixModal";
+import { providerProblem } from "../../components/providerReadiness";
+import type { Estimate } from "../estimate";
+import type { BudgetState } from "../budget";
+import { Link } from "react-router-dom";
 import type { FolderOption } from "./refs";
 import { shortTitle } from "./sessions";
 
@@ -46,6 +50,8 @@ export function ConsoleControls({
   onPickSession,
   threadOpen,
   onToggleThread,
+  estimate,
+  budget,
 }: {
   mode: Mode;
   onMode: (mode: Mode) => void;
@@ -65,6 +71,9 @@ export function ConsoleControls({
   onPickSession: (id: string) => void;
   threadOpen: boolean;
   onToggleThread: () => void;
+  /** What the next run will probably cost (refino item 39). */
+  estimate: Estimate | null;
+  budget: BudgetState;
 }) {
   const t = useT();
   const toast = useToast();
@@ -92,6 +101,12 @@ export function ConsoleControls({
 
   const turns = session?.session.turns ?? 0;
   const cost = session?.session.costUsd ?? 0;
+  // The provider's state is on the chip (refino item 44): red before a run fails.
+  const current = providers.find((p) => p.id === (session?.session.provider ?? provider));
+  const problem = current ? providerProblem(current) : null;
+  const money = (v: number) => `US$ ${v.toFixed(2)}`;
+  const secs = (ms: number) =>
+    ms < 60_000 ? `${Math.round(ms / 1000)} s` : `${Math.round(ms / 60_000)} min`;
 
   return (
     <div className="cons-ctl">
@@ -136,7 +151,11 @@ export function ConsoleControls({
         ref={modelBtn}
         aria-haspopup="dialog"
         aria-expanded={modelOpen}
-        title={t("desktop.console.model")}
+        title={
+          choice.model
+            ? t("desktop.console.model")
+            : t("desktop.console.autoHint", { provider: provider ?? "" })
+        }
         onClick={() => setModelOpen((v) => !v)}
         disabled={!provider}
       >
@@ -155,8 +174,12 @@ export function ConsoleControls({
       )}
       <button
         type="button"
-        className="cc"
-        title={t("desktop.prompt.provider")}
+        className={`cc${problem ? " warn" : ""}`}
+        title={
+          problem
+            ? `${t("desktop.prompt.provider")}: ${t(`gate.state.${problem}` as "gate.state.login_required")}`
+            : t("desktop.prompt.provider")
+        }
         aria-label={`${t("desktop.prompt.provider")}: ${session?.session.provider ?? provider ?? ""}`}
         onClick={cycleProvider}
         disabled={sessionLocked || providers.length < 2 || switchDefault.isPending}
@@ -194,6 +217,29 @@ export function ConsoleControls({
         <span aria-hidden>＋</span>
         {t("desktop.console.newChat")}
       </button>
+      {estimate && (estimate.usd !== null || estimate.ms !== null) && (
+        <span
+          className="cc static estimate"
+          title={t("desktop.estimateHint", { n: estimate.samples })}
+          data-testid="console-estimate"
+        >
+          {t("desktop.estimate", {
+            usd: estimate.usd !== null ? money(estimate.usd) : "—",
+            time: estimate.ms !== null ? secs(estimate.ms) : "—",
+          })}
+        </span>
+      )}
+      {budget.tone !== "off" && (
+        <Link
+          to="/settings?tab=security"
+          className={`cc static budget ${budget.tone}`}
+          title={t("desktop.cost.budget")}
+        >
+          {budget.tone === "over"
+            ? t("desktop.budget.raise")
+            : t("desktop.budget.left", { usd: money(Math.max(0, budget.budgetUsd - budget.spentUsd)) })}
+        </Link>
+      )}
       <button
         type="button"
         className="ro"

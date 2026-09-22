@@ -233,6 +233,25 @@ Entregue no mesmo branch, verificada no app real (dev server, pt-BR) e por 386 t
 | 50 | `⌘1–6` troca de espaço, `[` e `]` percorrem a pilha, `Esc` fecha o painel do topo quando nada mais está aberto, `F` cinema, `⌘⇧A/D` decide. Todos na folha de atalhos. | `index.tsx`, `ShortcutsHelp.tsx`. |
 | 51 | Cinema é o painel do topo expandido sobre o véu, com o console mantido; `F` liga e `Esc` desliga. | No app. |
 
+### Registro da Onda 3 — 22/09/2026
+
+| Item | O que entrou | Como se prova |
+|------|--------------|---------------|
+| 6, 31 | Painel **Missão** (`mission`): objetivos ativos e bloqueados com passos, estado por passo, run de cada passo, retry do passo bloqueado e "rodar passos prontos"; barra de progresso; segmento "Missão 2/5" na faixa enquanto houver objetivo vivo. | `MissionWidget.tsx`; e2e `desktop-intel.spec.ts`. |
+| 7 | Deck com busca no centro: digitar filtra por slug, nome, descrição e triggers ("revis" acha Revisão de Código); o centro mostra nome, slug, descrição e última execução da skill em foco; Enter roda; nomes completos nos hexágonos. | `SkillDeck.test.tsx`; e2e. |
+| 8, 34 | `recallFromEvents`: o `recall` do MCP deixa no trace a pergunta e as seções devolvidas; o console mostra "Lembrei de N seções" com chips, e a ficha do run lista os caminhos. Novo tool `facts_assert` no MCP; o console mostra "Aprendi: …" com "esquecer" (retract). | `recallFromEvents.test.ts`; `apps/api/src/mcp/mordomo.ts`. |
+| 32 | `GET /api/sentinels` e painel **Vigiando**: seis observadores com ligado/desligado, o que procuram, última vez que falaram e pastas vigiadas; próxima varredura horária. | `routes/sentinels.ts`; e2e. |
+| 33 | Painel **O que sei sobre você**: fatos abertos com origem (run) e "esquecer isto". | `FactsWidget.tsx`. |
+| 35 | Painel **Diário de hoje**: seções do journal do dia e uma linha para acrescentar. O briefing (item 4) continua lendo runs e rotinas; ler do journal fica para quando a rotina de digest escrever nele regularmente. | `JournalWidget.tsx`. |
+| 39 | `estimateRun`: mediana de custo e duração de ≥ 3 runs concluídas da mesma skill (ou mesmo prompt) aparece na linha de controles; "US$ X restantes hoje" com o orçamento; a 100 % o botão Executar desliga e uma nota explica com link para aumentar. | `estimate.test.ts`; `data-testid="console-estimate"`. |
+| 40 | `/skill` com input obrigatório pergunta no próprio console (campos inline, Executar / Deixa pra lá) em vez de abrir o painel de formulário; o formulário continua existindo para o deck. | `data-testid="console-ask"`. |
+| 41 | Nova skill aceita "Também rodar em horário" em palavras; ao salvar cria a rotina com o cron derivado. A proposta "fez duas vezes → skill" já abria o editor prefilled. | `NewSkillModal.tsx`. |
+| 42 | `naturalToCron`: "toda segunda às 8", "every weekday at 9", "a cada 15 minutos" viram cron, no formulário de rotina e na skill nova. | `naturalSchedule.test.ts`. |
+| 43 | `failureFix`: código de falha do backend vira frase de causa e uma ação (entrar, aumentar orçamento, abrir aprovações, executar de novo, configurações do provedor), no card de resultado do run e no turno falhado do console. | `failureFix.test.ts`; `FailureFixCard.tsx`. |
+| 44 | O chip do provedor no console fica vermelho com o problema no tooltip antes de tentar rodar; o chip de modelo em "auto" explica o roteamento. | `ConsoleControls.tsx`. |
+| 45 | Artefatos do turno como cartões na conversa: abrir como painel e enviar por Telegram (`POST /api/channels/telegram/send`). "Fixar no HUD" é abrir como painel, que já persiste no layout. | `ConsoleThread.tsx`; `routes/channels.ts`. |
+| 46 | Runs filhas orbitam a run mãe no campo vivo (satélites), a partir de `parentRunId`. | `fieldPoints.ts`, `LivingField.tsx`. |
+
 Fora da onda, anotado para as seguintes: `costSignal` ainda formata "0.08" sem locale no tooltip (item 23); descrições dos conectores em inglês vêm do catálogo em `connectors/` (item 28); "Processo concluído" vem do backend (item 36).
 
 ---

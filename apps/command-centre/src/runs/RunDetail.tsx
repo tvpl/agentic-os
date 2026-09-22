@@ -6,6 +6,8 @@
  * Keyboard: `r` run again, `c` continue with a follow-up, `/` search the log.
  */
 import "./runs.css";
+import { FailureFixCard } from "./FailureFixCard";
+import { recallFromEvents } from "./recallFromEvents";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, ClipboardList, Copy, CornerDownRight, FileText, RefreshCw, Square } from "lucide-react";
@@ -248,6 +250,7 @@ export default function RunDetail({ id }: { id: string }) {
   }
 
   const title = run.skillSlug ? `/${run.skillSlug}` : run.promptSummary.slice(0, 80) || t("runs.title");
+  const recalled = recallFromEvents(events).flatMap((r) => r.paths);
   const duration = active
     ? formatCountdown(now - (run.startedAt ?? run.createdAt))
     : formatDuration(run.durationMs, locale);
@@ -454,6 +457,26 @@ export default function RunDetail({ id }: { id: string }) {
                   ? t("runs.outcome.retry")
                   : t("runs.outcome.fix")}
             </p>
+          )}
+          {run.status !== "done" && (
+            <FailureFixCard
+              runId={run.id}
+              failure={run.failure}
+              provider={run.provider}
+              status={run.status}
+            />
+          )}
+          {recalled.length > 0 && (
+            <div className="run-recalled">
+              <span className="hud-label">{t("desktop.recalled", { n: recalled.length })}</span>
+              <ul>
+                {recalled.slice(0, 10).map((p, i) => (
+                  <li key={`${p.path}-${i}`} className="mono">
+                    {p.path} <span className="dim">§ {p.section}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
       )}

@@ -104,6 +104,30 @@ export function mordomoTools(api: McpApi): McpTool[] {
       },
     },
     {
+      name: "facts_assert",
+      description:
+        "Remember one durable fact about the user or the workspace as subject / predicate / object (e.g. 'user' / 'prefers' / 'commits in Portuguese'). Use sparingly, only for what will matter in future sessions.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          subject: { type: "string" },
+          predicate: { type: "string" },
+          object: { type: "string" },
+        },
+        required: ["subject", "predicate", "object"],
+      },
+      handler: async (a) => {
+        const runId = process.env.MORDOMO_RUN_ID;
+        const r = await api.post<{ fact: { id: number }; unchanged: boolean }>("/api/memory/facts", {
+          subject: str(a.subject, "subject"),
+          predicate: str(a.predicate, "predicate"),
+          object: str(a.object, "object"),
+          ...(runId ? { sourceRunId: runId } : {}),
+        });
+        return `${r.unchanged ? "Already knew" : "Remembered"} fact #${r.fact.id}: ${str(a.subject, "subject")} ${str(a.predicate, "predicate")} ${str(a.object, "object")}`;
+      },
+    },
+    {
       name: "facts_query",
       description: "Bi-temporal facts (subject / predicate filters).",
       inputSchema: {

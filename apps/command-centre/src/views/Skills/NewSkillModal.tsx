@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { naturalToCron } from "../naturalSchedule";
 import { api } from "../../api";
 import { qk, useInvalidate } from "../../queries";
 import { useT } from "../../i18n";
@@ -23,24 +24,58 @@ export default function NewSkillModal({
   const [name, setName] = useState("");
   const [slugValue, setSlugValue] = useState("");
   const [slugTouched, setSlugTouched] = useState(false);
-  const [description, setDescription] = useState(() => (initialPrompt ? initialPrompt.split(/\r?\n/)[0]!.slice(0, 160) : ""));
+  const [description, setDescription] = useState(() =>
+    initialPrompt ? initialPrompt.split(/\r?\n/)[0]!.slice(0, 160) : "",
+  );
   const [mode, setMode] = useState<"read_only" | "write">("read_only");
-  const [body, setBody] = useState(() => (initialPrompt ? `${t("skills.bodyTemplate")}\n\n## Prompt\n\n${initialPrompt}\n` : t("skills.bodyTemplate")));
+  // Refino item 41: a skill born from repetition usually wants a time too.
+  const [schedule, setSchedule] = useState("");
+  const cron = schedule.trim() ? naturalToCron(schedule) : null;
+  const [body, setBody] = useState(() =>
+    initialPrompt
+      ? `${t("skills.bodyTemplate")}\n\n## Prompt\n\n${initialPrompt}\n`
+      : t("skills.bodyTemplate"),
+  );
 
   const derived = slugify(name);
   const slug = slugValue.trim() || derived;
   const slugValid = SLUG_RE.test(slug);
-  const slugError = (slugTouched || slugValue.trim() !== "" || (name.trim() !== "" && !slugValid)) && !slugValid ? t("skills.slugInvalid") : undefined;
+  const slugError =
+    (slugTouched || slugValue.trim() !== "" || (name.trim() !== "" && !slugValid)) && !slugValid
+      ? t("skills.slugInvalid")
+      : undefined;
 
   const create = useMutation({
     mutationFn: () =>
       api.post("/api/skills", {
-        frontmatter: { name: name.trim(), slug, description: description.trim(), mode, triggers: [`/${slug}`] },
+        frontmatter: {
+          name: name.trim(),
+          slug,
+          description: description.trim(),
+          mode,
+          triggers: [`/${slug}`],
+        },
         body,
       }),
     onSuccess: async () => {
       await invalidate(qk.skills);
       toast(t("skills.created", { name: name.trim() }), "ok");
+      if (cron) {
+        try {
+          await api.post("/api/routines", {
+            id: slug,
+            name: name.trim(),
+            skillSlug: slug,
+            kind: "cron",
+            schedule: cron,
+            enabled: true,
+          });
+          await invalidate(qk.routines);
+          toast(t("skills.scheduled", { cron }), "ok");
+        } catch (err) {
+          toast(errorMessage(err), "danger");
+        }
+      }
       onCreated();
     },
     onError: (err) => toast(errorMessage(err), "danger"),
@@ -57,12 +92,22 @@ export default function NewSkillModal({
         }}
       >
         <Field label={t("skills.name")} htmlFor="ns-name">
-          <input id="ns-name" className="input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
+          <input
+            id="ns-name"
+            className="input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoComplete="off"
+          />
         </Field>
         <Field
           label={t("skills.slug")}
           htmlFor="ns-slug"
-          hint={slugValue.trim() === "" && derived ? t("skills.slugAuto", { slug: derived }) : t("skills.slugHint")}
+          hint={
+            slugValue.trim() === "" && derived
+              ? t("skills.slugAuto", { slug: derived })
+              : t("skills.slugHint")
+          }
           error={slugError}
         >
           <input
@@ -76,16 +121,45 @@ export default function NewSkillModal({
           />
         </Field>
         <Field label={t("common.description")} htmlFor="ns-desc">
-          <textarea id="ns-desc" className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <textarea
+            id="ns-desc"
+            className="input"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
         </Field>
         <Field label={t("common.mode")} htmlFor="ns-mode">
-          <select id="ns-mode" className="input" value={mode} onChange={(e) => setMode(e.target.value as "read_only" | "write")}>
+          <select
+            id="ns-mode"
+            className="input"
+            value={mode}
+            onChange={(e) => setMode(e.target.value as "read_only" | "write")}
+          >
             <option value="read_only">{t("skills.mode.read_only")}</option>
             <option value="write">{t("skills.mode.write")}</option>
           </select>
         </Field>
         <Field label="SKILL.md" htmlFor="ns-body" hint={t("skills.bodyHint")}>
-          <textarea id="ns-body" className="input mono tall" value={body} onChange={(e) => setBody(e.target.value)} />
+          <textarea
+            id="ns-body"
+            className="input mono tall"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+          />
+        </Field>
+        <Field
+          label={t("skills.scheduleLabel")}
+          htmlFor="ns-schedule"
+          hint={cron ? `cron: ${cron}` : t("skills.scheduleHint")}
+          error={schedule.trim() && !cron ? t("routines.naturalUnknown") : undefined}
+        >
+          <input
+            id="ns-schedule"
+            className="input"
+            value={schedule}
+            placeholder={t("routines.naturalPh")}
+            onChange={(e) => setSchedule(e.target.value)}
+          />
         </Field>
         <div className="modal-actions">
           <Button variant="ghost" onClick={onClose}>

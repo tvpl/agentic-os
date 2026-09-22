@@ -32,6 +32,7 @@ import { Badge, Button, EmptyState, Field, Segmented } from "../components/primi
 import { useConfirm } from "../hooks/useConfirm";
 import { errorMessage, isOffline } from "./shared";
 import { describeSchedule, isValidCron, isValidTimeZone, nextFires, timeZoneOptions } from "./cron";
+import { naturalToCron } from "./naturalSchedule";
 import "./backend.css";
 
 const KINDS: RoutineKind[] = ["cron", "at", "every", "on-exit", "heartbeat"];
@@ -365,6 +366,8 @@ function RoutineModal({
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
 
   const cronOk = form.kind !== "cron" || isValidCron(form.schedule);
+  const [natural, setNatural] = useState("");
+  const naturalCron = natural.trim() ? naturalToCron(natural) : null;
   const tzOk = isValidTimeZone(form.timezone) && (!form.hbActive || isValidTimeZone(form.hbTz));
   const atMs = form.at ? Date.parse(form.at) : NaN;
   const kindOk =
@@ -534,6 +537,29 @@ function RoutineModal({
 
       {form.kind === "cron" && (
         <div className="grid grid-2">
+          <Field
+            label={t("routines.natural")}
+            htmlFor="rt-natural"
+            hint={
+              natural.trim()
+                ? naturalCron
+                  ? `cron: ${naturalCron}`
+                  : t("routines.naturalUnknown")
+                : t("routines.naturalHint")
+            }
+          >
+            <input
+              id="rt-natural"
+              className="input"
+              value={natural}
+              placeholder={t("routines.naturalPh")}
+              onChange={(e) => {
+                setNatural(e.target.value);
+                const c = naturalToCron(e.target.value);
+                if (c) set({ schedule: c });
+              }}
+            />
+          </Field>
           <Field
             label={t("routines.schedule")}
             htmlFor="rt-cron"

@@ -17,7 +17,7 @@ import type { SignalLevel } from "./signal";
 import { useApiQuery } from "../queries";
 import type { MetricsHistory } from "../api";
 import { sparkline } from "../runs/sparkline";
-import { useOsSettings } from "../queries";
+import { useOsObjectives, useOsSettings } from "../queries";
 import { listSpaces, type SpaceMap } from "./spaces";
 import { requestSpace } from "../components/Workspace";
 
@@ -111,6 +111,7 @@ export interface AmbientStripProps {
   onOpenCost: () => void;
   onOpenRuns: () => void;
   onOpenAttention: () => void;
+  onOpenMission?: () => void;
 }
 
 export default function AmbientStrip({
@@ -125,6 +126,7 @@ export default function AmbientStrip({
   onOpenCost,
   onOpenRuns,
   onOpenAttention,
+  onOpenMission,
 }: AmbientStripProps) {
   const t = useT();
   const locale = useLocale();
@@ -146,6 +148,9 @@ export default function AmbientStrip({
   const spaceName = spaceList.find((sp) => sp.id === activeSpace)?.name ?? activeSpace;
   const nextSpace =
     spaceList[(spaceList.findIndex((sp) => sp.id === activeSpace) + 1) % Math.max(1, spaceList.length)];
+  const objectives = useOsObjectives({ refetchInterval: 30_000 });
+  const mission = (objectives.data ?? []).find((o) => o.status === "active" || o.status === "blocked");
+  const missionDone = mission ? mission.steps.filter((st) => st.status === "verified").length : 0;
   const problem = provider ? providerProblem(provider) : null;
   const providerLevel: SignalLevel = !provider
     ? "idle"
@@ -187,6 +192,15 @@ export default function AmbientStrip({
         title={t("desktop.strip.spaceHint")}
         onOpen={nextSpace && nextSpace.id !== activeSpace ? () => requestSpace(nextSpace.id) : undefined}
       />
+      {mission && (
+        <Segment
+          level={mission.status === "blocked" ? "warn" : "info"}
+          label={t("desktop.strip.mission")}
+          value={`${missionDone}/${mission.steps.length}`}
+          title={mission.title}
+          onOpen={onOpenMission}
+        />
+      )}
       <span className="gap" />
       <Segment
         level={signals.cost.level}

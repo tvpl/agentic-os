@@ -6,6 +6,12 @@
  */
 import type { Skill } from "../../api";
 import type { RunEventView } from "../../runs/useRunStream";
+import {
+  factsFromEvents,
+  recallFromEvents,
+  type LearnedFact,
+  type Recalled,
+} from "../../runs/recallFromEvents";
 
 const REPLY_MAX_CHARS = 900;
 
@@ -102,6 +108,10 @@ export function replyFromEvents(events: readonly RunEventView[]): {
   text: string;
   tools: number;
   tool: string | null;
+  /** Sections the agent pulled from memory (refino item 8). */
+  recalled: Recalled[];
+  /** Facts it wrote down about you, with a way to take them back. */
+  learned: LearnedFact[];
 } {
   let text = "";
   let tools = 0;
@@ -114,5 +124,5 @@ export function replyFromEvents(events: readonly RunEventView[]): {
     } else if (e.type === "result" && typeof e.summary === "string" && !text) text = e.summary.trim();
   }
   if (text.length > REPLY_MAX_CHARS) text = `${text.slice(0, REPLY_MAX_CHARS).trimEnd()}…`;
-  return { text, tools, tool };
+  return { text, tools, tool, recalled: recallFromEvents(events), learned: factsFromEvents(events) };
 }

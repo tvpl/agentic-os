@@ -25,6 +25,8 @@ export interface FieldSeed {
   open: { file: string } | { route: string };
   /** Something is wrong with this one: it burns instead of glowing. */
   hot?: boolean;
+  /** A child run orbits its parent (refino item 46). */
+  parentId?: string;
 }
 
 export interface FieldPoint extends FieldSeed {
@@ -56,7 +58,12 @@ export interface FieldSources {
   files: readonly GraphNodeLite[];
   skills: ReadonlyArray<{ slug: string; name: string; enabled: boolean }>;
   routines: ReadonlyArray<{ id: string; name: string; enabled: boolean; healthy: boolean }>;
-  runs: ReadonlyArray<{ id: string; status: string; promptSummary?: string | null }>;
+  runs: ReadonlyArray<{
+    id: string;
+    status: string;
+    promptSummary?: string | null;
+    parentRunId?: string | null;
+  }>;
   /** Localised labels for the three non-file kinds. */
   labels: { skill: string; routine: string; run: string; failed: string };
 }
@@ -107,6 +114,7 @@ export function fieldSeeds(src: FieldSources): FieldSeed[] {
       detail: failed ? src.labels.failed : src.labels.run,
       open: { route: `/runs/${run.id}` },
       hot: failed,
+      ...(run.parentRunId ? { parentId: `run:${run.parentRunId}` } : {}),
     });
   }
   return out.slice(0, MAX_POINTS);
