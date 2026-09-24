@@ -13,7 +13,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type ArtifactEntry, type Objective, type RoutineStatus, type RunRecord } from "../api";
 import { useLocale, useT } from "../i18n";
 import { qk, useOsConnectors, useOsObjectives, useOsSettings } from "../queries";
-import { isConfigured } from "./widgets/MicroAppsWidget";
+import { isConfigured } from "./appRows";
 import { nextStep, type StepId } from "./nextStep";
 import { StatusBadge, timeAgo, useToast } from "../components/ui";
 import { Button } from "../components/primitives";

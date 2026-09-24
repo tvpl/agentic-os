@@ -1,4 +1,5 @@
-import { Link, useParams } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { usePanelParams } from "../../desktop/appRoute";
 import { ArrowLeft } from "lucide-react";
 import { useOsProviders, useOsSkills } from "../../queries";
 import { ErrorBox, Skeleton } from "../../components/ui";
@@ -9,7 +10,7 @@ import SkillList from "./SkillList";
 import SkillDetail from "./SkillDetail";
 
 export default function Skills() {
-  const { slug } = useParams();
+  const { slug } = usePanelParams<"slug">("/skills/:slug?");
   const t = useT();
   const skills = useOsSkills();
   const providers = useOsProviders();

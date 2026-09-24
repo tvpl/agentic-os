@@ -1,5 +1,11 @@
 # Windows setup
 
+> No terminal needed: the packaged app (`MordomoOS.cmd` + `bin\mordomo.cmd`,
+> built with `npm run dist --platform win32` or downloaded) runs on native
+> Windows with its bundled Node.js; see [install.md](install.md). The
+> provider CLIs still need to be installed and signed in once. The rest of
+> this page covers the source checkout.
+
 Two supported paths. **WSL is recommended** — you get the Linux experience,
 and Claude/Cursor/Codex CLIs run best there.
 

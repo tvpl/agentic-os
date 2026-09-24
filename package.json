@@ -30,7 +30,9 @@
     "prepare": "husky",
     "mordomo": "node apps/api/dist/cli.js",
     "test:ui": "npm run test -w apps/command-centre",
-    "gallery": "vite --config apps/command-centre/vite.config.ts apps/command-centre --open /gallery.html"
+    "gallery": "vite --config apps/command-centre/vite.config.ts apps/command-centre --open /gallery.html",
+    "dist": "node scripts/package.mjs",
+    "dist:quick": "node scripts/package.mjs --skip-build --node none --no-archive"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
@@ -45,6 +47,7 @@
     "lint-staged": "^17.4.1",
     "playwright-core": "^1.49.0",
     "prettier": "^3.9.6",
+    "rolldown": "^1.2.6",
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.69.0",
     "vitest": "^4.1.11"

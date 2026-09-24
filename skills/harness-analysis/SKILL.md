@@ -29,6 +29,10 @@ successCriteria:
   - Top 3 fixes are concrete enough to apply without further research.
 examples:
   - "Run on a repo before onboarding agents to it."
+i18n:
+  pt-BR:
+    name: "Análise do Harness do Projeto"
+    description: "Analisa o harness de agentes de um projeto — CLAUDE.md/AGENTS.md, hooks, settings, permissões, guardas de CI — e relata lacunas em relação às boas práticas."
 ---
 
 # Project Harness Analysis

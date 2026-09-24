@@ -27,7 +27,8 @@ test("unverified authentication is not green or labelled OK and can be checked a
     await route.fulfill({ response, json: data });
   });
   await page.goto("/#/");
-  await expect(page.locator(".os-topbar > .side").first().locator(".dot")).toHaveClass(/warn/);
+  // The ambient strip's provider segment carries the state (G5): unverified is amber, never green.
+  await expect(page.locator("header.strip .sg").first()).toHaveAttribute("data-l", "warn");
   await page.goto("/#/settings?tab=providers");
   const provider = page.locator(".provider-row").first();
   await expect(provider.locator(".meta")).toContainText("not verified");

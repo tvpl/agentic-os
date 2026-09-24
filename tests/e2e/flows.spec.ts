@@ -114,7 +114,9 @@ test("a tool prompt mid-run is approved from the run page", async ({ page, reque
     toolUseId: "tu_e2e",
   });
   const errors = await open(page, `/#/runs/${runId}`);
-  const card = page.locator(".approval-inline, .tool-approval").first();
+  // Only this run's trace panel: earlier specs may have left traces on the stage (G3).
+  const trace = page.locator(`[data-panel="run:${runId}"]`);
+  const card = trace.locator(".approval-inline, .tool-approval").first();
   await expect(card).toBeVisible({ timeout: 10_000 });
   await expect(card).toContainText(/Write/);
   await card
@@ -127,7 +129,7 @@ test("a tool prompt mid-run is approved from the run page", async ({ page, reque
     (b) => (b as { status: string }).status === "approved",
     10_000,
   );
-  await expect(page.locator(".run-title .badge")).toHaveText(/done|conclu/i, { timeout: 25_000 });
+  await expect(trace.locator(".run-title .badge")).toHaveText(/done|conclu/i, { timeout: 25_000 });
   expect(errors, errors.join("\n")).toEqual([]);
 });
 
@@ -143,15 +145,18 @@ test("a run fans out into a squad of sub-agents", async ({ page, request }) => {
     (b) => (b as { run: { status: string } }).run.status === "done",
   );
   const errors = await open(page, `/#/runs/${runId}`);
-  await page
+  // Traces from earlier specs may still be on the stage (G3): only this run's
+  // panel is the subject.
+  const trace = page.locator(`[data-panel="run:${runId}"]`);
+  await trace
     .getByRole("button", { name: /fan out|dividir/i })
     .first()
     .click();
-  await page
+  await trace
     .getByLabel(/fan out|dividir/i)
     .fill("First sub-task: list the docs.\n\nSecond sub-task: summarise the README.");
-  await page.getByRole("button", { name: /^launch$|^lançar$/i }).click();
-  await expect(page.locator(".squad-list li")).toHaveCount(2, { timeout: 15_000 });
+  await trace.getByRole("button", { name: /^launch$|^lançar$/i }).click();
+  await expect(trace.locator(".squad-list li")).toHaveCount(2, { timeout: 15_000 });
   const children = (await waitFor(
     request,
     `/api/runs/${runId}/children`,
@@ -162,7 +167,7 @@ test("a run fans out into a squad of sub-agents", async ({ page, request }) => {
     25_000,
   )) as Array<{ parentRunId: string | null }>;
   expect(children.every((c) => c.parentRunId === runId)).toBe(true);
-  await expect(page.locator(".squad-list li").first()).toContainText(/done|conclu/i, { timeout: 15_000 });
+  await expect(trace.locator(".squad-list li").first()).toContainText(/done|conclu/i, { timeout: 15_000 });
   expect(errors, errors.join("\n")).toEqual([]);
 });
 

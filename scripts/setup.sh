@@ -4,12 +4,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if ! command -v node >/dev/null 2>&1; then
-  echo "Node.js >= 20 is required. Install it from https://nodejs.org or via your package manager." >&2
+  echo "Node.js >= 22 is required. Install it from https://nodejs.org or via your package manager." >&2
   exit 1
 fi
 NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
-if [ "$NODE_MAJOR" -lt 20 ]; then
-  echo "Node.js >= 20 is required (found $(node --version))." >&2
+if [ "$NODE_MAJOR" -lt 22 ]; then
+  echo "Node.js >= 22 is required (found $(node --version))." >&2
   exit 1
 fi
 

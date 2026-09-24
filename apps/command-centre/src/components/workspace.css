@@ -17,14 +17,14 @@
     inset 0 1px 0 color-mix(in srgb, var(--text) 8%, transparent);
 }
 .dock-apps,
-.dock-modes {
+.dock-spaces {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 .dock-app,
 .dock-collapse,
-.dock-modes button {
+.dock-spaces button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -48,12 +48,12 @@
   height: 20px;
 }
 .dock-app.active,
-.dock-modes button[aria-pressed="true"] {
+.dock-spaces button[aria-pressed="true"] {
   background: var(--accent-soft);
   color: var(--accent-text);
 }
 [data-theme="light"] .dock-app.active,
-[data-theme="light"] .dock-modes button[aria-pressed="true"] {
+[data-theme="light"] .dock-spaces button[aria-pressed="true"] {
   color: var(--text);
 }
 .dock-app:hover {
@@ -78,16 +78,16 @@
 .dock-app:focus-visible .dock-tooltip {
   opacity: 1;
 }
-.dock-modes {
+.dock-spaces {
   border-left: 1px solid var(--border);
   padding-left: 12px;
 }
-.dock-modes button {
+.dock-spaces button {
   gap: 6px;
   padding: 10px;
   font-size: var(--fs-2);
 }
-.dock-modes svg,
+.dock-spaces svg,
 .dock-collapse svg {
   width: 16px;
   height: 16px;
@@ -166,23 +166,10 @@
 .os-root .hud-overlay::after {
   opacity: 0.5;
 }
+/* Surface, edge, shadow and header typography of the desktop window are
+   owned by desktop.css (widget chrome); only the roomier padding lives here. */
 .desktop .widget-inner {
-  border-color: color-mix(in srgb, var(--text) 12%, transparent);
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
-  box-shadow: 0 8px 24px #0002;
   padding: 14px 16px;
-}
-.desktop .widget-inner > h2 {
-  color: var(--text-dim);
-  letter-spacing: 0.11em;
-}
-.desktop .widget::before {
-  opacity: 0.25;
-  border-radius: 12px;
-}
-.desktop .widget:hover::before,
-.desktop .widget:focus-within::before {
-  opacity: 0.8;
 }
 .desktop .now-next {
   border-radius: 10px;
@@ -230,4 +217,197 @@
   .explore-intro {
     animation: none;
   }
+}
+
+/* ------------------------------------------------- open panels (G1) ------
+   One button per panel on the stage, between the apps and the spaces. A
+   parked panel is dashed; the focused one carries the accent; a live trace
+   keeps a small pulse. Wide titles truncate rather than push the spaces out. */
+.dock-tasks {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+.dock-task {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 25px;
+  padding: 0 10px;
+  max-width: 180px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+  transition:
+    color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard);
+}
+.dock-task:hover {
+  border-color: var(--accent-line);
+  color: var(--text);
+}
+.dock-task.on {
+  border-color: var(--accent-line);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+/* Amber on the light soft fill is 2:1; the active task reads in ink instead,
+   the same way the active app and space already do. */
+[data-theme="light"] .dock-task.on {
+  color: var(--text);
+}
+.dock-task.parked {
+  opacity: 0.6;
+  border-style: dashed;
+}
+.dock-task .dock-glyph {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.dock-task-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  unicode-bidi: plaintext;
+}
+.dock-live {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 7px var(--accent-glow);
+  animation: dock-pip 1.4s ease-in-out infinite;
+}
+@keyframes dock-pip {
+  50% {
+    opacity: 0.2;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dock-live {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------ the dock (G5) ----
+   The prototype's bottom bar on the desktop: spaces with their panel counts,
+   the open panels, Edit HUD, Overview, Spread out. The floating pill of app
+   icons above is what the narrow screen keeps (`.workspace-dock.apps`). */
+.workspace-dock.hud {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  transform: none;
+  height: var(--stage-bottom);
+  padding: 0 12px;
+  gap: 12px;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
+  border-radius: 0;
+  background: linear-gradient(
+    0deg,
+    color-mix(in srgb, var(--bg) 97%, transparent),
+    color-mix(in srgb, var(--bg) 55%, transparent)
+  );
+  backdrop-filter: blur(14px);
+  box-shadow: none;
+  overflow: hidden;
+  z-index: var(--z-drawer);
+}
+.workspace-dock.hud .dock-spaces {
+  border: 0;
+  padding: 0;
+  gap: 4px;
+}
+.workspace-dock.hud .spc {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 27px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 12px;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+}
+.workspace-dock.hud .spc svg {
+  width: 13px;
+  height: 13px;
+}
+.workspace-dock.hud .spc:hover {
+  color: var(--text-dim);
+}
+.workspace-dock.hud .spc[aria-pressed="true"] {
+  color: var(--accent-text);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+[data-theme="light"] .workspace-dock.hud .spc[aria-pressed="true"] {
+  color: var(--text);
+}
+.workspace-dock.hud .spc .n {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  opacity: 0.7;
+}
+.workspace-dock.hud .dv {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+}
+.workspace-dock.hud .sp {
+  flex: 1;
+}
+.workspace-dock.hud .dock-tasks {
+  border: 0;
+  padding: 0;
+}
+.workspace-dock.hud .tl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 25px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  transition:
+    color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard);
+}
+.workspace-dock.hud .tl:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+.workspace-dock.hud .tl[aria-pressed="true"] {
+  color: var(--accent-text);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+[data-theme="light"] .workspace-dock.hud .tl[aria-pressed="true"] {
+  color: var(--text);
 }

@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useDesktopActions } from "../actions";
 import { useT } from "../../i18n";
 import { qk, useApiQuery, useOsMetrics, useOsSettings } from "../../queries";
 import { budgetState } from "../budget";
@@ -14,6 +15,7 @@ interface Approval {
 
 export default function AttentionWidget() {
   const t = useT();
+  const { openPanel, openRun } = useDesktopActions();
   const routines = useDesktopRoutines();
   const runs = useDesktopRuns();
   // Approvals are optional: a failure here only hides the approvals chip.
@@ -31,37 +33,58 @@ export default function AttentionWidget() {
   const budget = budgetState(settings.data?.limits?.dailyBudgetUsd, metrics.data?.cost?.todayUsd);
   const budgetHot = budget.tone === "warn" || budget.tone === "over";
 
+  const clear = failures.length === 0 && unhealthy.length === 0 && pending === 0 && !budgetHot;
+  // The prototype's rows: a tag, the thing, and the way in. Links for now;
+  // G3 makes "trace" open the run as a panel on the stage.
   return (
     <WidgetGate queries={[routines, runs]} lines={1}>
-      {failures.length === 0 && unhealthy.length === 0 && pending === 0 && !budgetHot ? (
+      {clear ? (
         <p className="attention-clear">{t("dash.allClear")}</p>
       ) : (
-        <div className="attention-row">
+        <div className="attention-rows">
           {pending > 0 && (
-            <Link to="/settings" className="badge warn plain">
-              {t("dash.pendingApprovals", { n: pending })}
-            </Link>
+            <div className="rw">
+              <span className="tg t">{t("desktop.core.waiting")}</span>
+              <span className="truncate">{t("dash.pendingApprovals", { n: pending })}</span>
+              <span className="sp" />
+              <button type="button" className="go" onClick={() => openPanel("approvals")}>
+                {t("desktop.prompt.approve")}
+              </button>
+            </div>
           )}
           {budgetHot && (
-            <Link
-              to="/settings?tab=security"
-              className={`badge ${budget.tone === "over" ? "danger" : "warn"} plain`}
-            >
-              {t(budget.tone === "over" ? "dash.budgetOver" : "dash.budgetWarn", {
-                pct: Math.round(budget.ratio * 100),
-              })}
-            </Link>
+            <div className="rw">
+              <span className={`tg ${budget.tone === "over" ? "f" : "t"}`}>{t("desktop.widget.cost")}</span>
+              <span className="truncate">
+                {t(budget.tone === "over" ? "dash.budgetOver" : "dash.budgetWarn", {
+                  pct: Math.round(budget.ratio * 100),
+                })}
+              </span>
+              <span className="sp" />
+              <Link to="/settings?tab=security" className="go">
+                {t("nav.settings")}
+              </Link>
+            </div>
           )}
           {unhealthy.map((r) => (
-            <Link key={r.id} to="/routines" className="badge danger plain">
-              {r.name} · {r.recentFailures}×
-            </Link>
+            <div className="rw" key={r.id}>
+              <span className="tg f">{r.recentFailures}×</span>
+              <span className="truncate">{r.name}</span>
+              <span className="sp" />
+              <Link to="/routines" className="go">
+                {t("desktop.widget.routines")}
+              </Link>
+            </div>
           ))}
           {failures.map((r) => (
-            <Link key={r.id} to={`/runs/${r.id}`} className="attention-failure">
-              <StatusBadge status={r.status} />{" "}
+            <div className="rw" key={r.id}>
+              <StatusBadge status={r.status} />
               <span className="truncate">{r.skillSlug ?? r.promptSummary.slice(0, 42)}</span>
-            </Link>
+              <span className="sp" />
+              <button type="button" className="go" onClick={() => openRun(r.id)}>
+                trace
+              </button>
+            </div>
           ))}
         </div>
       )}

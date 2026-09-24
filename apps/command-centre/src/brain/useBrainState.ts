@@ -16,7 +16,7 @@ import {
   useState,
   type MutableRefObject,
 } from "react";
-import { useSearchParams } from "react-router-dom";
+import { usePanelSearchParams } from "../desktop/appRoute";
 import { loadBrainNavigation, saveBrainNavigation } from "./navigationSnapshot";
 import { createForceEngine } from "./engine/force";
 import {
@@ -86,8 +86,8 @@ export interface BrainState {
   persistWorkspace: () => void;
   /** Persist the current settings; `toServer` also PUTs `settings.brain`. */
   persist: (settings: BrainSettings, toServer: boolean) => void;
-  /** Set when a selection arrives from the URL (deep link): the view should frame it. */
-  focusRef: MutableRefObject<boolean>;
+  /** Centre the camera on the next selection: true, or "dive" for a closer zoom (set by deep links and clicks). */
+  focusRef: MutableRefObject<boolean | "dive">;
   facets: { exts: Array<[string, number]>; tags: Array<[string, number]> };
   kindCounts: Map<EdgeKind, number>;
   legend: Array<{ key: string; count: number; color: string }>;
@@ -108,7 +108,8 @@ export function workspaceOf(w: World): WorkspaceState {
 export function useBrainState(src: BrainStateSources): BrainState {
   const { graph, skills, routines, connectors, ringLabels, timeline, serverBlob, dirty } = src;
 
-  const [searchParams, setSearchParams] = useSearchParams();
+  // The panel's own query when the brain is a panel, the URL's when it is a page (G2).
+  const [searchParams, setSearchParams] = usePanelSearchParams();
   const [navigation] = useState(() => (searchParams.size === 0 ? loadBrainNavigation() : null));
   const [boot] = useState<BrainSettings>(() => ({ ...DEFAULT_SETTINGS, ...loadLocalSettings() }));
   const [world] = useState<MutableRefObject<World>>(() => {
@@ -145,7 +146,7 @@ export function useBrainState(src: BrainStateSources): BrainState {
   lockedKeys.current ??= urlControlledKeys(
     navigation ? new URLSearchParams(navigation.params) : searchParams,
   );
-  const focusRef = useRef(searchParams.has("sel"));
+  const focusRef = useRef<boolean | "dive">(searchParams.has("sel"));
   const paramStamp = useRef(searchParams.toString());
 
   // A single synchronisation effect prevents an incoming Back/Forward URL

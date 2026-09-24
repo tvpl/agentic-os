@@ -1,30 +1,22 @@
 /**
  * The OS desktop: a fullscreen surface. The icosphere wallpaper sits under a
  * "Now" panel and the ring of artifact chips; widgets float above on a
- * 24-column grid (stacked below 900 px) and can be dragged, resized,
+ * 24-column grid (stacked below 1024 px) and can be dragged, resized,
  * configured, added and hidden in edit mode. Layout persists in settings.
  *
  * Every widget owns its queries through the registry, so one failing endpoint
  * degrades only that widget; the desktop itself never renders blank.
  *
  * Modes: edit (grid + gallery + per-widget gear) and search (widgets fade to
- * 30 %, only matching chips keep their ring, a detail modal pushes the
- * desktop back). Both are reachable from the tool row, the keyboard and the
+ * 30 %, and choosing a match lands the file on the stage as a document
+ * window). Both are reachable from the tool row, the keyboard and the
  * command palette (`mordomo:toggle-edit`).
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bell, Grid2x2, Info, LayoutGrid, Palette, Pencil, Plus, Search, Tag } from "lucide-react";
-import {
-  api,
-  type ArtifactEntry,
-  type ArtifactListItem,
-  type LaunchRunResponse,
-  type Meta,
-  type ProviderId,
-  type Skill,
-} from "../api";
-import { useLocale, useT, type TKey } from "../i18n";
+import { FileText } from "lucide-react";
+import { api, type LaunchRunResponse, type Meta, type Skill } from "../api";
+import { useT } from "../i18n";
 import { qk, useOsMetrics, useOsProviders, useOsSettings } from "../queries";
 import { budgetState } from "./budget";
 import { useToast } from "../components/ui";
@@ -33,95 +25,94 @@ import { useConfirm } from "../hooks/useConfirm";
 import { playCue, useNotifications } from "../hooks/useNotifications";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import { useOsEvent } from "../hooks/useEventStream";
-import { LAUNCHER_EVENT, TOGGLE_EDIT_EVENT } from "../App";
-import { useWorkspace } from "../components/Workspace";
-import { DEFAULT_LAYOUT, freeRegion, type LayoutMap, type WidgetConfig } from "./defaultLayout";
-import { useLayoutState, type GridMetrics } from "./useGridLayout";
-import WidgetLayer, { type WidgetSpec } from "./WidgetLayer";
-import Wallpaper, { type CoreFocus, type CoreState } from "./Wallpaper";
-import HudTelemetry from "./HudTelemetry";
-import ModelEffortPopover from "./ModelEffortPopover";
-import AddWidgetGallery from "./AddWidgetGallery";
-import { LayoutPresets } from "./LayoutPresets";
-import WidgetConfigPopover from "./WidgetConfigPopover";
-import { ArtifactModal, SearchBar } from "./ArtifactSearch";
-import { DesktopActionsProvider, type DesktopActions } from "./actions";
-import { WIDGET_REGISTRY, defaultConfig, widgetDefinition } from "./registry";
-import { buildRingChips, chipMatches, type RingChip } from "./ringChips";
-import { baseCoreState } from "./coreState";
+import { OPEN_DECK_EVENT, OPEN_PANEL_EVENT, RESET_LAYOUT_EVENT } from "../App";
+import { PANEL_ACTION_EVENT, panelKind, publishPanels, type OpenPanel, type PanelAction } from "./panelKinds";
+import { APPS, appForPath, appId, appKindOf, appLocationOf, type AppKind, type AppLocation } from "./apps";
+import AppPanel from "./AppPanel";
+import RunPanel from "./RunPanel";
+import SkillInputsPanel from "./SkillInputsPanel";
 import {
-  isActiveStatus,
-  recentFiles,
-  useArtifactList,
-  useDesktopArtifacts,
-  useDesktopGraph,
-  useDesktopRuns,
-} from "./data";
+  FORM_BOX,
+  RUN_BOX,
+  formPanelId,
+  formSlugOf,
+  isFormPanelId,
+  isRunPanelId,
+  runIdOf,
+  runPanelId,
+  runPanelTitle,
+} from "./runPanels";
+import { isRunActive } from "../runs/useRunStream";
+import { useLocation, useNavigate as useRouterNavigate } from "react-router-dom";
+import { SWITCH_SPACE_EVENT, takePendingSpace } from "../components/Workspace";
+import { DEFAULT_SPACE, switchSpace, type SpaceMap } from "./spaces";
+import { DOC_BOX, defaultWindows, docId, docPath, isDocId, minFor } from "./defaultWindows";
+import DocWindow from "./DocWindow";
+import { CONSOLE_DRAFT_EVENT, CONSOLE_REFS_EVENT, readConsoleDraft, storeConsoleDraft } from "./consoleDraft";
+import { clampIntoStage, placeNew, tile, topZ, type WindowMap } from "./windowModel";
+import { useWindowLayout, type StageMetrics } from "./useWindowLayout";
+import WidgetLayer, { type WidgetSpec } from "./WidgetLayer";
+import AgentPresence from "./AgentPresence";
+import LivingField from "./LivingField";
+import DesktopPods from "./DesktopPods";
+import AmbientStrip from "./AmbientStrip";
+import { useDesktopSignals } from "./useSignals";
+import { DESKTOP_ACTION_EVENT, publishDesktopModes, type DesktopAction } from "./desktopModes";
+import { hudEquals, normalizeHud, type Hud } from "./hud";
+import SkillDeck from "./SkillDeck";
+import FirstRunHint from "./FirstRunHint";
+import ModelEffortPopover from "./ModelEffortPopover";
+import { SearchBar, type ArtifactHit } from "./ArtifactSearch";
+import { DesktopActionsProvider, type DesktopActions } from "./actions";
+import { WIDGET_REGISTRY, hasSurface, widgetDefinition } from "./registry";
+import { baseCoreState, type CoreState } from "./coreState";
+import { isActiveStatus, useArtifactList, useDesktopRuns } from "./data";
 import { InboxList } from "./widgets/InboxWidget";
-import { LISTENING_EVENT } from "./widgets/PromptWidget";
+import Console, { LISTENING_EVENT } from "./console/Console";
 import "./desktop.css";
 
-/** One-click accent presets, cycled by the palette tool and persisted. */
-const ACCENT_PRESETS = ["#f97316", "#22d3ee", "#a78bfa", "#4ade80", "#f43f5e", "#fbbf24"];
-const RING_CHIPS = 22;
 const SEARCH_DEBOUNCE_MS = 220;
-
-/** `/api/artifacts/recent` rows in the shape the ring wants (older servers, or before the first list call). */
-function fromRecent(entries: readonly ArtifactEntry[]): ArtifactListItem[] {
-  return entries.map((a) => ({
-    id: `${a.runId}/${a.file}`,
-    file: a.file,
-    path: a.path,
-    runId: a.runId,
-    skillSlug: a.skillSlug,
-    createdAt: a.createdAt,
-    kind: "other" as const,
-    title: a.file,
-    folder: a.runId,
-    sizeBytes: a.sizeBytes ?? 0,
-    thumbnail: false,
-  }));
-}
 
 export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaChanged?: () => void }) {
   const t = useT();
-  const locale = useLocale();
   const navigate = useOsNavigate();
   const toast = useToast();
   const confirm = useConfirm();
   const qc = useQueryClient();
-  const { mode: workspaceMode, setMode: setWorkspaceMode } = useWorkspace();
-  const [editMode, setEditMode] = useState(false);
-  const [presetsOpen, setPresetsOpen] = useState(false);
-  const [metrics, setMetrics] = useState<GridMetrics | null>(null);
-  const rows = metrics?.rows ?? 20;
+  const [metrics, setMetrics] = useState<StageMetrics | null>(null);
+  const stage = useMemo(() => ({ w: metrics?.w ?? 1200, h: metrics?.h ?? 700 }), [metrics?.w, metrics?.h]);
 
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
-  const [revealLabels, setRevealLabels] = useState(false);
-  const [detail, setDetail] = useState<RingChip | null>(null);
 
   const [deckPopover, setDeckPopover] = useState<{ skill: Skill; anchor: HTMLElement } | null>(null);
-  const [configFor, setConfigFor] = useState<{ id: string; anchor: HTMLElement } | null>(null);
-  const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
+  /** Expanded widget, owned here so the ambient strip can open a surface. */
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  /** Camera pulled back over the whole stage. */
+  const [overview, setOverview] = useState(false);
+  /** The radial skill deck, fanned out over the console. */
+  const [deckOpen, setDeckOpen] = useState(false);
+  /** Paths the console draft points at; the layer tethers to their windows. */
+  const [activeRefs, setActiveRefs] = useState<readonly string[]>([]);
+  useEffect(() => {
+    const onRefs = (e: Event) => setActiveRefs((e as CustomEvent<string[]>).detail ?? []);
+    window.addEventListener(CONSOLE_REFS_EVENT, onRefs);
+    return () => window.removeEventListener(CONSOLE_REFS_EVENT, onRefs);
+  }, []);
   const [bellAnchor, setBellAnchor] = useState<HTMLElement | null>(null);
-  const addButtonRef = useRef<HTMLButtonElement>(null);
 
   const settings = useOsSettings();
   const providers = useOsProviders();
   const runs = useDesktopRuns();
-  const recent = useDesktopArtifacts();
-  const graph = useDesktopGraph();
   const notifications = useNotifications();
 
-  const ringList = useArtifactList({ limit: RING_CHIPS });
   const searchList = useArtifactList({ q: debounced, limit: 40 }, searching && debounced.trim().length >= 2);
 
-  const { layout, commit, saving, conflict, resolveConflict } = useLayoutState({
+  const { layout, commit, latest, saving, conflict, resolveConflict } = useWindowLayout({
     serverLayout: settings.data?.dashboardLayout,
-    rows,
-    editing: editMode,
+    stage,
+    spaceId: settings.data?.activeSpace,
     onError: (err) => toast(`${t("os.layoutSaveFailed")}: ${err.message}`, "danger"),
   });
 
@@ -130,63 +121,52 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     return () => window.clearTimeout(id);
   }, [query]);
 
-  /* ---- chips ------------------------------------------------------------ */
-  const nodes = useMemo(() => graph.data?.nodes ?? [], [graph.data]);
-  const files = useMemo(() => recentFiles(nodes, 12), [nodes]);
-  const baseArtifacts = useMemo(() => {
-    const listed = ringList.data?.items ?? [];
-    return listed.length > 0 ? listed : fromRecent(recent.data ?? []);
-  }, [ringList.data, recent.data]);
-
-  const chips = useMemo(() => {
-    const found = searching ? (searchList.data?.items ?? []) : [];
-    const merged = [...found, ...baseArtifacts];
-    return buildRingChips(merged, files, searching ? RING_CHIPS + 4 : RING_CHIPS);
-  }, [baseArtifacts, files, searching, searchList.data]);
-
-  const matched = useMemo(() => {
-    if (!searching || query.trim().length === 0) return new Set<string>();
-    const paths = new Set((searchList.data?.items ?? []).map((i) => i.path));
-    return new Set(chips.filter((c) => paths.has(c.path) || chipMatches(c, query)).map((c) => c.key));
-  }, [chips, searching, query, searchList.data]);
-
-  const runLabels = useMemo(
-    () =>
-      (runs.data ?? [])
-        .filter((r) => r.skillSlug)
-        .slice(0, 3)
-        .map(
-          (r) =>
-            `/${r.skillSlug!} · ${new Date(r.createdAt).toLocaleString(locale, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}`,
-        ),
-    [runs.data, locale],
-  );
+  /* ---- search results ---------------------------------------------------- */
+  const hits = useMemo<ArtifactHit[]>(() => {
+    if (!searching) return [];
+    return (searchList.data?.items ?? []).slice(0, 12).map((item) => ({
+      key: item.id || item.path,
+      label: item.file.split("/").pop() ?? item.file,
+      title: item.title || item.file,
+      path: item.path,
+      runId: item.runId,
+      skillSlug: item.skillSlug,
+      ts: item.createdAt,
+    }));
+  }, [searching, searchList.data]);
 
   const activeRuns = useMemo(
     () => (runs.data ?? []).filter((r) => isActiveStatus(r.status)).length,
     [runs.data],
   );
-  const executingRuns = useMemo(
-    () => (runs.data ?? []).filter((r) => r.status === "running").length,
-    [runs.data],
-  );
   const coreState = useCoreState(runs.data ?? []);
   useBudgetNotifications();
+  const signals = useDesktopSignals(activeRuns);
 
-  /* ---- the free region between the widget columns anchors the core ------ */
-  const focus = useMemo<CoreFocus | null>(() => {
-    if (!metrics || metrics.stacked) return null;
-    const r = freeRegion(workspaceMode === "explore" ? {} : layout, metrics);
-    // Hidden windows must not constrain the map. Reserve the introduction above it.
-    if (workspaceMode === "explore") r.top = Math.min(340, metrics.height * 0.4);
-    const cx = (r.left + r.right) / 2;
-    const cy = (r.top + r.bottom) / 2;
-    // The ring hugs the free region (chips are 46px plus their count badge)
-    // but never collapses onto the Now panel, which shrinks to fit inside it.
-    const rx = Math.max(210, (r.right - r.left) / 2 - 44);
-    const ry = Math.max(170, (r.bottom - r.top) / 2 - 44);
-    return { cx, cy, rx, ry };
-  }, [layout, metrics, workspaceMode]);
+  /* ---- the HUD (G5): which instruments sit on the arcs, persisted ------- */
+  const storedHud = useMemo(() => normalizeHud(settings.data?.hud), [settings.data?.hud]);
+  const [hud, setHud] = useState<Hud>(storedHud);
+  useEffect(() => setHud(storedHud), [storedHud]);
+  const [editingHud, setEditingHud] = useState(false);
+  const saveHudMutation = useMutation({
+    mutationFn: (next: Hud) => api.put<{ settings: Record<string, unknown> }>("/api/settings", { hud: next }),
+    onSuccess: (data) => {
+      if (data?.settings) qc.setQueryData(qk.settings, data.settings);
+      else qc.invalidateQueries({ queryKey: qk.settings }).catch(() => undefined);
+    },
+    onError: (err: Error) => {
+      toast(err.message, "danger");
+      setHud(storedHud);
+    },
+  });
+  const saveHud = useCallback(
+    (next: Hud) => {
+      if (hudEquals(next, hud)) return;
+      setHud(next);
+      saveHudMutation.mutate(next);
+    },
+    [hud, saveHudMutation],
+  );
 
   const runningSkills = useMemo(
     () =>
@@ -197,48 +177,102 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
   );
 
   /* ---- mutations -------------------------------------------------------- */
-  const accent = useMutation({
-    mutationFn: (next: string) => api.put("/api/settings", { accentColor: next }),
-    onSuccess: (_d, next) => {
-      onMetaChanged?.();
-      toast(`${t("settings.accent")}: ${next}`, "ok");
-    },
-    onError: (err: Error) => toast(err.message, "danger"),
-  });
-  const cycleAccent = () => {
-    const current = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
-    const idx = ACCENT_PRESETS.findIndex((c) => c.toLowerCase() === current.toLowerCase());
-    accent.mutate(ACCENT_PRESETS[(idx + 1) % ACCENT_PRESETS.length]!);
-  };
 
-  const switchDefault = useMutation({
-    mutationFn: (provider: ProviderId) => api.put("/api/providers/default", { provider }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: qk.providers }).catch(() => undefined);
-      qc.invalidateQueries({ queryKey: qk.meta }).catch(() => undefined);
-    },
-    onError: (err: Error) => toast(err.message, "danger"),
-  });
+  const openRunRef = useRef<(id: string) => void>(() => undefined);
+  const openSkillFormRef = useRef<(slug: string) => void>(() => undefined);
+  const openWindowRef = useRef<(id: string) => boolean>(() => false);
 
+  /** What running a skill from the desktop leads to: a form, a hold, or a trace. */
+  type RunOutcome = { form: string } | { approvals: true } | { run: string };
   const runSkill = useMutation({
-    mutationFn: async (skill: Skill) => {
-      if (skill.inputs.some((i) => i.required)) return { navigateTo: `/skills/${skill.slug}` };
+    mutationFn: async (skill: Skill): Promise<RunOutcome> => {
+      // A skill that needs inputs gets its form on the stage; one that can
+      // start now starts, and its trace opens as a panel (G3). Neither
+      // leaves the desktop.
+      if (skill.inputs.some((i) => i.required)) return { form: skill.slug };
       const res = await api.post<LaunchRunResponse>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, {
         inputs: {},
       });
-      if (res.status === "waiting_approval" || !res.runId) {
+      const runId = res.runId;
+      if (res.status === "waiting_approval" || !runId) {
         toast(t("runs.approvalPending"), "info");
-        return { navigateTo: "/settings?tab=security" };
+        return { approvals: true };
       }
       toast(`▶ /${skill.slug}`, "ok");
-      return { navigateTo: `/runs/${res.runId}` };
+      return { run: runId };
     },
-    onSuccess: ({ navigateTo }) => navigate(navigateTo),
+    onSuccess: (out) => {
+      if ("form" in out) openSkillFormRef.current(out.form);
+      else if ("approvals" in out) openWindowRef.current("approvals");
+      else openRunRef.current(out.run);
+    },
     onError: (err: Error) => toast(err.message, "danger"),
   });
 
+  /**
+   * Switching space is one write: the arrangement being left is saved into
+   * its space and the target's comes back. Done here, not in the dock,
+   * because the live layout includes a drag the debounce has not persisted.
+   */
+  const saveSpaces = useMutation({
+    mutationFn: (patch: { spaces: SpaceMap; activeSpace: string; dashboardLayout: WindowMap }) =>
+      api.put("/api/settings", patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.settings }).catch(() => undefined);
+    },
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
+  const saveSpacesRef = useRef(saveSpaces.mutate);
+  saveSpacesRef.current = saveSpaces.mutate;
+  /**
+   * The spaces map, held locally as well as in settings. Two switches in a
+   * row happen faster than the settings query refetches, and reading the
+   * stale copy would recreate the space you just left from the defaults —
+   * losing the arrangement the switch was supposed to save.
+   */
+  const spacesRef = useRef<{ spaces: SpaceMap; active: string }>({ spaces: {}, active: DEFAULT_SPACE });
+  useEffect(() => {
+    if (!settings.data) return;
+    spacesRef.current = {
+      spaces: (settings.data.spaces as SpaceMap | undefined) ?? {},
+      active: settings.data.activeSpace ?? DEFAULT_SPACE,
+    };
+  }, [settings.data]);
+  const switchRef = useRef<(next: string) => void>(() => undefined);
+  switchRef.current = (next: string) => {
+    const { spaces, active } = spacesRef.current;
+    const out = switchSpace(spaces, active, layout, next, defaultWindows(stage));
+    if (out.activeSpace === active && out.layout === layout) return;
+    spacesRef.current = { spaces: out.spaces, active: out.activeSpace };
+    // A different desktop: nothing from the old one stays expanded over it.
+    setExpandedId(null);
+    setOverview(false);
+    commit(out.layout);
+    saveSpacesRef.current({
+      spaces: out.spaces,
+      activeSpace: out.activeSpace,
+      dashboardLayout: out.layout,
+    });
+  };
+  useEffect(() => {
+    const onSwitch = (e: Event) => {
+      takePendingSpace();
+      switchRef.current((e as CustomEvent<string>).detail);
+    };
+    window.addEventListener(SWITCH_SPACE_EVENT, onSwitch);
+    return () => window.removeEventListener(SWITCH_SPACE_EVENT, onSwitch);
+  }, []);
+  // A switch asked for from another app, before this desktop existed.
+  const ready = settings.data !== undefined && metrics !== null;
+  useEffect(() => {
+    if (!ready) return;
+    const pending = takePendingSpace();
+    if (pending) switchRef.current(pending);
+  }, [ready]);
+
   const resetLayout = async () => {
-    if (await confirm({ title: t("os.resetLayout"), body: t("os.resetLayoutBody") })) commit(DEFAULT_LAYOUT);
+    if (await confirm({ title: t("os.resetLayout"), body: t("os.resetLayoutBody") }))
+      commit(defaultWindows(stage));
   };
 
   /* ---- modes ------------------------------------------------------------ */
@@ -246,21 +280,61 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
     setSearching(false);
     setQuery("");
     setDebounced("");
-    setDetail(null);
   }, []);
 
   useEffect(() => {
-    const onToggleEdit = () => {
-      setWorkspaceMode("overview");
-      setEditMode((v) => !v);
+    const onReset = () => void resetLayout();
+    const onOpenDeck = () => setDeckOpen(true);
+    window.addEventListener(RESET_LAYOUT_EVENT, onReset);
+    window.addEventListener(OPEN_DECK_EVENT, onOpenDeck);
+    return () => {
+      window.removeEventListener(RESET_LAYOUT_EVENT, onReset);
+      window.removeEventListener(OPEN_DECK_EVENT, onOpenDeck);
     };
-    window.addEventListener(TOGGLE_EDIT_EVENT, onToggleEdit);
-    return () => window.removeEventListener(TOGGLE_EDIT_EVENT, onToggleEdit);
-  }, [setWorkspaceMode]);
+    // `resetLayout` closes over the live layout and the confirm hook; the
+    // listener reads the latest through the render it was registered in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // The dock asks for a mode (G5); the desktop owns it and tells the dock
+  // what is on, so the dock's buttons can show pressed.
+  const tileRef = useRef(() => undefined as void);
+  tileRef.current = () => commit(tile(layout, stage));
+  useEffect(() => {
+    const onAction = (e: Event) => {
+      const action = (e as CustomEvent<DesktopAction>).detail;
+      if (action === "overview") setOverview((v) => !v);
+      else if (action === "hud") setEditingHud((v) => !v);
+      else if (action === "tile") tileRef.current();
+    };
+    window.addEventListener(DESKTOP_ACTION_EVENT, onAction);
+    return () => window.removeEventListener(DESKTOP_ACTION_EVENT, onAction);
+  }, []);
+  useEffect(() => {
+    publishDesktopModes({ overview, editing: editingHud });
+    return () => publishDesktopModes({ overview: false, editing: false });
+  }, [overview, editingHud]);
+  // Escape leaves the HUD edit, like every other mode.
+  useEffect(() => {
+    if (!editingHud) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !(e.target instanceof Element && e.target.closest('[role="dialog"]')))
+        setEditingHud(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editingHud]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.defaultPrevented || document.documentElement.dataset.onboarding) return;
+      // The deck is a command, so unlike the camera and search it keeps a
+      // modifier and works from inside the console too.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        setDeckOpen((v) => !v);
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target instanceof Element ? e.target : null;
       if (el?.closest('[role="dialog"]')) return;
       const editable =
@@ -271,289 +345,489 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
         setSearching(true);
         return;
       }
+      // Tab stays keyboard navigation; the camera gets its own key.
+      if (e.key === "\\" && !editable) {
+        e.preventDefault();
+        setOverview((v) => !v);
+        return;
+      }
+      if (e.key === "Escape" && overview) {
+        e.preventDefault();
+        setOverview(false);
+        return;
+      }
       if (e.key === "Escape" && searching) {
         e.preventDefault();
         e.stopPropagation();
-        if (detail) setDetail(null);
-        else closeSearch();
+        closeSearch();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [searching, detail, closeSearch]);
+  }, [searching, overview, closeSearch]);
 
   /* ---- widgets from the registry --------------------------------------- */
+  /** Document windows on the stage, newest (highest) first. */
+  /**
+   * Every panel on the stage, top of the stack first — what the console can
+   * point the agent at, and what the dock lists. Published to the panel store
+   * as well, because the dock lives outside this route.
+   */
+  const openPanels = useMemo<OpenPanel[]>(() => {
+    const out: OpenPanel[] = [];
+    for (const [id, box] of Object.entries(layout)) {
+      if (!box.visible) continue;
+      const kind = panelKind(id);
+      if (isDocId(id)) {
+        const path = docPath(id);
+        const name = path.split(/[\\/]/).pop() || path;
+        out.push({ id, kind, ref: name, title: name, path, minimized: box.minimized ?? false });
+        continue;
+      }
+      const app = appKindOf(id);
+      if (app) {
+        const def = APPS[app];
+        out.push({ id, kind, ref: t(def.refKey), title: t(def.titleKey), minimized: box.minimized ?? false });
+        continue;
+      }
+      if (isRunPanelId(id)) {
+        const rid = runIdOf(id);
+        const record = (runs.data ?? []).find((r) => r.id === rid);
+        const short = rid.length > 8 ? rid.slice(0, 8) : rid;
+        out.push({
+          id,
+          kind,
+          ref: `run-${short}`,
+          title: runPanelTitle(rid, record?.skillSlug),
+          minimized: box.minimized ?? false,
+          live: record ? isRunActive(record.status) : false,
+        });
+        continue;
+      }
+      if (isFormPanelId(id)) {
+        const slug = formSlugOf(id);
+        out.push({
+          id,
+          kind,
+          ref: slug,
+          title: t("desktop.form.title", { slug }),
+          minimized: box.minimized ?? false,
+        });
+        continue;
+      }
+      const def = widgetDefinition(id);
+      if (!def) continue;
+      out.push({ id, kind, ref: t(def.refKey), title: t(def.titleKey), minimized: box.minimized ?? false });
+    }
+    return out.sort((a, b) => (layout[b.id]?.z ?? 0) - (layout[a.id]?.z ?? 0));
+  }, [layout, t, runs.data]);
+  useEffect(() => {
+    publishPanels(openPanels);
+    return () => publishPanels([]);
+  }, [openPanels]);
+  /** The console only sees what is actually on the stage — and never itself. */
+  const stagePanels = useMemo(() => openPanels.filter((p) => !p.minimized), [openPanels]);
+
+  /**
+   * A pod's window: put it on the stage if it is not there, raise it if it is.
+   * The stage opens clear (F7), so a pod is how most windows arrive — opening
+   * one must not feel like a different gesture from focusing one.
+   */
+  const openWindow = useCallback(
+    (id: string) => {
+      // Read and write the latest layout, not this render's: a pod, a strip
+      // segment or a deep link can fire in the same tick the stored layout
+      // arrives, and building on the boot defaults would erase it.
+      const existing = latest()[id];
+      if (!existing) return false;
+      commit((prev) => {
+        const box = prev[id];
+        if (!box) return prev;
+        if (box.visible && !box.minimized) {
+          // Already on the stage: raising it is the whole answer.
+          return { ...prev, [id]: { ...box, z: topZ(prev) + 1 } };
+        }
+        // Its stored corner was chosen for a different composition and may now
+        // be under the console or under a window opened a moment ago, so a
+        // window arriving from a pod is placed against what is actually open.
+        const spot = placeNew({ w: box.w, h: box.h }, prev, stage);
+        return { ...prev, [id]: { ...box, ...spot, visible: true, minimized: false, z: topZ(prev) + 1 } };
+      });
+      return true;
+    },
+    [latest, commit, stage],
+  );
+
+  /**
+   * An app on the stage. Opening one that is already there raises it and,
+   * when a path was asked for, moves it there; a new one lands where there is
+   * room. The path and query live in the panel's `config`, so a reload or a
+   * space switch brings the app back where it was.
+   */
+  const openApp = useCallback(
+    (kind: AppKind, at?: Partial<AppLocation>) => {
+      const id = appId(kind);
+      const def = APPS[kind];
+      commit((prev) => {
+        const existing = prev[id];
+        const config: Record<string, unknown> = { ...(existing?.config ?? {}) };
+        if (at?.pathname !== undefined) config.path = at.pathname;
+        if (at?.search !== undefined) config.search = at.search;
+        if (existing)
+          return {
+            ...prev,
+            [id]: { ...existing, visible: true, minimized: false, z: topZ(prev) + 1, config },
+          };
+        const spot = placeNew(def.size, prev, stage);
+        // Fitted to the stage it opens on: the default box is a wish, not a
+        // right, and a plate wider than the stage would hang off its edge.
+        const box = clampIntoStage(
+          { ...spot, ...def.size, z: topZ(prev) + 1, visible: true, minimized: false, config },
+          stage,
+          minFor(id),
+        );
+        return { ...prev, [id]: box };
+      });
+    },
+    [commit, stage],
+  );
+  const openAppRef = useRef(openApp);
+  openAppRef.current = openApp;
+
+  /** A panel with a fixed box: on the stage if it is not there, raised if it is. */
+  /**
+   * Open (or raise) a panel that is not in the layout yet — a document, a run's
+   * trace, a skill's form. Derived from the latest committed layout, not this
+   * render's, because these arrive in bursts: a form closing and its run
+   * opening in the same tick, three artifacts landing when a run settles.
+   */
+  const openSized = useCallback(
+    (id: string, size: { w: number; h: number }) => {
+      commit((prev) => {
+        const existing = prev[id];
+        if (existing)
+          return { ...prev, [id]: { ...existing, visible: true, minimized: false, z: topZ(prev) + 1 } };
+        const spot = placeNew(size, prev, stage);
+        return {
+          ...prev,
+          [id]: clampIntoStage(
+            { ...spot, ...size, z: topZ(prev) + 1, visible: true, minimized: false },
+            stage,
+            minFor(id),
+          ),
+        };
+      });
+    },
+    [commit, stage],
+  );
+  const openDoc = useCallback((path: string) => openSized(docId(path), DOC_BOX), [openSized]);
+  const openRun = useCallback((runId: string) => openSized(runPanelId(runId), RUN_BOX), [openSized]);
+  const openSkillForm = useCallback((slug: string) => openSized(formPanelId(slug), FORM_BOX), [openSized]);
+  openRunRef.current = openRun;
+  openSkillFormRef.current = openSkillForm;
+  /** A form is done once its run is off: it closes itself. */
+  const closePanel = useCallback(
+    (id: string) => {
+      commit((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id]!, visible: false } } : prev));
+    },
+    [commit],
+  );
+
+  /**
+   * Deep links (G2): the app routes still exist — notifications, the palette,
+   * every `Link` inside an app — but they open the app as a panel and hand the
+   * URL back to the desktop. The desktop stays mounted through it (App renders
+   * it for every app route), so nothing re-materialises.
+   */
+  const location = useLocation();
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  // The bounce is a plain router navigation on purpose: the link that got us
+  // here may itself be mid view-transition (`useOsNavigate`), and starting a
+  // second transition inside the first one's update callback freezes the
+  // document — the palette and the run list both hung on exactly that.
+  const routerNavigate = useRouterNavigate();
+  // A deep link on a cold load has to wait for the stored layout: opening a
+  // panel over the boot defaults and persisting that would erase every panel
+  // the user had on the stage.
+  const layoutReady = settings.data !== undefined;
+  useEffect(() => {
+    if (!layoutReady) return;
+    // A run's own route opens its trace panel, not the Runs app: that is
+    // what every "open run" link in the OS means now (G3).
+    const runMatch = /^\/runs\/([^/]+)$/.exec(location.pathname);
+    if (runMatch) {
+      openRunRef.current(decodeURIComponent(runMatch[1]!));
+      routerNavigate("/", { replace: true });
+      return;
+    }
+    const def = appForPath(location.pathname);
+    if (!def) return;
+    // A bare link to an app that is already open at that path ("Second
+    // Brain" in the dock, again) is a request to see it, not to reset it:
+    // its query — the brain's selection and zoom — is left alone. A deeper
+    // path or an explicit query is a request to go there.
+    // Read from the latest layout, not this render's: on a cold load the
+    // render's layout is still the boot default, which has no app entry and
+    // would make every bare link look like "the same path".
+    const current = appLocationOf(def, latest()[appId(def.kind)]?.config);
+    const same = current.pathname === location.pathname && location.search === "";
+    openAppRef.current(def.kind, same ? undefined : { pathname: location.pathname, search: location.search });
+    routerNavigate("/", { replace: true });
+  }, [layoutReady, location.pathname, location.search, routerNavigate, latest]);
+
+  /** Move an app panel to a path or query inside it (the view asked, via its route hooks). */
+  const setAppLocation = useCallback(
+    (id: string, next: Partial<AppLocation>) => {
+      // On the latest layout: a view writes its location from inside an
+      // effect, often in the same tick as another commit.
+      commit((prev) => {
+        const box = prev[id];
+        if (!box) return prev;
+        const config: Record<string, unknown> = { ...(box.config ?? {}) };
+        if (next.pathname !== undefined) config.path = next.pathname;
+        if (next.search !== undefined) config.search = next.search;
+        return { ...prev, [id]: { ...box, config } };
+      });
+    },
+    [commit],
+  );
+
+  /** Append `@name` to the console draft and put the caret back in it. */
+  const referencePanel = useCallback(
+    (id: string) => {
+      const panel = openPanels.find((p) => p.id === id);
+      if (!panel) return;
+      const draft = readConsoleDraft();
+      const text = draft.text.trimEnd();
+      storeConsoleDraft({ ...draft, text: `${text ? `${text} ` : ""}@${panel.ref} ` });
+      window.dispatchEvent(new CustomEvent(CONSOLE_DRAFT_EVENT));
+    },
+    [openPanels],
+  );
+
+  openWindowRef.current = openWindow;
+
+  /** The dock's task buttons: focus, park, restore — the same layout, edited here. */
+  useEffect(() => {
+    const onAction = (e: Event) => {
+      const { id, action } = (e as CustomEvent<{ id: string; action: PanelAction }>).detail;
+      const box = layout[id];
+      if (!box) return;
+      if (action === "minimize") commit({ ...layout, [id]: { ...box, minimized: true } });
+      else commit({ ...layout, [id]: { ...box, visible: true, minimized: false, z: topZ(layout) + 1 } });
+    };
+    const onOpenPanel = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      const box = layout[id];
+      if (!box) return;
+      const spot = box.visible && !box.minimized ? {} : placeNew({ w: box.w, h: box.h }, layout, stage);
+      commit({ ...layout, [id]: { ...box, ...spot, visible: true, minimized: false, z: topZ(layout) + 1 } });
+    };
+    window.addEventListener(PANEL_ACTION_EVENT, onAction);
+    window.addEventListener(OPEN_PANEL_EVENT, onOpenPanel);
+    return () => {
+      window.removeEventListener(PANEL_ACTION_EVENT, onAction);
+      window.removeEventListener(OPEN_PANEL_EVENT, onOpenPanel);
+    };
+  }, [layout, commit, stage]);
+
   const actions = useMemo<DesktopActions>(
     () => ({
       runSkill: (skill) => runSkill.mutate(skill),
       configureSkill: (skill, anchor) => setDeckPopover({ skill, anchor }),
       focusDeck: () => document.querySelector<HTMLElement>(".deck-card .btn")?.focus(),
       runningSkills,
+      openPanels: stagePanels,
+      openDoc,
+      openApp,
+      openRun,
+      openSkillForm,
+      openPanel: (id) => {
+        openWindow(id);
+      },
+      referencePanel,
     }),
-    [runSkill, runningSkills],
+    [
+      runSkill,
+      runningSkills,
+      stagePanels,
+      openDoc,
+      openApp,
+      openRun,
+      openSkillForm,
+      openWindow,
+      referencePanel,
+    ],
   );
 
   const widgets = useMemo(() => {
     const out: Record<string, WidgetSpec> = {};
     for (const id of Object.keys(layout)) {
+      if (isDocId(id)) {
+        const path = docPath(id);
+        out[id] = {
+          title: path.split(/[\\/]/).pop() || path,
+          refName: path.split(/[\\/]/).pop() || path,
+          icon: <FileText aria-hidden />,
+          expandable: true,
+          surfaceMin: { w: 460, h: 340 },
+          node: <DocWindow instanceId={id} />,
+        };
+        continue;
+      }
+      if (isRunPanelId(id)) {
+        const rid = runIdOf(id);
+        const record = (runs.data ?? []).find((r) => r.id === rid);
+        out[id] = {
+          title: runPanelTitle(rid, record?.skillSlug),
+          refName: `run-${rid.length > 8 ? rid.slice(0, 8) : rid}`,
+          expandable: true,
+          surfaceMin: { w: 720, h: 520 },
+          node: <RunPanel runId={rid} />,
+        };
+        continue;
+      }
+      if (isFormPanelId(id)) {
+        const slug = formSlugOf(id);
+        out[id] = {
+          title: t("desktop.form.title", { slug }),
+          refName: slug,
+          expandable: false,
+          node: <SkillInputsPanel slug={slug} onDone={() => closePanel(id)} />,
+        };
+        continue;
+      }
+      const app = appKindOf(id);
+      if (app) {
+        const def = APPS[app];
+        const Icon = def.Icon;
+        out[id] = {
+          title: t(def.titleKey),
+          refName: t(def.refKey),
+          icon: <Icon aria-hidden />,
+          expandable: true,
+          surfaceMin: { w: 760, h: 540 },
+          node: (
+            <AppPanel
+              kind={app}
+              location={appLocationOf(def, layout[id]!.config)}
+              onLocation={(next) => setAppLocation(id, next)}
+              onMetaChanged={onMetaChanged}
+            />
+          ),
+        };
+        continue;
+      }
       const def = widgetDefinition(id);
       if (!def) continue;
-      const box = layout[id]!;
-      const config = { ...defaultConfig(def), ...(box.config ?? {}) };
       const Component = def.Component;
       out[id] = {
         title: t(def.titleKey),
+        refName: t(def.refKey),
         icon: def.icon,
-        configurable: (def.configSchema?.length ?? 0) > 0,
-        node: <Component instanceId={id} config={config} editing={editMode} />,
+        expandable: hasSurface(def),
+        surfaceMin: def.surfaceMin,
+        node: <Component instanceId={id} />,
       };
     }
     return out;
-  }, [layout, t, editMode]);
-
-  const setConfig = (id: string, next: WidgetConfig | undefined) => {
-    const box = layout[id];
-    if (!box) return;
-    const updated = { ...box };
-    if (next) updated.config = next;
-    else delete updated.config;
-    commit({ ...layout, [id]: updated });
-  };
+  }, [layout, t, setAppLocation, onMetaChanged, runs.data, closePanel]);
 
   const activeProvider = providers.data?.find((p) => p.isDefault);
-  const defaultProvider = activeProvider?.id ?? t("common.loading");
-  const configDef = configFor ? widgetDefinition(configFor.id) : undefined;
+  const consoleNode = (
+    <Console
+      busy={activeRuns > 0}
+      deckOpen={deckOpen}
+      onToggleDeck={(open) => setDeckOpen((v) => open ?? !v)}
+      stacked={Boolean(metrics?.stacked)}
+    />
+  );
 
   return (
     <DesktopActionsProvider value={actions}>
       <div
-        className={`desktop${editMode ? " edit-mode" : ""}${searching ? " searching" : ""}`}
-        data-depth={detail ? "pushed" : undefined}
+        className={`desktop${searching ? " searching" : ""}${editingHud ? " editing" : ""}`}
         data-core={coreState}
-        style={
-          focus
-            ? ({
-                "--core-x": `${focus.cx}px`,
-                "--core-y": `${focus.cy}px`,
-                "--core-ry": `${focus.ry}px`,
-              } as React.CSSProperties)
-            : undefined
-        }
       >
-        <Wallpaper
-          chips={chips}
-          nodes={nodes}
-          activeRuns={executingRuns}
-          runLabels={runLabels}
-          dimmed={!searching && workspaceMode !== "explore"}
-          searching={searching}
-          matched={matched}
-          revealLabels={revealLabels}
-          coreState={coreState}
-          focus={focus}
-          onOpenBrain={() => navigate("/brain")}
-          onChipActivate={(chip) => {
-            if (searching) setDetail(chip);
-            else if (chip.runId) navigate(`/runs/${chip.runId}`);
-            else navigate("/brain");
-          }}
-        />
+        {!metrics?.stacked && <LivingField onOpenFile={(path) => openDoc(path)} />}
+        <AgentPresence />
+        {!metrics?.stacked && <FirstRunHint />}
+        <SkillDeck open={deckOpen} onClose={() => setDeckOpen(false)} />
 
-        {workspaceMode === "explore" && (
-          <div className="explore-intro">
-            <span className="hud-label accent">{t("desktop.explore.eyebrow")}</span>
-            <h1>{t("desktop.explore.title")}</h1>
-            <p>{t("desktop.explore.body")}</p>
-            <Button variant="primary" onClick={() => navigate("/brain")}>
-              {t("desktop.explore.open")} →
-            </Button>
-          </div>
-        )}
         <div className="depth-layer desktop-depth">
-          <HudTelemetry activeRuns={activeRuns} />
+          {!metrics?.stacked && (
+            <DesktopPods
+              hud={hud}
+              signals={signals}
+              editing={editingHud}
+              onHudChange={saveHud}
+              onOpenApp={(kind) => openApp(kind)}
+              onExpand={(id) => {
+                // A pod only opens what the layout actually holds; otherwise it
+                // would promise a panel that has no body to render.
+                if (!openWindow(id)) navigate("/settings");
+              }}
+            />
+          )}
           <WidgetLayer
             layout={layout}
-            workspaceMode={workspaceMode}
             widgets={widgets}
-            editMode={editMode}
             onLayoutChange={commit}
             onMetrics={setMetrics}
-            onConfigure={(id, anchor) => setConfigFor({ id, anchor })}
+            expandedId={expandedId}
+            onExpandedChange={setExpandedId}
+            overview={overview}
+            onOverviewChange={setOverview}
+            onReference={referencePanel}
+            tetherTo={activeRefs}
+            // On a narrow stage the console flows first in the column; on
+            // the desk it is the fixed plate below (G4).
+            stackedLead={metrics?.stacked ? consoleNode : undefined}
           />
         </div>
+        {!metrics?.stacked && consoleNode}
 
-        <div className="os-topbar">
-          <div className="side">
-            <span
-              className={`dot ${activeProvider?.health.ok ? "ok" : activeProvider?.health.installed ? "warn" : "dim"}`}
-              aria-hidden
-            />
-            <span className="hud-label">
-              {t("dash.activeProvider")}: <span className="accent-text">{defaultProvider}</span>
-              {" · "}
-              <span className="core-state-label">{t(`desktop.core.${coreState}`)}</span>
-            </span>
-          </div>
-          <div className="os-brand">
-            <div className="line1">
-              <span className="brand-mark" aria-hidden>
-                {meta.name.charAt(0).toUpperCase()}
-              </span>
-              <span className="name">
-                <span className="accent">{meta.name.replace(/\s*os$/i, "")}</span>{" "}
-                <span style={{ fontWeight: 400 }}>{t("dash.brand")}</span>
-              </span>
-            </div>
-            <div className="byline">{t("dash.brainSub")}</div>
-            <div className="os-tools">
-              <Tool
-                active={editMode}
-                label={t("os.edit")}
-                onClick={() => {
-                  setWorkspaceMode("overview");
-                  setEditMode((v) => !v);
-                }}
-              >
-                <Pencil aria-hidden />
-              </Tool>
-              <Tool
-                active={searching}
-                label={t("desktop.search.open")}
-                onClick={() => (searching ? closeSearch() : setSearching(true))}
-              >
-                <Search aria-hidden />
-              </Tool>
-              <Tool
-                active={revealLabels}
-                label={revealLabels ? t("desktop.ring.labelsOff") : t("desktop.ring.labels")}
-                onClick={() => setRevealLabels((v) => !v)}
-              >
-                <Tag aria-hidden />
-              </Tool>
-              <Tool
-                label={`${t("os.menu")} (⌘K)`}
-                onClick={() => window.dispatchEvent(new CustomEvent(LAUNCHER_EVENT))}
-              >
-                <LayoutGrid aria-hidden />
-              </Tool>
-              <Tool label={t("settings.accent")} onClick={cycleAccent}>
-                <Palette aria-hidden />
-              </Tool>
-              <Tool label={t("nav.settings")} onClick={() => navigate("/settings")}>
-                <Info aria-hidden />
-              </Tool>
-            </div>
-          </div>
-          <div className="side right">
-            <button
-              type="button"
-              className={`os-tool bell${notifications.unread > 0 ? " has-unread" : ""}`}
-              aria-label={
-                notifications.unread > 0
-                  ? t("desktop.inbox.bell", { n: notifications.unread })
-                  : t("desktop.inbox.bellEmpty")
-              }
-              title={t("desktop.inbox.title")}
-              aria-expanded={bellAnchor !== null}
-              onClick={(e) => {
-                // Read the anchor now: a batched updater runs after the synthetic event is released.
-                const anchor = e.currentTarget;
-                setBellAnchor((prev) => (prev ? null : anchor));
-              }}
-            >
-              <Bell aria-hidden />
-              {notifications.unread > 0 && (
-                <span className="bell-count">{Math.min(99, notifications.unread)}</span>
-              )}
-            </button>
-            <div className="segmented sm" role="group" aria-label={t("dash.providers")}>
-              {(providers.data ?? []).map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={p.isDefault ? "active" : ""}
-                  disabled={!p.enabled || switchDefault.isPending}
-                  onClick={() => !p.isDefault && p.enabled && switchDefault.mutate(p.id)}
-                  title={p.enabled ? p.id : t("common.disabled")}
-                  aria-pressed={p.isDefault}
-                >
-                  <span
-                    className={`dot ${p.enabled ? (p.health.ok ? "ok" : p.health.installed ? "warn" : "danger") : "dim"}`}
-                    style={{ marginRight: 5 }}
-                  />
-                  {p.id}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+        <AmbientStrip
+          meta={meta}
+          provider={activeProvider}
+          coreState={coreState}
+          signals={signals}
+          unread={notifications.unread}
+          bellOpen={bellAnchor !== null}
+          onBell={(anchor) => setBellAnchor((prev) => (prev ? null : anchor))}
+          onOpenProvider={() => openApp("settings", { pathname: "/settings", search: "?tab=providers" })}
+          onOpenCost={() => openWindow("cost")}
+          onOpenRuns={() => openApp("runs")}
+          onOpenAttention={() => openWindow("attention")}
+        />
 
         {searching && (
-          <SearchBar query={query} matches={matched.size} onQuery={setQuery} onClose={closeSearch} />
+          <SearchBar
+            query={query}
+            matches={hits.length}
+            hits={hits}
+            onQuery={setQuery}
+            onPick={(hit) => {
+              // Search lands the file on the stage, where it can be referenced,
+              // instead of only showing a preview that closes with the modal.
+              openDoc(hit.path);
+              closeSearch();
+            }}
+            onClose={closeSearch}
+          />
         )}
 
-        {(editMode || conflict) && (
-          <div className="edit-bar enter-fade-up" role="toolbar" aria-label={t("os.edit")}>
-            {conflict && (
-              <>
-                <span role="alert">{t("os.layoutConflict")}</span>
-                <Button size="sm" disabled={saving} onClick={() => void resolveConflict(false)}>
-                  {t("os.layoutUseServer")}
-                </Button>
-                <Button size="sm" disabled={saving} onClick={() => void resolveConflict(true)}>
-                  {t("os.layoutKeepMine")}
-                </Button>
-              </>
-            )}
-            <span className="hud-label">{t("os.editHint")}</span>
-            <Button size="sm" onClick={() => setPresetsOpen(true)}>
-              {t("os.layoutPresets")}
+        {conflict && (
+          <div className="edit-bar enter-fade-up" role="toolbar" aria-label={t("os.layoutConflict")}>
+            <span role="alert">{t("os.layoutConflict")}</span>
+            <Button size="sm" disabled={saving} onClick={() => void resolveConflict(false)}>
+              {t("os.layoutUseServer")}
             </Button>
-            <Button
-              ref={addButtonRef}
-              size="sm"
-              variant="outline"
-              icon={<Plus aria-hidden />}
-              onClick={() => setAddAnchor(addButtonRef.current)}
-            >
-              {t("desktop.add.title")}
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon={<Grid2x2 aria-hidden />}
-              onClick={() => void resetLayout()}
-            >
-              {t("os.resetLayout")}
-            </Button>
-            <Button size="sm" variant="primary" loading={saving} onClick={() => setEditMode(false)}>
-              {t("os.done")}
+            <Button size="sm" disabled={saving} onClick={() => void resolveConflict(true)}>
+              {t("os.layoutKeepMine")}
             </Button>
           </div>
-        )}
-
-        {presetsOpen && (
-          <LayoutPresets layout={layout} rows={rows} onApply={commit} onClose={() => setPresetsOpen(false)} />
-        )}
-        {addAnchor && (
-          <AddWidgetGallery
-            layout={layout}
-            rows={rows}
-            anchor={addAnchor}
-            onAdd={(next: LayoutMap) => commit(next)}
-            onClose={() => setAddAnchor(null)}
-          />
-        )}
-
-        {configFor && configDef && (
-          <WidgetConfigPopover
-            definition={configDef}
-            title={t(configDef.titleKey as TKey)}
-            config={layout[configFor.id]?.config}
-            anchor={configFor.anchor}
-            onChange={(next) => setConfig(configFor.id, next)}
-            onClose={() => setConfigFor(null)}
-          />
         )}
 
         {bellAnchor && (
@@ -579,14 +853,6 @@ export default function Desktop({ meta, onMetaChanged }: { meta: Meta; onMetaCha
             onSaved={() => {
               qc.invalidateQueries({ queryKey: qk.skills }).catch(() => undefined);
             }}
-          />
-        )}
-
-        {detail && (
-          <ArtifactModal
-            chip={detail}
-            onClose={() => setDetail(null)}
-            onOpenRun={(runId) => navigate(`/runs/${runId}`)}
           />
         )}
       </div>
@@ -686,31 +952,6 @@ export function useCoreState(runs: ReadonlyArray<{ status: string }>): CoreState
   if (listening) return "listening";
   if (override && override.until > Date.now()) return override.state;
   return baseCoreState(runs);
-}
-
-function Tool({
-  children,
-  label,
-  active,
-  onClick,
-}: {
-  children: ReactNode;
-  label: string;
-  active?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={`os-tool${active ? " active" : ""}`}
-      onClick={onClick}
-      aria-pressed={active}
-      aria-label={label}
-      title={label}
-    >
-      {children}
-    </button>
-  );
 }
 
 /** Registry ids, for tests and for the command palette. */

@@ -1,3 +1,4 @@
+import { openOnboarding } from "../onboarding/state";
 import { errorMessage } from "../views/shared";
 /**
  * Command palette (analysis item 20): the launcher grown into a cmdk-like
@@ -13,6 +14,7 @@ import { errorMessage } from "../views/shared";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -23,6 +25,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import {
+  Activity,
   Archive,
   ArrowDown,
   ArrowLeft,
@@ -62,7 +65,9 @@ import {
   type RunRecord,
   type Skill,
 } from "../api";
+import { requestDesktopAction } from "../desktop/desktopModes";
 import { useT, type TKey } from "../i18n";
+import { localizeSkill } from "../views/Skills/localize";
 import { qk, useApiQuery, useOsProviders, useOsRuns, useOsSkills } from "../queries";
 import { PRESETS, applyAccentTokens, applyPreset, type PresetId } from "../theme";
 import { useOsNavigate } from "../hooks/useViewTransition";
@@ -73,8 +78,13 @@ import { DialogPortal, useDialog } from "./dialog";
 import { rankItems } from "./paletteMatch";
 import { useI18nLang } from "./paletteLang";
 
-/** Fired by the palette's "Toggle edit mode" action; the desktop listens and toggles its edit mode. */
-export const TOGGLE_EDIT_EVENT = "mordomo:toggle-edit";
+/** Fired by the palette's "Reset layout" action; the desktop listens and offers the default composition. */
+export const RESET_LAYOUT_EVENT = "mordomo:reset-layout";
+
+/** Fired by the palette's "Skill deck" action; the desktop fans the radial deck out. */
+export const OPEN_DECK_EVENT = "mordomo:open-deck";
+/** Fired by the palette to put a registered instrument panel on the stage (`detail` = its id). */
+export const OPEN_PANEL_EVENT = "mordomo:open-panel";
 
 /** `detail` of the LAUNCHER_EVENT CustomEvent: open with a query or straight on a skill's run page. */
 export interface PaletteOpenDetail {
@@ -148,6 +158,12 @@ export function CommandPalette({
   const { notify } = useNotifications();
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Focus on mount, synchronously: the dialog's own initial focus lands a
+  // frame later, and keys typed in that frame went to whatever panel had
+  // focus behind the palette (G2 put live apps there).
+  useLayoutEffect(() => {
+    inputRef.current?.focus();
+  }, []);
   const [query, setQuery] = useState(initial?.query ?? "");
   const [selected, setSelected] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
@@ -286,6 +302,16 @@ export function CommandPalette({
     });
     return [
       act(
+        "onboarding",
+        "shell.action.onboarding",
+        <Sparkles aria-hidden />,
+        ["tour", "guide", "onboarding", "guia", "ajuda", "help", "tutorial"],
+        () => {
+          close();
+          openOnboarding();
+        },
+      ),
+      act(
         "reindex",
         "shell.action.reindex",
         <RefreshCw aria-hidden />,
@@ -339,12 +365,62 @@ export function CommandPalette({
         go("/skills?new=1", el),
       ),
       act(
-        "toggle-edit",
-        "shell.action.toggleEdit",
-        <Pencil aria-hidden />,
-        ["edit", "layout", "widgets", "editar"],
+        "now",
+        "now.title",
+        <Activity aria-hidden />,
+        ["now", "objective", "objetivo", "agora", "steps"],
         () => {
-          const fire = () => window.dispatchEvent(new Event(TOGGLE_EDIT_EVENT));
+          const fire = () => window.dispatchEvent(new CustomEvent(OPEN_PANEL_EVENT, { detail: "now" }));
+          if (pathname === "/") {
+            fire();
+            close();
+          } else {
+            go("/");
+            requestAnimationFrame(() => requestAnimationFrame(fire));
+          }
+        },
+      ),
+      act(
+        "skill-deck",
+        "desktop.deck.open",
+        <Sparkles aria-hidden />,
+        ["skill", "deck", "run", "executar", "radial"],
+        () => {
+          // The deck only exists on the desktop, so the action has to land
+          // there first — same two-frame handoff as edit mode.
+          const fire = () => window.dispatchEvent(new Event(OPEN_DECK_EVENT));
+          if (pathname === "/") {
+            fire();
+            close();
+          } else {
+            go("/");
+            requestAnimationFrame(() => requestAnimationFrame(fire));
+          }
+        },
+      ),
+      act(
+        "edit-hud",
+        "desktop.dock.editHud",
+        <Pencil aria-hidden />,
+        ["hud", "pods", "arc", "arco", "editar", "edit", "instrument"],
+        () => {
+          const fire = () => requestDesktopAction("hud");
+          if (pathname === "/") {
+            fire();
+            close();
+          } else {
+            go("/");
+            requestAnimationFrame(() => requestAnimationFrame(fire));
+          }
+        },
+      ),
+      act(
+        "reset-layout",
+        "os.resetLayout",
+        <Pencil aria-hidden />,
+        ["layout", "reset", "restaurar", "composição", "desktop"],
+        () => {
+          const fire = () => window.dispatchEvent(new Event(RESET_LAYOUT_EVENT));
           if (pathname === "/") {
             fire();
             close();
@@ -418,29 +494,32 @@ export function CommandPalette({
     () =>
       (skills.data ?? [])
         .filter((s) => s.enabled)
-        .map((s) => ({
-          id: `skill:${s.slug}`,
-          section: "skills" as const,
-          label: s.name,
-          sub: `/${s.slug}${s.description ? ` · ${s.description}` : ""}`,
-          icon: <Sparkles aria-hidden />,
-          keywords: [s.slug, s.description, ...s.triggers],
-          right: (
-            <span className="pr-badges">
-              {s.inputs.some((i) => i.required) && (
-                <Badge kind="meta">{t("shell.palette.needsInputs")}</Badge>
-              )}
-              <Badge kind="meta" tone={s.mode === "write" ? "warn" : "ok"}>
-                {t(s.mode === "write" ? "skills.mode.write" : "skills.mode.read_only")}
-              </Badge>
-              <ChevronRight aria-hidden className="pr-chevron" />
-            </span>
-          ),
-          primary: (el) => go(`/skills/${encodeURIComponent(s.slug)}`, el),
-          secondary: () => void runAction(`skill:${s.slug}`, `/${s.slug}`, () => launchSkill(s), false),
-          nested: () => setPage({ kind: "run", skill: s }),
-        })),
-    [skills.data, t, go, runAction, launchSkill],
+        .map((s): Row => {
+          const loc = localizeSkill(s, lang);
+          return {
+            id: `skill:${s.slug}`,
+            section: "skills" as const,
+            label: loc.name,
+            sub: `/${s.slug}${loc.description ? ` · ${loc.description}` : ""}`,
+            icon: <Sparkles aria-hidden />,
+            keywords: [s.slug, s.name, s.description, loc.name, loc.description, ...s.triggers],
+            right: (
+              <span className="pr-badges">
+                {s.inputs.some((i) => i.required) && (
+                  <Badge kind="meta">{t("shell.palette.needsInputs")}</Badge>
+                )}
+                <Badge kind="meta" tone={s.mode === "write" ? "warn" : "ok"}>
+                  {t(s.mode === "write" ? "skills.mode.write" : "skills.mode.read_only")}
+                </Badge>
+                <ChevronRight aria-hidden className="pr-chevron" />
+              </span>
+            ),
+            primary: (el) => go(`/skills/${encodeURIComponent(s.slug)}`, el),
+            secondary: () => void runAction(`skill:${s.slug}`, `/${s.slug}`, () => launchSkill(s), false),
+            nested: () => setPage({ kind: "run", skill: s }),
+          };
+        }),
+    [skills.data, t, lang, go, runAction, launchSkill],
   );
 
   /* ---------- files (debounced server search) ---------- */

@@ -1,5 +1,66 @@
 # Changelog
 
+## Unreleased
+
+- **Packaged distributable** (`npm run dist`, `scripts/package.mjs`): one
+  minified bundle for the API + CLI, the SQLite addon, the built Command
+  Centre, seed data and an official Node.js runtime, with double-click
+  launchers (`MordomoOS.app`, `MordomoOS`, `MordomoOS.cmd`) and a CLI shim.
+  A packaged install keeps its data in the per-user application folder and
+  seeds skills/routines/connectors on first run.
+- **Setup in the browser**: the providers step shows each CLI's version and
+  login state, the install or login command with a copy button, and a
+  *Detect again* action; the terminal setup is offered as an alternative.
+- **Provider discovery beyond PATH**: `claude`, `cursor-agent` and `codex`
+  are looked up in the usual install folders (native installers, Homebrew,
+  npm/pnpm/bun/yarn prefixes, fnm/nvm/volta/asdf/n, Windows npm/nvm/fnm) so a
+  login service with a bare PATH still sees them; child processes get the
+  same folders appended to PATH.
+- **CLI**: `mordomo launch` (start if needed, open the browser), `mordomo
+  restart` (also under launchd/systemd/Task Scheduler), `status` reports a
+  MordomoOS answering on the port without a pidfile in this home.
+- **Boot recovery**: hashed assets are resolved at request time (a service
+  older than the UI build no longer answers HTML for JavaScript), missing
+  assets are uncached 404s, the service worker refuses to cache HTML as a
+  script, and the boot screen offers *Reload* as soon as the entry bundle
+  fails.
+- **Interactive OS guide** (onboarding): a 12-stop tour through the real
+  apps with a safe practice draft handed to the console at the end;
+  reopened from Settings or the command palette.
+- Setup scripts require Node.js ≥ 22 (as `engines` and `doctor` already did).
+- **Release pipeline** (manual only, nothing runs in CI on its own):
+  `release.yml` packages macOS/Linux/Windows when triggered from the
+  Actions tab, smoke-tests each archive and drafts a GitHub release with
+  checksums; Developer ID signing and notarization (`--sign`, `--notarize`)
+  verified locally. `ci.yml` is on demand as well.
+- **Settings › Identity**: version, packaged/source, data folder and pid;
+  opt-in release check (`updates.check`, `GET /api/updates`,
+  `GET /api/system/info`). **Settings › Providers**: editable binary path.
+  **Settings › Diagnostics**: export a redacted diagnostics JSON.
+- Cursor: when the editor is installed but `cursor-agent` is not, the hint
+  says so instead of "not found".
+- Route chunks reload the page once after an update instead of failing with
+  "Failed to fetch dynamically imported module".
+- E2E: a fresh home configured entirely from the browser (setup wizard).
+- **Native macOS app**: `MordomoOS.app` is a WKWebView window compiled from
+  `scripts/macos-app/main.swift` (no Electron, ~170 KB). It starts the
+  service through the bundled CLI, shows the Command Centre in its own
+  window, opens external links in the browser, grants the microphone to the
+  console, and offers *Quit* (service keeps running) or *Stop the background
+  service and quit*. `--snapshot` renders the window to a PNG for build
+  checks. Linux and Windows keep the browser launcher.
+- **Configure the AI first**: when every enabled provider is definitely
+  unable to run (not installed, or the CLI refuses its login) the OS opens
+  with a "Connect your AI first" screen (install/login command, Detect again,
+  Check again, Continue anyway) before the tour; the top bar says *login
+  required* instead of *ready*; the console refuses to start a run for such a
+  provider and shows the login command instead of a failed run; the setup
+  wizard warns when nothing is signed in yet.
+- **Desktop layout**: the grid stacks into one scrollable column when the
+  window is narrower than 1024 px or too short for readable rows (widgets no
+  longer overflow onto their neighbours in a small window); widget content
+  scrolls inside its box.
+
 ## 0.8.0 — 2026-09-05
 
 The ten follow-ups proposed after the plan closed, in the order they were

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { defineConfig, devices } from "@playwright/test";
+import { returningUserState } from "./returning-user";
 
 const PORT = Number(process.env.MORDOMO_E2E_PORT ?? 4788);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -21,6 +22,9 @@ export default defineConfig({
     : "list",
   use: {
     baseURL: BASE_URL,
+    // Existing workflows model a returning user. The onboarding spec explicitly
+    // overrides this with a fresh browser to exercise the first-visit journey.
+    storageState: returningUserState(BASE_URL),
     ...(executablePath ? { launchOptions: { executablePath } } : {}),
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
@@ -28,7 +32,13 @@ export default defineConfig({
   expect: {
     toHaveScreenshot: { maxDiffPixelRatio: 0.02 },
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    // The native macOS shell is a WKWebView: opt in with MORDOMO_E2E_WEBKIT=1 after `npx playwright install webkit`.
+    ...(process.env.MORDOMO_E2E_WEBKIT === "1"
+      ? [{ name: "webkit", use: { ...devices["Desktop Safari"] } }]
+      : []),
+  ],
   webServer: {
     command: "node tests/e2e/serve.mjs",
     cwd: "../..",

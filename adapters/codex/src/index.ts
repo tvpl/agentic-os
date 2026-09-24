@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   executeInvocation,
-  findOnPath,
+  findExecutable,
   parseHelpFlags,
   probe,
   type AgentAdapter,
@@ -48,18 +48,20 @@ export class CodexAdapter implements AgentAdapter {
   constructor(private readonly opts: { binaryPath?: string | null; homeDir?: string } = {}) {}
 
   private binary(): string {
-    return this.opts.binaryPath ?? findOnPath("codex") ?? "codex";
+    return this.opts.binaryPath ?? findExecutable("codex") ?? "codex";
   }
 
   async detect(): Promise<DetectionResult> {
-    const binaryPath = this.opts.binaryPath ?? findOnPath("codex");
+    const binaryPath = this.opts.binaryPath ?? findExecutable("codex");
     if (!binaryPath) {
       return {
         installed: false,
         binaryPath: null,
         version: null,
         supportedFlags: [],
-        notes: ["`codex` was not found on PATH. Install: npm install -g @openai/codex"],
+        notes: [
+          "`codex` was not found on PATH or in the usual install folders. Install: npm install -g @openai/codex",
+        ],
       };
     }
     const notes: string[] = [];

@@ -10,6 +10,10 @@ guardrails:
   - Não repetir tentativas sem nova evidência nem declarar sucesso com gates pendentes.
 successCriteria:
   - Critérios rastreados até evidências de validação e achados restantes explícitos.
+i18n:
+  en:
+    name: "Gauntlet Loop"
+    description: "Runs bounded cycles of implementation, adversarial review, fixes and validation for SDD or plain-prompt tasks, with evidence and explicit exit criteria."
 ---
 
 # Gauntlet loop

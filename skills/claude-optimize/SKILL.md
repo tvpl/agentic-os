@@ -31,6 +31,10 @@ successCriteria:
   - Each recommendation has an estimated impact (tokens/latency/clarity).
 examples:
   - "Run monthly as maintenance."
+i18n:
+  pt-BR:
+    name: "Otimizador de Recursos do Claude Code"
+    description: "Audita a configuração local do Claude Code (skills, agentes, servidores MCP, CLAUDE.md, settings) e relata o que limpar, mesclar ou enxugar. Apenas relatório — não altera nada."
 ---
 
 # Claude Code Resource Optimizer

@@ -118,13 +118,15 @@ test("bounded workspace endurance with simulated runs and real local persistence
         expect(text).toContain('"done"');
         await view.goto(`/#/runs/${runId}`);
         await expect(view.locator(".run-title .badge")).toHaveText(/done/i);
-        const dock = view.getByRole("navigation", { name: "Workspace navigation" });
+        // The apps open as panels from the launcher (G2, G5).
         for (const [name, selector] of [
           ["Second Brain", ".brain2"],
           ["Pixel Studio", ".pxs-stage"],
-          ["Overview", ".desktop"],
+          ["Dashboard", ".desktop"],
         ]) {
-          await dock.getByRole("button", { name: name!, exact: true }).click();
+          await view.keyboard.press("Control+M");
+          await view.getByRole("dialog").getByRole("option", { name: name!, exact: true }).click();
+          await expect(view.locator(".launcher")).toHaveCount(0);
           await expect(view.locator(selector!)).toBeVisible();
         }
         if (cycles % 10 === 0) {

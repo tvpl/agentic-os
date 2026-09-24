@@ -2,11 +2,21 @@
 
 ## 1. First contact
 
-After `scripts/setup.sh` (or `npm install && npm run build && npx mordomo setup`):
+Install the packaged app or a source checkout ([install.md](install.md)). Then:
 
 ```bash
-mordomo start        # → http://127.0.0.1:4777
+mordomo launch       # starts the service if needed and opens http://127.0.0.1:4777
+mordomo start        # the same, without opening the browser
 ```
+
+The first visit shows the **setup screen**: which provider CLIs were found on
+this computer (with the install or login command for the missing ones and a
+*Detect again* button), your name/theme/language, one folder to index, data
+connectors and the desktop look. Everything is editable later in Settings.
+If none of the enabled providers can run yet (not installed, or signed out),
+the OS opens with **Connect your AI first** and the top bar reads *login
+required* until a `claude auth login` / `codex login` / `cursor-agent login`
+succeeds; the console will not start a run before that.
 
 The Command Centre opens on the **Dashboard**: active provider + quick
 Claude/Cursor/Codex switcher, favorite skills with Run buttons, routines and
@@ -14,7 +24,9 @@ next executions, recent artifacts, in-progress runs, failures needing
 attention, and 7-day metrics. The Second Brain card is the centrepiece.
 
 Language (English/Português) and theme (dark/light/system) live in
-**Settings → Identity**.
+**Settings → Identity**, next to the running version, the data folder and an
+opt-in check for new releases. **Settings → Diagnostics** runs the doctor and
+exports a redacted diagnostics file for bug reports.
 
 ## 2. Skills (your SOPs as commands)
 

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import Database from "better-sqlite3";
 import path from "node:path";
 import {
+  SettingsSchema,
   SettingsStore,
   defaultSettings,
   detectTimezone,
@@ -193,6 +194,60 @@ describe("skill catalog", () => {
           .map((s) => s.slug)
           .sort(),
       ).toEqual(["test-skill", "thick-skill"]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("parses an optional i18n block and keeps it across save/toggle/import round-trips", () => {
+    const { paths, cleanup } = makeTempHome();
+    try {
+      const catalog = new SkillCatalog(paths);
+      fs.mkdirSync(path.join(paths.skills, "i18n-skill"), { recursive: true });
+      fs.writeFileSync(
+        path.join(paths.skills, "i18n-skill", "SKILL.md"),
+        [
+          "---",
+          "name: Code Review",
+          "description: Review a diff.",
+          "i18n:",
+          "  pt-BR:",
+          "    name: Revisão de Código",
+          '    description: "Revisa um diff: bugs primeiro."',
+          "---",
+          "Body.",
+          "",
+        ].join("\n"),
+      );
+      const loaded = catalog.load("i18n-skill");
+      expect(loaded?.name).toBe("Code Review");
+      expect(loaded?.i18n).toEqual({
+        "pt-BR": { name: "Revisão de Código", description: "Revisa um diff: bugs primeiro." },
+      });
+
+      // Toggling re-serialises the frontmatter; the translations must survive.
+      const toggled = catalog.setEnabled("i18n-skill", false);
+      expect(toggled.enabled).toBe(false);
+      expect(toggled.i18n).toEqual(loaded?.i18n);
+      expect(fs.readFileSync(path.join(paths.skills, "i18n-skill", "SKILL.md"), "utf8")).toContain(
+        "Revisão de Código",
+      );
+
+      // Skills without the block parse as before.
+      const plain = catalog.save(front, "Do the thing.");
+      expect(plain.i18n).toBeUndefined();
+
+      // Importing an external skill folder keeps i18n (it is on the allow-list).
+      const src = fs.mkdtempSync(path.join(path.dirname(paths.skills), "import-src-"));
+      fs.writeFileSync(
+        path.join(src, "SKILL.md"),
+        "---\nname: Ext\ndescription: Ext desc\nallowed-tools: Bash\ni18n:\n  en:\n    name: External\n---\nBody.\n",
+      );
+      const imported = catalog.importFrom(src, "ext-skill");
+      expect(imported.i18n).toEqual({ en: { name: "External" } });
+      const tolerant = SkillFrontmatterSchema.safeParse({ ...front, i18n: { "pt-BR": { name: 1 } } });
+      expect(tolerant.success).toBe(true); // a bad translation is dropped, never hides the skill
+      if (tolerant.success) expect(tolerant.data.i18n).toEqual({});
     } finally {
       cleanup();
     }
@@ -461,4 +516,49 @@ describe("backup and restore", () => {
       cleanup();
     }
   });
+
+  it("i18n frontmatter is tolerant: bad entries are dropped and language tags normalized, the skill stays", async () => {
+    const { SkillFrontmatterSchema, normalizeLangTag } = await import("../core/src/skills/types.js");
+    expect(normalizeLangTag("pt")).toBe("pt-BR");
+    expect(normalizeLangTag("PT_br")).toBe("pt-BR");
+    expect(normalizeLangTag("en-US")).toBe("en");
+    expect(normalizeLangTag("es_mx")).toBe("es-MX");
+    const parsed = SkillFrontmatterSchema.safeParse({
+      name: "X",
+      slug: "x",
+      description: "d",
+      i18n: { pt: { name: "Nome", description: 1 }, en: "not an object", "": { name: "?" } },
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.i18n).toEqual({ "pt-BR": { name: "Nome" } });
+    }
+    const junk = SkillFrontmatterSchema.safeParse({ name: "X", slug: "x", description: "d", i18n: "nope" });
+    expect(junk.success).toBe(true);
+    if (junk.success) expect(junk.data.i18n).toEqual({});
+  });
+});
+
+it("a desktop layout this version cannot read never takes the settings down with it", () => {
+  // A layout saved before windows carried pixels (redesign F4): grid cells.
+  const legacy = {
+    systemName: "MordomoOS",
+    defaultProvider: "claude",
+    dashboardLayout: {
+      now: { x: 5, y: 0, w: 14, h: 8, visible: false },
+      microapps: { x: 0, y: 0, w: 5, h: 7, visible: true },
+    },
+    spaces: { work: { name: "Work", layout: { now: { x: 1, y: 1, w: 6, h: 4, visible: true } } } },
+  };
+  const parsed = SettingsSchema.parse(legacy);
+  // The layout is presentation: it degrades to the default composition…
+  expect(parsed.dashboardLayout).toEqual({});
+  expect(parsed.spaces.work!.layout).toEqual({});
+  // …while everything the user actually configured survives.
+  expect(parsed.systemName).toBe("MordomoOS");
+  expect(parsed.defaultProvider).toBe("claude");
+
+  // A readable layout still round-trips untouched.
+  const current = { dashboardLayout: { now: { x: 40, y: 40, w: 420, h: 300, z: 2, visible: true } } };
+  expect(SettingsSchema.parse(current).dashboardLayout.now).toMatchObject({ x: 40, w: 420, z: 2 });
 });

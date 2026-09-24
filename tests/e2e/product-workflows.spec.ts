@@ -1,43 +1,55 @@
 import { test, expect } from "@playwright/test";
+import { resetStage, settled, stageWith } from "./stage";
 
-test("workspace modes preserve the console draft and layout, dock follows app navigation", async ({
-  page,
-}) => {
+test("spaces keep their own windows and the dock follows app navigation", async ({ page, request }) => {
+  // This spec drags a window between spaces, so it puts one on the stage.
+  await stageWith(request, "routines");
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
   const dock = page.getByRole("navigation", { name: "Workspace navigation" });
-  const consoleWidget = page.locator('[data-widget-id="prompt"]');
+  const consoleWidget = page.locator("[data-console]");
+  const routines = page.locator('[data-panel="routines"]');
   await consoleWidget.locator("textarea").fill("Continue this after exploring");
-  const before = await consoleWidget.boundingBox();
-  await dock.getByRole("button", { name: "Focus", exact: true }).click();
-  await expect.poll(async () => (await consoleWidget.boundingBox())!.width).toBeGreaterThan(before!.width);
-  await expect(page.locator('[data-widget-id="microapps"]')).not.toBeVisible();
-  const focused = (await consoleWidget.boundingBox())!;
-  expect(focused.y + focused.height).toBeLessThan((await dock.boundingBox())!.y);
-  await page.screenshot({ animations: "disabled", path: "artifacts/qa-workspace-focus.png" });
-  await dock.getByRole("button", { name: "Explore", exact: true }).click();
-  await expect(page.locator(".explore-intro")).toBeVisible();
-  await expect(consoleWidget).not.toBeVisible();
-  await page.reload();
-  await expect(page.locator(".explore-intro")).toBeVisible();
-  await page.screenshot({ animations: "disabled", path: "artifacts/qa-workspace-explore.png" });
-  await page.getByRole("button", { name: /Enter the Second Brain/ }).click();
+
+  // Rearrange Work, then leave it.
+  const header = routines.locator(".panel-title");
+  await settled(routines);
+  const g = (await header.boundingBox())!;
+  await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(g.x + g.width / 2 + 300, g.y + g.height / 2 + 140, { steps: 10 });
+  await page.mouse.up();
+  await expect.poll(async () => (await routines.boundingBox())!.x).toBeGreaterThan(240);
+  const arranged = (await routines.boundingBox())!;
+
+  await dock.getByRole("button", { name: "Research", exact: true }).click();
+  // A fresh space starts from the default composition, not the one just left —
+  // and since F7 the default composition is a clear stage, so the window that
+  // was just dragged around Work is simply not here.
+  await expect(routines).toHaveCount(0);
+  // The draft belongs to the console, not to a space.
+  await expect(consoleWidget.locator("textarea")).toHaveValue("Continue this after exploring");
+
+  // The Second Brain is still one click away, from its pod.
+  await page.locator('.pod-arc.l .pod[data-pod="app:brain"]').click();
   await expect(page.locator(".brain2")).toBeVisible();
   await page.getByRole("button", { name: "Zoom in", exact: true }).click();
   await expect
     .poll(async () => Number((await page.locator(".zoom-readout").innerText()).replace("%", "")))
     .toBeGreaterThan(110);
   await page.screenshot({ animations: "disabled", path: "artifacts/qa-workspace-brain.png" });
-  await dock.getByRole("button", { name: "Overview", exact: true }).click();
-  await expect(consoleWidget.locator("textarea")).toHaveValue("Continue this after exploring");
-  await expect
-    .poll(async () => Math.abs((await consoleWidget.boundingBox())!.width - before!.width))
-    .toBeLessThan(2);
-  await dock.getByRole("button", { name: "Collapse dock" }).click();
-  await expect(dock.getByRole("button", { name: "Second Brain", exact: true })).toHaveCount(0);
-  await dock.getByRole("button", { name: "Expand dock" }).click();
+
+  // Back to Work: the arrangement is where it was left, across a reload too.
+  await dock.getByRole("button", { name: "Work", exact: true }).click();
+  await expect.poll(async () => (await routines.boundingBox())!.x).toBeCloseTo(arranged.x, -1);
+  await page.reload();
+  await expect(page.locator(".boot-screen")).toHaveCount(0);
+  await expect.poll(async () => (await routines.boundingBox())!.x).toBeCloseTo(arranged.x, -1);
   await page.screenshot({ animations: "disabled", path: "artifacts/qa-workspace-overview.png" });
+
+  await page.goto("about:blank");
+  await resetStage(request);
 });
 
 test("Pixel Studio draws, undoes, adds frames, exports PNG and saves a viewable artifact", async ({
@@ -87,11 +99,14 @@ test("routine lifecycle: create, edit, enable, execute, inspect history and dele
   await revised.getByRole("button", { name: "Enable", exact: true }).click();
   await expect(revised.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
   await revised.getByRole("button", { name: "Test now", exact: true }).click();
-  await expect(page.locator(".run-title .badge")).toHaveText(/done/i, { timeout: 20000 });
-  await page
-    .getByRole("navigation", { name: "Workspace navigation" })
-    .getByRole("button", { name: "Routines", exact: true })
-    .click();
+  // The trace "Test now" opened is the one on top; earlier traces may still be on the stage.
+  await expect(page.locator('section.panel.on[data-panel^="run:"] .run-title .badge')).toHaveText(/done/i, {
+    timeout: 20000,
+  });
+  // The trace opened as a panel over the Routines app (G3): its dock task
+  // brings the app back to the front, whatever covers it.
+  await page.getByRole("button", { name: "Open panels: Routines", exact: true }).click();
+  await expect(page.locator('[data-panel="app:routines"]')).toHaveClass(/\bon\b/);
   await revised.getByRole("button", { name: "History", exact: true }).click();
   await expect(page.getByRole("dialog").locator("tbody .badge").first()).toHaveText(/done/i);
   await page.keyboard.press("Escape");
@@ -103,14 +118,15 @@ test("routine lifecycle: create, edit, enable, execute, inspect history and dele
 test("every launcher app opens usable content", async ({ page }) => {
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
+  // Every app is a panel on the stage now (G2); the desktop never goes away.
   for (const [name, target] of [
-    ["Second Brain", ".brain2"],
-    ["Skills", ".app-frame"],
-    ["Routines", ".app-frame"],
-    ["Runs", ".app-frame"],
-    ["Connectors", ".app-frame"],
-    ["Pixel Studio", ".pxs-stage"],
-    ["Settings", ".app-frame"],
+    ["Second Brain", '[data-panel="app:brain"] .brain2'],
+    ["Skills", '[data-panel="app:skills"] .page'],
+    ["Routines", '[data-panel="app:routines"] .page'],
+    ["Runs", '[data-panel="app:runs"] .page'],
+    ["Connectors", '[data-panel="app:connectors"] .page'],
+    ["Pixel Studio", '[data-panel="app:pixel"] .pxs-stage'],
+    ["Settings", '[data-panel="app:settings"] .page'],
     ["Dashboard", ".desktop"],
   ]) {
     await page.keyboard.press("Control+M");

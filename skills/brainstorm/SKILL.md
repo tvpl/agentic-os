@@ -34,6 +34,10 @@ successCriteria:
   - The 3 picks are genuinely different approaches, not variations of one idea.
 examples:
   - "Topic: products I could build on top of my agent OS."
+i18n:
+  pt-BR:
+    name: "Brainstorm Estruturado"
+    description: "Conduz uma sessão de brainstorm estruturada sobre um tema: diverge amplamente e depois converge nas ideias mais fortes, com próximos passos."
 ---
 
 # Structured Brainstorm

@@ -5,6 +5,7 @@
  * `satisfies` clause and by i18n.test.ts).
  */
 export const en = {
+  "shell.action.onboarding": "Interactive OS guide",
   "shell.palette.title": "Command palette",
   "shell.palette.placeholder": "Type a command, app, skill or file…",
   "shell.palette.apps": "Apps",
@@ -41,7 +42,6 @@ export const en = {
   "shell.action.doctor": "Run diagnostics",
   "shell.action.doctorDone": "Doctor: {ok} ok · {warn} warnings · {fail} failures",
   "shell.action.newSkill": "New skill",
-  "shell.action.toggleEdit": "Toggle widget edit mode",
   "shell.action.toggleTheme": "Toggle light / dark",
   "shell.action.presets": "Switch theme preset",
   "shell.action.brain": "Open Second Brain",
@@ -119,6 +119,7 @@ export const en = {
 };
 
 export const ptBR = {
+  "shell.action.onboarding": "Guia interativo do OS",
   "shell.palette.title": "Paleta de comandos",
   "shell.palette.placeholder": "Digite um comando, app, skill ou arquivo…",
   "shell.palette.apps": "Apps",
@@ -155,7 +156,6 @@ export const ptBR = {
   "shell.action.doctor": "Rodar diagnóstico",
   "shell.action.doctorDone": "Doctor: {ok} ok · {warn} avisos · {fail} falhas",
   "shell.action.newSkill": "Nova skill",
-  "shell.action.toggleEdit": "Alternar modo de edição dos widgets",
   "shell.action.toggleTheme": "Alternar claro / escuro",
   "shell.action.presets": "Trocar preset de tema",
   "shell.action.brain": "Abrir o Segundo Cérebro",

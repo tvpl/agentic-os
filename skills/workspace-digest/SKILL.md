@@ -30,6 +30,10 @@ successCriteria:
   - Every file mentioned includes its full path.
 examples:
   - "Run with focus 'Finanças' before a monthly review."
+i18n:
+  pt-BR:
+    name: "Resumo do Workspace"
+    description: "Produz um resumo conciso do workspace atual: o que mudou recentemente, o que parece desatualizado e o que merece atenção em seguida."
 ---
 
 # Workspace Digest

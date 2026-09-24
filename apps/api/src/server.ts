@@ -3,7 +3,6 @@ import fs from "node:fs";
 import https from "node:https";
 import path from "node:path";
 import { Writable } from "node:stream";
-import { fileURLToPath } from "node:url";
 import Fastify, {
   LogController,
   type FastifyInstance,
@@ -22,6 +21,9 @@ import {
   type TlsMaterial,
 } from "@mordomo/core";
 import { AppContext } from "./context.js";
+import { uiDistCandidates } from "./entry.js";
+import { instanceSnapshot, orphanProcesses, portHolder, terminate } from "./instances.js";
+import { type UpdateChecker } from "./updates.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerSkillRoutes } from "./routes/skills.js";
 import { registerRunRoutes } from "./routes/runs.js";
@@ -38,8 +40,6 @@ import { registerMicroappRoutes } from "./routes/microapps.js";
 import { registerEventRoutes } from "./routes/events.js";
 import { registerObjectiveRoutes } from "./routes/objectives.js";
 import { closeAllSse } from "./routes/sse.js";
-
-const here = path.dirname(fileURLToPath(import.meta.url));
 
 export interface ServerHandle {
   app: FastifyInstance;
@@ -156,13 +156,20 @@ function buildLoggerOptions(ctx: AppContext) {
   };
 }
 
-export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
+export async function buildServer(
+  ctx: AppContext,
+  options: { uiDist?: string; updates?: UpdateChecker } = {},
+): Promise<FastifyInstance> {
   const app = Fastify({
     logger: buildLoggerOptions(ctx),
     // Our own onResponse hook writes the request line; Fastify's default
     // "incoming request"/"request completed" pair would double it.
     logController: new LogController({ disableRequestLogging: true }),
     bodyLimit: 5 * 1024 * 1024,
+    // On close, drop idle keep-alive and SSE connections instead of waiting
+    // for them: a browser tab holding `/api/events` open must not keep an old
+    // service alive after a restart (that is how leftover processes were born).
+    forceCloseConnections: true,
   });
   const token = ctx.token();
 
@@ -236,7 +243,7 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   });
 
   // ---- API routes -----------------------------------------------------------
-  registerSystemRoutes(app, ctx);
+  registerSystemRoutes(app, ctx, { updates: options.updates });
   registerSkillRoutes(app, ctx);
   registerRunRoutes(app, ctx);
   registerSessionRoutes(app, ctx);
@@ -252,12 +259,17 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   registerObjectiveRoutes(app, ctx);
 
   // ---- Command Centre static UI --------------------------------------------
-  const uiDist = path.resolve(here, "..", "..", "command-centre", "dist");
+  const uiDist =
+    options.uiDist ??
+    uiDistCandidates().find((dir) => fs.existsSync(path.join(dir, "index.html"))) ??
+    uiDistCandidates()[0]!;
   const indexFile = path.join(uiDist, "index.html");
   if (fs.existsSync(indexFile)) {
     await app.register(fastifyStatic, {
       root: uiDist,
-      wildcard: false,
+      // Vite replaces hashed assets on rebuild. Resolve files at request time
+      // instead of freezing the list of routes when the daemon starts.
+      wildcard: true,
       index: false,
     });
     const serveIndex = (req: FastifyRequest, reply: FastifyReply) => {
@@ -272,11 +284,21 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
           /<meta name="mordomo-token" content=""\s*\/?>/,
           `<meta name="mordomo-token" content="${inject}" />`,
         );
-      reply.type("text/html; charset=utf-8").send(html);
+      reply.header("Cache-Control", "no-store").type("text/html; charset=utf-8").send(html);
     };
     app.get("/", serveIndex);
+    app.get("/index.html", serveIndex);
     app.setNotFoundHandler((req, reply) => {
-      if (req.url.startsWith("/api/")) return reply.code(404).send(errorBody("not_found", "Not found"));
+      const pathname = req.url.split("?")[0]!;
+      if (
+        pathname.startsWith("/api/") ||
+        /^\/(?:assets|fonts|icons)(?:\/|$)/.test(pathname) ||
+        path.posix.extname(pathname)
+      ) {
+        // Returning the SPA here makes browsers reject JS with a MIME error
+        // and allows service workers to cache HTML under a hashed asset URL.
+        return reply.header("Cache-Control", "no-store").code(404).send(errorBody("not_found", "Not found"));
+      }
       return serveIndex(req, reply);
     });
   } else {
@@ -306,6 +328,28 @@ export function tlsListenerFor(
     hosts: certificateHosts(hosts).filter((h) => !["localhost", "127.0.0.1", "::1"].includes(h)),
     material,
   };
+}
+
+/**
+ * Listen, retrying while the port is still held by a service we just asked to
+ * stop (graceful shutdown can take a few seconds). Any other error is fatal.
+ */
+async function listenWithRetry(
+  app: FastifyInstance,
+  port: number,
+  host: string,
+  attempts: number,
+): Promise<void> {
+  for (let i = 1; ; i++) {
+    try {
+      await app.listen({ port, host });
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== "EADDRINUSE" || i >= attempts) throw err;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
 }
 
 export async function startServer(homeOverride?: string): Promise<ServerHandle> {
@@ -374,7 +418,29 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   const approvalSweep = setInterval(sweepApprovals, 3_600_000);
   approvalSweep.unref?.();
 
-  await app.listen({ port: settings.port, host: settings.bindAddress });
+  // A service that is starting is the one that should be running on its port.
+  // Take the port first; only when it is busy do we stop what holds it — the
+  // process listening there if it is a MordomoOS service, plus leftovers of
+  // this same install (a lost port race, a restart still shutting down) — and
+  // retry. Other homes and checkouts on other ports are never touched.
+  try {
+    await app.listen({ port: settings.port, host: settings.bindAddress });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EADDRINUSE") throw err;
+    const snap = await instanceSnapshot(process.pid, 0);
+    const holder = portHolder(settings.port);
+    const holding = snap.processes.filter((p) => p.pid === holder);
+    const leftovers = [
+      ...holding,
+      ...orphanProcesses(snap.processes, null, process.pid, undefined, snap.listening).filter(
+        (p) => p.pid !== holder,
+      ),
+    ];
+    if (leftovers.length === 0) throw err; // something else owns the port: report, never kill
+    const stopped = await terminate(leftovers);
+    app.log.warn({ pids: stopped, port: settings.port, msg: "stopped MordomoOS processes holding the port" });
+    await listenWithRetry(app, settings.port, settings.bindAddress, 40);
+  }
   const url = `http://127.0.0.1:${settings.port}`;
 
   // Remote access over TLS (follow-up 10): a second listener with the

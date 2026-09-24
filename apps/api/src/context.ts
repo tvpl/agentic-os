@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   ApprovalStore,
   ConnectorRegistry,
@@ -23,6 +22,7 @@ import {
   localDay,
   openDb,
   resolvePaths,
+  seedHome,
   restoreBackup,
   type AgentAdapter,
   type BudgetCrossedPayload,
@@ -43,6 +43,7 @@ import {
   MetricsHistory,
   type MetricsSample,
 } from "@mordomo/core";
+import { cliEntry, seedDir } from "./entry.js";
 import { buildProviderRegistry } from "./providers.js";
 
 export interface ProviderSnapshot {
@@ -175,6 +176,9 @@ export class AppContext {
   constructor(homeOverride?: string, opts: AppContextOptions = {}) {
     this.paths = resolvePaths(homeOverride);
     ensureDirs(this.paths);
+    // Packaged installs ship their skills/routines/connectors next to the bundle.
+    const seeds = seedDir();
+    if (seeds) seedHome(this.paths, seeds);
     if (opts.applyPendingRestore) {
       this.restoredAtBoot = applyPendingRestore(this.paths).applied;
     }
@@ -299,7 +303,7 @@ export class AppContext {
     if (profile !== "review_before_write" && profile !== "controlled_write") return null;
     return {
       command: process.execPath,
-      args: [fileURLToPath(new URL("./cli.js", import.meta.url)), "mcp", "permission"],
+      args: [cliEntry(), "mcp", "permission"],
       env: {
         MORDOMO_URL: `http://127.0.0.1:${settings.port}`,
         MORDOMO_TOKEN: this.token(),

@@ -34,6 +34,10 @@ successCriteria:
   - Zero findings that a reader could not reproduce from the given evidence.
 examples:
   - "Review uncommitted changes in ./myapp before committing."
+i18n:
+  pt-BR:
+    name: "Revisão de Código"
+    description: "Revisa um diff, branch ou pasta buscando primeiro bugs de correção e depois simplificação e eficiência — achados ordenados por severidade, com evidências."
 ---
 
 # Code Review

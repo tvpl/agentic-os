@@ -9,6 +9,7 @@
  * component re-renders.
  */
 import type { SimulationNodeDatum } from "d3-force";
+import type { CameraFlight } from "./flight";
 import type { ForceEngine } from "./force";
 import type { Connector, GraphData, GraphNode, RoutineStatus, Skill } from "../../api";
 
@@ -177,6 +178,7 @@ export const DEFAULT_SETTINGS: BrainSettings = {
 
 export const LAYOUTS: readonly LayoutKind[] = ["arcs", "force", "circle", "hex", "rings"];
 
+/** Sixteen distinct hues; the first ten are the historical palette (stable colours for the top groups). */
 export const GROUP_COLORS = [
   "#c084fc",
   "#f472b6",
@@ -188,6 +190,12 @@ export const GROUP_COLORS = [
   "#f87171",
   "#5eead4",
   "#fbbf24",
+  "#38bdf8",
+  "#e879f9",
+  "#a3e635",
+  "#fda4af",
+  "#67e8f9",
+  "#d9f99d",
 ];
 export const RING = {
   skills: 92,
@@ -207,6 +215,21 @@ export const ZOOM_MIN = 0.3;
 export const ZOOM_MAX = 9;
 /** World width the minimap and fit-view assume. */
 export const WORLD_EXTENT = RING.apps * 2.35;
+
+/**
+ * World width the minimap must map: the ring guides, or the content when a
+ * layout spills past the apps orbit (force / circle), whichever reaches
+ * further — nothing drawn is clipped. Faded-out files do not count.
+ */
+export function minimapExtentFor(files: ReadonlyArray<Pick<FileNode, "x" | "y" | "visAlpha">>): number {
+  let reach = 0;
+  for (const n of files) {
+    if (n.visAlpha < 0.3) continue;
+    const r = Math.max(Math.abs(n.x), Math.abs(n.y));
+    if (r > reach) reach = r;
+  }
+  return Math.max(WORLD_EXTENT, reach * 2 + 60);
+}
 /** Duration of the layout-switch tween (seconds). */
 export const LAYOUT_TWEEN_S = 0.8;
 /** Duration of the directed hub explosion (seconds). */
@@ -222,6 +245,10 @@ export interface World {
   comets: Comet[];
   transform: Transform;
   target: Transform;
+  /** Timed camera flight in progress (drives `transform` instead of the tween), or null. */
+  flight: CameraFlight | null;
+  /** World width the minimap currently maps (grows when a layout spills past the rings). */
+  minimapExtent: number;
   theta: number;
   /** World clock in seconds, advanced by `stepWorld` (trips and tweens key off it). */
   time: number;
@@ -270,6 +297,8 @@ export function createWorld(settings: BrainSettings = DEFAULT_SETTINGS): World {
     comets: [],
     transform: { x: 0, y: 0, k: 1 },
     target: { x: 0, y: 0, k: 1 },
+    flight: null,
+    minimapExtent: WORLD_EXTENT,
     theta: 0,
     time: 0,
     layout: settings.layout,

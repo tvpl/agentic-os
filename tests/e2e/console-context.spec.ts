@@ -1,18 +1,19 @@
+import { openAppFromPalette, resetStage } from "./stage";
 import { test, expect } from "@playwright/test";
 
-test("draft keeps its selected project across app navigation and reload", async ({ page }) => {
+test("draft keeps its selected project across app navigation and reload", async ({ page, request }) => {
+  await resetStage(request);
   await page.goto("/#/");
-  const widget = page.locator('[data-widget-id="prompt"]');
-  const picker = widget.locator("select.promptw-cwd");
+  const widget = page.locator("[data-console]");
+  const picker = widget.locator("select.cons-cwd");
   await expect(picker.locator("option")).not.toHaveCount(1);
   const folder = await picker.locator("option").nth(1).getAttribute("value");
   expect(folder).toBeTruthy();
   await picker.selectOption(folder!);
   await widget.locator("textarea").fill("Review the mobile workspace");
-  const dock = page.getByRole("navigation", { name: "Workspace navigation" });
-  await dock.getByRole("button", { name: "Pixel Studio", exact: true }).click();
+  // An app opens as a panel over the desktop (G2): the console stays put.
+  await openAppFromPalette(page, "Pixel Studio");
   await expect(page.locator(".pxs-stage")).toBeVisible();
-  await dock.getByRole("button", { name: "Overview", exact: true }).click();
   await expect(picker).toHaveValue(folder!);
   await expect(widget.locator("textarea")).toHaveValue("Review the mobile workspace");
   await page.reload();
@@ -45,17 +46,19 @@ test("a draft whose project disappeared cannot silently run in the home director
     ),
   );
   await page.goto("/#/");
-  const widget = page.locator('[data-widget-id="prompt"]');
+  const widget = page.locator("[data-console]");
   await expect(widget.getByText(/saved project folder is unavailable/)).toBeVisible();
   await expect(widget.getByRole("button", { name: "Run", exact: true })).toBeDisabled();
-  await widget.locator("select.promptw-cwd").selectOption("");
+  await widget.locator("select.cons-cwd").selectOption("");
   await expect(widget.getByRole("button", { name: "Run", exact: true })).toBeEnabled();
   await expect(widget.locator("textarea")).toHaveValue("Edit files");
 });
 
 test("brain reference reaches the console without replacing the draft or executing a task", async ({
   page,
+  request,
 }) => {
+  await resetStage(request);
   let launches = 0;
   page.on("request", (request) => {
     if (
@@ -65,22 +68,21 @@ test("brain reference reaches the console without replacing the draft or executi
       launches++;
   });
   await page.goto("/#/");
-  const widget = page.locator('[data-widget-id="prompt"]');
+  const widget = page.locator("[data-console]");
   await widget.locator("textarea").fill("Keep my existing request");
-  const picker = widget.locator("select.promptw-cwd");
+  const picker = widget.locator("select.cons-cwd");
   const folder = await picker.locator("option").nth(1).getAttribute("value");
   await picker.selectOption(folder!);
-  await page
-    .getByRole("navigation", { name: "Workspace navigation" })
-    .getByRole("button", { name: "Second Brain", exact: true })
-    .click();
+  await page.locator('.pod-arc.l .pod[data-pod="app:brain"]').click();
   await page.getByRole("button", { name: "List view", exact: true }).click();
   const source = page.locator(".brain2-list button[data-file]").first();
   const sourcePath = await source.getAttribute("title");
   await source.click();
   await page.getByRole("button", { name: "Use in console", exact: true }).click();
+  // The console is on the stage already (G2): the reference arrives by event
+  // after the preview is fetched, so the read has to wait for it.
+  await expect.poll(() => widget.locator("textarea").inputValue()).toContain(JSON.stringify(sourcePath));
   await expect(widget.locator("textarea")).toHaveValue(new RegExp("^Keep my existing request"));
-  expect(await widget.locator("textarea").inputValue()).toContain(JSON.stringify(sourcePath));
   await expect(picker).toHaveValue(folder!);
   await expect(widget).toBeVisible();
   expect(launches).toBe(0);

@@ -77,8 +77,10 @@ export function planStartupService(
   nodePath: string,
   platform: StartupPlatform = process.platform,
   homeDir: string = os.homedir(),
+  /** The CLI entry to run; defaults to the source checkout layout under the home. */
+  entry?: string,
 ): StartupServicePlan {
-  const serverEntry = path.join(paths.home, "apps", "api", "dist", "cli.js");
+  const serverEntry = entry ?? path.join(paths.home, "apps", "api", "dist", "cli.js");
   const withDisplay = (argvs: string[][]): { argv: string[][]; display: string[] } => ({
     argv: argvs,
     display: argvs.map((a) => formatCommand(a, platform)),

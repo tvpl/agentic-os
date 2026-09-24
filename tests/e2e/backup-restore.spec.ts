@@ -5,6 +5,7 @@ import path from "node:path";
 import { createBackup, ensureDirs, resolvePaths, restoreBackup } from "@mordomo/core";
 import { AppContext } from "../../apps/api/dist/context.js";
 import { startServer } from "../../apps/api/dist/server.js";
+import { returningUserState } from "./returning-user";
 
 test("a backup restored into an emptied home has usable files and sessions in the browser", async ({
   browser,
@@ -37,8 +38,17 @@ test("a backup restored into an emptied home has usable files and sessions in th
   fs.cpSync(path.join(container, "snapshot"), path.join(paths.backups, snapshot.name), { recursive: true });
   restoreBackup(paths, snapshot.name);
   const server = await startServer(home);
-  const context = await browser.newContext({ baseURL: "http://127.0.0.1:4794" });
+  const context = await browser.newContext({
+    baseURL: "http://127.0.0.1:4794",
+    storageState: returningUserState("http://127.0.0.1:4794"),
+  });
   try {
+    // Every provider is disabled in this home, so the "connect your AI first"
+    // gate would cover the page: model a user who chose "Continue anyway".
+    await context.addInitScript(
+      (k: string) => sessionStorage.setItem(k, "1"),
+      "mordomo.providerGate.skipped.v1",
+    );
     const page = await context.newPage();
     await page.goto("/#/brain");
     await page.getByRole("button", { name: "List view", exact: true }).click();

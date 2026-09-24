@@ -33,6 +33,10 @@ successCriteria:
   - Every task has a verification step ("done when…").
 examples:
   - "Plan 'add CSV export to the reports page' against ./myapp."
+i18n:
+  pt-BR:
+    name: "Plano SDD"
+    description: "Transforma uma ideia de funcionalidade em um plano de Spec-Driven Development: especificação, critérios de aceite, plano técnico e divisão de tarefas verificáveis."
 ---
 
 # SDD Coding Plan

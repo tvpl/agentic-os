@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { parseArgs, type ParseArgsConfig } from "node:util";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
@@ -12,6 +12,7 @@ import {
   listBackups,
   restoreBackup,
   generateRouters,
+  isStartupServiceInstalled,
   planStartupService,
   recall,
   recordRecall,
@@ -27,14 +28,22 @@ import {
   type MordomoPaths,
 } from "@mordomo/core";
 import { AppContext } from "./context.js";
+import { cliEntry } from "./entry.js";
+import {
+  installedBuildTime,
+  isOlderService,
+  listServiceProcesses,
+  orphanProcesses,
+  terminate,
+  type ProbedServer,
+} from "./instances.js";
 import { PKG_VERSION } from "./routes/system.js";
 import { servePermissionTool } from "./mcp/permission.js";
 import { httpApi, serveMordomoMcp } from "./mcp/mordomo.js";
 import { startServer } from "./server.js";
 import { runDoctor } from "./doctor.js";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const CLI_PATH = path.join(here, "cli.js");
+const CLI_PATH = cliEntry();
 
 /** Exit codes: 0 ok · 1 runtime failure · 2 usage error (bad flag/argument). */
 const EXIT_USAGE = 2;
@@ -47,6 +56,8 @@ const COMMANDS = [
   "doctor",
   "start",
   "stop",
+  "restart",
+  "launch",
   "status",
   "backup",
   "restore",
@@ -68,6 +79,7 @@ const OPTION_SPECS = {
   json: { type: "boolean" },
   defaults: { type: "boolean" },
   foreground: { type: "boolean" },
+  "no-browser": { type: "boolean" },
   list: { type: "boolean" },
   "include-artifacts": { type: "boolean" },
   purge: { type: "boolean" },
@@ -91,6 +103,8 @@ const COMMAND_OPTIONS: Record<Command, readonly OptionName[]> = {
   doctor: ["json"],
   start: ["foreground"],
   stop: [],
+  restart: [],
+  launch: ["no-browser"],
   status: ["json"],
   backup: ["list", "include-artifacts"],
   restore: [],
@@ -112,6 +126,7 @@ export interface CliArgs {
   json: boolean;
   defaults: boolean;
   foreground: boolean;
+  noBrowser: boolean;
   list: boolean;
   includeArtifacts: boolean;
   purge: boolean;
@@ -203,6 +218,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
     json: values.json === true,
     defaults: values.defaults === true,
     foreground: values.foreground === true,
+    noBrowser: values["no-browser"] === true,
     list: values.list === true,
     includeArtifacts: values["include-artifacts"] === true,
     purge: values.purge === true,
@@ -229,6 +245,7 @@ function emptyArgs(command: Command): CliArgs {
     json: false,
     defaults: false,
     foreground: false,
+    noBrowser: false,
     list: false,
     includeArtifacts: false,
     purge: false,
@@ -356,7 +373,8 @@ export function isServiceProcess(info: PidInfo): boolean {
     return false;
   }
   const cmdline = processCommandLine(info.pid);
-  if (cmdline !== null) return cmdline.includes("cli.js");
+  // Source checkout runs `cli.js`; a packaged install runs the single bundle.
+  if (cmdline !== null) return cmdline.includes(path.basename(CLI_PATH)) || cmdline.includes("cli.js");
   const started = processStartTime(info.pid);
   if (started !== null && Number.isFinite(info.startedAt)) {
     // The process must predate its own pidfile (1 s tolerance: `lstart` has second granularity).
@@ -421,6 +439,10 @@ async function main(): Promise<void> {
       return cmdStart(args);
     case "stop":
       return cmdStop();
+    case "restart":
+      return cmdRestart();
+    case "launch":
+      return cmdLaunch(args);
     case "status":
       return cmdStatus(args);
     case "backup":
@@ -456,6 +478,8 @@ ${pc.bold("MordomoOS")} — local agentic OS over Claude Code, Cursor Agent and 
   mordomo doctor           Full diagnostic (providers, auth, index, routines, security) (--json)
   mordomo start            Start the local service + Command Centre (add --foreground to stay attached)
   mordomo stop             Stop the local service
+  mordomo restart          Restart the local service (also the login service, after an update)
+  mordomo launch           Start if needed and open the Command Centre in the browser (--no-browser)
   mordomo status           Service status (--json)
   mordomo index            Re-index the workspace and regenerate memory routers
   mordomo sync [dir]       Compile canonical skills/routers to provider-native files
@@ -820,7 +844,20 @@ async function cmdStart(args: CliArgs): Promise<void> {
     ctx.close();
     return;
   }
-  const logFile = path.join(ctx.paths.logs, "service.out.log");
+  const info = await startDetached(ctx);
+  if (info)
+    console.log(`${pc.green("●")} MordomoOS started (pid ${info.pid}) → http://127.0.0.1:${info.port}`);
+  else console.log(`${pc.red("✘")} Service did not report healthy — check ${serviceLogFile(ctx)}`);
+  ctx.close();
+}
+
+function serviceLogFile(ctx: Pick<AppContext, "paths">): string {
+  return path.join(ctx.paths.logs, "service.out.log");
+}
+
+/** Spawn the foreground server as a detached child and wait for its pidfile (up to ~6 s). */
+async function startDetached(ctx: AppContext): Promise<PidInfo | null> {
+  const logFile = serviceLogFile(ctx);
   fs.mkdirSync(ctx.paths.logs, { recursive: true });
   rotateLogIfNeeded(logFile);
   const out = fs.openSync(logFile, "a");
@@ -831,15 +868,156 @@ async function cmdStart(args: CliArgs): Promise<void> {
   });
   child.unref();
   fs.closeSync(out);
-  const port = ctx.settings().port;
-  // Wait briefly for the pidfile to confirm a healthy boot.
-  for (let i = 0; i < 30; i++) {
+  return waitForPidFile(ctx, 30);
+}
+
+async function waitForPidFile(ctx: Pick<AppContext, "paths">, ticks: number): Promise<PidInfo | null> {
+  for (let i = 0; i < ticks; i++) {
+    const info = readPidInfo(ctx);
+    if (info) return info;
     await new Promise((r) => setTimeout(r, 200));
-    if (readPidInfo(ctx)) break;
   }
+  return readPidInfo(ctx);
+}
+
+/**
+ * Is a MordomoOS answering on `port`? Used when there is no pidfile we own:
+ * a server started by another checkout, by hand, or whose pidfile was removed.
+ * `/api/meta` needs no token and identifies the app by name and version.
+ */
+export async function probeServer(port: number, timeoutMs = 1500): Promise<ProbedServer | null> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/meta`, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!res.ok) return null;
+    const meta = (await res.json()) as {
+      name?: unknown;
+      version?: unknown;
+      entry?: unknown;
+      build?: { stale?: unknown; installedAt?: unknown };
+    };
+    if (typeof meta.version !== "string") return null;
+    return {
+      name: typeof meta.name === "string" ? meta.name : "MordomoOS",
+      version: meta.version,
+      stale: typeof meta.build?.stale === "boolean" ? meta.build.stale : undefined,
+      installedAt: typeof meta.build?.installedAt === "number" ? meta.build.installedAt : undefined,
+      entry: typeof meta.entry === "string" ? meta.entry : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Open `url` in the default browser; never throws (headless machines just print the URL). */
+function openBrowser(url: string): boolean {
+  const [exe, args] =
+    process.platform === "darwin"
+      ? ["open", [url]]
+      : process.platform === "win32"
+        ? ["cmd", ["/c", "start", "", url]]
+        : ["xdg-open", [url]];
+  try {
+    const child = spawn(exe, args, { detached: true, stdio: "ignore", windowsHide: true });
+    child.on("error", () => undefined);
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `mordomo launch`: the double-click entry point of a packaged install. Starts
+ * the service when nothing answers on the configured port, then opens the
+ * Command Centre (the in-UI setup takes over on a fresh home).
+ */
+async function cmdLaunch(args: CliArgs): Promise<void> {
+  const ctx = new AppContext();
+  const port = ctx.settings().port;
+  const url = `http://127.0.0.1:${port}`;
+  // An older build already answering is replaced before the window opens:
+  // "open the app" must always mean "open this version of the app".
+  const answering = await probeServer(port);
+  if (answering && isOlderService(answering, installedBuildTime())) {
+    console.log(
+      `${pc.yellow("!")} An older MordomoOS build is running (pid file: ${readPidInfo(ctx)?.pid ?? "?"}); restarting it with the current build…`,
+    );
+    await cmdRestart({ keepOpen: true });
+  }
+  let running = readPidInfo(ctx) !== null || (await probeServer(port)) !== null;
+  if (!running) {
+    const info = await startDetached(ctx);
+    running = info !== null || (await probeServer(port)) !== null;
+  }
+  if (!running) {
+    console.log(`${pc.red("✘")} MordomoOS did not start — check ${serviceLogFile(ctx)}`);
+    ctx.close();
+    process.exit(1);
+  }
+  console.log(`${pc.green("●")} ${ctx.settings().systemName} is running at ${url}`);
+  if (!args.noBrowser) {
+    if (!openBrowser(url)) console.log(`Open ${url} in your browser.`);
+  }
+  ctx.close();
+}
+
+/**
+ * `mordomo restart`: stop the running service and bring it back with the
+ * current build. Under a login service (launchd/systemd/Task Scheduler) the
+ * service manager restarts it; otherwise a fresh detached process is spawned.
+ */
+async function cmdRestart(opts: { keepOpen?: boolean } = {}): Promise<void> {
+  const ctx = new AppContext();
   const info = readPidInfo(ctx);
-  if (info) console.log(`${pc.green("●")} MordomoOS started (pid ${info.pid}) → http://127.0.0.1:${port}`);
-  else console.log(`${pc.red("✘")} Service did not report healthy — check ${logFile}`);
+  const port = ctx.settings().port;
+  // Leftover service processes (a lost port race, another checkout's build)
+  // go first: the new service must not lose the port to one of them.
+  const leftovers = orphanProcesses(listServiceProcesses(), info?.pid ?? null);
+  if (leftovers.length > 0) {
+    const stopped = await terminate(leftovers);
+    if (stopped.length > 0)
+      console.log(`${pc.yellow("!")} Stopped leftover service process(es): ${stopped.join(", ")}`);
+  }
+  if (!info) {
+    const foreign = await probeServer(port);
+    if (foreign && leftovers.length === 0) {
+      console.log(
+        `${pc.yellow("!")} ${foreign.name} ${foreign.version} answers on port ${port} but was not started from this home.\n` +
+          `  Stop it where it was started (or with your login service manager), then run: mordomo start`,
+      );
+      ctx.close();
+      if (opts.keepOpen) return;
+      process.exit(1);
+    }
+    for (let i = 0; i < 40 && (await probeServer(port, 500)); i++)
+      await new Promise((r) => setTimeout(r, 250));
+  } else {
+    try {
+      process.kill(info.pid, "SIGTERM");
+    } catch {
+      /* already gone */
+    }
+    for (let i = 0; i < 50; i++) {
+      if (!readPidInfo(ctx)) break;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+  if (isStartupServiceInstalled(ctx.paths)) {
+    const restarted = await waitForPidFile(ctx, 50);
+    if (restarted && restarted.pid !== info?.pid) {
+      console.log(
+        `${pc.green("●")} Restarted by the login service (pid ${restarted.pid}) → http://127.0.0.1:${restarted.port}`,
+      );
+      ctx.close();
+      return;
+    }
+  }
+  const started = await startDetached(ctx);
+  if (started)
+    console.log(
+      `${pc.green("●")} MordomoOS restarted (pid ${started.pid}) → http://127.0.0.1:${started.port}`,
+    );
+  else console.log(`${pc.red("✘")} Service did not report healthy — check ${serviceLogFile(ctx)}`);
   ctx.close();
 }
 
@@ -864,10 +1042,13 @@ async function cmdStatus(args: CliArgs): Promise<void> {
   const ctx = new AppContext();
   const info = readPidInfo(ctx);
   const s = ctx.settings();
+  const foreign = info ? null : await probeServer(s.port);
   if (args.json) {
     console.log(
       JSON.stringify({
         running: info !== null,
+        /** Something answers on the port even though this home owns no pidfile. */
+        reachable: info !== null || foreign !== null,
         pid: info?.pid ?? null,
         port: info?.port ?? s.port,
         startedAt: info?.startedAt ?? null,
@@ -877,6 +1058,10 @@ async function cmdStatus(args: CliArgs): Promise<void> {
   } else if (info) {
     console.log(
       `${pc.green("●")} running · pid ${info.pid} · http://127.0.0.1:${info.port} · since ${new Date(info.startedAt).toLocaleString()}`,
+    );
+  } else if (foreign) {
+    console.log(
+      `${pc.dim("○")} stopped (this home) · but ${foreign.name} ${foreign.version} answers on http://127.0.0.1:${s.port} — started from another home or by hand`,
     );
   } else {
     console.log(`${pc.dim("○")} stopped · configured port ${s.port}`);
@@ -930,7 +1115,7 @@ async function cmdUninstall(args: CliArgs): Promise<void> {
     process.kill(info.pid, "SIGTERM");
     console.log("Stopped the running service.");
   }
-  const plan = planStartupService(ctx.paths, process.execPath);
+  const plan = planStartupService(ctx.paths, process.execPath, process.platform, os.homedir(), CLI_PATH);
   const unitInstalled = plan.files.some((f) => fs.existsSync(f.path));
   if (unitInstalled) {
     console.log("A startup service is installed. Remove it with:");
@@ -1227,7 +1412,7 @@ async function cmdRun(args: CliArgs): Promise<void> {
 async function cmdService(args: CliArgs): Promise<void> {
   const ctx = new AppContext();
   const sub = args.positionals[0] ?? "plan";
-  const plan = planStartupService(ctx.paths, process.execPath);
+  const plan = planStartupService(ctx.paths, process.execPath, process.platform, os.homedir(), CLI_PATH);
   if (sub === "plan") {
     console.log(pc.bold(`Startup service plan (${plan.platform}):`));
     for (const f of plan.files) console.log(`  file: ${f.path}`);
@@ -1251,7 +1436,7 @@ async function cmdService(args: CliArgs): Promise<void> {
 }
 
 async function installStartupService(ctx: AppContext, interactive: boolean): Promise<void> {
-  const plan = planStartupService(ctx.paths, process.execPath);
+  const plan = planStartupService(ctx.paths, process.execPath, process.platform, os.homedir(), CLI_PATH);
   if (plan.platform === "unsupported") {
     console.log("Startup services are not supported on this platform.");
     return;

@@ -74,6 +74,12 @@ export function focusables(root: HTMLElement): HTMLElement[] {
 export interface UseDialogOptions {
   /** Where focus lands on open; default: first field, else the dialog itself. */
   initialFocus?: () => HTMLElement | null | undefined;
+  /**
+   * For a component that stays mounted while closed (renders `null`): the
+   * dialog registers when this turns true and leaves the stack when it turns
+   * false. A component that mounts only while open can leave it out.
+   */
+  open?: boolean;
 }
 
 /**
@@ -93,9 +99,10 @@ export function useDialog(
     initialRef.current = opts.initialFocus;
   });
 
+  const open = opts.open ?? true;
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || !open) return;
     const previous = document.activeElement as HTMLElement | null;
     // The portal child is the backdrop; the dialog may be nested inside it.
     const portalChild = el.closest("#modal-root > *") as HTMLElement | null;
@@ -109,7 +116,15 @@ export function useDialog(
       focusables(el).find((candidate) => candidate.matches(FIELD)) ??
       focusables(el).find((f) => !f.hasAttribute("data-dialog-close")) ??
       el;
-    const raf = requestAnimationFrame(() => target.focus({ preventScroll: true }));
+    // The frame can land late (a busy stage, a canvas repaint). If the user
+    // — or an automation — has already put focus on a field inside the
+    // dialog by then, that choice stands: stealing it mid-typing sent the
+    // second field's text into the first.
+    const raf = requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (active && active !== el && el.contains(active)) return;
+      target.focus({ preventScroll: true });
+    });
 
     const onKey = (e: KeyboardEvent) => {
       if (stack[stack.length - 1] !== entry) return;
@@ -150,7 +165,7 @@ export function useDialog(
       if (previous && previous.isConnected && typeof previous.focus === "function")
         previous.focus({ preventScroll: true });
     };
-  }, [ref]);
+  }, [ref, open]);
 }
 
 /** Render dialog markup outside the OS shell so the shell can be made inert. */

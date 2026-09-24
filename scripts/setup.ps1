@@ -3,11 +3,11 @@ $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-  Write-Error "Node.js >= 20 is required. Install with: winget install OpenJS.NodeJS.LTS"
+  Write-Error "Node.js >= 22 is required. Install with: winget install OpenJS.NodeJS.LTS"
 }
 $major = [int](node -p 'process.versions.node.split(".")[0]')
-if ($major -lt 20) {
-  Write-Error "Node.js >= 20 is required (found $(node --version))."
+if ($major -lt 22) {
+  Write-Error "Node.js >= 22 is required (found $(node --version))."
 }
 
 Write-Host "- Installing dependencies..."

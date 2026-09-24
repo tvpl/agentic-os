@@ -7,7 +7,9 @@ import { useWorkspace } from "../components/Workspace";
  * All world mutations go through the engine; React state lives in the parent.
  */
 import { useEffect, useRef, type MutableRefObject, type RefObject } from "react";
+import { ClickChain } from "./engine/clicks";
 import { tripsActive } from "./engine/explosion";
+import { cancelFlight, stepFlight } from "./engine/flight";
 import { hitTest as engineHitTest, screenToWorld, zoomAt, type Hit } from "./engine/hitTest";
 import {
   alphasSettled,
@@ -25,6 +27,7 @@ import {
   makeRingDefs,
   type RingDef,
 } from "./render/draw";
+import { LabelRanker, LabelWidthCache } from "./render/labels";
 import { createSprites } from "./render/sprites";
 import { readCanvasTokens } from "./render/tokens";
 
@@ -34,6 +37,8 @@ export interface CanvasHandlers {
   onDoubleClick: (hit: Hit) => void;
   /** A file was dragged (it is now pinned at its new position). */
   onDragEnd: (node: FileNode) => void;
+  /** The zoom changed by more than a hair (pushed from the render loop; no polling). */
+  onZoom?: (k: number) => void;
 }
 
 export interface BrainCanvasProps {
@@ -44,6 +49,8 @@ export interface BrainCanvasProps {
   viewRef: MutableRefObject<{ width: number; height: number }>;
   /** Bump to force a frame (hover, selection, filters…). */
   invalidateRef: MutableRefObject<number>;
+  /** Written by the canvas: true when motion is reduced (OS setting or economy mode). */
+  reduceMotionRef?: MutableRefObject<boolean>;
   ringLabels: { skills: string; memory: string; routines: string; apps: string };
   coreLabel: string;
   ariaLabel: string;
@@ -54,6 +61,10 @@ export interface BrainCanvasProps {
 /** Idle frame interval (≈12 fps) when nothing moves. */
 const IDLE_INTERVAL_MS = 83;
 const WHEEL_ZOOM_PER_PX = 0.0065;
+/** Screen pixels a pointer must travel before a press becomes a drag (pan or node pin). */
+const DRAG_THRESHOLD_PX = 4;
+/** Zoom readout resolution. */
+const ZOOM_EPSILON = 0.005;
 
 export function BrainCanvas({
   world,
@@ -61,6 +72,7 @@ export function BrainCanvas({
   minimapRef,
   viewRef,
   invalidateRef,
+  reduceMotionRef,
   ringLabels,
   coreLabel,
   ariaLabel,
@@ -93,8 +105,10 @@ export function BrainCanvas({
     const w = world.current;
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     let reduceMotion = economy || motionQuery.matches;
+    if (reduceMotionRef) reduceMotionRef.current = reduceMotion;
     const onMotion = () => {
       reduceMotion = economy || motionQuery.matches;
+      if (reduceMotionRef) reduceMotionRef.current = reduceMotion;
       invalidateRef.current++;
     };
     motionQuery.addEventListener("change", onMotion);
@@ -105,6 +119,8 @@ export function BrainCanvas({
     let rect = { width: canvas.clientWidth || 1, height: canvas.clientHeight || 1 };
     let dpr = Math.min(window.devicePixelRatio || 1, 2);
     const minimap = createMinimapState();
+    const labelRanker = new LabelRanker();
+    const labelWidths = new LabelWidthCache();
 
     const resize = () => {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -138,12 +154,13 @@ export function BrainCanvas({
     let lastDraw = 0;
     let seenDirty = -1;
     let running = true;
+    let lastZoom = -1;
 
     /** True while anything on screen still moves (full frame rate); false → idle throttle. */
     const isMoving = (): boolean => {
       if (draggingRef.current) return true;
       if (w.effects.length > 0 || w.comets.length > 0) return true;
-      if (!transformSettled(w)) return true;
+      if (w.flight || !transformSettled(w)) return true;
       if (tripsActive(w.files)) return true;
       if (w.layout === "force" && w.sim && w.sim.alpha() > w.sim.alphaMin()) return true;
       return maxDisplacement(w) > 0.3;
@@ -166,8 +183,13 @@ export function BrainCanvas({
       lastDraw = now;
       seenDirty = invalidateRef.current;
 
-      tweenTransform(w, dt);
+      if (w.flight) stepFlight(w, w.time);
+      else tweenTransform(w, dt);
       stepWorld(w, dt, !reduceMotion);
+      if (Math.abs(w.transform.k - lastZoom) > ZOOM_EPSILON) {
+        lastZoom = w.transform.k;
+        handlersRef.current.onZoom?.(lastZoom);
+      }
       drawFrame(ctx, w, {
         width: rect.width,
         height: rect.height,
@@ -178,6 +200,8 @@ export function BrainCanvas({
         ringDefs: ringDefsRef.current,
         background,
         coreLabel: coreLabelRef.current,
+        labelRanker,
+        labelWidths,
       });
       const mini = minimapRef.current;
       if (mini)
@@ -217,7 +241,7 @@ export function BrainCanvas({
       motionQuery.removeEventListener("change", onMotion);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [canvasRef, minimapRef, world, viewRef, invalidateRef, economy]);
+  }, [canvasRef, minimapRef, world, viewRef, invalidateRef, reduceMotionRef, economy]);
 
   /* ---------- pointer interaction ---------- */
   useEffect(() => {
@@ -228,11 +252,24 @@ export function BrainCanvas({
     let mode: "none" | "pan" | "node" | "pinch" = "none";
     let moved = false;
     let start = { x: 0, y: 0 };
+    /** Screen position of the press: the drag threshold is measured from here. */
+    let downAt = { x: 0, y: 0 };
     let dragNode: FileNode | null = null;
     let wasPinned = false;
     let pinchDist = 0;
     let pinchMid = { x: 0, y: 0 };
     let lastHoverId: string | null = null;
+    /** What the last click landed on. The second press of a double-click and
+     *  the dblclick event reuse it, because the first click's own camera
+     *  flight has already moved that node away from under the pointer by the
+     *  time they would be hit-tested (see engine/clicks). */
+    const clicks = new ClickChain<Hit>();
+    /** Hit a chained press will click on release (no live hit-test for it). */
+    let pressHit: Hit | null = null;
+    const click = (hit: Hit, e: PointerEvent) => {
+      clicks.record(hit, performance.now(), e.clientX, e.clientY);
+      handlersRef.current.onClick(hit);
+    };
 
     const rectOf = () => canvas.getBoundingClientRect();
     const toWorld = (clientX: number, clientY: number) =>
@@ -252,6 +289,7 @@ export function BrainCanvas({
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      cancelFlight(w);
       const rect = rectOf();
       const tg = w.target;
       // Trackpad pinch arrives as ctrlKey + wheel; ⌘/ctrl + wheel is zoom too. A
@@ -280,14 +318,23 @@ export function BrainCanvas({
         pinchDist = Math.hypot(a!.x - b!.x, a!.y - b!.y) || 1;
         pinchMid = { x: (a!.x + b!.x) / 2, y: (a!.y + b!.y) / 2 };
         if (dragNode) dragNode = null;
+        cancelFlight(w);
+        clicks.reset();
+        pressHit = null;
         mode = "pinch";
         canvas.classList.remove("dragging", "dragging-node");
         return;
       }
       if (e.button !== 0 && e.pointerType === "mouse") return;
       moved = false;
-      const hit = hitAt(e.clientX, e.clientY);
-      if (hit.file && !hit.hub && !hit.orb && !hit.planet) {
+      downAt = { x: e.clientX, y: e.clientY };
+      // A press that continues the previous click (same spot, quick) acts on
+      // what that click hit; it starts no node drag and is not hit-tested live.
+      const { hit, reused } = clicks.hitForPress(performance.now(), e.clientX, e.clientY, () =>
+        hitAt(e.clientX, e.clientY),
+      );
+      pressHit = reused ? hit : null;
+      if (!reused && hit.file && !hit.hub && !hit.orb && !hit.planet) {
         mode = "node";
         dragNode = hit.file;
         wasPinned = dragNode.pinned;
@@ -299,6 +346,8 @@ export function BrainCanvas({
       start = { x: e.clientX - w.transform.x, y: e.clientY - w.transform.y };
       canvas.classList.add("dragging");
     };
+    const pastThreshold = (e: PointerEvent): boolean =>
+      Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > DRAG_THRESHOLD_PX;
 
     const onMove = (e: PointerEvent) => {
       if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -316,9 +365,9 @@ export function BrainCanvas({
         return;
       }
       if (mode === "node" && dragNode) {
-        const p = toWorld(e.clientX, e.clientY);
-        if (Math.abs(p.x - dragNode.x) + Math.abs(p.y - dragNode.y) > 0.5) moved = true;
+        if (!moved && pastThreshold(e)) moved = true;
         if (!moved) return;
+        const p = toWorld(e.clientX, e.clientY);
         dragNode.pinned = true;
         dragNode.trip = null;
         dragNode.x = p.x;
@@ -332,9 +381,15 @@ export function BrainCanvas({
         return;
       }
       if (mode === "pan") {
+        if (!moved && pastThreshold(e)) moved = true;
+        if (!moved) return;
+        // The pan takes over from any flight where the flight currently is.
+        if (w.flight) {
+          cancelFlight(w);
+          start = { x: e.clientX - w.transform.x, y: e.clientY - w.transform.y };
+        }
         const nx = e.clientX - start.x;
         const ny = e.clientY - start.y;
-        if (Math.abs(nx - w.transform.x) + Math.abs(ny - w.transform.y) > 3) moved = true;
         w.transform.x = nx;
         w.transform.y = ny;
         w.target.x = nx;
@@ -367,16 +422,23 @@ export function BrainCanvas({
         const node = dragNode;
         dragNode = null;
         if (w.layout === "force" && w.sim) w.sim.alphaTarget(0);
-        if (moved) handlersRef.current.onDragEnd(node);
-        else {
+        if (moved) {
+          clicks.reset();
+          handlersRef.current.onDragEnd(node);
+        } else {
           node.pinned = wasPinned;
-          handlersRef.current.onClick({ file: node });
+          click({ file: node }, e);
         }
         invalidateRef.current++;
         return;
       }
-      if (prevMode !== "pan" || moved) return;
-      handlersRef.current.onClick(hitAt(e.clientX, e.clientY));
+      const chained = pressHit;
+      pressHit = null;
+      if (prevMode !== "pan" || moved) {
+        if (moved) clicks.reset();
+        return;
+      }
+      click(chained ?? hitAt(e.clientX, e.clientY), e);
     };
 
     const onCancel = (e: PointerEvent) => {
@@ -384,11 +446,15 @@ export function BrainCanvas({
       canvas.classList.remove("dragging", "dragging-node");
       draggingRef.current = false;
       dragNode = null;
+      pressHit = null;
+      clicks.reset();
       mode = pointers.size >= 2 ? "pinch" : "none";
     };
 
     const onDblClick = (e: MouseEvent) => {
-      handlersRef.current.onDoubleClick(hitAt(e.clientX, e.clientY));
+      handlersRef.current.onDoubleClick(
+        clicks.hitForDoubleClick(performance.now(), () => hitAt(e.clientX, e.clientY)),
+      );
     };
     const onLeave = () => {
       if (lastHoverId === null) return;

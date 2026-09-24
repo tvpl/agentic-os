@@ -1,33 +1,32 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { useLocation } from "react-router-dom";
 import {
   BrainCircuit,
   CalendarClock,
-  ChevronDown,
-  ChevronUp,
-  Compass,
-  Focus,
   Grid3x3,
+  Layers,
   LayoutDashboard,
   ListTree,
   Settings,
   Sparkles,
 } from "lucide-react";
 import { useT, type TKey } from "../i18n";
+import { useOsSettings } from "../queries";
 import { useOsNavigate } from "../hooks/useViewTransition";
+import { PANEL_GLYPH, getPanels, requestPanelAction, subscribePanels } from "../desktop/panelKinds";
+import { requestDesktopAction, useDesktopModes } from "../desktop/desktopModes";
+import { shouldStack } from "../desktop/defaultLayout";
 import "./workspace.css";
 
-export type WorkspaceMode = "overview" | "focus" | "explore";
-const MODES: WorkspaceMode[] = ["overview", "focus", "explore"];
-const MODE_KEY = "mordomo.workspace.mode";
-function initialMode(): WorkspaceMode {
-  try {
-    const mode = localStorage.getItem(MODE_KEY);
-    return MODES.includes(mode as WorkspaceMode) ? (mode as WorkspaceMode) : "overview";
-  } catch {
-    return "overview";
-  }
-}
 export type RenderProfile = "auto" | "immersive" | "economy";
 function initialProfile(): RenderProfile {
   try {
@@ -38,20 +37,15 @@ function initialProfile(): RenderProfile {
   }
 }
 const WorkspaceContext = createContext<{
-  mode: WorkspaceMode;
-  setMode: (mode: WorkspaceMode) => void;
   renderProfile: RenderProfile;
   setRenderProfile: (profile: RenderProfile) => void;
   economy: boolean;
 }>({
-  mode: "overview",
-  setMode: () => undefined,
   renderProfile: "auto",
   setRenderProfile: () => undefined,
   economy: false,
 });
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const [mode, updateMode] = useState(initialMode);
   const [renderProfile, updateProfile] = useState(initialProfile);
   const [reduced, setReduced] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   useEffect(() => {
@@ -75,17 +69,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       delete document.documentElement.dataset.renderProfile;
     };
   }, [economy]);
-  const setMode = useCallback((next: WorkspaceMode) => {
-    updateMode(next);
-    try {
-      localStorage.setItem(MODE_KEY, next);
-    } catch {
-      /* session-only when storage is unavailable */
-    }
-  }, []);
   const value = useMemo(
-    () => ({ mode, setMode, renderProfile, setRenderProfile, economy }),
-    [mode, setMode, renderProfile, setRenderProfile, economy],
+    () => ({ renderProfile, setRenderProfile, economy }),
+    [renderProfile, setRenderProfile, economy],
   );
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
@@ -100,63 +86,189 @@ const APPS: Array<{ route: string; label: TKey; Icon: typeof BrainCircuit }> = [
   { route: "/pixel", label: "nav.pixel", Icon: Grid3x3 },
   { route: "/settings", label: "nav.settings", Icon: Settings },
 ];
-const MODE_ICONS = { overview: LayoutDashboard, focus: Focus, explore: Compass };
 
-/** Persistent navigation: app changes never depend on reopening the launcher. */
+/**
+ * The three desktop spaces (redesign F6). Each remembers its own windows, so
+ * switching is putting a context of work down and picking another up — which
+ * is what the old `overview` / `focus` / `explore` modes only pretended to
+ * be: they changed opacity and lost whatever you had arranged.
+ *
+ * The dock does not own the layout, so it asks: the desktop hears the event
+ * and performs the switch with the arrangement it has live, including a drag
+ * that has not been persisted yet.
+ */
+export const SWITCH_SPACE_EVENT = "mordomo:switch-space";
+
+/**
+ * A switch requested from another app: the dock navigates home first, so the
+ * desktop is not mounted yet and would never hear the event. The request is
+ * parked here and drained when the desktop comes up.
+ */
+let pendingSpace: string | null = null;
+export function requestSpace(id: string) {
+  pendingSpace = id;
+  window.dispatchEvent(new CustomEvent(SWITCH_SPACE_EVENT, { detail: id }));
+}
+export function takePendingSpace(): string | null {
+  const next = pendingSpace;
+  pendingSpace = null;
+  return next;
+}
+export const SPACE_IDS = ["work", "research", "ops"] as const;
+export type SpaceId = (typeof SPACE_IDS)[number];
+
+function SpaceSwitcher() {
+  const t = useT();
+  const navigate = useOsNavigate();
+  const { pathname } = useLocation();
+  const settings = useOsSettings();
+  const active = settings.data?.activeSpace ?? "work";
+  const panels = useSyncExternalStore(subscribePanels, getPanels, () => []);
+  // How many panels a space holds (the prototype's `.n`): the active one is
+  // what is on the stage now, the others what they remember.
+  const count = (id: string): number => {
+    if (id === active && pathname === "/") return panels.length;
+    const layout = settings.data?.spaces?.[id]?.layout ?? {};
+    return Object.values(layout).filter((box) => box.visible !== false).length;
+  };
+  return (
+    <div className="dock-spaces" data-onboarding="modes" role="group" aria-label={t("desktop.space.title")}>
+      {SPACE_IDS.map((id) => (
+        <button
+          key={id}
+          type="button"
+          className="spc"
+          aria-pressed={active === id && pathname === "/"}
+          onClick={() => {
+            if (pathname !== "/") navigate("/");
+            requestSpace(id);
+          }}
+        >
+          <Layers aria-hidden />
+          <span>{t(`desktop.space.${id}`)}</span>
+          {count(id) > 0 && (
+            <span className="n" aria-hidden>
+              {count(id)}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The panels on the stage, as the prototype's dock shows them (G1): one
+ * button per open panel, a parked one dashed, a live trace with a pulse.
+ * Clicking the focused one parks it; a parked one comes back; any other
+ * comes to the front. The desktop owns the layout; this only asks.
+ */
+function DockTasks() {
+  const t = useT();
+  const { pathname } = useLocation();
+  const panels = useSyncExternalStore(subscribePanels, getPanels, () => []);
+  if (pathname !== "/" || panels.length === 0) return <div className="dock-tasks" aria-hidden />;
+  const topId = panels.find((p) => !p.minimized)?.id ?? null;
+  return (
+    <div className="dock-tasks" role="group" aria-label={t("desktop.dock.panels")}>
+      {panels.map((p) => (
+        <button
+          key={p.id}
+          type="button"
+          className={`dock-task${p.minimized ? " parked" : ""}${p.id === topId ? " on" : ""}`}
+          data-task={p.id}
+          aria-pressed={p.id === topId}
+          // Named as a task, not as the app: the dock still lists the apps
+          // by their own names until G5, and a screen reader (or a test)
+          // must be able to tell "open Runs" from "the Runs panel".
+          aria-label={`${t("desktop.dock.panels")}: ${p.title}`}
+          title={p.title}
+          onClick={() =>
+            requestPanelAction(p.id, p.minimized ? "restore" : p.id === topId ? "minimize" : "focus")
+          }
+        >
+          {p.live && <span className="dock-live" aria-hidden />}
+          <span className="dock-glyph" aria-hidden>
+            {PANEL_GLYPH[p.kind]}
+          </span>
+          <span className="dock-task-name">{p.title}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The dock (redesign G5), as the prototype draws it on the desktop: spaces
+ * with their panel counts · the open panels · Edit HUD · Overview · Spread
+ * out. The apps are the pods on the left arc, not dock icons.
+ *
+ * On a narrow screen the apps are still pages (`useStacked`), so there the
+ * dock stays what it was: one icon per app, the way a phone navigates.
+ */
 export function WorkspaceDock() {
   const t = useT();
   const navigate = useOsNavigate();
   const { pathname } = useLocation();
-  const { mode, setMode } = useWorkspace();
-  const [collapsed, setCollapsed] = useState(false);
+  const modes = useDesktopModes();
+  const [stacked, setStacked] = useState(() => shouldStack(window.innerWidth, window.innerHeight));
+  useEffect(() => {
+    const onResize = () => setStacked(shouldStack(window.innerWidth, window.innerHeight));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  if (stacked || pathname !== "/") {
+    return (
+      <nav className="workspace-dock apps" aria-label={t("desktop.dock.title")}>
+        <div className="dock-apps">
+          {APPS.map(({ route, label, Icon }) => (
+            <button
+              type="button"
+              key={route}
+              className={`dock-app${pathname === route || (route !== "/" && pathname.startsWith(route + "/")) ? " active" : ""}`}
+              aria-label={t(label)}
+              aria-current={pathname === route ? "page" : undefined}
+              onClick={() => navigate(route)}
+            >
+              <Icon aria-hidden />
+              <span className="dock-tooltip">{t(label)}</span>
+            </button>
+          ))}
+        </div>
+        <SpaceSwitcher />
+      </nav>
+    );
+  }
   return (
-    <nav className={`workspace-dock${collapsed ? " collapsed" : ""}`} aria-label={t("desktop.dock.title")}>
-      {!collapsed && (
-        <>
-          <div className="dock-apps">
-            {APPS.map(({ route, label, Icon }) => (
-              <button
-                type="button"
-                key={route}
-                className={`dock-app${pathname === route || (route !== "/" && pathname.startsWith(route + "/")) ? " active" : ""}`}
-                aria-label={t(label)}
-                aria-current={pathname === route ? "page" : undefined}
-                onClick={() => navigate(route)}
-              >
-                <Icon aria-hidden />
-                <span className="dock-tooltip">{t(label)}</span>
-              </button>
-            ))}
-          </div>
-          <div className="dock-modes" role="group" aria-label={t("desktop.mode.title")}>
-            {MODES.map((value) => {
-              const Icon = MODE_ICONS[value];
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={mode === value && pathname === "/"}
-                  onClick={() => {
-                    setMode(value);
-                    if (pathname !== "/") navigate("/");
-                  }}
-                >
-                  <Icon aria-hidden />
-                  <span>{t(`desktop.mode.${value}`)}</span>
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
+    <nav className="workspace-dock hud" aria-label={t("desktop.dock.title")}>
+      <SpaceSwitcher />
+      <span className="dv" aria-hidden />
+      <DockTasks />
+      <span className="sp" aria-hidden />
       <button
         type="button"
-        className="dock-collapse"
-        onClick={() => setCollapsed(!collapsed)}
-        aria-expanded={!collapsed}
-        aria-label={t(collapsed ? "desktop.dock.expand" : "desktop.dock.collapse")}
+        className="tl"
+        aria-pressed={modes.editing}
+        onClick={() => requestDesktopAction("hud")}
       >
-        {collapsed ? <ChevronUp aria-hidden /> : <ChevronDown aria-hidden />}
+        <span aria-hidden>⌗</span> {t("desktop.dock.editHud")}
+      </button>
+      <button
+        type="button"
+        className="tl"
+        aria-pressed={modes.overview}
+        title={t(modes.overview ? "desktop.overview.exit" : "desktop.overview.enter")}
+        onClick={() => requestDesktopAction("overview")}
+      >
+        <span aria-hidden>▣</span> {t("desktop.dock.overview")}
+      </button>
+      <button
+        type="button"
+        className="tl"
+        title={t("desktop.arrange.tile")}
+        onClick={() => requestDesktopAction("tile")}
+      >
+        <span aria-hidden>◫</span> {t("desktop.dock.tile")}
       </button>
     </nav>
   );

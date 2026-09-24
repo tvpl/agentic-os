@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   executeInvocation,
-  findOnPath,
+  findExecutable,
   parseHelpFlags,
   probe,
   type AgentAdapter,
@@ -47,18 +47,22 @@ export class CursorAdapter implements AgentAdapter {
   constructor(private readonly opts: { binaryPath?: string | null; homeDir?: string } = {}) {}
 
   private binary(): string {
-    return this.opts.binaryPath ?? findOnPath("cursor-agent") ?? "cursor-agent";
+    return this.opts.binaryPath ?? findExecutable("cursor-agent") ?? "cursor-agent";
   }
 
   async detect(): Promise<DetectionResult> {
-    const binaryPath = this.opts.binaryPath ?? findOnPath("cursor-agent");
+    const binaryPath = this.opts.binaryPath ?? findExecutable("cursor-agent");
     if (!binaryPath) {
       return {
         installed: false,
         binaryPath: null,
         version: null,
         supportedFlags: [],
-        notes: ["`cursor-agent` was not found on PATH. Install: curl https://cursor.com/install -fsS | bash"],
+        notes: [
+          cursorIdeInstalled()
+            ? "Cursor (the editor) is installed but its terminal agent `cursor-agent` is not. Install it: curl https://cursor.com/install -fsS | bash"
+            : "`cursor-agent` was not found on PATH or in the usual install folders. Install: curl https://cursor.com/install -fsS | bash",
+        ],
       };
     }
     const notes: string[] = [];
@@ -87,7 +91,7 @@ export class CursorAdapter implements AgentAdapter {
   }
 
   async authenticate(): Promise<AuthStatus> {
-    const binaryPath = this.opts.binaryPath ?? findOnPath("cursor-agent");
+    const binaryPath = this.opts.binaryPath ?? findExecutable("cursor-agent");
     if (!binaryPath) return { authenticated: false, method: null, detail: "cursor-agent is not installed." };
     try {
       // `cursor-agent status` prints login state without exposing tokens.
@@ -289,4 +293,39 @@ export function cursorConfigDir(homeDir?: string): string {
 }
 export function hasCursorCliConfig(homeDir?: string): boolean {
   return fs.existsSync(path.join(cursorConfigDir(homeDir), "cli.json"));
+}
+
+/** The Cursor editor itself (not the agent CLI) — a hint that the user is a Cursor user. */
+export function cursorIdeInstalled(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = os.homedir(),
+): boolean {
+  const candidates =
+    platform === "darwin"
+      ? ["/Applications/Cursor.app", path.join(home, "Applications", "Cursor.app")]
+      : platform === "win32"
+        ? [
+            path.join(
+              env.LOCALAPPDATA ?? path.join(home, "AppData", "Local"),
+              "Programs",
+              "cursor",
+              "Cursor.exe",
+            ),
+          ]
+        : [
+            "/usr/bin/cursor",
+            "/usr/local/bin/cursor",
+            "/opt/cursor",
+            path.join(home, ".local", "bin", "cursor"),
+          ];
+  const present = candidates.some((c) => {
+    try {
+      fs.statSync(c);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  return present || findExecutable("cursor", env) !== null;
 }

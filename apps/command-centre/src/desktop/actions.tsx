@@ -6,6 +6,8 @@
  */
 import { createContext, useContext, type ReactNode } from "react";
 import type { Skill } from "../api";
+import type { OpenPanel } from "./panelKinds";
+import type { AppKind, AppLocation } from "./apps";
 
 export interface DesktopActions {
   /** Launch a skill (may navigate to the skill page when it needs inputs). */
@@ -16,6 +18,24 @@ export interface DesktopActions {
   focusDeck: () => void;
   /** Ids of the skills that have a run in flight right now. */
   runningSkills: ReadonlySet<string>;
+  /**
+   * Panels currently on the stage, top of the stack first. The console shows
+   * them as context chips and resolves `@ref` against them, so what is open
+   * is what the agent can be pointed at (redesign F5, generalised in G1).
+   */
+  openPanels: ReadonlyArray<OpenPanel>;
+  /** Open a file as a panel on the stage (idempotent: focuses an open one). */
+  openDoc: (path: string) => void;
+  /** Open one of the OS's apps as a panel on the stage, optionally at a path inside it. */
+  openApp: (kind: AppKind, at?: Partial<AppLocation>) => void;
+  /** Open a run's trace as a panel on the stage (idempotent). */
+  openRun: (runId: string) => void;
+  /** Open the inputs form for a skill that needs them before it runs. */
+  openSkillForm: (slug: string) => void;
+  /** Put a registered instrument surface on the stage by id (`approvals`, `now`…). */
+  openPanel: (id: string) => void;
+  /** Insert `@ref` for a panel into the console draft. */
+  referencePanel: (id: string) => void;
 }
 
 const noop = () => undefined;
@@ -24,6 +44,13 @@ const DesktopActionsContext = createContext<DesktopActions>({
   configureSkill: noop,
   focusDeck: noop,
   runningSkills: new Set<string>(),
+  openPanels: [],
+  openDoc: noop,
+  openApp: noop,
+  openRun: noop,
+  openSkillForm: noop,
+  openPanel: noop,
+  referencePanel: noop,
 });
 
 export function DesktopActionsProvider({ value, children }: { value: DesktopActions; children: ReactNode }) {

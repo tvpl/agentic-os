@@ -1,9 +1,9 @@
 name: CI
 
+# Manual only: nothing runs on push or pull request. Trigger it from the
+# Actions tab when you want a full check on a clean machine.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -35,6 +35,15 @@ jobs:
         run: npx vitest run --exclude tests/adapters.test.ts --exclude tests/api.test.ts --exclude tests/core.runs.test.ts --exclude tests/seeds.test.ts
       - run: npm run build
       - run: npm audit --audit-level=high
+      - name: Packager smoke (bundle + launchers, system Node, no archive)
+        if: runner.os != 'Windows'
+        run: |
+          npm run dist:quick
+          stage=$(ls -d build/package/*/ | head -1)
+          if [ -x "$stage/mordomo" ]; then cli="$stage/mordomo"; else cli="$stage/bin/mordomo"; fi
+          export MORDOMO_HOME="$RUNNER_TEMP/pkg-home" MORDOMO_SKIP_NPM_AUDIT=1
+          "$cli" status --json | grep -q '"running":false'
+          "$cli" doctor | grep -q "Node.js version"
 
   e2e:
     name: e2e (playwright)

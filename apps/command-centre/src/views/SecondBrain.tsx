@@ -8,9 +8,10 @@ import { errorMessage } from "./shared";
  * (`useBrainState`) and the panels. This file loads the data, owns the
  * selection, translates canvas hits into navigation and lays the pieces out.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, type GraphData, type IndexProgressPayload, type MemoryPreview, type RunRecord } from "../api";
 import { useToast } from "../components/ui";
+import { getDialogDepth } from "../components/dialog";
 import { useLang, useT } from "../i18n";
 import { useOsEvent } from "../hooks/useEventStream";
 import { useOsNavigate } from "../hooks/useViewTransition";
@@ -31,9 +32,18 @@ import { BrainPanel } from "../brain/BrainPanel";
 import { FileList } from "../brain/FileList";
 import { PreviewPanel, type PreviewState } from "../brain/PreviewPanel";
 import { useBrainState, workspaceOf } from "../brain/useBrainState";
-import { ZoomReadout } from "../brain/ZoomReadout";
+import { ZoomReadout, useZoomBus } from "../brain/ZoomReadout";
 import { useCamera, useMinimapNav } from "../brain/camera";
-import { frameSector } from "../brain/engine/explosion";
+import {
+  cancelFlight,
+  hubBounds,
+  planetBounds,
+  reserveInsets,
+  restingPoint,
+  sectorBounds,
+  type Insets,
+  type Rect,
+} from "../brain/engine/flight";
 import { applyVisibility, updateFocus } from "../brain/engine/graph";
 import type { Hit } from "../brain/engine/hitTest";
 import { setHubsExpanded, toggleHub as toggleHubIn } from "../brain/engine/hubs";
@@ -48,6 +58,22 @@ import { saveLocalSettings, settingsFromUi } from "../brain/state";
 import "../brain/brain.css";
 
 const GRAPH_PARAMS = { maxNodes: 3000 };
+/**
+ * Chrome that overlays the canvas (screen px). The insets are measured from
+ * the panels' real rects; these are only the fallbacks for a panel that is
+ * not mounted yet (the preview a selection is about to open, the top bar
+ * before first paint).
+ */
+const TOPBAR_PX = 60;
+const PANEL_MARGIN_PX = 16;
+const PREVIEW_TOP_PX = 76;
+const PREVIEW_MAX_PX = 360;
+const PREVIEW_MAX_FRACTION = 0.42;
+/** Below this viewport width the file list hides under the preview instead of sitting beside it. */
+const LIST_BESIDE_PREVIEW_QUERY = "(min-width: 1100px)";
+const LIST_BESIDE_PREVIEW_GAP_PX = 12;
+/** Zoom a double-click on a file dives to (a single click uses the camera's focus zoom, never zooming out). */
+const FILE_DIVE_K = 3.2;
 const GRAPH_PATH = "/api/memory/graph?maxNodes=3000";
 const LAYOUT_KEYS: Record<
   LayoutKind,
@@ -83,6 +109,7 @@ export default function SecondBrain() {
   const [presenting, setPresenting] = useState(false);
   const [legendOpen, setLegendOpen] = usePanelPreference("legend", true);
   const [listOpen, setListOpen] = usePanelPreference("files", false);
+  const [controlsCollapsed, setControlsCollapsed] = usePanelPreference("controls", false);
   const [missingSelection, setMissingSelection] = useState(false);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
@@ -139,16 +166,97 @@ export default function SecondBrain() {
   const wantFocus = brain.focusRef;
 
   /* ---------- camera ---------- */
-  const camera = useCamera(world, viewRef, dirty);
-  const { centerOn } = camera;
+  // Overlay panels reserve screen insets so framed content lands in the free
+  // part of the viewport. They are measured from the panels' real rects (the
+  // stylesheet decides where each sits and whether the file list stays beside
+  // the preview), after every panel change and again at the start of every
+  // camera helper that frames against them, so a resize never leaves them
+  // stale. A panel the state says is open but that is not mounted yet (the
+  // preview a selection is about to open) falls back to its stylesheet size.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const insetsRef = useRef<Insets>({ left: 0, right: 0, top: TOPBAR_PX, bottom: PANEL_MARGIN_PX });
+  const reduceMotionRef = useRef(false);
+  const panelState = useRef({ presenting, previewOpen: preview !== null, listOpen, controlsCollapsed });
+  const refreshInsets = useCallback(() => {
+    const st = panelState.current;
+    const view = viewRef.current;
+    const canvas: Rect = canvasRef.current?.getBoundingClientRect() ?? {
+      left: 0,
+      top: 0,
+      right: view.width,
+      bottom: view.height,
+    };
+    if (st.presenting) {
+      insetsRef.current = { left: 0, right: 0, top: 0, bottom: PANEL_MARGIN_PX };
+      return;
+    }
+    const rectOf = (selector: string): Rect | null => {
+      const el = rootRef.current?.querySelector(selector);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 ? r : null;
+    };
+    const panels: Rect[] = [];
+    const topbar = rectOf(".brain2-topbar");
+    panels.push(
+      topbar ?? { left: canvas.left, top: canvas.top, right: canvas.right, bottom: canvas.top + TOPBAR_PX },
+    );
+    const controls = rectOf(".brain2-panel");
+    if (controls) panels.push(controls);
+    const list = st.listOpen ? rectOf(".brain2-list") : null;
+    const preview = st.previewOpen ? rectOf(".brain2-preview") : null;
+    if (preview) {
+      panels.push(preview);
+      if (list) panels.push(list); // still displayed beside it (wide viewports); hidden ones measure 0×0
+    } else if (st.previewOpen) {
+      // Not mounted yet: the stylesheet's geometry, beside the list when the viewport keeps both.
+      const beside = list !== null && window.matchMedia(LIST_BESIDE_PREVIEW_QUERY).matches;
+      const left = beside ? list.right + LIST_BESIDE_PREVIEW_GAP_PX : canvas.left + PANEL_MARGIN_PX;
+      panels.push({
+        left,
+        top: canvas.top + PREVIEW_TOP_PX,
+        right: left + Math.min(PREVIEW_MAX_PX, view.width * PREVIEW_MAX_FRACTION),
+        bottom: canvas.bottom - PANEL_MARGIN_PX,
+      });
+      if (beside) panels.push(list);
+    } else if (list) panels.push(list);
+    insetsRef.current = reserveInsets(canvas, panels, PANEL_MARGIN_PX);
+  }, []);
+  useLayoutEffect(() => {
+    panelState.current = { presenting, previewOpen: preview !== null, listOpen, controlsCollapsed };
+    refreshInsets();
+  }, [presenting, preview, listOpen, controlsCollapsed, refreshInsets]);
+  const camera = useCamera(world, viewRef, insetsRef, dirty, reduceMotionRef, refreshInsets);
+  const { centerOn, fitToBounds } = camera;
+  /**
+   * "Reset zoom and position" means it: a flight still playing and a dive
+   * still queued for the selection would both steer the camera away again a
+   * moment later — inside a plate, where the preview pane lands mid-canvas,
+   * that is exactly what happened.
+   */
+  const resetCamera = useCallback(() => {
+    cancelFlight(world.current);
+    wantFocus.current = false;
+    camera.reset();
+  }, [camera, world, wantFocus]);
+  const zoomControls = useMemo(
+    () => ({ ...camera.controls, reset: resetCamera }),
+    [camera.controls, resetCamera],
+  );
+  const zoomBus = useZoomBus();
 
   /* ---------- selection + preview ---------- */
   const previewToken = useRef(0);
   const selectId = useCallback(
-    (id: number | null, focus = false) => {
+    (id: number | null, focus: boolean | "dive" = false) => {
       if (id !== null && id === uiRef.current.sel) {
-        const node = world.current.files.find((n) => n.id === id);
-        if (focus && node) centerOn(node.x, node.y);
+        const w = world.current;
+        const node = w.files.find((n) => n.id === id);
+        if (focus && node) {
+          panelState.current.previewOpen = true; // the preview is open (or about to be) for this selection
+          const [x, y] = restingPoint(w, node);
+          centerOn(x, y, focus === "dive" ? FILE_DIVE_K : undefined);
+        }
         return;
       }
       wantFocus.current = focus;
@@ -173,8 +281,11 @@ export default function SecondBrain() {
       return;
     }
     if (wantFocus.current) {
+      const dive = wantFocus.current === "dive";
       wantFocus.current = false;
-      centerOn(node.x, node.y);
+      panelState.current.previewOpen = true; // the preview opens with this selection
+      const [x, y] = restingPoint(w, node);
+      centerOn(x, y, dive ? FILE_DIVE_K : undefined);
     }
     setPreview({ node, content: null, kind: "loading", message: null });
     void api
@@ -285,15 +396,36 @@ export default function SecondBrain() {
   }, [invalidate, toast, t]);
 
   /* ---------- hubs: directed explosion + camera framing ---------- */
+  const frameHub = useCallback(
+    (hub: Hub) => {
+      const w = world.current;
+      if (hub.expanded) fitToBounds(sectorBounds(w, hub), { padding: 60, maxK: 4 });
+      else fitToBounds(hubBounds(hub), { padding: 40, maxK: 2.5 });
+    },
+    [world, fitToBounds],
+  );
+
+  /** Expand or collapse one hub (files fan out / ease back), then frame it. */
   const toggleHub = useCallback(
     (hub: Hub) => {
       const w = world.current;
+      cancelFlight(w);
       toggleHubIn(w, hub, { focusMode: uiRef.current.focusMode, now: performance.now() / 1000 });
-      if (hub.expanded) w.target = frameSector(w, hub, viewRef.current);
+      frameHub(hub);
+      setHover(null); // the tooltip text depends on the expanded state; the next move rebuilds it
       dirty();
       persistWorkspace();
     },
-    [world, uiRef, dirty, persistWorkspace],
+    [world, uiRef, frameHub, dirty, persistWorkspace],
+  );
+
+  /** Single click on a hub: open it if closed, and frame its sector either way (never collapses). */
+  const focusHub = useCallback(
+    (hub: Hub) => {
+      if (hub.expanded) frameHub(hub);
+      else toggleHub(hub);
+    },
+    [frameHub, toggleHub],
   );
 
   const setAllExpanded = useCallback(
@@ -308,11 +440,9 @@ export default function SecondBrain() {
   const expandHub = useCallback(
     (key: string) => {
       const hub = world.current.hubs.find((h) => h.key === key);
-      if (!hub) return;
-      if (hub.expanded) centerOn(hub.x, hub.y);
-      else toggleHub(hub);
+      if (hub) focusHub(hub);
     },
-    [world, toggleHub, centerOn],
+    [world, focusHub],
   );
 
   /* ---------- canvas handlers ---------- */
@@ -328,7 +458,7 @@ export default function SecondBrain() {
           x: sx,
           y: sy,
           title: hit.hub.key,
-          sub: `${hit.hub.count} ${t("brain.files")} — ${t("brain.hub.hint")}`,
+          sub: `${hit.hub.count} ${t("brain.files")} — ${t(hit.hub.expanded ? "brain.hub.hint" : "brain.hub.hintCollapsed")}`,
         });
       if (hit.orb) return setHover({ x: sx, y: sy, title: hit.orb.label, sub: hit.orb.sub });
       if (hit.planet)
@@ -336,7 +466,7 @@ export default function SecondBrain() {
           x: sx,
           y: sy,
           title: hit.planet.label,
-          sub: `${hit.planet.count} ${t("brain.files")} · ${t("brain.planet")}`,
+          sub: `${hit.planet.count} ${t("brain.files")} · ${t("brain.planet")} — ${t("brain.planet.hint")}`,
         });
       if (hit.file)
         return setHover({
@@ -362,11 +492,16 @@ export default function SecondBrain() {
     [dirty, persistWorkspace],
   );
 
+  // Click semantics ("zoom while navigating"): a single click acts at once
+  // and a double-click is purely additive, so a double-click never contradicts
+  // the click that preceded it (hub: focus, focus, then collapse; file:
+  // select + fly, then dive closer; empty: nothing, then fit to content).
   const handlers = useMemo(
     () => ({
       onHover,
+      onZoom: zoomBus.emit,
       onClick: (hit: Hit) => {
-        if (hit.hub) return toggleHub(hit.hub);
+        if (hit.hub) return focusHub(hit.hub);
         if (hit.orb)
           return navigate(
             hit.orb.kind === "skill"
@@ -375,21 +510,37 @@ export default function SecondBrain() {
                 ? "/routines"
                 : "/connectors",
           );
-        if (hit.planet) return centerOn(hit.planet.x, hit.planet.y, 3);
-        selectId(hit.file ? hit.file.id : null);
+        if (hit.planet) return fitToBounds(planetBounds(world.current, hit.planet), { padding: 36, maxK: 4 });
+        if (hit.file) return selectId(hit.file.id, true);
+        selectId(null);
       },
       onDoubleClick: (hit: Hit) => {
-        if (hit.hub) patch({ filterGroup: uiRef.current.filterGroup === hit.hub.key ? null : hit.hub.key });
-        else if (hit.file?.pinned) unpin(hit.file);
-        else if (hit.file) selectId(hit.file.id, true);
-        else if (!hit.orb && !hit.planet) camera.reset();
+        if (hit.hub) {
+          if (hit.hub.expanded) toggleHub(hit.hub);
+          return;
+        }
+        if (hit.file?.pinned) return unpin(hit.file);
+        if (hit.file) return selectId(hit.file.id, "dive");
+        if (!hit.orb && !hit.planet) camera.fit();
       },
       onDragEnd: () => {
         persistWorkspace();
         setPreview((cur) => (cur ? { ...cur } : cur));
       },
     }),
-    [onHover, toggleHub, navigate, centerOn, selectId, patch, uiRef, unpin, camera, persistWorkspace],
+    [
+      onHover,
+      zoomBus,
+      focusHub,
+      toggleHub,
+      navigate,
+      fitToBounds,
+      world,
+      selectId,
+      unpin,
+      camera,
+      persistWorkspace,
+    ],
   );
 
   useMinimapNav(minimapRef, world, dirty, !presenting);
@@ -407,7 +558,7 @@ export default function SecondBrain() {
         camera.by(0.8);
       } else if (mod && e.key === "0") {
         e.preventDefault();
-        camera.reset();
+        resetCamera();
       } else if (inField || mod || e.altKey) {
         /* typing: single-key shortcuts stay off */
       } else if (e.key === "/") {
@@ -420,13 +571,21 @@ export default function SecondBrain() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [camera, patch, uiRef]);
+  }, [camera, patch, uiRef, resetCamera]);
 
   // Esc closes the preview, then the list, then presentation mode — and only
   // then bubbles to the shell (which leaves the view).
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      // The brain is one panel among others (G2): its Escape is only its own
+      // when it is where the key was pressed, and never while a dialog is
+      // open — a modal in another panel used to lose its Escape here.
+      if (getDialogDepth() > 0) return;
+      const target = e.target instanceof Node ? e.target : null;
+      const inside = target ? rootRef.current?.contains(target) : false;
+      const onPage = target === document.body || target === document.documentElement;
+      if (!inside && !onPage) return;
       if (uiRef.current.sel !== null) selectId(null);
       else if (listOpen) setListOpen(false);
       else if (presenting) setPresenting(false);
@@ -461,7 +620,9 @@ export default function SecondBrain() {
   }, [world, uiRef, toast, t, invalidate]);
 
   const reset = useCallback(() => {
-    camera.reset();
+    // A flight in progress (the dive to a just-selected file) would keep
+    // steering the camera after the reset; it ends here.
+    resetCamera();
     setTimeline({ value: null, playing: false });
     patch({
       sel: null,
@@ -471,12 +632,13 @@ export default function SecondBrain() {
       groups: [],
       local: false,
     });
-  }, [camera, patch]);
+  }, [resetCamera, patch]);
 
   const total = graph?.totalFiles ?? 0;
 
   return (
     <div
+      ref={rootRef}
       className={`brain2${presenting ? " presenting" : ""}${preview ? " has-preview" : ""}${listOpen ? " has-list" : ""}`}
     >
       <BrainCanvas
@@ -485,6 +647,7 @@ export default function SecondBrain() {
         minimapRef={minimapRef}
         viewRef={viewRef}
         invalidateRef={invalidateRef}
+        reduceMotionRef={reduceMotionRef}
         ringLabels={ringLabels}
         coreLabel="ROUTER.MD"
         ariaLabel={t("brain.title")}
@@ -523,8 +686,8 @@ export default function SecondBrain() {
         onRefresh={refresh}
         liveCount={liveCount}
         onNavigate={navigate}
-        zoom={camera.controls}
-        zoomReadout={<ZoomReadout world={world} />}
+        zoom={zoomControls}
+        zoomReadout={<ZoomReadout world={world} bus={zoomBus} />}
         legend={brain.legend}
         legendOpen={legendOpen}
         setLegendOpen={setLegendOpen}
@@ -564,6 +727,8 @@ export default function SecondBrain() {
           onReset={reset}
           listOpen={listOpen}
           onToggleList={() => setListOpen((v) => !v)}
+          collapsed={controlsCollapsed}
+          onCollapse={setControlsCollapsed}
           onBake={bake}
           hygiene={brain.report}
           dangling={dangling}

@@ -9,6 +9,8 @@ export default tseslint.config(
   {
     ignores: [
       "**/dist/**",
+      "build/**",
+      "release/**",
       "**/node_modules/**",
       "coverage/**",
       "playwright-report/**",
@@ -63,6 +65,11 @@ export default tseslint.config(
       // Scrollable read-only regions (code viewers, logs) must be keyboard focusable.
       "jsx-a11y/no-noninteractive-tabindex": ["error", { roles: ["tabpanel", "region"] }],
     },
+  },
+  {
+    // Plain scripts served as-is by the Command Centre (boot recovery, service worker).
+    files: ["apps/command-centre/public/**/*.js"],
+    languageOptions: { globals: { ...globals.browser, ...globals.serviceworker, ...globals.es2021 } },
   },
   {
     // Playwright scripts evaluate callbacks inside the browser page.

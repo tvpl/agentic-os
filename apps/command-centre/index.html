@@ -18,8 +18,45 @@
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div
+        id="boot-status"
+        role="status"
+        style="
+          min-height: 100dvh;
+          display: grid;
+          place-content: center;
+          gap: 16px;
+          padding: 32px;
+          box-sizing: border-box;
+          background: #0b0a08;
+          color: #f2eee3;
+          font: 15px/1.6 system-ui;
+          text-align: center;
+        "
+      >
+        <strong style="font-size: 24px">MordomoOS</strong>
+        <span id="boot-message">Starting your workspace…</span>
+        <button
+          id="boot-reload"
+          type="button"
+          hidden
+          style="
+            padding: 12px 20px;
+            border: 1px solid #f97316;
+            border-radius: 10px;
+            background: #f97316;
+            color: #0b0a08;
+            cursor: pointer;
+            font: inherit;
+          "
+        >
+          Reload
+        </button>
+      </div>
+    </div>
     <div id="modal-root"></div>
+    <script src="/boot-recovery.js" defer></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

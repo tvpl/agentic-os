@@ -17,9 +17,21 @@ import {
   resolveInsideRoots,
   type Settings,
   dailyPoints,
+  isStartupServiceInstalled,
 } from "@mordomo/core";
 import { clearRestorePending, readRestorePending, writeRestorePending, type AppContext } from "../context.js";
 import { runDoctor } from "../doctor.js";
+import { cliEntry } from "../entry.js";
+import {
+  buildStatus,
+  installedBuildTime,
+  instanceSnapshot,
+  invalidateInstanceSnapshot,
+  orphanProcesses,
+  terminate,
+} from "../instances.js";
+import { spawn } from "node:child_process";
+import { RELEASES_PAGE, UpdateChecker } from "../updates.js";
 import { resolveApproval } from "../approvalActions.js";
 import { tlsListenerFor } from "../server.js";
 
@@ -36,14 +48,20 @@ import { BackupNameParams, UuidParams } from "./params.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-/** Version from the repository root package.json (falls back to apps/api's own). */
+/**
+ * Version from the repository root package.json, apps/api's own, or the
+ * manifest a packaged install writes next to `lib/`. Only MordomoOS manifests
+ * count, so an unrelated package.json above the install folder is ignored.
+ */
 export function readPackageVersion(): string {
   for (const candidate of [
     path.resolve(here, "..", "..", "..", "..", "package.json"),
     path.resolve(here, "..", "..", "package.json"),
+    path.resolve(here, "..", "package.json"),
   ]) {
     try {
-      const pkg = JSON.parse(fs.readFileSync(candidate, "utf8")) as { version?: unknown };
+      const pkg = JSON.parse(fs.readFileSync(candidate, "utf8")) as { name?: unknown; version?: unknown };
+      if (pkg.name !== "mordomo-os" && pkg.name !== "@mordomo/api") continue;
       if (typeof pkg.version === "string" && pkg.version) return pkg.version;
     } catch {
       /* try next */
@@ -308,7 +326,83 @@ export function listArtifacts(
   return { items: filtered.slice(0, q.limit), total: filtered.length, skills, folders };
 }
 
-export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): void {
+export interface SystemRouteOptions {
+  /** Release checker (tests inject a fake fetch). */
+  updates?: UpdateChecker;
+}
+
+export function registerSystemRoutes(
+  app: FastifyInstance,
+  ctx: AppContext,
+  opts: SystemRouteOptions = {},
+): void {
+  const updates = opts.updates ?? new UpdateChecker(PKG_VERSION);
+
+  /**
+   * Where this service runs from: the answer to "which MordomoOS am I looking
+   * at?" when a checkout and a packaged app share a machine. Token-protected
+   * (paths are not for the pre-auth page).
+   */
+  app.get("/api/system/info", async () => {
+    const snap = await instanceSnapshot();
+    return {
+      version: PKG_VERSION,
+      home: ctx.paths.home,
+      packaged: /\.mjs$/.test(cliEntry()),
+      entry: cliEntry(),
+      node: process.versions.node,
+      execPath: process.execPath,
+      platform: process.platform,
+      arch: process.arch,
+      pid: process.pid,
+      startedAt: ctx.startedAt,
+      serviceInstalled: isStartupServiceInstalled(ctx.paths),
+      releases: RELEASES_PAGE,
+      // Is the build on disk newer than this process, and are there other
+      // service processes lingering? The UI turns either into a banner.
+      build: buildStatus(installedBuildTime(), ctx.startedAt),
+      siblings: orphanProcesses(snap.processes, process.pid, process.pid, undefined, snap.listening).map(
+        (p) => ({
+          pid: p.pid,
+          command: p.command,
+        }),
+      ),
+    };
+  });
+
+  /**
+   * Restart this service with the build on disk. The detached CLI child
+   * terminates us (or the login service does) and starts a fresh process;
+   * the UI polls `/api/meta` and reloads once it answers again.
+   */
+  app.post("/api/system/restart", async () => {
+    const child = spawn(process.execPath, [cliEntry(), "restart"], {
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env, MORDOMO_HOME: ctx.paths.home },
+    });
+    child.on("error", () => undefined);
+    child.unref();
+    return { ok: true, pid: process.pid };
+  });
+
+  /** Stop lingering sibling service processes (never this one). */
+  app.post("/api/system/reap", async () => {
+    const snap = await instanceSnapshot(process.pid, 0);
+    const orphans = orphanProcesses(snap.processes, process.pid, process.pid, undefined, snap.listening);
+    const stopped = await terminate(orphans);
+    invalidateInstanceSnapshot();
+    return { stopped };
+  });
+
+  /** Release check: only when enabled in settings, or explicitly asked for (`?force=1`). */
+  app.get("/api/updates", async (req) => {
+    const force = (req.query as { force?: string }).force === "1";
+    const enabled = ctx.settings().updates.check;
+    if (!enabled && !force) return { enabled, current: PKG_VERSION, url: RELEASES_PAGE, status: null };
+    return { enabled, current: PKG_VERSION, url: RELEASES_PAGE, status: await updates.check(force) };
+  });
+
   // Public (no token): only non-sensitive branding needed before the UI boots.
   app.get("/api/meta", async () => {
     const s = ctx.settings();
@@ -321,6 +415,9 @@ export function registerSystemRoutes(app: FastifyInstance, ctx: AppContext): voi
       version: PKG_VERSION,
       // Remote TLS (follow-up 10): the pairing screen shows the fingerprint so a phone can check what it trusts.
       tls: tlsInfo(ctx),
+      // Which build answers here (pre-auth on purpose: `mordomo launch` uses it to decide whether to restart an older service).
+      build: buildStatus(installedBuildTime(), ctx.startedAt),
+      entry: cliEntry(),
     };
   });
 

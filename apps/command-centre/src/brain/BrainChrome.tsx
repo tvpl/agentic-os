@@ -3,10 +3,11 @@
  * indexing progress, the zoom stack, the legend (groups, rings and edge-kind
  * toggles), the layout pill and the hover tooltip. Presentational only.
  */
-import { type CSSProperties, type ReactNode } from "react";
+import { type CSSProperties, type ReactNode, useContext } from "react";
 import { ArrowLeft, Diamond, Maximize2, Menu, Minus, Plus, RefreshCw, Scan, Tv, X, Zap } from "lucide-react";
 import type { IndexProgressPayload } from "../api";
 import { LAUNCHER_EVENT } from "../App";
+import { AppRouteContext } from "../desktop/appRoute";
 import { ErrorBox } from "../components/ui";
 import { useT } from "../i18n";
 import { APP_COLOR, EDGE_KINDS, ROUTINE_COLOR, SKILL_COLOR, type EdgeKind } from "./engine/world";
@@ -65,6 +66,7 @@ const KIND_KEYS: Record<
 
 export function BrainChrome(p: BrainChromeProps) {
   const t = useT();
+  const inPanel = useContext(AppRouteContext) !== null;
   const { ui, patch, presenting, progress } = p;
   const ratio = progress?.total ? Math.min(1, progress.scanned / progress.total) : 0;
 
@@ -138,12 +140,18 @@ export function BrainChrome(p: BrainChromeProps) {
             >
               <Tv aria-hidden />
             </button>
-            <button className="os-chip" onClick={() => p.onNavigate("/")}>
-              <ArrowLeft aria-hidden /> {t("os.backToOs")}
-            </button>
-            <button className="os-chip" onClick={() => window.dispatchEvent(new Event(LAUNCHER_EVENT))}>
-              <Menu aria-hidden /> {t("os.menu")}
-            </button>
+            {/* On the stage the brain is a panel: the desktop is behind it, and
+                the palette is ⌘K — neither needs a chip inside the app (G2). */}
+            {!inPanel && (
+              <>
+                <button className="os-chip" onClick={() => p.onNavigate("/")}>
+                  <ArrowLeft aria-hidden /> {t("os.backToOs")}
+                </button>
+                <button className="os-chip" onClick={() => window.dispatchEvent(new Event(LAUNCHER_EVENT))}>
+                  <Menu aria-hidden /> {t("os.menu")}
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>

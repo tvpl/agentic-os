@@ -24,12 +24,18 @@ into artifacts.
 
 ## Quick start
 
-Requirements: Node.js ≥ 22, git. macOS/Linux first-class; Windows via
-PowerShell or WSL ([docs/windows.md](docs/windows.md)).
+**Packaged app** (no Node.js, no terminal): download the archive for your
+platform, extract it and open **MordomoOS** (`MordomoOS.app`, `MordomoOS` or
+`MordomoOS.cmd`). The local service starts and the browser opens the setup
+screen, which detects Claude Code, Cursor Agent and Codex on the computer and
+tells you how to install or sign in to each one. Data lives in your user
+profile. Details and platform notes: [docs/install.md](docs/install.md).
+
+**From source** (Node.js ≥ 22, git):
 
 ```bash
 git clone <this-repo> mordomo-os && cd mordomo-os
-scripts/setup.sh            # installs deps, builds, runs the guided setup
+scripts/setup.sh            # installs deps, builds, runs the guided terminal setup
 ```
 
 or step by step:
@@ -37,12 +43,13 @@ or step by step:
 ```bash
 npm install
 npm run build
-npx mordomo setup           # guided, idempotent — re-run anytime
-npx mordomo start           # → http://127.0.0.1:4777
+npx mordomo launch          # starts the service and opens the browser (setup happens there)
+npx mordomo setup           # …or the guided terminal setup — idempotent, re-run anytime
 ```
 
 `scripts/mordomo` is a convenience wrapper; add the repo's `scripts/` to your
 PATH (or `alias mordomo="npx --prefix /path/to/mordomo-os mordomo"`).
+Build your own distributable with `npm run dist` ([how it works](docs/install.md#building-a-distributable)).
 
 ## Commands
 
@@ -51,6 +58,7 @@ PATH (or `alias mordomo="npx --prefix /path/to/mordomo-os mordomo"`).
 | `mordomo setup`                     | Guided configuration: detects providers (with `--help` capability probing), auth (never printing tokens), folders, exclusions, identity, optional autostart (approval-gated), read-only smoke tests, final diagnostic. Idempotent. |
 | `mordomo doctor`                    | Full diagnostic: providers, auth, DB, index, routers, routines health, security posture.                                                                                                                                           |
 | `mordomo start` / `stop` / `status` | Manage the local service + Command Centre.                                                                                                                                                                                         |
+| `mordomo launch` / `restart`        | `launch` starts the service if needed and opens the browser (what the packaged app runs); `restart` reloads the current build, also under the login service.                                                                       |
 | `mordomo index`                     | Re-index the workspace and regenerate memory routers.                                                                                                                                                                              |
 | `mordomo sync [dir] --apply`        | Compile canonical skills/routers into `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.cursor/`, `.agents/` (backup + diff + per-file conflict approval).                                                                                   |
 | `mordomo run <skill>`               | Run a skill headlessly from the terminal.                                                                                                                                                                                          |
@@ -79,7 +87,7 @@ tests/  docs/  scripts/
 - [User manual](docs/user-manual.md) — day-to-day usage + the 7-day adoption plan
 - [Architecture](docs/architecture.md) · [Security & threat model](docs/security.md)
 - [Creating skills](docs/skills-guide.md) · [Creating routines](docs/routines-guide.md) · [Adding adapters](docs/adapters-guide.md)
-- [Backup, restore & uninstall](docs/backup-restore-uninstall.md)
+- [Installing & building a distributable](docs/install.md) · [Backup, restore & uninstall](docs/backup-restore-uninstall.md)
 - [Windows / WSL](docs/windows.md) · [Always-on VPS + Syncthing (optional)](docs/vps-syncthing.md)
 - [Product spec](docs/product-spec.md) · [Validation report](docs/validation-report.md)
 - [Análise: vídeo RoboNuggets/RUBRIC × MordomoOS × open-source (set. 2026)](docs/analysis-2026-09/README.md) · [Audit Sept 2026](docs/audit-2026-09/README.md)

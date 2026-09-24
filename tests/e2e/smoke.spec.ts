@@ -41,11 +41,13 @@ for (const [name, route] of ROUTES) {
   });
 }
 
-test("app chrome does not overlap page actions", async ({ page }) => {
+test("panel chrome does not overlap page actions", async ({ page }) => {
+  // `/skills` is a deep link into the Skills panel (G2).
   await open(page, "/#/skills");
-  const chrome = page.locator(".app-frame-chrome");
+  const panel = page.locator('[data-panel="app:skills"]');
+  const chrome = panel.locator(".panel-head");
   await expect(chrome).toBeVisible();
-  const newSkill = page.getByRole("button", { name: /new skill|nova skill/i }).first();
+  const newSkill = panel.getByRole("button", { name: /new skill|nova skill/i }).first();
   await expect(newSkill).toBeVisible();
   const a = await chrome.boundingBox();
   const b = await newSkill.boundingBox();
@@ -54,8 +56,8 @@ test("app chrome does not overlap page actions", async ({ page }) => {
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  // Escape inside the modal must not navigate home (audit item 14).
-  expect(page.url()).toContain("#/skills");
+  // Escape inside the modal must not close the panel (audit item 14).
+  await expect(panel).toBeVisible();
 });
 
 test("launcher opens with Ctrl+M and searches skills", async ({ page }) => {
@@ -66,7 +68,11 @@ test("launcher opens with Ctrl+M and searches skills", async ({ page }) => {
   await page.keyboard.type("digest");
   await expect(dialog.getByRole("option").first()).toContainText(/digest/i);
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/#\/skills\/workspace-digest/);
+  // The skill opens inside the Skills panel; the URL hands itself back to the desktop.
+  const panel = page.locator('[data-panel="app:skills"]');
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole("heading", { name: /digest/i }).first()).toBeVisible();
+  await expect(page).toHaveURL(/#\/$/);
 });
 
 test("desktop stacks widgets on a phone", async ({ page }) => {
@@ -81,16 +87,21 @@ test("desktop stacks widgets on a phone", async ({ page }) => {
 
 test("run detail streams a fake run to completion", async ({ page }) => {
   await open(page, "/#/runs");
-  await page
+  // The Runs app is a panel beside the console now (G2): the prompt and the
+  // Run button have to be the app's own, not the console's.
+  const runs = page.locator('[data-panel="app:runs"]');
+  await runs
     .getByLabel(/prompt/i)
     .first()
     .fill("hello from e2e");
-  await page
+  await runs
     .getByRole("button", { name: /^run|executar/i })
     .first()
     .click();
-  await expect(page).toHaveURL(/#\/runs\/[0-9a-f-]{36}/);
-  await expect(page.locator(".run-title .badge")).toHaveText(/done|conclu/i, { timeout: 20_000 });
+  // The run's trace opens as its own panel beside the Runs app (G3).
+  const trace = page.locator('[data-panel^="run:"]');
+  await expect(trace).toHaveCount(1);
+  await expect(trace.locator(".run-title .badge")).toHaveText(/done|conclu/i, { timeout: 20_000 });
 });
 
 for (const [name, route] of [
