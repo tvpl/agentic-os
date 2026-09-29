@@ -771,3 +771,129 @@ test("C26 an empty marketplace says so and offers one action", async ({ page }) 
   await expect(empty.getByRole("link")).toHaveText(/configure registries|configurar registros/i);
   await expect(page.getByRole("dialog").locator("input")).toHaveCount(0);
 });
+
+/* ---- S6: the galleries ------------------------------------------------------------------- */
+
+const GALLERIES = [
+  ["artifacts", "/artifacts"],
+  ["generations", "/generations"],
+] as const;
+
+/** A few artifacts of different kinds, so every gallery has something to show and filter. */
+async function seedArtifacts(page: Page) {
+  const now = Date.now();
+  const item = (id: string, kind: string, file: string, skillSlug: string | null) => ({
+    id,
+    path: `artifacts/${file}`,
+    file,
+    folder: "artifacts",
+    title: file,
+    kind,
+    sizeBytes: 1200,
+    createdAt: now - 3_600_000,
+    thumbnail: false,
+    skillSlug,
+    runId: null,
+  });
+  await page.route(/\/api\/artifacts\/list(\?.*)?$/, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          item("a1", "image", "concept-one.png", "pixel"),
+          item("a2", "video", "concept-two.mp4", "pixel"),
+          item("a3", "markdown", "concept-notes.md", "consolidate-memory"),
+        ],
+        total: 3,
+        skills: ["consolidate-memory", "pixel"],
+      },
+    }),
+  );
+}
+
+test("C32 one search field per gallery", async ({ page }) => {
+  await seedArtifacts(page);
+  for (const [scene, path] of GALLERIES) {
+    await openShell(page, path);
+    await arrived(page, scene);
+    const s = currentScene(page);
+    await expect(s.locator("input[type='search']:visible")).toHaveCount(1);
+    // No second, visible copy of its label beside it.
+    const said = await s.evaluate((el) => {
+      const input = el.querySelector<HTMLInputElement>("input[type='search']")!;
+      const words = input.placeholder.trim();
+      return [...el.querySelectorAll("label, span, p")].filter((n) => {
+        const r = n.getBoundingClientRect();
+        return r.width > 1 && r.height > 1 && n.textContent?.trim() === words;
+      }).length;
+    });
+    expect(said, scene).toBe(0);
+  }
+});
+
+test("C33 gallery filters are chips", async ({ page }) => {
+  await seedArtifacts(page);
+  await openShell(page, "/artifacts");
+  await arrived(page, "artifacts");
+  const bar = currentScene(page).locator(".art-filters");
+  for (const group of ["kind", "origin", "period"]) {
+    const chips = bar.locator(`[data-filter="${group}"] > button`);
+    expect(await chips.count(), group).toBeGreaterThan(1);
+    const pill = await chips
+      .first()
+      .evaluate(
+        (el) =>
+          parseFloat(getComputedStyle(el).borderTopLeftRadius) >= el.getBoundingClientRect().height / 2 - 1,
+      );
+    expect(pill, group).toBe(true);
+  }
+  await bar.locator('[data-filter="kind"] > button', { hasText: /^(notes|notas)$/i }).click();
+  await expect(currentScene(page).locator(".art-card")).toHaveCount(1);
+  await expect(bar.locator('[data-filter="kind"] > button[aria-pressed="true"]')).toHaveText(
+    /^(notes|notas)$/i,
+  );
+});
+
+test("C34 a gallery item opens from its tile", async ({ page }) => {
+  await seedArtifacts(page);
+  await openShell(page, "/artifacts");
+  await arrived(page, "artifacts");
+  const tile = currentScene(page).locator(".art-card").first();
+  // Where the tile is when pressed: lifted by its hover.
+  await tile.hover();
+  await page.waitForTimeout(450);
+  const from = (await tile.boundingBox())!;
+  await tile.click();
+  const lam = page.locator('article.nu-lamina[data-lamina^="doc:"]');
+  await expect(lam).toHaveCount(1);
+  const start = await lam.evaluate((el) => {
+    // The FLIP (a script animation), not the lâmina's own CSS entrance.
+    const a = el.getAnimations().find((x) => !(x instanceof CSSAnimation));
+    if (!a) return null;
+    const raw = String((a.effect as KeyframeEffect).getKeyframes()[0]!.transform);
+    // Where the lâmina rests, then where its first frame put it.
+    a.finish();
+    const r = el.getBoundingClientRect();
+    const m = /translate\(\s*([-\d.e]+)px,\s*([-\d.e]+)px/.exec(raw);
+    return m ? { x: r.left + Number(m[1]), y: r.top + Number(m[2]) } : { raw };
+  });
+  expect(start, "the lâmina grows from somewhere").toMatchObject({ x: expect.any(Number) });
+  const at = start as { x: number; y: number };
+  expect(Math.abs(at.x - from.x)).toBeLessThanOrEqual(4);
+  expect(Math.abs(at.y - from.y)).toBeLessThanOrEqual(4);
+});
+
+test("C35 an empty filter offers to clear", async ({ page }) => {
+  await seedArtifacts(page);
+  for (const [scene, path] of GALLERIES) {
+    await openShell(page, path);
+    await arrived(page, scene);
+    const s = currentScene(page);
+    await s.locator("input[type='search']").fill("nothing-matches-this");
+    await expect(s.locator(".art-card")).toHaveCount(0);
+    const empty = s.locator(".art-empty");
+    await expect(empty).toContainText(/Nothing here with these filters|Nada aqui com esses filtros/);
+    await empty.getByRole("button", { name: /clear filters|limpar filtros/i }).click();
+    await expect(s.locator(".art-card").first()).toBeVisible();
+    await expect(s.locator("input[type='search']")).toHaveValue("");
+  }
+});

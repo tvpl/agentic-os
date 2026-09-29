@@ -17,6 +17,8 @@ import { useDesktopActions } from "./actions";
 import type { WidgetProps } from "./widgetTypes";
 
 const PREVIEW_LINES = 400;
+const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
+const VIDEO = /\.(mp4|webm|mov|m4v)$/i;
 
 export default function DocWindow({ instanceId }: WidgetProps) {
   const t = useT();
@@ -25,11 +27,13 @@ export default function DocWindow({ instanceId }: WidgetProps) {
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Pictures and videos are shown, not read.
+  const media = IMAGE.test(path) ? "image" : VIDEO.test(path) ? "video" : null;
   useEffect(() => {
     let alive = true;
     setText(null);
     setError(null);
-    if (!path) return;
+    if (!path || media) return;
     api
       .get<MemoryPreview>(`/api/memory/preview?p=${encodeURIComponent(path)}`)
       .then((res) => {
@@ -42,7 +46,7 @@ export default function DocWindow({ instanceId }: WidgetProps) {
     return () => {
       alive = false;
     };
-  }, [path]);
+  }, [path, media]);
 
   const file = path.split(/[\\/]/).pop() ?? path;
   const viewable = isRawViewable(file);
@@ -50,7 +54,13 @@ export default function DocWindow({ instanceId }: WidgetProps) {
   return (
     <div className="doc-window">
       <WidgetGate queries={[]} lines={3}>
-        {error ? (
+        {media === "image" ? (
+          <img className="doc-media" src={artifactRawUrl(path)} alt={path.split(/[\\/]/).pop() ?? path} />
+        ) : media === "video" ? (
+          <video className="doc-media" src={artifactRawUrl(path)} controls aria-label={path}>
+            <track kind="captions" />
+          </video>
+        ) : error ? (
           <p role="status" className="dim">
             {error}
           </p>

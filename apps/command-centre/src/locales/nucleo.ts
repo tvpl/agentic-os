@@ -142,6 +142,8 @@ export const en = {
   "concept.runs.send": "Send",
   "concept.market.none": "No registry yet: add one to find skills to install.",
   "concept.market.configure": "Configure registries",
+  "concept.art.none": "Nothing here with these filters.",
+  "concept.art.clear": "Clear filters",
 } as const;
 
 export const ptBR = {
@@ -284,4 +286,6 @@ export const ptBR = {
   "concept.runs.send": "Enviar",
   "concept.market.none": "Nenhum registro ainda: adicione um para encontrar skills para instalar.",
   "concept.market.configure": "Configurar registros",
+  "concept.art.none": "Nada aqui com esses filtros.",
+  "concept.art.clear": "Limpar filtros",
 } as const satisfies Record<keyof typeof en, string>;

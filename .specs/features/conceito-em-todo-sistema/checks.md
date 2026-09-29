@@ -21,6 +21,7 @@ Status: closed
 
 **C2** - Nenhum `select` nativo visível em Artefatos, Gerações, Conectores e Habilidades (AC 2)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C2 no native select in the gallery, connector and skill scenes"`
+Status: closed
 
 **C3** - Um diálogo aberto no shell sobe como folha sobre o véu `.nu-dialog-veil`, com animação de entrada ≤ 450 ms (AC 3)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C3 a dialog rises as a sheet over the veil"`
@@ -151,15 +152,19 @@ Status: closed
 
 **C32** - Exatamente um campo de busca em Artefatos e um em Gerações (AC 32)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C32 one search field per gallery"`
+Status: closed
 
 **C33** - Tipo, origem e período são chips (AC 33)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C33 gallery filters are chips"`
+Status: closed
 
 **C34** - Clicar num cartão abre o item como lâmina que nasce do cartão (AC 34)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C34 a gallery item opens from its tile"`
+Status: closed
 
 **C35** - Filtro sem resultado mostra "Nada aqui com esses filtros" e "Limpar filtros" (AC 35)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C35 an empty filter offers to clear"`
+Status: closed
 
 ### S7 - agente em cada foco · 1 file · 34 KB · ~9k
 

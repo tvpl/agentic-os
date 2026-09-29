@@ -1,29 +1,19 @@
 /**
  * Artifacts gallery (analysis item 25): everything under `artifacts/` with
- * thumbnails, filters (kind, skill, age), free-text search over titles and
- * file names, and a lightbox with copy-path / open-run.
+ * thumbnails, filters as chips (kind, origin, age), one search over titles
+ * and file names; an item opens as a lâmina growing out of its tile.
  *
  * `ArtifactGallery` is the reusable body; the Generations micro-app renders
  * the same grid restricted to images and video.
  */
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Copy,
-  ExternalLink,
-  FileCode,
-  FileText,
-  Globe,
-  Images,
-  Search,
-} from "lucide-react";
+import { useMemo, useState, type CSSProperties } from "react";
+import { FileCode, FileText, Globe, Images, Search } from "lucide-react";
 import { api, artifactRawUrl, type ArtifactKind, type ArtifactListItem } from "../api";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useT, type TKey } from "../i18n";
-import { Button, EmptyState, Segmented } from "../components/primitives";
-import { Modal, Skeleton, formatBytes, useToast } from "../components/ui";
+import { EmptyState } from "../components/primitives";
+import { Skeleton, formatBytes } from "../components/ui";
+import { useDesktopActions } from "../desktop/actions";
 import { useArtifactList } from "../desktop/data";
 
 const KINDS = ["all", "image", "video", "html", "markdown", "code", "other"] as const;
@@ -107,12 +97,11 @@ export interface ArtifactGalleryProps {
 export function ArtifactGallery({ only, emptyTitle, emptyBody }: ArtifactGalleryProps) {
   const t = useT();
   const locale = useLocale();
-  const toast = useToast();
+  const { openDoc } = useDesktopActions();
   const [q, setQ] = useState("");
   const [kind, setKind] = useState<KindFilter>("all");
   const [skill, setSkill] = useState("all");
   const [since, setSince] = useState("all");
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   const sinceMs = SINCE.find((s) => s.value === since)?.ms ?? 0;
   const list = useArtifactList({ limit: 400, ...(sinceMs > 0 ? { since: Date.now() - sinceMs } : {}) });
@@ -128,81 +117,90 @@ export function ArtifactGallery({ only, emptyTitle, emptyBody }: ArtifactGallery
       return true;
     });
   }, [list.data, only, kind, skill, q]);
-
-  const open = openIndex !== null ? items[openIndex] : undefined;
-  const copyPath = (path: string) => {
-    void navigator.clipboard?.writeText(path).catch(() => undefined);
-    toast(t("common.copied"), "ok");
+  const filtered = q.trim() !== "" || kind !== "all" || skill !== "all" || since !== "all";
+  const clear = () => {
+    setQ("");
+    setKind("all");
+    setSkill("all");
+    setSince("all");
   };
 
   if (list.isPending && !list.data) return <Skeleton page lines={6} />;
 
+  const chip = (on: boolean, label: string, onClick: () => void, key: string) => (
+    <button key={key} type="button" className="art-chip" aria-pressed={on} onClick={onClick}>
+      {label}
+    </button>
+  );
   return (
     <>
       <div className="art-filters" role="group" aria-label={t("common.search")}>
-        <label className="visually-hidden" htmlFor="art-q">
-          {t("desktop.artifacts.search")}
-        </label>
-        <span className="input-with-icon">
+        <label className="art-find">
           <Search aria-hidden />
           <input
-            id="art-q"
-            className="input sm"
             type="search"
             value={q}
             placeholder={t("desktop.artifacts.search")}
+            aria-label={t("desktop.artifacts.search")}
             onChange={(e) => setQ(e.target.value)}
           />
-        </span>
+        </label>
         {!only && (
-          <select
-            className="input sm"
-            value={kind}
-            onChange={(e) => setKind(e.target.value as KindFilter)}
-            aria-label={t("desktop.artifacts.kind")}
-          >
-            {KINDS.map((k) => (
-              <option key={k} value={k}>
-                {k === "all" ? t("desktop.artifacts.all") : t(KIND_LABEL[k])}
-              </option>
-            ))}
-          </select>
+          <div className="art-chips" data-filter="kind" role="group" aria-label={t("desktop.artifacts.kind")}>
+            {KINDS.map((k) =>
+              chip(
+                kind === k,
+                k === "all" ? t("desktop.artifacts.all") : t(KIND_LABEL[k]),
+                () => setKind(k),
+                k,
+              ),
+            )}
+          </div>
         )}
-        <select
-          className="input sm"
-          value={skill}
-          onChange={(e) => setSkill(e.target.value)}
+        <div
+          className="art-chips"
+          data-filter="origin"
+          role="group"
           aria-label={t("desktop.artifacts.skill")}
         >
-          <option value="all">{t("desktop.artifacts.all")}</option>
-          {(list.data?.skills ?? []).map((s) => (
-            <option key={s} value={s}>
-              /{s}
-            </option>
-          ))}
-        </select>
-        <Segmented
-          size="sm"
-          ariaLabel={t("desktop.artifacts.since")}
-          value={since}
-          onChange={setSince}
-          options={SINCE.map((s) => ({ value: s.value, label: t(s.labelKey) }))}
-        />
-        <span className="filter-count">
+          {chip(skill === "all", t("desktop.artifacts.all"), () => setSkill("all"), "all")}
+          {(list.data?.skills ?? []).map((s) => chip(skill === s, `/${s}`, () => setSkill(s), s))}
+        </div>
+        <div
+          className="art-chips"
+          data-filter="period"
+          role="group"
+          aria-label={t("desktop.artifacts.since")}
+        >
+          {SINCE.map((s) => chip(since === s.value, t(s.labelKey), () => setSince(s.value), s.value))}
+        </div>
+        <span className="filter-count mono">
           {t("desktop.artifacts.count", { n: items.length, total: list.data?.total ?? items.length })}
         </span>
       </div>
 
       {items.length === 0 ? (
-        <EmptyState
-          icon={<Images aria-hidden />}
-          title={(list.data?.total ?? 0) === 0 ? emptyTitle : t("desktop.artifacts.noMatch")}
-          body={(list.data?.total ?? 0) === 0 ? emptyBody : ""}
-        />
+        (list.data?.total ?? 0) > 0 && filtered ? (
+          <div className="art-empty">
+            <p>{t("concept.art.none")}</p>
+            <button type="button" className="btn sm primary" onClick={clear}>
+              {t("concept.art.clear")}
+            </button>
+          </div>
+        ) : (
+          <EmptyState icon={<Images aria-hidden />} title={emptyTitle} body={emptyBody} />
+        )
       ) : (
         <div className="art-grid">
           {items.map((item, i) => (
-            <button key={item.id} type="button" className="art-card" onClick={() => setOpenIndex(i)}>
+            <button
+              key={item.id}
+              type="button"
+              className="art-card"
+              style={{ "--i": Math.min(i, 24) } as CSSProperties}
+              title={item.path}
+              onClick={() => openDoc(item.path)}
+            >
               <span className="art-thumb">
                 <ArtifactThumb item={item} />
               </span>
@@ -222,65 +220,6 @@ export function ArtifactGallery({ only, emptyTitle, emptyBody }: ArtifactGallery
             </button>
           ))}
         </div>
-      )}
-
-      {open && openIndex !== null && (
-        <Modal title={open.title} onClose={() => setOpenIndex(null)}>
-          <div className="art-lightbox">
-            {open.thumbnail && open.kind === "image" && (
-              <img src={artifactRawUrl(open.path)} alt={open.title} />
-            )}
-            {open.thumbnail && open.kind === "video" && (
-              <video src={artifactRawUrl(open.path)} controls aria-label={open.title}>
-                <track kind="captions" />
-              </video>
-            )}
-            <p className="art-modal-path mono">{open.path}</p>
-            <div className="art-lightbox-nav">
-              <Button
-                size="sm"
-                variant="ghost"
-                icon={<ChevronLeft aria-hidden />}
-                disabled={openIndex === 0}
-                onClick={() => setOpenIndex(openIndex - 1)}
-              >
-                {t("desktop.artifacts.prev")}
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                icon={<Copy aria-hidden />}
-                onClick={() => copyPath(open.path)}
-              >
-                {t("desktop.artifacts.copyPath")}
-              </Button>
-              {open.thumbnail && (
-                <a
-                  className="btn sm outline-accent"
-                  href={artifactRawUrl(open.path)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <ExternalLink aria-hidden /> {t("common.open")}
-                </a>
-              )}
-              {open.runId && (
-                <Link className="btn sm outline-accent" to={`/runs/${open.runId}`}>
-                  {t("desktop.search.openRun")}
-                </Link>
-              )}
-              <Button
-                size="sm"
-                variant="ghost"
-                icon={<ChevronRight aria-hidden />}
-                disabled={openIndex >= items.length - 1}
-                onClick={() => setOpenIndex(openIndex + 1)}
-              >
-                {t("desktop.artifacts.next")}
-              </Button>
-            </div>
-          </div>
-        </Modal>
       )}
     </>
   );

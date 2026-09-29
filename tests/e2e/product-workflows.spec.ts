@@ -26,9 +26,10 @@ test("Pixel Studio draws, undoes, adds frames, exports PNG and saves a viewable 
   await page.getByRole("button", { name: "Save", exact: true }).click();
   expect((await saved).ok()).toBe(true);
   await page.goto("/#/artifacts");
-  await page.locator("#art-q").fill("gauntlet-sprite.png");
+  await page.locator(".art-find input").fill("gauntlet-sprite.png");
   await page.locator(".art-card").first().click();
-  const image = page.locator(".art-lightbox img");
+  // The picture opens as a lâmina out of its tile.
+  const image = page.locator('article.nu-lamina[data-lamina^="doc:"] img.doc-media');
   await expect(image).toBeVisible();
   await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
 });

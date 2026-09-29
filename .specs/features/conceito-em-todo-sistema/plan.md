@@ -49,7 +49,8 @@ Reutiliza as primitivas existentes (`components/ui.tsx`, `components/dialog.tsx`
 5. Conectores: `views/Connectors.tsx` (exists) + `views/ConnectorWizard.tsx` (exists) - lista de cartões,
    um aberto por vez
 6. Artefatos e Gerações: `views/Artifacts.tsx` (exists) + `views/Generations.tsx` (exists) - busca única,
-   filtros em chips, abrir como lâmina
+   filtros em chips, abrir como lâmina (`desktop/DocWindow.tsx`, exists, passa a mostrar imagem e vídeo;
+   a caixa de visualização antiga saiu)
 7. Ajustes e Pixel: `views/Settings.tsx` (exists) + `views/PixelStudio.tsx` (exists) - só a linguagem (1)
 8. out: "Perguntar ao agente" em cada foco chama a conversa (exists) com o `@ref` do item
 
