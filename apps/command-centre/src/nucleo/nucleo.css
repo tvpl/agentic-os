@@ -3322,3 +3322,315 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
     0 0 32px -8px var(--accent-glow);
 }
+
+/* =============================================================================
+   The Resolver (conceito em todo o sistema, S2): one centred glass card at a
+   time, the agent's reading first; the queue on the left as soft rows, the
+   quiet history folded at its end; a resolved item leaves to the left while
+   the next rises in its place.
+   ============================================================================= */
+.nu-focus {
+  background:
+    radial-gradient(
+      ellipse 60% 50% at 62% 48%,
+      color-mix(in srgb, var(--agent) 7%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(ellipse at 12% 8%, color-mix(in srgb, var(--warn) 7%, transparent), transparent 60%),
+    color-mix(in srgb, var(--bg) 40%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.nu-focus-close {
+  border-radius: 999px;
+  padding: 9px 16px;
+  transition:
+    color 0.2s,
+    box-shadow 0.25s,
+    background 0.25s;
+}
+.nu-focus-close:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  box-shadow:
+    inset 0 0 0 1px var(--text-faint),
+    0 0 18px -8px var(--text);
+}
+.nu-focus-body {
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: 40px;
+}
+.nu-focus-body[data-clear] {
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+}
+.nu-focus-body[data-clear]:not(:has(.nu-focus-queue)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.nu-focus-queue {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 4px;
+}
+.nu-focus-queue ol {
+  gap: 6px;
+}
+.nu-focus-queue button {
+  border-radius: 14px;
+  padding: 11px 14px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lv) 10%, transparent);
+  background: color-mix(in srgb, var(--bg) 40%, transparent);
+  transition:
+    background 0.25s,
+    box-shadow 0.25s,
+    color 0.2s,
+    transform 0.3s var(--nu-ease);
+}
+.nu-focus-queue button:hover {
+  transform: translateX(3px);
+  background: color-mix(in srgb, var(--lv) 7%, transparent);
+}
+.nu-focus-queue button.on {
+  background: color-mix(in srgb, var(--lv) 12%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--lv) 55%, transparent),
+    0 0 24px -10px var(--lv);
+}
+.nu-focus-queue .ic {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+}
+.nu-focus-times {
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--lv);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lv) 45%, transparent);
+}
+.nu-focus-history summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--fs-1);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  transition: color 0.2s;
+}
+.nu-focus-history summary::-webkit-details-marker {
+  display: none;
+}
+.nu-focus-history summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.25s var(--nu-ease);
+}
+.nu-focus-history[open] summary::before {
+  transform: rotate(45deg);
+}
+.nu-focus-history summary:hover {
+  color: var(--text-dim);
+}
+.nu-focus-history ol {
+  margin-top: 6px;
+}
+.nu-focus-stage {
+  position: relative;
+  min-height: 0;
+  display: grid;
+  place-items: start center;
+  overflow: auto;
+  padding: 6px 12px 12px;
+  scrollbar-width: thin;
+}
+.nu-focus-item,
+.nu-focus-ghost {
+  width: min(100%, 860px);
+  padding: 30px 34px 22px;
+  border-radius: 28px;
+  background:
+    radial-gradient(120% 60% at 0% 0%, color-mix(in srgb, var(--lv) 9%, transparent), transparent 60%),
+    color-mix(in srgb, var(--bg) 62%, transparent);
+  backdrop-filter: blur(20px) saturate(1.3);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--lv) 30%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 60px -24px var(--lv),
+    0 30px 80px -40px rgba(0, 0, 0, 0.8);
+}
+.nu-focus-item {
+  overflow: visible;
+  max-width: none;
+  animation: nu-card-rise 0.5s cubic-bezier(0.2, 1.15, 0.35, 1) both;
+}
+.nu-focus-item[data-dir="up"] {
+  animation-name: nu-card-drop;
+}
+@keyframes nu-card-rise {
+  from {
+    opacity: 0;
+    transform: translateY(46px) scale(0.95);
+    filter: blur(8px);
+  }
+}
+@keyframes nu-card-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-46px) scale(0.95);
+    filter: blur(8px);
+  }
+}
+/* The item that just left crosses the stage on its own lane, over the card. */
+.nu-focus-body {
+  position: relative;
+}
+.nu-focus-ghost-lane {
+  position: absolute;
+  top: 6px;
+  right: 12px;
+  left: calc(min(320px, 30%) + 52px);
+  z-index: 2;
+  display: grid;
+  justify-items: center;
+  pointer-events: none;
+}
+.nu-focus-body:not(:has(.nu-focus-queue)) .nu-focus-ghost-lane {
+  left: 12px;
+}
+.nu-focus-ghost {
+  --lv: var(--ok);
+  animation: nu-card-leave 0.48s var(--nu-ease) both;
+}
+@keyframes nu-card-leave {
+  to {
+    opacity: 0;
+    transform: translateX(-90px) scale(0.9);
+    filter: blur(10px);
+  }
+}
+.nu-focus-reading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 18px;
+  font: 500 var(--fs-5) / 1.45 var(--font);
+  color: var(--agent-text);
+  text-wrap: pretty;
+}
+.nu-focus-agent {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 3px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 40% 36%,
+    #fff 0 7%,
+    var(--agent) 28%,
+    color-mix(in srgb, var(--agent) 22%, transparent) 60%,
+    transparent 72%
+  );
+  box-shadow: 0 0 14px -3px var(--agent);
+  animation: nu-orb-breathe 3.4s ease-in-out infinite;
+}
+.nu-focus-subject,
+.nu-focus-err,
+.nu-focus-diff pre {
+  border-radius: 14px;
+}
+.nu-focus-err {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 30%, transparent);
+}
+.nu-focus-acts {
+  gap: 10px;
+  margin-top: 26px;
+}
+.nu-act {
+  border-radius: 999px;
+  clip-path: none;
+  padding: 12px 20px;
+  font-size: var(--fs-2);
+  letter-spacing: 0.14em;
+  transition:
+    background 0.2s,
+    color 0.2s,
+    box-shadow 0.25s,
+    transform 0.3s cubic-bezier(0.34, 1.5, 0.5, 1);
+}
+.nu-act:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+.nu-act kbd {
+  border-radius: 6px;
+}
+.nu-act.primary {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #fff 18%, var(--lv)),
+    var(--lv) 60%,
+    color-mix(in srgb, var(--lv) 80%, #000)
+  );
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--lv) 60%, transparent),
+    0 0 26px -4px color-mix(in srgb, var(--lv) 70%, transparent);
+}
+.nu-focus-pos {
+  margin: 18px 0 0;
+  text-align: right;
+  font-size: var(--fs-1);
+  letter-spacing: 0.16em;
+  color: var(--text-faint);
+}
+.nu-focus-clear {
+  gap: 10px;
+  text-align: center;
+  animation: nu-card-rise 0.6s var(--nu-ease) both;
+}
+.nu-focus-clear-orb {
+  display: block;
+  width: 180px;
+  height: 180px;
+  margin-bottom: 12px;
+}
+.nu-focus-clear-entity {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.nu-focus-clear-t {
+  margin: 0;
+  font: 600 var(--fs-6) / 1.2 var(--font-display);
+  color: var(--text);
+}
+.nu-focus-clear-s {
+  margin: 0 0 18px;
+  color: var(--text-dim);
+  font-size: var(--fs-4);
+}
+.nu-focus-clear .nu-act.primary {
+  --lv: var(--agent);
+}
+@media (max-width: 760px) {
+  .nu-focus-item,
+  .nu-focus-ghost {
+    padding: 22px 20px 18px;
+    border-radius: 22px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nu-focus-item,
+  .nu-focus-ghost,
+  .nu-focus-clear {
+    animation-duration: 0.01ms;
+  }
+}

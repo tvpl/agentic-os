@@ -875,12 +875,15 @@ test("a decision from the voice line waits in the pendências, not in the conver
     await expect
       .poll(async () => (await api(request).get<{ status: string }>(`/api/approvals/${approvalId}`)).status)
       .toBe("approved");
-    // Approving leaves focus and follows the run it launched.
+    // Approving stays in the Resolver (conceito em todo o sistema, AC 12):
+    // the decision leaves the queue; the run carries on in the voice line.
+    await expect(focus.locator(`nav.nu-focus-queue button[data-id="decision:${approvalId}"]`)).toHaveCount(0);
+    await page.keyboard.press("Escape");
     await expect(focus).toHaveCount(0);
-    await expect(lamina(page, "run:", "^=")).toHaveCount(1);
     await expect(page.locator(".nu-shell")).not.toHaveAttribute("data-focus", /.*/);
     await expect(sent).toHaveCount(0, { timeout: 20_000 });
-    // And the OS is a place again.
+    // Back where you were: the conversation. Folded, the OS is a place again.
+    await foldConversation(page);
     await travelBySpine(page, "brain");
   } finally {
     await settle(request, approvalId);

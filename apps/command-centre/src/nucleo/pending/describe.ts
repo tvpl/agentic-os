@@ -8,6 +8,7 @@ import { describeDecision } from "../../desktop/decision";
 import { notificationText } from "../../hooks/notificationText";
 import type { PendingItem } from "./model";
 import { questionsOf } from "../question";
+import { failureFix } from "../../runs/failureFix";
 
 type T = (key: TKey, vars?: TVars) => string;
 
@@ -63,5 +64,36 @@ export function describePending(item: PendingItem, t: T): PendingText {
       const text = notificationText(n.title, n.body, lang, n);
       return { title: text.title, subject: text.body ?? null };
     }
+  }
+}
+
+/**
+ * The agent's reading of an item, in plain words: the first line of its card
+ * in the Resolver. Never the raw error — the card says that once, below.
+ */
+export function readingFor(item: PendingItem, t: T, ago: (at: number) => string): string {
+  switch (item.kind) {
+    case "question":
+      return t("concept.read.question");
+    case "decision":
+      return t("concept.read.decision");
+    case "provider":
+      return t("concept.read.provider", {
+        provider: item.provider!.snapshot.displayName ?? item.provider!.snapshot.id,
+        state: t(`gate.state.${item.provider!.problem}`),
+      });
+    case "budget":
+      return item.budget!.tone === "over"
+        ? t("concept.read.budgetOver")
+        : t("concept.read.budgetWarn", { pct: Math.round(item.budget!.ratio * 100) });
+    case "failure": {
+      const r = item.run!;
+      const fix = failureFix(r.failure, r.provider, r.status);
+      return fix ? t(fix.causeKey) : t("concept.read.failure", { ago: ago(item.at) });
+    }
+    case "routine":
+      return t("concept.read.routine");
+    case "notice":
+      return item.count ? t("concept.read.noticeMany", { n: item.count }) : t("concept.read.notice");
   }
 }

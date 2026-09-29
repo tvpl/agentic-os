@@ -34,6 +34,13 @@ export interface PendingItem {
   provider?: { snapshot: ProviderSnapshot; problem: Exclude<ProviderProblem, null> };
   budget?: { tone: "warn" | "over"; ratio: number };
   notice?: NotificationItem;
+  /**
+   * The same cause said again, folded into this item: a routine's failed
+   * runs, or notices with this one's title. Resolving this item resolves them.
+   */
+  also?: PendingItem[];
+  /** How many notices this row stands for (itself included), when more than one. */
+  count?: number;
 }
 
 export interface PendingInput {
@@ -84,17 +91,11 @@ export function buildPending(input: PendingInput): PendingItem[] {
       budget: { tone: input.budget.tone, ratio: input.budget.ratio },
     });
   const muted = input.muted ?? new Set<string>();
-  for (const r of input.runs ?? []) {
-    if (r.status !== "failed" && r.status !== "timed_out") continue;
-    if (muted.has(r.id) || covered.has(r.id)) continue;
-    const at = r.finishedAt ?? r.createdAt;
-    if (input.now - at > FRESH_MS) continue;
-    out.push({ id: `failure:${r.id}`, kind: "failure", level: "fix", at, run: r });
-    covered.add(r.id);
-  }
+  // An unhealthy routine is the cause; its failed runs are that cause again.
+  const routines = new Map<string, PendingItem>();
   for (const r of input.routines ?? []) {
     if (r.healthy || !r.enabled) continue;
-    out.push({
+    routines.set(r.id, {
       id: `routine:${r.id}`,
       kind: "routine",
       level: "fix",
@@ -102,7 +103,24 @@ export function buildPending(input: PendingInput): PendingItem[] {
       routine: r,
     });
   }
-  for (const n of input.notifications ?? []) {
+  for (const r of input.runs ?? []) {
+    if (r.status !== "failed" && r.status !== "timed_out") continue;
+    if (muted.has(r.id) || covered.has(r.id)) continue;
+    const at = r.finishedAt ?? r.createdAt;
+    if (input.now - at > FRESH_MS) continue;
+    const failure: PendingItem = { id: `failure:${r.id}`, kind: "failure", level: "fix", at, run: r };
+    covered.add(r.id);
+    const routine = r.routineId ? routines.get(r.routineId) : undefined;
+    if (routine) (routine.also ??= []).push(failure);
+    else out.push(failure);
+  }
+  for (const item of routines.values()) {
+    item.also?.sort((a, b) => b.at - a.at);
+    out.push(item);
+  }
+  const byTitle = new Map<string, PendingItem>();
+  const notices = [...(input.notifications ?? [])].sort((a, b) => b.ts - a.ts);
+  for (const n of notices) {
     if (n.read) continue;
     // A notice about something already listed says it twice.
     if ((n.approvalId && covered.has(n.approvalId)) || (n.runId && covered.has(n.runId))) continue;
@@ -112,7 +130,23 @@ export function buildPending(input: PendingInput): PendingItem[] {
     if (n.kind === "approval" && n.approvalId && input.approvals) continue;
     // A loud notice asks for a look while it is fresh; after a day it is history.
     const loud = (n.tone === "danger" || n.tone === "warn") && input.now - n.ts <= FRESH_MS;
-    out.push({ id: `notice:${n.id}`, kind: "notice", level: loud ? "look" : "info", at: n.ts, notice: n });
+    const item: PendingItem = {
+      id: `notice:${n.id}`,
+      kind: "notice",
+      level: loud ? "look" : "info",
+      at: n.ts,
+      notice: n,
+    };
+    // The same title again is the same cause: one row, "×N".
+    const first = byTitle.get(n.title);
+    if (first) {
+      (first.also ??= []).push(item);
+      first.count = (first.count ?? 1) + 1;
+      if (RANK[item.level] < RANK[first.level]) first.level = item.level;
+      continue;
+    }
+    byTitle.set(n.title, item);
+    out.push(item);
   }
   return out.sort((a, b) => RANK[a.level] - RANK[b.level] || b.at - a.at);
 }

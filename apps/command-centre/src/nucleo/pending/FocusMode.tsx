@@ -1,13 +1,15 @@
 /**
- * Focus (immersive shell): the OS turns toward what waits on you. The rest
- * of the system recedes; the queue runs down the left, the chosen item fills
- * the centre with everything needed to decide — the change itself for an
- * approval, the cause and its fix for a failure — and one gesture resolves
- * it. Resolved items leave the queue and the next one comes forward.
+ * The Resolver (immersive shell): the OS turns toward what waits on you.
+ * One card at a time, centred: the agent's reading of the item first, then
+ * what is needed to decide, then one primary action (and at most three
+ * others). Each cause is listed once (model.ts folds repetitions); quiet
+ * notices wait in a folded history at the end of the queue. A resolved item
+ * leaves with an animation and the next one comes forward; the Resolver
+ * stays until nothing needs you.
  *
- * Keys: ↑/↓ choose, A approve, D deny, Enter the primary action, Esc back.
+ * Keys: ↑/↓ (j/k) choose, A approve, D deny, Enter the primary action, Esc back.
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -23,6 +25,7 @@ import {
   SquareArrowOutUpRight,
   TriangleAlert,
   Bell,
+  LogIn,
   X,
 } from "lucide-react";
 import { api } from "../../api";
@@ -31,14 +34,15 @@ import { qk } from "../../queries";
 import { timeAgo, useToast } from "../../components/ui";
 import { useNotifications } from "../../hooks/useNotifications";
 import { useResolveApproval } from "../../runs/ApprovalCards";
-import { FailureFixCard } from "../../runs/FailureFixCard";
+import { failureFix } from "../../runs/failureFix";
 import { PROVIDER_LOGIN_COMMANDS } from "../../runs/authRecovery";
 import { useDesktopActions } from "../../desktop/actions";
 import { describeDecision, editPreview, previewLines } from "../../desktop/decision";
 import { CONSOLE_DRAFT_EVENT, readConsoleDraft, storeConsoleDraft } from "../../desktop/consoleDraft";
 import type { Pending } from "./usePending";
 import type { PendingItem, PendingKind } from "./model";
-import { describePending } from "./describe";
+import { describePending, readingFor } from "./describe";
+import Entity from "../entity/Entity";
 import QuestionCard from "../QuestionCard";
 
 const ICON: Record<PendingKind, ReactNode> = {
@@ -80,45 +84,90 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
   const toast = useToast();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { openRun } = useDesktopActions();
+  const { openRun, openPanel } = useDesktopActions();
   const { markRead } = useNotifications();
   const items = pending.items;
-  const [selId, setSelId] = useState<string | null>(items[0]?.id ?? null);
+  // What waits on you, and the quiet history folded at the end.
+  const live = useMemo(() => items.filter((i) => i.level !== "info"), [items]);
+  const quiet = useMemo(() => items.filter((i) => i.level === "info"), [items]);
+  const [selId, setSelId] = useState<string | null>(live[0]?.id ?? null);
+  const inQuiet = quiet.some((i) => i.id === selId);
+  const list = inQuiet ? quiet : live;
   // When the chosen item is resolved, the next one comes forward.
   const lastIndex = useRef(0);
-  const index = Math.max(
-    0,
-    items.findIndex((i) => i.id === selId),
-  );
+  const found = list.findIndex((i) => i.id === selId);
   const sel: PendingItem | undefined =
-    items.find((i) => i.id === selId) ?? items[Math.min(lastIndex.current, items.length - 1)];
-  useEffect(() => {
+    found >= 0 ? list[found] : live[Math.min(lastIndex.current, live.length - 1)];
+  const index = sel ? Math.max(0, list.indexOf(sel)) : 0;
+
+  // The card knows which way the queue moved, and the item that just left.
+  const [dir, setDir] = useState<"up" | "down">("down");
+  const [ghost, setGhost] = useState<{ item: PendingItem; reading: string; title: string } | null>(null);
+  const shown = useRef<PendingItem | undefined>(undefined);
+  useLayoutEffect(() => {
+    const prev = shown.current;
+    if (prev && sel && prev.id !== sel.id) {
+      if (!items.some((i) => i.id === prev.id)) {
+        setDir("down");
+        setGhost({
+          item: prev,
+          reading: readingFor(prev, t, (at) => timeAgo(at, locale)),
+          title: describePending(prev, t).title,
+        });
+      }
+    }
     if (sel) {
-      lastIndex.current = items.indexOf(sel);
+      lastIndex.current = list.indexOf(sel);
       if (sel.id !== selId) setSelId(sel.id);
     }
-  }, [sel, selId, items]);
+    shown.current = sel;
+  }, [sel, selId, items, list, t, locale]);
+  useEffect(() => {
+    if (!ghost) return;
+    const id = window.setTimeout(() => setGhost(null), 480);
+    return () => window.clearTimeout(id);
+  }, [ghost]);
+  const choose = (id: string) => {
+    const all = [...live, ...quiet];
+    const from = all.findIndex((i) => i.id === sel?.id);
+    const to = all.findIndex((i) => i.id === id);
+    setDir(to < from ? "up" : "down");
+    setSelId(id);
+  };
 
   const leaveThen = (fn: () => void) => {
     onClose();
     requestAnimationFrame(fn);
   };
-  const resolve = useResolveApproval((runId) => runId && leaveThen(() => openRun(runId)));
+  // Resolving stays here: the next item comes forward; the run carries on in the voice line.
+  const resolve = useResolveApproval();
   const retry = useMutation({
-    mutationFn: (id: string) =>
-      api.post<{ runId: string | null }>(`/api/runs/${encodeURIComponent(id)}/retry`, {
-        submissionId: crypto.randomUUID(),
-      }),
-    onSuccess: (res) => {
+    mutationFn: (ids: string[]) =>
+      Promise.all(
+        ids.map((id) =>
+          api.post<{ runId: string | null }>(`/api/runs/${encodeURIComponent(id)}/retry`, {
+            submissionId: crypto.randomUUID(),
+          }),
+        ),
+      ),
+    onSuccess: (_res, ids) => {
+      // The cause is being handled: it leaves the queue.
+      for (const id of ids) pending.silence(id);
+      toast(t("concept.focus.rerunning"), "ok");
       qc.invalidateQueries({ queryKey: ["runs"] }).catch(() => undefined);
-      if (res.runId) leaveThen(() => openRun(res.runId!));
-      else qc.invalidateQueries({ queryKey: qk.approvals }).catch(() => undefined);
+      qc.invalidateQueries({ queryKey: qk.approvals }).catch(() => undefined);
     },
     onError: (err: Error) => toast(err.message, "danger"),
   });
 
   const acts = useMemo<Act[]>(() => {
     if (!sel) return [];
+    const ask = (text: string): Act => ({
+      key: "ask",
+      label: t("nucleo.pending.askWhy"),
+      icon: <MessageCircleQuestion aria-hidden />,
+      run: () => leaveThen(() => askAgent(text)),
+    });
     switch (sel.kind) {
       case "question": {
         // Answered in the card itself; the run is one step away.
@@ -170,27 +219,49 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
       case "failure": {
         const r = sel.run!;
         const what = r.skillSlug ? `/${r.skillSlug}` : `"${r.promptSummary.slice(0, 60)}"`;
+        const fix = failureFix(r.failure, r.provider, r.status)?.action ?? { kind: "retry" as const };
+        const primary: Act =
+          fix.kind === "login" || fix.kind === "provider"
+            ? {
+                key: "fix",
+                label: t(fix.kind === "login" ? "runs.fix.login" : "runs.fix.providerSettings"),
+                icon: <LogIn aria-hidden />,
+                primary: true,
+                run: () => leaveThen(() => navigate("/settings?tab=providers")),
+              }
+            : fix.kind === "budget"
+              ? {
+                  key: "fix",
+                  label: t("runs.fix.raise"),
+                  icon: <CircleDollarSign aria-hidden />,
+                  primary: true,
+                  run: () => leaveThen(() => navigate("/settings?tab=security")),
+                }
+              : fix.kind === "approvals"
+                ? {
+                    key: "fix",
+                    label: t("runs.fix.approvals"),
+                    icon: <ShieldAlert aria-hidden />,
+                    primary: true,
+                    run: () => leaveThen(() => openPanel("approvals")),
+                  }
+                : {
+                    key: "retry",
+                    label: t("desktop.attention.rerun"),
+                    icon: <RotateCcw aria-hidden />,
+                    primary: true,
+                    busy: retry.isPending,
+                    run: () => retry.mutate([r.id]),
+                  };
         return [
+          primary,
           {
             key: "open",
             label: t("nucleo.pending.openRun"),
             icon: <SquareArrowOutUpRight aria-hidden />,
-            primary: true,
             run: () => leaveThen(() => navigate(`/runs/${encodeURIComponent(r.id)}`)),
           },
-          {
-            key: "retry",
-            label: t("desktop.attention.rerun"),
-            icon: <RotateCcw aria-hidden />,
-            busy: retry.isPending,
-            run: () => retry.mutate(r.id),
-          },
-          {
-            key: "ask",
-            label: t("nucleo.pending.askWhy"),
-            icon: <MessageCircleQuestion aria-hidden />,
-            run: () => leaveThen(() => askAgent(t("nucleo.pending.askRunPrompt", { what }))),
-          },
+          ask(t("nucleo.pending.askRunPrompt", { what })),
           {
             key: "mute",
             label: t("desktop.attention.mute"),
@@ -201,7 +272,8 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
       }
       case "routine": {
         const r = sel.routine!;
-        return [
+        const failed = (sel.also ?? []).map((i) => i.run!.id);
+        const out: Act[] = [
           {
             key: "open",
             label: t("nucleo.pending.openRoutine"),
@@ -209,16 +281,17 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
             primary: true,
             run: () => leaveThen(() => navigate(`/routines?r=${encodeURIComponent(r.id)}`)),
           },
-          {
-            key: "ask",
-            label: t("nucleo.pending.askWhy"),
-            icon: <MessageCircleQuestion aria-hidden />,
-            run: () =>
-              leaveThen(() =>
-                askAgent(t("nucleo.pending.askWhyPrompt", { name: r.name, n: r.recentFailures })),
-              ),
-          },
         ];
+        if (failed.length > 0)
+          out.push({
+            key: "retry",
+            label: t("desktop.attention.rerun"),
+            icon: <RotateCcw aria-hidden />,
+            busy: retry.isPending,
+            run: () => retry.mutate(failed.slice(0, 1)),
+          });
+        out.push(ask(t("nucleo.pending.askWhyPrompt", { name: r.name, n: r.recentFailures })));
+        return out;
       }
       case "provider":
         return [
@@ -242,6 +315,11 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
         ];
       case "notice": {
         const n = sel.notice!;
+        // A row that stands for several notices reads them all.
+        const readAll = () => {
+          markRead(n.id);
+          for (const o of sel.also ?? []) if (o.notice) markRead(o.notice.id);
+        };
         const out: Act[] = [];
         if (n.href)
           out.push({
@@ -250,7 +328,7 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
             icon: <SquareArrowOutUpRight aria-hidden />,
             primary: true,
             run: () => {
-              markRead(n.id);
+              readAll();
               leaveThen(() => navigate(n.href!));
             },
           });
@@ -259,7 +337,7 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
           label: t("nucleo.pending.markRead"),
           icon: <X aria-hidden />,
           primary: !n.href,
-          run: () => markRead(n.id),
+          run: readAll,
         });
         return out;
       }
@@ -267,7 +345,7 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
     // The switch is exhaustive; this keeps the return type honest.
     return [];
     // eslint-disable-next-line react-hooks/exhaustive-deps -- leaveThen/onClose are stable per render
-  }, [sel, t, resolve, retry, pending, markRead, navigate, openRun]);
+  }, [sel, t, resolve, retry, pending, markRead, navigate, openRun, openPanel]);
 
   // Keys, in the capture phase: while focused, this is the only surface.
   useEffect(() => {
@@ -279,11 +357,11 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
       let handled = true;
       if (k === "Escape") onClose();
       else if (k === "ArrowDown" || k === "j") {
-        const next = items[Math.min(items.length - 1, index + 1)];
-        if (next) setSelId(next.id);
+        const next = list[Math.min(list.length - 1, index + 1)];
+        if (next) choose(next.id);
       } else if (k === "ArrowUp" || k === "k") {
-        const prev = items[Math.max(0, index - 1)];
-        if (prev) setSelId(prev.id);
+        const prev = list[Math.max(0, index - 1)];
+        if (prev) choose(prev.id);
       } else if (k === "Enter") acts.find((a) => a.primary)?.run();
       else if ((k === "a" || k === "A") && sel?.kind === "decision")
         acts.find((a) => a.key === "approve")?.run();
@@ -297,10 +375,37 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [items, index, acts, sel, onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- choose reads the same state
+  }, [list, index, acts, sel, onClose]);
 
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => closeRef.current?.focus(), []);
+
+  const row = (item: PendingItem) => {
+    const text = describePending(item, t);
+    return (
+      <li key={item.id}>
+        <button
+          type="button"
+          className={item.id === sel?.id ? "on" : undefined}
+          aria-current={item.id === sel?.id || undefined}
+          data-id={item.id}
+          data-kind={item.kind}
+          data-level={item.level}
+          onClick={() => choose(item.id)}
+        >
+          <span className="ic">{ICON[item.kind]}</span>
+          <span className="tx">
+            <span className="lv mono">{t(`nucleo.pending.level.${item.level}`)}</span>
+            <span className="tt">{text.title}</span>
+          </span>
+          <span className="ag mono">
+            {item.count ? <span className="nu-focus-times">×{item.count}</span> : timeAgo(item.at, locale)}
+          </span>
+        </button>
+      </li>
+    );
+  };
 
   return (
     <div className="nu-focus" role="dialog" aria-modal="true" aria-label={t("nucleo.focus.title")}>
@@ -315,63 +420,79 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
           <X aria-hidden /> {t("nucleo.focus.close")}
         </button>
       </header>
-      {items.length === 0 || !sel ? (
-        <div className="nu-focus-clear">
-          <span className="nu-focus-clear-ring" aria-hidden />
-          <p>{t("nucleo.focus.clear")}</p>
-        </div>
-      ) : (
-        <div className="nu-focus-body">
+      <div className="nu-focus-body" data-clear={!sel ? "" : undefined}>
+        {(live.length > 0 || quiet.length > 0) && (
           <nav className="nu-focus-queue" aria-label={t("nucleo.focus.queue")}>
-            <ol>
-              {items.map((item) => {
-                const text = describePending(item, t);
-                return (
-                  <li key={item.id}>
-                    <button
-                      type="button"
-                      className={item.id === sel.id ? "on" : undefined}
-                      aria-current={item.id === sel.id || undefined}
-                      data-level={item.level}
-                      onClick={() => setSelId(item.id)}
-                    >
-                      <span className="ic">{ICON[item.kind]}</span>
-                      <span className="tx">
-                        <span className="lv mono">{t(`nucleo.pending.level.${item.level}`)}</span>
-                        <span className="tt">{text.title}</span>
-                      </span>
-                      <span className="ag mono">{timeAgo(item.at, locale)}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ol>
+            {live.length > 0 && <ol>{live.map(row)}</ol>}
+            {quiet.length > 0 && (
+              <details className="nu-focus-history" open={inQuiet || undefined}>
+                <summary className="mono">{t("concept.focus.history", { n: quiet.length })}</summary>
+                <ol>{quiet.map(row)}</ol>
+              </details>
+            )}
           </nav>
-          <section className="nu-focus-item" key={sel.id} data-level={sel.level} aria-live="polite">
-            <FocusDetail item={sel} />
-            <div className="nu-focus-acts">
-              {acts.map((a) => (
-                <button
-                  key={a.key}
-                  type="button"
-                  className={`nu-act${a.primary ? " primary" : ""}${a.danger ? " danger" : ""}`}
-                  disabled={a.busy}
-                  onClick={a.run}
-                >
-                  {a.icon}
-                  <span>{a.label}</span>
-                  {a.hint && <kbd>{a.hint}</kbd>}
-                </button>
-              ))}
+        )}
+        {ghost && (
+          <div className="nu-focus-ghost-lane" aria-hidden>
+            <div className="nu-focus-ghost" data-level={ghost.item.level}>
+              <p className="nu-focus-reading">{ghost.reading}</p>
+              <h2 className="nu-focus-h">{ghost.title}</h2>
             </div>
-          </section>
-        </div>
-      )}
+          </div>
+        )}
+        {!sel ? (
+          <div className="nu-focus-clear">
+            <span className="nu-focus-clear-orb" data-testid="focus-entity">
+              <Entity variant="iris" state="idle" className="nu-focus-clear-entity" />
+            </span>
+            <p className="nu-focus-clear-t">{t("nucleo.focus.clear")}</p>
+            <p className="nu-focus-clear-s">{t("concept.focus.clearSub")}</p>
+            <button type="button" className="nu-act primary" onClick={onClose}>
+              <X aria-hidden />
+              <span>{t("nucleo.focus.close")}</span>
+            </button>
+          </div>
+        ) : (
+          <div className="nu-focus-stage">
+            <section
+              className="nu-focus-item"
+              key={sel.id}
+              data-id={sel.id}
+              data-kind={sel.kind}
+              data-level={sel.level}
+              data-dir={dir}
+              aria-live="polite"
+            >
+              <p className="nu-focus-reading">
+                <span className="nu-focus-agent" aria-hidden />
+                {readingFor(sel, t, (at) => timeAgo(at, locale))}
+              </p>
+              <FocusDetail item={sel} />
+              <div className="nu-focus-acts">
+                {acts.map((a) => (
+                  <button
+                    key={a.key}
+                    type="button"
+                    className={`nu-act${a.primary ? " primary" : ""}${a.danger ? " danger" : ""}`}
+                    disabled={a.busy}
+                    onClick={a.run}
+                  >
+                    {a.icon}
+                    <span>{a.label}</span>
+                    {a.hint && <kbd>{a.hint}</kbd>}
+                  </button>
+                ))}
+              </div>
+              <p className="nu-focus-pos mono">{t("concept.focus.pos", { i: index + 1, n: list.length })}</p>
+            </section>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-/** Everything needed to decide, per kind. */
+/** Everything needed to decide, per kind. The error, when there is one, is said once. */
 function FocusDetail({ item }: { item: PendingItem }) {
   const t = useT();
   const locale = useLocale();
@@ -431,11 +552,25 @@ function FocusDetail({ item }: { item: PendingItem }) {
   }
   if (item.kind === "failure") {
     const r = item.run!;
+    const fix = failureFix(r.failure, r.provider, r.status)?.action;
     return (
       <>
         {head}
         {text.subject && <p className="nu-focus-err mono">{text.subject}</p>}
-        <FailureFixCard runId={r.id} failure={r.failure} provider={r.provider} status={r.status} />
+        {fix?.kind === "login" && fix.command && <code className="nu-focus-subject mono">{fix.command}</code>}
+      </>
+    );
+  }
+  if (item.kind === "routine") {
+    const last = item.also?.[0]?.run;
+    const error = last ? (last.failure?.message ?? last.error ?? null) : null;
+    return (
+      <>
+        {head}
+        {item.also && item.also.length > 0 && (
+          <p className="nu-focus-p">{t("concept.read.routineRuns", { n: item.also.length })}</p>
+        )}
+        {error && <p className="nu-focus-err mono">{error}</p>}
       </>
     );
   }

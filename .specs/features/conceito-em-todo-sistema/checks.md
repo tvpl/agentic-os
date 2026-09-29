@@ -34,28 +34,36 @@ Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/su
 
 **C6** - Uma falha de execução cuja `routineId` é de uma rotina doente listada vira parte do item da rotina: um item, contado uma vez (AC 6)
 Proof: `cd apps/command-centre && npx vitest run src/nucleo/pending/model.test.ts -t "folds a routine's failures into the routine"`
+Status: closed
 
 **C7** - Avisos não lidos com o mesmo título viram uma linha com `×N` (AC 7)
 Proof: `cd apps/command-centre && npx vitest run src/nucleo/pending/model.test.ts -t "collapses notices with the same title"`
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C7 the resolver shows each cause once"`
+Status: closed
 
 **C8** - Avisos de nível `info` só aparecem dentro do grupo recolhido "Histórico (N)" no fim da fila (AC 8)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C8 quiet notices wait in a folded history"`
+Status: closed
 
 **C9** - Ao abrir, o Resolver mostra um cartão central cuja primeira linha é a leitura do agente, com 1 ação primária e no máximo 3 secundárias (AC 9)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C9 one card, the agent's reading first, one primary action"`
+Status: closed
 
 **C10** - O texto de erro de um item aparece exatamente uma vez no cartão (AC 10)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C10 the resolver says an error once"`
+Status: closed
 
 **C11** - Trocar de item (↓, k, clique) anima o cartão e atualiza o contador "N de M" (AC 11)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C11 moving through the queue animates and counts"`
+Status: closed
 
 **C12** - Resolver um item o tira da fila e foca o próximo (AC 12)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C12 a resolved item leaves and the next takes focus"`
+Status: closed
 
 **C13** - Fila vazia mostra "Nada precisa de você", a entidade e "Voltar ao sistema" (AC 13)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C13 an empty queue says nothing needs you"`
+Status: closed
 
 ### S3 - Execuções · 5 files · 61 KB · ~15k
 

@@ -113,6 +113,47 @@ describe("pendências", () => {
     });
   });
 
+  it("folds a routine's failures into the routine", () => {
+    const routines = [
+      { id: "nightly", name: "Nightly", healthy: false, enabled: true, lastFiredAt: NOW - 50 },
+    ] as unknown as RoutineStatus[];
+    const failed = (id: string, at: number, routineId: string | null) =>
+      ({ ...run(id, "failed", at), routineId }) as RunRecord;
+    const items = buildPending({
+      routines,
+      runs: [
+        failed("r1", NOW - 100, "nightly"),
+        failed("r2", NOW - 200, "nightly"),
+        failed("r3", NOW - 300, null),
+      ],
+      // A notice about a folded failure is the same cause again.
+      notifications: [notice("n1", "danger", { runId: "r1" })],
+      now: NOW,
+    });
+    // One item for the routine, the failures inside it; the stray failure stays its own item.
+    expect(items.map((i) => i.id).sort()).toEqual(["failure:r3", "routine:nightly"]);
+    const routine = items.find((i) => i.id === "routine:nightly")!;
+    expect(routine.also?.map((i) => i.id)).toEqual(["failure:r1", "failure:r2"]);
+    // Counted once in the hub.
+    expect(pendingCount(items)).toBe(2);
+  });
+
+  it("collapses notices with the same title", () => {
+    const items = buildPending({
+      notifications: [
+        notice("t1", "warn", { title: "The run exceeded its time limit", ts: NOW - 10 }),
+        notice("t2", "warn", { title: "The run exceeded its time limit", ts: NOW - 20 }),
+        notice("t3", "warn", { title: "The run exceeded its time limit", ts: NOW - 30 }),
+        notice("other", "warn", { title: "Something else", ts: NOW - 40 }),
+      ],
+      now: NOW,
+    });
+    expect(items.map((i) => i.id)).toEqual(["notice:t1", "notice:other"]);
+    expect(items[0]!.count).toBe(3);
+    expect(items[0]!.also?.map((i) => i.id)).toEqual(["notice:t2", "notice:t3"]);
+    expect(items[1]!.count).toBeUndefined();
+  });
+
   it("is quiet when nothing waits", () => {
     const items = buildPending({ notifications: [notice("n", "info")], now: NOW });
     expect(pendingCount(items)).toBe(0);
