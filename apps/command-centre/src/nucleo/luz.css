@@ -1,0 +1,196 @@
+/* =============================================================================
+   Luz — the one language of the immersive shell (conceito em todo o sistema,
+   S1). The Núcleo, the conversation and the Resolver already speak it:
+   rounded glass, a neon hairline, spring entrances, no chamfers. Every other
+   scene inherits it here, on the shared primitives, instead of each view
+   restating it: controls are pills, fields are soft glass, rows and tiles
+   are rounded, dialogs rise as sheets over the conversation's veil.
+
+   Scope: the scenes that are production views or have their own chrome —
+   the Núcleo and the Brain draw their own worlds and are left alone.
+   ============================================================================= */
+:root {
+  --luz-r: 14px;
+  --luz-r-lg: 22px;
+  --luz-glass: color-mix(in srgb, var(--bg) 58%, transparent);
+  --luz-edge: color-mix(in srgb, var(--agent) 18%, transparent);
+  --luz-edge-hot: color-mix(in srgb, var(--agent) 55%, transparent);
+  --luz-spring: cubic-bezier(0.2, 1.15, 0.35, 1);
+}
+
+/* ---- controls: pills; fields: soft glass ----------------------------------------- */
+.nu-shell .nu-scene.luz :is(button, .btn, [role="button"]) {
+  clip-path: none;
+  border-radius: 999px;
+}
+.nu-shell .nu-scene.luz :is(input, textarea, select, .input) {
+  clip-path: none;
+  border-radius: var(--luz-r);
+}
+.nu-shell .nu-scene.luz :is(input[type="search"], .input.sm, .settings-search) {
+  border-radius: 999px;
+  padding-inline: 14px;
+}
+/* A checkbox is a glass switch; a radio a soft ring. */
+.nu-shell .nu-scene.luz input[type="checkbox"] {
+  appearance: none;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  vertical-align: middle;
+  background:
+    radial-gradient(circle at 10px 50%, var(--text-dim) 0 6px, transparent 6.5px),
+    color-mix(in srgb, var(--bg) 60%, transparent);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  transition:
+    background 0.25s,
+    box-shadow 0.25s;
+}
+.nu-shell .nu-scene.luz input[type="checkbox"]:checked {
+  background:
+    radial-gradient(circle at calc(100% - 10px) 50%, var(--accent-contrast) 0 6px, transparent 6.5px),
+    var(--agent);
+  box-shadow: 0 0 16px -4px var(--agent);
+}
+.nu-shell .nu-scene.luz input[type="checkbox"]:focus-visible {
+  outline: 1px solid var(--agent-line);
+  outline-offset: 3px;
+}
+.nu-shell .nu-scene.luz input[type="radio"] {
+  border-radius: 999px;
+}
+.nu-shell .nu-scene.luz input[type="range"] {
+  border-radius: 999px;
+}
+.nu-shell .nu-scene.luz input[type="color"] {
+  border-radius: 12px;
+}
+.nu-shell
+  .nu-scene.luz
+  :is(input, textarea, select, .input):not([type="checkbox"], [type="radio"], [type="range"]) {
+  transition:
+    box-shadow 0.25s,
+    border-color 0.25s,
+    background 0.25s;
+}
+.nu-shell
+  .nu-scene.luz
+  :is(input, textarea, select, .input):not([type="checkbox"], [type="radio"]):focus-visible {
+  outline: none;
+  border-color: var(--luz-edge-hot);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--agent) 10%, transparent),
+    0 0 24px -8px var(--agent);
+}
+.nu-shell .nu-scene.luz :is(button, .btn):not(:disabled) {
+  transition:
+    background 0.2s,
+    color 0.2s,
+    border-color 0.2s,
+    box-shadow 0.25s,
+    transform 0.3s cubic-bezier(0.34, 1.5, 0.5, 1);
+}
+.nu-shell .nu-scene.luz .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.nu-shell .nu-scene.luz .btn.primary:not(:disabled) {
+  box-shadow: 0 0 22px -6px var(--accent-glow);
+}
+
+/* ---- rows, tiles and cells: rounded, not pills --------------------------------- */
+.nu-shell
+  .nu-scene.luz
+  :is(
+    .art-card,
+    .sks-item,
+    .rts-row,
+    .cx-card-head,
+    .pxs-frame,
+    .pxs-tool,
+    .settings-nav-item,
+    .sks-last,
+    .rts-act
+  ) {
+  border-radius: var(--luz-r);
+}
+.nu-shell .nu-scene.luz .pxs-swatch {
+  border-radius: 10px;
+}
+.nu-shell .nu-scene.luz :is(.card, .panel, .widget, .modal-body, .badge, .pill) {
+  clip-path: none;
+}
+.nu-shell .nu-scene.luz .card {
+  border-radius: var(--luz-r-lg);
+  background: var(--luz-glass);
+  backdrop-filter: blur(14px);
+  border-color: var(--luz-edge);
+}
+.nu-shell .nu-scene.luz .badge {
+  border-radius: 999px;
+}
+
+/* ---- dialogs: a glass sheet over the conversation's veil ------------------------ */
+html:has(.nu-shell) .modal-backdrop {
+  background:
+    radial-gradient(
+      ellipse 70% 60% at 50% 100%,
+      color-mix(in srgb, var(--agent) 9%, transparent),
+      transparent 70%
+    ),
+    color-mix(in srgb, var(--bg) 54%, transparent);
+  backdrop-filter: blur(12px) saturate(0.75) brightness(0.85);
+  animation: luz-veil-in 0.4s var(--nu-ease, ease) both;
+}
+html:has(.nu-shell) .modal {
+  clip-path: none;
+  border: 0;
+  border-radius: 26px;
+  background:
+    radial-gradient(120% 55% at 50% 0%, color-mix(in srgb, var(--agent) 10%, transparent), transparent 62%),
+    color-mix(in srgb, var(--bg) 62%, transparent);
+  backdrop-filter: blur(28px) saturate(1.4);
+  box-shadow:
+    inset 0 0 0 1px var(--luz-edge),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 0 70px -24px color-mix(in srgb, var(--agent) 70%, transparent),
+    0 44px 120px -30px rgba(0, 0, 0, 0.85);
+  animation: luz-sheet-in 0.42s var(--luz-spring) both;
+}
+html:has(.nu-shell) .modal-backdrop.closing .modal {
+  animation: luz-sheet-out 0.16s var(--nu-ease, ease) both;
+}
+html:has(.nu-shell) .modal :is(.btn, button) {
+  clip-path: none;
+  border-radius: 999px;
+}
+html:has(.nu-shell) .modal :is(input, textarea, select, .input) {
+  clip-path: none;
+  border-radius: var(--luz-r);
+}
+@keyframes luz-veil-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes luz-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(36px) scale(0.94);
+    filter: blur(8px);
+  }
+}
+@keyframes luz-sheet-out {
+  to {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html:has(.nu-shell) :is(.modal, .modal-backdrop) {
+    animation-duration: 0.01ms;
+  }
+}

@@ -86,6 +86,10 @@ import Beams from "./Beams";
 import Lamina, { type LaminaSpec } from "./Lamina";
 import { SCENE_VIEWS } from "./sceneViews";
 import "./nucleo.css";
+import "./luz.css";
+
+/** The scenes that take the shared language (luz.css); the Núcleo and the Brain draw their own worlds. */
+const LUZ = (id: SceneId) => (id === "nucleo" || id === "brain" ? "" : " luz");
 
 /** How long the scene being left stays on screen while it travels away. */
 const LEAVE_MS = 650;
@@ -674,7 +678,7 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
               {leaving && leaving.id !== scene.id && (
                 <section
                   key={leaving.id}
-                  className={`nu-scene out-${leaving.mode}`}
+                  className={`nu-scene out-${leaving.mode}${LUZ(leaving.id)}`}
                   data-scene={leaving.id}
                   aria-hidden
                   // The scene on its way out is a picture, not a place (React 18
@@ -686,7 +690,7 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
               )}
               <section
                 key={scene.id}
-                className={`nu-scene on${leaving ? ` in-${mode}` : ""}`}
+                className={`nu-scene on${leaving ? ` in-${mode}` : ""}${LUZ(scene.id)}`}
                 // Coming back within the exit's 650 ms reuses the element that was
                 // leaving: it must not keep the exit's `inert`.
                 ref={(el) => el?.removeAttribute("inert")}

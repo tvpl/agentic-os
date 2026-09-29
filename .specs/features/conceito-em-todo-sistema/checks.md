@@ -17,18 +17,22 @@ Comandos (da raiz do repositório):
 
 **C1** - Dentro de `.nu-shell`, todo `button`, `input`, `textarea` e diálogo visível nas cenas Execuções, Habilidades, Rotinas, Conectores, Artefatos, Gerações, Pixel e Ajustes tem `clip-path: none` e `border-radius` ≥ 10px (AC 1)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C1 every control in every scene is rounded glass"`
+Status: closed
 
 **C2** - Nenhum `select` nativo visível em Artefatos, Gerações, Conectores e Habilidades (AC 2)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C2 no native select in the gallery, connector and skill scenes"`
 
 **C3** - Um diálogo aberto no shell sobe como folha sobre o véu `.nu-dialog-veil`, com animação de entrada ≤ 450 ms (AC 3)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C3 a dialog rises as a sheet over the veil"`
+Status: closed
 
 **C4** - Esc e clique no véu fecham o diálogo e devolvem o foco ao controle que o abriu (AC 4)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C4 a dialog folds on Esc and on the veil and gives focus back"`
+Status: closed
 
 **C5** - Contraste de texto ≥ 4.5:1 nas superfícies de vidro, escuro e claro (AC 5)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/surface-contrast.spec.ts -g "surface contrast"`
+Status: closed
 
 ### S2 - Resolver · 5 files · 31 KB · ~8k
 

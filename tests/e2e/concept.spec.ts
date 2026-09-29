@@ -543,3 +543,120 @@ test("C20 a run's route opens its view", async ({ page, request }) => {
   await expect(runView(page)).toBeVisible();
   await expect(runView(page)).toHaveAttribute("data-id", RUN_ID);
 });
+
+/* ---- S1: one language in every scene -------------------------------------------------- */
+
+const LANGUAGE_SCENES: ReadonlyArray<[string, string]> = [
+  ["runs", "/runs"],
+  ["skills", "/skills"],
+  ["routines", "/routines"],
+  ["connectors", "/connectors"],
+  ["artifacts", "/artifacts"],
+  ["generations", "/generations"],
+  ["pixel", "/pixel"],
+  ["settings", "/settings"],
+];
+
+/** Every visible control of the scene that is chamfered or square-cornered. */
+async function squareControls(page: Page): Promise<string[]> {
+  return currentScene(page)
+    .locator("button, input, textarea, select, [role='dialog']")
+    .evaluateAll((els) =>
+      els
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          const s = getComputedStyle(el);
+          return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none";
+        })
+        .flatMap((el) => {
+          const s = getComputedStyle(el);
+          const r = el.getBoundingClientRect();
+          const raw = s.borderTopLeftRadius;
+          const radius = raw.endsWith("%")
+            ? (parseFloat(raw) / 100) * Math.min(r.width, r.height)
+            : parseFloat(raw) || 0;
+          if (s.clipPath === "none" && radius >= 10) return [];
+          const name = `${el.tagName.toLowerCase()}.${[...el.classList].join(".")}`;
+          const text = (el.textContent ?? "").trim().slice(0, 24) || el.getAttribute("aria-label") || "";
+          return [`${name} "${text}" clip=${s.clipPath} r=${raw}`];
+        }),
+    );
+}
+
+test("C1 every control in every scene is rounded glass", async ({ page }) => {
+  for (const [scene, path] of LANGUAGE_SCENES) {
+    await openShell(page, path);
+    await arrived(page, scene);
+    // Let a lazy scene finish drawing its controls.
+    await page.waitForTimeout(800);
+    const square = await squareControls(page);
+    expect(square, `square controls in ${scene}`).toEqual([]);
+  }
+});
+
+test("C2 no native select in the gallery, connector and skill scenes", async ({ page }) => {
+  for (const [scene, path] of [
+    ["artifacts", "/artifacts"],
+    ["generations", "/generations"],
+    ["connectors", "/connectors"],
+    ["skills", "/skills"],
+  ] as const) {
+    await openShell(page, path);
+    await arrived(page, scene);
+    await page.waitForTimeout(800);
+    await expect(currentScene(page).locator("select:visible"), scene).toHaveCount(0);
+  }
+});
+
+/** A dialog the shell raises from a scene: the write gate of a connector. */
+async function openWriteGate(page: Page) {
+  const cards = await openConnectors(page);
+  const n = await cards.count();
+  for (let i = 0; i < n; i++) {
+    await cards.nth(i).locator(".cx-card-head").click();
+    const ask = cards.nth(i).getByRole("button", { name: /request write|solicitar escrita/i });
+    if (await ask.count()) {
+      await ask.click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
+      return { dialog, trigger: ask };
+    }
+  }
+  throw new Error("no connector offers a write gate");
+}
+
+test("C3 a dialog rises as a sheet over the veil", async ({ page }) => {
+  const { dialog } = await openWriteGate(page);
+  const look = await dialog.evaluate((el) => {
+    const s = getComputedStyle(el);
+    const veil = getComputedStyle(el.parentElement!);
+    const secs = (v: string) =>
+      Math.max(...v.split(",").map((x) => parseFloat(x) * (x.includes("ms") ? 1 : 1000)));
+    return {
+      clip: s.clipPath,
+      radius: parseFloat(s.borderTopLeftRadius),
+      glass: s.backdropFilter,
+      anim: s.animationName,
+      ms: secs(s.animationDuration),
+      veilBlur: veil.backdropFilter,
+    };
+  });
+  expect(look.clip).toBe("none");
+  expect(look.radius).toBeGreaterThanOrEqual(20);
+  expect(look.glass).toContain("blur");
+  expect(look.anim).not.toBe("none");
+  expect(look.ms).toBeLessThanOrEqual(450);
+  expect(look.veilBlur).toContain("blur");
+});
+
+test("C4 a dialog folds on Esc and on the veil and gives focus back", async ({ page }) => {
+  const first = await openWriteGate(page);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(first.trigger).toBeFocused();
+  await first.trigger.click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.mouse.click(8, 8);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(first.trigger).toBeFocused();
+});
