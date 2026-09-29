@@ -24,6 +24,12 @@ import { api, type ArtifactEntry } from "../../api";
 import { useOsArtifacts } from "../../queries";
 import { useToast } from "../../components/ui";
 import { FailureFixCard } from "../../runs/FailureFixCard";
+import { openFocus } from "../../nucleo/events";
+import QuestionCard from "../../nucleo/QuestionCard";
+import { isQuestion } from "../../nucleo/question";
+import { activityKind } from "../../nucleo/activity";
+import { useApprovals } from "../../runs/ApprovalCards";
+import Markdown from "../../views/Skills/Markdown";
 
 export type Reply = ReturnType<typeof replyFromEvents>;
 
@@ -51,11 +57,23 @@ export function ConsoleThread({
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const artifacts = useOsArtifacts();
-  // Keep the newest turn in view as it streams.
+  // Keep the newest turn in view as it streams — in the box that scrolls
+  // (the voice line's conversation area), and again whenever that box
+  // changes height (a scene with a shorter conversation, a folded briefing).
   useEffect(() => {
     const el = ref.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    const box = el?.closest<HTMLElement>(".cons-scroll") ?? el;
+    if (box) box.scrollTop = box.scrollHeight;
   }, [turns.length, live.text, live.tools, narration.length]);
+  useEffect(() => {
+    const box = ref.current?.closest<HTMLElement>(".cons-scroll");
+    if (!box || typeof ResizeObserver !== "function") return;
+    const ro = new ResizeObserver(() => {
+      box.scrollTop = box.scrollHeight;
+    });
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, []);
   return (
     <div className="cons-thread" ref={ref} aria-live="polite">
       {turns.length === 0 && <p className="cons-empty">{t("desktop.console.empty")}</p>}
@@ -119,6 +137,14 @@ function Turn({
     onError: (err: Error) => toast(err.message, "danger"),
   });
   const { openRun } = actions;
+  // A pending approval of this run: a question is answered in the
+  // conversation, any other one waits in the pendências.
+  const approvals = useApprovals({ refetchInterval: 15_000 });
+  const mine = streaming
+    ? (approvals.data ?? []).find((a) => a.status === "pending" && a.payload?.runId === run.id)
+    : undefined;
+  const question = mine && isQuestion(mine) ? mine : undefined;
+  const waitingOnTool = !!mine && !question;
   const cited = reply?.text && !streaming ? citations(reply.text, panels) : [];
   const open = (c: Citation) => {
     if ("path" in c.target) return actions.openDoc(c.target.path);
@@ -140,13 +166,28 @@ function Turn({
       </div>
       <div className="console-msg agent">
         <span className="console-who">{t("desktop.console.agent")}</span>
-        {reply?.text ? (
-          <p>{reply.text}</p>
-        ) : run.status === "waiting_approval" ? (
-          <p className="console-thinking waiting">{t("desktop.console.awaiting")}</p>
-        ) : streaming ? (
+        {/* What it said so far, and — below it — what it waits on: a question
+            is usually asked after a few words, and still answered here. */}
+        {reply?.text && <Markdown source={reply.text} className="console-md" />}
+        {question ? (
+          // The agent asked you something: that is conversation, answered here.
+          <QuestionCard approval={question} />
+        ) : run.status === "waiting_approval" || waitingOnTool ? (
+          // A tool approval is not conversation: it waits in the pendências
+          // (top-left), and this line points there.
+          <p className="console-thinking waiting">
+            {t("desktop.console.awaiting")}{" "}
+            <button type="button" className="console-link" onClick={openFocus}>
+              ↖ {t("nucleo.pending.sent")}
+            </button>
+          </p>
+        ) : reply?.text ? null : streaming ? (
           <p className="console-thinking">
-            <span className="spinner sm" aria-hidden />{" "}
+            <span className="console-dots" aria-hidden>
+              <i />
+              <i />
+              <i />
+            </span>{" "}
             {narration.length > 0 ? t("desktop.console.working") : t("desktop.console.thinking")}
           </p>
         ) : (
@@ -155,8 +196,14 @@ function Turn({
         {streaming && run.status !== "waiting_approval" && narration.length > 0 && (
           <ol className="console-narration" aria-label={t("desktop.console.working")}>
             {narration.map((h, i) => (
-              <li key={`${i}-${h.text}-${h.subject ?? ""}`} className={`tone-${h.tone}`}>
-                <span>{h.text}</span>
+              <li
+                key={`${i}-${h.text}-${h.subject ?? ""}`}
+                className={`tone-${h.tone}`}
+                data-kind={activityKind(h.text)}
+                style={{ animationDelay: `${i * 40}ms` }}
+              >
+                <span className="step-g" aria-hidden />
+                <span className="step-t">{h.text}</span>
                 {h.subject && <code className="mono">{h.subject}</code>}
               </li>
             ))}

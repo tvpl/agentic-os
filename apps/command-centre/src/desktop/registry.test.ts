@@ -6,8 +6,6 @@
 import { describe, expect, it } from "vitest";
 import { dictionaries } from "../i18n";
 import { WIDGET_ORDER } from "./defaultLayout";
-import { defaultWindows } from "./defaultWindows";
-import { MIN_H, MIN_W } from "./windowModel";
 import { WIDGET_REGISTRY, hasSurface, widgetDefinition } from "./registry";
 
 describe("panel registry", () => {
@@ -31,14 +29,6 @@ describe("panel registry", () => {
       for (const lang of ["en", "pt-BR"] as const) {
         expect(dictionaries[lang][key], `${lang}:${key}`).toMatch(/^[a-z0-9-]+$/);
       }
-    }
-  });
-
-  it("the first composition gives every panel a usable window", () => {
-    const layout = defaultWindows({ w: 1440, h: 704 });
-    for (const id of WIDGET_ORDER) {
-      expect(layout[id]!.w, `${id}.w`).toBeGreaterThanOrEqual(MIN_W);
-      expect(layout[id]!.h, `${id}.h`).toBeGreaterThanOrEqual(MIN_H);
     }
   });
 

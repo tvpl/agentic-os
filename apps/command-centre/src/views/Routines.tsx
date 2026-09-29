@@ -35,6 +35,8 @@ import { describeSchedule, isValidCron, isValidTimeZone, nextFires, timeZoneOpti
 import { naturalToCron } from "./naturalSchedule";
 import { RoutinesTimeline } from "./RoutinesTimeline";
 import "./backend.css";
+// The timeline below is styled there.
+import "./apps.css";
 
 const KINDS: RoutineKind[] = ["cron", "at", "every", "on-exit", "heartbeat"];
 const RUNNERS: RoutineRunner[] = ["local", "service", "remote"];
@@ -314,7 +316,8 @@ function toLocalInput(iso: string | null | undefined): string {
   return d.toISOString().slice(0, 16);
 }
 
-function RoutineModal({
+/** The routine editor (create and edit); the Routines scene opens it directly. */
+export function RoutineModal({
   routine,
   skills,
   allowWebhooks,

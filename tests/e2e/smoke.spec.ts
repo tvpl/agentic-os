@@ -1,10 +1,12 @@
 /**
- * Command Centre smoke: every route renders without console errors, the app
- * chrome never covers page actions (audit item 12), the desktop stacks on a
- * phone, and axe finds no serious/critical violations.
+ * Command Centre smoke: every route renders without console errors, the
+ * shell's chrome never covers a scene's actions (audit item 12), and axe
+ * finds no serious/critical violations. (The phone layout is covered by
+ * nucleo-shell.spec.ts.)
  */
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { openRunFromTurn, sendPrompt } from "./shell";
 
 const ROUTES: Array<[string, string]> = [
   ["desktop", "/#/"],
@@ -41,23 +43,40 @@ for (const [name, route] of ROUTES) {
   });
 }
 
-test("panel chrome does not overlap page actions", async ({ page }) => {
-  // `/skills` is a deep link into the Skills panel (G2).
+test("the shell's chrome does not cover a scene's actions, and a modal's Escape is its own", async ({
+  page,
+}) => {
   await open(page, "/#/skills");
-  const panel = page.locator('[data-panel="app:skills"]');
-  const chrome = panel.locator(".panel-head");
-  await expect(chrome).toBeVisible();
-  const newSkill = panel.getByRole("button", { name: /new skill|nova skill/i }).first();
+  const newSkill = page.getByRole("button", { name: /new skill|nova skill/i }).first();
   await expect(newSkill).toBeVisible();
-  const a = await chrome.boundingBox();
-  const b = await newSkill.boundingBox();
-  expect(a && b && a.y + a.height <= b.y + 1, "chrome must sit above the page header").toBe(true);
+  // Nothing of the HUD, the spine or the voice line is drawn over it.
+  const onTop = await newSkill.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+    return hit === el || el.contains(hit);
+  });
+  expect(onTop, "the scene's action is covered").toBe(true);
   await newSkill.click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  // Escape inside the modal must not close the panel (audit item 14).
-  await expect(panel).toBeVisible();
+  // Escape inside the modal must not take the scene away (audit item 14).
+  await expect(page).toHaveURL(/#\/skills$/);
+  await expect(page.locator('.nu-scene.on[data-scene="skills"]')).toBeVisible();
+  // The same for a production view's page actions.
+  await page.goto("/#/connectors");
+  await expect(page.locator('.nu-scene.on[data-scene="connectors"] .page')).toBeVisible();
+  // Once the zoom into the scene is over: mid-travel the page is still growing
+  // out of where the journey started, and the scene being left is drawn over it.
+  await expect(page.locator("section.nu-scene")).toHaveCount(1);
+  await expect(page.locator(".nu-scene.on")).not.toHaveClass(/\bin-zoom\b/);
+  const action = page.locator('[data-onboarding="connectors"] .page button:visible').first();
+  const clear = await action.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+    return hit === el || el.contains(hit);
+  });
+  expect(clear, "the page's first action is covered").toBe(true);
 });
 
 test("launcher opens with Ctrl+M and searches skills", async ({ page }) => {
@@ -68,38 +87,19 @@ test("launcher opens with Ctrl+M and searches skills", async ({ page }) => {
   await page.keyboard.type("digest");
   await expect(dialog.getByRole("option").first()).toContainText(/digest/i);
   await page.keyboard.press("Enter");
-  // The skill opens inside the Skills panel; the URL hands itself back to the desktop.
-  const panel = page.locator('[data-panel="app:skills"]');
-  await expect(panel).toBeVisible();
-  await expect(panel.getByRole("heading", { name: /digest/i }).first()).toBeVisible();
-  await expect(page).toHaveURL(/#\/$/);
-});
-
-test("desktop stacks widgets on a phone", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await open(page, "/#/");
-  await expect(page.locator(".desktop-widgets.stacked")).toBeVisible();
-  const overflow = await page.evaluate(
-    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-  );
-  expect(overflow).toBeLessThanOrEqual(2);
+  // The skill is chosen on the Skills scene's ring, and the URL names it.
+  await expect(page).toHaveURL(/#\/skills\/[^/]*digest/);
+  await expect(page.locator('.nu-scene.on[data-scene="skills"] .sks-name')).toContainText(/digest/i);
 });
 
 test("run detail streams a fake run to completion", async ({ page }) => {
-  await open(page, "/#/runs");
-  // The Runs app is a panel beside the console now (G2): the prompt and the
-  // Run button have to be the app's own, not the console's.
-  const runs = page.locator('[data-panel="app:runs"]');
-  await runs
-    .getByLabel(/prompt/i)
-    .first()
-    .fill("hello from e2e");
-  await runs
-    .getByRole("button", { name: /^run|executar/i })
-    .first()
-    .click();
-  // The run's trace opens as its own panel beside the Runs app (G3).
-  const trace = page.locator('[data-panel^="run:"]');
+  await open(page, "/#/");
+  // The voice line is the one place to type a request (refino item 12 took
+  // the prompt form out of the Runs app).
+  const id = await sendPrompt(page, "hello from e2e");
+  // The conversation follows it; its "Open run →" projects the trace beside the core.
+  await openRunFromTurn(page);
+  const trace = page.locator(`article.nu-lamina[data-lamina="run:${id}"]`);
   await expect(trace).toHaveCount(1);
   await expect(trace.locator(".run-title .badge")).toHaveText(/done|conclu/i, { timeout: 20_000 });
 });

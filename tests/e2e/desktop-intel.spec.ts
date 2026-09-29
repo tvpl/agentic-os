@@ -1,44 +1,63 @@
 /**
- * Refino Onda 3: the panels that give the OS's intelligence a face — what it
- * is watching, what it knows, today's journal and the mission — open on the
- * stage and read their real endpoints.
+ * Refino Onda 3, in the immersive shell: the instruments that give the OS's
+ * intelligence a face — what it is watching, what it knows, today's journal
+ * and the mission — are projected as lâminas and read their real endpoints.
  */
-import { test, expect, type Page } from "@playwright/test";
-import { resetStage } from "./stage";
+import { test, expect } from "@playwright/test";
+import { arrived, lamina, laminaIds, liveLaminas, openShell } from "./shell";
 
-async function openDesktop(page: Page) {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/#/");
-  await expect(page.locator(".boot-screen")).toHaveCount(0);
-  await expect(page.locator("[data-console]")).toBeVisible();
-}
+const arrange = (ids: string[]) => window.dispatchEvent(new CustomEvent("mordomo:arrange", { detail: ids }));
 
-test.beforeEach(async ({ request }) => {
-  await resetStage(request);
-});
-
-test("the arrange event opens the intelligence panels and each reads its endpoint", async ({ page }) => {
-  await openDesktop(page);
-  await page.evaluate(() =>
-    window.dispatchEvent(
-      new CustomEvent("mordomo:arrange", { detail: ["sentinels", "facts", "journal", "mission"] }),
-    ),
-  );
-  const sentinels = page.locator('[data-panel="sentinels"]');
-  await expect(sentinels).toBeVisible();
+test("the arrange event projects the intelligence instruments, two at a time, each reading its endpoint", async ({
+  page,
+}) => {
+  await openShell(page);
+  // Two lâminas at most: an arrangement names up to two instruments.
+  await page.evaluate(arrange, ["sentinels", "facts", "journal", "mission"]);
+  await expect(liveLaminas(page)).toHaveCount(2);
+  expect(await laminaIds(page)).toEqual(["sentinels", "facts"]);
+  const sentinels = lamina(page, "sentinels");
   // Six rows: the four sentinels, the repeat detector and the triage run.
   await expect(sentinels.locator(".sentinel-row")).toHaveCount(6);
-  await expect(sentinels.locator(".panel-body")).not.toContainText(/not found/i);
+  await expect(sentinels.locator(".nu-lamina-body")).not.toContainText(/not found/i);
+  await expect(lamina(page, "facts").locator(".nu-lamina-body")).not.toContainText(/not found/i);
 
-  await expect(page.locator('[data-panel="facts"]')).toBeVisible();
-  await expect(page.locator('[data-panel="journal"]')).toBeVisible();
-  await expect(page.locator('[data-panel="mission"]')).toBeVisible();
-  // Four panels: past three, they keep their spots rather than reflowing into columns.
-  await expect(page.locator(".panel")).toHaveCount(4);
+  // The next arrangement takes their place.
+  await page.evaluate(arrange, ["journal", "mission"]);
+  await expect.poll(() => laminaIds(page)).toEqual(["journal", "mission"]);
+  for (const id of ["journal", "mission"]) {
+    await expect(lamina(page, id)).toBeVisible();
+    await expect(lamina(page, id).locator(".nu-lamina-body")).not.toContainText(/not found/i);
+  }
+});
+
+test("an arrangement with an app travels to its scene and projects the instruments there", async ({
+  page,
+}) => {
+  await openShell(page);
+  await page.evaluate(arrange, ["app:runs", "pulse", "attention", "cost"]);
+  await expect(page).toHaveURL(/#\/runs$/);
+  await arrived(page, "runs");
+  // Projected after the travel, so arriving did not dissolve them.
+  await expect.poll(() => laminaIds(page)).toEqual(["pulse", "attention"]);
+});
+
+test("the palette's “organizar” composes the scene an intent needs", async ({ page }) => {
+  await openShell(page);
+  await page.keyboard.press("Control+M");
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("combobox").fill("organizar revisar código");
+  await dialog.getByRole("option").first().click();
+  await expect(dialog).toHaveCount(0);
+  // Reviewing code is the Runs scene, with what needs attention beside it
+  // (desktop/arrange.ts: the first app named is the scene).
+  await expect(page).toHaveURL(/#\/runs$/);
+  await arrived(page, "runs");
+  await expect.poll(() => laminaIds(page)).toEqual(["attention"]);
 });
 
 test("the deck finds a skill by what it does and shows its card", async ({ page }) => {
-  await openDesktop(page);
+  await openShell(page);
   await page.keyboard.press("ControlOrMeta+j");
   const deck = page.locator(".skill-deck");
   await expect(deck).toHaveClass(/open/);

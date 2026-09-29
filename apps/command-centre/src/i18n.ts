@@ -5,11 +5,16 @@ import * as shellL from "./locales/shell";
 import * as runsL from "./locales/runs";
 import * as appsL from "./locales/apps";
 import * as backendL from "./locales/backend";
+import * as nucleoL from "./locales/nucleo";
+import * as sceneBrainL from "./locales/scene-brain";
+import * as sceneRunsL from "./locales/scene-runs";
+import * as sceneSkillsL from "./locales/scene-skills";
+import * as sceneRoutinesL from "./locales/scene-routines";
 
 export type Lang = "en" | "pt-BR";
 
 const baseEn = {
-  "nav.dashboard": "Dashboard",
+  "nav.dashboard": "Core",
   "nav.skills": "Skills",
   "nav.brain": "Second Brain",
   "nav.routines": "Routines",
@@ -190,6 +195,7 @@ const baseEn = {
   "status.failed": "failed",
   "status.cancelled": "cancelled",
   "status.interrupted": "interrupted",
+  "status.timed_out": "timed out",
   "brain.layout": "Layout",
   "brain.layout.force": "Force",
   "brain.layout.circle": "Circle",
@@ -598,13 +604,18 @@ const en = {
   ...runsL.en,
   ...appsL.en,
   ...backendL.en,
+  ...nucleoL.en,
+  ...sceneBrainL.en,
+  ...sceneRunsL.en,
+  ...sceneSkillsL.en,
+  ...sceneRoutinesL.en,
 };
 /** Every string is widened to `string`: locale modules may use `as const`. */
 type Dict = { [K in keyof typeof en]: string };
 
 const basePtBR = {
   ...baseEn,
-  "nav.dashboard": "Painel",
+  "nav.dashboard": "Núcleo",
   "nav.skills": "Skills",
   "nav.brain": "Segundo Cérebro",
   "nav.routines": "Rotinas",
@@ -786,6 +797,7 @@ const basePtBR = {
   "status.failed": "falhou",
   "status.cancelled": "cancelada",
   "status.interrupted": "interrompida",
+  "status.timed_out": "tempo esgotado",
   "brain.layout": "Layout",
   "brain.layout.force": "Força",
   "brain.layout.circle": "Círculo",
@@ -1200,6 +1212,11 @@ const ptBR: Dict = {
   ...runsL.ptBR,
   ...appsL.ptBR,
   ...backendL.ptBR,
+  ...nucleoL.ptBR,
+  ...sceneBrainL.ptBR,
+  ...sceneRunsL.ptBR,
+  ...sceneSkillsL.ptBR,
+  ...sceneRoutinesL.ptBR,
 };
 
 export const dictionaries: Record<Lang, Dict> = { en, "pt-BR": ptBR };

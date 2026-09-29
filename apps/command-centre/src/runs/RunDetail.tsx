@@ -260,7 +260,7 @@ export default function RunDetail({ id }: { id: string }) {
 
   return (
     <div className="page run-detail">
-      <div className="page-head">
+      <div className="page-head detail">
         <div className="run-head-main">
           <p className="run-back">
             <Link to="/runs">

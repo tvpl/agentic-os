@@ -598,10 +598,16 @@ export function registerSystemRoutes(
   });
   app.post("/api/approvals/:id/resolve", async (req) => {
     const { id } = UuidParams.parse(req.params);
-    const { decision } = z.object({ decision: z.enum(["approved", "denied"]) }).parse(req.body);
+    const { decision, answers } = z
+      .object({
+        decision: z.enum(["approved", "denied"]),
+        // Answers to a question the agent asked: question text → answer.
+        answers: z.record(z.string().max(4000)).optional(),
+      })
+      .parse(req.body);
     const onError = (err: unknown, runId: string) =>
       req.log.error({ err, runId, msg: "approved run failed to execute" });
-    const result = await resolveApproval(ctx, id, decision, onError);
+    const result = await resolveApproval(ctx, id, decision, onError, answers);
     return { ...ctx.approvals.get(id)!, runId: result.runId };
   });
 

@@ -14,6 +14,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Bell, Play, Sparkles, Trash2 } from "lucide-react";
 import "../theme.css";
 import "../desktop/desktop.css";
+import "../nucleo/nucleo.css";
 import "./gallery.css";
 import { I18nContext, type Lang } from "../i18n";
 import { qk } from "../queries";
@@ -526,31 +527,31 @@ function Gallery() {
         <Overlays />
       </Story>
 
-      <Story id="widgets" title="Desktop widgets">
+      <Story id="widgets" title="Instruments as lâminas">
         <div className="story-widgets">
           {[
             ["Routines", <BoardWidget key="b" />],
             ["Pulse", <PulseWidget key="p" />],
             ["Needs attention", <AttentionWidget key="a" />],
           ].map(([title, node]) => (
-            <section
+            <article
               key={String(title)}
-              className="panel on story-widget"
+              className="nu-lamina story-widget"
               data-kind="surface"
               aria-label={String(title)}
             >
-              <div className="panel-in">
-                <div className="panel-head">
-                  <span className="panel-glyph" aria-hidden>
-                    ◉
-                  </span>
-                  <span className="panel-title">{title}</span>
-                  <span className="panel-ref mono">@{String(title).toLowerCase().replace(/\s+/g, "-")}</span>
-                  <span className="panel-sp" />
-                </div>
-                <div className="panel-body">{node}</div>
-              </div>
-            </section>
+              <header className="nu-lamina-head">
+                <span className="nu-lamina-glyph" aria-hidden>
+                  ◉
+                </span>
+                <h2 className="nu-lamina-title">{title}</h2>
+                <span className="nu-lamina-ref mono">
+                  @{String(title).toLowerCase().replace(/\s+/g, "-")}
+                </span>
+                <span className="sp" />
+              </header>
+              <div className="nu-lamina-body">{node}</div>
+            </article>
           ))}
         </div>
       </Story>

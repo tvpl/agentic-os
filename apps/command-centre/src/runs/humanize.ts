@@ -63,12 +63,16 @@ export function humanizeEvent(e: RunEventView, t: Translate, cwd?: string | null
       const text = str(e.text);
       return text ? { text: t("trace.said"), subject: clip(text), tone: "ok" } : null;
     }
-    case "permission":
-      return {
-        text: t("trace.permission"),
-        subject: str(e.detail) ? clip(String(e.detail)) : null,
-        tone: "warn",
-      };
+    case "permission": {
+      // "<Tool>: <summary> (approval <id>)" — the id is plumbing, and a
+      // question the agent asks is a question, not a permission.
+      const detail = (str(e.detail) ?? "").replace(/\s*\(approval [0-9a-f-]+\)\s*$/i, "");
+      if (/^askuserquestion\b/i.test(detail)) {
+        const q = /"question"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(detail)?.[1];
+        return { text: t("trace.asked"), subject: q ? clip(q.replace(/\\"/g, '"')) : null, tone: "warn" };
+      }
+      return { text: t("trace.permission"), subject: detail ? clip(detail) : null, tone: "warn" };
+    }
     case "error":
       return {
         text: t("trace.error"),

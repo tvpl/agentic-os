@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 import { DialogPortal, useDialogDepth } from "../components/dialog";
 import { PROVIDER_GATE_EVENT } from "../components/providerReadiness";
-import { SPACE_IDS, SWITCH_SPACE_EVENT } from "../components/Workspace";
 import { readConsoleDraft, storeConsoleDraft } from "../desktop/consoleDraft";
 import { useLang, useLocale } from "../i18n";
 import { useOsProviders, useOsSettings } from "../queries";
@@ -40,7 +39,8 @@ import {
 import { useTourFocus, useTourTarget } from "./useTourSurface";
 import "./onboarding.css";
 
-const SPACES: string[] = [...SPACE_IDS];
+/** The scenes the "modes" step lets you travel to (the first three on the spine). */
+const SCENE_STOPS = ["/", "/brain", "/runs"] as const;
 const CHAPTER_ICONS = [Compass, BrainCircuit, Rocket, Sparkles];
 const DRAFT_KEY = "mordomo.onboarding.draft.v1";
 function readPractice() {
@@ -58,7 +58,10 @@ export function Onboarding() {
   const depth = useDialogDepth();
   const providers = useOsProviders();
   const settings = useOsSettings();
-  const activeSpace = settings.data?.activeSpace ?? "work";
+  const sceneStop = Math.max(
+    0,
+    SCENE_STOPS.indexOf(`/${location.pathname.split("/")[1] ?? ""}` as (typeof SCENE_STOPS)[number]),
+  );
   const [progress, setProgress] = useState(readProgress);
   const [screen, setScreen] = useState<"welcome" | "tour" | "complete" | null>(null);
   const [draft, setDraft] = useState(readPractice);
@@ -324,13 +327,13 @@ export function Onboarding() {
                   <div className="ob-activity">
                     <p>{c.modes}</p>
                     <div className="ob-choice-row">
-                      {SPACES.map((value, i) => (
+                      {SCENE_STOPS.map((value, i) => (
                         <button
                           type="button"
                           key={value}
-                          aria-pressed={activeSpace === value}
+                          aria-pressed={sceneStop === i}
                           onClick={() => {
-                            window.dispatchEvent(new CustomEvent(SWITCH_SPACE_EVENT, { detail: value }));
+                            navigate(value);
                             setTriedMode(true);
                           }}
                         >
@@ -339,7 +342,7 @@ export function Onboarding() {
                       ))}
                     </div>
                     <p className="ob-feedback" role="status">
-                      {triedMode ? c.modeDone : c.modeHints[Math.max(0, SPACES.indexOf(activeSpace))]}
+                      {triedMode ? c.modeDone : c.modeHints[sceneStop]}
                     </p>
                   </div>
                 )}

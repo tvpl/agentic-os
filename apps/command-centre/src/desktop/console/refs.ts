@@ -13,7 +13,8 @@ import {
   type Recalled,
 } from "../../runs/recallFromEvents";
 
-const REPLY_MAX_CHARS = 900;
+/** The conversation sheet reads the whole answer; this only guards against a runaway stream. */
+const REPLY_MAX_CHARS = 24_000;
 
 /**
  * Panels matching the `@word` the caret is sitting in (redesign F5, every

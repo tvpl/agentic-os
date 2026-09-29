@@ -1,0 +1,973 @@
+/* The Skills scene (immersive shell): an arsenal ring with the chosen skill
+   standing in the middle as typography. Amber is read-only (the system's
+   own colour), cyan writes files (the agent's). No cards: a toolbar of
+   words in the corner, readings in the other, a glass sheet for details. */
+
+@property --sks-rot {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: 0deg;
+}
+
+.sks {
+  --sks-side: 250px;
+  --sks-top: calc(var(--nu-hud, 68px) + 8px);
+  --sks-bottom: calc(var(--nu-voice-h, 150px) + 16px);
+  --sks-gut: var(--nu-gutter, 28px);
+  --sks-sheet-w: min(700px, 50vw);
+  --sks-ease: var(--nu-ease, cubic-bezier(0.2, 0.8, 0.2, 1));
+  position: absolute;
+  inset: 0;
+  color: var(--text);
+}
+
+/* ---- the stage: where the ring stands ----------------------------------------- */
+.sks-stage {
+  position: absolute;
+  top: var(--sks-top);
+  bottom: var(--sks-bottom);
+  /* Names at the far sides of the orbit reach a little past the stage. */
+  left: calc(var(--sks-gut) + var(--sks-side) - 52px);
+  right: calc(var(--sks-gut) + var(--sks-side) - 52px);
+  display: grid;
+  place-items: center;
+  transition:
+    left 0.6s var(--sks-ease),
+    right 0.6s var(--sks-ease);
+}
+.sks[data-sheet] .sks-stage {
+  left: var(--sks-gut);
+  right: calc(var(--sks-sheet-w) + var(--sks-gut) + 24px);
+}
+.sks[data-proj] .sks-stage {
+  right: calc(min(620px, 44vw) + var(--sks-gut) + 20px);
+}
+.sks[data-proj] .sks-read {
+  display: none;
+}
+
+.sks-ring-wrap {
+  position: relative;
+}
+.sks-ring {
+  position: absolute;
+  inset: 0;
+}
+.sks-ring.settled {
+  transition: --sks-rot 1s var(--sks-ease);
+}
+.sks-track {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.sks-track ellipse {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+.sks-track .orbit {
+  stroke: color-mix(in srgb, var(--accent) 22%, transparent);
+  stroke-width: 1;
+}
+.sks-track .orbit.in {
+  stroke: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.sks-track .halo {
+  stroke: color-mix(in srgb, var(--agent) 14%, transparent);
+  stroke-width: 1;
+  stroke-dasharray: 2 7;
+}
+
+/* Every mark rides the orbit (--rx, --ry) at its angle plus the ring's turn. */
+.sks-item,
+.sks-sector,
+.sks-tick {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(
+    calc(cos(var(--a) + var(--sks-rot)) * var(--rx)),
+    calc(sin(var(--a) + var(--sks-rot)) * var(--ry))
+  );
+}
+.sks-tick {
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  background: color-mix(in srgb, var(--accent) 60%, transparent);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  pointer-events: none;
+}
+.sks-sector {
+  width: 120px;
+  margin: -7px 0 0 -60px;
+  text-align: center;
+  font: 500 var(--fs-0) / 14px var(--font-mono);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.sks-item {
+  width: 30px;
+  height: 34px;
+  margin: -17px 0 0 -15px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: opacity 0.3s;
+}
+.sks-item:hover,
+.sks-item:focus-visible,
+.sks-item[aria-current] {
+  z-index: 1;
+}
+.hx-w {
+  display: block;
+  width: 30px;
+  height: 34px;
+  transition:
+    transform 0.35s var(--sks-ease),
+    filter 0.35s;
+}
+.sks-item .hx,
+.sks-chip .hx,
+.sks-sheet-head .hx {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  background: color-mix(in srgb, var(--accent) 17%, transparent);
+  color: var(--accent-text);
+  font-size: var(--fs-3);
+  line-height: 1;
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+.sks-item[data-mode="write"] .hx,
+.sks-chip[data-mode="write"] .hx,
+.sks-sheet-head .hx[data-mode="write"] {
+  background: color-mix(in srgb, var(--agent) 17%, transparent);
+  color: var(--agent-text);
+}
+/* The name sits beside its glyph, on the side away from the centre. */
+.sks-item .nm {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 108px;
+  transform: translate(-50%, -50%)
+    translate(
+      calc(cos(var(--a) + var(--sks-rot)) * var(--ox)),
+      calc(sin(var(--a) + var(--sks-rot)) * var(--oy))
+    );
+  text-align: center;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--fs-2);
+  line-height: 1.25;
+  color: var(--text-dim);
+  transition: color 0.2s;
+}
+.sks-item .fav,
+.sks-chip .fav {
+  color: var(--accent-text);
+}
+.sks-item:hover .nm,
+.sks-item:focus-visible .nm,
+.sks-item[aria-current] .nm {
+  color: var(--text);
+}
+.sks-item:hover .hx {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.sks-item[data-mode="write"]:hover .hx {
+  background: color-mix(in srgb, var(--agent) 30%, transparent);
+}
+.sks-item:focus-visible {
+  outline: none;
+}
+.sks-item:focus-visible .hx-w {
+  filter: drop-shadow(0 0 0 var(--accent)) drop-shadow(0 0 6px var(--accent-glow));
+}
+.sks-item[aria-current] .hx-w {
+  transform: scale(1.3);
+  filter: drop-shadow(0 0 10px var(--accent-glow));
+}
+.sks-item[aria-current] .hx {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+.sks-item[aria-current][data-mode="write"] .hx-w {
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--agent) 70%, transparent));
+}
+.sks-item[aria-current][data-mode="write"] .hx {
+  background: var(--agent);
+  color: var(--bg);
+}
+.sks-item[aria-current] .nm {
+  font-weight: 600;
+}
+.sks-item[data-dim],
+.sks-chip[data-dim] {
+  opacity: 0.18;
+}
+.sks-item[data-paused] .hx,
+.sks-chip[data-paused] .hx {
+  background: none;
+  box-shadow: none;
+  color: var(--text-faint);
+  outline: 1px dashed var(--text-faint);
+  outline-offset: -4px;
+}
+.sks-item[data-paused] .nm {
+  color: var(--text-faint);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--text-faint) 60%, transparent);
+}
+.sks-item[data-live] .hx-w,
+.sks-chip[data-live] .hx-w {
+  animation: sks-live 1.4s ease-in-out infinite;
+}
+@keyframes sks-live {
+  50% {
+    filter: drop-shadow(0 0 12px var(--agent));
+  }
+}
+
+/* ---- the centre: the chosen skill as typography ------------------------------ */
+.sks-centre {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--cw);
+  max-height: var(--ch);
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+}
+.sks-centre.solo {
+  position: static;
+  transform: none;
+  width: min(520px, 100%);
+}
+.sks-focus {
+  display: grid;
+  justify-items: center;
+  gap: 0;
+  width: 100%;
+  text-align: center;
+  animation: sks-swap 0.5s var(--sks-ease);
+}
+@keyframes sks-swap {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    transform: translateY(8px);
+  }
+}
+.sks-eyebrow {
+  margin: 0;
+  font: 500 var(--fs-1) / 1 var(--font-mono);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+.sks-focus[data-mode="write"] .sks-eyebrow {
+  color: var(--agent-text);
+}
+.sks-eyebrow-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: -4px;
+}
+.sks-name {
+  margin: 8px 0 6px;
+  font: 600 clamp(1.375rem, 2.1vw, 2rem) / 1.05 var(--font-display);
+  letter-spacing: 0.02em;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.sks-cmd {
+  font: 400 var(--fs-3) / 1.2 var(--font-mono);
+  color: var(--agent-text);
+}
+.sks-desc {
+  margin: 8px 0 0;
+  max-width: 46ch;
+  font-size: var(--fs-3);
+  line-height: 1.5;
+  color: var(--text-dim);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sks-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin: 0;
+  font: 500 var(--fs-1) / 1.3 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.sks-tags .tg[data-mode="read_only"] {
+  color: var(--accent-text);
+}
+.sks-tags .tg[data-mode="write"] {
+  color: var(--agent-text);
+}
+.sks-tags .tg.paused {
+  color: var(--danger);
+}
+.sks-tags .sks-cmd {
+  letter-spacing: 0;
+  text-transform: none;
+}
+.sks-tags .prov {
+  text-transform: none;
+}
+.sks-state {
+  margin: 8px 0 0;
+  font: 400 var(--fs-1) / 1.3 var(--font-mono);
+  color: var(--text-faint);
+}
+.sks-state button {
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
+}
+.sks-state button:hover {
+  color: var(--text);
+}
+.sks-live {
+  color: var(--agent-text) !important;
+}
+.sks-live::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--agent);
+  box-shadow: 0 0 8px var(--agent);
+  animation: nu-blink 1.6s infinite;
+  vertical-align: 1px;
+}
+[data-status="failed"],
+[data-status="error"] {
+  color: var(--danger);
+}
+[data-status="done"] {
+  color: var(--ok);
+}
+
+.sks-acts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+}
+.sks-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: 600 var(--fs-3) / 1 var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    background 0.2s;
+}
+.sks-act svg {
+  width: 13px;
+  height: 13px;
+}
+.sks-act:hover,
+.sks-act:focus-visible {
+  color: var(--text);
+}
+.sks-act.primary {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.sks-act.primary:hover,
+.sks-act.primary:focus-visible {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: var(--text);
+}
+.sks-act:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.sks-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.sks-icon svg {
+  width: 15px;
+  height: 15px;
+}
+.sks-icon:hover,
+.sks-icon:focus-visible {
+  color: var(--text);
+}
+.sks-icon[aria-pressed="true"] {
+  color: var(--accent-text);
+}
+.sks-focus.compact .sks-desc,
+.sks-focus.compact .sks-tags .tg {
+  display: none;
+}
+.sks-focus.compact .sks-acts {
+  flex-wrap: nowrap;
+}
+.sks-focus.compact .sks-act {
+  padding: 7px 8px;
+  font-size: var(--fs-2);
+}
+.sks-focus.compact .sks-name {
+  font-size: clamp(1.25rem, 2vw, 1.75rem);
+}
+
+/* ---- the toolbar: words in the top-left corner -------------------------------- */
+.sks-tools {
+  position: absolute;
+  top: var(--sks-top);
+  left: var(--sks-gut);
+  z-index: 1;
+  width: calc(var(--sks-side) - 18px);
+  display: grid;
+  gap: 10px;
+  padding-top: 8px;
+  transition: opacity 0.4s;
+}
+.sks[data-sheet] .sks-tools,
+.sks[data-sheet] .sks-keys,
+.sks[data-sheet] .sks-nomatch {
+  opacity: 0;
+  visibility: hidden;
+}
+.sks-find {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--text-faint);
+}
+.sks-find:focus-within {
+  border-bottom-color: var(--agent);
+  color: var(--agent-text);
+}
+.sks-find svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.sks-find input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: 400 var(--fs-4) / 1.3 var(--font);
+  outline: none;
+}
+.sks-find input::placeholder {
+  color: var(--text-faint);
+}
+.sks-filters {
+  display: grid;
+  gap: 10px;
+}
+.sks-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 4px;
+}
+.sks-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  font: 600 var(--fs-2) / 1.2 var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sks-opt.mono {
+  font: 400 var(--fs-1) / 1.2 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+.sks-opt svg {
+  width: 12px;
+  height: 12px;
+}
+.sks-opt:hover,
+.sks-opt:focus-visible {
+  color: var(--text);
+}
+.sks-opt[aria-pressed="true"] {
+  color: var(--accent-text);
+  box-shadow: inset 0 -1px 0 var(--accent);
+}
+.sks-opt[data-mode="write"][aria-pressed="true"] {
+  color: var(--agent-text);
+  box-shadow: inset 0 -1px 0 var(--agent);
+}
+.sks-opt:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.sks-count {
+  margin: 0;
+  padding-left: 6px;
+  font-size: var(--fs-1);
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+.sks-pager span {
+  font-size: var(--fs-1);
+  color: var(--text-dim);
+}
+.sks-manage {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--text-faint) 22%, transparent);
+  flex-direction: column;
+  align-items: flex-start;
+}
+.sks-manage .sks-opt {
+  color: var(--text-dim);
+}
+.sks-manage .sks-opt.new {
+  color: var(--accent-text);
+}
+.sks-nomatch {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--sks-top) + 2px);
+  z-index: 1;
+  margin: 0;
+  transform: translateX(-50%);
+  font: 400 var(--fs-2) / 1.2 var(--font-mono);
+  color: var(--text-faint);
+}
+.sks-keys {
+  position: absolute;
+  left: var(--sks-gut);
+  bottom: var(--sks-bottom);
+  margin: 0;
+  font-size: var(--fs-0);
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+/* ---- readings: the other corner ---------------------------------------------- */
+.sks-read {
+  position: absolute;
+  top: calc(var(--sks-top) + 8px);
+  right: var(--sks-gut);
+  width: calc(var(--sks-side) - 24px);
+  text-align: right;
+}
+.sks-read .k {
+  margin: 18px 0 8px;
+  font: 500 var(--fs-0) / 1 var(--font-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.sks-read .k:first-child {
+  margin-top: 0;
+}
+.sks-read .v {
+  margin: 0 0 4px;
+  font-size: var(--fs-2);
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.sks-read .v.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-1);
+}
+.sks-read .faint {
+  color: var(--text-faint);
+}
+.sks-read .req {
+  color: var(--accent-text);
+}
+.sks-runs {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+.sks-runs button {
+  display: inline-flex;
+  gap: 10px;
+  padding: 3px 0;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: 400 var(--fs-1) / 1.3 var(--font-mono);
+  cursor: pointer;
+}
+.sks-runs button:hover .when,
+.sks-runs button:focus-visible .when {
+  color: var(--text);
+}
+
+/* ---- the details sheet ----------------------------------------------------------- */
+.sks-sheet {
+  --cut: 16px;
+  position: absolute;
+  z-index: 3;
+  top: var(--sks-top);
+  bottom: var(--sks-bottom);
+  right: var(--sks-gut);
+  width: var(--sks-sheet-w);
+  display: flex;
+  flex-direction: column;
+  background: var(--nu-glass, var(--bg-raise));
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow:
+    inset 0 0 0 1px var(--nu-edge, var(--border)),
+    0 30px 80px -30px rgba(0, 0, 0, 0.8);
+  clip-path: polygon(
+    var(--cut) 0,
+    100% 0,
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    0 100%,
+    0 var(--cut)
+  );
+  animation: sks-sheet-in 0.6s var(--sks-ease) both;
+}
+.sks-sheet::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--agent), transparent);
+  opacity: 0.7;
+}
+@keyframes sks-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+    filter: blur(6px);
+  }
+}
+.sks-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 14px 10px 20px;
+  flex: none;
+}
+.sks-sheet-head .hx {
+  width: 20px;
+  height: 23px;
+  flex: none;
+  font-size: var(--fs-1);
+}
+.sks-sheet-head h2 {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 var(--fs-6) / 1.1 var(--font-display);
+  letter-spacing: 0.03em;
+}
+.sks-sheet-head .sp {
+  flex: 1;
+}
+.sks-sheet-x {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.sks-sheet-x svg {
+  width: 16px;
+  height: 16px;
+}
+.sks-sheet-x:hover,
+.sks-sheet-x:focus-visible {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+.sks-sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  container-type: inline-size;
+}
+/* The sheet has its own title and close: the page's back link and title go. */
+.sks-sheet-body .page {
+  padding: 0 20px 28px;
+  background: transparent;
+}
+.sks-sheet-body .page-head .crumb,
+.sks-sheet-body .page-head h1 {
+  display: none;
+}
+.sks-sheet-body .grid-2.align-start {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* ---- middle widths: the toolbar becomes a row along the top ------------------- */
+@media (max-width: 1180px) and (min-width: 761px) {
+  .sks {
+    --sks-side: 0px;
+    --sks-sheet-w: min(640px, 62vw);
+  }
+  .sks-tools {
+    width: auto;
+    right: var(--sks-gut);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 14px;
+    padding-top: 0;
+  }
+  .sks-find {
+    flex: 0 0 200px;
+  }
+  .sks-filters {
+    display: contents;
+  }
+  .sks-row {
+    flex-wrap: nowrap;
+  }
+  .sks-manage {
+    margin: 0;
+    padding: 0 0 0 12px;
+    border-top: 0;
+    border-left: 1px solid color-mix(in srgb, var(--text-faint) 22%, transparent);
+    flex-direction: row;
+  }
+  .sks-count {
+    white-space: nowrap;
+  }
+  .sks-stage {
+    top: calc(var(--sks-top) + 84px);
+  }
+  .sks-read,
+  .sks-keys {
+    display: none;
+  }
+  .sks-nomatch {
+    top: calc(var(--sks-top) + 72px);
+  }
+}
+
+/* ---- narrow: the ring becomes a sectored grid ---------------------------------- */
+/* Wide: the body is only a grouping; its parts sit on the scene itself. */
+.sks-body {
+  display: contents;
+}
+.sks[data-narrow] .sks-body {
+  position: absolute;
+  inset: var(--sks-top) var(--sks-gut) var(--sks-bottom);
+  display: block;
+  overflow: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+}
+.sks[data-narrow] .sks-tools {
+  position: static;
+  width: auto;
+  gap: 8px;
+  padding-top: 4px;
+}
+.sks[data-narrow] .sks-filters {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+.sks[data-narrow] .sks-row {
+  flex-wrap: nowrap;
+}
+.sks[data-narrow] .sks-count {
+  display: none;
+}
+.sks[data-narrow] .sks-manage {
+  flex-direction: row;
+  margin: 0;
+  padding: 0 0 0 12px;
+  border-top: 0;
+  border-left: 1px solid color-mix(in srgb, var(--text-faint) 22%, transparent);
+}
+.sks[data-narrow] .sks-nomatch {
+  position: static;
+  transform: none;
+  margin-top: 8px;
+}
+.sks[data-narrow] .sks-stage {
+  position: static;
+  display: block;
+  padding-bottom: 24px;
+}
+.sks-narrow-focus {
+  padding: 22px 0 18px;
+  scroll-margin-top: 0;
+}
+.sks-narrow-focus .sks-focus {
+  justify-items: start;
+  text-align: left;
+}
+.sks-narrow-focus .sks-tags,
+.sks-narrow-focus .sks-acts,
+.sks-narrow-focus .sks-eyebrow-row {
+  justify-content: flex-start;
+}
+.sks-narrow-focus .sks-eyebrow-row {
+  margin-left: -8px;
+}
+.sks-narrow-focus .sks-acts {
+  margin-left: -12px;
+}
+.sks-list {
+  display: grid;
+  gap: 16px;
+}
+.sks-list-h {
+  margin: 0 0 8px;
+  font: 500 var(--fs-0) / 1 var(--font-mono);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.sks-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+}
+.sks-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 4px;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: 400 var(--fs-3) / 1.25 var(--font);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-faint) 16%, transparent);
+}
+.sks-chip .hx-w {
+  width: 22px;
+  height: 25px;
+  flex: none;
+  margin: 0;
+}
+.sks-chip .hx {
+  font-size: var(--fs-1);
+}
+.sks-chip .nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.sks-chip[aria-current] {
+  color: var(--text);
+  box-shadow: inset 0 -1px 0 var(--accent);
+}
+.sks-chip[aria-current][data-mode="write"] {
+  box-shadow: inset 0 -1px 0 var(--agent);
+}
+.sks-chip[aria-current] .hx {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+.sks-chip[aria-current][data-mode="write"] .hx {
+  background: var(--agent);
+  color: var(--bg);
+}
+.sks[data-narrow] .sks-sheet {
+  left: var(--sks-gut);
+  width: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sks-ring.settled,
+  .sks-stage,
+  .hx-w {
+    transition: none;
+  }
+  .sks-focus,
+  .sks-sheet,
+  .sks-item[data-live] .hx-w,
+  .sks-chip[data-live] .hx-w,
+  .sks-live::before {
+    animation: none;
+  }
+}

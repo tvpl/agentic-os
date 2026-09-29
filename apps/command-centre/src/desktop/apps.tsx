@@ -24,7 +24,6 @@ import {
 } from "lucide-react";
 import type { TKey } from "../i18n";
 import { lazyRoute } from "../lazyRoute";
-import type { Size } from "./windowModel";
 
 export const APP_KINDS = [
   "brain",
@@ -48,8 +47,6 @@ export interface AppDef {
   /** One line under the name in the pod's tooltip. */
   descKey: TKey;
   Icon: LucideIcon;
-  /** The box it opens in, before the user resizes it. */
-  size: Size;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the views take their own props
   Component: ComponentType<any>;
 }
@@ -62,7 +59,6 @@ export const APPS: Record<AppKind, AppDef> = {
     refKey: "desktop.ref.app.brain",
     descKey: "microapp.brain.desc",
     Icon: BrainCircuit,
-    size: { w: 960, h: 600 },
     Component: lazyRoute(() => import("../views/SecondBrain")),
   },
   skills: {
@@ -72,7 +68,6 @@ export const APPS: Record<AppKind, AppDef> = {
     refKey: "desktop.ref.app.skills",
     descKey: "desktop.pods.skillsDesc",
     Icon: Sparkles,
-    size: { w: 680, h: 480 },
     Component: lazyRoute(() => import("../views/Skills")),
   },
   artifacts: {
@@ -82,7 +77,6 @@ export const APPS: Record<AppKind, AppDef> = {
     refKey: "desktop.ref.app.artifacts",
     descKey: "desktop.apps.artifactsDesc",
     Icon: FolderOpen,
-    size: { w: 640, h: 460 },
     Component: lazyRoute(() => import("../views/Artifacts")),
   },
   generations: {
@@ -92,7 +86,6 @@ export const APPS: Record<AppKind, AppDef> = {
     refKey: "desktop.ref.app.generations",
     descKey: "desktop.apps.generationsDesc",
     Icon: Images,
-    size: { w: 600, h: 440 },
     Component: lazyRoute(() => import("../views/Generations")),
   },
   connectors: {
@@ -102,7 +95,6 @@ export const APPS: Record<AppKind, AppDef> = {
     refKey: "desktop.ref.app.connectors",
     descKey: "desktop.pods.connectorsDesc",
     Icon: Plug,
-    size: { w: 560, h: 420 },
     Component: lazyRoute(() => import("../views/Connectors")),
   },
   settings: {
@@ -112,7 +104,6 @@ export const APPS: Record<AppKind, AppDef> = {
     refKey: "desktop.ref.app.settings",
     descKey: "desktop.pods.settingsDesc",
     Icon: Settings,
-    size: { w: 900, h: 620 },
     Component: lazyRoute(() => import("../views/Settings")),
   },
   routines: {
@@ -122,7 +113,6 @@ export const APPS: Record<AppKind, AppDef> = {
     refKey: "desktop.ref.app.routines",
     descKey: "desktop.pods.routinesDesc",
     Icon: CalendarClock,
-    size: { w: 680, h: 480 },
     Component: lazyRoute(() => import("../views/Routines")),
   },
   runs: {
@@ -132,7 +122,6 @@ export const APPS: Record<AppKind, AppDef> = {
     refKey: "desktop.ref.app.runs",
     descKey: "desktop.pods.runsDesc",
     Icon: ListTree,
-    size: { w: 680, h: 480 },
     Component: lazyRoute(() => import("../runs")),
   },
   pixel: {
@@ -142,7 +131,6 @@ export const APPS: Record<AppKind, AppDef> = {
     refKey: "desktop.ref.app.pixel",
     descKey: "microapp.pixel.desc",
     Icon: Grid3x3,
-    size: { w: 980, h: 640 },
     Component: lazyRoute(() => import("../views/PixelStudio")),
   },
 };

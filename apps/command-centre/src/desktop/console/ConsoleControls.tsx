@@ -52,6 +52,7 @@ export function ConsoleControls({
   onToggleThread,
   estimate,
   budget,
+  showBudget = false,
 }: {
   mode: Mode;
   onMode: (mode: Mode) => void;
@@ -74,6 +75,12 @@ export function ConsoleControls({
   /** What the next run will probably cost (refino item 39). */
   estimate: Estimate | null;
   budget: BudgetState;
+  /**
+   * Show the remaining budget even when it is comfortable. The strip owns the
+   * day's spend; the console repeats it only while a request is being written
+   * (it is what that request will spend from) or when the budget is tight.
+   */
+  showBudget?: boolean;
 }) {
   const t = useT();
   const toast = useToast();
@@ -229,7 +236,7 @@ export function ConsoleControls({
           })}
         </span>
       )}
-      {budget.tone !== "off" && (
+      {budget.tone !== "off" && (showBudget || budget.tone === "warn" || budget.tone === "over") && (
         <Link
           to="/settings?tab=security"
           className={`cc static budget ${budget.tone}`}

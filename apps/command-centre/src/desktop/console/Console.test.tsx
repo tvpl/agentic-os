@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 /**
- * The fixed console (redesign G4), asserted on what it promises the hand:
- * the tray lists every open panel, `@` completes any of them, `/` on an
- * empty field is the deck, and the frame lights while a run is in flight.
+ * The voice line (the console of G4), asserted on what it promises the hand:
+ * the tray lists everything it can point at, `@` completes any of it, `/` on
+ * an empty field is the deck, the controls fold behind one button, and the
+ * line lights while a run is in flight.
  * The conversation and the launch are exercised end to end in Playwright;
  * here the network is a stub.
  */
@@ -102,8 +103,21 @@ describe("Console", () => {
     expect(chips.some((c) => c?.endsWith("@runs"))).toBe(true);
   });
 
+  it("folds its context and controls behind one button", () => {
+    setup();
+    const toggle = screen.getByRole("button", { name: /Context and controls|Contexto e controles/ });
+    const side = document.getElementById("cons-side")!;
+    const wasOpen = !side.hidden;
+    fireEvent.click(toggle);
+    expect(side.hidden).toBe(wasOpen);
+    expect(toggle.getAttribute("aria-expanded")).toBe(String(!wasOpen));
+  });
+
   it("writes a chip's reference into the draft and lights the chip", () => {
     setup();
+    const side = document.getElementById("cons-side")!;
+    if (side.hidden)
+      fireEvent.click(screen.getByRole("button", { name: /Context and controls|Contexto e controles/ }));
     fireEvent.click(screen.getByRole("button", { name: /@runs$/ }));
     expect(input().value).toBe("@runs ");
     expect(document.querySelector(".cons-tray .chp.on")?.textContent).toContain("@runs");

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { stageWith } from "./stage";
+import { lamina, openShell, project } from "./shell";
 
 test("an objective drives the Now panel and preserves its causal chain in run detail", async ({
   page,
@@ -37,12 +37,11 @@ test("an objective drives the Now panel and preserves its causal chain in run de
   });
   expect(created.ok()).toBe(true);
 
-  // The desktop layout is shared server state, and the stage opens clear (F7):
-  // this spec asserts on the Now panel, so this spec puts it there.
-  await stageWith(request, "now");
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await page.goto("/");
-  const panel = page.locator(".now-objective");
+  // The Núcleo opens clear: this spec asserts on the Now instrument, so it
+  // projects it (the palette's "Now" does the same).
+  await openShell(page, "/", { width: 1280, height: 720 });
+  await project(page, "now");
+  const panel = lamina(page, "now").locator(".now-objective");
   await expect(panel).toContainText("Validate durable objective");
   const action = panel.getByRole("button", { name: "Run ready steps" });
   await expect(action).toBeInViewport();
@@ -50,7 +49,13 @@ test("an objective drives the Now panel and preserves its causal chain in run de
   const inspect = panel.getByRole("link", { name: "Inspect run" });
   await expect(inspect).toBeVisible();
   await inspect.click();
-  await expect(page.getByText("Objective and causal chain")).toBeVisible();
+  // The run's place in the Runs scene: its trace unfolds, and the full detail
+  // — where the causal chain lives — is one step further.
+  await expect(page).toHaveURL(/#\/runs\/[^/?]+$/);
+  const trace = page.locator(".rs-trace.on");
+  await expect(trace).toBeVisible();
+  await trace.getByRole("button", { name: /Full detail/ }).click();
+  await expect(page.locator(".rs-sheet").getByText("Objective and causal chain")).toBeVisible();
   await expect(page.getByText(/Produce evidence · (dispatched|verified|verifying)/)).toBeVisible();
   const axe = await new AxeBuilder({ page }).analyze();
   expect(

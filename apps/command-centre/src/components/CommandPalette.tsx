@@ -23,7 +23,6 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "react-router-dom";
 import {
   Activity,
   Archive,
@@ -40,7 +39,6 @@ import {
   LayoutGrid,
   ListTree,
   Palette,
-  Pencil,
   Play,
   Plug,
   Plus,
@@ -65,9 +63,10 @@ import {
   type RunRecord,
   type Skill,
 } from "../api";
-import { requestDesktopAction } from "../desktop/desktopModes";
 import { ARRANGE_VERBS, arrangeFor } from "../desktop/arrange";
-import { ARRANGE_EVENT } from "../desktop/panelKinds";
+import { ARRANGE_EVENT, PANEL_GLYPH, getPanels } from "../desktop/panelKinds";
+import { HUD_CATALOGUE, hudTitleKey } from "../desktop/hud";
+import { APPS, appKindOf } from "../desktop/apps";
 import { useT, type TKey } from "../i18n";
 import { localizeSkill } from "../views/Skills/localize";
 import { qk, useApiQuery, useOsProviders, useOsRuns, useOsSkills } from "../queries";
@@ -93,6 +92,8 @@ export interface PaletteOpenDetail {
   query?: string;
   /** Open the "Run skill →" page for this slug. */
   runSkill?: string;
+  /** `panels`: open on the "Open a panel" page — the dock's "+" (plan step 5). */
+  mode?: "panels";
 }
 
 export interface CommandPaletteProps {
@@ -105,7 +106,7 @@ export interface CommandPaletteProps {
 }
 
 type Section = "apps" | "actions" | "skills" | "files" | "runs" | "themes" | "page";
-type Page = { kind: "root" } | { kind: "run"; skill: Skill } | { kind: "theme" };
+type Page = { kind: "root" } | { kind: "run"; skill: Skill } | { kind: "theme" } | { kind: "panels" };
 
 interface Row {
   id: string;
@@ -156,7 +157,6 @@ export function CommandPalette({
   const toast = useToast();
   const qc = useQueryClient();
   const navigate = useOsNavigate();
-  const { pathname } = useLocation();
   const { notify } = useNotifications();
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -176,6 +176,7 @@ export function CommandPalette({
   const providers = useOsProviders({ staleTime: 60_000 });
 
   const [page, setPage] = useState<Page>(() => {
+    if (initial?.mode === "panels") return { kind: "panels" };
     if (initial?.runSkill) {
       const skill = skills.data?.find((s) => s.slug === initial.runSkill);
       if (skill) return { kind: "run", skill };
@@ -194,6 +195,18 @@ export function CommandPalette({
       navigate(to, { morph: morph ? el : null, before: () => close({ instant: true }) });
     },
     [navigate, close],
+  );
+
+  /**
+   * The shell is mounted in every scene, so what it answers — a lâmina, the
+   * deck — fires where you are and the palette closes.
+   */
+  const inShell = useCallback(
+    (fire: () => void) => {
+      fire();
+      close();
+    },
+    [close],
   );
 
   const runAction = useCallback(
@@ -371,65 +384,28 @@ export function CommandPalette({
         "now.title",
         <Activity aria-hidden />,
         ["now", "objective", "objetivo", "agora", "steps"],
-        () => {
-          const fire = () => window.dispatchEvent(new CustomEvent(OPEN_PANEL_EVENT, { detail: "now" }));
-          if (pathname === "/") {
-            fire();
-            close();
-          } else {
-            go("/");
-            requestAnimationFrame(() => requestAnimationFrame(fire));
-          }
-        },
+        () => inShell(() => window.dispatchEvent(new CustomEvent(OPEN_PANEL_EVENT, { detail: "now" }))),
       ),
       act(
         "skill-deck",
         "desktop.deck.open",
         <Sparkles aria-hidden />,
         ["skill", "deck", "run", "executar", "radial"],
-        () => {
-          // The deck only exists on the desktop, so the action has to land
-          // there first — same two-frame handoff as edit mode.
-          const fire = () => window.dispatchEvent(new Event(OPEN_DECK_EVENT));
-          if (pathname === "/") {
-            fire();
-            close();
-          } else {
-            go("/");
-            requestAnimationFrame(() => requestAnimationFrame(fire));
-          }
-        },
+        () => inShell(() => window.dispatchEvent(new Event(OPEN_DECK_EVENT))),
       ),
+      // Project an instrument (a lâmina) or travel to an app's scene.
       act(
-        "edit-hud",
-        "desktop.dock.editHud",
-        <Pencil aria-hidden />,
-        ["hud", "pods", "arc", "arco", "editar", "edit", "instrument"],
+        "open-panel",
+        "desktop.dock.add",
+        <Plus aria-hidden />,
+        ["panel", "painel", "window", "janela", "open", "abrir", "instrument", "widget"],
         () => {
-          const fire = () => requestDesktopAction("hud");
-          if (pathname === "/") {
-            fire();
-            close();
-          } else {
-            go("/");
-            requestAnimationFrame(() => requestAnimationFrame(fire));
-          }
+          setPage({ kind: "panels" });
+          setQuery("");
         },
-      ),
-      act(
-        "reset-layout",
-        "os.resetLayout",
-        <Pencil aria-hidden />,
-        ["layout", "reset", "restaurar", "composição", "desktop"],
-        () => {
-          const fire = () => window.dispatchEvent(new Event(RESET_LAYOUT_EVENT));
-          if (pathname === "/") {
-            fire();
-            close();
-          } else {
-            go("/");
-            requestAnimationFrame(() => requestAnimationFrame(fire));
-          }
+        {
+          nested: () => setPage({ kind: "panels" }),
+          right: <ChevronRight aria-hidden className="pr-chevron" />,
         },
       ),
       act(
@@ -489,7 +465,7 @@ export function CommandPalette({
         },
       ),
     ];
-  }, [t, busy, runAction, toast, qc, notify, go, pathname, close, onMetaChanged, onShortcuts, sound]);
+  }, [t, busy, runAction, toast, qc, notify, go, close, onMetaChanged, onShortcuts, sound, inShell]);
 
   /* ---------- skills ---------- */
   const skillRows = useMemo<Row[]>(
@@ -657,6 +633,39 @@ export function CommandPalette({
         },
       ];
     }
+    if (page.kind === "panels") {
+      const open = new Set(getPanels().map((p) => p.id));
+      return HUD_CATALOGUE.map((id): Row => {
+        const kind = appKindOf(id);
+        const Icon = kind ? APPS[kind].Icon : null;
+        return {
+          id: `panel:${id}`,
+          section: "page",
+          label: t(hudTitleKey(id)),
+          sub: kind ? t(APPS[kind].descKey) : undefined,
+          keywords: [id, kind ?? ""],
+          icon: Icon ? (
+            <Icon aria-hidden />
+          ) : (
+            <span className="pr-glyph" aria-hidden>
+              {PANEL_GLYPH.surface}
+            </span>
+          ),
+          right: open.has(id) ? (
+            <Badge kind="meta" tone="accent">
+              {t("desktop.palette.open")}
+            </Badge>
+          ) : undefined,
+          primary: (el) => {
+            // An app answers to its route (the desktop turns it into a panel);
+            // the runs reading is the Runs app, like its pod.
+            if (kind) go(APPS[kind].route, el);
+            else if (id === "runs") go("/runs", el);
+            else inShell(() => window.dispatchEvent(new CustomEvent(OPEN_PANEL_EVENT, { detail: id })));
+          },
+        };
+      });
+    }
     if (page.kind === "theme") {
       return PRESETS.map((p) => ({
         id: `theme:${p.id}`,
@@ -688,7 +697,7 @@ export function CommandPalette({
       }));
     }
     return [];
-  }, [page, t, runProvider, model, effort, busy, runAction, launchSkill, go, onMetaChanged, toast]);
+  }, [page, t, runProvider, model, effort, busy, runAction, launchSkill, go, onMetaChanged, toast, inShell]);
 
   /* ---------- flat list ---------- */
   const sections = useMemo<Array<{ section: Section; rows: Row[] }>>(() => {
@@ -722,15 +731,9 @@ export function CommandPalette({
             icon: <LayoutGrid aria-hidden />,
             primary: () => {
               if (!arrangement) return;
-              const fire = () =>
-                window.dispatchEvent(new CustomEvent(ARRANGE_EVENT, { detail: arrangement.panels }));
-              if (pathname === "/") {
-                fire();
-                close();
-              } else {
-                go("/");
-                requestAnimationFrame(() => requestAnimationFrame(fire));
-              }
+              inShell(() =>
+                window.dispatchEvent(new CustomEvent(ARRANGE_EVENT, { detail: arrangement.panels })),
+              );
             },
           },
         ]
@@ -745,21 +748,7 @@ export function CommandPalette({
       { section: "files" as const, rows: fileRows },
       { section: "runs" as const, rows: rankItems(runRows, needle, 8).map((r) => r.item) },
     ].filter((s) => s.rows.length > 0 || (s.section === "files" && filesLoading));
-  }, [
-    page.kind,
-    pageRows,
-    needle,
-    apps,
-    actions,
-    runRows,
-    skillRows,
-    fileRows,
-    filesLoading,
-    t,
-    pathname,
-    go,
-    close,
-  ]);
+  }, [page.kind, pageRows, needle, apps, actions, runRows, skillRows, fileRows, filesLoading, t, inShell]);
   const rows = useMemo(() => sections.flatMap((s) => s.rows), [sections]);
 
   useEffect(() => setSelected(0), [needle, page.kind]);
@@ -814,7 +803,9 @@ export function CommandPalette({
       ? t("shell.palette.runPage", { slug: page.skill.slug })
       : page.kind === "theme"
         ? t("shell.palette.themes")
-        : t("shell.palette.placeholder");
+        : page.kind === "panels"
+          ? t("desktop.palette.panelsPh")
+          : t("shell.palette.placeholder");
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
   const mod = isMac ? "⌘" : "Ctrl";
   let flatIndex = -1;
@@ -860,7 +851,9 @@ export function CommandPalette({
               <span className="palette-crumb">
                 {page.kind === "run"
                   ? t("shell.palette.runPage", { slug: page.skill.slug })
-                  : t("shell.palette.themes")}
+                  : page.kind === "panels"
+                    ? t("desktop.dock.add")
+                    : t("shell.palette.themes")}
               </span>
             </div>
           )}

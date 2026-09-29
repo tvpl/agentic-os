@@ -87,4 +87,27 @@ describe("humanizeEvent", () => {
     ]);
     expect(narrate(events, en, "/p", 1)).toHaveLength(1);
   });
+
+  it("reads a question the agent asked as a question, without its JSON or the approval id", () => {
+    const tr = (k: string) => k;
+    const h = humanizeEvent(
+      {
+        type: "permission",
+        ts: 1,
+        detail:
+          'AskUserQuestion: {"questions":[{"question":"Por onde começamos hoje?","header":"Foco"}]} (approval 5f0c2b1e-1111-2222-3333-444455556666)',
+      },
+      tr as never,
+    );
+    expect(h).toEqual({ text: "trace.asked", subject: "Por onde começamos hoje?", tone: "warn" });
+    const p = humanizeEvent(
+      {
+        type: "permission",
+        ts: 1,
+        detail: "Bash: rm -rf dist (approval 5f0c2b1e-1111-2222-3333-444455556666)",
+      },
+      tr as never,
+    );
+    expect(p?.subject).toBe("Bash: rm -rf dist");
+  });
 });

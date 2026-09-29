@@ -11,7 +11,7 @@ const PORT = 4795;
 /**
  * First run of a packaged install: an empty home, nothing configured. The
  * wizard must find the (fake) CLIs on PATH, let the user re-detect, and end
- * on the desktop with the settings persisted — without any terminal step.
+ * on the Núcleo with the settings persisted — without any terminal step.
  */
 test("a fresh home is configured entirely from the browser", async ({ browser }) => {
   const container = fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-wizard-"));
@@ -53,7 +53,7 @@ test("a fresh home is configured entirely from the browser", async ({ browser })
     await page.getByRole("button", { name: "Next" }).click();
     await page.getByRole("button", { name: "Finish setup" }).click();
     await expect(page.locator(".os-root")).toBeVisible();
-    await expect(page.locator(".desktop")).toBeVisible();
+    await expect(page.locator('.nu-shell[data-scene="nucleo"]')).toBeVisible();
 
     // Persisted on the server, not only in the page.
     const ctx = new AppContext(home);

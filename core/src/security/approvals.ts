@@ -94,7 +94,12 @@ export class ApprovalStore {
    * Apply a decision. Throws when the approval is already resolved or expired
    * so the caller can answer with a clear error instead of a silent no-op.
    */
-  resolve(id: string, decision: "approved" | "denied"): Approval | null {
+  resolve(
+    id: string,
+    decision: "approved" | "denied",
+    /** Merged into the payload with the decision — e.g. the answers to a question the agent asked. */
+    patch?: Record<string, unknown>,
+  ): Approval | null {
     const current = this.get(id);
     if (!current) return null;
     if (current.status === "pending" && current.expiresAt <= Date.now()) {
@@ -115,9 +120,17 @@ export class ApprovalStore {
         code: current.status === "expired" ? "approval_expired" : "approval_resolved",
       });
     }
-    this.db
-      .prepare("UPDATE approvals SET status = ?, resolved_at = ? WHERE id = ? AND status = 'pending'")
-      .run(decision, Date.now(), id);
+    if (patch && Object.keys(patch).length > 0) {
+      this.db
+        .prepare(
+          "UPDATE approvals SET status = ?, resolved_at = ?, payload = ? WHERE id = ? AND status = 'pending'",
+        )
+        .run(decision, Date.now(), JSON.stringify({ ...current.payload, ...patch }), id);
+    } else {
+      this.db
+        .prepare("UPDATE approvals SET status = ?, resolved_at = ? WHERE id = ? AND status = 'pending'")
+        .run(decision, Date.now(), id);
+    }
     return this.get(id);
   }
 

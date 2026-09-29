@@ -6,6 +6,7 @@ import { createBackup, ensureDirs, resolvePaths, restoreBackup } from "@mordomo/
 import { AppContext } from "../../apps/api/dist/context.js";
 import { startServer } from "../../apps/api/dist/server.js";
 import { returningUserState } from "./returning-user";
+import { openBrainList } from "./shell";
 
 test("a backup restored into an emptied home has usable files and sessions in the browser", async ({
   browser,
@@ -51,11 +52,9 @@ test("a backup restored into an emptied home has usable files and sessions in th
     );
     const page = await context.newPage();
     await page.goto("/#/brain");
-    await page.getByRole("button", { name: "List view", exact: true }).click();
-    await page.locator(".brain2-list").getByRole("option", { name: "restore-proof.md", exact: true }).click();
-    await expect(page.locator(".brain2-preview")).toContainText(
-      "A fonte e sua referência continuam utilizáveis.",
-    );
+    const list = await openBrainList(page);
+    await list.getByRole("option", { name: "restore-proof.md", exact: true }).click();
+    await expect(page.locator(".bs-sheet")).toContainText("A fonte e sua referência continuam utilizáveis.");
     const response = await context.request.get(`/api/sessions/${session.id}`, {
       headers: { "x-mordomo-token": server.ctx.token() },
     });

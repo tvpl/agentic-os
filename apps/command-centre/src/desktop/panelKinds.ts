@@ -68,8 +68,8 @@ export function getPanels(): readonly OpenPanel[] {
   return panels;
 }
 
-/** What the dock asks the desktop to do with a panel. */
-export type PanelAction = "focus" | "minimize" | "restore";
+/** What the dock asks the desktop to do with a panel; `close` is the chip's ×. */
+export type PanelAction = "focus" | "minimize" | "restore" | "close";
 export const PANEL_ACTION_EVENT = "mordomo:panel-action";
 export function requestPanelAction(id: string, action: PanelAction): void {
   window.dispatchEvent(

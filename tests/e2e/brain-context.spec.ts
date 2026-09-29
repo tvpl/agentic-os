@@ -1,71 +1,84 @@
-import { resetStage, openAppFromPalette } from "./stage";
 import { test, expect, type Route } from "@playwright/test";
+import { arrived, openAppFromPalette, openBrainList, openClassicBrain, openShell, travel } from "./shell";
 
-test("a late file preview cannot reopen a selection the user already closed", async ({ page, request }) => {
-  await resetStage(request);
+test("a late file preview cannot reopen a selection the user already closed", async ({ page }) => {
   let pending: Route | undefined;
   await page.route("**/api/memory/preview?*", (route) => {
     pending = route;
   });
-  await page.goto("/#/brain");
-  await page.getByRole("button", { name: "List view", exact: true }).click();
-  await page.locator(".brain2-list button[data-file]").first().click();
-  await expect(page.locator(".brain2-preview")).toBeVisible();
+  await openShell(page, "/brain");
+  const list = await openBrainList(page);
+  await list.locator("button[data-file]").first().click();
+  const sheet = page.locator(".bs-sheet");
+  await expect(sheet).toBeVisible();
   await expect.poll(() => Boolean(pending)).toBe(true);
-  await page.locator(".brain2-preview").getByRole("button", { name: "Close", exact: true }).click();
-  await expect(page.locator(".brain2-preview")).toHaveCount(0);
+  await sheet.getByRole("button", { name: /^(Close|Fechar) · Esc$/ }).click();
+  await expect(sheet).toHaveCount(0);
   const response = page.waitForResponse((r) => r.url().includes("/api/memory/preview?"));
   await pending!.fulfill({ json: { kind: "text", content: "Late fixture", message: null } });
   await response;
   await page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   );
-  await expect(page.locator(".brain2-preview")).toHaveCount(0);
+  await expect(page.locator(".bs-sheet")).toHaveCount(0);
+  await expect(page.getByText("Late fixture")).toHaveCount(0);
 });
 
-test("brain keeps its selection while other apps open beside it", async ({ page }) => {
-  // The brain is a panel now (G2): its selection lives in the panel, not in
-  // the browser's history, and switching apps opens another panel beside it
-  // instead of replacing the page.
-  await page.goto("/#/brain");
-  const brain = page.locator('[data-panel="app:brain"]');
-  await brain.getByRole("button", { name: "List view", exact: true }).click();
-  const files = brain.locator(".brain2-list button[data-file]");
-  await expect(files.first()).toBeVisible();
+test("the brain keeps its selection and query while you travel to another scene and back", async ({
+  page,
+}) => {
+  await openShell(page, "/brain");
+  const list = await openBrainList(page);
+  const files = list.locator("button[data-file]");
   await files.first().click();
   const first = (await files.first().getAttribute("title")) ?? "";
   await files.nth(1).click();
   const second = (await files.nth(1).getAttribute("title")) ?? "";
   expect(second).not.toBe(first);
-  await expect(brain.locator(".brain2-preview")).toBeVisible();
-  await expect(page).toHaveURL(/#\/$/);
+  const sheet = page.locator(".bs-sheet");
+  await expect(sheet.locator(".bs-sheet-path")).toHaveAttribute("title", second);
+  // The selection is a place: it is in the URL.
+  await expect(page).toHaveURL(/#\/brain\?(.*&)?sel=\d+/);
+  const search = page.locator(".bs-search input");
+  await search.fill("brain");
+  await expect(page).toHaveURL(/[?&]q=brain/);
+
   await openAppFromPalette(page, "Pixel Studio");
-  await expect(page.locator('[data-panel="app:pixel"] .pxs-stage')).toBeVisible();
-  await page.locator('.pod-arc.l .pod[data-pod="app:brain"]').click();
-  await expect(brain.locator(".brain2-list")).toBeVisible();
-  await expect(brain.locator(".brain2-preview")).toBeVisible();
-  await expect(brain.locator(".brain2-preview")).toContainText(second.split("/").pop()!);
+  await arrived(page, "pixel");
+  await expect(page.locator(".pxs-stage")).toBeVisible();
+  // Back to the bare `/brain` (key 2 travels to it): where you were comes back.
+  await travel(page, "2", "brain");
+  await expect(page.locator(".bs-sheet .bs-sheet-path")).toHaveAttribute("title", second);
+  await expect(page.locator(".bs-search input")).toHaveValue("brain");
+  // And the Back button walks the same way.
+  await page.goto("/#/");
+  await arrived(page, "nucleo");
+  await page.goBack();
+  await arrived(page, "brain");
+  await expect(page.locator(".bs-sheet .bs-sheet-path")).toHaveAttribute("title", second);
 });
 
-test("zoom, query and selected source survive leaving the brain", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/#/brain");
-  const brain = page.locator('[data-panel="app:brain"]');
-  await brain.getByRole("button", { name: "List view", exact: true }).click();
-  const source = brain.locator(".brain2-list button[data-file]").first();
+test("the classic map keeps its zoom, query and selected source across scenes", async ({ page }) => {
+  await openShell(page, "/brain", { width: 1440, height: 900 });
+  const map = await openClassicBrain(page);
+  await map.getByRole("button", { name: "List view", exact: true }).click();
+  const source = map.locator(".brain2-list button[data-file]").first();
   const name = (await source.innerText()).trim();
   await source.click();
-  const query = brain.locator(".brain2-panel input").first();
+  const query = map.locator(".brain2-panel input").first();
   await query.fill(name);
-  await brain.getByRole("button", { name: "Reset zoom and position", exact: true }).click();
-  await brain.getByRole("button", { name: "Zoom in", exact: true }).click();
-  await brain.getByRole("button", { name: "Zoom in", exact: true }).click();
-  await expect(brain.getByLabel("Zoom", { exact: true })).toHaveText("169%");
+  await map.getByRole("button", { name: "Reset zoom and position", exact: true }).click();
+  await map.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await map.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await expect(map.getByLabel("Zoom", { exact: true })).toHaveText("169%");
   await openAppFromPalette(page, "Pixel Studio");
-  await expect(page.locator('[data-panel="app:pixel"] .pxs-stage')).toBeVisible();
-  await page.locator('.pod-arc.l .pod[data-pod="app:brain"]').click();
-  await expect(query).toHaveValue(name);
-  await expect(brain.getByLabel("Zoom", { exact: true })).toHaveText("169%");
-  await expect(brain.locator(".brain2-preview")).toContainText(name);
+  await arrived(page, "pixel");
+  await expect(page.locator(".pxs-stage")).toBeVisible();
+  await travel(page, "2", "brain");
+  // Still the classic map, where it was left.
+  const back = page.locator(".bs-classic .brain2");
+  await expect(back.locator(".brain2-panel input").first()).toHaveValue(name);
+  await expect(back.getByLabel("Zoom", { exact: true })).toHaveText("169%");
+  await expect(back.locator(".brain2-preview")).toContainText(name);
   await page.screenshot({ path: "artifacts/execution-2026-09-07/brain-context.png" });
 });

@@ -96,7 +96,8 @@ export function composeBriefing(input: BriefingInput, t: (key: TKey, vars?: TVar
     const hours = Math.max(1, Math.round((next.nextRunAt! - input.now) / 3_600_000));
     lines.push(t("desktop.briefing.next", { name: next.name, hours }));
   }
-  if (input.todayUsd > 0) lines.push(t("desktop.briefing.cost", { usd: input.todayUsd.toFixed(2) }));
+  // The day's spend lives in the strip (refino "um número, um lugar"): the
+  // briefing says what happened and what is next, not what the strip shows.
 
   const quiet = done === 0 && failed.length === 0 && unhealthy.length === 0 && input.pendingApprovals === 0;
   if (quiet && !night && input.phase !== "morning") lines.unshift(t("desktop.briefing.quiet"));

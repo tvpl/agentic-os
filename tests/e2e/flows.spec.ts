@@ -57,7 +57,7 @@ async function open(page: Page, route: string): Promise<string[]> {
 
 test.describe.configure({ mode: "serial" });
 
-test("a remote device pairs with a code and reaches the desktop", async ({ request }) => {
+test("a remote device pairs with a code and reaches the Núcleo", async ({ request }) => {
   await api(request, "put", "/api/settings", {
     remote: { enabled: true, allowedHosts: ["mordomo.test"], deviceTtlDays: 30 },
   });
@@ -78,7 +78,7 @@ test("a remote device pairs with a code and reaches the desktop", async ({ reque
     await page.getByLabel(/pairing code|código de pareamento/i).fill(code);
     await page.getByLabel(/device name|nome do dispositivo/i).fill("e2e phone");
     await page.getByRole("button", { name: /^pair$|^parear$/i }).click();
-    await expect(page.locator(".desktop")).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(".nu-shell")).toBeVisible({ timeout: 15_000 });
     expect(
       errors.filter((e) => !/401/.test(e)),
       errors.join("\n"),
@@ -113,9 +113,9 @@ test("a tool prompt mid-run is approved from the run page", async ({ page, reque
     input: { file_path: "/tmp/e2e-note.md", content: "hello" },
     toolUseId: "tu_e2e",
   });
-  const errors = await open(page, `/#/runs/${runId}`);
-  // Only this run's trace panel: earlier specs may have left traces on the stage (G3).
-  const trace = page.locator(`[data-panel="run:${runId}"]`);
+  // The run's full detail, in the Runs scene (`?detail=1` opens its sheet).
+  const errors = await open(page, `/#/runs/${runId}?detail=1`);
+  const trace = page.locator(".rs-sheet");
   const card = trace.locator(".approval-inline, .tool-approval").first();
   await expect(card).toBeVisible({ timeout: 10_000 });
   await expect(card).toContainText(/Write/);
@@ -144,10 +144,9 @@ test("a run fans out into a squad of sub-agents", async ({ page, request }) => {
     `/api/runs/${runId}`,
     (b) => (b as { run: { status: string } }).run.status === "done",
   );
-  const errors = await open(page, `/#/runs/${runId}`);
-  // Traces from earlier specs may still be on the stage (G3): only this run's
-  // panel is the subject.
-  const trace = page.locator(`[data-panel="run:${runId}"]`);
+  // The run's full detail, in the Runs scene (`?detail=1` opens its sheet).
+  const errors = await open(page, `/#/runs/${runId}?detail=1`);
+  const trace = page.locator(".rs-sheet");
   await trace
     .getByRole("button", { name: /fan out|dividir/i })
     .first()

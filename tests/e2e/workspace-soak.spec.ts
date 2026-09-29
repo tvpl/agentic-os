@@ -117,12 +117,12 @@ test("bounded workspace endurance with simulated runs and real local persistence
         expect(text).toContain('"run_state"');
         expect(text).toContain('"done"');
         await view.goto(`/#/runs/${runId}`);
-        await expect(view.locator(".run-title .badge")).toHaveText(/done/i);
-        // The apps open as panels from the launcher (G2, G5).
+        await expect(view.locator(".rs-trace.on .rs-pill")).toHaveText(/done/i);
+        // The apps are scenes, reached from the launcher.
         for (const [name, selector] of [
-          ["Second Brain", ".brain2"],
+          ["Second Brain", '.nu-scene.on[data-scene="brain"] .bs'],
           ["Pixel Studio", ".pxs-stage"],
-          ["Dashboard", ".desktop"],
+          ["Core", ".nu-nucleo"],
         ]) {
           await view.keyboard.press("Control+M");
           await view.getByRole("dialog").getByRole("option", { name: name!, exact: true }).click();
@@ -134,7 +134,7 @@ test("bounded workspace endurance with simulated runs and real local persistence
           await view.waitForTimeout(1000);
           await view.context().setOffline(false);
           await view.reload();
-          await expect(view.locator(".desktop")).toBeVisible();
+          await expect(view.locator(".nu-shell")).toBeVisible();
         }
       }
       const cdp = await view.context().newCDPSession(view);

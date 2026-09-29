@@ -1,0 +1,3324 @@
+/* The immersive shell ("Núcleo").
+   One scene at a time, full screen; the horizon on top, telemetry in the
+   corners, the voice line at the bottom, lâminas beside the core. Amber is
+   the system, cyan is the agent. Motion is travel: scenes dive, rise and
+   turn; lâminas materialise out of a line of light. */
+
+.nu-shell {
+  --nu-hud: 68px;
+  --nu-voice-h: 150px;
+  --nu-gutter: 28px;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  /* Clipped, not a scroll box: the voice's shade reaches past the edges, and
+     a focus or scrollIntoView must never slide the whole shell sideways. */
+  overflow: clip;
+  background: var(--bg);
+  color: var(--text);
+}
+/* Glass and edges are tokens of the whole document: lâminas also appear in
+   the component gallery, outside the shell. */
+:root {
+  --nu-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --nu-glass: linear-gradient(180deg, rgba(22, 20, 15, 0.8), rgba(10, 9, 7, 0.7));
+  --nu-edge: color-mix(in srgb, var(--agent) 18%, transparent);
+}
+[data-theme="light"] {
+  --nu-glass: linear-gradient(180deg, rgba(253, 252, 249, 0.9), rgba(240, 237, 229, 0.86));
+  --nu-edge: color-mix(in srgb, var(--agent) 30%, transparent);
+}
+.nu-field,
+.nu-beams {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.nu-field {
+  z-index: 0;
+}
+.nu-beams {
+  z-index: 4;
+  position: fixed;
+}
+.nu-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 45%, transparent 45%, rgba(0, 0, 0, 0.45) 100%);
+}
+[data-theme="light"] .nu-vignette {
+  background: radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(40, 32, 18, 0.1) 100%);
+}
+
+/* ---- HUD: identity left, telemetry right ---------------------------------- */
+.nu-hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--nu-hud);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 var(--nu-gutter);
+  pointer-events: none;
+}
+.nu-hud > * {
+  pointer-events: auto;
+}
+.nu-tele {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-1);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.nu-t {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 6px 8px;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nu-t .k {
+  color: var(--text-faint);
+}
+.nu-t .v {
+  color: var(--text);
+}
+.nu-t:hover .v,
+.nu-t:focus-visible .v {
+  color: var(--accent-text);
+}
+.nu-t[data-l="warn"] .v {
+  color: var(--warn);
+}
+.nu-t[data-l="crit"] .v {
+  color: var(--danger);
+}
+.nu-t.live .v {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--agent-text);
+}
+.nu-t.live .v::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--agent);
+  box-shadow: 0 0 10px var(--agent);
+  animation: nu-blink 1.6s infinite;
+}
+@keyframes nu-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ---- scenes and travel ---------------------------------------------------------- */
+.nu-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+.nu-scene {
+  position: absolute;
+  inset: 0;
+}
+/* Travel. A journey grows out of its origin (--ox, --oy: the press, or the
+   module's glyph): the new scene opens from that point like an iris and
+   comes forward; the old one rushes past the viewer, toward the same point.
+   Going home is the reverse: the scene folds back into its glyph while the
+   Núcleo settles from just in front of you. */
+.nu-scene {
+  transform-origin: var(--ox, 50%) var(--oy, 50%);
+}
+.nu-scene.in-zoom {
+  animation: nu-in-zoom 0.82s var(--nu-ease) both;
+}
+.nu-scene.out-zoom {
+  animation: nu-out-zoom 0.62s cubic-bezier(0.6, 0, 0.8, 0.4) both;
+}
+.nu-scene.in-home {
+  animation: nu-in-home 0.8s var(--nu-ease) both;
+}
+.nu-scene.out-home {
+  animation: nu-out-home 0.58s cubic-bezier(0.5, 0, 0.75, 0) both;
+}
+.nu-scene[class*="out-"] {
+  pointer-events: none;
+  z-index: 1;
+}
+.nu-scene.in-zoom {
+  z-index: 2;
+}
+@keyframes nu-in-zoom {
+  0% {
+    opacity: 0;
+    transform: scale(0.22);
+    filter: blur(16px) brightness(2.2);
+    clip-path: circle(0 at var(--ox, 50%) var(--oy, 50%));
+  }
+  45% {
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+    filter: none;
+    clip-path: circle(150% at var(--ox, 50%) var(--oy, 50%));
+  }
+}
+@keyframes nu-out-zoom {
+  to {
+    opacity: 0;
+    transform: scale(2.6);
+    filter: blur(22px) brightness(1.6);
+  }
+}
+@keyframes nu-in-home {
+  from {
+    opacity: 0;
+    transform: scale(1.22);
+    filter: blur(12px);
+  }
+}
+@keyframes nu-out-home {
+  0% {
+    clip-path: circle(150% at var(--ox, 50%) var(--oy, 50%));
+  }
+  100% {
+    opacity: 0.2;
+    transform: scale(0.12);
+    filter: blur(8px) brightness(1.8);
+    clip-path: circle(0 at var(--ox, 50%) var(--oy, 50%));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nu-scene[class*="in-"],
+  .nu-scene[class*="out-"] {
+    animation-duration: 0.01ms;
+  }
+}
+
+/* A production view as a scene: edge to edge between the HUD and the voice
+   line, no plate around it. It keeps `.app-panel` for the in-surface rules
+   (one header, container queries). */
+.nu-scene-app.app-panel {
+  position: absolute;
+  inset: calc(var(--nu-hud) + 8px) var(--nu-gutter) calc(var(--nu-voice-h) + 20px);
+  background: transparent;
+  mask-image: linear-gradient(to bottom, transparent, #000 14px, #000 calc(100% - 24px), transparent);
+}
+.nu-scene-app .page {
+  padding: 14px 4px 40px;
+  background: transparent;
+}
+/* A scene with its own composition takes the whole screen and keeps its own
+   distance from the HUD and the voice line (--nu-hud, --nu-voice-h). */
+.nu-scene-app.app-panel[data-designed] {
+  inset: 0;
+  mask-image: none;
+  overflow: hidden;
+  container-type: normal;
+}
+/* The brain is a place, not a page: it takes the whole screen, under the HUD. */
+.nu-shell[data-scene="brain"] .nu-scene-app.app-panel {
+  inset: 0;
+  mask-image: none;
+}
+/* The classic map is a production view: like the others it stands between
+   the HUD and the whole voice — its top bar, its controls pane, its zoom and
+   its legend live on its edges, and the telemetry or the conversation would
+   cover them. Its way back to the sky sits under its top bar, clear of the
+   legend, and its pane never grows past the box it is in. */
+.nu-shell[data-scene="brain"] .bs-classic {
+  top: calc(var(--nu-hud) + 8px);
+  bottom: calc(var(--nu-voice-h) + 12px);
+}
+.nu-shell[data-scene="brain"] .bs-classic .bs-back {
+  top: 40px;
+  bottom: auto;
+}
+.nu-shell[data-scene="brain"] .bs-classic .brain2-panel {
+  max-height: calc(100% - 76px);
+}
+
+/* ---- the Núcleo --------------------------------------------------------------- */
+.nu-nucleo {
+  position: absolute;
+  inset: var(--nu-hud) 0 var(--nu-voice-h) 0;
+  container-type: size;
+}
+.nu-core {
+  /* The core takes what the scene has left above the conversation, with
+     room under it for the greeting. */
+  --core-s: min(84cqh, 48cqw, 720px);
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  width: var(--core-s);
+  height: var(--core-s);
+  transform: translate(-50%, -50%) scale(var(--cs, 1));
+  transition:
+    left 0.9s var(--nu-ease),
+    transform 0.9s var(--nu-ease);
+}
+.nu-core-orb {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.nu-core-status {
+  position: absolute;
+  left: 50%;
+  top: 8%;
+  transform: translateX(-50%);
+  font-size: var(--fs-0);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--agent-text);
+  opacity: 0.8;
+  white-space: nowrap;
+}
+.nu-caption {
+  position: absolute;
+  left: 50%;
+  top: 96%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 70vw;
+  text-align: center;
+  transition: opacity 0.5s;
+}
+.nu-caption h1 {
+  margin: 0;
+  font: 600 clamp(26px, 3.2vw, 40px) / 1.05 var(--font-display);
+  letter-spacing: 0.04em;
+  text-wrap: balance;
+}
+.nu-caption p {
+  margin: 6px 0 0;
+  color: var(--text-dim);
+  font-size: var(--fs-4);
+}
+.nu-shell[data-proj="1"] .nu-core {
+  left: 27%;
+  --cs: 0.82;
+}
+.nu-shell[data-proj="2"] .nu-core {
+  left: 14%;
+  --cs: 0.56;
+}
+.nu-shell:not([data-proj="0"]) .nu-caption,
+.nu-shell:not([data-proj="0"]) .nu-readings {
+  opacity: 0;
+  pointer-events: none;
+}
+.nu-shell:not([data-proj="0"]) .nu-reading {
+  pointer-events: none;
+}
+.nu-readings {
+  position: absolute;
+  inset: 0;
+  transition: opacity 0.5s;
+  /* A layer the readings are placed on, not a sheet: what is under it (the
+     agent's speech, its "got it") stays reachable. */
+  pointer-events: none;
+}
+.nu-reading {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  justify-items: start;
+  max-width: 260px;
+  padding: 6px 8px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.9s var(--nu-ease);
+}
+.nu-reading.l {
+  justify-items: end;
+  text-align: right;
+}
+.nu-reading .k {
+  font: 500 var(--fs-1)/1 var(--font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.nu-reading .v {
+  margin: 7px 0 4px;
+  font: 600 var(--fs-7)/1 var(--font-display);
+  letter-spacing: 0.03em;
+  color: var(--text);
+  white-space: nowrap;
+}
+.nu-reading .s {
+  font-size: var(--fs-2);
+  line-height: 1.4;
+  color: var(--text-dim);
+  max-width: 230px;
+}
+.nu-reading:hover .v,
+.nu-reading:focus-visible .v {
+  color: var(--accent-text);
+}
+.nu-reading[data-l="warn"] .v {
+  color: var(--warn);
+}
+.nu-reading[data-l="crit"] .v {
+  color: var(--danger);
+}
+
+/* ---- lâminas -------------------------------------------------------------------- */
+.nu-laminas {
+  position: absolute;
+  z-index: 5;
+  right: var(--nu-gutter);
+  top: calc(var(--nu-hud) + 8px);
+  bottom: calc(var(--nu-voice-h) + 16px);
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  pointer-events: none;
+}
+.nu-lamina {
+  --cut: 16px;
+  pointer-events: auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(440px, 34vw);
+  max-height: 100%;
+  background: var(--nu-glass);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow:
+    inset 0 0 0 1px var(--nu-edge),
+    0 30px 80px -30px rgba(0, 0, 0, 0.9);
+  clip-path: polygon(
+    var(--cut) 0,
+    100% 0,
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    0 100%,
+    0 var(--cut)
+  );
+}
+.nu-lamina.wide {
+  width: min(620px, 44vw);
+}
+.nu-laminas[data-count="2"] .nu-lamina {
+  width: min(420px, 31vw);
+}
+.nu-laminas[data-count="2"] .nu-lamina.wide {
+  width: min(520px, 36vw);
+}
+.nu-lamina::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--agent), transparent);
+  opacity: 0.7;
+}
+.nu-lamina.fresh {
+  animation: nu-materialize 0.75s var(--nu-ease) both;
+}
+.nu-lamina.fresh::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 30%;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    color-mix(in srgb, var(--agent) 14%, transparent) 50%,
+    transparent
+  );
+  animation: nu-sweep 1.1s var(--nu-ease) 0.1s both;
+}
+.nu-lamina.bye {
+  animation: nu-dematerialize 0.43s var(--nu-ease) both;
+  pointer-events: none;
+}
+@keyframes nu-materialize {
+  0% {
+    clip-path: polygon(var(--cut) 50%, 100% 50%, 100% 50%, calc(100% - var(--cut)) 50%, 0 50%, 0 50%);
+    opacity: 0;
+    filter: brightness(2.2);
+    transform: translateX(-30px);
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    clip-path: polygon(
+      var(--cut) 0,
+      100% 0,
+      100% calc(100% - var(--cut)),
+      calc(100% - var(--cut)) 100%,
+      0 100%,
+      0 var(--cut)
+    );
+    filter: none;
+    transform: none;
+  }
+}
+@keyframes nu-dematerialize {
+  to {
+    clip-path: polygon(var(--cut) 50%, 100% 50%, 100% 50%, calc(100% - var(--cut)) 50%, 0 50%, 0 50%);
+    opacity: 0;
+    filter: brightness(2);
+  }
+}
+@keyframes nu-sweep {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(420%);
+    opacity: 0;
+  }
+}
+.nu-lamina-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px 10px 20px;
+  flex: none;
+}
+.nu-lamina-glyph {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  color: var(--agent-text);
+  font-size: var(--fs-3);
+}
+.nu-lamina-glyph svg {
+  width: 15px;
+  height: 15px;
+}
+.nu-lamina-title {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 var(--fs-6)/1.1 var(--font-display);
+  letter-spacing: 0.03em;
+}
+.nu-lamina-ref {
+  flex: none;
+  padding: 3px 6px;
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  font-size: var(--fs-1);
+  cursor: pointer;
+}
+.nu-lamina-ref:hover {
+  color: var(--agent-text);
+}
+.nu-lamina-head .sp {
+  flex: 1;
+}
+.nu-lamina-b {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.nu-lamina-b svg {
+  width: 15px;
+  height: 15px;
+}
+.nu-lamina-b:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+.nu-lamina-b.x:hover {
+  color: var(--danger);
+}
+.nu-lamina-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 20px 18px;
+  scrollbar-width: thin;
+  container-type: inline-size;
+}
+.nu-lamina-body:focus-visible {
+  outline: 1px solid var(--agent-line);
+  outline-offset: -1px;
+}
+
+/* ---- the voice line (the console, restyled) ----------------------------------- */
+.nu-voice {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  z-index: 8;
+  width: min(840px, calc(100% - 32px));
+  transform: translateX(-50%);
+}
+.nu-voice::before {
+  /* the ground darkens under the line, so the transcript reads over any scene */
+  content: "";
+  position: absolute;
+  left: -50vw;
+  right: -50vw;
+  bottom: -18px;
+  top: -40px;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(to top, color-mix(in srgb, var(--bg) 92%, transparent) 55%, transparent);
+}
+.nu-voice .cons {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  container-type: normal;
+}
+.nu-voice .cons-in {
+  display: flex;
+  flex-direction: column;
+  background: none;
+  backdrop-filter: none;
+  clip-path: none;
+}
+.nu-voice .cons-main {
+  display: flex;
+  flex-direction: column;
+}
+/* The conversation rises above the line and fades out at the top. */
+.nu-voice .cons-scroll {
+  max-height: min(26vh, 240px);
+  padding-top: 18px;
+  mask-image: linear-gradient(to top, #000 calc(100% - 36px), transparent);
+  -webkit-mask-image: linear-gradient(to top, #000 calc(100% - 36px), transparent);
+}
+.nu-voice .cons-thread {
+  padding: 0 4px;
+}
+.nu-voice .console-msg.agent {
+  color: var(--agent-text);
+}
+/* The line itself: one luminous chamfered bar. */
+.nu-voice .cons-row {
+  position: relative;
+  align-items: center;
+  min-height: 52px;
+  margin-top: 8px;
+  padding: 8px 12px 8px 22px;
+  background: var(--nu-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
+  clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 14px 100%, 0 50%);
+}
+.nu-voice .cons-row::after {
+  content: "";
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.5;
+  transition:
+    opacity 0.3s,
+    background 0.3s;
+}
+.nu-voice .cons-row:focus-within::after {
+  background: linear-gradient(90deg, transparent, var(--agent), transparent);
+  opacity: 1;
+}
+.nu-voice .cons.busy .cons-row::after {
+  background: linear-gradient(90deg, transparent, var(--agent), transparent);
+  opacity: 1;
+  animation: nu-blink 1.4s infinite;
+}
+.nu-voice .cons-input:focus-visible {
+  /* The line's underline turns cyan on focus; no box around the field. */
+  outline: none;
+}
+.nu-voice .cons-input {
+  font-family: var(--font);
+  font-size: var(--fs-5);
+  align-self: center;
+}
+.nu-voice .cons-more {
+  width: 29px;
+  height: 29px;
+  flex: none;
+}
+.nu-voice .cons-more.active {
+  color: var(--accent-text);
+}
+.nu-voice .cons-more svg {
+  width: 15px;
+  height: 15px;
+}
+/* Context and controls: one wrapped row under the line, when asked for. */
+.nu-voice .cons-side {
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: var(--nu-glass);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.nu-voice .cons-side[hidden] {
+  display: none;
+}
+.nu-voice .cons-tray,
+.nu-voice .cons-ctl {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+.nu-voice .cons-ac {
+  bottom: calc(100% + 6px);
+}
+
+.nu-keys {
+  position: absolute;
+  right: var(--nu-gutter);
+  bottom: 22px;
+  z-index: 7;
+  margin: 0;
+  font-size: var(--fs-1);
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+@media (max-width: 1280px) {
+  .nu-keys {
+    display: none;
+  }
+}
+
+/* Below 1500 px the title needs the room: the quiet readings step back
+   (a reading only asks for space when it has something to say). */
+@media (max-width: 1500px) {
+  .nu-t[data-item="provider"][data-l="idle"],
+  .nu-t[data-item="cost"][data-l="idle"] {
+    display: none;
+  }
+}
+
+/* ---- narrow screens -------------------------------------------------------------- */
+@media (max-width: 760px) {
+  .nu-shell {
+    --nu-hud: 96px;
+    --nu-gutter: 16px;
+  }
+  .nu-hud {
+    align-items: flex-start;
+    padding-top: 12px;
+  }
+  .nu-tele .nu-t {
+    display: none;
+  }
+  .nu-core {
+    --core-s: min(64cqh, 78cqw);
+    top: 42%;
+  }
+  .nu-readings {
+    display: none;
+  }
+  .nu-shell:not([data-proj="0"]) .nu-core {
+    left: 50%;
+    top: 8%;
+    --cs: 0.35;
+  }
+  .nu-laminas {
+    left: var(--nu-gutter);
+    top: calc(var(--nu-hud) + 40px);
+    flex-direction: column;
+    align-items: stretch;
+    overflow: auto;
+  }
+  .nu-lamina,
+  .nu-lamina.wide,
+  .nu-laminas[data-count="2"] .nu-lamina {
+    width: auto;
+    flex: none;
+  }
+  /* The line keeps its field: the extra tools fold to icons or step out. */
+  .nu-voice .cons-handsfree {
+    display: none;
+  }
+  .nu-voice .cons-row {
+    gap: 6px;
+    padding-left: 16px;
+  }
+  .nu-voice .cons-skills {
+    font-size: 0;
+    gap: 0;
+    padding: 0 9px;
+  }
+  .nu-voice .cons-skills span {
+    font-size: var(--fs-3);
+  }
+  .nu-voice .cons .cons-send {
+    padding: 0 10px;
+    font-size: 0;
+    gap: 0;
+  }
+}
+
+/* ---- the conversation as a transcript, not a chat of boxes -------------------- */
+.nu-voice .console-msg {
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  max-width: 100%;
+}
+.nu-voice .console-msg.you {
+  justify-self: end;
+  text-align: right;
+  color: var(--text-dim);
+}
+.nu-voice .console-msg.agent {
+  justify-self: start;
+  color: var(--agent-text);
+}
+.nu-voice .console-turn.failed .console-msg.agent {
+  color: var(--danger);
+}
+.nu-voice .console-turn.streaming .console-msg.agent p::after {
+  content: "▍";
+  margin-left: 2px;
+  color: var(--agent);
+  animation: nu-blink 0.8s infinite;
+}
+.nu-voice .console-who {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: var(--fs-0);
+  letter-spacing: 0.14em;
+}
+.nu-voice .cons .console-msg.briefing {
+  margin: 0 0 6px;
+  padding: 0 4px;
+}
+.nu-voice .briefing-lines {
+  list-style: none;
+  padding-left: 0;
+  gap: 1px;
+  font-size: var(--fs-4);
+}
+.nu-voice .cons-note,
+.nu-voice .cons .approval-inline.tool,
+.nu-voice .cons .promptw-approval {
+  margin-left: 4px;
+  margin-right: 4px;
+}
+.nu-voice .cons-empty {
+  padding: 0 4px;
+  font-size: var(--fs-2);
+}
+
+/* A long provider warning keeps to one short line; the tooltip has it all. */
+.nu-t[data-item="provider"] .v {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Outside the Núcleo the scene is the subject: the conversation keeps to a
+   few lines above the line and scrolls inside them. */
+.nu-shell:not([data-scene="nucleo"]) .nu-voice .cons-scroll {
+  max-height: min(14vh, 120px);
+}
+
+/* =============================================================================
+   Layout v2 — each thing in its place.
+   top-left: pendências · left edge: modules · top-centre: where you are ·
+   top-right: telemetry · bottom: the voice line · the rest: the scene.
+   ============================================================================= */
+.nu-shell {
+  --nu-spine: 76px;
+}
+.nu-os {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  transform-origin: 44px 40px;
+  transition:
+    transform 0.7s var(--nu-ease),
+    filter 0.7s var(--nu-ease),
+    opacity 0.5s;
+}
+/* Focus: the system recedes toward the corner the pendências live in. */
+.nu-shell[data-focus] .nu-os {
+  transform: scale(0.93);
+  filter: blur(7px) brightness(0.38) saturate(0.7);
+  pointer-events: none;
+}
+.nu-stage {
+  left: var(--nu-spine);
+}
+.nu-voice {
+  left: calc(var(--nu-spine) + (100% - var(--nu-spine)) / 2);
+  width: min(840px, calc(100% - var(--nu-spine) - 32px));
+}
+.nu-laminas {
+  left: auto;
+}
+
+/* ---- HUD row ------------------------------------------------------------------- */
+.nu-hud {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: start;
+  padding-top: 14px;
+  padding-left: 18px;
+}
+.nu-hud > .nu-tele {
+  justify-self: end;
+}
+.nu-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 6px;
+  pointer-events: none;
+}
+.nu-title-g {
+  color: var(--accent-text);
+  font-size: var(--fs-4);
+  text-shadow: 0 0 14px var(--accent-glow);
+}
+.nu-title-t {
+  margin: 0;
+  font: 600 var(--fs-5) / 1 var(--font-display);
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  color: var(--text);
+  animation: nu-title-in 0.7s var(--nu-ease) both;
+}
+@keyframes nu-title-in {
+  from {
+    opacity: 0;
+    letter-spacing: 0.9em;
+    filter: blur(6px);
+  }
+}
+.nu-sign {
+  margin-left: 12px;
+  font: 700 var(--fs-1) / 1 var(--font-display);
+  letter-spacing: 0.3em;
+  color: var(--accent-text);
+  white-space: nowrap;
+}
+.nu-sign b {
+  color: var(--text-faint);
+  font-weight: 600;
+}
+/* On a narrow desktop the signature gives its room to the readings, so the
+   telemetry never runs under the scene's title. */
+@media (max-width: 1260px) {
+  .nu-sign {
+    display: none;
+  }
+}
+/* Tablet widths (above the phone row): the title tightens and the provider
+   reading keeps its state, not its name (still in its tooltip). */
+@media (max-width: 900px) {
+  .nu-title-g {
+    display: none;
+  }
+  .nu-title-t {
+    letter-spacing: 0.28em;
+  }
+  .nu-tele .nu-t[data-item="provider"] .k {
+    display: none;
+  }
+}
+
+/* ---- the pendências hub (top-left) --------------------------------------------- */
+.nu-hub {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  --hub: var(--agent);
+}
+.nu-hub[data-level="decide"] {
+  --hub: var(--warn);
+}
+.nu-hub[data-level="fix"] {
+  --hub: var(--danger);
+}
+.nu-hub[data-level="look"] {
+  --hub: var(--accent);
+}
+.nu-hub-beacon {
+  position: relative;
+  flex: none;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  color: var(--hub);
+}
+.nu-hub-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.nu-hub-ring circle {
+  fill: none;
+  stroke: currentColor;
+}
+.nu-hub-ring .track {
+  stroke-opacity: 0.18;
+  stroke-width: 1;
+}
+.nu-hub-ring .arc {
+  stroke-width: 2;
+  stroke-dasharray: 26 106;
+  stroke-linecap: round;
+  transform-origin: 24px 24px;
+  animation: nu-hub-spin 6s linear infinite;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+.nu-hub-ring .inner {
+  fill: color-mix(in srgb, currentColor 10%, transparent);
+  stroke-opacity: 0.35;
+  stroke-width: 1;
+}
+.nu-hub:not([data-level="clear"]) .nu-hub-ring .arc {
+  animation-duration: 2.2s;
+}
+.nu-hub[data-level="decide"] .nu-hub-beacon::after,
+.nu-hub[data-level="fix"] .nu-hub-beacon::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  animation: nu-hub-ping 1.8s var(--nu-ease) infinite;
+}
+@keyframes nu-hub-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes nu-hub-ping {
+  from {
+    opacity: 0.8;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+.nu-hub-n {
+  position: relative;
+  font-size: var(--fs-4);
+  font-weight: 500;
+  color: var(--text);
+}
+.nu-hub[data-level="clear"] .nu-hub-n {
+  color: var(--hub);
+}
+.nu-hub-text {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  max-width: min(320px, 26vw);
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+.nu-hub-k {
+  font: 500 var(--fs-0) / 1 var(--font-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--hub);
+}
+.nu-hub-tick {
+  font-size: var(--fs-3);
+  line-height: 1.25;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: nu-tick-in 0.5s var(--nu-ease) both;
+}
+.nu-hub:not([data-level="clear"]) .nu-hub-tick {
+  color: var(--text);
+}
+@keyframes nu-tick-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(3px);
+  }
+}
+.nu-hub-slips {
+  position: absolute;
+  top: calc(100% + 10px);
+  /* beside the spine, never over it */
+  left: calc(var(--nu-spine) - 12px);
+  width: min(340px, 30vw);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  z-index: 9;
+}
+.nu-hub-slips li {
+  animation: nu-slip-in 0.55s var(--nu-ease) both;
+}
+.nu-hub-slips button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+  background: var(--nu-glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    inset 2px 0 0 var(--slip, var(--accent)),
+    inset 0 0 0 1px var(--border);
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+}
+.nu-hub-slips li[data-level="decide"] {
+  --slip: var(--warn);
+}
+.nu-hub-slips li[data-level="fix"] {
+  --slip: var(--danger);
+}
+.nu-hub-slips .lv {
+  font-size: var(--fs-0);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--slip, var(--accent));
+}
+.nu-hub-slips .tx {
+  font-size: var(--fs-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@keyframes nu-slip-in {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+    clip-path: polygon(0 0, 0 0, 0 100%, 0 100%);
+  }
+}
+
+/* ---- the module spine (left edge) ---------------------------------------------- */
+.nu-spine {
+  position: absolute;
+  z-index: 6;
+  left: 12px;
+  top: calc(var(--nu-hud) + 22px);
+  bottom: 24px;
+  width: calc(var(--nu-spine) - 24px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.nu-spine::before {
+  /* the spine itself: a hairline the glyphs are strung on */
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--accent-line) 12%,
+    var(--accent-line) 88%,
+    transparent
+  );
+  opacity: 0.35;
+}
+.nu-spine ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.nu-spine .sp {
+  flex: 1;
+}
+.nu-spine-rule {
+  width: 18px;
+  height: 1px;
+  margin: 6px 0;
+  background: var(--accent-line);
+}
+.nu-mod {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  color: var(--text-faint);
+}
+.nu-mod-glyph {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 38px;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  box-shadow: inset 0 0 0 1px var(--border);
+  transition:
+    color 0.25s,
+    background 0.25s,
+    transform 0.35s var(--nu-ease);
+}
+.nu-mod-glyph svg {
+  width: 17px;
+  height: 17px;
+}
+.nu-mod:hover,
+.nu-mod:focus-visible {
+  color: var(--text);
+}
+.nu-mod:hover .nu-mod-glyph {
+  transform: scale(1.12);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+}
+.nu-mod.on {
+  color: var(--accent-contrast);
+}
+.nu-mod.on .nu-mod-glyph {
+  background: var(--accent);
+  box-shadow: 0 0 22px var(--accent-glow);
+}
+.nu-mod.on::before {
+  /* lit, and tied to the edge of the screen by a beam */
+  content: "";
+  position: absolute;
+  right: calc(100% + 2px);
+  top: 50%;
+  width: 12px;
+  height: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+}
+.nu-mod-mark {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--agent);
+  color: #031214;
+  font-size: var(--fs-0);
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 0 10px var(--agent);
+}
+.nu-mod-label {
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translate(-8px, -50%);
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  padding: 8px 12px;
+  font: 600 var(--fs-3) / 1 var(--font-display);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text);
+  background: var(--nu-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: inset 0 0 0 1px var(--border);
+  clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px);
+  transition:
+    opacity 0.2s,
+    transform 0.3s var(--nu-ease);
+}
+.nu-mod-label kbd {
+  margin-left: 10px;
+  font: 400 var(--fs-0) / 1 var(--font-mono);
+  color: var(--text-faint);
+  background: none;
+  border: 0;
+  padding: 0;
+}
+.nu-mod:hover .nu-mod-label,
+.nu-mod:focus-visible .nu-mod-label {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
+/* ---- the aura: the agent at the edge of the screen ------------------------------- */
+@property --aura-a {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+.nu-aura {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+}
+.nu-aura-ring {
+  position: absolute;
+  inset: 0;
+  padding: 2px;
+  opacity: 0;
+  background: conic-gradient(
+    from var(--aura-a),
+    transparent 0deg 250deg,
+    color-mix(in srgb, var(--agent) 50%, transparent) 300deg,
+    var(--agent) 340deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 6px var(--agent));
+  transition: opacity 0.6s;
+}
+.nu-shell:is([data-core="thinking"], [data-core="tool"], [data-core="queued"]) .nu-aura-ring {
+  opacity: 0.9;
+  animation: nu-aura-run 3.2s linear infinite;
+}
+.nu-shell[data-core="responding"] .nu-aura-ring {
+  opacity: 0.55;
+  background: linear-gradient(var(--agent), var(--agent));
+  animation: nu-aura-breathe 1.6s ease-in-out infinite;
+}
+.nu-shell[data-core="alert"] .nu-aura-ring,
+.nu-shell[data-core="interrupted"] .nu-aura-ring {
+  background: linear-gradient(var(--danger), var(--danger));
+  filter: drop-shadow(0 0 10px var(--danger));
+  animation: nu-aura-flash 1.2s ease-out both;
+}
+.nu-shell[data-core="done"] .nu-aura-ring {
+  background: conic-gradient(from 0deg, transparent, var(--ok), transparent 40%);
+  filter: drop-shadow(0 0 8px var(--ok));
+  animation:
+    nu-aura-run 1.1s linear 1,
+    nu-aura-flash 1.3s ease-out both;
+}
+@keyframes nu-aura-run {
+  to {
+    --aura-a: 360deg;
+  }
+}
+@keyframes nu-aura-breathe {
+  50% {
+    opacity: 0.2;
+  }
+}
+@keyframes nu-aura-flash {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+/* When something waits on you, the corner where it lives glows. */
+.nu-aura-corner {
+  position: absolute;
+  left: -160px;
+  top: -160px;
+  width: 460px;
+  height: 460px;
+  border-radius: 50%;
+  opacity: 0;
+  background: radial-gradient(circle, color-mix(in srgb, var(--warn) 22%, transparent), transparent 62%);
+  transition: opacity 0.8s;
+}
+.nu-shell[data-pending="decide"] .nu-aura-corner {
+  opacity: 1;
+  animation: nu-aura-breathe 2.4s ease-in-out infinite;
+}
+.nu-shell[data-pending="fix"] .nu-aura-corner {
+  opacity: 0.7;
+  background: radial-gradient(circle, color-mix(in srgb, var(--danger) 16%, transparent), transparent 62%);
+}
+.nu-sparks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 30;
+  pointer-events: none;
+}
+
+/* ---- the agent speaks under its body (the briefing) ----------------------------- */
+.nu-speech {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  justify-items: center;
+}
+.nu-speech p {
+  margin: 0;
+  color: var(--agent-text);
+  font-size: var(--fs-4);
+  line-height: 1.45;
+  max-width: 62ch;
+  animation: nu-speak-line 0.7s var(--nu-ease) both;
+  animation-delay: calc(0.35s + var(--i, 0) * 0.42s);
+}
+@keyframes nu-speak-line {
+  from {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+    filter: none;
+  }
+}
+.nu-speech-ok {
+  margin-top: 6px;
+  padding: 4px 8px;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font-size: var(--fs-1);
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+/* ---- focus: resolving what waits on you ----------------------------------------- */
+.nu-focus {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 28px 26px;
+  background: radial-gradient(
+    ellipse at 12% 8%,
+    color-mix(in srgb, var(--warn) 7%, transparent),
+    transparent 60%
+  );
+  animation: nu-focus-in 0.7s var(--nu-ease) both;
+}
+@keyframes nu-focus-in {
+  from {
+    opacity: 0;
+    clip-path: circle(0 at 40px 40px);
+    transform: scale(1.04);
+  }
+  to {
+    clip-path: circle(160% at 40px 40px);
+  }
+}
+.nu-focus-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-left: 60px;
+  min-height: 46px;
+}
+.nu-focus-title {
+  font: 600 var(--fs-6) / 1 var(--font-display);
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+}
+.nu-focus-count {
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+}
+.nu-focus-head .sp {
+  flex: 1;
+}
+.nu-focus-keys {
+  font-size: var(--fs-1);
+  color: var(--text-faint);
+}
+.nu-focus-close {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border: 0;
+  cursor: pointer;
+  color: var(--text-dim);
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  font: 600 var(--fs-2) / 1 var(--font-display);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.nu-focus-close svg {
+  width: 14px;
+  height: 14px;
+}
+.nu-focus-close:hover {
+  color: var(--text);
+}
+.nu-focus-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+  gap: 48px;
+  margin-top: 26px;
+}
+.nu-focus-queue {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.nu-focus-queue ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.nu-focus-queue button {
+  --lv: var(--accent);
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-dim);
+  box-shadow: inset 2px 0 0 transparent;
+  transition:
+    background 0.2s,
+    box-shadow 0.2s,
+    color 0.2s;
+  animation: nu-slip-in 0.5s var(--nu-ease) both;
+}
+.nu-focus-queue button[data-level="decide"] {
+  --lv: var(--warn);
+}
+.nu-focus-queue button[data-level="fix"] {
+  --lv: var(--danger);
+}
+.nu-focus-queue button[data-level="info"] {
+  --lv: var(--text-faint);
+}
+.nu-focus-queue button:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.nu-focus-queue button.on {
+  color: var(--text);
+  background: color-mix(in srgb, var(--lv) 10%, transparent);
+  box-shadow: inset 2px 0 0 var(--lv);
+}
+.nu-focus-queue .ic {
+  color: var(--lv);
+  display: grid;
+  place-items: center;
+}
+.nu-focus-queue .ic svg {
+  width: 17px;
+  height: 17px;
+}
+.nu-focus-queue .tx {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.nu-focus-queue .lv {
+  font-size: var(--fs-0);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--lv);
+}
+.nu-focus-queue .tt {
+  font-size: var(--fs-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nu-focus-queue .ag {
+  font-size: var(--fs-0);
+  color: var(--text-faint);
+}
+.nu-focus-item {
+  --lv: var(--accent);
+  min-height: 0;
+  overflow: auto;
+  max-width: 900px;
+  padding-right: 8px;
+  animation: nu-item-in 0.55s var(--nu-ease) both;
+}
+.nu-focus-item[data-level="decide"] {
+  --lv: var(--warn);
+}
+.nu-focus-item[data-level="fix"] {
+  --lv: var(--danger);
+}
+@keyframes nu-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+    filter: blur(6px);
+  }
+}
+.nu-focus-eyebrow {
+  margin: 0;
+  font-size: var(--fs-1);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--lv);
+}
+.nu-focus-h {
+  margin: 12px 0 14px;
+  font: 600 clamp(1.6rem, 2.6vw, 2.6rem) / 1.08 var(--font-display);
+  letter-spacing: 0.01em;
+  text-wrap: balance;
+}
+.nu-focus-subject {
+  display: inline-block;
+  max-width: 100%;
+  padding: 8px 12px;
+  font-size: var(--fs-3);
+  color: var(--agent-text);
+  background: color-mix(in srgb, var(--agent) 8%, transparent);
+  overflow-wrap: anywhere;
+}
+.nu-focus-where,
+.nu-focus-p {
+  margin: 12px 0 0;
+  color: var(--text-dim);
+  font-size: var(--fs-4);
+  line-height: 1.5;
+  max-width: 70ch;
+}
+.nu-focus-err {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  font-size: var(--fs-2);
+  overflow-wrap: anywhere;
+}
+.nu-focus-diff {
+  margin-top: 18px;
+}
+.nu-focus-diff > p {
+  margin: 0 0 6px;
+  font-size: var(--fs-1);
+  color: var(--text-faint);
+}
+.nu-focus-diff pre {
+  margin: 0;
+  max-height: 40vh;
+  overflow: auto;
+  padding: 12px 14px;
+  font-size: var(--fs-2);
+  line-height: 1.55;
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.nu-focus-diff .dl.del {
+  color: var(--danger);
+}
+.nu-focus-diff .dl.add {
+  color: var(--ok);
+}
+.nu-focus-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 28px;
+}
+.nu-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 18px;
+  border: 0;
+  cursor: pointer;
+  color: var(--text-dim);
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  font: 600 var(--fs-3) / 1 var(--font-display);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  transition:
+    background 0.2s,
+    color 0.2s,
+    box-shadow 0.2s;
+}
+.nu-act svg {
+  width: 16px;
+  height: 16px;
+}
+.nu-act kbd {
+  font: 400 var(--fs-0) / 1 var(--font-mono);
+  padding: 3px 5px;
+  color: inherit;
+  opacity: 0.7;
+  background: none;
+  border: 1px solid currentColor;
+}
+.nu-act:hover {
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--text-faint);
+}
+.nu-act.primary {
+  color: var(--accent-contrast);
+  background: var(--lv);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--lv) 40%, transparent);
+}
+.nu-act.primary:hover {
+  filter: brightness(1.08);
+}
+.nu-act.danger:hover {
+  color: var(--danger);
+  box-shadow: inset 0 0 0 1px var(--danger);
+}
+.nu-act:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+.nu-focus-item .failure-fix {
+  margin-top: 6px;
+}
+.nu-focus-clear {
+  flex: 1;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 26px;
+  color: var(--text-dim);
+  font-size: var(--fs-5);
+}
+.nu-focus-clear-ring {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--ok) 50%, transparent);
+  box-shadow:
+    0 0 40px color-mix(in srgb, var(--ok) 25%, transparent),
+    inset 0 0 30px color-mix(in srgb, var(--ok) 15%, transparent);
+  animation: nu-aura-breathe 3s ease-in-out infinite;
+}
+
+/* ---- alerts live with the pendências: toasts arrive top-left -------------------- */
+.os-root:has(.nu-shell) .toast-wrap {
+  top: 84px;
+  left: 18px;
+  right: auto;
+  bottom: auto;
+}
+
+/* ---- narrow screens, v2 ----------------------------------------------------------- */
+@media (max-width: 760px) {
+  .nu-shell {
+    --nu-spine: 0px;
+    --nu-hud: 118px;
+  }
+  .nu-hud {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .nu-title {
+    display: none;
+  }
+  .nu-hub-text {
+    max-width: 52vw;
+  }
+  .nu-spine {
+    top: 66px;
+    left: 12px;
+    right: 12px;
+    bottom: auto;
+    width: auto;
+    height: 46px;
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nu-spine::before,
+  .nu-spine .sp,
+  .nu-spine-rule {
+    display: none;
+  }
+  .nu-spine ul {
+    display: flex;
+  }
+  .nu-mod-label {
+    display: none;
+  }
+  .nu-mod.on::before {
+    display: none;
+  }
+  .nu-focus {
+    padding: 16px;
+  }
+  .nu-focus-head {
+    padding-left: 0;
+    flex-wrap: wrap;
+  }
+  .nu-focus-keys {
+    display: none;
+  }
+  .nu-focus-body {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .nu-focus-queue {
+    max-height: 30vh;
+  }
+}
+
+/* ---- intents above the voice line ------------------------------------------------ */
+.nu-hints {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  transition: opacity 0.3s;
+}
+.nu-hint {
+  padding: 7px 12px;
+  border: 0;
+  cursor: pointer;
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--agent) 22%, transparent);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  animation: nu-tick-in 0.5s var(--nu-ease) both;
+  transition:
+    color 0.2s,
+    box-shadow 0.2s,
+    background 0.2s;
+}
+.nu-hint:hover,
+.nu-hint:focus-visible {
+  color: var(--agent-text);
+  background: color-mix(in srgb, var(--agent) 10%, transparent);
+  box-shadow: inset 0 0 0 1px var(--agent-line);
+}
+/* They step away once you type, and while the agent is answering. */
+.nu-voice:has(.cons-input:not(:placeholder-shown)) .nu-hints,
+.nu-voice:has(.console-turn.streaming) .nu-hints {
+  display: none;
+}
+/* The static "talk here" line gives its place to the intents. */
+.nu-voice .cons-empty {
+  display: none;
+}
+
+/* While the agent speaks (the briefing), its body makes room for the words. */
+.nu-nucleo[data-speaking] .nu-core {
+  --core-s: min(64cqh, 42cqw, 600px);
+  top: 36%;
+}
+@media (max-width: 760px) {
+  .nu-nucleo[data-speaking] .nu-core {
+    --core-s: min(40cqh, 62cqw);
+    top: 26%;
+  }
+  .nu-speech p {
+    font-size: var(--fs-3);
+  }
+  .nu-hint:nth-child(n + 2) {
+    display: none;
+  }
+}
+
+/* ---- the line, less form and more presence ---------------------------------------- */
+.nu-voice .cons-row {
+  padding-left: 12px;
+}
+.nu-iris {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-right: 4px;
+}
+.nu-iris-orb {
+  display: block;
+  width: 38px;
+  height: 38px;
+}
+/* Skills and send become glyphs: the line is for words. */
+.nu-voice .cons-skills {
+  font-size: 0;
+  gap: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+}
+.nu-voice .cons-skills span {
+  font-size: var(--fs-4);
+}
+.nu-voice .cons .cons-send {
+  width: 40px;
+  height: 36px;
+  padding: 0;
+  font-size: 0;
+  gap: 0;
+  justify-content: center;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.nu-voice .cons .cons-send svg {
+  width: 17px;
+  height: 17px;
+}
+.nu-voice .cons .cons-send:not(:disabled) {
+  box-shadow: 0 0 18px var(--accent-glow);
+}
+
+/* The entity draws its own state inscription; the text line stays for
+   screen readers only. */
+.nu-core-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+/* =============================================================================
+   The conversation (round 3). Folded, the voice is only the line. Used, the
+   rest dims and the conversation rises out of the line: a wide sheet with
+   the whole thread, the agent's steps and its questions.
+   ============================================================================= */
+.nu-voice .cons-scroll {
+  display: none;
+}
+.nu-voice:not([data-open]) .nu-hints {
+  display: none;
+}
+.nu-voice[data-open] {
+  z-index: 9;
+  bottom: 22px;
+  width: min(1040px, calc(100% - var(--nu-spine) - 64px));
+  padding: 14px 22px 16px;
+  background: linear-gradient(180deg, rgba(20, 18, 13, 0.92), rgba(9, 8, 6, 0.94));
+  backdrop-filter: blur(22px) saturate(1.2);
+  -webkit-backdrop-filter: blur(22px) saturate(1.2);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--agent) 22%, transparent),
+    0 40px 120px -20px rgba(0, 0, 0, 0.9);
+  clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+  animation: nu-sheet-rise 0.55s var(--nu-ease) both;
+}
+[data-theme="light"] .nu-voice[data-open] {
+  background: linear-gradient(180deg, rgba(253, 252, 249, 0.96), rgba(240, 237, 229, 0.96));
+}
+.nu-voice[data-open]::before {
+  display: none;
+}
+.nu-voice[data-open]::after {
+  /* the light the sheet rose on */
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--agent), transparent);
+}
+@keyframes nu-sheet-rise {
+  from {
+    clip-path: polygon(18px 88%, 100% 88%, 100% 100%, 0 100%, 0 100%, 0 88%);
+    opacity: 0.4;
+  }
+  to {
+    clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+    opacity: 1;
+  }
+}
+.nu-voice[data-open] .cons-scroll {
+  display: flex;
+  height: min(62vh, 700px);
+  max-height: none;
+  padding: 8px 6px 12px 2px;
+  mask-image: linear-gradient(to bottom, transparent, #000 28px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 28px);
+  scrollbar-width: thin;
+}
+.nu-voice[data-open] .cons-row {
+  margin-top: 6px;
+}
+.nu-dialog-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  backdrop-filter: blur(8px) saturate(0.8);
+  -webkit-backdrop-filter: blur(8px) saturate(0.8);
+  animation: nu-veil-in 0.45s var(--nu-ease) both;
+}
+@keyframes nu-veil-in {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+}
+.nu-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 2px 8px;
+}
+.nu-dialog-t {
+  font: 600 var(--fs-4) / 1 var(--font-display);
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+}
+.nu-dialog-state {
+  font-size: var(--fs-1);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--agent-text);
+}
+.nu-dialog-head .sp {
+  flex: 1;
+}
+.nu-dialog-x {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.nu-dialog-x:hover {
+  color: var(--text);
+}
+.nu-dialog-x svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ---- the thread inside the sheet: readable, not a log ---------------------------- */
+.nu-voice[data-open] .cons-thread {
+  gap: 22px;
+  padding: 0 8px;
+}
+.nu-voice[data-open] .console-turn {
+  gap: 10px;
+}
+.nu-voice[data-open] .console-msg.you {
+  max-width: 72%;
+  padding: 10px 14px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
+  clip-path: polygon(10px 0, 100% 0, 100% 100%, 0 100%, 0 10px);
+}
+.nu-voice[data-open] .console-msg.agent {
+  max-width: 100%;
+  color: var(--text);
+}
+.nu-voice[data-open] .console-msg.agent .console-who {
+  color: var(--agent-text);
+}
+.console-md {
+  font-size: var(--fs-4);
+  line-height: 1.6;
+  max-width: 78ch;
+}
+.console-md > :first-child {
+  margin-top: 0;
+}
+.console-md p,
+.console-md ul,
+.console-md ol {
+  margin: 0 0 10px;
+}
+.console-md code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--agent-text);
+}
+.console-md pre {
+  padding: 10px 12px;
+  overflow: auto;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.console-md h1,
+.console-md h2,
+.console-md h3 {
+  margin: 14px 0 8px;
+  font: 600 var(--fs-5) / 1.2 var(--font-display);
+  letter-spacing: 0.04em;
+}
+/* The agent's steps: a quiet timeline with a glyph per kind of work. */
+.nu-voice .console-narration {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0 0 0 4px;
+  display: grid;
+  gap: 5px;
+  border-left: 1px solid color-mix(in srgb, var(--agent) 25%, transparent);
+}
+.nu-voice .console-narration li {
+  display: grid;
+  grid-template-columns: 18px auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  padding-left: 8px;
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+  animation: nu-tick-in 0.4s var(--nu-ease) both;
+}
+.nu-voice .console-narration li code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+  font-size: var(--fs-1);
+}
+.nu-voice .console-narration .step-g {
+  width: 7px;
+  height: 7px;
+  margin-left: -13px;
+  border-radius: 50%;
+  background: var(--agent);
+  box-shadow: 0 0 8px var(--agent);
+  transform: translateY(-1px);
+}
+.nu-voice .console-narration li[data-kind="write"] .step-g {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+.nu-voice .console-narration li[data-kind="run"] .step-g {
+  border-radius: 1px;
+  background: var(--accent);
+}
+.nu-voice .console-narration li.tone-warn .step-g {
+  background: var(--warn);
+  box-shadow: 0 0 8px var(--warn);
+}
+.nu-voice .console-narration li.tone-danger .step-g {
+  background: var(--danger);
+}
+.nu-voice .console-narration li:last-child .step-g {
+  animation: nu-blink 1s infinite;
+}
+
+/* ---- the folded line: what the agent is doing, one line ---------------------------- */
+.nu-voice-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 8px 14px;
+  border: 0;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: var(--fs-2);
+  text-align: left;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--agent) 24%, transparent);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  animation: nu-tick-in 0.4s var(--nu-ease) both;
+}
+.nu-voice-status .dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--agent);
+  box-shadow: 0 0 10px var(--agent);
+  animation: nu-blink 1.2s infinite;
+}
+.nu-voice-status .tx {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.nu-voice-status .go {
+  font-size: var(--fs-1);
+  color: var(--agent-text);
+  white-space: nowrap;
+}
+
+/* ---- a question the agent asked ------------------------------------------------------ */
+.nu-ask {
+  display: grid;
+  gap: 16px;
+  margin-top: 6px;
+  padding: 14px 16px;
+  background: color-mix(in srgb, var(--warn) 6%, transparent);
+  box-shadow: inset 2px 0 0 var(--warn);
+}
+.nu-ask-q {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.nu-ask-q legend {
+  display: grid;
+  gap: 4px;
+  padding: 0;
+  margin-bottom: 8px;
+}
+.nu-ask-h {
+  font-size: var(--fs-0);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--warn);
+}
+.nu-ask-t {
+  font: 600 var(--fs-5) / 1.3 var(--font-display);
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.nu-ask-opts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+.nu-ask-opt {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 4px 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  transition:
+    box-shadow 0.2s,
+    color 0.2s,
+    background 0.2s;
+}
+.nu-ask-opt:hover {
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--text-faint);
+}
+.nu-ask-opt.on {
+  color: var(--text);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  box-shadow: inset 0 0 0 1px var(--warn);
+}
+.nu-ask-opt .mk {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  box-shadow: inset 0 0 0 1px currentColor;
+  color: var(--warn);
+}
+.nu-ask-opt .mk svg {
+  width: 12px;
+  height: 12px;
+}
+.nu-ask-opt .lb {
+  font-size: var(--fs-3);
+  font-weight: 500;
+}
+.nu-ask-opt .ds {
+  grid-column: 2;
+  font-size: var(--fs-2);
+  color: var(--text-faint);
+  line-height: 1.4;
+}
+.nu-ask-own .input {
+  width: 100%;
+}
+.nu-ask-acts {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.nu-ask .nu-act.primary {
+  --lv: var(--warn);
+}
+.nu-ask.compact .nu-ask-opts {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+/* ---- the Núcleo at rest: the body and a greeting; the day blooms on touch -------- */
+.nu-core-hit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46%;
+  height: 46%;
+  transform: translate(-50%, -50%);
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  z-index: 2;
+}
+.nu-core-hit:focus-visible {
+  outline: 1px solid var(--agent-line);
+  outline-offset: 8px;
+}
+.nu-core-hit:hover ~ .nu-caption .nu-caption-hint {
+  color: var(--agent-text);
+}
+.nu-caption-hint {
+  font-size: var(--fs-1);
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+  transition: color 0.3s;
+}
+.nu-reading {
+  transition:
+    transform 0.75s var(--nu-ease),
+    opacity 0.5s var(--nu-ease),
+    filter 0.5s;
+}
+.nu-nucleo:not([data-bloom]) .nu-reading {
+  opacity: 0;
+  filter: blur(6px);
+  pointer-events: none;
+}
+/* The readings' layer never takes the clicks meant for the core and the caption. */
+.nu-readings {
+  pointer-events: none;
+}
+.nu-nucleo[data-bloom] .nu-reading {
+  pointer-events: auto;
+}
+.nu-reading[data-reading="pending"][data-l="crit"] .v {
+  color: var(--warn);
+}
+
+/* An empty conversation invites; the intents sit just above the line. */
+.nu-voice[data-open] .cons-empty {
+  display: block;
+  margin: auto auto 90px;
+  max-width: 44ch;
+  text-align: center;
+  font: 500 var(--fs-5) / 1.4 var(--font-display);
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+}
+.nu-voice[data-open] .nu-hints {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  bottom: 86px;
+  /* Over the thread (the console is its own layer, at --z-drawer): the intents
+     are drawn on its empty space and must take the click. */
+  z-index: calc(var(--z-drawer) + 1);
+  margin: 0;
+}
+.nu-voice[data-open]:has(.console-turn) .nu-hints {
+  display: none;
+}
+.nu-voice[data-open] .cons-thread {
+  min-height: 100%;
+}
+
+/* =============================================================================
+   Round 4 — the core as the way in. Cards orbit on polar coordinates that
+   animate (a spiral out on a spring, a spiral back in); the core answers a
+   touch with a wave and a hold with a filling ring.
+   ============================================================================= */
+@property --pa {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --pr {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --ps {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 1;
+}
+.nu-orb-card {
+  --pr: 0px;
+  --ps: 0.25;
+  position: absolute;
+  left: var(--ocx, 50%);
+  top: var(--ocy, 45%);
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  justify-items: stretch;
+  width: min(290px, 22vw);
+  max-width: none;
+  padding: 12px 14px 12px 12px;
+  text-align: left;
+  border-radius: 16px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--agent) 7%, transparent),
+    color-mix(in srgb, var(--bg) 55%, transparent) 60%
+  );
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--agent) 20%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--agent) 30%, transparent),
+    0 10px 40px -18px color-mix(in srgb, var(--agent) 50%, transparent);
+  transform: translate(calc(cos(var(--pa)) * var(--pr)), calc(sin(var(--pa)) * var(--pr) * 0.88))
+    translate(0, -50%) scale(var(--ps));
+  transform-origin: left center;
+  transition:
+    --pr 0.95s cubic-bezier(0.34, 1.4, 0.5, 1) var(--d, 0ms),
+    --pa 1.05s var(--nu-ease) var(--d, 0ms),
+    --ps 0.8s var(--nu-ease) var(--d, 0ms),
+    opacity 0.55s var(--nu-ease) var(--d, 0ms),
+    filter 0.55s var(--nu-ease) var(--d, 0ms),
+    box-shadow 0.3s,
+    background 0.3s;
+}
+.nu-orb-card.l {
+  grid-template-columns: auto minmax(0, 1fr) 34px;
+  text-align: right;
+  transform: translate(calc(cos(var(--pa)) * var(--pr)), calc(sin(var(--pa)) * var(--pr) * 0.88))
+    translate(-100%, -50%) scale(var(--ps));
+  transform-origin: right center;
+}
+.nu-orb-card.l .oc-ic {
+  order: 3;
+}
+.nu-orb-card.l .oc-viz {
+  order: 1;
+}
+.nu-orb-card.l .oc-body {
+  order: 2;
+  justify-items: end;
+}
+.nu-nucleo[data-bloom] .nu-orb-card {
+  --pr: var(--or, 260px);
+  --ps: 1;
+}
+.nu-orb-card:hover,
+.nu-orb-card:focus-visible {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--agent) 14%, transparent),
+    color-mix(in srgb, var(--bg) 50%, transparent) 70%
+  );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--agent) 45%, transparent),
+    inset 0 1px 0 var(--agent),
+    0 14px 50px -14px color-mix(in srgb, var(--agent) 70%, transparent);
+}
+.nu-orb-card[data-l="warn"] {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--warn) 34%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--warn) 50%, transparent),
+    0 10px 40px -18px color-mix(in srgb, var(--warn) 60%, transparent);
+}
+.nu-orb-card[data-l="crit"] {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--danger) 40%, transparent),
+    inset 0 1px 0 var(--danger),
+    0 10px 40px -14px color-mix(in srgb, var(--danger) 60%, transparent);
+}
+.oc-ic {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  color: var(--agent-text);
+  background: color-mix(in srgb, var(--agent) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--agent) 30%, transparent);
+}
+.nu-orb-card[data-l="warn"] .oc-ic {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 40%, transparent);
+}
+.nu-orb-card[data-l="crit"] .oc-ic {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 45%, transparent);
+}
+.oc-ic svg {
+  width: 16px;
+  height: 16px;
+}
+.oc-body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  justify-items: start;
+}
+.nu-orb-card .k {
+  font: 500 var(--fs-0) / 1 var(--font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.nu-orb-card .v {
+  margin: 2px 0 0;
+  font: 600 var(--fs-6) / 1 var(--font-display);
+  letter-spacing: 0.03em;
+  color: var(--text);
+}
+.nu-orb-card .s {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-1);
+  color: var(--text-dim);
+}
+.nu-orb-card[data-l="warn"] .v {
+  color: var(--warn);
+}
+.nu-orb-card[data-l="crit"] .v {
+  color: var(--danger);
+}
+.oc-viz {
+  display: grid;
+  place-items: center;
+}
+.nu-viz.spark {
+  width: 72px;
+  height: 22px;
+}
+.nu-viz.spark rect.o {
+  fill: var(--agent);
+}
+.nu-viz.spark rect.f {
+  fill: var(--danger);
+}
+.nu-viz.spark rect.z {
+  fill: color-mix(in srgb, var(--text-faint) 50%, transparent);
+}
+.nu-viz.ring {
+  width: 26px;
+  height: 26px;
+}
+.nu-viz.ring circle {
+  fill: none;
+  stroke-width: 2.2;
+}
+.nu-viz.ring .t {
+  stroke: color-mix(in srgb, var(--text-faint) 35%, transparent);
+}
+.nu-viz.ring .a {
+  stroke: var(--agent);
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 3px var(--agent));
+}
+.nu-orb-card[data-l="warn"] .nu-viz.ring .a {
+  stroke: var(--warn);
+}
+.nu-viz.dots {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.nu-viz.dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--agent);
+  box-shadow: 0 0 8px var(--agent);
+  animation: nu-blink 1.1s infinite;
+}
+.nu-viz.dots b {
+  width: 26px;
+  height: 2px;
+  background: color-mix(in srgb, var(--agent) 50%, transparent);
+  animation: nu-aura-breathe 3s ease-in-out infinite;
+}
+.nu-viz.segs {
+  display: grid;
+  grid-template-columns: repeat(3, 6px);
+  gap: 3px;
+}
+.nu-viz.segs i {
+  width: 6px;
+  height: 6px;
+  transform: rotate(45deg);
+  background: color-mix(in srgb, var(--text-faint) 30%, transparent);
+}
+.nu-viz.segs i.on {
+  background: var(--warn);
+  box-shadow: 0 0 6px var(--warn);
+}
+.nu-viz.hexes {
+  display: grid;
+  grid-template-columns: repeat(4, 7px);
+  gap: 2px;
+}
+.nu-viz.hexes i {
+  width: 7px;
+  height: 8px;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* The wave a touch sends out, and the ring a hold fills. */
+.nu-core-wave {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 40%;
+  height: 40%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0;
+}
+.nu-nucleo[data-bloom] .nu-core-wave {
+  animation: nu-core-wave 1.1s var(--nu-ease) both;
+}
+@keyframes nu-core-wave {
+  0% {
+    opacity: 0.9;
+    box-shadow:
+      0 0 0 1px var(--agent),
+      0 0 40px color-mix(in srgb, var(--agent) 60%, transparent);
+    transform: translate(-50%, -50%) scale(0.7);
+  }
+  100% {
+    opacity: 0;
+    box-shadow:
+      0 0 0 1px var(--agent),
+      0 0 80px transparent;
+    transform: translate(-50%, -50%) scale(3.2);
+  }
+}
+.nu-core-hit {
+  transition: transform 0.4s var(--nu-ease);
+}
+.nu-core-hit:hover {
+  transform: translate(-50%, -50%) scale(1.04);
+}
+.nu-core-hit:active {
+  transform: translate(-50%, -50%) scale(0.97);
+}
+.nu-core-hold {
+  position: absolute;
+  inset: -6%;
+  width: 112%;
+  height: 112%;
+  overflow: visible;
+  pointer-events: none;
+}
+.nu-core-hold circle {
+  fill: none;
+  stroke: var(--agent);
+  stroke-width: 1.4;
+  stroke-dasharray: 302;
+  stroke-dashoffset: 302;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  opacity: 0;
+  filter: drop-shadow(0 0 6px var(--agent));
+}
+.nu-core[data-holding] .nu-core-hold circle {
+  opacity: 1;
+  animation: nu-hold-fill 0.45s linear forwards;
+}
+@keyframes nu-hold-fill {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+/* The ways to act hug the bottom of the body. */
+.nu-core-acts {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.nu-core-act {
+  --ar: 0px;
+  position: absolute;
+  left: var(--ocx, 50%);
+  top: var(--ocy, 45%);
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--text-dim);
+  opacity: 0;
+  transform: translate(calc(cos(var(--aa)) * var(--ar)), calc(sin(var(--aa)) * var(--ar)))
+    translate(-50%, -50%) scale(0.4);
+  transition:
+    transform 0.7s cubic-bezier(0.34, 1.45, 0.5, 1) var(--d, 0ms),
+    opacity 0.4s var(--nu-ease) var(--d, 0ms),
+    color 0.2s;
+}
+.nu-nucleo[data-bloom] .nu-core-act {
+  --ar: calc(var(--or, 260px) * 0.7);
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(calc(cos(var(--aa)) * var(--ar)), calc(sin(var(--aa)) * var(--ar)))
+    translate(-50%, -50%);
+}
+.nu-core-act .g {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  color: var(--agent-text);
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--agent) 35%, transparent),
+    0 0 18px -6px var(--agent);
+  transition:
+    box-shadow 0.25s,
+    transform 0.25s var(--nu-ease),
+    background 0.25s;
+}
+.nu-core-act .g svg {
+  width: 17px;
+  height: 17px;
+}
+.nu-core-act .l {
+  font: 500 var(--fs-0) / 1 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.nu-core-act:hover,
+.nu-core-act:focus-visible {
+  color: var(--text);
+}
+.nu-core-act:hover .g,
+.nu-core-act:focus-visible .g {
+  transform: scale(1.1);
+  background: color-mix(in srgb, var(--agent) 16%, var(--bg));
+  box-shadow:
+    inset 0 0 0 1px var(--agent),
+    0 0 26px -2px var(--agent);
+}
+.nu-core-act[data-act="talk"] .g {
+  color: var(--accent-contrast);
+  background: var(--agent);
+  box-shadow: 0 0 26px -4px var(--agent);
+}
+.nu-core-acts[data-speaking] [data-act="hear"] .g {
+  animation: nu-aura-breathe 1s ease-in-out infinite;
+}
+.nu-nucleo[data-bloom] .nu-caption {
+  top: 106%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nu-orb-card,
+  .nu-core-act {
+    transition-duration: 0.01ms;
+  }
+}
+@media (max-width: 760px) {
+  .nu-orb-card {
+    width: min(210px, 44vw);
+    padding: 8px 10px;
+    grid-template-columns: 26px minmax(0, 1fr);
+  }
+  .nu-orb-card .oc-viz {
+    display: none;
+  }
+  .nu-orb-card .v {
+    font-size: var(--fs-4);
+  }
+}
+
+/* =============================================================================
+   Round 4 — the conversation as light. The sheet is rounded glass that
+   blooms out of the line, ringed by a slow neon current; what you say and
+   what the agent says are luminous balloons that arrive, not boxes that
+   appear. The line itself is a pill, and its tools are round.
+   ============================================================================= */
+@property --sa {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes nu-current {
+  to {
+    --sa: 360deg;
+  }
+}
+
+/* ---- the line: a pill of light ------------------------------------------------ */
+.nu-voice .cons-row {
+  border-radius: 999px;
+  clip-path: none;
+  padding: 6px 8px 6px 10px;
+  transition:
+    box-shadow 0.35s var(--nu-ease),
+    background 0.35s;
+}
+.nu-voice .cons-row::after {
+  left: 18%;
+  right: 18%;
+}
+.nu-voice .cons-row:focus-within {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--agent) 55%, transparent),
+    0 0 0 4px color-mix(in srgb, var(--agent) 9%, transparent),
+    0 0 34px -8px var(--agent);
+}
+.nu-voice .os-tool,
+.nu-voice .cons-mic,
+.nu-voice .cons-skills {
+  border-radius: 50%;
+  clip-path: none;
+  transition:
+    background 0.2s,
+    color 0.2s,
+    box-shadow 0.25s,
+    transform 0.25s var(--nu-ease);
+}
+.nu-voice .os-tool:hover,
+.nu-voice .cons-skills:hover {
+  transform: scale(1.08);
+  box-shadow: 0 0 16px -4px var(--agent);
+}
+.nu-voice .cons .cons-send {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  clip-path: none;
+  background: radial-gradient(
+    circle at 34% 28%,
+    color-mix(in srgb, #fff 34%, var(--accent)),
+    var(--accent) 58%,
+    color-mix(in srgb, var(--accent) 70%, #000)
+  );
+  transition:
+    transform 0.3s cubic-bezier(0.34, 1.5, 0.5, 1),
+    box-shadow 0.3s;
+}
+.nu-voice .cons .cons-send:not(:disabled):hover {
+  transform: scale(1.1) rotate(-8deg);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent),
+    0 0 26px var(--accent-glow);
+}
+.nu-voice .cons .cons-send:disabled {
+  opacity: 0.45;
+}
+.nu-hint {
+  padding: 7px 14px;
+  border-radius: 999px;
+  clip-path: none;
+}
+.nu-voice-status {
+  border-radius: 999px;
+  clip-path: none;
+}
+
+/* ---- the sheet: rounded glass, blooming out of the line ------------------------ */
+.nu-voice[data-open] {
+  padding: 16px 22px 18px;
+  border-radius: 30px;
+  clip-path: none;
+  background:
+    radial-gradient(120% 55% at 50% 0%, color-mix(in srgb, var(--agent) 10%, transparent), transparent 62%),
+    radial-gradient(70% 45% at 100% 100%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%),
+    color-mix(in srgb, var(--bg) 58%, transparent);
+  backdrop-filter: blur(30px) saturate(1.45);
+  -webkit-backdrop-filter: blur(30px) saturate(1.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 0 70px -24px color-mix(in srgb, var(--agent) 70%, transparent),
+    0 44px 120px -30px rgba(0, 0, 0, 0.85);
+  transform-origin: 50% 100%;
+  animation: nu-sheet-bloom 0.72s cubic-bezier(0.2, 1.18, 0.32, 1) both;
+}
+[data-theme="light"] .nu-voice[data-open] {
+  background:
+    radial-gradient(120% 55% at 50% 0%, color-mix(in srgb, var(--agent) 12%, transparent), transparent 62%),
+    rgba(253, 252, 249, 0.8);
+}
+@keyframes nu-sheet-bloom {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(46px) scale(0.9, 0.7);
+    border-radius: 999px;
+  }
+  55% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%);
+  }
+}
+/* A slow neon current runs the rim. */
+.nu-voice[data-open]::before {
+  display: block;
+  inset: 0;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: -1;
+  padding: 1px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--sa),
+    color-mix(in srgb, var(--agent) 18%, transparent) 0 14%,
+    var(--agent) 24%,
+    color-mix(in srgb, var(--agent) 18%, transparent) 36% 62%,
+    var(--accent) 74%,
+    color-mix(in srgb, var(--agent) 18%, transparent) 86%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: nu-current 11s linear infinite;
+}
+.nu-voice[data-open]::after {
+  left: 20%;
+  right: 20%;
+  opacity: 0.8;
+  filter: blur(0.4px);
+}
+.nu-voice[data-open] .cons-scroll {
+  scrollbar-color: color-mix(in srgb, var(--agent) 32%, transparent) transparent;
+}
+.nu-dialog-veil {
+  background:
+    radial-gradient(
+      ellipse 70% 60% at 50% 100%,
+      color-mix(in srgb, var(--agent) 9%, transparent),
+      transparent 70%
+    ),
+    color-mix(in srgb, var(--bg) 54%, transparent);
+  backdrop-filter: blur(12px) saturate(0.75) brightness(0.85);
+  -webkit-backdrop-filter: blur(12px) saturate(0.75) brightness(0.85);
+}
+.nu-dialog-head {
+  gap: 12px;
+  padding: 2px 4px 10px;
+}
+.nu-dialog-pulse {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--agent);
+  box-shadow: 0 0 12px var(--agent);
+  animation: nu-pulse-ring 2.2s ease-out infinite;
+}
+.nu-dialog-pulse[data-state="idle"] {
+  animation-duration: 4.2s;
+  opacity: 0.75;
+}
+@keyframes nu-pulse-ring {
+  0% {
+    box-shadow:
+      0 0 0 0 color-mix(in srgb, var(--agent) 60%, transparent),
+      0 0 12px var(--agent);
+  }
+  100% {
+    box-shadow:
+      0 0 0 14px transparent,
+      0 0 12px var(--agent);
+  }
+}
+.nu-dialog-t {
+  background: linear-gradient(90deg, var(--text), var(--agent-text));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.nu-dialog-x {
+  border-radius: 50%;
+  transition:
+    background 0.2s,
+    color 0.2s,
+    transform 0.3s var(--nu-ease);
+}
+.nu-dialog-x:hover {
+  background: color-mix(in srgb, var(--agent) 12%, transparent);
+  transform: translateY(2px);
+}
+
+/* ---- the balloons ---------------------------------------------------------------- */
+.nu-voice[data-open] .cons-thread {
+  gap: 28px;
+  padding: 6px 12px 4px;
+}
+.nu-voice[data-open] .console-turn {
+  display: grid;
+  gap: 14px;
+}
+.nu-voice[data-open] .console-msg {
+  position: relative;
+  display: grid;
+  gap: 6px;
+}
+.nu-voice[data-open] .console-msg.you {
+  justify-self: end;
+  max-width: min(72%, 620px);
+  padding: 11px 18px 12px;
+  text-align: left;
+  border-radius: 22px 22px 6px 22px;
+  clip-path: none;
+  color: var(--text);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 24%, transparent),
+    color-mix(in srgb, var(--accent) 7%, transparent)
+  );
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 26px -10px var(--accent-glow),
+    0 12px 30px -20px var(--accent);
+  transform-origin: 100% 100%;
+  animation: nu-msg-you 0.6s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+}
+.nu-voice[data-open] .console-msg.you .console-who {
+  justify-self: end;
+  color: var(--accent-text);
+  opacity: 0.8;
+}
+.nu-voice[data-open] .console-msg.agent {
+  justify-self: start;
+  max-width: min(calc(100% - 38px), 880px);
+  margin-left: 38px;
+  padding: 13px 20px 14px;
+  border-radius: 6px 24px 24px 24px;
+  color: var(--text);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--agent) 11%, transparent),
+    color-mix(in srgb, var(--bg) 36%, transparent) 70%
+  );
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--agent) 24%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 0 36px -16px var(--agent);
+  transform-origin: 0 0;
+  animation: nu-msg-agent 0.7s cubic-bezier(0.2, 1.2, 0.4, 1) 0.1s both;
+}
+/* The agent's presence beside what it says: a small breathing orb. */
+.nu-voice[data-open] .console-msg.agent::before {
+  content: "";
+  position: absolute;
+  left: -36px;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 40% 36%,
+    #fff 0 7%,
+    var(--agent) 28%,
+    color-mix(in srgb, var(--agent) 22%, transparent) 60%,
+    transparent 72%
+  );
+  box-shadow: 0 0 16px -3px var(--agent);
+  animation: nu-orb-breathe 3.4s ease-in-out infinite;
+}
+.nu-voice[data-open] .console-turn.streaming .console-msg.agent::before {
+  animation-duration: 1.1s;
+}
+@keyframes nu-orb-breathe {
+  50% {
+    transform: scale(0.84);
+    box-shadow: 0 0 24px 0 var(--agent);
+  }
+}
+/* While it answers, a current runs the balloon's edge. */
+.nu-voice[data-open] .console-turn.streaming .console-msg.agent::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(from var(--sa), transparent 0 55%, var(--agent) 75%, transparent 90%);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: nu-current 2.4s linear infinite;
+}
+.nu-voice[data-open] .console-turn.failed .console-msg.agent {
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--danger) 12%, transparent),
+    color-mix(in srgb, var(--bg) 36%, transparent) 70%
+  );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--danger) 36%, transparent),
+    0 0 30px -16px var(--danger);
+}
+.nu-voice[data-open] .console-turn.failed .console-msg.agent::before {
+  background: radial-gradient(circle at 40% 36%, #fff 0 7%, var(--danger) 30%, transparent 70%);
+  box-shadow: 0 0 14px -3px var(--danger);
+}
+@keyframes nu-msg-you {
+  from {
+    opacity: 0;
+    transform: translate(26px, 16px) scale(0.86);
+    filter: blur(6px);
+  }
+}
+@keyframes nu-msg-agent {
+  from {
+    opacity: 0;
+    transform: translate(-20px, 14px) scale(0.92);
+    filter: blur(8px);
+  }
+}
+.nu-voice[data-open] .console-msg.agent .console-who {
+  color: var(--agent-text);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--agent) 60%, transparent);
+}
+.nu-voice[data-open] .console-md pre {
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--agent) 16%, transparent);
+}
+.nu-voice[data-open] .console-md :not(pre) > code {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--agent) 10%, transparent);
+}
+.nu-voice[data-open] .console-cite,
+.nu-voice[data-open] .console-artifact-open {
+  border-radius: 999px;
+  clip-path: none;
+}
+.nu-voice[data-open] .console-narration {
+  margin-top: 10px;
+  padding: 8px 0 2px 4px;
+}
+
+/* The agent is thinking: three drops of light. */
+.console-dots {
+  display: inline-flex;
+  gap: 4px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.console-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--agent);
+  box-shadow: 0 0 8px var(--agent);
+  animation: nu-drop 1.2s ease-in-out infinite;
+}
+.console-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.console-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes nu-drop {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0) scale(0.7);
+    opacity: 0.4;
+  }
+  40% {
+    transform: translateY(-4px) scale(1);
+    opacity: 1;
+  }
+}
+
+/* ---- the question, as rounded as the rest --------------------------------------- */
+.nu-ask {
+  border-radius: 18px;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--warn) 30%, transparent),
+    0 0 30px -18px var(--warn);
+}
+.nu-ask-opt {
+  border-radius: 14px;
+  transition:
+    box-shadow 0.2s,
+    color 0.2s,
+    background 0.2s,
+    transform 0.25s var(--nu-ease);
+}
+.nu-ask-opt:hover {
+  transform: translateY(-1px);
+}
+.nu-ask-opt.on {
+  box-shadow:
+    inset 0 0 0 1px var(--warn),
+    0 0 20px -8px var(--warn);
+}
+.nu-ask-opt[role="radio"] .mk {
+  border-radius: 50%;
+}
+.nu-ask-opt[role="checkbox"] .mk {
+  border-radius: 5px;
+}
+.nu-ask-own .input {
+  border-radius: 12px;
+}
+.nu-ask .nu-act {
+  border-radius: 999px;
+  clip-path: none;
+}
+
+/* ---- the empty conversation invites, glowing softly ----------------------------- */
+.nu-voice[data-open] .cons-empty {
+  background: linear-gradient(90deg, var(--text-dim), var(--agent-text), var(--text-dim));
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: nu-shimmer 6s linear infinite;
+}
+@keyframes nu-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nu-voice[data-open],
+  .nu-voice[data-open]::before,
+  .nu-voice[data-open] .console-msg,
+  .nu-voice[data-open] .console-msg::before,
+  .nu-voice[data-open] .console-msg::after,
+  .nu-voice[data-open] .cons-empty,
+  .console-dots i,
+  .nu-dialog-pulse {
+    animation: none;
+  }
+}
+.nu-voice .console-turn.streaming .console-msg.agent .console-thinking::after {
+  content: none;
+}
+.nu-voice[data-open] .console-thinking {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-dim);
+}
+.nu-voice[data-open] .console-msg {
+  transition: box-shadow 0.35s var(--nu-ease);
+}
+.nu-voice[data-open] .console-msg.agent:hover {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--agent) 40%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 44px -12px var(--agent);
+}
+.nu-voice[data-open] .console-msg.you:hover {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 32px -8px var(--accent-glow);
+}

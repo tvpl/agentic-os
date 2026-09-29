@@ -229,6 +229,14 @@ const WindowLayoutSchema = z.record(
      * so the record must survive a settings round-trip untouched.
      */
     config: z.record(z.unknown()).optional(),
+    /**
+     * Tabbed into another window's frame: the host's id. The window keeps
+     * its own config; the desktop draws it inside the host's frame and drops
+     * the link on read when the host is gone.
+     */
+    tabOf: z.string().min(1).max(4096).optional(),
+    /** Position in the host's tab strip (order of arrival). */
+    tabAt: z.number().int().min(0).max(10_000).optional(),
   }),
 );
 /** The same record, but degrading to an empty layout instead of throwing. */

@@ -73,7 +73,10 @@ test("the gate closes by itself once a provider checks out", async ({ page }) =>
   signedIn = true;
   await gate.getByRole("button", { name: "Check again" }).click();
   await expect(gate).toHaveCount(0);
-  await expect(page.getByTestId("provider-state")).toHaveCount(0);
+  // The telemetry's provider reading goes quiet: no problem to name, no colour
+  // (and below 1500 px a quiet reading steps out of the title's way).
+  await expect(page.locator('.nu-t[data-item="provider"]')).toHaveAttribute("data-l", "idle");
+  await expect(page.getByTestId("provider-state")).not.toHaveText(/login|not found|required/i);
 });
 
 test("an unverified login never blocks the OS", async ({ page }) => {
@@ -83,7 +86,7 @@ test("an unverified login never blocks the OS", async ({ page }) => {
     { claude: true, codex: false, cursor: false },
   );
   await page.goto("/#/");
-  await expect(page.locator(".desktop")).toBeVisible();
+  await expect(page.locator(".nu-shell")).toBeVisible();
   await page.waitForTimeout(800);
   await expect(page.getByTestId("provider-gate")).toHaveCount(0);
   await expect(page.getByTestId("provider-state")).toHaveText("login not verified");

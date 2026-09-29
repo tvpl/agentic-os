@@ -13,11 +13,21 @@ export async function resolveApproval(
   id: string,
   decision: "approved" | "denied",
   onError: (err: unknown, runId: string) => void,
+  /**
+   * The user's answers when the agent asked a question (`AskUserQuestion`):
+   * question text → chosen answer. Kept on the approval, where the
+   * permission tool reads them back into the tool's input.
+   */
+  answers?: Record<string, string>,
 ): Promise<{ id: string; kind: string; status: string; description: string; runId: string | null }> {
   // Sweep first: an approval past its TTL is expired here (cancelling the run
   // it gated), so resolving it answers 409 instead of silently acting on it.
   ctx.expireStaleApprovals();
-  const approval = ctx.approvals.resolve(id, decision);
+  const approval = ctx.approvals.resolve(
+    id,
+    decision,
+    decision === "approved" && answers && Object.keys(answers).length > 0 ? { answers } : undefined,
+  );
   if (!approval) throw Object.assign(new Error("Approval not found"), { statusCode: 404 });
   let runId: string | null = null;
   const gatedRunId = typeof approval.payload.runId === "string" ? approval.payload.runId : null;

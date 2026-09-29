@@ -1,18 +1,15 @@
 import {
   Suspense,
-  lazy,
   useCallback,
   useEffect,
   useMemo,
   useState,
   type CSSProperties,
-  type ComponentType,
   type ReactNode,
 } from "react";
 import ServiceHealthBanner from "./components/ServiceHealthBanner";
-import { HashRouter, Link, Route, Routes, useLocation } from "react-router-dom";
+import { HashRouter, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BrainCircuit, LayoutGrid, ListTree, Menu, Sparkles } from "lucide-react";
 import { api, needsPairing, setDeviceToken, type Meta } from "./api";
 import { I18nContext, useT, type Lang, type TKey } from "./i18n";
 import { qk, useOsSettings } from "./queries";
@@ -27,7 +24,6 @@ import {
 import { Skeleton, ToastProvider } from "./components/ui";
 import { useDialogDepth, usePresence } from "./components/dialog";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { EmptyState } from "./components/primitives";
 import {
   CommandPalette,
   OPEN_DECK_EVENT,
@@ -35,61 +31,20 @@ import {
   RESET_LAYOUT_EVENT,
   type PaletteOpenDetail,
 } from "./components/CommandPalette";
-import { WorkspaceDock, WorkspaceProvider } from "./components/Workspace";
+import { WorkspaceProvider } from "./components/Workspace";
 import { ShortcutsHelp } from "./components/ShortcutsHelp";
 import { ConfirmProvider } from "./hooks/useConfirm";
 import { useEventStream } from "./hooks/useEventStream";
 import { NotificationsProvider } from "./hooks/useNotifications";
 import { useOsNavigate } from "./hooks/useViewTransition";
 
-// Desktop is the landing surface and stays in the main chunk.
-import Desktop from "./desktop";
+// The immersive shell is the landing surface and stays in the main chunk:
+// every route is one of its scenes.
+import Nucleo from "./nucleo";
 import { lazyRoute } from "./lazyRoute";
-import { shouldStack } from "./desktop/defaultLayout";
 import { Onboarding } from "./onboarding/Onboarding";
 import { ProviderGate } from "./components/ProviderGate";
-const Runs = lazyRoute(() => import("./runs"));
-// TODO(orchestrator): switch to `lazyRoute(() => import("./brain"))` once F3 lands src/brain/index.tsx.
-const SecondBrain = lazyRoute(() => import("./views/SecondBrain"));
-const Skills = lazyRoute(() => import("./views/Skills"));
-const Routines = lazyRoute(() => import("./views/Routines"));
-const Connectors = lazyRoute(() => import("./views/Connectors"));
-const Settings = lazyRoute(() => import("./views/Settings"));
 const Setup = lazyRoute(() => import("./views/Setup"));
-const PixelStudio = lazyRoute(() => import("./views/PixelStudio"));
-
-/**
- * Routes whose module may not exist yet in this build (other frontiers land
- * them): resolve to a placeholder instead of breaking the bundle. Vite needs
- * static path strings, hence the glob with an explicit list.
- */
-const optionalViews = import.meta.glob<{ default: ComponentType }>([
-  "./views/Artifacts.tsx",
-  "./views/Generations.tsx",
-]);
-function lazyOptional(path: string, name: TKey): ComponentType {
-  const loader = optionalViews[path];
-  const placeholder = { default: () => <MissingApp name={name} /> };
-  return lazy(async () => {
-    if (!loader) return placeholder;
-    try {
-      return await loader();
-    } catch {
-      return placeholder;
-    }
-  });
-}
-const Artifacts = lazyOptional("./views/Artifacts.tsx", "shell.route.artifacts");
-const Generations = lazyOptional("./views/Generations.tsx", "shell.route.generations");
-
-function MissingApp({ name }: { name: TKey }) {
-  const t = useT();
-  return (
-    <div className="page">
-      <EmptyState title={t(name)} body={t("shell.route.missing")} />
-    </div>
-  );
-}
 
 /** Fire this event from anywhere to open the command palette (CustomEvent `detail`: PaletteOpenDetail). */
 export const LAUNCHER_EVENT = "mordomo:launcher";
@@ -384,22 +339,6 @@ function PageFallback() {
 }
 
 /**
- * Below the stack breakpoint the desktop is a single column and floating
- * panels make no sense, so the apps stay full pages there (G2). The same
- * rule the desktop itself applies to its stage.
- */
-function useStacked(): boolean {
-  const read = () => shouldStack(window.innerWidth, window.innerHeight);
-  const [stacked, setStacked] = useState(read);
-  useEffect(() => {
-    const onResize = () => setStacked(read());
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-  return stacked;
-}
-
-/**
  * Route wrapper: error boundary (reset on navigation), lazy suspense and a
  * 160 ms fade keyed on the app segment (intra-app navigation does not refade).
  */
@@ -515,15 +454,9 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
     if (location.pathname !== "/") closePalette();
   }, [location.pathname, closePalette]);
 
-  const framed = (name: string, node: ReactNode) => (
-    <RouteSurface name={name}>
-      <AppFrame>{node}</AppFrame>
-    </RouteSurface>
-  );
-  const stacked = useStacked();
-  const desktop = (
+  const shell = (
     <RouteSurface name="desktop" stable>
-      <Desktop meta={meta} onMetaChanged={onMetaChanged} />
+      <Nucleo meta={meta} onMetaChanged={onMetaChanged} />
     </RouteSurface>
   );
 
@@ -535,36 +468,8 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
     >
       <div className="depth-layer">
         <Routes>
-          <Route path="/" element={desktop} />
-          {stacked ? (
-            <>
-              <Route
-                path="/brain"
-                element={
-                  <RouteSurface name="brain">
-                    <SecondBrain />
-                  </RouteSurface>
-                }
-              />
-              <Route path="/skills" element={framed("skills", <Skills />)} />
-              <Route path="/skills/:slug" element={framed("skills", <Skills />)} />
-              <Route path="/routines" element={framed("routines", <Routines />)} />
-              <Route path="/runs" element={framed("runs", <Runs />)} />
-              <Route path="/runs/:id" element={framed("runs", <Runs />)} />
-              <Route path="/connectors" element={framed("connectors", <Connectors />)} />
-              <Route path="/pixel" element={framed("pixel", <PixelStudio />)} />
-              <Route path="/artifacts" element={framed("artifacts", <Artifacts />)} />
-              <Route path="/generations" element={framed("generations", <Generations />)} />
-              <Route
-                path="/settings"
-                element={framed("settings", <Settings onMetaChanged={onMetaChanged} />)}
-              />
-            </>
-          ) : (
-            // Wide enough for panels: every app route is a deep link the
-            // desktop answers by opening the app on the stage (G2).
-            <Route path="/*" element={desktop} />
-          )}
+          {/* Every route is a scene of the shell; the shell reads the path. */}
+          <Route path="/*" element={shell} />
         </Routes>
       </div>
       {paletteVisible && (
@@ -589,74 +494,8 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
         <span className="hud-bracket bl" />
         <span className="hud-bracket br" />
       </div>
-      <WorkspaceDock />
-      <MobileNav onMenu={() => openPalette()} />
       <ProviderGate />
       <Onboarding />
-    </div>
-  );
-}
-
-/** Bottom navigation below the stack breakpoint (plan Onda 3 §2, first slice). */
-function MobileNav({ onMenu }: { onMenu: () => void }) {
-  const t = useT();
-  const { pathname } = useLocation();
-  const segment = pathname.split("/")[1] ?? "";
-  const items: Array<{ to: string; key: TKey; icon: ReactNode; seg: string }> = [
-    { to: "/", key: "nav.dashboard", icon: <LayoutGrid aria-hidden />, seg: "" },
-    { to: "/brain", key: "nav.brain", icon: <BrainCircuit aria-hidden />, seg: "brain" },
-    { to: "/skills", key: "nav.skills", icon: <Sparkles aria-hidden />, seg: "skills" },
-    { to: "/runs", key: "nav.runs", icon: <ListTree aria-hidden />, seg: "runs" },
-  ];
-  return (
-    <nav className="mobile-nav" aria-label={t("shell.nav.label")}>
-      {items.map((item) => (
-        <Link
-          key={item.to}
-          to={item.to}
-          className={segment === item.seg ? "active" : undefined}
-          aria-current={segment === item.seg ? "page" : undefined}
-        >
-          {item.icon}
-          <span>{t(item.key)}</span>
-        </Link>
-      ))}
-      <button type="button" onClick={onMenu}>
-        <Menu aria-hidden />
-        <span>{t("os.menu")}</span>
-      </button>
-    </nav>
-  );
-}
-
-/** Fullscreen app surface. The chrome is a sticky header in normal flow (audit item 12). */
-export function AppFrame({ children, title }: { children: ReactNode; title?: string }) {
-  const t = useT();
-  const navigate = useOsNavigate();
-  const { pathname } = useLocation();
-  const segment = pathname.split("/")[1] ?? "";
-  const key = ROUTE_TITLE[segment];
-  const name = title ?? (key ? t(key) : "");
-  return (
-    <div className="app-frame">
-      <header className="app-frame-chrome">
-        <div className="left">
-          <button type="button" className="os-chip back" onClick={() => navigate("/")}>
-            <ArrowLeft aria-hidden /> {t("os.backToOs")}
-          </button>
-          {name && <span className="app-frame-title">{name}</span>}
-        </div>
-        <div className="right">
-          <button
-            type="button"
-            className="os-chip"
-            onClick={() => window.dispatchEvent(new CustomEvent(LAUNCHER_EVENT))}
-          >
-            <Menu aria-hidden /> {t("os.menu")}
-          </button>
-        </div>
-      </header>
-      <div className="app-frame-body">{children}</div>
     </div>
   );
 }

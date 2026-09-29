@@ -832,3 +832,10 @@
     display: none;
   }
 }
+
+/* One header per window (plan step 5): in a plate the brain's top bar is a
+   toolbar row — the indexed count on the left, refresh and present on the
+   right — under the plate's own title. */
+.app-panel .brain2-topbar.in-panel {
+  padding: 8px 12px;
+}

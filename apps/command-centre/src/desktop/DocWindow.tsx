@@ -12,7 +12,7 @@ import { ExternalLink } from "lucide-react";
 import { api, artifactRawUrl, isRawViewable, type MemoryPreview } from "../api";
 import { useT } from "../i18n";
 import { WidgetGate } from "./widgets/WidgetGate";
-import { docPath } from "./defaultWindows";
+import { docPath } from "./docIds";
 import { useDesktopActions } from "./actions";
 import type { WidgetProps } from "./widgetTypes";
 

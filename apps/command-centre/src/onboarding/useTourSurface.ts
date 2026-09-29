@@ -2,6 +2,32 @@ import { useEffect, useLayoutEffect, useState, type RefObject } from "react";
 import { focusables } from "../components/dialog";
 import { clipTarget, type Rect } from "./state";
 
+/**
+ * The box a target occupies on screen. A zero-size anchor — a point its
+ * children are placed around — is as big as the children it draws (the ones
+ * not stepped out with `aria-hidden`). The module spine has a box of its own.
+ */
+function boxOf(el: HTMLElement): Rect {
+  const box = el.getBoundingClientRect();
+  if (box.width > 0 && box.height > 0) return box;
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (const child of Array.from(el.children)) {
+    if (child.getAttribute("aria-hidden") === "true") continue;
+    const r = child.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue;
+    left = Math.min(left, r.left);
+    top = Math.min(top, r.top);
+    right = Math.max(right, r.right);
+    bottom = Math.max(bottom, r.bottom);
+  }
+  return right > left && bottom > top
+    ? { x: left, y: top, width: right - left, height: bottom - top }
+    : { x: box.x, y: box.y, width: 0, height: 0 };
+}
+
 /** Follow lazy routes, widget reflow, scrolling and viewport changes without a perpetual render loop. */
 export function useTourTarget(selector: string | null, active: boolean) {
   const [target, setTarget] = useState<Rect | null>(null);
@@ -33,7 +59,7 @@ export function useTourTarget(selector: string | null, active: boolean) {
         }
         settlingUntil = performance.now() + 650;
       }
-      const box = found?.getBoundingClientRect();
+      const box = found ? boxOf(found) : undefined;
       const rect =
         box && box.width > 0 && box.height > 0 && found && getComputedStyle(found).visibility !== "hidden"
           ? clipTarget(box, window.innerWidth, window.innerHeight)

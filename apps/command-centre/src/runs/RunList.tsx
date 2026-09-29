@@ -60,7 +60,8 @@ export default function RunList() {
           <h1>{t("runs.title")}</h1>
           <p className="sub">{t("runs.sub")}</p>
         </div>
-        <TokensSpark series={metrics.data?.usageSeries} todayUsd={metrics.data?.cost?.todayUsd ?? null} />
+        {/* Tokens only: the day's cost is the strip's number and the Cost panel's detail ("um número, um lugar"). */}
+        <TokensSpark series={metrics.data?.usageSeries} />
       </div>
 
       <ApprovalsCard approvals={approvals.data} onLaunched={(runId) => runId && navigate(`/runs/${runId}`)} />
@@ -202,13 +203,7 @@ export default function RunList() {
 }
 
 /** 24 hourly token buckets as an inline sparkline (no layout work per frame). */
-function TokensSpark({
-  series,
-  todayUsd,
-}: {
-  series: Array<{ ts: number; tokens: number; usd: number }> | undefined;
-  todayUsd: number | null;
-}) {
+function TokensSpark({ series }: { series: Array<{ ts: number; tokens: number; usd: number }> | undefined }) {
   const t = useT();
   const values = (series ?? []).map((p) => p.tokens);
   const total = values.reduce((a, b) => a + b, 0);
@@ -231,7 +226,6 @@ function TokensSpark({
       <div className="tokens-spark-meta">
         <span className="mono tnum">{formatTokens(total)}</span>
         <span className="hud-label">{t("runs.spark.label")}</span>
-        {todayUsd != null && <span className="mono tnum accent-text">{formatUsd(todayUsd)}</span>}
       </div>
     </div>
   );

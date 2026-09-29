@@ -1,57 +1,20 @@
 /** Settings › desktop (split out of Settings.tsx, refino item 17). */
 import { useState } from "react";
-import { Eye, EyeOff, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { type MicroApp } from "../../api";
 
 import { useT } from "../../i18n";
 import { Button, Field } from "../../components/primitives";
-import { WIDGET_ORDER, isWidgetId } from "../../desktop/defaultLayout";
-import type { WindowBox } from "../../desktop/windowModel";
-import { WIDGET_REGISTRY } from "../../desktop/registry";
 import { slugify } from "../shared";
 import { type Put } from "../SettingsFields";
 import { isValidMicroAppHref } from "./shared";
 import type { SettingsShape } from "./shared";
 
 export function DesktopTab({ s, put }: { s: SettingsShape; put: Put }) {
-  const t = useT();
-  const layout = s.dashboardLayout ?? {};
-  const ids = [...new Set([...WIDGET_ORDER, ...Object.keys(layout)])].filter((id) => isWidgetId(id));
-
-  const toggleWidget = (id: string) => {
-    // Geometry belongs to the desktop: a widget turned on here opens at a
-    // placeholder box and the window layer clamps and places it properly.
-    const box: WindowBox = layout[id] ?? { x: 24, y: 24, w: 420, h: 300, z: 1, visible: false };
-    void put({ dashboardLayout: { ...layout, [id]: { ...box, visible: !(box.visible ?? true) } } }, true);
-  };
-
+  // The instruments are projected on demand now (lâminas), so there is no
+  // desktop composition to toggle; what stays here is the user's own apps.
   return (
     <div className="stack">
-      <div className="card stack">
-        <div>
-          <h2>{t("apps.settings.widgets")}</h2>
-          <p className="hint">{t("apps.settings.widgetsHint")}</p>
-        </div>
-        <div className="apps-widgets">
-          {ids.map((id) => {
-            const def = isWidgetId(id) ? WIDGET_REGISTRY[id] : undefined;
-            const visible = layout[id]?.visible ?? true;
-            return (
-              <button
-                key={id}
-                type="button"
-                className="apps-widget-toggle"
-                aria-pressed={visible}
-                onClick={() => toggleWidget(id)}
-              >
-                {visible ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
-                <span className="truncate">{def ? t(def.titleKey) : id}</span>
-                <span className="id">{id}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
       <MicroAppsCard s={s} put={put} />
     </div>
   );

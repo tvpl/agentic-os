@@ -143,7 +143,7 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
 
   return (
     <div className="page">
-      <div className="page-head">
+      <div className="page-head detail">
         <div className="min0">
           <p className="crumb">
             <Link to="/skills">

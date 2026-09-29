@@ -56,8 +56,9 @@ describe("briefing", () => {
       "1 rotina parou de funcionar: Nightly.",
       "1 decisão espera por você.",
       "Próxima rotina: Digest em 2 h.",
-      "Gasto hoje: US$ 0.08.",
     ]);
+    // The day's spend is the strip's number, never repeated here.
+    expect(b.lines.join(" ")).not.toMatch(/US\$/);
     expect(b.spoken.split(" ").length).toBeGreaterThan(3);
   });
 

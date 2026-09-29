@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { openBrainList, travel } from "./shell";
 
 test("visual economy persists and system reduced motion wins over immersive", async ({ page }) => {
   await page.goto("/#/settings?tab=theme");
@@ -12,9 +13,9 @@ test("visual economy persists and system reduced motion wins over immersive", as
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(page.locator("html")).toHaveAttribute("data-render-profile", "economy");
   await expect(profile).toHaveValue("immersive");
-  // The apps are the pods on the left arc (G5).
-  await page.locator('.pod-arc.l .pod[data-pod="app:brain"]').click();
-  await expect(page.locator(".brain2 canvas").first()).toBeVisible();
-  await page.getByRole("button", { name: "List view", exact: true }).click();
-  await expect(page.locator(".brain2-list button[data-file]").first()).toBeVisible();
+  // The brain still answers in the economic profile: the sky is drawn still,
+  // and its accessible list is there.
+  await travel(page, "2", "brain");
+  await expect(page.locator(".bs canvas").first()).toBeVisible();
+  await openBrainList(page);
 });
