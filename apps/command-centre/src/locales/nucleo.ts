@@ -140,6 +140,8 @@ export const en = {
   "concept.runs.askPrompt": "About the run {what}: ",
   "concept.runs.done": "Finished in {duration}.",
   "concept.runs.send": "Send",
+  "concept.market.none": "No registry yet: add one to find skills to install.",
+  "concept.market.configure": "Configure registries",
 } as const;
 
 export const ptBR = {
@@ -280,4 +282,6 @@ export const ptBR = {
   "concept.runs.askPrompt": "Sobre a execução {what}: ",
   "concept.runs.done": "Concluída em {duration}.",
   "concept.runs.send": "Enviar",
+  "concept.market.none": "Nenhum registro ainda: adicione um para encontrar skills para instalar.",
+  "concept.market.configure": "Configurar registros",
 } as const satisfies Record<keyof typeof en, string>;

@@ -970,3 +970,290 @@
     animation: none;
   }
 }
+
+/* =============================================================================
+   The ring in the middle, the rest on demand (conceito em todo o sistema, S4).
+   One bar above the ring — a search pill and one row of chips, the count, the
+   pager and a single "+" — and the ring takes the width the side columns
+   used to hold. The readings are a glass card, only when asked for; the
+   editor is the shell's sheet.
+   ============================================================================= */
+.sks {
+  --sks-bar-h: 52px;
+}
+.sks-bar.sks-tools {
+  position: absolute;
+  top: var(--sks-top);
+  left: var(--sks-gut);
+  right: var(--sks-gut);
+  z-index: 2;
+  width: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px 6px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--agent) 14%, transparent),
+    0 0 40px -24px var(--agent);
+  animation: sks-bar-in 0.5s var(--sks-ease) both;
+}
+@keyframes sks-bar-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+.sks-bar .sp {
+  flex: 1;
+}
+.sks-bar .sks-find {
+  flex: 0 1 260px;
+  min-width: 160px;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  transition: box-shadow 0.25s;
+}
+.sks-bar .sks-find:focus-within {
+  box-shadow:
+    inset 0 0 0 1px var(--agent),
+    0 0 20px -6px var(--agent);
+}
+.sks-bar .sks-find input {
+  font-size: var(--fs-3);
+  border-radius: 999px;
+}
+.sks-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.sks-fchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  cursor: pointer;
+  white-space: nowrap;
+  font: 500 var(--fs-2) / 1.2 var(--font);
+  color: var(--text-dim);
+  transition:
+    background 0.2s,
+    color 0.2s,
+    box-shadow 0.25s;
+}
+.sks-fchip.mono {
+  font: 400 var(--fs-1) / 1.2 var(--font-mono);
+}
+.sks-fchip svg {
+  width: 13px;
+  height: 13px;
+}
+.sks-fchip:hover:not(:disabled) {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+.sks-fchip[aria-pressed="true"] {
+  color: var(--accent-text);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.sks-fchip[data-mode="write"][aria-pressed="true"] {
+  color: var(--agent-text);
+  background: color-mix(in srgb, var(--agent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--agent) 45%, transparent);
+}
+.sks-fchip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.sks-chip-sep {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border-strong);
+}
+.sks-bar .sks-count {
+  flex: none;
+  padding: 0;
+  white-space: nowrap;
+}
+.sks-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-size: var(--fs-1);
+  color: var(--text-dim);
+}
+.sks-more {
+  position: relative;
+  flex: none;
+}
+.sks-plus {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--accent-contrast);
+  background: radial-gradient(
+    circle at 34% 28%,
+    color-mix(in srgb, #fff 30%, var(--accent)),
+    var(--accent) 60%
+  );
+  box-shadow: 0 0 18px -4px var(--accent-glow);
+  transition: transform 0.35s cubic-bezier(0.34, 1.5, 0.5, 1);
+}
+.sks-plus:hover,
+.sks-plus[aria-expanded="true"] {
+  transform: rotate(90deg) scale(1.06);
+}
+.sks-plus svg {
+  width: 18px;
+  height: 18px;
+}
+.sks-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 5;
+  display: grid;
+  min-width: 240px;
+  padding: 6px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  backdrop-filter: blur(22px) saturate(1.3);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--agent) 22%, transparent),
+    0 20px 60px -20px rgba(0, 0, 0, 0.8),
+    0 0 40px -20px var(--agent);
+  transform-origin: top right;
+  animation: sks-menu-in 0.32s cubic-bezier(0.2, 1.2, 0.35, 1) both;
+}
+@keyframes sks-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-6px);
+  }
+}
+.sks-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: var(--fs-3);
+  color: var(--text-dim);
+}
+.sks-menu button:hover,
+.sks-menu button:focus-visible {
+  outline: none;
+  color: var(--text);
+  background: color-mix(in srgb, var(--agent) 10%, transparent);
+}
+.sks-menu button.new {
+  color: var(--accent-text);
+}
+.sks-menu svg {
+  width: 16px;
+  height: 16px;
+}
+/* The ring takes the width the side columns held, under the bar. */
+.sks:not([data-narrow]) .sks-stage {
+  top: calc(var(--sks-top) + var(--sks-bar-h) + 12px);
+  left: var(--sks-gut);
+  right: var(--sks-gut);
+}
+.sks[data-proj] .sks-stage {
+  right: calc(min(620px, 44vw) + var(--sks-gut) + 20px);
+}
+/* The readings make room for themselves: the ring steps left. */
+.sks[data-read]:not([data-proj]) .sks-stage {
+  right: calc(var(--sks-gut) + 270px);
+}
+.sks-nomatch {
+  top: calc(var(--sks-top) + var(--sks-bar-h) + 16px);
+}
+/* The readings: a glass card, only when asked for. */
+.sks-read {
+  top: calc(var(--sks-top) + var(--sks-bar-h) + 20px);
+  width: 250px;
+  padding: 18px 20px;
+  text-align: left;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  backdrop-filter: blur(18px);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--agent) 20%, transparent),
+    0 0 50px -24px var(--agent);
+  animation: sks-read-in 0.45s cubic-bezier(0.2, 1.15, 0.35, 1) both;
+}
+@keyframes sks-read-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px) scale(0.97);
+    filter: blur(6px);
+  }
+}
+/* The editor: the shell's sheet, wide. */
+.modal.sks-sheet {
+  position: static;
+  width: min(1060px, 100%);
+  max-height: 88vh;
+}
+.modal.sks-sheet::before {
+  display: none;
+}
+.sks-sheet-sub {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -6px 0 12px;
+}
+.modal.sks-sheet .sks-sheet-body {
+  padding: 0;
+  overflow: visible;
+}
+/* The marketplace with nothing to show: one sentence, one way on. */
+.market-empty {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  padding: 26px 12px 14px;
+  text-align: center;
+}
+.market-empty p {
+  margin: 0;
+  max-width: 42ch;
+  color: var(--text-dim);
+  font-size: var(--fs-4);
+  line-height: 1.5;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sks-bar,
+  .sks-menu,
+  .sks-read {
+    animation: none;
+  }
+}

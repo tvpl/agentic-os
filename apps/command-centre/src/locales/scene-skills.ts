@@ -53,6 +53,7 @@ export const en = {
   "scene.skills.detailsOf": "Details: {name}",
   "scene.skills.noMatchDim": "Nothing matches “{q}”",
   "scene.skills.back": "All skills",
+  "scene.skills.edit": "Edit",
 } as const;
 
 export const ptBR = {
@@ -105,4 +106,5 @@ export const ptBR = {
   "scene.skills.detailsOf": "Detalhes: {name}",
   "scene.skills.noMatchDim": "Nada corresponde a “{q}”",
   "scene.skills.back": "Todas as habilidades",
+  "scene.skills.edit": "Editar",
 } as const satisfies Record<keyof typeof en, string>;

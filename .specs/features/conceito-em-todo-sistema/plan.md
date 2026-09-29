@@ -44,7 +44,8 @@ Reutiliza as primitivas existentes (`components/ui.tsx`, `components/dialog.tsx`
    (uma execução, `RunsSceneRun.tsx`); a trilha e a folha "Detalhe completo" saíram - a folha
    virou a aba Log (`runs/RunDetail.tsx`, exists), ainda alcançável por `?detail=1`
 4. Habilidades: `nucleo/scenes/SkillsScene.tsx` (exists) + `SkillsSceneTools.tsx` + `SkillsSceneFocus.tsx`
-   (exist) - filtros em uma linha, metadados no cartão em foco, modais como folhas
+   (exist) - filtros em uma linha com um menu "+", leituras só em "Detalhes", o editor
+   (`views/Skills/SkillDetail.tsx`, exists) numa `Modal` (exists) em vez da folha lateral
 5. Conectores: `views/Connectors.tsx` (exists) + `views/ConnectorWizard.tsx` (exists) - lista de cartões,
    um aberto por vez
 6. Artefatos e Gerações: `views/Artifacts.tsx` (exists) + `views/Generations.tsx` (exists) - busca única,

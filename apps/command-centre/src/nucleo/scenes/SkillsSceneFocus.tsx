@@ -4,7 +4,7 @@
  * you can do with it. No card: it stands in the middle of the ring.
  */
 import type { MouseEvent } from "react";
-import { MessageSquarePlus, PanelRightOpen, Play, SlidersHorizontal, Star } from "lucide-react";
+import { Info, MessageSquarePlus, PanelRightOpen, Play, SlidersHorizontal, Star } from "lucide-react";
 import type { RunRecord } from "../../api";
 import { useLocale, useT, type TKey } from "../../i18n";
 import { timeAgo } from "../../components/ui";
@@ -13,7 +13,11 @@ import type { SkillEntry } from "./skillsEntries";
 export interface FocusActions {
   onRun: () => void;
   onAsk: () => void;
+  /** Show or hide the readings beside the ring. */
   onDetails: () => void;
+  detailsOpen: boolean;
+  /** The full editor (instructions, inputs, model, notes, export). */
+  onEdit: () => void;
   onConfigure: (anchor: HTMLElement) => void;
   onFavorite: () => void;
   onEnable: () => void;
@@ -131,12 +135,22 @@ export function SkillFocus({
         <button
           type="button"
           className={compact ? "sks-icon" : "sks-act"}
-          data-details
+          aria-pressed={actions.detailsOpen}
           title={compact ? t("scene.skills.details") : undefined}
           aria-label={compact ? t("scene.skills.details") : undefined}
           onClick={actions.onDetails}
         >
-          {compact ? <PanelRightOpen aria-hidden /> : t("scene.skills.details")}
+          {compact ? <Info aria-hidden /> : t("scene.skills.details")}
+        </button>
+        <button
+          type="button"
+          className={compact ? "sks-icon" : "sks-act"}
+          data-details
+          title={compact ? t("scene.skills.edit") : undefined}
+          aria-label={compact ? t("scene.skills.edit") : undefined}
+          onClick={actions.onEdit}
+        >
+          {compact ? <PanelRightOpen aria-hidden /> : t("scene.skills.edit")}
         </button>
       </div>
     </div>

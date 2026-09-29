@@ -660,3 +660,114 @@ test("C4 a dialog folds on Esc and on the veil and gives focus back", async ({ p
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(first.trigger).toBeFocused();
 });
+
+/* ---- S4: skills, the ring in the middle and the rest on demand ----------------------------- */
+
+async function openSkills(page: Page) {
+  await openShell(page, "/skills");
+  await arrived(page, "skills");
+  await expect(page.locator(".sks-focus")).toBeVisible();
+}
+
+test("C22 skill filters are one search and one row of chips", async ({ page }) => {
+  await openSkills(page);
+  const bar = page.locator(".sks-bar");
+  await expect(bar).toBeVisible();
+  const search = bar.locator("input[type='search']");
+  await expect(search).toHaveCount(1);
+  const pill = await search.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return parseFloat(s.borderTopLeftRadius) >= el.getBoundingClientRect().height / 2 - 1;
+  });
+  expect(pill).toBe(true);
+  const chips = bar.locator(".sks-chips > button");
+  expect(await chips.count()).toBeGreaterThan(3);
+  const tops = await chips.evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
+  expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(2);
+  // Above the ring.
+  const barBox = (await bar.boundingBox())!;
+  const stageBox = (await page.locator(".sks-stage").boundingBox())!;
+  expect(barBox.y + barBox.height).toBeLessThanOrEqual(stageBox.y + 1);
+  // Nothing else filters on the side any more.
+  await expect(page.locator(".sks-filters")).toHaveCount(0);
+});
+
+test("C23 one plus menu holds marketplace, export and new", async ({ page }) => {
+  await openSkills(page);
+  const scene = currentScene(page);
+  for (const name of [/^(Marketplace)$/i, /export|exportar/i, /new skill|nova skill/i])
+    await expect(scene.getByRole("button", { name })).toHaveCount(0);
+  const more = page.getByTestId("skills-more");
+  await expect(more).toHaveAttribute("aria-haspopup", "menu");
+  await more.click();
+  const menu = page.getByRole("menu");
+  await expect(menu.getByRole("menuitem")).toHaveText([
+    /Marketplace/i,
+    /export|exportar/i,
+    /new skill|nova skill/i,
+  ]);
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+});
+
+test("C24 skill details wait to be asked", async ({ page }) => {
+  await openSkills(page);
+  await expect(page.locator(".sks-read")).toHaveCount(0);
+  await page
+    .locator(".sks-focus")
+    .getByRole("button", { name: /^(details|detalhes)$/i })
+    .click();
+  const read = page.locator(".sks-read");
+  await expect(read).toBeVisible();
+  await expect(read).toContainText(/Recent runs|Execuções recentes|History|Histórico/i);
+  await expect(read).toContainText(/Model|Modelo/i);
+  await page
+    .locator(".sks-focus")
+    .getByRole("button", { name: /^(details|detalhes)$/i })
+    .click();
+  await expect(read).toHaveCount(0);
+});
+
+test("C25 skill dialogs are the shell's sheet", async ({ page }) => {
+  await openSkills(page);
+  const isSheet = async () => {
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    const look = await dialog.evaluate((el) => ({
+      modal: el.classList.contains("modal"),
+      veil: el.parentElement?.classList.contains("modal-backdrop") ?? false,
+      radius: parseFloat(getComputedStyle(el).borderTopLeftRadius),
+      glass: getComputedStyle(el).backdropFilter,
+    }));
+    expect(look.modal && look.veil).toBe(true);
+    expect(look.radius).toBeGreaterThanOrEqual(20);
+    expect(look.glass).toContain("blur");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+  };
+  for (const item of [/Marketplace/i, /new skill|nova skill/i]) {
+    await page.getByTestId("skills-more").click();
+    await page.getByRole("menuitem", { name: item }).click();
+    await isSheet();
+  }
+  await page
+    .locator(".sks-focus")
+    .getByRole("button", { name: /^(edit|editar)$/i })
+    .click();
+  await isSheet();
+});
+
+test("C26 an empty marketplace says so and offers one action", async ({ page }) => {
+  await page.route("**/api/skills/registry*", async (route) => {
+    const real = (await (await route.fetch()).json()) as Record<string, unknown>;
+    await route.fulfill({ json: { ...real, registries: [], skills: [], errors: [] } });
+  });
+  await openSkills(page);
+  await page.getByTestId("skills-more").click();
+  await page.getByRole("menuitem", { name: /Marketplace/i }).click();
+  const empty = page.getByRole("dialog").locator(".market-empty");
+  await expect(empty).toBeVisible();
+  await expect(empty.locator("p")).toHaveCount(1);
+  await expect(empty.getByRole("link")).toHaveText(/configure registries|configurar registros/i);
+  await expect(page.getByRole("dialog").locator("input")).toHaveCount(0);
+});

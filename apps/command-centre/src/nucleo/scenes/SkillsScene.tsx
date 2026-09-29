@@ -24,11 +24,10 @@ import {
 } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { X } from "lucide-react";
 import { api } from "../../api";
 import { useLang, useT } from "../../i18n";
 import { qk, useInvalidate, useOsProviders, useOsSkills } from "../../queries";
-import { ErrorBox, Skeleton, useToast } from "../../components/ui";
+import { ErrorBox, Modal, Skeleton, useToast } from "../../components/ui";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { usePanelParams, usePanelSearchParams } from "../../desktop/appRoute";
@@ -250,6 +249,8 @@ export default function SkillsScene(_props: SceneViewProps) {
   const liveRun = skillRuns.find((r) => isActiveStatus(r.status)) ?? null;
   const lastRun = skillRuns[0] ?? null;
 
+  // The skill's readings (recent runs, inputs, model) wait to be asked for.
+  const [readings, setReadings] = useState(false);
   const detailsOpener = useRef<HTMLElement | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const openDetails = () => {
@@ -283,7 +284,9 @@ export default function SkillsScene(_props: SceneViewProps) {
     ? {
         onRun: () => actions.runSkill(entry.skill),
         onAsk: () => ask(entry.slug),
-        onDetails: openDetails,
+        onDetails: () => setReadings((v) => !v),
+        detailsOpen: readings,
+        onEdit: openDetails,
         onConfigure: (anchor) => actions.configureSkill(entry.skill, anchor),
         onFavorite: () => favorite.mutate(entry.slug),
         onEnable: () => enable.mutate(entry.slug),
@@ -332,12 +335,7 @@ export default function SkillsScene(_props: SceneViewProps) {
     };
   }, []);
 
-  // The sheet takes focus when it opens.
-  const sheetRef = useRef<HTMLElement>(null);
   const showSheet = sheetOpen && Boolean(known);
-  useEffect(() => {
-    if (showSheet) sheetRef.current?.querySelector<HTMLElement>(".sks-sheet-x")?.focus();
-  }, [showSheet]);
 
   // On a narrow screen the chosen skill is above the grid: bring it into view.
   const focusRef = useRef<HTMLDivElement>(null);
@@ -436,6 +434,7 @@ export default function SkillsScene(_props: SceneViewProps) {
       className="sks"
       data-narrow={narrow || undefined}
       data-sheet={showSheet || undefined}
+      data-read={(readings && !narrow) || undefined}
       data-proj={!showSheet && laminas.length > 0 ? laminas.length : undefined}
     >
       <div className="sks-body">
@@ -490,7 +489,7 @@ export default function SkillsScene(_props: SceneViewProps) {
           </div>
         )}
 
-        {!narrow && !showSheet && entry && (
+        {!narrow && readings && entry && (
           <SkillReadings entry={entry} runs={skillRuns.slice(0, 5)} onOpenRun={actions.openRun} />
         )}
         {!narrow && (
@@ -501,28 +500,13 @@ export default function SkillsScene(_props: SceneViewProps) {
       </div>
 
       {showSheet && known && (
-        <aside
-          ref={sheetRef}
-          className="sks-sheet"
-          aria-label={t("scene.skills.detailsOf", { name: entry?.name ?? known.name })}
-        >
-          <header className="sks-sheet-head">
+        <Modal title={entry?.name ?? known.name} className="sks-sheet" onClose={closeDetails}>
+          <p className="sks-sheet-sub">
             <span className="hx" data-mode={known.mode} aria-hidden>
               {known.mode === "write" ? "✎" : "◇"}
             </span>
-            <h2>{entry?.name ?? known.name}</h2>
             <span className="sks-cmd">/{known.slug}</span>
-            <span className="sp" />
-            <button
-              type="button"
-              className="sks-sheet-x"
-              aria-label={t("scene.skills.closeDetails")}
-              title={`${t("scene.skills.closeDetails")} (Esc)`}
-              onClick={closeDetails}
-            >
-              <X aria-hidden />
-            </button>
-          </header>
+          </p>
           <div className="sks-sheet-body">
             <ErrorBoundary name={known.name} resetKey={known.slug}>
               {providers.data ? (
@@ -532,7 +516,7 @@ export default function SkillsScene(_props: SceneViewProps) {
               )}
             </ErrorBoundary>
           </div>
-        </aside>
+        </Modal>
       )}
 
       {showNew && <NewSkillModal initialPrompt={initialPrompt} onClose={closeNew} onCreated={closeNew} />}

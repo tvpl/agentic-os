@@ -107,18 +107,23 @@ Status: closed
 
 **C22** - Filtros = uma busca em pílula + uma linha de chips acima do anel (AC 22)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C22 skill filters are one search and one row of chips"`
+Status: closed
 
 **C23** - Marketplace, Exportar e Nova skill ficam num menu "+" único (AC 23)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C23 one plus menu holds marketplace, export and new"`
+Status: closed
 
 **C24** - Execuções recentes, entradas e modelo só aparecem depois de "Detalhes" (AC 24)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C24 skill details wait to be asked"`
+Status: closed
 
 **C25** - Marketplace, Nova skill e o editor abrem como a folha do shell (AC 25)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C25 skill dialogs are the shell's sheet"`
+Status: closed
 
 **C26** - Sem registro configurado, o Marketplace mostra uma frase e a ação "Configurar registros" (AC 26)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C26 an empty marketplace says so and offers one action"`
+Status: closed
 
 ### S5 - Conectores · 3 files · 17 KB · ~5k
 

@@ -47,7 +47,8 @@ test("the shell's chrome does not cover a scene's actions, and a modal's Escape 
   page,
 }) => {
   await open(page, "/#/skills");
-  const newSkill = page.getByRole("button", { name: /new skill|nova skill/i }).first();
+  // The scene's actions live under its "+" (conceito em todo o sistema, AC 23).
+  const newSkill = page.getByTestId("skills-more");
   await expect(newSkill).toBeVisible();
   // Nothing of the HUD, the spine or the voice line is drawn over it.
   const onTop = await newSkill.evaluate((el) => {
@@ -57,6 +58,7 @@ test("the shell's chrome does not cover a scene's actions, and a modal's Escape 
   });
   expect(onTop, "the scene's action is covered").toBe(true);
   await newSkill.click();
+  await page.getByRole("menuitem", { name: /new skill|nova skill/i }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
