@@ -455,8 +455,13 @@ async function seedRun(page: Page, request: APIRequestContext) {
       )
       .toMatch(/done|failed/);
   }
+  // Alone in its stretch of the river, so it keeps its own capsule however many runs came before.
+  const alone = Date.now() - 5 * 3_600_000;
   const failed = (r: Record<string, unknown>) => ({
     ...r,
+    createdAt: alone,
+    startedAt: alone,
+    finishedAt: alone + 60_000,
     status: "failed",
     error: JSON_ERROR,
     failure: null,
@@ -976,11 +981,9 @@ test("C34 a gallery item opens from its tile", async ({ page }) => {
   });
   expect(start, "the lâmina grows from somewhere").toMatchObject({ x: expect.any(Number) });
   const at = start as { x: number; y: number };
-  // Its first frame starts on the tile that was pressed.
-  expect(at.x).toBeGreaterThanOrEqual(from.x - 1);
-  expect(at.x).toBeLessThanOrEqual(from.x + from.w);
-  expect(at.y).toBeGreaterThanOrEqual(from.y - 1);
-  expect(at.y).toBeLessThanOrEqual(from.y + from.h);
+  // Its first frame starts on the tile that was pressed: on its corner.
+  expect(Math.abs(at.x - from.x)).toBeLessThanOrEqual(4);
+  expect(Math.abs(at.y - from.y)).toBeLessThanOrEqual(4);
 });
 
 test("C35 an empty filter offers to clear", async ({ page }) => {
@@ -1066,7 +1069,7 @@ test("C36 ask the agent carries the item", async ({ page, request }) => {
 });
 
 for (const theme of ["dark", "light"] as const)
-  test(`C5 the new glass surfaces keep their contrast (${theme})`, async ({ page }) => {
+  test(`C5 the new glass surfaces keep their contrast (${theme})`, async ({ page, request }) => {
     const surfaces: ReadonlyArray<[string, () => Promise<string>]> = [
       [
         "resolver",
@@ -1089,6 +1092,21 @@ for (const theme of ["dark", "light"] as const)
         async () => {
           await openSkills(page);
           return ".sks-bar";
+        },
+      ],
+      [
+        "run view",
+        async () => {
+          await openRuns(page, request);
+          await chooseRun(page);
+          return ".rs-run";
+        },
+      ],
+      [
+        "dialog sheet",
+        async () => {
+          await openWriteGate(page);
+          return "[role='dialog']";
         },
       ],
       [

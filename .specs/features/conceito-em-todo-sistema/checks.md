@@ -44,6 +44,7 @@ Status: closed
 
 **C7** - Avisos não lidos com o mesmo título viram uma linha com `×N` (AC 7)
 Proof: `cd apps/command-centre && npx vitest run src/nucleo/pending/model.test.ts -t "collapses notices with the same title"`
+Proof: `cd apps/command-centre && npx vitest run src/nucleo/pending/model.test.ts -t "collapses a sentinel's notice and its untranslated twin"`
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C7 the resolver shows each cause once"`
 Status: closed
 
@@ -181,7 +182,7 @@ Status: closed
 | cenas sem `select` nativo (4)            | artifacts C2 · generations C2 · connectors C2 · skills C2, table-driven over all 4                                                                | -        |
 | fechamentos de diálogo (2)               | Esc C4 · véu C4                                                                                                                                   | -        |
 | temas de contraste (2)                   | dark C5 · light C5                                                                                                                                | -        |
-| superfícies novas com contraste (4)      | Resolver C5 · conector aberto C5 · barra de habilidades C5 · barra das galerias C5, table-driven                                                  | -        |
+| superfícies novas com contraste (6)      | Resolver C5 · conector aberto C5 · barra de habilidades C5 · barra das galerias C5 · visão da execução C5 · folha de diálogo C5, table-driven     | -        |
 | avisos repetidos (2)                     | título idêntico C7 · aviso com e sem tradução C7                                                                                                  | -        |
 | tipos de pendência no Resolver (7)       | question C9 · decision C9 · provider C9 · budget C9 · failure C6 C10 · routine C6 · notice C7 C8, C9 table-driven over the seeded kinds           | -        |
 | agrupamentos de causa (2)                | falha dentro da rotina C6 · avisos de mesmo título C7                                                                                             | -        |
