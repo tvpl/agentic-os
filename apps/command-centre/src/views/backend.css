@@ -159,3 +159,327 @@
     }
   }
 }
+
+/* =============================================================================
+   Connectors (conceito em todo o sistema, S5): glass cards in one column, a
+   state orb on each, one open at a time; the three steps are pills that
+   never wrap. These live here, with the view that imports them.
+   ============================================================================= */
+.cx {
+  max-width: 980px;
+  margin: 0 auto;
+}
+.cx-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-4);
+  margin-bottom: var(--s-5);
+}
+.cx-pill {
+  border-radius: 999px;
+  clip-path: none;
+  padding-inline: 18px;
+}
+.cx-glass,
+.cx-card {
+  border-radius: 20px;
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--agent) 6%, transparent),
+    color-mix(in srgb, var(--bg) 55%, transparent) 70%
+  );
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--agent) 16%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.cx-audit {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--s-3);
+  margin-bottom: var(--s-5);
+  animation: cx-in 0.5s var(--nu-ease, ease) both;
+}
+.cx-glass {
+  padding: 16px 20px;
+}
+.cx-glass h2 {
+  margin: 0 0 10px;
+  font: 600 var(--fs-1) / 1 var(--font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--agent-text);
+}
+.cx-row {
+  display: grid;
+  gap: 2px;
+  padding: 8px 0;
+  border-top: 1px solid color-mix(in srgb, var(--agent) 10%, transparent);
+  min-width: 0;
+}
+.cx-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.cx-card {
+  overflow: hidden;
+  transition:
+    box-shadow 0.35s var(--nu-ease, ease),
+    transform 0.35s var(--nu-ease, ease);
+  animation: cx-in 0.55s var(--nu-ease, ease) calc(var(--i, 0) * 60ms) both;
+}
+.cx-card:hover {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--agent) 32%, transparent),
+    0 0 32px -14px var(--agent);
+}
+.cx-card[data-open] {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--agent) 40%, transparent),
+    0 0 44px -16px var(--agent);
+}
+@keyframes cx-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+    filter: blur(6px);
+  }
+}
+.cx-card-head {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto 18px;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 16px 20px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.cx-card-head:focus-visible {
+  outline: 1px solid var(--agent-line);
+  outline-offset: -3px;
+  border-radius: 20px;
+}
+.cx-orb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.cx-orb[data-state="ok"] {
+  background: var(--ok);
+  box-shadow: 0 0 12px var(--ok);
+}
+.cx-orb[data-state="warn"] {
+  background: var(--warn);
+  box-shadow: 0 0 12px var(--warn);
+}
+.cx-orb[data-state="danger"] {
+  background: var(--danger);
+  box-shadow: 0 0 12px var(--danger);
+  animation: cx-pulse 1.6s ease-in-out infinite;
+}
+.cx-orb[data-state="off"] {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--text-faint);
+}
+@keyframes cx-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+.cx-id {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.cx-name {
+  font: 600 var(--fs-4) / 1.2 var(--font-display);
+  letter-spacing: 0.02em;
+}
+.cx-purpose {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+}
+.cx-state {
+  font-size: var(--fs-1);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.cx-card:has(.cx-orb[data-state="ok"]) .cx-state {
+  color: var(--ok);
+}
+.cx-chev {
+  width: 18px;
+  height: 18px;
+  color: var(--text-faint);
+  transition: transform 0.35s var(--nu-ease, ease);
+}
+.cx-card[data-open] .cx-chev {
+  transform: rotate(180deg);
+  color: var(--agent-text);
+}
+.cx-body {
+  display: grid;
+  gap: 14px;
+  padding: 0 20px 20px 50px;
+  animation: cx-open 0.45s var(--nu-ease, ease) both;
+}
+@keyframes cx-open {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+.cx-body > .cx-pill {
+  justify-self: start;
+}
+.cx-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cx-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font: 500 var(--fs-1) / 1.4 var(--font-mono);
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.cx-chip[data-tone="ok"] {
+  color: var(--ok);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 45%, transparent);
+}
+.cx-chip[data-tone="warn"] {
+  color: var(--warn);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 45%, transparent);
+}
+.cx-chip[data-tone="info"] {
+  color: var(--agent-text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--agent) 45%, transparent);
+}
+
+/* The wizard: three pills on a line, then the step. */
+.conn-wizard {
+  display: grid;
+  gap: var(--s-3);
+}
+.conn-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.conn-steps button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 6px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-2);
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  transition:
+    box-shadow 0.25s,
+    color 0.25s,
+    background 0.25s;
+}
+.conn-steps button:hover {
+  color: var(--text);
+}
+.conn-steps li.on button {
+  color: var(--agent-text);
+  background: color-mix(in srgb, var(--agent) 10%, transparent);
+  box-shadow:
+    inset 0 0 0 1px var(--agent),
+    0 0 18px -6px var(--agent);
+}
+.conn-steps li.done button {
+  color: var(--ok);
+}
+.conn-step-n {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px currentColor;
+  font-size: var(--fs-0);
+}
+.conn-step-n svg {
+  width: 12px;
+  height: 12px;
+}
+.conn-step-body {
+  display: grid;
+  gap: var(--s-2);
+  animation: cx-open 0.35s var(--nu-ease, ease) both;
+}
+.conn-step-body p {
+  margin: 0;
+}
+.conn-step-body .btn {
+  justify-self: start;
+  border-radius: 999px;
+  clip-path: none;
+}
+.conn-risks {
+  margin: 0;
+  padding-left: 18px;
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+}
+.conn-setup {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: var(--fs-2);
+}
+.conn-setup li {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.conn-result {
+  display: grid;
+  gap: 4px;
+}
+.conn-items {
+  margin: 0;
+  padding-left: 16px;
+  font-size: var(--fs-2);
+}
+@media (max-width: 760px) {
+  .cx-card-head {
+    grid-template-columns: 12px minmax(0, 1fr) 18px;
+  }
+  .cx-state {
+    display: none;
+  }
+  .cx-body {
+    padding-left: 20px;
+  }
+}

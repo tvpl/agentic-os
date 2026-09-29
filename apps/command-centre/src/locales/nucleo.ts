@@ -112,6 +112,10 @@ export const en = {
   "nucleo.core.chat": "Converse",
   "nucleo.core.hear": "Hear the day",
   "nucleo.core.resolve": "Resolve",
+  "concept.conn.open": "Open {name}",
+  "concept.conn.close": "Close {name}",
+  "concept.conn.discovered": "Found on this machine",
+  "concept.conn.recommend": "Worth connecting",
 } as const;
 
 export const ptBR = {
@@ -223,4 +227,8 @@ export const ptBR = {
   "nucleo.core.chat": "Conversar",
   "nucleo.core.hear": "Ouvir o dia",
   "nucleo.core.resolve": "Resolver",
+  "concept.conn.open": "Abrir {name}",
+  "concept.conn.close": "Fechar {name}",
+  "concept.conn.discovered": "Encontrados nesta máquina",
+  "concept.conn.recommend": "Vale conectar",
 } as const satisfies Record<keyof typeof en, string>;

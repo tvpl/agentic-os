@@ -65,7 +65,9 @@ export function ConnectorWizard({ connector }: { connector: Connector }) {
           <li key={n} className={n === step ? "on" : n < step ? "done" : ""}>
             <button type="button" onClick={() => setStep(n)}>
               <span className="conn-step-n">{n < step ? <Check aria-hidden /> : n}</span>
-              {t(n === 1 ? "backend.conn.step1" : n === 2 ? "backend.conn.step2" : "backend.conn.step3")}
+              <span className="conn-step-t">
+                {t(n === 1 ? "backend.conn.step1" : n === 2 ? "backend.conn.step2" : "backend.conn.step3")}
+              </span>
             </button>
           </li>
         ))}
