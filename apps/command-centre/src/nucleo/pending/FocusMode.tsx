@@ -38,12 +38,12 @@ import { failureFix } from "../../runs/failureFix";
 import { PROVIDER_LOGIN_COMMANDS } from "../../runs/authRecovery";
 import { useDesktopActions } from "../../desktop/actions";
 import { describeDecision, editPreview, previewLines } from "../../desktop/decision";
-import { CONSOLE_DRAFT_EVENT, readConsoleDraft, storeConsoleDraft } from "../../desktop/consoleDraft";
 import type { Pending } from "./usePending";
 import type { PendingItem, PendingKind } from "./model";
 import { describePending, readingFor } from "./describe";
 import Entity from "../entity/Entity";
 import QuestionCard from "../QuestionCard";
+import { askAbout, refWord, type Subject } from "../subject";
 
 const ICON: Record<PendingKind, ReactNode> = {
   question: <MessageCircleQuestion aria-hidden />,
@@ -55,17 +55,7 @@ const ICON: Record<PendingKind, ReactNode> = {
   notice: <Bell aria-hidden />,
 };
 
-/** Put a question for the agent on the voice line and hand the focus back to it. */
-export function askAgent(text: string) {
-  const draft = readConsoleDraft();
-  storeConsoleDraft({ ...draft, text });
-  window.dispatchEvent(new CustomEvent(CONSOLE_DRAFT_EVENT));
-  requestAnimationFrame(() => {
-    const input = document.querySelector<HTMLTextAreaElement>(".cons-input");
-    input?.focus();
-    input?.setSelectionRange(text.length, text.length);
-  });
-}
+export { askAgent } from "../subject";
 
 interface Act {
   key: string;
@@ -162,11 +152,12 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
 
   const acts = useMemo<Act[]>(() => {
     if (!sel) return [];
+    // The pendência becomes the subject: the line opens with its @reference.
     const ask = (text: string): Act => ({
       key: "ask",
       label: t("nucleo.pending.askWhy"),
       icon: <MessageCircleQuestion aria-hidden />,
-      run: () => leaveThen(() => askAgent(text)),
+      run: () => leaveThen(() => askAbout(subjectOf(sel, describePending(sel, t).title), text)),
     });
     switch (sel.kind) {
       case "question": {
@@ -490,6 +481,23 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
       </div>
     </div>
   );
+}
+
+/** A pendência as the subject of a question to the agent. */
+function subjectOf(item: PendingItem, title: string): Subject {
+  const source =
+    item.run?.id ??
+    item.routine?.id ??
+    item.approval?.id ??
+    item.notice?.id ??
+    item.provider?.snapshot.id ??
+    item.kind;
+  return {
+    id: `subject:${item.id}`,
+    kind: item.run ? "run" : "surface",
+    ref: refWord("pendencia", source),
+    title: `${title} (${item.id})`,
+  };
 }
 
 /** Everything needed to decide, per kind. The error, when there is one, is said once. */

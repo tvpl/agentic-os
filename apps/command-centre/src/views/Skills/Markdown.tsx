@@ -74,7 +74,14 @@ function renderBlock(b: Block, i: number): ReactNode {
         <Tag key={i}>
           {b.items.map((item, j) => (
             <li key={j} className={item.checked === null ? undefined : "task"}>
-              {item.checked !== null && <input type="checkbox" checked={item.checked} readOnly aria-label={item.checked ? "done" : "todo"} />}
+              {item.checked !== null && (
+                <input
+                  type="checkbox"
+                  checked={item.checked}
+                  readOnly
+                  aria-label={item.checked ? "done" : "todo"}
+                />
+              )}
               {item.label && <span className="apps-md-label">{item.label}:</span>}
               {renderInline(item.children, `l${i}-${j}`)}
             </li>
@@ -89,5 +96,7 @@ function renderBlock(b: Block, i: number): ReactNode {
 
 export default function Markdown({ source, className }: { source: string; className?: string }) {
   const blocks = parseMarkdown(source);
-  return <div className={["apps-md", className ?? ""].filter(Boolean).join(" ")}>{blocks.map(renderBlock)}</div>;
+  return (
+    <div className={["apps-md", className ?? ""].filter(Boolean).join(" ")}>{blocks.map(renderBlock)}</div>
+  );
 }

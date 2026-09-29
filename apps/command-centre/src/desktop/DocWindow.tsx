@@ -8,12 +8,14 @@
  * you are looking at is the thing you are talking about.
  */
 import { useEffect, useState } from "react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, MessageCircleQuestion } from "lucide-react";
 import { api, artifactRawUrl, isRawViewable, type MemoryPreview } from "../api";
 import { useT } from "../i18n";
 import { WidgetGate } from "./widgets/WidgetGate";
 import { docPath } from "./docIds";
 import { useDesktopActions } from "./actions";
+import { getPanels } from "./panelKinds";
+import { askAgent } from "../nucleo/subject";
 import type { WidgetProps } from "./widgetTypes";
 
 const PREVIEW_LINES = 400;
@@ -73,6 +75,17 @@ export default function DocWindow({ instanceId }: WidgetProps) {
         )}
       </WidgetGate>
       <div className="doc-foot">
+        <button
+          type="button"
+          className="btn sm primary"
+          onClick={() => {
+            // The lâmina is already referenceable: the line opens with its @name.
+            const panel = getPanels().find((p) => p.id === instanceId);
+            if (panel) askAgent(`@${panel.ref} `);
+          }}
+        >
+          <MessageCircleQuestion aria-hidden /> {t("concept.runs.ask")}
+        </button>
         <button
           type="button"
           className="btn sm ghost"

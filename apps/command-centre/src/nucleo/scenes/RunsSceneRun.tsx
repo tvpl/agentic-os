@@ -20,7 +20,7 @@ import { narrate } from "../../runs/humanize";
 import { formatTokens, formatUsd, totalTokens } from "../../runs/usage";
 import { isNotFound, isRunActive, isRunFailed, useRunQuery, useRunStream } from "../../runs/useRunStream";
 import RunDetail from "../../runs/RunDetail";
-import { askAgent } from "../pending/FocusMode";
+import { askAbout, refWord } from "../subject";
 import { compactSteps, extractSteps, isGap, resultSummary } from "./runsTrace";
 import { laneOf, runLabel, runStart, toneOf } from "./runsRiver";
 import { formatWhen } from "./runsFormat";
@@ -280,7 +280,17 @@ export default function RunsRun({
               <button
                 type="button"
                 className="nu-act"
-                onClick={() => askAgent(t("concept.runs.askPrompt", { what: label }))}
+                onClick={() =>
+                  askAbout(
+                    {
+                      id: `subject:run:${run.id}`,
+                      kind: "run",
+                      ref: refWord("run", run.id.slice(0, 8)),
+                      title: `${label} · ${statusWord} (run ${run.id})`,
+                    },
+                    t("concept.runs.askPrompt", { what: label }),
+                  )
+                }
               >
                 <MessageCircleQuestion aria-hidden />
                 <span>{t("concept.runs.ask")}</span>

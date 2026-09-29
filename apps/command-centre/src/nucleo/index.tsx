@@ -87,6 +87,7 @@ import Lamina, { type LaminaSpec } from "./Lamina";
 import { SCENE_VIEWS } from "./sceneViews";
 import "./nucleo.css";
 import "./luz.css";
+import { setSubject, useSubject } from "./subject";
 
 /** The scenes that take the shared language (luz.css); the Núcleo and the Brain draw their own worlds. */
 const LUZ = (id: SceneId) => (id === "nucleo" || id === "brain" ? "" : " luz");
@@ -290,6 +291,9 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
   );
 
   /* ---- what the voice line can point at --------------------------------- */
+  const subject = useSubject();
+  // A subject belongs to the scene it was asked from.
+  useEffect(() => setSubject(null), [scene.id]);
   const openPanels = useMemo<OpenPanel[]>(() => {
     const out: OpenPanel[] = [];
     for (const spec of specs) {
@@ -307,6 +311,16 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
       });
     }
     out.reverse();
+    // The item being asked about, when it is not already on screen as a lâmina.
+    if (subject && !out.some((p) => p.id === subject.id))
+      out.unshift({
+        id: subject.id,
+        kind: subject.kind,
+        ref: subject.ref,
+        title: subject.title,
+        path: subject.path,
+        minimized: false,
+      });
     if (scene.app) {
       const def = APPS[scene.app];
       out.push({
@@ -318,7 +332,7 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
       });
     }
     return out;
-  }, [specs, exiting, scene.app, runs.data, t]);
+  }, [specs, exiting, scene.app, runs.data, t, subject]);
   useEffect(() => {
     publishPanels(openPanels);
     return () => publishPanels([]);

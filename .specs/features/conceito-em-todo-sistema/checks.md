@@ -170,6 +170,7 @@ Status: closed
 
 **C36** - "Perguntar ao agente" num foco abre a conversa com o `@ref` do item na linha, em pendência, execução, habilidade, conector e artefato (AC 36)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C36 ask the agent carries the item"`
+Status: closed
 
 ## Coverage
 

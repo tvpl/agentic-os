@@ -17,7 +17,15 @@ import {
   Scissors,
   Settings2,
 } from "lucide-react";
-import { api, getToken, type ApprovalRecord, type ProviderId, type ProviderSnapshot, type Skill, type SkillResource } from "../../api";
+import {
+  api,
+  getToken,
+  type ApprovalRecord,
+  type ProviderId,
+  type ProviderSnapshot,
+  type Skill,
+  type SkillResource,
+} from "../../api";
 import { qk, useApiQuery, useInvalidate } from "../../queries";
 import { useLang, useT } from "../../i18n";
 import { localizeSkill } from "./localize";
@@ -27,7 +35,13 @@ import { ModelEffortMatrix, skillEffort, type Effort } from "../../desktop/Skill
 import { ApprovalCard } from "../../runs/ApprovalCards";
 import { copyText, errorMessage } from "../shared";
 import Markdown from "./Markdown";
-import { canPreviewInline, groupByFolder, resourceUrl, resourcesOf, MAX_INLINE_TEXT_BYTES } from "./resources";
+import {
+  canPreviewInline,
+  groupByFolder,
+  resourceUrl,
+  resourcesOf,
+  MAX_INLINE_TEXT_BYTES,
+} from "./resources";
 import { clearDraft, readDraft, writeDraft } from "./runDraft";
 import { buildSplitPrompt } from "./splitPrompt";
 import "../apps.css";
@@ -61,8 +75,12 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
     const fromDraft = enabledProviders.find((p) => p.id === draft?.provider);
     return fromDraft?.id ?? defaultProvider?.id;
   });
-  const [model, setModel] = useState<string | null>(() => (draft?.model !== undefined ? draft.model : skill.recommendedModel));
-  const [effort, setEffort] = useState<Effort>(() => (isEffort(draft?.effort) ? draft.effort : skillEffort(skill)));
+  const [model, setModel] = useState<string | null>(() =>
+    draft?.model !== undefined ? draft.model : skill.recommendedModel,
+  );
+  const [effort, setEffort] = useState<Effort>(() =>
+    isEffort(draft?.effort) ? draft.effort : skillEffort(skill),
+  );
   const [inputs, setInputs] = useState<Record<string, string>>(() => draft?.inputs ?? {});
   const [pending, setPending] = useState<ApprovalRecord | null>(null);
 
@@ -78,7 +96,12 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
     mutationFn: () => api.post(`/api/skills/${encodeURIComponent(skill.slug)}/toggle`),
     onSuccess: async () => {
       await invalidate(qk.skills);
-      toast(skill.enabled ? t("skills.pausedToast", { name: skillName }) : t("skills.enabledToast", { name: skillName }), "ok");
+      toast(
+        skill.enabled
+          ? t("skills.pausedToast", { name: skillName })
+          : t("skills.enabledToast", { name: skillName }),
+        "ok",
+      );
     },
     onError: (err) => toast(errorMessage(err), "danger"),
   });
@@ -103,7 +126,11 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
     onError: (err) => toast(errorMessage(err), "danger"),
   });
 
-  const blocked: "skill" | "provider" | null = !skill.enabled ? "skill" : enabledProviders.length === 0 ? "provider" : null;
+  const blocked: "skill" | "provider" | null = !skill.enabled
+    ? "skill"
+    : enabledProviders.length === 0
+      ? "provider"
+      : null;
   const missingRequired = skill.inputs.some((i) => i.required && !(inputs[i.name] ?? "").trim());
   const canRun = blocked === null && Boolean(provider) && !missingRequired && !run.isPending;
 
@@ -173,7 +200,11 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
           </div>
         </div>
         <div className="head-actions">
-          <Button icon={skill.enabled ? <Pause aria-hidden /> : <Play aria-hidden />} loading={toggle.isPending} onClick={() => toggle.mutate()}>
+          <Button
+            icon={skill.enabled ? <Pause aria-hidden /> : <Play aria-hidden />}
+            loading={toggle.isPending}
+            onClick={() => toggle.mutate()}
+          >
             {skill.enabled ? t("skills.pause") : t("skills.enable")}
           </Button>
         </div>
@@ -189,7 +220,13 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
                 <div>
                   <strong>{t("skills.pausedTitle")}</strong>
                   <p>{t("skills.pausedBody")}</p>
-                  <Button size="sm" variant="primary" icon={<Play aria-hidden />} loading={toggle.isPending} onClick={() => toggle.mutate()}>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    icon={<Play aria-hidden />}
+                    loading={toggle.isPending}
+                    onClick={() => toggle.mutate()}
+                  >
                     {t("skills.enable")}
                   </Button>
                 </div>
@@ -210,7 +247,12 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
             {blocked === null && (
               <>
                 <Field label={t("skills.provider")} htmlFor="sk-provider">
-                  <select id="sk-provider" className="input" value={provider} onChange={(e) => setProvider(e.target.value as ProviderId)}>
+                  <select
+                    id="sk-provider"
+                    className="input"
+                    value={provider}
+                    onChange={(e) => setProvider(e.target.value as ProviderId)}
+                  >
                     {enabledProviders.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.id}
@@ -235,7 +277,11 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
                         }}
                       />
                     </div>
-                    {skill.recommendedModel && <span className="hint">{t("skills.recommended", { value: skill.recommendedModel })}</span>}
+                    {skill.recommendedModel && (
+                      <span className="hint">
+                        {t("skills.recommended", { value: skill.recommendedModel })}
+                      </span>
+                    )}
                   </div>
                 )}
                 <Field label={t("apps.skills.customModel")} htmlFor="sk-model">
@@ -262,11 +308,29 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
                     </>
                   );
                   return (
-                    <Field key={input.name} label={label} htmlFor={id} hint={input.required ? t("skills.required") : undefined}>
+                    <Field
+                      key={input.name}
+                      label={label}
+                      htmlFor={id}
+                      hint={input.required ? t("skills.required") : undefined}
+                    >
                       {input.type === "textarea" ? (
-                        <textarea id={id} className="input" placeholder={input.placeholder} value={value} onChange={(e) => set(e.target.value)} required={input.required} />
+                        <textarea
+                          id={id}
+                          className="input"
+                          placeholder={input.placeholder}
+                          value={value}
+                          onChange={(e) => set(e.target.value)}
+                          required={input.required}
+                        />
                       ) : input.type === "select" ? (
-                        <select id={id} className="input" value={value} onChange={(e) => set(e.target.value)} required={input.required}>
+                        <select
+                          id={id}
+                          className="input"
+                          value={value}
+                          onChange={(e) => set(e.target.value)}
+                          required={input.required}
+                        >
                           <option value="">—</option>
                           {(input.options ?? []).map((o) => (
                             <option key={o} value={o}>
@@ -275,13 +339,26 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
                           ))}
                         </select>
                       ) : (
-                        <input id={id} className="input" placeholder={input.placeholder} value={value} onChange={(e) => set(e.target.value)} required={input.required} />
+                        <input
+                          id={id}
+                          className="input"
+                          placeholder={input.placeholder}
+                          value={value}
+                          onChange={(e) => set(e.target.value)}
+                          required={input.required}
+                        />
                       )}
                     </Field>
                   );
                 })}
                 <div className="apps-run-actions">
-                  <Button variant="primary" icon={<Play aria-hidden />} loading={run.isPending} disabled={!provider || missingRequired} onClick={() => run.mutate()}>
+                  <Button
+                    variant="primary"
+                    icon={<Play aria-hidden />}
+                    loading={run.isPending}
+                    disabled={!provider || missingRequired}
+                    onClick={() => run.mutate()}
+                  >
                     {t("skills.runNow")}
                   </Button>
                   {skill.inputs.length > 0 && (
@@ -363,7 +440,12 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
                 { id: "notes", label: t("skills.notes.tab") },
               ]}
             />
-            <div className="tab-panel" role="tabpanel" id={`skill-panes-panel-${pane}`} aria-labelledby={`skill-panes-tab-${pane}`}>
+            <div
+              className="tab-panel"
+              role="tabpanel"
+              id={`skill-panes-panel-${pane}`}
+              aria-labelledby={`skill-panes-tab-${pane}`}
+            >
               {pane === "body" ? (
                 <>
                   <div className="card-head-row">
@@ -380,7 +462,11 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
                     <div className="head-actions">
                       {view === "source" && (
                         <label className="check">
-                          <input type="checkbox" checked={lineNumbers} onChange={(e) => setLineNumbers(e.target.checked)} />
+                          <input
+                            type="checkbox"
+                            checked={lineNumbers}
+                            onChange={(e) => setLineNumbers(e.target.checked)}
+                          />
                           {t("skills.lineNumbers")}
                         </label>
                       )}
@@ -390,7 +476,12 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
                     </div>
                   </div>
                   {view === "source" ? (
-                    <pre className={`skill-body${lineNumbers ? " numbered" : ""}`} tabIndex={0} role="region" aria-label="SKILL.md">
+                    <pre
+                      className={`skill-body${lineNumbers ? " numbered" : ""}`}
+                      tabIndex={0}
+                      role="region"
+                      aria-label="SKILL.md"
+                    >
                       <code>
                         {lines.map((line, i) => (
                           <span className="line" key={i}>
@@ -405,7 +496,14 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
                   )}
                   <p className="mono file-path" title={skill.skillFile}>
                     {skill.skillFile}
-                    <Button size="sm" variant="ghost" icon={<Copy aria-hidden />} aria-label={t("brain.copyPath")} title={t("brain.copyPath")} onClick={() => void copyPath()} />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      icon={<Copy aria-hidden />}
+                      aria-label={t("brain.copyPath")}
+                      title={t("brain.copyPath")}
+                      onClick={() => void copyPath()}
+                    />
                   </p>
                 </>
               ) : pane === "resources" ? (
@@ -429,10 +527,14 @@ function NotesPane({ slug }: { slug: string }) {
   const toast = useToast();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const notes = useApiQuery<{ notes: string; path: string; archived: number }>(qk.skillNotes(slug), `/api/skills/${encodeURIComponent(slug)}/notes`);
+  const notes = useApiQuery<{ notes: string; path: string; archived: number }>(
+    qk.skillNotes(slug),
+    `/api/skills/${encodeURIComponent(slug)}/notes`,
+  );
   const [text, setText] = useState("");
   const add = useMutation({
-    mutationFn: (body: string) => api.post<{ notes: string }>(`/api/skills/${encodeURIComponent(slug)}/notes`, { text: body }),
+    mutationFn: (body: string) =>
+      api.post<{ notes: string }>(`/api/skills/${encodeURIComponent(slug)}/notes`, { text: body }),
     onSuccess: () => {
       setText("");
       qc.invalidateQueries({ queryKey: qk.skillNotes(slug) }).catch(() => undefined);
@@ -441,11 +543,18 @@ function NotesPane({ slug }: { slug: string }) {
   });
   // A write-mode run that folds recurring notes into SKILL.md (parked for approval under review profiles).
   const promote = useMutation({
-    mutationFn: () => api.post<{ runId?: string; status?: string; run?: { id: string; status: string } }>(`/api/skills/${encodeURIComponent(slug)}/notes/promote`, {}),
+    mutationFn: () =>
+      api.post<{ runId?: string; status?: string; run?: { id: string; status: string } }>(
+        `/api/skills/${encodeURIComponent(slug)}/notes/promote`,
+        {},
+      ),
     onSuccess: (res) => {
       const status = res.status ?? res.run?.status ?? "";
       const id = res.runId ?? res.run?.id;
-      toast(status === "waiting_approval" ? t("skills.notes.promoteParked") : t("skills.notes.promoteStarted"), "ok");
+      toast(
+        status === "waiting_approval" ? t("skills.notes.promoteParked") : t("skills.notes.promoteStarted"),
+        "ok",
+      );
       qc.invalidateQueries({ queryKey: ["runs"] }).catch(() => undefined);
       if (id) navigate(`/runs/${id}`);
     },
@@ -456,13 +565,33 @@ function NotesPane({ slug }: { slug: string }) {
   return (
     <div className="skill-notes">
       {body.trim() ? <Markdown source={body} /> : <p className="widget-muted">{t("skills.notes.empty")}</p>}
-      {(notes.data?.archived ?? 0) > 0 && <p className="hint">{t("skills.notes.archived", { n: notes.data!.archived })}</p>}
-      <textarea rows={2} value={text} maxLength={4000} placeholder={t("skills.notes.placeholder")} onChange={(e) => setText(e.target.value)} />
+      {(notes.data?.archived ?? 0) > 0 && (
+        <p className="hint">{t("skills.notes.archived", { n: notes.data!.archived })}</p>
+      )}
+      <textarea
+        rows={2}
+        value={text}
+        maxLength={4000}
+        placeholder={t("skills.notes.placeholder")}
+        onChange={(e) => setText(e.target.value)}
+      />
       <div className="head-actions">
-        <Button size="sm" variant="primary" disabled={!text.trim() || add.isPending} onClick={() => add.mutate(text)}>
+        <Button
+          size="sm"
+          variant="primary"
+          disabled={!text.trim() || add.isPending}
+          onClick={() => add.mutate(text)}
+        >
           {t("skills.notes.add")}
         </Button>
-        <Button size="sm" variant="outline" disabled={!hasEntries || promote.isPending} loading={promote.isPending} title={t("skills.notes.promoteHint")} onClick={() => promote.mutate()}>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!hasEntries || promote.isPending}
+          loading={promote.isPending}
+          title={t("skills.notes.promoteHint")}
+          onClick={() => promote.mutate()}
+        >
           {t("skills.notes.promote")}
         </Button>
       </div>
@@ -499,7 +628,13 @@ function ResourcesPane({ slug, resources }: { slug: string; resources: SkillReso
   const groups = useMemo(() => groupByFolder(resources), [resources]);
 
   if (resources.length === 0) {
-    return <EmptyState icon={<FileText aria-hidden />} title={t("apps.skills.noResources")} body={t("apps.skills.noResourcesBody")} />;
+    return (
+      <EmptyState
+        icon={<FileText aria-hidden />}
+        title={t("apps.skills.noResources")}
+        body={t("apps.skills.noResourcesBody")}
+      />
+    );
   }
   return (
     <div className="stack">
@@ -510,7 +645,12 @@ function ResourcesPane({ slug, resources }: { slug: string; resources: SkillReso
           <ul className="apps-res-list">
             {group.items.map((r) => (
               <li key={r.rel}>
-                <button type="button" className="apps-res-row" aria-pressed={r.rel === selected} onClick={() => setSelected(r.rel)}>
+                <button
+                  type="button"
+                  className="apps-res-row"
+                  aria-pressed={r.rel === selected}
+                  onClick={() => setSelected(r.rel)}
+                >
                   {kindIcon(r.kind)}
                   <span className="rel" title={r.rel}>
                     {r.rel}
@@ -543,7 +683,9 @@ function ResourcePreview({ slug, resource }: { slug: string; resource: SkillReso
         </a>
       </div>
       {tooBig ? (
-        <div className="apps-res-fallback">{t("apps.skills.previewTooLarge", { size: formatBytes(resource.size) })}</div>
+        <div className="apps-res-fallback">
+          {t("apps.skills.previewTooLarge", { size: formatBytes(resource.size) })}
+        </div>
       ) : !canPreviewInline(resource) ? (
         <div className="apps-res-fallback">{t("apps.skills.noPreview")}</div>
       ) : resource.kind === "markdown" ? (
@@ -551,7 +693,13 @@ function ResourcePreview({ slug, resource }: { slug: string; resource: SkillReso
       ) : resource.kind === "image" ? (
         <img className="apps-res-img" src={href} alt={resource.name} />
       ) : (
-        <iframe className="apps-res-frame" src={href} sandbox="" title={`${resource.rel} — ${t("apps.skills.htmlPreview")}`} loading="lazy" />
+        <iframe
+          className="apps-res-frame"
+          src={href}
+          sandbox=""
+          title={`${resource.rel} — ${t("apps.skills.htmlPreview")}`}
+          loading="lazy"
+        />
       )}
     </div>
   );
@@ -567,6 +715,7 @@ function MarkdownResource({ slug, rel }: { slug: string; rel: string }) {
   }, [slug, rel]);
   const query = useQuery({ queryKey: ["skill-resource", slug, rel], queryFn: fetchText, staleTime: 30_000 });
   if (query.isPending) return <div className="apps-res-fallback">{t("common.loading")}</div>;
-  if (query.error || typeof query.data !== "string") return <div className="apps-res-fallback">{t("apps.skills.previewFailed")}</div>;
+  if (query.error || typeof query.data !== "string")
+    return <div className="apps-res-fallback">{t("apps.skills.previewFailed")}</div>;
   return <Markdown source={query.data} />;
 }

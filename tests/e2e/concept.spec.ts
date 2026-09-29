@@ -897,3 +897,69 @@ test("C35 an empty filter offers to clear", async ({ page }) => {
     await expect(s.locator("input[type='search']")).toHaveValue("");
   }
 });
+
+/* ---- S7: the agent takes any focused item -------------------------------------------------- */
+
+/** The voice line after "ask the agent": open, with an @reference to the item in it. */
+async function askedAbout(page: Page, about: RegExp) {
+  await expect(page.getByTestId("voice")).toHaveAttribute("data-open", "");
+  const line = page.locator(".cons-input");
+  await expect(line).toHaveValue(/@\S+/);
+  const ref = /@(\S+)/.exec(await line.inputValue())![1]!;
+  expect(ref, "the reference names the item").toMatch(about);
+  // The reference resolves: the line's context offers it.
+  await expect(page.locator(".cons-tray, #cons-side").getByText(`@${ref}`).first()).toBeAttached();
+}
+
+test("C36 ask the agent carries the item", async ({ page, request }) => {
+  // A pendência: a failed run in the Resolver.
+  await seedPending(page, { runs: [failedRun("f-ask")] });
+  let focus = await openResolver(page);
+  await focus
+    .locator("section.nu-focus-item")
+    .getByRole("button", { name: /ask the agent|perguntar ao agente/i })
+    .click();
+  await askedAbout(page, /f-ask/);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+
+  // A run in focus.
+  await openRuns(page, request);
+  await chooseRun(page);
+  await runView(page)
+    .getByRole("button", { name: /ask the agent|perguntar ao agente/i })
+    .click();
+  await askedAbout(page, new RegExp(RUN_ID.slice(0, 6)));
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+
+  // A skill, from its details.
+  await openSkills(page);
+  const slug = ((await page.locator(".sks-focus .sks-cmd").textContent()) ?? "").replace("/", "").trim();
+  await page
+    .locator(".sks-focus")
+    .getByRole("button", { name: /^(details|detalhes)$/i })
+    .click();
+  await page
+    .locator(".sks-read")
+    .getByRole("button", { name: /ask the agent|perguntar ao agente/i })
+    .click();
+  await askedAbout(page, new RegExp(slug));
+
+  // A connector, opened.
+  const cards = await openConnectors(page);
+  await cards.first().locator(".cx-card-head").click();
+  const id = (await cards.first().getAttribute("data-id")) ?? "";
+  await cards
+    .first()
+    .getByRole("button", { name: /ask the agent|perguntar ao agente/i })
+    .click();
+  await askedAbout(page, new RegExp(id.split(/[^a-z0-9]/i)[0]!, "i"));
+
+  // An artifact, from its lâmina.
+  await seedArtifacts(page);
+  await openShell(page, "/artifacts");
+  await arrived(page, "artifacts");
+  await currentScene(page).locator(".art-card").first().click();
+  focus = page.locator('article.nu-lamina[data-lamina^="doc:"]');
+  await focus.getByRole("button", { name: /ask the agent|perguntar ao agente/i }).click();
+  await askedAbout(page, /concept/);
+});

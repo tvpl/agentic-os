@@ -4,11 +4,20 @@
  * you can do with it. No card: it stands in the middle of the ring.
  */
 import type { MouseEvent } from "react";
-import { Info, MessageSquarePlus, PanelRightOpen, Play, SlidersHorizontal, Star } from "lucide-react";
+import {
+  Info,
+  MessageCircleQuestion,
+  MessageSquarePlus,
+  PanelRightOpen,
+  Play,
+  SlidersHorizontal,
+  Star,
+} from "lucide-react";
 import type { RunRecord } from "../../api";
 import { useLocale, useT, type TKey } from "../../i18n";
 import { timeAgo } from "../../components/ui";
 import type { SkillEntry } from "./skillsEntries";
+import { askAbout, refWord } from "../subject";
 
 export interface FocusActions {
   onRun: () => void;
@@ -173,6 +182,20 @@ export function SkillReadings({
   const s = entry.skill;
   return (
     <aside className="sks-read" aria-label={entry.name}>
+      <button
+        type="button"
+        className="sks-read-ask"
+        onClick={() =>
+          askAbout({
+            id: `subject:skill:${s.slug}`,
+            kind: "surface",
+            ref: refWord("skill", s.slug),
+            title: `${entry.name} (skill /${s.slug})`,
+          })
+        }
+      >
+        <MessageCircleQuestion aria-hidden /> {t("concept.runs.ask")}
+      </button>
       <p className="k">{t("scene.skills.history")}</p>
       {runs.length === 0 ? (
         <p className="v faint">{t("desktop.deck.neverRan")}</p>

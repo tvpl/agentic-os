@@ -72,5 +72,10 @@ export function clearDraft(slug: string, storage?: StorageLike): void {
 
 export function isEmptyDraft(d: RunDraft): boolean {
   const hasInput = Object.values(d.inputs).some((v) => v.trim() !== "");
-  return !hasInput && d.provider === undefined && (d.model === undefined || d.model === null || d.model === "") && d.effort === undefined;
+  return (
+    !hasInput &&
+    d.provider === undefined &&
+    (d.model === undefined || d.model === null || d.model === "") &&
+    d.effort === undefined
+  );
 }

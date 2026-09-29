@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from "react";
-import { ChevronDown, Plug, Search, ShieldCheck } from "lucide-react";
+import { ChevronDown, MessageCircleQuestion, Plug, Search, ShieldCheck } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ConnectorWizard, connectorStateLabel } from "./ConnectorWizard";
 import { api, type Connector } from "../api";
@@ -9,6 +9,7 @@ import { ErrorBox, Skeleton, useToast } from "../components/ui";
 import { Button, EmptyState } from "../components/primitives";
 import { useConfirm } from "../hooks/useConfirm";
 import { errorMessage, isOffline } from "./shared";
+import { askAbout, refWord } from "../nucleo/subject";
 import "./backend.css";
 
 interface AuditReport {
@@ -157,6 +158,7 @@ export default function Connectors() {
                 key={c.id}
                 className="cx-card"
                 data-testid="connector-card"
+                data-id={c.id}
                 data-open={isOpen ? "" : undefined}
                 style={{ "--i": i } as CSSProperties}
               >
@@ -190,18 +192,36 @@ export default function Connectors() {
                       </span>
                     </div>
                     <ConnectorWizard connector={c} />
-                    {!c.writeEnabled && c.writeOperations.length > 0 && (
+                    <div className="cx-acts">
                       <Button
                         size="sm"
-                        variant="outline"
+                        variant="ghost"
                         className="cx-pill"
-                        icon={<ShieldCheck aria-hidden />}
-                        onClick={() => void onRequestWrite(c)}
-                        loading={requestWrite.isPending && requestWrite.variables?.id === c.id}
+                        icon={<MessageCircleQuestion aria-hidden />}
+                        onClick={() =>
+                          askAbout({
+                            id: `subject:connector:${c.id}`,
+                            kind: "surface",
+                            ref: refWord("conector", c.id),
+                            title: `${c.name} (connector ${c.id}, ${connectorStateLabel(c, t, locale)})`,
+                          })
+                        }
                       >
-                        {t("conn.requestWrite")}
+                        {t("concept.runs.ask")}
                       </Button>
-                    )}
+                      {!c.writeEnabled && c.writeOperations.length > 0 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="cx-pill"
+                          icon={<ShieldCheck aria-hidden />}
+                          onClick={() => void onRequestWrite(c)}
+                          loading={requestWrite.isPending && requestWrite.variables?.id === c.id}
+                        >
+                          {t("conn.requestWrite")}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 )}
               </li>

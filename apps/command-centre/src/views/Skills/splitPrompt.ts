@@ -23,10 +23,16 @@ export function sectionHeadings(body: string): string[] {
   return out;
 }
 
-export function buildSplitPrompt(skill: Pick<Skill, "name" | "slug" | "skillFile" | "bodyLineCount" | "body" | "resources">): string {
+export function buildSplitPrompt(
+  skill: Pick<Skill, "name" | "slug" | "skillFile" | "bodyLineCount" | "body" | "resources">,
+): string {
   const headings = sectionHeadings(skill.body);
-  const existing = skill.resources.length > 0 ? skill.resources.map((r) => `  - ${r}`).join("\n") : "  (none yet)";
-  const sections = headings.length > 0 ? headings.map((h) => `  - ${h}`).join("\n") : "  (no headings found — split by topic)";
+  const existing =
+    skill.resources.length > 0 ? skill.resources.map((r) => `  - ${r}`).join("\n") : "  (none yet)";
+  const sections =
+    headings.length > 0
+      ? headings.map((h) => `  - ${h}`).join("\n")
+      : "  (no headings found — split by topic)";
   return [
     `Split the MordomoOS skill "${skill.name}" (/${skill.slug}) into a short router plus reference files.`,
     ``,
