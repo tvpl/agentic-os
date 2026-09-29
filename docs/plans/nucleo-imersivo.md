@@ -142,3 +142,25 @@ canto superior esquerdo; apps e módulos na lateral; Cérebro com zoom, sinapses
   linhas de queda), rótulos que não colidem nem crescem além de 15 px,
   legendas ao passar o mouse (estrela, ligação, área), bússola e ajuda de
   navegação. Corrigido o canvas medido no meio do zoom da viagem.
+
+## Rodada 5 — o conceito em todo o sistema (2026-09-29)
+
+Feita com a skill tlc-spec-lean: plano, 36 verificações com prova e um
+verificador independente (aprovado na 3ª rodada). Artefatos em
+`.specs/features/conceito-em-todo-sistema/`.
+
+- **Conectores**: cartões de vidro, um aberto por vez; o assistente de etapas
+  voltou a ter estilo (o CSS dele não era carregado pela tela).
+- **Resolver**: um cartão por vez com a leitura do agente primeiro; cada
+  causa uma vez (falhas dentro da rotina, avisos iguais com "×N"); avisos
+  quietos num histórico recolhido; resolver não fecha, o próximo vem.
+- **Execuções**: visão geral (o rio) ou uma execução (Resumo, Passos, Log),
+  nunca as duas; o erro uma vez por seção; rótulos do rio sem sobreposição.
+- **Linguagem Luz** (`nucleo/luz.css`): pílulas, vidro, diálogos como folha
+  sobre o véu da conversa, em toda cena menos Núcleo e Cérebro. O build
+  descartava `backdrop-filter` quando havia `-webkit-` escrito à mão: nunca
+  escrever o prefixo, o minificador o gera.
+- **Habilidades**: uma barra acima do anel e um "+"; detalhes sob demanda;
+  editor e marketplace como folha.
+- **Galerias**: uma busca, chips, item abre como lâmina nascendo do cartão.
+- **Perguntar ao agente** em todo foco, com o `@ref` do item (`nucleo/subject.ts`).
