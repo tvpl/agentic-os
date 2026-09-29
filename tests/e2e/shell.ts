@@ -69,6 +69,9 @@ export async function openVoiceControls(page: Page): Promise<Locator> {
   const side = page.locator("#cons-side");
   if (await side.isHidden()) await page.locator(".cons-more").click();
   await expect(side).toBeVisible();
+  // Using the line's tools raises the conversation (once the press is over): wait
+  // for it, so a later fold does not race the rise.
+  await expect(voiceSheet(page)).toHaveAttribute("data-open", "");
   return side;
 }
 

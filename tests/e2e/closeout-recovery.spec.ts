@@ -62,12 +62,13 @@ test("removing a selected source preserves the classic map's zoom and offers rec
 
 test("a low-height modal keeps close and submit reachable with keyboard", async ({ page }) => {
   await openShell(page, "/skills", { width: 720, height: 450 });
-  await page
-    .getByRole("button", { name: /new skill/i })
-    .first()
-    .click();
+  // "New skill" lives under the scene's + (conceito em todo o sistema, AC 23).
+  await page.getByTestId("skills-more").click();
+  await page.getByRole("menuitem", { name: /new skill/i }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
+  // Contrast is read once the sheet has risen: mid-entrance its text is still fading in.
+  await dialog.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
   const result = await new AxeBuilder({ page }).include('[role="dialog"]').analyze();
   expect(result.violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
   for (let i = 0; i < 12; i++) {

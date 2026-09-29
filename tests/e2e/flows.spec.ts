@@ -209,10 +209,8 @@ test("the marketplace installs a verified skill from a local registry", async ({
   await request.delete(`${BASE}/api/skills/e2e-hello`, { headers: headers() }).catch(() => undefined);
 
   const errors = await open(page, "/#/skills");
-  await page
-    .getByRole("button", { name: /marketplace/i })
-    .first()
-    .click();
+  await page.getByTestId("skills-more").click();
+  await page.getByRole("menuitem", { name: /marketplace/i }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   const row = dialog.locator(".market-list li", { hasText: "E2E Hello" });

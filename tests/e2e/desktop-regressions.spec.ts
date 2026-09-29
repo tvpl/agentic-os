@@ -252,6 +252,8 @@ test("Portuguese notification opens its destination, not just its read state", a
   await openShell(page);
   // Notices live in the pendências, said in the UI's language.
   const focus = await openPendingFocus(page);
+  // A quiet notice waits in the folded history (conceito em todo o sistema, AC 8).
+  await focus.locator("details.nu-focus-history summary").click();
   await focus.locator("nav.nu-focus-queue button", { hasText: "Indexação concluída" }).click();
   const item = focus.locator("section.nu-focus-item");
   await expect(item).toContainText("Indexação concluída");

@@ -136,6 +136,7 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
   const [dialog, setDialog] = useState(false);
   const dialogRef = useRef(dialog);
   dialogRef.current = dialog;
+  const foldedAt = useRef(0);
   const pressing = useRef(false);
   const scene = sceneForPath(location.pathname);
   type Mode = "zoom" | "home";
@@ -745,6 +746,7 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
                 className="nu-dialog-veil"
                 aria-hidden
                 onClick={() => {
+                  foldedAt.current = Date.now();
                   setDialog(false);
                   (document.activeElement as HTMLElement | null)?.blur();
                 }}
@@ -772,7 +774,9 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
                 );
               }}
               onFocusCapture={() => {
-                if (!pressing.current) setDialog(true);
+                // A focus that arrives just after folding is a late echo (a tool that
+                // focused itself on a timer), not a wish to talk: the fold stands.
+                if (!pressing.current && Date.now() - foldedAt.current > 400) setDialog(true);
               }}
             >
               {dialog && (
@@ -787,6 +791,7 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
                     aria-label={t("nucleo.dialog.close")}
                     title={`${t("nucleo.dialog.close")} · Esc`}
                     onClick={() => {
+                      foldedAt.current = Date.now();
                       setDialog(false);
                       (document.activeElement as HTMLElement | null)?.blur();
                     }}
