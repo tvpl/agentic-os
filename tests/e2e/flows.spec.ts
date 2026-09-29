@@ -129,7 +129,8 @@ test("a tool prompt mid-run is approved from the run page", async ({ page, reque
     (b) => (b as { status: string }).status === "approved",
     10_000,
   );
-  await expect(trace.locator(".run-title .badge")).toHaveText(/done|conclu/i, { timeout: 25_000 });
+  // The run's state is the scene's own head (the log below it starts where the record does).
+  await expect(page.locator(".rs-run .rs-pill")).toHaveText(/done|conclu/i, { timeout: 25_000 });
   expect(errors, errors.join("\n")).toEqual([]);
 });
 

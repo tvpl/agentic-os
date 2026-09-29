@@ -23,7 +23,7 @@ Status: closed
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C2 no native select in the gallery, connector and skill scenes"`
 Status: closed
 
-**C3** - Um diálogo aberto no shell sobe como folha sobre o véu `.nu-dialog-veil`, com animação de entrada ≤ 450 ms (AC 3)
+**C3** - Um diálogo aberto no shell sobe como folha de vidro sobre um véu igual ao da conversa (`.nu-dialog-veil`: mesmo desfoque e mesmo brilho), com animação de entrada ≤ 450 ms (AC 3)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C3 a dialog rises as a sheet over the veil"`
 Status: closed
 
@@ -33,6 +33,7 @@ Status: closed
 
 **C5** - Contraste de texto ≥ 4.5:1 nas superfícies de vidro, escuro e claro (AC 5)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/surface-contrast.spec.ts -g "surface contrast"`
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C5 the new glass surfaces keep their contrast"`
 Status: closed
 
 ### S2 - Resolver · 5 files · 31 KB · ~8k
@@ -50,7 +51,7 @@ Status: closed
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C8 quiet notices wait in a folded history"`
 Status: closed
 
-**C9** - Ao abrir, o Resolver mostra um cartão central cuja primeira linha é a leitura do agente, com 1 ação primária e no máximo 3 secundárias (AC 9)
+**C9** - Ao abrir, o Resolver mostra um cartão centrado no palco ao lado da fila, cuja primeira linha é a leitura do agente, com 1 ação primária e no máximo 3 secundárias (AC 9)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C9 one card, the agent's reading first, one primary action"`
 Status: closed
 
@@ -58,7 +59,7 @@ Status: closed
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C10 the resolver says an error once"`
 Status: closed
 
-**C11** - Trocar de item (↓, k, clique) anima o cartão e atualiza o contador "N de M" (AC 11)
+**C11** - Trocar de item (↓, ↑, j, k, clique) anima o cartão em no máximo 400 ms e atualiza o contador "N de M" (AC 11)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C11 moving through the queue animates and counts"`
 Status: closed
 
@@ -88,7 +89,7 @@ Status: closed
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C17 the summary starts with the agent and its actions"`
 Status: closed
 
-**C18** - O erro de uma execução aparece exatamente uma vez na visão (AC 18)
+**C18** - O erro de uma execução aparece exatamente uma vez em cada seção da visão (Resumo, Passos, Log) (AC 18)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C18 a run says its error once"`
 Status: closed
 
@@ -114,7 +115,7 @@ Status: closed
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C23 one plus menu holds marketplace, export and new"`
 Status: closed
 
-**C24** - Execuções recentes, entradas e modelo só aparecem depois de "Detalhes" (AC 24)
+**C24** - Execuções recentes, entradas e modelo só aparecem depois de "Detalhes", e os três aparecem (AC 24)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C24 skill details wait to be asked"`
 Status: closed
 
@@ -174,28 +175,30 @@ Status: closed
 
 ## Coverage
 
-| Set (size)                               | Member -> proof                                                                                                                         | Unproven |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| cenas que herdam a linguagem (8)         | runs C1 · skills C1 · routines C1 · connectors C1 · artifacts C1 · generations C1 · pixel C1 · settings C1, table-driven over all 8     | -        |
-| cenas sem `select` nativo (4)            | artifacts C2 · generations C2 · connectors C2 · skills C2, table-driven over all 4                                                      | -        |
-| fechamentos de diálogo (2)               | Esc C4 · véu C4                                                                                                                         | -        |
-| temas de contraste (2)                   | dark C5 · light C5                                                                                                                      | -        |
-| tipos de pendência no Resolver (7)       | question C9 · decision C9 · provider C9 · budget C9 · failure C6 C10 · routine C6 · notice C7 C8, C9 table-driven over the seeded kinds | -        |
-| agrupamentos de causa (2)                | falha dentro da rotina C6 · avisos de mesmo título C7                                                                                   | -        |
-| resoluções de um item (5)                | aprovar C12 · negar C12 · responder C12 · executar de novo C12 · silenciar C12, table-driven over all 5                                 | -        |
-| teclas de navegação do Resolver (3)      | ↓ C11 · k C11 · clique C11                                                                                                              | -        |
-| estados de Execuções (2)                 | visão geral C14 · foco C15                                                                                                              | -        |
-| seções da execução (3)                   | Resumo C16 · Passos C16 · Log C16                                                                                                       | -        |
-| ações do Resumo (3)                      | Executar de novo C17 · Continuar C17 · Perguntar ao agente C17                                                                          | -        |
-| saídas do foco da execução (2)           | Esc C19 · voltar C19                                                                                                                    | -        |
-| itens do menu "+" de Habilidades (3)     | Marketplace C23 · Exportar C23 · Nova skill C23                                                                                         | -        |
-| diálogos de Habilidades (3)              | Marketplace C25 · Nova skill C25 · editor C25                                                                                           | -        |
-| larguras dos conectores (2)              | 1280 C27 · 1440 C27                                                                                                                     | -        |
-| galerias (2)                             | Artefatos C32 C33 C35 · Gerações C32 C33 C35                                                                                            | -        |
-| filtros da galeria (3)                   | tipo C33 · origem C33 · período C33                                                                                                     | -        |
-| focos com "Perguntar ao agente" (5)      | pendência C36 · execução C36 · habilidade C36 · conector C36 · artefato C36, table-driven over all 5                                    | -        |
-| door 1: primitivas sob `.nu-shell` (1)   | C1                                                                                                                                      | -        |
-| door 2: `PendingItem.also` / `count` (1) | C6 C7                                                                                                                                   | -        |
+| Set (size)                               | Member -> proof                                                                                                                                   | Unproven |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| superfícies que herdam a linguagem (9)   | runs C1 · skills C1 · routines C1 · connectors C1 · artifacts C1 · generations C1 · pixel C1 · settings C1 · Resolver C1, table-driven over all 9 | -        |
+| cenas sem `select` nativo (4)            | artifacts C2 · generations C2 · connectors C2 · skills C2, table-driven over all 4                                                                | -        |
+| fechamentos de diálogo (2)               | Esc C4 · véu C4                                                                                                                                   | -        |
+| temas de contraste (2)                   | dark C5 · light C5                                                                                                                                | -        |
+| superfícies novas com contraste (4)      | Resolver C5 · conector aberto C5 · barra de habilidades C5 · barra das galerias C5, table-driven                                                  | -        |
+| avisos repetidos (2)                     | título idêntico C7 · aviso com e sem tradução C7                                                                                                  | -        |
+| tipos de pendência no Resolver (7)       | question C9 · decision C9 · provider C9 · budget C9 · failure C6 C10 · routine C6 · notice C7 C8, C9 table-driven over the seeded kinds           | -        |
+| agrupamentos de causa (2)                | falha dentro da rotina C6 · avisos de mesmo título C7                                                                                             | -        |
+| resoluções de um item (5)                | aprovar C12 · negar C12 · responder C12 · executar de novo C12 · silenciar C12, table-driven over all 5                                           | -        |
+| teclas de navegação do Resolver (5)      | ↓ C11 · ↑ C11 · j C11 · k C11 · clique C11                                                                                                        | -        |
+| estados de Execuções (2)                 | visão geral C14 · foco C15                                                                                                                        | -        |
+| seções da execução (3)                   | Resumo C16 C18 · Passos C16 C18 · Log C16 C18                                                                                                     | -        |
+| ações do Resumo (3)                      | Executar de novo C17 · Continuar C17 · Perguntar ao agente C17                                                                                    | -        |
+| saídas do foco da execução (2)           | Esc C19 · voltar C19                                                                                                                              | -        |
+| itens do menu "+" de Habilidades (3)     | Marketplace C23 · Exportar C23 · Nova skill C23                                                                                                   | -        |
+| diálogos de Habilidades (3)              | Marketplace C25 · Nova skill C25 · editor C25                                                                                                     | -        |
+| larguras dos conectores (2)              | 1280 C27 · 1440 C27                                                                                                                               | -        |
+| galerias (2)                             | Artefatos C32 C33 C35 · Gerações C32 C33 C35                                                                                                      | -        |
+| filtros da galeria (3)                   | tipo C33 · origem C33 · período C33                                                                                                               | -        |
+| focos com "Perguntar ao agente" (5)      | pendência C36 · execução C36 · habilidade C36 · conector C36 · artefato C36, table-driven over all 5                                              | -        |
+| door 1: primitivas sob `.nu-shell` (1)   | C1                                                                                                                                                | -        |
+| door 2: `PendingItem.also` / `count` (1) | C6 C7                                                                                                                                             | -        |
 
 - Nenhuma rota de API é adicionada ou alterada (plan `Surface`: None)
 - Nenhuma check afirma mais do que o caso que sua prova exercita, exceto as linhas table-driven acima, que declaram o tamanho

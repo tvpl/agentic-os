@@ -145,9 +145,9 @@ export function ArtifactGallery({ only, emptyTitle, emptyBody }: ArtifactGallery
             onChange={(e) => setQ(e.target.value)}
           />
         </label>
-        {!only && (
+        {(!only || only.length > 1) && (
           <div className="art-chips" data-filter="kind" role="group" aria-label={t("desktop.artifacts.kind")}>
-            {KINDS.map((k) =>
+            {KINDS.filter((k) => k === "all" || !only || only.includes(k)).map((k) =>
               chip(
                 kind === k,
                 k === "all" ? t("desktop.artifacts.all") : t(KIND_LABEL[k]),

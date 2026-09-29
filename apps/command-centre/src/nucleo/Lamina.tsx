@@ -46,6 +46,8 @@ export default function Lamina({ spec, leaving, onDismiss, onReference, onOpenSc
     const origin = freshOrigin();
     if (!el || !origin || typeof el.animate !== "function") return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    // The FLIP is the entrance: the CSS one would shift the box being measured.
+    el.style.animation = "none";
     const to = el.getBoundingClientRect();
     const from = origin.rect ?? { left: origin.x - 24, top: origin.y - 24, width: 48, height: 48 };
     const f = flipFrom(from, to);

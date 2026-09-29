@@ -335,13 +335,14 @@ html:has(.nu-shell) .modal :is(input, textarea, select, .input) {
     animation: none;
   }
 }
-/* A picture or a video in a lâmina: shown whole, on the glass. */
+/* A picture or a video in a lâmina: shown whole, on the glass, in a box that is
+   its size from the first frame (the lâmina does not jump when the file arrives). */
 .doc-media {
   display: block;
-  max-width: 100%;
-  max-height: min(60vh, 560px);
+  width: 100%;
+  height: min(52vh, 480px);
   margin: 0 auto;
   border-radius: 14px;
   object-fit: contain;
-  box-shadow: 0 16px 40px -24px rgba(0, 0, 0, 0.9);
+  background: color-mix(in srgb, var(--bg) 50%, transparent);
 }

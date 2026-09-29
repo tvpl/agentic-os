@@ -140,6 +140,8 @@ export function buildPending(input: PendingInput): PendingItem[] {
     // The same title again is the same cause: one row, "×N".
     const first = byTitle.get(n.title);
     if (first) {
+      // The row speaks with the notice that can be said in the UI's language.
+      if (!first.notice?.messageKey && n.messageKey) [first.notice, item.notice] = [n, first.notice];
       (first.also ??= []).push(item);
       first.count = (first.count ?? 1) + 1;
       if (RANK[item.level] < RANK[first.level]) first.level = item.level;

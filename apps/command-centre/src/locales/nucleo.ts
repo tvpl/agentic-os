@@ -144,6 +144,7 @@ export const en = {
   "concept.market.configure": "Configure registries",
   "concept.art.none": "Nothing here with these filters.",
   "concept.art.clear": "Clear filters",
+  "concept.skills.noInputs": "none — it runs as it is",
 } as const;
 
 export const ptBR = {
@@ -288,4 +289,5 @@ export const ptBR = {
   "concept.market.configure": "Configurar registros",
   "concept.art.none": "Nada aqui com esses filtros.",
   "concept.art.clear": "Limpar filtros",
+  "concept.skills.noInputs": "nenhuma — roda como está",
 } as const satisfies Record<keyof typeof en, string>;

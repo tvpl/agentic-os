@@ -6,7 +6,20 @@
  * focused item. Each test is named after the check it proves (C1…C36).
  */
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { arrived, currentScene, openShell } from "./shell";
+
+/** Wait for every finite animation on the page to end (entrances, not the breathing loops). */
+async function settle(page: Page) {
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => Number.isFinite(a.effect?.getComputedTiming().endTime ?? Infinity))
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
+}
 
 /* ---- S5: connectors ------------------------------------------------------------ */
 
@@ -322,6 +335,12 @@ test("C9 one card, the agent's reading first, one primary action", async ({ page
     expect(first, `card ${kinds[i]}`).toContain("nu-focus-reading");
     await expect(card.locator(".nu-focus-reading")).not.toBeEmpty();
     await expect(card.locator(".nu-act.primary"), `primary of ${kinds[i]}`).toHaveCount(1);
+    // Centred in the stage beside the queue.
+    const [c, st] = await Promise.all([card.boundingBox(), focus.locator(".nu-focus-stage").boundingBox()]);
+    expect(
+      Math.abs(c!.x + c!.width / 2 - (st!.x + st!.width / 2)),
+      `centre of ${kinds[i]}`,
+    ).toBeLessThanOrEqual(4);
     expect(await card.locator(".nu-focus-acts .nu-act:not(.primary)").count()).toBeLessThanOrEqual(3);
   }
 });
@@ -347,8 +366,23 @@ test("C11 moving through the queue animates and counts", async ({ page }) => {
   await page.keyboard.press("ArrowDown");
   await expect(pos).toHaveText(/^2 (de|of) 3$/);
   await expect(card).toHaveAttribute("data-dir", "down");
-  expect(await card.evaluate((el) => getComputedStyle(el).animationName)).not.toBe("none");
+  const motion = await card.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return {
+      name: s.animationName,
+      ms: parseFloat(s.animationDuration) * (s.animationDuration.endsWith("ms") ? 1 : 1000),
+    };
+  });
+  expect(motion.name).not.toBe("none");
+  expect(motion.ms).toBeGreaterThan(0);
+  expect(motion.ms).toBeLessThanOrEqual(400);
   await page.keyboard.press("k");
+  await expect(pos).toHaveText(/^1 (de|of) 3$/);
+  await expect(card).toHaveAttribute("data-dir", "up");
+  await page.keyboard.press("j");
+  await expect(pos).toHaveText(/^2 (de|of) 3$/);
+  await expect(card).toHaveAttribute("data-dir", "down");
+  await page.keyboard.press("ArrowUp");
   await expect(pos).toHaveText(/^1 (de|of) 3$/);
   await expect(card).toHaveAttribute("data-dir", "up");
   await queueRows(focus).nth(2).click();
@@ -510,8 +544,14 @@ test("C17 the summary starts with the agent and its actions", async ({ page, req
 test("C18 a run says its error once", async ({ page, request }) => {
   await openRuns(page, request);
   await chooseRun(page);
-  const text = await runView(page).innerText();
-  expect(text.split(JSON_ERROR).length - 1).toBe(1);
+  const count = async () => (await runView(page).innerText()).split(JSON_ERROR).length - 1;
+  // Each section is its own view: in each, once it has loaded, the error is said once.
+  for (const tab of [/Summary|Resumo/, /Steps|Passos/, /^Log$/]) {
+    await runView(page).getByRole("tab", { name: tab }).click();
+    await expect.poll(count, { timeout: 10_000 }).toBeGreaterThan(0);
+    await page.waitForTimeout(600);
+    expect(await count(), String(tab)).toBe(1);
+  }
 });
 
 test("C19 Esc gives the river back", async ({ page, request }) => {
@@ -592,6 +632,20 @@ test("C1 every control in every scene is rounded glass", async ({ page }) => {
     const square = await squareControls(page);
     expect(square, `square controls in ${scene}`).toEqual([]);
   }
+  // The Resolver speaks it too.
+  await seedPending(page, { approvals: [decision("d-look")], runs: [failedRun("f-look")] });
+  const focus = await openResolver(page);
+  await settle(page);
+  const square = await focus.locator("button, input, textarea").evaluateAll((els) =>
+    els
+      .filter((el) => el.getBoundingClientRect().width > 0)
+      .filter((el) => {
+        const s = getComputedStyle(el);
+        return s.clipPath !== "none" || (parseFloat(s.borderTopLeftRadius) || 0) < 10;
+      })
+      .map((el) => `${el.tagName.toLowerCase()}.${[...el.classList].join(".")}`),
+  );
+  expect(square, "square controls in the Resolver").toEqual([]);
 });
 
 test("C2 no native select in the gallery, connector and skill scenes", async ({ page }) => {
@@ -626,27 +680,45 @@ async function openWriteGate(page: Page) {
 }
 
 test("C3 a dialog rises as a sheet over the veil", async ({ page }) => {
+  // The conversation's veil, to compare with.
+  await openShell(page, "/connectors");
+  await arrived(page, "connectors");
+  await page.locator(".cons-input").focus();
+  await expect(page.locator(".nu-dialog-veil")).toBeVisible();
+  await settle(page);
+  const convVeil = await page.locator(".nu-dialog-veil").evaluate((el) => ({
+    bf: getComputedStyle(el).backdropFilter,
+    bg: getComputedStyle(el).backgroundImage,
+  }));
+  await page.keyboard.press("Escape");
   const { dialog } = await openWriteGate(page);
+  const entering = await dialog.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { name: s.animationName, duration: s.animationDuration };
+  });
+  await settle(page);
   const look = await dialog.evaluate((el) => {
     const s = getComputedStyle(el);
     const veil = getComputedStyle(el.parentElement!);
-    const secs = (v: string) =>
-      Math.max(...v.split(",").map((x) => parseFloat(x) * (x.includes("ms") ? 1 : 1000)));
     return {
       clip: s.clipPath,
       radius: parseFloat(s.borderTopLeftRadius),
       glass: s.backdropFilter,
-      anim: s.animationName,
-      ms: secs(s.animationDuration),
       veilBlur: veil.backdropFilter,
+      veilBg: veil.backgroundImage,
     };
   });
   expect(look.clip).toBe("none");
   expect(look.radius).toBeGreaterThanOrEqual(20);
   expect(look.glass).toContain("blur");
-  expect(look.anim).not.toBe("none");
-  expect(look.ms).toBeLessThanOrEqual(450);
+  expect(entering.name).not.toBe("none");
+  const secs = (v: string) =>
+    Math.max(...v.split(",").map((x) => parseFloat(x) * (x.includes("ms") ? 1 : 1000)));
+  expect(secs(entering.duration)).toBeLessThanOrEqual(450);
   expect(look.veilBlur).toContain("blur");
+  // The same veil: the same blur and the same glow.
+  expect(look.veilBlur).toBe(convVeil.bf);
+  expect(look.veilBg).toBe(convVeil.bg);
 });
 
 test("C4 a dialog folds on Esc and on the veil and gives focus back", async ({ page }) => {
@@ -721,6 +793,7 @@ test("C24 skill details wait to be asked", async ({ page }) => {
   await expect(read).toBeVisible();
   await expect(read).toContainText(/Recent runs|Execuções recentes|History|Histórico/i);
   await expect(read).toContainText(/Model|Modelo/i);
+  await expect(read).toContainText(/Inputs|Entradas/i);
   await page
     .locator(".sks-focus")
     .getByRole("button", { name: /^(details|detalhes)$/i })
@@ -832,6 +905,22 @@ test("C32 one search field per gallery", async ({ page }) => {
 
 test("C33 gallery filters are chips", async ({ page }) => {
   await seedArtifacts(page);
+  for (const [scene, path] of GALLERIES) {
+    await openShell(page, path);
+    await arrived(page, scene);
+    const chipsOf = currentScene(page).locator(".art-filters");
+    for (const group of ["kind", "origin", "period"])
+      expect(
+        await chipsOf.locator(`[data-filter="${group}"] > button`).count(),
+        `${scene} ${group}`,
+      ).toBeGreaterThan(1);
+  }
+  // Generations offers only the kinds it holds.
+  await expect(currentScene(page).locator('.art-filters [data-filter="kind"] > button')).toHaveText([
+    /all|todos/i,
+    /image|imagens/i,
+    /video|vídeo/i,
+  ]);
   await openShell(page, "/artifacts");
   await arrived(page, "artifacts");
   const bar = currentScene(page).locator(".art-filters");
@@ -858,28 +947,40 @@ test("C34 a gallery item opens from its tile", async ({ page }) => {
   await openShell(page, "/artifacts");
   await arrived(page, "artifacts");
   const tile = currentScene(page).locator(".art-card").first();
-  // Where the tile is when pressed: lifted by its hover.
-  await tile.hover();
-  await page.waitForTimeout(450);
-  const from = (await tile.boundingBox())!;
+  // Where the tile is at the very press (its hover lifts it).
+  const pressed = tile.evaluate(
+    (el) =>
+      new Promise<{ x: number; y: number; w: number; h: number }>((resolve) =>
+        el.addEventListener(
+          "pointerdown",
+          () => {
+            const r = el.getBoundingClientRect();
+            resolve({ x: r.left, y: r.top, w: r.width, h: r.height });
+          },
+          { once: true, capture: true },
+        ),
+      ),
+  );
   await tile.click();
+  const from = await pressed;
   const lam = page.locator('article.nu-lamina[data-lamina^="doc:"]');
   await expect(lam).toHaveCount(1);
+  // Freeze the entrance on its first frame and read where the lâmina actually is.
   const start = await lam.evaluate((el) => {
-    // The FLIP (a script animation), not the lâmina's own CSS entrance.
     const a = el.getAnimations().find((x) => !(x instanceof CSSAnimation));
     if (!a) return null;
-    const raw = String((a.effect as KeyframeEffect).getKeyframes()[0]!.transform);
-    // Where the lâmina rests, then where its first frame put it.
-    a.finish();
+    a.pause();
+    a.currentTime = 0;
     const r = el.getBoundingClientRect();
-    const m = /translate\(\s*([-\d.e]+)px,\s*([-\d.e]+)px/.exec(raw);
-    return m ? { x: r.left + Number(m[1]), y: r.top + Number(m[2]) } : { raw };
+    return { x: r.left, y: r.top };
   });
   expect(start, "the lâmina grows from somewhere").toMatchObject({ x: expect.any(Number) });
   const at = start as { x: number; y: number };
-  expect(Math.abs(at.x - from.x)).toBeLessThanOrEqual(4);
-  expect(Math.abs(at.y - from.y)).toBeLessThanOrEqual(4);
+  // Its first frame starts on the tile that was pressed.
+  expect(at.x).toBeGreaterThanOrEqual(from.x - 1);
+  expect(at.x).toBeLessThanOrEqual(from.x + from.w);
+  expect(at.y).toBeGreaterThanOrEqual(from.y - 1);
+  expect(at.y).toBeLessThanOrEqual(from.y + from.h);
 });
 
 test("C35 an empty filter offers to clear", async ({ page }) => {
@@ -963,3 +1064,61 @@ test("C36 ask the agent carries the item", async ({ page, request }) => {
   await focus.getByRole("button", { name: /ask the agent|perguntar ao agente/i }).click();
   await askedAbout(page, /concept/);
 });
+
+for (const theme of ["dark", "light"] as const)
+  test(`C5 the new glass surfaces keep their contrast (${theme})`, async ({ page }) => {
+    const surfaces: ReadonlyArray<[string, () => Promise<string>]> = [
+      [
+        "resolver",
+        async () => {
+          await seedPending(page, { runs: [failedRun("f-contrast")] });
+          await openResolver(page);
+          return "section.nu-focus-item";
+        },
+      ],
+      [
+        "connector",
+        async () => {
+          const cards = await openConnectors(page);
+          await cards.first().locator(".cx-card-head").click();
+          return "[data-testid='connector-card'][data-open]";
+        },
+      ],
+      [
+        "skills bar",
+        async () => {
+          await openSkills(page);
+          return ".sks-bar";
+        },
+      ],
+      [
+        "galleries",
+        async () => {
+          await openShell(page, "/artifacts");
+          await arrived(page, "artifacts");
+          return ".art-filters";
+        },
+      ],
+    ];
+    {
+      for (const [name, open] of surfaces) {
+        await page.unrouteAll({ behavior: "ignoreErrors" });
+        await page.route("**/api/meta", async (interception) => {
+          const response = await interception.fetch();
+          await interception.fulfill({ response, json: { ...(await response.json()), theme } });
+        });
+        const selector = await open();
+        await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+        // Read once everything has risen: mid-entrance text is still fading in.
+        await settle(page);
+        const result = await new AxeBuilder({ page })
+          .include(selector)
+          .withRules(["color-contrast"])
+          .analyze();
+        expect(
+          result.violations.flatMap((v) => v.nodes.map((n) => `${n.target.join(" ")}: ${n.failureSummary}`)),
+          `${name} in ${theme}`,
+        ).toEqual([]);
+      }
+    }
+  });

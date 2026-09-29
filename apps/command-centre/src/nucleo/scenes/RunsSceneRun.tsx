@@ -375,7 +375,7 @@ export default function RunsRun({
         )}
         {tab === "log" && (
           <div className="rs-run-log">
-            <RunDetail id={id} />
+            <RunDetail id={id} embedded />
           </div>
         )}
       </div>

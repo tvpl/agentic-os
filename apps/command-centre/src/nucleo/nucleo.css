@@ -3455,7 +3455,7 @@
 .nu-focus-item {
   overflow: visible;
   max-width: none;
-  animation: nu-card-rise 0.5s cubic-bezier(0.2, 1.15, 0.35, 1) both;
+  animation: nu-card-rise 0.38s cubic-bezier(0.2, 1.15, 0.35, 1) both;
 }
 .nu-focus-item[data-dir="up"] {
   animation-name: nu-card-drop;

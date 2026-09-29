@@ -213,19 +213,19 @@ export function SkillReadings({
           ))}
         </ul>
       )}
-      {s.inputs.length > 0 && (
-        <>
-          <p className="k">{t("scene.skills.inputs")}</p>
-          <p className="v">
-            {s.inputs.map((i, n) => (
-              <span key={i.name}>
-                {n > 0 && " · "}
-                {i.label || i.name}
-                {i.required && <span className="req">*</span>}
-              </span>
-            ))}
-          </p>
-        </>
+      <p className="k">{t("scene.skills.inputs")}</p>
+      {s.inputs.length === 0 ? (
+        <p className="v faint">{t("concept.skills.noInputs")}</p>
+      ) : (
+        <p className="v">
+          {s.inputs.map((i, n) => (
+            <span key={i.name}>
+              {n > 0 && " · "}
+              {i.label || i.name}
+              {i.required && <span className="req">*</span>}
+            </span>
+          ))}
+        </p>
       )}
       <p className="k">{t("scene.skills.model")}</p>
       <p className="v mono">

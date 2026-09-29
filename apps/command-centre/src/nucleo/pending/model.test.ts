@@ -154,6 +154,24 @@ describe("pendências", () => {
     expect(items[1]!.count).toBeUndefined();
   });
 
+  it("collapses a sentinel's notice and its untranslated twin, keeping the one that can be translated", () => {
+    const items = buildPending({
+      notifications: [
+        notice("plain", "warn", { title: "consolidate-memory failed 2 times", ts: NOW - 10, runId: "r9" }),
+        notice("keyed", "warn", {
+          title: "consolidate-memory failed 2 times",
+          ts: NOW - 20,
+          messageKey: "sentinel.repeatedFailure",
+          messageParams: { label: "consolidate-memory", count: 2 },
+        }),
+      ],
+      now: NOW,
+    });
+    expect(items).toHaveLength(1);
+    expect(items[0]!.count).toBe(2);
+    expect(items[0]!.notice?.messageKey).toBe("sentinel.repeatedFailure");
+  });
+
   it("is quiet when nothing waits", () => {
     const items = buildPending({ notifications: [notice("n", "info")], now: NOW });
     expect(pendingCount(items)).toBe(0);
