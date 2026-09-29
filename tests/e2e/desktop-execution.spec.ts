@@ -125,19 +125,21 @@ test("a run's route is a deep link into its trace, unfolded in the Runs scene", 
   await page.goto(`/#/runs/${id}`);
   await arrived(page, "runs");
   await expect(page).toHaveURL(new RegExp(`#/runs/${id}$`));
-  const unfolded = page.locator(".rs-trace.on");
+  const unfolded = page.locator(".rs-run");
   await expect(unfolded).toBeVisible();
-  await expect(unfolded.locator(".rs-trace-top h3")).toContainText("hello from a deep link");
+  await expect(unfolded.locator(".rs-run-head h3")).toContainText("hello from a deep link");
   await expect(unfolded.locator(".rs-pill")).toHaveText(/done|conclu/i);
-  // "Full detail" is a query on the same place: a link, a reload and Back land there.
-  await unfolded.getByRole("button", { name: /Full detail|Detalhe completo|detail/i }).click();
+  // The log is a query on the same place: a link, a reload and Back land there.
+  await unfolded.getByRole("tab", { name: /^Log$/ }).click();
   await expect(page).toHaveURL(new RegExp(`#/runs/${id}\\?detail=1$`));
-  const sheet = page.locator(".rs-sheet");
-  await expect(sheet).toBeVisible();
+  await expect(page.locator(".rs-run-log")).toBeVisible();
   await page.reload();
-  await expect(page.locator(".rs-sheet")).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.locator(".rs-sheet")).toHaveCount(0);
+  await expect(page.locator(".rs-run-log")).toBeVisible();
+  await page
+    .locator(".rs-run")
+    .getByRole("tab", { name: /Summary|Resumo/ })
+    .click();
+  await expect(page.locator(".rs-run-log")).toHaveCount(0);
   await expect(page).toHaveURL(new RegExp(`#/runs/${id}$`));
 
   // From a lâmina elsewhere, "open in its scene" goes to the same place.
@@ -152,7 +154,7 @@ test("a run's route is a deep link into its trace, unfolded in the Runs scene", 
     .click();
   await expect(page).toHaveURL(new RegExp(`#/runs/${id}$`));
   await arrived(page, "runs");
-  await expect(page.locator(".rs-trace.on")).toBeVisible();
+  await expect(page.locator(".rs-run")).toBeVisible();
 });
 
 test("in the Runs scene a run from the voice line unfolds in place, not in a lâmina", async ({ page }) => {
@@ -164,7 +166,7 @@ test("in the Runs scene a run from the voice line unfolds in place, not in a lâ
   await openRunFromTurn(page);
   await expect(page).toHaveURL(new RegExp(`#/runs/${id}$`));
   await expect(page.getByTestId("voice")).not.toHaveAttribute("data-open", /.*/);
-  await expect(page.locator(".rs-trace.on .rs-trace-top h3")).toContainText("hello from the river");
+  await expect(page.locator(".rs-run .rs-run-head h3")).toContainText("hello from the river");
   await expect(liveLaminas(page)).toHaveCount(0);
-  await expect(page.locator(".rs-trace.on .rs-pill")).toHaveText(/done|conclu/i, { timeout: 20_000 });
+  await expect(page.locator(".rs-run .rs-pill")).toHaveText(/done|conclu/i, { timeout: 20_000 });
 });

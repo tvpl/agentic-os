@@ -41,7 +41,8 @@ Reutiliza as primitivas existentes (`components/ui.tsx`, `components/dialog.tsx`
 2. Resolver: `nucleo/pending/model.ts` (exists) agrupa causas -> `nucleo/pending/FocusMode.tsx`
    (exists) mostra um cartão por vez
 3. Execuções: `nucleo/scenes/RunsScene.tsx` (exists) alterna entre visão geral (rio) e foco
-   (uma execução); `RunsSceneTrace.tsx` e `RunsSceneSheet.tsx` (exist) viram seções do foco
+   (uma execução, `RunsSceneRun.tsx`); a trilha e a folha "Detalhe completo" saíram - a folha
+   virou a aba Log (`runs/RunDetail.tsx`, exists), ainda alcançável por `?detail=1`
 4. Habilidades: `nucleo/scenes/SkillsScene.tsx` (exists) + `SkillsSceneTools.tsx` + `SkillsSceneFocus.tsx`
    (exist) - filtros em uma linha, metadados no cartão em foco, modais como folhas
 5. Conectores: `views/Connectors.tsx` (exists) + `views/ConnectorWizard.tsx` (exists) - lista de cartões,

@@ -113,9 +113,9 @@ test("a tool prompt mid-run is approved from the run page", async ({ page, reque
     input: { file_path: "/tmp/e2e-note.md", content: "hello" },
     toolUseId: "tu_e2e",
   });
-  // The run's full detail, in the Runs scene (`?detail=1` opens its sheet).
+  // The run's full record, in the Runs scene (`?detail=1` opens its log).
   const errors = await open(page, `/#/runs/${runId}?detail=1`);
-  const trace = page.locator(".rs-sheet");
+  const trace = page.locator(".rs-run-log");
   const card = trace.locator(".approval-inline, .tool-approval").first();
   await expect(card).toBeVisible({ timeout: 10_000 });
   await expect(card).toContainText(/Write/);
@@ -144,9 +144,9 @@ test("a run fans out into a squad of sub-agents", async ({ page, request }) => {
     `/api/runs/${runId}`,
     (b) => (b as { run: { status: string } }).run.status === "done",
   );
-  // The run's full detail, in the Runs scene (`?detail=1` opens its sheet).
+  // The run's full record, in the Runs scene (`?detail=1` opens its log).
   const errors = await open(page, `/#/runs/${runId}?detail=1`);
-  const trace = page.locator(".rs-sheet");
+  const trace = page.locator(".rs-run-log");
   await trace
     .getByRole("button", { name: /fan out|dividir/i })
     .first()

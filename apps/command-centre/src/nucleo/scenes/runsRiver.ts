@@ -247,7 +247,9 @@ export function layoutRiver(items: readonly RiverItem[], opts: LayoutOptions): L
   const maxRows = Math.max(1, opts.maxRows ?? 3);
   const charW = opts.charW ?? 6.8;
   const byLane = new Map<LaneId, Placed[]>();
+  const startOf = new Map<string, number>();
   for (const item of items) {
+    startOf.set(item.id, item.start);
     if (item.end < since || item.start > until) continue;
     const x1 = timeToX(item.start, since, until, width);
     const x2 = timeToX(item.end, since, until, width);
@@ -325,21 +327,32 @@ export function layoutRiver(items: readonly RiverItem[], opts: LayoutOptions): L
       }
     }
     // Labels: beside the capsule when the row has room there, on the left when only that side does.
+    // The newest runs are labelled first; a label that would cover one already placed is dropped,
+    // so of two colliding labels the older run's is the one that goes.
     for (let row = 0; row < rows; row++) {
       const inRow = marks.filter((m) => m.row === row).sort((a, b) => a.x - b.x);
-      inRow.forEach((m, i) => {
-        if (m.kind !== "run") return;
+      const taken: Array<[number, number]> = [];
+      const free = (a: number, b: number) => taken.every(([c, d]) => b <= c || a >= d);
+      const order = inRow
+        .map((m, i) => ({ m, i }))
+        .filter((e): e is { m: RunMark; i: number } => e.m.kind === "run")
+        .sort((a, b) => (startOf.get(b.m.id) ?? 0) - (startOf.get(a.m.id) ?? 0));
+      for (const { m, i } of order) {
         const need = m.label.length * charW + 12;
         const next = inRow[i + 1];
         const prev = inRow[i - 1];
-        const rightRoom = (next ? next.x : width) - (m.x + m.w);
+        const rightEnd = m.x + m.w;
+        const rightRoom = (next ? next.x : width) - rightEnd;
         const leftRoom = m.x - (prev ? prev.x + prev.w : 0);
-        if (rightRoom >= need) m.tagFits = true;
-        else if (leftRoom >= need) {
+        if (rightRoom >= need && free(rightEnd, rightEnd + need)) {
+          m.tagFits = true;
+          taken.push([rightEnd, rightEnd + need]);
+        } else if (leftRoom >= need && free(m.x - need, m.x)) {
           m.tagFits = true;
           m.tagLeft = true;
+          taken.push([m.x - need, m.x]);
         } else m.tagLeft = m.x + m.w + need > width;
-      });
+      }
     }
     out.push({ lane, rows, marks });
   }

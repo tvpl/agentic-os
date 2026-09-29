@@ -5,7 +5,7 @@
  * the rest on demand, says each cause once, and lets the agent take any
  * focused item. Each test is named after the check it proves (C1…C36).
  */
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import { arrived, currentScene, openShell } from "./shell";
 
 /* ---- S5: connectors ------------------------------------------------------------ */
@@ -394,4 +394,152 @@ test("C13 an empty queue says nothing needs you", async ({ page }) => {
   await expect(clear.getByTestId("focus-entity")).toBeVisible();
   await clear.getByRole("button", { name: /Back to the system|Voltar ao sistema/ }).click();
   await expect(focus).toHaveCount(0);
+});
+
+/* ---- S3: runs, an overview or one run ------------------------------------------------ */
+
+const TOKEN = { "x-mordomo-token": process.env.MORDOMO_TOKEN ?? "" };
+let RUN_ID = "";
+
+/** A real run, shown to the UI as a failed one with an error. */
+async function seedRun(page: Page, request: APIRequestContext) {
+  if (!RUN_ID) {
+    const res = await request.post("/api/runs", {
+      headers: TOKEN,
+      data: { prompt: "concept run for the river", mode: "read_only" },
+    });
+    RUN_ID = ((await res.json()) as { runId: string }).runId;
+    await expect
+      .poll(
+        async () =>
+          (
+            (await (await request.get(`/api/runs/${RUN_ID}`, { headers: TOKEN })).json()) as {
+              run: { status: string };
+            }
+          ).run.status,
+        { timeout: 20_000 },
+      )
+      .toMatch(/done|failed/);
+  }
+  const failed = (r: Record<string, unknown>) => ({
+    ...r,
+    status: "failed",
+    error: JSON_ERROR,
+    failure: null,
+    skillSlug: "consolidate-memory",
+  });
+  await page.route("**/api/runs?*", async (route) => {
+    const real = (await (await route.fetch()).json()) as Array<Record<string, unknown>>;
+    await route.fulfill({ json: real.map((r) => (r.id === RUN_ID ? failed(r) : r)) });
+  });
+  await page.route(`**/api/runs/${RUN_ID}`, async (route) => {
+    const real = (await (await route.fetch()).json()) as {
+      run: Record<string, unknown>;
+      events: Array<Record<string, unknown>>;
+    };
+    await route.fulfill({
+      json: {
+        ...real,
+        run: failed(real.run),
+        events: [...real.events, { type: "error", message: JSON_ERROR, ts: Date.now() }],
+      },
+    });
+  });
+}
+
+const runView = (page: Page) => page.locator(".rs-run");
+const riverWrap = (page: Page) => page.locator(".rs-river-wrap");
+
+async function openRuns(page: Page, request: APIRequestContext, path?: string) {
+  await seedRun(page, request);
+  await openShell(page, path ?? "/runs");
+  await arrived(page, "runs");
+}
+async function chooseRun(page: Page) {
+  await page.locator(`.rs-cap[data-mark="${RUN_ID}"]`).click();
+  await expect(runView(page)).toBeVisible();
+}
+
+test("C14 the runs overview is only the river", async ({ page, request }) => {
+  await openRuns(page, request);
+  await expect(riverWrap(page)).toBeVisible();
+  await expect(page.locator(".rs-head")).toBeVisible();
+  await expect(runView(page)).toHaveCount(0);
+  await expect(page.locator(".rs-sheet, .rs-trace.on")).toHaveCount(0);
+});
+
+test("C15 a chosen run replaces the overview", async ({ page, request }) => {
+  await openRuns(page, request);
+  await chooseRun(page);
+  await expect.poll(async () => (await riverWrap(page).boundingBox())!.height).toBeLessThanOrEqual(120);
+  await expect(runView(page)).toHaveCount(1);
+  await expect(page.locator(".rs-sheet")).toHaveCount(0);
+  // The run view takes the rest of the scene: below the strip, down to the voice line.
+  const strip = (await riverWrap(page).boundingBox())!;
+  const view = (await runView(page).boundingBox())!;
+  expect(view.y).toBeGreaterThanOrEqual(strip.y + strip.height - 1);
+});
+
+test("C16 the run view has summary, steps and log", async ({ page, request }) => {
+  await openRuns(page, request);
+  await chooseRun(page);
+  const tabs = runView(page).getByRole("tab");
+  await expect(tabs).toHaveText([/Summary|Resumo/, /Steps|Passos/, /Log/]);
+  await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+  await expect(runView(page).getByRole("tabpanel")).toHaveAttribute("data-tab", "summary");
+  await tabs.nth(1).click();
+  await expect(runView(page).getByRole("tabpanel")).toHaveAttribute("data-tab", "steps");
+  await expect(runView(page).locator(".rs-chain .rs-step").first()).toBeVisible();
+  await tabs.nth(2).click();
+  await expect(runView(page).getByRole("tabpanel")).toHaveAttribute("data-tab", "log");
+});
+
+test("C17 the summary starts with the agent and its actions", async ({ page, request }) => {
+  await openRuns(page, request);
+  await chooseRun(page);
+  const panel = runView(page).getByRole("tabpanel");
+  const first = await panel.evaluate((el) => el.firstElementChild?.className ?? "");
+  expect(first).toContain("rs-agent-line");
+  await expect(panel.locator(".rs-agent-line")).not.toBeEmpty();
+  const acts = panel.locator(".rs-run-acts");
+  await expect(acts.getByRole("button", { name: /run again|executar de novo/i })).toBeVisible();
+  await expect(acts.getByRole("button", { name: /continue|continuar/i })).toBeVisible();
+  await expect(acts.getByRole("button", { name: /ask the agent|perguntar ao agente/i })).toBeVisible();
+});
+
+test("C18 a run says its error once", async ({ page, request }) => {
+  await openRuns(page, request);
+  await chooseRun(page);
+  const text = await runView(page).innerText();
+  expect(text.split(JSON_ERROR).length - 1).toBe(1);
+});
+
+test("C19 Esc gives the river back", async ({ page, request }) => {
+  await openRuns(page, request);
+  const full = (await riverWrap(page).boundingBox())!.height;
+  await chooseRun(page);
+  await page.locator("body").click({ position: { x: 5, y: 450 } });
+  await page.keyboard.press("Escape");
+  const leaving = page.locator(".rs-run.bye");
+  await expect(leaving).toHaveCount(1);
+  const ms = await leaving.evaluate((el) => parseFloat(getComputedStyle(el).animationDuration) * 1000);
+  expect(ms).toBeGreaterThan(0);
+  expect(ms).toBeLessThanOrEqual(450);
+  await expect(runView(page)).toHaveCount(0);
+  await expect
+    .poll(async () => Math.round((await riverWrap(page).boundingBox())!.height))
+    .toBe(Math.round(full));
+  // The back control does the same.
+  await chooseRun(page);
+  await runView(page)
+    .getByRole("button", { name: /back to the river|voltar ao rio/i })
+    .click();
+  await expect(runView(page)).toHaveCount(0);
+});
+
+test("C20 a run's route opens its view", async ({ page, request }) => {
+  await seedRun(page, request);
+  await openRuns(page, request, `/runs/${RUN_ID}`);
+  await expect(runView(page)).toBeVisible();
+  await expect(runView(page)).toHaveAttribute("data-id", RUN_ID);
 });

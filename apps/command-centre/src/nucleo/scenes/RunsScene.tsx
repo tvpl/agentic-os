@@ -5,15 +5,17 @@
  * count is also the status filter. Below, the river: one lane per origin,
  * each run a capsule placed by when it started and as long as it took,
  * "now" a cyan line on the right edge, live runs pulsing and growing. Pick
- * one (click, arrows + Enter, or a `/runs/:id` link) and its trace unfolds
- * in place underneath; "Full detail" slides the complete run view in from
- * the right. The list view is the same runs, one per line.
+ * one (click, arrows + Enter, or a `/runs/:id` link) and the overview steps
+ * back: the river folds into a strip at the top and the run takes the rest
+ * of the scene — summary, steps and log, one at a time (RunsSceneRun). Esc
+ * or "back" gives the river back. The list view is the same runs, one per
+ * line.
  *
  * State that is a place lives in the URL: the run in the path, the range,
- * status, lane, view and the detail sheet in the query — so a link, a
- * reload and the Back button all land where you were.
+ * status, lane, view and the run's log (`detail=1`) in the query — so a
+ * link, a reload and the Back button all land where you were.
  */
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, X } from "lucide-react";
 import { useLocale, useT } from "../../i18n";
@@ -49,9 +51,8 @@ import {
 import { formatSpan } from "./runsFormat";
 import { useRiverRuns } from "./runsData";
 import RunsRiver from "./RunsSceneRiver";
-import RunsTrace from "./RunsSceneTrace";
+import RunsRun from "./RunsSceneRun";
 import RunsList from "./RunsSceneList";
-import RunsSheet from "./RunsSceneSheet";
 import "./runsScene.css";
 
 const COUNT_FILTERS: ReadonlyArray<{ key: "done" | "failed" | "cancelled" | "live"; filter: StatusFilter }> =
@@ -99,7 +100,6 @@ export default function RunsScene(_props: SceneViewProps) {
   const status: StatusFilter = isStatusFilter(statusParam) ? statusParam : "all";
   const lane: LaneId | null = isLaneId(laneParam) ? laneParam : null;
   const view = params.get("view") === "list" ? "list" : "river";
-  const detailOpen = params.get("detail") === "1" && selectedId !== null;
   const provider = params.get("provider");
   const [query, setQuery] = useState("");
   const [zoom, setZoom] = useState<{ from: number; to: number } | null>(null);
@@ -184,29 +184,19 @@ export default function RunsScene(_props: SceneViewProps) {
   const byId = useMemo(() => new Map(runs.map((r) => [r.id, r])), [runs]);
   const statusOfId = useCallback((id: string) => statusWord(byId.get(id)?.status ?? ""), [byId, statusWord]);
 
-  /* ---- the trace and the sheet -------------------------------------------------- */
-  const traceRef = useRef<HTMLElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!selectedId) return;
-    // Bring the head of the trace into view, no further: the river stays on screen when it can.
-    const id = window.setTimeout(() => {
-      const trace = traceRef.current;
-      const scroller = scrollRef.current;
-      if (!trace || !scroller) return;
-      const below = trace.getBoundingClientRect().top + 180 - scroller.getBoundingClientRect().bottom;
-      if (below <= 0) return;
-      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      scroller.scrollBy({ top: below, behavior: reduce ? "auto" : "smooth" });
-    }, 120);
-    return () => window.clearTimeout(id);
-  }, [selectedId]);
-  const closeDetail = useCallback(() => {
-    setParam("detail", null);
-    window.setTimeout(() => document.querySelector<HTMLElement>("[data-detail-trigger]")?.focus(), 0);
-  }, [setParam]);
+  /* ---- one run in focus ------------------------------------------------------------ */
+  // Leaving the run plays its exit before the river comes back.
+  const [leaving, setLeaving] = useState(false);
+  useEffect(() => setLeaving(false), [selectedId]);
+  const closeRun = useCallback(() => {
+    if (!selectedId || leaving) return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) return select(null);
+    setLeaving(true);
+    window.setTimeout(() => select(null), 320);
+  }, [selectedId, leaving, select]);
 
-  // Escape steps back one thing at a time — the sheet, then the trace, then the zoom — and only
+  // Escape steps back one thing at a time — the run, then the zoom — and only
   // then lets the shell go home. A lâmina that is up goes first (the shell's own Escape).
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -214,12 +204,9 @@ export default function RunsScene(_props: SceneViewProps) {
       const el = e.target instanceof Element ? e.target : null;
       if (el?.closest('[role="dialog"]')) return;
       if (el instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName)) return;
-      if (detailOpen) {
+      if (selectedId) {
         e.preventDefault();
-        closeDetail();
-      } else if (selectedId) {
-        e.preventDefault();
-        select(null);
+        closeRun();
       } else if (zoom) {
         e.preventDefault();
         setZoom(null);
@@ -228,10 +215,9 @@ export default function RunsScene(_props: SceneViewProps) {
     // Capture, so this runs before the app's own Escape ("go home"), whatever order they mounted in.
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [detailOpen, selectedId, zoom, closeDetail, select]);
+  }, [selectedId, zoom, closeRun]);
 
   const filtered = status !== "all" || lane !== null || query.trim() !== "";
-  const selectedInWindow = selectedId ? shown.some((r) => r.id === selectedId) : true;
 
   /* ---- render ---------------------------------------------------------------------- */
   const head = (
@@ -398,38 +384,28 @@ export default function RunsScene(_props: SceneViewProps) {
     />
   );
 
-  const trace = (
-    <section
-      ref={traceRef}
-      className={`rs-trace${selectedId ? " on" : ""}`}
-      aria-label={t("scene.runs.trace")}
-      key={selectedId ?? "none"}
-    >
-      {selectedId ? (
-        <>
-          {!selectedInWindow && view === "river" && (
-            <p className="rs-eyebrow rs-outside">{t("scene.runs.trace.outside")}</p>
-          )}
-          <RunsTrace
-            id={selectedId}
-            detailOpen={detailOpen}
-            onClose={() => select(null)}
-            onDetail={() => setParam("detail", detailOpen ? null : "1")}
-          />
-        </>
-      ) : (
-        view === "river" && !loading && shown.length > 0 && <p className="rs-quiet">{t("scene.runs.hint")}</p>
-      )}
-    </section>
-  );
+  const hint =
+    !selectedId && view === "river" && !loading && shown.length > 0 ? (
+      <p className="rs-quiet">{t("scene.runs.hint")}</p>
+    ) : null;
 
   return (
-    <div className="rs-scene" data-detail={detailOpen || undefined}>
-      <div ref={scrollRef} className="rs-scroll">
+    <div className="rs-scene" data-focus={selectedId ? "" : undefined}>
+      <div className="rs-scroll">
         {head}
-        {body}
-        {trace}
-        {view === "list" && !loading && (
+        <div className="rs-river-wrap">{body}</div>
+        {hint}
+        {selectedId && (
+          <RunsRun
+            key={selectedId}
+            id={selectedId}
+            leaving={leaving}
+            onClose={closeRun}
+            log={params.get("detail") === "1"}
+            onLog={(open) => setParam("detail", open ? "1" : null)}
+          />
+        )}
+        {view === "list" && !loading && !selectedId && (
           <RunsList
             runs={listRuns}
             now={now}
@@ -451,7 +427,6 @@ export default function RunsScene(_props: SceneViewProps) {
           />
         )}
       </div>
-      {detailOpen && selectedId && <RunsSheet id={selectedId} onClose={closeDetail} />}
     </div>
   );
 }

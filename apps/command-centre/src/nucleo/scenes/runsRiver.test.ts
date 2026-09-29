@@ -16,6 +16,7 @@ import {
   worstTone,
   type RiverItem,
   type RiverRun,
+  type RunMark,
 } from "./runsRiver";
 
 const H = 3_600_000;
@@ -257,5 +258,29 @@ describe("keyboard neighbours", () => {
     expect(neighbour(lanes, "y2", "home")).toBe("r1");
     expect(neighbour(lanes, "r1", "end")).toBe("y2");
     expect(neighbour([], "r1", "right")).toBeNull();
+  });
+});
+
+describe("river labels", () => {
+  it("hides the older of two colliding labels", () => {
+    const item = (id: string, start: number, label: string): RiverItem => ({
+      id,
+      lane: "routine",
+      start,
+      end: start + 5,
+      tone: "fail",
+      label,
+    });
+    // P (oldest) would label rightwards; Q has a neighbour on its right, so its label
+    // goes left — straight over P's. R (newest) has room.
+    const [lane] = layoutRiver(
+      [item("p", 0, "p".repeat(15)), item("q", 200, "q".repeat(15)), item("r", 215, "r")],
+      { since: 0, until: 1000, width: 1000 },
+    );
+    const mark = (id: string) => lane!.marks.find((m) => m.id === id) as RunMark;
+    expect(mark("q").tagFits).toBe(true);
+    expect(mark("q").tagLeft).toBe(true);
+    expect(mark("r").tagFits).toBe(true);
+    expect(mark("p").tagFits).toBe(false);
   });
 });

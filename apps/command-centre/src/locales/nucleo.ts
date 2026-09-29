@@ -130,6 +130,16 @@ export const en = {
   "concept.read.notice": "The system left you a notice.",
   "concept.read.noticeMany": "The system said this {n} times.",
   "concept.focus.rerunning": "Running it again; the queue moves on.",
+  "concept.runs.back": "Back to the river",
+  "concept.runs.tabs": "This run",
+  "concept.runs.tab.summary": "Summary",
+  "concept.runs.tab.steps": "Steps",
+  "concept.runs.tab.log": "Log",
+  "concept.runs.continue": "Continue",
+  "concept.runs.ask": "Ask the agent",
+  "concept.runs.askPrompt": "About the run {what}: ",
+  "concept.runs.done": "Finished in {duration}.",
+  "concept.runs.send": "Send",
 } as const;
 
 export const ptBR = {
@@ -260,4 +270,14 @@ export const ptBR = {
   "concept.read.notice": "O sistema deixou um aviso para você.",
   "concept.read.noticeMany": "O sistema disse isso {n} vezes.",
   "concept.focus.rerunning": "Executando de novo; a fila segue.",
+  "concept.runs.back": "Voltar ao rio",
+  "concept.runs.tabs": "Esta execução",
+  "concept.runs.tab.summary": "Resumo",
+  "concept.runs.tab.steps": "Passos",
+  "concept.runs.tab.log": "Log",
+  "concept.runs.continue": "Continuar",
+  "concept.runs.ask": "Perguntar ao agente",
+  "concept.runs.askPrompt": "Sobre a execução {what}: ",
+  "concept.runs.done": "Concluída em {duration}.",
+  "concept.runs.send": "Enviar",
 } as const satisfies Record<keyof typeof en, string>;

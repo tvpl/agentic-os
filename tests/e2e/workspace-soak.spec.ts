@@ -117,7 +117,7 @@ test("bounded workspace endurance with simulated runs and real local persistence
         expect(text).toContain('"run_state"');
         expect(text).toContain('"done"');
         await view.goto(`/#/runs/${runId}`);
-        await expect(view.locator(".rs-trace.on .rs-pill")).toHaveText(/done/i);
+        await expect(view.locator(".rs-run .rs-pill")).toHaveText(/done/i);
         // The apps are scenes, reached from the launcher.
         for (const [name, selector] of [
           ["Second Brain", '.nu-scene.on[data-scene="brain"] .bs'],

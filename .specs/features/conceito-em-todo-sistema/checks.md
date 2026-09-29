@@ -69,27 +69,35 @@ Status: closed
 
 **C14** - Sem execução selecionada: só o rio e o resumo do período; nenhuma visão de execução (AC 14)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C14 the runs overview is only the river"`
+Status: closed
 
 **C15** - Com execução selecionada: o rio encolhe para faixa ≤ 120px e uma única visão de execução ocupa o resto; nenhuma folha lateral (AC 15)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C15 a chosen run replaces the overview"`
+Status: closed
 
 **C16** - A visão de execução tem as seções Resumo, Passos e Log e abre em Resumo (AC 16)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C16 the run view has summary, steps and log"`
+Status: closed
 
 **C17** - Resumo começa com a linha do agente e as ações "Executar de novo", "Continuar" e "Perguntar ao agente" (AC 17)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C17 the summary starts with the agent and its actions"`
+Status: closed
 
 **C18** - O erro de uma execução aparece exatamente uma vez na visão (AC 18)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C18 a run says its error once"`
+Status: closed
 
 **C19** - Esc ou voltar restaura o rio inteiro e tira a visão (AC 19)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C19 Esc gives the river back"`
+Status: closed
 
 **C20** - `/runs/:id` abre direto a visão daquela execução (AC 20)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/concept.spec.ts -g "C20 a run's route opens its view"`
+Status: closed
 
 **C21** - Dois rótulos do rio que se sobreporiam: o da execução mais antiga some (AC 21)
 Proof: `cd apps/command-centre && npx vitest run src/nucleo/scenes/runsRiver.test.ts -t "hides the older of two colliding labels"`
+Status: closed
 
 ### S4 - Habilidades · 7 files · 70 KB · ~17k
 

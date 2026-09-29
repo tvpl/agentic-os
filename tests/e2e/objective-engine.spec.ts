@@ -49,13 +49,13 @@ test("an objective drives the Now panel and preserves its causal chain in run de
   const inspect = panel.getByRole("link", { name: "Inspect run" });
   await expect(inspect).toBeVisible();
   await inspect.click();
-  // The run's place in the Runs scene: its trace unfolds, and the full detail
-  // — where the causal chain lives — is one step further.
+  // The run's place in the Runs scene: the run in focus, and its log — where
+  // the causal chain lives — is one step further.
   await expect(page).toHaveURL(/#\/runs\/[^/?]+$/);
-  const trace = page.locator(".rs-trace.on");
+  const trace = page.locator(".rs-run");
   await expect(trace).toBeVisible();
-  await trace.getByRole("button", { name: /Full detail/ }).click();
-  await expect(page.locator(".rs-sheet").getByText("Objective and causal chain")).toBeVisible();
+  await trace.getByRole("tab", { name: /^Log$/ }).click();
+  await expect(page.locator(".rs-run-log").getByText("Objective and causal chain")).toBeVisible();
   await expect(page.getByText(/Produce evidence · (dispatched|verified|verifying)/)).toBeVisible();
   const axe = await new AxeBuilder({ page }).analyze();
   expect(
