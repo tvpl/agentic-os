@@ -1,56 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { resetStage, settled, stageWith } from "./stage";
-
-test("spaces keep their own windows and the dock follows app navigation", async ({ page, request }) => {
-  // This spec drags a window between spaces, so it puts one on the stage.
-  await stageWith(request, "routines");
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto("/#/");
-  await expect(page.locator(".boot-screen")).toHaveCount(0);
-  const dock = page.getByRole("navigation", { name: "Workspace navigation" });
-  const consoleWidget = page.locator("[data-console]");
-  const routines = page.locator('[data-panel="routines"]');
-  await consoleWidget.locator("textarea").fill("Continue this after exploring");
-
-  // Rearrange Work, then leave it.
-  const header = routines.locator(".panel-title");
-  await settled(routines);
-  const g = (await header.boundingBox())!;
-  await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(g.x + g.width / 2 + 300, g.y + g.height / 2 + 140, { steps: 10 });
-  await page.mouse.up();
-  await expect.poll(async () => (await routines.boundingBox())!.x).toBeGreaterThan(240);
-  const arranged = (await routines.boundingBox())!;
-
-  await dock.getByRole("button", { name: "Research", exact: true }).click();
-  // A fresh space starts from the default composition, not the one just left —
-  // and since F7 the default composition is a clear stage, so the window that
-  // was just dragged around Work is simply not here.
-  await expect(routines).toHaveCount(0);
-  // The draft belongs to the console, not to a space.
-  await expect(consoleWidget.locator("textarea")).toHaveValue("Continue this after exploring");
-
-  // The Second Brain is still one click away, from its pod.
-  await page.locator('.pod-arc.l .pod[data-pod="app:brain"]').click();
-  await expect(page.locator(".brain2")).toBeVisible();
-  await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-  await expect
-    .poll(async () => Number((await page.locator(".zoom-readout").innerText()).replace("%", "")))
-    .toBeGreaterThan(110);
-  await page.screenshot({ animations: "disabled", path: "artifacts/qa-workspace-brain.png" });
-
-  // Back to Work: the arrangement is where it was left, across a reload too.
-  await dock.getByRole("button", { name: "Work", exact: true }).click();
-  await expect.poll(async () => (await routines.boundingBox())!.x).toBeCloseTo(arranged.x, -1);
-  await page.reload();
-  await expect(page.locator(".boot-screen")).toHaveCount(0);
-  await expect.poll(async () => (await routines.boundingBox())!.x).toBeCloseTo(arranged.x, -1);
-  await page.screenshot({ animations: "disabled", path: "artifacts/qa-workspace-overview.png" });
-
-  await page.goto("about:blank");
-  await resetStage(request);
-});
+import { arrived, currentScene, lamina, openAppFromPalette, openShell } from "./shell";
 
 test("Pixel Studio draws, undoes, adds frames, exports PNG and saves a viewable artifact", async ({
   page,
@@ -77,61 +26,69 @@ test("Pixel Studio draws, undoes, adds frames, exports PNG and saves a viewable 
   await page.getByRole("button", { name: "Save", exact: true }).click();
   expect((await saved).ok()).toBe(true);
   await page.goto("/#/artifacts");
-  await page.locator("#art-q").fill("gauntlet-sprite.png");
+  await page.locator(".art-find input").fill("gauntlet-sprite.png");
   await page.locator(".art-card").first().click();
-  const image = page.locator(".art-lightbox img");
+  // The picture opens as a lâmina out of its tile.
+  const image = page.locator('article.nu-lamina[data-lamina^="doc:"] img.doc-media');
   await expect(image).toBeVisible();
   await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
 });
 
 test("routine lifecycle: create, edit, enable, execute, inspect history and delete", async ({ page }) => {
-  await page.goto("/#/routines");
-  await page.getByRole("button", { name: "New routine", exact: true }).click();
+  await openShell(page, "/routines");
+  await arrived(page, "routines");
+  await page.getByRole("button", { name: "+ New routine", exact: true }).click();
   await page.locator("#rt-name").fill("Gauntlet daily workflow");
   await page.locator("#rt-prompt").fill("Summarize this test workspace");
   await page.getByRole("dialog").getByRole("button", { name: "Save", exact: true }).click();
-  const card = page.locator(".routine-card").filter({ hasText: "Gauntlet daily workflow" });
-  await expect(card).toBeVisible();
-  await card.getByRole("button", { name: /Edit Gauntlet/ }).click();
+  const item = (name: string) => page.locator(".rts-item").filter({ hasText: name });
+  await expect(item("Gauntlet daily workflow")).toBeVisible();
+  // A line of the agenda unfolds into its details and every action; the choice is in the URL.
+  await item("Gauntlet daily workflow").locator(".rts-row").click();
+  await expect(page).toHaveURL(/#\/routines\?r=/);
+  const details = page.getByRole("region", { name: /Gauntlet daily workflow/ });
+  await details.getByRole("button", { name: "Edit", exact: true }).click();
   await page.locator("#rt-name").fill("Gauntlet daily revised");
   await page.getByRole("dialog").getByRole("button", { name: "Save", exact: true }).click();
-  const revised = page.locator(".routine-card").filter({ hasText: "Gauntlet daily revised" });
-  await revised.getByRole("button", { name: "Enable", exact: true }).click();
-  await expect(revised.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
-  await revised.getByRole("button", { name: "Test now", exact: true }).click();
-  // The trace "Test now" opened is the one on top; earlier traces may still be on the stage.
-  await expect(page.locator('section.panel.on[data-panel^="run:"] .run-title .badge')).toHaveText(/done/i, {
-    timeout: 20000,
-  });
-  // The trace opened as a panel over the Routines app (G3): its dock task
-  // brings the app back to the front, whatever covers it.
-  await page.getByRole("button", { name: "Open panels: Routines", exact: true }).click();
-  await expect(page.locator('[data-panel="app:routines"]')).toHaveClass(/\bon\b/);
-  await revised.getByRole("button", { name: "History", exact: true }).click();
-  await expect(page.getByRole("dialog").locator("tbody .badge").first()).toHaveText(/done/i);
-  await page.keyboard.press("Escape");
-  await revised.getByRole("button", { name: /Delete Gauntlet/ }).click();
+  const revised = item("Gauntlet daily revised");
+  await expect(revised).toBeVisible();
+  const open = page.getByRole("region", { name: /Gauntlet daily revised/ });
+  await expect(open).toBeVisible();
+  await open.getByRole("button", { name: "Enable", exact: true }).click();
+  await expect(open.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
+  await open.getByRole("button", { name: "Run now", exact: true }).click();
+  // Outside the Runs scene, the run is projected beside the routines as a trace.
+  const trace = lamina(page, "run:", "^=");
+  await expect(trace.locator(".run-title .badge")).toHaveText(/done/i, { timeout: 20000 });
+  await expect(page).toHaveURL(/#\/routines\?r=/);
+  // Read, then dismissed: the routine is where it was.
+  await trace.getByRole("button", { name: /^(Dismiss|Dispensar): / }).click();
+  await expect(lamina(page, "run:", "^=")).toHaveCount(0);
+  await open.getByRole("button", { name: "History", exact: true }).click();
+  const history = open.getByRole("list", { name: "History" });
+  await expect(history.locator("li").first()).toContainText(/done/i);
+  // A firing's run opens its trace from the history too.
+  await expect(history.getByRole("button", { name: /open run/i }).first()).toBeVisible();
+  await open.getByRole("button", { name: "Delete", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true }).click();
   await expect(revised).toHaveCount(0);
 });
 
 test("every launcher app opens usable content", async ({ page }) => {
-  await page.goto("/#/");
-  await expect(page.locator(".boot-screen")).toHaveCount(0);
-  // Every app is a panel on the stage now (G2); the desktop never goes away.
-  for (const [name, target] of [
-    ["Second Brain", '[data-panel="app:brain"] .brain2'],
-    ["Skills", '[data-panel="app:skills"] .page'],
-    ["Routines", '[data-panel="app:routines"] .page'],
-    ["Runs", '[data-panel="app:runs"] .page'],
-    ["Connectors", '[data-panel="app:connectors"] .page'],
-    ["Pixel Studio", '[data-panel="app:pixel"] .pxs-stage'],
-    ["Settings", '[data-panel="app:settings"] .page'],
-    ["Dashboard", ".desktop"],
+  await openShell(page);
+  // Every app is a scene now; the palette travels to it.
+  for (const [name, scene, target] of [
+    ["Second Brain", "brain", ".bs"],
+    ["Skills", "skills", ".sks-tools"],
+    ["Routines", "routines", ".rts-side"],
+    ["Runs", "runs", ".rs-scene"],
+    ["Connectors", "connectors", ".page"],
+    ["Pixel Studio", "pixel", ".pxs-stage"],
+    ["Settings", "settings", ".page"],
+    ["Core", "nucleo", ".nu-nucleo"],
   ]) {
-    await page.keyboard.press("Control+M");
-    await page.getByRole("dialog").getByRole("option", { name, exact: true }).click();
-    await expect(page.locator(".launcher")).toHaveCount(0);
-    await expect(page.locator(target)).toBeVisible();
+    await openAppFromPalette(page, name!);
+    await arrived(page, scene!);
+    await expect(currentScene(page).locator(target!).first()).toBeVisible();
   }
 });

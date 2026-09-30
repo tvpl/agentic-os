@@ -1,22 +1,18 @@
 /**
- * Run history: a prompt box (⌘/Ctrl+Enter to submit) with provider, effort,
- * write toggle and working-directory picker, pending approvals inline, a
- * tokens sparkline from `/api/metrics`, filter chips, a paginated table with
- * cost per run, and empty/skeleton states.
+ * Run history (refino item 12): pending approvals inline, a tokens sparkline
+ * from `/api/metrics`, filter chips, and a paginated list that is a table
+ * when the plate is wide and cards when it is narrow. Prompts are typed in
+ * the console, not here.
  */
-import { useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Pencil, Play } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { loadPromptSubmission, savePromptSubmission } from "../desktop/promptSubmission";
-import { api, type ProviderId, type RunRecord } from "../api";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import type { RunRecord } from "../api";
 import { useLocale, useT } from "../i18n";
-import { qk, useApiQuery, useOsMetrics, useOsProviders, useOsSettings } from "../queries";
-import { ErrorBox, Skeleton, StatusBadge, formatDuration, timeAgo, useToast } from "../components/ui";
-import { Badge, Button, EmptyState, Field, Segmented } from "../components/primitives";
-import { EFFORTS, useEffortLabels, type Effort } from "../desktop/SkillMatrixModal";
+import { qk, useApiQuery, useOsMetrics, useOsProviders } from "../queries";
+import { ErrorBox, Skeleton, StatusBadge, formatDuration, timeAgo } from "../components/ui";
+import { Badge, Button, EmptyState, Segmented } from "../components/primitives";
 import { ApprovalsCard, useApprovals } from "./ApprovalCards";
-import { cwdSuggestions, writePolicyFor } from "./policy";
 import { sparkline } from "./sparkline";
 import { formatTokens, formatUsd, totalTokens } from "./usage";
 
@@ -24,30 +20,15 @@ const STATUS_FILTERS = ["all", "running", "done", "failed", "cancelled"] as cons
 type StatusFilter = (typeof STATUS_FILTERS)[number];
 const PAGE_SIZE = 50;
 
-/** Settings fields this view reads (the shared hook types them loosely). */
-interface RunsSettings {
-  securityProfile?: string;
-  indexedFolders?: Array<{ path: string; enabled: boolean }>;
-}
-
 export default function RunList() {
   const t = useT();
   const locale = useLocale();
-  const toast = useToast();
   const navigate = useNavigate();
-  const qc = useQueryClient();
-  const effortLabels = useEffortLabels();
   const [offset, setOffset] = useState(0);
   const providers = useOsProviders();
   const metrics = useOsMetrics({ refetchInterval: 300_000 });
-  const settings = useOsSettings();
   const approvals = useApprovals();
 
-  const [prompt, setPrompt] = useState("");
-  const [provider, setProvider] = useState<ProviderId | "">("");
-  const [effort, setEffort] = useState<Effort>("default");
-  const [writeMode, setWriteMode] = useState(false);
-  const [cwd, setCwd] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [providerFilter, setProviderFilter] = useState<string>("all");
   const [sortAsc, setSortAsc] = useState(false);
@@ -67,176 +48,20 @@ export default function RunList() {
   const query = new URLSearchParams(Object.entries(filters).map(([key, value]) => [key, String(value)]));
   const runs = useApiQuery<RunRecord[]>(qk.runs(filters), `/api/runs?${query}`, { refetchInterval: 300_000 });
 
-  const enabledProviders = (providers.data ?? []).filter((p) => p.enabled);
-  const conf = (settings.data ?? {}) as RunsSettings;
-  const policy = writePolicyFor(conf.securityProfile);
-  const write = writeMode && policy !== "refused";
-
-  const cwdOptions = useMemo(
-    () => cwdSuggestions(conf.indexedFolders, runs.data),
-    [conf.indexedFolders, runs.data],
-  );
-
-  const submitting = useRef(false);
-  const submission = useRef(loadPromptSubmission("run-list"));
-  const submittedText = useRef("");
-  const quickRun = useMutation({
-    mutationFn: () => {
-      const payload = {
-        prompt: prompt.trim(),
-        mode: write ? "write" : "read_only",
-        ...(provider ? { provider } : {}),
-        ...(effort !== "default" ? { effort } : {}),
-        ...(cwd ? { cwd } : {}),
-      };
-      const fingerprint = JSON.stringify(payload);
-      if (submission.current?.fingerprint !== fingerprint) {
-        submission.current = { fingerprint, id: crypto.randomUUID() };
-        savePromptSubmission(submission.current, "run-list");
-      }
-      submittedText.current = payload.prompt;
-      return api.post<{ runId: string | null; pendingApproval?: { id: string } | null }>("/api/runs", {
-        ...payload,
-        submissionId: submission.current.id,
-      });
-    },
-    onSettled: () => {
-      submitting.current = false;
-    },
-    onSuccess: (res) => {
-      setPrompt((value) => (value.trim() === submittedText.current ? "" : value));
-      submission.current = null;
-      savePromptSubmission(null, "run-list");
-      qc.invalidateQueries({ queryKey: ["runs"] }).catch(() => undefined);
-      if (!res.runId) {
-        // The profile asked for a human decision: the card below now shows it.
-        qc.invalidateQueries({ queryKey: qk.approvals }).catch(() => undefined);
-        toast(t("runs.approve.queued"), "info");
-        return;
-      }
-      navigate(`/runs/${res.runId}`);
-    },
-    onError: (err: Error) => toast(err.message, "danger"),
-  });
-
-  const launch = () => {
-    if (submitting.current || !prompt.trim()) return;
-    submitting.current = true;
-    quickRun.mutate();
-  };
   const rows = (runs.data ?? []).slice(0, PAGE_SIZE);
 
-  const canRun = prompt.trim().length > 0 && !quickRun.isPending && enabledProviders.length > 0;
   const hasNext = (runs.data ?? []).length > PAGE_SIZE;
   const page = Math.floor(offset / PAGE_SIZE) + 1;
 
   return (
-    <div className="page">
+    <div className="page runs-page">
       <div className="page-head">
         <div>
           <h1>{t("runs.title")}</h1>
           <p className="sub">{t("runs.sub")}</p>
         </div>
-        <TokensSpark series={metrics.data?.usageSeries} todayUsd={metrics.data?.cost?.todayUsd ?? null} />
-      </div>
-
-      <div className="card" style={{ marginBottom: "var(--s-4)" }}>
-        <h2>{t("runs.quick")}</h2>
-        <div className="stack-sm">
-          <div className="quick-row">
-            <textarea
-              className="input quick-prompt"
-              rows={2}
-              placeholder={t("runs.quickPh")}
-              value={prompt}
-              aria-label={t("runs.prompt")}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canRun) {
-                  e.preventDefault();
-                  launch();
-                }
-              }}
-            />
-            <Button
-              variant="primary"
-              icon={<Play aria-hidden />}
-              disabled={!canRun}
-              loading={quickRun.isPending}
-              onClick={launch}
-            >
-              {t("common.run")}
-            </Button>
-          </div>
-          <p className="hint quick-hint">{t("runs.submitHint")}</p>
-          <div className="quick-options">
-            <Field label={t("runs.provider")} htmlFor="qr-provider">
-              <select
-                id="qr-provider"
-                className="input"
-                value={provider}
-                onChange={(e) => setProvider(e.target.value as ProviderId | "")}
-              >
-                <option value="">{t("runs.defaultProvider")}</option>
-                {enabledProviders.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.id}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t("skills.effort")} htmlFor="qr-effort">
-              <Segmented
-                ariaLabel={t("skills.effort")}
-                size="sm"
-                value={effort}
-                onChange={(v) => setEffort(v as Effort)}
-                options={EFFORTS.map((e) => ({ value: e, label: effortLabels[e] }))}
-              />
-            </Field>
-            <Field label={t("runs.cwdLabel")} htmlFor="qr-cwd" hint={t("runs.cwdHint")}>
-              <input
-                id="qr-cwd"
-                className="input"
-                list="qr-cwd-options"
-                value={cwd}
-                placeholder={t("runs.cwdDefault")}
-                onChange={(e) => setCwd(e.target.value)}
-              />
-              <datalist id="qr-cwd-options">
-                {cwdOptions.map((p) => (
-                  <option key={p} value={p} />
-                ))}
-              </datalist>
-            </Field>
-            <Field label={t("runs.mode")} htmlFor="qr-write">
-              <div className="write-toggle">
-                <Button
-                  id="qr-write"
-                  size="sm"
-                  variant={write ? "primary" : "outline"}
-                  icon={<Pencil aria-hidden />}
-                  aria-pressed={write}
-                  disabled={policy === "refused"}
-                  title={policy === "refused" ? t("runs.write.refused") : undefined}
-                  onClick={() => setWriteMode((v) => !v)}
-                >
-                  {t("runs.write.toggle")}
-                </Button>
-                <span className={`hint ${policy === "refused" ? "warn" : ""}`}>
-                  {policy === "refused"
-                    ? t("runs.write.refused")
-                    : policy === "approval"
-                      ? t("runs.write.approval")
-                      : t("runs.write.allowed")}
-                </span>
-              </div>
-            </Field>
-            {enabledProviders.length === 0 && providers.data && (
-              <p className="hint warn">{t("skills.noProviderBody")}</p>
-            )}
-          </div>
-        </div>
+        {/* Tokens only: the day's cost is the strip's number and the Cost panel's detail ("um número, um lugar"). */}
+        <TokensSpark series={metrics.data?.usageSeries} />
       </div>
 
       <ApprovalsCard approvals={approvals.data} onLaunched={(runId) => runId && navigate(`/runs/${runId}`)} />
@@ -317,26 +142,32 @@ export default function RunList() {
                   tabIndex={0}
                   onKeyDown={(e) => e.key === "Enter" && navigate(`/runs/${r.id}`)}
                 >
-                  <td className="truncate" style={{ maxWidth: 320 }}>
+                  <td className="truncate run-cell-title" style={{ maxWidth: 320 }}>
                     {r.skillSlug ? (
                       <span className="mono">/{r.skillSlug}</span>
                     ) : (
                       r.promptSummary.slice(0, 60)
                     )}
                   </td>
-                  <td>{r.provider}</td>
-                  <td>
+                  <td data-label={t("runs.provider")}>{r.provider}</td>
+                  <td data-label={t("runs.origin")}>
                     <Badge kind="meta">{r.origin}</Badge>
                   </td>
-                  <td>
+                  <td data-label={t("runs.status")} className="run-cell-status">
                     <StatusBadge status={r.status} />
                   </td>
-                  <td className="num tabular">
+                  <td className="num tabular" data-label={t("runs.cost")}>
                     {r.usage?.costUsd != null ? formatUsd(r.usage.costUsd) : "—"}
                   </td>
-                  <td className="num tabular">{r.usage ? formatTokens(totalTokens(r.usage)) : "—"}</td>
-                  <td className="tabular">{formatDuration(r.durationMs)}</td>
-                  <td className="dim">{timeAgo(r.createdAt, locale)}</td>
+                  <td className="num tabular" data-label={t("runs.tokens")}>
+                    {r.usage ? formatTokens(totalTokens(r.usage)) : "—"}
+                  </td>
+                  <td className="tabular" data-label={t("runs.duration")}>
+                    {formatDuration(r.durationMs, locale)}
+                  </td>
+                  <td className="dim" data-label={t("runs.when")}>
+                    {timeAgo(r.createdAt, locale)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -372,13 +203,7 @@ export default function RunList() {
 }
 
 /** 24 hourly token buckets as an inline sparkline (no layout work per frame). */
-function TokensSpark({
-  series,
-  todayUsd,
-}: {
-  series: Array<{ ts: number; tokens: number; usd: number }> | undefined;
-  todayUsd: number | null;
-}) {
+function TokensSpark({ series }: { series: Array<{ ts: number; tokens: number; usd: number }> | undefined }) {
   const t = useT();
   const values = (series ?? []).map((p) => p.tokens);
   const total = values.reduce((a, b) => a + b, 0);
@@ -401,7 +226,6 @@ function TokensSpark({
       <div className="tokens-spark-meta">
         <span className="mono tnum">{formatTokens(total)}</span>
         <span className="hud-label">{t("runs.spark.label")}</span>
-        {todayUsd != null && <span className="mono tnum accent-text">{formatUsd(todayUsd)}</span>}
       </div>
     </div>
   );

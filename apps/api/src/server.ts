@@ -39,6 +39,7 @@ import { registerConnectorRoutes } from "./routes/connectors.js";
 import { registerMicroappRoutes } from "./routes/microapps.js";
 import { registerEventRoutes } from "./routes/events.js";
 import { registerObjectiveRoutes } from "./routes/objectives.js";
+import { registerSentinelRoutes } from "./routes/sentinels.js";
 import { closeAllSse } from "./routes/sse.js";
 
 export interface ServerHandle {
@@ -247,6 +248,7 @@ export async function buildServer(
   registerSkillRoutes(app, ctx);
   registerRunRoutes(app, ctx);
   registerSessionRoutes(app, ctx);
+  registerSentinelRoutes(app, ctx);
   registerNotificationRoutes(app, ctx);
   registerDeviceRoutes(app, ctx);
   registerChannelRoutes(app, ctx);

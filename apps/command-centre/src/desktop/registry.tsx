@@ -9,7 +9,19 @@
  * instruments a pod on the right arc opens. Apps (kind `app`), documents
  * (`artifact`) and traces (`run`) are registered elsewhere.
  */
-import { Activity, AlertTriangle, CalendarClock, Coins, Inbox, ShieldCheck } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  BookOpen,
+  CalendarClock,
+  Coins,
+  Eye,
+  HeartPulse,
+  Inbox,
+  Lightbulb,
+  ShieldCheck,
+  Target,
+} from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import type { TKey } from "../i18n";
 import type { WidgetId } from "./defaultLayout";
@@ -21,6 +33,11 @@ import ApprovalsWidget from "./widgets/ApprovalsWidget";
 import InboxWidget from "./widgets/InboxWidget";
 import NowPanel from "./NowPanel";
 import CostWidget from "./widgets/CostWidget";
+import MissionWidget from "./widgets/MissionWidget";
+import SentinelsWidget from "./widgets/SentinelsWidget";
+import FactsWidget from "./widgets/FactsWidget";
+import JournalWidget from "./widgets/JournalWidget";
+import HealthWidget from "./widgets/HealthWidget";
 
 export interface WidgetDefinition {
   id: WidgetId;
@@ -101,6 +118,46 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     refKey: "desktop.ref.cost",
     icon: <Coins aria-hidden />,
     Component: CostWidget,
+  },
+  mission: {
+    id: "mission",
+    surfaceMin: { w: 480, h: 360 },
+    titleKey: "desktop.widget.mission",
+    refKey: "desktop.ref.mission",
+    icon: <Target aria-hidden />,
+    Component: MissionWidget,
+  },
+  sentinels: {
+    id: "sentinels",
+    surfaceMin: { w: 420, h: 320 },
+    titleKey: "desktop.widget.sentinels",
+    refKey: "desktop.ref.sentinels",
+    icon: <Eye aria-hidden />,
+    Component: SentinelsWidget,
+  },
+  facts: {
+    id: "facts",
+    surfaceMin: { w: 440, h: 320 },
+    titleKey: "desktop.widget.facts",
+    refKey: "desktop.ref.facts",
+    icon: <Lightbulb aria-hidden />,
+    Component: FactsWidget,
+  },
+  journal: {
+    id: "journal",
+    surfaceMin: { w: 440, h: 360 },
+    titleKey: "desktop.widget.journal",
+    refKey: "desktop.ref.journal",
+    icon: <BookOpen aria-hidden />,
+    Component: JournalWidget,
+  },
+  health: {
+    id: "health",
+    surfaceMin: { w: 440, h: 320 },
+    titleKey: "desktop.widget.health",
+    refKey: "desktop.ref.health",
+    icon: <HeartPulse aria-hidden />,
+    Component: HealthWidget,
   },
 };
 

@@ -64,5 +64,9 @@ describe("spotlight geometry", () => {
     const mobile = placeCoach(null, 320, 568, card);
     expect(mobile.x + mobile.width).toBeLessThanOrEqual(320);
     expect(mobile.y + mobile.height).toBeLessThanOrEqual(568);
+    // On a phone the voice line is at the bottom: the coach steps up to the top.
+    const voice = placeCoach({ x: 8, y: 470, width: 304, height: 90 }, 320, 568, card);
+    expect(voice.y).toBe(12);
+    expect(voice.y + voice.height).toBeLessThanOrEqual(470);
   });
 });

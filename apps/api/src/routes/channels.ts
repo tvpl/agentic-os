@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import { formatNotification, sendTelegramMessage, telegramToken } from "@mordomo/core";
 import type { AppContext } from "../context.js";
@@ -22,6 +23,21 @@ export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): vo
       lastError: p?.lastError ?? null,
       handled: p?.handled ?? 0,
     };
+  });
+
+  /** Send one line to the configured chat (refino item 45: an artifact or a reply, on demand). */
+  app.post("/api/channels/telegram/send", async (req) => {
+    const body = z.object({ text: z.string().min(1).max(4000) }).parse(req.body);
+    const settings = ctx.settings();
+    const cfg = settings.channels.telegram;
+    const token = telegramToken(settings);
+    if (!token)
+      return {
+        ok: false,
+        error: `No bot token: set ${cfg.botTokenEnv} in the environment of the MordomoOS service.`,
+      };
+    if (!cfg.chatId) return { ok: false, error: "No chat id configured in Settings › Channels." };
+    return sendTelegramMessage({ token, chatId: cfg.chatId, text: body.text });
   });
 
   app.post("/api/channels/telegram/test", async () => {

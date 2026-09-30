@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "promote_threshold": 2,
+  "window_days": 45,
+  "quarantine_threshold": 2,
+  "next_id": 5,
+  "lessons": [
+    {
+      "id": "L-001",
+      "key": "surviving_mutant::assert an animated element s start position within a few pixels of its origin a containment check lets a 30 px drift through",
+      "text": "Assert an animated element's start position within a few pixels of its origin; a containment check lets a 30 px drift through.",
+      "signal": "surviving_mutant",
+      "scope": "e2e/animation",
+      "status": "candidate",
+      "features": ["conceito-em-todo-sistema"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["apps/command-centre/src/nucleo/Lamina.tsx:50 (e2e/animation)"],
+      "created": "2026-09-29T12:28:35Z",
+      "last_seen": "2026-09-29T12:28:35Z"
+    },
+    {
+      "id": "L-002",
+      "key": "spec_precision_gap::carry the ac s numeric bound duration px into the check text or the proof will only assert presence",
+      "text": "Carry the AC's numeric bound (duration, px) into the check text, or the proof will only assert presence.",
+      "signal": "spec_precision_gap",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["conceito-em-todo-sistema"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C11 (checks)"],
+      "created": "2026-09-29T12:28:35Z",
+      "last_seen": "2026-09-29T12:28:35Z"
+    },
+    {
+      "id": "L-003",
+      "key": "gate_fail::an x appears once proof must visit every tab or section that renders x after each one has loaded",
+      "text": "An 'X appears once' proof must visit every tab or section that renders X, after each one has loaded.",
+      "signal": "gate_fail",
+      "scope": "e2e",
+      "status": "candidate",
+      "features": ["conceito-em-todo-sistema"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["C18 (e2e)"],
+      "created": "2026-09-29T12:28:35Z",
+      "last_seen": "2026-09-29T12:28:35Z"
+    },
+    {
+      "id": "L-004",
+      "key": "surviving_mutant::every new unit test written for a check must be named as a proof line of that check",
+      "text": "Every new unit test written for a check must be named as a Proof line of that check.",
+      "signal": "surviving_mutant",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["conceito-em-todo-sistema"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["apps/command-centre/src/nucleo/pending/model.ts:144 (checks)"],
+      "created": "2026-09-29T12:28:36Z",
+      "last_seen": "2026-09-29T12:28:36Z"
+    }
+  ]
+}

@@ -100,12 +100,17 @@ export function BrainChrome(p: BrainChromeProps) {
         </div>
       )}
 
-      <div className="brain2-topbar">
+      <div className={`brain2-topbar${inPanel ? " in-panel" : ""}`}>
         <div>
-          <div className="brain2-brand">
-            <span className="primary accent-text">{p.systemName.replace(/\s*os$/i, "")}</span>
-            <span className="secondary">{t("brain.title")}</span>
-          </div>
+          {/* One header per window (plan step 5): on the stage the plate's
+              title bar already says "Second Brain"; the page says it only
+              when it is the whole screen. The count and the actions stay. */}
+          {!inPanel && (
+            <div className="brain2-brand">
+              <span className="primary accent-text">{p.systemName.replace(/\s*os$/i, "")}</span>
+              <span className="secondary">{t("brain.title")}</span>
+            </div>
+          )}
           <div className="brain2-brand">
             <span className="byline">
               {p.total.toLocaleString(p.lang)} {t("brain.sub")}

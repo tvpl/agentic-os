@@ -40,8 +40,22 @@ const GROUPS: Group[] = [
   {
     title: "shell.shortcuts.desktop",
     rows: [
-      { keys: [["E"]], label: "shell.shortcuts.editMode" },
-      { keys: [["↑↓←→"], ["Shift", "↑↓←→"]], label: "shell.shortcuts.nudge" },
+      {
+        keys: [["1"], ["5"]],
+        label: "shell.shortcuts.spaces",
+      },
+      { keys: [["["], ["]"]], label: "shell.shortcuts.cycle" },
+      { keys: [["/"]], label: "shell.shortcuts.cinema" },
+      { keys: [[MOD, "F"]], label: "shell.shortcuts.overview" },
+      { keys: [["Esc"]], label: "shell.shortcuts.closeTop" },
+      {
+        keys: [
+          [MOD, "⇧", "A"],
+          [MOD, "⇧", "D"],
+        ],
+        label: "shell.shortcuts.decide",
+      },
+      { keys: [[">"]], label: "shell.shortcuts.commandPrefix" },
     ],
   },
   {

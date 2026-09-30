@@ -5,11 +5,16 @@ import * as shellL from "./locales/shell";
 import * as runsL from "./locales/runs";
 import * as appsL from "./locales/apps";
 import * as backendL from "./locales/backend";
+import * as nucleoL from "./locales/nucleo";
+import * as sceneBrainL from "./locales/scene-brain";
+import * as sceneRunsL from "./locales/scene-runs";
+import * as sceneSkillsL from "./locales/scene-skills";
+import * as sceneRoutinesL from "./locales/scene-routines";
 
 export type Lang = "en" | "pt-BR";
 
 const baseEn = {
-  "nav.dashboard": "Dashboard",
+  "nav.dashboard": "Core",
   "nav.skills": "Skills",
   "nav.brain": "Second Brain",
   "nav.routines": "Routines",
@@ -190,6 +195,7 @@ const baseEn = {
   "status.failed": "failed",
   "status.cancelled": "cancelled",
   "status.interrupted": "interrupted",
+  "status.timed_out": "timed out",
   "brain.layout": "Layout",
   "brain.layout.force": "Force",
   "brain.layout.circle": "Circle",
@@ -598,13 +604,18 @@ const en = {
   ...runsL.en,
   ...appsL.en,
   ...backendL.en,
+  ...nucleoL.en,
+  ...sceneBrainL.en,
+  ...sceneRunsL.en,
+  ...sceneSkillsL.en,
+  ...sceneRoutinesL.en,
 };
 /** Every string is widened to `string`: locale modules may use `as const`. */
 type Dict = { [K in keyof typeof en]: string };
 
 const basePtBR = {
   ...baseEn,
-  "nav.dashboard": "Painel",
+  "nav.dashboard": "Núcleo",
   "nav.skills": "Skills",
   "nav.brain": "Segundo Cérebro",
   "nav.routines": "Rotinas",
@@ -786,6 +797,7 @@ const basePtBR = {
   "status.failed": "falhou",
   "status.cancelled": "cancelada",
   "status.interrupted": "interrompida",
+  "status.timed_out": "tempo esgotado",
   "brain.layout": "Layout",
   "brain.layout.force": "Força",
   "brain.layout.circle": "Círculo",
@@ -1200,6 +1212,11 @@ const ptBR: Dict = {
   ...runsL.ptBR,
   ...appsL.ptBR,
   ...backendL.ptBR,
+  ...nucleoL.ptBR,
+  ...sceneBrainL.ptBR,
+  ...sceneRunsL.ptBR,
+  ...sceneSkillsL.ptBR,
+  ...sceneRoutinesL.ptBR,
 };
 
 export const dictionaries: Record<Lang, Dict> = { en, "pt-BR": ptBR };
@@ -1215,8 +1232,30 @@ export type TVars = Record<string, string | number>;
 /** Pure lookup with `{name}` interpolation — usable outside React (canvas loops, tests). */
 export function tf(lang: Lang, key: TKey, vars?: TVars): string {
   const raw = dictionaries[lang][key] ?? key;
-  if (!vars) return raw;
-  return raw.replace(/\{(\w+)\}/g, (match, name: string) => (name in vars ? String(vars[name]) : match));
+  if (!vars) return plural(raw, undefined);
+  return plural(raw, vars).replace(/\{(\w+)\}/g, (match, name: string) =>
+    name in vars ? String(vars[name]) : match,
+  );
+}
+
+/**
+ * Plural forms inline: `{n} turn[|s]` or `{done} run[done?|s] finished`.
+ * The bracket picks its first half when the count is exactly one and the
+ * second otherwise — the rule both languages share. The count is `n` unless
+ * the bracket names another variable (`[name?one|other]`). A string without
+ * a bracket is returned untouched, and a bracket without a count reads as
+ * "other".
+ */
+export function plural(raw: string, vars: TVars | undefined): string {
+  if (!raw.includes("[")) return raw;
+  return raw.replace(
+    /\[(?:(\w+)\?)?([^\]|]*)\|([^\]]*)\]/g,
+    (_m, name: string | undefined, a: string, b: string) => {
+      const v = vars?.[name ?? "n"];
+      const one = typeof v === "number" ? Math.abs(v) === 1 : v === "1";
+      return one ? a : b;
+    },
+  );
 }
 
 /** BCP-47 locale for Intl.* for a UI language. */

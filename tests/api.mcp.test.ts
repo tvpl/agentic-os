@@ -68,6 +68,25 @@ describe("permission decide()", () => {
     });
   });
 
+  it("hands the user's answers to a question back in the tool's input", async () => {
+    await withEnv(async () => {
+      const call = async <T>(method: string): Promise<T> => {
+        if (method === "POST") return { id: "q1", status: "pending" } as T;
+        return { id: "q1", status: "approved", payload: { answers: { "Por onde?": "Testes" } } } as T;
+      };
+      const out = JSON.parse(
+        await decide(
+          { tool_name: "AskUserQuestion", input: { questions: [{ question: "Por onde?" }] } },
+          { call, sleep: async () => undefined, now: Date.now },
+        ),
+      );
+      expect(out).toEqual({
+        behavior: "allow",
+        updatedInput: { questions: [{ question: "Por onde?" }], answers: { "Por onde?": "Testes" } },
+      });
+    });
+  });
+
   it("denies on timeout and resolves the approval as denied", async () => {
     await withEnv(async () => {
       const seen: string[] = [];

@@ -516,3 +516,91 @@
 .skill-note-recent li {
   margin: 0.15em 0;
 }
+
+/* The run sheet (refino item 14): three lines, no pill soup. */
+.run-sheet-line {
+  margin: 4px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  font-size: var(--fs-2);
+  color: var(--text-dim);
+}
+.run-sheet-line .dot {
+  color: var(--text-faint);
+}
+.run-sheet-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-4);
+  margin-top: var(--s-2);
+}
+.run-metric {
+  display: grid;
+  gap: 1px;
+}
+.run-metric b {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: var(--fs-4);
+  color: var(--text);
+}
+.run-metric b.accent {
+  color: var(--accent-text);
+}
+.run-metric small {
+  font-size: var(--fs-0);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* The run list (refino item 12): columns when wide, cards when narrow. */
+.runs-page {
+  container-type: inline-size;
+  width: 100%;
+  box-sizing: border-box;
+}
+@container (max-width: 760px) {
+  .runs-table thead {
+    display: none;
+  }
+  .runs-table,
+  .runs-table tbody {
+    display: block;
+  }
+  .runs-table tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .runs-table td {
+    display: block;
+    padding: 0;
+    border: 0;
+    max-width: none !important;
+  }
+  .runs-table td.run-cell-title {
+    grid-column: 1;
+    font-weight: 600;
+  }
+  .runs-table td.run-cell-status {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+  .runs-table td[data-label]:not(.run-cell-status)::before {
+    content: attr(data-label) " ";
+    font-size: var(--fs-0);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-right: 4px;
+  }
+  .runs-table td[data-label]:not(.run-cell-status) {
+    grid-column: 1 / -1;
+    font-size: var(--fs-2);
+  }
+}

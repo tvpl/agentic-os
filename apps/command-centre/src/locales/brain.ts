@@ -4,6 +4,9 @@
  * the `satisfies` clause and by i18n.test.ts).
  */
 export const en = {
+  "brain.more": "More controls",
+  "brain.summarize": "Ask for a summary",
+  "brain.askSummary": "Summarise this file in five lines and say what I should do with it:",
   "brain.controls": "Brain controls",
   "brain.layout.arcs": "Arcs",
   "brain.edges": "Edges",
@@ -69,6 +72,9 @@ export const en = {
 } as const;
 
 export const ptBR = {
+  "brain.more": "Mais controles",
+  "brain.summarize": "Pedir um resumo",
+  "brain.askSummary": "Resuma este arquivo em cinco linhas e diga o que devo fazer com ele:",
   "brain.controls": "Controles do cérebro",
   "brain.layout.arcs": "Arcos",
   "brain.edges": "Arestas",

@@ -28,6 +28,7 @@ import {
 import { useLocale, useT } from "../i18n";
 import { Button, Segmented } from "../components/primitives";
 import { absoluteTime, eventBody, relativeOffset, searchIndices, splitMatches } from "./logText";
+import { humanizeEvent } from "./humanize";
 import { formatTokens, formatUsd } from "./usage";
 import type { RunEventView } from "./useRunStream";
 
@@ -63,6 +64,8 @@ export type TimestampMode = "relative" | "absolute";
 export interface EventTimelineProps {
   events: RunEventView[];
   live: boolean;
+  /** The run's working directory: paths in the trace are shortened against it. */
+  cwd?: string | null;
   /** Viewport height: a number of px, or any CSS length. Defaults to filling the window. */
   height?: number | string;
   /** Show the search + timestamp toolbar (on in RunDetail, off for embeds). */
@@ -77,7 +80,7 @@ export interface EventTimelineHandle {
 const DEFAULT_HEIGHT = "clamp(320px, calc(100vh - 420px), 1100px)";
 
 const EventTimeline = forwardRef<EventTimelineHandle, EventTimelineProps>(function EventTimeline(
-  { events, live, height = DEFAULT_HEIGHT, searchable = false },
+  { events, live, cwd, height = DEFAULT_HEIGHT, searchable = false },
   ref,
 ) {
   const t = useT();
@@ -249,7 +252,14 @@ const EventTimeline = forwardRef<EventTimelineHandle, EventTimelineProps>(functi
                   className={`timeline-row-wrap${v.index === active ? " is-match" : ""}`}
                   style={{ transform: `translateY(${v.start}px)` }}
                 >
-                  <TimelineRow item={item} firstTs={firstTs} query={query} stamps={stamps} locale={locale} />
+                  <TimelineRow
+                    item={item}
+                    firstTs={firstTs}
+                    query={query}
+                    stamps={stamps}
+                    locale={locale}
+                    cwd={cwd}
+                  />
                 </div>
               );
             })}
@@ -282,12 +292,14 @@ function TimelineRow({
   query,
   stamps,
   locale,
+  cwd,
 }: {
   item: Item;
   firstTs: number;
   query: string;
   stamps: TimestampMode;
   locale: string;
+  cwd?: string | null;
 }) {
   const t = useT();
   const ts = item.ts;
@@ -343,6 +355,21 @@ function TimelineRow({
       );
     case "tool_use": {
       const detail = String(e.detail ?? "");
+      // The sentence first (refino item 36); the raw input one click away.
+      const human = humanizeEvent(e, t, cwd);
+      const line = (
+        <>
+          <span className={`ev-human tone-${human?.tone ?? "ok"}`}>{human?.text}</span>
+          {human?.subject && (
+            <span className="mono ev-subject">
+              <Hit text={human.subject} query={query} />
+            </span>
+          )}
+          <span className="ev-tag ev-tool-name">
+            <Hit text={String(e.tool ?? "")} query={query} />
+          </span>
+        </>
+      );
       return (
         <div className="ev ev-tool">
           {time}
@@ -352,23 +379,13 @@ function TimelineRow({
           <div className="ev-body">
             {detail ? (
               <details>
-                <summary>
-                  <span className="ev-tag">tool</span>{" "}
-                  <span className="mono ev-tool-name">
-                    <Hit text={String(e.tool ?? "")} query={query} />
-                  </span>
-                </summary>
+                <summary>{line}</summary>
                 <pre className="ev-pre">
                   <Hit text={detail} query={query} />
                 </pre>
               </details>
             ) : (
-              <>
-                <span className="ev-tag">tool</span>{" "}
-                <span className="mono ev-tool-name">
-                  <Hit text={String(e.tool ?? "")} query={query} />
-                </span>
-              </>
+              line
             )}
           </div>
         </div>

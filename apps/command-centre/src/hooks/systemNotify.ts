@@ -1,3 +1,4 @@
+import { isQuiet, readQuietHours } from "./rhythm";
 /**
  * Notifications outside the tab (plan Onda 2 §4): system notifications via
  * the Notification API (through the service worker when it controls the
@@ -97,13 +98,23 @@ export function showSystemNotification(n: SystemNotice, opts: { force?: boolean 
 }
 
 /** Speak a short line (alerts, replies) in the UI language; silent without the toggle or the API. */
-export function speak(text: string, lang: string, opts: { force?: boolean } = {}): boolean {
+export function speak(
+  text: string,
+  lang: string,
+  opts: { force?: boolean; onEnd?: () => void; byUser?: boolean } = {},
+): boolean {
   if (!opts.force && !getVoiceNotify()) return false;
+  // Quiet hours (refino item 53): nothing spoken unless a person just asked.
+  if (!opts.byUser && isQuiet(readQuietHours())) return false;
   if (typeof speechSynthesis === "undefined" || typeof SpeechSynthesisUtterance === "undefined") return false;
   try {
     const u = new SpeechSynthesisUtterance(text.slice(0, 400));
     u.lang = lang;
     u.rate = 1.05;
+    if (opts.onEnd) {
+      u.onend = opts.onEnd;
+      u.onerror = opts.onEnd;
+    }
     speechSynthesis.cancel();
     speechSynthesis.speak(u);
     return true;
@@ -126,7 +137,10 @@ interface SpeechRecognitionLike {
   interimResults: boolean;
   continuous: boolean;
   onresult:
-    ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> & { length: number } }) => void) | null;
+    | ((e: {
+        results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal?: boolean }> & { length: number };
+      }) => void)
+    | null;
   onend: (() => void) | null;
   onerror: ((e: { error?: string }) => void) | null;
   start(): void;
@@ -140,7 +154,13 @@ export function speechRecognitionAvailable(): boolean {
 }
 
 /** Start listening; `onText` receives the final transcript, `onEnd` fires when recognition stops. Returns a stop function. */
-export function listen(lang: string, onText: (text: string) => void, onEnd: () => void): (() => void) | null {
+export function listen(
+  lang: string,
+  onText: (text: string) => void,
+  onEnd: () => void,
+  /** Hands-free (refino item 3): `onInterim` receives the transcript as it forms. */
+  opts: { onInterim?: (text: string) => void } = {},
+): (() => void) | null {
   const w = window as unknown as {
     SpeechRecognition?: new () => SpeechRecognitionLike;
     webkitSpeechRecognition?: new () => SpeechRecognitionLike;
@@ -149,15 +169,27 @@ export function listen(lang: string, onText: (text: string) => void, onEnd: () =
   if (!Ctor) return null;
   const rec = new Ctor();
   rec.lang = lang;
-  rec.interimResults = false;
+  rec.interimResults = Boolean(opts.onInterim);
   rec.continuous = false;
+  let delivered = false;
   rec.onresult = (e) => {
-    const parts: string[] = [];
+    const finals: string[] = [];
+    const interim: string[] = [];
     for (let i = 0; i < e.results.length; i++) {
-      const alt = e.results[i]?.[0];
-      if (alt?.transcript) parts.push(alt.transcript);
+      const result = e.results[i];
+      const alt = result?.[0];
+      if (!alt?.transcript) continue;
+      // Without interim results every result is final; with them, the flag decides.
+      if (!opts.onInterim || result?.isFinal !== false) finals.push(alt.transcript);
+      else interim.push(alt.transcript);
     }
-    if (parts.length > 0) onText(parts.join(" ").trim());
+    if (interim.length > 0) opts.onInterim?.([...finals, ...interim].join(" ").trim());
+    if (finals.length > 0 && !delivered) {
+      // A final result may arrive more than once while listening continues; deliver each new one.
+      opts.onInterim?.("");
+      onText(finals.join(" ").trim());
+      delivered = !opts.onInterim;
+    }
   };
   rec.onend = () => onEnd();
   rec.onerror = () => onEnd();

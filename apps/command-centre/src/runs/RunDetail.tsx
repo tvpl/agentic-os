@@ -5,6 +5,9 @@
  *
  * Keyboard: `r` run again, `c` continue with a follow-up, `/` search the log.
  */
+import "./runs.css";
+import { FailureFixCard } from "./FailureFixCard";
+import { recallFromEvents } from "./recallFromEvents";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, ClipboardList, Copy, CornerDownRight, FileText, RefreshCw, Square } from "lucide-react";
@@ -31,7 +34,7 @@ import { isNotFound, isRunActive, useRunQuery, useRunStream } from "./useRunStre
 
 type DetailTab = "timeline" | "replay";
 
-export default function RunDetail({ id }: { id: string }) {
+export default function RunDetail({ id, embedded = false }: { id: string; embedded?: boolean }) {
   const t = useT();
   const locale = useLocale();
   const toast = useToast();
@@ -247,127 +250,22 @@ export default function RunDetail({ id }: { id: string }) {
   }
 
   const title = run.skillSlug ? `/${run.skillSlug}` : run.promptSummary.slice(0, 80) || t("runs.title");
+  const recalled = recallFromEvents(events).flatMap((r) => r.paths);
   const duration = active
     ? formatCountdown(now - (run.startedAt ?? run.createdAt))
-    : formatDuration(run.durationMs);
+    : formatDuration(run.durationMs, locale);
   const contextPct =
     contextTokens != null && contextWindow ? Math.min(100, (contextTokens / contextWindow) * 100) : null;
   const recovery = authRecovery(run.provider, run.failure?.message ?? run.error);
 
   return (
-    <div className="page run-detail">
-      <div className="page-head">
-        <div className="run-head-main">
-          <p className="run-back">
-            <Link to="/runs">
-              <ArrowLeft aria-hidden /> {t("runs.title")}
-            </Link>
-          </p>
-          <h1 className="run-title">
-            <span className={run.skillSlug ? "mono" : ""}>{title}</span>
-            <StatusBadge status={run.status} />
-          </h1>
-          <div className="run-meta">
-            <Badge kind="meta">{run.provider}</Badge>
-            {(usage?.model ?? run.model) && (
-              <Badge kind="meta" title={t("runs.model")}>
-                {usage?.model ?? run.model}
-              </Badge>
-            )}
-            {run.effort && (
-              <Badge kind="meta" title={t("skills.effort")}>
-                {t("skills.effort")}: {run.effort}
-              </Badge>
-            )}
-            <Badge kind="meta" title={active ? t("runs.elapsed") : t("table.duration")}>
-              {duration}
-            </Badge>
-            <Badge kind="meta" title={t("table.when")}>
-              {timeAgo(run.createdAt, locale)}
-            </Badge>
-            <Badge kind="meta">{run.origin}</Badge>
-            {usage && (
-              <>
-                <Badge kind="state" tone="accent" title={t("runs.usage.costTitle")}>
-                  {formatUsd(usage.costUsd)}
-                </Badge>
-                <Badge kind="meta" title={t("runs.usage.tokensTitle")}>
-                  ↑{formatTokens(usage.inputTokens)} ↓{formatTokens(usage.outputTokens)} ·{" "}
-                  {formatTokens(totalTokens(usage))}
-                </Badge>
-              </>
-            )}
-          </div>
-          <div className="run-context">
-            <span className="hud-label">{t("runs.usage.context")}</span>
-            {contextPct == null ? (
-              <span className="mono dim">{t("runs.usage.na")}</span>
-            ) : (
-              <>
-                <span
-                  className="context-track"
-                  role="meter"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={Math.round(contextPct)}
-                  aria-label={t("runs.usage.context")}
-                >
-                  <span className="context-fill" style={{ transform: `scaleX(${contextPct / 100})` }} />
-                </span>
-                <span className="mono tnum">
-                  {formatTokens(contextTokens)} / {formatTokens(contextWindow)} · {Math.round(contextPct)}%
-                </span>
-              </>
-            )}
-          </div>
-          {run.cwd && (
-            <div className="run-cwd">
-              <span className="hud-label">{t("runs.cwd")}</span>
-              <code className="mono truncate" title={run.cwd}>
-                {run.cwd}
-              </code>
-              <Button
-                size="sm"
-                variant="ghost"
-                icon={<Copy aria-hidden />}
-                aria-label={t("brain.copyPath")}
-                title={t("brain.copyPath")}
-                onClick={() => void copy(run.cwd!)}
-              />
-            </div>
-          )}
-          <p className="run-id mono">{run.id}</p>
-        </div>
-        <div className="run-actions">
-          {active && (
-            <Button
-              variant="danger"
-              icon={<Square aria-hidden />}
-              onClick={() => void onCancel()}
-              loading={cancel.isPending}
-            >
-              {t("runs.cancel")}
-            </Button>
-          )}
+    <div className={`page run-detail${embedded ? " embedded" : ""}`}>
+      {/* Embedded (the Runs scene's Log): the scene already says the run's name, state,
+          numbers, error and ways on — the record starts below them. */}
+      {embedded ? (
+        <div className="run-embedded-acts">
           <Button
-            variant="secondary"
-            icon={<RefreshCw aria-hidden />}
-            onClick={runAgain}
-            loading={repeat.isPending}
-            disabled={!run.request}
-            title={t("runs.actions.againTitle")}
-          >
-            {t("runs.actions.again")}
-          </Button>
-          <Button
-            variant="secondary"
-            icon={<CornerDownRight aria-hidden />}
-            onClick={startFollowUp}
-            title={t("runs.actions.continueTitle")}
-          >
-            {t("runs.actions.continue")}
-          </Button>
-          <Button
+            size="sm"
             variant="ghost"
             icon={<ClipboardList aria-hidden />}
             onClick={copyLog}
@@ -377,7 +275,149 @@ export default function RunDetail({ id }: { id: string }) {
             {t("runs.actions.copyLog")}
           </Button>
         </div>
-      </div>
+      ) : (
+        <div className="page-head detail">
+          <div className="run-head-main">
+            <p className="run-back">
+              <Link to="/runs">
+                <ArrowLeft aria-hidden /> {t("runs.title")}
+              </Link>
+            </p>
+            <h1 className="run-title">
+              <span className={run.skillSlug ? "mono" : ""}>{title}</span>
+              <StatusBadge status={run.status} />
+            </h1>
+            {/* The sheet (refino item 14): who ran it on one line, what it cost on the next. */}
+            <p className="run-sheet-line mono">
+              <span>{run.provider}</span>
+              {(usage?.model ?? run.model) && (
+                <>
+                  <span className="dot" aria-hidden>
+                    ·
+                  </span>
+                  <span title={t("runs.model")}>{usage?.model ?? run.model}</span>
+                </>
+              )}
+              {run.effort && (
+                <>
+                  <span className="dot" aria-hidden>
+                    ·
+                  </span>
+                  <span title={t("skills.effort")}>
+                    {t("skills.effort").toLowerCase()} {run.effort}
+                  </span>
+                </>
+              )}
+              <span className="dot" aria-hidden>
+                ·
+              </span>
+              <span>{run.origin}</span>
+              <span className="dot" aria-hidden>
+                ·
+              </span>
+              <span title={t("table.when")}>{timeAgo(run.createdAt, locale)}</span>
+            </p>
+            <div className="run-sheet-metrics">
+              {usage && (
+                <span className="run-metric">
+                  <b className="tnum accent">{formatUsd(usage.costUsd)}</b>
+                  <small>{t("runs.usage.costTitle")}</small>
+                </span>
+              )}
+              {usage && (
+                <span className="run-metric" title={t("runs.usage.tokensTitle")}>
+                  <b className="tnum">
+                    ↑{formatTokens(usage.inputTokens)} ↓{formatTokens(usage.outputTokens)}
+                  </b>
+                  <small>{formatTokens(totalTokens(usage))} tokens</small>
+                </span>
+              )}
+              <span className="run-metric">
+                <b className="tnum">{duration}</b>
+                <small>{active ? t("runs.elapsed") : t("table.duration")}</small>
+              </span>
+            </div>
+            <div className="run-context">
+              <span className="hud-label">{t("runs.usage.context")}</span>
+              {contextPct == null ? (
+                <span className="mono dim">{t("runs.usage.na")}</span>
+              ) : (
+                <>
+                  <span
+                    className="context-track"
+                    role="meter"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(contextPct)}
+                    aria-label={t("runs.usage.context")}
+                  >
+                    <span className="context-fill" style={{ transform: `scaleX(${contextPct / 100})` }} />
+                  </span>
+                  <span className="mono tnum">
+                    {formatTokens(contextTokens)} / {formatTokens(contextWindow)} · {Math.round(contextPct)}%
+                  </span>
+                </>
+              )}
+            </div>
+            {run.cwd && (
+              <div className="run-cwd">
+                <span className="hud-label">{t("runs.cwd")}</span>
+                <code className="mono truncate" title={run.cwd}>
+                  {run.cwd}
+                </code>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={<Copy aria-hidden />}
+                  aria-label={t("brain.copyPath")}
+                  title={t("brain.copyPath")}
+                  onClick={() => void copy(run.cwd!)}
+                />
+              </div>
+            )}
+            <p className="run-id mono">{run.id}</p>
+          </div>
+          <div className="run-actions">
+            {active && (
+              <Button
+                variant="danger"
+                icon={<Square aria-hidden />}
+                onClick={() => void onCancel()}
+                loading={cancel.isPending}
+              >
+                {t("runs.cancel")}
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              icon={<RefreshCw aria-hidden />}
+              onClick={runAgain}
+              loading={repeat.isPending}
+              disabled={!run.request}
+              title={t("runs.actions.againTitle")}
+            >
+              {t("runs.actions.again")}
+            </Button>
+            <Button
+              variant="secondary"
+              icon={<CornerDownRight aria-hidden />}
+              onClick={startFollowUp}
+              title={t("runs.actions.continueTitle")}
+            >
+              {t("runs.actions.continue")}
+            </Button>
+            <Button
+              variant="ghost"
+              icon={<ClipboardList aria-hidden />}
+              onClick={copyLog}
+              disabled={events.length === 0}
+              title={t("runs.actions.copyLogTitle")}
+            >
+              {t("runs.actions.copyLog")}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {objective && objectiveStep && (
         <div className="card run-objective">
@@ -402,7 +442,7 @@ export default function RunDetail({ id }: { id: string }) {
         </div>
       )}
 
-      {!active && (
+      {!active && !embedded && (
         <div className={`card run-outcome${run.failure ? " failed" : ""}`}>
           <div>
             <span className="hud-label">{t("runs.outcome.title")}</span>
@@ -435,6 +475,26 @@ export default function RunDetail({ id }: { id: string }) {
                   : t("runs.outcome.fix")}
             </p>
           )}
+          {run.status !== "done" && (
+            <FailureFixCard
+              runId={run.id}
+              failure={run.failure}
+              provider={run.provider}
+              status={run.status}
+            />
+          )}
+          {recalled.length > 0 && (
+            <div className="run-recalled">
+              <span className="hud-label">{t("desktop.recalled", { n: recalled.length })}</span>
+              <ul>
+                {recalled.slice(0, 10).map((p, i) => (
+                  <li key={`${p.path}-${i}`} className="mono">
+                    {p.path} <span className="dim">§ {p.section}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
@@ -460,7 +520,7 @@ export default function RunDetail({ id }: { id: string }) {
         </div>
       )}
 
-      {run.error && (
+      {run.error && !embedded && (
         <div className="error-box run-error" role="alert">
           {run.error}
           {recovery && (
@@ -536,7 +596,7 @@ export default function RunDetail({ id }: { id: string }) {
           />
         </div>
         {tab === "timeline" ? (
-          <EventTimeline ref={timelineRef} events={events} live={stream.live} searchable />
+          <EventTimeline ref={timelineRef} events={events} live={stream.live} cwd={run.cwd} searchable />
         ) : (
           <Replay events={events} />
         )}

@@ -161,6 +161,7 @@ export const api = {
   get: <T>(url: string, opts?: RequestOptions) => request<T>("GET", url, undefined, opts),
   post: <T>(url: string, body?: unknown, opts?: RequestOptions) => request<T>("POST", url, body, opts),
   put: <T>(url: string, body?: unknown, opts?: RequestOptions) => request<T>("PUT", url, body, opts),
+  patch: <T>(url: string, body?: unknown, opts?: RequestOptions) => request<T>("PATCH", url, body, opts),
   del: <T>(url: string, opts?: RequestOptions) => request<T>("DELETE", url, undefined, opts),
 
   /** SSE stream of run events; EventSource cannot set headers → token in query. */
@@ -555,9 +556,22 @@ export interface MetricsDailyPoint {
   approvalWaitAvgMs: number | null;
   samples: number;
 }
+/** One hourly sample (mirrors core/src/metrics `MetricsSample`). */
+export interface MetricsSample {
+  ts: number;
+  runsTotal: number;
+  runs24h: number;
+  failed24h: number;
+  costTodayUsd: number;
+  tokensToday: number;
+  spendWeekUsd: number;
+  inboxUnread: number;
+  approvalsPending: number;
+  approvalWaitAvgMs: number | null;
+}
 export interface MetricsHistory {
   days: number;
-  samples: Array<{ ts: number }>;
+  samples: MetricsSample[];
   daily: MetricsDailyPoint[];
 }
 

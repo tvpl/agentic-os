@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { getVoiceNotify, speak } from "../hooks/systemNotify";
+import { readHandsFree } from "../desktop/console/voice";
+import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -20,9 +22,8 @@ import {
 } from "lucide-react";
 import { DialogPortal, useDialogDepth } from "../components/dialog";
 import { PROVIDER_GATE_EVENT } from "../components/providerReadiness";
-import { SPACE_IDS, SWITCH_SPACE_EVENT } from "../components/Workspace";
 import { readConsoleDraft, storeConsoleDraft } from "../desktop/consoleDraft";
-import { useLang } from "../i18n";
+import { useLang, useLocale } from "../i18n";
 import { useOsProviders, useOsSettings } from "../queries";
 import { tourCopy } from "./copy";
 import {
@@ -38,7 +39,8 @@ import {
 import { useTourFocus, useTourTarget } from "./useTourSurface";
 import "./onboarding.css";
 
-const SPACES: string[] = [...SPACE_IDS];
+/** The scenes the "modes" step lets you travel to (the first three on the spine). */
+const SCENE_STOPS = ["/", "/brain", "/runs"] as const;
 const CHAPTER_ICONS = [Compass, BrainCircuit, Rocket, Sparkles];
 const DRAFT_KEY = "mordomo.onboarding.draft.v1";
 function readPractice() {
@@ -56,7 +58,10 @@ export function Onboarding() {
   const depth = useDialogDepth();
   const providers = useOsProviders();
   const settings = useOsSettings();
-  const activeSpace = settings.data?.activeSpace ?? "work";
+  const sceneStop = Math.max(
+    0,
+    SCENE_STOPS.indexOf(`/${location.pathname.split("/")[1] ?? ""}` as (typeof SCENE_STOPS)[number]),
+  );
   const [progress, setProgress] = useState(readProgress);
   const [screen, setScreen] = useState<"welcome" | "tour" | "complete" | null>(null);
   const [draft, setDraft] = useState(readPractice);
@@ -70,7 +75,15 @@ export function Onboarding() {
   const autoOpened = useRef(false);
   const navigatedStep = useRef<string | null>(null);
   const step = TOUR_STEPS[Math.min(progress.step, TOUR_STEPS.length - 1)]!;
+  const obLocale = useLocale();
   const info = c.steps[step.id];
+  // Refino item 59: with voice on, the guide reads each step as it comes.
+  const spokenStep = useRef<string | null>(null);
+  useEffect(() => {
+    if (screen !== "tour" || spokenStep.current === step.id) return;
+    spokenStep.current = step.id;
+    if (getVoiceNotify() || readHandsFree()) speak(`${info.title}. ${info.body}`, obLocale, { force: true });
+  }, [screen, step.id, info.title, info.body, obLocale]);
   const selector =
     screen !== "tour"
       ? null
@@ -314,13 +327,13 @@ export function Onboarding() {
                   <div className="ob-activity">
                     <p>{c.modes}</p>
                     <div className="ob-choice-row">
-                      {SPACES.map((value, i) => (
+                      {SCENE_STOPS.map((value, i) => (
                         <button
                           type="button"
                           key={value}
-                          aria-pressed={activeSpace === value}
+                          aria-pressed={sceneStop === i}
                           onClick={() => {
-                            window.dispatchEvent(new CustomEvent(SWITCH_SPACE_EVENT, { detail: value }));
+                            navigate(value);
                             setTriedMode(true);
                           }}
                         >
@@ -329,7 +342,7 @@ export function Onboarding() {
                       ))}
                     </div>
                     <p className="ob-feedback" role="status">
-                      {triedMode ? c.modeDone : c.modeHints[Math.max(0, SPACES.indexOf(activeSpace))]}
+                      {triedMode ? c.modeDone : c.modeHints[sceneStop]}
                     </p>
                   </div>
                 )}

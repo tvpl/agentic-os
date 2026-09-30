@@ -32,7 +32,11 @@ import { Badge, Button, EmptyState, Field, Segmented } from "../components/primi
 import { useConfirm } from "../hooks/useConfirm";
 import { errorMessage, isOffline } from "./shared";
 import { describeSchedule, isValidCron, isValidTimeZone, nextFires, timeZoneOptions } from "./cron";
+import { naturalToCron } from "./naturalSchedule";
+import { RoutinesTimeline } from "./RoutinesTimeline";
 import "./backend.css";
+// The timeline below is styled there.
+import "./apps.css";
 
 const KINDS: RoutineKind[] = ["cron", "at", "every", "on-exit", "heartbeat"];
 const RUNNERS: RoutineRunner[] = ["local", "service", "remote"];
@@ -157,6 +161,7 @@ export default function Routines() {
         </Button>
       </div>
 
+      {list.length > 0 && <RoutinesTimeline routines={list} />}
       {list.length === 0 ? (
         <EmptyState
           icon={<CalendarClock aria-hidden />}
@@ -311,7 +316,8 @@ function toLocalInput(iso: string | null | undefined): string {
   return d.toISOString().slice(0, 16);
 }
 
-function RoutineModal({
+/** The routine editor (create and edit); the Routines scene opens it directly. */
+export function RoutineModal({
   routine,
   skills,
   allowWebhooks,
@@ -365,6 +371,8 @@ function RoutineModal({
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
 
   const cronOk = form.kind !== "cron" || isValidCron(form.schedule);
+  const [natural, setNatural] = useState("");
+  const naturalCron = natural.trim() ? naturalToCron(natural) : null;
   const tzOk = isValidTimeZone(form.timezone) && (!form.hbActive || isValidTimeZone(form.hbTz));
   const atMs = form.at ? Date.parse(form.at) : NaN;
   const kindOk =
@@ -534,6 +542,29 @@ function RoutineModal({
 
       {form.kind === "cron" && (
         <div className="grid grid-2">
+          <Field
+            label={t("routines.natural")}
+            htmlFor="rt-natural"
+            hint={
+              natural.trim()
+                ? naturalCron
+                  ? `cron: ${naturalCron}`
+                  : t("routines.naturalUnknown")
+                : t("routines.naturalHint")
+            }
+          >
+            <input
+              id="rt-natural"
+              className="input"
+              value={natural}
+              placeholder={t("routines.naturalPh")}
+              onChange={(e) => {
+                setNatural(e.target.value);
+                const c = naturalToCron(e.target.value);
+                if (c) set({ schedule: c });
+              }}
+            />
+          </Field>
           <Field
             label={t("routines.schedule")}
             htmlFor="rt-cron"

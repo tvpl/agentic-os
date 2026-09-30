@@ -21,7 +21,9 @@ export type Block =
   | { type: "list"; ordered: boolean; items: ListItem[] }
   | { type: "code"; text: string; lang: string | null }
   | { type: "quote"; children: Inline[] }
-  | { type: "hr" };
+  | { type: "hr" }
+  /** A pipe table: header cells and rows, each cell parsed inline (refino item 24). */
+  | { type: "table"; header: Inline[][]; rows: Inline[][][] };
 
 export interface ListItem {
   children: Inline[];
@@ -36,8 +38,22 @@ const PATH_RE = /^(?:\.{0,2}\/)?(?:[\w.@+-]+\/)*[\w.@+-]+\.[a-z0-9]{1,8}$/i;
 const SKILL_RE = /^\/[a-z0-9][a-z0-9-]*$/i;
 const FILE_EXT_RE = /\.[a-z0-9]{1,8}$/i;
 
+/** `<!-- … -->` is for the file, not the reader: dropped before parsing. */
+export function stripHtmlComments(src: string): string {
+  return src.replace(/<!--[\s\S]*?-->/g, "");
+}
+
+const TABLE_ROW = /^\|?(.+?)\|?$/;
+const TABLE_RULE = /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?$/;
+
+function tableCells(line: string): string[] {
+  const m = TABLE_ROW.exec(line.trim());
+  if (!m) return [];
+  return m[1]!.split("|").map((c) => c.trim());
+}
+
 export function parseMarkdown(src: string): Block[] {
-  const lines = src.replace(/\r\n?/g, "\n").split("\n");
+  const lines = stripHtmlComments(src).replace(/\r\n?/g, "\n").split("\n");
   const blocks: Block[] = [];
   let i = 0;
   while (i < lines.length) {
@@ -63,6 +79,18 @@ export function parseMarkdown(src: string): Block[] {
     if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
       blocks.push({ type: "hr" });
       i++;
+      continue;
+    }
+    // A pipe table: a header line, a rule line, then rows until a blank line.
+    if (trimmed.includes("|") && i + 1 < lines.length && TABLE_RULE.test(lines[i + 1]!.trim())) {
+      const header = tableCells(trimmed).map((c) => parseInline(c));
+      i += 2;
+      const rows: Inline[][][] = [];
+      while (i < lines.length && lines[i]!.trim() !== "" && lines[i]!.includes("|")) {
+        rows.push(tableCells(lines[i]!).map((c) => parseInline(c)));
+        i++;
+      }
+      blocks.push({ type: "table", header, rows });
       continue;
     }
     const heading = /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(trimmed);

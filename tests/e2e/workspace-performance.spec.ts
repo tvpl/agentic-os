@@ -2,22 +2,21 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 
 test("baseline: 200 warm workspace navigations measured inside the browser", async ({ page }) => {
-  // 200 dock round-trips through a live desktop (G2: panels, not pages) take longer than 200 page loads did.
+  // 200 spine round-trips between two scenes, each a real travel: the
+  // leaving scene plays out while the arriving one becomes the place.
   test.setTimeout(240000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/#/");
   await expect(page.locator(".boot-screen")).toHaveCount(0);
-  // Both apps are panels on the stage now (G2), opened from their pods (G5):
-  // a pod click brings one to the front rather than swapping pages, so what
-  // is measured is click → that app's panel on top with its content ready.
-  const POD: Record<string, string> = { "Second Brain": "app:brain", Runs: "runs" };
-  const pod = (name: string) => page.locator(`.pod-arc .pod[data-pod="${POD[name]}"]`);
+  const SCENE: Record<string, string> = { "Second Brain": "brain", Runs: "runs" };
+  const label = (name: string) => page.locator(`nav.nu-spine .nu-mod[data-scene="${SCENE[name]}"]`);
+  // What is measured is click → that scene's content ready in the arriving scene.
   const ready = (name: string) =>
     name === "Second Brain"
-      ? '.panel.on[data-panel="app:brain"] .brain2-panel input'
-      : '.panel.on[data-panel="app:runs"] .page';
+      ? '.nu-scene.on[data-scene="brain"] .bs-search input'
+      : '.nu-scene.on[data-scene="runs"] .rs-head';
   for (const name of ["Second Brain", "Runs"]) {
-    await pod(name).click();
+    await label(name).click();
     await expect(page.locator(ready(name)).first()).toBeVisible();
   }
   // Measure browser click dispatch -> target ready for interaction, not the
@@ -26,12 +25,13 @@ test("baseline: 200 warm workspace navigations measured inside the browser", asy
   for (let i = 0; i < 200; i++) {
     const name = i % 2 === 0 ? "Second Brain" : "Runs";
     const selector = ready(name);
+    const scene = SCENE[name]!;
     const measured = page.evaluate(
-      ({ name, selector }) =>
+      ({ scene, selector }) =>
         new Promise<number>((resolve) => {
           const onClick = (event: MouseEvent) => {
-            const target = event.target instanceof Element ? event.target.closest(".pod") : null;
-            if (!target?.getAttribute("aria-label")?.startsWith(`${name}:`)) return;
+            const target = event.target instanceof Element ? event.target.closest(".nu-mod") : null;
+            if (target?.getAttribute("data-scene") !== scene) return;
             document.removeEventListener("click", onClick, true);
             const start = performance.now();
             const check = () => {
@@ -49,10 +49,10 @@ test("baseline: 200 warm workspace navigations measured inside the browser", asy
           document.addEventListener("click", onClick, true);
           document.documentElement.dataset.benchmarkArmed = "true";
         }),
-      { name, selector },
+      { scene, selector },
     );
     await expect(page.locator("html")).toHaveAttribute("data-benchmark-armed", "true");
-    await pod(name).click();
+    await label(name).click();
     records.push({ target: name, durationMs: await measured });
     await page.evaluate(() => delete document.documentElement.dataset.benchmarkArmed);
   }

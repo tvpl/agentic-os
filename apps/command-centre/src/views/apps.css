@@ -684,7 +684,7 @@
   stroke-dasharray: 3 3;
 }
 .trend-chart .axis-label {
-  font-size: 10px;
+  font-size: var(--fs-0);
   fill: var(--text-faint);
   font-family: var(--font-mono);
 }
@@ -731,4 +731,193 @@
 }
 .apps-hud-arc > .hud-label {
   margin-top: var(--s-2);
+}
+
+/* Settings by question (refino item 17): a vertical nav with search. */
+.settings-page {
+  /* A size container in a flex column with auto margins collapses to its
+     padding; the width has to be said. */
+  container-type: inline-size;
+  width: 100%;
+  box-sizing: border-box;
+}
+.settings-shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--s-6);
+  align-items: start;
+}
+.settings-nav {
+  position: sticky;
+  top: 0;
+  display: grid;
+  gap: var(--s-3);
+}
+.settings-search {
+  width: 100%;
+}
+.settings-group {
+  display: grid;
+  gap: 2px;
+  margin-bottom: var(--s-3);
+}
+.settings-group-label {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-0);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.settings-nav-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-3);
+  text-align: left;
+  cursor: pointer;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  transition:
+    color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard);
+}
+.settings-nav-item:hover,
+.settings-nav-item:focus-visible {
+  color: var(--text);
+  background: var(--bg-raise-2);
+}
+.settings-nav-item.on {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+.settings-autosave {
+  margin: 0;
+  font-size: var(--fs-1);
+}
+.settings-section-title {
+  margin: 0 0 var(--s-4);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-6);
+  letter-spacing: 0.02em;
+}
+@container (max-width: 640px) {
+  .settings-shell {
+    grid-template-columns: 1fr;
+  }
+  .settings-nav {
+    position: static;
+  }
+  .settings-nav [role="tablist"] {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .settings-group {
+    display: contents;
+  }
+  .settings-group-label {
+    display: none;
+  }
+  .settings-nav-item {
+    width: auto;
+  }
+}
+
+/* Refino item 29: routines on a line. */
+.rt-timeline {
+  display: grid;
+  gap: 4px;
+  margin: var(--s-3) 0 var(--s-5);
+  padding: var(--s-3) 0 0;
+  border-top: 1px solid var(--border);
+}
+.rt-timeline-axis {
+  position: relative;
+  height: 16px;
+  margin-left: 140px;
+}
+.rt-tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: var(--fs-0);
+  color: var(--text-faint);
+}
+.rt-now {
+  position: absolute;
+  top: 12px;
+  width: 1px;
+  height: 6px;
+  background: var(--agent);
+}
+.rt-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  align-items: center;
+  gap: 0;
+  min-height: 22px;
+}
+.rt-name {
+  font-size: var(--fs-2);
+  padding-right: 8px;
+}
+.rt-row.failing .rt-name {
+  color: var(--danger);
+}
+.rt-lane {
+  position: relative;
+  height: 14px;
+  border-bottom: 1px dashed var(--border);
+}
+.rt-now-line {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: color-mix(in srgb, var(--agent) 60%, transparent);
+}
+.rt-dot {
+  position: absolute;
+  top: 3px;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border-radius: 50%;
+  border: 1px solid var(--text-faint);
+  background: transparent;
+  padding: 0;
+  cursor: default;
+}
+.rt-dot.past {
+  cursor: pointer;
+}
+.rt-dot.past.ok {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+.rt-dot.past.bad {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+.rt-dot.future {
+  border-color: var(--agent);
+}
+.rt-diagnosis {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 2px 0 6px;
+  padding: 4px 8px;
+  border-left: 2px solid var(--danger);
+  background: var(--danger-bg);
+  font-size: var(--fs-1);
 }

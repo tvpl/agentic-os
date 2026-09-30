@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { openClassicBrain } from "./shell";
 
 test("unverified authentication is not green or labelled OK and can be checked again", async ({ page }) => {
   await page.route("**/api/providers?*", async (route) => {
@@ -27,8 +28,9 @@ test("unverified authentication is not green or labelled OK and can be checked a
     await route.fulfill({ response, json: data });
   });
   await page.goto("/#/");
-  // The ambient strip's provider segment carries the state (G5): unverified is amber, never green.
-  await expect(page.locator("header.strip .sg").first()).toHaveAttribute("data-l", "warn");
+  // The telemetry's provider reading carries the state: unverified is amber, never green.
+  await expect(page.locator('.nu-t[data-item="provider"]')).toHaveAttribute("data-l", "warn");
+  await expect(page.getByTestId("provider-state")).toHaveText("login not verified");
   await page.goto("/#/settings?tab=providers");
   const provider = page.locator(".provider-row").first();
   await expect(provider.locator(".meta")).toContainText("not verified");
@@ -49,11 +51,21 @@ test("failed indexing preserves the brain and explains recovery in Portuguese", 
     }),
   );
   await page.goto("/#/brain");
-  await expect(page.locator(".brain2 canvas").first()).toBeVisible();
-  await page.getByRole("button", { name: "Atualizar índice", exact: true }).click();
+  await expect(page.locator(".bs canvas").first()).toBeVisible();
+  // The constellation's own "refresh index", behind its ⋯.
+  await page.locator(".bs-more").click();
+  await page.locator(".bs-menu").getByRole("button", { name: "Atualizar índice", exact: true }).click();
   await expect(page.getByText(/O índice anterior foi preservado/)).toBeVisible();
+  await expect(page.locator(".bs-indexing")).toHaveCount(0);
+  await expect(page.locator(".bs canvas").first()).toBeVisible();
+  // The classic map's refresh explains the same way.
+  if (await page.locator(".bs-menu").isVisible()) await page.keyboard.press("Escape");
+  await expect(page.locator(".bs-menu")).toHaveCount(0);
+  const map = await openClassicBrain(page);
+  await map.getByRole("button", { name: "Atualizar índice", exact: true }).click();
+  await expect(page.getByText(/O índice anterior foi preservado/).first()).toBeVisible();
   await expect(page.locator(".brain-progress")).toHaveCount(0);
-  await expect(page.locator(".brain2 canvas").first()).toBeVisible();
+  await expect(map.locator("canvas").first()).toBeVisible();
 });
 
 test("a remote indexing failure clears an observer's progress through the event stream", async ({ page }) => {
@@ -84,7 +96,7 @@ test("a remote indexing failure clears an observer's progress through the event 
     Object.defineProperty(window, "EventSource", { value: FixtureEventSource });
   });
   await page.goto("/#/brain");
-  await expect(page.locator(".brain2 canvas").first()).toBeVisible();
+  await expect(page.locator(".bs canvas").first()).toBeVisible();
   await page.evaluate(() =>
     window.dispatchEvent(
       new CustomEvent("fixture-os-event", {
@@ -92,7 +104,7 @@ test("a remote indexing failure clears an observer's progress through the event 
       }),
     ),
   );
-  await expect(page.locator(".brain-progress")).toBeVisible();
+  await expect(page.locator(".bs-indexing")).toContainText("50");
   await page.evaluate(() =>
     window.dispatchEvent(
       new CustomEvent("fixture-os-event", {
@@ -103,6 +115,6 @@ test("a remote indexing failure clears an observer's progress through the event 
       }),
     ),
   );
-  await expect(page.locator(".brain-progress")).toHaveCount(0);
-  await expect(page.locator(".brain2 canvas").first()).toBeVisible();
+  await expect(page.locator(".bs-indexing")).toHaveCount(0);
+  await expect(page.locator(".bs canvas").first()).toBeVisible();
 });

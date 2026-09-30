@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import type { Skill, SkillResource } from "../../api";
-import { canPreviewInline, groupByFolder, kindOf, resourceUrl, resourcesOf, MAX_INLINE_TEXT_BYTES } from "./resources";
+import {
+  canPreviewInline,
+  groupByFolder,
+  kindOf,
+  resourceUrl,
+  resourcesOf,
+  MAX_INLINE_TEXT_BYTES,
+} from "./resources";
 import { clearDraft, draftKey, isEmptyDraft, readDraft, writeDraft } from "./runDraft";
 import { buildSplitPrompt, sectionHeadings, ROUTER_TARGET_LINES } from "./splitPrompt";
 
@@ -15,7 +22,12 @@ function memoryStorage() {
   };
 }
 
-const res = (rel: string, kind: SkillResource["kind"], size = 10): SkillResource => ({ name: rel.split("/").pop() ?? rel, rel, kind, size });
+const res = (rel: string, kind: SkillResource["kind"], size = 10): SkillResource => ({
+  name: rel.split("/").pop() ?? rel,
+  rel,
+  kind,
+  size,
+});
 
 describe("skill resources", () => {
   it("classifies by extension, unknown falls back to other", () => {
@@ -38,7 +50,9 @@ describe("skill resources", () => {
   });
 
   it("builds a containment-safe, encoded resource URL", () => {
-    expect(resourceUrl("my-skill", "resources/a b.md")).toBe("/api/skills/my-skill/resource?rel=resources%2Fa%20b.md");
+    expect(resourceUrl("my-skill", "resources/a b.md")).toBe(
+      "/api/skills/my-skill/resource?rel=resources%2Fa%20b.md",
+    );
     // No token in the test document → `withToken` cannot add one.
     expect(resourceUrl("s", "a.md", true)).toBe("/api/skills/s/resource?rel=a.md");
   });
@@ -53,7 +67,12 @@ describe("skill resources", () => {
   });
 
   it("groups by top-level folder, keeping order and root files", () => {
-    const groups = groupByFolder([res("README.md", "markdown"), res("resources/a.md", "markdown"), res("brand/logo.png", "image"), res("resources/b/c.md", "markdown")]);
+    const groups = groupByFolder([
+      res("README.md", "markdown"),
+      res("resources/a.md", "markdown"),
+      res("brand/logo.png", "image"),
+      res("resources/b/c.md", "markdown"),
+    ]);
     expect(groups.map((g) => g.folder)).toEqual(["", "resources", "brand"]);
     expect(groups[1]?.items.map((i) => i.rel)).toEqual(["resources/a.md", "resources/b/c.md"]);
   });
@@ -62,9 +81,18 @@ describe("skill resources", () => {
 describe("run draft", () => {
   it("round-trips a draft per skill", () => {
     const storage = memoryStorage();
-    writeDraft("digest", { provider: "claude", model: "opus", effort: "high", inputs: { topic: "week" } }, storage);
+    writeDraft(
+      "digest",
+      { provider: "claude", model: "opus", effort: "high", inputs: { topic: "week" } },
+      storage,
+    );
     expect(storage.map.has(draftKey("digest"))).toBe(true);
-    expect(readDraft("digest", storage)).toEqual({ provider: "claude", model: "opus", effort: "high", inputs: { topic: "week" } });
+    expect(readDraft("digest", storage)).toEqual({
+      provider: "claude",
+      model: "opus",
+      effort: "high",
+      inputs: { topic: "week" },
+    });
     expect(readDraft("other", storage)).toBeNull();
   });
 
@@ -81,7 +109,12 @@ describe("run draft", () => {
     storage.setItem(draftKey("bad"), "{not json");
     expect(readDraft("bad", storage)).toBeNull();
     storage.setItem(draftKey("weird"), JSON.stringify({ provider: 7, inputs: { a: 1, b: "ok" } }));
-    expect(readDraft("weird", storage)).toEqual({ provider: undefined, model: undefined, effort: undefined, inputs: { b: "ok" } });
+    expect(readDraft("weird", storage)).toEqual({
+      provider: undefined,
+      model: undefined,
+      effort: undefined,
+      inputs: { b: "ok" },
+    });
   });
 
   it("clears one skill only", () => {
@@ -95,7 +128,9 @@ describe("run draft", () => {
 });
 
 describe("split assistant prompt", () => {
-  const body = ["# Goal", "text", "```", "# not a heading", "```", "## Steps", "1. do it", "### Detail"].join("\n");
+  const body = ["# Goal", "text", "```", "# not a heading", "```", "## Steps", "1. do it", "### Detail"].join(
+    "\n",
+  );
 
   it("collects headings outside fenced code", () => {
     expect(sectionHeadings(body)).toEqual(["Goal", "Steps", "Detail"]);

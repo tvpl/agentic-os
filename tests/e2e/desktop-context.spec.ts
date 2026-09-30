@@ -1,19 +1,13 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { arrived, foldConversation, lamina, openShell, openVoiceControls, project } from "./shell";
 
 /**
- * The console's context (redesign F5): what is open on the stage is what the
- * agent can be pointed at. Its own file — it opens document windows, and a
- * spec that rearranges the desktop must not leak that into its neighbours.
+ * The voice line's context (redesign F5, immersive shell): what is projected
+ * beside the core — and the scene you are in — is what the agent can be
+ * pointed at. One search (⌘F) finds files, and a file it finds is projected.
  */
 
-const HEADERS = () => ({ "x-mordomo-token": process.env.MORDOMO_TOKEN! });
-
-test("a searched file lands on the stage and the console can point the agent at it", async ({
-  page,
-  request,
-}) => {
-  const reset = () => request.put("/api/settings", { headers: HEADERS(), data: { dashboardLayout: {} } });
-  await reset();
+async function stubPlan(page: Page, path: string, title: string) {
   await page.route("**/api/artifacts/list*", (route) =>
     route.fulfill({
       json: {
@@ -21,14 +15,14 @@ test("a searched file lands on the stage and the console can point the agent at 
           {
             id: "a1",
             file: "plan.md",
-            path: "/tmp/plan.md",
+            path,
             runId: "1",
-            skillSlug: null,
+            skillSlug: "sdd-plan",
             createdAt: Date.now(),
             kind: "markdown",
-            title: "Plan",
+            title,
             folder: "1",
-            sizeBytes: 10,
+            sizeBytes: 120,
             thumbnail: false,
           },
         ],
@@ -38,33 +32,53 @@ test("a searched file lands on the stage and the console can point the agent at 
       },
     }),
   );
+}
+
+test("the one search lists artifact matches in their own group and projects the one chosen", async ({
+  page,
+}) => {
+  await stubPlan(page, "/runs/1/plan.md", "Redesign plan");
+  await openShell(page);
+  await page.keyboard.press("ControlOrMeta+f");
+  await page.locator(".art-search-input").fill("plan");
+  // One search, grouped (refino item 52): the artifact group holds the match.
+  const hit = page.locator(".art-search-group").first().locator(".art-hit");
+  await expect(hit).toHaveCount(1);
+  await expect(hit).toContainText("Redesign plan");
+  // Choosing a match projects the file beside the core rather than opening a
+  // modal that closes with itself.
+  await hit.click();
+  await expect(page.locator(".art-search-input")).toHaveCount(0);
+  await expect(lamina(page, "doc:/runs/1/plan.md")).toBeVisible();
+  await expect(page).toHaveURL(/#\/$/);
+});
+
+test("a searched file is projected and the voice line can point the agent at it", async ({ page }) => {
+  await stubPlan(page, "/tmp/plan.md", "Plan");
   await page.route("**/api/memory/preview*", (route) =>
     route.fulfill({ json: { kind: "text", content: "line one\nline two" } }),
   );
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/#/");
-  await expect(page.locator(".boot-screen")).toHaveCount(0);
+  await openShell(page);
 
-  // Search puts the file on the stage rather than in a modal that closes.
-  await page.keyboard.press("/");
+  await page.keyboard.press("ControlOrMeta+f");
   await page.locator(".art-search-input").fill("plan");
-  await page.locator(".art-hit").first().click();
-  const doc = page.locator('[data-panel="doc:/tmp/plan.md"]');
+  // Skills answer first; the artifact group arrives with the listing.
+  await page.locator(".art-hit", { hasText: "/tmp/plan.md" }).click();
+  const doc = lamina(page, "doc:/tmp/plan.md");
   await expect(doc).toBeVisible();
+  await expect(doc.locator(".nu-lamina-title")).toHaveText("plan.md");
   await expect(doc.locator(".doc-body")).toContainText("line two");
-
-  // It is a window like any other: it appears in the camera view too.
-  await page.keyboard.press("\\");
-  await expect(page.locator(".desktop-widgets.overview")).toHaveCount(1);
-  await page.keyboard.press("Escape");
-  await expect(page.locator(".desktop-widgets.overview")).toHaveCount(0);
 
   // The context chip writes the reference into the draft.
   const input = page.locator(".cons-input");
-  // The chip carries the panel's glyph before its reference (G4).
-  await expect(page.locator(".cons-tray .chp")).toHaveText(/@plan\.md$/);
-  await page.locator(".cons-tray .chp").click();
+  const side = await openVoiceControls(page);
+  const chip = side.locator(".cons-tray .chp", { hasText: "@plan.md" });
+  await expect(chip).toHaveText(/@plan\.md$/);
+  await expect(chip).not.toHaveClass(/\bon\b/);
+  await chip.click();
   await expect(input).toHaveValue("@plan.md ");
+  // A chip the draft points at is lit: what the agent will be looking at.
+  await expect(chip).toHaveClass(/\bon\b/);
 
   // And the request carries the path behind the name the user typed.
   const sent = page.waitForRequest((r) => r.url().endsWith("/api/runs") && r.method() === "POST");
@@ -73,44 +87,45 @@ test("a searched file lands on the stage and the console can point the agent at 
   const body = (await sent).postDataJSON() as { prompt: string };
   expect(body.prompt).toContain("summarise @plan.md");
   expect(body.prompt).toContain('"/tmp/plan.md"');
-
-  await page.goto("about:blank");
-  await reset();
 });
 
-test("typing @ offers the open documents and Tab completes one", async ({ page, request }) => {
-  const reset = () => request.put("/api/settings", { headers: HEADERS(), data: { dashboardLayout: {} } });
-  // Seed a document window straight into the layout: the point here is the
-  // completion, not how the file got onto the stage.
-  await request.put("/api/settings", {
-    headers: HEADERS(),
-    data: {
-      dashboardLayout: {
-        "doc:/tmp/report.md": { x: 40, y: 40, w: 420, h: 300, z: 20, visible: true },
-      },
-    },
-  });
+test("typing @ offers the projected documents and Tab completes one", async ({ page }) => {
   await page.route("**/api/memory/preview*", (route) =>
     route.fulfill({ json: { kind: "text", content: "the report" } }),
   );
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/#/");
-  await expect(page.locator(".boot-screen")).toHaveCount(0);
-  await expect(page.locator('[data-panel="doc:/tmp/report.md"]')).toBeVisible();
+  await openShell(page);
+  // The point here is the completion, not how the file got projected.
+  await project(page, "doc:/tmp/report.md");
+  await expect(lamina(page, "doc:/tmp/report.md")).toBeVisible();
 
   const input = page.locator(".cons-input");
-  // No reference yet, so no tether.
-  await expect(page.locator(".tethers path")).toHaveCount(0);
   await input.fill("look at @rep");
   const option = page.locator('.cons-ac [role="option"]');
   await expect(option).toContainText("@report.md");
   await input.press("Tab");
   await expect(input).toHaveValue("look at @report.md ");
-  // A complete reference draws a line from the console to that window.
-  await expect(page.locator(".tethers path")).toHaveCount(1);
-  await input.fill("never mind");
-  await expect(page.locator(".tethers path")).toHaveCount(0);
+  await expect(page.locator(".cons-ac")).toHaveCount(0);
+  // The lâmina's own @ref button writes the same reference (the conversation
+  // folded first: while it is open, the scene behind it is dimmed).
+  await input.fill("");
+  await foldConversation(page);
+  await lamina(page, "doc:/tmp/report.md").locator(".nu-lamina-ref").click();
+  await expect(input).toHaveValue("@report.md ");
+});
 
-  await page.goto("about:blank");
-  await reset();
+test("typing @ in a scene offers the scene itself beside the lâminas", async ({ page }) => {
+  await openShell(page, "/runs");
+  await arrived(page, "runs");
+  await project(page, "attention");
+  await expect(page.locator("article.nu-lamina:not(.bye)")).toHaveCount(1);
+  const input = page.locator(".cons-input");
+  await input.fill("@");
+  const options = page.locator('.cons-ac [role="option"]');
+  await expect(options).toHaveCount(2);
+  // The lâmina first (newest projection), then the scene you are in.
+  await expect(options.last()).toContainText(/Runs|Execuções/);
+  await input.press("Escape");
+  await expect(page.locator(".cons-ac")).toHaveCount(0);
+  // Escape in the line closed the completion, not the scene.
+  await expect(page).toHaveURL(/#\/runs$/);
 });

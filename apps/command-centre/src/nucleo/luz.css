@@ -1,0 +1,348 @@
+/* =============================================================================
+   Luz — the one language of the immersive shell (conceito em todo o sistema,
+   S1). The Núcleo, the conversation and the Resolver already speak it:
+   rounded glass, a neon hairline, spring entrances, no chamfers. Every other
+   scene inherits it here, on the shared primitives, instead of each view
+   restating it: controls are pills, fields are soft glass, rows and tiles
+   are rounded, dialogs rise as sheets over the conversation's veil.
+
+   Scope: the scenes that are production views or have their own chrome —
+   the Núcleo and the Brain draw their own worlds and are left alone.
+   ============================================================================= */
+:root {
+  --luz-r: 14px;
+  --luz-r-lg: 22px;
+  --luz-glass: color-mix(in srgb, var(--bg) 58%, transparent);
+  --luz-edge: color-mix(in srgb, var(--agent) 18%, transparent);
+  --luz-edge-hot: color-mix(in srgb, var(--agent) 55%, transparent);
+  --luz-spring: cubic-bezier(0.2, 1.15, 0.35, 1);
+}
+
+/* ---- controls: pills; fields: soft glass ----------------------------------------- */
+.nu-shell .nu-scene.luz :is(button, .btn, [role="button"]) {
+  clip-path: none;
+  border-radius: 999px;
+}
+.nu-shell .nu-scene.luz :is(input, textarea, select, .input) {
+  clip-path: none;
+  border-radius: var(--luz-r);
+}
+.nu-shell .nu-scene.luz :is(input[type="search"], .input.sm, .settings-search) {
+  border-radius: 999px;
+  padding-inline: 14px;
+}
+/* A checkbox is a glass switch; a radio a soft ring. */
+.nu-shell .nu-scene.luz input[type="checkbox"] {
+  appearance: none;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  vertical-align: middle;
+  background:
+    radial-gradient(circle at 10px 50%, var(--text-dim) 0 6px, transparent 6.5px),
+    color-mix(in srgb, var(--bg) 60%, transparent);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  transition:
+    background 0.25s,
+    box-shadow 0.25s;
+}
+.nu-shell .nu-scene.luz input[type="checkbox"]:checked {
+  background:
+    radial-gradient(circle at calc(100% - 10px) 50%, var(--accent-contrast) 0 6px, transparent 6.5px),
+    var(--agent);
+  box-shadow: 0 0 16px -4px var(--agent);
+}
+.nu-shell .nu-scene.luz input[type="checkbox"]:focus-visible {
+  outline: 1px solid var(--agent-line);
+  outline-offset: 3px;
+}
+.nu-shell .nu-scene.luz input[type="radio"] {
+  border-radius: 999px;
+}
+.nu-shell .nu-scene.luz input[type="range"] {
+  border-radius: 999px;
+}
+.nu-shell .nu-scene.luz input[type="color"] {
+  border-radius: 12px;
+}
+.nu-shell
+  .nu-scene.luz
+  :is(input, textarea, select, .input):not([type="checkbox"], [type="radio"], [type="range"]) {
+  transition:
+    box-shadow 0.25s,
+    border-color 0.25s,
+    background 0.25s;
+}
+.nu-shell
+  .nu-scene.luz
+  :is(input, textarea, select, .input):not([type="checkbox"], [type="radio"]):focus-visible {
+  outline: none;
+  border-color: var(--luz-edge-hot);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--agent) 10%, transparent),
+    0 0 24px -8px var(--agent);
+}
+.nu-shell .nu-scene.luz :is(button, .btn):not(:disabled) {
+  transition:
+    background 0.2s,
+    color 0.2s,
+    border-color 0.2s,
+    box-shadow 0.25s,
+    transform 0.3s cubic-bezier(0.34, 1.5, 0.5, 1);
+}
+.nu-shell .nu-scene.luz .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.nu-shell .nu-scene.luz .btn.primary:not(:disabled) {
+  box-shadow: 0 0 22px -6px var(--accent-glow);
+}
+
+/* ---- rows, tiles and cells: rounded, not pills --------------------------------- */
+.nu-shell
+  .nu-scene.luz
+  :is(
+    .art-card,
+    .sks-item,
+    .rts-row,
+    .cx-card-head,
+    .pxs-frame,
+    .pxs-tool,
+    .settings-nav-item,
+    .sks-last,
+    .rts-act
+  ) {
+  border-radius: var(--luz-r);
+}
+.nu-shell .nu-scene.luz .pxs-swatch {
+  border-radius: 10px;
+}
+.nu-shell .nu-scene.luz :is(.card, .panel, .widget, .modal-body, .badge, .pill) {
+  clip-path: none;
+}
+.nu-shell .nu-scene.luz .card {
+  border-radius: var(--luz-r-lg);
+  background: var(--luz-glass);
+  backdrop-filter: blur(14px);
+  border-color: var(--luz-edge);
+}
+.nu-shell .nu-scene.luz .badge {
+  border-radius: 999px;
+}
+
+/* ---- dialogs: a glass sheet over the conversation's veil ------------------------ */
+html:has(.nu-shell) .modal-backdrop {
+  background:
+    radial-gradient(
+      ellipse 70% 60% at 50% 100%,
+      color-mix(in srgb, var(--agent) 9%, transparent),
+      transparent 70%
+    ),
+    color-mix(in srgb, var(--bg) 54%, transparent);
+  backdrop-filter: blur(12px) saturate(0.75) brightness(0.85);
+  animation: luz-veil-in 0.4s var(--nu-ease, ease) both;
+}
+html:has(.nu-shell) .modal {
+  clip-path: none;
+  border: 0;
+  border-radius: 26px;
+  background:
+    radial-gradient(120% 55% at 50% 0%, color-mix(in srgb, var(--agent) 10%, transparent), transparent 62%),
+    color-mix(in srgb, var(--bg) 62%, transparent);
+  backdrop-filter: blur(28px) saturate(1.4);
+  box-shadow:
+    inset 0 0 0 1px var(--luz-edge),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 0 70px -24px color-mix(in srgb, var(--agent) 70%, transparent),
+    0 44px 120px -30px rgba(0, 0, 0, 0.85);
+  animation: luz-sheet-in 0.42s var(--luz-spring) both;
+}
+html:has(.nu-shell) .modal-backdrop.closing .modal {
+  animation: luz-sheet-out 0.16s var(--nu-ease, ease) both;
+}
+html:has(.nu-shell) .modal :is(.btn, button) {
+  clip-path: none;
+  border-radius: 999px;
+}
+html:has(.nu-shell) .modal :is(input, textarea, select, .input) {
+  clip-path: none;
+  border-radius: var(--luz-r);
+}
+@keyframes luz-veil-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes luz-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(36px) scale(0.94);
+    filter: blur(8px);
+  }
+}
+@keyframes luz-sheet-out {
+  to {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html:has(.nu-shell) :is(.modal, .modal-backdrop) {
+    animation-duration: 0.01ms;
+  }
+}
+
+/* ---- the galleries (S6): one glass bar of chips, glowing tiles --------------------- */
+.nu-scene.luz .art-filters {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  gap: 10px 14px;
+  padding: 8px 14px 8px 8px;
+  margin-bottom: 20px;
+  border-radius: 26px;
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--agent) 14%, transparent),
+    0 0 40px -24px var(--agent);
+}
+.art-find {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 260px;
+  min-width: 170px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  color: var(--text-faint);
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  transition: box-shadow 0.25s;
+}
+.art-find:focus-within {
+  color: var(--agent-text);
+  box-shadow:
+    inset 0 0 0 1px var(--agent),
+    0 0 20px -6px var(--agent);
+}
+.art-find svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.art-find input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--text);
+  font: 400 var(--fs-3) / 1.3 var(--font);
+}
+.nu-shell .nu-scene.luz .art-find input:focus-visible {
+  box-shadow: none;
+}
+.art-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+.art-chip {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  cursor: pointer;
+  white-space: nowrap;
+  font: 500 var(--fs-2) / 1.2 var(--font);
+  color: var(--text-dim);
+  transition:
+    background 0.2s,
+    color 0.2s,
+    box-shadow 0.25s;
+}
+.art-chip:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+.art-chip[aria-pressed="true"] {
+  color: var(--accent-text);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.nu-scene.luz .art-filters .filter-count {
+  margin-left: auto;
+  font-size: var(--fs-1);
+  color: var(--text-faint);
+}
+.nu-scene.luz .art-grid {
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 16px;
+}
+.nu-shell .nu-scene.luz .art-card {
+  border: 0;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--agent) 12%, transparent),
+    0 10px 30px -20px rgba(0, 0, 0, 0.8);
+  animation: luz-tile-in 0.5s var(--luz-spring) calc(var(--i, 0) * 28ms) both;
+  transition:
+    transform 0.35s var(--luz-spring),
+    box-shadow 0.3s;
+}
+.nu-shell .nu-scene.luz .art-card:hover {
+  transform: translateY(-4px) scale(1.015);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--agent) 45%, transparent),
+    0 0 40px -12px var(--agent),
+    0 18px 40px -24px rgba(0, 0, 0, 0.9);
+}
+.nu-scene.luz .art-thumb {
+  border-radius: 20px 20px 0 0;
+}
+@keyframes luz-tile-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.96);
+    filter: blur(6px);
+  }
+}
+.art-empty {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: 60px 12px;
+  text-align: center;
+  animation: luz-tile-in 0.45s var(--luz-spring) both;
+}
+.art-empty p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-5);
+}
+@media (prefers-reduced-motion: reduce) {
+  .nu-shell .nu-scene.luz .art-card,
+  .art-empty {
+    animation: none;
+  }
+}
+/* A picture or a video in a lâmina: shown whole, on the glass, in a box that is
+   its size from the first frame (the lâmina does not jump when the file arrives). */
+.doc-media {
+  display: block;
+  width: 100%;
+  height: min(52vh, 480px);
+  margin: 0 auto;
+  border-radius: 14px;
+  object-fit: contain;
+  background: color-mix(in srgb, var(--bg) 50%, transparent);
+}

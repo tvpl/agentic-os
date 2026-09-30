@@ -62,6 +62,11 @@
   height: 300px;
   will-change: auto;
 }
+/* A lâmina here takes its grid cell, not the shell's width beside the core. */
+.story-widgets .story-widget {
+  width: auto;
+  min-width: 0;
+}
 .story-now {
   position: relative;
   height: 320px;

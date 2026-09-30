@@ -8,10 +8,10 @@ export const TOUR_STEPS = [
   { id: "console", chapter: 0, route: "/", target: "[data-console]" },
   { id: "providers", chapter: 1, route: "/settings?tab=providers", target: "#settings-tabs-panel-providers" },
   { id: "brain", chapter: 1, route: "/brain", target: '[data-onboarding="brain"]' },
-  { id: "skills", chapter: 1, route: "/skills", target: '[data-onboarding="skills"] .page' },
-  { id: "runs", chapter: 2, route: "/runs", target: '[data-onboarding="runs"] .page' },
+  { id: "skills", chapter: 1, route: "/skills", target: '[data-onboarding="skills"]' },
+  { id: "runs", chapter: 2, route: "/runs", target: '[data-onboarding="runs"]' },
   { id: "artifacts", chapter: 2, route: "/artifacts", target: '[data-onboarding="artifacts"] .page' },
-  { id: "routines", chapter: 2, route: "/routines", target: '[data-onboarding="routines"] .page' },
+  { id: "routines", chapter: 2, route: "/routines", target: '[data-onboarding="routines"]' },
   { id: "connectors", chapter: 3, route: "/connectors", target: '[data-onboarding="connectors"] .page' },
   { id: "pixel", chapter: 3, route: "/pixel", target: '[data-onboarding="pixel"] .page' },
   { id: "settings", chapter: 3, route: "/settings?tab=theme", target: "#settings-tabs-panel-theme" },
@@ -101,6 +101,10 @@ export function placeCoach(target: Rect | null, width: number, height: number, c
       ? Math.max(0, Math.min(x + w, target.x + target.width) - Math.max(x, target.x)) *
         Math.max(0, Math.min(y + h, target.y + target.height) - Math.max(y, target.y))
       : 0;
-  const best = width < 700 ? { x: 12, y: bottom } : options.sort((a, b) => overlap(a) - overlap(b))[0]!;
+  // A phone's coach spans the width: at the bottom, unless the target lives
+  // there (the voice line), then at the top.
+  const low = target !== null && target.y + target.height / 2 > height / 2;
+  const best =
+    width < 700 ? { x: 12, y: low ? 12 : bottom } : options.sort((a, b) => overlap(a) - overlap(b))[0]!;
   return { ...best, width: w, height: h };
 }

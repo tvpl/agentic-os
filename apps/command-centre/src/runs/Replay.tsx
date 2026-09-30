@@ -39,6 +39,11 @@ function prefersReducedMotion(): boolean {
 export default function Replay({ events }: ReplayProps) {
   const t = useT();
   const model = useMemo(() => buildReplayModel(events), [events]);
+  // Refino item 37: the first thing that went wrong, one click away.
+  const firstError = useMemo(() => {
+    const p = model.particles.find((x) => x.kind === "error");
+    return p ? Math.max(0, p.at - model.start) : null;
+  }, [model]);
   const [reduced, setReduced] = useState(prefersReducedMotion);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<Speed>(1);
@@ -297,6 +302,19 @@ export default function Replay({ events }: ReplayProps) {
           disabled={reduced}
           onChange={(e) => seek(Number(e.target.value))}
         />
+        {firstError !== null && (
+          <button
+            type="button"
+            className="btn sm ghost"
+            title={t("runs.replay.jumpError")}
+            onClick={() => {
+              setPlaying(false);
+              seek(firstError);
+            }}
+          >
+            {t("runs.replay.jumpError")}
+          </button>
+        )}
         <span className="replay-clock mono tnum">
           {(time / 1000).toFixed(1)}s / {(model.duration / 1000).toFixed(1)}s
         </span>

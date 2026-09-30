@@ -55,6 +55,15 @@ export function registerSessionRoutes(app: FastifyInstance, ctx: AppContext): vo
     return result.body;
   });
 
+  /** Rename a conversation (refino item 49). */
+  app.patch("/api/sessions/:id", async (req) => {
+    const { id } = UuidParams.parse(req.params);
+    const body = z.object({ title: z.string().min(1).max(200) }).parse(req.body);
+    if (!ctx.runs.sessions.get(id)) throw httpError(404, "Session not found");
+    ctx.runs.sessions.rename(id, body.title);
+    return ctx.runs.sessions.get(id);
+  });
+
   /** Forget a conversation. Its runs stay in the history, unlinked. */
   app.delete("/api/sessions/:id", async (req) => {
     const { id } = UuidParams.parse(req.params);

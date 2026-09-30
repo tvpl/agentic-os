@@ -112,7 +112,10 @@ export default function SkillList({ skills }: { skills: Skill[] }) {
             ariaLabel={t("skills.provider")}
             value={provider}
             onChange={setProvider}
-            options={[{ value: "all", label: t("brain.all") }, ...PROVIDERS.map((p) => ({ value: p, label: p }))]}
+            options={[
+              { value: "all", label: t("brain.all") },
+              ...PROVIDERS.map((p) => ({ value: p, label: p })),
+            ]}
           />
           <Button
             size="sm"
@@ -145,11 +148,7 @@ export default function SkillList({ skills }: { skills: Skill[] }) {
           icon={<Search aria-hidden />}
           title={t("skills.noMatch")}
           body={t("skills.noMatchBody")}
-          action={
-            hasFilters ? (
-              <Button onClick={clearFilters}>{t("skills.clearFilters")}</Button>
-            ) : undefined
-          }
+          action={hasFilters ? <Button onClick={clearFilters}>{t("skills.clearFilters")}</Button> : undefined}
         />
       ) : (
         <div className="grid grid-2">
@@ -183,7 +182,15 @@ export default function SkillList({ skills }: { skills: Skill[] }) {
   );
 }
 
-function SkillCard({ skill: s, onFavorite, favoriteBusy }: { skill: Skill; onFavorite: () => void; favoriteBusy: boolean }) {
+function SkillCard({
+  skill: s,
+  onFavorite,
+  favoriteBusy,
+}: {
+  skill: Skill;
+  onFavorite: () => void;
+  favoriteBusy: boolean;
+}) {
   const t = useT();
   const { name, description } = localizeSkill(s, useLang());
   const meta: Array<{ key: string; label: string; tone?: "warn" }> = [
@@ -205,7 +212,13 @@ function SkillCard({ skill: s, onFavorite, favoriteBusy }: { skill: Skill; onFav
         <Button
           variant="ghost"
           size="sm"
-          icon={<Star fill={s.favorite ? "currentColor" : "none"} color={s.favorite ? "var(--warn)" : "currentColor"} aria-hidden />}
+          icon={
+            <Star
+              fill={s.favorite ? "currentColor" : "none"}
+              color={s.favorite ? "var(--warn)" : "currentColor"}
+              aria-hidden
+            />
+          }
           aria-label={`${t("dash.favorites")}: ${name}`}
           aria-pressed={!!s.favorite}
           loading={favoriteBusy}

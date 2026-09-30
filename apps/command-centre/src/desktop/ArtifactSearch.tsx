@@ -8,10 +8,12 @@
  * It used to highlight matching chips on the orbital ring; the ring is gone
  * (redesign F4b), so the matches are a list you can actually read.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 import { useT } from "../i18n";
 /** One search result: whatever the modal and the list need, nothing more. */
+export type HitKind = "artifact" | "file" | "run" | "skill" | "notification";
+
 export interface ArtifactHit {
   key: string;
   /** Base file name. */
@@ -22,7 +24,27 @@ export interface ArtifactHit {
   runId: string | null;
   skillSlug: string | null;
   ts: number;
+  /** Which group the hit belongs to (refino item 52); artifacts when absent. */
+  kind?: HitKind;
+  /** A memory node id, for flying to it in the brain (⌥↵). */
+  nodeId?: number;
 }
+
+const KIND_ORDER: HitKind[] = ["artifact", "file", "run", "skill", "notification"];
+const KIND_KEY: Record<
+  HitKind,
+  | "desktop.search.group.artifact"
+  | "desktop.search.group.file"
+  | "desktop.search.group.run"
+  | "desktop.search.group.skill"
+  | "desktop.search.group.notification"
+> = {
+  artifact: "desktop.search.group.artifact",
+  file: "desktop.search.group.file",
+  run: "desktop.search.group.run",
+  skill: "desktop.search.group.skill",
+  notification: "desktop.search.group.notification",
+};
 
 export interface SearchBarProps {
   query: string;
@@ -31,14 +53,24 @@ export interface SearchBarProps {
   hits: readonly ArtifactHit[];
   onQuery: (q: string) => void;
   onPick: (hit: ArtifactHit) => void;
+  /** ⌥↵ or the arrow: fly to the hit in the Second Brain. */
+  onFly?: (hit: ArtifactHit) => void;
   onClose: () => void;
 }
 
 /** The centred field: the term is shown in caps, with the match count under it. */
-export function SearchBar({ query, matches, hits, onQuery, onPick, onClose }: SearchBarProps) {
+export function SearchBar({ query, matches, hits, onQuery, onPick, onFly, onClose }: SearchBarProps) {
   const t = useT();
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => ref.current?.focus(), []);
+  const [selected, setSelected] = useState(0);
+  useEffect(() => setSelected(0), [query, hits.length]);
+  const groups = KIND_ORDER.map((kind) => ({
+    kind,
+    hits: hits.filter((h) => (h.kind ?? "artifact") === kind),
+  })).filter((g) => g.hits.length > 0);
+  const ordered = groups.flatMap((g) => g.hits);
+  const current = ordered[selected];
   return (
     <div className="art-search enter-fade-up" role="search">
       <div className="art-search-field">
@@ -56,6 +88,18 @@ export function SearchBar({ query, matches, hits, onQuery, onPick, onClose }: Se
               e.preventDefault();
               e.stopPropagation();
               onClose();
+              return;
+            }
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              e.preventDefault();
+              const n = ordered.length;
+              if (n) setSelected((i) => (i + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
+              return;
+            }
+            if (e.key === "Enter" && current) {
+              e.preventDefault();
+              if (e.altKey && onFly) onFly(current);
+              else onPick(current);
             }
           }}
         />
@@ -78,17 +122,42 @@ export function SearchBar({ query, matches, hits, onQuery, onPick, onClose }: Se
         </span>
         <span className="hud-label">{t("desktop.search.exit")}</span>
       </div>
-      {hits.length > 0 && (
-        <ul className="art-search-hits" aria-label={t("desktop.search.placeholder")}>
-          {hits.map((hit) => (
-            <li key={hit.key}>
-              <button type="button" className="art-hit" onClick={() => onPick(hit)}>
-                <span className="art-hit-title">{hit.title}</span>
-                <span className="art-hit-path">{hit.path}</span>
-              </button>
-            </li>
+      {groups.length > 0 && (
+        <div className="art-search-groups" role="listbox" aria-label={t("desktop.search.placeholder")}>
+          {groups.map((g) => (
+            <div key={g.kind} className="art-search-group">
+              <span className="hud-label art-group-label">{t(KIND_KEY[g.kind])}</span>
+              <ul className="art-search-hits">
+                {g.hits.map((hit) => (
+                  <li key={hit.key}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={current?.key === hit.key}
+                      className={`art-hit${current?.key === hit.key ? " on" : ""}`}
+                      onMouseEnter={() => setSelected(ordered.indexOf(hit))}
+                      onClick={() => onPick(hit)}
+                    >
+                      <span className="art-hit-title">{hit.title}</span>
+                      <span className="art-hit-path">{hit.path}</span>
+                    </button>
+                    {onFly && (hit.kind === "file" || hit.kind === "artifact") && (
+                      <button
+                        type="button"
+                        className="art-hit-fly"
+                        title={t("desktop.search.fly")}
+                        aria-label={t("desktop.search.fly")}
+                        onClick={() => onFly(hit)}
+                      >
+                        ✦
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );

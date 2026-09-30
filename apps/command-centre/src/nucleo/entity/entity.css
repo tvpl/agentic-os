@@ -1,0 +1,37 @@
+/* The entity: the WebGL core fills the element; the HUD canvas reaches past
+   it sideways so satellite labels are never clipped. Size the element from
+   the outside (square works best). */
+.entity {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.entity-gl,
+.entity-hud {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+.entity-gl {
+  left: 0;
+  width: 100%;
+}
+.entity-hud {
+  left: -24%;
+  width: 148%;
+}
+.entity--iris .entity-hud {
+  left: 0;
+  width: 100%;
+}
+/* Without WebGL2: the 2D CoreOrb fills the same box. */
+.entity-fallback {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}

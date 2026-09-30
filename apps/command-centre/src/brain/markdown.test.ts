@@ -128,3 +128,20 @@ describe("references", () => {
     expect(resolveReference("", files)).toBeNull();
   });
 });
+
+describe("tables and comments (refino item 24)", () => {
+  it("drops HTML comments and parses a pipe table", () => {
+    const blocks = parseMarkdown(
+      "<!-- generated -->\n# T\n\n| Area | Index |\n|---|---|\n| Worker | worker.md |\n| Docs | docs.md |\n\nafter",
+    );
+    expect(blocks[0]).toMatchObject({ type: "heading" });
+    const table = blocks[1];
+    expect(table?.type).toBe("table");
+    if (table?.type === "table") {
+      expect(table.header.length).toBe(2);
+      expect(table.rows.length).toBe(2);
+      expect(table.rows[0]![1]![0]).toMatchObject({ type: "path", text: "worker.md" });
+    }
+    expect(blocks[2]).toMatchObject({ type: "paragraph" });
+  });
+});

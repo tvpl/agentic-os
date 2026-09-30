@@ -11,7 +11,7 @@ import { api } from "../../api";
 import { qk, useApiQuery, useInvalidate } from "../../queries";
 import { useT } from "../../i18n";
 import { Modal, useToast } from "../../components/ui";
-import { Button, EmptyState } from "../../components/primitives";
+import { Button } from "../../components/primitives";
 import { errorMessage } from "../shared";
 
 interface RegistrySkillRow {
@@ -39,7 +39,10 @@ export default function MarketplaceModal({ onClose }: { onClose: () => void }) {
   const toast = useToast();
   const invalidate = useInvalidate();
   const [q, setQ] = useState("");
-  const catalog = useApiQuery<RegistryResponse>(qk.skillRegistry, "/api/skills/registry", { staleTime: 60_000, retry: false });
+  const catalog = useApiQuery<RegistryResponse>(qk.skillRegistry, "/api/skills/registry", {
+    staleTime: 60_000,
+    retry: false,
+  });
   const qc = useQueryClient();
   // Refresh bypasses the server-side index cache, not only the client one.
   const refresh = useMutation({
@@ -47,7 +50,8 @@ export default function MarketplaceModal({ onClose }: { onClose: () => void }) {
     onSuccess: (data) => qc.setQueryData(qk.skillRegistry, data),
   });
   const install = useMutation({
-    mutationFn: (row: RegistrySkillRow) => api.post("/api/skills/install", { slug: row.slug, registry: row.registry, force: row.installed }),
+    mutationFn: (row: RegistrySkillRow) =>
+      api.post("/api/skills/install", { slug: row.slug, registry: row.registry, force: row.installed }),
     onSuccess: async (_r, row) => {
       toast(t("skills.market.installed", { name: row.name }), "ok");
       await invalidate(qk.skills);
@@ -55,6 +59,7 @@ export default function MarketplaceModal({ onClose }: { onClose: () => void }) {
     },
     onError: (err) => toast(errorMessage(err), "danger"),
   });
+  const noRegistry = catalog.data?.registries.length === 0;
   const rows = (catalog.data?.skills ?? []).filter((s) => {
     const needle = q.trim().toLowerCase();
     return !needle || `${s.slug} ${s.name} ${s.description}`.toLowerCase().includes(needle);
@@ -62,14 +67,32 @@ export default function MarketplaceModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal title={t("skills.market.title")} onClose={onClose}>
       <div className="market">
-        <div className="market-head">
-          <input className="input" value={q} placeholder={t("skills.market.search")} aria-label={t("skills.market.search")} onChange={(e) => setQ(e.target.value)} />
-          <Button size="sm" variant="ghost" icon={<RefreshCw aria-hidden />} loading={catalog.isFetching || refresh.isPending} onClick={() => refresh.mutate()}>
-            {t("skills.market.refresh")}
-          </Button>
-        </div>
-        {catalog.data && catalog.data.registries.length === 0 && (
-          <EmptyState title={t("skills.market.noRegistry")} body={t("skills.market.noRegistryBody")} action={<Link to="/settings?tab=memory" className="btn sm primary">{t("nav.settings")}</Link>} />
+        {noRegistry ? (
+          <div className="market-empty">
+            <p>{t("concept.market.none")}</p>
+            <Link to="/settings?tab=memory" className="btn sm primary">
+              {t("concept.market.configure")}
+            </Link>
+          </div>
+        ) : (
+          <div className="market-head">
+            <input
+              className="input"
+              value={q}
+              placeholder={t("skills.market.search")}
+              aria-label={t("skills.market.search")}
+              onChange={(e) => setQ(e.target.value)}
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<RefreshCw aria-hidden />}
+              loading={catalog.isFetching || refresh.isPending}
+              onClick={() => refresh.mutate()}
+            >
+              {t("skills.market.refresh")}
+            </Button>
+          </div>
         )}
         {catalog.data?.errors.map((e) => (
           <p key={e.registry} className="hint warn">
@@ -82,25 +105,39 @@ export default function MarketplaceModal({ onClose }: { onClose: () => void }) {
               <li key={`${s.registry}:${s.slug}`}>
                 <div className="min0">
                   <strong>
-                    {s.name} <span className="mono meta">/{s.slug} · v{s.version}</span>
+                    {s.name}{" "}
+                    <span className="mono meta">
+                      /{s.slug} · v{s.version}
+                    </span>
                   </strong>
                   <p className="hint">{s.description}</p>
                   <span className="meta">
                     {s.registryName}
                     {s.author ? ` · ${s.author}` : ""} · {t("skills.market.files", { n: s.files.length })} ·{" "}
-                    <span className={s.verified ? "text-ok" : "text-muted"} title={t(s.verified ? "skills.market.signedTitle" : "skills.market.unsignedTitle")}>
+                    <span
+                      className={s.verified ? "text-ok" : "text-muted"}
+                      title={t(s.verified ? "skills.market.signedTitle" : "skills.market.unsignedTitle")}
+                    >
                       {t(s.verified ? "skills.market.signed" : "skills.market.unsigned")}
                     </span>
                   </span>
                 </div>
-                <Button size="sm" variant={s.installed ? "outline" : "primary"} icon={<Download aria-hidden />} loading={install.isPending && install.variables?.slug === s.slug} onClick={() => install.mutate(s)}>
+                <Button
+                  size="sm"
+                  variant={s.installed ? "outline" : "primary"}
+                  icon={<Download aria-hidden />}
+                  loading={install.isPending && install.variables?.slug === s.slug}
+                  onClick={() => install.mutate(s)}
+                >
                   {s.installed ? t("skills.market.reinstall") : t("skills.market.install")}
                 </Button>
               </li>
             ))}
           </ul>
         )}
-        {catalog.data && catalog.data.registries.length > 0 && rows.length === 0 && !catalog.isFetching && <p className="hint">{t("skills.market.empty")}</p>}
+        {catalog.data && catalog.data.registries.length > 0 && rows.length === 0 && !catalog.isFetching && (
+          <p className="hint">{t("skills.market.empty")}</p>
+        )}
       </div>
     </Modal>
   );

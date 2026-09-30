@@ -68,11 +68,14 @@ export function getPanels(): readonly OpenPanel[] {
   return panels;
 }
 
-/** What the dock asks the desktop to do with a panel. */
-export type PanelAction = "focus" | "minimize" | "restore";
+/** What the dock asks the desktop to do with a panel; `close` is the chip's ×. */
+export type PanelAction = "focus" | "minimize" | "restore" | "close";
 export const PANEL_ACTION_EVENT = "mordomo:panel-action";
 export function requestPanelAction(id: string, action: PanelAction): void {
   window.dispatchEvent(
     new CustomEvent<{ id: string; action: PanelAction }>(PANEL_ACTION_EVENT, { detail: { id, action } }),
   );
 }
+
+/** Fired with `detail: string[]` (panel ids): the desk opens them and lays them out (refino item 47). */
+export const ARRANGE_EVENT = "mordomo:arrange";

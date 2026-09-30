@@ -12,7 +12,12 @@ interface SyncPlanResp {
   conflicts: number;
 }
 
-const KIND_TONE: Record<string, BadgeTone> = { conflict: "danger", unchanged: "dim", create: "ok", update: "info" };
+const KIND_TONE: Record<string, BadgeTone> = {
+  conflict: "danger",
+  unchanged: "dim",
+  create: "ok",
+  update: "info",
+};
 
 export default function ExportModal({ onClose }: { onClose: () => void }) {
   const t = useT();
@@ -22,7 +27,10 @@ export default function ExportModal({ onClose }: { onClose: () => void }) {
   const [approved, setApproved] = useState<string[]>([]);
 
   const preview = useMutation({
-    mutationFn: () => api.get<SyncPlanResp>(`/api/sync/plan${target.trim() ? `?target=${encodeURIComponent(target.trim())}` : ""}`),
+    mutationFn: () =>
+      api.get<SyncPlanResp>(
+        `/api/sync/plan${target.trim() ? `?target=${encodeURIComponent(target.trim())}` : ""}`,
+      ),
     onSuccess: (p) => {
       setPlan(p);
       setApproved([]);
@@ -32,12 +40,18 @@ export default function ExportModal({ onClose }: { onClose: () => void }) {
 
   const apply = useMutation({
     mutationFn: () =>
-      api.post<{ written: string[]; skippedConflicts: string[]; backupDir: string | null }>("/api/sync/apply", {
-        target: target.trim() || undefined,
-        approvedConflicts: approved,
-      }),
+      api.post<{ written: string[]; skippedConflicts: string[]; backupDir: string | null }>(
+        "/api/sync/apply",
+        {
+          target: target.trim() || undefined,
+          approvedConflicts: approved,
+        },
+      ),
     onSuccess: (res) => {
-      toast(`${t("skills.written", { n: res.written.length })}${res.backupDir ? ` ${t("skills.backupCreated")}` : ""}`, "ok");
+      toast(
+        `${t("skills.written", { n: res.written.length })}${res.backupDir ? ` ${t("skills.backupCreated")}` : ""}`,
+        "ok",
+      );
       preview.mutate();
     },
     onError: (err) => toast(errorMessage(err), "danger"),
@@ -49,7 +63,13 @@ export default function ExportModal({ onClose }: { onClose: () => void }) {
     <Modal title={t("skills.export")} onClose={onClose}>
       <p className="modal-intro">{t("skills.exportHint")}</p>
       <Field label={t("settings.syncTarget")} htmlFor="ex-target" hint={t("skills.exportTargetHint")}>
-        <input id="ex-target" className="input mono" placeholder={t("skills.exportTargetPh")} value={target} onChange={(e) => setTarget(e.target.value)} />
+        <input
+          id="ex-target"
+          className="input mono"
+          placeholder={t("skills.exportTargetPh")}
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+        />
       </Field>
       <div className="row-actions">
         <Button loading={preview.isPending} disabled={busy} onClick={() => preview.mutate()}>
@@ -64,7 +84,8 @@ export default function ExportModal({ onClose }: { onClose: () => void }) {
       {plan && (
         <div className="stack-sm">
           <p className="hint">
-            <span className="mono">{plan.targetDir}</span> · {t("skills.planSummary", { n: plan.actions.length, conflicts: plan.conflicts })}
+            <span className="mono">{plan.targetDir}</span> ·{" "}
+            {t("skills.planSummary", { n: plan.actions.length, conflicts: plan.conflicts })}
           </p>
           <p className="hint">{t("settings.conflicts")}</p>
           <div className="table-scroll scroll-y-300">
@@ -91,7 +112,13 @@ export default function ExportModal({ onClose }: { onClose: () => void }) {
                           <input
                             type="checkbox"
                             checked={approved.includes(a.filePath)}
-                            onChange={(e) => setApproved(e.target.checked ? [...approved, a.filePath] : approved.filter((f) => f !== a.filePath))}
+                            onChange={(e) =>
+                              setApproved(
+                                e.target.checked
+                                  ? [...approved, a.filePath]
+                                  : approved.filter((f) => f !== a.filePath),
+                              )
+                            }
                           />
                           {t("skills.overwrite")}
                         </label>

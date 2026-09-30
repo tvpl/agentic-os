@@ -18,6 +18,7 @@ const POLL_MS = 1000;
 interface ApprovalRow {
   id: string;
   status: "pending" | "approved" | "denied" | "expired";
+  payload?: Record<string, unknown>;
 }
 
 function env(name: string): string {
@@ -55,6 +56,7 @@ export async function decide(
   });
   const started = deps.now();
   let status = created.status;
+  let row: ApprovalRow = created;
   while (status === "pending") {
     if (deps.now() - started > timeoutMs) {
       await deps
@@ -66,9 +68,17 @@ export async function decide(
       });
     }
     await deps.sleep(POLL_MS);
-    status = (await deps.call<ApprovalRow>("GET", `/api/approvals/${created.id}`)).status;
+    row = await deps.call<ApprovalRow>("GET", `/api/approvals/${created.id}`);
+    status = row.status;
   }
-  if (status === "approved") return JSON.stringify({ behavior: "allow", updatedInput: input });
+  if (status === "approved") {
+    // A question the agent asked (AskUserQuestion) comes back with the
+    // user's answers, which Claude Code reads from the tool's input.
+    const answers = row.payload?.answers;
+    const updatedInput =
+      answers && typeof answers === "object" && !Array.isArray(answers) ? { ...input, answers } : input;
+    return JSON.stringify({ behavior: "allow", updatedInput });
+  }
   return JSON.stringify({ behavior: "deny", message: `MordomoOS: ${toolName} was ${status} by the user.` });
 }
 

@@ -2,9 +2,18 @@
 import { getToken, type Skill, type SkillResource, type SkillResourceKind } from "../../api";
 
 const KIND_BY_EXT: Record<string, SkillResourceKind> = {
-  md: "markdown", markdown: "markdown", mdx: "markdown",
-  html: "html", htm: "html",
-  png: "image", jpg: "image", jpeg: "image", gif: "image", webp: "image", svg: "image", avif: "image",
+  md: "markdown",
+  markdown: "markdown",
+  mdx: "markdown",
+  html: "html",
+  htm: "html",
+  png: "image",
+  jpg: "image",
+  jpeg: "image",
+  gif: "image",
+  webp: "image",
+  svg: "image",
+  avif: "image",
   pdf: "pdf",
 };
 
