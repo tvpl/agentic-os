@@ -264,18 +264,20 @@ export class ClaudeAdapter implements AgentAdapter {
       const providerSessionId = resumeId ?? crypto.randomUUID();
       const detection = await detect();
       const invocation = await build(run, providerSessionId);
-      if (resumeId && !detection.supportedFlags.includes("--resume")) {
-        yield {
-          type: "text",
-          ts: Date.now(),
-          stream: "stderr",
-          text: "[mordomo] resumeSupported: false — the installed claude does not advertise --resume; starting a fresh conversation.",
-        } as RunEvent;
-      } else if (invocation.args.includes("--session-id") || invocation.args.includes("--resume")) {
-        // Known before the first line of output; the stream confirms it later.
-        yield { type: "session", ts: Date.now(), providerSessionId };
-      }
+      // From here the broker's MCP config file exists: remove it however the run ends,
+      // including a consumer that abandons the stream before the CLI starts.
       try {
+        if (resumeId && !detection.supportedFlags.includes("--resume")) {
+          yield {
+            type: "text",
+            ts: Date.now(),
+            stream: "stderr",
+            text: "[mordomo] resumeSupported: false — the installed claude does not advertise --resume; starting a fresh conversation.",
+          } as RunEvent;
+        } else if (invocation.args.includes("--session-id") || invocation.args.includes("--resume")) {
+          // Known before the first line of output; the stream confirms it later.
+          yield { type: "session", ts: Date.now(), providerSessionId };
+        }
         yield* executeInvocation(run, invocation, claudeStreamParser(), [invocation.executable]);
       } finally {
         removeMcpConfig(invocation.args);

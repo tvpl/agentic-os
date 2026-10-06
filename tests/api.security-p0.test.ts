@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type * as ChildProcess from "node:child_process";
 import type { FastifyInstance } from "fastify";
 import { AppContext } from "../apps/api/src/context.js";
-import { buildServer } from "../apps/api/src/server.js";
+import { buildServer, isLoopbackAddress } from "../apps/api/src/server.js";
 import { openerFor } from "../apps/api/src/routes/memory.js";
 import { makeTempHome } from "./helpers.js";
 
@@ -352,6 +352,7 @@ describe("S6 the threat model names the new rules", () => {
     expect(doc).toContain("config: { public: true }");
     expect(doc).toContain("brk_");
     expect(doc).toMatch(/socket/i);
+    expect(doc).toContain("req.socket.remoteAddress");
     expect(doc).toContain("OPENABLE_EXTENSIONS");
   });
 });
@@ -390,5 +391,105 @@ describe("existing approval contract", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(ctx.approvals.get(id)!.status).toBe("approved");
+  });
+});
+
+describe("round 2: members the first verification found unproven", () => {
+  const meta = (html: string) => /<meta name="mordomo-token" content="([^"]*)"/.exec(html)?.[1];
+
+  it("C29 the broker credential works while its run is running and dies when it ends", async () => {
+    const { runId, credential } = brokeredRun();
+    ctx.db.prepare("UPDATE runs SET status = 'running', started_at = ? WHERE id = ?").run(Date.now(), runId);
+    const raised = await raise(credential, runId);
+    expect(raised.statusCode).toBe(200);
+    const id = raised.json().id as string;
+    const read = await app.inject({ method: "GET", url: `/api/approvals/${id}`, headers: as(credential) });
+    expect(read.statusCode).toBe(200);
+    const deny = await app.inject({
+      method: "POST",
+      url: `/api/approvals/${id}/resolve`,
+      headers: as(credential),
+      payload: { decision: "denied" },
+    });
+    expect(deny.statusCode).toBe(200);
+    ctx.db.prepare("UPDATE runs SET status = 'done', finished_at = ? WHERE id = ?").run(Date.now(), runId);
+    expect((await raise(credential, runId)).statusCode).toBe(401);
+  });
+
+  it("C30 a folder opens, an extensionless file does not", async () => {
+    const dir = path.join(ctx.paths.home, "notes", "Projects");
+    fs.mkdirSync(dir, { recursive: true });
+    const folder = await app.inject({
+      method: "POST",
+      url: "/api/memory/open",
+      headers: owner(),
+      payload: { p: dir },
+    });
+    expect(folder.statusCode).toBe(200);
+    const bare = path.join(ctx.paths.home, "notes", "runme");
+    fs.writeFileSync(bare, "#!/bin/sh\necho hi\n");
+    spawned.length = 0;
+    const file = await app.inject({
+      method: "POST",
+      url: "/api/memory/open",
+      headers: owner(),
+      payload: { p: bare },
+    });
+    expect(file.statusCode).toBe(415);
+    expect(file.json().error.code).toBe("unsupported_type");
+    expect(spawned).toEqual([]);
+  });
+
+  it("C31 every allow-listed type opens", async () => {
+    // The list approved in the plan's Landing (door 3), written out here on purpose.
+    const allowed =
+      "md txt pdf png jpg jpeg gif webp svg mp4 mov webm mp3 wav m4a csv json html htm docx xlsx pptx odt ods odp rtf".split(
+        " ",
+      );
+    expect(allowed).toHaveLength(26);
+    const dir = path.join(ctx.paths.home, "notes", "types");
+    fs.mkdirSync(dir, { recursive: true });
+    for (const ext of allowed) {
+      for (const name of [`a.${ext}`, `B.${ext.toUpperCase()}`]) {
+        const file = path.join(dir, name);
+        fs.writeFileSync(file, "x");
+        const res = await app.inject({
+          method: "POST",
+          url: "/api/memory/open",
+          headers: owner(),
+          payload: { p: file },
+        });
+        expect(res.statusCode, name).toBe(200);
+      }
+    }
+  });
+
+  it("C32 every page route keeps the token from a remote socket", async () => {
+    for (const url of ["/", "/index.html", "/runs/abc", "/brain"]) {
+      const res = await app.inject({
+        method: "GET",
+        url,
+        remoteAddress: "203.0.113.9",
+        headers: { host: "localhost:4777" },
+      });
+      expect(res.statusCode, url).toBe(200);
+      expect(meta(res.body), url).toBe("");
+      expect(res.body, url).not.toContain(token);
+    }
+  });
+
+  it("C33 every loopback socket form gets the token", async () => {
+    for (const remoteAddress of ["127.0.0.1", "127.0.0.2", "::1", "::ffff:127.0.0.1"]) {
+      const res = await app.inject({
+        method: "GET",
+        url: "/index.html",
+        remoteAddress,
+        headers: { host: "localhost:4777" },
+      });
+      expect(meta(res.body), remoteAddress).toBe(token);
+    }
+    for (const address of ["10.0.0.5", "::ffff:10.0.0.5", "fe80::1", "", undefined]) {
+      expect(isLoopbackAddress(address), String(address)).toBe(false);
+    }
   });
 });

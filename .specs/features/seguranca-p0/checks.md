@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/seguranca-p0/plan.md`
 
-28 checks in 6 slices · 3 one-way doors · 0 open, of which 0 block
+34 checks in 7 slices · 3 one-way doors · 0 open, of which 0 block
 
 Comandos (da raiz do repositório; o `vitest.config.ts` da raiz já roda `tests/**/*.test.ts`):
 
@@ -138,6 +138,32 @@ Status: closed
 Proof: `npx vitest run tests/api.security-p0.test.ts -t "C28 the owner still approves"`
 Status: closed
 
+### Rodada 2 - membros que a primeira verificação achou sem prova
+
+**C29** - Com a execução em `running`, a credencial do broker cria (`200`), lê (`200`) e nega (`200`) a própria aprovação; quando a execução vai a `done`, recebe `401` (AC 15, AC 18)
+Proof: `npx vitest run tests/api.security-p0.test.ts -t "C29 the broker credential works while its run is running and dies when it ends"`
+Status: closed
+
+**C30** - `POST /api/memory/open` abre uma pasta sem extensão (`200`) e recusa um arquivo sem extensão com `415` `unsupported_type`, sem chamar o abridor (AC 19, door 3)
+Proof: `npx vitest run tests/api.security-p0.test.ts -t "C30 a folder opens, an extensionless file does not"`
+Status: closed
+
+**C31** - Cada uma das 26 extensões de `OPENABLE_EXTENSIONS`, em minúsculas e maiúsculas, abre com `200` (AC 20, door 3)
+Proof: `npx vitest run tests/api.security-p0.test.ts -t "C31 every allow-listed type opens"`
+Status: closed
+
+**C32** - `GET /`, `GET /index.html` e o fallback da SPA (`/runs/abc`, `/brain`) vindos do socket `203.0.113.9` com `Host: localhost:4777` trazem o meta vazio (AC 7)
+Proof: `npx vitest run tests/api.security-p0.test.ts -t "C32 every page route keeps the token from a remote socket"`
+Status: closed
+
+**C33** - Os sockets `127.0.0.1`, `127.0.0.2`, `::1` e `::ffff:127.0.0.1` recebem o token; `isLoopbackAddress` devolve `false` para `10.0.0.5`, `::ffff:10.0.0.5`, `fe80::1`, vazio e ausente (AC 8)
+Proof: `npx vitest run tests/api.security-p0.test.ts -t "C33 every loopback socket form gets the token"`
+Status: closed
+
+**C34** - Abandonar o stream de uma execução do Claude com broker logo após o primeiro evento remove o diretório do arquivo MCP (AC 12)
+Proof: `npx vitest run tests/adapters.security-p0.test.ts -t "C34 abandoning the stream after the first event removes the MCP config"`
+Status: closed
+
 ## Coverage
 
 | Set (size)                                     | Member -> proof                                                                                           | Unproven |
@@ -146,18 +172,22 @@ Status: closed
 | caixa da rota protegida (1)                    | `/API/` C4                                                                                                | -        |
 | rotas públicas (2)                             | `/api/meta` C5 · `/api/pair/claim` C6                                                                     | -        |
 | `ANY /api/*` statuses (2)                      | 401 C1 · 403 C17                                                                                          | -        |
-| socket da página (2)                           | não loopback C7 · loopback C8                                                                             | -        |
+| socket da página (2)                           | não loopback C7, C32 · loopback C8, C33                                                                   | -        |
+| rotas de página (4)                            | `/` C7 · `/index.html` C32 · fallback `/runs/abc` C32 · fallback `/brain` C32                             | -        |
+| formas de endereço loopback (4)                | `127.0.0.1` C33 · `127.0.0.2` C33 · `::1` C33 · `::ffff:127.0.0.1` C33                                    | -        |
 | escopo da credencial de broker (6 linhas)      | criar própria C15 · ler própria C15 · negar própria C14 · aprovar C13 · alheia C16 · outra rota C17       | -        |
 | alvos alheios do broker (3)                    | `approvals/tool` C16 · `GET approvals/:id` C16 · `resolve denied` C16                                     | -        |
-| estado da execução para a credencial (2)       | ativa (`queued`) C15 · terminada C18                                                                      | -        |
+| estado da execução para a credencial (4)       | `queued` C15 · `running` C29 · `cancelled` C18 · `done` C29                                               | -        |
 | `POST /api/approvals/:id/resolve` statuses (3) | 200 C14 · 403 C13 · 404 C27                                                                               | -        |
 | `POST /api/approvals/tool` statuses (4)        | 200 C15 · 403 C16 · 404 C26 · 409 C26                                                                     | -        |
 | `GET /api/approvals/:id` statuses (3)          | 200 C15 · 403 C16 · 404 C27                                                                               | -        |
 | `POST /api/memory/open` statuses (3)           | 200 C20 · 403 C25 · 415 C19                                                                               | -        |
 | extensões recusadas no teste (4)               | `.command` C19 · `.app` C19 · `.sh` C19 · `.exe` C19                                                      | -        |
+| alvo sem extensão (2)                          | pasta C30 · arquivo C30                                                                                   | -        |
+| `OPENABLE_EXTENSIONS` (26)                     | C31, table-driven over all 26, both cases                                                                 | -        |
 | abridor por plataforma (3)                     | `darwin` C21 · `linux` C21 · `win32` C21                                                                  | -        |
 | adaptadores com prompt posicional (2)          | codex C22 · cursor C23                                                                                    | -        |
-| arquivo MCP: segredos, modo, ciclo de vida (3) | fora do argv C10 · `0600` C11 · apagado no fim C12                                                        | -        |
+| arquivo MCP: segredos, modo, ciclo de vida (4) | fora do argv C10 · `0600` C11 · apagado no fim C12 · apagado ao abandonar C34                             | -        |
 | startup config: hook de auth (2 assemblies)    | `buildServer` (usado por `startServer` e pelos testes) C1 · listener TLS (emite no mesmo `app.server`) C1 | -        |
 | doors (3)                                      | rota pública por config C5, C6 · credencial de broker C9, C13 · `OPENABLE_EXTENSIONS` C19, C20            | -        |
 

@@ -129,3 +129,19 @@ describe("a dashed prompt is never a CLI option", () => {
     expect(last.trim()).toBe("--help");
   });
 });
+
+describe("round 2: the MCP config never outlives an abandoned stream", () => {
+  const adapter = new ClaudeAdapter({ binaryPath: path.join(FAKE_BIN, "claude") });
+
+  it.skipIf(!FAKE_CLIS_RUNNABLE)(
+    "C34 abandoning the stream after the first event removes the MCP config",
+    async () => {
+      const run = makeRun();
+      for await (const event of adapter.execute(run)) {
+        expect(event).toBeTruthy();
+        break;
+      }
+      expect(leftoverConfigDirs(run.runId)).toEqual([]);
+    },
+  );
+});
