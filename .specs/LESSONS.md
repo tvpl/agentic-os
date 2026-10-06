@@ -63,6 +63,27 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: apps/api/src/server.ts:313 (round 1 coverage) (routes)
 - last seen: 2026-10-06T13:30:13Z
 
+### L-008 - Assert a configuration filter by its exact value, never by a pattern that a look-alike value also matches
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `config` · harmful: 0
+- features: ci-gate
+- evidence: tests/ci.workflow.test.ts:30 (P4, round 1) (config)
+- last seen: 2026-10-06T14:01:28Z
+
+### L-009 - A claim about every event of a kind must also assert that no filter narrows it
+
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `config` · harmful: 0
+- features: ci-gate
+- evidence: tests/ci.workflow.test.ts:26 (P2/P3, round 1) (config)
+- last seen: 2026-10-06T14:01:28Z
+
+### L-010 - A hand-written reader of a structured file needs a proof with comments and reordered keys
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `config` · harmful: 0
+- features: ci-gate
+- evidence: tests/ci.workflow.test.ts:18 (P6, round 2) (config)
+- last seen: 2026-10-06T14:01:28Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

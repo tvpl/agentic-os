@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 8,
+  "next_id": 11,
   "lessons": [
     {
       "id": "L-001",
@@ -102,6 +102,48 @@
       "evidence": ["apps/api/src/server.ts:313 (round 1 coverage) (routes)"],
       "created": "2026-10-06T13:30:13Z",
       "last_seen": "2026-10-06T13:30:13Z"
+    },
+    {
+      "id": "L-008",
+      "key": "surviving_mutant::assert a configuration filter by its exact value never by a pattern that a look alike value also matches",
+      "text": "Assert a configuration filter by its exact value, never by a pattern that a look-alike value also matches",
+      "signal": "surviving_mutant",
+      "scope": "config",
+      "status": "candidate",
+      "features": ["ci-gate"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["tests/ci.workflow.test.ts:30 (P4, round 1) (config)"],
+      "created": "2026-10-06T14:01:28Z",
+      "last_seen": "2026-10-06T14:01:28Z"
+    },
+    {
+      "id": "L-009",
+      "key": "spec_precision_gap::a claim about every event of a kind must also assert that no filter narrows it",
+      "text": "A claim about every event of a kind must also assert that no filter narrows it",
+      "signal": "spec_precision_gap",
+      "scope": "config",
+      "status": "candidate",
+      "features": ["ci-gate"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["tests/ci.workflow.test.ts:26 (P2/P3, round 1) (config)"],
+      "created": "2026-10-06T14:01:28Z",
+      "last_seen": "2026-10-06T14:01:28Z"
+    },
+    {
+      "id": "L-010",
+      "key": "surviving_mutant::a hand written reader of a structured file needs a proof with comments and reordered keys",
+      "text": "A hand-written reader of a structured file needs a proof with comments and reordered keys",
+      "signal": "surviving_mutant",
+      "scope": "config",
+      "status": "candidate",
+      "features": ["ci-gate"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["tests/ci.workflow.test.ts:18 (P6, round 2) (config)"],
+      "created": "2026-10-06T14:01:28Z",
+      "last_seen": "2026-10-06T14:01:28Z"
     }
   ]
 }
