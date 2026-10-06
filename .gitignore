@@ -41,5 +41,9 @@ test-results/
 build/
 release/
 
-# Local dev-server config for the Claude desktop app
-.claude/
+# Local dev-server config for the Claude desktop app (project skills are shared)
+.claude/*
+!.claude/skills/
+
+# agent-skills installer backups
+.agents/*.backup

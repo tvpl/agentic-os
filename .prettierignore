@@ -24,3 +24,9 @@ CHANGELOG.md
 # distributable staging and output
 build/
 release/
+
+# Installed third-party agent skills (keep the installer's content hash valid)
+.agents/
+.claude/skills/
+.cursor/skills/
+.windsurf/skills/
