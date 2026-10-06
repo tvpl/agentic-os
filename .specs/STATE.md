@@ -11,10 +11,10 @@
 
 ## Handoff
 
-**Feature**: motor-composicao
-**Where**: C1-C19 fechados, verificação independente pendente
+**Feature**: contratos (verificação independente pendente); próxima: preferencias-ui (plano e checks prontos)
+**Where**: seguranca-p0, ci-gate, motor-composicao e capacidades-aplicadas verificadas; contratos commitada em `19df6a7`
 **In progress**: nenhum
-**Next step**: verificação da feature 3; depois `capacidades-aplicadas` (feature 4)
-**Blockers**: nenhum
+**Next step**: veredito de contratos; construir preferencias-ui; depois provedores-plugaveis
+**Blockers**: nenhum até a feature 9 (direção da interface, decisão do dono)
 **Uncommitted**: nenhum
 **Branch**: chore/tlc-spec-lean-skill
