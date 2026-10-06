@@ -100,7 +100,7 @@ codificado.
 3. WHEN `POST /%61pi/pair/start` arrives with no token THEN the API SHALL answer `401` and no pairing code SHALL be created
 4. WHEN `POST /api/backups` arrives as `POST /%2Fapi/backups` or `POST /%61%70%69/backups` with no token THEN the API SHALL answer `401` or `404`, never `200`
 5. The API SHALL answer `GET /api/meta` with `200` and no token
-6. The API SHALL let `POST /api/pair/claim` reach its handler with no token (a wrong code answers its own error, never `401`)
+6. The API SHALL let `POST /api/pair/claim` reach its handler with no token (a wrong code answers the handler's own error `pair_failed`, never `error.code` `"unauthorized"`)
 
 **Independent test:** `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:<port>/%61pi/settings` prints `401`.
 
