@@ -98,6 +98,27 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: core/src/engine.ts:279 (round 1, start effects) (lifecycle)
 - last seen: 2026-10-06T14:27:38Z
 
+### L-013 - Prove a rule by every value of the field it branches on, including the ones that must keep the old behaviour
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `policy` · harmful: 0
+- features: capacidades-aplicadas
+- evidence: core/src/runs/runManager.ts:580 (F5, round 1) (policy)
+- last seen: 2026-10-06T14:56:25Z
+
+### L-014 - A rule about every child process must be proven on each spawn path, not only the main one
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `security` · harmful: 0
+- features: capacidades-aplicadas
+- evidence: core/src/spawn/safeSpawn.ts:274 (round 1, probes) (security)
+- last seen: 2026-10-06T14:56:25Z
+
+### L-015 - List every entry point that can start the guarded action before claiming a policy holds
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `policy` · harmful: 0
+- features: capacidades-aplicadas
+- evidence: apps/api/src/cli.ts:1377 (round 1, CLI) (policy)
+- last seen: 2026-10-06T14:56:25Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 13,
+  "next_id": 16,
   "lessons": [
     {
       "id": "L-001",
@@ -172,6 +172,48 @@
       "evidence": ["core/src/engine.ts:279 (round 1, start effects) (lifecycle)"],
       "created": "2026-10-06T14:27:38Z",
       "last_seen": "2026-10-06T14:27:38Z"
+    },
+    {
+      "id": "L-013",
+      "key": "surviving_mutant::prove a rule by every value of the field it branches on including the ones that must keep the old behaviour",
+      "text": "Prove a rule by every value of the field it branches on, including the ones that must keep the old behaviour",
+      "signal": "surviving_mutant",
+      "scope": "policy",
+      "status": "candidate",
+      "features": ["capacidades-aplicadas"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["core/src/runs/runManager.ts:580 (F5, round 1) (policy)"],
+      "created": "2026-10-06T14:56:25Z",
+      "last_seen": "2026-10-06T14:56:25Z"
+    },
+    {
+      "id": "L-014",
+      "key": "ac_gap::a rule about every child process must be proven on each spawn path not only the main one",
+      "text": "A rule about every child process must be proven on each spawn path, not only the main one",
+      "signal": "ac_gap",
+      "scope": "security",
+      "status": "candidate",
+      "features": ["capacidades-aplicadas"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["core/src/spawn/safeSpawn.ts:274 (round 1, probes) (security)"],
+      "created": "2026-10-06T14:56:25Z",
+      "last_seen": "2026-10-06T14:56:25Z"
+    },
+    {
+      "id": "L-015",
+      "key": "ac_gap::list every entry point that can start the guarded action before claiming a policy holds",
+      "text": "List every entry point that can start the guarded action before claiming a policy holds",
+      "signal": "ac_gap",
+      "scope": "policy",
+      "status": "candidate",
+      "features": ["capacidades-aplicadas"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["apps/api/src/cli.ts:1377 (round 1, CLI) (policy)"],
+      "created": "2026-10-06T14:56:25Z",
+      "last_seen": "2026-10-06T14:56:25Z"
     }
   ]
 }

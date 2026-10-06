@@ -267,10 +267,9 @@ describe.skipIf(!FAKE_CLIS_RUNNABLE)("round 2: members the first verification fo
   it("C14 provider probes do not inherit MordomoOS secrets", async () => {
     const dump = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-dump-")), "env.txt");
     homes.push(path.dirname(dump));
-    const saved = { ...process.env };
-    process.env.FAKE_ENV_DUMP = dump;
-    process.env.MORDOMO_SECRET_X = "s3cret";
-    process.env.TG_BOT_TOKEN = "123:abc";
+    const vars = { FAKE_ENV_DUMP: dump, MORDOMO_SECRET_X: "s3cret", TG_BOT_TOKEN: "123:abc" };
+    const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+    Object.assign(process.env, vars);
     try {
       const e = engine((s) => {
         s.channels.telegram.botTokenEnv = "TG_BOT_TOKEN";
@@ -279,7 +278,10 @@ describe.skipIf(!FAKE_CLIS_RUNNABLE)("round 2: members the first verification fo
       await e.adapters.claude.detect();
       await e.adapters.claude.authenticate();
     } finally {
-      process.env = saved;
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
     }
     const names = fs.readFileSync(dump, "utf8").split("\n").filter(Boolean);
     expect(names.length).toBeGreaterThan(0);
