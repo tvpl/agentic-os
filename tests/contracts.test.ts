@@ -36,11 +36,27 @@ describe("S1 the contracts package", () => {
       ".": { types: "./dist/index.d.ts", default: "./dist/index.js" },
       "./policy": { types: "./dist/policy.d.ts", default: "./dist/policy.js" },
     });
-    // The subpath exists so a browser can take the policy without zod: only type imports.
-    const policy = read("contracts/src/policy.ts");
-    for (const line of policy.split("\n").filter((l) => /^\s*import\b/.test(l))) {
-      expect(line).toMatch(/^import type /);
-    }
+    // The subpath exists so a browser can take the policy without zod: follow every
+    // value import and re-export from policy.ts (type-only ones are erased) and
+    // check none of them reaches zod.
+    const reached = new Set<string>();
+    const walk = (rel: string) => {
+      if (reached.has(rel)) return;
+      reached.add(rel);
+      const src = read(rel);
+      const specifiers = [
+        ...src.matchAll(/^\s*(?:import|export)\s+(?!type\b)[^;]*?\bfrom\s+"([^"]+)"/gms),
+        ...src.matchAll(/^\s*import\s+"([^"]+)"/gm),
+        ...src.matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g),
+      ].map((m) => m[1]!);
+      for (const spec of specifiers) {
+        if (spec.startsWith("."))
+          walk(path.posix.join(path.posix.dirname(rel), spec.replace(/\.js$/, ".ts")));
+        else reached.add(spec);
+      }
+    };
+    walk("contracts/src/policy.ts");
+    expect([...reached].filter((m) => !m.startsWith("contracts/src/"))).toEqual([]);
   });
 
   it("C4 core re-exports the very same contract objects", () => {

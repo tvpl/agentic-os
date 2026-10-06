@@ -5,6 +5,8 @@ describe("writePolicyFor", () => {
   it("mirrors the core write decision for manual runs", () => {
     expect(writePolicyFor("read_only")).toBe("refused");
     expect(writePolicyFor(undefined)).toBe("refused");
+    for (const unknown of ["bogus", "", "toString", "__proto__"])
+      expect(writePolicyFor(unknown), unknown).toBe("refused");
     expect(writePolicyFor("review_before_write")).toBe("approval");
     expect(writePolicyFor("controlled_write")).toBe("allowed");
     expect(writePolicyFor("approved_automation")).toBe("allowed");

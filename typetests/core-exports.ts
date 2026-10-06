@@ -17,7 +17,8 @@ import type {
 } from "@mordomo/core";
 import type * as Contracts from "@mordomo/contracts";
 
-type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+// Strict identity (an `any` on either side fails it), not mutual assignability.
+type Same<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 
 export const sameAsContract: [
   Same<Approval, Contracts.Approval>,

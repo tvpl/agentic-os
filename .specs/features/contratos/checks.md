@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/contratos/plan.md`
 
-16 checks in 4 slices · 4 one-way doors · 0 open, of which 0 block
+17 checks in 4 slices · 4 one-way doors · 0 open, of which 0 block
 
 Comandos (da raiz):
 
@@ -77,11 +77,15 @@ Status: closed
 Proof: `npx tsc -p typetests/tsconfig.json`
 Status: closed
 
+**C17** - `writePolicyFor` devolve `refused` para um perfil desconhecido (`bogus`, `""`, `toString`, `__proto__`) e para `undefined` (AC 10; rodada 3)
+Proof: `npm run test -w apps/command-centre -- src/runs/policy.test.ts`
+Status: closed
+
 **C15** - Com `writeDecision` trocado por um stub (`vi.mock("@mordomo/contracts/policy")`), `writePolicyFor` segue o stub para os 4 perfis e as 3 decisões, chamando-o com `(perfil, "manual")` (AC 10)
 Proof: `npm run test -w apps/command-centre -- src/runs/policy.delegation.test.ts`
 Status: closed
 
-**C16** - `contracts/package.json` tem `exports` igual a `{ ".", "./policy" }` com as formas literais do `Landing` (porta 1 e emenda 1a), e `contracts/src/policy.ts` só tem `import type` (Landing)
+**C16** - `contracts/package.json` tem `exports` igual a `{ ".", "./policy" }` com as formas literais do `Landing` (porta 1 e emenda 1a), e, seguindo cada `import`/`export … from` de valor a partir de `contracts/src/policy.ts` (os `import type`/`export type` são apagados pelo compilador), nenhum módulo fora de `contracts/src` é alcançado - o subcaminho não puxa zod (Landing; rodada 3)
 Proof: `npx vitest run tests/contracts.test.ts -t "C16 the contracts package publishes exactly two entry points"`
 Status: closed
 
