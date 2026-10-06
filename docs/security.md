@@ -87,7 +87,7 @@ before a routine fires:
 |---|---|
 | `read_only` | write runs are refused; agents run in each provider's read-only mode |
 | `review_before_write` | interactive write runs are not started: a `write_run` approval is created (`202 waiting_approval`) and the run launches when a human approves it in Settings › Security |
-| `controlled_write` | interactive write runs apply immediately (constrained to the working dir); routines cannot write |
+| `controlled_write` | interactive write runs apply immediately on a provider that confines writes (Claude broker, Codex sandbox); on one that does not (Cursor) they are parked for approval; routines cannot write |
 | `approved_automation` | routines may also run with write access, unattended |
 
 Read-only enforcement is only as strong as the provider CLI: Claude (permission rules)
@@ -108,13 +108,19 @@ each manifest declares (`core/src/agents/registry.ts`):
 - **Provider processes do not inherit MordomoOS's secrets.** Every variable whose
   name starts with `MORDOMO_`, and the one named by
   `settings.channels.telegram.botTokenEnv`, is removed from the environment of a
-  provider process; everything else (PATH, HOME, the provider's own API keys,
+  provider process, including the short probes (`--version`, `--help`,
+  `auth status`); everything else (PATH, HOME, the provider's own API keys,
   proxies) passes through.
+- **The CLI follows the same policy.** `mordomo run` passes a write skill through
+  the engine's `gateWrite`: refused under `read_only` (exit 1), parked as a
+  `write_run` approval when the profile or the provider asks for one (exit 0,
+  `waiting_approval`), run only when the policy allows it.
 
 ## Approval-gated actions (never silent)
 
 Exposing the server beyond `127.0.0.1` (`expose_port`), enabling connector writes
-(`connector_write`) and write-mode runs under `review_before_write` (`write_run`)
+(`connector_write`) and write-mode runs under `review_before_write`, or on a provider
+without write confinement under `controlled_write` (`write_run`)
 create pending approvals in the UI/CLI today. Startup-service
 installation is confirmed interactively by the CLI before anything is written. The
 remaining `ApprovalKind`s — installing software, changing global configs, destructive

@@ -1374,14 +1374,54 @@ async function cmdRun(args: CliArgs): Promise<void> {
   }
   const settings = ctx.settings();
   const provider = args.provider ?? settings.defaultProvider;
+  const mode = skill.mode === "write" ? "write" : "read_only";
+  const model = args.model ?? skill.recommendedModel ?? settings.providers[provider].defaultModel;
+  const effort = args.effort ?? skill.recommendedEffort;
+  // The same write policy as the Command Centre: refuse, park for approval, or run.
+  let gate;
+  try {
+    gate = ctx.gateWrite(mode, "skill", `Write-mode skill run /${slug} (CLI)`, {
+      kind: "skill",
+      input: {
+        slug,
+        inputs: args.inputs,
+        provider,
+        model,
+        effort,
+        cwd: ctx.paths.home,
+        timeoutMs: settings.limits.defaultTimeoutMs,
+      },
+    });
+  } catch (err) {
+    console.error(`${pc.red("✘")} ${(err as Error).message}`);
+    ctx.close();
+    process.exit(1);
+  }
+  if (gate.pendingApproval) {
+    if (args.json) {
+      console.log(
+        JSON.stringify({
+          status: "waiting_approval",
+          runId: gate.runId,
+          pendingApproval: gate.pendingApproval,
+        }),
+      );
+    } else {
+      console.log(
+        `${pc.yellow("◐")} Waiting for approval ${gate.pendingApproval.id} (run ${gate.runId}): approve it in the Command Centre; the run starts then.`,
+      );
+    }
+    ctx.close();
+    process.exit(0);
+  }
   const run = ctx.runs.create({
     origin: "skill",
     provider,
     prompt: `(skill: ${slug})`,
     cwd: ctx.paths.home,
-    model: args.model ?? skill.recommendedModel ?? settings.providers[provider].defaultModel,
-    effort: args.effort ?? skill.recommendedEffort,
-    mode: skill.mode === "write" ? "write" : "read_only",
+    model,
+    effort,
+    mode,
     timeoutMs: settings.limits.defaultTimeoutMs,
     profile: skill.mode === "write" ? settings.securityProfile : "read_only",
     skillSlug: slug,

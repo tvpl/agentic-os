@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/capacidades-aplicadas/plan.md`
 
-12 checks in 3 slices · 2 one-way doors · 0 open, of which 0 block
+18 checks in 4 slices · 2 one-way doors · 0 open, of which 0 block
 
 Comandos (da raiz): `npx vitest run tests/core.capabilities.test.ts -t "<nome>"`. O CLI falso do
 Claude (`tests/fixtures/fake-bin/claude`) ganha um gatilho `[[env]]` no prompt que responde com os
@@ -65,17 +65,45 @@ Status: closed
 Proof: `npx vitest run tests/core.capabilities.test.ts -t "C12 the provider keeps the rest of the environment"`
 Status: closed
 
+### Rodada 2 - membros que a primeira verificação achou sem prova
+
+**C13** - Uma execução `read_only` de origem `skill` no Cursor termina `done`, com o evento `permission` de aviso (AC 2 - origem atendida)
+Proof: `npx vitest run tests/core.capabilities.test.ts -t "C13 a skill read-only run on cursor runs with a warning"`
+Status: closed
+
+**C14** - As sondagens de um provedor (`detect`: `--version`, `--help`; `authenticate`: `auth status`) não recebem variáveis `MORDOMO_*` nem a nomeada em `botTokenEnv`, e recebem `PATH` (AC 9, AC 10)
+Proof: `npx vitest run tests/core.capabilities.test.ts -t "C14 provider probes do not inherit MordomoOS secrets"`
+Status: closed
+
+**C15** - `POST /api/skills/tidy-notes/run` com `provider: "cursor"` para uma skill de escrita sob `controlled_write` responde `202` com `status` `"waiting_approval"` e `pendingApproval.payload.kind` `"skill"` (Impact - contrato)
+Proof: `npx vitest run tests/core.capabilities.test.ts -t "C15 the skill route answers 202 for an unconfined write skill"`
+Status: closed
+
+**C16** - `mordomo run tidy-notes --provider cursor --json` sob `controlled_write` sai `0` com `status` `"waiting_approval"` e a única execução gravada está `waiting_approval` (AC 5, pela CLI)
+Proof: `npm run build:server && npx vitest run tests/cli.write-gate.test.ts -t "C16 a cursor write skill under controlled_write is parked, not run"`
+Status: closed
+
+**C17** - `mordomo run tidy-notes --provider claude --json` sob `review_before_write` sai `0` com `status` `"waiting_approval"` e nenhuma execução roda
+Proof: `npm run build:server && npx vitest run tests/cli.write-gate.test.ts -t "C17 a write skill under review_before_write is parked, not run"`
+Status: closed
+
+**C18** - `mordomo run tidy-notes` sob `read_only` sai `1`, com a mensagem de perfil no stderr e nenhuma execução criada
+Proof: `npm run build:server && npx vitest run tests/cli.write-gate.test.ts -t "C18 a write skill under read_only is refused with exit 1"`
+Status: closed
+
 ## Coverage
 
-| Set (size)                                           | Member -> proof                                                                                                                   | Unproven |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| origens × `enforcesReadOnly` (4 linhas que importam) | `routine`+false C1 · `sentinel`+false C2 · `manual`+false C3 · `routine`+true C4                                                  | -        |
-| manifestos embutidos (3)                             | claude C5 · codex C5 · cursor C5                                                                                                  | -        |
-| `writeConfinement` × perfil que libera direto (4)    | `none`+`controlled_write` C6 · `broker`+`controlled_write` C7 · `sandbox`+`controlled_write` C7 · `none`+`approved_automation` C8 | -        |
-| `POST /api/runs` statuses mudados (1)                | 202 C9                                                                                                                            | -        |
-| variáveis removidas (2 regras)                       | prefixo `MORDOMO_` C10 · nome de `botTokenEnv` C11                                                                                | -        |
-| variáveis mantidas (3)                               | `PATH` C12 · `HOME` C12 · `ANTHROPIC_API_KEY` C12                                                                                 | -        |
-| doors (2)                                            | `writeConfinement` C5-C8 · regra de ambiente C10-C12                                                                              | -        |
+| Set (size)                                        | Member -> proof                                                                                                                   | Unproven |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| origens × `enforcesReadOnly` (5)                  | `routine`+false C1 · `sentinel`+false C2 · `manual`+false C3 · `skill`+false C13 · `routine`+true C4                              | -        |
+| manifestos embutidos (3)                          | claude C5 · codex C5 · cursor C5                                                                                                  | -        |
+| `writeConfinement` × perfil que libera direto (4) | `none`+`controlled_write` C6 · `broker`+`controlled_write` C7 · `sandbox`+`controlled_write` C7 · `none`+`approved_automation` C8 | -        |
+| rotas com status mudado (2)                       | `POST /api/runs` 202 C9 · `POST /api/skills/:slug/run` 202 C15                                                                    | -        |
+| processos de provedor que herdam ambiente (2)     | execução C10-C12 · sondagens C14                                                                                                  | -        |
+| entradas de escrita (3)                           | `POST /api/runs` C9 · rota de skill C15 · `mordomo run` C16-C18                                                                   | -        |
+| variáveis removidas (2 regras)                    | prefixo `MORDOMO_` C10 · nome de `botTokenEnv` C11                                                                                | -        |
+| variáveis mantidas (3)                            | `PATH` C12 · `HOME` C12 · `ANTHROPIC_API_KEY` C12                                                                                 | -        |
+| doors (2)                                         | `writeConfinement` C5-C8 · regra de ambiente C10-C12                                                                              | -        |
 
 - `review_before_write` não está no conjunto `writeConfinement × perfil`: ele já estaciona toda escrita manual e não muda (provado em `tests/core.engine.test.ts` C15)
 - Claims naming a status code: C9 - provado por `inject` na rota
@@ -104,7 +132,7 @@ Cost: 1 arquivo de teste novo, 12 provas; uma linha nova no CLI falso.
 - concurrency: n/a - a decisão é tomada por execução, sem estado compartilhado
 - data lifecycle: n/a - nada persiste
 - dependency failure: n/a - nenhuma dependência nova
-- state transitions: C1, C2 (`queued` → `failed` sem passar por `running` do adaptador)
+- state transitions: C1, C2 (`queued` → `running` → `failed` sem que o adaptador seja chamado: nenhum evento `started`)
 - observability: C3 (aviso no rastro)
 
 ## Handoff

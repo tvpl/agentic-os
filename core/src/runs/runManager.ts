@@ -630,7 +630,7 @@ export class RunManager {
         profile: record.permissionProfile ?? this.getSettings().securityProfile,
         artifactsDir,
         // MordomoOS's own secrets stay in the service (docs/security.md).
-        dropEnv: { names: [this.getSettings().channels.telegram.botTokenEnv], prefixes: ["MORDOMO_"] },
+        dropEnv: providerEnvDrop(this.getSettings()),
         ...(record.sessionId ? { sessionId: record.sessionId } : {}),
         ...(resume ? { resume } : {}),
         ...(this.permissionBroker && mode === "write" ? brokerFor(this.permissionBroker, record) : {}),
@@ -1627,4 +1627,9 @@ function brokerFor(
   } catch {
     return {};
   }
+}
+
+/** The environment every provider process loses: MordomoOS's own variables and the Telegram bot token. */
+export function providerEnvDrop(settings: Settings): { names: string[]; prefixes: string[] } {
+  return { names: [settings.channels.telegram.botTokenEnv], prefixes: ["MORDOMO_"] };
 }

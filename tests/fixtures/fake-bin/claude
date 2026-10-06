@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Faithful fake of the Claude Code CLI for adapter tests (stream-json shapes
 # match claude 2.x headless output). Never used in production.
+# FAKE_ENV_DUMP=<file>: every invocation (probes included) appends the names of its environment variables.
+if [[ -n "$FAKE_ENV_DUMP" ]]; then env | cut -d= -f1 >> "$FAKE_ENV_DUMP"; fi
 case "$1" in
   --version) echo "9.9.9-fake (Claude Code)"; exit 0 ;;
   --help)

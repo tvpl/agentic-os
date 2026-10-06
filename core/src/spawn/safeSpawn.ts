@@ -264,13 +264,24 @@ export function safeSpawn(executable: string, args: string[], opts: SpawnOptions
   };
 }
 
-/** Convenience for short, non-streamed probes (--version, --help). */
+/**
+ * What every provider probe drops from the inherited environment. The engine
+ * sets it from the settings (`MordomoEngine`); until then MordomoOS's own
+ * `MORDOMO_*` variables are dropped.
+ */
+let probeEnvDrop: { names: string[]; prefixes: string[] } = { names: [], prefixes: ["MORDOMO_"] };
+
+export function setProbeEnvDrop(drop: { names: string[]; prefixes: string[] }): void {
+  probeEnvDrop = { names: [...drop.names], prefixes: [...drop.prefixes] };
+}
+
+/** Convenience for short, non-streamed probes of a provider CLI (--version, --help, auth status). */
 export async function probe(
   executable: string,
   args: string[],
   cwd: string,
   timeoutMs = 15_000,
 ): Promise<SpawnResult> {
-  const handle = safeSpawn(executable, args, { cwd, timeoutMs });
+  const handle = safeSpawn(executable, args, { cwd, timeoutMs, dropEnv: probeEnvDrop });
   return handle.result;
 }

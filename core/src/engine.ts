@@ -33,7 +33,7 @@ import { ObjectiveStore } from "./objectives/objectiveStore.js";
 import { ensureDirs, resolvePaths, seedHome, type MordomoPaths } from "./paths.js";
 import { RoutineScheduler } from "./routines/scheduler.js";
 import { RoutineStore } from "./routines/store.js";
-import { RunManager, type CreateRunInput } from "./runs/runManager.js";
+import { RunManager, providerEnvDrop, type CreateRunInput } from "./runs/runManager.js";
 import { ApprovalStore, type Approval } from "./security/approvals.js";
 import { DeviceStore } from "./security/devices.js";
 import { resolveInsideRoots } from "./security/paths.js";
@@ -41,6 +41,7 @@ import { writeDecision, type WriteOrigin } from "./security/profiles.js";
 import { SentinelRunner } from "./sentinels/runner.js";
 import { SkillCatalog } from "./skills/catalog.js";
 import { SkillRegistry } from "./skills/registry.js";
+import { setProbeEnvDrop } from "./spawn/safeSpawn.js";
 import { SyncCompiler } from "./sync/compiler.js";
 
 export interface EngineOptions {
@@ -169,6 +170,7 @@ export class MordomoEngine {
     this.db = openDb(this.paths).db;
     this.providers = opts.providers;
     this.adapterRecord = buildAdapters(this.providers, this.settingsStore.load());
+    setProbeEnvDrop(providerEnvDrop(this.settingsStore.load()));
     this.skills = new SkillCatalog(this.paths);
     // The adapter callback reads the CURRENT record, so `reloadAdapters()`
     // takes effect for the next run without rebuilding the RunManager.
@@ -248,6 +250,7 @@ export class MordomoEngine {
   /** Re-create the provider adapters from the settings on disk (binaryPath etc.). */
   reloadAdapters(): void {
     this.adapterRecord = buildAdapters(this.providers, this.settings());
+    setProbeEnvDrop(providerEnvDrop(this.settings()));
   }
 
   settings(): Settings {
