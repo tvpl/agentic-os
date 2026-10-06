@@ -1,6 +1,6 @@
 /**
  * All Second Brain state plumbing in one hook: the UI state and its three
- * sources (localStorage → URL → server `settings.brain`), the world instance
+ * sources (localStorage → URL → server `brain` in the UI preferences), the world instance
  * and every "state → world" synchronisation, plus the derived data the panels
  * need (facets, edge-kind counts, legend, hygiene, timeline range).
  *
@@ -68,7 +68,7 @@ export interface BrainStateSources {
   ringLabels: { skills: string; memory: string; routines: string; apps: string };
   /** Timeline cutoff (mtime ms) or null when the scrubber is off. */
   timeline: number | null;
-  /** Raw `settings.brain` blob from the server (undefined while loading). */
+  /** Raw `brain` blob from the UI preferences (undefined while loading). */
   serverBlob: unknown;
   /** Ask the canvas for a frame. */
   dirty: () => void;
@@ -84,7 +84,7 @@ export interface BrainState {
   groupOf: (n: GraphNode) => string;
   /** Save pins + collapsed hubs (to the server too while workspace mode is on). */
   persistWorkspace: () => void;
-  /** Persist the current settings; `toServer` also PUTs `settings.brain`. */
+  /** Persist the current settings; `toServer` also PUTs `brain` to the UI preferences. */
   persist: (settings: BrainSettings, toServer: boolean) => void;
   /** Centre the camera on the next selection: true, or "dive" for a closer zoom (set by deep links and clicks). */
   focusRef: MutableRefObject<boolean | "dive">;

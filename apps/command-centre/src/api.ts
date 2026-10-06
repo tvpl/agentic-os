@@ -172,6 +172,8 @@ export const api = {
   /** Deep-merged on the server; a `dashboardLayout` replaces the stored one (send `dashboardLayoutBase` to detect a conflict). */
   putUiPreferences: (patch: UiPreferencesPatch) =>
     request<UiPreferencesDoc>("PUT", "/api/ui-preferences", patch),
+  /** Every settings write in the UI goes through here; the patch type refuses the keys that moved to the preferences. */
+  putSettings: <T = unknown>(patch: SettingsPatch) => request<T>("PUT", "/api/settings", patch),
 
   /** SSE stream of run events; EventSource cannot set headers → token in query. */
   streamRun(runId: string, onEvent: (data: Record<string, unknown>) => void): () => void {
@@ -526,6 +528,14 @@ export type WindowLayoutDoc = Contracts.UiPreferences["dashboardLayout"];
 /** The settings document as `GET /api/settings` returns it. */
 export type SettingsDoc = Contracts.Settings;
 
+/** The keys that left the settings for the UI preferences (settings version 2). */
+export type MovedSettingKey = Contracts.UiPreferenceKey;
+/**
+ * `PUT /api/settings` body. A moved key is `never`, so it cannot reach the
+ * settings route, not even through a spread (the route answers 400 for it).
+ */
+export type SettingsPatch = Partial<SettingsDoc> & { [K in MovedSettingKey]?: never };
+
 /** `GET /api/ui-preferences`: what only the Command Centre reads and writes. */
 export type UiPreferencesDoc = Contracts.UiPreferences;
 /** `PUT /api/ui-preferences` body. */
@@ -543,7 +553,7 @@ export interface DeviceRecord {
   revokedAt: number | null;
 }
 
-/** Micro app row (`settings.microApps`). */
+/** Micro app row (`microApps` in the UI preferences). */
 export type MicroApp = Contracts.MicroApp;
 
 // ---- desktop ----
@@ -653,7 +663,7 @@ export function isRawViewable(file: string): boolean {
   return [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".mp4", ".webm"].includes(ext);
 }
 
-/** Micro app entry persisted in `settings.microApps` when the schema has it (else route-only list). */
+/** Micro app entry as the UI preferences' `microApps` lists it (else route-only list). */
 export interface MicroAppEntry {
   id: string;
   name: string;
@@ -839,7 +849,7 @@ export interface SessionDetail {
 export type ResolveApprovalResponse = ApprovalRecord & { runId: string | null };
 
 // ---- brain ----
-/** Second Brain preferences persisted in `settings.brain` (validated client-side by brain/state.ts). */
+/** Second Brain preferences persisted in the UI preferences' `brain` (validated client-side by brain/state.ts). */
 export interface BrainSettingsPayload {
   layout?: string;
   view?: string;

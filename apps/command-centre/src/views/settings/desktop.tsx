@@ -5,18 +5,33 @@ import { type MicroApp } from "../../api";
 
 import { useT } from "../../i18n";
 import { Button, Field } from "../../components/primitives";
-import { slugify } from "../shared";
+import { errorMessage, isOffline, slugify } from "../shared";
 import { type Put } from "../SettingsFields";
 import { isValidMicroAppHref } from "./shared";
 import type { SettingsShape } from "./shared";
 import { useOsUiPreferences, useSaveUiPreferences } from "../../queries";
-import { useToast } from "../../components/ui";
+import { ErrorBox, Skeleton, useToast } from "../../components/ui";
 
 export function DesktopTab(_props: { s: SettingsShape; put: Put }) {
   // The instruments are projected on demand now (lâminas), so there is no
   // desktop composition to toggle; what stays here is the user's own apps.
   const preferences = useOsUiPreferences();
-  if (!preferences.data) return null;
+  if (preferences.error && !preferences.data)
+    return (
+      <div className="card">
+        <ErrorBox
+          message={errorMessage(preferences.error)}
+          offline={isOffline(preferences.error)}
+          onRetry={() => void preferences.refetch()}
+        />
+      </div>
+    );
+  if (!preferences.data)
+    return (
+      <div className="card">
+        <Skeleton lines={3} />
+      </div>
+    );
   return (
     <div className="stack">
       <MicroAppsCard initial={preferences.data.microApps} />

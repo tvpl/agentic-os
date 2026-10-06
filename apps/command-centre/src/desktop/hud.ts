@@ -4,7 +4,7 @@
  * An instrument is either one of the OS's apps (`app:<kind>`) or one of the
  * desktop's readings (`pulse`, `attention`, …). The user edits the arcs from
  * the dock — remove with ✕, add from the gallery — and the result is
- * persisted in `settings.hud`, so it survives a reload and a reinstall.
+ * persisted in the UI preferences' `hud`, so it survives a reload and a reinstall.
  * Everything here is pure: the pods component only renders what this says.
  */
 import type { TKey } from "../i18n";

@@ -10,6 +10,7 @@ import {
   UI_PREFERENCE_KEYS,
   createBackup,
   createEngine,
+  events,
   ensureDirs,
   resolvePaths,
   restoreBackup,
@@ -82,7 +83,10 @@ describe("S1 migration without losing anything", () => {
 
   it("C2 the v1 file is kept byte for byte", () => {
     const home = tempHome();
-    const original = writeV1(home);
+    // Not what JSON.stringify would write: other indentation and key order, no final newline.
+    const original =
+      '{"systemName": "Casa",\n\t"themePreset":"jarvis",  "version":1,\n\t"brain": {"layout":"rings"}}';
+    fs.writeFileSync(settingsFile(home), original);
     engineOver(home);
     expect(fs.readFileSync(`${settingsFile(home)}.v1.bak`, "utf8")).toBe(original);
   });
@@ -144,24 +148,23 @@ describe("S1 migration without losing anything", () => {
   });
 });
 
-describe("S2 the preferences routes", () => {
-  async function server() {
-    const home = tempHome();
-    const ctx = new AppContext(home);
-    const app = await buildServer(ctx);
-    const headers = { "x-mordomo-token": ctx.token(), "content-type": "application/json" };
-    return {
-      home,
-      ctx,
-      app,
-      headers,
-      close: async () => {
-        await app.close();
-        ctx.close();
-      },
-    };
-  }
+async function server(home = tempHome()) {
+  const ctx = new AppContext(home);
+  const app = await buildServer(ctx);
+  const headers = { "x-mordomo-token": ctx.token(), "content-type": "application/json" };
+  return {
+    home,
+    ctx,
+    app,
+    headers,
+    close: async () => {
+      await app.close();
+      ctx.close();
+    },
+  };
+}
 
+describe("S2 the preferences routes", () => {
   it("C8 a new home answers the default preferences", async () => {
     const s = await server();
     try {
@@ -252,9 +255,9 @@ describe("S2 the preferences routes", () => {
   it("C12 the settings route refuses moved fields", async () => {
     const s = await server();
     try {
-      const before = fs.existsSync(settingsFile(s.home))
-        ? fs.readFileSync(settingsFile(s.home), "utf8")
-        : null;
+      // A real file to compare: a new home has none, and null === null proves nothing.
+      const before = JSON.stringify({ version: 2, systemName: "Antes" }, null, 2) + "\n";
+      fs.writeFileSync(settingsFile(s.home), before);
       const samples: Record<string, unknown> = {
         themePreset: "forest",
         microApps: [],
@@ -274,10 +277,7 @@ describe("S2 the preferences routes", () => {
         expect(res.statusCode, key).toBe(400);
         expect(res.json().error.code, key).toBe("moved_to_ui_preferences");
       }
-      const after = fs.existsSync(settingsFile(s.home))
-        ? fs.readFileSync(settingsFile(s.home), "utf8")
-        : null;
-      expect(after).toBe(before);
+      expect(fs.readFileSync(settingsFile(s.home), "utf8")).toBe(before);
     } finally {
       await s.close();
     }
@@ -326,15 +326,34 @@ describe("S3 the UI reads preferences through their route", () => {
     });
 
   it("C16 the UI reads and writes preferences through their route", () => {
+    const moved = "(themePreset|microApps|activeSpace|hud|brain|dashboardLayout|spaces)";
+    const q = "[\"'`]";
+    const end = "[\"'`?/]"; // the path ends at its quote, a query string or a sub-route
+    // A non-GET call naming /api/settings, in any formatting and with any body:
+    // api.put/post/patch/del("/api/settings", …), request("PUT", "/api/settings", …), fetch("/api/settings", …).
+    const writes = [
+      new RegExp(`\\bapi\\s*\\.\\s*(put|post|patch|del)\\b[^(]*\\(\\s*${q}/api/settings${end}`),
+      new RegExp(`\\brequest\\b[^(]*\\(\\s*${q}(PUT|POST|PATCH|DELETE)${q}\\s*,\\s*${q}/api/settings${end}`),
+      new RegExp(`\\bfetch\\s*\\(\\s*${q}/api/settings${end}`),
+    ];
     const offenders: string[] = [];
     for (const file of files(uiSrc)) {
+      const rel = path.relative(uiSrc, file);
       const text = fs.readFileSync(file, "utf8");
-      if (
-        /settings\.data\?\.(themePreset|microApps|activeSpace|hud|brain|dashboardLayout|spaces)\b/.test(text)
-      )
-        offenders.push(`${path.relative(uiSrc, file)}: reads a moved field from settings`);
-      if (/put\(\s*\{\s*(themePreset|microApps|activeSpace|hud|brain|dashboardLayout|spaces)\s*:/.test(text))
-        offenders.push(`${path.relative(uiSrc, file)}: writes a moved field through settings`);
+      // Reads: `settings.data?.<field>`, or any query bound to the settings key read the same way.
+      const settingsQueries = [
+        "settings",
+        ...[...text.matchAll(/(\w+)\s*=\s*(useOsSettings\s*\(|useApiQuery\b[^(]*\(\s*qk\.settings\b)/g)].map(
+          (m) => m[1]!,
+        ),
+      ];
+      for (const name of settingsQueries)
+        if (new RegExp(`\\b${name}\\.data\\??\\.${moved}\\b`).test(text))
+          offenders.push(`${rel}: ${name} reads a moved field from settings`);
+      if (new RegExp(`useOsSettings\\s*\\([^)]*\\)\\.data\\??\\.${moved}\\b`).test(text))
+        offenders.push(`${rel}: useOsSettings() reads a moved field`);
+      if (rel !== "api.ts" && writes.some((re) => re.test(text)))
+        offenders.push(`${rel}: writes /api/settings outside api.putSettings`);
     }
     expect(offenders).toEqual([]);
     const api = fs.readFileSync(path.join(uiSrc, "api.ts"), "utf8");
@@ -344,11 +363,127 @@ describe("S3 the UI reads preferences through their route", () => {
     expect(api).toMatch(
       /\bputUiPreferences:\s*\([^)]*\)\s*=>\s*request<UiPreferencesDoc>\("PUT", "\/api\/ui-preferences"/,
     );
+    // Inside api.ts the one settings write is putSettings, typed by the patch that refuses the moved keys.
+    expect(api.match(new RegExp(writes[1]!.source, "g")) ?? []).toHaveLength(1);
+    expect(api).toMatch(
+      /\bputSettings:\s*<T = unknown>\(patch: SettingsPatch\)\s*=>\s*request<T>\("PUT", "\/api\/settings", patch\)/,
+    );
+    expect(api).toMatch(
+      /export type SettingsPatch = Partial<SettingsDoc> & \{ \[K in MovedSettingKey\]\?: never \}/,
+    );
   });
 
   it("C17 a saved preference refreshes the UI query", () => {
     const queries = fs.readFileSync(path.join(uiSrc, "queries.ts"), "utf8");
     expect(queries).toMatch(/uiPreferences: \["uiPreferences"\] as const/);
     expect(queries).toMatch(/"settings\.changed": \[[^\n]*\["uiPreferences"\]/);
+  });
+});
+
+describe("Rodada 2 - gaps of the first verification", () => {
+  it("C18 an old backup brings its own preferences back", async () => {
+    // A home from before the feature, upgraded: its v1 file migrates once.
+    const home = tempHome();
+    const firstOriginal = writeV1(home, { themePreset: "mono", activeSpace: "home" });
+    const s = await server(home);
+    try {
+      expect(fs.readFileSync(`${settingsFile(home)}.v1.bak`, "utf8")).toBe(firstOriginal);
+      // The user moves on: other preferences, then a backup that is made old-format by hand
+      // (settings.json v1 with the UI fields inside, no ui-preferences.json), as one taken before the feature.
+      const put = await s.app.inject({
+        method: "PUT",
+        url: "/api/ui-preferences",
+        headers: s.headers,
+        payload: { themePreset: "forest", activeSpace: "work" },
+      });
+      expect(put.statusCode).toBe(200);
+      const backup = await createBackup(s.ctx.paths, s.ctx.db);
+      fs.rmSync(path.join(backup.path, "config", "ui-preferences.json"));
+      const oldFile = JSON.stringify({
+        version: 1,
+        systemName: "Casa",
+        themePreset: "jarvis",
+        activeSpace: "focus",
+        brain: { layout: "rings" },
+      });
+      fs.writeFileSync(path.join(backup.path, "config", "settings.json"), oldFile);
+      await s.close();
+      restoreBackup(resolvePaths(home), backup.name);
+    } catch (err) {
+      await s.close().catch(() => undefined);
+      throw err;
+    }
+    // The next boot migrates the restored file: the backup's preferences, not the current ones.
+    const after = await server(home);
+    try {
+      const got = (
+        await after.app.inject({ method: "GET", url: "/api/ui-preferences", headers: after.headers })
+      ).json();
+      expect(got.themePreset).toBe("jarvis");
+      expect(got.activeSpace).toBe("focus");
+      expect(got.brain.layout).toBe("rings");
+      const settings = readJson(settingsFile(home));
+      expect(settings.version).toBe(2);
+      for (const key of UI_PREFERENCE_KEYS) expect(settings, key).not.toHaveProperty(key);
+      // The first migration's original stays: it exists nowhere else, while the
+      // restored file is still in the backup directory.
+      expect(fs.readFileSync(`${settingsFile(home)}.v1.bak`, "utf8")).toBe(firstOriginal);
+    } finally {
+      await after.close();
+    }
+  });
+
+  it("C19 a saved preference is announced as settings.changed", async () => {
+    const s = await server();
+    const seen: string[] = [];
+    const stop = events.subscribe((event) => {
+      if (event.type === "settings.changed") seen.push(event.type);
+    });
+    try {
+      const res = await s.app.inject({
+        method: "PUT",
+        url: "/api/ui-preferences",
+        headers: s.headers,
+        payload: { themePreset: "forest" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(seen).toEqual(["settings.changed"]);
+    } finally {
+      stop();
+      await s.close();
+    }
+  });
+
+  it("C20 a v1 file with one invalid preference keeps the valid ones", () => {
+    const home = tempHome();
+    writeV1(home, { themePreset: "nope" });
+    engineOver(home);
+    const prefs = readJson(prefsFile(home));
+    expect(prefs.themePreset).toBe("hud-orange");
+    expect(prefs.microApps).toEqual([{ id: "pixel", name: "Pixel", description: "Draw", href: "/pixel" }]);
+    expect((prefs.brain as { layout: string }).layout).toBe("rings");
+    expect(prefs.hud).toEqual({ l: ["app:brain"], r: ["pulse"] });
+    expect(prefs.activeSpace).toBe("focus");
+    const settings = readJson(settingsFile(home));
+    expect(settings.version).toBe(2);
+    for (const key of UI_PREFERENCE_KEYS) expect(settings, key).not.toHaveProperty(key);
+  });
+
+  it("C21 a version below 1 migrates once like v1", () => {
+    for (const version of [0, -3]) {
+      const home = tempHome();
+      writeV1(home, { version, themePreset: "ocean" });
+      engineOver(home);
+      expect(readJson(prefsFile(home)).themePreset, String(version)).toBe("ocean");
+      const settings = readJson(settingsFile(home));
+      expect(settings.version, String(version)).toBe(2);
+      expect(settings, String(version)).not.toHaveProperty("themePreset");
+      const before = fs.statSync(settingsFile(home)).mtimeMs;
+      const text = fs.readFileSync(settingsFile(home), "utf8");
+      new SettingsStore(resolvePaths(home)).load();
+      engineOver(home);
+      expect(fs.statSync(settingsFile(home)).mtimeMs, String(version)).toBe(before);
+      expect(fs.readFileSync(settingsFile(home), "utf8"), String(version)).toBe(text);
+    }
   });
 });

@@ -48,7 +48,7 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
 
   const save = useMutation({
     mutationFn: ({ patch }: { patch: Partial<SettingsShape>; silent?: boolean }) =>
-      api.put<{ settings: SettingsShape; pendingApproval: Approval | null }>("/api/settings", patch),
+      api.putSettings<{ settings: SettingsShape; pendingApproval: Approval | null }>(patch),
     onSuccess: (res, vars) => {
       if (res.pendingApproval) toast(res.pendingApproval.description, "info");
       else if (!vars.silent) toast(t("common.saved"), "ok");

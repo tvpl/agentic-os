@@ -36,8 +36,12 @@ layout) e a checagem de conflito de layout que já existe em `PUT /api/settings`
    conflito de layout muda de `PUT /api/settings` para cá; `PUT /api/settings` com um dos sete
    campos responde `400`.
 5. Backup e restauração → `core/src/backup.ts` (exists) copiam e devolvem `ui-preferences.json`
-   junto com `settings.json`.
-6. Interface → `apps/command-centre/src/api.ts` (exists) ganha `uiPreferences`/`putUiPreferences`;
+   junto com `settings.json`. Um backup sem `ui-preferences.json` (feito antes desta feature) apaga
+   o arquivo vivo na restauração, e a próxima leitura migra as preferências que o `settings.json` v1
+   do backup traz.
+6. Interface → `apps/command-centre/src/api.ts` (exists) ganha `uiPreferences`/`putUiPreferences`
+   e `putSettings`, a única escrita de `/api/settings` na interface, cujo tipo de patch recusa os
+   sete campos;
    as telas que liam esses campos de `settings` passam a ler das preferências (`App.tsx`,
    `views/settings/theme.tsx`, `views/settings/desktop.tsx`, `views/Setup.tsx`,
    `desktop/console/Console.tsx`, `views/SecondBrain.tsx`, `nucleo/scenes/BrainScene.tsx`,
@@ -50,7 +54,7 @@ layout) e a checagem de conflito de layout que já existe em `PUT /api/settings`
 | domain      | novo termo: `UiPreferences` - o que só a interface lê e grava; vive em `contracts/src/preferences.ts` e em `config/ui-preferences.json`                                                                    |
 | domain      | termo existente: `Settings` perde `themePreset`, `microApps`, `dashboardLayout`, `spaces`, `activeSpace`, `hud`, `brain`; quem lia: as telas listadas no Flow 6 e `PUT /api/settings` (conflito de layout) |
 | domain      | termo existente: `settings.version` era decorativo, passa a decidir a migração e a recusa de gravação                                                                                                      |
-| stored data | migração na leitura: um `settings.json` com `version` 1 (ou sem `version`) é migrado na primeira leitura por qualquer processo; o original fica copiado como `settings.json.v1.bak`                        |
+| stored data | migração na leitura: um `settings.json` com `version` 1 (sem `version` ou abaixo de 1) é migrado na primeira leitura por qualquer processo; o original fica copiado como `settings.json.v1.bak`            |
 | contrato    | `GET /api/settings` deixa de trazer os sete campos; `PUT /api/settings` com eles responde `400 moved_to_ui_preferences`; rotas novas `GET`/`PUT /api/ui-preferences`                                       |
 
 ## Relations
@@ -122,6 +126,23 @@ não grava sobre `version` maior que a sua (door 3).
 
 **Independent test:** trocar o tema visual em Ajustes e recarregar: o preset escolhido continua.
 
+### Rodada 2 - lacunas da primeira verificação (P1)
+
+Acrescentada depois do FAIL da rodada 1 (`verification.md`): comportamento que o plano não nomeava
+(backup antigo, versão abaixo de 1, campo inválido na migração, estados da aba Desktop) e a metade
+do AC 16 que fica no servidor.
+
+**Acceptance Criteria**
+
+17. IF a restored backup has `config/settings.json` and no `config/ui-preferences.json` (a backup made before this feature) THEN the restore SHALL remove the live `config/ui-preferences.json`, the next load SHALL bring back that backup's `themePreset`, `activeSpace` and `brain`, and the existing `config/settings.json.v1.bak` SHALL stay unchanged (it is the only copy of the pre-upgrade file; the restored one is still in the backup directory)
+18. WHEN `PUT /api/ui-preferences` saves THEN the engine SHALL emit `settings.changed` once
+19. IF a `settings.json` v1 holds one invalid UI field (`themePreset: "nope"`) THEN the migration SHALL keep the other fields in `config/ui-preferences.json`, SHALL use the default (`"hud-orange"`) for the invalid one, and SHALL NOT fail
+20. IF `settings.json` has `version` 0 or a negative `version` THEN the engine SHALL migrate it as version 1 once and SHALL NOT rewrite it on later loads
+21. The UI SHALL send every `PUT /api/settings` through `api.putSettings`, whose patch type refuses the seven fields; WHEN the in-UI setup finishes THEN `themePreset` and `hud` SHALL go through `PUT /api/ui-preferences` and none of the seven fields through `PUT /api/settings`
+22. WHILE `GET /api/ui-preferences` has not answered, the `Ajustes › Desktop` tab SHALL show a skeleton; IF it fails THEN the tab SHALL show the error box with a retry button, the same pattern the Settings page uses
+
+**Independent test:** restaurar um backup feito antes desta feature e recarregar: o tema do backup volta.
+
 ## Out of scope
 
 | Excluded                                                          | Why                                                                                                                                            |
@@ -152,6 +173,8 @@ não grava sobre `version` maior que a sua (door 3).
 | API `PUT /api/settings`       | error for moved fields  | AC 11                                                                                          |
 | screen `Ajustes › Tema`       | error state             | existing - o toast de erro de gravação que a tela já usa                                       |
 | screen `Ajustes › Tema`       | empty, loading          | existing - a tela já espera a query de configurações; passa a esperar também a de preferências |
+| screen `Ajustes › Desktop`    | loading, error          | AC 22                                                                                          |
+| stored data backup antigo     | restauração             | AC 17                                                                                          |
 | stored data `settings.json`   | migration and rollback  | AC 1-5 (backup `.v1.bak`, recusa de arquivo mais novo)                                         |
 
 ## Sources

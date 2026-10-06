@@ -28,7 +28,7 @@ export function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
   const [pathError, setPathError] = useState<string | null>(null);
   const addFolder = useMutation({
     mutationFn: () =>
-      api.put("/api/settings", {
+      api.putSettings({
         indexedFolders: [...s.indexedFolders, { path: newPath.trim(), area: newArea || null, enabled: true }],
       }),
     onSuccess: () => {

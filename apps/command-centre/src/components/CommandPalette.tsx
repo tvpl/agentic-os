@@ -416,7 +416,7 @@ export function CommandPalette({
         () =>
           void runAction("action:toggle-theme", t("shell.action.toggleTheme"), async () => {
             const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
-            await api.put("/api/settings", { theme: next });
+            await api.putSettings({ theme: next });
             onMetaChanged();
             toast(t("shell.palette.themeToggled", { theme: next }), "ok");
           }),
@@ -690,7 +690,7 @@ export function CommandPalette({
           void runAction(`theme:${p.id}`, p.label, async () => {
             committedPreset.current = true;
             applyPreset(p.id);
-            await api.put("/api/settings", { accentColor: p.accent });
+            await api.putSettings({ accentColor: p.accent });
             onMetaChanged();
             toast(t("shell.palette.themeApplied", { name: p.label }), "ok");
           }),

@@ -176,7 +176,12 @@ export function restoreBackup(paths: MordomoPaths, name: string): { safetyBackup
   for (const set of BACKUP_SETS) add(path.join(src, set), paths[set]);
   if (includeArtifacts) add(path.join(src, "artifacts"), paths.artifacts);
   add(path.join(src, "config", "settings.json"), paths.settingsFile);
-  add(path.join(src, "config", "ui-preferences.json"), paths.uiPreferencesFile);
+  const backupPrefs = path.join(src, "config", "ui-preferences.json");
+  if (fs.existsSync(backupPrefs)) add(backupPrefs, paths.uiPreferencesFile);
+  // A backup from before ui-preferences.json (settings version 1) keeps its
+  // preferences inside settings.json: drop the live file so the next load
+  // migrates the backup's own values instead of keeping the current ones.
+  else if (fs.existsSync(path.join(src, "config", "settings.json"))) add(null, paths.uiPreferencesFile);
   add(path.join(src, "config", "sync-manifest.json"), paths.syncManifest);
   add(path.join(src, "config", "db", "mordomo.db"), paths.dbFile);
   for (const suffix of ["-wal", "-shm"]) add(null, paths.dbFile + suffix);

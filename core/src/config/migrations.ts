@@ -55,9 +55,14 @@ function pickValid(moved: Raw): Raw {
   return out;
 }
 
-/** The version a raw settings document declares; a file without one is version 1. */
+/**
+ * The version a raw settings document declares. A file without one, or with
+ * one below 1 that no writer ever produced, is version 1: it migrates once
+ * like any other v1 file instead of matching no step and being rewritten on
+ * every load.
+ */
 export function settingsVersion(raw: Raw): number {
-  return typeof raw.version === "number" && Number.isInteger(raw.version) ? raw.version : 1;
+  return typeof raw.version === "number" && Number.isInteger(raw.version) && raw.version >= 1 ? raw.version : 1;
 }
 
 /**

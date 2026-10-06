@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { CalendarDays, Check, Copy, ExternalLink, Eye, EyeOff, Mail, Plug, RefreshCw } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { PROVIDER_LOGIN_COMMANDS } from "../runs/authRecovery";
-import { api, type Connector, type ProviderId, type ProviderSnapshot } from "../api";
+import { api, type Connector, type ProviderId, type ProviderSnapshot, type SettingsDoc } from "../api";
 import { I18nContext, useT, type Lang } from "../i18n";
 import { qk, useApiQuery } from "../queries";
 import { ErrorBox, Skeleton, useToast } from "../components/ui";
@@ -92,16 +92,16 @@ export default function Setup({ onDone }: { onDone: () => void }) {
           .filter(([, on]) => on)
           .map(([id]) => api.post(`/api/providers/${id}/detect`).catch(() => undefined)),
       );
-      const current = await api.get<Record<string, unknown>>("/api/settings");
-      const provSettings = current.providers as Record<ProviderId, Record<string, unknown>>;
+      const current = await api.get<SettingsDoc>("/api/settings");
+      const provSettings = current.providers;
       for (const id of ["claude", "cursor", "codex"] as ProviderId[])
         provSettings[id] = { ...provSettings[id], enabled: enabled[id] };
       const chosenDefault = enabled[defaultProvider]
         ? defaultProvider
         : ((Object.entries(enabled).find(([, v]) => v)?.[0] as ProviderId | undefined) ?? "claude");
-      const folders = current.indexedFolders as Array<Record<string, unknown>>;
+      const folders = current.indexedFolders;
       const chosenPreset = PRESETS.find((p) => p.id === preset) ?? PRESETS[0]!;
-      await api.put("/api/settings", {
+      await api.putSettings({
         systemName: name.trim() || "MordomoOS",
         language: lang,
         theme,

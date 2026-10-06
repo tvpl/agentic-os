@@ -8,6 +8,7 @@
 import { useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-query";
 import {
   api,
+  type MovedSettingKey,
   type SettingsDoc,
   type UiPreferencesDoc,
   type UiPreferencesPatch,
@@ -131,8 +132,13 @@ export const useOsConnectors = (o?: ApiQueryOptions<Connector[]>) =>
   useApiQuery<Connector[]>(qk.connectors, "/api/connectors", o);
 export const useOsObjectives = (o?: ApiQueryOptions<Objective[]>) =>
   useApiQuery<Objective[]>(qk.objectives, "/api/objectives", o);
-/** Every settings field, optional (an older server may omit some), plus room for fields this build does not know. */
-export type SettingsView = Partial<SettingsDoc> & { [key: string]: unknown };
+/**
+ * Every settings field, optional (an older server may omit some), plus room for fields this build does not know.
+ * A key that moved to the UI preferences is `never` here: read it from `useOsUiPreferences`.
+ */
+export type SettingsView = Partial<SettingsDoc> & { [K in MovedSettingKey]?: never } & {
+  [key: string]: unknown;
+};
 export const useOsSettings = (o?: ApiQueryOptions<SettingsView>) =>
   useApiQuery<SettingsView>(qk.settings, "/api/settings", o);
 /** What only the Command Centre reads and writes; refreshed on `settings.changed`. */
