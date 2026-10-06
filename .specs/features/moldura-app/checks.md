@@ -8,7 +8,7 @@ Plan: `.specs/features/moldura-app/plan.md`
 Comandos (da raiz):
 
 - interface (jsdom): `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "<nome>"`
-- composição no navegador (Playwright, Chromium em `/opt/pw-browsers`): `npx playwright test tests/e2e/moldura.spec.ts -g "<nome>"`
+- composição no navegador (Playwright, Chromium em `/opt/pw-browsers`): `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "<nome>"`
 - motor e rota: `npx vitest run tests/moldura.test.ts -t "<nome>"`
 
 Fora do alcance destes checks, por tela: espaçamento, cor e peso de tipo da Moldura, da página Hoje,
@@ -23,7 +23,7 @@ Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "
 Status: open
 
 **C2** - No navegador (1440×900), a caixa do `nav` fica à esquerda de `main`, a do `aside` à direita de `main`, o `header` acima de `main` na mesma coluna, e `nav` e `aside` têm a altura da viewport (AC 1)
-Proof: `npx playwright test tests/e2e/moldura.spec.ts -g "C2 the regions sit where the design draws them"`
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C2 the regions sit where the design draws them"`
 Status: open
 
 **C3** - Os links da barra lateral são, nesta ordem, Hoje, Execuções, Skills, Rotinas, Memória, Conectores, Artefatos, Gerações, Pixel Studio, Configurações (em pt-BR) e Today, Runs, Skills, Routines, Memory, Connectors, Artifacts, Generations, Pixel Studio, Settings (em en), com `href` `#/`, `#/runs`, `#/skills`, `#/routines`, `#/brain`, `#/connectors`, `#/artifacts`, `#/generations`, `#/pixel`, `#/settings` (AC 2)
@@ -51,7 +51,7 @@ Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "
 Status: open
 
 **C9** - Em 800×900, a barra lateral começa recolhida; abrir a conversa a mostra como gaveta sobre o `main` (a caixa sobrepõe a de `main`) e Esc a fecha (AC 7)
-Proof: `npx playwright test tests/e2e/moldura.spec.ts -g "C9 a narrow window collapses the sidebar and drawers the chat"`
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C9 a narrow window collapses the sidebar and drawers the chat"`
 Status: open
 
 **C10** - Com `shell: "moldura"`, as teclas 1, `]`, `/`, `p`, ⌘J, ⌘F, ⌘⇧A e ⌘⇧D não mudam a rota, não abrem deck, busca nem foco, e não resolvem aprovação (AC 8)
@@ -69,7 +69,7 @@ Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "
 Status: open
 
 **C13** - No navegador, em 1440 de largura os cartões 1 e 2 estão na mesma linha (mesmo `top`, `left` crescente) e em 1000 de largura cada cartão está abaixo do anterior (AC 11)
-Proof: `npx playwright test tests/e2e/moldura.spec.ts -g "C13 today is two columns wide and one column narrow"`
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C13 today is two columns wide and one column narrow"`
 Status: open
 
 **C14** - `openRun("r1")` vindo da conversa e da paleta navega para `/runs/r1`; `openDoc("notes/a.md")` abre uma gaveta com o visualizador e o botão "Fechar", que a fecha (AC 12)
@@ -99,7 +99,7 @@ Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "
 Status: open
 
 **C20** - No navegador: trocar para o Núcleo em Configurações, recarregar a página e encontrar `.nu-shell`; trocar de volta e encontrar `[data-shell="moldura"]` (AC 16)
-Proof: `npx playwright test tests/e2e/moldura.spec.ts -g "C20 the interface choice survives a reload"`
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C20 the interface choice survives a reload"`
 Status: open
 
 **C21** - Na moldura, a paleta lista "Mudar para o Núcleo imersivo" e não lista "Abrir painel" nem a ação de organizar (mesmo com a consulta "organizar"); no Núcleo, lista "Mudar para a moldura de app"; rodar a ação grava `shell` (AC 17)
@@ -109,7 +109,7 @@ Status: open
 ### S4 - o Núcleo segue igual · 3 files · 20 KB · ~5k
 
 **C22** - Com `shell: "nucleo"`, a tela rende `.nu-shell` e nenhum `[data-shell="moldura"]`, e a suíte e2e existente do Núcleo (`tests/e2e/nucleo-shell.spec.ts`) passa com as homes de teste semeadas com `shell: "nucleo"` (AC 13, AC 16)
-Proof: `npx playwright test tests/e2e/nucleo-shell.spec.ts`
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/nucleo-shell.spec.ts`
 Status: open
 
 **C23** - Os textos novos têm chave em `en` e em `ptBR` (o teste de paridade de locales passa) (AC 2, AC 10, AC 15, AC 17)
