@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -122,22 +122,6 @@ describe("S1 building the engine changes nothing", () => {
     expect(stepOf(engine, stepId)).toEqual({ status: "dispatched", runId });
   });
 
-  it("C2 constructing an AppContext leaves a queued step dispatched", async () => {
-    const home = tempHome();
-    const { stepId, runId } = seed(home, "queued");
-    const { AppContext } = await import("../apps/api/src/context.js");
-    const ctx = new AppContext(home);
-    try {
-      const row = ctx.db.prepare("SELECT status, run_id FROM objective_steps WHERE id = ?").get(stepId) as {
-        status: string;
-        run_id: string | null;
-      };
-      expect(row).toEqual({ status: "dispatched", run_id: runId });
-    } finally {
-      ctx.close();
-    }
-  });
-
   it("C3 constructing an engine leaves a running step dispatched", () => {
     const home = tempHome();
     const { stepId } = seed(home, "running");
@@ -223,32 +207,72 @@ describe("S2 only the owner recovers", () => {
     expect(fs.existsSync(lockFile(home))).toBe(false);
   });
 
-  it("C12 the API service owns the engine", async () => {
+  it("C20 start starts the scheduler and the sentinels, building does not", () => {
+    const engine = engineFor(tempHome());
+    expect(engine.scheduler.isRunning()).toBe(false);
+    expect(engine.sentinels.isRunning()).toBe(false);
+    engine.start();
+    expect(engine.scheduler.isRunning()).toBe(true);
+    expect(engine.sentinels.isRunning()).toBe(true);
+  });
+
+  it("C21 start prunes old run events, building does not", () => {
     const home = tempHome();
-    const { runId } = seed(home, "running");
-    const probe = await import("node:net").then(
-      (net) =>
-        new Promise<number>((resolve) => {
-          const server = net.createServer().listen(0, "127.0.0.1", () => {
-            const port = (server.address() as { port: number }).port;
-            server.close(() => resolve(port));
-          });
-        }),
-    );
     settingsOf(home, (s) => {
-      s.port = probe;
-      s.setupCompleted = true;
+      s.limits.logRetentionDays = 1;
     });
-    const { startServer } = await import("../apps/api/src/server.js");
-    const handle = await startServer(home);
-    try {
-      const lock = JSON.parse(fs.readFileSync(lockFile(home), "utf8")) as { pid: number };
-      expect(lock.pid).toBe(process.pid);
-      expect(handle.ctx.runs.get(runId)!.status).toBe("interrupted");
-    } finally {
-      await handle.close();
+    const { runId } = seed(home, "queued");
+    const { db } = openDb(resolvePaths(home));
+    db.prepare("UPDATE runs SET status = 'done', finished_at = ? WHERE id = ?").run(Date.now(), runId);
+    db.prepare("INSERT INTO run_events (run_id, ts, type, data) VALUES (?, ?, 'text', '{}')").run(
+      runId,
+      Date.now() - 3 * 86_400_000,
+    );
+    db.close();
+    const engine = engineFor(home);
+    const count = () =>
+      (engine.db.prepare("SELECT COUNT(*) c FROM run_events WHERE run_id = ?").get(runId) as { c: number }).c;
+    expect(count()).toBe(1);
+    engine.start();
+    expect(count()).toBe(0);
+  });
+
+  it("C22 a lock of this very process is taken over", () => {
+    const home = tempHome();
+    fs.writeFileSync(lockFile(home), JSON.stringify({ pid: process.pid, startedAt: 1 }));
+    const engine = engineFor(home);
+    expect(() => engine.start()).not.toThrow();
+    expect((JSON.parse(fs.readFileSync(lockFile(home), "utf8")) as { pid: number }).pid).toBe(process.pid);
+  });
+
+  it("C23 an unreadable lock is taken over", () => {
+    for (const content of ["", "{", '{"pid":"x"}']) {
+      const home = tempHome();
+      fs.writeFileSync(lockFile(home), content);
+      const engine = engineFor(home);
+      expect(() => engine.start(), JSON.stringify(content)).not.toThrow();
+      expect((JSON.parse(fs.readFileSync(lockFile(home), "utf8")) as { pid: number }).pid).toBe(process.pid);
     }
-    expect(fs.existsSync(lockFile(home))).toBe(false);
+  });
+
+  it("C24 the lock appears already holding its pid", () => {
+    const home = tempHome();
+    const seen: Array<{ targetExisted: boolean; sourcePid: unknown }> = [];
+    const real = fs.linkSync.bind(fs);
+    const spy = vi.spyOn(fs, "linkSync").mockImplementation((source, target) => {
+      seen.push({
+        targetExisted: fs.existsSync(target),
+        sourcePid: (JSON.parse(fs.readFileSync(source, "utf8")) as { pid: unknown }).pid,
+      });
+      return real(source, target);
+    });
+    try {
+      engineFor(home).start();
+    } finally {
+      spy.mockRestore();
+    }
+    expect(seen).toEqual([{ targetExisted: false, sourcePid: process.pid }]);
+    expect(fs.readdirSync(resolvePaths(home).run).filter((n) => n.endsWith(".tmp"))).toEqual([]);
   });
 });
 
@@ -270,8 +294,7 @@ describe("S4 an embedder gets the engine and its policy", () => {
     async () => {
       // This file imports the engine only from @mordomo/core and one adapter package.
       const source = fs.readFileSync(path.join(here, "core.engine.test.ts"), "utf8");
-      const staticImports = [...source.matchAll(/^import [^;]+ from "([^"]+)";/gm)].map((m) => m[1]);
-      expect(staticImports.filter((spec) => spec!.includes("apps/"))).toEqual([]);
+      expect(source).not.toMatch(/["'][./]*apps\//);
 
       const restorePath = withFakeBinPath();
       try {
@@ -371,5 +394,50 @@ describe("S4 an embedder gets the engine and its policy", () => {
       input: { ...gatedPayload.input, cwd: home },
     });
     expect(gate).toEqual({ pendingApproval: null, runId: null });
+  });
+
+  it("C27 approved_automation lets a manual write through", () => {
+    const home = tempHome();
+    settingsOf(home, (s) => {
+      s.securityProfile = "approved_automation";
+    });
+    const engine = engineFor(home);
+    expect(
+      engine.gateWrite("write", "manual", "change it", {
+        ...gatedPayload,
+        input: { ...gatedPayload.input, cwd: home },
+      }),
+    ).toEqual({ pendingApproval: null, runId: null });
+  });
+
+  it("C28 the engine parks a reviewed write skill", () => {
+    const home = tempHome();
+    const skillDir = path.join(resolvePaths(home).skills, "tidy-notes");
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(skillDir, "SKILL.md"),
+      "---\nname: Tidy notes\ndescription: Rename notes to the house style.\nmode: write\nproviders: [claude]\n---\n\n# Tidy notes\n\nRename the notes.\n",
+    );
+    settingsOf(home, (s) => {
+      s.securityProfile = "review_before_write";
+    });
+    const engine = engineFor(home);
+    const gate = engine.gateWrite("write", "manual", "tidy", {
+      kind: "skill",
+      input: {
+        slug: "tidy-notes",
+        inputs: {},
+        provider: "claude",
+        model: null,
+        effort: "default",
+        cwd: home,
+        timeoutMs: 60_000,
+      },
+    });
+    expect(gate.pendingApproval?.kind).toBe("write_run");
+    const run = engine.runs.get(gate.runId!)!;
+    expect(run.status).toBe("waiting_approval");
+    expect(run.skillSlug).toBe("tidy-notes");
+    expect(gate.pendingApproval!.payload).toMatchObject({ kind: "skill", runId: gate.runId });
   });
 });

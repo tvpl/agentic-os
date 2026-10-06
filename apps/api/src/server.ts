@@ -410,14 +410,21 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   // below does; anything else holding it is reported, never killed.
   let recovered: number;
   try {
-    ({ recovered } = ctx.start());
+    try {
+      ({ recovered } = ctx.start());
+    } catch (err) {
+      if (!(err instanceof EngineLockedError) || err.holderPid === null) throw err;
+      const leftover = listServiceProcesses().filter((p) => p.pid === err.holderPid);
+      if (leftover.length === 0) throw err;
+      const stopped = await terminate(leftover);
+      app.log.warn({ pids: stopped, msg: "stopped the MordomoOS service holding the engine lock" });
+      ({ recovered } = ctx.start());
+    }
   } catch (err) {
-    if (!(err instanceof EngineLockedError) || err.holderPid === null) throw err;
-    const leftover = listServiceProcesses().filter((p) => p.pid === err.holderPid);
-    if (leftover.length === 0) throw err;
-    const stopped = await terminate(leftover);
-    app.log.warn({ pids: stopped, msg: "stopped the MordomoOS service holding the engine lock" });
-    ({ recovered } = ctx.start());
+    // Never leave a half-built service behind: no listener, no open database.
+    await app.close();
+    ctx.close();
+    throw err;
   }
   if (recovered > 0) {
     app.log.info({ recovered, msg: "marked orphaned runs as interrupted" });

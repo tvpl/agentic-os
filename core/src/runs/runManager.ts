@@ -230,12 +230,15 @@ export class RunManager {
     this.logger = new JsonlLogger(paths.logs, "runs", s.limits.logMaxFileBytes, s.limits.logRetentionDays);
     this.emitter.setMaxListeners(100);
     this.eventCap = opts.eventCap ?? DEFAULT_EVENT_CAP;
-    if (opts.pruneOnBoot !== false) {
-      try {
-        this.prune();
-      } catch (err) {
-        this.log({ event: "prune_failed", error: (err as Error).message });
-      }
+    if (opts.pruneOnBoot !== false) this.pruneLogged();
+  }
+
+  /** `prune()` as a boot step: best effort, a failure is logged and never thrown. */
+  pruneLogged(): void {
+    try {
+      this.prune();
+    } catch (err) {
+      this.log({ event: "prune_failed", error: (err as Error).message });
     }
   }
 

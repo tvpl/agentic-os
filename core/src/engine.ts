@@ -275,11 +275,7 @@ export class MordomoEngine {
    */
   start(): { recovered: number } {
     this.acquireLock();
-    try {
-      this.runs.prune();
-    } catch {
-      /* retention is best effort; a failed prune never blocks the service */
-    }
+    this.runs.pruneLogged();
     this.objectives.recover(this.runs);
     const recovered = this.runs.recoverInterrupted();
     this.scheduler.start();
@@ -304,24 +300,34 @@ export class MordomoEngine {
     if (this.db.open) this.db.close();
   }
 
+  /**
+   * Take `config/run/engine.lock`. The file appears in one step — a fully
+   * written temporary file hard-linked into place, which fails if the lock
+   * exists — so no reader ever sees a lock without its pid. A lock naming a
+   * dead process, this process, or nothing readable is stale and taken over.
+   */
   private acquireLock(): void {
     fs.mkdirSync(this.paths.run, { recursive: true });
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const fd = fs.openSync(this.lockFile, "wx", 0o600);
-        fs.writeSync(fd, JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
-        fs.closeSync(fd);
-        this.lockHeld = true;
-        return;
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    const temp = `${this.lockFile}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(temp, JSON.stringify({ pid: process.pid, startedAt: Date.now() }), { mode: 0o600 });
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          fs.linkSync(temp, this.lockFile);
+          this.lockHeld = true;
+          return;
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+        }
+        const holder = this.lockHolder();
+        if (holder !== null && holder !== process.pid && pidAlive(holder))
+          throw new EngineLockedError(holder);
+        fs.rmSync(this.lockFile, { force: true });
       }
-      const holder = this.lockHolder();
-      if (holder !== null && holder !== process.pid && pidAlive(holder)) throw new EngineLockedError(holder);
-      // A lock left by a dead process (or by this one): take it over.
-      fs.rmSync(this.lockFile, { force: true });
+      throw new EngineLockedError(this.lockHolder());
+    } finally {
+      fs.rmSync(temp, { force: true });
     }
-    throw new EngineLockedError(this.lockHolder());
   }
 
   /** The pid recorded in the lock file, or null when it is missing or unreadable. */

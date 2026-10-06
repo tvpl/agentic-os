@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/motor-composicao/plan.md`
 
-19 checks in 4 slices · 3 one-way doors · 0 open, of which 0 block
+28 checks in 5 slices · 3 one-way doors · 0 open, of which 0 block
 
 Comandos (da raiz): `npx vitest run tests/core.engine.test.ts -t "<nome>"`. As semeaduras usam a API
 pública dos stores (`ObjectiveStore.create` + `markDispatched`, `RunManager.create`) e, para pôr uma
@@ -18,7 +18,7 @@ Proof: `npx vitest run tests/core.engine.test.ts -t "C1 constructing an engine l
 Status: closed
 
 **C2** - Montar um `AppContext` (o que todo comando da CLI faz) sobre a mesma semeadura deixa a etapa `dispatched` com o mesmo `run_id` (AC 1)
-Proof: `npx vitest run tests/core.engine.test.ts -t "C2 constructing an AppContext leaves a queued step dispatched"`
+Proof: `npx vitest run tests/api.engine.test.ts -t "C2 constructing an AppContext leaves a queued step dispatched"`
 Status: closed
 
 **C3** - Montar um motor sobre uma home com etapa `dispatched` cuja execução está `running` deixa a etapa `dispatched`, não `blocked` (AC 2)
@@ -60,7 +60,7 @@ Proof: `npx vitest run tests/core.engine.test.ts -t "C11 stop releases the lock"
 Status: closed
 
 **C12** - `startServer` sobre uma home com execução `running` deixa `config/run/engine.lock` com `process.pid` e a execução `interrupted`; fechar o servidor remove o lock (AC 11)
-Proof: `npx vitest run tests/core.engine.test.ts -t "C12 the API service owns the engine"`
+Proof: `npx vitest run tests/api.engine.test.ts -t "C12 the API service owns the engine"`
 Status: closed
 
 ### S3 - SQLite espera · 1 file · 4 KB · ~1k
@@ -71,7 +71,7 @@ Status: closed
 
 ### S4 - embutidor com motor e política · 4 files · 60 KB · ~15k
 
-**C14** - Um teste que importa só `@mordomo/core` e `@mordomo/adapter-claude` (o arquivo não importa nada de `apps/`) cria o motor, chama `start()`, cria e executa uma execução `read_only` no CLI falso do Claude, e ela termina `done` (AC 13)
+**C14** - Um teste que importa só `@mordomo/core` e `@mordomo/adapter-claude` (o arquivo não referencia `apps/` em nenhum import, estático ou dinâmico; as provas que usam a API ficam em `tests/api.engine.test.ts`) cria o motor, chama `start()`, cria e executa uma execução `read_only` no CLI falso do Claude, e ela termina `done` (AC 13)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C14 an embedder runs a read-only run with core and one adapter"`
 Status: closed
 
@@ -92,22 +92,60 @@ Proof: `npx vitest run tests/core.engine.test.ts -t "C18 the engine lets a contr
 Status: closed
 
 **C19** - As suítes de perfil, submissão e contenção da API passam sem mudança nos seus arquivos (AC 17)
-Proof: `npx vitest run tests/api.profiles.test.ts tests/api.submission.test.ts tests/api.hardening.test.ts -t "security profiles|submission|containment"`
+Proof: `npx vitest run tests/api.profiles.test.ts tests/api.submission.test.ts tests/api.hardening.test.ts`
+Status: closed
+
+### Rodada 2 - membros que a primeira verificação achou sem prova
+
+**C20** - Montar o motor deixa `scheduler.isRunning()` e `sentinels.isRunning()` falsos; depois de `start()`, os dois são verdadeiros (AC 5-7, Flow 2)
+Proof: `npx vitest run tests/core.engine.test.ts -t "C20 start starts the scheduler and the sentinels, building does not"`
+Status: closed
+
+**C21** - Com `logRetentionDays` = 1, um evento de 3 dias de uma execução `done` continua depois de montar o motor e some depois de `start()` (Flow 2)
+Proof: `npx vitest run tests/core.engine.test.ts -t "C21 start prunes old run events, building does not"`
+Status: closed
+
+**C22** - Um `engine.lock` com o PID do próprio processo é retomado por `start()` sem erro (AC 9, door 2)
+Proof: `npx vitest run tests/core.engine.test.ts -t "C22 a lock of this very process is taken over"`
+Status: closed
+
+**C23** - Um `engine.lock` vazio, `{` ou com `pid` não numérico é retomado por `start()` (AC 9, door 2)
+Proof: `npx vitest run tests/core.engine.test.ts -t "C23 an unreadable lock is taken over"`
+Status: closed
+
+**C24** - O lock nasce por `link` de um arquivo temporário que já contém o `pid`, sobre um destino que não existia; nenhum `.tmp` sobra (door 2 - sem janela de lock vazio)
+Proof: `npx vitest run tests/core.engine.test.ts -t "C24 the lock appears already holding its pid"`
+Status: closed
+
+**C25** - Com o lock de um serviço MordomoOS que ficou para trás (linha de comando `…/cli.js start`), `startServer` encerra esse processo, toma o lock e sobe (AC 11, Flow 5)
+Proof: `npx vitest run tests/api.engine.test.ts -t "C25 a leftover MordomoOS service holding the lock is stopped and the service starts"`
+Status: closed
+
+**C26** - Com o lock de outro processo vivo qualquer, `startServer` rejeita com `EngineLockedError`, o processo continua vivo, o lock continua dele e a etapa semeada continua `dispatched` (AC 8, Flow 5)
+Proof: `npx vitest run tests/api.engine.test.ts -t "C26 another process holding the lock is never killed and the service does not start"`
+Status: closed
+
+**C27** - Sob `approved_automation`, `gateWrite` de uma escrita manual devolve `{ pendingApproval: null, runId: null }` (AC 14)
+Proof: `npx vitest run tests/core.engine.test.ts -t "C27 approved_automation lets a manual write through"`
+Status: closed
+
+**C28** - Sob `review_before_write`, `gateWrite` com payload `skill` de uma skill de escrita devolve aprovação `write_run` com `payload.kind` `"skill"` e uma execução `waiting_approval` com `skillSlug` da skill (AC 14)
+Proof: `npx vitest run tests/core.engine.test.ts -t "C28 the engine parks a reviewed write skill"`
 Status: closed
 
 ## Coverage
 
-| Set (size)                                           | Member -> proof                                                                    | Unproven |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------- | -------- |
-| montagens do motor (3 assemblies)                    | `createEngine` C1 · `AppContext` (CLI) C2 · `startServer` C12                      | -        |
-| fases do ciclo de vida (3)                           | construir C1-C5 · `start()` C6-C10 · `stop()` C11                                  | -        |
-| estados do lock em `start()` (3)                     | ausente C8 · vivo de outro processo C9 · PID morto C10                             | -        |
-| casos de `ObjectiveStore.recover` tocados (2)        | execução `queued` inativa C1, C6 · execução `running` C3                           | -        |
-| decisão de escrita por perfil para origem manual (3) | `read_only` C16 · `review_before_write` C15 · `controlled_write` C18               | -        |
-| `resolveCwd` (2)                                     | fora C17 · dentro C17                                                              | -        |
-| doors (3)                                            | `createEngine`/`MordomoEngine` C1, C14 · `engine.lock` C8-C11 · `busy_timeout` C13 | -        |
+| Set (size)                                           | Member -> proof                                                                                  | Unproven |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------ | -------- |
+| montagens do motor (3 assemblies)                    | `createEngine` C1 · `AppContext` (CLI) C2 · `startServer` C12                                    | -        |
+| fases do ciclo de vida (3)                           | construir C1-C5 · `start()` C6-C10 · `stop()` C11                                                | -        |
+| estados do lock em `start()` (3)                     | ausente C8 · vivo de outro processo C9 · PID morto C10                                           | -        |
+| casos de `ObjectiveStore.recover` tocados (2)        | execução `queued` inativa C1, C6 · execução `running` C3                                         | -        |
+| decisão de escrita por perfil para origem manual (4) | `read_only` C16 · `review_before_write` C15 · `controlled_write` C18 · `approved_automation` C27 | -        |
+| tipo do payload em `gateWrite` (2)                   | `prompt` C15 · `skill` C28                                                                       | -        |
+| `resolveCwd` (2)                                     | fora C17 · dentro C17                                                                            | -        |
+| doors (3)                                            | `createEngine`/`MordomoEngine` C1, C14 · `engine.lock` C8-C11 · `busy_timeout` C13               | -        |
 
-- `approved_automation` fica fora do conjunto de decisão: para origem `manual` ele decide igual a `controlled_write` (`core/src/security/profiles.ts` `writeDecision`), e a tabela inteira já é provada em `tests/core.security.test.ts`
 - Claims naming a status code, route or response shape: C16 (`statusCode` 403) - provado na camada do motor, que é onde o contrato novo vive; a rota HTTP é C19
 
 ## Test policy
