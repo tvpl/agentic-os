@@ -11,10 +11,10 @@
 
 ## Handoff
 
-**Feature**: contratos (verificação independente pendente); próxima: preferencias-ui (plano e checks prontos)
-**Where**: seguranca-p0, ci-gate, motor-composicao e capacidades-aplicadas verificadas; contratos commitada em `19df6a7`
-**In progress**: nenhum
-**Next step**: veredito de contratos; construir preferencias-ui; depois provedores-plugaveis
+**Feature**: preferencias-ui (construída na worktree `feat/preferencias`, a aplicar e verificar); provedores-plugaveis em construção na worktree `feat/provedores`
+**Where**: seguranca-p0, ci-gate, motor-composicao e capacidades-aplicadas verificadas. contratos: 3 rodadas, todas as lacunas fechadas; a 3ª deixou um mutante (import com aspas simples escapando do C16), corrigido pelo autor em `c438d30` e morto por sonda do autor (não por um verificador independente) - escalado ao dono no resumo da sessão
+**In progress**: provedores-plugaveis (plano e checks em `4191472`)
+**Next step**: aplicar preferencias-ui, verificar; integrar provedores-plugaveis, verificar; depois api-v1
 **Blockers**: nenhum até a feature 9 (direção da interface, decisão do dono)
 **Uncommitted**: nenhum
 **Branch**: chore/tlc-spec-lean-skill

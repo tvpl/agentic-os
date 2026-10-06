@@ -119,6 +119,41 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: apps/api/src/cli.ts:1377 (round 1, CLI) (policy)
 - last seen: 2026-10-06T14:56:25Z
 
+### L-016 - Size a Coverage set from the AC's own list, not from the subset the author thought of: when an AC says 'each of those names', the set size is the count in the AC it points back to.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: contratos
+- evidence: contratos round 1: AC3 named 14 re-exported names, Coverage sized the set at 3 (checks)
+- last seen: 2026-10-06T17:33:09Z
+
+### L-017 - A 'derives from X' claim needs a behavioral proof (stub X and show the output follows the stub); a text check that X is imported survives the old duplicated logic kept beside the import.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: contratos
+- evidence: contratos round 1 P1: C11 text check passed with the duplicated if-chain restored (checks)
+- last seen: 2026-10-06T17:33:09Z
+
+### L-018 - When the build adds anything to a one-way door's literal shape (an extra package export, a new field), amend the Landing row in the same commit and add a check that pins the whole shape with toEqual.
+
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `build` · harmful: 0
+- features: contratos
+- evidence: contratos round 1: exports['./policy'] shipped beyond the Landing literal shape (build)
+- last seen: 2026-10-06T17:33:09Z
+
+### L-019 - Prove 'module M does not pull dependency D' by walking M's value-import graph (imports, re-exports, side-effect and dynamic imports, either quote style, type-only skipped) and asserting the reachable set, not by filtering lines that start with import.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: contratos
+- evidence: contratos rounds 2-3: a value re-export, then a single-quoted import, reached zod through the ./policy subpath (checks)
+- last seen: 2026-10-06T17:33:09Z
+
+### L-020 - Build a typed envelope with an annotation or satisfies, never an as-cast: the cast lets the compiler accept a missing required field that only a runtime test would catch.
+
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `build` · harmful: 0
+- features: contratos
+- evidence: contratos round 1: event envelope built with 'as OsEvent<K>', tsc accepted it without v (build)
+- last seen: 2026-10-06T17:33:09Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
