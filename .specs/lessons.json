@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 11,
+  "next_id": 13,
   "lessons": [
     {
       "id": "L-001",
@@ -144,6 +144,34 @@
       "evidence": ["tests/ci.workflow.test.ts:18 (P6, round 2) (config)"],
       "created": "2026-10-06T14:01:28Z",
       "last_seen": "2026-10-06T14:01:28Z"
+    },
+    {
+      "id": "L-011",
+      "key": "ac_gap::prove every state a lock or guard file can be found in including unreadable and owned by the current process",
+      "text": "Prove every state a lock or guard file can be found in, including unreadable and owned by the current process",
+      "signal": "ac_gap",
+      "scope": "concurrency",
+      "status": "candidate",
+      "features": ["motor-composicao"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["core/src/engine.ts:310-322 (round 1, lock states) (concurrency)"],
+      "created": "2026-10-06T14:27:38Z",
+      "last_seen": "2026-10-06T14:27:38Z"
+    },
+    {
+      "id": "L-012",
+      "key": "ac_gap::a lifecycle method needs one assertion per side effect it promises not only the first",
+      "text": "A lifecycle method needs one assertion per side effect it promises, not only the first",
+      "signal": "ac_gap",
+      "scope": "lifecycle",
+      "status": "candidate",
+      "features": ["motor-composicao"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["core/src/engine.ts:279 (round 1, start effects) (lifecycle)"],
+      "created": "2026-10-06T14:27:38Z",
+      "last_seen": "2026-10-06T14:27:38Z"
     }
   ]
 }

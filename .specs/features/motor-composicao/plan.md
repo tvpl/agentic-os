@@ -75,6 +75,9 @@ None - nothing consumed outside (as rotas HTTP não mudam; o export novo do core
 | 2. Lock de dono do motor        | arquivo `config/run/engine.lock` com `{"pid":<n>,"startedAt":<ms>}`, criado com `fs.openSync(…, "wx")`; lock de PID morto é retomado; `start()` com lock vivo de outro processo lança `EngineLockedError` (`code: "engine_locked"`)                                                                                                                                    | Lock pelo `server.pid` que já existe: ele é escrito depois do `listen`, tarde demais para proteger a recuperação, e é do servidor HTTP, não do motor (um embutidor sem HTTP não o escreve)      |
 | 3. Pragma `busy_timeout`        | `db.pragma("busy_timeout = 5000")` em `openDb`                                                                                                                                                                                                                                                                                                                         | Repetir a escrita em `SQLITE_BUSY` em cada store: dezenas de pontos de escrita, e o SQLite já oferece a espera                                                                                  |
 
+| 4. Lock criado já com o PID (acrescentado na rodada 2) | o lock nasce por `fs.linkSync(<temp com {"pid","startedAt"}>, "config/run/engine.lock")`; `start()` devolve `{ recovered: number }` | `fs.openSync("wx")` + `writeSync` (forma da door 2): deixa uma janela em que outro processo lê o lock vazio, o considera ilegível e também o toma |
+
+- Limite conhecido: dois `start()` simultâneos sobre um lock de PID morto ainda podem ambos retomá-lo (ler o dono, apagar, linkar não é atômico); exige dois serviços subindo no mesmo instante sobre a mesma home
 - Nothing else in this change is hard to reverse
 
 ## Criteria

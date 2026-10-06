@@ -138,8 +138,10 @@ Status: closed
 | Set (size)                                           | Member -> proof                                                                                  | Unproven |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------ | -------- |
 | montagens do motor (3 assemblies)                    | `createEngine` C1 · `AppContext` (CLI) C2 · `startServer` C12                                    | -        |
-| fases do ciclo de vida (3)                           | construir C1-C5 · `start()` C6-C10 · `stop()` C11                                                | -        |
-| estados do lock em `start()` (3)                     | ausente C8 · vivo de outro processo C9 · PID morto C10                                           | -        |
+| fases do ciclo de vida (3)                           | construir C1-C5 · `start()` C6-C10, C20-C24 · `stop()` C11                                       | -        |
+| efeitos de `start()` (5)                             | lock C8, C24 · poda C21 · recuperação C6, C7 · agendador C20 · sentinelas C20                    | -        |
+| conflito de lock no `startServer` (2)                | serviço que ficou para trás C25 · outro processo C26                                             | -        |
+| estados do lock em `start()` (5)                     | ausente C8, C24 · vivo de outro processo C9 · PID morto C10 · PID próprio C22 · ilegível C23     | -        |
 | casos de `ObjectiveStore.recover` tocados (2)        | execução `queued` inativa C1, C6 · execução `running` C3                                         | -        |
 | decisão de escrita por perfil para origem manual (4) | `read_only` C16 · `review_before_write` C15 · `controlled_write` C18 · `approved_automation` C27 | -        |
 | tipo do payload em `gateWrite` (2)                   | `prompt` C15 · `skill` C28                                                                       | -        |
@@ -159,6 +161,7 @@ Status: closed
 Evidence:
 
 - `core/src/engine.ts` `start()`: lock ausente / vivo / morto (3 branch points) e a ordem recuperar → interromper → ligar timers -> decides
+- rodada 2: a mesma linha cobre 5 estados de lock (próprio PID e ilegível acrescentados) e o conflito em `startServer` (C25, C26)
 - closest analogue in the repo: `tests/core.runs.test.ts` (ciclo de vida do `RunManager`, provado na própria camada contra uma home temporária)
 
 Cost: 1 arquivo de teste novo, 18 provas próprias. Sem essas linhas, o lock só seria provado pelo caminho feliz de `startServer`.

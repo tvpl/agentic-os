@@ -84,6 +84,20 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: tests/ci.workflow.test.ts:18 (P6, round 2) (config)
 - last seen: 2026-10-06T14:01:28Z
 
+### L-011 - Prove every state a lock or guard file can be found in, including unreadable and owned by the current process
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `concurrency` · harmful: 0
+- features: motor-composicao
+- evidence: core/src/engine.ts:310-322 (round 1, lock states) (concurrency)
+- last seen: 2026-10-06T14:27:38Z
+
+### L-012 - A lifecycle method needs one assertion per side effect it promises, not only the first
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `lifecycle` · harmful: 0
+- features: motor-composicao
+- evidence: core/src/engine.ts:279 (round 1, start effects) (lifecycle)
+- last seen: 2026-10-06T14:27:38Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
