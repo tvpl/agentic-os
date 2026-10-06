@@ -8,6 +8,11 @@
 - `config/settings.json`, `config/ui-preferences.json`, `config/sync-manifest.json`
 - `config/db/mordomo.db` (runs, events, memory index, history, approvals)
 
+A backup made before UI preferences moved out (settings version 2) has no `ui-preferences.json`: its theme, layouts, HUD and Second
+Brain view still sit inside its `settings.json`. Restoring it removes the live
+`ui-preferences.json`, so the next start migrates the backup's own values out of its
+`settings.json` (the `settings.json.v1.bak` from the first upgrade is kept as it was).
+
 Artifacts and logs are excluded by default (`--include-artifacts` adds
 artifacts). Backups are plain directories — restorable by hand with `cp -r`.
 
