@@ -23,17 +23,17 @@ Comandos (da raiz): `npx vitest run tests/ci.workflow.test.ts tests/core.spawn-t
 
 **C1** - `.github/workflows/ci.yml` dispara em `pull_request` e em `push` para a branch `main`, e mantém `workflow_dispatch`
 Proof: `npx vitest run tests/ci.workflow.test.ts -t "C1 ci runs on pull requests and pushes to main"`
-Status: open
+Status: closed
 
 ### S2 - processo zumbi conta como morto · 1 file · 2 KB · ~1k
 
 **C2** - No Linux, o teste de árvore de processos considera morto um processo cujo estado em `/proc/<pid>/stat` é `Z`, e passa neste contêiner
 Proof: `npx vitest run tests/core.spawn-tree.test.ts -t "cancellation kills a TERM-resistant descendant even when its parent exits first"`
-Status: open
+Status: closed
 
 **C3** - O helper de vivacidade devolve `true` para um processo vivo (o próprio `process.pid`) e `false` para um PID inexistente
 Proof: `npx vitest run tests/core.spawn-tree.test.ts -t "C3 liveness: alive, gone"`
-Status: open
+Status: closed
 
 ## Coverage
 

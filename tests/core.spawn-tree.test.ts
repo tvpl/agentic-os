@@ -1,5 +1,6 @@
 import { it, expect } from "vitest";
 import { safeSpawn } from "@mordomo/core";
+import { processAlive } from "./helpers.js";
 
 it.skipIf(process.platform === "win32")(
   "cancellation kills a TERM-resistant descendant even when its parent exits first",
@@ -15,14 +16,7 @@ it.skipIf(process.platform === "win32")(
       },
     });
     const pid = await ready.promise;
-    const alive = () => {
-      try {
-        process.kill(pid, 0);
-        return true;
-      } catch {
-        return false;
-      }
-    };
+    const alive = () => processAlive(pid);
     try {
       handle.cancel("fixture", 50);
       await handle.result;
@@ -38,3 +32,9 @@ it.skipIf(process.platform === "win32")(
     }
   },
 );
+
+it("C3 liveness: alive, gone", () => {
+  expect(processAlive(process.pid)).toBe(true);
+  // PIDs are bounded well below this on every supported OS.
+  expect(processAlive(2 ** 30)).toBe(false);
+});

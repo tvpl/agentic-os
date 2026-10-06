@@ -43,3 +43,26 @@ export function withFakeBinPath(): () => void {
     process.env.PATH = original;
   };
 }
+
+/**
+ * Whether a process is still running. `process.kill(pid, 0)` also succeeds for
+ * a zombie (dead, not yet reaped), which is what a killed grandchild becomes in
+ * a container whose PID 1 does not reap orphans; on Linux the state letter in
+ * /proc/<pid>/stat tells the two apart.
+ */
+export function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return false;
+  }
+  if (process.platform !== "linux") return true;
+  try {
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+    // Format: "<pid> (<comm>) <state> …"; comm may contain spaces and parentheses.
+    const state = stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3);
+    return state !== "Z";
+  } catch {
+    return false;
+  }
+}

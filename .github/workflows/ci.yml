@@ -1,8 +1,11 @@
 name: CI
 
-# Manual only: nothing runs on push or pull request. Trigger it from the
-# Actions tab when you want a full check on a clean machine.
+# Every pull request and every push to main is checked; the Actions tab can
+# still run it by hand on any branch.
 on:
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
