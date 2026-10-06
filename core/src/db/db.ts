@@ -23,6 +23,8 @@ export function openDb(paths: MordomoPaths): { db: Db; migration: MigrationResul
     }
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
+    // A CLI command and the service write to the same file: wait for the other writer instead of failing.
+    db.pragma("busy_timeout = 5000");
     const migration = migrate(db, paths);
     return { db, migration };
   } catch (error) {

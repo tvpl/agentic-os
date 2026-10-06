@@ -41,7 +41,10 @@ o motor só os monta e dá a eles um ciclo de vida; nenhum é reescrito.
 4. `apps/api/src/context.ts` (exists): `AppContext extends MordomoEngine` e guarda só o que é da
    API (token, credenciais de broker, cache de saúde dos provedores).
 5. `apps/api/src/server.ts` (exists) `startServer` chama `ctx.start()` no lugar de
-   `recoverInterrupted` + `scheduler.start` + `sentinels.start`; o fechamento chama `ctx.stop()`.
+   `recoverInterrupted` + `scheduler.start` + `sentinels.start`; se o lock é de um serviço
+   MordomoOS que ficou para trás (`apps/api/src/instances.ts`, exists), ele é encerrado e o
+   `start()` é repetido, como a tomada da porta já fazia; o fechamento libera o lock em
+   `ctx.close()`.
 6. `apps/api/src/cli.ts` (exists): os comandos continuam montando `AppContext` e nunca chamam
    `start()`.
 

@@ -1,48 +1,17 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
 import {
-  ApprovalStore,
-  ConnectorRegistry,
-  MemoryIndexer,
-  NotificationStore,
-  ObjectiveStore,
-  RoutineScheduler,
-  RoutineStore,
-  RunManager,
-  SentinelRunner,
-  SettingsStore,
-  SkillCatalog,
-  SyncCompiler,
+  MordomoEngine,
   budgetDedupeKey,
-  ensureDirs,
   events,
-  installJournalHooks,
-  installNotificationRecorder,
-  installTelegramChannel,
   localDay,
-  openDb,
-  resolvePaths,
-  seedHome,
-  restoreBackup,
-  type AgentAdapter,
   type BudgetCrossedPayload,
-  type Db,
   type HealthStatus,
-  type MordomoPaths,
+  type MetricsSample,
+  type PermissionBroker,
   type ProviderCapabilities,
   type ProviderId,
-  type ProviderRegistry,
-  type Settings,
-  DeviceStore,
-  SkillRegistry,
   type SecurityProfile,
-  type PermissionBroker,
-  PushStore,
   type TelegramPoller,
-  installPushChannel,
-  MetricsHistory,
-  type MetricsSample,
 } from "@mordomo/core";
 import { cliEntry, seedDir } from "./entry.js";
 import { buildProviderRegistry } from "./providers.js";
@@ -59,6 +28,16 @@ export interface ProviderSnapshot {
   defaultEffort: string;
 }
 
+export {
+  RESTORE_PENDING_DIR,
+  applyPendingRestore,
+  clearRestorePending,
+  readRestorePending,
+  restorePendingDir,
+  writeRestorePending,
+  type RestorePending,
+} from "@mordomo/core";
+
 export interface AppContextOptions {
   /**
    * Apply a restore staged by `POST /api/backups/:name/restore` before the
@@ -68,225 +47,33 @@ export interface AppContextOptions {
   applyPendingRestore?: boolean;
 }
 
-/** Marker + copy written by the API when a restore cannot run against the open DB. */
-export interface RestorePending {
-  name: string;
-  stagedAt: number;
-  stagedPath: string;
-}
-
-export const RESTORE_PENDING_DIR = "restore-pending";
-const RESTORE_MARKER = "PENDING.json";
-
-export function restorePendingDir(paths: MordomoPaths): string {
-  return path.join(paths.config, RESTORE_PENDING_DIR);
-}
-
-export function readRestorePending(paths: MordomoPaths): RestorePending | null {
-  const marker = path.join(restorePendingDir(paths), RESTORE_MARKER);
-  try {
-    const raw = JSON.parse(fs.readFileSync(marker, "utf8")) as Partial<RestorePending>;
-    if (typeof raw.name !== "string" || typeof raw.stagedAt !== "number") return null;
-    return {
-      name: raw.name,
-      stagedAt: raw.stagedAt,
-      stagedPath: path.join(restorePendingDir(paths), raw.name),
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function writeRestorePending(paths: MordomoPaths, name: string): RestorePending {
-  const dir = restorePendingDir(paths);
-  const stagedPath = path.join(dir, name);
-  fs.rmSync(dir, { recursive: true, force: true });
-  fs.mkdirSync(dir, { recursive: true });
-  fs.cpSync(path.join(paths.backups, name), stagedPath, { recursive: true });
-  const info: RestorePending = { name, stagedAt: Date.now(), stagedPath };
-  fs.writeFileSync(
-    path.join(dir, RESTORE_MARKER),
-    JSON.stringify({ name, stagedAt: info.stagedAt }, null, 2) + "\n",
-  );
-  return info;
-}
-
-export function clearRestorePending(paths: MordomoPaths): void {
-  fs.rmSync(restorePendingDir(paths), { recursive: true, force: true });
-}
-
 /**
- * Apply a staged restore. Must be called with NO database handle open
- * (i.e. before `openDb`). If the original backup directory is gone the
- * staged copy is moved back into `backups/` first.
+ * The engine plus what only the HTTP API needs: the local token, the
+ * permission-broker credentials, the provider health cache and the Telegram
+ * poller. Building one changes nothing (every CLI command builds one); the
+ * service calls `start()` to own the home (`startServer`).
  */
-export function applyPendingRestore(paths: MordomoPaths): { applied: RestorePending | null } {
-  const pending = readRestorePending(paths);
-  if (!pending) return { applied: null };
-  const original = path.join(paths.backups, pending.name);
-  if (!fs.existsSync(original) && fs.existsSync(pending.stagedPath)) {
-    fs.cpSync(pending.stagedPath, original, { recursive: true });
-  }
-  try {
-    restoreBackup(paths, pending.name);
-  } finally {
-    clearRestorePending(paths);
-  }
-  return { applied: pending };
-}
+export class AppContext extends MordomoEngine {
+  /** Telegram inbound poller; created and started by the server (needs the approval actions). */
+  telegramPoller: TelegramPoller | null = null;
 
-function buildAdapters(registry: ProviderRegistry, settings: Settings): Record<ProviderId, AgentAdapter> {
-  return registry.createAll((id) => settings.providers[id]?.binaryPath ?? null);
-}
-
-export class AppContext {
-  readonly paths: MordomoPaths;
-  readonly settingsStore: SettingsStore;
-  readonly db: Db;
-  readonly runs: RunManager;
-  readonly objectives: ObjectiveStore;
-  readonly skills: SkillCatalog;
-  readonly indexer: MemoryIndexer;
-  readonly routines: RoutineStore;
-  readonly scheduler: RoutineScheduler;
-  readonly connectors: ConnectorRegistry;
-  readonly sync: SyncCompiler;
-  readonly approvals: ApprovalStore;
-  /** Persisted inbox (Onda 2): approvals, failed runs, alerts, budget warnings. */
-  readonly notifications: NotificationStore;
-  /** Paired devices for remote access (Onda 3). */
-  readonly devices: DeviceStore;
-  /** Skill registries (Onda 3): cached indexes and verified staging. */
-  readonly skillRegistry: SkillRegistry;
-  /**
-   * Sentinels (Onda 2): the cheap observers plus the triage listener. Built
-   * here, started and stopped with the scheduler in `startServer`; its hourly
-   * pass runs inside the service's existing hourly sweep (`selfSchedule: false`).
-   */
-  readonly sentinels: SentinelRunner;
-  /** Registered providers (manifests + factories); the single place the API learns which providers exist. */
-  readonly providers: ProviderRegistry;
-  readonly startedAt = Date.now();
-  /** Restore applied at boot (see `applyPendingRestore`), for the startup log. */
-  readonly restoredAtBoot: RestorePending | null = null;
-
-  private adapterRecord: Record<ProviderId, AgentAdapter>;
   private healthCache = new Map<ProviderId, { at: number; health: HealthStatus }>();
   private healthInFlight = new Map<ProviderId, Promise<HealthStatus>>();
 
   constructor(homeOverride?: string, opts: AppContextOptions = {}) {
-    this.paths = resolvePaths(homeOverride);
-    ensureDirs(this.paths);
-    // Packaged installs ship their skills/routines/connectors next to the bundle.
-    const seeds = seedDir();
-    if (seeds) seedHome(this.paths, seeds);
-    if (opts.applyPendingRestore) {
-      this.restoredAtBoot = applyPendingRestore(this.paths).applied;
-    }
-    this.settingsStore = new SettingsStore(this.paths);
-    this.db = openDb(this.paths).db;
-    this.providers = buildProviderRegistry();
-    this.adapterRecord = buildAdapters(this.providers, this.settingsStore.load());
-    this.skills = new SkillCatalog(this.paths);
-    // The adapter callback reads the CURRENT record, so `reloadAdapters()`
-    // takes effect for the next run without rebuilding the RunManager.
-    this.runs = new RunManager(
-      this.db,
-      this.paths,
-      () => this.settings(),
-      (id) => this.adapters[id],
-      { permissionBroker: (run) => this.permissionBrokerFor(run) },
-    );
-    this.objectives = new ObjectiveStore(this.db, this.paths);
-    this.objectives.recover(this.runs);
-    this.indexer = new MemoryIndexer(this.db, () => this.settings());
-    this.routines = new RoutineStore(this.paths);
-    this.scheduler = new RoutineScheduler(this.db, this.paths, this.routines, this.runs, this.skills, () =>
-      this.settings(),
-    );
-    this.connectors = new ConnectorRegistry(this.paths);
-    this.sync = new SyncCompiler(
-      this.paths,
-      () => this.settings(),
-      () => this.skills.list(),
-      () => this.providers.manifests(),
-    );
-    this.approvals = new ApprovalStore(this.db, () => this.settings().limits.approvalTtlDays * 86_400_000);
-    this.devices = new DeviceStore(this.db);
-    this.skillRegistry = new SkillRegistry();
-    // The daily journal listens for finished runs. Installing it here (and not
-    // only when the HTTP routes are registered) means CLI paths — `mordomo
-    // index`, `mordomo run` — also index `memory/journal/**` and log their run
-    // line. The install is idempotent, so the route-level one is a no-op.
-    this.disposeJournalHooks = installJournalHooks(events, this.paths, {
-      indexer: this.indexer,
-      runs: { get: (id) => this.runs.get(id), lastReply: (id) => this.runs.lastAssistantText(id) },
+    super({
+      ...(homeOverride ? { home: homeOverride } : {}),
+      providers: buildProviderRegistry(),
+      // Packaged installs ship their skills/routines/connectors next to the bundle.
+      seedDir: seedDir(),
+      applyPendingRestore: opts.applyPendingRestore === true,
     });
-    // The inbox listens on the same bus: approvals, failed runs, heartbeat
-    // alerts and budget thresholds become rows that survive a closed tab.
-    this.notifications = new NotificationStore(this.db);
-    this.disposeNotificationRecorder = installNotificationRecorder(events, this.notifications, {
-      runs: this.runs,
-      routines: this.routines,
-    });
-    this.disposeObjectiveSync = events.subscribe((event) => {
-      if (event.type !== "run.finished") return;
-      const runId = (event.payload as { runId?: string }).runId;
-      const run = runId ? this.runs.get(runId) : null;
-      if (run) this.objectives.syncRun(run, this.runs);
-    });
-    // Alerts leave the tab: rows at or above `channels.telegram.minTone` are
-    // posted to Telegram. The bot token is read from the environment at send
-    // time; failures are logged at most once an hour and never thrown.
-    this.disposeTelegramChannel = installTelegramChannel(events, { getSettings: () => this.settings() });
-    // Web Push to installed PWAs: same rows, encrypted to each subscription.
-    this.push = new PushStore(this.db, this.paths.config);
-    this.metricsHistory = new MetricsHistory(this.db);
-    this.disposePushChannel = installPushChannel(events, {
-      getSettings: () => this.settings(),
-      store: this.push,
-    });
-    // The observers themselves. Nothing is watched or polled until `start()`.
-    this.sentinels = new SentinelRunner({
-      db: this.db,
-      paths: this.paths,
-      getSettings: () => this.settings(),
-      runs: this.runs,
-      notifications: this.notifications,
-      scheduler: this.scheduler,
-      connectors: this.connectors,
-      skills: this.skills,
-      indexer: this.indexer,
-      bus: events,
-      selfSchedule: false,
-    });
-  }
-
-  private readonly disposeJournalHooks: () => void;
-  private readonly disposeNotificationRecorder: () => void;
-  private readonly disposeObjectiveSync: () => void;
-  private readonly disposeTelegramChannel: () => void;
-  private readonly disposePushChannel: () => void;
-  /** Web Push subscriptions and the VAPID pair. */
-  readonly push: PushStore;
-  /** Hourly metrics snapshots (Settings › Trends). */
-  readonly metricsHistory: MetricsHistory;
-  /** Telegram inbound poller; created and started by the server (needs the approval actions). */
-  telegramPoller: TelegramPoller | null = null;
-
-  /** Live adapters — rebuilt by `reloadAdapters()` whenever settings change. */
-  get adapters(): Record<ProviderId, AgentAdapter> {
-    return this.adapterRecord;
   }
 
   /** Re-create the provider adapters from the settings on disk (binaryPath etc.). */
-  reloadAdapters(): void {
-    this.adapterRecord = buildAdapters(this.providers, this.settings());
+  override reloadAdapters(): void {
+    super.reloadAdapters();
     this.invalidateProviderCache();
-  }
-
-  settings(): Settings {
-    return this.settingsStore.load();
   }
 
   /**
@@ -295,7 +82,7 @@ export class AppContext {
    * run id in its environment. Profiles that answer prompts themselves
    * (approved_automation) and read-only runs get none.
    */
-  permissionBrokerFor(run: {
+  override permissionBrokerFor(run: {
     id: string;
     permissionProfile: SecurityProfile | null;
   }): PermissionBroker | null {
@@ -467,15 +254,8 @@ export class AppContext {
     );
   }
 
-  close(): void {
-    this.disposeJournalHooks();
-    this.disposeNotificationRecorder();
-    this.disposeObjectiveSync();
-    this.disposeTelegramChannel();
-    this.disposePushChannel();
+  override close(): void {
     this.telegramPoller?.stop();
-    this.sentinels.stop();
-    this.scheduler.stop();
-    if (this.db.open) this.db.close();
+    super.close();
   }
 }

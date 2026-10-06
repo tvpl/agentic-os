@@ -141,7 +141,20 @@ export {
 } from "./connectors/auditor.js";
 export { SyncCompiler, type SyncPlan, type SyncAction, type SyncApplyResult } from "./sync/compiler.js";
 export { unifiedDiff } from "./sync/diff.js";
-export { createBackup, listBackups, restoreBackup, type BackupInfo, type BackupOptions } from "./backup.js";
+export {
+  RESTORE_PENDING_DIR,
+  applyPendingRestore,
+  clearRestorePending,
+  createBackup,
+  listBackups,
+  readRestorePending,
+  restoreBackup,
+  restorePendingDir,
+  writeRestorePending,
+  type BackupInfo,
+  type BackupOptions,
+  type RestorePending,
+} from "./backup.js";
 export {
   NotificationStore,
   NOTIFICATION_KINDS,
@@ -413,3 +426,14 @@ export {
   fingerprintOf,
   type TlsMaterial,
 } from "./security/tls.js";
+export {
+  EngineLockedError,
+  MordomoEngine,
+  createEngine,
+  promptRunFields,
+  type EngineOptions,
+  type GatedRunPayload,
+  type PromptRunInput,
+  type SkillRunInput,
+  type WriteGate,
+} from "./engine.js";

@@ -15,85 +15,85 @@ execução em `running`, um `UPDATE` direto (o mesmo estado que um serviço derr
 
 **C1** - Montar um motor com `createEngine` sobre uma home com etapa `dispatched` cuja execução está `queued` deixa a etapa `dispatched` com o mesmo `run_id` (AC 1)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C1 constructing an engine leaves a queued step dispatched"`
-Status: open
+Status: closed
 
 **C2** - Montar um `AppContext` (o que todo comando da CLI faz) sobre a mesma semeadura deixa a etapa `dispatched` com o mesmo `run_id` (AC 1)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C2 constructing an AppContext leaves a queued step dispatched"`
-Status: open
+Status: closed
 
 **C3** - Montar um motor sobre uma home com etapa `dispatched` cuja execução está `running` deixa a etapa `dispatched`, não `blocked` (AC 2)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C3 constructing an engine leaves a running step dispatched"`
-Status: open
+Status: closed
 
 **C4** - Montar um motor sobre uma home com execução `running` deixa a execução `running` (AC 3)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C4 constructing an engine leaves a running run running"`
-Status: open
+Status: closed
 
 **C5** - Montar um motor não cria `config/run/engine.lock` (AC 4)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C5 constructing an engine takes no lock"`
-Status: open
+Status: closed
 
 ### S2 - só o dono recupera · 3 files · 70 KB · ~18k
 
 **C6** - `start()` sobre uma etapa `dispatched` com execução `queued` inativa deixa a etapa `pending` com `run_id` nulo (AC 5)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C6 start requeues a step whose run never started"`
-Status: open
+Status: closed
 
 **C7** - `start()` sobre uma execução `running` deixa a execução `interrupted` (AC 6)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C7 start interrupts a run left running"`
-Status: open
+Status: closed
 
 **C8** - Depois de `start()`, `config/run/engine.lock` existe e o `pid` nele é `process.pid` (AC 7)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C8 start writes the owner lock"`
-Status: open
+Status: closed
 
 **C9** - Com `engine.lock` apontando para um processo vivo que não é o atual, `start()` lança `EngineLockedError` com `code` `"engine_locked"` e a etapa semeada continua `dispatched` (AC 8)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C9 a live foreign lock refuses start and recovers nothing"`
-Status: open
+Status: closed
 
 **C10** - Com `engine.lock` apontando para um PID que não existe, `start()` toma o lock (passa a ter `process.pid`) e recupera a etapa para `pending` (AC 9)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C10 a dead lock is taken over"`
-Status: open
+Status: closed
 
 **C11** - Depois de `stop()`, `config/run/engine.lock` não existe (AC 10)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C11 stop releases the lock"`
-Status: open
+Status: closed
 
 **C12** - `startServer` sobre uma home com execução `running` deixa `config/run/engine.lock` com `process.pid` e a execução `interrupted`; fechar o servidor remove o lock (AC 11)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C12 the API service owns the engine"`
-Status: open
+Status: closed
 
 ### S3 - SQLite espera · 1 file · 4 KB · ~1k
 
 **C13** - A conexão aberta por `openDb` responde `busy_timeout` = `5000` (AC 12)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C13 the database waits on a busy lock"`
-Status: open
+Status: closed
 
 ### S4 - embutidor com motor e política · 4 files · 60 KB · ~15k
 
 **C14** - Um teste que importa só `@mordomo/core` e `@mordomo/adapter-claude` (o arquivo não importa nada de `apps/`) cria o motor, chama `start()`, cria e executa uma execução `read_only` no CLI falso do Claude, e ela termina `done` (AC 13)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C14 an embedder runs a read-only run with core and one adapter"`
-Status: open
+Status: closed
 
 **C15** - Com perfil `review_before_write`, `engine.gateWrite("write", "manual", …)` devolve `pendingApproval.kind` `"write_run"` e um `runId` cuja execução está `waiting_approval` (AC 14)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C15 the engine parks a reviewed write"`
-Status: open
+Status: closed
 
 **C16** - Com perfil `read_only`, `engine.assertWriteAllowed("write", "manual")` lança com `statusCode` `403` e `code` `"profile_refused"`; com `mode` `read_only` não lança (AC 15)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C16 the engine refuses writes under read_only"`
-Status: open
+Status: closed
 
 **C17** - `engine.resolveCwd` lança `PathAccessError` para um caminho fora da home e das pastas indexadas habilitadas, e devolve o caminho real para um caminho dentro de uma pasta indexada habilitada (AC 16)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C17 the engine contains cwd to the granted roots"`
-Status: open
+Status: closed
 
 **C18** - Com `controlled_write`, `engine.gateWrite("write", "manual", …)` devolve `pendingApproval` nulo e `runId` nulo (a escrita segue direto) (AC 14)
 Proof: `npx vitest run tests/core.engine.test.ts -t "C18 the engine lets a controlled write through"`
-Status: open
+Status: closed
 
 **C19** - As suítes de perfil, submissão e contenção da API passam sem mudança nos seus arquivos (AC 17)
 Proof: `npx vitest run tests/api.profiles.test.ts tests/api.submission.test.ts tests/api.hardening.test.ts -t "security profiles|submission|containment"`
-Status: open
+Status: closed
 
 ## Coverage
 

@@ -12,6 +12,7 @@ import Fastify, {
 import fastifyStatic from "@fastify/static";
 import { ZodError } from "zod";
 import {
+  EngineLockedError,
   JsonlLogger,
   PathAccessError,
   TelegramPoller,
@@ -22,7 +23,13 @@ import {
 } from "@mordomo/core";
 import { AppContext } from "./context.js";
 import { uiDistCandidates } from "./entry.js";
-import { instanceSnapshot, orphanProcesses, portHolder, terminate } from "./instances.js";
+import {
+  instanceSnapshot,
+  listServiceProcesses,
+  orphanProcesses,
+  portHolder,
+  terminate,
+} from "./instances.js";
 import { type UpdateChecker } from "./updates.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerSkillRoutes } from "./routes/skills.js";
@@ -397,16 +404,26 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
 
     console.log(`[mordomo] applied staged restore of backup ${ctx.restoredAtBoot.name}`);
   }
-  const recovered = ctx.runs.recoverInterrupted();
+  // Own the home: lock, prune, recover objective steps and orphaned runs, and
+  // start the scheduler and the sentinels. A leftover MordomoOS service of this
+  // same install still holding the lock is stopped first, as the port takeover
+  // below does; anything else holding it is reported, never killed.
+  let recovered: number;
+  try {
+    ({ recovered } = ctx.start());
+  } catch (err) {
+    if (!(err instanceof EngineLockedError) || err.holderPid === null) throw err;
+    const leftover = listServiceProcesses().filter((p) => p.pid === err.holderPid);
+    if (leftover.length === 0) throw err;
+    const stopped = await terminate(leftover);
+    app.log.warn({ pids: stopped, msg: "stopped the MordomoOS service holding the engine lock" });
+    ({ recovered } = ctx.start());
+  }
   if (recovered > 0) {
     app.log.info({ recovered, msg: "marked orphaned runs as interrupted" });
 
     console.log(`[mordomo] marked ${recovered} orphaned run(s) as interrupted`);
   }
-  ctx.scheduler.start();
-  // The sentinels observe on the same lifecycle as the scheduler; their hourly
-  // pass rides the sweep below instead of arming a timer of its own.
-  ctx.sentinels.start();
   // Telegram inbound: approve / deny from the phone through the same code path as the UI button.
   ctx.telegramPoller = new TelegramPoller({
     getSettings: () => ctx.settings(),

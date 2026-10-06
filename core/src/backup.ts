@@ -231,3 +231,72 @@ function dirSize(dir: string): number {
   walk(dir);
   return total;
 }
+
+// ---- Staged restore (applied at boot, before the database opens) ----------
+
+/** Marker + copy written by the API when a restore cannot run against the open DB. */
+export interface RestorePending {
+  name: string;
+  stagedAt: number;
+  stagedPath: string;
+}
+
+export const RESTORE_PENDING_DIR = "restore-pending";
+const RESTORE_MARKER = "PENDING.json";
+
+export function restorePendingDir(paths: MordomoPaths): string {
+  return path.join(paths.config, RESTORE_PENDING_DIR);
+}
+
+export function readRestorePending(paths: MordomoPaths): RestorePending | null {
+  const marker = path.join(restorePendingDir(paths), RESTORE_MARKER);
+  try {
+    const raw = JSON.parse(fs.readFileSync(marker, "utf8")) as Partial<RestorePending>;
+    if (typeof raw.name !== "string" || typeof raw.stagedAt !== "number") return null;
+    return {
+      name: raw.name,
+      stagedAt: raw.stagedAt,
+      stagedPath: path.join(restorePendingDir(paths), raw.name),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function writeRestorePending(paths: MordomoPaths, name: string): RestorePending {
+  const dir = restorePendingDir(paths);
+  const stagedPath = path.join(dir, name);
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  fs.cpSync(path.join(paths.backups, name), stagedPath, { recursive: true });
+  const info: RestorePending = { name, stagedAt: Date.now(), stagedPath };
+  fs.writeFileSync(
+    path.join(dir, RESTORE_MARKER),
+    JSON.stringify({ name, stagedAt: info.stagedAt }, null, 2) + "\n",
+  );
+  return info;
+}
+
+export function clearRestorePending(paths: MordomoPaths): void {
+  fs.rmSync(restorePendingDir(paths), { recursive: true, force: true });
+}
+
+/**
+ * Apply a staged restore. Must be called with NO database handle open
+ * (i.e. before `openDb`). If the original backup directory is gone the
+ * staged copy is moved back into `backups/` first.
+ */
+export function applyPendingRestore(paths: MordomoPaths): { applied: RestorePending | null } {
+  const pending = readRestorePending(paths);
+  if (!pending) return { applied: null };
+  const original = path.join(paths.backups, pending.name);
+  if (!fs.existsSync(original) && fs.existsSync(pending.stagedPath)) {
+    fs.cpSync(pending.stagedPath, original, { recursive: true });
+  }
+  try {
+    restoreBackup(paths, pending.name);
+  } finally {
+    clearRestorePending(paths);
+  }
+  return { applied: pending };
+}

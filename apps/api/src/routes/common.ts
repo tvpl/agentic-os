@@ -1,15 +1,18 @@
 import path from "node:path";
 import { createHash } from "node:crypto";
 import {
-  events,
+  promptRunFields,
   resolveInsideRoots,
-  writeDecision,
   type Approval,
   type CreateRunInput,
   type EffortLevel,
+  type GatedRunPayload,
+  type PromptRunInput,
   type ProviderId,
   type RunMode,
   type SecurityProfile,
+  type SkillRunInput,
+  type WriteGate,
   type WriteOrigin,
 } from "@mordomo/core";
 import type { AppContext } from "../context.js";
@@ -23,86 +26,27 @@ export function httpError(
   return Object.assign(new Error(message), { statusCode, ...(code ? { code } : {}) });
 }
 
-/** Roots a user-supplied path may resolve into: the home plus enabled indexed folders. */
+/** Roots a user-supplied path may resolve into: the home plus enabled indexed folders (the engine's rule). */
 export function grantedRoots(ctx: AppContext): string[] {
-  return [
-    ctx.paths.home,
-    ...ctx
-      .settings()
-      .indexedFolders.filter((f) => f.enabled)
-      .map((f) => f.path),
-  ];
+  return ctx.grantedRoots();
 }
 
-export interface PromptRunInput {
-  prompt: string;
-  provider: ProviderId;
-  model: string | null;
-  effort: EffortLevel;
-  mode: RunMode;
-  cwd: string;
-  timeoutMs: number;
-  /**
-   * Conversation this run belongs to. `submitPromptRun` fills it in before the
-   * write gate, so a run parked for approval resumes the same conversation
-   * when a human releases it.
-   */
-  sessionId?: string;
-  /** Squad (Onda 3): the run this one was fanned out from. */
-  parentRunId?: string;
-}
-
-export interface SkillRunInput {
-  slug: string;
-  inputs: Record<string, string>;
-  provider: ProviderId;
-  model: string | null;
-  effort: EffortLevel;
-  cwd: string;
-  timeoutMs: number;
-  /** First run in the lineage when this is a deliberate retry. */
-  parentRunId?: string | null;
-}
-
-/** What an approved `write_run` approval replays (also its stored payload shape). */
-export type GatedRunPayload =
-  { kind: "prompt"; input: PromptRunInput } | { kind: "skill"; input: SkillRunInput };
-
-export interface WriteGate {
-  /** Pending approval created instead of launching the run (profile `review_before_write`). */
-  pendingApproval: ReturnType<AppContext["approvals"]["request"]> | null;
-  /** Run row parked in `waiting_approval` and linked to that approval. */
-  runId: string | null;
-}
+export type { GatedRunPayload, PromptRunInput, SkillRunInput, WriteGate } from "@mordomo/core";
 
 /**
  * The write policy check `gateWrite` starts with, on its own: callers that
  * need to know a write is refused *before* they create anything (a session,
- * for instance) use this instead of duplicating the rule.
+ * for instance) use this instead of duplicating the rule. The rule is the
+ * engine's (`MordomoEngine.assertWriteAllowed`).
  */
 export function assertWriteAllowed(ctx: AppContext, mode: RunMode, origin: WriteOrigin): void {
-  if (mode !== "write") return;
-  if (writeDecision(ctx.settings().securityProfile, origin) === "refuse") {
-    throw httpError(
-      403,
-      "The current security profile does not allow write runs; change it in Settings › Security.",
-      "profile_refused",
-    );
-  }
-}
-
-/** The run row a gated write is parked in until a human decides. */
-function createGatedRun(ctx: AppContext, payload: GatedRunPayload): string {
-  const fields =
-    payload.kind === "skill" ? skillRunFields(ctx, payload.input) : promptRunFields(payload.input);
-  return ctx.runs.create({ ...fields, profile: ctx.settings().securityProfile, status: "waiting_approval" })
-    .id;
+  ctx.assertWriteAllowed(mode, origin);
 }
 
 /**
- * Apply the security profile to a write run (audit item 39): refuse, ask for
- * approval, or allow. The approval payload carries everything needed to launch
- * the run once a human approves it in Settings › Security, plus the id of the
+ * Apply the security profile to a write run: refuse, ask for approval, or
+ * allow (`MordomoEngine.gateWrite`). The approval payload carries everything
+ * needed to launch the run once a human approves it, plus the id of the
  * `waiting_approval` run row so the pending write is visible in Runs.
  */
 export function gateWrite(
@@ -112,56 +56,11 @@ export function gateWrite(
   description: string,
   payload: GatedRunPayload,
 ): WriteGate {
-  if (mode !== "write") return { pendingApproval: null, runId: null };
-  assertWriteAllowed(ctx, mode, origin);
-  const decision = writeDecision(ctx.settings().securityProfile, origin);
-  if (decision === "approval") {
-    const runId = createGatedRun(ctx, payload);
-    const approval = ctx.approvals.request("write_run", description, { ...payload, runId });
-    events.emit("approval.requested", { id: approval.id, kind: approval.kind, description, runId });
-    return { pendingApproval: approval, runId };
-  }
-  return { pendingApproval: null, runId: null };
-}
-
-function promptRunFields(input: PromptRunInput): Omit<CreateRunInput, "profile"> {
-  return {
-    origin: "manual",
-    provider: input.provider,
-    prompt: input.prompt,
-    request: { version: 1, kind: "prompt", prompt: input.prompt, mode: input.mode },
-    cwd: input.cwd,
-    model: input.model,
-    effort: input.effort,
-    mode: input.mode,
-    timeoutMs: input.timeoutMs,
-    ...(input.sessionId ? { sessionId: input.sessionId } : {}),
-    ...(input.parentRunId ? { parentRunId: input.parentRunId } : {}),
-  };
+  return ctx.gateWrite(mode, origin, description, payload);
 }
 
 function skillRunFields(ctx: AppContext, input: SkillRunInput): Omit<CreateRunInput, "profile"> {
-  const skill = ctx.skills.load(input.slug);
-  if (!skill) throw httpError(404, "Skill not found");
-  return {
-    origin: "skill",
-    provider: input.provider,
-    prompt: `(skill: ${input.slug})`,
-    request: {
-      version: 1,
-      kind: "skill",
-      skillSlug: input.slug,
-      inputs: input.inputs,
-      mode: skill.mode === "write" ? "write" : "read_only",
-    },
-    cwd: input.cwd,
-    model: input.model,
-    effort: input.effort,
-    mode: skill.mode === "write" ? "write" : "read_only",
-    timeoutMs: input.timeoutMs,
-    skillSlug: input.slug,
-    parentRunId: input.parentRunId ?? null,
-  };
+  return ctx.skillRunFields(input);
 }
 
 /**
