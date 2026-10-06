@@ -7,26 +7,45 @@ import { describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-/** The top-level `on:` block of a workflow, as its indented lines. */
-function onBlock(workflow: string): string {
-  const lines = workflow.split("\n");
+/** The triggers under the top-level `on:` key: trigger name → its indented lines (comments and blanks dropped). */
+function triggers(workflow: string): Map<string, string[]> {
+  const lines = workflow.replace(/\r\n?/g, "\n").split("\n");
   const start = lines.findIndex((line) => /^on:\s*$/.test(line));
   expect(start, "workflow has an `on:` block").toBeGreaterThanOrEqual(0);
-  const body: string[] = [];
+  const out = new Map<string, string[]>();
+  let current: string | null = null;
   for (const line of lines.slice(start + 1)) {
     if (/^\S/.test(line)) break;
-    body.push(line);
+    if (!line.trim() || line.trim().startsWith("#")) continue;
+    const key = /^ {2}([a-z_]+):\s*$/.exec(line);
+    if (key) {
+      current = key[1]!;
+      out.set(current, []);
+    } else if (current) {
+      out.get(current)!.push(line.trim());
+    }
   }
-  return body.join("\n");
+  return out;
 }
 
 describe("ci workflow triggers", () => {
   it("C1 ci runs on pull requests and pushes to main", () => {
-    const on = onBlock(fs.readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8"));
-    expect(on).toMatch(/^ {2}pull_request:/m);
-    expect(on).toMatch(/^ {2}workflow_dispatch:/m);
-    const push = /^ {2}push:\n((?: {4,}.*\n?)*)/m.exec(on);
-    expect(push, "push trigger").not.toBeNull();
-    expect(push![1]).toMatch(/branches:\s*\[\s*main\s*\]|branches:\s*\n\s*-\s*main/);
+    const on = triggers(fs.readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8"));
+    expect([...on.keys()].sort()).toEqual(["pull_request", "push", "workflow_dispatch"]);
+    // Every pull request: no branch, path or type filter narrows it.
+    expect(on.get("pull_request")).toEqual([]);
+    // Every push to main, and only that filter.
+    expect(on.get("push")).toEqual(["branches: [main]"]);
+    expect(on.get("workflow_dispatch")).toEqual([]);
+  });
+
+  it("C1 the trigger reader rejects narrowed or look-alike filters", () => {
+    const read = (body: string) => triggers(`name: x\non:\n${body}\njobs: {}\n`);
+    expect(read("  push:\n    branches: [main-legacy]").get("push")).not.toEqual(["branches: [main]"]);
+    expect(read("  push:\n    branches: [main]\n    paths: [docs/**]").get("push")).not.toEqual([
+      "branches: [main]",
+    ]);
+    expect(read("  pull_request:\n    branches: [release]").get("pull_request")).not.toEqual([]);
+    expect(read("  push:\r\n    branches: [main]\r\n").get("push")).toEqual(["branches: [main]"]);
   });
 });
