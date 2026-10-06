@@ -10,6 +10,7 @@ const approval = (over: Partial<ApprovalRecord> = {}): ApprovalRecord => ({
   payload: {},
   status: "pending",
   resolvedAt: null,
+  expiresAt: 0,
   ...over,
 });
 

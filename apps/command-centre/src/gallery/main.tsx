@@ -114,8 +114,38 @@ const routines: RoutineStatus[] = [
     createdAt: NOW - 86_400_000 * 30,
   },
 ];
+/** A gallery run: the fields the cards show, the rest of the contract at its neutral value. */
+const run = (
+  fields: Partial<RunRecord> & Pick<RunRecord, "id" | "status" | "origin" | "provider">,
+): RunRecord => ({
+  createdAt: NOW,
+  startedAt: null,
+  finishedAt: null,
+  model: null,
+  effort: "default",
+  exitCode: null,
+  durationMs: null,
+  cwd: null,
+  promptSummary: "",
+  request: null,
+  skillSlug: null,
+  routineId: null,
+  maxCostUsd: null,
+  parentRunId: null,
+  sessionId: null,
+  pid: null,
+  error: null,
+  failure: null,
+  artifacts: [],
+  filesChanged: [],
+  attempts: 1,
+  timeoutMs: null,
+  permissionProfile: null,
+  usage: null,
+  ...fields,
+});
 const runs: RunRecord[] = [
-  {
+  run({
     id: "11111111-1111-4111-8111-111111111111",
     createdAt: NOW - 120_000,
     finishedAt: null,
@@ -130,8 +160,8 @@ const runs: RunRecord[] = [
     error: null,
     artifacts: [],
     exitCode: null,
-  },
-  {
+  }),
+  run({
     id: "22222222-2222-4222-8222-222222222222",
     createdAt: NOW - 3_600_000,
     finishedAt: NOW - 3_500_000,
@@ -146,8 +176,8 @@ const runs: RunRecord[] = [
     error: null,
     artifacts: ["digest.md"],
     exitCode: 0,
-  },
-  {
+  }),
+  run({
     id: "33333333-3333-4333-8333-333333333333",
     createdAt: NOW - 7_200_000,
     finishedAt: NOW - 7_100_000,
@@ -162,7 +192,7 @@ const runs: RunRecord[] = [
     error: "Provider exited with code 1.",
     artifacts: [],
     exitCode: 1,
-  },
+  }),
 ];
 const metrics: Metrics = {
   total: 42,

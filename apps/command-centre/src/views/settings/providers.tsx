@@ -2,7 +2,7 @@
 import { PROVIDER_LOGIN_COMMANDS } from "../../runs/authRecovery";
 import { RefreshCw } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type ProviderId, type ProviderSnapshot } from "../../api";
+import { api, type ProviderId, type ProviderSnapshot, type SettingsDoc } from "../../api";
 
 import { useT } from "../../i18n";
 import { qk, useOsProviders } from "../../queries";
@@ -126,7 +126,13 @@ export function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
                 id={`st-effort-${prov.id}`}
                 className="input"
                 value={s.providers[prov.id].defaultEffort}
-                onChange={(e) => void patchProvider(prov.id, { defaultEffort: e.target.value }, true)}
+                onChange={(e) =>
+                  void patchProvider(
+                    prov.id,
+                    { defaultEffort: e.target.value as SettingsDoc["providers"]["claude"]["defaultEffort"] },
+                    true,
+                  )
+                }
               >
                 {["default", "low", "medium", "high"].map((e2) => (
                   <option key={e2} value={e2}>

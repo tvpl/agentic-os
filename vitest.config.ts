@@ -4,6 +4,8 @@ import path from "node:path";
 export default defineConfig({
   resolve: {
     alias: {
+      "@mordomo/contracts/policy": path.resolve(import.meta.dirname, "contracts/src/policy.ts"),
+      "@mordomo/contracts": path.resolve(import.meta.dirname, "contracts/src/index.ts"),
       "@mordomo/core": path.resolve(import.meta.dirname, "core/src/index.ts"),
       "@mordomo/adapter-claude": path.resolve(import.meta.dirname, "adapters/claude/src/index.ts"),
       "@mordomo/adapter-cursor": path.resolve(import.meta.dirname, "adapters/cursor/src/index.ts"),

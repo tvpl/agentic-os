@@ -17,59 +17,59 @@ Comandos (da raiz):
 
 **C1** - `@mordomo/contracts` exporta em tempo de execução `SettingsSchema` (um schema zod que aceita `{}` e devolve `version` = 1), `writeDecision` e `PROFILES` (AC 1)
 Proof: `npx vitest run tests/contracts.test.ts -t "C1 the contracts package exports the runtime pieces"`
-Status: open
+Status: closed
 
 **C2** - `@mordomo/contracts` exporta os tipos `RunRecord`, `RunEvent`, `RunUsage`, `Approval`, `NotificationRecord`, `SessionRecord`, `ProviderCapabilities`, `Settings`, `OsEvent`, `OsEventMap` e `OsEventType` (um arquivo de tipos que importa os 11 nomes compila) (AC 1)
 Proof: `npx tsc -p typetests/tsconfig.json`
-Status: open
+Status: closed
 
 **C3** - `contracts/package.json` tem `dependencies` igual a `{ "zod": … }` e nada mais (AC 2)
 Proof: `npx vitest run tests/contracts.test.ts -t "C3 the contracts package depends on zod only"`
-Status: open
+Status: closed
 
 **C4** - `@mordomo/core` exporta `writeDecision`, `PROFILES` e `SettingsSchema`, e são os mesmos objetos de `@mordomo/contracts` (`toBe`) (AC 3)
 Proof: `npx vitest run tests/contracts.test.ts -t "C4 core re-exports the very same contract objects"`
-Status: open
+Status: closed
 
-**C5** - Com `contracts/dist` e `core/dist` apagados, `npm run build:server` sai `0` e deixa `contracts/dist/index.js` e `core/dist/index.js` (AC 4)
-Proof: `rm -rf contracts/dist core/dist && npm run build:server && test -f contracts/dist/index.js && test -f core/dist/index.js`
-Status: open
+**C5** - Com `contracts/dist`, `core/dist` e os `tsconfig.tsbuildinfo` dos dois apagados (um checkout limpo), `npm run build:server` sai `0` e deixa `contracts/dist/index.js` e `core/dist/index.js` (AC 4)
+Proof: `rm -rf contracts/dist core/dist contracts/tsconfig.tsbuildinfo core/tsconfig.tsbuildinfo && npm run build:server && test -f contracts/dist/index.js && test -f core/dist/index.js`
+Status: closed
 
 ### S2 - eventos tipados e versionados · 14 files · 110 KB · ~28k
 
 **C6** - Todo evento emitido pelo barramento (testado com `run.finished`, `settings.changed` e `notification.read`) tem `v` = 1, também no anel de replay (`since`) (AC 5)
 Proof: `npx vitest run tests/contracts.test.ts -t "C6 every emitted event carries v 1"`
-Status: open
+Status: closed
 
 **C7** - Cada evento de `GET /api/events` lido por um cliente SSE traz `"v":1` (AC 6)
 Proof: `npx vitest run tests/contracts.test.ts -t "C7 the SSE feed carries the event version"`
-Status: open
+Status: closed
 
 **C8** - `emit("run.finished", { runId: 1 })` e `emit("settings.changed", { nope: true })` não compilam (`// @ts-expect-error` em `typetests/events.ts`), e `emit("run.finished", { runId: "x", status: "done", durationMs: 1 })` compila (AC 7)
 Proof: `npx tsc -p typetests/tsconfig.json`
-Status: open
+Status: closed
 
 **C9** - `OsEventMap` tem chave para cada um dos 22 valores de `OsEventType` e nenhuma a mais (`typetests/events.ts`: `Exclude<OsEventType, keyof OsEventMap>` e `Exclude<keyof OsEventMap, OsEventType>` são `never`) (AC 8)
 Proof: `npx tsc -p typetests/tsconfig.json`
-Status: open
+Status: closed
 
 ### S3 - a interface usa o contrato · 6 files · 70 KB · ~18k
 
 **C10** - Em `apps/command-centre/src/api.ts`, `RunRecord`, `RunUsage`, `RunUsageEvent`, `ApprovalRecord`, `NotificationItem`, `NotificationKind`, `SessionRecord`, `SettingsDoc`, `ProviderId`, `ProviderCapabilities` e `OsEvent` são declarados como `export type X = …` apontando para `@mordomo/contracts`, e o arquivo tem zero ocorrências de `mirrors core` (AC 9)
 Proof: `npx vitest run tests/contracts.test.ts -t "C10 the UI api types are contract aliases"`
-Status: open
+Status: closed
 
 **C11** - `apps/command-centre/src/runs/policy.ts` importa `writeDecision` de `@mordomo/contracts` e não contém `read_only:`, `review_before_write:` nem `controlled_write:` como chaves de tabela (AC 10)
 Proof: `npx vitest run tests/contracts.test.ts -t "C11 the UI write policy comes from the contract"`
-Status: open
+Status: closed
 
 **C12** - `npm run typecheck` e `npm run build -w apps/command-centre` saem `0` (AC 11)
 Proof: `npm run typecheck && npm run build -w apps/command-centre`
-Status: open
+Status: closed
 
 **C13** - Nenhum arquivo em `apps/command-centre/dist/assets` contém `better-sqlite3` nem `node:fs` (AC 12)
 Proof: `npm run build -w apps/command-centre && ! grep -rlE "better-sqlite3|node:fs" apps/command-centre/dist/assets`
-Status: open
+Status: closed
 
 ## Coverage
 

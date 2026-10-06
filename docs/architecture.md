@@ -57,6 +57,18 @@ manages the service via a pidfile that records pid, port, start time and a
 per-boot token (a recycled PID is not mistaken for a live service). Exit
 codes: 0 ok, 1 failure, 2 usage error.
 
+## Contracts (`contracts/src`)
+
+`@mordomo/contracts` holds what crosses the engine / API / UI boundary and depends on
+zod only, so the browser can import it: the wire types (`RunRecord`, `RunEvent`,
+`RunUsage`, `Approval`, `NotificationRecord`, `SessionRecord`, `ProviderCapabilities`,
+`MetricsSample`), the settings schema (`SettingsSchema`), the write policy
+(`writeDecision`, `PROFILES`; also at `@mordomo/contracts/policy`, without zod) and the
+typed event map. Every event the bus emits is `{ id, type, ts, v, payload }`, with
+`payload` typed by `OsEventMap[type]` and `v` = 1; a payload whose shape changes bumps
+`v`. The core re-exports all of it under the same names. `typetests/` holds compile-time
+proofs (`npm run typecheck`).
+
 ## Core modules (`core/src`)
 
 | Module | Responsibility |

@@ -2,6 +2,14 @@ import crypto from "node:crypto";
 import type { Db } from "../db/db.js";
 import { redactSecrets } from "../security/redact.js";
 import { events } from "../events.js";
+import {
+  NOTIFICATION_KINDS,
+  type NotificationKind,
+  type NotificationRecord,
+  type NotificationTone,
+} from "@mordomo/contracts";
+
+export { NOTIFICATION_KINDS, type NotificationKind, type NotificationRecord, type NotificationTone };
 
 /**
  * Persisted inbox (Onda 2, item 3).
@@ -17,35 +25,6 @@ import { events } from "../events.js";
  * through the secret redactor because they quote prompts and approval
  * descriptions.
  */
-
-export type NotificationKind = "approval" | "run" | "routine" | "index" | "system";
-export type NotificationTone = "ok" | "warn" | "danger" | "info";
-
-export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
-  "approval",
-  "run",
-  "routine",
-  "index",
-  "system",
-];
-
-export interface NotificationRecord {
-  /** `n_<uuid>` — the prefix is what tells the UI a row came from the server. */
-  id: string;
-  kind: NotificationKind;
-  tone: NotificationTone | null;
-  messageKey?: string | null;
-  messageParams?: Record<string, string | number | boolean> | null;
-  title: string;
-  body: string | null;
-  href: string | null;
-  approvalId: string | null;
-  runId: string | null;
-  ts: number;
-  read: boolean;
-  /** Rows sharing a key within `DEDUPE_MS` replace each other. */
-  dedupeKey: string | null;
-}
 
 export interface NotificationInput {
   kind: NotificationKind;

@@ -1,5 +1,8 @@
 import type { EffortLevel, ProviderId, SecurityProfile } from "../config/schema.js";
 import type { ProviderManifest } from "./registry.js";
+import type { RunEvent, RunMode, RunUsage, RunUsageEvent } from "@mordomo/contracts";
+
+export type { RunEvent, RunMode, RunUsage, RunUsageEvent };
 
 export interface DetectionResult {
   installed: boolean;
@@ -42,8 +45,6 @@ export interface HealthStatus {
   detail: string;
   checkedAt: number;
 }
-
-export type RunMode = "read_only" | "write";
 
 /** Command line of the permission MCP server (spawned by the provider CLI, not by us). */
 export interface PermissionBroker {
@@ -101,74 +102,6 @@ export interface SafeInvocation {
   env: Record<string, string>;
   stdin?: string;
   description: string;
-}
-
-export type RunEvent = (
-  | { type: "started"; ts: number; pid: number | null }
-  | { type: "text"; ts: number; stream: "stdout" | "stderr"; text: string }
-  | { type: "assistant"; ts: number; text: string }
-  | {
-      type: "tool_use";
-      ts: number;
-      tool: string;
-      detail: string;
-      callId?: string;
-      phase?: "start" | "end";
-      durationMs?: number;
-      outcome?: "ok" | "error" | "denied";
-    }
-  | { type: "permission"; ts: number; detail: string }
-  /**
-   * The provider told us which conversation this run belongs to (Claude's
-   * `session_id`, Codex's `thread_id`). Emitted up front when the adapter
-   * chose the id itself and again from the stream as confirmation — the last
-   * one wins, which is also how a resumed conversation that forks into a new
-   * provider session gets recorded.
-   */
-  | { type: "session"; ts: number; providerSessionId: string }
-  | {
-      type: "result";
-      ts: number;
-      exitCode: number | null;
-      summary: string;
-      durationMs: number;
-      timedOut: boolean;
-      /** True when the process ended because cancellation was requested (or was never spawned because of it). */
-      cancelled?: boolean;
-    }
-  | { type: "error"; ts: number; message: string }
-  | ({ type: "usage"; ts: number } & RunUsageEvent)
-) & {
-  /** Stable execution attempt id. */ attemptId?: string;
-  /** Monotonic within this attempt. */ sequence?: number;
-};
-
-/**
- * Token/cost usage reported by a provider. `scope` tells the RunManager how to
- * fold several events into the run's usage: a `total` snapshot replaces
- * everything seen so far (Claude's `result`, Codex's `turn.completed`),
- * while `turn` events (one per assistant message) are summed until a total
- * arrives. Missing scope means `turn`.
- */
-export interface RunUsageEvent {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens?: number;
-  cacheWriteTokens?: number;
-  /** Provider-reported cost in USD; null when the provider gives tokens but no price. */
-  costUsd?: number | null;
-  model?: string;
-  scope?: "turn" | "total";
-}
-
-/** Usage persisted on the run row (sum of turns, or the provider's total). */
-export interface RunUsage {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens?: number;
-  cacheWriteTokens?: number;
-  costUsd?: number | null;
-  model?: string;
 }
 
 /**

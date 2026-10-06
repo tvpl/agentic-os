@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { TerminalSquare, Trash2, Webhook } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type DeviceRecord } from "../../api";
+import { api, type DeviceRecord, type SettingsDoc } from "../../api";
 
 import { useLocale, useT } from "../../i18n";
 import { qk, useApiQuery, useOsMeta } from "../../queries";
@@ -46,7 +46,7 @@ export function SecurityTab({ s, put }: { s: SettingsShape; put: Put }) {
             id="st-profile"
             className="input"
             value={s.securityProfile}
-            onChange={(e) => void put({ securityProfile: e.target.value })}
+            onChange={(e) => void put({ securityProfile: e.target.value as SettingsDoc["securityProfile"] })}
           >
             {PROFILES.map((prof) => (
               <option key={prof} value={prof}>

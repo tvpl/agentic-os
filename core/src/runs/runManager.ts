@@ -13,75 +13,23 @@ import { ownedProcessKiller } from "../spawn/safeSpawn.js";
 import { events } from "../events.js";
 import { SessionStore } from "./sessionStore.js";
 import { emulatedPrompt } from "./emulatedSession.js";
+import {
+  TERMINAL_STATUSES,
+  type RunFailure,
+  type RunOrigin,
+  type RunRecord,
+  type RunRequestSpec,
+  type RunStatus,
+} from "@mordomo/contracts";
 
-export type RunOrigin = "manual" | "skill" | "routine" | "api" | "sentinel";
-export type RunStatus =
-  "queued" | "running" | "waiting_approval" | "done" | "failed" | "cancelled" | "timed_out" | "interrupted";
-
-export const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set([
-  "done",
-  "failed",
-  "cancelled",
-  "timed_out",
-  "interrupted",
-]);
-
-/** Complete local request used to reproduce a run without relying on its UI summary. */
-export type RunRequestSpec =
-  | { version: 1; kind: "prompt"; prompt: string; mode: RunMode }
-  | { version: 1; kind: "skill"; skillSlug: string; inputs: Record<string, string>; mode: RunMode }
-  | { version: 1; kind: "system"; prompt: string; mode: RunMode };
-
-export interface RunFailure {
-  code:
-    | "authentication"
-    | "permission"
-    | "budget"
-    | "timeout"
-    | "cancelled"
-    | "interrupted"
-    | "provider"
-    | "unknown";
-  message: string;
-  recoverable: boolean;
-  effectsUncertain: boolean;
-}
-
-export interface RunRecord {
-  id: string;
-  createdAt: number;
-  startedAt: number | null;
-  finishedAt: number | null;
-  origin: RunOrigin;
-  provider: ProviderId;
-  model: string | null;
-  effort: EffortLevel;
-  status: RunStatus;
-  exitCode: number | null;
-  durationMs: number | null;
-  cwd: string | null;
-  promptSummary: string;
-  /** Complete typed request. Null for runs created before migration 14. */
-  request: RunRequestSpec | null;
-  skillSlug: string | null;
-  routineId: string | null;
-  /** Spend cap for this run (remaining routine/skill budget at launch); null = none. */
-  maxCostUsd: number | null;
-  /** First run of a retry chain (null for the first attempt). */
-  parentRunId: string | null;
-  /** Conversation this run belongs to (`sessions.id`), or null for a one-shot run. */
-  sessionId: string | null;
-  pid: number | null;
-  error: string | null;
-  failure: RunFailure | null;
-  artifacts: string[];
-  filesChanged: string[];
-  attempts: number;
-  timeoutMs: number | null;
-  permissionProfile: SecurityProfile | null;
-  /** Token usage and provider-reported cost; null until a provider reports it. */
-  usage: RunUsage | null;
-}
+export {
+  TERMINAL_STATUSES,
+  type RunFailure,
+  type RunOrigin,
+  type RunRecord,
+  type RunRequestSpec,
+  type RunStatus,
+};
 
 /** `Metrics.cost` — spend and token throughput derived from the runs table. */
 export interface CostMetrics {

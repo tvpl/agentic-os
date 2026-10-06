@@ -12,35 +12,9 @@
  */
 import { ProviderId } from "../config/schema.js";
 import type { AgentAdapter } from "./types.js";
+import type { ProviderCapabilities } from "@mordomo/contracts";
 
-export interface ProviderCapabilities {
-  /** `read_only` is enforced by the CLI itself (sandbox / permission rules), not just asked for in the prompt. */
-  enforcesReadOnly: boolean;
-  /** The provider accepts an effort / reasoning budget. */
-  supportsEffort: boolean;
-  /** How the prompt reaches the CLI. `argv` is visible in `ps` and bounded by ARG_MAX. */
-  promptTransport: "stdin" | "argv";
-  /** The CLI streams structured events (tool calls, results) rather than plain text. */
-  streaming: boolean;
-  /**
-   * How the CLI continues a previous conversation:
-   * `flag` — an option on the normal invocation (`claude --resume <id>`);
-   * `subcommand` — a dedicated verb (`codex exec resume <id>`);
-   * `none` — the CLI cannot resume, so every run starts a fresh conversation.
-   * Adapters treat anything but `none` as best effort: when the installed CLI
-   * does not advertise it, the run starts fresh and says so in a text event.
-   */
-  resume: "flag" | "subcommand" | "none";
-  /**
-   * How a write run is kept in bounds: `broker` — every tool that is not a
-   * pre-approved edit asks a human (Claude's permission prompt tool);
-   * `sandbox` — the CLI confines writes to the working directory (Codex
-   * `--sandbox workspace-write`); `none` — nothing does (`cursor-agent --force`).
-   * The engine parks an unconfined write for approval unless the profile is
-   * `approved_automation`.
-   */
-  writeConfinement: "broker" | "sandbox" | "none";
-}
+export type { ProviderCapabilities };
 
 /** Where the compiled views of the canonical skills/routers live for a provider (paths relative to the target dir). */
 export interface ProviderNativeLayout {

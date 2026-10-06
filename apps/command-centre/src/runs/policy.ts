@@ -1,13 +1,14 @@
 /** Small pure helpers shared by the run views (kept out of the .tsx so they are testable). */
+import { PROFILES, writeDecision } from "@mordomo/contracts/policy";
 
 /** What a write run will do under the active security profile. */
 export type WritePolicy = "allowed" | "approval" | "refused";
 
-/** Mirrors `writeDecision()` in core/src/security/profiles.ts for origin "manual". */
+/** The engine's own rule (`writeDecision` in the contract) for a run a person starts; an unknown profile refuses. */
 export function writePolicyFor(profile: string | undefined): WritePolicy {
-  if (profile === "controlled_write" || profile === "approved_automation") return "allowed";
-  if (profile === "review_before_write") return "approval";
-  return "refused";
+  if (!profile || !Object.hasOwn(PROFILES, profile)) return "refused";
+  const decision = writeDecision(profile as keyof typeof PROFILES, "manual");
+  return decision === "allow" ? "allowed" : decision === "approval" ? "approval" : "refused";
 }
 
 /** The follow-up prompt carries the previous request as context, then the new ask. */

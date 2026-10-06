@@ -5,6 +5,9 @@ import path from "node:path";
 import type { MordomoPaths } from "./paths.js";
 import type { Db } from "./db/db.js";
 import { events } from "./events.js";
+import type { BackupInfo } from "@mordomo/contracts";
+
+export type { BackupInfo };
 
 /**
  * Backup / restore of everything that defines this MordomoOS installation:
@@ -19,13 +22,6 @@ import { events } from "./events.js";
  */
 
 const BACKUP_SETS = ["skills", "memory", "routines", "connectors"] as const;
-
-export interface BackupInfo {
-  name: string;
-  path: string;
-  createdAt: number;
-  sizeBytes: number;
-}
 
 export interface BackupOptions {
   includeArtifacts?: boolean;

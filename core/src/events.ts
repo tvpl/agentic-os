@@ -7,45 +7,9 @@
  * a throwing listener is isolated and reported on the "error" channel.
  */
 
-export type OsEventType =
-  | "run.created"
-  | "run.started"
-  | "run.event"
-  | "run.finished"
-  | "routine.fired"
-  | "routine.alert"
-  | "routine.changed"
-  | "index.progress"
-  | "index.finished"
-  | "index.failed"
-  | "approval.requested"
-  | "approval.resolved"
-  | "approval.expired"
-  | "session.created"
-  | "session.updated"
-  | "objective.changed"
-  | "settings.changed"
-  | "backup.created"
-  /** A row was appended to the persisted inbox (payload: the notification). */
-  | "notification.created"
-  | "notification.read"
-  /** Today's spend passed a share of `settings.limits.dailyBudgetUsd`. */
-  | "budget.crossed"
-  /**
-   * A sentinel observed something worth a look (Onda 2, item 1). Payload:
-   * `SentinelFiredPayload` (core/src/sentinels/types.ts). The notification
-   * recorder turns it into an inbox row; the triage listener may answer it
-   * with a short, cheap run when `triage` is set.
-   */
-  | "sentinel.fired";
+import { OS_EVENT_VERSION, type OsEvent, type OsEventMap, type OsEventType } from "@mordomo/contracts";
 
-export interface OsEvent<T = unknown> {
-  /** Monotonic id (per process) so SSE clients can resume with Last-Event-ID. */
-  id: number;
-  type: OsEventType;
-  ts: number;
-  payload: T;
-}
+export { OS_EVENT_VERSION, type OsEvent, type OsEventMap, type OsEventType };
 
 export type OsEventListener = (event: OsEvent) => void;
 
@@ -57,11 +21,13 @@ export class EventBus {
   private dispatching = false;
   constructor(private readonly ringSize = 500) {}
 
-  emit<T>(type: OsEventType, payload: T): OsEvent<T> {
-    const event: OsEvent<T> = { id: ++this.seq, type, ts: Date.now(), payload };
-    this.ring.push(event);
+  /** Announce an event; the payload type is the one `OsEventMap` names for `type`. */
+  emit<K extends OsEventType>(type: K, payload: OsEventMap[K]): OsEvent<K> {
+    const event = { id: ++this.seq, type, ts: Date.now(), v: OS_EVENT_VERSION, payload } as OsEvent<K>;
+    const stored = event as OsEvent;
+    this.ring.push(stored);
     if (this.ring.length > this.ringSize) this.ring.shift();
-    this.pending.push(event);
+    this.pending.push(stored);
     if (this.dispatching) return event;
     this.dispatching = true;
     try {

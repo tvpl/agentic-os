@@ -298,18 +298,9 @@ export function eventToNotification(event: OsEvent, t: NotificationTranslate): N
       };
     }
     case "index.finished": {
-      const stats = ((event.payload as { stats?: Record<string, unknown> } | null)?.stats ?? {}) as Record<
-        string,
-        unknown
-      >;
-      const n =
-        typeof stats.files === "number"
-          ? stats.files
-          : typeof stats.indexed === "number"
-            ? stats.indexed
-            : typeof stats.total === "number"
-              ? stats.total
-              : null;
+      // The contract's IndexStats: `scanned` is how many files the pass looked at.
+      const scanned = (event.payload as { stats?: { scanned?: unknown } } | null)?.stats?.scanned;
+      const n = typeof scanned === "number" ? scanned : null;
       return {
         ...base,
         kind: "index",

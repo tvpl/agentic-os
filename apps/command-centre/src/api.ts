@@ -1,3 +1,5 @@
+import type * as Contracts from "@mordomo/contracts";
+
 /** Typed-ish fetch layer for the local MordomoOS API. */
 
 const DEVICE_TOKEN_KEY = "mordomo.deviceToken";
@@ -141,13 +143,13 @@ async function request<T>(
   return (await res.json()) as T;
 }
 
-/** One event from `/api/events` (mirrors core/src/events.ts `OsEvent`). */
-export interface OsEvent<T = unknown> {
-  id?: number;
-  type: string;
-  ts?: number;
-  payload: T;
-}
+/**
+ * One event as the UI sees it: the contract's envelope from `/api/events`
+ * (discriminated by `type`), or the UI's own note that the stream came back.
+ */
+export type OsEvent =
+  | Contracts.OsEvent
+  | { type: "stream.reconnected"; id?: undefined; ts: number; v?: undefined; payload: Record<string, never> };
 
 export interface StreamOptions {
   /** Named SSE event types to subscribe to in addition to unnamed `message` events. */
@@ -189,11 +191,12 @@ export const api = {
     const source = new EventSource(`/api/events?token=${TOKEN}`);
     const handle = (raw: MessageEvent, fallbackType?: string) => {
       try {
-        const parsed = JSON.parse(raw.data as string) as Partial<OsEvent> | null;
+        const parsed = JSON.parse(raw.data as string) as Partial<Contracts.OsEvent> | null;
         if (!parsed || typeof parsed !== "object") return;
         const type = typeof parsed.type === "string" ? parsed.type : fallbackType;
         if (!type) return;
-        onEvent({ id: parsed.id, type, ts: parsed.ts, payload: parsed.payload });
+        // The server speaks the contract; the named SSE event supplies `type` when the data omits it.
+        onEvent({ ...parsed, type } as Contracts.OsEvent);
       } catch {
         /* ignore malformed */
       }
@@ -213,7 +216,7 @@ export const api = {
   },
 };
 // ---- shared shapes (mirror the API responses we rely on) --------------------
-export type ProviderId = "claude" | "cursor" | "codex";
+export type ProviderId = Contracts.ProviderId;
 
 export interface Meta {
   name: string;
@@ -232,12 +235,7 @@ export interface ModelishOption {
   recommendedFor?: string;
 }
 
-export interface ProviderCapabilities {
-  enforcesReadOnly: boolean;
-  supportsEffort: boolean;
-  promptTransport: "stdin" | "argv";
-  streaming: boolean;
-}
+export type ProviderCapabilities = Contracts.ProviderCapabilities;
 
 export interface ProviderSnapshot {
   id: ProviderId;
@@ -296,60 +294,10 @@ export interface Skill {
   skillFile: string;
 }
 
-export interface RunRecord {
-  id: string;
-  createdAt: number;
-  /** Spend cap for this run (remaining routine/skill budget at launch). */
-  maxCostUsd?: number | null;
-  startedAt?: number | null;
-  finishedAt: number | null;
-  origin: string;
-  provider: ProviderId;
-  model: string | null;
-  effort?: string;
-  status: string;
-  durationMs: number | null;
-  cwd?: string | null;
-  promptSummary: string;
-  request?:
-    | { version: 1; kind: "prompt" | "system"; prompt: string; mode: "read_only" | "write" }
-    | {
-        version: 1;
-        kind: "skill";
-        skillSlug: string;
-        inputs: Record<string, string>;
-        mode: "read_only" | "write";
-      }
-    | null;
-  skillSlug: string | null;
-  routineId: string | null;
-  parentRunId?: string | null;
-  sessionId?: string | null;
-  pid?: number | null;
-  error: string | null;
-  failure?: { code: string; message: string; recoverable: boolean; effectsUncertain: boolean } | null;
-  artifacts: string[];
-  /** Absolute paths the run's write tools touched (from the RunManager). */
-  filesChanged?: string[];
-  exitCode: number | null;
-  attempts?: number;
-  timeoutMs?: number | null;
-  /** `read_only` for read-only runs, else the security profile the run ran under. */
-  permissionProfile?: string | null;
-  /** Token usage and provider-reported cost (null until a provider reports it). */
-  usage?: RunUsage | null;
-}
+export type RunRecord = Contracts.RunRecord;
 
-/** Token usage persisted on a run (F-RUNS contract). */
-export interface RunUsage {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens?: number;
-  cacheWriteTokens?: number;
-  /** null = tokens known but the provider gives no price. */
-  costUsd?: number | null;
-  model?: string;
-}
+/** Token usage persisted on a run. */
+export type RunUsage = Contracts.RunUsage;
 
 /** Routines v2 schedule kinds (F-BACKEND); a v1 routine reads as `cron`. */
 export type RoutineKind = "cron" | "at" | "every" | "on-exit" | "heartbeat";
@@ -556,19 +504,8 @@ export interface MetricsDailyPoint {
   approvalWaitAvgMs: number | null;
   samples: number;
 }
-/** One hourly sample (mirrors core/src/metrics `MetricsSample`). */
-export interface MetricsSample {
-  ts: number;
-  runsTotal: number;
-  runs24h: number;
-  failed24h: number;
-  costTodayUsd: number;
-  tokensToday: number;
-  spendWeekUsd: number;
-  inboxUnread: number;
-  approvalsPending: number;
-  approvalWaitAvgMs: number | null;
-}
+/** One hourly sample. */
+export type MetricsSample = Contracts.MetricsSample;
 export interface MetricsHistory {
   days: number;
   samples: MetricsSample[];
@@ -576,92 +513,11 @@ export interface MetricsHistory {
 }
 
 // ---- settings ----
-/**
- * The settings document as `GET /api/settings` returns it (mirrors
- * `SettingsSchema` in core/src/config/schema.ts). Fields older servers may
- * omit are optional on `SettingsView`, the shape the shared hook exposes.
- */
-export type WindowLayoutDoc = Record<
-  string,
-  {
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-    z: number;
-    visible: boolean;
-    minimized?: boolean;
-    config?: Record<string, unknown>;
-  }
->;
+/** Stage layout stored in the settings document (`dashboardLayout`). */
+export type WindowLayoutDoc = Contracts.Settings["dashboardLayout"];
 
-export interface SettingsDoc {
-  systemName: string;
-  language: "en" | "pt-BR";
-  theme: "dark" | "light" | "system";
-  accentColor: string;
-  port: number;
-  timezone: string;
-  defaultProvider: ProviderId;
-  securityProfile: string;
-  providers: Record<
-    ProviderId,
-    { enabled: boolean; defaultModel: string | null; defaultEffort: string; binaryPath: string | null }
-  >;
-  indexedFolders: Array<{ path: string; area: string | null; enabled: boolean }>;
-  excludes: string[];
-  areas: string[];
-  setupCompleted: boolean;
-  /** Theme preset id (F-SHELL `PRESETS`). */
-  themePreset: string;
-  microApps: MicroApp[];
-  /** Stage pixels with a stacking order (redesign F4): see `windowModel.ts`. */
-  dashboardLayout: WindowLayoutDoc;
-  /** Named spaces, each remembering its own arrangement (redesign F6). */
-  spaces?: Record<string, { name: string; layout: WindowLayoutDoc }>;
-  /** Id of the space `dashboardLayout` currently belongs to. */
-  activeSpace?: string;
-  /** The pod arcs (redesign G5): instrument ids on the left and right, in order. */
-  hud?: { l: string[]; r: string[] };
-  routines: { allowWebhooks: boolean; heartbeatIntervalMinutes: number; heartbeatOkToken: string };
-  connectors: { dataCacheTtlMs: number; dataTimeoutMs: number; allowedCommands: string[] };
-  limits?: {
-    maxConcurrentRuns?: number;
-    defaultTimeoutMs?: number;
-    /** Daily spend budget in USD (0 = no budget). */
-    dailyBudgetUsd?: number;
-    [key: string]: unknown;
-  }; /** Remote access (Onda 3): paired devices from the listed hosts. */
-  remote?: {
-    enabled: boolean;
-    allowedHosts: string[];
-    deviceTtlDays: number;
-    tls?: { enabled: boolean; port: number | null };
-  };
-  /** Skill registries (Onda 3). */
-  marketplace?: { registries: string[] };
-  updates?: { check: boolean };
-  /** Sentinels and triage (Onda 2). */
-  sentinels?: {
-    fsWatch: { enabled: boolean; debounceMs: number };
-    repeatedFailure: { enabled: boolean; threshold: number; windowHours: number };
-    silentRoutine: { enabled: boolean; factor: number };
-    connectorDelta: { enabled: boolean; maxItems: number };
-    repeatDetector: { enabled: boolean; days: number; minRuns: number; similarity: number };
-    triage: { enabled: boolean; model: string; dailyBudgetUsd: number; timeoutMs: number };
-  };
-  /** External delivery channels (Onda 2). */
-  channels?: {
-    telegram: {
-      enabled: boolean;
-      botTokenEnv: string;
-      chatId: string;
-      minTone: "ok" | "info" | "warn" | "danger";
-      inbound: boolean;
-    };
-    push: { enabled: boolean; minTone: "ok" | "info" | "warn" | "danger"; subject: string };
-  };
-}
+/** The settings document as `GET /api/settings` returns it. */
+export type SettingsDoc = Contracts.Settings;
 
 /** `GET /api/devices` */
 export interface DeviceRecord {
@@ -673,13 +529,8 @@ export interface DeviceRecord {
   revokedAt: number | null;
 }
 
-/** Micro app row (mirrors `MicroAppSchema` in core/src/config/schema.ts). */
-export interface MicroApp {
-  id: string;
-  name: string;
-  description: string;
-  href: string;
-}
+/** Micro app row (`settings.microApps`). */
+export type MicroApp = Contracts.MicroApp;
 
 // ---- desktop ----
 export type ArtifactKind = "image" | "video" | "html" | "markdown" | "code" | "other";
@@ -771,28 +622,11 @@ export interface MetricsCost {
   block5h?: { usedPct: number; resetsAt: number };
 }
 
-export type NotificationKind = "approval" | "run" | "routine" | "index" | "system";
-export interface NotificationItem {
-  id: string;
-  kind: NotificationKind;
-  title: string;
-  body?: string;
-  ts: number;
-  read: boolean;
-  href?: string;
-  approvalId?: string;
-}
+export type NotificationKind = Contracts.NotificationKind;
+export type NotificationItem = Contracts.NotificationRecord;
 
 /** A pending approval as returned by `GET /api/approvals`. */
-export interface ApprovalRecord {
-  id: string;
-  createdAt: number;
-  kind: string;
-  description: string;
-  payload: Record<string, unknown>;
-  status: "pending" | "approved" | "denied" | "expired";
-  resolvedAt: number | null;
-}
+export type ApprovalRecord = Contracts.Approval;
 
 /** Absolute URL of `GET /api/artifacts/raw` for a file (token in the query: `<img>` cannot set headers). */
 export function artifactRawUrl(absolutePath: string): string {
@@ -824,15 +658,6 @@ export interface SkillResource {
   size: number;
 }
 
-/** A user-defined micro app persisted in `settings.microApps`. */
-export interface MicroApp {
-  id: string;
-  name: string;
-  description: string;
-  /** Internal route ("/pixel") or an http(s) URL. */
-  href: string;
-}
-
 /** Response of `POST /api/skills/:slug/run` (202 when an approval is pending). */
 export interface SkillRunResponse {
   runId: string | null;
@@ -859,35 +684,14 @@ export interface RunLaunchResponse {
   pendingApproval?: { id: string; kind: string; description: string } | null;
 }
 
-/** `POST /api/backups` response (mirrors core BackupInfo). */
-export interface BackupCreated {
-  name: string;
-  path: string;
-  createdAt: number;
-  sizeBytes: number;
-}
+/** `POST /api/backups` response. */
+export type BackupCreated = Contracts.BackupInfo;
 
 /** Payloads of the OS events the notification store understands. */
-export interface ApprovalRequestedPayload {
-  id: string;
-  kind: string;
-  description: string;
-}
-export interface ApprovalResolvedPayload {
-  id: string;
-  kind: string;
-  status: "approved" | "denied" | string;
-  runId: string | null;
-}
-export interface RunFinishedPayload {
-  runId: string;
-  status: string;
-  durationMs: number | null;
-}
-export interface RoutineFiredPayload {
-  routineId: string;
-  runId: string;
-}
+export type ApprovalRequestedPayload = Contracts.OsEventMap["approval.requested"];
+export type ApprovalResolvedPayload = Contracts.OsEventMap["approval.resolved"];
+export type RunFinishedPayload = Contracts.OsEventMap["run.finished"];
+export type RoutineFiredPayload = Contracts.OsEventMap["routine.fired"];
 
 // ---- memory ----
 // F-MEMORY: layered recall, daily journal, hygiene, bi-temporal facts, inline fields.
@@ -984,13 +788,8 @@ export interface UsageSeriesPoint {
   usd: number;
 }
 
-/** `usage` frame of `/api/runs/:id/stream` (mirrors core `RunUsageEvent`). */
-export interface RunUsageEvent extends RunUsage {
-  type: "usage";
-  ts: number;
-  /** `total` replaces the sum of previous `turn` events. */
-  scope?: "turn" | "total";
-}
+/** `usage` frame of `/api/runs/:id/stream`. */
+export type RunUsageEvent = Contracts.RunUsageEvent & { type: "usage"; ts: number };
 
 /** `GET /api/runs/:id/diff?file=` */
 export type RunDiffResult =
@@ -1016,21 +815,7 @@ export interface LaunchRunResponse {
 
 // ---- sessions (Onda 1) ----
 /** A conversation with one provider: runs that continue each other via the provider's own resume. */
-export interface SessionRecord {
-  id: string;
-  provider: ProviderId;
-  providerSessionId: string | null;
-  cwd: string | null;
-  profile: string;
-  title: string;
-  createdAt: number;
-  updatedAt: number;
-  lastRunId: string | null;
-  turns: number;
-  inputTokens: number;
-  outputTokens: number;
-  costUsd: number;
-}
+export type SessionRecord = Contracts.SessionRecord;
 export interface SessionDetail {
   session: SessionRecord;
   runs: RunRecord[];
@@ -1055,14 +840,8 @@ export interface BrainSettingsPayload {
   workspace?: { pinned: Array<{ id: number; x: number; y: number }>; collapsed: string[] };
 }
 
-/** Payload of the `index.progress` SSE event (mirrors core/src/memory/indexer.ts IndexProgress). */
-export interface IndexProgressPayload {
-  scanned: number;
-  total?: number;
-  added: number;
-  updated: number;
-  removed: number;
-}
+/** Payload of the `index.progress` SSE event. */
+export type IndexProgressPayload = Contracts.IndexProgress;
 
 export interface MemoryPreview {
   kind: "text" | "binary" | "blocked" | "too-large";

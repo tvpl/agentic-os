@@ -9,6 +9,7 @@
     "node": ">=22"
   },
   "workspaces": [
+    "contracts",
     "core",
     "adapters/claude",
     "adapters/cursor",
@@ -17,9 +18,9 @@
     "apps/command-centre"
   ],
   "scripts": {
-    "build": "tsc -b core adapters/claude adapters/cursor adapters/codex apps/api && npm run build -w apps/command-centre",
-    "build:server": "tsc -b core adapters/claude adapters/cursor adapters/codex apps/api",
-    "typecheck": "tsc -b core adapters/claude adapters/cursor adapters/codex apps/api && npm run typecheck -w apps/command-centre",
+    "build": "tsc -b contracts core adapters/claude adapters/cursor adapters/codex apps/api && npm run build -w apps/command-centre",
+    "build:server": "tsc -b contracts core adapters/claude adapters/cursor adapters/codex apps/api",
+    "typecheck": "tsc -b contracts core adapters/claude adapters/cursor adapters/codex apps/api && tsc -p typetests/tsconfig.json && npm run typecheck -w apps/command-centre",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

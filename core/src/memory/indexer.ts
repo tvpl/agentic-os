@@ -6,6 +6,9 @@ import { events } from "../events.js";
 import { relatedFromTerms, termFrequencies } from "./related.js";
 import { isBinaryBuffer, makeWorkspaceFilter } from "./excludes.js";
 import { fieldsFromDb, parseInlineFields } from "./fields.js";
+import type { IndexProgress, IndexStats } from "@mordomo/contracts";
+
+export type { IndexProgress, IndexStats };
 
 const TEXT_EXTENSIONS = new Set([
   ".md", ".markdown", ".txt", ".json", ".yaml", ".yml", ".toml", ".csv",
@@ -29,28 +32,7 @@ export class IncompleteIndexScanError extends Error {
   }
 }
 
-export interface IndexStats {
-  scanned: number;
-  added: number;
-  updated: number;
-  removed: number;
-  skippedExcluded: number;
-  /** Files whose bytes were not indexed because they looked binary (NUL in first 8 KiB). */
-  skippedBinary: number;
-  /** Related-by-content edges (re)computed for the files that changed. */
-  related: number;
-  durationMs: number;
-}
 
-/** Payload of `index.progress` events and of the `indexAllAsync` callback. */
-export interface IndexProgress {
-  scanned: number;
-  /** Known once the scan phase finished. */
-  total?: number;
-  added: number;
-  updated: number;
-  removed: number;
-}
 
 export interface FileRow {
   id: number;

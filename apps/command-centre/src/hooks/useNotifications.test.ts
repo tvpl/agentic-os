@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
+import type { OsEventMap, OsEventType } from "@mordomo/contracts";
+import type { OsEvent } from "../api";
 import {
   DEDUPE_MS,
   MAX_NOTIFICATIONS,
@@ -81,15 +83,17 @@ describe("notifications reducer", () => {
   });
 });
 
+/** A contract event for the mapper; `id`/`ts` default to 0 like an event the stream replayed. */
+const ev = <K extends OsEventType>(
+  type: K,
+  payload: OsEventMap[K],
+  extra: { id?: number; ts?: number } = {},
+): OsEvent => ({ id: extra.id ?? 0, ts: extra.ts ?? 0, v: 1, type, payload }) as OsEvent;
+
 describe("eventToNotification", () => {
   it("maps approvals with the approval id and a security link", () => {
     const n = eventToNotification(
-      {
-        id: 7,
-        type: "approval.requested",
-        ts: 5,
-        payload: { id: "ap1", kind: "write_run", description: "Write run" },
-      },
+      ev("approval.requested", { id: "ap1", kind: "write_run", description: "Write run" }, { id: 7, ts: 5 }),
       t,
     );
     expect(n).toMatchObject({
@@ -102,11 +106,11 @@ describe("eventToNotification", () => {
       tone: "warn",
     });
     const r = eventToNotification(
-      {
-        id: 8,
-        type: "approval.resolved",
-        payload: { id: "ap1", kind: "write_run", status: "approved", runId: "run-1" },
-      },
+      ev(
+        "approval.resolved",
+        { id: "ap1", kind: "write_run", status: "approved", runId: "run-1" },
+        { id: 8 },
+      ),
       t,
     );
     expect(r).toMatchObject({ title: "shell.notif.approvalApproved", href: "/runs/run-1", read: true });
@@ -114,11 +118,7 @@ describe("eventToNotification", () => {
 
   it("maps run.finished by status (failures unread + danger, cancelled quiet)", () => {
     const failed = eventToNotification(
-      {
-        type: "run.finished",
-        ts: 1,
-        payload: { runId: "abcdefgh-1234", status: "failed", durationMs: 61_000 },
-      },
+      ev("run.finished", { runId: "abcdefgh-1234", status: "failed", durationMs: 61_000 }, { ts: 1 }),
       t,
     )!;
     expect(failed).toMatchObject({
@@ -130,12 +130,12 @@ describe("eventToNotification", () => {
     });
     expect(failed.body).toBe("abcdefgh · 1m 1s");
     const done = eventToNotification(
-      { type: "run.finished", ts: 1, payload: { runId: "r", status: "done", durationMs: 800 } },
+      ev("run.finished", { runId: "r", status: "done", durationMs: 800 }, { ts: 1 }),
       t,
     )!;
     expect(done).toMatchObject({ tone: "ok", read: false, title: "shell.notif.runDone" });
     const cancelled = eventToNotification(
-      { type: "run.finished", ts: 1, payload: { runId: "r", status: "cancelled", durationMs: null } },
+      ev("run.finished", { runId: "r", status: "cancelled", durationMs: null }, { ts: 1 }),
       t,
     )!;
     expect(cancelled).toMatchObject({ tone: "info", read: true, title: "shell.notif.runCancelled" });
@@ -143,18 +143,37 @@ describe("eventToNotification", () => {
 
   it("maps routine, index, backup and settings; ignores the rest", () => {
     expect(
-      eventToNotification({ type: "routine.fired", ts: 1, payload: { routineId: "digest", runId: "r9" } }, t),
+      eventToNotification(ev("routine.fired", { routineId: "digest", runId: "r9" }, { ts: 1 }), t),
     ).toMatchObject({ kind: "routine", href: "/runs/r9", body: "digest" });
+    const stats = {
+      scanned: 156,
+      added: 3,
+      updated: 1,
+      removed: 0,
+      skippedExcluded: 0,
+      skippedBinary: 0,
+      related: 0,
+      durationMs: 10,
+    };
+    expect(eventToNotification(ev("index.finished", { stats }, { ts: 1 }), t)).toMatchObject({
+      kind: "index",
+      read: true,
+      body: 'shell.notif.indexBody:{"n":156}',
+    });
     expect(
-      eventToNotification({ type: "index.finished", ts: 1, payload: { stats: { files: 156 } } }, t),
-    ).toMatchObject({ kind: "index", read: true, body: 'shell.notif.indexBody:{"n":156}' });
-    expect(
-      eventToNotification({ type: "backup.created", ts: 1, payload: { name: "2026-09-03.zip" } }, t),
+      eventToNotification(
+        ev("backup.created", { name: "2026-09-03.zip", path: "/b", createdAt: 1, sizeBytes: 1 }, { ts: 1 }),
+        t,
+      ),
     ).toMatchObject({ kind: "system", body: "2026-09-03.zip", href: "/settings?tab=backups" });
     // A saved setting never reaches the bell.
-    expect(eventToNotification({ type: "settings.changed", ts: 1, payload: {} }, t)).toBeNull();
-    expect(eventToNotification({ type: "run.event", ts: 1, payload: {} }, t)).toBeNull();
-    expect(eventToNotification({ type: "index.progress", ts: 1, payload: {} }, t)).toBeNull();
+    expect(
+      eventToNotification(ev("settings.changed", {} as OsEventMap["settings.changed"], { ts: 1 }), t),
+    ).toBeNull();
+    expect(eventToNotification(ev("run.event", {} as OsEventMap["run.event"], { ts: 1 }), t)).toBeNull();
+    expect(
+      eventToNotification(ev("index.progress", {} as OsEventMap["index.progress"], { ts: 1 }), t),
+    ).toBeNull();
   });
 });
 

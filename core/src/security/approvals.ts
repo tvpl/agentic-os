@@ -1,18 +1,8 @@
 import crypto from "node:crypto";
 import type { Db } from "../db/db.js";
-import type { ApprovalKind } from "./profiles.js";
+import type { Approval, ApprovalKind } from "@mordomo/contracts";
 
-export interface Approval {
-  id: string;
-  createdAt: number;
-  kind: ApprovalKind;
-  description: string;
-  payload: Record<string, unknown>;
-  status: "pending" | "approved" | "denied" | "expired";
-  resolvedAt: number | null;
-  /** When a still-pending approval is swept to `expired` (createdAt + TTL). */
-  expiresAt: number;
-}
+export type { Approval };
 
 /** Default lifetime of a pending approval (settings.limits.approvalTtlDays). */
 export const DEFAULT_APPROVAL_TTL_MS = 7 * 86_400_000;

@@ -18,7 +18,7 @@ const run = (id: string, skillSlug: string | null, status: string, createdAt: nu
     error: null,
     artifacts: [],
     exitCode: null,
-  }) as RunRecord;
+  }) as unknown as RunRecord;
 
 describe("runningSkillMap", () => {
   it("maps active skill runs, newest first, ignoring finished ones", () => {

@@ -4,6 +4,9 @@ import type { ProviderId, SecurityProfile } from "../config/schema.js";
 import type { RunUsage } from "../agents/types.js";
 import { redactSecrets } from "../security/redact.js";
 import { events } from "../events.js";
+import type { SessionRecord } from "@mordomo/contracts";
+
+export type { SessionRecord };
 
 /**
  * Conversations (Onda 1).
@@ -17,25 +20,6 @@ import { events } from "../events.js";
  * The store never spawns anything and never reads provider credentials; it is
  * pure SQLite plus two bus announcements (`session.created`, `session.updated`).
  */
-
-export interface SessionRecord {
-  id: string;
-  provider: ProviderId;
-  /** Id the provider CLI resumes; null until the first run of the session reports one. */
-  providerSessionId: string | null;
-  cwd: string | null;
-  profile: SecurityProfile | null;
-  /** Short, redacted label (the first prompt of the conversation). */
-  title: string;
-  createdAt: number;
-  updatedAt: number;
-  lastRunId: string | null;
-  /** Finished runs folded into this conversation. */
-  turns: number;
-  inputTokens: number;
-  outputTokens: number;
-  costUsd: number;
-}
 
 /** One row of `GET /api/sessions`: the session plus a summary of its last run. */
 export interface SessionSummary extends SessionRecord {

@@ -1,6 +1,9 @@
 import type { EventBus, OsEvent } from "../events.js";
 import type { SentinelFiredPayload, SentinelSeverity } from "../sentinels/types.js";
 import type { NotificationInput, NotificationStore, NotificationTone } from "./store.js";
+import type { BudgetCrossedPayload } from "@mordomo/contracts";
+
+export type { BudgetCrossedPayload };
 
 /**
  * Bus → inbox. The recorder is the only thing that writes notification rows in
@@ -38,14 +41,6 @@ export interface NotificationRecorderOptions {
 }
 
 /** Payload of `budget.crossed` (emitted by the hourly budget check). */
-export interface BudgetCrossedPayload {
-  /** Percentage of the daily budget that was crossed. */
-  level: 80 | 100;
-  /** Local day the spend belongs to, `YYYY-MM-DD`. */
-  day: string;
-  spentUsd: number;
-  budgetUsd: number;
-}
 
 const FAILED_STATUSES = new Set(["failed", "timed_out"]);
 
