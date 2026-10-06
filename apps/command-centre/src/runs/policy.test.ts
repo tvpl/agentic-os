@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { cwdSuggestions, followUpPrompt, writePolicyFor } from "./policy";
 
 describe("writePolicyFor", () => {
-  it("mirrors the core write decision for manual runs", () => {
+  it("C17 mirrors the core write decision for manual runs and refuses unknown profiles", () => {
     expect(writePolicyFor("read_only")).toBe("refused");
     expect(writePolicyFor(undefined)).toBe("refused");
     for (const unknown of ["bogus", "", "toString", "__proto__"])

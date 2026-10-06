@@ -45,10 +45,10 @@ describe("S1 the contracts package", () => {
       reached.add(rel);
       const src = read(rel);
       const specifiers = [
-        ...src.matchAll(/^\s*(?:import|export)\s+(?!type\b)[^;]*?\bfrom\s+"([^"]+)"/gms),
-        ...src.matchAll(/^\s*import\s+"([^"]+)"/gm),
-        ...src.matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g),
-      ].map((m) => m[1]!);
+        ...src.matchAll(/^\s*(?:import|export)\s+(?!type\b)[^;]*?\bfrom\s+(["'])([^"']+)\1/gms),
+        ...src.matchAll(/^\s*import\s+(["'])([^"']+)\1/gm),
+        ...src.matchAll(/\bimport\(\s*(["'])([^"']+)\1\s*\)/g),
+      ].map((m) => m[2]!);
       for (const spec of specifiers) {
         if (spec.startsWith("."))
           walk(path.posix.join(path.posix.dirname(rel), spec.replace(/\.js$/, ".ts")));

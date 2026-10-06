@@ -78,7 +78,7 @@ Proof: `npx tsc -p typetests/tsconfig.json`
 Status: closed
 
 **C17** - `writePolicyFor` devolve `refused` para um perfil desconhecido (`bogus`, `""`, `toString`, `__proto__`) e para `undefined` (AC 10; rodada 3)
-Proof: `npm run test -w apps/command-centre -- src/runs/policy.test.ts`
+Proof: `npm run test -w apps/command-centre -- src/runs/policy.test.ts -t "C17"`
 Status: closed
 
 **C15** - Com `writeDecision` trocado por um stub (`vi.mock("@mordomo/contracts/policy")`), `writePolicyFor` segue o stub para os 4 perfis e as 3 decisões, chamando-o com `(perfil, "manual")` (AC 10)
