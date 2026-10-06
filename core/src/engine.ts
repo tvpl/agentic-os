@@ -20,6 +20,7 @@ import { installPushChannel } from "./channels/pushChannel.js";
 import { installTelegramChannel } from "./channels/telegram.js";
 import type { EffortLevel, ProviderId, SecurityProfile, Settings } from "./config/schema.js";
 import { SettingsStore } from "./config/store.js";
+import { UiPreferencesStore } from "./config/preferences.js";
 import { ConnectorRegistry } from "./connectors/registry.js";
 import { openDb, type Db } from "./db/db.js";
 import { events } from "./events.js";
@@ -127,6 +128,8 @@ function pidAlive(pid: number): boolean {
 export class MordomoEngine {
   readonly paths: MordomoPaths;
   readonly settingsStore: SettingsStore;
+  /** What only the Command Centre reads and writes (`config/ui-preferences.json`). */
+  readonly uiPreferences: UiPreferencesStore;
   readonly db: Db;
   readonly runs: RunManager;
   readonly objectives: ObjectiveStore;
@@ -167,6 +170,11 @@ export class MordomoEngine {
     if (opts.applyPendingRestore) this.restoredAtBoot = applyPendingRestore(this.paths).applied;
     this.brokerFactory = opts.permissionBroker;
     this.settingsStore = new SettingsStore(this.paths);
+    // A saved preference is announced like a settings change, so every open
+    // Command Centre refreshes it (the event map has no separate type for it).
+    this.uiPreferences = new UiPreferencesStore(this.paths, () =>
+      events.emit("settings.changed", { settings: this.settings() }),
+    );
     this.db = openDb(this.paths).db;
     this.providers = opts.providers;
     this.adapterRecord = buildAdapters(this.providers, this.settingsStore.load());

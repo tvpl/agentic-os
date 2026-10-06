@@ -16,7 +16,7 @@ const read = (rel: string) => fs.readFileSync(path.join(repoRoot, rel), "utf8");
 
 describe("S1 the contracts package", () => {
   it("C1 the contracts package exports the runtime pieces", () => {
-    expect(contracts.SettingsSchema.parse({}).version).toBe(1);
+    expect(contracts.SettingsSchema.parse({}).version).toBe(contracts.CURRENT_SETTINGS_VERSION);
     expect(typeof contracts.writeDecision).toBe("function");
     expect(Object.keys(contracts.PROFILES).sort()).toEqual(
       ["approved_automation", "controlled_write", "read_only", "review_before_write"].sort(),

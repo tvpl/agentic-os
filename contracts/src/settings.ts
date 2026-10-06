@@ -204,70 +204,12 @@ export const ChannelSettingsSchema = z.object({
 });
 export type ChannelSettings = z.infer<typeof ChannelSettingsSchema>;
 
-/**
- * One desktop window: stage pixels, stacking order and per-widget config.
- *
- * `.catch({})` is load-bearing: a layout is presentation, and a box this
- * version cannot read must never invalidate the whole settings document and
- * take the service down with it. An unreadable layout falls back to the
- * default composition; providers, folders and identity survive untouched.
- */
-const WindowLayoutSchema = z.record(
-  z.object({
-    x: z.number().int().min(-8000).max(16000),
-    y: z.number().int().min(0).max(16000),
-    w: z.number().int().min(120).max(16000),
-    h: z.number().int().min(80).max(16000),
-    /** Stacking order; higher is nearer the viewer. */
-    z: z.number().int().min(0).max(1_000_000).default(1),
-    visible: z.boolean().default(true),
-    /** Collapsed to the dock but still part of the layout. */
-    minimized: z.boolean().default(false),
-    /**
-     * Per-widget configuration (timezones, day counts, item limits …).
-     * Opaque to the core: the widget that owns the id defines the shape,
-     * so the record must survive a settings round-trip untouched.
-     */
-    config: z.record(z.unknown()).optional(),
-    /**
-     * Tabbed into another window's frame: the host's id. The window keeps
-     * its own config; the desktop draws it inside the host's frame and drops
-     * the link on read when the host is gone.
-     */
-    tabOf: z.string().min(1).max(4096).optional(),
-    /** Position in the host's tab strip (order of arrival). */
-    tabAt: z.number().int().min(0).max(10_000).optional(),
-  }),
-);
-/** The same record, but degrading to an empty layout instead of throwing. */
-const SafeWindowLayoutSchema = WindowLayoutSchema.catch({});
+/** Version of `settings.json` this code reads and writes; older files are migrated on load (core/src/config/migrations.ts). */
+export const CURRENT_SETTINGS_VERSION = 2;
 
-/**
- * The HUD (redesign G5): which instruments sit on the left and right pod
- * arcs, in order. Ids are the desktop's (`app:brain`, `pulse`, …); unknown
- * ones are ignored on read. Same rule as the layout: presentation never
- * invalidates the settings document, so an unreadable HUD is the default.
- */
-export const DEFAULT_HUD = {
-  l: [
-    "app:brain",
-    "app:skills",
-    "app:artifacts",
-    "app:generations",
-    "app:connectors",
-    "app:settings",
-    "app:pixel",
-  ],
-  r: ["pulse", "attention", "runs", "routines", "inbox"],
-};
-const HudSchema = z.object({
-  l: z.array(z.string().min(1).max(60)).max(16).default(DEFAULT_HUD.l),
-  r: z.array(z.string().min(1).max(60)).max(16).default(DEFAULT_HUD.r),
-});
-const SafeHudSchema = HudSchema.catch(DEFAULT_HUD);
-
+/** The engine's settings. What only the Command Centre reads lives in `UiPreferences` (preferences.ts). */
 export const SettingsSchema = z.object({
-  version: z.number().default(1),
+  version: z.number().default(CURRENT_SETTINGS_VERSION),
   systemName: z.string().default("MordomoOS"),
   language: z.enum(["en", "pt-BR"]).default("en"),
   theme: z.enum(["dark", "light", "system"]).default("dark"),
@@ -379,10 +321,6 @@ export const SettingsSchema = z.object({
     })
     .default({}),
   favoriteSkills: z.array(z.string()).default([]),
-  /** Theme preset id (see apps/command-centre/src/theme.ts); the shell reads `settings.themePreset`. */
-  themePreset: z.enum(["hud-orange", "jarvis", "forest", "ocean", "mono"]).default("hud-orange"),
-  /** User-defined micro apps listed on the desktop. */
-  microApps: z.array(MicroAppSchema).default([]),
   /** Routine engine defaults (F-BACKEND: routines v2). */
   routines: z
     .object({
@@ -420,32 +358,6 @@ export const SettingsSchema = z.object({
     })
     .default({}),
   /**
-   * Command Centre desktop window layout, per widget id. Pixels of the stage,
-   * not grid units: the desktop is a window manager (redesign F4), so a box
-   * is where the user put it. `x` may be negative because a window is allowed
-   * to hang off the left edge; the frontend clamps everything back into view
-   * when the viewport is smaller than the one that saved it.
-   */
-  dashboardLayout: SafeWindowLayoutSchema.default({}),
-  /**
-   * Named desktop spaces (redesign F6): each one remembers which windows were
-   * open and where. Switching space saves the current arrangement into the
-   * one being left, so a context of work can be put down and picked up.
-   * `dashboardLayout` is always the *active* space's layout.
-   */
-  spaces: z
-    .record(
-      z.object({
-        name: z.string().min(1).max(40),
-        layout: SafeWindowLayoutSchema.default({}),
-      }),
-    )
-    .default({}),
-  /** Id of the space `dashboardLayout` currently belongs to. */
-  activeSpace: z.string().min(1).max(60).default("work"),
-  /** The pod arcs (redesign G5): editable, persisted, one HUD for every space. */
-  hud: SafeHudSchema.default(DEFAULT_HUD),
-  /**
    * Sentinels (Onda 2, item 1): cheap observers that need no LLM. Every
    * sentinel is togglable on its own; `fsWatch` is off by default because a
    * recursive watch over a large tree costs real memory and wakeups.
@@ -453,8 +365,6 @@ export const SettingsSchema = z.object({
   sentinels: SentinelSettingsSchema.default({}),
   /** External delivery channels (Onda 2, item 4). Tokens live in the environment, never here. */
   channels: ChannelSettingsSchema.default({}),
-  /** Second Brain view preferences (Command Centre); the shape is owned by the frontend (`brain/engine/world.ts` BrainSettings). */
-  brain: BrainSettingsSchema.default({}),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 

@@ -21,7 +21,7 @@ import {
   speechRecognitionAvailable,
   stopSpeaking,
 } from "../../hooks/systemNotify";
-import { qk, useOsProviders, useOsSettings, useOsSkills } from "../../queries";
+import { qk, useOsProviders, useOsSettings, useOsSkills, useOsUiPreferences } from "../../queries";
 import { Link } from "react-router-dom";
 import { PROVIDER_LOGIN_COMMANDS, authRecovery } from "../../runs/authRecovery";
 import { providerProblem } from "../../components/providerReadiness";
@@ -166,6 +166,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
   const providers = useOsProviders();
   const skills = useOsSkills();
   const settings = useOsSettings();
+  const uiPreferences = useOsUiPreferences();
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   /* ---- the draft --------------------------------------------------------- */
@@ -185,7 +186,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
       window.removeEventListener(CONSOLE_DRAFT_EVENT, refresh);
     };
   }, []);
-  const space = settings.data?.activeSpace ?? "work";
+  const space = uiPreferences.data?.activeSpace ?? "work";
   const [mode, setModeState] = useState<Mode>(() => readStoredMode(space));
   const setMode = (next: Mode) => {
     setModeState(next);

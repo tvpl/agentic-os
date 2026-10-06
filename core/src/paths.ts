@@ -60,6 +60,8 @@ export interface MordomoPaths {
   backups: string;
   run: string;
   settingsFile: string;
+  /** What only the Command Centre reads and writes (theme preset, layouts, HUD, Second Brain view). */
+  uiPreferencesFile: string;
   tokenFile: string;
   syncManifest: string;
 }
@@ -84,6 +86,7 @@ export function resolvePaths(homeOverride?: string): MordomoPaths {
     backups: path.join(config, "backups"),
     run: path.join(config, "run"),
     settingsFile: path.join(config, "settings.json"),
+    uiPreferencesFile: path.join(config, "ui-preferences.json"),
     tokenFile: path.join(config, "token"),
     syncManifest: path.join(config, "sync-manifest.json"),
   };

@@ -2,16 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import type { MordomoPaths } from "../paths.js";
-import { SettingsSchema, type Settings, defaultSettings } from "./schema.js";
+import { CURRENT_SETTINGS_VERSION, SettingsSchema, type Settings, defaultSettings } from "./schema.js";
 import { events } from "../events.js";
 
-/** Atomic write: write to a temp file in the same dir, then rename over. */
-export function atomicWrite(filePath: string, content: string): void {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(tmp, content, "utf8");
-  fs.renameSync(tmp, filePath);
-}
+export { atomicWrite } from "./atomicWrite.js";
+import { atomicWrite } from "./atomicWrite.js";
+import { migrateSettings, settingsVersion } from "./migrations.js";
 
 /** Recursive merge for settings patches: objects merge, arrays and scalars replace. */
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -60,8 +56,11 @@ export class SettingsStore {
       return structuredClone(this.cache.settings);
     }
     try {
-      const raw = JSON.parse(fs.readFileSync(this.paths.settingsFile, "utf8"));
-      const settings = SettingsSchema.parse(raw);
+      const text = fs.readFileSync(this.paths.settingsFile, "utf8");
+      const raw = JSON.parse(text) as Record<string, unknown>;
+      const migrated = migrateSettings(raw, this.paths, text);
+      if (migrated !== raw) stat = fs.statSync(this.paths.settingsFile);
+      const settings = SettingsSchema.parse(migrated);
       this.cache = { mtimeMs: stat.mtimeMs, size: stat.size, settings };
       return structuredClone(settings);
     } catch (err) {
@@ -80,12 +79,35 @@ export class SettingsStore {
     }
   }
 
+  /**
+   * A file written by a newer MordomoOS is never overwritten: this code would
+   * drop or misread what it does not know (`code: "settings_newer"`).
+   */
+  private refuseNewerFile(): void {
+    let raw: Record<string, unknown>;
+    try {
+      raw = JSON.parse(fs.readFileSync(this.paths.settingsFile, "utf8")) as Record<string, unknown>;
+    } catch {
+      return;
+    }
+    const version = settingsVersion(raw);
+    if (version > CURRENT_SETTINGS_VERSION) {
+      throw Object.assign(
+        new Error(
+          `config/settings.json was written by a newer MordomoOS (settings version ${version}); this version (${CURRENT_SETTINGS_VERSION}) will not overwrite it.`,
+        ),
+        { code: "settings_newer" },
+      );
+    }
+  }
+
   /** Drop the in-memory cache (e.g. after a restore replaced the file). */
   invalidate(): void {
     this.cache = null;
   }
 
   save(settings: Settings): Settings {
+    this.refuseNewerFile();
     const parsed = SettingsSchema.parse(settings);
     atomicWrite(this.paths.settingsFile, JSON.stringify(parsed, null, 2) + "\n");
     try {

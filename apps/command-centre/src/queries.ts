@@ -9,6 +9,8 @@ import { useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-
 import {
   api,
   type SettingsDoc,
+  type UiPreferencesDoc,
+  type UiPreferencesPatch,
   type ArtifactEntry,
   type Connector,
   type Meta,
@@ -23,6 +25,7 @@ import {
 export const qk = {
   meta: ["meta"] as const,
   settings: ["settings"] as const,
+  uiPreferences: ["uiPreferences"] as const,
   providers: ["providers"] as const,
   skills: ["skills"] as const,
   skill: (slug: string) => ["skills", slug] as const,
@@ -68,7 +71,7 @@ export const invalidationMap: Record<string, readonly (readonly unknown[])[]> = 
   "approval.requested": [["approvals"], ["run"], ["notifications"]],
   "approval.resolved": [["approvals"], ["run"], ["runs"], ["settings"], ["connectors"], ["notifications"]],
   "approval.expired": [["approvals"], ["run"], ["runs"]],
-  "settings.changed": [["settings"], ["meta"], ["providers"]],
+  "settings.changed": [["settings"], ["meta"], ["providers"], ["uiPreferences"]],
   "backup.created": [["backups"]],
   "notification.read": [["notifications"]],
   "notification.created": [["notifications"], ["metrics"]],
@@ -132,3 +135,16 @@ export const useOsObjectives = (o?: ApiQueryOptions<Objective[]>) =>
 export type SettingsView = Partial<SettingsDoc> & { [key: string]: unknown };
 export const useOsSettings = (o?: ApiQueryOptions<SettingsView>) =>
   useApiQuery<SettingsView>(qk.settings, "/api/settings", o);
+/** What only the Command Centre reads and writes; refreshed on `settings.changed`. */
+export const useOsUiPreferences = (o?: ApiQueryOptions<UiPreferencesDoc>) =>
+  useApiQuery<UiPreferencesDoc>(qk.uiPreferences, "/api/ui-preferences", o);
+
+/** Save part of the UI preferences and put the answer straight into the cache. */
+export function useSaveUiPreferences() {
+  const qc = useQueryClient();
+  return async (patch: UiPreferencesPatch): Promise<UiPreferencesDoc> => {
+    const doc = await api.putUiPreferences(patch);
+    qc.setQueryData(qk.uiPreferences, doc);
+    return doc;
+  };
+}

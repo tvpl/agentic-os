@@ -8,6 +8,9 @@ import {
   ProviderId,
   ProviderSettingsSchema,
   SettingsSchema,
+  UI_PREFERENCE_KEYS,
+  UiPreferencesSchema,
+  deepMergeSettings as deepMerge,
   createBackup,
   events,
   isInside,
@@ -75,7 +78,6 @@ export const PKG_VERSION = readPackageVersion();
 
 const ProviderPatch = ProviderSettingsSchema.partial();
 export const SettingsPatchSchema = SettingsSchema.partial().extend({
-  dashboardLayoutBase: SettingsSchema.shape.dashboardLayout.removeDefault().optional(),
   providers: z
     .object({
       claude: ProviderPatch.optional(),
@@ -440,9 +442,16 @@ export function registerSystemRoutes(
 
   app.get("/api/settings", async () => ctx.settings());
 
-  app.put("/api/settings", async (req) => {
-    const { dashboardLayoutBase, ...patch } = SettingsPatchSchema.parse(req.body);
-    const before = ctx.settings();
+  // ---- UI preferences (config/ui-preferences.json) ---------------------------
+  app.get("/api/ui-preferences", async () => ctx.uiPreferences.load());
+
+  const UiPreferencesPatchSchema = UiPreferencesSchema.partial().extend({
+    /** The layout this writer started from; a different stored layout means another window saved first. */
+    dashboardLayoutBase: UiPreferencesSchema.shape.dashboardLayout.removeDefault().optional(),
+  });
+  app.put("/api/ui-preferences", async (req) => {
+    const { dashboardLayoutBase, ...patch } = UiPreferencesPatchSchema.parse(req.body ?? {});
+    const before = ctx.uiPreferences.load();
     if (
       patch.dashboardLayout &&
       dashboardLayoutBase !== undefined &&
@@ -453,6 +462,26 @@ export function registerSystemRoutes(
         { statusCode: 409, code: "layout_conflict" },
       );
     }
+    // Objects merge and arrays replace, like settings; a layout replaces the stored one whole.
+    const { dashboardLayout, ...rest } = patch;
+    const merged = deepMerge(before, rest as Record<string, unknown>);
+    if (dashboardLayout) merged.dashboardLayout = dashboardLayout;
+    return ctx.uiPreferences.save(UiPreferencesSchema.parse(merged));
+  });
+
+  app.put("/api/settings", async (req) => {
+    // What only the Command Centre reads moved to /api/ui-preferences (settings version 2).
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const moved = UI_PREFERENCE_KEYS.filter((key) => key in body);
+    if (moved.length > 0) {
+      throw httpError(
+        400,
+        `${moved.join(", ")} moved to /api/ui-preferences; save them there.`,
+        "moved_to_ui_preferences",
+      );
+    }
+    const patch = SettingsPatchSchema.parse(req.body);
+    const before = ctx.settings();
 
     // Approval-gated transitions (docs/security.md).
     let pendingApproval = null;

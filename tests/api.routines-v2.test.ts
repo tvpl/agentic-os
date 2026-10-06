@@ -260,7 +260,7 @@ describe("connector data API", () => {
   });
 });
 
-describe("settings schema (cross-frontier requests)", () => {
+describe("UI preferences schema (cross-frontier requests)", () => {
   it("keeps per-widget config inside dashboardLayout across a round-trip", async () => {
     const layout = {
       today: {
@@ -274,24 +274,24 @@ describe("settings schema (cross-frontier requests)", () => {
     };
     const put = await app.inject({
       method: "PUT",
-      url: "/api/settings",
+      url: "/api/ui-preferences",
       headers: auth(),
       payload: { dashboardLayout: layout },
     });
     expect(put.statusCode).toBe(200);
-    const res = await app.inject({ method: "GET", url: "/api/settings", headers: auth() });
+    const res = await app.inject({ method: "GET", url: "/api/ui-preferences", headers: auth() });
     const saved = (res.json() as { dashboardLayout: Record<string, { config?: Record<string, unknown> }> })
       .dashboardLayout;
     expect(saved.today!.config).toEqual({ zones: ["UTC", "America/Sao_Paulo"], limit: 5 });
   });
 
   it("exposes themePreset with the HUD default and accepts the four presets", async () => {
-    const res = await app.inject({ method: "GET", url: "/api/settings", headers: auth() });
+    const res = await app.inject({ method: "GET", url: "/api/ui-preferences", headers: auth() });
     expect(res.json().themePreset).toBe("hud-orange");
     for (const preset of ["forest", "ocean", "mono", "hud-orange"]) {
       const put = await app.inject({
         method: "PUT",
-        url: "/api/settings",
+        url: "/api/ui-preferences",
         headers: auth(),
         payload: { themePreset: preset },
       });
@@ -300,7 +300,7 @@ describe("settings schema (cross-frontier requests)", () => {
     }
     const bad = await app.inject({
       method: "PUT",
-      url: "/api/settings",
+      url: "/api/ui-preferences",
       headers: auth(),
       payload: { themePreset: "neon" },
     });

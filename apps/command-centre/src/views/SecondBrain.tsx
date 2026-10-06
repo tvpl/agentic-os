@@ -23,7 +23,7 @@ import {
   useOsMeta,
   useOsRoutines,
   useOsRuns,
-  useOsSettings,
+  useOsUiPreferences,
   useOsSkills,
 } from "../queries";
 import { BrainCanvas } from "../brain/BrainCanvas";
@@ -129,7 +129,7 @@ export default function SecondBrain() {
   const skillsQuery = useOsSkills();
   const routinesQuery = useOsRoutines();
   const connectorsQuery = useOsConnectors();
-  const settingsQuery = useOsSettings();
+  const uiPreferencesQuery = useOsUiPreferences();
   const runsQuery = useOsRuns({ limit: 12 }, { refetchInterval: 120_000 });
   const meta = useOsMeta();
 
@@ -159,7 +159,7 @@ export default function SecondBrain() {
     connectors,
     ringLabels,
     timeline: timeline.value,
-    serverBlob: settingsQuery.data?.brain,
+    serverBlob: uiPreferencesQuery.data?.brain,
     dirty,
   });
   const { ui, uiRef, patch, world, version, groupOf, persistWorkspace } = brain;
@@ -611,10 +611,10 @@ export default function SecondBrain() {
     const next = settingsFromUi(uiRef.current, workspaceOf(world.current));
     saveLocalSettings(next);
     void api
-      .put("/api/settings", { brain: next })
+      .putUiPreferences({ brain: next })
       .then(() => {
         toast(t("brain.savedServer"), "ok");
-        void invalidate(qk.settings);
+        void invalidate(qk.uiPreferences);
       })
       .catch(() => toast(t("brain.savedLocal"), "info"));
   }, [world, uiRef, toast, t, invalidate]);

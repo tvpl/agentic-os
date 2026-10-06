@@ -1,6 +1,12 @@
 export { resolvePaths, ensureDirs, defaultUserDataDir, seedHome, type MordomoPaths } from "./paths.js";
 export {
   SettingsSchema,
+  CURRENT_SETTINGS_VERSION,
+  UI_PREFERENCE_KEYS,
+  UiPreferencesSchema,
+  defaultUiPreferences,
+  type UiPreferences,
+  type UiPreferenceKey,
   ProviderId,
   SecurityProfile,
   EffortLevel,
@@ -437,3 +443,10 @@ export {
   type SkillRunInput,
   type WriteGate,
 } from "./engine.js";
+export { UiPreferencesStore } from "./config/preferences.js";
+export {
+  SETTINGS_MIGRATIONS,
+  migrateSettings,
+  settingsVersion,
+  type SettingsMigration,
+} from "./config/migrations.js";

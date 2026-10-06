@@ -5,7 +5,7 @@
 `mordomo backup` copies into `config/backups/full-<timestamp>/`:
 
 - `skills/`, `memory/`, `routines/`, `connectors/` (your canonical content)
-- `config/settings.json`, `config/sync-manifest.json`
+- `config/settings.json`, `config/ui-preferences.json`, `config/sync-manifest.json`
 - `config/db/mordomo.db` (runs, events, memory index, history, approvals)
 
 Artifacts and logs are excluded by default (`--include-artifacts` adds

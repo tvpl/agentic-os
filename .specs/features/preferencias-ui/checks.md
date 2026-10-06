@@ -14,75 +14,75 @@ Comandos (da raiz): `npx vitest run tests/preferences.test.ts -t "<nome>"`; a in
 
 **C1** - Um `settings.json` v1 com `themePreset: "jarvis"`, um micro app, `brain` e `hud` vira `ui-preferences.json` com esses quatro valores e `settings.json` com `version` 2 e nenhum dos sete campos, depois de montar o motor (AC 1)
 Proof: `npx vitest run tests/preferences.test.ts -t "C1 a v1 settings file is migrated without losing a preference"`
-Status: open
+Status: closed
 
 **C2** - O arquivo original fica em `config/settings.json.v1.bak`, idêntico byte a byte (AC 2)
 Proof: `npx vitest run tests/preferences.test.ts -t "C2 the v1 file is kept byte for byte"`
-Status: open
+Status: closed
 
 **C3** - Com `ui-preferences.json` já existente (`themePreset: "ocean"`), a migração não o altera e ainda remove os sete campos de `settings.json` (AC 3)
 Proof: `npx vitest run tests/preferences.test.ts -t "C3 existing preferences win over the migration"`
-Status: open
+Status: closed
 
 **C4** - Montar o motor sobre um `settings.json` já em `version` 2 não reescreve o arquivo (mesmo `mtimeMs` e mesmo conteúdo) (AC 4)
 Proof: `npx vitest run tests/preferences.test.ts -t "C4 a migrated file is never rewritten by a load"`
-Status: open
+Status: closed
 
 **C5** - Com `settings.json` em `version` 3 no disco, `SettingsStore.save()` lança com `code` `"settings_newer"` e o arquivo fica igual byte a byte (AC 5)
 Proof: `npx vitest run tests/preferences.test.ts -t "C5 a newer settings file is never overwritten"`
-Status: open
+Status: closed
 
 **C6** - `SettingsSchema.shape` não tem nenhuma das chaves `themePreset`, `microApps`, `dashboardLayout`, `spaces`, `activeSpace`, `hud`, `brain`, e `SettingsSchema.parse({}).version` é 2 (AC 6)
 Proof: `npx vitest run tests/preferences.test.ts -t "C6 the engine schema holds no UI preference"`
-Status: open
+Status: closed
 
 **C7** - Um `settings.json` sem campo `version` é migrado como v1 (os campos de interface vão para `ui-preferences.json`) (Assumptions)
 Proof: `npx vitest run tests/preferences.test.ts -t "C7 a file without version migrates as v1"`
-Status: open
+Status: closed
 
 ### S2 - rotas das preferências · 4 files · 50 KB · ~13k
 
 **C8** - `GET /api/ui-preferences` numa home nova responde `200` com `themePreset` `"hud-orange"` e `version` 1 (AC 7)
 Proof: `npx vitest run tests/preferences.test.ts -t "C8 a new home answers the default preferences"`
-Status: open
+Status: closed
 
 **C9** - `PUT /api/ui-preferences` com `{ themePreset: "forest" }` responde `200`; um `GET` seguinte traz `forest` e os `microApps` gravados antes continuam (AC 8)
 Proof: `npx vitest run tests/preferences.test.ts -t "C9 a partial preferences patch keeps the rest"`
-Status: open
+Status: closed
 
 **C10** - `PUT /api/ui-preferences` com `{ themePreset: "nope" }` responde `400` com `error.code` `"validation"` (AC 9)
 Proof: `npx vitest run tests/preferences.test.ts -t "C10 an invalid preference is refused"`
-Status: open
+Status: closed
 
 **C11** - `PUT /api/ui-preferences` com `dashboardLayout` e um `dashboardLayoutBase` diferente do gravado responde `409` e o layout gravado continua (AC 10)
 Proof: `npx vitest run tests/preferences.test.ts -t "C11 a stale layout write conflicts"`
-Status: open
+Status: closed
 
 **C12** - `PUT /api/settings` com cada um dos sete campos responde `400` com `error.code` `"moved_to_ui_preferences"`, e `settings.json` não muda (AC 11)
 Proof: `npx vitest run tests/preferences.test.ts -t "C12 the settings route refuses moved fields"`
-Status: open
+Status: closed
 
 **C13** - `GET /api/settings` não traz nenhum dos sete campos (AC 12)
 Proof: `npx vitest run tests/preferences.test.ts -t "C13 settings no longer carry UI preferences"`
-Status: open
+Status: closed
 
 **C14** - Um backup criado com `themePreset: "forest"` e restaurado devolve `ui-preferences.json` com `forest` (AC 13)
 Proof: `npx vitest run tests/preferences.test.ts -t "C14 preferences survive a backup and restore"`
-Status: open
+Status: closed
 
 ### S3 - a interface lê das preferências · 9 files · 120 KB · ~30k
 
 **C15** - O tipo `SettingsDoc` da interface não tem os sete campos, e `npm run typecheck` sai `0` (AC 14)
 Proof: `npm run typecheck`
-Status: open
+Status: closed
 
 **C16** - Em `apps/command-centre/src` (fora de testes) não há leitura `settings.data?.(themePreset|microApps|activeSpace|hud|brain)` nem escrita desses campos por `put(`/`api.put("/api/settings"`; `api.ts` tem `uiPreferences` e `putUiPreferences` apontando para `/api/ui-preferences` (AC 15)
 Proof: `npx vitest run tests/preferences.test.ts -t "C16 the UI reads and writes preferences through their route"`
-Status: open
+Status: closed
 
 **C17** - A chave de query das preferências é invalidada pelo mesmo evento que invalida as configurações (`settings.changed` no mapa de invalidação da interface) (AC 16)
 Proof: `npx vitest run tests/preferences.test.ts -t "C17 a saved preference refreshes the UI query"`
-Status: open
+Status: closed
 
 ## Coverage
 

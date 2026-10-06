@@ -166,6 +166,13 @@ export const api = {
   patch: <T>(url: string, body?: unknown, opts?: RequestOptions) => request<T>("PATCH", url, body, opts),
   del: <T>(url: string, opts?: RequestOptions) => request<T>("DELETE", url, undefined, opts),
 
+  /** What only the Command Centre reads and writes (theme preset, micro apps, layouts, HUD, Second Brain view). */
+  uiPreferences: (opts?: RequestOptions) =>
+    request<UiPreferencesDoc>("GET", "/api/ui-preferences", undefined, opts),
+  /** Deep-merged on the server; a `dashboardLayout` replaces the stored one (send `dashboardLayoutBase` to detect a conflict). */
+  putUiPreferences: (patch: UiPreferencesPatch) =>
+    request<UiPreferencesDoc>("PUT", "/api/ui-preferences", patch),
+
   /** SSE stream of run events; EventSource cannot set headers → token in query. */
   streamRun(runId: string, onEvent: (data: Record<string, unknown>) => void): () => void {
     const source = new EventSource(`/api/runs/${encodeURIComponent(runId)}/stream?token=${TOKEN}`);
@@ -513,11 +520,18 @@ export interface MetricsHistory {
 }
 
 // ---- settings ----
-/** Stage layout stored in the settings document (`dashboardLayout`). */
-export type WindowLayoutDoc = Contracts.Settings["dashboardLayout"];
+/** Stage layout stored in the UI preferences (`dashboardLayout`). */
+export type WindowLayoutDoc = Contracts.UiPreferences["dashboardLayout"];
 
 /** The settings document as `GET /api/settings` returns it. */
 export type SettingsDoc = Contracts.Settings;
+
+/** `GET /api/ui-preferences`: what only the Command Centre reads and writes. */
+export type UiPreferencesDoc = Contracts.UiPreferences;
+/** `PUT /api/ui-preferences` body. */
+export type UiPreferencesPatch = Partial<Omit<UiPreferencesDoc, "version">> & {
+  dashboardLayoutBase?: UiPreferencesDoc["dashboardLayout"];
+};
 
 /** `GET /api/devices` */
 export interface DeviceRecord {

@@ -70,6 +70,13 @@ typed event map. Every event the bus emits is `{ id, type, ts, v, payload }`, wi
 `MicroApp` and `DEFAULT_HUD` stay in the contract). `typetests/` holds compile-time
 proofs (`npm run typecheck`).
 
+What only the Command Centre reads and writes (theme preset, micro apps, layouts, HUD,
+Second Brain view) is `UiPreferences`, stored in `config/ui-preferences.json` and served
+by `GET`/`PUT /api/ui-preferences`; the engine stores it and never interprets it.
+`settings.json` carries `version` (now 2): an older file is migrated on its first read
+(`core/src/config/migrations.ts`, the original kept as `settings.json.v<n>.bak`), and a
+file written by a newer version is never overwritten (`code: "settings_newer"`).
+
 ## Core modules (`core/src`)
 
 | Module | Responsibility |

@@ -12,7 +12,7 @@ import { HashRouter, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, needsPairing, setDeviceToken, type Meta } from "./api";
 import { I18nContext, useT, type Lang, type TKey } from "./i18n";
-import { qk, useOsSettings } from "./queries";
+import { qk, useOsUiPreferences } from "./queries";
 import {
   applyAccentTokens,
   applyHudIntensity,
@@ -81,9 +81,9 @@ function AppInner() {
   const meta = metaQuery.data ?? null;
   const offline = !meta && metaQuery.isError;
   const [lang, setLang] = useState<Lang>("en");
-  // Theme preset: `settings.themePreset` once the backend has it, else the browser mirror.
-  const settings = useOsSettings({ enabled: !!meta?.setupCompleted, staleTime: 30_000 });
-  const serverPreset = settings.data?.themePreset;
+  // Theme preset: the saved UI preference once the backend answers, else the browser mirror.
+  const uiPreferences = useOsUiPreferences({ enabled: !!meta?.setupCompleted, staleTime: 30_000 });
+  const serverPreset = uiPreferences.data?.themePreset;
   const presetId = isPresetId(serverPreset) ? serverPreset : readStoredPreset();
 
   // Follow the language saved on the server; Settings can still switch live via setLang.

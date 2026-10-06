@@ -5,6 +5,10 @@
  */
 export {
   BrainSettingsSchema,
+  CURRENT_SETTINGS_VERSION,
+  UI_PREFERENCE_KEYS,
+  UiPreferencesSchema,
+  defaultUiPreferences,
   ChannelSettingsSchema,
   DEFAULT_EXCLUDES,
   DEFAULT_HUD,
@@ -25,4 +29,6 @@ export {
   type ProviderSettings,
   type SentinelSettings,
   type Settings,
+  type UiPreferenceKey,
+  type UiPreferences,
 } from "@mordomo/contracts";

@@ -36,7 +36,7 @@ import { useWorkspace } from "../../components/Workspace";
 import { useLang, useT, type TKey } from "../../i18n";
 import { useOsEvent } from "../../hooks/useEventStream";
 import { useOsNavigate } from "../../hooks/useViewTransition";
-import { qk, useApiQuery, useInvalidate, useOsSettings, useOsSkills } from "../../queries";
+import { qk, useApiQuery, useInvalidate, useOsSkills, useOsUiPreferences } from "../../queries";
 import { useDesktopActions } from "../../desktop/actions";
 import {
   CONSOLE_DRAFT_EVENT,
@@ -267,7 +267,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
 
   /* ---------- data ---------- */
   const graphQuery = useApiQuery<GraphData>(qk.memoryGraph(GRAPH_PARAMS), GRAPH_PATH);
-  const settingsQuery = useOsSettings();
+  const uiPreferencesQuery = useOsUiPreferences();
   const skillsQuery = useOsSkills();
   const graph = graphQuery.data ?? null;
   const skillSlugs = useMemo(
@@ -303,7 +303,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
     connectors: NO_CONNECTORS,
     ringLabels,
     timeline: cutoff,
-    serverBlob: settingsQuery.data?.brain,
+    serverBlob: uiPreferencesQuery.data?.brain,
     dirty,
   });
   const { ui, uiRef, patch, world, version } = brain;
@@ -1114,10 +1114,10 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
     const next = settingsFromUi(uiRef.current, workspaceOf(world.current));
     saveLocalSettings(next);
     void api
-      .put("/api/settings", { brain: next })
+      .putUiPreferences({ brain: next })
       .then(() => {
         toast(t("brain.savedServer"), "ok");
-        void invalidate(qk.settings);
+        void invalidate(qk.uiPreferences);
       })
       .catch(() => toast(t("brain.savedLocal"), "info"));
   }, [world, uiRef, toast, t, invalidate]);

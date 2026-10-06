@@ -16,16 +16,21 @@ import {
 } from "../../theme";
 import { type Put } from "../SettingsFields";
 import type { SettingsShape } from "./shared";
+import { useOsUiPreferences, useSaveUiPreferences } from "../../queries";
 
-export function ThemeTab({ s, put }: { s: SettingsShape; put: Put }) {
+export function ThemeTab({ put }: { s: SettingsShape; put: Put }) {
   const { renderProfile, setRenderProfile } = useWorkspace();
   const t = useT();
   const toast = useToast();
-  const current = s.themePreset;
+  const preferences = useOsUiPreferences();
+  const savePreferences = useSaveUiPreferences();
+  const current = preferences.data?.themePreset;
   const pick = (id: PresetId) => {
     const preset = applyPreset(id);
     toast(t("apps.settings.presetApplied", { name: preset.label }), "ok");
-    void put({ themePreset: id, accentColor: preset.accent }, true);
+    // The preset is a UI preference; the accent colour stays an engine setting (it brands /api/meta).
+    void savePreferences({ themePreset: id }).catch((err: Error) => toast(err.message, "danger"));
+    void put({ accentColor: preset.accent }, true);
   };
   const [hud, setHud] = useState(() => readStoredHudIntensity() ?? currentHudIntensity());
   const onHud = (v: number) => {

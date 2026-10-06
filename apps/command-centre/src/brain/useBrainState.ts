@@ -177,7 +177,7 @@ export function useBrainState(src: BrainStateSources): BrainState {
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
       const payload: BrainSettingsPayload = next;
-      void api.put("/api/settings", { brain: payload }).catch(() => undefined);
+      void api.putUiPreferences({ brain: payload }).catch(() => undefined);
     }, 700);
   }, []);
   useEffect(() => () => window.clearTimeout(saveTimer.current), []);

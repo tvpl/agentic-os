@@ -15,7 +15,7 @@ Comandos (da raiz):
 
 ### S1 - pacote de contratos · 12 files · 120 KB · ~30k
 
-**C1** - `@mordomo/contracts` exporta em tempo de execução `SettingsSchema` (um schema zod que aceita `{}` e devolve `version` = 1), `writeDecision` e `PROFILES` (AC 1)
+**C1** - `@mordomo/contracts` exporta em tempo de execução `SettingsSchema` (um schema zod que aceita `{}` e devolve `version` = `CURRENT_SETTINGS_VERSION`; 1 até a feature `preferencias-ui`, 2 depois), `writeDecision` e `PROFILES` (AC 1)
 Proof: `npx vitest run tests/contracts.test.ts -t "C1 the contracts package exports the runtime pieces"`
 Status: closed
 

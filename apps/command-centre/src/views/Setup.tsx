@@ -110,12 +110,11 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         indexedFolders: folder.trim()
           ? [...folders, { path: folder.trim(), area: null, enabled: true }]
           : folders,
-        themePreset: chosenPreset.id,
         accentColor: chosenPreset.accent,
-        // The stage opens clear (F7); the arcs open the way this step left them.
-        hud,
         setupCompleted: true,
       });
+      // The preset and the arcs are UI preferences (config/ui-preferences.json).
+      await api.putUiPreferences({ themePreset: chosenPreset.id, hud });
       if (folder.trim()) {
         setPhase("indexing");
         await api.post("/api/memory/index");

@@ -63,6 +63,10 @@ function snapshotFiles(paths: MordomoPaths, opts: BackupOptions): { dest: string
       fs.mkdirSync(path.join(dest, "config"), { recursive: true });
       fs.copyFileSync(paths.settingsFile, path.join(dest, "config", "settings.json"));
     }
+    if (fs.existsSync(paths.uiPreferencesFile)) {
+      fs.mkdirSync(path.join(dest, "config"), { recursive: true });
+      fs.copyFileSync(paths.uiPreferencesFile, path.join(dest, "config", "ui-preferences.json"));
+    }
     if (fs.existsSync(paths.syncManifest)) {
       fs.mkdirSync(path.join(dest, "config"), { recursive: true });
       fs.copyFileSync(paths.syncManifest, path.join(dest, "config", "sync-manifest.json"));
@@ -172,6 +176,7 @@ export function restoreBackup(paths: MordomoPaths, name: string): { safetyBackup
   for (const set of BACKUP_SETS) add(path.join(src, set), paths[set]);
   if (includeArtifacts) add(path.join(src, "artifacts"), paths.artifacts);
   add(path.join(src, "config", "settings.json"), paths.settingsFile);
+  add(path.join(src, "config", "ui-preferences.json"), paths.uiPreferencesFile);
   add(path.join(src, "config", "sync-manifest.json"), paths.syncManifest);
   add(path.join(src, "config", "db", "mordomo.db"), paths.dbFile);
   for (const suffix of ["-wal", "-shm"]) add(null, paths.dbFile + suffix);
