@@ -42,6 +42,27 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: apps/command-centre/src/nucleo/pending/model.ts:144 (checks)
 - last seen: 2026-09-29T12:28:36Z
 
+### L-005 - Prove a state-gated credential in every state it must accept, not only the first one a fixture can reach
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `auth` · harmful: 0
+- features: seguranca-p0
+- evidence: apps/api/src/context.ts:337 (F3, verification round 1) (auth)
+- last seen: 2026-10-06T13:30:13Z
+
+### L-006 - An allow-list check needs one case per allowed member and one asserting the set has nothing else
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `validation` · harmful: 0
+- features: seguranca-p0
+- evidence: apps/api/src/routes/memory.ts:52-57 (round 1 coverage) (validation)
+- last seen: 2026-10-06T13:30:13Z
+
+### L-007 - A rule applied by a shared handler must be proven on every route that reaches the handler
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `routes` · harmful: 0
+- features: seguranca-p0
+- evidence: apps/api/src/server.ts:313 (round 1 coverage) (routes)
+- last seen: 2026-10-06T13:30:13Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

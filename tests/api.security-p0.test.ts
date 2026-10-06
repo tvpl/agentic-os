@@ -7,7 +7,7 @@ import type * as ChildProcess from "node:child_process";
 import type { FastifyInstance } from "fastify";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer, isLoopbackAddress } from "../apps/api/src/server.js";
-import { openerFor } from "../apps/api/src/routes/memory.js";
+import { OPENABLE_EXTENSIONS, openerFor } from "../apps/api/src/routes/memory.js";
 import { makeTempHome } from "./helpers.js";
 
 /**
@@ -447,6 +447,8 @@ describe("round 2: members the first verification found unproven", () => {
         " ",
       );
     expect(allowed).toHaveLength(26);
+    // …and nothing else: a type added to the code without a plan row fails here.
+    expect([...OPENABLE_EXTENSIONS].sort()).toEqual([...allowed].sort());
     const dir = path.join(ctx.paths.home, "notes", "types");
     fs.mkdirSync(dir, { recursive: true });
     for (const ext of allowed) {

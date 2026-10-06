@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 5,
+  "next_id": 8,
   "lessons": [
     {
       "id": "L-001",
@@ -60,6 +60,48 @@
       "evidence": ["apps/command-centre/src/nucleo/pending/model.ts:144 (checks)"],
       "created": "2026-09-29T12:28:36Z",
       "last_seen": "2026-09-29T12:28:36Z"
+    },
+    {
+      "id": "L-005",
+      "key": "surviving_mutant::prove a state gated credential in every state it must accept not only the first one a fixture can reach",
+      "text": "Prove a state-gated credential in every state it must accept, not only the first one a fixture can reach",
+      "signal": "surviving_mutant",
+      "scope": "auth",
+      "status": "candidate",
+      "features": ["seguranca-p0"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["apps/api/src/context.ts:337 (F3, verification round 1) (auth)"],
+      "created": "2026-10-06T13:30:13Z",
+      "last_seen": "2026-10-06T13:30:13Z"
+    },
+    {
+      "id": "L-006",
+      "key": "ac_gap::an allow list check needs one case per allowed member and one asserting the set has nothing else",
+      "text": "An allow-list check needs one case per allowed member and one asserting the set has nothing else",
+      "signal": "ac_gap",
+      "scope": "validation",
+      "status": "candidate",
+      "features": ["seguranca-p0"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["apps/api/src/routes/memory.ts:52-57 (round 1 coverage) (validation)"],
+      "created": "2026-10-06T13:30:13Z",
+      "last_seen": "2026-10-06T13:30:13Z"
+    },
+    {
+      "id": "L-007",
+      "key": "ac_gap::a rule applied by a shared handler must be proven on every route that reaches the handler",
+      "text": "A rule applied by a shared handler must be proven on every route that reaches the handler",
+      "signal": "ac_gap",
+      "scope": "routes",
+      "status": "candidate",
+      "features": ["seguranca-p0"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["apps/api/src/server.ts:313 (round 1 coverage) (routes)"],
+      "created": "2026-10-06T13:30:13Z",
+      "last_seen": "2026-10-06T13:30:13Z"
     }
   ]
 }

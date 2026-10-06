@@ -10,10 +10,10 @@
 
 ## Handoff
 
-**Feature**: seguranca-p0
-**Where**: plan.md escrito, aguardando revisão do dono
-**In progress**: nenhum código
-**Next step**: aprovação do plano → `checks.md`
-**Blockers**: revisão humana do plano
-**Uncommitted**: `.specs/`
+**Feature**: ci-gate
+**Where**: seguranca-p0 verificada (rodada 2, PASS, `.specs/features/seguranca-p0/verification.md`); ci-gate com checks escritos, nenhum código
+**In progress**: nenhum
+**Next step**: construir ci-gate (C1-C3), depois motor-composicao (plano e checks prontos)
+**Blockers**: nenhum
+**Uncommitted**: nenhum
 **Branch**: chore/tlc-spec-lean-skill
