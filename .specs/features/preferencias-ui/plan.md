@@ -41,7 +41,9 @@ layout) e a checagem de conflito de layout que já existe em `PUT /api/settings`
    do backup traz.
 6. Interface → `apps/command-centre/src/api.ts` (exists) ganha `uiPreferences`/`putUiPreferences`
    e `putSettings`, a única escrita de `/api/settings` na interface, cujo tipo de patch recusa os
-   sete campos;
+   sete campos; `request()`, por onde passa toda requisição da interface, recusa em execução uma
+   escrita em `/api/settings` com um deles (AC 24), e o lint proíbe `fetch` cru fora de `api.ts`;
+   a query de configurações é tipada como `SettingsDoc` exato (AC 25);
    as telas que liam esses campos de `settings` passam a ler das preferências (`App.tsx`,
    `views/settings/theme.tsx`, `views/settings/desktop.tsx`, `views/Setup.tsx`,
    `desktop/console/Console.tsx`, `views/SecondBrain.tsx`, `nucleo/scenes/BrainScene.tsx`,
@@ -143,6 +145,19 @@ do AC 16 que fica no servidor.
 
 **Independent test:** restaurar um backup feito antes desta feature e recarregar: o tema do backup volta.
 
+### Rodada 3 - lacunas da segunda verificação (P1)
+
+Acrescentada depois do FAIL da rodada 2 (`verification.md`): o caso de backup que o plano não
+decidia e a recusa da escrita na própria interface, que o AC 21 pedia só pelo tipo.
+
+**Acceptance Criteria**
+
+23. IF a restored backup has neither `config/settings.json` nor `config/ui-preferences.json` THEN the restore SHALL leave the live `config/ui-preferences.json` and `config/settings.json` byte for byte unchanged (`createBackup` always copies `settings.json` when it exists, so this is not the pre-feature shape of AC 17)
+24. IF the UI sends a request other than `GET` to `/api/settings` (any spelling of the path: query string, trailing or doubled slash, absolute URL) whose body carries one of the seven fields THEN the UI SHALL refuse it before sending, with `code` `"moved_to_ui_preferences"` and a message naming the field; requests without those fields, and requests to other routes, SHALL go out unchanged
+25. The settings query result in the UI (`useOsSettings`, the Settings page query) SHALL be typed as exactly `SettingsDoc`, with no index signature, so reading one of the seven fields from it does not compile; the settings tabs' write (`Put`) SHALL take the same patch type as `api.putSettings`
+
+**Independent test:** no console do navegador, `api.put(url, { themePreset: "jarvis" })` com `url = "/api/settings"` rejeita sem chegar à rede.
+
 ## Out of scope
 
 | Excluded                                                          | Why                                                                                                                                            |
@@ -154,28 +169,30 @@ do AC 16 que fica no servidor.
 
 ## Assumptions
 
-| Assumption                                | Chosen default                                            | Rationale                                                                                                                      | Confirmed? |
-| ----------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| Quem dispara a migração                   | o primeiro `load()` de qualquer processo (serviço ou CLI) | a migração é idempotente e atômica; esperar o `start()` deixaria a CLI lendo um arquivo v1 com chaves que o schema não conhece | n          |
-| Arquivo sem `version`                     | tratado como `version` 1                                  | todos os arquivos gravados até hoje têm `version: 1` por padrão do schema                                                      | n          |
-| `PUT /api/settings` com os campos antigos | `400` em vez de redirecionar                              | interface e API saem juntas; redirecionar esconderia um cliente desatualizado                                                  | n          |
+| Assumption                                | Chosen default                                                                                                          | Rationale                                                                                                                                                                                                                           | Confirmed? |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Quem dispara a migração                   | o primeiro `load()` de qualquer processo (serviço ou CLI)                                                               | a migração é idempotente e atômica; esperar o `start()` deixaria a CLI lendo um arquivo v1 com chaves que o schema não conhece                                                                                                      | n          |
+| Arquivo sem `version`                     | tratado como `version` 1                                                                                                | todos os arquivos gravados até hoje têm `version: 1` por padrão do schema                                                                                                                                                           | n          |
+| `PUT /api/settings` com os campos antigos | `400` em vez de redirecionar                                                                                            | interface e API saem juntas; redirecionar esconderia um cliente desatualizado                                                                                                                                                       | n          |
+| As duas gravações do `Setup`              | aceitas como duas chamadas: `PUT /api/ui-preferences` primeiro, `PUT /api/settings` (com `setupCompleted: true`) depois | não há rota que grave os dois arquivos numa transação; nessa ordem o setup só fica concluído quando as duas gravaram; se a segunda falhar, as preferências já salvas ficam, a tela mostra o erro e concluir de novo regrava as duas | n          |
 
 **Open questions:** none - all resolved or logged above.
 
 ## Observable
 
-| Surface                       | Decision                | Landing                                                                                        |
-| ----------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------- |
-| API `GET /api/ui-preferences` | response shape          | AC 7                                                                                           |
-| API `PUT /api/ui-preferences` | error shape and codes   | AC 9, AC 10                                                                                    |
-| API `/api/ui-preferences*`    | who may call it         | existing - regra de auth da feature 1 (rota não pública)                                       |
-| API `/api/ui-preferences*`    | versioning, rate limits | n/a - `version` dentro do documento (door 1); rate limit é da feature 7                        |
-| API `PUT /api/settings`       | error for moved fields  | AC 11                                                                                          |
-| screen `Ajustes › Tema`       | error state             | existing - o toast de erro de gravação que a tela já usa                                       |
-| screen `Ajustes › Tema`       | empty, loading          | existing - a tela já espera a query de configurações; passa a esperar também a de preferências |
-| screen `Ajustes › Desktop`    | loading, error          | AC 22                                                                                          |
-| stored data backup antigo     | restauração             | AC 17                                                                                          |
-| stored data `settings.json`   | migration and rollback  | AC 1-5 (backup `.v1.bak`, recusa de arquivo mais novo)                                         |
+| Surface                              | Decision                | Landing                                                                                        |
+| ------------------------------------ | ----------------------- | ---------------------------------------------------------------------------------------------- |
+| API `GET /api/ui-preferences`        | response shape          | AC 7                                                                                           |
+| API `PUT /api/ui-preferences`        | error shape and codes   | AC 9, AC 10                                                                                    |
+| API `/api/ui-preferences*`           | who may call it         | existing - regra de auth da feature 1 (rota não pública)                                       |
+| API `/api/ui-preferences*`           | versioning, rate limits | n/a - `version` dentro do documento (door 1); rate limit é da feature 7                        |
+| API `PUT /api/settings`              | error for moved fields  | AC 11                                                                                          |
+| screen `Ajustes › Tema`              | error state             | existing - o toast de erro de gravação que a tela já usa                                       |
+| screen `Ajustes › Tema`              | empty, loading          | existing - a tela já espera a query de configurações; passa a esperar também a de preferências |
+| screen `Ajustes › Desktop`           | loading, error          | AC 22                                                                                          |
+| stored data backup antigo            | restauração             | AC 17                                                                                          |
+| stored data backup sem configurações | restauração             | AC 23                                                                                          |
+| stored data `settings.json`          | migration and rollback  | AC 1-5 (backup `.v1.bak`, recusa de arquivo mais novo)                                         |
 
 ## Sources
 

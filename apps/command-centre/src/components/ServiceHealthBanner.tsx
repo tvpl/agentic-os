@@ -40,6 +40,8 @@ export default function ServiceHealthBanner({ name }: { name: string }) {
     let gone = false;
     const probe = async () => {
       try {
+        // A raw GET on purpose: no token, no timeout, no error envelope while the service restarts.
+        // eslint-disable-next-line no-restricted-globals
         const res = await fetch("/api/meta", { cache: "no-store" });
         if (!res.ok) throw new Error(String(res.status));
         const meta = (await res.json()) as { build?: { startedAt?: number } };

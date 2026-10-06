@@ -67,6 +67,29 @@ export default tseslint.config(
     },
   },
   {
+    // Command Centre HTTP goes through `request()` in api.ts, which refuses a
+    // settings write carrying a UI preference key (.specs/features/preferencias-ui, C32).
+    files: ["apps/command-centre/src/**/*.{ts,tsx}"],
+    ignores: ["apps/command-centre/src/api.ts", "apps/command-centre/src/**/*.test.{ts,tsx}"],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        {
+          name: "fetch",
+          message: "Call the API through `api` (api.ts), whose request() guards the settings route.",
+        },
+        { name: "XMLHttpRequest", message: "Call the API through `api` (api.ts)." },
+      ],
+      "no-restricted-properties": [
+        "error",
+        { object: "window", property: "fetch", message: "Call the API through `api` (api.ts)." },
+        { object: "globalThis", property: "fetch", message: "Call the API through `api` (api.ts)." },
+        { object: "self", property: "fetch", message: "Call the API through `api` (api.ts)." },
+        { object: "navigator", property: "sendBeacon", message: "Call the API through `api` (api.ts)." },
+      ],
+    },
+  },
+  {
     // Plain scripts served as-is by the Command Centre (boot recovery, service worker).
     files: ["apps/command-centre/public/**/*.js"],
     languageOptions: { globals: { ...globals.browser, ...globals.serviceworker, ...globals.es2021 } },

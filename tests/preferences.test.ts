@@ -3,6 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
+import { ESLint } from "eslint";
 import {
   ProviderRegistry,
   SettingsSchema,
@@ -326,34 +328,44 @@ describe("S3 the UI reads preferences through their route", () => {
     });
 
   it("C16 the UI reads and writes preferences through their route", () => {
-    const moved = "(themePreset|microApps|activeSpace|hud|brain|dashboardLayout|spaces)";
-    const q = "[\"'`]";
-    const end = "[\"'`?/]"; // the path ends at its quote, a query string or a sub-route
-    // A non-GET call naming /api/settings, in any formatting and with any body:
-    // api.put/post/patch/del("/api/settings", …), request("PUT", "/api/settings", …), fetch("/api/settings", …).
-    const writes = [
-      new RegExp(`\\bapi\\s*\\.\\s*(put|post|patch|del)\\b[^(]*\\(\\s*${q}/api/settings${end}`),
-      new RegExp(`\\brequest\\b[^(]*\\(\\s*${q}(PUT|POST|PATCH|DELETE)${q}\\s*,\\s*${q}/api/settings${end}`),
-      new RegExp(`\\bfetch\\s*\\(\\s*${q}/api/settings${end}`),
-    ];
+    // Reads are a compile error now (C29), any other spelling is refused at run time (C31) and raw
+    // fetch is a lint error (C32). What this check still owns is the call shape, read from the
+    // TypeScript AST so comments and look-alike names do not count: outside api.ts no
+    // api.put/post/patch/del names the settings route, with a literal or a const bound to one.
+    const settingsRoute = (text: string) => /^\/api\/settings(?:[?#/]|$)/.test(text);
     const offenders: string[] = [];
     for (const file of files(uiSrc)) {
       const rel = path.relative(uiSrc, file);
-      const text = fs.readFileSync(file, "utf8");
-      // Reads: `settings.data?.<field>`, or any query bound to the settings key read the same way.
-      const settingsQueries = [
-        "settings",
-        ...[...text.matchAll(/(\w+)\s*=\s*(useOsSettings\s*\(|useApiQuery\b[^(]*\(\s*qk\.settings\b)/g)].map(
-          (m) => m[1]!,
-        ),
-      ];
-      for (const name of settingsQueries)
-        if (new RegExp(`\\b${name}\\.data\\??\\.${moved}\\b`).test(text))
-          offenders.push(`${rel}: ${name} reads a moved field from settings`);
-      if (new RegExp(`useOsSettings\\s*\\([^)]*\\)\\.data\\??\\.${moved}\\b`).test(text))
-        offenders.push(`${rel}: useOsSettings() reads a moved field`);
-      if (rel !== "api.ts" && writes.some((re) => re.test(text)))
-        offenders.push(`${rel}: writes /api/settings outside api.putSettings`);
+      if (rel === "api.ts") continue;
+      const source = ts.createSourceFile(file, fs.readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
+      const consts = new Map<string, string>();
+      const literal = (node: ts.Node | undefined): string | undefined => {
+        if (!node) return undefined;
+        if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
+        if (ts.isTemplateExpression(node)) return node.head.text;
+        if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node)) return literal(node.expression);
+        if (ts.isIdentifier(node)) return consts.get(node.text);
+        return undefined;
+      };
+      const visit = (node: ts.Node): void => {
+        if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+          const value = literal(node.initializer);
+          if (value !== undefined) consts.set(node.name.text, value);
+        }
+        if (
+          ts.isCallExpression(node) &&
+          ts.isPropertyAccessExpression(node.expression) &&
+          ts.isIdentifier(node.expression.expression) &&
+          node.expression.expression.text === "api" &&
+          ["put", "post", "patch", "del"].includes(node.expression.name.text)
+        ) {
+          const url = literal(node.arguments[0]);
+          if (url !== undefined && settingsRoute(url))
+            offenders.push(`${rel}:${source.getLineAndCharacterOfPosition(node.getStart()).line + 1}`);
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(source);
     }
     expect(offenders).toEqual([]);
     const api = fs.readFileSync(path.join(uiSrc, "api.ts"), "utf8");
@@ -364,7 +376,11 @@ describe("S3 the UI reads preferences through their route", () => {
       /\bputUiPreferences:\s*\([^)]*\)\s*=>\s*request<UiPreferencesDoc>\("PUT", "\/api\/ui-preferences"/,
     );
     // Inside api.ts the one settings write is putSettings, typed by the patch that refuses the moved keys.
-    expect(api.match(new RegExp(writes[1]!.source, "g")) ?? []).toHaveLength(1);
+    expect(
+      api.match(
+        /\brequest\b[^(]*\(\s*["'`](PUT|POST|PATCH|DELETE)["'`]\s*,\s*["'`]\/api\/settings["'`?/]/g,
+      ) ?? [],
+    ).toHaveLength(1);
     expect(api).toMatch(
       /\bputSettings:\s*<T = unknown>\(patch: SettingsPatch\)\s*=>\s*request<T>\("PUT", "\/api\/settings", patch\)/,
     );
@@ -484,6 +500,78 @@ describe("Rodada 2 - gaps of the first verification", () => {
       engineOver(home);
       expect(fs.statSync(settingsFile(home)).mtimeMs, String(version)).toBe(before);
       expect(fs.readFileSync(settingsFile(home), "utf8"), String(version)).toBe(text);
+    }
+  });
+});
+
+describe("Rodada 3 - gaps of the second verification", () => {
+  it("C32 the UI reaches the API only through the request guard", async () => {
+    const eslint = new ESLint({ cwd: repoRoot });
+    const rules = ["no-restricted-globals", "no-restricted-properties"];
+    // Every raw way out, written in a UI file, is a lint error.
+    const raw = [
+      'fetch("/api/settings", { method: "PUT" });',
+      'window.fetch("/api/settings", { method: "PUT" });',
+      'globalThis.fetch("/api/settings", { method: "PUT" });',
+      'self.fetch("/api/settings", { method: "PUT" });',
+      "new XMLHttpRequest();",
+      'navigator.sendBeacon("/api/settings", "{}");',
+    ];
+    for (const line of raw) {
+      const [result] = await eslint.lintText(`export const go = () => ${line}\n`, {
+        filePath: path.join(repoRoot, "apps/command-centre/src/views/probe.ts"),
+      });
+      expect(
+        result!.messages.filter((m) => rules.includes(m.ruleId ?? "")).map((m) => m.severity),
+        line,
+      ).toEqual([2]);
+    }
+    // api.ts itself may call fetch: it is where request() lives.
+    const [inApi] = await eslint.lintText('export const go = () => fetch("/x");\n', {
+      filePath: path.join(repoRoot, "apps/command-centre/src/api.ts"),
+    });
+    expect(inApi!.messages.filter((m) => rules.includes(m.ruleId ?? ""))).toEqual([]);
+    // And the UI as it stands has none.
+    const results = await eslint.lintFiles(["apps/command-centre/src/**/*.{ts,tsx}"]);
+    const offenders = results.flatMap((r) =>
+      r.messages
+        .filter((m) => rules.includes(m.ruleId ?? ""))
+        .map((m) => `${path.relative(repoRoot, r.filePath)}:${m.line}`),
+    );
+    expect(offenders).toEqual([]);
+  }, 120_000);
+
+  it("C35 a backup without either settings file leaves the live preferences alone", async () => {
+    const s = await server();
+    try {
+      await s.app.inject({
+        method: "PUT",
+        url: "/api/ui-preferences",
+        headers: s.headers,
+        payload: { themePreset: "forest" },
+      });
+      const saved = await s.app.inject({
+        method: "PUT",
+        url: "/api/settings",
+        headers: s.headers,
+        payload: { systemName: "Casa" },
+      });
+      expect(saved.statusCode).toBe(200);
+      const backup = await createBackup(s.ctx.paths, s.ctx.db);
+      // A backup carrying neither settings.json nor ui-preferences.json (createBackup always
+      // copies settings.json when it exists, so this is no pre-feature shape): nothing to restore.
+      fs.rmSync(path.join(backup.path, "config", "settings.json"));
+      fs.rmSync(path.join(backup.path, "config", "ui-preferences.json"));
+      const live = JSON.stringify({ version: 1, themePreset: "mono", activeSpace: "focus" }) + "\n";
+      fs.writeFileSync(prefsFile(s.home), live);
+      const liveSettings = fs.readFileSync(settingsFile(s.home), "utf8");
+      await s.close();
+      restoreBackup(resolvePaths(s.home), backup.name);
+      expect(fs.readFileSync(prefsFile(s.home), "utf8")).toBe(live);
+      expect(fs.readFileSync(settingsFile(s.home), "utf8")).toBe(liveSettings);
+    } catch (err) {
+      await s.close().catch(() => undefined);
+      throw err;
     }
   });
 });

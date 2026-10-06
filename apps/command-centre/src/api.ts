@@ -102,12 +102,55 @@ async function parseError(res: Response): Promise<ApiError> {
   return new ApiError(res.status, message, code, issues);
 }
 
+/** The keys that left the settings for the UI preferences (settings version 2), as values. */
+export const MOVED_SETTING_KEYS = [
+  "themePreset",
+  "microApps",
+  "dashboardLayout",
+  "spaces",
+  "activeSpace",
+  "hud",
+  "brain",
+] as const satisfies readonly Contracts.UiPreferenceKey[];
+
+/**
+ * Runtime backstop for the settings split: a write to `/api/settings` whose body
+ * carries a key that moved to the UI preferences is refused before it leaves the
+ * page, however the call was spelled (`putSettings` behind a cast, `api.put` with
+ * the URL in a variable, a query string). The route would answer the same `400`.
+ * Every UI request goes through `request()`, so this is the one place to check.
+ */
+export function refuseMovedSettingKeys(method: string, url: string, body: unknown): void {
+  if (method.toUpperCase() === "GET" || body === null || typeof body !== "object") return;
+  let path: string;
+  try {
+    path = decodeURIComponent(new URL(url, "http://command-centre.local").pathname);
+  } catch {
+    return;
+  }
+  if (
+    path
+      .replace(/\/{2,}/g, "/")
+      .replace(/\/+$/, "")
+      .toLowerCase() !== "/api/settings"
+  )
+    return;
+  const moved = MOVED_SETTING_KEYS.find((key) => (body as Record<string, unknown>)[key] !== undefined);
+  if (moved)
+    throw new ApiError(
+      400,
+      `"${moved}" moved to the UI preferences: write it through PUT /api/ui-preferences, not ${method.toUpperCase()} /api/settings`,
+      "moved_to_ui_preferences",
+    );
+}
+
 async function request<T>(
   method: string,
   url: string,
   body?: unknown,
   opts: RequestOptions = {},
 ): Promise<T> {
+  refuseMovedSettingKeys(method, url, body);
   const controller = new AbortController();
   let timedOut = false;
   const timer = window.setTimeout(() => {

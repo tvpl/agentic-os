@@ -709,6 +709,8 @@ function ResourcePreview({ slug, resource }: { slug: string; resource: SkillReso
 function MarkdownResource({ slug, rel }: { slug: string; rel: string }) {
   const t = useT();
   const fetchText = useCallback(async () => {
+    // A raw GET on purpose: the resource is text, not the JSON request() parses.
+    // eslint-disable-next-line no-restricted-globals
     const res = await fetch(resourceUrl(slug, rel), { headers: { "x-mordomo-token": getToken() } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.text();

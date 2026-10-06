@@ -2,7 +2,7 @@ import { OnboardingButton } from "../onboarding/Onboarding";
 import { useContext, useEffect, useState } from "react";
 import { usePanelSearchParams } from "../desktop/appRoute";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api";
+import { api, type SettingsPatch } from "../api";
 
 import { I18nContext, useT } from "../i18n";
 import { qk, useApiQuery } from "../queries";
@@ -47,7 +47,7 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
   const settings = useApiQuery<SettingsShape>(qk.settings, "/api/settings");
 
   const save = useMutation({
-    mutationFn: ({ patch }: { patch: Partial<SettingsShape>; silent?: boolean }) =>
+    mutationFn: ({ patch }: { patch: SettingsPatch; silent?: boolean }) =>
       api.putSettings<{ settings: SettingsShape; pendingApproval: Approval | null }>(patch),
     onSuccess: (res, vars) => {
       if (res.pendingApproval) toast(res.pendingApproval.description, "info");

@@ -101,6 +101,9 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         : ((Object.entries(enabled).find(([, v]) => v)?.[0] as ProviderId | undefined) ?? "claude");
       const folders = current.indexedFolders;
       const chosenPreset = PRESETS.find((p) => p.id === preset) ?? PRESETS[0]!;
+      // The preset and the arcs are UI preferences (config/ui-preferences.json). They are
+      // saved first, so `setupCompleted` only flips once both writes have landed.
+      await api.putUiPreferences({ themePreset: chosenPreset.id, hud });
       await api.putSettings({
         systemName: name.trim() || "MordomoOS",
         language: lang,
@@ -113,8 +116,6 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         accentColor: chosenPreset.accent,
         setupCompleted: true,
       });
-      // The preset and the arcs are UI preferences (config/ui-preferences.json).
-      await api.putUiPreferences({ themePreset: chosenPreset.id, hud });
       if (folder.trim()) {
         setPhase("indexing");
         await api.post("/api/memory/index");
