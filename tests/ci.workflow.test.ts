@@ -15,8 +15,9 @@ function triggers(workflow: string): Map<string, string[]> {
   const out = new Map<string, string[]>();
   let current: string | null = null;
   for (const line of lines.slice(start + 1)) {
-    if (/^\S/.test(line)) break;
+    // Blank lines and comments (at any column) never end the block; the next top-level key does.
     if (!line.trim() || line.trim().startsWith("#")) continue;
+    if (/^\S/.test(line)) break;
     const key = /^ {2}([a-z_]+):\s*$/.exec(line);
     if (key) {
       current = key[1]!;
@@ -47,5 +48,15 @@ describe("ci workflow triggers", () => {
     ]);
     expect(read("  pull_request:\n    branches: [release]").get("pull_request")).not.toEqual([]);
     expect(read("  push:\r\n    branches: [main]\r\n").get("push")).toEqual(["branches: [main]"]);
+    // The reader keeps what it reads: a narrowed filter shows up as such…
+    expect(read("  push:\n    branches: [main-legacy]").get("push")).toEqual(["branches: [main-legacy]"]);
+    expect(read("  pull_request:\n    branches: [release]").get("pull_request")).toEqual([
+      "branches: [release]",
+    ]);
+    // …even after a comment at column 0 inside `on:`.
+    const commented = read(
+      "  pull_request:\n  push:\n    branches: [main]\n# docs-only pushes for now\n    paths: [docs/**]",
+    );
+    expect(commented.get("push")).toEqual(["branches: [main]", "paths: [docs/**]"]);
   });
 });

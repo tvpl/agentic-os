@@ -44,11 +44,11 @@ Status: closed
 
 ## Coverage
 
-| Set (size)                           | Member -> proof                                                                                 | Unproven |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------- | -------- |
-| gatilhos do CI (3)                   | `pull_request` C1 · `push` em `main` C1 · `workflow_dispatch` C1                                | -        |
-| estados de processo (3)              | vivo C3 · inexistente C3 · zumbi C2 (contêiner), C4 (qualquer Linux)                            | -        |
-| filtros que estreitam um gatilho (4) | branch parecida `main-legacy` C1 · `paths` no push C1 · branches no `pull_request` C1 · CRLF C1 | -        |
+| Set (size)                           | Member -> proof                                                                                                                              | Unproven |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| gatilhos do CI (3)                   | `pull_request` C1 · `push` em `main` C1 · `workflow_dispatch` C1                                                                             | -        |
+| estados de processo (3)              | vivo C3 · inexistente C3 · zumbi C2 (contêiner), C4 (qualquer Linux)                                                                         | -        |
+| filtros que estreitam um gatilho (5) | branch parecida `main-legacy` C1 · `paths` no push C1 · branches no `pull_request` C1 · CRLF C1 · filtro depois de comentário na coluna 0 C1 | -        |
 
 - Claims naming a status code, route or response shape: none
 

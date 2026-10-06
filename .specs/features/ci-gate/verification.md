@@ -2,25 +2,24 @@
 
 **Verdict**: FAIL
 **Profile**: standard
-**Diff range**: c3b3650..fad566f (HEAD = `fad566f`, o único commit da feature)
-**Round**: 1 - full
+**Diff range**: c3b3650..bfaf355 (HEAD = `bfaf355`; correção da rodada 1 = `fad566f..bfaf355`)
+**Round**: 2 - scoped
 **Verifier**: independent sub-agent (author != verifier)
 
-Resumo: os três checks passam em `fad566f` com asserção localizada, os cinco mutantes de comportamento
-foram mortos (inclusive o do zumbi, que só é observável neste contêiner porque o PID 1 é
-`process_api` e não recolhe órfãos) e a suíte completa passa (531/531). O FAIL vem da precisão da
-prova de C1: a segunda alternativa da regex em `tests/ci.workflow.test.ts:30`
-(`branches:\s*\n\s*-\s*main`) não tem âncora no fim, então um workflow com
-`branches:` em forma de bloco apontando para `- main-legacy` (que **não** dispara em push na `main`)
-passa no teste - um mutante que contradiz a própria afirmação de C1 e sobreviveu. Além disso, a
-varredura da sintaxe de gatilhos do GitHub Actions encontrou um conjunto sem linha (filtros que
-restringem gatilhos: `branches` em `pull_request`, `paths`/`paths-ignore`, `types`), que o teste
-aceita e que contradiria a Intent ("todo PR e todo push na `main`").
+Resumo: a correção fecha as cinco lacunas da rodada 1. P4 (`main-legacy` em bloco e em fluxo), P3
+(`paths` no push) e P2 (`branches` no `pull_request`) agora são mortos pela igualdade exata em
+`tests/ci.workflow.test.ts:36,38`, o arquivo inteiro em CRLF passa, e o novo C4 cria um zumbi de
+propósito e morre quando `processAlive` passa a tratar `Z` como vivo. A suíte completa passa
+(533/533). O FAIL vem de uma sonda nova contra o leitor novo: ele para no primeiro texto na coluna 0
+(`:18`) antes de pular comentários (`:19`), então um comentário na coluna 0 dentro de `on:` esconde
+o resto do bloco. Com os gatilhos reordenados (`push` por último), `paths: ["docs/**"]` depois de um
+`# ...` passa nas duas provas de C1, enquanto o parse YAML dá `push.paths = ["docs/**"]`. É a mesma
+classe de P3: um mutante sobrevivente que contradiz "recusa filtro de `paths`".
 
 ## Binding sources
 
-no binding source - não há `plan.md` (o `checks.md` declara `Plan: none` e carrega um parágrafo de
-Intent) e nenhuma fonte é marcada como vinculante. O perfil `standard` não exige o passo 1.
+Carried from `fad566f`: não há `plan.md` (`Plan: none`) e nenhuma fonte é marcada como vinculante; a
+correção não tocou interface. O perfil `standard` não exige o passo 1.
 
 | Source            | Opened | Contradiction | Uncovered |
 | ----------------- | ------ | ------------- | --------- |
@@ -28,125 +27,127 @@ Intent) e nenhuma fonte é marcada como vinculante. O perfil `standard` não exi
 
 ## Checks
 
-Verificado em `fad566f`. Proof run, uma única invocação:
+Verified at `bfaf355`. Proof run, uma única invocação na árvore real:
 `npx vitest run tests/ci.workflow.test.ts tests/core.spawn-tree.test.ts --reporter=verbose` - exit 0,
-`Test Files 2 passed (2)`, `Tests 3 passed (3)`, com três linhas `✓` individuais:
+`Test Files 2 passed (2)`, `Tests 5 passed (5)`, com cinco linhas `✓` individuais:
 
-- `✓ tests/ci.workflow.test.ts > ci workflow triggers > C1 ci runs on pull requests and pushes to main 2ms`
-- `✓ tests/core.spawn-tree.test.ts > cancellation kills a TERM-resistant descendant even when its parent exits first 146ms`
-- `✓ tests/core.spawn-tree.test.ts > C3 liveness: alive, gone 0ms`
+- `✓ tests/ci.workflow.test.ts > ci workflow triggers > C1 ci runs on pull requests and pushes to main 3ms`
+- `✓ tests/ci.workflow.test.ts > ci workflow triggers > C1 the trigger reader rejects narrowed or look-alike filters 1ms`
+- `✓ tests/core.spawn-tree.test.ts > cancellation kills a TERM-resistant descendant even when its parent exits first 147ms`
+- `✓ tests/core.spawn-tree.test.ts > C3 liveness: alive, gone 1ms`
+- `✓ tests/core.spawn-tree.test.ts > C4 liveness: a zombie is not alive 6ms`
 
-Existência confirmada com `rg -n 'C1 ci runs|TERM-resistant descendant even|C3 liveness: alive, gone'`
-fora de `.specs`: `tests/ci.workflow.test.ts:24`, `tests/core.spawn-tree.test.ts:6`,
-`tests/core.spawn-tree.test.ts:36` - um hit por nome. Os três testes estão no diff: C1 e C3 são novos
-e C2 teve o `alive()` trocado por `processAlive(pid)` (`tests/core.spawn-tree.test.ts:19`), que é o
-comportamento novo.
+Existência: `rg -n --glob '!.specs/**' 'C1 ci runs on pull requests|C1 the trigger reader rejects|TERM-resistant descendant even|C3 liveness: alive, gone|C4 liveness: a zombie'`
+dá um hit por nome: `tests/ci.workflow.test.ts:32`, `:42`, `tests/core.spawn-tree.test.ts:8`, `:38`,
+`:44`. As duas provas novas (C1 #2, C4) estão no diff da correção; as citações de
+`tests/core.spawn-tree.test.ts` mudaram de linha (+2 pelos imports) e foram refeitas.
+`tests/helpers.ts` e `.github/workflows/ci.yml` não mudaram desde `fad566f`.
 
-| Check | Claim                                                                                        | Proof run                                                                           | Evidence                                                                                                                                                                                                                                                                                                                                                                  | Result |
-| ----- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| C1    | `ci.yml` dispara em `pull_request` e em `push` para `main`, mantém `workflow_dispatch`       | batch acima, `✓ C1 ci runs on pull requests and pushes to main`                     | `tests/ci.workflow.test.ts:26` - `expect(on).toMatch(/^ {2}pull_request:/m)`; `:27` - `expect(on).toMatch(/^ {2}workflow_dispatch:/m)`; `:29` - `expect(push, "push trigger").not.toBeNull()`; `:30` - `expect(push![1]).toMatch(/branches:\s*\[\s*main\s*\]\|branches:\s*\n\s*-\s*main/)` (ver falha de precisão em Faults: a alternativa de bloco aceita `main-legacy`) | PASS   |
-| C2    | No Linux, zumbi (`Z` em `/proc/<pid>/stat`) conta como morto e o teste passa neste contêiner | `✓ cancellation kills a TERM-resistant descendant even when its parent exits first` | `tests/core.spawn-tree.test.ts:23` - `await expect.poll(alive, { timeout: 1000 }).toBe(false)` com `alive = () => processAlive(pid)` em `:19`; decisão em `tests/helpers.ts:64` - `return state !== "Z"`. F3 provou que o neto é de fato zumbi aqui                                                                                                                       | PASS   |
-| C3    | helper devolve `true` para `process.pid` e `false` para PID inexistente                      | `✓ C3 liveness: alive, gone`                                                        | `tests/core.spawn-tree.test.ts:37` - `expect(processAlive(process.pid)).toBe(true)`; `:39` - `expect(processAlive(2 ** 30)).toBe(false)`                                                                                                                                                                                                                                  | PASS   |
+| Check | Claim                                                                                                                                                                                      | Proof run                                                                                                                          | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Result |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| C1    | dispara exatamente em `pull_request` (sem filtro), `push` com só `branches: [main]` e `workflow_dispatch`; leitor normaliza CRLF e recusa `main-legacy`, `paths` e `pull_request` restrito | batch acima, `✓ C1 ci runs on pull requests and pushes to main` e `✓ C1 the trigger reader rejects narrowed or look-alike filters` | prova 1: `tests/ci.workflow.test.ts:34` - `expect([...on.keys()].sort()).toEqual(["pull_request", "push", "workflow_dispatch"])`; `:36` - `expect(on.get("pull_request")).toEqual([])`; `:38` - `expect(on.get("push")).toEqual(["branches: [main]"])`; `:39` - `expect(on.get("workflow_dispatch")).toEqual([])`. Prova 2: `:44`, `:45`, `:48` - `.not.toEqual(...)` sobre `main-legacy`, `paths`, `branches: [release]`; `:49` - `expect(read("  push:\r\n    branches: [main]\r\n").get("push")).toEqual(["branches: [main]"])`. Precisão: ver P6 em Faults | PASS   |
+| C2    | No Linux, zumbi (`Z` em `/proc/<pid>/stat`) conta como morto e o teste passa neste contêiner                                                                                               | `✓ cancellation kills a TERM-resistant descendant even when its parent exits first`                                                | `tests/core.spawn-tree.test.ts:25` - `await expect.poll(alive, { timeout: 1000 }).toBe(false)` com `alive = () => processAlive(pid)` em `:21`; decisão em `tests/helpers.ts:64` - `return state !== "Z"` (carried from `fad566f`: F3 provou que aqui o neto é zumbi)                                                                                                                                                                                                                                                                                           | PASS   |
+| C3    | helper devolve `true` para `process.pid` e `false` para PID inexistente                                                                                                                    | `✓ C3 liveness: alive, gone`                                                                                                       | `tests/core.spawn-tree.test.ts:39` - `expect(processAlive(process.pid)).toBe(true)`; `:41` - `expect(processAlive(2 ** 30)).toBe(false)`                                                                                                                                                                                                                                                                                                                                                                                                                       | PASS   |
+| C4    | No Linux, um zumbi criado de propósito (estado `Z`) é dado como não vivo pelo helper, em qualquer máquina                                                                                  | `✓ C4 liveness: a zombie is not alive`                                                                                             | pré-condição `tests/core.spawn-tree.test.ts:52-54` - `await expect.poll(() => <estado lido de /proc/${zombie}/stat>, { timeout: 2000 }).toBe("Z")`; decisão `:55` - `expect(processAlive(zombie)).toBe(false)`                                                                                                                                                                                                                                                                                                                                                 | PASS   |
 
-Nível: C1 é configuração provada lendo o arquivo, como a Test policy pede; C2 e C3 afirmam o valor de
-retorno do próprio helper. Nenhuma afirmação nomeia status, rota ou formato de resposta - nenhum
-level gap.
+Nível: C1 é configuração provada lendo o arquivo (`:33`, `fs.readFileSync(... "ci.yml")`); C2, C3 e
+C4 afirmam o retorno do próprio helper. Nenhuma afirmação nomeia status, rota ou formato de
+resposta - nenhum level gap. C4 é `skipIf(process.platform !== "linux")`, coerente com "No Linux" da
+afirmação; o zumbi não depende do PID 1 porque o pai dele é o `sleep` que nunca chama `wait`.
 
-Validade do workflow: `yaml.parseDocument` sobre `.github/workflows/ci.yml` dá 0 erros e 0 avisos e
-`on` = `{"pull_request":null,"push":{"branches":["main"]},"workflow_dispatch":null}`. `pull_request:`
-sem valor (tipos padrão `opened`, `synchronize`, `reopened`), `push.branches: [main]` e
-`workflow_dispatch:` são sintaxe válida do GitHub Actions; o arquivo atual faz o que C1 afirma.
+Observações sobre a prova 2 de C1 (sem mudar o resultado): `:44`, `:45` e `:48` são `not.toEqual`
+contra um leitor que preserva o texto das linhas, então só caem se o leitor descartar linhas; e a
+normalização CRLF em `:12` é redundante com `\s*$` em `:13`/`:20` e `trim()` em `:25` - remover a
+normalização (R1) é um mutante equivalente, e `:49` passa igual. Os mutantes reais de C1 são mortos
+pela prova 1 contra o arquivo real. Em sentido contrário, a igualdade exata recusa formas legítimas
+(`branches: [ main ]`, `- main` em bloco): falso negativo conservador, aceitável para fixar
+configuração.
 
 ## Coverage
 
-Recalculado em `fad566f` a partir da autoridade de cada conjunto, não da tabela do autor.
+Verified at `bfaf355` para as linhas cuja autoridade a correção tocou (o leitor de gatilhos, o caso
+zumbi); `gatilhos do CI` recalculado de novo porque a prova mudou. `ci.yml` não mudou, então a
+autoridade dos gatilhos é a mesma de `fad566f`.
 
-| Set (size)                                               | Recomputed from                                                                                                                                                                | Member -> proof                                                                                                                                               | Unproven                                                                                                 |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| gatilhos do CI (3)                                       | o próprio workflow: `.github/workflows/ci.yml:5-9`, conferido pelo parse YAML acima                                                                                            | `pull_request` C1 `:26` · `push` C1 `:29` · `workflow_dispatch` C1 `:27` (F1 morto)                                                                           | -                                                                                                        |
-| branch do filtro de `push` (1: `main`)                   | `.github/workflows/ci.yml:8` (`branches: [main]`)                                                                                                                              | `main` na forma inline C1 `:30` (F2 morto)                                                                                                                    | forma de bloco aceita qualquer nome com prefixo `main` (`- main-legacy`, `- maintenance`): P4 sobreviveu |
-| filtros que restringem um gatilho (sem linha nos checks) | sintaxe de gatilhos do GitHub Actions: `branches`/`branches-ignore`/`paths`/`paths-ignore`/`types` sob `pull_request` e `push`; a Intent exige "todo PR e todo push na `main`" | nenhuma prova afirma a ausência deles: `pull_request: branches: [release]` (P2) e `push: paths: ["docs/**"]` (P3) passam em C1                                | ausência de filtro em `pull_request`; ausência de `paths`/`paths-ignore` em `push`                       |
-| estados de processo (3)                                  | Linux `proc(5)`: `kill(pid, 0)` falha (inexistente) vs. sucede; letra de estado em `/proc/<pid>/stat` (`R S D T t X Z I ...`), só `Z` decide "morto" em `tests/helpers.ts:64`  | vivo (`R`, o próprio processo) C3 `:37` (F5 morto) · inexistente (`ESRCH`) C3 `:39` (F4 morto) · zumbi `Z` C2 `:23` (F3 morto, só observável neste contêiner) | -                                                                                                        |
+| Set (size)                                                   | Recomputed from                                                                                                                                                 | Member -> proof                                                                                                                                          | Unproven                                                                                                                                                 |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| gatilhos do CI (3)                                           | `.github/workflows/ci.yml:5-9`, inalterado; parse `yaml` carried from `fad566f` (`{"pull_request":null,"push":{"branches":["main"]},"workflow_dispatch":null}`) | conjunto exato C1 `:34` · `pull_request` C1 `:36` · `push` C1 `:38` · `workflow_dispatch` C1 `:39`                                                       | -                                                                                                                                                        |
+| branch do filtro de `push` (1: `main`)                       | `.github/workflows/ci.yml:8` (`branches: [main]`)                                                                                                               | `main` exato C1 `:38`; `- main-legacy` em bloco morto (P4a) e `[main-legacy]` em fluxo morto (P4b)                                                       | -                                                                                                                                                        |
+| filtros que estreitam um gatilho (sintaxe do GitHub Actions) | `branches`/`branches-ignore`/`paths`/`paths-ignore`/`tags`/`types` sob `pull_request` e `push`; a Intent exige "todo PR e todo push na `main`"                  | `branches` no `pull_request` C1 `:36` (P2 morto) · `paths` no `push` C1 `:38` (P3 morto) · os demais caem na mesma igualdade exata quando o leitor os vê | qualquer filtro escrito depois de um comentário na coluna 0 dentro de `on:` - o leitor para em `tests/ci.workflow.test.ts:18` e não o vê (P6 sobreviveu) |
+| terminação de linha (2: LF, CRLF)                            | `ci.yml` é LF no repo; o repo não tem `.gitattributes`, e a perna `windows-latest` roda `tests/ci.workflow.test.ts`                                             | LF C1 `:38` sobre o arquivo real · CRLF C1 `:49` e a sonda P1 (arquivo inteiro em CRLF passa nas duas provas)                                            | -                                                                                                                                                        |
+| estados de processo (3)                                      | Linux `proc(5)`: `kill(pid, 0)` falha vs. sucede; letra de estado em `/proc/<pid>/stat`, só `Z` decide "morto" em `tests/helpers.ts:64`                         | vivo C3 `:39` · inexistente C3 `:41` · zumbi C4 `:55` em qualquer Linux (Z morto) e C2 `:25` neste contêiner                                             | -                                                                                                                                                        |
 
-Varredura de conjuntos sem linha, além do terceiro acima:
+Varredura de conjuntos sem linha:
 
-- Ramos do helper: o `checks.md` diz "2 branch points", o código tem 4 (`tests/helpers.ts:57` catch do
-  `kill`, `:59` plataforma não-Linux, `:64` estado, `:66` falha ao ler `/proc`). O ramo não-Linux é
-  exercido por C3 `:37` nas pernas macOS/Windows do CI, não observável aqui. O ramo `:66` (o processo
-  some entre o `kill` e a leitura) é uma corrida sem prova; baixa severidade, fora das afirmações.
-- `kill(pid, 0)` com `EPERM` (processo de outro usuário) cai em `:57` e vira "morto". Inalcançável
-  para a fixture do próprio teste; registro apenas.
-- Passos que a Intent nomeia (typecheck, lint, testes, build): já existiam (`ci.yml:31,32,35,39`) e
-  nenhum check os reivindica. Não é lacuna desta feature.
+- Ramos do helper (`tests/helpers.ts:53-68`): 4 pontos de decisão, e a prosa da Test policy agora diz 4
+  (lacuna 5 da rodada 1 fechada). `:57` (catch do `kill`) C3 `:41`; `:59` (não-Linux) C3 `:39` só nas
+  pernas macOS/Windows do CI; `:64` (estado) C3 `:39` e C4 `:55`; `:66` (falha ao ler `/proc`) sem prova,
+  declarado na policy como corrida sem prova determinística. O conjunto que a policy exige é o de
+  estados, e `:66` leva ao estado "inexistente", já provado por `:57`. Registro, não lacuna.
+- `kill(pid, 0)` com `EPERM`: carried from `fad566f` - inalcançável para as fixtures do próprio teste.
+- Jobs condicionados (`if:` em `jobs.*`, sonda P5 da rodada 1): carried from `fad566f`, fora da
+  afirmação de C1, que fala só de gatilhos.
 
 ## Test policy rows
 
-| Row                                                           | Files it classifies                       | Required proof                                                                                                                                                                         | Expectation met                                                                                                                                                                                                                    |
-| ------------------------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Decides, not reached across a boundary (helper de vivacidade) | `tests/helpers.ts:53-68` (`processAlive`) | uma prova na própria camada: C3 `tests/core.spawn-tree.test.ts:37,39` afirma o retorno do helper; o zumbi é afirmado sobre o mesmo retorno em C2 `:23`, como a prosa da policy atribui | yes - um caso afirmado por estado (vivo `:37`, inexistente `:39`, zumbi `:23`). Ressalva: o caso zumbi depende do ambiente; num host cujo PID 1 recolhe órfãos (os runners do GitHub), `:23` passa pelo ramo `ESRCH`, não pelo `Z` |
-| Configuration (`ci.yml`)                                      | `.github/workflows/ci.yml:5-9`            | uma prova lendo o arquivo: C1 `tests/ci.workflow.test.ts:25` (`fs.readFileSync(... "ci.yml")`)                                                                                         | yes - cada gatilho afirmado (`:26`, `:27`, `:29-30`); a precisão da afirmação de branch é tratada em Faults                                                                                                                        |
+Re-julgadas em `bfaf355`: a linha do helper (a ressalva da rodada 1 era a dependência de ambiente) e
+a da configuração (a prova que a classifica mudou).
 
-Swept `existing`, relido no código:
+| Row                                                           | Files it classifies                       | Required proof                                                                                                    | Expectation met                                                                                                                                                                 |
+| ------------------------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Decides, not reached across a boundary (helper de vivacidade) | `tests/helpers.ts:53-68` (`processAlive`) | uma prova na própria camada: C3 `tests/core.spawn-tree.test.ts:39,41` e C4 `:55`, todos sobre o retorno do helper | yes - um caso afirmado por estado: vivo `:39`, inexistente `:41`, zumbi `:55`. O caso zumbi agora é determinístico em qualquer Linux; a ressalva da rodada 1 não se aplica mais |
+| Configuration (`ci.yml`)                                      | `.github/workflows/ci.yml:5-9`            | uma prova lendo o arquivo: C1 `tests/ci.workflow.test.ts:33`                                                      | yes - cada gatilho afirmado (`:36`, `:38`, `:39`) e o conjunto exato (`:34`); a precisão do leitor é tratada em Faults (P6)                                                     |
 
-- concurrency: `.github/workflows/ci.yml:11-13` - `group: ci-${{ github.ref }}` e
-  `cancel-in-progress: true`. Confere.
-- As linhas `n/a` são política aprovada. Registro só que `ci.yml` não tem nenhuma chave
-  `permissions:`, então o token segue o padrão do repositório, como a linha de authorization diz.
+Swept `existing`, carried from `fad566f` (`ci.yml` inalterado): concurrency em
+`.github/workflows/ci.yml:11-13` (`group: ci-${{ github.ref }}`, `cancel-in-progress: true`) -
+confere, relido nesta rodada. As linhas `n/a` são política aprovada.
 
 ## Faults injected
 
-Worktree descartável em `.../scratchpad/wt` (`git worktree add --detach`, `node_modules` por
-symlink), baseline verde (3/3) antes das mutações; cada mutação revertida com `git checkout --` antes
-da próxima. F1-F5 são os cinco mutantes de comportamento (teto de 5, uma superfície de asserção cada).
-P2-P4 são as sondas de precisão pedidas no brief sobre o parser por regex; P4 contradiz a própria
-afirmação de C1 e entra aqui como mutante sobrevivente.
+Verified at `bfaf355`. Worktree descartável em `.../scratchpad/wt-r2` (`git worktree add --detach`,
+`node_modules` por symlink), baseline 5/5 verde antes das mutações; cada mutação revertida com
+`git checkout --` antes da próxima. Faults F1-F5 da rodada 1 carried from `fad566f` (superfícies que a
+correção não tocou: `ci.yml` e `tests/helpers.ts`). Teto de 5 faults: P4 nas duas formas pedidas, P3,
+P2 e Z. P6 é uma sonda de precisão contra o leitor novo, achada lendo `:18-19`, e entra na tabela por
+contradizer a afirmação de C1.
 
-| Mutation                                                                                     | Location                     | Killed                                                                                                                                                                                               |
-| -------------------------------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| F1 remove a linha `pull_request:`                                                            | `.github/workflows/ci.yml:6` | yes - C1 falha em `tests/ci.workflow.test.ts:26` (`expected '  push:\n    branches: [main]\n  work…' to match /^ {2}pull_request:/m`)                                                                |
-| F2 `branches: [main]` -> `branches: [develop]`                                               | `.github/workflows/ci.yml:8` | yes - C1 falha em `:30` (`expected '    branches: [develop]\n' to match …`)                                                                                                                          |
-| F3 zumbi conta como vivo (`return state !== "Z"` -> `return true`)                           | `tests/helpers.ts:64`        | yes - C2 falha em `tests/core.spawn-tree.test.ts:23` (`expected true to be false`, após 1170 ms de poll): confirma que neste contêiner o neto vira zumbi (PID 1 = `process_api`, não recolhe órfãos) |
-| F4 `processAlive` sempre devolve `true`                                                      | `tests/helpers.ts:53`        | yes - C3 falha em `tests/core.spawn-tree.test.ts:39` (`expected true to be false`)                                                                                                                   |
-| F5 condição invertida (`state !== "Z"` -> `state === "Z"`)                                   | `tests/helpers.ts:64`        | yes - C3 falha em `tests/core.spawn-tree.test.ts:37:37` (`expected false to be true`)                                                                                                                |
-| P4 `branches: [main]` -> bloco `branches:` / `- main-legacy` (não dispara em push na `main`) | `.github/workflows/ci.yml:8` | no - survived: `Tests 1 passed`; a alternativa `branches:\s*\n\s*-\s*main` em `tests/ci.workflow.test.ts:30` casa o prefixo                                                                          |
-| P2 `pull_request:` ganha `branches: [release]` (PRs para `main` não rodam)                   | `.github/workflows/ci.yml:6` | no - survived: `Tests 1 passed`; precisão do check (C1 não proíbe filtros)                                                                                                                           |
-| P3 `push:` ganha `paths: ["docs/**"]` (push na `main` só roda se tocar docs)                 | `.github/workflows/ci.yml:8` | no - survived: `Tests 1 passed`; precisão do check                                                                                                                                                   |
+| Mutation                                                                                                                   | Location                       | Killed                                                                                                                                                                                                                                                 |
+| -------------------------------------------------------------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| P4a `branches: [main]` -> bloco `branches:` / `- main-legacy`                                                              | `.github/workflows/ci.yml:8`   | yes - C1 falha em `tests/ci.workflow.test.ts:38:28` (`expected [ 'branches:', '- main-legacy' ] to deeply equal [ 'branches: [main]' ]`)                                                                                                               |
+| P4b `branches: [main]` -> `branches: [main-legacy]`                                                                        | `.github/workflows/ci.yml:8`   | yes - C1 falha em `:38:28` (`expected [ 'branches: [main-legacy]' ] to deeply equal [ 'branches: [main]' ]`)                                                                                                                                           |
+| P3 `push:` ganha `paths: ["docs/**"]`                                                                                      | `.github/workflows/ci.yml:8`   | yes - C1 falha em `:38:28` (`expected [ 'branches: [main]', …(1) ] to deeply equal [ 'branches: [main]' ]`)                                                                                                                                            |
+| P2 `pull_request:` ganha `branches: [release]`                                                                             | `.github/workflows/ci.yml:6`   | yes - C1 falha em `:36:36` (`expected [ 'branches: [release]' ] to deeply equal []`)                                                                                                                                                                   |
+| Z zumbi conta como vivo (`return state !== "Z"` -> `return true`)                                                          | `tests/helpers.ts:64`          | yes - C4 falha em `tests/core.spawn-tree.test.ts:55:34` (`expected true to be false`), rodando só `-t "C4 liveness: a zombie is not alive"`                                                                                                            |
+| P6 gatilhos reordenados (`push` por último) e `# docs-only pushes for now` na coluna 0 seguido de `    paths: ["docs/**"]` | `.github/workflows/ci.yml:5-9` | no - survived: `Tests 2 passed (2)`; `yaml.parseDocument` dá 0 erros e `push = {"branches":["main"],"paths":["docs/**"]}`; o leitor para em `tests/ci.workflow.test.ts:18` (`if (/^\S/.test(line)) break;`) antes do `continue` de comentário em `:19` |
 
-Outras sondas, fora da tabela por não serem mutantes das afirmações:
+Outras sondas, fora da tabela:
 
-- P1, falso negativo: `ci.yml` com terminadores CRLF faz C1 falhar (`push trigger: expected null not
-to be null`), porque `onBlock` faz `split("\n")` e a regex de `push` exige `push:\n`. O repo não tem
-  `.gitattributes`, e a matriz roda `npx vitest run --exclude ...` no `windows-latest`
-  (`ci.yml:36-38`) sem excluir `tests/ci.workflow.test.ts`. Se o checkout no Windows converter para
-  CRLF (`core.autocrlf=true` do Git for Windows), C1 fica vermelho nas duas pernas Windows. Não
-  confirmei o `autocrlf` do runner: o log do run `34710618337` não o mostra. Esse run (12/09, push na
-  `main`) já tinha as pernas Windows e o e2e vermelhos por falhas preexistentes (`tests/adapters.readiness.test.ts`, `tests/cli.test.ts`, `tests/core.publish.test.ts`, entre outros), então o gate liga já vermelho nessas pernas, independente desta feature.
-- P5, jobs condicionados (`if: github.event_name == 'workflow_dispatch'` em `check`): C1 passa. Fora
-  da afirmação de C1, que fala só de gatilhos, mas a Intent ("todo PR ... roda o CI") fica sem prova
-  de que os jobs rodam.
+- P1, CRLF: `ci.yml` inteiro convertido para CRLF (`file`: "with CRLF line terminators") - as duas
+  provas de C1 passam (`Tests 2 passed (2)`). Falso negativo da rodada 1 fechado.
+- R1, leitor sem normalização CRLF (`workflow.replace(/\r\n?/g, "\n").split("\n")` ->
+  `workflow.split("\n")` em `tests/ci.workflow.test.ts:12`): as duas provas passam. Mutante
+  equivalente - `\s*$` em `:13`/`:20` casa o `\r` e `trim()` em `:25` o remove, então o comportamento
+  afirmado se mantém. Consequência: a prova 2 de C1 nunca foi feita falhar nesta rodada.
 
 Isolamento: `git status --porcelain` da árvore real antes = vazio, depois = vazio (`cmp` igual);
-worktree removido (`git worktree remove`), e `git worktree list` mostra só a árvore real e o
-`wt-motor` preexistente, que não foi tocado.
+symlink removido e worktree removido (`git worktree remove`); `git worktree list` mostra só a árvore
+real e o `wt-motor` preexistente, que não foi tocado.
 
 ## Gate
 
-`npx vitest run` (em `fad566f`, árvore real) - 531 passed, 0 failed (66 arquivos, nenhum skip). A
-falha conhecida de `tests/core.spawn-tree.test.ts` neste contêiner deixou de existir.
+`npx vitest run` (em `bfaf355`, árvore real) - 533 passed, 0 failed (66 arquivos, nenhum skip; 531
+da rodada 1 + as 2 provas novas).
 
 Gaps em ordem:
 
-1. Mutante sobrevivente P4: a alternativa em bloco aceita qualquer branch com prefixo `main`. C1, em
-   `tests/ci.workflow.test.ts:30`. Correção sugerida: ancorar (`-\s*main\s*$` com flag `m`) ou fazer
-   o parse com `yaml` (já está em `node_modules`) e afirmar `on.push.branches` igual a `["main"]`.
-2. Lacuna de precisão no check C1: nada afirma a ausência de filtros que contradizem "todo PR / todo
-   push na `main`" (P2, P3), em `tests/ci.workflow.test.ts:26,28-30`. Com parse YAML: afirmar
-   `on.pull_request` nulo (ou sem `branches`/`paths`/`types` restritivos) e `on.push` sem `paths`.
-3. Risco de falso negativo com CRLF nas pernas Windows do CI (P1), em
-   `tests/ci.workflow.test.ts:12,28`. Usar `split(/\r?\n/)` ou o parse YAML.
-4. C2 e o caso zumbi dependem do ambiente: só exercitam `tests/helpers.ts:64` onde o PID 1 não
-   recolhe órfãos. Um zumbi determinístico em qualquer Linux é possível (por exemplo
-   `sh -c 'true & exec sleep 5'`, em que o filho de fundo vira zumbi sob o `sleep`). Baixa
-   severidade, a policy aprovada aceitou C2 como prova.
-5. A prosa da Test policy diz "2 branch points" e o helper tem 4. O ramo de falha da leitura de
-   `/proc` (`tests/helpers.ts:66`) não tem prova. Baixa severidade.
+1. Mutante sobrevivente P6 - C1 - `tests/ci.workflow.test.ts:18-19`. Um comentário na coluna 0 dentro
+   de `on:` encerra a leitura, e um filtro escrito depois dele (aqui `paths` no `push`, com `push` como
+   último gatilho) passa nas duas provas. Correção sugerida: pular linhas em branco e comentários antes
+   do teste de coluna 0 (trocar a ordem de `:18` e `:19`), ou fazer o parse com `yaml` (já em
+   `node_modules`) e afirmar `on` igual a
+   `{ pull_request: null, push: { branches: ["main"] }, workflow_dispatch: null }`.
+2. Prova 2 de C1 sem poder de falha demonstrado - C1 - `tests/ci.workflow.test.ts:44,45,48,49`. As
+   asserções `not.toEqual` só caem se o leitor descartar linhas, e a de CRLF (`:49`) não distingue a
+   normalização de `:12` (R1 equivalente). Baixa severidade: os mutantes de C1 são mortos pela prova 1.
+3. Ramo `tests/helpers.ts:66` (falha ao ler `/proc`) sem prova - C2/C3/C4 - declarado na Test policy.
+   Registro, baixa severidade.
