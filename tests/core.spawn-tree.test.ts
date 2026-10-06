@@ -42,9 +42,13 @@ it("C3 liveness: alive, gone", () => {
 });
 
 it.skipIf(process.platform !== "linux")("C4 liveness: a zombie is not alive", async () => {
-  // `sh` starts `true` in the background, then becomes `sleep`, which never
-  // waits: `true` exits and stays a zombie of `sleep`, on any Linux.
-  const parent = spawn("sh", ["-c", "true & echo $!; exec sleep 5"], { stdio: ["ignore", "pipe", "ignore"] });
+  // `sh` starts a short-lived child in the background, then becomes `sleep`,
+  // which never waits: the child exits after the exec and stays a zombie of
+  // `sleep`, on any Linux. (An instant child could exit while `sh` is still
+  // `sh`, which reaps it — the race that made this test flaky under load.)
+  const parent = spawn("sh", ["-c", "sleep 0.3 & echo $!; exec sleep 5"], {
+    stdio: ["ignore", "pipe", "ignore"],
+  });
   try {
     const zombie = await new Promise<number>((resolve) =>
       parent.stdout!.once("data", (chunk: Buffer) => resolve(Number(String(chunk).trim()))),
