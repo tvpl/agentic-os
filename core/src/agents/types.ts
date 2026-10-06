@@ -65,6 +65,11 @@ export interface AgentRun {
   artifactsDir: string;
   extraEnv?: Record<string, string>;
   /**
+   * Environment the provider process must not inherit from the service:
+   * exact names and name prefixes (MordomoOS's own secrets, set by the RunManager).
+   */
+  dropEnv?: { names: string[]; prefixes: string[] };
+  /**
    * Conversation this run belongs to (`sessions.id`). Set by the RunManager
    * from the run row; adapters use it only to decide whether the provider's
    * own session id is worth pinning down.

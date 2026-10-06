@@ -65,6 +65,7 @@ export async function* executeInvocation(
   const handle = safeSpawn(invocation.executable, invocation.args, {
     cwd: run.cwd,
     env: invocation.env,
+    ...(run.dropEnv ? { dropEnv: run.dropEnv } : {}),
     timeoutMs: run.timeoutMs,
     allowPaths,
     stdin: invocation.stdin,

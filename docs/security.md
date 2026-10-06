@@ -93,7 +93,23 @@ before a routine fires:
 Read-only enforcement is only as strong as the provider CLI: Claude (permission rules)
 and Codex (`--sandbox read-only`, refused if the flag is missing) are enforced
 mechanically; **Cursor is prompt-level only** and should not be trusted for
-`read_only` work on files you cannot afford to have touched.
+`read_only` work on files you cannot afford to have touched. The engine applies what
+each manifest declares (`core/src/agents/registry.ts`):
+
+- **Unattended read-only needs `enforcesReadOnly`.** A `read_only` run started by a
+  routine or by sentinel triage on a provider that cannot enforce it ends `failed`
+  before the CLI starts. A manual one runs, with a `permission` event in its trace
+  saying read-only is only requested in the prompt.
+- **An unconfined write needs a human.** Each manifest declares `writeConfinement`:
+  `broker` (Claude: every non-edit tool asks), `sandbox` (Codex: writes stay in the
+  working directory) or `none` (Cursor `--force`). Under `controlled_write`, a write on
+  a `none` provider is parked as a `write_run` approval, as under `review_before_write`;
+  only `approved_automation` lets it through.
+- **Provider processes do not inherit MordomoOS's secrets.** Every variable whose
+  name starts with `MORDOMO_`, and the one named by
+  `settings.channels.telegram.botTokenEnv`, is removed from the environment of a
+  provider process; everything else (PATH, HOME, the provider's own API keys,
+  proxies) passes through.
 
 ## Approval-gated actions (never silent)
 

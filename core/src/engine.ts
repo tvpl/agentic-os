@@ -384,7 +384,12 @@ export class MordomoEngine {
   gateWrite(mode: RunMode, origin: WriteOrigin, description: string, payload: GatedRunPayload): WriteGate {
     if (mode !== "write") return { pendingApproval: null, runId: null };
     this.assertWriteAllowed(mode, origin);
-    if (writeDecision(this.settings().securityProfile, origin) !== "approval") {
+    const profile = this.settings().securityProfile;
+    const confinement = this.providers.manifest(payload.input.provider).capabilities.writeConfinement;
+    // A provider that confines nothing gets a human first, unless the owner
+    // chose fully approved automation.
+    const unconfined = confinement === "none" && profile !== "approved_automation";
+    if (writeDecision(profile, origin) !== "approval" && !unconfined) {
       return { pendingApproval: null, runId: null };
     }
     const fields =

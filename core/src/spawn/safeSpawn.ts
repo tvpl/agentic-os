@@ -37,6 +37,8 @@ export class ExecutableNotAllowedError extends Error {
 export interface SpawnOptions {
   cwd: string;
   env?: Record<string, string | undefined>;
+  /** Variables of this process the child must not inherit (exact names and prefixes); `env` still applies on top. */
+  dropEnv?: { names: string[]; prefixes: string[] };
   timeoutMs?: number;
   /** Extra absolute paths allowed (e.g. a pinned provider binary). */
   allowPaths?: string[];
@@ -110,6 +112,16 @@ class TailBuffer {
   }
 }
 
+function inheritedEnv(drop: SpawnOptions["dropEnv"]): NodeJS.ProcessEnv {
+  if (!drop) return { ...process.env };
+  const names = new Set(drop.names);
+  return Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([name]) => !names.has(name) && !drop.prefixes.some((prefix) => name.startsWith(prefix)),
+    ),
+  );
+}
+
 export function safeSpawn(executable: string, args: string[], opts: SpawnOptions): SpawnHandle {
   assertAllowed(executable, opts.allowPaths);
   const started = Date.now();
@@ -121,7 +133,7 @@ export function safeSpawn(executable: string, args: string[], opts: SpawnOptions
       cwd: opts.cwd,
       // Services run with a bare PATH: make sure the CLI (and the node/git it
       // shells out to) is reachable, without overriding an explicit PATH.
-      env: { ...process.env, PATH: augmentedPath(), ...opts.env },
+      env: { ...inheritedEnv(opts.dropEnv), PATH: augmentedPath(), ...opts.env },
       stdio: supervised ? ["pipe", "pipe", "pipe", "ipc"] : ["pipe", "pipe", "pipe"],
       detached: process.platform !== "win32", // own process group → group kill works
       shell: false,

@@ -570,6 +570,28 @@ export class RunManager {
       this.log({ event: "run_started", runId, provider: record.provider, origin: record.origin });
 
       const adapter = this.getAdapter(record.provider);
+      // A provider that cannot enforce read-only only gets it as a sentence in the
+      // prompt: acceptable when a person started the run and watches it, never for
+      // the unattended ones (routines, sentinel triage), whose prompts can carry
+      // outside text.
+      const capabilities = adapter.manifest?.capabilities;
+      if (mode === "read_only" && capabilities && !capabilities.enforcesReadOnly) {
+        const name = adapter.manifest.displayName;
+        if (record.origin === "routine" || record.origin === "sentinel") {
+          throw new Error(
+            `${name} cannot enforce read-only, so it cannot run unattended read-only work; choose a provider that enforces it.`,
+          );
+        }
+        this.persistEvent(
+          runId,
+          {
+            type: "permission",
+            ts: Date.now(),
+            detail: `${name} has no read-only sandbox: read-only is only requested in the prompt.`,
+          },
+          active,
+        );
+      }
       const artifactsDir = path.join(this.paths.artifacts, runId);
       fs.mkdirSync(artifactsDir, { recursive: true });
       // A run that continues a conversation hands the adapter the id the
@@ -607,6 +629,8 @@ export class RunManager {
         timeoutMs: record.timeoutMs ?? this.getSettings().limits.defaultTimeoutMs,
         profile: record.permissionProfile ?? this.getSettings().securityProfile,
         artifactsDir,
+        // MordomoOS's own secrets stay in the service (docs/security.md).
+        dropEnv: { names: [this.getSettings().channels.telegram.botTokenEnv], prefixes: ["MORDOMO_"] },
         ...(record.sessionId ? { sessionId: record.sessionId } : {}),
         ...(resume ? { resume } : {}),
         ...(this.permissionBroker && mode === "write" ? brokerFor(this.permissionBroker, record) : {}),

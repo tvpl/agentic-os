@@ -31,6 +31,15 @@ export interface ProviderCapabilities {
    * does not advertise it, the run starts fresh and says so in a text event.
    */
   resume: "flag" | "subcommand" | "none";
+  /**
+   * How a write run is kept in bounds: `broker` — every tool that is not a
+   * pre-approved edit asks a human (Claude's permission prompt tool);
+   * `sandbox` — the CLI confines writes to the working directory (Codex
+   * `--sandbox workspace-write`); `none` — nothing does (`cursor-agent --force`).
+   * The engine parks an unconfined write for approval unless the profile is
+   * `approved_automation`.
+   */
+  writeConfinement: "broker" | "sandbox" | "none";
 }
 
 /** Where the compiled views of the canonical skills/routers live for a provider (paths relative to the target dir). */
@@ -142,6 +151,7 @@ export const BUILTIN_MANIFESTS: Record<ProviderId, ProviderManifest> = {
       promptTransport: "stdin",
       streaming: true,
       resume: "flag",
+      writeConfinement: "broker",
     },
     layout: {
       instructionsFile: "CLAUDE.md",
@@ -164,6 +174,7 @@ export const BUILTIN_MANIFESTS: Record<ProviderId, ProviderManifest> = {
       streaming: true,
       // No resume flag is documented for cursor-agent -p; runs always start fresh.
       resume: "none",
+      writeConfinement: "none",
     },
     layout: {
       instructionsFile: "AGENTS.md",
@@ -185,6 +196,7 @@ export const BUILTIN_MANIFESTS: Record<ProviderId, ProviderManifest> = {
       promptTransport: "argv",
       streaming: true,
       resume: "subcommand",
+      writeConfinement: "sandbox",
     },
     layout: {
       instructionsFile: "AGENTS.md",
