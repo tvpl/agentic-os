@@ -23,7 +23,7 @@ export class EventBus {
 
   /** Announce an event; the payload type is the one `OsEventMap` names for `type`. */
   emit<K extends OsEventType>(type: K, payload: OsEventMap[K]): OsEvent<K> {
-    const event = { id: ++this.seq, type, ts: Date.now(), v: OS_EVENT_VERSION, payload } as OsEvent<K>;
+    const event: OsEvent<K> = { id: ++this.seq, type, ts: Date.now(), v: OS_EVENT_VERSION, payload };
     const stored = event as OsEvent;
     this.ring.push(stored);
     if (this.ring.length > this.ringSize) this.ring.shift();

@@ -66,7 +66,8 @@ zod only, so the browser can import it: the wire types (`RunRecord`, `RunEvent`,
 (`writeDecision`, `PROFILES`; also at `@mordomo/contracts/policy`, without zod) and the
 typed event map. Every event the bus emits is `{ id, type, ts, v, payload }`, with
 `payload` typed by `OsEventMap[type]` and `v` = 1; a payload whose shape changes bumps
-`v`. The core re-exports all of it under the same names. `typetests/` holds compile-time
+`v`. The core re-exports these under the same names (the UI-only `BrainSettings`,
+`MicroApp` and `DEFAULT_HUD` stay in the contract). `typetests/` holds compile-time
 proofs (`npm run typecheck`).
 
 ## Core modules (`core/src`)

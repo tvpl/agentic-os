@@ -28,6 +28,21 @@ describe("S1 the contracts package", () => {
     expect(Object.keys(pkg.dependencies ?? {})).toEqual(["zod"]);
   });
 
+  it("C16 the contracts package publishes exactly two entry points", () => {
+    const pkg = JSON.parse(read("contracts/package.json")) as {
+      exports: Record<string, { types: string; default: string }>;
+    };
+    expect(pkg.exports).toEqual({
+      ".": { types: "./dist/index.d.ts", default: "./dist/index.js" },
+      "./policy": { types: "./dist/policy.d.ts", default: "./dist/policy.js" },
+    });
+    // The subpath exists so a browser can take the policy without zod: only type imports.
+    const policy = read("contracts/src/policy.ts");
+    for (const line of policy.split("\n").filter((l) => /^\s*import\b/.test(l))) {
+      expect(line).toMatch(/^import type /);
+    }
+  });
+
   it("C4 core re-exports the very same contract objects", () => {
     expect(core.writeDecision).toBe(contracts.writeDecision);
     expect(core.PROFILES).toBe(contracts.PROFILES);

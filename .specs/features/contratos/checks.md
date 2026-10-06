@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/contratos/plan.md`
 
-13 checks in 3 slices · 3 one-way doors · 0 open, of which 0 block
+16 checks in 4 slices · 4 one-way doors · 0 open, of which 0 block
 
 Comandos (da raiz):
 
@@ -67,8 +67,22 @@ Status: closed
 Proof: `npm run typecheck && npm run build -w apps/command-centre`
 Status: closed
 
-**C13** - Nenhum arquivo em `apps/command-centre/dist/assets` contém `better-sqlite3` nem `node:fs` (AC 12)
-Proof: `npm run build -w apps/command-centre && ! grep -rlE "better-sqlite3|node:fs" apps/command-centre/dist/assets`
+**C13** - Nenhum arquivo em `apps/command-centre/dist/assets` contém `better-sqlite3`, `node:fs` nem `ZodError` (AC 12)
+Proof: `npm run build -w apps/command-centre && ! grep -rlE "better-sqlite3|node:fs|ZodError" apps/command-centre/dist/assets`
+Status: closed
+
+### Rodada 2 - lacunas da primeira verificação
+
+**C14** - `@mordomo/core` exporta os 11 tipos do C2 com os mesmos nomes, e cada um é mutuamente atribuível ao de `@mordomo/contracts` (`typetests/core-exports.ts`) (AC 3)
+Proof: `npx tsc -p typetests/tsconfig.json`
+Status: closed
+
+**C15** - Com `writeDecision` trocado por um stub (`vi.mock("@mordomo/contracts/policy")`), `writePolicyFor` segue o stub para os 4 perfis e as 3 decisões, chamando-o com `(perfil, "manual")` (AC 10)
+Proof: `npm run test -w apps/command-centre -- src/runs/policy.delegation.test.ts`
+Status: closed
+
+**C16** - `contracts/package.json` tem `exports` igual a `{ ".", "./policy" }` com as formas literais do `Landing` (porta 1 e emenda 1a), e `contracts/src/policy.ts` só tem `import type` (Landing)
+Proof: `npx vitest run tests/contracts.test.ts -t "C16 the contracts package publishes exactly two entry points"`
 Status: closed
 
 ## Coverage
@@ -77,14 +91,16 @@ Status: closed
 | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | exports de tempo de execução (3)                          | `SettingsSchema` C1 · `writeDecision` C1 · `PROFILES` C1                                                                                            | -        |
 | exports de tipo (11)                                      | C2, table-driven over all 11 (um import de cada em `typetests/exports.ts`)                                                                          | -        |
-| reexports do core (3)                                     | `writeDecision` C4 · `PROFILES` C4 · `SettingsSchema` C4                                                                                            | -        |
+| reexports do core (14)                                    | `writeDecision` C4 · `PROFILES` C4 · `SettingsSchema` C4 · os 11 tipos C14, table-driven over all 11                                                | -        |
 | tipos de evento (22)                                      | C9, table-driven over all 22 (exaustivo em tipo nos dois sentidos)                                                                                  | -        |
 | uniões por ponto de emissão (4)                           | `routine.alert` C8 · `routine.changed` C8 · `session.updated` C8 · `objective.changed` C8 (um `emit` válido de cada forma em `typetests/events.ts`) | -        |
 | aliases na interface (11)                                 | C10, table-driven over all 11                                                                                                                       | -        |
 | `GET /api/events` (1)                                     | `v` em cada evento C7                                                                                                                               | -        |
 | startup config: alias `@mordomo/contracts` (3 assemblies) | `tsc -b` (build) C5 · `vitest.config.ts` (testes) C1 · Vite (interface) C12                                                                         | -        |
-| doors (3)                                                 | pacote C1-C5 · `v` no envelope C6, C7 · uniões C8                                                                                                   | -        |
+| doors (4)                                                 | pacote C1-C5, C16 · subcaminho `./policy` C16 · `v` no envelope C6, C7 e `tsc` (o envelope é anotado, não convertido) · uniões C8                   | -        |
 
+- C13 é uma guarda: hoje a interface só importa tipos do contrato (`runs/policy.ts` é importado só pelos testes), então nada de tempo de execução do contrato chega ao bundle; o `ZodError` faz a guarda notar se zod entrar
+- C11 é textual; o comportamento (delegar a `writeDecision`) é C15
 - Claims naming a route: C7 - provado lendo o SSE de um servidor real (`listen`), como `tests/api.hardening.test.ts` já faz
 
 ## Test policy

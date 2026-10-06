@@ -68,6 +68,8 @@ None - no stored-data shape change
 | 2. Versão no envelope de evento              | `OsEvent<K> = { id: number; type: K; ts: number; v: 1; payload: OsEventMap[K] }`; mudar a forma de um payload incrementa `v` daquele tipo de evento                                                                 | Versão por stream (cabeçalho no SSE): um cliente que guarda eventos (o anel, o replay por `Last-Event-ID`) perderia a versão de cada um                                                         |
 | 3. Payloads com formato por ponto de emissão | `routine.alert`, `routine.changed`, `session.updated` e `objective.changed` viram uniões discriminadas no mapa (`{ reason: "budget" … } \| { status … }`), sem mudar o que já é emitido                             | Normalizar cada evento num formato único: muda o que a interface recebe hoje em quatro eventos, num diff que não é desta feature                                                                |
 
+| 1a. Subcaminho `./policy` (emenda da rodada 2, aditiva) | `exports["./policy"] = { "types": "./dist/policy.d.ts", "default": "./dist/policy.js" }`, ao lado de `"."`; `contracts/src/policy.ts` só tem `import type`, então o subcaminho não puxa zod | Só a raiz `"."`: a interface importaria `writeDecision` pela raiz e levaria zod para o bundle do navegador junto com o schema |
+
 - Nothing else in this change is hard to reverse
 
 ## Criteria

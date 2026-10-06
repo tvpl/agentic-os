@@ -40,8 +40,6 @@ export interface NotificationRecorderOptions {
   keep?: number;
 }
 
-/** Payload of `budget.crossed` (emitted by the hourly budget check). */
-
 const FAILED_STATUSES = new Set(["failed", "timed_out"]);
 
 /** `sentinel.fired` severity → inbox tone. */
