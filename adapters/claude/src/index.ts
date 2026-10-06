@@ -238,7 +238,7 @@ export class ClaudeAdapter implements AgentAdapter {
         "--permission-prompt-tool",
         "mcp__mordomo__approve",
         "--mcp-config",
-        JSON.stringify(mcp),
+        writeMcpConfig(run.runId, mcp),
       );
     } else {
       args.push("--permission-mode", "acceptEdits");
@@ -275,7 +275,11 @@ export class ClaudeAdapter implements AgentAdapter {
         // Known before the first line of output; the stream confirms it later.
         yield { type: "session", ts: Date.now(), providerSessionId };
       }
-      yield* executeInvocation(run, invocation, claudeStreamParser(), [invocation.executable]);
+      try {
+        yield* executeInvocation(run, invocation, claudeStreamParser(), [invocation.executable]);
+      } finally {
+        removeMcpConfig(invocation.args);
+      }
     })();
   }
 
@@ -293,6 +297,23 @@ export class ClaudeAdapter implements AgentAdapter {
       checkedAt: Date.now(),
     };
   }
+}
+
+/**
+ * The broker's MCP config goes to a 0600 file in a private 0700 directory,
+ * never on argv where `ps` shows it to every user and to the agent itself.
+ */
+function writeMcpConfig(runId: string, config: unknown): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `mordomo-mcp-${runId.replace(/[^A-Za-z0-9-]/g, "_")}-`));
+  const file = path.join(dir, "mcp.json");
+  fs.writeFileSync(file, JSON.stringify(config), { mode: 0o600 });
+  return file;
+}
+
+function removeMcpConfig(args: string[]): void {
+  const i = args.indexOf("--mcp-config");
+  if (i < 0 || !args[i + 1]) return;
+  fs.rmSync(path.dirname(args[i + 1]!), { recursive: true, force: true });
 }
 
 function num(value: unknown): number {

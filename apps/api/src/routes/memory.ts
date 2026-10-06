@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import {
@@ -33,6 +35,34 @@ import type { AppContext } from "../context.js";
 import { grantedRoots, httpError } from "./common.js";
 
 const JournalDateParam = z.string().refine(isJournalDate, { message: "expected YYYY-MM-DD" });
+
+/**
+ * What `POST /api/memory/open` hands to the OS (docs/security.md): documents
+ * and media by extension, and folders without one. Anything else, executables
+ * and app bundles included, is refused before a process starts.
+ */
+export const OPENABLE_EXTENSIONS: ReadonlySet<string> = new Set(
+  "md txt pdf png jpg jpeg gif webp svg mp4 mov webm mp3 wav m4a csv json html htm docx xlsx pptx odt ods odp rtf".split(
+    " ",
+  ),
+);
+
+function isOpenable(resolved: string): boolean {
+  const ext = path.extname(resolved).slice(1).toLowerCase();
+  if (ext) return OPENABLE_EXTENSIONS.has(ext);
+  try {
+    return fs.statSync(resolved).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** The platform's opener, argv only. Never `cmd /c`, which re-parses `&` in a file name. */
+export function openerFor(platform: NodeJS.Platform, resolved: string): [string, string[]] {
+  if (platform === "darwin") return ["open", [resolved]];
+  if (platform === "win32") return ["explorer.exe", [resolved]];
+  return ["xdg-open", [resolved]];
+}
 
 export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): void {
   // Journal hooks: `memory/` becomes an indexed root (journal notes are
@@ -117,13 +147,11 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   app.post("/api/memory/open", async (req) => {
     const { p } = z.object({ p: z.string() }).parse(req.body);
     const resolved = resolveInsideRoots(grantedRoots(ctx), p); // PathAccessError → 403
+    if (!isOpenable(resolved)) {
+      throw httpError(415, "Only documents, media and folders open from here", "unsupported_type");
+    }
     const { spawn } = await import("node:child_process");
-    const [exe, args] =
-      process.platform === "darwin"
-        ? ["open", [resolved]]
-        : process.platform === "win32"
-          ? ["cmd", ["/c", "start", "", resolved]]
-          : ["xdg-open", [resolved]];
+    const [exe, args] = openerFor(process.platform, resolved);
     const child = spawn(exe, args, { detached: true, stdio: "ignore" });
     child.on("error", () => {
       /* opener missing (headless) — the UI already shows the path */

@@ -104,6 +104,31 @@ export function isLoopbackHost(hostHeader: string | string[] | undefined): boole
   return isAllowedHost(hostHeader);
 }
 
+/** The TCP peer is this machine (the Host header alone can be forged by any client). */
+export function isLoopbackAddress(address: string | undefined): boolean {
+  if (!address) return false;
+  const a = address.toLowerCase();
+  return a === "::1" || a.startsWith("127.") || a.startsWith("::ffff:127.");
+}
+
+/** The only routes a permission-broker credential may call (docs/security.md, AD-002). */
+const BROKER_ROUTES = new Set([
+  "POST /api/approvals/tool",
+  "GET /api/approvals/:id",
+  "POST /api/approvals/:id/resolve",
+]);
+
+declare module "fastify" {
+  interface FastifyRequest {
+    /** Set when the request carries a permission-broker credential: the run it is bound to. */
+    brokerRunId: string | null;
+  }
+  interface FastifyContextConfig {
+    /** Reachable without a credential. Every other /api route is denied by default. */
+    public?: boolean;
+  }
+}
+
 export function tokenMatches(supplied: unknown, expected: string): boolean {
   if (typeof supplied !== "string" || supplied.length === 0) return false;
   const a = Buffer.from(supplied, "utf8");
@@ -173,6 +198,7 @@ export async function buildServer(
     forceCloseConnections: true,
   });
   const token = ctx.token();
+  app.decorateRequest("brokerRunId", null);
 
   app.addHook("onRequest", async (req: FastifyRequest, reply: FastifyReply) => {
     const remote = ctx.settings().remote;
@@ -180,19 +206,24 @@ export async function buildServer(
     if (!isAllowedHost(req.headers.host, extraHosts)) {
       return reply.code(403).send(errorBody("forbidden_host", "Forbidden host"));
     }
-    if (req.url.startsWith("/api/")) {
-      // Unauthenticated: the meta line the shell boots from, and claiming a pairing code.
-      const open = req.url === "/api/meta" || (req.method === "POST" && req.url === "/api/pair/claim");
-      const supplied =
-        (req.headers["x-mordomo-token"] as string | undefined) ??
-        (req.query as Record<string, string | undefined>)?.token;
-      const ok =
-        tokenMatches(supplied, token) ||
-        (remote.enabled && typeof supplied === "string" && ctx.devices.verify(supplied) !== null);
-      if (!open && !ok) {
-        return reply.code(401).send(errorBody("unauthorized", "Missing or invalid local token"));
+    // Decided on the route the router matched, never on the raw URL: the
+    // router decodes the path, so `/%61pi/settings` is `/api/settings` here.
+    const route = req.routeOptions.url;
+    if (!route?.startsWith("/api/") || req.routeOptions.config.public === true) return;
+    const supplied =
+      (req.headers["x-mordomo-token"] as string | undefined) ??
+      (req.query as Record<string, string | undefined>)?.token;
+    if (tokenMatches(supplied, token)) return;
+    if (remote.enabled && typeof supplied === "string" && ctx.devices.verify(supplied) !== null) return;
+    const broker = typeof supplied === "string" ? ctx.brokerRunFor(supplied) : null;
+    if (broker?.active) {
+      if (!BROKER_ROUTES.has(`${req.method} ${route}`)) {
+        return reply.code(403).send(errorBody("forbidden", "The permission broker cannot call this route"));
       }
+      req.brokerRunId = broker.runId;
+      return;
     }
+    return reply.code(401).send(errorBody("unauthorized", "Missing or invalid local token"));
   });
 
   app.addHook("onSend", async (_req, reply, payload) => {
@@ -276,10 +307,11 @@ export async function buildServer(
     });
     const serveIndex = (req: FastifyRequest, reply: FastifyReply) => {
       // The local token is injected into the same-origin page only, and only
-      // when the page is opened from this machine; a remote device pairs and
-      // keeps its own token in the browser. Foreign origins cannot read the
-      // meta (CORS) nor send it (custom header + no CORS).
-      const inject = isLoopbackHost(req.headers.host) ? token : "";
+      // when the page is opened from this machine (loopback socket AND loopback
+      // Host); a remote device pairs and keeps its own token in the browser.
+      // Foreign origins cannot read the meta (CORS) nor send it (custom header + no CORS).
+      const inject =
+        isLoopbackHost(req.headers.host) && isLoopbackAddress(req.socket.remoteAddress) ? token : "";
       const html = fs
         .readFileSync(indexFile, "utf8")
         .replace(
@@ -293,6 +325,7 @@ export async function buildServer(
     app.setNotFoundHandler((req, reply) => {
       const pathname = req.url.split("?")[0]!;
       if (
+        (req.method !== "GET" && req.method !== "HEAD") ||
         pathname.startsWith("/api/") ||
         /^\/(?:assets|fonts|icons)(?:\/|$)/.test(pathname) ||
         path.posix.extname(pathname)

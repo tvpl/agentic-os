@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -301,12 +302,16 @@ export class AppContext {
     const settings = this.settings();
     const profile = run.permissionProfile ?? settings.securityProfile;
     if (profile !== "review_before_write" && profile !== "controlled_write") return null;
+    // Its own credential, never the local token: it can raise, read and deny
+    // this run's approvals only, and dies with the run (AD-002).
+    const credential = `brk_${crypto.randomBytes(32).toString("base64url")}`;
+    this.brokerCredentials.set(credential, run.id);
     return {
       command: process.execPath,
       args: [cliEntry(), "mcp", "permission"],
       env: {
         MORDOMO_URL: `http://127.0.0.1:${settings.port}`,
-        MORDOMO_TOKEN: this.token(),
+        MORDOMO_TOKEN: credential,
         MORDOMO_RUN_ID: run.id,
         MORDOMO_APPROVAL_TIMEOUT_MS: String(settings.limits.toolApprovalTimeoutMs ?? 600_000),
         ...(this.paths.home ? { MORDOMO_HOME: this.paths.home } : {}),
@@ -316,6 +321,22 @@ export class AppContext {
 
   token(): string {
     return this.settingsStore.getOrCreateToken();
+  }
+
+  /** Permission-broker credential → the run it was issued for. In memory: a restart interrupts every run anyway. */
+  private readonly brokerCredentials = new Map<string, string>();
+
+  /**
+   * The run a broker credential belongs to, and whether it still counts: only
+   * while that run is queued or running. A dead credential is forgotten.
+   */
+  brokerRunFor(credential: string): { runId: string; active: boolean } | null {
+    const runId = this.brokerCredentials.get(credential);
+    if (!runId) return null;
+    const status = this.runs.get(runId)?.status;
+    if (status === "queued" || status === "running") return { runId, active: true };
+    this.brokerCredentials.delete(credential);
+    return { runId, active: false };
   }
 
   async providerSnapshot(force = false): Promise<ProviderSnapshot[]> {

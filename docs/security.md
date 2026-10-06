@@ -29,8 +29,8 @@ wins and this page is the bug.
 
 | # | Threat | Controls |
 |---|---|---|
-| T1 | Remote origin drives the local API (DNS rebinding, malicious web page) | Bind `127.0.0.1` only; `Host` header parsed with `new URL` and restricted to `127.0.0.1`, `localhost`, `[::1]` (IPv6 works, a *missing* Host is refused); security headers + CSP (`default-src 'self'`, `frame-ancestors 'none'`); every `/api/*` route except `/api/meta` requires the local token via the `x-mordomo-token` header (or `?token=` for SSE, redacted from logs), compared with `crypto.timingSafeEqual`. The token is generated at setup, stored in `config/` (0600) and injected only into the same-origin page, so it doubles as CSRF protection. There is **no CORS layer**: no CORS headers are sent, so the browser's same-origin policy is what stops a foreign page from reading responses, and the token stops it from writing. Changing `bindAddress` is approval-gated, but the Host allowlist stays loopback-only, so a non-loopback bind is not a supported way to expose the panel (`apps/api/src/server.ts`). |
-| T2 | Command injection via prompts/paths | argv arrays only, `shell: false`, no `eval`; executable allowlist **by basename** (`claude`, `cursor-agent`, `codex`, `node`) plus an optional pinned absolute `binaryPath` per provider — the basename check does not prove *which* binary runs, it only rules out arbitrary executables (`core/src/spawn/safeSpawn.ts`); prompts go to Claude over stdin and to Cursor/Codex as an argv element (visible in `ps`); captured stdout/stderr are capped at 1 MiB each (tail kept); Zod validation on every route with a `400 {error:{code:"validation", issues}}` envelope |
+| T1 | Remote origin drives the local API (DNS rebinding, malicious web page) | Bind `127.0.0.1` only; `Host` header parsed with `new URL` and restricted to `127.0.0.1`, `localhost`, `[::1]` (IPv6 works, a *missing* Host is refused); security headers + CSP (`default-src 'self'`, `frame-ancestors 'none'`); every `/api/*` route requires a credential (see *Authentication* below) via the `x-mordomo-token` header (or `?token=` for SSE, redacted from logs), compared with `crypto.timingSafeEqual`. The token is generated at setup, stored in `config/` (0600) and injected only into the same-origin page served to a loopback socket, so it doubles as CSRF protection. There is **no CORS layer**: no CORS headers are sent, so the browser's same-origin policy is what stops a foreign page from reading responses, and the token stops it from writing. Changing `bindAddress` is approval-gated; with remote access on (`settings.remote`), the Host allowlist also accepts the hosts the owner listed, and remote devices authenticate with their own paired token, never the page's (`apps/api/src/server.ts`, `apps/api/src/routes/devices.ts`). |
+| T2 | Command injection via prompts/paths | argv arrays only, `shell: false`, no `eval`; executable allowlist **by basename** (`claude`, `cursor-agent`, `codex`, `node`) plus an optional pinned absolute `binaryPath` per provider — the basename check does not prove *which* binary runs, it only rules out arbitrary executables (`core/src/spawn/safeSpawn.ts`); prompts go to Claude over stdin and to Cursor/Codex as an argv element (visible in `ps`), prefixed with a space when they begin with `-` so they are never parsed as an option; captured stdout/stderr are capped at 1 MiB each (tail kept); Zod validation on every route with a `400 {error:{code:"validation", issues}}` envelope |
 | T3 | Path traversal / symlink escape | every `:id` / `:slug` route parameter is validated against `^[a-z0-9][a-z0-9._-]{0,80}$` with no `..` (`apps/api/src/routes/params.ts`, `core/src/security/ids.ts`) and the file stores re-check that `<dir>/<id>` stays inside `<dir>`; every user-supplied path (preview, open, run `cwd`, skill import `sourceDir`, sync `target`) is realpath-resolved and must sit inside the home or an enabled indexed folder (`resolveInsideRoots`); new `indexedFolders` must be absolute, existing directories and may not overlap `config/`; backup names match `full-…` and restores are staged (see T10) |
 | T4 | Secret exfiltration via index/logs | one shared exclusion policy for the indexer, preview and open (`core/src/memory/excludes.ts`): user `excludes` globs, a **hard directory blocklist** the user cannot switch off (`.git`, `.aws`, `.ssh`, `.gnupg`, `.kube`, `.docker`, `node_modules`) and the secret-file basename patterns (`.env*`, `*.pem`, `*.key`, `*.p12`, `id_rsa*`, `id_ed25519*`, `credentials*.json`, `.npmrc`, …), all applied *before* reading; binary files detected by content (NUL byte in the first 8 KiB); redaction of token-shaped strings (`sk-…`, `sk-ant-…`, `ghp_…`, `xox…`, `AKIA…`, JWTs, `Bearer …`, `password=`/`token=` pairs) on every persisted log line, including the API request log; auth detection never prints, copies or stores tokens |
 | T5 | Prompt injection inside indexed files | indexed content is never concatenated into MordomoOS system instructions; skill runs receive file *paths*, not inlined untrusted content; previews are rendered as plain text/escaped HTML; UI marks workspace content as data |
@@ -40,6 +40,42 @@ wins and this page is the bug.
 | T9 | Supply chain (npm) | small dependency set, exact-pinned via lockfile; no postinstall scripts of our own; `mordomo doctor` runs `npm audit --audit-level=high` (20 s budget, `MORDOMO_SKIP_NPM_AUDIT=1` to skip) and CI fails on high-severity advisories |
 | T10 | DB corruption / bad migration | versioned SQL migrations; timestamped DB backup before each migration; WAL mode; backups copy the DB with SQLite's online backup API (`db.backup()`), so a backup taken while the service runs is consistent; a restore requested through the API is **staged** in `config/restore-pending/` (refused while runs are active) and applied at the next service boot before the DB is opened, after a safety backup; `mordomo restore` on the CLI refuses while the service is running |
 | T11 | Orphaned processes after crash | pidfile carries pid, port, start time and a per-boot token so a recycled PID is not mistaken for a live service; graceful shutdown (SIGTERM/SIGINT) cancels active runs and waits up to 10 s before closing the DB, marking them `interrupted`; on boot, runs left `running`/`queued` are marked `interrupted`. Persisted PIDs do not prove process identity after restart: live PIDs are recorded as unverified and are not signalled by `RunManager.recoverInterrupted`. Automatic reaping after a crash requires durable ownership verification and is not currently guaranteed. Live processes owned by the current manager remain cancellable through their handles. |
+
+## Authentication
+
+The rules below hold for every route, present and future (`.specs/STATE.md`, AD-001 and AD-002).
+
+- **Denied by default, decided on the matched route.** The `onRequest` hook in
+  `apps/api/src/server.ts` reads the route the router matched (`req.routeOptions.url`),
+  never the raw URL: the router decodes the path, so `/%61pi/settings` is `/api/settings`
+  and needs a credential like any other spelling. A route is reachable without one only
+  when it declares `config: { public: true }` — today `GET /api/meta` and
+  `POST /api/pair/claim`. The SPA fallback answers `GET`/`HEAD` only.
+- **Three credentials.** The local token (the owner); a paired device token (only while
+  `remote.enabled`); and a permission-broker credential.
+- **The permission broker cannot approve.** A write run under `review_before_write` or
+  `controlled_write` gets its own credential (`brk_` + 32 random bytes, base64url), issued
+  by `AppContext.permissionBrokerFor` and held in memory. It is accepted only while its run
+  is `queued` or `running` (afterwards `401`), and only on `POST /api/approvals/tool`,
+  `GET /api/approvals/:id` and `POST /api/approvals/:id/resolve` with `decision: "denied"`
+  — always for its own run; anything else is `403`. Approving needs the owner. The Claude
+  adapter writes the MCP config that carries it to a `0600` file in a private `0700`
+  temporary directory, passes the file path to `--mcp-config` and removes the directory
+  when the run ends, so neither credential appears on argv.
+- **The page only carries the token to this machine.** `GET /` injects the local token
+  into `<meta name="mordomo-token">` only when both the TCP peer (`req.socket.remoteAddress`)
+  and the `Host` header are loopback; a forged `Host: localhost` from the network gets an
+  empty meta and pairs instead.
+- **Opening a file never runs it.** `POST /api/memory/open` hands the OS only folders and
+  files whose extension is in `OPENABLE_EXTENSIONS` (`apps/api/src/routes/memory.ts`:
+  documents, images, audio, video, `html`, office files); anything else — `.app`,
+  `.command`, `.sh`, `.exe`, an extensionless file — is `415 unsupported_type` before a
+  process starts. The opener is `open` (macOS), `xdg-open` (Linux) or `explorer.exe`
+  (Windows), argv only, never `cmd /c`.
+
+Not covered yet (roadmap feature `api-v1`): scopes for device tokens, per-user Telegram
+approvals, rate limits. A process running as the owner can still read `config/token`
+from disk; that needs an OS sandbox and is outside this model.
 
 ## Security profiles
 

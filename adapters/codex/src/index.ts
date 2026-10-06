@@ -173,7 +173,8 @@ export class CodexAdapter implements AgentAdapter {
     // `codex exec resume <SESSION_ID> [PROMPT]`: the session id is the first
     // positional, the prompt the second.
     if (resumeId) args.push(resumeId);
-    args.push(run.prompt);
+    // A prompt is never an option: a leading space keeps "-…" from being parsed as a flag.
+    args.push(run.prompt.startsWith("-") ? ` ${run.prompt}` : run.prompt);
     return {
       executable: this.binary(),
       args,

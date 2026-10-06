@@ -146,7 +146,8 @@ export class CursorAdapter implements AgentAdapter {
     if (run.mode === "write" && detection.supportedFlags.includes("--force")) {
       args.push("--force");
     }
-    args.push(run.prompt);
+    // A prompt is never an option: a leading space keeps "-…" from being parsed as a flag.
+    args.push(run.prompt.startsWith("-") ? ` ${run.prompt}` : run.prompt);
     return {
       executable: this.binary(),
       args,

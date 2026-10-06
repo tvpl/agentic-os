@@ -24,7 +24,7 @@ export function registerDeviceRoutes(app: FastifyInstance, ctx: AppContext): voi
     };
   });
 
-  app.post("/api/pair/claim", async (req, reply) => {
+  app.post("/api/pair/claim", { config: { public: true } }, async (req, reply) => {
     const body = z
       .object({ code: z.string().regex(/^\d{6}$/), name: z.string().max(80).default("") })
       .parse(req.body ?? {});

@@ -404,7 +404,7 @@ export function registerSystemRoutes(
   });
 
   // Public (no token): only non-sensitive branding needed before the UI boots.
-  app.get("/api/meta", async () => {
+  app.get("/api/meta", { config: { public: true } }, async () => {
     const s = ctx.settings();
     return {
       name: s.systemName,
@@ -556,6 +556,8 @@ export function registerSystemRoutes(
     const { id } = UuidParams.parse(req.params);
     const approval = ctx.approvals.get(id);
     if (!approval) throw httpError(404, "Approval not found");
+    if (req.brokerRunId && approval.payload.runId !== req.brokerRunId)
+      throw httpError(403, "This approval belongs to another run", "forbidden");
     return approval;
   });
   /**
@@ -572,6 +574,8 @@ export function registerSystemRoutes(
         toolUseId: z.string().max(200).optional(),
       })
       .parse(req.body);
+    if (req.brokerRunId && body.runId !== req.brokerRunId)
+      throw httpError(403, "The permission broker can only ask for its own run", "forbidden");
     const run = ctx.runs.get(body.runId);
     if (!run) throw httpError(404, "Run not found");
     if (run.status !== "running" && run.status !== "queued") throw httpError(409, "Run is not active");
@@ -605,6 +609,14 @@ export function registerSystemRoutes(
         answers: z.record(z.string().max(4000)).optional(),
       })
       .parse(req.body);
+    if (req.brokerRunId) {
+      // The broker only gives up on its own prompt (timeout); approving is the owner's.
+      const approval = ctx.approvals.get(id);
+      if (!approval) throw httpError(404, "Approval not found");
+      if (approval.payload.runId !== req.brokerRunId)
+        throw httpError(403, "This approval belongs to another run", "forbidden");
+      if (decision !== "denied") throw httpError(403, "The permission broker cannot approve", "forbidden");
+    }
     const onError = (err: unknown, runId: string) =>
       req.log.error({ err, runId, msg: "approved run failed to execute" });
     const result = await resolveApproval(ctx, id, decision, onError, answers);
