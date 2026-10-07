@@ -471,7 +471,8 @@ export function registerSystemRoutes(
 
   app.put("/api/settings", async (req) => {
     // What only the Command Centre reads moved to /api/ui-preferences (settings version 2).
-    const body = (req.body ?? {}) as Record<string, unknown>;
+    // A body that is not an object (a string, a number) falls through to the schema's 400.
+    const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
     const moved = UI_PREFERENCE_KEYS.filter((key) => key in body);
     if (moved.length > 0) {
       throw httpError(

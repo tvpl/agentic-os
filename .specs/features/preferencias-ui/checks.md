@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/preferencias-ui/plan.md`
 
-35 checks in 5 slices · 3 one-way doors · 0 open, of which 0 block
+37 checks in 5 slices · 3 one-way doors · 0 open, of which 0 block
 
 Comandos (da raiz): `npx vitest run tests/preferences.test.ts -t "<nome>"`; a interface com
 `npm run typecheck -w apps/command-centre`, `npm run test -w apps/command-centre -- -t "<nome>"` e
@@ -159,6 +159,16 @@ Status: closed
 
 **C35** - Um backup sem `config/settings.json` e sem `config/ui-preferences.json`, restaurado sobre uma home com `ui-preferences.json` (`themePreset: "mono"`) e `settings.json` gravados, deixa os dois arquivos vivos iguais byte a byte (AC 23)
 Proof: `npx vitest run tests/preferences.test.ts -t "C35 a backup without either settings file leaves the live preferences alone"`
+Status: closed
+
+### Depois da rodada 3 - correção do autor (escalada ao dono)
+
+**C36** - Com `putUiPreferences` rejeitando, concluir o `Setup` não chama `putSettings`, não faz nenhuma escrita de configurações e não chama `onDone` (o setup só fica concluído depois das duas gravações; mata o mutante S2 da rodada 3, que tirava o `await`) (AC 21, Assumptions)
+Proof: `npm run test -w apps/command-centre -- -t "C36 a failed preferences write leaves setup unfinished"`
+Status: closed
+
+**C37** - `PUT /api/settings` com um corpo JSON que não é objeto (`"themePreset"`, `42`) responde `400` com `error.code` `"validation"`, como antes da feature (a checagem de campos movidos não lança mais sobre um corpo que não é objeto) (AC 11)
+Proof: `npx vitest run tests/preferences.test.ts -t "C37 a settings body that is not an object is a validation error"`
 Status: closed
 
 ## Coverage

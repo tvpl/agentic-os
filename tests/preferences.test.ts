@@ -285,6 +285,24 @@ describe("S2 the preferences routes", () => {
     }
   });
 
+  it("C37 a settings body that is not an object is a validation error", async () => {
+    const s = await server();
+    try {
+      for (const payload of ['"themePreset"', "42"]) {
+        const res = await s.app.inject({
+          method: "PUT",
+          url: "/api/settings",
+          headers: { ...s.headers, "content-type": "application/json" },
+          payload,
+        });
+        expect(res.statusCode, payload).toBe(400);
+        expect(res.json().error.code, payload).toBe("validation");
+      }
+    } finally {
+      await s.close();
+    }
+  });
+
   it("C13 settings no longer carry UI preferences", async () => {
     const s = await server();
     try {

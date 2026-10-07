@@ -202,6 +202,21 @@ describe("S3 the UI reads and writes preferences through their route", () => {
     );
   });
 
+  it("C36 a failed preferences write leaves setup unfinished", async () => {
+    vi.mocked(api.putUiPreferences).mockRejectedValueOnce(new Error("disk full"));
+    const done = vi.fn();
+    render(<Setup onDone={done} />, { wrapper });
+    const next = async () => fireEvent.click(await screen.findByRole("button", { name: "Next" }));
+    for (let i = 0; i < 4; i++) await next();
+    fireEvent.click(await screen.findByRole("button", { name: "Finish setup" }));
+    await waitFor(() => expect(api.putUiPreferences).toHaveBeenCalledTimes(1));
+    await settle();
+    // The settings (and `setupCompleted: true`) are only written after the preferences landed.
+    expect(api.putSettings).not.toHaveBeenCalled();
+    expect(settingsWrites()).toHaveLength(0);
+    expect(done).not.toHaveBeenCalled();
+  });
+
   it("C24 the brain state saves its view to the UI preferences", async () => {
     vi.useFakeTimers();
     const src: BrainStateSources = {
