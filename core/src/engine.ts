@@ -42,7 +42,7 @@ import { writeDecision, type WriteOrigin } from "./security/profiles.js";
 import { SentinelRunner } from "./sentinels/runner.js";
 import { SkillCatalog } from "./skills/catalog.js";
 import { SkillRegistry } from "./skills/registry.js";
-import { setProbeEnvDrop, setProviderBinaries } from "./spawn/safeSpawn.js";
+import { executableName, setProbeEnvDrop, setProviderBinaries } from "./spawn/safeSpawn.js";
 import { SyncCompiler } from "./sync/compiler.js";
 
 export interface EngineOptions {
@@ -112,10 +112,36 @@ export interface WriteGate {
   runId: string | null;
 }
 
+/** A stored `binaryPath` the engine refuses to run: its basename is not the manifest's `binary`. */
+export interface IgnoredBinaryPath {
+  provider: ProviderId;
+  binaryPath: string;
+  /** The executable the provider's manifest names. */
+  binary: string;
+}
+
+/**
+ * Stored `providers.<id>.binaryPath` values that do not name their manifest's
+ * `binary` (basename, without `.exe`/`.cmd`/`.bat` on Windows). However such a
+ * value got into `settings.json` (written before the check existed, edited by
+ * hand), the engine never pins it: the adapter discovers the binary on PATH
+ * instead, and `mordomo doctor` names the ignored path.
+ */
+export function ignoredBinaryPaths(registry: ProviderRegistry, settings: Settings): IgnoredBinaryPath[] {
+  const ignored: IgnoredBinaryPath[] = [];
+  for (const manifest of registry.manifests()) {
+    const binaryPath = settings.providers[manifest.id]?.binaryPath;
+    if (binaryPath && executableName(binaryPath) !== manifest.binary)
+      ignored.push({ provider: manifest.id, binaryPath, binary: manifest.binary });
+  }
+  return ignored;
+}
+
 /** One adapter per registered provider; their executables become the spawn allowlist. */
 function buildAdapters(registry: ProviderRegistry, settings: Settings): Record<ProviderId, AgentAdapter> {
   setProviderBinaries(registry.manifests().map((m) => m.binary));
-  return registry.createAll((id) => settings.providers[id]?.binaryPath ?? null);
+  const ignored = new Set(ignoredBinaryPaths(registry, settings).map((i) => i.provider));
+  return registry.createAll((id) => (ignored.has(id) ? null : (settings.providers[id]?.binaryPath ?? null)));
 }
 
 function pidAlive(pid: number): boolean {
@@ -255,6 +281,11 @@ export class MordomoEngine {
   /** Live adapters — rebuilt by `reloadAdapters()` whenever settings change. */
   get adapters(): Record<ProviderId, AgentAdapter> {
     return this.adapterRecord;
+  }
+
+  /** Stored `binaryPath` values the adapters ignore because they name another program. */
+  ignoredBinaryPaths(): IgnoredBinaryPath[] {
+    return ignoredBinaryPaths(this.providers, this.settings());
   }
 
   /** Re-create the provider adapters from the settings on disk (binaryPath etc.). */
@@ -398,7 +429,14 @@ export class MordomoEngine {
     if (mode !== "write") return { pendingApproval: null, runId: null };
     this.assertWriteAllowed(mode, origin);
     const profile = this.settings().securityProfile;
-    const confinement = this.providers.manifest(payload.input.provider).capabilities.writeConfinement;
+    const provider = payload.input.provider;
+    if (!this.providers.has(provider)) {
+      throw Object.assign(new Error(`Unknown provider "${provider}": no adapter is registered for it`), {
+        statusCode: 400,
+        code: "unknown_provider",
+      });
+    }
+    const confinement = this.providers.manifest(provider).capabilities.writeConfinement;
     // A provider that confines nothing gets a human first, unless the owner
     // chose fully approved automation.
     const unconfined = confinement === "none" && profile !== "approved_automation";

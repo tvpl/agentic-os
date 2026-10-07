@@ -100,7 +100,11 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
   /** Manual test run — returns the real run id; watch via /api/runs/:id/stream. */
   app.post("/api/routines/:id/run", async (req) => {
     const { id } = IdParams.parse(req.params);
-    if (!ctx.routines.get(id)) throw httpError(404, "Routine not found");
+    const routine = ctx.routines.get(id);
+    if (!routine) throw httpError(404, "Routine not found");
+    // A stored routine on a provider that is no longer registered is refused
+    // here (`400 unknown_provider`); a scheduled fire ends `failed` instead.
+    requireProvider(ctx, routine.provider);
     // fire() creates the run row and resolves at once; execution continues
     // in the background (409 from core if the routine is already in flight).
     const { runId, status } = await ctx.scheduler.fire(id, { reason: "manual" });

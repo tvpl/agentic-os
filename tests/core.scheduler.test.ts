@@ -315,7 +315,8 @@ describe("per-routine budgets", () => {
       // First fire: nothing spent yet; the run carries the remaining budget as its cap.
       const first = await scheduler.fire("budgeted");
       expect(runs.get(first.runId)!.maxCostUsd).toBeCloseTo(0.5, 6);
-      await wait(400);
+      // Wait for the in-flight firing itself, not a fixed delay that loses the race under load.
+      await scheduler.drain();
       // Pretend the provider billed US$ 0.6 for it.
       db.prepare("UPDATE runs SET cost_usd = ? WHERE id = ?").run(0.6, first.runId);
       expect(runs.spentTodayUsd({ routineId: "budgeted" })).toBeCloseTo(0.6, 6);

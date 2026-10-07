@@ -45,7 +45,15 @@ e o padrão de configuração global de `safeSpawn` que a feature 4 criou (`setP
    `400 unknown_provider` em todas as rotas que recebem provedor; a CLI confere `--provider` (e o
    `defaultProvider`) contra os ids registrados; o `RunManager` termina `failed` ("unknown provider") uma
    execução já gravada cujo provedor sumiu. `PUT /api/settings` recusa um `binaryPath` novo cujo nome
-   base não é o `binary` do manifesto (`400 binary_mismatch`); um valor já gravado não é revalidado.
+   base não é o `binary` do manifesto (`400 binary_mismatch`); o valor já gravado, reenviado sem mudança
+   (a interface reenvia todos os provedores a cada gravação), é aceito. O motor
+   (`core/src/engine.ts`, `ignoredBinaryPaths`, ao montar e ao recarregar adaptadores) nunca passa ao
+   adaptador um `binaryPath` gravado cujo nome base não é o `binary` do manifesto, venha de onde vier: o
+   adaptador procura o binário no PATH, e `mordomo doctor` (`apps/api/src/doctor.ts`, também
+   `GET /api/doctor`) avisa com o provedor e o caminho ignorado. O retry (`POST /api/runs/:id/retry`) e a
+   execução manual de rotina (`POST /api/routines/:id/run`) conferem o provedor gravado com
+   `requireProvider` antes de criar qualquer coisa, e `engine.gateWrite` recusa um provedor não registrado
+   com `400 unknown_provider` em vez de lançar o erro do registro.
 6. Interface → as listas fixas de provedores (`views/Skills/SkillList.tsx`, exists;
    `nucleo/scenes/SkillsSceneTools.tsx`, `views/Routines.tsx`, `views/Setup.tsx`) passam a vir dos
    snapshots de `GET /api/providers` (`providers/options.ts`, new: `providerOptions`). Os dois mapas de
@@ -64,6 +72,8 @@ e o padrão de configuração global de `safeSpawn` que a feature 4 criou (`setP
 | contrato    | API: `PUT /api/settings` com `providers.<id>.binaryPath` de nome base errado responde `400 binary_mismatch`                                                                                                                               |
 | contrato    | `@mordomo/adapter-*`: cada pacote exporta `<id>Manifest` declarado nele mesmo; `@mordomo/core` deixa de exportar `BUILTIN_MANIFESTS` e `builtinManifests`                                                                                 |
 | contrato    | `@mordomo/core`: novos `BUILTIN_PROVIDER_IDS`, `setProviderBinaries`, `executableName`, `homeConfigFilesOf`; `runAudit`/`discoverMcpServers` exigem a lista de arquivos e `SyncCompiler` exige `getManifests` (antes caíam nos embutidos) |
+| contrato    | `@mordomo/core`: novos `ignoredBinaryPaths`, `IgnoredBinaryPath` e `MordomoEngine.ignoredBinaryPaths()`; o motor deixa de passar ao adaptador um `binaryPath` gravado de outro programa                                                   |
+| contrato    | API: `POST /api/runs/:id/retry` e `POST /api/routines/:id/run` com provedor gravado não registrado respondem `400 unknown_provider`; `GET /api/doctor` ganha um check `warn` por `binaryPath` gravado ignorado                            |
 | stored data | `settings.json`: as chaves de `providers` que não são embutidas passam a ser mantidas; nenhum arquivo existente muda de forma                                                                                                             |
 
 ## Relations
@@ -72,12 +82,14 @@ None - no stored-data shape change (o registro aceita o que o objeto aceitava, e
 
 ## Surface
 
-| Route                                                                     | In                                       | Out                                | Status                         |
-| ------------------------------------------------------------------------- | ---------------------------------------- | ---------------------------------- | ------------------------------ |
-| `POST /api/runs`, `POST /api/skills/:slug/run` e as demais com `provider` | `provider` bem formado e não registrado  | `error.code` `"unknown_provider"`  | `400` (antes `400 validation`) |
-| `POST /api/providers/:id/detect`, `GET /api/providers/:id/models`         | `:id` bem formado e não registrado       | `error.code` `"unknown_provider"`  | `400` (antes `500 internal`)   |
-| `PUT /api/settings`                                                       | `providers.<id>.binaryPath` de outro CLI | `error.code` `"binary_mismatch"`   | `400` (antes `200`)            |
-| `GET /api/providers`                                                      | -                                        | cada snapshot ganha `loginCommand` | `200`                          |
+| Route                                                                     | In                                           | Out                                 | Status                         |
+| ------------------------------------------------------------------------- | -------------------------------------------- | ----------------------------------- | ------------------------------ |
+| `POST /api/runs`, `POST /api/skills/:slug/run` e as demais com `provider` | `provider` bem formado e não registrado      | `error.code` `"unknown_provider"`   | `400` (antes `400 validation`) |
+| `POST /api/providers/:id/detect`, `GET /api/providers/:id/models`         | `:id` bem formado e não registrado           | `error.code` `"unknown_provider"`   | `400` (antes `500 internal`)   |
+| `PUT /api/settings`                                                       | `providers.<id>.binaryPath` de outro CLI     | `error.code` `"binary_mismatch"`    | `400` (antes `200`)            |
+| `POST /api/runs/:id/retry`, `POST /api/routines/:id/run`                  | registro gravado com provedor não registrado | `error.code` `"unknown_provider"`   | `400` (antes `200`/`500`)      |
+| `GET /api/doctor`                                                         | `binaryPath` gravado de outro programa       | check `warn` com provedor e caminho | `200`                          |
+| `GET /api/providers`                                                      | -                                            | cada snapshot ganha `loginCommand`  | `200`                          |
 
 ## Landing
 
@@ -120,7 +132,7 @@ None - no stored-data shape change (o registro aceita o que o objeto aceitava, e
 
 10. The executable allowlist SHALL contain `node` and the `binary` of every registered manifest, and nothing else; WHEN the `acme` provider (binary `acme-cli`) is registered THEN `acme-cli` SHALL be allowed and, before that, refused
 11. IF no registered manifest declares `cursor-agent` THEN `assertAllowed("/usr/bin/cursor-agent")` SHALL throw `ExecutableNotAllowedError`
-12. WHEN `PUT /api/settings` sets `providers.<id>.binaryPath` to an absolute path whose basename (without `.exe`, `.cmd` or `.bat`) is not that manifest's `binary` THEN the API SHALL answer `400` with `error.code` `"binary_mismatch"` and the settings SHALL NOT change
+12. WHEN `PUT /api/settings` sets `providers.<id>.binaryPath` to a new absolute path (one that differs from the stored value) whose basename (without `.exe`, `.cmd` or `.bat`) is not that manifest's `binary` THEN the API SHALL answer `400` with `error.code` `"binary_mismatch"` and the settings SHALL NOT change; a stored value re-sent unchanged SHALL be accepted. IF a stored `providers.<id>.binaryPath`, however it was written, has a basename that is not that manifest's `binary` THEN the engine SHALL NOT execute it (the adapter SHALL discover the binary on PATH instead) and `mordomo doctor` and `GET /api/doctor` SHALL report a `warn` check naming the provider and the ignored path
 13. WHEN `PUT /api/settings` sets `providers.claude.binaryPath` to `/opt/x/claude` or to `null` THEN the API SHALL answer `200`
 
 **Independent test:** `binaryPath` do Claude apontando para `/bin/sh` é recusado.
@@ -156,15 +168,16 @@ None - no stored-data shape change (o registro aceita o que o objeto aceitava, e
 
 ## Observable
 
-| Surface                             | Decision                | Landing                                    |
-| ----------------------------------- | ----------------------- | ------------------------------------------ |
-| API rotas com `provider`            | error shape             | AC 4, AC 5 - `400 unknown_provider`        |
-| API `PUT /api/settings`             | error shape             | AC 12 - `400 binary_mismatch`              |
-| API `GET /api/providers`            | response shape          | AC 9 - `loginCommand`                      |
-| API (todas)                         | who may call it         | existing - regra de auth da feature 1      |
-| command `mordomo run --provider x`  | exit code               | AC 4 - `2`, como um provedor inválido hoje |
-| package `@mordomo/core`             | what a consumer imports | AC 6 - sai `BUILTIN_MANIFESTS`             |
-| screen `Skills`, `Rotinas`, `Setup` | provider list           | AC 14 - mesma aparência, fonte no servidor |
+| Surface                                         | Decision                | Landing                                            |
+| ----------------------------------------------- | ----------------------- | -------------------------------------------------- |
+| API rotas com `provider`                        | error shape             | AC 4, AC 5 - `400 unknown_provider`                |
+| API `PUT /api/settings`                         | error shape             | AC 12 - `400 binary_mismatch`                      |
+| command `mordomo doctor`, API `GET /api/doctor` | diagnostic              | AC 12 - `warn` com o provedor e o caminho ignorado |
+| API `GET /api/providers`                        | response shape          | AC 9 - `loginCommand`                              |
+| API (todas)                                     | who may call it         | existing - regra de auth da feature 1              |
+| command `mordomo run --provider x`              | exit code               | AC 4 - `2`, como um provedor inválido hoje         |
+| package `@mordomo/core`                         | what a consumer imports | AC 6 - sai `BUILTIN_MANIFESTS`                     |
+| screen `Skills`, `Rotinas`, `Setup`             | provider list           | AC 14 - mesma aparência, fonte no servidor         |
 
 ## Sources
 

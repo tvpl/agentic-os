@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
@@ -27,6 +28,7 @@ import {
   type MordomoEngine,
   type ProviderManifest,
   type RunRecord,
+  type RunRequestSpec,
 } from "@mordomo/core";
 import { claudeManifest, createClaudeAdapter } from "@mordomo/adapter-claude";
 import { codexManifest, createCodexAdapter } from "@mordomo/adapter-codex";
@@ -394,6 +396,11 @@ describe("the API with an unregistered provider", () => {
       path.join(tmp.paths.skills, "say-hi", "SKILL.md"),
       "---\nname: Say hi\ndescription: Says hi.\n---\n\nSay hi.\n",
     );
+    fs.mkdirSync(path.join(tmp.paths.skills, "say-write"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp.paths.skills, "say-write", "SKILL.md"),
+      "---\nname: Say write\ndescription: Writes hi.\nmode: write\n---\n\nWrite hi.\n",
+    );
     ctx = new AppContext(tmp.paths.home);
     const settings = ctx.settings();
     settings.providers.claude.enabled = true;
@@ -477,6 +484,143 @@ describe("the API with an unregistered provider", () => {
     expectUnknown(await app.inject({ method: "GET", url: "/api/providers/gemini/models", headers: auth() }));
   });
 
+  const receiptCount = () =>
+    (ctx.db.prepare("SELECT COUNT(*) AS n FROM run_action_receipts").get() as { n: number }).n;
+  /** A run recorded on `gemini` (a provider since removed), with the complete request a retry repeats. */
+  const recordedOnGemini = (request: RunRequestSpec) =>
+    ctx.runs.create({
+      origin: request.kind === "skill" ? "skill" : "manual",
+      provider: "gemini",
+      prompt: "recorded",
+      request,
+      cwd: ctx.paths.home,
+      model: null,
+      effort: "default",
+      mode: request.mode,
+      timeoutMs: 10_000,
+      profile: "review_before_write",
+      skillSlug: request.kind === "skill" ? request.skillSlug : null,
+    });
+
+  it("C22 a retry of a run recorded on an unregistered provider is refused", async () => {
+    const shapes: Array<[string, RunRequestSpec]> = [
+      ["skill write", { version: 1, kind: "skill", skillSlug: "say-write", inputs: {}, mode: "write" }],
+      ["skill read_only", { version: 1, kind: "skill", skillSlug: "say-hi", inputs: {}, mode: "read_only" }],
+      ["plain prompt", { version: 1, kind: "prompt", prompt: "hi", mode: "read_only" }],
+    ];
+    for (const [shape, request] of shapes) {
+      const source = recordedOnGemini(request);
+      const runs = runCount();
+      const receipts = receiptCount();
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/runs/${source.id}/retry`,
+        headers: auth(),
+        payload: { submissionId: crypto.randomUUID() },
+      });
+      expect(res.statusCode, `${shape}: ${res.body}`).toBe(400);
+      expect(res.json().error.code, shape).toBe("unknown_provider");
+      // Refused before anything is queued: no run, no receipt.
+      expect(runCount(), shape).toBe(runs);
+      expect(receiptCount(), shape).toBe(receipts);
+    }
+  });
+
+  it("C23 each remaining route taking a provider refuses an unregistered one", async () => {
+    ctx.routines.save(
+      RoutineSchema.parse({ id: "claude-check", name: "Claude check", prompt: "hi", schedule: "0 9 * * *" }),
+    );
+    ctx.routines.save(
+      RoutineSchema.parse({
+        id: "gemini-stored",
+        name: "Gemini stored",
+        prompt: "hi",
+        schedule: "0 9 * * *",
+        provider: "gemini",
+      }),
+    );
+    const parent = ctx.runs.create({
+      origin: "manual",
+      provider: "claude",
+      prompt: "parent",
+      cwd: ctx.paths.home,
+      model: null,
+      effort: "default",
+      mode: "read_only",
+      timeoutMs: 10_000,
+      profile: "read_only",
+    });
+    const objective = await app.inject({
+      method: "POST",
+      url: "/api/objectives",
+      headers: auth(),
+      payload: {
+        title: "Gemini objective",
+        steps: [{ title: "Step", request: { version: 1, kind: "prompt", prompt: "hi", mode: "read_only" } }],
+      },
+    });
+    expect(objective.statusCode, objective.body).toBe(200);
+    const objectiveId = objective.json().id as string;
+    const settingsBefore = fs.readFileSync(ctx.paths.settingsFile);
+    const runs = runCount();
+
+    const routes: Array<{ method: "POST" | "PUT"; url: string; payload?: unknown }> = [
+      {
+        method: "PUT",
+        url: "/api/routines/claude-check",
+        payload: { name: "Claude check", prompt: "hi", schedule: "0 9 * * *", provider: "gemini" },
+      },
+      { method: "POST", url: "/api/routines/gemini-stored/run" },
+      {
+        method: "POST",
+        url: `/api/runs/${parent.id}/children`,
+        payload: { prompts: ["hi"], provider: "gemini" },
+      },
+      { method: "POST", url: `/api/objectives/${objectiveId}/dispatch`, payload: { provider: "gemini" } },
+      { method: "PUT", url: "/api/providers/default", payload: { provider: "gemini" } },
+      { method: "POST", url: "/api/providers/gemini/smoke" },
+      {
+        method: "PUT",
+        url: "/api/settings",
+        payload: { providers: { gemini: { binaryPath: "/opt/x/gemini" } } },
+      },
+    ];
+    for (const route of routes) {
+      const res = await app.inject({ ...route, headers: auth() } as Parameters<typeof app.inject>[0]);
+      const label = `${route.method} ${route.url}`;
+      expect(res.statusCode, `${label}: ${res.body}`).toBe(400);
+      expect(res.json().error.code, label).toBe("unknown_provider");
+    }
+    // Nothing was created or changed by any of them.
+    expect(ctx.routines.get("claude-check")?.provider).toBe("claude");
+    expect(runCount()).toBe(runs);
+    expect(ctx.objectives.get(objectiveId)?.steps.every((step) => step.runId == null)).toBe(true);
+    expect(fs.readFileSync(ctx.paths.settingsFile).equals(settingsBefore)).toBe(true);
+  });
+
+  it("C24 the write gate refuses an unregistered provider with a mapped error", () => {
+    let thrown: unknown = null;
+    try {
+      ctx.gateWrite("write", "skill", "Write-mode skill run: /say-write with gemini", {
+        kind: "skill",
+        input: {
+          slug: "say-write",
+          inputs: {},
+          provider: "gemini",
+          model: null,
+          effort: "default",
+          cwd: ctx.paths.home,
+          timeoutMs: 10_000,
+        },
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).not.toBeInstanceOf(ProviderRegistryError);
+    expect(thrown).toMatchObject({ statusCode: 400, code: "unknown_provider" });
+  });
+
   it("C13 each snapshot carries the login command", async () => {
     const res = await app.inject({ method: "GET", url: "/api/providers", headers: auth() });
     expect(res.statusCode).toBe(200);
@@ -528,28 +672,165 @@ describe("the API with an unregistered provider", () => {
   });
 });
 
+describe.skipIf(!FAKE_CLIS_RUNNABLE)("a stored binary path of another program", () => {
+  let ctx: AppContext | null = null;
+  let app: FastifyInstance | null = null;
+  let restorePath: (() => void) | null = null;
+  afterAll(async () => {
+    await app?.close();
+    ctx?.close();
+    restorePath?.();
+  });
+
+  it("C25 a stored mismatched binary path is never executed and doctor names it", async () => {
+    restorePath = withFakeBinPath();
+    const home = tempDir("mordomo-plug-stored-");
+    const bin = tempDir("mordomo-plug-notclaude-");
+    const marker = path.join(bin, "notclaude-ran");
+    const notclaude = path.join(bin, "notclaude");
+    fs.writeFileSync(notclaude, `#!/bin/sh\ntouch "${marker}"\n`);
+    fs.chmodSync(notclaude, 0o755);
+    // Written straight to settings.json, as a value stored before the check existed (or edited by hand).
+    const paths = resolvePaths(home);
+    fs.mkdirSync(paths.config, { recursive: true });
+    fs.writeFileSync(
+      paths.settingsFile,
+      JSON.stringify({
+        version: 2,
+        setupCompleted: true,
+        providers: { claude: { enabled: true, binaryPath: notclaude } },
+      }),
+    );
+    ctx = new AppContext(home);
+    app = await buildServer(ctx);
+    const auth = { "x-mordomo-token": ctx.token() };
+
+    const runOnce = async () => {
+      const record = ctx!.runs.create({
+        origin: "manual",
+        provider: "claude",
+        prompt: "Say OK",
+        cwd: home,
+        model: null,
+        effort: "default",
+        mode: "read_only",
+        timeoutMs: 20_000,
+        profile: "read_only",
+      });
+      return ctx!.runs.execute(record.id, "Say OK", "read_only");
+    };
+    const assistantTexts = (runId: string) =>
+      ctx!.runs
+        .eventsFor(runId)
+        .map((x) => x.event)
+        .filter((ev) => ev.type === "assistant")
+        .map((ev) => (ev as { text: string }).text);
+    const ignoredWarning = async () => {
+      const res = await app!.inject({ method: "GET", url: "/api/doctor?audit=0", headers: auth });
+      expect(res.statusCode).toBe(200);
+      return (res.json() as { checks: Array<{ status: string; label: string; detail: string }> }).checks.find(
+        (c) => c.status === "warn" && c.label.includes("claude") && c.detail.includes(notclaude),
+      );
+    };
+
+    // The fake claude on PATH runs instead of the stored path.
+    const first = await runOnce();
+    expect(first.status, first.error ?? "").toBe("done");
+    expect(assistantTexts(first.id)).toContain("Working on it.");
+    expect(fs.existsSync(marker)).toBe(false);
+    expect(await ignoredWarning()).toBeDefined();
+
+    // The UI re-sends every provider on save: the stored value unchanged is accepted, and stays ignored.
+    const resend = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers: auth,
+      payload: { providers: { claude: { enabled: true, binaryPath: notclaude } } },
+    });
+    expect(resend.statusCode, resend.body).toBe(200);
+    const second = await runOnce();
+    expect(second.status, second.error ?? "").toBe("done");
+    expect(fs.existsSync(marker)).toBe(false);
+    expect(await ignoredWarning()).toBeDefined();
+
+    // A new mismatched value is still refused.
+    const fresh = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers: auth,
+      payload: { providers: { claude: { binaryPath: "/bin/sh" } } },
+    });
+    expect(fresh.statusCode).toBe(400);
+    expect(fresh.json().error.code).toBe("binary_mismatch");
+  });
+});
+
+/** The Command Centre sources a hard-coded provider list could hide in (no tests, no gallery). */
+function uiSources(): Array<{ rel: string; source: string }> {
+  const root = path.join(repoRoot, "apps", "command-centre", "src");
+  const out: Array<{ rel: string; source: string }> = [];
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== "gallery") walk(full);
+        continue;
+      }
+      if (!/\.(ts|tsx)$/.test(entry.name) || /\.test\./.test(entry.name)) continue;
+      out.push({ rel: path.relative(root, full), source: fs.readFileSync(full, "utf8") });
+    }
+  };
+  walk(root);
+  return out;
+}
+
+/**
+ * Object literals with at least two built-in provider ids among their own keys
+ * (`{ claude: …, cursor: … }`, quoted or not): a map of the built-ins in disguise.
+ */
+function builtinKeyedObjects(source: string): string[] {
+  const key = /\s*["']?(claude|cursor|codex)["']?\s*:/y;
+  const found: string[] = [];
+  const stack: Array<{ start: number; keys: Set<string> }> = [];
+  const keyAt = (at: number) => {
+    key.lastIndex = at;
+    const m = key.exec(source);
+    if (m && stack.length) stack[stack.length - 1]!.keys.add(m[1]!);
+  };
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i];
+    if (ch === "{") {
+      stack.push({ start: i, keys: new Set() });
+      keyAt(i + 1);
+    } else if (ch === "}") {
+      const obj = stack.pop();
+      if (obj && obj.keys.size >= 2) found.push(source.slice(obj.start, i + 1));
+    } else if (ch === ",") keyAt(i + 1);
+  }
+  return found;
+}
+
 describe("S4 the UI lists the registered providers", () => {
   it("C18 the UI has no hard-coded provider list", () => {
-    const root = path.join(repoRoot, "apps", "command-centre", "src");
     const offenders: string[] = [];
-    const walk = (dir: string) => {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          if (entry.name !== "gallery") walk(full);
-          continue;
-        }
-        if (!/\.(ts|tsx)$/.test(entry.name) || /\.test\./.test(entry.name)) continue;
-        const source = fs.readFileSync(full, "utf8");
-        const rel = path.relative(root, full);
-        for (const literal of source.match(/\[[^[\]]*\]/g) ?? []) {
-          if (["claude", "cursor", "codex"].every((id) => new RegExp(`["'\`]${id}["'\`]`).test(literal)))
-            offenders.push(`${rel}: ${literal.replace(/\s+/g, " ").slice(0, 80)}`);
-        }
-        if (/Record<\s*ProviderId\s*,/.test(source)) offenders.push(`${rel}: Record<ProviderId, …>`);
+    for (const { rel, source } of uiSources()) {
+      for (const literal of source.match(/\[[^[\]]*\]/g) ?? []) {
+        if (["claude", "cursor", "codex"].every((id) => new RegExp(`["'\`]${id}["'\`]`).test(literal)))
+          offenders.push(`${rel}: ${literal.replace(/\s+/g, " ").slice(0, 80)}`);
       }
-    };
-    walk(root);
+      if (/Record<\s*ProviderId\s*,/.test(source)) offenders.push(`${rel}: Record<ProviderId, …>`);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("C28 the UI has no map keyed by the built-in provider ids", () => {
+    // The detector itself: it must see the shapes it is meant to refuse.
+    expect(builtinKeyedObjects('const m = { claude: "claude auth login", cursor: "x" };')).toHaveLength(1);
+    expect(builtinKeyedObjects('({ "codex": { a: 1 }, claude: 2 })[id]')).toHaveLength(1);
+    expect(builtinKeyedObjects("const one = { claude: 1, other: 2 };")).toEqual([]);
+    const offenders = uiSources().flatMap(({ rel, source }) =>
+      builtinKeyedObjects(source).map((obj) => `${rel}: ${obj.replace(/\s+/g, " ").slice(0, 80)}`),
+    );
     expect(offenders).toEqual([]);
   });
 });

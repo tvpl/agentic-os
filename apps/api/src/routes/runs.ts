@@ -18,6 +18,7 @@ import {
   grantedRoots,
   httpError,
   launchSkillRun,
+  requireProvider,
   submitPromptRun,
   type SkillRunInput,
 } from "./common.js";
@@ -182,6 +183,9 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
         );
       return JSON.parse(prior.response);
     }
+    // The provider comes from the recorded run: refuse one that is no longer
+    // registered (`400 unknown_provider`) before a receipt or a run exists.
+    requireProvider(ctx, source.provider);
     ctx.db
       .prepare(
         "INSERT INTO run_action_receipts(id, action, source_run_id, created_at) VALUES (?, 'retry', ?, ?)",

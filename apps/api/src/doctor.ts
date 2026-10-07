@@ -153,6 +153,17 @@ export async function runDoctor(ctx: AppContext, opts: DoctorOptions = {}): Prom
     });
   }
 
+  // A stored binaryPath that names another program is never run (the adapter
+  // looks on PATH instead); say so, or the owner believes it is in use.
+  for (const ignored of ctx.ignoredBinaryPaths()) {
+    checks.push({
+      id: `provider-${ignored.provider}-binary-path`,
+      label: `Provider: ${ignored.provider} binary path`,
+      status: "warn",
+      detail: `Ignored providers.${ignored.provider}.binaryPath "${ignored.binaryPath}": it is not the "${ignored.binary}" executable, so ${ignored.binary} is looked up on PATH instead. Fix it in Settings › Providers.`,
+    });
+  }
+
   const indexed = settings.indexedFolders.filter((f) => f.enabled);
   if (indexed.length === 0) {
     checks.push({
