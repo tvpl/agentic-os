@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
+import ts from "typescript";
 import * as core from "@mordomo/core";
 import {
   ConnectorRegistry,
@@ -763,6 +764,79 @@ describe.skipIf(!FAKE_CLIS_RUNNABLE)("a stored binary path of another program", 
     expect(fresh.statusCode).toBe(400);
     expect(fresh.json().error.code).toBe("binary_mismatch");
   });
+
+  it("C29 the stored binary path check follows the platform's executable names", () => {
+    const registry = new core.ProviderRegistry()
+      .register(claudeManifest, createClaudeAdapter)
+      .register(codexManifest, createCodexAdapter);
+    const ignored = (binaryPath: string | null, platform: NodeJS.Platform) =>
+      core
+        .ignoredBinaryPaths(
+          registry,
+          core.SettingsSchema.parse({ providers: { claude: { binaryPath } } }),
+          platform,
+        )
+        .map((i) => i.provider);
+    // Windows: the suffix and the case are not part of the name.
+    expect(ignored("C:\\tools\\claude.exe", "win32")).toEqual([]);
+    expect(ignored("C:\\tools\\CLAUDE.CMD", "win32")).toEqual([]);
+    expect(ignored("C:\\tools\\sh.exe", "win32")).toEqual(["claude"]);
+    // POSIX: the name is exact.
+    expect(ignored("/opt/x/claude", "linux")).toEqual([]);
+    expect(ignored("/opt/x/claude.exe", "linux")).toEqual(["claude"]);
+    expect(ignored("/bin/sh", "darwin")).toEqual(["claude"]);
+    // Nothing stored, nothing ignored.
+    expect(ignored(null, "linux")).toEqual([]);
+    expect(ignored(null, "win32")).toEqual([]);
+  });
+
+  it("C30 doctor says nothing about binary paths when none is ignored", async () => {
+    // One context per test: close the one the previous test left.
+    await app?.close();
+    ctx?.close();
+    const home = tempDir("mordomo-plug-doctor-");
+    ctx = new AppContext(home);
+    app = await buildServer(ctx);
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/doctor?audit=0",
+      headers: { "x-mordomo-token": ctx.token() },
+    });
+    expect(res.statusCode).toBe(200);
+    const checks = (res.json() as { checks: Array<{ id: string }> }).checks;
+    expect(checks.filter((c) => /^provider-.*-binary-path$/.test(c.id))).toEqual([]);
+  });
+
+  it("C31 approving a parked write on a removed provider is refused and stays pending", async () => {
+    // One context per test: close the one the previous test left.
+    await app?.close();
+    ctx?.close();
+    const home = tempDir("mordomo-plug-approve-");
+    ctx = new AppContext(home);
+    app = await buildServer(ctx);
+    const approval = ctx.approvals.request("write_run", "Write with a provider that was removed", {
+      kind: "prompt",
+      input: {
+        prompt: "x",
+        provider: "gemini",
+        model: null,
+        effort: "default",
+        mode: "write",
+        cwd: home,
+        timeoutMs: 1000,
+      },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/approvals/${approval.id}/resolve`,
+      headers: { "x-mordomo-token": ctx.token() },
+      payload: { decision: "approved" },
+    });
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json().error.code).toBe("unknown_provider");
+    expect(ctx.approvals.get(approval.id)?.status).toBe("pending");
+    expect(ctx.runs.list({ limit: 10 })).toHaveLength(0);
+  });
 });
 
 /** The Command Centre sources a hard-coded provider list could hide in (no tests, no gallery). */
@@ -784,29 +858,49 @@ function uiSources(): Array<{ rel: string; source: string }> {
   return out;
 }
 
+const BUILTIN_IDS = new Set(["claude", "cursor", "codex"]);
+
 /**
- * Object literals with at least two built-in provider ids among their own keys
- * (`{ claude: …, cursor: … }`, quoted or not): a map of the built-ins in disguise.
+ * Maps of the built-in providers in disguise, read from the syntax tree (so text
+ * in strings and comments never counts): object literals with at least two
+ * built-in ids among their own keys (plain, quoted, computed `["claude"]`,
+ * shorthand `{ claude, cursor }`, methods), and arrays of `[id, value]` pairs
+ * naming at least two (what `new Map(…)` and `Object.fromEntries(…)` take).
+ * Destructuring patterns and types are not values and are not flagged.
  */
-function builtinKeyedObjects(source: string): string[] {
-  const key = /\s*["']?(claude|cursor|codex)["']?\s*:/y;
-  const found: string[] = [];
-  const stack: Array<{ start: number; keys: Set<string> }> = [];
-  const keyAt = (at: number) => {
-    key.lastIndex = at;
-    const m = key.exec(source);
-    if (m && stack.length) stack[stack.length - 1]!.keys.add(m[1]!);
+function builtinKeyedObjects(source: string, fileName = "source.tsx"): string[] {
+  const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const literalText = (node: ts.Node | undefined): string | null =>
+    node && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) ? node.text : null;
+  const keyOf = (name: ts.PropertyName): string | null => {
+    if (ts.isIdentifier(name) || ts.isPrivateIdentifier(name)) return name.text;
+    if (ts.isComputedPropertyName(name)) return literalText(name.expression);
+    return literalText(name);
   };
-  for (let i = 0; i < source.length; i++) {
-    const ch = source[i];
-    if (ch === "{") {
-      stack.push({ start: i, keys: new Set() });
-      keyAt(i + 1);
-    } else if (ch === "}") {
-      const obj = stack.pop();
-      if (obj && obj.keys.size >= 2) found.push(source.slice(obj.start, i + 1));
-    } else if (ch === ",") keyAt(i + 1);
-  }
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isObjectLiteralExpression(node)) {
+      const keys = new Set<string>();
+      for (const prop of node.properties) {
+        const name = ts.isShorthandPropertyAssignment(prop)
+          ? prop.name.text
+          : prop.name
+            ? keyOf(prop.name)
+            : null;
+        if (name && BUILTIN_IDS.has(name)) keys.add(name);
+      }
+      if (keys.size >= 2) found.push(node.getText(file));
+    } else if (ts.isArrayLiteralExpression(node)) {
+      const ids = new Set(
+        node.elements
+          .map((el) => (ts.isArrayLiteralExpression(el) ? literalText(el.elements[0]) : null))
+          .filter((id): id is string => id !== null && BUILTIN_IDS.has(id)),
+      );
+      if (ids.size >= 2) found.push(node.getText(file));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
   return found;
 }
 
@@ -828,8 +922,25 @@ describe("S4 the UI lists the registered providers", () => {
     expect(builtinKeyedObjects('const m = { claude: "claude auth login", cursor: "x" };')).toHaveLength(1);
     expect(builtinKeyedObjects('({ "codex": { a: 1 }, claude: 2 })[id]')).toHaveLength(1);
     expect(builtinKeyedObjects("const one = { claude: 1, other: 2 };")).toEqual([]);
+    // Round-2 false negatives: computed keys, shorthand, a comment before the key, methods, pairs.
+    expect(builtinKeyedObjects('const m = { ["claude"]: 1, ["codex"]: 2 };')).toHaveLength(1);
+    expect(builtinKeyedObjects("const m = { claude, cursor };")).toHaveLength(1);
+    expect(builtinKeyedObjects("const m = { /* login */ claude: 1, // x\n cursor: 2 };")).toHaveLength(1);
+    expect(builtinKeyedObjects("const m = { claude() { return 1; }, codex() { return 2; } };")).toHaveLength(
+      1,
+    );
+    expect(builtinKeyedObjects('new Map([["claude", "a"], ["cursor", "b"]]);')).toHaveLength(1);
+    expect(builtinKeyedObjects('Object.fromEntries([["codex", 1], ["claude", 2]]);')).toHaveLength(1);
+    // Round-2 false positives: text in strings and comments, destructuring, types.
+    expect(builtinKeyedObjects('const s = "{ claude: 1, cursor: 2 }"; // { claude: 1, codex: 2 }')).toEqual(
+      [],
+    );
+    expect(builtinKeyedObjects("const { claude: a, cursor: b } = snapshots;")).toEqual([]);
+    expect(
+      builtinKeyedObjects("function f({ claude, codex }: { claude: string; codex: string }) {}"),
+    ).toEqual([]);
     const offenders = uiSources().flatMap(({ rel, source }) =>
-      builtinKeyedObjects(source).map((obj) => `${rel}: ${obj.replace(/\s+/g, " ").slice(0, 80)}`),
+      builtinKeyedObjects(source, rel).map((obj) => `${rel}: ${obj.replace(/\s+/g, " ").slice(0, 80)}`),
     );
     expect(offenders).toEqual([]);
   });

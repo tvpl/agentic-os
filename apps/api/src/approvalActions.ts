@@ -1,6 +1,12 @@
 import { events } from "@mordomo/core";
 import type { AppContext } from "./context.js";
-import { launchPromptRun, launchSkillRun, type PromptRunInput, type SkillRunInput } from "./routes/common.js";
+import {
+  launchPromptRun,
+  launchSkillRun,
+  requireProvider,
+  type PromptRunInput,
+  type SkillRunInput,
+} from "./routes/common.js";
 
 /**
  * Resolve an approval and apply its effect — the one code path behind the
@@ -23,6 +29,14 @@ export async function resolveApproval(
   // Sweep first: an approval past its TTL is expired here (cancelling the run
   // it gated), so resolving it answers 409 instead of silently acting on it.
   ctx.expireStaleApprovals();
+  // Approving a parked write whose provider was removed since would launch nothing:
+  // refuse (400 unknown_provider) and leave the approval pending.
+  if (decision === "approved") {
+    const pending = ctx.approvals.get(id);
+    const input = (pending?.payload as { input?: { provider?: unknown } } | undefined)?.input;
+    if (pending?.status === "pending" && pending.kind === "write_run" && typeof input?.provider === "string")
+      requireProvider(ctx, input.provider);
+  }
   const approval = ctx.approvals.resolve(
     id,
     decision,

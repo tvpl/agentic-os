@@ -127,11 +127,15 @@ export interface IgnoredBinaryPath {
  * hand), the engine never pins it: the adapter discovers the binary on PATH
  * instead, and `mordomo doctor` names the ignored path.
  */
-export function ignoredBinaryPaths(registry: ProviderRegistry, settings: Settings): IgnoredBinaryPath[] {
+export function ignoredBinaryPaths(
+  registry: ProviderRegistry,
+  settings: Settings,
+  platform: NodeJS.Platform = process.platform,
+): IgnoredBinaryPath[] {
   const ignored: IgnoredBinaryPath[] = [];
   for (const manifest of registry.manifests()) {
     const binaryPath = settings.providers[manifest.id]?.binaryPath;
-    if (binaryPath && executableName(binaryPath) !== manifest.binary)
+    if (binaryPath && executableName(binaryPath, platform) !== manifest.binary)
       ignored.push({ provider: manifest.id, binaryPath, binary: manifest.binary });
   }
   return ignored;
