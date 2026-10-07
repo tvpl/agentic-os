@@ -6,11 +6,11 @@
  */
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type RefObject } from "react";
 import { ChevronLeft, ChevronRight, Plus, Search, Star, Store, Upload, WandSparkles } from "lucide-react";
-import type { ProviderId } from "../../api";
 import { useT } from "../../i18n";
+import { providerOptions } from "../../providers/options";
+import { useOsProviders } from "../../queries";
 import type { ModeFilter, ProviderFilter, SkillFilters } from "./skillsMatch";
 
-const PROVIDERS: ProviderId[] = ["claude", "cursor", "codex"];
 const MODES: ModeFilter[] = ["all", "read_only", "write"];
 
 export interface ToolsProps {
@@ -33,6 +33,7 @@ export interface ToolsProps {
 
 export default function SkillsTools(p: ToolsProps) {
   const t = useT();
+  const providers = useOsProviders();
   const f = p.filters;
   const set = (patch: Partial<SkillFilters>) => p.onFilters({ ...f, ...patch });
   return (
@@ -63,7 +64,7 @@ export default function SkillsTools(p: ToolsProps) {
           </button>
         ))}
         <span className="sks-chip-sep" aria-hidden />
-        {(["all", ...PROVIDERS] as ProviderFilter[]).map((prov) => (
+        {(["all", ...providerOptions(providers.data)] as ProviderFilter[]).map((prov) => (
           <button
             key={prov}
             type="button"

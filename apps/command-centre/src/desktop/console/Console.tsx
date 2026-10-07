@@ -23,7 +23,7 @@ import {
 } from "../../hooks/systemNotify";
 import { qk, useOsProviders, useOsSettings, useOsSkills, useOsUiPreferences } from "../../queries";
 import { Link } from "react-router-dom";
-import { PROVIDER_LOGIN_COMMANDS, authRecovery } from "../../runs/authRecovery";
+import { authRecovery } from "../../runs/authRecovery";
 import { providerProblem } from "../../components/providerReadiness";
 import { Button } from "../../components/primitives";
 import { useToast } from "../../components/ui";
@@ -569,8 +569,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
       setPreflight({
         id: target.id,
         problem,
-        command:
-          problem === "not_installed" ? (target.installHint ?? null) : PROVIDER_LOGIN_COMMANDS[target.id],
+        command: problem === "not_installed" ? (target.installHint ?? null) : (target.loginCommand ?? null),
       });
       return;
     }
@@ -613,7 +612,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
   const last = turns[turns.length - 1];
   const recovery =
     !showThread && last
-      ? authRecovery(last.provider, `${last.error ?? ""} ${replies.get(last.id)?.text ?? ""}`)
+      ? authRecovery(last.provider, `${last.error ?? ""} ${replies.get(last.id)?.text ?? ""}`, providers.data)
       : null;
 
   return (

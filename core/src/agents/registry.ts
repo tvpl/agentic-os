@@ -5,10 +5,11 @@
  * native file layout, home config files, write-tool pattern) and created by a
  * *factory* (code: the adapter class). Everything in the core that used to
  * hard-code "claude / cursor / codex" — the sync compiler, the connector
- * auditor, the run manager's write detection, the API's adapter composition —
- * now iterates manifests, so adding a provider is: add its id to `ProviderId`
- * (settings validation), ship an adapter package with a manifest + factory,
- * and register it in `apps/api/src/providers.ts`.
+ * auditor, the run manager's write detection, the API's adapter composition,
+ * the executable allowlist — iterates the registered manifests, so adding a
+ * provider is: ship an adapter package with its manifest + factory and
+ * register it in `apps/api/src/providers.ts`. `ProviderId` is only the shape
+ * of an id; the core knows no provider by name.
  */
 import { ProviderId } from "../config/schema.js";
 import type { AgentAdapter } from "./types.js";
@@ -35,6 +36,8 @@ export interface ProviderManifest {
   binary: string;
   /** One-line install instruction shown when the binary is missing. */
   installHint: string;
+  /** What a person runs in a terminal to sign the CLI in (shown after an authentication failure). */
+  loginCommand: string;
   capabilities: ProviderCapabilities;
   layout: ProviderNativeLayout;
   /** Config files under the user's home dir that the connector auditor may scan (names/commands only, never credentials). */
@@ -68,7 +71,7 @@ export class ProviderRegistry {
     const parsed = ProviderId.safeParse(manifest.id);
     if (!parsed.success) {
       throw new ProviderRegistryError(
-        `Provider id "${manifest.id}" is not declared in ProviderId (core/src/config/schema.ts).`,
+        `Provider id "${manifest.id}" is not a valid provider id (2-32 lowercase letters, digits or dashes).`,
       );
     }
     if (this.entries.has(manifest.id))
@@ -98,7 +101,12 @@ export class ProviderRegistry {
   create(id: ProviderId, opts: AdapterFactoryOptions): AgentAdapter {
     const entry = this.entries.get(id);
     if (!entry) throw new ProviderRegistryError(`Unknown provider "${id}".`);
-    return entry.factory(opts);
+    const adapter = entry.factory(opts);
+    if (adapter.id !== id)
+      throw new ProviderRegistryError(
+        `The factory of provider "${id}" created an adapter for "${adapter.id}".`,
+      );
+    return adapter;
   }
 
   /** Create one adapter per registered provider from a `binaryPath` lookup. */
@@ -111,77 +119,3 @@ export class ProviderRegistry {
     return out;
   }
 }
-
-/** Every declared provider must have a manifest; the compiler and auditor rely on this table when no registry is wired. */
-export const BUILTIN_MANIFESTS: Record<ProviderId, ProviderManifest> = {
-  claude: {
-    id: "claude",
-    displayName: "Claude Code",
-    binary: "claude",
-    installHint: "npm install -g @anthropic-ai/claude-code",
-    capabilities: {
-      enforcesReadOnly: true,
-      supportsEffort: true,
-      promptTransport: "stdin",
-      streaming: true,
-      resume: "flag",
-      writeConfinement: "broker",
-    },
-    layout: {
-      instructionsFile: "CLAUDE.md",
-      skillsDir: ".claude/skills",
-      rulesFile: null,
-      commandsDir: null,
-    },
-    homeConfigFiles: [".claude.json", ".claude/settings.json"],
-    writeToolPattern: /^(write|edit|multiedit|notebookedit|create_file)/i,
-  },
-  cursor: {
-    id: "cursor",
-    displayName: "Cursor Agent",
-    binary: "cursor-agent",
-    installHint: "curl https://cursor.com/install -fsS | bash",
-    capabilities: {
-      enforcesReadOnly: false,
-      supportsEffort: false,
-      promptTransport: "argv",
-      streaming: true,
-      // No resume flag is documented for cursor-agent -p; runs always start fresh.
-      resume: "none",
-      writeConfinement: "none",
-    },
-    layout: {
-      instructionsFile: "AGENTS.md",
-      skillsDir: null,
-      rulesFile: ".cursor/rules/mordomo.mdc",
-      commandsDir: ".cursor/commands",
-    },
-    homeConfigFiles: [".cursor/mcp.json"],
-    writeToolPattern: /^(write|edit|multiedit|create_file|str_replace)/i,
-  },
-  codex: {
-    id: "codex",
-    displayName: "OpenAI Codex",
-    binary: "codex",
-    installHint: "npm install -g @openai/codex",
-    capabilities: {
-      enforcesReadOnly: true,
-      supportsEffort: true,
-      promptTransport: "argv",
-      streaming: true,
-      resume: "subcommand",
-      writeConfinement: "sandbox",
-    },
-    layout: {
-      instructionsFile: "AGENTS.md",
-      skillsDir: ".agents/skills",
-      rulesFile: null,
-      commandsDir: null,
-    },
-    homeConfigFiles: [".codex/config.toml"],
-    writeToolPattern: /^(apply_patch|write|edit|create_file)/i,
-  },
-};
-
-export const builtinManifests = (): ProviderManifest[] =>
-  ProviderId.options.map((id) => BUILTIN_MANIFESTS[id]);

@@ -21,7 +21,7 @@ import type { OpenPanel } from "../panelKinds";
 import { appKindOf } from "../apps";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type ArtifactEntry } from "../../api";
-import { useOsArtifacts } from "../../queries";
+import { useOsArtifacts, useOsProviders } from "../../queries";
 import { useToast } from "../../components/ui";
 import { FailureFixCard } from "../../runs/FailureFixCard";
 import { openFocus } from "../../nucleo/events";
@@ -119,6 +119,7 @@ function Turn({
   const toast = useToast();
   const qc = useQueryClient();
   const actions = useDesktopActions();
+  const providers = useOsProviders();
   const send = useMutation({
     mutationFn: (a: ArtifactEntry) =>
       api.post<{ ok: boolean; error?: string }>("/api/channels/telegram/send", {
@@ -156,7 +157,7 @@ function Turn({
     return actions.openPanel(id);
   };
   const cost = run.usage?.costUsd;
-  const recovery = authRecovery(run.provider, `${run.error ?? ""} ${reply?.text ?? ""}`);
+  const recovery = authRecovery(run.provider, `${run.error ?? ""} ${reply?.text ?? ""}`, providers.data);
   const failed = run.status === "failed" || run.status === "timed_out" || run.status === "interrupted";
   return (
     <div className={`console-turn${streaming ? " streaming" : ""}${failed ? " failed" : ""}`}>

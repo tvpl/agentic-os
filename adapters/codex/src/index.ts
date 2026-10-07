@@ -16,10 +16,9 @@ import {
   type RunEvent,
   type SafeInvocation,
   type ValidationResult,
-  BUILTIN_MANIFESTS,
-  type ProviderManifest,
   type AdapterFactoryOptions,
 } from "@mordomo/core";
+import { codexManifest } from "./manifest.js";
 
 /**
  * OpenAI Codex CLI adapter — non-interactive `codex exec` with `--json` events.
@@ -32,7 +31,7 @@ import {
  * `codex exec --help`. When the binary is older the run simply starts a fresh
  * conversation and says `resumeSupported: false` in a text event.
  */
-export const codexManifest: ProviderManifest = BUILTIN_MANIFESTS.codex;
+export { codexManifest };
 
 /** Factory used by the provider registry (`apps/api/src/providers.ts`). */
 export const createCodexAdapter = (opts: AdapterFactoryOptions): AgentAdapter =>

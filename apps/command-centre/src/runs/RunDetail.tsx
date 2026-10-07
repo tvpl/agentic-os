@@ -14,7 +14,7 @@ import { ArrowLeft, ClipboardList, Copy, CornerDownRight, FileText, RefreshCw, S
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useLocale, useT } from "../i18n";
-import { useOsArtifacts, useOsObjectives } from "../queries";
+import { useOsArtifacts, useOsObjectives, useOsProviders } from "../queries";
 import { ErrorBox, Skeleton, StatusBadge, formatDuration, timeAgo, useToast } from "../components/ui";
 import { Badge, Button, EmptyState, Segmented } from "../components/primitives";
 import { useConfirm } from "../hooks/useConfirm";
@@ -41,6 +41,7 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
   const confirm = useConfirm();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const providers = useOsProviders();
   const record = useRunQuery(id, {
     refetchInterval: (q) => (isRunActive(q.state.data?.run.status) ? 20_000 : false),
   });
@@ -256,7 +257,7 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
     : formatDuration(run.durationMs, locale);
   const contextPct =
     contextTokens != null && contextWindow ? Math.min(100, (contextTokens / contextWindow) * 100) : null;
-  const recovery = authRecovery(run.provider, run.failure?.message ?? run.error);
+  const recovery = authRecovery(run.provider, run.failure?.message ?? run.error, providers.data);
 
   return (
     <div className={`page run-detail${embedded ? " embedded" : ""}`}>

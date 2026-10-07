@@ -4,15 +4,15 @@ import path from "node:path";
 import type { MordomoPaths } from "../paths.js";
 import type { Settings, ProviderId } from "../config/schema.js";
 import type { Skill } from "../skills/types.js";
-import { builtinManifests, type ProviderManifest } from "../agents/registry.js";
+import type { ProviderManifest } from "../agents/registry.js";
 import { unifiedDiff } from "./diff.js";
 
 /**
  * Configuration compiler / synchronizer.
  *
  * One canonical source (skills/, memory/ routers, settings) is compiled into the
- * native files of each provider, as declared by its manifest's `layout`
- * (`core/src/agents/registry.ts`). With the built-in manifests:
+ * native files of each registered provider, as declared by its manifest's
+ * `layout` (`core/src/agents/registry.ts`). With the built-in manifests:
  *   Claude  → CLAUDE.md, .claude/skills/<slug>/**
  *   Cursor  → AGENTS.md, .cursor/rules/mordomo.mdc, .cursor/commands/<slug>.md
  *   Codex   → AGENTS.md, .agents/skills/<slug>/**
@@ -61,7 +61,8 @@ export class SyncCompiler {
     private readonly paths: MordomoPaths,
     private readonly getSettings: () => Settings,
     private readonly listSkills: () => Skill[],
-    private readonly getManifests: () => ProviderManifest[] = builtinManifests,
+    /** The registered providers' manifests (`ProviderRegistry.manifests`). */
+    private readonly getManifests: () => ProviderManifest[],
   ) {}
 
   private loadManifest(): Manifest {

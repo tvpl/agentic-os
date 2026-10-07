@@ -17,10 +17,9 @@ import {
   type RunEvent,
   type SafeInvocation,
   type ValidationResult,
-  BUILTIN_MANIFESTS,
-  type ProviderManifest,
   type AdapterFactoryOptions,
 } from "@mordomo/core";
+import { claudeManifest } from "./manifest.js";
 
 /**
  * Claude Code adapter — headless (`claude -p`) with `stream-json` output.
@@ -34,7 +33,7 @@ import {
  * installed CLI advertises them (`--help` probe), so an older binary simply
  * starts a fresh conversation.
  */
-export const claudeManifest: ProviderManifest = BUILTIN_MANIFESTS.claude;
+export { claudeManifest };
 
 /** Factory used by the provider registry (`apps/api/src/providers.ts`). */
 export const createClaudeAdapter = (opts: AdapterFactoryOptions): AgentAdapter =>

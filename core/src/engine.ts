@@ -42,7 +42,7 @@ import { writeDecision, type WriteOrigin } from "./security/profiles.js";
 import { SentinelRunner } from "./sentinels/runner.js";
 import { SkillCatalog } from "./skills/catalog.js";
 import { SkillRegistry } from "./skills/registry.js";
-import { setProbeEnvDrop } from "./spawn/safeSpawn.js";
+import { setProbeEnvDrop, setProviderBinaries } from "./spawn/safeSpawn.js";
 import { SyncCompiler } from "./sync/compiler.js";
 
 export interface EngineOptions {
@@ -112,7 +112,9 @@ export interface WriteGate {
   runId: string | null;
 }
 
+/** One adapter per registered provider; their executables become the spawn allowlist. */
 function buildAdapters(registry: ProviderRegistry, settings: Settings): Record<ProviderId, AgentAdapter> {
+  setProviderBinaries(registry.manifests().map((m) => m.binary));
   return registry.createAll((id) => settings.providers[id]?.binaryPath ?? null);
 }
 

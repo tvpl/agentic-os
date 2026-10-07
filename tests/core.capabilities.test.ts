@@ -3,7 +3,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  BUILTIN_MANIFESTS,
   ProviderRegistry,
   SettingsStore,
   createEngine,
@@ -124,9 +123,9 @@ describe.skipIf(!FAKE_CLIS_RUNNABLE)("S1 unattended read-only needs a provider t
 
 describe("S2 an unconfined write needs a human", () => {
   it("C5 every builtin manifest declares its write confinement", () => {
-    expect(BUILTIN_MANIFESTS.claude.capabilities.writeConfinement).toBe("broker");
-    expect(BUILTIN_MANIFESTS.codex.capabilities.writeConfinement).toBe("sandbox");
-    expect(BUILTIN_MANIFESTS.cursor.capabilities.writeConfinement).toBe("none");
+    expect(claudeManifest.capabilities.writeConfinement).toBe("broker");
+    expect(codexManifest.capabilities.writeConfinement).toBe("sandbox");
+    expect(cursorManifest.capabilities.writeConfinement).toBe("none");
   });
 
   const gate = (e: MordomoEngine, provider: ProviderId) =>

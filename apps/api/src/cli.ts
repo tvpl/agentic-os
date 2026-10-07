@@ -19,16 +19,19 @@ import {
   DEFAULT_EXCLUDES,
   detectTimezone,
   EffortLevel,
-  ProviderId,
+  ProviderSettingsSchema,
   type IndexStats,
   type IndexProgress,
   type Settings,
   ensureSigningKeys,
   publishRegistry,
   type MordomoPaths,
+  type ProviderId,
+  type ProviderSettings,
 } from "@mordomo/core";
 import { AppContext } from "./context.js";
 import { cliEntry } from "./entry.js";
+import { buildProviderRegistry } from "./providers.js";
 import {
   installedBuildTime,
   isOlderService,
@@ -47,6 +50,8 @@ const CLI_PATH = cliEntry();
 
 /** Exit codes: 0 ok · 1 runtime failure · 2 usage error (bad flag/argument). */
 const EXIT_USAGE = 2;
+/** The registered providers, in registration order (the only valid `--provider` values). */
+const PROVIDER_IDS = buildProviderRegistry().ids();
 const SERVICE_LOG_MAX_BYTES = 5 * 1024 * 1024;
 
 // ------------------------------------------------------------ arguments ----
@@ -186,13 +191,12 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 
   let provider: ProviderId | undefined;
   if (values.provider !== undefined) {
-    const parsed = ProviderId.safeParse(values.provider);
-    if (!parsed.success) {
+    if (typeof values.provider !== "string" || !PROVIDER_IDS.includes(values.provider)) {
       throw new UsageError(
-        `Invalid --provider "${String(values.provider)}". Expected one of: ${ProviderId.options.join(", ")}`,
+        `Invalid --provider "${String(values.provider)}". Expected one of: ${PROVIDER_IDS.join(", ")}`,
       );
     }
-    provider = parsed.data;
+    provider = values.provider;
   }
   let effort: EffortLevel | undefined;
   if (values.effort !== undefined) {
@@ -487,7 +491,7 @@ ${pc.bold("MordomoOS")} — local agentic OS over Claude Code, Cursor Agent and 
   mordomo skills publish [dir] --out <registry-dir> [--base-url <url>] [--name <n>] [--unsigned]
                            Build a signed skill registry (index.json + files) from a skills folder
   mordomo skills key       Print this machine's registry signing public key
-  mordomo run <skill>      Run a skill headlessly (--provider ${ProviderId.options.join("|")}, --model <m>,
+  mordomo run <skill>      Run a skill headlessly (--provider ${PROVIDER_IDS.join("|")}, --model <m>,
                            --effort ${EffortLevel.options.join("|")}, --input k=v ...)
   mordomo recall <question>  Layered memory retrieval: only the sections worth reading (--json)
   mordomo mcp              Serve MordomoOS as an MCP server (stdio) to Claude/Cursor/Codex
@@ -511,6 +515,8 @@ async function cmdSetup(args: CliArgs): Promise<void> {
     `Environment: ${process.platform}/${process.arch} · Node ${process.versions.node} · home: ${ctx.paths.home}`,
   );
   let settings = ctx.settings();
+  const prefsOf = (id: ProviderId): ProviderSettings =>
+    (settings.providers[id] ??= ProviderSettingsSchema.parse({}));
 
   // 1. Provider detection (read-only; --help capability probing; no tokens shown)
   const spinner = p.spinner();
@@ -519,20 +525,20 @@ async function cmdSetup(args: CliArgs): Promise<void> {
     ProviderId,
     { installed: boolean; version: string | null; auth: string; notes: string[] }
   >;
-  for (const id of ProviderId.options) {
-    const det = await ctx.adapters[id].detect();
-    const auth = det.installed ? await ctx.adapters[id].authenticate() : null;
+  for (const id of ctx.providers.ids()) {
+    const det = await ctx.adapters[id]!.detect();
+    const auth = det.installed ? await ctx.adapters[id]!.authenticate() : null;
     detections[id] = {
       installed: det.installed,
       version: det.version,
       auth: auth ? `${String(auth.authenticated)}${auth.method ? ` (${auth.method})` : ""}` : "n/a",
       notes: det.notes,
     };
-    if (det.binaryPath) settings.providers[id].binaryPath = det.binaryPath;
+    if (det.binaryPath) prefsOf(id).binaryPath = det.binaryPath;
   }
   spinner.stop("Provider detection finished");
-  for (const id of ProviderId.options) {
-    const d = detections[id];
+  for (const id of ctx.providers.ids()) {
+    const d = detections[id]!;
     p.log.message(
       `${d.installed ? pc.green("●") : pc.red("○")} ${pc.bold(id.padEnd(6))} ${
         d.installed ? `${d.version ?? "installed"} · auth: ${d.auth}` : "not installed"
@@ -541,11 +547,11 @@ async function cmdSetup(args: CliArgs): Promise<void> {
   }
 
   if (nonInteractive) {
-    for (const id of ProviderId.options) {
-      settings.providers[id].enabled = settings.providers[id].enabled || detections[id].installed;
+    for (const id of ctx.providers.ids()) {
+      prefsOf(id).enabled = prefsOf(id).enabled || detections[id]!.installed;
     }
-    if (!settings.providers[settings.defaultProvider].enabled) {
-      const firstEnabled = ProviderId.options.find((i) => settings.providers[i].enabled);
+    if (!settings.providers[settings.defaultProvider]?.enabled) {
+      const firstEnabled = ctx.providers.ids().find((i) => prefsOf(i).enabled);
       if (firstEnabled) settings.defaultProvider = firstEnabled;
     }
     // A stored (or defaulted) "UTC" means nobody ever chose a zone: use the
@@ -558,19 +564,17 @@ async function cmdSetup(args: CliArgs): Promise<void> {
     // 2. Enable providers
     const enabled = await p.multiselect({
       message: "Which providers do you want enabled?",
-      options: ProviderId.options.map((id) => ({
+      options: ctx.providers.ids().map((id) => ({
         value: id,
-        label: `${id}${detections[id].installed ? "" : " (not installed — can be enabled later)"}`,
+        label: `${id}${detections[id]!.installed ? "" : " (not installed — can be enabled later)"}`,
       })),
-      initialValues: ProviderId.options.filter(
-        (id) => settings.providers[id].enabled || detections[id].installed,
-      ),
+      initialValues: ctx.providers.ids().filter((id) => prefsOf(id).enabled || detections[id]!.installed),
       required: true,
     });
     if (p.isCancel(enabled)) return cancel();
     const enabledIds = enabled as ProviderId[];
-    for (const id of ProviderId.options) {
-      settings.providers[id].enabled = enabledIds.includes(id);
+    for (const id of ctx.providers.ids()) {
+      prefsOf(id).enabled = enabledIds.includes(id);
     }
 
     // 3. Default provider
@@ -584,7 +588,7 @@ async function cmdSetup(args: CliArgs): Promise<void> {
 
     // 4. Model + effort per provider
     for (const id of enabledIds) {
-      const models = await ctx.adapters[id].listModels();
+      const models = await ctx.adapters[id]!.listModels();
       const model = await p.select({
         message: `Default model for ${id}?`,
         options: [
@@ -594,10 +598,10 @@ async function cmdSetup(args: CliArgs): Promise<void> {
             label: `${m.label}${m.recommendedFor ? pc.dim(` — ${m.recommendedFor}`) : ""}`,
           })),
         ],
-        initialValue: settings.providers[id].defaultModel ?? "",
+        initialValue: prefsOf(id).defaultModel ?? "",
       });
       if (p.isCancel(model)) return cancel();
-      settings.providers[id].defaultModel = (model as string) || null;
+      prefsOf(id).defaultModel = (model as string) || null;
       const effort = await p.select({
         message: `Default effort/reasoning for ${id}?`,
         options: [
@@ -606,10 +610,10 @@ async function cmdSetup(args: CliArgs): Promise<void> {
           { value: "medium", label: "medium" },
           { value: "high", label: "high" },
         ],
-        initialValue: settings.providers[id].defaultEffort,
+        initialValue: prefsOf(id).defaultEffort,
       });
       if (p.isCancel(effort)) return cancel();
-      settings.providers[id].defaultEffort = effort as EffortLevel;
+      prefsOf(id).defaultEffort = effort as EffortLevel;
     }
 
     // 5. Folders to index
@@ -711,9 +715,9 @@ async function cmdSetup(args: CliArgs): Promise<void> {
       initialValue: true,
     });
     if (!p.isCancel(doSmoke) && doSmoke) {
-      for (const id of ProviderId.options) {
-        if (!settings.providers[id].enabled) continue;
-        if (!detections[id].installed) {
+      for (const id of ctx.providers.ids()) {
+        if (!prefsOf(id).enabled) continue;
+        if (!detections[id]!.installed) {
           p.log.warn(`${id}: skipped (not installed)`);
           continue;
         }
@@ -725,7 +729,7 @@ async function cmdSetup(args: CliArgs): Promise<void> {
             provider: id,
             prompt: "Smoke test",
             cwd: ctx.paths.home,
-            model: settings.providers[id].defaultModel,
+            model: prefsOf(id).defaultModel,
             effort: "low",
             mode: "read_only",
             timeoutMs: 180_000,
@@ -1356,7 +1360,7 @@ async function cmdRun(args: CliArgs): Promise<void> {
   const slug = args.positionals[0];
   if (!slug) {
     console.error(
-      `Usage: mordomo run <skill-slug> [--provider ${ProviderId.options.join("|")}] [--model m] [--effort ${EffortLevel.options.join("|")}] [--input key=value]...`,
+      `Usage: mordomo run <skill-slug> [--provider ${PROVIDER_IDS.join("|")}] [--model m] [--effort ${EffortLevel.options.join("|")}] [--input key=value]...`,
     );
     process.exit(EXIT_USAGE);
   }
@@ -1374,8 +1378,13 @@ async function cmdRun(args: CliArgs): Promise<void> {
   }
   const settings = ctx.settings();
   const provider = args.provider ?? settings.defaultProvider;
+  if (!ctx.providers.has(provider)) {
+    console.error(`Unknown provider "${provider}". Registered: ${PROVIDER_IDS.join(", ")}`);
+    ctx.close();
+    process.exit(EXIT_USAGE);
+  }
   const mode = skill.mode === "write" ? "write" : "read_only";
-  const model = args.model ?? skill.recommendedModel ?? settings.providers[provider].defaultModel;
+  const model = args.model ?? skill.recommendedModel ?? settings.providers[provider]?.defaultModel ?? null;
   const effort = args.effort ?? skill.recommendedEffort;
   // The same write policy as the Command Centre: refuse, park for approval, or run.
   let gate;

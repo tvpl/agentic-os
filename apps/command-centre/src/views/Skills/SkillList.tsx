@@ -4,7 +4,8 @@ import { usePanelSearchParams } from "../../desktop/appRoute";
 import { useMutation } from "@tanstack/react-query";
 import { Plus, Search, Sparkles, Star, Upload, Store } from "lucide-react";
 import { api, type ProviderId, type Skill } from "../../api";
-import { qk, useInvalidate } from "../../queries";
+import { providerOptions } from "../../providers/options";
+import { qk, useInvalidate, useOsProviders } from "../../queries";
 import { useLang, useT } from "../../i18n";
 import { localizeSkill, skillSearchText } from "./localize";
 import { useToast } from "../../components/ui";
@@ -16,7 +17,6 @@ import ExportModal from "./ExportModal";
 
 type ModeFilter = "all" | "read_only" | "write";
 type ProviderFilter = "all" | ProviderId;
-const PROVIDERS: ProviderId[] = ["claude", "cursor", "codex"];
 const MAX_META_BADGES = 3;
 
 export default function SkillList({ skills }: { skills: Skill[] }) {
@@ -24,6 +24,7 @@ export default function SkillList({ skills }: { skills: Skill[] }) {
   const lang = useLang();
   const toast = useToast();
   const invalidate = useInvalidate();
+  const providers = useOsProviders();
   // `/skills?new=1&prompt=…` (the did-it-twice suggestion) opens the modal pre-filled.
   const [params, setParams] = usePanelSearchParams();
   const [showNew, setShowNew] = useState(() => params.get("new") === "1");
@@ -114,7 +115,7 @@ export default function SkillList({ skills }: { skills: Skill[] }) {
             onChange={setProvider}
             options={[
               { value: "all", label: t("brain.all") },
-              ...PROVIDERS.map((p) => ({ value: p, label: p })),
+              ...providerOptions(providers.data).map((p) => ({ value: p, label: p })),
             ]}
           />
           <Button

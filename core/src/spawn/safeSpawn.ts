@@ -6,14 +6,32 @@ import { augmentedPath } from "./which.js";
 /**
  * Controlled child-process layer.
  * - argv arrays only; never a shell string, never `eval`.
- * - executable allowlist (basenames + optional pinned absolute paths).
+ * - executable allowlist: `node` plus the `binary` of every registered provider
+ *   manifest (`setProviderBinaries`), by name, and optional pinned absolute paths.
  * - cwd must be provided explicitly by the caller (already containment-checked).
  * - timeout kills the whole process group.
  * - stdout/stderr are accumulated in memory only up to a bounded tail
  *   (`MAX_CAPTURED_BYTES` each); streaming callbacks still see every chunk.
  */
 
-const BASE_ALLOWLIST = new Set(["claude", "cursor-agent", "codex", "node"]);
+/**
+ * The registered providers' executable names. The engine sets it whenever it
+ * builds the adapters (`MordomoEngine`); until then only `node` is allowed.
+ */
+let providerBinaries = new Set<string>();
+
+export function setProviderBinaries(binaries: string[]): void {
+  providerBinaries = new Set(binaries);
+}
+
+/** The program an executable path names: its basename, on Windows without `.exe`/`.cmd`/`.bat` (case-insensitive). */
+export function executableName(executable: string, platform: NodeJS.Platform = process.platform): string {
+  if (platform !== "win32") return path.posix.basename(executable);
+  return path.win32
+    .basename(executable)
+    .replace(/\.(exe|cmd|bat)$/i, "")
+    .toLowerCase();
+}
 
 /** Tail of stdout/stderr kept in memory for `SpawnResult` (1 MiB each). */
 export const MAX_CAPTURED_BYTES = 1024 * 1024;
@@ -69,8 +87,8 @@ export interface SpawnHandle {
 }
 
 export function assertAllowed(executable: string, allowPaths: string[] = []): void {
-  const base = path.basename(executable);
-  if (BASE_ALLOWLIST.has(base)) return;
+  const name = executableName(executable);
+  if (name === "node" || providerBinaries.has(name)) return;
   if (allowPaths.some((p) => path.resolve(p) === path.resolve(executable))) return;
   throw new ExecutableNotAllowedError(executable);
 }

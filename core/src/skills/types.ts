@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ProviderId, EffortLevel } from "../config/schema.js";
+import { BUILTIN_PROVIDER_IDS, ProviderId, EffortLevel } from "../config/schema.js";
 
 export const SkillInputSchema = z.object({
   name: z.string().regex(/^[a-z][a-z0-9_]*$/),
@@ -56,7 +56,7 @@ export const SkillFrontmatterSchema = z.object({
   description: z.string(),
   triggers: z.array(z.string()).default([]),
   inputs: z.array(SkillInputSchema).default([]),
-  providers: z.array(ProviderId).default(["claude", "cursor", "codex"]),
+  providers: z.array(ProviderId).default([...BUILTIN_PROVIDER_IDS]),
   recommendedModel: z.string().nullable().default(null),
   recommendedEffort: EffortLevel.default("default"),
   mode: z.enum(["read_only", "write"]).default("read_only"),

@@ -33,6 +33,7 @@ import { useConfirm } from "../hooks/useConfirm";
 import { errorMessage, isOffline } from "./shared";
 import { describeSchedule, isValidCron, isValidTimeZone, nextFires, timeZoneOptions } from "./cron";
 import { naturalToCron } from "./naturalSchedule";
+import { providerOptions } from "../providers/options";
 import { RoutinesTimeline } from "./RoutinesTimeline";
 import "./backend.css";
 // The timeline below is styled there.
@@ -358,7 +359,7 @@ export function RoutineModal({
     context: routine?.context ?? ("main" as "main" | "isolated"),
     delivery: routine?.delivery ?? ("announce" as RoutineDelivery),
     webhookUrl: routine?.webhookUrl ?? "",
-    provider: routine?.provider ?? ("claude" as ProviderId),
+    provider: routine?.provider ?? providers.data?.find((s) => s.isDefault)?.id ?? ("claude" as ProviderId),
     effort: routine?.effort ?? "default",
     missedPolicy: routine?.missedPolicy ?? "skip",
     timeoutMs: routine?.timeoutMs ?? 600000,
@@ -886,7 +887,7 @@ export function RoutineModal({
             value={form.provider}
             onChange={(e) => set({ provider: e.target.value as ProviderId })}
           >
-            {(["claude", "cursor", "codex"] as ProviderId[]).map((p) => (
+            {providerOptions(providers.data).map((p) => (
               <option key={p} value={p}>
                 {p}
                 {enabledProviders.length && !enabledProviders.includes(p) ? ` (${t("common.disabled")})` : ""}

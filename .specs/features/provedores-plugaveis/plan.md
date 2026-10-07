@@ -34,33 +34,37 @@ e o padrão de configuração global de `safeSpawn` que a feature 4 criou (`setP
    id (door 2), sempre com as três chaves embutidas preenchidas e sem descartar as outras.
 2. Manifestos → cada `adapters/<id>/src/manifest.ts` (new) declara o seu. `core/src/agents/registry.ts`
    (exists) perde `BUILTIN_MANIFESTS` e `builtinManifests()`. O auditor de conectores
-   (`core/src/connectors/auditor.ts`) e o compilador de sync (`core/src/sync/compiler.ts`) recebem os
-   manifestos do registro.
+   (`core/src/connectors/auditor.ts`, via `homeConfigFilesOf(manifests)`) e o compilador de sync
+   (`core/src/sync/compiler.ts`, `getManifests` obrigatório) recebem os manifestos do registro.
 3. Registro → `ProviderRegistry.register()` (exists) aceita qualquer id no formato e exige `manifest.id` igual
    ao `adapter.id` criado pela fábrica.
 4. Allowlist → `core/src/spawn/safeSpawn.ts` (exists): `node` + o `binary` de cada manifesto
    registrado, por `setProviderBinaries()`, chamado pelo motor ao montar e ao recarregar adaptadores.
-5. Validação → `apps/api/src/routes/common.ts` (exists) ganha `requireProvider(ctx, id)`. Um id bem
-   formado mas não registrado responde `400 unknown_provider` em todas as rotas que recebem provedor.
-   `PUT /api/settings` recusa um `binaryPath` cujo nome base não é o `binary` do manifesto
-   (`400 binary_mismatch`).
+5. Validação → `apps/api/src/routes/common.ts` (exists) ganha `requireProvider(ctx, id)` (e
+   `requireAdapter` para as rotas que usam o adaptador). Um id bem formado mas não registrado responde
+   `400 unknown_provider` em todas as rotas que recebem provedor; a CLI confere `--provider` (e o
+   `defaultProvider`) contra os ids registrados; o `RunManager` termina `failed` ("unknown provider") uma
+   execução já gravada cujo provedor sumiu. `PUT /api/settings` recusa um `binaryPath` novo cujo nome
+   base não é o `binary` do manifesto (`400 binary_mismatch`); um valor já gravado não é revalidado.
 6. Interface → as listas fixas de provedores (`views/Skills/SkillList.tsx`, exists;
    `nucleo/scenes/SkillsSceneTools.tsx`, `views/Routines.tsx`, `views/Setup.tsx`) passam a vir dos
-   snapshots de `GET /api/providers`. Os dois mapas de comando de login que discordam entre si
-   (`runs/authRecovery.ts`, `runs/failureFix.ts`) passam a ler `loginCommand` do snapshot, que vem do
-   manifesto.
+   snapshots de `GET /api/providers` (`providers/options.ts`, new: `providerOptions`). Os dois mapas de
+   comando de login que discordam entre si (`runs/authRecovery.ts`, `runs/failureFix.ts`) passam a ler
+   `loginCommand` do snapshot, que vem do manifesto, e os outros leitores do mapa (`ProviderGate`, o
+   pré-voo do console, `Setup`, Ajustes › provedores, o modo foco) também.
 
 ## Impact
 
-| Front       | What changes                                                                                                                                                                                     |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| domain      | termo existente: `ProviderId` deixa de ser a lista dos provedores e passa a ser o formato de um id; "os provedores" são os registrados                                                           |
-| domain      | novo termo: `loginCommand` - o comando que a pessoa roda no terminal para autenticar o CLI; vive no manifesto                                                                                    |
-| contrato    | `@mordomo/contracts`: `ProviderId` vira `string` com formato; quem usava a união fechada (`Record<ProviderId, …>`) passa a tratar a ausência de uma chave                                        |
-| contrato    | API: id bem formado mas desconhecido responde `400` com `error.code` `"unknown_provider"` (antes `400 validation` ou `500 internal`); `GET /api/providers` ganha `loginCommand` em cada snapshot |
-| contrato    | API: `PUT /api/settings` com `providers.<id>.binaryPath` de nome base errado responde `400 binary_mismatch`                                                                                      |
-| contrato    | `@mordomo/adapter-*`: cada pacote exporta `<id>Manifest` declarado nele mesmo; `@mordomo/core` deixa de exportar `BUILTIN_MANIFESTS` e `builtinManifests`                                        |
-| stored data | `settings.json`: as chaves de `providers` que não são embutidas passam a ser mantidas; nenhum arquivo existente muda de forma                                                                    |
+| Front       | What changes                                                                                                                                                                                                                              |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| domain      | termo existente: `ProviderId` deixa de ser a lista dos provedores e passa a ser o formato de um id; "os provedores" são os registrados                                                                                                    |
+| domain      | novo termo: `loginCommand` - o comando que a pessoa roda no terminal para autenticar o CLI; vive no manifesto                                                                                                                             |
+| contrato    | `@mordomo/contracts`: `ProviderId` vira `string` com formato; quem usava a união fechada (`Record<ProviderId, …>`) passa a tratar a ausência de uma chave                                                                                 |
+| contrato    | API: id bem formado mas desconhecido responde `400` com `error.code` `"unknown_provider"` (antes `400 validation` ou `500 internal`); `GET /api/providers` ganha `loginCommand` em cada snapshot                                          |
+| contrato    | API: `PUT /api/settings` com `providers.<id>.binaryPath` de nome base errado responde `400 binary_mismatch`                                                                                                                               |
+| contrato    | `@mordomo/adapter-*`: cada pacote exporta `<id>Manifest` declarado nele mesmo; `@mordomo/core` deixa de exportar `BUILTIN_MANIFESTS` e `builtinManifests`                                                                                 |
+| contrato    | `@mordomo/core`: novos `BUILTIN_PROVIDER_IDS`, `setProviderBinaries`, `executableName`, `homeConfigFilesOf`; `runAudit`/`discoverMcpServers` exigem a lista de arquivos e `SyncCompiler` exige `getManifests` (antes caíam nos embutidos) |
+| stored data | `settings.json`: as chaves de `providers` que não são embutidas passam a ser mantidas; nenhum arquivo existente muda de forma                                                                                                             |
 
 ## Relations
 
@@ -106,7 +110,7 @@ None - no stored-data shape change (o registro aceita o que o objeto aceitava, e
 6. The builtin adapter packages SHALL each export its manifest declared in its own source (`adapters/<id>/src/manifest.ts`), and `@mordomo/core` SHALL NOT export `BUILTIN_MANIFESTS` nor `builtinManifests`
 7. WHEN a provider with a new id (`"acme"`) is registered with its manifest and factory THEN `ids()` SHALL include it, the connector auditor and the sync compiler SHALL see its manifest, and a run on it SHALL execute through its adapter
 8. IF a factory creates an adapter whose `id` differs from its manifest `id` THEN `register()` or the first `create()` SHALL throw `ProviderRegistryError`
-9. The provider manifests SHALL each declare `loginCommand`, and `GET /api/providers` SHALL return it in each snapshot (`claude` → `claude`, `cursor` → `cursor-agent login`, `codex` → `codex login`)
+9. The provider manifests SHALL each declare `loginCommand`, and `GET /api/providers` SHALL return it in each snapshot (`claude` → `claude auth login`, `cursor` → `cursor-agent login`, `codex` → `codex login`)
 
 **Independent test:** um provedor `acme` registrado num teste roda uma execução pelo seu CLI falso.
 

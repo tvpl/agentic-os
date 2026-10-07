@@ -6,7 +6,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useT } from "../i18n";
-import { qk } from "../queries";
+import { qk, useOsProviders } from "../queries";
 import { useToast } from "../components/ui";
 import { useDesktopActions } from "../desktop/actions";
 import { failureFix } from "./failureFix";
@@ -28,7 +28,8 @@ export function FailureFixCard({
   const toast = useToast();
   const qc = useQueryClient();
   const { openRun, openPanel } = useDesktopActions();
-  const fix = failureFix(failure, provider, status);
+  const providers = useOsProviders();
+  const fix = failureFix(failure, provider, status, providers.data);
   const retry = useMutation({
     mutationFn: () =>
       api.post<{ runId: string | null }>(`/api/runs/${encodeURIComponent(runId)}/retry`, {

@@ -1,7 +1,20 @@
 import { z } from "zod";
 
-export const ProviderId = z.enum(["claude", "cursor", "codex"]);
+/**
+ * The shape of a provider id, not the list of providers: the providers are the
+ * ones registered in the engine's `ProviderRegistry`.
+ */
+export const ProviderId = z
+  .string()
+  .regex(
+    /^[a-z][a-z0-9-]{1,31}$/,
+    "A provider id is 2-32 lowercase letters, digits or dashes, starting with a letter",
+  );
 export type ProviderId = z.infer<typeof ProviderId>;
+
+/** The providers shipped with MordomoOS, in registration order. */
+export const BUILTIN_PROVIDER_IDS = ["claude", "cursor", "codex"] as const;
+export type BuiltinProviderId = (typeof BUILTIN_PROVIDER_IDS)[number];
 
 export const SecurityProfile = z.enum([
   "read_only",
@@ -224,13 +237,18 @@ export const SettingsSchema = z.object({
   setupCompleted: z.boolean().default(false),
   defaultProvider: ProviderId.default("claude"),
   securityProfile: SecurityProfile.default("review_before_write"),
+  /** One entry per provider id: the builtins always exist (with their defaults), any other id is kept as written. */
   providers: z
-    .object({
-      claude: ProviderSettingsSchema.default({}),
-      cursor: ProviderSettingsSchema.default({}),
-      codex: ProviderSettingsSchema.default({}),
-    })
-    .default({}),
+    .record(ProviderId, ProviderSettingsSchema)
+    .default({})
+    .transform(
+      (providers): Record<ProviderId, ProviderSettings> & Record<BuiltinProviderId, ProviderSettings> => ({
+        claude: ProviderSettingsSchema.parse({}),
+        cursor: ProviderSettingsSchema.parse({}),
+        codex: ProviderSettingsSchema.parse({}),
+        ...providers,
+      }),
+    ),
   /**
    * Remote access (Onda 3): paired devices may call the API from the listed
    * hosts. `bindAddress` must also leave loopback (an `expose_port` approval).

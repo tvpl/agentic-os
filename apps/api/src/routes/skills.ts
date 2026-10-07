@@ -15,6 +15,7 @@ import {
   grantedRoots,
   httpError,
   launchSkillRun,
+  requireProvider,
   submitPromptRun,
   type SkillRunInput,
 } from "./common.js";
@@ -277,7 +278,8 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
 
     const settings = ctx.settings();
     const provider = body.provider ?? settings.defaultProvider;
-    if (!settings.providers[provider].enabled) throw httpError(400, `Provider ${provider} is not enabled`);
+    const providerSettings = requireProvider(ctx, provider, settings);
+    if (!providerSettings.enabled) throw httpError(400, `Provider ${provider} is not enabled`);
     if (!skill.providers.includes(provider))
       throw httpError(400, `Skill ${slug} does not support provider ${provider}`);
     for (const input of skill.inputs) {
@@ -293,14 +295,10 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
       inputs: body.inputs,
       provider,
       model:
-        body.model !== undefined
-          ? body.model
-          : (skill.recommendedModel ?? settings.providers[provider].defaultModel),
+        body.model !== undefined ? body.model : (skill.recommendedModel ?? providerSettings.defaultModel),
       effort:
         body.effort ??
-        (skill.recommendedEffort !== "default"
-          ? skill.recommendedEffort
-          : settings.providers[provider].defaultEffort),
+        (skill.recommendedEffort !== "default" ? skill.recommendedEffort : providerSettings.defaultEffort),
       cwd,
       timeoutMs: body.timeoutMs ?? settings.limits.defaultTimeoutMs,
     };

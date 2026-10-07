@@ -1,5 +1,4 @@
 /** Settings › providers (split out of Settings.tsx, refino item 17). */
-import { PROVIDER_LOGIN_COMMANDS } from "../../runs/authRecovery";
 import { RefreshCw } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type ProviderId, type ProviderSnapshot, type SettingsDoc } from "../../api";
@@ -11,6 +10,14 @@ import { Badge, Button, Field } from "../../components/primitives";
 import { copyText, isAbsolutePath } from "../shared";
 import { DraftField, parseOptionalText, type Put } from "../SettingsFields";
 import type { SettingsShape } from "./shared";
+
+/** What a registered provider with no entry in settings.json yet runs with (the server's defaults). */
+const DEFAULT_PREFS: SettingsShape["providers"][ProviderId] = {
+  enabled: false,
+  defaultModel: null,
+  defaultEffort: "default",
+  binaryPath: null,
+};
 
 export function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
   const t = useT();
@@ -33,11 +40,12 @@ export function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
     },
     onError: (err: Error) => toast(err.message, "danger"),
   });
+  const prefsOf = (id: ProviderId) => s.providers[id] ?? DEFAULT_PREFS;
   const patchProvider = (
     id: ProviderId,
     patch: Partial<SettingsShape["providers"][ProviderId]>,
     silent = false,
-  ) => put({ providers: { ...s.providers, [id]: { ...s.providers[id], ...patch } } }, silent);
+  ) => put({ providers: { ...s.providers, [id]: { ...prefsOf(id), ...patch } } }, silent);
 
   if (providers.isPending && !providers.data)
     return (
@@ -78,7 +86,7 @@ export function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
               <label className="check">
                 <input
                   type="checkbox"
-                  checked={s.providers[prov.id].enabled}
+                  checked={prefsOf(prov.id).enabled}
                   onChange={(e) => void patchProvider(prov.id, { enabled: e.target.checked })}
                 />
                 {t("common.enabled")}
@@ -87,22 +95,22 @@ export function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
                 size="sm"
                 variant="secondary"
                 onClick={() => smoke.mutate(prov.id)}
-                disabled={!s.providers[prov.id].enabled || !prov.health.installed}
+                disabled={!prefsOf(prov.id).enabled || !prov.health.installed}
                 loading={smoke.isPending && smoke.variables === prov.id}
               >
                 {t("settings.smokeTest")}
               </Button>
             </div>
           </div>
-          {prov.health.installed && prov.health.authenticated !== true && (
+          {prov.health.installed && prov.health.authenticated !== true && prov.loginCommand && (
             <div className="auth-recovery">
               <p>{t("settings.authRecoveryHint")}</p>
-              <code>{PROVIDER_LOGIN_COMMANDS[prov.id]}</code>{" "}
+              <code>{prov.loginCommand}</code>{" "}
               <Button
                 size="sm"
                 variant="secondary"
                 onClick={async () => {
-                  const copied = await copyText(PROVIDER_LOGIN_COMMANDS[prov.id]);
+                  const copied = await copyText(prov.loginCommand ?? "");
                   toast(t(copied ? "common.copied" : "skills.copyFailed"), copied ? "ok" : "danger");
                 }}
               >
@@ -116,7 +124,7 @@ export function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
               label={t("skills.model")}
               hint={t("settings.modelHint")}
               className="mono"
-              serverValue={s.providers[prov.id].defaultModel}
+              serverValue={prefsOf(prov.id).defaultModel}
               format={(v) => v ?? ""}
               parse={parseOptionalText}
               save={(defaultModel) => patchProvider(prov.id, { defaultModel }, true)}
@@ -125,7 +133,7 @@ export function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
               <select
                 id={`st-effort-${prov.id}`}
                 className="input"
-                value={s.providers[prov.id].defaultEffort}
+                value={prefsOf(prov.id).defaultEffort}
                 onChange={(e) =>
                   void patchProvider(
                     prov.id,
@@ -147,7 +155,7 @@ export function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
               hint={t("settings.binaryPathHint")}
               className="mono"
               placeholder={t("settings.binaryPathAuto")}
-              serverValue={s.providers[prov.id].binaryPath}
+              serverValue={prefsOf(prov.id).binaryPath}
               format={(v) => v ?? ""}
               parse={(text) => {
                 const value = text.trim() || null;

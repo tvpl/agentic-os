@@ -16,10 +16,9 @@ import {
   type RunEvent,
   type SafeInvocation,
   type ValidationResult,
-  BUILTIN_MANIFESTS,
-  type ProviderManifest,
   type AdapterFactoryOptions,
 } from "@mordomo/core";
+import { cursorManifest } from "./manifest.js";
 
 /**
  * Cursor Agent adapter — headless (`cursor-agent -p`) with stream-json output
@@ -33,7 +32,7 @@ import {
  * and never asks this adapter to resume. The warning below only fires for a
  * caller that bypasses the run manager.
  */
-export const cursorManifest: ProviderManifest = BUILTIN_MANIFESTS.cursor;
+export { cursorManifest };
 
 /** Factory used by the provider registry (`apps/api/src/providers.ts`). */
 export const createCursorAdapter = (opts: AdapterFactoryOptions): AgentAdapter =>

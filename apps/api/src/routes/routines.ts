@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { RoutineSchema, events } from "@mordomo/core";
 import type { AppContext } from "../context.js";
-import { httpError } from "./common.js";
+import { httpError, requireProvider } from "./common.js";
 import { IdParams } from "./params.js";
 
 const SilentQuery = z.object({ days: z.coerce.number().int().min(1).max(365).default(30) });
@@ -38,6 +38,7 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
 
   app.post("/api/routines", async (req) => {
     const routine = RoutineSchema.parse(req.body);
+    requireProvider(ctx, routine.provider);
     if (ctx.routines.get(routine.id)) throw httpError(409, `Routine "${routine.id}" already exists`);
     if (routine.skillSlug && !ctx.skills.load(routine.skillSlug)) {
       throw httpError(400, `Unknown skill: ${routine.skillSlug}`);
@@ -52,6 +53,7 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
     const { id } = IdParams.parse(req.params);
     if (!ctx.routines.get(id)) throw httpError(404, "Routine not found");
     const routine = RoutineSchema.parse({ ...(req.body as object), id });
+    requireProvider(ctx, routine.provider);
     if (routine.skillSlug && !ctx.skills.load(routine.skillSlug)) {
       throw httpError(400, `Unknown skill: ${routine.skillSlug}`);
     }

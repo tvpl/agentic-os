@@ -8,6 +8,8 @@ export {
   type UiPreferences,
   type UiPreferenceKey,
   ProviderId,
+  BUILTIN_PROVIDER_IDS,
+  type BuiltinProviderId,
   SecurityProfile,
   EffortLevel,
   ProviderSettingsSchema,
@@ -44,6 +46,8 @@ export {
   safeSpawn,
   probe,
   assertAllowed,
+  executableName,
+  setProviderBinaries,
   killProcessGroup,
   MAX_CAPTURED_BYTES,
   ExecutableNotAllowedError,
@@ -142,6 +146,7 @@ export { ConnectorRegistry, ConnectorSchema, type Connector } from "./connectors
 export {
   runAudit,
   discoverMcpServers,
+  homeConfigFilesOf,
   type AuditReport,
   type DiscoveredMcpServer,
 } from "./connectors/auditor.js";
@@ -196,8 +201,6 @@ export { INDEX_CHUNK_SIZE, type IndexProgress } from "./memory/indexer.js"; // B
 export {
   ProviderRegistry,
   ProviderRegistryError,
-  BUILTIN_MANIFESTS,
-  builtinManifests,
   type ProviderManifest,
   type ProviderCapabilities,
   type ProviderNativeLayout,

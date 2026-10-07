@@ -2,7 +2,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { CalendarDays, Check, Copy, ExternalLink, Eye, EyeOff, Mail, Plug, RefreshCw } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
-import { PROVIDER_LOGIN_COMMANDS } from "../runs/authRecovery";
+import { providerOptions } from "../providers/options";
 import { api, type Connector, type ProviderId, type ProviderSnapshot, type SettingsDoc } from "../api";
 import { I18nContext, useT, type Lang } from "../i18n";
 import { qk, useApiQuery } from "../queries";
@@ -40,9 +40,9 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     const ok = await copyText(command);
     toast(ok ? t("common.copied") : t("skills.copyFailed"), ok ? "ok" : "danger");
   };
-  const [enabled, setEnabled] = useState<Record<ProviderId, boolean> | null>(null);
-  const installedRef = useRef<Partial<Record<ProviderId, boolean>>>({});
-  const [defaultProvider, setDefaultProvider] = useState<ProviderId>("claude");
+  const [enabled, setEnabled] = useState<{ [id: ProviderId]: boolean } | null>(null);
+  const installedRef = useRef<{ [id: ProviderId]: boolean | undefined }>({});
+  const [defaultProvider, setDefaultProvider] = useState<ProviderId>("");
   const [name, setName] = useState("MordomoOS");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [folder, setFolder] = useState("");
@@ -72,12 +72,13 @@ export default function Setup({ onDone }: { onDone: () => void }) {
       return;
     }
     for (const s of providers.data) installedRef.current[s.id] = s.health.installed;
-    const next: Record<ProviderId, boolean> = { claude: false, cursor: false, codex: false };
+    const next: { [id: ProviderId]: boolean } = {};
     for (const s of providers.data) next[s.id] = s.health.installed;
     setEnabled(next);
+    // The server's default, unless it is missing here and another CLI is installed.
+    const current = providers.data.find((s) => s.isDefault) ?? providers.data[0];
     const firstInstalled = providers.data.find((s) => s.health.installed)?.id;
-    if (firstInstalled && !providers.data.find((s) => s.id === "claude")?.health.installed)
-      setDefaultProvider(firstInstalled);
+    setDefaultProvider(firstInstalled && !current?.health.installed ? firstInstalled : (current?.id ?? ""));
   }, [providers.data, enabled]);
 
   const finish = useMutation({
@@ -94,11 +95,11 @@ export default function Setup({ onDone }: { onDone: () => void }) {
       );
       const current = await api.get<SettingsDoc>("/api/settings");
       const provSettings = current.providers;
-      for (const id of ["claude", "cursor", "codex"] as ProviderId[])
-        provSettings[id] = { ...provSettings[id], enabled: enabled[id] };
+      for (const id of providerOptions(providers.data))
+        provSettings[id] = { ...provSettings[id]!, enabled: enabled[id] ?? false };
       const chosenDefault = enabled[defaultProvider]
         ? defaultProvider
-        : ((Object.entries(enabled).find(([, v]) => v)?.[0] as ProviderId | undefined) ?? "claude");
+        : (Object.entries(enabled).find(([, v]) => v)?.[0] ?? defaultProvider);
       const folders = current.indexedFolders;
       const chosenPreset = PRESETS.find((p) => p.id === preset) ?? PRESETS[0]!;
       // The preset and the arcs are UI preferences (config/ui-preferences.json). They are
@@ -205,7 +206,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
                   {(providers.data ?? []).map((prov) => {
                     const installed = prov.health.installed;
                     const loggedIn = prov.health.authenticated === true;
-                    const command = installed ? PROVIDER_LOGIN_COMMANDS[prov.id] : prov.installHint;
+                    const command = installed ? prov.loginCommand : prov.installHint;
                     const busy = redetect.isPending && redetect.variables === prov.id;
                     return (
                       <div key={prov.id} className="setup-provider" data-testid={`setup-provider-${prov.id}`}>

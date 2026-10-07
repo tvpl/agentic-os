@@ -4,6 +4,7 @@
  * existing importer keeps working.
  */
 export {
+  BUILTIN_PROVIDER_IDS,
   BrainSettingsSchema,
   CURRENT_SETTINGS_VERSION,
   UI_PREFERENCE_KEYS,
@@ -23,6 +24,7 @@ export {
   defaultSettings,
   detectTimezone,
   type BrainSettings,
+  type BuiltinProviderId,
   type ChannelSettings,
   type IndexedFolder,
   type MicroApp,

@@ -22,6 +22,8 @@ import {
   rotateFile,
   events,
 } from "@mordomo/core";
+import { claudeManifest } from "@mordomo/adapter-claude";
+import { cursorManifest } from "@mordomo/adapter-cursor";
 import { makeTempHome } from "./helpers.js";
 
 describe("settings store", () => {
@@ -438,6 +440,7 @@ describe("sync compiler", () => {
         paths,
         () => store.load(),
         () => catalog.list(),
+        () => [claudeManifest, cursorManifest],
       );
 
       // 1st plan: everything is a create

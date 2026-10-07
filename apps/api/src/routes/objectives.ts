@@ -7,6 +7,7 @@ import {
   grantedRoots,
   httpError,
   launchSkillRun,
+  requireProvider,
   submitPromptRun,
   type SkillRunInput,
 } from "./common.js";
@@ -111,13 +112,14 @@ export function registerObjectiveRoutes(app: FastifyInstance, ctx: AppContext): 
       .parse(req.body ?? {});
     const settings = ctx.settings();
     const provider = body.provider ?? settings.defaultProvider;
-    if (!settings.providers[provider]?.enabled) throw httpError(400, `Provider ${provider} is not enabled`);
+    const providerSettings = requireProvider(ctx, provider, settings);
+    if (!providerSettings.enabled) throw httpError(400, `Provider ${provider} is not enabled`);
     const results: Array<{ stepId: string; runId: string | null; status: string }> = [];
     for (const step of ctx.objectives.ready(id, body.limit)) {
       const cwd = body.cwd ? resolveInsideRoots(grantedRoots(ctx), body.cwd) : ctx.paths.home;
       const timeoutMs = body.timeoutMs ?? settings.limits.defaultTimeoutMs;
-      const model = body.model !== undefined ? body.model : settings.providers[provider].defaultModel;
-      const effort = body.effort ?? settings.providers[provider].defaultEffort;
+      const model = body.model !== undefined ? body.model : providerSettings.defaultModel;
+      const effort = body.effort ?? providerSettings.defaultEffort;
       const packet = JSON.stringify(ctx.objectives.contextPacket(id, step.id), null, 2);
       let runId: string | null;
       let status: "queued" | "waiting_approval";

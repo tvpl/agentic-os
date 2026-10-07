@@ -31,7 +31,8 @@ test("a signed-out AI is configured before anything else, and the console refuse
   const gate = page.getByTestId("provider-gate");
   await expect(gate.getByRole("heading", { name: "Connect your AI first" })).toBeVisible();
   await expect(gate.getByTestId("gate-provider-claude")).toContainText("login required");
-  await expect(gate.getByTestId("gate-provider-claude")).toContainText("claude auth login");
+  // The login command is the one the provider's manifest declares (`loginCommand`).
+  await expect(gate.getByTestId("gate-provider-claude").locator("pre")).toHaveText("claude auth login");
   await expect(gate.getByTestId("gate-provider-codex")).toContainText("not found on this computer");
   await expect(gate.getByTestId("gate-provider-codex")).toContainText("npm install -g @openai/codex");
   // The tour waits behind the gate.
@@ -49,7 +50,7 @@ test("a signed-out AI is configured before anything else, and the console refuse
   });
   await page.locator(".cons-input").fill("List the files in this folder");
   await page.locator(".cons-input").press("Meta+Enter");
-  await expect(page.getByTestId("console-preflight")).toContainText("claude auth login");
+  await expect(page.getByTestId("console-preflight").locator("code")).toHaveText("claude auth login");
   expect(runs).toEqual([]);
 });
 

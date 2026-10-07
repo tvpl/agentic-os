@@ -16,93 +16,93 @@ CLI falso do Claude (`tests/fixtures/fake-bin/claude`) copiado para um diretóri
 
 **C1** - `ProviderId.safeParse` aceita `"gemini"`, `"acme-2"` e `"claude"` e recusa `"Claude"`, `""`, `"a"`, `"1x"` e um id de 33 caracteres (AC 1)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C1 a provider id is a format, not a list"`
-Status: open
+Status: closed
 
 **C2** - Um `settings.json` com `defaultProvider: "gemini"` e `providers.gemini: { enabled: true }` carrega: `providers.gemini.enabled` é `true` e `providers.claude`, `providers.cursor` e `providers.codex` existem com `enabled: false` (AC 2)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C2 an unknown provider in settings keeps the file and the builtins"`
-Status: open
+Status: closed
 
 **C3** - Uma rotina com `provider: "gemini"`, uma skill com `providers: [gemini]` e um conector com `compatibleProviders: ["gemini"]` carregam e não aparecem em `problems` (AC 3)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C3 records naming an unregistered provider still load"`
-Status: open
+Status: closed
 
 **C4** - `POST /api/runs` com `provider: "gemini"` responde `400` com `error.code` `"unknown_provider"` e nenhuma execução é criada (AC 4)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C4 a run on an unregistered provider is refused"`
-Status: open
+Status: closed
 
-**C5** - `POST /api/skills/:slug/run`, `POST /api/sessions` e a criação de rotina com `provider: "gemini"` respondem `400 unknown_provider` (AC 4)
+**C5** - `POST /api/skills/:slug/run` e a criação de rotina com `provider: "gemini"`, e `POST /api/sessions/:id/continue` numa conversa gravada com `provider: "gemini"` (não existe `POST /api/sessions`: uma conversa nasce de `POST /api/runs`, já coberto por C4), respondem `400 unknown_provider` (AC 4)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C5 every route taking a provider refuses an unregistered one"`
-Status: open
+Status: closed
 
 **C6** - Uma rotina gravada com `provider: "gemini"` disparada pelo agendador termina `failed` com erro contendo `unknown provider`, sem processo iniciado (AC 4)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C6 a routine on an unregistered provider fails without a process"`
-Status: open
+Status: closed
 
 **C7** - `mordomo run <skill> --provider gemini` sai com código `2` (AC 4)
 Proof: `npm run build:server && npx vitest run tests/providers.pluggable.test.ts -t "C7 the CLI refuses an unregistered provider with exit 2"`
-Status: open
+Status: closed
 
 **C8** - `POST /api/providers/:id/detect` e `GET /api/providers/:id/models`, com `:id` = `gemini`, respondem `400 unknown_provider` (antes `500`) (AC 5)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C8 provider routes answer 400 for an unregistered id"`
-Status: open
+Status: closed
 
 ### S2 - cada adaptador carrega o próprio manifesto · 10 files · 80 KB · ~20k
 
 **C9** - `adapters/claude/src/manifest.ts`, `adapters/cursor/src/manifest.ts` e `adapters/codex/src/manifest.ts` existem e declaram `id` igual ao nome do pacote; `@mordomo/core` não tem as exportações `BUILTIN_MANIFESTS` nem `builtinManifests` (AC 6)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C9 manifests live in the adapter packages"`
-Status: open
+Status: closed
 
 **C10** - Com `acme` registrado, `registry.ids()` termina em `"acme"`, `ConnectorAuditor` lê os `homeConfigFiles` de `acme` e o `SyncCompiler` do motor planeja a pasta de `acme` (AC 7)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C10 a registered provider is seen by the auditor and the compiler"`
-Status: open
+Status: closed
 
 **C11** - Uma execução manual com `provider: "acme"` termina `done` com a saída do CLI falso (AC 7)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C11 a run on a registered third-party provider executes"`
-Status: open
+Status: closed
 
 **C12** - Uma fábrica que cria um adaptador com `id` diferente do manifesto faz `create()` lançar `ProviderRegistryError` (AC 8)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C12 a factory must create the adapter its manifest names"`
-Status: open
+Status: closed
 
-**C13** - `GET /api/providers` traz `loginCommand` `"claude"`, `"cursor-agent login"` e `"codex login"` nos três snapshots (AC 9)
+**C13** - `GET /api/providers` traz `loginCommand` `"claude auth login"`, `"cursor-agent login"` e `"codex login"` nos três snapshots (AC 9)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C13 each snapshot carries the login command"`
-Status: open
+Status: closed
 
 ### S3 - allowlist dos manifestos e `binaryPath` conferido · 4 files · 40 KB · ~10k
 
 **C14** - Antes de registrar `acme`, `assertAllowed("/tmp/x/acme-cli")` lança `ExecutableNotAllowedError`; depois, passa; `node` passa sempre (AC 10)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C14 the allowlist follows the registered manifests"`
-Status: open
+Status: closed
 
 **C15** - Com um registro só com `claude`, `assertAllowed("/usr/bin/cursor-agent")` e `assertAllowed("/usr/bin/codex")` lançam (AC 11)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C15 an unregistered binary is not allowed"`
-Status: open
+Status: closed
 
 **C16** - `PUT /api/settings` com `providers.claude.binaryPath` `"/bin/sh"` responde `400 binary_mismatch` e `settings.json` fica igual byte a byte (AC 12)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C16 a binary path of another program is refused"`
-Status: open
+Status: closed
 
 **C17** - `PUT /api/settings` com `providers.claude.binaryPath` `"/opt/x/claude"`, com `"C:\\tools\\claude.exe"` (no win32 simulado por `path.win32`) e com `null` responde `200` (AC 13)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C17 a binary path of the right program is accepted"`
-Status: open
+Status: closed
 
 ### S4 - a interface lista os provedores registrados · 7 files · 70 KB · ~18k
 
 **C18** - Em `apps/command-centre/src` (fora de `*.test.*` e de `gallery/`), nenhum arquivo tem uma lista literal com os três ids (`"claude"`, `"cursor"` e `"codex"` no mesmo literal de array) nem um literal `Record<ProviderId, …>` (AC 14)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C18 the UI has no hard-coded provider list"`
-Status: open
+Status: closed
 
 **C19** - `providerOptions(snapshots)` (helper da interface usado pelo filtro das skills, das rotinas e do Setup) devolve os ids na ordem dos snapshots, incluindo `acme` (AC 14)
 Proof: `npm run test -w apps/command-centre -- src/providers/options.test.ts -t "C19 provider options come from the snapshots"`
-Status: open
+Status: closed
 
 **C20** - `loginHint` de `authRecovery.ts` e o comando de `failureFix.ts` devolvem o `loginCommand` do snapshot dado (`acme login` para um snapshot `acme`) (AC 15)
 Proof: `npm run test -w apps/command-centre -- src/runs/authRecovery.test.ts -t "C20 the login command comes from the snapshot"`
-Status: open
+Status: closed
 
 **C21** - `npm run typecheck` e `npm run test -w apps/command-centre` saem `0` (AC 16)
 Proof: `npm run typecheck && npm run test -w apps/command-centre`
-Status: open
+Status: closed
 
 ## Coverage
 

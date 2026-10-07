@@ -30,12 +30,11 @@ import {
 } from "lucide-react";
 import { api } from "../../api";
 import { useLocale, useT } from "../../i18n";
-import { qk } from "../../queries";
+import { qk, useOsProviders } from "../../queries";
 import { timeAgo, useToast } from "../../components/ui";
 import { useNotifications } from "../../hooks/useNotifications";
 import { useResolveApproval } from "../../runs/ApprovalCards";
 import { failureFix } from "../../runs/failureFix";
-import { PROVIDER_LOGIN_COMMANDS } from "../../runs/authRecovery";
 import { useDesktopActions } from "../../desktop/actions";
 import { describeDecision, editPreview, previewLines } from "../../desktop/decision";
 import type { Pending } from "./usePending";
@@ -504,6 +503,7 @@ function subjectOf(item: PendingItem, title: string): Subject {
 function FocusDetail({ item }: { item: PendingItem }) {
   const t = useT();
   const locale = useLocale();
+  const providers = useOsProviders();
   const text = describePending(item, t);
   const head = (
     <>
@@ -560,7 +560,7 @@ function FocusDetail({ item }: { item: PendingItem }) {
   }
   if (item.kind === "failure") {
     const r = item.run!;
-    const fix = failureFix(r.failure, r.provider, r.status)?.action;
+    const fix = failureFix(r.failure, r.provider, r.status, providers.data)?.action;
     return (
       <>
         {head}
@@ -585,9 +585,7 @@ function FocusDetail({ item }: { item: PendingItem }) {
   if (item.kind === "provider") {
     const p = item.provider!;
     const cmd =
-      p.problem === "not_installed"
-        ? (p.snapshot.installHint ?? null)
-        : ((PROVIDER_LOGIN_COMMANDS as Record<string, string>)[p.snapshot.id] ?? null);
+      p.problem === "not_installed" ? (p.snapshot.installHint ?? null) : (p.snapshot.loginCommand ?? null);
     return (
       <>
         {head}

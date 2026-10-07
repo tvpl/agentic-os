@@ -169,7 +169,7 @@ export class RunManager {
     private readonly db: Db,
     private readonly paths: MordomoPaths,
     private readonly getSettings: () => Settings,
-    private readonly getAdapter: (id: ProviderId) => AgentAdapter,
+    private readonly getAdapter: (id: ProviderId) => AgentAdapter | undefined,
     opts: { eventCap?: number; pruneOnBoot?: boolean; permissionBroker?: PermissionBrokerFactory } = {},
   ) {
     this.permissionBroker = opts.permissionBroker ?? null;
@@ -518,6 +518,7 @@ export class RunManager {
       this.log({ event: "run_started", runId, provider: record.provider, origin: record.origin });
 
       const adapter = this.getAdapter(record.provider);
+      if (!adapter) throw new Error(`unknown provider "${record.provider}": it is not registered`);
       // A provider that cannot enforce read-only only gets it as a sentence in the
       // prompt: acceptable when a person started the run and watches it, never for
       // the unattended ones (routines, sentinel triage), whose prompts can carry

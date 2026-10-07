@@ -13,6 +13,7 @@ import {
   deepMergeSettings as deepMerge,
   createBackup,
   events,
+  executableName,
   isInside,
   listBackups,
   planStartupService,
@@ -46,7 +47,7 @@ function tlsInfo(ctx: AppContext): { port: number; fingerprint: string; hosts: s
     return null;
   }
 }
-import { grantedRoots, httpError } from "./common.js";
+import { grantedRoots, httpError, requireAdapter, requireProvider } from "./common.js";
 import { BackupNameParams, UuidParams } from "./params.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -78,13 +79,7 @@ export const PKG_VERSION = readPackageVersion();
 
 const ProviderPatch = ProviderSettingsSchema.partial();
 export const SettingsPatchSchema = SettingsSchema.partial().extend({
-  providers: z
-    .object({
-      claude: ProviderPatch.optional(),
-      cursor: ProviderPatch.optional(),
-      codex: ProviderPatch.optional(),
-    })
-    .optional(),
+  providers: z.record(ProviderId, ProviderPatch).optional(),
   limits: SettingsSchema.shape.limits.removeDefault().partial().optional(),
 });
 export type SettingsPatch = z.infer<typeof SettingsPatchSchema>;
@@ -483,6 +478,19 @@ export function registerSystemRoutes(
     }
     const patch = SettingsPatchSchema.parse(req.body);
     const before = ctx.settings();
+    // A pinned binary is allowlisted by its path: a new one must be the program the manifest names.
+    for (const [id, provider] of Object.entries(patch.providers ?? {})) {
+      if (!provider.binaryPath || provider.binaryPath === before.providers[id]?.binaryPath) continue;
+      requireProvider(ctx, id);
+      const { binary } = ctx.providers.manifest(id);
+      if (executableName(provider.binaryPath) !== binary) {
+        throw httpError(
+          400,
+          `providers.${id}.binaryPath must point to the "${binary}" executable, not "${provider.binaryPath}".`,
+          "binary_mismatch",
+        );
+      }
+    }
 
     // Approval-gated transitions (docs/security.md).
     let pendingApproval = null;
@@ -514,12 +522,13 @@ export function registerSystemRoutes(
 
   app.post("/api/providers/:id/detect", async (req) => {
     const { id } = z.object({ id: ProviderId }).parse(req.params);
-    const detection = await ctx.adapters[id].detect();
-    const auth = await ctx.adapters[id].authenticate();
-    const models = await ctx.adapters[id].listModels();
+    const adapter = requireAdapter(ctx, id);
+    const detection = await adapter.detect();
+    const auth = await adapter.authenticate();
+    const models = await adapter.listModels();
     if (detection.binaryPath) {
       const s = ctx.settings();
-      s.providers[id].binaryPath = detection.binaryPath;
+      s.providers[id] = { ...requireProvider(ctx, id, s), binaryPath: detection.binaryPath };
       ctx.settingsStore.save(s);
       ctx.reloadAdapters();
     }
@@ -529,26 +538,25 @@ export function registerSystemRoutes(
 
   app.get("/api/providers/:id/models", async (req) => {
     const { id } = z.object({ id: ProviderId }).parse(req.params);
-    return ctx.adapters[id].listModels();
+    return requireAdapter(ctx, id).listModels();
   });
 
   app.put("/api/providers/default", async (req) => {
     const { provider } = z.object({ provider: ProviderId }).parse(req.body);
-    const s = ctx.settings();
-    if (!s.providers[provider].enabled) throw httpError(400, `Provider ${provider} is not enabled`);
+    if (!requireProvider(ctx, provider).enabled) throw httpError(400, `Provider ${provider} is not enabled`);
     return ctx.settingsStore.update({ defaultProvider: provider });
   });
 
   /** Safe, file-change-free smoke test for one provider. */
   app.post("/api/providers/:id/smoke", async (req) => {
     const { id } = z.object({ id: ProviderId }).parse(req.params);
-    const s = ctx.settings();
+    const providerSettings = requireProvider(ctx, id);
     const run = ctx.runs.create({
       origin: "manual",
       provider: id,
       prompt: "Smoke test: reply with exactly MORDOMO_OK and do nothing else.",
       cwd: ctx.paths.home,
-      model: s.providers[id].defaultModel,
+      model: providerSettings.defaultModel,
       effort: "low",
       mode: "read_only",
       timeoutMs: 180_000,

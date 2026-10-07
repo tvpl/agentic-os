@@ -295,6 +295,8 @@ export interface ProviderSnapshot {
   displayName?: string;
   capabilities?: ProviderCapabilities;
   installHint?: string;
+  /** What signs the CLI in, run in a terminal (from the manifest; older servers omit it). */
+  loginCommand?: string;
   enabled: boolean;
   isDefault: boolean;
   defaultModel: string | null;

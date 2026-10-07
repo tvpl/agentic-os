@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import {
   MordomoEngine,
+  ProviderSettingsSchema,
   budgetDedupeKey,
   events,
   localDay,
@@ -21,6 +22,8 @@ export interface ProviderSnapshot {
   displayName: string;
   capabilities: ProviderCapabilities;
   installHint: string;
+  /** What a person runs in a terminal to sign the CLI in (from the manifest). */
+  loginCommand: string;
   enabled: boolean;
   isDefault: boolean;
   health: HealthStatus;
@@ -132,16 +135,18 @@ export class AppContext extends MordomoEngine {
     for (const id of this.providers.ids()) {
       const manifest = this.providers.manifest(id);
       const health = await this.providerHealth(id, force);
+      const prefs = settings.providers[id] ?? ProviderSettingsSchema.parse({});
       out.push({
         id,
         displayName: manifest.displayName,
         capabilities: manifest.capabilities,
         installHint: manifest.installHint,
-        enabled: settings.providers[id].enabled,
+        loginCommand: manifest.loginCommand,
+        enabled: prefs.enabled,
         isDefault: settings.defaultProvider === id,
         health,
-        defaultModel: settings.providers[id].defaultModel,
-        defaultEffort: settings.providers[id].defaultEffort,
+        defaultModel: prefs.defaultModel,
+        defaultEffort: prefs.defaultEffort,
       });
     }
     return out;
@@ -154,7 +159,7 @@ export class AppContext extends MordomoEngine {
     if (pending) return pending;
     const adapter = this.adapters[id];
     const request = Promise.resolve()
-      .then(() => adapter.healthCheck())
+      .then(() => adapter!.healthCheck())
       .then((health) => {
         // An invalidation/reload may replace this request while its CLI is running.
         if (this.healthInFlight.get(id) === request) {

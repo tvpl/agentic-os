@@ -14,6 +14,7 @@ import { formatDuration, useToast } from "../../components/ui";
 import { useConfirm } from "../../hooks/useConfirm";
 import { useDesktopActions } from "../../desktop/actions";
 import { useTicker } from "../../desktop/data";
+import { useOsProviders } from "../../queries";
 import { failureFix } from "../../runs/failureFix";
 import { authRecovery } from "../../runs/authRecovery";
 import { narrate } from "../../runs/humanize";
@@ -49,6 +50,7 @@ export default function RunsRun({
   const confirm = useConfirm();
   const qc = useQueryClient();
   const { openRun } = useDesktopActions();
+  const providers = useOsProviders();
   const record = useRunQuery(id, {
     refetchInterval: (q) => (isRunActive(q.state.data?.run.status) ? 20_000 : false),
   });
@@ -159,9 +161,9 @@ export default function RunsRun({
   const duration = active ? formatDuration(now - start, locale) : formatDuration(run.durationMs, locale);
   const usage = run.usage;
   const failed = isRunFailed(run.status) || run.status === "cancelled";
-  const fix = failureFix(run.failure, run.provider, run.status);
+  const fix = failureFix(run.failure, run.provider, run.status, providers.data);
   const error = failed ? (run.failure?.message ?? run.error ?? null) : null;
-  const login = authRecovery(run.provider, run.failure?.message ?? run.error);
+  const login = authRecovery(run.provider, run.failure?.message ?? run.error, providers.data);
   const statusWord = (() => {
     if (run.status === "timed_out") return t("scene.runs.status.timedOut");
     const key = `status.${run.status}` as Parameters<typeof t>[0];

@@ -4,6 +4,7 @@ import {
   ConnectorDataCache,
   ConnectorSchema,
   fetchConnectorData,
+  homeConfigFilesOf,
   runAudit,
   setupChecklist,
 } from "@mordomo/core";
@@ -20,9 +21,7 @@ export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): 
   app.get("/api/connectors", async () => ctx.connectors.list());
 
   app.get("/api/connectors/audit", async () =>
-    runAudit(ctx.connectors, undefined, [
-      ...new Set(ctx.providers.manifests().flatMap((m) => m.homeConfigFiles)),
-    ]),
+    runAudit(ctx.connectors, undefined, homeConfigFilesOf(ctx.providers.manifests())),
   );
 
   /**

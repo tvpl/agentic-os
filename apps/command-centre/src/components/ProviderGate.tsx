@@ -5,7 +5,6 @@ import { Link } from "react-router-dom";
 import { api, type ProviderId, type ProviderSnapshot } from "../api";
 import { useT } from "../i18n";
 import { useOsProviders } from "../queries";
-import { PROVIDER_LOGIN_COMMANDS } from "../runs/authRecovery";
 import { copyText, errorMessage } from "../views/shared";
 import { DialogPortal, useDialog } from "./dialog";
 import { Button } from "./primitives";
@@ -140,7 +139,7 @@ function GateRow({
     problem === "not_installed"
       ? prov.installHint
       : problem === "login_required"
-        ? PROVIDER_LOGIN_COMMANDS[prov.id]
+        ? (prov.loginCommand ?? null)
         : null;
   return (
     <li className="provider-gate-row" data-testid={`gate-provider-${prov.id}`}>

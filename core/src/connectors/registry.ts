@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { ProviderId } from "../config/schema.js";
+import { BUILTIN_PROVIDER_IDS, ProviderId } from "../config/schema.js";
 import type { MordomoPaths } from "../paths.js";
 import { atomicWrite } from "../config/store.js";
 import { resolveInsideDir } from "../security/ids.js";
@@ -96,7 +96,7 @@ export const ConnectorSchema = z.object({
   writeOperations: z.array(z.string()).default([]),
   writeEnabled: z.boolean().default(false),
   risks: z.array(z.string()).default([]),
-  compatibleProviders: z.array(ProviderId).default(["claude", "cursor", "codex"]),
+  compatibleProviders: z.array(ProviderId).default([...BUILTIN_PROVIDER_IDS]),
   status: z.enum(["not_configured", "configured", "healthy", "unhealthy"]).default("not_configured"),
   lastUsedAt: z.number().nullable().default(null),
   lastHealthCheckAt: z.number().nullable().default(null),

@@ -286,7 +286,7 @@ test("expired Claude authentication explains recovery and opens provider setting
   await openShell(page);
   // The failed turn says how to recover, in the conversation.
   await openConversation(page);
-  await expect(page.locator(".auth-recovery")).toContainText("claude auth login");
+  await expect(page.locator(".auth-recovery code")).toHaveText("claude auth login");
   await page.locator(".auth-recovery a").click();
   // The link is a deep link into the Settings scene, on the providers tab.
   await expect(page).toHaveURL(/#\/settings\?tab=providers$/);

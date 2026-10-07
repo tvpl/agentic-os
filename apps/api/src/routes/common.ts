@@ -1,14 +1,17 @@
 import path from "node:path";
 import { createHash } from "node:crypto";
 import {
+  ProviderSettingsSchema,
   promptRunFields,
   resolveInsideRoots,
+  type AgentAdapter,
   type Approval,
   type CreateRunInput,
   type EffortLevel,
   type GatedRunPayload,
   type PromptRunInput,
   type ProviderId,
+  type ProviderSettings,
   type RunMode,
   type SecurityProfile,
   type SkillRunInput,
@@ -24,6 +27,31 @@ export function httpError(
   code?: string,
 ): Error & { statusCode: number; code?: string } {
   return Object.assign(new Error(message), { statusCode, ...(code ? { code } : {}) });
+}
+
+/**
+ * A provider id is only a format: refuse one no adapter is registered for
+ * (`400 unknown_provider`) before anything is created, and hand back its
+ * settings (the defaults when `settings.json` has no entry for it).
+ */
+export function requireProvider(
+  ctx: AppContext,
+  id: ProviderId,
+  settings = ctx.settings(),
+): ProviderSettings {
+  if (!ctx.providers.has(id)) throw unknownProvider(id);
+  return settings.providers[id] ?? ProviderSettingsSchema.parse({});
+}
+
+/** The live adapter of a registered provider (`400 unknown_provider` otherwise). */
+export function requireAdapter(ctx: AppContext, id: ProviderId): AgentAdapter {
+  const adapter = ctx.adapters[id];
+  if (!adapter) throw unknownProvider(id);
+  return adapter;
+}
+
+function unknownProvider(id: ProviderId): Error {
+  return httpError(400, `Unknown provider "${id}": no adapter is registered for it`, "unknown_provider");
 }
 
 /** Roots a user-supplied path may resolve into: the home plus enabled indexed folders (the engine's rule). */
@@ -226,8 +254,8 @@ function createPromptSubmission(
   const session = body.sessionId ? ctx.runs.sessions.get(body.sessionId) : null;
   if (body.sessionId && !session) throw httpError(404, "Session not found");
   const provider = body.provider ?? session?.provider ?? settings.defaultProvider;
-  const providerSettings = settings.providers[provider];
-  if (!providerSettings?.enabled) throw httpError(400, `Provider ${provider} is not enabled`);
+  const providerSettings = requireProvider(ctx, provider, settings);
+  if (!providerSettings.enabled) throw httpError(400, `Provider ${provider} is not enabled`);
   // A session's cwd is re-checked against the *current* roots: a folder that
   // was granted when the conversation started may have been revoked since.
   const roots = grantedRoots(ctx);
