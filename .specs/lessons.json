@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 21,
+  "next_id": 26,
   "lessons": [
     {
       "id": "L-001",
@@ -290,6 +290,86 @@
       ],
       "created": "2026-10-06T17:33:09Z",
       "last_seen": "2026-10-06T17:33:09Z"
+    },
+    {
+      "id": "L-021",
+      "key": "surviving_mutant::when a screen switches data source prove it with a render test where the old and new sources serve different values a source regex misses reformatting aliases and destructuring",
+      "text": "When a screen switches data source, prove it with a render test where the old and new sources serve different values; a source regex misses reformatting, aliases and destructuring.",
+      "signal": "surviving_mutant",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["preferencias-ui"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "preferencias-ui round 1 P1-P3: reverting screens to read/write the old source passed a regex source check (checks)"
+      ],
+      "created": "2026-10-07T00:14:29Z",
+      "last_seen": "2026-10-07T00:14:29Z"
+    },
+    {
+      "id": "L-022",
+      "key": "spec_precision_gap::to forbid moved fields remove them from the read type so any read is ts2339 and give every write path one patch type with the keys as never back it with a runtime guard at the single request function",
+      "text": "To forbid moved fields, remove them from the read type (so any read is TS2339) and give every write path one patch type with the keys as never; back it with a runtime guard at the single request function.",
+      "signal": "spec_precision_gap",
+      "scope": "build",
+      "status": "candidate",
+      "features": ["preferencias-ui"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "preferencias-ui round 2 N1-N3/M21: '?: never' keys still compiled reads and a Partial<> write path let spreads through (build)"
+      ],
+      "created": "2026-10-07T00:14:29Z",
+      "last_seen": "2026-10-07T00:14:29Z"
+    },
+    {
+      "id": "L-023",
+      "key": "surviving_mutant::prove an only after x succeeds claim by making x fail and asserting the dependent step never runs call order alone survives a missing await",
+      "text": "Prove an 'only after X succeeds' claim by making X fail and asserting the dependent step never runs; call order alone survives a missing await.",
+      "signal": "surviving_mutant",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["preferencias-ui"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "preferencias-ui round 3 S2: 'only after both writes succeed' proven by call order; dropping the await survived (checks)"
+      ],
+      "created": "2026-10-07T00:14:29Z",
+      "last_seen": "2026-10-07T00:14:29Z"
+    },
+    {
+      "id": "L-024",
+      "key": "ac_gap::when a migration moves data between files add an ac for restoring a backup made before the migration restore bypasses the upgrade path the migration was tested on",
+      "text": "When a migration moves data between files, add an AC for restoring a backup made before the migration; restore bypasses the upgrade path the migration was tested on.",
+      "signal": "ac_gap",
+      "scope": "plan",
+      "status": "candidate",
+      "features": ["preferencias-ui"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "preferencias-ui round 1 B2: restoring a pre-feature backup lost its UI preferences (plan)"
+      ],
+      "created": "2026-10-07T00:14:29Z",
+      "last_seen": "2026-10-07T00:14:29Z"
+    },
+    {
+      "id": "L-025",
+      "key": "surviving_mutant::a kept byte for byte claim needs a non canonical fixture other indentation key order no trailing newline or re serializing passes as copying",
+      "text": "A 'kept byte for byte' claim needs a non-canonical fixture (other indentation, key order, no trailing newline), or re-serializing passes as copying.",
+      "signal": "surviving_mutant",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["preferencias-ui"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "preferencias-ui round 1 F2: byte-for-byte .bak check passed with re-serialization because the fixture was already canonical (checks)"
+      ],
+      "created": "2026-10-07T00:14:30Z",
+      "last_seen": "2026-10-07T00:14:30Z"
     }
   ]
 }

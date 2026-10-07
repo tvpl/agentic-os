@@ -154,6 +154,41 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: contratos round 1: event envelope built with 'as OsEvent<K>', tsc accepted it without v (build)
 - last seen: 2026-10-06T17:33:09Z
 
+### L-021 - When a screen switches data source, prove it with a render test where the old and new sources serve different values; a source regex misses reformatting, aliases and destructuring.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: preferencias-ui
+- evidence: preferencias-ui round 1 P1-P3: reverting screens to read/write the old source passed a regex source check (checks)
+- last seen: 2026-10-07T00:14:29Z
+
+### L-022 - To forbid moved fields, remove them from the read type (so any read is TS2339) and give every write path one patch type with the keys as never; back it with a runtime guard at the single request function.
+
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `build` · harmful: 0
+- features: preferencias-ui
+- evidence: preferencias-ui round 2 N1-N3/M21: '?: never' keys still compiled reads and a Partial<> write path let spreads through (build)
+- last seen: 2026-10-07T00:14:29Z
+
+### L-023 - Prove an 'only after X succeeds' claim by making X fail and asserting the dependent step never runs; call order alone survives a missing await.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: preferencias-ui
+- evidence: preferencias-ui round 3 S2: 'only after both writes succeed' proven by call order; dropping the await survived (checks)
+- last seen: 2026-10-07T00:14:29Z
+
+### L-024 - When a migration moves data between files, add an AC for restoring a backup made before the migration; restore bypasses the upgrade path the migration was tested on.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `plan` · harmful: 0
+- features: preferencias-ui
+- evidence: preferencias-ui round 1 B2: restoring a pre-feature backup lost its UI preferences (plan)
+- last seen: 2026-10-07T00:14:29Z
+
+### L-025 - A 'kept byte for byte' claim needs a non-canonical fixture (other indentation, key order, no trailing newline), or re-serializing passes as copying.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: preferencias-ui
+- evidence: preferencias-ui round 1 F2: byte-for-byte .bak check passed with re-serialization because the fixture was already canonical (checks)
+- last seen: 2026-10-07T00:14:30Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

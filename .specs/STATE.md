@@ -15,10 +15,10 @@
 
 ## Handoff
 
-**Feature**: preferencias-ui (construída na worktree `feat/preferencias`, a aplicar e verificar); provedores-plugaveis em construção na worktree `feat/provedores`
-**Where**: seguranca-p0, ci-gate, motor-composicao e capacidades-aplicadas verificadas. contratos: 3 rodadas, todas as lacunas fechadas; a 3ª deixou um mutante (import com aspas simples escapando do C16), corrigido pelo autor em `c438d30` e morto por sonda do autor (não por um verificador independente) - escalado ao dono no resumo da sessão
-**In progress**: provedores-plugaveis (plano e checks em `4191472`)
-**Next step**: aplicar preferencias-ui, verificar; integrar provedores-plugaveis, verificar; depois api-v1
-**Blockers**: nenhum até a feature 9 (direção da interface, decisão do dono)
+**Feature**: provedores-plugaveis (integrando na branch e verificando); api-v1 e adaptadores-tipados prontos e rebaseados nas worktrees `feat/api-v1` e `feat/adaptadores-tipados`; moldura-app em construção na worktree `feat/moldura-app`
+**Where**: seguranca-p0, ci-gate, motor-composicao e capacidades-aplicadas verificadas. contratos e preferencias-ui fecharam com escalonamento ao dono: cada uma teve 3 rodadas de verificação, todas as lacunas fechadas, e o mutante sobrevivente da 3ª rodada foi corrigido e morto pelo autor (contratos em `c438d30`; preferencias-ui em `3b9cd3f`, C36/C37), não por um verificador independente
+**In progress**: integração das features 6 → 7 → 8, cada uma com verificação; construção da 9
+**Next step**: verificar provedores-plugaveis; depois integrar e verificar api-v1, adaptadores-tipados e moldura-app; planejar 10 (design-system), 11 (comandos-atalhos), 12 (limpeza-legado)
+**Blockers**: nenhum
 **Uncommitted**: nenhum
 **Branch**: chore/tlc-spec-lean-skill
