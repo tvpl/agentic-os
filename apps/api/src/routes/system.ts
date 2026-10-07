@@ -423,9 +423,11 @@ export function registerSystemRoutes(
 
   app.get("/api/health", async () => {
     const dbOpen = ctx.db.open;
+    // A closed database is a failure (500 in the envelope), never a 200 with `ok: false`.
+    if (!dbOpen) throw new Error("The database is closed");
     const runs = ctx.activeRunCount();
     return {
-      ok: dbOpen,
+      ok: true,
       uptimeMs: Date.now() - ctx.startedAt,
       version: PKG_VERSION,
       db: { open: dbOpen, path: ctx.paths.dbFile },

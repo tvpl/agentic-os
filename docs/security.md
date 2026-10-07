@@ -66,8 +66,9 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
 - **No token in the URL, except where a header is impossible.** `?token=` is accepted only
   on `GET` of the routes marked `config: { queryToken: true }`: `/api/events`,
   `/api/runs/:id/stream` (EventSource), `/api/artifacts/raw` and
-  `/api/skills/:slug/resource` (`<img>`/`<iframe>`). Anywhere else, or on another method,
-  it is `401 unauthorized` even next to a valid header.
+  `/api/skills/:slug/resource` (`<img>`/`<iframe>`). Anywhere else under `/api` (the public
+  `/api/meta` and `/api/pair/claim` included), or on another method, it is
+  `401 unauthorized` even next to a valid header.
 - **Attempt limits** (`apps/api/src/rateLimit.ts`, in memory, reset on restart).
   `POST /api/pair/claim` takes 10 attempts a minute per address, counted before the code
   is read; an address that collected 20 `401`s in 5 minutes gets `429` on every request

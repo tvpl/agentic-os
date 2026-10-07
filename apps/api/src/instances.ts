@@ -303,3 +303,37 @@ export function isOlderService(probe: ProbedServer, ourInstalledAt: number, tole
     return ourInstalledAt > probe.installedAt + toleranceMs;
   return false;
 }
+
+/**
+ * Is a MordomoOS answering on `port`? Used when there is no pidfile we own:
+ * a server started by another checkout, by hand, or whose pidfile was removed.
+ * `/api/v1/meta` needs no token and identifies the app by name and version; a
+ * service older than API v1 answers it `404`, so the unversioned path is tried next.
+ */
+export async function probeServer(port: number, timeoutMs = 1500): Promise<ProbedServer | null> {
+  try {
+    const signal = AbortSignal.timeout(timeoutMs);
+    let res = await fetch(`http://127.0.0.1:${port}/api/v1/meta`, { signal });
+    if (res.status === 404) {
+      await res.body?.cancel();
+      res = await fetch(`http://127.0.0.1:${port}/api/meta`, { signal });
+    }
+    if (!res.ok) return null;
+    const meta = (await res.json()) as {
+      name?: unknown;
+      version?: unknown;
+      entry?: unknown;
+      build?: { stale?: unknown; installedAt?: unknown };
+    };
+    if (typeof meta.version !== "string") return null;
+    return {
+      name: typeof meta.name === "string" ? meta.name : "MordomoOS",
+      version: meta.version,
+      stale: typeof meta.build?.stale === "boolean" ? meta.build.stale : undefined,
+      installedAt: typeof meta.build?.installedAt === "number" ? meta.build.installedAt : undefined,
+      entry: typeof meta.entry === "string" ? meta.entry : undefined,
+    };
+  } catch {
+    return null;
+  }
+}

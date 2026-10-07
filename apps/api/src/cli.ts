@@ -37,8 +37,8 @@ import {
   isOlderService,
   listServiceProcesses,
   orphanProcesses,
+  probeServer,
   terminate,
-  type ProbedServer,
 } from "./instances.js";
 import { PKG_VERSION } from "./routes/system.js";
 import { servePermissionTool } from "./mcp/permission.js";
@@ -882,34 +882,6 @@ async function waitForPidFile(ctx: Pick<AppContext, "paths">, ticks: number): Pr
     await new Promise((r) => setTimeout(r, 200));
   }
   return readPidInfo(ctx);
-}
-
-/**
- * Is a MordomoOS answering on `port`? Used when there is no pidfile we own:
- * a server started by another checkout, by hand, or whose pidfile was removed.
- * `/api/meta` needs no token and identifies the app by name and version.
- */
-export async function probeServer(port: number, timeoutMs = 1500): Promise<ProbedServer | null> {
-  try {
-    const res = await fetch(`http://127.0.0.1:${port}/api/meta`, { signal: AbortSignal.timeout(timeoutMs) });
-    if (!res.ok) return null;
-    const meta = (await res.json()) as {
-      name?: unknown;
-      version?: unknown;
-      entry?: unknown;
-      build?: { stale?: unknown; installedAt?: unknown };
-    };
-    if (typeof meta.version !== "string") return null;
-    return {
-      name: typeof meta.name === "string" ? meta.name : "MordomoOS",
-      version: meta.version,
-      stale: typeof meta.build?.stale === "boolean" ? meta.build.stale : undefined,
-      installedAt: typeof meta.build?.installedAt === "number" ? meta.build.installedAt : undefined,
-      entry: typeof meta.entry === "string" ? meta.entry : undefined,
-    };
-  } catch {
-    return null;
-  }
 }
 
 /** Open `url` in the default browser; never throws (headless machines just print the URL). */

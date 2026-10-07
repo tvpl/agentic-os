@@ -260,17 +260,20 @@ export async function buildServer(
     // router decodes the path, so `/%61pi/settings` is `/api/settings` here.
     const route = req.routeOptions.url;
     const config = req.routeOptions.config;
-    if (!route?.startsWith("/api/") || config.public === true) return;
-    const queryToken = (req.query as Record<string, string | undefined>)?.token;
+    const queryToken = (req.query as Record<string, string | undefined> | undefined)?.token;
     // A token in the URL lands in proxy logs and browser history: only the
     // GETs that cannot send a header (EventSource, <img>, <iframe>) take one.
-    if (queryToken !== undefined && !(req.method === "GET" && config.queryToken === true)) {
+    // Refused on every other /api request, public routes and unmatched methods
+    // included (`req.url` is already rewritten from `/api/v1/…`).
+    const isApi = route?.startsWith("/api/") === true || req.url.startsWith("/api/");
+    if (isApi && queryToken !== undefined && !(req.method === "GET" && config.queryToken === true)) {
       return reply
         .code(401)
         .send(
           errorBody("unauthorized", "This route does not accept a token in the URL; send x-mordomo-token"),
         );
     }
+    if (!route?.startsWith("/api/") || config.public === true) return;
     const supplied = (req.headers["x-mordomo-token"] as string | undefined) ?? queryToken;
     if (tokenMatches(supplied, token)) {
       req.principal = { kind: "owner" };
