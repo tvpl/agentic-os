@@ -13,7 +13,7 @@ for (const theme of ["dark", "light"]) {
     "/pixel",
   ]) {
     test(`surface contrast ${theme} ${route}`, async ({ page }) => {
-      await page.route("**/api/meta", async (interception) => {
+      await page.route("**/api/v1/meta", async (interception) => {
         const response = await interception.fetch();
         await interception.fulfill({ response, json: { ...(await response.json()), theme } });
       });

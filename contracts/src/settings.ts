@@ -203,6 +203,11 @@ export const ChannelSettingsSchema = z.object({
       minTone: z.enum(["ok", "info", "warn", "danger"]).default("warn"),
       /** Long-poll the bot for replies: approve / deny from the phone. Only the configured chat is honoured. */
       inbound: z.boolean().default(false),
+      /**
+       * Telegram user ids (`from.id`) allowed to decide. Empty: anyone in the
+       * configured chat, as before; otherwise everyone else is ignored.
+       */
+      allowedUserIds: z.array(z.number().int()).default([]),
     })
     .default({}),
   /** Web Push to installed PWAs (VAPID keys live in config/vapid.json, subscriptions in SQLite). */

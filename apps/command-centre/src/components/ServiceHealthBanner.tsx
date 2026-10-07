@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from "react";
 import { RefreshCw, Skull, X } from "lucide-react";
-import { api, type SystemInfo } from "../api";
+import { api, apiUrl, type SystemInfo } from "../api";
 import { useT } from "../i18n";
 import { useApiQuery } from "../queries";
 import { Button } from "./primitives";
@@ -42,7 +42,7 @@ export default function ServiceHealthBanner({ name }: { name: string }) {
       try {
         // A raw GET on purpose: no token, no timeout, no error envelope while the service restarts.
         // eslint-disable-next-line no-restricted-globals
-        const res = await fetch("/api/meta", { cache: "no-store" });
+        const res = await fetch(apiUrl("/api/meta"), { cache: "no-store" });
         if (!res.ok) throw new Error(String(res.status));
         const meta = (await res.json()) as { build?: { startedAt?: number } };
         // Reload only after a *new* process answers (its startedAt moved) or the old one was seen down.

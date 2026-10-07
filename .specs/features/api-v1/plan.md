@@ -137,7 +137,7 @@ Reutiliza o gancho `onRequest` de `apps/api/src/server.ts` (exists), o envelope 
 **Acceptance Criteria**
 
 13. WHEN one address sends the 11th `POST /api/pair/claim` within 60 s THEN the API SHALL answer `429` with `error.code` `"too_many_requests"` and a `Retry-After` header, without checking the code
-14. WHEN one non-loopback address collects its 21st `401` within 5 minutes THEN its next request SHALL answer `429` until the window passes
+14. WHEN one non-loopback address has collected 20 `401` responses within 5 minutes THEN its next request SHALL answer `429` until the window passes
 15. WHILE requests come from loopback, failed authentications SHALL NOT be rate limited
 
 **Independent test:** 11 tentativas de pareamento seguidas do mesmo IP → a 11ª é `429`.

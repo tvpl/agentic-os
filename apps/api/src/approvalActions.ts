@@ -18,6 +18,8 @@ export async function resolveApproval(
   ctx: AppContext,
   id: string,
   decision: "approved" | "denied",
+  /** Who decided (`Approval.resolvedBy`): `owner`, `device:<id>`, `broker:<runId>`, `telegram:<userId>`. */
+  resolvedBy: string | null,
   onError: (err: unknown, runId: string) => void,
   /**
    * The user's answers when the agent asked a question (`AskUserQuestion`):
@@ -41,6 +43,7 @@ export async function resolveApproval(
     id,
     decision,
     decision === "approved" && answers && Object.keys(answers).length > 0 ? { answers } : undefined,
+    resolvedBy,
   );
   if (!approval) throw Object.assign(new Error("Approval not found"), { statusCode: 404 });
   let runId: string | null = null;
@@ -74,6 +77,7 @@ export async function resolveApprovalForChat(
   ctx: AppContext,
   idOrPrefix: string,
   decision: "approved" | "denied",
+  resolvedBy: string,
 ): Promise<{ ok: boolean; message: string }> {
   const pending = ctx.approvals.list("pending");
   const matches = pending.filter(
@@ -86,7 +90,7 @@ export async function resolveApprovalForChat(
       message: `"${idOrPrefix}" matches ${matches.length} approvals; send more characters.`,
     };
   try {
-    const r = await resolveApproval(ctx, matches[0]!.id, decision, () => undefined);
+    const r = await resolveApproval(ctx, matches[0]!.id, decision, resolvedBy, () => undefined);
     const verb = r.status === "approved" ? "✅ Approved" : "⛔ Denied";
     return {
       ok: true,

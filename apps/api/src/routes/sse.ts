@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { successorHeaders } from "../apiVersion.js";
 
 /**
  * Server-Sent Events helper shared by `/api/events` and `/api/runs/:id/stream`.
@@ -57,6 +58,7 @@ export function openSse(
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
+    ...successorHeaders(req),
   });
   raw.flushHeaders?.();
 

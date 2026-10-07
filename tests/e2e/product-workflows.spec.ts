@@ -21,7 +21,7 @@ test("Pixel Studio draws, undoes, adds frames, exports PNG and saves a viewable 
   await expect(page.locator(".pxs-frame")).toHaveCount(2);
   const saved = page.waitForResponse(
     (response) =>
-      response.url().endsWith("/api/microapps/pixel/save") && response.request().method() === "POST",
+      response.url().endsWith("/api/v1/microapps/pixel/save") && response.request().method() === "POST",
   );
   await page.getByRole("button", { name: "Save", exact: true }).click();
   expect((await saved).ok()).toBe(true);

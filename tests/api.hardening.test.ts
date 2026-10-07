@@ -195,8 +195,9 @@ describe("host and token checks (audit #8)", () => {
       headers: { "x-mordomo-token": flipped },
     });
     expect(wrong.statusCode).toBe(401);
+    // api-v1 door 4: the right token in the URL is refused outside the stream/file GETs.
     const viaQuery = await app.inject({ method: "GET", url: `/api/settings?token=${token}` });
-    expect(viaQuery.statusCode).toBe(200);
+    expect(viaQuery.statusCode).toBe(401);
   });
 });
 
@@ -470,7 +471,8 @@ describe("health, version and request log (audit #25)", () => {
       .map((l) => JSON.parse(l));
     const metrics = lines.find((l) => typeof l.url === "string" && l.url.startsWith("/api/metrics"));
     expect(metrics).toBeTruthy();
-    expect(metrics).toMatchObject({ method: "GET", status: 200 });
+    // Refused (api-v1: no token in the URL outside streams), and logged without it.
+    expect(metrics).toMatchObject({ method: "GET", status: 401 });
     expect(typeof metrics.ms).toBe("number");
     expect(typeof metrics.ts).toBe("number");
     expect(metrics.reqId).toBeTruthy();

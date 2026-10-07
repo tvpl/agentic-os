@@ -257,7 +257,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
    * query. Frames carry the run_events DB id, so a reconnect with
    * `Last-Event-ID` resumes after the last frame the client saw.
    */
-  app.get("/api/runs/:id/stream", async (req, reply) => {
+  app.get("/api/runs/:id/stream", { config: { queryToken: true } }, async (req, reply) => {
     const { id } = UuidParams.parse(req.params);
     if (!ctx.runs.get(id)) throw httpError(404, "Run not found");
 

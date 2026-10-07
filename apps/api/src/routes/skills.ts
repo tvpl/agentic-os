@@ -79,6 +79,8 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
   app.get(
     "/api/skills/:slug/resource",
     {
+      // `<img>`/`<iframe>` sources cannot send a header.
+      config: { queryToken: true },
       onSend: async (_req, reply, payload) => {
         reply.header("content-security-policy", RESOURCE_CSP);
         reply.header("x-frame-options", "SAMEORIGIN");
@@ -184,7 +186,7 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
   });
 
   /** Import a skill directory — only from inside the home or an enabled indexed folder. */
-  app.post("/api/skills/import", async (req) => {
+  app.post("/api/skills/import", { config: { scope: "owner" } }, async (req) => {
     const { sourceDir, slug } = z
       .object({ sourceDir: z.string().min(1), slug: IdParam.optional() })
       .parse(req.body);
@@ -232,7 +234,7 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
    * verified before the catalog is touched; an existing skill is only
    * replaced with `force`, and then its folder is kept as a `.bak` first.
    */
-  app.post("/api/skills/install", async (req) => {
+  app.post("/api/skills/install", { config: { scope: "owner" } }, async (req) => {
     const body = z
       .object({ slug: IdParam, registry: z.string().url().optional(), force: z.boolean().default(false) })
       .parse(req.body);

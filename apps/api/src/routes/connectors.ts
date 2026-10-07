@@ -72,7 +72,7 @@ export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): 
     };
   });
 
-  app.put("/api/connectors/:id", async (req) => {
+  app.put("/api/connectors/:id", { config: { scope: "owner" } }, async (req) => {
     const { id } = IdParams.parse(req.params);
     const existing = ctx.connectors.get(id);
     if (!existing) throw httpError(404, "Connector not found");
@@ -94,14 +94,14 @@ export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): 
     return { connector: ctx.connectors.save(updated), pendingApproval: null };
   });
 
-  app.post("/api/connectors", async (req) => {
+  app.post("/api/connectors", { config: { scope: "owner" } }, async (req) => {
     const connector = ConnectorSchema.parse(req.body);
     if (ctx.connectors.get(connector.id)) throw httpError(409, `Connector "${connector.id}" already exists`);
     // New connectors always start not-configured with writes off.
     return ctx.connectors.save({ ...connector, status: "not_configured", writeEnabled: false });
   });
 
-  app.delete("/api/connectors/:id", async (req) => {
+  app.delete("/api/connectors/:id", { config: { scope: "owner" } }, async (req) => {
     const { id } = IdParams.parse(req.params);
     if (!ctx.connectors.remove(id)) throw httpError(404, "Connector not found");
     cache.invalidate(id);

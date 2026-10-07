@@ -132,7 +132,8 @@ export function refuseMovedSettingKeys(method: string, url: string, body: unknow
     path
       .replace(/\/{2,}/g, "/")
       .replace(/\/+$/, "")
-      .toLowerCase() !== "/api/settings"
+      .toLowerCase()
+      .replace(/^\/api\/v1\//, "/api/") !== "/api/settings"
   )
     return;
   const moved = MOVED_SETTING_KEYS.find((key) => (body as Record<string, unknown>)[key] !== undefined);
@@ -142,6 +143,14 @@ export function refuseMovedSettingKeys(method: string, url: string, body: unknow
       `"${moved}" moved to the UI preferences: write it through PUT /api/ui-preferences, not ${method.toUpperCase()} /api/settings`,
       "moved_to_ui_preferences",
     );
+}
+
+/**
+ * Every API path goes to the documented version: `/api/<rest>` becomes
+ * `/api/v1/<rest>`, exactly once. Anything else is returned unchanged.
+ */
+export function apiUrl(path: string): string {
+  return path.startsWith("/api/") && !path.startsWith("/api/v1/") ? `/api/v1/${path.slice(5)}` : path;
 }
 
 async function request<T>(
@@ -164,7 +173,7 @@ async function request<T>(
   }
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await fetch(apiUrl(url), {
       method,
       headers: {
         "x-mordomo-token": TOKEN,
@@ -220,7 +229,7 @@ export const api = {
 
   /** SSE stream of run events; EventSource cannot set headers → token in query. */
   streamRun(runId: string, onEvent: (data: Record<string, unknown>) => void): () => void {
-    const source = new EventSource(`/api/runs/${encodeURIComponent(runId)}/stream?token=${TOKEN}`);
+    const source = new EventSource(apiUrl(`/api/runs/${encodeURIComponent(runId)}/stream?token=${TOKEN}`));
     source.onmessage = (e) => {
       try {
         onEvent(JSON.parse(e.data as string) as Record<string, unknown>);
@@ -240,7 +249,7 @@ export const api = {
    * connection is closed for good so callers can back off and reopen.
    */
   streamEvents(onEvent: (event: OsEvent) => void, opts: StreamOptions = {}): () => void {
-    const source = new EventSource(`/api/events?token=${TOKEN}`);
+    const source = new EventSource(apiUrl(`/api/events?token=${TOKEN}`));
     const handle = (raw: MessageEvent, fallbackType?: string) => {
       try {
         const parsed = JSON.parse(raw.data as string) as Partial<Contracts.OsEvent> | null;
@@ -699,7 +708,9 @@ export type ApprovalRecord = Contracts.Approval;
 
 /** Absolute URL of `GET /api/artifacts/raw` for a file (token in the query: `<img>` cannot set headers). */
 export function artifactRawUrl(absolutePath: string): string {
-  return `/api/artifacts/raw?p=${encodeURIComponent(absolutePath)}&token=${encodeURIComponent(TOKEN)}`;
+  return apiUrl(
+    `/api/artifacts/raw?p=${encodeURIComponent(absolutePath)}&token=${encodeURIComponent(TOKEN)}`,
+  );
 }
 
 /** Can `/api/artifacts/raw` serve this file inline? (mirrors the server allow-list) */

@@ -34,6 +34,7 @@ describe("C31 a settings write carrying a moved key is refused before it leaves 
       "/api/settings/",
       "/api//settings",
       "http://127.0.0.1:7777/api/settings",
+      "/api/v1/settings",
     ];
     const sends = [
       (url: string, body: object) => api.put(url, body),
@@ -66,12 +67,12 @@ describe("C31 a settings write carrying a moved key is refused before it leaves 
     await api.get(settingsUrl);
     await api.post("/api/settings-export", { themePreset: "jarvis" });
     expect(fetchMock.mock.calls.map(([url, init]) => `${init.method} ${url}`)).toEqual([
-      "PUT /api/settings",
-      "PUT /api/settings",
-      "PUT /api/ui-preferences",
-      "PUT /api/ui-preferences",
-      "GET /api/settings",
-      "POST /api/settings-export",
+      "PUT /api/v1/settings",
+      "PUT /api/v1/settings",
+      "PUT /api/v1/ui-preferences",
+      "PUT /api/v1/ui-preferences",
+      "GET /api/v1/settings",
+      "POST /api/v1/settings-export",
     ]);
   });
 });

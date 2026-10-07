@@ -10,7 +10,7 @@ import { lastEventId, openSse } from "./sse.js";
  * Token auth is enforced by the global onRequest hook (`?token=` accepted).
  */
 export function registerEventRoutes(app: FastifyInstance, _ctx: AppContext): void {
-  app.get("/api/events", async (req, reply) => {
+  app.get("/api/events", { config: { queryToken: true } }, async (req, reply) => {
     const since = lastEventId(req);
     const ch = openSse(req, reply);
     // Without a resume point nothing is replayed: start after the current id.

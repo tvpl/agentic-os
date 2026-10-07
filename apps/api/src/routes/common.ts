@@ -20,6 +20,21 @@ import {
 } from "@mordomo/core";
 import type { AppContext } from "../context.js";
 
+/**
+ * Who made a request (docs/security.md, "Scopes"): the local token is the
+ * owner at the machine, a paired device token is a `device`, and a run's
+ * permission-broker credential is a `broker` bound to that run.
+ */
+export type Principal =
+  { kind: "owner" } | { kind: "device"; deviceId: string } | { kind: "broker"; runId: string };
+
+/** How an approval records its decider (`Approval.resolvedBy`). */
+export function principalName(principal: Principal): string {
+  if (principal.kind === "device") return `device:${principal.deviceId}`;
+  if (principal.kind === "broker") return `broker:${principal.runId}`;
+  return "owner";
+}
+
 /** Error carrying an HTTP status — the global error handler maps it 1:1. */
 export function httpError(
   statusCode: number,

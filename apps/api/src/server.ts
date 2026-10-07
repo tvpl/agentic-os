@@ -5,6 +5,7 @@ import path from "node:path";
 import { Writable } from "node:stream";
 import Fastify, {
   LogController,
+  type FastifyContextConfig,
   type FastifyInstance,
   type FastifyReply,
   type FastifyRequest,
@@ -48,6 +49,10 @@ import { registerEventRoutes } from "./routes/events.js";
 import { registerObjectiveRoutes } from "./routes/objectives.js";
 import { registerSentinelRoutes } from "./routes/sentinels.js";
 import { closeAllSse } from "./routes/sse.js";
+import { rewriteApiUrl, successorHeaders } from "./apiVersion.js";
+import { SlidingWindow } from "./rateLimit.js";
+import { registerOpenApiRoute } from "./openapi.js";
+import type { Principal } from "./routes/common.js";
 
 export interface ServerHandle {
   app: FastifyInstance;
@@ -129,11 +134,27 @@ declare module "fastify" {
   interface FastifyRequest {
     /** Set when the request carries a permission-broker credential: the run it is bound to. */
     brokerRunId: string | null;
+    /** Who called an authenticated /api route (null on public routes and outside /api). */
+    principal: Principal | null;
   }
   interface FastifyContextConfig {
     /** Reachable without a credential. Every other /api route is denied by default. */
     public?: boolean;
+    /** Only the owner (the local token) may call it; a paired device gets `403 owner_only`. */
+    scope?: "owner";
+    /** A `GET` that may carry its credential in `?token=` (streams and `<img>`/`<iframe>` sources). */
+    queryToken?: boolean;
   }
+  interface FastifyInstance {
+    /** Every /api route as registered (filled by an `onRoute` hook): the OpenAPI document's source. */
+    apiRoutes: ApiRoute[];
+  }
+}
+
+export interface ApiRoute {
+  method: string;
+  url: string;
+  config: FastifyContextConfig;
 }
 
 export function tokenMatches(supplied: unknown, expected: string): boolean {
@@ -203,9 +224,24 @@ export async function buildServer(
     // for them: a browser tab holding `/api/events` open must not keep an old
     // service alive after a restart (that is how leftover processes were born).
     forceCloseConnections: true,
+    // `/api/v1/<rest>` is served by the route registered as `/api/<rest>` (apiVersion.ts).
+    rewriteUrl: (req) => rewriteApiUrl(req.url ?? "/"),
   });
   const token = ctx.token();
   app.decorateRequest("brokerRunId", null);
+  app.decorateRequest("principal", null);
+  app.decorate("apiRoutes", [] as ApiRoute[]);
+  app.addHook("onRoute", (route) => {
+    if (!route.url.startsWith("/api/")) return;
+    for (const method of [route.method].flat()) {
+      // HEAD twins of GET routes are added by Fastify itself.
+      if (method !== "HEAD") app.apiRoutes.push({ method, url: route.url, config: route.config ?? {} });
+    }
+  });
+
+  // Twenty 401s in five minutes lock an address out until the window passes;
+  // this machine itself (loopback) is never locked out.
+  const failedAuth = new SlidingWindow(20, 5 * 60_000);
 
   app.addHook("onRequest", async (req: FastifyRequest, reply: FastifyReply) => {
     const remote = ctx.settings().remote;
@@ -213,27 +249,58 @@ export async function buildServer(
     if (!isAllowedHost(req.headers.host, extraHosts)) {
       return reply.code(403).send(errorBody("forbidden_host", "Forbidden host"));
     }
+    const wait = isLoopbackAddress(req.ip) ? 0 : failedAuth.retryAfter(req.ip);
+    if (wait > 0) {
+      return reply
+        .code(429)
+        .header("Retry-After", String(wait))
+        .send(errorBody("too_many_requests", "Too many failed authentications from this address"));
+    }
     // Decided on the route the router matched, never on the raw URL: the
     // router decodes the path, so `/%61pi/settings` is `/api/settings` here.
     const route = req.routeOptions.url;
-    if (!route?.startsWith("/api/") || req.routeOptions.config.public === true) return;
-    const supplied =
-      (req.headers["x-mordomo-token"] as string | undefined) ??
-      (req.query as Record<string, string | undefined>)?.token;
-    if (tokenMatches(supplied, token)) return;
-    if (remote.enabled && typeof supplied === "string" && ctx.devices.verify(supplied) !== null) return;
+    const config = req.routeOptions.config;
+    if (!route?.startsWith("/api/") || config.public === true) return;
+    const queryToken = (req.query as Record<string, string | undefined>)?.token;
+    // A token in the URL lands in proxy logs and browser history: only the
+    // GETs that cannot send a header (EventSource, <img>, <iframe>) take one.
+    if (queryToken !== undefined && !(req.method === "GET" && config.queryToken === true)) {
+      return reply
+        .code(401)
+        .send(
+          errorBody("unauthorized", "This route does not accept a token in the URL; send x-mordomo-token"),
+        );
+    }
+    const supplied = (req.headers["x-mordomo-token"] as string | undefined) ?? queryToken;
+    if (tokenMatches(supplied, token)) {
+      req.principal = { kind: "owner" };
+      return;
+    }
+    const device = remote.enabled && typeof supplied === "string" ? ctx.devices.verify(supplied) : null;
+    if (device) {
+      if (config.scope === "owner") {
+        return reply
+          .code(403)
+          .send(errorBody("owner_only", "Only the owner, with the local token, can call this route"));
+      }
+      req.principal = { kind: "device", deviceId: device.id };
+      return;
+    }
     const broker = typeof supplied === "string" ? ctx.brokerRunFor(supplied) : null;
     if (broker?.active) {
       if (!BROKER_ROUTES.has(`${req.method} ${route}`)) {
         return reply.code(403).send(errorBody("forbidden", "The permission broker cannot call this route"));
       }
       req.brokerRunId = broker.runId;
+      req.principal = { kind: "broker", runId: broker.runId };
       return;
     }
     return reply.code(401).send(errorBody("unauthorized", "Missing or invalid local token"));
   });
 
-  app.addHook("onSend", async (_req, reply, payload) => {
+  app.addHook("onSend", async (req, reply, payload) => {
+    if (reply.statusCode === 401 && !isLoopbackAddress(req.ip)) failedAuth.hit(req.ip);
+    reply.headers(successorHeaders(req));
     reply.header("X-Content-Type-Options", "nosniff");
     reply.header("X-Frame-Options", "DENY");
     reply.header("Referrer-Policy", "no-referrer");
@@ -267,8 +334,11 @@ export async function buildServer(
         typeof err.statusCode === "number" && err.statusCode >= 400 && err.statusCode <= 599
           ? err.statusCode
           : 500;
-      if (status < 500) {
-        const code = typeof err.code === "string" && err.code ? err.code : (STATUS_CODES[status] ?? "error");
+      // 502: an upstream (Telegram, a push service) refused; its reason was written for the user.
+      if (status < 500 || status === 502) {
+        // Fastify's own codes (FST_ERR_*) are internal names; clients get the status's code.
+        const own = typeof err.code === "string" && err.code && !err.code.startsWith("FST_");
+        const code = own ? err.code! : (STATUS_CODES[status] ?? "error");
         return reply.code(status).send(errorBody(code, err.message));
       }
       // Never leak internals (paths, stack, SQL) to the client; keep them in the log.
@@ -297,6 +367,7 @@ export async function buildServer(
   registerMicroappRoutes(app, ctx);
   registerEventRoutes(app, ctx);
   registerObjectiveRoutes(app, ctx);
+  registerOpenApiRoute(app);
 
   // ---- Command Centre static UI --------------------------------------------
   const uiDist =
@@ -434,7 +505,7 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   // Telegram inbound: approve / deny from the phone through the same code path as the UI button.
   ctx.telegramPoller = new TelegramPoller({
     getSettings: () => ctx.settings(),
-    resolve: (id, decision) => resolveApprovalForChat(ctx, id, decision),
+    resolve: (id, decision, by) => resolveApprovalForChat(ctx, id, decision, by),
     pending: () =>
       ctx.approvals.list("pending").map((a) => ({ id: a.id, kind: a.kind, description: a.description })),
     onError: (message) => app.log.warn({ msg: `telegram inbound: ${message}` }),

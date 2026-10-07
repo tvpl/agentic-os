@@ -11,7 +11,14 @@ import {
 
 function settingsWith(chatId = "42") {
   const s = defaultSettings();
-  s.channels.telegram = { enabled: true, botTokenEnv: "TG_TOKEN", chatId, minTone: "warn", inbound: true };
+  s.channels.telegram = {
+    enabled: true,
+    botTokenEnv: "TG_TOKEN",
+    chatId,
+    minTone: "warn",
+    inbound: true,
+    allowedUserIds: [],
+  };
   return s;
 }
 

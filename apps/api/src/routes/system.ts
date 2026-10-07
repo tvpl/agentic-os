@@ -38,6 +38,7 @@ import { spawn } from "node:child_process";
 import { RELEASES_PAGE, UpdateChecker } from "../updates.js";
 import { resolveApproval } from "../approvalActions.js";
 import { tlsListenerFor } from "../server.js";
+import { API_VERSION } from "../apiVersion.js";
 
 function tlsInfo(ctx: AppContext): { port: number; fingerprint: string; hosts: string[] } | null {
   try {
@@ -47,7 +48,7 @@ function tlsInfo(ctx: AppContext): { port: number; fingerprint: string; hosts: s
     return null;
   }
 }
-import { grantedRoots, httpError, requireAdapter, requireProvider } from "./common.js";
+import { grantedRoots, httpError, principalName, requireAdapter, requireProvider } from "./common.js";
 import { BackupNameParams, UuidParams } from "./params.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -372,7 +373,7 @@ export function registerSystemRoutes(
    * terminates us (or the login service does) and starts a fresh process;
    * the UI polls `/api/meta` and reloads once it answers again.
    */
-  app.post("/api/system/restart", async () => {
+  app.post("/api/system/restart", { config: { scope: "owner" } }, async () => {
     const child = spawn(process.execPath, [cliEntry(), "restart"], {
       detached: true,
       stdio: "ignore",
@@ -384,7 +385,7 @@ export function registerSystemRoutes(
   });
 
   /** Stop lingering sibling service processes (never this one). */
-  app.post("/api/system/reap", async () => {
+  app.post("/api/system/reap", { config: { scope: "owner" } }, async () => {
     const snap = await instanceSnapshot(process.pid, 0);
     const orphans = orphanProcesses(snap.processes, process.pid, process.pid, undefined, snap.listening);
     const stopped = await terminate(orphans);
@@ -410,6 +411,8 @@ export function registerSystemRoutes(
       language: s.language,
       setupCompleted: s.setupCompleted,
       version: PKG_VERSION,
+      // The contract this service speaks under /api/v1 (the unversioned /api is its alias).
+      apiVersion: API_VERSION,
       // Remote TLS (follow-up 10): the pairing screen shows the fingerprint so a phone can check what it trusts.
       tls: tlsInfo(ctx),
       // Which build answers here (pre-auth on purpose: `mordomo launch` uses it to decide whether to restart an older service).
@@ -464,7 +467,7 @@ export function registerSystemRoutes(
     return ctx.uiPreferences.save(UiPreferencesSchema.parse(merged));
   });
 
-  app.put("/api/settings", async (req) => {
+  app.put("/api/settings", { config: { scope: "owner" } }, async (req) => {
     // What only the Command Centre reads moved to /api/ui-preferences (settings version 2).
     // A body that is not an object (a string, a number) falls through to the schema's 400.
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
@@ -520,7 +523,7 @@ export function registerSystemRoutes(
     return ctx.providerSnapshot(force);
   });
 
-  app.post("/api/providers/:id/detect", async (req) => {
+  app.post("/api/providers/:id/detect", { config: { scope: "owner" } }, async (req) => {
     const { id } = z.object({ id: ProviderId }).parse(req.params);
     const adapter = requireAdapter(ctx, id);
     const detection = await adapter.detect();
@@ -541,7 +544,7 @@ export function registerSystemRoutes(
     return requireAdapter(ctx, id).listModels();
   });
 
-  app.put("/api/providers/default", async (req) => {
+  app.put("/api/providers/default", { config: { scope: "owner" } }, async (req) => {
     const { provider } = z.object({ provider: ProviderId }).parse(req.body);
     if (!requireProvider(ctx, provider).enabled) throw httpError(400, `Provider ${provider} is not enabled`);
     return ctx.settingsStore.update({ defaultProvider: provider });
@@ -657,13 +660,14 @@ export function registerSystemRoutes(
     }
     const onError = (err: unknown, runId: string) =>
       req.log.error({ err, runId, msg: "approved run failed to execute" });
-    const result = await resolveApproval(ctx, id, decision, onError, answers);
+    const by = req.principal ? principalName(req.principal) : null;
+    const result = await resolveApproval(ctx, id, decision, by, onError, answers);
     return { ...ctx.approvals.get(id)!, runId: result.runId };
   });
 
   // ---- Backups ---------------------------------------------------------------
   app.get("/api/backups", async () => listBackups(ctx.paths));
-  app.post("/api/backups", async (req) => {
+  app.post("/api/backups", { config: { scope: "owner" } }, async (req) => {
     const { includeArtifacts } = z
       .object({ includeArtifacts: z.boolean().default(false) })
       .parse(req.body ?? {});
@@ -676,7 +680,7 @@ export function registerSystemRoutes(
    * on its next boot, before the DB is opened (see AppContext.applyPendingRestore).
    * Refused while any run is active.
    */
-  app.post("/api/backups/:name/restore", async (req, reply) => {
+  app.post("/api/backups/:name/restore", { config: { scope: "owner" } }, async (req, reply) => {
     const { name } = BackupNameParams.parse(req.params);
     const src = path.join(ctx.paths.backups, name);
     if (!isInside(ctx.paths.backups, src) || !fs.existsSync(src))
@@ -702,7 +706,7 @@ export function registerSystemRoutes(
     };
   });
   app.get("/api/backups/restore-pending", async () => ({ restorePending: readRestorePending(ctx.paths) }));
-  app.delete("/api/backups/restore-pending", async () => {
+  app.delete("/api/backups/restore-pending", { config: { scope: "owner" } }, async () => {
     const pending = readRestorePending(ctx.paths);
     clearRestorePending(ctx.paths);
     return { cancelled: pending?.name ?? null };
@@ -713,7 +717,7 @@ export function registerSystemRoutes(
     const { target } = z.object({ target: z.string().optional() }).parse(req.query);
     return ctx.sync.plan(resolveSyncTarget(ctx, target));
   });
-  app.post("/api/sync/apply", async (req) => {
+  app.post("/api/sync/apply", { config: { scope: "owner" } }, async (req) => {
     const body = z
       .object({ target: z.string().optional(), approvedConflicts: z.array(z.string()).default([]) })
       .parse(req.body ?? {});
@@ -728,7 +732,7 @@ export function registerSystemRoutes(
   });
 
   /** Binary artifact (images / video) for thumbnails — strictly inside the artifacts dir, allow-listed types only. */
-  app.get("/api/artifacts/raw", async (req, reply) => {
+  app.get("/api/artifacts/raw", { config: { queryToken: true } }, async (req, reply) => {
     const { p } = z.object({ p: z.string() }).parse(req.query);
     const resolved = resolveInsideRoots([ctx.paths.artifacts], p); // PathAccessError → 403
     // resolveInsideRoots already checks real paths, including macOS /var -> /private/var.
@@ -750,7 +754,7 @@ export function registerSystemRoutes(
 
   app.get("/api/startup-plan", async () => planStartupService(ctx.paths, process.execPath));
 
-  app.get("/api/diagnostics/export", async () => {
+  app.get("/api/diagnostics/export", { config: { scope: "owner" } }, async () => {
     const doctor = await runDoctor(ctx, { npmAudit: false });
     const bundle = {
       generatedAt: new Date().toISOString(),

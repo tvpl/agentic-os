@@ -2,9 +2,9 @@
  * The permission prompt tool (plan Onda 1 §3). Claude Code spawns this
  * server for a write run (`--permission-prompt-tool mcp__mordomo__approve`)
  * and calls `approve` whenever a tool needs a human decision. The tool turns
- * the request into a MordomoOS approval (`POST /api/approvals/tool`), which
+ * the request into a MordomoOS approval (`POST /api/v1/approvals/tool`), which
  * shows up in the Console, the run page and the inbox, and waits for the
- * answer (`GET /api/approvals/:id`) — denying on timeout so a forgotten
+ * answer (`GET /api/v1/approvals/:id`) — denying on timeout so a forgotten
  * prompt never leaves the CLI hanging.
  *
  * Environment (set by the API when it builds the MCP config for the run):
@@ -48,7 +48,7 @@ export async function decide(
   const input = (args.input ?? {}) as Record<string, unknown>;
   const toolUseId = typeof args.tool_use_id === "string" ? args.tool_use_id : undefined;
   const timeoutMs = Number(process.env.MORDOMO_APPROVAL_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS;
-  const created = await deps.call<ApprovalRow>("POST", "/api/approvals/tool", {
+  const created = await deps.call<ApprovalRow>("POST", "/api/v1/approvals/tool", {
     runId: env("MORDOMO_RUN_ID"),
     toolName,
     input,
@@ -60,7 +60,7 @@ export async function decide(
   while (status === "pending") {
     if (deps.now() - started > timeoutMs) {
       await deps
-        .call("POST", `/api/approvals/${created.id}/resolve`, { decision: "denied" })
+        .call("POST", `/api/v1/approvals/${created.id}/resolve`, { decision: "denied" })
         .catch(() => undefined);
       return JSON.stringify({
         behavior: "deny",
@@ -68,7 +68,7 @@ export async function decide(
       });
     }
     await deps.sleep(POLL_MS);
-    row = await deps.call<ApprovalRow>("GET", `/api/approvals/${created.id}`);
+    row = await deps.call<ApprovalRow>("GET", `/api/v1/approvals/${created.id}`);
     status = row.status;
   }
   if (status === "approved") {

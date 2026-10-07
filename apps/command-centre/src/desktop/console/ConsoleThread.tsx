@@ -122,11 +122,10 @@ function Turn({
   const providers = useOsProviders();
   const send = useMutation({
     mutationFn: (a: ArtifactEntry) =>
-      api.post<{ ok: boolean; error?: string }>("/api/channels/telegram/send", {
+      api.post<{ ok: true }>("/api/channels/telegram/send", {
         text: `${a.file}\n${a.path}`,
       }),
-    onSuccess: (r) =>
-      toast(r.ok ? t("desktop.artifact.sent") : (r.error ?? t("common.error")), r.ok ? "ok" : "danger"),
+    onSuccess: () => toast(t("desktop.artifact.sent"), "ok"),
     onError: (err: Error) => toast(err.message, "danger"),
   });
   const forget = useMutation({

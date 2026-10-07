@@ -22,7 +22,7 @@ import {
 test("lâminas of every kind survive a reload of the tab, in the scene they were projected in", async ({
   page,
 }) => {
-  await page.route("**/api/memory/preview*", (route) =>
+  await page.route("**/api/v1/memory/preview*", (route) =>
     route.fulfill({ json: { kind: "text", content: "the report" } }),
   );
   await openShell(page, "/settings?tab=security");

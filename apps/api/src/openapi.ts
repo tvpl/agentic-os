@@ -1,0 +1,78 @@
+import type { FastifyInstance } from "fastify";
+import { API_VERSION } from "./apiVersion.js";
+import type { ApiRoute } from "./server.js";
+
+/**
+ * `GET /api/v1/openapi.json`: an OpenAPI 3.1 document generated from the
+ * route table Fastify built at startup (`app.apiRoutes`), so a route added
+ * without documentation still appears. Each operation carries its method,
+ * path parameters, who may call it (`security`, `x-mordomo-scope`) and the
+ * error envelope; request and response bodies are not described yet.
+ */
+export function registerOpenApiRoute(app: FastifyInstance): void {
+  let document: Record<string, unknown> | null = null;
+  app.get("/api/openapi.json", async () => (document ??= openApiDocument(app.apiRoutes)));
+}
+
+const ERROR_RESPONSE = { $ref: "#/components/responses/Error" };
+
+export function openApiDocument(routes: readonly ApiRoute[]): Record<string, unknown> {
+  const paths: Record<string, Record<string, unknown>> = {};
+  for (const route of routes) {
+    const params = [...route.url.matchAll(/:(\w+)/g)].map((m) => m[1]!);
+    const path = `/api/v1/${route.url.slice("/api/".length)}`.replace(/:(\w+)/g, "{$1}");
+    const security = route.config.public
+      ? []
+      : route.config.queryToken
+        ? [{ localToken: [] }, { queryToken: [] }]
+        : [{ localToken: [] }];
+    (paths[path] ??= {})[route.method.toLowerCase()] = {
+      tags: [route.url.split("/")[2]],
+      parameters: params.map((name) => ({ name, in: "path", required: true, schema: { type: "string" } })),
+      security,
+      ...(route.config.scope === "owner" ? { "x-mordomo-scope": "owner" } : {}),
+      responses: { "200": { description: "Success" }, "4XX": ERROR_RESPONSE, "5XX": ERROR_RESPONSE },
+    };
+  }
+  return {
+    openapi: "3.1.0",
+    info: {
+      title: "MordomoOS API",
+      version: String(API_VERSION),
+      description:
+        "Local API of MordomoOS. /api/v1 is the documented path; the unversioned /api is a deprecated alias. " +
+        'A paired device may call every route except those marked x-mordomo-scope: "owner".',
+    },
+    paths,
+    components: {
+      securitySchemes: {
+        localToken: { type: "apiKey", in: "header", name: "x-mordomo-token" },
+        queryToken: { type: "apiKey", in: "query", name: "token" },
+      },
+      schemas: {
+        Error: {
+          type: "object",
+          required: ["error", "message"],
+          properties: {
+            error: {
+              type: "object",
+              required: ["code", "message"],
+              properties: {
+                code: { type: "string" },
+                message: { type: "string" },
+                issues: { type: "array", items: { type: "object" } },
+              },
+            },
+            message: { type: "string", description: "The same as error.message, for older clients." },
+          },
+        },
+      },
+      responses: {
+        Error: {
+          description: "Error envelope",
+          content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+        },
+      },
+    },
+  };
+}

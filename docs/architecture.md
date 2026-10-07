@@ -51,6 +51,26 @@ Shutdown (SIGTERM/SIGINT, or `mordomo stop`): stop accepting requests, cancel
 active runs and wait up to 10 s for them (they end as `interrupted`), close
 SSE channels, then close the DB. `unhandledRejection` is logged, never fatal.
 
+### The API contract (v1)
+
+- **Versioned path.** `/api/v1/<rest>` is the documented path; Fastify's `rewriteUrl`
+  routes it to the handler registered as `/api/<rest>` (`apps/api/src/apiVersion.ts`). The
+  unversioned `/api/<rest>` answers the same and carries `Deprecation: true` and
+  `Link: </api/v1/<rest>>; rel="successor-version"`. `GET /api/v1/meta` names
+  `apiVersion: 1`. The Command Centre (`apiUrl()` in `apps/command-centre/src/api.ts`) and
+  the CLI's MCP clients call `/api/v1`.
+- **One error shape.** Every status `>= 400` is
+  `{ "error": { "code", "message", "issues"? }, "message" }` (the top-level `message`
+  repeats the inner one for older clients); no `2xx` carries `ok: false`. Channel tests
+  answer `409 channel_not_configured` or `502 channel_failed`.
+- **Scopes and limits.** `owner` routes, the `?token=` rule and the attempt limits are
+  described in [security.md](security.md#authentication).
+- **Route document.** `GET /api/v1/openapi.json` (authenticated) is an OpenAPI 3.1
+  document generated at startup from the route table an `onRoute` hook collects
+  (`app.apiRoutes`, `apps/api/src/openapi.ts`): every route with its method, path
+  parameters, `security` and `x-mordomo-scope: "owner"` where it applies. Request and
+  response bodies are not described yet.
+
 The CLI (`apps/api/src/cli.ts`, `node:util.parseArgs`) drives the same
 `AppContext` directly for setup/doctor/index/sync/run/backup/restore, and
 manages the service via a pidfile that records pid, port, start time and a

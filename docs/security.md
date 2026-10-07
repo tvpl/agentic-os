@@ -29,7 +29,7 @@ wins and this page is the bug.
 
 | # | Threat | Controls |
 |---|---|---|
-| T1 | Remote origin drives the local API (DNS rebinding, malicious web page) | Bind `127.0.0.1` only; `Host` header parsed with `new URL` and restricted to `127.0.0.1`, `localhost`, `[::1]` (IPv6 works, a *missing* Host is refused); security headers + CSP (`default-src 'self'`, `frame-ancestors 'none'`); every `/api/*` route requires a credential (see *Authentication* below) via the `x-mordomo-token` header (or `?token=` for SSE, redacted from logs), compared with `crypto.timingSafeEqual`. The token is generated at setup, stored in `config/` (0600) and injected only into the same-origin page served to a loopback socket, so it doubles as CSRF protection. There is **no CORS layer**: no CORS headers are sent, so the browser's same-origin policy is what stops a foreign page from reading responses, and the token stops it from writing. Changing `bindAddress` is approval-gated; with remote access on (`settings.remote`), the Host allowlist also accepts the hosts the owner listed, and remote devices authenticate with their own paired token, never the page's (`apps/api/src/server.ts`, `apps/api/src/routes/devices.ts`). |
+| T1 | Remote origin drives the local API (DNS rebinding, malicious web page) | Bind `127.0.0.1` only; `Host` header parsed with `new URL` and restricted to `127.0.0.1`, `localhost`, `[::1]` (IPv6 works, a *missing* Host is refused); security headers + CSP (`default-src 'self'`, `frame-ancestors 'none'`); every `/api/*` route requires a credential (see *Authentication* below) via the `x-mordomo-token` header (or `?token=` on the four stream/file `GET`s only, redacted from logs), compared with `crypto.timingSafeEqual`. The token is generated at setup, stored in `config/` (0600) and injected only into the same-origin page served to a loopback socket, so it doubles as CSRF protection. There is **no CORS layer**: no CORS headers are sent, so the browser's same-origin policy is what stops a foreign page from reading responses, and the token stops it from writing. Changing `bindAddress` is approval-gated; with remote access on (`settings.remote`), the Host allowlist also accepts the hosts the owner listed, and remote devices authenticate with their own paired token, never the page's (`apps/api/src/server.ts`, `apps/api/src/routes/devices.ts`). |
 | T2 | Command injection via prompts/paths | argv arrays only, `shell: false`, no `eval`; executable allowlist **by basename**: `node` plus the `binary` of every registered provider manifest (on Windows without `.exe`/`.cmd`/`.bat`), set by the engine whenever it builds the adapters, plus an optional pinned absolute `binaryPath` per provider, which `PUT /api/settings` only accepts when its basename is that manifest's `binary` (`400 binary_mismatch`) — the basename check does not prove *which* binary runs, it only rules out arbitrary executables (`core/src/spawn/safeSpawn.ts`); prompts go to Claude over stdin and to Cursor/Codex as an argv element (visible in `ps`), prefixed with a space when they begin with `-` so they are never parsed as an option; captured stdout/stderr are capped at 1 MiB each (tail kept); Zod validation on every route with a `400 {error:{code:"validation", issues}}` envelope |
 | T3 | Path traversal / symlink escape | every `:id` / `:slug` route parameter is validated against `^[a-z0-9][a-z0-9._-]{0,80}$` with no `..` (`apps/api/src/routes/params.ts`, `core/src/security/ids.ts`) and the file stores re-check that `<dir>/<id>` stays inside `<dir>`; every user-supplied path (preview, open, run `cwd`, skill import `sourceDir`, sync `target`) is realpath-resolved and must sit inside the home or an enabled indexed folder (`resolveInsideRoots`); new `indexedFolders` must be absolute, existing directories and may not overlap `config/`; backup names match `full-…` and restores are staged (see T10) |
 | T4 | Secret exfiltration via index/logs | one shared exclusion policy for the indexer, preview and open (`core/src/memory/excludes.ts`): user `excludes` globs, a **hard directory blocklist** the user cannot switch off (`.git`, `.aws`, `.ssh`, `.gnupg`, `.kube`, `.docker`, `node_modules`) and the secret-file basename patterns (`.env*`, `*.pem`, `*.key`, `*.p12`, `id_rsa*`, `id_ed25519*`, `credentials*.json`, `.npmrc`, …), all applied *before* reading; binary files detected by content (NUL byte in the first 8 KiB); redaction of token-shaped strings (`sk-…`, `sk-ant-…`, `ghp_…`, `xox…`, `AKIA…`, JWTs, `Bearer …`, `password=`/`token=` pairs) on every persisted log line, including the API request log; auth detection never prints, copies or stores tokens |
@@ -51,8 +51,28 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
   and needs a credential like any other spelling. A route is reachable without one only
   when it declares `config: { public: true }` — today `GET /api/meta` and
   `POST /api/pair/claim`. The SPA fallback answers `GET`/`HEAD` only.
-- **Three credentials.** The local token (the owner); a paired device token (only while
-  `remote.enabled`); and a permission-broker credential.
+- **Three credentials, three principals.** The local token is the `owner`; a paired device
+  token (only while `remote.enabled`) is a `device`; a permission-broker credential is a
+  `broker` bound to one run. The hook records which one called in `req.principal`.
+- **Owner-only routes.** A route marked `config: { scope: "owner" }` refuses a device with
+  `403 owner_only` before its handler runs, so a lost phone cannot take over the machine:
+  `PUT /api/settings`, `PUT /api/providers/default`, `POST /api/providers/:id/detect`,
+  `POST /api/system/restart`, `POST /api/system/reap`, `POST /api/backups`,
+  `POST /api/backups/:name/restore`, `DELETE /api/backups/restore-pending`,
+  `POST /api/sync/apply`, `POST /api/skills/install`, `POST /api/skills/import`,
+  `POST /api/connectors`, `PUT`/`DELETE /api/connectors/:id`, `POST /api/pair/start`,
+  `DELETE /api/devices/:id`, `POST /api/memory/open` and `GET /api/diagnostics/export`.
+  Everything else (runs, approvals, reading settings) stays open to a paired device.
+- **No token in the URL, except where a header is impossible.** `?token=` is accepted only
+  on `GET` of the routes marked `config: { queryToken: true }`: `/api/events`,
+  `/api/runs/:id/stream` (EventSource), `/api/artifacts/raw` and
+  `/api/skills/:slug/resource` (`<img>`/`<iframe>`). Anywhere else, or on another method,
+  it is `401 unauthorized` even next to a valid header.
+- **Attempt limits** (`apps/api/src/rateLimit.ts`, in memory, reset on restart).
+  `POST /api/pair/claim` takes 10 attempts a minute per address, counted before the code
+  is read; an address that collected 20 `401`s in 5 minutes gets `429` on every request
+  until the window passes. Both answer `429 too_many_requests` with `Retry-After` in
+  seconds. Loopback never counts towards the `401` limit, so the owner is never locked out.
 - **The permission broker cannot approve.** A write run under `review_before_write` or
   `controlled_write` gets its own credential (`brk_` + 32 random bytes, base64url), issued
   by `AppContext.permissionBrokerFor` and held in memory. It is accepted only while its run
@@ -73,9 +93,17 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
   process starts. The opener is `open` (macOS), `xdg-open` (Linux) or `explorer.exe`
   (Windows), argv only, never `cmd /c`.
 
-Not covered yet (roadmap feature `api-v1`): scopes for device tokens, per-user Telegram
-approvals, rate limits. A process running as the owner can still read `config/token`
-from disk; that needs an OS sandbox and is outside this model.
+- **Who decided is recorded.** Every approval keeps `resolvedBy`: `owner`,
+  `device:<deviceId>`, `broker:<runId>`, `telegram:<userId>` or `system` (expired); rows
+  decided before this was recorded read `null`.
+- **Telegram per person.** The poller honours only the configured `chatId`; while
+  `channels.telegram.allowedUserIds` lists anyone, a button or command from another
+  `from.id` is ignored with no reply, so in a group only the listed people can decide.
+
+Not covered: a one-time ticket for SSE instead of `?token=` (needed once access leaves
+the local network), and fine-grained scopes per resource. A process running as the owner
+can still read `config/token` from disk; that needs an OS sandbox and is outside this
+model.
 
 ## Security profiles
 

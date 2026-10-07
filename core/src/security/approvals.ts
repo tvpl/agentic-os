@@ -37,6 +37,7 @@ export class ApprovalStore {
       payload,
       status: "pending",
       resolvedAt: null,
+      resolvedBy: null,
       expiresAt: createdAt + this.ttlMs(),
     };
     this.db
@@ -74,10 +75,10 @@ export class ApprovalStore {
     if (stale.length === 0) return [];
     this.db
       .prepare(
-        "UPDATE approvals SET status = 'expired', resolved_at = ? WHERE status = 'pending' AND created_at < ?",
+        "UPDATE approvals SET status = 'expired', resolved_at = ?, resolved_by = 'system' WHERE status = 'pending' AND created_at < ?",
       )
       .run(now, cutoff);
-    return stale.map((a) => ({ ...a, status: "expired" as const, resolvedAt: now }));
+    return stale.map((a) => ({ ...a, status: "expired" as const, resolvedAt: now, resolvedBy: "system" }));
   }
 
   /**
@@ -89,6 +90,8 @@ export class ApprovalStore {
     decision: "approved" | "denied",
     /** Merged into the payload with the decision — e.g. the answers to a question the agent asked. */
     patch?: Record<string, unknown>,
+    /** Who decided (`Approval.resolvedBy`). */
+    resolvedBy: string | null = null,
   ): Approval | null {
     const current = this.get(id);
     if (!current) return null;
@@ -113,13 +116,15 @@ export class ApprovalStore {
     if (patch && Object.keys(patch).length > 0) {
       this.db
         .prepare(
-          "UPDATE approvals SET status = ?, resolved_at = ?, payload = ? WHERE id = ? AND status = 'pending'",
+          "UPDATE approvals SET status = ?, resolved_at = ?, resolved_by = ?, payload = ? WHERE id = ? AND status = 'pending'",
         )
-        .run(decision, Date.now(), JSON.stringify({ ...current.payload, ...patch }), id);
+        .run(decision, Date.now(), resolvedBy, JSON.stringify({ ...current.payload, ...patch }), id);
     } else {
       this.db
-        .prepare("UPDATE approvals SET status = ?, resolved_at = ? WHERE id = ? AND status = 'pending'")
-        .run(decision, Date.now(), id);
+        .prepare(
+          "UPDATE approvals SET status = ?, resolved_at = ?, resolved_by = ? WHERE id = ? AND status = 'pending'",
+        )
+        .run(decision, Date.now(), resolvedBy, id);
     }
     return this.get(id);
   }
@@ -133,6 +138,7 @@ export class ApprovalStore {
       payload: JSON.parse(row.payload) as Record<string, unknown>,
       status: row.status as Approval["status"],
       resolvedAt: row.resolved_at,
+      resolvedBy: row.resolved_by ?? null,
       expiresAt: row.created_at + this.ttlMs(),
     };
   }
@@ -146,4 +152,5 @@ interface RawRow {
   payload: string;
   status: string;
   resolved_at: number | null;
+  resolved_by?: string | null;
 }

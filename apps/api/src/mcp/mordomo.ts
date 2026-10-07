@@ -47,7 +47,7 @@ export function mordomoTools(api: McpApi): McpTool[] {
         const k = typeof a.k === "number" ? `&k=${Math.max(1, Math.min(10, Math.round(a.k)))}` : "";
         const r = await api.get<{
           answerContext: Array<{ path: string; section: string; excerpt?: string; score: number }>;
-        }>(`/api/memory/recall?q=${q}${k}`);
+        }>(`/api/v1/memory/recall?q=${q}${k}`);
         if (r.answerContext.length === 0) return "No indexed section matched.";
         return r.answerContext
           .map((c) => `## ${c.path} § ${c.section} (score ${c.score})\n${c.excerpt ?? ""}`)
@@ -62,7 +62,7 @@ export function mordomoTools(api: McpApi): McpTool[] {
         const skills =
           await api.get<
             Array<{ slug: string; name: string; description: string; enabled: boolean; mode?: string }>
-          >("/api/skills");
+          >("/api/v1/skills");
         return (
           skills
             .filter((s) => s.enabled)
@@ -82,7 +82,7 @@ export function mordomoTools(api: McpApi): McpTool[] {
       },
       handler: async (a) => {
         const slug = encodeURIComponent(str(a.slug, "slug"));
-        const r = await api.post<{ runId: string | null; status: string }>(`/api/skills/${slug}/run`, {
+        const r = await api.post<{ runId: string | null; status: string }>(`/api/v1/skills/${slug}/run`, {
           inputs: (a.inputs ?? {}) as object,
         });
         return JSON.stringify(r);
@@ -99,7 +99,7 @@ export function mordomoTools(api: McpApi): McpTool[] {
       handler: async (a) => {
         const body: Record<string, unknown> = { text: str(a.text, "text") };
         if (typeof a.section === "string") body.section = a.section;
-        await api.post("/api/memory/journal/append", body);
+        await api.post("/api/v1/memory/journal/append", body);
         return "Appended.";
       },
     },
@@ -118,7 +118,7 @@ export function mordomoTools(api: McpApi): McpTool[] {
       },
       handler: async (a) => {
         const runId = process.env.MORDOMO_RUN_ID;
-        const r = await api.post<{ fact: { id: number }; unchanged: boolean }>("/api/memory/facts", {
+        const r = await api.post<{ fact: { id: number }; unchanged: boolean }>("/api/v1/memory/facts", {
           subject: str(a.subject, "subject"),
           predicate: str(a.predicate, "predicate"),
           object: str(a.object, "object"),
@@ -138,7 +138,7 @@ export function mordomoTools(api: McpApi): McpTool[] {
         const params = new URLSearchParams();
         if (typeof a.subject === "string") params.set("subject", a.subject);
         if (typeof a.predicate === "string") params.set("predicate", a.predicate);
-        const r = await api.get<unknown>(`/api/memory/facts?${params.toString()}`);
+        const r = await api.get<unknown>(`/api/v1/memory/facts?${params.toString()}`);
         return JSON.stringify(r, null, 2);
       },
     },
@@ -148,7 +148,7 @@ export function mordomoTools(api: McpApi): McpTool[] {
       inputSchema: { type: "object", properties: {} },
       handler: async () => {
         const r = await api.get<{ items: Array<{ title: string; body?: string | null; ts: number }> }>(
-          "/api/notifications?unread=true&limit=50",
+          "/api/v1/notifications?unread=true&limit=50",
         );
         return (
           r.items

@@ -46,7 +46,7 @@ export function registerPushRoutes(app: FastifyInstance, ctx: AppContext): void 
   app.post("/api/push/test", async () => {
     const settings = ctx.settings();
     if (!settings.channels.push.enabled)
-      return { ok: false, error: "Push is off in Settings › Notifications." };
+      throw httpError(409, "Push is off in Settings › Notifications.", "channel_not_configured");
     const r = await deliverPush(
       { getSettings: () => settings, store: ctx.push },
       {
@@ -63,9 +63,9 @@ export function registerPushRoutes(app: FastifyInstance, ctx: AppContext): void 
         dedupeKey: "push-test",
       },
     );
-    if (r.skipped === "none") return { ok: false, error: "No device subscribed yet." };
-    return r.sent > 0
-      ? { ok: true, ...r }
-      : { ok: false, error: `Sent to nobody (${r.failed} failed, ${r.dropped} dropped).`, ...r };
+    if (r.skipped === "none") throw httpError(409, "No device subscribed yet.", "channel_not_configured");
+    if (r.sent === 0)
+      throw httpError(502, `Sent to nobody (${r.failed} failed, ${r.dropped} dropped).`, "channel_failed");
+    return { ok: true, ...r };
   });
 }

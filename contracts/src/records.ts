@@ -10,6 +10,12 @@ export interface Approval {
   payload: Record<string, unknown>;
   status: "pending" | "approved" | "denied" | "expired";
   resolvedAt: number | null;
+  /**
+   * Who decided: `"owner"`, `"device:<deviceId>"`, `"broker:<runId>"`,
+   * `"telegram:<userId>"` or `"system"` (expired). Null while pending and on
+   * approvals decided before this was recorded.
+   */
+  resolvedBy: string | null;
   /** When a still-pending approval is swept to `expired` (createdAt + TTL). */
   expiresAt: number;
 }

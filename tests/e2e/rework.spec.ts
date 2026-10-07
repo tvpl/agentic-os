@@ -7,7 +7,7 @@ import { openBrainList, openClassicBrain, openShell, overlaps } from "./shell";
  */
 
 test("a stale build shows the service banner and its restart button calls the API", async ({ page }) => {
-  await page.route("**/api/system/info", async (route) => {
+  await page.route("**/api/v1/system/info", async (route) => {
     const res = await route.fetch();
     const json = (await res.json()) as Record<string, unknown>;
     await route.fulfill({
@@ -19,7 +19,7 @@ test("a stale build shows the service banner and its restart button calls the AP
     });
   });
   let restarted = false;
-  await page.route("**/api/system/restart", (route) => {
+  await page.route("**/api/v1/system/restart", (route) => {
     restarted = true;
     return route.fulfill({ json: { ok: true, pid: 1 } });
   });

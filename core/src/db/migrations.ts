@@ -440,4 +440,14 @@ CREATE INDEX IF NOT EXISTS idx_objective_steps_run ON objective_steps(run_id);
 `);
     },
   },
+  {
+    version: 16,
+    name: "approval-resolved-by",
+    // Who decided an approval (api-v1 door 6). Rows decided before keep NULL.
+    up(db) {
+      if (!hasColumn(db, "approvals", "resolved_by")) {
+        db.exec("ALTER TABLE approvals ADD COLUMN resolved_by TEXT");
+      }
+    },
+  },
 ];

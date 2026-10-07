@@ -144,7 +144,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
    * Open a file with the OS default application — explicit user action only.
    * The executable is a fixed platform constant; the path is containment-checked.
    */
-  app.post("/api/memory/open", async (req) => {
+  app.post("/api/memory/open", { config: { scope: "owner" } }, async (req) => {
     const { p } = z.object({ p: z.string() }).parse(req.body);
     const resolved = resolveInsideRoots(grantedRoots(ctx), p); // PathAccessError → 403
     if (!isOpenable(resolved)) {

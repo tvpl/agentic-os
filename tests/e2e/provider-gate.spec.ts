@@ -7,7 +7,7 @@ async function mockProviders(
   health: Record<string, Partial<Health>>,
   enabled: Record<string, boolean>,
 ) {
-  await page.route("**/api/providers*", async (route) => {
+  await page.route("**/api/v1/providers*", async (route) => {
     const response = await route.fetch();
     const data = (await response.json()).map((p: { id: string; health: Health; enabled: boolean }) => ({
       ...p,
@@ -46,7 +46,7 @@ test("a signed-out AI is configured before anything else, and the console refuse
   // Console pre-flight: no run is created for a provider that cannot answer.
   const runs: string[] = [];
   page.on("request", (request) => {
-    if (request.method() === "POST" && /\/api\/runs$/.test(request.url())) runs.push(request.url());
+    if (request.method() === "POST" && /\/api\/v1\/runs$/.test(request.url())) runs.push(request.url());
   });
   await page.locator(".cons-input").fill("List the files in this folder");
   await page.locator(".cons-input").press("Meta+Enter");
@@ -56,7 +56,7 @@ test("a signed-out AI is configured before anything else, and the console refuse
 
 test("the gate closes by itself once a provider checks out", async ({ page }) => {
   let signedIn = false;
-  await page.route("**/api/providers*", async (route) => {
+  await page.route("**/api/v1/providers*", async (route) => {
     const response = await route.fetch();
     const data = (await response.json()).map((p: { id: string; health: Health; enabled: boolean }) => ({
       ...p,

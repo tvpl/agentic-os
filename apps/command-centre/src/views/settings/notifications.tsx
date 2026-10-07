@@ -234,13 +234,10 @@ export function SentinelsCard({ s, put }: { s: SettingsShape; put: Put }) {
   const sentinels = s.sentinels;
   const channels = s.channels;
   const test = useMutation({
-    mutationFn: () => api.post<{ ok: boolean; error?: string }>("/api/channels/telegram/test", {}),
-    onSuccess: (res) =>
-      toast(
-        res.ok ? t("apps.settings.telegramOk") : `${t("apps.settings.telegramFailed")}: ${res.error ?? ""}`,
-        res.ok ? "ok" : "danger",
-      ),
-    onError: (err: Error) => toast(err.message, "danger"),
+    // A failure is an error envelope (409 channel_not_configured, 502 channel_failed): its message is the reason.
+    mutationFn: () => api.post<{ ok: true }>("/api/channels/telegram/test", {}),
+    onSuccess: () => toast(t("apps.settings.telegramOk"), "ok"),
+    onError: (err: Error) => toast(`${t("apps.settings.telegramFailed")}: ${err.message}`, "danger"),
   });
   if (!sentinels || !channels) return null;
   const toggle = (key: SentinelKey) =>
@@ -404,17 +401,11 @@ function PushServerCard({ s, put }: { s: SettingsShape; put: Put }) {
     "/api/push/subscriptions",
   );
   const test = useMutation({
-    mutationFn: () => api.post<{ ok: boolean; error?: string }>("/api/push/test", {}),
-    onSuccess: (res) => {
-      toast(
-        res.ok
-          ? t("apps.settings.telegramOk").replace("Telegram", "Push")
-          : `${t("apps.settings.pushFailed")}: ${res.error ?? ""}`,
-        res.ok ? "ok" : "danger",
-      );
-      qc.invalidateQueries({ queryKey: qk.pushSubscriptions }).catch(() => undefined);
-    },
-    onError: (err: Error) => toast(err.message, "danger"),
+    mutationFn: () => api.post<{ ok: true }>("/api/push/test", {}),
+    onSuccess: () => toast(t("apps.settings.telegramOk").replace("Telegram", "Push"), "ok"),
+    onError: (err: Error) => toast(`${t("apps.settings.pushFailed")}: ${err.message}`, "danger"),
+    // Failed deliveries count against a subscription either way.
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.pushSubscriptions }).catch(() => undefined),
   });
   const remove = useMutation({
     mutationFn: (id: string) => api.del(`/api/push/subscriptions/${encodeURIComponent(id)}`),

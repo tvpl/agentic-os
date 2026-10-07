@@ -8,7 +8,7 @@ import { arrived, foldConversation, lamina, openShell, openVoiceControls, projec
  */
 
 async function stubPlan(page: Page, path: string, title: string) {
-  await page.route("**/api/artifacts/list*", (route) =>
+  await page.route("**/api/v1/artifacts/list*", (route) =>
     route.fulfill({
       json: {
         items: [
@@ -55,7 +55,7 @@ test("the one search lists artifact matches in their own group and projects the 
 
 test("a searched file is projected and the voice line can point the agent at it", async ({ page }) => {
   await stubPlan(page, "/tmp/plan.md", "Plan");
-  await page.route("**/api/memory/preview*", (route) =>
+  await page.route("**/api/v1/memory/preview*", (route) =>
     route.fulfill({ json: { kind: "text", content: "line one\nline two" } }),
   );
   await openShell(page);
@@ -81,7 +81,7 @@ test("a searched file is projected and the voice line can point the agent at it"
   await expect(chip).toHaveClass(/\bon\b/);
 
   // And the request carries the path behind the name the user typed.
-  const sent = page.waitForRequest((r) => r.url().endsWith("/api/runs") && r.method() === "POST");
+  const sent = page.waitForRequest((r) => r.url().endsWith("/api/v1/runs") && r.method() === "POST");
   await input.fill("summarise @plan.md");
   await page.getByRole("button", { name: /^(Run|Executar)$/ }).click();
   const body = (await sent).postDataJSON() as { prompt: string };
@@ -90,7 +90,7 @@ test("a searched file is projected and the voice line can point the agent at it"
 });
 
 test("typing @ offers the projected documents and Tab completes one", async ({ page }) => {
-  await page.route("**/api/memory/preview*", (route) =>
+  await page.route("**/api/v1/memory/preview*", (route) =>
     route.fulfill({ json: { kind: "text", content: "the report" } }),
   );
   await openShell(page);
