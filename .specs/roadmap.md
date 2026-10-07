@@ -26,3 +26,13 @@ ordem. Uma feature só começa depois que a anterior tem `verification.md` aprov
 
 Itens fora do código, que dependem só do dono: remover o zip do histórico (`git filter-repo` e
 force-push na `main`), revisão jurídica dos termos dos CLIs e das marcas.
+
+Itens acrescentados pela revisão de arquitetura de 07/10/2026 (`review-arch`), em ordem de prioridade:
+
+| #   | Feature               | Fase | Entrega                                                                                                                                                                      |
+| --- | --------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S1  | `seguranca-p1`        | P0   | `config/` e `logs/` do home fora da API (o token era legível por pré-visualização), git sem executar o repositório, modos de arquivo, token exclusivo, `stream.reset` no SSE |
+| S2  | `escopos-dispositivo` | P0   | dispositivo pareado por allowlist de rotas, aprovação que o dispositivo criou não é resolvida por ele, TLS ou túnel obrigatório para acesso remoto, ticket de SSE            |
+| S3  | `dados-v2`            | P1   | migração sem corrida, lock de dono sem PID reciclado, configurações tolerantes a campo inválido, backups com checksum e retenção                                             |
+| S4  | `sdk-core`            | P1   | fachada de execução no core, barril público enxuto, eventos e travas por instância (sem singletons), pacote publicável com `types` e docs                                    |
+| S5  | `contratos-rest`      | P1   | corpos de requisição e resposta no contrato, OpenAPI com schemas, versão por tipo de evento                                                                                  |
