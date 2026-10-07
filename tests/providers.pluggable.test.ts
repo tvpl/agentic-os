@@ -673,6 +673,48 @@ describe("the API with an unregistered provider", () => {
   });
 });
 
+// Pure: runs on every platform, including the Windows CI leg.
+describe("the stored binary path check", () => {
+  it("C29 the stored binary path check follows the platform's executable names", () => {
+    const registry = new core.ProviderRegistry()
+      .register(claudeManifest, createClaudeAdapter)
+      .register(codexManifest, createCodexAdapter);
+    const ignored = (binaryPath: string | null, platform: NodeJS.Platform) =>
+      core
+        .ignoredBinaryPaths(
+          registry,
+          core.SettingsSchema.parse({ providers: { claude: { binaryPath } } }),
+          platform,
+        )
+        .map((i) => i.provider);
+    // Windows: the suffix and the case are not part of the name.
+    expect(ignored("C:\\tools\\claude.exe", "win32")).toEqual([]);
+    expect(ignored("C:\\tools\\CLAUDE.CMD", "win32")).toEqual([]);
+    expect(ignored("C:\\tools\\sh.exe", "win32")).toEqual(["claude"]);
+    // POSIX: the name is exact.
+    expect(ignored("/opt/x/claude", "linux")).toEqual([]);
+    expect(ignored("/opt/x/claude.exe", "linux")).toEqual(["claude"]);
+    expect(ignored("/bin/sh", "darwin")).toEqual(["claude"]);
+    // Nothing stored, nothing ignored.
+    expect(ignored(null, "linux")).toEqual([]);
+    expect(ignored(null, "win32")).toEqual([]);
+    // Production calls rely on the default: it must be the running platform, not a fixed one.
+    const real = Object.getOwnPropertyDescriptor(process, "platform")!;
+    for (const platform of ["win32", "linux"] as const) {
+      Object.defineProperty(process, "platform", { ...real, value: platform });
+      try {
+        const settings = core.SettingsSchema.parse({
+          providers: { claude: { binaryPath: "C:\\tools\\claude.exe" } },
+        });
+        const byDefault = core.ignoredBinaryPaths(registry, settings).map((i) => i.provider);
+        expect(byDefault, platform).toEqual(platform === "win32" ? [] : ["claude"]);
+      } finally {
+        Object.defineProperty(process, "platform", real);
+      }
+    }
+  });
+});
+
 describe.skipIf(!FAKE_CLIS_RUNNABLE)("a stored binary path of another program", () => {
   let ctx: AppContext | null = null;
   let app: FastifyInstance | null = null;
@@ -765,31 +807,6 @@ describe.skipIf(!FAKE_CLIS_RUNNABLE)("a stored binary path of another program", 
     expect(fresh.json().error.code).toBe("binary_mismatch");
   });
 
-  it("C29 the stored binary path check follows the platform's executable names", () => {
-    const registry = new core.ProviderRegistry()
-      .register(claudeManifest, createClaudeAdapter)
-      .register(codexManifest, createCodexAdapter);
-    const ignored = (binaryPath: string | null, platform: NodeJS.Platform) =>
-      core
-        .ignoredBinaryPaths(
-          registry,
-          core.SettingsSchema.parse({ providers: { claude: { binaryPath } } }),
-          platform,
-        )
-        .map((i) => i.provider);
-    // Windows: the suffix and the case are not part of the name.
-    expect(ignored("C:\\tools\\claude.exe", "win32")).toEqual([]);
-    expect(ignored("C:\\tools\\CLAUDE.CMD", "win32")).toEqual([]);
-    expect(ignored("C:\\tools\\sh.exe", "win32")).toEqual(["claude"]);
-    // POSIX: the name is exact.
-    expect(ignored("/opt/x/claude", "linux")).toEqual([]);
-    expect(ignored("/opt/x/claude.exe", "linux")).toEqual(["claude"]);
-    expect(ignored("/bin/sh", "darwin")).toEqual(["claude"]);
-    // Nothing stored, nothing ignored.
-    expect(ignored(null, "linux")).toEqual([]);
-    expect(ignored(null, "win32")).toEqual([]);
-  });
-
   it("C30 doctor says nothing about binary paths when none is ignored", async () => {
     // One context per test: close the one the previous test left.
     await app?.close();
@@ -814,27 +831,27 @@ describe.skipIf(!FAKE_CLIS_RUNNABLE)("a stored binary path of another program", 
     const home = tempDir("mordomo-plug-approve-");
     ctx = new AppContext(home);
     app = await buildServer(ctx);
-    const approval = ctx.approvals.request("write_run", "Write with a provider that was removed", {
-      kind: "prompt",
-      input: {
-        prompt: "x",
-        provider: "gemini",
-        model: null,
-        effort: "default",
-        mode: "write",
-        cwd: home,
-        timeoutMs: 1000,
-      },
-    });
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/approvals/${approval.id}/resolve`,
-      headers: { "x-mordomo-token": ctx.token() },
-      payload: { decision: "approved" },
-    });
-    expect(res.statusCode, res.body).toBe(400);
-    expect(res.json().error.code).toBe("unknown_provider");
-    expect(ctx.approvals.get(approval.id)?.status).toBe("pending");
+    const base = { provider: "gemini", model: null, effort: "default", cwd: home, timeoutMs: 1000 };
+    const payloads = [
+      { kind: "prompt", input: { ...base, prompt: "x", mode: "write" } },
+      { kind: "skill", input: { ...base, slug: "tidy-notes", inputs: {} } },
+    ];
+    for (const payload of payloads) {
+      const approval = ctx.approvals.request(
+        "write_run",
+        `Write (${payload.kind}) on a removed provider`,
+        payload,
+      );
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/approvals/${approval.id}/resolve`,
+        headers: { "x-mordomo-token": ctx.token() },
+        payload: { decision: "approved" },
+      });
+      expect(res.statusCode, `${payload.kind}: ${res.body}`).toBe(400);
+      expect(res.json().error.code, payload.kind).toBe("unknown_provider");
+      expect(ctx.approvals.get(approval.id)?.status, payload.kind).toBe("pending");
+    }
     expect(ctx.runs.list({ limit: 10 })).toHaveLength(0);
   });
 });
@@ -870,8 +887,15 @@ const BUILTIN_IDS = new Set(["claude", "cursor", "codex"]);
  */
 function builtinKeyedObjects(source: string, fileName = "source.tsx"): string[] {
   const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const literalText = (node: ts.Node | undefined): string | null =>
-    node && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) ? node.text : null;
+  const literalText = (node: ts.Node | undefined): string | null => {
+    // `("claude")`, `"claude" as string` and `"claude" satisfies string` are still the id.
+    while (
+      node &&
+      (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node))
+    )
+      node = node.expression;
+    return node && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) ? node.text : null;
+  };
   const keyOf = (name: ts.PropertyName): string | null => {
     if (ts.isIdentifier(name) || ts.isPrivateIdentifier(name)) return name.text;
     if (ts.isComputedPropertyName(name)) return literalText(name.expression);
@@ -931,6 +955,9 @@ describe("S4 the UI lists the registered providers", () => {
     );
     expect(builtinKeyedObjects('new Map([["claude", "a"], ["cursor", "b"]]);')).toHaveLength(1);
     expect(builtinKeyedObjects('Object.fromEntries([["codex", 1], ["claude", 2]]);')).toHaveLength(1);
+    // Round-3 escapes: ids wrapped in parentheses or a cast.
+    expect(builtinKeyedObjects('const m = { [("claude")]: 1, ["cursor" as string]: 2 };')).toHaveLength(1);
+    expect(builtinKeyedObjects('new Map([[("codex"), 1], ["claude" as ProviderId, 2]]);')).toHaveLength(1);
     // Round-2 false positives: text in strings and comments, destructuring, types.
     expect(builtinKeyedObjects('const s = "{ claude: 1, cursor: 2 }"; // { claude: 1, codex: 2 }')).toEqual(
       [],

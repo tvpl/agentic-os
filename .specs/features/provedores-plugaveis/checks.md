@@ -135,13 +135,13 @@ Status: closed
 Proof: `npm run test -w apps/command-centre -- src/providers/sources.test.tsx -t "C27 every provider list is the snapshots"`
 Status: closed
 
-**C28** - Em `apps/command-centre/src` (fora de `*.test.*` e de `gallery/`), lido pela árvore sintática do TypeScript (texto em string ou comentário não conta; desestruturação e tipos não são valores): nenhum literal de objeto tem entre as próprias chaves dois ou mais ids embutidos (simples, com aspas, computadas `["claude"]`, abreviadas `{ claude, cursor }`, métodos), e nenhum array de pares `[id, valor]` (o que `new Map` e `Object.fromEntries` recebem) nomeia dois ou mais; o detector se prova contra cada forma e contra os falsos positivos da rodada 2 (AC 14; rodada 3)
+**C28** - Em `apps/command-centre/src` (fora de `*.test.*` e de `gallery/`), lido pela árvore sintática do TypeScript (texto em string ou comentário não conta; desestruturação e tipos não são valores): nenhum literal de objeto tem entre as próprias chaves dois ou mais ids embutidos (simples, com aspas, computadas `["claude"]`, abreviadas `{ claude, cursor }`, métodos), e nenhum array de pares `[id, valor]` (o que `new Map` e `Object.fromEntries` recebem) nomeia dois ou mais; um id entre parênteses ou com `as`/`satisfies` ainda conta; o detector se prova contra cada forma e contra os falsos positivos da rodada 2 (AC 14; rodada 3)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C28 the UI has no map keyed by the built-in provider ids"`
 Status: closed
 
 ### Rodada 3 - lacunas da segunda verificação
 
-**C29** - `ignoredBinaryPaths(registry, settings, platform)` não ignora `C:\tools\claude.exe` nem `C:\tools\CLAUDE.CMD` em `win32`, ignora `C:\tools\sh.exe`, não ignora `/opt/x/claude` em `linux`, ignora `/opt/x/claude.exe` em `linux` e `/bin/sh` em `darwin`, e não ignora nada quando não há `binaryPath` gravado (AC 12; mata M25d e M25e)
+**C29** - `ignoredBinaryPaths(registry, settings, platform)` não ignora `C:\tools\claude.exe` nem `C:\tools\CLAUDE.CMD` em `win32`, ignora `C:\tools\sh.exe`, não ignora `/opt/x/claude` em `linux`, ignora `/opt/x/claude.exe` em `linux` e `/bin/sh` em `darwin`, e não ignora nada quando não há `binaryPath` gravado; sem o parâmetro, segue a plataforma em execução (`process.platform` simulado `win32` e `linux`); roda fora do `skipIf`, também no Windows (AC 12; mata M25d, M25e e M25g)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C29 the stored binary path check follows the platform's executable names"`
 Status: closed
 
@@ -149,7 +149,7 @@ Status: closed
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C30 doctor says nothing about binary paths when none is ignored"`
 Status: closed
 
-**C31** - Aprovar (`POST /api/approvals/:id/resolve`) um `write_run` estacionado cujo provedor (`gemini`) não está registrado responde `400 unknown_provider`, a aprovação continua `pending` e nenhuma execução é criada (AC 4)
+**C31** - Aprovar (`POST /api/approvals/:id/resolve`) um `write_run` estacionado, de prompt e de skill, cujo provedor (`gemini`) não está registrado responde `400 unknown_provider`, a aprovação continua `pending` e nenhuma execução é criada (AC 4)
 Proof: `npx vitest run tests/providers.pluggable.test.ts -t "C31 approving a parked write on a removed provider is refused and stays pending"`
 Status: closed
 
