@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 26,
+  "next_id": 31,
   "lessons": [
     {
       "id": "L-001",
@@ -370,6 +370,86 @@
       ],
       "created": "2026-10-07T00:14:30Z",
       "last_seen": "2026-10-07T00:14:30Z"
+    },
+    {
+      "id": "L-026",
+      "key": "ac_gap::size the routes that take x set by grepping every route for x in params bodies and the stored record it replays retry resolve run now not from the routes the plan named",
+      "text": "Size the 'routes that take X' set by grepping every route for X in params, bodies and the stored record it replays (retry, resolve, run-now), not from the routes the plan named.",
+      "signal": "ac_gap",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["provedores-plugaveis"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "provedores-plugaveis round 1: retry, routine run and approval resolve took a provider but were not in the route list (checks)"
+      ],
+      "created": "2026-10-07T01:20:30Z",
+      "last_seen": "2026-10-07T01:20:30Z"
+    },
+    {
+      "id": "L-027",
+      "key": "spec_precision_gap::enforce a safety rule where the value is used the engine building adapters not only where it is written the put route stored hand edited and migrated values bypass write time checks",
+      "text": "Enforce a safety rule where the value is used (the engine building adapters), not only where it is written (the PUT route); stored, hand-edited and migrated values bypass write-time checks.",
+      "signal": "spec_precision_gap",
+      "scope": "plan",
+      "status": "candidate",
+      "features": ["provedores-plugaveis"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "provedores-plugaveis round 1: a stored mismatched binaryPath was still executed because only new values were checked (plan)"
+      ],
+      "created": "2026-10-07T01:20:30Z",
+      "last_seen": "2026-10-07T01:20:30Z"
+    },
+    {
+      "id": "L-028",
+      "key": "surviving_mutant::prove platform dependent code by simulating process platform and calling it the way production does no explicit platform argument a test that always passes the platform cannot see a wrong default",
+      "text": "Prove platform-dependent code by simulating process.platform and calling it the way production does (no explicit platform argument); a test that always passes the platform cannot see a wrong default.",
+      "signal": "surviving_mutant",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["provedores-plugaveis"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "provedores-plugaveis rounds 2-3: platform-dependent check passed with a hard-coded platform, first in the body then in the default parameter (checks)"
+      ],
+      "created": "2026-10-07T01:20:30Z",
+      "last_seen": "2026-10-07T01:20:30Z"
+    },
+    {
+      "id": "L-029",
+      "key": "surviving_mutant::write source shape checks on the typescript syntax tree with self tests for each shape the claim covers and each false positive it must not flag regexes over source text miss and over match",
+      "text": "Write source-shape checks on the TypeScript syntax tree, with self-tests for each shape the claim covers and each false positive it must not flag; regexes over source text miss and over-match.",
+      "signal": "surviving_mutant",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["provedores-plugaveis"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "provedores-plugaveis rounds 1-3: regex source detector missed computed/shorthand/cast keys and flagged strings and destructuring (checks)"
+      ],
+      "created": "2026-10-07T01:20:30Z",
+      "last_seen": "2026-10-07T01:20:30Z"
+    },
+    {
+      "id": "L-030",
+      "key": "surviving_mutant::when a guard covers several payload kinds prove it table driven over every kind one representative lets a guard narrowed to that kind survive",
+      "text": "When a guard covers several payload kinds, prove it table-driven over every kind; one representative lets a guard narrowed to that kind survive.",
+      "signal": "surviving_mutant",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["provedores-plugaveis"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "provedores-plugaveis round 3 MA2: approval guard proven only on prompt payloads (checks)"
+      ],
+      "created": "2026-10-07T01:20:30Z",
+      "last_seen": "2026-10-07T01:20:30Z"
     }
   ]
 }

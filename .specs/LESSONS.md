@@ -189,6 +189,41 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: preferencias-ui round 1 F2: byte-for-byte .bak check passed with re-serialization because the fixture was already canonical (checks)
 - last seen: 2026-10-07T00:14:30Z
 
+### L-026 - Size the 'routes that take X' set by grepping every route for X in params, bodies and the stored record it replays (retry, resolve, run-now), not from the routes the plan named.
+
+- signal: `ac_gap` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: provedores-plugaveis
+- evidence: provedores-plugaveis round 1: retry, routine run and approval resolve took a provider but were not in the route list (checks)
+- last seen: 2026-10-07T01:20:30Z
+
+### L-027 - Enforce a safety rule where the value is used (the engine building adapters), not only where it is written (the PUT route); stored, hand-edited and migrated values bypass write-time checks.
+
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `plan` · harmful: 0
+- features: provedores-plugaveis
+- evidence: provedores-plugaveis round 1: a stored mismatched binaryPath was still executed because only new values were checked (plan)
+- last seen: 2026-10-07T01:20:30Z
+
+### L-028 - Prove platform-dependent code by simulating process.platform and calling it the way production does (no explicit platform argument); a test that always passes the platform cannot see a wrong default.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: provedores-plugaveis
+- evidence: provedores-plugaveis rounds 2-3: platform-dependent check passed with a hard-coded platform, first in the body then in the default parameter (checks)
+- last seen: 2026-10-07T01:20:30Z
+
+### L-029 - Write source-shape checks on the TypeScript syntax tree, with self-tests for each shape the claim covers and each false positive it must not flag; regexes over source text miss and over-match.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: provedores-plugaveis
+- evidence: provedores-plugaveis rounds 1-3: regex source detector missed computed/shorthand/cast keys and flagged strings and destructuring (checks)
+- last seen: 2026-10-07T01:20:30Z
+
+### L-030 - When a guard covers several payload kinds, prove it table-driven over every kind; one representative lets a guard narrowed to that kind survive.
+
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `checks` · harmful: 0
+- features: provedores-plugaveis
+- evidence: provedores-plugaveis round 3 MA2: approval guard proven only on prompt payloads (checks)
+- last seen: 2026-10-07T01:20:30Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
