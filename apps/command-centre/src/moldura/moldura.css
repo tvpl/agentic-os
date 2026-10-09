@@ -20,6 +20,8 @@
   --mold-chat-w: clamp(320px, 32vw, 400px);
   --mold-row-h: 36px;
   --mold-ctl-h: 34px;
+  /* The search at its smallest: its icon alone. */
+  --mold-search-min: 44px;
   --mold-drawer-w: 640px;
   position: absolute;
   inset: 0;
@@ -255,9 +257,11 @@
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  /* A shrink factor far above the title's: the search takes the squeeze first, down to its icon. */
-  flex: 0 100 380px;
-  min-width: 44px;
+  /* It takes the room the title leaves, up to 380 px, and never asks the title for any: with a base
+     of 0 there is nothing to shrink, so the title is only squeezed once the search is at its icon. */
+  flex: 1000 0 0;
+  max-width: 380px;
+  min-width: var(--mold-search-min);
   height: var(--mold-ctl-h);
   padding: 0 var(--s-2) 0 var(--s-3);
   border: 1px solid var(--border);
@@ -526,7 +530,7 @@
   background: color-mix(in srgb, var(--bg) 60%, transparent);
 }
 .mold[data-narrow] .mold-search {
-  flex-basis: 44px;
+  flex: 0 0 var(--mold-search-min);
 }
 /* The rail keeps its 60 px; unfolded, the sidebar lies over the content
    instead of pushing it (a 232 px sidebar would leave a phone no content). */
@@ -546,7 +550,7 @@
 /* The search is its icon once the centre column cannot give it room beside a title and three controls. */
 @container mold (max-width: 640px) {
   .mold-search {
-    flex-basis: 44px;
+    flex: 0 0 var(--mold-search-min);
   }
   .mold-search-t,
   .mold-kbd {
@@ -636,5 +640,7 @@
   align-self: start;
 }
 .mold-card[data-widget="approvals"] .mold-card-b {
+  /* No floor either: an empty "Needs you" is a short card, not a box with room to spare. */
+  min-height: 0;
   max-height: none;
 }

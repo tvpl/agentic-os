@@ -3,7 +3,7 @@
  * fixed reading order. Each card is an instrument the Núcleo projects as a
  * lâmina; here they sit side by side.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocale, useT, type TKey } from "../i18n";
 import { WIDGET_REGISTRY } from "../desktop/registry";
 import type { WidgetId } from "../desktop/defaultLayout";
@@ -33,9 +33,11 @@ export default function Today() {
   const t = useT();
   const locale = useLocale();
   const today = useToday();
-  const date = new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long" }).format(
-    today,
+  const dateFormat = useMemo(
+    () => new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long" }),
+    [locale],
   );
+  const date = dateFormat.format(today);
   return (
     <div className="page mold-today">
       <h2 className="mold-today-h">

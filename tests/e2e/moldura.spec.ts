@@ -355,7 +355,12 @@ test("C56 a run's detail page fits the content column, however long its working 
   }
 });
 
-test("C57 the page title keeps its text until the search has given all it can", async ({ page }) => {
+/** The centre column's width below which the search is its icon (moldura.css, `@container mold`). */
+const SEARCH_ICON_BELOW = 641;
+
+test("C57 the page title keeps its text, and the search shows its text only where there is room", async ({
+  page,
+}) => {
   const routes = [
     "/",
     "/runs",
@@ -368,29 +373,72 @@ test("C57 the page title keeps its text until the search has given all it can", 
     "/pixel",
     "/settings",
   ];
-  for (const width of [900, 1000, 1100, 1200]) {
-    for (const route of routes) {
-      const frame = await openFrame(page, route, { width, height: 900 });
-      await expect(frame.locator(":scope > aside")).toBeVisible();
-      const bar = frame.locator("header.mold-top");
-      const m = await bar.evaluate((el) => {
-        const title = el.querySelector<HTMLElement>(".mold-title")!;
-        const search = el.querySelector<HTMLElement>(".mold-search")!;
-        return {
-          text: title.textContent,
-          cut: title.scrollWidth - title.clientWidth,
-          search: search.getBoundingClientRect().width,
-          minSearch: parseFloat(getComputedStyle(search).minWidth),
-        };
+  // 900-1200: the column is under 641 px and the search is its icon; 1240-1300 is where only the
+  // search's shrink factor keeps long titles whole; from 1300 the search has text and hint.
+  const widths = [900, 1000, 1100, 1200, 1240, 1280, 1300, 1360, 1440];
+  for (const language of ["en", "pt-BR"]) {
+    // A hash change keeps the page and its language: start each pass from a blank one.
+    await page.goto("about:blank");
+    if (language !== "en")
+      await page.route("**/api/v1/meta", async (route) => {
+        const response = await route.fetch();
+        await route.fulfill({ response, json: { ...(await response.json()), language } });
       });
-      const label = `"${m.text}" at ${width}px`;
-      // The title gives way only after the search is down to its icon.
-      if (m.cut > 0) expect(m.search, `search when ${label} is cut`).toBeLessThanOrEqual(m.minSearch + 0.5);
-      // Where the column is the width of a common laptop window, the title is whole.
-      if (width >= 1000) expect(m.cut, label).toBeLessThanOrEqual(0);
+    for (const route of routes) {
+      const frame = await openFrame(page, route, { width: widths[0]!, height: 900 });
+      const bar = frame.locator("header.mold-top");
+      for (const width of widths) {
+        await page.setViewportSize({ width, height: 900 });
+        await expect(frame.locator(":scope > aside")).toBeVisible();
+        const m = await bar.evaluate((el) => {
+          const shown = (node: Element) => getComputedStyle(node).display !== "none";
+          const title = el.querySelector<HTMLElement>(".mold-title")!;
+          const search = el.querySelector<HTMLElement>(".mold-search")!;
+          const text = search.querySelector<HTMLElement>(".mold-search-t")!;
+          const hint = search.querySelector<HTMLElement>(".mold-kbd")!;
+          return {
+            title: title.textContent,
+            cut: title.scrollWidth - title.clientWidth,
+            centre: el.parentElement!.clientWidth,
+            search: search.getBoundingClientRect().width,
+            minSearch: parseFloat(getComputedStyle(search).minWidth),
+            overflow: search.scrollWidth - search.clientWidth,
+            text: shown(text) ? text.textContent : null,
+            textCut: text.scrollWidth - text.clientWidth,
+            hint: shown(hint) ? hint.textContent : null,
+            bar: el.scrollWidth - el.clientWidth,
+          };
+        });
+        const label = `"${m.title}" at ${width}px (${language})`;
+        if (language === "pt-BR" && route === "/settings") expect(m.title).toBe("Configurações");
+        // The title gives way only after the search is down to its icon, and is whole from 1000 px.
+        if (m.cut > 0) expect(m.search, `search when ${label} is cut`).toBeLessThanOrEqual(m.minSearch + 0.5);
+        if (width >= 1000) expect(m.cut, label).toBeLessThanOrEqual(0);
+        expect(m.bar, `top bar overflow at ${label}`).toBeLessThanOrEqual(0);
+        if (m.centre < SEARCH_ICON_BELOW) {
+          // An icon: neither text nor hint, and nothing spills out of the 44 px button.
+          expect(m.text, `search text at ${label}`).toBeNull();
+          expect(m.hint, `search hint at ${label}`).toBeNull();
+          expect(m.overflow, `search content past its box at ${label}`).toBeLessThanOrEqual(0);
+        } else {
+          expect(m.text, `search text at ${label}`).toBeTruthy();
+          expect(m.hint, `search hint at ${label}`).toMatch(/^(Ctrl K|⌘K)$/);
+          expect(m.overflow, `search content past its box at ${label}`).toBeLessThanOrEqual(0);
+          if (width === 1440) {
+            expect(m.textCut, `search text cut at ${label}`).toBeLessThanOrEqual(0);
+            // Room to spare: the search is drawn at its full 380 px.
+            expect(m.search, `search width at ${label}`).toBeGreaterThanOrEqual(379);
+          }
+        }
+      }
     }
+    await page.unroute("**/api/v1/meta");
   }
-  const frame = await openFrame(page, "/", { width: 1100, height: 900 });
+  await page.goto("about:blank");
+  const frame = await openFrame(page, "/", { width: 1440, height: 900 });
+  await expect(frame.locator(".mold-search-t")).toHaveText("Search or run a command…");
+  await expect(frame.locator(".mold-search .mold-kbd")).toBeVisible();
+  await page.setViewportSize({ width: 1100, height: 900 });
   await page.screenshot({ path: test.info().outputPath("today-1100-chat-open.png") });
   await expect(frame.locator("h1.mold-title")).toHaveText("Today");
 });
@@ -435,6 +483,14 @@ test("C59 the card that needs you is as tall as its content, not as its neighbou
     return card.getBoundingClientRect().height - parts - 2;
   });
   expect(spare, "empty room inside the card").toBeLessThanOrEqual(1);
+  // And none inside its body either: no floor of 160 px under a short empty state.
+  const slack = await cards.nth(0).evaluate((card) => {
+    const body = card.querySelector<HTMLElement>(".mold-card-b")!;
+    const style = getComputedStyle(body);
+    const room = body.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    return room - body.firstElementChild!.getBoundingClientRect().height;
+  });
+  expect(slack, "empty room inside the card's body").toBeLessThanOrEqual(4);
 });
 
 test("C60 the arrangements the design draws: sidebar width and button, card scrolling, history", async ({

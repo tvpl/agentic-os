@@ -10,7 +10,7 @@
 import { createElement, useEffect, useState, type ComponentProps, type ComponentType } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Sun } from "lucide-react";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HashRouter } from "react-router-dom";
@@ -25,6 +25,7 @@ import { docId } from "../desktop/docIds";
 import { requestPanelAction, type PanelAction } from "../desktop/panelKinds";
 import { formPanelId, runPanelId } from "../desktop/runPanels";
 import { openOnboarding } from "../onboarding/state";
+import { ShellProvider } from "./shell";
 import { I18nContext, type Lang } from "../i18n";
 
 // Each test mounts the whole shell (providers, router, palette, console, widgets): a few seconds on an
@@ -760,6 +761,29 @@ describe("S3 switching shells", () => {
     await waitFor(() => expect(api.putUiPreferences).toHaveBeenCalledWith({ shell: "moldura" }));
     await waitFor(() => expect(frame()).not.toBeNull());
   });
+
+  it("C75 until the preferences arrive, the interface control marks the shell in use", async () => {
+    server.prefsMode = "fail";
+    for (const shell of ["moldura", "nucleo"] as const) {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <Providers lang="pt-BR" client={client}>
+          <ShellProvider value={shell}>
+            <ThemeTab s={{} as never} put={() => Promise.resolve({ ok: true as const })} />
+          </ShellProvider>
+        </Providers>,
+      );
+      const group = await screen.findByRole("radiogroup", { name: "Interface" });
+      await waitFor(() => expect(client.getQueryState(qk.uiPreferences)?.status).toBe("error"));
+      const checked = within(group)
+        .getAllByRole("radio")
+        .filter((o) => o.getAttribute("aria-checked") === "true");
+      expect(checked.map((o) => o.textContent)).toEqual([
+        shell === "moldura" ? "Moldura de app" : "Núcleo imersivo",
+      ]);
+      cleanup();
+    }
+  });
 });
 
 /* ---- Rodada 2: the review of the first build ---------------------------- */
@@ -1361,6 +1385,17 @@ describe("R3.2 the ways out of what covers the content", () => {
     expect(aside().getAttribute("role")).toBe("dialog");
   });
 
+  it("C74 ⌘K and Ctrl K open the palette in the frame and the same key closes it", async () => {
+    await mountShell("/");
+    for (const init of [{ ctrlKey: true }, { metaKey: true }]) {
+      const label = JSON.stringify(init);
+      fireEvent.keyDown(document.body, { key: "k", ...init });
+      await waitFor(() => expect(screen.queryByRole("combobox"), label).not.toBeNull());
+      fireEvent.keyDown(document.body, { key: "k", ...init });
+      await waitFor(() => expect(screen.queryByRole("combobox"), label).toBeNull());
+    }
+  });
+
   it("C66 Esc in the frame closes what is open and goes nowhere; in the Núcleo it goes to Today", async () => {
     await mountShell("/runs");
     escape();
@@ -1472,9 +1507,10 @@ describe("R3.4 the breakpoint and what belongs to the Núcleo", () => {
 
 describe("R3.5 time passes", () => {
   /** Mount with the clock in the test's hands: the shell, the retry and midnight all use timers. */
-  async function mountWithClock(start: Date) {
+  async function mountWithClock(start: Date, beforeMount?: () => void) {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     vi.setSystemTime(start);
+    beforeMount?.();
     const client = await mountShell("/", "pt-BR", { settle: false });
     await elapse(0);
     return client;
@@ -1503,13 +1539,34 @@ describe("R3.5 time passes", () => {
     expect(asked()).toBe(answered);
   });
 
-  it("C73 Today's date moves to the next day at midnight", async () => {
-    await mountWithClock(new Date(2026, 9, 6, 23, 59, 30));
+  it("C73 Today's date moves to the next day at every midnight, and its timer goes with the page", async () => {
+    let set!: MockInstance<typeof window.setTimeout>;
+    let clear!: MockInstance<typeof window.clearTimeout>;
+    await mountWithClock(new Date(2026, 9, 6, 23, 59, 30), () => {
+      set = vi.spyOn(window, "setTimeout");
+      clear = vi.spyOn(window, "clearTimeout");
+    });
     const heading = () => within(main()).getByRole("heading", { level: 2 }).textContent;
     expect(heading()).toContain("6 de outubro");
     await elapse(29_000);
     expect(heading()).toContain("6 de outubro");
     await elapse(2_000);
     expect(heading()).toContain("7 de outubro");
+    // And the night after: a tab left open for days keeps up.
+    await elapse(23 * 3_600_000);
+    expect(heading()).toContain("7 de outubro");
+    await elapse(3_600_000);
+    expect(heading()).toContain("8 de outubro");
+
+    // The timer armed for the next midnight (nothing else waits that long) goes when Today does.
+    const armed = set.mock.calls.flatMap(([, ms], i) => ((ms ?? 0) > 3_600_000 ? [i] : []));
+    expect(armed.length).toBeGreaterThan(0);
+    const timer = set.mock.results[armed.at(-1)!]!.value;
+    act(() => {
+      window.location.hash = "#/runs";
+    });
+    await elapse(0);
+    expect(within(top()).getByRole("heading", { level: 1 }).textContent).toBe("Execuções");
+    expect(clear.mock.calls.some(([id]) => id === timer)).toBe(true);
   });
 });

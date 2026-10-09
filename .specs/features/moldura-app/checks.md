@@ -3,7 +3,7 @@
 Profile: ui
 Plan: `.specs/features/moldura-app/plan.md`
 
-73 checks in 6 slices · 2 one-way doors · 0 open, of which 0 block
+75 checks in 6 slices · 2 one-way doors · 0 open, of which 0 block
 
 Comandos (da raiz):
 
@@ -114,6 +114,7 @@ Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/nu
 Status: closed
 Note: 33 of 35 pass; `:90` (the spine travels…) and `:165` (a transition leaves exactly one interactive scene…) fail the same way at `f1de763`, before this feature, in every run - pre-existing, not a regression
 Note: re-run after round 2 (the Núcleo now uses `desktop/shellActions.ts`; `dialog.tsx` gained the in-place dialog): 34 of 35 pass, only `:165` fails (`:90` is flaky and passed); the same-shape failure of `:165` is pre-existing. A run on a loaded machine whose server was killed by another process (SIGTERM) failed everything after `:165` with connection refused - that run proves nothing and was repeated
+Note: rodada 4, em `fix/moldura-r2` (com as regras de `theme.css` e `theme.tsx` das rodadas 3 e 4): 32 de 35 passam; `:90` e `:165` falham como antes da feature (pré-existentes, as duas notas acima) e `:1125` falhou uma vez sob carga e passou sozinho (`-g`); o Núcleo não usa nada do que a moldura mudou
 
 **C23** - Os textos novos têm chave em `en` e em `ptBR` (o teste de paridade de locales passa) (AC 2, AC 10, AC 15, AC 17)
 Proof: `npm run test -w apps/command-centre -- src/i18n.test.ts`
@@ -263,7 +264,7 @@ teste por mutante (cada mutante do relatório tem um teste que o mata, rodado de
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C56 a run's detail page fits the content column"`
 Status: closed
 
-**C57** - No navegador, em 900, 1000, 1100 e 1200 px com a conversa aberta e em cada uma das dez rotas, o título (`h1`) só é cortado com reticências quando a busca já está no mínimo (o ícone, 44 px), e a partir de 1000 px o título aparece inteiro (design Tela 1, achado 2)
+**C57** - No navegador, em 900, 1000, 1100, 1200, 1240, 1280, 1300, 1360 e 1440 px com a conversa aberta, em cada uma das dez rotas e em en e pt-BR: o título (`h1`) só é cortado com reticências quando a busca já está no mínimo (o ícone, 44 px) e é inteiro a partir de 1000 px; a barra superior não transborda; com a coluna central abaixo de 641 px a busca é só o ícone (sem texto nem dica, e nada do conteúdo passa do botão de 44 px), e a partir de 641 px tem o texto e a dica (⌘K / Ctrl K), em 1440 px com o texto inteiro e a largura cheia de 380 px (design Tela 1: título encurta antes de perder um controle; a busca mantém o nome mesmo sem o texto)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C57 the page title keeps its text"`
 Status: closed
 
@@ -271,7 +272,7 @@ Status: closed
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C58 each of the nine views fits the column"`
 Status: closed
 
-**C59** - No navegador (1440 px), o cartão "Pede você" tem a altura do seu conteúdo e não a do cartão ao lado, que é mais alto na mesma linha: sem espaço sobrando dentro do cartão (design Tela 2, "cresce com o conteúdo")
+**C59** - No navegador (1440 px), o cartão "Pede você" tem a altura do seu conteúdo e não a do cartão ao lado, que é mais alto na mesma linha: sem espaço sobrando dentro do cartão nem dentro do corpo dele (o corpo não tem piso de 160 px: o estado vazio é um cartão curto) (design Tela 2, "cresce com o conteúdo")
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C59 the card that needs you is as tall as its content"`
 Status: closed
 
@@ -327,8 +328,16 @@ Status: closed
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C72 a failed preferences request is asked again"`
 Status: closed
 
-**C73** - A data longa de Hoje passa para o dia seguinte à meia-noite local sem recarregar (23:59:30 de 6 de outubro mostra "6 de outubro"; 30 s depois, "7 de outubro") (design Tela 2)
+**C73** - A data longa de Hoje passa para o dia seguinte à meia-noite local sem recarregar, em todas as noites (23:59:30 de 6 de outubro mostra "6 de outubro"; 30 s depois, "7 de outubro"; 24 h depois, "8 de outubro"), e o temporizador armado para a próxima meia-noite é cancelado quando Hoje sai da tela (design Tela 2)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C73 Today's date moves to the next day"`
+Status: closed
+
+**C74** - ⌘K e Ctrl K abrem a paleta na moldura, e a mesma tecla a fecha (design Tela 1, atalhos da moldura)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C74 ⌘K and Ctrl K open the palette"`
+Status: closed
+
+**C75** - Enquanto as preferências não chegam (a requisição falha, sem dados), o controle de interface de Configurações › Aparência marca o shell em uso: "Moldura de app" na moldura e "Núcleo imersivo" no Núcleo (design Tela 3, AC 15)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C75 until the preferences arrive"`
 Status: closed
 
 ## Coverage
@@ -347,6 +356,8 @@ Status: closed
 | caminhos de fechar a barra estreita desdobrada (4)    | Esc C45 · seguir um link C45 · botão "Barra lateral" C64 · toque fora C64, C61                                                                                                                                                             | -        |
 | caminhos de fechar o documento (3)                    | Esc C40, C61 · "Fechar" C40 · toque fora C43, C61                                                                                                                                                                                          | -        |
 | diálogos da moldura (3)                               | conversa estreita C39, C9, C61 · documento C40, C61 · barra lateral estreita C45, C50, C61                                                                                                                                                 | -        |
+| estados da busca (2)                                  | ícone, sem texto nem dica, com a coluna central abaixo de 641 px C57, C51 · texto e dica a partir de 641 px C57                                                                                                                            | -        |
+| atalhos da moldura (3)                                | ⌘K / Ctrl K C74 · ⌘. / Ctrl . C8 · Esc C41, C42, C66                                                                                                                                                                                       | -        |
 | ordem do Esc (5)                                      | paleta C41 · documento C41 · conversa C41 · sino C42 · rota intacta C66 (no Núcleo, Esc leva a Hoje: C66)                                                                                                                                  | -        |
 | teclas do Núcleo inertes (8)                          | 1-5 C10 (1) · `[` `]` C10 (`]`) · `/` C10 · `p` C10 · ⌘J C10 · ⌘F C10 · ⌘⇧A C10 · ⌘⇧D C10                                                                                                                                                  | -        |
 | ids de painel que o resto do app envia (5)            | documento C67, C44 · execução C67 · formulário C67 · instrumento C67, C44 · desconhecido C44                                                                                                                                               | -        |
@@ -363,7 +374,7 @@ Status: closed
 | fontes do shell enquanto carrega (5) + nova tentativa | resposta C27 · espelho lento C28 · espelho com falha C29 · padrão sem espelho C30 · busca que falha depois de carregar C31 · nova tentativa automática e parada ao responder C72                                                           | -        |
 | presets × temas (10)                                  | hud-orange dark C49, C52 · jarvis dark C49, C52 · forest dark C49, C52 · ocean dark C49, C52 · mono dark C49, C52 · hud-orange light C49, C52 · jarvis light C49, C52 · forest light C49, C52 · ocean light C49, C52 · mono light C49, C52 | -        |
 | nomes acessíveis (4)                                  | sino C34 · Hoje com contagem C34 · botão da barra lateral C35 · busca C51                                                                                                                                                                  | -        |
-| larguras de composição (7)                            | 1440 C13, C52, C56, C58 · 1200 C57 · 1100 C13, C56, C57 · 1000 C13, C57 · 900 C56, C57, C58 · 800/600 C9, C50, C51 · 360 C51, C56                                                                                                          | -        |
+| larguras de composição (7)                            | 1440 C13, C52, C56, C57, C58 · 1240-1360 C57 · 1200 C57 · 1100 C13, C56, C57 · 1000 C13, C57 · 900 C56, C57, C58 · 800/600 C9, C50, C51 · 360 C51, C56                                                                                     | -        |
 | ações da paleta por shell (3 ocultas na moldura)      | "Abrir painel" C21 · "organizar" C21 · tour ("Guia interativo do OS") C21                                                                                                                                                                  | -        |
 | tour e HUD fora da moldura (4 pontos)                 | botão em Configurações C33 · ação da paleta C21 · `Onboarding` montado C71 · overlay HUD montado C71                                                                                                                                       | -        |
 | `PUT /api/ui-preferences` com `shell` (2)             | `200` C15 · `400` C15                                                                                                                                                                                                                      | -        |
@@ -374,6 +385,7 @@ Status: closed
 - Claims naming a status code or route: C15, C25 - provados por `inject`
 - A linha "teclas do Núcleo inertes" prova uma tecla de cada família (1 por 1-5, `]` por `[ ]`); as outras são o mesmo ramo
 - Cada mutante do relatório de verificação da rodada 1 (U2, U4-U11, U15, U17, U19, U30, U36, U37) tem um teste que o mata, rodado de fato: U2 C72 · U4 C66 · U5 e U30 C71 · U6 C21 · U7 e U11 C62 · U8 C70 · U9 C37 · U10 C65 · U15 C68 · U17 C69 · U19 C46 · U36 C67 · U37 C63. Nenhum é equivalente
+- Mutantes da verificação da rodada 2, re-injetados e mortos: E1, E2, E9, E10 (limiar e esconder da busca) C57 · E3 (fator de encolhimento; substituído por `flex: 1000 0 0` sem base, o que também tirou a faixa em que o título perdia frações de pixel) C57 · E4 C57, C51 · E5 e E6 (piso de 160 px) C59 · N2c, N2e (segunda meia-noite e cancelamento) C73 · N3 C75 · N5 C74
 
 ## Binding sources
 
@@ -403,7 +415,7 @@ Expectativas das linhas que a verificação da rodada 1 deu como não atendidas,
 - Instrumentation (foco, `inert` e Esc das gavetas): a barra estreita desdobrada, a gaveta de conversa e a de documento têm laço de Tab real e fechamento por toque real (C61), e jsdom prova cada caminho de fechar (botão C63, toque fora C64, paleta por cima C65, Esc C39-C42 e C66, evento de painel C68)
 - Decides (`useShell`): a nova tentativa automática, que faltava, é C72
 
-Cost: 2 arquivos de teste de interface, 1 spec e2e, 1 teste de raiz, 73 provas.
+Cost: 2 arquivos de teste de interface, 1 spec e2e, 1 teste de raiz, 75 provas.
 
 ## Swept
 
@@ -423,4 +435,5 @@ Cost: 2 arquivos de teste de interface, 1 spec e2e, 1 teste de raiz, 73 provas.
 - Boundary: the first builder was cut off (API limit) with S1-S4 written but uncommitted; a second builder resumed from that diff, fixed the narrow-window chat drawer (it was placed in the empty third grid track), and closed all 24 checks in one commit
 - Settled mid-build: nothing new from the user
 - Abandoned: nothing
+- Rodada 4 (`fix/moldura-r2`, C57 e C59 ampliados, C73 estendido, C74-C75): fecha os achados da verificação da rodada 2 (consulta ao contêiner da busca, ⌘K, segunda meia-noite, fallback de `theme.tsx`, pt-BR, piso do corpo do cartão, constante `--mold-search-min`)
 - Rodada 3 (`fix/moldura-r1`, C56-C73): builder único, ~60k (css e três componentes pequenos, 12 testes de interface novos, 6 de navegador); fecha os achados bloqueantes 1, 2, 5 e 6, os 15 mutantes sobreviventes e as lacunas de cobertura do relatório da rodada 1
