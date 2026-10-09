@@ -4,10 +4,12 @@ import path from "node:path";
 import {
   CodexStreamEvent,
   KnownStreamTypes,
+  boundedPaths,
   createUnrecognizedTally,
   executeInvocation,
   findExecutable,
   parseHelpFlags,
+  plainText,
   probe,
   type AgentAdapter,
   type AgentRun,
@@ -295,21 +297,9 @@ function viewOf(item: CodexItem): ItemView {
   }
 }
 
-/**
- * At most this many paths ride on one `tool_use` event, and none longer than
- * `MAX_PATH_CHARS`: the event is journaled whole, so a patch of thousands of
- * files (or a hostile line) must not make one enormous row. A patch beyond the
- * cap records its first 200 files.
- */
-const MAX_PATHS = 200;
-const MAX_PATH_CHARS = 4096;
-
+/** A patch beyond `MAX_EVENT_PATHS` files records its first 200 (the journal row must stay bounded). */
 function changedPaths(changes: Array<{ path: string }> | undefined): string[] | undefined {
-  if (!changes) return undefined;
-  return changes
-    .map((c) => c.path)
-    .filter((p) => p.length > 0 && p.length <= MAX_PATH_CHARS)
-    .slice(0, MAX_PATHS);
+  return changes ? boundedPaths(changes.map((c) => c.path)) : undefined;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -336,13 +326,18 @@ function describeCodexLine(value: Record<string, unknown>): RejectedLine {
   return { known: false };
 }
 
-/** A failed turn or a stream error is never silent: it becomes a line of the trace. */
-const failure = (ts: number, what: string, message: string | undefined): RunEvent => ({
-  type: "text",
-  ts,
-  stream: "stderr",
-  text: `[codex] ${what}${message ? `: ${message.slice(0, 400)}` : ""}`,
-});
+/** The longest CLI message that goes into the trace. */
+const MAX_MESSAGE_CHARS = 400;
+
+/**
+ * A failed turn or a stream error is never silent: it becomes a line of the
+ * trace. The message is the CLI's own text, so it is flattened to one line of
+ * plain characters (`plainText`) and cannot pose as a notice of the MordomoOS.
+ */
+const failure = (ts: number, what: string, message: string | undefined): RunEvent => {
+  const plain = message === undefined ? "" : plainText(message, MAX_MESSAGE_CHARS);
+  return { type: "text", ts, stream: "stderr", text: `[codex] ${what}${plain ? `: ${plain}` : ""}` };
+};
 
 /**
  * Codex --json emits JSONL events; shapes vary across versions
@@ -351,7 +346,7 @@ const failure = (ts: number, what: string, message: string | undefined): RunEven
  * counted, never read, and `finish()` names the count once. Exported for tests.
  */
 export function codexStreamParser(): LineParser {
-  const unknown = createUnrecognizedTally("codex");
+  const unrecognized = createUnrecognizedTally("codex");
   let lastMessage = "";
   let model: string | null = null;
   // The conversation id repeats on later lines; report it only when it changes.
@@ -366,7 +361,7 @@ export function codexStreamParser(): LineParser {
   });
   return {
     parseLine(line: string): RunEvent[] | null {
-      const read = readTypedLine(line, CodexStreamEvent, unknown, describeCodexLine);
+      const read = readTypedLine(line, CodexStreamEvent, unrecognized, describeCodexLine);
       if (!read.ok) return read.events;
       const data = read.data;
       const ts = Date.now();
@@ -398,7 +393,10 @@ export function codexStreamParser(): LineParser {
           ];
         }
         if (msg.type === "error" && typeof msg.message === "string") {
-          return [...sessionEvents, { type: "permission", ts, detail: msg.message.slice(0, 400) }];
+          return [
+            ...sessionEvents,
+            { type: "permission", ts, detail: plainText(msg.message, MAX_MESSAGE_CHARS) },
+          ];
         }
         // Older shape: {"msg":{"type":"token_count","info":{"total_token_usage":{...},"last_token_usage":{...}}}}
         if (isTokenCount(msg)) {
@@ -431,8 +429,8 @@ export function codexStreamParser(): LineParser {
     summarize(stdout: string): string {
       return (lastMessage || stdout.slice(-2000)).slice(0, 2000);
     },
-    finish: () => unknown.warning(),
-    dropped: () => unknown.noteUnreadable(),
+    finish: () => unrecognized.warning(),
+    dropped: () => unrecognized.noteUnreadable(),
   };
 
   /** Events of a newer-shape `item.*` line: {"type":"item.completed","item":{"type"/"item_type": "...", "text": ...}} */

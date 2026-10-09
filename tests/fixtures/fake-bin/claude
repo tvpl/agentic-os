@@ -57,6 +57,13 @@ for SIZE in long:1048576 huge:5242880; do
     printf '"}]}}\n'
   fi
 done
+# "[[wide]]" in the prompt prints one ~4 MB assistant line (just under the runner's 4 MiB cap) whose `content` is
+# two million `1`s where a list of blocks belongs: a hostile wrong-shape array (a schema check per element would freeze the daemon).
+if [[ "$PROMPT" == *"[[wide]]"* ]]; then
+  printf '{"type":"assistant","message":{"content":['
+  yes '1,' | head -n 1999999 | tr -d '\n'
+  printf '1]}}\n'
+fi
 # "[[sleep:N]]" in the prompt keeps the run alive N seconds (e2e: approvals, squads mid-flight).
 if [[ "$PROMPT" =~ \[\[sleep:([0-9]+)\]\] ]]; then sleep "${BASH_REMATCH[1]}"; fi
 if [[ "$FAKE_CLAUDE_FAIL" == "1" ]]; then
@@ -77,6 +84,11 @@ if [[ "$PROMPT" =~ \[\[artifact:([A-Za-z0-9._-]+)\]\] ]]; then
     mkdir -p "$RUN_DIR"
     printf '# %s\n\nWritten by the fake provider for: %s\n' "$NAME" "${PROMPT:0:60}" > "$RUN_DIR/$NAME"
   fi
+fi
+# "[[nonl]]" in the prompt ends the stream with the result line and NO trailing newline (the cost rides on it).
+if [[ "$PROMPT" == *"[[nonl]]"* ]]; then
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"No newline.","total_cost_usd":0.5}'
+  exit 0
 fi
 echo '{"type":"result","subtype":"success","is_error":false,"result":"All done. secret sk-test1234567890abcdefTOKEN should be redacted."}'
 exit 0

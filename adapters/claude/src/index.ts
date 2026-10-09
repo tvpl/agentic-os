@@ -374,7 +374,7 @@ const describeClaudeLine = (value: Record<string, unknown>) =>
  * Exported for tests.
  */
 export function claudeStreamParser(): LineParser {
-  const unknown = createUnrecognizedTally("claude");
+  const unrecognized = createUnrecognizedTally("claude");
   let lastAssistantText = "";
   let resultText = "";
   let sessionModel: string | null = null;
@@ -383,7 +383,7 @@ export function claudeStreamParser(): LineParser {
   let seenSessionId: string | null = null;
   return {
     parseLine(line: string): RunEvent[] | null {
-      const read = readTypedLine(line, ClaudeStreamMessage, unknown, describeClaudeLine);
+      const read = readTypedLine(line, ClaudeStreamMessage, unrecognized, describeClaudeLine);
       if (!read.ok) return read.events;
       const obj = read.data;
       const ts = Date.now();
@@ -396,7 +396,8 @@ export function claudeStreamParser(): LineParser {
       // the line (text, tool calls, cost) is kept; it is still counted, so the
       // warning shows the drift.
       const ignoredUsage = (raw: unknown, parsed: unknown) => {
-        if (raw != null && parsed === undefined) unknown.note(read.value, { name: obj.type, known: true });
+        if (raw != null && parsed === undefined)
+          unrecognized.note(read.value, { name: obj.type, known: true });
       };
       if (obj.type === "system") {
         if (obj.subtype === "init" && obj.model !== undefined) sessionModel = obj.model;
@@ -498,7 +499,7 @@ export function claudeStreamParser(): LineParser {
     summarize(): string {
       return (resultText || lastAssistantText).slice(0, 2000);
     },
-    finish: () => unknown.warning(),
-    dropped: () => unknown.noteUnreadable(),
+    finish: () => unrecognized.warning(),
+    dropped: () => unrecognized.noteUnreadable(),
   };
 }

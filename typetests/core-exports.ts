@@ -14,6 +14,8 @@ import type {
   RunUsage,
   SessionRecord,
   Settings,
+  TestedVersions,
+  VersionStatus,
 } from "@mordomo/core";
 import type * as Contracts from "@mordomo/contracts";
 
@@ -32,4 +34,6 @@ export const sameAsContract: [
   Same<RunUsage, Contracts.RunUsage>,
   Same<SessionRecord, Contracts.SessionRecord>,
   Same<Settings, Contracts.Settings>,
-] = [true, true, true, true, true, true, true, true, true, true, true];
+  Same<TestedVersions, Contracts.TestedVersions>,
+  Same<VersionStatus, Contracts.VersionStatus>,
+] = [true, true, true, true, true, true, true, true, true, true, true, true, true];

@@ -81,9 +81,12 @@ export type {
   HealthStatus,
 } from "./agents/types.js";
 export { resumableSessionId } from "./agents/resumeId.js";
+export { boundedPaths, MAX_EVENT_PATHS, MAX_EVENT_PATH_CHARS } from "./agents/eventPaths.js";
 export { executeInvocation, MAX_LINE_CHARS, type LineParser } from "./agents/baseExec.js";
 export {
   createUnrecognizedTally,
+  exceedsShapeBudget,
+  plainText,
   readTypedLine,
   type RejectedLine,
   type TypedLine,

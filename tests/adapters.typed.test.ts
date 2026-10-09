@@ -26,6 +26,7 @@ import {
   RunManager,
   SettingsStore,
   executeInvocation,
+  exceedsShapeBudget,
   installedVersion,
   openDb,
   type AgentAdapter,
@@ -211,9 +212,14 @@ async function runFake(
   };
 }
 
-/** A run of the fake claude CLI through the real pipeline (`executeInvocation`), no database. */
-async function pipe(prompt: string, parser: LineParser, home: string): Promise<RunEvent[]> {
-  const executable = path.join(FAKE_BIN, "claude");
+/** A run of a fake CLI (claude by default) through the real pipeline (`executeInvocation`), no database. */
+async function pipe(
+  prompt: string,
+  parser: LineParser,
+  home: string,
+  cli: { bin: string; args: string[] } = { bin: "claude", args: ["-p"] },
+): Promise<RunEvent[]> {
+  const executable = path.join(FAKE_BIN, cli.bin);
   const run: AgentRun = {
     runId: "typed",
     prompt,
@@ -228,13 +234,32 @@ async function pipe(prompt: string, parser: LineParser, home: string): Promise<R
   const out: RunEvent[] = [];
   for await (const event of executeInvocation(
     run,
-    { executable, args: ["-p"], env: {}, stdin: prompt, description: "fake claude" },
+    { executable, args: cli.args, env: {}, stdin: prompt, description: `fake ${cli.bin}` },
     parser,
     [executable],
   )) {
     out.push(event);
   }
   return out;
+}
+
+/** A parser that adds up the time spent in its `parseLine`: the part of a run that blocks the daemon's event loop. */
+function timed(parser: LineParser): { parser: LineParser; spentMs: () => number } {
+  let spent = 0;
+  return {
+    parser: {
+      ...parser,
+      parseLine(line) {
+        const t0 = performance.now();
+        try {
+          return parser.parseLine(line);
+        } finally {
+          spent += performance.now() - t0;
+        }
+      },
+    },
+    spentMs: () => spent,
+  };
 }
 
 const textsOf = (events: RunEvent[]): string[] => events.flatMap((e) => (e.type === "text" ? [e.text] : []));
@@ -436,7 +461,16 @@ describe("S2 - a strange line never sinks a run", () => {
         codex.parseLine(JSON.stringify({ msg: { type: "session_configured", session_id: id } })),
         id,
       ).toEqual([]);
+      expect(
+        codex.parseLine(JSON.stringify({ msg: { type: "token_count", session_id: id, info: null } })),
+        id,
+      ).toEqual([]);
+      // The oldest shape also carries the id at the top of the line, beside `msg`.
+      expect(codex.parseLine(JSON.stringify({ session_id: id, msg: { type: "x" } })), id).toEqual([]);
     }
+    expect(codexStreamParser().parseLine(`{"session_id":"${good}","msg":{"type":"x"}}`)).toMatchObject([
+      { type: "session", providerSessionId: good },
+    ]);
 
     // What an earlier version stored is checked again before it reaches argv.
     const run = (providerSessionId: string): AgentRun => ({
@@ -515,6 +549,40 @@ describe("S2 - a strange line never sinks a run", () => {
     expect(warning!.text).toContain(
       "emitted 6 unrecognized line(s): known type assistant with an invalid field, known type result with an invalid field.",
     );
+
+    // The same holds for every other field that only labels a line. A `model` of the wrong type reads as absent:
+    // the Claude `system` line still starts the session ...
+    const labels = claudeStreamParser();
+    expect(labels.parseLine('{"type":"system","subtype":"init","session_id":"s1","model":5}')).toMatchObject([
+      { type: "session", providerSessionId: "s1" },
+      { type: "text", text: "[claude session started: model=?]" },
+    ]);
+    // ... a `modelUsage` entry with a bad `outputTokens` is skipped, not the whole map ...
+    expect(
+      labels.parseLine(
+        '{"type":"result","subtype":"success","total_cost_usd":1,"modelUsage":{"a":{"outputTokens":"x"},"b":{"outputTokens":5}}}',
+      ),
+    ).toMatchObject([{ type: "usage", scope: "total", costUsd: 1, model: "b" }]);
+    expect(labels.finish!()).toEqual([]);
+
+    // ... a Codex event keeps its usage (and the model, when it is a string) ...
+    const codex = codexStreamParser();
+    expect(
+      codex.parseLine('{"type":"turn.completed","model":5,"usage":{"input_tokens":4,"output_tokens":2}}'),
+    ).toEqual([expect.objectContaining({ type: "usage", inputTokens: 4, outputTokens: 2 })]);
+    expect(
+      codex.parseLine(
+        '{"type":"turn.completed","model":"gpt-x","usage":{"input_tokens":1,"output_tokens":1}}',
+      ),
+    ).toMatchObject([{ type: "usage", model: "gpt-x" }]);
+    // ... and so does a message of the oldest shape, whose `message` or `model` is not a string.
+    expect(codex.parseLine('{"msg":{"type":"exec_command_begin","message":5,"command":"ls"}}')).toMatchObject(
+      [{ type: "tool_use", tool: "exec_command_begin" }],
+    );
+    expect(codex.parseLine('{"model":5,"msg":{"type":"exec_command_end","exit_code":0}}')).toMatchObject([
+      { type: "tool_use", tool: "exec_command_end" },
+    ]);
+    expect(codex.finish!()).toEqual([]);
   });
 
   it("C21 a failed codex turn is never silent", () => {
@@ -531,6 +599,39 @@ describe("S2 - a strange line never sinks a run", () => {
     expect(codexStreamParser().parseLine('{"type":"turn.failed"}')).toMatchObject([
       { type: "text", text: "[codex] turn failed" },
     ]);
+  });
+
+  it("C26 the text of a CLI failure is one plain line and cannot pose as a notice", () => {
+    // A newline, colour and cursor escapes, bidi and line separators, a bell, a window-title sequence: none survives.
+    const hostile =
+      "x\n[mordomo] claude emitted 0 unrecognized line(s)\u001b[31m\u202e\u2028\r\u0007red\u001b]0;title\u0007end";
+    const plain = "[codex] turn failed: x [mordomo] claude emitted 0 unrecognized line(s) redend";
+    const parser = codexStreamParser();
+    const textOf = (line: unknown) => {
+      const [event] = parser.parseLine(JSON.stringify(line)) ?? [];
+      return event?.type === "text" ? event.text : event;
+    };
+    expect(textOf({ type: "turn.failed", error: { message: hostile } })).toBe(plain);
+    expect(textOf({ type: "error", message: hostile })).toBe(plain.replace("turn failed", "error"));
+    expect(textOf({ type: "item.completed", item: { type: "error", message: hostile } })).toBe(
+      plain.replace("turn failed", "error"),
+    );
+    // The oldest shape's error takes the same road (it becomes a permission note).
+    expect(parser.parseLine(JSON.stringify({ msg: { type: "error", message: hostile } }))).toMatchObject([
+      { type: "permission", detail: "x [mordomo] claude emitted 0 unrecognized line(s) redend" },
+    ]);
+    // No character that could break the line or the terminal reaches the trace.
+    expect([...plain].filter((c) => c < " " || c === "\u202e")).toEqual([]);
+
+    // Cut at 400 characters, never in the middle of a surrogate pair, and a megabyte costs nothing.
+    const long = textOf({ type: "error", message: "😀".repeat(300) }) as string;
+    expect(long).toBe(`[codex] error: ${"😀".repeat(199)}…`);
+    const started = performance.now();
+    const huge = textOf({ type: "error", message: "\u001b[".repeat(2_000_000) + "tail" }) as string;
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(huge).toBe("[codex] error");
+    // A message that is only control characters says nothing, like no message.
+    expect(textOf({ type: "turn.failed", error: { message: "\n\u202e " } })).toBe("[codex] turn failed");
   });
 
   it("C22 a throwing parser, or a huge line, costs that line and nothing more", async () => {
@@ -591,6 +692,88 @@ describe("S2 - a strange line never sinks a run", () => {
     // The parser that does not count (cursor) gets the generic note, once.
     const cursor = await pipe("hello [[huge]] [[huge]]", cursorStreamParser(), home);
     expect(textsOf(cursor).filter((t) => t.includes("could not be read"))).toHaveLength(1);
+  });
+
+  it("C23 a stream that ends without a newline still yields its last line", async () => {
+    // The `result` line carries the cost; a CLI that exits right after printing it leaves no `\n` behind.
+    const events = await pipe("hello [[nonl]]", claudeStreamParser(), h.paths().home);
+    expect(events.find((e) => e.type === "usage")).toMatchObject({
+      type: "usage",
+      scope: "total",
+      costUsd: 0.5,
+    });
+    expect(events.at(-1)).toMatchObject({ type: "result", exitCode: 0, summary: "No newline." });
+    expect(textsOf(events).filter((t) => t.includes("unrecognized"))).toEqual([]);
+    // It is parsed as a line, not echoed as raw text.
+    expect(events.some((e) => e.type === "text" && e.text.includes("total_cost_usd"))).toBe(false);
+  });
+
+  it("C24 a hostile wrong-shape array line costs a skipped line, not seconds of the event loop", async () => {
+    const home = h.paths().home;
+    // A ~4 MB line (under the 4 MiB cap) whose list holds two million `1`s: a schema that reported every wrong
+    // element took 14 s (codex) and 4 s (claude) and 567 MB here. Now the line is counted and never checked.
+    const cases = [
+      {
+        provider: "claude",
+        parser: claudeStreamParser(),
+        cli: { bin: "claude", args: ["-p"] },
+        label: "type assistant with an oversized structure",
+        after: (events: RunEvent[]) =>
+          expect(events.at(-1)).toMatchObject({
+            type: "result",
+            exitCode: 0,
+            summary: expect.stringContaining("All done"),
+          }),
+      },
+      {
+        provider: "codex",
+        parser: codexStreamParser(),
+        cli: { bin: "codex", args: ["exec", "--json", "[[wide]]"] },
+        label: "type item.completed/file_change with an oversized structure",
+        after: (events: RunEvent[]) => {
+          expect(events.find((e) => e.type === "assistant")).toMatchObject({ text: "Codex fake reply." });
+          expect(events.find((e) => e.type === "usage")).toMatchObject({ inputTokens: 10, outputTokens: 5 });
+          expect(events.at(-1)).toMatchObject({ type: "result", exitCode: 0 });
+        },
+      },
+    ];
+    for (const c of cases) {
+      const t = timed(c.parser);
+      const events = await pipe("hello [[wide]]", t.parser, home, c.cli);
+      expect(t.spentMs(), c.provider).toBeLessThan(1000);
+      expect(
+        textsOf(events).filter((x) => x.includes("unrecognized")),
+        c.provider,
+      ).toEqual([`[mordomo] ${c.provider} emitted 1 unrecognized line(s): ${c.label}. ${HINT}`]);
+      expect(
+        events.some((e) => e.type === "error"),
+        c.provider,
+      ).toBe(false);
+      c.after(events);
+    }
+
+    // The budget itself: an array past 10 000 items, or past 50 000 values in all (members and elements, nested).
+    const list = (n: number) => Array.from({ length: n }, () => 1);
+    expect(exceedsShapeBudget({ a: list(10_000) })).toBe(false);
+    expect(exceedsShapeBudget({ a: list(10_001) })).toBe(true);
+    expect(
+      exceedsShapeBudget({
+        a: [list(9_000), list(9_000), list(9_000), list(9_000), list(9_000), list(9_000)],
+      }),
+    ).toBe(true);
+    expect(exceedsShapeBudget(Object.fromEntries(list(60_000).map((_, i) => [`k${i}`, i])))).toBe(true);
+    let deep: unknown = 1;
+    for (let i = 0; i < 200_000; i++) deep = [deep];
+    expect(exceedsShapeBudget(deep)).toBe(true); // 200 000 values; and walking it does not overflow the stack
+    // A real line stays well inside it: a patch of 3000 files is read, and keeps its first 200 paths.
+    const patch = codexStreamParser();
+    const big = Array.from({ length: 3000 }, (_, i) => ({ path: `/repo/f${i}.ts`, kind: "update" }));
+    const [tool] =
+      patch.parseLine(
+        JSON.stringify({ type: "item.completed", item: { type: "file_change", changes: big } }),
+      ) ?? [];
+    expect(tool?.type === "tool_use" && tool.paths).toHaveLength(200);
+    expect(patch.finish!()).toEqual([]);
   });
 });
 
@@ -800,26 +983,14 @@ describe("S4 - writes reach filesChanged", () => {
     expect(bare).not.toHaveProperty("paths");
   });
 
-  it("C17 a tool without paths records its first path only, as before", async () => {
-    const claudeWrite: AgentAdapter = {
+  /** A run of a stub adapter that yields `produced` (then a clean `result`): the run's `filesChanged` and its journaled events. */
+  async function runStub(produced: RunEvent[]): Promise<{ files: string[]; journaled: RunEvent[] }> {
+    const adapter: AgentAdapter = {
       id: "claude",
       manifest: claudeManifest,
       async *execute() {
         yield { type: "started", ts: Date.now(), pid: null } as RunEvent;
-        yield {
-          type: "tool_use",
-          ts: Date.now(),
-          tool: "Write",
-          detail: JSON.stringify({ file_path: "/repo/a.ts", content: "cd /var/www && cat /etc/hosts" }),
-          phase: "start",
-        } as RunEvent;
-        yield {
-          type: "tool_use",
-          ts: Date.now(),
-          tool: "Edit",
-          detail: JSON.stringify({ file_path: "/repo/with, comma.ts", old_string: "/etc/passwd" }),
-          phase: "start",
-        } as RunEvent;
+        yield* produced;
         yield {
           type: "result",
           ts: Date.now(),
@@ -831,7 +1002,7 @@ describe("S4 - writes reach filesChanged", () => {
         } as RunEvent;
       },
     } as unknown as AgentAdapter;
-    const ctx = makeTempHome("mordomo-typed-first-");
+    const ctx = makeTempHome("mordomo-typed-stub-");
     const db = openDb(ctx.paths).db;
     try {
       const store = new SettingsStore(ctx.paths);
@@ -839,14 +1010,74 @@ describe("S4 - writes reach filesChanged", () => {
         db,
         ctx.paths,
         () => store.load(),
-        () => claudeWrite,
+        () => adapter,
       );
-      const { files } = await runFake(manager, ctx.paths, "claude", "write it");
-      expect(files).toEqual(["/repo/a.ts", "/repo/with,"]);
+      const run = manager.create({
+        origin: "manual",
+        provider: "claude",
+        prompt: "write it",
+        cwd: ctx.paths.home,
+        model: null,
+        effort: "default",
+        mode: "read_only",
+        timeoutMs: 30_000,
+        profile: "read_only",
+      });
+      const done = await manager.execute(run.id, "write it", "read_only");
+      expect(done.status).toBe("done");
+      const result = {
+        files: manager.get(run.id)?.filesChanged ?? [],
+        journaled: manager.eventsFor(run.id).map((e) => e.event),
+      };
       await manager.shutdown(1000);
+      return result;
     } finally {
       db.close();
       ctx.cleanup();
     }
+  }
+  const write = (extra: Record<string, unknown>): RunEvent =>
+    ({ type: "tool_use", ts: Date.now(), tool: "Write", detail: "{}", phase: "start", ...extra }) as RunEvent;
+
+  it("C17 a tool without paths records its first path only, as before", async () => {
+    const { files } = await runStub([
+      write({
+        detail: JSON.stringify({ file_path: "/repo/a.ts", content: "cd /var/www && cat /etc/hosts" }),
+      }),
+      write({
+        tool: "Edit",
+        detail: JSON.stringify({ file_path: "/repo/with, comma.ts", old_string: "/etc/passwd" }),
+      }),
+    ]);
+    expect(files).toEqual(["/repo/a.ts", "/repo/with,"]);
+  });
+
+  it("C25 the run manager does not trust the paths an adapter lists", async () => {
+    const longest = "/" + "y".repeat(4095);
+    const valid = (n: number, tag: string) => Array.from({ length: n }, (_, i) => `/repo/${tag}-${i}.ts`);
+    const { files, journaled } = await runStub([
+      // Wrong kinds, an empty path and one of 4097 characters are ignored (4096 is the longest kept); of the
+      // good ones only 200 count, in order.
+      write({
+        paths: [1, null, {}, "", "/ok/first.ts", longest, "/" + "z".repeat(4096), ...valid(300, "a")],
+      }),
+      // `paths` that is not a list is ignored: the tool's `detail` is read instead, as for any tool without it.
+      write({ paths: "/etc/shadow", detail: JSON.stringify({ file_path: "/repo/fallback.ts" }) }),
+      write({ paths: { length: 99999 }, detail: JSON.stringify({ file_path: "/repo/fallback2.ts" }) }),
+      // Event after event of 200 fresh files each: the run's list stops at 5000.
+      ...Array.from({ length: 30 }, (_, n) => write({ paths: valid(200, `b${n}`) })),
+    ]);
+    expect(files.slice(0, 4)).toEqual(["/ok/first.ts", longest, "/repo/a-0.ts", "/repo/a-1.ts"]);
+    expect(files[199]).toBe("/repo/a-197.ts");
+    expect(files).not.toContain("/repo/a-198.ts");
+    expect(files.slice(200, 202)).toEqual(["/repo/fallback.ts", "/repo/fallback2.ts"]);
+    expect(files).not.toContain("/etc/shadow");
+    expect(files).toHaveLength(5000);
+    // What is journaled (and streamed) is the bounded list too, not what the adapter sent.
+    const tools = journaled.filter((e) => e.type === "tool_use");
+    expect(tools[0]).toMatchObject({ paths: expect.arrayContaining(["/ok/first.ts"]) });
+    expect(tools[0]?.type === "tool_use" && tools[0].paths).toHaveLength(200);
+    expect(tools[1]).not.toHaveProperty("paths");
+    expect(tools[2]).not.toHaveProperty("paths");
   });
 });

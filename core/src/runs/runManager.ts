@@ -11,6 +11,7 @@ import { JsonlLogger } from "../logs/jsonl.js";
 import { redactSecrets } from "../security/redact.js";
 import { ownedProcessKiller } from "../spawn/safeSpawn.js";
 import { events } from "../events.js";
+import { boundedPaths } from "../agents/eventPaths.js";
 import { SessionStore } from "./sessionStore.js";
 import { emulatedPrompt } from "./emulatedSession.js";
 import {
@@ -118,6 +119,8 @@ export interface PruneResult {
 /** Events kept per run (first HEAD_KEEP + tail). Applied live and on prune(). */
 const DEFAULT_EVENT_CAP = 5000;
 const HEAD_KEEP = 500;
+/** A run's `filesChanged` never lists more files than this (it is one column of the runs row). */
+const MAX_FILES_CHANGED = 5000;
 /** Queue depth allowed before create() refuses with 429 = maxConcurrentRuns * this. */
 const QUEUE_DEPTH_FACTOR = 10;
 /** How often prune() may compact the database file. */
@@ -600,11 +603,16 @@ export class RunManager {
       }
 
       const filesChanged = new Set<string>();
+      // Bounded in total as well: events are many, and each event's list is only bounded on its own.
+      const recordFile = (file: string) => {
+        if (filesChanged.size < MAX_FILES_CHANGED) filesChanged.add(file);
+      };
       let resultEvent: Extract<RunEvent, { type: "result" }> | null = null;
       let errorEvent: Extract<RunEvent, { type: "error" }> | null = null;
       const usage = new UsageFolder();
 
-      for await (const event of adapter.execute(agentRun)) {
+      for await (const produced of adapter.execute(agentRun)) {
+        const event = this.boundedEvent(produced);
         if (event.type === "started") {
           active.pid = event.pid;
           active.forceKill = event.pid == null ? undefined : ownedProcessKiller(event.pid);
@@ -638,12 +646,12 @@ export class RunManager {
           (adapter.manifest?.writeToolPattern ?? WRITE_TOOLS).test(event.tool)
         ) {
           if (event.paths) {
-            // The adapter listed the files itself (a Codex patch can touch several).
-            for (const file of event.paths) filesChanged.add(file);
+            // The adapter listed the files itself (a Codex patch can touch several); `boundedEvent` already bounded the list.
+            for (const file of event.paths) recordFile(file);
           } else {
             // Otherwise the first path-looking token of the tool's input is the file it wrote.
             const m = event.detail.match(/(?:^|[\s"'])(\/[^\s"']+|[A-Za-z]:\\[^\s"']+)/);
-            if (m?.[1]) filesChanged.add(m[1]);
+            if (m?.[1]) recordFile(m[1]);
           }
         }
         if (event.type === "result") resultEvent = event;
@@ -888,6 +896,19 @@ export class RunManager {
   }
 
   // -------------------------------------------------------------- events --
+
+  /**
+   * An adapter is code we did not necessarily write: what it claims about the
+   * files of a tool call is bounded here, where it is used, whatever the
+   * adapter does (`boundedPaths`). A `paths` that is not a list is dropped, so
+   * the run manager reads the call's `detail` as it does for any tool without one.
+   */
+  private boundedEvent(event: RunEvent): RunEvent {
+    if (event.type !== "tool_use" || event.paths === undefined) return event;
+    const { paths: claimed, ...rest } = event;
+    const paths = boundedPaths(claimed);
+    return paths ? { ...rest, paths } : rest;
+  }
 
   private persistEvent(runId: string, event: RunEvent, active?: ActiveRun): void {
     if (active && event.type === "tool_use" && event.callId) {
