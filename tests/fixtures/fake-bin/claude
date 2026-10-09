@@ -4,7 +4,8 @@
 # FAKE_ENV_DUMP=<file>: every invocation (probes included) appends the names of its environment variables.
 if [[ -n "$FAKE_ENV_DUMP" ]]; then env | cut -d= -f1 >> "$FAKE_ENV_DUMP"; fi
 case "$1" in
-  --version) echo "9.9.9-fake (Claude Code)"; exit 0 ;;
+  # FAKE_CLAUDE_VERSION=<v>: what --version reports (tested-range checks).
+  --version) echo "${FAKE_CLAUDE_VERSION:-9.9.9-fake} (Claude Code)"; exit 0 ;;
   --help)
     echo "Usage: claude [options] [command] [prompt]"
     echo "  -p, --print                  print response and exit"
@@ -43,6 +44,19 @@ fi
 echo "{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"fake-sonnet\",\"session_id\":\"$SESSION_ID\"}"
 echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Working on it."}]}}'
 echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/x"}}]}}'
+# "[[unknown:TYPE]]" in the prompt prints a line of a type no CLI version emits, twice (unrecognized-line warning).
+if [[ "$PROMPT" =~ \[\[unknown:([A-Za-z0-9_.-]+)\]\] ]]; then
+  echo "{\"type\":\"${BASH_REMATCH[1]}\"}"
+  echo "{\"type\":\"${BASH_REMATCH[1]}\"}"
+fi
+# "[[long]]" / "[[huge]]" in the prompt print one assistant line of 1 MiB / 5 MiB (the runner's line cap is 4 MiB) between the normal ones.
+for SIZE in long:1048576 huge:5242880; do
+  if [[ "$PROMPT" == *"[[${SIZE%%:*}]]"* ]]; then
+    printf '{"type":"assistant","message":{"content":[{"type":"text","text":"'
+    head -c "${SIZE##*:}" /dev/zero | tr '\0' 'x'
+    printf '"}]}}\n'
+  fi
+done
 # "[[sleep:N]]" in the prompt keeps the run alive N seconds (e2e: approvals, squads mid-flight).
 if [[ "$PROMPT" =~ \[\[sleep:([0-9]+)\]\] ]]; then sleep "${BASH_REMATCH[1]}"; fi
 if [[ "$FAKE_CLAUDE_FAIL" == "1" ]]; then

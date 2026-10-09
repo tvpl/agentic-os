@@ -317,6 +317,10 @@ export interface ProviderSnapshot {
     version: string | null;
     detail: string;
   };
+  /** Installed CLI version (`major.minor.patch`) against the range this release was developed against (older servers omit these). */
+  installedVersion?: string | null;
+  versionStatus?: Contracts.VersionStatus;
+  testedVersions?: Contracts.TestedVersions | null;
 }
 
 /** Localized display name/description keyed by UI language (e.g. "pt-BR"). */

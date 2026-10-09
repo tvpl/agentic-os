@@ -5,6 +5,8 @@ import {
   budgetDedupeKey,
   events,
   localDay,
+  installedVersion,
+  versionStatus,
   type BudgetCrossedPayload,
   type HealthStatus,
   type MetricsSample,
@@ -13,6 +15,8 @@ import {
   type ProviderId,
   type SecurityProfile,
   type TelegramPoller,
+  type TestedVersions,
+  type VersionStatus,
 } from "@mordomo/core";
 import { cliEntry, seedDir } from "./entry.js";
 import { buildProviderRegistry } from "./providers.js";
@@ -27,6 +31,12 @@ export interface ProviderSnapshot {
   enabled: boolean;
   isDefault: boolean;
   health: HealthStatus;
+  /** The `major.minor.patch` read from `health.version` (the CLI's own `--version` text); null when there is none. */
+  installedVersion: string | null;
+  /** `installedVersion` against `testedVersions`; only informs, never blocks a run. */
+  versionStatus: VersionStatus;
+  /** The range this MordomoOS release was developed against; null when the provider declares none. */
+  testedVersions: TestedVersions | null;
   defaultModel: string | null;
   defaultEffort: string;
 }
@@ -145,6 +155,9 @@ export class AppContext extends MordomoEngine {
         enabled: prefs.enabled,
         isDefault: settings.defaultProvider === id,
         health,
+        installedVersion: installedVersion(health.version),
+        versionStatus: versionStatus(manifest.testedVersions, health.version),
+        testedVersions: manifest.testedVersions ?? null,
         defaultModel: prefs.defaultModel,
         defaultEffort: prefs.defaultEffort,
       });

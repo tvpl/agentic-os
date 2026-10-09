@@ -1,0 +1,8 @@
+{"type":"thread.started","thread_id":"019a0c2e-7d41-7b20-9c3e-5f6a7b8c9d0e"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"todo_list","items":[{"text":"read the code","completed":false},{"text":"fix the bug","completed":false}]}}
+{"type":"item.updated","item":{"id":"item_0","type":"todo_list","items":[{"text":"read the code","completed":true},{"text":"fix the bug","completed":false}]}}
+{"type":"item.completed","item":{"id":"item_1","type":"web_search","query":"zod passthrough discriminated union"}}
+{"type":"item.completed","item":{"id":"item_2","type":"error","message":"command timed out"}}
+{"type":"error","message":"Reconnecting... 1/5"}
+{"type":"turn.failed","error":{"message":"stream disconnected before completion"}}

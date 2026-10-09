@@ -68,6 +68,24 @@ export interface SessionRecord {
   costUsd: number;
 }
 
+/**
+ * The CLI versions (`major.minor.patch`, both ends included) this MordomoOS
+ * release was developed against: the range its parser and fixtures follow.
+ * It is a version check, not a certification that every version inside works.
+ */
+export interface TestedVersions {
+  min: string;
+  max: string;
+}
+
+/**
+ * Where the installed CLI falls in its provider's `TestedVersions`: `tested`
+ * inside, `older` below `min`, `newer` above `max`, `unknown` when no version
+ * could be read or the provider declares no range. It only informs: a run
+ * never depends on it.
+ */
+export type VersionStatus = "tested" | "older" | "newer" | "unknown";
+
 export interface ProviderCapabilities {
   /** `read_only` is enforced by the CLI itself (sandbox / permission rules), not just asked for in the prompt. */
   enforcesReadOnly: boolean;

@@ -1,0 +1,11 @@
+{"id":"0","msg":{"type":"session_configured","session_id":"5c1d9e2a-0b7f-4e3c-8a6d-1f2e3d4c5b6a","model":"gpt-5-codex","history_log_id":0,"history_entry_count":0}}
+{"id":"0","msg":{"type":"task_started","model_context_window":272000}}
+{"id":"0","msg":{"type":"agent_reasoning","text":"Looking at the tree"}}
+{"id":"0","msg":{"type":"exec_command_begin","call_id":"call_1","command":["bash","-lc","ls"],"cwd":"/home/owner/project"}}
+{"id":"0","msg":{"type":"exec_command_end","call_id":"call_1","stdout":"README.md\n","stderr":"","exit_code":0}}
+{"id":"0","msg":{"type":"patch_apply_begin","call_id":"call_2","auto_approved":true,"changes":{"/home/owner/project/README.md":{"update":{"unified_diff":"@@ -1 +1 @@\n-a\n+b\n"}}}}}
+{"id":"0","msg":{"type":"patch_apply_end","call_id":"call_2","stdout":"Success","stderr":"","success":true}}
+{"id":"0","msg":{"type":"agent_message","message":"Updated the README."}}
+{"id":"0","msg":{"type":"token_count","info":{"total_token_usage":{"input_tokens":2400,"cached_input_tokens":1800,"output_tokens":310,"reasoning_output_tokens":120,"total_tokens":2710},"last_token_usage":{"input_tokens":2400,"cached_input_tokens":1800,"output_tokens":310,"reasoning_output_tokens":120,"total_tokens":2710},"model_context_window":272000}}}
+{"id":"0","msg":{"type":"error","message":"stream disconnected before completion"}}
+{"id":"0","msg":{"type":"task_complete","last_agent_message":"Updated the README."}}

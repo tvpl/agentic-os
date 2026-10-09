@@ -85,7 +85,13 @@ export class CursorAdapter implements AgentAdapter {
     } catch (err) {
       notes.push(`--help probe failed: ${(err as Error).message}`);
     }
-    this.detection = { installed: true, binaryPath, version, supportedFlags, notes };
+    this.detection = {
+      installed: true,
+      binaryPath,
+      version,
+      supportedFlags,
+      notes,
+    };
     return this.detection;
   }
 
@@ -238,21 +244,27 @@ export function cursorStreamParser(): LineParser {
   });
   return {
     parseLine(line: string): RunEvent[] | null {
-      let obj: Record<string, unknown>;
+      let parsed: unknown;
       try {
-        obj = JSON.parse(line) as Record<string, unknown>;
+        parsed = JSON.parse(line);
       } catch {
         return null;
       }
+      // Valid JSON that is not an object (`null`, a number, an array) is a banner, not a message: show it as text.
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+      const obj = parsed as Record<string, unknown>;
       const ts = Date.now();
       const type = obj.type as string;
       if (type === "assistant") {
-        const message = obj.message as
-          { content?: Array<Record<string, unknown>>; usage?: unknown; model?: unknown } | undefined;
+        const message = obj.message as { content?: unknown; usage?: unknown; model?: unknown } | undefined;
         const events: RunEvent[] = [];
         const turn = parseCursorUsage(message?.usage ?? obj.usage);
         if (turn) events.push(usageEvent(ts, "turn", turn, message?.model ?? obj.model));
-        for (const block of message?.content ?? []) {
+        // `content` and its blocks come from the CLI: only an array of objects is read.
+        const content: unknown[] = Array.isArray(message?.content) ? message.content : [];
+        for (const item of content) {
+          if (item === null || typeof item !== "object") continue;
+          const block = item as Record<string, unknown>;
           if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
             lastText = block.text;
             events.push({ type: "assistant", ts, text: block.text });

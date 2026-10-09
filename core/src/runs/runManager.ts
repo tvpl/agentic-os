@@ -637,8 +637,14 @@ export class RunManager {
           event.type === "tool_use" &&
           (adapter.manifest?.writeToolPattern ?? WRITE_TOOLS).test(event.tool)
         ) {
-          const m = event.detail.match(/(?:^|[\s"'])(\/[^\s"']+|[A-Za-z]:\\[^\s"']+)/);
-          if (m?.[1]) filesChanged.add(m[1]);
+          if (event.paths) {
+            // The adapter listed the files itself (a Codex patch can touch several).
+            for (const file of event.paths) filesChanged.add(file);
+          } else {
+            // Otherwise the first path-looking token of the tool's input is the file it wrote.
+            const m = event.detail.match(/(?:^|[\s"'])(\/[^\s"']+|[A-Za-z]:\\[^\s"']+)/);
+            if (m?.[1]) filesChanged.add(m[1]);
+          }
         }
         if (event.type === "result") resultEvent = event;
         if (event.type === "error") errorEvent = event;

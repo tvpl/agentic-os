@@ -22,5 +22,8 @@ export const codexManifest: ProviderManifest = {
     commandsDir: null,
   },
   homeConfigFiles: [".codex/config.toml"],
-  writeToolPattern: /^(apply_patch|write|edit|create_file)/i,
+  writeToolPattern: /^(apply_patch|write|edit|create_file|file_change)/i,
+  // The range this release was developed against: the base is where the `item.*` event format starts, the top is the CLI
+  // @openai/codex-sdk 0.160.1 drives (whose types the fixtures follow). No real CLI was run to certify it.
+  testedVersions: { min: "0.100.0", max: "0.160.1" },
 };

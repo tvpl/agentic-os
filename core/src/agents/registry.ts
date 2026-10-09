@@ -13,9 +13,9 @@
  */
 import { ProviderId } from "../config/schema.js";
 import type { AgentAdapter } from "./types.js";
-import type { ProviderCapabilities } from "@mordomo/contracts";
+import type { ProviderCapabilities, TestedVersions, VersionStatus } from "@mordomo/contracts";
 
-export type { ProviderCapabilities };
+export type { ProviderCapabilities, TestedVersions, VersionStatus };
 
 /** Where the compiled views of the canonical skills/routers live for a provider (paths relative to the target dir). */
 export interface ProviderNativeLayout {
@@ -44,6 +44,55 @@ export interface ProviderManifest {
   homeConfigFiles: string[];
   /** Tool names (case-insensitive prefix match) that mean "a file was written", for `filesChanged` detection. */
   writeToolPattern: RegExp;
+  /**
+   * The CLI versions this MordomoOS release was developed against (see
+   * `TestedVersions`). Optional: a provider without a range reads as `unknown`.
+   * The provider snapshot compares the installed CLI with it (`versionStatus`).
+   */
+  testedVersions?: TestedVersions;
+}
+
+const SEMVER = /(\d+)\.(\d+)\.(\d+)/;
+
+function semverOf(text: string | null | undefined): [number, number, number] | null {
+  const m = text ? SEMVER.exec(text) : null;
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+function compareSemver(a: [number, number, number], b: [number, number, number]): number {
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i]! - b[i]!;
+  return 0;
+}
+
+/**
+ * The `major.minor.patch` a CLI's `--version` output starts with (the first one
+ * found: the contract is that the CLI names its own version before anything
+ * else), or null when there is none. A pre-release tag (`2.1.0-beta.1`) is
+ * ignored, so it reads as the release.
+ */
+export function installedVersion(versionOutput: string | null | undefined): string | null {
+  const v = semverOf(versionOutput);
+  return v ? v.join(".") : null;
+}
+
+/**
+ * Where the installed CLI falls in the range this release was developed
+ * against (`min` and `max` included). This is a version check, not a
+ * certification: `unknown` when the output has no version, or the provider
+ * declares no range, or the range is malformed. The one place this is computed
+ * (the provider snapshot); a pre-release compares equal to its release.
+ */
+export function versionStatus(
+  range: TestedVersions | undefined,
+  versionOutput: string | null,
+): VersionStatus {
+  const installed = semverOf(versionOutput);
+  const min = semverOf(range?.min);
+  const max = semverOf(range?.max);
+  if (!installed || !min || !max) return "unknown";
+  if (compareSemver(installed, min) < 0) return "older";
+  if (compareSemver(installed, max) > 0) return "newer";
+  return "tested";
 }
 
 export interface AdapterFactoryOptions {

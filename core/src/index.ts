@@ -70,7 +70,16 @@ export type {
   ValidationResult,
   HealthStatus,
 } from "./agents/types.js";
-export { executeInvocation, type LineParser } from "./agents/baseExec.js";
+export { resumableSessionId } from "./agents/resumeId.js";
+export { executeInvocation, MAX_LINE_CHARS, type LineParser } from "./agents/baseExec.js";
+export {
+  createUnrecognizedTally,
+  readTypedLine,
+  type RejectedLine,
+  type TypedLine,
+  type UnrecognizedTally,
+} from "./agents/streamTally.js";
+export { ClaudeStreamMessage, CodexStreamEvent, KnownStreamTypes } from "@mordomo/contracts";
 export {
   augmentedPath,
   findExecutable,
@@ -201,8 +210,12 @@ export { INDEX_CHUNK_SIZE, type IndexProgress } from "./memory/indexer.js"; // B
 export {
   ProviderRegistry,
   ProviderRegistryError,
+  versionStatus,
+  installedVersion,
   type ProviderManifest,
   type ProviderCapabilities,
+  type TestedVersions,
+  type VersionStatus,
   type ProviderNativeLayout,
   type AdapterFactory,
   type AdapterFactoryOptions,

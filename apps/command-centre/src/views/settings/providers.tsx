@@ -102,6 +102,17 @@ export function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
               </Button>
             </div>
           </div>
+          {(prov.versionStatus === "older" || prov.versionStatus === "newer") &&
+            prov.installedVersion &&
+            prov.testedVersions && (
+              <p className="meta" role="note">
+                {t(prov.versionStatus === "older" ? "settings.versionOlder" : "settings.versionNewer", {
+                  version: prov.installedVersion,
+                  min: prov.testedVersions.min,
+                  max: prov.testedVersions.max,
+                })}
+              </p>
+            )}
           {prov.health.installed && prov.health.authenticated !== true && prov.loginCommand && (
             <div className="auth-recovery">
               <p>{t("settings.authRecoveryHint")}</p>

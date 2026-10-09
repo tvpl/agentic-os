@@ -23,4 +23,7 @@ export const claudeManifest: ProviderManifest = {
   },
   homeConfigFiles: [".claude.json", ".claude/settings.json"],
   writeToolPattern: /^(write|edit|multiedit|notebookedit|create_file)/i,
+  // The range this release was developed against: the top is the CLI bundled with @anthropic-ai/claude-agent-sdk 0.3.291,
+  // whose types the stream fixtures follow; the base is the first 2.x. No real CLI was run to certify it.
+  testedVersions: { min: "2.0.0", max: "2.1.291" },
 };

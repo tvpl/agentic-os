@@ -81,6 +81,13 @@ export type RunEvent = (
       ts: number;
       tool: string;
       detail: string;
+      /**
+       * Files the tool wrote, when the adapter knows them structurally (a Codex
+       * `file_change` lists every path of its patch). Additive: absent for tools
+       * whose files only appear inside `detail`, which the run manager then reads
+       * as before. Paths are verbatim (never JSON-escaped), at most 200 per event.
+       */
+      paths?: string[];
       callId?: string;
       phase?: "start" | "end";
       durationMs?: number;

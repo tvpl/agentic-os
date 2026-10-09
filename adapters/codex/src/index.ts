@@ -2,6 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  CodexStreamEvent,
+  KnownStreamTypes,
+  createUnrecognizedTally,
   executeInvocation,
   findExecutable,
   parseHelpFlags,
@@ -17,6 +20,9 @@ import {
   type SafeInvocation,
   type ValidationResult,
   type AdapterFactoryOptions,
+  readTypedLine,
+  resumableSessionId,
+  type RejectedLine,
 } from "@mordomo/core";
 import { codexManifest } from "./manifest.js";
 
@@ -92,7 +98,13 @@ export class CodexAdapter implements AgentAdapter {
     } catch (err) {
       notes.push(`exec --help probe failed: ${(err as Error).message}`);
     }
-    this.detection = { installed: true, binaryPath, version, supportedFlags, notes };
+    this.detection = {
+      installed: true,
+      binaryPath,
+      version,
+      supportedFlags,
+      notes,
+    };
     return this.detection;
   }
 
@@ -142,7 +154,7 @@ export class CodexAdapter implements AgentAdapter {
 
   /** True when this run asked to resume and the installed CLI can do it. */
   private async canResume(run: AgentRun): Promise<boolean> {
-    if (!run.resume?.providerSessionId) return false;
+    if (!resumableSessionId(run)) return false;
     if (this.manifest.capabilities.resume !== "subcommand") return false;
     if (!this.detection) await this.detect();
     return this.resumeSupported;
@@ -150,7 +162,7 @@ export class CodexAdapter implements AgentAdapter {
 
   async buildInvocation(run: AgentRun): Promise<SafeInvocation> {
     const detection = this.detection ?? (await this.detect());
-    const resumeId = (await this.canResume(run)) ? run.resume?.providerSessionId : undefined;
+    const resumeId = (await this.canResume(run)) ? resumableSessionId(run) : undefined;
     const args: string[] = ["exec"];
     if (resumeId) args.push("resume");
     if (detection.supportedFlags.includes("--json")) args.push("--json");
@@ -186,7 +198,7 @@ export class CodexAdapter implements AgentAdapter {
     const build = (r: AgentRun) => this.buildInvocation(r);
     const canResume = (r: AgentRun) => this.canResume(r);
     return (async function* () {
-      const wanted = Boolean(run.resume?.providerSessionId);
+      const wanted = Boolean(resumableSessionId(run));
       const resuming = await canResume(run);
       const invocation = await build(run);
       if (wanted && !resuming) {
@@ -239,12 +251,107 @@ export function parseCodexUsage(
   };
 }
 
+type CodexItem = Extract<CodexStreamEvent, { type: "item.completed" }>["item"];
+type CodexLegacyItem = Extract<CodexItem, { item_type: string }>;
+type CodexLegacyEvent = Extract<CodexStreamEvent, { msg: unknown }>;
+type CodexLegacyMsg = CodexLegacyEvent["msg"];
+
+// The schemas are passthrough objects, whose types carry an index signature: `in` does not narrow them, a guard does.
+const isLegacyItem = (item: CodexItem): item is CodexLegacyItem => "item_type" in item;
+const isLegacyEvent = (event: CodexStreamEvent): event is CodexLegacyEvent => "msg" in event;
+const isTokenCount = (msg: CodexLegacyMsg): msg is Extract<CodexLegacyMsg, { type: "token_count" }> =>
+  msg.type === "token_count";
+
+/** What the parser reads of an item, in either spelling (`item.type` or `item.item_type`). */
+interface ItemView {
+  kind: string;
+  id?: string | undefined;
+  text?: string | undefined;
+  command?: string | undefined;
+  path?: string | undefined;
+  status?: string | undefined;
+  message?: string | undefined;
+  changes?: Array<{ path: string }> | undefined;
+}
+
+function viewOf(item: CodexItem): ItemView {
+  if (isLegacyItem(item)) {
+    const { id, text, command, path: file, status, changes } = item;
+    return { kind: item.item_type, id, text, command, path: file, status, changes };
+  }
+  switch (item.type) {
+    case "agent_message":
+      return { kind: item.type, id: item.id, text: item.text };
+    case "command_execution":
+      return { kind: item.type, id: item.id, command: item.command, status: item.status };
+    case "file_change":
+      return { kind: item.type, id: item.id, status: item.status, changes: item.changes };
+    case "mcp_tool_call":
+      return { kind: item.type, id: item.id, status: item.status };
+    case "error":
+      return { kind: item.type, id: item.id, message: item.message };
+    default:
+      return { kind: item.type, id: item.id };
+  }
+}
+
+/**
+ * At most this many paths ride on one `tool_use` event, and none longer than
+ * `MAX_PATH_CHARS`: the event is journaled whole, so a patch of thousands of
+ * files (or a hostile line) must not make one enormous row. A patch beyond the
+ * cap records its first 200 files.
+ */
+const MAX_PATHS = 200;
+const MAX_PATH_CHARS = 4096;
+
+function changedPaths(changes: Array<{ path: string }> | undefined): string[] | undefined {
+  if (!changes) return undefined;
+  return changes
+    .map((c) => c.path)
+    .filter((p) => p.length > 0 && p.length <= MAX_PATH_CHARS)
+    .slice(0, MAX_PATHS);
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === "object" && !Array.isArray(v);
+
+/** Names a rejected line for the warning: its type (with the item's, for `item.*`), and whether the schema has it. */
+function describeCodexLine(value: Record<string, unknown>): RejectedLine {
+  const type = value.type;
+  if (typeof type === "string") {
+    const item = value.item;
+    if (isRecord(item)) {
+      const legacy = typeof item.item_type === "string";
+      const kind = legacy ? item.item_type : item.type;
+      if (typeof kind === "string") {
+        const known = KnownStreamTypes.codex.has(type) && (legacy || KnownStreamTypes.codexItem.has(kind));
+        return { name: `${type}/${kind}`, known };
+      }
+    }
+    return { name: type, known: KnownStreamTypes.codex.has(type) };
+  }
+  // The oldest shape has no top-level `type`; its `msg.type` is any string, so such a line fails on a field.
+  const msg = value.msg;
+  if (isRecord(msg) && typeof msg.type === "string") return { name: `msg.${msg.type}`, known: true };
+  return { known: false };
+}
+
+/** A failed turn or a stream error is never silent: it becomes a line of the trace. */
+const failure = (ts: number, what: string, message: string | undefined): RunEvent => ({
+  type: "text",
+  ts,
+  stream: "stderr",
+  text: `[codex] ${what}${message ? `: ${message.slice(0, 400)}` : ""}`,
+});
+
 /**
  * Codex --json emits JSONL events; shapes vary across versions
- * ("item.completed" items, or msg-typed events). Parse defensively.
- * Exported for tests.
+ * ("item.completed" items, or msg-typed events). Each line is checked against
+ * `CodexStreamEvent` first: a JSON object that matches no known event is
+ * counted, never read, and `finish()` names the count once. Exported for tests.
  */
 export function codexStreamParser(): LineParser {
+  const unknown = createUnrecognizedTally("codex");
   let lastMessage = "";
   let model: string | null = null;
   // The conversation id repeats on later lines; report it only when it changes.
@@ -259,105 +366,121 @@ export function codexStreamParser(): LineParser {
   });
   return {
     parseLine(line: string): RunEvent[] | null {
-      let obj: Record<string, unknown>;
-      try {
-        obj = JSON.parse(line) as Record<string, unknown>;
-      } catch {
-        return null;
-      }
+      const read = readTypedLine(line, CodexStreamEvent, unknown, describeCodexLine);
+      if (!read.ok) return read.events;
+      const data = read.data;
       const ts = Date.now();
-      const type = String(obj.type ?? "");
-      if (typeof obj.model === "string") model = obj.model;
+      if (data.model) model = data.model;
 
       // Conversation id, whichever spelling this CLI version uses.
-      const msgObj = obj.msg as Record<string, unknown> | undefined;
-      const conversationId = [obj.session_id, obj.thread_id, msgObj?.session_id].find(
-        (v): v is string => typeof v === "string" && v.length > 0,
-      );
       const sessionEvents: RunEvent[] = [];
+      const conversationId = isLegacyEvent(data)
+        ? (data.session_id ?? data.msg.session_id)
+        : data.type === "thread.started"
+          ? data.thread_id
+          : undefined;
       if (conversationId && conversationId !== seenSessionId) {
         seenSessionId = conversationId;
         sessionEvents.push({ type: "session", ts, providerSessionId: conversationId });
       }
 
-      // Newer shape: {"type":"turn.completed","usage":{"input_tokens":..,"output_tokens":..}}
-      if (type === "turn.completed") {
-        const parsed = parseCodexUsage(obj.usage);
-        return parsed ? [...sessionEvents, usageEvent(ts, parsed)] : sessionEvents;
-      }
-
-      // Newer shape: {"type":"item.completed","item":{"item_type"/"type": "...", "text": ...}}
-      const item = obj.item as Record<string, unknown> | undefined;
-      if (item) {
-        const itemType = String(item.item_type ?? item.type ?? "");
-        if (itemType.includes("agent_message") || itemType === "assistant_message") {
-          const text = String(item.text ?? "");
-          if (text.trim()) {
-            lastMessage = text;
-            return [...sessionEvents, { type: "assistant", ts, text }];
-          }
-          return sessionEvents;
-        }
-        if (
-          itemType.includes("command") ||
-          itemType.includes("tool") ||
-          itemType.includes("patch") ||
-          itemType.includes("file")
-        ) {
-          return [
-            {
-              type: "tool_use",
-              ts,
-              tool: itemType,
-              detail: JSON.stringify({ command: item.command, path: item.path, status: item.status }).slice(
-                0,
-                400,
-              ),
-              ...(typeof item.id === "string" ? { callId: item.id } : {}),
-              phase: type === "item.completed" ? "end" : "start",
-              ...(type === "item.completed"
-                ? {
-                    outcome: String(item.status ?? "")
-                      .toLowerCase()
-                      .includes("fail")
-                      ? ("error" as const)
-                      : ("ok" as const),
-                  }
-                : {}),
-            },
-          ];
-        }
-        if (itemType.includes("reasoning")) return sessionEvents;
-      }
-
       // Older shape: {"msg":{"type":"agent_message","message":"..."}}
-      const msg = msgObj;
-      if (msg) {
-        const msgType = String(msg.type ?? "");
-        if (msgType === "agent_message" && typeof msg.message === "string") {
+      if (isLegacyEvent(data)) {
+        const msg: CodexLegacyMsg = data.msg;
+        if (msg.type === "agent_message" && typeof msg.message === "string") {
           lastMessage = msg.message;
           return [...sessionEvents, { type: "assistant", ts, text: msg.message }];
         }
-        if (msgType.includes("exec") || msgType.includes("patch")) {
-          return [{ type: "tool_use", ts, tool: msgType, detail: JSON.stringify(msg).slice(0, 400) }];
+        if (msg.type.includes("exec") || msg.type.includes("patch")) {
+          return [
+            ...sessionEvents,
+            { type: "tool_use", ts, tool: msg.type, detail: JSON.stringify(msg).slice(0, 400) },
+          ];
         }
-        if (msgType === "error" && typeof msg.message === "string") {
-          return [{ type: "permission", ts, detail: msg.message.slice(0, 400) }];
+        if (msg.type === "error" && typeof msg.message === "string") {
+          return [...sessionEvents, { type: "permission", ts, detail: msg.message.slice(0, 400) }];
         }
         // Older shape: {"msg":{"type":"token_count","info":{"total_token_usage":{...},"last_token_usage":{...}}}}
-        if (msgType === "token_count") {
-          const info = msg.info as Record<string, unknown> | undefined;
+        if (isTokenCount(msg)) {
           const parsed = parseCodexUsage(
-            info?.total_token_usage ?? msg.total_token_usage ?? msg.token_usage ?? info?.token_usage,
+            msg.info?.total_token_usage ?? msg.total_token_usage ?? msg.token_usage ?? msg.info?.token_usage,
           );
           return parsed ? [...sessionEvents, usageEvent(ts, parsed)] : sessionEvents;
         }
         return sessionEvents;
       }
-      return sessionEvents;
+
+      switch (data.type) {
+        // Newer shape: {"type":"turn.completed","usage":{"input_tokens":..,"output_tokens":..}}
+        case "turn.completed": {
+          const parsed = parseCodexUsage(data.usage);
+          return parsed ? [...sessionEvents, usageEvent(ts, parsed)] : sessionEvents;
+        }
+        case "turn.failed":
+          return [...sessionEvents, failure(ts, "turn failed", data.error?.message)];
+        case "error":
+          return [...sessionEvents, failure(ts, "error", data.message)];
+        case "item.started":
+        case "item.updated":
+        case "item.completed":
+          return [...sessionEvents, ...itemEvents(data.type, viewOf(data.item), ts)];
+        default:
+          return sessionEvents;
+      }
     },
     summarize(stdout: string): string {
       return (lastMessage || stdout.slice(-2000)).slice(0, 2000);
     },
+    finish: () => unknown.warning(),
+    dropped: () => unknown.noteUnreadable(),
   };
+
+  /** Events of a newer-shape `item.*` line: {"type":"item.completed","item":{"type"/"item_type": "...", "text": ...}} */
+  function itemEvents(
+    type: "item.started" | "item.updated" | "item.completed",
+    item: ItemView,
+    ts: number,
+  ): RunEvent[] {
+    if (item.kind.includes("agent_message") || item.kind === "assistant_message") {
+      if (item.text?.trim()) {
+        lastMessage = item.text;
+        return [{ type: "assistant", ts, text: item.text }];
+      }
+      return [];
+    }
+    if (item.kind === "error") {
+      return type === "item.completed" ? [failure(ts, "error", item.message)] : [];
+    }
+    if (
+      item.kind.includes("command") ||
+      item.kind.includes("tool") ||
+      item.kind.includes("patch") ||
+      item.kind.includes("file")
+    ) {
+      const paths = changedPaths(item.changes);
+      return [
+        {
+          type: "tool_use",
+          ts,
+          tool: item.kind,
+          detail: JSON.stringify({ command: item.command, path: item.path, status: item.status }).slice(
+            0,
+            400,
+          ),
+          // The files a patch wrote travel as data, not as text in `detail` (which is cut at 400 characters).
+          ...(paths ? { paths } : {}),
+          ...(item.id !== undefined ? { callId: item.id } : {}),
+          phase: type === "item.completed" ? "end" : "start",
+          ...(type === "item.completed"
+            ? {
+                outcome: (item.status ?? "").toLowerCase().includes("fail")
+                  ? ("error" as const)
+                  : ("ok" as const),
+              }
+            : {}),
+        },
+      ];
+    }
+    return [];
+  }
 }

@@ -3,6 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  ClaudeStreamMessage,
+  KnownStreamTypes,
+  resumableSessionId,
+  createUnrecognizedTally,
   executeInvocation,
   findExecutable,
   parseHelpFlags,
@@ -18,6 +22,7 @@ import {
   type SafeInvocation,
   type ValidationResult,
   type AdapterFactoryOptions,
+  readTypedLine,
 } from "@mordomo/core";
 import { claudeManifest } from "./manifest.js";
 
@@ -91,7 +96,13 @@ export class ClaudeAdapter implements AgentAdapter {
     } catch (err) {
       notes.push(`--help probe failed: ${(err as Error).message}`);
     }
-    this.detection = { installed: true, binaryPath, version, supportedFlags, notes };
+    this.detection = {
+      installed: true,
+      binaryPath,
+      version,
+      supportedFlags,
+      notes,
+    };
     return this.detection;
   }
 
@@ -200,7 +211,7 @@ export class ClaudeAdapter implements AgentAdapter {
   async buildInvocation(run: AgentRun, newSessionId: string = crypto.randomUUID()): Promise<SafeInvocation> {
     const detection = await this.ensureDetection();
     const args = ["-p", "--output-format", "stream-json", "--verbose"];
-    const resumeId = run.resume?.providerSessionId;
+    const resumeId = resumableSessionId(run);
     if (resumeId && detection.supportedFlags.includes("--resume")) {
       args.push("--resume", resumeId);
     } else if (!resumeId && detection.supportedFlags.includes("--session-id")) {
@@ -259,7 +270,7 @@ export class ClaudeAdapter implements AgentAdapter {
     const build = (r: AgentRun, sessionId: string) => this.buildInvocation(r, sessionId);
     const detect = () => this.ensureDetection();
     return (async function* () {
-      const resumeId = run.resume?.providerSessionId;
+      const resumeId = resumableSessionId(run);
       const providerSessionId = resumeId ?? crypto.randomUUID();
       const detection = await detect();
       const invocation = await build(run, providerSessionId);
@@ -350,8 +361,20 @@ export function dominantModel(modelUsage: unknown): string | null {
   return best?.model ?? null;
 }
 
-/** Parser for Claude Code's stream-json (one JSON object per line). Exported for tests. */
+/** Names a rejected line for the warning: its type, and whether the schema has that type. */
+const describeClaudeLine = (value: Record<string, unknown>) =>
+  typeof value.type === "string"
+    ? { name: value.type, known: KnownStreamTypes.claude.has(value.type) }
+    : { known: false };
+
+/**
+ * Parser for Claude Code's stream-json (one JSON object per line). Each line
+ * is checked against `ClaudeStreamMessage` first: a JSON object that matches no
+ * known message is counted, never read, and `finish()` names the count once.
+ * Exported for tests.
+ */
 export function claudeStreamParser(): LineParser {
+  const unknown = createUnrecognizedTally("claude");
   let lastAssistantText = "";
   let resultText = "";
   let sessionModel: string | null = null;
@@ -360,55 +383,61 @@ export function claudeStreamParser(): LineParser {
   let seenSessionId: string | null = null;
   return {
     parseLine(line: string): RunEvent[] | null {
-      let obj: Record<string, unknown>;
-      try {
-        obj = JSON.parse(line) as Record<string, unknown>;
-      } catch {
-        return null;
-      }
+      const read = readTypedLine(line, ClaudeStreamMessage, unknown, describeClaudeLine);
+      if (!read.ok) return read.events;
+      const obj = read.data;
       const ts = Date.now();
-      const type = obj.type as string;
       const sessionEvents: RunEvent[] = [];
-      if (typeof obj.session_id === "string" && obj.session_id && obj.session_id !== seenSessionId) {
+      if (obj.session_id && obj.session_id !== seenSessionId) {
         seenSessionId = obj.session_id;
         sessionEvents.push({ type: "session", ts, providerSessionId: obj.session_id });
       }
-      if (type === "system") {
-        const subtype = (obj.subtype as string) ?? "";
-        if (subtype === "init" && typeof obj.model === "string") sessionModel = obj.model;
-        return subtype === "init"
+      // A `usage` block that does not match its schema is ignored so the rest of
+      // the line (text, tool calls, cost) is kept; it is still counted, so the
+      // warning shows the drift.
+      const ignoredUsage = (raw: unknown, parsed: unknown) => {
+        if (raw != null && parsed === undefined) unknown.note(read.value, { name: obj.type, known: true });
+      };
+      if (obj.type === "system") {
+        if (obj.subtype === "init" && obj.model !== undefined) sessionModel = obj.model;
+        return obj.subtype === "init"
           ? [
               ...sessionEvents,
               {
                 type: "text",
                 ts,
                 stream: "stdout",
-                text: `[claude session started: model=${(obj.model as string) ?? "?"}]`,
+                text: `[claude session started: model=${obj.model ?? "?"}]`,
               },
             ]
           : sessionEvents;
       }
-      if (type === "assistant" || type === "user") {
-        const message = obj.message as
-          { content?: Array<Record<string, unknown>>; usage?: unknown; model?: unknown } | undefined;
+      if (obj.type === "assistant" || obj.type === "user") {
+        const message = obj.message;
         const events: RunEvent[] = [...sessionEvents];
         // Per-turn usage (context meter): one event per assistant message.
-        const turn = type === "assistant" ? parseClaudeUsage(message?.usage) : null;
-        if (turn) {
-          const model = typeof message?.model === "string" ? message.model : sessionModel;
-          events.push({
-            type: "usage",
-            ts,
-            scope: "turn",
-            ...turn,
-            costUsd: null,
-            ...(model ? { model } : {}),
-          });
+        if (obj.type === "assistant") {
+          ignoredUsage((read.value.message as { usage?: unknown }).usage, message.usage);
+          const turn = parseClaudeUsage(message.usage);
+          if (turn) {
+            const model = message.model ?? sessionModel;
+            events.push({
+              type: "usage",
+              ts,
+              scope: "turn",
+              ...turn,
+              costUsd: null,
+              ...(model ? { model } : {}),
+            });
+          }
         }
-        for (const block of message?.content ?? []) {
+        for (const block of Array.isArray(message.content) ? message.content : []) {
           if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
-            lastAssistantText = block.text;
-            if (type === "assistant") events.push({ type: "assistant", ts, text: block.text });
+            // The summary is the assistant's last words, never the user's turn.
+            if (obj.type === "assistant") {
+              lastAssistantText = block.text;
+              events.push({ type: "assistant", ts, text: block.text });
+            }
           } else if (block.type === "tool_use") {
             const input = JSON.stringify(block.input ?? {});
             events.push({
@@ -427,7 +456,7 @@ export function claudeStreamParser(): LineParser {
               detail: JSON.stringify(block.content ?? "").slice(0, 300),
               ...(typeof block.tool_use_id === "string" ? { callId: block.tool_use_id } : {}),
               phase: "end",
-              outcome: block.is_error ? "error" : "ok",
+              outcome: "error",
             });
             events.push({
               type: "permission",
@@ -438,12 +467,13 @@ export function claudeStreamParser(): LineParser {
         }
         return events;
       }
-      if (type === "result") {
-        resultText = typeof obj.result === "string" ? obj.result : lastAssistantText;
+      if (obj.type === "result") {
+        ignoredUsage(read.value.usage, obj.usage);
+        resultText = obj.result ?? lastAssistantText;
         // Session totals: tokens + cost. The lifecycle `result` event itself is
         // emitted by the runner with the exit code.
         const total = parseClaudeUsage(obj.usage);
-        const cost = typeof obj.total_cost_usd === "number" ? obj.total_cost_usd : null;
+        const cost = obj.total_cost_usd ?? null;
         if (total || cost != null) {
           const model = dominantModel(obj.modelUsage) ?? sessionModel;
           return [
@@ -468,5 +498,7 @@ export function claudeStreamParser(): LineParser {
     summarize(): string {
       return (resultText || lastAssistantText).slice(0, 2000);
     },
+    finish: () => unknown.warning(),
+    dropped: () => unknown.noteUnreadable(),
   };
 }

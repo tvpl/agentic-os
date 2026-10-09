@@ -24,4 +24,5 @@ export const cursorManifest: ProviderManifest = {
   },
   homeConfigFiles: [".cursor/mcp.json"],
   writeToolPattern: /^(write|edit|multiedit|create_file|str_replace)/i,
+  // No `testedVersions`: there is no published schema or recording of cursor-agent to anchor a range on, so its status reads `unknown`.
 };

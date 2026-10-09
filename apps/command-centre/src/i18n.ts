@@ -499,6 +499,10 @@ const baseEn = {
   "settings.copyLoginCommand": "Copy login command",
   "settings.authRecoveryHint":
     "Login is not verified. Sign in through the provider CLI, then verify again. Existing tasks will not be retried automatically.",
+  "settings.versionOlder":
+    "Installed version {version} is older than the range this MordomoOS release was developed against ({min}–{max}). Runs still go ahead; update the CLI if something looks wrong.",
+  "settings.versionNewer":
+    "Installed version {version} is newer than the range this MordomoOS release was developed against ({min}–{max}). Runs still go ahead; if usage, cost or changed files look incomplete, update MordomoOS.",
   "brain.sourceMissing": "This source was moved or removed. Refresh the index and choose an existing file.",
   "brain.indexUnavailable":
     "A configured folder could not be read. The previous index was preserved. Check folder access or update indexed folders in Settings, then try again.",
@@ -1106,6 +1110,10 @@ const basePtBR = {
   "settings.copyLoginCommand": "Copiar comando de login",
   "settings.authRecoveryHint":
     "O login não está verificado. Autentique-se pela CLI do provedor e verifique novamente. As tarefas existentes não serão repetidas automaticamente.",
+  "settings.versionOlder":
+    "A versão instalada {version} é mais antiga que a faixa com que esta versão do MordomoOS foi desenvolvida ({min}–{max}). As execuções seguem normalmente; atualize a CLI se algo parecer errado.",
+  "settings.versionNewer":
+    "A versão instalada {version} é mais recente que a faixa com que esta versão do MordomoOS foi desenvolvida ({min}–{max}). As execuções seguem normalmente; se o uso, o custo ou os arquivos alterados parecerem incompletos, atualize o MordomoOS.",
   "brain.sourceMissing":
     "Esta fonte foi movida ou removida. Atualize o índice e selecione um arquivo existente.",
   "brain.indexUnavailable":
