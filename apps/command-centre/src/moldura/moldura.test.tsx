@@ -1281,7 +1281,7 @@ describe("R2.5 the frame is stable and holds in every theme", () => {
   });
 });
 
-/* ---- Rodada 3: what the first verification found no proof for ----------- */
+/* ---- Verification round 1: what it found no proof for ------------------ */
 const press = (target: Element) => fireEvent.pointerDown(target);
 const iconMarkup = (Icon: ComponentType<{ className?: string }>) => {
   const holder = document.createElement("div");
@@ -1289,7 +1289,7 @@ const iconMarkup = (Icon: ComponentType<{ className?: string }>) => {
   return holder.querySelector("svg")!.innerHTML;
 };
 
-describe("R3.1 what the sidebar draws", () => {
+describe("V1.1 what the sidebar draws", () => {
   it("C62 the brand is the installation's name and every item has its own icon", async () => {
     await mountShell("/");
     const brand = () => nav().querySelector<HTMLElement>(".mold-brand")!;
@@ -1321,7 +1321,7 @@ describe("R3.1 what the sidebar draws", () => {
   });
 });
 
-describe("R3.2 the ways out of what covers the content", () => {
+describe("V1.2 the ways out of what covers the content", () => {
   it("C63 the conversation closes with its own button, wide and narrow", async () => {
     await mountShell("/");
     const close = () => within(aside()).getByRole("button", { name: "Fechar conversa" });
@@ -1389,9 +1389,11 @@ describe("R3.2 the ways out of what covers the content", () => {
     await mountShell("/");
     for (const init of [{ ctrlKey: true }, { metaKey: true }]) {
       const label = JSON.stringify(init);
-      fireEvent.keyDown(document.body, { key: "k", ...init });
+      // `fireEvent` answers false when the handler cancelled the event: the browser's own ⌘K / Ctrl K
+      // (the address bar, the search box) must not also run.
+      expect(fireEvent.keyDown(document.body, { key: "k", ...init }), label).toBe(false);
       await waitFor(() => expect(screen.queryByRole("combobox"), label).not.toBeNull());
-      fireEvent.keyDown(document.body, { key: "k", ...init });
+      expect(fireEvent.keyDown(document.body, { key: "k", ...init }), label).toBe(false);
       await waitFor(() => expect(screen.queryByRole("combobox"), label).toBeNull());
     }
   });
@@ -1410,7 +1412,7 @@ describe("R3.2 the ways out of what covers the content", () => {
   });
 });
 
-describe("R3.3 what the rest of the app can ask of the frame", () => {
+describe("V1.3 what the rest of the app can ask of the frame", () => {
   it("C67 a panel id opens the page or drawer that shows the same thing", async () => {
     await mountShell("/runs");
     await waitFor(() => expect(consoleActions.current).not.toBeNull());
@@ -1474,7 +1476,7 @@ describe("R3.3 what the rest of the app can ask of the frame", () => {
   });
 });
 
-describe("R3.4 the breakpoint and what belongs to the Núcleo", () => {
+describe("V1.4 the breakpoint and what belongs to the Núcleo", () => {
   it("C70 900 px is wide and 899 px is narrow", async () => {
     for (const [width, narrow] of [
       [900, false],
@@ -1505,7 +1507,7 @@ describe("R3.4 the breakpoint and what belongs to the Núcleo", () => {
   });
 });
 
-describe("R3.5 time passes", () => {
+describe("V1.5 time passes", () => {
   /** Mount with the clock in the test's hands: the shell, the retry and midnight all use timers. */
   async function mountWithClock(start: Date, beforeMount?: () => void) {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });

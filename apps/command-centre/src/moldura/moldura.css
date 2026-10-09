@@ -529,6 +529,9 @@
   z-index: calc(var(--z-drawer) + 1);
   background: color-mix(in srgb, var(--bg) 60%, transparent);
 }
+/* The search as an icon is one state with two conditions, so two rules: a narrow window (here) and
+   a centre column under 641 px (the @container rule below). Each one is the only one acting
+   somewhere, which is why the browser checks sample both ranges (C51, C57). */
 .mold[data-narrow] .mold-search {
   flex: 0 0 var(--mold-search-min);
 }

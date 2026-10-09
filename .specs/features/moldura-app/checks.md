@@ -114,7 +114,7 @@ Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/nu
 Status: closed
 Note: 33 of 35 pass; `:90` (the spine travels…) and `:165` (a transition leaves exactly one interactive scene…) fail the same way at `f1de763`, before this feature, in every run - pre-existing, not a regression
 Note: re-run after round 2 (the Núcleo now uses `desktop/shellActions.ts`; `dialog.tsx` gained the in-place dialog): 34 of 35 pass, only `:165` fails (`:90` is flaky and passed); the same-shape failure of `:165` is pre-existing. A run on a loaded machine whose server was killed by another process (SIGTERM) failed everything after `:165` with connection refused - that run proves nothing and was repeated
-Note: rodada 4, em `fix/moldura-r2` (com as regras de `theme.css` e `theme.tsx` das rodadas 3 e 4): 32 de 35 passam; `:90` e `:165` falham como antes da feature (pré-existentes, as duas notas acima) e `:1125` falhou uma vez sob carga e passou sozinho (`-g`); o Núcleo não usa nada do que a moldura mudou
+Note: correção do round 2, em `fix/moldura-r2` (com as regras de `theme.css` e `theme.tsx` das correções dos rounds 1 e 2): 32 de 35 passam; `:90` e `:165` falham como antes da feature (pré-existentes, as duas notas acima) e `:1125` falhou uma vez sob carga e passou sozinho (`-g`); o Núcleo não usa nada do que a moldura mudou
 
 **C23** - Os textos novos têm chave em `en` e em `ptBR` (o teste de paridade de locales passa) (AC 2, AC 10, AC 15, AC 17)
 Proof: `npm run test -w apps/command-centre -- src/i18n.test.ts`
@@ -233,7 +233,7 @@ Status: closed
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C50 the narrow sidebar unfolds over the content"`
 Status: closed
 
-**C51** - Em 360, 600 e 800 de largura, a barra superior não transborda (`scrollWidth <= clientWidth`), busca, sino e Conversa mantêm caixa de pelo menos 30 px e a página não tem rolagem horizontal (AC 7, AC 21)
+**C51** - Em 360, 600, 720, 800 e 880 de largura, a barra superior não transborda (`scrollWidth <= clientWidth`), busca, sino e Conversa mantêm caixa de pelo menos 30 px, a página não tem rolagem horizontal, e a busca é uma caixa de 44 px só com o ícone: sem texto nem dica e nada do conteúdo para fora da caixa (720 e 880 são janelas estreitas cuja coluna central tem 641 px ou mais, onde só as regras da janela estreita seguram a busca) (AC 7, AC 21)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C51 the top bar fits"`
 Status: closed
 
@@ -254,17 +254,17 @@ Note: o Núcleo (`nucleo/index.tsx`) passou a usar os mesmos ganchos; sua prova 
 Proof: `npm run typecheck && npm run build -w apps/command-centre && npx eslint --max-warnings=0 apps/command-centre/src core/src/config tests/moldura.test.ts tests/e2e/moldura.spec.ts`
 Status: closed
 
-### Rodada 3 - falhas da verificação independente (round 1) · 6 files · 120 KB · ~30k
+### Verificação independente - correções dos rounds 1, 2 e 3 (C56-C75) · 6 files · 140 KB · ~35k
 
-Veio de `verification.md` (FAIL, `ui`): defeitos visuais vistos no navegador, claims sem asserção e
-mutantes sobreviventes. C56-C61 são medidos em Chromium contra as views reais; C62-C73 em jsdom, um
+Veio de `verification.md` (FAIL em cada um dos três rounds, `ui`): defeitos visuais vistos no navegador,
+claims sem asserção e mutantes sobreviventes. Os rounds numeram as verificações; cada correção leva o número do round que a pediu. C56-C61 são medidos em Chromium contra as views reais; C62-C73 em jsdom, um
 teste por mutante (cada mutante do relatório tem um teste que o mata, rodado de fato).
 
 **C56** - No navegador, `/runs/<id>` de uma execução com diretório de trabalho de ~250 caracteres cabe na coluna central em 1440, 1100, 900 e 360 px com a conversa aberta: a borda direita do cartão "Outcome" não passa da de `main`, o `.app-panel` não tem conteúdo além da coluna (`scrollWidth <= clientWidth`) e o caminho aparece inteiro (quebrado em linhas, nenhum caractere cortado) (AC 9, achado 1)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C56 a run's detail page fits the content column"`
 Status: closed
 
-**C57** - No navegador, em 900, 1000, 1100, 1200, 1240, 1280, 1300, 1360 e 1440 px com a conversa aberta, em cada uma das dez rotas e em en e pt-BR: o título (`h1`) só é cortado com reticências quando a busca já está no mínimo (o ícone, 44 px) e é inteiro a partir de 1000 px; a barra superior não transborda; com a coluna central abaixo de 641 px a busca é só o ícone (sem texto nem dica, e nada do conteúdo passa do botão de 44 px), e a partir de 641 px tem o texto e a dica (⌘K / Ctrl K), em 1440 px com o texto inteiro e a largura cheia de 380 px (design Tela 1: título encurta antes de perder um controle; a busca mantém o nome mesmo sem o texto)
+**C57** - No navegador, em 900, 1000, 1100, 1200, 1240, 1272, 1273, 1280, 1300, 1360 e 1440 px com a conversa aberta, em cada uma das dez rotas e em en e pt-BR: o título (`h1`) só é cortado com reticências quando a busca já está no mínimo (o ícone, 44 px) e é inteiro a partir de 1000 px; a barra superior não transborda; com a coluna central abaixo de 641 px a busca é uma caixa de exatamente 44 px (o mínimo computado também é 44) só com o ícone, sem texto nem dica e sem conteúdo para fora do botão, e a partir de 641 px tem o texto e a dica (⌘K / Ctrl K), em 1440 px com o texto inteiro e a largura cheia de 380 px; 1272 e 1273 px são as duas pontas do limite (coluna de 640 e de 641 px, afirmadas) (design Tela 1: título encurta antes de perder um controle; a busca mantém o nome mesmo sem o texto)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C57 the page title keeps its text"`
 Status: closed
 
@@ -332,7 +332,7 @@ Status: closed
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C73 Today's date moves to the next day"`
 Status: closed
 
-**C74** - ⌘K e Ctrl K abrem a paleta na moldura, e a mesma tecla a fecha (design Tela 1, atalhos da moldura)
+**C74** - ⌘K e Ctrl K abrem a paleta na moldura, a mesma tecla a fecha, e o atalho é cancelado (`preventDefault`: o ⌘K / Ctrl K do navegador não roda junto) (design Tela 1, atalhos da moldura)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C74 ⌘K and Ctrl K open the palette"`
 Status: closed
 
@@ -384,8 +384,9 @@ Status: closed
 
 - Claims naming a status code or route: C15, C25 - provados por `inject`
 - A linha "teclas do Núcleo inertes" prova uma tecla de cada família (1 por 1-5, `]` por `[ ]`); as outras são o mesmo ramo
-- Cada mutante do relatório de verificação da rodada 1 (U2, U4-U11, U15, U17, U19, U30, U36, U37) tem um teste que o mata, rodado de fato: U2 C72 · U4 C66 · U5 e U30 C71 · U6 C21 · U7 e U11 C62 · U8 C70 · U9 C37 · U10 C65 · U15 C68 · U17 C69 · U19 C46 · U36 C67 · U37 C63. Nenhum é equivalente
-- Mutantes da verificação da rodada 2, re-injetados e mortos: E1, E2, E9, E10 (limiar e esconder da busca) C57 · E3 (fator de encolhimento; substituído por `flex: 1000 0 0` sem base, o que também tirou a faixa em que o título perdia frações de pixel) C57 · E4 C57, C51 · E5 e E6 (piso de 160 px) C59 · N2c, N2e (segunda meia-noite e cancelamento) C73 · N3 C75 · N5 C74
+- Cada mutante do relatório de verificação do round 1 (U2, U4-U11, U15, U17, U19, U30, U36, U37) tem um teste que o mata, rodado de fato: U2 C72 · U4 C66 · U5 e U30 C71 · U6 C21 · U7 e U11 C62 · U8 C70 · U9 C37 · U10 C65 · U15 C68 · U17 C69 · U19 C46 · U36 C67 · U37 C63. Nenhum é equivalente
+- Mutantes da verificação do round 2, re-injetados e mortos: E1, E2, E9, E10 (limiar e esconder da busca) C57 · E3 (fator de encolhimento; substituído por `flex: 1000 0 0` sem base, o que também tirou a faixa em que o título perdia frações de pixel) C57 · E4 C57, C51 · E5 e E6 (piso de 160 px) C59 · N2c, N2e (segunda meia-noite e cancelamento) C73 · N3 C75 · N5 C74
+- Mutantes da verificação do round 3, re-injetados e mortos: M7 (consulta sem o `flex`, caixa de 275 px) C57 · M4 (janela estreita sem o `flex`) e M5 (janela estreita sem esconder o texto) C51 · M9 (`--mold-search-min` 60) C57, C51 · E11, E12 (limiar 625 e 647) C57 · N5e (sem `preventDefault`) C74. Equivalentes, sem teste: T1 (`useMemo` de `Today` com `[]` em vez de `[locale]`: a página Hoje remonta quando o idioma muda, então o formatador nunca sobrevive a uma troca de `locale`) e M3 (base `auto` em vez de 0 na busca: com a coluna de 641 px ou mais a busca fica com 304 px ou mais, o título cabe e nada muda). A regra de ícone existe duas vezes porque é preciso uma por condição (`@container` da coluna e `data-narrow` da janela, sem como juntar as duas num seletor); cada uma é observada onde só ela atua (721-899 px de janela e 900-1272 px), por isso nenhuma cópia esconde a falta da outra
 
 ## Binding sources
 
@@ -409,7 +410,7 @@ Evidence:
 - `App.tsx` `OsShell`: `shell` → qual árvore monta -> decides
 - closest analogue in the repo: `src/preferences.test.tsx` (render com as duas rotas mockadas) e `tests/e2e/nucleo-shell.spec.ts` (geometria no navegador)
 
-Expectativas das linhas que a verificação da rodada 1 deu como não atendidas, e onde a rodada 3 as atende:
+Expectativas das linhas que a verificação do round 1 deu como não atendidas, e onde a correção do round 1 as atende:
 
 - Instrumentation (composição das telas), "views reais ou prova equivalente": as nove views reais e o detalhe real de execução são medidos no navegador, dentro da moldura e com a conversa aberta (C56, C58); região, item, cartão e controle que o design decide têm check: marca e ícones (C62), largura da barra, botão no pé, trilho de 60 px, rolagem dos cartões e do histórico (C60, C9), título e busca (C57), cartão "Pede você" (C59). O C11 segue com stand-ins, e é o nível certo para "qual view monta e que rota recebe"
 - Instrumentation (foco, `inert` e Esc das gavetas): a barra estreita desdobrada, a gaveta de conversa e a de documento têm laço de Tab real e fechamento por toque real (C61), e jsdom prova cada caminho de fechar (botão C63, toque fora C64, paleta por cima C65, Esc C39-C42 e C66, evento de painel C68)
@@ -435,5 +436,6 @@ Cost: 2 arquivos de teste de interface, 1 spec e2e, 1 teste de raiz, 75 provas.
 - Boundary: the first builder was cut off (API limit) with S1-S4 written but uncommitted; a second builder resumed from that diff, fixed the narrow-window chat drawer (it was placed in the empty third grid track), and closed all 24 checks in one commit
 - Settled mid-build: nothing new from the user
 - Abandoned: nothing
-- Rodada 4 (`fix/moldura-r2`, C57 e C59 ampliados, C73 estendido, C74-C75): fecha os achados da verificação da rodada 2 (consulta ao contêiner da busca, ⌘K, segunda meia-noite, fallback de `theme.tsx`, pt-BR, piso do corpo do cartão, constante `--mold-search-min`)
-- Rodada 3 (`fix/moldura-r1`, C56-C73): builder único, ~60k (css e três componentes pequenos, 12 testes de interface novos, 6 de navegador); fecha os achados bloqueantes 1, 2, 5 e 6, os 15 mutantes sobreviventes e as lacunas de cobertura do relatório da rodada 1
+- Correção do round 1 (`fix/moldura-r1`, C56-C73): builder único, ~60k (css e três componentes pequenos, 12 testes de interface novos, 6 de navegador); fecha os achados bloqueantes 1, 2, 5 e 6, os 15 mutantes sobreviventes e as lacunas de cobertura do relatório da rodada 1
+- Correção do round 2 (`fix/moldura-r2`, C57 e C59 ampliados, C73 estendido, C74-C75): fecha os achados da verificação do round 2 (consulta ao contêiner da busca, ⌘K, segunda meia-noite, fallback de `theme.tsx`, pt-BR, piso do corpo do cartão, constante `--mold-search-min`)
+- Correção do round 3 (`fix/moldura-r3`, C51 e C57 ampliados, C74): fecha os achados da verificação do round 3 (forma da busca de ícone e da janela estreita, limiar 641 px, `preventDefault` do ⌘K, comentário do spec); última correção antes da escalação ao dono

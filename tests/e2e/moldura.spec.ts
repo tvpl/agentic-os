@@ -147,8 +147,31 @@ test("C50 the narrow sidebar unfolds over the content instead of pushing it", as
   await expect(toggle).toBeFocused();
 });
 
+/** The search at its smallest: its icon alone, 44 px (design Tela 1: it keeps its name without the text). */
+const SEARCH_ICON_WIDTH = 44;
+
+/** What the search draws and how big its box is, measured in the page. */
+function measureSearch(bar: Locator) {
+  return bar.evaluate((el) => {
+    const shown = (node: Element) => getComputedStyle(node).display !== "none";
+    const search = el.querySelector<HTMLElement>(".mold-search")!;
+    const text = search.querySelector<HTMLElement>(".mold-search-t")!;
+    const hint = search.querySelector<HTMLElement>(".mold-kbd")!;
+    return {
+      width: search.getBoundingClientRect().width,
+      minWidth: parseFloat(getComputedStyle(search).minWidth),
+      overflow: search.scrollWidth - search.clientWidth,
+      text: shown(text) ? text.textContent : null,
+      textCut: text.scrollWidth - text.clientWidth,
+      hint: shown(hint) ? hint.textContent : null,
+    };
+  });
+}
+
 test("C51 the top bar fits and keeps its controls at phone widths", async ({ page }) => {
-  for (const width of [360, 600, 800]) {
+  // 720 and 880 are narrow windows whose centre column is still 641 px or more: only the narrow
+  // window's own rules (not the container query) make the search an icon there.
+  for (const width of [360, 600, 720, 800, 880]) {
     const frame = await openFrame(page, "/generations", { width, height: 800 });
     const bar = frame.locator("header.mold-top");
     const fits = await bar.evaluate((el) => el.scrollWidth <= el.clientWidth);
@@ -159,6 +182,12 @@ test("C51 the top bar fits and keeps its controls at phone widths", async ({ pag
     }
     const page_ = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
     expect(page_, `no horizontal page scroll at ${width}px`).toBe(true);
+    // The search is an icon box of 44 px with nothing drawn outside it.
+    const search = await measureSearch(bar);
+    expect(search.width, `search width at ${width}px`).toBeCloseTo(SEARCH_ICON_WIDTH, 0);
+    expect(search.text, `search text at ${width}px`).toBeNull();
+    expect(search.hint, `search hint at ${width}px`).toBeNull();
+    expect(search.overflow, `search content past its box at ${width}px`).toBeLessThanOrEqual(0);
   }
 });
 
@@ -373,9 +402,10 @@ test("C57 the page title keeps its text, and the search shows its text only wher
     "/pixel",
     "/settings",
   ];
-  // 900-1200: the column is under 641 px and the search is its icon; 1240-1300 is where only the
-  // search's shrink factor keeps long titles whole; from 1300 the search has text and hint.
-  const widths = [900, 1000, 1100, 1200, 1240, 1280, 1300, 1360, 1440];
+  // 900-1240: the column is under 641 px and the search is its icon; 1272 and 1273 px are the two
+  // sides of the limit (a column of 640 and of 641 px); from 1280 the search has text and hint.
+  const widths = [900, 1000, 1100, 1200, 1240, 1272, 1273, 1280, 1300, 1360, 1440];
+  const columnAtEdge: Record<number, number> = { 1272: 640, 1273: 641 };
   for (const language of ["en", "pt-BR"]) {
     // A hash change keeps the page and its language: start each pass from a blank one.
     await page.goto("about:blank");
@@ -390,33 +420,29 @@ test("C57 the page title keeps its text, and the search shows its text only wher
       for (const width of widths) {
         await page.setViewportSize({ width, height: 900 });
         await expect(frame.locator(":scope > aside")).toBeVisible();
-        const m = await bar.evaluate((el) => {
-          const shown = (node: Element) => getComputedStyle(node).display !== "none";
-          const title = el.querySelector<HTMLElement>(".mold-title")!;
-          const search = el.querySelector<HTMLElement>(".mold-search")!;
-          const text = search.querySelector<HTMLElement>(".mold-search-t")!;
-          const hint = search.querySelector<HTMLElement>(".mold-kbd")!;
-          return {
-            title: title.textContent,
-            cut: title.scrollWidth - title.clientWidth,
-            centre: el.parentElement!.clientWidth,
-            search: search.getBoundingClientRect().width,
-            minSearch: parseFloat(getComputedStyle(search).minWidth),
-            overflow: search.scrollWidth - search.clientWidth,
-            text: shown(text) ? text.textContent : null,
-            textCut: text.scrollWidth - text.clientWidth,
-            hint: shown(hint) ? hint.textContent : null,
-            bar: el.scrollWidth - el.clientWidth,
-          };
-        });
+        const m = {
+          ...(await measureSearch(bar)),
+          ...(await bar.evaluate((el) => {
+            const title = el.querySelector<HTMLElement>(".mold-title")!;
+            return {
+              title: title.textContent,
+              cut: title.scrollWidth - title.clientWidth,
+              centre: el.parentElement!.clientWidth,
+              bar: el.scrollWidth - el.clientWidth,
+            };
+          })),
+        };
         const label = `"${m.title}" at ${width}px (${language})`;
         if (language === "pt-BR" && route === "/settings") expect(m.title).toBe("Configurações");
         // The title gives way only after the search is down to its icon, and is whole from 1000 px.
-        if (m.cut > 0) expect(m.search, `search when ${label} is cut`).toBeLessThanOrEqual(m.minSearch + 0.5);
+        if (m.cut > 0) expect(m.width, `search when ${label} is cut`).toBeLessThanOrEqual(m.minWidth + 0.5);
+        if (width in columnAtEdge) expect(m.centre, `centre column at ${width}px`).toBe(columnAtEdge[width]);
         if (width >= 1000) expect(m.cut, label).toBeLessThanOrEqual(0);
         expect(m.bar, `top bar overflow at ${label}`).toBeLessThanOrEqual(0);
         if (m.centre < SEARCH_ICON_BELOW) {
-          // An icon: neither text nor hint, and nothing spills out of the 44 px button.
+          // An icon: a 44 px box with neither text nor hint, and nothing spilling out of it.
+          expect(m.minWidth, `search minimum at ${label}`).toBe(SEARCH_ICON_WIDTH);
+          expect(m.width, `search width at ${label}`).toBeCloseTo(SEARCH_ICON_WIDTH, 0);
           expect(m.text, `search text at ${label}`).toBeNull();
           expect(m.hint, `search hint at ${label}`).toBeNull();
           expect(m.overflow, `search content past its box at ${label}`).toBeLessThanOrEqual(0);
@@ -427,7 +453,7 @@ test("C57 the page title keeps its text, and the search shows its text only wher
           if (width === 1440) {
             expect(m.textCut, `search text cut at ${label}`).toBeLessThanOrEqual(0);
             // Room to spare: the search is drawn at its full 380 px.
-            expect(m.search, `search width at ${label}`).toBeGreaterThanOrEqual(379);
+            expect(m.width, `search width at ${label}`).toBeGreaterThanOrEqual(379);
           }
         }
       }
