@@ -315,15 +315,15 @@ function describeCodexLine(value: Record<string, unknown>): RejectedLine {
       const kind = legacy ? item.item_type : item.type;
       if (typeof kind === "string") {
         const known = KnownStreamTypes.codex.has(type) && (legacy || KnownStreamTypes.codexItem.has(kind));
-        return { name: `${type}/${kind}`, known };
+        return { name: `${type}/${kind}`, reason: known ? "invalid" : "unknown" };
       }
     }
-    return { name: type, known: KnownStreamTypes.codex.has(type) };
+    return { name: type, reason: KnownStreamTypes.codex.has(type) ? "invalid" : "unknown" };
   }
   // The oldest shape has no top-level `type`; its `msg.type` is any string, so such a line fails on a field.
   const msg = value.msg;
-  if (isRecord(msg) && typeof msg.type === "string") return { name: `msg.${msg.type}`, known: true };
-  return { known: false };
+  if (isRecord(msg) && typeof msg.type === "string") return { name: `msg.${msg.type}`, reason: "invalid" };
+  return { reason: "unknown" };
 }
 
 /** The longest CLI message that goes into the trace. */

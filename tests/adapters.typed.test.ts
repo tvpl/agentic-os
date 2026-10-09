@@ -26,7 +26,6 @@ import {
   RunManager,
   SettingsStore,
   executeInvocation,
-  exceedsShapeBudget,
   installedVersion,
   openDb,
   type AgentAdapter,
@@ -41,6 +40,7 @@ import {
 import { ClaudeAdapter, claudeManifest, claudeStreamParser } from "@mordomo/adapter-claude";
 import { CodexAdapter, codexManifest, codexStreamParser } from "@mordomo/adapter-codex";
 import { cursorManifest, cursorStreamParser } from "@mordomo/adapter-cursor";
+import { exceedsShapeBudget } from "../core/src/agents/streamTally.js";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "./helpers.js";
@@ -444,7 +444,26 @@ describe("S2 - a strange line never sinks a run", () => {
       { type: "session", providerSessionId: good },
       { type: "text" },
     ]);
-    const bad = ["-rf", "a b", "a\\nb", "", "x".repeat(201), "é"];
+    // Real control characters (JSON.stringify turns them into escapes on the wire and the parser reads them back):
+    // a line break, a carriage return, a tab and NUL are in no way the two characters backslash + `n`.
+    const bad = [
+      "-rf",
+      "a b",
+      "a\nb",
+      "a\n",
+      "\nabc",
+      "a\rb",
+      "a\r",
+      "a\tb",
+      "a\u0000b",
+      "a/b",
+      "..",
+      "../x",
+      "",
+      "x".repeat(201),
+      "é",
+    ];
+    expect(bad.some((id) => id.includes("\n"))).toBe(true); // a real LF, not backslash + n
     for (const id of bad) {
       expect(
         claude.parseLine(JSON.stringify({ type: "system", subtype: "init", session_id: id })),
@@ -487,7 +506,7 @@ describe("S2 - a strange line never sinks a run", () => {
     });
     const claudeAdapter = new ClaudeAdapter({ binaryPath: path.join(FAKE_BIN, "claude") });
     const codexAdapter = new CodexAdapter({ binaryPath: path.join(FAKE_BIN, "codex") });
-    for (const id of ["--dangerously-evil", "-x"]) {
+    for (const id of ["--dangerously-evil", "-x", "abc\ndef", "abc\tdef", "a/b", ".."]) {
       const c = await claudeAdapter.buildInvocation(run(id), "new-session");
       expect(c.args, id).not.toContain(id);
       expect(c.args, id).toContain("--session-id");
@@ -634,6 +653,40 @@ describe("S2 - a strange line never sinks a run", () => {
     expect(textOf({ type: "turn.failed", error: { message: "\n\u202e " } })).toBe("[codex] turn failed");
   });
 
+  it("C32 every bidi, zero-width and other format character of a CLI failure becomes a space", () => {
+    // The class the filter promises (Unicode `Cf`), one code point at a time: a filter that handles `U+202E` alone,
+    // or only the zero-width ones, leaves the rest to reorder or hide text in the trace.
+    const ranges: Array<[string, number, number]> = [
+      ["zero-width and direction marks", 0x200b, 0x200f],
+      ["embedding and override", 0x202a, 0x202e],
+      ["word joiner and invisible operators", 0x2060, 0x2064],
+      ["isolates", 0x2066, 0x2069],
+      ["byte order mark / zero-width no-break space", 0xfeff, 0xfeff],
+      ["soft hyphen", 0x00ad, 0x00ad],
+      ["arabic letter mark", 0x061c, 0x061c],
+      ["language tag", 0xe0001, 0xe0001],
+      ["tag letter", 0xe0041, 0xe0041],
+    ];
+    const parser = codexStreamParser();
+    const failure = (message: string) => {
+      const [event] = parser.parseLine(JSON.stringify({ type: "turn.failed", error: { message } })) ?? [];
+      return event?.type === "text" ? event.text : event;
+    };
+    let tried = 0;
+    for (const [what, from, to] of ranges) {
+      for (let code = from; code <= to; code++) {
+        const ch = String.fromCodePoint(code);
+        const label = `${what} U+${code.toString(16).toUpperCase().padStart(4, "0")}`;
+        expect(failure(`a${ch}b`), label).toBe("[codex] turn failed: a b");
+        // Alone it is nothing to say; around text it neither survives nor glues two words together.
+        expect(failure(`${ch}${ch}`), label).toBe("[codex] turn failed");
+        expect(failure(`end${ch}`), label).toBe("[codex] turn failed: end");
+        tried++;
+      }
+    }
+    expect(tried).toBe(5 + 5 + 5 + 4 + 1 + 1 + 1 + 1 + 1);
+  });
+
   it("C22 a throwing parser, or a huge line, costs that line and nothing more", async () => {
     const home = h.paths().home;
     // A parser that throws on every line, on finish and on summarize still lets the run end with its result.
@@ -708,6 +761,37 @@ describe("S2 - a strange line never sinks a run", () => {
     expect(events.some((e) => e.type === "text" && e.text.includes("total_cost_usd"))).toBe(false);
   });
 
+  it("C31 an unterminated last line is counted, whether it is over the size cap or of an unknown type", async () => {
+    const home = h.paths().home;
+    // Over the cap (5 MiB) and no `\n`: dropped and counted once as unreadable, never echoed as text, the run ends.
+    const huge = await pipe("hello [[nonl-huge]]", claudeStreamParser(), home);
+    expect(huge.some((e) => e.type === "text" && e.text.length > 1000)).toBe(false);
+    expect(huge.some((e) => e.type === "assistant" && e.text.length > 1000)).toBe(false);
+    expect(textsOf(huge).filter((t) => t.includes("unrecognized"))).toEqual([
+      `[mordomo] claude emitted 1 unrecognized line(s): an unreadable line. ${HINT}`,
+    ]);
+    expect(huge.at(-1)).toMatchObject({ type: "result", exitCode: 0 });
+    // The parser that does not count (cursor) gets the generic note for it, once.
+    const cursor = await pipe("hello [[nonl-huge]]", cursorStreamParser(), home);
+    expect(textsOf(cursor).filter((t) => t.includes("could not be read"))).toHaveLength(1);
+
+    // An unknown type as the unterminated last line is part of the one warning, which is emitted at the close.
+    const unknown = await pipe("hello [[unknown:novidade]] [[nonl-unknown]]", claudeStreamParser(), home);
+    const warnings = textsOf(unknown).filter((t) => t.includes("unrecognized"));
+    expect(warnings).toEqual([
+      `[mordomo] claude emitted 3 unrecognized line(s): unknown type novidade, unknown type ultima. ${HINT}`,
+    ]);
+    expect(unknown.some((e) => e.type === "text" && e.text.includes('"ultima"'))).toBe(false);
+    const warningAt = unknown.findIndex((e) => e.type === "text" && e.text.includes("unrecognized"));
+    expect(warningAt).toBeGreaterThan(-1);
+    expect(warningAt).toBeLessThan(unknown.findIndex((e) => e.type === "result"));
+    // Alone, it is the whole warning.
+    const only = await pipe("hello [[nonl-unknown]]", claudeStreamParser(), home);
+    expect(textsOf(only).filter((t) => t.includes("unrecognized"))).toEqual([
+      `[mordomo] claude emitted 1 unrecognized line(s): unknown type ultima. ${HINT}`,
+    ]);
+  });
+
   it("C24 a hostile wrong-shape array line costs a skipped line, not seconds of the event loop", async () => {
     const home = h.paths().home;
     // A ~4 MB line (under the 4 MiB cap) whose list holds two million `1`s: a schema that reported every wrong
@@ -747,6 +831,11 @@ describe("S2 - a strange line never sinks a run", () => {
       ).toEqual([`[mordomo] ${c.provider} emitted 1 unrecognized line(s): ${c.label}. ${HINT}`]);
       expect(
         events.some((e) => e.type === "error"),
+        c.provider,
+      ).toBe(false);
+      // The skipped line is counted, never echoed: a 4 MB line must not reach the trace as text (nor the journal).
+      expect(
+        events.some((e) => e.type === "text" && (e.text.length > 1000 || e.text.includes("1,1,1,1"))),
         c.provider,
       ).toBe(false);
       c.after(events);
@@ -1079,5 +1168,26 @@ describe("S4 - writes reach filesChanged", () => {
     expect(tools[0]?.type === "tool_use" && tools[0].paths).toHaveLength(200);
     expect(tools[1]).not.toHaveProperty("paths");
     expect(tools[2]).not.toHaveProperty("paths");
+  });
+
+  it("C30 the 5000-file cap holds for the detail source too, and across both sources", async () => {
+    const detail = (file: string) => write({ detail: JSON.stringify({ file_path: file }) });
+    // Only `detail` (a tool without `paths`): one file per event, 5001 events, the run lists 5000.
+    const onlyDetail = await runStub(Array.from({ length: 5001 }, (_, i) => detail(`/w/f-${i}.ts`)));
+    expect(onlyDetail.files).toHaveLength(5000);
+    expect(onlyDetail.files[0]).toBe("/w/f-0.ts");
+    expect(onlyDetail.files[4999]).toBe("/w/f-4999.ts");
+    expect(onlyDetail.files).not.toContain("/w/f-5000.ts");
+
+    // Both sources share one budget: 4998 files from `detail`, then a patch of three, then one more from `detail`.
+    const mixed = await runStub([
+      ...Array.from({ length: 4998 }, (_, i) => detail(`/w/d-${i}.ts`)),
+      write({ paths: ["/p/1.ts", "/p/2.ts", "/p/3.ts"] }),
+      detail("/w/late.ts"),
+    ]);
+    expect(mixed.files).toHaveLength(5000);
+    expect(mixed.files.slice(4998)).toEqual(["/p/1.ts", "/p/2.ts"]);
+    expect(mixed.files).not.toContain("/p/3.ts");
+    expect(mixed.files).not.toContain("/w/late.ts");
   });
 });

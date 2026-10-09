@@ -18,6 +18,7 @@ import {
   type HealthStatus,
   type LineParser,
   type ModelOption,
+  type RejectedLine,
   type RunEvent,
   type SafeInvocation,
   type ValidationResult,
@@ -362,10 +363,10 @@ export function dominantModel(modelUsage: unknown): string | null {
 }
 
 /** Names a rejected line for the warning: its type, and whether the schema has that type. */
-const describeClaudeLine = (value: Record<string, unknown>) =>
+const describeClaudeLine = (value: Record<string, unknown>): RejectedLine =>
   typeof value.type === "string"
-    ? { name: value.type, known: KnownStreamTypes.claude.has(value.type) }
-    : { known: false };
+    ? { name: value.type, reason: KnownStreamTypes.claude.has(value.type) ? "invalid" : "unknown" }
+    : { reason: "unknown" };
 
 /**
  * Parser for Claude Code's stream-json (one JSON object per line). Each line
@@ -397,7 +398,7 @@ export function claudeStreamParser(): LineParser {
       // warning shows the drift.
       const ignoredUsage = (raw: unknown, parsed: unknown) => {
         if (raw != null && parsed === undefined)
-          unrecognized.note(read.value, { name: obj.type, known: true });
+          unrecognized.note(read.value, { name: obj.type, reason: "invalid" });
       };
       if (obj.type === "system") {
         if (obj.subtype === "init" && obj.model !== undefined) sessionModel = obj.model;

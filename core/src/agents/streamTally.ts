@@ -16,14 +16,20 @@ const MAX_LABELS = 10;
 /** Longest printed type name. */
 const MAX_NAME = 40;
 
+/**
+ * Why a JSON object was not read: its type is not one the schema has
+ * (`unknown`), the type is known but a field it needs is wrong (`invalid`), or
+ * the line was not validated at all because its JSON is too big in values or
+ * in one array (`oversized`, see `exceedsShapeBudget`). The three are
+ * exclusive, so they are one value and not three flags.
+ */
+export type RejectionReason = "unknown" | "invalid" | "oversized";
+
 /** How a rejected line names itself in the warning. */
 export interface RejectedLine {
   /** Its type (`result`, `item.completed/file_change`); anything without one is "(no type)". */
   name?: string;
-  /** The type is one the schema has: the line failed on a field, not on its type. */
-  known?: boolean;
-  /** The line was not validated: its JSON is too big in values or in one array (`exceedsShapeBudget`). */
-  oversized?: boolean;
+  reason: RejectionReason;
 }
 
 export interface UnrecognizedTally {
@@ -79,10 +85,11 @@ export function createUnrecognizedTally(provider: string): UnrecognizedTally {
       const type = value.type;
       const raw = what?.name ?? (typeof type === "string" ? type : undefined);
       const name = raw === undefined ? "(no type)" : printable(raw);
+      const reason = what?.reason ?? "unknown";
       add(
-        what?.oversized
+        reason === "oversized"
           ? `type ${name} with an oversized structure`
-          : what?.known
+          : reason === "invalid"
             ? `known type ${name} with an invalid field`
             : `unknown type ${name}`,
       );
@@ -171,7 +178,7 @@ export function readTypedLine<S extends z.ZodTypeAny>(
   const object = value as Record<string, unknown>;
   // Before the schema, not after: the schema's cost grows with the number of wrong values, and this line is the attacker's.
   if (exceedsShapeBudget(object)) {
-    tally.note(object, { ...describe(object), oversized: true });
+    tally.note(object, { ...describe(object), reason: "oversized" });
     return { ok: false, events: [] };
   }
   const checked = schema.safeParse(object);

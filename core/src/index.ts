@@ -83,12 +83,16 @@ export type {
 export { resumableSessionId } from "./agents/resumeId.js";
 export { boundedPaths, MAX_EVENT_PATHS, MAX_EVENT_PATH_CHARS } from "./agents/eventPaths.js";
 export { executeInvocation, MAX_LINE_CHARS, type LineParser } from "./agents/baseExec.js";
+// The surface a provider adapter needs to read its stream: the tally and `readTypedLine`, and `plainText` for the
+// message of a CLI failure (the Codex adapter prints one). Nothing else of `streamTally.ts` is exported on purpose:
+// `exceedsShapeBudget` and its limits run inside `readTypedLine` for every adapter, so an adapter cannot skip them,
+// and its own test imports the module directly.
 export {
   createUnrecognizedTally,
-  exceedsShapeBudget,
   plainText,
   readTypedLine,
   type RejectedLine,
+  type RejectionReason,
   type TypedLine,
   type UnrecognizedTally,
 } from "./agents/streamTally.js";

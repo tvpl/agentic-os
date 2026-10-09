@@ -902,6 +902,9 @@ export class RunManager {
    * files of a tool call is bounded here, where it is used, whatever the
    * adapter does (`boundedPaths`). A `paths` that is not a list is dropped, so
    * the run manager reads the call's `detail` as it does for any tool without one.
+   * That is deliberately silent: the junk is not journaled (the event is stored
+   * without it), the file is still recorded from `detail`, and a note per event
+   * would be as unbounded as the stream it complains about (C25, C30).
    */
   private boundedEvent(event: RunEvent): RunEvent {
     if (event.type !== "tool_use" || event.paths === undefined) return event;

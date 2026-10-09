@@ -98,6 +98,8 @@ describe("provider version notice", () => {
     for (const note of notes) {
       expect(note.tagName).toBe("P");
       expect(note.childElementCount).toBe(0);
+      // Information tone (`meta`), not an alert: neither a badge nor a warning class (design.md, Forma).
+      expect(note.className).toBe("meta");
     }
   });
 
@@ -126,5 +128,48 @@ describe("provider version notice", () => {
     delete old.testedVersions;
     setup([old]);
     expect(screen.queryAllByRole("note")).toEqual([]);
+  });
+
+  // C29: each field the notice reads is missing on its own. The server may send `versionStatus` older/newer and
+  // still lack the parsed version or the range (a CLI whose `--version` has no semver, a manifest without a range);
+  // the notice must then stay out instead of printing "Installed version undefined" (design.md, "Quando aparece").
+  describe("C29 the notice needs every field it prints, each missing on its own", () => {
+    const cases: Array<[string, (p: ProviderSnapshot) => void]> = [
+      ["installedVersion absent", (p) => delete p.installedVersion],
+      ["installedVersion null", (p) => (p.installedVersion = null)],
+      ["installedVersion empty", (p) => (p.installedVersion = "")],
+      ["testedVersions absent", (p) => delete p.testedVersions],
+      ["testedVersions null", (p) => (p.testedVersions = null)],
+    ];
+    for (const status of ["older", "newer"] as const) {
+      for (const [label, strip] of cases) {
+        it(`${status} with ${label} shows no notice`, () => {
+          const bare = snapshot("claude", "raw --version text", "1.2.3", status);
+          strip(bare);
+          // A second, complete provider proves the screen did render a notice for the others.
+          setup([bare, snapshot("codex", "99.0.0", "99.0.0", status)]);
+          const cards = Array.from(document.querySelectorAll(".provider-row"));
+          expect(cards).toHaveLength(2);
+          expect(cards[0]?.querySelectorAll('[role="note"]')).toHaveLength(0);
+          expect(cards[1]?.querySelectorAll('[role="note"]')).toHaveLength(1);
+          expect(document.body.textContent).not.toMatch(/undefined|null|NaN/);
+        });
+      }
+    }
+
+    it("the notice itself is the plain `meta` paragraph, in both languages", () => {
+      for (const lang of ["en", "pt-BR"] as const) {
+        setup(
+          [snapshot("claude", "0.0.1", "0.0.1", "older"), snapshot("codex", "99.0.0", "99.0.0", "newer")],
+          lang,
+        );
+        const notes = screen.getAllByRole("note");
+        expect(notes.map((n) => [n.tagName, n.className])).toEqual([
+          ["P", "meta"],
+          ["P", "meta"],
+        ]);
+        cleanup();
+      }
+    });
   });
 });

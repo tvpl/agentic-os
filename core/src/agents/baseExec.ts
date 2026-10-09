@@ -135,9 +135,13 @@ export async function* executeInvocation(
       start = newline + 1;
     }
   };
-  /** The last line may end without a newline. */
+  /**
+   * The last line may end without a newline: it is read (or, past the cap,
+   * counted as dropped) as if the newline had come. A line being discarded has
+   * `pendingChars` above the cap, so this one test covers both (C23, C31).
+   */
   const flushStdout = () => {
-    if (pendingChars > 0 || discarding) handleStdout("\n");
+    if (pendingChars > 0) handleStdout("\n");
   };
 
   const handle = safeSpawn(invocation.executable, invocation.args, {

@@ -85,6 +85,18 @@ if [[ "$PROMPT" =~ \[\[artifact:([A-Za-z0-9._-]+)\]\] ]]; then
     printf '# %s\n\nWritten by the fake provider for: %s\n' "$NAME" "${PROMPT:0:60}" > "$RUN_DIR/$NAME"
   fi
 fi
+# "[[nonl-huge]]" ends the stream with a 5 MiB assistant line (over the runner's 4 MiB cap) and NO trailing newline.
+if [[ "$PROMPT" == *"[[nonl-huge]]"* ]]; then
+  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"'
+  head -c 5242880 /dev/zero | tr '\0' 'x'
+  printf '"}]}}'
+  exit 0
+fi
+# "[[nonl-unknown]]" ends the stream with a line of a type no CLI emits ("ultima") and NO trailing newline.
+if [[ "$PROMPT" == *"[[nonl-unknown]]"* ]]; then
+  printf '{"type":"ultima"}'
+  exit 0
+fi
 # "[[nonl]]" in the prompt ends the stream with the result line and NO trailing newline (the cost rides on it).
 if [[ "$PROMPT" == *"[[nonl]]"* ]]; then
   printf '{"type":"result","subtype":"success","is_error":false,"result":"No newline.","total_cost_usd":0.5}'
