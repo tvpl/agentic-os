@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import {
   ProviderSettingsSchema,
   promptRunFields,
-  resolveInsideRoots,
   type AgentAdapter,
   type Approval,
   type CreateRunInput,
@@ -273,9 +272,8 @@ function createPromptSubmission(
   if (!providerSettings.enabled) throw httpError(400, `Provider ${provider} is not enabled`);
   // A session's cwd is re-checked against the *current* roots: a folder that
   // was granted when the conversation started may have been revoked since.
-  const roots = grantedRoots(ctx);
   const requested = body.cwd ?? session?.cwd ?? null;
-  const cwd = requested ? resolveInsideRoots(roots, requested) : ctx.paths.home;
+  const cwd = requested ? ctx.resolveCwd(requested) : ctx.paths.home;
   const input: PromptRunInput = {
     prompt: body.prompt,
     provider,

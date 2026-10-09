@@ -4,7 +4,7 @@ import type { Db } from "../db/db.js";
 import type { IndexedFolder, Settings } from "../config/schema.js";
 import { events } from "../events.js";
 import { relatedFromTerms, termFrequencies } from "./related.js";
-import { isBinaryBuffer, makeWorkspaceFilter } from "./excludes.js";
+import { isBinaryBuffer, makeWorkspaceFilter, type WorkspaceFilterOptions } from "./excludes.js";
 import { fieldsFromDb, parseInlineFields } from "./fields.js";
 import type { IndexProgress, IndexStats } from "@mordomo/contracts";
 
@@ -89,6 +89,8 @@ export class MemoryIndexer {
   constructor(
     private readonly db: Db,
     private readonly getSettings: () => Settings,
+    /** `homeDir`: the MordomoOS home, whose `config/` and `logs/` are never indexed. */
+    private readonly filterOptions: WorkspaceFilterOptions = {},
   ) {}
 
   /**
@@ -157,7 +159,7 @@ export class MemoryIndexer {
       const stats: IndexStats = {
         scanned: 0, added: 0, updated: 0, removed: 0, skippedExcluded: 0, skippedBinary: 0, related: 0, durationMs: 0,
       };
-      const filter = makeWorkspaceFilter(settings.excludes);
+      const filter = makeWorkspaceFilter(settings.excludes, this.filterOptions);
       const maxBytes = settings.limits.maxIndexedFileBytes;
 
       // Deterministic root set: de-duplicated by resolved path (first entry
@@ -188,7 +190,10 @@ export class MemoryIndexer {
       const candidates: Candidate[] = [];
       let dirsSinceYield = 0;
       for (const root of roots) {
-        if (filter.reasonToSkip("", root)) {
+        // The home check compares real paths; the walk never follows a symlink,
+        // so only the root can be spelled through one.
+        const realRoot = realpathOr(root);
+        if (filter.reasonToSkip("", realRoot)) {
           stats.skippedExcluded++;
           continue;
         }
@@ -207,7 +212,7 @@ export class MemoryIndexer {
           for (const entry of entries) {
             const full = path.join(dir, entry.name);
             const rel = path.relative(root, full);
-            if (filter.isExcluded(rel, full)) {
+            if (filter.isExcluded(rel, path.join(realRoot, rel))) {
               stats.skippedExcluded++;
               continue;
             }
@@ -491,6 +496,14 @@ export class MemoryIndexer {
     this.db
       .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
       .run(PENDING_LINKS_KEY, JSON.stringify(obj));
+  }
+}
+
+function realpathOr(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
   }
 }
 

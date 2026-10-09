@@ -290,7 +290,7 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
       }
     }
 
-    const cwd = body.cwd ? resolveInsideRoots(grantedRoots(ctx), body.cwd) : ctx.paths.home;
+    const cwd = body.cwd ? ctx.resolveCwd(body.cwd) : ctx.paths.home;
     const mode: RunMode = skill.mode === "write" ? "write" : "read_only";
     const input: SkillRunInput = {
       slug,

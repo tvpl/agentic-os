@@ -27,12 +27,12 @@ import {
   recentJournals,
   recordRecall,
   relatedFiles,
-  resolveInsideRoots,
+  resolveOpenablePath,
   retractFact,
   searchFiles,
 } from "@mordomo/core";
 import type { AppContext } from "../context.js";
-import { grantedRoots, httpError } from "./common.js";
+import { httpError } from "./common.js";
 
 const JournalDateParam = z.string().refine(isJournalDate, { message: "expected YYYY-MM-DD" });
 
@@ -126,9 +126,10 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   app.get("/api/memory/preview", async (req) => {
     const { p } = z.object({ p: z.string() }).parse(req.query);
-    // previewFile enforces root containment + secret blocklist (403 on violation).
+    // previewFile enforces root containment, the secret blocklist and the home's
+    // private config/ and logs/ (403 on violation).
     try {
-      return previewFile(ctx.settings(), [ctx.paths.home], p);
+      return previewFile(ctx.settings(), [ctx.paths.home], p, { homeDir: ctx.paths.home });
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT")
         throw httpError(
@@ -146,7 +147,8 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
    */
   app.post("/api/memory/open", { config: { scope: "owner" } }, async (req) => {
     const { p } = z.object({ p: z.string() }).parse(req.body);
-    const resolved = resolveInsideRoots(grantedRoots(ctx), p); // PathAccessError → 403
+    // Same filter as the preview and the indexer; PathAccessError → 403.
+    const resolved = resolveOpenablePath(ctx.settings(), [ctx.paths.home], p, { homeDir: ctx.paths.home });
     if (!isOpenable(resolved)) {
       throw httpError(415, "Only documents, media and folders open from here", "unsupported_type");
     }

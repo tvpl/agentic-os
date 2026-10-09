@@ -1,10 +1,9 @@
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { EffortLevel, ProviderId, resolveInsideRoots, type RunRequestSpec } from "@mordomo/core";
+import { EffortLevel, ProviderId, type RunRequestSpec } from "@mordomo/core";
 import type { AppContext } from "../context.js";
 import {
   gateWrite,
-  grantedRoots,
   httpError,
   launchSkillRun,
   requireProvider,
@@ -116,7 +115,7 @@ export function registerObjectiveRoutes(app: FastifyInstance, ctx: AppContext): 
     if (!providerSettings.enabled) throw httpError(400, `Provider ${provider} is not enabled`);
     const results: Array<{ stepId: string; runId: string | null; status: string }> = [];
     for (const step of ctx.objectives.ready(id, body.limit)) {
-      const cwd = body.cwd ? resolveInsideRoots(grantedRoots(ctx), body.cwd) : ctx.paths.home;
+      const cwd = body.cwd ? ctx.resolveCwd(body.cwd) : ctx.paths.home;
       const timeoutMs = body.timeoutMs ?? settings.limits.defaultTimeoutMs;
       const model = body.model !== undefined ? body.model : providerSettings.defaultModel;
       const effort = body.effort ?? providerSettings.defaultEffort;

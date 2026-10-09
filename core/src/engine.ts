@@ -31,13 +31,14 @@ import { PushStore } from "./notifications/pushStore.js";
 import { installNotificationRecorder } from "./notifications/recorder.js";
 import { NotificationStore } from "./notifications/store.js";
 import { ObjectiveStore } from "./objectives/objectiveStore.js";
-import { ensureDirs, resolvePaths, seedHome, type MordomoPaths } from "./paths.js";
+import { ensureDirs, resolvePaths, seedHome, tightenHomeFiles, type MordomoPaths } from "./paths.js";
 import { RoutineScheduler } from "./routines/scheduler.js";
 import { RoutineStore } from "./routines/store.js";
 import { RunManager, providerEnvDrop, type CreateRunInput } from "./runs/runManager.js";
 import { ApprovalStore, type Approval } from "./security/approvals.js";
 import { DeviceStore } from "./security/devices.js";
-import { resolveInsideRoots } from "./security/paths.js";
+import { makeWorkspaceFilter } from "./memory/excludes.js";
+import { PathAccessError, resolveInsideRoots } from "./security/paths.js";
 import { writeDecision, type WriteOrigin } from "./security/profiles.js";
 import { SentinelRunner } from "./sentinels/runner.js";
 import { SkillCatalog } from "./skills/catalog.js";
@@ -208,6 +209,7 @@ export class MordomoEngine {
       events.emit("settings.changed", { settings: this.settings() }),
     );
     this.db = openDb(this.paths).db;
+    tightenHomeFiles(this.paths);
     this.providers = opts.providers;
     this.adapterRecord = buildAdapters(this.providers, this.settingsStore.load());
     setProbeEnvDrop(providerEnvDrop(this.settingsStore.load()));
@@ -223,7 +225,7 @@ export class MordomoEngine {
       { pruneOnBoot: false, permissionBroker: (run) => this.permissionBrokerFor(run) },
     );
     this.objectives = new ObjectiveStore(this.db, this.paths);
-    this.indexer = new MemoryIndexer(this.db, () => this.settings());
+    this.indexer = new MemoryIndexer(this.db, () => this.settings(), { homeDir: this.paths.home });
     this.routines = new RoutineStore(this.paths);
     this.scheduler = new RoutineScheduler(this.db, this.paths, this.routines, this.runs, this.skills, () =>
       this.settings(),
@@ -408,7 +410,12 @@ export class MordomoEngine {
 
   /** A run's working directory, realpath-resolved inside the granted roots (`PathAccessError` otherwise). */
   resolveCwd(cwd: string): string {
-    return resolveInsideRoots(this.grantedRoots(), cwd);
+    const resolved = resolveInsideRoots(this.grantedRoots(), cwd);
+    // The home itself is a granted root, but its credentials folders are not a place to start an agent in:
+    // a run whose working directory is `config/` is one `cat token` away from the owner token.
+    const reason = makeWorkspaceFilter([], { homeDir: this.paths.home }).homePrivateReason(resolved);
+    if (reason) throw new PathAccessError(cwd, reason);
+    return resolved;
   }
 
   /** Refuse a write run the current security profile does not allow, before anything is created. */

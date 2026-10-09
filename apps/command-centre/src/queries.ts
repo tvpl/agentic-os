@@ -78,6 +78,8 @@ export const invalidationMap: Record<string, readonly (readonly unknown[])[]> = 
   "budget.crossed": [["metrics"], ["notifications"]],
   "sentinel.fired": [["notifications"]],
   "objective.changed": [["objectives"]],
+  // The service restarted and event ids started over: anything may have been missed. The empty key matches every query.
+  "stream.reset": [[]],
 };
 
 /** Named SSE event types the stream subscribes to. */

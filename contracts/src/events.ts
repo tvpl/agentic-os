@@ -38,7 +38,13 @@ export type OsEventType =
    * recorder turns it into an inbox row; the triage listener may answer it
    * with a short, cheap run when `triage` is set.
    */
-  | "sentinel.fired";
+  | "sentinel.fired"
+  /**
+   * The resume point the client sent is ahead of this process's last id (the service
+   * restarted and event ids start over). Sent by `GET /api/events` only, as the first
+   * frame of that response and never through the bus; payload: the process's last id.
+   */
+  | "stream.reset";
 
 /** Version of the event envelope and payloads. */
 export const OS_EVENT_VERSION = 1 as const;
@@ -148,6 +154,7 @@ export interface OsEventMap {
   "notification.read": { ids: readonly string[] } | { all: true };
   "budget.crossed": BudgetCrossedPayload;
   "sentinel.fired": SentinelFiredPayload;
+  "stream.reset": { lastId: number };
 }
 
 /** One event as the bus delivers it: a union over the event types, discriminated by `type`. */

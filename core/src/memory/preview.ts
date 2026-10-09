@@ -2,7 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Settings } from "../config/schema.js";
 import { PathAccessError, isInside, resolveInsideRoots } from "../security/paths.js";
-import { isBinaryBuffer, makeWorkspaceFilter, BINARY_SNIFF_BYTES } from "./excludes.js";
+import {
+  isBinaryBuffer,
+  makeWorkspaceFilter,
+  BINARY_SNIFF_BYTES,
+  type WorkspaceFilterOptions,
+} from "./excludes.js";
 
 /** Extensions that are binary by definition — refused without reading a byte. */
 const KNOWN_BINARY = new Set([
@@ -43,12 +48,15 @@ function grantedRoots(settings: Settings, extraRoots: string[]): string[] {
 /**
  * Resolve a user-supplied path against the granted roots and evaluate the
  * shared exclusion policy (settings excludes, hard directory blocklist,
- * secret-file patterns). Throws PathAccessError when outside every root.
+ * secret-file patterns). Throws PathAccessError when outside every root, and
+ * also when inside the MordomoOS home's `config/` or `logs/` (`options.homeDir`):
+ * those are not granted even though the home is a root.
  */
 export function checkWorkspacePath(
   settings: Settings,
   extraRoots: string[],
   filePath: string,
+  options: WorkspaceFilterOptions = {},
 ): WorkspacePathCheck {
   const roots = grantedRoots(settings, extraRoots);
   const resolved = resolveInsideRoots(roots, filePath);
@@ -59,7 +67,9 @@ export function checkWorkspacePath(
     .sort((a, b) => b.length - a.length);
   const root = containing[0] ?? path.dirname(resolved);
   const rel = path.relative(root, resolved);
-  const filter = makeWorkspaceFilter(settings.excludes);
+  const filter = makeWorkspaceFilter(settings.excludes, options);
+  const homePrivate = filter.homePrivateReason(resolved);
+  if (homePrivate) throw new PathAccessError(filePath, homePrivate);
   return { resolved, root, rel, blockedReason: filter.reasonToSkip(rel, resolved) };
 }
 
@@ -67,8 +77,13 @@ export function checkWorkspacePath(
  * For "open with the OS" and similar actions: the resolved path, or a
  * PathAccessError (403) when it is outside the roots OR excluded/blocklisted.
  */
-export function resolveOpenablePath(settings: Settings, extraRoots: string[], filePath: string): string {
-  const check = checkWorkspacePath(settings, extraRoots, filePath);
+export function resolveOpenablePath(
+  settings: Settings,
+  extraRoots: string[],
+  filePath: string,
+  options: WorkspaceFilterOptions = {},
+): string {
+  const check = checkWorkspacePath(settings, extraRoots, filePath, options);
   if (check.blockedReason) throw new PathAccessError(filePath, check.blockedReason);
   return check.resolved;
 }
@@ -83,8 +98,9 @@ export function previewFile(
   settings: Settings,
   extraRoots: string[],
   filePath: string,
+  options: WorkspaceFilterOptions = {},
 ): PreviewResult {
-  const check = checkWorkspacePath(settings, extraRoots, filePath);
+  const check = checkWorkspacePath(settings, extraRoots, filePath, options);
   if (check.blockedReason) {
     return { kind: "blocked", content: null, truncated: false, size: 0, message: check.blockedReason };
   }

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { redactSecrets } from "../security/redact.js";
+import { PRIVATE_DIR_MODE, PRIVATE_FILE_MODE } from "../paths.js";
 
 function rotationStamp(): string {
   return new Date().toISOString().replace(/[:.]/g, "-");
@@ -69,7 +70,7 @@ export class JsonlLogger {
     private readonly maxFileBytes: number,
     private readonly retentionDays: number,
   ) {
-    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(dir, { recursive: true, mode: PRIVATE_DIR_MODE });
     try {
       this.prune();
     } catch {
@@ -84,7 +85,7 @@ export class JsonlLogger {
   append(record: Record<string, unknown>): void {
     const line = redactSecrets(JSON.stringify({ ts: Date.now(), ...record })) + "\n";
     this.rotateIfNeeded(Buffer.byteLength(line));
-    fs.appendFileSync(this.currentFile, line, "utf8");
+    fs.appendFileSync(this.currentFile, line, { encoding: "utf8", mode: PRIVATE_FILE_MODE });
   }
 
   private rotateIfNeeded(incoming: number): void {

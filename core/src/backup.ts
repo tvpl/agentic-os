@@ -2,7 +2,7 @@ import fs from "node:fs";
 import Database from "better-sqlite3";
 import { MIGRATIONS } from "./db/migrations.js";
 import path from "node:path";
-import type { MordomoPaths } from "./paths.js";
+import { PRIVATE_DIR_MODE, PRIVATE_FILE_MODE, tightenMode, type MordomoPaths } from "./paths.js";
 import type { Db } from "./db/db.js";
 import { events } from "./events.js";
 import type { BackupInfo } from "@mordomo/contracts";
@@ -52,7 +52,7 @@ export async function createBackup(
 /** Copy every file set except the database into a fresh backup directory. */
 function snapshotFiles(paths: MordomoPaths, opts: BackupOptions): { dest: string; dbFile: string } {
   const prefix = `.pending-full-${new Date().toISOString().replace(/[:.]/g, "-")}-`;
-  fs.mkdirSync(paths.backups, { recursive: true });
+  fs.mkdirSync(paths.backups, { recursive: true, mode: PRIVATE_DIR_MODE });
   const dest = fs.mkdtempSync(path.join(paths.backups, prefix));
   try {
     for (const set of BACKUP_SETS) {
@@ -84,6 +84,9 @@ function snapshotFiles(paths: MordomoPaths, opts: BackupOptions): { dest: string
 }
 
 function finalize(dest: string): BackupInfo {
+  // The online-backup API and plain copies create the database file with the process mask or the source's mode.
+  tightenMode(dest, PRIVATE_DIR_MODE);
+  tightenMode(path.join(dest, "config", "db", "mordomo.db"), PRIVATE_FILE_MODE);
   const sizeBytes = dirSize(dest);
   const published = path.join(path.dirname(dest), path.basename(dest).replace(/^\.pending-/, ""));
   fs.renameSync(dest, published);

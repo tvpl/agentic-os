@@ -522,7 +522,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
             for (const id of payload.ids) dispatch({ type: "markRead", id });
           return;
         }
-        if (event.type === "stream.reconnected") {
+        if (event.type === "stream.reconnected" || event.type === "stream.reset") {
           void api
             .get<{ items: ServerNotification[] }>(`${SERVER_PATH}?limit=${MAX_NOTIFICATIONS}`)
             .then((res) => {

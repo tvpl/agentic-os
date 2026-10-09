@@ -7,9 +7,9 @@ import {
   EffortLevel,
   resolveInsideRoots,
   isInside,
+  checkWorkspacePath,
   findOnPath,
   previewFile,
-  safeSpawn,
   type RunEvent,
 } from "@mordomo/core";
 import type { AppContext } from "../context.js";
@@ -22,6 +22,7 @@ import {
   submitPromptRun,
   type SkillRunInput,
 } from "./common.js";
+import { runGit } from "./git.js";
 import { UuidParam, UuidParams } from "./params.js";
 import { lastEventId, openSse } from "./sse.js";
 
@@ -404,30 +405,25 @@ export function findGitRoot(start: string): string | null {
 }
 
 const DIFF_MAX_CHARS = 512 * 1024;
-const GIT_TIMEOUT_MS = 10_000;
-
-async function git(
-  gitPath: string,
-  cwd: string,
-  args: string[],
-): Promise<{ exitCode: number | null; stdout: string; truncated: boolean }> {
-  const handle = safeSpawn(gitPath, ["-c", "core.quotepath=off", ...args], {
-    cwd,
-    allowPaths: [gitPath],
-    timeoutMs: GIT_TIMEOUT_MS,
-    env: { GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", GIT_PAGER: "cat" },
-  });
-  const res = await handle.result;
-  return { exitCode: res.exitCode, stdout: res.stdout, truncated: res.stdoutTruncated };
-}
 
 async function runFileDiff(ctx: AppContext, resolved: string, roots: string[]): Promise<RunDiffResult> {
+  const filterOptions = { homeDir: ctx.paths.home };
+  // The same filter as the preview, before git runs: a diff of a tracked secret
+  // or of the home's config/ would otherwise bypass it.
+  let access: ReturnType<typeof checkWorkspacePath>;
+  try {
+    access = checkWorkspacePath(ctx.settings(), roots, resolved, filterOptions);
+  } catch (err) {
+    throw httpError(403, (err as Error).message, "forbidden_path");
+  }
+  if (access.blockedReason) return { kind: "unavailable", file: resolved, message: access.blockedReason };
+
   const snapshot = (untracked: boolean): RunDiffResult => {
     if (!fs.existsSync(resolved))
       return { kind: "unavailable", file: resolved, message: "File no longer exists." };
     let preview: ReturnType<typeof previewFile>;
     try {
-      preview = previewFile(ctx.settings(), roots, resolved);
+      preview = previewFile(ctx.settings(), roots, resolved, filterOptions);
     } catch (err) {
       throw httpError(403, (err as Error).message, "forbidden_path");
     }
@@ -449,12 +445,11 @@ async function runFileDiff(ctx: AppContext, resolved: string, roots: string[]): 
   const rel = path.relative(repoRoot, resolved);
   try {
     // HEAD may not exist yet (fresh repository): fall back to the index diff.
-    let out = await git(gitPath, repoRoot, ["diff", "--no-color", "--no-ext-diff", "HEAD", "--", rel]);
-    if (out.exitCode !== 0)
-      out = await git(gitPath, repoRoot, ["diff", "--no-color", "--no-ext-diff", "--", rel]);
+    let out = await runGit(gitPath, repoRoot, ["diff", "--no-color", "HEAD", "--", rel]);
+    if (out.exitCode !== 0) out = await runGit(gitPath, repoRoot, ["diff", "--no-color", "--", rel]);
     if (out.exitCode !== 0) return snapshot(false);
     if (out.stdout.trim() === "") {
-      const status = await git(gitPath, repoRoot, [
+      const status = await runGit(gitPath, repoRoot, [
         "status",
         "--porcelain",
         "--untracked-files=all",

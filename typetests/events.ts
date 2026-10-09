@@ -3,7 +3,7 @@
  * payload the event map names, and the map covers every event type exactly.
  */
 import { EventBus } from "@mordomo/core";
-import type { OsEventMap, OsEventType } from "@mordomo/contracts";
+import type { OsEvent, OsEventMap, OsEventType } from "@mordomo/contracts";
 
 const bus = new EventBus();
 
@@ -41,3 +41,14 @@ type Missing = Exclude<OsEventType, keyof OsEventMap>;
 type Extra = Exclude<keyof OsEventMap, OsEventType>;
 export const noMissing: [Missing] extends [never] ? true : false = true;
 export const noExtra: [Extra] extends [never] ? true : false = true;
+
+// Security P1, C14 — `stream.reset` carries the process's last id, in envelope version 1.
+type ResetEvent = OsEvent<"stream.reset">;
+export const resetPayload: ResetEvent["payload"] = { lastId: 3 };
+// @ts-expect-error lastId is a number
+export const resetBadId: ResetEvent["payload"] = { lastId: "3" };
+// @ts-expect-error the payload has nothing but lastId
+export const resetExtra: ResetEvent["payload"] = { lastId: 3, more: true };
+export const resetVersion: ResetEvent["v"] = 1;
+// @ts-expect-error the envelope is version 1
+export const resetWrongVersion: ResetEvent["v"] = 2;

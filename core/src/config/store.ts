@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import type { MordomoPaths } from "../paths.js";
+import { PRIVATE_DIR_MODE, PRIVATE_FILE_MODE, type MordomoPaths } from "../paths.js";
 import { CURRENT_SETTINGS_VERSION, SettingsSchema, type Settings, defaultSettings } from "./schema.js";
 import { events } from "../events.js";
 
@@ -147,15 +147,43 @@ export class SettingsStore {
   /**
    * Local API token. Generated once, stored in config/token (0600).
    * Serves as CSRF/foreign-origin protection; it never leaves the machine.
+   *
+   * Creation is exclusive (`wx`): of several processes starting on a home with
+   * no token, one creates the file and the others read what it wrote, so they
+   * all return the same value.
    */
   getOrCreateToken(): string {
-    if (fs.existsSync(this.paths.tokenFile)) {
-      const existing = fs.readFileSync(this.paths.tokenFile, "utf8").trim();
-      if (existing.length >= 32) return existing;
-    }
+    const existing = this.readToken();
+    if (existing) return existing;
     const token = crypto.randomBytes(32).toString("hex");
-    fs.mkdirSync(path.dirname(this.paths.tokenFile), { recursive: true });
-    fs.writeFileSync(this.paths.tokenFile, token + "\n", { mode: 0o600 });
-    return token;
+    fs.mkdirSync(path.dirname(this.paths.tokenFile), { recursive: true, mode: PRIVATE_DIR_MODE });
+    try {
+      fs.writeFileSync(this.paths.tokenFile, token + "\n", { mode: PRIVATE_FILE_MODE, flag: "wx" });
+      return token;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
+    // Lost the race: the winner may still be writing, so wait briefly for a complete value.
+    const deadline = Date.now() + 2000;
+    for (;;) {
+      const written = this.readToken();
+      if (written) return written;
+      if (Date.now() >= deadline) break;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+    // An empty or truncated file (a crash mid-write) is replaced, not trusted.
+    const replacement = `${this.paths.tokenFile}.${process.pid}.tmp`;
+    fs.writeFileSync(replacement, token + "\n", { mode: PRIVATE_FILE_MODE });
+    fs.renameSync(replacement, this.paths.tokenFile);
+    return this.readToken() ?? token;
+  }
+
+  private readToken(): string | null {
+    try {
+      const value = fs.readFileSync(this.paths.tokenFile, "utf8").trim();
+      return value.length >= 32 ? value : null;
+    } catch {
+      return null;
+    }
   }
 }

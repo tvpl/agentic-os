@@ -92,20 +92,62 @@ export function resolvePaths(homeOverride?: string): MordomoPaths {
   };
 }
 
+/** Directories that hold credentials, the database, backups and run output: owner only. */
+export const PRIVATE_DIR_MODE = 0o700;
+/** The database, its sidecars, backups of it, the token and the logs: owner only. */
+export const PRIVATE_FILE_MODE = 0o600;
+
+/**
+ * Set `target`'s permission bits to `mode` when they differ; a no-op when they
+ * already match, when the path is missing, on Windows (where POSIX modes do not
+ * exist; docs/security.md) and when the file is not ours to change.
+ */
+export function tightenMode(target: string, mode: number): boolean {
+  if (process.platform === "win32") return false;
+  try {
+    if ((fs.statSync(target).mode & 0o777) === mode) return false;
+    fs.chmodSync(target, mode);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function ensureDirs(p: MordomoPaths): void {
-  for (const dir of [
-    p.skills,
-    p.memory,
-    p.routines,
-    p.connectors,
-    p.artifacts,
-    p.logs,
-    p.config,
-    p.db,
-    p.backups,
-    p.run,
-  ]) {
+  for (const dir of [p.skills, p.memory, p.routines, p.connectors, p.artifacts]) {
     fs.mkdirSync(dir, { recursive: true });
+  }
+  for (const dir of [p.config, p.db, p.backups, p.logs, p.run]) {
+    fs.mkdirSync(dir, { recursive: true, mode: PRIVATE_DIR_MODE });
+    tightenMode(dir, PRIVATE_DIR_MODE);
+  }
+}
+
+/**
+ * Bring the files of an existing home to owner-only, once per start: the
+ * database and its WAL sidecars, the token, every log, and the backups (their
+ * folders and the database inside each). Only what differs is written.
+ */
+export function tightenHomeFiles(p: MordomoPaths): void {
+  for (const suffix of ["", "-wal", "-shm"]) tightenMode(p.dbFile + suffix, PRIVATE_FILE_MODE);
+  tightenMode(p.tokenFile, PRIVATE_FILE_MODE);
+  const entries = (dir: string): fs.Dirent[] => {
+    try {
+      return fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+  };
+  for (const entry of entries(p.logs)) {
+    if (entry.isFile()) tightenMode(path.join(p.logs, entry.name), PRIVATE_FILE_MODE);
+  }
+  for (const entry of entries(p.backups)) {
+    const full = path.join(p.backups, entry.name);
+    if (entry.isFile()) tightenMode(full, PRIVATE_FILE_MODE);
+    else if (entry.isDirectory()) {
+      tightenMode(full, PRIVATE_DIR_MODE);
+      tightenMode(path.join(full, "config", "db", "mordomo.db"), PRIVATE_FILE_MODE);
+    }
   }
 }
 

@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/seguranca-p1/plan.md`
 
-17 checks in 4 slices · 2 one-way doors · 0 open, of which 0 block
+18 checks in 4 slices · 2 one-way doors · 0 open, of which 0 block
 
 Comandos (da raiz): `npx vitest run tests/security-p1.test.ts -t "<nome>"`. As provas de git usam um
 repositório temporário criado no teste (`git init`), e as de processo concorrente usam `fork` de um
@@ -15,79 +15,85 @@ script curto.
 
 **C1** - `GET /api/memory/preview` com `p` = cada um de `config/token`, `config/vapid.json`, `config/registry-signing.json`, `config/settings.json`, `config/ui-preferences.json`, `config/db/mordomo.db`, `config/tls/key.pem`, `config/backups/x/a.json` e `logs/runs.jsonl` do home responde `403` `forbidden_path`, com um token de dispositivo e com o do dono (AC 1)
 Proof: `npx vitest run tests/security-p1.test.ts -t "C1 no file under the home's config or logs is previewable"`
-Status: open
+Status: closed
 
 **C2** - O mesmo para `<home>/config/../config/token`, um symlink dentro de `<home>/memory` apontando para `config/token`, `<home>/CONFIG/token` (home em sistema insensível a caixa simulado pelo filtro), `<home>/config/token.` e `<home>/config//token` (AC 2)
 Proof: `npx vitest run tests/security-p1.test.ts -t "C2 path tricks do not reach the config directory"`
-Status: open
+Status: closed
 
 **C3** - `<home>/memory/note.md`, `<home>/skills/x/SKILL.md` e `<home>/artifacts/r1/out.txt` continuam sendo pré-visualizados (`200`) (AC 3)
 Proof: `npx vitest run tests/security-p1.test.ts -t "C3 memory, skills and artifacts stay previewable"`
-Status: open
+Status: closed
 
 **C4** - `POST /api/memory/open` e o indexador recusam `<home>/config/token` e `<home>/logs/x`; um arquivo `config/app.json` dentro de uma pasta indexada do usuário (fora do home) continua legível e indexável (AC 4, door 1)
 Proof: `npx vitest run tests/security-p1.test.ts -t "C4 open and index refuse the home config; user config folders stay readable"`
-Status: open
+Status: closed
 
 ### S2 - o diff não executa o repositório · 3 files · 30 KB · ~8k
 
 **C5** - Toda chamada de `git` da rota de diff leva `core.fsmonitor=false`, `core.hooksPath` nulo, `--no-textconv`, `--no-ext-diff` e o ambiente `GIT_CONFIG_NOSYSTEM=1` e `GIT_CONFIG_GLOBAL` nulo (a função `git()` é exercitada com um `git` falso que registra argv e ambiente) (AC 5)
 Proof: `npx vitest run tests/security-p1.test.ts -t "C5 every git call of the diff route is neutralised"`
-Status: open
+Status: closed
 
 **C6** - Num repositório real com `core.fsmonitor`, `diff.x.textconv` (com `.gitattributes`) e um hook configurados para criar um arquivo marcador, `GET /api/runs/:id/diff` devolve o diff e nenhum marcador aparece (AC 6)
 Proof: `npx vitest run tests/security-p1.test.ts -t "C6 a hostile repository config does not run on diff"`
-Status: open
+Status: closed
 
 ### S3 - permissões e tokens · 5 files · 50 KB · ~12k
 
 **C7** - Num home novo (POSIX), `config`, `config/db`, `config/backups`, `logs` e `config/run` têm modo `0700`; `mordomo.db`, um backup criado e um arquivo de log têm `0600` (AC 7)
 Proof: `npx vitest run tests/security-p1.test.ts -t "C7 a new home is private to its owner"`
-Status: open
+Status: closed
 
 **C8** - Num home existente com tudo em `0755`/`0644`, montar o motor corrige os modos para os mesmos valores; num home com o modo certo, não grava nada (mesmo `mtime`) (AC 8)
 Proof: `npx vitest run tests/security-p1.test.ts -t "C8 an existing home is tightened once"`
-Status: open
+Status: closed
 
 **C9** - 20 processos filhos chamando `getOrCreateToken()` ao mesmo tempo num home sem token devolvem o mesmo valor, e o arquivo contém exatamente esse valor (AC 9)
 Proof: `npx vitest run tests/security-p1.test.ts -t "C9 concurrent token creation agrees on one token"`
-Status: open
+Status: closed
 
 **C10** - `git check-ignore` confirma que `config/token`, `config/vapid.json`, `config/registry-signing.json`, `config/tls/key.pem`, `config/ui-preferences.json`, `config/db/mordomo.db`, `config/settings.json.v1.bak` e `x.bak` são ignorados, e que `core/src/config/store.ts` e `apps/command-centre/src/config/x.ts` (código sob uma pasta chamada `config` fora da raiz do home) não são (AC 10)
 Proof: `npx vitest run tests/security-p1.test.ts -t "C10 private home files are git-ignored and source files are not"`
-Status: open
+Status: closed
 
 ### S4 - o SSE se recupera · 4 files · 40 KB · ~10k
 
 **C11** - Num servidor real, `GET /api/events` com `Last-Event-ID` maior que o último id manda `stream.reset` (com `lastId`) como primeiro quadro de dados, reenvia o anel e entrega um evento novo depois (AC 11)
 Proof: `npx vitest run tests/security-p1.test.ts -t "C11 a stale resume point gets a stream reset"`
-Status: open
+Status: closed
 
 **C12** - Com `Last-Event-ID` dentro da faixa, ou ausente, nenhum `stream.reset` é enviado e o replay é o de antes (AC 13)
 Proof: `npx vitest run tests/security-p1.test.ts -t "C12 an in-range resume point replays as before"`
-Status: open
+Status: closed
 
 **C13** - A interface, ao receber `stream.reset`, invalida suas consultas (o mapa de invalidação o inclui como `stream.reconnected`) (AC 12)
 Proof: `npm run test -w apps/command-centre -- src/queries.test.ts -t "C13 a stream reset refreshes every query"`
-Status: open
+Status: closed
 
 **C14** - `OsEventMap` tem a chave `stream.reset` com `{ lastId: number }` e `v` 1 (door 2; o teste de tipos de eventos continua exaustivo nos dois sentidos)
 Proof: `npx tsc -p typetests/tsconfig.json`
-Status: open
+Status: closed
+
+### Depois da construção - achado do builder
+
+**C18** - `POST /api/runs`, com token de dispositivo e do dono, e com `cwd` = `<home>/config`, `<home>/config/db`, `<home>/config/tls` e `<home>/logs`, responde `403` `forbidden_path` (o `cwd` passa por `ctx.resolveCwd`, que aplica o filtro do home; `POST /api/skills/:slug/run` e `POST /api/objectives/:id/dispatch` usam o mesmo caminho); `<home>/memory` segue sendo um `cwd` válido (AC 4; fecha a rota pela qual um agente iniciado em `config/` leria o token)
+Proof: `npx vitest run tests/security-p1.test.ts -t "C18 a run cannot start with its working directory in config or logs"`
+Status: closed
 
 ### Fechamento
 
 **C15** - `docs/security.md` descreve o bloqueio do home, o git neutralizado, os modos de arquivo (e que no Windows não se aplicam) e o `stream.reset`; a seção "Not covered" não lista mais o que foi coberto (AC 1-13)
 Proof: `npx vitest run tests/security-p1.test.ts -t "C15 the security doc describes what is enforced"`
-Status: open
+Status: closed
 
 **C16** - A suíte da raiz e da interface, o typecheck e o lint saem `0` (AC 1-13)
 Proof: `npm run typecheck && npm run lint`
-Status: open
+Status: closed
 
 **C17** - `tests/api.test.ts` "preview refuses secrets" continua passando e ganha um caso por arquivo secreto do home (regressão de C1 no teste antigo) (AC 1)
 Proof: `npx vitest run tests/api.test.ts -t "preview"`
-Status: open
+Status: closed
 
 ## Coverage
 

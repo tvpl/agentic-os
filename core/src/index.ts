@@ -1,4 +1,14 @@
-export { resolvePaths, ensureDirs, defaultUserDataDir, seedHome, type MordomoPaths } from "./paths.js";
+export {
+  resolvePaths,
+  ensureDirs,
+  tightenHomeFiles,
+  tightenMode,
+  PRIVATE_DIR_MODE,
+  PRIVATE_FILE_MODE,
+  defaultUserDataDir,
+  seedHome,
+  type MordomoPaths,
+} from "./paths.js";
 export {
   SettingsSchema,
   CURRENT_SETTINGS_VERSION,
@@ -197,10 +207,12 @@ export { InvalidIdError, ID_PATTERN, isValidId, assertValidId, resolveInsideDir 
 export { isInsideAny } from "./security/paths.js";
 export {
   HARD_BLOCKED_DIRS,
+  HOME_PRIVATE_DIRS,
   isHardBlockedPath,
   isBinaryBuffer,
   makeWorkspaceFilter,
   type WorkspaceFilter,
+  type WorkspaceFilterOptions,
 } from "./memory/excludes.js";
 export { checkWorkspacePath, resolveOpenablePath, type WorkspacePathCheck } from "./memory/preview.js";
 export { rotateFile, pruneRotated } from "./logs/jsonl.js";

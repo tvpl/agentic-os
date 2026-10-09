@@ -3,11 +3,12 @@ dist/
 *.tsbuildinfo
 
 # Local state (source of truth for the machine, never committed)
-config/settings.json
-config/token
-config/db/
-config/backups/
-config/run/
+# Everything under the home's config/ is machine state or a secret (token, VAPID and
+# signing keys, TLS key, database, backups). Anchored to the repo root so source folders
+# named config/ (core/src/config, apps/command-centre/src/config) stay tracked. To version
+# a file in the home's config/, add `!/config/<name>` below; nothing is versioned today.
+/config/*
+*.bak
 logs/*.jsonl
 logs/*.jsonl.*
 artifacts/*
@@ -28,7 +29,6 @@ coverage/
 playwright-report/
 
 # Machine-local generated state
-config/sync-manifest.json
 logs/*.log
 memory/ROUTER.md
 memory/areas/

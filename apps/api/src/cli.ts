@@ -864,7 +864,7 @@ async function startDetached(ctx: AppContext): Promise<PidInfo | null> {
   const logFile = serviceLogFile(ctx);
   fs.mkdirSync(ctx.paths.logs, { recursive: true });
   rotateLogIfNeeded(logFile);
-  const out = fs.openSync(logFile, "a");
+  const out = fs.openSync(logFile, "a", 0o600);
   const child = spawn(process.execPath, [CLI_PATH, "start", "--foreground"], {
     detached: true,
     stdio: ["ignore", out, out],
