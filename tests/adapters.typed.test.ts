@@ -463,6 +463,12 @@ describe("S2 - a strange line never sinks a run", () => {
       "x".repeat(201),
       "é",
     ];
+    // The tail is `[\w.:-]`: every other printable ASCII character, and anything past ASCII, is refused.
+    for (let code = 0x20; code < 0x7f; code++) {
+      const ch = String.fromCharCode(code);
+      if (!/[\w.:-]/.test(ch)) bad.push(`a${ch}b`);
+    }
+    bad.push("aé", "a\u0080", "a\uffff", "a\u{1F600}");
     expect(bad.some((id) => id.includes("\n"))).toBe(true); // a real LF, not backslash + n
     for (const id of bad) {
       expect(

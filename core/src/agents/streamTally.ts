@@ -34,7 +34,7 @@ export interface RejectedLine {
 
 export interface UnrecognizedTally {
   /** A JSON object the schema rejected. */
-  note(value: Record<string, unknown>, what?: RejectedLine): void;
+  note(value: Record<string, unknown>, what: RejectedLine): void;
   /** A line nobody could read: over the size cap, or the parser threw on it. */
   noteUnreadable(): void;
   /** The closing `text` event naming what was counted; none when nothing was. */
@@ -83,13 +83,12 @@ export function createUnrecognizedTally(provider: string): UnrecognizedTally {
   return {
     note(value, what) {
       const type = value.type;
-      const raw = what?.name ?? (typeof type === "string" ? type : undefined);
+      const raw = what.name ?? (typeof type === "string" ? type : undefined);
       const name = raw === undefined ? "(no type)" : printable(raw);
-      const reason = what?.reason ?? "unknown";
       add(
-        reason === "oversized"
+        what.reason === "oversized"
           ? `type ${name} with an oversized structure`
-          : reason === "invalid"
+          : what.reason === "invalid"
             ? `known type ${name} with an invalid field`
             : `unknown type ${name}`,
       );
