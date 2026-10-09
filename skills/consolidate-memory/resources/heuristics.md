@@ -4,7 +4,7 @@ Every journal bullet gets `score = recall × importance × recency`.
 
 | Signal | How to compute | Range |
 |---|---|---|
-| **recall** | `1 + count` for the journal file in `GET /api/memory/recall/stats` (`paths[].count`); bullets mentioning a path that appears in the stats inherit that path's count | 1 … |
+| **recall** | `1 + count` for the journal file in `GET $MORDOMO_URL/api/memory/recall/stats` (`paths[].count`); bullets mentioning a path that appears in the stats inherit that path's count | 1 … |
 | **importance** | 1 = routine chatter (run finished, file opened); 2 = fact with a number, a name or a date; 3 = a decision, a commitment, a deadline, a change of plan; 4 = something that affects money, health, legal or a client | 1–4 |
 | **recency** | 1.0 today, 0.9 yesterday, decaying ×0.9 per day (7 days ≈ 0.48) | 0.4–1 |
 
@@ -14,7 +14,7 @@ same fact appears on two or more days (repetition is memory's own vote).
 ## What goes where in MEMORY.md
 
 - `## Facts` — stable statements: `subject — predicate — object (journal YYYY-MM-DD)`.
-  Also assert them through `POST /api/memory/facts` so they become queryable by date.
+  Also assert them through `POST $MORDOMO_URL/api/memory/facts` so they become queryable by date.
 - `## Decisions` — one line each, with the "why" when the journal has it.
 - `## Open loops` — unresolved items; when a later journal closes one, append
   `→ closed YYYY-MM-DD` to the line instead of deleting it.

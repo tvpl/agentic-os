@@ -139,6 +139,29 @@ export class AppContext extends MordomoEngine {
     return { runId, active: false };
   }
 
+  /** Run-scoped API credential → the run it was issued for (same lifetime rule as the broker's). */
+  private readonly runApiCredentials = new Map<string, string>();
+
+  /**
+   * A run of a memory skill calls the memory routes of this API with a credential of its own
+   * (`MORDOMO_RUN_TOKEN`), never with the owner token it cannot read: `rc_` + 32 random bytes, accepted only while
+   * the run is queued or running and only on `RUN_API_ROUTES` (docs/security.md, AD-012).
+   */
+  override runApiAccessFor(run: { id: string }): { url: string; token: string } | null {
+    const credential = `rc_${crypto.randomBytes(32).toString("base64url")}`;
+    this.runApiCredentials.set(credential, run.id);
+    return { url: `http://127.0.0.1:${this.settings().port}`, token: credential };
+  }
+
+  runApiRunFor(credential: string): { runId: string; active: boolean } | null {
+    const runId = this.runApiCredentials.get(credential);
+    if (!runId) return null;
+    const status = this.runs.get(runId)?.status;
+    if (status === "queued" || status === "running") return { runId, active: true };
+    this.runApiCredentials.delete(credential);
+    return { runId, active: false };
+  }
+
   async providerSnapshot(force = false): Promise<ProviderSnapshot[]> {
     const settings = this.settings();
     const out: ProviderSnapshot[] = [];

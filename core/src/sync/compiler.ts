@@ -14,8 +14,8 @@ import {
   homeReadScope,
   readWorkspaceFile,
   readWorkspaceText,
-  writeWorkspaceFile,
 } from "../security/safeFs.js";
+import { writeWorkspaceFile } from "../security/safeWrite.js";
 import { unifiedDiff } from "./diff.js";
 
 /**

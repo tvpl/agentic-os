@@ -6,17 +6,16 @@ import { SkillFrontmatterSchema, type Skill, type SkillFrontmatter, type SkillRe
 import { isValidId, resolveInsideDir } from "../security/ids.js";
 import { PathAccessError } from "../security/paths.js";
 import {
-  copyTreeWithoutLinks,
   homeReadScope,
   listWorkspaceDir,
   openWorkspaceFile,
   readWorkspaceText,
   readScope,
   resolveReadable,
-  writeWorkspaceFile,
   type ReadScope,
   type WorkspaceFile,
 } from "../security/safeFs.js";
+import { copyTreeWithoutLinks, writeWorkspaceFile } from "../security/safeWrite.js";
 import type { StoreProblem } from "../routines/store.js";
 
 /** A SKILL.md body at or above this many lines is flagged "thick" (ARMS S-L2). */
@@ -382,6 +381,26 @@ export class SkillCatalog {
     return this.readNotes(slug)!;
   }
 
+  /**
+   * Where things are, as absolute paths the engine knows. The run does not start in the home (it holds config/),
+   * so a skill never reaches for `memory/…` or `config/…` relative to where it is: it is told here. A memory skill
+   * is also told how to reach the memory routes of the local API without the owner token.
+   */
+  locationsBlock(skill: Skill): string {
+    const lines = [`Skill folder (yours to read): ${skill.dir}`];
+    if (skill.memoryAccess) {
+      const memory = this.paths.memory;
+      lines.push(
+        `MordomoOS home: ${this.paths.home}`,
+        `Memory folder (an added folder of this run): ${memory}`,
+        `  long-term memory: ${path.join(memory, "MEMORY.md")}`,
+        `  daily journal: ${path.join(memory, "journal")}${path.sep}YYYY-MM-DD.md`,
+        "Local API for the memory routes only: the environment variables MORDOMO_URL (base address) and MORDOMO_RUN_TOKEN (credential of this run only, sent as the header x-mordomo-token). If they are not set, there is no API for this run: use the files above and skip what needs the API, and say so. There is no other token and no other file to read: never look in the config folder of the home.",
+      );
+    }
+    return lines.join("\n");
+  }
+
   buildRunPrompt(skill: Skill, inputs: Record<string, string>, artifactsDir: string): string {
     const notesFile = this.notesFile(skill);
     const notes = (this.readText(notesFile) ?? "").trim();
@@ -391,6 +410,7 @@ export class SkillCatalog {
     return [
       `You are executing the "${skill.name}" skill from this machine's MordomoOS skill catalog.`,
       `Read the skill definition at: ${skill.skillFile}`,
+      this.locationsBlock(skill),
       skill.resources.length > 0
         ? `The skill folder contains extra resource files; read ONLY the ones the skill's router points you to for this task.`
         : "",

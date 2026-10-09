@@ -220,3 +220,11 @@ Fonte em `/tmp/claude-0/-home-user-agentic-os/5594f891-3b47-525e-8515-aa34286c4b
 - `npm run build:server` saída 0; `npx tsc -p typetests/tsconfig.json` saída 0; `npm run lint` saída 0; `npm run typecheck -w apps/command-centre` saída 0
 - `npm run test -w apps/command-centre -- src/hooks/useNotifications.reset.test.tsx src/queries.test.ts` - 2 arquivos, 4 passed
 - `python3 .claude/skills/tlc-spec-lean/scripts/validate_plan.py .specs/features/seguranca-p1/plan.md` - 0 errors, 1 warning; `validate_checks.py` - 0 errors, 4 warnings
+
+---
+
+## Fechamento após a rodada 3 (escalonamento ao dono)
+
+Três rodadas usadas. Os achados da rodada 3 foram corrigidos pelo corretor (6f29e36, 971f999) e passaram a uma revisão sênior dirigida, sem quarta verificação completa: regressão das skills embutidas (caminhos absolutos do motor + credencial por execução `rc_`, AD-012), TOCTOU de `writeWorkspaceFile` (re-resolução após abrir), `--no-renames` e demais mutantes do diff, caixa no macOS, `atomicWrite` com nome aleatório exclusivo, frases falsas de `docs/security.md`, lacunas N60/N61/N63.
+
+Aberto para o dono: resíduo de `escopos-dispositivo` (Codex em `read-only` e Cursor leem o disco inteiro; agente com shell aprovado lê o token); comportamento real dos CLIs do Claude e Codex não executado; macOS provado só por simulação da plataforma.

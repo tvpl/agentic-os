@@ -5,6 +5,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import {
   DEFAULT_COPY_LIMITS,
+  atomicWrite,
   ensureJournal,
   PathAccessError,
   copyTreeWithoutLinks,
@@ -147,6 +148,76 @@ describe.skipIf(!POSIX)("C42-C43 the write primitive, and the hard link", () => 
     expect(swapped).toBe(true);
     intact("after the race");
     fs.rmSync(racy);
+  });
+
+  it("C42 a folder on the way that becomes a link between the check and the open is not written through", () => {
+    const folder = path.join(home, "memory", "swap");
+    fs.mkdirSync(folder, { recursive: true });
+    const target = path.join(folder, "token");
+    const mkdir = fs.mkdirSync.bind(fs);
+    let swapped = false;
+    // The check has passed; the next raw call is the one that makes the folders: `memory/swap` becomes config/.
+    const spy = vi.spyOn(fs, "mkdirSync").mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+      if (!swapped && String(p) === folder) {
+        swapped = true;
+        fs.rmSync(folder, { recursive: true });
+        fs.symlinkSync(path.join(home, "config"), folder);
+      }
+      return (mkdir as (...a: unknown[]) => unknown)(p, ...rest);
+    }) as typeof fs.mkdirSync);
+    try {
+      expect(() => writeWorkspaceFile(narrow(), target, "CORRUPTED-BY-RACE")).toThrow(PathAccessError);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(swapped).toBe(true);
+    intact("after the folder race");
+    fs.rmSync(folder);
+  });
+
+  it("C42 a dangling link that appears at the target after the check creates nothing behind it (O_NOFOLLOW)", () => {
+    const target = path.join(home, "memory", "dangling-late.md");
+    const behind = path.join(home, "config", "created-through-the-link");
+    const mkdir = fs.mkdirSync.bind(fs);
+    let planted = false;
+    const spy = vi.spyOn(fs, "mkdirSync").mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+      if (!planted && String(p) === path.dirname(target)) {
+        planted = true;
+        fs.symlinkSync(behind, target);
+      }
+      return (mkdir as (...a: unknown[]) => unknown)(p, ...rest);
+    }) as typeof fs.mkdirSync);
+    try {
+      expect(() => writeWorkspaceFile(narrow(), target, "X", { mode: "replace" })).toThrow(PathAccessError);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(planted).toBe(true);
+    expect(fs.existsSync(behind), "nothing was made behind the link").toBe(false);
+    fs.rmSync(target);
+  });
+
+  it("C42 a file replaced by another between the open and the check is refused, not written", () => {
+    const target = path.join(home, "memory", "replaced-late.md");
+    write(target, "FIRST");
+    const fstat = fs.fstatSync.bind(fs);
+    let replaced = false;
+    const spy = vi.spyOn(fs, "fstatSync").mockImplementation(((fd: number, ...rest: unknown[]) => {
+      const answer = (fstat as (...a: unknown[]) => fs.Stats)(fd, ...rest);
+      if (!replaced) {
+        replaced = true;
+        fs.rmSync(target);
+        fs.writeFileSync(target, "SECOND");
+      }
+      return answer;
+    }) as typeof fs.fstatSync);
+    try {
+      expect(() => writeWorkspaceFile(narrow(), target, "OVERWRITE")).toThrow(PathAccessError);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(fs.readFileSync(target, "utf8")).toBe("SECOND");
+    fs.rmSync(target);
   });
 
   it("C42 refuses a pipe or a directory without blocking", () => {
@@ -326,7 +397,12 @@ describe.skipIf(!POSIX)("C42-C43 the write primitive, and the hard link", () => 
     expect(() => copyTreeWithoutLinks(scope, src, out, into("depth"), limits({ maxDepth: 2 }))).toThrow(
       /too large/,
     );
-    expect(copyTreeWithoutLinks(scope, src, out, into("fits"), limits({ maxDepth: 3 })).files).toBe(3);
+    expect(() => copyTreeWithoutLinks(scope, src, out, into("folders"), limits({ maxFolders: 2 }))).toThrow(
+      /too large/,
+    );
+    expect(
+      copyTreeWithoutLinks(scope, src, out, into("fits"), limits({ maxDepth: 3, maxFolders: 3 })).files,
+    ).toBe(3);
     fs.rmSync(src, { recursive: true });
     fs.rmSync(path.join(base, "bounded-out"), { recursive: true });
   });
@@ -522,6 +598,83 @@ describe.skipIf(!POSIX)(
       } finally {
         s.ctx.settingsStore.update({ indexedFolders: folders });
       }
+    });
+
+    it("C41 on a file system that ignores case, the home and config/ are the home and config/ in any spelling", () => {
+      // The distribution is for macOS: names are compared as darwin compares them, as the filter already does.
+      const above = path.dirname(s.home);
+      const folders = s.ctx.settings().indexedFolders;
+      s.ctx.settingsStore.update({
+        indexedFolders: [...folders, { path: above, area: null, enabled: true }],
+      });
+      try {
+        const manager = new RunManager(
+          s.ctx.db,
+          s.ctx.paths,
+          () => s.ctx.settings(),
+          () => undefined,
+          {
+            pruneOnBoot: false,
+            platform: "darwin",
+          },
+        );
+        const shouted = path.join(above, path.basename(s.home).toUpperCase());
+        expect(shouted).not.toBe(s.home);
+        expect(manager.resolveCwd(shouted), "the home in capitals is the home").toBe(m("workspace"));
+        expect(manager.resolveCwd(`${shouted}/`), "... with a trailing slash").toBe(m("workspace"));
+        for (const private_ of ["CONFIG", "Config/db", "LOGS", "config/TLS"]) {
+          expect(() => manager.resolveCwd(path.join(shouted, private_)), private_).toThrow(PathAccessError);
+        }
+        // a folder above the home is refused in any spelling too (it holds config/)
+        expect(() => manager.resolveCwd(above.toUpperCase()), "above, in capitals").toThrow(PathAccessError);
+        // the same names on a case-sensitive file system are other folders (they do not exist: nothing private there)
+        const exact = new RunManager(
+          s.ctx.db,
+          s.ctx.paths,
+          () => s.ctx.settings(),
+          () => undefined,
+          {
+            pruneOnBoot: false,
+            platform: "linux",
+          },
+        );
+        expect(exact.resolveCwd(s.home)).toBe(m("workspace"));
+        expect(exact.resolveCwd(path.join(shouted, "config"))).toBe(path.join(shouted, "config"));
+        // the scope-level rule, for the import and the working directory alike
+        const scope = readScope({ homeDir: s.home, roots: [above], platform: "darwin" });
+        expect(() => resolveWorkspaceCwd(scope, shouted)).toThrow(PathAccessError);
+        expect(() => resolveWorkspaceCwd(scope, above)).toThrow(PathAccessError);
+      } finally {
+        s.ctx.settingsStore.update({ indexedFolders: folders });
+      }
+    });
+
+    it("C41 a default working directory that is a file or a dangling link is a clear 409, not a crash", async () => {
+      const workspace = m("workspace");
+      fs.rmSync(workspace, { recursive: true, force: true });
+      try {
+        for (const plant of [
+          () => fs.writeFileSync(workspace, "i am a file"),
+          () => fs.symlinkSync(m("nowhere"), workspace),
+        ]) {
+          plant();
+          expect(() => s.ctx.runs.resolveCwd(null)).toThrow(expect.objectContaining({ statusCode: 409 }));
+          for (const [who, headers] of s.principals()) {
+            const res = await s.app.inject({
+              method: "POST",
+              url: "/api/runs",
+              headers,
+              payload: { prompt: "ls", provider: "claude", mode: "read_only" },
+            });
+            expect(res.statusCode, `${who}: ${res.body}`).toBe(409);
+            expect(res.json().error.message).toContain("remove or rename it");
+          }
+          fs.rmSync(workspace);
+        }
+      } finally {
+        fs.rmSync(workspace, { force: true });
+      }
+      expect(s.ctx.runs.resolveCwd(null)).toBe(workspace);
     });
 
     it("C41 a workspace folder that is a link into config/ is refused, not used", () => {
@@ -731,6 +884,62 @@ describe.skipIf(!POSIX)(
     });
 
     // ---- C44: the import route ------------------------------------------------------------------------------
+    it("C44 a failed import leaves no folder behind, whether it fails while copying or after", async () => {
+      const owner = s.asOwner();
+      // after the copy: the SKILL.md does not validate (a name that is not text)
+      const bad = path.join(s.userFolder, "bad-frontmatter");
+      write(path.join(bad, "SKILL.md"), ["---", "name:", "  - not", "  - text", "---", "Body"].join("\n"));
+      write(path.join(bad, "refs", "a.md"), "A");
+      const afterCopy = await s.app.inject({
+        method: "POST",
+        url: "/api/skills/import",
+        headers: owner,
+        payload: { sourceDir: bad, slug: "bad-frontmatter" },
+      });
+      expect(afterCopy.statusCode, afterCopy.body).toBeGreaterThanOrEqual(400);
+      expect(
+        fs.existsSync(m("skills", "bad-frontmatter")),
+        "nothing left after a failure after the copy",
+      ).toBe(false);
+      // while copying: more files than the limit, so the copy stops half way
+      const big = path.join(s.userFolder, "too-many-files");
+      write(path.join(big, "SKILL.md"), ["---", "name: Big", "description: d", "---", "Body"].join("\n"));
+      for (let i = 0; i < 2001; i++) write(path.join(big, "files", `f${String(i).padStart(4, "0")}.md`), "x");
+      const midCopy = await s.app.inject({
+        method: "POST",
+        url: "/api/skills/import",
+        headers: owner,
+        payload: { sourceDir: big, slug: "too-many-files" },
+      });
+      expect(midCopy.statusCode, midCopy.body).toBe(413);
+      expect(fs.existsSync(m("skills", "too-many-files")), "nothing left after a failure while copying").toBe(
+        false,
+      );
+    }, 60_000);
+
+    it("C44 the import honours the exclusions the user set in Settings, at any depth", async () => {
+      const before = s.ctx.settings().excludes;
+      s.ctx.settingsStore.update({ excludes: ["*.private.md", "drafts"] });
+      try {
+        const src = path.join(s.userFolder, "with-excludes");
+        write(path.join(src, "SKILL.md"), ["---", "name: Ex", "description: d", "---", "Body"].join("\n"));
+        write(path.join(src, "refs", "ok.md"), "OK");
+        write(path.join(src, "refs", "notes.private.md"), "PRIVATE-NOTES");
+        write(path.join(src, "drafts", "d.md"), "DRAFT");
+        const res = await s.app.inject({
+          method: "POST",
+          url: "/api/skills/import",
+          headers: s.asOwner(),
+          payload: { sourceDir: src, slug: "with-excludes" },
+        });
+        expect(res.statusCode, res.body).toBe(200);
+        expect(fs.readdirSync(m("skills", "with-excludes", "refs"))).toEqual(["ok.md"]);
+        expect(fs.existsSync(m("skills", "with-excludes", "drafts", "d.md"))).toBe(false);
+      } finally {
+        s.ctx.settingsStore.update({ excludes: before });
+      }
+    });
+
     it("C44 importing a folder copies its files, not its links, its secrets or the home's config", async () => {
       const src = path.join(s.userFolder, "to-import");
       write(path.join(src, "SKILL.md"), ["---", "name: Imp", "description: d", "---", "Body"].join("\n"));
@@ -902,6 +1111,69 @@ describe.skipIf(!POSIX)(
           ),
         ).toThrow(PathAccessError);
         expect(fs.existsSync(target)).toBe(false);
+      } finally {
+        tmp.cleanup();
+      }
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
+describe.skipIf(!POSIX)(
+  "C48 the atomic write of routines, connectors and settings follows no planted name",
+  () => {
+    it("writes through a random exclusive temporary name: a link planted at a guessed name is never written through", () => {
+      const tmp = makeTempHome("mordomo-atomic-");
+      try {
+        const token = path.join(tmp.paths.config, "token");
+        fs.writeFileSync(token, "THE-OWNER-TOKEN");
+        const target = path.join(tmp.paths.routines, "plant.json");
+        // Every name the old scheme could take (pid, millisecond) is a link to the token.
+        const now = vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+        for (const name of [`${target}.${process.pid}.1700000000000.tmp`]) fs.symlinkSync(token, name);
+        try {
+          atomicWrite(target, '{"id":"plant"}\n');
+        } finally {
+          now.mockRestore();
+        }
+        expect(fs.readFileSync(token, "utf8")).toBe("THE-OWNER-TOKEN");
+        expect(fs.readFileSync(target, "utf8")).toBe('{"id":"plant"}\n');
+        // the name is random and nothing is left behind
+        const left = fs
+          .readdirSync(tmp.paths.routines)
+          .filter(
+            (f) => f.endsWith(".tmp") && !fs.lstatSync(path.join(tmp.paths.routines, f)).isSymbolicLink(),
+          );
+        expect(left).toEqual([]);
+        const names = new Set<string>();
+        const spy = vi.spyOn(fs, "openSync");
+        try {
+          for (let i = 0; i < 5; i++) atomicWrite(target, `{"n":${i}}\n`);
+          for (const call of spy.mock.calls) if (String(call[0]).endsWith(".tmp")) names.add(String(call[0]));
+        } finally {
+          spy.mockRestore();
+        }
+        expect(names.size, "a fresh name every time").toBe(5);
+      } finally {
+        tmp.cleanup();
+      }
+    });
+
+    it("a failed write leaves no temporary file and the target as it was", () => {
+      const tmp = makeTempHome("mordomo-atomic-");
+      try {
+        const target = path.join(tmp.paths.connectors, "c.json");
+        atomicWrite(target, "OLD\n");
+        const rename = vi.spyOn(fs, "renameSync").mockImplementation(() => {
+          throw new Error("disk full");
+        });
+        try {
+          expect(() => atomicWrite(target, "NEW\n")).toThrow("disk full");
+        } finally {
+          rename.mockRestore();
+        }
+        expect(fs.readFileSync(target, "utf8")).toBe("OLD\n");
+        expect(fs.readdirSync(tmp.paths.connectors).filter((f) => f.endsWith(".tmp"))).toEqual([]);
       } finally {
         tmp.cleanup();
       }

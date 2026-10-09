@@ -22,15 +22,20 @@ import type { AppContext } from "../context.js";
 /**
  * Who made a request (docs/security.md, "Scopes"): the local token is the
  * owner at the machine, a paired device token is a `device`, and a run's
- * permission-broker credential is a `broker` bound to that run.
+ * permission-broker credential is a `broker` bound to that run, and the credential of a memory skill's run is a
+ * `run` bound to it.
  */
 export type Principal =
-  { kind: "owner" } | { kind: "device"; deviceId: string } | { kind: "broker"; runId: string };
+  | { kind: "owner" }
+  | { kind: "device"; deviceId: string }
+  | { kind: "broker"; runId: string }
+  | { kind: "run"; runId: string };
 
 /** How an approval records its decider (`Approval.resolvedBy`). */
 export function principalName(principal: Principal): string {
   if (principal.kind === "device") return `device:${principal.deviceId}`;
   if (principal.kind === "broker") return `broker:${principal.runId}`;
+  if (principal.kind === "run") return `run:${principal.runId}`;
   return "owner";
 }
 

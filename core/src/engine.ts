@@ -221,7 +221,15 @@ export class MordomoEngine {
       this.paths,
       () => this.settings(),
       (id) => this.adapters[id],
-      { pruneOnBoot: false, permissionBroker: (run) => this.permissionBrokerFor(run) },
+      {
+        pruneOnBoot: false,
+        permissionBroker: (run) => this.permissionBrokerFor(run),
+        skillAccess: (slug) => {
+          const skill = this.skills.load(slug);
+          return skill ? { memory: skill.memoryAccess } : null;
+        },
+        runApiAccess: (run) => this.runApiAccessFor(run),
+      },
     );
     this.objectives = new ObjectiveStore(this.db, this.paths);
     this.indexer = new MemoryIndexer(this.db, () => this.settings(), { homeDir: this.paths.home });
@@ -315,6 +323,14 @@ export class MordomoEngine {
     permissionProfile: SecurityProfile | null;
   }): PermissionBroker | null {
     return this.brokerFactory?.(run) ?? null;
+  }
+
+  /**
+   * The credential a run of a memory skill uses for the memory routes of the local API, in place of the owner
+   * token it must never see. Null here (no server in this process); the API issues it.
+   */
+  runApiAccessFor(_run: { id: string }): { url: string; token: string } | null {
+    return null;
   }
 
   private get lockFile(): string {

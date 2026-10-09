@@ -185,8 +185,8 @@ export function resolveWorkspaceCwd(scope: ReadScope, cwd: string): string {
   return real;
 }
 
-const O_NOFOLLOW = fs.constants.O_NOFOLLOW ?? 0;
-const O_NONBLOCK = fs.constants.O_NONBLOCK ?? 0;
+export const O_NOFOLLOW = fs.constants.O_NOFOLLOW ?? 0;
+export const O_NONBLOCK = fs.constants.O_NONBLOCK ?? 0;
 
 /** An open, verified file. The descriptor belongs to it: call `close()` or hand it to `createReadStream()`. */
 export interface WorkspaceFile {
@@ -215,7 +215,7 @@ const MAX_PRIVATE_WALK = 20_000;
  * walk; the walk never follows a link. A tree too large to walk counts as a
  * match: the answer errs towards refusing.
  */
-function sharesInodeWithPrivateFile(scope: ReadScope, stat: fs.Stats): boolean {
+export function sharesInodeWithPrivateFile(scope: ReadScope, stat: fs.Stats): boolean {
   if (stat.nlink <= 1 || process.platform === "win32") return false;
   let seen = 0;
   const walk = (dir: string): boolean => {
@@ -244,11 +244,11 @@ function sharesInodeWithPrivateFile(scope: ReadScope, stat: fs.Stats): boolean {
   return HOME_PRIVATE_DIRS.some((name) => walk(path.join(scope.realHomeDir, name)));
 }
 
-function hardLinked(candidate: string): PathAccessError {
+export function hardLinked(candidate: string): PathAccessError {
   return new PathAccessError(candidate, `Refusing a second name for a private file: ${candidate}`);
 }
 
-function changed(candidate: string): PathAccessError {
+export function changed(candidate: string): PathAccessError {
   return new PathAccessError(candidate, `Path changed while it was being opened: ${candidate}`);
 }
 
@@ -393,152 +393,15 @@ export function assertWritablePath(scope: ReadScope, candidate: string): string 
   return verdict.real;
 }
 
-export type WriteMode = "replace" | "append" | "create";
-
-export interface WriteOptions {
-  /**
-   * `replace` (default) rewrites the file, `append` adds to its end, `create` fails with `EEXIST` when
-   * anything is there already (a dangling link included).
-   */
-  mode?: WriteMode;
-  /** Permission bits of a file this call creates (before the umask). Default `0o666`. */
-  fileMode?: number;
+export function assertHoldsNoPrivateFolder(scope: ReadScope, dir: string): void {
+  // Decided by the filter, which compares names as the platform's file system does (case-folded on macOS and Windows).
+  const reason = scope.filter.holdsHomePrivateDir(dir);
+  if (reason) throw new PathAccessError(dir, `${reason} ${dir}`);
 }
 
-/**
- * Write a file the engine owns inside a folder an agent can also write to
- * (a router, a skill note, a journal day, a sync target, a skill copied from
- * a folder). The sibling of `openWorkspaceFile` for the other direction:
- *
- *  - the path must be inside the scope and pass the filter (`config/` and
- *    `logs/` of the home, secret names, the user's excludes), by its real path;
- *  - a link at the last component, dangling or not, is refused: a write
- *    follows a link wherever it points, and that is how a note became the token;
- *  - the file is opened `O_NOFOLLOW` (and not truncated by the open), so a link
- *    put there after the check fails the open instead of being followed;
- *  - the open descriptor must be a regular file with the inode the path names,
- *    and not a second name for a private file, before anything is changed.
- *
- * Missing parent folders are made. Returns the real path written.
- */
-export function writeWorkspaceFile(
-  scope: ReadScope,
-  candidate: string,
-  data: string | Uint8Array,
-  options: WriteOptions = {},
-): string {
-  const mode = options.mode ?? "replace";
-  const real = assertWritablePath(scope, candidate);
-  fs.mkdirSync(path.dirname(real), { recursive: true });
-  const base = fs.constants.O_WRONLY | fs.constants.O_CREAT | O_NOFOLLOW | O_NONBLOCK;
-  const flags =
-    mode === "append" ? base | fs.constants.O_APPEND : mode === "create" ? base | fs.constants.O_EXCL : base;
-  let fd: number;
-  try {
-    fd = fs.openSync(real, flags, options.fileMode ?? 0o666);
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === "ELOOP" || code === "EMLINK") throw changed(candidate);
-    throw err;
-  }
-  try {
-    const stat = fs.fstatSync(fd);
-    if (!stat.isFile()) throw new NotRegularFileError(candidate);
-    if (sharesInodeWithPrivateFile(scope, stat)) throw hardLinked(candidate);
-    if (process.platform !== "win32") {
-      const named = fs.lstatSync(real);
-      if (named.ino !== stat.ino || named.dev !== stat.dev) throw changed(candidate);
-    }
-    if (mode === "replace") fs.ftruncateSync(fd, 0);
-    const bytes = typeof data === "string" ? Buffer.from(data, "utf8") : data;
-    let written = 0;
-    while (written < bytes.length) {
-      written += fs.writeSync(fd, bytes, written, bytes.length - written, mode === "append" ? null : written);
-    }
-    return real;
-  } finally {
-    fs.closeSync(fd);
-  }
-}
-
-/** The most a copied tree may hold: a skill is a handful of small files, not a disk. */
-export interface CopyLimits {
-  maxFiles: number;
-  maxFileBytes: number;
-  maxTotalBytes: number;
-  maxDepth: number;
-}
-
-export const DEFAULT_COPY_LIMITS: CopyLimits = {
-  maxFiles: 2_000,
-  maxFileBytes: 8 * 1024 * 1024,
-  maxTotalBytes: 64 * 1024 * 1024,
-  maxDepth: 12,
-};
-
-/** The folder holds the home's `config/` or `logs/` (it is the home, or a folder above it). */
-function assertHoldsNoPrivateFolder(scope: ReadScope, dir: string): void {
-  for (const name of HOME_PRIVATE_DIRS) {
-    if (isInside(dir, realpathLenient(path.join(scope.realHomeDir, name)))) {
-      throw new PathAccessError(dir, `Folder would hold the MordomoOS ${name}/ folder: ${dir}`);
-    }
-  }
-}
-
-/**
- * Copy a folder the scope grants (an import source, a downloaded bundle) into
- * `target`, a folder that does not exist yet. Every file is READ through the
- * primitive and every file is WRITTEN through it, so what the copy contains is
- * what the reader may see:
- *
- *  - links, devices and pipes are left behind, and so is whatever the filter
- *    refuses (`.env`, keys, `.git`, `node_modules`, the user's excludes) at
- *    any depth, not only at the top;
- *  - a folder that holds the home's `config/` or `logs/` (the home itself, a
- *    folder above it) is refused outright;
- *  - the target is never copied into itself, when it lies inside the source;
- *  - the copy is bounded in files, bytes and depth (`CopyLimits`).
- */
-export function copyTreeWithoutLinks(
-  sourceScope: ReadScope,
-  source: string,
-  targetScope: ReadScope,
-  target: string,
-  limits: CopyLimits = DEFAULT_COPY_LIMITS,
-): { files: number; bytes: number } {
-  const root = resolveReadable(sourceScope, source).real;
-  assertHoldsNoPrivateFolder(sourceScope, root);
-  const realTarget = realpathLenient(path.resolve(target));
-  let files = 0;
-  let bytes = 0;
-  const tooBig = (what: string) => new Error(`Folder is too large to copy (${what}): ${source}`);
-  const copyDir = (dir: string, into: string, depth: number): void => {
-    if (depth > limits.maxDepth) throw tooBig(`more than ${limits.maxDepth} levels deep`);
-    fs.mkdirSync(into, { recursive: true });
-    for (const entry of listWorkspaceDir(sourceScope, dir)) {
-      const to = path.join(into, entry.name);
-      // The target is not part of what is copied (it may lie inside the source).
-      if (entry.path === realTarget) continue;
-      if (entry.isDirectory) {
-        copyDir(entry.path, to, depth + 1);
-        continue;
-      }
-      if (!entry.isFile) continue;
-      if (++files > limits.maxFiles) throw tooBig(`more than ${limits.maxFiles} files`);
-      const file = openWorkspaceFile(sourceScope, entry.path);
-      try {
-        if (file.stat.size > limits.maxFileBytes)
-          throw tooBig(`${entry.name} is larger than ${limits.maxFileBytes} bytes`);
-        bytes += file.stat.size;
-        if (bytes > limits.maxTotalBytes) throw tooBig(`more than ${limits.maxTotalBytes} bytes`);
-        writeWorkspaceFile(targetScope, to, file.readBytes(limits.maxFileBytes).bytes, { mode: "create" });
-      } finally {
-        file.close();
-      }
-    }
-  };
-  copyDir(root, target, 0);
-  return { files, bytes };
+/** Whether `real` is the MordomoOS home itself (platform-aware, see `WorkspaceFilter.isHomeDir`). */
+export function isHomeDirectory(scope: ReadScope, real: string): boolean {
+  return scope.filter.isHomeDir(real);
 }
 
 export interface WorkspaceEntry {

@@ -12,7 +12,12 @@ import { JsonlLogger } from "../logs/jsonl.js";
 import { isInside, realpathLenient } from "../security/paths.js";
 import { isValidId } from "../security/ids.js";
 import { redactSecrets } from "../security/redact.js";
-import { grantedReadScope, resolveWorkspaceCwd } from "../security/safeFs.js";
+import {
+  grantedReadScope,
+  isHomeDirectory,
+  resolveWorkspaceCwd,
+  type ReadScope,
+} from "../security/safeFs.js";
 import { ownedProcessKiller } from "../spawn/safeSpawn.js";
 import { events } from "../events.js";
 import { boundedPaths } from "../agents/eventPaths.js";
@@ -157,8 +162,18 @@ interface ActiveRun {
 /** Builds the permission MCP command for a run, or null to let the CLI decide alone. */
 export type PermissionBrokerFactory = (run: RunRecord) => PermissionBroker | null;
 
+/** What a catalog skill is given besides its own folder (`SkillFrontmatter.memoryAccess`). */
+export interface SkillAccess {
+  memory: boolean;
+}
+/** The run-scoped credential for the memory routes of the local API, or null when the API is not this process's. */
+export type RunApiAccessFactory = (run: RunRecord) => { url: string; token: string } | null;
+
 export class RunManager {
   private readonly permissionBroker: PermissionBrokerFactory | null;
+  private readonly skillAccess: ((slug: string) => SkillAccess | null) | null;
+  private readonly runApiAccess: RunApiAccessFactory | null;
+  private readonly platform: NodeJS.Platform | undefined;
   /** Conversations these runs may belong to (`runs.session_id`). */
   readonly sessions: SessionStore;
   private readonly emitter = new EventEmitter();
@@ -179,9 +194,20 @@ export class RunManager {
     private readonly paths: MordomoPaths,
     private readonly getSettings: () => Settings,
     private readonly getAdapter: (id: ProviderId) => AgentAdapter | undefined,
-    opts: { eventCap?: number; pruneOnBoot?: boolean; permissionBroker?: PermissionBrokerFactory } = {},
+    opts: {
+      eventCap?: number;
+      pruneOnBoot?: boolean;
+      permissionBroker?: PermissionBrokerFactory;
+      skillAccess?: (slug: string) => SkillAccess | null;
+      runApiAccess?: RunApiAccessFactory;
+      /** Platform whose file-name rules apply to working directories (tests only); defaults to this process's. */
+      platform?: NodeJS.Platform;
+    } = {},
   ) {
     this.permissionBroker = opts.permissionBroker ?? null;
+    this.skillAccess = opts.skillAccess ?? null;
+    this.runApiAccess = opts.runApiAccess ?? null;
+    this.platform = opts.platform;
     const s = getSettings();
     this.sessions = new SessionStore(db);
     this.logger = new JsonlLogger(paths.logs, "runs", s.limits.logMaxFileBytes, s.limits.logRetentionDays);
@@ -406,14 +432,30 @@ export class RunManager {
     if (cwd === undefined || cwd === null) return this.defaultCwd();
     const real = realpathLenient(path.resolve(cwd));
     if ([...this.scratchDirs].some((dir) => isInside(dir, real))) return real;
-    if (real === realpathLenient(this.paths.home)) return this.defaultCwd();
-    return resolveWorkspaceCwd(grantedReadScope(this.getSettings(), this.paths.home), cwd);
+    const scope = this.scope();
+    if (isHomeDirectory(scope, real)) return this.defaultCwd();
+    return resolveWorkspaceCwd(scope, cwd);
+  }
+
+  /** The folders an agent may start in: the home and the enabled indexed folders, names compared as this platform does. */
+  private scope(): ReadScope {
+    return grantedReadScope(this.getSettings(), this.paths.home, [], this.platform);
   }
 
   /** `<home>/workspace`, made on first use and checked by the same rule (a link there to `config/` is refused). */
   defaultCwd(): string {
-    fs.mkdirSync(this.paths.workspace, { recursive: true });
-    return resolveWorkspaceCwd(grantedReadScope(this.getSettings(), this.paths.home), this.paths.workspace);
+    try {
+      fs.mkdirSync(this.paths.workspace, { recursive: true });
+    } catch (err) {
+      // A file, or a link that points nowhere, is where the folder should be: say what to do, not "EEXIST".
+      throw Object.assign(
+        new Error(
+          `The default working directory ${this.paths.workspace} cannot be used (it exists and is not a folder, or cannot be made): remove or rename it. ${(err as Error).message}`,
+        ),
+        { statusCode: 409, code: "workspace_unavailable" },
+      );
+    }
+    return resolveWorkspaceCwd(this.scope(), this.paths.workspace);
   }
 
   /**
@@ -430,6 +472,38 @@ export class RunManager {
     } catch {
       return this.defaultCwd();
     }
+  }
+
+  /**
+   * The agent does not start in the home (it holds config/), so what a skill run needs outside its working
+   * directory is let in by name, as real paths inside the home: the skill's own folder (it reads SKILL.md there)
+   * and, for a skill that works on the second brain, `memory/` plus a credential of this run for the memory
+   * routes of the local API. Never `config/` or `logs/`, and never the owner token.
+   */
+  private skillContext(record: RunRecord): { readDirs?: string[]; extraEnv?: Record<string, string> } {
+    if (!record.skillSlug || !isValidId(record.skillSlug)) return {};
+    const realHome = realpathLenient(this.paths.home);
+    const inHome = (dir: string): string | null => {
+      const real = realpathLenient(dir);
+      // A folder that is a link out of the home is not let in; neither is anything that holds config/ or logs/.
+      return isInside(realHome, real) && real !== realHome ? real : null;
+    };
+    const access = this.skillAccess?.(record.skillSlug) ?? null;
+    const dirs = [inHome(path.join(this.paths.skills, record.skillSlug))];
+    if (access?.memory) dirs.push(inHome(this.paths.memory));
+    const readDirs = dirs.filter((d): d is string => d !== null);
+    let api: { url: string; token: string } | null = null;
+    if (access?.memory) {
+      try {
+        api = this.runApiAccess?.(record) ?? null;
+      } catch {
+        api = null;
+      }
+    }
+    return {
+      ...(readDirs.length > 0 ? { readDirs } : {}),
+      ...(api ? { extraEnv: { MORDOMO_URL: api.url, MORDOMO_RUN_TOKEN: api.token } } : {}),
+    };
   }
 
   // -------------------------------------------------------------- create --
@@ -636,10 +710,7 @@ export class RunManager {
         timeoutMs: record.timeoutMs ?? this.getSettings().limits.defaultTimeoutMs,
         profile: record.permissionProfile ?? this.getSettings().securityProfile,
         artifactsDir,
-        // The agent does not start in the home (it holds config/), so a skill's folder is let in by name.
-        ...(record.skillSlug && isValidId(record.skillSlug)
-          ? { readDirs: [path.join(this.paths.skills, record.skillSlug)] }
-          : {}),
+        ...this.skillContext(record),
         // MordomoOS's own secrets stay in the service (docs/security.md).
         dropEnv: providerEnvDrop(this.getSettings()),
         ...(record.sessionId ? { sessionId: record.sessionId } : {}),

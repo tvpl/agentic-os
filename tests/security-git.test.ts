@@ -132,6 +132,79 @@ describe.skipIf(!POSIX || !gitPath)(
       }
     });
 
+    it("C39 a secret that was renamed and staged is still a blocked file in the diff of its folder", async () => {
+      const repo = repoWith({ "d/.env": "API_KEY=HUNTER2-RENAMED-SECRET\n", "d/keep.txt": "keep\n" }, {});
+      // `.env` becomes `notes.txt` (same content): git sees a rename once staged
+      fs.renameSync(path.join(repo, "d", ".env"), path.join(repo, "d", "notes.txt"));
+      git(repo, "add", "-A");
+      const run = runIn(repo);
+      for (const [who, headers] of s.principals()) {
+        for (const file of ["d", path.join(repo, "d")]) {
+          const res = await diff(run.id, file, headers);
+          expect(res.statusCode, `${who} ${file}`).toBe(200);
+          expect(res.body, `${who} ${file}`).not.toContain("HUNTER2-RENAMED-SECRET");
+          expect(res.json().kind, `${who} ${file}`).toBe("unavailable");
+        }
+      }
+    });
+
+    it("C39 a list of files cut short by the output cap is not judged whole: the diff is unavailable", async () => {
+      const names = Array.from(
+        { length: 5200 },
+        (_, i) => `${String(i).padStart(5, "0")}-${"x".repeat(200)}.txt`,
+      );
+      const files = Object.fromEntries(names.map((n) => [`big/${n}`, "one\n"]));
+      const changed = Object.fromEntries(names.map((n) => [`big/${n}`, "two\n"]));
+      const repo = repoWith(files, changed);
+      const run = runIn(repo);
+      for (const [who, headers] of s.principals()) {
+        const res = await diff(run.id, "big", headers);
+        expect(res.statusCode, who).toBe(200);
+        expect(res.json().kind, who).toBe("unavailable");
+      }
+    }, 60_000);
+
+    it("C39 a changed link that points outside the granted folders (or into config/) makes the folder's diff unavailable", async () => {
+      const repo = repoWith({ "d/ok.txt": "one\n" }, {});
+      const outside = path.join(s.userFolder, "..", `outside-${++counter}.txt`);
+      fs.writeFileSync(outside, "outside\n");
+      const elsewhere = `${outside}.other`;
+      fs.writeFileSync(elsewhere, "elsewhere\n");
+      for (const target of [outside, s.tokenFile()]) {
+        fs.rmSync(path.join(repo, "d", "link"), { force: true });
+        fs.symlinkSync(target, path.join(repo, "d", "link"));
+        git(repo, "add", "-f", "d/link");
+        git(repo, "commit", "-q", "-m", `link to ${path.basename(target)}`);
+        fs.rmSync(path.join(repo, "d", "link"));
+        fs.symlinkSync(elsewhere, path.join(repo, "d", "link"));
+        write(path.join(repo, "d", "ok.txt"), `two-${path.basename(target)}\n`);
+        const run = runIn(repo);
+        for (const [who, headers] of s.principals()) {
+          const res = await diff(run.id, "d", headers);
+          expect(res.statusCode, `${who} ${target}`).toBe(200);
+          expect(res.json().kind, `${who} ${target}`).toBe("unavailable");
+          expect(res.body, `${who} ${target}`).not.toContain(s.ownerToken);
+        }
+      }
+      fs.rmSync(outside);
+      fs.rmSync(elsewhere);
+    });
+
+    it("C39 a repository with no commit yet is diffed against its index", async () => {
+      const repo = path.join(s.userFolder, `fresh-${++counter}`);
+      fs.mkdirSync(repo);
+      git(repo, "init", "-q");
+      write(path.join(repo, "a.txt"), "one\n");
+      git(repo, "add", "a.txt");
+      write(path.join(repo, "a.txt"), "two\n");
+      const run = runIn(repo);
+      for (const [who, headers] of s.principals()) {
+        const res = await diff(run.id, "a.txt", headers);
+        expect(res.json().kind, who).toBe("git");
+        expect(res.json().diff, who).toContain("+two");
+      }
+    });
+
     it("C39 a file whose name looks like a pathspec is diffed as that file, and only that file", async () => {
       const repo = repoWith(
         { "star*.txt": "star one\n", "starx.txt": "other one\n" },

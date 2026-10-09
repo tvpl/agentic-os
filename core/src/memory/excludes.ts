@@ -85,6 +85,14 @@ export interface WorkspaceFilter {
    * that answer an API request turn this into a 403 rather than a "blocked" body.
    */
   homePrivateReason(absolute: string): string | null;
+  /**
+   * Why a folder cannot be an agent's working directory or an import source because it HOLDS the home's private
+   * directories (it is the home, or a folder above it), or null. Compared as the platform's file system compares
+   * names, like `homePrivateReason`: on macOS and Windows `<base>/.MORDOMO` is the home.
+   */
+  holdsHomePrivateDir(absolute: string): string | null;
+  /** Whether `absolute` (a real path) is the MordomoOS home itself, by the same comparison. */
+  isHomeDir(absolute: string): boolean;
 }
 
 /** Segments as the platform's file system compares them: case-folded, and without the trailing dots/spaces Windows drops. */
@@ -139,6 +147,20 @@ export function makeWorkspaceFilter(
     const hit = privateDirs.find((dir) => dir.segs.every((seg, i) => segs[i] === seg));
     return hit ? `Path is inside the MordomoOS ${hit.name}/ folder, which holds credentials and is never served.` : null;
   };
+  const homeSpellings = options.homeDir
+    ? [path.resolve(options.homeDir), realpathLenient(options.homeDir)].map((p) => comparableSegments(p, platform))
+    : [];
+  const holdsHomePrivateDir = (absolute: string): string | null => {
+    if (privateDirs.length === 0 || !path.isAbsolute(absolute)) return null;
+    const segs = comparableSegments(path.resolve(absolute), platform);
+    const hit = privateDirs.find((dir) => segs.length <= dir.segs.length && segs.every((seg, i) => dir.segs[i] === seg));
+    return hit ? `Folder would hold the MordomoOS ${hit.name}/ folder, which holds credentials.` : null;
+  };
+  const isHomeDir = (absolute: string): boolean => {
+    if (!path.isAbsolute(absolute)) return false;
+    const segs = comparableSegments(path.resolve(absolute), platform);
+    return homeSpellings.some((home) => home.length === segs.length && home.every((seg, i) => segs[i] === seg));
+  };
   const reasonToSkip = (rel: string, absolute?: string): string | null => {
     const blocked = hardBlockedSegment(absolute ?? rel) ?? hardBlockedSegment(rel);
     if (blocked) return `Path is inside a protected directory (${blocked}/) and is never read.`;
@@ -154,5 +176,7 @@ export function makeWorkspaceFilter(
     reasonToSkip,
     isExcluded: (rel, absolute) => reasonToSkip(rel, absolute) !== null,
     homePrivateReason,
+    holdsHomePrivateDir,
+    isHomeDir,
   };
 }

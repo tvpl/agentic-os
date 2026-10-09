@@ -244,13 +244,7 @@ export {
   resolveReadable,
   resolveWorkspaceCwd,
   statWorkspacePath,
-  writeWorkspaceFile,
-  copyTreeWithoutLinks,
-  DEFAULT_COPY_LIMITS,
   type BytesRead,
-  type CopyLimits,
-  type WriteMode,
-  type WriteOptions,
   type PathVerdict,
   type ReadOptions,
   type ReadScope,
@@ -259,6 +253,15 @@ export {
   type WorkspaceEntry,
   type WorkspaceFile,
 } from "./security/safeFs.js";
+export {
+  DEFAULT_COPY_LIMITS,
+  FolderTooLargeError,
+  copyTreeWithoutLinks,
+  writeWorkspaceFile,
+  type CopyLimits,
+  type WriteMode,
+  type WriteOptions,
+} from "./security/safeWrite.js";
 export { rotateFile, pruneRotated } from "./logs/jsonl.js";
 export { type StoreProblem } from "./routines/store.js";
 export { deepMergeSettings, type SettingsPatch } from "./config/store.js";

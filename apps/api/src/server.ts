@@ -130,6 +130,19 @@ const BROKER_ROUTES = new Set([
   "POST /api/approvals/:id/resolve",
 ]);
 
+/**
+ * The only routes the credential of a memory skill's run may call (AD-012): the memory the skill works on, and
+ * nothing of settings, devices, providers, approvals or other runs.
+ */
+const RUN_API_ROUTES = new Set([
+  "GET /api/memory/recall",
+  "GET /api/memory/recall/stats",
+  "GET /api/memory/journal",
+  "POST /api/memory/journal/append",
+  "GET /api/memory/facts",
+  "POST /api/memory/facts",
+]);
+
 declare module "fastify" {
   interface FastifyRequest {
     /** Set when the request carries a permission-broker credential: the run it is bound to. */
@@ -301,6 +314,14 @@ export async function buildServer(
       }
       req.brokerRunId = broker.runId;
       req.principal = { kind: "broker", runId: broker.runId };
+      return;
+    }
+    const runApi = typeof supplied === "string" ? ctx.runApiRunFor(supplied) : null;
+    if (runApi?.active) {
+      if (!RUN_API_ROUTES.has(`${req.method} ${route}`)) {
+        return reply.code(403).send(errorBody("forbidden", "A run's credential cannot call this route"));
+      }
+      req.principal = { kind: "run", runId: runApi.runId };
       return;
     }
     return reply.code(401).send(errorBody("unauthorized", "Missing or invalid local token"));

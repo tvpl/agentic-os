@@ -1,7 +1,8 @@
 import path from "node:path";
 import type { MordomoPaths } from "../paths.js";
 import { PathAccessError } from "../security/paths.js";
-import { homeReadScope, listWorkspaceDir, readWorkspaceText, writeWorkspaceFile } from "../security/safeFs.js";
+import { homeReadScope, listWorkspaceDir, readWorkspaceText } from "../security/safeFs.js";
+import { writeWorkspaceFile } from "../security/safeWrite.js";
 import type { EventBus, OsEvent } from "../events.js";
 import type { MemoryIndexer } from "./indexer.js";
 

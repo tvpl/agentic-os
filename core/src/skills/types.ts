@@ -60,6 +60,12 @@ export const SkillFrontmatterSchema = z.object({
   recommendedModel: z.string().nullable().default(null),
   recommendedEffort: EffortLevel.default("default"),
   mode: z.enum(["read_only", "write"]).default("read_only"),
+  /**
+   * The skill works on the second brain: a run of it is given the home's `memory/` folder (an added folder of the
+   * agent, not its working directory) and a credential of its own for the memory routes of the local API, never the
+   * owner token. Only a SKILL.md in the catalog sets it: a skill imported or installed from elsewhere has it dropped.
+   */
+  memoryAccess: z.boolean().default(false),
   /** Daily spend cap for runs of this skill in USD (0 = none). */
   budgetUsd: z.number().min(0).default(0),
   enabled: z.boolean().default(true),

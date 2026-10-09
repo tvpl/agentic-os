@@ -70,6 +70,7 @@ export interface AgentRun {
    * one that does not, ignores them.
    */
   readDirs?: string[];
+  /** Variables added to the provider process on top of what it inherits (the run-scoped API credential). */
   extraEnv?: Record<string, string>;
   /**
    * Environment the provider process must not inherit from the service:

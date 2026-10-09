@@ -9,8 +9,8 @@ import {
   listWorkspaceDir,
   readWorkspaceText,
   statWorkspacePath,
-  writeWorkspaceFile,
 } from "../security/safeFs.js";
+import { writeWorkspaceFile } from "../security/safeWrite.js";
 import { fileRowFromDb, type FileRow } from "./indexer.js";
 import { ensureJournal, journalSections, localDateString, readJournal, shiftDate, type JournalDay } from "./journal.js";
 

@@ -530,6 +530,37 @@ describe.skipIf(!POSIX)("a paired device and the owner cannot read the owner tok
     );
     expect(fs.lstatSync(path.join(second, "CLAUDE.md")).isSymbolicLink()).toBe(true);
 
+    // A target that becomes a link AFTER it was read (while the copy is being kept) is skipped, not an error.
+    const fourth = path.join(userFolder, "proj4");
+    write(path.join(fourth, "CLAUDE.md"), "# plain when read\n");
+    write(path.join(fourth, "other.md"), "# somebody else's file\n");
+    const mkdirRaw = fs.mkdirSync.bind(fs);
+    let raced = false;
+    const racing = vi.spyOn(fs, "mkdirSync").mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+      // the backup folder is made after the target was read and before it is written
+      if (!raced && String(p).includes(`${path.sep}backups${path.sep}sync-`)) {
+        raced = true;
+        fs.rmSync(path.join(fourth, "CLAUDE.md"));
+        fs.symlinkSync(path.join(fourth, "other.md"), path.join(fourth, "CLAUDE.md"));
+      }
+      return (mkdirRaw as (...a: unknown[]) => unknown)(p, ...rest);
+    }) as typeof fs.mkdirSync);
+    let applyRaced;
+    try {
+      applyRaced = await app.inject({
+        method: "POST",
+        url: "/api/sync/apply",
+        headers: asOwner(),
+        payload: { target: fourth, approvedConflicts: [path.join(fourth, "CLAUDE.md")] },
+      });
+    } finally {
+      racing.mockRestore();
+    }
+    expect(raced).toBe(true);
+    expect(applyRaced.statusCode, applyRaced.body).toBe(200);
+    expect(applyRaced.json().skippedConflicts).toContain(path.join(fourth, "CLAUDE.md"));
+    expect(fs.readFileSync(path.join(fourth, "other.md"), "utf8")).toBe("# somebody else's file\n");
+
     // The copy kept before an overwrite is the owner's alone (0600) in a folder of its own (0700).
     const third = path.join(userFolder, "proj3");
     write(path.join(third, "CLAUDE.md"), "# the owner's file, about to be replaced\n");
@@ -1523,6 +1554,13 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
     why: "this is the one place that opens, lists, stats and resolves a path after the checks",
   },
   {
+    file: "core/src/security/safeWrite.ts",
+    api: "*",
+    count: 0,
+    kind: "the primitive",
+    why: "the write side of the same door: writeWorkspaceFile and the copy of a folder, after the same checks",
+  },
+  {
     file: "core/src/security/paths.ts",
     api: "realpathSync",
     count: 1,
@@ -1814,10 +1852,10 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
   },
   {
     file: "core/src/config/atomicWrite.ts",
-    api: "writeFileSync",
+    api: "openSync",
     count: 1,
-    kind: "fixed",
-    why: "the temporary file beside a config file the engine names (settings, ui preferences), then rename",
+    kind: "fresh",
+    why: "the writer of settings, ui preferences, routines and connectors: a temporary file with a random name made exclusively (wx, which follows no link) beside the target, then rename, which replaces the name and follows nothing",
   },
   {
     file: "core/src/config/migrations.ts",
@@ -2301,5 +2339,11 @@ describe("C33 the security doc says what the code guarantees, and what it does n
     // write through a link is not harmless.
     expect(doc).not.toContain("can start a **write** run can therefore reach the token");
     expect(doc).not.toContain("they do not expose bytes");
+    // Round 3: claims no code or test backs.
+    expect(doc).not.toContain("the descriptor's own path on Linux");
+    expect(doc).not.toMatch(/token` is created exclusively \(`wx`\), so two/);
+    expect(doc).not.toContain("confined to the working directory, `--add-dir` folders and nothing else");
+    expect(doc).toContain("not verified here");
+    expect(doc).toContain("MORDOMO_RUN_TOKEN");
   });
 });
