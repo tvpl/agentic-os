@@ -7,6 +7,7 @@ import { useT } from "../../i18n";
 import { useToast } from "../../components/ui";
 import { Field, Segmented } from "../../components/primitives";
 import type { UiShell } from "../../api";
+import { useCurrentShell } from "../../moldura/shell";
 import {
   PRESETS,
   applyHudIntensity,
@@ -26,7 +27,9 @@ export function ThemeTab({ put }: { s: SettingsShape; put: Put }) {
   const preferences = useOsUiPreferences();
   const savePreferences = useSaveUiPreferences();
   const current = preferences.data?.themePreset;
-  const shell: UiShell = preferences.data?.shell ?? "moldura";
+  // Until the preferences arrive, the shell this page is part of is the one in use.
+  const inUse = useCurrentShell();
+  const shell: UiShell = preferences.data?.shell ?? inUse;
   // Saved at once; the shell reads the answer from the cache and swaps in place.
   const pickShell = (next: UiShell) => {
     if (next === shell) return;

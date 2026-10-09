@@ -1,8 +1,9 @@
 /**
  * The app frame in a real browser (.specs/features/moldura-app, C2 C9 C13
- * C20 C50-C52): where the regions sit, how a narrow window folds them and
- * keeps focus in a drawer, how Today reflows, that every preset reads in both
- * themes, and that the interface choice survives a reload. The suite's home
+ * C20 C50-C53 C56-C61): where the regions sit, how a narrow window folds them
+ * and keeps focus in a drawer, how Today reflows, that the real views and the
+ * page title fit the column, that every preset reads in both themes, and that
+ * the interface choice survives a reload. The suite's home
  * is seeded with the Núcleo (home.mjs); each test here switches it to the
  * frame through the API and puts the Núcleo back after.
  */
@@ -80,7 +81,8 @@ test("C9 a narrow window collapses the sidebar and drawers the chat", async ({ p
   // Icons only: no label is drawn, each link keeps its name.
   await expect(nav.locator(".mold-link-t")).toHaveCount(0);
   await expect(nav.getByRole("link", { name: "Runs" })).toBeVisible();
-  expect((await box(nav)).width).toBeLessThan(100);
+  // The rail is 60 px, not just "narrow".
+  expect(Math.abs((await box(nav)).width - 60)).toBeLessThanOrEqual(1);
 
   const aside = frame.locator(":scope > aside");
   await expect(aside).toBeHidden();
@@ -213,6 +215,8 @@ test("C52 every preset in light and dark: the frame draws, text reads, nothing i
         },
         [theme, preset],
       );
+      // Colours ease between themes: measure the settled ones, not a frame of the transition.
+      await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished)));
       const ratios = await frame.evaluate((root) => {
         const rgb = (v: string) => (v.match(/[\d.]+/g) ?? []).slice(0, 4).map(Number);
         const lum = ([r, g, b]: number[]) => {
@@ -294,4 +298,239 @@ test("C53 a home whose preferences predate the frame opens in the Núcleo, and a
   } finally {
     fs.writeFileSync(file, original);
   }
+});
+
+/* ---- round 3: the frame with the real views --------------------------------- */
+
+/** A finished run whose working directory is as long as a real checkout's can be. */
+async function finishedRun(request: APIRequestContext, cwd: string): Promise<string> {
+  fs.mkdirSync(cwd, { recursive: true });
+  const res = await request.post("/api/runs", {
+    headers: headers(),
+    data: { prompt: "check the frame", mode: "read_only", cwd },
+  });
+  expect(res.ok(), `POST /api/runs → ${res.status()}`).toBe(true);
+  const { runId } = (await res.json()) as { runId: string };
+  await expect
+    .poll(
+      async () => {
+        const out = await request.get(`/api/runs/${runId}`, { headers: headers() });
+        return ((await out.json()) as { run: { status: string } }).run.status;
+      },
+      { timeout: 20_000 },
+    )
+    .toBe("done");
+  return runId;
+}
+
+const LONG_CWD = () =>
+  path.join(E2E_HOME, ...Array.from({ length: 5 }, (_, i) => `workspace-${i}-${"x".repeat(40)}`));
+
+test("C56 a run's detail page fits the content column, however long its working directory", async ({
+  page,
+  request,
+}) => {
+  const runId = await finishedRun(request, LONG_CWD());
+  for (const width of [1440, 1100, 900, 360]) {
+    const frame = await openFrame(page, `/runs/${runId}`, { width, height: 900 });
+    const panel = frame.locator('main [data-app="runs"]');
+    const outcome = panel.locator(".run-outcome");
+    await expect(outcome).toBeVisible();
+    const main = await box(frame.locator("main.mold-main"));
+    const card = await box(outcome);
+    expect(card.x + card.width, `the outcome card's right edge at ${width}px`).toBeLessThanOrEqual(
+      main.x + main.width + 0.5,
+    );
+    const clipped = await panel.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(clipped, `content past the column at ${width}px`).toBeLessThanOrEqual(0);
+    // The path is not hidden to make it fit: every character is on screen, wrapped.
+    const cwd = panel.locator(".run-cwd code");
+    const shown = await cwd.evaluate((el) => ({
+      text: el.textContent,
+      over: el.scrollWidth - el.clientWidth,
+    }));
+    expect(shown.text).toBe(LONG_CWD());
+    expect(shown.over, `cwd clipped at ${width}px`).toBeLessThanOrEqual(0);
+    if (width === 1440) await page.screenshot({ path: test.info().outputPath("run-detail-1440.png") });
+  }
+});
+
+test("C57 the page title keeps its text until the search has given all it can", async ({ page }) => {
+  const routes = [
+    "/",
+    "/runs",
+    "/skills",
+    "/routines",
+    "/brain",
+    "/connectors",
+    "/artifacts",
+    "/generations",
+    "/pixel",
+    "/settings",
+  ];
+  for (const width of [900, 1000, 1100, 1200]) {
+    for (const route of routes) {
+      const frame = await openFrame(page, route, { width, height: 900 });
+      await expect(frame.locator(":scope > aside")).toBeVisible();
+      const bar = frame.locator("header.mold-top");
+      const m = await bar.evaluate((el) => {
+        const title = el.querySelector<HTMLElement>(".mold-title")!;
+        const search = el.querySelector<HTMLElement>(".mold-search")!;
+        return {
+          text: title.textContent,
+          cut: title.scrollWidth - title.clientWidth,
+          search: search.getBoundingClientRect().width,
+          minSearch: parseFloat(getComputedStyle(search).minWidth),
+        };
+      });
+      const label = `"${m.text}" at ${width}px`;
+      // The title gives way only after the search is down to its icon.
+      if (m.cut > 0) expect(m.search, `search when ${label} is cut`).toBeLessThanOrEqual(m.minSearch + 0.5);
+      // Where the column is the width of a common laptop window, the title is whole.
+      if (width >= 1000) expect(m.cut, label).toBeLessThanOrEqual(0);
+    }
+  }
+  const frame = await openFrame(page, "/", { width: 1100, height: 900 });
+  await page.screenshot({ path: test.info().outputPath("today-1100-chat-open.png") });
+  await expect(frame.locator("h1.mold-title")).toHaveText("Today");
+});
+
+test("C58 each of the nine views fits the column in the frame, with the conversation open", async ({
+  page,
+}) => {
+  const routes = [
+    "/runs",
+    "/skills",
+    "/routines",
+    "/brain",
+    "/connectors",
+    "/artifacts",
+    "/generations",
+    "/pixel",
+    "/settings",
+  ];
+  for (const width of [1440, 900]) {
+    for (const route of routes) {
+      const frame = await openFrame(page, route, { width, height: 900 });
+      await expect(frame.locator(":scope > aside")).toBeVisible();
+      const panel = frame.locator("main [data-app]");
+      await expect(panel).toHaveCount(1);
+      const clipped = await panel.evaluate((el) => el.scrollWidth - el.clientWidth);
+      expect(clipped, `${route} past the column at ${width}px`).toBeLessThanOrEqual(0);
+    }
+  }
+});
+
+test("C59 the card that needs you is as tall as its content, not as its neighbour", async ({ page }) => {
+  const frame = await openFrame(page, "/", { width: 1440, height: 900 });
+  const cards = frame.locator("main section.mold-card");
+  await expect(cards).toHaveCount(6);
+  const first = await box(cards.nth(0));
+  const second = await box(cards.nth(1));
+  // The row is shared with a taller card, so a stretched first card would have room inside it to spare.
+  expect(Math.abs(first.y - second.y)).toBeLessThanOrEqual(1);
+  expect(second.height).toBeGreaterThan(first.height);
+  const spare = await cards.nth(0).evaluate((card) => {
+    const parts = [...card.children].reduce((sum, el) => sum + el.getBoundingClientRect().height, 0);
+    return card.getBoundingClientRect().height - parts - 2;
+  });
+  expect(spare, "empty room inside the card").toBeLessThanOrEqual(1);
+});
+
+test("C60 the arrangements the design draws: sidebar width and button, card scrolling, history", async ({
+  page,
+}) => {
+  const frame = await openFrame(page, "/", { width: 1440, height: 900 });
+  const nav = frame.locator(":scope > nav");
+  expect(Math.abs((await box(nav)).width - 232)).toBeLessThanOrEqual(1);
+
+  // "Sidebar" is the last thing in the column, below Settings, at its foot.
+  const settings = await box(nav.getByRole("link", { name: "Settings" }));
+  const foldButton = await box(nav.getByRole("button", { name: "Sidebar" }));
+  const column = await box(nav);
+  expect(foldButton.y).toBeGreaterThanOrEqual(settings.y + settings.height);
+  expect(column.y + column.height - (foldButton.y + foldButton.height)).toBeLessThanOrEqual(24);
+
+  // "Needs you" grows with its content; the other five scroll inside their card from 360 px.
+  const bodies = await frame.locator("main section.mold-card").evaluateAll((cards) =>
+    cards.map((card) => {
+      const body = getComputedStyle(card.querySelector(".mold-card-b")!);
+      return { widget: (card as HTMLElement).dataset.widget, max: body.maxHeight, overflowY: body.overflowY };
+    }),
+  );
+  for (const body of bodies) {
+    if (body.widget === "approvals") expect(body.max, "approvals").toBe("none");
+    else {
+      expect(body.max, body.widget).toBe("360px");
+      expect(body.overflowY, body.widget).toBe("auto");
+    }
+  }
+
+  // The conversation's history scrolls inside the column, not in a short window of its own.
+  const aside = await box(frame.locator(":scope > aside"));
+  const history = frame.locator(":scope > aside .cons-scroll");
+  const scroll = await history.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { overflowY: style.overflowY, max: style.maxHeight };
+  });
+  expect(scroll).toEqual({ overflowY: "auto", max: "none" });
+  const inside = await box(history);
+  expect(inside.y + inside.height).toBeLessThanOrEqual(aside.y + aside.height + 1);
+});
+
+/** Tab and Shift+Tab never leave `selector`: the rest of the frame is out of reach. */
+async function expectFocusStaysIn(page: Page, selector: string): Promise<void> {
+  for (const key of ["Tab", "Shift+Tab"]) {
+    for (let i = 0; i < 25; i++) {
+      await page.keyboard.press(key);
+      const inside = await page.evaluate((sel) => Boolean(document.activeElement?.closest(sel)), selector);
+      expect(inside, `${key} #${i + 1} stays in ${selector}`).toBe(true);
+    }
+  }
+}
+
+test("C61 the drawers and the unfolded sidebar hold focus and close on a real press outside", async ({
+  page,
+}) => {
+  // The narrow sidebar: unfolded, Tab stays in it; a press on the content folds it.
+  let frame = await openFrame(page, "/", { width: 800, height: 900 });
+  const nav = frame.locator(":scope > nav");
+  const unfold = nav.getByRole("button", { name: "Sidebar" });
+  await unfold.click();
+  await expect(nav).toHaveAttribute("data-overlay", "");
+  await expectFocusStaysIn(page, "nav.mold-nav");
+  await page.mouse.click(700, 450);
+  await expect(nav).not.toHaveAttribute("data-overlay", "");
+  await expect(nav.locator(".mold-link-t")).toHaveCount(0);
+
+  // The chat drawer: its own button, then a press on the veil.
+  const aside = frame.locator(":scope > aside");
+  const chat = page.getByRole("button", { name: "Chat", exact: true });
+  await chat.click();
+  await expect(aside).toHaveAttribute("role", "dialog");
+  await aside.getByRole("button", { name: "Close chat" }).click();
+  await expect(aside).toBeHidden();
+  await expect(chat).toBeFocused();
+  await chat.click();
+  await expect(aside).toBeVisible();
+  await page.mouse.click(40, 450);
+  await expect(aside).toBeHidden();
+
+  // The document drawer, wide: Tab stays in it, Esc and a press outside both close it.
+  frame = await openFrame(page, "/", { width: 1440, height: 900 });
+  const open = () =>
+    page.evaluate(() =>
+      window.dispatchEvent(new CustomEvent("mordomo:open-panel", { detail: "doc:notes/a.md" })),
+    );
+  const doc = frame.locator("main").getByRole("dialog", { name: "Document" });
+  await open();
+  await expect(doc).toBeVisible();
+  await expect(doc.getByRole("button", { name: "Close" })).toBeFocused();
+  await expectFocusStaysIn(page, ".mold-drawer");
+  await page.keyboard.press("Escape");
+  await expect(doc).toHaveCount(0);
+  await open();
+  await expect(doc).toBeVisible();
+  await page.mouse.click(120, 450);
+  await expect(doc).toHaveCount(0);
 });

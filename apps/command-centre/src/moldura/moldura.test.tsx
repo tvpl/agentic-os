@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The app frame (.specs/features/moldura-app, checks C1-C21): the shell as
+ * The app frame (.specs/features/moldura-app, the checks that name this file): the shell as
  * `App.tsx` mounts it, with the real providers, router, palette, console and
  * Today widgets. The network is a table; the nine app views are stand-ins
  * that read their route through the same hooks the real views use, so what
@@ -8,6 +8,8 @@
  * The Núcleo is a stand-in too: only whether it mounts is asserted here.
  */
 import { createElement, useEffect, useState, type ComponentProps, type ComponentType } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Sun } from "lucide-react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -17,6 +19,12 @@ import type * as AppsModule from "../desktop/apps";
 import type * as ConsoleModule from "../desktop/console/Console";
 import type { DesktopActions } from "../desktop/actions";
 import { api, type Meta } from "../api";
+import { APPS, type AppKind } from "../desktop/apps";
+import { CONSOLE_DRAFT_EVENT } from "../desktop/consoleDraft";
+import { docId } from "../desktop/docIds";
+import { requestPanelAction, type PanelAction } from "../desktop/panelKinds";
+import { formPanelId, runPanelId } from "../desktop/runPanels";
+import { openOnboarding } from "../onboarding/state";
 import { I18nContext, type Lang } from "../i18n";
 
 // Each test mounts the whole shell (providers, router, palette, console, widgets): a few seconds on an
@@ -32,6 +40,7 @@ import { WorkspaceProvider } from "../components/Workspace";
 import { ThemeTab } from "../views/settings/theme";
 import { qk } from "../queries";
 import { OsShell } from "../App";
+import { CHAT_KEY } from "./useFrameLayout";
 
 /* ---- the server --------------------------------------------------------- */
 const PREFS = {
@@ -720,6 +729,10 @@ describe("S3 switching shells", () => {
     });
     await act(async () => undefined);
     expect(names().some((n) => /Organizar a tela|Não sei organizar/.test(n))).toBe(false);
+    // The tour has no places to point at in the frame: its action is not offered either.
+    fireEvent.change(within(palette).getByRole("combobox"), { target: { value: "guia interativo" } });
+    await act(async () => undefined);
+    expect(names().some((n) => /Guia interativo/.test(n))).toBe(false);
     fireEvent.change(within(palette).getByRole("combobox"), { target: { value: "" } });
     await act(async () => undefined);
 
@@ -739,6 +752,10 @@ describe("S3 switching shells", () => {
     await waitFor(() => expect(names().some((n) => n.includes("Mudar para a moldura de app"))).toBe(true));
     expect(names().some((n) => n.includes("Mudar para o Núcleo imersivo"))).toBe(false);
     expect(names().some((n) => /Abrir um painel/.test(n))).toBe(true);
+    fireEvent.change(within(palette).getByRole("combobox"), { target: { value: "guia interativo" } });
+    await waitFor(() => expect(names().some((n) => /Guia interativo/.test(n))).toBe(true));
+    fireEvent.change(within(palette).getByRole("combobox"), { target: { value: "" } });
+    await act(async () => undefined);
     fireEvent.click(within(palette).getByRole("option", { name: /Mudar para a moldura de app/ }));
     await waitFor(() => expect(api.putUiPreferences).toHaveBeenCalledWith({ shell: "moldura" }));
     await waitFor(() => expect(frame()).not.toBeNull());
@@ -939,11 +956,16 @@ describe("R2.2 the frame names what it shows", () => {
     }
   });
 
-  it("C37 an address that is no place of the frame lands on Today", async () => {
+  it("C37 an address that is no place of the frame lands on Today, without a step in the history", async () => {
+    const push = vi.spyOn(window.history, "pushState");
+    const replace = vi.spyOn(window.history, "replaceState");
     await mountShell("/nonsense/deep");
     await waitFor(() => expect(route()).toBe("#/"));
     expect(within(top()).getByRole("heading", { level: 1 }).textContent).toBe("Hoje");
     expect(within(nav()).getByRole("link", { name: /^Hoje/ }).getAttribute("aria-current")).toBe("page");
+    // Back must not land on the address that was just refused.
+    expect(replace.mock.calls.some(([, , url]) => String(url).endsWith("#/"))).toBe(true);
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("C38 the shell root carries the shell for the banner, and no :has() is needed", async () => {
@@ -1143,6 +1165,23 @@ describe("R2.4 narrow and wide", () => {
     expect(inertIn()).toHaveLength(0);
     expect(getDialogDepth()).toBe(0);
 
+    // The rail left unfolded narrow does not come back unfolded: narrow always starts folded.
+    viewport.resize(800);
+    await settled();
+    fireEvent.click(within(nav()).getByRole("button", { name: "Barra lateral" }));
+    expect(nav().hasAttribute("data-overlay")).toBe(true);
+    viewport.resize(1440);
+    await settled();
+    expect(nav().hasAttribute("data-overlay")).toBe(false);
+    expect(inertIn()).toHaveLength(0);
+    viewport.resize(800);
+    await settled();
+    expect(nav().hasAttribute("data-overlay")).toBe(false);
+    expect(frame()!.hasAttribute("data-collapsed")).toBe(true);
+    expect(inertIn()).toHaveLength(0);
+    viewport.resize(1440);
+    await settled();
+
     // Close the column wide; narrow again starts folded and closed, and the wide choice is intact.
     fireEvent.click(chatButton());
     viewport.resize(800);
@@ -1215,5 +1254,262 @@ describe("R2.5 the frame is stable and holds in every theme", () => {
       problems.flatMap((p) => p.mock.calls),
       "console output while mounting",
     ).toEqual([]);
+  });
+});
+
+/* ---- Rodada 3: what the first verification found no proof for ----------- */
+const press = (target: Element) => fireEvent.pointerDown(target);
+const iconMarkup = (Icon: ComponentType<{ className?: string }>) => {
+  const holder = document.createElement("div");
+  holder.innerHTML = renderToStaticMarkup(createElement(Icon, { className: "mold-link-i" }));
+  return holder.querySelector("svg")!.innerHTML;
+};
+
+describe("R3.1 what the sidebar draws", () => {
+  it("C62 the brand is the installation's name and every item has its own icon", async () => {
+    await mountShell("/");
+    const brand = () => nav().querySelector<HTMLElement>(".mold-brand")!;
+    expect(brand().textContent).toContain(META.name);
+    expect(brand().querySelector(".mold-brand-mark")!.textContent).toBe("C");
+
+    // Hoje is the sun; every other item carries the icon of the app it opens.
+    const kinds: AppKind[] = [
+      "runs",
+      "skills",
+      "routines",
+      "brain",
+      "connectors",
+      "artifacts",
+      "generations",
+      "pixel",
+      "settings",
+    ];
+    const expected = [Sun, ...kinds.map((kind) => APPS[kind].Icon)];
+    const drawn = () => navLinks().map((a) => a.querySelector("svg.mold-link-i")?.innerHTML);
+    expect(drawn()).toEqual(expected.map(iconMarkup));
+    expect(new Set(drawn()).size).toBe(10);
+
+    // Folded: the same ten icons, and the name is only a tooltip and the first letter.
+    fireEvent.click(within(nav()).getByRole("button", { name: "Barra lateral" }));
+    expect(drawn()).toEqual(expected.map(iconMarkup));
+    expect(brand().textContent).toBe("C");
+    expect(brand().getAttribute("title")).toBe(META.name);
+  });
+});
+
+describe("R3.2 the ways out of what covers the content", () => {
+  it("C63 the conversation closes with its own button, wide and narrow", async () => {
+    await mountShell("/");
+    const close = () => within(aside()).getByRole("button", { name: "Fechar conversa" });
+    fireEvent.click(close());
+    expect(aside().hidden).toBe(true);
+    expect(chatButton().getAttribute("aria-pressed")).toBe("false");
+    expect(localStorage.getItem(CHAT_KEY)).toBe("0");
+    cleanup();
+    localStorage.clear();
+
+    viewport.width = 800;
+    await mountShell("/");
+    chatButton().focus();
+    fireEvent.click(chatButton());
+    await waitFor(() => expect(aside().getAttribute("role")).toBe("dialog"));
+    fireEvent.click(close());
+    expect(aside().hidden).toBe(true);
+    expect(inertIn()).toHaveLength(0);
+    expect(document.activeElement).toBe(chatButton());
+  });
+
+  it("C64 a press on what a narrow chat drawer or the unfolded sidebar covers closes it, a press inside does not", async () => {
+    viewport.width = 800;
+    await mountShell("/");
+    fireEvent.click(chatButton());
+    await waitFor(() => expect(aside().getAttribute("role")).toBe("dialog"));
+    press(aside());
+    expect(aside().hidden).toBe(false);
+    press(frame()!);
+    expect(aside().hidden).toBe(true);
+    expect(inertIn()).toHaveLength(0);
+
+    const toggle = within(nav()).getByRole("button", { name: "Barra lateral" });
+    fireEvent.click(toggle);
+    expect(nav().hasAttribute("data-overlay")).toBe(true);
+    press(nav());
+    expect(nav().hasAttribute("data-overlay")).toBe(true);
+    press(frame()!);
+    expect(nav().hasAttribute("data-overlay")).toBe(false);
+    expect(inertIn()).toHaveLength(0);
+
+    // The sidebar's own button folds it too.
+    fireEvent.click(toggle);
+    expect(nav().hasAttribute("data-overlay")).toBe(true);
+    fireEvent.click(toggle);
+    expect(nav().hasAttribute("data-overlay")).toBe(false);
+  });
+
+  it("C65 a press behind the palette opened over a drawer leaves the drawer open", async () => {
+    viewport.width = 800;
+    await mountShell("/");
+    fireEvent.click(chatButton());
+    await waitFor(() => expect(aside().getAttribute("role")).toBe("dialog"));
+    act(() => {
+      window.dispatchEvent(new CustomEvent(LAUNCHER_EVENT));
+    });
+    await screen.findByRole("combobox");
+    expect(getDialogDepth()).toBe(2);
+    press(document.body);
+    expect(aside().hidden).toBe(false);
+    expect(aside().getAttribute("role")).toBe("dialog");
+  });
+
+  it("C66 Esc in the frame closes what is open and goes nowhere; in the Núcleo it goes to Today", async () => {
+    await mountShell("/runs");
+    escape();
+    await settled();
+    expect(route()).toBe("#/runs");
+    cleanup();
+
+    server.prefs = { ...PREFS, shell: "nucleo" };
+    await mountShell("/runs");
+    escape();
+    await waitFor(() => expect(route()).toBe("#/"));
+  });
+});
+
+describe("R3.3 what the rest of the app can ask of the frame", () => {
+  it("C67 a panel id opens the page or drawer that shows the same thing", async () => {
+    await mountShell("/runs");
+    await waitFor(() => expect(consoleActions.current).not.toBeNull());
+    const cases: Array<[string, string, string]> = [
+      ["a run", runPanelId("r9"), "#/runs/r9"],
+      ["a skill form", formPanelId("deploy"), "#/skills/deploy"],
+      ["an instrument", "now", "#/"],
+    ];
+    for (const [label, id, to] of cases) {
+      act(() => consoleActions.current!.openPanel(id));
+      await waitFor(() => expect(route(), label).toBe(to));
+      act(() => consoleActions.current!.openApp("runs"));
+      await waitFor(() => expect(route()).toBe("#/runs"));
+    }
+    act(() => consoleActions.current!.openPanel(docId("notes/a.md")));
+    await within(main()).findByRole("dialog", { name: "Documento" });
+    expect(route()).toBe("#/runs");
+  });
+
+  it("C68 a panel's close or minimise event dismisses the document drawer; focus and restore do not", async () => {
+    await mountShell("/");
+    await waitFor(() => expect(consoleActions.current).not.toBeNull());
+    const actions: Array<[PanelAction, boolean]> = [
+      ["focus", true],
+      ["restore", true],
+      ["minimize", false],
+      ["close", false],
+    ];
+    for (const [action, stays] of actions) {
+      openDoc();
+      await within(main()).findByRole("dialog", { name: "Documento" });
+      act(() => requestPanelAction(docId("notes/a.md"), action));
+      expect(drawer() !== null, action).toBe(stays);
+      if (stays) fireEvent.click(within(drawer()!).getByRole("button", { name: "Fechar" }));
+      expect(inertIn(), action).toHaveLength(0);
+    }
+  });
+
+  it("C69 words put on the line bring the conversation on screen, wide and narrow, and leave it open", async () => {
+    await mountShell("/");
+    fireEvent.click(chatButton());
+    expect(aside().hidden).toBe(true);
+    act(() => {
+      window.dispatchEvent(new CustomEvent(CONSOLE_DRAFT_EVENT));
+    });
+    expect(aside().hidden).toBe(false);
+    act(() => {
+      window.dispatchEvent(new CustomEvent(CONSOLE_DRAFT_EVENT));
+    });
+    expect(aside().hidden).toBe(false);
+    cleanup();
+
+    viewport.width = 800;
+    await mountShell("/");
+    expect(aside().hidden).toBe(true);
+    act(() => {
+      window.dispatchEvent(new CustomEvent(CONSOLE_DRAFT_EVENT));
+    });
+    await waitFor(() => expect(aside().getAttribute("role")).toBe("dialog"));
+    expect(aside().hidden).toBe(false);
+  });
+});
+
+describe("R3.4 the breakpoint and what belongs to the Núcleo", () => {
+  it("C70 900 px is wide and 899 px is narrow", async () => {
+    for (const [width, narrow] of [
+      [900, false],
+      [899, true],
+    ] as const) {
+      viewport.width = width;
+      await mountShell("/");
+      expect(frame()!.hasAttribute("data-narrow"), `${width}px`).toBe(narrow);
+      expect(frame()!.hasAttribute("data-collapsed"), `${width}px`).toBe(narrow);
+      expect(aside().hidden, `${width}px`).toBe(narrow);
+      cleanup();
+    }
+  });
+
+  it("C71 the HUD overlay and the tour are the Núcleo's: the frame mounts neither", async () => {
+    await mountShell("/");
+    expect(document.querySelector(".hud-overlay")).toBeNull();
+    act(() => openOnboarding());
+    await settled();
+    expect(document.getElementById("ob-title")).toBeNull();
+    cleanup();
+
+    server.prefs = { ...PREFS, shell: "nucleo" };
+    await mountShell("/");
+    expect(document.querySelector(".hud-overlay")).not.toBeNull();
+    act(() => openOnboarding());
+    await waitFor(() => expect(document.getElementById("ob-title")).not.toBeNull());
+  });
+});
+
+describe("R3.5 time passes", () => {
+  /** Mount with the clock in the test's hands: the shell, the retry and midnight all use timers. */
+  async function mountWithClock(start: Date) {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    vi.setSystemTime(start);
+    const client = await mountShell("/", "pt-BR", { settle: false });
+    await elapse(0);
+    return client;
+  }
+  const elapse = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
+  const asked = () => vi.mocked(api.get).mock.calls.filter(([url]) => url === "/api/ui-preferences").length;
+
+  it("C72 a failed preferences request is asked again every few seconds until it answers", async () => {
+    server.prefs = { ...PREFS, shell: "nucleo" };
+    server.prefsMode = "fail";
+    await mountWithClock(new Date(2026, 9, 6, 12, 0, 0));
+    // No mirror and no answer: the frame stands in, and the request goes on being made, quietly.
+    expect(frame()).not.toBeNull();
+    const first = asked();
+    await elapse(5_000);
+    expect(asked()).toBeGreaterThan(first);
+
+    // The server comes back: the next try is the truth, with nobody touching anything.
+    server.prefsMode = "ok";
+    await elapse(10_000);
+    expect(screen.getByTestId("nucleo")).toBeTruthy();
+    expect(frame()).toBeNull();
+    // Answered, it stops asking.
+    const answered = asked();
+    await elapse(60_000);
+    expect(asked()).toBe(answered);
+  });
+
+  it("C73 Today's date moves to the next day at midnight", async () => {
+    await mountWithClock(new Date(2026, 9, 6, 23, 59, 30));
+    const heading = () => within(main()).getByRole("heading", { level: 2 }).textContent;
+    expect(heading()).toContain("6 de outubro");
+    await elapse(29_000);
+    expect(heading()).toContain("6 de outubro");
+    await elapse(2_000);
+    expect(heading()).toContain("7 de outubro");
   });
 });

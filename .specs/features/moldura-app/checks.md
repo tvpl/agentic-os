@@ -3,7 +3,7 @@
 Profile: ui
 Plan: `.specs/features/moldura-app/plan.md`
 
-55 checks in 5 slices · 2 one-way doors · 0 open, of which 0 block
+73 checks in 6 slices · 2 one-way doors · 0 open, of which 0 block
 
 Comandos (da raiz):
 
@@ -51,7 +51,7 @@ Status: closed
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C8 the chat column toggles and is remembered"`
 Status: closed
 
-**C9** - Em 800×900, a barra lateral começa recolhida; abrir a conversa a mostra como gaveta sobre o `main` (a caixa sobrepõe a de `main`), com o foco no campo, Tab/Shift+Tab sem sair dela, Esc a fecha e o foco volta ao botão "Chat" (AC 7, AC 19)
+**C9** - Em 800×900, a barra lateral começa recolhida como um trilho de 60 px; abrir a conversa a mostra como gaveta sobre o `main` (a caixa sobrepõe a de `main`), com o foco no campo, Tab/Shift+Tab sem sair dela, Esc a fecha e o foco volta ao botão "Chat" (AC 7, AC 19)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C9 a narrow window collapses the sidebar and drawers the chat"`
 Status: closed
 
@@ -103,7 +103,7 @@ Status: closed
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C20 the interface choice survives a reload"`
 Status: closed
 
-**C21** - Na moldura, a paleta lista "Mudar para o Núcleo imersivo" e não lista "Abrir painel" nem a ação de organizar (mesmo com a consulta "organizar"; a ação do tour também não aparece); no Núcleo, lista "Mudar para a moldura de app"; rodar a ação grava `shell` (AC 17)
+**C21** - Na moldura, a paleta lista "Mudar para o Núcleo imersivo" e não lista "Abrir painel" nem a ação de organizar (mesmo com a consulta "organizar"; a ação do tour, "Guia interativo do OS", também não aparece, e no Núcleo a mesma consulta a acha); no Núcleo, lista "Mudar para a moldura de app"; rodar a ação grava `shell` (AC 17)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C21 the palette switches shells and hides lâmina actions"`
 Status: closed
 
@@ -176,7 +176,7 @@ Status: closed
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C36 a page has one level-1 heading"`
 Status: closed
 
-**C37** - `/nonsense/deep` é trocado por `/` e mostra Hoje com o item Hoje atual (AC 23)
+**C37** - `/nonsense/deep` é trocado por `/` (substitui a entrada do histórico, `replaceState`, sem `pushState`: voltar não leva ao endereço recusado) e mostra Hoje com o item Hoje atual (AC 23)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C37 an address that is no place of the frame"`
 Status: closed
 
@@ -212,7 +212,7 @@ Status: closed
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C45 the narrow sidebar is a rail"`
 Status: closed
 
-**C46** - Atravessar o ponto de 900 px de estreito para largo tira o papel de diálogo da conversa, mostra a coluna lembrada e limpa todo `inert`; de largo para estreito fecha a gaveta, recolhe a barra, e a escolha larga (coluna fechada) permanece (AC 7, AC 19)
+**C46** - Atravessar o ponto de 900 px de estreito para largo tira o papel de diálogo da conversa, mostra a coluna lembrada e limpa todo `inert`; de largo para estreito fecha a gaveta, recolhe a barra, e a escolha larga (coluna fechada) permanece; uma barra estreita deixada aberta, ao ir para largo e voltar para estreito, volta recolhida e sem `inert` (AC 7, AC 19)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C46 crossing the breakpoint"`
 Status: closed
 
@@ -253,35 +253,127 @@ Note: o Núcleo (`nucleo/index.tsx`) passou a usar os mesmos ganchos; sua prova 
 Proof: `npm run typecheck && npm run build -w apps/command-centre && npx eslint --max-warnings=0 apps/command-centre/src core/src/config tests/moldura.test.ts tests/e2e/moldura.spec.ts`
 Status: closed
 
+### Rodada 3 - falhas da verificação independente (round 1) · 6 files · 120 KB · ~30k
+
+Veio de `verification.md` (FAIL, `ui`): defeitos visuais vistos no navegador, claims sem asserção e
+mutantes sobreviventes. C56-C61 são medidos em Chromium contra as views reais; C62-C73 em jsdom, um
+teste por mutante (cada mutante do relatório tem um teste que o mata, rodado de fato).
+
+**C56** - No navegador, `/runs/<id>` de uma execução com diretório de trabalho de ~250 caracteres cabe na coluna central em 1440, 1100, 900 e 360 px com a conversa aberta: a borda direita do cartão "Outcome" não passa da de `main`, o `.app-panel` não tem conteúdo além da coluna (`scrollWidth <= clientWidth`) e o caminho aparece inteiro (quebrado em linhas, nenhum caractere cortado) (AC 9, achado 1)
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C56 a run's detail page fits the content column"`
+Status: closed
+
+**C57** - No navegador, em 900, 1000, 1100 e 1200 px com a conversa aberta e em cada uma das dez rotas, o título (`h1`) só é cortado com reticências quando a busca já está no mínimo (o ícone, 44 px), e a partir de 1000 px o título aparece inteiro (design Tela 1, achado 2)
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C57 the page title keeps its text"`
+Status: closed
+
+**C58** - No navegador, cada uma das nove views reais, em 1440 e em 900 px com a conversa aberta, cabe na coluna central: o `.app-panel` não tem conteúdo além dela (AC 9; a composição com as views reais, não stand-ins)
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C58 each of the nine views fits the column"`
+Status: closed
+
+**C59** - No navegador (1440 px), o cartão "Pede você" tem a altura do seu conteúdo e não a do cartão ao lado, que é mais alto na mesma linha: sem espaço sobrando dentro do cartão (design Tela 2, "cresce com o conteúdo")
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C59 the card that needs you is as tall as its content"`
+Status: closed
+
+**C60** - No navegador (1440 px), a barra lateral aberta mede 232 px e o botão "Barra lateral" fica abaixo de Configurações, no pé da coluna; o corpo de "Pede você" não tem altura máxima e o dos outros cinco cartões tem 360 px com rolagem por dentro; o histórico da conversa rola dentro da coluna (`overflow-y: auto`, sem altura máxima, dentro do `aside`) (design Telas 1 e 2)
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C60 the arrangements the design draws"`
+Status: closed
+
+**C61** - No navegador, a barra lateral estreita desdobrada, a gaveta de conversa (800 px) e a gaveta de documento (1440 px) prendem Tab e Shift+Tab (25 vezes cada) dentro de si; um clique real no que cada uma cobre a fecha, o botão "Fechar conversa" fecha a gaveta de conversa e devolve o foco ao botão "Conversa", e Esc fecha a de documento (AC 19)
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C61 the drawers and the unfolded sidebar hold focus"`
+Status: closed
+
+**C62** - A marca da barra lateral é o `systemName` (nome e inicial, em maiúscula; recolhida, a inicial e o `title` com o nome) e cada um dos 10 itens tem o seu ícone, aberta e recolhida: Sol em Hoje e o `Icon` de `APPS[kind]` nos outros nove, dez desenhos distintos (design Tela 1)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C62 the brand is the installation's name"`
+Status: closed
+
+**C63** - O botão "Fechar conversa" fecha a conversa: na coluna larga (`aria-pressed` "false", o estado lembrado grava `0`) e na gaveta estreita (sem `inert`, foco volta ao botão "Conversa") (design Tela 1)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C63 the conversation closes with its own button"`
+Status: closed
+
+**C64** - Na janela estreita, um toque no que a gaveta de conversa ou a barra lateral desdobrada cobre as fecha, um toque dentro delas não, e o botão "Barra lateral" também dobra a desdobrada (AC 19)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C64 a press on what a narrow chat drawer"`
+Status: closed
+
+**C65** - Com a gaveta de conversa aberta e a paleta aberta por cima (profundidade 2), um toque fora de ambas não fecha a gaveta (AC 19)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C65 a press behind the palette"`
+Status: closed
+
+**C66** - Em `/runs`, com nada aberto, Esc na moldura não muda a rota; no Núcleo, Esc em `/runs` leva a `/` (AC 8, AC 19)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C66 Esc in the frame closes what is open"`
+Status: closed
+
+**C67** - `openPanel` de um id de execução (`run:r9`), de formulário de skill (`form:deploy`) e de instrumento (`now`) navega para `/runs/r9`, `/skills/deploy` e `/`, e de um id de documento abre a gaveta sem mudar a rota (AC 12, AC 20)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C67 a panel id opens the page or drawer"`
+Status: closed
+
+**C68** - O evento de painel `close` e o `minimize` de um documento dispensam a gaveta de documento (e tiram o `inert`); `focus` e `restore` não (AC 20)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C68 a panel's close or minimise event"`
+Status: closed
+
+**C69** - O evento de rascunho (palavras postas na linha por fora) abre a conversa fechada, coluna na janela larga e gaveta na estreita, e não a fecha quando já está aberta (AC 6)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C69 words put on the line"`
+Status: closed
+
+**C70** - 900 px é largo (barra aberta, coluna da conversa aberta) e 899 px é estreito (trilho, conversa fechada) (design, "estreita = abaixo de 900 px")
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C70 900 px is wide and 899 px is narrow"`
+Status: closed
+
+**C71** - A moldura não monta o overlay HUD (`.hud-overlay`) nem o tour (`openOnboarding()` não abre diálogo nenhum), e o Núcleo monta os dois (AC 24, plan Assumptions)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C71 the HUD overlay and the tour"`
+Status: closed
+
+**C72** - Sem espelho e com a requisição de preferências falhando, ela é feita de novo a cada poucos segundos sem que ninguém peça, e a resposta que chega (`nucleo`) troca a moldura pelo Núcleo; respondida, não é mais feita (AC 18, "retrying quietly")
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C72 a failed preferences request is asked again"`
+Status: closed
+
+**C73** - A data longa de Hoje passa para o dia seguinte à meia-noite local sem recarregar (23:59:30 de 6 de outubro mostra "6 de outubro"; 30 s depois, "7 de outubro") (design Tela 2)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C73 Today's date moves to the next day"`
+Status: closed
+
 ## Coverage
 
-| Set (size)                                | Member -> proof                                                                                                                                                                                                                            | Unproven |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
-| regiões da moldura (4)                    | `nav` C1, C2 · `header` C1, C2 · `main` C1, C2 · `aside` C1, C2                                                                                                                                                                            | -        |
-| itens da barra lateral (10)               | C3, table-driven over all 10 (rótulo pt/en, ordem, rota)                                                                                                                                                                                   | -        |
-| grupos da barra lateral (3)               | principal sem título C4 · "Mais" C4 · Configurações sozinho C3                                                                                                                                                                             | -        |
-| controles da barra superior (4)           | título C7 · busca C7 · sino C7 · Conversa C7, C8                                                                                                                                                                                           | -        |
-| estados da conversa (3)                   | aberta C8 · fechada C8 · gaveta estreita C9, C39, C46                                                                                                                                                                                      | -        |
-| teclas do Núcleo inertes (8)              | 1-5 C10 (1) · `[` `]` C10 (`]`) · `/` C10 · `p` C10 · ⌘J C10 · ⌘F C10 · ⌘⇧A C10 · ⌘⇧D C10                                                                                                                                                  | -        |
-| apps no conteúdo (9)                      | C11, table-driven over all 9                                                                                                                                                                                                               | -        |
-| rotas de detalhe (3)                      | `/runs/:id` C11 · `/skills/:slug` C11 · `/settings?tab=` C11                                                                                                                                                                               | -        |
-| cartões de Hoje (6)                       | C12, table-driven over all 6 (título, ordem, widget)                                                                                                                                                                                       | -        |
-| arranjos de Hoje (2)                      | duas colunas C13 · uma coluna C13                                                                                                                                                                                                          | -        |
-| origens do shell na leitura (4)           | sem arquivo C17, C53 · arquivo sem a chave C25, C53 · valor desconhecido C16, C25 · migração v1 C17                                                                                                                                        | -        |
-| fontes do shell enquanto carrega (5)      | resposta C27 · espelho lento C28 · espelho com falha C29 · padrão sem espelho C30 · busca que falha depois de carregar C31                                                                                                                 | -        |
-| diálogos da moldura (3)                   | conversa estreita C39 · documento C40 · barra lateral estreita C45, C50                                                                                                                                                                    | -        |
-| ordem do Esc (4)                          | paleta C41 · documento C41 · conversa C41 · sino C42                                                                                                                                                                                       | -        |
-| saídas que fecham o documento (4)         | formulário de skill C44 · execução C44 · app C44 · instrumento C44                                                                                                                                                                         | -        |
-| presets × temas (10)                      | hud-orange dark C49, C52 · jarvis dark C49, C52 · forest dark C49, C52 · ocean dark C49, C52 · mono dark C49, C52 · hud-orange light C49, C52 · jarvis light C49, C52 · forest light C49, C52 · ocean light C49, C52 · mono light C49, C52 | -        |
-| nomes acessíveis (4)                      | sino C34 · Hoje com contagem C34 · botão da barra lateral C35 · busca C51                                                                                                                                                                  | -        |
-| larguras de composição (4)                | 1440 C13, C52 · 1100 C13 · 1000 C13 · 800/600/360 C9, C50, C51                                                                                                                                                                             | -        |
-| `PUT /api/ui-preferences` com `shell` (2) | `200` C15 · `400` C15                                                                                                                                                                                                                      | -        |
-| origens do padrão (2)                     | home nova C15, C17 · migração v1 C17                                                                                                                                                                                                       | -        |
-| caminhos de troca (2)                     | Configurações C18, C19, C20 · paleta C21                                                                                                                                                                                                   | -        |
-| doors (2)                                 | campo `shell` C15, C16 · padrão por origem C17                                                                                                                                                                                             | -        |
+| Set (size)                                            | Member -> proof                                                                                                                                                                                                                            | Unproven |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| regiões da moldura (4)                                | `nav` C1, C2 · `header` C1, C2 · `main` C1, C2 · `aside` C1, C2                                                                                                                                                                            | -        |
+| itens da barra lateral (10)                           | C3, table-driven over all 10 (rótulo pt/en, ordem, rota) · ícone C62, table-driven over all 10                                                                                                                                             | -        |
+| elementos da barra lateral fora dos itens (3)         | marca (`systemName`) C62 · título "Mais" C4 · botão "Barra lateral" C35 (nome, estado), C60 (no pé, abaixo de Configurações)                                                                                                               | -        |
+| grupos da barra lateral (3)                           | principal sem título C4 · "Mais" C4 · Configurações sozinho C3                                                                                                                                                                             | -        |
+| larguras da barra lateral (2)                         | aberta 232 px C60 · trilho 60 px C9                                                                                                                                                                                                        | -        |
+| controles da barra superior (4)                       | título C7, C57 · busca C7, C51, C57 · sino C7 · Conversa C7, C8                                                                                                                                                                            | -        |
+| estados da conversa (3)                               | aberta C8 · fechada C8 · gaveta estreita C9, C39, C46                                                                                                                                                                                      | -        |
+| fronteira entre largo e estreito (2)                  | 900 px largo C70 · 899 px estreito C70                                                                                                                                                                                                     | -        |
+| caminhos de fechar a gaveta de conversa (3)           | Esc C39, C41 · botão "Fechar conversa" C63, C61 · toque fora C64, C61                                                                                                                                                                      | -        |
+| caminhos de fechar a barra estreita desdobrada (4)    | Esc C45 · seguir um link C45 · botão "Barra lateral" C64 · toque fora C64, C61                                                                                                                                                             | -        |
+| caminhos de fechar o documento (3)                    | Esc C40, C61 · "Fechar" C40 · toque fora C43, C61                                                                                                                                                                                          | -        |
+| diálogos da moldura (3)                               | conversa estreita C39, C9, C61 · documento C40, C61 · barra lateral estreita C45, C50, C61                                                                                                                                                 | -        |
+| ordem do Esc (5)                                      | paleta C41 · documento C41 · conversa C41 · sino C42 · rota intacta C66 (no Núcleo, Esc leva a Hoje: C66)                                                                                                                                  | -        |
+| teclas do Núcleo inertes (8)                          | 1-5 C10 (1) · `[` `]` C10 (`]`) · `/` C10 · `p` C10 · ⌘J C10 · ⌘F C10 · ⌘⇧A C10 · ⌘⇧D C10                                                                                                                                                  | -        |
+| ids de painel que o resto do app envia (5)            | documento C67, C44 · execução C67 · formulário C67 · instrumento C67, C44 · desconhecido C44                                                                                                                                               | -        |
+| eventos de painel (4)                                 | `focus` C68 · `restore` C68 · `minimize` C68 · `close` C68                                                                                                                                                                                 | -        |
+| saídas que fecham o documento (5)                     | formulário de skill C44 · execução C44 · app C44 · instrumento C44 · evento de painel `close`/`minimize` C68                                                                                                                               | -        |
+| eventos que abrem a conversa (2)                      | rascunho na janela larga C69 · rascunho na estreita C69                                                                                                                                                                                    | -        |
+| apps no conteúdo (9)                                  | C11, table-driven over all 9 (stand-ins) · views reais cabem na coluna C58 (9 rotas x 2 larguras)                                                                                                                                          | -        |
+| rotas de detalhe (3)                                  | `/runs/:id` C11, C56 (view real) · `/skills/:slug` C11 · `/settings?tab=` C11                                                                                                                                                              | -        |
+| endereços que não são da moldura (1)                  | `/nonsense/deep` -> `/` C37 (`replace`)                                                                                                                                                                                                    | -        |
+| cartões de Hoje (6)                                   | C12, table-driven over all 6 (título, ordem, widget)                                                                                                                                                                                       | -        |
+| arranjos de Hoje (4)                                  | duas colunas C13 · uma coluna C13 · "Pede você" cresce com o conteúdo C59 · os outros cinco rolam por dentro a partir de 360 px C60                                                                                                        | -        |
+| cabeçalho de Hoje (2)                                 | "Hoje" e data longa C12 · data muda à meia-noite C73                                                                                                                                                                                       | -        |
+| origens do shell na leitura (4)                       | sem arquivo C17, C53 · arquivo sem a chave C25, C53 · valor desconhecido C16, C25 · migração v1 C17                                                                                                                                        | -        |
+| fontes do shell enquanto carrega (5) + nova tentativa | resposta C27 · espelho lento C28 · espelho com falha C29 · padrão sem espelho C30 · busca que falha depois de carregar C31 · nova tentativa automática e parada ao responder C72                                                           | -        |
+| presets × temas (10)                                  | hud-orange dark C49, C52 · jarvis dark C49, C52 · forest dark C49, C52 · ocean dark C49, C52 · mono dark C49, C52 · hud-orange light C49, C52 · jarvis light C49, C52 · forest light C49, C52 · ocean light C49, C52 · mono light C49, C52 | -        |
+| nomes acessíveis (4)                                  | sino C34 · Hoje com contagem C34 · botão da barra lateral C35 · busca C51                                                                                                                                                                  | -        |
+| larguras de composição (7)                            | 1440 C13, C52, C56, C58 · 1200 C57 · 1100 C13, C56, C57 · 1000 C13, C57 · 900 C56, C57, C58 · 800/600 C9, C50, C51 · 360 C51, C56                                                                                                          | -        |
+| ações da paleta por shell (3 ocultas na moldura)      | "Abrir painel" C21 · "organizar" C21 · tour ("Guia interativo do OS") C21                                                                                                                                                                  | -        |
+| tour e HUD fora da moldura (4 pontos)                 | botão em Configurações C33 · ação da paleta C21 · `Onboarding` montado C71 · overlay HUD montado C71                                                                                                                                       | -        |
+| `PUT /api/ui-preferences` com `shell` (2)             | `200` C15 · `400` C15                                                                                                                                                                                                                      | -        |
+| origens do padrão (2)                                 | home nova C15, C17 · migração v1 C17                                                                                                                                                                                                       | -        |
+| caminhos de troca (2)                                 | Configurações C18, C19, C20 · paleta C21                                                                                                                                                                                                   | -        |
+| doors (2)                                             | campo `shell` C15, C16 · padrão por origem C17                                                                                                                                                                                             | -        |
 
 - Claims naming a status code or route: C15, C25 - provados por `inject`
 - A linha "teclas do Núcleo inertes" prova uma tecla de cada família (1 por 1-5, `]` por `[ ]`); as outras são o mesmo ramo
+- Cada mutante do relatório de verificação da rodada 1 (U2, U4-U11, U15, U17, U19, U30, U36, U37) tem um teste que o mata, rodado de fato: U2 C72 · U4 C66 · U5 e U30 C71 · U6 C21 · U7 e U11 C62 · U8 C70 · U9 C37 · U10 C65 · U15 C68 · U17 C69 · U19 C46 · U36 C67 · U37 C63. Nenhum é equivalente
 
 ## Binding sources
 
@@ -305,7 +397,13 @@ Evidence:
 - `App.tsx` `OsShell`: `shell` → qual árvore monta -> decides
 - closest analogue in the repo: `src/preferences.test.tsx` (render com as duas rotas mockadas) e `tests/e2e/nucleo-shell.spec.ts` (geometria no navegador)
 
-Cost: 2 arquivos de teste de interface, 1 spec e2e, 1 teste de raiz, 55 provas.
+Expectativas das linhas que a verificação da rodada 1 deu como não atendidas, e onde a rodada 3 as atende:
+
+- Instrumentation (composição das telas), "views reais ou prova equivalente": as nove views reais e o detalhe real de execução são medidos no navegador, dentro da moldura e com a conversa aberta (C56, C58); região, item, cartão e controle que o design decide têm check: marca e ícones (C62), largura da barra, botão no pé, trilho de 60 px, rolagem dos cartões e do histórico (C60, C9), título e busca (C57), cartão "Pede você" (C59). O C11 segue com stand-ins, e é o nível certo para "qual view monta e que rota recebe"
+- Instrumentation (foco, `inert` e Esc das gavetas): a barra estreita desdobrada, a gaveta de conversa e a de documento têm laço de Tab real e fechamento por toque real (C61), e jsdom prova cada caminho de fechar (botão C63, toque fora C64, paleta por cima C65, Esc C39-C42 e C66, evento de painel C68)
+- Decides (`useShell`): a nova tentativa automática, que faltava, é C72
+
+Cost: 2 arquivos de teste de interface, 1 spec e2e, 1 teste de raiz, 73 provas.
 
 ## Swept
 
@@ -325,3 +423,4 @@ Cost: 2 arquivos de teste de interface, 1 spec e2e, 1 teste de raiz, 55 provas.
 - Boundary: the first builder was cut off (API limit) with S1-S4 written but uncommitted; a second builder resumed from that diff, fixed the narrow-window chat drawer (it was placed in the empty third grid track), and closed all 24 checks in one commit
 - Settled mid-build: nothing new from the user
 - Abandoned: nothing
+- Rodada 3 (`fix/moldura-r1`, C56-C73): builder único, ~60k (css e três componentes pequenos, 12 testes de interface novos, 6 de navegador); fecha os achados bloqueantes 1, 2, 5 e 6, os 15 mutantes sobreviventes e as lacunas de cobertura do relatório da rodada 1

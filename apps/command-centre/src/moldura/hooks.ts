@@ -1,10 +1,7 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { getDialogDepth } from "../components/dialog";
 
-/**
- * Call `onPress` for a pointer press outside `ref` (the bell's popover).
- * With `inside` the press is outside whenever it is not within that element.
- */
+/** Call `onPress` for a pointer press outside `ref` (the bell's popover), while `enabled`. */
 export function useOutsidePress(ref: RefObject<HTMLElement | null>, onPress: () => void, enabled = true) {
   const pressRef = useRef(onPress);
   pressRef.current = onPress;

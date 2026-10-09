@@ -2751,6 +2751,10 @@ input[type="range"]::-moz-range-thumb {
 }
 .run-cwd code {
   min-width: 0;
+  /* A long path wraps instead of defining the page's width (an ellipsis would hide where the run was). */
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
 }
 .run-id {
   margin: var(--s-1) 0 0;
