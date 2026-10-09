@@ -2,6 +2,7 @@ import { describe, expect, it, beforeAll, afterAll, afterEach, vi } from "vitest
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1349,6 +1350,33 @@ describe("Round 3 - the second verification's gaps", () => {
     expect((await app.inject({ method: "GET", url: `/?token=${token}` })).statusCode).toBe(200);
     // `/apix` is not under /api: the hook leaves it alone (404 without a UI build, the SPA page with one).
     expect((await app.inject({ method: "GET", url: `/apix?token=${token}` })).statusCode).not.toBe(401);
+    // An absolute-form request target (`GET http://host/api/runs?token=…`) is a path the URL decoder never
+    // sees as `/api`: only the router's matched route says it is an API request. Over a raw socket, since
+    // `inject` normalises the target.
+    const rawBase = await listening();
+    const rawPort = Number(new URL(rawBase).port);
+    const rawStatus = (target: string) =>
+      new Promise<string>((resolve, reject) => {
+        const socket = net.connect(rawPort, "127.0.0.1", () => {
+          socket.write(`GET ${target} HTTP/1.1\r\nHost: 127.0.0.1:${rawPort}\r\nConnection: close\r\n\r\n`);
+        });
+        let head = "";
+        socket.on("data", (chunk) => {
+          head += chunk.toString("latin1");
+          if (head.includes("\r\n")) socket.destroy();
+        });
+        socket.on("close", () => resolve(head.split("\r\n")[0] ?? ""));
+        socket.on("error", reject);
+      });
+    expect(
+      await rawStatus(`http://127.0.0.1:${rawPort}/api/runs?token=${token}`),
+      "absolute-form /api",
+    ).toMatch(/^HTTP\/1\.1 401/);
+    expect(
+      await rawStatus(`http://127.0.0.1:${rawPort}/api/v1/runs?token=${token}`),
+      "absolute-form /api/v1",
+    ).toMatch(/^HTTP\/1\.1 40[13]/);
+    // (an absolute-form `/api/v1` target is not rewritten, so it never reaches a route: refused either way)
     // The streams that take one still do, in the spelling they take it.
     const base = await listening();
     expect((await openStream(`${base}/api/v1/events?token=${token}`)).status).toBe(200);
@@ -1641,6 +1669,12 @@ describe("Round 3 - the second verification's gaps", () => {
         asked: [V1, PLAIN],
       },
       {
+        name: "v1 500 with a valid-looking body",
+        replies: { [V1]: json(v1Body, 500), [PLAIN]: json(plainBody) },
+        found: { name: "from plain", version: "1.0.0" },
+        asked: [V1, PLAIN],
+      },
+      {
         name: "v1 200 but not JSON",
         replies: { [V1]: { status: 200, body: "<html>hi</html>" }, [PLAIN]: json(plainBody) },
         found: { name: "from plain", version: "1.0.0" },
@@ -1695,6 +1729,19 @@ describe("Round 3 - the second verification's gaps", () => {
       } finally {
         await new Promise((r) => server.close(r));
       }
+    }
+    // A server that accepts and never answers: the probe gives up inside its budget instead of hanging.
+    const mute = http.createServer(() => undefined);
+    await new Promise<void>((resolve) => mute.listen(0, "127.0.0.1", resolve));
+    try {
+      const started = Date.now();
+      const probed = await probeServer((mute.address() as { port: number }).port, 300);
+      expect(probed).toBeNull();
+      // Both requests share the one budget: well under two budgets, nowhere near a hang.
+      expect(Date.now() - started).toBeLessThan(1500);
+    } finally {
+      mute.closeAllConnections();
+      await new Promise((r) => mute.close(r));
     }
     // Nothing listening at all.
     const closed = http.createServer();

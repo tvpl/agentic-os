@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/api-v1/plan.md`
 
-44 checks in 6 slices and 2 repair rounds · 6 one-way doors · 0 open, of which 0 block
+47 checks in 6 slices and 3 repair rounds · 6 one-way doors · 0 open, of which 0 block
 
 Comandos (da raiz): `npx vitest run tests/api.v1.test.ts -t "<nome>"`; a interface com
 `npm run test -w apps/command-centre -- <arquivo> -t "<nome>"`. Requisições de dispositivo e de outro
@@ -211,6 +211,20 @@ Proof: `npx vitest run tests/api.v1.test.ts -t "C43 the 404 answers in the envel
 Status: closed
 
 **C44** - `probeServer` só aceita `/api/v1/meta` quando responde `200`, JSON de objeto, com `apiVersion`; em qualquer outra resposta (`404`, `401`, `403`, `500`, `200` que não é JSON, JSON sem `apiVersion`, JSON que não é objeto) pergunta `/api/meta`, na ordem v1 depois sem versão (a lista de pedidos é a esperada em cada caso); `null` quando os dois falham (`401`, `500`, não JSON, sem `version`, nada responde, porta fechada) (AC 4; Q3, M50, M52)
+Proof: `npx vitest run tests/api.v1.test.ts -t "C44 the CLI probe falls back to /api/meta unless v1 answered for good"`
+Status: closed
+
+### Depois da rodada 3 - correção do autor (escalada ao dono)
+
+**C45** - Por socket cru, `GET http://127.0.0.1:<porta>/api/runs?token=<local>` (alvo em forma absoluta, que `inject` normaliza) responde `401`: só a metade da regra que usa a rota casada o vê como `/api`; `/api/v1/runs` em forma absoluta, que não é reescrito e nunca chega a uma rota, é recusado (`401` ou `403`) (AC 11; mata R3-08)
+Proof: `npx vitest run tests/api.v1.test.ts -t "C38 a query token is refused on every spelling of an /api path"`
+Status: closed
+
+**C46** - `probeServer` contra um servidor que aceita e nunca responde devolve `null` dentro do orçamento (menos de 1500 ms com 300 ms de limite), e a requisição leva o `signal` (mata R3-33 e R3-34)
+Proof: `npx vitest run tests/api.v1.test.ts -t "C44 the CLI probe falls back to /api/meta unless v1 answered for good"`
+Status: closed
+
+**C47** - Um `500` com corpo v1 válido (`apiVersion`, `version`) não é aceito como v1: o probe cai para `/api/meta` (mata R3-32)
 Proof: `npx vitest run tests/api.v1.test.ts -t "C44 the CLI probe falls back to /api/meta unless v1 answered for good"`
 Status: closed
 
