@@ -769,7 +769,7 @@ export default function PixelStudio() {
                 aria-label={t("pixel.transparent")}
                 title={t("pixel.transparent")}
               />
-              <span className="mono" style={{ fontSize: 11, color: "var(--text-faint)" }}>
+              <span className="mono" style={{ fontSize: 12, color: "var(--text-faint)" }}>
                 {color ?? t("pixel.transparent")}
               </span>
             </div>

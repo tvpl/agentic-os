@@ -19,7 +19,7 @@ export function ConsoleTray({
   const t = useT();
   return (
     <div className="cons-tray" aria-label={t("desktop.doc.context")}>
-      <span className={`cons-h${panels.length ? "" : " dim"}`}>{t("desktop.doc.context")}</span>
+      <span className="cons-h">{t("desktop.doc.context")}</span>
       {panels.map((panel) => (
         <button
           key={panel.id}

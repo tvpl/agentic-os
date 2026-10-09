@@ -116,17 +116,17 @@ export function placeLabels(
 
 /**
  * Screen size (px) of a star's title: it grows a little as the star comes
- * closer (`s` is its perspective scale) but stays between 11 px and a cap
+ * closer (`s` is its perspective scale) but stays between 12 px (the text floor) and a cap
  * that depends on how important the label is (the note you are in: 15 px).
  */
 export function labelPx(pri: number, s: number): number {
   const cap = pri <= 0 ? 15 : pri === 1 ? 13.5 : 12.5;
-  return Math.round(clamp(10.5 + Math.max(0, s) * 1.6, 11, cap) * 2) / 2;
+  return Math.round(clamp(10.5 + Math.max(0, s) * 1.6, 12, cap) * 2) / 2;
 }
 
-/** Screen size (px) of an area's name: tracked capitals, 11 … 13 px whatever the distance. */
+/** Screen size (px) of an area's name: tracked capitals, 12 … 13 px whatever the distance. */
 export function groupPx(spanPx: number): number {
-  return Math.round(clamp(11 + spanPx / 260, 11, 13) * 2) / 2;
+  return Math.round(clamp(11 + spanPx / 260, 12, 13) * 2) / 2;
 }
 
 /**

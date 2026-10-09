@@ -41,12 +41,13 @@ Reutiliza os tokens de `apps/command-centre/src/theme.css` (exists), o teste `ty
 
 ## Impact
 
-| Front       | What changes                                                            |
-| ----------- | ----------------------------------------------------------------------- |
-| domain      | termo existente: escala de tipo - perde os dois degraus abaixo de 12px  |
-| domain      | novo termo: `--mask-ink` - o preto opaco das máscaras CSS, como token   |
-| contrato    | nenhum na API; no repositório, `npm run lint` passa a rodar o stylelint |
-| stored data | nada a migrar                                                           |
+| Front       | What changes                                                                                                                                                                                                                                                        |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| domain      | termo existente: escala de tipo - perde os dois degraus abaixo de 12px                                                                                                                                                                                              |
+| domain      | novo termo: `--mask-ink` - o preto opaco das máscaras CSS, como token                                                                                                                                                                                               |
+| domain      | novos termos, todos em `theme.css`: `--shadow-ink`, `--highlight-ink`, `--paper` (tintas neutras de sombra, brilho e folha branca), `--blue`, `--violet` (matizes categóricos de família de modelo e tipo de executor) e `--agent-contrast` (texto sobre `--agent`) |
+| contrato    | nenhum na API; no repositório, `npm run lint` passa a rodar o stylelint                                                                                                                                                                                             |
+| stored data | nada a migrar                                                                                                                                                                                                                                                       |
 
 ## Relations
 

@@ -315,7 +315,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
     const nameAlpha = hovered ? 1 : planetNameAlpha;
     if (nameAlpha > 0) {
       const name = truncate(p.label, 18);
-      ctx.font = `700 ${9 / k}px ${font}`;
+      ctx.font = `700 ${12 / k}px ${font}`;
       ctx.textAlign = "center";
       const width = ctx.measureText(name).width;
       const y2 = p.y + 14 / k;
@@ -344,7 +344,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
       ctx.drawImage(sprites.spark(SKILL_COLOR, hovered), orb.x - s, orb.y - s, s * 2, s * 2);
       if (hovered || k > 1.6) {
         ctx.fillStyle = hovered ? accent : textDim;
-        ctx.font = `700 ${10 / k}px ${mono}`;
+        ctx.font = `700 ${12 / k}px ${mono}`;
         ctx.textAlign = "center";
         ctx.fillText(orb.label, orb.x, orb.y - 12 / k);
         ctx.textAlign = "start";
@@ -363,7 +363,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
       );
       if (hovered) {
         ctx.fillStyle = accent;
-        ctx.font = `700 ${10.5 / k}px ${font}`;
+        ctx.font = `700 ${12 / k}px ${font}`;
         ctx.textAlign = "center";
         ctx.fillText(orb.label, orb.x, orb.y - 15 / k);
         ctx.textAlign = "start";
@@ -379,7 +379,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
       );
       if (hovered) {
         ctx.fillStyle = accent;
-        ctx.font = `700 ${10.5 / k}px ${font}`;
+        ctx.font = `700 ${12 / k}px ${font}`;
         ctx.textAlign = "center";
         ctx.fillText(orb.label, orb.x, orb.y - 20 / k);
         ctx.textAlign = "start";
@@ -402,20 +402,20 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
     ctx.fill();
     drawFolderGlyph(ctx, hub.x, hub.y, rr * 0.9, tokens.glyphInk);
     const short = truncate(hub.key.toUpperCase(), 16);
-    ctx.font = `800 ${11.5 / k}px ${font}`;
+    ctx.font = `800 ${12 / k}px ${font}`;
     ctx.textAlign = "center";
     const labelW = ctx.measureText(short).width;
-    ctx.font = `800 ${9 / k}px ${mono}`;
+    ctx.font = `800 ${12 / k}px ${mono}`;
     const countW = ctx.measureText(String(hub.count)).width + 4 / k;
     // Hub names are collision-aware: a name that would sit on another hub's
     // label steps outward along the hub's radius (up to three label heights).
     const labelH = 13 / k;
     const spot = placeHubLabel(hubPlacer, hub, labelW + countW, labelH, rr + 7 / k);
-    ctx.font = `800 ${11.5 / k}px ${font}`;
+    ctx.font = `800 ${12 / k}px ${font}`;
     ctx.fillStyle = active ? accent : textDim;
     ctx.globalAlpha = spot.free ? 1 : 0.55;
     ctx.fillText(short, spot.x - countW / 2, spot.y);
-    ctx.font = `800 ${9 / k}px ${mono}`;
+    ctx.font = `800 ${12 / k}px ${mono}`;
     ctx.fillStyle = faint;
     ctx.textAlign = "left";
     ctx.fillText(String(hub.count), spot.x - countW / 2 + labelW / 2 + 4 / k, spot.y);
@@ -434,7 +434,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
 
   drawPixelCore(ctx, accent, k, reduceMotion ? 0 : tNow, w.comets.length > 0, sprites);
   ctx.fillStyle = textDim;
-  ctx.font = `800 ${11 / k}px ${font}`;
+  ctx.font = `800 ${12 / k}px ${font}`;
   ctx.textAlign = "center";
   ctx.fillText(o.coreLabel, 0, 36 / k);
 

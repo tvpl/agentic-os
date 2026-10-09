@@ -13,13 +13,13 @@ const ask = (id: number, x: number, y: number, pri = 3, w = 80): LabelAsk => ({
 });
 
 describe("label sizes", () => {
-  it("stay between 11 px and a cap, whatever the distance", () => {
-    expect(labelPx(3, 0.1)).toBe(11);
+  it("stay between 12 px and a cap, whatever the distance", () => {
+    expect(labelPx(3, 0.1)).toBe(12);
     expect(labelPx(3, 50)).toBe(12.5);
     expect(labelPx(0, 50)).toBe(15);
     expect(labelPx(1, 50)).toBe(13.5);
     expect(labelPx(0, 1.5)).toBeGreaterThan(labelPx(0, 0.5));
-    expect(groupPx(0)).toBe(11);
+    expect(groupPx(0)).toBe(12);
     expect(groupPx(100000)).toBe(13);
   });
 

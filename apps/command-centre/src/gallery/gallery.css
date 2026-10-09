@@ -40,7 +40,7 @@
 }
 .story-label {
   font-family: var(--font-mono);
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -76,4 +76,23 @@
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
+}
+/* A layer story hosts the interface's own root (.nu-shell, .mold: both fill
+   their window) as a plate on the page, around the primitives it dresses. */
+.story-layer {
+  position: relative;
+  inset: auto;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.story-layer-scene {
+  position: relative;
+  inset: auto;
+  padding: var(--s-4);
+}
+/* The dialog sits in the page flow here, without the veil that centres it. */
+.story-dialog {
+  width: 100%;
+  max-width: 440px;
 }

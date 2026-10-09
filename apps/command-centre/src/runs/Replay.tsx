@@ -106,7 +106,7 @@ export default function Replay({ events }: ReplayProps) {
     }
 
     // Nodes.
-    ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     for (const node of placed.values()) {

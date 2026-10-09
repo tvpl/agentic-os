@@ -11,7 +11,7 @@
 }
 .ob-shade {
   position: absolute;
-  background: rgb(3 6 12 / 65%);
+  background: color-mix(in srgb, var(--shadow-ink) 65%, transparent);
   pointer-events: auto;
   animation: ob-shade-in 350ms ease both;
 }
@@ -20,7 +20,7 @@
 }
 .ob-centered .ob-shade {
   backdrop-filter: blur(7px);
-  background: rgb(3 6 12 / 70%);
+  background: color-mix(in srgb, var(--shadow-ink) 70%, transparent);
 }
 .ob-centered {
   display: grid;
@@ -33,7 +33,7 @@
 }
 .ob-spotlight {
   position: absolute;
-  border: 1px solid color-mix(in srgb, var(--accent) 80%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 80%, var(--highlight-ink));
   border-radius: 16px;
   box-shadow:
     0 0 0 5px color-mix(in srgb, var(--accent) 9%, transparent),
@@ -84,8 +84,8 @@
   background-image: radial-gradient(ellipse at 100% 0%, var(--accent-soft), transparent 60%);
   border: 1px solid var(--ob-line);
   box-shadow:
-    0 32px 100px rgb(0 0 0 / 40%),
-    0 0 0 1px rgb(255 255 255 / 3%) inset;
+    0 32px 100px color-mix(in srgb, var(--shadow-ink) 40%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--highlight-ink) 3%, transparent) inset;
   border-radius: 24px;
   outline: none;
   line-height: 1.5;
@@ -153,14 +153,14 @@
   align-items: center;
   gap: 8px;
   color: var(--accent-text);
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   font-weight: 650;
   letter-spacing: 0.055em;
 }
 .ob-pill {
   display: inline-block;
   font-family: var(--font-mono);
-  font-size: var(--fs-0);
+  font-size: var(--fs-2);
   border: 1px solid var(--accent-line);
   border-radius: 20px;
   padding: 2px 8px;
@@ -180,7 +180,7 @@
 .ob-duration {
   margin-top: 21px;
   color: var(--text-faint);
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   font-family: var(--font-mono);
 }
 .ob-universe {
@@ -243,7 +243,7 @@
   border: 1px solid var(--ob-line);
   background: var(--bg-raise);
   border-radius: 15px;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 15%);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--shadow-ink) 15%, transparent);
   color: var(--text-dim);
   animation: ob-float 5s ease-in-out infinite;
 }
@@ -307,7 +307,7 @@
 .ob-map > div > span {
   font-family: var(--font-mono);
   color: var(--text-faint);
-  font-size: var(--fs-0);
+  font-size: var(--fs-2);
 }
 .ob-map strong {
   font-size: var(--fs-2);
@@ -369,14 +369,14 @@
   border: none;
   padding: 6px 0;
   color: var(--ob-muted);
-  font-size: var(--fs-1) !important;
+  font-size: var(--fs-2) !important;
 }
 .ob-text-button:hover {
   color: var(--accent-text);
 }
 .ob-replay-hint {
   margin-top: 20px !important;
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   line-height: 1.6;
 }
 .ob-coach {
@@ -407,7 +407,7 @@
   align-items: center;
   gap: 7px;
   color: var(--text-faint);
-  font-size: var(--fs-0);
+  font-size: var(--fs-2);
   letter-spacing: 0.06em;
 }
 .ob-live > span {
@@ -459,7 +459,7 @@
   animation: ob-step 320ms ease-out both;
 }
 .ob-coach .ob-eyebrow {
-  font-size: var(--fs-0);
+  font-size: var(--fs-2);
   letter-spacing: 0.015em;
 }
 .ob-coach .ob-eyebrow span {
@@ -486,7 +486,7 @@
   padding: 3px 7px;
   border-radius: 6px;
   color: var(--text-faint);
-  font-size: var(--fs-0);
+  font-size: var(--fs-2);
 }
 .ob-tip {
   display: flex;
@@ -499,7 +499,7 @@
   color: var(--accent-text);
 }
 .ob-tip p {
-  font-size: var(--fs-1);
+  font-size: var(--fs-3);
 }
 .ob-activity {
   background: var(--bg);
@@ -509,7 +509,7 @@
   margin: 14px 0 5px;
 }
 .ob-activity > p:first-child {
-  font-size: var(--fs-1);
+  font-size: var(--fs-3);
   color: var(--text);
   margin-bottom: 9px;
 }
@@ -529,7 +529,7 @@
   padding: 8px 9px;
   background: var(--bg-raise);
   color: var(--text-dim);
-  font-size: var(--fs-0);
+  font-size: var(--fs-2);
   flex: 1 1 auto;
 }
 .ob-choice-row button[aria-pressed="true"],
@@ -542,7 +542,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   color: var(--text);
   margin-bottom: 6px;
 }
@@ -551,7 +551,7 @@
 }
 .ob-activity-title > button {
   margin-left: auto;
-  font-size: var(--fs-0) !important;
+  font-size: var(--fs-2) !important;
 }
 .ob-activity textarea {
   resize: vertical;
@@ -564,7 +564,7 @@
   border: 1px solid var(--ob-line);
   border-radius: 8px;
   padding: 10px;
-  font-size: var(--fs-1);
+  font-size: var(--fs-3);
   line-height: 1.6;
 }
 .ob-activity textarea::placeholder {
@@ -572,7 +572,7 @@
 }
 .ob-feedback {
   margin-top: 9px !important;
-  font-size: var(--fs-0) !important;
+  font-size: var(--fs-2) !important;
   color: var(--accent-text) !important;
 }
 .ob-quiz {
@@ -584,7 +584,7 @@
   text-align: left;
 }
 .ob-missing {
-  font-size: var(--fs-0) !important;
+  font-size: var(--fs-2) !important;
   margin-top: 7px !important;
 }
 .ob-coach-footer {
@@ -599,7 +599,7 @@
 }
 .ob-coach-footer .ob-primary {
   padding: 11px 13px;
-  font-size: var(--fs-1) !important;
+  font-size: var(--fs-2) !important;
 }
 .ob-bottom {
   flex-shrink: 0;
@@ -608,10 +608,10 @@
   justify-content: space-between;
   margin-top: 10px;
   color: var(--text-faint);
-  font-size: var(--fs-0);
+  font-size: var(--fs-2);
 }
 .ob-bottom .ob-text-button {
-  font-size: var(--fs-0) !important;
+  font-size: var(--fs-2) !important;
 }
 .ob-progress {
   flex-shrink: 0;
@@ -652,7 +652,7 @@
 .ob-readiness small {
   margin-left: auto;
   color: var(--text-faint);
-  font-size: var(--fs-0);
+  font-size: var(--fs-2);
 }
 @keyframes ob-spin {
   to {
@@ -782,7 +782,7 @@
     margin: 6px 0 10px;
   }
   .ob-readiness > div {
-    font-size: var(--fs-1);
+    font-size: var(--fs-2);
   }
 }
 @media (max-height: 600px) {

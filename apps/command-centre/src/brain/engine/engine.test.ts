@@ -1244,8 +1244,8 @@ describe("labels", () => {
     const [x1, y1, x2, y2] = fileLabelBox(10, 20, 30, 2);
     expect(x1).toBe(10);
     expect(x2).toBe(40);
-    expect(y1).toBeCloseTo(20 + 1.5 - 4); // baseline − ascent
-    expect(y2).toBeCloseTo(20 + 1.5 + 1.25); // baseline + descent
+    expect(y1).toBeCloseTo(20 + 2 - 5); // baseline − ascent (12 px label)
+    expect(y2).toBeCloseTo(20 + 2 + 1.5); // baseline + descent
     const placer = new LabelPlacer();
     expect(placer.tryPlace(0, 0, 10, 10)).toBe(true);
     expect(placer.tryPlace(5, 5, 15, 15)).toBe(false);

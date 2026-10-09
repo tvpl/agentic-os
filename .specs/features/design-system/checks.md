@@ -17,55 +17,55 @@ mínimo, cor por token e acessibilidade); a composição das telas não muda.
 
 **C1** - `theme.css` define `--fs-2` a `--fs-8` e `--fs-hero`, e nenhum arquivo de `src` define ou usa `--fs-0` ou `--fs-1` (AC 1)
 Proof: `npm run test -w apps/command-centre -- src/typography.test.ts -t "C1 the type scale starts at 12px"`
-Status: open
+Status: closed
 
 **C2** - Lendo cada CSS de `src` como árvore (postcss): nenhum `font-size` nem atalho `font:` abaixo de 12px, resolvendo tokens `--fs-*`, `px`, `rem`/`em` (16px de base) e `calc`/`clamp` com o menor valor; o teste se prova contra `font: 600 11px/1 x`, `font-size: .7rem`, `font-size: var(--fs-1)` e `clamp(10px, 1vw, 14px)` (AC 2)
 Proof: `npm run test -w apps/command-centre -- src/typography.test.ts -t "C2 no CSS sets text below 12px"`
-Status: open
+Status: closed
 
 **C3** - Lendo os TSX/TS de `src` pela árvore sintática do TypeScript: nenhum `fontSize` em `style` abaixo de 12 e nenhuma atribuição a `ctx.font` com tamanho abaixo de 12px (AC 3)
 Proof: `npm run test -w apps/command-centre -- src/typography.test.ts -t "C3 no inline or canvas text below 12px"`
-Status: open
+Status: closed
 
 **C4** - No navegador, o `font-size` computado de um `.badge` da galeria é `12px`, nos dois temas (AC 4)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/a11y.spec.ts -g "C4 badges read at 12px"`
-Status: open
+Status: closed
 
 ### S2 - cores por token · 18 files · 110 KB · ~28k
 
 **C5** - `npm run lint` roda o stylelint sobre `apps/command-centre/src/**/*.css` com `color-no-hex`, `color-named: never` e `function-disallowed-list` (rgb, rgba, hsl, hsla), e um arquivo temporário com `a { color: #fff }` faz o comando sair com código ≠ 0 (AC 5)
 Proof: `npm run test -w apps/command-centre -- src/typography.test.ts -t "C5 the colour lint refuses a literal"`
-Status: open
+Status: closed
 
 **C6** - `npx stylelint "apps/command-centre/src/**/*.css"` sai `0` sobre a árvore (os literais de hoje viraram tokens ou `--mask-ink`), e os únicos trechos com a regra desligada são os blocos de definição de token de `theme.css` (`:root`, `[data-theme]`, `[data-preset]`) (AC 6)
 Proof: `npm run test -w apps/command-centre -- src/typography.test.ts -t "C6 the tree passes the colour lint"`
-Status: open
+Status: closed
 
 **C7** - No navegador, com tema claro e preset `hud-orange`, o `color` computado de `.display-digits` e de `.hud-label.accent` não é o `--text` do JARVIS (`#cfe9ff`-família) e é igual ao token do tema claro; com o preset `jarvis` escuro, o JARVIS continua aplicado (AC 7)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/a11y.spec.ts -g "C7 the light theme keeps its own tokens"`
-Status: open
+Status: closed
 
 ### S3 - acessibilidade e galeria · 8 files · 60 KB · ~15k
 
 **C8** - axe (tags `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`) sem violação `serious`/`critical` na moldura: Hoje, Execuções, Skills, Rotinas, Memória, Configurações — tema escuro e claro (AC 8)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/a11y.spec.ts -g "C8 the app frame has no serious violation"`
-Status: open
+Status: closed
 
 **C9** - O mesmo no Núcleo: início, Execuções, Skills, Configurações — tema escuro e claro (AC 8)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/a11y.spec.ts -g "C9 the Núcleo has no serious violation"`
-Status: open
+Status: closed
 
 **C10** - A galeria tem as seções `#story-nucleo-layer` (primitivas dentro de `.nu-shell` com `luz.css` carregado) e `#story-frame-layer` (dentro de `[data-shell="moldura"]` com `moldura.css`), cada uma com botões, badges, campo e um diálogo (AC 9)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/gallery.spec.ts -g "C10 the gallery shows both layers"`
-Status: open
+Status: closed
 
 **C11** - `tests/e2e/gallery.spec.ts` passa inteiro em Linux, incluindo as duas seções novas, nos dois temas (AC 10)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/gallery.spec.ts`
-Status: open
+Status: closed
 
 **C12** - `tests/e2e/gallery-contrast.spec.ts` e `tests/e2e/surface-contrast.spec.ts` continuam passando (AC 8)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/gallery-contrast.spec.ts tests/e2e/surface-contrast.spec.ts`
-Status: open
+Status: closed
 
 **C13** - A suíte e2e completa não ganha nenhuma falha nova em relação à base (lista de antes e depois no relatório do build) (AC 1-10)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts`
@@ -73,7 +73,7 @@ Status: open
 
 **C14** - `npm run typecheck`, `npm run lint` e a suíte da interface saem `0` (AC 1-10)
 Proof: `npm run typecheck && npm run lint && npm run test -w apps/command-centre`
-Status: open
+Status: closed
 
 ## Coverage
 

@@ -67,7 +67,7 @@
   backdrop-filter: blur(10px) saturate(1.2);
   box-shadow:
     inset 0 0 0 1px var(--agent-line),
-    0 16px 36px -18px rgba(0, 0, 0, 0.75);
+    0 16px 36px -18px color-mix(in srgb, var(--shadow-ink) 75%, transparent);
   clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
   opacity: 0;
   transition: opacity 0.14s;
@@ -94,7 +94,7 @@
   overflow-wrap: anywhere;
 }
 .bs-card-meta {
-  font: 500 var(--fs-0) / 1.35 var(--font-mono);
+  font: 500 var(--fs-2) / 1.35 var(--font-mono);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--agent-text);
@@ -109,7 +109,7 @@
   margin-top: 2px;
   padding-top: 6px;
   border-top: 1px solid var(--bs-line);
-  font: 500 var(--fs-0) / 1.35 var(--font-mono);
+  font: 500 var(--fs-2) / 1.35 var(--font-mono);
   letter-spacing: 0.06em;
   color: var(--text-faint);
 }
@@ -138,7 +138,7 @@
 /* ---- shared type ---------------------------------------------------------- */
 .bs-eyebrow {
   margin: 0;
-  font: 500 var(--fs-0) / 1.5 var(--font-mono);
+  font: 500 var(--fs-2) / 1.5 var(--font-mono);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -272,7 +272,7 @@
   padding: 6px 9px 6px 8px;
   border: 0;
   background: none;
-  font: 600 var(--fs-0) / 1 var(--font-display);
+  font: 600 var(--fs-2) / 1 var(--font-display);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -338,7 +338,7 @@
   white-space: nowrap;
 }
 .bs-area small {
-  font: 400 var(--fs-0) / 1 var(--font-mono);
+  font: 400 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.06em;
   color: var(--text-faint);
 }
@@ -398,7 +398,7 @@
   padding: 2px 0;
   border: 0;
   background: none;
-  font: 500 var(--fs-0) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -474,7 +474,7 @@
   fill: var(--agent);
 }
 .bs-zoomread {
-  font: 500 var(--fs-0) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.08em;
   color: var(--text-faint);
 }
@@ -677,7 +677,7 @@
   border-radius: 50%;
   background: none;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-faint) 55%, transparent);
-  font: 600 var(--fs-1) / 1 var(--font-mono);
+  font: 600 var(--fs-2) / 1 var(--font-mono);
   color: var(--text-dim);
   cursor: pointer;
 }
@@ -732,13 +732,13 @@
   display: contents;
 }
 .bs-help dt {
-  font: 500 var(--fs-0) / 1.35 var(--font-mono);
+  font: 500 var(--fs-2) / 1.35 var(--font-mono);
   letter-spacing: 0.04em;
   color: var(--text);
 }
 .bs-help dd {
   margin: 0;
-  font: 400 var(--fs-1) / 1.35 var(--font);
+  font: 400 var(--fs-2) / 1.35 var(--font);
   color: var(--text-dim);
 }
 .bs-results {
@@ -782,7 +782,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--fs-0);
+  font-size: var(--fs-2);
   color: var(--text-faint);
 }
 .bs-hits button:hover {
@@ -807,7 +807,7 @@
   backdrop-filter: blur(18px);
   box-shadow:
     inset 0 0 0 1px var(--nu-edge, var(--border)),
-    0 30px 80px -30px rgba(0, 0, 0, 0.8);
+    0 30px 80px -30px color-mix(in srgb, var(--shadow-ink) 80%, transparent);
   clip-path: polygon(14px 0, 100% 0, 100% 100%, 0 100%, 0 14px);
   scrollbar-width: thin;
 }
@@ -876,7 +876,7 @@
   color: var(--text);
 }
 .bs-chips small {
-  font: 400 var(--fs-0) / 1 var(--font-mono);
+  font: 400 var(--fs-2) / 1 var(--font-mono);
   color: var(--text-faint);
 }
 .bs-row {
@@ -912,7 +912,7 @@
   align-items: center;
   gap: 8px;
   margin: 10px 0 2px;
-  font: 500 var(--fs-1) / 1.4 var(--font-mono);
+  font: 500 var(--fs-2) / 1.4 var(--font-mono);
   letter-spacing: 0.06em;
   color: var(--text-dim);
 }
@@ -983,7 +983,7 @@
 }
 .bs-list .brain2-list-group {
   margin: 12px 0 2px;
-  font: 500 var(--fs-0) / 1.5 var(--font-mono);
+  font: 500 var(--fs-2) / 1.5 var(--font-mono);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -1110,7 +1110,7 @@
 }
 .bs-sheet-path {
   margin: 0;
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   line-height: 1.5;
   color: var(--text-faint);
   overflow-wrap: anywhere;
@@ -1143,7 +1143,7 @@
     box-shadow 0.2s;
 }
 .bs-terms button small {
-  font: 400 var(--fs-0) / 1 var(--font-mono);
+  font: 400 var(--fs-2) / 1 var(--font-mono);
   color: var(--text-faint);
 }
 .bs-terms button:hover,
@@ -1233,7 +1233,7 @@
   align-items: baseline;
   gap: 7px;
   margin: 0 0 4px;
-  font: 500 var(--fs-1) / 1.4 var(--font-mono);
+  font: 500 var(--fs-2) / 1.4 var(--font-mono);
   letter-spacing: 0.04em;
   color: var(--text-dim);
 }
@@ -1442,7 +1442,7 @@
 }
 .bs-md code {
   padding: 0.1em 0.35em;
-  font: 400 0.84em var(--font-mono);
+  font: 400 max(var(--fs-2), 0.84em) var(--font-mono);
   color: var(--agent-text);
   background: color-mix(in srgb, var(--agent) 8%, transparent);
 }
@@ -1467,7 +1467,7 @@
 }
 .bs-md-ext {
   margin-left: 2px;
-  font-size: 0.8em;
+  font-size: max(var(--fs-2), 0.8em);
 }
 .bs-md-pre {
   position: relative;
@@ -1487,7 +1487,7 @@
   position: absolute;
   right: 10px;
   top: 6px;
-  font: 500 var(--fs-0) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -1525,7 +1525,7 @@
 }
 .bs-md-skill {
   font-family: var(--font-mono);
-  font-size: 0.84em;
+  font-size: max(var(--fs-2), 0.84em);
   color: var(--accent-text);
   text-decoration-color: var(--accent-line);
 }
@@ -1543,7 +1543,7 @@
 }
 .bs-md-label {
   margin-right: 8px;
-  font: 500 var(--fs-0) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -1577,7 +1577,7 @@
   vertical-align: top;
 }
 .bs-md-table th {
-  font: 500 var(--fs-0) / 1.4 var(--font-mono);
+  font: 500 var(--fs-2) / 1.4 var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -1618,7 +1618,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: right;
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   letter-spacing: 0.06em;
   color: var(--text-dim);
 }
@@ -1629,7 +1629,7 @@
   padding: 2px 4px;
   border: 0;
   background: none;
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   color: var(--accent-text);
   cursor: pointer;
 }

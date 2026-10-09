@@ -16,11 +16,11 @@ export const PLANET_LABEL_RAMP_END = 1.6;
 export const LABEL_BUDGET = 240;
 /** Placement attempts per frame at most: past this the rest of the ranking is not even measured. */
 export const LABEL_ATTEMPT_CAP = LABEL_BUDGET * 4;
-/** Font metrics of the 10 px mono label: baseline offset and box height (px, pre-zoom). */
-export const LABEL_FONT_PX = 10;
-export const LABEL_BASELINE_PX = 3;
-export const LABEL_ASCENT_PX = 8;
-export const LABEL_DESCENT_PX = 2.5;
+/** Font metrics of the 12 px mono label (the text floor): baseline offset and box height (px, pre-zoom). */
+export const LABEL_FONT_PX = 12;
+export const LABEL_BASELINE_PX = 4;
+export const LABEL_ASCENT_PX = 10;
+export const LABEL_DESCENT_PX = 3;
 
 export function ramp(k: number, start: number, end: number): number {
   return Math.min(1, Math.max(0, (k - start) / (end - start)));

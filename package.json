@@ -21,7 +21,8 @@
     "build": "tsc -b contracts core adapters/claude adapters/cursor adapters/codex apps/api && npm run build -w apps/command-centre",
     "build:server": "tsc -b contracts core adapters/claude adapters/cursor adapters/codex apps/api",
     "typecheck": "tsc -b contracts core adapters/claude adapters/cursor adapters/codex apps/api && tsc -p typetests/tsconfig.json && npm run typecheck -w apps/command-centre",
-    "lint": "eslint .",
+    "lint": "eslint . && npm run lint:css",
+    "lint:css": "stylelint \"apps/command-centre/src/**/*.css\"",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -47,8 +48,11 @@
     "husky": "^9.1.7",
     "lint-staged": "^17.4.1",
     "playwright-core": "^1.49.0",
+    "postcss": "^8.5.26",
     "prettier": "^3.9.6",
     "rolldown": "^1.2.6",
+    "stylelint": "^17.16.0",
+    "stylelint-config-standard": "^40.0.0",
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.69.0",
     "vitest": "^4.1.11"
@@ -58,7 +62,11 @@
       "eslint --max-warnings=0",
       "prettier --write"
     ],
-    "*.{json,md,css,html,yml,yaml}": "prettier --write --ignore-unknown"
+    "*.css": [
+      "stylelint --max-warnings=0",
+      "prettier --write"
+    ],
+    "*.{json,md,html,yml,yaml}": "prettier --write --ignore-unknown"
   },
   "allowScripts": {
     "better-sqlite3@12.11.1": true

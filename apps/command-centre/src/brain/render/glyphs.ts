@@ -89,7 +89,7 @@ export function drawPlanet(
   ctx.stroke();
   ctx.globalAlpha = alpha;
   ctx.fillStyle = ink;
-  ctx.font = `800 ${8.5 / Math.max(0.8, k)}px ${font}`;
+  ctx.font = `800 ${12 / Math.max(0.8, k)}px ${font}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillText(String(count), r * 2.4, 0);

@@ -6,6 +6,10 @@
  *
  * Open with `npm run gallery` (Vite dev) or `/gallery.html?theme=light` on the
  * built app (`&preset=forest|ocean|mono` picks a theme preset). Each story section has a stable `#story-<id>` for screenshots.
+ *
+ * The first sections show the primitives bare (theme.css); `nucleo-layer` and
+ * `frame-layer` show the same primitives inside the two interfaces, each with
+ * the stylesheet that dresses them there (luz.css, moldura.css).
  */
 import { StrictMode, useMemo, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -15,6 +19,8 @@ import { Bell, Play, Sparkles, Trash2 } from "lucide-react";
 import "../theme.css";
 import "../desktop/desktop.css";
 import "../nucleo/nucleo.css";
+import "../nucleo/luz.css";
+import "../moldura/moldura.css";
 import "./gallery.css";
 import { I18nContext, type Lang } from "../i18n";
 import { qk } from "../queries";
@@ -369,6 +375,61 @@ function Dialogs() {
   );
 }
 
+/** A dialog drawn in place (the real Modal portals to the page and traps focus), for the layer stories. */
+function StaticDialog({ title, idPrefix }: { title: string; idPrefix: string }) {
+  return (
+    <div className="modal narrow story-dialog" role="dialog" aria-label={title}>
+      <div className="modal-head">
+        <h2>{title}</h2>
+      </div>
+      <Field label="Name" htmlFor={`${idPrefix}-name`}>
+        <input id={`${idPrefix}-name`} className="input" defaultValue="Weekly report" />
+      </Field>
+      <div className="modal-actions">
+        <Button variant="secondary">Cancel</Button>
+        <Button variant="primary">Save</Button>
+      </div>
+    </div>
+  );
+}
+
+/** What a layer draws with the shared primitives: buttons, badges, a field and a dialog. */
+function LayerPrimitives({ idPrefix }: { idPrefix: string }) {
+  return (
+    <div className="story-body">
+      <Row label="buttons">
+        {(["primary", "secondary", "ghost", "danger"] as const).map((variant) => (
+          <Button key={variant} variant={variant}>
+            {variant}
+          </Button>
+        ))}
+        <Button variant="secondary" icon={<Play aria-hidden />}>
+          With icon
+        </Button>
+        <Button variant="secondary" disabled>
+          Disabled
+        </Button>
+      </Row>
+      <Row label="badges">
+        {(["ok", "warn", "danger", "info", "accent", "dim"] as const).map((tone) => (
+          <Badge key={tone} kind="state" tone={tone}>
+            {tone}
+          </Badge>
+        ))}
+        <Badge kind="meta">18 lines</Badge>
+      </Row>
+      <Row label="field">
+        <Field label="Cron" htmlFor={`${idPrefix}-cron`} hint="Shown in the launcher.">
+          <input id={`${idPrefix}-cron`} className="input mono" defaultValue="30 7 * * 1-5" />
+        </Field>
+      </Row>
+      <Row label="dialog">
+        <StaticDialog title="New skill" idPrefix={idPrefix} />
+      </Row>
+    </div>
+  );
+}
+
 function Overlays() {
   const [pop, setPop] = useState(false);
   const [palette, setPalette] = useState(false);
@@ -583,6 +644,22 @@ function Gallery() {
               <div className="nu-lamina-body">{node}</div>
             </article>
           ))}
+        </div>
+      </Story>
+
+      <Story id="nucleo-layer" title="Núcleo layer">
+        <div className="nu-shell story-layer">
+          <div className="nu-scene luz story-layer-scene">
+            <LayerPrimitives idPrefix="g-nu" />
+          </div>
+        </div>
+      </Story>
+
+      <Story id="frame-layer" title="App frame layer">
+        <div className="mold story-layer" data-shell="moldura">
+          <div className="story-layer-scene">
+            <LayerPrimitives idPrefix="g-fr" />
+          </div>
         </div>
       </Story>
 

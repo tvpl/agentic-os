@@ -82,7 +82,7 @@ function readPalette(): Palette {
   const ok = get("--ok", [0.29, 0.871, 0.502]);
   const faint = get("--text-faint", light ? [0.43, 0.4, 0.34] : [0.56, 0.53, 0.45]);
   const dim = get("--text-dim", light ? [0.3, 0.28, 0.24] : [0.72, 0.69, 0.62]);
-  const fs0 = parseFloat(cs.getPropertyValue("--fs-0")) || 10;
+  const fs2 = parseFloat(cs.getPropertyValue("--fs-2")) || 12;
   const mono =
     cs.getPropertyValue("--font-mono").trim() ||
     '"JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace';
@@ -103,7 +103,7 @@ function readPalette(): Palette {
       faint: css(faint),
       dim: css(dim),
       plate: css(bg),
-      fs0,
+      fs2,
       mono,
     },
   };
