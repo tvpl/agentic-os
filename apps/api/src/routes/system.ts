@@ -446,6 +446,8 @@ export function registerSystemRoutes(
   app.get("/api/ui-preferences", async () => ctx.uiPreferences.load());
 
   const UiPreferencesPatchSchema = UiPreferencesSchema.partial().extend({
+    /** Strict on write: an unknown shell is refused, not read back as the default. */
+    shell: UiPreferencesSchema.shape.shell.removeCatch().optional(),
     /** The layout this writer started from; a different stored layout means another window saved first. */
     dashboardLayoutBase: UiPreferencesSchema.shape.dashboardLayout.removeDefault().optional(),
   });

@@ -596,6 +596,8 @@ export type SettingsPatch = Partial<SettingsDoc> & { [K in MovedSettingKey]?: ne
 
 /** `GET /api/ui-preferences`: what only the Command Centre reads and writes. */
 export type UiPreferencesDoc = Contracts.UiPreferences;
+/** Which interface mounts: the app frame or the immersive Núcleo. */
+export type UiShell = UiPreferencesDoc["shell"];
 /** `PUT /api/ui-preferences` body. */
 export type UiPreferencesPatch = Partial<Omit<UiPreferencesDoc, "version">> & {
   dashboardLayoutBase?: UiPreferencesDoc["dashboardLayout"];

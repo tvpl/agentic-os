@@ -3,13 +3,14 @@
 Profile: ui
 Plan: `.specs/features/moldura-app/plan.md`
 
-24 checks in 4 slices · 2 one-way doors · 0 open, of which 0 block
+55 checks in 5 slices · 2 one-way doors · 0 open, of which 0 block
 
 Comandos (da raiz):
 
 - interface (jsdom): `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "<nome>"`
 - composição no navegador (Playwright, Chromium em `/opt/pw-browsers`): `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "<nome>"`
 - motor e rota: `npx vitest run tests/moldura.test.ts -t "<nome>"`
+- ações compartilhadas dos shells (jsdom): `npm run test -w apps/command-centre -- src/desktop/shellActions.test.tsx -t "<nome>"`
 
 Fora do alcance destes checks, por tela: espaçamento, cor e peso de tipo da Moldura, da página Hoje,
 do controle de interface e da paleta (vêm dos tokens e do preset).
@@ -18,128 +19,268 @@ do controle de interface e da paleta (vêm dos tokens e do preset).
 
 ### S1 - a moldura e suas regiões · 8 files · 90 KB · ~23k
 
-**C1** - Com `shell: "moldura"`, a tela tem exatamente um `nav`, um `header`, um `main` e um `aside` dentro de `[data-shell="moldura"]`, e nenhum `.nu-shell` (AC 1)
+**C1** - Com `shell: "moldura"`, a tela tem exatamente um `nav`, um `header`, um `main` e um `aside` de nível superior dentro de `.mold` (um marco aninhado, como o menu de Configurações, é parte da região e leva rótulo, C36), e nenhum `.nu-shell` (AC 1)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C1 the frame has exactly four regions"`
-Status: open
+Status: closed
 
-**C2** - No navegador (1440×900), a caixa do `nav` fica à esquerda de `main`, a do `aside` à direita de `main`, o `header` acima de `main` na mesma coluna, e `nav` e `aside` têm a altura da viewport (AC 1)
+**C2** - No navegador (1440×900), a caixa do `nav` fica à esquerda de `main`, a do `aside` à direita de `main`, o `header` acima de `main` na mesma coluna, e `nav` e `aside` têm a altura da viewport; `--mold-top-h` resolve em `.os-root`, onde o banner de saúde o lê (AC 1)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C2 the regions sit where the design draws them"`
-Status: open
+Status: closed
 
 **C3** - Os links da barra lateral são, nesta ordem, Hoje, Execuções, Skills, Rotinas, Memória, Conectores, Artefatos, Gerações, Pixel Studio, Configurações (em pt-BR) e Today, Runs, Skills, Routines, Memory, Connectors, Artifacts, Generations, Pixel Studio, Settings (em en), com `href` `#/`, `#/runs`, `#/skills`, `#/routines`, `#/brain`, `#/connectors`, `#/artifacts`, `#/generations`, `#/pixel`, `#/settings` (AC 2)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C3 the sidebar lists the ten items in order"`
-Status: open
+Status: closed
 
 **C4** - O grupo de Conectores a Pixel Studio tem o título visível "Mais" / "More", e o primeiro grupo não tem título; em `/runs/r1` o link Execuções tem `aria-current="page"` e nenhum outro tem (AC 2)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C4 groups and the current item"`
-Status: open
+Status: closed
 
 **C5** - Com 2 aprovações pendentes, o item Hoje mostra `2`; com 0, nenhum número (AC 3)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C5 today counts pending approvals"`
-Status: open
+Status: closed
 
-**C6** - Depois de "Recolher", nenhum rótulo de item é texto visível e cada link tem o rótulo como nome acessível (AC 4)
+**C6** - Depois de apertar "Barra lateral", nenhum rótulo de item é texto visível e cada link tem o rótulo como nome acessível (AC 4)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C6 a collapsed sidebar keeps accessible names"`
-Status: open
+Status: closed
 
 **C7** - A barra superior tem, nesta ordem, um `h1` com o rótulo do item ativo (também em `/runs/r1`: "Execuções"), o botão "Buscar ou comandar…" com a dica do atalho, o sino de notificações e o botão "Conversa"; o botão de busca abre a paleta (AC 5)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C7 the top bar shows title, search, bell and chat in order"`
-Status: open
+Status: closed
 
 **C8** - O botão "Conversa" e ⌘. / Ctrl . escondem e mostram o `aside` (com `aria-pressed` acompanhando), e o estado sobrevive a um recarregamento (`localStorage`) (AC 6)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C8 the chat column toggles and is remembered"`
-Status: open
+Status: closed
 
-**C9** - Em 800×900, a barra lateral começa recolhida; abrir a conversa a mostra como gaveta sobre o `main` (a caixa sobrepõe a de `main`) e Esc a fecha (AC 7)
+**C9** - Em 800×900, a barra lateral começa recolhida; abrir a conversa a mostra como gaveta sobre o `main` (a caixa sobrepõe a de `main`), com o foco no campo, Tab/Shift+Tab sem sair dela, Esc a fecha e o foco volta ao botão "Chat" (AC 7, AC 19)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C9 a narrow window collapses the sidebar and drawers the chat"`
-Status: open
+Status: closed
 
 **C10** - Com `shell: "moldura"`, as teclas 1, `]`, `/`, `p`, ⌘J, ⌘F, ⌘⇧A e ⌘⇧D não mudam a rota, não abrem deck, busca nem foco, e não resolvem aprovação (AC 8)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C10 the Núcleo keys are inert in the frame"`
-Status: open
+Status: closed
 
 ### S2 - conteúdo e página Hoje · 6 files · 60 KB · ~15k
 
 **C11** - Para cada um dos 9 apps, a rota rende no `main` o componente de `APPS[kind]` (marcador `data-app=<kind>`), e `/runs/r1`, `/skills/s1` e `/settings?tab=security` rendem o detalhe (AC 9)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C11 each route renders its existing view"`
-Status: open
+Status: closed
 
 **C12** - Em `/`, o `main` tem um `h1`/`h2` "Hoje" com a data longa em pt-BR, e seis cartões com os títulos, nesta ordem: Pede você, Em execução, Rotinas de hoje, Caixa de entrada, Diário, Custo (e em en: Needs you, Running, Today's routines, Inbox, Journal, Cost), cada um com o widget `approvals`, `now`, `routines`, `inbox`, `journal`, `cost` (AC 10)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C12 today shows six cards in order"`
-Status: open
+Status: closed
 
-**C13** - No navegador, em 1440 de largura os cartões 1 e 2 estão na mesma linha (mesmo `top`, `left` crescente) e em 1000 de largura cada cartão está abaixo do anterior (AC 11)
-Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C13 today is two columns wide and one column narrow"`
-Status: open
+**C13** - No navegador, com a coluna central de 808 px (janela de 1440) os cartões 1 e 2 estão na mesma linha (mesmo `top`, `left` crescente); com 368 px (1000) cada cartão está abaixo do anterior; em 1100 com a conversa aberta (~450 px) é uma coluna e, com a conversa fechada (~870 px), duas (AC 11)
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C13 today is two columns when its column is wide, one when it is narrow"`
+Status: closed
 
-**C14** - `openRun("r1")` vindo da conversa e da paleta navega para `/runs/r1`; `openDoc("notes/a.md")` abre uma gaveta com o visualizador e o botão "Fechar", que a fecha (AC 12)
+**C14** - `openRun("r1")` vindo da conversa e da paleta navega para `/runs/r1`; `openDoc("notes/a.md")` abre uma gaveta (diálogo) com o visualizador e o botão "Fechar", que a fecha (AC 12)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C14 runs navigate and documents open in a drawer"`
-Status: open
+Status: closed
 
 ### S3 - troca de shell · 6 files · 50 KB · ~13k
 
 **C15** - Numa home nova, `GET /api/ui-preferences` traz `shell` `"moldura"`; `PUT { shell: "nucleo" }` responde `200` e um `GET` seguinte traz `nucleo`; `PUT { shell: "x" }` responde `400` `validation` (AC 13)
 Proof: `npx vitest run tests/moldura.test.ts -t "C15 the shell preference round-trips"`
-Status: open
+Status: closed
 
-**C16** - Um `ui-preferences.json` com `shell: "outro"` no disco lê `moldura`, sem falhar (door 1)
+**C16** - Um `ui-preferences.json` com `shell: "outro"` no disco lê `moldura`, sem falhar (door 1; um arquivo sem a chave é outro caso, C25)
 Proof: `npx vitest run tests/moldura.test.ts -t "C16 an unknown shell on disk falls back"`
-Status: open
+Status: closed
 
-**C17** - Migrar um `settings.json` v1 gera `ui-preferences.json` com `shell` `"nucleo"`; uma home nova sem arquivo lê `moldura` (AC 14)
+**C17** - Migrar um `settings.json` v1 gera `ui-preferences.json` com `shell` `"nucleo"`; uma home nova sem arquivo lê `moldura` (AC 14); um arquivo existente sem a chave é C25
 Proof: `npx vitest run tests/moldura.test.ts -t "C17 migrated homes keep the Núcleo"`
-Status: open
+Status: closed
 
 **C18** - A aba de aparência tem o rótulo "Interface" e um controle segmentado com "Moldura de app" e "Núcleo imersivo", nesta ordem, acima dos presets, com a opção atual marcada (AC 15)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C18 appearance offers the two interfaces"`
-Status: open
+Status: closed
 
 **C19** - Escolher "Núcleo imersivo" chama `putUiPreferences({ shell: "nucleo" })` e, com a resposta, `[data-shell="moldura"]` sai e `.nu-shell` entra, sem `location.reload` (AC 16)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C19 choosing an interface swaps the shell in place"`
-Status: open
+Status: closed
 
 **C20** - No navegador: trocar para o Núcleo em Configurações, recarregar a página e encontrar `.nu-shell`; trocar de volta e encontrar `[data-shell="moldura"]` (AC 16)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C20 the interface choice survives a reload"`
-Status: open
+Status: closed
 
-**C21** - Na moldura, a paleta lista "Mudar para o Núcleo imersivo" e não lista "Abrir painel" nem a ação de organizar (mesmo com a consulta "organizar"); no Núcleo, lista "Mudar para a moldura de app"; rodar a ação grava `shell` (AC 17)
+**C21** - Na moldura, a paleta lista "Mudar para o Núcleo imersivo" e não lista "Abrir painel" nem a ação de organizar (mesmo com a consulta "organizar"; a ação do tour também não aparece); no Núcleo, lista "Mudar para a moldura de app"; rodar a ação grava `shell` (AC 17)
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C21 the palette switches shells and hides lâmina actions"`
-Status: open
+Status: closed
 
 ### S4 - o Núcleo segue igual · 3 files · 20 KB · ~5k
 
 **C22** - Com `shell: "nucleo"`, a tela rende `.nu-shell` e nenhum `[data-shell="moldura"]`, e a suíte e2e existente do Núcleo (`tests/e2e/nucleo-shell.spec.ts`) passa com as homes de teste semeadas com `shell: "nucleo"` (AC 13, AC 16)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/nucleo-shell.spec.ts`
-Status: open
+Status: closed
+Note: 33 of 35 pass; `:90` (the spine travels…) and `:165` (a transition leaves exactly one interactive scene…) fail the same way at `f1de763`, before this feature, in every run - pre-existing, not a regression
+Note: re-run after round 2 (the Núcleo now uses `desktop/shellActions.ts`; `dialog.tsx` gained the in-place dialog): 34 of 35 pass, only `:165` fails (`:90` is flaky and passed); the same-shape failure of `:165` is pre-existing. A run on a loaded machine whose server was killed by another process (SIGTERM) failed everything after `:165` with connection refused - that run proves nothing and was repeated
 
 **C23** - Os textos novos têm chave em `en` e em `ptBR` (o teste de paridade de locales passa) (AC 2, AC 10, AC 15, AC 17)
 Proof: `npm run test -w apps/command-centre -- src/i18n.test.ts`
-Status: open
+Status: closed
 
 **C24** - `npm run typecheck` e `npm run build -w apps/command-centre` saem `0` (AC 1-17)
 Proof: `npm run typecheck && npm run build -w apps/command-centre`
-Status: open
+Status: closed
+
+### Rodada 2 - revisão de qualidade · 24 files · 190 KB · ~45k
+
+Veio da revisão sênior da primeira entrega (4 bloqueantes, 12 a corrigir, 9 detalhes). Cada check
+abaixo só fecha com a prova rodada.
+
+**C25** - Um `ui-preferences.json` que existe sem a chave `shell` (ex.: `{version:1, themePreset:"ocean"}`) lê `nucleo` no store e pela rota, e um `PUT` de outro campo grava `shell: "nucleo"` no arquivo; sem arquivo, valor desconhecido e arquivo ilegível leem `moldura` (AC 14, door 2)
+Proof: `npx vitest run tests/moldura.test.ts -t "C25 a preferences file written before the frame reads as the Núcleo"`
+Status: closed
+
+**C26** - Todo `save()` grava a chave `shell`, então a ausência só vem de antes da feature (AC 14, door 2)
+Proof: `npx vitest run tests/moldura.test.ts -t "C26 a saved file always carries the shell"`
+Status: closed
+
+**C27** - Com a requisição de preferências lenta e sem espelho, a tela mostra o esqueleto (nem moldura, nem Núcleo, e a paleta não abre); ao responder `nucleo`, monta o Núcleo e espelha `nucleo` em `localStorage` (AC 18)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C27 a slow load shows a skeleton"`
+Status: closed
+
+**C28** - Com espelho `nucleo` e a requisição lenta, o Núcleo aparece de imediato (sem esqueleto nem moldura) e a resposta igual não o remonta (AC 18)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C28 the mirror stands in"`
+Status: closed
+
+**C29** - Com espelho `nucleo` e a requisição falhando, o Núcleo fica; a nova tentativa que responde `nucleo` não o troca nem o remonta (AC 18)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C29 a failed load keeps the mirrored shell"`
+Status: closed
+
+**C30** - Sem espelho e com a requisição falhando, a moldura aparece e fica (a nova tentativa, que volta a "pendente", não a desmonta); a resposta posterior do servidor (`nucleo`) é a verdade e troca (AC 18)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C30 a failed load with no mirror"`
+Status: closed
+
+**C31** - Uma nova busca que falha depois de uma carga bem-sucedida mantém o shell, e `localStorage` bloqueado (leitura e escrita lançam) não derruba nada (AC 18)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C31 a refetch that fails after a load"`
+Status: closed
+
+**C32** - Escolher a interface em Configurações espelha o shell escolhido em `localStorage` (AC 16, AC 18)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C32 choosing an interface is mirrored"`
+Status: closed
+
+**C33** - Configurações na moldura não mostra o botão do tour ("Guia do OS") e no Núcleo mostra (AC 24)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C33 the tour is offered in the Núcleo only"`
+Status: closed
+
+**C34** - O sino tem como nome "Notificações" sem não lidas e "Notificações, 2 não lidas" com 2 (o selo é `aria-hidden`); o item Hoje com 2 pendentes tem o nome "Hoje, 2 aprovações pendentes", aberto e recolhido (AC 21)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C34 the bell and the Today item"`
+Status: closed
+
+**C35** - O botão da barra lateral tem sempre o nome "Barra lateral", `aria-expanded` acompanha o estado e o `title` diz "Recolher"/"Expandir" (AC 21)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C35 the sidebar button keeps one name"`
+Status: closed
+
+**C36** - Em `/runs/r1`, `/skills/s1` e `/settings?tab=security` o `h1` da view tem `aria-level="2"` e o único `h1` sem nível é o da barra superior; em `/settings` (a view real) as regiões de nível superior continuam sendo quatro e o `nav` do menu, dentro de `main`, tem rótulo diferente do da barra lateral (AC 22)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C36 a page has one level-1 heading"`
+Status: closed
+
+**C37** - `/nonsense/deep` é trocado por `/` e mostra Hoje com o item Hoje atual (AC 23)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C37 an address that is no place of the frame"`
+Status: closed
+
+**C38** - `.os-root` leva `data-shell="moldura"` (lido pelo banner de saúde), `.mold` não leva o atributo (AC 1; a variável `--mold-top-h` em `.os-root` é provada em C2)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C38 the shell root carries the shell"`
+Status: closed
+
+**C39** - Na janela estreita, abrir a conversa a torna `role="dialog"` `aria-modal`, com o foco no campo, barra lateral, barra superior e conteúdo `inert`; Esc a fecha, tira todo `inert` e devolve o foco ao botão "Conversa" (AC 19)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C39 the narrow chat drawer"`
+Status: closed
+
+**C40** - A gaveta de documento é `role="dialog"` `aria-modal`, recebe o foco no botão "Fechar", deixa o resto `inert` sem fazer o shell recuar (`data-depth` ausente); Esc e "Fechar" a fecham e o foco volta a quem abriu (AC 19)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C40 the document drawer"`
+Status: closed
+
+**C41** - Com a gaveta de conversa, a de documento e a paleta abertas, Esc fecha primeiro a paleta (que faz o shell recuar), depois o documento, depois a conversa, sem mudar a rota (AC 19)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C41 Esc closes the topmost thing first"`
+Status: closed
+
+**C42** - Com o sino aberto (não modal, nada `inert`), Esc o fecha e devolve o foco ao sino; abrir uma gaveta com o sino aberto o fecha (AC 19)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C42 Esc closes the bell first"`
+Status: closed
+
+**C43** - Um toque no que a gaveta cobre a fecha; um toque dentro dela não (AC 19)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C43 a press on what a modal drawer covers"`
+Status: closed
+
+**C44** - Com um documento aberto, `openPanel` de um id desconhecido (`zzz`, `constructor`) não faz nada; abrir formulário de skill, execução, app e instrumento (`now`) navega e fecha a gaveta e tira todo `inert`; mudar o endereço por fora também fecha (AC 20)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C44 a document drawer leaves with the page"`
+Status: closed
+
+**C45** - Em janela estreita a barra lateral desdobra com `data-overlay`, deixa o conteúdo `inert`, recebe o foco, Esc a dobra e devolve o foco ao botão, e seguir um link também a dobra (AC 7, AC 19)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C45 the narrow sidebar is a rail"`
+Status: closed
+
+**C46** - Atravessar o ponto de 900 px de estreito para largo tira o papel de diálogo da conversa, mostra a coluna lembrada e limpa todo `inert`; de largo para estreito fecha a gaveta, recolhe a barra, e a escolha larga (coluna fechada) permanece (AC 7, AC 19)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C46 crossing the breakpoint"`
+Status: closed
+
+**C47** - Um rascunho pela metade sobrevive a esconder a conversa e a atravessar o ponto de 900 px (o `Console` não remonta), e ⌘. / Ctrl . funciona com o foco no próprio campo (AC 6)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C47 a half-typed draft survives"`
+Status: closed
+
+**C48** - As ações entregues ao Console mantêm a identidade em novos renders da moldura (sino, conversa, não lidas) e os eventos de painel são assinados uma vez (AC 26)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C48 the actions keep their identity"`
+Status: closed
+
+**C49** - Em dark e light, para cada um dos 5 presets, a moldura monta com as 10 entradas e a conversa, sem nenhuma saída de `console.error`/`console.warn` (AC 25)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C49 light and dark, every preset"`
+Status: closed
+
+**C50** - No navegador (800×900), abrir a barra lateral estreita não move nem encolhe o `main` (a caixa do `nav` com 232 px sobrepõe a dele e é o que está sob o ponto), Esc a dobra e o foco volta ao botão (AC 7, AC 19)
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C50 the narrow sidebar unfolds over the content"`
+Status: closed
+
+**C51** - Em 360, 600 e 800 de largura, a barra superior não transborda (`scrollWidth <= clientWidth`), busca, sino e Conversa mantêm caixa de pelo menos 30 px e a página não tem rolagem horizontal (AC 7, AC 21)
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C51 the top bar fits"`
+Status: closed
+
+**C52** - No navegador, para cada preset (5) em dark e em light, o contraste do texto de link, link atual, título da barra, título de cartão e título da conversa é de pelo menos 4.5:1 sobre o fundo opaco mais próximo, e nada é registrado em `console`/`pageerror` (AC 25)
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C52 every preset in light and dark"`
+Status: closed
+
+**C53** - No navegador, uma home cujo `ui-preferences.json` não tem `shell` abre o Núcleo (`.nu-shell`, sem `.mold`) e a rota devolve `nucleo`; sem arquivo a rota devolve `moldura` (AC 14, door 2)
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts -g "C53 a home whose preferences predate the frame"`
+Status: closed
+
+**C54** - `useRunSkill` (formulário, execução, aprovação; função estável; usa o último callback), `useActiveRunCount`/`useRunningSkills`, `referencePanel` (`@ref` no rascunho, id desconhecido não faz nada) e `usePanelEventBridge` (abrir, focar, fechar, minimizar; assinado uma vez) se comportam como o Núcleo sempre fez, e o Núcleo os usa (AC 26)
+Proof: `npm run test -w apps/command-centre -- src/desktop/shellActions.test.tsx -t "C54"`
+Status: closed
+Note: o Núcleo (`nucleo/index.tsx`) passou a usar os mesmos ganchos; sua prova de comportamento é C22
+
+**C55** - `npm run typecheck`, `npm run build -w apps/command-centre` e `eslint` sobre os arquivos tocados saem `0` (AC 1-26)
+Proof: `npm run typecheck && npm run build -w apps/command-centre && npx eslint --max-warnings=0 apps/command-centre/src core/src/config tests/moldura.test.ts tests/e2e/moldura.spec.ts`
+Status: closed
 
 ## Coverage
 
-| Set (size)                                | Member -> proof                                                                           | Unproven |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------- | -------- |
-| regiões da moldura (4)                    | `nav` C1, C2 · `header` C1, C2 · `main` C1, C2 · `aside` C1, C2                           | -        |
-| itens da barra lateral (10)               | C3, table-driven over all 10 (rótulo pt/en, ordem, rota)                                  | -        |
-| grupos da barra lateral (3)               | principal sem título C4 · "Mais" C4 · Configurações sozinho C3                            | -        |
-| controles da barra superior (4)           | título C7 · busca C7 · sino C7 · Conversa C7, C8                                          | -        |
-| estados da conversa (3)                   | aberta C8 · fechada C8 · gaveta estreita C9                                               | -        |
-| teclas do Núcleo inertes (8)              | 1-5 C10 (1) · `[` `]` C10 (`]`) · `/` C10 · `p` C10 · ⌘J C10 · ⌘F C10 · ⌘⇧A C10 · ⌘⇧D C10 | -        |
-| apps no conteúdo (9)                      | C11, table-driven over all 9                                                              | -        |
-| rotas de detalhe (3)                      | `/runs/:id` C11 · `/skills/:slug` C11 · `/settings?tab=` C11                              | -        |
-| cartões de Hoje (6)                       | C12, table-driven over all 6 (título, ordem, widget)                                      | -        |
-| arranjos de Hoje (2)                      | duas colunas C13 · uma coluna C13                                                         | -        |
-| `PUT /api/ui-preferences` com `shell` (2) | `200` C15 · `400` C15                                                                     | -        |
-| origens do padrão (2)                     | home nova C15, C17 · migração v1 C17                                                      | -        |
-| caminhos de troca (2)                     | Configurações C18, C19, C20 · paleta C21                                                  | -        |
-| doors (2)                                 | campo `shell` C15, C16 · padrão por origem C17                                            | -        |
+| Set (size)                                | Member -> proof                                                                                                                                                                                                                            | Unproven |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| regiões da moldura (4)                    | `nav` C1, C2 · `header` C1, C2 · `main` C1, C2 · `aside` C1, C2                                                                                                                                                                            | -        |
+| itens da barra lateral (10)               | C3, table-driven over all 10 (rótulo pt/en, ordem, rota)                                                                                                                                                                                   | -        |
+| grupos da barra lateral (3)               | principal sem título C4 · "Mais" C4 · Configurações sozinho C3                                                                                                                                                                             | -        |
+| controles da barra superior (4)           | título C7 · busca C7 · sino C7 · Conversa C7, C8                                                                                                                                                                                           | -        |
+| estados da conversa (3)                   | aberta C8 · fechada C8 · gaveta estreita C9, C39, C46                                                                                                                                                                                      | -        |
+| teclas do Núcleo inertes (8)              | 1-5 C10 (1) · `[` `]` C10 (`]`) · `/` C10 · `p` C10 · ⌘J C10 · ⌘F C10 · ⌘⇧A C10 · ⌘⇧D C10                                                                                                                                                  | -        |
+| apps no conteúdo (9)                      | C11, table-driven over all 9                                                                                                                                                                                                               | -        |
+| rotas de detalhe (3)                      | `/runs/:id` C11 · `/skills/:slug` C11 · `/settings?tab=` C11                                                                                                                                                                               | -        |
+| cartões de Hoje (6)                       | C12, table-driven over all 6 (título, ordem, widget)                                                                                                                                                                                       | -        |
+| arranjos de Hoje (2)                      | duas colunas C13 · uma coluna C13                                                                                                                                                                                                          | -        |
+| origens do shell na leitura (4)           | sem arquivo C17, C53 · arquivo sem a chave C25, C53 · valor desconhecido C16, C25 · migração v1 C17                                                                                                                                        | -        |
+| fontes do shell enquanto carrega (5)      | resposta C27 · espelho lento C28 · espelho com falha C29 · padrão sem espelho C30 · busca que falha depois de carregar C31                                                                                                                 | -        |
+| diálogos da moldura (3)                   | conversa estreita C39 · documento C40 · barra lateral estreita C45, C50                                                                                                                                                                    | -        |
+| ordem do Esc (4)                          | paleta C41 · documento C41 · conversa C41 · sino C42                                                                                                                                                                                       | -        |
+| saídas que fecham o documento (4)         | formulário de skill C44 · execução C44 · app C44 · instrumento C44                                                                                                                                                                         | -        |
+| presets × temas (10)                      | hud-orange dark C49, C52 · jarvis dark C49, C52 · forest dark C49, C52 · ocean dark C49, C52 · mono dark C49, C52 · hud-orange light C49, C52 · jarvis light C49, C52 · forest light C49, C52 · ocean light C49, C52 · mono light C49, C52 | -        |
+| nomes acessíveis (4)                      | sino C34 · Hoje com contagem C34 · botão da barra lateral C35 · busca C51                                                                                                                                                                  | -        |
+| larguras de composição (4)                | 1440 C13, C52 · 1100 C13 · 1000 C13 · 800/600/360 C9, C50, C51                                                                                                                                                                             | -        |
+| `PUT /api/ui-preferences` com `shell` (2) | `200` C15 · `400` C15                                                                                                                                                                                                                      | -        |
+| origens do padrão (2)                     | home nova C15, C17 · migração v1 C17                                                                                                                                                                                                       | -        |
+| caminhos de troca (2)                     | Configurações C18, C19, C20 · paleta C21                                                                                                                                                                                                   | -        |
+| doors (2)                                 | campo `shell` C15, C16 · padrão por origem C17                                                                                                                                                                                             | -        |
 
-- Claims naming a status code or route: C15 - provado por `inject`
+- Claims naming a status code or route: C15, C25 - provados por `inject`
 - A linha "teclas do Núcleo inertes" prova uma tecla de cada família (1 por 1-5, `]` por `[ ]`); as outras são o mesmo ramo
 
 ## Binding sources
@@ -150,18 +291,21 @@ Status: open
 
 ## Test policy
 
-| Code                                                                 | Required proofs                | Coverage expectation                |
-| -------------------------------------------------------------------- | ------------------------------ | ----------------------------------- |
-| Instrumentation (composição das telas)                               | render test + browser geometry | each region, item, card and control |
-| Decides, not reached across a boundary (padrão do `shell`, migração) | one at its own layer           | each origin                         |
-| Decides, reached across a boundary (`PUT /api/ui-preferences`)       | one at the boundary            | each status                         |
+| Code                                                                                                | Required proofs                                                             | Coverage expectation                                 |
+| --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Instrumentation (composição das telas)                                                              | render test + browser geometry                                              | each region, item, card and control                  |
+| Decides, not reached across a boundary (`useShell`: qual shell mostra enquanto a preferência viaja) | one at its own layer (requisição lenta, com falha, armazenamento bloqueado) | each source of the shell (resposta, espelho, padrão) |
+| Instrumentation (foco, `inert` e Esc das gavetas)                                                   | render test + a real Tab loop in the browser                                | each dialog and each close path                      |
+| Instrumentation (montagem e contraste por preset e tema)                                            | render test + browser computed style and console                            | each preset in each theme                            |
+| Decides, not reached across a boundary (padrão do `shell`, migração)                                | one at its own layer                                                        | each origin                                          |
+| Decides, reached across a boundary (`PUT /api/ui-preferences`)                                      | one at the boundary                                                         | each status                                          |
 
 Evidence:
 
 - `App.tsx` `OsShell`: `shell` → qual árvore monta -> decides
 - closest analogue in the repo: `src/preferences.test.tsx` (render com as duas rotas mockadas) e `tests/e2e/nucleo-shell.spec.ts` (geometria no navegador)
 
-Cost: 1 arquivo de teste de interface, 1 spec e2e, 1 teste de raiz, 24 provas.
+Cost: 2 arquivos de teste de interface, 1 spec e2e, 1 teste de raiz, 55 provas.
 
 ## Swept
 
@@ -178,3 +322,6 @@ Cost: 1 arquivo de teste de interface, 1 spec e2e, 1 teste de raiz, 24 provas.
 ## Handoff
 
 - S1-S4 ≈ 70k: App.tsx 20 KB, nucleo/index.tsx trechos 15 KB, apps.tsx 6 KB, Console props e CSS 10 KB, registry.tsx 8 KB, CommandPalette trechos 15 KB, theme.tsx 4 KB, preferences/migrations 8 KB, CSS novo ~12 KB, componentes novos ~30 KB, testes novos ~40 KB, locales 6 KB ≈ 174 KB / 4 ≈ 44k, mais leitura e execução do Playwright - abaixo de 150k - one builder
+- Boundary: the first builder was cut off (API limit) with S1-S4 written but uncommitted; a second builder resumed from that diff, fixed the narrow-window chat drawer (it was placed in the empty third grid track), and closed all 24 checks in one commit
+- Settled mid-build: nothing new from the user
+- Abandoned: nothing

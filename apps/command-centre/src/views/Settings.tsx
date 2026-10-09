@@ -1,4 +1,5 @@
 import { OnboardingButton } from "../onboarding/Onboarding";
+import { useCurrentShell } from "../moldura/shell";
 import { useContext, useEffect, useState } from "react";
 import { usePanelSearchParams } from "../desktop/appRoute";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -28,6 +29,7 @@ export { isValidMicroAppHref };
 
 export default function Settings({ onMetaChanged }: { onMetaChanged: () => void }) {
   const t = useT();
+  const shell = useCurrentShell();
   const toast = useToast();
   const { setLang } = useContext(I18nContext);
   const qc = useQueryClient();
@@ -156,7 +158,8 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
         <div>
           <h1>{t("settings.title")}</h1>
         </div>
-        <OnboardingButton />
+        {/* The tour points at the Núcleo's places; the frame has none of them (plan Assumptions). */}
+        {shell === "nucleo" && <OnboardingButton />}
       </div>
       <div className="settings-shell">
         <nav className="settings-nav" aria-label={t("settings.title")}>

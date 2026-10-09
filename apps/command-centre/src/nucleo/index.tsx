@@ -19,26 +19,19 @@
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, FileText } from "lucide-react";
-import { api, type LaunchRunResponse, type Meta, type Skill } from "../api";
+import type { Meta, Skill } from "../api";
 import { useT } from "../i18n";
 import { qk, useOsProviders } from "../queries";
-import { useToast, Skeleton } from "../components/ui";
+import { Skeleton } from "../components/ui";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { useWorkspace } from "../components/Workspace";
-import { OPEN_DECK_EVENT, OPEN_PANEL_EVENT } from "../App";
+import { OPEN_DECK_EVENT } from "../App";
 import { APPS, appId, appKindOf, type AppKind, type AppLocation } from "../desktop/apps";
 import { AppRouteContext, type AppRoute } from "../desktop/appRoute";
 import { DesktopActionsProvider, type DesktopActions } from "../desktop/actions";
-import {
-  ARRANGE_EVENT,
-  PANEL_ACTION_EVENT,
-  panelKind,
-  publishPanels,
-  type OpenPanel,
-  type PanelAction,
-} from "../desktop/panelKinds";
+import { ARRANGE_EVENT, panelKind, publishPanels, type OpenPanel } from "../desktop/panelKinds";
 import { docId, docPath, isDocId } from "../desktop/docIds";
 import {
   formPanelId,
@@ -52,7 +45,14 @@ import {
 import { WIDGET_REGISTRY, widgetDefinition } from "../desktop/registry";
 import { isActiveStatus, useDesktopRuns } from "../desktop/data";
 import { useDesktopSignals } from "../desktop/useSignals";
-import { CONSOLE_DRAFT_EVENT, readConsoleDraft, storeConsoleDraft } from "../desktop/consoleDraft";
+import {
+  focusSkillDeck,
+  useActiveRunCount,
+  usePanelEventBridge,
+  useReferencePanel,
+  useRunningSkills,
+  useRunSkill,
+} from "../desktop/shellActions";
 import DocWindow from "../desktop/DocWindow";
 import RunPanel from "../desktop/RunPanel";
 import SkillInputsPanel from "../desktop/SkillInputsPanel";
@@ -98,17 +98,13 @@ const LAMINA_EXIT_MS = 430;
 
 export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChanged?: () => void }) {
   const t = useT();
-  const toast = useToast();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const { economy } = useWorkspace();
   const providers = useOsProviders();
   const runs = useDesktopRuns();
-  const activeRuns = useMemo(
-    () => (runs.data ?? []).filter((r) => isActiveStatus(r.status)).length,
-    [runs.data],
-  );
+  const activeRuns = useActiveRunCount(runs.data);
   const coreState = useCoreState(runs.data ?? []);
   const signals = useDesktopSignals(activeRuns);
   useBudgetNotifications();
@@ -338,17 +334,7 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
     return () => publishPanels([]);
   }, [openPanels]);
 
-  const referencePanel = useCallback(
-    (id: string) => {
-      const panel = openPanels.find((p) => p.id === id);
-      if (!panel) return;
-      const draft = readConsoleDraft();
-      const text = draft.text.trimEnd();
-      storeConsoleDraft({ ...draft, text: `${text ? `${text} ` : ""}@${panel.ref} ` });
-      window.dispatchEvent(new CustomEvent(CONSOLE_DRAFT_EVENT));
-    },
-    [openPanels],
-  );
+  const referencePanel = useReferencePanel(openPanels);
 
   /* ---- actions everything else calls ------------------------------------ */
   const sceneRef = useRef(scene.id);
@@ -377,40 +363,18 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
     },
     [navigate],
   );
-  type RunOutcome = { form: string } | { approvals: true } | { run: string };
-  const runSkill = useMutation({
-    mutationFn: async (skill: Skill): Promise<RunOutcome> => {
-      if (skill.inputs.some((i) => i.required)) return { form: skill.slug };
-      const res = await api.post<LaunchRunResponse>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, {
-        inputs: {},
-      });
-      if (res.status === "waiting_approval" || !res.runId) {
-        toast(t("runs.approvalPending"), "info");
-        return { approvals: true };
-      }
-      toast(`▶ /${skill.slug}`, "ok");
-      return { run: res.runId };
-    },
-    onSuccess: (out) => {
-      if ("form" in out) project(formPanelId(out.form));
-      else if ("approvals" in out) project("approvals");
-      else openRun(out.run);
-    },
-    onError: (err: Error) => toast(err.message, "danger"),
+  const runSkill = useRunSkill((out) => {
+    if ("form" in out) project(formPanelId(out.form));
+    else if ("approvals" in out) project("approvals");
+    else openRun(out.run);
   });
-  const runningSkills = useMemo(
-    () =>
-      new Set(
-        (runs.data ?? []).filter((r) => isActiveStatus(r.status) && r.skillSlug).map((r) => r.skillSlug!),
-      ),
-    [runs.data],
-  );
+  const runningSkills = useRunningSkills(runs.data);
   const [deckPopover, setDeckPopover] = useState<{ skill: Skill; anchor: HTMLElement } | null>(null);
   const actions = useMemo<DesktopActions>(
     () => ({
-      runSkill: (skill) => runSkill.mutate(skill),
+      runSkill,
       configureSkill: (skill, anchor) => setDeckPopover({ skill, anchor }),
-      focusDeck: () => document.querySelector<HTMLElement>(".deck-card .btn")?.focus(),
+      focusDeck: focusSkillDeck,
       runningSkills,
       openPanels,
       openDoc: (path) => {
@@ -441,13 +405,8 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
 
   // Old callers still speak in panels: the palette's "open panel", the inbox's
   // "focus". A panel id is a lâmina now.
+  usePanelEventBridge({ open: actions.openPanel, dismiss });
   useEffect(() => {
-    const onOpenPanel = (e: Event) => actions.openPanel((e as CustomEvent<string>).detail);
-    const onAction = (e: Event) => {
-      const { id, action } = (e as CustomEvent<{ id: string; action: PanelAction }>).detail;
-      if (action === "close" || action === "minimize") dismiss(id);
-      else actions.openPanel(id);
-    };
     // "Organizar revisar código" (refino item 47): the scene the intent needs,
     // and its instruments projected beside it — two at most.
     const onArrange = (e: Event) => {
@@ -460,14 +419,8 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
       if (app) requestAnimationFrame(() => requestAnimationFrame(later));
       else later();
     };
-    window.addEventListener(OPEN_PANEL_EVENT, onOpenPanel);
-    window.addEventListener(PANEL_ACTION_EVENT, onAction);
     window.addEventListener(ARRANGE_EVENT, onArrange);
-    return () => {
-      window.removeEventListener(OPEN_PANEL_EVENT, onOpenPanel);
-      window.removeEventListener(PANEL_ACTION_EVENT, onAction);
-      window.removeEventListener(ARRANGE_EVENT, onArrange);
-    };
+    return () => window.removeEventListener(ARRANGE_EVENT, onArrange);
   }, [actions]);
 
   /* ---- modes: the one search, the deck ---------------------------------- */
@@ -838,7 +791,7 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
                 if (kind === "run" && hit.runId) openRun(hit.runId);
                 else if (kind === "skill" && hit.skillSlug) {
                   const sk = search.skills.find((x) => x.slug === hit.skillSlug);
-                  if (sk) runSkill.mutate(sk);
+                  if (sk) runSkill(sk);
                 } else if (kind === "notification") {
                   if (hit.runId) openRun(hit.runId);
                 } else if (kind === "file" && !hit.path.startsWith("/")) {

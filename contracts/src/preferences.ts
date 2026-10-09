@@ -81,8 +81,22 @@ export const UI_PREFERENCE_KEYS = [
 ] as const;
 export type UiPreferenceKey = (typeof UI_PREFERENCE_KEYS)[number];
 
+/**
+ * Which interface mounts (.specs/features/moldura-app): the app frame
+ * (sidebar, content, chat on the right) or the immersive Núcleo.
+ */
+export const UI_SHELLS = ["moldura", "nucleo"] as const;
+export const UiShellSchema = z.enum(UI_SHELLS);
+export type UiShell = z.infer<typeof UiShellSchema>;
+
 export const UiPreferencesSchema = z.object({
   version: z.literal(1).default(1),
+  /**
+   * Missing or unknown on disk reads as the frame, like every presentation
+   * field; a write is checked strictly by the route (`UiShellSchema`).
+   * Not one of `UI_PREFERENCE_KEYS`: it never lived in `settings.json`.
+   */
+  shell: UiShellSchema.catch("moldura"),
   /** Theme preset id (see apps/command-centre/src/theme.ts). */
   themePreset: z.enum(["hud-orange", "jarvis", "forest", "ocean", "mono"]).default("hud-orange"),
   /** User-defined micro apps listed on the desktop. */

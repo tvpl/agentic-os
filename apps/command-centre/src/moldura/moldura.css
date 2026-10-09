@@ -1,0 +1,626 @@
+/* ---------------------------------------------------------- app frame -----
+   .specs/features/moldura-app/design.md, Tela 1: sidebar | top bar over the
+   content | the conversation. Tokens only (theme.css and the active preset);
+   every region is opaque and none of them floats over another, except the
+   drawers on purpose.
+
+   Layers inside the frame (it isolates its own stacking context):
+     --z-drawer      the document drawer's base, the bell popover
+     --z-drawer + 1  the top bar, the veil behind a modal drawer
+     --z-drawer + 2  what sits over the veil: the document drawer, the chat
+                     drawer and the unfolded sidebar when the window is narrow */
+/* Defined on the shell root, not the frame: the health banner is the frame's
+   sibling, not its child, and has to clear the top bar too. */
+.os-root[data-shell="moldura"] {
+  --mold-top-h: 56px;
+}
+.mold {
+  --mold-nav-w: 232px;
+  /* A narrower window gives the content more of the width than the conversation. */
+  --mold-chat-w: clamp(320px, 32vw, 400px);
+  --mold-row-h: 36px;
+  --mold-ctl-h: 34px;
+  --mold-drawer-w: 640px;
+  position: absolute;
+  inset: 0;
+  /* The frame's own layers stay inside it: the shared overlays (palette,
+     health banner, toasts) sit over the whole frame, top bar included. */
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: var(--mold-nav-w) minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
+  background: var(--bg);
+  color: var(--text);
+}
+.mold[data-collapsed] {
+  --mold-nav-w: 60px;
+}
+
+/* The shared health banner floats under the top bar, not over its controls. */
+.os-root[data-shell="moldura"] .service-banner {
+  top: calc(var(--mold-top-h) + 10px);
+}
+/* The global display font and tracking are for the Núcleo; the frame's headings are interface text. */
+.mold :is(h1, h2, h3) {
+  font-family: var(--font);
+  letter-spacing: normal;
+}
+
+/* ---- sidebar ------------------------------------------------------------ */
+.mold-nav {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  padding: var(--s-3) var(--s-2);
+  overflow: hidden auto;
+  scrollbar-width: thin;
+  background: var(--bg-raise);
+  border-right: 1px solid var(--border);
+}
+.mold-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 32px;
+  margin: 0 0 var(--s-3);
+  padding: 0 var(--s-2);
+  font-size: var(--fs-5);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.mold-brand-mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-3);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: var(--fs-4);
+  font-weight: 700;
+}
+.mold-brand-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mold[data-collapsed] .mold-brand {
+  justify-content: center;
+  padding: 0;
+}
+.mold-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mold-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: var(--mold-row-h);
+  padding: 0 var(--s-3);
+  border-radius: var(--r-3);
+  color: var(--text-dim);
+  font-size: var(--fs-4);
+  line-height: var(--lh-tight);
+  text-decoration: none;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+.mold-link:hover {
+  background: var(--bg-raise-2);
+  color: var(--text);
+}
+.mold-link:focus-visible,
+.mold-collapse:focus-visible,
+.mold-search:focus-visible,
+.mold-icon-btn:focus-visible,
+.mold-chat-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.mold-link[aria-current="page"] {
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 600;
+}
+.mold-link[aria-current="page"] .mold-link-i {
+  color: var(--accent-text);
+}
+.mold-link-i {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+.mold-link-t {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mold-count {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: var(--fs-1);
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+.mold[data-collapsed] .mold-link {
+  justify-content: center;
+  padding: 0;
+}
+.mold[data-collapsed] .mold-count {
+  position: absolute;
+  top: 1px;
+  right: 3px;
+  min-width: 16px;
+  padding: 0 4px;
+  font-size: var(--fs-0);
+  line-height: 16px;
+}
+.mold-group-t {
+  padding: var(--s-4) var(--s-3) var(--s-1);
+  color: var(--text-faint);
+  font-size: var(--fs-1);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+}
+.mold-sep {
+  margin: var(--s-2) var(--s-2);
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.mold-nav-sp {
+  flex: 1;
+}
+.mold-collapse {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: var(--mold-row-h);
+  padding: 0 var(--s-3);
+  border: 0;
+  border-radius: var(--r-3);
+  background: transparent;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: var(--fs-3);
+  cursor: pointer;
+}
+.mold-collapse:hover {
+  background: var(--bg-raise-2);
+  color: var(--text);
+}
+.mold-collapse svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+.mold[data-collapsed] .mold-collapse {
+  justify-content: center;
+  padding: 0;
+}
+
+/* ---- centre column: top bar over the content ----------------------------- */
+.mold-center {
+  /* Today lays itself out by the width of this column, not of the window. */
+  container: mold / inline-size;
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.mold-top {
+  position: relative;
+  z-index: calc(var(--z-drawer) + 1);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: var(--mold-top-h);
+  padding: 0 var(--s-4) 0 var(--s-5);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.mold-title {
+  /* The first to give way: the controls beside it keep their size. */
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0 var(--s-3) 0 0;
+  overflow: hidden;
+  font-size: var(--fs-5);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mold-search {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 0 1 380px;
+  min-width: 0;
+  height: var(--mold-ctl-h);
+  padding: 0 var(--s-2) 0 var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+  background: var(--bg-raise);
+  color: var(--text-faint);
+  font: inherit;
+  font-size: var(--fs-3);
+  cursor: pointer;
+}
+.mold-search:hover {
+  border-color: var(--border-strong);
+  color: var(--text-dim);
+}
+.mold-search svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+.mold-search-t {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mold-kbd {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  background: var(--bg);
+  color: var(--text-dim);
+  font-size: var(--fs-1);
+}
+.mold-top-sp {
+  flex: 1;
+}
+.mold-icon-btn {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--mold-ctl-h);
+  height: var(--mold-ctl-h);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--r-3);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.mold-icon-btn:hover,
+.mold-icon-btn[aria-expanded="true"] {
+  background: var(--bg-raise-2);
+  color: var(--text);
+}
+.mold-icon-btn svg {
+  width: 18px;
+  height: 18px;
+}
+.mold-dot-count {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: var(--fs-0);
+  font-weight: 700;
+  line-height: 16px;
+}
+.mold-chat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: none;
+  height: var(--mold-ctl-h);
+  padding: 0 var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+  background: var(--bg-raise);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-3);
+  cursor: pointer;
+}
+.mold-chat-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.mold-chat-btn[aria-pressed="true"] {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.mold-chat-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.mold-bell-wrap {
+  position: relative;
+}
+.mold-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: var(--z-drawer);
+  width: min(380px, calc(100vw - 32px));
+  max-height: min(520px, 70vh);
+  padding: var(--s-2);
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-4);
+  background: var(--surface);
+  box-shadow: var(--shadow-drawer);
+}
+
+.mold-main {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.mold-scroll {
+  position: absolute;
+  inset: 0;
+  overflow: hidden auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/* ---- the document drawer, over the content ------------------------------- */
+.mold-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: calc(var(--z-drawer) + 2);
+  display: flex;
+  flex-direction: column;
+  width: min(var(--mold-drawer-w), 100%);
+  background: var(--surface);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-drawer);
+}
+.mold-drawer-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 48px;
+  padding: 0 var(--s-3) 0 var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+.mold-drawer-t {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mold-drawer-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: var(--s-3) var(--s-4);
+  overflow: auto;
+}
+
+/* ---- the conversation ----------------------------------------------------- */
+.mold-chat {
+  /* The history scrolls inside the column, not in a 240 px window. */
+  --cons-scroll-max: none;
+  grid-column: 3;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  width: var(--mold-chat-w);
+  min-height: 0;
+  background: var(--bg-raise);
+  border-left: 1px solid var(--border);
+}
+.mold-chat[hidden] {
+  display: none;
+}
+.mold-chat-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: var(--mold-top-h);
+  padding: 0 var(--s-2) 0 var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+.mold-chat-t {
+  flex: 1;
+  font-size: var(--fs-4);
+  font-weight: 600;
+}
+.mold-chat .cons.stacked {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+}
+.mold-chat .cons-in {
+  flex: 1;
+  min-height: 0;
+  background: none;
+  backdrop-filter: none;
+  clip-path: none;
+}
+.mold-chat .cons-main {
+  flex: 1;
+  min-height: 0;
+}
+.mold-chat .cons-scroll {
+  flex: 1;
+  min-height: 0;
+  padding-bottom: var(--s-2);
+}
+.mold-chat .cons-row {
+  /* A 400 px column: the field takes its own line, the tools sit under it. */
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  padding-top: var(--s-3);
+  padding-bottom: var(--s-3);
+}
+.mold-chat .cons-input {
+  flex: 1 0 100%;
+  min-height: 44px;
+}
+.mold-chat .cons-side {
+  max-height: 50%;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+
+/* ---- narrow window: the conversation is a drawer over the content --------- */
+.mold[data-narrow] .mold-chat {
+  /* Out of the grid flow: placed against the whole frame, not the empty third track. */
+  grid-column: auto;
+  grid-row: auto;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: calc(var(--z-drawer) + 2);
+  width: min(var(--mold-chat-w), calc(100% - 48px));
+  box-shadow: var(--shadow-drawer);
+}
+.mold-veil {
+  position: absolute;
+  inset: 0;
+  z-index: calc(var(--z-drawer) + 1);
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+}
+.mold[data-narrow] .mold-search {
+  flex-basis: 44px;
+  min-width: 44px;
+}
+/* The rail keeps its 60 px; unfolded, the sidebar lies over the content
+   instead of pushing it (a 232 px sidebar would leave a phone no content). */
+.mold[data-narrow] {
+  --mold-nav-w: 60px;
+}
+.mold[data-narrow] .mold-nav[data-overlay] {
+  z-index: calc(var(--z-drawer) + 2);
+  justify-self: start;
+  width: 232px;
+  box-shadow: var(--shadow-drawer);
+}
+.mold[data-narrow] .mold-search-t,
+.mold[data-narrow] .mold-kbd {
+  display: none;
+}
+
+/* ---- Today (Tela 2) -------------------------------------------------------- */
+.mold-today-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-5);
+  font-size: var(--fs-6);
+  font-weight: 600;
+}
+.mold-today-sep,
+.mold-today-date {
+  color: var(--text-dim);
+  font-size: var(--fs-5);
+  font-weight: 400;
+}
+.mold-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-4);
+}
+/* Two columns when the column the cards sit in can hold two readable cards
+   (design Tela 2): a 1100 px window with the sidebar and the chat open leaves
+   it 450 px, and one column of 450 is better than two of 210. */
+@container mold (min-width: 720px) {
+  .mold-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.mold-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: var(--r-4);
+}
+.mold-card-t {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-4);
+  font-weight: 600;
+}
+.mold-card-i {
+  display: inline-flex;
+  color: var(--accent-text);
+}
+.mold-card-i svg {
+  width: 16px;
+  height: 16px;
+}
+.mold-card-b {
+  position: relative;
+  min-height: 160px;
+  /* Capped so one busy card does not push the rest off the page — except "Needs you", which must not be clipped. */
+  max-height: 360px;
+  padding: var(--s-3) var(--s-4);
+  overflow: hidden auto;
+  scrollbar-width: thin;
+}
+/* The Now panel sized itself for a lâmina on a wide viewport (two columns,
+   560 px); in a card it takes the card, one column, without its own frame. */
+.mold-card .now-panel {
+  width: auto;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.mold-card[data-widget="approvals"] .mold-card-b {
+  max-height: none;
+}

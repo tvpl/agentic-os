@@ -14,7 +14,7 @@ export const E2E_PORT = Number(process.env.MORDOMO_E2E_PORT ?? 4788);
 export const FAKE_BIN = path.join(REPO_ROOT, "tests", "fixtures", "fake-bin");
 export const CLI = path.join(REPO_ROOT, "apps", "api", "dist", "cli.js");
 
-/** Create the home from scratch: seeds, settings.json (setupCompleted) and an index of docs/. */
+/** Create the home from scratch: seeds, settings.json (setupCompleted), the Núcleo as the shell and an index of docs/. */
 export function prepareE2eHome({ fresh = true } = {}) {
   if (fresh) fs.rmSync(E2E_HOME, { recursive: true, force: true });
   fs.mkdirSync(path.join(E2E_HOME, "config"), { recursive: true });
@@ -55,6 +55,13 @@ export function prepareE2eHome({ fresh = true } = {}) {
       indexedFolders: [{ path: path.join(REPO_ROOT, "docs"), area: "Docs", enabled: true }],
     };
     fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+    // The suite was written for the immersive shell; a new home now opens in
+    // the app frame, so the Núcleo is chosen here and moldura.spec.ts switches
+    // to the frame for its own tests (.specs/features/moldura-app, C22).
+    fs.writeFileSync(
+      path.join(E2E_HOME, "config", "ui-preferences.json"),
+      JSON.stringify({ version: 1, shell: "nucleo" }, null, 2),
+    );
     const res = spawnSync(process.execPath, [CLI, "index"], {
       env: {
         ...process.env,

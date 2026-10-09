@@ -118,7 +118,9 @@ export interface SegmentedProps<T extends string> {
   options: Array<SegmentedOption<T>>;
   value: T;
   onChange: (value: T) => void;
-  ariaLabel: string;
+  /** The group's name; or `labelledBy`, the id of a visible label that already names it. */
+  ariaLabel?: string;
+  labelledBy?: string;
   size?: "sm" | "md";
   className?: string;
 }
@@ -129,6 +131,7 @@ export function Segmented<T extends string>({
   value,
   onChange,
   ariaLabel,
+  labelledBy,
   size = "md",
   className,
 }: SegmentedProps<T>) {
@@ -153,7 +156,8 @@ export function Segmented<T extends string>({
       ref={groupRef}
       className={["segmented", size === "sm" ? "sm" : "", className ?? ""].filter(Boolean).join(" ")}
       role="radiogroup"
-      aria-label={ariaLabel}
+      aria-label={labelledBy ? undefined : ariaLabel}
+      aria-labelledby={labelledBy}
     >
       {options.map((o) => {
         const active = o.value === value;

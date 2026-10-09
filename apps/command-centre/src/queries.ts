@@ -5,6 +5,7 @@
  * shared across the desktop and the apps, and so the `/api/events` stream can
  * invalidate precisely. Add new keys here, never inline in a view.
  */
+import { useCallback } from "react";
 import { useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-query";
 import {
   api,
@@ -149,9 +150,12 @@ export const useOsUiPreferences = (o?: ApiQueryOptions<UiPreferencesDoc>) =>
 /** Save part of the UI preferences and put the answer straight into the cache. */
 export function useSaveUiPreferences() {
   const qc = useQueryClient();
-  return async (patch: UiPreferencesPatch): Promise<UiPreferencesDoc> => {
-    const doc = await api.putUiPreferences(patch);
-    qc.setQueryData(qk.uiPreferences, doc);
-    return doc;
-  };
+  return useCallback(
+    async (patch: UiPreferencesPatch): Promise<UiPreferencesDoc> => {
+      const doc = await api.putUiPreferences(patch);
+      qc.setQueryData(qk.uiPreferences, doc);
+      return doc;
+    },
+    [qc],
+  );
 }

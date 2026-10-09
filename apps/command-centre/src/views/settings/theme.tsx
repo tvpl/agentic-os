@@ -5,7 +5,8 @@ import { Check } from "lucide-react";
 
 import { useT } from "../../i18n";
 import { useToast } from "../../components/ui";
-import { Field } from "../../components/primitives";
+import { Field, Segmented } from "../../components/primitives";
+import type { UiShell } from "../../api";
 import {
   PRESETS,
   applyHudIntensity,
@@ -25,6 +26,20 @@ export function ThemeTab({ put }: { s: SettingsShape; put: Put }) {
   const preferences = useOsUiPreferences();
   const savePreferences = useSaveUiPreferences();
   const current = preferences.data?.themePreset;
+  const shell: UiShell = preferences.data?.shell ?? "moldura";
+  // Saved at once; the shell reads the answer from the cache and swaps in place.
+  const pickShell = (next: UiShell) => {
+    if (next === shell) return;
+    savePreferences({ shell: next }).then(
+      // This page is rebuilt inside the other shell: the control that was pressed is a new
+      // element, so focus is put back on it instead of dropping to the page.
+      () =>
+        requestAnimationFrame(() =>
+          document.querySelector<HTMLElement>('[data-setting="shell"] [aria-checked="true"]')?.focus(),
+        ),
+      (err: Error) => toast(err.message, "danger"),
+    );
+  };
   const pick = (id: PresetId) => {
     const preset = applyPreset(id);
     toast(t("apps.settings.presetApplied", { name: preset.label }), "ok");
@@ -39,6 +54,18 @@ export function ThemeTab({ put }: { s: SettingsShape; put: Put }) {
   };
   return (
     <div className="card stack">
+      <div className="field" data-setting="shell">
+        <label id="ui-shell-label">{t("moldura.settings.interface")}</label>
+        <Segmented<UiShell>
+          labelledBy="ui-shell-label"
+          value={shell}
+          onChange={pickShell}
+          options={[
+            { value: "moldura", label: t("moldura.settings.frame") },
+            { value: "nucleo", label: t("moldura.settings.nucleo") },
+          ]}
+        />
+      </div>
       <div>
         <h2>{t("apps.settings.presets")}</h2>
         <p className="hint">{t("apps.settings.presetsHint")}</p>

@@ -33,7 +33,13 @@ export class UiPreferencesStore {
     // every field already degrades to its default, and a broken file reads as defaults.
     let prefs: UiPreferences;
     try {
-      prefs = UiPreferencesSchema.parse(JSON.parse(fs.readFileSync(this.paths.uiPreferencesFile, "utf8")));
+      const raw: unknown = JSON.parse(fs.readFileSync(this.paths.uiPreferencesFile, "utf8"));
+      prefs = UiPreferencesSchema.parse(raw);
+      // `shell` arrived with the app frame and every `save()` writes it, so a file
+      // that exists without it was written before that: its owner was living in the
+      // Núcleo and keeps living there (.specs/features/moldura-app, door 2). Only
+      // "no file at all" (a new install) and an unreadable value read as the frame.
+      if (isPlainObject(raw) && !("shell" in raw)) prefs.shell = "nucleo";
     } catch {
       prefs = defaultUiPreferences();
     }
@@ -53,4 +59,8 @@ export class UiPreferencesStore {
   update(patch: Partial<UiPreferences>): UiPreferences {
     return this.save(UiPreferencesSchema.parse(deepMergeSettings(this.load(), patch as Record<string, unknown>)));
   }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

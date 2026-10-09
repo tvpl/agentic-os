@@ -41,6 +41,8 @@ import { useOsNavigate } from "./hooks/useViewTransition";
 // The immersive shell is the landing surface and stays in the main chunk:
 // every route is one of its scenes.
 import Nucleo from "./nucleo";
+import Moldura from "./moldura/Moldura";
+import { ShellProvider, useShell } from "./moldura/shell";
 import { lazyRoute } from "./lazyRoute";
 import { Onboarding } from "./onboarding/Onboarding";
 import { ProviderGate } from "./components/ProviderGate";
@@ -385,8 +387,9 @@ function isEditableTarget(): boolean {
   return (el as HTMLElement).isContentEditable;
 }
 
-function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => void }) {
+export function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => void }) {
   const t = useT();
+  const shell = useShell();
   const [palette, setPalette] = useState<PaletteState>({ open: false, instant: false });
   const { mounted: paletteMounted, closing: paletteClosing } = usePresence(palette.open, 160);
   const paletteVisible = paletteMounted && !palette.instant;
@@ -429,7 +432,8 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
       const key = ev.key.toLowerCase();
       if (ev.key === "Escape") {
         if (palette.open) closePalette();
-        else if (location.pathname !== "/" && !inField) navigate("/");
+        // The Núcleo's apps are scenes over the core: Escape goes home. The frame's are pages.
+        else if (shell === "nucleo" && location.pathname !== "/" && !inField) navigate("/");
         return;
       }
       if (mod && !ev.altKey && !ev.shiftKey && (key === "k" || key === "m")) {
@@ -445,7 +449,7 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [palette.open, location.pathname, navigate, openPalette, closePalette, depth]);
+  }, [palette.open, location.pathname, navigate, openPalette, closePalette, depth, shell]);
 
   // Close the palette on navigation — to a page. A deep link bouncing back
   // to `/` (G2: an app opened as a panel) is not a place the user went; a
@@ -454,25 +458,37 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
     if (location.pathname !== "/") closePalette();
   }, [location.pathname, closePalette]);
 
-  const shell = (
-    <RouteSurface name="desktop" stable>
-      <Nucleo meta={meta} onMetaChanged={onMetaChanged} />
-    </RouteSurface>
-  );
+  const surface =
+    shell === "nucleo" ? (
+      <RouteSurface name="desktop" stable>
+        <Nucleo meta={meta} onMetaChanged={onMetaChanged} />
+      </RouteSurface>
+    ) : shell === "moldura" ? (
+      <ErrorBoundary name={meta.name}>
+        <Moldura meta={meta} onMetaChanged={onMetaChanged} onOpenPalette={() => openPalette()} />
+      </ErrorBoundary>
+    ) : (
+      // Nothing is known yet (no answer, no mirror of the last one): not an empty page, not a guess.
+      <PageFallback />
+    );
 
   return (
     <div
       className="os-root"
+      data-shell={shell ?? undefined}
       data-depth={depth > 0 ? "pushed" : undefined}
       data-palette={paletteVisible ? "open" : undefined}
     >
       <div className="depth-layer">
         <Routes>
-          {/* Every route is a scene of the shell; the shell reads the path. */}
-          <Route path="/*" element={shell} />
+          {/* Every route is a scene (Núcleo) or a page (frame); the shell reads the path. */}
+          <Route
+            path="/*"
+            element={shell ? <ShellProvider value={shell}>{surface}</ShellProvider> : surface}
+          />
         </Routes>
       </div>
-      {paletteVisible && (
+      {paletteVisible && shell !== null && (
         <CommandPalette
           meta={meta}
           closing={paletteClosing}
@@ -480,6 +496,7 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
           onMetaChanged={onMetaChanged}
           onShortcuts={() => setHelp(true)}
           initial={palette.initial}
+          shell={shell}
         />
       )}
       {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
@@ -488,14 +505,17 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
         <span className="dot warn" />
       </div>
       {/* HUD instrumentation layer: scanlines, vignette and corner brackets (CSS only, --hud-intensity). */}
-      <div className="hud-overlay" aria-hidden>
-        <span className="hud-bracket tl" />
-        <span className="hud-bracket tr" />
-        <span className="hud-bracket bl" />
-        <span className="hud-bracket br" />
-      </div>
+      {shell === "nucleo" && (
+        <div className="hud-overlay" aria-hidden>
+          <span className="hud-bracket tl" />
+          <span className="hud-bracket tr" />
+          <span className="hud-bracket bl" />
+          <span className="hud-bracket br" />
+        </div>
+      )}
       <ProviderGate />
-      <Onboarding />
+      {/* The tour points at the Núcleo's places; the frame has none of them (plan Assumptions). */}
+      {shell === "nucleo" && <Onboarding />}
     </div>
   );
 }

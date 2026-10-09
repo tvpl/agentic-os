@@ -38,6 +38,8 @@ test("a backup restored into an emptied home has usable files and sessions in th
   ensureDirs(paths);
   fs.cpSync(path.join(container, "snapshot"), path.join(paths.backups, snapshot.name), { recursive: true });
   restoreBackup(paths, snapshot.name);
+  // This home is new, so it would open in the app frame; the steps below are the Núcleo's.
+  fs.writeFileSync(paths.uiPreferencesFile, JSON.stringify({ version: 1, shell: "nucleo" }));
   const server = await startServer(home);
   const context = await browser.newContext({
     baseURL: "http://127.0.0.1:4794",

@@ -1,7 +1,9 @@
 /**
  * Shared dialog machinery: portal into #modal-root, focus trap, initial
  * focus, focus restore, Escape handled on the dialog (never leaking to the
- * OS shell) and `inert` on everything behind the top-most dialog.
+ * OS shell) and `inert` on everything behind the top-most dialog. A dialog
+ * that has to stay mounted where it is (a drawer of the app frame) may skip
+ * the portal: the dialog stack inerts everything but its path to the root.
  */
 import {
   useEffect,
@@ -35,20 +37,57 @@ export function subscribeDialogDepth(fn: () => void): () => void {
     depthListeners.delete(fn);
   };
 }
-/** Number of open dialogs (Modal, Confirm, palette). The shell sets `data-depth="pushed"` when > 0. */
+/**
+ * Dialogs that cover the shell (Modal, Confirm, palette: portaled out of it).
+ * The shell sets `data-depth="pushed"` when > 0 and recedes behind them. A
+ * dialog that lives inside the shell (a drawer of the app frame) is part of
+ * what would recede, so it does not count.
+ */
+function getPushingDepth(): number {
+  const root = document.getElementById("root");
+  return stack.filter((el) => !root?.contains(el)).length;
+}
 export function useDialogDepth(): number {
-  return useSyncExternalStore(subscribeDialogDepth, getDialogDepth, () => 0);
+  return useSyncExternalStore(subscribeDialogDepth, getPushingDepth, () => 0);
+}
+
+/**
+ * Elements inerted below the root's own children: the siblings along the path
+ * to a dialog that stays where it is in the tree (see `syncInert`).
+ */
+const isolated = new Set<Element>();
+
+/**
+ * Make everything outside `top` inert by walking up from it to `root` and
+ * inerting each level's other children. For a dialog that cannot leave its
+ * place in the tree (the app frame's chat drawer holds a live conversation
+ * and must not remount to be portaled).
+ */
+function isolate(top: HTMLElement, root: HTMLElement) {
+  for (let node: HTMLElement = top; node !== root && node.parentElement; node = node.parentElement) {
+    for (const sibling of Array.from(node.parentElement.children)) {
+      if (sibling === node || sibling.classList.contains("toast-wrap")) continue;
+      sibling.setAttribute("inert", "");
+      isolated.add(sibling);
+    }
+  }
 }
 
 function syncInert() {
   const top = stack[stack.length - 1];
   const root = document.getElementById("root");
+  for (const el of isolated) el.removeAttribute("inert");
+  isolated.clear();
   if (root) {
+    // A dialog portaled out of the root leaves the whole root inert; one that
+    // lives inside it keeps its own path to the root alive.
+    const inPlace = top !== undefined && root.contains(top);
     for (const child of Array.from(root.children)) {
       if (child.classList.contains("toast-wrap")) continue;
-      if (top) child.setAttribute("inert", "");
+      if (top && !inPlace) child.setAttribute("inert", "");
       else child.removeAttribute("inert");
     }
+    if (top && inPlace) isolate(top, root);
   }
   const portal = document.getElementById("modal-root");
   if (portal) {

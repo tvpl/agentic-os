@@ -37,6 +37,8 @@ export const SETTINGS_MIGRATIONS: readonly SettingsMigration[] = [
       if (!fs.existsSync(paths.uiPreferencesFile)) {
         const parsed = UiPreferencesSchema.safeParse(moved);
         const prefs = parsed.success ? parsed.data : { ...defaultUiPreferences(), ...pickValid(moved) };
+        // Whoever had a v1 file was already living in the Núcleo: keep them there (moldura-app, door 2).
+        prefs.shell = "nucleo";
         atomicWrite(paths.uiPreferencesFile, JSON.stringify(prefs, null, 2) + "\n");
       }
       return { ...kept, version: 2 };

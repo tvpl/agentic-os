@@ -43,6 +43,7 @@ import {
   Plug,
   Plus,
   RefreshCw,
+  Repeat,
   Search,
   Settings as SettingsIcon,
   Sparkles,
@@ -62,6 +63,7 @@ import {
   type RunLaunchResponse,
   type RunRecord,
   type Skill,
+  type UiShell,
 } from "../api";
 import { ARRANGE_VERBS, arrangeFor } from "../desktop/arrange";
 import { ARRANGE_EVENT, PANEL_GLYPH, getPanels } from "../desktop/panelKinds";
@@ -69,7 +71,7 @@ import { HUD_CATALOGUE, hudTitleKey } from "../desktop/hud";
 import { APPS, appKindOf } from "../desktop/apps";
 import { useT, type TKey } from "../i18n";
 import { localizeSkill } from "../views/Skills/localize";
-import { qk, useApiQuery, useOsProviders, useOsRuns, useOsSkills } from "../queries";
+import { qk, useApiQuery, useOsProviders, useOsRuns, useOsSkills, useSaveUiPreferences } from "../queries";
 import { PRESETS, applyAccentTokens, applyPreset, type PresetId } from "../theme";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import { getNotifySound, setNotifySound, useNotifications } from "../hooks/useNotifications";
@@ -103,6 +105,12 @@ export interface CommandPaletteProps {
   onMetaChanged: () => void;
   onShortcuts: () => void;
   initial?: PaletteOpenDetail;
+  /**
+   * The shell the palette opened over. The frame has no lâminas, so "Open
+   * panel" and the arrange row are the Núcleo's only; each shell offers the
+   * switch to the other (.specs/features/moldura-app, Tela 4).
+   */
+  shell?: UiShell;
 }
 
 type Section = "apps" | "actions" | "skills" | "files" | "runs" | "themes" | "page";
@@ -151,6 +159,7 @@ export function CommandPalette({
   onMetaChanged,
   onShortcuts,
   initial,
+  shell = "nucleo",
 }: CommandPaletteProps) {
   const t = useT();
   const lang = useI18nLang();
@@ -158,6 +167,8 @@ export function CommandPalette({
   const qc = useQueryClient();
   const navigate = useOsNavigate();
   const { notify } = useNotifications();
+  const savePreferences = useSaveUiPreferences();
+  const frame = shell === "moldura";
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // Focus on mount, synchronously: the dialog's own initial focus lands a
@@ -283,7 +294,14 @@ export function CommandPalette({
             t("nav.settings"),
             ["preferences", "config", "configuracoes"],
           ],
-          ["home", "/", <LayoutGrid aria-hidden />, t("nav.dashboard"), ["desktop", "home", "os"]],
+          [
+            "home",
+            "/",
+            <LayoutGrid aria-hidden />,
+            // "/" is the core in the Núcleo and the Today page in the frame.
+            t(frame ? "moldura.nav.today" : "nav.dashboard"),
+            ["desktop", "home", "os", "today", "hoje"],
+          ],
         ] as Array<[string, string, ReactNode, string, string[]]>
       ).map(([id, to, icon, label, keywords]) => ({
         id: `app:${id}`,
@@ -293,7 +311,7 @@ export function CommandPalette({
         keywords,
         primary: (el) => go(to, el, true),
       })),
-    [t, go],
+    [t, go, frame],
   );
 
   /* ---------- actions ---------- */
@@ -315,7 +333,9 @@ export function CommandPalette({
       busy: busy === `action:${id}`,
       ...extra,
     });
-    return [
+    const toShell: UiShell = frame ? "nucleo" : "moldura";
+    const switchLabel: TKey = frame ? "moldura.palette.toNucleo" : "moldura.palette.toFrame";
+    const rows = [
       act(
         "onboarding",
         "shell.action.onboarding",
@@ -464,8 +484,36 @@ export function CommandPalette({
           ),
         },
       ),
+      act(
+        "switch-shell",
+        switchLabel,
+        <Repeat aria-hidden />,
+        ["interface", "shell", "switch", "mudar", "trocar", "nucleo", "núcleo", "moldura", "frame", "app"],
+        () =>
+          void runAction("action:switch-shell", t(switchLabel), async () => {
+            await savePreferences({ shell: toShell });
+          }),
+      ),
     ];
-  }, [t, busy, runAction, toast, qc, notify, go, close, onMetaChanged, onShortcuts, sound, inShell]);
+    // The frame has no lâminas to open, and its tour has no places to point at yet.
+    const frameless = new Set(["action:open-panel", "action:onboarding"]);
+    return frame ? rows.filter((r) => !frameless.has(r.id)) : rows;
+  }, [
+    t,
+    busy,
+    runAction,
+    toast,
+    qc,
+    notify,
+    go,
+    close,
+    onMetaChanged,
+    onShortcuts,
+    sound,
+    inShell,
+    frame,
+    savePreferences,
+  ]);
 
   /* ---------- skills ---------- */
   const skillRows = useMemo<Row[]>(
@@ -717,7 +765,7 @@ export function CommandPalette({
       return base.filter((s) => s.rows.length > 0);
     }
     // "organizar revisar código" → the desk composes itself (refino item 47).
-    const verb = ARRANGE_VERBS.exec(needle);
+    const verb = frame ? null : ARRANGE_VERBS.exec(needle);
     const arrangement = verb ? arrangeFor(verb[1]!) : null;
     const arrangeRow: Row[] = verb
       ? [
@@ -748,7 +796,20 @@ export function CommandPalette({
       { section: "files" as const, rows: fileRows },
       { section: "runs" as const, rows: rankItems(runRows, needle, 8).map((r) => r.item) },
     ].filter((s) => s.rows.length > 0 || (s.section === "files" && filesLoading));
-  }, [page.kind, pageRows, needle, apps, actions, runRows, skillRows, fileRows, filesLoading, t, inShell]);
+  }, [
+    page.kind,
+    pageRows,
+    needle,
+    apps,
+    actions,
+    runRows,
+    skillRows,
+    fileRows,
+    filesLoading,
+    t,
+    inShell,
+    frame,
+  ]);
   const rows = useMemo(() => sections.flatMap((s) => s.rows), [sections]);
 
   useEffect(() => setSelected(0), [needle, page.kind]);
