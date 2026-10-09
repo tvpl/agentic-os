@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { Settings } from "../config/schema.js";
-import { makeWorkspaceFilter, type WorkspaceFilter } from "../memory/excludes.js";
+import { HOME_PRIVATE_DIRS, makeWorkspaceFilter, type WorkspaceFilter } from "../memory/excludes.js";
 import { PathAccessError, isInside, realpathLenient } from "./paths.js";
 
 /**
@@ -30,16 +30,28 @@ import { PathAccessError, isInside, realpathLenient } from "./paths.js";
  *     window between the check and the open, and
  *  6. read through a byte cap.
  *
- * Not covered, and said so in `docs/security.md`: a hard link (another name for
- * the same inode has no path to judge), Windows (no `O_NOFOLLOW`; the path
- * checks still apply), and a program the agent runs, which reads whatever its
- * operating-system user can.
+ * A write (`writeWorkspaceFile`) goes through the same door: the path is judged
+ * as above, a link of any kind at the last component is refused (a write
+ * follows a link wherever it points), the file is opened with `O_NOFOLLOW`
+ * and never truncated by the open itself, and the open descriptor is checked
+ * against the path before a byte is written.
+ *
+ * A file with more than one name is judged by what it IS and not by what it is
+ * called: when the open descriptor has several links, its (device, inode) is
+ * compared with every file under the home's `config/` and `logs/`, so a hard
+ * link to `config/token` planted anywhere is refused, read or write.
+ *
+ * Not covered, and said so in `docs/security.md`: Windows (no `O_NOFOLLOW`; the
+ * path checks still apply, and inode numbers are not reliable), and a program
+ * the agent runs, which reads whatever its operating-system user can.
  */
 
 /** A file the caller may not read, in a place it may not read it. */
 export interface ReadScope {
   /** The MordomoOS home: its `config/` and `logs/` are never inside any scope. */
   readonly homeDir: string;
+  /** The home by real path (resolved once, with `realRoots`). */
+  readonly realHomeDir: string;
   /** Folders a path must lie in (as given). */
   readonly roots: readonly string[];
   /** The same folders by real path, resolved once when the scope is made (a scope lives for one request or one pass). */
@@ -60,6 +72,7 @@ export interface ReadScopeOptions {
 export function readScope(options: ReadScopeOptions): ReadScope {
   return {
     homeDir: options.homeDir,
+    realHomeDir: realpathLenient(path.resolve(options.homeDir)),
     roots: [...options.roots],
     realRoots: options.roots.map((r) => realpathLenient(path.resolve(r))),
     filter: makeWorkspaceFilter(options.excludes ?? [], {
@@ -157,13 +170,19 @@ export function resolveReadable(scope: ReadScope, candidate: string): PathVerdic
 }
 
 /**
- * The working directory rule: inside a granted root and outside the home's
- * `config/` and `logs/`. (A run may start in a `.git`-named folder or a folder
- * the user excluded from the index; it may not start next to the token.)
- * `RunManager` applies it to every run it creates or launches.
+ * The working directory rule: inside a granted root, outside the home's
+ * `config/` and `logs/`, and not a directory that holds them. (A run may start
+ * in a `.git`-named folder or a folder the user excluded from the index; it may
+ * not start next to the token.) An agent reads everything under its working
+ * directory without being asked, so the home itself, and any folder the user
+ * granted that contains the home, are as private as `config/` is: the answer
+ * for them is 403. `RunManager` applies this to every run it creates or
+ * launches, and maps the home itself to its default working directory first.
  */
 export function resolveWorkspaceCwd(scope: ReadScope, cwd: string): string {
-  return inspectPath(scope, cwd).real;
+  const real = inspectPath(scope, cwd).real;
+  assertHoldsNoPrivateFolder(scope, real);
+  return real;
 }
 
 const O_NOFOLLOW = fs.constants.O_NOFOLLOW ?? 0;
@@ -184,6 +203,49 @@ export interface WorkspaceFile {
   /** The stream owns the descriptor and closes it at the end. */
   createReadStream(): fs.ReadStream;
   close(): void;
+}
+
+/** Most files looked at when asking whether an inode belongs to the home's private folders; past it the answer is "yes". */
+const MAX_PRIVATE_WALK = 20_000;
+
+/**
+ * Whether `stat` (of an open descriptor) is one of the files under the home's
+ * `config/` or `logs/`, however many names it has. Only a file with more than
+ * one link can be a second name for another file, so only those pay for the
+ * walk; the walk never follows a link. A tree too large to walk counts as a
+ * match: the answer errs towards refusing.
+ */
+function sharesInodeWithPrivateFile(scope: ReadScope, stat: fs.Stats): boolean {
+  if (stat.nlink <= 1 || process.platform === "win32") return false;
+  let seen = 0;
+  const walk = (dir: string): boolean => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return false;
+    }
+    for (const entry of entries) {
+      if (++seen > MAX_PRIVATE_WALK) return true;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (walk(full)) return true;
+      } else if (entry.isFile()) {
+        try {
+          const other = fs.lstatSync(full);
+          if (other.ino === stat.ino && other.dev === stat.dev) return true;
+        } catch {
+          /* removed in between */
+        }
+      }
+    }
+    return false;
+  };
+  return HOME_PRIVATE_DIRS.some((name) => walk(path.join(scope.realHomeDir, name)));
+}
+
+function hardLinked(candidate: string): PathAccessError {
+  return new PathAccessError(candidate, `Refusing a second name for a private file: ${candidate}`);
 }
 
 function changed(candidate: string): PathAccessError {
@@ -209,6 +271,7 @@ export function openWorkspaceFile(scope: ReadScope, candidate: string): Workspac
   try {
     const stat = fs.fstatSync(fd);
     if (!stat.isFile()) throw new NotRegularFileError(candidate);
+    if (sharesInodeWithPrivateFile(scope, stat)) throw hardLinked(candidate);
     // The window between the realpath above and the open: re-resolve the whole path and require the same
     // answer, and the same inode behind it. A folder on the way or the file itself swapped for a link, or
     // the file replaced, after the first check shows here and nothing is returned.
@@ -330,19 +393,152 @@ export function assertWritablePath(scope: ReadScope, candidate: string): string 
   return verdict.real;
 }
 
+export type WriteMode = "replace" | "append" | "create";
+
+export interface WriteOptions {
+  /**
+   * `replace` (default) rewrites the file, `append` adds to its end, `create` fails with `EEXIST` when
+   * anything is there already (a dangling link included).
+   */
+  mode?: WriteMode;
+  /** Permission bits of a file this call creates (before the umask). Default `0o666`. */
+  fileMode?: number;
+}
+
 /**
- * Copy a directory tree the caller has already verified (an import source, a
- * downloaded and checked bundle) into `target`, leaving every link and special
- * file behind: the copy never contains a link and never reads through one.
+ * Write a file the engine owns inside a folder an agent can also write to
+ * (a router, a skill note, a journal day, a sync target, a skill copied from
+ * a folder). The sibling of `openWorkspaceFile` for the other direction:
+ *
+ *  - the path must be inside the scope and pass the filter (`config/` and
+ *    `logs/` of the home, secret names, the user's excludes), by its real path;
+ *  - a link at the last component, dangling or not, is refused: a write
+ *    follows a link wherever it points, and that is how a note became the token;
+ *  - the file is opened `O_NOFOLLOW` (and not truncated by the open), so a link
+ *    put there after the check fails the open instead of being followed;
+ *  - the open descriptor must be a regular file with the inode the path names,
+ *    and not a second name for a private file, before anything is changed.
+ *
+ * Missing parent folders are made. Returns the real path written.
  */
-export function copyTreeWithoutLinks(source: string, target: string): void {
-  fs.mkdirSync(target, { recursive: true });
-  for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
-    const from = path.join(source, entry.name);
-    const to = path.join(target, entry.name);
-    if (entry.isDirectory()) copyTreeWithoutLinks(from, to);
-    else if (entry.isFile()) fs.copyFileSync(from, to);
+export function writeWorkspaceFile(
+  scope: ReadScope,
+  candidate: string,
+  data: string | Uint8Array,
+  options: WriteOptions = {},
+): string {
+  const mode = options.mode ?? "replace";
+  const real = assertWritablePath(scope, candidate);
+  fs.mkdirSync(path.dirname(real), { recursive: true });
+  const base = fs.constants.O_WRONLY | fs.constants.O_CREAT | O_NOFOLLOW | O_NONBLOCK;
+  const flags =
+    mode === "append" ? base | fs.constants.O_APPEND : mode === "create" ? base | fs.constants.O_EXCL : base;
+  let fd: number;
+  try {
+    fd = fs.openSync(real, flags, options.fileMode ?? 0o666);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ELOOP" || code === "EMLINK") throw changed(candidate);
+    throw err;
   }
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) throw new NotRegularFileError(candidate);
+    if (sharesInodeWithPrivateFile(scope, stat)) throw hardLinked(candidate);
+    if (process.platform !== "win32") {
+      const named = fs.lstatSync(real);
+      if (named.ino !== stat.ino || named.dev !== stat.dev) throw changed(candidate);
+    }
+    if (mode === "replace") fs.ftruncateSync(fd, 0);
+    const bytes = typeof data === "string" ? Buffer.from(data, "utf8") : data;
+    let written = 0;
+    while (written < bytes.length) {
+      written += fs.writeSync(fd, bytes, written, bytes.length - written, mode === "append" ? null : written);
+    }
+    return real;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/** The most a copied tree may hold: a skill is a handful of small files, not a disk. */
+export interface CopyLimits {
+  maxFiles: number;
+  maxFileBytes: number;
+  maxTotalBytes: number;
+  maxDepth: number;
+}
+
+export const DEFAULT_COPY_LIMITS: CopyLimits = {
+  maxFiles: 2_000,
+  maxFileBytes: 8 * 1024 * 1024,
+  maxTotalBytes: 64 * 1024 * 1024,
+  maxDepth: 12,
+};
+
+/** The folder holds the home's `config/` or `logs/` (it is the home, or a folder above it). */
+function assertHoldsNoPrivateFolder(scope: ReadScope, dir: string): void {
+  for (const name of HOME_PRIVATE_DIRS) {
+    if (isInside(dir, realpathLenient(path.join(scope.realHomeDir, name)))) {
+      throw new PathAccessError(dir, `Folder would hold the MordomoOS ${name}/ folder: ${dir}`);
+    }
+  }
+}
+
+/**
+ * Copy a folder the scope grants (an import source, a downloaded bundle) into
+ * `target`, a folder that does not exist yet. Every file is READ through the
+ * primitive and every file is WRITTEN through it, so what the copy contains is
+ * what the reader may see:
+ *
+ *  - links, devices and pipes are left behind, and so is whatever the filter
+ *    refuses (`.env`, keys, `.git`, `node_modules`, the user's excludes) at
+ *    any depth, not only at the top;
+ *  - a folder that holds the home's `config/` or `logs/` (the home itself, a
+ *    folder above it) is refused outright;
+ *  - the target is never copied into itself, when it lies inside the source;
+ *  - the copy is bounded in files, bytes and depth (`CopyLimits`).
+ */
+export function copyTreeWithoutLinks(
+  sourceScope: ReadScope,
+  source: string,
+  targetScope: ReadScope,
+  target: string,
+  limits: CopyLimits = DEFAULT_COPY_LIMITS,
+): { files: number; bytes: number } {
+  const root = resolveReadable(sourceScope, source).real;
+  assertHoldsNoPrivateFolder(sourceScope, root);
+  const realTarget = realpathLenient(path.resolve(target));
+  let files = 0;
+  let bytes = 0;
+  const tooBig = (what: string) => new Error(`Folder is too large to copy (${what}): ${source}`);
+  const copyDir = (dir: string, into: string, depth: number): void => {
+    if (depth > limits.maxDepth) throw tooBig(`more than ${limits.maxDepth} levels deep`);
+    fs.mkdirSync(into, { recursive: true });
+    for (const entry of listWorkspaceDir(sourceScope, dir)) {
+      const to = path.join(into, entry.name);
+      // The target is not part of what is copied (it may lie inside the source).
+      if (entry.path === realTarget) continue;
+      if (entry.isDirectory) {
+        copyDir(entry.path, to, depth + 1);
+        continue;
+      }
+      if (!entry.isFile) continue;
+      if (++files > limits.maxFiles) throw tooBig(`more than ${limits.maxFiles} files`);
+      const file = openWorkspaceFile(sourceScope, entry.path);
+      try {
+        if (file.stat.size > limits.maxFileBytes)
+          throw tooBig(`${entry.name} is larger than ${limits.maxFileBytes} bytes`);
+        bytes += file.stat.size;
+        if (bytes > limits.maxTotalBytes) throw tooBig(`more than ${limits.maxTotalBytes} bytes`);
+        writeWorkspaceFile(targetScope, to, file.readBytes(limits.maxFileBytes).bytes, { mode: "create" });
+      } finally {
+        file.close();
+      }
+    }
+  };
+  copyDir(root, target, 0);
+  return { files, bytes };
 }
 
 export interface WorkspaceEntry {
@@ -356,9 +552,10 @@ export interface WorkspaceEntry {
 }
 
 /**
- * The entries of a directory the scope grants, minus symlinks and minus what
- * the filter refuses (secret names, protected directories, excludes). Never
- * follows a link.
+ * The entries of a directory the scope grants, minus symlinks, minus what the
+ * filter refuses (secret names, protected directories, excludes) and minus any
+ * second name for a file under the home's `config/` or `logs/`. Never follows
+ * a link.
  */
 export function listWorkspaceDir(scope: ReadScope, candidate: string): WorkspaceEntry[] {
   const verdict = resolveReadable(scope, candidate);
@@ -374,6 +571,7 @@ export function listWorkspaceDir(scope: ReadScope, candidate: string): Workspace
       continue; // removed in between
     }
     if (stat.isSymbolicLink()) continue;
+    if (sharesInodeWithPrivateFile(scope, stat)) continue; // a second name for a private file is not listed either
     out.push({
       name: entry.name,
       path: full,

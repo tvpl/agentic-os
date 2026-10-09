@@ -434,7 +434,7 @@ describe("sync compiler", () => {
       settings = store.save(settings);
       const catalog = new SkillCatalog(paths);
       catalog.save(SkillFrontmatterSchema.parse({ name: "S", slug: "s1", description: "d" }), "Body.");
-      const target = path.join(paths.home, "workspace");
+      const target = path.join(paths.home, "project");
       fs.mkdirSync(target);
       const compiler = new SyncCompiler(
         paths,

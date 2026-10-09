@@ -11,7 +11,9 @@ import {
   listWorkspaceDir,
   openWorkspaceFile,
   readWorkspaceText,
+  readScope,
   resolveReadable,
+  writeWorkspaceFile,
   type ReadScope,
   type WorkspaceFile,
 } from "../security/safeFs.js";
@@ -237,10 +239,9 @@ export class SkillCatalog {
 
   save(front: SkillFrontmatter, body: string): Skill {
     const dir = this.dirFor(front.slug);
-    fs.mkdirSync(dir, { recursive: true });
     const { slug: _omit, ...frontWithoutSlug } = front;
     const content = matter.stringify(body.trim() + "\n", frontWithoutSlug);
-    fs.writeFileSync(path.join(dir, "SKILL.md"), content, "utf8");
+    writeWorkspaceFile(this.scope, path.join(dir, "SKILL.md"), content);
     const skill = this.load(front.slug);
     if (!skill) throw new Error(`failed to persist skill ${front.slug}`);
     return skill;
@@ -261,11 +262,14 @@ export class SkillCatalog {
    * Import an existing external skill folder (e.g. from ~/.claude/skills) into
    * the canonical catalog. Copies files; never touches the source.
    */
-  importFrom(sourceDir: string, slug?: string): Skill {
+  importFrom(sourceDir: string, slug?: string, sourceScope?: ReadScope): Skill {
     const skillFile = path.join(sourceDir, "SKILL.md");
     if (!fs.existsSync(skillFile)) {
       throw new Error(`No SKILL.md found in ${sourceDir}`);
     }
+    // The folder is read through a scope rooted at itself unless the caller (the import route) passes the
+    // user's granted one: either way a link, a secret file or a private folder at any depth stays behind.
+    const from = sourceScope ?? readScope({ homeDir: this.paths.home, roots: [sourceDir] });
     const finalSlug = (slug ?? path.basename(sourceDir))
       .toLowerCase()
       .replace(/[^a-z0-9-]+/g, "-")
@@ -274,18 +278,24 @@ export class SkillCatalog {
     if (fs.existsSync(targetDir)) {
       throw new Error(`Skill "${finalSlug}" already exists in the catalog.`);
     }
-    copyTreeWithoutLinks(sourceDir, targetDir); // the copy holds no link, so nothing in it reads through one
-    // Normalize frontmatter so the imported skill validates.
-    const raw = this.readText(path.join(targetDir, "SKILL.md"));
-    if (raw === null) throw new Error(`No SKILL.md found in ${sourceDir}`);
-    const parsed = matter(raw);
-    const front = SkillFrontmatterSchema.parse({
-      name: (parsed.data.name as string) ?? finalSlug,
-      slug: finalSlug,
-      description: (parsed.data.description as string) ?? "(imported skill — add a description)",
-      ...normalizeImported(parsed.data),
-    });
-    return this.save(front, parsed.content);
+    try {
+      // Read AND written through the primitive: the copy holds no link, no secret file, nothing from config/.
+      copyTreeWithoutLinks(from, sourceDir, this.scope, targetDir);
+      // Normalize frontmatter so the imported skill validates.
+      const raw = this.readText(path.join(targetDir, "SKILL.md"));
+      if (raw === null) throw new Error(`No SKILL.md found in ${sourceDir}`);
+      const parsed = matter(raw);
+      const front = SkillFrontmatterSchema.parse({
+        name: (parsed.data.name as string) ?? finalSlug,
+        slug: finalSlug,
+        description: (parsed.data.description as string) ?? "(imported skill — add a description)",
+        ...normalizeImported(parsed.data),
+      });
+      return this.save(front, parsed.content);
+    } catch (err) {
+      fs.rmSync(targetDir, { recursive: true, force: true }); // a half-copied skill must not stay behind
+      throw err;
+    }
   }
 
   /** Build the prompt used to run a skill headlessly through any provider. */
@@ -328,12 +338,19 @@ export class SkillCatalog {
     const moved = entries.slice(0, excess);
     const kept = entries.slice(excess);
     const header = raw.slice(0, entries[0]!.start).trimEnd();
-    fs.writeFileSync(file, `${header}\n${kept.map((e) => e.text).join("")}`);
+    const scope = this.scope;
+    // The archive first: when it cannot be written (a link, a second name for the token) nothing has moved yet.
     const archive = this.archiveFile(skill);
     if (!fs.existsSync(archive)) {
-      fs.writeFileSync(archive, `# Archived notes for ${skill.name}\n\nMoved out of NOTES.md when it passed ${max} entries. Not read by the agent.\n`);
+      writeWorkspaceFile(
+        scope,
+        archive,
+        `# Archived notes for ${skill.name}\n\nMoved out of NOTES.md when it passed ${max} entries. Not read by the agent.\n`,
+        { mode: "create" },
+      );
     }
-    fs.appendFileSync(archive, moved.map((e) => e.text).join(""));
+    writeWorkspaceFile(scope, archive, moved.map((e) => e.text).join(""), { mode: "append" });
+    writeWorkspaceFile(scope, file, `${header}\n${kept.map((e) => e.text).join("")}`);
     return excess;
   }
 
@@ -351,13 +368,16 @@ export class SkillCatalog {
     const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
     const tag = [meta.source, meta.runId ? `run ${meta.runId}` : ""].filter(Boolean).join(", ");
     const entry = `\n- **${stamp}**${tag ? ` (${tag})` : ""}: ${body.replace(/\n+/g, " ")}\n`;
+    const scope = this.scope;
     if (!fs.existsSync(file)) {
-      fs.writeFileSync(
+      writeWorkspaceFile(
+        scope,
         file,
         `# Notes for ${skill.name}\n\nLessons saved from runs. The agent reads this file on every run of the skill; keep entries short and actionable.\n`,
+        { mode: "create" },
       );
     }
-    fs.appendFileSync(file, entry);
+    writeWorkspaceFile(scope, file, entry, { mode: "append" });
     if (meta.max) this.pruneNotes(slug, meta.max);
     return this.readNotes(slug)!;
   }

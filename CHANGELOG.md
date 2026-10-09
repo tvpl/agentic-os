@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Security (seguranca-p1)**: an agent run with no working directory now starts
+  in `<home>/workspace` instead of the home (the home holds `config/token`, and an
+  agent reads everything below its working directory without asking); the home
+  as a working directory is mapped there, and a granted folder that contains the
+  home is refused. The run diff reads only the file the filter judged (literal
+  pathspecs, explicit git directory and work tree), files the engine writes into
+  folders an agent can write to are never written through a link or a second name
+  for the token, and a folder import copies files only.
 - **Packaged distributable** (`npm run dist`, `scripts/package.mjs`): one
   minified bundle for the API + CLI, the SQLite addon, the built Command
   Centre, seed data and an official Node.js runtime, with double-click

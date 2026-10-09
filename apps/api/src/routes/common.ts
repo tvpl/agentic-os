@@ -273,7 +273,7 @@ function createPromptSubmission(
   // A session's cwd is re-checked against the *current* roots: a folder that
   // was granted when the conversation started may have been revoked since.
   const requested = body.cwd ?? session?.cwd ?? null;
-  const cwd = requested ? ctx.resolveCwd(requested) : ctx.paths.home;
+  const cwd = ctx.resolveCwd(requested);
   const input: PromptRunInput = {
     prompt: body.prompt,
     provider,

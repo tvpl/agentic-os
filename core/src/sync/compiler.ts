@@ -14,6 +14,7 @@ import {
   homeReadScope,
   readWorkspaceFile,
   readWorkspaceText,
+  writeWorkspaceFile,
 } from "../security/safeFs.js";
 import { unifiedDiff } from "./diff.js";
 
@@ -282,8 +283,14 @@ export class SyncCompiler {
         fs.mkdirSync(path.dirname(backupPath), { recursive: true });
         fs.writeFileSync(backupPath, existing, { mode: 0o600 });
       }
-      fs.mkdirSync(path.dirname(action.filePath), { recursive: true });
-      fs.writeFileSync(action.filePath, action.newContent, "utf8");
+      try {
+        writeWorkspaceFile(scope, action.filePath, action.newContent);
+      } catch (err) {
+        // The target became a link, or a second name for a private file, since it was read.
+        if (!(err instanceof PathAccessError)) throw err;
+        skippedConflicts.push(action.filePath);
+        continue;
+      }
       manifest[action.filePath] = sha256(action.newContent);
       written.push(action.filePath);
     }

@@ -222,6 +222,7 @@ export class ClaudeAdapter implements AgentAdapter {
     }
     if (run.model) args.push("--model", run.model);
     args.push("--add-dir", run.artifactsDir);
+    for (const dir of run.readDirs ?? []) args.push("--add-dir", dir);
     if (run.mode === "read_only") {
       // Headless default mode auto-denies permission prompts; writes are only
       // pre-approved inside the artifacts directory. Claude Code permission

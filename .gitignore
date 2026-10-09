@@ -13,6 +13,8 @@ logs/*.jsonl
 logs/*.jsonl.*
 artifacts/*
 !artifacts/.gitkeep
+# The default working directory of an agent run (the home itself is never one: it holds config/)
+/workspace/
 
 # Environment
 .env

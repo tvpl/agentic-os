@@ -64,6 +64,12 @@ export interface AgentRun {
   profile: SecurityProfile;
   /** Directory where the run should place produced artifacts. */
   artifactsDir: string;
+  /**
+   * Folders outside the working directory the run reads (a skill run reads its own `SKILL.md`). Set by the
+   * RunManager, never by a request. A provider that confines reads to the working directory lets these in too;
+   * one that does not, ignores them.
+   */
+  readDirs?: string[];
   extraEnv?: Record<string, string>;
   /**
    * Environment the provider process must not inherit from the service:

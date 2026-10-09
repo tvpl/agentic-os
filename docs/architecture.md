@@ -142,7 +142,7 @@ confirmed against the installed CLI before use.
 ## Data flow of a skill run ("the button")
 
 1. `POST /api/skills/:slug/run` validates slug (strict id), provider, inputs
-   and `cwd` (must resolve inside the home or an enabled indexed folder).
+   and `cwd` (must resolve inside the home or an enabled indexed folder, outside the home's `config/` and `logs/`; the home itself is not a working directory, so no `cwd` means `<home>/workspace`).
 2. `RunManager.create` inserts a `queued` run (prompt summary pre-redacted);
    the queue is bounded at 10 × `limits.maxConcurrentRuns`.
 3. The run prompt tells the agent to **read the canonical SKILL.md** (and only

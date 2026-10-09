@@ -206,7 +206,7 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
     if (!finalSlug) throw httpError(400, "Cannot derive a slug from the source directory name");
     if (ctx.skills.load(finalSlug))
       throw httpError(409, `Skill "${finalSlug}" already exists in the catalog`);
-    return ctx.skills.importFrom(resolved, finalSlug);
+    return ctx.skills.importFrom(resolved, finalSlug, ctx.scopeOf([resolved]));
   });
 
   /** Marketplace (plan Onda 3 §6): every skill the configured registries offer. */
@@ -289,7 +289,7 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
       }
     }
 
-    const cwd = body.cwd ? ctx.resolveCwd(body.cwd) : ctx.paths.home;
+    const cwd = ctx.resolveCwd(body.cwd);
     const mode: RunMode = skill.mode === "write" ? "write" : "read_only";
     const input: SkillRunInput = {
       slug,

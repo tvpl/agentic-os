@@ -4,7 +4,13 @@ import type { Db } from "../db/db.js";
 import type { MordomoPaths } from "../paths.js";
 import type { Settings } from "../config/schema.js";
 import { PathAccessError } from "../security/paths.js";
-import { homeReadScope, listWorkspaceDir, readWorkspaceText, statWorkspacePath } from "../security/safeFs.js";
+import {
+  homeReadScope,
+  listWorkspaceDir,
+  readWorkspaceText,
+  statWorkspacePath,
+  writeWorkspaceFile,
+} from "../security/safeFs.js";
 import { fileRowFromDb, type FileRow } from "./indexer.js";
 import { ensureJournal, journalSections, localDateString, readJournal, shiftDate, type JournalDay } from "./journal.js";
 
@@ -118,7 +124,8 @@ export function generateRouters(
   const budget = settings.memory?.journalBudgetTokens ?? DEFAULT_JOURNAL_BUDGET_TOKENS;
   lines.push("", ...renderJournalBlock(days, budget));
   const masterPath = path.join(paths.memory, "ROUTER.md");
-  fs.writeFileSync(masterPath, lines.join("\n") + "\n", "utf8");
+  const scope = homeReadScope(paths.home, [paths.memory]);
+  writeWorkspaceFile(scope, masterPath, lines.join("\n") + "\n");
   written.push(masterPath);
 
   // Area indexes — pointers, not documentation; kept under a page.
@@ -139,7 +146,7 @@ export function generateRouters(
       areaLines.push(`- ${label} → \`${f.path}\``);
     }
     const areaPath = path.join(areasDir, `${areaSlug(area)}.md`);
-    fs.writeFileSync(areaPath, areaLines.join("\n") + "\n", "utf8");
+    writeWorkspaceFile(scope, areaPath, areaLines.join("\n") + "\n");
     written.push(areaPath);
   }
   return { written };

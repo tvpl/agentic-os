@@ -214,7 +214,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
           provider: source.provider,
           model: source.model,
           effort: source.effort,
-          cwd: source.cwd ?? ctx.paths.home,
+          cwd: source.cwd ?? ctx.runs.defaultCwd(),
           timeoutMs: source.timeoutMs ?? ctx.settings().limits.defaultTimeoutMs,
           parentRunId: lineage,
         };
@@ -238,7 +238,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
             model: source.model,
             effort: source.effort,
             mode: source.request.mode,
-            cwd: source.cwd ?? ctx.paths.home,
+            cwd: source.cwd ?? ctx.runs.defaultCwd(),
             timeoutMs: source.timeoutMs ?? ctx.settings().limits.defaultTimeoutMs,
             parentRunId: lineage,
           },
@@ -458,10 +458,54 @@ async function runFileDiff(ctx: AppContext, resolved: string, roots: string[]): 
   const gitPath = findOnPath("git");
   if (!repoRoot || !gitPath) return snapshot(false);
   const rel = path.relative(repoRoot, resolved);
+  // What git reads is every file `rel` names (a directory names all of those under it, a deleted one the files
+  // it held), not the one path the filter judged above. List them first, judge each with the same filter, and
+  // only then ask for the diff of that same, literal pathspec.
+  const readsOnlyAllowed = async (against: string[]): Promise<boolean | "failed"> => {
+    const listed = await runGit(gitPath, repoRoot, [
+      "diff",
+      "--name-only",
+      "-z",
+      "--no-renames",
+      ...against,
+      "--",
+      rel,
+    ]);
+    if (listed.exitCode !== 0) return "failed";
+    if (listed.truncated) return false; // a list cut short cannot be judged whole
+    for (const name of listed.stdout.split("\0").filter(Boolean)) {
+      try {
+        if (checkWorkspacePath(ctx.settings(), roots, path.join(repoRoot, name), filterOptions).blockedReason)
+          return false;
+      } catch {
+        return false; // outside every root, or the home's config/ and logs/: not shown either
+      }
+    }
+    return true;
+  };
   try {
     // HEAD may not exist yet (fresh repository): fall back to the index diff.
-    let out = await runGit(gitPath, repoRoot, ["diff", "--no-color", "HEAD", "--", rel]);
-    if (out.exitCode !== 0) out = await runGit(gitPath, repoRoot, ["diff", "--no-color", "--", rel]);
+    let against = ["HEAD"];
+    let allowed = await readsOnlyAllowed(against);
+    if (allowed === "failed") {
+      against = [];
+      allowed = await readsOnlyAllowed(against);
+    }
+    if (allowed === "failed") return snapshot(false);
+    if (!allowed)
+      return {
+        kind: "unavailable",
+        file: resolved,
+        message: "The diff would include files that are not shown.",
+      };
+    const out = await runGit(gitPath, repoRoot, [
+      "diff",
+      "--no-color",
+      "--no-renames",
+      ...against,
+      "--",
+      rel,
+    ]);
     if (out.exitCode !== 0) return snapshot(false);
     if (out.stdout.trim() === "") {
       const status = await runGit(gitPath, repoRoot, [

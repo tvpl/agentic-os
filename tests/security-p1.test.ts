@@ -16,7 +16,7 @@ import {
   previewFile,
   resolveOpenablePath,
 } from "@mordomo/core";
-import { runGit, GIT_NEUTRAL_ARGS, NULL_DEVICE } from "../apps/api/src/routes/git.js";
+import { inspectRepo, runGit, GIT_NEUTRAL_ARGS, NULL_DEVICE } from "../apps/api/src/routes/git.js";
 import { findOnPath, createBackup, JsonlLogger, events } from "@mordomo/core";
 import { makeTempHome } from "./helpers.js";
 
@@ -318,13 +318,15 @@ describe("S2 the diff does not run what the repository says", () => {
     env: Record<string, string>;
   }
   const fakeGit = (dir: string) => {
+    // A repository git is pointed at: `.git` is a real directory of the work tree (runGit refuses anything else).
+    fs.mkdirSync(path.join(dir, ".git"), { recursive: true });
     const bin = path.join(dir, "git");
     fs.writeFileSync(
       bin,
       [
         "#!/bin/sh",
         '{ echo "#CALL"; for a in "$@"; do printf "A:%s\\n" "$a"; done;',
-        '  printf "E:GIT_CONFIG_NOSYSTEM=%s\\nE:GIT_CONFIG_GLOBAL=%s\\n" "$GIT_CONFIG_NOSYSTEM" "$GIT_CONFIG_GLOBAL"; } >> "$FAKE_GIT_LOG"',
+        '  printf "E:GIT_CONFIG_NOSYSTEM=%s\\nE:GIT_CONFIG_GLOBAL=%s\\nE:GIT_LITERAL_PATHSPECS=%s\\nE:GIT_DIR=%s\\nE:GIT_WORK_TREE=%s\\nE:GIT_COMMON_DIR=%s\\nE:GIT_INDEX_FILE=%s\\n" "$GIT_CONFIG_NOSYSTEM" "$GIT_CONFIG_GLOBAL" "$GIT_LITERAL_PATHSPECS" "$GIT_DIR" "$GIT_WORK_TREE" "$GIT_COMMON_DIR" "$GIT_INDEX_FILE"; } >> "$FAKE_GIT_LOG"',
         'for a in "$@"; do if [ "$a" = config ]; then printf "%s" "$FAKE_GIT_CONFIG"; fi; done',
         "exit 0",
         "",
@@ -348,13 +350,15 @@ describe("S2 the diff does not run what the repository says", () => {
   };
   /** The `-c key=value` pairs before the subcommand, and the subcommand with what follows it. */
   const split = (args: string[]) => {
+    const globals: string[] = [];
     const overrides: string[] = [];
     let i = 0;
+    while (args[i]?.startsWith("--")) globals.push(args[i++]!);
     while (args[i] === "-c") {
       overrides.push(args[i + 1]!);
       i += 2;
     }
-    return { overrides, sub: args[i]!, after: args.slice(i + 1) };
+    return { globals, overrides, sub: args[i]!, after: args.slice(i + 1) };
   };
 
   it("C5 every git call of the diff route is neutralised", async () => {
@@ -393,6 +397,16 @@ describe("S2 the diff does not run what the repository says", () => {
         }
         expect(call.env.GIT_CONFIG_NOSYSTEM).toBe("1");
         expect(call.env.GIT_CONFIG_GLOBAL).toBe(NULL_DEVICE);
+        // The pathspec is literal and the repository's location is ours, on every call (C39, C40).
+        expect(call.env.GIT_LITERAL_PATHSPECS).toBe("1");
+        const { globals } = split(call.args);
+        expect(globals, `${call.args.join(" ")}`).toEqual(
+          expect.arrayContaining([
+            "--literal-pathspecs",
+            `--git-dir=${path.join(dir, ".git")}`,
+            `--work-tree=${dir}`,
+          ]),
+        );
       }
       for (const call of calls.filter((c) => split(c.args).sub === "diff")) {
         const { after, overrides } = split(call.args);
@@ -413,6 +427,102 @@ describe("S2 the diff does not run what the repository says", () => {
       const refused = await runGit(fake.bin, dir, ["diff", "--no-color", "--", "a.txt"]);
       expect(refused.exitCode).toBeNull();
       expect(fake.calls().map((c) => split(c.args).sub)).toEqual(["config"]);
+    } finally {
+      delete process.env.FAKE_GIT_LOG;
+      delete process.env.FAKE_GIT_CONFIG;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("C40 git's own environment is not inherited from the service", async () => {
+    const dir = scratch();
+    const fake = fakeGit(dir);
+    process.env.FAKE_GIT_LOG = fake.log;
+    process.env.FAKE_GIT_CONFIG = "user.name\n";
+    const hostile = {
+      GIT_DIR: "/elsewhere/.git",
+      GIT_WORK_TREE: "/elsewhere",
+      GIT_COMMON_DIR: "/c",
+      GIT_INDEX_FILE: "/i",
+    };
+    Object.assign(process.env, hostile);
+    try {
+      await runGit(fake.bin, dir, ["diff", "--no-color", "--", "a.txt"]);
+      const calls = fake.calls();
+      expect(calls.length).toBeGreaterThan(0);
+      for (const call of calls) {
+        for (const name of Object.keys(hostile))
+          expect(call.env[name] ?? "", `${name} in ${call.args.join(" ")}`).toBe("");
+      }
+    } finally {
+      for (const name of Object.keys(hostile)) delete process.env[name];
+      delete process.env.FAKE_GIT_LOG;
+      delete process.env.FAKE_GIT_CONFIG;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("C40 a repository that points git elsewhere is refused, not run", async () => {
+    const dir = scratch();
+    const fake = fakeGit(dir);
+    process.env.FAKE_GIT_LOG = fake.log;
+    try {
+      // a config that includes another file makes git parse a file the repository chose
+      for (const config of [
+        "include.path\n",
+        "includeif.gitdir:/x/.path\n",
+        "user.name\nIncludeIf.onbranch:x.Path\n",
+      ]) {
+        process.env.FAKE_GIT_CONFIG = config;
+        fs.rmSync(fake.log, { force: true });
+        const refused = await runGit(fake.bin, dir, ["diff", "--no-color", "--", "a.txt"]);
+        expect(refused.exitCode, config).toBeNull();
+        expect(
+          fake.calls().map((c) => split(c.args).sub),
+          config,
+        ).toEqual(["config"]);
+      }
+      // where `.git` is, and what it is: a real directory, no gitfile, no link, no alternates, no commondir
+      const shapes: Array<[string, (d: string) => void, boolean]> = [
+        ["a real .git directory", () => undefined, true],
+        [
+          "a .git file (gitdir: elsewhere)",
+          (d) => (
+            fs.rmSync(path.join(d, ".git"), { recursive: true }),
+            fs.writeFileSync(path.join(d, ".git"), "gitdir: /x\n")
+          ),
+          false,
+        ],
+        [
+          "a .git symlink",
+          (d) => (
+            fs.rmSync(path.join(d, ".git"), { recursive: true }),
+            fs.symlinkSync(os.tmpdir(), path.join(d, ".git"))
+          ),
+          false,
+        ],
+        ["no .git at all", (d) => fs.rmSync(path.join(d, ".git"), { recursive: true }), false],
+        [
+          "alternate object stores",
+          (d) => (
+            fs.mkdirSync(path.join(d, ".git", "objects", "info"), { recursive: true }),
+            fs.writeFileSync(path.join(d, ".git", "objects", "info", "alternates"), "/x\n")
+          ),
+          false,
+        ],
+        [
+          "a linked worktree's commondir",
+          (d) => fs.writeFileSync(path.join(d, ".git", "commondir"), "../..\n"),
+          false,
+        ],
+      ];
+      for (const [name, shape, accepted] of shapes) {
+        const repo = scratch();
+        fs.mkdirSync(path.join(repo, ".git"));
+        shape(repo);
+        expect(inspectRepo(repo) !== null, name).toBe(accepted);
+        fs.rmSync(repo, { recursive: true, force: true });
+      }
     } finally {
       delete process.env.FAKE_GIT_LOG;
       delete process.env.FAKE_GIT_CONFIG;

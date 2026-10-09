@@ -1,8 +1,7 @@
-import fs from "node:fs";
 import path from "node:path";
 import type { MordomoPaths } from "../paths.js";
 import { PathAccessError } from "../security/paths.js";
-import { homeReadScope, listWorkspaceDir, readWorkspaceText } from "../security/safeFs.js";
+import { homeReadScope, listWorkspaceDir, readWorkspaceText, writeWorkspaceFile } from "../security/safeFs.js";
 import type { EventBus, OsEvent } from "../events.js";
 import type { MemoryIndexer } from "./indexer.js";
 
@@ -106,11 +105,10 @@ export function ensureJournal(paths: MordomoPaths, date: string = localDateStrin
   const file = journalPath(paths, date);
   const existing = readJournalFile(paths, file);
   if (existing !== null) return { date, path: file, content: existing, created: false };
-  fs.mkdirSync(path.dirname(file), { recursive: true });
   const content = journalTemplate(date);
   try {
-    // `wx`: never create through a link that is already there (a dangling one included).
-    fs.writeFileSync(file, content, { encoding: "utf8", flag: "wx" });
+    // `create`: never through a link that is already there (a dangling one included), never over a file.
+    writeWorkspaceFile(homeReadScope(paths.home, [paths.memory]), file, content, { mode: "create" });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
     // Another call created the day between the read and the write: take its file.
@@ -195,7 +193,7 @@ export function appendJournal(paths: MordomoPaths, entry: JournalEntry): Journal
   if (start === -1) {
     const tail = day.content.endsWith("\n") ? "" : "\n";
     const content = `${day.content}${tail}\n${heading}\n\n${bullet}\n`;
-    fs.writeFileSync(day.path, content, "utf8");
+    writeWorkspaceFile(homeReadScope(paths.home, [paths.memory]), day.path, content);
     return { ...day, content };
   }
   // Insert before the next heading (or at the end), after the section's last non-empty line.
@@ -213,7 +211,7 @@ export function appendJournal(paths: MordomoPaths, entry: JournalEntry): Journal
   // Keep one blank line before the next heading.
   if (end < lines.length && lines[insertAt + block.length]?.trim() !== "") lines.splice(insertAt + block.length, 0, "");
   const content = lines.join("\n");
-  fs.writeFileSync(day.path, content, "utf8");
+  writeWorkspaceFile(homeReadScope(paths.home, [paths.memory]), day.path, content);
   return { ...day, content };
 }
 

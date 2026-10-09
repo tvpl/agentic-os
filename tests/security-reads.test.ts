@@ -34,8 +34,13 @@ import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "./helpers.js";
 import {
+  NEUTRAL_APIS,
+  RAW_APIS,
   READ_APIS,
+  WRITE_APIS,
   auditProgram,
+  fsPathApis,
+  unclassifiedFsPathApis,
   auditVirtual,
   createAuditProgram,
   sourceFilesUnder,
@@ -394,6 +399,7 @@ describe.skipIf(!POSIX)("a paired device and the owner cannot read the owner tok
     link(tokenFile(), path.join(journal, "2026-01-02.md"));
     link(path.join(home, "memory", "other.md"), path.join(journal, "2026-01-04.md"));
     link(path.join(home, "memory", "not-there.md"), path.join(journal, "2026-01-06.md"));
+    fs.mkdirSync(path.join(journal, "2026-01-05.md"), { recursive: true }); // a folder with a date's name is no day
     const before = fs.readFileSync(tokenFile(), "utf8");
     for (const [who, headers] of principals()) {
       const day = await app.inject({ method: "GET", url: "/api/memory/journal?date=2026-01-02", headers });
@@ -431,13 +437,28 @@ describe.skipIf(!POSIX)("a paired device and the owner cannot read the owner tok
         headers,
       });
       expect(dangling.statusCode, who).toBe(403);
+      // ... and appending to it creates nothing through it, nor does appending to a link to another note
+      for (const date of ["2026-01-06", "2026-01-04"]) {
+        const refused = await app.inject({
+          method: "POST",
+          url: "/api/memory/journal/append",
+          headers,
+          payload: { date, text: "must not land" },
+        });
+        expect(refused.statusCode, `${who} append ${date}`).toBe(403);
+      }
 
       // A link that stays inside memory/ is an ordinary note, and the listing hides links.
       const inside = await app.inject({ method: "GET", url: "/api/memory/journal?date=2026-01-04", headers });
       expect(inside.statusCode, who).toBe(200);
       expect(inside.json().content, who).toContain("OTHER-NOTE");
       expect(inside.json().dates, who).not.toContain("2026-01-02");
+      expect(inside.json().dates, `${who} a folder named like a day`).not.toContain("2026-01-05");
     }
+    expect(
+      fs.readFileSync(path.join(home, "memory", "other.md"), "utf8"),
+      "the linked note is unchanged",
+    ).toBe("# other\nOTHER-NOTE\n");
     expect(fs.readFileSync(tokenFile(), "utf8")).toBe(before);
     expect(
       fs.lstatSync(path.join(home, "memory", "not-there.md"), { throwIfNoEntry: false }),
@@ -489,6 +510,51 @@ describe.skipIf(!POSIX)("a paired device and the owner cannot read the owner tok
     );
     expect(fs.readFileSync(tokenFile(), "utf8")).toBe(before);
     expect(fs.lstatSync(path.join(target, "CLAUDE.md")).isSymbolicLink()).toBe(true);
+
+    // A target that is a link to ANOTHER readable file of the folder is read like any file, but a write
+    // does not follow it: approved or not, the file behind the link stays as it was.
+    const second = path.join(userFolder, "proj2");
+    write(path.join(second, "real-claude.md"), "# hand-written, do not touch\n");
+    link(path.join(second, "real-claude.md"), path.join(second, "CLAUDE.md"));
+    const applyLinked = await app.inject({
+      method: "POST",
+      url: "/api/sync/apply",
+      headers: asOwner(),
+      payload: { target: second, approvedConflicts: [path.join(second, "CLAUDE.md")] },
+    });
+    expect(applyLinked.statusCode, applyLinked.body).toBe(200);
+    expect(applyLinked.json().skippedConflicts).toContain(path.join(second, "CLAUDE.md"));
+    expect(applyLinked.json().backupDir, "no copy is kept of a file that will not be written").toBeNull();
+    expect(fs.readFileSync(path.join(second, "real-claude.md"), "utf8")).toBe(
+      "# hand-written, do not touch\n",
+    );
+    expect(fs.lstatSync(path.join(second, "CLAUDE.md")).isSymbolicLink()).toBe(true);
+
+    // The copy kept before an overwrite is the owner's alone (0600) in a folder of its own (0700).
+    const third = path.join(userFolder, "proj3");
+    write(path.join(third, "CLAUDE.md"), "# the owner's file, about to be replaced\n");
+    const applyBacked = await app.inject({
+      method: "POST",
+      url: "/api/sync/apply",
+      headers: asOwner(),
+      payload: { target: third, approvedConflicts: [path.join(third, "CLAUDE.md")] },
+    });
+    expect(applyBacked.statusCode, applyBacked.body).toBe(200);
+    const backupDir = applyBacked.json().backupDir as string;
+    expect(backupDir).toBeTruthy();
+    const kept: string[] = [];
+    const walkBackup = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) walkBackup(path.join(dir, e.name));
+        else kept.push(path.join(dir, e.name));
+      }
+    };
+    walkBackup(backupDir);
+    expect(kept.length).toBeGreaterThan(0);
+    for (const file of kept) expect(fs.statSync(file).mode & 0o777, file).toBe(0o600);
+    expect(fs.statSync(path.dirname(backupDir)).mode & 0o777, "config/backups").toBe(0o700);
+    expect(fs.readFileSync(kept[0]!, "utf8")).toContain("the owner's file");
+
     // A target inside the home's private folders is no target at all.
     for (const [who, headers] of principals()) {
       for (const rel of ["config", "logs"]) {
@@ -558,6 +624,15 @@ describe.skipIf(!POSIX)("a paired device and the owner cannot read the owner tok
       expect(search.statusCode, who).toBe(200);
       noToken(search, who);
       expect(search.json(), who).toEqual([]);
+      // ... and a search with no words at all (a filter only) judges the row too
+      const bare = await app.inject({
+        method: "GET",
+        url: `/api/memory/search?dir=${encodeURIComponent(path.join(home, "config"))}`,
+        headers,
+      });
+      expect(bare.statusCode, who).toBe(200);
+      noToken(bare, who);
+      expect(bare.json(), `${who} filter-only search`).toEqual([]);
     }
     // Rows the policy no longer allows go at start (and at the next pass).
     expect(ctx.indexer.purgeExcluded()).toBe(1);
@@ -675,6 +750,23 @@ describe.skipIf(!POSIX)("a paired device and the owner cannot read the owner tok
       }
     } finally {
       ctx.settingsStore.update({ indexedFolders: folders });
+    }
+    expect(runCount()).toBe(runsBefore);
+
+    // The timers (a one-shot or "every" timer, a cron tick) reach the same refusal and record it once, not twice.
+    ctx.routines.save(baseRoutine("timer-private", { workingDir: path.join(home, "config"), enabled: true }));
+    ctx.routines.save(baseRoutine("cron-private", { workingDir: path.join(home, "config"), enabled: true }));
+    const scheduler = ctx.scheduler as unknown as {
+      onTimerTick(id: string, scheduledFor: number): Promise<void>;
+      onTick(id: string, job: { currentRun(): Date }): Promise<void>;
+    };
+    await scheduler.onTimerTick("timer-private", Date.now());
+    await scheduler.onTick("cron-private", { currentRun: () => new Date() });
+    for (const id of ["timer-private", "cron-private"]) {
+      const rows = ctx.scheduler.history(id);
+      expect(rows.length, `${id}: one row for one refusal`).toBe(1);
+      expect(rows[0]?.status, id).toBe("failed_to_fire");
+      expect(rows[0]?.note?.startsWith("Working directory refused:"), id).toBe(true);
     }
     expect(runCount()).toBe(runsBefore);
 
@@ -1188,6 +1280,40 @@ describe.skipIf(!POSIX)("a paired device and the owner cannot read the owner tok
     ctx.indexer.indexAll();
   });
 
+  it("C35 a file that becomes a link between the scan's check and its read is refused, not indexed as empty", () => {
+    const note = path.join(userFolder, "swap2", "late.md");
+    write(note, "# late quokka\nHARMLESS\n");
+    const rowFor = () =>
+      ctx.db.prepare("SELECT COUNT(*) c FROM files WHERE path = ?").get(note) as { c: number };
+    expect(rowFor().c).toBe(0);
+    const lstat = fs.lstatSync.bind(fs);
+    let swapped = false;
+    // The pass has judged the file (its metadata came back from the primitive); the next thing it does is open it.
+    const spy = vi.spyOn(fs, "lstatSync").mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+      const answer = (lstat as (...a: unknown[]) => fs.Stats)(p, ...rest);
+      if (!swapped && String(p) === note) {
+        swapped = true;
+        fs.rmSync(note);
+        fs.symlinkSync(tokenFile(), note);
+      }
+      return answer;
+    }) as typeof fs.lstatSync);
+    try {
+      const stats = ctx.indexer.indexAll();
+      expect(swapped).toBe(true);
+      expect(stats.skippedExcluded).toBeGreaterThan(0);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(rowFor().c, "no row, not even an empty one").toBe(0);
+    const indexedText = (ctx.db.prepare("SELECT content FROM files_fts").all() as Array<{ content: string }>)
+      .map((r) => r.content)
+      .join("\n");
+    expect(indexedText).not.toContain(ownerToken);
+    fs.rmSync(path.dirname(note), { recursive: true, force: true });
+    ctx.indexer.indexAll();
+  });
+
   it("C36 the objective evidence hashes only artifacts that stay inside artifacts/", () => {
     write(path.join(home, "artifacts", "run-e", "real.txt"), "REAL-EVIDENCE");
     link(tokenFile(), path.join(home, "artifacts", "run-e", "leak.txt"));
@@ -1376,7 +1502,8 @@ describe.skipIf(!POSIX)("C34 the token is created without blocking the process",
 // ---------------------------------------------------------------------------
 
 /**
- * Raw fs reads with a non-literal path that are allowed, each with the reason it cannot serve a path somebody
+ * Raw fs reads AND writes (writeFile, appendFile, createWriteStream, truncate, chmod, chown, utimes and their
+ * Sync forms) with a non-literal path that are allowed, each with the reason it cannot serve a path somebody
  * else chose. `count` is exact: a new reader in an allowed file is a new row to review, a removed one a row to
  * delete. Everything else in `core/src` and `apps/api/src` reads through `core/src/security/safeFs.ts`.
  *
@@ -1385,6 +1512,7 @@ describe.skipIf(!POSIX)("C34 the token is created without blocking the process",
  *  names  - returns file names only, never bytes; every file it finds is then opened through the primitive
  *  owner  - the path is something the owner typed or configured (an owner-only route, the CLI, a settings value)
  *  path   - turns a path into a path; reads no bytes
+ *  fresh  - writes into a folder this very call created (a temporary directory), under names it checked
  */
 const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; why: string }> = [
   {
@@ -1400,6 +1528,13 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
     count: 1,
     kind: "path",
     why: "realpathLenient, the engine's one realpath helper",
+  },
+  {
+    file: "apps/api/src/routes/git.ts",
+    api: "lstatSync",
+    count: 1,
+    kind: "fixed",
+    why: "inspectRepo: is `.git`, `objects/info/alternates` or `commondir` there, and is `.git` a link (metadata of three fixed names under a work tree the caller found)",
   },
   {
     file: "apps/api/src/cli.ts",
@@ -1600,10 +1735,10 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
   },
   {
     file: "core/src/paths.ts",
-    api: "statSync",
+    api: "openSync",
     count: 1,
     kind: "fixed",
-    why: "mode of the engine's own folders",
+    why: "tightenMode opens the engine's own folder or file without following a link, then fstat/fchmod on the descriptor",
   },
   {
     file: "core/src/routines/osIntegration.ts",
@@ -1656,12 +1791,108 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
     kind: "fixed",
     why: "config/sync-manifest.json",
   },
+  {
+    file: "apps/api/src/cli.ts",
+    api: "writeFileSync",
+    count: 2,
+    kind: "fixed",
+    why: "the pid file, and the service files `mordomo service install` shows the owner and asks to create",
+  },
+  {
+    file: "apps/api/src/server.ts",
+    api: "writeFileSync",
+    count: 1,
+    kind: "fixed",
+    why: "the pid file in config/run",
+  },
+  {
+    file: "core/src/backup.ts",
+    api: "writeFileSync",
+    count: 1,
+    kind: "fixed",
+    why: "the restore-pending marker in config/restore-pending",
+  },
+  {
+    file: "core/src/config/atomicWrite.ts",
+    api: "writeFileSync",
+    count: 1,
+    kind: "fixed",
+    why: "the temporary file beside a config file the engine names (settings, ui preferences), then rename",
+  },
+  {
+    file: "core/src/config/migrations.ts",
+    api: "writeFileSync",
+    count: 1,
+    kind: "fixed",
+    why: "the one-time .bak of a settings file, in config/",
+  },
+  {
+    file: "core/src/config/store.ts",
+    api: "writeFileSync",
+    count: 3,
+    kind: "fixed",
+    why: "the token: a temporary file published by link(2), and the exclusive fallbacks (flag wx)",
+  },
+  {
+    file: "core/src/engine.ts",
+    api: "writeFileSync",
+    count: 1,
+    kind: "fixed",
+    why: "config/run/engine.lock",
+  },
+  {
+    file: "core/src/logs/jsonl.ts",
+    api: "appendFileSync",
+    count: 1,
+    kind: "fixed",
+    why: "the log file of a logger the engine made, in logs/",
+  },
+  {
+    file: "core/src/notifications/pushStore.ts",
+    api: "writeFileSync",
+    count: 1,
+    kind: "fixed",
+    why: "config/vapid.json (0600)",
+  },
+  {
+    file: "core/src/security/tls.ts",
+    api: "writeFileSync",
+    count: 3,
+    kind: "fixed",
+    why: "config/tls key, certificate and fingerprint",
+  },
+  {
+    file: "core/src/skills/publish.ts",
+    api: "writeFileSync",
+    count: 3,
+    kind: "owner",
+    why: "`mordomo skills publish`: the owner's signing keys, the files of a registry folder the owner named, its index",
+  },
+  {
+    file: "core/src/skills/registry.ts",
+    api: "writeFileSync",
+    count: 1,
+    kind: "fresh",
+    why: "a file of a verified registry skill, in a mkdtemp folder, under a name checked to stay inside it",
+  },
+  {
+    file: "core/src/sync/compiler.ts",
+    api: "writeFileSync",
+    count: 2,
+    kind: "fixed",
+    why: "the sync manifest, and the backup copy under config/backups/sync-<time>/ (a folder this call makes)",
+  },
 ];
 
 const repoSources = () =>
   sourceFilesUnder([path.join(repoRoot, "core", "src"), path.join(repoRoot, "apps", "api", "src")]);
 let repoProgram: ts.Program | null = null;
 function theRepoProgram(): ts.Program {
+  // The detector resolves `@mordomo/core` through its built declarations: without them every call into the core
+  // is "unresolved" and the audit would judge by name alone. Say so instead of failing in some other way.
+  if (!fs.existsSync(path.join(repoRoot, "core", "dist", "index.d.ts"))) {
+    throw new Error("C31/C32 need the built core: run `npm run build:server` first");
+  }
   repoProgram ??= createAuditProgram(repoRoot, repoSources());
   return repoProgram;
 }
@@ -1762,6 +1993,45 @@ describe("C31 the raw-read detector sees every way of calling fs", () => {
       'import fs from "node:fs"; export const f = (n: string) => fs.readFileSync(`/etc/${n}`);',
       ["readFileSync:call"],
     ],
+    [
+      "opendir, asynchronous and promised",
+      'import fs from "node:fs"; import fsp from "node:fs/promises"; export const f = (p: string) => [fs.opendir(p, () => undefined), fsp.opendir(p)];',
+      ["opendir:call", "opendir:call"],
+    ],
+    [
+      "glob, in all three forms",
+      'import fs from "node:fs"; import fsp from "node:fs/promises"; export const f = (p: string) => [fs.globSync(p), fsp.glob(p), fs.glob(p, () => undefined)];',
+      ["glob:call", "glob:call", "globSync:call"],
+    ],
+    [
+      "openAsBlob",
+      'import fs from "node:fs"; export const f = (p: string) => fs.openAsBlob(p);',
+      ["openAsBlob:call"],
+    ],
+    [
+      "every way of writing a file",
+      'import fs from "node:fs"; import fsp from "node:fs/promises"; import { writeFileSync as w } from "node:fs"; export const f = (p: string) => [fs.writeFileSync(p, "x"), fs.appendFileSync(p, "x"), fs.createWriteStream(p), fs.truncateSync(p), fsp.writeFile(p, "x"), fsp.appendFile(p, "x"), fsp.truncate(p), w(p, "x")];',
+      [
+        "appendFile:call",
+        "appendFileSync:call",
+        "createWriteStream:call",
+        "truncate:call",
+        "truncateSync:call",
+        "writeFile:call",
+        "writeFileSync:call",
+        "writeFileSync:call",
+      ],
+    ],
+    [
+      "mode, owner and time changes (they follow a link)",
+      'import fs from "node:fs"; export const f = (p: string) => [fs.chmodSync(p, 0o600), fs.chownSync(p, 1, 1), fs.utimesSync(p, 1, 1), fs.lchmod, fs.lutimesSync(p, 1, 1)];',
+      ["chmodSync:call", "chownSync:call", "lchmod:value", "lutimesSync:call", "utimesSync:call"],
+    ],
+    [
+      "a write function held in a variable",
+      'import fs from "node:fs"; const w = fs.writeFileSync; export const f = (p: string) => w(p, "x");',
+      ["writeFileSync:call", "writeFileSync:value"],
+    ],
   ];
   it.each(flagged)("flags %s", (_name, source, expected) => {
     expect(apis(audit(source))).toEqual([...expected].sort());
@@ -1777,8 +2047,8 @@ describe("C31 the raw-read detector sees every way of calling fs", () => {
       'import fs from "node:fs"; export const f = (fd: number) => [fs.fstatSync(fd), fs.readFileSync(fd), fs.readSync(fd, Buffer.alloc(1), 0, 1, 0)];',
     ],
     [
-      "writes, existence and removal",
-      'import fs from "node:fs"; export const f = (p: string) => { fs.writeFileSync(p, "x"); fs.mkdirSync(p); fs.rmSync(p); fs.unlinkSync(p); return [fs.existsSync(p), fs.accessSync(p)]; };',
+      "creation, renaming, existence and removal (they act on a name, not on the file behind it)",
+      'import fs from "node:fs"; export const f = (p: string) => { fs.mkdirSync(p); fs.mkdtempSync(p); fs.rmSync(p); fs.unlinkSync(p); fs.renameSync(p, p + "x"); fs.symlinkSync(p, p + "y"); fs.linkSync(p, p + "z"); return [fs.existsSync(p), fs.accessSync(p), fs.statfsSync(p)]; };',
     ],
     [
       "an object with the same method name",
@@ -1833,6 +2103,63 @@ describe("C31 the raw-read detector sees every way of calling fs", () => {
     }
     expect(READ_APIS.has("existsSync")).toBe(false);
     expect(READ_APIS.has("writeFileSync")).toBe(false);
+  });
+
+  // Written out in full, not derived from the sets: dropping a member from the detector changes this list.
+  const EVERY_READ = [
+    "readFile",
+    "createReadStream",
+    "open",
+    "opendir",
+    "readdir",
+    "stat",
+    "lstat",
+    "realpath",
+    "readlink",
+    "copyFile",
+    "cp",
+    "glob",
+    "openAsBlob",
+  ];
+  const EVERY_WRITE = [
+    "writeFile",
+    "appendFile",
+    "createWriteStream",
+    "truncate",
+    "chmod",
+    "lchmod",
+    "chown",
+    "lchown",
+    "utimes",
+    "lutimes",
+  ];
+  it("lists, member by member, every read and every write api, synchronous forms included", () => {
+    const sync = (names: string[]) => names.flatMap((n) => [n, `${n}Sync`]);
+    expect([...READ_APIS].sort()).toEqual(sync(EVERY_READ).sort());
+    expect([...WRITE_APIS].sort()).toEqual(sync(EVERY_WRITE).sort());
+    for (const api of NEUTRAL_APIS) expect(RAW_APIS.has(api), api).toBe(false);
+  });
+
+  it("sees every one of them through fs and fs/promises, as @types/node declares them", () => {
+    const { fs: inFs, promises: inPromises } = fsPathApis(repoRoot);
+    const wanted = (names: string[]) => names.filter((n) => RAW_APIS.has(n));
+    const calls = [
+      ...wanted(inFs).map((n) => `fs.${n}(p as never)`),
+      ...wanted(inPromises).map((n) => `fsp.${n}(p as never)`),
+    ];
+    const reads = audit(
+      `import fs from "node:fs"; import fsp from "node:fs/promises"; export const f = (p: string) => [${calls.join(", ")}];`,
+    );
+    expect(reads.map((r) => r.how)).toEqual(calls.map(() => "call"));
+    expect(reads.map((r) => r.api).sort()).toEqual([...wanted(inFs), ...wanted(inPromises)].sort());
+    // Every api the lists name is declared by @types/node, so a rename there shows here and not as a silent gap.
+    const declared = new Set([...inFs, ...inPromises]);
+    for (const api of RAW_APIS)
+      expect(declared.has(api) || declared.has(api.replace(/Sync$/, "")), api).toBe(true);
+  });
+
+  it("classifies every function of fs and fs/promises that takes a path (a new Node api must be judged)", () => {
+    expect(unclassifiedFsPathApis(repoRoot)).toEqual([]);
   });
 });
 
@@ -1893,7 +2220,7 @@ describe("C32 every raw fs read in core/src and apps/api/src is on the reviewed 
     ];
     for (const file of migrated) {
       expect(
-        reads.filter((r) => r.file === file),
+        reads.filter((r) => r.file === file && READ_APIS.has(r.api)),
         file,
       ).toHaveLength(file === "core/src/sync/compiler.ts" ? 1 : 0);
     }
@@ -1939,18 +2266,29 @@ describe("C33 the security doc says what the code guarantees, and what it does n
       "every reader": ["journal", "sync plan", "recall", "artifacts", "the indexer"],
       "working directory": [
         "RunManager.resolveCwd",
+        "`<home>/workspace`",
+        "is never a folder that holds them",
         "a routine's `workingDir`",
         "at every fire",
         "the repeat of a stored run",
       ],
       "old index rows": ["rows an older index holds"],
       "an agent with a shell": [
-        "An agent with a shell reads whatever its operating-system user can",
+        "An agent with a shell, or a provider sandbox that reads the whole disk, reads whatever its operating-system user can",
         "`escopos-dispositivo`",
+        "Codex's `--sandbox read-only` limits writes, not reads",
+        ".specs/STATE.md",
       ],
-      "hard link": ["A hard link"],
+      "hard link": ["A hard link", "inode", "refused for a read, a write and a listing"],
+      "git reads what the filter judged": [
+        "--literal-pathspecs",
+        "GIT_LITERAL_PATHSPECS=1",
+        "--git-dir=<work tree>/.git",
+        "`core.worktree`",
+        "diff --name-only -z",
+      ],
       windows: ["Windows", "no `O_NOFOLLOW`"],
-      writes: ["Writes through a link"],
+      writes: ["writeWorkspaceFile", "Writes the engine does to its own fixed files", "`tightenMode`"],
       "files the engine reads itself": ["Fixed files the engine reads itself"],
     };
     for (const [what, phrases] of Object.entries(required)) {
@@ -1959,5 +2297,9 @@ describe("C33 the security doc says what the code guarantees, and what it does n
     // The claims that were false before this round must no longer be hedged away or contradicted.
     expect(doc).toContain("this holds for *every* reader");
     expect(doc).not.toMatch(/run `cwd`, skill import/);
+    // The verifier found these two to be false: a write run is not the only one that reaches the token, and a
+    // write through a link is not harmless.
+    expect(doc).not.toContain("can start a **write** run can therefore reach the token");
+    expect(doc).not.toContain("they do not expose bytes");
   });
 });

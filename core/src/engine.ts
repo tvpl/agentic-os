@@ -419,7 +419,7 @@ export class MordomoEngine {
    * The rule lives in `RunManager.resolveCwd`, which also applies it to every
    * run it creates or launches; this is the same function for early 403s.
    */
-  resolveCwd(cwd: string): string {
+  resolveCwd(cwd?: string | null): string {
     return this.runs.resolveCwd(cwd);
   }
 

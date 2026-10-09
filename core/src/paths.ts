@@ -53,6 +53,8 @@ export interface MordomoPaths {
   routines: string;
   connectors: string;
   artifacts: string;
+  /** The default working directory of an agent run: the home itself holds `config/`, so it never is one. */
+  workspace: string;
   logs: string;
   config: string;
   db: string;
@@ -79,6 +81,7 @@ export function resolvePaths(homeOverride?: string): MordomoPaths {
     routines: path.join(home, "routines"),
     connectors: path.join(home, "connectors"),
     artifacts: path.join(home, "artifacts"),
+    workspace: path.join(home, "workspace"),
     logs: path.join(home, "logs"),
     config,
     db,
@@ -99,22 +102,33 @@ export const PRIVATE_FILE_MODE = 0o600;
 
 /**
  * Set `target`'s permission bits to `mode` when they differ; a no-op when they
- * already match, when the path is missing, on Windows (where POSIX modes do not
- * exist; docs/security.md) and when the file is not ours to change.
+ * already match, when the path is missing or is a symbolic link (never followed),
+ * on Windows (where POSIX modes do not exist; docs/security.md) and when the
+ * file is not ours to change.
  */
 export function tightenMode(target: string, mode: number): boolean {
   if (process.platform === "win32") return false;
+  // The descriptor is opened without following a link: a `logs` or `mordomo.db-wal` that somebody replaced
+  // by a link to a file elsewhere is left alone, never chmod-ed through (`stat` + `chmod` follow links).
+  let fd: number;
   try {
-    if ((fs.statSync(target).mode & 0o777) === mode) return false;
-    fs.chmodSync(target, mode);
+    fd = fs.openSync(target, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+  } catch {
+    return false;
+  }
+  try {
+    if ((fs.fstatSync(fd).mode & 0o777) === mode) return false;
+    fs.fchmodSync(fd, mode);
     return true;
   } catch {
     return false;
+  } finally {
+    fs.closeSync(fd);
   }
 }
 
 export function ensureDirs(p: MordomoPaths): void {
-  for (const dir of [p.skills, p.memory, p.routines, p.connectors, p.artifacts]) {
+  for (const dir of [p.skills, p.memory, p.routines, p.connectors, p.artifacts, p.workspace]) {
     fs.mkdirSync(dir, { recursive: true });
   }
   for (const dir of [p.config, p.db, p.backups, p.logs, p.run]) {

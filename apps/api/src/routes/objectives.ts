@@ -115,7 +115,7 @@ export function registerObjectiveRoutes(app: FastifyInstance, ctx: AppContext): 
     if (!providerSettings.enabled) throw httpError(400, `Provider ${provider} is not enabled`);
     const results: Array<{ stepId: string; runId: string | null; status: string }> = [];
     for (const step of ctx.objectives.ready(id, body.limit)) {
-      const cwd = body.cwd ? ctx.resolveCwd(body.cwd) : ctx.paths.home;
+      const cwd = ctx.resolveCwd(body.cwd);
       const timeoutMs = body.timeoutMs ?? settings.limits.defaultTimeoutMs;
       const model = body.model !== undefined ? body.model : providerSettings.defaultModel;
       const effort = body.effort ?? providerSettings.defaultEffort;

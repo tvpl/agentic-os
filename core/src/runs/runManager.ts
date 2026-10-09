@@ -10,6 +10,7 @@ import type { Settings, ProviderId, EffortLevel, SecurityProfile } from "../conf
 import type { AgentAdapter, AgentRun, RunEvent, RunMode, RunUsage, RunUsageEvent } from "../agents/types.js";
 import { JsonlLogger } from "../logs/jsonl.js";
 import { isInside, realpathLenient } from "../security/paths.js";
+import { isValidId } from "../security/ids.js";
 import { redactSecrets } from "../security/redact.js";
 import { grantedReadScope, resolveWorkspaceCwd } from "../security/safeFs.js";
 import { ownedProcessKiller } from "../spawn/safeSpawn.js";
@@ -393,11 +394,26 @@ export class RunManager {
    * through it twice, whoever asked: `create()` (a request, a routine, a
    * retry, an objective step) and the launch itself (a stored cwd whose folder
    * became private or was revoked since). Throws `PathAccessError` (403).
+   *
+   * An agent reads everything below its working directory without asking
+   * (Claude's `Read` inside the cwd, Codex's read-only sandbox), so a directory
+   * that holds `config/token` is never one: the home itself is NOT a working
+   * directory. No `cwd` (`null`), or the home itself (what every run recorded
+   * before this rule has), is the default working directory `<home>/workspace`;
+   * a granted folder that contains the home is refused.
    */
-  resolveCwd(cwd: string): string {
+  resolveCwd(cwd?: string | null): string {
+    if (cwd === undefined || cwd === null) return this.defaultCwd();
     const real = realpathLenient(path.resolve(cwd));
     if ([...this.scratchDirs].some((dir) => isInside(dir, real))) return real;
+    if (real === realpathLenient(this.paths.home)) return this.defaultCwd();
     return resolveWorkspaceCwd(grantedReadScope(this.getSettings(), this.paths.home), cwd);
+  }
+
+  /** `<home>/workspace`, made on first use and checked by the same rule (a link there to `config/` is refused). */
+  defaultCwd(): string {
+    fs.mkdirSync(this.paths.workspace, { recursive: true });
+    return resolveWorkspaceCwd(grantedReadScope(this.getSettings(), this.paths.home), this.paths.workspace);
   }
 
   /**
@@ -412,7 +428,7 @@ export class RunManager {
       this.scratchDirs.add(realpathLenient(dir));
       return dir;
     } catch {
-      return this.paths.home;
+      return this.defaultCwd();
     }
   }
 
@@ -613,13 +629,17 @@ export class RunManager {
         runId,
         prompt: effectivePrompt,
         // Checked again here: the stored folder may have become private or been revoked since create().
-        cwd: this.resolveCwd(record.cwd ?? this.paths.home),
+        cwd: this.resolveCwd(record.cwd),
         model: record.model,
         effort: record.effort,
         mode,
         timeoutMs: record.timeoutMs ?? this.getSettings().limits.defaultTimeoutMs,
         profile: record.permissionProfile ?? this.getSettings().securityProfile,
         artifactsDir,
+        // The agent does not start in the home (it holds config/), so a skill's folder is let in by name.
+        ...(record.skillSlug && isValidId(record.skillSlug)
+          ? { readDirs: [path.join(this.paths.skills, record.skillSlug)] }
+          : {}),
         // MordomoOS's own secrets stay in the service (docs/security.md).
         dropEnv: providerEnvDrop(this.getSettings()),
         ...(record.sessionId ? { sessionId: record.sessionId } : {}),

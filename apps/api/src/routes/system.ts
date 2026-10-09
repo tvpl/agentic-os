@@ -562,7 +562,7 @@ export function registerSystemRoutes(
       origin: "manual",
       provider: id,
       prompt: "Smoke test: reply with exactly MORDOMO_OK and do nothing else.",
-      cwd: ctx.paths.home,
+      cwd: ctx.runs.defaultCwd(),
       model: providerSettings.defaultModel,
       effort: "low",
       mode: "read_only",

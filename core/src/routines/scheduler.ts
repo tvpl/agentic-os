@@ -426,7 +426,8 @@ export class RoutineScheduler {
     };
 
     // `workingDir` is a stored value: whether it is still a place an agent may start in is decided by
-    // `RunManager.create` at every fire (a folder that became private or was revoked refuses here).
+    // `RunManager.create` at every fire (a folder that became private or was revoked refuses here). A routine
+    // with none is asked for the home, which `RunManager.resolveCwd` turns into its default working directory.
     const cwd = routine.context === "isolated" ? this.runs.scratchDir(`mordomo-${routine.id}-`) : (routine.workingDir ?? this.paths.home);
     const createRun = (attempt: number, parentRunId: string | null) =>
       this.runs.create({
