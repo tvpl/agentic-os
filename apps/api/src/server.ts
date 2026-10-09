@@ -49,7 +49,7 @@ import { registerEventRoutes } from "./routes/events.js";
 import { registerObjectiveRoutes } from "./routes/objectives.js";
 import { registerSentinelRoutes } from "./routes/sentinels.js";
 import { closeAllSse } from "./routes/sse.js";
-import { rewriteApiUrl, successorHeaders } from "./apiVersion.js";
+import { isApiRequest, rewriteApiUrl, successorHeaders } from "./apiVersion.js";
 import { SlidingWindow } from "./rateLimit.js";
 import { registerOpenApiRoute } from "./openapi.js";
 import type { Principal } from "./routes/common.js";
@@ -263,10 +263,15 @@ export async function buildServer(
     const queryToken = (req.query as Record<string, string | undefined> | undefined)?.token;
     // A token in the URL lands in proxy logs and browser history: only the
     // GETs that cannot send a header (EventSource, <img>, <iframe>) take one.
-    // Refused on every other /api request, public routes and unmatched methods
-    // included (`req.url` is already rewritten from `/api/v1/…`).
-    const isApi = route?.startsWith("/api/") === true || req.url.startsWith("/api/");
-    if (isApi && queryToken !== undefined && !(req.method === "GET" && config.queryToken === true)) {
+    // Refused on every other /api request (`isApiRequest`: matched or not, public
+    // routes and methods without a route included) with 401, also on a path
+    // that does not exist: 401 is the safer refusal, it never reveals which
+    // spellings are routes (`req.url` is already rewritten from `/api/v1/…`).
+    if (
+      isApiRequest(req.url, route) &&
+      queryToken !== undefined &&
+      !(req.method === "GET" && config.queryToken === true)
+    ) {
       return reply
         .code(401)
         .send(
@@ -337,8 +342,9 @@ export async function buildServer(
         typeof err.statusCode === "number" && err.statusCode >= 400 && err.statusCode <= 599
           ? err.statusCode
           : 500;
-      // 502: an upstream (Telegram, a push service) refused; its reason was written for the user.
-      if (status < 500 || status === 502) {
+      // 502: an upstream (Telegram, a push service) refused; 503: the service cannot answer right now
+      // (a closed database). Their reasons were written for the user.
+      if (status < 500 || status === 502 || status === 503) {
         // Fastify's own codes (FST_ERR_*) are internal names; clients get the status's code.
         const own = typeof err.code === "string" && err.code && !err.code.startsWith("FST_");
         const code = own ? err.code! : (STATUS_CODES[status] ?? "error");
@@ -407,7 +413,7 @@ export async function buildServer(
       const pathname = req.url.split("?")[0]!;
       if (
         (req.method !== "GET" && req.method !== "HEAD") ||
-        pathname.startsWith("/api/") ||
+        isApiRequest(req.url, undefined) ||
         /^\/(?:assets|fonts|icons)(?:\/|$)/.test(pathname) ||
         path.posix.extname(pathname)
       ) {

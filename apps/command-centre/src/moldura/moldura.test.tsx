@@ -18,6 +18,10 @@ import type * as ConsoleModule from "../desktop/console/Console";
 import type { DesktopActions } from "../desktop/actions";
 import { api, type Meta } from "../api";
 import { I18nContext, type Lang } from "../i18n";
+
+// Each test mounts the whole shell (providers, router, palette, console, widgets): a few seconds on an
+// idle machine and more than the 5 s default when the machine is busy. A real bug still fails fast.
+vi.setConfig({ testTimeout: 30_000 });
 import { ToastProvider } from "../components/ui";
 import { ConfirmProvider } from "../hooks/useConfirm";
 import { NotificationsProvider, useNotifications } from "../hooks/useNotifications";

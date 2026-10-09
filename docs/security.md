@@ -72,7 +72,10 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
   `/api/runs/:id/stream` (EventSource), `/api/artifacts/raw` and
   `/api/skills/:slug/resource` (`<img>`/`<iframe>`). Anywhere else under `/api` (the public
   `/api/meta` and `/api/pair/claim` included), or on another method, it is
-  `401 unauthorized` even next to a valid header.
+  `401 unauthorized` even next to a valid header. "Under `/api`" is one rule
+  (`isApiRequest`): the router matched an `/api/…` route, or the percent-decoded path is
+  `/api` or lies under `/api/` — so `/%61pi/runs`, `/api/v1//runs` and a path that does not
+  exist are all refused with `401` (never a `404` that would say which paths exist).
 - **Attempt limits** (`apps/api/src/rateLimit.ts`, in memory, reset on restart).
   `POST /api/pair/claim` takes 10 attempts a minute per address, counted before the code
   is read; an address that collected 20 `401`s in 5 minutes gets `429` on every request

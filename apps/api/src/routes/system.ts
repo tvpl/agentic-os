@@ -422,15 +422,16 @@ export function registerSystemRoutes(
   });
 
   app.get("/api/health", async () => {
-    const dbOpen = ctx.db.open;
-    // A closed database is a failure (500 in the envelope), never a 200 with `ok: false`.
-    if (!dbOpen) throw new Error("The database is closed");
+    // A closed database is an honest 503 in the envelope (a poller reads it as "not ready", and it is
+    // not an unhandled error to log on every poll), never a 200 with `ok: false`.
+    if (!ctx.db.open) throw httpError(503, "The database is closed", "service_unavailable");
     const runs = ctx.activeRunCount();
     return {
+      // Always true here, and always `db.open`: the soak script and the e2e soak read both of them.
       ok: true,
       uptimeMs: Date.now() - ctx.startedAt,
       version: PKG_VERSION,
-      db: { open: dbOpen, path: ctx.paths.dbFile },
+      db: { open: true, path: ctx.paths.dbFile },
       scheduler: { running: ctx.schedulerRunning() },
       activeRuns: runs.running,
       queuedRuns: runs.queued,

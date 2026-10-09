@@ -15,6 +15,24 @@ export function rewriteApiUrl(url: string): string {
 }
 
 /**
+ * Is this request under `/api`? One rule for every decision that must not depend on the spelling:
+ * it is when the router matched an `/api/…` route, or when no such route matched but the path, once
+ * percent-decoded the way the router decodes it, is `/api` or lies under `/api/`. So `/%61pi/runs`
+ * (matched, as `/api/runs`), `/api/v1//runs` and `/api/nao-existe` (unmatched) are all API; `/`,
+ * `/index.html` and the static files are not. `url` is the rewritten URL (`/api/v1/…` is already `/api/…`).
+ */
+export function isApiRequest(url: string, matchedRoute: string | undefined): boolean {
+  if (matchedRoute?.startsWith("/api/")) return true;
+  let pathname = url.split("?")[0]!;
+  try {
+    pathname = decodeURI(pathname);
+  } catch {
+    /* a malformed escape: the raw path is judged */
+  }
+  return pathname === "/api" || pathname.startsWith("/api/");
+}
+
+/**
  * `Deprecation` and the successor `Link` for a request that reached an `/api`
  * route without the version (none for `/api/v1/…`, for non-API paths and for
  * unmatched ones). The query is left out of the link so a token never lands

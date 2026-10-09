@@ -40,7 +40,7 @@ Reutiliza o gancho `onRequest` de `apps/api/src/server.ts` (exists), o envelope 
    aplicada em `POST /api/pair/claim` e nas respostas `401`.
 5. Erros → todo `4xx`/`5xx` sai pelo envelope (door 2). As rotas de teste de canal e de push passam a
    responder `4xx`/`502` em vez de `200 { ok: false }`.
-6. Documento → uma rota nova `GET /api/v1/openapi.json`, gerada da tabela de rotas do Fastify (`onRoute`): método,
+6. Documento → `GET /api/v1/openapi.json` (new), gerada da tabela de rotas do Fastify (`onRoute`): método,
    caminho, parâmetros de caminho, escopo, `queryToken`, e as respostas de erro comuns.
 7. Quem decidiu → `approvals.resolved_by` (door 6), preenchido pelo principal da requisição ou pelo
    Telegram (`telegram:<userId>`). O Telegram passa a conferir `from.id` contra
@@ -69,20 +69,32 @@ Reutiliza o gancho `onRequest` de `apps/api/src/server.ts` (exists), o envelope 
 
 ## Surface
 
-| Route                                          | In                                | Out                                               | Status                         |
-| ---------------------------------------------- | --------------------------------- | ------------------------------------------------- | ------------------------------ |
-| `GET /api/v1/runs` (e toda rota sob `/api/v1`) | o mesmo de `/api/runs`            | o mesmo corpo                                     | `200` (o mesmo de `/api/runs`) |
-| `GET /api/runs` (e toda rota sem versão)       | o mesmo                           | cabeçalhos `Deprecation`, `Link`                  | `200` (inalterado)             |
-| `GET /api/v1/meta`                             | -                                 | `apiVersion: 1`                                   | `200`                          |
-| `GET /api/v1/openapi.json`                     | -                                 | documento OpenAPI 3.1                             | `200`                          |
-| rota `owner` chamada por dispositivo           | token de dispositivo              | `error.code` `"owner_only"`                       | `403`                          |
-| qualquer rota com `?token=` não marcada        | `?token=`                         | `error.code` `"unauthorized"`                     | `401`                          |
-| `POST /api/pair/claim` além do limite          | -                                 | `error.code` `"too_many_requests"`, `Retry-After` | `429`                          |
-| `POST /api/channels/telegram/send`, `/test`    | sem token do bot ou sem chat      | `error.code` `"channel_not_configured"`           | `409` (antes `200`)            |
-| `POST /api/channels/telegram/send`, `/test`    | o Telegram recusou                | `error.code` `"channel_failed"`                   | `502` (antes `200`)            |
-| `POST /api/push/test`                          | push desligado / ninguém inscrito | `error.code` `"channel_not_configured"`           | `409` (antes `200`)            |
-| `POST /api/push/test`                          | nenhuma entrega                   | `error.code` `"channel_failed"`                   | `502` (antes `200`)            |
-| `GET /api/approvals/:id`                       | -                                 | `resolvedBy`                                      | `200`                          |
+| Route                                                                                                           | In                                | Out                                               | Status                         |
+| --------------------------------------------------------------------------------------------------------------- | --------------------------------- | ------------------------------------------------- | ------------------------------ |
+| `GET /api/v1/runs` (e toda rota sob `/api/v1`)                                                                  | o mesmo de `/api/runs`            | o mesmo corpo                                     | `200` (o mesmo de `/api/runs`) |
+| `GET /api/runs` (e toda rota sem versão)                                                                        | o mesmo                           | cabeçalhos `Deprecation`, `Link`                  | `200` (inalterado)             |
+| `GET /api/v1/meta`                                                                                              | -                                 | `apiVersion: 1`                                   | `200`                          |
+| `GET /api/v1/openapi.json`                                                                                      | -                                 | documento OpenAPI 3.1                             | `200`                          |
+| rota `owner` chamada por dispositivo                                                                            | token de dispositivo              | `error.code` `"owner_only"`                       | `403`                          |
+| qualquer rota com `?token=` não marcada                                                                         | `?token=`                         | `error.code` `"unauthorized"`                     | `401`                          |
+| caminho `/api/**` que não existe, ou grafia que o roteador decodifica (`/%61pi/…`, `/api/v1//…`), com `?token=` | `?token=`                         | `error.code` `"unauthorized"`                     | `401` (não `404`)              |
+| `GET /api/health` com o banco fechado                                                                           | -                                 | `error.code` `"service_unavailable"`              | `503` (antes `500 internal`)   |
+| `POST /api/pair/claim` além do limite                                                                           | -                                 | `error.code` `"too_many_requests"`, `Retry-After` | `429`                          |
+| `POST /api/channels/telegram/send`, `/test`                                                                     | sem token do bot ou sem chat      | `error.code` `"channel_not_configured"`           | `409` (antes `200`)            |
+| `POST /api/channels/telegram/send`, `/test`                                                                     | o Telegram recusou                | `error.code` `"channel_failed"`                   | `502` (antes `200`)            |
+| `POST /api/push/test`                                                                                           | push desligado / ninguém inscrito | `error.code` `"channel_not_configured"`           | `409` (antes `200`)            |
+| `POST /api/push/test`                                                                                           | nenhuma entrega                   | `error.code` `"channel_failed"`                   | `502` (antes `200`)            |
+| `GET /api/approvals/:id`                                                                                        | -                                 | `resolvedBy`                                      | `200`                          |
+
+Decisão da rodada 3 (recusa de `?token=`): o gancho decide "é `/api`" uma vez, por `isApiRequest(url, rota)`
+(`apiVersion.ts`): a rota casada começa por `/api/`, ou o caminho decodificado como o roteador o decodifica é
+`/api` ou começa por `/api/`. Todo `/api` com `?token=` fora da door 4 (ou em método que não é `GET`) responde
+`401`, **inclusive um caminho que não existe**: `401` é a recusa mais segura, porque nunca revela quais grafias
+são rotas, e um `404` aqui diria ao portador de um token na URL quais caminhos existem. Fora de `/api`
+(`/`, `/index.html`, estáticos) o `?token=` não é assunto do gancho (`/index.html?token=x` segue `404`).
+`GET /api/health` com o banco fechado responde `503 service_unavailable` no envelope (um sondador lê "ainda não
+pronto"; um erro não tratado no log a cada consulta não é verdade nenhuma); `ok: true` e `db.open: true` ficam
+no corpo `200` porque `scripts/soak-api.mjs` e `tests/e2e/workspace-soak.spec.ts` os leem.
 
 ## Landing
 

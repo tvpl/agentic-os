@@ -2,6 +2,7 @@ import { describe, expect, it, beforeAll, afterAll, afterEach, vi } from "vitest
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type * as ChildProcess from "node:child_process";
@@ -10,10 +11,12 @@ import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { resolveApprovalForChat } from "../apps/api/src/approvalActions.js";
 import { probeServer } from "../apps/api/src/instances.js";
+import { isApiRequest } from "../apps/api/src/apiVersion.js";
 import Database from "better-sqlite3";
-import ts from "typescript";
 import { MIGRATIONS, TelegramPoller, type TelegramUpdate } from "@mordomo/core";
 import { FAKE_BIN, makeTempHome } from "./helpers.js";
+import { okLiteralSites, okNotTrueSites } from "./helpers/okScanner.js";
+import { unversionedApiUrls } from "./helpers/apiUrlScanner.js";
 
 const TELEGRAM_ENV = "MORDOMO_V1_TEST_TELEGRAM_TOKEN";
 
@@ -167,6 +170,16 @@ async function openStream(url: string, method = "GET"): Promise<{ status: number
   return { status: res.status, headers: res.headers };
 }
 
+let hosts = 0;
+/**
+ * A fresh non-loopback address (the 198.18.0.0/15 benchmarking range) for each caller: the attempt limits are
+ * per address and live as long as the app, so two tests that shared one would count each other's answers.
+ */
+function freshAddress(): string {
+  hosts++;
+  return `198.18.${(hosts >> 8) & 255}.${hosts & 255}`;
+}
+
 async function listening(): Promise<string> {
   if (!app.server.listening) await app.listen({ port: 0, host: "127.0.0.1" });
   const addr = app.server.address();
@@ -238,21 +251,18 @@ describe("S1 a version in the path", () => {
     const files = (fs.readdirSync(uiSrc, { recursive: true }) as string[])
       .filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f) && !f.startsWith("gallery"))
       .map((f) => path.join(uiSrc, f));
-    // A URL reaches the network only through `apiUrl(…)` or a builder that returns one.
-    const BUILDERS = ["apiUrl(", "resourceUrl(", "artifactRawUrl("];
-    const calls: string[] = [];
+    // Read on the syntax tree: every `/api/` string that reaches a network sink (an attribute that loads a
+    // URL, `fetch`, `EventSource`, `new URL`, `window.open`, a beacon) goes through `apiUrl(…)` (C42 proves
+    // the reader on each shape).
+    let sinks = 0;
+    const findings: string[] = [];
     for (const file of files) {
-      const text = fs.readFileSync(file, "utf8");
-      for (const m of text.matchAll(/\b(?:fetch|new EventSource)\(\s*([^,)]*)/g)) {
-        const arg = m[1]!.trim();
-        calls.push(`${path.relative(uiSrc, file)}: ${arg}`);
-        expect(
-          BUILDERS.some((b) => arg.startsWith(b)),
-          `${path.relative(uiSrc, file)} sends ${arg}`,
-        ).toBe(true);
-      }
+      const scan = unversionedApiUrls(fs.readFileSync(file, "utf8"), path.relative(uiSrc, file));
+      sinks += scan.sinks;
+      findings.push(...scan.findings.map((f) => `${f.where} ${f.kind} ${f.text}`));
     }
-    expect(calls.length).toBeGreaterThanOrEqual(5);
+    expect(findings).toEqual([]);
+    expect(sinks).toBeGreaterThanOrEqual(10);
     const apiTs = fs.readFileSync(path.join(uiSrc, "api.ts"), "utf8");
     expect(apiTs).toMatch(/fetch\(apiUrl\(url\)/);
     expect(apiTs).toMatch(/export function artifactRawUrl[^]*?return apiUrl\(\s*`\/api\/artifacts\/raw/);
@@ -286,171 +296,6 @@ function expectEnvelope(
   expect(body.error.message.length, label).toBeGreaterThan(0);
   expect(body.message, label).toBe(body.error.message);
   return body;
-}
-
-/**
- * AC 7 on the syntax tree (L-029): every object literal a route handler answers
- * with — returned (also as an arrow's body), passed to `.send(…)`, through
- * parentheses, casts, `await`, both arms of `?:`/`??`/`||`, a local variable,
- * or the return of a same-file function it calls — whose own `ok` is anything
- * but the literal `true`. Handlers are the function arguments of
- * `<x>.get|post|put|patch|delete|head|options|all("/…", …)` and the `handler`
- * of `<x>.route({ … })`, inline or by name. Nested objects (`{ health: { ok } }`)
- * are data, not the answer's flag, and are not flagged; nor are strings,
- * comments, or objects the handler builds but does not answer with.
- */
-function okNotTrueSites(source: string, fileName = "source.ts"): { handlers: number; sites: string[] } {
-  const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const METHODS = new Set(["get", "post", "put", "patch", "delete", "head", "options", "all"]);
-  type Fn = ts.FunctionLikeDeclaration;
-  const isFn = (n: ts.Node | undefined): n is Fn =>
-    !!n &&
-    (ts.isArrowFunction(n) ||
-      ts.isFunctionExpression(n) ||
-      ts.isFunctionDeclaration(n) ||
-      ts.isMethodDeclaration(n));
-  const named = new Map<string, Fn>();
-  const collect = (n: ts.Node) => {
-    if (ts.isFunctionDeclaration(n) && n.name && n.body) named.set(n.name.text, n);
-    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && isFn(n.initializer))
-      named.set(n.name.text, n.initializer);
-    ts.forEachChild(n, collect);
-  };
-  collect(file);
-  const asFn = (e: ts.Node | undefined): Fn | undefined =>
-    isFn(e) ? e : e && ts.isIdentifier(e) ? named.get(e.text) : undefined;
-  const keyOf = (name: ts.PropertyName): string | null => {
-    if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name))
-      return name.text;
-    if (ts.isComputedPropertyName(name)) {
-      let e: ts.Expression = name.expression;
-      while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e)) e = e.expression;
-      return ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e) ? e.text : null;
-    }
-    return null;
-  };
-  const ownFn = (n: ts.Node): ts.Node | undefined => {
-    let p = n.parent;
-    while (p && !ts.isFunctionLike(p)) p = p.parent;
-    return p;
-  };
-
-  const handlers = new Set<Fn>();
-  const findHandlers = (n: ts.Node) => {
-    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)) {
-      const method = n.expression.name.text;
-      const [first] = n.arguments;
-      if (method === "route" && first && ts.isObjectLiteralExpression(first)) {
-        for (const p of first.properties) {
-          if (!p.name || keyOf(p.name) !== "handler") continue;
-          const fn = ts.isPropertyAssignment(p)
-            ? asFn(p.initializer)
-            : ts.isShorthandPropertyAssignment(p)
-              ? named.get(p.name.text)
-              : asFn(p);
-          if (fn) handlers.add(fn);
-        }
-      } else if (
-        METHODS.has(method) &&
-        first &&
-        (ts.isStringLiteral(first) || ts.isNoSubstitutionTemplateLiteral(first)) &&
-        first.text.startsWith("/")
-      ) {
-        const fn = asFn(n.arguments[n.arguments.length - 1]);
-        if (fn) handlers.add(fn);
-      }
-    }
-    ts.forEachChild(n, findHandlers);
-  };
-  findHandlers(file);
-
-  const sites = new Set<string>();
-  const line = (n: ts.Node) => file.getLineAndCharacterOfPosition(n.getStart(file)).line + 1;
-  const checkObject = (obj: ts.ObjectLiteralExpression) => {
-    for (const p of obj.properties) {
-      if (!p.name || keyOf(p.name) !== "ok") continue;
-      if (ts.isPropertyAssignment(p) && p.initializer.kind === ts.SyntaxKind.TrueKeyword) continue;
-      sites.add(`${fileName}:${line(p)} ${p.getText(file).replace(/\s+/g, " ")}`);
-    }
-  };
-  const seen = new Set<Fn>();
-  const answers = (e: ts.Expression | undefined, scope: Fn, depth = 0): void => {
-    if (!e || depth > 20) return;
-    if (
-      ts.isParenthesizedExpression(e) ||
-      ts.isAsExpression(e) ||
-      ts.isSatisfiesExpression(e) ||
-      ts.isTypeAssertionExpression(e) ||
-      ts.isNonNullExpression(e) ||
-      ts.isAwaitExpression(e)
-    )
-      return answers(e.expression, scope, depth + 1);
-    if (ts.isConditionalExpression(e)) {
-      answers(e.whenTrue, scope, depth + 1);
-      return answers(e.whenFalse, scope, depth + 1);
-    }
-    if (ts.isBinaryExpression(e)) {
-      const op = e.operatorToken.kind;
-      if (op === ts.SyntaxKind.QuestionQuestionToken || op === ts.SyntaxKind.BarBarToken)
-        answers(e.left, scope, depth + 1);
-      if (
-        op === ts.SyntaxKind.QuestionQuestionToken ||
-        op === ts.SyntaxKind.BarBarToken ||
-        op === ts.SyntaxKind.AmpersandAmpersandToken ||
-        op === ts.SyntaxKind.CommaToken
-      )
-        answers(e.right, scope, depth + 1);
-      return;
-    }
-    if (ts.isObjectLiteralExpression(e)) return checkObject(e);
-    if (ts.isIdentifier(e)) {
-      // A local the handler answers with: its initialiser and every assignment to it.
-      const visit = (n: ts.Node) => {
-        if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === e.text)
-          answers(n.initializer, scope, depth + 1);
-        if (
-          ts.isBinaryExpression(n) &&
-          n.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-          ts.isIdentifier(n.left) &&
-          n.left.text === e.text
-        )
-          answers(n.right, scope, depth + 1);
-        ts.forEachChild(n, visit);
-      };
-      if (scope.body) visit(scope.body);
-      return;
-    }
-    if (ts.isCallExpression(e) && ts.isIdentifier(e.expression)) {
-      const callee = named.get(e.expression.text);
-      if (callee) answersOf(callee);
-    }
-  };
-  // What a function answers with: its returns (not those of the callbacks inside it) and its arrow body.
-  const answersOf = (fn: Fn) => {
-    if (seen.has(fn)) return;
-    seen.add(fn);
-    if (fn.body && !ts.isBlock(fn.body)) answers(fn.body, fn);
-    const visit = (n: ts.Node) => {
-      if (ts.isReturnStatement(n) && ownFn(n) === fn) answers(n.expression, fn);
-      ts.forEachChild(n, visit);
-    };
-    if (fn.body) visit(fn.body);
-  };
-  for (const fn of handlers) {
-    answersOf(fn);
-    // `reply.send(…)` anywhere in the handler, its callbacks included.
-    const visit = (n: ts.Node) => {
-      if (
-        ts.isCallExpression(n) &&
-        ts.isPropertyAccessExpression(n.expression) &&
-        n.expression.name.text === "send"
-      )
-        answers(n.arguments[0], fn);
-      ts.forEachChild(n, visit);
-    };
-    if (fn.body) visit(fn.body);
-  }
-  return { handlers: handlers.size, sites: [...sites] };
 }
 
 describe("S2 one error shape", () => {
@@ -548,16 +393,43 @@ describe("S2 one error shape", () => {
     const files = (fs.readdirSync(src, { recursive: true }) as string[]).filter((f) => f.endsWith(".ts"));
     let handlers = 0;
     const sites: string[] = [];
+    const literals: string[] = [];
     for (const file of files) {
-      const scan = okNotTrueSites(fs.readFileSync(path.join(src, file), "utf8"), file);
+      const text = fs.readFileSync(path.join(src, file), "utf8");
+      const scan = okNotTrueSites(text, file);
       handlers += scan.handlers;
       sites.push(...scan.sites);
+      literals.push(...okLiteralSites(text, file));
     }
     expect(sites).toEqual([]);
     // Every registered /api route has a handler the scan read (125 today), so the scan is not vacuous.
     expect(handlers).toBeGreaterThanOrEqual(app.apiRoutes.length);
+    // The same rule over every file, for a body a route gets from a function of another file (and for any
+    // spelling the handler scan cannot follow): an `ok` that is not `true` anywhere in the API needs a reason.
+    const unexplained = literals.filter((site) => !OK_EXEMPT.some((e) => site.startsWith(e.file + ":")));
+    expect(unexplained).toEqual([]);
+    // No exemption outlives its code: each one still matches the number of sites it names.
+    for (const e of OK_EXEMPT)
+      expect(literals.filter((site) => site.startsWith(e.file + ":")).length, e.file).toBe(e.sites);
   });
 });
+
+/**
+ * The `ok` that is not `true` and is no HTTP answer (C10, second scan). Each file is named with the number of
+ * sites and why none of them can reach a `2xx` body of a route.
+ */
+const OK_EXEMPT: ReadonlyArray<{ file: string; sites: number; why: string }> = [
+  {
+    file: "approvalActions.ts",
+    sites: 3,
+    why: "resolveApprovalForChat's result goes to the Telegram poller (server.ts wires it as `resolve`), which turns it into a chat reply; no route calls it",
+  },
+  {
+    file: "doctor.ts",
+    sites: 1,
+    why: "`ok` is the number of passing checks in the doctor report (`ok: number` beside `warn` and `fail`), not a success flag",
+  },
+];
 
 describe("S3 scopes and the token in the URL", () => {
   it("C11 a device cannot call an owner route", async () => {
@@ -698,18 +570,19 @@ describe("S4 attempt limits", () => {
     });
 
   it("C17 pairing attempts are limited per address", async () => {
+    const address = freshAddress();
     for (let i = 1; i <= 10; i++) {
-      const res = await claim("203.0.113.5");
+      const res = await claim(address);
       expect(res.statusCode, `attempt ${i}`).toBe(401);
       expect(res.json().error.code, `attempt ${i}`).toBe("pair_failed");
     }
-    const eleventh = await claim("203.0.113.5");
+    const eleventh = await claim(address);
     expect(eleventh.statusCode).toBe(429);
     expect(eleventh.json().error.code).toBe("too_many_requests");
     const retryAfter = eleventh.headers["retry-after"];
     expect(String(retryAfter)).toMatch(/^\d+$/);
     expect(Number(retryAfter)).toBeGreaterThan(0);
-    const other = await claim("203.0.113.7");
+    const other = await claim(freshAddress());
     expect(other.statusCode).toBe(401);
     expect(other.json().error.code).toBe("pair_failed");
   });
@@ -717,7 +590,7 @@ describe("S4 attempt limits", () => {
   it("C18 failed logins are limited per address", async () => {
     vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
     try {
-      const remoteAddress = "203.0.113.6";
+      const remoteAddress = freshAddress();
       for (let i = 1; i <= 20; i++) {
         const res = await app.inject({ method: "GET", url: "/api/v1/runs", remoteAddress });
         expect(res.statusCode, `attempt ${i}`).toBe(401);
@@ -881,19 +754,45 @@ describe("S6 who decided, and Telegram per person", () => {
     return calls;
   }
   let updateId = 1000;
-  const button = (data: string, fromId: number, chatId = 12345): TelegramUpdate => ({
+  /**
+   * Who sent an update: a numeric `from.id`, or one of the three shapes with no usable id: no `from` at all
+   * (a channel post, an anonymous admin), a `from` without `id`, and a `from.id` that is text.
+   */
+  type Sender = number | "no from" | "no id" | "text id";
+  const fromOf = (who: Sender): { id: number } | undefined =>
+    who === "no from"
+      ? undefined
+      : who === "no id"
+        ? ({} as { id: number })
+        : who === "text id"
+          ? ({ id: "42" } as unknown as { id: number })
+          : { id: who };
+  const button = (data: string, who: Sender, chatId = 12345): TelegramUpdate => ({
     update_id: updateId++,
     callback_query: {
       id: `q${updateId}`,
       data,
-      from: { id: fromId },
+      from: fromOf(who),
       message: { message_id: 1, chat: { id: chatId } },
     },
   });
-  const command = (text: string, fromId: number, chatId = 12345): TelegramUpdate => ({
+  const command = (text: string, who: Sender, chatId = 12345): TelegramUpdate => ({
     update_id: updateId++,
-    message: { message_id: 2, chat: { id: chatId }, text, from: { id: fromId } },
+    message: { message_id: 2, chat: { id: chatId }, text, from: fromOf(who) },
   });
+  // Every update kind `parseCommand` knows (L-030): decisions, listings, help, buttons.
+  const KINDS: Array<{ name: string; update: (id: string, who: Sender) => TelegramUpdate }> = [
+    { name: "/approve", update: (id, who) => command(`/approve ${id}`, who) },
+    { name: "/deny", update: (id, who) => command(`/deny ${id}`, who) },
+    { name: "/ok", update: (id, who) => command(`/ok ${id}`, who) },
+    { name: "/no", update: (id, who) => command(`/no ${id}`, who) },
+    { name: "/pending", update: (_id, who) => command("/pending", who) },
+    { name: "/status", update: (_id, who) => command("/status", who) },
+    { name: "/start", update: (_id, who) => command("/start", who) },
+    { name: "/help", update: (_id, who) => command("/help", who) },
+    { name: "ap: button", update: (id, who) => button(`ap:${id}`, who) },
+    { name: "dn: button", update: (id, who) => button(`dn:${id}`, who) },
+  ];
   const allow = (ids: number[]) =>
     ctx.settingsStore.update({
       channels: {
@@ -938,19 +837,6 @@ describe("S6 who decided, and Telegram per person", () => {
 
   it("C30 an unlisted person gets nothing from any command or button", async () => {
     allow([42]);
-    // Every update kind `parseCommand` knows, table-driven (L-030): decisions, listings, help, buttons.
-    const KINDS: Array<{ name: string; update: (id: string, from: number) => TelegramUpdate }> = [
-      { name: "/approve", update: (id, from) => command(`/approve ${id}`, from) },
-      { name: "/deny", update: (id, from) => command(`/deny ${id}`, from) },
-      { name: "/ok", update: (id, from) => command(`/ok ${id}`, from) },
-      { name: "/no", update: (id, from) => command(`/no ${id}`, from) },
-      { name: "/pending", update: (_id, from) => command("/pending", from) },
-      { name: "/status", update: (_id, from) => command("/status", from) },
-      { name: "/start", update: (_id, from) => command("/start", from) },
-      { name: "/help", update: (_id, from) => command("/help", from) },
-      { name: "ap: button", update: (id, from) => button(`ap:${id}`, from) },
-      { name: "dn: button", update: (id, from) => button(`dn:${id}`, from) },
-    ];
     for (const kind of KINDS) {
       const a = pendingApproval();
       const ignored = await pollWith([kind.update(a.id, 7)]);
@@ -960,6 +846,28 @@ describe("S6 who decided, and Telegram per person", () => {
       const heard = await pollWith([kind.update(a.id, 42)]);
       expect(heard.length, `${kind.name} from 42`).toBeGreaterThan(0);
     }
+  });
+
+  it("C37 an update with no listed person behind it is ignored", async () => {
+    allow([42]);
+    // Table-driven over every kind of C30 and every sender with no usable id.
+    const NOBODY: Sender[] = ["no from", "no id", "text id"];
+    for (const kind of KINDS) {
+      for (const who of NOBODY) {
+        const a = pendingApproval();
+        const ignored = await pollWith([kind.update(a.id, who)]);
+        expect(ignored, `${kind.name} from ${who}`).toEqual([]);
+        expect(ctx.approvals.get(a.id)?.status, `${kind.name} from ${who}`).toBe("pending");
+      }
+      // The same update from the listed person is answered, so the silence above is the guard's.
+      const a = pendingApproval();
+      expect((await pollWith([kind.update(a.id, 42)])).length, `${kind.name} from 42`).toBeGreaterThan(0);
+    }
+    // With an empty list the chat rule alone decides, a message with no `from` included (C25).
+    allow([]);
+    const open = pendingApproval();
+    await pollWith([button(`ap:${open.id}`, "no from")]);
+    expect(ctx.approvals.get(open.id)).toMatchObject({ status: "approved", resolvedBy: "telegram:unknown" });
   });
 
   it("C26 old approvals read back without a decider", () => {
@@ -1024,7 +932,7 @@ describe("Round 2 - the first verification's gaps", () => {
     const fine = await app.inject({
       method: "POST",
       url: "/api/v1/pair/claim",
-      remoteAddress: "203.0.113.50",
+      remoteAddress: freshAddress(),
       headers: json,
       payload: { code, name: "fine" },
     });
@@ -1051,9 +959,8 @@ describe("Round 2 - the first verification's gaps", () => {
         request: { method: "POST", url: "/api/v1/runs", headers: owner(), payload: { mode: "sideways" } },
       },
     ];
-    let host = 60;
     for (const { status, code, request } of NOT_401) {
-      const remoteAddress = `203.0.113.${host++}`;
+      const remoteAddress = freshAddress();
       for (let i = 1; i <= 25; i++) {
         const res = await app.inject({ ...request, remoteAddress });
         expect(res.statusCode, `${status} #${i}`).toBe(status);
@@ -1062,7 +969,7 @@ describe("Round 2 - the first verification's gaps", () => {
       const after = await app.inject({ method: "GET", url: "/api/v1/runs", headers: owner(), remoteAddress });
       expect(after.statusCode, `after 25 × ${status}`).toBe(200);
     }
-    const remoteAddress = `203.0.113.${host}`;
+    const remoteAddress = freshAddress();
     for (let i = 1; i <= 20; i++) {
       const res = await app.inject({ method: "GET", url: "/api/v1/runs", remoteAddress });
       expect(res.statusCode, `401 #${i}`).toBe(401);
@@ -1080,21 +987,22 @@ describe("Round 2 - the first verification's gaps", () => {
         headers: json,
         payload: { code, name: "limit" },
       });
+    const address = freshAddress();
     for (let i = 1; i <= 10; i++) {
       // A fresh code per guess, so the wrong guesses never burn the code tried last.
       const { code } = ctx.devices.startPairing("limit");
       const wrong = code === "000000" ? "000001" : "000000";
-      expectEnvelope(await claimWith(wrong, "203.0.113.70"), 401, "pair_failed", `attempt ${i}`);
+      expectEnvelope(await claimWith(wrong, address), 401, "pair_failed", `attempt ${i}`);
     }
     const { code } = ctx.devices.startPairing("limit");
     const before = ctx.devices.list().length;
-    const eleventh = await claimWith(code, "203.0.113.70");
+    const eleventh = await claimWith(code, address);
     expectEnvelope(eleventh, 429, "too_many_requests");
     expect(Number(eleventh.headers["retry-after"])).toBeGreaterThan(0);
     expect(ctx.devices.list().length).toBe(before);
     expect(ctx.devices.pairingOpen()?.code).toBe(code);
     // The code was right: another address pairs with it.
-    const other = await claimWith(code, "203.0.113.71");
+    const other = await claimWith(code, freshAddress());
     expect(other.statusCode).toBe(200);
     expect(ctx.devices.list().length).toBe(before + 1);
   });
@@ -1137,7 +1045,7 @@ describe("Round 2 - the first verification's gaps", () => {
 
   it("C32 every failure of the hook and the parser uses the envelope", async () => {
     const device = pairDevice("envelope phone");
-    const locked = "203.0.113.80";
+    const locked = freshAddress();
     for (let i = 1; i <= 20; i++) {
       const res = await app.inject({ method: "GET", url: "/api/v1/runs", remoteAddress: locked });
       expect(res.statusCode).toBe(401);
@@ -1228,15 +1136,19 @@ describe("Round 2 - the first verification's gaps", () => {
       },
     ];
     for (const c of CASES) {
-      // The internal case: the route's own store fails, once.
+      // The internal case: the route's own store fails for the length of the call, and only then.
       const failing =
         c.name === "internal"
-          ? vi.spyOn(ctx.runs, "list").mockImplementationOnce(() => {
+          ? vi.spyOn(ctx.runs, "list").mockImplementation(() => {
               throw new Error("disk on fire");
             })
           : null;
-      const res = await app.inject(c.request);
-      failing?.mockRestore();
+      let res: Awaited<ReturnType<typeof app.inject>>;
+      try {
+        res = await app.inject(c.request);
+      } finally {
+        failing?.mockRestore();
+      }
       expectEnvelope(res, c.status, c.code, c.name);
       expect(res.headers["content-type"], c.name).toContain("application/json");
       if (c.retryAfter) expect(String(res.headers["retry-after"]), c.name).toMatch(/^[1-9]\d*$/);
@@ -1367,7 +1279,7 @@ describe("Round 2 - the first verification's gaps", () => {
       return server;
     };
     const portOf = (server: http.Server) => (server.address() as { port: number }).port;
-    const onlyV1 = await serve({ "/api/v1/meta": { name: "v1 only", version: "9.9.9" } });
+    const onlyV1 = await serve({ "/api/v1/meta": { name: "v1 only", version: "9.9.9", apiVersion: 1 } });
     const older = await serve({ "/api/meta": { name: "older", version: "0.7.0" } });
     const neither = await serve({});
     try {
@@ -1379,5 +1291,416 @@ describe("Round 2 - the first verification's gaps", () => {
     } finally {
       for (const s of [onlyV1, older, neither]) await new Promise((r) => s.close(r));
     }
+  });
+});
+
+/** A service of its own (a home of its own), for what must not touch the shared one: a closed database, a mounted UI. */
+async function isolatedService(options: Parameters<typeof buildServer>[1] = {}) {
+  const tmp = makeTempHome();
+  const own = new AppContext(tmp.paths.home);
+  const ownApp = await buildServer(own, options);
+  return {
+    ctx: own,
+    app: ownApp,
+    headers: { "x-mordomo-token": own.token() },
+    async dispose() {
+      await ownApp.close();
+      try {
+        own.close();
+      } catch {
+        /* its database is already closed */
+      }
+      tmp.cleanup();
+    },
+  };
+}
+
+describe("Round 3 - the second verification's gaps", () => {
+  it("C38 a query token is refused on every spelling of an /api path", async () => {
+    const SPELLINGS: Array<{ name: string; method: "GET" | "POST"; url: string }> = [
+      // Matched by the router after it decodes the path, but not an `/api/` URL as written.
+      { name: "encoded first segment", method: "GET", url: "/%61pi/runs?token=T" },
+      { name: "encoded first segment, v1", method: "GET", url: "/%61pi/v1/runs?token=T" },
+      { name: "encoded public route", method: "GET", url: "/%61pi/meta?token=T" },
+      { name: "encoded public route, POST", method: "POST", url: "/%61pi/pair/claim?token=T" },
+      // No route matches: refused all the same (401, never a 404 that would tell which paths exist).
+      { name: "double slash", method: "GET", url: "/api//runs?token=T" },
+      { name: "double slash after v1", method: "GET", url: "/api/v1//runs?token=T" },
+      { name: "double slash after v1, POST", method: "POST", url: "/api/v1//runs?token=T" },
+      { name: "empty rest after v1", method: "GET", url: "/api/v1/?token=T" },
+      { name: "v1 alone", method: "GET", url: "/api/v1?token=T" },
+      { name: "unknown path", method: "GET", url: "/api/nao-existe?token=T" },
+      { name: "unknown path under v1", method: "GET", url: "/api/v1/nao-existe?token=T" },
+      { name: "unknown path, POST", method: "POST", url: "/api/nao-existe?token=T" },
+      { name: "unknown nested path", method: "GET", url: "/api/runs/x/y/z?token=T" },
+      { name: "api alone", method: "GET", url: "/api?token=T" },
+      { name: "encoded and unknown", method: "GET", url: "/%61pi/nao-existe?token=T" },
+    ];
+    for (const c of SPELLINGS) {
+      const res = await app.inject({
+        method: c.method,
+        url: c.url.replace("token=T", `token=${token}`),
+        headers: c.method === "POST" ? { "content-type": "application/json" } : {},
+        ...(c.method === "POST" ? { payload: {} } : {}),
+      });
+      expectEnvelope(res, 401, "unauthorized", c.name);
+    }
+    // Outside /api a token in the URL is not this hook's business: the page route answers.
+    expect((await app.inject({ method: "GET", url: `/?token=${token}` })).statusCode).toBe(200);
+    // `/apix` is not under /api: the hook leaves it alone (404 without a UI build, the SPA page with one).
+    expect((await app.inject({ method: "GET", url: `/apix?token=${token}` })).statusCode).not.toBe(401);
+    // The streams that take one still do, in the spelling they take it.
+    const base = await listening();
+    expect((await openStream(`${base}/api/v1/events?token=${token}`)).status).toBe(200);
+  });
+
+  it("C38 isApiRequest: the matched route and the decoded path each decide alone", () => {
+    const CASES: Array<[string, string | undefined, boolean]> = [
+      ["/anything", "/api/runs", true], // the router matched an /api route: the URL as written does not matter
+      ["/api/nao-existe", undefined, true], // nothing matched: the path does
+      ["/%61pi/runs?token=x", undefined, true], // ... decoded the way the router decodes it
+      ["/%61pi/v1/runs", undefined, true],
+      ["/api", undefined, true],
+      ["/api/v1//runs", undefined, true],
+      ["/", undefined, false],
+      ["/index.html?token=x", undefined, false],
+      ["/assets/api/app.js", undefined, false],
+      ["/apix", undefined, false],
+      ["/api-docs", undefined, false],
+      ["/x?next=/api/runs", undefined, false], // the query is not the path
+      ["/%E0%A4%A", undefined, false], // a malformed escape is judged as written, not thrown
+      ["/anything", "/", false],
+    ];
+    for (const [url, route, expected] of CASES)
+      expect(isApiRequest(url, route), `${url} matched as ${route}`).toBe(expected);
+  });
+
+  it("C39 a closed database answers GET /api/health with a 503 envelope", async () => {
+    const service = await isolatedService();
+    try {
+      const open = await service.app.inject({
+        method: "GET",
+        url: "/api/v1/health",
+        headers: service.headers,
+      });
+      expect(open.statusCode).toBe(200);
+      expect(open.json()).toMatchObject({ ok: true, db: { open: true } });
+
+      service.ctx.db.close();
+      for (const url of ["/api/v1/health", "/api/health"]) {
+        const res = await service.app.inject({ method: "GET", url, headers: service.headers });
+        // Honest and not an unhandled error: 503 with its own code, never `internal` (500), never a 2xx.
+        expectEnvelope(res, 503, "service_unavailable", url);
+        expect(res.json(), url).not.toHaveProperty("ok");
+        expect(res.headers["content-type"], url).toContain("application/json");
+      }
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  it("C40 the ok scans see a spread, Object.assign, a late assignment and another file's body", () => {
+    const flagged = (code: string) => okNotTrueSites(code).sites.length;
+    // What a handler answers with, one site each (the M55 form first).
+    const ANSWERS = [
+      'app.get("/api/a", async () => ({ ...{ ok: dbOpen }, uptime: 1 }));',
+      'app.get("/api/b", async () => ({ ...{ ok: false } }));',
+      'app.get("/api/c", async () => { const base = { ok: false }; return { ...base, n: 1 }; });',
+      'app.get("/api/d", async () => ({ ...(up ? { ok: true } : { ok: false }) }));',
+      'app.get("/api/e", async () => Object.assign({}, { ok: false }));',
+      'app.get("/api/f", async () => { const body = {}; Object.assign(body, { ok: x }); return body; });',
+      'app.get("/api/g", async () => { const body = { n: 1 }; body.ok = false; return body; });',
+      'app.get("/api/h", async () => { const body = { n: 1 }; body["ok"] = !!db; return body; });',
+      'app.get("/api/i", async () => ({ ...build() }));\nfunction build() { return { ok: false }; }',
+      'app.get("/api/j", async (req, reply) => reply.send(Object.assign({ n: 1 }, local)));\nconst local = { ok: 0 };',
+    ];
+    for (const code of ANSWERS) expect(flagged(code), code).toBe(1);
+    const NOT_ANSWERS = [
+      'app.get("/api/a", async () => ({ ...{ ok: true }, n: 1 }));',
+      'app.get("/api/b", async () => ({ ...rows, n: 1 }));',
+      'app.get("/api/c", async () => Object.assign({}, { n: 1 }));',
+      'app.get("/api/d", async () => { const body = { n: 1 }; body.okay = false; return body; });',
+      'app.get("/api/e", async () => { const other = {}; Object.assign(other, { ok: false }); return { done: true }; });',
+      'app.get("/api/f", async () => { const body = { n: 1 }; body.ok = true; return body; });',
+    ];
+    for (const code of NOT_ANSWERS) expect(flagged(code), code).toBe(0);
+
+    // The file-wide scan: an `ok` that is not `true`, wherever it sits (a function of another file included).
+    const count = (code: string) => okLiteralSites(code).length;
+    const FLAG = [
+      "export function build() { return { ok: false }; }",
+      "const b = { ok };",
+      "const b = { ...{ ok: x } };",
+      "x.ok = false;",
+      'x["ok"] = y;',
+      "Object.assign({}, { ok: 0 });",
+      'const b = { "ok": false };',
+      'const b = { ["ok"]: false };',
+      "const b = { ok: !!db };",
+    ];
+    for (const code of FLAG) expect(count(code), code).toBe(1);
+    const PASS = [
+      "const b = { ok: true };",
+      "x.ok = true;",
+      "interface R { ok: boolean }",
+      "const b = { okay: false, notOk: false };",
+      "// const b = { ok: false };",
+      'const s = "{ ok: false }";',
+      "if (x.ok === false) return;",
+      "const { ok } = result;",
+      "const flag = result.ok;",
+    ];
+    for (const code of PASS) expect(count(code), code).toBe(0);
+  });
+
+  it("C41 the permission broker's 403 uses the envelope", async () => {
+    ctx.settingsStore.update({ securityProfile: "review_before_write" });
+    const run = ctx.runs.create({
+      origin: "manual",
+      provider: "claude",
+      prompt: "brokered",
+      cwd: ctx.paths.home,
+      model: null,
+      effort: "default",
+      mode: "write",
+      timeoutMs: 60_000,
+      profile: "review_before_write",
+    });
+    const broker = ctx.permissionBrokerFor({ id: run.id, permissionProfile: "review_before_write" });
+    expect(broker).not.toBeNull();
+    const credential = broker!.env.MORDOMO_TOKEN!;
+    // Routes the broker may not call, in both spellings and several methods: all refused in the envelope.
+    const REFUSED: Array<{ method: "GET" | "POST" | "PUT" | "DELETE"; url: string }> = [
+      { method: "GET", url: "/api/v1/settings" },
+      { method: "GET", url: "/api/settings" },
+      { method: "POST", url: "/api/v1/runs" },
+      { method: "PUT", url: "/api/v1/settings" },
+      { method: "DELETE", url: "/api/v1/devices/abc" },
+    ];
+    for (const c of REFUSED) {
+      const res = await app.inject({ method: c.method, url: c.url, headers: as(credential), payload: {} });
+      expectEnvelope(res, 403, "forbidden", `${c.method} ${c.url}`);
+      expect(res.headers["content-type"], c.url).toContain("application/json");
+    }
+  });
+
+  it("C42 the api url reader sees every sink shape and nothing else", () => {
+    const found = (code: string) => unversionedApiUrls(code, "view.tsx").findings.length;
+    // A `/api/` string that reaches a sink without `apiUrl(…)`: at least one finding each.
+    const FLAG = [
+      '<img src="/api/artifacts/raw?p=x" />',
+      '<img src={"/api/x"} />',
+      "<video src={`/api/artifacts/raw?p=${p}`} controls />",
+      '<a href={"/api/x/" + id}>open</a>',
+      '<video poster="/api/poster" />',
+      '<form action="/api/x" method="post" />',
+      '<img src={cond ? "/api/a" : apiUrl("/api/b")} />',
+      'const u = "/api/x"; const el = <img src={u} />;',
+      "const u = `/api/x/${id}`; const el = <a href={u}>x</a>;",
+      'fetch("/api/x");',
+      "fetch(`/api/x/${id}`);",
+      'fetch(buildUrl("/api/x"));',
+      "fetch(url);", // where the URL came from is hidden: it must be a builder's call
+      'new EventSource("/api/events");',
+      "new EventSource(url);",
+      'new URL("/api/x", location.origin);',
+      'new Request("/api/x");',
+      'window.open("/api/x");',
+      'window.open(`/api/x/${id}`, "_blank");',
+      'xhr.open("GET", "/api/x");',
+      'new XMLHttpRequest().open("GET", "/api/x");',
+      'navigator.sendBeacon("/api/x", data);',
+      'img.src = "/api/x";',
+      'location.href = "/api/x";',
+      'const props = { src: "/api/x" };',
+    ];
+    for (const code of FLAG) expect(found(code), code).toBeGreaterThan(0);
+    // The same sinks through `apiUrl(…)`, and strings that are not sinks.
+    const PASS = [
+      '<img src={apiUrl("/api/artifacts/raw?p=x")} />',
+      "<img src={artifactRawUrl(p)} />",
+      "<video src={resourceUrl(slug, file)} controls />",
+      "<img src={apiUrl(`/api/x/${id}`)} />",
+      'const u = apiUrl("/api/x"); const el = <img src={u} />;',
+      "fetch(apiUrl(url));",
+      "fetch(apiUrl(`/api/x/${id}`), { method: 'POST' });",
+      'new EventSource(apiUrl("/api/events"));',
+      'window.open(apiUrl("/api/x"));',
+      'navigator.sendBeacon(apiUrl("/api/x"), data);',
+      'new URL(apiUrl("/api/x"), location.origin);',
+      '<a href="https://example.com/docs">docs</a>',
+      '<img src="/icons/a.png" />',
+      'const status = useApiQuery("/api/updates"); const el = <a href={status.url}>x</a>;',
+      "<EmptyState action={<Button>go</Button>} />",
+      'api.get("/api/x");',
+      'request("/api/x", { method: "POST" });',
+      '// fetch("/api/x") and <img src="/api/x" />',
+      'const text = "see /api/x"; log(text);',
+      "const el = <img src={props.src} />;",
+    ];
+    for (const code of PASS) expect(found(code), code).toBe(0);
+    // It counts what it judged, so an empty UI would not pass for a clean one.
+    expect(unversionedApiUrls('fetch(apiUrl(u)); <img src={a} />; new URL("x");', "v.tsx").sinks).toBe(3);
+  });
+
+  it("C43 the 404 answers in the envelope with the UI mounted", async () => {
+    // A minimal static dir, so the proof never depends on a gitignored build of the UI.
+    const uiDist = fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-ui-"));
+    fs.writeFileSync(
+      path.join(uiDist, "index.html"),
+      '<!doctype html><html><head><meta name="mordomo-token" content="" /></head><body>ui</body></html>',
+    );
+    fs.writeFileSync(path.join(uiDist, "app.js"), "export {};");
+    const service = await isolatedService({ uiDist });
+    try {
+      // The page and its SPA routes are served...
+      for (const url of ["/", "/index.html", "/some/spa/route"]) {
+        const res = await service.app.inject({ method: "GET", url });
+        expect(res.statusCode, url).toBe(200);
+        expect(res.headers["content-type"], url).toContain("text/html");
+      }
+      expect((await service.app.inject({ method: "GET", url: "/app.js" })).statusCode).toBe(200);
+      // ... and everything that is not a page is a 404 in the envelope, never the HTML.
+      const NOT_PAGES: Array<{ method: "GET" | "POST"; url: string }> = [
+        { method: "GET", url: "/api/v1/nao-existe" },
+        { method: "GET", url: "/api/nao-existe" },
+        { method: "GET", url: "/api" },
+        { method: "GET", url: "/%61pi/nao-existe" },
+        { method: "GET", url: "/assets/missing.js" },
+        { method: "GET", url: "/missing.css" },
+        { method: "POST", url: "/some/spa/route" },
+      ];
+      for (const c of NOT_PAGES) {
+        const res = await service.app.inject({
+          ...c,
+          headers: service.headers,
+          ...(c.method === "POST" ? { payload: {} } : {}),
+        });
+        expectEnvelope(res, 404, "not_found", `${c.method} ${c.url}`);
+        expect(res.headers["content-type"], c.url).toContain("application/json");
+        expect(res.headers["cache-control"], c.url).toBe("no-store");
+      }
+    } finally {
+      await service.dispose();
+      fs.rmSync(uiDist, { recursive: true, force: true });
+    }
+  });
+
+  it("C44 the CLI probe falls back to /api/meta unless v1 answered for good", async () => {
+    type Reply = { status: number; body: string };
+    const json = (body: unknown, status = 200): Reply => ({ status, body: JSON.stringify(body) });
+    const asked: string[] = [];
+    const serve = async (replies: Record<string, Reply>) => {
+      const server = http.createServer((req, res) => {
+        asked.push(req.url ?? "");
+        const reply = replies[req.url ?? ""] ?? json({ error: { code: "not_found" } }, 404);
+        res.writeHead(reply.status, { "content-type": "application/json" });
+        res.end(reply.body);
+      });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      return server;
+    };
+    const V1 = "/api/v1/meta";
+    const PLAIN = "/api/meta";
+    const v1Body = { name: "from v1", version: "2.0.0", apiVersion: 1 };
+    const plainBody = { name: "from plain", version: "1.0.0" };
+    const CASES: Array<{
+      name: string;
+      replies: Record<string, Reply>;
+      found: { name: string; version: string } | null;
+      asked: string[];
+    }> = [
+      {
+        name: "v1 answers for good",
+        replies: { [V1]: json(v1Body), [PLAIN]: json(plainBody) },
+        found: { name: "from v1", version: "2.0.0" },
+        asked: [V1],
+      },
+      {
+        name: "v1 404 (older service)",
+        replies: { [PLAIN]: json(plainBody) },
+        found: { name: "from plain", version: "1.0.0" },
+        asked: [V1, PLAIN],
+      },
+      {
+        name: "v1 401",
+        replies: { [V1]: json({ error: "no" }, 401), [PLAIN]: json(plainBody) },
+        found: { name: "from plain", version: "1.0.0" },
+        asked: [V1, PLAIN],
+      },
+      {
+        name: "v1 403",
+        replies: { [V1]: json({ error: "no" }, 403), [PLAIN]: json(plainBody) },
+        found: { name: "from plain", version: "1.0.0" },
+        asked: [V1, PLAIN],
+      },
+      {
+        name: "v1 500",
+        replies: { [V1]: json({ error: "boom" }, 500), [PLAIN]: json(plainBody) },
+        found: { name: "from plain", version: "1.0.0" },
+        asked: [V1, PLAIN],
+      },
+      {
+        name: "v1 200 but not JSON",
+        replies: { [V1]: { status: 200, body: "<html>hi</html>" }, [PLAIN]: json(plainBody) },
+        found: { name: "from plain", version: "1.0.0" },
+        asked: [V1, PLAIN],
+      },
+      {
+        name: "v1 200 JSON without apiVersion",
+        replies: { [V1]: json({ name: "stray", version: "7.7.7" }), [PLAIN]: json(plainBody) },
+        found: { name: "from plain", version: "1.0.0" },
+        asked: [V1, PLAIN],
+      },
+      {
+        name: "v1 200 JSON that is not an object",
+        replies: { [V1]: json([1, 2]), [PLAIN]: json(plainBody) },
+        found: { name: "from plain", version: "1.0.0" },
+        asked: [V1, PLAIN],
+      },
+      {
+        name: "v1 fails and plain 401",
+        replies: { [V1]: json({}, 500), [PLAIN]: json({}, 401) },
+        found: null,
+        asked: [V1, PLAIN],
+      },
+      {
+        name: "v1 fails and plain 500",
+        replies: { [V1]: json({}, 401), [PLAIN]: json({}, 500) },
+        found: null,
+        asked: [V1, PLAIN],
+      },
+      {
+        name: "v1 fails and plain not JSON",
+        replies: { [V1]: json({}, 500), [PLAIN]: { status: 200, body: "nope" } },
+        found: null,
+        asked: [V1, PLAIN],
+      },
+      {
+        name: "v1 fails and plain has no version",
+        replies: { [V1]: json({}, 500), [PLAIN]: json({ name: "x" }) },
+        found: null,
+        asked: [V1, PLAIN],
+      },
+      { name: "neither answers", replies: {}, found: null, asked: [V1, PLAIN] },
+    ];
+    for (const c of CASES) {
+      asked.length = 0;
+      const server = await serve(c.replies);
+      try {
+        const probed = await probeServer((server.address() as { port: number }).port);
+        if (c.found) expect(probed, c.name).toMatchObject(c.found);
+        else expect(probed, c.name).toBeNull();
+        expect(asked, c.name).toEqual(c.asked);
+      } finally {
+        await new Promise((r) => server.close(r));
+      }
+    }
+    // Nothing listening at all.
+    const closed = http.createServer();
+    await new Promise<void>((resolve) => closed.listen(0, "127.0.0.1", resolve));
+    const port = (closed.address() as { port: number }).port;
+    await new Promise((r) => closed.close(r));
+    expect(await probeServer(port)).toBeNull();
   });
 });

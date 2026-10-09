@@ -93,9 +93,14 @@ function sameChat(a: number | string | undefined, b: string): boolean {
   return a !== undefined && String(a) === String(b);
 }
 
-/** Empty list: anyone in the chat (the chat rule alone); otherwise only the listed people. */
-function allowedPerson(from: { id: number } | undefined, allowed: readonly number[]): boolean {
-  return allowed.length === 0 || (from !== undefined && allowed.includes(from.id));
+/**
+ * Empty list: anyone in the chat (the chat rule alone). Otherwise only the listed people: an update
+ * with no `from` (a channel post, an anonymous admin) or with a `from` that has no numeric id is nobody
+ * on the list, so it is ignored.
+ */
+function allowedPerson(from: { id?: unknown } | undefined, allowed: readonly number[]): boolean {
+  if (allowed.length === 0) return true;
+  return typeof from?.id === "number" && allowed.includes(from.id);
 }
 
 function decider(from: { id: number } | undefined): string {
