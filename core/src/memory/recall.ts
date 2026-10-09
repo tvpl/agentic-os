@@ -42,6 +42,11 @@ export interface RecallOptions {
   candidateLimit?: number;
   /** Pointer targets followed per chosen section (default 2, 0 disables). */
   pointerLimit?: number;
+  /**
+   * The folders recall may read. Default: the home and the enabled indexed folders. A run's credential passes
+   * `memory/` only, so what it recalls is the second brain and not the owner's other folders.
+   */
+  scope?: ReadScope;
 }
 
 export interface RecallContext {
@@ -454,7 +459,7 @@ export function recall(db: Db, paths: MordomoPaths, settings: Settings, question
   };
   if (keywords.length === 0) return { ...empty, durationMs: Date.now() - started };
 
-  const scope = grantedReadScope(settings, paths.home);
+  const scope = opts.scope ?? grantedReadScope(settings, paths.home);
   const scored = scoreCandidates(db, paths, settings, scope, keywords, opts);
   const maxBytes = settings.limits.maxIndexedFileBytes;
   const answer: RecallContext[] = [];

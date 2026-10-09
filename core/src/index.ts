@@ -235,6 +235,7 @@ export {
   assertWritablePath,
   grantedReadScope,
   homeReadScope,
+  findPrivateLink,
   inspectPath,
   listWorkspaceDir,
   openWorkspaceFile,
@@ -262,6 +263,7 @@ export {
   type WriteMode,
   type WriteOptions,
 } from "./security/safeWrite.js";
+export { parseSkillFile, type ParsedSkillFile } from "./skills/parse.js";
 export { rotateFile, pruneRotated } from "./logs/jsonl.js";
 export { type StoreProblem } from "./routines/store.js";
 export { deepMergeSettings, type SettingsPatch } from "./config/store.js";

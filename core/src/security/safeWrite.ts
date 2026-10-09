@@ -22,9 +22,11 @@ import {
  * in (a skill import) goes through `copyTreeWithoutLinks`, which reads and writes only through the two.
  *
  * What it cannot do: Node has no `openat`, so a folder on the way that becomes a link between the check and the
- * open cannot be refused before the open. The whole path is resolved again right after, and nothing is written when
- * it differs; but in `create` mode that open may have made an empty file behind the new link (nothing is truncated,
- * nothing is written, an existing file is never changed). An agent racing the engine this way already has a shell.
+ * open cannot be refused before the open. The open is `O_CREAT` in every mode, so it can create a file behind the
+ * new link; the whole path is resolved again right after, nothing is written when it differs, and a file this call
+ * created (the name did not exist before) is removed again, but only when it is still the very file that was
+ * created (same device and inode). An existing file is never truncated or changed by a refused call. An agent
+ * racing the engine this way already has a shell.
  */
 
 export type WriteMode = "replace" | "append" | "create";
@@ -65,6 +67,15 @@ export function writeWorkspaceFile(
   const mode = options.mode ?? "replace";
   const real = assertWritablePath(scope, candidate);
   fs.mkdirSync(path.dirname(real), { recursive: true });
+  // The folders are made: look at the path again before the open, so a link that took a folder's place while they
+  // were being made is not opened through (the window that is left is the one between this and the open).
+  if (assertWritablePath(scope, candidate) !== real) throw changed(candidate);
+  let existed = true;
+  try {
+    fs.lstatSync(real);
+  } catch {
+    existed = false;
+  }
   const base = fs.constants.O_WRONLY | fs.constants.O_CREAT | O_NOFOLLOW | O_NONBLOCK;
   const flags =
     mode === "append" ? base | fs.constants.O_APPEND : mode === "create" ? base | fs.constants.O_EXCL : base;
@@ -76,8 +87,9 @@ export function writeWorkspaceFile(
     if (code === "ELOOP" || code === "EMLINK") throw changed(candidate);
     throw err;
   }
+  let stat: fs.Stats | null = null;
   try {
-    const stat = fs.fstatSync(fd);
+    stat = fs.fstatSync(fd);
     if (!stat.isFile()) throw new NotRegularFileError(candidate);
     if (sharesInodeWithPrivateFile(scope, stat)) throw hardLinked(candidate);
     // The window between the check and the open: `O_NOFOLLOW` covers the last component only. Resolve the whole
@@ -95,8 +107,21 @@ export function writeWorkspaceFile(
       written += fs.writeSync(fd, bytes, written, bytes.length - written, mode === "append" ? null : written);
     }
     return real;
+  } catch (err) {
+    if (!existed && stat?.isFile()) removeIfStillOurs(real, stat);
+    throw err;
   } finally {
     fs.closeSync(fd);
+  }
+}
+
+/** Remove the file this call created and then refused, only if `real` still names that very file. */
+function removeIfStillOurs(real: string, ours: fs.Stats): void {
+  try {
+    const named = fs.lstatSync(real);
+    if (named.isFile() && named.ino === ours.ino && named.dev === ours.dev) fs.unlinkSync(real);
+  } catch {
+    /* gone already, or not ours to remove */
   }
 }
 

@@ -13,6 +13,7 @@ import {
   type PermissionBroker,
   type ProviderCapabilities,
   type ProviderId,
+  type RunMode,
   type SecurityProfile,
   type TelegramPoller,
   type TestedVersions,
@@ -66,6 +67,10 @@ export interface AppContextOptions {
  * poller. Building one changes nothing (every CLI command builds one); the
  * service calls `start()` to own the home (`startServer`).
  */
+/** Writes (journal lines, facts) one run credential may make, and all of them together in a day. */
+const MEMORY_WRITES_PER_RUN = 100;
+const MEMORY_WRITES_PER_DAY = 500;
+
 export class AppContext extends MordomoEngine {
   /** Telegram inbound poller; created and started by the server (needs the approval actions). */
   telegramPoller: TelegramPoller | null = null;
@@ -81,7 +86,14 @@ export class AppContext extends MordomoEngine {
       seedDir: seedDir(),
       applyPendingRestore: opts.applyPendingRestore === true,
     });
+    this.unsubscribeCredentials = events.subscribe((e) => {
+      if (e.type !== "run.finished") return;
+      const runId = (e.payload as { runId?: string }).runId;
+      if (runId) this.forgetCredentialsOf(runId);
+    });
   }
+
+  private readonly unsubscribeCredentials: () => void;
 
   /** Re-create the provider adapters from the settings on disk (binaryPath etc.). */
   override reloadAdapters(): void {
@@ -139,27 +151,62 @@ export class AppContext extends MordomoEngine {
     return { runId, active: false };
   }
 
-  /** Run-scoped API credential → the run it was issued for (same lifetime rule as the broker's). */
-  private readonly runApiCredentials = new Map<string, string>();
+  /** Run-scoped API credential → the run it was issued for and whether that run may write (same lifetime rule as the broker's). */
+  private readonly runApiCredentials = new Map<string, { runId: string; writable: boolean }>();
 
   /**
    * A run of a memory skill calls the memory routes of this API with a credential of its own
    * (`MORDOMO_RUN_TOKEN`), never with the owner token it cannot read: `rc_` + 32 random bytes, accepted only while
-   * the run is queued or running and only on `RUN_API_ROUTES` (docs/security.md, AD-012).
+   * the run is queued or running, only on the routes in `RUN_API_*_ROUTES`, and for the routes that write only
+   * when the run itself may write (docs/security.md, AD-012).
    */
-  override runApiAccessFor(run: { id: string }): { url: string; token: string } | null {
+  override runApiAccessFor(run: { id: string }, mode: RunMode): { url: string; token: string } | null {
     const credential = `rc_${crypto.randomBytes(32).toString("base64url")}`;
-    this.runApiCredentials.set(credential, run.id);
+    this.runApiCredentials.set(credential, { runId: run.id, writable: mode === "write" });
     return { url: `http://127.0.0.1:${this.settings().port}`, token: credential };
   }
 
-  runApiRunFor(credential: string): { runId: string; active: boolean } | null {
-    const runId = this.runApiCredentials.get(credential);
-    if (!runId) return null;
-    const status = this.runs.get(runId)?.status;
-    if (status === "queued" || status === "running") return { runId, active: true };
+  runApiRunFor(credential: string): { runId: string; active: boolean; writable: boolean } | null {
+    const entry = this.runApiCredentials.get(credential);
+    if (!entry) return null;
+    const status = this.runs.get(entry.runId)?.status;
+    if (status === "queued" || status === "running") return { ...entry, active: true };
     this.runApiCredentials.delete(credential);
-    return { runId, active: false };
+    return { ...entry, active: false };
+  }
+
+  /** A finished run keeps no credential: both maps drop its entries the moment it settles. */
+  private forgetCredentialsOf(runId: string): void {
+    for (const [credential, id] of this.brokerCredentials)
+      if (id === runId) this.brokerCredentials.delete(credential);
+    for (const [credential, entry] of this.runApiCredentials) {
+      if (entry.runId === runId) this.runApiCredentials.delete(credential);
+    }
+  }
+
+  /** How many writes (journal lines, facts) run credentials made today, and per run. */
+  private readonly memoryWrites = { day: "", total: 0, perRun: new Map<string, number>() };
+
+  /**
+   * One more write by a run credential, or a `429`: a run that loops (or an injected prompt that makes it) cannot
+   * fill the journal or the fact table. The caps are per run and per day across runs.
+   */
+  noteMemoryWrite(runId: string): void {
+    const day = new Date().toISOString().slice(0, 10);
+    if (this.memoryWrites.day !== day) {
+      this.memoryWrites.day = day;
+      this.memoryWrites.total = 0;
+      this.memoryWrites.perRun.clear();
+    }
+    const mine = (this.memoryWrites.perRun.get(runId) ?? 0) + 1;
+    if (mine > MEMORY_WRITES_PER_RUN || this.memoryWrites.total + 1 > MEMORY_WRITES_PER_DAY) {
+      throw Object.assign(new Error("Too many memory writes by runs; try later"), {
+        statusCode: 429,
+        code: "too_many_requests",
+      });
+    }
+    this.memoryWrites.perRun.set(runId, mine);
+    this.memoryWrites.total += 1;
   }
 
   async providerSnapshot(force = false): Promise<ProviderSnapshot[]> {
@@ -296,6 +343,7 @@ export class AppContext extends MordomoEngine {
   }
 
   override close(): void {
+    this.unsubscribeCredentials();
     this.telegramPoller?.stop();
     super.close();
   }

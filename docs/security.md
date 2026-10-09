@@ -59,16 +59,38 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
   token (only while `remote.enabled`) is a `device`; a permission-broker credential is a
   `broker` bound to one run; the credential of a *memory skill's* run is a `run` bound to it.
   The hook records which one called in `req.principal`.
-- **A memory skill's run never sees the owner token.** A skill that works on the second brain
-  (`memoryAccess: true` in the catalog's `SKILL.md`; a skill imported or installed from elsewhere has it
-  dropped) is told the absolute paths it needs in its prompt, gets `memory/` as an added folder, and gets
-  `MORDOMO_URL` and `MORDOMO_RUN_TOKEN` in its environment: `rc_` + 32 random bytes, in memory, accepted
-  only while its run is `queued` or `running` and only on `GET /api/memory/recall`, `…/recall/stats`,
-  `…/journal`, `…/facts` and `POST /api/memory/journal/append`, `…/facts` (anything else is `403`). It
-  replaces the instruction to `cat config/token` that those skills used to carry (AD-012). The CLI path
-  (`mordomo recall`) reads the index directly and needs no credential. `tests/builtin-context.test.ts`
-  runs every built-in skill and routine against the real working directory and the real prompt and fails
-  when one still names a path relative to the home or `config/`.
+- **A memory skill's run does not need the owner token, and is not given it.** Which skills work on
+  the second brain is a list only the owner changes (`settings.memorySkills`, `PUT /api/settings` is
+  owner-only; default `recall` and `consolidate-memory`). It is not a field of any `SKILL.md`: a file an
+  agent, a paired device, an imported folder or a link to another skill's file could write cannot grant it
+  (`tests/builtin-context.test.ts`). Such a skill is told the absolute paths it needs in its prompt, gets
+  `memory/` as an added folder, and gets `MORDOMO_URL` and `MORDOMO_RUN_TOKEN` in its environment: `rc_` +
+  32 random bytes, in memory, dropped the moment its run finishes, accepted only while the run is `queued`
+  or `running`, and only on `GET /api/memory/recall`, `…/recall/stats`, `…/journal`, `…/facts`; the two
+  routes that write (`POST /api/memory/journal/append`, `…/facts`) are open to the credential of a *write*
+  run only, are capped (100 writes a run, 500 a day) and record the run as the source (a fact's
+  `sourceRunId` is the credential's run, whatever the body says). Anything else is `403`. Recall through
+  it reads `memory/` only, not the owner's other granted folders. The request log records who called
+  (`owner`, `device:<id>`, `broker:<run>`, `run:<run>`). It replaces the instruction to `cat config/token`
+  that those skills used to carry (AD-012). The CLI path (`mordomo recall`) reads the index directly and
+  needs no credential. `tests/builtin-context.test.ts` runs every built-in skill and routine against the
+  real working directory and the real prompt and fails when one still names a path relative to the home or
+  `config/`. **Two honest limits:** the credential is not per device and not hidden from the OS user (the
+  environment of a process is readable by `/proc/<pid>/environ` and `ps eww` for processes of the same
+  user, and the same holds for the permission broker's `brk_` credential); and the owner token itself is
+  still obtainable by a program of this user from the page (next bullet), so this narrows what a run is
+  *given*, it does not stop a run that goes looking.
+- **A SKILL.md is data, never code.** Every SKILL.md is parsed by one function (`parseSkillFile`,
+  `core/src/skills/parse.ts`): `gray-matter` would run a `---js`, `---javascript`, `---coffee` or `---cson`
+  frontmatter with `eval`, so those engines are replaced by ones that refuse (`400 invalid_frontmatter`),
+  in the catalog, in the import and in `mordomo skills publish`; YAML and JSON remain.
+- **Folders handed to an agent.** A skill run is given its own folder (`AgentRun.readDirs`), and a memory
+  skill also `memory/`, as real paths inside the home, outside `config/` and `logs/`, and holding no link or
+  second name that leads into them (the run fails before the agent starts otherwise). The skill's own
+  folder is also `protectedDirs`: the Claude adapter passes `--disallowedTools Edit/Write/MultiEdit` rules
+  for it in every mode, so an `acceptEdits` run cannot rewrite the `SKILL.md` the next run trusts. That the
+  installed Claude CLI honours those rule strings was not verified here (no binary was run); Codex and
+  Cursor have no such rule and ignore `protectedDirs`.
 - **Owner-only routes.** A route marked `config: { scope: "owner" }` refuses a device with
   `403 owner_only` before its handler runs, so a lost phone cannot take over the machine:
   `PUT /api/settings`, `PUT /api/providers/default`, `POST /api/providers/:id/detect`,
@@ -101,10 +123,16 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
   adapter writes the MCP config that carries it to a `0600` file in a private `0700`
   temporary directory, passes the file path to `--mcp-config` and removes the directory
   when the run ends, so neither credential appears on argv.
-- **The page only carries the token to this machine.** `GET /` injects the local token
-  into `<meta name="mordomo-token">` only when both the TCP peer (`req.socket.remoteAddress`)
-  and the `Host` header are loopback; a forged `Host: localhost` from the network gets an
-  empty meta and pairs instead.
+- **The page only carries the token to a browser on this machine.** `GET /` injects the local token
+  into `<meta name="mordomo-token">` only when the TCP peer (`req.socket.remoteAddress`) and the `Host`
+  header are loopback AND the request looks like a browser opening the page: `Sec-Fetch-Dest: document`
+  with `Sec-Fetch-Mode: navigate`, or neither header with a `Mozilla/5.0` user agent (a web view that
+  predates Fetch Metadata), and no `Origin` that is not this host (`looksLikeBrowserNavigation`). A forged
+  `Host: localhost` from the network, `curl http://127.0.0.1:4777/` and a script's `fetch()` get an empty
+  meta. **This is a reduction, not a boundary:** a program that sends those headers (it is one line)
+  still reads the owner token from the page, and so can any process of this user read `config/token`
+  from disk. Closing it needs a secret the launcher hands the browser (a handshake or cookie), and is part
+  of the device-scopes work (`escopos-dispositivo`, `.specs/STATE.md`, AD-012).
 - **Opening a file never runs it.** `POST /api/memory/open` hands the OS only folders and
   files whose extension is in `OPENABLE_EXTENSIONS` (`apps/api/src/routes/memory.ts`:
   documents, images, audio, video, `html`, office files); anything else — `.app`,

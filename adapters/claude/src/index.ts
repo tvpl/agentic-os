@@ -223,6 +223,13 @@ export class ClaudeAdapter implements AgentAdapter {
     if (run.model) args.push("--model", run.model);
     args.push("--add-dir", run.artifactsDir);
     for (const dir of run.readDirs ?? []) args.push("--add-dir", dir);
+    // The folders the run reads but must not edit (a skill's own folder): deny the edit tools there in every mode.
+    // acceptEdits would otherwise pre-approve an edit of the SKILL.md the next run trusts. (Rule syntax as for the
+    // artifacts folder below; not exercised against the installed CLI here.)
+    const protectedRules = (run.protectedDirs ?? []).flatMap((dir) => {
+      const rule = dir.startsWith("/") ? `/${dir}` : dir;
+      return [`Edit(${rule}/**)`, `Write(${rule}/**)`, `MultiEdit(${rule}/**)`];
+    });
     if (run.mode === "read_only") {
       // Headless default mode auto-denies permission prompts; writes are only
       // pre-approved inside the artifacts directory. Claude Code permission
@@ -234,7 +241,7 @@ export class ClaudeAdapter implements AgentAdapter {
         "--allowedTools",
         `Write(${artifactsRule}/**),Edit(${artifactsRule}/**)`,
         "--disallowedTools",
-        "Bash(rm:*),Bash(sudo:*)",
+        ["Bash(rm:*)", "Bash(sudo:*)", ...protectedRules].join(","),
       );
     } else if (run.permissionBroker) {
       // Every prompt the CLI would raise goes to a human through the
@@ -255,6 +262,8 @@ export class ClaudeAdapter implements AgentAdapter {
     } else {
       args.push("--permission-mode", "acceptEdits");
     }
+    if (run.mode !== "read_only" && protectedRules.length > 0)
+      args.push("--disallowedTools", protectedRules.join(","));
     const env: Record<string, string> = {};
     const thinking = { low: "1024", medium: "8192", high: "31999" }[run.effort as string];
     if (thinking) env.MAX_THINKING_TOKENS = thinking;

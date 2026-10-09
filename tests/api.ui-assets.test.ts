@@ -63,7 +63,11 @@ describe("Command Centre asset delivery across rebuilds", () => {
       '<!doctype html><meta name="mordomo-token" content=""><main>Updated build</main>',
     );
     for (const url of ["/", "/index.html", "/settings"]) {
-      const response = await app.inject(url);
+      // a browser opening the page (a program fetching it gets no token: tests/api.security-p0.test.ts C53)
+      const response = await app.inject({
+        url,
+        headers: { "sec-fetch-dest": "document", "sec-fetch-mode": "navigate" },
+      });
       expect(response.statusCode).toBe(200);
       expect(response.headers["cache-control"]).toBe("no-store");
       expect(response.body).toContain("Updated build");

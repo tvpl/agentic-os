@@ -2345,5 +2345,19 @@ describe("C33 the security doc says what the code guarantees, and what it does n
     expect(doc).not.toContain("confined to the working directory, `--add-dir` folders and nothing else");
     expect(doc).toContain("not verified here");
     expect(doc).toContain("MORDOMO_RUN_TOKEN");
+    // Round 4: the limits are said, and nothing claims the token is out of reach.
+    for (const phrase of [
+      "parseSkillFile",
+      "`settings.memorySkills`",
+      "looksLikeBrowserNavigation",
+      "a reduction, not a boundary",
+      "/proc/<pid>/environ",
+      "`protectedDirs`",
+      "was not verified here",
+    ]) {
+      expect(doc, phrase).toContain(phrase);
+    }
+    expect(doc).not.toContain("never sees the owner token");
+    expect(doc).not.toContain("`memoryAccess: true` in the catalog");
   });
 });

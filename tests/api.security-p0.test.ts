@@ -71,6 +71,8 @@ afterAll(async () => {
   cleanup();
 });
 
+/** What a browser (or a web view) sends when a person opens the page. */
+const NAVIGATION = { "sec-fetch-dest": "document", "sec-fetch-mode": "navigate", "sec-fetch-site": "none" };
 const owner = () => ({ "x-mordomo-token": token, "content-type": "application/json" });
 const as = (credential: string) => ({ "x-mordomo-token": credential, "content-type": "application/json" });
 
@@ -174,7 +176,7 @@ describe("S2 the page carries the token only to a loopback socket", () => {
       method: "GET",
       url: "/",
       remoteAddress: "127.0.0.1",
-      headers: { host: "127.0.0.1:4777" },
+      headers: { host: "127.0.0.1:4777", ...NAVIGATION },
     });
     expect(res.statusCode).toBe(200);
     expect(meta(res.body)).toBe(token);
@@ -486,12 +488,61 @@ describe("round 2: members the first verification found unproven", () => {
         method: "GET",
         url: "/index.html",
         remoteAddress,
-        headers: { host: "localhost:4777" },
+        headers: { host: "localhost:4777", ...NAVIGATION },
       });
       expect(meta(res.body), remoteAddress).toBe(token);
     }
     for (const address of ["10.0.0.5", "::ffff:10.0.0.5", "fe80::1", "", undefined]) {
       expect(isLoopbackAddress(address), String(address)).toBe(false);
     }
+  });
+
+  it("C53 only a browser opening the page gets the token: not a program fetching it, not another origin", async () => {
+    const page = (headers: Record<string, string>) =>
+      app.inject({
+        method: "GET",
+        url: "/",
+        remoteAddress: "127.0.0.1",
+        headers: { host: "127.0.0.1:4777", ...headers },
+      });
+    // a program: curl and the like send no Fetch Metadata and no browser user agent
+    for (const [who, headers] of [
+      ["no headers", {}],
+      ["curl", { "user-agent": "curl/8.5.0", accept: "*/*" }],
+      ["node fetch", { "user-agent": "node" }],
+      [
+        "a script's fetch()",
+        { "sec-fetch-dest": "empty", "sec-fetch-mode": "cors", "sec-fetch-site": "same-origin" },
+      ],
+      [
+        "an iframe",
+        { "sec-fetch-dest": "iframe", "sec-fetch-mode": "navigate", "sec-fetch-site": "cross-site" },
+      ],
+      ["a navigation that is not a document", { "sec-fetch-dest": "document", "sec-fetch-mode": "cors" }],
+      ["a page from another origin", { ...NAVIGATION, origin: "http://evil.example" }],
+      ["an origin that does not parse", { ...NAVIGATION, origin: "::::" }],
+    ] as const) {
+      const res = await page(headers);
+      expect(res.statusCode, who).toBe(200);
+      expect(meta(res.body), who).toBe("");
+      expect(res.body, who).not.toContain(token);
+    }
+    // a person: a navigation, from this origin or none, and a browser that predates Fetch Metadata
+    for (const [who, headers] of [
+      ["navigation", NAVIGATION],
+      ["navigation with this origin", { ...NAVIGATION, origin: "http://127.0.0.1:4777" }],
+      ["opaque origin", { ...NAVIGATION, origin: "null" }],
+      ["a web view before Fetch Metadata", { "user-agent": "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15" }],
+    ] as const) {
+      expect(meta((await page(headers)).body), who).toBe(token);
+    }
+    // the fallback page of the SPA answers the same way
+    const deep = await app.inject({
+      method: "GET",
+      url: "/runs/abc",
+      remoteAddress: "127.0.0.1",
+      headers: { host: "127.0.0.1:4777", "user-agent": "curl/8.5.0" },
+    });
+    expect(meta(deep.body)).toBe("");
   });
 });

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
+import { parseSkillFile } from "./parse.js";
 import type { MordomoPaths } from "../paths.js";
 import { SkillFrontmatterSchema, type Skill, type SkillFrontmatter, type SkillResource, type SkillResourceKind } from "./types.js";
 import { isValidId, resolveInsideDir } from "../security/ids.js";
@@ -89,7 +90,14 @@ const MAX_SKILL_TEXT_BYTES = 2 * 1024 * 1024;
 export class SkillCatalog {
   private problems: StoreProblem[] = [];
 
-  constructor(private readonly paths: MordomoPaths) {}
+  /**
+   * `memorySlugs` is the owner's list of skills that work on the second brain (`settings.memorySkills`); the
+   * catalog never learns it from a SKILL.md.
+   */
+  constructor(
+    private readonly paths: MordomoPaths,
+    private readonly memorySlugs: () => readonly string[] = () => [],
+  ) {}
 
   /**
    * Every skill file is read through the safe-read primitive, confined to
@@ -148,8 +156,9 @@ export class SkillCatalog {
     const skillFile = path.join(dir, "SKILL.md");
     const raw = this.readText(skillFile, scope);
     if (raw === null) return null;
-    const parsed = matter(raw);
-    const front = SkillFrontmatterSchema.safeParse({ slug, ...parsed.data });
+    const parsed = parseSkillFile(raw);
+    // The folder names the skill: a slug written in the file cannot rename it.
+    const front = SkillFrontmatterSchema.safeParse({ ...parsed.data, slug });
     if (!front.success) {
       throw new Error(`Skill "${slug}" has invalid frontmatter: ${front.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
     }
@@ -158,6 +167,7 @@ export class SkillCatalog {
     const bodyLineCount = body.split("\n").length;
     return {
       ...front.data,
+      memoryAccess: this.memorySlugs().includes(slug),
       body,
       dir,
       skillFile,
@@ -238,7 +248,9 @@ export class SkillCatalog {
 
   save(front: SkillFrontmatter, body: string): Skill {
     const dir = this.dirFor(front.slug);
-    const { slug: _omit, ...frontWithoutSlug } = front;
+    // Only the frontmatter fields go to disk: a loaded Skill passed back in (`setEnabled`) also carries what is
+    // derived (body, folder, resources, `memoryAccess`), none of which belongs in the file.
+    const { slug: _omit, ...frontWithoutSlug } = SkillFrontmatterSchema.parse(front);
     const content = matter.stringify(body.trim() + "\n", frontWithoutSlug);
     writeWorkspaceFile(this.scope, path.join(dir, "SKILL.md"), content);
     const skill = this.load(front.slug);
@@ -274,8 +286,16 @@ export class SkillCatalog {
       .replace(/[^a-z0-9-]+/g, "-")
       .replace(/^-+|-+$/g, "");
     const targetDir = this.dirFor(finalSlug);
-    if (fs.existsSync(targetDir)) {
-      throw new Error(`Skill "${finalSlug}" already exists in the catalog.`);
+    // Made here, exclusively: what a failure removes below is the folder THIS call made, never one that another
+    // import (another process) put there in the meantime.
+    fs.mkdirSync(this.paths.skills, { recursive: true });
+    try {
+      fs.mkdirSync(targetDir);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+        throw new Error(`Skill "${finalSlug}" already exists in the catalog.`);
+      }
+      throw err;
     }
     try {
       // Read AND written through the primitive: the copy holds no link, no secret file, nothing from config/.
@@ -283,7 +303,7 @@ export class SkillCatalog {
       // Normalize frontmatter so the imported skill validates.
       const raw = this.readText(path.join(targetDir, "SKILL.md"));
       if (raw === null) throw new Error(`No SKILL.md found in ${sourceDir}`);
-      const parsed = matter(raw);
+      const parsed = parseSkillFile(raw);
       const front = SkillFrontmatterSchema.parse({
         name: (parsed.data.name as string) ?? finalSlug,
         slug: finalSlug,

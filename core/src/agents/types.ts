@@ -70,6 +70,11 @@ export interface AgentRun {
    * one that does not, ignores them.
    */
   readDirs?: string[];
+  /**
+   * Folders among `readDirs` the run must not edit (the skill's own folder: its SKILL.md is the definition the next
+   * run trusts). The Claude adapter denies its edit tools there; a provider that cannot, ignores it.
+   */
+  protectedDirs?: string[];
   /** Variables added to the provider process on top of what it inherits (the run-scoped API credential). */
   extraEnv?: Record<string, string>;
   /**

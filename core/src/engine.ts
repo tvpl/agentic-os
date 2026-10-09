@@ -212,7 +212,7 @@ export class MordomoEngine {
     this.providers = opts.providers;
     this.adapterRecord = buildAdapters(this.providers, this.settingsStore.load());
     setProbeEnvDrop(providerEnvDrop(this.settingsStore.load()));
-    this.skills = new SkillCatalog(this.paths);
+    this.skills = new SkillCatalog(this.paths, () => this.settings().memorySkills);
     // The adapter callback reads the CURRENT record, so `reloadAdapters()`
     // takes effect for the next run without rebuilding the RunManager.
     // Pruning is the owner's job (`start()`), never a side effect of building.
@@ -228,7 +228,7 @@ export class MordomoEngine {
           const skill = this.skills.load(slug);
           return skill ? { memory: skill.memoryAccess } : null;
         },
-        runApiAccess: (run) => this.runApiAccessFor(run),
+        runApiAccess: (run, mode) => this.runApiAccessFor(run, mode),
       },
     );
     this.objectives = new ObjectiveStore(this.db, this.paths);
@@ -329,7 +329,7 @@ export class MordomoEngine {
    * The credential a run of a memory skill uses for the memory routes of the local API, in place of the owner
    * token it must never see. Null here (no server in this process); the API issues it.
    */
-  runApiAccessFor(_run: { id: string }): { url: string; token: string } | null {
+  runApiAccessFor(_run: { id: string }, _mode: RunMode): { url: string; token: string } | null {
     return null;
   }
 

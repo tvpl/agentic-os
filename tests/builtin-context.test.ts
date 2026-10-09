@@ -2,7 +2,7 @@ import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { seedHome, type AgentRun } from "@mordomo/core";
+import { events, seedHome, type AgentRun } from "@mordomo/core";
 import { ClaudeAdapter } from "@mordomo/adapter-claude";
 import { startSecureServer, type SecureServer } from "./helpers/securityHarness.js";
 
@@ -110,7 +110,8 @@ describe.skipIf(!POSIX)(
       }
     });
 
-    it("a skill that talks of the run credential declares it needs one, and the two memory skills do", () => {
+    it("a skill that talks of the run credential is one the owner's settings name, and the two memory skills are", () => {
+      expect(s.ctx.settings().memorySkills).toEqual(["recall", "consolidate-memory"]);
       for (const skill of skills()) {
         const text = textFiles(skill.dir)
           .map((f) => fs.readFileSync(f, "utf8"))
@@ -213,7 +214,7 @@ describe.skipIf(!POSIX)(
         skillSlug: "recall",
         status: "queued",
       } as never);
-      const credential = s.ctx.runApiAccessFor({ id: live.id })!;
+      const credential = s.ctx.runApiAccessFor({ id: live.id }, "write")!;
       const liveCall = (method: "GET" | "POST", url: string, payload?: unknown) =>
         s.app.inject({
           method,
@@ -249,6 +250,166 @@ describe.skipIf(!POSIX)(
       expect((await liveCall("GET", "/api/memory/facts")).statusCode).toBe(401);
       // a credential that never existed
       expect((await call("GET", "/api/memory/facts")).statusCode).toBe(401);
+    });
+
+    it("a read-only run's credential only reads; a write run's writes, as itself, within a cap; it recalls from memory/ only", async () => {
+      const live = (mode: "read_only" | "write") =>
+        s.ctx.runs.create({
+          origin: "skill",
+          provider: "claude",
+          prompt: "go",
+          cwd: s.home,
+          model: null,
+          effort: "default",
+          mode,
+          timeoutMs: 30_000,
+          profile: mode === "write" ? "controlled_write" : "read_only",
+          skillSlug: "consolidate-memory",
+          status: "queued",
+        } as never);
+      const calls = (token: string) => (method: "GET" | "POST", url: string, payload?: unknown) =>
+        s.app.inject({
+          method,
+          url,
+          headers: { "x-mordomo-token": token, "content-type": "application/json" },
+          ...(payload ? { payload: payload as never } : {}),
+        });
+      const readOnlyRun = live("read_only");
+      const writeRun = live("write");
+      const ro = calls(s.ctx.runApiAccessFor({ id: readOnlyRun.id }, "read_only")!.token);
+      const rw = calls(s.ctx.runApiAccessFor({ id: writeRun.id }, "write")!.token);
+
+      // reading is the same for both; writing is for the run that may write
+      for (const call of [ro, rw]) {
+        for (const url of [
+          "/api/memory/recall?q=anything&record=false",
+          "/api/memory/recall/stats",
+          "/api/memory/journal",
+          "/api/memory/facts",
+        ]) {
+          expect((await call("GET", url)).statusCode, url).toBe(200);
+        }
+      }
+      const fact = { subject: "s", predicate: "p", object: "o" };
+      for (const [method, url, payload] of [
+        ["POST", "/api/memory/journal/append", { text: "x" }],
+        ["POST", "/api/memory/facts", fact],
+      ] as const) {
+        const refused = await ro(method, url, payload);
+        expect(refused.statusCode, `read-only ${url}`).toBe(403);
+        expect(refused.json().error.message).toContain("read-only run");
+      }
+      expect((await rw("POST", "/api/memory/journal/append", { text: "from a write run" })).statusCode).toBe(
+        200,
+      );
+
+      // the fact says which run asserted it: the run's own id, whatever the body claims
+      const asserted = await rw("POST", "/api/memory/facts", {
+        ...fact,
+        object: "o2",
+        sourceRunId: "somebody-else",
+      });
+      expect(asserted.statusCode, asserted.body).toBe(201);
+      const stored = s.ctx.db.prepare("SELECT source_run_id FROM facts WHERE object = 'o2'").get() as {
+        source_run_id: string;
+      };
+      expect(stored.source_run_id).toBe(writeRun.id);
+
+      // recall: the owner finds a note in a granted folder, the run's credential only what is in memory/
+      fs.mkdirSync(path.join(s.userFolder, "notes"), { recursive: true });
+      fs.writeFileSync(
+        path.join(s.userFolder, "notes", "elsewhere.md"),
+        "# quokka elsewhere\nquokka in a granted folder\n",
+      );
+      fs.writeFileSync(
+        path.join(s.home, "memory", "inside.md"),
+        "# quokka inside\nquokka in the memory folder\n",
+      );
+      s.ctx.indexer.indexAll();
+      const paths = (res: {
+        json(): { answerContext: Array<{ path: string }>; candidates: Array<{ path: string }> };
+      }) => [...res.json().answerContext, ...res.json().candidates].map((c) => c.path).join("\n");
+      const owner = await s.app.inject({
+        method: "GET",
+        url: "/api/memory/recall?q=quokka&record=false",
+        headers: s.asOwner(),
+      });
+      expect(paths(owner)).toContain("elsewhere.md");
+      const run = await ro("GET", "/api/memory/recall?q=quokka&record=false");
+      expect(paths(run)).toContain("inside.md");
+      expect(paths(run)).not.toContain("elsewhere.md");
+      expect(run.body).not.toContain("granted folder");
+
+      // the request log says who called
+      await s.app.inject({ method: "GET", url: "/api/memory/facts", headers: s.asOwner() });
+      const lines = fs
+        .readFileSync(path.join(s.home, "logs", "api.jsonl"), "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l) as { url?: string; by?: string | null; status?: number });
+      const by = lines.filter((l) => l.url?.startsWith("/api/memory/facts")).map((l) => l.by);
+      expect(by).toContain(`run:${writeRun.id}`);
+      expect(by).toContain(`run:${readOnlyRun.id}`);
+      expect(by).toContain("owner");
+      expect(JSON.stringify(lines)).not.toMatch(/rc_[A-Za-z0-9_-]{40,}/);
+
+      // a cap per run: the 101st write is a 429, and another run still writes
+      const spare = live("write");
+      const spareCall = calls(s.ctx.runApiAccessFor({ id: spare.id }, "write")!.token);
+      let last = 200;
+      for (let i = 0; i < 101; i++) {
+        last = (
+          await spareCall("POST", "/api/memory/journal/append", { text: `line ${i}`, timestamp: false })
+        ).statusCode;
+      }
+      expect(last).toBe(429);
+      expect((await rw("POST", "/api/memory/journal/append", { text: "still fine" })).statusCode).toBe(200);
+    });
+
+    it("a credential is forgotten the moment its run finishes, the broker's included", async () => {
+      const record = s.ctx.runs.create({
+        origin: "skill",
+        provider: "claude",
+        prompt: "go",
+        cwd: s.home,
+        model: null,
+        effort: "default",
+        mode: "write",
+        timeoutMs: 30_000,
+        profile: "controlled_write",
+        skillSlug: "recall",
+        status: "queued",
+      } as never);
+      const credential = s.ctx.runApiAccessFor({ id: record.id }, "write")!.token;
+      const broker = s.ctx.permissionBrokerFor({ id: record.id, permissionProfile: "controlled_write" })!.env
+        .MORDOMO_TOKEN!;
+      const maps = () => ({
+        run: (s.ctx as unknown as { runApiCredentials: Map<string, unknown> }).runApiCredentials,
+        broker: (s.ctx as unknown as { brokerCredentials: Map<string, unknown> }).brokerCredentials,
+      });
+      expect(maps().run.has(credential)).toBe(true);
+      expect(maps().broker.has(broker)).toBe(true);
+      events.emit("run.finished", { runId: record.id, status: "done" } as never);
+      expect(maps().run.has(credential)).toBe(false);
+      expect(maps().broker.has(broker)).toBe(false);
+      // and a run that finishes for real leaves nothing behind
+      const before = maps().run.size;
+      captured = [];
+      current = "recall";
+      const done = s.ctx.runs.create({
+        origin: "skill",
+        provider: "claude",
+        prompt: "go",
+        cwd: s.home,
+        model: null,
+        effort: "default",
+        mode: "read_only",
+        timeoutMs: 30_000,
+        profile: "read_only",
+        skillSlug: "recall",
+      } as never);
+      await s.ctx.runs.execute(done.id, "go", "read_only");
+      expect(maps().run.size).toBe(before);
     });
 
     it("the credential reaches the agent process, and nothing else of MordomoOS's environment does", async () => {
@@ -308,6 +469,196 @@ describe.skipIf(!POSIX)(
       expect(done.error).toContain("outside the granted folders");
       expect(captured).toEqual([]);
       fs.rmSync(path.join(s.home, "skills", "linkout"));
+    });
+
+    it("the skill's own folder is protected from edits in every mode; a link into config/ in a folder handed to the agent fails the run", async () => {
+      const run = async (slug: string) => {
+        captured = [];
+        current = slug;
+        const record = s.ctx.runs.create({
+          origin: "skill",
+          provider: "claude",
+          prompt: "go",
+          cwd: s.home,
+          model: null,
+          effort: "default",
+          mode: "read_only",
+          timeoutMs: 30_000,
+          profile: "read_only",
+          skillSlug: slug,
+        } as never);
+        return s.ctx.runs.execute(record.id, "go", "read_only");
+      };
+      expect((await run("recall")).status).toBe("done");
+      const recall = captured[0]!.run;
+      expect(recall.protectedDirs).toEqual([fs.realpathSync(path.join(s.home, "skills", "recall"))]);
+      const claude = new ClaudeAdapter({ binaryPath: "claude" });
+      for (const mode of ["read_only", "write"] as const) {
+        const inv = await claude.buildInvocation({
+          ...recall,
+          mode,
+          profile: mode === "write" ? "controlled_write" : "read_only",
+        });
+        const denied = inv.args
+          .flatMap((a, i) => (a === "--disallowedTools" ? [inv.args[i + 1]!] : []))
+          .join(",");
+        const rule = `/${recall.protectedDirs![0]}`;
+        for (const tool of ["Edit", "Write", "MultiEdit"])
+          expect(denied, `${mode} ${tool}`).toContain(`${tool}(${rule}/**)`);
+      }
+      // a run of a skill without protected folders adds nothing to the write mode arguments
+      const bare = await claude.buildInvocation({
+        ...recall,
+        protectedDirs: undefined,
+        mode: "write",
+        profile: "controlled_write",
+      });
+      expect(bare.args).not.toContain("--disallowedTools");
+
+      // links and second names leading into config/ or logs/, in either folder the agent is given
+      const plants: Array<[string, string, (at: string) => void]> = [
+        ["symbolic link to the token", "skills/recall/leak", (at) => fs.symlinkSync(s.tokenFile(), at)],
+        [
+          "dangling link into config/",
+          "skills/recall/pending",
+          (at) => fs.symlinkSync(path.join(s.home, "config", "later"), at),
+        ],
+        ["hard link to the token", "memory/notes/hard.md", (at) => fs.linkSync(s.tokenFile(), at)],
+        [
+          "link to a folder of config/",
+          "memory/cfg",
+          (at) => fs.symlinkSync(path.join(s.home, "config", "db"), at),
+        ],
+      ];
+      fs.mkdirSync(path.join(s.home, "memory", "notes"), { recursive: true });
+      fs.mkdirSync(path.join(s.home, "config", "db"), { recursive: true });
+      for (const [what, rel, plant] of plants) {
+        const at = path.join(s.home, rel);
+        plant(at);
+        try {
+          const done = await run("recall");
+          expect(done.status, what).toBe("failed");
+          expect(done.error, what).toContain("link into the MordomoOS config/ or logs/");
+          expect(captured, `${what}: the agent was not started`).toEqual([]);
+        } finally {
+          fs.rmSync(at, { force: true });
+        }
+      }
+      // memory/ itself turned into a link to a folder of config/: it is not handed over as a folder of the agent
+      fs.renameSync(path.join(s.home, "memory"), path.join(s.home, "memory.bak"));
+      fs.symlinkSync(path.join(s.home, "config", "db"), path.join(s.home, "memory"));
+      try {
+        expect((await run("recall")).status).toBe("done");
+        const dirs = captured[0]!.run.readDirs ?? [];
+        expect(dirs.some((d) => d.startsWith(path.join(s.home, "config")))).toBe(false);
+        expect(dirs).toEqual([fs.realpathSync(path.join(s.home, "skills", "recall"))]);
+      } finally {
+        fs.rmSync(path.join(s.home, "memory"));
+        fs.renameSync(path.join(s.home, "memory.bak"), path.join(s.home, "memory"));
+      }
+      // a link to somewhere harmless inside memory/ (or to a user's folder) is fine
+      fs.symlinkSync(path.join(s.userFolder), path.join(s.home, "memory", "vault"));
+      fs.symlinkSync(path.join(s.home, "memory", "notes"), path.join(s.home, "memory", "alias"));
+      try {
+        expect((await run("recall")).status).toBe("done");
+      } finally {
+        fs.rmSync(path.join(s.home, "memory", "vault"));
+        fs.rmSync(path.join(s.home, "memory", "alias"));
+      }
+    });
+
+    it("no skill gives itself the memory: not through the API, not through a link to a memory skill's file, not as a device", async () => {
+      const run = async (slug: string) => {
+        captured = [];
+        current = slug;
+        const record = s.ctx.runs.create({
+          origin: "skill",
+          provider: "claude",
+          prompt: "go",
+          cwd: s.home,
+          model: null,
+          effort: "default",
+          mode: "read_only",
+          timeoutMs: 30_000,
+          profile: "read_only",
+          skillSlug: slug,
+        } as never);
+        const done = await s.ctx.runs.execute(record.id, "go", "read_only");
+        expect(done.status, slug).toBe("done");
+        return captured[0]!.run;
+      };
+      const body = (slug: string, extra: Record<string, unknown> = {}) => ({
+        frontmatter: {
+          name: slug,
+          slug,
+          description: "d",
+          memoryAccess: true,
+          needs: { memory: true },
+          ...extra,
+        },
+        body: "Do it.",
+      });
+      for (const [who, headers] of s.principals()) {
+        const slug = `sneaky-${who}`;
+        const created = await s.app.inject({
+          method: "POST",
+          url: "/api/skills",
+          headers,
+          payload: body(slug),
+        });
+        expect(created.statusCode, created.body).toBe(200);
+        expect(s.ctx.skills.load(slug)?.memoryAccess, `${who} POST`).toBe(false);
+        expect(
+          fs.readFileSync(path.join(s.home, "skills", slug, "SKILL.md"), "utf8"),
+          `${who} file`,
+        ).not.toContain("memoryAccess");
+        const updated = await s.app.inject({
+          method: "PUT",
+          url: `/api/skills/${slug}`,
+          headers,
+          payload: body(slug),
+        });
+        expect(updated.statusCode, updated.body).toBe(200);
+        expect(s.ctx.skills.load(slug)?.memoryAccess, `${who} PUT`).toBe(false);
+        const ran = await run(slug);
+        expect(ran.extraEnv, `${who}: no credential`).toBeUndefined();
+        expect(ran.readDirs, `${who}: no memory folder`).toEqual([
+          fs.realpathSync(path.join(s.home, "skills", slug)),
+        ]);
+      }
+      // a skill whose SKILL.md is a link to a memory skill's own file reads that file, and is still not a memory skill
+      fs.mkdirSync(path.join(s.home, "skills", "borrowed"), { recursive: true });
+      fs.symlinkSync("../recall/SKILL.md", path.join(s.home, "skills", "borrowed", "SKILL.md"));
+      try {
+        expect(s.ctx.skills.load("borrowed")?.name).toBe("Recall");
+        expect(s.ctx.skills.load("borrowed")?.memoryAccess).toBe(false);
+        const ran = await run("borrowed");
+        expect(ran.extraEnv).toBeUndefined();
+      } finally {
+        fs.rmSync(path.join(s.home, "skills", "borrowed"), { recursive: true });
+      }
+      // the list is the owner's: a device cannot change it, the owner can, and only then does a skill gain the memory
+      const patch = { memorySkills: ["recall", "consolidate-memory", "sneaky-owner"] };
+      const asDevice = await s.app.inject({
+        method: "PUT",
+        url: "/api/settings",
+        headers: s.asDevice(),
+        payload: patch,
+      });
+      expect(asDevice.statusCode).toBe(403);
+      expect(s.ctx.settings().memorySkills).not.toContain("sneaky-owner");
+      const asOwner = await s.app.inject({
+        method: "PUT",
+        url: "/api/settings",
+        headers: s.asOwner(),
+        payload: patch,
+      });
+      expect(asOwner.statusCode, asOwner.body).toBe(200);
+      try {
+        expect((await run("sneaky-owner")).extraEnv?.MORDOMO_RUN_TOKEN).toMatch(/^rc_/);
+      } finally {
+        s.ctx.settingsStore.update({ memorySkills: ["recall", "consolidate-memory"] });
+      }
     });
 
     it("a skill imported from a folder cannot give itself the memory", async () => {

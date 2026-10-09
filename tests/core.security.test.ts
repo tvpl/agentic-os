@@ -153,3 +153,42 @@ describe("safe spawn", () => {
     expect(hung.exitCode).not.toBe(0);
   }, 20_000);
 });
+
+describe("C55 MordomoOS's own credentials never reach a log or a stored summary", () => {
+  const rc = `rc_${"A1b2C3d4E5".repeat(4)}abc`; // 43 characters after the prefix, like crypto.randomBytes(32) in base64url
+  const brk = `brk_${"Z9y8X7w6V5".repeat(4)}abc`;
+
+  it("redacts a run credential and a broker credential wherever they appear", () => {
+    for (const text of [
+      `token ${rc} end`,
+      `curl -H 'x-mordomo-token: ${rc}'`,
+      `{"t":"${brk}"}`,
+      `${rc}${brk}`,
+    ]) {
+      const out = redactSecrets(text);
+      expect(out, text).not.toContain(rc);
+      expect(out, text).not.toContain(brk);
+    }
+    expect(redactSecrets(`word rc_short and brk_x are not credentials`)).toContain("rc_short");
+  });
+
+  it("redacts a prefixed key name: MORDOMO_RUN_TOKEN=…, x_api_key: …, an env dump", () => {
+    for (const text of [
+      `MORDOMO_RUN_TOKEN=${"q".repeat(30)}`,
+      `export MORDOMO_TOKEN='${"q".repeat(30)}'`,
+      `{"MORDOMO_RUN_TOKEN": "${"q".repeat(30)}"}`,
+      `x_api_key: ${"q".repeat(30)}`,
+      `DB_PASSWORD=${"q".repeat(30)}`,
+      `CLIENT_SECRET = ${"q".repeat(30)}`,
+    ]) {
+      const out = redactSecrets(text);
+      expect(out, text).not.toContain("qqqqqqqq");
+      expect(out, text).toContain("[REDACTED");
+    }
+    // the key stays, so a log is still readable, and ordinary words are left alone
+    expect(redactSecrets(`MORDOMO_RUN_TOKEN=${"q".repeat(30)}`)).toMatch(/^MORDOMO_RUN_TOKEN=/);
+    expect(redactSecrets("the author: a person with tokens of appreciation")).toBe(
+      "the author: a person with tokens of appreciation",
+    );
+  });
+});

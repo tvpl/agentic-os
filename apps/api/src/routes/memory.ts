@@ -11,6 +11,7 @@ import {
   events,
   factStats,
   generateRouters,
+  homeReadScope,
   installJournalHooks,
   isJournalDate,
   journalSections,
@@ -191,6 +192,8 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       k: q.k,
       area: q.area,
       excerptChars: q.excerptChars,
+      // A run's credential recalls from the memory folder, not from every folder the owner granted.
+      ...(req.principal?.kind === "run" ? { scope: homeReadScope(ctx.paths.home, [ctx.paths.memory]) } : {}),
     });
     if (q.record !== false) recordRecall(ctx.db, result);
     return result;
@@ -226,6 +229,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
         timestamp: z.boolean().optional(),
       })
       .parse(req.body);
+    if (req.principal?.kind === "run") ctx.noteMemoryWrite(req.principal.runId);
     const day = appendJournal(ctx.paths, body);
     return { ...day, sections: journalSections(day.content) };
   });
@@ -280,6 +284,11 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
         sourcePath: z.string().max(4096).nullable().optional(),
       })
       .parse(req.body);
+    // A run's credential says which run asserted the fact; the body cannot name another.
+    if (req.principal?.kind === "run") {
+      ctx.noteMemoryWrite(req.principal.runId);
+      body.sourceRunId = req.principal.runId;
+    }
     const result = assertFact(ctx.db, body);
     reply.code(result.unchanged ? 200 : 201);
     return result;

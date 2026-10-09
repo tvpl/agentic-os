@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import matter from "gray-matter";
+import { parseSkillFile } from "./parse.js";
 
 /**
  * The producer side of the marketplace (plan follow-up 9): turn a folder of
@@ -169,7 +169,7 @@ export function publishRegistry(opts: PublishOptions): PublishResult {
     if (!fs.existsSync(skillFile)) continue;
     let front: Record<string, unknown>;
     try {
-      front = matter(fs.readFileSync(skillFile, "utf8")).data as Record<string, unknown>;
+      front = parseSkillFile(fs.readFileSync(skillFile, "utf8")).data;
     } catch (err) {
       skipped.push({ dir, reason: `frontmatter: ${(err as Error).message}` });
       continue;

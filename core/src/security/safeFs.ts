@@ -404,6 +404,51 @@ export function isHomeDirectory(scope: ReadScope, real: string): boolean {
   return scope.filter.isHomeDir(real);
 }
 
+/** The most entries `findPrivateLink` looks at; past it the folder is refused, not trusted. */
+const MAX_LINK_SCAN = 100_000;
+
+/**
+ * A link, or a second name for a file, inside `dir` that leads into the home's `config/` or `logs/`; null when
+ * there is none. Looked for before a folder is handed to an agent as an added folder (the agent's own tools follow
+ * links the engine's reader would refuse). Never follows a link. A folder too large to look through counts as a hit.
+ */
+export function findPrivateLink(scope: ReadScope, dir: string): string | null {
+  let seen = 0;
+  const walk = (current: string): string | null => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      return null;
+    }
+    for (const entry of entries) {
+      if (++seen > MAX_LINK_SCAN) return current;
+      const full = path.join(current, entry.name);
+      if (entry.isSymbolicLink()) {
+        let target: string | null = null;
+        try {
+          target = path.resolve(current, fs.readlinkSync(full));
+        } catch {
+          /* gone */
+        }
+        const spellings = [realpathLenient(full), ...(target ? [realpathLenient(target)] : [])];
+        if (spellings.some((s) => scope.filter.homePrivateReason(s) !== null)) return full;
+      } else if (entry.isDirectory()) {
+        const found = walk(full);
+        if (found) return found;
+      } else if (entry.isFile()) {
+        try {
+          if (sharesInodeWithPrivateFile(scope, fs.lstatSync(full))) return full;
+        } catch {
+          /* gone */
+        }
+      }
+    }
+    return null;
+  };
+  return walk(dir);
+}
+
 export interface WorkspaceEntry {
   name: string;
   /** Real path of the entry (its parent's real path + its name). */

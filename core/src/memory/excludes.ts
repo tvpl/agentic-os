@@ -95,12 +95,17 @@ export interface WorkspaceFilter {
   isHomeDir(absolute: string): boolean;
 }
 
-/** Segments as the platform's file system compares them: case-folded, and without the trailing dots/spaces Windows drops. */
+/**
+ * Segments as the platform's file system compares them: case-folded, without the trailing dots/spaces Windows
+ * drops, and on macOS in one Unicode form (APFS and HFS+ treat `é` written as one character or as `e` plus an
+ * accent as the same name).
+ */
 function comparableSegments(p: string, platform: NodeJS.Platform): string[] {
   const insensitive = platform === "darwin" || platform === "win32";
   return segmentsOf(p).map((seg) => {
     const trimmed = platform === "win32" ? seg.replace(/[. ]+$/, "") : seg;
-    return insensitive ? trimmed.toLowerCase() : trimmed;
+    const composed = platform === "darwin" ? trimmed.normalize("NFC") : trimmed;
+    return insensitive ? composed.toLowerCase() : composed;
   });
 }
 

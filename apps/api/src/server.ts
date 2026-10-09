@@ -52,7 +52,7 @@ import { closeAllSse } from "./routes/sse.js";
 import { isApiRequest, rewriteApiUrl, successorHeaders } from "./apiVersion.js";
 import { SlidingWindow } from "./rateLimit.js";
 import { registerOpenApiRoute } from "./openapi.js";
-import type { Principal } from "./routes/common.js";
+import { principalName, type Principal } from "./routes/common.js";
 
 export interface ServerHandle {
   app: FastifyInstance;
@@ -123,6 +123,31 @@ export function isLoopbackAddress(address: string | undefined): boolean {
   return a === "::1" || a.startsWith("127.") || a.startsWith("::ffff:127.");
 }
 
+/**
+ * Whether a request for the page is a browser opening it, as opposed to a program fetching it (`curl
+ * http://127.0.0.1:4777/`, which any process of this user, an agent's shell included, can do). A browser or a
+ * web view that supports Fetch Metadata says `Sec-Fetch-Dest: document` and `Sec-Fetch-Mode: navigate`; one that
+ * predates it (WebKit before 16.4) sends neither and a `Mozilla/5.0` user agent; a request from another origin
+ * (`Origin` that is not this host) is never one. This is a reduction, not a boundary: a program can send those
+ * headers too. Closing it takes a secret the launcher hands the browser (feature `escopos-dispositivo`).
+ */
+export function looksLikeBrowserNavigation(req: FastifyRequest): boolean {
+  const origin = req.headers.origin;
+  if (typeof origin === "string" && origin !== "null") {
+    try {
+      if (new URL(origin).host !== req.headers.host) return false;
+    } catch {
+      return false;
+    }
+  }
+  const dest = req.headers["sec-fetch-dest"];
+  const mode = req.headers["sec-fetch-mode"];
+  if (dest === undefined && mode === undefined) {
+    return /^Mozilla\/5\.0 /.test(String(req.headers["user-agent"] ?? ""));
+  }
+  return dest === "document" && mode === "navigate";
+}
+
 /** The only routes a permission-broker credential may call (docs/security.md, AD-002). */
 const BROKER_ROUTES = new Set([
   "POST /api/approvals/tool",
@@ -132,16 +157,16 @@ const BROKER_ROUTES = new Set([
 
 /**
  * The only routes the credential of a memory skill's run may call (AD-012): the memory the skill works on, and
- * nothing of settings, devices, providers, approvals or other runs.
+ * nothing of settings, devices, providers, approvals or other runs. The first set reads and is open to every run
+ * with the credential; the second writes (a journal line, a fact) and only to a run that may write itself.
  */
-const RUN_API_ROUTES = new Set([
+const RUN_API_READ_ROUTES = new Set([
   "GET /api/memory/recall",
   "GET /api/memory/recall/stats",
   "GET /api/memory/journal",
-  "POST /api/memory/journal/append",
   "GET /api/memory/facts",
-  "POST /api/memory/facts",
 ]);
+const RUN_API_WRITE_ROUTES = new Set(["POST /api/memory/journal/append", "POST /api/memory/facts"]);
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -318,8 +343,14 @@ export async function buildServer(
     }
     const runApi = typeof supplied === "string" ? ctx.runApiRunFor(supplied) : null;
     if (runApi?.active) {
-      if (!RUN_API_ROUTES.has(`${req.method} ${route}`)) {
+      const called = `${req.method} ${route}`;
+      if (!RUN_API_READ_ROUTES.has(called) && !RUN_API_WRITE_ROUTES.has(called)) {
         return reply.code(403).send(errorBody("forbidden", "A run's credential cannot call this route"));
+      }
+      if (RUN_API_WRITE_ROUTES.has(called) && !runApi.writable) {
+        return reply
+          .code(403)
+          .send(errorBody("forbidden", "The credential of a read-only run cannot write to the memory"));
       }
       req.principal = { kind: "run", runId: runApi.runId };
       return;
@@ -347,6 +378,8 @@ export async function buildServer(
       status: reply.statusCode,
       ms: Math.round(reply.elapsedTime * 10) / 10,
       reqId: req.id,
+      // Who called: `owner`, `device:<id>`, `broker:<run>`, `run:<run>`; null on public routes.
+      by: req.principal ? principalName(req.principal) : null,
     });
   });
 
@@ -419,7 +452,11 @@ export async function buildServer(
       // Host); a remote device pairs and keeps its own token in the browser.
       // Foreign origins cannot read the meta (CORS) nor send it (custom header + no CORS).
       const inject =
-        isLoopbackHost(req.headers.host) && isLoopbackAddress(req.socket.remoteAddress) ? token : "";
+        isLoopbackHost(req.headers.host) &&
+        isLoopbackAddress(req.socket.remoteAddress) &&
+        looksLikeBrowserNavigation(req)
+          ? token
+          : "";
       const html = fs
         .readFileSync(indexFile, "utf8")
         .replace(

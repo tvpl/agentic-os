@@ -175,6 +175,68 @@ describe.skipIf(!POSIX)("C42-C43 the write primitive, and the hard link", () => 
     fs.rmSync(folder);
   });
 
+  it("C51 a file the open created behind a folder that turned into a link is removed again,", () => {
+    const folder = path.join(home, "memory", "swap2");
+    fs.mkdirSync(folder, { recursive: true });
+    const target = path.join(folder, "new-file.md");
+    const behind = path.join(home, "config", "new-file.md");
+    const lstat = fs.lstatSync.bind(fs);
+    let swapped = false;
+    let looks = 0;
+    // the check and the folders are done; the next look at the name (is it there already?) is where the folder is swapped
+    const spy = vi.spyOn(fs, "lstatSync").mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+      try {
+        return (lstat as (...a: unknown[]) => fs.Stats)(p, ...rest);
+      } catch (err) {
+        // the third look at the name: the two checks are behind us, "is it there already?" is next to the open
+        if (String(p) === target && ++looks === 3) {
+          swapped = true;
+          fs.rmSync(folder, { recursive: true });
+          fs.symlinkSync(path.join(home, "config"), folder);
+        }
+        throw err;
+      }
+    }) as typeof fs.lstatSync);
+    try {
+      expect(() => writeWorkspaceFile(narrow(), target, "BEHIND-THE-LINK")).toThrow(PathAccessError);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(swapped).toBe(true);
+    expect(fs.existsSync(behind), "the empty file the open made is gone").toBe(false);
+    fs.rmSync(folder);
+  });
+
+  it("C51 a folder that becomes a link while the folders are being made is seen before the open", () => {
+    const folder = path.join(home, "memory", "swap3");
+    const target = path.join(folder, "late.md");
+    const mkdir = fs.mkdirSync.bind(fs);
+    let swapped = false;
+    const spy = vi.spyOn(fs, "mkdirSync").mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+      const answer = (mkdir as (...a: unknown[]) => unknown)(p, ...rest);
+      if (!swapped && String(p) === folder) {
+        swapped = true;
+        fs.rmSync(folder, { recursive: true });
+        fs.symlinkSync(path.join(home, "config"), folder);
+      }
+      return answer;
+    }) as typeof fs.mkdirSync);
+    const open = vi.spyOn(fs, "openSync");
+    try {
+      expect(() => writeWorkspaceFile(narrow(), target, "X")).toThrow(PathAccessError);
+      expect(
+        open.mock.calls.filter((c) => String(c[0]).endsWith("late.md")),
+        "nothing was opened",
+      ).toEqual([]);
+    } finally {
+      open.mockRestore();
+      spy.mockRestore();
+    }
+    expect(swapped).toBe(true);
+    expect(fs.existsSync(path.join(home, "config", "late.md"))).toBe(false);
+    fs.rmSync(folder);
+  });
+
   it("C42 a dangling link that appears at the target after the check creates nothing behind it (O_NOFOLLOW)", () => {
     const target = path.join(home, "memory", "dangling-late.md");
     const behind = path.join(home, "config", "created-through-the-link");
@@ -647,6 +709,30 @@ describe.skipIf(!POSIX)(
       } finally {
         s.ctx.settingsStore.update({ indexedFolders: folders });
       }
+    });
+
+    it("C41 on macOS a name written with a combining accent is the same name as the composed one", () => {
+      const above = path.dirname(s.home);
+      // the home's own name has no accent: the point is the private folders and a folder in a made-up home
+      const base = path.join(above, "mordomo-café-home");
+      const scope = (form: "NFC" | "NFD", platform: NodeJS.Platform) =>
+        readScope({ homeDir: base.normalize(form), roots: [above], platform });
+      const composed = base.normalize("NFC");
+      const decomposed = base.normalize("NFD");
+      expect(composed).not.toBe(decomposed);
+      // the home is known by one spelling, the agent's folder is asked for by the other
+      expect(() => resolveWorkspaceCwd(scope("NFC", "darwin"), path.join(decomposed, "config"))).toThrow(
+        PathAccessError,
+      );
+      expect(() => resolveWorkspaceCwd(scope("NFD", "darwin"), path.join(composed, "LOGS"))).toThrow(
+        PathAccessError,
+      );
+      expect(scope("NFC", "darwin").filter.isHomeDir(decomposed)).toBe(true);
+      // a file system that tells the two apart does not
+      expect(scope("NFC", "linux").filter.isHomeDir(decomposed)).toBe(false);
+      expect(resolveWorkspaceCwd(scope("NFC", "linux"), path.join(decomposed, "config"))).toBe(
+        path.join(decomposed, "config"),
+      );
     });
 
     it("C41 a default working directory that is a file or a dangling link is a clear 409, not a crash", async () => {

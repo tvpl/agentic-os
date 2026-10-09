@@ -25,7 +25,6 @@ providers: [claude, cursor, codex]
 recommendedModel: null
 recommendedEffort: low
 mode: read_only
-memoryAccess: true
 enabled: true
 version: 1.0.0
 changelog:
@@ -55,12 +54,13 @@ estimate, so you read less and answer faster.
 
 ## Procedure
 
-1. Run the CLI (from any folder; no token needed, it reads the index directly):
+1. Run the CLI (from any folder; no token needed, it reads the index directly). Name
+   the MordomoOS home given in the paths above, so it finds the right one:
 
-   `mordomo recall "<question>" --json`
+   `MORDOMO_HOME="<MordomoOS home>" mordomo recall "<question>" --json`
 
-   If `mordomo` is not on the PATH, run it from the MordomoOS home given in
-   the paths above: `npm run mordomo --prefix <MordomoOS home> -- recall "<question>" --json`.
+   If `mordomo` is not on the PATH, run it through npm from that home:
+   `MORDOMO_HOME="<MordomoOS home>" npm run mordomo --prefix "<MordomoOS home>" -- recall "<question>" --json`.
 
    If the CLI is unavailable, call the local API with the credential of this
    run (the environment variables `MORDOMO_URL` and `MORDOMO_RUN_TOKEN`; there

@@ -9,10 +9,11 @@ import type { MordomoPaths } from "../paths.js";
 import type { Settings, ProviderId, EffortLevel, SecurityProfile } from "../config/schema.js";
 import type { AgentAdapter, AgentRun, RunEvent, RunMode, RunUsage, RunUsageEvent } from "../agents/types.js";
 import { JsonlLogger } from "../logs/jsonl.js";
-import { isInside, realpathLenient } from "../security/paths.js";
+import { PathAccessError, isInside, realpathLenient } from "../security/paths.js";
 import { isValidId } from "../security/ids.js";
 import { redactSecrets } from "../security/redact.js";
 import {
+  findPrivateLink,
   grantedReadScope,
   isHomeDirectory,
   resolveWorkspaceCwd,
@@ -162,12 +163,12 @@ interface ActiveRun {
 /** Builds the permission MCP command for a run, or null to let the CLI decide alone. */
 export type PermissionBrokerFactory = (run: RunRecord) => PermissionBroker | null;
 
-/** What a catalog skill is given besides its own folder (`SkillFrontmatter.memoryAccess`). */
+/** What a catalog skill is given besides its own folder (`Skill.memoryAccess`, from the owner's `memorySkills`). */
 export interface SkillAccess {
   memory: boolean;
 }
 /** The run-scoped credential for the memory routes of the local API, or null when the API is not this process's. */
-export type RunApiAccessFactory = (run: RunRecord) => { url: string; token: string } | null;
+export type RunApiAccessFactory = (run: RunRecord, mode: RunMode) => { url: string; token: string } | null;
 
 export class RunManager {
   private readonly permissionBroker: PermissionBrokerFactory | null;
@@ -480,28 +481,48 @@ export class RunManager {
    * and, for a skill that works on the second brain, `memory/` plus a credential of this run for the memory
    * routes of the local API. Never `config/` or `logs/`, and never the owner token.
    */
-  private skillContext(record: RunRecord): { readDirs?: string[]; extraEnv?: Record<string, string> } {
+  private skillContext(
+    record: RunRecord,
+    mode: RunMode,
+  ): {
+    readDirs?: string[];
+    protectedDirs?: string[];
+    extraEnv?: Record<string, string>;
+  } {
     if (!record.skillSlug || !isValidId(record.skillSlug)) return {};
     const realHome = realpathLenient(this.paths.home);
+    const scope = this.scope();
+    // A folder is let in only when it is a real folder of the home, outside config/ and logs/, and holds no link
+    // (or second name) that leads into them: the agent's own tools follow what the engine's reader refuses.
     const inHome = (dir: string): string | null => {
       const real = realpathLenient(dir);
-      // A folder that is a link out of the home is not let in; neither is anything that holds config/ or logs/.
-      return isInside(realHome, real) && real !== realHome ? real : null;
+      if (!isInside(realHome, real) || real === realHome) return null;
+      if (scope.filter.homePrivateReason(real) !== null) return null;
+      const offending = findPrivateLink(scope, real);
+      if (offending) {
+        throw new PathAccessError(
+          real,
+          `Folder holds a link into the MordomoOS config/ or logs/: ${offending}`,
+        );
+      }
+      return real;
     };
     const access = this.skillAccess?.(record.skillSlug) ?? null;
-    const dirs = [inHome(path.join(this.paths.skills, record.skillSlug))];
+    const skillDir = inHome(path.join(this.paths.skills, record.skillSlug));
+    const dirs = [skillDir];
     if (access?.memory) dirs.push(inHome(this.paths.memory));
     const readDirs = dirs.filter((d): d is string => d !== null);
     let api: { url: string; token: string } | null = null;
     if (access?.memory) {
       try {
-        api = this.runApiAccess?.(record) ?? null;
+        api = this.runApiAccess?.(record, mode) ?? null;
       } catch {
         api = null;
       }
     }
     return {
       ...(readDirs.length > 0 ? { readDirs } : {}),
+      ...(skillDir ? { protectedDirs: [skillDir] } : {}),
       ...(api ? { extraEnv: { MORDOMO_URL: api.url, MORDOMO_RUN_TOKEN: api.token } } : {}),
     };
   }
@@ -710,7 +731,7 @@ export class RunManager {
         timeoutMs: record.timeoutMs ?? this.getSettings().limits.defaultTimeoutMs,
         profile: record.permissionProfile ?? this.getSettings().securityProfile,
         artifactsDir,
-        ...this.skillContext(record),
+        ...this.skillContext(record, mode),
         // MordomoOS's own secrets stay in the service (docs/security.md).
         dropEnv: providerEnvDrop(this.getSettings()),
         ...(record.sessionId ? { sessionId: record.sessionId } : {}),

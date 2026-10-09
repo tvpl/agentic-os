@@ -18,7 +18,6 @@ providers: [claude, cursor, codex]
 recommendedModel: null
 recommendedEffort: medium
 mode: write
-memoryAccess: true
 enabled: true
 version: 1.0.0
 changelog:
