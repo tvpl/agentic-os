@@ -109,7 +109,7 @@ afterEach(() => {
 });
 
 function index(): void {
-  new MemoryIndexer(db, () => settings()).indexAll();
+  new MemoryIndexer(db, () => settings(), { homeDir: ctx.paths.home }).indexAll();
 }
 
 // --------------------------------------------------------------- keywords ----
@@ -372,7 +372,7 @@ describe("daily journal", () => {
     expect(router).toContain("keep the routers generated");
     expect(router).toContain("mordomo recall");
 
-    const indexer = new MemoryIndexer(db, () => settings());
+    const indexer = new MemoryIndexer(db, () => settings(), { homeDir: ctx.paths.home });
     installJournalHooks(new EventBus(), ctx.paths, { indexer });
     indexer.indexAll();
     const journalFile = path.join(ctx.paths.memory, "journal", `${localDateString()}.md`);

@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
@@ -30,6 +29,9 @@ import {
   resolveOpenablePath,
   retractFact,
   searchFiles,
+  statWorkspacePath,
+  workspaceScope,
+  type ReadScope,
 } from "@mordomo/core";
 import type { AppContext } from "../context.js";
 import { httpError } from "./common.js";
@@ -47,11 +49,11 @@ export const OPENABLE_EXTENSIONS: ReadonlySet<string> = new Set(
   ),
 );
 
-function isOpenable(resolved: string): boolean {
+function isOpenable(scope: ReadScope, resolved: string): boolean {
   const ext = path.extname(resolved).slice(1).toLowerCase();
   if (ext) return OPENABLE_EXTENSIONS.has(ext);
   try {
-    return fs.statSync(resolved).isDirectory();
+    return statWorkspacePath(scope, resolved).stat.isDirectory();
   } catch {
     return false;
   }
@@ -97,7 +99,8 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
         limit: z.coerce.number().int().min(1).max(200).optional(),
       })
       .parse(req.query);
-    return searchFiles(ctx.db, { query: q.q, ...q });
+    // Rows are judged by today's policy as they are read (an old index may still hold a private path).
+    return searchFiles(ctx.db, { query: q.q, ...q, allow: ctx.indexer.rowFilter() });
   });
 
   app.get("/api/memory/graph", async (req) => {
@@ -148,8 +151,9 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   app.post("/api/memory/open", { config: { scope: "owner" } }, async (req) => {
     const { p } = z.object({ p: z.string() }).parse(req.body);
     // Same filter as the preview and the indexer; PathAccessError → 403.
-    const resolved = resolveOpenablePath(ctx.settings(), [ctx.paths.home], p, { homeDir: ctx.paths.home });
-    if (!isOpenable(resolved)) {
+    const access = { homeDir: ctx.paths.home };
+    const resolved = resolveOpenablePath(ctx.settings(), [ctx.paths.home], p, access);
+    if (!isOpenable(workspaceScope(ctx.settings(), [ctx.paths.home], access), resolved)) {
       throw httpError(415, "Only documents, media and folders open from here", "unsupported_type");
     }
     const { spawn } = await import("node:child_process");

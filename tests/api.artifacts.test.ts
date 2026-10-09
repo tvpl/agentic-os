@@ -68,14 +68,28 @@ describe("artifact helpers", () => {
   });
 
   it("reads markdown headings and html titles", () => {
-    expect(artifactTitle(path.join(ctx.paths.artifacts, "run-abc", "report.md"), "markdown")).toBe(
-      "Thro brand candidates",
-    );
-    expect(artifactTitle(path.join(ctx.paths.artifacts, "run-abc", "page.html"), "html")).toBe(
-      "OS restyle — 10 brand candidates",
-    );
-    expect(artifactTitle(path.join(ctx.paths.artifacts, "run-abc", "notes.txt"), "other")).toBe("notes.txt");
-    expect(artifactTitle("/nowhere/x.md", "markdown")).toBe("x.md");
+    expect(
+      artifactTitle(
+        ctx.scopeOf([ctx.paths.artifacts]),
+        path.join(ctx.paths.artifacts, "run-abc", "report.md"),
+        "markdown",
+      ),
+    ).toBe("Thro brand candidates");
+    expect(
+      artifactTitle(
+        ctx.scopeOf([ctx.paths.artifacts]),
+        path.join(ctx.paths.artifacts, "run-abc", "page.html"),
+        "html",
+      ),
+    ).toBe("OS restyle — 10 brand candidates");
+    expect(
+      artifactTitle(
+        ctx.scopeOf([ctx.paths.artifacts]),
+        path.join(ctx.paths.artifacts, "run-abc", "notes.txt"),
+        "other",
+      ),
+    ).toBe("notes.txt");
+    expect(artifactTitle(ctx.scopeOf([ctx.paths.artifacts]), "/nowhere/x.md", "markdown")).toBe("x.md");
   });
 });
 

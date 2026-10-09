@@ -38,6 +38,7 @@ export { redactSecrets, redactObject } from "./security/redact.js";
 export {
   isInside,
   resolveInsideRoots,
+  realpathLenient,
   PathAccessError,
   makeExcludeMatcher,
   isSecretFile,
@@ -221,7 +222,37 @@ export {
   type WorkspaceFilter,
   type WorkspaceFilterOptions,
 } from "./memory/excludes.js";
-export { checkWorkspacePath, resolveOpenablePath, type WorkspacePathCheck } from "./memory/preview.js";
+export {
+  checkWorkspacePath,
+  resolveOpenablePath,
+  workspaceScope,
+  type WorkspacePathCheck,
+  type WorkspaceAccessOptions,
+} from "./memory/preview.js";
+export {
+  FileTooLargeError,
+  NotRegularFileError,
+  assertWritablePath,
+  grantedReadScope,
+  homeReadScope,
+  inspectPath,
+  listWorkspaceDir,
+  openWorkspaceFile,
+  readScope,
+  readWorkspaceFile,
+  readWorkspaceText,
+  resolveReadable,
+  resolveWorkspaceCwd,
+  statWorkspacePath,
+  type BytesRead,
+  type PathVerdict,
+  type ReadOptions,
+  type ReadScope,
+  type ReadScopeOptions,
+  type TextRead,
+  type WorkspaceEntry,
+  type WorkspaceFile,
+} from "./security/safeFs.js";
 export { rotateFile, pruneRotated } from "./logs/jsonl.js";
 export { type StoreProblem } from "./routines/store.js";
 export { deepMergeSettings, type SettingsPatch } from "./config/store.js";

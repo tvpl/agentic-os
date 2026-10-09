@@ -103,7 +103,7 @@ file written by a newer version is never overwritten (`code: "settings_newer"`).
 |---|---|
 | `config/` | Zod `SettingsSchema`, atomic file store with an mtime-keyed cache and deep-merge `update()`, local token |
 | `db/` | open + versioned SQL migrations, pre-migration DB backup |
-| `security/` | redaction, path containment (realpath), id validation for file-backed stores, exclusion matcher, secret blocklist, profiles, approval store |
+| `security/` | redaction, path containment (realpath), the safe-read primitive (`safeFs.ts`: the one way a path chosen by a request, a record, an index row or a link is read), id validation for file-backed stores, exclusion matcher, secret blocklist, profiles, approval store |
 | `spawn/` | argv-only spawn, basename allowlist + optional pinned path, timeouts, kill-tree, bounded stdout/stderr capture, `--help` probing helpers |
 | `agents/` | `AgentAdapter` types, shared streaming executor |
 | `runs/` | `RunManager`: explicit state transitions (`queued → running → done / failed / cancelled / timed_out / interrupted`), bounded queue, `parent_run_id` for retries, JSONL logs (rotating, redacted), metrics, boot recovery, retention pruning |

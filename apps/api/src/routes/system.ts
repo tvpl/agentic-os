@@ -17,9 +17,17 @@ import {
   isInside,
   listBackups,
   planStartupService,
+  NotRegularFileError,
+  listWorkspaceDir,
+  openWorkspaceFile,
+  readWorkspaceText,
+  realpathLenient,
   redactSecrets,
-  resolveInsideRoots,
+  resolveReadable,
+  type ReadScope,
   type Settings,
+  type WorkspaceEntry,
+  type WorkspaceFile,
   dailyPoints,
   isStartupServiceInstalled,
 } from "@mordomo/core";
@@ -48,7 +56,7 @@ function tlsInfo(ctx: AppContext): { port: number; fingerprint: string; hosts: s
     return null;
   }
 }
-import { grantedRoots, httpError, principalName, requireAdapter, requireProvider } from "./common.js";
+import { httpError, principalName, requireAdapter, requireProvider } from "./common.js";
 import { BackupNameParams, UuidParams } from "./params.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -129,8 +137,8 @@ function assertIndexableFolder(ctx: AppContext, folderPath: string): void {
     throw httpError(400, `Folder does not exist: ${folderPath}`);
   }
   if (!stat.isDirectory()) throw httpError(400, `Not a directory: ${folderPath}`);
-  const real = fs.realpathSync(folderPath);
-  const config = fs.existsSync(ctx.paths.config) ? fs.realpathSync(ctx.paths.config) : ctx.paths.config;
+  const real = realpathLenient(folderPath);
+  const config = realpathLenient(ctx.paths.config);
   if (isInside(config, real) || isInside(real, config)) {
     throw httpError(400, "The MordomoOS config directory cannot be indexed");
   }
@@ -139,7 +147,8 @@ function assertIndexableFolder(ctx: AppContext, folderPath: string): void {
 /** A sync target must live inside the home or an enabled indexed folder. */
 function resolveSyncTarget(ctx: AppContext, target: string | undefined): string {
   if (!target) return ctx.paths.home;
-  return resolveInsideRoots(grantedRoots(ctx), target);
+  // Granted folders, on the real path, outside the home's config/ and logs/ (PathAccessError → 403).
+  return resolveReadable(ctx.readScope(), target).real;
 }
 
 // ---- Artifacts list -----------------------------------------------------------
@@ -202,19 +211,12 @@ export function artifactKind(file: string): ArtifactKind {
 }
 
 /** Title for a file: first `# heading` of a .md, `<title>` of an .html, else the base name. Reads at most 16 KB. */
-export function artifactTitle(abs: string, kind: ArtifactKind): string {
+export function artifactTitle(scope: ReadScope, abs: string, kind: ArtifactKind): string {
   const base = path.basename(abs);
   if (kind !== "markdown" && kind !== "html") return base;
   let head = "";
   try {
-    const fd = fs.openSync(abs, "r");
-    try {
-      const buf = Buffer.alloc(TITLE_SCAN_BYTES);
-      const n = fs.readSync(fd, buf, 0, TITLE_SCAN_BYTES, 0);
-      head = buf.subarray(0, n).toString("utf8");
-    } finally {
-      fs.closeSync(fd);
-    }
+    head = readWorkspaceText(scope, abs, { maxBytes: TITLE_SCAN_BYTES }).text;
   } catch {
     return base;
   }
@@ -264,29 +266,26 @@ export function listArtifacts(
   }
 
   const items: ArtifactListItem[] = [];
+  // Listed and sized through the safe-read primitive: a link in artifacts/ is not an artifact.
+  const scope = ctx.scopeOf([root]);
+  const realRoot = realpathLenient(root);
   const walk = (dir: string, depth: number) => {
     if (items.length >= LIST_MAX_FILES || depth > 6) return;
-    let entries: fs.Dirent[];
+    let entries: WorkspaceEntry[];
     try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
+      entries = listWorkspaceDir(scope, dir);
     } catch {
       return;
     }
     for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
-      const abs = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(abs, depth + 1);
+      if (entry.isDirectory) {
+        walk(entry.path, depth + 1);
         continue;
       }
-      if (!entry.isFile()) continue;
-      let stat: fs.Stats;
-      try {
-        stat = fs.statSync(abs);
-      } catch {
-        continue;
-      }
-      const rel = path.relative(root, abs).split(path.sep).join("/");
+      if (!entry.isFile) continue;
+      const rel = path.relative(realRoot, entry.path).split(path.sep).join("/");
+      const abs = path.join(root, ...rel.split("/"));
       const meta = byRel.get(rel);
       const kind = artifactKind(entry.name);
       const folder = rel.split("/")[0] ?? "";
@@ -296,11 +295,11 @@ export function listArtifacts(
         path: abs,
         runId: meta?.runId ?? null,
         skillSlug: meta?.skillSlug ?? null,
-        createdAt: meta?.createdAt ?? stat.mtimeMs,
+        createdAt: meta?.createdAt ?? entry.mtimeMs,
         kind,
-        title: artifactTitle(abs, kind),
+        title: artifactTitle(scope, abs, kind),
         folder,
-        sizeBytes: stat.size,
+        sizeBytes: entry.size,
         thumbnail: Boolean(RAW_MIME[path.extname(entry.name).toLowerCase()]),
       });
       if (items.length >= LIST_MAX_FILES) return;
@@ -739,22 +738,28 @@ export function registerSystemRoutes(
   /** Binary artifact (images / video) for thumbnails — strictly inside the artifacts dir, allow-listed types only. */
   app.get("/api/artifacts/raw", { config: { queryToken: true } }, async (req, reply) => {
     const { p } = z.object({ p: z.string() }).parse(req.query);
-    const resolved = resolveInsideRoots([ctx.paths.artifacts], p); // PathAccessError → 403
-    // resolveInsideRoots already checks real paths, including macOS /var -> /private/var.
-    const mime = RAW_MIME[path.extname(resolved).toLowerCase()];
-    if (!mime) throw httpError(415, "Not a previewable artifact type");
-    let stat: fs.Stats;
+    let file: WorkspaceFile;
     try {
-      stat = fs.statSync(resolved);
-    } catch {
-      throw httpError(404, "Artifact not found");
+      // PathAccessError → 403; the descriptor, not the path, is what gets streamed.
+      file = openWorkspaceFile(ctx.scopeOf([ctx.paths.artifacts]), p);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT" || err instanceof NotRegularFileError)
+        throw httpError(404, "Artifact not found");
+      throw err;
     }
-    if (!stat.isFile()) throw httpError(404, "Artifact not found");
-    if (stat.size > RAW_MAX_BYTES) throw httpError(413, "Artifact larger than 25 MB — open it from disk.");
+    const mime = RAW_MIME[path.extname(file.path).toLowerCase()];
+    if (!mime) {
+      file.close();
+      throw httpError(415, "Not a previewable artifact type");
+    }
+    if (file.stat.size > RAW_MAX_BYTES) {
+      file.close();
+      throw httpError(413, "Artifact larger than 25 MB — open it from disk.");
+    }
     reply.header("content-type", mime);
     reply.header("cache-control", "private, max-age=300");
     reply.header("x-content-type-options", "nosniff");
-    return reply.send(fs.createReadStream(resolved));
+    return reply.send(file.createReadStream());
   });
 
   app.get("/api/startup-plan", async () => planStartupService(ctx.paths, process.execPath));

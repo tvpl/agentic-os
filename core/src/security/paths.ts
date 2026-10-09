@@ -17,30 +17,36 @@ export function isInsideAny(roots: string[], candidate: string): boolean {
  * granted roots. Follows symlinks (realpath) so a link cannot escape the root.
  * Throws on violation — callers turn this into a 403.
  */
-export function resolveInsideRoots(roots: string[], candidate: string): string {
+export function resolveInsideRoots(roots: readonly string[], candidate: string): string {
   const real = realpathLenient(path.resolve(candidate));
   for (const root of roots) {
-    const realRoot = fs.existsSync(root) ? fs.realpathSync(root) : path.resolve(root);
-    if (isInside(realRoot, real)) return real;
+    if (isInside(realpathLenient(path.resolve(root)), real)) return real;
   }
   throw new PathAccessError(candidate);
 }
 
 /**
- * `realpath` for paths that may not exist yet: symlinks are resolved in the
- * deepest existing ancestor and the missing tail is re-appended, so a symlinked
- * parent directory cannot smuggle a new file outside the granted roots.
+ * The one `realpath` of the engine, for paths that may not exist yet: symlinks
+ * are resolved in the deepest existing ancestor and the missing tail is
+ * re-appended, so a symlinked parent directory cannot smuggle a new file
+ * outside the granted roots. A path with no existing ancestor comes back
+ * resolved (absolute, `..` folded) but otherwise as given.
  */
-function realpathLenient(absolute: string): string {
-  let head = absolute;
+export function realpathLenient(absolute: string): string {
+  const resolved = path.resolve(absolute);
+  let head = resolved;
   const tail: string[] = [];
-  while (!fs.existsSync(head)) {
-    const parent = path.dirname(head);
-    if (parent === head) return absolute;
-    tail.unshift(path.basename(head));
-    head = parent;
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync(head), ...tail);
+    } catch {
+      // A dangling symlink or a missing component: walk up to what exists.
+      const parent = path.dirname(head);
+      if (parent === head) return resolved;
+      tail.unshift(path.basename(head));
+      head = parent;
+    }
   }
-  return path.join(fs.realpathSync(head), ...tail);
 }
 
 export class PathAccessError extends Error {

@@ -4,7 +4,17 @@ import matter from "gray-matter";
 import type { MordomoPaths } from "../paths.js";
 import { SkillFrontmatterSchema, type Skill, type SkillFrontmatter, type SkillResource, type SkillResourceKind } from "./types.js";
 import { isValidId, resolveInsideDir } from "../security/ids.js";
-import { isInside } from "../security/paths.js";
+import { PathAccessError } from "../security/paths.js";
+import {
+  copyTreeWithoutLinks,
+  homeReadScope,
+  listWorkspaceDir,
+  openWorkspaceFile,
+  readWorkspaceText,
+  resolveReadable,
+  type ReadScope,
+  type WorkspaceFile,
+} from "../security/safeFs.js";
 import type { StoreProblem } from "../routines/store.js";
 
 /** A SKILL.md body at or above this many lines is flagged "thick" (ARMS S-L2). */
@@ -72,10 +82,32 @@ export function isSafeResourceRel(rel: unknown): rel is string {
   return segments.every((seg) => seg.length > 0 && seg !== "." && seg !== ".." && !seg.startsWith(".") && !/^[A-Za-z]:$/.test(seg));
 }
 
+/** SKILL.md, NOTES.md and the like are text a person wrote; one past this is not one. */
+const MAX_SKILL_TEXT_BYTES = 2 * 1024 * 1024;
+
 export class SkillCatalog {
   private problems: StoreProblem[] = [];
 
   constructor(private readonly paths: MordomoPaths) {}
+
+  /**
+   * Every skill file is read through the safe-read primitive, confined to
+   * `skills/`: a SKILL.md, a NOTES.md or a resource that is a link out of the
+   * catalog (to `config/token`, say) is refused, not followed.
+   */
+  private get scope(): ReadScope {
+    return homeReadScope(this.paths.home, [this.paths.skills]);
+  }
+
+  /** The text of a skill file, or null when it does not exist. */
+  private readText(file: string, scope: ReadScope = this.scope): string | null {
+    try {
+      return readWorkspaceText(scope, file, { maxBytes: MAX_SKILL_TEXT_BYTES, strict: true }).text;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw err;
+    }
+  }
 
   /** Skill folders skipped by the most recent `list()` call, with the reason. */
   lastProblems(): StoreProblem[] {
@@ -91,15 +123,16 @@ export class SkillCatalog {
     this.problems = [];
     if (!fs.existsSync(this.paths.skills)) return [];
     const skills: Skill[] = [];
-    for (const entry of fs.readdirSync(this.paths.skills, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
+    const scope = this.scope; // one scope for the whole listing
+    for (const entry of listWorkspaceDir(scope, this.paths.skills)) {
+      if (!entry.isDirectory) continue;
       const full = path.join(this.paths.skills, entry.name);
       if (!isValidId(entry.name)) {
         this.problems.push({ file: full, error: `Folder name is not a valid skill slug: ${entry.name}` });
         continue;
       }
       try {
-        const skill = this.load(entry.name);
+        const skill = this.load(entry.name, scope);
         if (skill) skills.push(skill);
       } catch (err) {
         // One broken SKILL.md must not hide the whole catalog.
@@ -109,18 +142,18 @@ export class SkillCatalog {
     return skills.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  load(slug: string): Skill | null {
+  load(slug: string, scope: ReadScope = this.scope): Skill | null {
     const dir = this.dirFor(slug);
     const skillFile = path.join(dir, "SKILL.md");
-    if (!fs.existsSync(skillFile)) return null;
-    const raw = fs.readFileSync(skillFile, "utf8");
+    const raw = this.readText(skillFile, scope);
+    if (raw === null) return null;
     const parsed = matter(raw);
     const front = SkillFrontmatterSchema.safeParse({ slug, ...parsed.data });
     if (!front.success) {
       throw new Error(`Skill "${slug}" has invalid frontmatter: ${front.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
     }
     const body = parsed.content.trim();
-    const resourceFiles = this.listResources(dir);
+    const resourceFiles = this.listResources(dir, scope);
     const bodyLineCount = body.split("\n").length;
     return {
       ...front.data,
@@ -139,13 +172,12 @@ export class SkillCatalog {
    * `rel`. Symlinks and hidden entries are skipped (a link could point outside
    * the folder), and the walk stops at MAX_SKILL_RESOURCES entries.
    */
-  private listResources(dir: string): SkillResource[] {
+  private listResources(dir: string, scope: ReadScope = this.scope): SkillResource[] {
     const out: SkillResource[] = [];
-    const root = path.resolve(dir);
     const walk = (current: string, prefix: string) => {
-      let entries: fs.Dirent[];
+      let entries: ReturnType<typeof listWorkspaceDir>;
       try {
-        entries = fs.readdirSync(current, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+        entries = listWorkspaceDir(scope, current).sort((a, b) => a.name.localeCompare(b.name));
       } catch {
         return;
       }
@@ -153,30 +185,21 @@ export class SkillCatalog {
         if (out.length >= MAX_SKILL_RESOURCES) return;
         if (entry.name.startsWith(".")) continue;
         if (entry.name === "SKILL.md" && prefix === "") continue;
-        if (entry.isSymbolicLink()) continue;
-        const full = path.join(current, entry.name);
-        if (!isInside(root, full)) continue;
         const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) walk(full, rel);
-        else if (entry.isFile()) {
-          let size = 0;
-          try {
-            size = fs.statSync(full).size;
-          } catch {
-            continue;
-          }
-          out.push({ name: entry.name, rel, kind: skillResourceKind(entry.name), size });
+        if (entry.isDirectory) walk(entry.path, rel);
+        else if (entry.isFile) {
+          out.push({ name: entry.name, rel, kind: skillResourceKind(entry.name), size: entry.size });
         }
       }
     };
-    walk(root, "");
+    walk(dir, "");
     return out.sort((a, b) => a.rel.localeCompare(b.rel));
   }
 
   /**
-   * Absolute path of one listed resource, or null when `rel` is not a safe
+   * Real path of one listed resource, or null when `rel` is not a safe
    * relative path, is not in the scan (so never SKILL.md, symlinks or hidden
-   * files), or resolves outside the skill folder. Never throws for bad input
+   * files), or resolves outside the catalog. Never throws for bad input
    * other than an invalid slug (InvalidIdError → 400).
    */
   resolveResource(slug: string, rel: unknown): { absPath: string; resource: SkillResource; contentType: string } | null {
@@ -184,16 +207,32 @@ export class SkillCatalog {
     if (!isSafeResourceRel(rel)) return null;
     const resource = this.listResources(dir).find((r) => r.rel === rel);
     if (!resource) return null;
-    const absPath = path.resolve(dir, ...rel.split("/"));
-    if (!isInside(path.resolve(dir), absPath)) return null;
-    let real: string;
     try {
-      real = fs.realpathSync(absPath);
-    } catch {
-      return null;
+      const { real } = resolveReadable(this.scope, path.resolve(dir, ...rel.split("/")));
+      return { absPath: real, resource, contentType: skillResourceContentType(resource.name) };
+    } catch (err) {
+      if (err instanceof PathAccessError || (err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw err;
     }
-    if (!isInside(fs.realpathSync(dir), real)) return null;
-    return { absPath: real, resource, contentType: skillResourceContentType(resource.name) };
+  }
+
+  /**
+   * One listed resource, opened for streaming through the safe-read primitive
+   * (the descriptor belongs to the returned file). Null as for `resolveResource`,
+   * and also when the file is gone or is not a regular file.
+   */
+  openResource(
+    slug: string,
+    rel: unknown,
+  ): { file: WorkspaceFile; resource: SkillResource; contentType: string } | null {
+    const hit = this.resolveResource(slug, rel);
+    if (!hit) return null;
+    try {
+      return { file: openWorkspaceFile(this.scope, hit.absPath), resource: hit.resource, contentType: hit.contentType };
+    } catch (err) {
+      if (err instanceof PathAccessError || (err as NodeJS.ErrnoException).code === "ENOENT" || (err as { code?: string }).code === "not_a_file") return null;
+      throw err;
+    }
   }
 
   save(front: SkillFrontmatter, body: string): Skill {
@@ -235,9 +274,10 @@ export class SkillCatalog {
     if (fs.existsSync(targetDir)) {
       throw new Error(`Skill "${finalSlug}" already exists in the catalog.`);
     }
-    fs.cpSync(sourceDir, targetDir, { recursive: true });
+    copyTreeWithoutLinks(sourceDir, targetDir); // the copy holds no link, so nothing in it reads through one
     // Normalize frontmatter so the imported skill validates.
-    const raw = fs.readFileSync(path.join(targetDir, "SKILL.md"), "utf8");
+    const raw = this.readText(path.join(targetDir, "SKILL.md"));
+    if (raw === null) throw new Error(`No SKILL.md found in ${sourceDir}`);
     const parsed = matter(raw);
     const front = SkillFrontmatterSchema.parse({
       name: (parsed.data.name as string) ?? finalSlug,
@@ -259,10 +299,11 @@ export class SkillCatalog {
     if (!skill) return null;
     const file = this.notesFile(skill);
     const archive = this.archiveFile(skill);
+    const archived = this.readText(archive);
     return {
-      notes: fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "",
+      notes: this.readText(file) ?? "",
       path: file,
-      archived: fs.existsSync(archive) ? noteEntries(fs.readFileSync(archive, "utf8")).length : 0,
+      archived: archived === null ? 0 : noteEntries(archived).length,
     };
   }
 
@@ -279,8 +320,8 @@ export class SkillCatalog {
     const skill = this.load(slug);
     if (!skill) return 0;
     const file = this.notesFile(skill);
-    if (!fs.existsSync(file)) return 0;
-    const raw = fs.readFileSync(file, "utf8");
+    const raw = this.readText(file);
+    if (raw === null) return 0;
     const entries = noteEntries(raw);
     if (entries.length <= max) return 0;
     const excess = entries.length - max;
@@ -323,7 +364,7 @@ export class SkillCatalog {
 
   buildRunPrompt(skill: Skill, inputs: Record<string, string>, artifactsDir: string): string {
     const notesFile = this.notesFile(skill);
-    const notes = fs.existsSync(notesFile) ? fs.readFileSync(notesFile, "utf8").trim() : "";
+    const notes = (this.readText(notesFile) ?? "").trim();
     const inputLines = skill.inputs
       .map((input) => `- ${input.label} (${input.name}): ${inputs[input.name]?.trim() || "(not provided)"}`)
       .join("\n");

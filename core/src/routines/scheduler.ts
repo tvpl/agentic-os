@@ -1,7 +1,6 @@
-import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { writeDecision } from "../security/profiles.js";
+import { PathAccessError } from "../security/paths.js";
 import { redactSecrets } from "../security/redact.js";
 import { Cron } from "croner";
 import type { Db } from "../db/db.js";
@@ -39,6 +38,13 @@ import { events, type OsEvent } from "../events.js";
  */
 
 export type FireReason = "fired" | "caught_up" | "manual";
+
+/** Start of the history note and error message when a routine's working directory is no longer allowed. */
+const CWD_REFUSED = "Working directory refused:";
+
+function isPathRefusal(err: unknown): boolean {
+  return err instanceof PathAccessError || (err as Error | undefined)?.name === "PathAccessError";
+}
 
 export interface FireOptions {
   reason?: FireReason;
@@ -419,7 +425,9 @@ export class RoutineScheduler {
     return caps.length > 0 ? Math.min(...caps) : null;
     };
 
-    const cwd = routine.context === "isolated" ? this.isolatedCwd(routine) : (routine.workingDir ?? this.paths.home);
+    // `workingDir` is a stored value: whether it is still a place an agent may start in is decided by
+    // `RunManager.create` at every fire (a folder that became private or was revoked refuses here).
+    const cwd = routine.context === "isolated" ? this.runs.scratchDir(`mordomo-${routine.id}-`) : (routine.workingDir ?? this.paths.home);
     const createRun = (attempt: number, parentRunId: string | null) =>
       this.runs.create({
         origin: "routine",
@@ -441,7 +449,16 @@ export class RoutineScheduler {
         maxCostUsd: remainingBudget(),
       });
 
-    const first = createRun(1, null);
+    let first: RunRecord;
+    try {
+      first = createRun(1, null);
+    } catch (err) {
+      if (!isPathRefusal(err)) throw err;
+      // Recorded like the other refusals (a budget skip, a missing skill): the history says why nothing ran.
+      const note = `${CWD_REFUSED} ${(err as Error).message}`;
+      this.recordHistory(routine.id, null, scheduledFor, "failed_to_fire", note);
+      throw Object.assign(new Error(note), { statusCode: 403, code: "forbidden_path" });
+    }
     if (opts.historyAlreadyRecorded) {
       this.db
         .prepare(
@@ -467,15 +484,6 @@ export class RoutineScheduler {
       });
     this.inflight.set(routine.id, task);
     return { runId: first.id, status: first.status };
-  }
-
-  /** Fresh working directory for `context: "isolated"` (outside the workspace; artifacts still land in artifacts/<runId>). */
-  private isolatedCwd(routine: Routine): string {
-    try {
-      return fs.mkdtempSync(path.join(os.tmpdir(), `mordomo-${routine.id}-`));
-    } catch {
-      return this.paths.home;
-    }
   }
 
   private async runWithRetries(
@@ -647,6 +655,11 @@ export class RoutineScheduler {
     return typeof note === "string" && note.startsWith("Daily budget of");
   }
 
+  /** A working-directory refusal is recorded by fire() itself; callers must not add a second row. */
+  private isCwdRefusal(note: string | null): boolean {
+    return typeof note === "string" && note.startsWith(CWD_REFUSED);
+  }
+
   private safeHistory(
     routineId: string,
     runId: string | null,
@@ -654,7 +667,7 @@ export class RoutineScheduler {
     status: string,
     note: string | null,
   ): void {
-    if (status === "failed_to_fire" && this.isBudgetSkip(note)) return; // fire() already recorded the skip
+    if (status === "failed_to_fire" && (this.isBudgetSkip(note) || this.isCwdRefusal(note))) return; // fire() already recorded it
     try {
       this.recordHistory(routineId, runId, scheduledFor, status, note);
     } catch (err) {

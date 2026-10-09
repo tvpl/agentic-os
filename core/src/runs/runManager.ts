@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import type { PermissionBroker } from "../agents/types.js";
@@ -8,7 +9,9 @@ import type { MordomoPaths } from "../paths.js";
 import type { Settings, ProviderId, EffortLevel, SecurityProfile } from "../config/schema.js";
 import type { AgentAdapter, AgentRun, RunEvent, RunMode, RunUsage, RunUsageEvent } from "../agents/types.js";
 import { JsonlLogger } from "../logs/jsonl.js";
+import { isInside, realpathLenient } from "../security/paths.js";
 import { redactSecrets } from "../security/redact.js";
+import { grantedReadScope, resolveWorkspaceCwd } from "../security/safeFs.js";
 import { ownedProcessKiller } from "../spawn/safeSpawn.js";
 import { events } from "../events.js";
 import { boundedPaths } from "../agents/eventPaths.js";
@@ -167,6 +170,8 @@ export class RunManager {
   private readonly activeRuns = new Map<string, ActiveRun>();
   private shuttingDown = false;
   private readonly eventCap: number;
+  /** Real paths of the throwaway directories this manager made for isolated runs (`scratchDir`). */
+  private readonly scratchDirs = new Set<string>();
 
   constructor(
     private readonly db: Db,
@@ -379,9 +384,42 @@ export class RunManager {
     return changed;
   }
 
+  // ------------------------------------------------------ working directory --
+
+  /**
+   * The only rule that decides where an agent may start: inside a folder the
+   * user granted (the home and the enabled indexed folders) and outside the
+   * home's `config/` and `logs/`, which hold the owner token. Every run goes
+   * through it twice, whoever asked: `create()` (a request, a routine, a
+   * retry, an objective step) and the launch itself (a stored cwd whose folder
+   * became private or was revoked since). Throws `PathAccessError` (403).
+   */
+  resolveCwd(cwd: string): string {
+    const real = realpathLenient(path.resolve(cwd));
+    if ([...this.scratchDirs].some((dir) => isInside(dir, real))) return real;
+    return resolveWorkspaceCwd(grantedReadScope(this.getSettings(), this.paths.home), cwd);
+  }
+
+  /**
+   * A fresh, empty working directory outside the workspace for an isolated
+   * run. It is the one place outside the granted folders a run may start in,
+   * and only because this manager made it. Falls back to the home when the
+   * system temp folder cannot be written.
+   */
+  scratchDir(prefix: string): string {
+    try {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+      this.scratchDirs.add(realpathLenient(dir));
+      return dir;
+    } catch {
+      return this.paths.home;
+    }
+  }
+
   // -------------------------------------------------------------- create --
 
   create(input: CreateRunInput): RunRecord {
+    const cwd = this.resolveCwd(input.cwd);
     const settings = this.getSettings();
     const maxQueued = settings.limits.maxConcurrentRuns * QUEUE_DEPTH_FACTOR;
     const queued = (
@@ -412,7 +450,7 @@ export class RunManager {
         input.model,
         input.effort,
         status,
-        input.cwd,
+        cwd,
         promptSummary,
         input.request ? JSON.stringify(input.request) : null,
         input.skillSlug ?? null,
@@ -574,7 +612,8 @@ export class RunManager {
       const agentRun: AgentRun = {
         runId,
         prompt: effectivePrompt,
-        cwd: record.cwd ?? this.paths.home,
+        // Checked again here: the stored folder may have become private or been revoked since create().
+        cwd: this.resolveCwd(record.cwd ?? this.paths.home),
         model: record.model,
         effort: record.effort,
         mode,

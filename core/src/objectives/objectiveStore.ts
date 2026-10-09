@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
 import path from "node:path";
 import type { Db } from "../db/db.js";
 import type { MordomoPaths } from "../paths.js";
 import type { RunManager, RunRecord, RunRequestSpec } from "../runs/runManager.js";
 import { events } from "../events.js";
+import { homeReadScope, openWorkspaceFile } from "../security/safeFs.js";
 
 export type ObjectiveStatus = "active" | "blocked" | "completed" | "cancelled";
 export type ObjectiveStepStatus =
@@ -381,14 +381,13 @@ export class ObjectiveStore {
       const absolute = path.resolve(artifactRoot, relative);
       if (absolute !== artifactRoot && !absolute.startsWith(`${artifactRoot}${path.sep}`)) return [];
       try {
-        const body = fs.readFileSync(absolute);
-        return [
-          {
-            path: relative,
-            bytes: body.byteLength,
-            sha256: crypto.createHash("sha256").update(body).digest("hex"),
-          },
-        ];
+        // Size and digest of what the run left in artifacts/; a link there is not followed out of it.
+        const file = openWorkspaceFile(homeReadScope(this.paths.home, [this.paths.artifacts]), absolute);
+        try {
+          return [{ path: relative, bytes: file.stat.size, sha256: file.sha256() }];
+        } finally {
+          file.close();
+        }
       } catch {
         return [];
       }

@@ -5,11 +5,13 @@ import type { FastifyInstance } from "fastify";
 import {
   ProviderId,
   EffortLevel,
-  resolveInsideRoots,
-  isInside,
+  NotRegularFileError,
+  inspectPath,
   checkWorkspacePath,
   findOnPath,
+  openWorkspaceFile,
   previewFile,
+  statWorkspacePath,
   type RunEvent,
 } from "@mordomo/core";
 import type { AppContext } from "../context.js";
@@ -151,7 +153,9 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     const cwd = run.cwd ?? ctx.paths.home;
     const target = path.isAbsolute(file) ? file : path.join(cwd, file);
     const roots = [...grantedRoots(ctx), ctx.paths.artifacts];
-    const resolved = resolveInsideRoots(roots, target); // PathAccessError → 403
+    // `file` comes from a run's record: it must lie in a granted root and outside the home's config/ and logs/ (403);
+    // the rest of the filter (secret names, excludes) answers "unavailable" inside runFileDiff.
+    const resolved = inspectPath(ctx.readScope([ctx.paths.artifacts]), target).real;
     return runFileDiff(ctx, resolved, roots);
   });
 
@@ -328,6 +332,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
       .object({ limit: z.coerce.number().int().min(1).max(100).default(20) })
       .parse(req.query);
     const runs = ctx.runs.list({ limit: 200 });
+    const scope = ctx.scopeOf([ctx.paths.artifacts]);
     const artifacts: Array<{
       runId: string;
       file: string;
@@ -343,7 +348,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
         const abs = path.join(ctx.paths.artifacts, rel);
         let sizeBytes: number | null = null;
         try {
-          sizeBytes = fs.statSync(abs).size;
+          sizeBytes = statWorkspacePath(scope, abs).stat.size;
         } catch {
           continue; // artifact was deleted on disk
         }
@@ -366,18 +371,27 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
   /** Read one artifact (text) — strictly inside the artifacts dir. */
   app.get("/api/artifacts/file", async (req) => {
     const { p } = z.object({ p: z.string() }).parse(req.query);
-    const resolved = resolveInsideRoots([ctx.paths.artifacts], p); // PathAccessError → 403
-    if (!isInside(ctx.paths.artifacts, resolved)) throw httpError(403, "Outside artifacts directory");
-    let stat: fs.Stats;
+    let file: ReturnType<typeof openWorkspaceFile>;
     try {
-      stat = fs.statSync(resolved);
-    } catch {
-      throw httpError(404, "Artifact not found");
+      // PathAccessError → 403 (outside artifacts/, a link out of it, a secret name).
+      file = openWorkspaceFile(ctx.scopeOf([ctx.paths.artifacts]), p);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT" || err instanceof NotRegularFileError)
+        throw httpError(404, "Artifact not found");
+      throw err;
     }
-    if (stat.size > 2 * 1024 * 1024) {
-      return { path: resolved, content: null, note: "Artifact larger than 2 MB — open it from disk." };
+    try {
+      if (file.stat.size > ARTIFACT_TEXT_MAX_BYTES) {
+        return { path: file.path, content: null, note: "Artifact larger than 2 MB — open it from disk." };
+      }
+      return {
+        path: file.path,
+        content: file.readBytes(ARTIFACT_TEXT_MAX_BYTES).bytes.toString("utf8"),
+        sizeBytes: file.stat.size,
+      };
+    } finally {
+      file.close();
     }
-    return { path: resolved, content: fs.readFileSync(resolved, "utf8"), sizeBytes: stat.size };
   });
 }
 
@@ -405,6 +419,7 @@ export function findGitRoot(start: string): string | null {
 }
 
 const DIFF_MAX_CHARS = 512 * 1024;
+const ARTIFACT_TEXT_MAX_BYTES = 2 * 1024 * 1024;
 
 async function runFileDiff(ctx: AppContext, resolved: string, roots: string[]): Promise<RunDiffResult> {
   const filterOptions = { homeDir: ctx.paths.home };

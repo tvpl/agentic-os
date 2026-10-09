@@ -5,6 +5,7 @@ import { BUILTIN_PROVIDER_IDS, ProviderId } from "../config/schema.js";
 import type { MordomoPaths } from "../paths.js";
 import { atomicWrite } from "../config/store.js";
 import { resolveInsideDir } from "../security/ids.js";
+import { homeReadScope, listWorkspaceDir, readWorkspaceText } from "../security/safeFs.js";
 import type { StoreProblem } from "../routines/store.js";
 
 /** `string` = dot path into the item; object = path plus a predicate for booleans. */
@@ -108,10 +109,27 @@ export const ConnectorSchema = z.object({
 });
 export type Connector = z.infer<typeof ConnectorSchema>;
 
+/** A connector definition is a small JSON file. */
+const MAX_CONNECTOR_BYTES = 1024 * 1024;
+
 export class ConnectorRegistry {
   private problems: StoreProblem[] = [];
 
   constructor(private readonly paths: MordomoPaths) {}
+
+  /** Connector files are read through the safe-read primitive, confined to `connectors/`. */
+  private readJson(file: string, scope = this.scope()): unknown {
+    return JSON.parse(
+      readWorkspaceText(scope, file, {
+        maxBytes: MAX_CONNECTOR_BYTES,
+        strict: true,
+      }).text,
+    );
+  }
+
+  private scope() {
+    return homeReadScope(this.paths.home, [this.paths.connectors]);
+  }
 
   /** Files skipped by the most recent `list()` call, with the reason. */
   lastProblems(): StoreProblem[] {
@@ -127,11 +145,12 @@ export class ConnectorRegistry {
     this.problems = [];
     if (!fs.existsSync(this.paths.connectors)) return [];
     const out: Connector[] = [];
-    for (const file of fs.readdirSync(this.paths.connectors)) {
-      if (!file.endsWith(".json")) continue;
-      const full = path.join(this.paths.connectors, file);
+    const scope = this.scope(); // one scope for the whole listing
+    for (const entry of listWorkspaceDir(scope, this.paths.connectors)) {
+      if (!entry.isFile || !entry.name.endsWith(".json")) continue;
+      const full = path.join(this.paths.connectors, entry.name);
       try {
-        out.push(ConnectorSchema.parse(JSON.parse(fs.readFileSync(full, "utf8"))));
+        out.push(ConnectorSchema.parse(this.readJson(full, scope)));
       } catch (err) {
         this.problems.push({ file: full, error: (err as Error).message });
       }
@@ -142,7 +161,7 @@ export class ConnectorRegistry {
   get(id: string): Connector | null {
     const file = this.fileFor(id);
     if (!fs.existsSync(file)) return null;
-    return ConnectorSchema.parse(JSON.parse(fs.readFileSync(file, "utf8")));
+    return ConnectorSchema.parse(this.readJson(file));
   }
 
   save(connector: Connector): Connector {

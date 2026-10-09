@@ -37,8 +37,7 @@ import { RoutineStore } from "./routines/store.js";
 import { RunManager, providerEnvDrop, type CreateRunInput } from "./runs/runManager.js";
 import { ApprovalStore, type Approval } from "./security/approvals.js";
 import { DeviceStore } from "./security/devices.js";
-import { makeWorkspaceFilter } from "./memory/excludes.js";
-import { PathAccessError, resolveInsideRoots } from "./security/paths.js";
+import { grantedReadScope, readScope, type ReadScope } from "./security/safeFs.js";
 import { writeDecision, type WriteOrigin } from "./security/profiles.js";
 import { SentinelRunner } from "./sentinels/runner.js";
 import { SkillCatalog } from "./skills/catalog.js";
@@ -226,6 +225,12 @@ export class MordomoEngine {
     );
     this.objectives = new ObjectiveStore(this.db, this.paths);
     this.indexer = new MemoryIndexer(this.db, () => this.settings(), { homeDir: this.paths.home });
+    // An index from before the home's config/ was private may hold rows of it: they go now, not at the next pass.
+    try {
+      this.indexer.purgeExcluded();
+    } catch {
+      /* best effort: the next index pass removes them as well, and readers filter rows as they read */
+    }
     this.routines = new RoutineStore(this.paths);
     this.scheduler = new RoutineScheduler(this.db, this.paths, this.routines, this.runs, this.skills, () =>
       this.settings(),
@@ -408,14 +413,24 @@ export class MordomoEngine {
     ];
   }
 
-  /** A run's working directory, realpath-resolved inside the granted roots (`PathAccessError` otherwise). */
+  /**
+   * A run's working directory, realpath-resolved inside the granted roots and
+   * outside the home's `config/` and `logs/` (`PathAccessError` otherwise).
+   * The rule lives in `RunManager.resolveCwd`, which also applies it to every
+   * run it creates or launches; this is the same function for early 403s.
+   */
   resolveCwd(cwd: string): string {
-    const resolved = resolveInsideRoots(this.grantedRoots(), cwd);
-    // The home itself is a granted root, but its credentials folders are not a place to start an agent in:
-    // a run whose working directory is `config/` is one `cat token` away from the owner token.
-    const reason = makeWorkspaceFilter([], { homeDir: this.paths.home }).homePrivateReason(resolved);
-    if (reason) throw new PathAccessError(cwd, reason);
-    return resolved;
+    return this.runs.resolveCwd(cwd);
+  }
+
+  /** What a reader may open on behalf of a request: the granted roots plus `extraRoots`, under the user's excludes. */
+  readScope(extraRoots: readonly string[] = []): ReadScope {
+    return grantedReadScope(this.settings(), this.paths.home, extraRoots);
+  }
+
+  /** A scope limited to `roots` (the artifacts folder, say), under the user's excludes and the home's private folders. */
+  scopeOf(roots: readonly string[]): ReadScope {
+    return readScope({ homeDir: this.paths.home, roots, excludes: this.settings().excludes });
   }
 
   /** Refuse a write run the current security profile does not allow, before anything is created. */

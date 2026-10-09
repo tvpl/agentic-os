@@ -9,6 +9,8 @@ export interface SearchFilters {
   tag?: string;
   modifiedAfter?: number;
   limit?: number;
+  /** Read-time policy over stored rows (`MemoryIndexer.rowFilter`): rows it refuses are not returned. */
+  allow?: (row: { root: string; rel: string }) => boolean;
 }
 
 export interface SearchHit extends FileRow {
@@ -59,7 +61,9 @@ export function searchFiles(db: Db, filters: SearchFilters): SearchHit[] {
     const rows = db
       .prepare(`SELECT f.* FROM files f ${where} ORDER BY f.mtime DESC LIMIT ?`)
       .all(...params, limit) as Array<Record<string, unknown>>;
-    return rows.map((r) => ({ ...fileRowFromDb(r), snippet: null, score: 0 }));
+    return rows
+      .map((r) => ({ ...fileRowFromDb(r), snippet: null, score: 0 }))
+      .filter((hit) => filters.allow?.(hit) ?? true);
   }
 
   const where = clauses.length ? `AND ${clauses.join(" AND ")}` : "";
@@ -74,11 +78,13 @@ export function searchFiles(db: Db, filters: SearchFilters): SearchHit[] {
        LIMIT ?`,
     )
     .all(fts, ...params, limit) as Array<Record<string, unknown>>;
-  return rows.map((r) => ({
-    ...fileRowFromDb(r),
-    snippet: (r.snip as string | null) ?? null,
-    score: r.score as number,
-  }));
+  return rows
+    .map((r) => ({
+      ...fileRowFromDb(r),
+      snippet: (r.snip as string | null) ?? null,
+      score: r.score as number,
+    }))
+    .filter((hit) => filters.allow?.(hit) ?? true);
 }
 
 export function listFacets(db: Db): {

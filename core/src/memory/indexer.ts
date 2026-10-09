@@ -4,7 +4,9 @@ import type { Db } from "../db/db.js";
 import type { IndexedFolder, Settings } from "../config/schema.js";
 import { events } from "../events.js";
 import { relatedFromTerms, termFrequencies } from "./related.js";
-import { isBinaryBuffer, makeWorkspaceFilter, type WorkspaceFilterOptions } from "./excludes.js";
+import { PathAccessError, realpathLenient } from "../security/paths.js";
+import { openWorkspaceFile, readScope, statWorkspacePath, type ReadScope } from "../security/safeFs.js";
+import { isBinaryBuffer, makeWorkspaceFilter } from "./excludes.js";
 import { fieldsFromDb, parseInlineFields } from "./fields.js";
 import type { IndexProgress, IndexStats } from "@mordomo/contracts";
 
@@ -89,9 +91,53 @@ export class MemoryIndexer {
   constructor(
     private readonly db: Db,
     private readonly getSettings: () => Settings,
-    /** `homeDir`: the MordomoOS home, whose `config/` and `logs/` are never indexed. */
-    private readonly filterOptions: WorkspaceFilterOptions = {},
+    /** `homeDir`: the MordomoOS home, whose `config/` and `logs/` are never indexed (required: no indexer without it). */
+    private readonly filterOptions: { homeDir: string; platform?: NodeJS.Platform },
   ) {}
+
+  /**
+   * A test over stored rows, for readers of old data (search, recall): true when
+   * today's policy still lets the row's file be shown. The index may hold rows
+   * written before a path became private (the home's `config/`, a new exclude).
+   */
+  rowFilter(): (row: { root: string; rel: string }) => boolean {
+    const filter = makeWorkspaceFilter(this.getSettings().excludes, this.filterOptions);
+    const realRoots = new Map<string, string>();
+    return (row) => {
+      let real = realRoots.get(row.root);
+      if (real === undefined) {
+        real = realpathLenient(row.root);
+        realRoots.set(row.root, real);
+      }
+      return !filter.isExcluded(row.rel, path.join(real, row.rel));
+    };
+  }
+
+  /**
+   * Drop rows that today's policy would not index (see `rowFilter`), with their
+   * links and terms. An index built before the home's `config/` was private can
+   * hold token-bearing rows until the next full pass; this removes them at once.
+   */
+  purgeExcluded(): number {
+    const allowed = this.rowFilter();
+    const rows = this.db.prepare("SELECT id, path, root, rel FROM files").all() as Array<{
+      id: number;
+      path: string;
+      root: string;
+      rel: string;
+    }>;
+    const doomed = rows.filter((row) => !allowed(row));
+    if (doomed.length === 0) return 0;
+    const pending = this.loadPendingLinks();
+    const stats: IndexStats = {
+      scanned: 0, added: 0, updated: 0, removed: 0, skippedExcluded: 0, skippedBinary: 0, related: 0, durationMs: 0,
+    };
+    this.db.transaction(() => {
+      for (const row of doomed) this.removeFile(row.id, row.path, pending, stats);
+      this.savePendingLinks(pending);
+    })();
+    return stats.removed;
+  }
 
   /**
    * Roots indexed in addition to `settings.indexedFolders` (the MordomoOS
@@ -173,6 +219,8 @@ export class MemoryIndexer {
       }
       const roots = [...rootArea.keys()].sort();
       const rootSet = new Set(roots);
+      // Every byte below is read through the safe-read primitive on the real path, under these roots.
+      const scope = readScope({ ...this.filterOptions, roots, excludes: settings.excludes });
 
       const emit = (total?: number) => {
         const p: IndexProgress = {
@@ -192,7 +240,7 @@ export class MemoryIndexer {
       for (const root of roots) {
         // The home check compares real paths; the walk never follows a symlink,
         // so only the root can be spelled through one.
-        const realRoot = realpathOr(root);
+        const realRoot = realpathLenient(root);
         if (filter.reasonToSkip("", realRoot)) {
           stats.skippedExcluded++;
           continue;
@@ -240,8 +288,13 @@ export class MemoryIndexer {
       const total = candidates.length;
       const upsertChunk = this.db.transaction((chunk: Candidate[]) => {
         for (const c of chunk) {
+          // A file the policy refuses at read time (a link swapped in after the scan) is not "seen":
+          // its old row goes with the vanished files below.
+          if (this.upsertFile(c, scope, stats, maxBytes, pending) === "refused") {
+            stats.skippedExcluded++;
+            continue;
+          }
           seen.add(c.full);
-          this.upsertFile(c, stats, maxBytes, pending);
         }
       });
       for (let i = 0; i < candidates.length; i += INDEX_CHUNK_SIZE) {
@@ -288,14 +341,21 @@ export class MemoryIndexer {
     }
   }
 
-  private upsertFile(c: Candidate, stats: IndexStats, maxBytes: number, pending: PendingLinks): void {
+  private upsertFile(
+    c: Candidate,
+    scope: ReadScope,
+    stats: IndexStats,
+    maxBytes: number,
+    pending: PendingLinks,
+  ): "kept" | "refused" {
     const { root, full, rel, area } = c;
     let stat: fs.Stats;
     try {
-      stat = fs.statSync(full);
-    } catch {
-      return;
+      stat = statWorkspacePath(scope, full).stat;
+    } catch (err) {
+      return err instanceof PathAccessError ? "refused" : "kept";
     }
+    if (!stat.isFile()) return "kept";
     const existing = this.db
       .prepare("SELECT id, size, mtime, root, area FROM files WHERE path = ?")
       .get(full) as { id: number; size: number; mtime: number; root: string; area: string | null } | undefined;
@@ -307,7 +367,7 @@ export class MemoryIndexer {
       existing.root === root &&
       (existing.area ?? null) === area
     ) {
-      return;
+      return "kept";
     }
 
     const ext = path.extname(full).toLowerCase();
@@ -317,10 +377,16 @@ export class MemoryIndexer {
     let fields: Record<string, string> = {};
     if ((TEXT_EXTENSIONS.has(ext) || ext === "") && stat.size <= maxBytes) {
       try {
-        const buf = fs.readFileSync(full);
-        if (isBinaryBuffer(buf)) stats.skippedBinary++;
-        else content = buf.toString("utf8");
-      } catch {
+        const file = openWorkspaceFile(scope, full);
+        try {
+          const buf = file.readBytes(maxBytes).bytes;
+          if (isBinaryBuffer(buf)) stats.skippedBinary++;
+          else content = buf.toString("utf8");
+        } finally {
+          file.close();
+        }
+      } catch (err) {
+        if (err instanceof PathAccessError) return "refused";
         content = "";
       }
       if (ext === ".md" || ext === ".markdown") {
@@ -369,6 +435,7 @@ export class MemoryIndexer {
     if (ext === ".md" || ext === ".markdown") {
       this.refreshLinks(id, full, content, pending);
     }
+    return "kept";
   }
 
   /** Recompute the outgoing markdown links of one file (called only when it changed). */
@@ -496,14 +563,6 @@ export class MemoryIndexer {
     this.db
       .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
       .run(PENDING_LINKS_KEY, JSON.stringify(obj));
-  }
-}
-
-function realpathOr(p: string): string {
-  try {
-    return fs.realpathSync(p);
-  } catch {
-    return p;
   }
 }
 

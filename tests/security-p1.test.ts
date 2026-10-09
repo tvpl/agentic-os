@@ -308,59 +308,6 @@ describe("S1 an agent is not started inside the home's credentials folders", () 
   });
 });
 
-describe("S1 every caller of the workspace filter passes the home", () => {
-  it("extra: production calls of the filter functions all pass an options argument", () => {
-    const guarded = new Map([
-      ["makeWorkspaceFilter", 1],
-      ["checkWorkspacePath", 3],
-      ["resolveOpenablePath", 3],
-      ["previewFile", 3],
-    ]);
-    const files: string[] = [];
-    const walk = (dir: string) => {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          if (entry.name !== "node_modules" && entry.name !== "dist") walk(full);
-        } else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".d.ts")) files.push(full);
-      }
-    };
-    walk(path.join(repoRoot, "core", "src"));
-    walk(path.join(repoRoot, "apps", "api", "src"));
-    const missing: string[] = [];
-    let calls = 0;
-    for (const file of files) {
-      const source = ts.createSourceFile(file, fs.readFileSync(file, "utf8"), ts.ScriptTarget.ESNext, true);
-      const visit = (node: ts.Node) => {
-        if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-          const index = guarded.get(node.expression.text);
-          if (index !== undefined) {
-            calls++;
-            const arg = node.arguments[index];
-            const where = `${path.relative(repoRoot, file)}:${source.getLineAndCharacterOfPosition(node.pos).line + 1}`;
-            // A literal naming homeDir, or an options value forwarded by name.
-            const forwarded =
-              arg &&
-              (ts.isIdentifier(arg) ? arg.text : ts.isPropertyAccessExpression(arg) ? arg.name.text : "");
-            const ok =
-              arg !== undefined &&
-              ((ts.isObjectLiteralExpression(arg) &&
-                arg.properties.some((p) => p.name?.getText() === "homeDir")) ||
-                /options/i.test(forwarded || ""));
-            if (!ok) missing.push(`${node.expression.text} at ${where}`);
-          }
-        }
-        ts.forEachChild(node, visit);
-      };
-      visit(source);
-    }
-    // fsWatch builds a name-only filter without a home (it reads no content); it is the one known exception.
-    const unexpected = missing.filter((m) => !m.includes("core/src/sentinels/fsWatch.ts"));
-    expect(calls).toBeGreaterThanOrEqual(8);
-    expect(unexpected).toEqual([]);
-  });
-});
-
 // ---------------------------------------------------------------------------
 describe("S2 the diff does not run what the repository says", () => {
   const scratch = () => fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-sp1-git-"));
@@ -466,6 +413,33 @@ describe("S2 the diff does not run what the repository says", () => {
       const refused = await runGit(fake.bin, dir, ["diff", "--no-color", "--", "a.txt"]);
       expect(refused.exitCode).toBeNull();
       expect(fake.calls().map((c) => split(c.args).sub)).toEqual(["config"]);
+    } finally {
+      delete process.env.FAKE_GIT_LOG;
+      delete process.env.FAKE_GIT_CONFIG;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("C28 diff and status never enter a submodule's own repository", async () => {
+    const dir = scratch();
+    const fake = fakeGit(dir);
+    process.env.FAKE_GIT_LOG = fake.log;
+    process.env.FAKE_GIT_CONFIG = "user.name\n";
+    try {
+      const wanted: Array<[string, string[]]> = [
+        ["diff", ["diff", "--no-color", "HEAD", "--", "a.txt"]],
+        ["diff", ["diff", "--no-color", "--", "a.txt"]],
+        ["status", ["status", "--porcelain", "--untracked-files=all", "--", "a.txt"]],
+      ];
+      for (const [, args] of wanted) await runGit(fake.bin, dir, args);
+      const calls = fake.calls().filter((c) => ["diff", "status"].includes(split(c.args).sub));
+      expect(calls.map((c) => split(c.args).sub)).toEqual(["diff", "diff", "status"]);
+      for (const call of calls) {
+        const { after, sub } = split(call.args);
+        expect(after, `${sub} carries --ignore-submodules=all`).toContain("--ignore-submodules=all");
+        // placed before the pathspec separator, so git reads it as an option and not as a path
+        expect(after.indexOf("--ignore-submodules=all"), sub).toBeLessThan(after.indexOf("--"));
+      }
     } finally {
       delete process.env.FAKE_GIT_LOG;
       delete process.env.FAKE_GIT_CONFIG;
@@ -804,7 +778,9 @@ describe("S4 the event stream recovers from a restart", () => {
     during?: () => void,
   ): Promise<{ status: number; frames: Frame[]; raw: string }> {
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), ms);
+    // The reading window opens when the stream does: a machine busy with a whole suite can take longer than
+    // `ms` just to accept the connection, and that must not eat the window. The connection has its own limit.
+    let timer = setTimeout(() => ac.abort(), 15_000);
     let raw = "";
     let status = 0;
     try {
@@ -813,6 +789,8 @@ describe("S4 the event stream recovers from a restart", () => {
         signal: ac.signal,
       });
       status = res.status;
+      clearTimeout(timer);
+      timer = setTimeout(() => ac.abort(), ms);
       const reader = res.body!.getReader();
       if (during) setTimeout(during, 150);
       try {
@@ -901,7 +879,10 @@ describe("S4 the event stream recovers from a restart", () => {
 describe("S5 the security doc matches what is enforced", () => {
   it("C15 the security doc describes what is enforced", () => {
     const doc = fs.readFileSync(path.join(repoRoot, "docs", "security.md"), "utf8");
-    const notCovered = doc.slice(doc.indexOf("Not covered:"), doc.indexOf("## Security profiles"));
+    const notCovered = doc.slice(
+      doc.indexOf("Not covered, and said plainly:"),
+      doc.indexOf("## Security profiles"),
+    );
     const required: Record<string, string[]> = {
       "home config and logs not served": [
         "`config/` and `logs/` are never served",

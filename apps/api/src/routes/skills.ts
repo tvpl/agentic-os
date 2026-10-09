@@ -6,13 +6,12 @@ import {
   ProviderId,
   EffortLevel,
   SkillFrontmatterSchema,
-  resolveInsideRoots,
+  statWorkspacePath,
   type RunMode,
 } from "@mordomo/core";
 import type { AppContext } from "../context.js";
 import {
   gateWrite,
-  grantedRoots,
   httpError,
   launchSkillRun,
   requireProvider,
@@ -92,16 +91,13 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
       const { slug } = SlugParams.parse(req.params);
       const { rel } = z.object({ rel: z.string().min(1).max(512) }).parse(req.query ?? {});
       if (!ctx.skills.load(slug)) throw httpError(404, "Skill not found");
-      const hit = ctx.skills.resolveResource(slug, rel);
+      // Opened through the safe-read primitive: the descriptor, not the path, is what gets streamed.
+      const hit = ctx.skills.openResource(slug, rel);
       if (!hit) throw httpError(404, "Resource not found");
-      let stat: fs.Stats;
-      try {
-        stat = fs.statSync(hit.absPath);
-      } catch {
-        throw httpError(404, "Resource not found");
+      if (hit.file.stat.size > MAX_RESOURCE_BYTES) {
+        hit.file.close();
+        throw httpError(413, "Resource too large to preview");
       }
-      if (!stat.isFile()) throw httpError(404, "Resource not found");
-      if (stat.size > MAX_RESOURCE_BYTES) throw httpError(413, "Resource too large to preview");
       reply.header("content-type", hit.contentType);
       reply.header("cache-control", "private, no-store");
       // Anything the panel cannot preview inline is offered as a download.
@@ -111,7 +107,7 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
           `${hit.resource.kind === "pdf" ? "inline" : "attachment"}; filename="${hit.resource.name.replace(/["\\\r\n]/g, "_")}"`,
         );
       }
-      return reply.send(fs.createReadStream(hit.absPath));
+      return reply.send(hit.file.createReadStream());
     },
   );
 
@@ -190,12 +186,15 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
     const { sourceDir, slug } = z
       .object({ sourceDir: z.string().min(1), slug: IdParam.optional() })
       .parse(req.body);
-    const resolved = resolveInsideRoots(grantedRoots(ctx), sourceDir); // PathAccessError → 403
+    // The granted folders and the workspace filter, on the real path (PathAccessError → 403).
+    let resolved: string;
     let stat: fs.Stats;
     try {
-      stat = fs.statSync(resolved);
-    } catch {
-      throw httpError(400, "Source directory does not exist");
+      ({ path: resolved, stat } = statWorkspacePath(ctx.readScope(), sourceDir));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT")
+        throw httpError(400, "Source directory does not exist");
+      throw err;
     }
     if (!stat.isDirectory()) throw httpError(400, "Source must be a directory");
     if (!fs.existsSync(path.join(resolved, "SKILL.md")))

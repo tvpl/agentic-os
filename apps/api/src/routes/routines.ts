@@ -25,6 +25,16 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
     }
   };
 
+  /**
+   * `workingDir` is where an agent will start: the same rule as a run's `cwd`
+   * (inside a granted folder, outside the home's `config/` and `logs/`), at
+   * create and edit. The scheduler applies it again at every fire, because the
+   * folder may have been revoked or turned private since.
+   */
+  const checkWorkingDir = (workingDir: string | null): void => {
+    if (workingDir) ctx.resolveCwd(workingDir); // PathAccessError → 403 forbidden_path
+  };
+
   app.get("/api/routines", async () => ctx.scheduler.status());
 
   /** Dashboard footer: "n/m fired today" plus the routine count per runner and kind. */
@@ -39,6 +49,7 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
   app.post("/api/routines", async (req) => {
     const routine = RoutineSchema.parse(req.body);
     requireProvider(ctx, routine.provider);
+    checkWorkingDir(routine.workingDir);
     if (ctx.routines.get(routine.id)) throw httpError(409, `Routine "${routine.id}" already exists`);
     if (routine.skillSlug && !ctx.skills.load(routine.skillSlug)) {
       throw httpError(400, `Unknown skill: ${routine.skillSlug}`);
@@ -54,6 +65,7 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
     if (!ctx.routines.get(id)) throw httpError(404, "Routine not found");
     const routine = RoutineSchema.parse({ ...(req.body as object), id });
     requireProvider(ctx, routine.provider);
+    checkWorkingDir(routine.workingDir);
     if (routine.skillSlug && !ctx.skills.load(routine.skillSlug)) {
       throw httpError(400, `Unknown skill: ${routine.skillSlug}`);
     }

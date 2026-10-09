@@ -173,7 +173,7 @@ describe("routine scheduler (manual fire, against fake CLI)", () => {
       const db = openDb(paths).db;
       const store = new SettingsStore(paths);
       store.update({ indexedFolders: [{ path: repoPaths.skills, area: "Projetos", enabled: true }] });
-      const stats = new MemoryIndexer(db, () => store.load()).indexAll();
+      const stats = new MemoryIndexer(db, () => store.load(), { homeDir: paths.home }).indexAll();
       expect(stats.added).toBeGreaterThan(5);
       db.close();
     } finally {

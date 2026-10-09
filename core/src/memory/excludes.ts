@@ -1,6 +1,5 @@
-import fs from "node:fs";
 import path from "node:path";
-import { isSecretFile, makeExcludeMatcher } from "../security/paths.js";
+import { isSecretFile, makeExcludeMatcher, realpathLenient } from "../security/paths.js";
 
 /**
  * Workspace exclusion policy shared by the indexer, the preview and the
@@ -67,11 +66,11 @@ export function isBinaryBuffer(buf: Uint8Array): boolean {
 
 export interface WorkspaceFilterOptions {
   /**
-   * The MordomoOS home. Its `config/` and `logs/` are never served. Callers that
-   * read files on behalf of the API MUST pass it: without it the filter cannot
-   * tell the home from any other folder.
+   * The MordomoOS home. Its `config/` and `logs/` are never served. Required, so
+   * that leaving it out is a type error rather than a silent hole: `null` says
+   * "this filter judges names only and reads nothing" (the file watcher).
    */
-  homeDir?: string;
+  homeDir: string | null;
   /** Platform whose file-name rules apply; defaults to this process's. Case-insensitive on darwin and win32. */
   platform?: NodeJS.Platform;
 }
@@ -86,14 +85,6 @@ export interface WorkspaceFilter {
    * that answer an API request turn this into a 403 rather than a "blocked" body.
    */
   homePrivateReason(absolute: string): string | null;
-}
-
-function realOrResolved(p: string): string {
-  try {
-    return fs.realpathSync(p);
-  } catch {
-    return path.resolve(p);
-  }
 }
 
 /** Segments as the platform's file system compares them: case-folded, and without the trailing dots/spaces Windows drops. */
@@ -112,12 +103,12 @@ function comparableSegments(p: string, platform: NodeJS.Platform): string[] {
  */
 function homePrivateDirs(homeDir: string, platform: NodeJS.Platform): Array<{ name: string; segs: string[] }> {
   const found = new Map<string, { name: string; segs: string[] }>();
-  const realHome = realOrResolved(homeDir);
+  const realHome = realpathLenient(homeDir);
   for (const name of HOME_PRIVATE_DIRS) {
     const spellings = [
       path.join(path.resolve(homeDir), name),
       path.join(realHome, name),
-      realOrResolved(path.join(homeDir, name)),
+      realpathLenient(path.join(homeDir, name)),
     ];
     for (const spelling of spellings) {
       const segs = comparableSegments(spelling, platform);
@@ -137,7 +128,7 @@ function homePrivateDirs(homeDir: string, platform: NodeJS.Platform): Array<{ na
  */
 export function makeWorkspaceFilter(
   excludes: ReadonlyArray<string>,
-  options: WorkspaceFilterOptions = {},
+  options: WorkspaceFilterOptions,
 ): WorkspaceFilter {
   const userMatch = makeExcludeMatcher([...excludes]);
   const platform = options.platform ?? process.platform;

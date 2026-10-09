@@ -148,22 +148,51 @@ export class SettingsStore {
    * Local API token. Generated once, stored in config/token (0600).
    * Serves as CSRF/foreign-origin protection; it never leaves the machine.
    *
-   * Creation is exclusive (`wx`): of several processes starting on a home with
-   * no token, one creates the file and the others read what it wrote, so they
-   * all return the same value.
+   * Of several processes starting on a home with no token, one wins and the
+   * others return what it wrote, so they all agree. The winner is decided by
+   * `link(2)`: the token is written in full to a private temporary file and
+   * linked into place, which is atomic and exclusive, so a loser always finds a
+   * complete token and nobody waits. A file system without hard links (FAT,
+   * some network mounts) falls back to an exclusive create (`wx`), where the
+   * winner may still be writing: the loser then polls, for at most 2 s, the one
+   * time two processes start in the same instant on such a disk.
    */
   getOrCreateToken(): string {
     const existing = this.readToken();
     if (existing) return existing;
     const token = crypto.randomBytes(32).toString("hex");
     fs.mkdirSync(path.dirname(this.paths.tokenFile), { recursive: true, mode: PRIVATE_DIR_MODE });
+    const staged = `${this.paths.tokenFile}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
+    fs.writeFileSync(staged, token + "\n", { mode: PRIVATE_FILE_MODE, flag: "wx" });
+    try {
+      try {
+        fs.linkSync(staged, this.paths.tokenFile);
+        return token;
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "EEXIST") {
+          const winner = this.readToken();
+          if (winner) return winner;
+          // The file is there but empty or short (a crash mid-write of an older version): replace it, do not trust it.
+          fs.renameSync(staged, this.paths.tokenFile);
+          return this.readToken() ?? token;
+        }
+        if (code !== "EPERM" && code !== "ENOSYS" && code !== "ENOTSUP" && code !== "EOPNOTSUPP") throw err;
+      }
+      return this.createTokenWithoutLinks(token);
+    } finally {
+      fs.rmSync(staged, { force: true });
+    }
+  }
+
+  /** `getOrCreateToken` on a file system that cannot hard-link: exclusive create, then a bounded wait for a rival's write. */
+  private createTokenWithoutLinks(token: string): string {
     try {
       fs.writeFileSync(this.paths.tokenFile, token + "\n", { mode: PRIVATE_FILE_MODE, flag: "wx" });
       return token;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
     }
-    // Lost the race: the winner may still be writing, so wait briefly for a complete value.
     const deadline = Date.now() + 2000;
     for (;;) {
       const written = this.readToken();
@@ -171,10 +200,7 @@ export class SettingsStore {
       if (Date.now() >= deadline) break;
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
     }
-    // An empty or truncated file (a crash mid-write) is replaced, not trusted.
-    const replacement = `${this.paths.tokenFile}.${process.pid}.tmp`;
-    fs.writeFileSync(replacement, token + "\n", { mode: PRIVATE_FILE_MODE });
-    fs.renameSync(replacement, this.paths.tokenFile);
+    fs.writeFileSync(this.paths.tokenFile, token + "\n", { mode: PRIVATE_FILE_MODE });
     return this.readToken() ?? token;
   }
 

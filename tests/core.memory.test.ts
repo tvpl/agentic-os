@@ -52,7 +52,7 @@ afterEach(() => {
 
 describe("memory indexer", () => {
   it("preserves the previous snapshot when directory enumeration fails", async () => {
-    const indexer = new MemoryIndexer(db, () => store.load());
+    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home });
     indexer.indexAll();
     const before = db.prepare("SELECT * FROM files ORDER BY id").all();
     const lastIndex = indexer.lastIndex();
@@ -82,7 +82,7 @@ describe("memory indexer", () => {
   });
 
   it("does not mistake an unavailable configured root for intentionally removed files", () => {
-    const indexer = new MemoryIndexer(db, () => store.load());
+    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home });
     indexer.indexAll();
     const detached = workspace + "-detached";
     fs.renameSync(workspace, detached);
@@ -98,7 +98,7 @@ describe("memory indexer", () => {
   });
 
   it("indexes real files, honours exclusions and never reads secrets", () => {
-    const indexer = new MemoryIndexer(db, () => store.load());
+    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home });
     const stats = indexer.indexAll();
     expect(stats.added).toBe(2); // budget + notes; .env and node_modules excluded
     expect(stats.skippedExcluded).toBeGreaterThan(0);
@@ -115,7 +115,7 @@ describe("memory indexer", () => {
   });
 
   it("is incremental: unchanged files are not re-added", () => {
-    const indexer = new MemoryIndexer(db, () => store.load());
+    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home });
     indexer.indexAll();
     const second = indexer.indexAll();
     expect(second.added).toBe(0);
@@ -127,7 +127,7 @@ describe("memory indexer", () => {
   });
 
   it("removes deleted files from the index", () => {
-    const indexer = new MemoryIndexer(db, () => store.load());
+    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home });
     indexer.indexAll();
     fs.unlinkSync(path.join(workspace, "notes.md"));
     const stats = indexer.indexAll();
@@ -143,7 +143,7 @@ describe("memory indexer", () => {
       "[default]\naws_access_key_id = AKIAAAAAAAAAAAAAAAAA\n",
     );
     store.update({ excludes: [] });
-    new MemoryIndexer(db, () => store.load()).indexAll();
+    new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home }).indexAll();
     const rows = db.prepare("SELECT path FROM files").all() as Array<{ path: string }>;
     expect(rows.some((r) => r.path.includes(`${path.sep}.git${path.sep}`))).toBe(false);
     expect(rows.some((r) => r.path.includes(`${path.sep}.aws${path.sep}`))).toBe(false);
@@ -155,7 +155,7 @@ describe("memory indexer", () => {
     bin.write("looks like text at first");
     bin[40] = 0; // NUL inside the first 8 KiB
     fs.writeFileSync(path.join(workspace, "blob.txt"), bin);
-    const stats = new MemoryIndexer(db, () => store.load()).indexAll();
+    const stats = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home }).indexAll();
     expect(stats.skippedBinary).toBe(1);
     const row = db.prepare("SELECT id FROM files WHERE name = 'blob.txt'").get() as { id: number };
     expect(row).toBeTruthy(); // the file is listed, its bytes are not indexed
@@ -166,7 +166,7 @@ describe("memory indexer", () => {
   });
 
   it("keeps markdown links incremental: added later, restored after delete, dropped on edit", () => {
-    const indexer = new MemoryIndexer(db, () => store.load());
+    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home });
     fs.writeFileSync(
       path.join(workspace, "hub.md"),
       "# Hub\n\n[later](./later.md) and [notes](./notes.md)\n",
@@ -213,7 +213,7 @@ describe("memory indexer", () => {
         { path: nested, area: "Finanças", enabled: true },
       ],
     });
-    const indexer = new MemoryIndexer(db, () => store.load());
+    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home });
     indexer.indexAll();
     const budget = db.prepare("SELECT root, area, rel FROM files WHERE name = 'budget-2026.md'").get() as {
       root: string;
@@ -243,7 +243,7 @@ describe("memory indexer", () => {
 
   it("indexAllAsync yields between chunks and emits progress/finished events", async () => {
     for (let i = 0; i < 450; i++) fs.writeFileSync(path.join(workspace, `n${i}.txt`), `note ${i}`);
-    const indexer = new MemoryIndexer(db, () => store.load());
+    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home });
     const seen: string[] = [];
     const unsubscribe = events.subscribe((e) => {
       if (e.type === "index.progress" || e.type === "index.finished") seen.push(e.type);
@@ -271,7 +271,7 @@ describe("memory indexer", () => {
 
 describe("search", () => {
   it("finds a real file by content with a snippet", () => {
-    new MemoryIndexer(db, () => store.load()).indexAll();
+    new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home }).indexAll();
     const hits = searchFiles(db, { query: "quarterly budget" });
     expect(hits.length).toBeGreaterThan(0);
     expect(hits[0]!.name).toBe("budget-2026.md");
@@ -281,7 +281,7 @@ describe("search", () => {
   });
 
   it("filters by area and extension and lists facets", () => {
-    new MemoryIndexer(db, () => store.load()).indexAll();
+    new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home }).indexAll();
     expect(searchFiles(db, { query: "", area: "Finanças" }).length).toBe(2);
     expect(searchFiles(db, { query: "", ext: "md" }).length).toBe(2);
     const facets = listFacets(db);
@@ -293,7 +293,7 @@ describe("search", () => {
 
 describe("graph and relations", () => {
   it("builds nodes/edges including markdown links with explanations", () => {
-    new MemoryIndexer(db, () => store.load()).indexAll();
+    new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home }).indexAll();
     const graph = buildGraph(db, {});
     expect(graph.nodes.length).toBe(2);
     const linkEdge = graph.edges.find((e) => e.kind === "markdown-link");
@@ -348,17 +348,18 @@ describe("graph and relations", () => {
 });
 
 describe("preview", () => {
+  const access = () => ({ homeDir: ctx.paths.home });
   it("previews text files and blocks secret files", () => {
     const settings = store.load();
-    const ok = previewFile(settings, [], path.join(workspace, "notes.md"));
+    const ok = previewFile(settings, [], path.join(workspace, "notes.md"), access());
     expect(ok.kind).toBe("text");
     expect(ok.content).toContain("General notes");
 
-    const blocked = previewFile(settings, [], path.join(workspace, ".env"));
+    const blocked = previewFile(settings, [], path.join(workspace, ".env"), access());
     expect(blocked.kind).toBe("blocked");
     expect(blocked.content).toBeNull();
 
-    expect(() => previewFile(settings, [], "/etc/passwd")).toThrow();
+    expect(() => previewFile(settings, [], "/etc/passwd", access())).toThrow();
   });
 
   it("refuses hard-blocked directories and settings excludes inside an indexed root", () => {
@@ -370,23 +371,29 @@ describe("preview", () => {
     fs.writeFileSync(path.join(workspace, "private", "diary.md"), "# Diary\n");
     store.update({ excludes: [] }); // even with an empty list the hard blocklist holds
     let settings = store.load();
-    expect(previewFile(settings, [], path.join(workspace, ".git", "config")).kind).toBe("blocked");
-    expect(previewFile(settings, [], path.join(workspace, ".aws", "credentials")).kind).toBe("blocked");
-    expect(previewFile(settings, [], path.join(workspace, "node_modules", "junk", "index.js")).kind).toBe(
+    expect(previewFile(settings, [], path.join(workspace, ".git", "config"), access()).kind).toBe("blocked");
+    expect(previewFile(settings, [], path.join(workspace, ".aws", "credentials"), access()).kind).toBe(
       "blocked",
     );
-    expect(previewFile(settings, [], path.join(workspace, "private", "diary.md")).kind).toBe("text");
+    expect(
+      previewFile(settings, [], path.join(workspace, "node_modules", "junk", "index.js"), access()).kind,
+    ).toBe("blocked");
+    expect(previewFile(settings, [], path.join(workspace, "private", "diary.md"), access()).kind).toBe(
+      "text",
+    );
 
     store.update({ excludes: ["private"] });
     settings = store.load();
-    expect(previewFile(settings, [], path.join(workspace, "private", "diary.md")).kind).toBe("blocked");
-    expect(() => resolveOpenablePath(settings, [], path.join(workspace, "private", "diary.md"))).toThrow(
+    expect(previewFile(settings, [], path.join(workspace, "private", "diary.md"), access()).kind).toBe(
+      "blocked",
+    );
+    expect(() =>
+      resolveOpenablePath(settings, [], path.join(workspace, "private", "diary.md"), access()),
+    ).toThrow(PathAccessError);
+    expect(() => resolveOpenablePath(settings, [], path.join(workspace, ".git", "config"), access())).toThrow(
       PathAccessError,
     );
-    expect(() => resolveOpenablePath(settings, [], path.join(workspace, ".git", "config"))).toThrow(
-      PathAccessError,
-    );
-    expect(resolveOpenablePath(settings, [], path.join(workspace, "notes.md"))).toBe(
+    expect(resolveOpenablePath(settings, [], path.join(workspace, "notes.md"), access())).toBe(
       fs.realpathSync(path.join(workspace, "notes.md")),
     );
   });
@@ -397,17 +404,17 @@ describe("preview", () => {
     fs.writeFileSync(path.join(workspace, "fake.md"), bin);
     fs.writeFileSync(path.join(workspace, "Makefile"), "all:\n\techo hi\n");
     const settings = store.load();
-    expect(previewFile(settings, [], path.join(workspace, "fake.md")).kind).toBe("binary");
-    const mk = previewFile(settings, [], path.join(workspace, "Makefile"));
+    expect(previewFile(settings, [], path.join(workspace, "fake.md"), access()).kind).toBe("binary");
+    const mk = previewFile(settings, [], path.join(workspace, "Makefile"), access());
     expect(mk.kind).toBe("text");
     expect(mk.content).toContain("echo hi");
-    expect(previewFile(settings, [], path.join(workspace, "notes.md")).kind).toBe("text");
+    expect(previewFile(settings, [], path.join(workspace, "notes.md"), access()).kind).toBe("text");
   });
 });
 
 describe("routers", () => {
   it("generates master + area indexes and detects broken pointers", () => {
-    new MemoryIndexer(db, () => store.load()).indexAll();
+    new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home }).indexAll();
     const { written } = generateRouters(db, ctx.paths, store.load());
     expect(written.some((w) => w.endsWith("ROUTER.md"))).toBe(true);
     const master = fs.readFileSync(path.join(ctx.paths.memory, "ROUTER.md"), "utf8");
@@ -455,7 +462,7 @@ describe("related-by-content edges at index time", () => {
 
   it("stores term vectors and neighbours, serves them to the graph, and refreshes incrementally", () => {
     seed();
-    const indexer = new MemoryIndexer(db, () => store.load());
+    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home });
     const stats = indexer.indexAll();
     expect(stats.related).toBeGreaterThan(0);
     const terms = (db.prepare("SELECT COUNT(*) c FROM file_terms").get() as { c: number }).c;
