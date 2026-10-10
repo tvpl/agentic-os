@@ -181,7 +181,7 @@ export function ConsoleControls({
       )}
       <button
         type="button"
-        className={`cc${problem ? " warn" : ""}`}
+        className={`cc${problem ? " problem" : ""}`}
         title={
           problem
             ? `${t("desktop.prompt.provider")}: ${t(`gate.state.${problem}` as "gate.state.login_required")}`

@@ -512,7 +512,7 @@
 }
 .pxs-brush .pxs-brush-dots i.on {
   background: var(--accent);
-  transform: scale(1.5);
+  transform: scale(1.25);
 }
 .pxs-frame-nav {
   display: flex;
@@ -911,6 +911,18 @@
   border-color: var(--danger);
   border-radius: 1px;
   transform: rotate(45deg);
+}
+/* Still going: half a disc. Nothing ran (skipped, cancelled): a dash. */
+.rt-dot.past.live {
+  background: linear-gradient(90deg, var(--accent) 50%, transparent 50%);
+  border-color: var(--accent);
+}
+.rt-dot.past.skip {
+  top: 6px;
+  height: 2px;
+  border: 0;
+  border-radius: 0;
+  background: var(--text-faint);
 }
 .rt-dot.future {
   border-color: var(--agent);

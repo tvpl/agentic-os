@@ -22,7 +22,7 @@
     "build:server": "tsc -b contracts core adapters/claude adapters/cursor adapters/codex apps/api",
     "typecheck": "tsc -b contracts core adapters/claude adapters/cursor adapters/codex apps/api && tsc -p typetests/tsconfig.json && npm run typecheck -w apps/command-centre",
     "lint": "eslint . && npm run lint:css",
-    "lint:css": "stylelint --config stylelint.config.mjs --ignore-path .gitignore \"apps/command-centre/src/**/*.css\"",
+    "lint:css": "stylelint --config stylelint.config.mjs --ignore-path stylelint.ignore \"apps/command-centre/src/**/*.css\"",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -62,8 +62,8 @@
       "eslint --max-warnings=0",
       "prettier --write"
     ],
-    "*.css": [
-      "stylelint --config stylelint.config.mjs --ignore-path .gitignore --max-warnings=0",
+    "apps/command-centre/src/**/*.css": [
+      "stylelint --config stylelint.config.mjs --ignore-path stylelint.ignore --allow-empty-input --max-warnings=0",
       "prettier --write"
     ],
     "*.{json,md,html,yml,yaml}": "prettier --write --ignore-unknown"

@@ -19,7 +19,7 @@ import postcss from "postcss";
 import { rel, selectorPieces } from "./sizeScan";
 
 /** The status words a class can carry (`.ok`, `.bad`…): siblings that differ by one of them are values of one state. */
-const STATUS = String.raw`\.(?:ok|bad|warn|warning|danger|err|error|failed|fail|done|paused|live|running|healthy|stale|pending|busy|alert|success|idle|blocked)(?![\w-])`;
+const STATUS = String.raw`\.(?:ok|bad|warn|warning|danger|err|error|failed|fail|done|paused|live|running|healthy|stale|pending|busy|alert|success|idle|blocked|skip|skipped|problem)(?![\w-])`;
 
 /** A selector part that says "this element is in a state". */
 const STATE = new RegExp(

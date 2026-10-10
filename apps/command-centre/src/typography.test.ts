@@ -7,7 +7,15 @@
  * actually refuses one. The readers live in testing/sizeScan.ts.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -526,13 +534,26 @@ describe("colour tokens", () => {
       expect(pkg.scripts.lint).toMatch(/\bnpm run lint:css\b/);
       // The config is named, never discovered: stylelint searches the tree for a config of its own
       // (a `.stylelintrc.*` in any folder, `stylelint.config.cjs`…), and an explicit --config switches that off.
-      // `--ignore-path .gitignore` replaces the `.stylelintignore` that stylelint reads from the working directory.
+      // `--ignore-path stylelint.ignore` (an empty list) replaces the `.stylelintignore` that stylelint reads
+      // from the working directory and the `.gitignore` a stray stylesheet could hide behind.
       expect(pkg.scripts["lint:css"]).toBe(
-        'stylelint --config stylelint.config.mjs --ignore-path .gitignore "apps/command-centre/src/**/*.css"',
+        'stylelint --config stylelint.config.mjs --ignore-path stylelint.ignore "apps/command-centre/src/**/*.css"',
       );
-      expect(pkg["lint-staged"]["*.css"]).toEqual(
-        expect.arrayContaining([expect.stringMatching(/^stylelint --config stylelint\.config\.mjs /)]),
+      // The commit hook lints the same files, with the same pinned config and ignore list.
+      expect(Object.keys(pkg["lint-staged"]).filter((glob) => glob.endsWith(".css"))).toEqual([
+        "apps/command-centre/src/**/*.css",
+      ]);
+      expect(pkg["lint-staged"]["apps/command-centre/src/**/*.css"]).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(
+            /^stylelint --config stylelint\.config\.mjs --ignore-path stylelint\.ignore /,
+          ),
+        ]),
       );
+      const ignoreList = readFileSync(join(repoRoot, "stylelint.ignore"), "utf8")
+        .split("\n")
+        .filter((line) => line.trim() && !line.trim().startsWith("#"));
+      expect(ignoreList, "stylelint.ignore stays empty").toEqual([]);
 
       // The command itself exits non-zero on `a { color: #fff }`.
       const dir = mkdtempSync(join(tmpdir(), "colour-lint-"));
@@ -546,22 +567,25 @@ describe("colour tokens", () => {
         rmSync(dir, { recursive: true, force: true });
       }
 
-      // `lint:css` on its own, run as written in a folder whose `.stylelintignore` lists the file, still refuses it.
+      // `lint:css` on its own, run as written in a folder whose `.stylelintignore` and `.gitignore` list the
+      // file (a stylesheet in `dist/`), still refuses it.
       const ignored = mkdtempSync(join(tmpdir(), "colour-lint-ignore-"));
       try {
-        writeFileSync(join(ignored, "probe.css"), "a { color: #fff; }\n");
-        writeFileSync(join(ignored, ".stylelintignore"), "probe.css\n");
-        writeFileSync(join(ignored, ".gitignore"), "");
+        mkdirSync(join(ignored, "dist"));
+        writeFileSync(join(ignored, "dist", "probe.css"), "a { color: #fff; }\n");
+        writeFileSync(join(ignored, ".stylelintignore"), "dist/probe.css\n");
+        writeFileSync(join(ignored, ".gitignore"), "dist/\n");
+        copyFileSync(join(repoRoot, "stylelint.ignore"), join(ignored, "stylelint.ignore"));
         const args = (pkg.scripts["lint:css"] as string)
           .replace(/^stylelint /, "")
           .replace("stylelint.config.mjs", stylelintConfig)
-          .replace(/"apps[^"]*"/, "probe.css")
+          .replace(/"apps[^"]*"/, "dist/probe.css")
           .split(" ");
         const run = spawnSync("npx", ["stylelint", ...args], { cwd: ignored, encoding: "utf8" });
         expect(run.status, run.stdout + run.stderr).not.toBe(0);
         expect(run.stdout + run.stderr).toContain("color-no-hex");
-        // Without the pinned ignore path the list is honoured and the file is skipped: the probe is what bites.
-        const bare = spawnSync("npx", ["stylelint", "--config", stylelintConfig, "probe.css"], {
+        // With stylelint's own defaults the lists are honoured and the file is skipped: the probe is what bites.
+        const bare = spawnSync("npx", ["stylelint", "--config", stylelintConfig, "dist/probe.css"], {
           cwd: ignored,
           encoding: "utf8",
         });
@@ -656,6 +680,9 @@ describe("colour tokens", () => {
       expect(await colourWarnings("a { grid-area: field; }\n")).toEqual([]);
       expect(await colourWarnings("a { animation-name: highlight; }\n")).toEqual([]);
       expect(await colourWarnings("a { container-name: field; }\n")).toEqual([]);
+      // `font: menu` and `font-family: caption` name system fonts, not colours
+      expect(await colourWarnings("a { font: menu; }\n")).toEqual([]);
+      expect(await colourWarnings("a { font: caption; }\n")).toEqual([]);
       expect(await colourWarnings("a { anchor-name: --field; }\n")).toEqual([]);
       // The declared limit: a custom property may hold a colour, so one holding a bare system-colour word is refused.
       expect(await colourWarnings("a { --kind: mark; }\n")).toContain(

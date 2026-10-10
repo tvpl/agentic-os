@@ -418,9 +418,6 @@
 .conn-steps li.done button {
   color: var(--ok);
 }
-.conn-steps li.done button::after {
-  content: " ✓";
-}
 .conn-step-n {
   display: inline-grid;
   place-items: center;

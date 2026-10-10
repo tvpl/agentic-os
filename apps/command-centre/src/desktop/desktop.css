@@ -2370,7 +2370,8 @@
 .cons-ctl .cc.budget.over {
   color: var(--danger);
 }
-.cons-ctl .cc.warn {
+/* The provider chip when its login or install needs a look. */
+.cons-ctl .cc.problem {
   color: var(--danger);
   border-color: var(--danger);
   text-decoration: underline;

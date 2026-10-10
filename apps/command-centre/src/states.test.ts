@@ -12,6 +12,8 @@ import { colourOnlyStates, stateGroups } from "./testing/stateScan";
 
 const DOT =
   "a status dot sits beside the words that say the same: ProviderGate, Setup and the providers list name the login, the diagnostics list prints the check's status; the app's `sse-dot` is `aria-hidden` and the service banner says it";
+const STEP_CHECK =
+  "a finished step swaps its number for a check icon (`<Check />` in Setup and in the connector wizard)";
 const LABELLED =
   "the element carries its own label (a badge, a button or a link says what it is); the hue only reinforces it";
 const SENTENCE = "a sentence the person reads; the hue only reinforces what the words say";
@@ -29,6 +31,8 @@ const MARKED_ELSEWHERE: Record<string, string> = {
   ".sse-dot.off": "decorative (`aria-hidden`); the service banner says it in words",
   "canvas.dimmed": "a canvas dimmed behind an open panel: decoration, the panel is the state",
   ".palette-row.selected": "the chevron follows the row, which is filled by `.launcher-result.selected`",
+  ".stepper li.done": STEP_CHECK,
+  ".conn-steps li.done": STEP_CHECK,
   ".dot.ok": DOT,
   ".dot.warn": DOT,
   ".dot.danger": DOT,

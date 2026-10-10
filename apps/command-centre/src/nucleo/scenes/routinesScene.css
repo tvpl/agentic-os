@@ -235,6 +235,7 @@ path.rts-hit {
   opacity: 0.55;
 }
 .rts-lane.off .rts-lane-span {
+  stroke: color-mix(in srgb, var(--text-dim) 70%, transparent);
   stroke-dasharray: 3 5;
   stroke-linecap: butt;
 }

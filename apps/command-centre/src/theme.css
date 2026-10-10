@@ -1000,7 +1000,7 @@ canvas.dimmed {
   background: var(--accent-soft);
 }
 .launcher-result.selected {
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent-text);
 }
 .launcher-result .lr-icon {
   width: 30px;
@@ -3550,10 +3550,6 @@ input[type="range"]::-moz-range-thumb {
 }
 .stepper li.done {
   color: var(--text-dim);
-}
-.stepper li.done::after {
-  content: "✓";
-  margin-left: auto;
 }
 .stepper .step-n {
   display: inline-grid;

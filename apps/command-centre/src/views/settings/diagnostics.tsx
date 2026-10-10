@@ -3,7 +3,7 @@ import { Download, Stethoscope } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { api, type DoctorReport } from "../../api";
 
-import { useT } from "../../i18n";
+import { useT, type TKey } from "../../i18n";
 import { useToast } from "../../components/ui";
 import { Button } from "../../components/primitives";
 
@@ -61,7 +61,7 @@ export function DiagnosticsTab() {
                   className={`dot ${c.status === "ok" ? "ok" : c.status === "warn" ? "warn" : c.status === "fail" ? "danger" : "dim"}`}
                   style={{ marginRight: 8 }}
                 />
-                {c.label} <span className="meta mono">{c.status}</span>
+                {c.label} <span className="meta mono">{t(`doctor.status.${c.status}` as TKey)}</span>
                 <div className="meta truncate" title={c.detail}>
                   {c.detail}
                 </div>

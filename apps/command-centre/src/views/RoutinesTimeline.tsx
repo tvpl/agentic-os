@@ -7,7 +7,8 @@
 import { useQueries } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api, type RoutineStatus } from "../api";
-import { useLocale, useT, type TKey } from "../i18n";
+import { dictionaries, useLocale, useT, type TKey } from "../i18n";
+import { fireOutcome } from "../nucleo/scenes/routinesDial";
 import { qk } from "../queries";
 import { nextFires } from "./cron";
 
@@ -22,6 +23,15 @@ interface HistoryEntry {
 }
 
 const WINDOW_MS = 12 * 3_600_000;
+
+/** A past fire as one of four shapes: a disc (went well), a diamond (failed), a half disc (still going), a dash (nothing ran). */
+const DOT_TONE = { ok: "ok", fail: "bad", live: "live", skip: "skip" } as const;
+
+/** What a past fire is drawn as, and the status key that says it in words (the raw status when it has no words). */
+export function pastFire(h: Pick<HistoryEntry, "runStatus" | "status">): { tone: string; statusKey: string } {
+  const raw = h.runStatus ?? h.status;
+  return { tone: DOT_TONE[fireOutcome(h.runStatus, h.status)], statusKey: `status.${raw}` };
+}
 
 export function RoutinesTimeline({
   routines,
@@ -75,15 +85,16 @@ export function RoutinesTimeline({
             <div className="rt-lane">
               <span className="rt-now-line" style={{ left: x(now) }} aria-hidden />
               {history.map((h) => {
-                const ok = h.runStatus === "done" || (h.runStatus === null && h.status !== "failed");
+                const { tone, statusKey } = pastFire(h);
+                const said = statusKey in dictionaries.en ? t(statusKey as TKey) : (h.runStatus ?? h.status);
                 return (
                   <button
                     key={h.id}
                     type="button"
-                    className={`rt-dot past ${ok ? "ok" : "bad"}`}
+                    className={`rt-dot past ${tone}`}
                     style={{ left: x(h.firedAt) }}
-                    title={`${fmtHour(h.firedAt)} · ${t(`status.${h.runStatus ?? h.status}` as TKey)}`}
-                    aria-label={`${r.name} ${fmtHour(h.firedAt)} · ${t(`status.${h.runStatus ?? h.status}` as TKey)}`}
+                    title={`${fmtHour(h.firedAt)} · ${said}`}
+                    aria-label={`${r.name} ${fmtHour(h.firedAt)} · ${said}`}
                     onClick={() => h.runId && navigate(`/runs/${h.runId}`)}
                   />
                 );
