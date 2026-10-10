@@ -72,6 +72,9 @@ export function settingsVersion(raw: Raw): number {
  * migrated raw document, or the input untouched when nothing had to run.
  */
 export function migrateSettings(raw: Raw, paths: MordomoPaths, fileText: string): Raw {
+  // A `version` that is there and is not even a number is an invalid field like any other: it is dropped when
+  // the file is read (and the original kept), not a reason to rewrite the file as a version 1 one.
+  if ("version" in raw && typeof raw.version !== "number") return raw;
   let version = settingsVersion(raw);
   if (version >= CURRENT_SETTINGS_VERSION) return raw;
   const backup = `${paths.settingsFile}.v${version}.bak`;

@@ -53,6 +53,9 @@ export function openDb(
   migrations: ReadonlyArray<Migration> = MIGRATIONS,
 ): { db: Db; migration: MigrationResult } {
   fs.mkdirSync(path.dirname(paths.dbFile), { recursive: true, mode: PRIVATE_DIR_MODE });
+  // A database from a newer version is refused before this process touches it in any way: no mode change, no
+  // connection that could checkpoint its WAL when it closes (the bytes of the file stay as they were).
+  assertNotNewer(peekVersion(paths.dbFile), latestVersion(migrations));
   // SQLite gives the -wal and -shm files the mode of the database file, so the
   // file is created owner-only before SQLite opens it.
   fs.closeSync(fs.openSync(paths.dbFile, "a", PRIVATE_FILE_MODE));
@@ -73,6 +76,29 @@ export function openDb(
   } catch (error) {
     db.close();
     throw error;
+  }
+}
+
+/**
+ * `user_version` of the database file as it stands, WAL included, through a read-only connection: one never
+ * checkpoints, so closing it changes nothing. 0 for a file that is missing or empty; a file that cannot be
+ * read this way is left to the normal open, which reports it.
+ */
+function peekVersion(file: string): number {
+  try {
+    if (fs.statSync(file).size === 0) return 0;
+  } catch {
+    return 0;
+  }
+  let db: Db | undefined;
+  try {
+    db = new Database(file, { readonly: true, fileMustExist: true });
+    db.pragma("busy_timeout = 5000");
+    return currentVersion(db);
+  } catch {
+    return 0;
+  } finally {
+    db?.close();
   }
 }
 

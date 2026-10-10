@@ -108,6 +108,10 @@ const stepStatus = (engine: MordomoEngine, stepId: string) =>
     .status;
 
 const MARKER_KNOWN = processStartMarker(process.pid) !== null;
+// Where procfs exists the marker must be readable: a test that skips there would be a proof that never ran.
+if (process.platform === "linux" && fs.existsSync("/proc/self/stat")) {
+  it("the start of a process is readable on this Linux", () => expect(MARKER_KNOWN).toBe(true));
+}
 
 describe("S2 the lock knows its owner", () => {
   it("C9 the lock records the identity of its owner", () => {
@@ -234,7 +238,7 @@ describe("S2 the lock knows its owner", () => {
     expect(processStartMarker(77, mac)).toBe(`ps:${Date.UTC(2026, 9, 9, 12, 0, 0) / 1000}`);
     expect(mac.ran).toEqual([
       {
-        candidates: ["/bin/ps", "/usr/bin/ps", "ps"],
+        candidates: ["/bin/ps", "/usr/bin/ps"],
         args: ["-o", "lstart=", "-p", "77"],
         TZ: "UTC",
         LC_ALL: "C",
@@ -277,13 +281,13 @@ describe("S2 the lock knows its owner", () => {
         `import { openDb } from ${src("core/src/db/db.ts")};`,
         `import { resolvePaths } from ${src("core/src/paths.ts")};`,
         `import { EngineLockedError, OwnerLock } from ${src("core/src/ownerLock.ts")};`,
+        `import { barrier } from ${src("tests/helpers/barrier.ts")};`,
         "const paths = resolvePaths(process.env.HOME_DIR);",
         "const { db } = openDb(paths);",
-        "const start = Number(process.env.START_AT);",
         "const locks = [];",
         "const outcomes = [];",
         "for (let r = 0; r < Number(process.env.ROUNDS); r++) {",
-        "  while (Date.now() < start + r * 120) { /* every contender enters the round together */ }",
+        '  barrier(process.env.BARRIER_DIR, "round-" + r, Number(process.env.CONTENDERS)); // everyone enters together',
         "  const lock = new OwnerLock(`${paths.run}/round-${r}.lock`, db);",
         "  try { lock.acquire(); locks.push(lock); outcomes.push('won'); }",
         "  catch (err) { outcomes.push(err instanceof EngineLockedError ? 'locked' : 'error:' + err.message); }",
@@ -292,10 +296,16 @@ describe("S2 the lock knows its owner", () => {
         "db.close();",
       ].join("\n"),
     );
-    const startAt = String(Date.now() + 1500);
+    const barrierDir = fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-barrier-"));
+    homes.push(barrierDir);
     const results = await Promise.all(
       Array.from({ length: contenders }, () =>
-        runChild(script, { HOME_DIR: home, START_AT: startAt, ROUNDS: String(rounds) }),
+        runChild(script, {
+          HOME_DIR: home,
+          BARRIER_DIR: barrierDir,
+          ROUNDS: String(rounds),
+          CONTENDERS: String(contenders),
+        }),
       ),
     );
     for (const r of results) expect(r.code, r.stderr).toBe(0);
@@ -380,5 +390,39 @@ describe("S2 the lock knows its owner", () => {
     fs.writeFileSync(lockFile(home), JSON.stringify(theirs));
     second.close();
     expect(JSON.parse(fs.readFileSync(lockFile(home), "utf8"))).toEqual(theirs);
+  });
+
+  it("C61 a lock path that is a folder refuses with a clear message, and a dead process's temporary file is swept", () => {
+    const home = tempHome();
+    const { db } = openDb(resolvePaths(home));
+    try {
+      const file = lockFile(home);
+      fs.mkdirSync(file);
+      fs.writeFileSync(path.join(file, "inside"), "x");
+      let thrown: unknown;
+      try {
+        new OwnerLock(file, db).acquire();
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(EngineLockedError);
+      expect((thrown as Error).message).toContain(file);
+      expect((thrown as Error).message).toContain("remove it by hand");
+      expect(fs.existsSync(path.join(file, "inside"))).toBe(true);
+      fs.rmSync(file, { recursive: true });
+
+      // A process killed between writing its temporary file and publishing it leaves the file behind.
+      const dead = `${file}.${DEAD_PID}.${"a".repeat(32)}.tmp`;
+      const old = `${file}.${DEAD_PID}.1700000000000.tmp`;
+      const alive = `${file}.${process.pid + 0}.${"b".repeat(32)}.tmp`;
+      for (const orphan of [dead, old, alive]) fs.writeFileSync(orphan, "{}");
+      new OwnerLock(file, db).acquire();
+      expect(fs.existsSync(dead)).toBe(false);
+      expect(fs.existsSync(old)).toBe(false);
+      expect(fs.existsSync(alive), "a live process's file is not touched").toBe(true);
+      expect(readLock(file)?.pid).toBe(process.pid);
+    } finally {
+      db.close();
+    }
   });
 });

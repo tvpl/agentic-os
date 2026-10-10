@@ -7,6 +7,7 @@ import Database from "better-sqlite3";
 import {
   BackupVerificationError,
   MIGRATIONS,
+  applyPendingRestore,
   SettingsSchema,
   SettingsStore,
   createBackup,
@@ -15,11 +16,14 @@ import {
   processStartMarker,
   readRestorePending,
   recoverInterruptedRestore,
+  pruneBackups,
   restoreBackup,
   writeRestorePending,
   type MordomoPaths,
 } from "@mordomo/core";
+import net from "node:net";
 import { AppContext } from "../apps/api/src/context.js";
+import { startServer } from "../apps/api/src/server.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { makeTempHome } from "./helpers.js";
 import { bundleChild, repoRoot, runChild, src } from "./helpers/childBundle.js";
@@ -91,6 +95,45 @@ const flipByte = (file: string) => {
   bytes[0] = bytes[0]! ^ 0xff;
   fs.writeFileSync(file, bytes);
 };
+
+/** A child that restores and dies by SIGKILL at the k-th rename (or when it starts to clean up), or runs to the end. */
+let killScript: Promise<string> | undefined;
+function killer(): Promise<string> {
+  killScript ??= bundleChild(
+    "restore-killed",
+    [
+      'import fs from "node:fs";',
+      `import { resolvePaths } from ${src("core/src/paths.ts")};`,
+      `import { restoreBackup } from ${src("core/src/backup.ts")};`,
+      "const killAt = Number(process.env.KILL_AT);",
+      "let renames = 0;",
+      "const real = fs.renameSync.bind(fs);",
+      "fs.renameSync = ((from, to) => {",
+      '  if (String(from).includes(".restore-") || String(to).includes(".restore-")) {',
+      '    renames++; if (renames === killAt) process.kill(process.pid, "SIGKILL");',
+      "  }",
+      "  return real(from, to);",
+      "});",
+      "const realRm = fs.rmSync.bind(fs);",
+      "fs.rmSync = ((target, options) => {",
+      '  if (process.env.KILL_ON_CLEANUP && /[.]restore-[0-9]+-[A-Za-z0-9]+$/.test(String(target))) process.kill(process.pid, "SIGKILL");',
+      "  return realRm(target, options);",
+      "});",
+      "restoreBackup(resolvePaths(process.env.HOME_DIR), process.env.BACKUP_NAME);",
+      "process.stdout.write(String(renames));",
+    ].join("\n"),
+  );
+  return killScript;
+}
+async function crashedRestore(env: Record<string, string>) {
+  const fx = await fixture();
+  const before = liveState(fx.paths);
+  const result = await runChild(await killer(), { HOME_DIR: fx.home, BACKUP_NAME: fx.backup.name, ...env });
+  expect(result.signal, result.stderr).toBe("SIGKILL");
+  expect(stagingFolders(fx.paths)).toHaveLength(1);
+  return { ...fx, before };
+}
+const MARKER_KNOWN = processStartMarker(process.pid) !== null;
 
 describe("S4 backups are sealed, verified and kept in number", () => {
   it("C27 a backup carries a manifest of everything in it", async () => {
@@ -269,25 +312,7 @@ describe("S4 backups are sealed, verified and kept in number", () => {
   });
 
   it("C31 a restore killed at any rename is rolled back", async () => {
-    const script = await bundleChild(
-      "restore-killed",
-      [
-        'import fs from "node:fs";',
-        `import { resolvePaths } from ${src("core/src/paths.ts")};`,
-        `import { restoreBackup } from ${src("core/src/backup.ts")};`,
-        "const killAt = Number(process.env.KILL_AT);",
-        "let renames = 0;",
-        "const real = fs.renameSync.bind(fs);",
-        "fs.renameSync = ((from, to) => {",
-        '  if (String(from).includes(".restore-") || String(to).includes(".restore-")) {',
-        '    renames++; if (renames === killAt) process.kill(process.pid, "SIGKILL");',
-        "  }",
-        "  return real(from, to);",
-        "});",
-        "restoreBackup(resolvePaths(process.env.HOME_DIR), process.env.BACKUP_NAME);",
-        "process.stdout.write(String(renames));",
-      ].join("\n"),
-    );
+    const script = await killer();
     // How many renames a complete restore makes, from a restore that is let finish.
     const dry = await fixture();
     const finished = await runChild(script, {
@@ -346,6 +371,178 @@ describe("S4 backups are sealed, verified and kept in number", () => {
     expect(recoverInterruptedRestore(paths)).toEqual([path.basename(staging)]);
     expect(fs.readFileSync(path.join(paths.memory, "note.md"), "utf8")).toBe("the original");
     expect(stagingFolders(paths)).toEqual([]);
+  });
+
+  it("C53 a restore that died half way is undone by every way back into the home", async () => {
+    const k = "9"; // far enough in that targets were moved aside and some installed, short of the database
+    const pre = "note CURRENT\n";
+
+    // 1. The next restore: its safety backup is the state BEFORE the dead one, not the half done one.
+    const a = await crashedRestore({ KILL_AT: k });
+    const second = restoreBackup(a.paths, a.backup.name);
+    expect(fs.readFileSync(path.join(second.safetyBackup.path, "memory", "note.md"), "utf8")).toBe(pre);
+    expect(fs.readFileSync(path.join(a.paths.memory, "note.md"), "utf8")).toBe("note v1\n");
+    expect(stagingFolders(a.paths)).toEqual([]);
+
+    // 2. The boot that applies a staged restore, with nothing staged.
+    const b = await crashedRestore({ KILL_AT: k });
+    expect(applyPendingRestore(b.paths).applied).toBeNull();
+    expect(liveState(b.paths)).toEqual(b.before);
+    expect(stagingFolders(b.paths)).toEqual([]);
+
+    // 3. Any command that builds the engine (every CLI command does): no start, no restore.
+    const c = await crashedRestore({ KILL_AT: k });
+    new AppContext(c.home).close();
+    expect(liveState(c.paths)).toEqual(c.before);
+    expect(stagingFolders(c.paths)).toEqual([]);
+
+    // 4. A backup: it never seals the half restored home.
+    const d = await crashedRestore({ KILL_AT: k });
+    const { db } = openDb(d.paths);
+    try {
+      const sealed = await createBackup(d.paths, db);
+      expect(fs.readFileSync(path.join(sealed.path, "memory", "note.md"), "utf8")).toBe(pre);
+      expect(stagingFolders(d.paths)).toEqual([]);
+    } finally {
+      db.close();
+    }
+
+    // 5. The CLI: `backup --list` and `backup` on the half restored home.
+    ensureCli();
+    const e = await crashedRestore({ KILL_AT: k });
+    expect(mordomo(e.home, ["backup", "--list"]).status).toBe(0);
+    expect(liveState(e.paths)).toEqual(e.before);
+    const e2 = await crashedRestore({ KILL_AT: k });
+    const made = mordomo(e2.home, ["backup"]);
+    expect(made.status, made.stderr).toBe(0);
+    const newest = listBackups(e2.paths)[0]!;
+    expect(fs.readFileSync(path.join(newest.path, "memory", "note.md"), "utf8")).toBe(pre);
+
+    // A restore that is still running is refused, not sealed.
+    const live = await fixture();
+    const owner = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    children.push(owner);
+    await new Promise((resolve) => owner.once("spawn", resolve));
+    write(
+      path.join(live.paths.home, `.restore-${owner.pid}-abc123`, "JOURNAL.json"),
+      JSON.stringify({
+        pid: owner.pid,
+        procStart: processStartMarker(owner.pid!),
+        phase: "installing",
+        entries: [],
+      }),
+    );
+    const { db: liveDb } = openDb(live.paths);
+    try {
+      await expect(createBackup(live.paths, liveDb)).rejects.toThrow(/restore is in progress/);
+    } finally {
+      liveDb.close();
+    }
+  }, 120_000);
+
+  it("C55 a restore that dies after it installed everything is kept, not undone", async () => {
+    const crashed = await crashedRestore({ KILL_AT: "0", KILL_ON_CLEANUP: "1" });
+    const journal = JSON.parse(
+      fs.readFileSync(
+        path.join(crashed.paths.home, stagingFolders(crashed.paths)[0]!, "JOURNAL.json"),
+        "utf8",
+      ),
+    ) as { phase: string };
+    expect(journal.phase).toBe("done");
+    recoverInterruptedRestore(crashed.paths);
+    expect(fs.readFileSync(path.join(crashed.paths.memory, "note.md"), "utf8")).toBe("note v1\n");
+    expect(JSON.parse(fs.readFileSync(crashed.paths.settingsFile, "utf8")).systemName).toBe("Backed");
+    expect(stagingFolders(crashed.paths)).toEqual([]);
+  }, 60_000);
+
+  it.skipIf(!MARKER_KNOWN)(
+    "C56 the journal names the process by its start, so a recycled pid is not mistaken for it",
+    async () => {
+      // The restore that wrote this journal is dead; its pid now belongs to a live program that started later.
+      const crashed = await crashedRestore({ KILL_AT: "9" });
+      const staging = path.join(crashed.paths.home, stagingFolders(crashed.paths)[0]!);
+      const journalFile = path.join(staging, "JOURNAL.json");
+      const journal = JSON.parse(fs.readFileSync(journalFile, "utf8")) as { pid: number; procStart: unknown };
+      expect(typeof journal.procStart).toBe("string");
+      expect(String(journal.procStart)).toMatch(/^(linux:|ps:|win:)/);
+      const stranger = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+      children.push(stranger);
+      await new Promise((resolve) => stranger.once("spawn", resolve));
+      // The stranger takes the dead owner's place in the journal: a live pid whose start is not the recorded one.
+      fs.writeFileSync(journalFile, JSON.stringify({ ...journal, pid: stranger.pid }));
+      recoverInterruptedRestore(crashed.paths);
+      expect(liveState(crashed.paths)).toEqual(crashed.before);
+      expect(stagingFolders(crashed.paths)).toEqual([]);
+    },
+    60_000,
+  );
+
+  it("C57 a folder without a journal is debris only once its process is gone", async () => {
+    const { paths } = await fixture();
+    const owner = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    children.push(owner);
+    await new Promise((resolve) => owner.once("spawn", resolve));
+    const mine = path.join(paths.home, `.restore-${owner.pid}-xyz789`);
+    fs.mkdirSync(mine);
+    expect(recoverInterruptedRestore(paths)).toEqual([]);
+    expect(fs.existsSync(mine)).toBe(true);
+
+    const exited = new Promise((resolve) => owner.once("exit", resolve));
+    owner.kill("SIGKILL");
+    await exited;
+    expect(recoverInterruptedRestore(paths)).toEqual([path.basename(mine)]);
+    expect(fs.existsSync(mine)).toBe(false);
+  });
+
+  it("C58 a restore that fails in this process after any install puts everything back", async () => {
+    const real = fs.renameSync.bind(fs);
+    const staged = (from: unknown, to: unknown) =>
+      (String(from).includes(".restore-") || String(to).includes(".restore-")) &&
+      !String(from).includes("JOURNAL.json") &&
+      !String(to).includes("JOURNAL.json");
+    const dry = await fixture();
+    let total = 0;
+    vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      if (staged(from, to)) total++;
+      return real(from, to);
+    });
+    restoreBackup(dry.paths, dry.backup.name);
+    vi.restoreAllMocks();
+    expect(total).toBeGreaterThan(8);
+
+    for (let k = 1; k <= total; k++) {
+      const { paths, backup } = await fixture();
+      const before = liveState(paths);
+      let seen = 0;
+      vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+        if (staged(from, to) && ++seen === k) throw new Error("Injected install failure");
+        return real(from, to);
+      });
+      try {
+        expect(() => restoreBackup(paths, backup.name), `k=${k}`).toThrow(/Injected/);
+      } finally {
+        vi.restoreAllMocks();
+      }
+      expect(liveState(paths), `k=${k}`).toEqual(before);
+      expect(stagingFolders(paths), `k=${k}`).toEqual([]);
+    }
+  }, 120_000);
+
+  it("C59 a backup whose database is empty or from a newer version is refused even when unsealed", async () => {
+    for (const version of [0, 9999]) {
+      const { paths, backup } = await fixture();
+      fs.rmSync(inBackup(backup, "manifest.json"));
+      const raw = new Database(inBackup(backup, "config/db/mordomo.db"));
+      raw.pragma("wal_checkpoint(TRUNCATE)");
+      raw.pragma("journal_mode = DELETE");
+      raw.pragma(`user_version = ${version}`);
+      raw.close();
+      const before = liveState(paths);
+      expect(() => restoreBackup(paths, backup.name, { allowUnverified: true }), String(version)).toThrow(
+        /Invalid backup database/,
+      );
+      expect(liveState(paths)).toEqual(before);
+    }
   });
 
   it("C33 the sidecars leave before the database is replaced", async () => {
@@ -473,20 +670,46 @@ describe("S4 backups are sealed, verified and kept in number", () => {
     }
   });
 
+  it("C60 the service tells the owner at boot that a staged restore was refused", async () => {
+    const { paths, backup } = await fixture();
+    const port = await new Promise<number>((resolve) => {
+      const probe = net.createServer().listen(0, "127.0.0.1", () => {
+        const free = (probe.address() as net.AddressInfo).port;
+        probe.close(() => resolve(free));
+      });
+    });
+    const store = new SettingsStore(paths);
+    store.update({ port, setupCompleted: true });
+    writeRestorePending(paths, backup.name);
+    flipByte(inBackup(backup, "memory/note.md"));
+
+    const warned: string[] = [];
+    vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => void warned.push(args.join(" ")));
+    const handle = await startServer(paths.home);
+    try {
+      expect(warned.join("\n")).toContain(`staged restore of ${backup.name} refused`);
+      expect(warned.join("\n")).toContain("checksum memory/note.md");
+      expect(handle.ctx.restoreRejectedAtBoot?.name).toBe(backup.name);
+      expect(handle.ctx.settings().systemName).toBe("Current");
+    } finally {
+      await handle.close();
+    }
+  }, 30_000);
+
   it("C36 retention deletes only sealed backups beyond the newest", async () => {
-    const { paths, backup: first } = await fixture();
+    const { paths, backup: legacy } = await fixture();
+    fs.rmSync(inBackup(legacy, "manifest.json")); // the oldest backup is one from before backups were sealed
     const { db } = openDb(paths);
     try {
       const make = async () => createBackup(paths, db);
-      const sealed = [first, await make(), await make(), await make()];
-      const legacy = await make();
-      fs.rmSync(inBackup(legacy, "manifest.json"));
+      const sealed = [await make(), await make(), await make(), await make()];
       const outside = path.join(paths.home, "outside-backup");
       fs.mkdirSync(outside);
       if (POSIX) fs.symlinkSync(outside, path.join(paths.backups, "full-link"));
-      // legacy oldest, then the four sealed ones in order
-      const now = Date.now() / 1000;
-      [legacy, ...sealed].forEach((b, i) => fs.utimesSync(b.path, now - 100 + i * 10, now - 100 + i * 10));
+      // Modification times say nothing about age (a copy of the folder resets them): scramble them.
+      [legacy, ...sealed].forEach((b, i) =>
+        fs.utimesSync(b.path, 1000 + ((i * 7) % 5), 1000 + ((i * 7) % 5)),
+      );
       writeRestorePending(paths, sealed[0]!.name); // the oldest sealed one is what a staged restore points at
 
       const created = await createBackup(paths, db, { keep: 2 });
@@ -500,6 +723,37 @@ describe("S4 backups are sealed, verified and kept in number", () => {
       ].sort();
       expect(left).toEqual(expected);
       expect(fs.existsSync(path.join(outside))).toBe(true);
+      expect(listBackups(paths).map((b) => b.name)).toEqual([
+        created.name,
+        sealed[3]!.name,
+        sealed[0]!.name,
+        legacy.name,
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("C54 a keep that is not an integer of at least 1 deletes nothing, and backups made together all succeed", async () => {
+    const { paths } = await fixture();
+    const { db } = openDb(paths);
+    try {
+      await createBackup(paths, db);
+      const before = listBackups(paths).map((b) => b.name);
+      for (const keep of [Number.NaN, 0, -1, 1.5, Number.POSITIVE_INFINITY]) {
+        await expect(createBackup(paths, db, { keep }), String(keep)).rejects.toThrow(RangeError);
+        expect(() => pruneBackups(paths, keep), String(keep)).toThrow(RangeError);
+      }
+      expect(listBackups(paths).map((b) => b.name)).toEqual(before);
+
+      // Three at once (the CLI and the service do this), each pruning to 1: none fails over another's deletion.
+      const all = await Promise.allSettled([
+        createBackup(paths, db, { keep: 1 }),
+        createBackup(paths, db, { keep: 1 }),
+        createBackup(paths, db, { keep: 1 }),
+      ]);
+      expect(all.map((r) => r.status)).toEqual(["fulfilled", "fulfilled", "fulfilled"]);
+      expect(listBackups(paths).length).toBeGreaterThanOrEqual(1);
     } finally {
       db.close();
     }
@@ -523,7 +777,7 @@ describe("S4 backups are sealed, verified and kept in number", () => {
       ctx.close();
     }
 
-    if (!cliReady()) return;
+    ensureCli();
     const cli = makeTempHome("mordomo-dados-keep-cli-");
     cleanups.push(cli.cleanup);
     const store = new SettingsStore(cli.paths);
@@ -536,7 +790,7 @@ describe("S4 backups are sealed, verified and kept in number", () => {
   }, 120_000);
 
   it("C38 the CLI list marks unsealed backups", async () => {
-    if (!cliReady()) return;
+    ensureCli();
     const { paths, backup } = await fixture();
     const { db } = openDb(paths);
     const sealed = await createBackup(paths, db);
@@ -551,7 +805,7 @@ describe("S4 backups are sealed, verified and kept in number", () => {
   });
 
   it("C39 the restore command refuses unsealed and tampered backups", async () => {
-    if (!cliReady()) return;
+    ensureCli();
     const legacy = await fixture();
     fs.rmSync(inBackup(legacy.backup, "manifest.json"));
     const refused = mordomo(legacy.home, ["restore", legacy.backup.name]);
@@ -599,19 +853,20 @@ describe("S4 backups are sealed, verified and kept in number", () => {
   });
 });
 
-// ---- the built CLI (as tests/cli.test.ts): skipped, loudly, when dist/ is missing -------------------------------
+// ---- the built CLI (as tests/cli.test.ts) ---------------------------------------------------------------------
 
 const CLI = path.join(repoRoot, "apps", "api", "dist", "cli.js");
-let cliProbe: boolean | undefined;
-function cliReady(): boolean {
-  cliProbe ??= (() => {
-    if (!fs.existsSync(CLI)) {
-      console.warn(`[data.backup.test] skipping CLI proofs: ${CLI} missing - run npm run build:server`);
-      return false;
-    }
-    return true;
-  })();
-  return cliProbe;
+/** The CLI proofs run the built artifact: build it when it is missing instead of passing without asserting. */
+function ensureCli(): void {
+  if (fs.existsSync(CLI)) return;
+  const build = spawnSync(
+    "npx",
+    ["tsc", "-b", "contracts", "core", "adapters/claude", "adapters/cursor", "adapters/codex", "apps/api"],
+    { cwd: repoRoot, encoding: "utf8", timeout: 600_000 },
+  );
+  if (build.status !== 0 || !fs.existsSync(CLI)) {
+    throw new Error(`${CLI} is missing and building it failed:\n${build.stdout}${build.stderr}`);
+  }
 }
 function mordomo(home: string, args: string[]) {
   const res = spawnSync(process.execPath, [CLI, ...args], {

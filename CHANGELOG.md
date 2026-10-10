@@ -14,7 +14,10 @@
   the service. Backups carry a `manifest.json` with SHA-256 per file; restore refuses a backup
   that is truncated, edited or incomplete (`422 backup_invalid`), refuses one without a manifest
   unless `mordomo restore --allow-unverified`, installs all or nothing (undone if the process
-  dies), and `limits.backupRetention` (default 10) keeps the number of backups bounded.
+  dies), and `limits.backupRetention` (default 10) keeps the number of backups bounded. A `settings.json` field
+  that cannot be read never opens a permission: nine security fields (profile, indexed folders,
+  provider binaries, Telegram approvers, memory skills, spend alert, approval and device lifetimes,
+  triage budget) read as their most restrictive value, the others as their default.
 - **Security (seguranca-p1)**: an agent run with no working directory now starts
   in `<home>/workspace` instead of the home (the home holds `config/token`, and an
   agent reads everything below its working directory without asking); the home

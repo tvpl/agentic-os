@@ -25,7 +25,8 @@ is touched. A backup made before backups were sealed has no manifest: it is refu
 `mordomo backup --list` marks those `unsealed`.
 
 The number of backups kept is `limits.backupRetention` (default 10, set through
-`PUT /api/settings`): a new backup deletes the older **sealed** ones beyond that. A backup
+`PUT /api/settings`): a new backup deletes the older **sealed** ones beyond that, oldest by
+the time in the backup's name (copying the folder does not change its age). A backup
 without a manifest, and the one a staged restore points at, are never deleted.
 
 ```bash
@@ -38,7 +39,8 @@ mordomo restore full-2026-… --allow-unverified   # an unsealed backup from an 
 `restore` always creates a **safety backup of the current state first**, so a
 restore can itself be undone. Restart the service after restoring. A restore applies
 all of it or none of it: if it fails, every file is put back, and if the process dies in
-the middle the next start undoes it.
+the middle the next command that opens the home (any `mordomo` command, the service) undoes
+it; a backup is refused while a restore is still running.
 
 Automatic backups also happen before: DB migrations, sync-compiler overwrites
 of existing files, and restores.

@@ -1640,9 +1640,9 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
   {
     file: "core/src/backup.ts",
     api: "readdirSync",
-    count: 3,
+    count: 4,
     kind: "names",
-    why: "backup list, size walk, and the .restore-* folders of the home (names only; the journal inside is read by name)",
+    why: "backup list, size walk, and the .restore-* folders of the home - twice: recovery and the guard before a backup (names only; the journal inside is read by name)",
   },
   {
     file: "core/src/backup.ts",
@@ -1682,9 +1682,9 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
   {
     file: "core/src/config/store.ts",
     api: "readFileSync",
-    count: 5,
+    count: 7,
     kind: "fixed",
-    why: "config/settings.json (load, after a migration, before a save), config/token, and the settings.json.invalid copy it compares with",
+    why: "config/settings.json (load, after a migration, before a save), config/token, the settings.json.invalid copy it compares with, and the settings.json.corrupt.* copies it compares with and keeps",
   },
   {
     file: "core/src/config/store.ts",
@@ -1692,13 +1692,6 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
     count: 3,
     kind: "fixed",
     why: "mtime of config/settings.json",
-  },
-  {
-    file: "core/src/config/store.ts",
-    api: "copyFileSync",
-    count: 1,
-    kind: "fixed",
-    why: "settings.json.v1.bak before a migration",
   },
   {
     file: "core/src/connectors/auditor.ts",
@@ -1713,6 +1706,34 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
     count: 1,
     kind: "fixed",
     why: "creates the database file with mode 0600",
+  },
+  {
+    file: "core/src/config/store.ts",
+    api: "lstatSync",
+    count: 1,
+    kind: "fixed",
+    why: "is a settings.json.invalid candidate a regular file (never trust a link) before its bytes are compared",
+  },
+  {
+    file: "core/src/config/store.ts",
+    api: "readdirSync",
+    count: 1,
+    kind: "names",
+    why: "the settings.json.corrupt.* copies in config/, to keep the newest few",
+  },
+  {
+    file: "core/src/db/db.ts",
+    api: "statSync",
+    count: 1,
+    kind: "fixed",
+    why: "size of the database file, to tell a missing or empty one from one to read the version of",
+  },
+  {
+    file: "core/src/ownerLock.ts",
+    api: "readdirSync",
+    count: 1,
+    kind: "names",
+    why: "config/run, to sweep the temporary files of a process that died while taking the lock",
   },
   {
     file: "core/src/ownerLock.ts",
@@ -1922,9 +1943,9 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
   {
     file: "core/src/config/store.ts",
     api: "writeFileSync",
-    count: 4,
+    count: 5,
     kind: "fixed",
-    why: "the token: a temporary file published by link(2), and the exclusive fallbacks (flag wx); settings.json.invalid, created with wx so it never overwrites",
+    why: "the token: a temporary file published by link(2), and the exclusive fallbacks (flag wx); settings.json.invalid and settings.json.corrupt.*, created with wx so they never overwrite",
   },
   {
     file: "core/src/ownerLock.ts",

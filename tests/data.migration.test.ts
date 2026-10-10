@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import Database from "better-sqlite3";
@@ -58,7 +59,8 @@ function race() {
         `import { openDb } from ${src("core/src/db/db.ts")};`,
         `import { resolvePaths } from ${src("core/src/paths.ts")};`,
         `import { slowMigrations } from ${src("tests/helpers/slowMigrations.ts")};`,
-        "while (Date.now() < Number(process.env.START_AT)) { /* line the processes up so they race */ }",
+        `import { barrier } from ${src("tests/helpers/barrier.ts")};`,
+        'barrier(process.env.BARRIER_DIR, "open", 3);',
         "const { db, migration } = openDb(resolvePaths(process.env.HOME_DIR), slowMigrations());",
         'process.stdout.write(JSON.stringify({ ...migration, version: db.pragma("user_version", { simple: true }) }));',
         "db.close();",
@@ -67,10 +69,11 @@ function race() {
     const home = makeTempHome("mordomo-dados-race-");
     cleanupRace = home.cleanup;
     openDb(home.paths, slowMigrations().slice(0, 1)).db.close();
-    const startAt = String(Date.now() + 1500);
+    const barrierDir = fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-barrier-"));
     const results = await Promise.all(
-      [0, 1, 2].map(() => runChild(script, { HOME_DIR: home.paths.home, START_AT: startAt })),
+      [0, 1, 2].map(() => runChild(script, { HOME_DIR: home.paths.home, BARRIER_DIR: barrierDir })),
     );
+    fs.rmSync(barrierDir, { recursive: true, force: true });
     for (const r of results) expect(r.code, r.stderr).toBe(0);
     return { paths: home.paths, outcomes: results.map((r) => JSON.parse(r.stdout) as ChildOutcome) };
   })();
@@ -304,6 +307,64 @@ describe("S1 the database is migrated once", () => {
       expect(touched.filter((p) => p.startsWith(paths.dbFile))).toEqual([]);
     } finally {
       db.close();
+    }
+  });
+
+  it("C51 a newer database with a WAL still pending is refused with its bytes and mode untouched", () => {
+    const { paths } = tempHome();
+    // What a service killed mid-flight leaves: the version only a WAL knows, copied while its writer was open.
+    const other = tempHome();
+    fs.mkdirSync(path.dirname(other.paths.dbFile), { recursive: true });
+    const live = new Database(other.paths.dbFile);
+    live.pragma("journal_mode = WAL");
+    live.pragma("wal_autocheckpoint = 0");
+    live.exec("CREATE TABLE t (x INTEGER); INSERT INTO t VALUES (1)");
+    live.pragma("user_version = 99");
+    fs.mkdirSync(path.dirname(paths.dbFile), { recursive: true });
+    fs.copyFileSync(other.paths.dbFile, paths.dbFile);
+    fs.copyFileSync(`${other.paths.dbFile}-wal`, `${paths.dbFile}-wal`);
+    live.close();
+    for (const file of [paths.dbFile, `${paths.dbFile}-wal`]) fs.chmodSync(file, 0o644);
+    const digest = (file: string) => crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+    const before = { main: digest(paths.dbFile), wal: digest(`${paths.dbFile}-wal`) };
+
+    expect(() => openDb(paths)).toThrow(DbNewerVersionError);
+    expect({ main: digest(paths.dbFile), wal: digest(`${paths.dbFile}-wal`) }).toEqual(before);
+    if (POSIX) {
+      for (const file of [paths.dbFile, `${paths.dbFile}-wal`]) {
+        expect(fs.statSync(file).mode & 0o777, file).toBe(0o644);
+      }
+    }
+  });
+
+  it("C52 the pre-migration snapshot holds what only the WAL holds, even with a reader open", () => {
+    const { paths } = homeAtVersion1();
+    // Rows that live only in the WAL (its writer never checkpoints), and a reader whose open snapshot keeps a
+    // checkpoint from finishing: a checkpoint-then-copy of the file would miss the rows and tear the copy.
+    const reader = new Database(paths.dbFile);
+    reader.exec("BEGIN");
+    reader.prepare("SELECT count(*) FROM ran").get(); // its snapshot is older than the rows written next
+    const writer = new Database(paths.dbFile);
+    writer.pragma("wal_autocheckpoint = 0");
+    writer.exec("CREATE TABLE notes (body TEXT); INSERT INTO notes VALUES ('only in the wal')");
+    try {
+      const { db, migration } = openDb(paths, slowMigrations().slice(0, 2));
+      try {
+        const snapshot = new Database(migration.backupPath!, { readonly: true });
+        try {
+          expect(snapshot.pragma("integrity_check", { simple: true })).toBe("ok");
+          expect(snapshot.pragma("user_version", { simple: true })).toBe(1);
+          expect(snapshot.prepare("SELECT body FROM notes").all()).toEqual([{ body: "only in the wal" }]);
+        } finally {
+          snapshot.close();
+        }
+      } finally {
+        db.close();
+      }
+    } finally {
+      reader.exec("ROLLBACK");
+      reader.close();
+      writer.close();
     }
   });
 });

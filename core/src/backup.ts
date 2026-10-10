@@ -102,6 +102,11 @@ export async function createBackup(
   db: Db,
   opts: BackupOptions = {},
 ): Promise<BackupInfo> {
+  if (opts.keep !== undefined && !(Number.isInteger(opts.keep) && opts.keep >= 1)) {
+    throw new RangeError(`keep must be an integer of at least 1 (got ${String(opts.keep)})`);
+  }
+  // A home with a restore half done is not a state to seal: undo what a dead restore left, refuse a live one.
+  assertNoRestoreInProgress(paths);
   const { dest, dbFile } = snapshotFiles(paths, opts);
   try {
     if (db.open) {
@@ -112,7 +117,11 @@ export async function createBackup(
     }
     const info = finalize(dest, await buildManifestAsync(dest));
     if (opts.keep !== undefined) {
-      pruneBackups(paths, opts.keep, [info.name, readRestorePending(paths)?.name ?? ""]);
+      try {
+        pruneBackups(paths, opts.keep, [info.name, readRestorePending(paths)?.name ?? ""]);
+      } catch {
+        /* the backup exists; a retention pass that lost a race with another process runs again next time */
+      }
     }
     events.emit("backup.created", info);
     return info;
@@ -167,16 +176,40 @@ function finalize(dest: string, manifest: BackupManifest): BackupInfo {
   return { name: path.basename(published), path: published, createdAt: Date.now(), sizeBytes };
 }
 
+/**
+ * When a backup was made, from its name (`full-<ISO time with dashes>-<random>`, which sorts the way time does and
+ * survives `cp -r`, rsync and an archive that reset every modification time); for a name that does not carry one,
+ * the manifest's `createdAt`, and last the folder's modification time.
+ */
+function backupCreatedAt(name: string, folder: string): number {
+  const stamped = /^full-(\d{4}-\d{2}-\d{2}T\d{2})-(\d{2})-(\d{2})-(\d{3}Z)/.exec(name);
+  if (stamped) {
+    const ms = Date.parse(`${stamped[1]}:${stamped[2]}:${stamped[3]}.${stamped[4]}`);
+    if (!Number.isNaN(ms)) return ms;
+  }
+  const manifest = readManifest(folder);
+  if (typeof manifest === "object") return manifest.createdAt;
+  return fs.statSync(folder).mtimeMs;
+}
+
 export function listBackups(paths: MordomoPaths): BackupInfo[] {
   if (!fs.existsSync(paths.backups)) return [];
-  return fs
-    .readdirSync(paths.backups, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && e.name.startsWith("full-"))
-    .map((e) => {
-      const full = path.join(paths.backups, e.name);
-      return { name: e.name, path: full, createdAt: fs.statSync(full).mtimeMs, sizeBytes: dirSize(full) };
-    })
-    .sort((a, b) => b.createdAt - a.createdAt);
+  const found: BackupInfo[] = [];
+  for (const e of fs.readdirSync(paths.backups, { withFileTypes: true })) {
+    if (!e.isDirectory() || !e.name.startsWith("full-")) continue;
+    const full = path.join(paths.backups, e.name);
+    try {
+      found.push({
+        name: e.name,
+        path: full,
+        createdAt: backupCreatedAt(e.name, full),
+        sizeBytes: dirSize(full),
+      });
+    } catch {
+      /* removed by another process (a retention pass) while it was being read: it is not there any more */
+    }
+  }
+  return found.sort((a, b) => b.createdAt - a.createdAt || (a.name < b.name ? 1 : -1));
 }
 
 /** Does this backup folder carry a manifest (was it sealed when it was made)? */
@@ -190,8 +223,11 @@ export function isSealed(backupPath: string): boolean {
  * owner's, from before this existed) and anything that is not a real `full-…` folder. Returns what it deleted.
  */
 export function pruneBackups(paths: MordomoPaths, keep: number, protect: readonly string[] = []): string[] {
+  if (!(Number.isInteger(keep) && keep >= 1)) {
+    throw new RangeError(`keep must be an integer of at least 1 (got ${String(keep)})`);
+  }
   const newest = listBackups(paths);
-  const kept = new Set([...newest.slice(0, Math.max(1, keep)).map((b) => b.name), ...protect]);
+  const kept = new Set([...newest.slice(0, keep).map((b) => b.name), ...protect]);
   const removed: string[] = [];
   for (const backup of newest) {
     if (kept.has(backup.name) || !BACKUP_NAME.test(backup.name) || !isSealed(backup.path)) continue;
@@ -285,7 +321,6 @@ export function restoreBackup(
     phase: "staging",
     entries: [],
   };
-  writeJournal(staging, journal);
   const entries: Array<{
     rel: string | null;
     source: string | null;
@@ -323,6 +358,7 @@ export function restoreBackup(
   add("config/db/mordomo.db", inBackup("config/db/mordomo.db"), paths.dbFile);
   let preserveStaging = false;
   try {
+    writeJournal(staging, journal);
     for (const entry of entries) {
       if (entry.source) fs.cpSync(entry.source, entry.staged, { recursive: true });
     }
@@ -383,8 +419,14 @@ export function restoreBackup(
       }
       throw error;
     }
+    // Everything is installed: the restore has happened. Marking it done only keeps a later recovery from undoing
+    // it, and failing to write the mark must not turn a finished restore into an error.
     journal.phase = "done";
-    writeJournal(staging, journal);
+    try {
+      writeJournal(staging, journal);
+    } catch {
+      /* see above */
+    }
     return { safetyBackup };
   } finally {
     if (!preserveStaging) fs.rmSync(staging, { recursive: true, force: true });
@@ -419,6 +461,24 @@ function readJournal(staging: string): RestoreJournal | null {
     };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Before anything seals the home (a backup): undo restores whose process is gone, and refuse while one is running.
+ */
+function assertNoRestoreInProgress(paths: MordomoPaths): void {
+  recoverInterruptedRestore(paths);
+  let running: string[] = [];
+  try {
+    running = fs.readdirSync(paths.home).filter((n) => n.startsWith(".restore-"));
+  } catch {
+    return;
+  }
+  if (running.length > 0) {
+    throw new Error(
+      `A restore is in progress (${running[0]}): its files are not all in place yet. Try again when it has finished.`,
+    );
   }
 }
 

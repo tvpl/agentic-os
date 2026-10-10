@@ -5,6 +5,7 @@ import { PRIVATE_DIR_MODE, PRIVATE_FILE_MODE, type MordomoPaths } from "../paths
 import { CURRENT_SETTINGS_VERSION, SettingsSchema, type Settings, defaultSettings } from "./schema.js";
 import { events } from "../events.js";
 import { JsonlLogger } from "../logs/jsonl.js";
+import { SETTINGS_FAIL_CLOSED } from "./failClosed.js";
 import { parseTolerant, type SettingsIssue } from "./tolerant.js";
 
 export { atomicWrite } from "./atomicWrite.js";
@@ -27,6 +28,9 @@ export function deepMergeSettings<T extends Record<string, unknown>>(base: T, pa
 }
 
 export type SettingsPatch = Partial<Settings> | ((current: Settings) => Partial<Settings>);
+
+/** `settings.json.corrupt.<ms>` copies kept. */
+const MAX_CORRUPT_COPIES = 5;
 
 interface CacheEntry {
   mtimeMs: number;
@@ -67,7 +71,9 @@ export class SettingsStore {
       if (migrated !== raw) stat = fs.statSync(this.paths.settingsFile);
       // A field this version cannot read costs that field and nothing else: it reads as its default, the file
       // is left as it is, and the original is kept aside before anything can replace it.
-      const { value: settings, issues } = parseTolerant(SettingsSchema, migrated);
+      const { value: settings, issues } = parseTolerant(SettingsSchema, migrated, {
+        failClosed: SETTINGS_FAIL_CLOSED,
+      });
       if (issues.length > 0) this.reportInvalid(onDisk, issues);
       this.cache = { mtimeMs: stat.mtimeMs, size: stat.size, settings };
       return structuredClone(settings);
@@ -75,42 +81,93 @@ export class SettingsStore {
       this.cache = null;
       // Never destroy a corrupt settings file: keep it aside. Not valid JSON, or not an object at all, has no
       // field to drop: stop with the cause instead of starting from defaults that would replace the lot.
-      const backup = `${this.paths.settingsFile}.corrupt.${Date.now()}`;
-      try {
-        fs.copyFileSync(this.paths.settingsFile, backup);
-      } catch {
-        /* best effort */
-      }
+      const backup = this.keepCorrupt();
       throw new Error(
         `config/settings.json is invalid (${(err as Error).message}). ` +
-          `A copy was kept at ${backup}. Fix or delete settings.json and run setup again.`,
+          `A copy was kept at ${backup ?? "(none: it could not be written)"}. Fix or delete settings.json and run setup again.`,
       );
     }
   }
 
   /**
-   * Keep the bytes of a settings file that has fields this version drops, under a name that never overwrites:
-   * `settings.json.invalid`, or `settings.json.invalid.<12 hex of their SHA-256>` when that holds other bytes.
-   * Returns the file that holds them.
+   * Keep a settings file that cannot be read at all as `settings.json.corrupt.<ms>`, unless a copy with the same
+   * bytes is there already, and keep only the newest few: a command that fails on it again and again must not
+   * leave one copy each time.
    */
-  private preserveInvalid(text: string): string {
-    const first = `${this.paths.settingsFile}.invalid`;
-    const hash = crypto.createHash("sha256").update(text).digest("hex").slice(0, 12);
-    for (const target of [first, `${first}.${hash}`]) {
-      try {
-        fs.writeFileSync(target, text, { flag: "wx", mode: PRIVATE_FILE_MODE });
-        return target;
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-        if (fs.readFileSync(target, "utf8") === text) return target;
-      }
+  private keepCorrupt(): string | null {
+    const prefix = `${path.basename(this.paths.settingsFile)}.corrupt.`;
+    let copies: Array<{ name: string; at: number }> = [];
+    try {
+      copies = fs
+        .readdirSync(this.paths.config)
+        .filter((name) => name.startsWith(prefix))
+        .map((name) => ({ name, at: Number(name.slice(prefix.length)) || 0 }))
+        .sort((a, b) => b.at - a.at);
+    } catch {
+      /* no folder, no copies */
     }
-    return `${first}.${hash}`;
+    let kept: string | null = null;
+    try {
+      const bytes = fs.readFileSync(this.paths.settingsFile);
+      const same = copies.find((copy) => {
+        try {
+          return fs.readFileSync(path.join(this.paths.config, copy.name)).equals(bytes);
+        } catch {
+          return false;
+        }
+      });
+      if (same) return path.join(this.paths.config, same.name);
+      kept = `${this.paths.settingsFile}.corrupt.${Date.now()}`;
+      fs.writeFileSync(kept, bytes, { flag: "wx", mode: PRIVATE_FILE_MODE });
+    } catch {
+      return kept;
+    }
+    for (const old of copies.slice(MAX_CORRUPT_COPIES - 1)) {
+      fs.rmSync(path.join(this.paths.config, old.name), { force: true });
+    }
+    return kept;
   }
 
-  /** One log line per dropped field, after the original is safe. */
+  /**
+   * Keep the bytes of a settings file that has fields this version drops, under a name that never overwrites:
+   * `settings.json.invalid`, or `settings.json.invalid.<12 hex of their SHA-256>` when that holds other bytes (and
+   * `-1`, `-2`… if even that is taken by something else: a folder, a link, other bytes). `created` is false when
+   * a file with exactly these bytes was there already (they were kept and reported before). `file` is null when
+   * no name could be written: the caller must not let the original be replaced.
+   */
+  private preserveInvalid(text: string): { file: string | null; created: boolean } {
+    const first = `${this.paths.settingsFile}.invalid`;
+    const hash = crypto.createHash("sha256").update(text).digest("hex").slice(0, 12);
+    const names = [first, `${first}.${hash}`, ...Array.from({ length: 8 }, (_, i) => `${first}.${hash}-${i + 1}`)];
+    for (const target of names) {
+      try {
+        fs.writeFileSync(target, text, { flag: "wx", mode: PRIVATE_FILE_MODE });
+        return { file: target, created: true };
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "EEXIST") return { file: null, created: false };
+        try {
+          if (fs.lstatSync(target).isFile() && fs.readFileSync(target, "utf8") === text) {
+            return { file: target, created: false };
+          }
+        } catch {
+          /* a folder, a link, unreadable: the name is taken by something else, try the next */
+        }
+      }
+    }
+    return { file: null, created: false };
+  }
+
+  private lastReported: string | null = null;
+
+  /**
+   * One log line per dropped field, once per version of the file: not when these very bytes were kept before
+   * (by this process or any other), and not twice in one process. The original is kept first.
+   */
   private reportInvalid(text: string, issues: SettingsIssue[]): void {
     const preserved = this.preserveInvalid(text);
+    const digest = crypto.createHash("sha256").update(text).digest("hex");
+    if ((preserved.file !== null && !preserved.created) || this.lastReported === digest) return;
+    this.lastReported = digest;
     try {
       const { logMaxFileBytes, logRetentionDays } = defaultSettings().limits;
       const log = new JsonlLogger(this.paths.logs, "settings", logMaxFileBytes, logRetentionDays);
@@ -119,7 +176,8 @@ export class SettingsStore {
           msg: "settings.invalid_field",
           path: issue.path,
           reason: issue.reason,
-          preserved: path.basename(preserved),
+          ...(issue.closed ? { closed: true } : {}),
+          preserved: preserved.file === null ? null : path.basename(preserved.file),
         });
       }
     } catch {
@@ -143,11 +201,11 @@ export class SettingsStore {
     try {
       raw = JSON.parse(text);
     } catch {
-      this.preserveInvalid(text);
+      this.mustPreserve(text);
       return;
     }
     if (!isPlainObject(raw)) {
-      this.preserveInvalid(text);
+      this.mustPreserve(text);
       return;
     }
     const version = settingsVersion(raw);
@@ -159,11 +217,25 @@ export class SettingsStore {
         { code: "settings_newer" },
       );
     }
+    let dropsFields = false;
     try {
-      if (parseTolerant(SettingsSchema, raw).issues.length > 0) this.preserveInvalid(text);
+      dropsFields = parseTolerant(SettingsSchema, raw, { failClosed: SETTINGS_FAIL_CLOSED }).issues.length > 0;
     } catch {
-      this.preserveInvalid(text);
+      dropsFields = true;
     }
+    if (dropsFields) this.mustPreserve(text);
+  }
+
+  /** `preserveInvalid`, for a file that is about to be replaced: if the original cannot be kept, it is not replaced. */
+  private mustPreserve(text: string): void {
+    if (this.preserveInvalid(text).file !== null) return;
+    throw Object.assign(
+      new Error(
+        "config/settings.json holds values this version cannot read and a copy of it could not be written " +
+          `(${path.basename(this.paths.settingsFile)}.invalid and its alternatives are taken or not writable); it was not replaced.`,
+      ),
+      { code: "settings_unpreserved" },
+    );
   }
 
   /** Drop the in-memory cache (e.g. after a restore replaced the file). */

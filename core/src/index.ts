@@ -32,6 +32,13 @@ export {
   type IndexedFolder,
 } from "./config/schema.js";
 export { SettingsStore, atomicWrite } from "./config/store.js";
+export { SETTINGS_FAIL_CLOSED } from "./config/failClosed.js";
+export {
+  parseTolerant,
+  type FailClosedField,
+  type SettingsIssue,
+  type TolerantOptions,
+} from "./config/tolerant.js";
 export {
   DbNewerVersionError,
   MigrationError,

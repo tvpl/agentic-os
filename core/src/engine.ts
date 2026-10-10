@@ -18,6 +18,7 @@ import {
   BackupVerificationError,
   applyPendingRestore,
   readRestorePending,
+  recoverInterruptedRestore,
   type RestorePending,
 } from "./backup.js";
 import { installPushChannel } from "./channels/pushChannel.js";
@@ -35,7 +36,7 @@ import { PushStore } from "./notifications/pushStore.js";
 import { installNotificationRecorder } from "./notifications/recorder.js";
 import { NotificationStore } from "./notifications/store.js";
 import { ObjectiveStore } from "./objectives/objectiveStore.js";
-import { OwnerLock, readLock } from "./ownerLock.js";
+import { OwnerLock } from "./ownerLock.js";
 import { ensureDirs, resolvePaths, seedHome, tightenHomeFiles, type MordomoPaths } from "./paths.js";
 import { RoutineScheduler } from "./routines/scheduler.js";
 import { RoutineStore } from "./routines/store.js";
@@ -187,6 +188,9 @@ export class MordomoEngine {
     this.paths = resolvePaths(opts.home);
     ensureDirs(this.paths);
     if (opts.seedDir) seedHome(this.paths, opts.seedDir);
+    // Whatever command built this engine, a restore that died half way is undone before the database opens
+    // (one still running in another process is left alone).
+    recoverInterruptedRestore(this.paths);
     if (opts.applyPendingRestore) {
       const pending = readRestorePending(this.paths);
       try {
@@ -376,11 +380,6 @@ export class MordomoEngine {
     const lock = new OwnerLock(this.lockFile, this.db);
     lock.acquire();
     this.ownerLock = lock;
-  }
-
-  /** The pid recorded in the lock file, or null when it is missing or unreadable. */
-  lockHolder(): number | null {
-    return readLock(this.lockFile)?.pid ?? null;
   }
 
   private releaseLock(): void {

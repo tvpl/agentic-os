@@ -2,7 +2,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { SettingsSchema, SettingsStore, type MordomoPaths } from "@mordomo/core";
+import {
+  SETTINGS_FAIL_CLOSED,
+  SecurityProfile,
+  SettingsSchema,
+  SettingsStore,
+  parseTolerant,
+  type MordomoPaths,
+} from "@mordomo/core";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { makeTempHome } from "./helpers.js";
@@ -75,6 +82,23 @@ function invalidFor(key: string): unknown {
   throw new Error(`the schema accepts every candidate for ${key}`);
 }
 
+/**
+ * What a top-level field reads as when it is dropped whole and holds security fields (the test's own statement of
+ * the closed values, independent of the table in the engine): the default with the closed leaves applied.
+ */
+const d = defaults as Record<string, any>;
+const CLOSED_WHEN_DROPPED: Record<string, unknown> = {
+  securityProfile: "read_only",
+  memorySkills: [],
+  limits: { ...d.limits, dailyBudgetUsd: 0.01, approvalTtlDays: 1 },
+  remote: { ...d.remote, deviceTtlDays: 1 },
+  sentinels: { ...d.sentinels, triage: { ...d.sentinels.triage, dailyBudgetUsd: 0 } },
+  channels: {
+    ...d.channels,
+    telegram: { ...d.channels.telegram, allowedUserIds: [], enabled: false, inbound: false },
+  },
+};
+
 describe("S3 settings tolerate an invalid field", () => {
   it("C19 an invalid value in any top-level field costs only that field", () => {
     const keys = Object.keys(SettingsSchema.shape);
@@ -88,7 +112,9 @@ describe("S3 settings tolerate an invalid field", () => {
       const { store, write } = setup();
       write({ ...good, [key]: invalidFor(key) });
       const loaded = store.load() as unknown as Record<string, unknown>;
-      expect(loaded[key], `${key} reads as its default`).toEqual(defaults[key]);
+      expect(loaded[key], `${key} reads as its default, or closed when it is a security field`).toEqual(
+        key in CLOSED_WHEN_DROPPED ? CLOSED_WHEN_DROPPED[key] : defaults[key],
+      );
       for (const other of keys.filter((k) => k !== key)) {
         expect(loaded[other], `${other} keeps its value when ${key} is invalid`).toEqual(
           (SettingsSchema.parse(good) as Record<string, unknown>)[other],
@@ -106,7 +132,8 @@ describe("S3 settings tolerate an invalid field", () => {
       limits: { maxConcurrentRuns: 99, logRetentionDays: 7 },
     });
     const settings = store.load();
-    expect(settings.providers.claude.enabled).toBe(true);
+    // A pinned binary that cannot be read is not run through PATH instead: the provider is switched off.
+    expect(settings.providers.claude.enabled).toBe(false);
     expect(settings.providers.claude.binaryPath).toBeNull();
     expect(settings.providers.cursor.defaultModel).toBe("composer");
     expect(settings.indexedFolders.map((f) => f.path)).toEqual(["/tmp/a", "/tmp/c"]);
@@ -250,5 +277,375 @@ describe("S3 settings tolerate an invalid field", () => {
       await app.close();
       ctx.close();
     }
+  });
+
+  /**
+   * The test's own statement of each security field: its valid values from the most restrictive to the most
+   * permissive, and what a value that cannot be read must read as (the first one). `0` is not on the budget
+   * lists: it is the permissive extreme (no alert, no ceiling), not a restrictive value.
+   */
+  const DIRECTION: Array<{
+    name: string;
+    /** A document with this field holding an unreadable value, around a valid sibling to keep. */
+    broken(bad: unknown): Record<string, unknown>;
+    read(s: ReturnType<SettingsStore["load"]>): unknown;
+    restrictiveToPermissive: unknown[];
+    /** The value written is the value read (so every value on the list can be checked as written). */
+    direct?: true;
+  }> = [
+    {
+      name: "securityProfile",
+      direct: true,
+      broken: (bad) => ({ securityProfile: bad }),
+      read: (s) => s.securityProfile,
+      restrictiveToPermissive: [
+        "read_only",
+        "review_before_write",
+        "controlled_write",
+        "approved_automation",
+      ],
+    },
+    {
+      name: "indexedFolders[].enabled",
+      broken: (bad) => ({ indexedFolders: [{ path: "/tmp/granted", enabled: bad }] }),
+      read: (s) => s.indexedFolders[0]?.enabled,
+      restrictiveToPermissive: [false, true],
+    },
+    {
+      name: "providers.claude.binaryPath (the provider runs only if enabled)",
+      broken: (bad) => ({ providers: { claude: { enabled: true, binaryPath: bad } } }),
+      read: (s) => s.providers.claude.enabled,
+      restrictiveToPermissive: [false, true],
+    },
+    {
+      name: "channels.telegram.allowedUserIds (empty means anybody in the chat, so the channel is what closes)",
+      broken: (bad) => ({ channels: { telegram: { enabled: true, inbound: true, allowedUserIds: bad } } }),
+      read: (s) => s.channels.telegram.enabled && s.channels.telegram.inbound,
+      restrictiveToPermissive: [false, true],
+    },
+    {
+      name: "memorySkills",
+      direct: true,
+      broken: (bad) => ({ memorySkills: bad }),
+      read: (s) => s.memorySkills,
+      restrictiveToPermissive: [[], ["recall"], ["recall", "consolidate-memory"]],
+    },
+    {
+      name: "limits.dailyBudgetUsd",
+      direct: true,
+      broken: (bad) => ({ limits: { dailyBudgetUsd: bad } }),
+      read: (s) => s.limits.dailyBudgetUsd,
+      restrictiveToPermissive: [0.01, 1, 100],
+    },
+    {
+      name: "limits.approvalTtlDays",
+      direct: true,
+      broken: (bad) => ({ limits: { approvalTtlDays: bad } }),
+      read: (s) => s.limits.approvalTtlDays,
+      restrictiveToPermissive: [1, 7, 30],
+    },
+    {
+      name: "remote.deviceTtlDays",
+      direct: true,
+      broken: (bad) => ({ remote: { deviceTtlDays: bad } }),
+      read: (s) => s.remote.deviceTtlDays,
+      restrictiveToPermissive: [1, 90, 365],
+    },
+    {
+      name: "sentinels.triage.dailyBudgetUsd",
+      direct: true,
+      broken: (bad) => ({ sentinels: { triage: { dailyBudgetUsd: bad } } }),
+      read: (s) => s.sentinels.triage.dailyBudgetUsd,
+      restrictiveToPermissive: [0, 0.25, 5],
+    },
+  ];
+
+  it("C44 a security field that cannot be read never reads as more permissive than any value it could have had", () => {
+    expect(SecurityProfile.options).toEqual(DIRECTION[0]!.restrictiveToPermissive);
+    for (const field of DIRECTION) {
+      // Every value on the list is one the schema accepts, so the list is the field's real range.
+      if (field.direct) {
+        for (const valid of field.restrictiveToPermissive) {
+          const { store, write } = setup();
+          write({ version: 2, ...field.broken(valid) });
+          expect(field.read(store.load()), `${field.name} = ${JSON.stringify(valid)} is readable`).toEqual(
+            valid,
+          );
+        }
+      }
+      for (const bad of [null, "not valid", -7, 1.5, "5", {}, [1.5], ["BAD name"], [false], 42, "false", 0]) {
+        const { store, write } = setup();
+        const doc = { version: 2, ...field.broken(bad) };
+        // A value the schema accepts is not an unreadable one.
+        if (SettingsSchema.safeParse(doc).success) continue;
+        write(doc);
+        const read = store.load();
+        expect(field.read(read), `${field.name} unreadable as ${JSON.stringify(bad)}`).toEqual(
+          field.restrictiveToPermissive[0],
+        );
+      }
+    }
+  });
+
+  it("C45 an element, or the parent, that cannot be read closes the security fields below it too", () => {
+    const element = setup();
+    element.write({
+      version: 2,
+      channels: { telegram: { enabled: true, inbound: true, chatId: "1", allowedUserIds: [7, 1.5] } },
+      indexedFolders: [
+        { path: "/tmp/a", enabled: "false" },
+        { path: "/tmp/b", enabled: true },
+      ],
+      memorySkills: ["recall", "BAD NAME"],
+    });
+    const s1 = element.store.load();
+    expect(s1.channels.telegram).toMatchObject({ enabled: false, inbound: false, chatId: "1" });
+    expect(s1.indexedFolders.map((f) => [f.path, f.enabled])).toEqual([
+      ["/tmp/a", false],
+      ["/tmp/b", true],
+    ]);
+    expect(s1.memorySkills).toEqual([]);
+
+    // Each parent dropped whole.
+    for (const [key, check] of [
+      ["limits", (s: any) => [s.limits.dailyBudgetUsd, s.limits.approvalTtlDays]],
+      ["remote", (s: any) => [s.remote.deviceTtlDays]],
+      ["sentinels", (s: any) => [s.sentinels.triage.dailyBudgetUsd]],
+      ["channels", (s: any) => [s.channels.telegram.enabled, s.channels.telegram.inbound]],
+    ] as const) {
+      const { store, write } = setup();
+      write({ version: 2, [key]: "not an object" });
+      const expected = {
+        limits: [0.01, 1],
+        remote: [1],
+        sentinels: [0],
+        channels: [false, false],
+      }[key];
+      expect(check(store.load()), key).toEqual(expected);
+    }
+    const providers = setup();
+    providers.write({ version: 2, providers: 7 });
+    const loaded = providers.store.load();
+    expect(Object.values(loaded.providers).every((p) => p.enabled === false && p.binaryPath === null)).toBe(
+      true,
+    );
+  });
+
+  it("C46 every leaf of the settings is either a security field with a closed value or one that opens nothing", () => {
+    const leaves: string[] = [];
+    const walk = (node: unknown, trail: string[]) => {
+      if (node !== null && typeof node === "object" && !Array.isArray(node)) {
+        for (const [key, value] of Object.entries(node)) walk(value, [...trail, key]);
+      } else if (Array.isArray(node) && node.length > 0 && typeof node[0] === "object") {
+        walk(node[0], [...trail, "0"]);
+      } else leaves.push(trail.join("."));
+    };
+    // The defaults, with a sample element where the schema has a list of objects or a record.
+    walk(
+      SettingsSchema.parse({
+        indexedFolders: [{ path: "/tmp/x" }],
+        providers: { claude: {} },
+      }),
+      [],
+    );
+    const closed = SETTINGS_FAIL_CLOSED.map((r) => r.path.replace(/\*/g, "[^.]+"));
+    /** Everything else, by prefix, and why none of it can open anything. */
+    const OPENS_NOTHING: Array<[string, string]> = [
+      ["version", "bookkeeping"],
+      ["systemName", "a label"],
+      ["language", "presentation"],
+      ["theme", "presentation"],
+      ["accentColor", "presentation"],
+      ["port", "where the loopback listener is; no value widens who may connect"],
+      ["bindAddress", "default is loopback, the narrowest; anything else needs an approval to take effect"],
+      ["timezone", "scheduling"],
+      ["autostart", "start with the machine; the default is off"],
+      ["setupCompleted", "whether the wizard ran"],
+      ["defaultProvider", "which provider a run uses by default; it still has to be enabled"],
+      ["providers.", "enabled is off by default, a default model or effort grants nothing"],
+      ["remote.enabled", "off by default"],
+      ["remote.allowedHosts", "empty by default: nobody"],
+      ["remote.tls", "off by default; only matters once remote is enabled"],
+      ["marketplace.registries", "empty by default: no registry"],
+      ["updates.check", "off by default: no outbound request"],
+      ["indexedFolders.", "path and area name a folder; enabled is classified"],
+      ["excludes", "the default list is the hard secret list"],
+      ["areas", "labels"],
+      ["limits.maxConcurrentRuns", "resource use, not permission"],
+      ["limits.skillNotesMax", "size"],
+      ["limits.defaultTimeoutMs", "size"],
+      ["limits.logRetentionDays", "retention"],
+      ["limits.logMaxFileBytes", "size"],
+      ["limits.maxIndexedFileBytes", "size"],
+      ["limits.previewMaxBytes", "size"],
+      ["limits.runRetentionDays", "retention"],
+      ["limits.runRetentionMax", "retention"],
+      ["limits.backupRetention", "retention; sealed backups only"],
+      ["limits.routineHistoryRetentionDays", "retention"],
+      ["limits.toolApprovalTimeoutMs", "how long a prompt waits before it is denied"],
+      ["favoriteSkills", "labels"],
+      ["routines.allowWebhooks", "off by default"],
+      ["routines.heartbeat", "scheduling"],
+      ["connectors.dataCacheTtlMs", "cache"],
+      ["connectors.dataTimeoutMs", "timeout"],
+      ["connectors.allowedCommands", "empty by default: only the base allowlist"],
+      ["memory.", "a token budget"],
+      ["sentinels.fsWatch", "off by default"],
+      ["sentinels.repeatedFailure", "an observer that only notifies"],
+      ["sentinels.silentRoutine", "an observer that only notifies"],
+      ["sentinels.connectorDelta", "an observer that only notifies"],
+      ["sentinels.repeatDetector", "an observer that only notifies"],
+      ["sentinels.triage.enabled", "bounded by its budget, which is classified"],
+      ["sentinels.triage.model", "a model alias"],
+      ["sentinels.triage.timeoutMs", "timeout"],
+      ["channels.telegram.enabled", "off by default"],
+      ["channels.telegram.botTokenEnv", "the name of a variable"],
+      ["channels.telegram.chatId", "empty by default: nowhere"],
+      ["channels.telegram.minTone", "what is worth a message"],
+      ["channels.telegram.inbound", "off by default"],
+      ["channels.push", "off by default"],
+    ];
+    const unclassified = leaves.filter(
+      (leaf) =>
+        !closed.some((re) => new RegExp(`^${re}$`).test(leaf)) &&
+        !OPENS_NOTHING.some(([prefix]) => leaf.startsWith(prefix)),
+    );
+    expect(
+      unclassified,
+      "a settings leaf nobody classified: add it to SETTINGS_FAIL_CLOSED or say why it opens nothing",
+    ).toEqual([]);
+  });
+
+  it("C47 more invalid values than a file can reasonably hold are read as the closed defaults, without failing", () => {
+    const wrap = (areas: unknown[]) => ({ version: 2, systemName: "Casa", areas });
+    // 1100 invalid among valid ones: all of them go in one pass, the valid ones stay in order.
+    const some = setup();
+    const elements: unknown[] = [];
+    for (let i = 0; i < 1100; i++) elements.push(i % 2 === 0 ? { not: "a string" } : `area-${i}`);
+    some.write(wrap(elements));
+    const started = Date.now();
+    const settings = some.store.load();
+    expect(settings.areas).toHaveLength(550);
+    expect(settings.areas[0]).toBe("area-1");
+    expect(settings.areas.at(-1)).toBe("area-1099");
+    expect(settings.systemName).toBe("Casa");
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(fs.readdirSync(some.paths.config).filter((n) => n.includes(".corrupt."))).toEqual([]);
+
+    // 50 000 invalid: the file is kept, the document reads as the closed defaults, one line says why.
+    const many = setup();
+    many.write(wrap(Array.from({ length: 50_000 }, (_, i) => (i % 2 ? { bad: i } : `a${i}`))));
+    const t0 = Date.now();
+    const closedRead = many.store.load();
+    expect(Date.now() - t0).toBeLessThan(10_000);
+    expect(closedRead.systemName).toBe("MordomoOS");
+    expect(closedRead.securityProfile).toBe("read_only");
+    expect(closedRead.limits.dailyBudgetUsd).toBe(0.01);
+    expect(closedRead.memorySkills).toEqual([]);
+    expect(fs.readdirSync(many.paths.config).filter((n) => n.includes(".corrupt."))).toEqual([]);
+    expect(fs.readFileSync(`${many.paths.settingsFile}.invalid`, "utf8")).toBe(
+      fs.readFileSync(many.paths.settingsFile, "utf8"),
+    );
+    const line = JSON.parse(fs.readFileSync(path.join(many.paths.logs, "settings.jsonl"), "utf8").trim()) as {
+      path: string;
+    };
+    expect(line.path).toBe("(document)");
+
+    // The cap is a parameter of the parser, and a pass over many invalid values is linear.
+    const direct = parseTolerant(SettingsSchema, wrap(Array.from({ length: 4000 }, () => 1)), {
+      failClosed: SETTINGS_FAIL_CLOSED,
+    });
+    expect(direct.overflow).toBe(false);
+    expect(direct.value.areas).toEqual([]);
+  }, 60_000);
+
+  it("C48 a name taken by a folder, a link or other bytes never loses the original or stops the load", () => {
+    const folder = setup();
+    const text = folder.write({ version: 2, port: "abc", systemName: "Casa" });
+    fs.mkdirSync(`${folder.paths.settingsFile}.invalid`);
+    expect(folder.store.load().systemName).toBe("Casa");
+    const hash = crypto.createHash("sha256").update(text).digest("hex").slice(0, 12);
+    expect(fs.readFileSync(`${folder.paths.settingsFile}.invalid.${hash}`, "utf8")).toBe(text);
+    expect(fs.readdirSync(folder.paths.config).filter((n) => n.includes(".corrupt."))).toEqual([]);
+
+    if (POSIX) {
+      const link = setup();
+      const t2 = link.write({ version: 2, port: "abc" });
+      fs.symlinkSync(path.join(link.paths.config, "nowhere"), `${link.paths.settingsFile}.invalid`);
+      expect(link.store.load().port).toBe(4777);
+      const h2 = crypto.createHash("sha256").update(t2).digest("hex").slice(0, 12);
+      expect(fs.readFileSync(`${link.paths.settingsFile}.invalid.${h2}`, "utf8")).toBe(t2);
+      expect(fs.existsSync(path.join(link.paths.config, "nowhere"))).toBe(false);
+    }
+
+    // The hashed name is taken too, by other bytes: the next free name keeps the original.
+    const taken = setup();
+    const t3 = taken.write({ version: 2, port: "abc" });
+    const h3 = crypto.createHash("sha256").update(t3).digest("hex").slice(0, 12);
+    fs.writeFileSync(`${taken.paths.settingsFile}.invalid`, "other");
+    fs.writeFileSync(`${taken.paths.settingsFile}.invalid.${h3}`, "someone else");
+    expect(taken.store.load().port).toBe(4777);
+    expect(fs.readFileSync(`${taken.paths.settingsFile}.invalid.${h3}-1`, "utf8")).toBe(t3);
+    expect(fs.readFileSync(`${taken.paths.settingsFile}.invalid`, "utf8")).toBe("other");
+
+    // Nothing can be written at all: the load still works, and a save refuses to replace what it could not keep.
+    if (POSIX) {
+      const blocked = setup();
+      blocked.write({ version: 2, port: "abc", systemName: "Casa" });
+      const h4 = crypto
+        .createHash("sha256")
+        .update(fs.readFileSync(blocked.paths.settingsFile, "utf8"))
+        .digest("hex")
+        .slice(0, 12);
+      for (const name of [
+        ".invalid",
+        `.invalid.${h4}`,
+        ...Array.from({ length: 8 }, (_, i) => `.invalid.${h4}-${i + 1}`),
+      ]) {
+        fs.mkdirSync(`${blocked.paths.settingsFile}${name}`);
+      }
+      expect(blocked.store.load().systemName).toBe("Casa");
+      const before = fs.readFileSync(blocked.paths.settingsFile, "utf8");
+      let thrown: unknown;
+      try {
+        blocked.store.update({ systemName: "X" });
+      } catch (error) {
+        thrown = error;
+      }
+      expect((thrown as { code?: string }).code).toBe("settings_unpreserved");
+      expect(fs.readFileSync(blocked.paths.settingsFile, "utf8")).toBe(before);
+    }
+  });
+
+  it("C49 the log says it once per version of the file, across instances", () => {
+    const { paths, write } = setup();
+    write({ version: 2, port: "abc", limits: { maxConcurrentRuns: 99 } });
+    for (let i = 0; i < 3; i++) new SettingsStore(paths).load();
+    const logFile = path.join(paths.logs, "settings.jsonl");
+    expect(fs.readFileSync(logFile, "utf8").trim().split("\n")).toHaveLength(2);
+    write({ version: 2, port: "abc", theme: "neon" });
+    for (let i = 0; i < 3; i++) new SettingsStore(paths).load();
+    expect(fs.readFileSync(logFile, "utf8").trim().split("\n")).toHaveLength(4);
+  });
+
+  it("C50 an unreadable file is kept once and only the newest copies stay, and a version that is not a number is not migrated", () => {
+    const { paths, store, write } = setup();
+    write("{ not json");
+    for (let i = 0; i < 3; i++) expect(() => store.load()).toThrow(/settings\.json is invalid/);
+    expect(fs.readdirSync(paths.config).filter((n) => n.includes(".corrupt."))).toHaveLength(1);
+
+    for (let i = 0; i < 8; i++) {
+      write(`{ not json ${i}`);
+      expect(() => store.load()).toThrow();
+    }
+    expect(fs.readdirSync(paths.config).filter((n) => n.includes(".corrupt.")).length).toBeLessThanOrEqual(5);
+
+    const stranger = setup();
+    const text = stranger.write({ version: "abc", systemName: "Casa" });
+    const before = fs.statSync(stranger.paths.settingsFile).mtimeMs;
+    expect(stranger.store.load().systemName).toBe("Casa");
+    expect(fs.readFileSync(stranger.paths.settingsFile, "utf8")).toBe(text);
+    expect(fs.statSync(stranger.paths.settingsFile).mtimeMs).toBe(before);
+    expect(fs.existsSync(`${stranger.paths.settingsFile}.v1.bak`)).toBe(false);
   });
 });

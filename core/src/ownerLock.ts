@@ -4,14 +4,21 @@ import path from "node:path";
 import type { Db } from "./db/db.js";
 import { pidAlive, processStartMarker } from "./processIdentity.js";
 
+/** A temporary file of `acquire()`: `<lock>.<pid>.<token>.tmp` (an older release wrote `<lock>.<pid>.<ms>.tmp`). */
+const TEMP_NAME = /\.(\d+)\.(?:[0-9a-f]{32}|\d+)\.tmp$/;
+
 /** `start()` found another live process owning this home. */
 export class EngineLockedError extends Error {
   readonly code = "engine_locked";
-  constructor(readonly holderPid: number | null) {
+  constructor(
+    readonly holderPid: number | null,
+    detail?: string,
+  ) {
     super(
-      holderPid === null
-        ? "Another MordomoOS engine owns this home."
-        : `Another MordomoOS engine (pid ${holderPid}) owns this home.`,
+      detail ??
+        (holderPid === null
+          ? "Another MordomoOS engine owns this home."
+          : `Another MordomoOS engine (pid ${holderPid}) owns this home.`),
     );
     this.name = "EngineLockedError";
   }
@@ -96,6 +103,7 @@ export class OwnerLock {
   /** Take the lock, or throw `EngineLockedError` — having changed nothing — when another live process holds it. */
   acquire(): void {
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
+    this.removeOrphanTemps();
     const token = crypto.randomBytes(16).toString("hex");
     const record: LockRecord = {
       v: 2,
@@ -119,7 +127,16 @@ export class OwnerLock {
             const holder = readLock(this.file);
             if (!lockIsStale(holder, this.probe, process.pid))
               throw new EngineLockedError(holder?.pid ?? null);
-            fs.rmSync(this.file, { force: true });
+            try {
+              fs.rmSync(this.file, { force: true });
+            } catch (err) {
+              // Not a file (a folder), or not ours to remove: the home cannot be owned until someone looks.
+              throw new EngineLockedError(
+                null,
+                `${this.file} is in the way and cannot be removed (${(err as NodeJS.ErrnoException).code}); ` +
+                  "remove it by hand if no MordomoOS engine is running.",
+              );
+            }
           }
           throw new EngineLockedError(readLock(this.file)?.pid ?? null);
         })
@@ -127,6 +144,24 @@ export class OwnerLock {
       this.token = token;
     } finally {
       fs.rmSync(temp, { force: true });
+    }
+  }
+
+  /** A process killed between writing its temporary file and publishing it leaves the file: sweep those of dead ones. */
+  private removeOrphanTemps(): void {
+    const dir = path.dirname(this.file);
+    const base = path.basename(this.file);
+    let names: string[] = [];
+    try {
+      names = fs.readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      const owner = name.startsWith(`${base}.`) ? TEMP_NAME.exec(name) : null;
+      if (owner && Number(owner[1]) !== process.pid && !this.probe.alive(Number(owner[1]))) {
+        fs.rmSync(path.join(dir, name), { force: true });
+      }
     }
   }
 

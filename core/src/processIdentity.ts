@@ -56,7 +56,9 @@ export const realProbeIo: ProbeIo = {
   },
 };
 
-const PS_CANDIDATES = ["/bin/ps", "/usr/bin/ps", "ps"];
+// Absolute paths only: a program found through PATH is whatever the caller's PATH says, and this runs in the
+// middle of deciding who owns the home.
+const PS_CANDIDATES = ["/bin/ps", "/usr/bin/ps"];
 const POWERSHELL_CANDIDATES = [
   path.join(
     process.env.SystemRoot ?? "C:\\Windows",
@@ -65,7 +67,6 @@ const POWERSHELL_CANDIDATES = [
     "v1.0",
     "powershell.exe",
   ),
-  "powershell.exe",
 ];
 
 export function processStartMarker(pid: number, io: ProbeIo = realProbeIo): string | null {
