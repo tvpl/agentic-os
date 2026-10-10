@@ -117,6 +117,12 @@ export async function mountShell(
   shell: "nucleo" | "moldura",
   lang: Lang = "en",
   registry = new CommandRegistry(),
+  opts: {
+    /** What the shell is told when the settings changed (a spy, for the tests that read it). */
+    onMetaChanged?: () => void;
+    /** Something to render inside the providers, to read what they hold. */
+    inside?: ReactNode;
+  } = {},
 ) {
   server.prefs = { ...PREFS, shell };
   window.location.hash = `#${path}`;
@@ -135,9 +141,10 @@ export async function mountShell(
                 <WorkspaceProvider>
                   <OsShell
                     meta={{ ...META, language: lang }}
-                    onMetaChanged={() => undefined}
+                    onMetaChanged={opts.onMetaChanged ?? (() => undefined)}
                     registry={registry}
                   />
+                  {opts.inside}
                 </WorkspaceProvider>
               </HashRouter>
             </NotificationsProvider>

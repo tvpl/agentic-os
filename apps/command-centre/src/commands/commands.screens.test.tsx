@@ -10,10 +10,13 @@
 import { useRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type * as ApiModule from "../api";
 import type * as CameraModule from "../brain/camera";
 import { api } from "../api";
 import { dictionaries } from "../i18n";
+import { qk } from "../queries";
+import { useNotifications, type NotificationItem } from "../hooks/useNotifications";
 import { useDialog } from "../components/dialog";
 import { dismiss, getLaminas, project } from "../nucleo/projections";
 import { horizonRing } from "../nucleo/scenes";
@@ -600,6 +603,25 @@ describe("R1 the Núcleo's own keys", () => {
     await waitFor(() => expect(getLaminas()).toEqual([]));
   });
 
+  it("C29 Esc in a field of the scene leaves a sheet up; from the page it dismisses it", async () => {
+    await mountShell("/runs", "nucleo");
+    await waitFor(() => expect(document.querySelector(".nu-scene.on input")).not.toBeNull(), {
+      timeout: 5000,
+    });
+    blur();
+    act(() => project("cost"));
+    await waitFor(() => expect(getLaminas()).toEqual(["cost"]));
+    const field = document.querySelector<HTMLInputElement>(".nu-scene.on input")!;
+    act(() => field.focus());
+    press({ key: "Escape" }, field);
+    await settle();
+    expect(getLaminas(), "Esc in a field is the field's").toEqual(["cost"]);
+    expect(hash()).toBe("#/runs");
+    act(() => field.blur());
+    press({ key: "Escape" });
+    await waitFor(() => expect(getLaminas()).toEqual([]));
+  });
+
   it("C29 with the conversation and the search both open, Esc folds the conversation first", async () => {
     await mountShell("/runs", "nucleo");
     const shell = () => document.querySelector(".nu-shell")!;
@@ -779,22 +801,51 @@ describe("R1 layouts, platforms and the home key", () => {
 
 /* ---- the palette's asynchronous actions (AD-014) ------------------------------------------- */
 describe("R1 the palette closes at once on an action that talks to the server", () => {
-  const open = async () => {
+  type Lang = "en" | "pt-BR";
+  const LANGS: Lang[] = ["en", "pt-BR"];
+  const fmt = (template: string, params: Record<string, string | number>) =>
+    template.replace(/\{(\w+)\}/g, (_, key: string) => String(params[key]));
+  /** What the providers hold, read from inside them. */
+  const held = { client: null as QueryClient | null, items: [] as NotificationItem[] };
+  function Spy() {
+    held.client = useQueryClient();
+    held.items = useNotifications().items;
+    return null;
+  }
+  const gone = () =>
+    waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: /^(Command palette|Paleta de comandos)$/ })).toBeNull(),
+    );
+  const toastOf = async (text: string) => (await screen.findByText(text)).closest(".toast")!;
+
+  /** Mount the frame, open the palette and choose the row of `id`; the palette must be gone before the server answers. */
+  const choose = async (lang: Lang, id: string, setup: () => void = () => undefined) => {
+    const onMetaChanged = vi.fn();
+    await mountShell("/", "moldura", lang, undefined, { onMetaChanged, inside: <Spy /> });
+    setup();
+    blur();
+    press({ key: "k", ctrlKey: true });
+    await screen.findByRole("combobox");
+    await waitFor(() => expect(document.getElementById(`palette-list-${id}`), id).not.toBeNull());
+    const invalidate = vi.spyOn(held.client!, "invalidateQueries");
+    fireEvent.click(document.getElementById(`palette-list-${id}`)!);
+    await gone();
+    return { onMetaChanged, invalidate };
+  };
+  const after = () => {
+    document.documentElement.removeAttribute("data-theme");
+    cleanup();
+  };
+
+  it("C32 the palette closes first; the answer navigates to Settings and says so in a toast", async () => {
+    let answer!: (report: unknown) => void;
+    server.doctor = () => new Promise((resolve) => (answer = resolve));
     await mountShell("/", "moldura");
     blur();
     press({ key: "k", ctrlKey: true });
     const input = (await screen.findByRole("combobox")) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "diagnostics" } });
     await waitFor(() => expect(document.getElementById("palette-list-action:doctor")).not.toBeNull());
-    return input;
-  };
-  const gone = () =>
-    waitFor(() => expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull());
-
-  it("C32 the palette closes first; the answer navigates to Settings and says so in a toast", async () => {
-    let answer!: (report: unknown) => void;
-    server.doctor = () => new Promise((resolve) => (answer = resolve));
-    const input = await open();
     fireEvent.keyDown(input, { key: "Enter" });
     await gone();
     expect(api.get).toHaveBeenCalledWith("/api/doctor?audit=0");
@@ -804,98 +855,149 @@ describe("R1 the palette closes at once on an action that talks to the server", 
     await screen.findByText("Doctor: 3 ok · 1 warnings · 0 failures");
   });
 
-  it("C32 a failure is a toast that names the action, and the palette stays closed", async () => {
-    server.doctor = () => Promise.reject(new Error("the doctor is out"));
-    const input = await open();
-    fireEvent.keyDown(input, { key: "Enter" });
-    await gone();
-    await screen.findByText(/Run diagnostics failed: .*the doctor is out/);
-    expect(hash()).toBe("#/");
-  });
-
-  it("C32 each of the five actions says it worked: the toast, its tone and what it did", async () => {
-    const en = dictionaries.en;
-    const toasts = () =>
-      [...document.querySelectorAll<HTMLElement>(".toast")].map((t) => [
-        t.className.replace(/\s+/g, " "),
-        t.textContent,
-      ]);
-    const toastOf = async (text: string) => (await screen.findByText(text)).closest(".toast")!;
-    type Row = [id: string, setup: () => void, text: string, tone: string, effect: () => void];
-    const rows: Row[] = [
-      [
-        "action:reindex",
-        () => vi.mocked(api.post).mockResolvedValue({}),
-        en["shell.action.reindexDone"],
-        "ok",
-        () => expect(api.post).toHaveBeenCalledWith("/api/memory/index"),
-      ],
-      [
-        "action:backup",
-        () => vi.mocked(api.post).mockResolvedValue({ name: "b-2026" }),
-        "Backup created: b-2026",
-        "ok",
-        () => expect(api.post).toHaveBeenCalledWith("/api/backups", {}),
-      ],
-      [
-        "action:doctor",
-        () => (server.doctor = () => Promise.resolve({ ok: 5, warn: 0, fail: 0 })),
-        "Doctor: 5 ok · 0 warnings · 0 failures",
-        "ok",
-        () => expect(hash()).toBe("#/settings?tab=diagnostics"),
-      ],
-      [
-        "action:doctor",
-        () => (server.doctor = () => Promise.resolve({ ok: 3, warn: 1, fail: 2 })),
-        "Doctor: 3 ok · 1 warnings · 2 failures",
-        "danger",
-        () => expect(hash()).toBe("#/settings?tab=diagnostics"),
-      ],
-      [
-        "action:toggle-theme",
-        () => {
-          document.documentElement.dataset.theme = "dark";
-          vi.mocked(api.putSettings).mockResolvedValue({ settings: {}, pendingApproval: null });
+  it("C32 each of the five actions says it worked, in both languages: the toast, its tone and what it did", async () => {
+    for (const lang of LANGS) {
+      const d = dictionaries[lang];
+      const toastText = (id: string, params: Record<string, string | number>) => {
+        const key = {
+          "action:reindex": "shell.action.reindexDone",
+          "action:backup": "shell.action.backupDone",
+          "action:doctor": "shell.action.doctorDone",
+          "action:toggle-theme": "shell.palette.themeToggled",
+        }[id] as keyof typeof d;
+        return fmt(d[key], params);
+      };
+      const putSettings = () =>
+        vi.mocked(api.putSettings).mockResolvedValue({ settings: {}, pendingApproval: null });
+      type Row = {
+        label: string;
+        id: string;
+        setup: () => void;
+        text: string;
+        tone: "ok" | "danger";
+        effect: (spied: Awaited<ReturnType<typeof choose>>) => void;
+      };
+      const doctor = (report: { ok: number; warn: number; fail: number }): Row => {
+        const tone = report.fail > 0 ? "danger" : "ok";
+        const text = toastText("action:doctor", report);
+        return {
+          label: `doctor ${JSON.stringify(report)}`,
+          id: "action:doctor",
+          setup: () => (server.doctor = () => Promise.resolve(report)),
+          text,
+          tone,
+          effect: () => {
+            expect(hash()).toBe("#/settings?tab=diagnostics");
+            // The report is kept for the Diagnostics tab, and the bell has a line about it.
+            expect(held.client!.getQueryData(qk.doctor)).toEqual(report);
+            expect(held.items.filter((i) => i.kind === "system")).toEqual([
+              expect.objectContaining({
+                kind: "system",
+                title: d["shell.action.doctor"],
+                body: text,
+                href: "/settings?tab=diagnostics",
+                tone,
+              }),
+            ]);
+          },
+        };
+      };
+      const theme = (from: "dark" | "light", next: "dark" | "light"): Row => ({
+        label: `theme ${from} → ${next}`,
+        id: "action:toggle-theme",
+        setup: () => {
+          document.documentElement.dataset.theme = from;
+          putSettings();
         },
-        "Theme: light",
-        "ok",
-        () => expect(api.putSettings).toHaveBeenCalledWith({ theme: "light" }),
-      ],
-      [
-        "action:toggle-theme",
-        () => {
-          document.documentElement.dataset.theme = "light";
-          vi.mocked(api.putSettings).mockResolvedValue({ settings: {}, pendingApproval: null });
+        text: toastText("action:toggle-theme", { theme: next }),
+        tone: "ok",
+        effect: ({ onMetaChanged }) => {
+          expect(api.putSettings).toHaveBeenCalledWith({ theme: next });
+          // The shell reads the theme again, or it only takes at the next refresh.
+          expect(onMetaChanged).toHaveBeenCalledTimes(1);
         },
-        "Theme: dark",
-        "ok",
-        () => expect(api.putSettings).toHaveBeenCalledWith({ theme: "dark" }),
-      ],
-      [
-        "action:switch-shell",
-        () =>
-          vi.mocked(api.putUiPreferences).mockResolvedValue({ ...server.prefs, shell: "nucleo" } as never),
-        en["moldura.palette.switchedToNucleo"],
-        "ok",
-        () => expect(api.putUiPreferences).toHaveBeenCalledWith({ shell: "nucleo" }),
-      ],
-    ];
-    for (const [id, setup, text, tone, effect] of rows) {
-      await mountShell("/", "moldura");
-      setup();
-      blur();
-      press({ key: "k", ctrlKey: true });
-      await screen.findByRole("combobox");
-      await waitFor(() => expect(document.getElementById(`palette-list-${id}`), id).not.toBeNull());
-      fireEvent.click(document.getElementById(`palette-list-${id}`)!);
-      await gone();
-      const toast = await toastOf(text);
-      expect(toast.classList.contains(tone), `${id} ${text}: ${JSON.stringify(toasts())}`).toBe(true);
-      await waitFor(effect);
-      document.documentElement.removeAttribute("data-theme");
-      cleanup();
+      });
+      const rows: Row[] = [
+        {
+          label: "reindex",
+          id: "action:reindex",
+          setup: () => vi.mocked(api.post).mockResolvedValue({}),
+          text: toastText("action:reindex", {}),
+          tone: "ok",
+          effect: ({ invalidate }) => {
+            expect(api.post).toHaveBeenCalledWith("/api/memory/index");
+            expect(invalidate).toHaveBeenCalledWith({ queryKey: ["memory"] });
+          },
+        },
+        {
+          label: "backup",
+          id: "action:backup",
+          setup: () => vi.mocked(api.post).mockResolvedValue({ name: "b-2026" }),
+          text: toastText("action:backup", { name: "b-2026" }),
+          tone: "ok",
+          effect: ({ invalidate }) => {
+            expect(api.post).toHaveBeenCalledWith("/api/backups", {});
+            expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.backups });
+          },
+        },
+        // Failures make it dangerous; warnings alone do not. One failure is enough.
+        doctor({ ok: 5, warn: 0, fail: 0 }),
+        doctor({ ok: 3, warn: 1, fail: 2 }),
+        doctor({ ok: 4, warn: 0, fail: 1 }),
+        doctor({ ok: 4, warn: 2, fail: 0 }),
+        theme("dark", "light"),
+        theme("light", "dark"),
+        {
+          label: "switch interface",
+          id: "action:switch-shell",
+          setup: () =>
+            vi.mocked(api.putUiPreferences).mockResolvedValue({ ...server.prefs, shell: "nucleo" } as never),
+          text: d["moldura.palette.switchedToNucleo"],
+          tone: "ok",
+          effect: () => expect(api.putUiPreferences).toHaveBeenCalledWith({ shell: "nucleo" }),
+        },
+      ];
+      for (const row of rows) {
+        const spied = await choose(lang, row.id, row.setup);
+        const toast = await toastOf(row.text);
+        expect(toast.classList.contains(row.tone), `${lang} ${row.label}: ${toast.className}`).toBe(true);
+        expect(toast.classList.contains(row.tone === "ok" ? "danger" : "ok"), `${lang} ${row.label}`).toBe(
+          false,
+        );
+        await waitFor(() => row.effect(spied));
+        after();
+      }
     }
-  });
+  }, 240_000);
+
+  it("C32 a failure of any of the five is a dangerous toast that names the action; the palette stays closed", async () => {
+    const boom = () => Promise.reject(new Error("boom"));
+    for (const lang of LANGS) {
+      const d = dictionaries[lang];
+      const rows: Array<[id: string, label: string, fail: () => void]> = [
+        ["action:reindex", d["shell.action.reindex"], () => vi.mocked(api.post).mockImplementation(boom)],
+        ["action:backup", d["shell.action.backup"], () => vi.mocked(api.post).mockImplementation(boom)],
+        ["action:doctor", d["shell.action.doctor"], () => (server.doctor = boom)],
+        [
+          "action:toggle-theme",
+          d["shell.action.toggleTheme"],
+          () => vi.mocked(api.putSettings).mockImplementation(boom),
+        ],
+        [
+          "action:switch-shell",
+          d["moldura.palette.toNucleo"],
+          () => vi.mocked(api.putUiPreferences).mockImplementation(boom),
+        ],
+      ];
+      for (const [id, label, fail] of rows) {
+        await choose(lang, id, fail);
+        const toast = await toastOf(fmt(d["shell.action.failed"], { action: label, error: "boom" }));
+        expect(toast.classList.contains("danger"), `${lang} ${id}: ${toast.className}`).toBe(true);
+        expect(hash(), id).toBe("#/");
+        after();
+      }
+    }
+  }, 240_000);
 
   it("C32 the frame's own row, 'Open the skill deck', opens the deck (it replaced an event)", async () => {
     await mountShell("/", "moldura");
@@ -911,36 +1013,36 @@ describe("R1 the palette closes at once on an action that talks to the server", 
     await waitFor(() => expect(document.querySelector(".skill-deck")).not.toBeNull());
   });
 
-  it("C32 each of the actions that talk to the server closes the palette first and reports its failure", async () => {
-    const en = dictionaries.en;
-    const boom = () => Promise.reject(new Error("boom"));
-    const rows: Array<[id: string, label: string, fail: () => void]> = [
-      ["action:reindex", en["shell.action.reindex"], () => vi.mocked(api.post).mockImplementation(boom)],
-      ["action:backup", en["shell.action.backup"], () => vi.mocked(api.post).mockImplementation(boom)],
-      [
-        "action:toggle-theme",
-        en["shell.action.toggleTheme"],
-        () => vi.mocked(api.putSettings).mockImplementation(boom),
-      ],
-      [
-        "action:switch-shell",
-        en["moldura.palette.toNucleo"],
-        () => vi.mocked(api.putUiPreferences).mockImplementation(boom),
-      ],
-    ];
-    for (const [id, label, fail] of rows) {
-      await mountShell("/", "moldura");
-      fail();
-      blur();
-      press({ key: "k", ctrlKey: true });
-      await screen.findByRole("combobox");
-      await waitFor(() => expect(document.getElementById(`palette-list-${id}`), id).not.toBeNull());
-      fireEvent.click(document.getElementById(`palette-list-${id}`)!);
-      await gone();
-      await screen.findByText(`${label} failed: boom`);
-      expect(hash(), id).toBe("#/");
-      cleanup();
+  it("C32 what the actions say exists in both languages, with the same holes, and is translated", () => {
+    const keys = [
+      "shell.action.reindex",
+      "shell.action.reindexDone",
+      "shell.action.backup",
+      "shell.action.backupDone",
+      "shell.action.doctor",
+      "shell.action.doctorDone",
+      "shell.action.toggleTheme",
+      "shell.palette.themeToggled",
+      "shell.action.failed",
+      "moldura.palette.toNucleo",
+      "moldura.palette.toFrame",
+      "moldura.palette.switchedToNucleo",
+      "moldura.palette.switchedToFrame",
+    ] as const;
+    const holes = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+    for (const key of keys) {
+      const en = dictionaries.en[key];
+      const pt = dictionaries["pt-BR"][key];
+      expect(en.length, `en ${key}`).toBeGreaterThan(3);
+      expect(pt.length, `pt-BR ${key}`).toBeGreaterThan(3);
+      expect(pt, `${key} is not translated`).not.toBe(en);
+      expect(holes(pt), `${key} holes`).toEqual(holes(en));
     }
+    // The two switch notices say where you are now, and differ from each other, in each language.
+    for (const lang of ["en", "pt-BR"] as const)
+      expect(dictionaries[lang]["moldura.palette.switchedToNucleo"]).not.toBe(
+        dictionaries[lang]["moldura.palette.switchedToFrame"],
+      );
   });
 });
 

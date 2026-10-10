@@ -2,7 +2,8 @@
  * The key listeners that stay on the page outside the registry
  * (.specs/features/comandos-atalhos, C16): file by file, how many, and why they
  * are not commands. The source check (`commands.source.test.ts`) and the runtime
- * probe (`commands.screens.test.tsx`) both hold the app to exactly this list.
+ * probe (`commands.probe.test.tsx`) both hold the app to this list: the reader
+ * to these counts, the probe to at most this many call sites per file.
  */
 export const OUTSIDE_THE_REGISTRY: Record<string, [count: number, why: string]> = {
   "commands/registry.ts": [1, "the one listener of the key manager"],

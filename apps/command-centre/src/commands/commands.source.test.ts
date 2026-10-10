@@ -72,13 +72,6 @@ const unwrap = (e: ts.Expression): ts.Expression =>
     ? unwrap(e.expression)
     : e;
 
-const propName = (n: ts.PropertyAccessExpression | ts.ElementAccessExpression): string | null =>
-  ts.isPropertyAccessExpression(n)
-    ? n.name.text
-    : ts.isStringLiteralLike(n.argumentExpression)
-      ? n.argumentExpression.text
-      : null;
-
 const isAccess = (e: ts.Node): e is ts.PropertyAccessExpression | ts.ElementAccessExpression =>
   ts.isPropertyAccessExpression(e) || ts.isElementAccessExpression(e);
 
@@ -120,81 +113,7 @@ export interface Listeners {
 export function readListeners(text: string, name?: string, opts: ReadOptions = {}): Listeners {
   const sf = parse(text, name);
 
-  /* -- names: what is the page, what a constant -- */
-  const names = new Set(GLOBAL_NAMES);
-  const isGlobal = (raw: ts.Expression): boolean => {
-    const e = unwrap(raw);
-    if (ts.isIdentifier(e)) return names.has(e.text);
-    if (isAccess(e)) {
-      const prop = propName(e);
-      return prop !== null && GLOBAL_PROPS.includes(prop) && isGlobal(e.expression);
-    }
-    if (ts.isCallExpression(e) && isAccess(unwrap(e.expression))) {
-      const callee = unwrap(e.expression) as ts.PropertyAccessExpression | ts.ElementAccessExpression;
-      const arg = e.arguments[0];
-      return (
-        ["getElementById", "querySelector"].includes(propName(callee) ?? "") &&
-        isGlobal(callee.expression) &&
-        arg !== undefined &&
-        ts.isStringLiteralLike(arg) &&
-        ROOT_SELECTORS.includes(arg.text)
-      );
-    }
-    if (
-      ts.isBinaryExpression(e) &&
-      [
-        ts.SyntaxKind.QuestionQuestionToken,
-        ts.SyntaxKind.BarBarToken,
-        ts.SyntaxKind.AmpersandAmpersandToken,
-      ].includes(e.operatorToken.kind)
-    )
-      return isGlobal(e.left) || isGlobal(e.right);
-    if (ts.isConditionalExpression(e)) return isGlobal(e.whenTrue) || isGlobal(e.whenFalse);
-    return false;
-  };
-  const listHoldsGlobal = (raw: ts.Expression): boolean => {
-    const e = unwrap(raw);
-    return ts.isArrayLiteralExpression(e) && e.elements.some((x) => isGlobal(x));
-  };
-  const alias = (id: ts.Node): boolean => {
-    if (!ts.isIdentifier(id) || names.has(id.text)) return false;
-    names.add(id.text);
-    return true;
-  };
-  // Copies of copies: run to a fixed point.
-  for (let changed = true; changed;) {
-    changed = false;
-    visit(sf, (n) => {
-      if (ts.isVariableDeclaration(n) && n.initializer) {
-        if (isGlobal(n.initializer) && alias(n.name)) changed = true;
-        if (ts.isObjectBindingPattern(n.name) && isGlobal(n.initializer))
-          for (const el of n.name.elements)
-            if (GLOBAL_PROPS.includes((el.propertyName ?? el.name).getText()) && alias(el.name))
-              changed = true;
-      }
-      if (
-        ts.isForOfStatement(n) &&
-        ts.isVariableDeclarationList(n.initializer) &&
-        listHoldsGlobal(n.expression) &&
-        n.initializer.declarations.some((d) => alias(d.name))
-      )
-        changed = true;
-      if (ts.isCallExpression(n) && isAccess(unwrap(n.expression))) {
-        const callee = unwrap(n.expression) as ts.PropertyAccessExpression | ts.ElementAccessExpression;
-        const fn = n.arguments[0];
-        if (
-          ["forEach", "map", "some", "every", "flatMap"].includes(propName(callee) ?? "") &&
-          listHoldsGlobal(callee.expression) &&
-          fn &&
-          (ts.isArrowFunction(fn) || ts.isFunctionExpression(fn)) &&
-          fn.parameters[0] &&
-          alias(fn.parameters[0].name)
-        )
-          changed = true;
-      }
-    });
-  }
-
+  /* -- constants first: ids, types and keys may be spelled through them -- */
   const constants = new Map<string, string>();
   const imported = new Map<string, [from: string, name: string]>();
   visit(sf, (n) => {
@@ -254,8 +173,102 @@ export function readListeners(text: string, name?: string, opts: ReadOptions = {
     });
   }
 
+  /** The name a property access spells — by dot, by a literal, or by a constant or sum the file holds. */
+  const propName = (n: ts.PropertyAccessExpression | ts.ElementAccessExpression): string | null =>
+    ts.isPropertyAccessExpression(n) ? n.name.text : resolveStr(n.argumentExpression);
+
+  /* -- names: what is the page -- */
+  const names = new Set(GLOBAL_NAMES);
+  const isGlobal = (raw: ts.Expression): boolean => {
+    const e = unwrap(raw);
+    if (ts.isIdentifier(e)) return names.has(e.text);
+    if (isAccess(e)) {
+      const prop = propName(e);
+      return prop !== null && GLOBAL_PROPS.includes(prop) && isGlobal(e.expression);
+    }
+    if (ts.isCallExpression(e) && isAccess(unwrap(e.expression))) {
+      const callee = unwrap(e.expression) as ts.PropertyAccessExpression | ts.ElementAccessExpression;
+      const arg = e.arguments[0];
+      if (
+        !["getElementById", "querySelector"].includes(propName(callee) ?? "") ||
+        !isGlobal(callee.expression) ||
+        arg === undefined
+      )
+        return false;
+      // The root by name — or by a name the reader cannot read: refused, as the page.
+      const id = resolveStr(arg);
+      return id === null || ROOT_SELECTORS.includes(id);
+    }
+    if (
+      ts.isBinaryExpression(e) &&
+      [
+        ts.SyntaxKind.QuestionQuestionToken,
+        ts.SyntaxKind.BarBarToken,
+        ts.SyntaxKind.AmpersandAmpersandToken,
+      ].includes(e.operatorToken.kind)
+    )
+      return isGlobal(e.left) || isGlobal(e.right);
+    if (ts.isConditionalExpression(e)) return isGlobal(e.whenTrue) || isGlobal(e.whenFalse);
+    return false;
+  };
+  const listHoldsGlobal = (raw: ts.Expression): boolean => {
+    const e = unwrap(raw);
+    return ts.isArrayLiteralExpression(e) && e.elements.some((x) => isGlobal(x));
+  };
+  const alias = (id: ts.Node): boolean => {
+    if (!ts.isIdentifier(id) || names.has(id.text)) return false;
+    names.add(id.text);
+    return true;
+  };
+  // Copies of copies: run to a fixed point.
+  for (let changed = true; changed;) {
+    changed = false;
+    visit(sf, (n) => {
+      if (ts.isVariableDeclaration(n) && n.initializer) {
+        if (isGlobal(n.initializer) && alias(n.name)) changed = true;
+        if (ts.isObjectBindingPattern(n.name) && isGlobal(n.initializer))
+          for (const el of n.name.elements)
+            if (GLOBAL_PROPS.includes((el.propertyName ?? el.name).getText()) && alias(el.name))
+              changed = true;
+      }
+      if (
+        ts.isForOfStatement(n) &&
+        ts.isVariableDeclarationList(n.initializer) &&
+        listHoldsGlobal(n.expression) &&
+        n.initializer.declarations.some((d) => alias(d.name))
+      )
+        changed = true;
+      if (ts.isCallExpression(n) && isAccess(unwrap(n.expression))) {
+        const callee = unwrap(n.expression) as ts.PropertyAccessExpression | ts.ElementAccessExpression;
+        const fn = n.arguments[0];
+        if (
+          ["forEach", "map", "some", "every", "flatMap"].includes(propName(callee) ?? "") &&
+          listHoldsGlobal(callee.expression) &&
+          fn &&
+          (ts.isArrowFunction(fn) || ts.isFunctionExpression(fn)) &&
+          fn.parameters[0] &&
+          alias(fn.parameters[0].name)
+        )
+          changed = true;
+      }
+    });
+  }
+
   /* -- listener calls -- */
   const bare = new Set<string>(["addEventListener"]);
+  /** `addEventListener` taken off an object (`const f = window.addEventListener`): it listens where `.call` points it. */
+  const detached = new Set<string>();
+  const isEventTargetProto = (raw: ts.Expression): boolean => {
+    const e = unwrap(raw);
+    return (
+      ts.isPropertyAccessExpression(e) &&
+      e.name.text === "prototype" &&
+      ts.isIdentifier(e.expression) &&
+      ["EventTarget", "Window", "Document", "Node", "Element", "HTMLElement", "HTMLDocument"].includes(
+        e.expression.text,
+      )
+    );
+  };
   const isListenerFn = (raw: ts.Expression): boolean => {
     const e = unwrap(raw);
     return isAccess(e) && propName(e) === "addEventListener";
@@ -263,10 +276,12 @@ export function readListeners(text: string, name?: string, opts: ReadOptions = {
   visit(sf, (n) => {
     if (ts.isVariableDeclaration(n) && n.initializer) {
       // `const { addEventListener } = window` / `{ addEventListener: on } = globalThis`
-      if (ts.isObjectBindingPattern(n.name) && isGlobal(n.initializer))
+      if (ts.isObjectBindingPattern(n.name) && (isGlobal(n.initializer) || isEventTargetProto(n.initializer)))
         for (const el of n.name.elements)
           if ((el.propertyName ?? el.name).getText() === "addEventListener" && ts.isIdentifier(el.name))
-            bare.add(el.name.text);
+            (isGlobal(n.initializer) ? bare : detached).add(el.name.text);
+      // `const f = window.addEventListener` / `= EventTarget.prototype.addEventListener`
+      if (ts.isIdentifier(n.name) && isListenerFn(n.initializer)) detached.add(n.name.text);
       // `const on = window.addEventListener.bind(window)`
       const init = unwrap(n.initializer);
       if (ts.isIdentifier(n.name) && ts.isCallExpression(init) && isAccess(unwrap(init.expression))) {
@@ -295,6 +310,23 @@ export function readListeners(text: string, name?: string, opts: ReadOptions = {
       const prop = propName(callee);
       if (prop === "addEventListener" && isGlobal(callee.expression))
         return { who: callee.expression.getText(), type: a0 };
+      // f.call(thisArg, type, …) / f.apply(thisArg, [type, …]) with `f` taken off an object
+      if (
+        (prop === "call" || prop === "apply") &&
+        ts.isIdentifier(unwrap(callee.expression)) &&
+        detached.has((unwrap(callee.expression) as ts.Identifier).text) &&
+        a0 !== undefined &&
+        isGlobal(a0)
+      )
+        return {
+          who: `${a0.getText()}.${(unwrap(callee.expression) as ts.Identifier).text}.${prop}`,
+          type:
+            prop === "call"
+              ? a1
+              : a1 && ts.isArrayLiteralExpression(unwrap(a1))
+                ? (unwrap(a1) as ts.ArrayLiteralExpression).elements[0]
+                : undefined,
+        };
       // X.addEventListener.call(thisArg, type, …) / .apply(thisArg, [type, …])
       if ((prop === "call" || prop === "apply") && isListenerFn(callee.expression)) {
         const receiver = unwrap(callee.expression) as
@@ -375,11 +407,13 @@ export function readListeners(text: string, name?: string, opts: ReadOptions = {
               ["Object.defineProperty", "Reflect.set", "Reflect.defineProperty"].includes(
                 `${owner}.${prop}`,
               ) &&
-              a1 &&
-              ts.isStringLiteralLike(a1) &&
-              a1.text.toLowerCase() === "onkeydown"
-            )
-              keydown.push(`${a0.getText()}.onkeydown through ${owner}.${prop}`);
+              a1
+            ) {
+              const key = resolveStr(a1);
+              if (key === null) unresolved.push(`${owner}.${prop}(${a0.getText()}, ${a1.getText()})`);
+              else if (key.toLowerCase() === "onkeydown")
+                keydown.push(`${a0.getText()}.onkeydown through ${owner}.${prop}`);
+            }
             if (`${owner}.${prop}` === "Object.assign")
               for (const src of n.arguments.slice(1))
                 if (ts.isObjectLiteralExpression(unwrap(src)))
@@ -395,8 +429,14 @@ export function readListeners(text: string, name?: string, opts: ReadOptions = {
     }
     if (ts.isBinaryExpression(n) && ASSIGN_OPS.includes(n.operatorToken.kind)) {
       const left = unwrap(n.left);
-      if (isAccess(left) && propName(left)?.toLowerCase() === "onkeydown" && isGlobal(left.expression))
-        keydown.push(`${left.expression.getText()}.onkeydown`);
+      if (isAccess(left) && isGlobal(left.expression)) {
+        const key = propName(left);
+        if (key === null)
+          unresolved.push(
+            `${left.expression.getText()}[${(left as ts.ElementAccessExpression).argumentExpression.getText()}] =`,
+          );
+        else if (key.toLowerCase() === "onkeydown") keydown.push(`${left.expression.getText()}.onkeydown`);
+      }
     }
   });
   return { keydown, unresolved };
@@ -549,6 +589,31 @@ describe("C16 the migrated screens own no keydown listener", () => {
     expect(
       found('import { TYPE as T } from "./events"; window.addEventListener(T, f);', { importConst }),
     ).toHaveLength(1);
+    // The root by a constant or a sum; a name the reader cannot read is the root as far as it is concerned.
+    expect(
+      found('const ID = "root"; document.getElementById(ID)!.addEventListener("keydown", f);'),
+    ).toHaveLength(1);
+    expect(found('document.getElementById("ro" + "ot")!.addEventListener("keydown", f);')).toHaveLength(1);
+    expect(found("document.getElementById(someId)!.addEventListener('keydown', f);")).toHaveLength(1);
+    expect(found('document.getElementById("panel")!.addEventListener("keydown", f);')).toEqual([]);
+    // A property named by a constant or a sum; one the reader cannot read is refused.
+    expect(found('const k = "onkeydown"; window[k] = f;')).toHaveLength(1);
+    expect(found('Object.defineProperty(window, "on" + "keydown", { value: f });')).toHaveLength(1);
+    expect(found('const k = "on" + "keydown"; Reflect.set(document, k, f);')).toHaveLength(1);
+    expect(readListeners("window[name] = f;").unresolved).toHaveLength(1);
+    expect(readListeners("Object.defineProperty(window, name, { value: f });").unresolved).toHaveLength(1);
+    expect(readListeners('window["title"] = f; el[name] = f;').unresolved).toEqual([]);
+    // addEventListener taken off the page, or off a prototype, and pointed at the page with call/apply.
+    expect(
+      found('const { addEventListener: add } = EventTarget.prototype; add.call(window, "keydown", f);'),
+    ).toHaveLength(1);
+    expect(found('const add = window.addEventListener; add.call(window, "keydown", f);')).toHaveLength(1);
+    expect(
+      found('const add = EventTarget.prototype.addEventListener; add.apply(document, ["keydown", f]);'),
+    ).toHaveLength(1);
+    expect(
+      found('const { addEventListener: add } = EventTarget.prototype; add.call(el, "keydown", f);'),
+    ).toEqual([]);
     // Not listeners on the page.
     expect(found('canvas.addEventListener("keydown", f);')).toEqual([]);
     expect(found('el.onkeydown = f; this.addEventListener("keydown", f);')).toEqual([]);
