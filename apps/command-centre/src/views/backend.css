@@ -309,7 +309,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   color: var(--text-dim);
 }
 .cx-state {

@@ -97,12 +97,17 @@ describe("Núcleo brain scene text, measured on screen (C17)", () => {
       ];
       const small: string[] = [];
       let total = 0;
+      const sites = new Set<string>();
       for (const extra of extras)
         for (const t of paint(distance, extra)) {
           total++;
+          sites.add(t.site);
           if (t.px < FLOOR - 1e-6) small.push(`"${t.text}" at ${t.px.toFixed(2)}px`);
         }
       expect(small, small.join("\n")).toEqual([]);
+      expect([...sites], "the painter is the only file that writes on the sky").toEqual([
+        "nucleo/scenes/brainPaint.ts",
+      ]);
       // Not vacuous: something was written at every distance (area names at least).
       expect(total).toBeGreaterThan(0);
     });

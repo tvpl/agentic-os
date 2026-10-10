@@ -15,29 +15,59 @@ import postcss from "postcss";
 import { rel } from "./sizeScan";
 
 /** A selector part that says "this element is in a state". */
-const STATE =
-  /\[aria-(pressed|checked|selected|current)(="(true|page|step)")?\]|\.(on|active|selected|read|off|kind-off|dimmed|current|is-active|open)(?![\w-])/;
+const STATE = new RegExp(
+  [
+    String.raw`\[aria-(?:pressed|checked|selected|current|expanded)(?:=["']?[\w-]+["']?)?\]`,
+    String.raw`\[data-(?:state|active|status|selected|open|current)(?:=["']?[\w-]+["']?)?\]`,
+    String.raw`\.(?:on|active|selected|is-selected|is-active|current|open|expanded|read|off|kind-off|dimmed)(?![\w-])`,
+    // status dots: a dot that is only a colour
+    String.raw`\.dot\.(?:ok|warn|danger|info|accent|dim)(?![\w-])`,
+  ].join("|"),
+);
 
-/** Declarations that change hue, strength or glow only. */
-const COLOUR_ONLY = new Set([
-  "color",
-  "opacity",
-  "fill",
-  "stroke",
-  "accent-color",
-  "caret-color",
-  "text-shadow",
-  "filter",
-  "border-color",
-  "border-top-color",
-  "border-right-color",
-  "border-bottom-color",
-  "border-left-color",
-  "outline-color",
-  "background-color",
-  "transition",
-  "cursor",
-]);
+/**
+ * What counts as a mark: a change a person who cannot tell the hues apart can
+ * see. Weight, style, underline or strike-through, a border, outline or hard
+ * shadow (a bar or ring), a fill, a shape (transform, dash, width), a glyph.
+ * Not marks: colour, opacity, a glow (a blurred shadow), a filter,
+ * `pointer-events`, `z-index`, `cursor`, `transition`, a gradient image.
+ */
+const MARK_PROPS =
+  /^(font-weight|font-style|text-decoration(-line|-style|-thickness)?|text-transform|border(-(top|right|bottom|left))?(-(width|style))?|outline(-(width|style|offset))?|background|background-color|transform|scale|rotate|stroke-dasharray|stroke-width|clip-path|width|height|display|visibility|content)$/;
+
+/**
+ * What a state can change by hue alone. A group is a finding only when it has
+ * one of these and no mark: a rule that changes only a transition or an
+ * animation timing says nothing a person would miss.
+ */
+const COLOUR_PROPS =
+  /^(color|opacity|fill|stroke|fill-opacity|stroke-opacity|stop-color|filter|text-shadow|box-shadow|background(-color|-image)?|border(-(top|right|bottom|left))?-color|outline-color|-webkit-text-fill-color)$/;
+
+/** A `box-shadow` is a mark only when one of its layers is hard: offset or spread, no blur (a bar or a ring, not a glow). */
+function hardShadow(value: string): boolean {
+  const layers: string[] = [];
+  let depth = 0;
+  let cur = "";
+  for (const c of value) {
+    if (c === "(") depth++;
+    if (c === ")") depth--;
+    if (c === "," && depth === 0) {
+      layers.push(cur);
+      cur = "";
+    } else cur += c;
+  }
+  layers.push(cur);
+  return layers.some((layer) => {
+    const lengths = layer
+      .replace(/\([^)]*\)/g, " ") // colours: rgb(), var(), color-mix()
+      .split(/\s+/)
+      .filter((t) => /^-?(\d*\.?\d+)(px|em|rem)?$/.test(t))
+      .map(parseFloat);
+    if (lengths.length < 2) return false;
+    const [x = 0, y = 0, blur = 0, spread = 0] = lengths;
+    return blur === 0 && (x !== 0 || y !== 0 || spread !== 0);
+  });
+}
 
 export interface StateGroup {
   /** The selector up to the element that carries the state, without pseudo-elements: the group's name. */
@@ -45,6 +75,8 @@ export interface StateGroup {
   /** Where the first rule of the group is. */
   at: string;
   marked: boolean;
+  /** Changes hue, strength or glow: the group is only a finding if it does and is not marked. */
+  colourful: boolean;
   props: Set<string>;
 }
 
@@ -68,15 +100,26 @@ export function stateGroups(sources: { file: string; css: string }[]): StateGrou
           key,
           at: `${rel(file)}:${rule.source?.start?.line}`,
           marked: false,
+          colourful: false,
           props: new Set<string>(),
         };
-        // A pseudo-element's `content` is a mark of its own element.
-        if (/::(before|after)/.test(selector)) group.marked = true;
+        const isDot = /^\.dot\./.test(key);
+        let mark = false;
+        let content = "";
         rule.each((d) => {
           if (d.type !== "decl" || d.prop.startsWith("--")) return;
-          group.props.add(d.prop);
-          if (!COLOUR_ONLY.has(d.prop.toLowerCase())) group.marked = true;
+          const prop = d.prop.toLowerCase();
+          group.props.add(prop);
+          if (COLOUR_PROPS.test(prop)) group.colourful = true;
+          if (prop === "content") content = d.value.trim();
+          else if (prop === "box-shadow") mark ||= hardShadow(d.value);
+          // a dot is a fill and nothing else: its background is its colour, not a mark
+          else if (MARK_PROPS.test(prop) && !(isDot && /^background/.test(prop))) mark ||= true;
         });
+        // A pseudo-element marks its element when it draws something: a glyph, or a shape with a fill, border or size.
+        if (/::(before|after)/.test(selector)) {
+          if (content !== "none" && (content.replace(/["']/g, "") !== "" || mark)) group.marked = true;
+        } else if (mark) group.marked = true;
         groups.set(key, group);
       }
     });
@@ -89,6 +132,6 @@ export function colourOnlyStates(
   exempt: Record<string, string>,
 ): string[] {
   return stateGroups(sources)
-    .filter((g) => !g.marked && !(g.key in exempt))
+    .filter((g) => g.colourful && !g.marked && !(g.key in exempt))
     .map((g) => `${g.at} ${g.key} { ${[...g.props].join(", ")} }`);
 }

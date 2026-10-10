@@ -14,11 +14,11 @@ import { pathToFileURL } from "node:url";
 import postcss from "postcss";
 import ts from "typescript";
 import stylelint from "stylelint";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   cssFiles,
-  paragraphClasses,
-  proseOffences,
+  proseClasses,
+  proseRules,
   cssSizeOffences,
   customProperties,
   filesUnder,
@@ -29,6 +29,10 @@ import {
 } from "./testing/sizeScan";
 
 // ------------------------------------------------------------------- tests
+
+// These tests read every CSS and TS file of the app through a parser, and run in parallel with the
+// other readers under a loaded machine: the 5 s default timed out (C3 takes ~3 s alone).
+vi.setConfig({ testTimeout: 60_000 });
 
 describe("type scale", () => {
   it("has no pixel font-size literal outside the tokens", () => {
@@ -123,6 +127,45 @@ describe("type scale", () => {
     expect(
       probe("function pick(a: number) { if (a) return 10; return 14; }\nx.font = `500 ${pick(1)}px ${m}`;"),
     ).toHaveLength(1);
+    // Units other than px, keywords and a line height: a canvas reads all of them
+    expect(probe('ctx.font = "8pt monospace";')).toHaveLength(1);
+    expect(probe('ctx.font = "0.5rem monospace";')).toHaveLength(1);
+    expect(probe('ctx.font = "0.5em ui-monospace, monospace";')).toHaveLength(1);
+    expect(probe('ctx.font = "50% monospace";')).toHaveLength(1);
+    expect(probe('ctx.font = "1pc monospace";')).toEqual([]);
+    expect(probe('ctx.font = "x-small monospace";')).toHaveLength(1);
+    expect(probe('ctx.font = "smaller monospace";')).toHaveLength(1);
+    expect(probe('ctx.font = "8px/1 mono";')).toHaveLength(1);
+    expect(probe('ctx.font = "700 8px/1.2 monospace";')).toHaveLength(1);
+    expect(probe("const n = 6;\nx.font = `600 ${n}pt ${family}`;")).toHaveLength(1);
+    expect(probe("x.font = `600 ${unknownSize}rem ${family}`;")).toHaveLength(1);
+    expect(probe('ctx.font = "9pt monospace";')).toEqual([]);
+    expect(probe('ctx.font = "0.75rem monospace";')).toEqual([]);
+    expect(probe('ctx.font = "small monospace";')).toEqual([]);
+    expect(probe("x.font = `600 ${Math.max(10, n)}pt ${family}`;")).toEqual([]);
+    // prose that looks like a font is not one: a unit or a keyword needs a family that is unmistakably one
+    expect(probe('const t = "50% faster than before";')).toEqual([]);
+    expect(probe('const t = "small screens need a drawer";')).toEqual([]);
+    expect(probe('const t = "10 in the list";')).toEqual([]);
+    expect(probe('const t = "5in a row";')).toEqual([]);
+    // A font string built with `+` or `.join`, and the computed spellings of a size
+    expect(probe('ctx.font = "700 " + 8 + "px" + " mono";')).toHaveLength(1);
+    expect(probe('ctx.font = ["700", "8px", "mono"].join(" ");')).toHaveLength(1);
+    expect(probe('ctx.font = ["700", n + "px", "mono"].join(" ");')).toHaveLength(1);
+    expect(probe('ctx.font = ["700", "12px", "mono"].join(" ");')).toEqual([]);
+    expect(probe('ctx.font = "700 " + 14 + "px " + family;')).toEqual([]);
+    expect(probe("el.setAttribute('font-size', '8');")).toHaveLength(1);
+    expect(probe("el.setAttribute('font-size', '13');")).toEqual([]);
+    expect(probe("const s = { ['fontSize']: 8 };")).toHaveLength(1);
+    expect(probe("el.style['fontSize'] = '8px';")).toHaveLength(1);
+    expect(probe("el.style['fontSize'] = '13px';")).toEqual([]);
+    // Arithmetic is read soundly: a lower bound of a subtrahend is no bound at all, a negative factor flips one.
+    expect(probe("x.font = `500 ${Math.max(14, w) - Math.max(2, h)}px ${m}`;")).toHaveLength(1);
+    expect(probe("x.font = `500 ${Math.max(14, w) - 2}px ${m}`;")).toEqual([]);
+    expect(probe("x.font = `500 ${-2 * Math.max(8, w)}px ${m}`;")).toHaveLength(1);
+    expect(probe("x.font = `500 ${Math.max(6, w) * 2}px ${m}`;")).toEqual([]);
+    // Not decidable here, and so not claimed: `size / k` trusts the name `k` as the camera's scale (C17 measures
+    // what the canvas really draws), and a font read through a call, a bind, a destructure or a computed key.
     // JSX and SVG attributes, a shorthand property, setProperty, cssText and an HTML string
     expect(probe("const a = <text fontSize={9} />;")).toHaveLength(1);
     expect(probe('const a = <text fontSize="9" />;')).toHaveLength(1);
@@ -176,107 +219,146 @@ describe("type scale", () => {
 // ------------------------------------------------------------ running text
 
 /**
- * The classes of `<p>` elements that are labels, counters, key hints or
- * metadata, not sentences: design.md keeps these at 12px (`--fs-2`) and wants
- * running text (paragraphs, descriptions, messages) at 13px (`--fs-3`) or more.
- * Each entry says why it is not running text; a class not listed here that a
- * `<p>` carries is held to 13px.
+ * The rules that set text at 12px (`--fs-2`) on something a `<p>`, or a class
+ * that names a sentence, carries, and that are labels, counters, key hints,
+ * paths or metadata rather than running text: design.md keeps those at 12px
+ * and wants running text (paragraphs, descriptions, messages) at 13px (`--fs-3`)
+ * or more. Each entry is one selector, as written, with why it is not a
+ * sentence: a name like `.sub` or `.meta` is exempt only where that selector
+ * says so, never wherever the class appears.
  */
 const MICROCOPY: Record<string, string> = {
-  mono: "monospace utility for data (ids, paths, commands, cron expressions), not a sentence",
-  meta: "metadata line of a list row (author, count, age)",
-  label: "a field or stat label",
-  k: "the key of a key/value pair",
-  v: "the value of a key/value pair",
-  sub: "the subtitle of a tooltip or row: a name and a count",
-  cp: "a name chip in the journal widget",
-  "brain-preview-path": "a file path",
-  "approval-inline-cwd": "a working-directory path",
-  "bs-sheet-path": "a file path",
-  "file-path": "a file path",
-  "run-id": "a run id",
-  "nu-keys": "key hints",
-  "sks-keys": "key hints",
-  "pxs-shortcuts": "key hints",
-  "apps-run-hint": "a key hint (the keys are `kbd` elements)",
-  "sks-eyebrow": "an uppercase eyebrow",
-  "nu-focus-eyebrow": "an uppercase eyebrow",
-  "nu-focus-pos": "the position counter of the focus queue",
-  "bs-eyebrow": "an uppercase eyebrow",
-  "bs-rail-kind": "a kind label",
-  "bs-link-kind": "a kind label",
-  "inbox-section": "an uppercase section label",
-  "settings-group-label": "an uppercase group label",
-  "sks-tags": "tags: metadata",
-  "sks-state": "a state counter line",
-  "sks-count": "a counter",
-  "rs-sub": "run metadata (provider, age)",
-  "run-sheet-line": "run metadata on one line",
-  "nu-focus-err": "a monospace error trace (the focus card's `mono` line)",
+  ".mono": "monospace utility for data (ids, paths, commands, cron expressions)",
+  ".ev-usage .ev-body .mono": "monospace token usage figures",
+  ".folder-row .mono": "a folder path",
+  ".rs-row-title.mono": "a run title that is a skill name or a command",
+  ".rts-facts dd.mono": "a routine fact value (a cron expression, a time zone)",
+  ".sks-fchip.mono": "a filter chip in monospace",
+  ".sks-opt.mono": "a filter option in monospace",
+  ".sks-read .v.mono": "a value in monospace",
+  ".sks-read .k": "the key of a key/value pair",
+  ".sks-read .v": "the value of a key/value pair",
+  ".mt .k": "the key of a key/value pair",
+  ".nu-orb-card .k": "the key of a key/value pair",
+  ".nu-reading .k": "the key of a key/value pair",
+  ".label": "a field label",
+  ".stat .label": "a stat label",
+  ".cp": "a name chip in the journal widget",
+  ".apps-conn-row .meta": "metadata of a list row (kind, age, count)",
+  ".device-list .meta": "metadata of a list row (kind, age, count)",
+  ".list-row .meta": "metadata of a list row (kind, age, count)",
+  ".market-list .meta": "metadata of a list row (kind, age, count)",
+  ".squad-list .meta": "metadata of a list row (kind, age, count)",
+  ".brain2-tooltip .sub": "the subtitle of a tooltip: a kind and a count",
+  ".approval-inline-cwd": "a working-directory path",
+  ".brain-preview-path": "a file path",
+  ".bs-sheet-path": "a file path",
+  ".file-path": "a file path",
+  ".microapp-row .ma-desc": "a file path (the row's `rel`)",
+  ".run-id": "a run id",
+  ".nu-keys": "key hints",
+  ".sks-keys": "key hints",
+  ".pxs-shortcuts": "key hints",
+  ".apps-run-hint": "a key hint (the keys are `kbd` elements)",
+  ".nu-caption-hint": "the caption's key hints under the core",
+  ".sks-eyebrow": "an uppercase eyebrow",
+  ".nu-focus-eyebrow": "an uppercase eyebrow",
+  ".bs-eyebrow": "an uppercase eyebrow",
+  ".bs-link-kind": "a kind label",
+  ".bs-rail-kind": "a kind label",
+  ".inbox-section": "an uppercase section label",
+  ".settings-group-label": "an uppercase group label",
+  ".nu-focus-pos": "the position counter of the focus queue",
+  ".sks-tags": "tags: metadata",
+  ".sks-state": "a state counter line",
+  ".sks-count": "a counter",
+  ".rs-sub": "run metadata (provider, age)",
+  ".run-sheet-line": "run metadata on one line",
+  ".art-sub": "artifact metadata (date, size)",
+  ".conv-sub": "conversation metadata (count, age)",
+  ".launcher-result .lr-sub": "a palette result's subtitle: a path or a kind",
+  ".nu-hint": "a suggestion chip: the label of a button",
+  ".replay-summary.compact": "tool counts of a replay",
+  ".doc-body": "a preformatted document (`<pre>`)",
+  ".skill-body": "a preformatted skill source",
 };
 
 describe("running text", () => {
   it("C15 paragraphs, descriptions and messages are at least 13px", () => {
     const props = customProperties([postcss.parse(":root { --fs-2: 12px; --fs-3: 13px; }")]);
-    const probe = (css: string, classes = ["note"], exempt: string[] = []) =>
-      proseOffences([{ file: "probe.css", css }], new Set(classes), new Set(exempt), props);
+    const probe = (css: string, classes = ["note"]) =>
+      proseRules([{ file: "probe.css", css }], new Set(classes), props).map((r) => r.selector);
     // Self-test: a rule that sets small text on a paragraph, or on a class a paragraph carries, is found…
-    expect(probe(".note { font-size: 12px }")).toHaveLength(1);
-    expect(probe(".note { font-size: var(--fs-2) }")).toHaveLength(1);
-    expect(probe(".card .note { font: 400 var(--fs-2) / 1.4 var(--font) }")).toHaveLength(1);
-    expect(probe("p { font-size: 12px }", [])).toHaveLength(1);
-    expect(probe(".panel p { font-size: var(--fs-2) }", [])).toHaveLength(1);
-    expect(probe("p.lead { font-size: 12.5px }", [])).toHaveLength(1);
-    expect(probe("@media (max-width: 600px) { .note { font-size: 12px } }")).toHaveLength(1);
-    // …and 13px or more, a class no paragraph carries, a rule about a child, and a listed microcopy class are not.
+    expect(probe(".note { font-size: 12px }")).toEqual([".note"]);
+    expect(probe(".note { font-size: var(--fs-2) }")).toEqual([".note"]);
+    expect(probe(".card .note { font: 400 var(--fs-2) / 1.4 var(--font) }")).toEqual([".card .note"]);
+    expect(probe("p { font-size: 12px }", [])).toEqual(["p"]);
+    expect(probe(".panel p { font-size: var(--fs-2) }", [])).toEqual([".panel p"]);
+    expect(probe("p.lead { font-size: 12.5px }", [])).toEqual(["p.lead"]);
+    expect(probe("@media (max-width: 600px) { .note { font-size: 12px } }")).toEqual([".note"]);
+    // …under the selector as written, so a class that is microcopy in one place is prose in another
+    expect(probe(".page-head .sub { font-size: var(--fs-2) }", ["sub"])).toEqual([".page-head .sub"]);
+    expect(probe(".note.mono { font-size: 12px }")).toEqual([".note.mono"]);
+    // …and 13px or more, a class no paragraph carries, and a rule about a child, are not.
     expect(probe(".note { font-size: var(--fs-3) }")).toEqual([]);
     expect(probe(".note { font-size: 1rem }")).toEqual([]);
     expect(probe(".other { font-size: 12px }")).toEqual([]);
     expect(probe(".note b { font-size: 12px }")).toEqual([]);
-    expect(probe(".note.tiny { font-size: 12px }", ["note"], ["tiny"])).toEqual([]);
     expect(probe(".note { color: red }")).toEqual([]);
 
+    // Which classes carry sentences: on a <p>, or named like one anywhere (a className, a lookup, a prop).
+    const found = (code: string) => [...proseClasses("a.tsx", code)].sort();
+    expect(found('const a = <p className="one two">x</p>;')).toEqual(["one", "two"]);
+    expect(found("const a = <p className={`one ${b ? 'two' : ''}`}>x</p>;")).toEqual(["one", "two"]);
+    expect(found('const a = <div className="one">x</div>;')).toEqual([]);
+    expect(found('const a = <span className="cx-purpose">x</span>;')).toEqual(["cx-purpose"]);
+    expect(found('const kinds = { a: "row-desc", b: "row-icon" };')).toEqual(["row-desc"]);
+    expect(found('const a = <Card note="item-hint" />;')).toEqual(["item-hint"]);
+    expect(found('const a = <span className="Not-Kebab">x</span>;')).toEqual([]);
     const classes = new Set<string>();
-    for (const f of sourceFiles())
-      for (const c of paragraphClasses(f, readFileSync(f, "utf8"))) classes.add(c);
-    expect([...paragraphClasses("a.tsx", 'const a = <p className="one two">x</p>;')].sort()).toEqual([
-      "one",
-      "two",
-    ]);
-    expect(
-      [...paragraphClasses("a.tsx", "const a = <p className={`one ${b ? 'two' : ''}`}>x</p>;")].sort(),
-    ).toEqual(["one", "two"]);
-    expect([...paragraphClasses("a.tsx", 'const a = <div className="one">x</div>;')]).toEqual([]);
-    expect(classes.size).toBeGreaterThan(40);
+    for (const f of sourceFiles()) for (const c of proseClasses(f, readFileSync(f, "utf8"))) classes.add(c);
+    expect(classes.size).toBeGreaterThan(60);
+    expect(classes.has("cx-purpose")).toBe(true);
 
     const tokens = customProperties(treeRoots());
-    const offenders = proseOffences(
+    const rules = proseRules(
       cssFiles().map((file) => ({ file, css: readFileSync(file, "utf8") })),
       classes,
-      new Set(Object.keys(MICROCOPY)),
       tokens,
     );
-    expect(offenders, offenders.join("\n")).toEqual([]);
+    const offenders = rules.filter((r) => !(r.selector in MICROCOPY));
+    expect(offenders.map((r) => `${r.at} ${r.selector} { ${r.why} }`).join("\n")).toBe("");
 
-    // No listed class has gone unused.
-    const unused = Object.keys(MICROCOPY).filter((c) => !classes.has(c));
-    expect(unused, `not carried by any <p> any more (drop the entry): ${unused.join(", ")}`).toEqual([]);
+    // No exemption has gone stale: each still names a rule that is under 13px.
+    const small = new Set(rules.map((r) => r.selector));
+    const stale = Object.keys(MICROCOPY).filter((sel) => !small.has(sel));
+    expect(stale, `no longer small text on a sentence class (drop the entry): ${stale.join(", ")}`).toEqual(
+      [],
+    );
   });
 });
 
 // ------------------------------------------------- canvas text, at runtime
 
-/** Where a source draws canvas text: `x.fillText(...)` and `x.strokeText(...)` call sites. */
+/**
+ * Where a source reaches for canvas text: any `fillText` / `strokeText` named
+ * as a method, a property, a quoted key, a destructured binding or a bare
+ * call, so a bound method, `Reflect.apply(ctx.fillText, …)`, `ctx["fillText"]`
+ * and `prototype.fillText.call(…)` are sites like a plain call.
+ */
 function canvasTextSites(file: string, code: string): number[] {
   const sf = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const named = (name: string) => /^(fill|stroke)Text$/.test(name);
   const lines: number[] = [];
   const visit = (n: ts.Node) => {
-    if (
-      ts.isCallExpression(n) &&
-      ts.isPropertyAccessExpression(n.expression) &&
-      /^(fill|stroke)Text$/.test(n.expression.name.text)
-    )
-      lines.push(sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1);
+    const hit =
+      (ts.isPropertyAccessExpression(n) && named(n.name.text)) ||
+      (ts.isElementAccessExpression(n) &&
+        ts.isStringLiteralLike(n.argumentExpression) &&
+        named(n.argumentExpression.text)) ||
+      (ts.isBindingElement(n) && named((n.propertyName ?? n.name).getText(sf))) ||
+      (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && named(n.expression.text));
+    if (hit) lines.push(sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1);
     ts.forEachChild(n, visit);
   };
   visit(sf);
@@ -301,7 +383,21 @@ describe("canvas text", () => {
   it("C17 every source that draws canvas text is measured on screen by a test", () => {
     // Self-test: a call site is found by its method, not by a name that merely contains it.
     expect(canvasTextSites("a.ts", "ctx.fillText(t, 0, 0);\nx.strokeText(t, 1, 1);")).toEqual([1, 2]);
-    expect(canvasTextSites("a.ts", "const fillTextStyle = 1; fillText(t); ctx.fillTextAt(t);")).toEqual([]);
+    expect(canvasTextSites("a.ts", "const fillTextStyle = 1; ctx.fillTextAt(t);")).toEqual([]);
+    // …and so is every other way to reach the method: a bare call, a bind, a destructure, a quoted
+    // key, Reflect.apply, a prototype call, an optional call, a cast.
+    for (const code of [
+      "fillText(t, 0, 0);",
+      "const draw = ctx.fillText.bind(ctx);",
+      "const { fillText } = ctx;",
+      "const { strokeText: st } = ctx;",
+      "ctx['fillText'](t, 0, 0);",
+      "Reflect.apply(ctx.fillText, ctx, [t, 0, 0]);",
+      "CanvasRenderingContext2D.prototype.fillText.call(ctx, t, 0, 0);",
+      "ctx?.fillText?.(t, 0, 0);",
+      "(ctx as any).strokeText(t, 0, 0);",
+    ])
+      expect(canvasTextSites("a.ts", code), code).toHaveLength(1);
 
     const sites = sourceFiles()
       .filter((f) => canvasTextSites(f, readFileSync(f, "utf8")).length > 0)
@@ -316,6 +412,8 @@ describe("canvas text", () => {
       // The measurement asserts the floor on what the recording canvas saw.
       expect(code, test).toMatch(/textDrawnOn\(/);
       expect(code, test).toMatch(/FLOOR/);
+      // …and says which files the text came from, so an unrecognised spelling still shows up.
+      expect(code, test).toMatch(/\.site\b|LAYER_FILES/);
     }
   });
 });
@@ -380,6 +478,31 @@ function exemptionOffences(file: string, css: string): string[] {
   return out;
 }
 
+/**
+ * Every place a stylelint config could hide besides `stylelint.config.mjs`:
+ * `.stylelintrc` in any spelling, another `stylelint.config.*`, a
+ * `.stylelintignore`, a `stylelint` key in any package.json. `lint:css` names
+ * its config, which stops stylelint looking for others, but the tree must not
+ * hold one that another tool (an editor, a hook) would read.
+ */
+function strayStylelintConfigs(files: string[], packages: Record<string, string>): string[] {
+  const out: string[] = [];
+  for (const f of files) {
+    if (/(^|\/)\.stylelintrc(\.[a-z]+)?$/.test(f)) out.push(`${f}: a stylelint rc file`);
+    else if (/(^|\/)stylelint\.config\.[cm]?[jt]s$/.test(f) && f !== "stylelint.config.mjs")
+      out.push(`${f}: a second stylelint config`);
+    else if (/(^|\/)\.stylelintignore$/.test(f)) out.push(`${f}: a stylelint ignore list`);
+    else if (/(^|\/)package\.json$/.test(f) && f in packages) {
+      try {
+        if ("stylelint" in JSON.parse(packages[f]!)) out.push(`${f}: a "stylelint" key`);
+      } catch {
+        out.push(`${f}: unreadable`);
+      }
+    }
+  }
+  return out;
+}
+
 /** What is wrong with the config (its keys, its three colour rules), given `patch` laid over it. */
 function guardedConfig(base: Record<string, unknown>, patch: Record<string, unknown> = {}): string[] {
   const config = {
@@ -406,9 +529,13 @@ describe("colour tokens", () => {
       // `npm run lint` runs stylelint over every CSS file of the Command Centre, and so does the commit hook.
       const pkg = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8"));
       expect(pkg.scripts.lint).toMatch(/\bnpm run lint:css\b/);
-      expect(pkg.scripts["lint:css"]).toBe('stylelint "apps/command-centre/src/**/*.css"');
+      // The config is named, never discovered: stylelint searches the tree for a config of its own
+      // (a `.stylelintrc.*` in any folder, `stylelint.config.cjs`…), and an explicit --config switches that off.
+      expect(pkg.scripts["lint:css"]).toBe(
+        'stylelint --config stylelint.config.mjs "apps/command-centre/src/**/*.css"',
+      );
       expect(pkg["lint-staged"]["*.css"]).toEqual(
-        expect.arrayContaining([expect.stringMatching(/^stylelint /)]),
+        expect.arrayContaining([expect.stringMatching(/^stylelint --config stylelint\.config\.mjs /)]),
       );
 
       // The command itself exits non-zero on `a { color: #fff }`.
@@ -458,6 +585,26 @@ describe("colour tokens", () => {
       expect(await colourWarnings("a { border: 1px solid ButtonFace; }\n")).toContain(
         "declaration-property-value-disallowed-list",
       );
+      // …in shadows, filters, gradients, stops, fills, text strokes and custom properties too
+      for (const decl of [
+        "box-shadow: 0 0 4px Highlight",
+        "text-shadow: 0 0 2px Canvas",
+        "filter: drop-shadow(0 0 2px ButtonText)",
+        "-webkit-text-fill-color: GrayText",
+        "-webkit-text-stroke: 1px Highlight",
+        "stop-color: Highlight",
+        "flood-color: Canvas",
+        "fill: CanvasText",
+        "background: linear-gradient(Canvas, transparent)",
+        "--c: Canvas",
+      ])
+        expect(await colourWarnings(`a { ${decl}; }\n`), decl).toContain(
+          "declaration-property-value-disallowed-list",
+        );
+      expect(await colourWarnings("a { --c: #fff; }\n")).toContain("color-no-hex");
+      expect(await colourWarnings("a { box-shadow: 0 0 4px rgba(0, 0, 0, 0.4); }\n")).toContain(
+        "function-disallowed-list",
+      );
       // …and the forms the design allows are not.
       expect(await colourWarnings("a { color: var(--text); }\n")).toEqual([]);
       expect(
@@ -468,6 +615,8 @@ describe("colour tokens", () => {
       ).toEqual([]);
       expect(await colourWarnings("a { mask-image: linear-gradient(var(--mask-ink) 0 0); }\n")).toEqual([]);
       expect(await colourWarnings("a { grid-area: field; }\n")).toEqual([]);
+      expect(await colourWarnings("a { animation-name: highlight; }\n")).toEqual([]);
+      expect(await colourWarnings("a { box-shadow: 0 0 4px var(--accent); }\n")).toEqual([]);
     },
     STYLELINT_MS,
   );
@@ -475,10 +624,11 @@ describe("colour tokens", () => {
   it(
     "C6 the tree passes the colour lint",
     async () => {
-      const run = spawnSync("npx", ["stylelint", "apps/command-centre/src/**/*.css"], {
-        cwd: repoRoot,
-        encoding: "utf8",
-      });
+      const run = spawnSync(
+        "npx",
+        ["stylelint", "--config", "stylelint.config.mjs", "apps/command-centre/src/**/*.css"],
+        { cwd: repoRoot, encoding: "utf8" },
+      );
       expect(run.status, run.stdout + run.stderr).toBe(0);
 
       // The rule is switched off only around the token blocks of theme.css…
@@ -519,15 +669,49 @@ describe("colour tokens", () => {
       expect(guarded({ rules: { "color-named": null } }).length).toBeGreaterThan(0);
       expect(guarded({ rules: { "function-disallowed-list": ["rgb", "rgba"] } }).length).toBeGreaterThan(0);
       expect(guarded({ plugins: ["./plugin.js"] }).length).toBeGreaterThan(0);
-      for (const other of [
-        ".stylelintignore",
+      // No other stylelint config, ignore list or package.json key exists anywhere in the tree (tracked or not).
+      expect(strayStylelintConfigs([], {})).toEqual([]);
+      for (const name of [
         ".stylelintrc",
         ".stylelintrc.json",
-        "stylelint.config.js",
+        ".stylelintrc.yml",
+        ".stylelintrc.yaml",
         ".stylelintrc.js",
+        ".stylelintrc.cjs",
+        ".stylelintrc.mjs",
+        ".stylelintrc.ts",
+        "stylelint.config.js",
+        "stylelint.config.cjs",
+        "stylelint.config.ts",
+        "apps/command-centre/src/.stylelintrc.json",
+        "apps/command-centre/src/views/stylelint.config.mjs",
+        ".stylelintignore",
+        "apps/command-centre/.stylelintignore",
       ])
-        expect(existsSync(join(repoRoot, other)), other).toBe(false);
-      expect(JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")).stylelint).toBeUndefined();
+        expect(strayStylelintConfigs([name], {}), name).toHaveLength(1);
+      expect(strayStylelintConfigs(["stylelint.config.mjs"], {})).toEqual([]);
+      expect(
+        strayStylelintConfigs(["package.json"], { "package.json": '{"stylelint":{"rules":{}}}' }),
+      ).toHaveLength(1);
+      expect(
+        strayStylelintConfigs(["apps/x/package.json"], {
+          "apps/x/package.json": '{"name":"x","stylelint":{}}',
+        }),
+      ).toHaveLength(1);
+      expect(strayStylelintConfigs(["package.json"], { "package.json": '{"name":"x"}' })).toEqual([]);
+      const listed = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
+        cwd: repoRoot,
+        encoding: "utf8",
+      });
+      expect(listed.status, listed.stderr).toBe(0);
+      const files = listed.stdout.split("\n").filter(Boolean);
+      const packages = Object.fromEntries(
+        files
+          .filter((f) => /(^|\/)package\.json$/.test(f) && existsSync(join(repoRoot, f)))
+          .map((f) => [f, readFileSync(join(repoRoot, f), "utf8")]),
+      );
+      const stray = strayStylelintConfigs(files, packages);
+      expect(stray, stray.join("\n")).toEqual([]);
     },
     STYLELINT_MS,
   );

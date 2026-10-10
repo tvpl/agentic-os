@@ -25,6 +25,8 @@ import { createSprites } from "./sprites";
 import { readCanvasTokens } from "./tokens";
 
 const FLOOR = 12;
+/** The files that draw this layer's text (planet counts fade out when zoomed far out, so glyphs.ts only shows from zoom 1). */
+const LAYER_FILES = ["brain/render/draw.ts", "brain/render/glyphs.ts"];
 const NOW = 1_700_000_000_000 + 10 * 86_400_000;
 
 let restore: () => void;
@@ -105,6 +107,10 @@ function states(w: World): { name: string; apply: (w: World) => void }[] {
     { name: "hover a planet", apply: (x) => void (x.hoverKey = `planet:${planet.hubKey}:${planet.dir}`) },
     { name: "an area chosen", apply: (x) => void (x.filterGroup = hub.key) },
     {
+      name: "a search matching",
+      apply: (x) => void ((x.query = "file"), (x.matched = new Set(x.files.slice(0, 8).map((_, i) => i)))),
+    },
+    {
       name: "a file selected",
       apply: (x) => void ((x.selectedId = x.files[0]!.id), (x.hoverId = x.files[1]!.id)),
     },
@@ -142,15 +148,21 @@ describe("brain canvas text, measured on screen (C17)", () => {
         const w = build(layout);
         const small: string[] = [];
         const seen = new Set<string>();
+        const sites = new Set<string>();
         for (const state of states(w)) {
           const fresh = build(layout);
           state.apply(fresh);
           for (const t of drawn(fresh, k)) {
             seen.add(t.text);
+            sites.add(t.site);
             if (t.px < FLOOR - 1e-6) small.push(`${state.name}: "${t.text}" at ${t.px.toFixed(2)}px`);
           }
         }
         expect(small, small.join("\n")).toEqual([]);
+        // The text comes from the files this layer is measured for, and from no other: a
+        // spelling no source scan recognises (a bound method, Reflect.apply…) still lands here.
+        expect([...sites].filter((f) => !LAYER_FILES.includes(f))).toEqual([]);
+        if (k >= 1) expect([...sites].sort()).toEqual([...LAYER_FILES]);
         // Not vacuous: the core, a ring name and a hub name are there at every zoom.
         expect(seen.has("ROUTER.MD")).toBe(true);
         expect(seen.has("MEMORY")).toBe(true);

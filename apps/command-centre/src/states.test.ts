@@ -10,11 +10,15 @@ import { describe, expect, it } from "vitest";
 import { cssFiles } from "./testing/sizeScan";
 import { colourOnlyStates, stateGroups } from "./testing/stateScan";
 
+const DOT =
+  "a status dot always sits beside the words that say the same (ProviderGate, Setup, diagnostics, providers); the app's `sse-dot` is `aria-hidden` and the banner says it";
+const STATUS_WORD =
+  "the element is the status word itself (failed / error / done); the colour only reinforces it";
+
 /** Colour-only in the CSS, marked in the markup: the state's group name -> where the mark is. */
 const MARKED_ELSEWHERE: Record<string, string> = {
   ".sentinel-row.off": "the row swaps its Eye icon for EyeOff (SentinelsWidget)",
   ".rts-row.off": "the row says its status in words, `.rts-st` (RoutinesScene)",
-  ".rts-lane.off": "the dial lane repeats a routine whose list row says Paused",
   ".rts-pdot:not(.on)": "a past-run dot of a routine that is not the focused one; its row names it",
   ".rts-item.on": "the row opens its detail panel (`aria-expanded`)",
   ".rts-mark.on": "the dial mark of the focused routine; the dial's centre names it in words",
@@ -22,6 +26,17 @@ const MARKED_ELSEWHERE: Record<string, string> = {
   ".sse-dot.off": "decorative (`aria-hidden`); the service banner says it in words",
   "canvas.dimmed": "a canvas dimmed behind an open panel: decoration, the panel is the state",
   ".palette-row.selected": "the chevron follows the row, which is filled by `.launcher-result.selected`",
+  ".dot.ok": DOT,
+  ".dot.warn": DOT,
+  ".dot.danger": DOT,
+  ".dot.dim": DOT,
+  '[data-status="failed"]': STATUS_WORD,
+  '[data-status="error"]': STATUS_WORD,
+  '[data-status="done"]': STATUS_WORD,
+  '.cx-card:has(.cx-orb[data-state="ok"])':
+    "the `.cx-state` label is the word (Connected / Off) and the orb sits beside it",
+  '.nu-dialog-pulse[data-state="idle"]':
+    "decorative pulse (slower, fainter when idle); the dialog's header says the state in words",
   '.tabs [role="tab"][aria-selected="true"]':
     "the 2px bottom border every tab has (transparent) becomes the underline",
 };
@@ -38,6 +53,19 @@ describe("states", () => {
     expect(probe(".item.on { color: red; filter: drop-shadow(0 0 4px red); }")).toHaveLength(1);
     expect(probe('.t[aria-selected="true"] { border-bottom-color: red; }')).toHaveLength(1);
     expect(probe(".row.dimmed .name { color: gray; } .row.dimmed { opacity: .4 }")).toHaveLength(1);
+    // the wider vocabulary: expanded, selected, data-state, data-active, location, status dots
+    expect(probe('b[aria-expanded="true"] { color: red; }')).toHaveLength(1);
+    expect(probe(".tab.is-selected { color: red; }")).toHaveLength(1);
+    expect(probe('i[data-state="ok"] { color: green; }')).toHaveLength(1);
+    expect(probe("i[data-active] { opacity: 1; }")).toHaveLength(1);
+    expect(probe('a[aria-current="location"] { color: red; }')).toHaveLength(1);
+    expect(probe(".dot.ok { background: green; box-shadow: 0 0 8px green; }")).toHaveLength(1);
+    // a glow is not a mark, and neither are pointer-events, z-index or a gradient
+    expect(probe("a.on { color: red; box-shadow: 0 0 12px red; }")).toHaveLength(1);
+    expect(probe("a.on { color: red; pointer-events: none; z-index: 2; }")).toHaveLength(1);
+    expect(probe("a.on { background-image: linear-gradient(red, blue); }")).toHaveLength(1);
+    // a rule that moves no colour says nothing a person would miss
+    expect(probe("a.on { transition-delay: 1s; }")).toEqual([]);
     // …and one that also changes something a person can see is not.
     expect(probe("a.on { color: red; text-decoration: underline; }")).toEqual([]);
     expect(probe("a.off { opacity: .5; text-decoration: line-through; }")).toEqual([]);
@@ -45,6 +73,16 @@ describe("states", () => {
     expect(probe("a.on { color: red; box-shadow: inset 2px 0 0 red; }")).toEqual([]);
     expect(probe("a.on { color: red; } a.on::before { content: '✓'; }")).toEqual([]);
     expect(probe("a.on { color: red; } a.on .name { font-weight: 700; }")).toEqual([]);
+    expect(probe('b[aria-expanded="true"] { color: red; text-decoration: underline; }')).toEqual([]);
+    expect(probe("a.on { color: red; box-shadow: inset 0 -2px 0 currentColor; }")).toEqual([]);
+    expect(probe("a.on { color: red; box-shadow: 0 0 0 1px red; }")).toEqual([]);
+    expect(probe("a.on { display: block; } a.on { opacity: 1 }")).toEqual([]);
+    expect(probe("p.on { stroke: red; stroke-width: 2; }")).toEqual([]);
+    expect(probe(".dot.ok { color: green; } .dot.ok::before { content: '✓'; }")).toEqual([]);
+    // a pseudo-element with a fill is a bar
+    expect(probe("a.on { color: red; } a.on::before { content: ''; background: red; width: 2px; }")).toEqual(
+      [],
+    );
     // hover and focus are not states of the data
     expect(probe("a:hover { color: red; } a.on:focus { color: red; }")).toEqual([]);
     // an explanation silences exactly the group it names

@@ -1653,9 +1653,14 @@
   cursor: pointer;
   padding: 0 2px;
 }
-.cons-ctl .ro:hover,
+.cons-ctl .ro:hover {
+  color: var(--accent-text);
+}
+/* Open: the underline says it for a reader who cannot tell the hue. */
 .cons-ctl .ro[aria-expanded="true"] {
   color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 /* `@` completion, over the field */
 .cons-ac {
@@ -2161,7 +2166,7 @@
   font-size: var(--fs-2);
 }
 .sentinel-hint {
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   color: var(--text-faint);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2171,7 +2176,7 @@
   margin-top: var(--s-2);
 }
 .fact-text {
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -2426,7 +2431,7 @@
   color: var(--agent-text);
 }
 .deck-focus-desc {
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   color: var(--text-dim);
   display: -webkit-box;
   -webkit-box-orient: vertical;

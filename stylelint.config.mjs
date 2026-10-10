@@ -39,8 +39,11 @@ export default {
     "declaration-property-value-disallowed-list": {
       // An inline image carries colours of its own, out of reach of every theme.
       "/.*/": ["/url\\(\\s*[\"']?data:/i"],
-      // System colours (Canvas, ButtonFace…) are colours by name, which `color-named` does not see.
-      "/^(color|background(-color)?|border(-[a-z]+)*-color|border(-[a-z]+)?|outline(-color)?|fill|stroke|caret-color|accent-color|text-decoration-color|column-rule-color|scrollbar-color)$/":
+      // System colours (Canvas, ButtonFace, Highlight…) are colours by name, which `color-named` does not see.
+      // They are refused in every property, shadows, filters, gradients, `stop-color`, custom properties
+      // and `-webkit-text-fill-color` included, except the few whose values are names or strings of
+      // another kind (a grid area called `field`, an animation called `highlight`).
+      "/^(?!grid|animation|transition|view-transition|counter|content|will-change|font-family|quotes|list-style|cursor)/":
         [
           "/(^|[\\s,(])(canvas|canvastext|linktext|visitedtext|activetext|buttonface|buttontext|buttonborder|field|fieldtext|highlight|highlighttext|selecteditem|selecteditemtext|mark|marktext|graytext|accentcolor|accentcolortext)($|[\\s,)])/i",
         ],

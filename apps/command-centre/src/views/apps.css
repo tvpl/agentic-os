@@ -286,7 +286,7 @@
   color: var(--text-dim);
 }
 .apps-approval .desc {
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   font-family: var(--font-mono);
   color: var(--text);
   word-break: break-word;

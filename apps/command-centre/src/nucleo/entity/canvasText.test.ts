@@ -80,6 +80,10 @@ describe("HUD text, measured on screen (C17)", () => {
           .filter((t) => t.px < FLOOR - 1e-6)
           .map((t) => `"${t.text}" at ${t.px.toFixed(2)}px`);
         expect(small, small.join("\n")).toEqual([]);
+        // The iris, the small body on the voice line, draws no words at all.
+        expect([...new Set(drawn.map((t) => t.site))]).toEqual(
+          variant === "hero" ? ["nucleo/entity/entityHud.ts"] : [],
+        );
         if (variant === "hero") {
           // Not vacuous: the ring inscription and the satellites' labels are drawn.
           expect(drawn.some((t) => t.text === "T")).toBe(true);

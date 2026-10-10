@@ -40,6 +40,7 @@ describe("Replay canvas text, measured on screen (C17)", () => {
         .filter((t) => t.px < FLOOR - 1e-6)
         .map((t) => `"${t.text}" at ${t.px.toFixed(2)}px`);
       expect(small, small.join("\n")).toEqual([]);
+      expect([...new Set(drawn.map((t) => t.site))]).toEqual(["runs/Replay.tsx"]);
     });
   }
 });

@@ -64,6 +64,47 @@ async function serious(page: Page) {
     }));
 }
 
+/**
+ * C18 on screen (design.md: running text is 13px or more). The CSS check reads
+ * the stylesheets for the classes it knows carry sentences; this reads the page:
+ * any element that holds a sentence of its own (60+ characters, 8+ words, not
+ * code, a key hint or a preformatted block) must compute to 13px or more.
+ * It catches what a class name cannot (a description built at runtime).
+ */
+async function proseUnder13(page: Page) {
+  return page.evaluate(() => {
+    const out: string[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>("body *")) {
+      if (
+        el.closest(
+          "pre, code, kbd, textarea, input, select, canvas, svg, script, style, [aria-hidden='true']",
+        )
+      )
+        continue;
+      const own = [...el.childNodes]
+        .filter((n) => n.nodeType === Node.TEXT_NODE)
+        .map((n) => n.textContent ?? "")
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (own.length < 60 || own.split(" ").length < 8) continue;
+      const cs = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      if (
+        cs.display === "none" ||
+        cs.visibility === "hidden" ||
+        +cs.opacity === 0 ||
+        !rect.width ||
+        !rect.height
+      )
+        continue;
+      if (parseFloat(cs.fontSize) < 13)
+        out.push(`${el.tagName.toLowerCase()}.${el.className} ${cs.fontSize}: ${own.slice(0, 70)}`);
+    }
+    return out;
+  });
+}
+
 const FRAME_SCREENS: [string, string][] = [
   ["Today", "/"],
   ["Runs", "/runs"],
@@ -84,6 +125,19 @@ for (const theme of THEMES) {
     test(`C8 the app frame has no serious violation on ${name} (${theme})`, async ({ page }) => {
       await open(page, "moldura", theme, path);
       expect(await serious(page)).toEqual([]);
+    });
+  }
+  // The frame's screens, and Connectors, whose descriptions are the sentences a stylesheet read cannot find by class.
+  for (const [name, path] of [...FRAME_SCREENS, ["Connectors", "/connectors"]]) {
+    test(`C18 no running text under 13px on screen: the app frame, ${name} (${theme})`, async ({ page }) => {
+      await open(page, "moldura", theme, path);
+      expect(await proseUnder13(page)).toEqual([]);
+    });
+  }
+  for (const [name, path] of NUCLEO_SCREENS) {
+    test(`C18 no running text under 13px on screen: the Núcleo, ${name} (${theme})`, async ({ page }) => {
+      await open(page, "nucleo", theme, path);
+      expect(await proseUnder13(page)).toEqual([]);
     });
   }
   test(`C8 the app frame has no serious violation on Memory with an area chosen (${theme})`, async ({

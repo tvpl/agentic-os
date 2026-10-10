@@ -11,10 +11,14 @@
  * swallows everything else. It is a test double, not a rasteriser.
  */
 
+import { canvasFontPx } from "./fontSize";
+
 export interface DrawnText {
   text: string;
   /** Font size on screen, in CSS px, after every transform and sprite scale. */
   px: number;
+  /** The source file (`brain/render/draw.ts`) whose code asked for the text, from the call stack. */
+  site: string;
 }
 
 interface Recorded {
@@ -37,7 +41,7 @@ const records = new WeakMap<object, Recorded>();
  */
 export function textDrawnOn(canvas: { width: number }, cssWidth: number = canvas.width): DrawnText[] {
   const shown = cssWidth / (canvas.width || 1);
-  return (records.get(canvas)?.texts ?? []).map((t) => ({ text: t.text, px: t.px * shown }));
+  return (records.get(canvas)?.texts ?? []).map((t) => ({ ...t, px: t.px * shown }));
 }
 
 export function clearTextDrawnOn(canvas: object): void {
@@ -45,10 +49,23 @@ export function clearTextDrawnOn(canvas: object): void {
   if (r) r.texts.length = 0;
 }
 
-/** CSS px of a canvas `font` string (`800 12px ui-monospace, monospace`); null when it has none. */
-export function fontPx(font: string): number | null {
-  const m = /(?:^|\s)(\d+(?:\.\d+)?|\.\d+)px\b/.exec(font);
-  return m ? parseFloat(m[1]!) : null;
+/**
+ * The source file that asked for the text, read from the stack: the first frame
+ * in `src` that is neither this recorder nor a test. It lets a test say which
+ * files a layer drew text from, so a file that draws text through a spelling no
+ * source scan recognises (a bound method, `Reflect.apply`…) still shows up.
+ */
+function callSite(): string {
+  for (const line of (new Error().stack ?? "").split("\n")) {
+    const m = /\/src\/((?!testing\/)[^\s:()]+?\.(?:tsx?|jsx?))(?::\d+)/.exec(line);
+    if (m && !/\.test\.[tj]sx?$/.test(m[1]!)) return m[1]!;
+  }
+  return "(unknown)";
+}
+
+/** The files the text on `canvas` was drawn from (sprites included), sorted. */
+export function textSitesOn(canvas: { width: number }): string[] {
+  return [...new Set(textDrawnOn(canvas).map((t) => t.site))].sort();
 }
 
 function multiply(a: Matrix, b: Matrix): Matrix {
@@ -64,7 +81,11 @@ function multiply(a: Matrix, b: Matrix): Matrix {
 const scaleOf = (m: Matrix) => Math.hypot(m[0], m[1]);
 
 /** A 2D context for `canvas` that records the on-screen size of every text it draws. */
-export function recordingContext(canvas: { width: number; height: number }): CanvasRenderingContext2D {
+export function recordingContext(
+  canvas: { width: number; height: number },
+  /** The size `em` and `%` fonts are relative to: the canvas element's own font size (16px unless styled). */
+  emBase = 16,
+): CanvasRenderingContext2D {
   const rec: Recorded = records.get(canvas) ?? { texts: [], width: canvas.width, height: canvas.height };
   records.set(canvas, rec);
   let matrix: Matrix = [...IDENTITY];
@@ -72,8 +93,9 @@ export function recordingContext(canvas: { width: number; height: number }): Can
   const state: Record<string, unknown> = { font: "10px sans-serif", globalAlpha: 1 };
 
   const draw = (text: string) => {
-    const px = fontPx(String(state.font));
-    if (px !== null) rec.texts.push({ text, px: px * scaleOf(matrix) });
+    // Throws when the font cannot be read: text must never go unmeasured.
+    const px = canvasFontPx(String(state.font), emBase);
+    rec.texts.push({ text, px: px * scaleOf(matrix), site: callSite() });
   };
   const methods: Record<string, (...args: never[]) => unknown> = {
     save: () => void stack.push({ matrix: [...matrix], font: String(state.font) }),
@@ -104,7 +126,7 @@ export function recordingContext(canvas: { width: number; height: number }): Can
     fillText: (text: string) => void draw(text),
     strokeText: (text: string) => void draw(text),
     // Monospace-ish advance: close enough for the fit and collision decisions a renderer makes.
-    measureText: (text: string) => ({ width: text.length * 0.6 * (fontPx(String(state.font)) ?? 10) }),
+    measureText: (text: string) => ({ width: text.length * 0.6 * canvasFontPx(String(state.font), emBase) }),
     createRadialGradient: () => ({ addColorStop: () => undefined }),
     createLinearGradient: () => ({ addColorStop: () => undefined }),
     createPattern: () => ({}),
@@ -118,7 +140,7 @@ export function recordingContext(canvas: { width: number; height: number }): Can
       const dw = a.length >= 8 ? a[6]! : a.length >= 4 ? a[2]! : src.width;
       const sw = a.length >= 8 ? a[2]! : src.width;
       const ratio = sw ? Math.abs(dw) / sw : 1;
-      for (const t of src.texts) rec.texts.push({ text: t.text, px: t.px * ratio * scaleOf(matrix) });
+      for (const t of src.texts) rec.texts.push({ ...t, px: t.px * ratio * scaleOf(matrix) });
     },
   };
 

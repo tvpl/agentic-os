@@ -10,6 +10,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import postcss, { type Declaration, type Root } from "postcss";
 import ts from "typescript";
+import { SIZE_KEYWORDS, SIZE_UNITS, toPx } from "./fontSize";
 
 /** `src`, whichever file asks. */
 const SRC = join(__dirname, "..");
@@ -44,17 +45,6 @@ export function customProperties(roots: Root[]): Map<string, string[]> {
   return out;
 }
 
-/** Sizes the browser knows by name. `smaller` depends on the parent: unbounded below. */
-const SIZE_KEYWORDS: Record<string, number> = {
-  "xx-small": 9,
-  "x-small": 10,
-  small: 13,
-  medium: 16,
-  large: 18,
-  "x-large": 24,
-  "xx-large": 32,
-  "xxx-large": 48,
-};
 /** Values that take the parent's size (already held to the floor) or the initial 16px. */
 const INHERITING = new Set(["inherit", "initial", "unset", "revert", "revert-layer", "larger"]);
 
@@ -128,13 +118,7 @@ export function lowerBound(src: string, props: Map<string, string[]>, seen: stri
       i += num[0].length;
       const n = parseFloat(num[1]!);
       const unit = num[2]!.toLowerCase();
-      if (unit === "" || unit === "px") return n;
-      if (unit === "rem") return n * 16;
-      if (unit === "em") return n * FLOOR;
-      if (unit === "%") return (n / 100) * FLOOR;
-      if (unit === "pt") return (n * 4) / 3;
-      if (/^(s|l|d)?v(w|h|i|b|min|max)$|^cq(w|h|i|b|min|max)$/.test(unit)) return 0;
-      return null;
+      return toPx(n, unit, FLOOR);
     }
     const word = /^[a-z-]+/i.exec(s.slice(i));
     if (word) {
@@ -250,62 +234,81 @@ export function cssSizeOffences(sources: { file: string; css: string }[], extra:
 /** Running text (paragraphs, descriptions, messages) is at least this many CSS px: `--fs-3`. */
 export const PROSE_FLOOR = 13;
 
-/** The class names carried by `<p>` elements in a TSX/TS source (every string in their `className`). */
-export function paragraphClasses(file: string, code: string): Set<string> {
+/**
+ * A class name that says "this is a sentence": `…-desc`, `…-hint`, `…-body`,
+ * `…-purpose`, `…-msg`, `…-empty`, `…-sub`… (kebab-case, last word).
+ */
+const PROSE_NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+const PROSE_WORD =
+  /(?:^|-)(desc|description|purpose|body|summary|blurb|intro|lede|explain|hint|note|msg|message|empty|help|text|caption|detail|reason|why|sub|subtitle)$/;
+
+/**
+ * The classes that carry running text in a TS/TSX source: those on a `<p>`, and
+ * every class-like string anywhere (a `className`, a lookup object, a prop)
+ * whose last word says it is a sentence. Classes put together at runtime are
+ * not seen: the browser scan (a11y.spec.ts, C15) reads the screens for those.
+ */
+export function proseClasses(file: string, code: string): Set<string> {
   const sf = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const out = new Set<string>();
-  const add = (text: string) => {
-    for (const c of text.split(/\s+/)) if (c) out.add(c);
+  const add = (text: string, onlyProse: boolean) => {
+    for (const c of text.split(/\s+/))
+      if (c && PROSE_NAME.test(c) && (!onlyProse || PROSE_WORD.test(c))) out.add(c);
   };
-  const strings = (n: ts.Node) => {
+  const strings = (n: ts.Node, onlyProse: boolean) => {
     if (ts.isStringLiteralLike(n) || ts.isTemplateHead(n) || ts.isTemplateMiddle(n) || ts.isTemplateTail(n))
-      add(n.text);
-    ts.forEachChild(n, strings);
+      add(n.text, onlyProse);
+    ts.forEachChild(n, (c) => strings(c, onlyProse));
   };
   const visit = (n: ts.Node) => {
     if ((ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n)) && n.tagName.getText(sf) === "p")
       for (const a of n.attributes.properties)
         if (ts.isJsxAttribute(a) && a.name.getText(sf) === "className" && a.initializer)
-          strings(a.initializer);
+          strings(a.initializer, false);
+    if (ts.isStringLiteralLike(n) || ts.isTemplateHead(n) || ts.isTemplateMiddle(n) || ts.isTemplateTail(n))
+      add(n.text, true);
     ts.forEachChild(n, visit);
   };
   visit(sf);
   return out;
 }
 
+export interface ProseRule {
+  /** The selector as written, whitespace collapsed: the key an exemption names. */
+  selector: string;
+  at: string;
+  why: string;
+}
+
 /**
  * Rules that set running text under 13px: those whose subject (the last
- * compound of a selector) is a `<p>`, or carries a class some `<p>` carries.
- * `exempt` names the classes of microcopy (labels, counters, key hints,
- * metadata) that design.md leaves at 12px.
+ * compound of a selector) is a `<p>`, or carries a class `classes` names.
+ * The caller says which of them are labels, counters, key hints or metadata.
  */
-export function proseOffences(
+export function proseRules(
   sources: { file: string; css: string }[],
   classes: ReadonlySet<string>,
-  exempt: ReadonlySet<string>,
   props: Map<string, string[]>,
-): string[] {
-  const out: string[] = [];
+): ProseRule[] {
+  const out: ProseRule[] = [];
   for (const { file, css } of sources)
     postcss.parse(css, { from: file }).walkRules((rule) => {
       if (rule.parent?.type === "atrule" && /keyframes$/i.test((rule.parent as { name: string }).name))
         return;
-      for (const selector of rule.selectors) {
-        const subject =
-          selector
-            .trim()
-            .split(/\s*[>+~]\s*|\s+/)
-            .pop() ?? "";
+      for (const raw of rule.selectors) {
+        const selector = raw.replace(/\s+/g, " ").trim();
+        const subject = selector.split(/\s*[>+~]\s*|\s+/).pop() ?? "";
         const names = [...subject.matchAll(/\.([\w-]+)/g)].map((m) => m[1]!);
-        const isParagraph = /^p(?![\w-])/.test(subject);
-        if (!isParagraph && !names.some((n) => classes.has(n))) continue;
-        if (names.some((n) => exempt.has(n))) continue;
-        rule.walkDecls((d) => {
+        if (!/^p(?![\w-])/.test(subject) && !names.some((n) => classes.has(n))) continue;
+        rule.each((d) => {
+          if (d.type !== "decl") return;
           const why = sizeOffence(d, props, PROSE_FLOOR);
-          if (why && d.parent === rule)
-            out.push(
-              `${rel(file)}:${d.source?.start?.line} ${selector.trim()} { ${d.prop}: ${d.value} } — ${why}`,
-            );
+          if (why)
+            out.push({
+              selector,
+              at: `${rel(file)}:${d.source?.start?.line}`,
+              why: `${d.prop}: ${d.value} — ${why}`,
+            });
         });
       }
     });
@@ -367,11 +370,16 @@ function bound(e: ts.Expression, sc: Scope): number | null {
         return l !== null && ts.isIdentifier(d) && d.text === "k" ? l : null;
       }
       case ts.SyntaxKind.AsteriskToken:
-        return l === null || r === null ? null : l * r;
+        // A product of lower bounds is a lower bound only when neither can be negative.
+        return l === null || r === null || l < 0 || r < 0 ? null : l * r;
       case ts.SyntaxKind.PlusToken:
         return l === null || r === null ? null : l + r;
-      case ts.SyntaxKind.MinusToken:
-        return l === null || r === null ? null : l - r;
+      case ts.SyntaxKind.MinusToken: {
+        // `a - b` needs an *upper* bound of `b`: only a literal gives one.
+        let d = e.right;
+        while (ts.isParenthesizedExpression(d)) d = d.expression;
+        return l !== null && ts.isNumericLiteral(d) ? l - Number(d.text) : null;
+      }
       default:
         return null;
     }
@@ -506,11 +514,28 @@ function constDeclaration(id: ts.Identifier, file: ts.SourceFile): ts.VariableDe
 }
 
 /**
- * A canvas font string: optional style/weight words, then `<size>px`, then a
- * family that is not another length (`${x}px ${y}px` is a position).
+ * A canvas font string: optional style/weight words, then a size (`<n><unit>`,
+ * `${hole}<unit>` or a keyword), an optional `/line-height`, then a family that
+ * is not another length (`${x}px ${y}px` is a position). Groups: 1 = hole
+ * index, 2 = number, 3 = unit; or, for a keyword, 4.
  */
-const CANVAS_FONT =
-  /^\s*(?:(?:normal|italic|oblique|bold|bolder|lighter|small-caps|\d{3}|\$\{\d+\})\s+)*(\$\{(\d+)\}|\d+(?:\.\d+)?)px\s+(?!\$\{\d+\}(?:px|%|r?em|deg)|-?[\d.]+(?:px|%|r?em)?(?:\s|,|$)|(?:solid|dashed|dotted|double|groove|ridge|inset|outset|none|hidden|var\(|rgba?\(|hsla?\(|#))\S/;
+const FONT_WORDS = String.raw`(?:(?:normal|italic|oblique|bold|bolder|lighter|small-caps|\d{3}|\$\{\d+\})\s+)*`;
+const LINE_HEIGHT = String.raw`(?:\/[\d.]+(?:${SIZE_UNITS})?)?`;
+const NOT_A_FAMILY = String.raw`(?!\$\{\d+\}(?:${SIZE_UNITS}|deg)|-?[\d.]+(?:${SIZE_UNITS})?(?:\s|,|$)|(?:solid|dashed|dotted|double|groove|ridge|inset|outset|none|hidden|var\(|rgba?\(|hsla?\(|#))\S`;
+const FAMILY_AHEAD = String.raw`(?!\$\{\d+\}(?:${SIZE_UNITS}|deg))(?=["'$]|(?:ui-)?(?:monospace|sans-serif|serif|cursive|fantasy|system-ui)\b)`;
+/** `px` is a font size whenever a family follows; every other unit (and a keyword) also needs a family that is unmistakably one, so `50% faster` is prose. */
+const CANVAS_FONT = new RegExp(
+  `^\\s*${FONT_WORDS}(?:\\$\\{(\\d+)\\}|(\\d*\\.?\\d+))(px)${LINE_HEIGHT}\\s+${NOT_A_FAMILY}`,
+  "i",
+);
+const CANVAS_FONT_UNIT = new RegExp(
+  `^\\s*${FONT_WORDS}(?:\\$\\{(\\d+)\\}|(\\d*\\.?\\d+))(${SIZE_UNITS})${LINE_HEIGHT}\\s+${FAMILY_AHEAD}`,
+  "i",
+);
+const CANVAS_FONT_KEYWORD = new RegExp(
+  `^\\s*${FONT_WORDS}(xx-small|x-small|small|medium|large|x-large|xx-large|xxx-large|smaller|larger)${LINE_HEIGHT}\\s+${FAMILY_AHEAD}`,
+  "i",
+);
 
 /** `font-size: <value>` and `font: <shorthand>` declarations written inside a string (cssText, HTML `style="…"`). */
 const CSS_IN_STRING = /(?:^|[;\s"'{(])(font-size|font)\s*:\s*([^;"'}]*)/gi;
@@ -519,8 +544,9 @@ const isFontSizeName = (n: string) => n.replace(/["']/g, "") === "fontSize";
 
 /** The font-size expression a node sets, if it sets one: a property, a JSX attribute, `style.fontSize =`, `setProperty`. */
 function sizeSetBy(node: ts.Node, sf: ts.SourceFile): ts.Expression | null {
-  // { fontSize: 11 }, { "fontSize": … }
-  if (ts.isPropertyAssignment(node) && isFontSizeName(node.name.getText(sf))) return node.initializer;
+  // { fontSize: 11 }, { "fontSize": … }, { ["fontSize"]: … }
+  if (ts.isPropertyAssignment(node) && isFontSizeName(node.name.getText(sf).replace(/^\[|\]$/g, "")))
+    return node.initializer;
   // { fontSize }
   if (ts.isShorthandPropertyAssignment(node) && node.name.text === "fontSize") return node.name;
   // <text fontSize={9} /> and <text fontSize="9" />
@@ -528,25 +554,87 @@ function sizeSetBy(node: ts.Node, sf: ts.SourceFile): ts.Expression | null {
     const v = node.initializer;
     return v && ts.isJsxExpression(v) ? (v.expression ?? null) : ((v as ts.Expression | undefined) ?? null);
   }
-  // el.style.fontSize = …
+  // el.style.fontSize = …, el.style["fontSize"] = …
   if (
     ts.isBinaryExpression(node) &&
     node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-    ts.isPropertyAccessExpression(node.left) &&
-    node.left.name.text === "fontSize"
+    ((ts.isPropertyAccessExpression(node.left) && node.left.name.text === "fontSize") ||
+      (ts.isElementAccessExpression(node.left) &&
+        ts.isStringLiteralLike(node.left.argumentExpression) &&
+        isFontSizeName(node.left.argumentExpression.text)))
   )
     return node.right;
   // el.style.setProperty("font-size", …)
   if (
     ts.isCallExpression(node) &&
     ts.isPropertyAccessExpression(node.expression) &&
-    node.expression.name.text === "setProperty" &&
+    /^(setProperty|setAttribute)$/.test(node.expression.name.text) &&
     node.arguments[0] &&
     ts.isStringLiteralLike(node.arguments[0]) &&
     /^(font-size|fontSize)$/.test(node.arguments[0].text)
   )
     return node.arguments[1] ?? null;
   return null;
+}
+
+/**
+ * The text a node builds, with `${k}` standing for the k-th expression that is
+ * not a string: a literal, a template, a chain of `+` (`"700 " + size + "px"`) or
+ * an array joined (`["700", size, "mono"].join(" ")`). Null for anything else.
+ * Only the outermost node of a chain answers, so a chain is read once.
+ */
+function shapeOf(node: ts.Node): { shape: string; holes: ts.Expression[] } | null {
+  const holes: ts.Expression[] = [];
+  const part = (n: ts.Expression): string => {
+    while (ts.isParenthesizedExpression(n)) n = n.expression;
+    if (ts.isStringLiteralLike(n)) return n.text;
+    if (ts.isTemplateExpression(n)) {
+      let t = n.head.text;
+      for (const span of n.templateSpans) t += part(span.expression) + span.literal.text;
+      return t;
+    }
+    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.PlusToken && isStringy(n))
+      return part(n.left) + part(n.right);
+    holes.push(n);
+    return `\${${holes.length - 1}}`;
+  };
+  if (ts.isStringLiteralLike(node)) return { shape: node.text, holes };
+  if (ts.isTemplateExpression(node)) return { shape: part(node), holes };
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.PlusToken &&
+    isStringy(node) &&
+    !(ts.isBinaryExpression(node.parent) && node.parent.operatorToken.kind === ts.SyntaxKind.PlusToken)
+  )
+    return { shape: part(node), holes };
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    node.expression.name.text === "join" &&
+    ts.isArrayLiteralExpression(node.expression.expression) &&
+    node.arguments[0] &&
+    ts.isStringLiteralLike(node.arguments[0])
+  )
+    return {
+      shape: node.expression.expression.elements.map((e) => part(e)).join(node.arguments[0].text),
+      holes,
+    };
+  return null;
+}
+
+/** A `+` expression with a string literal among its operands is a string. */
+function isStringy(n: ts.BinaryExpression): boolean {
+  const leaf = (e: ts.Expression): boolean => {
+    while (ts.isParenthesizedExpression(e)) e = e.expression;
+    return (
+      ts.isStringLiteralLike(e) ||
+      ts.isTemplateExpression(e) ||
+      (ts.isBinaryExpression(e) &&
+        e.operatorToken.kind === ts.SyntaxKind.PlusToken &&
+        (leaf(e.left) || leaf(e.right)))
+    );
+  };
+  return leaf(n.left) || leaf(n.right);
 }
 
 export function inlineSizeOffences(file: string, text: string, props: Map<string, string[]>): string[] {
@@ -561,21 +649,20 @@ export function inlineSizeOffences(file: string, text: string, props: Map<string
       if (min === null) out.push(`${at(node)} fontSize ${v.getText(sf)} — cannot be bounded`);
       else if (min < FLOOR) out.push(`${at(node)} fontSize ${v.getText(sf)} — ${min}px`);
     }
-    if (ts.isStringLiteralLike(node) || ts.isTemplateExpression(node)) {
-      let shape: string;
-      const holes: ts.Expression[] = [];
-      if (ts.isTemplateExpression(node)) {
-        shape = node.head.text;
-        node.templateSpans.forEach((span, k) => {
-          holes.push(span.expression);
-          shape += `\${${k}}${span.literal.text}`;
-        });
-      } else shape = node.text;
-      // canvas font strings: "11px mono", `500 ${size}px ${family}`
-      const m = CANVAS_FONT.exec(shape);
-      if (m) {
-        const min = m[2] !== undefined ? numberBound(holes[Number(m[2])]!, sf) : Number(m[1]);
-        const src = ts.isTemplateExpression(node) ? node.getText(sf) : JSON.stringify(shape);
+    const sh = shapeOf(node);
+    if (sh) {
+      const { shape, holes } = sh;
+      // canvas font strings: "11px mono", "8pt mono", "small monospace", `500 ${size}px ${family}`
+      const m = CANVAS_FONT.exec(shape) ?? CANVAS_FONT_UNIT.exec(shape);
+      const kw = m ? null : CANVAS_FONT_KEYWORD.exec(shape);
+      if (m || kw) {
+        let min: number | null;
+        if (kw) min = kw[1]!.toLowerCase() in SIZE_KEYWORDS ? SIZE_KEYWORDS[kw[1]!.toLowerCase()]! : null;
+        else {
+          const n = m![1] !== undefined ? numberBound(holes[Number(m![1])]!, sf) : parseFloat(m![2]!);
+          min = n === null ? null : toPx(n, m![3]!, FLOOR);
+        }
+        const src = ts.isStringLiteralLike(node) ? JSON.stringify(shape) : node.getText(sf);
         if (min === null) out.push(`${at(node)} canvas font ${src} — size cannot be bounded`);
         else if (min < FLOOR) out.push(`${at(node)} canvas font ${src} — ${+min.toFixed(2)}px`);
       }
@@ -586,14 +673,6 @@ export function inlineSizeOffences(file: string, text: string, props: Map<string
         if (why) out.push(`${at(node)} ${decl.prop}: ${decl.value} in a string — ${why}`);
       }
     }
-    // "500 " + size + "px mono": font strings are templates here
-    if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.PlusToken &&
-      ts.isStringLiteralLike(node.right) &&
-      /^px\s+\S/.test(node.right.text)
-    )
-      out.push(`${at(node)} font string built with + — use a template literal`);
     ts.forEachChild(node, visit);
   };
   visit(sf);
