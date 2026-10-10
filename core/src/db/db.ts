@@ -55,7 +55,8 @@ export function openDb(
   fs.mkdirSync(path.dirname(paths.dbFile), { recursive: true, mode: PRIVATE_DIR_MODE });
   // A database from a newer version is refused before this process touches it in any way: no mode change, no
   // connection that could checkpoint its WAL when it closes (the bytes of the file stay as they were).
-  assertNotNewer(peekVersion(paths.dbFile), latestVersion(migrations));
+  const peeked = peekVersion(paths.dbFile);
+  if (peeked !== null) assertNotNewer(peeked, latestVersion(migrations));
   // SQLite gives the -wal and -shm files the mode of the database file, so the
   // file is created owner-only before SQLite opens it.
   fs.closeSync(fs.openSync(paths.dbFile, "a", PRIVATE_FILE_MODE));
@@ -80,15 +81,40 @@ export function openDb(
 }
 
 /**
- * `user_version` of the database file as it stands, WAL included, through a read-only connection: one never
- * checkpoints, so closing it changes nothing. 0 for a file that is missing or empty; a file that cannot be
- * read this way is left to the normal open, which reports it.
+ * `user_version` of the database file as it stands, without opening it for writing and, when it can be avoided,
+ * without opening it with SQLite at all (a connection creates `-shm`, and closing the last one checkpoints):
+ *  - no file, or an empty one: 0 (the only errors that mean "no database yet");
+ *  - no WAL waiting: the 4 bytes at offset 60 of the header, which is where SQLite keeps it;
+ *  - a WAL with frames in it (what a service killed mid-flight leaves; the version may live only there): a
+ *    read-only connection, which never checkpoints.
+ * `null` is "cannot tell" (not a SQLite file, unreadable): the normal open then reports it with its own message.
  */
-function peekVersion(file: string): number {
+function peekVersion(file: string): number | null {
   try {
     if (fs.statSync(file).size === 0) return 0;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? 0 : null;
+  }
+  let walFrames = false;
+  try {
+    walFrames = fs.statSync(`${file}-wal`).size > 0;
   } catch {
-    return 0;
+    /* no WAL */
+  }
+  if (!walFrames) {
+    try {
+      const fd = fs.openSync(file, "r");
+      try {
+        const header = Buffer.alloc(64);
+        const read = fs.readSync(fd, header, 0, 64, 0);
+        if (read < 64 || header.toString("latin1", 0, 16) !== "SQLite format 3\0") return null;
+        return header.readUInt32BE(60);
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {
+      return null;
+    }
   }
   let db: Db | undefined;
   try {
@@ -96,7 +122,7 @@ function peekVersion(file: string): number {
     db.pragma("busy_timeout = 5000");
     return currentVersion(db);
   } catch {
-    return 0;
+    return null;
   } finally {
     db?.close();
   }

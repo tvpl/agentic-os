@@ -1626,9 +1626,9 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
   {
     file: "core/src/backup.ts",
     api: "lstatSync",
-    count: 2,
+    count: 3,
     kind: "fixed",
-    why: "restore refuses a backup folder that is a link (name matches full-…); the size walk counts a link as itself",
+    why: "restore refuses a backup folder that is a link (name matches full-…); the size walk counts a link as itself; recovery acts only on a .restore-* that is a real folder of the home",
   },
   {
     file: "core/src/backup.ts",
@@ -1640,9 +1640,9 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
   {
     file: "core/src/backup.ts",
     api: "readdirSync",
-    count: 4,
+    count: 3,
     kind: "names",
-    why: "backup list, size walk, and the .restore-* folders of the home - twice: recovery and the guard before a backup (names only; the journal inside is read by name)",
+    why: "backup list, size walk, and the .restore-* folders of the home (names only; the journal inside is read by name)",
   },
   {
     file: "core/src/backup.ts",
@@ -1703,16 +1703,16 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
   {
     file: "core/src/db/db.ts",
     api: "openSync",
-    count: 1,
+    count: 2,
     kind: "fixed",
-    why: "creates the database file with mode 0600",
+    why: "creates the database file with mode 0600, and reads the 64-byte header of an existing one for its version (read-only)",
   },
   {
     file: "core/src/config/store.ts",
     api: "lstatSync",
-    count: 1,
+    count: 2,
     kind: "fixed",
-    why: "is a settings.json.invalid candidate a regular file (never trust a link) before its bytes are compared",
+    why: "is a settings.json.invalid candidate or a settings.json.corrupt.* name a regular file (never trust a link, never touch a folder or a note) before it is compared, listed or pruned",
   },
   {
     file: "core/src/config/store.ts",
@@ -1724,9 +1724,16 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
   {
     file: "core/src/db/db.ts",
     api: "statSync",
+    count: 2,
+    kind: "fixed",
+    why: "size of the database file and of its -wal, to tell a missing or empty one, and one with a WAL waiting, from one whose header says the version",
+  },
+  {
+    file: "core/src/restoreLock.ts",
+    api: "openSync",
     count: 1,
     kind: "fixed",
-    why: "size of the database file, to tell a missing or empty one from one to read the version of",
+    why: "creates config/run/restore.lock owner-only before SQLite opens it (the lock is its write lock)",
   },
   {
     file: "core/src/ownerLock.ts",

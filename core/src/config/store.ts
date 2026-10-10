@@ -13,6 +13,14 @@ import { atomicWrite } from "./atomicWrite.js";
 import { migrateSettings, settingsVersion } from "./migrations.js";
 
 /** Recursive merge for settings patches: objects merge, arrays and scalars replace. */
+function isRegularFile(file: string): boolean {
+  try {
+    return fs.lstatSync(file).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -100,8 +108,10 @@ export class SettingsStore {
     try {
       copies = fs
         .readdirSync(this.paths.config)
-        .filter((name) => name.startsWith(prefix))
-        .map((name) => ({ name, at: Number(name.slice(prefix.length)) || 0 }))
+        // Only what this code wrote: the prefix and a number, and a regular file - a folder, or a note the owner
+        // keeps next to it (`settings.json.corrupt.notes`, `settings.json.corrupt.1/`) is theirs.
+        .filter((name) => name.startsWith(prefix) && /^\d+$/.test(name.slice(prefix.length)) && isRegularFile(path.join(this.paths.config, name)))
+        .map((name) => ({ name, at: Number(name.slice(prefix.length)) }))
         .sort((a, b) => b.at - a.at);
     } catch {
       /* no folder, no copies */
@@ -234,7 +244,7 @@ export class SettingsStore {
         "config/settings.json holds values this version cannot read and a copy of it could not be written " +
           `(${path.basename(this.paths.settingsFile)}.invalid and its alternatives are taken or not writable); it was not replaced.`,
       ),
-      { code: "settings_unpreserved" },
+      { code: "settings_unpreserved", statusCode: 409 },
     );
   }
 

@@ -53,6 +53,8 @@ export {
 } from "@mordomo/core";
 
 export interface AppContextOptions {
+  /** How long to wait for a restore running in another process before refusing (ms). */
+  restoreWaitMs?: number;
   /**
    * Apply a restore staged by `POST /api/backups/:name/restore` before the
    * database is opened. Only the long-running server passes this; CLI
@@ -85,6 +87,7 @@ export class AppContext extends MordomoEngine {
       // Packaged installs ship their skills/routines/connectors next to the bundle.
       seedDir: seedDir(),
       applyPendingRestore: opts.applyPendingRestore === true,
+      ...(opts.restoreWaitMs !== undefined ? { restoreWaitMs: opts.restoreWaitMs } : {}),
     });
     this.unsubscribeCredentials = events.subscribe((e) => {
       if (e.type !== "run.finished") return;

@@ -367,4 +367,37 @@ describe("S1 the database is migrated once", () => {
       writer.close();
     }
   });
+
+  it("C71 the version is read without SQLite when no WAL waits (no -shm appears), and only a missing or empty file is version 0", () => {
+    // A newer database closed cleanly: no WAL. Refused with the folder exactly as it was.
+    const clean = tempHome();
+    openDb(clean.paths).db.close();
+    const raw = new Database(clean.paths.dbFile);
+    raw.pragma("user_version = 99");
+    raw.close();
+    const listing = () => fs.readdirSync(path.dirname(clean.paths.dbFile)).sort();
+    const before = listing();
+    expect(before).not.toContain("mordomo.db-shm");
+    expect(() => openDb(clean.paths)).toThrow(DbNewerVersionError);
+    expect(listing()).toEqual(before);
+
+    // Missing, and empty: no database yet, so they open fresh.
+    const missing = tempHome();
+    expect(openDb(missing.paths).migration.fromVersion).toBe(0);
+    const empty = tempHome();
+    fs.mkdirSync(path.dirname(empty.paths.dbFile), { recursive: true });
+    fs.writeFileSync(empty.paths.dbFile, "");
+    expect(openDb(empty.paths).migration.fromVersion).toBe(0);
+
+    // Not a database at all: not "version 0". The normal open reports it, and nothing is made of it.
+    const junk = tempHome();
+    fs.mkdirSync(path.dirname(junk.paths.dbFile), { recursive: true });
+    fs.writeFileSync(
+      junk.paths.dbFile,
+      "this is not a sqlite database, only text that is long enough to be read",
+    );
+    expect(() => openDb(junk.paths)).toThrow(/not a database/i);
+    expect(fs.readFileSync(junk.paths.dbFile, "utf8")).toContain("this is not a sqlite database");
+    expect(fs.existsSync(`${junk.paths.dbFile}-wal`)).toBe(false);
+  });
 });

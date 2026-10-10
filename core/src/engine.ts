@@ -16,11 +16,12 @@ import type { AgentAdapter, PermissionBroker, RunMode } from "./agents/types.js"
 import type { ProviderRegistry } from "./agents/registry.js";
 import {
   BackupVerificationError,
-  applyPendingRestore,
+  applyPendingRestoreLocked,
   readRestorePending,
-  recoverInterruptedRestore,
+  recoverLocked,
   type RestorePending,
 } from "./backup.js";
+import { RestoreLock } from "./restoreLock.js";
 import { installPushChannel } from "./channels/pushChannel.js";
 import { installTelegramChannel } from "./channels/telegram.js";
 import type { EffortLevel, ProviderId, SecurityProfile, Settings } from "./config/schema.js";
@@ -60,6 +61,8 @@ export interface EngineOptions {
   seedDir?: string | null;
   /** Apply a restore staged by the API before the database is opened (the long-running service only). */
   applyPendingRestore?: boolean;
+  /** How long to wait for a restore running in another process before refusing (ms, default 10 000). */
+  restoreWaitMs?: number;
   /** How a write run's provider CLI asks a human before a tool runs; absent = never brokered. */
   permissionBroker?: (run: {
     id: string;
@@ -187,27 +190,34 @@ export class MordomoEngine {
   constructor(opts: EngineOptions) {
     this.paths = resolvePaths(opts.home);
     ensureDirs(this.paths);
-    if (opts.seedDir) seedHome(this.paths, opts.seedDir);
-    // Whatever command built this engine, a restore that died half way is undone before the database opens
-    // (one still running in another process is left alone).
-    recoverInterruptedRestore(this.paths);
-    if (opts.applyPendingRestore) {
-      const pending = readRestorePending(this.paths);
-      try {
-        this.restoredAtBoot = applyPendingRestore(this.paths).applied;
-      } catch (error) {
-        if (!(error instanceof BackupVerificationError) || pending === null) throw error;
-        this.restoreRejectedAtBoot = { name: pending.name, message: error.message };
+    // The files of the home are not ours to build on while a restore replaces them: wait for it to finish, or
+    // refuse (`RestoreInProgressError`) - never open (and so create) a database the restore is about to put
+    // in place. The lock is held until the database is open, so a restore that starts next finds it open.
+    const restoreLock = RestoreLock.acquire(this.paths, opts.restoreWaitMs ?? 10_000);
+    try {
+      if (opts.seedDir) seedHome(this.paths, opts.seedDir);
+      // Whatever command built this engine, a restore that died half way is undone before the database opens.
+      recoverLocked(this.paths);
+      if (opts.applyPendingRestore) {
+        const pending = readRestorePending(this.paths);
+        try {
+          this.restoredAtBoot = applyPendingRestoreLocked(this.paths).applied;
+        } catch (error) {
+          if (!(error instanceof BackupVerificationError) || pending === null) throw error;
+          this.restoreRejectedAtBoot = { name: pending.name, message: error.message };
+        }
       }
+      this.brokerFactory = opts.permissionBroker;
+      this.settingsStore = new SettingsStore(this.paths);
+      // A saved preference is announced like a settings change, so every open
+      // Command Centre refreshes it (the event map has no separate type for it).
+      this.uiPreferences = new UiPreferencesStore(this.paths, () =>
+        events.emit("settings.changed", { settings: this.settings() }),
+      );
+      this.db = openDb(this.paths).db;
+    } finally {
+      restoreLock.release();
     }
-    this.brokerFactory = opts.permissionBroker;
-    this.settingsStore = new SettingsStore(this.paths);
-    // A saved preference is announced like a settings change, so every open
-    // Command Centre refreshes it (the event map has no separate type for it).
-    this.uiPreferences = new UiPreferencesStore(this.paths, () =>
-      events.emit("settings.changed", { settings: this.settings() }),
-    );
-    this.db = openDb(this.paths).db;
     tightenHomeFiles(this.paths);
     this.providers = opts.providers;
     this.adapterRecord = buildAdapters(this.providers, this.settingsStore.load());

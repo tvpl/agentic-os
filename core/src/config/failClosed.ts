@@ -1,3 +1,4 @@
+import { DEFAULT_EXCLUDES } from "@mordomo/contracts";
 import type { FailClosedField } from "./tolerant.js";
 
 /**
@@ -36,4 +37,24 @@ export const SETTINGS_FAIL_CLOSED: readonly FailClosedField[] = [
   { path: "remote.deviceTtlDays", closed: 1 },
   // 0 means no triage runs at all.
   { path: "sentinels.triage.dailyBudgetUsd", closed: 0 },
+  // The owner's own exclusions from indexing and serving: whatever of the list can be read is kept (a lone string
+  // counts as a one-entry list), and the schema's default list is added, so it is never smaller than either.
+  {
+    path: "excludes",
+    closed: (unreadable: unknown) => [
+      ...new Set([
+        ...DEFAULT_EXCLUDES,
+        ...(typeof unreadable === "string" ? [unreadable] : []),
+        ...(Array.isArray(unreadable) ? unreadable.filter((entry): entry is string => typeof entry === "string") : []),
+      ]),
+    ],
+  },
+  // A flag that switches something ON reads OFF when it cannot be read. These are the ones whose default is on:
+  // the model run of the triage and the hourly read of connectors start processes; the rest only notify, and are
+  // closed with them so that no unreadable flag ever turns anything on.
+  { path: "sentinels.triage.enabled", closed: false },
+  { path: "sentinels.connectorDelta.enabled", closed: false },
+  { path: "sentinels.repeatedFailure.enabled", closed: false },
+  { path: "sentinels.silentRoutine.enabled", closed: false },
+  { path: "sentinels.repeatDetector.enabled", closed: false },
 ];

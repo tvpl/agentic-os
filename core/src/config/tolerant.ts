@@ -13,11 +13,13 @@ export interface SettingsIssue {
  * A field whose unreadable value must read as something safer than the schema's default (see
  * `failClosed.ts`). `path` is dot-separated and `*` stands for any array index or record key; the rule also
  * fires for a value anywhere below the path (an element of a list) and for an ancestor that was dropped whole.
- * `also` sets siblings of the field at the same time (`sibling` is a key of the field's parent).
+ * `closed` is the value to read, or a function of the unreadable value found there (undefined when a parent was
+ * dropped whole) for a field whose readable part is worth keeping. `also` sets siblings of the field at the same
+ * time (`sibling` is a key of the field's parent).
  */
 export interface FailClosedField {
   path: string;
-  closed: unknown;
+  closed: unknown | ((unreadable: unknown) => unknown);
   also?: ReadonlyArray<{ sibling: string; value: unknown }>;
 }
 
@@ -47,6 +49,8 @@ function setAt(doc: unknown, path: Path, value: unknown): void {
   }
 }
 
+const closedValue = (rule: FailClosedField, unreadable: unknown): unknown =>
+  typeof rule.closed === "function" ? (rule.closed as (value: unknown) => unknown)(unreadable) : rule.closed;
 const segments = (rule: FailClosedField): string[] => rule.path.split(".");
 const covers = (pattern: readonly string[], path: Path): boolean =>
   pattern.length <= path.length && pattern.every((segment, i) => segment === "*" || segment === String(path[i]));
@@ -66,7 +70,7 @@ function closedBelow(rules: readonly FailClosedField[], path: Path): Record<stri
       });
       node[keys[keys.length - 1]!] = value;
     };
-    put(pattern, rule.closed);
+    put(pattern, closedValue(rule, undefined));
     for (const also of rule.also ?? []) put([...pattern.slice(0, -1), also.sibling], also.value);
     any = true;
   }
@@ -131,7 +135,7 @@ export function parseTolerant<S extends ZodTypeAny>(
       if (rule !== undefined && !closedAt.has(key)) {
         closedAt.add(key);
         const field = path.slice(0, segments(rule).length);
-        setAt(doc, field, rule.closed);
+        setAt(doc, field, closedValue(rule, valueAt(doc, field)));
         for (const also of rule.also ?? []) setAt(doc, [...field.slice(0, -1), also.sibling], also.value);
         issues.push({ path: text, reason, closed: true });
         continue;

@@ -92,7 +92,14 @@ const CLOSED_WHEN_DROPPED: Record<string, unknown> = {
   memorySkills: [],
   limits: { ...d.limits, dailyBudgetUsd: 0.01, approvalTtlDays: 1 },
   remote: { ...d.remote, deviceTtlDays: 1 },
-  sentinels: { ...d.sentinels, triage: { ...d.sentinels.triage, dailyBudgetUsd: 0 } },
+  sentinels: {
+    ...d.sentinels,
+    repeatedFailure: { ...d.sentinels.repeatedFailure, enabled: false },
+    silentRoutine: { ...d.sentinels.silentRoutine, enabled: false },
+    connectorDelta: { ...d.sentinels.connectorDelta, enabled: false },
+    repeatDetector: { ...d.sentinels.repeatDetector, enabled: false },
+    triage: { ...d.sentinels.triage, enabled: false, dailyBudgetUsd: 0 },
+  },
   channels: {
     ...d.channels,
     telegram: { ...d.channels.telegram, allowedUserIds: [], enabled: false, inbound: false },
@@ -351,6 +358,15 @@ describe("S3 settings tolerate an invalid field", () => {
       read: (s) => s.remote.deviceTtlDays,
       restrictiveToPermissive: [1, 90, 365],
     },
+    ...(["triage", "connectorDelta", "repeatedFailure", "silentRoutine", "repeatDetector"] as const).map(
+      (sentinel) => ({
+        name: `sentinels.${sentinel}.enabled (it switches something on)`,
+        direct: true as const,
+        broken: (bad: unknown) => ({ sentinels: { [sentinel]: { enabled: bad } } }),
+        read: (s: ReturnType<SettingsStore["load"]>) => s.sentinels[sentinel].enabled,
+        restrictiveToPermissive: [false, true],
+      }),
+    ),
     {
       name: "sentinels.triage.dailyBudgetUsd",
       direct: true,
@@ -431,89 +447,160 @@ describe("S3 settings tolerate an invalid field", () => {
     );
   });
 
-  it("C46 every leaf of the settings is either a security field with a closed value or one that opens nothing", () => {
-    const leaves: string[] = [];
+  it("C62 a list of the owner's exclusions that cannot be read keeps what can be read and is never smaller than the defaults", () => {
+    const read = (excludes: unknown) => {
+      const { store, write } = setup();
+      write({ version: 2, excludes });
+      return store.load().excludes;
+    };
+    const defaultList = d.excludes as string[];
+    // A lone string is a one-entry list; anything else unreadable is the defaults.
+    expect(read("private-notes")).toEqual([...defaultList, "private-notes"]);
+    expect(read([5])).toEqual(defaultList);
+    expect(read(7)).toEqual(defaultList);
+    expect(read({ a: 1 })).toEqual(defaultList);
+    expect(read(["mine/*", 5, "also-mine"])).toEqual([...defaultList, "mine/*", "also-mine"]);
+    // A list that is all readable is the owner's, as written (they may shorten the defaults on purpose).
+    expect(read(["only-this"])).toEqual(["only-this"]);
+    expect(read([])).toEqual([]);
+  });
+
+  it("C63 an unreadable flag never reads on: every boolean that is on by default reads off", () => {
+    const onByDefault: string[] = [];
+    const walk = (node: unknown, trail: string[]) => {
+      if (typeof node === "boolean") {
+        if (node) onByDefault.push(trail.join("."));
+      } else if (node !== null && typeof node === "object" && !Array.isArray(node)) {
+        for (const [key, value] of Object.entries(node)) walk(value, [...trail, key]);
+      } else if (Array.isArray(node) && typeof node[0] === "object") walk(node[0], [...trail, "0"]);
+    };
+    walk(SettingsSchema.parse({ indexedFolders: [{ path: "/tmp/x" }] }), []);
+    expect(onByDefault.sort()).toEqual([
+      "indexedFolders.0.enabled",
+      "sentinels.connectorDelta.enabled",
+      "sentinels.repeatDetector.enabled",
+      "sentinels.repeatedFailure.enabled",
+      "sentinels.silentRoutine.enabled",
+      "sentinels.triage.enabled",
+    ]);
+    for (const leaf of onByDefault) {
+      for (const bad of ["false", 0, null, "off", {}, []]) {
+        const { store, write } = setup();
+        const doc: Record<string, any> = { version: 2 };
+        const keys = leaf.split(".");
+        if (keys[0] === "indexedFolders") {
+          doc.indexedFolders = [{ path: "/tmp/x", enabled: bad }];
+        } else {
+          let node = doc;
+          for (const key of keys.slice(0, -1)) node = node[key] = {};
+          node[keys[keys.length - 1]!] = bad;
+        }
+        write(doc);
+        const loaded = store.load() as any;
+        const value = keys.reduce((acc: any, key) => acc?.[key], loaded);
+        expect(value, `${leaf} = ${JSON.stringify(bad)}`).toBe(false);
+      }
+    }
+  });
+
+  it("C46 every leaf of the settings is either a security field with a closed value or one that opens nothing, one by one", () => {
+    const leaves = new Set<string>();
     const walk = (node: unknown, trail: string[]) => {
       if (node !== null && typeof node === "object" && !Array.isArray(node)) {
         for (const [key, value] of Object.entries(node)) walk(value, [...trail, key]);
       } else if (Array.isArray(node) && node.length > 0 && typeof node[0] === "object") {
-        walk(node[0], [...trail, "0"]);
-      } else leaves.push(trail.join("."));
+        walk(node[0], [...trail, "*"]);
+      } else leaves.add(trail.join("."));
     };
     // The defaults, with a sample element where the schema has a list of objects or a record.
-    walk(
-      SettingsSchema.parse({
-        indexedFolders: [{ path: "/tmp/x" }],
-        providers: { claude: {} },
-      }),
-      [],
+    walk(SettingsSchema.parse({ indexedFolders: [{ path: "/tmp/x" }], providers: { claude: {} } }), []);
+    const normalized = new Set(
+      [...leaves].map((leaf) => leaf.replace(/^providers\.(claude|cursor|codex)\./, "providers.*.")),
     );
-    const closed = SETTINGS_FAIL_CLOSED.map((r) => r.path.replace(/\*/g, "[^.]+"));
-    /** Everything else, by prefix, and why none of it can open anything. */
-    const OPENS_NOTHING: Array<[string, string]> = [
-      ["version", "bookkeeping"],
-      ["systemName", "a label"],
-      ["language", "presentation"],
-      ["theme", "presentation"],
-      ["accentColor", "presentation"],
-      ["port", "where the loopback listener is; no value widens who may connect"],
-      ["bindAddress", "default is loopback, the narrowest; anything else needs an approval to take effect"],
-      ["timezone", "scheduling"],
-      ["autostart", "start with the machine; the default is off"],
-      ["setupCompleted", "whether the wizard ran"],
-      ["defaultProvider", "which provider a run uses by default; it still has to be enabled"],
-      ["providers.", "enabled is off by default, a default model or effort grants nothing"],
-      ["remote.enabled", "off by default"],
-      ["remote.allowedHosts", "empty by default: nobody"],
-      ["remote.tls", "off by default; only matters once remote is enabled"],
-      ["marketplace.registries", "empty by default: no registry"],
-      ["updates.check", "off by default: no outbound request"],
-      ["indexedFolders.", "path and area name a folder; enabled is classified"],
-      ["excludes", "the default list is the hard secret list"],
-      ["areas", "labels"],
-      ["limits.maxConcurrentRuns", "resource use, not permission"],
-      ["limits.skillNotesMax", "size"],
-      ["limits.defaultTimeoutMs", "size"],
-      ["limits.logRetentionDays", "retention"],
-      ["limits.logMaxFileBytes", "size"],
-      ["limits.maxIndexedFileBytes", "size"],
-      ["limits.previewMaxBytes", "size"],
-      ["limits.runRetentionDays", "retention"],
-      ["limits.runRetentionMax", "retention"],
-      ["limits.backupRetention", "retention; sealed backups only"],
-      ["limits.routineHistoryRetentionDays", "retention"],
-      ["limits.toolApprovalTimeoutMs", "how long a prompt waits before it is denied"],
-      ["favoriteSkills", "labels"],
-      ["routines.allowWebhooks", "off by default"],
-      ["routines.heartbeat", "scheduling"],
-      ["connectors.dataCacheTtlMs", "cache"],
-      ["connectors.dataTimeoutMs", "timeout"],
-      ["connectors.allowedCommands", "empty by default: only the base allowlist"],
-      ["memory.", "a token budget"],
-      ["sentinels.fsWatch", "off by default"],
-      ["sentinels.repeatedFailure", "an observer that only notifies"],
-      ["sentinels.silentRoutine", "an observer that only notifies"],
-      ["sentinels.connectorDelta", "an observer that only notifies"],
-      ["sentinels.repeatDetector", "an observer that only notifies"],
-      ["sentinels.triage.enabled", "bounded by its budget, which is classified"],
-      ["sentinels.triage.model", "a model alias"],
-      ["sentinels.triage.timeoutMs", "timeout"],
-      ["channels.telegram.enabled", "off by default"],
-      ["channels.telegram.botTokenEnv", "the name of a variable"],
-      ["channels.telegram.chatId", "empty by default: nowhere"],
-      ["channels.telegram.minTone", "what is worth a message"],
-      ["channels.telegram.inbound", "off by default"],
-      ["channels.push", "off by default"],
-    ];
-    const unclassified = leaves.filter(
-      (leaf) =>
-        !closed.some((re) => new RegExp(`^${re}$`).test(leaf)) &&
-        !OPENS_NOTHING.some(([prefix]) => leaf.startsWith(prefix)),
+    const closed = SETTINGS_FAIL_CLOSED.map((r) => new RegExp(`^${r.path.replace(/\*/g, "[^.]+")}$`));
+    /**
+     * Every other leaf, by its exact name, and why it opens nothing. A leaf that is not here, or here and no
+     * longer in the schema, fails: a field added to the schema (under `providers.`, `channels.push.`, `memory.`
+     * or anywhere) has to be decided one way or the other.
+     */
+    const OPENS_NOTHING: Record<string, string> = {
+      version: "bookkeeping",
+      systemName: "a label",
+      language: "presentation",
+      theme: "presentation",
+      accentColor: "presentation",
+      port: "where the loopback listener is; no value widens who may connect",
+      bindAddress: "default is loopback, the narrowest; anything else needs an approval to take effect",
+      timezone: "scheduling",
+      autostart: "default off; an unreadable value reads off",
+      setupCompleted: "whether the wizard ran",
+      defaultProvider: "which provider a run uses by default; it still has to be enabled",
+      "providers.*.enabled": "default off; an unreadable value reads off",
+      "providers.*.defaultModel": "a model name",
+      "providers.*.defaultEffort": "how hard a model thinks",
+      "remote.enabled": "default off; an unreadable value reads off",
+      "remote.allowedHosts": "default empty: nobody",
+      "remote.tls.enabled": "default off; only removes a listener, the http one stays where bindAddress says",
+      "remote.tls.port": "a port for the listener above",
+      "marketplace.registries": "default empty: no registry",
+      "updates.check": "default off: no outbound request",
+      "indexedFolders.*.path": "names a folder; an entry without a readable path is removed whole",
+      "indexedFolders.*.area": "a label",
+      areas: "labels",
+      "limits.maxConcurrentRuns": "resource use, not permission",
+      "limits.skillNotesMax": "size",
+      "limits.defaultTimeoutMs": "size",
+      "limits.logRetentionDays": "retention (never closed to a shorter one: that would delete data)",
+      "limits.logMaxFileBytes": "size",
+      "limits.maxIndexedFileBytes": "size",
+      "limits.previewMaxBytes": "size",
+      "limits.runRetentionDays": "retention (never closed to a shorter one: that would delete data)",
+      "limits.runRetentionMax": "retention (never closed to a smaller one: that would delete data)",
+      "limits.backupRetention": "retention; sealed backups only",
+      "limits.routineHistoryRetentionDays":
+        "retention (never closed to a shorter one: that would delete data)",
+      "limits.toolApprovalTimeoutMs": "how long a prompt waits before it is denied",
+      favoriteSkills: "labels",
+      "routines.allowWebhooks": "default off; an unreadable value reads off",
+      "routines.heartbeatIntervalMinutes": "scheduling",
+      "routines.heartbeatOkToken": "a token a quiet heartbeat prints",
+      "connectors.dataCacheTtlMs": "cache",
+      "connectors.dataTimeoutMs": "timeout",
+      "connectors.allowedCommands": "default empty: only the base allowlist",
+      "memory.journalBudgetTokens": "a token budget",
+      "sentinels.fsWatch.enabled": "default off; an unreadable value reads off",
+      "sentinels.fsWatch.debounceMs": "timing",
+      "sentinels.repeatedFailure.threshold": "a count for a notification",
+      "sentinels.repeatedFailure.windowHours": "a window for a notification",
+      "sentinels.silentRoutine.factor": "a factor for a notification",
+      "sentinels.connectorDelta.maxItems":
+        "items read per check, while the sentinel is on (its switch is closed)",
+      "sentinels.repeatDetector.days": "a window for a notification",
+      "sentinels.repeatDetector.minRuns": "a count for a notification",
+      "sentinels.repeatDetector.similarity": "a threshold for a notification",
+      "sentinels.triage.model": "a model alias",
+      "sentinels.triage.timeoutMs": "timeout",
+      "channels.telegram.enabled": "default off; an unreadable value reads off",
+      "channels.telegram.botTokenEnv": "the name of a variable",
+      "channels.telegram.chatId":
+        "default empty: nowhere; an unreadable id reads empty and the channel does not start",
+      "channels.telegram.minTone": "what is worth a message",
+      "channels.telegram.inbound": "default off; an unreadable value reads off",
+      "channels.push.enabled": "default off; an unreadable value reads off",
+      "channels.push.minTone": "what is worth a message",
+      "channels.push.subject": "a contact address for the push service",
+    };
+    const unclassified = [...normalized].filter(
+      (leaf) => !closed.some((re) => re.test(leaf)) && !(leaf in OPENS_NOTHING),
     );
     expect(
       unclassified,
       "a settings leaf nobody classified: add it to SETTINGS_FAIL_CLOSED or say why it opens nothing",
     ).toEqual([]);
+    const stale = Object.keys(OPENS_NOTHING).filter(
+      (leaf) => !normalized.has(leaf) || closed.some((re) => re.test(leaf)),
+    );
+    expect(stale, "listed as opening nothing but gone from the schema, or also closed").toEqual([]);
   });
 
   it("C47 more invalid values than a file can reasonably hold are read as the closed defaults, without failing", () => {
@@ -647,5 +734,95 @@ describe("S3 settings tolerate an invalid field", () => {
     expect(fs.readFileSync(stranger.paths.settingsFile, "utf8")).toBe(text);
     expect(fs.statSync(stranger.paths.settingsFile).mtimeMs).toBe(before);
     expect(fs.existsSync(`${stranger.paths.settingsFile}.v1.bak`)).toBe(false);
+  });
+
+  it("C69 copies of an unreadable file are told apart by what is in them, and only the ones this code wrote are touched", async () => {
+    const { paths, store, write } = setup();
+    // The same bytes, read again later (a new millisecond): still one copy.
+    write("{ not json");
+    expect(() => store.load()).toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(() => store.load()).toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(() => new SettingsStore(paths).load()).toThrow();
+    const copies = () => fs.readdirSync(paths.config).filter((n) => n.startsWith("settings.json.corrupt."));
+    expect(copies()).toHaveLength(1);
+
+    // What the owner keeps next to it is theirs: a folder with a copy's name, a note, a link.
+    fs.mkdirSync(path.join(paths.config, "settings.json.corrupt.1"));
+    fs.writeFileSync(path.join(paths.config, "settings.json.corrupt.notes"), "my notes");
+    if (POSIX)
+      fs.symlinkSync(
+        path.join(paths.config, "settings.json.corrupt.notes"),
+        path.join(paths.config, "settings.json.corrupt.2"),
+      );
+    for (let i = 0; i < 8; i++) {
+      write(`{ not json ${i}`);
+      expect(() => store.load(), "the load still stops with the cause, not with a failure to prune").toThrow(
+        /settings\.json is invalid.*Fix or delete/s,
+      );
+    }
+    expect(fs.statSync(path.join(paths.config, "settings.json.corrupt.1")).isDirectory()).toBe(true);
+    expect(fs.readFileSync(path.join(paths.config, "settings.json.corrupt.notes"), "utf8")).toBe("my notes");
+    if (POSIX)
+      expect(fs.lstatSync(path.join(paths.config, "settings.json.corrupt.2")).isSymbolicLink()).toBe(true);
+    const mine = fs
+      .readdirSync(paths.config)
+      .filter(
+        (n) => /^settings\.json\.corrupt\.\d+$/.test(n) && fs.lstatSync(path.join(paths.config, n)).isFile(),
+      );
+    expect(mine.length).toBeLessThanOrEqual(5);
+  });
+
+  it("C70 a link is not a copy, a failed copy is told once per process, and the log says which fields read closed", () => {
+    // A link to a file that holds the very same bytes does not count as having kept them.
+    if (POSIX) {
+      const { paths, store, write } = setup();
+      const text = write({ version: 2, port: "abc" });
+      const elsewhere = path.join(paths.config, "elsewhere.txt");
+      fs.writeFileSync(elsewhere, text);
+      fs.symlinkSync(elsewhere, `${paths.settingsFile}.invalid`);
+      store.load();
+      const hash = crypto.createHash("sha256").update(text).digest("hex").slice(0, 12);
+      expect(fs.readFileSync(`${paths.settingsFile}.invalid.${hash}`, "utf8")).toBe(text);
+      expect(fs.lstatSync(`${paths.settingsFile}.invalid`).isSymbolicLink()).toBe(true);
+    }
+
+    // When no name can hold the original, the same file read again by the same process is not logged again.
+    if (POSIX) {
+      const blocked = setup();
+      const text = blocked.write({ version: 2, port: "abc" });
+      const hash = crypto.createHash("sha256").update(text).digest("hex").slice(0, 12);
+      for (const name of [
+        ".invalid",
+        `.invalid.${hash}`,
+        ...Array.from({ length: 8 }, (_, i) => `.invalid.${hash}-${i + 1}`),
+      ]) {
+        fs.mkdirSync(`${blocked.paths.settingsFile}${name}`);
+      }
+      blocked.store.load();
+      blocked.store.invalidate();
+      blocked.store.load();
+      blocked.store.invalidate();
+      blocked.store.load();
+      const lines = fs
+        .readFileSync(path.join(blocked.paths.logs, "settings.jsonl"), "utf8")
+        .trim()
+        .split("\n");
+      expect(lines).toHaveLength(1);
+      expect(JSON.parse(lines[0]!)).toMatchObject({ path: "port", preserved: null });
+    }
+
+    // The log marks the fields that read closed, and only those.
+    const { paths, store, write } = setup();
+    write({ version: 2, port: "abc", securityProfile: "nope", limits: "gone", memorySkills: [1] });
+    store.load();
+    const records = fs
+      .readFileSync(path.join(paths.logs, "settings.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { path: string; closed?: true });
+    const closed = Object.fromEntries(records.map((r) => [r.path, r.closed === true]));
+    expect(closed).toEqual({ port: false, securityProfile: true, limits: true, "memorySkills.0": true });
   });
 });

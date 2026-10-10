@@ -203,6 +203,7 @@ export {
   listBackups,
   pruneBackups,
   readRestorePending,
+  RestoreRecoveryError,
   recoverInterruptedRestore,
   restoreBackup,
   restorePendingDir,
@@ -287,6 +288,7 @@ export { parseSkillFile, type ParsedSkillFile } from "./skills/parse.js";
 export { rotateFile, pruneRotated } from "./logs/jsonl.js";
 export { type StoreProblem } from "./routines/store.js";
 export { deepMergeSettings, type SettingsPatch } from "./config/store.js";
+export { RestoreInProgressError, RestoreLock, withRestoreLock } from "./restoreLock.js";
 export {
   EngineLockedError,
   OwnerLock,

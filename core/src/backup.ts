@@ -19,8 +19,7 @@ import {
   type Mount,
 } from "./backupManifest.js";
 import { atomicWrite } from "./config/atomicWrite.js";
-import { lockIsStale, realProbe } from "./ownerLock.js";
-import { processStartMarker } from "./processIdentity.js";
+import { withRestoreLock } from "./restoreLock.js";
 
 export type { BackupInfo };
 
@@ -52,6 +51,9 @@ const RESTORABLE = [
   "config/sync-manifest.json",
   "config/db/mordomo.db",
 ] as const;
+
+/** How long a backup waits for the restore lock: other backups hold it for an instant, a restore for minutes. */
+const BACKUP_GUARD_WAIT_MS = 3000;
 
 const BACKUP_NAME = /^full-[A-Za-z0-9-]{1,80}$/;
 
@@ -282,8 +284,18 @@ export function restoreBackup(
   name: string,
   options: RestoreOptions = {},
 ): { safetyBackup: BackupInfo } {
+  // One restore at a time, and none while another process undoes a dead one: not waiting, a second is refused.
+  return withRestoreLock(paths, 0, () => restoreBackupLocked(paths, name, options));
+}
+
+/** `restoreBackup` for a caller that already holds the restore lock. */
+export function restoreBackupLocked(
+  paths: MordomoPaths,
+  name: string,
+  options: RestoreOptions = {},
+): { safetyBackup: BackupInfo } {
   const src = backupFolder(paths, name);
-  recoverInterruptedRestore(paths);
+  recoverLocked(paths);
   const manifest = readManifest(src);
   if (manifest === "invalid") throw invalidBackup(name, [{ path: MANIFEST_NAME, kind: "checksum" }]);
   if (manifest === "absent" && options.allowUnverified !== true) throw unsealedBackup(name);
@@ -317,7 +329,6 @@ export function restoreBackup(
   const staging = fs.mkdtempSync(path.join(paths.home, `.restore-${process.pid}-`));
   const journal: RestoreJournal = {
     pid: process.pid,
-    procStart: processStartMarker(process.pid),
     phase: "staging",
     entries: [],
   };
@@ -436,8 +447,8 @@ export function restoreBackup(
 // ---- Restore journal: a restore that dies half way is undone, never left half applied -----------------------
 
 interface RestoreJournal {
+  /** Whose restore it was (for a human reading the folder; the lock is what says it is over). */
   pid: number;
-  procStart: string | null;
   /** `staging`: nothing live was touched; `installing`: targets may have been moved; `done`: all installed. */
   phase: "staging" | "installing" | "done";
   entries: Array<{ target: string; old: string; staged: string; hadTarget: boolean }>;
@@ -455,7 +466,6 @@ function readJournal(staging: string): RestoreJournal | null {
     if (typeof raw.pid !== "number" || !Array.isArray(raw.entries)) return null;
     return {
       pid: raw.pid,
-      procStart: typeof raw.procStart === "string" ? raw.procStart : null,
       phase: raw.phase === "installing" || raw.phase === "done" ? raw.phase : "staging",
       entries: raw.entries,
     };
@@ -464,51 +474,107 @@ function readJournal(staging: string): RestoreJournal | null {
   }
 }
 
+/** The only names a restore's staging folder has, and it is a direct child of the home. */
+const STAGING_NAME = /^\.restore-\d+-[A-Za-z0-9]+$/;
+
 /**
- * Before anything seals the home (a backup): undo restores whose process is gone, and refuse while one is running.
+ * Does this journal describe a restore THIS code wrote? A journal is a list of paths to delete and rename, so one
+ * that points anywhere but at the eleven things a restore replaces, or at files outside its own staging folder,
+ * is not acted upon (anyone who can write to the home could plant one).
  */
-function assertNoRestoreInProgress(paths: MordomoPaths): void {
-  recoverInterruptedRestore(paths);
-  let running: string[] = [];
-  try {
-    running = fs.readdirSync(paths.home).filter((n) => n.startsWith(".restore-"));
-  } catch {
-    return;
-  }
-  if (running.length > 0) {
-    throw new Error(
-      `A restore is in progress (${running[0]}): its files are not all in place yet. Try again when it has finished.`,
+function journalIsOurs(paths: MordomoPaths, staging: string, journal: RestoreJournal): boolean {
+  const targets = new Set(
+    [
+      paths.skills,
+      paths.memory,
+      paths.routines,
+      paths.connectors,
+      paths.artifacts,
+      paths.settingsFile,
+      paths.uiPreferencesFile,
+      paths.syncManifest,
+      paths.dbFile,
+      `${paths.dbFile}-wal`,
+      `${paths.dbFile}-shm`,
+    ].map((target) => path.resolve(target)),
+  );
+  return journal.entries.every((entry, index) => {
+    if (
+      typeof entry?.target !== "string" ||
+      typeof entry.old !== "string" ||
+      typeof entry.staged !== "string"
+    )
+      return false;
+    return (
+      targets.has(path.resolve(entry.target)) &&
+      path.resolve(entry.old) === path.join(staging, `old-${index}`) &&
+      path.resolve(entry.staged) === path.join(staging, `new-${index}`) &&
+      typeof entry.hadTarget === "boolean"
     );
+  });
+}
+
+/** An interrupted restore that cannot be put back: where its files are, why, and what to do by hand. */
+export class RestoreRecoveryError extends Error {
+  readonly code = "restore_recovery_failed";
+  constructor(staging: string, causes: unknown[]) {
+    const first = causes[0] instanceof Error ? causes[0].message : String(causes[0]);
+    super(
+      `An interrupted restore could not be undone (${first}). Its files are in ${staging}: for each entry of ` +
+        `${JOURNAL} there, move old-N back over its target, then delete the folder. Nothing else was touched.`,
+      { cause: causes[0] },
+    );
+    this.name = "RestoreRecoveryError";
   }
 }
 
 /**
- * Undo restores whose process is gone: for each `.restore-*` folder in the home whose journal names a process that
- * is no longer running (or that is not this one), put every target that was moved aside back, remove what was
- * installed from the staging, and remove the folder. A restore that finished (`done`) only has its folder
- * removed. One whose process is alive is left alone. Returns the folders it dealt with.
+ * Before anything seals the home (a backup): undo what a dead restore left, and refuse while a restore is running
+ * (the lock is held by another process).
  */
-export function recoverInterruptedRestore(paths: MordomoPaths): string[] {
+function assertNoRestoreInProgress(paths: MordomoPaths): void {
+  // Other backups take the lock for an instant, too: wait a little for them, not for a restore.
+  withRestoreLock(paths, BACKUP_GUARD_WAIT_MS, () => recoverLocked(paths));
+}
+
+/**
+ * Undo restores that died: for each `.restore-*` folder in the home, put every target that was moved aside back,
+ * remove what was installed from the staging, and remove the folder. A restore that finished (`done`) only has its
+ * folder removed; a folder with no journal (its process died before it) touched nothing and is removed.
+ *
+ * It takes the restore lock, so it is one process at a time and never while a restore is running: when it has the
+ * lock, no restore is alive, and every folder it finds is debris. Several commands finding the same dead restore
+ * at once therefore queue up, and the later ones find nothing left. Waits up to `waitMs` for the lock, then
+ * throws `RestoreInProgressError`. Returns the folders it dealt with.
+ */
+export function recoverInterruptedRestore(paths: MordomoPaths, waitMs = 10_000): string[] {
+  return withRestoreLock(paths, waitMs, () => recoverLocked(paths));
+}
+
+/** `recoverInterruptedRestore` for a caller that holds the restore lock. */
+export function recoverLocked(paths: MordomoPaths): string[] {
   let names: string[];
   try {
-    names = fs.readdirSync(paths.home).filter((n) => n.startsWith(".restore-"));
+    names = fs.readdirSync(paths.home).filter((n) => STAGING_NAME.test(n));
   } catch {
     return [];
   }
   const recovered: string[] = [];
   for (const name of names) {
     const staging = path.join(paths.home, name);
+    try {
+      // A direct child of the home that is a real folder, never a link to somewhere else.
+      if (!fs.lstatSync(staging).isDirectory()) continue;
+    } catch {
+      continue;
+    }
     const journal = readJournal(staging);
     if (journal === null) {
-      // No journal: nothing live was touched. It is still being made by a live process (its pid is in the name),
-      // or its process died before writing it and the folder is only debris.
-      const owner = /^\.restore-(\d+)-/.exec(name);
-      if (owner && !lockIsStale({ pid: Number(owner[1]) }, realProbe, process.pid)) continue;
       fs.rmSync(staging, { recursive: true, force: true });
       recovered.push(name);
       continue;
     }
-    if (!lockIsStale({ pid: journal.pid, procStart: journal.procStart }, realProbe, process.pid)) continue;
+    if (!journalIsOurs(paths, staging, journal)) continue;
     const failures: unknown[] = [];
     if (journal.phase === "installing") {
       for (const entry of [...journal.entries].reverse()) {
@@ -524,12 +590,7 @@ export function recoverInterruptedRestore(paths: MordomoPaths): string[] {
         }
       }
     }
-    if (failures.length > 0) {
-      throw new AggregateError(
-        failures,
-        `An interrupted restore could not be undone. Preserved files: ${staging}`,
-      );
-    }
+    if (failures.length > 0) throw new RestoreRecoveryError(staging, failures);
     fs.rmSync(staging, { recursive: true, force: true });
     recovered.push(name);
   }
@@ -604,7 +665,12 @@ export function clearRestorePending(paths: MordomoPaths): void {
  * staged copy is moved back into `backups/` first.
  */
 export function applyPendingRestore(paths: MordomoPaths): { applied: RestorePending | null } {
-  recoverInterruptedRestore(paths);
+  return withRestoreLock(paths, 10_000, () => applyPendingRestoreLocked(paths));
+}
+
+/** `applyPendingRestore` for a caller that holds the restore lock (the engine, while it builds). */
+export function applyPendingRestoreLocked(paths: MordomoPaths): { applied: RestorePending | null } {
+  recoverLocked(paths);
   const pending = readRestorePending(paths);
   if (!pending) return { applied: null };
   const original = path.join(paths.backups, pending.name);
@@ -612,7 +678,7 @@ export function applyPendingRestore(paths: MordomoPaths): { applied: RestorePend
     fs.cpSync(pending.stagedPath, original, { recursive: true });
   }
   try {
-    restoreBackup(paths, pending.name);
+    restoreBackupLocked(paths, pending.name);
   } finally {
     clearRestorePending(paths);
   }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import crypto from "node:crypto";
+import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -13,8 +14,10 @@ import {
   createBackup,
   listBackups,
   openDb,
-  processStartMarker,
   readRestorePending,
+  RestoreInProgressError,
+  RestoreLock,
+  RestoreRecoveryError,
   recoverInterruptedRestore,
   pruneBackups,
   restoreBackup,
@@ -71,7 +74,7 @@ const stagingFolders = (paths: MordomoPaths) =>
   fs.readdirSync(paths.home).filter((n) => n.startsWith(".restore-"));
 
 /** A home with something in every set, a backup of it, and live files that have moved on since. */
-async function fixture(options: { link?: boolean } = {}) {
+async function fixture(options: { link?: boolean; bulk?: number } = {}) {
   const home = makeTempHome("mordomo-dados-backup-");
   cleanups.push(home.cleanup);
   const { paths } = home;
@@ -81,8 +84,13 @@ async function fixture(options: { link?: boolean } = {}) {
   write(path.join(paths.connectors, "c.json"), '{"id":"c"}');
   if (options.link && POSIX)
     fs.symlinkSync(path.join(paths.skills, "x", "SKILL.md"), path.join(paths.skills, "x", "link"));
+  for (let i = 0; i < (options.bulk ?? 0); i++) {
+    write(path.join(paths.skills, "big", `f${i}.md`), `skill file ${i}\n`);
+    write(path.join(paths.memory, "bulk", `n${i}.md`), `memory note ${i}\n`);
+  }
   new SettingsStore(paths).save(SettingsSchema.parse({ systemName: "Backed" }));
   const { db } = openDb(paths);
+  db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('marker', 'backup')").run();
   const backup = await createBackup(paths, db);
   db.close();
   write(path.join(paths.memory, "note.md"), "note CURRENT\n");
@@ -125,15 +133,37 @@ function killer(): Promise<string> {
   );
   return killScript;
 }
-async function crashedRestore(env: Record<string, string>) {
-  const fx = await fixture();
+async function crashedRestore(env: Record<string, string>, options: { bulk?: number } = {}) {
+  const fx = await fixture(options);
   const before = liveState(fx.paths);
   const result = await runChild(await killer(), { HOME_DIR: fx.home, BACKUP_NAME: fx.backup.name, ...env });
   expect(result.signal, result.stderr).toBe("SIGKILL");
   expect(stagingFolders(fx.paths)).toHaveLength(1);
   return { ...fx, before };
 }
-const MARKER_KNOWN = processStartMarker(process.pid) !== null;
+/** A child that holds the restore lock until it is killed: a restore that is running in another process. */
+async function startHolder(home: string): Promise<ChildProcess & { pid: number }> {
+  const script = await bundleChild(
+    "restore-lock-holder",
+    [
+      `import { RestoreLock } from ${src("core/src/restoreLock.ts")};`,
+      `import { resolvePaths } from ${src("core/src/paths.ts")};`,
+      "RestoreLock.acquire(resolvePaths(process.env.HOME_DIR), 0);",
+      'process.stdout.write("held\\n");',
+      "setInterval(() => {}, 1000);",
+    ].join("\n"),
+  );
+  const child = spawn(process.execPath, [script], {
+    env: { ...process.env, HOME_DIR: home },
+    stdio: ["ignore", "pipe", "inherit"],
+  });
+  children.push(child);
+  await new Promise<void>((resolve, reject) => {
+    child.stdout.once("data", () => resolve());
+    child.once("exit", (code) => reject(new Error(`holder exited ${code}`)));
+  });
+  return child as ChildProcess & { pid: number };
+}
 
 describe("S4 backups are sealed, verified and kept in number", () => {
   it("C27 a backup carries a manifest of everything in it", async () => {
@@ -335,23 +365,87 @@ describe("S4 backups are sealed, verified and kept in number", () => {
     }
   }, 180_000);
 
-  it("C32 a restore in progress is left alone", async () => {
+  it("C55 a restore that dies after it installed everything is kept, not undone", async () => {
+    const crashed = await crashedRestore({ KILL_AT: "0", KILL_ON_CLEANUP: "1" });
+    const journal = JSON.parse(
+      fs.readFileSync(
+        path.join(crashed.paths.home, stagingFolders(crashed.paths)[0]!, "JOURNAL.json"),
+        "utf8",
+      ),
+    ) as { phase: string };
+    expect(journal.phase).toBe("done");
+    recoverInterruptedRestore(crashed.paths);
+    expect(fs.readFileSync(path.join(crashed.paths.memory, "note.md"), "utf8")).toBe("note v1\n");
+    expect(JSON.parse(fs.readFileSync(crashed.paths.settingsFile, "utf8")).systemName).toBe("Backed");
+    expect(stagingFolders(crashed.paths)).toEqual([]);
+  }, 60_000);
+
+  it("C58 a restore that fails in this process after any install puts everything back", async () => {
+    const real = fs.renameSync.bind(fs);
+    const staged = (from: unknown, to: unknown) =>
+      (String(from).includes(".restore-") || String(to).includes(".restore-")) &&
+      !String(from).includes("JOURNAL.json") &&
+      !String(to).includes("JOURNAL.json");
+    const dry = await fixture();
+    let total = 0;
+    vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      if (staged(from, to)) total++;
+      return real(from, to);
+    });
+    restoreBackup(dry.paths, dry.backup.name);
+    vi.restoreAllMocks();
+    expect(total).toBeGreaterThan(8);
+
+    for (let k = 1; k <= total; k++) {
+      const { paths, backup } = await fixture();
+      const before = liveState(paths);
+      let seen = 0;
+      vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+        if (staged(from, to) && ++seen === k) throw new Error("Injected install failure");
+        return real(from, to);
+      });
+      try {
+        expect(() => restoreBackup(paths, backup.name), `k=${k}`).toThrow(/Injected/);
+      } finally {
+        vi.restoreAllMocks();
+      }
+      expect(liveState(paths), `k=${k}`).toEqual(before);
+      expect(stagingFolders(paths), `k=${k}`).toEqual([]);
+    }
+  }, 120_000);
+
+  it("C59 a backup whose database is empty or from a newer version is refused even when unsealed", async () => {
+    for (const version of [0, 9999]) {
+      const { paths, backup } = await fixture();
+      fs.rmSync(inBackup(backup, "manifest.json"));
+      const raw = new Database(inBackup(backup, "config/db/mordomo.db"));
+      raw.pragma("wal_checkpoint(TRUNCATE)");
+      raw.pragma("journal_mode = DELETE");
+      raw.pragma(`user_version = ${version}`);
+      raw.close();
+      const before = liveState(paths);
+      expect(() => restoreBackup(paths, backup.name, { allowUnverified: true }), String(version)).toThrow(
+        /Invalid backup database/,
+      );
+      expect(liveState(paths)).toEqual(before);
+    }
+  });
+
+  it("C32 a restore that is running is left alone, and its dead leftovers are undone as soon as it is gone", async () => {
     const { paths } = await fixture();
-    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
-    children.push(child);
-    await new Promise((resolve) => child.once("spawn", resolve));
-    const staging = path.join(paths.home, `.restore-${child.pid}-abc123`);
-    const moved = path.join(paths.memory);
+    const owner = await startHolder(paths.home);
+    // What the restore has done so far: the memory folder moved aside, its copy not yet in.
+    const staging = path.join(paths.home, `.restore-${owner.pid}-abc123`);
     write(path.join(staging, "old-0", "note.md"), "the original");
+    fs.rmSync(paths.memory, { recursive: true });
     write(
       path.join(staging, "JOURNAL.json"),
       JSON.stringify({
-        pid: child.pid,
-        procStart: processStartMarker(child.pid!),
+        pid: owner.pid,
         phase: "installing",
         entries: [
           {
-            target: moved,
+            target: paths.memory,
             old: path.join(staging, "old-0"),
             staged: path.join(staging, "new-0"),
             hadTarget: true,
@@ -359,14 +453,13 @@ describe("S4 backups are sealed, verified and kept in number", () => {
         ],
       }),
     );
-    const before = liveState(paths);
-    expect(recoverInterruptedRestore(paths)).toEqual([]);
+    expect(() => recoverInterruptedRestore(paths, 100)).toThrow(RestoreInProgressError);
     expect(fs.existsSync(path.join(staging, "old-0", "note.md"))).toBe(true);
-    expect(liveState(paths)).toEqual(before);
+    expect(fs.existsSync(paths.memory)).toBe(false);
 
-    // The same journal once its process is gone is undone.
-    const exited = new Promise((resolve) => child.once("exit", resolve));
-    child.kill("SIGKILL");
+    // The process dies: the kernel lets go of the lock, and the same journal is now undone.
+    const exited = new Promise((resolve) => owner.once("exit", resolve));
+    owner.kill("SIGKILL");
     await exited;
     expect(recoverInterruptedRestore(paths)).toEqual([path.basename(staging)]);
     expect(fs.readFileSync(path.join(paths.memory, "note.md"), "utf8")).toBe("the original");
@@ -418,20 +511,9 @@ describe("S4 backups are sealed, verified and kept in number", () => {
     const newest = listBackups(e2.paths)[0]!;
     expect(fs.readFileSync(path.join(newest.path, "memory", "note.md"), "utf8")).toBe(pre);
 
-    // A restore that is still running is refused, not sealed.
+    // A restore that is still running (another process holds the lock) is refused, not sealed.
     const live = await fixture();
-    const owner = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
-    children.push(owner);
-    await new Promise((resolve) => owner.once("spawn", resolve));
-    write(
-      path.join(live.paths.home, `.restore-${owner.pid}-abc123`, "JOURNAL.json"),
-      JSON.stringify({
-        pid: owner.pid,
-        procStart: processStartMarker(owner.pid!),
-        phase: "installing",
-        entries: [],
-      }),
-    );
+    await startHolder(live.paths.home);
     const { db: liveDb } = openDb(live.paths);
     try {
       await expect(createBackup(live.paths, liveDb)).rejects.toThrow(/restore is in progress/);
@@ -440,109 +522,378 @@ describe("S4 backups are sealed, verified and kept in number", () => {
     }
   }, 120_000);
 
-  it("C55 a restore that dies after it installed everything is kept, not undone", async () => {
-    const crashed = await crashedRestore({ KILL_AT: "0", KILL_ON_CLEANUP: "1" });
-    const journal = JSON.parse(
-      fs.readFileSync(
-        path.join(crashed.paths.home, stagingFolders(crashed.paths)[0]!, "JOURNAL.json"),
-        "utf8",
-      ),
-    ) as { phase: string };
-    expect(journal.phase).toBe("done");
-    recoverInterruptedRestore(crashed.paths);
-    expect(fs.readFileSync(path.join(crashed.paths.memory, "note.md"), "utf8")).toBe("note v1\n");
-    expect(JSON.parse(fs.readFileSync(crashed.paths.settingsFile, "utf8")).systemName).toBe("Backed");
-    expect(stagingFolders(crashed.paths)).toEqual([]);
-  }, 60_000);
-
-  it.skipIf(!MARKER_KNOWN)(
-    "C56 the journal names the process by its start, so a recycled pid is not mistaken for it",
-    async () => {
-      // The restore that wrote this journal is dead; its pid now belongs to a live program that started later.
-      const crashed = await crashedRestore({ KILL_AT: "9" });
-      const staging = path.join(crashed.paths.home, stagingFolders(crashed.paths)[0]!);
-      const journalFile = path.join(staging, "JOURNAL.json");
-      const journal = JSON.parse(fs.readFileSync(journalFile, "utf8")) as { pid: number; procStart: unknown };
-      expect(typeof journal.procStart).toBe("string");
-      expect(String(journal.procStart)).toMatch(/^(linux:|ps:|win:)/);
-      const stranger = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
-      children.push(stranger);
-      await new Promise((resolve) => stranger.once("spawn", resolve));
-      // The stranger takes the dead owner's place in the journal: a live pid whose start is not the recorded one.
-      fs.writeFileSync(journalFile, JSON.stringify({ ...journal, pid: stranger.pid }));
-      recoverInterruptedRestore(crashed.paths);
-      expect(liveState(crashed.paths)).toEqual(crashed.before);
-      expect(stagingFolders(crashed.paths)).toEqual([]);
-    },
-    60_000,
-  );
-
-  it("C57 a folder without a journal is debris only once its process is gone", async () => {
+  it("C56 a restore lock is released by the kernel when its process dies, with no pid to judge", async () => {
     const { paths } = await fixture();
-    const owner = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
-    children.push(owner);
-    await new Promise((resolve) => owner.once("spawn", resolve));
-    const mine = path.join(paths.home, `.restore-${owner.pid}-xyz789`);
-    fs.mkdirSync(mine);
-    expect(recoverInterruptedRestore(paths)).toEqual([]);
-    expect(fs.existsSync(mine)).toBe(true);
-
+    const owner = await startHolder(paths.home);
+    expect(() => RestoreLock.acquire(paths, 0)).toThrow(RestoreInProgressError);
     const exited = new Promise((resolve) => owner.once("exit", resolve));
     owner.kill("SIGKILL");
     await exited;
-    expect(recoverInterruptedRestore(paths)).toEqual([path.basename(mine)]);
-    expect(fs.existsSync(mine)).toBe(false);
+    const lock = RestoreLock.acquire(paths, 0); // at once: nothing was left behind to be stale
+    lock.release();
+    expect(() => RestoreLock.acquire(paths, 0).release()).not.toThrow();
   });
 
-  it("C58 a restore that fails in this process after any install puts everything back", async () => {
-    const real = fs.renameSync.bind(fs);
-    const staged = (from: unknown, to: unknown) =>
-      (String(from).includes(".restore-") || String(to).includes(".restore-")) &&
-      !String(from).includes("JOURNAL.json") &&
-      !String(to).includes("JOURNAL.json");
+  it("C57 a folder without a journal is debris once the lock is ours, and not before", async () => {
+    const { paths } = await fixture();
+    const debris = path.join(paths.home, `.restore-4242-xyz789`);
+    fs.mkdirSync(debris);
+    write(path.join(debris, "new-0", "x"), "x");
+    const owner = await startHolder(paths.home);
+    expect(() => recoverInterruptedRestore(paths, 100)).toThrow(RestoreInProgressError);
+    expect(fs.existsSync(debris)).toBe(true);
+    const exited = new Promise((resolve) => owner.once("exit", resolve));
+    owner.kill("SIGKILL");
+    await exited;
+    expect(recoverInterruptedRestore(paths)).toEqual([path.basename(debris)]);
+    expect(fs.existsSync(debris)).toBe(false);
+  });
+
+  it("C64 several commands finding the same dead restore at once undo it once, and lose nothing", async () => {
+    const script = await bundleChild(
+      "recover-together",
+      [
+        `import { resolvePaths } from ${src("core/src/paths.ts")};`,
+        `import { recoverInterruptedRestore } from ${src("core/src/backup.ts")};`,
+        `import { barrier } from ${src("tests/helpers/barrier.ts")};`,
+        'barrier(process.env.BARRIER_DIR, "go", Number(process.env.PARTIES));',
+        "process.stdout.write(JSON.stringify(recoverInterruptedRestore(resolvePaths(process.env.HOME_DIR), 60000)));",
+      ].join("\n"),
+    );
+    const parties = 4;
+    for (let round = 0; round < 6; round++) {
+      const crashed = await crashedRestore({ KILL_AT: "9" }, { bulk: 400 });
+      const barrierDir = fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-barrier-"));
+      cleanups.push(() => fs.rmSync(barrierDir, { recursive: true, force: true }));
+      const results = await Promise.all(
+        Array.from({ length: parties }, () =>
+          runChild(script, { HOME_DIR: crashed.home, BARRIER_DIR: barrierDir, PARTIES: String(parties) }),
+        ),
+      );
+      for (const r of results) {
+        expect(r.code, `round ${round}: ${r.stderr}`).toBe(0);
+        expect(r.stderr).not.toContain("could not be undone");
+      }
+      const undone = results.map((r) => (JSON.parse(r.stdout) as string[]).length).sort();
+      expect(undone, `round ${round}: exactly one of them undid it`).toEqual([0, 0, 0, 1]);
+      expect(liveState(crashed.paths), `round ${round}`).toEqual(crashed.before);
+      expect(stagingFolders(crashed.paths), `round ${round}`).toEqual([]);
+    }
+  }, 180_000);
+
+  it("C65 an engine built while a restore is running in another process waits, then refuses, and never opens the database", async () => {
+    const slow = await bundleChild(
+      "restore-slow",
+      [
+        'import fs from "node:fs";',
+        `import { resolvePaths } from ${src("core/src/paths.ts")};`,
+        `import { restoreBackup } from ${src("core/src/backup.ts")};`,
+        "const real = fs.renameSync.bind(fs);",
+        "fs.renameSync = ((from, to) => {",
+        "  real(from, to);",
+        '  if (String(from).endsWith("mordomo.db") && String(to).includes(".restore-")) {',
+        '    process.stdout.write("aside\\n");',
+        "    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.DELAY_MS));",
+        "  }",
+        "});",
+        "restoreBackup(resolvePaths(process.env.HOME_DIR), process.env.BACKUP_NAME);",
+        'process.stdout.write("done\\n");',
+      ].join("\n"),
+    );
+    const { paths, backup, home } = await fixture();
+    const child = spawn(process.execPath, [slow], {
+      env: { ...process.env, HOME_DIR: home, BACKUP_NAME: backup.name, DELAY_MS: "2500" },
+      stdio: ["ignore", "pipe", "inherit"],
+    });
+    children.push(child);
+    const lines: string[] = [];
+    child.stdout.on("data", (d: Buffer) => lines.push(...d.toString().split("\n").filter(Boolean)));
+    await expect.poll(() => lines.includes("aside"), { timeout: 30_000 }).toBe(true);
+    // The database is moved aside and its copy not in yet: a vicinity process that opened it would create an
+    // empty one (and a WAL) and the restored one would end up under it.
+    expect(fs.existsSync(paths.dbFile)).toBe(false);
+    let thrown: unknown;
+    try {
+      new AppContext(home, { restoreWaitMs: 200 });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(RestoreInProgressError);
+    expect((thrown as RestoreInProgressError).statusCode).toBe(409);
+    expect(fs.existsSync(paths.dbFile)).toBe(false);
+    expect(fs.existsSync(`${paths.dbFile}-wal`)).toBe(false);
+    expect(fs.existsSync(`${paths.dbFile}-shm`)).toBe(false);
+
+    await expect.poll(() => lines.includes("done"), { timeout: 30_000 }).toBe(true);
+    // Afterwards the engine builds, on the restored database.
+    const ctx = new AppContext(home);
+    try {
+      expect(ctx.db.prepare("SELECT value FROM meta WHERE key = 'marker'").get()).toEqual({
+        value: "backup",
+      });
+      expect(ctx.db.pragma("integrity_check", { simple: true })).toBe("ok");
+    } finally {
+      ctx.close();
+    }
+  }, 90_000);
+
+  it("C66 a journal this code did not write is not acted upon", async () => {
+    const { paths } = await fixture();
+    const outside = path.join(path.dirname(paths.home), `outside-${process.pid}`);
+    fs.mkdirSync(outside, { recursive: true });
+    write(path.join(outside, "precious.txt"), "do not delete");
+    cleanups.push(() => fs.rmSync(outside, { recursive: true, force: true }));
+    const forged = (staging: string, entries: unknown[]) =>
+      write(
+        path.join(staging, "JOURNAL.json"),
+        JSON.stringify({ pid: 2 ** 30, phase: "installing", entries }),
+      );
+    const entry = (staging: string, target: string, over: Record<string, unknown> = {}) => ({
+      target,
+      old: path.join(staging, "old-0"),
+      staged: path.join(staging, "new-0"),
+      hadTarget: false,
+      ...over,
+    });
+
+    // 1. A target that is not one of the eleven things a restore replaces.
+    const s1 = path.join(paths.home, ".restore-1-aaaaaa");
+    forged(s1, [entry(s1, outside)]);
+    // 2. An old/staged path that is not inside its own staging folder.
+    const s2 = path.join(paths.home, ".restore-2-bbbbbb");
+    forged(s2, [entry(s2, paths.memory, { old: path.join(outside, "precious.txt"), hadTarget: true })]);
+    // 3. A folder whose name is not a staging name.
+    const s3 = path.join(paths.home, ".restore-evil");
+    forged(s3, [entry(s3, outside)]);
+    // 4. A link named like a staging folder, to a folder that holds a forged journal.
+    if (POSIX) {
+      const away = path.join(outside, "away");
+      forged(away, [entry(away, paths.memory)]);
+      fs.symlinkSync(away, path.join(paths.home, ".restore-4-dddddd"));
+    }
+    const before = liveState(paths);
+    expect(recoverInterruptedRestore(paths)).toEqual([]);
+    expect(fs.readFileSync(path.join(outside, "precious.txt"), "utf8")).toBe("do not delete");
+    expect(liveState(paths)).toEqual(before);
+    for (const staging of [s1, s2, s3]) expect(fs.existsSync(staging), staging).toBe(true);
+
+    // 5. The same shape, genuinely ours (a target the restore replaces, paths inside the folder): undone.
+    const good = path.join(paths.home, ".restore-5-eeeeee");
+    write(path.join(good, "old-0", "note.md"), "the original");
+    fs.rmSync(paths.memory, { recursive: true });
+    forged(good, [entry(good, paths.memory, { hadTarget: true })]);
+    expect(recoverInterruptedRestore(paths)).toEqual([path.basename(good)]);
+    expect(fs.readFileSync(path.join(paths.memory, "note.md"), "utf8")).toBe("the original");
+  });
+
+  it("C72 the API answers 409 with its code when a restore is running or the original cannot be kept", async () => {
+    const { paths: seed } = makeTempHome("mordomo-dados-409-");
+    cleanups.push(() => fs.rmSync(seed.home, { recursive: true, force: true }));
+    const ctx = new AppContext(seed.home);
+    const app = await buildServer(ctx);
+    const headers = { "x-mordomo-token": ctx.token() };
+    try {
+      await startHolder(seed.home);
+      const busy = await app.inject({ method: "POST", url: "/api/backups", headers, payload: {} });
+      expect(busy.statusCode).toBe(409);
+      expect(busy.json().error.code).toBe("restore_in_progress");
+      expect(busy.json().error.message).toMatch(/restore is in progress/);
+
+      // A settings.json with an unreadable value, and no name that can hold its copy.
+      const text = JSON.stringify({ version: 2, port: "abc", systemName: "Casa" });
+      fs.writeFileSync(ctx.paths.settingsFile, text);
+      const hash = crypto.createHash("sha256").update(text).digest("hex").slice(0, 12);
+      for (const name of [
+        ".invalid",
+        `.invalid.${hash}`,
+        ...Array.from({ length: 8 }, (_, i) => `.invalid.${hash}-${i + 1}`),
+      ]) {
+        fs.mkdirSync(`${ctx.paths.settingsFile}${name}`);
+      }
+      ctx.settingsStore.invalidate();
+      const refused = await app.inject({
+        method: "PUT",
+        url: "/api/settings",
+        headers,
+        payload: { systemName: "Changed" },
+      });
+      expect(refused.statusCode).toBe(409);
+      expect(refused.json().error.code).toBe("settings_unpreserved");
+      expect(fs.readFileSync(ctx.paths.settingsFile, "utf8")).toBe(text);
+    } finally {
+      await app.close();
+      ctx.close();
+    }
+  });
+
+  it("C73 a restore that cannot be undone, or is still running, is reported with its cause by the commands that find it", async () => {
+    // Cannot be undone: the database was moved aside, then putting it back fails.
+    const script = await killer();
     const dry = await fixture();
-    let total = 0;
+    const finished = await runChild(script, {
+      HOME_DIR: dry.home,
+      BACKUP_NAME: dry.backup.name,
+      KILL_AT: "0",
+    });
+    const total = Number(finished.stdout);
+    const stuck = await crashedRestore({ KILL_AT: String(total - 1) });
+    const real = fs.renameSync.bind(fs);
     vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-      if (staged(from, to)) total++;
+      if (String(from).includes(".restore-") && String(to) === stuck.paths.dbFile) {
+        throw Object.assign(new Error("ENOENT: no such file or directory, rename"), { code: "ENOENT" });
+      }
       return real(from, to);
     });
-    restoreBackup(dry.paths, dry.backup.name);
-    vi.restoreAllMocks();
-    expect(total).toBeGreaterThan(8);
+    let thrown: unknown;
+    try {
+      new AppContext(stuck.home);
+    } catch (error) {
+      thrown = error;
+    } finally {
+      vi.restoreAllMocks();
+    }
+    expect(thrown).toBeInstanceOf(RestoreRecoveryError);
+    const message = (thrown as Error).message;
+    expect(message).toContain("could not be undone");
+    expect(message).toContain("ENOENT");
+    expect(message).toContain(stagingFolders(stuck.paths)[0]!);
+    expect(message).toContain("move old-N back over its target");
+    expect(stagingFolders(stuck.paths)).toHaveLength(1);
+    // The files are all still in the staging folder, so the same recovery finishes the job once it can.
+    expect(recoverInterruptedRestore(stuck.paths)).toHaveLength(1);
+    expect(liveState(stuck.paths)).toEqual(stuck.before);
 
-    for (let k = 1; k <= total; k++) {
-      const { paths, backup } = await fixture();
-      const before = liveState(paths);
-      let seen = 0;
-      vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-        if (staged(from, to) && ++seen === k) throw new Error("Injected install failure");
-        return real(from, to);
-      });
-      try {
-        expect(() => restoreBackup(paths, backup.name), `k=${k}`).toThrow(/Injected/);
-      } finally {
-        vi.restoreAllMocks();
-      }
-      expect(liveState(paths), `k=${k}`).toEqual(before);
-      expect(stagingFolders(paths), `k=${k}`).toEqual([]);
+    // Still running in another process: the command says so and exits 1 (the engine waits 10 s first).
+    ensureCli();
+    const { paths } = await fixture();
+    await startHolder(paths.home);
+    for (const args of [["backup", "--list"]]) {
+      const run = mordomo(paths.home, args);
+      expect(run.status, args.join(" ")).toBe(1);
+      expect(run.stderr, args.join(" ")).toContain("restore is in progress");
     }
   }, 120_000);
 
-  it("C59 a backup whose database is empty or from a newer version is refused even when unsealed", async () => {
-    for (const version of [0, 9999]) {
-      const { paths, backup } = await fixture();
-      fs.rmSync(inBackup(backup, "manifest.json"));
-      const raw = new Database(inBackup(backup, "config/db/mordomo.db"));
-      raw.pragma("wal_checkpoint(TRUNCATE)");
-      raw.pragma("journal_mode = DELETE");
-      raw.pragma(`user_version = ${version}`);
-      raw.close();
-      const before = liveState(paths);
-      expect(() => restoreBackup(paths, backup.name, { allowUnverified: true }), String(version)).toThrow(
-        /Invalid backup database/,
-      );
-      expect(liveState(paths)).toEqual(before);
+  it("C74 retention that loses a race to another process never fails the backup that was made", async () => {
+    // Deterministic halves: a backup that vanishes while it is listed is skipped, and a deletion that fails is
+    // not the backup's failure.
+    const { paths, backup: first } = await fixture();
+    const { db } = openDb(paths);
+    try {
+      const second = await createBackup(paths, db);
+      const real = fs.lstatSync.bind(fs);
+      vi.spyOn(fs, "lstatSync").mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+        if (String(p).includes(second.name) && String(p).endsWith("manifest.json")) {
+          throw Object.assign(new Error("gone"), { code: "ENOENT" });
+        }
+        return (real as (...a: unknown[]) => fs.Stats)(p, ...rest);
+      }) as typeof fs.lstatSync);
+      expect(listBackups(paths).map((b) => b.name)).toEqual([first.name]);
+      vi.restoreAllMocks();
+
+      const realRm = fs.rmSync.bind(fs);
+      vi.spyOn(fs, "rmSync").mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+        if (/[\\\\/]full-[^\\\\/]+$/.test(String(p)))
+          throw Object.assign(new Error("busy"), { code: "EBUSY" });
+        return (realRm as (...a: unknown[]) => void)(p, ...rest);
+      }) as typeof fs.rmSync);
+      await expect(createBackup(paths, db, { keep: 1 })).resolves.toMatchObject({
+        name: expect.stringMatching(/^full-/),
+      });
+      vi.restoreAllMocks();
+    } finally {
+      db.close();
     }
+
+    // And for real: four processes make and prune backups to 1 at the same moment, several times.
+    const script = await bundleChild(
+      "backups-together",
+      [
+        `import { openDb } from ${src("core/src/db/db.ts")};`,
+        `import { resolvePaths } from ${src("core/src/paths.ts")};`,
+        `import { createBackup, listBackups } from ${src("core/src/backup.ts")};`,
+        `import { barrier } from ${src("tests/helpers/barrier.ts")};`,
+        "const paths = resolvePaths(process.env.HOME_DIR);",
+        "const { db } = openDb(paths);",
+        "for (let i = 0; i < 4; i++) {",
+        '  barrier(process.env.BARRIER_DIR, "go-" + i, Number(process.env.PARTIES));',
+        "  await createBackup(paths, db, { keep: 1 });",
+        "  listBackups(paths);",
+        "}",
+        'process.stdout.write("ok");',
+        "db.close();",
+      ].join("\n"),
+    );
+    const real2 = await fixture();
+    const barrierDir = fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-barrier-"));
+    cleanups.push(() => fs.rmSync(barrierDir, { recursive: true, force: true }));
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () =>
+        runChild(script, { HOME_DIR: real2.home, BARRIER_DIR: barrierDir, PARTIES: "4" }),
+      ),
+    );
+    for (const r of results) {
+      expect(r.code, r.stderr).toBe(0);
+      expect(r.stdout).toBe("ok");
+    }
+    expect(listBackups(real2.paths).length).toBeGreaterThanOrEqual(1);
+  }, 120_000);
+
+  it("C75 a restore is not an error because its done mark could not be written, and leaves nothing if its first journal cannot", async () => {
+    const real = fs.renameSync.bind(fs);
+    // N8: the mark that says everything is installed cannot be written.
+    const a = await fixture();
+    vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      if (String(to).endsWith("JOURNAL.json") && fs.readFileSync(from, "utf8").includes('"phase":"done"')) {
+        throw new Error("Injected: cannot write the done mark");
+      }
+      return real(from, to);
+    });
+    try {
+      expect(() => restoreBackup(a.paths, a.backup.name)).not.toThrow();
+    } finally {
+      vi.restoreAllMocks();
+    }
+    expect(fs.readFileSync(path.join(a.paths.memory, "note.md"), "utf8")).toBe("note v1\n");
+    expect(stagingFolders(a.paths)).toEqual([]);
+
+    // N10: the first journal cannot be written at all.
+    const b = await fixture();
+    const before = liveState(b.paths);
+    vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      if (String(to).endsWith("JOURNAL.json")) throw new Error("Injected: no journal");
+      return real(from, to);
+    });
+    try {
+      expect(() => restoreBackup(b.paths, b.backup.name)).toThrow(/Injected: no journal/);
+    } finally {
+      vi.restoreAllMocks();
+    }
+    expect(liveState(b.paths)).toEqual(before);
+    expect(stagingFolders(b.paths)).toEqual([]);
+  });
+
+  it("C76 backups are ordered by the time in their name, and the same time by name", async () => {
+    const { paths, backup } = await fixture();
+    const copy = (name: string, createdAt: number) => {
+      const dest = path.join(paths.backups, name);
+      fs.cpSync(backup.path, dest, { recursive: true });
+      const manifestFile = path.join(dest, "manifest.json");
+      const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8")) as { createdAt: number };
+      manifest.createdAt = createdAt;
+      fs.writeFileSync(manifestFile, JSON.stringify(manifest));
+      return dest;
+    };
+    // Manifests and modification times say the opposite of the names; two names carry the same instant.
+    const newest = "full-2026-01-01T00-00-00-000Z-bbbbbb";
+    const tie = "full-2026-01-01T00-00-00-000Z-aaaaaa";
+    const oldest = "full-2025-12-31T23-59-59-999Z-cccccc";
+    const dirs = [copy(newest, 1), copy(tie, 2), copy(oldest, 3)];
+    fs.rmSync(backup.path, { recursive: true });
+    dirs.forEach((dir, i) => fs.utimesSync(dir, 5000 - i * 1000, 5000 - i * 1000));
+    expect(listBackups(paths).map((b) => b.name)).toEqual([newest, tie, oldest]);
+    expect(pruneBackups(paths, 1).sort()).toEqual([tie, oldest].sort());
+    expect(fs.readdirSync(paths.backups)).toEqual([newest]);
   });
 
   it("C33 the sidecars leave before the database is replaced", async () => {
@@ -856,17 +1207,22 @@ describe("S4 backups are sealed, verified and kept in number", () => {
 // ---- the built CLI (as tests/cli.test.ts) ---------------------------------------------------------------------
 
 const CLI = path.join(repoRoot, "apps", "api", "dist", "cli.js");
-/** The CLI proofs run the built artifact: build it when it is missing instead of passing without asserting. */
+/**
+ * The CLI proofs run the built artifact, so it is built (incrementally: nothing is rebuilt when nothing changed)
+ * once per run - not trusted when it merely exists, a stale one would prove the old code.
+ */
+let cliBuilt = false;
 function ensureCli(): void {
-  if (fs.existsSync(CLI)) return;
+  if (cliBuilt) return;
   const build = spawnSync(
     "npx",
     ["tsc", "-b", "contracts", "core", "adapters/claude", "adapters/cursor", "adapters/codex", "apps/api"],
     { cwd: repoRoot, encoding: "utf8", timeout: 600_000 },
   );
   if (build.status !== 0 || !fs.existsSync(CLI)) {
-    throw new Error(`${CLI} is missing and building it failed:\n${build.stdout}${build.stderr}`);
+    throw new Error(`building ${CLI} failed:\n${build.stdout}${build.stderr}`);
   }
+  cliBuilt = true;
 }
 function mordomo(home: string, args: string[]) {
   const res = spawnSync(process.execPath, [CLI, ...args], {
