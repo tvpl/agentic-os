@@ -441,8 +441,10 @@ describe("Rodada 2 - gaps of the first verification", () => {
         brain: { layout: "rings" },
       });
       fs.writeFileSync(path.join(backup.path, "config", "settings.json"), oldFile);
+      // A backup of that age has no manifest (dados-v2): it is restored on request, trusted as it is.
+      fs.rmSync(path.join(backup.path, "manifest.json"));
       await s.close();
-      restoreBackup(resolvePaths(home), backup.name);
+      restoreBackup(resolvePaths(home), backup.name, { allowUnverified: true });
     } catch (err) {
       await s.close().catch(() => undefined);
       throw err;
@@ -583,8 +585,10 @@ describe("Rodada 3 - gaps of the second verification", () => {
       const live = JSON.stringify({ version: 1, themePreset: "mono", activeSpace: "focus" }) + "\n";
       fs.writeFileSync(prefsFile(s.home), live);
       const liveSettings = fs.readFileSync(settingsFile(s.home), "utf8");
+      // A shape that is not what createBackup writes is not sealed either (dados-v2): restored on request.
+      fs.rmSync(path.join(backup.path, "manifest.json"));
       await s.close();
-      restoreBackup(resolvePaths(s.home), backup.name);
+      restoreBackup(resolvePaths(s.home), backup.name, { allowUnverified: true });
       expect(fs.readFileSync(prefsFile(s.home), "utf8")).toBe(live);
       expect(fs.readFileSync(settingsFile(s.home), "utf8")).toBe(liveSettings);
     } catch (err) {

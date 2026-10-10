@@ -101,8 +101,8 @@ file written by a newer version is never overwritten (`code: "settings_newer"`).
 
 | Module | Responsibility |
 |---|---|
-| `config/` | Zod `SettingsSchema`, atomic file store with an mtime-keyed cache and deep-merge `update()`, local token |
-| `db/` | open + versioned SQL migrations, pre-migration DB backup |
+| `config/` | Zod `SettingsSchema`, atomic file store with an mtime-keyed cache and deep-merge `update()`, local token; a field that fails the schema reads as its default, the file is left alone and the original is kept in `settings.json.invalid` |
+| `db/` | open + versioned SQL migrations (once, in an `EXCLUSIVE` transaction that re-reads the version after the lock), pre-migration snapshot (`VACUUM INTO`), `MigrationError` / `DbNewerVersionError` |
 | `security/` | redaction, path containment (realpath), the safe-read primitive (`safeFs.ts`: the one way a path chosen by a request, a record, an index row or a link is read), id validation for file-backed stores, exclusion matcher, secret blocklist, profiles, approval store |
 | `spawn/` | argv-only spawn, basename allowlist + optional pinned path, timeouts, kill-tree, bounded stdout/stderr capture, `--help` probing helpers |
 | `agents/` | `AgentAdapter` types, shared streaming executor |
@@ -113,7 +113,8 @@ file written by a newer version is never overwritten (`code: "settings_newer"`).
 | `routines/` | JSON store, croner scheduler, missed-run catch-up, retries as linked runs, timezone inheritance, quoted OS unit generation |
 | `connectors/` | registry, credential-free MCP discovery, ranked auditor (max 3) |
 | `sync/` | config compiler: plan → diff → backup → apply with per-file conflict approval |
-| `backup.ts` | online backup (`db.backup()`), restore with pre-restore safety backup, staged restore applied at boot |
+| `backup.ts` / `backupManifest.ts` | online backup (`db.backup()`) sealed with `manifest.json` (SHA-256 per file), restore that verifies the staged copies against it, journals the install and is undone if its process dies, pre-restore safety backup, staged restore applied at boot, retention (`limits.backupRetention`) |
+| `ownerLock.ts` / `processIdentity.ts` | the owner lock of a home: process identity (pid + start time + boot id), stale-lock takeover serialised by the database, release by token |
 
 ## Adapters
 

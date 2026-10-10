@@ -16,14 +16,29 @@ Brain view still sit inside its `settings.json`. Restoring it removes the live
 Artifacts and logs are excluded by default (`--include-artifacts` adds
 artifacts). Backups are plain directories — restorable by hand with `cp -r`.
 
+Each backup is **sealed** with `manifest.json` at its root: the SHA-256 and size of every
+file in it and the target of every link. `mordomo restore` (and the Restore button) checks
+the copies it is about to install against it and refuses a backup that is truncated,
+edited, missing a file or carrying one more, naming the files, before anything of yours
+is touched. A backup made before backups were sealed has no manifest: it is refused with
+`backup_unsealed` unless you restore it from the terminal with `--allow-unverified`.
+`mordomo backup --list` marks those `unsealed`.
+
+The number of backups kept is `limits.backupRetention` (default 10, set through
+`PUT /api/settings`): a new backup deletes the older **sealed** ones beyond that. A backup
+without a manifest, and the one a staged restore points at, are never deleted.
+
 ```bash
 mordomo backup                  # create
 mordomo backup --list           # list
 mordomo restore full-2026-…     # restore (service must be stopped)
+mordomo restore full-2026-… --allow-unverified   # an unsealed backup from an older version
 ```
 
 `restore` always creates a **safety backup of the current state first**, so a
-restore can itself be undone. Restart the service after restoring.
+restore can itself be undone. Restart the service after restoring. A restore applies
+all of it or none of it: if it fails, every file is put back, and if the process dies in
+the middle the next start undoes it.
 
 Automatic backups also happen before: DB migrations, sync-compiler overwrites
 of existing files, and restores.

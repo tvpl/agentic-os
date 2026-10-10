@@ -333,6 +333,8 @@ export const SettingsSchema = z.object({
       runRetentionDays: z.number().int().min(1).default(90),
       /** Hard cap on finished runs kept, newest first (0 = no cap). */
       runRetentionMax: z.number().int().min(0).default(2000),
+      /** Backups kept in `config/backups/`: a new one deletes the sealed ones beyond this many (legacy ones are never deleted). */
+      backupRetention: z.number().int().min(1).default(10),
       /** Rows kept in `routine_history`. */
       routineHistoryRetentionDays: z.number().int().min(1).default(90),
       /** A pending approval older than this is swept to `expired`. */

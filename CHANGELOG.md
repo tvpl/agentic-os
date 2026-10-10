@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Data (dados-v2)**: opening the database from two processes at once migrates it once (the
+  migration runs in an exclusive transaction that re-reads the schema version; a failing
+  migration rolls back and names itself; a database from a newer version is refused untouched;
+  the pre-migration copy is a consistent `VACUUM INTO` snapshot); a process no longer drops
+  SQLite's locks by tightening file modes on an open database. The owner lock records the
+  start identity of its process, so a recycled pid is not mistaken for the owner, and two
+  processes taking over a stale lock can no longer both win. A `settings.json` with an
+  invalid field reads that field as its default, keeps the rest, logs it to
+  `logs/settings.jsonl` and keeps the original in `settings.json.invalid` instead of stopping
+  the service. Backups carry a `manifest.json` with SHA-256 per file; restore refuses a backup
+  that is truncated, edited or incomplete (`422 backup_invalid`), refuses one without a manifest
+  unless `mordomo restore --allow-unverified`, installs all or nothing (undone if the process
+  dies), and `limits.backupRetention` (default 10) keeps the number of backups bounded.
 - **Security (seguranca-p1)**: an agent run with no working directory now starts
   in `<home>/workspace` instead of the home (the home holds `config/token`, and an
   agent reads everything below its working directory without asking); the home

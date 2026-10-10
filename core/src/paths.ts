@@ -108,6 +108,15 @@ export const PRIVATE_FILE_MODE = 0o600;
  */
 export function tightenMode(target: string, mode: number): boolean {
   if (process.platform === "win32") return false;
+  // A file that already has the mode is not opened at all: closing ANY descriptor on a file SQLite has open (the
+  // database, its -wal and -shm) drops this process's locks on it, and a connection that lost them corrupts the
+  // lock protocol other processes depend on. A link is left alone here too, as below.
+  try {
+    const stat = fs.lstatSync(target);
+    if (stat.isSymbolicLink() || (stat.mode & 0o777) === mode) return false;
+  } catch {
+    return false;
+  }
   // The descriptor is opened without following a link: a `logs` or `mordomo.db-wal` that somebody replaced
   // by a link to a file elsewhere is left alone, never chmod-ed through (`stat` + `chmod` follow links).
   let fd: number;

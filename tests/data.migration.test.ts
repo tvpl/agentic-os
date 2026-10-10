@@ -1,0 +1,309 @@
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { spawn } from "node:child_process";
+import Database from "better-sqlite3";
+import {
+  DbNewerVersionError,
+  MIGRATIONS,
+  MigrationError,
+  openDb,
+  tightenHomeFiles,
+  tightenMode,
+} from "@mordomo/core";
+import { makeTempHome } from "./helpers.js";
+import { bundleChild, repoRoot, runChild, src } from "./helpers/childBundle.js";
+import { slowMigrations } from "./helpers/slowMigrations.js";
+
+/**
+ * dados-v2, slice S1 (.specs/features/dados-v2): the database is migrated once, however many processes open it
+ * together, and a migration that cannot finish leaves the file as it was.
+ */
+
+const POSIX = process.platform !== "win32";
+const homes: Array<() => void> = [];
+afterEach(() => {
+  for (const cleanup of homes.splice(0)) cleanup();
+});
+function tempHome() {
+  const home = makeTempHome("mordomo-dados-mig-");
+  homes.push(home.cleanup);
+  return home;
+}
+
+/** A home whose database holds `ran` = [1] at `user_version` 1 (what an older release left behind). */
+function homeAtVersion1() {
+  const home = tempHome();
+  const first = openDb(home.paths, slowMigrations().slice(0, 1));
+  first.db.close();
+  return home;
+}
+
+interface ChildOutcome {
+  fromVersion: number;
+  toVersion: number;
+  backupPath: string | null;
+  version: number;
+}
+
+let cleanupRace: (() => void) | undefined;
+let racing: Promise<{ paths: ReturnType<typeof tempHome>["paths"]; outcomes: ChildOutcome[] }> | undefined;
+/** Three processes open the same version-1 home at the same instant, once for the whole file. */
+function race() {
+  racing ??= (async () => {
+    const script = await bundleChild(
+      "open-db",
+      [
+        `import { openDb } from ${src("core/src/db/db.ts")};`,
+        `import { resolvePaths } from ${src("core/src/paths.ts")};`,
+        `import { slowMigrations } from ${src("tests/helpers/slowMigrations.ts")};`,
+        "while (Date.now() < Number(process.env.START_AT)) { /* line the processes up so they race */ }",
+        "const { db, migration } = openDb(resolvePaths(process.env.HOME_DIR), slowMigrations());",
+        'process.stdout.write(JSON.stringify({ ...migration, version: db.pragma("user_version", { simple: true }) }));',
+        "db.close();",
+      ].join("\n"),
+    );
+    const home = makeTempHome("mordomo-dados-race-");
+    cleanupRace = home.cleanup;
+    openDb(home.paths, slowMigrations().slice(0, 1)).db.close();
+    const startAt = String(Date.now() + 1500);
+    const results = await Promise.all(
+      [0, 1, 2].map(() => runChild(script, { HOME_DIR: home.paths.home, START_AT: startAt })),
+    );
+    for (const r of results) expect(r.code, r.stderr).toBe(0);
+    return { paths: home.paths, outcomes: results.map((r) => JSON.parse(r.stdout) as ChildOutcome) };
+  })();
+  return racing;
+}
+
+describe("S1 the database is migrated once", () => {
+  // The race is built once and shared by C1 and C3, so its home outlives each test.
+  afterAll(() => cleanupRace?.());
+
+  it("C1 three processes opening together apply each migration once", async () => {
+    const { paths, outcomes } = await race();
+    for (const outcome of outcomes) expect(outcome.version).toBe(3);
+    const db = new Database(paths.dbFile, { readonly: true });
+    try {
+      expect(db.pragma("user_version", { simple: true })).toBe(3);
+      expect(db.prepare("SELECT v FROM ran ORDER BY v").all()).toEqual([{ v: 1 }, { v: 2 }, { v: 3 }]);
+    } finally {
+      db.close();
+    }
+  }, 60_000);
+
+  it("C2 the pre-migration snapshot is consistent and private", () => {
+    const { paths } = homeAtVersion1();
+    const seed = new Database(paths.dbFile);
+    seed.exec("CREATE TABLE notes (body TEXT); INSERT INTO notes VALUES ('keep me')");
+    seed.close();
+
+    const { db, migration } = openDb(paths, slowMigrations().slice(0, 2));
+    try {
+      expect(migration.fromVersion).toBe(1);
+      expect(migration.toVersion).toBe(2);
+      expect(migration.backupPath).toMatch(/mordomo\.db\.v1\.[^/\\]+\.bak$/);
+      expect(path.dirname(migration.backupPath!)).toBe(paths.backups);
+      const snapshot = new Database(migration.backupPath!, { readonly: true });
+      try {
+        expect(snapshot.pragma("user_version", { simple: true })).toBe(1);
+        expect(snapshot.prepare("SELECT body FROM notes").all()).toEqual([{ body: "keep me" }]);
+        expect(snapshot.prepare("SELECT name FROM sqlite_master WHERE name = 'second'").all()).toEqual([]);
+      } finally {
+        snapshot.close();
+      }
+      if (POSIX) expect(fs.statSync(migration.backupPath!).mode & 0o777).toBe(0o600);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("C3 the processes that lost the race apply nothing and leave no backup", async () => {
+    const { paths, outcomes } = await race();
+    const migrated = outcomes.filter((o) => o.fromVersion === 1);
+    const waited = outcomes.filter((o) => o.fromVersion !== 1);
+    expect(migrated).toHaveLength(1);
+    expect(migrated[0]).toMatchObject({ fromVersion: 1, toVersion: 3 });
+    expect(waited).toHaveLength(2);
+    for (const outcome of waited) {
+      expect(outcome).toMatchObject({ fromVersion: 3, toVersion: 3, backupPath: null });
+    }
+    expect(fs.readdirSync(paths.backups).filter((name) => name.endsWith(".bak"))).toHaveLength(1);
+  }, 60_000);
+
+  it("C4 a failing migration rolls everything back and names itself", () => {
+    const { paths } = homeAtVersion1();
+    let thrown: unknown;
+    try {
+      openDb(paths, slowMigrations({ failAt3: true }));
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(MigrationError);
+    const error = thrown as MigrationError;
+    expect(error.code).toBe("db_migration_failed");
+    expect(error.message).toContain("3");
+    expect(error.message).toContain("boom-migration");
+    expect(error.backupPath).not.toBeNull();
+    expect(error.message).toContain(error.backupPath!);
+
+    const raw = new Database(paths.dbFile, { readonly: true });
+    try {
+      expect(raw.pragma("user_version", { simple: true })).toBe(1);
+      const tables = raw.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{
+        name: string;
+      }>;
+      expect(tables.map((t) => t.name)).not.toContain("second");
+      expect(tables.map((t) => t.name)).not.toContain("third");
+      expect(raw.prepare("SELECT v FROM ran").all()).toEqual([{ v: 1 }]);
+    } finally {
+      raw.close();
+    }
+    // The handle was closed and the file is usable: the corrected list goes through to 3.
+    const again = openDb(paths, slowMigrations());
+    try {
+      expect(again.migration).toMatchObject({ fromVersion: 1, toVersion: 3 });
+    } finally {
+      again.db.close();
+    }
+  });
+
+  it("C5 a database from a newer version is refused untouched", () => {
+    const { paths } = tempHome();
+    openDb(paths).db.close();
+    const raw = new Database(paths.dbFile);
+    raw.pragma("user_version = 99");
+    raw.close();
+    const digest = () => crypto.createHash("sha256").update(fs.readFileSync(paths.dbFile)).digest("hex");
+    const before = digest();
+
+    let thrown: unknown;
+    try {
+      openDb(paths);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(DbNewerVersionError);
+    const error = thrown as DbNewerVersionError;
+    expect(error.code).toBe("db_newer");
+    expect(error.message).toContain("99");
+    expect(error.message).toContain(String(Math.max(...MIGRATIONS.map((m) => m.version))));
+    expect(error.message).toContain("Use that version or restore a compatible backup");
+    expect(fs.existsSync(paths.backups) ? fs.readdirSync(paths.backups) : []).toEqual([]);
+    expect(digest()).toBe(before);
+  });
+
+  it("C6 openDb waits for a busy lock, also before WAL", async () => {
+    const { paths } = tempHome();
+    fs.mkdirSync(path.dirname(paths.dbFile), { recursive: true });
+    // What an older release left: rollback-journal mode, version 1.
+    const legacy = new Database(paths.dbFile);
+    legacy.exec("CREATE TABLE ran (v INTEGER NOT NULL); INSERT INTO ran VALUES (1)");
+    legacy.pragma("user_version = 1");
+    expect(legacy.pragma("journal_mode", { simple: true })).toBe("delete");
+    legacy.close();
+
+    const holder = spawn(
+      process.execPath,
+      [
+        "-e",
+        `const D = require("better-sqlite3"); const db = new D(${JSON.stringify(paths.dbFile)}); ` +
+          'db.exec("BEGIN EXCLUSIVE"); process.stdout.write("locked\\n"); ' +
+          'setTimeout(() => { db.exec("COMMIT"); db.close(); }, 600);',
+      ],
+      { cwd: repoRoot, stdio: ["ignore", "pipe", "inherit"] },
+    );
+    try {
+      await new Promise<void>((resolve, reject) => {
+        holder.stdout.once("data", () => resolve());
+        holder.once("error", reject);
+        holder.once("exit", (code) => reject(new Error(`holder exited ${code} before locking`)));
+      });
+      const started = Date.now();
+      const opened = openDb(paths, slowMigrations().slice(0, 2));
+      const waited = Date.now() - started;
+      try {
+        expect(waited).toBeGreaterThanOrEqual(400);
+        expect(waited).toBeLessThan(5000);
+        expect(opened.db.pragma("user_version", { simple: true })).toBe(2);
+        expect(opened.db.pragma("journal_mode", { simple: true })).toBe("wal");
+      } finally {
+        opened.db.close();
+      }
+    } finally {
+      holder.kill("SIGKILL");
+    }
+  }, 30_000);
+
+  it("C7 MIGRATIONS is contiguous", () => {
+    expect(MIGRATIONS.map((m) => m.version)).toEqual(MIGRATIONS.map((_, index) => index + 1));
+  });
+
+  it("C8 fresh and up-to-date databases open without a backup", () => {
+    const { paths } = tempHome();
+    const latest = MIGRATIONS.length;
+    const fresh = openDb(paths);
+    fresh.db.close();
+    expect(fresh.migration).toEqual({ fromVersion: 0, toVersion: latest, backupPath: null });
+    const again = openDb(paths);
+    again.db.close();
+    expect(again.migration).toEqual({ fromVersion: latest, toVersion: latest, backupPath: null });
+    expect(fs.existsSync(paths.backups) ? fs.readdirSync(paths.backups) : []).toEqual([]);
+  });
+
+  it.skipIf(!POSIX)("C43 tightening never opens a file that already has its mode", () => {
+    const { paths } = tempHome();
+    const dir = path.dirname(paths.dbFile);
+    const right = path.join(dir, "right");
+    const wrong = path.join(dir, "wrong");
+    const link = path.join(dir, "link");
+    fs.writeFileSync(right, "x", { mode: 0o600 });
+    fs.writeFileSync(wrong, "x", { mode: 0o644 });
+    fs.chmodSync(wrong, 0o644);
+    fs.symlinkSync(wrong, link);
+
+    const opened: string[] = [];
+    const open = fs.openSync.bind(fs);
+    const spy = vi.spyOn(fs, "openSync").mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+      opened.push(String(p));
+      return (open as (...a: unknown[]) => number)(p, ...rest);
+    }) as typeof fs.openSync);
+    try {
+      expect(tightenMode(right, 0o600)).toBe(false);
+      expect(tightenMode(link, 0o600)).toBe(false);
+      expect(opened).toEqual([]);
+      expect(tightenMode(wrong, 0o600)).toBe(true);
+      expect(opened).toEqual([wrong]);
+      expect(fs.statSync(wrong).mode & 0o777).toBe(0o600);
+    } finally {
+      spy.mockRestore();
+    }
+
+    // An older release left the database and its sidecars at 0644: they are tightened before the connection
+    // opens, and once it is open the engine's own tightening pass leaves all three alone.
+    for (const suffix of ["", "-wal", "-shm"]) {
+      fs.writeFileSync(paths.dbFile + suffix, "", { mode: 0o644 });
+      fs.chmodSync(paths.dbFile + suffix, 0o644);
+    }
+    const { db } = openDb(paths);
+    try {
+      for (const suffix of ["", "-wal", "-shm"]) {
+        expect(fs.statSync(paths.dbFile + suffix).mode & 0o777, suffix || "main").toBe(0o600);
+      }
+      const touched: string[] = [];
+      const spy2 = vi.spyOn(fs, "openSync").mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+        touched.push(String(p));
+        return (open as (...a: unknown[]) => number)(p, ...rest);
+      }) as typeof fs.openSync);
+      try {
+        tightenHomeFiles(paths);
+      } finally {
+        spy2.mockRestore();
+      }
+      expect(touched.filter((p) => p.startsWith(paths.dbFile))).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+});

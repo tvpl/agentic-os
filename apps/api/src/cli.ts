@@ -9,6 +9,7 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import {
   createBackup,
+  isSealed,
   listBackups,
   restoreBackup,
   generateRouters,
@@ -87,6 +88,7 @@ const OPTION_SPECS = {
   "no-browser": { type: "boolean" },
   list: { type: "boolean" },
   "include-artifacts": { type: "boolean" },
+  "allow-unverified": { type: "boolean" },
   purge: { type: "boolean" },
   yes: { type: "boolean", short: "y" },
   apply: { type: "boolean" },
@@ -112,7 +114,7 @@ const COMMAND_OPTIONS: Record<Command, readonly OptionName[]> = {
   launch: ["no-browser"],
   status: ["json"],
   backup: ["list", "include-artifacts"],
-  restore: [],
+  restore: ["allow-unverified"],
   uninstall: ["purge", "yes"],
   index: ["json"],
   sync: ["apply", "approve", "diff"],
@@ -134,6 +136,7 @@ export interface CliArgs {
   noBrowser: boolean;
   list: boolean;
   includeArtifacts: boolean;
+  allowUnverified: boolean;
   purge: boolean;
   yes: boolean;
   apply: boolean;
@@ -225,6 +228,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
     noBrowser: values["no-browser"] === true,
     list: values.list === true,
     includeArtifacts: values["include-artifacts"] === true,
+    allowUnverified: values["allow-unverified"] === true,
     purge: values.purge === true,
     yes: values.yes === true,
     apply: values.apply === true,
@@ -252,6 +256,7 @@ function emptyArgs(command: Command): CliArgs {
     noBrowser: false,
     list: false,
     includeArtifacts: false,
+    allowUnverified: false,
     purge: false,
     yes: false,
     apply: false,
@@ -496,7 +501,8 @@ ${pc.bold("MordomoOS")} — local agentic OS over Claude Code, Cursor Agent and 
   mordomo recall <question>  Layered memory retrieval: only the sections worth reading (--json)
   mordomo mcp              Serve MordomoOS as an MCP server (stdio) to Claude/Cursor/Codex
   mordomo backup           Create a backup (--list to list, --include-artifacts to include outputs)
-  mordomo restore <name>   Restore a backup (a safety backup is taken first)
+  mordomo restore <name>   Restore a backup after checking it against its manifest (a safety backup is
+                           taken first; --allow-unverified restores one made before backups were sealed)
   mordomo service          Startup service: mordomo service install | remove | plan  (--yes skips confirmation)
   mordomo uninstall        Remove services/processes; data is PRESERVED unless you pass --purge
                            (--purge asks for confirmation; add --yes when not attached to a terminal)
@@ -1051,14 +1057,20 @@ async function cmdBackup(args: CliArgs): Promise<void> {
   if (args.list) {
     for (const b of listBackups(ctx.paths)) {
       console.log(
-        `${b.name}  ${(b.sizeBytes / 1024).toFixed(1)} KB  ${new Date(b.createdAt).toLocaleString()}`,
+        `${b.name}  ${(b.sizeBytes / 1024).toFixed(1)} KB  ${new Date(b.createdAt).toLocaleString()}${isSealed(b.path) ? "" : "  unsealed"}`,
       );
     }
     ctx.close();
     return;
   }
-  const info = await createBackup(ctx.paths, ctx.db, { includeArtifacts: args.includeArtifacts });
+  const before = listBackups(ctx.paths).length;
+  const info = await createBackup(ctx.paths, ctx.db, {
+    includeArtifacts: args.includeArtifacts,
+    keep: ctx.settings().limits.backupRetention,
+  });
   console.log(`${pc.green("●")} Backup created: ${info.path} (${(info.sizeBytes / 1024).toFixed(1)} KB)`);
+  const removed = before + 1 - listBackups(ctx.paths).length;
+  if (removed > 0) console.log(`removed ${removed} old backup(s)`);
   ctx.close();
 }
 
@@ -1077,7 +1089,7 @@ async function cmdRestore(args: CliArgs): Promise<void> {
   }
   const paths = ctx.paths;
   ctx.close(); // release the DB before overwriting it
-  const result = restoreBackup(paths, name);
+  const result = restoreBackup(paths, name, { allowUnverified: args.allowUnverified });
   console.log(
     `${pc.green("●")} Restored ${name}. A safety backup of the previous state is at ${result.safetyBackup.path}`,
   );

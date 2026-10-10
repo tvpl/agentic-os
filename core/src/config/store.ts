@@ -4,6 +4,8 @@ import crypto from "node:crypto";
 import { PRIVATE_DIR_MODE, PRIVATE_FILE_MODE, type MordomoPaths } from "../paths.js";
 import { CURRENT_SETTINGS_VERSION, SettingsSchema, type Settings, defaultSettings } from "./schema.js";
 import { events } from "../events.js";
+import { JsonlLogger } from "../logs/jsonl.js";
+import { parseTolerant, type SettingsIssue } from "./tolerant.js";
 
 export { atomicWrite } from "./atomicWrite.js";
 import { atomicWrite } from "./atomicWrite.js";
@@ -57,15 +59,22 @@ export class SettingsStore {
     }
     try {
       const text = fs.readFileSync(this.paths.settingsFile, "utf8");
-      const raw = JSON.parse(text) as Record<string, unknown>;
+      const raw = JSON.parse(text) as unknown;
+      if (!isPlainObject(raw)) throw new Error("the document is not a JSON object");
       const migrated = migrateSettings(raw, this.paths, text);
+      // A migration rewrites the file: what a save would replace (and `.invalid` keeps) is what is on disk now.
+      const onDisk = migrated === raw ? text : fs.readFileSync(this.paths.settingsFile, "utf8");
       if (migrated !== raw) stat = fs.statSync(this.paths.settingsFile);
-      const settings = SettingsSchema.parse(migrated);
+      // A field this version cannot read costs that field and nothing else: it reads as its default, the file
+      // is left as it is, and the original is kept aside before anything can replace it.
+      const { value: settings, issues } = parseTolerant(SettingsSchema, migrated);
+      if (issues.length > 0) this.reportInvalid(onDisk, issues);
       this.cache = { mtimeMs: stat.mtimeMs, size: stat.size, settings };
       return structuredClone(settings);
     } catch (err) {
       this.cache = null;
-      // Never destroy a corrupt settings file: keep it aside and start from defaults.
+      // Never destroy a corrupt settings file: keep it aside. Not valid JSON, or not an object at all, has no
+      // field to drop: stop with the cause instead of starting from defaults that would replace the lot.
       const backup = `${this.paths.settingsFile}.corrupt.${Date.now()}`;
       try {
         fs.copyFileSync(this.paths.settingsFile, backup);
@@ -80,14 +89,65 @@ export class SettingsStore {
   }
 
   /**
-   * A file written by a newer MordomoOS is never overwritten: this code would
-   * drop or misread what it does not know (`code: "settings_newer"`).
+   * Keep the bytes of a settings file that has fields this version drops, under a name that never overwrites:
+   * `settings.json.invalid`, or `settings.json.invalid.<12 hex of their SHA-256>` when that holds other bytes.
+   * Returns the file that holds them.
    */
-  private refuseNewerFile(): void {
-    let raw: Record<string, unknown>;
+  private preserveInvalid(text: string): string {
+    const first = `${this.paths.settingsFile}.invalid`;
+    const hash = crypto.createHash("sha256").update(text).digest("hex").slice(0, 12);
+    for (const target of [first, `${first}.${hash}`]) {
+      try {
+        fs.writeFileSync(target, text, { flag: "wx", mode: PRIVATE_FILE_MODE });
+        return target;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+        if (fs.readFileSync(target, "utf8") === text) return target;
+      }
+    }
+    return `${first}.${hash}`;
+  }
+
+  /** One log line per dropped field, after the original is safe. */
+  private reportInvalid(text: string, issues: SettingsIssue[]): void {
+    const preserved = this.preserveInvalid(text);
     try {
-      raw = JSON.parse(fs.readFileSync(this.paths.settingsFile, "utf8")) as Record<string, unknown>;
+      const { logMaxFileBytes, logRetentionDays } = defaultSettings().limits;
+      const log = new JsonlLogger(this.paths.logs, "settings", logMaxFileBytes, logRetentionDays);
+      for (const issue of issues) {
+        log.append({
+          msg: "settings.invalid_field",
+          path: issue.path,
+          reason: issue.reason,
+          preserved: path.basename(preserved),
+        });
+      }
     } catch {
+      /* the log is a courtesy: a full disk must not turn a tolerated field into a failure */
+    }
+  }
+
+  /**
+   * Before the file is replaced: a file written by a newer MordomoOS is never overwritten (this code would drop or
+   * misread what it does not know: `code: "settings_newer"`), and one that is not valid JSON, or holds fields this
+   * version drops, is kept aside first, so a save never loses what the owner wrote.
+   */
+  private guardCurrentFile(): void {
+    let text: string;
+    try {
+      text = fs.readFileSync(this.paths.settingsFile, "utf8");
+    } catch {
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = JSON.parse(text);
+    } catch {
+      this.preserveInvalid(text);
+      return;
+    }
+    if (!isPlainObject(raw)) {
+      this.preserveInvalid(text);
       return;
     }
     const version = settingsVersion(raw);
@@ -99,6 +159,11 @@ export class SettingsStore {
         { code: "settings_newer" },
       );
     }
+    try {
+      if (parseTolerant(SettingsSchema, raw).issues.length > 0) this.preserveInvalid(text);
+    } catch {
+      this.preserveInvalid(text);
+    }
   }
 
   /** Drop the in-memory cache (e.g. after a restore replaced the file). */
@@ -107,7 +172,7 @@ export class SettingsStore {
   }
 
   save(settings: Settings): Settings {
-    this.refuseNewerFile();
+    this.guardCurrentFile();
     const parsed = SettingsSchema.parse(settings);
     atomicWrite(this.paths.settingsFile, JSON.stringify(parsed, null, 2) + "\n");
     try {

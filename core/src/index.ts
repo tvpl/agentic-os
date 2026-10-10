@@ -32,7 +32,14 @@ export {
   type IndexedFolder,
 } from "./config/schema.js";
 export { SettingsStore, atomicWrite } from "./config/store.js";
-export { openDb, type Db, type MigrationResult } from "./db/db.js";
+export {
+  DbNewerVersionError,
+  MigrationError,
+  openDb,
+  runMigrations,
+  type Db,
+  type MigrationResult,
+} from "./db/db.js";
 export { MIGRATIONS, hasColumn, type Migration } from "./db/migrations.js";
 export { redactSecrets, redactObject } from "./security/redact.js";
 export {
@@ -180,17 +187,23 @@ export {
 export { SyncCompiler, type SyncPlan, type SyncAction, type SyncApplyResult } from "./sync/compiler.js";
 export { unifiedDiff } from "./sync/diff.js";
 export {
+  BackupVerificationError,
   RESTORE_PENDING_DIR,
   applyPendingRestore,
   clearRestorePending,
   createBackup,
+  isSealed,
   listBackups,
+  pruneBackups,
   readRestorePending,
+  recoverInterruptedRestore,
   restoreBackup,
   restorePendingDir,
+  verifyBackup,
   writeRestorePending,
   type BackupInfo,
   type BackupOptions,
+  type RestoreOptions,
   type RestorePending,
 } from "./backup.js";
 export {
@@ -267,6 +280,16 @@ export { parseSkillFile, type ParsedSkillFile } from "./skills/parse.js";
 export { rotateFile, pruneRotated } from "./logs/jsonl.js";
 export { type StoreProblem } from "./routines/store.js";
 export { deepMergeSettings, type SettingsPatch } from "./config/store.js";
+export {
+  EngineLockedError,
+  OwnerLock,
+  lockIsStale,
+  readLock,
+  realProbe,
+  type LockRecord,
+  type ProcessProbe,
+} from "./ownerLock.js";
+export { pidAlive, processStartMarker, realProbeIo, type ProbeIo } from "./processIdentity.js";
 export { INDEX_CHUNK_SIZE, type IndexProgress } from "./memory/indexer.js"; // B3 exports
 export {
   ProviderRegistry,
@@ -510,7 +533,6 @@ export {
   type TlsMaterial,
 } from "./security/tls.js";
 export {
-  EngineLockedError,
   MordomoEngine,
   createEngine,
   ignoredBinaryPaths,

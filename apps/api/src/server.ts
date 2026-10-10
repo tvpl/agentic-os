@@ -537,6 +537,16 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   const settings = ctx.settings();
   const app = await buildServer(ctx);
 
+  if (ctx.restoreRejectedAtBoot) {
+    app.log.warn({
+      backup: ctx.restoreRejectedAtBoot.name,
+      msg: `staged restore refused at boot: ${ctx.restoreRejectedAtBoot.message}`,
+    });
+
+    console.warn(
+      `[mordomo] staged restore of ${ctx.restoreRejectedAtBoot.name} refused: ${ctx.restoreRejectedAtBoot.message}`,
+    );
+  }
   if (ctx.restoredAtBoot) {
     app.log.info({ backup: ctx.restoredAtBoot.name, msg: "applied staged restore at boot" });
 

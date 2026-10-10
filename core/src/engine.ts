@@ -11,11 +11,15 @@
  * `resolveCwd`), so a program embedding the engine gets the same rules the
  * HTTP API applies.
  */
-import fs from "node:fs";
 import path from "node:path";
 import type { AgentAdapter, PermissionBroker, RunMode } from "./agents/types.js";
 import type { ProviderRegistry } from "./agents/registry.js";
-import { applyPendingRestore, type RestorePending } from "./backup.js";
+import {
+  BackupVerificationError,
+  applyPendingRestore,
+  readRestorePending,
+  type RestorePending,
+} from "./backup.js";
 import { installPushChannel } from "./channels/pushChannel.js";
 import { installTelegramChannel } from "./channels/telegram.js";
 import type { EffortLevel, ProviderId, SecurityProfile, Settings } from "./config/schema.js";
@@ -31,6 +35,7 @@ import { PushStore } from "./notifications/pushStore.js";
 import { installNotificationRecorder } from "./notifications/recorder.js";
 import { NotificationStore } from "./notifications/store.js";
 import { ObjectiveStore } from "./objectives/objectiveStore.js";
+import { OwnerLock, readLock } from "./ownerLock.js";
 import { ensureDirs, resolvePaths, seedHome, tightenHomeFiles, type MordomoPaths } from "./paths.js";
 import { RoutineScheduler } from "./routines/scheduler.js";
 import { RoutineStore } from "./routines/store.js";
@@ -59,19 +64,6 @@ export interface EngineOptions {
     id: string;
     permissionProfile: SecurityProfile | null;
   }) => PermissionBroker | null;
-}
-
-/** `start()` found another live process owning this home. */
-export class EngineLockedError extends Error {
-  readonly code = "engine_locked";
-  constructor(readonly holderPid: number | null) {
-    super(
-      holderPid === null
-        ? "Another MordomoOS engine owns this home."
-        : `Another MordomoOS engine (pid ${holderPid}) owns this home.`,
-    );
-    this.name = "EngineLockedError";
-  }
 }
 
 /** What a gated write run carries: the prompt or skill run to launch once a human approves. */
@@ -148,15 +140,6 @@ function buildAdapters(registry: ProviderRegistry, settings: Settings): Record<P
   return registry.createAll((id) => (ignored.has(id) ? null : (settings.providers[id]?.binaryPath ?? null)));
 }
 
-function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "EPERM";
-  }
-}
-
 export class MordomoEngine {
   readonly paths: MordomoPaths;
   readonly settingsStore: SettingsStore;
@@ -189,17 +172,30 @@ export class MordomoEngine {
   readonly startedAt = Date.now();
   /** Restore applied while building (see `EngineOptions.applyPendingRestore`). */
   readonly restoredAtBoot: RestorePending | null = null;
+  /**
+   * A restore staged for this boot that failed verification (a backup that is tampered, truncated or unsealed):
+   * nothing was changed, the service starts with the data it has, and the owner is told why.
+   */
+  readonly restoreRejectedAtBoot: { name: string; message: string } | null = null;
 
   private adapterRecord: Record<ProviderId, AgentAdapter>;
   private readonly disposers: Array<() => void> = [];
   private readonly brokerFactory: EngineOptions["permissionBroker"];
-  private lockHeld = false;
+  private ownerLock: OwnerLock | null = null;
 
   constructor(opts: EngineOptions) {
     this.paths = resolvePaths(opts.home);
     ensureDirs(this.paths);
     if (opts.seedDir) seedHome(this.paths, opts.seedDir);
-    if (opts.applyPendingRestore) this.restoredAtBoot = applyPendingRestore(this.paths).applied;
+    if (opts.applyPendingRestore) {
+      const pending = readRestorePending(this.paths);
+      try {
+        this.restoredAtBoot = applyPendingRestore(this.paths).applied;
+      } catch (error) {
+        if (!(error instanceof BackupVerificationError) || pending === null) throw error;
+        this.restoreRejectedAtBoot = { name: pending.name, message: error.message };
+      }
+    }
     this.brokerFactory = opts.permissionBroker;
     this.settingsStore = new SettingsStore(this.paths);
     // A saved preference is announced like a settings change, so every open
@@ -372,49 +368,24 @@ export class MordomoEngine {
   }
 
   /**
-   * Take `config/run/engine.lock`. The file appears in one step — a fully
-   * written temporary file hard-linked into place, which fails if the lock
-   * exists — so no reader ever sees a lock without its pid. A lock naming a
-   * dead process, this process, or nothing readable is stale and taken over.
+   * Take `config/run/engine.lock` (see `OwnerLock`): the file appears in one step, a lock naming a process that is
+   * gone, that started at another moment than the owner recorded (its pid was reused), or this process is stale and
+   * is taken over, and two processes taking over together cannot both succeed.
    */
   private acquireLock(): void {
-    fs.mkdirSync(this.paths.run, { recursive: true });
-    const temp = `${this.lockFile}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(temp, JSON.stringify({ pid: process.pid, startedAt: Date.now() }), { mode: 0o600 });
-    try {
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          fs.linkSync(temp, this.lockFile);
-          this.lockHeld = true;
-          return;
-        } catch (err) {
-          if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-        }
-        const holder = this.lockHolder();
-        if (holder !== null && holder !== process.pid && pidAlive(holder))
-          throw new EngineLockedError(holder);
-        fs.rmSync(this.lockFile, { force: true });
-      }
-      throw new EngineLockedError(this.lockHolder());
-    } finally {
-      fs.rmSync(temp, { force: true });
-    }
+    const lock = new OwnerLock(this.lockFile, this.db);
+    lock.acquire();
+    this.ownerLock = lock;
   }
 
   /** The pid recorded in the lock file, or null when it is missing or unreadable. */
   lockHolder(): number | null {
-    try {
-      const pid = (JSON.parse(fs.readFileSync(this.lockFile, "utf8")) as { pid?: unknown }).pid;
-      return typeof pid === "number" && Number.isInteger(pid) && pid > 0 ? pid : null;
-    } catch {
-      return null;
-    }
+    return readLock(this.lockFile)?.pid ?? null;
   }
 
   private releaseLock(): void {
-    if (!this.lockHeld) return;
-    this.lockHeld = false;
-    if (this.lockHolder() === process.pid) fs.rmSync(this.lockFile, { force: true });
+    this.ownerLock?.release();
+    this.ownerLock = null;
   }
 
   // ---- Write policy ---------------------------------------------------------

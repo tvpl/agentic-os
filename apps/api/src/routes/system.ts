@@ -16,6 +16,7 @@ import {
   executableName,
   isInside,
   listBackups,
+  verifyBackup,
   planStartupService,
   NotRegularFileError,
   listWorkspaceDir,
@@ -675,7 +676,10 @@ export function registerSystemRoutes(
     const { includeArtifacts } = z
       .object({ includeArtifacts: z.boolean().default(false) })
       .parse(req.body ?? {});
-    return createBackup(ctx.paths, ctx.db, { includeArtifacts });
+    return createBackup(ctx.paths, ctx.db, {
+      includeArtifacts,
+      keep: ctx.settings().limits.backupRetention,
+    });
   });
 
   /**
@@ -696,6 +700,8 @@ export function registerSystemRoutes(
         `Cannot restore while ${active.running + active.queued} run(s) are active. Wait or cancel them first.`,
       );
     }
+    // Verified before it is staged: a backup that fails is a `422` now, not a rejection at the next boot.
+    await verifyBackup(ctx.paths, name);
     const staged = writeRestorePending(ctx.paths, name);
     reply.code(202);
     return {

@@ -6,6 +6,21 @@ import { PRIVATE_DIR_MODE, PRIVATE_FILE_MODE, tightenMode, type MordomoPaths } f
 import type { Db } from "./db/db.js";
 import { events } from "./events.js";
 import type { BackupInfo } from "@mordomo/contracts";
+import {
+  MANIFEST_NAME,
+  buildManifest,
+  buildManifestAsync,
+  readManifest,
+  verifyMounts,
+  verifyMountsAsync,
+  writeManifest,
+  type BackupManifest,
+  type BackupProblem,
+  type Mount,
+} from "./backupManifest.js";
+import { atomicWrite } from "./config/atomicWrite.js";
+import { lockIsStale, realProbe } from "./ownerLock.js";
+import { processStartMarker } from "./processIdentity.js";
 
 export type { BackupInfo };
 
@@ -19,13 +34,68 @@ export type { BackupInfo };
  * the copy is a consistent snapshot even while the WAL holds un-checkpointed
  * pages and other writers are active. Never copy `mordomo.db` with `cp` while
  * the service runs: a WAL-mode file copied that way can be missing every table.
+ *
+ * A backup is SEALED when it is published: `manifest.json` at its root lists the SHA-256 and size of every file
+ * and the target of every link (`backupManifest.ts`). A restore compares what it is about to install with it and
+ * refuses a backup that is truncated, edited, short of a file or carries one more; a backup from before this
+ * existed has no manifest ("unsealed") and is restored only on request.
  */
 
 const BACKUP_SETS = ["skills", "memory", "routines", "connectors"] as const;
 
+/** Everything a restore can install, by path inside the backup (a manifest line outside these is not judged). */
+const RESTORABLE = [
+  ...BACKUP_SETS,
+  "artifacts",
+  "config/settings.json",
+  "config/ui-preferences.json",
+  "config/sync-manifest.json",
+  "config/db/mordomo.db",
+] as const;
+
+const BACKUP_NAME = /^full-[A-Za-z0-9-]{1,80}$/;
+
 export interface BackupOptions {
   includeArtifacts?: boolean;
+  /** Backups to keep: after this one is published, the sealed ones beyond the `keep` newest are deleted. */
+  keep?: number;
 }
+
+export interface RestoreOptions {
+  /** Restore a backup that has no manifest, trusting it as it is (the checks of the database still run). */
+  allowUnverified?: boolean;
+}
+
+/** A backup that cannot be trusted: nothing was changed. `statusCode` is what an API answers. */
+export class BackupVerificationError extends Error {
+  readonly statusCode = 422;
+  constructor(
+    readonly code: "backup_invalid" | "backup_unsealed",
+    message: string,
+    readonly problems: BackupProblem[] = [],
+  ) {
+    super(message);
+    this.name = "BackupVerificationError";
+  }
+}
+
+const invalidBackup = (name: string, problems: BackupProblem[]) =>
+  new BackupVerificationError(
+    "backup_invalid",
+    `Backup ${name} failed verification (${problems.length} problem(s): ` +
+      `${problems
+        .slice(0, 5)
+        .map((p) => `${p.kind} ${p.path}`)
+        .join("; ")}${problems.length > 5 ? "; …" : ""}). Current files were not changed.`,
+    problems,
+  );
+
+const unsealedBackup = (name: string) =>
+  new BackupVerificationError(
+    "backup_unsealed",
+    `Backup ${name} has no manifest.json (it was made before backups were sealed), so it cannot be verified. ` +
+      "Restore it with --allow-unverified to trust it as it is. Current files were not changed.",
+  );
 
 export async function createBackup(
   paths: MordomoPaths,
@@ -40,7 +110,10 @@ export async function createBackup(
       // Closed handle: the file is quiescent and WAL checkpointed on close.
       fs.copyFileSync(paths.dbFile, dbFile);
     }
-    const info = finalize(dest);
+    const info = finalize(dest, await buildManifestAsync(dest));
+    if (opts.keep !== undefined) {
+      pruneBackups(paths, opts.keep, [info.name, readRestorePending(paths)?.name ?? ""]);
+    }
     events.emit("backup.created", info);
     return info;
   } catch (error) {
@@ -83,10 +156,11 @@ function snapshotFiles(paths: MordomoPaths, opts: BackupOptions): { dest: string
   }
 }
 
-function finalize(dest: string): BackupInfo {
+function finalize(dest: string, manifest: BackupManifest): BackupInfo {
   // The online-backup API and plain copies create the database file with the process mask or the source's mode.
   tightenMode(dest, PRIVATE_DIR_MODE);
   tightenMode(path.join(dest, "config", "db", "mordomo.db"), PRIVATE_FILE_MODE);
+  writeManifest(dest, manifest);
   const sizeBytes = dirSize(dest);
   const published = path.join(path.dirname(dest), path.basename(dest).replace(/^\.pending-/, ""));
   fs.renameSync(dest, published);
@@ -105,6 +179,52 @@ export function listBackups(paths: MordomoPaths): BackupInfo[] {
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
+/** Does this backup folder carry a manifest (was it sealed when it was made)? */
+export function isSealed(backupPath: string): boolean {
+  return fs.existsSync(path.join(backupPath, MANIFEST_NAME));
+}
+
+/**
+ * Keep the `keep` newest backups and delete the sealed ones beyond them. Never deleted: a backup named in
+ * `protect` (the one just made, the one a staged restore points at), a legacy backup without a manifest (the
+ * owner's, from before this existed) and anything that is not a real `full-…` folder. Returns what it deleted.
+ */
+export function pruneBackups(paths: MordomoPaths, keep: number, protect: readonly string[] = []): string[] {
+  const newest = listBackups(paths);
+  const kept = new Set([...newest.slice(0, Math.max(1, keep)).map((b) => b.name), ...protect]);
+  const removed: string[] = [];
+  for (const backup of newest) {
+    if (kept.has(backup.name) || !BACKUP_NAME.test(backup.name) || !isSealed(backup.path)) continue;
+    fs.rmSync(backup.path, { recursive: true, force: true });
+    removed.push(backup.name);
+  }
+  return removed;
+}
+
+/** `name` as a backup folder, or "Backup not found": the name must be `full-…` and a real folder, not a link. */
+function backupFolder(paths: MordomoPaths, name: string): string {
+  const src = path.join(paths.backups, name);
+  if (!BACKUP_NAME.test(name) || !fs.existsSync(src) || fs.lstatSync(src).isSymbolicLink()) {
+    throw new Error(`Backup not found: ${name}`);
+  }
+  return src;
+}
+
+/**
+ * Check a backup in place against its manifest, without restoring: throws `BackupVerificationError`
+ * (`backup_unsealed` when there is no manifest, `backup_invalid` for anything that does not match). Yields to the
+ * event loop between files, so a service can ask before it stages a restore.
+ */
+export async function verifyBackup(paths: MordomoPaths, name: string): Promise<void> {
+  const src = backupFolder(paths, name);
+  const manifest = readManifest(src);
+  if (manifest === "absent") throw unsealedBackup(name);
+  if (manifest === "invalid") throw invalidBackup(name, [{ path: MANIFEST_NAME, kind: "checksum" }]);
+  const mounts: Mount[] = RESTORABLE.map((rel) => ({ rel, actual: path.join(src, ...rel.split("/")) }));
+  const problems = await verifyMountsAsync(manifest, mounts);
+  if (problems.length > 0) throw invalidBackup(name, problems);
+}
+
 /**
  * Restore a backup. A pre-restore safety backup is created first, so a restore
  * can itself be undone.
@@ -114,12 +234,23 @@ export function listBackups(paths: MordomoPaths): BackupInfo[] {
  * sidecars, and the safety backup copies the DB file directly (safe only when
  * no handle is open). The CLI and the API are responsible for stopping runs,
  * closing the DB, calling this, then reopening.
+ *
+ * Order, and why: the backup's parts are copied to a staging folder; the COPIES are checked against the manifest
+ * (what is installed is what was checked, a file changed after the copy cannot get in); only then are the safety
+ * backup made and a journal written; then each target is moved aside and its copy moved in, the database's
+ * `-wal`/`-shm` first so a new database is never opened with an old WAL. A failure puts every target back; a
+ * process that dies half way leaves the journal for `recoverInterruptedRestore`.
  */
-export function restoreBackup(paths: MordomoPaths, name: string): { safetyBackup: BackupInfo } {
-  const src = path.join(paths.backups, name);
-  if (!/^full-[A-Za-z0-9-]{1,80}$/.test(name) || !fs.existsSync(src) || fs.lstatSync(src).isSymbolicLink()) {
-    throw new Error(`Backup not found: ${name}`);
-  }
+export function restoreBackup(
+  paths: MordomoPaths,
+  name: string,
+  options: RestoreOptions = {},
+): { safetyBackup: BackupInfo } {
+  const src = backupFolder(paths, name);
+  recoverInterruptedRestore(paths);
+  const manifest = readManifest(src);
+  if (manifest === "invalid") throw invalidBackup(name, [{ path: MANIFEST_NAME, kind: "checksum" }]);
+  if (manifest === "absent" && options.allowUnverified !== true) throw unsealedBackup(name);
   // Validate before touching live files or publishing a safety snapshot.
   let candidate: Database.Database | undefined;
   try {
@@ -135,28 +266,28 @@ export function restoreBackup(paths: MordomoPaths, name: string): { safetyBackup
     )
       throw new Error("Unsupported or damaged database");
   } catch {
-    throw new Error(
+    throw new BackupVerificationError(
+      "backup_invalid",
       "Invalid backup database. Choose a complete, compatible backup; current files were not changed.",
     );
   } finally {
     candidate?.close();
   }
-  // Safety backup by plain copy: valid only because the DB is closed.
   const includeArtifacts = fs.existsSync(path.join(src, "artifacts"));
-  const { dest, dbFile } = snapshotFiles(paths, { includeArtifacts });
-  let safetyBackup: BackupInfo;
-  try {
-    if (fs.existsSync(paths.dbFile)) fs.copyFileSync(paths.dbFile, dbFile);
-    safetyBackup = finalize(dest);
-  } catch (error) {
-    fs.rmSync(dest, { recursive: true, force: true });
-    throw error;
-  }
 
   // Prepare every replacement before moving live data. In particular ENOSPC
   // during copying must not leave an emptied skills/memory directory behind.
-  const staging = fs.mkdtempSync(path.join(paths.home, ".restore-"));
+  // The name carries the pid: a folder that dies before its journal exists still says whose it was.
+  const staging = fs.mkdtempSync(path.join(paths.home, `.restore-${process.pid}-`));
+  const journal: RestoreJournal = {
+    pid: process.pid,
+    procStart: processStartMarker(process.pid),
+    phase: "staging",
+    entries: [],
+  };
+  writeJournal(staging, journal);
   const entries: Array<{
+    rel: string | null;
     source: string | null;
     target: string;
     staged: string;
@@ -164,10 +295,11 @@ export function restoreBackup(paths: MordomoPaths, name: string): { safetyBackup
     moved: boolean;
     installed: boolean;
   }> = [];
-  const add = (source: string | null, target: string) => {
+  const add = (rel: string | null, source: string | null, target: string) => {
     if (source && !fs.existsSync(source)) return;
     const index = entries.length;
     entries.push({
+      rel,
       source,
       target,
       staged: path.join(staging, `new-${index}`),
@@ -176,56 +308,172 @@ export function restoreBackup(paths: MordomoPaths, name: string): { safetyBackup
       installed: false,
     });
   };
-  for (const set of BACKUP_SETS) add(path.join(src, set), paths[set]);
-  if (includeArtifacts) add(path.join(src, "artifacts"), paths.artifacts);
-  add(path.join(src, "config", "settings.json"), paths.settingsFile);
-  const backupPrefs = path.join(src, "config", "ui-preferences.json");
-  if (fs.existsSync(backupPrefs)) add(backupPrefs, paths.uiPreferencesFile);
+  const inBackup = (rel: string) => path.join(src, ...rel.split("/"));
+  for (const set of BACKUP_SETS) add(set, inBackup(set), paths[set]);
+  if (includeArtifacts) add("artifacts", inBackup("artifacts"), paths.artifacts);
+  add("config/settings.json", inBackup("config/settings.json"), paths.settingsFile);
+  if (fs.existsSync(inBackup("config/ui-preferences.json")))
+    add("config/ui-preferences.json", inBackup("config/ui-preferences.json"), paths.uiPreferencesFile);
   // A backup from before ui-preferences.json (settings version 1) keeps its
   // preferences inside settings.json: drop the live file so the next load
   // migrates the backup's own values instead of keeping the current ones.
-  else if (fs.existsSync(path.join(src, "config", "settings.json"))) add(null, paths.uiPreferencesFile);
-  add(path.join(src, "config", "sync-manifest.json"), paths.syncManifest);
-  add(path.join(src, "config", "db", "mordomo.db"), paths.dbFile);
-  for (const suffix of ["-wal", "-shm"]) add(null, paths.dbFile + suffix);
+  else if (fs.existsSync(inBackup("config/settings.json"))) add(null, null, paths.uiPreferencesFile);
+  add("config/sync-manifest.json", inBackup("config/sync-manifest.json"), paths.syncManifest);
+  for (const suffix of ["-wal", "-shm"]) add(null, null, paths.dbFile + suffix);
+  add("config/db/mordomo.db", inBackup("config/db/mordomo.db"), paths.dbFile);
   let preserveStaging = false;
   try {
     for (const entry of entries) {
       if (entry.source) fs.cpSync(entry.source, entry.staged, { recursive: true });
     }
-    for (const entry of entries) {
-      fs.mkdirSync(path.dirname(entry.target), { recursive: true });
-      if (fs.existsSync(entry.target)) {
-        fs.renameSync(entry.target, entry.old);
-        entry.moved = true;
-      }
-      if (entry.source) {
-        fs.renameSync(entry.staged, entry.target);
-        entry.installed = true;
-      }
+    if (manifest !== "absent") {
+      const mounts: Mount[] = RESTORABLE.map((rel) => ({
+        rel,
+        actual: entries.find((e) => e.rel === rel)?.staged ?? null,
+      }));
+      const problems = verifyMounts(manifest, mounts);
+      if (problems.length > 0) throw invalidBackup(name, problems);
     }
-  } catch (error) {
-    const failures: unknown[] = [];
-    for (const entry of [...entries].reverse()) {
-      try {
-        if (entry.installed) fs.rmSync(entry.target, { recursive: true, force: true });
-        if (entry.moved) fs.renameSync(entry.old, entry.target);
-      } catch (rollbackError) {
-        failures.push(rollbackError);
+    // Safety backup by plain copy: valid only because the DB is closed.
+    const { dest, dbFile } = snapshotFiles(paths, { includeArtifacts });
+    let safetyBackup: BackupInfo;
+    try {
+      if (fs.existsSync(paths.dbFile)) fs.copyFileSync(paths.dbFile, dbFile);
+      safetyBackup = finalize(dest, buildManifest(dest));
+    } catch (error) {
+      fs.rmSync(dest, { recursive: true, force: true });
+      throw error;
+    }
+    journal.phase = "installing";
+    journal.entries = entries.map((e) => ({
+      target: e.target,
+      old: e.old,
+      staged: e.staged,
+      hadTarget: fs.existsSync(e.target),
+    }));
+    writeJournal(staging, journal);
+    try {
+      for (const entry of entries) {
+        fs.mkdirSync(path.dirname(entry.target), { recursive: true });
+        if (fs.existsSync(entry.target)) {
+          fs.renameSync(entry.target, entry.old);
+          entry.moved = true;
+        }
+        if (entry.source) {
+          fs.renameSync(entry.staged, entry.target);
+          entry.installed = true;
+        }
       }
+    } catch (error) {
+      const failures: unknown[] = [];
+      for (const entry of [...entries].reverse()) {
+        try {
+          if (entry.installed) fs.rmSync(entry.target, { recursive: true, force: true });
+          if (entry.moved) fs.renameSync(entry.old, entry.target);
+        } catch (rollbackError) {
+          failures.push(rollbackError);
+        }
+      }
+      if (failures.length) {
+        preserveStaging = true;
+        throw new AggregateError(
+          [error, ...failures],
+          `Restore rollback requires recovery. Preserved files: ${staging}; safety backup: ${safetyBackup.name}`,
+        );
+      }
+      throw error;
     }
-    if (failures.length) {
-      preserveStaging = true;
-      throw new AggregateError(
-        [error, ...failures],
-        `Restore rollback requires recovery. Preserved files: ${staging}; safety backup: ${safetyBackup.name}`,
-      );
-    }
-    throw error;
+    journal.phase = "done";
+    writeJournal(staging, journal);
+    return { safetyBackup };
   } finally {
     if (!preserveStaging) fs.rmSync(staging, { recursive: true, force: true });
   }
-  return { safetyBackup };
+}
+
+// ---- Restore journal: a restore that dies half way is undone, never left half applied -----------------------
+
+interface RestoreJournal {
+  pid: number;
+  procStart: string | null;
+  /** `staging`: nothing live was touched; `installing`: targets may have been moved; `done`: all installed. */
+  phase: "staging" | "installing" | "done";
+  entries: Array<{ target: string; old: string; staged: string; hadTarget: boolean }>;
+}
+
+const JOURNAL = "JOURNAL.json";
+
+function writeJournal(staging: string, journal: RestoreJournal): void {
+  atomicWrite(path.join(staging, JOURNAL), JSON.stringify(journal));
+}
+
+function readJournal(staging: string): RestoreJournal | null {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(staging, JOURNAL), "utf8")) as Partial<RestoreJournal>;
+    if (typeof raw.pid !== "number" || !Array.isArray(raw.entries)) return null;
+    return {
+      pid: raw.pid,
+      procStart: typeof raw.procStart === "string" ? raw.procStart : null,
+      phase: raw.phase === "installing" || raw.phase === "done" ? raw.phase : "staging",
+      entries: raw.entries,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Undo restores whose process is gone: for each `.restore-*` folder in the home whose journal names a process that
+ * is no longer running (or that is not this one), put every target that was moved aside back, remove what was
+ * installed from the staging, and remove the folder. A restore that finished (`done`) only has its folder
+ * removed. One whose process is alive is left alone. Returns the folders it dealt with.
+ */
+export function recoverInterruptedRestore(paths: MordomoPaths): string[] {
+  let names: string[];
+  try {
+    names = fs.readdirSync(paths.home).filter((n) => n.startsWith(".restore-"));
+  } catch {
+    return [];
+  }
+  const recovered: string[] = [];
+  for (const name of names) {
+    const staging = path.join(paths.home, name);
+    const journal = readJournal(staging);
+    if (journal === null) {
+      // No journal: nothing live was touched. It is still being made by a live process (its pid is in the name),
+      // or its process died before writing it and the folder is only debris.
+      const owner = /^\.restore-(\d+)-/.exec(name);
+      if (owner && !lockIsStale({ pid: Number(owner[1]) }, realProbe, process.pid)) continue;
+      fs.rmSync(staging, { recursive: true, force: true });
+      recovered.push(name);
+      continue;
+    }
+    if (!lockIsStale({ pid: journal.pid, procStart: journal.procStart }, realProbe, process.pid)) continue;
+    const failures: unknown[] = [];
+    if (journal.phase === "installing") {
+      for (const entry of [...journal.entries].reverse()) {
+        try {
+          if (fs.existsSync(entry.old)) {
+            fs.rmSync(entry.target, { recursive: true, force: true });
+            fs.renameSync(entry.old, entry.target);
+          } else if (!entry.hadTarget && !fs.existsSync(entry.staged)) {
+            fs.rmSync(entry.target, { recursive: true, force: true });
+          }
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures,
+        `An interrupted restore could not be undone. Preserved files: ${staging}`,
+      );
+    }
+    fs.rmSync(staging, { recursive: true, force: true });
+    recovered.push(name);
+  }
+  return recovered;
 }
 
 function dirSize(dir: string): number {
@@ -234,7 +482,7 @@ function dirSize(dir: string): number {
     for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
       const full = path.join(d, entry.name);
       if (entry.isDirectory()) walk(full);
-      else total += fs.statSync(full).size;
+      else total += fs.lstatSync(full).size; // a link counts as itself: a dangling one must not fail the listing
     }
   };
   walk(dir);
@@ -296,6 +544,7 @@ export function clearRestorePending(paths: MordomoPaths): void {
  * staged copy is moved back into `backups/` first.
  */
 export function applyPendingRestore(paths: MordomoPaths): { applied: RestorePending | null } {
+  recoverInterruptedRestore(paths);
   const pending = readRestorePending(paths);
   if (!pending) return { applied: null };
   const original = path.join(paths.backups, pending.name);
