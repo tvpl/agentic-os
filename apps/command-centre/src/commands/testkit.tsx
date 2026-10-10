@@ -10,7 +10,7 @@ import { afterEach, beforeAll, beforeEach, expect, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HashRouter } from "react-router-dom";
-import { type Meta } from "../api";
+import { api, type Meta } from "../api";
 import { I18nContext, type Lang, dictionaries } from "../i18n";
 import { ToastProvider } from "../components/ui";
 import { ConfirmProvider } from "../hooks/useConfirm";
@@ -89,6 +89,8 @@ export function installHarness() {
     );
   });
   afterEach(() => {
+    // Calls are cleared by clearAllMocks; what a test made the server answer is not: back to the table.
+    for (const fn of Object.values(api)) if (vi.isMockFunction(fn)) fn.mockReset();
     // Back to the prototype's getter (jsdom's own value).
     delete (window.navigator as { platform?: string }).platform;
     cleanup();

@@ -304,6 +304,8 @@ export function useGlobalCommands(opts: GlobalCommandsOptions): void {
         palette: true,
         run: task(switchTitle, async () => {
           await live.current.savePreferences({ shell: frame ? "nucleo" : "moldura" });
+          const { t, toast } = live.current;
+          toast(t(frame ? "moldura.palette.switchedToNucleo" : "moldura.palette.switchedToFrame"), "ok");
         }),
       },
     );

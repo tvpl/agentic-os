@@ -39,6 +39,8 @@ export const en = {
   "moldura.settings.nucleo": "Immersive Núcleo",
   "moldura.palette.toNucleo": "Switch to the immersive Núcleo",
   "moldura.palette.toFrame": "Switch to the app frame",
+  "moldura.palette.switchedToNucleo": "Switched to the immersive Núcleo",
+  "moldura.palette.switchedToFrame": "Switched to the app frame",
 } as const;
 
 export const ptBR = {
@@ -77,4 +79,6 @@ export const ptBR = {
   "moldura.settings.nucleo": "Núcleo imersivo",
   "moldura.palette.toNucleo": "Mudar para o Núcleo imersivo",
   "moldura.palette.toFrame": "Mudar para a moldura de app",
+  "moldura.palette.switchedToNucleo": "Agora no Núcleo imersivo",
+  "moldura.palette.switchedToFrame": "Agora na moldura de app",
 } as const satisfies Record<keyof typeof en, string>;

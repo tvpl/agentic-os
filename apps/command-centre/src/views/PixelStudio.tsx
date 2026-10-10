@@ -504,9 +504,10 @@ export default function PixelStudio() {
       key("pixel.swap", "cmd.pixel.swap", ["x"], () => keyActs.current.swapColors()),
       key("pixel.onion", "pixel.onion", ["o"], () => setOnion((v) => !v)),
       ...tools.map(([k, tool, title]) => key(`pixel.tool.${tool}`, title, [k], () => setTool(tool))),
-      // Before the shell's own Escape (a lâmina, home): unsaved pixels are asked about first.
+      // Before the shell's own Escape (a lâmina, home): unsaved pixels are asked about first. In a
+      // field, Escape is the field's (the manager keeps bare keys out of fields).
       key("pixel.leave", "cmd.pixel.leave", ["Escape"], () => keyActs.current.leave(), {
-        when: () => dirtyRef.current && !isTypingTarget(document.activeElement),
+        when: () => dirtyRef.current,
       }),
     ];
   }, []);

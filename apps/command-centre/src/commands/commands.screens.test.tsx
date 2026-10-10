@@ -15,8 +15,9 @@ import type * as CameraModule from "../brain/camera";
 import { api } from "../api";
 import { dictionaries } from "../i18n";
 import { useDialog } from "../components/dialog";
-import { getLaminas, project } from "../nucleo/projections";
+import { dismiss, getLaminas, project } from "../nucleo/projections";
 import { horizonRing } from "../nucleo/scenes";
+import { runPanelId } from "../desktop/runPanels";
 import { CommandRegistry, CommandsGate, CommandsProvider, useCommandScope, useCommands } from "./registry";
 import { matchesCombo } from "./keys";
 import {
@@ -236,6 +237,21 @@ describe("R1 the doors found while building", () => {
   });
 });
 
+describe("R1 a sheet on its way out does not answer keys", () => {
+  it("C24 a lâmina that is dissolving keeps none of its screen's keys", async () => {
+    const registry = await mountShell("/", "nucleo");
+    const ids = () => registry.list().map((c) => c.id);
+    blur();
+    act(() => project(runPanelId("r1")));
+    await waitFor(() => expect(ids()).toContain("runs.again"), { timeout: 5000 });
+    act(() => dismiss(runPanelId("r1")));
+    // It is still drawn for its exit, as a picture: its keys are gone with it.
+    await waitFor(() => expect(document.querySelector(".nu-lamina.bye")).not.toBeNull());
+    expect(ids()).not.toContain("runs.again");
+    await waitFor(() => expect(document.querySelector(".nu-lamina")).toBeNull(), { timeout: 5000 });
+  });
+});
+
 /* ---- Pixel Studio ------------------------------------------------------------------ */
 describe("R1 every key of Pixel Studio does what it says", () => {
   it("C26 Pixel Studio keys each act on Pixel Studio", async () => {
@@ -300,6 +316,14 @@ describe("R1 every key of Pixel Studio does what it says", () => {
     await screen.findByRole("button", { name: /Eraser/ }, { timeout: 5000 });
     blur();
     fireEvent.click(screen.getByRole("button", { name: /^Add$/ }));
+    // In a field, Escape is the field's: nothing asks, nobody leaves.
+    const field = screen.getAllByRole("textbox")[0]!;
+    act(() => field.focus());
+    press({ key: "Escape" }, field);
+    await settle();
+    expect(screen.queryByRole("dialog", { name: "Leave with unsaved pixels?" })).toBeNull();
+    expect(hash()).toBe("#/pixel");
+    blur();
     press({ key: "Escape" });
     const ask = await screen.findByRole("dialog", { name: "Leave with unsaved pixels?" });
     expect(hash()).toBe("#/pixel");
@@ -391,10 +415,15 @@ describe("R1 every key of the Second Brain, a run and a skill does what it says"
       expect(document.querySelector(".bs-classic .brain2")!.classList.contains("presenting")).toBe(false),
     );
     await waitFor(() => expect(onSearch()).toBe(true));
-    // Once: the field is not grabbed again by a later render.
+    // Once: the field is not grabbed again by a later render, nor when the panel is folded and unfolded.
     blur();
     await settle();
     expect(onSearch()).toBe(false);
+    fireEvent.click(toggle());
+    fireEvent.click(toggle());
+    await settle();
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(onSearch(), "unfolding the panel is not a request for the field").toBe(false);
   });
 
   it("C28 a run's /, c and r each do their own thing", async () => {
@@ -447,6 +476,29 @@ describe("R1 every key of the Second Brain, a run and a skill does what it says"
     expect(field, "the page has a field").not.toBeNull();
     press({ key: "Enter", ctrlKey: true }, field!);
     await waitFor(() => expect(launches()).toHaveLength(2));
+  });
+});
+
+describe("R1 a skill's ⌘Enter respects whether it can run", () => {
+  it("C28 ⌘Enter does nothing while the skill is already running", async () => {
+    await mountShell("/skills/demo", "moldura");
+    await waitFor(
+      () =>
+        expect(document.querySelector<HTMLButtonElement>(".apps-run-actions .btn.primary")?.disabled).toBe(
+          false,
+        ),
+      { timeout: 5000 },
+    );
+    const launches = () => vi.mocked(api.post).mock.calls.filter(([url]) => url === "/api/skills/demo/run");
+    blur();
+    // The launch never answers: the page is running.
+    press({ key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(launches()).toHaveLength(1));
+    await settle();
+    press({ key: "Enter", ctrlKey: true });
+    press({ key: "Enter", ctrlKey: true });
+    await settle();
+    expect(launches(), "while it runs, the key is not another run").toHaveLength(1);
   });
 });
 
@@ -530,6 +582,39 @@ describe("R1 the Núcleo's own keys", () => {
     await waitFor(() => expect(deck()).not.toBeNull());
     press({ key: "j", ctrlKey: true }, document.activeElement ?? document.body);
     await waitFor(() => expect(deck()).toBeNull());
+  });
+
+  it("C29 with a sheet up and the deck open, Esc closes the deck first and the sheet next", async () => {
+    await mountShell("/runs", "nucleo");
+    blur();
+    act(() => project("cost"));
+    await waitFor(() => expect(getLaminas()).toEqual(["cost"]));
+    press({ key: "j", ctrlKey: true });
+    await waitFor(() => expect(document.querySelector(".skill-deck")).not.toBeNull());
+    press({ key: "Escape" }, document.activeElement ?? document.body);
+    await waitFor(() => expect(document.querySelector(".skill-deck")).toBeNull());
+    expect(getLaminas(), "the sheet under the deck stayed").toEqual(["cost"]);
+    expect(hash()).toBe("#/runs");
+    blur();
+    press({ key: "Escape" });
+    await waitFor(() => expect(getLaminas()).toEqual([]));
+  });
+
+  it("C29 with the conversation and the search both open, Esc folds the conversation first", async () => {
+    await mountShell("/runs", "nucleo");
+    const shell = () => document.querySelector(".nu-shell")!;
+    const voice = () => document.querySelector(".nu-voice")!;
+    blur();
+    press({ key: "f", ctrlKey: true });
+    await waitFor(() => expect(shell().classList.contains("searching")).toBe(true));
+    act(() => document.querySelector<HTMLTextAreaElement>(".cons-input")!.focus());
+    await waitFor(() => expect(voice().hasAttribute("data-open")).toBe(true));
+    press({ key: "Escape" }, document.activeElement!);
+    await waitFor(() => expect(voice().hasAttribute("data-open")).toBe(false));
+    expect(shell().classList.contains("searching"), "the search is still there").toBe(true);
+    blur();
+    press({ key: "Escape" });
+    await waitFor(() => expect(shell().classList.contains("searching")).toBe(false));
   });
 
   it("C29 ⌘⇧A and ⌘⇧D answer only with a decision waiting, and only with Shift", async () => {
@@ -726,6 +811,104 @@ describe("R1 the palette closes at once on an action that talks to the server", 
     await gone();
     await screen.findByText(/Run diagnostics failed: .*the doctor is out/);
     expect(hash()).toBe("#/");
+  });
+
+  it("C32 each of the five actions says it worked: the toast, its tone and what it did", async () => {
+    const en = dictionaries.en;
+    const toasts = () =>
+      [...document.querySelectorAll<HTMLElement>(".toast")].map((t) => [
+        t.className.replace(/\s+/g, " "),
+        t.textContent,
+      ]);
+    const toastOf = async (text: string) => (await screen.findByText(text)).closest(".toast")!;
+    type Row = [id: string, setup: () => void, text: string, tone: string, effect: () => void];
+    const rows: Row[] = [
+      [
+        "action:reindex",
+        () => vi.mocked(api.post).mockResolvedValue({}),
+        en["shell.action.reindexDone"],
+        "ok",
+        () => expect(api.post).toHaveBeenCalledWith("/api/memory/index"),
+      ],
+      [
+        "action:backup",
+        () => vi.mocked(api.post).mockResolvedValue({ name: "b-2026" }),
+        "Backup created: b-2026",
+        "ok",
+        () => expect(api.post).toHaveBeenCalledWith("/api/backups", {}),
+      ],
+      [
+        "action:doctor",
+        () => (server.doctor = () => Promise.resolve({ ok: 5, warn: 0, fail: 0 })),
+        "Doctor: 5 ok · 0 warnings · 0 failures",
+        "ok",
+        () => expect(hash()).toBe("#/settings?tab=diagnostics"),
+      ],
+      [
+        "action:doctor",
+        () => (server.doctor = () => Promise.resolve({ ok: 3, warn: 1, fail: 2 })),
+        "Doctor: 3 ok · 1 warnings · 2 failures",
+        "danger",
+        () => expect(hash()).toBe("#/settings?tab=diagnostics"),
+      ],
+      [
+        "action:toggle-theme",
+        () => {
+          document.documentElement.dataset.theme = "dark";
+          vi.mocked(api.putSettings).mockResolvedValue({ settings: {}, pendingApproval: null });
+        },
+        "Theme: light",
+        "ok",
+        () => expect(api.putSettings).toHaveBeenCalledWith({ theme: "light" }),
+      ],
+      [
+        "action:toggle-theme",
+        () => {
+          document.documentElement.dataset.theme = "light";
+          vi.mocked(api.putSettings).mockResolvedValue({ settings: {}, pendingApproval: null });
+        },
+        "Theme: dark",
+        "ok",
+        () => expect(api.putSettings).toHaveBeenCalledWith({ theme: "dark" }),
+      ],
+      [
+        "action:switch-shell",
+        () =>
+          vi.mocked(api.putUiPreferences).mockResolvedValue({ ...server.prefs, shell: "nucleo" } as never),
+        en["moldura.palette.switchedToNucleo"],
+        "ok",
+        () => expect(api.putUiPreferences).toHaveBeenCalledWith({ shell: "nucleo" }),
+      ],
+    ];
+    for (const [id, setup, text, tone, effect] of rows) {
+      await mountShell("/", "moldura");
+      setup();
+      blur();
+      press({ key: "k", ctrlKey: true });
+      await screen.findByRole("combobox");
+      await waitFor(() => expect(document.getElementById(`palette-list-${id}`), id).not.toBeNull());
+      fireEvent.click(document.getElementById(`palette-list-${id}`)!);
+      await gone();
+      const toast = await toastOf(text);
+      expect(toast.classList.contains(tone), `${id} ${text}: ${JSON.stringify(toasts())}`).toBe(true);
+      await waitFor(effect);
+      document.documentElement.removeAttribute("data-theme");
+      cleanup();
+    }
+  });
+
+  it("C32 the frame's own row, 'Open the skill deck', opens the deck (it replaced an event)", async () => {
+    await mountShell("/", "moldura");
+    blur();
+    press({ key: "k", ctrlKey: true });
+    await screen.findByRole("combobox");
+    await waitFor(() => expect(document.getElementById("palette-list-action:skill-deck")).not.toBeNull());
+    // The frame has no key for it: ⌘J is the Núcleo's.
+    expect(document.getElementById("palette-list-action:skill-deck")!.querySelector(".pr-keys")).toBeNull();
+    expect(document.querySelector(".skill-deck")).toBeNull();
+    fireEvent.click(document.getElementById("palette-list-action:skill-deck")!);
+    await gone();
+    await waitFor(() => expect(document.querySelector(".skill-deck")).not.toBeNull());
   });
 
   it("C32 each of the actions that talk to the server closes the palette first and reports its failure", async () => {

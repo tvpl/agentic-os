@@ -81,8 +81,8 @@ Status: closed
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C15 Mod+Enter belongs to the open palette"`
 Status: closed
 
-**C16** - Lido pela árvore sintática do TypeScript, com autoteste do leitor (alias de `window`, `globalThis`, `self`, `window.document`, chamada sem receptor, desestruturação, tipo em constante, `onkeydown =`; e o que não é ouvinte da página): `App.tsx`, `nucleo/index.tsx`, `views/PixelStudio.tsx`, `views/SecondBrain.tsx`, `runs/RunDetail.tsx` e todo arquivo de `moldura/` não escutam `keydown` na página; os que sobram em `src` são exatamente os da allowlist, com contagem e motivo; nenhum arquivo de `src` (fora de testes) define ou usa `RESET_LAYOUT_EVENT`, `SHORTCUTS_EVENT`, `OPEN_DECK_EVENT` nem o nome de um desses eventos (AC 15)
-Proof: `npm run test -w apps/command-centre -- src/commands/commands.source.test.ts -t "C16"`
+**C16** - Lido pela árvore sintática do TypeScript, com autoteste do leitor (a página por qualquer nome: cópias, desestruturação, `body`, `documentElement`, `top`, `parent`, `globalThis`, `self`, a raiz por `getElementById`, laço sobre alvos; `addEventListener` por ponto, colchete, sem receptor, `bind`, `call`, `apply`, `Reflect.apply` e função-invólucro; `onkeydown` por `=`, `??=`, `||=`, `Object.assign`, `Reflect.set`; tipo em string, template, soma, constante do arquivo ou importada; e o que não é ouvinte da página): `App.tsx`, `nucleo/index.tsx`, `views/PixelStudio.tsx`, `views/SecondBrain.tsx`, `runs/RunDetail.tsx` e todo arquivo de `moldura/` não escutam `keydown` na página; os que sobram em `src` são exatamente os da allowlist, com contagem e motivo, e nenhum tem tipo de evento ilegível; nenhum arquivo define ou usa `RESET_LAYOUT_EVENT`, `SHORTCUTS_EVENT`, `OPEN_DECK_EVENT` nem o nome de um desses eventos. O limite é explícito: o leitor prova o que consegue ler; o que ele não vê (código que o arquivo não contém, um objeto passado de fora por um nome que não segue) a sonda de execução conta: desde antes do primeiro `import` do app, cada `keydown` posto em `window`, `document`, `body` e `documentElement`, em cada shell e cada tela, é exatamente um do registro mais os da allowlist (AC 15)
+Proof: npm run test -w apps/command-centre -- src/commands/commands.source.test.ts -t "C16" && npm run test -w apps/command-centre -- src/commands/commands.probe.test.tsx
 Status: closed
 
 **C17** - e2e: `tests/e2e/nucleo-shell.spec.ts` "⌘⇧A and ⌘⇧D resolve the first decision from anywhere" passa (AC 16)
@@ -115,7 +115,7 @@ Status: closed
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C23"`
 Status: closed
 
-**C24** - Um `CommandsGate enabled={false}` tira do registro o que está dentro e `true` o devolve; de duas instâncias com a mesma chave `exclusive` só a mais nova registra e, ao sair, a mais velha assume; no Núcleo, a cena que está saindo (650 ms) não responde: a tecla `2` logo depois de sair do Pixel Studio viaja de cena, não troca a ferramenta (door 5)
+**C24** - Um `CommandsGate enabled={false}` tira do registro o que está dentro e `true` o devolve; de duas instâncias com a mesma chave `exclusive` só a mais nova registra e, ao sair, a mais velha assume; no Núcleo, a cena que está saindo (650 ms) não responde (a tecla `2` logo depois de sair do Pixel Studio viaja de cena, não troca a ferramenta) e a lâmina que se dissolve perde as teclas da sua tela (`runs.again` sai do registro enquanto ela ainda é desenhada) (door 5)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C24"`
 Status: closed
 
@@ -123,19 +123,19 @@ Status: closed
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C25 the narrow chat drawer"`
 Status: closed
 
-**C26** - No Pixel Studio aberto no Núcleo, cada tecla faz o que diz, uma tabela que aperta e lê o efeito: 1, 2, 3, 4 (ferramenta), `=`/`+` e `-`/`_` (pincel), `x` (cores), `o` (onion), ⌘Z, ⌘⇧Z e ⌘Y (desfazer/refazer, e não dentro de um campo), `[` `]` (quadros, em C12) e Esc (pergunta antes de sair com pixels não salvos; sem eles, vai para o início), sem a cena sair de `pixel` (AC 11)
+**C26** - No Pixel Studio aberto no Núcleo, cada tecla faz o que diz, uma tabela que aperta e lê o efeito: 1, 2, 3, 4 (ferramenta), `=`/`+` e `-`/`_` (pincel), `x` (cores), `o` (onion), ⌘Z, ⌘⇧Z e ⌘Y (desfazer/refazer, e não dentro de um campo), `[` `]` (quadros, em C12) e Esc (pergunta antes de sair com pixels não salvos, e não pergunta com o foco num campo; sem pixels, vai para o início), sem a cena sair de `pixel` (AC 11)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C26"`
 Status: closed
 
-**C27** - No Cérebro clássico, cada tecla faz o que diz: ⌘= / ⌘+ aproxima, ⌘- afasta, ⌘0 volta (o que a câmera recebe), `f` liga e desliga o modo local, `l` os nomes dos arquivos, e Esc fecha a lista, depois a apresentação, e só então é do shell (AC 12)
+**C27** - No Cérebro clássico, cada tecla faz o que diz: ⌘= / ⌘+ aproxima, ⌘- afasta, ⌘0 volta (o que a câmera recebe), `f` liga e desliga o modo local, `l` os nomes dos arquivos, `/` desdobra o painel dobrado ou sai da apresentação e foca a busca uma vez só (não de novo ao dobrar e desdobrar), e Esc fecha a lista, depois a apresentação, e só então é do shell (AC 12)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C27"`
 Status: closed
 
-**C28** - Numa execução, `/` foca a busca do registro, `c` abre e foca o seguir e `r` chama a nova execução uma vez, e `r`/`c` num campo são texto; na página de uma skill, ⌘Enter a executa (da página e de um campo), Enter e Ctrl+Shift+Enter não (AC 13)
+**C28** - Numa execução, `/` foca a busca do registro, `c` abre e foca o seguir e `r` chama a nova execução uma vez, e `r`/`c` num campo são texto; na página de uma skill, ⌘Enter a executa (da página e de um campo), Enter e Ctrl+Shift+Enter não, e enquanto ela roda a tecla não é outra execução (AC 13)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C28"`
 Status: closed
 
-**C29** - No Núcleo: 1-5 e `[` `]` viajam entre as cenas; Esc dobra a conversa, depois fecha a busca (⌘F), depois dispensa a lâmina, depois volta ao início; ⌘J abre o deck e a mesma tecla o fecha, Ctrl+Shift+J não; ⌘⇧A e ⌘⇧D só respondem com uma decisão esperando (AC 16)
+**C29** - No Núcleo: 1-5 e `[` `]` viajam entre as cenas; Esc dobra a conversa, depois fecha a busca (⌘F) — a conversa primeiro quando as duas estão abertas —, depois dispensa a lâmina, depois volta ao início; com uma lâmina e o deck abertos, o Esc fecha o deck e a lâmina fica; ⌘J abre o deck e a mesma tecla o fecha, Ctrl+Shift+J não; ⌘⇧A e ⌘⇧D só respondem com uma decisão esperando (AC 16)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C29"`
 Status: closed
 
@@ -147,7 +147,7 @@ Status: closed
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C31"`
 Status: closed
 
-**C32** - Com a paleta aberta, "Rodar diagnóstico" fecha a paleta antes de o servidor responder; ao responder, navega para Configurações e avisa; uma falha vira um aviso de erro que nomeia a ação, com a paleta fechada (AC 20, AD-014)
+**C32** - Com a paleta aberta, cada uma das cinco ações que falam com o servidor fecha a paleta antes de o servidor responder e, ao responder, avisa com o texto e o tom certos e faz o que diz: reindexar (aviso `ok`, chamada ao índice), backup (aviso com o nome, `ok`, chamada), diagnóstico (aviso `ok` ou, com falhas, `danger`; navega para Configurações), tema (aviso com o tema oposto ao de agora, `ok`, nas duas direções; `putSettings` com ele) e trocar de interface (aviso `ok`; `putUiPreferences` com a outra); uma falha de qualquer das cinco vira um aviso de erro que nomeia a ação, com a paleta fechada; a linha "Abrir o deck" da moldura abre o deck (AC 20, AD-014)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C32"`
 Status: closed
 
@@ -214,4 +214,5 @@ Cost: 2 arquivos de teste de interface (+ o `testkit` que dividem), 1 que lê a 
 - Edição de proof depois da aprovação: o C8 passou de `-g "launcher opens with Ctrl+M and searches skills"` para `-g "launcher opens with Ctrl\+M and searches skills"` (o `+` é quantificador no `-g`, que é uma expressão regular: sem o escape o filtro não casa teste nenhum). O claim não mudou
 - Mudanças de C-checks aprovados na S4, por pedido do orquestrador: C9 (AC 17), C11 (a chave sai, AC 10 muda) e C16 (leitor endurecido, allowlist, `OPEN_DECK_EVENT`); os testes de C11 e C16 foram para `commands.source.test.ts`
 - Baseline do ambiente, não da feature (idêntico no commit-base, 2f22034): C20 e C57 de `moldura.spec.ts` falham em `page.reload()` com a tela "Pair this device", então a proof do C21 não sai 0 inteira neste ambiente; C17-C20 e as specs de `nucleo-shell` estouram os 5 s do `.boot-screen` e os 30 s do teste (Chromium sem GPU, ~3 quadros por segundo): passam com `timeout` 150 s e `expect.timeout` 40 s numa configuração temporária não comitada
-- Abandonado: nada. Decidido: migrar os 11 ouvintes locais restantes fica para a próxima rodada (plan, Out of scope)
+- Abandonado: nada. Decidido: migrar os 13 ouvintes locais restantes (em 11 arquivos) fica para a próxima rodada (plan, Out of scope)
+- Rodada 2 da verificação (FAIL): C32 passa a provar o sucesso das cinco ações da paleta (texto, tom e efeito; trocar de interface ganhou o aviso de sucesso, `moldura.palette.switched*`) e a linha "Abrir o deck" da moldura; C24 prova a lâmina que se dissolve; C26-C29 provam os ramos de guarda (Esc em campo, `/` uma vez, ⌘Enter com a execução rodando, Esc sob o deck, conversa antes da busca); duas guardas redundantes saíram do código (`isTypingTarget` no Esc do Pixel, `!deckOpen` no Esc do Núcleo: o gerenciador já fazia isso); C16 ganhou o leitor endurecido, o limite explícito e a sonda de execução (`commands.probe.test.tsx`). AD-014 e as cinco decisões ficaram em "Perguntas ao dono" (STATE.md), pendentes de aceite do dono

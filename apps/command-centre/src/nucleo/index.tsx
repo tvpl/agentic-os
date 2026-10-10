@@ -435,8 +435,8 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
   const resolve = useResolveApproval((runId) => runId && openRun(runId));
   const resolveRef = useRef(resolve);
   resolveRef.current = resolve;
-  const keyState = useRef({ go, searching, deckOpen });
-  keyState.current = { go, searching, deckOpen };
+  const keyState = useRef({ go, searching });
+  keyState.current = { go, searching };
   const commands = useMemo<Command[]>(() => {
     const key = (
       id: string,
@@ -492,9 +492,7 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
           when: () =>
             dialogRef.current ||
             keyState.current.searching ||
-            (!isTypingTarget(document.activeElement) &&
-              !keyState.current.deckOpen &&
-              getLaminas().length > 0),
+            (!isTypingTarget(document.activeElement) && getLaminas().length > 0),
         },
       ),
       {
