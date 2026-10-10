@@ -16,6 +16,7 @@ import {
   openDb,
   readRestorePending,
   RestoreInProgressError,
+  RestoreLeftoverError,
   RestoreLock,
   RestoreRecoveryError,
   recoverInterruptedRestore,
@@ -70,6 +71,19 @@ function liveState(paths: MordomoPaths): Record<string, string> {
   }
   return out;
 }
+/** Every file under a folder with its content: what a refusal must leave exactly as it was. */
+const tree = (dir: string): Array<[string, string]> => {
+  const out: Array<[string, string]> = [];
+  const walk = (d: string) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) walk(full);
+      else out.push([path.relative(dir, full), fs.readFileSync(full, "utf8")]);
+    }
+  };
+  walk(dir);
+  return out.sort(([a], [b]) => (a < b ? -1 : 1));
+};
 const stagingFolders = (paths: MordomoPaths) =>
   fs.readdirSync(paths.home).filter((n) => n.startsWith(".restore-"));
 
@@ -148,9 +162,9 @@ async function startHolder(home: string): Promise<ChildProcess & { pid: number }
     [
       `import { RestoreLock } from ${src("core/src/restoreLock.ts")};`,
       `import { resolvePaths } from ${src("core/src/paths.ts")};`,
-      "RestoreLock.acquire(resolvePaths(process.env.HOME_DIR), 0);",
+      "const lock = RestoreLock.acquire(resolvePaths(process.env.HOME_DIR), 0);",
       'process.stdout.write("held\\n");',
-      "setInterval(() => {}, 1000);",
+      "setInterval(() => { void lock; }, 1000);",
     ].join("\n"),
   );
   const child = spawn(process.execPath, [script], {
@@ -443,14 +457,7 @@ describe("S4 backups are sealed, verified and kept in number", () => {
       JSON.stringify({
         pid: owner.pid,
         phase: "installing",
-        entries: [
-          {
-            target: paths.memory,
-            old: path.join(staging, "old-0"),
-            staged: path.join(staging, "new-0"),
-            hadTarget: true,
-          },
-        ],
+        entries: [{ slot: "memory", target: paths.memory, hadTarget: true }],
       }),
     );
     expect(() => recoverInterruptedRestore(paths, 100)).toThrow(RestoreInProgressError);
@@ -637,54 +644,126 @@ describe("S4 backups are sealed, verified and kept in number", () => {
     }
   }, 90_000);
 
-  it("C66 a journal this code did not write is not acted upon", async () => {
-    const { paths } = await fixture();
+  it("C66 a journal this code did not write is not acted upon, and the home refuses everything while it is there", async () => {
+    const { paths, backup } = await fixture();
     const outside = path.join(path.dirname(paths.home), `outside-${process.pid}`);
     fs.mkdirSync(outside, { recursive: true });
     write(path.join(outside, "precious.txt"), "do not delete");
     cleanups.push(() => fs.rmSync(outside, { recursive: true, force: true }));
-    const forged = (staging: string, entries: unknown[]) =>
+    const journal = (staging: string, entries: unknown[], over: Record<string, unknown> = {}) =>
       write(
         path.join(staging, "JOURNAL.json"),
-        JSON.stringify({ pid: 2 ** 30, phase: "installing", entries }),
+        JSON.stringify({ pid: 2 ** 30, phase: "installing", entries, ...over }),
       );
-    const entry = (staging: string, target: string, over: Record<string, unknown> = {}) => ({
-      target,
-      old: path.join(staging, "old-0"),
-      staged: path.join(staging, "new-0"),
-      hadTarget: false,
+    const legit = (over: Record<string, unknown> = {}) => ({
+      slot: "memory",
+      target: paths.memory,
+      hadTarget: true,
       ...over,
     });
+    let n = 0;
+    const staging = () => path.join(paths.home, `.restore-${++n}-aaaaaa`);
 
-    // 1. A target that is not one of the eleven things a restore replaces.
-    const s1 = path.join(paths.home, ".restore-1-aaaaaa");
-    forged(s1, [entry(s1, outside)]);
-    // 2. An old/staged path that is not inside its own staging folder.
-    const s2 = path.join(paths.home, ".restore-2-bbbbbb");
-    forged(s2, [entry(s2, paths.memory, { old: path.join(outside, "precious.txt"), hadTarget: true })]);
-    // 3. A folder whose name is not a staging name.
-    const s3 = path.join(paths.home, ".restore-evil");
-    forged(s3, [entry(s3, outside)]);
-    // 4. A link named like a staging folder, to a folder that holds a forged journal.
+    // Each of these is refused (nothing deleted, nothing moved, the folder kept), and so is every caller.
+    const cases: Array<[string, (dir: string) => void]> = [
+      ["a slot that is not one of the eleven", (d) => journal(d, [legit({ slot: "outside" })])],
+      ["a slot that is a path", (d) => journal(d, [legit({ slot: outside })])],
+      ["the same slot twice", (d) => journal(d, [legit(), legit()])],
+      ["hadTarget that is not a boolean", (d) => journal(d, [legit({ hadTarget: "yes" })])],
+      ["a phase that is not one", (d) => journal(d, [legit()], { phase: "whenever" })],
+      [
+        "one legitimate entry and one outside it (all or nothing)",
+        (d) => {
+          write(path.join(d, "old-0", "note.md"), "the original");
+          fs.rmSync(paths.memory, { recursive: true });
+          journal(d, [legit(), { slot: "../../etc", target: outside, hadTarget: false }]);
+        },
+      ],
+      ["a journal that is not JSON", (d) => write(path.join(d, "JOURNAL.json"), "{ not json")],
+      [
+        "a damaged journal over the originals it can no longer place (old-N are kept)",
+        (d) => {
+          write(path.join(d, "old-0", "note.md"), "the original");
+          write(path.join(d, "old-3", "x.md"), "another original");
+          write(path.join(d, "JOURNAL.json"), '{"pid":1,"phase":"insta');
+        },
+      ],
+      ["a journal that is not an object", (d) => write(path.join(d, "JOURNAL.json"), "[1,2]")],
+      [
+        "no journal, but the originals (old-N) are there",
+        (d) => write(path.join(d, "old-0", "note.md"), "x"),
+      ],
+    ];
     if (POSIX) {
-      const away = path.join(outside, "away");
-      forged(away, [entry(away, paths.memory)]);
-      fs.symlinkSync(away, path.join(paths.home, ".restore-4-dddddd"));
+      cases.push([
+        "a link named like a staging folder, to a folder that holds a valid journal",
+        (d) => {
+          const away = path.join(outside, "away");
+          journal(away, [legit({ hadTarget: false })]);
+          fs.symlinkSync(away, d);
+        },
+      ]);
     }
-    const before = liveState(paths);
-    expect(recoverInterruptedRestore(paths)).toEqual([]);
-    expect(fs.readFileSync(path.join(outside, "precious.txt"), "utf8")).toBe("do not delete");
-    expect(liveState(paths)).toEqual(before);
-    for (const staging of [s1, s2, s3]) expect(fs.existsSync(staging), staging).toBe(true);
+    for (const [label, build] of cases) {
+      const dir = staging();
+      build(dir);
+      const mid = liveState(paths);
+      const kept = POSIX && fs.lstatSync(dir).isSymbolicLink() ? [] : tree(dir);
+      const { db } = openDb(paths);
+      try {
+        for (const attempt of [
+          () => recoverInterruptedRestore(paths),
+          () => restoreBackup(paths, backup.name),
+          () => new AppContext(paths.home),
+          () => createBackup(paths, db),
+        ]) {
+          await expect(Promise.resolve().then(attempt), label).rejects.toBeInstanceOf(RestoreLeftoverError);
+        }
+      } finally {
+        db.close();
+      }
+      // (an engine makes the folders it needs, memory included: what a restore replaces is compared as it was)
+      const now = liveState(paths);
+      for (const key of Object.keys(mid)) expect(now[key], `${label}: ${key}`).toBe(mid[key]);
+      expect(POSIX && fs.lstatSync(dir).isSymbolicLink() ? [] : tree(dir), label).toEqual(kept);
+      expect(fs.readFileSync(path.join(outside, "precious.txt"), "utf8"), label).toBe("do not delete");
+      expect(fs.lstatSync(dir, { throwIfNoEntry: false }), label).toBeDefined();
+      // The owner clears it by hand, as the message says, and the home works again.
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.mkdirSync(paths.memory, { recursive: true });
+    }
+    const error = await Promise.resolve()
+      .then(() => {
+        write(path.join(staging(), "JOURNAL.json"), "garbage");
+        return recoverInterruptedRestore(paths);
+      })
+      .catch((e: unknown) => e as RestoreLeftoverError);
+    expect(error.message).toContain("delete the folder and try again");
+    expect((error as RestoreLeftoverError).statusCode).toBe(409);
+    expect((error as RestoreLeftoverError).leftovers).toHaveLength(1);
+    fs.rmSync(path.join(paths.home, `.restore-${n}-aaaaaa`), { recursive: true, force: true });
 
-    // 5. The same shape, genuinely ours (a target the restore replaces, paths inside the folder): undone.
-    const good = path.join(paths.home, ".restore-5-eeeeee");
+    // A folder an owner made, whose name only starts like one, is not a staging folder: left alone, no error.
+    const notes = path.join(paths.home, ".restore-notes");
+    write(path.join(notes, "mine.txt"), "mine");
+    expect(recoverInterruptedRestore(paths)).toEqual([]);
+    expect(fs.readFileSync(path.join(notes, "mine.txt"), "utf8")).toBe("mine");
+    const engine = new AppContext(paths.home);
+    engine.close();
+    expect(fs.existsSync(notes)).toBe(true);
+
+    // The genuine thing is undone - and by index and slot, whatever the journal says of old/staged/target.
+    const good = staging();
     write(path.join(good, "old-0", "note.md"), "the original");
     fs.rmSync(paths.memory, { recursive: true });
-    forged(good, [entry(good, paths.memory, { hadTarget: true })]);
+    journal(good, [
+      legit({ target: path.join(outside, "elsewhere"), old: path.join(outside, "precious.txt") }),
+    ]);
     expect(recoverInterruptedRestore(paths)).toEqual([path.basename(good)]);
     expect(fs.readFileSync(path.join(paths.memory, "note.md"), "utf8")).toBe("the original");
-  });
+    expect(fs.readFileSync(path.join(outside, "precious.txt"), "utf8")).toBe("do not delete");
+    expect(fs.existsSync(path.join(outside, "elsewhere"))).toBe(false);
+  }, 120_000);
 
   it("C72 the API answers 409 with its code when a restore is running or the original cannot be kept", async () => {
     const { paths: seed } = makeTempHome("mordomo-dados-409-");

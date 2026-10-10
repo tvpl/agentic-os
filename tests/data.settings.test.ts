@@ -638,6 +638,18 @@ describe("S3 settings tolerate an invalid field", () => {
     };
     expect(line.path).toBe("(document)");
 
+    // Past the cap the owner's exclusions are not lost with the rest: the entries that can be read are kept (a
+    // read of fewer exclusions than the owner wrote would index and serve what they asked to keep out).
+    const lost = setup();
+    lost.write({
+      version: 2,
+      excludes: [...Array.from({ length: 6000 }, (_, i) => i), "mine/*", "also-mine"],
+    });
+    const kept = lost.store.load();
+    expect(kept.excludes).toEqual([...(d.excludes as string[]), "mine/*", "also-mine"]);
+    expect(kept.securityProfile).toBe("read_only");
+    expect(kept.limits.dailyBudgetUsd).toBe(0.01);
+
     // The cap is a parameter of the parser, and a pass over many invalid values is linear.
     const direct = parseTolerant(SettingsSchema, wrap(Array.from({ length: 4000 }, () => 1)), {
       failClosed: SETTINGS_FAIL_CLOSED,

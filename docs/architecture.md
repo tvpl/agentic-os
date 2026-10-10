@@ -114,7 +114,7 @@ file written by a newer version is never overwritten (`code: "settings_newer"`).
 | `connectors/` | registry, credential-free MCP discovery, ranked auditor (max 3) |
 | `sync/` | config compiler: plan → diff → backup → apply with per-file conflict approval |
 | `backup.ts` / `backupManifest.ts` | online backup (`db.backup()`) sealed with `manifest.json` (SHA-256 per file), restore that verifies the staged copies against it, journals the install and is undone if its process dies, pre-restore safety backup, staged restore applied at boot, retention (`limits.backupRetention`) |
-| `restoreLock.ts` | the restore lock: one restore, undoing of a dead restore or engine construction on the files of a home at a time (the write lock of `config/run/restore.lock`, released by the kernel) |
+| `restoreLock.ts` | the restore lock (the lock of `config/run/restore.lock`, released by the kernel): exclusive for a restore, the undoing of a dead one and a staged restore; shared for a backup (all of it) and for an engine being built (until its database is open) |
 | `ownerLock.ts` / `processIdentity.ts` | the owner lock of a home: process identity (pid + start time + boot id), stale-lock takeover serialised by the database, release by token |
 
 ## Adapters

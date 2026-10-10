@@ -57,7 +57,12 @@ const covers = (pattern: readonly string[], path: Path): boolean =>
 const hasWildcard = (rule: FailClosedField): boolean => segments(rule).includes("*");
 
 /** The closed values of the rules that sit below `path` (none with a `*`: nothing below a dropped parent has one). */
-function closedBelow(rules: readonly FailClosedField[], path: Path): Record<string, unknown> | undefined {
+function closedBelow(
+  rules: readonly FailClosedField[],
+  path: Path,
+  /** The document these values replace parts of, when what it holds is to be kept (a rule that keeps readable entries). */
+  raw?: unknown,
+): Record<string, unknown> | undefined {
   const out: Record<string, unknown> = {};
   let any = false;
   for (const rule of rules) {
@@ -70,7 +75,7 @@ function closedBelow(rules: readonly FailClosedField[], path: Path): Record<stri
       });
       node[keys[keys.length - 1]!] = value;
     };
-    put(pattern, closedValue(rule, undefined));
+    put(pattern, closedValue(rule, raw === undefined ? undefined : valueAt(raw, pattern)));
     for (const also of rule.also ?? []) put([...pattern.slice(0, -1), also.sibling], also.value);
     any = true;
   }
@@ -108,7 +113,7 @@ export function parseTolerant<S extends ZodTypeAny>(
     if (parsed.success) return { value: parsed.data, issues, overflow: false };
     if (issues.length + parsed.error.issues.length > max) {
       return {
-        value: closedDefaults(schema, rules),
+        value: closedDefaults(schema, rules, raw),
         issues: [{ path: "(document)", reason: `more than ${max} invalid values: read as the closed defaults` }],
         overflow: true,
       };
@@ -162,7 +167,19 @@ export function parseTolerant<S extends ZodTypeAny>(
   }
 }
 
-/** The schema's defaults with every closed value applied: what a document too broken to repair reads as. */
-export function closedDefaults<S extends ZodTypeAny>(schema: S, rules: readonly FailClosedField[]): z.output<S> {
-  return schema.parse(closedBelow(rules, []) ?? {});
+/**
+ * The schema's defaults with every closed value applied: what a document too broken to repair reads as. Given the
+ * document (`raw`), the closed values that keep what is readable of it (the owner's `excludes`) do: a list of
+ * thousands of bad entries still gives its good ones back, never fewer exclusions than the owner wrote.
+ */
+export function closedDefaults<S extends ZodTypeAny>(
+  schema: S,
+  rules: readonly FailClosedField[],
+  raw?: unknown,
+): z.output<S> {
+  const candidate = closedBelow(rules, [], raw) ?? {};
+  const parsed = schema.safeParse(candidate);
+  if (parsed.success) return parsed.data;
+  // A readable entry the schema still refuses (it is only the closed fields that are in `candidate`): taken out.
+  return parseTolerant(schema, candidate, { failClosed: rules, maxInvalid: Number.POSITIVE_INFINITY }).value;
 }

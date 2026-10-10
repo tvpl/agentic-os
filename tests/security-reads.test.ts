@@ -1640,9 +1640,9 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
   {
     file: "core/src/backup.ts",
     api: "readdirSync",
-    count: 3,
+    count: 5,
     kind: "names",
-    why: "backup list, size walk, and the .restore-* folders of the home (names only; the journal inside is read by name)",
+    why: "backup list, size walk, the .restore-* folders of the home (to look for them and to undo them), and the names inside one to see whether it holds old-N (names only; the journal inside is read by name)",
   },
   {
     file: "core/src/backup.ts",
@@ -1731,9 +1731,23 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
   {
     file: "core/src/restoreLock.ts",
     api: "openSync",
+    count: 2,
+    kind: "fixed",
+    why: "creates config/run/restore.lock owner-only, only when it is absent (a descriptor opened and closed on a file this process holds a lock on would release it), and again if it was removed while waiting for it",
+  },
+  {
+    file: "core/src/restoreLock.ts",
+    api: "lstatSync",
     count: 1,
     kind: "fixed",
-    why: "creates config/run/restore.lock owner-only before SQLite opens it (the lock is its write lock)",
+    why: "config/run/restore.lock must be a regular file, never a link or a folder",
+  },
+  {
+    file: "core/src/restoreLock.ts",
+    api: "statSync",
+    count: 2,
+    kind: "fixed",
+    why: "the identity (device and inode) of config/run/restore.lock before and after it is locked, to know it is still the file that was locked",
   },
   {
     file: "core/src/ownerLock.ts",

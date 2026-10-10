@@ -17,11 +17,12 @@ import type { ProviderRegistry } from "./agents/registry.js";
 import {
   BackupVerificationError,
   applyPendingRestoreLocked,
+  hasStagingFolders,
   readRestorePending,
   recoverLocked,
   type RestorePending,
 } from "./backup.js";
-import { RestoreLock } from "./restoreLock.js";
+import { RestoreInProgressError, RestoreLock } from "./restoreLock.js";
 import { installPushChannel } from "./channels/pushChannel.js";
 import { installTelegramChannel } from "./channels/telegram.js";
 import type { EffortLevel, ProviderId, SecurityProfile, Settings } from "./config/schema.js";
@@ -175,12 +176,12 @@ export class MordomoEngine {
   readonly metricsHistory: MetricsHistory;
   readonly startedAt = Date.now();
   /** Restore applied while building (see `EngineOptions.applyPendingRestore`). */
-  readonly restoredAtBoot: RestorePending | null = null;
+  readonly restoredAtBoot: RestorePending | null;
   /**
    * A restore staged for this boot that failed verification (a backup that is tampered, truncated or unsealed):
    * nothing was changed, the service starts with the data it has, and the owner is told why.
    */
-  readonly restoreRejectedAtBoot: { name: string; message: string } | null = null;
+  readonly restoreRejectedAtBoot: { name: string; message: string } | null;
 
   private adapterRecord: Record<ProviderId, AgentAdapter>;
   private readonly disposers: Array<() => void> = [];
@@ -191,22 +192,41 @@ export class MordomoEngine {
     this.paths = resolvePaths(opts.home);
     ensureDirs(this.paths);
     // The files of the home are not ours to build on while a restore replaces them: wait for it to finish, or
-    // refuse (`RestoreInProgressError`) - never open (and so create) a database the restore is about to put
-    // in place. The lock is held until the database is open, so a restore that starts next finds it open.
-    const restoreLock = RestoreLock.acquire(this.paths, opts.restoreWaitMs ?? 10_000);
+    // refuse (`RestoreInProgressError`) - never open (and so create) a database the restore is about to put in
+    // place. The SHARED lock is held until the database is open (any number of engines at once; a restore that
+    // starts next finds the database open and waits for it). Undoing a dead restore or applying a staged one takes
+    // the EXCLUSIVE lock, so the shared one is let go for that and taken again.
+    const waitMs = opts.restoreWaitMs ?? 10_000;
+    let restoredAtBoot: RestorePending | null = null;
+    let restoreRejectedAtBoot: { name: string; message: string } | null = null;
+    let restoreLock = RestoreLock.acquire(this.paths, waitMs, "shared");
     try {
-      if (opts.seedDir) seedHome(this.paths, opts.seedDir);
-      // Whatever command built this engine, a restore that died half way is undone before the database opens.
-      recoverLocked(this.paths);
-      if (opts.applyPendingRestore) {
-        const pending = readRestorePending(this.paths);
+      for (let round = 0; ; round++) {
+        const needed =
+          hasStagingFolders(this.paths) ||
+          (opts.applyPendingRestore === true && readRestorePending(this.paths) !== null);
+        if (!needed) break;
+        if (round >= 5) throw new RestoreInProgressError();
+        restoreLock.release();
+        const exclusive = RestoreLock.acquire(this.paths, waitMs, "exclusive");
         try {
-          this.restoredAtBoot = applyPendingRestoreLocked(this.paths).applied;
-        } catch (error) {
-          if (!(error instanceof BackupVerificationError) || pending === null) throw error;
-          this.restoreRejectedAtBoot = { name: pending.name, message: error.message };
+          // Whatever command built this engine, a restore that died half way is undone before the database opens.
+          recoverLocked(this.paths);
+          if (opts.applyPendingRestore) {
+            const pending = readRestorePending(this.paths);
+            try {
+              restoredAtBoot = applyPendingRestoreLocked(this.paths).applied;
+            } catch (error) {
+              if (!(error instanceof BackupVerificationError) || pending === null) throw error;
+              restoreRejectedAtBoot = { name: pending.name, message: error.message };
+            }
+          }
+        } finally {
+          exclusive.release();
         }
+        restoreLock = RestoreLock.acquire(this.paths, waitMs, "shared");
       }
+      if (opts.seedDir) seedHome(this.paths, opts.seedDir);
       this.brokerFactory = opts.permissionBroker;
       this.settingsStore = new SettingsStore(this.paths);
       // A saved preference is announced like a settings change, so every open
@@ -218,6 +238,8 @@ export class MordomoEngine {
     } finally {
       restoreLock.release();
     }
+    this.restoredAtBoot = restoredAtBoot;
+    this.restoreRejectedAtBoot = restoreRejectedAtBoot;
     tightenHomeFiles(this.paths);
     this.providers = opts.providers;
     this.adapterRecord = buildAdapters(this.providers, this.settingsStore.load());

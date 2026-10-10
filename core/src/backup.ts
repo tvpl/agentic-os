@@ -19,7 +19,7 @@ import {
   type Mount,
 } from "./backupManifest.js";
 import { atomicWrite } from "./config/atomicWrite.js";
-import { withRestoreLock } from "./restoreLock.js";
+import { RestoreInProgressError, RestoreLock, withRestoreLock } from "./restoreLock.js";
 
 export type { BackupInfo };
 
@@ -55,6 +55,8 @@ const RESTORABLE = [
 /** How long a backup waits for the restore lock: other backups hold it for an instant, a restore for minutes. */
 const BACKUP_GUARD_WAIT_MS = 3000;
 
+const RESTORE_WAIT_MS = 15_000;
+
 const BACKUP_NAME = /^full-[A-Za-z0-9-]{1,80}$/;
 
 export interface BackupOptions {
@@ -64,6 +66,8 @@ export interface BackupOptions {
 }
 
 export interface RestoreOptions {
+  /** How long to wait for the restore lock before refusing (ms, default 15 000; 0 refuses at once). */
+  waitMs?: number;
   /** Restore a backup that has no manifest, trusting it as it is (the checks of the database still run). */
   allowUnverified?: boolean;
 }
@@ -107,8 +111,19 @@ export async function createBackup(
   if (opts.keep !== undefined && !(Number.isInteger(opts.keep) && opts.keep >= 1)) {
     throw new RangeError(`keep must be an integer of at least 1 (got ${String(opts.keep)})`);
   }
-  // A home with a restore half done is not a state to seal: undo what a dead restore left, refuse a live one.
-  assertNoRestoreInProgress(paths);
+  // The files of the home must stay as they are from the first copy to the published manifest: a restore that
+  // starts half way would leave a backup with some of the old files and some of the new. So the backup holds the
+  // shared restore lock throughout (restores are refused meanwhile; other backups are not), after the leftovers
+  // of a dead restore have been undone - a home half restored is not a state to seal.
+  const lock = await lockHomeForBackup(paths);
+  try {
+    return await createBackupLocked(paths, db, opts);
+  } finally {
+    lock.release();
+  }
+}
+
+async function createBackupLocked(paths: MordomoPaths, db: Db, opts: BackupOptions): Promise<BackupInfo> {
   const { dest, dbFile } = snapshotFiles(paths, opts);
   try {
     if (db.open) {
@@ -284,8 +299,11 @@ export function restoreBackup(
   name: string,
   options: RestoreOptions = {},
 ): { safetyBackup: BackupInfo } {
-  // One restore at a time, and none while another process undoes a dead one: not waiting, a second is refused.
-  return withRestoreLock(paths, 0, () => restoreBackupLocked(paths, name, options));
+  // One restore at a time, and none while a backup runs or another process undoes a dead restore or is starting:
+  // a short wait (an engine being built holds the lock for milliseconds), then refused.
+  return withRestoreLock(paths, options.waitMs ?? RESTORE_WAIT_MS, () =>
+    restoreBackupLocked(paths, name, options),
+  );
 }
 
 /** `restoreBackup` for a caller that already holds the restore lock. */
@@ -333,6 +351,7 @@ export function restoreBackupLocked(
     entries: [],
   };
   const entries: Array<{
+    slot: RestoreSlot;
     rel: string | null;
     source: string | null;
     target: string;
@@ -341,10 +360,13 @@ export function restoreBackupLocked(
     moved: boolean;
     installed: boolean;
   }> = [];
-  const add = (rel: string | null, source: string | null, target: string) => {
+  const slots = restoreSlots(paths);
+  const add = (rel: string | null, source: string | null, slot: RestoreSlot) => {
+    const target = slots[slot];
     if (source && !fs.existsSync(source)) return;
     const index = entries.length;
     entries.push({
+      slot,
       rel,
       source,
       target,
@@ -355,18 +377,19 @@ export function restoreBackupLocked(
     });
   };
   const inBackup = (rel: string) => path.join(src, ...rel.split("/"));
-  for (const set of BACKUP_SETS) add(set, inBackup(set), paths[set]);
-  if (includeArtifacts) add("artifacts", inBackup("artifacts"), paths.artifacts);
-  add("config/settings.json", inBackup("config/settings.json"), paths.settingsFile);
+  for (const set of BACKUP_SETS) add(set, inBackup(set), set);
+  if (includeArtifacts) add("artifacts", inBackup("artifacts"), "artifacts");
+  add("config/settings.json", inBackup("config/settings.json"), "settings");
   if (fs.existsSync(inBackup("config/ui-preferences.json")))
-    add("config/ui-preferences.json", inBackup("config/ui-preferences.json"), paths.uiPreferencesFile);
+    add("config/ui-preferences.json", inBackup("config/ui-preferences.json"), "uiPreferences");
   // A backup from before ui-preferences.json (settings version 1) keeps its
   // preferences inside settings.json: drop the live file so the next load
   // migrates the backup's own values instead of keeping the current ones.
-  else if (fs.existsSync(inBackup("config/settings.json"))) add(null, null, paths.uiPreferencesFile);
-  add("config/sync-manifest.json", inBackup("config/sync-manifest.json"), paths.syncManifest);
-  for (const suffix of ["-wal", "-shm"]) add(null, null, paths.dbFile + suffix);
-  add("config/db/mordomo.db", inBackup("config/db/mordomo.db"), paths.dbFile);
+  else if (fs.existsSync(inBackup("config/settings.json"))) add(null, null, "uiPreferences");
+  add("config/sync-manifest.json", inBackup("config/sync-manifest.json"), "syncManifest");
+  add(null, null, "dbWal");
+  add(null, null, "dbShm");
+  add("config/db/mordomo.db", inBackup("config/db/mordomo.db"), "db");
   let preserveStaging = false;
   try {
     writeJournal(staging, journal);
@@ -393,9 +416,8 @@ export function restoreBackupLocked(
     }
     journal.phase = "installing";
     journal.entries = entries.map((e) => ({
+      slot: e.slot,
       target: e.target,
-      old: e.old,
-      staged: e.staged,
       hadTarget: fs.existsSync(e.target),
     }));
     writeJournal(staging, journal);
@@ -446,12 +468,52 @@ export function restoreBackupLocked(
 
 // ---- Restore journal: a restore that dies half way is undone, never left half applied -----------------------
 
+/**
+ * The eleven things a restore replaces, by name. The journal says WHICH of them, never where: the place is always
+ * derived from the paths of the process that reads it, so a home reached by another spelling (a link, a moved
+ * folder, `/tmp` against `/private/tmp`) is undone like any other, and a journal cannot point anywhere else.
+ */
+const RESTORE_SLOTS = [
+  "skills",
+  "memory",
+  "routines",
+  "connectors",
+  "artifacts",
+  "settings",
+  "uiPreferences",
+  "syncManifest",
+  "dbWal",
+  "dbShm",
+  "db",
+] as const;
+type RestoreSlot = (typeof RESTORE_SLOTS)[number];
+
+function restoreSlots(paths: MordomoPaths): Record<RestoreSlot, string> {
+  return {
+    skills: paths.skills,
+    memory: paths.memory,
+    routines: paths.routines,
+    connectors: paths.connectors,
+    artifacts: paths.artifacts,
+    settings: paths.settingsFile,
+    uiPreferences: paths.uiPreferencesFile,
+    syncManifest: paths.syncManifest,
+    dbWal: `${paths.dbFile}-wal`,
+    dbShm: `${paths.dbFile}-shm`,
+    db: paths.dbFile,
+  };
+}
+
 interface RestoreJournal {
   /** Whose restore it was (for a human reading the folder; the lock is what says it is over). */
   pid: number;
   /** `staging`: nothing live was touched; `installing`: targets may have been moved; `done`: all installed. */
   phase: "staging" | "installing" | "done";
-  entries: Array<{ target: string; old: string; staged: string; hadTarget: boolean }>;
+  /**
+   * In order; the entry at index N owns `old-N` and `new-N` of the staging folder. `target` is informational (what
+   * a person reading the file sees): it is never acted upon, the slot is.
+   */
+  entries: Array<{ slot: RestoreSlot; target: string; hadTarget: boolean }>;
 }
 
 const JOURNAL = "JOURNAL.json";
@@ -460,59 +522,47 @@ function writeJournal(staging: string, journal: RestoreJournal): void {
   atomicWrite(path.join(staging, JOURNAL), JSON.stringify(journal));
 }
 
-function readJournal(staging: string): RestoreJournal | null {
+/** `absent`: there is none; `damaged`: it is there but is not a journal this code wrote. */
+function readJournal(staging: string): RestoreJournal | "absent" | "damaged" {
+  let text: string;
   try {
-    const raw = JSON.parse(fs.readFileSync(path.join(staging, JOURNAL), "utf8")) as Partial<RestoreJournal>;
-    if (typeof raw.pid !== "number" || !Array.isArray(raw.entries)) return null;
+    text = fs.readFileSync(path.join(staging, JOURNAL), "utf8");
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? "absent" : "damaged";
+  }
+  try {
+    const raw = JSON.parse(text) as Partial<RestoreJournal> | null;
+    if (typeof raw !== "object" || raw === null) return "damaged";
+    if (typeof raw.pid !== "number" || !Array.isArray(raw.entries)) return "damaged";
+    if (raw.phase !== "staging" && raw.phase !== "installing" && raw.phase !== "done") return "damaged";
+    // A journal is a list of things to delete and rename, so one that names anything but the eleven slots of a
+    // restore, twice, or without saying whether the target existed, is not acted upon (anyone who can write to
+    // the home could plant one).
+    const seen = new Set<string>();
+    for (const entry of raw.entries as unknown[]) {
+      const e = entry as { slot?: unknown; hadTarget?: unknown } | null;
+      if (typeof e !== "object" || e === null) return "damaged";
+      if (typeof e.slot !== "string" || !(RESTORE_SLOTS as readonly string[]).includes(e.slot))
+        return "damaged";
+      if (seen.has(e.slot) || typeof e.hadTarget !== "boolean") return "damaged";
+      seen.add(e.slot);
+    }
     return {
       pid: raw.pid,
-      phase: raw.phase === "installing" || raw.phase === "done" ? raw.phase : "staging",
-      entries: raw.entries,
+      phase: raw.phase,
+      entries: (raw.entries as RestoreJournal["entries"]).map((e) => ({
+        slot: e.slot,
+        target: typeof e.target === "string" ? e.target : "",
+        hadTarget: e.hadTarget,
+      })),
     };
   } catch {
-    return null;
+    return "damaged";
   }
 }
 
 /** The only names a restore's staging folder has, and it is a direct child of the home. */
 const STAGING_NAME = /^\.restore-\d+-[A-Za-z0-9]+$/;
-
-/**
- * Does this journal describe a restore THIS code wrote? A journal is a list of paths to delete and rename, so one
- * that points anywhere but at the eleven things a restore replaces, or at files outside its own staging folder,
- * is not acted upon (anyone who can write to the home could plant one).
- */
-function journalIsOurs(paths: MordomoPaths, staging: string, journal: RestoreJournal): boolean {
-  const targets = new Set(
-    [
-      paths.skills,
-      paths.memory,
-      paths.routines,
-      paths.connectors,
-      paths.artifacts,
-      paths.settingsFile,
-      paths.uiPreferencesFile,
-      paths.syncManifest,
-      paths.dbFile,
-      `${paths.dbFile}-wal`,
-      `${paths.dbFile}-shm`,
-    ].map((target) => path.resolve(target)),
-  );
-  return journal.entries.every((entry, index) => {
-    if (
-      typeof entry?.target !== "string" ||
-      typeof entry.old !== "string" ||
-      typeof entry.staged !== "string"
-    )
-      return false;
-    return (
-      targets.has(path.resolve(entry.target)) &&
-      path.resolve(entry.old) === path.join(staging, `old-${index}`) &&
-      path.resolve(entry.staged) === path.join(staging, `new-${index}`) &&
-      typeof entry.hadTarget === "boolean"
-    );
-  });
-}
 
 /** An interrupted restore that cannot be put back: where its files are, why, and what to do by hand. */
 export class RestoreRecoveryError extends Error {
@@ -529,18 +579,63 @@ export class RestoreRecoveryError extends Error {
 }
 
 /**
- * Before anything seals the home (a backup): undo what a dead restore left, and refuse while a restore is running
- * (the lock is held by another process).
+ * A `.restore-*` folder that MordomoOS will not delete or act on: it is not a folder, its journal is damaged or
+ * was not written by a restore, or it holds files (`old-N`) a damaged journal can no longer place. Whatever is
+ * asked of the home (a backup, a restore, an engine) is refused while it is there: nothing is changed.
  */
-function assertNoRestoreInProgress(paths: MordomoPaths): void {
-  // Other backups take the lock for an instant, too: wait a little for them, not for a restore.
-  withRestoreLock(paths, BACKUP_GUARD_WAIT_MS, () => recoverLocked(paths));
+export class RestoreLeftoverError extends Error {
+  readonly code = "restore_leftover";
+  /** What an API answers. */
+  readonly statusCode = 409;
+  constructor(
+    readonly leftovers: Array<{ name: string; folder: string; reason: string }>,
+    /** What was undone in the same pass. */
+    readonly recovered: string[] = [],
+  ) {
+    const list = leftovers.map((l) => `${l.folder} (${l.reason})`).join("; ");
+    super(
+      `The home holds ${leftovers.length} leftover(s) of a restore that cannot be undone safely by itself: ${list}. ` +
+        "Nothing was changed. Look inside (JOURNAL.json, old-N): move back by hand whatever belongs to the home " +
+        "(old-N is the original of the Nth entry), then delete the folder and try again.",
+    );
+    this.name = "RestoreLeftoverError";
+  }
+}
+
+/** Is there a `.restore-*` folder in the home? (Shared holders may look: nothing creates one without the exclusive lock.) */
+export function hasStagingFolders(paths: MordomoPaths): boolean {
+  try {
+    return fs.readdirSync(paths.home).some((n) => STAGING_NAME.test(n));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The shared restore lock for a backup: any number of backups at once, none while a restore runs (it waits for it
+ * a few seconds without blocking the event loop, then is refused). Leftovers of a dead restore are undone first
+ * (that takes the exclusive lock, so the shared one is let go and taken again); leftovers that cannot be undone
+ * refuse the backup (`RestoreLeftoverError`).
+ */
+async function lockHomeForBackup(paths: MordomoPaths): Promise<RestoreLock> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const lock = await RestoreLock.acquireAsync(paths, BACKUP_GUARD_WAIT_MS, "shared");
+    if (!hasStagingFolders(paths)) return lock;
+    lock.release();
+    withRestoreLock(paths, 10_000, () => recoverLocked(paths));
+  }
+  throw new RestoreInProgressError();
 }
 
 /**
  * Undo restores that died: for each `.restore-*` folder in the home, put every target that was moved aside back,
  * remove what was installed from the staging, and remove the folder. A restore that finished (`done`) only has its
- * folder removed; a folder with no journal (its process died before it) touched nothing and is removed.
+ * folder removed; a folder with no journal and nothing of the home inside (its process died before the journal)
+ * touched nothing and is removed.
+ *
+ * What it cannot place it keeps: a folder that is a link or a file, a journal that is damaged or not a restore's,
+ * a folder with `old-N` and no journal. Those are left exactly as they are and, after everything else was dealt
+ * with, `RestoreLeftoverError` says so - a caller never goes on over them.
  *
  * It takes the restore lock, so it is one process at a time and never while a restore is running: when it has the
  * lock, no restore is alive, and every folder it finds is debris. Several commands finding the same dead restore
@@ -559,31 +654,54 @@ export function recoverLocked(paths: MordomoPaths): string[] {
   } catch {
     return [];
   }
+  const slots = restoreSlots(paths);
   const recovered: string[] = [];
+  const leftovers: RestoreLeftoverError["leftovers"] = [];
   for (const name of names) {
     const staging = path.join(paths.home, name);
+    const keep = (reason: string) => leftovers.push({ name, folder: staging, reason });
     try {
       // A direct child of the home that is a real folder, never a link to somewhere else.
-      if (!fs.lstatSync(staging).isDirectory()) continue;
+      if (!fs.lstatSync(staging).isDirectory()) {
+        keep("not a folder");
+        continue;
+      }
     } catch {
-      continue;
+      continue; // gone meanwhile
     }
     const journal = readJournal(staging);
-    if (journal === null) {
+    if (journal === "damaged") {
+      keep("its JOURNAL.json is damaged or was not written by a restore");
+      continue;
+    }
+    if (journal === "absent") {
+      let holdsOriginals = false;
+      try {
+        holdsOriginals = fs.readdirSync(staging).some((n) => /^old-\d+$/.test(n));
+      } catch {
+        holdsOriginals = true; // cannot tell: do not delete what cannot be seen
+      }
+      if (holdsOriginals) {
+        keep("it holds old-N and has no JOURNAL.json");
+        continue;
+      }
       fs.rmSync(staging, { recursive: true, force: true });
       recovered.push(name);
       continue;
     }
-    if (!journalIsOurs(paths, staging, journal)) continue;
     const failures: unknown[] = [];
     if (journal.phase === "installing") {
-      for (const entry of [...journal.entries].reverse()) {
+      for (let index = journal.entries.length - 1; index >= 0; index--) {
+        const entry = journal.entries[index]!;
+        const target = slots[entry.slot];
+        const old = path.join(staging, `old-${index}`);
+        const staged = path.join(staging, `new-${index}`);
         try {
-          if (fs.existsSync(entry.old)) {
-            fs.rmSync(entry.target, { recursive: true, force: true });
-            fs.renameSync(entry.old, entry.target);
-          } else if (!entry.hadTarget && !fs.existsSync(entry.staged)) {
-            fs.rmSync(entry.target, { recursive: true, force: true });
+          if (fs.existsSync(old)) {
+            fs.rmSync(target, { recursive: true, force: true });
+            fs.renameSync(old, target);
+          } else if (!entry.hadTarget && !fs.existsSync(staged)) {
+            fs.rmSync(target, { recursive: true, force: true });
           }
         } catch (error) {
           failures.push(error);
@@ -594,6 +712,7 @@ export function recoverLocked(paths: MordomoPaths): string[] {
     fs.rmSync(staging, { recursive: true, force: true });
     recovered.push(name);
   }
+  if (leftovers.length > 0) throw new RestoreLeftoverError(leftovers, recovered);
   return recovered;
 }
 

@@ -40,7 +40,13 @@ mordomo restore full-2026-… --allow-unverified   # an unsealed backup from an 
 restore can itself be undone. Restart the service after restoring. A restore applies
 all of it or none of it: if it fails, every file is put back, and if the process dies in
 the middle the next command that opens the home (any `mordomo` command, the service) undoes
-it; a backup is refused while a restore is still running.
+it; a backup waits a few seconds for a restore that is still running and is then refused (`409`), and a restore waits
+for a backup or for a command that is starting. A backup is never taken half way through a restore: it is all of the
+files before the restore or all of them after it. If a `.restore-…` folder in the home cannot be undone by itself (a damaged
+`JOURNAL.json`, for instance) it is left as it is and every backup, restore and command is refused with a message that
+names it: look inside, move back by hand whatever belongs to the home (`old-N` is the original of the Nth entry),
+delete the folder and try again. If `config/run/restore.lock` is reported as unusable, remove it by hand (only when no
+MordomoOS process is running).
 
 Automatic backups also happen before: DB migrations, sync-compiler overwrites
 of existing files, and restores.

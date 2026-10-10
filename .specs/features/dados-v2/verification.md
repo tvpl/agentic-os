@@ -219,3 +219,11 @@ Estado dos achados da rodada 2: 1 (dois recuperadores) fechado e provado por C64
 ## Gate
 
 `npx vitest run tests/data.migration.test.ts tests/data.owner-lock.test.ts tests/data.settings.test.ts tests/data.backup.test.ts tests/security-reads.test.ts tests/core.backup.test.ts tests/core.foundation.test.ts tests/preferences.test.ts tests/api.hardening.test.ts tests/api.engine.test.ts tests/core.engine.test.ts` - 11 files, 240 passed, 0 failed (HEAD 1d4637b, `npm run build` completo); `npx vitest run` - 86 files, 941 passed, 0 failed; `tsc -b contracts core apps/api`, `tsc -p typetests/tsconfig.json`, `eslint` e `prettier --check` limpos nos arquivos do diff.
+
+---
+
+## Fechamento após a rodada 3 (escalonamento ao dono)
+
+Três rodadas usadas. Os achados da rodada 3 foram corrigidos pelo corretor (`createBackup` segura o lock compartilhado do começo ao fim; o diário guarda o slot e não o caminho; `RestoreLeftoverError`; lock não reentrante criado com `wx`; verificação do inode do lock; provas C77–C86) e passaram a uma revisão sênior dirigida, sem quarta verificação completa.
+
+Aberto para o dono: apagar ou trocar `restore.lock` com o lock segurado ainda admite um segundo dono na janela entre travar e conferir o inode (documentado em `docs/security.md`); um diário forjado e bem formado, escrito por quem já pode escrever na home, ainda pode fazer a recuperação substituir um dos onze slots (sem fronteira contra quem escreve na home); Windows e macOS sem execução real.

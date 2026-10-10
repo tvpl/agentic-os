@@ -378,8 +378,20 @@ describe("S1 the database is migrated once", () => {
     const listing = () => fs.readdirSync(path.dirname(clean.paths.dbFile)).sort();
     const before = listing();
     expect(before).not.toContain("mordomo.db-shm");
+    // The version is the 4 bytes big-endian at offset 60 of the header: that is where the file says 99.
+    const header = Buffer.alloc(4);
+    const fd = fs.openSync(clean.paths.dbFile, "r");
+    fs.readSync(fd, header, 0, 4, 60);
+    fs.closeSync(fd);
+    expect(header.readUInt32BE(0)).toBe(99);
+    // A refused database is not touched in any way - its mode included: a file an older release left at 0644
+    // stays at 0644 (tightening it is part of opening it, and it is not opened).
+    if (process.platform !== "win32") fs.chmodSync(clean.paths.dbFile, 0o644);
+    const bytes = fs.readFileSync(clean.paths.dbFile);
     expect(() => openDb(clean.paths)).toThrow(DbNewerVersionError);
     expect(listing()).toEqual(before);
+    expect(fs.readFileSync(clean.paths.dbFile).equals(bytes)).toBe(true);
+    if (process.platform !== "win32") expect(fs.statSync(clean.paths.dbFile).mode & 0o777).toBe(0o644);
 
     // Missing, and empty: no database yet, so they open fresh.
     const missing = tempHome();

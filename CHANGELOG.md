@@ -15,12 +15,14 @@
   that is truncated, edited or incomplete (`422 backup_invalid`), refuses one without a manifest
   unless `mordomo restore --allow-unverified`, installs all or nothing (undone if the process
   dies), and `limits.backupRetention` (default 10) keeps the number of backups bounded. A restore holds a lock
-  (`config/run/restore.lock`) that every restore, every undoing of a dead restore and every engine
-  construction takes, so two commands cannot undo the same dead restore, and an engine built during a
-  restore waits and is refused instead of opening a database over it. A `settings.json` field
-  that cannot be read never opens a permission: nine security fields (profile, indexed folders,
+  (`config/run/restore.lock`): exclusive for a restore, the undoing of a dead one and a staged restore,
+  shared for a backup (all of it, so a backup is never sealed across a restore) and for an engine being
+  built (until its database is open). Two commands cannot undo the same dead restore, a dead restore is
+  undone whatever the spelling of the path to the home, and what cannot be placed is left alone and
+  refuses backup, restore and engine (`restore_leftover`) until it is removed by hand. A `settings.json` field
+  that cannot be read never opens a permission: fifteen security fields (profile, indexed folders,
   provider binaries, Telegram approvers, memory skills, spend alert, approval and device lifetimes,
-  triage budget) read as their most restrictive value, the others as their default.
+  triage budget, the owner's exclusions and the sentinel switches) read as their most restrictive value, the others as their default.
 - **Security (seguranca-p1)**: an agent run with no working directory now starts
   in `<home>/workspace` instead of the home (the home holds `config/token`, and an
   agent reads everything below its working directory without asking); the home

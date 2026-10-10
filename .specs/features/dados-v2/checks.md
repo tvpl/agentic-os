@@ -3,11 +3,11 @@
 Profile: standard
 Plan: `.specs/features/dados-v2/plan.md`
 
-76 checks in 4 slices · 9 one-way doors · 0 open, of which 0 block
+84 checks in 4 slices · 9 one-way doors · 0 open, of which 0 block
 
 Comandos (da raiz): `npx vitest run tests/<arquivo>.test.ts -t "<nome>"`. Os arquivos novos são
 `tests/data.migration.test.ts` (S1), `tests/data.owner-lock.test.ts` (S2), `tests/data.settings.test.ts`
-(S3) e `tests/data.backup.test.ts` (S4). As provas de processo concorrente seguem a de
+(S3), `tests/data.backup.test.ts` e `tests/data.restore-lock.test.ts` (S4). As provas de processo concorrente seguem a de
 `tests/security-p1.test.ts` C9: o teste empacota o código-fonte atual com `rolldown` num script de
 filho (`tests/helpers/childBundle.ts`), sem depender de `dist/`, e alinha os filhos por uma barreira de
 arquivos (`tests/helpers/barrier.ts`: cada filho espera os outros terem chegado, em vez de um relógio, que uma
@@ -62,7 +62,7 @@ Status: closed
 Proof: `npx vitest run tests/data.migration.test.ts -t "C52 the pre-migration snapshot holds what only the WAL holds"`
 Status: closed
 
-**C71** - Um banco de versão 99 fechado sem WAL é recusado com a pasta do banco idêntica à de antes (nenhum `-shm`); um arquivo ausente e um vazio abrem do zero (`fromVersion` 0); um arquivo que não é banco não é "versão 0": a abertura normal lança `not a database` e o arquivo e a pasta ficam como estavam (AC 9)
+**C71** - Um banco de versão 99 fechado sem WAL tem a versão 99 nos 4 bytes do deslocamento 60 do cabeçalho e é recusado com a pasta do banco idêntica à de antes (nenhum `-shm`), os bytes iguais e o modo `0644` que tinha continuando `0644` (a recusa não aperta o modo); um arquivo ausente e um vazio abrem do zero (`fromVersion` 0); um arquivo que não é banco não é "versão 0": a abertura normal lança `not a database` e o arquivo e a pasta ficam como estavam (AC 9)
 Proof: `npx vitest run tests/data.migration.test.ts -t "C71 the version is read without SQLite"`
 Status: closed
 
@@ -158,7 +158,7 @@ Status: closed
 Proof: `npx vitest run tests/data.settings.test.ts -t "C46 every leaf of the settings"`
 Status: closed
 
-**C47** - 1100 elementos de `areas` com metade inválida saem todos num passe (550 ficam, em ordem, `systemName` mantido, menos de 5 s, nenhum `.corrupt`); 50 000 elementos (metade inválida) leem o padrão fechado (`securityProfile` `read_only`, `dailyBudgetUsd` `0.01`, `memorySkills` `[]`, `systemName` `MordomoOS`) em menos de 10 s, sem lançar nem `.corrupt`, com o arquivo em `.invalid` e um registro `(document)`; 4000 inválidos direto em `parseTolerant` não estouram (AC 31)
+**C47** - 1100 elementos de `areas` com metade inválida saem todos num passe (550 ficam, em ordem, `systemName` mantido, menos de 5 s, nenhum `.corrupt`); 50 000 elementos (metade inválida) leem o padrão fechado (`securityProfile` `read_only`, `dailyBudgetUsd` `0.01`, `memorySkills` `[]`, `systemName` `MordomoOS`) em menos de 10 s, sem lançar nem `.corrupt`, com o arquivo em `.invalid` e um registro `(document)`; 6000 valores inválidos em `excludes` junto de `mine/*` e `also-mine` leem a lista padrão mais as duas entradas do dono (as exclusões legíveis não se perdem no estouro); 4000 inválidos direto em `parseTolerant` não estouram (AC 31, AC 34)
 Proof: `npx vitest run tests/data.settings.test.ts -t "C47 more invalid values than a file can reasonably hold"`
 Status: closed
 
@@ -186,7 +186,7 @@ Status: closed
 Proof: `npx vitest run tests/data.settings.test.ts -t "C69 copies of an unreadable file"`
 Status: closed
 
-**C70** - Um link para um arquivo com os mesmos bytes não conta como cópia guardada (o original vai para `.invalid.<hash>` e o link continua link); sem nenhum nome gravável, o mesmo arquivo lido de novo pelo mesmo processo não registra de novo (uma linha, `preserved` nulo); o registro de log marca `closed: true` exatamente nos campos que leram fechados (`securityProfile`, `limits`, `memorySkills.0`) e não em `port` (AC 22, AC 24)
+**C70** - Um link para um arquivo com os mesmos bytes não conta como cópia guardada (o original vai para `.invalid.<hash>` e o link continua link); sem nenhum nome gravável, o mesmo arquivo lido de novo pelo mesmo processo não registra de novo (uma linha, `preserved` nulo); o registro de log marca `closed: true` exatamente nos campos que leram fechados (`securityProfile`, `limits`, `memorySkills.0`) e não em `port` (AC 23, AC 25)
 Proof: `npx vitest run tests/data.settings.test.ts -t "C70 a link is not a copy"`
 Status: closed
 
@@ -200,7 +200,7 @@ Status: closed
 Proof: `npx vitest run tests/data.backup.test.ts -t "C28 the staged copies are what gets verified"`
 Status: closed
 
-**C29** - Para cada um destes sete defeitos num backup selado: um byte trocado sem mudar o tamanho (`checksum`), um arquivo truncado (`size`), um arquivo apagado (`missing`), um arquivo acrescentado (`unexpected`), um destino de symlink trocado (`link`), um banco válido editado por SQL (`checksum`) e um `manifest.json` ilegível, `restoreBackup` lança `BackupVerificationError` com `code` `"backup_invalid"` e `statusCode` 422 citando o caminho (exceto o manifesto), e depois da recusa os arquivos vivos têm o SHA-256 de antes, `listBackups` tem o mesmo número de backups (nenhuma cópia de segurança) e a home não tem pasta `.restore-*` (AC 38)
+**C29** - Para cada um destes sete defeitos num backup selado: um byte trocado sem mudar o tamanho (`checksum`), um arquivo truncado (`size`), um arquivo apagado (`missing`), um arquivo acrescentado (`unexpected`), um destino de symlink trocado (`link`), um banco válido editado por SQL (`checksum`) e um `manifest.json` ilegível, `restoreBackup` lança `BackupVerificationError` com `code` `"backup_invalid"` e `statusCode` 422 citando o caminho (exceto o manifesto), e depois da recusa os arquivos vivos têm o SHA-256 de antes, `listBackups` tem o mesmo número de backups (nenhuma cópia de segurança) e a home não tem pasta `.restore-*` (AC 37)
 Proof: `npx vitest run tests/data.backup.test.ts -t "C29 any difference from the manifest refuses the restore and changes nothing"`
 Status: closed
 
@@ -236,16 +236,56 @@ Status: closed
 Proof: `npx vitest run tests/data.backup.test.ts -t "C37 the route and the CLI apply the configured retention"`
 Status: closed
 
-**C38** - `mordomo backup --list` imprime `unsealed` na linha de um backup sem manifesto e não nas de backups selados (AC 47)
+**C38** - `mordomo backup --list` imprime `unsealed` na linha de um backup sem manifesto e não nas de backups selados (AC 46)
 Proof: `npx vitest run tests/data.backup.test.ts -t "C38 the CLI list marks unsealed backups"`
 Status: closed
 
-**C39** - `mordomo restore <backup legado>` sai com `1` e `stderr` contendo `--allow-unverified`; com `--allow-unverified` sai com `0`; `mordomo restore <backup adulterado>` sai com `1` e `stderr` com o caminho do arquivo; sem nome, sai com `2` (AC 38, AC 39, Surface)
+**C39** - `mordomo restore <backup legado>` sai com `1` e `stderr` contendo `--allow-unverified`; com `--allow-unverified` sai com `0`; `mordomo restore <backup adulterado>` sai com `1` e `stderr` com o caminho do arquivo; sem nome, sai com `2` (AC 37, AC 39)
 Proof: `npx vitest run tests/data.backup.test.ts -t "C39 the restore command refuses unsealed and tampered backups"`
 Status: closed
 
 **C40** - Um backup feito com o banco em versão anterior à mais nova (3 migrações a menos), restaurado, é levado por `openDb` à versão mais nova com as linhas que tinha (AC 48)
 Proof: `npx vitest run tests/data.backup.test.ts -t "C40 a backup from an older schema restores and migrates"`
+Status: closed
+
+**C77** - Um backup feito em outro processo, parado a meio da cópia (a primeira pasta copiada, as outras não), segura o lock compartilhado: `restoreBackup(paths, name, { waitMs: 0 })` lança `RestoreInProgressError` sem mudar nada nem criar `.restore-*`, e um `restoreBackup` que espera só roda depois do backup (levou mais de 500 ms); o backup publicado tem `skills/`, `memory/` e `routines/` todos no estado de antes da restauração (`CURRENT`), nenhum no restaurado, e `verifyBackup` o aceita (AC 56)
+Proof: `npx vitest run tests/data.restore-lock.test.ts -t "C77 a backup holds the lock for the whole of it"`
+Status: closed
+
+**C78** - Uma restauração morta com SIGKILL quando a home foi alcançada por um link é desfeita por um motor montado pelo caminho real; uma morta pelo caminho real, com a home depois movida de lugar, é desfeita por `recoverInterruptedRestore` no caminho novo e deixa os arquivos como estavam; e um `createBackup` na home movida não sela o meio da restauração (o backup tem `note CURRENT`) (AC 38, AC 40)
+Proof: `npx vitest run tests/data.restore-lock.test.ts -t "C78 a restore that died is undone whatever the spelling"`
+Status: closed
+
+**C79** - (a) Com uma restauração real parada 1,2 s depois de mover o banco, `new AppContext(home)` sem `restoreWaitMs` espera (mais de 300 ms), monta depois dela e abre o banco restaurado (`marker` = `backup`, `integrity_check` `ok`); (b) com um motor de outro processo parado dentro da abertura do banco, `restoreBackup(…, { waitMs: 0 })` e `RestoreLock.acquire(paths, 0)` lançam `RestoreInProgressError`, nada muda e nenhuma pasta `.restore-*` nasce, e só depois de o motor terminar a restauração roda (AC 59, AC 47)
+Proof: `npx vitest run tests/data.restore-lock.test.ts -t "C79 an engine built while a restore runs"`
+Status: closed
+
+**C80** - O arquivo do lock é criado `0600` e `config/run` `0700` (POSIX); um arquivo mais frouxo é apertado para `0600` ao tomar o lock, e um motor deixa a pasta em `0700` e o arquivo em `0600` partindo de `0755` e `0666` (AC 58)
+Proof: `npx vitest run tests/data.restore-lock.test.ts -t "C80 the lock file is owner-only"`
+Status: closed
+
+**C81** - Um segundo `RestoreLock.acquire` exclusivo no mesmo processo lança "not reentrant" e o pedido compartilhado lança `RestoreInProgressError`, e depois dessas recusas outro processo continua recusado (a primeira trava não foi solta); dois compartilhados coexistem (um terceiro processo obtém o compartilhado, o exclusivo é recusado) e o exclusivo só passa quando os dois soltaram; soltar duas vezes não faz nada (AC 52, AC 58)
+Proof: `npx vitest run tests/data.restore-lock.test.ts -t "C81 the lock is not reentrant"`
+Status: closed
+
+**C82** - Com `restore.lock` cheio de texto, ou sendo uma pasta, `RestoreLock.acquire`, `restoreBackup`, `recoverInterruptedRestore`, `new AppContext(home)` e `createBackup` lançam `RestoreLockError` com "remove it by hand" e o caminho; o arquivo não é sobrescrito, os arquivos vivos não mudam, e depois de apagado à mão o lock volta a funcionar (AC 58)
+Proof: `npx vitest run tests/data.restore-lock.test.ts -t "C82 a lock file that cannot be a lock"`
+Status: closed
+
+**C83** - Com um processo esperando o lock que outro segura, o arquivo `restore.lock` é substituído (rename por cima) ou apagado e o dono é morto: quem esperava passa a segurar o arquivo que está no caminho agora (mesmo inode que `stat`, igual ao do arquivo novo no caso da troca) e um terceiro processo é recusado, isto é, não há dois donos (AC 58)
+Proof: `npx vitest run tests/data.restore-lock.test.ts -t "C83 a lock file deleted or replaced while someone waits"`
+Status: closed
+
+**C84** - Para cada k de 1 ao total de renames de uma restauração com os onze alvos em jogo (pastas `skills`, `memory`, `routines`, `connectors`, `artifacts`, `settings.json`, `ui-preferences.json`, `sync-manifest.json`, o banco e seu `-wal`/`-shm`; total lido do próprio teste), com e sem `artifacts` e `sync-manifest.json` na home viva (`hadTarget` `false`), um SIGKILL no k-ésimo rename é desfeito de modo que o SHA-256 de todos os arquivos vivos é o de antes e o que ainda não existia continua não existindo; o diário de um k tardio nomeia exatamente os onze `slot` e diz `hadTarget` `false` para os dois ausentes (AC 40)
+Proof: `npx vitest run tests/data.restore-lock.test.ts -t "C84 a restore killed at any rename"`
+Status: closed
+
+**C85** - Com outro processo segurando o lock, `POST /api/backups` espera sem travar o laço de eventos (o maior intervalo de um temporizador de 20 ms durante o pedido fica abaixo de 500 ms) e responde `409` `restore_in_progress` depois de mais de 500 ms (AC 47)
+Proof: `npx vitest run tests/data.restore-lock.test.ts -t "C85 a restore running makes a backup wait"`
+Status: closed
+
+**C86** - Com outro processo segurando o lock exclusivo, `restoreBackup(…, { waitMs: 0 })` lança `RestoreInProgressError` (409) cuja mensagem cita o backup e o processo que está começando, e deixa os arquivos vivos como estavam sem criar `.restore-*`; `recoverInterruptedRestore` com a espera padrão espera um dono que solta em 0,8 s (mais de 300 ms) e remove a pasta sem diário; `restoreBackup` com a espera padrão espera um dono compartilhado que solta em 0,8 s e restaura (AC 47, AC 52)
+Proof: `npx vitest run tests/data.restore-lock.test.ts -t "C86 a second restore is refused"`
 Status: closed
 
 ### Transversais · 2 files · 100 KB · ~5k
@@ -264,7 +304,7 @@ Proof: `npx vitest run tests/api.hardening.test.ts -t "backup restore is staged,
 Proof: `npx vitest run tests/api.engine.test.ts -t "the service owns the engine"`
 Status: closed
 
-**C53** - Uma restauração morta com SIGKILL no 9º rename é desfeita por cada caminho de volta à home, sem chamar `recoverInterruptedRestore` à mão: (1) o `restoreBackup` seguinte (a cópia de segurança dele contém `note CURRENT`, o estado de antes, e não o meio), (2) `applyPendingRestore` sem nada agendado, (3) `new AppContext(home)` (o que todo comando da CLI faz), (4) `createBackup` (o backup contém `note CURRENT`), (5) `mordomo backup --list` e `mordomo backup` na CLI; e `createBackup` recusa com `restore is in progress` enquanto outro processo segura o `RestoreLock` (AC 38, AC 47)
+**C53** - Uma restauração morta com SIGKILL no 9º rename é desfeita por cada caminho de volta à home, sem chamar `recoverInterruptedRestore` à mão: (1) o `restoreBackup` seguinte (a cópia de segurança dele contém `note CURRENT`, o estado de antes, e não o meio), (2) `applyPendingRestore` sem nada agendado, (3) `new AppContext(home)` (o que todo comando da CLI faz), (4) `createBackup` (o backup contém `note CURRENT`), (5) `mordomo backup --list` e `mordomo backup` na CLI; e `createBackup` recusa com `restore is in progress` enquanto outro processo segura o `RestoreLock` (AC 38, AC 47, AC 49, AC 57)
 Proof: `npx vitest run tests/data.backup.test.ts -t "C53 a restore that died half way is undone by every way back"`
 Status: closed
 
@@ -284,7 +324,7 @@ Status: closed
 Proof: `npx vitest run tests/data.backup.test.ts -t "C57 a folder without a journal is debris once the lock is ours"`
 Status: closed
 
-**C58** - Para cada rename do staging, de 1 ao total (contado do próprio teste), uma falha injetada nele em processo faz `restoreBackup` lançar e deixa os SHA-256 de todos os arquivos vivos como estavam e nenhuma pasta `.restore-*` (AC 38)
+**C58** - Para cada rename do staging, de 1 ao total (contado do próprio teste), uma falha injetada nele em processo faz `restoreBackup` lançar e deixa os SHA-256 de todos os arquivos vivos como estavam e nenhuma pasta `.restore-*` (AC 40)
 Proof: `npx vitest run tests/data.backup.test.ts -t "C58 a restore that fails in this process after any install puts everything back"`
 Status: closed
 
@@ -300,11 +340,11 @@ Status: closed
 Proof: `npx vitest run tests/data.backup.test.ts -t "C64 several commands finding the same dead restore"`
 Status: closed
 
-**C65** - Com um processo real no meio de uma restauração (o banco já movido para o staging, parado 2,5 s), `new AppContext(home, { restoreWaitMs: 200 })` lança `RestoreInProgressError` (`statusCode` 409) e `mordomo.db`, `-wal` e `-shm` continuam não existindo; terminada a restauração, o motor abre sobre o banco restaurado (a linha `marker` = `backup` está lá e `integrity_check` é `ok`) (AC 47)
+**C65** - Com um processo real no meio de uma restauração (o banco já movido para o staging, parado 2,5 s), `new AppContext(home, { restoreWaitMs: 200 })` lança `RestoreInProgressError` (`statusCode` 409) e `mordomo.db`, `-wal` e `-shm` continuam não existindo; terminada a restauração, o motor abre sobre o banco restaurado (a linha `marker` = `backup` está lá e `integrity_check` é `ok`) (AC 47, AC 59)
 Proof: `npx vitest run tests/data.backup.test.ts -t "C65 an engine built while a restore is running"`
 Status: closed
 
-**C66** - Diários que esta versão não escreveu não são executados: um alvo fora dos onze (uma pasta ao lado da home com um arquivo), um `old` fora do próprio staging, uma pasta de nome `.restore-evil`, e (POSIX) um link `.restore-4-dddddd` para uma pasta com um diário forjado deixam o arquivo de fora, os arquivos vivos e as pastas como estavam e `recoverInterruptedRestore` devolve `[]`; um diário legítimo na mesma home é desfeito (AC 53)
+**C66** - Diários que esta versão não escreveu não são executados, e a home recusa tudo enquanto eles estão lá: um `slot` que não é um dos onze nomes, um `slot` que é um caminho, o mesmo `slot` duas vezes, `hadTarget` que não é booleano, uma fase que não existe, uma entrada legítima mais uma de fora (tudo ou nada), um diário que não é JSON ou não é objeto, originais `old-N` sem diário ou sob um diário danificado, e (POSIX) um link `.restore-N-…` para uma pasta com um diário válido deixam o arquivo de fora, os arquivos vivos e o conteúdo da pasta como estavam, e `recoverInterruptedRestore`, `restoreBackup`, `createBackup` e `new AppContext(home)` lançam `RestoreLeftoverError` (409, "delete the folder and try again"); uma pasta do dono `.restore-notes` não é olhada nem apagada; um diário legítimo é desfeito pelo índice e pelo `slot`, ignorando os caminhos `target`/`old` que o arquivo diga (AC 53, AC 57)
 Proof: `npx vitest run tests/data.backup.test.ts -t "C66 a journal this code did not write"`
 Status: closed
 
@@ -316,15 +356,15 @@ Status: closed
 Proof: `npx vitest run tests/data.backup.test.ts -t "C73 a restore that cannot be undone, or is still running"`
 Status: closed
 
-**C74** - Um backup que some enquanto se lista é pulado por `listBackups`; uma exclusão da retenção que falha (`EBUSY`) não faz `createBackup` falhar; e 4 processos reais, 4 vezes cada, fazendo `createBackup` com `keep: 1` no mesmo instante terminam todos com código 0 (AC 43, AC 48)
+**C74** - Um backup que some enquanto se lista é pulado por `listBackups`; uma exclusão da retenção que falha (`EBUSY`) não faz `createBackup` falhar; e 4 processos reais, 4 vezes cada, fazendo `createBackup` com `keep: 1` no mesmo instante terminam todos com código 0 (AC 45, AC 50)
 Proof: `npx vitest run tests/data.backup.test.ts -t "C74 retention that loses a race"`
 Status: closed
 
-**C75** - Uma falha ao escrever a marca `done` do diário não faz `restoreBackup` lançar (o estado restaurado fica, `note v1`, sem pasta de staging); uma falha ao escrever o primeiro diário o faz lançar e não deixa pasta `.restore-*` nem muda arquivo vivo (AC 38)
+**C75** - Uma falha ao escrever a marca `done` do diário não faz `restoreBackup` lançar (o estado restaurado fica, `note v1`, sem pasta de staging); uma falha ao escrever o primeiro diário o faz lançar e não deixa pasta `.restore-*` nem muda arquivo vivo (AC 41)
 Proof: `npx vitest run tests/data.backup.test.ts -t "C75 a restore is not an error because its done mark"`
 Status: closed
 
-**C76** - Três backups cujos nomes, `createdAt` de manifesto e `mtime` dizem coisas diferentes são listados pela data do nome, e dois com o mesmo instante pelo nome (decrescente); `pruneBackups(paths, 1)` apaga exatamente os dois mais antigos e deixa o mais novo (AC 43)
+**C76** - Três backups cujos nomes, `createdAt` de manifesto e `mtime` dizem coisas diferentes são listados pela data do nome, e dois com o mesmo instante pelo nome (decrescente); `pruneBackups(paths, 1)` apaga exatamente os dois mais antigos e deixa o mais novo (AC 45)
 Proof: `npx vitest run tests/data.backup.test.ts -t "C76 backups are ordered by the time in their name"`
 Status: closed
 
@@ -355,7 +395,7 @@ Status: closed
 | `POST /api/backups/:name/restore` statuses (4)                   | 202 C34 · 404 C34 · 409 C34 · 422 C34                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | -        |
 | `PUT /api/settings` (campo novo) statuses (2)                    | 200 C26 · 400 C26                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | -        |
 | `mordomo restore` saídas (3)                                     | 0 C39 · 1 C39 · 2 C39                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | -        |
-| doors (9)                                                        | 1 `engine.lock` C9, C10, C11, C13 · 2 `OwnerLock`/`EngineLockedError` C11, C12, C17 · 3 `BEGIN IMMEDIATE` C15 · 4 `.invalid` C21 · 5 `manifest.json` C27 · 6 `openDb`/erros C1, C4, C5 · 7 retenção e `BackupVerificationError` C26, C29, C36 · 8 `SETTINGS_FAIL_CLOSED` C44, C45, C46 · 9 `RestoreLock` C32, C56, C57, C64, C65                                                                                                                                                                                                | -        |
+| doors (9)                                                        | 1 `engine.lock` C9, C10, C11, C13 · 2 `OwnerLock`/`EngineLockedError` C11, C12, C17 · 3 `BEGIN IMMEDIATE` C15 · 4 `.invalid` C21 · 5 `manifest.json` C27 · 6 `openDb`/erros C1, C4, C5 · 7 retenção e `BackupVerificationError` C26, C29, C36 · 8 `SETTINGS_FAIL_CLOSED` C44, C45, C46 · 9 `RestoreLock` C32, C56, C57, C64, C65, C77, C79, C81, C82, C83                                                                                                                                                                       | -        |
 | campos de segurança do esquema (15)                              | `securityProfile` C44 · `indexedFolders[].enabled` C44, C45, C63 · `providers.*.binaryPath` C44, C45 · `channels.telegram.allowedUserIds` C44, C45 · `memorySkills` C44, C45 · `limits.dailyBudgetUsd` C44, C45 · `limits.approvalTtlDays` C44, C45 · `remote.deviceTtlDays` C44, C45 · `sentinels.triage.dailyBudgetUsd` C44, C45 · `excludes` C62 · `triage.enabled` C44, C63 · `connectorDelta.enabled` C44, C63 · `repeatedFailure.enabled` C44, C63 · `silentRoutine.enabled` C44, C63 · `repeatDetector.enabled` C44, C63 | -        |
 | formas de um segurança ilegível (3)                              | o valor C44 · um elemento da lista C45 · o pai inteiro C45                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | -        |
 | conjunto das folhas do esquema, todas classificadas (1)          | C46, derivado dos padrões do `SettingsSchema` (nenhuma sem classe)                                                                                                                                                                                                                                                                                                                                                                                                                                                              | -        |
@@ -364,7 +404,7 @@ Status: closed
 | quem lê o mesmo arquivo inválido (2)                             | a mesma instância C23 · instâncias novas C49                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | -        |
 | caminhos de volta à home depois de uma restauração morta (6)     | `restoreBackup` C53 · `applyPendingRestore` C53 · construir o motor C53 · `createBackup` C53 · CLI `backup --list` C53 · CLI `backup` C53                                                                                                                                                                                                                                                                                                                                                                                       | -        |
 | fases do diário (3)                                              | `staging` C57 · `installing` C31, C56 · `done` C55                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | -        |
-| dono do diário (3)                                               | morto C31 · vivo com o mesmo início C32 · vivo com outro início (pid reciclado) C56                                                                                                                                                                                                                                                                                                                                                                                                                                             | -        |
+| dono de uma restauração (2)                                      | morta, o kernel soltou o lock C31, C56 · viva, segura o lock C32, C65                                                                                                                                                                                                                                                                                                                                                                                                                                                           | -        |
 | `keep` inválido (5)                                              | C54, table-driven over all 5 (NaN, 0, -1, 1.5, Infinity)                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | -        |
 | criações simultâneas (1)                                         | três juntas C54                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | -        |
 | banco do backup recusado mesmo sem manifesto (2)                 | `user_version` 0 C59 · 9999 C59                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | -        |
@@ -373,8 +413,17 @@ Status: closed
 | versões que o banco de versão futura pode ter pendentes (2)      | limpo C5 · WAL pendente C51                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | -        |
 | recuperadores simultâneos (6)                                    | C64, table-driven over all 6 rounds de 4 processos reais                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | -        |
 | quem pode estar com o `RestoreLock` (3)                          | o próprio processo C56 · outro processo vivo C32, C57, C65, C72, C73 · outro processo morto C56                                                                                                                                                                                                                                                                                                                                                                                                                                 | -        |
+| modos do `RestoreLock` (2)                                       | exclusivo (restaurar, desfazer, aplicar agendada) C32, C56, C57 · compartilhado (backup inteiro, motor até o banco abrir) C77, C79, C81                                                                                                                                                                                                                                                                                                                                                                                         | -        |
+| quem segura o compartilhado (2)                                  | `createBackup`, do primeiro arquivo ao manifesto C77 · o motor, até o banco abrir C79                                                                                                                                                                                                                                                                                                                                                                                                                                           | -        |
+| grafias do caminho da home (3)                                   | a real C31 · por um link C78 · depois de movida C78                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | -        |
+| os onze alvos de uma restauração (11)                            | `skills` C84 · `memory` C84 · `routines` C84 · `connectors` C84 · `artifacts` C84 · `settings.json` C84 · `ui-preferences.json` C84 · `sync-manifest.json` C84 · `-wal` C84 · `-shm` C84 · banco C84 (C84, table-driven over all 11)                                                                                                                                                                                                                                                                                            | -        |
+| o alvo existia antes (2)                                         | sim C84 · não (`hadTarget` `false`) C84                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | -        |
+| estados do arquivo do lock (4)                                   | ausente, criado `0600` C80 · mais frouxo, apertado C80 · bytes que não são banco C82 · pasta C82                                                                                                                                                                                                                                                                                                                                                                                                                                | -        |
+| arquivo do lock mudado enquanto se espera (2)                    | substituído C83 · apagado C83 (C83, table-driven over both)                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | -        |
+| esperas que são esperas (4)                                      | o motor, espera padrão C79 · `recoverInterruptedRestore`, espera padrão C86 · `restoreBackup`, espera padrão C86 · `POST /api/backups`, sem travar o laço C85                                                                                                                                                                                                                                                                                                                                                                   | -        |
+| pedidos do lock no mesmo processo (4)                            | exclusivo sobre exclusivo C81 · compartilhado sobre exclusivo C81 · compartilhado sobre compartilhado C81 · soltar duas vezes C81                                                                                                                                                                                                                                                                                                                                                                                               | -        |
 | quem constrói ou guarda a home enquanto uma restauração roda (4) | motor C65 · `createBackup` C53, C72 · `recoverInterruptedRestore` C32, C57 · CLI C73                                                                                                                                                                                                                                                                                                                                                                                                                                            | -        |
-| diários que não são nossos (4)                                   | alvo fora dos onze C66 · `old` fora do staging C66 · nome que não é de staging C66 · link C66                                                                                                                                                                                                                                                                                                                                                                                                                                   | -        |
+| diários e pastas `.restore-*` de que não se age (11)             | `slot` que não é dos onze C66 · `slot` que é um caminho C66 · `slot` repetido C66 · `hadTarget` que não é booleano C66 · fase que não existe C66 · entrada legítima mais uma de fora C66 · diário que não é JSON C66 · diário que não é objeto C66 · diário danificado sobre `old-N` C66 · `old-N` sem diário C66 · link com nome de staging C66 (C66, table-driven over all 11)                                                                                                                                                | -        |
 | booleanos ligados por padrão (6)                                 | `indexedFolders[].enabled` C63 · `triage` C63 · `connectorDelta` C63 · `repeatedFailure` C63 · `silentRoutine` C63 · `repeatDetector` C63                                                                                                                                                                                                                                                                                                                                                                                       | -        |
 | formas ilegíveis de `excludes` (5)                               | texto C62 · `[5]` C62 · número C62 · objeto C62 · lista com um elemento ruim C62                                                                                                                                                                                                                                                                                                                                                                                                                                                | -        |
 | arquivos que o espiar da versão lê (4)                           | ausente C71 · vazio C71 · cabeçalho sem WAL C5, C71 · WAL esperando C51                                                                                                                                                                                                                                                                                                                                                                                                                                                         | -        |
@@ -398,32 +447,33 @@ Status: closed
 Evidence:
 
 - `core/src/config/tolerant.ts` (rodada 1): remoção em lote por caminho, regra fechada por campo, pai inteiro, estouro (6 branch points) -> decides
-- `core/src/config/failClosed.ts`: tabela de 9 campos -> decide, provada campo a campo e por classificação de todas as folhas (C44-C46)
+- `core/src/config/failClosed.ts`: tabela de 15 campos -> decide, provada campo a campo e por classificação de todas as folhas (C44-C46)
 
 - `core/src/db/db.ts` `runMigrations`: versão futura (2 pontos), nada pendente, pendente com dados, pendente sem dados, perdeu a corrida, migração falhou (7 branch points) -> decides
 - `core/src/ownerLock.ts` (julgamento de obsolescência): ilegível, o próprio PID, PID morto, formato antigo, início registrado igual/diferente/ilegível (7 estados) -> decides
 - `core/src/processIdentity.ts`: 3 plataformas, cada uma com leitura que pode falhar (6 branch points) -> decides
 - `core/src/config/tolerant.ts`: valor inválido numa propriedade, num elemento de array, escalada quando o pai exige a chave, raiz irrecuperável (4 branch points) -> decides
 - `core/src/backupManifest.ts` `verifyMounts`: 5 tipos de problema, montagem sem cópia (6 branch points) -> decides
-- `core/src/backup.ts` `restoreBackup`/`recoverInterruptedRestore`: ordem verificar → cópia de segurança → instalar, rollback, diário (9 branch points) -> decides
+- `core/src/backup.ts` `restoreBackup`/`recoverInterruptedRestore`: ordem verificar → cópia de segurança → instalar, rollback, diário por `slot`, pasta que não se coloca (13 branch points) -> decides
+- `core/src/restoreLock.ts`: exclusivo/compartilhado, reentrada, arquivo que não é lock, troca do arquivo durante a espera, espera zero (8 branch points) -> decides; `core/src/engine.ts` (construtor): lock compartilhado até o banco abrir, trecho exclusivo para desfazer/aplicar (4 branch points) -> decides
 - `apps/api/src/routes/system.ts` rota de restauração: repassa o erro do core -> instrumentation
 - closest analogue in the repo: `tests/core.backup.test.ts` (a restauração provada no core, contra uma home temporária, com `vi.spyOn(fs, …)` para injetar falha) e `tests/core.engine.test.ts` (estados do lock), ambos já provados nesse nível
 
 Mutantes equivalentes, justificados: `tolerant.ts` "sem pular descendente de ancestral já tomado" (T4): o ancestral e o descendente saem do mesmo documento e a remoção de uma chave de um objeto já destacado não muda o resultado, porque os pais são lidos antes de qualquer remoção; `store.ts` "guarda de `save()` sem as regras fechadas" (S8): a guarda só usa a CONTAGEM de problemas, e as regras fechadas trocam um valor, não tiram nenhum problema da contagem. O terceiro da lista (S3, o `lastReported`) não é equivalente e tem prova (C70).
 
-Cost: 4 arquivos de teste novos, 40 provas próprias e 1 ajuste da lista revisada de leituras de `fs`. Sem essas linhas, o lock só seria provado pelo caminho feliz, a corrida só por dois motores no mesmo processo (que o SQLite serializa por construção) e a verificação do backup por um único byte trocado.
+Cost: 5 arquivos de teste novos, 50 provas próprias e 1 ajuste da lista revisada de leituras de `fs`. Sem essas linhas, o lock só seria provado pelo caminho feliz, a corrida só por dois motores no mesmo processo (que o SQLite serializa por construção) e a verificação do backup por um único byte trocado.
 
 ## Swept
 
 - validation: C19, C20, C25, C26, C44-C50 (configurações), C29 (manifesto), C5, C51 (versão do banco), C54 (`keep`), C59 (banco do backup)
-- failure modes: C4 (migração que falha desfaz tudo), C29 (verificação falha sem tocar em nada), C31, C53, C55-C58 (processo morto ou falha no meio da restauração), C35, C60 (restauração recusada no boot não derruba o serviço), C47, C48 (arquivo de configurações que não cabe ou sem onde guardar o original)
+- failure modes: C66, C82, C84 (o que não se desfaz fica como está e recusa; o lock que não é lock é dito; morte em cada rename com os onze alvos), C4 (migração que falha desfaz tudo), C29 (verificação falha sem tocar em nada), C31, C53, C55-C58 (processo morto ou falha no meio da restauração), C35, C60 (restauração recusada no boot não derruba o serviço), C47, C48 (arquivo de configurações que não cabe ou sem onde guardar o original)
 - idempotency: C3 (a segunda abertura não reaplica), C21, C48 (o mesmo original não vira dois arquivos), C23, C49 (um aviso por versão do arquivo)
-- authorization: existing - a rota de restauração e `POST /api/backups` já são `scope: "owner"` (`apps/api/src/routes/system.ts`); a CLI roda como o dono; o `.invalid`, o diário e o manifesto nascem `0600` em pastas `0700` (C2, C21); C44, C45 (um valor ilegível nunca abre permissão)
-- concurrency: C64, C65, C74 (recuperadores, motor e backups simultâneos de processos reais), C1, C3, C6, C52 (banco), C15, C16 (lock), C32, C53, C57 (restauração de outro processo), C54 (backups simultâneos)
+- authorization: existing - a rota de restauração e `POST /api/backups` já são `scope: "owner"` (`apps/api/src/routes/system.ts`); a CLI roda como o dono; o `.invalid`, o diário e o manifesto nascem `0600` em pastas `0700` (C2, C21); C80 (o lock `0600` em `config/run` `0700`); C44, C45 (um valor ilegível nunca abre permissão)
+- concurrency: C77, C79, C83, C85, C86 (backup, motor e restauração de processos reais sob o lock compartilhado/exclusivo), C64, C65, C74 (recuperadores, motor e backups simultâneos de processos reais), C1, C3, C6, C52 (banco), C15, C16 (lock), C32, C53, C57 (restauração de outro processo), C54 (backups simultâneos)
 - data lifecycle: C36, C54 (retenção), C21, C50 (o `.invalid` nunca é apagado nem sobrescrito; as cópias `.corrupt` são podadas), C40 (backup antigo restaurado e migrado)
 - dependency failure: C12 e C14 (o sistema não responde sobre o início do processo), C6 (o banco está travado por outro processo), C61 (caminho do lock que não é arquivo)
 - state transitions: C10, C11, C13 (lock: dono → obsoleto → retomado), C28, C30 (backup: selado → verificado → instalado), C55 (restauração: instalando → feita)
-- observability: C70 (o registro marca `closed`), C73 (a recuperação impossível diz a causa), C23, C49 (`logs/settings.jsonl`), C35, C60 (`restoreRejectedAtBoot` e o aviso em `startServer`), C4 e C5 (as mensagens dos erros de migração)
+- observability: C66, C82 (o que sobrou diz a pasta, o motivo e o passo manual; o lock diz "remove it by hand"), C70 (o registro marca `closed`), C73 (a recuperação impossível diz a causa), C23, C49 (`logs/settings.jsonl`), C35, C60 (`restoreRejectedAtBoot` e o aviso em `startServer`), C4 e C5 (as mensagens dos erros de migração)
 
 ## Out of scope
 
@@ -439,3 +489,4 @@ See the plan's `Out of scope`.
 - S1-S4 + transversais ≈ 73k, abaixo do orçamento de 150k - one builder
 - Rodada 1 (correção estrutural pedida pelo orquestrador depois da verificação FAIL): fail-closed dos campos de segurança, provas dos mutantes sobreviventes, recuperação da restauração por todo caminho de volta à home, espiar a versão do banco sem tocá-lo, ordem dos backups pelo nome - um construtor
 - Rodada 2: `RestoreLock` (exclusão mútua da restauração, da recuperação e da construção do motor, no kernel), diário validado, `excludes` e as chaves `enabled` fechados, classificação folha a folha, espiar a versão sem SQLite quando não há WAL, mensagens 409, provas de processos reais - um construtor, ≈ 40k adicionais
+- Rodada 3: o `RestoreLock` ganha os modos compartilhado/exclusivo (o backup o segura inteiro, o motor até o banco abrir), o diário nomeia os onze alvos por `slot` e não por caminho, o que a recuperação não consegue colocar fica como está e recusa tudo (`RestoreLeftoverError`), o arquivo do lock é criado só se ausente, não é reentrante, é conferido pelo inode depois de tomado e o que não pode ser lock é dito (`RestoreLockError`), o estouro dos 5000 mantém as exclusões legíveis do dono, e as provas de processos reais das alegações do lock (C77-C86) - um construtor, ≈ 45k adicionais
