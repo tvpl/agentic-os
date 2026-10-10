@@ -11,8 +11,7 @@ import { errorMessage } from "./shared";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, type GraphData, type IndexProgressPayload, type MemoryPreview, type RunRecord } from "../api";
 import { useToast } from "../components/ui";
-import { getDialogDepth } from "../components/dialog";
-import { useLang, useT } from "../i18n";
+import { useLang, useT, type TKey } from "../i18n";
 import { useOsEvent } from "../hooks/useEventStream";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import {
@@ -56,6 +55,7 @@ import {
 } from "../brain/engine/world";
 import { saveLocalSettings, settingsFromUi } from "../brain/state";
 import "../brain/brain.css";
+import { useCommands, type Command } from "../commands/registry";
 
 const GRAPH_PARAMS = { maxNodes: 3000 };
 /**
@@ -545,56 +545,63 @@ export default function SecondBrain() {
 
   useMinimapNav(minimapRef, world, dirty, !presenting);
 
-  /* ---------- keyboard ---------- */
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const inField = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName ?? "");
-      const mod = e.ctrlKey || e.metaKey;
-      if (mod && (e.key === "+" || e.key === "=")) {
-        e.preventDefault();
-        camera.by(1.25);
-      } else if (mod && e.key === "-") {
-        e.preventDefault();
-        camera.by(0.8);
-      } else if (mod && e.key === "0") {
-        e.preventDefault();
-        resetCamera();
-      } else if (inField || mod || e.altKey) {
-        /* typing: single-key shortcuts stay off */
-      } else if (e.key === "/") {
-        e.preventDefault();
+  /* ---------- keyboard (the `view:brain` scope: `/` and `p` are the brain's while it is open) ---------- */
+  const keyActs = useRef({ camera, patch, resetCamera });
+  keyActs.current = { camera, patch, resetCamera };
+  const commands = useMemo<Command[]>(() => {
+    const key = (id: string, title: TKey, keys: string[], run: () => void) =>
+      ({ id, title, group: "view", scope: "view:brain", keys, run }) satisfies Command;
+    return [
+      key("brain.zoomIn", "cmd.brain.zoomIn", ["Mod+=", "Mod++"], () => keyActs.current.camera.by(1.25)),
+      key("brain.zoomOut", "cmd.brain.zoomOut", ["Mod+-"], () => keyActs.current.camera.by(0.8)),
+      key("brain.zoomReset", "cmd.brain.zoomReset", ["Mod+0"], () => keyActs.current.resetCamera()),
+      key("brain.search", "shell.shortcuts.brainSearch", ["/"], () => {
         setPresenting(false);
         requestAnimationFrame(() => searchRef.current?.focus());
-      } else if (e.key === "p") setPresenting((v) => !v);
-      else if (e.key === "f") patch({ local: !uiRef.current.local });
-      else if (e.key === "l") patch({ showNames: !uiRef.current.showNames });
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [camera, patch, uiRef, resetCamera]);
+      }),
+      key("brain.present", "shell.shortcuts.brainPresent", ["p"], () => setPresenting((v) => !v)),
+      key("brain.local", "cmd.brain.local", ["f"], () =>
+        keyActs.current.patch({ local: !uiRef.current.local }),
+      ),
+      key("brain.names", "cmd.brain.names", ["l"], () =>
+        keyActs.current.patch({ showNames: !uiRef.current.showNames }),
+      ),
+    ];
+  }, [uiRef]);
+  useCommands(commands);
 
   // Esc closes the preview, then the list, then presentation mode — and only
-  // then bubbles to the shell (which leaves the view).
-  useEffect(() => {
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      // The brain is one panel among others (G2): its Escape is only its own
-      // when it is where the key was pressed, and never while a dialog is
-      // open — a modal in another panel used to lose its Escape here.
-      if (getDialogDepth() > 0) return;
-      const target = e.target instanceof Node ? e.target : null;
-      const inside = target ? rootRef.current?.contains(target) : false;
-      const onPage = target === document.body || target === document.documentElement;
-      if (!inside && !onPage) return;
-      if (uiRef.current.sel !== null) selectId(null);
-      else if (listOpen) setListOpen(false);
-      else if (presenting) setPresenting(false);
-      else return;
-      e.stopPropagation();
-    };
-    window.addEventListener("keydown", onEsc, true);
-    return () => window.removeEventListener("keydown", onEsc, true);
-  }, [listOpen, presenting, selectId, uiRef, setListOpen]);
+  // then falls to the shell (which leaves the view). The brain is one panel
+  // among others (G2): its Escape is only its own when the focus is in it
+  // (or nowhere); a dialog's Escape is the dialog's (the modal scope).
+  const escState = useRef({ listOpen, presenting, selectId, setListOpen });
+  escState.current = { listOpen, presenting, selectId, setListOpen };
+  const escCommands = useMemo<Command[]>(
+    () => [
+      {
+        id: "brain.escape",
+        title: "cmd.brain.escape",
+        group: "view",
+        scope: "view:brain",
+        keys: ["Escape"],
+        allowInInput: true,
+        when: () => {
+          const s = escState.current;
+          const el = document.activeElement;
+          const here = !el || el === document.body || Boolean(rootRef.current?.contains(el));
+          return here && (uiRef.current.sel !== null || s.listOpen || s.presenting);
+        },
+        run: () => {
+          const s = escState.current;
+          if (uiRef.current.sel !== null) s.selectId(null);
+          else if (s.listOpen) s.setListOpen(false);
+          else setPresenting(false);
+        },
+      },
+    ],
+    [uiRef],
+  );
+  useCommands(escCommands);
 
   /* ---------- layout pill ---------- */
   const layoutLabel = t(LAYOUT_KEYS[ui.layout]);

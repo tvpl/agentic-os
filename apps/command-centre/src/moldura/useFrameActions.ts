@@ -5,10 +5,11 @@
  * document, so "open this" is a navigation or the drawer. The parts that are
  * the same in both shells live in `desktop/shellActions.ts`.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useT } from "../i18n";
-import { OPEN_DECK_EVENT } from "../components/CommandPalette";
+import { Sparkles } from "lucide-react";
+import { useCommands, type Command } from "../commands/registry";
 import { APPS, appForPath, appId, type AppKind, type AppLocation } from "../desktop/apps";
 import type { DesktopActions } from "../desktop/actions";
 import type { OpenPanel } from "../desktop/panelKinds";
@@ -55,11 +56,23 @@ export function useFrameActions(): FrameActions {
   const closeDoc = useCallback(() => setDocState(null), []);
 
   const [deckOpen, setDeckOpen] = useState(false);
-  useEffect(() => {
-    const onOpenDeck = () => setDeckOpen(true);
-    window.addEventListener(OPEN_DECK_EVENT, onOpenDeck);
-    return () => window.removeEventListener(OPEN_DECK_EVENT, onOpenDeck);
-  }, []);
+  // The palette's "Skill deck" row (the frame has no key for it: ⌘J is the Núcleo's).
+  const deckCommand = useMemo<Command[]>(
+    () => [
+      {
+        id: "action:skill-deck",
+        title: "desktop.deck.open",
+        group: "actions",
+        scope: "moldura",
+        icon: Sparkles,
+        keywords: ["skill", "deck", "run", "executar", "radial"],
+        palette: true,
+        run: () => setDeckOpen(true),
+      },
+    ],
+    [],
+  );
+  useCommands(deckCommand);
 
   const openRun = useCallback((runId: string) => navigate(`/runs/${encodeURIComponent(runId)}`), [navigate]);
   const openApp = useCallback(

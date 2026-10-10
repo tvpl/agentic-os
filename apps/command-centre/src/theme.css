@@ -1112,6 +1112,11 @@ canvas.dimmed {
   align-items: center;
   gap: var(--s-1);
 }
+.palette-row .pr-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
 .palette-row .pr-chevron {
   width: 14px;
   height: 14px;

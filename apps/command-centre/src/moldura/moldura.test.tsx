@@ -515,7 +515,13 @@ describe("S1 the frame and its regions", () => {
     fireEvent.keyDown(document.body, { key: ".", ctrlKey: true });
     expect(aside().hidden).toBe(false);
     expect(chat().getAttribute("aria-pressed")).toBe("true");
-    fireEvent.keyDown(document.body, { key: ".", metaKey: true });
+    // ⌘ is the key on a Mac (comandos-atalhos door 3: Mod is the platform's command key).
+    Object.defineProperty(window.navigator, "platform", { value: "MacIntel", configurable: true });
+    try {
+      fireEvent.keyDown(document.body, { key: ".", metaKey: true });
+    } finally {
+      delete (window.navigator as { platform?: string }).platform;
+    }
     expect(aside().hidden).toBe(true);
     expect(chat().getAttribute("aria-pressed")).toBe("false");
 
@@ -1386,15 +1392,31 @@ describe("V1.2 the ways out of what covers the content", () => {
   });
 
   it("C74 ⌘K and Ctrl K open the palette in the frame and the same key closes it", async () => {
-    await mountShell("/");
-    for (const init of [{ ctrlKey: true }, { metaKey: true }]) {
-      const label = JSON.stringify(init);
-      // `fireEvent` answers false when the handler cancelled the event: the browser's own ⌘K / Ctrl K
-      // (the address bar, the search box) must not also run.
-      expect(fireEvent.keyDown(document.body, { key: "k", ...init }), label).toBe(false);
-      await waitFor(() => expect(screen.queryByRole("combobox"), label).not.toBeNull());
-      expect(fireEvent.keyDown(document.body, { key: "k", ...init }), label).toBe(false);
-      await waitFor(() => expect(screen.queryByRole("combobox"), label).toBeNull());
+    // Mod is the platform's command key (comandos-atalhos, door 3): ⌘ on a Mac, Ctrl elsewhere —
+    // the other one belongs to the system (Win+K) or to text editing (Ctrl+K on a Mac).
+    for (const [platform, yes, no] of [
+      ["Linux x86_64", { ctrlKey: true }, { metaKey: true }],
+      ["MacIntel", { metaKey: true }, { ctrlKey: true }],
+    ] as const) {
+      Object.defineProperty(window.navigator, "platform", { value: platform, configurable: true });
+      try {
+        await mountShell("/");
+        const label = `${platform} ${JSON.stringify(yes)}`;
+        fireEvent.keyDown(document.body, { key: "k", ...no });
+        await settled();
+        expect(screen.queryByRole("combobox"), label).toBeNull();
+        // `fireEvent` answers false when the handler cancelled the event: the browser's own ⌘K / Ctrl K
+        // (the address bar, the search box) must not also run.
+        expect(fireEvent.keyDown(document.body, { key: "k", ...yes }), label).toBe(false);
+        await waitFor(() => expect(screen.queryByRole("combobox"), label).not.toBeNull());
+        expect(fireEvent.keyDown(document.activeElement ?? document.body, { key: "k", ...yes }), label).toBe(
+          false,
+        );
+        await waitFor(() => expect(screen.queryByRole("combobox"), label).toBeNull());
+      } finally {
+        delete (window.navigator as { platform?: string }).platform;
+        cleanup();
+      }
     }
   });
 

@@ -1,4 +1,3 @@
-import { openOnboarding } from "../onboarding/state";
 import { errorMessage } from "../views/shared";
 /**
  * Command palette (analysis item 20): the launcher grown into a cmdk-like
@@ -22,40 +21,22 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import {
-  Activity,
-  Archive,
   ArrowDown,
   ArrowLeft,
   ArrowUp,
-  BrainCircuit,
-  CalendarClock,
   ChevronRight,
   CornerDownLeft,
   FileText,
-  Grid3x3,
   Keyboard,
   LayoutGrid,
   ListTree,
-  Palette,
   Play,
-  Plug,
-  Plus,
-  RefreshCw,
-  Repeat,
   Search,
-  Settings as SettingsIcon,
   Sparkles,
-  Stethoscope,
-  SunMoon,
-  Volume2,
-  VolumeX,
 } from "lucide-react";
 import {
   api,
-  type BackupCreated,
-  type DoctorReport,
   type MemorySearchHit,
   type Meta,
   type ModelishOption,
@@ -71,21 +52,18 @@ import { HUD_CATALOGUE, hudTitleKey } from "../desktop/hud";
 import { APPS, appKindOf } from "../desktop/apps";
 import { useT, type TKey } from "../i18n";
 import { localizeSkill } from "../views/Skills/localize";
-import { qk, useApiQuery, useOsProviders, useOsRuns, useOsSkills, useSaveUiPreferences } from "../queries";
+import { qk, useApiQuery, useOsProviders, useOsRuns, useOsSkills } from "../queries";
 import { PRESETS, applyAccentTokens, applyPreset, type PresetId } from "../theme";
 import { useOsNavigate } from "../hooks/useViewTransition";
-import { getNotifySound, setNotifySound, useNotifications } from "../hooks/useNotifications";
+import { getNotifySound } from "../hooks/useNotifications";
 import { StatusBadge, timeAgo, useToast } from "./ui";
 import { Badge, Button, Segmented } from "./primitives";
 import { DialogPortal, useDialog } from "./dialog";
 import { rankItems } from "./paletteMatch";
+import { useCommands, useRegisteredCommands, type Command } from "../commands/registry";
+import { ariaShortcut, comboLabel, isMac } from "../commands/keys";
 import { useI18nLang } from "./paletteLang";
 
-/** Fired by the palette's "Reset layout" action; the desktop listens and offers the default composition. */
-export const RESET_LAYOUT_EVENT = "mordomo:reset-layout";
-
-/** Fired by the palette's "Skill deck" action; the desktop fans the radial deck out. */
-export const OPEN_DECK_EVENT = "mordomo:open-deck";
 /** Fired by the palette to put a registered instrument panel on the stage (`detail` = its id). */
 export const OPEN_PANEL_EVENT = "mordomo:open-panel";
 
@@ -94,8 +72,8 @@ export interface PaletteOpenDetail {
   query?: string;
   /** Open the "Run skill →" page for this slug. */
   runSkill?: string;
-  /** `panels`: open on the "Open a panel" page — the dock's "+" (plan step 5). */
-  mode?: "panels";
+  /** `panels`: open on the "Open a panel" page — the dock's "+" (plan step 5); `theme`: on the presets. */
+  mode?: "panels" | "theme";
 }
 
 export interface CommandPaletteProps {
@@ -124,6 +102,8 @@ interface Row {
   icon: ReactNode;
   keywords?: string[];
   right?: ReactNode;
+  /** The key combinations the row's command answers to (`aria-keyshortcuts`). */
+  shortcuts?: string;
   /** Enter */
   primary: (el: HTMLElement | null) => void;
   /** ⌘Enter */
@@ -164,10 +144,7 @@ export function CommandPalette({
   const t = useT();
   const lang = useI18nLang();
   const toast = useToast();
-  const qc = useQueryClient();
   const navigate = useOsNavigate();
-  const { notify } = useNotifications();
-  const savePreferences = useSaveUiPreferences();
   const frame = shell === "moldura";
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -180,7 +157,8 @@ export function CommandPalette({
   const [query, setQuery] = useState(initial?.query ?? "");
   const [selected, setSelected] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
-  const [sound, setSound] = useState(getNotifySound);
+  // Read once per opening: the sound row's badge (the command toggles it and closes the palette).
+  const [sound] = useState(getNotifySound);
 
   const skills = useOsSkills({ staleTime: 60_000 });
   const runs = useOsRuns({ limit: 8 }, { staleTime: 15_000 });
@@ -188,6 +166,7 @@ export function CommandPalette({
 
   const [page, setPage] = useState<Page>(() => {
     if (initial?.mode === "panels") return { kind: "panels" };
+    if (initial?.mode === "theme") return { kind: "theme" };
     if (initial?.runSkill) {
       const skill = skills.data?.find((s) => s.slug === initial.runSkill);
       if (skill) return { kind: "run", skill };
@@ -199,6 +178,22 @@ export function CommandPalette({
   closeRef.current = onClose;
   const close = useCallback((opts?: { instant?: boolean }) => closeRef.current(opts), []);
   useDialog(ref, () => close(), { initialFocus: () => inputRef.current });
+  // The palette is a modal: the global keys that opened it do not reach it, so its own
+  // toggle keys close it (the `modal` scope of the command registry).
+  const toggleKeys = useMemo<Command[]>(
+    () => [
+      {
+        id: "palette.close",
+        title: "common.close",
+        group: "navigation",
+        scope: "modal",
+        keys: ["Mod+K", "Mod+M", "Ctrl+M"],
+        run: () => closeRef.current(),
+      },
+    ],
+    [],
+  );
+  useCommands(toggleKeys);
 
   /* ---------- navigation helpers ---------- */
   const go = useCallback(
@@ -264,256 +259,58 @@ export function CommandPalette({
     [go, toast, t],
   );
 
-  /* ---------- apps ---------- */
-  const apps = useMemo<Row[]>(
-    () =>
-      (
-        [
-          [
-            "brain",
-            "/brain",
-            <BrainCircuit aria-hidden />,
-            t("nav.brain"),
-            ["memory", "graph", "brain", "cerebro", "files"],
-          ],
-          ["skills", "/skills", <Sparkles aria-hidden />, t("nav.skills"), ["sop", "commands"]],
-          [
-            "routines",
-            "/routines",
-            <CalendarClock aria-hidden />,
-            t("nav.routines"),
-            ["cron", "schedule", "agenda"],
-          ],
-          ["runs", "/runs", <ListTree aria-hidden />, t("nav.runs"), ["history", "logs", "execucoes"]],
-          ["connectors", "/connectors", <Plug aria-hidden />, t("nav.connectors"), ["mcp", "integrations"]],
-          ["pixel", "/pixel", <Grid3x3 aria-hidden />, t("nav.pixel"), ["pixel", "art", "sprite"]],
-          [
-            "settings",
-            "/settings",
-            <SettingsIcon aria-hidden />,
-            t("nav.settings"),
-            ["preferences", "config", "configuracoes"],
-          ],
-          [
-            "home",
-            "/",
-            <LayoutGrid aria-hidden />,
-            // "/" is the core in the Núcleo and the Today page in the frame.
-            t(frame ? "moldura.nav.today" : "nav.dashboard"),
-            ["desktop", "home", "os", "today", "hoje"],
-          ],
-        ] as Array<[string, string, ReactNode, string, string[]]>
-      ).map(([id, to, icon, label, keywords]) => ({
-        id: `app:${id}`,
-        section: "apps" as const,
-        label,
-        icon,
-        keywords,
-        primary: (el) => go(to, el, true),
-      })),
-    [t, go, frame],
-  );
-
-  /* ---------- actions ---------- */
-  const actions = useMemo<Row[]>(() => {
-    const act = (
-      id: string,
-      label: TKey,
-      icon: ReactNode,
-      keywords: string[],
-      primary: Row["primary"],
-      extra: Partial<Row> = {},
-    ): Row => ({
-      id: `action:${id}`,
-      section: "actions",
-      label: t(label),
-      icon,
-      keywords,
-      primary,
-      busy: busy === `action:${id}`,
-      ...extra,
-    });
-    const toShell: UiShell = frame ? "nucleo" : "moldura";
-    const switchLabel: TKey = frame ? "moldura.palette.toNucleo" : "moldura.palette.toFrame";
-    const rows = [
-      act(
-        "onboarding",
-        "shell.action.onboarding",
-        <Sparkles aria-hidden />,
-        ["tour", "guide", "onboarding", "guia", "ajuda", "help", "tutorial"],
-        () => {
-          close();
-          openOnboarding();
-        },
-      ),
-      act(
-        "reindex",
-        "shell.action.reindex",
-        <RefreshCw aria-hidden />,
-        ["index", "rebuild", "memory", "reindexar"],
-        () =>
-          void runAction("action:reindex", t("shell.action.reindex"), async () => {
-            await api.post("/api/memory/index");
-            toast(t("shell.action.reindexDone"), "ok");
-            await qc.invalidateQueries({ queryKey: ["memory"] });
-          }),
-      ),
-      act(
-        "backup",
-        "shell.action.backup",
-        <Archive aria-hidden />,
-        ["backup", "export", "save"],
-        () =>
-          void runAction("action:backup", t("shell.action.backup"), async () => {
-            const res = await api.post<BackupCreated>("/api/backups", {});
-            toast(t("shell.action.backupDone", { name: res.name }), "ok");
-            await qc.invalidateQueries({ queryKey: qk.backups });
-          }),
-      ),
-      act(
-        "doctor",
-        "shell.action.doctor",
-        <Stethoscope aria-hidden />,
-        ["doctor", "health", "diagnostics", "check", "diagnostico"],
-        () =>
-          void runAction(
-            "action:doctor",
-            t("shell.action.doctor"),
-            async () => {
-              const rep = await api.get<DoctorReport>("/api/doctor?audit=0");
-              const text = t("shell.action.doctorDone", { ok: rep.ok, warn: rep.warn, fail: rep.fail });
-              toast(text, rep.fail > 0 ? "danger" : "ok");
-              notify({
-                kind: "system",
-                title: t("shell.action.doctor"),
-                body: text,
-                href: "/settings?tab=diagnostics",
-                tone: rep.fail > 0 ? "danger" : "ok",
-              });
-              qc.setQueryData(qk.doctor, rep);
-              go("/settings?tab=diagnostics");
-            },
-            false,
-          ),
-      ),
-      act("new-skill", "shell.action.newSkill", <Plus aria-hidden />, ["skill", "create", "nova"], (el) =>
-        go("/skills?new=1", el),
-      ),
-      act(
-        "now",
-        "now.title",
-        <Activity aria-hidden />,
-        ["now", "objective", "objetivo", "agora", "steps"],
-        () => inShell(() => window.dispatchEvent(new CustomEvent(OPEN_PANEL_EVENT, { detail: "now" }))),
-      ),
-      act(
-        "skill-deck",
-        "desktop.deck.open",
-        <Sparkles aria-hidden />,
-        ["skill", "deck", "run", "executar", "radial"],
-        () => inShell(() => window.dispatchEvent(new Event(OPEN_DECK_EVENT))),
-      ),
-      // Project an instrument (a lâmina) or travel to an app's scene.
-      act(
-        "open-panel",
-        "desktop.dock.add",
-        <Plus aria-hidden />,
-        ["panel", "painel", "window", "janela", "open", "abrir", "instrument", "widget"],
-        () => {
-          setPage({ kind: "panels" });
-          setQuery("");
-        },
-        {
-          nested: () => setPage({ kind: "panels" }),
-          right: <ChevronRight aria-hidden className="pr-chevron" />,
-        },
-      ),
-      act(
-        "toggle-theme",
-        "shell.action.toggleTheme",
-        <SunMoon aria-hidden />,
-        ["dark", "light", "theme", "tema", "escuro", "claro"],
-        () =>
-          void runAction("action:toggle-theme", t("shell.action.toggleTheme"), async () => {
-            const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
-            await api.putSettings({ theme: next });
-            onMetaChanged();
-            toast(t("shell.palette.themeToggled", { theme: next }), "ok");
-          }),
-      ),
-      act(
-        "presets",
-        "shell.action.presets",
-        <Palette aria-hidden />,
-        ["preset", "accent", "colour", "color", "cor", "forest", "ocean", "mono"],
-        () => setPage({ kind: "theme" }),
-        {
-          nested: () => setPage({ kind: "theme" }),
-          right: <ChevronRight aria-hidden className="pr-chevron" />,
-        },
-      ),
-      act("brain", "shell.action.brain", <BrainCircuit aria-hidden />, ["brain", "memory", "graph"], (el) =>
-        go("/brain", el),
-      ),
-      act(
-        "shortcuts",
-        "shell.action.shortcuts",
-        <Keyboard aria-hidden />,
-        ["keys", "help", "atalhos", "?"],
-        () => {
-          close();
-          onShortcuts();
-        },
-      ),
-      act(
-        "sound",
-        "shell.action.sound",
-        sound ? <Volume2 aria-hidden /> : <VolumeX aria-hidden />,
-        ["sound", "audio", "notification", "som"],
-        () => {
-          const next = !sound;
-          setNotifySound(next);
-          setSound(next);
-          toast(t(next ? "shell.action.soundOn" : "shell.action.soundOff"), "ok");
-        },
-        {
-          right: (
-            <Badge kind="meta" tone={sound ? "ok" : "dim"}>
-              {sound ? "on" : "off"}
-            </Badge>
-          ),
-        },
-      ),
-      act(
-        "switch-shell",
-        switchLabel,
-        <Repeat aria-hidden />,
-        ["interface", "shell", "switch", "mudar", "trocar", "nucleo", "núcleo", "moldura", "frame", "app"],
-        () =>
-          void runAction("action:switch-shell", t(switchLabel), async () => {
-            await savePreferences({ shell: toShell });
-          }),
-      ),
-    ];
-    // The frame has no lâminas to open, and its tour has no places to point at yet.
-    const frameless = new Set(["action:open-panel", "action:onboarding"]);
-    return frame ? rows.filter((r) => !frameless.has(r.id)) : rows;
-  }, [
-    t,
-    busy,
-    runAction,
-    toast,
-    qc,
-    notify,
-    go,
-    close,
-    onMetaChanged,
-    onShortcuts,
-    sound,
-    inShell,
-    frame,
-    savePreferences,
-  ]);
+  /* ---------- apps and actions: the registered commands (.specs/features/comandos-atalhos) ---------- */
+  const commands = useRegisteredCommands();
+  const [apps, actions] = useMemo<[Row[], Row[]]>(() => {
+    // Two commands open a page of the palette itself rather than run from it.
+    const nested: Record<string, Page> = {
+      "action:presets": { kind: "theme" },
+      "action:open-panel": { kind: "panels" },
+    };
+    const rows = commands
+      .filter((c) => c.palette && (!c.when || c.when()))
+      .map((c): Row => {
+        const Icon = c.icon;
+        const page = nested[c.id];
+        const keys = [...new Set((c.keys ?? []).map((k) => comboLabel(k)))];
+        return {
+          id: c.id,
+          section: c.group === "apps" ? "apps" : "actions",
+          label: t(c.title),
+          icon: Icon ? <Icon aria-hidden /> : null,
+          keywords: c.keywords,
+          shortcuts:
+            keys.length > 0 ? [...new Set((c.keys ?? []).map((k) => ariaShortcut(k)))].join(" ") : undefined,
+          right:
+            keys.length > 0 ? (
+              <span className="pr-keys">
+                {keys.map((k) => (
+                  <kbd key={k} className="kbd">
+                    {k}
+                  </kbd>
+                ))}
+              </span>
+            ) : page ? (
+              <ChevronRight aria-hidden className="pr-chevron" />
+            ) : c.id === "action:sound" ? (
+              <Badge kind="meta" tone={sound ? "ok" : "dim"}>
+                {sound ? "on" : "off"}
+              </Badge>
+            ) : undefined,
+          primary: page
+            ? () => {
+                setPage(page);
+                setQuery("");
+              }
+            : () => {
+                close();
+                c.run();
+              },
+          nested: page ? () => setPage(page) : undefined,
+        };
+      });
+    return [rows.filter((r) => r.section === "apps"), rows.filter((r) => r.section === "actions")];
+  }, [commands, t, sound, close]);
 
   /* ---------- skills ---------- */
   const skillRows = useMemo<Row[]>(
@@ -867,8 +664,7 @@ export function CommandPalette({
         : page.kind === "panels"
           ? t("desktop.palette.panelsPh")
           : t("shell.palette.placeholder");
-  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-  const mod = isMac ? "⌘" : "Ctrl";
+  const mod = isMac() ? "⌘" : "Ctrl";
   let flatIndex = -1;
 
   return (
@@ -1026,6 +822,7 @@ export function CommandPalette({
                             role="option"
                             aria-selected={idx === selected}
                             aria-busy={row.busy || undefined}
+                            aria-keyshortcuts={row.shortcuts}
                             className={`launcher-result palette-row${idx === selected ? " selected" : ""}`}
                             onMouseEnter={() => setSelected(idx)}
                             onClick={(e) => row.primary(e.currentTarget)}

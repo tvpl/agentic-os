@@ -45,6 +45,7 @@ import {
 import { clearDraft, readDraft, writeDraft } from "./runDraft";
 import { buildSplitPrompt } from "./splitPrompt";
 import "../apps.css";
+import { useCommands, type Command } from "../../commands/registry";
 
 const EFFORT_VALUES: readonly Effort[] = ["default", "low", "medium", "high"];
 
@@ -134,21 +135,28 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
   const missingRequired = skill.inputs.some((i) => i.required && !(inputs[i.name] ?? "").trim());
   const canRun = blocked === null && Boolean(provider) && !missingRequired && !run.isPending;
 
-  // ⌘/Ctrl+Enter runs from anywhere on the page, including from inside a field.
+  // ⌘/Ctrl+Enter runs from anywhere on the page, including from inside a field —
+  // a registered command of the `view:skills` scope, so a dialog over the page
+  // (the palette's own ⌘Enter) keeps the key.
   const canRunRef = useRef(canRun);
   canRunRef.current = canRun;
   const runRef = useRef(() => run.mutate());
   runRef.current = () => run.mutate();
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey)) return;
-      if (!canRunRef.current) return;
-      e.preventDefault();
-      runRef.current();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  const commands = useMemo<Command[]>(
+    () => [
+      {
+        id: "skills.run",
+        title: "cmd.skills.run",
+        group: "view",
+        scope: "view:skills",
+        keys: ["Mod+Enter"],
+        when: () => canRunRef.current,
+        run: () => runRef.current(),
+      },
+    ],
+    [],
+  );
+  useCommands(commands);
 
   const copyPath = async () => {
     toast((await copyText(skill.skillFile)) ? t("common.copied") : t("skills.copyFailed"), "ok");

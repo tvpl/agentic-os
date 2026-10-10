@@ -11,6 +11,7 @@ import * as sceneRunsL from "./locales/scene-runs";
 import * as sceneSkillsL from "./locales/scene-skills";
 import * as sceneRoutinesL from "./locales/scene-routines";
 import * as molduraL from "./locales/moldura";
+import * as commandsL from "./locales/commands";
 
 export type Lang = "en" | "pt-BR";
 
@@ -615,6 +616,7 @@ const en = {
   ...sceneSkillsL.en,
   ...sceneRoutinesL.en,
   ...molduraL.en,
+  ...commandsL.en,
 };
 /** Every string is widened to `string`: locale modules may use `as const`. */
 type Dict = { [K in keyof typeof en]: string };
@@ -1228,6 +1230,7 @@ const ptBR: Dict = {
   ...sceneSkillsL.ptBR,
   ...sceneRoutinesL.ptBR,
   ...molduraL.ptBR,
+  ...commandsL.ptBR,
 };
 
 export const dictionaries: Record<Lang, Dict> = { en, "pt-BR": ptBR };

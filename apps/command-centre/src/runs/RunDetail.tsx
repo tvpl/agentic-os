@@ -8,7 +8,7 @@
 import "./runs.css";
 import { FailureFixCard } from "./FailureFixCard";
 import { recallFromEvents } from "./recallFromEvents";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, ClipboardList, Copy, CornerDownRight, FileText, RefreshCw, Square } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -31,6 +31,7 @@ import { authRecovery } from "./authRecovery";
 import { contextWindowFor } from "./models";
 import { contextUsed, foldUsage, formatTokens, formatUsd, totalTokens } from "./usage";
 import { isNotFound, isRunActive, useRunQuery, useRunStream } from "./useRunStream";
+import { useCommands, type Command } from "../commands/registry";
 
 type DetailTab = "timeline" | "replay";
 
@@ -185,31 +186,45 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
     window.setTimeout(() => followUpRef.current?.focus(), 0);
   };
 
-  // Shortcuts: never steal keys while the reader is typing. The handlers live
-  // in a ref so the listener is attached once, not on every streamed frame.
+  // Shortcuts (the `view:runs` scope; bare keys, so never while the reader is
+  // typing). The handlers live in a ref so the commands are registered once,
+  // not on every streamed frame. A run shown twice (a lâmina and the Runs
+  // scene) answers once: the newest instance holds the keys.
   const shortcuts = useRef({ runAgain, startFollowUp });
   shortcuts.current = { runAgain, startFollowUp };
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const el = e.target as HTMLElement | null;
-      const tag = el?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable) return;
-      if (e.key === "/") {
-        e.preventDefault();
-        setTab("timeline");
-        window.setTimeout(() => timelineRef.current?.focusSearch(), 0);
-      } else if (e.key === "r") {
-        e.preventDefault();
-        shortcuts.current.runAgain();
-      } else if (e.key === "c") {
-        e.preventDefault();
-        shortcuts.current.startFollowUp();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  const commands = useMemo<Command[]>(
+    () => [
+      {
+        id: "runs.search",
+        title: "cmd.runs.search",
+        group: "view",
+        scope: "view:runs",
+        keys: ["/"],
+        run: () => {
+          setTab("timeline");
+          window.setTimeout(() => timelineRef.current?.focusSearch(), 0);
+        },
+      },
+      {
+        id: "runs.again",
+        title: "cmd.runs.again",
+        group: "view",
+        scope: "view:runs",
+        keys: ["r"],
+        run: () => shortcuts.current.runAgain(),
+      },
+      {
+        id: "runs.followUp",
+        title: "cmd.runs.followUp",
+        group: "view",
+        scope: "view:runs",
+        keys: ["c"],
+        run: () => shortcuts.current.startFollowUp(),
+      },
+    ],
+    [],
+  );
+  useCommands(commands, { exclusive: "run-detail" });
 
   if (record.isError && isNotFound(record.error)) {
     return (

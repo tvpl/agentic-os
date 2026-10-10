@@ -20,6 +20,7 @@ import { localizeSkill } from "../views/Skills/localize";
 import { useDesktopActions } from "./actions";
 import { useDesktopRuns } from "./data";
 import { timeAgo } from "../components/ui";
+import { useCommands, type Command } from "../commands/registry";
 
 /** Past this the arc stops reading as a fan and starts reading as a list. */
 const MAX_ON_ARC = 8;
@@ -113,6 +114,23 @@ function Deck({ closing, onClose }: { closing: boolean; onClose: () => void }) {
 
   const searchRef = useRef<HTMLInputElement>(null);
   useDialog(ref, onClose, { initialFocus: () => searchRef.current });
+  // ⌘J opened the deck; with the deck up (a modal), ⌘J is the deck's own and puts it away.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const commands = useMemo<Command[]>(
+    () => [
+      {
+        id: "deck.close",
+        title: "common.close",
+        group: "view",
+        scope: "modal",
+        keys: ["Mod+J"],
+        run: () => closeRef.current(),
+      },
+    ],
+    [],
+  );
+  useCommands(commands);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => setFanned(true));

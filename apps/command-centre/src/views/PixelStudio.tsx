@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Braces,
@@ -23,11 +23,13 @@ import {
   Undo2,
 } from "lucide-react";
 import { api } from "../api";
-import { useT } from "../i18n";
+import { useT, type TKey } from "../i18n";
 import { useToast } from "../components/ui";
 import { useConfirm } from "../hooks/useConfirm";
 import { downloadUrl as downloadFile } from "./shared";
 import "./apps.css";
+import { useCommands, type Command } from "../commands/registry";
+import { isTypingTarget } from "../commands/keys";
 
 /* =========================================================================
    Pixel Studio — a self-contained pixel-art drawing + animation micro-app.
@@ -310,35 +312,26 @@ export default function PixelStudio() {
     }, 400);
     return () => window.clearTimeout(id);
   }, [frames, size, current]);
+  // Escape with unsaved pixels asks before leaving (the `pixel.leave` command below).
+  const leave = () =>
+    void confirm({
+      title: t("pixel.leaveTitle"),
+      body: t("pixel.leaveBody"),
+      danger: true,
+      confirmLabel: t("pixel.leave"),
+    }).then((ok) => {
+      if (ok) {
+        dirtyRef.current = false;
+        navigate("/");
+      }
+    });
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || !dirtyRef.current) return;
-      if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName ?? "")) return;
-      if ((e.target as Element | null)?.closest?.('[role="dialog"]')) return;
-      e.stopPropagation();
-      e.preventDefault();
-      void confirm({
-        title: t("pixel.leaveTitle"),
-        body: t("pixel.leaveBody"),
-        danger: true,
-        confirmLabel: t("pixel.leave"),
-      }).then((ok) => {
-        if (ok) {
-          dirtyRef.current = false;
-          navigate("/");
-        }
-      });
-    };
     const onUnload = (e: BeforeUnloadEvent) => {
       if (dirtyRef.current) e.preventDefault();
     };
-    window.addEventListener("keydown", onKey, true);
     window.addEventListener("beforeunload", onUnload);
-    return () => {
-      window.removeEventListener("keydown", onKey, true);
-      window.removeEventListener("beforeunload", onUnload);
-    };
-  }, [confirm, navigate, t]);
+    return () => window.removeEventListener("beforeunload", onUnload);
+  }, []);
 
   /* ---------- undo ---------- */
   const snapshot = useCallback(
@@ -477,58 +470,47 @@ export default function PixelStudio() {
     if (f) paintFrame(ctx, f, size);
   }, [frames, current, size, onion]);
 
-  /* ---------- keyboard ---------- */
-  const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
-  keyRef.current = (e: KeyboardEvent) => {
-    const target = e.target as HTMLElement | null;
-    if (target && /^(input|textarea|select)$/i.test(target.tagName)) return;
-    const mod = e.metaKey || e.ctrlKey;
-    const key = e.key.toLowerCase();
-    if (mod && (key === "y" || (key === "z" && e.shiftKey))) {
-      e.preventDefault();
-      redo();
-      return;
-    }
-    if (mod && key === "z") {
-      e.preventDefault();
-      undo();
-      return;
-    }
-    if (mod || e.altKey) return;
-    if (e.key === "[" || e.key === "]") {
-      e.preventDefault();
-      setCurrent((c) => stepFrame(c, frames.length, e.key === "[" ? -1 : 1));
-      return;
-    }
-    if (e.key === "+" || e.key === "=") {
-      e.preventDefault();
-      setBrush((b) => clampBrush(b + 1));
-      return;
-    }
-    if (e.key === "-" || e.key === "_") {
-      e.preventDefault();
-      setBrush((b) => clampBrush(b - 1));
-      return;
-    }
-    if (key === "x") {
-      e.preventDefault();
-      swapColors();
-      return;
-    }
-    if (key === "o") {
-      e.preventDefault();
-      setOnion((v) => !v);
-      return;
-    }
-    const tools: Record<string, Tool> = { "1": "pencil", "2": "eraser", "3": "fill", "4": "eyedropper" };
-    const next = tools[e.key];
-    if (next) setTool(next);
-  };
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => keyRef.current(e);
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+  /* ---------- keyboard (the `view:pixel` scope: these keys are Pixel Studio's while it is open) ---------- */
+  const keyActs = useRef({ undo, redo, swapColors, leave, frames: frames.length });
+  keyActs.current = { undo, redo, swapColors, leave, frames: frames.length };
+  const commands = useMemo<Command[]>(() => {
+    const key = (id: string, title: TKey, keys: string[], run: () => void, extra: Partial<Command> = {}) =>
+      ({ id, title, group: "view", scope: "view:pixel", keys, run, ...extra }) satisfies Command;
+    // Undo in a text field is the field's own.
+    const outsideFields = { when: () => !isTypingTarget(document.activeElement) };
+    const tools: Array<[string, Tool, TKey]> = [
+      ["1", "pencil", "pixel.tool.pencil"],
+      ["2", "eraser", "pixel.tool.eraser"],
+      ["3", "fill", "pixel.tool.fill"],
+      ["4", "eyedropper", "pixel.tool.eyedropper"],
+    ];
+    return [
+      key("pixel.undo", "pixel.undo", ["Mod+Z"], () => keyActs.current.undo(), outsideFields),
+      key(
+        "pixel.redo",
+        "cmd.pixel.redo",
+        ["Mod+Shift+Z", "Mod+Y"],
+        () => keyActs.current.redo(),
+        outsideFields,
+      ),
+      key("pixel.prevFrame", "cmd.pixel.prevFrame", ["["], () =>
+        setCurrent((c) => stepFrame(c, keyActs.current.frames, -1)),
+      ),
+      key("pixel.nextFrame", "cmd.pixel.nextFrame", ["]"], () =>
+        setCurrent((c) => stepFrame(c, keyActs.current.frames, 1)),
+      ),
+      key("pixel.brushUp", "cmd.pixel.brushUp", ["+", "="], () => setBrush((b) => clampBrush(b + 1))),
+      key("pixel.brushDown", "cmd.pixel.brushDown", ["-", "_"], () => setBrush((b) => clampBrush(b - 1))),
+      key("pixel.swap", "cmd.pixel.swap", ["x"], () => keyActs.current.swapColors()),
+      key("pixel.onion", "pixel.onion", ["o"], () => setOnion((v) => !v)),
+      ...tools.map(([k, tool, title]) => key(`pixel.tool.${tool}`, title, [k], () => setTool(tool))),
+      // Before the shell's own Escape (a lâmina, home): unsaved pixels are asked about first.
+      key("pixel.leave", "cmd.pixel.leave", ["Escape"], () => keyActs.current.leave(), {
+        when: () => dirtyRef.current && !isTypingTarget(document.activeElement),
+      }),
+    ];
   }, []);
+  useCommands(commands);
 
   /* ---------- grid size ---------- */
   const changeSize = async (next: GridSize) => {

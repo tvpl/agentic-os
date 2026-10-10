@@ -5,7 +5,9 @@ import { Bell, MessageSquare, Search } from "lucide-react";
 import { useT } from "../i18n";
 import { useNotifications } from "../hooks/useNotifications";
 import { BellPopover } from "./BellPopover";
-import { chatKeys, paletteKeys } from "./keys";
+import { comboLabel } from "../commands/keys";
+import { PALETTE_KEY } from "../commands/global";
+import { CHAT_TOGGLE } from "./useFrameLayout";
 
 export interface TopBarProps {
   title: string;
@@ -39,7 +41,7 @@ export function TopBar({ title, chatOpen, modalOpen, onOpenPalette, onToggleChat
       >
         <Search aria-hidden />
         <span className="mold-search-t">{t("moldura.top.search")}</span>
-        <kbd className="mold-kbd mono">{paletteKeys()}</kbd>
+        <kbd className="mold-kbd mono">{comboLabel(PALETTE_KEY)}</kbd>
       </button>
       <span className="mold-top-sp" />
       <div className="mold-bell-wrap" ref={wrap}>
@@ -74,7 +76,7 @@ export function TopBar({ title, chatOpen, modalOpen, onOpenPalette, onToggleChat
         type="button"
         className="mold-chat-btn"
         aria-pressed={chatOpen}
-        title={t("moldura.top.chatHint", { keys: chatKeys() })}
+        title={t("moldura.top.chatHint", { keys: comboLabel(CHAT_TOGGLE) })}
         onClick={onToggleChat}
       >
         <MessageSquare aria-hidden />

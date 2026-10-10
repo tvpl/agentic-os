@@ -1,13 +1,14 @@
 /** The bell: the existing notification inbox, dropped from the top bar. */
-import { useEffect, useRef } from "react";
+import { useMemo, useRef } from "react";
+import { useCommands, type Command } from "../commands/registry";
 import { useT } from "../i18n";
 import { InboxList } from "../desktop/widgets/InboxWidget";
 import { useOutsidePress } from "./hooks";
 
 /**
  * A popover, not a modal: it closes on a press outside and on Esc (focus goes
- * back to the bell). A modal drawer opened over it takes Esc first, because
- * the dialog stack stops the key before it reaches this listener.
+ * back to the bell; the `moldura` scope). A modal drawer opened over it takes
+ * Esc first: a dialog is a layer that hides this scope.
  */
 export function BellPopover({
   anchor,
@@ -21,15 +22,21 @@ export function BellPopover({
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useOutsidePress(anchor, () => closeRef.current(false));
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented) return;
-      e.preventDefault();
-      closeRef.current(true);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  const commands = useMemo<Command[]>(
+    () => [
+      {
+        id: "moldura.bell.close",
+        title: "cmd.moldura.bell",
+        group: "navigation",
+        scope: "moldura",
+        keys: ["Escape"],
+        allowInInput: true,
+        run: () => closeRef.current(true),
+      },
+    ],
+    [],
+  );
+  useCommands(commands);
   return (
     <div
       className="mold-popover"

@@ -8,11 +8,16 @@
  * Narrow means the sidebar is a rail that unfolds over the content (an
  * overlay, not a push) and the conversation is a drawer over it.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MessageSquare } from "lucide-react";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { CONSOLE_DRAFT_EVENT } from "../desktop/consoleDraft";
+import { getDialogDepth } from "../components/dialog";
+import { useCommands, type Command } from "../commands/registry";
 
 export const CHAT_KEY = "mordomo.moldura.chat.v1";
+/** Shows and hides the conversation. */
+export const CHAT_TOGGLE = "Mod+.";
 export const SIDEBAR_KEY = "mordomo.moldura.sidebar.v1";
 /** Below this the frame cannot hold three columns (design Tela 1, "estreita"). */
 export const NARROW = "(max-width: 899px)";
@@ -94,18 +99,43 @@ export function useFrameLayout(): FrameLayout {
     return () => window.removeEventListener(CONSOLE_DRAFT_EVENT, onDraft);
   }, [setChat]);
 
-  // ⌘. / Ctrl . shows and hides the conversation. Esc is each drawer's own (dialog.tsx).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented) return;
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key === ".") {
-        e.preventDefault();
-        setChat(!chatOpenRef.current);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [setChat]);
+  // ⌘. / Ctrl . shows and hides the conversation (the `moldura` scope). Esc is each drawer's own
+  // (dialog.tsx). The narrow drawer is a modal that hides the frame's keys, so it carries the
+  // toggle too — only while it is the dialog on top (the palette over it keeps its own keys).
+  const layoutRef = useRef({ setChat, chatDrawer: narrow && chatDrawerOpen });
+  layoutRef.current = { setChat, chatDrawer: narrow && chatDrawerOpen };
+  const toggle = useMemo<Command[]>(
+    () => [
+      {
+        id: "moldura.chat",
+        title: "cmd.moldura.chat",
+        group: "actions",
+        scope: "moldura",
+        icon: MessageSquare,
+        keywords: ["chat", "conversa", "console", "voice"],
+        keys: [CHAT_TOGGLE],
+        palette: true,
+        run: () => layoutRef.current.setChat(!chatOpenRef.current),
+      },
+    ],
+    [],
+  );
+  useCommands(toggle);
+  const drawerToggle = useMemo<Command[]>(
+    () => [
+      {
+        id: "moldura.chat.drawer",
+        title: "cmd.moldura.chat",
+        group: "actions",
+        scope: "modal",
+        keys: [CHAT_TOGGLE],
+        when: () => getDialogDepth() === 1,
+        run: () => layoutRef.current.setChat(false),
+      },
+    ],
+    [],
+  );
+  useCommands(drawerToggle, { enabled: narrow && chatDrawerOpen });
 
   return {
     narrow,

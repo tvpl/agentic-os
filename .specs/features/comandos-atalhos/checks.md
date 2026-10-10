@@ -17,95 +17,95 @@ paleta (vêm dos tokens).
 
 **C1** - Um componente que chama `useCommands([cmd])` faz `cmd` aparecer no registro enquanto está montado e sumir ao desmontar (AC 1)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C1 commands live while their owner is mounted"`
-Status: open
+Status: closed
 
 **C2** - Com a mesma tecla `x` registrada em `global`, `nucleo`, `view:pixel`, `overlay` e `modal`, cada combinação de escopos ativos roda só o comando do escopo mais interno (tabela sobre as 5 posições) (AC 2)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C2 the innermost active scope wins"`
-Status: open
+Status: closed
 
 **C3** - Com o foco em `input`, `textarea`, `select` e num `contenteditable`, a tecla `p` não roda; um comando com `allowInInput` roda; `Mod+K` roda (AC 3)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C3 bare keys never fire while typing"`
-Status: open
+Status: closed
 
 **C4** - Com a plataforma simulada como Mac, `Mod+K` responde a ⌘K e não a Ctrl+K; simulada como Windows e Linux, responde a Ctrl+K e não a Win(meta)+K (AC 4)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C4 Mod is the platform's command key"`
-Status: open
+Status: closed
 
 **C5** - Registrar `Mod+K` duas vezes no escopo `global` lança um erro cujo texto tem os dois ids; o mesmo em escopos diferentes não lança (AC 5)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C5 a duplicate key in one scope is refused"`
-Status: open
+Status: closed
 
 **C6** - Com `when: () => false`, o comando não roda (a tecla vai ao escopo de baixo) e não aparece na paleta; com `true`, roda e aparece (AC 6)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C6 a disabled command falls through and hides"`
-Status: open
+Status: closed
 
 ### S2 - paleta e ajuda · 6 files · 60 KB · ~15k
 
 **C7** - Com a paleta aberta na moldura, as seções "Apps" e "Ações" listam exatamente os comandos registrados com `palette: true` para o shell (mesmos ids, mesma ordem de registro), e uma ação com teclas mostra a dica (`⌘K` simulando Mac, `Ctrl K` em outros) (AC 7)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C7 the palette lists the registered commands with their keys"`
-Status: open
+Status: closed
 
 **C8** - Skills, arquivos, execuções e as páginas aninhadas (painéis, temas, rodar skill) continuam na paleta como antes: a suíte de testes da paleta e o e2e `smoke.spec.ts` "launcher opens with Ctrl+M and searches skills" passam (AC 7)
-Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/smoke.spec.ts -g "launcher opens with Ctrl+M and searches skills"`
-Status: open
+Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/smoke.spec.ts -g "launcher opens with Ctrl\+M and searches skills"`
+Status: closed
 
 **C9** - A ajuda de atalhos mostra um bloco por escopo com teclas, na ordem Geral → shell → tela, cada linha com os chips e o título; o conjunto de linhas é exatamente o dos comandos com teclas registrados para o shell e a tela atuais (AC 8)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C9 the help lists exactly the registered keys by scope"`
-Status: open
+Status: closed
 
 **C10** - Na moldura, a ajuda não tem 1, `[`, `]`, `p` nem ⌘J; no Núcleo, tem os cinco; com Pixel Studio aberto, tem o bloco "Pixel Studio" (AC 9)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C10 the help follows the shell and the screen"`
-Status: open
+Status: closed
 
 **C11** - `shell.shortcuts.desktop` é "Scenes" em `en` e "Cenas" em `ptBR` (AC 10)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C11 the scenes heading reads right in both languages"`
-Status: open
+Status: closed
 
 ### S3 - conflitos e migração · 10 files · 110 KB · ~28k
 
 **C12** - No Núcleo com Pixel Studio aberto, as teclas 2 e `]` trocam a ferramenta/quadro e a cena continua `pixel` (AC 11)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C12 Pixel Studio keys stay in Pixel Studio"`
-Status: open
+Status: closed
 
 **C13** - No Cérebro clássico, `p` liga a apresentação e o modo foco não abre; `/` foca a busca do Cérebro e não a linha de voz (AC 12)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C13 Second Brain keys stay in the Second Brain"`
-Status: open
+Status: closed
 
 **C14** - Com uma execução aberta numa lâmina e na cena de execuções ao mesmo tempo, `r` faz exatamente uma chamada de nova execução (AC 13)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C14 a run's r fires once"`
-Status: open
+Status: closed
 
 **C15** - Com a paleta aberta sobre o detalhe de uma skill, Ctrl+Enter roda só a ação secundária da paleta (a skill atrás não é chamada) (AC 14)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C15 Mod+Enter belongs to the open palette"`
-Status: open
+Status: closed
 
 **C16** - Lido pela árvore sintática do TypeScript: `App.tsx`, `nucleo/index.tsx`, `moldura/Moldura.tsx`, `views/PixelStudio.tsx`, `views/SecondBrain.tsx` e `runs/RunDetail.tsx` não chamam `addEventListener("keydown"…)` nem `onKeyDown` em `window`/`document`; nenhum arquivo de `src` (fora de testes) define ou usa `RESET_LAYOUT_EVENT` ou `SHORTCUTS_EVENT` (AC 15)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C16 the migrated screens own no keydown listener"`
-Status: open
+Status: closed
 
 **C17** - e2e: `tests/e2e/nucleo-shell.spec.ts` "⌘⇧A and ⌘⇧D resolve the first decision from anywhere" passa (AC 16)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/nucleo-shell.spec.ts -g "resolve the first decision from anywhere"`
-Status: open
+Status: closed
 
 **C18** - e2e: `tests/e2e/nucleo-shell.spec.ts` "the voice line is in every scene, in the same place, and / reaches it" e "opens focus by click, by P" passam (AC 16)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/nucleo-shell.spec.ts -g "reaches it|opens focus by click"`
-Status: open
+Status: closed
 
 **C19** - e2e: `tests/e2e/smoke.spec.ts` "a modal's Escape is its own" e `tests/e2e/desktop-context.spec.ts` (⌘F) passam (AC 16)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/smoke.spec.ts tests/e2e/desktop-context.spec.ts -g "Escape is its own|search"`
-Status: open
+Status: closed
 
 **C20** - e2e: `tests/e2e/desktop-intel.spec.ts` (deck por ⌘J) e `tests/e2e/onboarding.spec.ts` "command palette reopens a completed guide" passam (AC 16)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/desktop-intel.spec.ts tests/e2e/onboarding.spec.ts -g "deck|reopens a completed guide"`
-Status: open
+Status: closed
 
 **C21** - e2e: `tests/e2e/moldura.spec.ts` passa inteiro (⌘. e Esc da moldura) (AC 16)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/moldura.spec.ts`
-Status: open
+Status: closed
 
 **C22** - `npm run typecheck` e a suíte da interface saem `0` (AC 1-16)
 Proof: `npm run typecheck && npm run test -w apps/command-centre`
-Status: open
+Status: closed
 
 ## Coverage
 

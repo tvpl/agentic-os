@@ -43,6 +43,7 @@ import { describePending, readingFor } from "./describe";
 import Entity from "../entity/Entity";
 import QuestionCard from "../QuestionCard";
 import { askAbout, refWord, type Subject } from "../subject";
+import { useCommandScope } from "../../commands/registry";
 
 const ICON: Record<PendingKind, ReactNode> = {
   question: <MessageCircleQuestion aria-hidden />,
@@ -80,6 +81,8 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
   const live = useMemo(() => items.filter((i) => i.level !== "info"), [items]);
   const quiet = useMemo(() => items.filter((i) => i.level === "info"), [items]);
   const [selId, setSelId] = useState<string | null>(live[0]?.id ?? null);
+  // A layer over the shell: while it is up, the Núcleo's and the global keys stand down.
+  useCommandScope("overlay");
   const inQuiet = quiet.some((i) => i.id === selId);
   const list = inQuiet ? quiet : live;
   // When the chosen item is resolved, the next one comes forward.

@@ -29,6 +29,8 @@ import { ToastProvider, Modal, StatusBadge, Skeleton, useToast } from "../compon
 import { Badge, Button, EmptyState, Field, Popover, Segmented, Tabs } from "../components/primitives";
 import { CommandPalette } from "../components/CommandPalette";
 import { ShortcutsHelp } from "../components/ShortcutsHelp";
+import { CommandsProvider } from "../commands/registry";
+import { useGlobalCommands, type GlobalCommandsOptions } from "../commands/global";
 import { ConfirmProvider, useConfirm } from "../hooks/useConfirm";
 import { NotificationsProvider, useNotifications } from "../hooks/useNotifications";
 import type { ArtifactEntry, Meta, Metrics, RoutineStatus, RunRecord, Skill } from "../api";
@@ -430,6 +432,12 @@ function LayerPrimitives({ idPrefix }: { idPrefix: string }) {
   );
 }
 
+/** The palette and the sheet list what the registry holds: the global commands, as the shell registers them. */
+function GalleryCommands(props: GlobalCommandsOptions) {
+  useGlobalCommands(props);
+  return null;
+}
+
 function Overlays() {
   const [pop, setPop] = useState(false);
   const [palette, setPalette] = useState(false);
@@ -459,17 +467,25 @@ function Overlays() {
         </Popover>
       </Row>
       <Row label="palette">
-        <Button onClick={() => setPalette(true)}>Command palette</Button>
-        <Button onClick={() => setHelp(true)}>Shortcuts sheet</Button>
-        {palette && (
-          <CommandPalette
-            meta={META}
-            onClose={() => setPalette(false)}
+        <CommandsProvider>
+          <GalleryCommands
+            shell="nucleo"
+            openPalette={() => setPalette(true)}
+            openHelp={() => setHelp(true)}
             onMetaChanged={() => undefined}
-            onShortcuts={() => setHelp(true)}
           />
-        )}
-        {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
+          <Button onClick={() => setPalette(true)}>Command palette</Button>
+          <Button onClick={() => setHelp(true)}>Shortcuts sheet</Button>
+          {palette && (
+            <CommandPalette
+              meta={META}
+              onClose={() => setPalette(false)}
+              onMetaChanged={() => undefined}
+              onShortcuts={() => setHelp(true)}
+            />
+          )}
+          {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
+        </CommandsProvider>
       </Row>
       <Row label="notifications">
         <Button

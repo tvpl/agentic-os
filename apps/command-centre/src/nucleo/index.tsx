@@ -20,14 +20,13 @@ import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import type { CSSProperties } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, FileText } from "lucide-react";
+import { ChevronDown, FileText, Sparkles } from "lucide-react";
 import type { Meta, Skill } from "../api";
 import { useT } from "../i18n";
 import { qk, useOsProviders } from "../queries";
 import { Skeleton } from "../components/ui";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { useWorkspace } from "../components/Workspace";
-import { OPEN_DECK_EVENT } from "../App";
 import { APPS, appId, appKindOf, type AppKind, type AppLocation } from "../desktop/apps";
 import { AppRouteContext, type AppRoute } from "../desktop/appRoute";
 import { DesktopActionsProvider, type DesktopActions } from "../desktop/actions";
@@ -88,6 +87,8 @@ import { SCENE_VIEWS } from "./sceneViews";
 import "./nucleo.css";
 import "./luz.css";
 import { setSubject, useSubject } from "./subject";
+import { CommandsGate, useCommands, type Command } from "../commands/registry";
+import { isTypingTarget } from "../commands/keys";
 
 /** The scenes that take the shared language (luz.css); the Núcleo and the Brain draw their own worlds. */
 const LUZ = (id: SceneId) => (id === "nucleo" || id === "brain" ? "" : " luz");
@@ -427,96 +428,89 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
   const [searching, setSearching] = useState(false);
   const search = useUniversalSearch(searching);
   const [deckOpen, setDeckOpen] = useState(false);
-  useEffect(() => {
-    const onOpenDeck = () => setDeckOpen(true);
-    window.addEventListener(OPEN_DECK_EVENT, onOpenDeck);
-    return () => window.removeEventListener(OPEN_DECK_EVENT, onOpenDeck);
-  }, []);
 
-  /* ---- keys ------------------------------------------------------------- */
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || document.documentElement.dataset.onboarding) return;
-      const mod = e.metaKey || e.ctrlKey;
-      if (mod && !e.altKey && e.key.toLowerCase() === "j") {
-        e.preventDefault();
-        setDeckOpen((v) => !v);
-        return;
-      }
-      const el = e.target instanceof Element ? e.target : null;
-      if (el?.closest('[role="dialog"]')) return;
-      const editable =
-        el instanceof HTMLElement &&
-        (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
-      // Escape folds the conversation first (and lets go of the line).
-      if (e.key === "Escape" && dialogRef.current) {
-        e.preventDefault();
-        setDialog(false);
-        (document.activeElement as HTMLElement | null)?.blur();
-        return;
-      }
-      if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "f") {
-        e.preventDefault();
-        setSearching(true);
-        return;
-      }
-      if (e.key === "Escape" && searching) {
-        e.preventDefault();
-        setSearching(false);
-        return;
-      }
-      // ⌘⇧A approves, ⌘⇧D denies the first decision — from anywhere.
-      if (mod && e.shiftKey && !e.altKey && (e.key.toLowerCase() === "a" || e.key.toLowerCase() === "d")) {
-        const first = pendingRef.current.items.find((i) => i.kind === "decision");
-        if (first?.approval && !resolveRef.current.isPending) {
-          e.preventDefault();
-          resolveRef.current.mutate({
-            id: first.approval.id,
-            decision: e.key.toLowerCase() === "a" ? "approved" : "denied",
-          });
-        }
-        return;
-      }
-      if (mod || e.altKey || editable) return;
-      if (/^[1-5]$/.test(e.key)) {
-        const target = MAIN_SCENES[Number(e.key) - 1];
-        if (target) {
-          e.preventDefault();
-          go(target);
-        }
-        return;
-      }
-      if (e.key === "[" || e.key === "]") {
-        const ring = horizonRing(sceneRef.current);
-        const i = ring.findIndex((s) => s.id === sceneRef.current);
-        const next = ring[(i + (e.key === "]" ? 1 : ring.length - 1)) % ring.length];
-        if (next) {
-          e.preventDefault();
-          go(next);
-        }
-        return;
-      }
-      if (e.key === "/") {
-        e.preventDefault();
-        document.querySelector<HTMLTextAreaElement>(".cons-input")?.focus();
-        return;
-      }
-      if (e.key === "p" || e.key === "P") {
-        e.preventDefault();
-        setFocus(true);
-        return;
-      }
-      // Escape takes the newest lâmina away first; with none, the shell goes home.
-      if (e.key === "Escape" && !deckOpen && dismissNewest()) e.preventDefault();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [go, searching, deckOpen]);
+  /* ---- keys (the `nucleo` scope of the command registry) ------------------ */
   const pendingRef = useRef(pending);
   pendingRef.current = pending;
   const resolve = useResolveApproval((runId) => runId && openRun(runId));
   const resolveRef = useRef(resolve);
   resolveRef.current = resolve;
+  const keyState = useRef({ go, searching, deckOpen });
+  keyState.current = { go, searching, deckOpen };
+  const commands = useMemo<Command[]>(() => {
+    const key = (
+      id: string,
+      title: Command["title"],
+      keys: string[],
+      run: () => void,
+      extra: Partial<Command> = {},
+    ) => ({ id, title, group: "navigation", scope: "nucleo", keys, run, ...extra }) satisfies Command;
+    const cycle = (step: 1 | -1) => () => {
+      const ring = horizonRing(sceneRef.current);
+      const i = ring.findIndex((s) => s.id === sceneRef.current);
+      const next = ring[(i + (step === 1 ? 1 : ring.length - 1)) % ring.length];
+      if (next) keyState.current.go(next);
+    };
+    // ⌘⇧A approves, ⌘⇧D denies the first decision — from anywhere.
+    const firstDecision = () => pendingRef.current.items.find((i) => i.kind === "decision")?.approval;
+    const decidable: Partial<Command> = {
+      when: () => Boolean(firstDecision()) && !resolveRef.current.isPending,
+    };
+    const resolveFirst = (decision: "approved" | "denied") => () => {
+      const first = firstDecision();
+      if (first) resolveRef.current.mutate({ id: first.id, decision });
+    };
+    return [
+      ...MAIN_SCENES.map((scene, i) =>
+        key(`nucleo.scene.${scene.id}`, scene.labelKey, [String(i + 1)], () => keyState.current.go(scene)),
+      ),
+      key("nucleo.prev", "cmd.nucleo.prev", ["["], cycle(-1)),
+      key("nucleo.next", "cmd.nucleo.next", ["]"], cycle(1)),
+      key("nucleo.voice", "shell.shortcuts.cinema", ["/"], () =>
+        document.querySelector<HTMLTextAreaElement>(".cons-input")?.focus(),
+      ),
+      key("nucleo.focus", "cmd.nucleo.focus", ["p"], () => setFocus(true)),
+      key("nucleo.search", "shell.shortcuts.overview", ["Mod+F"], () => setSearching(true)),
+      key("nucleo.approve", "cmd.nucleo.approve", ["Mod+Shift+A"], resolveFirst("approved"), decidable),
+      key("nucleo.deny", "cmd.nucleo.deny", ["Mod+Shift+D"], resolveFirst("denied"), decidable),
+      // Escape folds the conversation first (and lets go of the line), then
+      // closes the search, then takes the newest lâmina away; with none, the
+      // global Escape goes home.
+      key(
+        "nucleo.escape",
+        "cmd.nucleo.escape",
+        ["Escape"],
+        () => {
+          if (dialogRef.current) {
+            setDialog(false);
+            (document.activeElement as HTMLElement | null)?.blur();
+          } else if (keyState.current.searching) setSearching(false);
+          else dismissNewest();
+        },
+        {
+          allowInInput: true,
+          when: () =>
+            dialogRef.current ||
+            keyState.current.searching ||
+            (!isTypingTarget(document.activeElement) &&
+              !keyState.current.deckOpen &&
+              getLaminas().length > 0),
+        },
+      ),
+      {
+        id: "action:skill-deck",
+        title: "desktop.deck.open",
+        group: "actions",
+        scope: "nucleo",
+        icon: Sparkles,
+        keywords: ["skill", "deck", "run", "executar", "radial"],
+        keys: ["Mod+J"],
+        palette: true,
+        run: () => setDeckOpen((v) => !v),
+      },
+    ];
+  }, []);
+  useCommands(commands);
 
   /* ---- the scene's own route, for the production views ------------------ */
   const route = useMemo<AppRoute>(
@@ -652,7 +646,8 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
                   // has no `inert` prop, so it is set on the element).
                   ref={(el) => el?.setAttribute("inert", "")}
                 >
-                  {renderScene(leaving.id)}
+                  {/* Same shape as the scene on: React keeps the view mounted while it leaves. */}
+                  <CommandsGate enabled={false}>{renderScene(leaving.id)}</CommandsGate>
                 </section>
               )}
               <section
@@ -664,7 +659,7 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
                 data-scene={scene.id}
                 aria-label={t(scene.labelKey)}
               >
-                {renderScene(scene.id)}
+                <CommandsGate enabled>{renderScene(scene.id)}</CommandsGate>
               </section>
             </main>
 
@@ -673,21 +668,23 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
             {specs.length > 0 && (
               <aside className="nu-laminas" data-count={specs.length} aria-label={t("nucleo.lamina.region")}>
                 {specs.map((spec) => (
-                  <Lamina
-                    key={spec.id}
-                    spec={spec}
-                    leaving={exiting.includes(spec.id)}
-                    onDismiss={() => dismiss(spec.id)}
-                    onReference={() => referencePanel(spec.id)}
-                    onOpenScene={
-                      spec.scenePath
-                        ? () => {
-                            dismiss(spec.id);
-                            navigate(spec.scenePath!);
-                          }
-                        : undefined
-                    }
-                  />
+                  // A lâmina dissolving is a picture: its screen's keys stand down.
+                  <CommandsGate key={spec.id} enabled={!exiting.includes(spec.id)}>
+                    <Lamina
+                      spec={spec}
+                      leaving={exiting.includes(spec.id)}
+                      onDismiss={() => dismiss(spec.id)}
+                      onReference={() => referencePanel(spec.id)}
+                      onOpenScene={
+                        spec.scenePath
+                          ? () => {
+                              dismiss(spec.id);
+                              navigate(spec.scenePath!);
+                            }
+                          : undefined
+                      }
+                    />
+                  </CommandsGate>
                 ))}
               </aside>
             )}
