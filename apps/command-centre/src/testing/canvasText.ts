@@ -19,6 +19,10 @@ export interface DrawnText {
   px: number;
   /** The source file (`brain/render/draw.ts`) whose code asked for the text, from the call stack. */
   site: string;
+  /** The line in that file, so a test can tell which call sites a state reached. */
+  line: number;
+  /** The `file:line` that set the font this text was drawn with (`""` for the default font). */
+  fontAt: string;
 }
 
 interface Recorded {
@@ -55,12 +59,22 @@ export function clearTextDrawnOn(canvas: object): void {
  * files a layer drew text from, so a file that draws text through a spelling no
  * source scan recognises (a bound method, `Reflect.apply`…) still shows up.
  */
-function callSite(): string {
+function callSite(): { site: string; line: number } {
   for (const line of (new Error().stack ?? "").split("\n")) {
-    const m = /\/src\/((?!testing\/)[^\s:()]+?\.(?:tsx?|jsx?))(?::\d+)/.exec(line);
-    if (m && !/\.test\.[tj]sx?$/.test(m[1]!)) return m[1]!;
+    const m = /\/src\/((?!testing\/)[^\s:()]+?\.(?:tsx?|jsx?)):(\d+)/.exec(line);
+    if (m && !/\.test\.[tj]sx?$/.test(m[1]!)) return { site: m[1]!, line: Number(m[2]) };
   }
-  return "(unknown)";
+  return { site: "(unknown)", line: 0 };
+}
+
+/** The `file:line` of every call that drew text on `canvas` (sprites included), sorted. */
+export function textLinesOn(canvas: { width: number }): string[] {
+  return [...new Set(textDrawnOn(canvas).map((t) => `${t.site}:${t.line}`))].sort();
+}
+
+/** The `file:line` of every assignment of a font that some text was then drawn with, sorted. */
+export function fontLinesOn(canvas: { width: number }): string[] {
+  return [...new Set(textDrawnOn(canvas).map((t) => t.fontAt))].filter(Boolean).sort();
 }
 
 /** The files the text on `canvas` was drawn from (sprites included), sorted. */
@@ -89,21 +103,23 @@ export function recordingContext(
   const rec: Recorded = records.get(canvas) ?? { texts: [], width: canvas.width, height: canvas.height };
   records.set(canvas, rec);
   let matrix: Matrix = [...IDENTITY];
-  const stack: { matrix: Matrix; font: string }[] = [];
+  const stack: { matrix: Matrix; font: string; fontAt: string }[] = [];
+  let fontAt = "";
   const state: Record<string, unknown> = { font: "10px sans-serif", globalAlpha: 1 };
 
   const draw = (text: string) => {
     // Throws when the font cannot be read: text must never go unmeasured.
     const px = canvasFontPx(String(state.font), emBase);
-    rec.texts.push({ text, px: px * scaleOf(matrix), site: callSite() });
+    rec.texts.push({ text, px: px * scaleOf(matrix), ...callSite(), fontAt });
   };
   const methods: Record<string, (...args: never[]) => unknown> = {
-    save: () => void stack.push({ matrix: [...matrix], font: String(state.font) }),
+    save: () => void stack.push({ matrix: [...matrix], font: String(state.font), fontAt }),
     restore: () => {
       const top = stack.pop();
       if (top) {
         matrix = top.matrix;
         state.font = top.font;
+        fontAt = top.fontAt;
       }
     },
     translate: (x: number, y: number) => void (matrix = multiply(matrix, [1, 0, 0, 1, x, y])),
@@ -155,6 +171,10 @@ export function recordingContext(
       },
       set(_t, prop: string, value) {
         state[prop] = value;
+        if (prop === "font") {
+          const at = callSite();
+          fontAt = `${at.site}:${at.line}`;
+        }
         return true;
       },
     },

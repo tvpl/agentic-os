@@ -7,6 +7,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import { installRecordingCanvas, textDrawnOn } from "../testing/canvasText";
+import { fontSiteProblems, unreachedTextSites } from "../testing/sizeScan";
 import Replay from "./Replay";
 
 const FLOOR = 12;
@@ -43,4 +44,17 @@ describe("Replay canvas text, measured on screen (C17)", () => {
       expect([...new Set(drawn.map((t) => t.site))]).toEqual(["runs/Replay.tsx"]);
     });
   }
+
+  it("reaches the call that writes text and the font it chooses", () => {
+    const { container } = render(<Replay events={events} />);
+    const drawn = textDrawnOn(container.querySelector("canvas")!, 320);
+    const calls = drawn.map((t) => `${t.site}:${t.line}`);
+    expect(unreachedTextSites("runs/Replay.tsx", calls)).toEqual([]);
+    expect(
+      fontSiteProblems(
+        "runs/Replay.tsx",
+        drawn.map((t) => t.fontAt),
+      ),
+    ).toEqual([]);
+  });
 });

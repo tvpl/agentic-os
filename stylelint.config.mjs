@@ -40,12 +40,15 @@ export default {
       // An inline image carries colours of its own, out of reach of every theme.
       "/.*/": ["/url\\(\\s*[\"']?data:/i"],
       // System colours (Canvas, ButtonFace, Highlight…) are colours by name, which `color-named` does not see.
-      // They are refused in every property, shadows, filters, gradients, `stop-color`, custom properties
-      // and `-webkit-text-fill-color` included, except the few whose values are names or strings of
-      // another kind (a grid area called `field`, an animation called `highlight`).
-      "/^(?!grid|animation|transition|view-transition|counter|content|will-change|font-family|quotes|list-style|cursor)/":
+      // Both the current ones (CSS Color 4 §6.2) and the deprecated ones (Window, Menu, ThreeDFace…, plus the
+      // vendor keywords). They are refused in every property, shadows, filters, gradients, `stop-color`,
+      // custom properties and `-webkit-text-fill-color` included, except the few whose values are names or
+      // strings of another kind (a grid area called `field`, an animation or a container called `highlight`;
+      // the names of timelines and anchors are dashed idents, `--field`, which never match). Limit: a custom property holding a bare word that is also a system colour (`--kind: mark`)
+      // is refused too, since a custom property may hold a colour; quote it or rename the value.
+      "/^(?!grid|animation|transition|view-transition|counter|content|will-change|font-family|quotes|list-style|cursor|container)/":
         [
-          "/(^|[\\s,(])(canvas|canvastext|linktext|visitedtext|activetext|buttonface|buttontext|buttonborder|field|fieldtext|highlight|highlighttext|selecteditem|selecteditemtext|mark|marktext|graytext|accentcolor|accentcolortext)($|[\\s,)])/i",
+          "/(^|[\\s,(])(canvas|canvastext|linktext|visitedtext|activetext|buttonface|buttontext|buttonborder|field|fieldtext|highlight|highlighttext|selecteditem|selecteditemtext|mark|marktext|graytext|accentcolor|accentcolortext|activeborder|activecaption|appworkspace|background|buttonhighlight|buttonshadow|captiontext|inactiveborder|inactivecaption|inactivecaptiontext|infobackground|infotext|menu|menutext|scrollbar|threeddarkshadow|threedface|threedhighlight|threedlightshadow|threedshadow|window|windowframe|windowtext|-webkit-link|-webkit-activelink|-webkit-focus-ring-color|-moz-default-color|-moz-default-background-color|-moz-hyperlinktext|-moz-activehyperlinktext|-moz-visitedhyperlinktext)($|[\\s,)])/i",
         ],
     },
 

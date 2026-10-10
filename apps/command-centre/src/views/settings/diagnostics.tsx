@@ -61,7 +61,7 @@ export function DiagnosticsTab() {
                   className={`dot ${c.status === "ok" ? "ok" : c.status === "warn" ? "warn" : c.status === "fail" ? "danger" : "dim"}`}
                   style={{ marginRight: 8 }}
                 />
-                {c.label}
+                {c.label} <span className="meta mono">{c.status}</span>
                 <div className="meta truncate" title={c.detail}>
                   {c.detail}
                 </div>

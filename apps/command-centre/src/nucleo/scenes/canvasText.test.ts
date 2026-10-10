@@ -9,10 +9,21 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clearTextDrawnOn, installRecordingCanvas, textDrawnOn } from "../../testing/canvasText";
+import { fontSiteProblems, unreachedTextSites } from "../../testing/sizeScan";
+import { egoLayout } from "./brainEgo";
+import { layoutAreas, layoutLinks, layoutTime, layoutTypes, type Dimension } from "./brainDimensions";
 import { buildModel } from "./brainModel";
 import { Painter, type Tokens } from "./brainPaint";
 import { SpriteBook } from "./brainSprites";
-import { createStage, distLimits, setModel, syncFrame } from "./brainStage";
+import {
+  createStage,
+  distLimits,
+  egoDistance,
+  enterNote,
+  setLayout,
+  setModel,
+  syncFrame,
+} from "./brainStage";
 
 const FLOOR = 12;
 const NOW = Date.UTC(2026, 8, 26);
@@ -86,19 +97,57 @@ function paint(
   return textDrawnOn(canvas);
 }
 
+/** Inside a note and zoomed out past its space: the painter writes the way out. */
+const insideANote = (s: ReturnType<typeof sky>) => {
+  enterNote(s, egoLayout(10, s.model!.adjacency), 0);
+  s.flight = null;
+  s.autoFrame = false;
+  s.cam.dist = egoDistance(s, s.ego!) * 1.95;
+};
+
+/** One of the four arrangements, with the names the React side gives its groups and guides. */
+const arranged = (dim: Dimension) => (s: ReturnType<typeof sky>) => {
+  const m = s.model!;
+  const lay =
+    dim === "time"
+      ? layoutTime(m.id.map((id, i) => ({ id, mtime: m.mtime[i]! })))
+      : dim === "types"
+        ? layoutTypes(m.id.map((id, i) => ({ id, mtime: m.mtime[i]!, kind: m.kind[i]! })))
+        : dim === "links"
+          ? layoutLinks(
+              m.id.map((id, i) => ({ id, degree: m.degree[i]! })),
+              m.edges,
+              m.pos,
+            )
+          : layoutAreas(m.pos, m.clusters, m.cluster);
+  s.guideText = lay.guides.map((_, i) => `GUIDE ${i}`);
+  s.groupText = lay.groups.map((g) => g.key.toUpperCase());
+  setLayout(s, lay, 0);
+};
+
+/** Every state that puts words on the sky besides the plain one. */
+const EXTRAS: Array<(s: ReturnType<typeof sky>) => void> = [
+  () => undefined,
+  (s) => void ((s.hoverIdx = 3), (s.selIdx = 7), (s.enterIdx = 3)),
+  (s) => void ((s.highlight = new Set([1, 2, 3, 4, 5, 6])), (s.labelHighlight = true)),
+  (s) => void (s.pointer = { x: 640, y: 400 }),
+  insideANote,
+  arranged("areas"),
+  arranged("types"),
+  arranged("time"),
+  arranged("links"),
+];
+
+/** Fonts set only to measure a word that is then drawn with a font set again. */
+const MEASURE_ONLY: Record<string, string> = {};
+
 describe("Núcleo brain scene text, measured on screen (C17)", () => {
   for (const distance of ["near", "mid", "far"] as const) {
     it(`is never under ${FLOOR}px with the camera ${distance}`, () => {
-      const extras: Array<(s: ReturnType<typeof sky>) => void> = [
-        () => undefined,
-        (s) => void ((s.hoverIdx = 3), (s.selIdx = 7), (s.enterIdx = 3)),
-        (s) => void ((s.highlight = new Set([1, 2, 3, 4, 5, 6])), (s.labelHighlight = true)),
-        (s) => void (s.pointer = { x: 640, y: 400 }),
-      ];
       const small: string[] = [];
       let total = 0;
       const sites = new Set<string>();
-      for (const extra of extras)
+      for (const extra of EXTRAS)
         for (const t of paint(distance, extra)) {
           total++;
           sites.add(t.site);
@@ -112,6 +161,25 @@ describe("Núcleo brain scene text, measured on screen (C17)", () => {
       expect(total).toBeGreaterThan(0);
     });
   }
+
+  it("writes the way out inside a note, at the floor", () => {
+    const out = paint("far", insideANote).filter((t) => t.text === "Scroll out to leave");
+    expect(out.length).toBeGreaterThan(0);
+    for (const t of out) expect(t.px).toBeGreaterThanOrEqual(FLOOR);
+  });
+
+  it("reaches every call that writes text and every font it chooses", () => {
+    const calls = new Set<string>();
+    const fonts = new Set<string>();
+    for (const distance of ["near", "mid", "far"] as const)
+      for (const extra of EXTRAS)
+        for (const t of paint(distance, extra)) {
+          calls.add(`${t.site}:${t.line}`);
+          fonts.add(t.fontAt);
+        }
+    expect(unreachedTextSites("nucleo/scenes/brainPaint.ts", calls)).toEqual([]);
+    expect(fontSiteProblems("nucleo/scenes/brainPaint.ts", fonts, MEASURE_ONLY)).toEqual([]);
+  });
 
   it("writes titles when close, so the near case really measures labels", () => {
     const near = paint("near", (s) => void (s.highlight = new Set(Array.from({ length: 40 }, (_, i) => i))));

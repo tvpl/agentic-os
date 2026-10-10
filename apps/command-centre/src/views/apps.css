@@ -400,6 +400,7 @@
 .apps-widget-toggle[aria-pressed="true"] {
   border-color: var(--accent-line);
   background: var(--accent-soft);
+  box-shadow: inset 0 -2px 0 currentColor;
 }
 .apps-widget-toggle svg {
   width: 14px;
@@ -511,6 +512,7 @@
 }
 .pxs-brush .pxs-brush-dots i.on {
   background: var(--accent);
+  transform: scale(1.5);
 }
 .pxs-frame-nav {
   display: flex;
@@ -903,9 +905,12 @@
   background: var(--ok);
   border-color: var(--ok);
 }
+/* A failed run is a diamond, a good one a disc: the outcome is not the hue alone. */
 .rt-dot.past.bad {
   background: var(--danger);
   border-color: var(--danger);
+  border-radius: 1px;
+  transform: rotate(45deg);
 }
 .rt-dot.future {
   border-color: var(--agent);

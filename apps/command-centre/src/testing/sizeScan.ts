@@ -285,6 +285,24 @@ export interface ProseRule {
  * compound of a selector) is a `<p>`, or carries a class `classes` names.
  * The caller says which of them are labels, counters, key hints or metadata.
  */
+/** A selector cut into compounds and combinators, outside brackets and parentheses (`[class~="a"]` is one piece). */
+export function selectorPieces(selector: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let depth = 0;
+  for (const c of selector) {
+    if (c === "[" || c === "(") depth++;
+    if (c === "]" || c === ")") depth--;
+    if (depth === 0 && /[\s>+~]/.test(c)) {
+      if (cur) out.push(cur);
+      cur = "";
+      if (/[>+~]/.test(c)) out.push(c);
+    } else cur += c;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
 export function proseRules(
   sources: { file: string; css: string }[],
   classes: ReadonlySet<string>,
@@ -297,8 +315,17 @@ export function proseRules(
         return;
       for (const raw of rule.selectors) {
         const selector = raw.replace(/\s+/g, " ").trim();
-        const subject = selector.split(/\s*[>+~]\s*|\s+/).pop() ?? "";
+        const subject = selectorPieces(selector).pop() ?? "";
         const names = [...subject.matchAll(/\.([\w-]+)/g)].map((m) => m[1]!);
+        // `[class~="sub"]`, `[class="sub"]` name a class; `[class*="desc"]`, `^=` and `$=` match any class that has the fragment
+        for (const m of subject.matchAll(/\[class([~|^$*]?)=\s*["']?([\w-]+)["']?\s*\]/g)) {
+          const [, op, frag] = m;
+          if (op === "" || op === "~" || op === "|") names.push(frag!);
+          else
+            for (const c of classes)
+              if (op === "*" ? c.includes(frag!) : op === "^" ? c.startsWith(frag!) : c.endsWith(frag!))
+                names.push(c);
+        }
         if (!/^p(?![\w-])/.test(subject) && !names.some((n) => classes.has(n))) continue;
         rule.each((d) => {
           if (d.type !== "decl") return;
@@ -685,3 +712,89 @@ export const sourceFiles = () =>
   filesUnder(SRC, (n) => /\.(ts|tsx)$/.test(n) && !/\.d\.ts$|\.test\.tsx?$/.test(n)).filter(
     (f) => !f.startsWith(join(SRC, "testing")),
   );
+
+/**
+ * Where a source reaches for canvas text: any `fillText` / `strokeText` named
+ * as a method, a property, a quoted key, a destructured binding or a bare
+ * call, so a bound method, `Reflect.apply(ctx.fillText, …)`, `ctx["fillText"]`
+ * and `prototype.fillText.call(…)` are sites like a plain call.
+ */
+export function canvasTextSites(file: string, code: string): number[] {
+  const sf = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const named = (name: string) => /^(fill|stroke)Text$/.test(name);
+  const lines: number[] = [];
+  const visit = (n: ts.Node) => {
+    const hit =
+      (ts.isPropertyAccessExpression(n) && named(n.name.text)) ||
+      (ts.isElementAccessExpression(n) &&
+        ts.isStringLiteralLike(n.argumentExpression) &&
+        named(n.argumentExpression.text)) ||
+      (ts.isBindingElement(n) && named((n.propertyName ?? n.name).getText(sf))) ||
+      (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && named(n.expression.text));
+    if (hit) lines.push(sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1);
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return lines;
+}
+
+/**
+ * The lines of `file` (relative to `src`) that reach for canvas text and that none of `hit` (`file:line`, as the
+ * recording canvas reports them) reached: a state the layer's test does not put the painter in.
+ */
+export function unreachedTextSites(file: string, hit: Iterable<string>): number[] {
+  const reached = new Set(hit);
+  return canvasTextSites(file, readFileSync(join(SRC, file), "utf8")).filter(
+    (line) => !reached.has(`${file}:${line}`),
+  );
+}
+
+/** The `.font =` assignments of a source (where a text size is chosen): their line and `text#n`, the nth time that text occurs. */
+export function canvasFontSites(file: string, code: string): { line: number; id: string }[] {
+  const sf = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const found: { line: number; id: string }[] = [];
+  const seen = new Map<string, number>();
+  const visit = (n: ts.Node) => {
+    if (
+      ts.isBinaryExpression(n) &&
+      n.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ((ts.isPropertyAccessExpression(n.left) && n.left.name.text === "font") ||
+        (ts.isElementAccessExpression(n.left) &&
+          ts.isStringLiteralLike(n.left.argumentExpression) &&
+          n.left.argumentExpression.text === "font"))
+    ) {
+      const text = n.getText(sf).replace(/\s+/g, " ");
+      const nth = (seen.get(text) ?? 0) + 1;
+      seen.set(text, nth);
+      found.push({ line: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1, id: `${text}#${nth}` });
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return found;
+}
+
+/**
+ * What is wrong with the font choices of `file` against the ones a test drew text with (`hit`, `file:line`):
+ * a `.font =` that no text was drawn with (a size choice no state puts on screen), unless `measureOnly` names it
+ * (`text#n` -> why it only measures); and a `measureOnly` entry that is no longer true.
+ */
+export function fontSiteProblems(
+  file: string,
+  hit: Iterable<string>,
+  measureOnly: Record<string, string> = {},
+): string[] {
+  const reached = new Set(hit);
+  const sites = canvasFontSites(file, readFileSync(join(SRC, file), "utf8"));
+  const problems: string[] = [];
+  for (const { line, id } of sites)
+    if (!reached.has(`${file}:${line}`) && !(id in measureOnly))
+      problems.push(`${file}:${line} \`${id}\` sets a font no text was drawn with`);
+  for (const id of Object.keys(measureOnly)) {
+    const site = sites.find((x) => x.id === id);
+    if (!site) problems.push(`${file}: \`${id}\` is not in the source any more`);
+    else if (reached.has(`${file}:${site.line}`))
+      problems.push(`${file}: \`${id}\` does draw text: drop its entry`);
+  }
+  return problems;
+}

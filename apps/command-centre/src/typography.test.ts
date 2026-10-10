@@ -12,7 +12,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import postcss from "postcss";
-import ts from "typescript";
 import stylelint from "stylelint";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -22,6 +21,7 @@ import {
   cssSizeOffences,
   customProperties,
   filesUnder,
+  canvasTextSites,
   inlineSizeOffences,
   rel,
   sourceFiles,
@@ -99,6 +99,16 @@ describe("type scale", () => {
     expect(offenders, offenders.join("\n")).toEqual([]);
   });
 
+  /*
+   * What this scan proves and what it does not. It proves what it can read: a size written as a literal, a
+   * constant, arithmetic on those, or a call of a function in the tree. Two things it takes on trust, by name,
+   * and the runtime measurement (C17) covers instead, in the states the layer tests exercise:
+   *   - `size / k` is read as `size` when the divisor is an identifier called `k` (the camera scale). A local
+   *     `const k = 10` shadowing it passes here.
+   *   - a canvas method reached through a computed key (`ctx["fill" + "Text"]`) is not a text site to the
+   *     structural guard below.
+   * Neither is a rule to follow: they are the places where reading the source runs out.
+   */
   it("C3 no inline or canvas text below 12px", () => {
     const props = customProperties([postcss.parse(":root { --fs-2: 12px; --fs-3: 13px; }")]);
     const probe = (code: string) => inlineSizeOffences(join(__dirname, "probe.tsx"), code, props);
@@ -110,6 +120,8 @@ describe("type scale", () => {
     expect(probe(`ctx.font = "11px ui-monospace, monospace";`)).toHaveLength(1);
     expect(probe("ctx.font = `500 11px ${tk.body}`;")).toHaveLength(1);
     expect(probe("ctx.font = `700 ${9 / k}px ${font}`;")).toHaveLength(1);
+    // The declared limit: the name `k` is trusted, so a shadowing `k` is not seen here (C17 measures it).
+    expect(probe("const k = 10;\nctx.font = `500 ${12 / k}px ${font}`;")).toEqual([]);
     expect(probe("c.font = `800 ${Math.max(7, size * 0.62)}px ${mono}`;")).toHaveLength(1);
     expect(probe("const fs = Math.max(8, w * 0.02);\nx.font = `500 ${fs}px ${mono}`;")).toHaveLength(1);
     expect(probe("x.font = `500 ${pal.fs}px ${mono}`;")).toHaveLength(1);
@@ -299,6 +311,12 @@ describe("running text", () => {
     // …under the selector as written, so a class that is microcopy in one place is prose in another
     expect(probe(".page-head .sub { font-size: var(--fs-2) }", ["sub"])).toEqual([".page-head .sub"]);
     expect(probe(".note.mono { font-size: 12px }")).toEqual([".note.mono"]);
+    // …whether the class is written as a class or as an attribute selector
+    expect(probe('[class~="sub"] { font-size: var(--fs-2) }', ["sub"])).toEqual(['[class~="sub"]']);
+    expect(probe('.row [class="sub"] { font-size: var(--fs-2) }', ["sub"])).toEqual(['.row [class="sub"]']);
+    expect(probe('[class*="sub"] { font-size: var(--fs-2) }', ["row-sub"])).toEqual(['[class*="sub"]']);
+    expect(probe('[class^="row-"] { font-size: var(--fs-2) }', ["row-sub"])).toEqual(['[class^="row-"]']);
+    expect(probe('[class~="other"] { font-size: var(--fs-2) }', ["sub"])).toEqual([]);
     // …and 13px or more, a class no paragraph carries, and a rule about a child, are not.
     expect(probe(".note { font-size: var(--fs-3) }")).toEqual([]);
     expect(probe(".note { font-size: 1rem }")).toEqual([]);
@@ -341,31 +359,6 @@ describe("running text", () => {
 // ------------------------------------------------- canvas text, at runtime
 
 /**
- * Where a source reaches for canvas text: any `fillText` / `strokeText` named
- * as a method, a property, a quoted key, a destructured binding or a bare
- * call, so a bound method, `Reflect.apply(ctx.fillText, …)`, `ctx["fillText"]`
- * and `prototype.fillText.call(…)` are sites like a plain call.
- */
-function canvasTextSites(file: string, code: string): number[] {
-  const sf = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const named = (name: string) => /^(fill|stroke)Text$/.test(name);
-  const lines: number[] = [];
-  const visit = (n: ts.Node) => {
-    const hit =
-      (ts.isPropertyAccessExpression(n) && named(n.name.text)) ||
-      (ts.isElementAccessExpression(n) &&
-        ts.isStringLiteralLike(n.argumentExpression) &&
-        named(n.argumentExpression.text)) ||
-      (ts.isBindingElement(n) && named((n.propertyName ?? n.name).getText(sf))) ||
-      (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && named(n.expression.text));
-    if (hit) lines.push(sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1);
-    ts.forEachChild(n, visit);
-  };
-  visit(sf);
-  return lines;
-}
-
-/**
  * Every source that draws text on a canvas, and the test that measures what it
  * draws where a person sees it (font x transform scale x sprite scale).
  * C3 reads the size out of the source and cannot see a zoom or a sprite; these
@@ -384,6 +377,8 @@ describe("canvas text", () => {
     // Self-test: a call site is found by its method, not by a name that merely contains it.
     expect(canvasTextSites("a.ts", "ctx.fillText(t, 0, 0);\nx.strokeText(t, 1, 1);")).toEqual([1, 2]);
     expect(canvasTextSites("a.ts", "const fillTextStyle = 1; ctx.fillTextAt(t);")).toEqual([]);
+    // The declared limit: a computed key is not a name the scan can read (the recorder's call sites cover it).
+    expect(canvasTextSites("a.ts", 'ctx["fill" + "Text"](t, 0, 0);')).toEqual([]);
     // …and so is every other way to reach the method: a bare call, a bind, a destructure, a quoted
     // key, Reflect.apply, a prototype call, an optional call, a cast.
     for (const code of [
@@ -531,8 +526,9 @@ describe("colour tokens", () => {
       expect(pkg.scripts.lint).toMatch(/\bnpm run lint:css\b/);
       // The config is named, never discovered: stylelint searches the tree for a config of its own
       // (a `.stylelintrc.*` in any folder, `stylelint.config.cjs`…), and an explicit --config switches that off.
+      // `--ignore-path .gitignore` replaces the `.stylelintignore` that stylelint reads from the working directory.
       expect(pkg.scripts["lint:css"]).toBe(
-        'stylelint --config stylelint.config.mjs "apps/command-centre/src/**/*.css"',
+        'stylelint --config stylelint.config.mjs --ignore-path .gitignore "apps/command-centre/src/**/*.css"',
       );
       expect(pkg["lint-staged"]["*.css"]).toEqual(
         expect.arrayContaining([expect.stringMatching(/^stylelint --config stylelint\.config\.mjs /)]),
@@ -548,6 +544,30 @@ describe("colour tokens", () => {
         expect(run.stdout + run.stderr).toContain("color-no-hex");
       } finally {
         rmSync(dir, { recursive: true, force: true });
+      }
+
+      // `lint:css` on its own, run as written in a folder whose `.stylelintignore` lists the file, still refuses it.
+      const ignored = mkdtempSync(join(tmpdir(), "colour-lint-ignore-"));
+      try {
+        writeFileSync(join(ignored, "probe.css"), "a { color: #fff; }\n");
+        writeFileSync(join(ignored, ".stylelintignore"), "probe.css\n");
+        writeFileSync(join(ignored, ".gitignore"), "");
+        const args = (pkg.scripts["lint:css"] as string)
+          .replace(/^stylelint /, "")
+          .replace("stylelint.config.mjs", stylelintConfig)
+          .replace(/"apps[^"]*"/, "probe.css")
+          .split(" ");
+        const run = spawnSync("npx", ["stylelint", ...args], { cwd: ignored, encoding: "utf8" });
+        expect(run.status, run.stdout + run.stderr).not.toBe(0);
+        expect(run.stdout + run.stderr).toContain("color-no-hex");
+        // Without the pinned ignore path the list is honoured and the file is skipped: the probe is what bites.
+        const bare = spawnSync("npx", ["stylelint", "--config", stylelintConfig, "probe.css"], {
+          cwd: ignored,
+          encoding: "utf8",
+        });
+        expect(bare.stdout + bare.stderr).toContain("ignored");
+      } finally {
+        rmSync(ignored, { recursive: true, force: true });
       }
 
       // Each form of colour literal is refused…
@@ -601,6 +621,25 @@ describe("colour tokens", () => {
         expect(await colourWarnings(`a { ${decl}; }\n`), decl).toContain(
           "declaration-property-value-disallowed-list",
         );
+      // …the deprecated system colours and the vendor keywords too
+      for (const name of [
+        "Window",
+        "WindowText",
+        "Menu",
+        "Background",
+        "ActiveCaption",
+        "ActiveBorder",
+        "InfoBackground",
+        "ThreeDFace",
+        "AppWorkspace",
+        "ThreeDShadow",
+        "-webkit-link",
+        "-moz-default-color",
+        "-webkit-focus-ring-color",
+      ])
+        expect(await colourWarnings(`a { color: ${name}; background: ${name}; }\n`), name).toContain(
+          "declaration-property-value-disallowed-list",
+        );
       expect(await colourWarnings("a { --c: #fff; }\n")).toContain("color-no-hex");
       expect(await colourWarnings("a { box-shadow: 0 0 4px rgba(0, 0, 0, 0.4); }\n")).toContain(
         "function-disallowed-list",
@@ -616,6 +655,12 @@ describe("colour tokens", () => {
       expect(await colourWarnings("a { mask-image: linear-gradient(var(--mask-ink) 0 0); }\n")).toEqual([]);
       expect(await colourWarnings("a { grid-area: field; }\n")).toEqual([]);
       expect(await colourWarnings("a { animation-name: highlight; }\n")).toEqual([]);
+      expect(await colourWarnings("a { container-name: field; }\n")).toEqual([]);
+      expect(await colourWarnings("a { anchor-name: --field; }\n")).toEqual([]);
+      // The declared limit: a custom property may hold a colour, so one holding a bare system-colour word is refused.
+      expect(await colourWarnings("a { --kind: mark; }\n")).toContain(
+        "declaration-property-value-disallowed-list",
+      );
       expect(await colourWarnings("a { box-shadow: 0 0 4px var(--accent); }\n")).toEqual([]);
     },
     STYLELINT_MS,

@@ -457,6 +457,7 @@
 }
 .console-turn.failed .console-msg.agent {
   border-color: var(--danger);
+  border-style: dashed;
 }
 .console-turn.streaming .console-msg.agent {
   border-color: var(--agent);
@@ -789,6 +790,8 @@
 }
 .now-objective.blocked {
   border-left-color: var(--danger);
+  border-left-width: 4px;
+  padding-left: 8px;
 }
 .now-objective-step {
   display: grid;
@@ -1015,6 +1018,7 @@
 }
 .skill-form .input.bad {
   border-color: var(--danger);
+  box-shadow: inset 3px 0 0 var(--danger);
 }
 .skill-form-foot {
   display: flex;
@@ -1287,6 +1291,7 @@
 }
 .deck-skill.live .hex {
   background: linear-gradient(150deg, var(--accent), var(--accent-line));
+  scale: 1.12;
   animation: deck-live 1.6s var(--ease-standard) infinite;
 }
 @keyframes deck-live {
@@ -2359,6 +2364,8 @@
 }
 .cons-ctl .cc.budget.warn {
   color: var(--warn);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .cons-ctl .cc.budget.over {
   color: var(--danger);
@@ -2366,6 +2373,8 @@
 .cons-ctl .cc.warn {
   color: var(--danger);
   border-color: var(--danger);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 /* Item 40: the agent asks for inputs in the thread. */
 .cons .console-msg.ask {

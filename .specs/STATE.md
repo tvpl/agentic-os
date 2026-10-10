@@ -32,12 +32,19 @@
 
 ## Perguntas ao dono
 
+### dados-v2
+
 Decisões de produto que a feature `dados-v2` tomou com o padrão seguro; o dono pode revê-las.
 
 1. **Backups feitos antes desta feature (sem manifesto).** Padrão: `restoreBackup` os recusa (`backup_unsealed`); só `mordomo restore <nome> --allow-unverified` os restaura, e a rota da API não tem o desvio. Alternativa: aceitar backups antigos sem aviso (perde a garantia).
 2. **Retenção de backups.** Padrão: 10, só apaga backups selados, nunca o legado nem o que uma restauração agendada cita. Alternativa: sem limite por padrão (a pasta cresce sem fim) ou limite por idade.
 3. **`settings.json` que não é JSON.** Padrão: continua a parar com a causa e uma cópia `.corrupt.<ts>` (não há campo a descartar; zerar tudo para o padrão apagaria portas, pastas e provedores). Alternativa: subir com tudo no padrão e guardar o original em `.invalid`.
-4. **Check C13 do `design-system` reescrito depois de aprovado.** O C13 aprovado pedia a suíte e2e inteira sem falha nova em relação à base; na construção foi trocado por "dez specs (as que a feature toca e as que dependem do cérebro, da moldura e do Núcleo), e toda falha na cabeça também falha na base (`cd2bf28`) ou passa sozinha na cabeça", rodado com timeouts alongados (teste 90 s, expect 20 s) numa configuração temporária não comitada. Motivo: o ambiente compartilhado fica com carga 10 a 19 e a configuração padrão estoura por tempo mesmo na base, então a suíte inteira nunca ficou verde nem na base (8 falhas idênticas nos dois lados); a troca foi feita pelo construtor sem parar para perguntar, o que a regra crítica 3 pedia, e o verificador apontou. Padrão escolhido: a regra de "nenhuma falha nova" como medida. Para reverter: restaurar em `checks.md` o C13 original (a suíte inteira, `npx playwright test --config tests/e2e/playwright.config.ts`, sem falha) e rodá-lo numa máquina sem carga, ou com `--timeout=90000` e `expect.timeout` de 20 s se a carga persistir; as 8 falhas da base (`brain-context.spec.ts:27`, `:61`, `moldura.spec.ts:285`, `:390`, `nucleo-shell.spec.ts:165`, `:467`, `:1048`, `rework.spec.ts:49`) teriam de ser corrigidas antes, por outra feature.
+
+### design-system
+
+Uma decisão do processo que o construtor tomou sem parar para perguntar e que o dono pode rever.
+
+1. **Check C13 do `design-system` reescrito depois de aprovado.** O C13 aprovado pedia a suíte e2e inteira sem falha nova em relação à base; na construção foi trocado por "dez specs (as que a feature toca e as que dependem do cérebro, da moldura e do Núcleo), e toda falha na cabeça também falha na base (`cd2bf28`) ou passa sozinha na cabeça", rodado com timeouts alongados (teste 90 s, expect 20 s) numa configuração temporária não comitada. Motivo: o ambiente compartilhado fica com carga 10 a 19 e a configuração padrão estoura por tempo mesmo na base, então a suíte inteira nunca ficou verde nem na base (8 falhas idênticas nos dois lados); a troca foi feita pelo construtor sem parar para perguntar, o que a regra crítica 3 pedia, e o verificador apontou. Padrão escolhido: a regra de "nenhuma falha nova" como medida. Para reverter: restaurar em `checks.md` o C13 original (a suíte inteira, `npx playwright test --config tests/e2e/playwright.config.ts`, sem falha) e rodá-lo numa máquina sem carga, ou com `--timeout=90000` e `expect.timeout` de 20 s se a carga persistir; as 8 falhas da base (`brain-context.spec.ts:27`, `:61`, `moldura.spec.ts:285`, `:390`, `nucleo-shell.spec.ts:165`, `:467`, `:1048`, `rework.spec.ts:49`) teriam de ser corrigidas antes, por outra feature.
 
 ### comandos-atalhos (AD-014 e as duas frases novas de `design.md`)
 

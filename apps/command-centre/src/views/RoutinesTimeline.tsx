@@ -83,7 +83,7 @@ export function RoutinesTimeline({
                     className={`rt-dot past ${ok ? "ok" : "bad"}`}
                     style={{ left: x(h.firedAt) }}
                     title={`${fmtHour(h.firedAt)} · ${t(`status.${h.runStatus ?? h.status}` as TKey)}`}
-                    aria-label={`${r.name} ${fmtHour(h.firedAt)}`}
+                    aria-label={`${r.name} ${fmtHour(h.firedAt)} · ${t(`status.${h.runStatus ?? h.status}` as TKey)}`}
                     onClick={() => h.runId && navigate(`/runs/${h.runId}`)}
                   />
                 );

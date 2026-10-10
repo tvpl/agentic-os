@@ -127,3 +127,11 @@ Isolated in `ds3/mut` (a scratch worktree at 4a4eec7 with the head's `node_modul
 `npm run typecheck && npm run lint && npm run test -w apps/command-centre` at 4a4eec7 (clean worktree, `npm ci`, `npm run build`): typecheck 0, lint 0, 107 files, 773 tests passed (96 s). The 7 proof files of this round in one invocation (verbose): 7 files, 32 tests listed individually, 32 passed; `-t "C17"`: 24 passed. e2e, 10 specs of C13, temporary config (`playwright.long.config.ts`, 90 s/20 s, `MORDOMO_E2E_PORT=4884`, untracked in the scratch worktrees): head 157 passed, 8 failed (`brain-context:27`, `:61`, `moldura:285`, `:390`, `nucleo-shell:165`, `:467`, `:1048`, `rework:49`); base cd2bf28: the same 8 failed, `a11y.spec.ts` 23 passed. My own screen and state specs (untracked, in the scratch worktrees only): 48 screens x 3 trees (head, 6612733, cd2bf28) and the three new marks in both themes.
 
 `python3 .claude/skills/tlc-spec-lean/scripts/validate_verification.py design-system` - exit 1, one error: the verdict is FAIL (the gate's own reading of this report).
+
+---
+
+## Fechamento após a rodada 3 (escalonamento ao dono)
+
+Três rodadas usadas. Os achados da rodada 3 foram corrigidos pelo corretor (d0dbfba) e passaram a uma revisão dirigida, sem quarta verificação completa: pontos da timeline de Rotinas com forma (disco/losango) e desfecho no `aria-label`; vocabulário do C16 ampliado (palavras de status, `:checked`, `[open]`, `.is-on`, `[class*="active"]`) com 54 entradas de `MARKED_ELSEWHERE` justificadas e as marcas não cromáticas dos defeitos reais; marca de pausa das faixas de rotina visível (`butt`); estados `stage.ego` e grupos/guias do Núcleo no teste de cena (C17); cores de sistema depreciadas no C5; `--ignore-path .gitignore` no lint.
+
+Aberto para o dono: aceite da reescrita do C13 (ver "Perguntas ao dono", bloco design-system); limites declarados dos checks estáticos (`k`, chave computada, nome de classe de prosa), cobertos só pela medição em tempo de execução nos estados exercitados; `.sentinel-hint`, `.fact-text` e `.apps-approval .desc` cobertos apenas pelo C15; Darwin baselines da galeria desatualizadas por pressuposto aprovado.

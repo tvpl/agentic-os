@@ -9,6 +9,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Connector, GraphData, RoutineStatus, Skill } from "../../api";
 import { clearTextDrawnOn, installRecordingCanvas, textDrawnOn } from "../../testing/canvasText";
+import { fontSiteProblems, unreachedTextSites } from "../../testing/sizeScan";
 import { layoutFiles } from "../engine/layouts";
 import {
   DEFAULT_SETTINGS,
@@ -141,6 +142,18 @@ function drawn(w: World, k: number) {
   return textDrawnOn(canvas);
 }
 
+/** Fonts the painter sets only to measure a word it then draws with a font set again: not a size on screen. */
+const MEASURE_ONLY: Record<string, Record<string, string>> = {
+  "brain/render/draw.ts": {
+    "ctx.font = `800 ${ringSize}px ${font}`#1":
+      "measures the ring name to reserve its place; drawn last, with the same font set again",
+    "ctx.font = `800 ${CORE_LABEL_PX / k}px ${font}`#1":
+      "measures the core label to reserve its place; drawn with the font set again",
+    "ctx.font = nameFont#1": "measures the hub name; drawn after `ctx.font = nameFont` again",
+    "ctx.font = countFont#1": "measures the hub count; drawn after `ctx.font = countFont` again",
+  },
+};
+
 describe("brain canvas text, measured on screen (C17)", () => {
   for (const k of [ZOOM_MIN, 1, ZOOM_MAX]) {
     for (const layout of ["arcs", "rings"] as LayoutKind[]) {
@@ -170,6 +183,24 @@ describe("brain canvas text, measured on screen (C17)", () => {
       });
     }
   }
+
+  it("reaches every call that writes text, so no size choice is left unmeasured", () => {
+    const hit = new Set<string>();
+    const fonts = new Set<string>();
+    for (const k of [ZOOM_MIN, 1, ZOOM_MAX])
+      for (const layout of ["arcs", "rings"] as LayoutKind[])
+        for (const state of states(build(layout))) {
+          const fresh = build(layout);
+          state.apply(fresh);
+          for (const t of drawn(fresh, k)) {
+            hit.add(`${t.site}:${t.line}`);
+            fonts.add(t.fontAt);
+          }
+        }
+    for (const file of LAYER_FILES) expect(unreachedTextSites(file, hit), file).toEqual([]);
+    for (const file of LAYER_FILES)
+      expect(fontSiteProblems(file, fonts, MEASURE_ONLY[file]), file).toEqual([]);
+  });
 
   it("draws the applications' initials live, at the floor, when the badge can hold them", () => {
     const w = build("arcs");

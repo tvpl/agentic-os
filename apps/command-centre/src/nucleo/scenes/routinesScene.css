@@ -227,12 +227,19 @@ path.rts-hit {
 .rts-lane.on .rts-lane-dot {
   fill-opacity: 1;
 }
-/* Paused: dimmed and dashed, so it is not the dimming alone. */
+/*
+ * Paused: dimmed and dashed, so it is not the dimming alone. The caps are
+ * butt: a band's round caps (half its width) would close the gaps.
+ */
 .rts-lane.off {
-  opacity: 0.4;
+  opacity: 0.55;
 }
 .rts-lane.off .rts-lane-span {
   stroke-dasharray: 3 5;
+  stroke-linecap: butt;
+}
+.rts-lane.off.k-band .rts-lane-span {
+  stroke-dasharray: 6 5;
 }
 .rts-lane.bad .rts-lane-span {
   stroke: color-mix(in srgb, var(--danger) 45%, transparent);

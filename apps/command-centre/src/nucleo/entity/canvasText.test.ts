@@ -7,6 +7,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clearTextDrawnOn, installRecordingCanvas, textDrawnOn } from "../../testing/canvasText";
+import { fontSiteProblems, unreachedTextSites } from "../../testing/sizeScan";
 import { EntityHud, type HudFrame, type HudPalette, type Satellite } from "./entityHud";
 
 const FLOOR = 12;
@@ -92,4 +93,28 @@ describe("HUD text, measured on screen (C17)", () => {
       });
     }
   }
+
+  it("reaches every call that writes text and every font it chooses", () => {
+    const calls = new Set<string>();
+    const fonts = new Set<string>();
+    for (const [size, dpr] of [
+      [260, 1],
+      [520, 2],
+    ] as const)
+      for (const state of [{}, { wait: 1 }, { speak: 1, typing: 1 }, { warm: 0 }, { scan: 0 }] as const) {
+        const canvas = document.createElement("canvas");
+        const hud = new EntityHud(canvas, "hero");
+        hud.setPalette(palette);
+        hud.setMetrics(size * 1.4, size * 1.4, size, dpr);
+        hud.setWord("THINKING");
+        clearTextDrawnOn(canvas);
+        hud.draw({ ...frame, ...state }, satellites, satellites.length);
+        for (const t of textDrawnOn(canvas, size * 1.4)) {
+          calls.add(`${t.site}:${t.line}`);
+          fonts.add(t.fontAt);
+        }
+      }
+    expect(unreachedTextSites("nucleo/entity/entityHud.ts", calls)).toEqual([]);
+    expect(fontSiteProblems("nucleo/entity/entityHud.ts", fonts)).toEqual([]);
+  });
 });

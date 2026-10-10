@@ -999,6 +999,9 @@ canvas.dimmed {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
+.launcher-result.selected {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
 .launcher-result .lr-icon {
   width: 30px;
   height: 30px;
@@ -1516,6 +1519,7 @@ textarea.input {
 }
 .input[aria-invalid="true"] {
   border-color: var(--danger);
+  box-shadow: inset 3px 0 0 var(--danger);
 }
 textarea.input {
   resize: vertical;
@@ -3371,6 +3375,7 @@ input[type="range"]::-moz-range-thumb {
   /* the text shade of the accent: 4.5:1 on the light theme's tint too */
   color: var(--accent-text);
   background: color-mix(in srgb, var(--accent) 12%, var(--bg-raise));
+  box-shadow: inset 0 -2px 0 currentColor;
 }
 .pxs-tool .pxs-key {
   margin-left: auto;
@@ -3545,6 +3550,10 @@ input[type="range"]::-moz-range-thumb {
 }
 .stepper li.done {
   color: var(--text-dim);
+}
+.stepper li.done::after {
+  content: "✓";
+  margin-left: auto;
 }
 .stepper .step-n {
   display: inline-grid;

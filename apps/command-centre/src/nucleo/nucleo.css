@@ -846,6 +846,8 @@
 }
 .nu-voice .console-turn.failed .console-msg.agent {
   color: var(--danger);
+  text-decoration: underline dashed;
+  text-underline-offset: 4px;
 }
 .nu-voice .console-turn.streaming .console-msg.agent p::after {
   content: "▍";

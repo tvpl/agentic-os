@@ -11,7 +11,10 @@ import { cssFiles } from "./testing/sizeScan";
 import { colourOnlyStates, stateGroups } from "./testing/stateScan";
 
 const DOT =
-  "a status dot always sits beside the words that say the same (ProviderGate, Setup, diagnostics, providers); the app's `sse-dot` is `aria-hidden` and the banner says it";
+  "a status dot sits beside the words that say the same: ProviderGate, Setup and the providers list name the login, the diagnostics list prints the check's status; the app's `sse-dot` is `aria-hidden` and the service banner says it";
+const LABELLED =
+  "the element carries its own label (a badge, a button or a link says what it is); the hue only reinforces it";
+const SENTENCE = "a sentence the person reads; the hue only reinforces what the words say";
 const STATUS_WORD =
   "the element is the status word itself (failed / error / done); the colour only reinforces it";
 
@@ -37,6 +40,49 @@ const MARKED_ELSEWHERE: Record<string, string> = {
     "the `.cx-state` label is the word (Connected / Off) and the orb sits beside it",
   '.nu-dialog-pulse[data-state="idle"]':
     "decorative pulse (slower, fainter when idle); the dialog's header says the state in words",
+  ".deck-card.running":
+    "no element carries it today: the deck has no `.deck-card`, only a `.btn` inside one is focused by a shortcut",
+  ".console-link.danger":
+    "a button whose label says what it does (Stop); the hue marks the destructive variant",
+  ".cost-gauge.warn":
+    "the gauge head prints the percentage and the budget, and the fill's length is the amount; the hue only reinforces it",
+  ".cost-gauge.danger":
+    "the gauge head prints the percentage and the budget, and the fill's length is the amount; the hue only reinforces it",
+  ".mt .bad": "the tile's value is the success rate as a number; the hue only reinforces it",
+  ".cons.busy":
+    "the console frame while a turn runs; the running turn streams its own bubble and shows a Stop button",
+  ".cons-note.warn": SENTENCE,
+  ".rw.stale": "the stale rows sit under their own heading (Older failures, n) that names the group",
+  ".health-check.ok": "the row prints the check's status word (`.tg`) and its label",
+  ".nu-viz.segs i.on": "decorative (`aria-hidden`); the card beside it prints the pending count in words",
+  ".rts-mark.done": "a dial mark that has already passed today: its place against the now hand says it",
+  ".rts-lane-dot.done": "a dial dot that has already passed today: its place against the now hand says it",
+  ".rts-lane.bad":
+    "the lane repeats a routine whose row and centre say it is failing in words (`.rts-st`, `.rts-bad`)",
+  ".rts-centre h2.bad": "the heading is followed by the word Failing (`.rts-bad`)",
+  ".rts-row.bad": "the row says its status in words (`.rts-st`) and the reason (`.rts-reason`)",
+  ".rts-act.danger": LABELLED,
+  ".rs-link.warn":
+    "a link whose label is the count of pending approvals; the hue only marks it as one to look at",
+  ".sks-tags .tg.paused": "the tag is the word Paused",
+  ".btn.danger": LABELLED,
+  ".badge.ok": LABELLED,
+  ".badge.warn": LABELLED,
+  ".badge.danger": LABELLED,
+  ".badge.meta.ok": LABELLED,
+  ".badge.meta.warn": LABELLED,
+  ".badge.meta.danger": LABELLED,
+  ".toast.ok": SENTENCE,
+  ".toast.danger": SENTENCE + " (an alert, announced by the platform)",
+  ".run-outcome.failed":
+    "the card prints the outcome in words (Completed, or the failure message and its code badge)",
+  ".ev-result.ok": "the row swaps its icon (a check for an x) and prints the exit code",
+  ".ev-result.bad": "the row swaps its icon (a check for an x) and prints the exit code",
+  ".notice.warn": SENTENCE,
+  ".hint.warn": SENTENCE,
+  '.cx-orb[data-state="ok"]': "the orb sits beside the `.cx-state` word (Connected / Off)",
+  '.cx-orb[data-state="warn"]': "the orb sits beside the `.cx-state` word",
+  '.cx-orb[data-state="danger"]': "the orb sits beside the `.cx-state` word",
   '.tabs [role="tab"][aria-selected="true"]':
     "the 2px bottom border every tab has (transparent) becomes the underline",
 };
@@ -60,6 +106,30 @@ describe("states", () => {
     expect(probe("i[data-active] { opacity: 1; }")).toHaveLength(1);
     expect(probe('a[aria-current="location"] { color: red; }')).toHaveLength(1);
     expect(probe(".dot.ok { background: green; box-shadow: 0 0 8px green; }")).toHaveLength(1);
+    // the status words, and the other state selectors
+    for (const sel of [".bad", ".ok", ".warn", ".danger", ".failed", ".done", ".paused", ".live", ".running"])
+      expect(probe(`.zz${sel} { color: red; }`), sel).toHaveLength(1);
+    expect(probe("input:checked { color: red; }")).toHaveLength(1);
+    expect(probe("details[open] { color: red; }")).toHaveLength(1);
+    expect(probe(".zz.is-on { color: red; }")).toHaveLength(1);
+    expect(probe('.zz[class*="active"] { color: red; }')).toHaveLength(1);
+    // a dot that is a fill in two colours is a fill in two colours, whatever the fill
+    expect(
+      probe(
+        ".zz-dot { width: 8px; border: 1px solid grey; background: transparent; } .zz-dot.ok { background: var(--ok); } .zz-dot.bad { background: var(--danger); }",
+      ),
+    ).toHaveLength(2);
+    // a border or a fill the element already has, recoloured, is not a mark…
+    expect(probe(".zz { border: 1px solid grey; } .zz.on { border: 1px solid var(--accent); }")).toHaveLength(
+      1,
+    );
+    expect(probe(".zz { background: var(--bg); } .zz.on { background: var(--accent); }")).toHaveLength(1);
+    expect(probe(".zz { border: 1px solid grey; } .zz.on { border-color: red; }")).toHaveLength(1);
+    // …a dash behind round caps is not either (they close the gaps)
+    expect(probe(".zz.off { opacity: .4; } .zz.off path { stroke-dasharray: 3 5; }")).toHaveLength(1);
+    expect(
+      probe(".zz.off { opacity: .4; } .zz.off path { stroke-dasharray: 3 5; stroke-linecap: round; }"),
+    ).toHaveLength(1);
     // a glow is not a mark, and neither are pointer-events, z-index or a gradient
     expect(probe("a.on { color: red; box-shadow: 0 0 12px red; }")).toHaveLength(1);
     expect(probe("a.on { color: red; pointer-events: none; z-index: 2; }")).toHaveLength(1);
@@ -83,6 +153,25 @@ describe("states", () => {
     expect(probe("a.on { color: red; } a.on::before { content: ''; background: red; width: 2px; }")).toEqual(
       [],
     );
+    // …but a border or a fill the element did not have is
+    expect(probe(".zz { border: 0; } .zz.on { border: 1px solid var(--accent); }")).toEqual([]);
+    expect(probe(".zz { background: transparent; } .zz.on { background: var(--accent); }")).toEqual([]);
+    expect(probe(".zz { border: 1px solid grey; } .zz.on { border-bottom-width: 3px; color: red; }")).toEqual(
+      [],
+    );
+    // a dash with butt caps is
+    expect(
+      probe(".zz.off { opacity: .4; } .zz.off path { stroke-dasharray: 3 5; stroke-linecap: butt; }"),
+    ).toEqual([]);
+    // siblings of one status that differ in shape are told apart; in colour alone they are not
+    expect(
+      probe(
+        ".zz-dot.ok { background: var(--ok); } .zz-dot.bad { background: var(--danger); transform: rotate(45deg); }",
+      ),
+    ).toEqual([]);
+    expect(
+      probe(".zz.ok::before { content: '✓'; color: green; } .zz.bad::before { content: '✕'; color: red; }"),
+    ).toEqual([]);
     // hover and focus are not states of the data
     expect(probe("a:hover { color: red; } a.on:focus { color: red; }")).toEqual([]);
     // an explanation silences exactly the group it names
