@@ -105,9 +105,9 @@ interface Row {
   /** The key combinations the row's command answers to (`aria-keyshortcuts`). */
   shortcuts?: string;
   /** Enter */
-  primary: (el: HTMLElement | null) => void;
+  primary: () => void;
   /** ⌘Enter */
-  secondary?: (el: HTMLElement | null) => void;
+  secondary?: () => void;
   /** ArrowRight */
   nested?: () => void;
   busy?: boolean;
@@ -197,8 +197,8 @@ export function CommandPalette({
 
   /* ---------- navigation helpers ---------- */
   const go = useCallback(
-    (to: string, el?: HTMLElement | null, morph = false) => {
-      navigate(to, { morph: morph ? el : null, before: () => close({ instant: true }) });
+    (to: string) => {
+      navigate(to, { before: () => close({ instant: true }) });
     },
     [navigate, close],
   );
@@ -337,7 +337,7 @@ export function CommandPalette({
                 <ChevronRight aria-hidden className="pr-chevron" />
               </span>
             ),
-            primary: (el) => go(`/skills/${encodeURIComponent(s.slug)}`, el),
+            primary: () => go(`/skills/${encodeURIComponent(s.slug)}`),
             secondary: () => void runAction(`skill:${s.slug}`, `/${s.slug}`, () => launchSkill(s), false),
             nested: () => setPage({ kind: "run", skill: s }),
           };
@@ -385,7 +385,7 @@ export function CommandPalette({
         label: f.name,
         sub: f.rel,
         icon: <FileText aria-hidden />,
-        primary: (el) => go(`/brain?sel=${f.id}`, el),
+        primary: () => go(`/brain?sel=${f.id}`),
       })),
     [files, go],
   );
@@ -401,7 +401,7 @@ export function CommandPalette({
         icon: <ListTree aria-hidden />,
         keywords: [r.id, r.provider, r.status, r.skillSlug ?? "", r.promptSummary],
         right: <StatusBadge status={r.status} />,
-        primary: (el) => go(`/runs/${r.id}`, el),
+        primary: () => go(`/runs/${r.id}`),
       })),
     [runs.data, lang, go],
   );
@@ -474,7 +474,7 @@ export function CommandPalette({
           label: t("shell.palette.openSkill"),
           sub: skill.skillFile,
           icon: <Sparkles aria-hidden />,
-          primary: (el) => go(`/skills/${encodeURIComponent(skill.slug)}`, el),
+          primary: () => go(`/skills/${encodeURIComponent(skill.slug)}`),
         },
       ];
     }
@@ -501,11 +501,11 @@ export function CommandPalette({
               {t("desktop.palette.open")}
             </Badge>
           ) : undefined,
-          primary: (el) => {
+          primary: () => {
             // An app answers to its route (the desktop turns it into a panel);
             // the runs reading is the Runs app, like its pod.
-            if (kind) go(APPS[kind].route, el);
-            else if (id === "runs") go("/runs", el);
+            if (kind) go(APPS[kind].route);
+            else if (id === "runs") go("/runs");
             else inShell(() => window.dispatchEvent(new CustomEvent(OPEN_PANEL_EVENT, { detail: id })));
           },
         };
@@ -640,9 +640,8 @@ export function CommandPalette({
     } else if (e.key === "Enter") {
       if (!current) return;
       e.preventDefault();
-      const el = document.getElementById(`${listId}-${current.id}`);
-      if ((e.metaKey || e.ctrlKey) && current.secondary) current.secondary(el);
-      else current.primary(el);
+      if ((e.metaKey || e.ctrlKey) && current.secondary) current.secondary();
+      else current.primary();
     } else if (e.key === "ArrowRight" && current?.nested) {
       const input = e.currentTarget;
       if (input.selectionStart === input.value.length) {
@@ -801,7 +800,7 @@ export function CommandPalette({
                             className={`launcher-tile${idx === selected ? " selected" : ""}`}
                             style={{ "--i": i } as CSSProperties}
                             onMouseEnter={() => setSelected(idx)}
-                            onClick={(e) => row.primary(e.currentTarget)}
+                            onClick={() => row.primary()}
                           >
                             <span className="lt-icon">{row.icon}</span>
                             <span className="lt-name">{row.label}</span>
@@ -825,7 +824,7 @@ export function CommandPalette({
                             aria-keyshortcuts={row.shortcuts}
                             className={`launcher-result palette-row${idx === selected ? " selected" : ""}`}
                             onMouseEnter={() => setSelected(idx)}
-                            onClick={(e) => row.primary(e.currentTarget)}
+                            onClick={() => row.primary()}
                           >
                             <span className="lr-icon">
                               {row.busy ? <span className="spinner sm" /> : row.icon}

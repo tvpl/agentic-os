@@ -190,7 +190,11 @@ export class CommandRegistry {
 
   /** Run the command `e` belongs to, if any. True when one ran. */
   handle(e: KeyboardEvent): boolean {
-    if (e.defaultPrevented || e.isComposing || document.documentElement.dataset.onboarding) return false;
+    // A key that belongs to someone else: already handled (`defaultPrevented`), part of an IME
+    // composition (`isComposing`, and keyCode 229, which is all Safari says for the key that
+    // ends one), or the guided tour's (it owns the keyboard while it is up).
+    if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return false;
+    if (document.documentElement.dataset.onboarding) return false;
     const mac = isMac();
     const typing = isTypingTarget(e.target);
     for (const scope of this.activeScopes(e.target)) {

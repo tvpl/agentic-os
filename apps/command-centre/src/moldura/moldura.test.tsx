@@ -1391,6 +1391,32 @@ describe("V1.2 the ways out of what covers the content", () => {
     expect(aside().getAttribute("role")).toBe("dialog");
   });
 
+  it("C25 the narrow chat drawer carries ⌘. and gives it up to a dialog over it", async () => {
+    viewport.width = 800;
+    await mountShell("/");
+    // Wide or narrow, the key shows and hides the conversation; narrow, the drawer is a modal
+    // that hides the frame's own scope, so it carries the key itself.
+    fireEvent.click(chatButton());
+    await waitFor(() => expect(aside().getAttribute("role")).toBe("dialog"));
+    expect(aside().hidden).toBe(false);
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: ".", ctrlKey: true });
+    await settled();
+    expect(aside().hidden, "⌘. closes the drawer").toBe(true);
+    fireEvent.keyDown(document.body, { key: ".", ctrlKey: true });
+    await settled();
+    expect(aside().hidden, "and opens it").toBe(false);
+    // The palette over the drawer is the dialog on top: ⌘. is not the drawer's then.
+    act(() => {
+      window.dispatchEvent(new CustomEvent(LAUNCHER_EVENT));
+    });
+    await screen.findByRole("combobox");
+    expect(getDialogDepth()).toBe(2);
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: ".", ctrlKey: true });
+    await settled();
+    expect(aside().hidden, "the drawer stays under the palette").toBe(false);
+    expect(aside().getAttribute("role")).toBe("dialog");
+  });
+
   it("C74 ⌘K and Ctrl K open the palette in the frame and the same key closes it", async () => {
     // Mod is the platform's command key (comandos-atalhos, door 3): ⌘ on a Mac, Ctrl elsewhere —
     // the other one belongs to the system (Win+K) or to text editing (Ctrl+K on a Mac).

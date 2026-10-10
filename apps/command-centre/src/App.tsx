@@ -368,7 +368,7 @@ function RouteSurface({
 
 interface PaletteState {
   open: boolean;
-  /** Skip the exit animation (set when the palette navigates with a shared-element morph). */
+  /** Skip the exit animation (set when the palette closes in the same update as a navigation). */
   instant: boolean;
   initial?: PaletteOpenDetail;
 }

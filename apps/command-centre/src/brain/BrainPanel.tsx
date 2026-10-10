@@ -4,7 +4,7 @@
  * advanced sliders, workspace mode, bake, hygiene and the minimap.
  * Presentational: state comes from the parent as `ui` + `patch`.
  */
-import { type RefObject, useEffect, useId, useRef, useState } from "react";
+import { type RefObject, useEffect, useId, useState } from "react";
 import {
   ChevronsDownUp,
   PanelRightClose,
@@ -112,24 +112,6 @@ export function BrainPanel(p: BrainPanelProps) {
   const { ui, patch } = p;
   const ids = useId();
   const { collapsed, onCollapse: setCollapsed } = p;
-  const focusSearch = useRef(false);
-  useEffect(() => {
-    if (!collapsed) {
-      if (focusSearch.current) p.searchRef.current?.focus();
-      focusSearch.current = false;
-      return;
-    }
-    const revealSearch = (event: KeyboardEvent) => {
-      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
-      if ((event.target as HTMLElement)?.closest("input, textarea, select, [contenteditable=true]")) return;
-      focusSearch.current = true;
-      setCollapsed(false);
-    };
-    window.addEventListener("keydown", revealSearch);
-    return () => {
-      window.removeEventListener("keydown", revealSearch);
-    };
-  }, [collapsed, p.searchRef, setCollapsed]);
   const filtersOn =
     ui.filters.exts.length > 0 ||
     ui.filters.tags.length > 0 ||

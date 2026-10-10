@@ -25,9 +25,9 @@ Diálogo existente. Dentro: um bloco por escopo com comandos de teclas, nesta or
 (`global`), o shell atual ("Moldura" / "App frame" ou "Núcleo" / "Núcleo"), a tela aberta (o título do
 app, ex.: "Pixel Studio") quando ela registra teclas. Cada linha: as teclas como chips (⌘ no Mac,
 Ctrl nos outros) à esquerda e o título do comando à direita. Um bloco sem comandos não aparece. Nada
-além do que o registro tem para o shell e a tela atuais.
+além do que o registro tem para o shell e a tela atuais. Uma tecla que um escopo interno também declara aparece só no bloco do interno, com o significado dele (com o Pixel Studio aberto no Núcleo, o `2` é "Borracha", uma vez); um comando que ficou sem tecla própria sai da folha. Não aparecem: as teclas do campo da própria paleta (↑↓ ↵ ⌘↵ → ⌫, no rodapé dela) e o `>` da linha de voz (um caractere digitado, não um comando).
 
 ## Tela - Paleta
 
 Mesma composição de hoje. Muda só: as linhas de "Apps" e "Ações" vêm do registro e, quando o comando
-tem teclas, a dica (chips) aparece à direita da linha, no lugar do texto auxiliar.
+tem teclas, a dica (chips) aparece à direita da linha, no lugar do texto auxiliar. As ações que falam com o servidor (reindexar, backup, diagnóstico, tema, trocar de interface) fecham a paleta na hora e o resultado vira um aviso (toast), o erro inclusive; o diagnóstico leva a Configurações quando responde (AD-014). A ordem das linhas vem do registro: de fora para dentro, depois a de registro.

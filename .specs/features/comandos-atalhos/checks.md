@@ -3,9 +3,11 @@
 Profile: ui
 Plan: `.specs/features/comandos-atalhos/plan.md`
 
-22 checks in 3 slices · 3 one-way doors · 0 open, of which 0 block
+33 checks in 4 slices · 7 one-way doors · 0 open, of which 0 block
 
-Comandos (da raiz): interface (jsdom) `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "<nome>"`;
+Comandos (da raiz): interface (jsdom) `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "<nome>"`
+(registro, paleta, ajuda), `.../commands.screens.test.tsx` (as telas, as doors, as guardas) e `.../commands.source.test.ts`
+(o que se lê na árvore sintática do código-fonte);
 e2e `npx playwright test --config tests/e2e/playwright.config.ts <spec> -g "<nome>"`.
 
 Fora do alcance destes checks, por tela: espaçamento, cor e peso de tipo da ajuda de atalhos e da
@@ -49,7 +51,7 @@ Status: closed
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/smoke.spec.ts -g "launcher opens with Ctrl\+M and searches skills"`
 Status: closed
 
-**C9** - A ajuda de atalhos mostra um bloco por escopo com teclas, na ordem Geral → shell → tela, cada linha com os chips e o título; o conjunto de linhas é exatamente o dos comandos com teclas registrados para o shell e a tela atuais (AC 8)
+**C9** - A ajuda de atalhos mostra um bloco por escopo com teclas, na ordem Geral → shell → tela, cada linha com os chips e o título; o conjunto de linhas é exatamente o dos comandos com teclas registrados para o shell e a tela atuais, menos a tecla que um escopo interno também declara (AC 8, 17)
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C9 the help lists exactly the registered keys by scope"`
 Status: closed
 
@@ -57,8 +59,8 @@ Status: closed
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C10 the help follows the shell and the screen"`
 Status: closed
 
-**C11** - `shell.shortcuts.desktop` é "Scenes" em `en` e "Cenas" em `ptBR` (AC 10)
-Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C11 the scenes heading reads right in both languages"`
+**C11** - A lista escrita à mão saiu: `shell.shortcuts.desktop` (valores trocados entre `en` e `ptBR`) não existe em idioma nenhum, e toda chave `shell.shortcuts.*` que sobra é mostrada por alguma tela (AC 10)
+Proof: `npm run test -w apps/command-centre -- src/commands/commands.source.test.ts -t "C11"`
 Status: closed
 
 ### S3 - conflitos e migração · 10 files · 110 KB · ~28k
@@ -79,8 +81,8 @@ Status: closed
 Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C15 Mod+Enter belongs to the open palette"`
 Status: closed
 
-**C16** - Lido pela árvore sintática do TypeScript: `App.tsx`, `nucleo/index.tsx`, `moldura/Moldura.tsx`, `views/PixelStudio.tsx`, `views/SecondBrain.tsx` e `runs/RunDetail.tsx` não chamam `addEventListener("keydown"…)` nem `onKeyDown` em `window`/`document`; nenhum arquivo de `src` (fora de testes) define ou usa `RESET_LAYOUT_EVENT` ou `SHORTCUTS_EVENT` (AC 15)
-Proof: `npm run test -w apps/command-centre -- src/commands/commands.test.tsx -t "C16 the migrated screens own no keydown listener"`
+**C16** - Lido pela árvore sintática do TypeScript, com autoteste do leitor (alias de `window`, `globalThis`, `self`, `window.document`, chamada sem receptor, desestruturação, tipo em constante, `onkeydown =`; e o que não é ouvinte da página): `App.tsx`, `nucleo/index.tsx`, `views/PixelStudio.tsx`, `views/SecondBrain.tsx`, `runs/RunDetail.tsx` e todo arquivo de `moldura/` não escutam `keydown` na página; os que sobram em `src` são exatamente os da allowlist, com contagem e motivo; nenhum arquivo de `src` (fora de testes) define ou usa `RESET_LAYOUT_EVENT`, `SHORTCUTS_EVENT`, `OPEN_DECK_EVENT` nem o nome de um desses eventos (AC 15)
+Proof: `npm run test -w apps/command-centre -- src/commands/commands.source.test.ts -t "C16"`
 Status: closed
 
 **C17** - e2e: `tests/e2e/nucleo-shell.spec.ts` "⌘⇧A and ⌘⇧D resolve the first decision from anywhere" passa (AC 16)
@@ -107,51 +109,109 @@ Status: closed
 Proof: `npm run typecheck && npm run test -w apps/command-centre`
 Status: closed
 
+### S4 - correções da rodada 1 da verificação · 5 files · 90 KB · ~22k
+
+**C23** - Com um diálogo da pilha aberto (com ou sem comando em `modal`), ou a tecla vinda de dentro de um `role="dialog"` modal, ou o escopo `overlay` seguro à mão, as teclas de `global`, shell e tela não recebem nada e as do próprio escopo da camada rodam; ao sair a camada, voltam; um popover (`aria-modal="false"`) não é camada (door 4)
+Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C23"`
+Status: closed
+
+**C24** - Um `CommandsGate enabled={false}` tira do registro o que está dentro e `true` o devolve; de duas instâncias com a mesma chave `exclusive` só a mais nova registra e, ao sair, a mais velha assume; no Núcleo, a cena que está saindo (650 ms) não responde: a tecla `2` logo depois de sair do Pixel Studio viaja de cena, não troca a ferramenta (door 5)
+Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C24"`
+Status: closed
+
+**C25** - Na moldura estreita, com a gaveta da conversa aberta, ⌘. / Ctrl . a fecha e a abre; com a paleta aberta por cima da gaveta, ⌘. não fecha a gaveta (door 6)
+Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "C25 the narrow chat drawer"`
+Status: closed
+
+**C26** - No Pixel Studio aberto no Núcleo, cada tecla faz o que diz, uma tabela que aperta e lê o efeito: 1, 2, 3, 4 (ferramenta), `=`/`+` e `-`/`_` (pincel), `x` (cores), `o` (onion), ⌘Z, ⌘⇧Z e ⌘Y (desfazer/refazer, e não dentro de um campo), `[` `]` (quadros, em C12) e Esc (pergunta antes de sair com pixels não salvos; sem eles, vai para o início), sem a cena sair de `pixel` (AC 11)
+Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C26"`
+Status: closed
+
+**C27** - No Cérebro clássico, cada tecla faz o que diz: ⌘= / ⌘+ aproxima, ⌘- afasta, ⌘0 volta (o que a câmera recebe), `f` liga e desliga o modo local, `l` os nomes dos arquivos, e Esc fecha a lista, depois a apresentação, e só então é do shell (AC 12)
+Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C27"`
+Status: closed
+
+**C28** - Numa execução, `/` foca a busca do registro, `c` abre e foca o seguir e `r` chama a nova execução uma vez, e `r`/`c` num campo são texto; na página de uma skill, ⌘Enter a executa (da página e de um campo), Enter e Ctrl+Shift+Enter não (AC 13)
+Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C28"`
+Status: closed
+
+**C29** - No Núcleo: 1-5 e `[` `]` viajam entre as cenas; Esc dobra a conversa, depois fecha a busca (⌘F), depois dispensa a lâmina, depois volta ao início; ⌘J abre o deck e a mesma tecla o fecha, Ctrl+Shift+J não; ⌘⇧A e ⌘⇧D só respondem com uma decisão esperando (AC 16)
+Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C29"`
+Status: closed
+
+**C30** - Uma tecla já tratada (`defaultPrevented`), parte de uma composição de IME (`isComposing`, `keyCode` 229) ou apertada com o guia aberto não roda comando; o Shift faz parte da tecla da letra: Ctrl+Shift+J não é ⌘J, Ctrl+A não é ⌘⇧A, Shift+P não é `p` e Caps Lock P é (AC 18)
+Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C30"`
+Status: closed
+
+**C31** - `"1"` casa a tecla que digita "1" com ou sem Shift (AZERTY) e `"Shift+1"` a tecla física com Shift; no Núcleo, um 1 de AZERTY viaja, Shift+P não abre o modo foco e Caps Lock P abre; Ctrl+M abre e fecha a paleta no Mac, onde Ctrl+K não abre e ⌘M abre; Esc só vai para o início fora do início e só no Núcleo (AC 18, 19; plan Assumptions)
+Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C31"`
+Status: closed
+
+**C32** - Com a paleta aberta, "Rodar diagnóstico" fecha a paleta antes de o servidor responder; ao responder, navega para Configurações e avisa; uma falha vira um aviso de erro que nomeia a ação, com a paleta fechada (AC 20, AD-014)
+Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C32"`
+Status: closed
+
+**C33** - Com Pixel Studio aberto no Núcleo, a ajuda mostra 1-4, `[`, `]` e Esc uma vez, no bloco do Pixel, e as linhas que perderam todas as teclas saem; no início, Esc é só o do Núcleo; Ctrl+K e Ctrl+M são um grupo de chips fora do Mac, ⌘K, ⌘M e ⌃M no Mac (AC 17)
+Proof: `npm run test -w apps/command-centre -- src/commands/commands.screens.test.tsx -t "C33"`
+Status: closed
+
 ## Coverage
 
-| Set (size)                           | Member -> proof                                                                                                      | Unproven |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | -------- |
-| escopos (5)                          | C2, table-driven over all 5                                                                                          | -        |
-| alvos de digitação (4)               | `input` C3 · `textarea` C3 · `select` C3 · `contenteditable` C3                                                      | -        |
-| plataformas (3)                      | Mac C4 · Windows C4 · Linux C4                                                                                       | -        |
-| ouvintes migrados (6)                | C16, table-driven over all 6                                                                                         | -        |
-| conflitos do inventário (5)          | 1–4/`[ ]` C12 · `p` C13 · `/` C13 · `r`/`c` C14 · ⌘Enter C15                                                         | -        |
-| comportamentos de teclado no e2e (8) | palette C8 · Esc modal C19 · ⌘F C19 · ⌘J C20 · palette reabre o guia C20 · ⌘⇧A/⌘⇧D C17 · `/` e `p` C18 · moldura C21 | -        |
-| blocos da ajuda (3)                  | Geral C9 · shell C9, C10 · tela C10                                                                                  | -        |
-| doors (3)                            | forma de `Command` C1, C6, C7 · ordem dos escopos C2 · modificador C4                                                | -        |
+| Set (size)                                     | Member -> proof                                                                                                                                                                                                                                                | Unproven |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| escopos (6)                                    | `global` C2 · `nucleo` C2 · `view` C2 · `overlay` C2, C23 · `modal` C2, C23 · `moldura` C25                                                                                                                                                                    | -        |
+| alvos de digitação (4)                         | `input` C3 · `textarea` C3 · `select` C3 · `contenteditable` C3                                                                                                                                                                                                | -        |
+| plataformas (3)                                | Mac C4 · Windows C4 · Linux C4                                                                                                                                                                                                                                 | -        |
+| ouvintes migrados (6)                          | `App.tsx` C16 · `nucleo/index.tsx` C16 · `moldura/Moldura.tsx` C16 · `PixelStudio.tsx` C16 · `SecondBrain.tsx` C16 · `RunDetail.tsx` C16                                                                                                                       | -        |
+| ouvintes de teclado que ficam na página (11)   | `commands/registry.ts` C16 · `dialog.tsx` C16 · `primitives.tsx` C16 · `FocusMode.tsx` C16 · `useTourSurface.ts` C16 · `Replay.tsx` C16 · `SkillsScene.tsx` C16 · `BrainScene.tsx` C16 · `RunsScene.tsx` C16 · `RoutinesScene.tsx` C16 · `NucleoScene.tsx` C16 | -        |
+| conflitos do inventário (5)                    | 1–4/`[ ]` C12, C26 · `p` C13 · `/` C13, C28 · `r`/`c` C14, C28 · ⌘Enter C15, C28                                                                                                                                                                               | -        |
+| teclas migradas do Pixel Studio (14)           | 1 C26 · 2 C26 · 3 C26 · 4 C26 · `=` C26 · `+` C26 · `-` C26 · `_` C26 · `x` C26 · `o` C26 · ⌘Z C26 · ⌘⇧Z C26 · ⌘Y C26 · Esc C26                                                                                                                                | -        |
+| teclas migradas do Cérebro (8)                 | ⌘= C27 · ⌘+ C27 · ⌘- C27 · ⌘0 C27 · `f` C27 · `l` C27 · Esc C27 · `/` C27                                                                                                                                                                                      | -        |
+| teclas migradas de Execuções e Habilidades (4) | `/` C28 · `c` C28 · `r` C14, C28 · ⌘Enter C15, C28                                                                                                                                                                                                             | -        |
+| teclas do Núcleo (10)                          | 1–5 C29 · `[ ]` C29 · `/` C18 · `p` C18 · ⌘F C29 · Esc C29 · ⌘J C29 · ⌘⇧A C17, C29 · ⌘⇧D C17, C29 · ⌘J dentro do deck C29                                                                                                                                      | -        |
+| comportamentos de teclado no e2e (8)           | palette C8 · Esc modal C19 · ⌘F C19 · ⌘J C20 · palette reabre o guia C20 · ⌘⇧A/⌘⇧D C17 · `/` e `p` C18 · moldura C21                                                                                                                                           | -        |
+| guardas do gerenciador (8)                     | `defaultPrevented` C30 · IME C30 · guia aberto C30 · Shift em letra C30 · Shift+P C30, C31 · dígito de AZERTY C31 · Ctrl+M no Mac C31 · Esc em `/` C31                                                                                                         | -        |
+| blocos da ajuda (4)                            | Geral C9 · shell C9, C10 · tela C10 · tecla coberta por escopo interno C33                                                                                                                                                                                     | -        |
+| doors (7)                                      | forma de `Command` C1, C6, C7 · ordem dos escopos C2 · modificador C4 · camadas C23 · instância única e `CommandsGate` C24 · quem registra na moldura C25 · dígitos e Shift C30, C31                                                                           | -        |
+| ações da paleta que falam com o servidor (5)   | reindexar C32 · backup C32 · diagnóstico C32 · tema C32 · trocar de interface C32                                                                                                                                                                              | -        |
 
 ## Binding sources
 
-| Source                                       | Screens / sets                                      | Checks          |
-| -------------------------------------------- | --------------------------------------------------- | --------------- |
-| `.specs/features/comandos-atalhos/design.md` | inventário (6 ouvintes, 5 conflitos), ajuda, paleta | C7-C10, C12-C16 |
+| Source                                       | Screens / sets                                      | Checks                   |
+| -------------------------------------------- | --------------------------------------------------- | ------------------------ |
+| `.specs/features/comandos-atalhos/design.md` | inventário (6 ouvintes, 5 conflitos), ajuda, paleta | C7-C10, C12-C16, C23-C33 |
 
 ## Test policy
 
-| Code                                                 | Required proofs               | Coverage expectation         |
-| ---------------------------------------------------- | ----------------------------- | ---------------------------- |
-| Decides, not reached across a boundary (gerenciador) | one at its own layer          | each scope, target, platform |
-| Instrumentation (telas migradas, ajuda, paleta)      | render test + e2e + AST check | each listener and conflict   |
+| Code                                                 | Required proofs               | Coverage expectation                     |
+| ---------------------------------------------------- | ----------------------------- | ---------------------------------------- |
+| Decides, not reached across a boundary (gerenciador) | one at its own layer          | each scope, target, platform             |
+| Instrumentation (telas migradas, ajuda, paleta)      | render test + e2e + AST check | each listener, conflict and migrated key |
 
 Evidence:
 
 - `commands/keys.ts`: tecla × escopos ativos × foco × plataforma -> decides
 - closest analogue in the repo: `components/paletteMatch.test.ts` (unidade) e `tests/e2e/nucleo-shell.spec.ts` (teclado no navegador)
 
-Cost: 1 arquivo de teste de interface, e2e existentes, 22 provas.
+Cost: 2 arquivos de teste de interface (+ o `testkit` que dividem), 1 que lê a árvore do código, e2e existentes, 33 provas.
 
 ## Swept
 
-- validation: C5 (conflito de registro)
+- validation: C5 (conflito de registro), C30 (tecla de IME, já tratada ou do guia)
 - failure modes: C6 (comando desligado cai para o escopo de baixo)
-- idempotency: C14 (uma tecla, uma ação)
+- idempotency: C14, C24 (uma tecla, uma ação, uma instância)
 - authorization: n/a - nenhuma rota nova; os comandos chamam a API como antes
 - concurrency: n/a - um ouvinte, eventos em ordem
 - data lifecycle: C1 (registro some ao desmontar)
-- dependency failure: n/a - nenhuma dependência nova
-- state transitions: C10 (ajuda muda com o shell e a tela)
+- dependency failure: C32 (o servidor falha ou demora: a paleta já fechou, o aviso diz qual ação)
+- state transitions: C10, C33 (ajuda muda com o shell e a tela), C23 (diálogo entra e sai)
 - observability: n/a - nenhum requisito de log
 
 ## Handoff
 
 - S1-S3 ≈ 56k: CommandPalette.tsx 30 KB, ShortcutsHelp 4 KB, App.tsx trechos 8 KB, nucleo/index.tsx trechos 15 KB, Moldura 8 KB, PixelStudio/SecondBrain/RunDetail trechos 20 KB, novos 15 KB, testes ~30 KB ≈ 130 KB / 4 ≈ 33k, mais e2e - abaixo de 150k - one builder
+- S4 (rodada 1 da verificação) ≈ 22k, um construtor. Boundary: as doors 4-7, as 22 teclas migradas sem prova, as guardas, o C16 cego a alias, as regressões e as decisões AD-014 (STATE.md)
+- Edição de proof depois da aprovação: o C8 passou de `-g "launcher opens with Ctrl+M and searches skills"` para `-g "launcher opens with Ctrl\+M and searches skills"` (o `+` é quantificador no `-g`, que é uma expressão regular: sem o escape o filtro não casa teste nenhum). O claim não mudou
+- Mudanças de C-checks aprovados na S4, por pedido do orquestrador: C9 (AC 17), C11 (a chave sai, AC 10 muda) e C16 (leitor endurecido, allowlist, `OPEN_DECK_EVENT`); os testes de C11 e C16 foram para `commands.source.test.ts`
+- Baseline do ambiente, não da feature (idêntico no commit-base, 2f22034): C20 e C57 de `moldura.spec.ts` falham em `page.reload()` com a tela "Pair this device", então a proof do C21 não sai 0 inteira neste ambiente; C17-C20 e as specs de `nucleo-shell` estouram os 5 s do `.boot-screen` e os 30 s do teste (Chromium sem GPU, ~3 quadros por segundo): passam com `timeout` 150 s e `expect.timeout` 40 s numa configuração temporária não comitada
+- Abandonado: nada. Decidido: migrar os 11 ouvintes locais restantes fica para a próxima rodada (plan, Out of scope)

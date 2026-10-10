@@ -771,21 +771,10 @@ canvas.dimmed {
   position: absolute;
   inset: 0;
 }
-/* View Transitions: the launcher tile morphs into the "Back to OS" chip. */
-.launcher-tile.morphing {
-  view-transition-name: os-app;
-}
-.os-root:not([data-palette="open"]) .app-frame-chrome .os-chip.back {
-  view-transition-name: os-app;
-}
+/* View Transitions: the whole page cross-fades. */
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: 200ms;
-  animation-timing-function: var(--ease-emphasized);
-}
-::view-transition-old(os-app),
-::view-transition-new(os-app) {
-  animation-duration: 260ms;
   animation-timing-function: var(--ease-emphasized);
 }
 @media (prefers-reduced-motion: reduce) {

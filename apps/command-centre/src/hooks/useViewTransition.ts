@@ -3,11 +3,6 @@
  * navigate in `document.startViewTransition` when the browser supports it and
  * the user has not asked for reduced motion; otherwise it navigates directly
  * and `.route-surface` plays its 160 ms fade.
- *
- * Shared-element morph: pass `morph` (the element the user activated, e.g. a
- * launcher tile or a deck card). It receives the `morphing` class, which
- * theme.css maps to `view-transition-name: os-app`; the "Back to OS" chip of
- * the app frame carries the same name, so the tile morphs into the chip.
  */
 import { useCallback } from "react";
 import { flushSync } from "react-dom";
@@ -36,8 +31,6 @@ export function prefersReducedMotion(): boolean {
 }
 
 export interface TransitionOptions {
-  /** Element that morphs into the destination's `os-app` element. */
-  morph?: HTMLElement | null;
   /** Runs inside the same synchronous update as the navigation (e.g. close the palette so its tile is gone in the new snapshot). */
   before?: () => void;
 }
@@ -47,23 +40,20 @@ export interface TransitionOptions {
  * `html[data-vt]` is set while the transition runs so CSS can mute the
  * fallback fade.
  */
-export function withViewTransition(update: () => void, opts: TransitionOptions = {}): Promise<void> {
+export function withViewTransition(update: () => void): Promise<void> {
   const doc = document as Document & { startViewTransition?: StartViewTransition };
   if (!doc.startViewTransition || prefersReducedMotion()) {
     update();
     return Promise.resolve();
   }
   const html = document.documentElement;
-  const morph = opts.morph ?? null;
-  morph?.classList.add("morphing");
   html.dataset.vt = "1";
   const cleanup = () => {
     delete html.dataset.vt;
-    morph?.classList.remove("morphing");
   };
   try {
     const vt = doc.startViewTransition(update);
-    // Duplicate morph names can reject ready even though the DOM update succeeds.
+    // `ready` can reject (an aborted transition) even though the DOM update succeeded.
     void vt.ready.catch(() => undefined);
     return vt.finished.then(cleanup, cleanup);
   } catch {
@@ -80,13 +70,13 @@ export function useOsNavigate(): OsNavigate {
   const navigate = useNavigate();
   return useCallback<OsNavigate>(
     (to, opts = {}) => {
-      const { morph, before, ...navOpts } = opts;
+      const { before, ...navOpts } = opts;
       const go = () => {
         before?.();
         if (typeof to === "number") navigate(to);
         else navigate(to, navOpts);
       };
-      void withViewTransition(() => flushSync(go), { morph });
+      void withViewTransition(() => flushSync(go));
     },
     [navigate],
   );

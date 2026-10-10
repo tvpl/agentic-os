@@ -53,9 +53,11 @@ export function matchesCombo(combo: string, e: KeyboardEvent, mac = isMac()): bo
   const meta = c.meta || (c.mod && mac);
   if (e.ctrlKey !== ctrl || e.metaKey !== meta || e.altKey !== c.alt) return false;
   if (isLetter(c.key)) return e.shiftKey === c.shift && e.key.toLowerCase() === c.key.toLowerCase();
-  // Shift+1 types "!" (or another sign, by layout): the physical key is what is meant.
-  if (isDigit(c.key))
-    return e.shiftKey === c.shift && (c.shift ? e.code === `Digit${c.key}` : e.key === c.key);
+  // A digit is matched by what the key types. On a layout where the digit row is shifted
+  // (AZERTY: Shift+& types "1") the shift is how it is typed, not a modifier of the command,
+  // so a plain `"1"` takes it. `"Shift+1"` is the other thing — the physical key with Shift
+  // held, whatever sign it types ("!" on a US layout) — and is matched by `code`.
+  if (isDigit(c.key)) return c.shift ? e.shiftKey && e.code === `Digit${c.key}` : e.key === c.key;
   if (isSymbol(c.key)) return e.key === c.key;
   return e.shiftKey === c.shift && e.key === c.key;
 }

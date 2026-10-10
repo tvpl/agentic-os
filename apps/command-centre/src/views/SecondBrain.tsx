@@ -546,8 +546,16 @@ export default function SecondBrain() {
   useMinimapNav(minimapRef, world, dirty, !presenting);
 
   /* ---------- keyboard (the `view:brain` scope: `/` and `p` are the brain's while it is open) ---------- */
-  const keyActs = useRef({ camera, patch, resetCamera });
-  keyActs.current = { camera, patch, resetCamera };
+  // `/` asks for the search field; it is focused once it is on screen (panel open, not presenting).
+  const [searchAsk, setSearchAsk] = useState(0);
+  const searchAnswered = useRef(0);
+  useEffect(() => {
+    if (searchAsk === searchAnswered.current || controlsCollapsed || presenting) return;
+    searchAnswered.current = searchAsk;
+    searchRef.current?.focus();
+  }, [searchAsk, controlsCollapsed, presenting]);
+  const keyActs = useRef({ camera, patch, resetCamera, setControlsCollapsed });
+  keyActs.current = { camera, patch, resetCamera, setControlsCollapsed };
   const commands = useMemo<Command[]>(() => {
     const key = (id: string, title: TKey, keys: string[], run: () => void) =>
       ({ id, title, group: "view", scope: "view:brain", keys, run }) satisfies Command;
@@ -556,8 +564,10 @@ export default function SecondBrain() {
       key("brain.zoomOut", "cmd.brain.zoomOut", ["Mod+-"], () => keyActs.current.camera.by(0.8)),
       key("brain.zoomReset", "cmd.brain.zoomReset", ["Mod+0"], () => keyActs.current.resetCamera()),
       key("brain.search", "shell.shortcuts.brainSearch", ["/"], () => {
+        // The field is on screen only with the panel open and out of presentation: bring it, then focus it.
         setPresenting(false);
-        requestAnimationFrame(() => searchRef.current?.focus());
+        keyActs.current.setControlsCollapsed(false);
+        setSearchAsk((n) => n + 1);
       }),
       key("brain.present", "shell.shortcuts.brainPresent", ["p"], () => setPresenting((v) => !v)),
       key("brain.local", "cmd.brain.local", ["f"], () =>
