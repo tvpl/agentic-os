@@ -12,7 +12,7 @@ import { httpError } from "./common.js";
 const IdParams = z.object({ id: z.string().regex(/^n_[0-9a-f-]{8,64}$/i) });
 
 export function registerNotificationRoutes(app: FastifyInstance, ctx: AppContext): void {
-  app.get("/api/notifications", async (req) => {
+  app.get("/api/notifications", { config: { scope: "monitor" } }, async (req) => {
     const q = z
       .object({
         limit: z.coerce.number().int().min(1).max(500).default(200),
@@ -25,7 +25,7 @@ export function registerNotificationRoutes(app: FastifyInstance, ctx: AppContext
     };
   });
 
-  app.post("/api/notifications/read", async (req) => {
+  app.post("/api/notifications/read", { config: { scope: "monitor" } }, async (req) => {
     const body = z
       .object({
         ids: z
@@ -40,7 +40,7 @@ export function registerNotificationRoutes(app: FastifyInstance, ctx: AppContext
     return { updated: ctx.notifications.markRead(body.ids) };
   });
 
-  app.delete("/api/notifications/:id", async (req) => {
+  app.delete("/api/notifications/:id", { config: { scope: "monitor" } }, async (req) => {
     const { id } = IdParams.parse(req.params);
     if (!ctx.notifications.delete(id)) throw httpError(404, "Notification not found");
     return { deleted: true };

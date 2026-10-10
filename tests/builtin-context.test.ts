@@ -600,6 +600,21 @@ describe.skipIf(!POSIX)(
       });
       for (const [who, headers] of s.principals()) {
         const slug = `sneaky-${who}`;
+        if (who === "device") {
+          // escopos-dispositivo (AD-015): writing a skill is the owner's, so a device cannot even try; nothing is made.
+          for (const method of ["POST", "PUT"] as const) {
+            const refused = await s.app.inject({
+              method,
+              url: method === "POST" ? "/api/skills" : `/api/skills/${slug}`,
+              headers,
+              payload: body(slug),
+            });
+            expect(refused.statusCode, `${who} ${method}`).toBe(403);
+            expect(refused.json().error.code, `${who} ${method}`).toBe("owner_only");
+          }
+          expect(s.ctx.skills.load(slug), `${who} writes nothing`).toBeNull();
+          continue;
+        }
         const created = await s.app.inject({
           method: "POST",
           url: "/api/skills",

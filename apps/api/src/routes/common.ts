@@ -17,6 +17,7 @@ import {
   type WriteGate,
   type WriteOrigin,
 } from "@mordomo/core";
+import type { FastifyRequest } from "fastify";
 import type { AppContext } from "../context.js";
 
 /**
@@ -37,6 +38,11 @@ export function principalName(principal: Principal): string {
   if (principal.kind === "broker") return `broker:${principal.runId}`;
   if (principal.kind === "run") return `run:${principal.runId}`;
   return "owner";
+}
+
+/** Who asked, by the name runs and approvals record (`RunRecord.startedBy`, `Approval.requestedBy`). */
+export function startedByOf(req: FastifyRequest): string | null {
+  return req.principal ? principalName(req.principal) : null;
 }
 
 /** Error carrying an HTTP status — the global error handler maps it 1:1. */
@@ -223,9 +229,10 @@ export interface PromptRunResponse {
 export function submitPromptRun(
   ctx: AppContext,
   body: PromptRunRequest,
+  startedBy: string | null,
   onError: (err: unknown, runId: string) => void,
 ): PromptRunResponse {
-  if (!body.submissionId) return createPromptSubmission(ctx, body, onError);
+  if (!body.submissionId) return createPromptSubmission(ctx, body, startedBy, onError);
   const { submissionId, ...payload } = body;
   const hash = createHash("sha256")
     .update(JSON.stringify(payload, Object.keys(payload).sort()))
@@ -251,7 +258,7 @@ export function submitPromptRun(
     .run(submissionId, hash, Date.now());
   let result: PromptRunResponse;
   try {
-    result = createPromptSubmission(ctx, payload, onError);
+    result = createPromptSubmission(ctx, payload, startedBy, onError);
   } catch (error) {
     ctx.db.prepare("DELETE FROM prompt_submissions WHERE id = ?").run(submissionId);
     throw error;
@@ -267,6 +274,7 @@ export function submitPromptRun(
 function createPromptSubmission(
   ctx: AppContext,
   body: PromptRunRequest,
+  startedBy: string | null,
   onError: (err: unknown, runId: string) => void,
 ): PromptRunResponse {
   const settings = ctx.settings();
@@ -275,6 +283,8 @@ function createPromptSubmission(
   const provider = body.provider ?? session?.provider ?? settings.defaultProvider;
   const providerSettings = requireProvider(ctx, provider, settings);
   if (!providerSettings.enabled) throw httpError(400, `Provider ${provider} is not enabled`);
+  // A device's refusal comes before the conversation is created, so it leaves nothing behind.
+  ctx.runs.assertMayStart(startedBy, provider);
   // A session's cwd is re-checked against the *current* roots: a folder that
   // was granted when the conversation started may have been revoked since.
   const requested = body.cwd ?? session?.cwd ?? null;
@@ -289,6 +299,7 @@ function createPromptSubmission(
     timeoutMs: body.timeoutMs ?? settings.limits.defaultTimeoutMs,
     ...(body.sessionId ? { sessionId: body.sessionId } : {}),
     ...(body.parentRunId ? { parentRunId: body.parentRunId } : {}),
+    startedBy,
   };
   // Refused writes must not leave an empty conversation behind.
   assertWriteAllowed(ctx, body.mode, "manual");

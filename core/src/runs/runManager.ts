@@ -26,6 +26,7 @@ import { SessionStore } from "./sessionStore.js";
 import { emulatedPrompt } from "./emulatedSession.js";
 import {
   TERMINAL_STATUSES,
+  isDeviceActor,
   type RunFailure,
   type RunOrigin,
   type RunRecord,
@@ -91,6 +92,12 @@ export interface CreateRunInput {
    */
   sessionId?: string | null;
   attempts?: number;
+  /**
+   * Who asked for the run, by the names `Approval.resolvedBy` uses (`owner`, `device:<id>`); null or absent for what no
+   * request started (a routine, a sentinel, the CLI). A paired device only starts runs on a provider whose reads stay
+   * in the working folder (`ProviderCapabilities.readConfinement`), checked here for every way a run is created.
+   */
+  startedBy?: string | null;
   /**
    * Initial status. `waiting_approval` makes a write run gated by an approval
    * visible in the Runs list; `markApproved()` moves it to `queued`.
@@ -527,9 +534,29 @@ export class RunManager {
     };
   }
 
+  /**
+   * A run asked for by a paired device runs only where the CLI's reads stay in the working folder: the owner token sits
+   * in a file under the home, which a provider that reads the whole disk (`readConfinement: "none"`, or a manifest that
+   * says nothing) would hand to a prompt. `403 device_provider_refused` otherwise (`docs/security.md`, T3). `create`
+   * asks it for every run; a caller that would leave something behind first (a conversation) asks it up front.
+   */
+  assertMayStart(startedBy: string | null | undefined, provider: ProviderId): void {
+    if (!isDeviceActor(startedBy)) return;
+    const adapter = this.getAdapter(provider);
+    if (adapter?.manifest?.capabilities?.readConfinement === "workdir") return;
+    const name = adapter?.manifest?.displayName ?? provider;
+    throw Object.assign(
+      new Error(
+        `${name} reads everything the user can read, so a paired device cannot start a run on it. Start it from the desktop, or choose a provider that keeps reads in the working folder.`,
+      ),
+      { statusCode: 403, code: "device_provider_refused" },
+    );
+  }
+
   // -------------------------------------------------------------- create --
 
   create(input: CreateRunInput): RunRecord {
+    this.assertMayStart(input.startedBy, input.provider);
     const cwd = this.resolveCwd(input.cwd);
     const settings = this.getSettings();
     const maxQueued = settings.limits.maxConcurrentRuns * QUEUE_DEPTH_FACTOR;
@@ -550,8 +577,8 @@ export class RunManager {
     const promptSummary = redactSecrets(input.prompt.slice(0, 500));
     this.db
       .prepare(
-        `INSERT INTO runs (id, created_at, origin, provider, model, effort, status, cwd, prompt_summary, request_json, skill_slug, routine_id, parent_run_id, session_id, attempts, timeout_ms, permission_profile, max_cost_usd)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO runs (id, created_at, origin, provider, model, effort, status, cwd, prompt_summary, request_json, skill_slug, routine_id, parent_run_id, session_id, attempts, timeout_ms, permission_profile, max_cost_usd, started_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -572,6 +599,7 @@ export class RunManager {
         input.timeoutMs,
         input.profile,
         input.maxCostUsd ?? null,
+        input.startedBy ?? null,
       );
     const record = this.get(id);
     if (!record) throw new Error("run insert failed");
@@ -1548,6 +1576,7 @@ interface RawRun {
   attempts: number;
   timeout_ms: number | null;
   permission_profile: string | null;
+  started_by?: string | null;
   input_tokens?: number | null;
   output_tokens?: number | null;
   cache_read_tokens?: number | null;
@@ -1668,6 +1697,7 @@ function fromRow(row: RawRun): RunRecord {
     attempts: row.attempts,
     timeoutMs: row.timeout_ms,
     permissionProfile: row.permission_profile as SecurityProfile | null,
+    startedBy: row.started_by ?? null,
     usage: usageFromRow(row),
   };
 }

@@ -341,7 +341,7 @@ export function registerSystemRoutes(
    * at?" when a checkout and a packaged app share a machine. Token-protected
    * (paths are not for the pre-auth page).
    */
-  app.get("/api/system/info", async () => {
+  app.get("/api/system/info", { config: { scope: "monitor" } }, async () => {
     const snap = await instanceSnapshot();
     return {
       version: PKG_VERSION,
@@ -394,7 +394,7 @@ export function registerSystemRoutes(
   });
 
   /** Release check: only when enabled in settings, or explicitly asked for (`?force=1`). */
-  app.get("/api/updates", async (req) => {
+  app.get("/api/updates", { config: { scope: "monitor" } }, async (req) => {
     const force = (req.query as { force?: string }).force === "1";
     const enabled = ctx.settings().updates.check;
     if (!enabled && !force) return { enabled, current: PKG_VERSION, url: RELEASES_PAGE, status: null };
@@ -421,7 +421,7 @@ export function registerSystemRoutes(
     };
   });
 
-  app.get("/api/health", async () => {
+  app.get("/api/health", { config: { scope: "monitor" } }, async () => {
     // A closed database is an honest 503 in the envelope (a poller reads it as "not ready", and it is
     // not an unhandled error to log on every poll), never a 200 with `ok: false`.
     if (!ctx.db.open) throw httpError(503, "The database is closed", "service_unavailable");
@@ -441,10 +441,10 @@ export function registerSystemRoutes(
     };
   });
 
-  app.get("/api/settings", async () => ctx.settings());
+  app.get("/api/settings", { config: { scope: "monitor" } }, async () => ctx.settings());
 
   // ---- UI preferences (config/ui-preferences.json) ---------------------------
-  app.get("/api/ui-preferences", async () => ctx.uiPreferences.load());
+  app.get("/api/ui-preferences", { config: { scope: "monitor" } }, async () => ctx.uiPreferences.load());
 
   const UiPreferencesPatchSchema = UiPreferencesSchema.partial().extend({
     /** Strict on write: an unknown shell is refused, not read back as the default. */
@@ -452,7 +452,7 @@ export function registerSystemRoutes(
     /** The layout this writer started from; a different stored layout means another window saved first. */
     dashboardLayoutBase: UiPreferencesSchema.shape.dashboardLayout.removeDefault().optional(),
   });
-  app.put("/api/ui-preferences", async (req) => {
+  app.put("/api/ui-preferences", { config: { scope: "owner" } }, async (req) => {
     const { dashboardLayoutBase, ...patch } = UiPreferencesPatchSchema.parse(req.body ?? {});
     const before = ctx.uiPreferences.load();
     if (
@@ -523,7 +523,7 @@ export function registerSystemRoutes(
     return { settings: saved, pendingApproval };
   });
 
-  app.get("/api/providers", async (req) => {
+  app.get("/api/providers", { config: { scope: "monitor" } }, async (req) => {
     const force = (req.query as { force?: string }).force === "1";
     return ctx.providerSnapshot(force);
   });
@@ -544,7 +544,7 @@ export function registerSystemRoutes(
     return { detection, auth, models };
   });
 
-  app.get("/api/providers/:id/models", async (req) => {
+  app.get("/api/providers/:id/models", { config: { scope: "owner" } }, async (req) => {
     const { id } = z.object({ id: ProviderId }).parse(req.params);
     return requireAdapter(ctx, id).listModels();
   });
@@ -556,7 +556,7 @@ export function registerSystemRoutes(
   });
 
   /** Safe, file-change-free smoke test for one provider. */
-  app.post("/api/providers/:id/smoke", async (req) => {
+  app.post("/api/providers/:id/smoke", { config: { scope: "owner" } }, async (req) => {
     const { id } = z.object({ id: ProviderId }).parse(req.params);
     const providerSettings = requireProvider(ctx, id);
     const run = ctx.runs.create({
@@ -584,21 +584,22 @@ export function registerSystemRoutes(
     return { run: finished, passed: finished.status === "done" && sawOk };
   });
 
-  app.get("/api/doctor", async (req) => {
+  app.get("/api/doctor", { config: { scope: "monitor" } }, async (req) => {
     const { audit } = z.object({ audit: z.enum(["0", "1"]).optional() }).parse(req.query);
-    return runDoctor(ctx, { npmAudit: audit !== "0" });
+    // The HUD of a paired phone asks for the report too; `npm audit` (a network call, 20 s) is for the owner at the desk.
+    return runDoctor(ctx, { npmAudit: audit !== "0" && req.principal?.kind !== "device" });
   });
 
   /** Hourly samples of the last N days plus their daily fold (Settings › Trends). */
-  app.get("/api/metrics/history", async (req) => {
+  app.get("/api/metrics/history", { config: { scope: "monitor" } }, async (req) => {
     const q = z.object({ days: z.coerce.number().int().min(1).max(90).default(14) }).parse(req.query ?? {});
     const samples = ctx.metricsHistory.series(q.days);
     return { days: q.days, samples, daily: dailyPoints(samples) };
   });
 
-  app.get("/api/approvals", async () => ctx.approvals.list("pending"));
+  app.get("/api/approvals", { config: { scope: "monitor" } }, async () => ctx.approvals.list("pending"));
   /** One approval by id, any status (the permission tool polls this). */
-  app.get("/api/approvals/:id", async (req) => {
+  app.get("/api/approvals/:id", { config: { scope: "monitor" } }, async (req) => {
     const { id } = UuidParams.parse(req.params);
     const approval = ctx.approvals.get(id);
     if (!approval) throw httpError(404, "Approval not found");
@@ -611,7 +612,7 @@ export function registerSystemRoutes(
    * permission MCP server parks it here; the Console, the run page and the
    * inbox offer Approve / Deny; the server answers the CLI when resolved.
    */
-  app.post("/api/approvals/tool", async (req) => {
+  app.post("/api/approvals/tool", { config: { scope: "owner" } }, async (req) => {
     const body = z
       .object({
         runId: z.string().uuid(),
@@ -627,12 +628,18 @@ export function registerSystemRoutes(
     if (run.status !== "running" && run.status !== "queued") throw httpError(409, "Run is not active");
     const detail = summarizeToolInput(body.toolName, body.input);
     const description = `${body.toolName}: ${detail}`;
-    const approval = ctx.approvals.request("tool_use", description, {
-      runId: body.runId,
-      toolName: body.toolName,
-      input: body.input,
-      ...(body.toolUseId ? { toolUseId: body.toolUseId } : {}),
-    });
+    // The tool is the run's request, so it is whoever started the run who asked (a device cannot approve it).
+    const approval = ctx.approvals.request(
+      "tool_use",
+      description,
+      {
+        runId: body.runId,
+        toolName: body.toolName,
+        input: body.input,
+        ...(body.toolUseId ? { toolUseId: body.toolUseId } : {}),
+      },
+      run.startedBy,
+    );
     ctx.runs.annotate(body.runId, {
       type: "permission",
       ts: Date.now(),
@@ -646,7 +653,7 @@ export function registerSystemRoutes(
     });
     return approval;
   });
-  app.post("/api/approvals/:id/resolve", async (req) => {
+  app.post("/api/approvals/:id/resolve", { config: { scope: "approve" } }, async (req) => {
     const { id } = UuidParams.parse(req.params);
     const { decision, answers } = z
       .object({
@@ -671,7 +678,7 @@ export function registerSystemRoutes(
   });
 
   // ---- Backups ---------------------------------------------------------------
-  app.get("/api/backups", async () => listBackups(ctx.paths));
+  app.get("/api/backups", { config: { scope: "owner" } }, async () => listBackups(ctx.paths));
   app.post("/api/backups", { config: { scope: "owner" } }, async (req) => {
     const { includeArtifacts } = z
       .object({ includeArtifacts: z.boolean().default(false) })
@@ -715,7 +722,9 @@ export function registerSystemRoutes(
         "(a safety backup is taken first). Restart with: mordomo stop && mordomo start",
     };
   });
-  app.get("/api/backups/restore-pending", async () => ({ restorePending: readRestorePending(ctx.paths) }));
+  app.get("/api/backups/restore-pending", { config: { scope: "owner" } }, async () => ({
+    restorePending: readRestorePending(ctx.paths),
+  }));
   app.delete("/api/backups/restore-pending", { config: { scope: "owner" } }, async () => {
     const pending = readRestorePending(ctx.paths);
     clearRestorePending(ctx.paths);
@@ -723,7 +732,7 @@ export function registerSystemRoutes(
   });
 
   // ---- Sync ------------------------------------------------------------------
-  app.get("/api/sync/plan", async (req) => {
+  app.get("/api/sync/plan", { config: { scope: "owner" } }, async (req) => {
     const { target } = z.object({ target: z.string().optional() }).parse(req.query);
     return ctx.sync.plan(resolveSyncTarget(ctx, target));
   });
@@ -736,13 +745,13 @@ export function registerSystemRoutes(
   });
 
   // ---- Artifacts gallery (desktop search, /artifacts, /generations) --------
-  app.get("/api/artifacts/list", async (req) => {
+  app.get("/api/artifacts/list", { config: { scope: "content" } }, async (req) => {
     const q = ArtifactListQuery.parse(req.query);
     return listArtifacts(ctx, q);
   });
 
   /** Binary artifact (images / video) for thumbnails — strictly inside the artifacts dir, allow-listed types only. */
-  app.get("/api/artifacts/raw", { config: { queryToken: true } }, async (req, reply) => {
+  app.get("/api/artifacts/raw", { config: { scope: "content", queryToken: true } }, async (req, reply) => {
     const { p } = z.object({ p: z.string() }).parse(req.query);
     let file: WorkspaceFile;
     try {
@@ -768,7 +777,9 @@ export function registerSystemRoutes(
     return reply.send(file.createReadStream());
   });
 
-  app.get("/api/startup-plan", async () => planStartupService(ctx.paths, process.execPath));
+  app.get("/api/startup-plan", { config: { scope: "owner" } }, async () =>
+    planStartupService(ctx.paths, process.execPath),
+  );
 
   app.get("/api/diagnostics/export", { config: { scope: "owner" } }, async () => {
     const doctor = await runDoctor(ctx, { npmAudit: false });

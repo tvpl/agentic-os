@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import { EffortLevel, ProviderId } from "@mordomo/core";
 import type { AppContext } from "../context.js";
-import { httpError, submitPromptRun } from "./common.js";
+import { httpError, startedByOf, submitPromptRun } from "./common.js";
 import { UuidParams } from "./params.js";
 
 /**
@@ -13,7 +13,7 @@ import { UuidParams } from "./params.js";
  * containment and the profile rules are identical.
  */
 export function registerSessionRoutes(app: FastifyInstance, ctx: AppContext): void {
-  app.get("/api/sessions", async (req, reply) => {
+  app.get("/api/sessions", { config: { scope: "monitor" } }, async (req, reply) => {
     const q = z
       .object({
         limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -26,7 +26,7 @@ export function registerSessionRoutes(app: FastifyInstance, ctx: AppContext): vo
     return ctx.runs.sessions.list(q);
   });
 
-  app.get("/api/sessions/:id", async (req) => {
+  app.get("/api/sessions/:id", { config: { scope: "monitor" } }, async (req) => {
     const { id } = UuidParams.parse(req.params);
     const session = ctx.runs.sessions.get(id);
     if (!session) throw httpError(404, "Session not found");
@@ -34,7 +34,7 @@ export function registerSessionRoutes(app: FastifyInstance, ctx: AppContext): vo
   });
 
   /** Continue the conversation: a new run that resumes the provider session. */
-  app.post("/api/sessions/:id/continue", async (req, reply) => {
+  app.post("/api/sessions/:id/continue", { config: { scope: "run" } }, async (req, reply) => {
     const { id } = UuidParams.parse(req.params);
     const body = z
       .object({
@@ -48,7 +48,7 @@ export function registerSessionRoutes(app: FastifyInstance, ctx: AppContext): vo
       .parse(req.body);
     // Provider and cwd come from the session itself (submitPromptRun resolves
     // them); a 404 for an unknown session comes from there too.
-    const result = submitPromptRun(ctx, { ...body, sessionId: id }, (err, runId) =>
+    const result = submitPromptRun(ctx, { ...body, sessionId: id }, startedByOf(req), (err, runId) =>
       req.log.error({ err, runId, sessionId: id, msg: "run failed to execute" }),
     );
     if (result.statusCode !== 200) reply.code(result.statusCode);
@@ -56,7 +56,7 @@ export function registerSessionRoutes(app: FastifyInstance, ctx: AppContext): vo
   });
 
   /** Rename a conversation (refino item 49). */
-  app.patch("/api/sessions/:id", async (req) => {
+  app.patch("/api/sessions/:id", { config: { scope: "owner" } }, async (req) => {
     const { id } = UuidParams.parse(req.params);
     const body = z.object({ title: z.string().min(1).max(200) }).parse(req.body);
     if (!ctx.runs.sessions.get(id)) throw httpError(404, "Session not found");
@@ -65,7 +65,7 @@ export function registerSessionRoutes(app: FastifyInstance, ctx: AppContext): vo
   });
 
   /** Forget a conversation. Its runs stay in the history, unlinked. */
-  app.delete("/api/sessions/:id", async (req) => {
+  app.delete("/api/sessions/:id", { config: { scope: "owner" } }, async (req) => {
     const { id } = UuidParams.parse(req.params);
     if (!ctx.runs.sessions.get(id)) throw httpError(404, "Session not found");
     return ctx.runs.sessions.delete(id);

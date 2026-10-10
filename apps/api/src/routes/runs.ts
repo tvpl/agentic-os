@@ -21,6 +21,7 @@ import {
   httpError,
   launchSkillRun,
   requireProvider,
+  startedByOf,
   submitPromptRun,
   type SkillRunInput,
 } from "./common.js";
@@ -31,7 +32,7 @@ import { lastEventId, openSse } from "./sse.js";
 const ACTIVE_STATUSES = new Set(["queued", "running", "waiting_approval"]);
 
 export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
-  app.get("/api/runs", async (req, reply) => {
+  app.get("/api/runs", { config: { scope: "monitor" } }, async (req, reply) => {
     const q = z
       .object({
         provider: ProviderId.optional(),
@@ -60,7 +61,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     return ctx.runs.list(q).map(({ request: _request, ...run }) => run);
   });
 
-  app.get("/api/runs/:id", async (req) => {
+  app.get("/api/runs/:id", { config: { scope: "monitor" } }, async (req) => {
     const { id } = UuidParams.parse(req.params);
     const run = ctx.runs.get(id);
     if (!run) throw httpError(404, "Run not found");
@@ -73,7 +74,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
    * returned, so the caller can continue it later. The old response fields
    * (`runId`, `status`, `pendingApproval`) are unchanged.
    */
-  app.post("/api/runs", async (req, reply) => {
+  app.post("/api/runs", { config: { scope: "run" } }, async (req, reply) => {
     const body = z
       .object({
         submissionId: z.string().uuid().optional(),
@@ -87,7 +88,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
         sessionId: UuidParam.optional(),
       })
       .parse(req.body);
-    const result = submitPromptRun(ctx, body, (err, id) =>
+    const result = submitPromptRun(ctx, body, startedByOf(req), (err, id) =>
       req.log.error({ err, runId: id, msg: "run failed to execute" }),
     );
     if (result.statusCode !== 200) reply.code(result.statusCode);
@@ -99,7 +100,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
    * Each child is an ordinary prompt run (same gate, its own session, its own
    * artifacts) that carries `parentRunId`; the parent's page shows the tree.
    */
-  app.post("/api/runs/:id/children", async (req, reply) => {
+  app.post("/api/runs/:id/children", { config: { scope: "run" } }, async (req, reply) => {
     const { id } = UuidParams.parse(req.params);
     const parent = ctx.runs.get(id);
     if (!parent) throw httpError(404, "Run not found");
@@ -124,6 +125,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
           provider: body.provider ?? parent.provider,
           parentRunId: id,
         },
+        startedByOf(req),
         (err, runId) => req.log.error({ err, runId, parentRunId: id, msg: "child run failed to execute" }),
       ),
     );
@@ -132,7 +134,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
   });
 
   /** The children of a run (a squad), newest first. */
-  app.get("/api/runs/:id/children", async (req) => {
+  app.get("/api/runs/:id/children", { config: { scope: "monitor" } }, async (req) => {
     const { id } = UuidParams.parse(req.params);
     if (!ctx.runs.get(id)) throw httpError(404, "Run not found");
     return ctx.runs.list({ parentRunId: id, limit: 50 }).filter((r) => r.id !== id);
@@ -145,7 +147,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
    * otherwise (or for untracked files) a containment-checked snapshot with the
    * same rules as `/api/memory/preview`.
    */
-  app.get("/api/runs/:id/diff", async (req) => {
+  app.get("/api/runs/:id/diff", { config: { scope: "content" } }, async (req) => {
     const { id } = UuidParams.parse(req.params);
     const { file } = z.object({ file: z.string().min(1).max(4096) }).parse(req.query);
     const run = ctx.runs.get(id);
@@ -159,14 +161,14 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     return runFileDiff(ctx, resolved, roots);
   });
 
-  app.post("/api/runs/:id/cancel", async (req) => {
+  app.post("/api/runs/:id/cancel", { config: { scope: "run" } }, async (req) => {
     const { id } = UuidParams.parse(req.params);
     const ok = await ctx.runs.cancel(id);
     return { cancelled: ok };
   });
 
   /** Repeat the complete typed request retained with a run. */
-  app.post("/api/runs/:id/retry", async (req, reply) => {
+  app.post("/api/runs/:id/retry", { config: { scope: "run" } }, async (req, reply) => {
     const { id } = UuidParams.parse(req.params);
     const { submissionId } = z.object({ submissionId: z.string().uuid() }).parse(req.body);
     const source = ctx.runs.get(id);
@@ -217,6 +219,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
           cwd: source.cwd ?? ctx.runs.defaultCwd(),
           timeoutMs: source.timeoutMs ?? ctx.settings().limits.defaultTimeoutMs,
           parentRunId: lineage,
+          startedBy: startedByOf(req),
         };
         const gated = gateWrite(ctx, retryMode, "skill", `Repeat /${input.slug} with ${source.provider}`, {
           kind: "skill",
@@ -242,6 +245,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
             timeoutMs: source.timeoutMs ?? ctx.settings().limits.defaultTimeoutMs,
             parentRunId: lineage,
           },
+          startedByOf(req),
           (err, runId) => req.log.error({ err, runId, retryOf: id }),
         );
         if (repeated.statusCode !== 200) reply.code(repeated.statusCode);
@@ -262,72 +266,76 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
    * query. Frames carry the run_events DB id, so a reconnect with
    * `Last-Event-ID` resumes after the last frame the client saw.
    */
-  app.get("/api/runs/:id/stream", { config: { queryToken: true } }, async (req, reply) => {
-    const { id } = UuidParams.parse(req.params);
-    if (!ctx.runs.get(id)) throw httpError(404, "Run not found");
+  app.get(
+    "/api/runs/:id/stream",
+    { config: { scope: "monitor", queryToken: true, ticket: true } },
+    async (req, reply) => {
+      const { id } = UuidParams.parse(req.params);
+      if (!ctx.runs.get(id)) throw httpError(404, "Run not found");
 
-    const ch = openSse(req, reply);
-    let lastId = lastEventId(req) ?? 0;
-    let finished = false;
-    // Live events that arrive while the catch-up replay is still running are
-    // buffered, then delivered in order and deduped by their row id.
-    let replaying = true;
-    const buffered: Array<{ event: RunEvent; eventId?: number }> = [];
+      const ch = openSse(req, reply);
+      let lastId = lastEventId(req) ?? 0;
+      let finished = false;
+      // Live events that arrive while the catch-up replay is still running are
+      // buffered, then delivered in order and deduped by their row id.
+      let replaying = true;
+      const buffered: Array<{ event: RunEvent; eventId?: number }> = [];
 
-    // Catch-up only: drain persisted events after `lastId` (they carry ids).
-    const replay = () => {
-      for (;;) {
-        const rows = ctx.runs.eventsFor(id, lastId);
-        for (const row of rows) {
-          ch.send({ id: row.id, data: row.event });
-          lastId = row.id;
+      // Catch-up only: drain persisted events after `lastId` (they carry ids).
+      const replay = () => {
+        for (;;) {
+          const rows = ctx.runs.eventsFor(id, lastId);
+          for (const row of rows) {
+            ch.send({ id: row.id, data: row.event });
+            lastId = row.id;
+          }
+          if (rows.length < 2000) break;
         }
-        if (rows.length < 2000) break;
+      };
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        const final = ctx.runs.get(id);
+        ch.send({ data: { type: "run_state", ts: Date.now(), status: final?.status, error: final?.error } });
+        ch.end();
+      };
+      // No DB query per event: the manager hands over the persisted row id.
+      // Events emitted but not persisted (e.g. "[queued]") have no id.
+      const deliver = ({ event, eventId }: { event: RunEvent; eventId?: number }) => {
+        if (eventId === undefined) {
+          ch.send({ data: event });
+        } else if (eventId > lastId) {
+          ch.send({ id: eventId, data: event });
+          lastId = eventId;
+        } else {
+          return; // already sent by the replay
+        }
+        if (event.type === "result" || event.type === "error") finish();
+      };
+
+      // Subscribe first so nothing persisted between replay and follow is lost.
+      const unsubscribe = ctx.runs.onEvent(id, (event, eventId) => {
+        if (ch.closed) return;
+        if (replaying) buffered.push({ event, eventId });
+        else deliver({ event, eventId });
+      });
+      ch.onClose(unsubscribe);
+
+      replay();
+      replaying = false;
+      for (const item of buffered.splice(0)) {
+        if (ch.closed) break;
+        deliver(item);
       }
-    };
-    const finish = () => {
-      if (finished) return;
-      finished = true;
-      const final = ctx.runs.get(id);
-      ch.send({ data: { type: "run_state", ts: Date.now(), status: final?.status, error: final?.error } });
-      ch.end();
-    };
-    // No DB query per event: the manager hands over the persisted row id.
-    // Events emitted but not persisted (e.g. "[queued]") have no id.
-    const deliver = ({ event, eventId }: { event: RunEvent; eventId?: number }) => {
-      if (eventId === undefined) {
-        ch.send({ data: event });
-      } else if (eventId > lastId) {
-        ch.send({ id: eventId, data: event });
-        lastId = eventId;
-      } else {
-        return; // already sent by the replay
-      }
-      if (event.type === "result" || event.type === "error") finish();
-    };
+      const current = ctx.runs.get(id);
+      if (!current || !ACTIVE_STATUSES.has(current.status)) finish();
+      return reply;
+    },
+  );
 
-    // Subscribe first so nothing persisted between replay and follow is lost.
-    const unsubscribe = ctx.runs.onEvent(id, (event, eventId) => {
-      if (ch.closed) return;
-      if (replaying) buffered.push({ event, eventId });
-      else deliver({ event, eventId });
-    });
-    ch.onClose(unsubscribe);
+  app.get("/api/metrics", { config: { scope: "monitor" } }, async () => ctx.runs.metrics());
 
-    replay();
-    replaying = false;
-    for (const item of buffered.splice(0)) {
-      if (ch.closed) break;
-      deliver(item);
-    }
-    const current = ctx.runs.get(id);
-    if (!current || !ACTIVE_STATUSES.has(current.status)) finish();
-    return reply;
-  });
-
-  app.get("/api/metrics", async () => ctx.runs.metrics());
-
-  app.get("/api/artifacts/recent", async (req) => {
+  app.get("/api/artifacts/recent", { config: { scope: "content" } }, async (req) => {
     const { limit } = z
       .object({ limit: z.coerce.number().int().min(1).max(100).default(20) })
       .parse(req.query);
@@ -369,7 +377,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
   });
 
   /** Read one artifact (text) — strictly inside the artifacts dir. */
-  app.get("/api/artifacts/file", async (req) => {
+  app.get("/api/artifacts/file", { config: { scope: "content" } }, async (req) => {
     const { p } = z.object({ p: z.string() }).parse(req.query);
     let file: ReturnType<typeof openWorkspaceFile>;
     try {

@@ -450,4 +450,18 @@ CREATE INDEX IF NOT EXISTS idx_objective_steps_run ON objective_steps(run_id);
       }
     },
   },
+  {
+    version: 17,
+    name: "device-scopes-and-who-asked",
+    // escopos-dispositivo (doors 1 and 3): what a paired device may do (a JSON list; NULL reads as the default, so
+    // devices paired before keep working inside it), who asked for an approval and who started a run (the principal's
+    // name, no key: a revoked device's rows stay). Every column is nullable and rows already there keep NULL.
+    up(db) {
+      if (!hasColumn(db, "devices", "scopes")) db.exec("ALTER TABLE devices ADD COLUMN scopes TEXT");
+      if (!hasColumn(db, "approvals", "requested_by")) {
+        db.exec("ALTER TABLE approvals ADD COLUMN requested_by TEXT");
+      }
+      if (!hasColumn(db, "runs", "started_by")) db.exec("ALTER TABLE runs ADD COLUMN started_by TEXT");
+    },
+  },
 ];

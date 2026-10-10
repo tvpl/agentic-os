@@ -1,4 +1,4 @@
-import { events } from "@mordomo/core";
+import { events, isDeviceActor, type ApprovalKind } from "@mordomo/core";
 import type { AppContext } from "./context.js";
 import {
   launchPromptRun,
@@ -7,6 +7,13 @@ import {
   type PromptRunInput,
   type SkillRunInput,
 } from "./routes/common.js";
+
+/**
+ * The kinds a paired device holding `approve` may approve: a write run or a tool a run asked for. Everything else
+ * (`expose_port` changes where the service listens, `connector_write`, ...) is the owner's, whatever scope the device
+ * holds (.specs/features/escopos-dispositivo, door 3). Denying is open to every kind.
+ */
+const DEVICE_APPROVABLE_KINDS: ReadonlySet<ApprovalKind> = new Set(["write_run", "tool_use"]);
 
 /**
  * Resolve an approval and apply its effect — the one code path behind the
@@ -31,6 +38,27 @@ export async function resolveApproval(
   // Sweep first: an approval past its TTL is expired here (cancelling the run
   // it gated), so resolving it answers 409 instead of silently acting on it.
   ctx.expireStaleApprovals();
+  // Separation of duties, where the decision is applied (so the Command Centre, a device and any later caller meet
+  // it): a device approves neither what it asked for itself nor a kind that is the owner's.
+  if (decision === "approved" && isDeviceActor(resolvedBy)) {
+    const asked = ctx.approvals.get(id);
+    if (asked?.status === "pending") {
+      if (!DEVICE_APPROVABLE_KINDS.has(asked.kind)) {
+        throw Object.assign(new Error(`Only the owner can approve a request of kind "${asked.kind}"`), {
+          statusCode: 403,
+          code: "owner_only",
+        });
+      }
+      if (asked.requestedBy === resolvedBy) {
+        throw Object.assign(
+          new Error(
+            "A device cannot approve what it asked for itself; approve it on the desktop, from Telegram or from another device",
+          ),
+          { statusCode: 403, code: "self_approval" },
+        );
+      }
+    }
+  }
   // Approving a parked write whose provider was removed since would launch nothing:
   // refuse (400 unknown_provider) and leave the approval pending.
   if (decision === "approved") {

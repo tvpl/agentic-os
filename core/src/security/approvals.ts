@@ -27,7 +27,13 @@ export class ApprovalStore {
     }
   }
 
-  request(kind: ApprovalKind, description: string, payload: Record<string, unknown> = {}): Approval {
+  /** `requestedBy` is who asked (`Approval.requestedBy`): the principal's name, or null when no request caused it. */
+  request(
+    kind: ApprovalKind,
+    description: string,
+    payload: Record<string, unknown> = {},
+    requestedBy: string | null = null,
+  ): Approval {
     const createdAt = Date.now();
     const approval: Approval = {
       id: crypto.randomUUID(),
@@ -38,13 +44,14 @@ export class ApprovalStore {
       status: "pending",
       resolvedAt: null,
       resolvedBy: null,
+      requestedBy,
       expiresAt: createdAt + this.ttlMs(),
     };
     this.db
       .prepare(
-        "INSERT INTO approvals (id, created_at, kind, description, payload, status) VALUES (?, ?, ?, ?, ?, 'pending')",
+        "INSERT INTO approvals (id, created_at, kind, description, payload, status, requested_by) VALUES (?, ?, ?, ?, ?, 'pending', ?)",
       )
-      .run(approval.id, approval.createdAt, kind, description, JSON.stringify(payload));
+      .run(approval.id, approval.createdAt, kind, description, JSON.stringify(payload), requestedBy);
     return approval;
   }
 
@@ -139,6 +146,7 @@ export class ApprovalStore {
       status: row.status as Approval["status"],
       resolvedAt: row.resolved_at,
       resolvedBy: row.resolved_by ?? null,
+      requestedBy: row.requested_by ?? null,
       expiresAt: row.created_at + this.ttlMs(),
     };
   }
@@ -153,4 +161,5 @@ interface RawRow {
   status: string;
   resolved_at: number | null;
   resolved_by?: string | null;
+  requested_by?: string | null;
 }

@@ -1,6 +1,9 @@
 /** The run-level write policy: shared by the engine (enforcement) and the UI (what a button will do). */
 import type { SecurityProfile } from "./settings.js";
 
+// What a paired device may do belongs to the same zod-free entry: the screen that grants it reads it in the browser.
+export * from "./devices.js";
+
 export interface ProfileCapabilities {
   /** May the agent write files in its working directory? */
   writeFiles: boolean;

@@ -241,14 +241,20 @@ the run continues the moment you answer (timeout: `limits.toolApprovalTimeoutMs`
 **Remote access** (Settings › Security): off by default. When enabled, a
 phone or laptop pairs with a 6-digit code and gets its own token (expiry and
 revoke list there); the Command Centre installs as a PWA and keeps its shell
-offline. Only paired devices are accepted on non-loopback hosts.
+offline. Only paired devices are accepted on non-loopback hosts, only over TLS
+or through a tunnel (7.1), and each one only does what you let it (7.1,
+*What a device may do*).
 
 ## 7.1 Remote access
 
 Settings › Security › **Remote access** answers to the hosts you list and
 lets a phone or laptop pair with a six-digit code shown on the desktop; each
-device gets its own token (revocable, with a lifetime). Three ways to reach
-it safely:
+device gets its own token (revocable, with a lifetime). **Another machine is
+served over TLS or through a tunnel, never plain http**: a request from outside
+this machine on plain http is refused (`tls_required`), and `bindAddress`
+beyond `127.0.0.1` only takes effect together with TLS (without it the
+service stays on loopback and says so at start, and `mordomo doctor` warns).
+Two ways to reach it safely:
 
 - **Built-in TLS**: turn on **TLS for remote devices** and restart. A
   second https listener (port + 1) serves a self-signed certificate
@@ -256,13 +262,27 @@ it safely:
   shows its SHA-256 so the phone can compare with the desktop before
   trusting it. Loopback stays plain http on the main port, so the CLI and
   the MCP broker never change.
-- **Tailscale** (recommended for a home network): keep remote access on
-  plain http and add your tailnet name to the allowed hosts — the tunnel is
-  already encrypted and authenticated.
-- **Caddy / a reverse proxy**: terminate a real certificate in front of the
-  http port and forward with the original `Host` header.
+- **A tunnel or reverse proxy running on this machine** (recommended for a
+  home network: Tailscale serve, Caddy, cloudflared): it terminates the
+  encryption and forwards to `127.0.0.1` on the main port with the original
+  `Host` header; add that host to the allowed hosts. A proxy on another
+  machine is not a tunnel: it would reach plain http and is refused, so point
+  it at the TLS port.
 
-Never expose the plain http port on the open internet.
+**What a device may do.** Before the code is shown you tick what the new
+device will be allowed to: *Monitor* (see runs, approvals, notifications and
+status), *Read content* (files, notes, memory, results), *Start runs*
+(read-only runs on Claude; anything that writes waits for you) and *Approve*
+(decide what other people or devices asked for, never its own requests).
+Ticking one that needs another ticks it for you. The default is the first
+three; a device paired before this existed has them too. Change a device's
+permissions at any time with its **Permissions** button; the change applies to
+its next request. Codex and Cursor read the whole disk, so a device cannot
+start a run on them (you can, from the desktop); settings, backups, skills,
+routines, connectors and memory writes stay yours alone.
+
+Never expose the main port beyond this machine: it is plain http and, whatever
+`bindAddress` says, it listens on loopback only.
 
 ## 7.2 Windows checklist
 

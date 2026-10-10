@@ -6,7 +6,7 @@
 import { useMemo } from "react";
 import { useLocale, useT } from "../i18n";
 import { qk, useApiQuery, useOsMetrics, useOsSettings, useOsSkills } from "../queries";
-import type { DoctorReport, UpdateCheck } from "../api";
+import { isPairedDevice, type DoctorReport, type UpdateCheck } from "../api";
 import { budgetState } from "./budget";
 import { useDesktopRoutines, useDesktopRuns } from "./data";
 import { useAppRows } from "./appRows";
@@ -67,9 +67,11 @@ export function useDesktopSignals(activeRuns: number): DesktopSignals {
       retry: false,
     },
   );
+  // The device list is the owner's (escopos-dispositivo): a paired phone does not ask for it.
   const devices = useApiQuery<{ devices: unknown[] }>(["devices"], "/api/devices", {
     refetchInterval: 300_000,
     retry: false,
+    enabled: !isPairedDevice(),
   });
   return useMemo<DesktopSignals>(() => {
     const runList = runs.data ?? [];

@@ -483,6 +483,13 @@ export {
   type ChannelSettings,
 } from "./config/schema.js";
 export {
+  DEVICE_SCOPES,
+  DEFAULT_DEVICE_SCOPES,
+  closeDeviceScopes,
+  isDeviceActor,
+  type DeviceScope,
+} from "@mordomo/contracts";
+export {
   DeviceStore,
   hashToken,
   PAIRING_TTL_MS,

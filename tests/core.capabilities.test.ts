@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   ProviderRegistry,
   SettingsStore,
@@ -17,6 +18,8 @@ import { claudeManifest, createClaudeAdapter } from "@mordomo/adapter-claude";
 import { codexManifest, createCodexAdapter } from "@mordomo/adapter-codex";
 import { cursorManifest, createCursorAdapter } from "@mordomo/adapter-cursor";
 import { FAKE_BIN, FAKE_CLIS_RUNNABLE, withFakeBinPath } from "./helpers.js";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
  * Applied capabilities (.specs/features/capacidades-aplicadas): an unattended
@@ -118,6 +121,20 @@ describe.skipIf(!FAKE_CLIS_RUNNABLE)("S1 unattended read-only needs a provider t
     const done = await run(e, "claude", "routine");
     expect(done.status).toBe("done");
     expect(permissions(e, done.id).some((d) => d.includes("only requested in the prompt"))).toBe(false);
+  });
+});
+
+describe("S3 where a provider's reads stop", () => {
+  it("C16 manifests declare where reads stop", () => {
+    // The one a paired device may start a run on keeps reads in the working folder; the two that read the disk do not.
+    expect(claudeManifest.capabilities.readConfinement).toBe("workdir");
+    expect(codexManifest.capabilities.readConfinement).toBe("none");
+    expect(cursorManifest.capabilities.readConfinement).toBe("none");
+    // The guide for a new provider says what the field means and what it decides.
+    const guide = fs.readFileSync(path.join(repoRoot, "docs", "adapters-guide.md"), "utf8");
+    expect(guide).toContain("capabilities.readConfinement");
+    expect(guide).toContain('`"workdir"`');
+    expect(guide).toContain("paired device");
   });
 });
 

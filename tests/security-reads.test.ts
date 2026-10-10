@@ -33,6 +33,7 @@ import { ClaudeAdapter } from "@mordomo/adapter-claude";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "./helpers.js";
+import { EXPECTED_ROUTE_SCOPES } from "./helpers/routeScopes.js";
 import {
   NEUTRAL_APIS,
   RAW_APIS,
@@ -481,6 +482,13 @@ describe.skipIf(!POSIX)("a paired device and the owner cannot read the owner tok
         url: `/api/sync/plan?target=${encodeURIComponent(target)}`,
         headers,
       });
+      if (who === "device") {
+        // escopos-dispositivo (AD-015): the plan is the owner's, so a device is turned away before the target is read.
+        expect(plan.statusCode, who).toBe(403);
+        expect(plan.json().error.code, who).toBe("owner_only");
+        noToken(plan, who);
+        continue;
+      }
       expect(plan.statusCode, who).toBe(200);
       noToken(plan, who);
       const actions = plan.json().actions as Array<{ filePath: string; kind: string; diff: string | null }>;
@@ -596,7 +604,8 @@ describe.skipIf(!POSIX)("a paired device and the owner cannot read the owner tok
           headers,
         });
         expect(res.statusCode, `${who} ${rel}`).toBe(403);
-        expect(res.json().error.code).toBe("forbidden_path");
+        // The plan is the owner's (AD-015): a device is turned away before the target is looked at.
+        expect(res.json().error.code).toBe(who === "device" ? "owner_only" : "forbidden_path");
       }
     }
   });
@@ -729,7 +738,8 @@ describe.skipIf(!POSIX)("a paired device and the owner cannot read the owner tok
           payload: routineBody(`r-${who}`, { workingDir: dir }),
         });
         expect(create.statusCode, `${who} create ${dir}`).toBe(403);
-        expect(create.json().error.code).toBe("forbidden_path");
+        // A device is turned away before the folder is looked at (routines are the owner's, AD-015).
+        expect(create.json().error.code).toBe(who === "device" ? "owner_only" : "forbidden_path");
       }
       expect(ctx.routines.get(`r-${who}`), `${who} stored nothing`).toBeNull();
     }
@@ -737,7 +747,7 @@ describe.skipIf(!POSIX)("a paired device and the owner cannot read the owner tok
     const ok = await app.inject({
       method: "POST",
       url: "/api/routines",
-      headers: asDevice(),
+      headers: asOwner(),
       payload: routineBody("moves", { workingDir: userFolder }),
     });
     expect(ok.statusCode).toBe(200);
@@ -768,10 +778,11 @@ describe.skipIf(!POSIX)("a paired device and the owner cannot read the owner tok
             payload: {},
           });
           expect(fire.statusCode, `${who} ${id}: ${fire.body}`).toBe(403);
-          expect(fire.json().error.code).toBe("forbidden_path");
+          // Running a routine is the owner's (AD-015): a device never reaches the fire, so only the owner's is recorded.
+          expect(fire.json().error.code).toBe(who === "device" ? "owner_only" : "forbidden_path");
         }
         const history = ctx.scheduler.history(id);
-        expect(history.length, id).toBe(2);
+        expect(history.length, id).toBe(1);
         expect(
           history.every(
             (h) => h.status === "failed_to_fire" && h.note?.startsWith("Working directory refused:"),
@@ -996,7 +1007,12 @@ describe.skipIf(!POSIX)("a paired device and the owner cannot read the owner tok
         const { method, url, payload } = entry.request();
         const res = await app.inject({ method, url, headers, payload });
         expect(res.statusCode, `${label}: ${entry.name} as ${who}: ${res.body}`).toBe(403);
-        expect(res.json().error.code, `${label}: ${entry.name} as ${who}`).toBe("forbidden_path");
+        // An entry that is the owner's turns a device away before the folder is looked at (AD-015); the others
+        // (a device with `run` may start runs) reach the folder check and are refused there.
+        const scope = EXPECTED_ROUTE_SCOPES[entry.name.split(" ").slice(0, 2).join(" ")];
+        expect(res.json().error.code, `${label}: ${entry.name} as ${who}`).toBe(
+          who === "device" && scope === "owner" ? "owner_only" : "forbidden_path",
+        );
       }
     };
     const before = runCount();

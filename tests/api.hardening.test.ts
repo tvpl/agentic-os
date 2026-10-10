@@ -43,7 +43,7 @@ beforeAll(async () => {
   token = ctx.token();
   app = await buildServer(ctx);
   // A route that throws an internal error, to assert the 500 envelope hides details.
-  app.get("/api/__boom", async () => {
+  app.get("/api/__boom", { config: { scope: "owner" } }, async () => {
     throw new Error(`secret path ${home}/config/token`);
   });
 });

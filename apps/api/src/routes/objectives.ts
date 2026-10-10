@@ -7,6 +7,7 @@ import {
   httpError,
   launchSkillRun,
   requireProvider,
+  startedByOf,
   submitPromptRun,
   type SkillRunInput,
 } from "./common.js";
@@ -35,22 +36,22 @@ const requestSchema = z.discriminatedUnion("kind", [
 ]);
 
 export function registerObjectiveRoutes(app: FastifyInstance, ctx: AppContext): void {
-  app.get("/api/objectives", async () => ctx.objectives.list());
+  app.get("/api/objectives", { config: { scope: "monitor" } }, async () => ctx.objectives.list());
 
-  app.get("/api/objectives/:id", async (req) => {
+  app.get("/api/objectives/:id", { config: { scope: "monitor" } }, async (req) => {
     const { id } = UuidParams.parse(req.params);
     const objective = ctx.objectives.get(id);
     if (!objective) throw httpError(404, "Objective not found");
     return objective;
   });
 
-  app.delete("/api/objectives/:id", async (req) => {
+  app.delete("/api/objectives/:id", { config: { scope: "owner" } }, async (req) => {
     const { id } = UuidParams.parse(req.params);
     if (!ctx.objectives.delete(id)) throw httpError(404, "Objective not found");
     return { deleted: id };
   });
 
-  app.post("/api/objectives", async (req) => {
+  app.post("/api/objectives", { config: { scope: "owner" } }, async (req) => {
     const body = z
       .object({
         project: z.string().max(200).nullable().optional(),
@@ -95,7 +96,7 @@ export function registerObjectiveRoutes(app: FastifyInstance, ctx: AppContext): 
     }
   });
 
-  app.post("/api/objectives/:id/dispatch", async (req) => {
+  app.post("/api/objectives/:id/dispatch", { config: { scope: "owner" } }, async (req) => {
     const { id } = UuidParams.parse(req.params);
     if (!ctx.objectives.get(id)) throw httpError(404, "Objective not found");
     const body = z
@@ -139,6 +140,7 @@ export function registerObjectiveRoutes(app: FastifyInstance, ctx: AppContext): 
           effort,
           cwd,
           timeoutMs,
+          startedBy: startedByOf(req),
         };
         const gated = gateWrite(ctx, mode, "skill", `Objective step: ${step.title}`, {
           kind: "skill",
@@ -158,6 +160,7 @@ export function registerObjectiveRoutes(app: FastifyInstance, ctx: AppContext): 
         const launched = submitPromptRun(
           ctx,
           { prompt, provider, model, effort, mode: step.request.mode, cwd, timeoutMs },
+          startedByOf(req),
           (error, failedRunId) =>
             req.log.error({ error, runId: failedRunId, objectiveId: id, stepId: step.id }),
         );
@@ -174,7 +177,7 @@ export function registerObjectiveRoutes(app: FastifyInstance, ctx: AppContext): 
     return { objectiveId: id, dispatched: results };
   });
 
-  app.post("/api/objectives/:id/steps/:stepId/retry", async (req) => {
+  app.post("/api/objectives/:id/steps/:stepId/retry", { config: { scope: "owner" } }, async (req) => {
     const params = z.object({ id: z.string().uuid(), stepId: z.string().uuid() }).parse(req.params);
     const { effectsReconciled } = z
       .object({ effectsReconciled: z.boolean().default(false) })

@@ -15,6 +15,7 @@ export const cursorManifest: ProviderManifest = {
     // No resume flag is documented for cursor-agent -p; runs always start fresh.
     resume: "none",
     writeConfinement: "none",
+    readConfinement: "none",
   },
   layout: {
     instructionsFile: "AGENTS.md",

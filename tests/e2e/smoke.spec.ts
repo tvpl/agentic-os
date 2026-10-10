@@ -122,3 +122,31 @@ for (const [name, route] of [
     expect(serious.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
   });
 }
+
+// escopos-dispositivo, C42: the page keeps its event stream, and the stream is opened with a ticket, not a token.
+test("C42 the event stream opens with a ticket and no token in any URL", async ({ page }) => {
+  const urls: string[] = [];
+  const posts: string[] = [];
+  page.on("request", (req) => {
+    urls.push(req.url());
+    if (req.method() === "POST" && req.url().includes("/stream-tickets")) posts.push(req.url());
+  });
+  const errors = await open(page, "/#/");
+  expect(errors, errors.join("\n")).toEqual([]);
+  // The stream is up: the shell asked for a ticket and opened the feed with it.
+  await expect.poll(() => urls.some((u) => /\/api\/v1\/events\?ticket=tk_/.test(u))).toBe(true);
+  expect(posts.length).toBeGreaterThan(0);
+  // Nothing the browser requested carries the token in its URL.
+  expect(urls.filter((u) => /[?&]token=/.test(u))).toEqual([]);
+  // And the feed delivers: an event the server emits reaches the page (the run list refetches on `run.created`).
+  const token = process.env.MORDOMO_TOKEN!;
+  const before = urls.filter((u) => /\/api\/v1\/runs(\?|$)/.test(u)).length;
+  const created = await page.request.post("/api/v1/runs", {
+    headers: { "x-mordomo-token": token, "content-type": "application/json" },
+    data: { prompt: "ticket smoke", mode: "read_only" },
+  });
+  expect(created.ok()).toBe(true);
+  await expect
+    .poll(() => urls.filter((u) => /\/api\/v1\/runs(\?|$)/.test(u)).length, { timeout: 15_000 })
+    .toBeGreaterThan(before);
+});

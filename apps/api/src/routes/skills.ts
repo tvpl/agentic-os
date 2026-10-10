@@ -15,6 +15,7 @@ import {
   httpError,
   launchSkillRun,
   requireProvider,
+  startedByOf,
   submitPromptRun,
   type SkillRunInput,
 } from "./common.js";
@@ -37,12 +38,12 @@ const RunSkillBody = z.object({
 });
 
 export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void {
-  app.get("/api/skills", async () => {
+  app.get("/api/skills", { config: { scope: "monitor" } }, async () => {
     const favorites = new Set(ctx.settings().favoriteSkills);
     return ctx.skills.list().map((s) => ({ ...s, favorite: favorites.has(s.slug) }));
   });
 
-  app.get("/api/skills/:slug", async (req) => {
+  app.get("/api/skills/:slug", { config: { scope: "content" } }, async (req) => {
     const { slug } = SlugParams.parse(req.params);
     const skill = ctx.skills.load(slug);
     if (!skill) throw httpError(404, "Skill not found");
@@ -50,13 +51,13 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
   });
 
   const SaveBody = z.object({ frontmatter: SkillFrontmatterSchema, body: z.string().min(1) });
-  app.post("/api/skills", async (req) => {
+  app.post("/api/skills", { config: { scope: "owner" } }, async (req) => {
     const { frontmatter, body } = SaveBody.parse(req.body);
     if (ctx.skills.load(frontmatter.slug)) throw httpError(409, `Skill "${frontmatter.slug}" already exists`);
     return ctx.skills.save(frontmatter, body);
   });
 
-  app.put("/api/skills/:slug", async (req) => {
+  app.put("/api/skills/:slug", { config: { scope: "owner" } }, async (req) => {
     const { slug } = SlugParams.parse(req.params);
     const { frontmatter, body } = SaveBody.parse(req.body);
     if (frontmatter.slug !== slug) throw httpError(400, "Slug in body must match URL");
@@ -79,7 +80,7 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
     "/api/skills/:slug/resource",
     {
       // `<img>`/`<iframe>` sources cannot send a header.
-      config: { queryToken: true },
+      config: { scope: "content", queryToken: true },
       onSend: async (_req, reply, payload) => {
         reply.header("content-security-policy", RESOURCE_CSP);
         reply.header("x-frame-options", "SAMEORIGIN");
@@ -112,14 +113,14 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
   );
 
   /** Agent notes (Onda 4): a NOTES.md beside SKILL.md, read on every run, appended from run pages. */
-  app.get("/api/skills/:slug/notes", async (req) => {
+  app.get("/api/skills/:slug/notes", { config: { scope: "content" } }, async (req) => {
     const { slug } = SlugParams.parse(req.params);
     const out = ctx.skills.readNotes(slug);
     if (!out) throw httpError(404, "Skill not found");
     return out;
   });
 
-  app.post("/api/skills/:slug/notes", async (req) => {
+  app.post("/api/skills/:slug/notes", { config: { scope: "owner" } }, async (req) => {
     const { slug } = SlugParams.parse(req.params);
     const body = z
       .object({ text: z.string().trim().min(1).max(4000), runId: z.string().max(80).optional() })
@@ -137,7 +138,7 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
    * review_before_write) that folds recurring lessons into SKILL.md and moves
    * the applied entries to NOTES.archive.md.
    */
-  app.post("/api/skills/:slug/notes/promote", async (req, reply) => {
+  app.post("/api/skills/:slug/notes/promote", { config: { scope: "owner" } }, async (req, reply) => {
     const { slug } = SlugParams.parse(req.params);
     const skill = ctx.skills.load(slug);
     if (!skill) throw httpError(404, "Skill not found");
@@ -150,21 +151,24 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
       `Move every note you applied to ${ctx.skills.archiveFile(skill)} (append, keep the date, mark each one (promoted)); leave one-off notes in NOTES.md.`,
       "Do not touch any other file. Finish with a short summary of what changed.",
     ].join("\n");
-    const result = submitPromptRun(ctx, { prompt, mode: "write", cwd: skill.dir }, (err, runId) =>
-      req.log.error({ err, runId, msg: "notes promotion run failed to execute" }),
+    const result = submitPromptRun(
+      ctx,
+      { prompt, mode: "write", cwd: skill.dir },
+      startedByOf(req),
+      (err, runId) => req.log.error({ err, runId, msg: "notes promotion run failed to execute" }),
     );
     if (result.statusCode !== 200) reply.code(result.statusCode);
     return result.body;
   });
 
-  app.post("/api/skills/:slug/toggle", async (req) => {
+  app.post("/api/skills/:slug/toggle", { config: { scope: "owner" } }, async (req) => {
     const { slug } = SlugParams.parse(req.params);
     const skill = ctx.skills.load(slug);
     if (!skill) throw httpError(404, "Skill not found");
     return ctx.skills.setEnabled(slug, !skill.enabled);
   });
 
-  app.post("/api/skills/:slug/favorite", async (req) => {
+  app.post("/api/skills/:slug/favorite", { config: { scope: "owner" } }, async (req) => {
     const { slug } = SlugParams.parse(req.params);
     const s = ctx.settings();
     const favorites = s.favoriteSkills.includes(slug)
@@ -174,7 +178,7 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
     return { slug, favorite: favorites.includes(slug) };
   });
 
-  app.delete("/api/skills/:slug", async (req) => {
+  app.delete("/api/skills/:slug", { config: { scope: "owner" } }, async (req) => {
     const { slug } = SlugParams.parse(req.params);
     if (!ctx.skills.load(slug)) throw httpError(404, "Skill not found");
     ctx.skills.remove(slug);
@@ -210,7 +214,7 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
   });
 
   /** Marketplace (plan Onda 3 §6): every skill the configured registries offer. */
-  app.get("/api/skills/registry", async (req) => {
+  app.get("/api/skills/registry", { config: { scope: "owner" } }, async (req) => {
     // `?refresh=1` bypasses the 10-minute index cache (the modal's Refresh button).
     const q = z.object({ refresh: z.coerce.boolean().optional() }).parse(req.query ?? {});
     const registries = ctx.settings().marketplace.registries;
@@ -270,7 +274,7 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
    * Run a skill headlessly (the "button"). Returns immediately with the run id;
    * progress streams via /api/runs/:id/stream.
    */
-  app.post("/api/skills/:slug/run", async (req, reply) => {
+  app.post("/api/skills/:slug/run", { config: { scope: "run" } }, async (req, reply) => {
     const { slug } = SlugParams.parse(req.params);
     const body = RunSkillBody.parse(req.body ?? {});
     const skill = ctx.skills.load(slug);
@@ -302,6 +306,7 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
         (skill.recommendedEffort !== "default" ? skill.recommendedEffort : providerSettings.defaultEffort),
       cwd,
       timeoutMs: body.timeoutMs ?? settings.limits.defaultTimeoutMs,
+      startedBy: startedByOf(req),
     };
     const gate = gateWrite(ctx, mode, "skill", `Write-mode skill run: /${slug} with ${provider}`, {
       kind: "skill",

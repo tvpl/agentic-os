@@ -18,32 +18,32 @@ const Subscription = z.object({
 });
 
 export function registerPushRoutes(app: FastifyInstance, ctx: AppContext): void {
-  app.get("/api/push/vapid", async () => ({
+  app.get("/api/push/vapid", { config: { scope: "monitor" } }, async () => ({
     publicKey: ctx.push.vapidKeys().publicKey,
     enabled: ctx.settings().channels.push.enabled,
   }));
 
-  app.post("/api/push/subscribe", async (req) => {
+  app.post("/api/push/subscribe", { config: { scope: "monitor" } }, async (req) => {
     const body = z
       .object({ subscription: Subscription, label: z.string().max(120).optional() })
       .parse(req.body);
     return ctx.push.upsert(body.subscription, body.label ?? null);
   });
 
-  app.post("/api/push/unsubscribe", async (req) => {
+  app.post("/api/push/unsubscribe", { config: { scope: "monitor" } }, async (req) => {
     const { endpoint } = z.object({ endpoint: z.string().url().max(2048) }).parse(req.body ?? {});
     return { removed: ctx.push.removeByEndpoint(endpoint) };
   });
 
-  app.get("/api/push/subscriptions", async () => ctx.push.list());
+  app.get("/api/push/subscriptions", { config: { scope: "owner" } }, async () => ctx.push.list());
 
-  app.delete("/api/push/subscriptions/:id", async (req) => {
+  app.delete("/api/push/subscriptions/:id", { config: { scope: "owner" } }, async (req) => {
     const { id } = z.object({ id: z.string().regex(/^ps_[0-9a-f-]{8,64}$/i) }).parse(req.params);
     if (!ctx.push.remove(id)) throw httpError(404, "Subscription not found");
     return { removed: true };
   });
 
-  app.post("/api/push/test", async () => {
+  app.post("/api/push/test", { config: { scope: "owner" } }, async () => {
     const settings = ctx.settings();
     if (!settings.channels.push.enabled)
       throw httpError(409, "Push is off in Settings › Notifications.", "channel_not_configured");

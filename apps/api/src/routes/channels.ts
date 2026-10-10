@@ -17,7 +17,7 @@ import { httpError } from "./common.js";
  */
 export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): void {
   /** Inbound poller health for the Settings card. */
-  app.get("/api/channels/telegram/status", async () => {
+  app.get("/api/channels/telegram/status", { config: { scope: "monitor" } }, async () => {
     const p = ctx.telegramPoller;
     return {
       inbound: p?.enabled() ?? false,
@@ -29,7 +29,7 @@ export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): vo
   });
 
   /** Send one line to the configured chat (refino item 45: an artifact or a reply, on demand). */
-  app.post("/api/channels/telegram/send", async (req) => {
+  app.post("/api/channels/telegram/send", { config: { scope: "owner" } }, async (req) => {
     const body = z.object({ text: z.string().min(1).max(4000) }).parse(req.body);
     const settings = ctx.settings();
     const cfg = settings.channels.telegram;
@@ -37,7 +37,7 @@ export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): vo
     return delivered(await sendTelegramMessage({ token, chatId: cfg.chatId, text: body.text }));
   });
 
-  app.post("/api/channels/telegram/test", async () => {
+  app.post("/api/channels/telegram/test", { config: { scope: "owner" } }, async () => {
     const settings = ctx.settings();
     const cfg = settings.channels.telegram;
     const token = telegramDestination(settings);

@@ -33,7 +33,7 @@ export function registerMicroappRoutes(app: FastifyInstance, ctx: AppContext): v
    * The name regex is the only path input — no separators, no dots — so the
    * destination is contained in <artifacts>/pixel-studio by construction.
    */
-  app.post("/api/microapps/pixel/save", async (req) => {
+  app.post("/api/microapps/pixel/save", { config: { scope: "owner" } }, async (req) => {
     const body = z
       .object({
         name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/),

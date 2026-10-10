@@ -14,6 +14,7 @@ export const claudeManifest: ProviderManifest = {
     streaming: true,
     resume: "flag",
     writeConfinement: "broker",
+    readConfinement: "workdir",
   },
   layout: {
     instructionsFile: "CLAUDE.md",

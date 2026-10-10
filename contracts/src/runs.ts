@@ -68,6 +68,11 @@ export interface RunRecord {
   attempts: number;
   timeoutMs: number | null;
   permissionProfile: SecurityProfile | null;
+  /**
+   * Who started it, by the names `Approval.resolvedBy` uses: `"owner"` (the local token), `"device:<deviceId>"`, or
+   * null for what no request started (a routine, a sentinel, the CLI) and for runs created before this was recorded.
+   */
+  startedBy: string | null;
   /** Token usage and provider-reported cost; null until a provider reports it. */
   usage: RunUsage | null;
 }

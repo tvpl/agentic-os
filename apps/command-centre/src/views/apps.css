@@ -580,6 +580,27 @@
   color: var(--text-faint);
   font-size: var(--fs-2);
 }
+.device-list .device-scopes,
+.device-list .device-editor {
+  grid-column: 1 / -1;
+}
+.device-editor {
+  display: grid;
+  gap: var(--s-2);
+}
+.scope-picker {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.scope-picker legend {
+  padding: 0 var(--s-1);
+  color: var(--text-faint);
+  font-size: var(--fs-2);
+}
 .grid-2 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

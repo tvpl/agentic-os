@@ -2,6 +2,12 @@
 import { useState } from "react";
 import { TerminalSquare, Trash2, Webhook } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  DEFAULT_DEVICE_SCOPES,
+  DEVICE_SCOPES,
+  closeDeviceScopes,
+  type DeviceScope,
+} from "@mordomo/contracts/policy";
 import { api, type DeviceRecord, type SettingsDoc } from "../../api";
 
 import { useLocale, useT } from "../../i18n";
@@ -153,6 +159,48 @@ export function SecurityTab({ s, put }: { s: SettingsShape; put: Put }) {
   );
 }
 
+/**
+ * The four permissions of a paired device as checkboxes. `value` is what the person ticked; the ones another tick
+ * requires (`run` needs `content`, which needs `monitor`) show ticked and locked, and what is sent is the closure.
+ */
+function ScopePicker({
+  id,
+  legend,
+  value,
+  onChange,
+}: {
+  id: string;
+  legend: string;
+  value: DeviceScope[];
+  onChange: (next: DeviceScope[]) => void;
+}) {
+  const t = useT();
+  const shown = new Set(closeDeviceScopes(value));
+  return (
+    <fieldset className="scope-picker" id={id}>
+      <legend>{legend}</legend>
+      {DEVICE_SCOPES.map((scope) => {
+        // Locked when some other ticked box already requires it.
+        const locked = closeDeviceScopes(value.filter((v) => v !== scope)).includes(scope);
+        return (
+          <label className="check" key={scope}>
+            <input
+              type="checkbox"
+              checked={shown.has(scope)}
+              disabled={locked}
+              onChange={(e) =>
+                onChange(e.target.checked ? [...value, scope] : value.filter((v) => v !== scope))
+              }
+            />
+            <strong>{t(`apps.settings.scope.${scope}`)}</strong>
+            <span className="meta">{t(`apps.settings.scope.${scope}.hint`)}</span>
+          </label>
+        );
+      })}
+    </fieldset>
+  );
+}
+
 function RemoteAccess({ s, put }: { s: SettingsShape; put: Put }) {
   const t = useT();
   const locale = useLocale();
@@ -164,9 +212,26 @@ function RemoteAccess({ s, put }: { s: SettingsShape; put: Put }) {
   const meta = useOsMeta();
   const devices = useApiQuery<{ devices: DeviceRecord[] }>(qk.devices, "/api/devices");
   const [pairing, setPairing] = useState<{ code: string; expiresAt: number } | null>(null);
+  // What the next device to pair will be allowed to do (the boxes the person ticked), and the device being edited.
+  const [newScopes, setNewScopes] = useState<DeviceScope[]>([...DEFAULT_DEVICE_SCOPES]);
+  const [editing, setEditing] = useState<{ id: string; scopes: DeviceScope[] } | null>(null);
   const start = useMutation({
-    mutationFn: () => api.post<{ code: string; expiresAt: number }>("/api/pair/start", {}),
+    mutationFn: () =>
+      api.post<{ code: string; expiresAt: number }>("/api/pair/start", {
+        scopes: closeDeviceScopes(newScopes),
+      }),
     onSuccess: (res) => setPairing(res),
+    onError: (err: Error) => toast(err.message, "danger"),
+  });
+  const rescope = useMutation({
+    mutationFn: (vars: { id: string; scopes: DeviceScope[] }) =>
+      api.patch<DeviceRecord>(`/api/devices/${encodeURIComponent(vars.id)}`, {
+        scopes: closeDeviceScopes(vars.scopes),
+      }),
+    onSuccess: () => {
+      setEditing(null);
+      qc.invalidateQueries({ queryKey: qk.devices }).catch(() => undefined);
+    },
     onError: (err: Error) => toast(err.message, "danger"),
   });
   const revoke = useMutation({
@@ -237,6 +302,11 @@ function RemoteAccess({ s, put }: { s: SettingsShape; put: Put }) {
           {tls.enabled ? t("apps.settings.soundOn") : t("apps.settings.soundOff")}
         </Button>
       </div>
+      {remote.enabled && !tls.enabled && (
+        <p className="hint warn" id="remote-tls-required">
+          {t("apps.settings.remoteTlsRequired")}
+        </p>
+      )}
       <div className="apps-sound">
         <div className="min0">
           <strong>{t("apps.settings.pairDevice")}</strong>
@@ -251,6 +321,12 @@ function RemoteAccess({ s, put }: { s: SettingsShape; put: Put }) {
           {t("apps.settings.pairStart")}
         </Button>
       </div>
+      <ScopePicker
+        id="pair-scopes"
+        legend={t("apps.settings.scopeGroup")}
+        value={newScopes}
+        onChange={setNewScopes}
+      />
       {pairing && (
         <div className="pairing-code-box" role="status">
           <span className="pairing-code-big mono">{pairing.code}</span>
@@ -275,18 +351,59 @@ function RemoteAccess({ s, put }: { s: SettingsShape; put: Put }) {
                   ? ` · ${t("apps.settings.deviceExpires", { date: new Date(d.expiresAt).toLocaleDateString(locale) })}`
                   : ""}
               </span>
-              <Button
-                size="sm"
-                variant="danger"
-                icon={<Trash2 aria-hidden />}
-                loading={revoke.isPending && revoke.variables === d.id}
-                onClick={async () => {
-                  if (await confirm({ title: t("apps.settings.deviceRevoke"), body: d.name, danger: true }))
-                    revoke.mutate(d.id);
-                }}
-              >
-                {t("apps.settings.deviceRevoke")}
-              </Button>
+              <div className="row-actions">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  aria-expanded={editing?.id === d.id}
+                  onClick={() => setEditing(editing?.id === d.id ? null : { id: d.id, scopes: d.scopes })}
+                >
+                  {t("apps.settings.deviceScopesEdit")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  icon={<Trash2 aria-hidden />}
+                  loading={revoke.isPending && revoke.variables === d.id}
+                  onClick={async () => {
+                    if (await confirm({ title: t("apps.settings.deviceRevoke"), body: d.name, danger: true }))
+                      revoke.mutate(d.id);
+                  }}
+                >
+                  {t("apps.settings.deviceRevoke")}
+                </Button>
+              </div>
+              <span className="meta device-scopes">
+                {t("apps.settings.deviceScopes", {
+                  list:
+                    closeDeviceScopes(d.scopes)
+                      .map((scope) => t(`apps.settings.scope.${scope}`))
+                      .join(", ") || t("apps.settings.scopeNone"),
+                })}
+              </span>
+              {editing?.id === d.id && (
+                <div className="device-editor">
+                  <ScopePicker
+                    id={`device-scopes-${d.id}`}
+                    legend={t("apps.settings.deviceScopesEdit")}
+                    value={editing.scopes}
+                    onChange={(scopes) => setEditing({ id: d.id, scopes })}
+                  />
+                  <div className="row-actions">
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      loading={rescope.isPending}
+                      onClick={() => rescope.mutate(editing)}
+                    >
+                      {t("common.save")}
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => setEditing(null)}>
+                      {t("common.cancel")}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>

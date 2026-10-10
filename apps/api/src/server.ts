@@ -1,8 +1,10 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import https from "node:https";
+import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { Writable } from "node:stream";
+import type { TLSSocket } from "node:tls";
 import Fastify, {
   LogController,
   type FastifyContextConfig,
@@ -20,6 +22,7 @@ import {
   certificateHosts,
   ensureTlsMaterial,
   redactSecrets,
+  type DeviceScope,
   type TlsMaterial,
 } from "@mordomo/core";
 import { AppContext } from "./context.js";
@@ -53,6 +56,8 @@ import { isApiRequest, rewriteApiUrl, successorHeaders } from "./apiVersion.js";
 import { SlidingWindow } from "./rateLimit.js";
 import { registerOpenApiRoute } from "./openapi.js";
 import { principalName, type Principal } from "./routes/common.js";
+import { ticketKey } from "./tickets.js";
+import { ignoredBindMessage, listenPlan } from "./transport.js";
 
 export interface ServerHandle {
   app: FastifyInstance;
@@ -61,6 +66,8 @@ export interface ServerHandle {
   close: () => Promise<void>;
   /** The https URL for remote devices when remote.tls is on. */
   tlsUrl: string | null;
+  /** Where the listeners bound: the one without TLS (loopback only) and the TLS one, when there is one. */
+  listeners: { plain: { host: string; port: number }; tls: { host: string; port: number } | null };
 }
 
 /** Uniform error envelope. `message` is duplicated at the top level for older clients. */
@@ -129,7 +136,8 @@ export function isLoopbackAddress(address: string | undefined): boolean {
  * web view that supports Fetch Metadata says `Sec-Fetch-Dest: document` and `Sec-Fetch-Mode: navigate`; one that
  * predates it (WebKit before 16.4) sends neither and a `Mozilla/5.0` user agent; a request from another origin
  * (`Origin` that is not this host) is never one. This is a reduction, not a boundary: a program can send those
- * headers too. Closing it takes a secret the launcher hands the browser (feature `escopos-dispositivo`).
+ * headers too. Closing it takes a secret the launcher hands the browser; `docs/security.md` describes that design,
+ * which `escopos-dispositivo` left unbuilt.
  */
 export function looksLikeBrowserNavigation(req: FastifyRequest): boolean {
   const origin = req.headers.origin;
@@ -146,6 +154,49 @@ export function looksLikeBrowserNavigation(req: FastifyRequest): boolean {
     return /^Mozilla\/5\.0 /.test(String(req.headers["user-agent"] ?? ""));
   }
   return dest === "document" && mode === "navigate";
+}
+
+/** Whether the connection this request arrived on is TLS (the second listener of `startServer`, or an https test). */
+export function isTlsConnection(req: FastifyRequest): boolean {
+  return (req.raw.socket as Partial<TLSSocket>).encrypted === true;
+}
+
+const TLS_REQUIRED_MESSAGE =
+  "This service answers other machines over TLS only. Turn on Settings › Security › Remote access › TLS " +
+  "(remote.enabled and remote.tls.enabled) and open the https address, or reach the service through a tunnel that runs on " +
+  "this machine and forwards to 127.0.0.1 (list its host in remote.allowedHosts)";
+
+const UNAUTHORIZED_MESSAGE = "Missing or invalid local token";
+
+/**
+ * Whether a paired device holding `held` may call a route that declares `needed`: a route with no scope, or an
+ * `owner` one, is the owner's (denied by default); any other scope must be one the device holds.
+ */
+export function deviceVerdict(
+  held: readonly DeviceScope[],
+  needed: RouteScope | undefined,
+): "ok" | "owner_only" | "scope_required" {
+  if (needed === undefined || needed === "owner") return "owner_only";
+  return held.includes(needed) ? "ok" : "scope_required";
+}
+
+/**
+ * The principal a stream ticket was minted for, if it still counts: a device is checked again now (not revoked, not
+ * expired, remote access on, still holding the scope of the route), so a ticket cannot outlive what its device lost.
+ */
+function redeemTicket(
+  ctx: AppContext,
+  ticket: string,
+  key: string,
+  config: FastifyContextConfig,
+): Principal | null {
+  const principal = ctx.streamTickets.redeem(ticket, key);
+  if (!principal) return null;
+  if (principal.kind === "owner") return principal;
+  if (principal.kind !== "device" || !ctx.settings().remote.enabled) return null;
+  const device = ctx.devices.active(principal.deviceId);
+  if (!device || deviceVerdict(device.scopes, config.scope) !== "ok") return null;
+  return principal;
 }
 
 /** The only routes a permission-broker credential may call (docs/security.md, AD-002). */
@@ -178,16 +229,25 @@ declare module "fastify" {
   interface FastifyContextConfig {
     /** Reachable without a credential. Every other /api route is denied by default. */
     public?: boolean;
-    /** Only the owner (the local token) may call it; a paired device gets `403 owner_only`. */
-    scope?: "owner";
+    /**
+     * Who may call it (.specs/features/escopos-dispositivo, door 2). Required on every `/api` route that is not
+     * `public`: registering one without it throws. `owner` - only the local token; a paired device gets
+     * `403 owner_only`. Any other value is the scope a paired device must hold (`403 scope_required` otherwise).
+     */
+    scope?: RouteScope;
     /** A `GET` that may carry its credential in `?token=` (streams and `<img>`/`<iframe>` sources). */
     queryToken?: boolean;
+    /** A `GET` that may carry a stream ticket in `?ticket=` (`POST /api/stream-tickets`), and refuses a device's `?token=`. */
+    ticket?: boolean;
   }
   interface FastifyInstance {
     /** Every /api route as registered (filled by an `onRoute` hook): the OpenAPI document's source. */
     apiRoutes: ApiRoute[];
   }
 }
+
+/** The scope a route declares: the owner alone, or the scope of a paired device it needs. */
+export type RouteScope = "owner" | DeviceScope;
 
 export interface ApiRoute {
   method: string;
@@ -203,9 +263,9 @@ export function tokenMatches(supplied: unknown, expected: string): boolean {
   return crypto.timingSafeEqual(a, b);
 }
 
-/** Strip the token from a URL before it reaches any log line. */
+/** Strip the token and the stream ticket from a URL before it reaches any log line. */
 export function safeUrl(url: string): string {
-  return url.replace(/([?&]token=)[^&#]*/gi, "$1[REDACTED]");
+  return url.replace(/([?&](?:token|ticket)=)[^&#]*/gi, "$1[REDACTED]");
 }
 
 const STATUS_CODES: Record<number, string> = {
@@ -271,6 +331,12 @@ export async function buildServer(
   app.decorate("apiRoutes", [] as ApiRoute[]);
   app.addHook("onRoute", (route) => {
     if (!route.url.startsWith("/api/")) return;
+    // Denied by default: a route that does not say who may call it does not exist.
+    if (route.config?.public !== true && route.config?.scope === undefined) {
+      throw new Error(
+        `${[route.method].flat().join("/")} ${route.url} declares no scope: add config: { scope } (owner, monitor, content, run or approve), or public: true`,
+      );
+    }
     for (const method of [route.method].flat()) {
       // HEAD twins of GET routes are added by Fastify itself.
       if (method !== "HEAD") app.apiRoutes.push({ method, url: route.url, config: route.config ?? {} });
@@ -282,6 +348,12 @@ export async function buildServer(
   const failedAuth = new SlidingWindow(20, 5 * 60_000);
 
   app.addHook("onRequest", async (req: FastifyRequest, reply: FastifyReply) => {
+    // Another machine reaches this service over TLS or not at all (door 6): decided before anything is read from the
+    // request, so a credential that crossed the network in the clear is never even compared. A tunnel or a reverse
+    // proxy on this machine arrives from loopback and is not asked.
+    if (!isLoopbackAddress(req.socket.remoteAddress) && !isTlsConnection(req)) {
+      return reply.code(403).send(errorBody("tls_required", TLS_REQUIRED_MESSAGE));
+    }
     const remote = ctx.settings().remote;
     const extraHosts = remote.enabled ? remote.allowedHosts : [];
     if (!isAllowedHost(req.headers.host, extraHosts)) {
@@ -298,25 +370,39 @@ export async function buildServer(
     // router decodes the path, so `/%61pi/settings` is `/api/settings` here.
     const route = req.routeOptions.url;
     const config = req.routeOptions.config;
-    const queryToken = (req.query as Record<string, string | undefined> | undefined)?.token;
+    const query = req.query as Record<string, string | undefined> | undefined;
+    const queryToken = query?.token;
+    const queryTicket = query?.ticket;
+    const api = isApiRequest(req.url, route);
     // A token in the URL lands in proxy logs and browser history: only the
     // GETs that cannot send a header (EventSource, <img>, <iframe>) take one.
     // Refused on every other /api request (`isApiRequest`: matched or not, public
     // routes and methods without a route included) with 401, also on a path
     // that does not exist: 401 is the safer refusal, it never reveals which
     // spellings are routes (`req.url` is already rewritten from `/api/v1/…`).
-    if (
-      isApiRequest(req.url, route) &&
-      queryToken !== undefined &&
-      !(req.method === "GET" && config.queryToken === true)
-    ) {
+    if (api && queryToken !== undefined && !(req.method === "GET" && config.queryToken === true)) {
       return reply
         .code(401)
         .send(
           errorBody("unauthorized", "This route does not accept a token in the URL; send x-mordomo-token"),
         );
     }
+    // A ticket is no better than a token anywhere but the two streams it was made for.
+    if (api && queryTicket !== undefined && !(req.method === "GET" && config.ticket === true)) {
+      return reply.code(401).send(errorBody("unauthorized", UNAUTHORIZED_MESSAGE));
+    }
     if (!route?.startsWith("/api/") || config.public === true) return;
+    if (config.ticket === true && queryTicket !== undefined) {
+      const principal = redeemTicket(
+        ctx,
+        queryTicket,
+        ticketKey(route, req.params as Record<string, unknown>),
+        config,
+      );
+      if (!principal) return reply.code(401).send(errorBody("unauthorized", UNAUTHORIZED_MESSAGE));
+      req.principal = principal;
+      return;
+    }
     const supplied = (req.headers["x-mordomo-token"] as string | undefined) ?? queryToken;
     if (tokenMatches(supplied, token)) {
       req.principal = { kind: "owner" };
@@ -324,10 +410,33 @@ export async function buildServer(
     }
     const device = remote.enabled && typeof supplied === "string" ? ctx.devices.verify(supplied) : null;
     if (device) {
-      if (config.scope === "owner") {
+      // A device credential never rides in the URL of a stream: it asks for a ticket (door 5).
+      if (config.ticket === true && supplied === queryToken && queryToken !== undefined) {
+        return reply
+          .code(401)
+          .send(
+            errorBody(
+              "unauthorized",
+              "A device opens this stream with a ticket: POST /api/v1/stream-tickets, then send ?ticket=",
+            ),
+          );
+      }
+      const needed = config.scope;
+      const verdict = deviceVerdict(device.scopes, needed);
+      if (verdict === "owner_only") {
         return reply
           .code(403)
           .send(errorBody("owner_only", "Only the owner, with the local token, can call this route"));
+      }
+      if (verdict === "scope_required") {
+        return reply
+          .code(403)
+          .send(
+            errorBody(
+              "scope_required",
+              `This device has no "${String(needed)}" permission; the owner grants it in Settings › Security › Remote access`,
+            ),
+          );
       }
       req.principal = { kind: "device", deviceId: device.id };
       return;
@@ -355,7 +464,7 @@ export async function buildServer(
       req.principal = { kind: "run", runId: runApi.runId };
       return;
     }
-    return reply.code(401).send(errorBody("unauthorized", "Missing or invalid local token"));
+    return reply.code(401).send(errorBody("unauthorized", UNAUTHORIZED_MESSAGE));
   });
 
   app.addHook("onSend", async (req, reply, payload) => {
@@ -630,8 +739,13 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   // process listening there if it is a MordomoOS service, plus leftovers of
   // this same install (a lost port race, a restart still shutting down) — and
   // retry. Other homes and checkouts on other ports are never touched.
+  const plan = listenPlan(settings);
+  if (plan.ignoredBind !== null) {
+    app.log.warn({ bindAddress: plan.ignoredBind, msg: ignoredBindMessage(plan.ignoredBind) });
+    console.warn(`[mordomo] ${ignoredBindMessage(plan.ignoredBind)}`);
+  }
   try {
-    await app.listen({ port: settings.port, host: settings.bindAddress });
+    await app.listen({ port: settings.port, host: plan.plainHost });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "EADDRINUSE") throw err;
     const snap = await instanceSnapshot(process.pid, 0);
@@ -646,7 +760,7 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
     if (leftovers.length === 0) throw err; // something else owns the port: report, never kill
     const stopped = await terminate(leftovers);
     app.log.warn({ pids: stopped, port: settings.port, msg: "stopped MordomoOS processes holding the port" });
-    await listenWithRetry(app, settings.port, settings.bindAddress, 40);
+    await listenWithRetry(app, settings.port, plan.plainHost, 40);
   }
   const url = `http://127.0.0.1:${settings.port}`;
 
@@ -661,7 +775,7 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
     });
     await new Promise<void>((resolve, reject) => {
       tlsServer!.once("error", reject);
-      tlsServer!.listen(tls.port, settings.bindAddress, () => resolve());
+      tlsServer!.listen(tls.port, plan.tlsHost ?? plan.plainHost, () => resolve());
     });
     app.log.info({ port: tls.port, fingerprint: tls.material.fingerprint, msg: "tls listener up" });
   }
@@ -716,5 +830,17 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   process.on("SIGINT", onSignal);
   process.on("unhandledRejection", onRejection);
 
-  return { app, ctx, url, tlsUrl: tls ? `https://${tls.hosts[0] ?? "localhost"}:${tls.port}` : null, close };
+  // What the sockets bound to, as the operating system reports it (not what was asked for).
+  const bound = (server: { address(): unknown }) => {
+    const address = server.address() as AddressInfo;
+    return { host: address.address, port: address.port };
+  };
+  return {
+    app,
+    ctx,
+    url,
+    tlsUrl: tls ? `https://${tls.hosts[0] ?? "localhost"}:${tls.port}` : null,
+    listeners: { plain: bound(app.server), tls: tlsServer ? bound(tlsServer) : null },
+    close,
+  };
 }

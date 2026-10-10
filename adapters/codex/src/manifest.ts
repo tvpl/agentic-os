@@ -14,6 +14,7 @@ export const codexManifest: ProviderManifest = {
     streaming: true,
     resume: "subcommand",
     writeConfinement: "sandbox",
+    readConfinement: "none",
   },
   layout: {
     instructionsFile: "AGENTS.md",

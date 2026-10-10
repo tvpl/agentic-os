@@ -9,6 +9,7 @@ import { AppContext } from "../apps/api/src/context.js";
 import { buildServer, isLoopbackAddress } from "../apps/api/src/server.js";
 import { OPENABLE_EXTENSIONS, openerFor } from "../apps/api/src/routes/memory.js";
 import { makeTempHome } from "./helpers.js";
+import { tlsForRemotePeers } from "./helpers/tlsPeers.js";
 
 /**
  * Security P0 (.specs/features/seguranca-p0): every /api route needs a
@@ -60,7 +61,7 @@ beforeAll(async () => {
     path.join(uiDir, "index.html"),
     '<!doctype html><html><head><meta name="mordomo-token" content="" /></head><body></body></html>',
   );
-  app = await buildServer(ctx, { uiDist: uiDir });
+  app = tlsForRemotePeers(await buildServer(ctx, { uiDist: uiDir }));
 });
 
 afterAll(async () => {

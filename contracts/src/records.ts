@@ -16,6 +16,12 @@ export interface Approval {
    * approvals decided before this was recorded.
    */
   resolvedBy: string | null;
+  /**
+   * Who asked for it, by the same names: `"owner"`, `"device:<deviceId>"`, or null for what no request caused (a
+   * routine, a sentinel, the CLI) and for approvals raised before this was recorded. A device cannot approve
+   * what it asked for itself.
+   */
+  requestedBy: string | null;
   /** When a still-pending approval is swept to `expired` (createdAt + TTL). */
   expiresAt: number;
 }
@@ -113,6 +119,14 @@ export interface ProviderCapabilities {
    * `approved_automation`.
    */
   writeConfinement: "broker" | "sandbox" | "none";
+  /**
+   * Where the CLI's own reads stop: `workdir` - outside the working folder (and the folders added to the run) a
+   * read needs a permission a headless run is denied; `none` - the CLI reads whatever the operating-system user
+   * reads, whatever its read-only mode says (Codex's `--sandbox read-only` limits writes, Cursor has no sandbox).
+   * A run started by a paired device is only accepted on a provider that declares `workdir`, because the owner
+   * token sits in a file the folder does not contain (`docs/security.md`, T3).
+   */
+  readConfinement: "workdir" | "none";
 }
 
 /** One hourly snapshot of the live numbers (Settings › Trends). */

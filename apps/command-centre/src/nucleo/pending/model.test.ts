@@ -13,6 +13,7 @@ const approval = (id: string, at: number, runId?: string): ApprovalRecord => ({
   status: "pending",
   resolvedAt: null,
   resolvedBy: null,
+  requestedBy: null,
   expiresAt: 0,
 });
 const run = (id: string, status: string, at: number): RunRecord =>

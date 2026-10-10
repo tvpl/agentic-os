@@ -12,6 +12,7 @@
  * HTTP API applies.
  */
 import path from "node:path";
+import { isDeviceActor } from "@mordomo/contracts";
 import type { AgentAdapter, PermissionBroker, RunMode } from "./agents/types.js";
 import type { ProviderRegistry } from "./agents/registry.js";
 import {
@@ -84,6 +85,11 @@ export interface PromptRunInput {
   sessionId?: string;
   /** Squad: the run this one was fanned out from. */
   parentRunId?: string;
+  /**
+   * Who asked, by the names `Approval.resolvedBy` uses (`owner`, `device:<id>`); null for the CLI. Required so each
+   * caller decides: a write asked by a paired device always waits for a human (`gateWrite`).
+   */
+  startedBy: string | null;
 }
 
 export interface SkillRunInput {
@@ -96,6 +102,8 @@ export interface SkillRunInput {
   timeoutMs: number;
   /** First run in the lineage when this is a deliberate retry. */
   parentRunId?: string | null;
+  /** Who asked (see `PromptRunInput.startedBy`). */
+  startedBy: string | null;
 }
 
 /** What an approved `write_run` approval replays (also its stored payload shape). */
@@ -482,9 +490,11 @@ export class MordomoEngine {
     }
     const confinement = this.providers.manifest(provider).capabilities.writeConfinement;
     // A provider that confines nothing gets a human first, unless the owner
-    // chose fully approved automation.
+    // chose fully approved automation. A paired device never writes without
+    // one: what it asks for waits, whatever the profile would have allowed.
     const unconfined = confinement === "none" && profile !== "approved_automation";
-    if (writeDecision(profile, origin) !== "approval" && !unconfined) {
+    const askedByDevice = isDeviceActor(payload.input.startedBy);
+    if (writeDecision(profile, origin) !== "approval" && !unconfined && !askedByDevice) {
       return { pendingApproval: null, runId: null };
     }
     const fields =
@@ -494,7 +504,12 @@ export class MordomoEngine {
       profile: this.settings().securityProfile,
       status: "waiting_approval",
     }).id;
-    const approval = this.approvals.request("write_run", description, { ...payload, runId });
+    const approval = this.approvals.request(
+      "write_run",
+      description,
+      { ...payload, runId },
+      payload.input.startedBy,
+    );
     events.emit("approval.requested", { id: approval.id, kind: approval.kind, description, runId });
     return { pendingApproval: approval, runId };
   }
@@ -516,6 +531,7 @@ export class MordomoEngine {
       timeoutMs: input.timeoutMs,
       skillSlug: input.slug,
       parentRunId: input.parentRunId ?? null,
+      startedBy: input.startedBy,
     };
   }
 }
@@ -534,6 +550,7 @@ export function promptRunFields(input: PromptRunInput): Omit<CreateRunInput, "pr
     timeoutMs: input.timeoutMs,
     ...(input.sessionId ? { sessionId: input.sessionId } : {}),
     ...(input.parentRunId ? { parentRunId: input.parentRunId } : {}),
+    startedBy: input.startedBy,
   };
 }
 

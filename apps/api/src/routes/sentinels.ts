@@ -18,7 +18,7 @@ export interface SentinelStatusRow {
 }
 
 export function registerSentinelRoutes(app: FastifyInstance, ctx: AppContext): void {
-  app.get("/api/sentinels", async () => {
+  app.get("/api/sentinels", { config: { scope: "monitor" } }, async () => {
     const settings = ctx.settings();
     const cfg = settings.sentinels as Record<string, Record<string, unknown> & { enabled?: boolean }>;
     const recent = ctx.notifications.list({ limit: 300 });

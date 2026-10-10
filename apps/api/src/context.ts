@@ -21,6 +21,7 @@ import {
 } from "@mordomo/core";
 import { cliEntry, seedDir } from "./entry.js";
 import { buildProviderRegistry } from "./providers.js";
+import { TicketStore } from "./tickets.js";
 
 export interface ProviderSnapshot {
   id: ProviderId;
@@ -76,6 +77,9 @@ const MEMORY_WRITES_PER_DAY = 500;
 export class AppContext extends MordomoEngine {
   /** Telegram inbound poller; created and started by the server (needs the approval actions). */
   telegramPoller: TelegramPoller | null = null;
+
+  /** The tickets that open the two SSE streams without a credential in the URL (`POST /api/stream-tickets`). */
+  readonly streamTickets = new TicketStore();
 
   private healthCache = new Map<ProviderId, { at: number; health: HealthStatus }>();
   private healthInFlight = new Map<ProviderId, Promise<HealthStatus>>();

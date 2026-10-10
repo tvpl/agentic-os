@@ -18,9 +18,9 @@ export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): 
   // One cache per server process; the TTL comes from settings at read time.
   const cache = new ConnectorDataCache(ctx.settings().connectors.dataCacheTtlMs);
 
-  app.get("/api/connectors", async () => ctx.connectors.list());
+  app.get("/api/connectors", { config: { scope: "content" } }, async () => ctx.connectors.list());
 
-  app.get("/api/connectors/audit", async () =>
+  app.get("/api/connectors/audit", { config: { scope: "owner" } }, async () =>
     runAudit(ctx.connectors, undefined, homeConfigFilesOf(ctx.providers.manifests())),
   );
 
@@ -29,7 +29,7 @@ export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): 
    * mail, … Never writes; the client refuses any tool outside the connector's
    * declared read mapping. `?refresh=1` bypasses the 5-minute TTL cache.
    */
-  app.get("/api/connectors/:id/data", async (req) => {
+  app.get("/api/connectors/:id/data", { config: { scope: "content" } }, async (req) => {
     const { id } = IdParams.parse(req.params);
     const { refresh } = DataQuery.parse(req.query ?? {});
     const connector = ctx.connectors.get(id);
@@ -62,7 +62,7 @@ export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): 
   });
 
   /** The setup checklist alone (install command, env var NAMES, allowlist step) — never any secret value. */
-  app.get("/api/connectors/:id/setup", async (req) => {
+  app.get("/api/connectors/:id/setup", { config: { scope: "owner" } }, async (req) => {
     const { id } = IdParams.parse(req.params);
     const connector = ctx.connectors.get(id);
     if (!connector) throw httpError(404, "Connector not found");

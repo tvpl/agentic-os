@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 import * as contracts from "@mordomo/contracts";
+import * as policy from "@mordomo/contracts/policy";
 import * as core from "@mordomo/core";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
@@ -57,6 +58,68 @@ describe("S1 the contracts package", () => {
     };
     walk("contracts/src/policy.ts");
     expect([...reached].filter((m) => !m.startsWith("contracts/src/"))).toEqual([]);
+  });
+
+  it("C41 the device pieces are the only new exports", () => {
+    // The whole runtime surface of the package, pinned: a name added or removed is a change to a door.
+    expect(Object.keys(contracts).sort()).toEqual(
+      [
+        "BUILTIN_PROVIDER_IDS",
+        "BrainSettingsSchema",
+        "CURRENT_SETTINGS_VERSION",
+        "ChannelSettingsSchema",
+        "ClaudeStreamMessage",
+        "CodexStreamEvent",
+        "DEFAULT_DEVICE_SCOPES",
+        "DEFAULT_EXCLUDES",
+        "DEFAULT_HUD",
+        "DEVICE_SCOPES",
+        "EffortLevel",
+        "IndexedFolderSchema",
+        "KnownStreamTypes",
+        "MicroAppSchema",
+        "NOTIFICATION_KINDS",
+        "OS_EVENT_VERSION",
+        "PROFILES",
+        "ProviderId",
+        "ProviderSettingsSchema",
+        "SENTINEL_IDS",
+        "SecurityProfile",
+        "SentinelSettingsSchema",
+        "SessionId",
+        "SettingsSchema",
+        "TERMINAL_STATUSES",
+        "UI_PREFERENCE_KEYS",
+        "UI_SHELLS",
+        "UiPreferencesSchema",
+        "UiShellSchema",
+        "closeDeviceScopes",
+        "defaultSettings",
+        "defaultUiPreferences",
+        "detectTimezone",
+        "isDeviceActor",
+        "writeDecision",
+      ].sort(),
+    );
+    // The browser takes the scopes from the entry point that carries no zod.
+    expect(Object.keys(policy).sort()).toEqual(
+      [
+        "DEFAULT_DEVICE_SCOPES",
+        "DEVICE_SCOPES",
+        "PROFILES",
+        "closeDeviceScopes",
+        "isDeviceActor",
+        "writeDecision",
+      ].sort(),
+    );
+    expect(core.DEVICE_SCOPES).toBe(contracts.DEVICE_SCOPES);
+    expect(core.DEFAULT_DEVICE_SCOPES).toBe(contracts.DEFAULT_DEVICE_SCOPES);
+    expect(core.closeDeviceScopes).toBe(contracts.closeDeviceScopes);
+    expect(core.isDeviceActor).toBe(contracts.isDeviceActor);
+    expect(contracts.isDeviceActor("device:abc")).toBe(true);
+    for (const by of ["owner", "device:", "telegram:1", "broker:r", "", null, undefined]) {
+      expect(contracts.isDeviceActor(by as string | null | undefined), String(by)).toBe(false);
+    }
   });
 
   it("C4 core re-exports the very same contract objects", () => {

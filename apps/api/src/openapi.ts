@@ -6,12 +6,17 @@ import type { ApiRoute } from "./server.js";
  * `GET /api/v1/openapi.json`: an OpenAPI 3.1 document generated from the
  * route table Fastify built at startup (`app.apiRoutes`), so a route added
  * without documentation still appears. Each operation carries its method,
- * path parameters, who may call it (`security`, `x-mordomo-scope`) and the
- * error envelope; request and response bodies are not described yet.
+ * path parameters, who may call it (`security`, `x-mordomo-scope`: `owner` or
+ * the scope a device must hold) and the error envelope; request and response
+ * bodies are not described yet.
  */
 export function registerOpenApiRoute(app: FastifyInstance): void {
   let document: Record<string, unknown> | null = null;
-  app.get("/api/openapi.json", async () => (document ??= openApiDocument(app.apiRoutes)));
+  app.get(
+    "/api/openapi.json",
+    { config: { scope: "monitor" } },
+    async () => (document ??= openApiDocument(app.apiRoutes)),
+  );
 }
 
 const ERROR_RESPONSE = { $ref: "#/components/responses/Error" };
@@ -42,14 +47,16 @@ export function openApiDocument(routes: readonly ApiRoute[]): Record<string, unk
     const path = `/api/v1/${route.url.slice("/api/".length)}`.replace(/:(\w+)/g, "{$1}");
     const security = route.config.public
       ? []
-      : route.config.queryToken
-        ? [{ localToken: [] }, { queryToken: [] }]
-        : [{ localToken: [] }];
+      : [
+          { localToken: [] },
+          ...(route.config.queryToken ? [{ queryToken: [] }] : []),
+          ...(route.config.ticket ? [{ streamTicket: [] }] : []),
+        ];
     (paths[path] ??= {})[route.method.toLowerCase()] = {
       tags: [route.url.split("/")[2]],
       parameters: params.map((name) => ({ name, in: "path", required: true, schema: { type: "string" } })),
       security,
-      ...(route.config.scope === "owner" ? { "x-mordomo-scope": "owner" } : {}),
+      ...(route.config.scope ? { "x-mordomo-scope": route.config.scope } : {}),
       responses: {
         "200": { description: "Success" },
         ...Object.fromEntries(
@@ -69,13 +76,17 @@ export function openApiDocument(routes: readonly ApiRoute[]): Record<string, unk
       version: String(API_VERSION),
       description:
         "Local API of MordomoOS. /api/v1 is the documented path; the unversioned /api is a deprecated alias. " +
-        'A paired device may call every route except those marked x-mordomo-scope: "owner".',
+        "Every route that is not public declares the scope that may call it (x-mordomo-scope): the owner (the local " +
+        "token) calls all of them; a paired device calls those whose scope it holds - monitor, content, run or " +
+        'approve - and never those marked "owner". The two event streams also take a one-use ticket from ' +
+        "POST /api/v1/stream-tickets.",
     },
     paths,
     components: {
       securitySchemes: {
         localToken: { type: "apiKey", in: "header", name: "x-mordomo-token" },
         queryToken: { type: "apiKey", in: "query", name: "token" },
+        streamTicket: { type: "apiKey", in: "query", name: "ticket" },
       },
       schemas: {
         Error: {

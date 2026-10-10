@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { checkRouters, probe, type ProviderId } from "@mordomo/core";
 import type { AppContext } from "./context.js";
+import { ignoredBindMessage, isLoopbackBind, listenPlan } from "./transport.js";
 
 export interface DoctorCheck {
   id: string;
@@ -238,14 +239,19 @@ export async function runDoctor(ctx: AppContext, opts: DoctorOptions = {}): Prom
     detail: `${metrics.last7d} run(s) in 7 days, ${metrics.failedRecent} failed in 24h`,
   });
 
+  // The listener without TLS is for this machine only (docs/security.md, T1): a `bindAddress` beyond loopback is
+  // honoured by the TLS listener alone, and ignored (with this warning) when remote access and its TLS are off.
+  const plan = listenPlan(settings);
   checks.push({
     id: "bind",
     label: "Network exposure",
-    status: settings.bindAddress === "127.0.0.1" ? "ok" : "warn",
+    status: plan.ignoredBind !== null ? "warn" : "ok",
     detail:
-      settings.bindAddress === "127.0.0.1"
-        ? "Server bound to 127.0.0.1 (local only)"
-        : `Server configured to bind ${settings.bindAddress} — make sure this is intentional and protected`,
+      plan.ignoredBind !== null
+        ? ignoredBindMessage(plan.ignoredBind)
+        : plan.tlsHost !== null && !isLoopbackBind(plan.tlsHost)
+          ? `Plain HTTP on ${plan.plainHost} (this machine only); other machines reach the TLS listener on ${plan.tlsHost}`
+          : `Server bound to ${plan.plainHost} (local only)`,
   });
 
   if (opts.npmAudit !== false) checks.push(await npmAuditCheck(ctx.paths.home));

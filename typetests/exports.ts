@@ -4,6 +4,8 @@
  */
 import type {
   Approval,
+  DeviceRecord,
+  DeviceScope,
   NotificationRecord,
   OsEvent,
   OsEventMap,
@@ -20,6 +22,8 @@ import type {
 
 export type ContractExports = [
   Approval,
+  DeviceRecord,
+  DeviceScope,
   NotificationRecord,
   OsEvent,
   OsEventMap,
@@ -45,3 +49,34 @@ export const toolUseWithPaths: ToolUse = { ...toolUseBase, paths: ["/repo/a.ts",
 export const toolUsePathsString: ToolUse = { ...toolUseBase, paths: "/repo/a.ts" };
 // @ts-expect-error `paths` is a list of strings, not of numbers
 export const toolUsePathsNumbers: ToolUse = { ...toolUseBase, paths: [1] };
+
+/**
+ * escopos-dispositivo, door 4: a manifest must say where its provider's reads stop. A provider written before the
+ * field existed does not compile, so it cannot be mistaken for one that keeps reads in the working folder.
+ */
+// @ts-expect-error `readConfinement` is required
+export const noReadConfinement: ProviderCapabilities = {
+  enforcesReadOnly: true,
+  supportsEffort: true,
+  promptTransport: "stdin",
+  streaming: true,
+  resume: "flag",
+  writeConfinement: "broker",
+};
+export const withReadConfinement: ProviderCapabilities = { ...noReadConfinement, readConfinement: "workdir" };
+// @ts-expect-error only `workdir` and `none`
+export const unknownConfinement: ProviderCapabilities = { ...withReadConfinement, readConfinement: "some" };
+
+/** escopos-dispositivo, door 1: a device holds scopes from the four names, and the record says which. */
+export const heldScopes: DeviceScope[] = ["monitor", "content", "run", "approve"];
+// @ts-expect-error `manage` is not a device scope
+export const unknownScope: DeviceScope = "manage";
+// @ts-expect-error a device record always lists its scopes
+export const deviceWithoutScopes: DeviceRecord = {
+  id: "d",
+  name: "n",
+  createdAt: 1,
+  lastSeenAt: null,
+  expiresAt: null,
+  revokedAt: null,
+};

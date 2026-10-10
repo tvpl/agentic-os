@@ -14,10 +14,11 @@ import { resolveApprovalForChat } from "../apps/api/src/approvalActions.js";
 import { probeServer } from "../apps/api/src/instances.js";
 import { isApiRequest } from "../apps/api/src/apiVersion.js";
 import Database from "better-sqlite3";
-import { MIGRATIONS, TelegramPoller, type TelegramUpdate } from "@mordomo/core";
+import { MIGRATIONS, TelegramPoller, type DeviceScope, type TelegramUpdate } from "@mordomo/core";
 import { FAKE_BIN, makeTempHome } from "./helpers.js";
 import { okLiteralSites, okNotTrueSites } from "./helpers/okScanner.js";
 import { unversionedApiUrls } from "./helpers/apiUrlScanner.js";
+import { tlsForRemotePeers } from "./helpers/tlsPeers.js";
 
 const TELEGRAM_ENV = "MORDOMO_V1_TEST_TELEGRAM_TOKEN";
 
@@ -67,7 +68,7 @@ beforeAll(async () => {
   ctx.settingsStore.save(settings);
   ctx.reloadAdapters();
   token = ctx.token();
-  app = await buildServer(ctx);
+  app = tlsForRemotePeers(await buildServer(ctx));
 });
 
 afterEach(() => {
@@ -86,8 +87,12 @@ const owner = () => ({ "x-mordomo-token": token, "content-type": "application/js
 const as = (credential: string) => ({ "x-mordomo-token": credential, "content-type": "application/json" });
 
 /** A paired device and its bearer token. */
-function pairDevice(name = "phone"): { id: string; token: string } {
-  const { code } = ctx.devices.startPairing(name);
+function pairDevice(
+  name = "phone",
+  scopes: readonly DeviceScope[] = ["monitor", "content", "run", "approve"],
+): { id: string; token: string } {
+  // api-v1 predates scopes: its devices hold all four, so what these checks say about a device stays true.
+  const { code } = ctx.devices.startPairing(name, scopes);
   const claimed = ctx.devices.claim(code, name);
   expect(claimed).not.toBeNull();
   return { id: claimed!.device.id, token: claimed!.token };
@@ -467,9 +472,10 @@ describe("S3 scopes and the token in the URL", () => {
     expect(ctx.devices.pairingOpen()).toBeNull();
   });
 
-  it("C12 the owner routes are exactly the door's list", () => {
+  it("C12 the owner routes include the door's list", () => {
+    // escopos-dispositivo (AD-015) widens the owner set: the 18 of door 3 are still in it, the exact set is C3 there.
     const marked = app.apiRoutes.filter((r) => r.config.scope === "owner").map((r) => `${r.method} ${r.url}`);
-    expect(marked.sort()).toEqual(OWNER_ROUTES.map(([m, u]) => `${m} ${u}`).sort());
+    expect(marked).toEqual(expect.arrayContaining(OWNER_ROUTES.map(([m, u]) => `${m} ${u}`)));
     // The table is the router's: every route Fastify knows is in it, and nothing else.
     expect(app.apiRoutes.map((r) => `${r.method} ${r.url}`).sort()).toEqual(
       registeredApiRoutes()
@@ -478,7 +484,7 @@ describe("S3 scopes and the token in the URL", () => {
     );
   });
 
-  it("C13 a device keeps the everyday routes", async () => {
+  it("C13 a device keeps the everyday routes it holds", async () => {
     const device = pairDevice("phone");
     const list = await app.inject({ method: "GET", url: "/api/v1/runs", headers: as(device.token) });
     expect(list.statusCode).toBe(200);
@@ -671,8 +677,10 @@ describe("S5 the route document", () => {
     const owners = operations(doc)
       .filter((o) => o.op["x-mordomo-scope"] === "owner")
       .map((o) => o.key);
-    expect(owners.sort()).toEqual(
-      OWNER_ROUTES.map(([m, u]) => `${m} /api/v1/${u.slice(5).replace(/:(\w+)/g, "{$1}")}`).sort(),
+    expect(owners).toEqual(
+      expect.arrayContaining(
+        OWNER_ROUTES.map(([m, u]) => `${m} /api/v1/${u.slice(5).replace(/:(\w+)/g, "{$1}")}`),
+      ),
     );
     expect(doc.paths["/api/v1/meta"]!.get!.security).toEqual([]);
     expect(doc.paths["/api/v1/pair/claim"]!.post!.security).toEqual([]);
@@ -874,7 +882,7 @@ describe("S6 who decided, and Telegram per person", () => {
   it("C26 old approvals read back without a decider", () => {
     const tmp = makeTempHome();
     try {
-      const previous = Math.max(...MIGRATIONS.map((m) => m.version)) - 1;
+      const previous = MIGRATIONS.find((m) => m.name === "approval-resolved-by")!.version - 1;
       const raw = new Database(tmp.paths.dbFile);
       for (const m of MIGRATIONS.filter((x) => x.version <= previous)) {
         if (m.sql) raw.exec(m.sql);

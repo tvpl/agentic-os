@@ -149,6 +149,7 @@ const run = (
   attempts: 1,
   timeoutMs: null,
   permissionProfile: null,
+  startedBy: null,
   usage: null,
   ...fields,
 });

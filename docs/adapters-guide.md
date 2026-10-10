@@ -41,6 +41,15 @@ streamed events (`started`, `assistant`, `tool_use`, `permission`, `text`,
    flag, permission rules, or at minimum never passing the provider's
    auto-apply flag). If the installed CLI cannot enforce it, throw — do not
    silently run writable. Never use full-bypass flags.
+   Declare in the manifest where the CLI's own *reads* stop
+   (`capabilities.readConfinement`): `"workdir"` only if a read outside the working
+   folder and the folders added to the run needs a permission that a headless run is
+   denied; `"none"` if the CLI reads whatever the user can read, whatever its read-only
+   mode says (Codex's `--sandbox read-only` limits writes, Cursor has no sandbox). It is
+   required, and it decides one thing: a run asked for by a paired device is accepted
+   only on a `"workdir"` provider, because the owner token sits in a file under the home
+   that a `"none"` provider would read on request (`docs/security.md`, T3). Claim
+   `"workdir"` only for a behaviour you ran, not for one a README promises.
 4. Map `effort` only if the provider supports it; otherwise ignore it and say
    so in `detect().notes`.
 5. Describe and register it. Declare the package's `ProviderManifest` in

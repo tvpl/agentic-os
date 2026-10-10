@@ -35,18 +35,18 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
     if (workingDir) ctx.resolveCwd(workingDir); // PathAccessError → 403 forbidden_path
   };
 
-  app.get("/api/routines", async () => ctx.scheduler.status());
+  app.get("/api/routines", { config: { scope: "monitor" } }, async () => ctx.scheduler.status());
 
   /** Dashboard footer: "n/m fired today" plus the routine count per runner and kind. */
-  app.get("/api/routines/summary", async () => ctx.scheduler.summary());
+  app.get("/api/routines/summary", { config: { scope: "monitor" } }, async () => ctx.scheduler.summary());
 
   /** Hygiene input: routines that never fired, went quiet, or keep failing inside the window. */
-  app.get("/api/routines/silent", async (req) => {
+  app.get("/api/routines/silent", { config: { scope: "monitor" } }, async (req) => {
     const { days } = SilentQuery.parse(req.query ?? {});
     return { days, routines: ctx.scheduler.silent(days) };
   });
 
-  app.post("/api/routines", async (req) => {
+  app.post("/api/routines", { config: { scope: "owner" } }, async (req) => {
     const routine = RoutineSchema.parse(req.body);
     requireProvider(ctx, routine.provider);
     checkWorkingDir(routine.workingDir);
@@ -60,7 +60,7 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
     return saved;
   });
 
-  app.put("/api/routines/:id", async (req) => {
+  app.put("/api/routines/:id", { config: { scope: "owner" } }, async (req) => {
     const { id } = IdParams.parse(req.params);
     if (!ctx.routines.get(id)) throw httpError(404, "Routine not found");
     const routine = RoutineSchema.parse({ ...(req.body as object), id });
@@ -75,7 +75,7 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
     return saved;
   });
 
-  app.post("/api/routines/:id/toggle", async (req) => {
+  app.post("/api/routines/:id/toggle", { config: { scope: "owner" } }, async (req) => {
     const { id } = IdParams.parse(req.params);
     const routine = ctx.routines.get(id);
     if (!routine) throw httpError(404, "Routine not found");
@@ -92,7 +92,7 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
     return saved;
   });
 
-  app.post("/api/routines/:id/duplicate", async (req) => {
+  app.post("/api/routines/:id/duplicate", { config: { scope: "owner" } }, async (req) => {
     const { id } = IdParams.parse(req.params);
     if (!ctx.routines.get(id)) throw httpError(404, "Routine not found");
     const copy = save(() => ctx.routines.duplicate(id, saveOpts()));
@@ -101,7 +101,7 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
     return copy;
   });
 
-  app.delete("/api/routines/:id", async (req) => {
+  app.delete("/api/routines/:id", { config: { scope: "owner" } }, async (req) => {
     const { id } = IdParams.parse(req.params);
     if (!ctx.routines.remove(id)) throw httpError(404, "Routine not found");
     ctx.scheduler.reload();
@@ -110,7 +110,7 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
   });
 
   /** Manual test run — returns the real run id; watch via /api/runs/:id/stream. */
-  app.post("/api/routines/:id/run", async (req) => {
+  app.post("/api/routines/:id/run", { config: { scope: "owner" } }, async (req) => {
     const { id } = IdParams.parse(req.params);
     const routine = ctx.routines.get(id);
     if (!routine) throw httpError(404, "Routine not found");
@@ -123,7 +123,7 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
     return { runId, status };
   });
 
-  app.get("/api/routines/:id/history", async (req) => {
+  app.get("/api/routines/:id/history", { config: { scope: "monitor" } }, async (req) => {
     const { id } = IdParams.parse(req.params);
     return ctx.scheduler.history(id, 30);
   });

@@ -17,8 +17,8 @@ function readDeviceToken(): string {
  * machine; a paired device (plan Onda 3 §1) keeps its own token in the
  * browser instead. Either way every API call carries it in the same header.
  */
-const TOKEN =
-  document.querySelector<HTMLMetaElement>('meta[name="mordomo-token"]')?.content || readDeviceToken();
+const PAGE_TOKEN = document.querySelector<HTMLMetaElement>('meta[name="mordomo-token"]')?.content ?? "";
+const TOKEN = PAGE_TOKEN || readDeviceToken();
 
 /** Local token (injected into the page by the API server / the Vite dev plugin) or the paired-device token. */
 export function getToken(): string {
@@ -33,6 +33,14 @@ export function setDeviceToken(token: string | null): void {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * True when this page runs with a paired device's token rather than the owner's (the token the server injected into
+ * the page): it reaches only what its permissions cover, so a screen that is the owner's does not ask for it.
+ */
+export function isPairedDevice(): boolean {
+  return PAGE_TOKEN === "" && TOKEN.length > 0;
 }
 
 /** True when this page has no credential at all (remote, not yet paired). */
@@ -227,30 +235,78 @@ export const api = {
   /** Every settings write in the UI goes through here; the patch type refuses the keys that moved to the preferences. */
   putSettings: <T = unknown>(patch: SettingsPatch) => request<T>("PUT", "/api/settings", patch),
 
-  /** SSE stream of run events; EventSource cannot set headers → token in query. */
+  /**
+   * SSE stream of one run's events. An `EventSource` cannot set a header and the credential must not ride in the URL,
+   * so each connection asks for a one-use ticket first (`POST /api/stream-tickets`). A dropped connection cannot resume
+   * on its own (the ticket is spent), so this reopens it with a new ticket and `since` set to the last frame it saw,
+   * until the run's final `run_state` frame arrives or the returned function is called.
+   */
   streamRun(runId: string, onEvent: (data: Record<string, unknown>) => void): () => void {
-    const source = new EventSource(apiUrl(`/api/runs/${encodeURIComponent(runId)}/stream?token=${TOKEN}`));
-    source.onmessage = (e) => {
-      try {
-        onEvent(JSON.parse(e.data as string) as Record<string, unknown>);
-      } catch {
-        /* ignore malformed */
-      }
+    let closed = false;
+    let source: EventSource | null = null;
+    let lastId = "";
+    let attempt = 0;
+    let timer: number | undefined;
+    const retry = () => {
+      if (closed) return;
+      timer = window.setTimeout(open, Math.min(STREAM_MAX_BACKOFF_MS, 1000 * 2 ** attempt));
+      attempt += 1;
     };
-    source.onerror = () => {
-      if (source.readyState === EventSource.CLOSED) source.close();
+    const open = () => {
+      streamTicket({ target: "run", runId }).then(
+        (ticket) => {
+          if (closed) return;
+          const since = lastId ? `&since=${encodeURIComponent(lastId)}` : "";
+          const es = new EventSource(
+            apiUrl(
+              `/api/runs/${encodeURIComponent(runId)}/stream?ticket=${encodeURIComponent(ticket)}${since}`,
+            ),
+          );
+          source = es;
+          es.onopen = () => {
+            attempt = 0;
+          };
+          es.onmessage = (e) => {
+            if (e.lastEventId) lastId = e.lastEventId;
+            let data: Record<string, unknown>;
+            try {
+              data = JSON.parse(e.data as string) as Record<string, unknown>;
+            } catch {
+              return; // ignore malformed
+            }
+            onEvent(data);
+            // The server ends the stream after this frame: reopening it would only ask for the same ending.
+            if (data.type === "run_state") {
+              closed = true;
+              es.close();
+            }
+          };
+          es.onerror = () => {
+            es.close();
+            retry();
+          };
+        },
+        () => retry(),
+      );
     };
-    return () => source.close();
+    open();
+    return () => {
+      closed = true;
+      window.clearTimeout(timer);
+      source?.close();
+    };
   },
 
   /**
-   * SSE stream of OS events (`/api/events`). The browser handles
-   * `Last-Event-ID` on its automatic reconnects; `onError` fires when the
-   * connection is closed for good so callers can back off and reopen.
+   * SSE stream of OS events (`/api/events`), opened with a one-use ticket like `streamRun`. A connection that closes
+   * cannot resume itself (the ticket is spent), so `onError` fires on every close and the caller backs off and opens a
+   * new stream, which asks for the events after the last id this one saw.
    */
   streamEvents(onEvent: (event: OsEvent) => void, opts: StreamOptions = {}): () => void {
-    const source = new EventSource(apiUrl(`/api/events?token=${TOKEN}`));
+    let closed = false;
+    let source: EventSource | null = null;
     const handle = (raw: MessageEvent, fallbackType?: string) => {
+      if (raw.lastEventId) lastFeedEventId = raw.lastEventId;
       try {
         const parsed = JSON.parse(raw.data as string) as Partial<Contracts.OsEvent> | null;
         if (!parsed || typeof parsed !== "object") return;
@@ -262,20 +318,44 @@ export const api = {
         /* ignore malformed */
       }
     };
-    source.onmessage = (e) => handle(e);
-    for (const type of opts.types ?? []) {
-      source.addEventListener(type, (e) => handle(e as MessageEvent, type));
-    }
-    source.onopen = () => opts.onOpen?.();
-    source.onerror = () => {
-      if (source.readyState === EventSource.CLOSED) {
-        source.close();
-        opts.onError?.();
-      }
+    streamTicket({ target: "events" }).then(
+      (ticket) => {
+        if (closed) return;
+        const since = lastFeedEventId ? `&since=${encodeURIComponent(lastFeedEventId)}` : "";
+        const es = new EventSource(apiUrl(`/api/events?ticket=${encodeURIComponent(ticket)}${since}`));
+        source = es;
+        es.onmessage = (e) => handle(e);
+        for (const type of opts.types ?? []) {
+          es.addEventListener(type, (e) => handle(e as MessageEvent, type));
+        }
+        es.onopen = () => opts.onOpen?.();
+        es.onerror = () => {
+          es.close();
+          if (!closed) opts.onError?.();
+        };
+      },
+      () => {
+        if (!closed) opts.onError?.();
+      },
+    );
+    return () => {
+      closed = true;
+      source?.close();
     };
-    return () => source.close();
   },
 };
+
+/** Longest wait before a run stream is reopened. */
+const STREAM_MAX_BACKOFF_MS = 10_000;
+
+/** The id of the last frame the events feed delivered: where the next feed asks to resume. */
+let lastFeedEventId = "";
+
+/** A one-use ticket to open a stream without a credential in its URL (`POST /api/stream-tickets`). */
+function streamTicket(target: { target: "events" } | { target: "run"; runId: string }): Promise<string> {
+  return request<{ ticket: string }>("POST", "/api/stream-tickets", target).then((res) => res.ticket);
+}
+
 // ---- shared shapes (mirror the API responses we rely on) --------------------
 export type ProviderId = Contracts.ProviderId;
 
@@ -603,15 +683,8 @@ export type UiPreferencesPatch = Partial<Omit<UiPreferencesDoc, "version">> & {
   dashboardLayoutBase?: UiPreferencesDoc["dashboardLayout"];
 };
 
-/** `GET /api/devices` */
-export interface DeviceRecord {
-  id: string;
-  name: string;
-  createdAt: number;
-  lastSeenAt: number | null;
-  expiresAt: number | null;
-  revokedAt: number | null;
-}
+/** `GET /api/devices`: a paired device and what it may do. */
+export type DeviceRecord = Contracts.DeviceRecord;
 
 /** Micro app row (`microApps` in the UI preferences). */
 export type MicroApp = Contracts.MicroApp;

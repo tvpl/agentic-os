@@ -1472,6 +1472,7 @@ async function cmdRun(args: CliArgs): Promise<void> {
         effort,
         cwd: ctx.runs.defaultCwd(),
         timeoutMs: settings.limits.defaultTimeoutMs,
+        startedBy: null,
       },
     });
   } catch (err) {

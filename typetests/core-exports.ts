@@ -4,6 +4,8 @@
  */
 import type {
   Approval,
+  DeviceRecord,
+  DeviceScope,
   NotificationRecord,
   OsEvent,
   OsEventMap,
@@ -24,6 +26,8 @@ type Same<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 
 
 export const sameAsContract: [
   Same<Approval, Contracts.Approval>,
+  Same<DeviceRecord, Contracts.DeviceRecord>,
+  Same<DeviceScope, Contracts.DeviceScope>,
   Same<NotificationRecord, Contracts.NotificationRecord>,
   Same<OsEvent, Contracts.OsEvent>,
   Same<OsEventMap, Contracts.OsEventMap>,
@@ -36,4 +40,4 @@ export const sameAsContract: [
   Same<Settings, Contracts.Settings>,
   Same<TestedVersions, Contracts.TestedVersions>,
   Same<VersionStatus, Contracts.VersionStatus>,
-] = [true, true, true, true, true, true, true, true, true, true, true, true, true];
+] = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true];

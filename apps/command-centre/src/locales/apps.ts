@@ -155,7 +155,7 @@ export const en = {
     "One https:// or file:// index.json per line. Append #key=<public key> to require the publisher's Ed25519 signature (mordomo skills key prints yours).",
   "apps.settings.remote": "Remote access",
   "apps.settings.remoteHint":
-    "Let paired devices (your phone, a laptop) use the OS through a host you list — a Tailscale name or a LAN address. The server must also bind beyond loopback (Identity › Port asks for that approval).",
+    "Let paired devices (your phone, a laptop) use the OS through a host you list — a Tailscale name or a LAN address. Another machine is only served over TLS (below) or through a tunnel that runs on this machine; the server must also bind beyond loopback (Identity › Port asks for that approval).",
   "apps.settings.remoteHosts": "Allowed hosts",
   "apps.settings.remoteHostsHint":
     "Host names or addresses the server answers to, besides 127.0.0.1. Comma separated.",
@@ -175,6 +175,21 @@ export const en = {
   "apps.settings.deviceNeverSeen": "never used",
   "apps.settings.deviceExpires": "expires {date}",
   "apps.settings.deviceRevoke": "Revoke",
+  "apps.settings.remoteTlsRequired":
+    "TLS is off, so only this machine is served: a device on the network is refused. Turn TLS on, or reach this service through a tunnel that runs on this machine.",
+  "apps.settings.scopeGroup": "Permissions for the new device",
+  "apps.settings.scope.monitor": "Monitor",
+  "apps.settings.scope.monitor.hint": "See runs, approvals, notifications and status.",
+  "apps.settings.scope.content": "Read content",
+  "apps.settings.scope.content.hint": "Open files, notes, memory and results.",
+  "apps.settings.scope.run": "Start runs",
+  "apps.settings.scope.run.hint": "Ask for read-only runs on Claude; a write waits for you.",
+  "apps.settings.scope.approve": "Approve",
+  "apps.settings.scope.approve.hint":
+    "Decide what other people or devices asked for, never its own requests.",
+  "apps.settings.scopeNone": "none",
+  "apps.settings.deviceScopes": "Permissions: {list}",
+  "apps.settings.deviceScopesEdit": "Permissions",
   "apps.settings.sentinels": "Sentinels",
   "apps.settings.sentinelsHint":
     "Observers that need no model: they write to the inbox, and the ones marked for triage ask a cheap model whether to bother you.",
@@ -417,7 +432,7 @@ export const ptBR = {
     "Um index.json https:// ou file:// por linha. Acrescente #key=<chave pública> para exigir a assinatura Ed25519 do publicador (mordomo skills key mostra a sua).",
   "apps.settings.remote": "Acesso remoto",
   "apps.settings.remoteHint":
-    "Deixe dispositivos pareados (celular, notebook) usarem o OS por um host que você listar — um nome do Tailscale ou um endereço da rede local. O servidor também precisa sair do loopback (Identidade › Porta pede essa aprovação).",
+    "Deixe dispositivos pareados (celular, notebook) usarem o OS por um host que você listar — um nome do Tailscale ou um endereço da rede local. Outra máquina só é atendida por TLS (abaixo) ou por um túnel que rode nesta máquina; o servidor também precisa sair do loopback (Identidade › Porta pede essa aprovação).",
   "apps.settings.remoteHosts": "Hosts permitidos",
   "apps.settings.remoteHostsHint":
     "Nomes ou endereços aos quais o servidor responde além de 127.0.0.1. Separados por vírgula.",
@@ -437,6 +452,21 @@ export const ptBR = {
   "apps.settings.deviceNeverSeen": "nunca usado",
   "apps.settings.deviceExpires": "expira {date}",
   "apps.settings.deviceRevoke": "Revogar",
+  "apps.settings.remoteTlsRequired":
+    "O TLS está desligado, então só esta máquina é atendida: um dispositivo da rede é recusado. Ligue o TLS ou chegue a este serviço por um túnel que rode nesta máquina.",
+  "apps.settings.scopeGroup": "Permissões do novo dispositivo",
+  "apps.settings.scope.monitor": "Acompanhar",
+  "apps.settings.scope.monitor.hint": "Ver execuções, aprovações, avisos e estado.",
+  "apps.settings.scope.content": "Ler conteúdo",
+  "apps.settings.scope.content.hint": "Abrir arquivos, notas, memória e resultados.",
+  "apps.settings.scope.run": "Iniciar execuções",
+  "apps.settings.scope.run.hint": "Pedir execuções somente leitura no Claude; a escrita espera por você.",
+  "apps.settings.scope.approve": "Aprovar",
+  "apps.settings.scope.approve.hint":
+    "Decidir o que outras pessoas ou dispositivos pediram, nunca os próprios pedidos.",
+  "apps.settings.scopeNone": "nenhuma",
+  "apps.settings.deviceScopes": "Permissões: {list}",
+  "apps.settings.deviceScopesEdit": "Permissões",
   "apps.settings.sentinels": "Sentinelas",
   "apps.settings.sentinelsHint":
     "Observadores sem modelo: escrevem no inbox, e os marcados para triagem perguntam a um modelo barato se vale te incomodar.",
