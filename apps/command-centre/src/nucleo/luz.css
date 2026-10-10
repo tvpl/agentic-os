@@ -56,6 +56,12 @@
     var(--agent);
   box-shadow: 0 0 16px -4px var(--agent);
 }
+/* A switch another one requires: not-allowed pointer and a dashed ring (the words beside it say why). */
+.nu-shell .nu-scene.luz input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  outline: 1px dashed var(--text-dim);
+  outline-offset: 2px;
+}
 .nu-shell .nu-scene.luz input[type="checkbox"]:focus-visible {
   outline: 1px solid var(--agent-line);
   outline-offset: 3px;

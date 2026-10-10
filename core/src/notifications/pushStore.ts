@@ -8,6 +8,8 @@ import { generateVapidKeys } from "../channels/webpush.js";
 export interface PushSubscriptionRecord {
   id: string;
   endpoint: string;
+  /** The paired device that registered it; null for the owner's (and for what was subscribed before devices could). */
+  deviceId: string | null;
   label: string | null;
   createdAt: number;
   lastOkAt: number | null;
@@ -17,6 +19,12 @@ export interface PushSubscriptionRecord {
 /** Subscriptions in SQLite; the VAPID pair in `config/vapid.json` (0600), created on first read. */
 export class PushStore {
   private keys: VapidKeys | null = null;
+  /** Whether a paired device's subscriptions still count (the device lives and may read content); set by the engine. */
+  private deviceGate: (deviceId: string) => boolean = () => true;
+
+  setDeviceGate(gate: (deviceId: string) => boolean): void {
+    this.deviceGate = gate;
+  }
 
   constructor(
     private readonly db: Db,
@@ -40,7 +48,19 @@ export class PushStore {
     return keys;
   }
 
-  upsert(sub: PushSubscriptionJson, label: string | null = null): PushSubscriptionRecord {
+  /** The device that registered the subscription at `endpoint`: undefined when there is none, null for the owner's. */
+  ownerOf(endpoint: string): string | null | undefined {
+    const row = this.db
+      .prepare("SELECT device_id FROM push_subscriptions WHERE endpoint = ?")
+      .get(endpoint) as { device_id: string | null } | undefined;
+    return row ? row.device_id : undefined;
+  }
+
+  upsert(
+    sub: PushSubscriptionJson,
+    label: string | null = null,
+    deviceId: string | null = null,
+  ): PushSubscriptionRecord {
     const existing = this.db
       .prepare("SELECT id FROM push_subscriptions WHERE endpoint = ?")
       .get(sub.endpoint) as { id: string } | undefined;
@@ -48,15 +68,15 @@ export class PushStore {
     if (existing) {
       this.db
         .prepare(
-          "UPDATE push_subscriptions SET p256dh = ?, auth = ?, label = COALESCE(?, label), failures = 0 WHERE id = ?",
+          "UPDATE push_subscriptions SET p256dh = ?, auth = ?, label = COALESCE(?, label), failures = 0, device_id = ? WHERE id = ?",
         )
-        .run(sub.keys.p256dh, sub.keys.auth, label, id);
+        .run(sub.keys.p256dh, sub.keys.auth, label, deviceId, id);
     } else {
       this.db
         .prepare(
-          "INSERT INTO push_subscriptions (id, endpoint, p256dh, auth, label, created_at, last_ok_at, failures) VALUES (?, ?, ?, ?, ?, ?, NULL, 0)",
+          "INSERT INTO push_subscriptions (id, endpoint, p256dh, auth, label, created_at, last_ok_at, failures, device_id) VALUES (?, ?, ?, ?, ?, ?, NULL, 0, ?)",
         )
-        .run(id, sub.endpoint, sub.keys.p256dh, sub.keys.auth, label, Date.now());
+        .run(id, sub.endpoint, sub.keys.p256dh, sub.keys.auth, label, Date.now(), deviceId);
     }
     return this.get(id)!;
   }
@@ -75,20 +95,43 @@ export class PushStore {
     ).map(fromRow);
   }
 
-  /** Full subscriptions (with keys) for delivery only. */
+  /**
+   * Full subscriptions (with keys) for delivery only. One that a paired device registered and that device no longer
+   * counts for (revoked, expired, or without `content`) is deleted here instead of delivered to.
+   */
   targets(): Array<{ id: string; sub: PushSubscriptionJson }> {
-    return (
-      this.db.prepare("SELECT id, endpoint, p256dh, auth FROM push_subscriptions").all() as Array<{
-        id: string;
-        endpoint: string;
-        p256dh: string;
-        auth: string;
-      }>
-    ).map((r) => ({ id: r.id, sub: { endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth } } }));
+    const rows = this.db
+      .prepare("SELECT id, endpoint, p256dh, auth, device_id FROM push_subscriptions")
+      .all() as Array<{
+      id: string;
+      endpoint: string;
+      p256dh: string;
+      auth: string;
+      device_id: string | null;
+    }>;
+    const live: typeof rows = [];
+    for (const r of rows) {
+      if (r.device_id !== null && !this.deviceGate(r.device_id)) this.remove(r.id);
+      else live.push(r);
+    }
+    return live.map((r) => ({
+      id: r.id,
+      sub: { endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth } },
+    }));
   }
 
-  removeByEndpoint(endpoint: string): boolean {
-    return this.db.prepare("DELETE FROM push_subscriptions WHERE endpoint = ?").run(endpoint).changes > 0;
+  /** Remove by endpoint; with `deviceId`, only a subscription that device registered itself. */
+  removeByEndpoint(endpoint: string, deviceId?: string): boolean {
+    return deviceId === undefined
+      ? this.db.prepare("DELETE FROM push_subscriptions WHERE endpoint = ?").run(endpoint).changes > 0
+      : this.db
+          .prepare("DELETE FROM push_subscriptions WHERE endpoint = ? AND device_id = ?")
+          .run(endpoint, deviceId).changes > 0;
+  }
+
+  /** Everything a paired device registered (it was revoked, or lost the permission to read content). */
+  removeForDevice(deviceId: string): number {
+    return this.db.prepare("DELETE FROM push_subscriptions WHERE device_id = ?").run(deviceId).changes;
   }
 
   remove(id: string): boolean {
@@ -117,6 +160,7 @@ function fromRow(r: Record<string, unknown>): PushSubscriptionRecord {
   return {
     id: String(r.id),
     endpoint: String(r.endpoint),
+    deviceId: (r.device_id as string | null) ?? null,
     label: (r.label as string | null) ?? null,
     createdAt: Number(r.created_at),
     lastOkAt: r.last_ok_at == null ? null : Number(r.last_ok_at),

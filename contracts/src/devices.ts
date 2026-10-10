@@ -3,8 +3,9 @@
  * local token, which reaches every route. A device holds a set of these four, always closed (see
  * `closeDeviceScopes`), and a route names the one scope it needs (`config.scope`).
  *
- * - `monitor`: see runs, approvals, notifications and status, and keep its own inbox and push subscription.
- * - `content`: read what the owner's folders, notes and memory hold (files, previews, search, diffs, artifacts).
+ * - `monitor`: see runs, approvals, notifications and status. It does not clear the inbox (read marks and deletes are the owner's).
+ * - `content`: read what the owner's folders, notes and memory hold (files, previews, search, diffs, artifacts), and
+ *   register a push subscription at a browser's push service (a push carries the inbox's titles and bodies).
  * - `run`: ask for runs (read-only on a provider that keeps reads in the working folder; a write waits for a human).
  * - `approve`: decide what other people or devices asked for (never what the device asked for itself).
  */

@@ -88,6 +88,12 @@ describe("S6 the permissions of a paired device", () => {
       "Start runs:on",
       "Approve:off",
     ]);
+    // A locked box says so in words as well as by its state (never by colour alone).
+    const lockedLabels = Array.from(group.querySelectorAll("label.check"))
+      .filter((l) => (l.querySelector("input") as HTMLInputElement).disabled)
+      .map((l) => l.querySelector(".scope-locked")?.textContent);
+    expect(lockedLabels).toEqual(["required by another permission", "required by another permission"]);
+    expect(group.querySelectorAll(".scope-locked")).toHaveLength(2);
     // Defaults first: the button sends the closure of what is ticked.
     fireEvent.click(screen.getByRole("button", { name: "Show a code" }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
@@ -179,6 +185,45 @@ describe("S6 the permissions of a paired device", () => {
     expect(rows[0]!.querySelector(".device-editor")).not.toBeNull();
   });
 
+  it("C36 the same in Portuguese, with a device that may do nothing", async () => {
+    const patch = vi.spyOn(api, "patch").mockResolvedValue(undefined);
+    setup({
+      lang: "pt-BR",
+      devices: [device("d1", "Celular", ["monitor", "content", "run"]), device("d2", "Vazio", [])],
+    });
+    const rows = Array.from(document.querySelectorAll(".device-list li"));
+    expect(rows.map((r) => r.querySelector(".device-scopes")!.textContent)).toEqual([
+      "Permissões: Acompanhar, Ler conteúdo, Iniciar execuções",
+      "Permissões: nenhuma",
+    ]);
+    expect(document.querySelector("#pair-scopes legend")!.textContent).toBe("Permissões do novo dispositivo");
+    expect(state(document.querySelector("#pair-scopes")!)).toEqual([
+      "Acompanhar:on:locked",
+      "Ler conteúdo:on:locked",
+      "Iniciar execuções:on",
+      "Aprovar:off",
+    ]);
+    const empty = rows[1] as HTMLElement;
+    fireEvent.click(within(empty).getByRole("button", { name: "Permissões" }));
+    const editor = empty.querySelector(".device-editor")!;
+    expect(state(editor.querySelector("fieldset")!)).toEqual([
+      "Acompanhar:off",
+      "Ler conteúdo:off",
+      "Iniciar execuções:off",
+      "Aprovar:off",
+    ]);
+    fireEvent.click(box(editor, "Aprovar"));
+    expect(editor.querySelector(".scope-locked")!.textContent).toBe("exigida por outra permissão");
+    fireEvent.click(within(editor as HTMLElement).getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    expect(patch).toHaveBeenLastCalledWith("/api/devices/d2", { scopes: ["monitor", "approve"] });
+  });
+
+  it("C36 a device that may do nothing says so in English", () => {
+    setup({ devices: [device("d1", "Empty", [])] });
+    expect(document.querySelector(".device-scopes")!.textContent).toBe("Permissions: none");
+  });
+
   it("C37 the TLS requirement is said on the card", () => {
     for (const lang of ["en", "pt-BR"] as const) {
       const text = dictionaries[lang]["apps.settings.remoteTlsRequired"];
@@ -200,7 +245,7 @@ describe("S6 the permissions of a paired device", () => {
     }
   });
 
-  it("C38 the card keeps its arrangement", () => {
+  it("C38 the card keeps its arrangement", async () => {
     const names = (el: Element) =>
       Array.from(el.children).map((c) => {
         if (c.id === "remote-tls-required") return "R5";
@@ -226,6 +271,14 @@ describe("S6 the permissions of a paired device", () => {
       expect(names(card()), name).toEqual(expected.map((x) => x));
       view.unmount();
     }
+    // With the code shown: the box follows the permission group (R7 then R8) and nothing moves it.
+    vi.spyOn(api, "post").mockResolvedValue({ code: "424242", expiresAt: Date.now() + 60_000 });
+    const open = setup({ remote: true, tls: true });
+    fireEvent.click(screen.getByRole("button", { name: "Show a code" }));
+    await waitFor(() => expect(card().querySelector(".pairing-code-box")).not.toBeNull());
+    expect(names(card())).toEqual([`row:${header}`, "DIV", "DIV", tlsRow, pairRow, "R7", "R8"]);
+    expect(card().querySelector(".pairing-code-box")!.textContent).toContain("424242");
+    open.view.unmount();
     // Two devices, the editor open on the second: name, last seen, actions, permissions line, editor.
     const { view } = setup({
       devices: [device("d1", "Phone", ["monitor"]), device("d2", "Tablet", ["monitor", "content"])],
@@ -242,8 +295,14 @@ describe("S6 the permissions of a paired device", () => {
           ? "actions"
           : c.className.split(" ")[0] || c.tagName.toLowerCase(),
       );
-    expect(order(items[0]!)).toEqual(["strong", "meta", "actions", "meta"].map((x) => x));
-    expect(order(items[1]!)).toEqual(["strong", "meta", "actions", "meta", "device-editor"].map((x) => x));
+    // The name and the last-seen line sit together in one column (so a second button cannot squeeze the name to nothing);
+    // then the actions, the permissions line, and the editor when it is open. The width itself is measured in a real
+    // browser (`tests/e2e/device-card-layout.spec.ts`, C44).
+    expect(order(items[0]!)).toEqual(["device-main", "actions", "meta"]);
+    expect(order(items[1]!)).toEqual(["device-main", "actions", "meta", "device-editor"]);
+    expect(
+      Array.from(items[0]!.querySelector(".device-main")!.children).map((c) => c.tagName.toLowerCase()),
+    ).toEqual(["strong", "span"]);
     view.unmount();
   });
 
@@ -265,6 +324,7 @@ describe("S6 the permissions of a paired device", () => {
         "apps.settings.scope.run",
         "apps.settings.scope.run.hint",
         "apps.settings.scopeGroup",
+        "apps.settings.scopeLocked",
         "apps.settings.scopeNone",
       ].sort(),
     );

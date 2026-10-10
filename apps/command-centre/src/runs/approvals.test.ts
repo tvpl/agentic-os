@@ -47,6 +47,10 @@ describe("approval payloads", () => {
       prompt: "hi",
       cwd: "/w",
       provider: "claude",
+      model: null,
+      effort: null,
+      mode: null,
+      inputs: [],
     });
     expect(approvalTarget(approval({ payload: { kind: "skill", input: { slug: "tidy" } } })).skillSlug).toBe(
       "tidy",
@@ -57,6 +61,36 @@ describe("approval payloads", () => {
       prompt: null,
       cwd: null,
       provider: null,
+      model: null,
+      effort: null,
+      mode: null,
+      inputs: [],
+    });
+    // A skill's inputs keep their order; a value that is not text is shown as JSON, never dropped.
+    expect(
+      approvalTarget(
+        approval({
+          payload: {
+            kind: "skill",
+            input: {
+              slug: "s",
+              inputs: { b: "two", a: 1, c: { x: true } },
+              model: "m",
+              effort: "low",
+              mode: "write",
+            },
+          },
+        }),
+      ),
+    ).toMatchObject({
+      inputs: [
+        ["b", "two"],
+        ["a", "1"],
+        ["c", '{"x":true}'],
+      ],
+      model: "m",
+      effort: "low",
+      mode: "write",
     });
   });
 

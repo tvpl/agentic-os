@@ -6,8 +6,8 @@ import type { RouteScope } from "../../apps/api/src/server.js";
  * `config.scope` moves fails a test until a person changes this table too. `docs/security.md` prints the same table.
  *
  * - owner: the local token only (a paired device gets `403 owner_only`)
- * - monitor: runs, approvals, notifications and status, and a device's own inbox and push subscription
- * - content: what the owner's folders, notes and memory hold
+ * - monitor: runs, approvals, notifications and status (read; the inbox is cleared by the owner only)
+ * - content: what the owner's folders, notes and memory hold, and a push subscription (a push carries inbox text)
  * - run: asking for runs (read-only on a provider that keeps reads in the working folder; a write waits for a human)
  * - approve: deciding what someone else asked for
  */
@@ -64,8 +64,8 @@ export const EXPECTED_ROUTE_SCOPES: Readonly<Record<string, RouteScope>> = {
   "GET /api/metrics/history": "monitor",
   "POST /api/microapps/pixel/save": "owner",
   "GET /api/notifications": "monitor",
-  "DELETE /api/notifications/:id": "monitor",
-  "POST /api/notifications/read": "monitor",
+  "DELETE /api/notifications/:id": "owner",
+  "POST /api/notifications/read": "owner",
   "GET /api/objectives": "monitor",
   "POST /api/objectives": "owner",
   "DELETE /api/objectives/:id": "owner",
@@ -79,7 +79,7 @@ export const EXPECTED_ROUTE_SCOPES: Readonly<Record<string, RouteScope>> = {
   "GET /api/providers/:id/models": "owner",
   "POST /api/providers/:id/smoke": "owner",
   "PUT /api/providers/default": "owner",
-  "POST /api/push/subscribe": "monitor",
+  "POST /api/push/subscribe": "content",
   "GET /api/push/subscriptions": "owner",
   "DELETE /api/push/subscriptions/:id": "owner",
   "POST /api/push/test": "owner",

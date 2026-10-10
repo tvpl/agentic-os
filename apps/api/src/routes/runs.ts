@@ -176,11 +176,16 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     if (!source.request) {
       throw httpError(409, "This older run has no complete request to repeat safely.", "request_unavailable");
     }
+    const requestedBy = startedByOf(req);
     const prior = ctx.db
-      .prepare("SELECT action, source_run_id, response FROM run_action_receipts WHERE id = ?")
-      .get(submissionId) as { action: string; source_run_id: string; response: string | null } | undefined;
+      .prepare("SELECT action, source_run_id, requested_by, response FROM run_action_receipts WHERE id = ?")
+      .get(submissionId) as
+      | { action: string; source_run_id: string; requested_by: string | null; response: string | null }
+      | undefined;
     if (prior) {
-      if (prior.action !== "retry" || prior.source_run_id !== id)
+      // A receipt holds the run its maker was given: it replays for that principal only (a receipt from before the
+      // column existed has none and replays for nobody).
+      if (prior.action !== "retry" || prior.source_run_id !== id || prior.requested_by !== requestedBy)
         throw httpError(409, "Submission identity was reused for another action.", "submission_conflict");
       if (!prior.response)
         throw httpError(
@@ -195,9 +200,9 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     requireProvider(ctx, source.provider);
     ctx.db
       .prepare(
-        "INSERT INTO run_action_receipts(id, action, source_run_id, created_at) VALUES (?, 'retry', ?, ?)",
+        "INSERT INTO run_action_receipts(id, action, source_run_id, created_at, requested_by) VALUES (?, 'retry', ?, ?, ?)",
       )
-      .run(submissionId, id, Date.now());
+      .run(submissionId, id, Date.now(), requestedBy);
     let result: Record<string, unknown>;
     try {
       const lineage = source.parentRunId ?? source.id;
@@ -219,12 +224,13 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
           cwd: source.cwd ?? ctx.runs.defaultCwd(),
           timeoutMs: source.timeoutMs ?? ctx.settings().limits.defaultTimeoutMs,
           parentRunId: lineage,
-          startedBy: startedByOf(req),
+          startedBy: requestedBy,
         };
         const gated = gateWrite(ctx, retryMode, "skill", `Repeat /${input.slug} with ${source.provider}`, {
           kind: "skill",
           input,
         });
+        if (gated.pendingApproval) reply.code(202);
         result = gated.pendingApproval
           ? { runId: gated.runId, status: "waiting_approval", pendingApproval: gated.pendingApproval }
           : {
@@ -245,7 +251,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
             timeoutMs: source.timeoutMs ?? ctx.settings().limits.defaultTimeoutMs,
             parentRunId: lineage,
           },
-          startedByOf(req),
+          requestedBy,
           (err, runId) => req.log.error({ err, runId, retryOf: id }),
         );
         if (repeated.statusCode !== 200) reply.code(repeated.statusCode);

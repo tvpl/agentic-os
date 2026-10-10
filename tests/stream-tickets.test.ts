@@ -7,7 +7,7 @@ import { events, type DeviceScope } from "@mordomo/core";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer, safeUrl } from "../apps/api/src/server.js";
 import type { Principal } from "../apps/api/src/routes/common.js";
-import { TICKET_TTL_MS, TICKETS_PER_PRINCIPAL } from "../apps/api/src/tickets.js";
+import { TICKET_TTL_MS, TICKETS_PER_PRINCIPAL, TicketStore, ticketKey } from "../apps/api/src/tickets.js";
 import { makeTempHome } from "./helpers.js";
 
 /**
@@ -193,6 +193,11 @@ describe("S5 stream tickets", () => {
     const elsewhere = await ticketOf(owner(), { target: "events" });
     const elsewhereToo = await ticketOf(owner(), { target: "events" });
     const posted = await ticketOf(owner(), { target: "events" });
+    const lapsed = pair(["monitor"]);
+    const lapsedTicket = await ticketOf(as(lapsed.token), { target: "events" });
+    const closedOff = pair(["monitor"]);
+    const closedOffTicket = await ticketOf(as(closedOff.token), { target: "events" });
+    const byHead = await ticketOf(owner(), { target: "events" });
     const twin = await ticketOf(owner(), { target: "events" });
 
     await get("wrong stream", `/api/v1/events?ticket=${wrongStream}`);
@@ -202,9 +207,27 @@ describe("S5 stream tickets", () => {
     await get("revoked device", `/api/v1/events?ticket=${revoked}`);
     ctx.devices.setScopes(demoted.id, []);
     await get("device that lost monitor", `/api/v1/events?ticket=${lost}`);
+    await get(
+      "the ticket of a run stream, once spent at the wrong place, at its own",
+      `/api/v1/runs/${runX}/stream?ticket=${wrongStream}`,
+    );
+    // The device came to expire after the ticket was made.
+    ctx.db.prepare("UPDATE devices SET expires_at = 1 WHERE id = ?").run(lapsed.id);
+    await get("device that expired", `/api/v1/events?ticket=${lapsedTicket}`);
+    // Remote access was turned off after the ticket was made.
+    const remote = ctx.settings().remote;
+    ctx.settingsStore.update({ remote: { ...remote, enabled: false } });
+    try {
+      await get("remote access turned off", `/api/v1/events?ticket=${closedOffTicket}`);
+    } finally {
+      ctx.settingsStore.update({ remote: { ...remote, enabled: true } });
+    }
     await get("a route that takes no ticket", `/api/v1/runs?ticket=${elsewhere}`);
     await get("a public route", `/api/v1/meta?ticket=${elsewhereToo}`);
     await get("another method", `/api/v1/runs?ticket=${posted}`, "POST");
+    // HEAD is a twin of GET to the router and not to the ticket.
+    const head = await fetch(`${base}/api/v1/events?ticket=${byHead}`, { method: "HEAD" });
+    expect(head.status, "HEAD").toBe(401);
     // After 30 seconds: the clock moves, the sockets do not.
     vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
     vi.setSystemTime(Date.now() + TICKET_TTL_MS + 1);
@@ -218,6 +241,9 @@ describe("S5 stream tickets", () => {
       "another run",
       "revoked device",
       "device that lost monitor",
+      "the ticket of a run stream, once spent at the wrong place, at its own",
+      "device that expired",
+      "remote access turned off",
       "a route that takes no ticket",
       "a public route",
       "another method",
@@ -326,13 +352,54 @@ describe("S5 stream tickets", () => {
     expect(safeUrl("/api/events?since=3&ticket=tk_abc")).toBe("/api/events?since=3&ticket=[REDACTED]");
     expect(safeUrl("/api/events?since=3&token=abc")).toBe("/api/events?since=3&token=[REDACTED]");
     const secret = "tk_neverlogthisticketvalue00000001";
-    // A refused presentation is logged like any other request (a stream that opens is hijacked and is not).
-    const res = await fetch(`${base}/api/v1/runs?ticket=${secret}`);
-    expect(res.status).toBe(401);
-    await res.text();
-    await new Promise((r) => setTimeout(r, 100));
+    // On the stream itself: a refused presentation is logged like any other request, and a stream that opens is hijacked
+    // (and is not), so both leave the log without the value.
+    const live = await ticketOf(owner(), { target: "events" });
+    const opened = await open(`${base}/api/v1/events?ticket=${live}`);
+    expect(opened.status).toBe(200);
+    opened.close();
+    const refused = await fetch(`${base}/api/v1/events?ticket=${secret}`);
+    expect(refused.status).toBe(401);
+    await refused.text();
+    const runStream = await fetch(`${base}/api/v1/runs/${crypto.randomUUID()}/stream?ticket=${secret}x`);
+    expect(runStream.status).toBe(401);
+    await runStream.text();
+    await new Promise((r) => setTimeout(r, 200));
     const log = fs.readFileSync(path.join(ctx.paths.logs, "api.jsonl"), "utf8");
-    expect(log).toContain("ticket=[REDACTED]");
+    expect(log).toContain("/api/events?ticket=[REDACTED]");
     expect(log).not.toContain(secret);
+    expect(log).not.toContain(live);
+  });
+});
+
+describe("S5 the ticket store, on its own layer", () => {
+  const key = ticketKey("/api/runs/:id/stream", { id: "a" });
+  const owner: Principal = { kind: "owner" };
+  const device: Principal = { kind: "device", deviceId: "d1" };
+
+  it("C30 a ticket is good once, for its stream and its life; a wrong presentation spends it", () => {
+    const store = new TicketStore();
+    const made = store.mint(device, key)!;
+    expect(made.ticket).toMatch(/^tk_[A-Za-z0-9_-]{32}$/);
+    // Presented at another stream: refused, and gone for the right one too.
+    expect(store.redeem(made.ticket, ticketKey("/api/runs/:id/stream", { id: "b" }))).toBeNull();
+    expect(store.redeem(made.ticket, key)).toBeNull();
+    // Right stream, once.
+    const good = store.mint(device, key)!;
+    expect(store.redeem(good.ticket, key)).toEqual(device);
+    expect(store.redeem(good.ticket, key)).toBeNull();
+    // After its life.
+    const old = store.mint(owner, key)!;
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
+    vi.setSystemTime(Date.now() + TICKET_TTL_MS + 1);
+    expect(store.redeem(old.ticket, key)).toBeNull();
+    vi.useRealTimers();
+    // The feed's key is not a run's.
+    expect(ticketKey("/api/events", {})).not.toBe(ticketKey("/api/runs/:id/stream", {}));
+    // The cap is per principal, counted on live tickets.
+    const capped = new TicketStore();
+    for (let i = 0; i < TICKETS_PER_PRINCIPAL; i++) expect(capped.mint(device, key)).not.toBeNull();
+    expect(capped.mint(device, key)).toBeNull();
+    expect(capped.mint(owner, key)).not.toBeNull();
   });
 });

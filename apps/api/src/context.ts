@@ -9,6 +9,7 @@ import {
   versionStatus,
   type BudgetCrossedPayload,
   type HealthStatus,
+  type HostResolver,
   type MetricsSample,
   type PermissionBroker,
   type ProviderCapabilities,
@@ -62,6 +63,8 @@ export interface AppContextOptions {
    * commands that merely open the context must not silently restore.
    */
   applyPendingRestore?: boolean;
+  /** How a push endpoint's host is resolved (tests replace the system's DNS). */
+  pushResolver?: HostResolver;
 }
 
 /**
@@ -91,6 +94,7 @@ export class AppContext extends MordomoEngine {
       // Packaged installs ship their skills/routines/connectors next to the bundle.
       seedDir: seedDir(),
       applyPendingRestore: opts.applyPendingRestore === true,
+      ...(opts.pushResolver ? { pushResolver: opts.pushResolver } : {}),
       ...(opts.restoreWaitMs !== undefined ? { restoreWaitMs: opts.restoreWaitMs } : {}),
     });
     this.unsubscribeCredentials = events.subscribe((e) => {

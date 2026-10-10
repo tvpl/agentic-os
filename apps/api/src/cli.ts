@@ -747,6 +747,7 @@ async function cmdSetup(args: CliArgs): Promise<void> {
             mode: "read_only",
             timeoutMs: 180_000,
             profile: "read_only",
+            startedBy: null,
           });
           const rec = await ctx.runs.execute(
             run.id,
@@ -1508,6 +1509,7 @@ async function cmdRun(args: CliArgs): Promise<void> {
     timeoutMs: settings.limits.defaultTimeoutMs,
     profile: skill.mode === "write" ? settings.securityProfile : "read_only",
     skillSlug: slug,
+    startedBy: null,
   });
   if (!args.json) console.log(`${pc.cyan("▶")} Running ${skill.name} via ${provider} (run ${run.id})…`);
   const prompt = ctx.skills.buildRunPrompt(skill, args.inputs, path.join(ctx.paths.artifacts, run.id));

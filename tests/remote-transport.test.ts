@@ -5,7 +5,7 @@ import path from "node:path";
 import type { FastifyInstance } from "fastify";
 import { AppContext } from "../apps/api/src/context.js";
 import { runDoctor } from "../apps/api/src/doctor.js";
-import { buildServer, startServer } from "../apps/api/src/server.js";
+import { buildServer, carriesProxyHeaders, isLoopbackAddress, startServer } from "../apps/api/src/server.js";
 import { listenPlan } from "../apps/api/src/transport.js";
 import { makeTempHome } from "./helpers.js";
 import { injectTls } from "./helpers/tlsPeers.js";
@@ -148,6 +148,146 @@ describe("S4 remote access only over TLS or a tunnel", () => {
         expect(settings.statusCode, `${remoteAddress} ${host} device`).toBe(200);
       }
     }
+  });
+});
+
+describe("round 1: what a proxy or a header cannot make true", () => {
+  it("C49 TLS and the address of the peer come from the socket, never from a header", async () => {
+    // The unspecified address is nobody's loopback.
+    for (const address of [
+      "::",
+      "0.0.0.0",
+      "::ffff:10.0.0.5",
+      "fe80::1",
+      "128.0.0.1",
+      "203.0.113.9",
+      "",
+      undefined,
+    ]) {
+      expect(isLoopbackAddress(address), String(address)).toBe(false);
+    }
+    for (const address of LOOPBACK) expect(isLoopbackAddress(address), address).toBe(true);
+    // A plain request does not become TLS by saying so.
+    const claims: Array<Record<string, string>> = [
+      { "x-forwarded-proto": "https" },
+      { "x-forwarded-ssl": "on" },
+      { forwarded: "proto=https;for=127.0.0.1" },
+      { "x-forwarded-for": "127.0.0.1" },
+      { "x-real-ip": "127.0.0.1" },
+      { "x-forwarded-proto": "https", "x-forwarded-for": "127.0.0.1", "x-real-ip": "127.0.0.1" },
+    ];
+    for (const remoteAddress of [REMOTE, "::", "0.0.0.0"]) {
+      for (const claim of claims) {
+        const res = await app.inject({
+          method: "GET",
+          url: "/api/v1/meta",
+          remoteAddress,
+          headers: { host: "mordomo.local", ...claim },
+        });
+        const label = `${remoteAddress} ${JSON.stringify(claim)}`;
+        expect(res.statusCode, label).toBe(403);
+        expect(body(res).error.code, label).toBe("tls_required");
+      }
+    }
+    // Twenty-one wrong tokens from one peer lock that peer out whatever its X-Forwarded-For says, and a peer that says
+    // it is 127.0.0.1 is counted as the socket it came from, not exempt.
+    const peer = "203.0.113.77";
+    const statuses: number[] = [];
+    for (let i = 0; i < 21; i++) {
+      const res = await injectTls(app, {
+        method: "GET",
+        url: "/api/v1/runs",
+        remoteAddress: peer,
+        headers: {
+          host: "mordomo.local",
+          "x-mordomo-token": "wrong",
+          "x-forwarded-for": i % 2 === 0 ? "127.0.0.1" : `198.51.100.${i}`,
+        },
+      });
+      statuses.push(res.statusCode);
+    }
+    expect(statuses.slice(0, 20).every((s) => s === 401)).toBe(true);
+    expect(statuses[20]).toBe(429);
+    // ...and a spoofed header does not lock out another peer.
+    const other = await injectTls(app, {
+      method: "GET",
+      url: "/api/v1/runs",
+      remoteAddress: "203.0.113.78",
+      headers: { host: "mordomo.local", "x-mordomo-token": token, "x-forwarded-for": peer },
+    });
+    expect(other.statusCode).toBe(200);
+  });
+
+  it("C48 a page behind a proxy on this machine does not carry the owner token", async () => {
+    const page = (headers: Record<string, string>) =>
+      app.inject({
+        method: "GET",
+        url: "/",
+        remoteAddress: "127.0.0.1",
+        headers: {
+          host: "127.0.0.1:4777",
+          "sec-fetch-dest": "document",
+          "sec-fetch-mode": "navigate",
+          "user-agent": "Mozilla/5.0 (X11; Linux x86_64)",
+          ...headers,
+        },
+      });
+    const meta = (html: string) => /<meta name="mordomo-token" content="([^"]*)"/.exec(html)?.[1];
+    // Control: the owner's browser, no proxy in between.
+    expect(meta((await page({})).body)).toBe(token);
+    // Each header a proxy adds when it forwards a visitor from elsewhere withdraws the token.
+    const proxied: Array<Record<string, string>> = [
+      { "x-forwarded-for": "198.51.100.4" },
+      { "x-forwarded-for": "127.0.0.1" },
+      { "x-forwarded-host": "mordomo.example" },
+      { "x-forwarded-proto": "https" },
+      { "x-forwarded-port": "443" },
+      { forwarded: "for=198.51.100.4;host=mordomo.example" },
+      { "x-real-ip": "198.51.100.4" },
+      { via: "1.1 nginx" },
+    ];
+    for (const headers of proxied) {
+      const res = await page(headers);
+      expect(res.statusCode, JSON.stringify(headers)).toBe(200);
+      expect(meta(res.body), JSON.stringify(headers)).toBe("");
+      expect(res.body, JSON.stringify(headers)).not.toContain(token);
+    }
+    // The rule itself: names a proxy adds, in any case; the ordinary request headers of a browser are not.
+    expect(carriesProxyHeaders({ "x-forwarded-for": "1.2.3.4" })).toBe(true);
+    expect(carriesProxyHeaders({ via: "1.0 x" })).toBe(true);
+    expect(
+      carriesProxyHeaders({
+        host: "127.0.0.1",
+        "user-agent": "x",
+        accept: "*/*",
+        "sec-fetch-dest": "document",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("round 1: pairing from outside keeps its answers", () => {
+  it("C57 a wrong pairing code is 401 and the eleventh try in a minute from one address is 429, over TLS", async () => {
+    ctx.devices.startPairing("phone", ["monitor"]);
+    const claim = (code: string, remoteAddress: string) =>
+      injectTls(app, {
+        method: "POST",
+        url: "/api/v1/pair/claim",
+        remoteAddress,
+        headers: { host: "mordomo.local", "content-type": "application/json" },
+        payload: { code, name: "attacker" },
+      });
+    const peer = "203.0.113.90";
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) statuses.push((await claim("000000", peer)).statusCode);
+    expect(statuses.slice(0, 10).every((x) => x === 401)).toBe(true);
+    expect(statuses[10]).toBe(429);
+    const wrong = await claim("000000", "203.0.113.91");
+    expect(body(wrong).error.code).toBe("pair_failed");
+    // Plain from outside, the same call never reaches the code (C23); the right code from a fresh address works.
+    const { code } = ctx.devices.startPairing("phone", ["monitor"]);
+    const ok = await claim(code, "203.0.113.92");
+    expect(ok.statusCode).toBe(200);
   });
 });
 

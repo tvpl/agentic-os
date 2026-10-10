@@ -10,6 +10,7 @@ import { useLocale, useT } from "../i18n";
 import { qk, useApiQuery, type ApiQueryOptions } from "../queries";
 import { timeAgo, useToast } from "../components/ui";
 import { Badge, Button } from "../components/primitives";
+import { ApprovalRequest } from "./ApprovalRequest";
 import { approvalLabel, approvalTarget, toolApprovalParts, writeRunApprovals } from "./approvals";
 
 /** Pending approvals (shared cache key with Settings › Security). */
@@ -95,6 +96,7 @@ export function ApprovalCard({ approval, onLaunched, compact = false }: Approval
           {t("runs.approve.deny")}
         </Button>
       </div>
+      <ApprovalRequest approval={approval} />
     </div>
   );
 }

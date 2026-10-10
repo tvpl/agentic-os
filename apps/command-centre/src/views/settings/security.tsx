@@ -8,7 +8,7 @@ import {
   closeDeviceScopes,
   type DeviceScope,
 } from "@mordomo/contracts/policy";
-import { api, type DeviceRecord, type SettingsDoc } from "../../api";
+import { api, type ApprovalRecord, type DeviceRecord, type SettingsDoc } from "../../api";
 
 import { useLocale, useT } from "../../i18n";
 import { qk, useApiQuery, useOsMeta } from "../../queries";
@@ -24,15 +24,15 @@ import {
   sameList,
   type Put,
 } from "../SettingsFields";
+import { ApprovalRequest } from "../../runs/ApprovalRequest";
 import { PROFILES } from "./shared";
-import type { Approval } from "./shared";
 import type { SettingsShape } from "./shared";
 
 export function SecurityTab({ s, put }: { s: SettingsShape; put: Put }) {
   const t = useT();
   const toast = useToast();
   const qc = useQueryClient();
-  const approvals = useApiQuery<Approval[]>(qk.approvals, "/api/approvals");
+  const approvals = useApiQuery<ApprovalRecord[]>(qk.approvals, "/api/approvals");
   const resolve = useMutation({
     mutationFn: ({ id, decision }: { id: string; decision: "approved" | "denied" }) =>
       api.post(`/api/approvals/${encodeURIComponent(id)}/resolve`, { decision }),
@@ -133,6 +133,7 @@ export function SecurityTab({ s, put }: { s: SettingsShape; put: Put }) {
                   {a.kind}
                 </Badge>
                 <div className="approval-desc">{a.description}</div>
+                <ApprovalRequest approval={a} />
               </div>
               <div className="row-actions">
                 <Button
@@ -194,6 +195,7 @@ function ScopePicker({
             />
             <strong>{t(`apps.settings.scope.${scope}`)}</strong>
             <span className="meta">{t(`apps.settings.scope.${scope}.hint`)}</span>
+            {locked && <span className="meta scope-locked">{t("apps.settings.scopeLocked")}</span>}
           </label>
         );
       })}
@@ -344,13 +346,15 @@ function RemoteAccess({ s, put }: { s: SettingsShape; put: Put }) {
         <ul className="plain-list device-list">
           {active.map((d) => (
             <li key={d.id}>
-              <strong>{d.name}</strong>
-              <span className="meta mono">
-                {d.lastSeenAt ? timeAgo(d.lastSeenAt, locale) : t("apps.settings.deviceNeverSeen")}
-                {d.expiresAt
-                  ? ` · ${t("apps.settings.deviceExpires", { date: new Date(d.expiresAt).toLocaleDateString(locale) })}`
-                  : ""}
-              </span>
+              <div className="device-main">
+                <strong>{d.name}</strong>
+                <span className="meta mono">
+                  {d.lastSeenAt ? timeAgo(d.lastSeenAt, locale) : t("apps.settings.deviceNeverSeen")}
+                  {d.expiresAt
+                    ? ` · ${t("apps.settings.deviceExpires", { date: new Date(d.expiresAt).toLocaleDateString(locale) })}`
+                    : ""}
+                </span>
+              </div>
               <div className="row-actions">
                 <Button
                   size="sm"

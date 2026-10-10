@@ -443,6 +443,8 @@ export class RoutineScheduler {
         mode,
         timeoutMs: routine.timeoutMs,
         profile: mode === "write" ? routine.profile : "read_only",
+        // No request started it: the schedule did.
+        startedBy: null,
         skillSlug,
         routineId: routine.id,
         parentRunId,

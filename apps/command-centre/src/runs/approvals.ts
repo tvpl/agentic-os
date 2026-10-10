@@ -15,6 +15,12 @@ export interface ApprovalTarget {
   prompt: string | null;
   cwd: string | null;
   provider: string | null;
+  model: string | null;
+  effort: string | null;
+  /** `write` for a prompt run held at the gate; a skill run says it by being a write skill. */
+  mode: string | null;
+  /** What a skill run is given, in the order it was written (empty for a prompt run). */
+  inputs: Array<[string, string]>;
 }
 
 /** Read the launch input out of an approval payload without trusting its shape. */
@@ -29,6 +35,16 @@ export function approvalTarget(approval: ApprovalRecord): ApprovalTarget {
     prompt: str(input.prompt),
     cwd: str(input.cwd),
     provider: str(input.provider),
+    model: str(input.model),
+    effort: str(input.effort),
+    mode: str(input.mode),
+    inputs:
+      input.inputs && typeof input.inputs === "object" && !Array.isArray(input.inputs)
+        ? Object.entries(input.inputs as Record<string, unknown>).map(([k, v]) => [
+            k,
+            typeof v === "string" ? v : JSON.stringify(v),
+          ])
+        : [],
   };
 }
 

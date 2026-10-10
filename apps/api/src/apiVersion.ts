@@ -14,6 +14,11 @@ export function rewriteApiUrl(url: string): string {
   return url.startsWith(V1_PREFIX) ? `/api/${url.slice(V1_PREFIX.length)}` : url;
 }
 
+/** Whether a registered route path is `/api` itself or lies under `/api/` (the one rule for what the gate guards). */
+export function isApiRoutePath(url: string | undefined): url is string {
+  return url === "/api" || url?.startsWith("/api/") === true;
+}
+
 /**
  * Is this request under `/api`? One rule for every decision that must not depend on the spelling:
  * it is when the router matched an `/api/…` route, or when no such route matched but the path, once
@@ -22,7 +27,7 @@ export function rewriteApiUrl(url: string): string {
  * `/index.html` and the static files are not. `url` is the rewritten URL (`/api/v1/…` is already `/api/…`).
  */
 export function isApiRequest(url: string, matchedRoute: string | undefined): boolean {
-  if (matchedRoute?.startsWith("/api/")) return true;
+  if (isApiRoutePath(matchedRoute)) return true;
   let pathname = url.split("?")[0]!;
   try {
     pathname = decodeURI(pathname);

@@ -190,7 +190,15 @@ cap for providers that report cost while running.
   and the **Push channel** on the server side. Alerts arrive with the app
   closed. Payloads are encrypted end to end (RFC 8291) with keys the server
   generates once into `config/vapid.json`; the push service only relays
-  ciphertext. Subscribed devices are listed and can be removed.
+  ciphertext. Subscribed devices are listed and can be removed. The server only
+  posts to a public `https` push service: an endpoint that points at this
+  machine or its network (`localhost`, a private address, a name that resolves
+  to one) is refused, when it is registered and again at every send. A paired
+  phone needs *Read content* to register and may name only the browsers' own
+  push services (Chrome/Edge, Firefox, Safari, Windows); its subscription
+  disappears with it when you revoke the device or take that permission away.
+  The inbox is yours: a paired phone reads it, but marking read and deleting
+  alerts happen on the desktop.
 
 ### 5.2.2 Trends
 
@@ -265,9 +273,15 @@ Two ways to reach it safely:
 - **A tunnel or reverse proxy running on this machine** (recommended for a
   home network: Tailscale serve, Caddy, cloudflared): it terminates the
   encryption and forwards to `127.0.0.1` on the main port with the original
-  `Host` header; add that host to the allowed hosts. A proxy on another
-  machine is not a tunnel: it would reach plain http and is refused, so point
-  it at the TLS port.
+  `Host` header; add that host to the allowed hosts. **Do not rewrite `Host` to
+  `127.0.0.1`** (nginx does unless told otherwise: add `proxy_set_header Host
+  $host;` and `proxy_set_header X-Forwarded-For $remote_addr;`): a request
+  that reaches the service from this machine with a loopback `Host` is taken
+  for you, and gets the page with your token in it. The page withholds the
+  token from a request that names a proxy (`X-Forwarded-For`, `Forwarded`,
+  `X-Real-IP`, `Via`), so keep the original `Host` and let the proxy say who it
+  forwards. A proxy on another machine is not a tunnel: it would reach plain
+  http and is refused, so point it at the TLS port.
 
 **What a device may do.** Before the code is shown you tick what the new
 device will be allowed to: *Monitor* (see runs, approvals, notifications and
@@ -277,12 +291,22 @@ status), *Read content* (files, notes, memory, results), *Start runs*
 Ticking one that needs another ticks it for you. The default is the first
 three; a device paired before this existed has them too. Change a device's
 permissions at any time with its **Permissions** button; the change applies to
-its next request. Codex and Cursor read the whole disk, so a device cannot
+its next request. A write a device asks for waits in your approvals with the
+whole request in front of you: who asked, the provider, folder and mode, the
+full prompt or every input of the skill, in boxes that scroll when they are
+long (nothing is cut). Cancelling it from the phone withdraws the approval
+too. Codex and Cursor read the whole disk, so a device cannot
 start a run on them (you can, from the desktop); settings, backups, skills,
 routines, connectors and memory writes stay yours alone.
 
-Never expose the main port beyond this machine: it is plain http and, whatever
-`bindAddress` says, it listens on loopback only.
+Never expose the main port beyond this machine: it is plain http and it
+listens on loopback only (`127.0.0.1`, or the loopback name `bindAddress`
+gives; an address beyond loopback applies to the TLS listener alone).
+
+Claude is the one provider a phone may use because Claude Code keeps reads to
+the working folder, which its documentation says and this release has not
+measured. If you prefer certainty, set Claude's `readConfinement` to `"none"` in
+`adapters/claude/src/manifest.ts`: no paired device then starts a run at all.
 
 ## 7.2 Windows checklist
 

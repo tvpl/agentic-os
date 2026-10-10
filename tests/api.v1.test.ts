@@ -57,7 +57,8 @@ let cleanup: () => void;
 beforeAll(async () => {
   const tmp = makeTempHome();
   cleanup = tmp.cleanup;
-  ctx = new AppContext(tmp.paths.home);
+  // The sandbox has no DNS to speak of: the push endpoint of C9 resolves to a public address.
+  ctx = new AppContext(tmp.paths.home, { pushResolver: async () => ["93.184.216.34"] });
   const settings = ctx.settings();
   settings.setupCompleted = true;
   settings.remote.enabled = true;

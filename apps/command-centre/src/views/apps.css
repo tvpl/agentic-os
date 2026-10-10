@@ -568,13 +568,27 @@
   color: var(--accent-text);
   text-shadow: 0 0 18px var(--accent-glow);
 }
+/* A device row wraps instead of squeezing: the name keeps at least 14rem, the actions drop under it when they do not fit. */
 .device-list li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: var(--s-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-3);
   align-items: center;
   padding: var(--s-2) 0;
   border-top: 1px solid var(--border);
+}
+.device-main {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.device-main strong {
+  overflow-wrap: anywhere;
+}
+.device-list .row-actions {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
 }
 .device-list .meta {
   color: var(--text-faint);
@@ -582,7 +596,7 @@
 }
 .device-list .device-scopes,
 .device-list .device-editor {
-  grid-column: 1 / -1;
+  flex: 1 0 100%;
 }
 .device-editor {
   display: grid;
@@ -595,6 +609,22 @@
   padding: var(--s-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+}
+.scope-picker .check {
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.scope-picker .check .meta {
+  flex: 1 1 10rem;
+}
+/* A box another one requires cannot be changed: it says so in words, and the pointer and the outline say it too. */
+.scope-picker .check:has(input:disabled) {
+  cursor: not-allowed;
+}
+.scope-picker input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  outline: 1px dashed var(--text-dim);
+  outline-offset: 2px;
 }
 .scope-picker legend {
   padding: 0 var(--s-1);

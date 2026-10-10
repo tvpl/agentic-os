@@ -178,7 +178,7 @@ describe("S1 each route says who may call it", () => {
       if (expected === "owner") owners += 1;
       else scoped += 1;
     }
-    expect([owners, scoped]).toEqual([61, 64]);
+    expect([owners, scoped]).toEqual([63, 62]);
     expect(fingerprint()).toBe(before.fp);
     expect(fs.readFileSync(settingsFile()).equals(before.settings)).toBe(true);
     expect(launches()).toHaveLength(before.launches);
@@ -226,7 +226,7 @@ describe("S1 each route says who may call it", () => {
       Object.fromEntries(
         (["owner", "monitor", "content", "run", "approve"] as const).map((s) => [s, routesOf(s).length]),
       ),
-    ).toEqual({ owner: 61, monitor: 36, content: 21, run: 6, approve: 1 });
+    ).toEqual({ owner: 63, monitor: 33, content: 22, run: 6, approve: 1 });
     // The route document carries the same scope on every operation that is not public.
     const doc = (
       await app.inject({ method: "GET", url: "/api/v1/openapi.json", headers: owner() })
@@ -564,7 +564,7 @@ describe("S2 what a device starts is limited", () => {
   });
 
   it("C12 the engine enforces the device limits itself", async () => {
-    const make = (provider: string, startedBy?: string | null) =>
+    const make = (provider: string, startedBy: string | null) =>
       ctx.runs.create({
         origin: "manual",
         provider,
@@ -575,7 +575,7 @@ describe("S2 what a device starts is limited", () => {
         mode: "read_only",
         timeoutMs: 60_000,
         profile: "read_only",
-        ...(startedBy !== undefined ? { startedBy } : {}),
+        startedBy,
       });
     for (const provider of ["codex", "cursor", "acme", "ghost"]) {
       let thrown: unknown;
@@ -585,9 +585,9 @@ describe("S2 what a device starts is limited", () => {
         thrown = err;
       }
       expect(thrown, provider).toMatchObject({ statusCode: 403, code: "device_provider_refused" });
-      for (const by of ["owner", null, undefined]) {
+      for (const by of ["owner", null]) {
         if (provider === "ghost") continue;
-        expect(make(provider, by).startedBy, `${provider} ${String(by)}`).toBe(by ?? null);
+        expect(make(provider, by).startedBy, `${provider} ${String(by)}`).toBe(by);
       }
     }
     expect(make("claude", "device:x").startedBy).toBe("device:x");
@@ -686,6 +686,45 @@ describe("S2 what a device starts is limited", () => {
     // Nothing started for the device: the only launch since is the owner's own run.
     expect(launches()).toHaveLength(beforeSkills + 1);
 
+    // The two ways left to start a run (five in all: a prompt, a skill, a repeat, a child, a turn of a conversation).
+    const seed = await post("/api/v1/runs", owner(), { prompt: "a run to branch from", mode: "read_only" });
+    const seeded = await settle((seed.json() as { runId: string }).runId);
+    const afterSeed = launches().length;
+    const parkedFor = (body: {
+      status?: string;
+      pendingApproval?: { requestedBy: string; kind: string };
+    }) => {
+      expect(body.status).toBe("waiting_approval");
+      expect(body.pendingApproval).toMatchObject({ kind: "write_run", requestedBy: `device:${device.id}` });
+    };
+    const viaChildren = await post(`/api/v1/runs/${seeded.id}/children`, as(device.token), {
+      prompts: ["write child"],
+      mode: "write",
+    });
+    expect(viaChildren.statusCode).toBe(202);
+    const child = (
+      viaChildren.json() as { runs: Array<{ runId: string; status: string; pendingApproval: never }> }
+    ).runs[0]!;
+    parkedFor(child);
+    expect(ctx.runs.get(child.runId)).toMatchObject({
+      status: "waiting_approval",
+      startedAt: null,
+      startedBy: `device:${device.id}`,
+    });
+    const viaContinue = await post(`/api/v1/sessions/${seeded.sessionId}/continue`, as(device.token), {
+      prompt: "write on",
+      mode: "write",
+    });
+    expect(viaContinue.statusCode).toBe(202);
+    const turn = viaContinue.json() as { runId: string; status: string; pendingApproval: never };
+    parkedFor(turn);
+    expect(ctx.runs.get(turn.runId)).toMatchObject({
+      status: "waiting_approval",
+      startedAt: null,
+      startedBy: `device:${device.id}`,
+    });
+    expect(launches()).toHaveLength(afterSeed);
+
     ctx.settingsStore.update({ securityProfile: "read_only" });
     const before = { fp: fingerprint(), launches: launches().length };
     const refused = await post("/api/v1/runs", as(device.token), { prompt: "change a file", mode: "write" });
@@ -762,6 +801,7 @@ describe("S2 what a device starts is limited", () => {
       mode: "read_only",
       timeoutMs: 60_000,
       profile: "read_only",
+      startedBy: null,
     });
     expect(direct.startedBy).toBeNull();
 
@@ -958,7 +998,11 @@ describe("S3 who asked does not approve", () => {
     const tmp = makeTempHome("mordomo-scopes-old-");
     try {
       const target = MIGRATIONS.find((m) => m.name === "device-scopes-and-who-asked")!.version;
-      expect(target).toBe(Math.max(...MIGRATIONS.map((m) => m.version)));
+      // Two later migrations (round 1) also run over these rows: who a push subscription and a retry receipt belong to.
+      expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([
+        "push-subscription-device",
+        "run-action-receipt-requester",
+      ]);
       const raw = new Database(tmp.paths.dbFile);
       for (const m of MIGRATIONS.filter((x) => x.version < target)) {
         if (m.sql) raw.exec(m.sql);
@@ -985,6 +1029,16 @@ describe("S3 who asked does not approve", () => {
           "INSERT INTO runs (id, created_at, origin, provider, effort, status, prompt_summary) VALUES ('old-run', 20, 'manual', 'claude', 'default', 'done', 'old')",
         )
         .run();
+      raw
+        .prepare(
+          "INSERT INTO push_subscriptions (id, endpoint, p256dh, auth, label, created_at, failures) VALUES ('ps_old', 'https://push.example.net/old', 'k', 'a', 'old', 3, 0)",
+        )
+        .run();
+      raw
+        .prepare(
+          "INSERT INTO run_action_receipts (id, action, source_run_id, created_at, response) VALUES (?, 'retry', 'old-run', 4, '{}')",
+        )
+        .run(crypto.randomUUID());
       raw.close();
 
       const migrated = new AppContext(tmp.paths.home);
@@ -1011,6 +1065,18 @@ describe("S3 who asked does not approve", () => {
           promptSummary: "old",
           startedBy: null,
         });
+        // The owner's subscription from before stays the owner's (no device), and the receipt has no requester.
+        expect(migrated.push.get("ps_old")).toMatchObject({
+          endpoint: "https://push.example.net/old",
+          deviceId: null,
+        });
+        expect(
+          (
+            migrated.db.prepare("SELECT requested_by FROM run_action_receipts").all() as Array<{
+              requested_by: unknown;
+            }>
+          ).map((r) => r.requested_by),
+        ).toEqual([null]);
       } finally {
         migrated.close();
       }
@@ -1042,7 +1108,7 @@ describe("S6 the documents say the same as the router", () => {
       }
     }
     expect(documented).toEqual(EXPECTED_ROUTE_SCOPES);
-    expect(counts).toEqual({ owner: 61, monitor: 36, content: 21, run: 6, approve: 1 });
+    expect(counts).toEqual({ owner: 63, monitor: 33, content: 22, run: 6, approve: 1 });
     // What this feature leaves open is written down, one phrase each.
     const open: Array<[string, string]> = [
       [
@@ -1056,6 +1122,19 @@ describe("S6 the documents say the same as the router", () => {
       ["the approval from before requestedBy", "an approval raised before `requestedBy` existed"],
       ["monitor shows run transcripts", "`monitor` shows what the owner's runs printed"],
       ["Claude's workdir is documentation", "no CLI binary was run to verify it here"],
+      ["Claude's workdir is a deduction, with the safest choice", "is a deduction, not a measurement"],
+      [
+        "a proxy on this machine is trusted as this machine is",
+        "A proxy on this machine is trusted as this machine is",
+      ],
+      ["a proxy that rewrites Host and adds nothing", "rewrites `Host` and adds no forwarding header"],
+      ["forwarded headers are never read for TLS or the peer", "never from `X-Forwarded-Proto`"],
+      [
+        "who may name a push endpoint and where it may point",
+        "A subscription is a URL the server will `POST` to",
+      ],
+      ["the owner reads the whole request", "The owner reads the whole request before approving"],
+      ["the listener without TLS is not always 127.0.0.1", "the loopback name `bindAddress` itself gives"],
     ];
     for (const [what, phrase] of open) expect(page.replace(/\s+/g, " "), what).toContain(phrase);
   });
@@ -1089,5 +1168,251 @@ describe("S6 the documents say the same as the router", () => {
     for (const word of ["monitor", "content", "run", "approve", "owner", "stream-tickets"]) {
       expect(doc.info.description, word).toContain(word);
     }
+  });
+});
+
+// ---- round 1: what the first verification found ------------------------------------------------------------------
+
+describe("round 1 the gaps the first verification found", () => {
+  it("C50 the inbox is the owner's: a device sees it and neither clears it nor marks it read", async () => {
+    const row = ctx.notifications.add({
+      kind: "system",
+      tone: "warn",
+      title: "needs you",
+      body: null,
+      href: null,
+      approvalId: null,
+      runId: null,
+      dedupeKey: null,
+    })!;
+    const device = pair(["monitor", "content", "run", "approve"], "reader");
+    const unreadBefore = ctx.notifications.unreadCount();
+    expect(unreadBefore).toBeGreaterThan(0);
+    const seen = await app.inject({ method: "GET", url: "/api/v1/notifications", headers: as(device.token) });
+    expect(seen.statusCode).toBe(200);
+    expect((seen.json() as { items: Array<{ id: string }> }).items.map((i) => i.id)).toContain(row.id);
+    const before = fingerprint();
+    for (const [method, url, payload] of [
+      ["DELETE", `/api/v1/notifications/${row.id}`, undefined],
+      ["POST", "/api/v1/notifications/read", { ids: [row.id] }],
+      ["POST", "/api/v1/notifications/read", { all: true }],
+    ] as const) {
+      const res = await app.inject({
+        method,
+        url,
+        headers: method === "DELETE" ? { "x-mordomo-token": device.token } : as(device.token),
+        ...(payload ? { payload } : {}),
+      });
+      expect(res.statusCode, `${method} ${url}`).toBe(403);
+      expect(errorCode(res), `${method} ${url}`).toBe("owner_only");
+    }
+    expect(fingerprint()).toBe(before);
+    expect(ctx.notifications.unreadCount()).toBe(unreadBefore);
+    expect(ctx.notifications.list({ limit: 500 }).some((n) => n.id === row.id)).toBe(true);
+    // The owner still clears it.
+    const read = await post("/api/v1/notifications/read", owner(), { ids: [row.id] });
+    expect(read.statusCode).toBe(200);
+    const del = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/notifications/${row.id}`,
+      headers: { "x-mordomo-token": token },
+    });
+    expect(del.statusCode).toBe(200);
+    const gone = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/notifications/${row.id}`,
+      headers: { "x-mordomo-token": token },
+    });
+    expect(gone.statusCode).toBe(404);
+  });
+
+  it("C51 repeating a skill run keeps who asked: refused on a provider that reads the disk, parked when it writes", async () => {
+    const made = await post("/api/v1/skills", owner(), {
+      frontmatter: {
+        name: "Repeat writer",
+        slug: "round1-writer",
+        description: "writes",
+        mode: "write",
+        providers: ["claude", "codex"],
+      },
+      body: "Write a note.",
+    });
+    expect(made.statusCode).toBe(200);
+    const device = pair(["run"], "repeater");
+    // A skill run of the owner's on claude (controlled_write lets the owner write at once).
+    ctx.settingsStore.update({ securityProfile: "controlled_write" });
+    const source = await post("/api/v1/skills/round1-writer/run", owner(), { provider: "claude" });
+    expect(source.statusCode).toBe(200);
+    const sourceRun = await settle((source.json() as { runId: string }).runId);
+    expect(sourceRun.request).toMatchObject({ kind: "skill", skillSlug: "round1-writer" });
+    const before = { fp: fingerprint(), launches: launches().length };
+    const repeated = await post(`/api/v1/runs/${sourceRun.id}/retry`, as(device.token), {
+      submissionId: crypto.randomUUID(),
+    });
+    expect(repeated.statusCode).toBe(202);
+    const body = repeated.json() as {
+      runId: string;
+      status: string;
+      pendingApproval: { requestedBy: string };
+    };
+    expect(body.status).toBe("waiting_approval");
+    expect(body.pendingApproval.requestedBy).toBe(`device:${device.id}`);
+    expect(ctx.runs.get(body.runId)).toMatchObject({
+      status: "waiting_approval",
+      startedBy: `device:${device.id}`,
+      startedAt: null,
+    });
+    expect(launches()).toHaveLength(before.launches);
+    ctx.settingsStore.update({ securityProfile: "review_before_write" });
+
+    // The same skill, run by the owner on codex (which reads the whole disk), cannot be repeated by a device.
+    const onCodex = await post("/api/v1/skills/round1-writer/run", owner(), { provider: "codex" });
+    expect([200, 202]).toContain(onCodex.statusCode);
+    const codexRunId = (onCodex.json() as { runId: string }).runId;
+    const counted = { fp: fingerprint(), launches: launches().length };
+    const refused = await post(`/api/v1/runs/${codexRunId}/retry`, as(device.token), {
+      submissionId: crypto.randomUUID(),
+    });
+    expect(refused.statusCode).toBe(403);
+    expect(errorCode(refused)).toBe("device_provider_refused");
+    expect(fingerprint()).toBe(counted.fp);
+    expect(launches()).toHaveLength(counted.launches);
+  });
+
+  it("C52 cancelling a write parked for a human takes its approval with it", async () => {
+    const device = pair(["run"], "canceller");
+    for (const [who, headers] of [
+      ["the device that asked", as(device.token)],
+      ["the owner", owner()],
+    ] as const) {
+      const { runId, approvalId } = await askForWrite(device, `write then think better of it (${who})`);
+      const before = { launches: launches().length, runs: ctx.runs.list({ limit: 500 }).length };
+      const cancelled = await post(`/api/v1/runs/${runId}/cancel`, headers, {});
+      expect(cancelled.statusCode, who).toBe(200);
+      expect(ctx.runs.get(runId)?.status, who).toBe("cancelled");
+      expect(ctx.approvals.get(approvalId), who).toMatchObject({ status: "denied", resolvedBy: "system" });
+      expect(
+        ctx.approvals.list("pending").some((a) => a.id === approvalId),
+        who,
+      ).toBe(false);
+      // A decision that comes later finds nothing to approve, and starts nothing.
+      const late = await resolve(approvalId, owner(), "approved");
+      expect(late.statusCode, who).toBe(409);
+      expect(errorCode(late), who).toBe("approval_resolved");
+      expect(launches(), who).toHaveLength(before.launches);
+      expect(ctx.runs.list({ limit: 500 }), who).toHaveLength(before.runs);
+    }
+  });
+
+  it("C53 who asked is never left out, and no route at exactly /api slips past the gate", async () => {
+    // A request that reaches a handler without a principal does not start work as nobody.
+    const { startedByOf } = await import("../apps/api/src/routes/common.js");
+    expect(() => startedByOf({ principal: null } as never)).toThrow(/No principal/);
+    expect(startedByOf({ principal: { kind: "owner" } } as never)).toBe("owner");
+    expect(startedByOf({ principal: { kind: "device", deviceId: "d1" } } as never)).toBe("device:d1");
+    // A route registered at /api itself is held to the same rules as the ones under /api/.
+    const fresh = await buildServer(ctx);
+    try {
+      expect(() => fresh.get("/api", async () => ({ root: true }))).toThrow(/GET \/api declares no scope/);
+      fresh.get("/api", { config: { scope: "owner" } }, async () => ({ root: true }));
+      const device = pair(["monitor", "content", "run", "approve"], "root");
+      const call = (headers: Record<string, string>) =>
+        fresh.inject({ method: "GET", url: "/api", headers: { host: "127.0.0.1", ...headers } });
+      const anonymous = await call({});
+      expect(anonymous.statusCode).toBe(401);
+      const held = await call(as(device.token));
+      expect(held.statusCode).toBe(403);
+      expect(errorCode(held)).toBe("owner_only");
+      expect((await call(owner())).statusCode).toBe(200);
+      const viaQuery = await fresh.inject({
+        method: "GET",
+        url: `/api?token=${token}`,
+        headers: { host: "127.0.0.1" },
+      });
+      expect(viaQuery.statusCode).toBe(401);
+    } finally {
+      await fresh.close();
+    }
+  });
+
+  it("C54 a submission id replays only for the one who made it", async () => {
+    const device = pair(["run"], "replayer");
+    const submissionId = crypto.randomUUID();
+    const payload = { prompt: "one submission", mode: "read_only", submissionId };
+    const first = await post("/api/v1/runs", owner(), payload);
+    expect(first.statusCode).toBe(200);
+    const runId = (first.json() as { runId: string }).runId;
+    await settle(runId);
+    // The same principal asking again gets its own run back.
+    const again = await post("/api/v1/runs", owner(), payload);
+    expect(again.statusCode).toBe(200);
+    expect((again.json() as { runId: string }).runId).toBe(runId);
+    // Another principal with the same id and the same request gets neither the run nor its session.
+    const before = fingerprint();
+    const stolen = await post("/api/v1/runs", as(device.token), payload);
+    expect(stolen.statusCode).toBe(409);
+    expect(errorCode(stolen)).toBe("submission_conflict");
+    expect(JSON.stringify(stolen.json())).not.toContain(runId);
+    expect(fingerprint()).toBe(before);
+
+    // The receipt of a repeat is the same: the owner's id does not hand the owner's run to a device.
+    const retryId = crypto.randomUUID();
+    const repeated = await post(`/api/v1/runs/${runId}/retry`, owner(), { submissionId: retryId });
+    expect(repeated.statusCode).toBe(200);
+    const repeatedRun = (repeated.json() as { runId: string }).runId;
+    await settle(repeatedRun);
+    const replayed = await post(`/api/v1/runs/${runId}/retry`, owner(), { submissionId: retryId });
+    expect((replayed.json() as { runId: string }).runId).toBe(repeatedRun);
+    const countBefore = fingerprint();
+    const taken = await post(`/api/v1/runs/${runId}/retry`, as(device.token), { submissionId: retryId });
+    expect(taken.statusCode).toBe(409);
+    expect(errorCode(taken)).toBe("submission_conflict");
+    expect(JSON.stringify(taken.json())).not.toContain(repeatedRun);
+    expect(fingerprint()).toBe(countBefore);
+  });
+
+  it("C55 the health report of a device skips npm audit, and an objective's runs are the owner's", async () => {
+    const device = pair(["monitor"], "doctor");
+    const before = spawned.length;
+    const report = await app.inject({ method: "GET", url: "/api/v1/doctor", headers: as(device.token) });
+    expect(report.statusCode).toBe(200);
+    const checks = (report.json() as { checks: Array<{ id: string }> }).checks.map((c) => c.id);
+    expect(checks.length).toBeGreaterThan(0);
+    expect(checks).not.toContain("npm-audit");
+    expect(spawned.slice(before).some((argv) => argv.includes("audit"))).toBe(false);
+
+    // An objective is the owner's to dispatch; both kinds of step record who dispatched them.
+    const skill = await post("/api/v1/skills", owner(), {
+      frontmatter: { name: "Step skill", slug: "round1-step", description: "a step", providers: ["claude"] },
+      body: "Say hello.",
+    });
+    expect(skill.statusCode).toBe(200);
+    const created = await post("/api/v1/objectives", owner(), {
+      title: "Who dispatched",
+      steps: [
+        { title: "prompt step", request: { version: 1, kind: "prompt", prompt: "hello", mode: "read_only" } },
+        {
+          title: "skill step",
+          request: { version: 1, kind: "skill", skillSlug: "round1-step", inputs: {}, mode: "read_only" },
+        },
+      ],
+    });
+    expect(created.statusCode).toBe(200);
+    const objectiveId = (created.json() as { id: string }).id;
+    const refused = await post(`/api/v1/objectives/${objectiveId}/dispatch`, as(device.token), { limit: 2 });
+    expect(refused.statusCode).toBe(403);
+    expect(errorCode(refused)).toBe("owner_only");
+    const dispatched = await post(`/api/v1/objectives/${objectiveId}/dispatch`, owner(), { limit: 2 });
+    expect(dispatched.statusCode).toBe(200);
+    const results = (dispatched.json() as { dispatched: Array<{ runId: string }> }).dispatched;
+    expect(results).toHaveLength(2);
+    for (const r of results) expect((await settle(r.runId)).startedBy).toBe("owner");
+  });
+
+  it("C46 a device cannot register a push endpoint without content, and the table says so", () => {
+    expect(EXPECTED_ROUTE_SCOPES["POST /api/push/subscribe"]).toBe("content");
+    expect(EXPECTED_ROUTE_SCOPES["POST /api/push/unsubscribe"]).toBe("monitor");
+    expect(EXPECTED_ROUTE_SCOPES["DELETE /api/notifications/:id"]).toBe("owner");
+    expect(EXPECTED_ROUTE_SCOPES["POST /api/notifications/read"]).toBe("owner");
   });
 });

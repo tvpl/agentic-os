@@ -57,7 +57,7 @@ function tlsInfo(ctx: AppContext): { port: number; fingerprint: string; hosts: s
     return null;
   }
 }
-import { httpError, principalName, requireAdapter, requireProvider } from "./common.js";
+import { httpError, principalName, requireAdapter, requireProvider, startedByOf } from "./common.js";
 import { BackupNameParams, UuidParams } from "./params.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -569,6 +569,7 @@ export function registerSystemRoutes(
       mode: "read_only",
       timeoutMs: 180_000,
       profile: "read_only",
+      startedBy: startedByOf(req),
     });
     const finished = await ctx.runs.execute(
       run.id,

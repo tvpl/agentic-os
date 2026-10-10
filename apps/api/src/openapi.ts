@@ -44,7 +44,7 @@ export function openApiDocument(routes: readonly ApiRoute[]): Record<string, unk
   const paths: Record<string, Record<string, unknown>> = {};
   for (const route of routes) {
     const params = [...route.url.matchAll(/:(\w+)/g)].map((m) => m[1]!);
-    const path = `/api/v1/${route.url.slice("/api/".length)}`.replace(/:(\w+)/g, "{$1}");
+    const path = `/api/v1${route.url.slice("/api".length)}`.replace(/:(\w+)/g, "{$1}");
     const security = route.config.public
       ? []
       : [

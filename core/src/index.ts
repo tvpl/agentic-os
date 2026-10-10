@@ -530,6 +530,14 @@ export {
   pushPayload,
   type PushChannelDeps,
 } from "./channels/pushChannel.js";
+export {
+  checkPushEndpoint,
+  endpointProblem,
+  isKnownPushHost,
+  isPublicAddress,
+  systemResolver,
+  type HostResolver,
+} from "./channels/pushEndpoint.js";
 export { PushStore, type PushSubscriptionRecord } from "./notifications/pushStore.js";
 export {
   MetricsHistory,

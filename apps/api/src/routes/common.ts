@@ -40,9 +40,16 @@ export function principalName(principal: Principal): string {
   return "owner";
 }
 
-/** Who asked, by the name runs and approvals record (`RunRecord.startedBy`, `Approval.requestedBy`). */
-export function startedByOf(req: FastifyRequest): string | null {
-  return req.principal ? principalName(req.principal) : null;
+/**
+ * Who asked, by the name runs and approvals record (`RunRecord.startedBy`, `Approval.requestedBy`). The gate sets a
+ * principal on every route that is not public, so a handler that reaches this without one is a route the gate did not
+ * guard: it fails closed (500) instead of starting work in the name of nobody, which no rule about devices would see.
+ */
+export function startedByOf(req: FastifyRequest): string {
+  if (!req.principal) {
+    throw httpError(500, "No principal on a request that starts work", "principal_missing");
+  }
+  return principalName(req.principal);
 }
 
 /** Error carrying an HTTP status — the global error handler maps it 1:1. */
@@ -226,6 +233,19 @@ export interface PromptRunResponse {
  * (provider and cwd, unless the caller overrides them), apply the write gate,
  * then launch. 202 + `waiting_approval` when the profile wants a human first.
  */
+/** The longest text an approval's one-line label quotes; the approval's payload holds the whole request. */
+const LABEL_QUOTE_CHARS = 600;
+
+/**
+ * A request quoted inside an approval's description (the label a chat message or a notification shows): cut, and said
+ * to be cut and by how much, so nobody reads a prefix as the whole. The approval's `payload.input` is never cut, and
+ * the approvals screens render it whole (`ApprovalRequest`).
+ */
+export function clipForLabel(text: string): string {
+  if (text.length <= LABEL_QUOTE_CHARS) return text;
+  return `${text.slice(0, LABEL_QUOTE_CHARS)}… (+${text.length - LABEL_QUOTE_CHARS} more characters; the approval holds the full request)`;
+}
+
 export function submitPromptRun(
   ctx: AppContext,
   body: PromptRunRequest,
@@ -234,8 +254,10 @@ export function submitPromptRun(
 ): PromptRunResponse {
   if (!body.submissionId) return createPromptSubmission(ctx, body, startedBy, onError);
   const { submissionId, ...payload } = body;
+  // Who asked is part of the request's identity: a receipt holds the run ids of the one who made it, so the same
+  // `submissionId` from another principal is a conflict, never a replay that hands over someone else's run.
   const hash = createHash("sha256")
-    .update(JSON.stringify(payload, Object.keys(payload).sort()))
+    .update(`${startedBy}\n${JSON.stringify(payload, Object.keys(payload).sort())}`)
     .digest("hex");
   const receipt = ctx.db
     .prepare("SELECT request_hash, response FROM prompt_submissions WHERE id = ?")
@@ -308,7 +330,7 @@ function createPromptSubmission(
     ctx,
     body.mode,
     "manual",
-    `Write-mode prompt run with ${provider}: "${body.prompt.slice(0, 80)}"`,
+    `Write-mode prompt run with ${provider}: "${clipForLabel(body.prompt)}"`,
     { kind: "prompt", input },
   );
   if (gate.pendingApproval) {

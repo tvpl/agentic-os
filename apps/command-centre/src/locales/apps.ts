@@ -188,6 +188,7 @@ export const en = {
   "apps.settings.scope.approve.hint":
     "Decide what other people or devices asked for, never its own requests.",
   "apps.settings.scopeNone": "none",
+  "apps.settings.scopeLocked": "required by another permission",
   "apps.settings.deviceScopes": "Permissions: {list}",
   "apps.settings.deviceScopesEdit": "Permissions",
   "apps.settings.sentinels": "Sentinels",
@@ -465,6 +466,7 @@ export const ptBR = {
   "apps.settings.scope.approve.hint":
     "Decidir o que outras pessoas ou dispositivos pediram, nunca os próprios pedidos.",
   "apps.settings.scopeNone": "nenhuma",
+  "apps.settings.scopeLocked": "exigida por outra permissão",
   "apps.settings.deviceScopes": "Permissões: {list}",
   "apps.settings.deviceScopesEdit": "Permissões",
   "apps.settings.sentinels": "Sentinelas",

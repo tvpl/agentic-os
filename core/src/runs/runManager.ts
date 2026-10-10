@@ -93,11 +93,13 @@ export interface CreateRunInput {
   sessionId?: string | null;
   attempts?: number;
   /**
-   * Who asked for the run, by the names `Approval.resolvedBy` uses (`owner`, `device:<id>`); null or absent for what no
-   * request started (a routine, a sentinel, the CLI). A paired device only starts runs on a provider whose reads stay
-   * in the working folder (`ProviderCapabilities.readConfinement`), checked here for every way a run is created.
+   * Who asked for the run, by the names `Approval.resolvedBy` uses (`owner`, `device:<id>`); `null` for what no request
+   * started (a routine, a sentinel, the CLI). Required, so a caller that forgets it does not compile instead of
+   * running as nobody: each way a run is created says who it is for. A paired device only starts runs on a provider
+   * whose reads stay in the working folder (`ProviderCapabilities.readConfinement`), checked here for every way a run
+   * is created.
    */
-  startedBy?: string | null;
+  startedBy: string | null;
   /**
    * Initial status. `waiting_approval` makes a write run gated by an approval
    * visible in the Runs list; `markApproved()` moves it to `queued`.
@@ -599,7 +601,7 @@ export class RunManager {
         input.timeoutMs,
         input.profile,
         input.maxCostUsd ?? null,
-        input.startedBy ?? null,
+        input.startedBy,
       );
     const record = this.get(id);
     if (!record) throw new Error("run insert failed");

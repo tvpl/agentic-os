@@ -52,7 +52,7 @@ import { registerEventRoutes } from "./routes/events.js";
 import { registerObjectiveRoutes } from "./routes/objectives.js";
 import { registerSentinelRoutes } from "./routes/sentinels.js";
 import { closeAllSse } from "./routes/sse.js";
-import { isApiRequest, rewriteApiUrl, successorHeaders } from "./apiVersion.js";
+import { isApiRequest, isApiRoutePath, rewriteApiUrl, successorHeaders } from "./apiVersion.js";
 import { SlidingWindow } from "./rateLimit.js";
 import { registerOpenApiRoute } from "./openapi.js";
 import { principalName, type Principal } from "./routes/common.js";
@@ -128,6 +128,17 @@ export function isLoopbackAddress(address: string | undefined): boolean {
   if (!address) return false;
   const a = address.toLowerCase();
   return a === "::1" || a.startsWith("127.") || a.startsWith("::ffff:127.");
+}
+
+/**
+ * Whether the request names a proxy on its way (`X-Forwarded-*`, `Forwarded`, `X-Real-IP`, `Via`). A browser on this
+ * machine sends none of these; a reverse proxy on this machine that forwards a visitor from elsewhere usually adds
+ * one, and that visitor must not be handed the owner's token just because the proxy's own socket is loopback and it
+ * rewrote the `Host` header to `127.0.0.1`. A proxy that adds none and rewrites `Host` cannot be told from the owner's
+ * browser: `docs/security.md` (limits) says to keep the original `Host` or to add one of these.
+ */
+export function carriesProxyHeaders(headers: FastifyRequest["headers"]): boolean {
+  return Object.keys(headers).some((name) => /^(?:x-forwarded-|x-real-ip$|forwarded$|via$)/.test(name));
 }
 
 /**
@@ -330,7 +341,7 @@ export async function buildServer(
   app.decorateRequest("principal", null);
   app.decorate("apiRoutes", [] as ApiRoute[]);
   app.addHook("onRoute", (route) => {
-    if (!route.url.startsWith("/api/")) return;
+    if (!isApiRoutePath(route.url)) return;
     // Denied by default: a route that does not say who may call it does not exist.
     if (route.config?.public !== true && route.config?.scope === undefined) {
       throw new Error(
@@ -391,7 +402,7 @@ export async function buildServer(
     if (api && queryTicket !== undefined && !(req.method === "GET" && config.ticket === true)) {
       return reply.code(401).send(errorBody("unauthorized", UNAUTHORIZED_MESSAGE));
     }
-    if (!route?.startsWith("/api/") || config.public === true) return;
+    if (!isApiRoutePath(route) || config.public === true) return;
     if (config.ticket === true && queryTicket !== undefined) {
       const principal = redeemTicket(
         ctx,
@@ -558,11 +569,13 @@ export async function buildServer(
     const serveIndex = (req: FastifyRequest, reply: FastifyReply) => {
       // The local token is injected into the same-origin page only, and only
       // when the page is opened from this machine (loopback socket AND loopback
-      // Host); a remote device pairs and keeps its own token in the browser.
+      // Host) and names no proxy on the way (`carriesProxyHeaders`); a remote device pairs and keeps its own token in
+      // the browser.
       // Foreign origins cannot read the meta (CORS) nor send it (custom header + no CORS).
       const inject =
         isLoopbackHost(req.headers.host) &&
         isLoopbackAddress(req.socket.remoteAddress) &&
+        !carriesProxyHeaders(req.headers) &&
         looksLikeBrowserNavigation(req)
           ? token
           : "";

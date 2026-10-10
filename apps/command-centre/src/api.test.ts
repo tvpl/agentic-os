@@ -110,6 +110,13 @@ describe("streams without a credential in the URL", () => {
     expect(seen).toEqual(["assistant", "run_state"]);
     stop();
     for (const instance of FakeEventSource.instances) expect(instance.url).not.toContain("token=");
+
+    // A run stream closed before its ticket arrives never opens, and the retry timer it armed does not either.
+    const before = FakeEventSource.instances.length;
+    const early = api.streamRun(run, () => undefined);
+    early();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(FakeEventSource.instances).toHaveLength(before);
   });
 });
 

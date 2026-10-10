@@ -19,6 +19,7 @@ import type {
   TestedVersions,
   VersionStatus,
 } from "@mordomo/contracts";
+import type { CreateRunInput } from "@mordomo/core";
 
 export type ContractExports = [
   Approval,
@@ -80,3 +81,23 @@ export const deviceWithoutScopes: DeviceRecord = {
   expiresAt: null,
   revokedAt: null,
 };
+
+/**
+ * escopos-dispositivo, round 1: who asked is part of creating a run. A caller that leaves `startedBy` out does not
+ * compile, so it cannot start a run as nobody by forgetting; `null` (a routine, a sentinel, the CLI) is written down.
+ */
+const runFields = {
+  origin: "manual",
+  provider: "claude",
+  prompt: "p",
+  cwd: "/w",
+  model: null,
+  effort: "default",
+  mode: "read_only",
+  timeoutMs: 1000,
+  profile: "read_only",
+} as const;
+// @ts-expect-error `startedBy` is required
+export const runWithoutStartedBy: CreateRunInput = { ...runFields };
+export const runByNobody: CreateRunInput = { ...runFields, startedBy: null };
+export const runByDevice: CreateRunInput = { ...runFields, startedBy: "device:d1" };

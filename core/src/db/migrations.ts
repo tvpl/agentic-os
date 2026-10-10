@@ -464,4 +464,26 @@ CREATE INDEX IF NOT EXISTS idx_objective_steps_run ON objective_steps(run_id);
       if (!hasColumn(db, "runs", "started_by")) db.exec("ALTER TABLE runs ADD COLUMN started_by TEXT");
     },
   },
+  {
+    version: 18,
+    name: "push-subscription-device",
+    // escopos-dispositivo, round 1: which paired device registered a push subscription (the device id, no key: a
+    // revoked device's rows are deleted with it). NULL is the owner's, and what was subscribed before this existed.
+    up(db) {
+      if (!hasColumn(db, "push_subscriptions", "device_id")) {
+        db.exec("ALTER TABLE push_subscriptions ADD COLUMN device_id TEXT");
+      }
+    },
+  },
+  {
+    version: 19,
+    name: "run-action-receipt-requester",
+    // escopos-dispositivo, round 1: who a retry receipt belongs to, so a replay hands a run back only to the principal
+    // that made it. Receipts from before have none and replay for nobody (they were one-shot idempotency keys).
+    up(db) {
+      if (!hasColumn(db, "run_action_receipts", "requested_by")) {
+        db.exec("ALTER TABLE run_action_receipts ADD COLUMN requested_by TEXT");
+      }
+    },
+  },
 ];

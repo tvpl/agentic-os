@@ -25,6 +25,7 @@ import {
 } from "./backup.js";
 import { RestoreInProgressError, RestoreLock } from "./restoreLock.js";
 import { installPushChannel } from "./channels/pushChannel.js";
+import { systemResolver, type HostResolver } from "./channels/pushEndpoint.js";
 import { installTelegramChannel } from "./channels/telegram.js";
 import type { EffortLevel, ProviderId, SecurityProfile, Settings } from "./config/schema.js";
 import { SettingsStore } from "./config/store.js";
@@ -70,6 +71,8 @@ export interface EngineOptions {
     id: string;
     permissionProfile: SecurityProfile | null;
   }) => PermissionBroker | null;
+  /** How a push endpoint's host name is resolved before it is accepted and before a send (default: the system's DNS). */
+  pushResolver?: HostResolver;
 }
 
 /** What a gated write run carries: the prompt or skill run to launch once a human approves. */
@@ -180,6 +183,8 @@ export class MordomoEngine {
   readonly providers: ProviderRegistry;
   /** Web Push subscriptions and the VAPID pair. */
   readonly push: PushStore;
+  /** Resolves the host of a push endpoint (the check that keeps the server from posting inside its own network). */
+  readonly pushResolver: HostResolver;
   /** Hourly metrics snapshots. */
   readonly metricsHistory: MetricsHistory;
   readonly startedAt = Date.now();
@@ -315,12 +320,50 @@ export class MordomoEngine {
         if (run) this.objectives.syncRun(run, this.runs);
       }),
     );
+    // A write parked for a human that is cancelled (by whoever asked, or the owner) takes its approval with it: left
+    // pending, a later "approve" would start a fresh run nobody is waiting for any more.
+    this.disposers.push(
+      events.subscribe((event) => {
+        if (event.type !== "run.finished") return;
+        const { runId, status } = event.payload as { runId?: string; status?: string };
+        if (!runId || status !== "cancelled") return;
+        for (const approval of this.approvals.list("pending")) {
+          if (approval.kind !== "write_run" || approval.payload.runId !== runId) continue;
+          const denied = this.approvals.resolve(approval.id, "denied", undefined, "system");
+          if (denied) {
+            events.emit("approval.resolved", {
+              id: denied.id,
+              kind: denied.kind,
+              status: denied.status,
+              runId: null,
+            });
+          }
+        }
+      }),
+    );
     // Alerts leave the tab: Telegram (bot token read from the environment at
     // send time) and Web Push to installed PWAs.
     this.disposers.push(installTelegramChannel(events, { getSettings: () => this.settings() }));
     this.push = new PushStore(this.db, this.paths.config);
+    this.pushResolver = opts.pushResolver ?? systemResolver;
+    // A subscription a paired device registered follows the device: gone with it when it is revoked or expires, and when
+    // it is left without `content` (what a push carries is that), so a revoked key keeps no way to reach the owner.
+    this.push.setDeviceGate((id) => this.devices.active(id)?.scopes.includes("content") === true);
+    this.disposers.push(
+      this.devices.onChange((change) => {
+        if (change.kind === "revoked" || !change.device.scopes.includes("content")) {
+          this.push.removeForDevice(change.device.id);
+        }
+      }),
+    );
     this.metricsHistory = new MetricsHistory(this.db);
-    this.disposers.push(installPushChannel(events, { getSettings: () => this.settings(), store: this.push }));
+    this.disposers.push(
+      installPushChannel(events, {
+        getSettings: () => this.settings(),
+        store: this.push,
+        resolveHost: this.pushResolver,
+      }),
+    );
     // The observers themselves. Nothing is watched or polled until `start()`.
     this.sentinels = new SentinelRunner({
       db: this.db,

@@ -34,6 +34,7 @@ import { qk, useOsProviders } from "../../queries";
 import { timeAgo, useToast } from "../../components/ui";
 import { useNotifications } from "../../hooks/useNotifications";
 import { useResolveApproval } from "../../runs/ApprovalCards";
+import { ApprovalRequest } from "../../runs/ApprovalRequest";
 import { failureFix } from "../../runs/failureFix";
 import { useDesktopActions } from "../../desktop/actions";
 import { describeDecision, editPreview, previewLines } from "../../desktop/decision";
@@ -541,6 +542,7 @@ function FocusDetail({ item }: { item: PendingItem }) {
         {d.subject && <code className="nu-focus-subject mono">{d.subject}</code>}
         {d.where && <p className="nu-focus-where mono">{d.where}</p>}
         {a.description && a.description !== d.headline && <p className="nu-focus-p">{a.description}</p>}
+        <ApprovalRequest approval={a} />
         {preview && lines.length > 0 && (
           <div className="nu-focus-diff">
             <p className="mono">

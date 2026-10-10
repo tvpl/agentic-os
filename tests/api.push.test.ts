@@ -18,7 +18,8 @@ beforeAll(async () => {
   const tmp = makeTempHome();
   cleanup = tmp.cleanup;
   home = tmp.paths.home;
-  ctx = new AppContext(home);
+  // The sandbox has no DNS to speak of: the endpoint host resolves to a documentation-free public address.
+  ctx = new AppContext(home, { pushResolver: async () => ["93.184.216.34"] });
   const settings = ctx.settings();
   settings.setupCompleted = true;
   settings.channels.push.enabled = true;
@@ -78,7 +79,7 @@ describe("push API", () => {
       return new Response(null, { status: 201 });
     }) as unknown as typeof fetch;
     const r = await deliverPush(
-      { getSettings: () => ctx.settings(), store: ctx.push, fetchImpl },
+      { getSettings: () => ctx.settings(), store: ctx.push, fetchImpl, resolveHost: ctx.pushResolver },
       {
         id: "n_1",
         kind: "approval",
@@ -107,7 +108,7 @@ describe("push API", () => {
 
     // Below the tone: skipped. Dead endpoint: dropped.
     const low = await deliverPush(
-      { getSettings: () => ctx.settings(), store: ctx.push, fetchImpl },
+      { getSettings: () => ctx.settings(), store: ctx.push, fetchImpl, resolveHost: ctx.pushResolver },
       {
         id: "n_2",
         kind: "system",
@@ -125,7 +126,7 @@ describe("push API", () => {
     expect(low.skipped).toBe("tone");
     const gone = (async () => new Response(null, { status: 410 })) as unknown as typeof fetch;
     const r2 = await deliverPush(
-      { getSettings: () => ctx.settings(), store: ctx.push, fetchImpl: gone },
+      { getSettings: () => ctx.settings(), store: ctx.push, fetchImpl: gone, resolveHost: ctx.pushResolver },
       {
         id: "n_3",
         kind: "system",

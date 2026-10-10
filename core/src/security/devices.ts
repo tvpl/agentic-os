@@ -42,13 +42,27 @@ export function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token, "utf8").digest("hex");
 }
 
+/** What happened to a device that something tied to it must follow (its push subscriptions, for one). */
+export type DeviceChange =
+  { kind: "revoked"; device: DeviceRecord } | { kind: "scopes"; device: DeviceRecord };
+
 export class DeviceStore {
   private readonly pending = new Map<string, PendingCode>();
+  private readonly listeners: Array<(change: DeviceChange) => void> = [];
 
   constructor(
     private readonly db: Db,
     private readonly now: () => number = Date.now,
   ) {}
+
+  /** Hear of a device revoked or given another set of scopes (synchronously, in the same call). Returns the way out. */
+  onChange(listener: (change: DeviceChange) => void): () => void {
+    this.listeners.push(listener);
+    return () => {
+      const i = this.listeners.indexOf(listener);
+      if (i >= 0) this.listeners.splice(i, 1);
+    };
+  }
 
   /** Mint a pairing code. A new code replaces any older pending one. */
   startPairing(
@@ -141,7 +155,9 @@ export class DeviceStore {
     const res = this.db
       .prepare("UPDATE devices SET scopes = ? WHERE id = ? AND revoked_at IS NULL")
       .run(JSON.stringify(closeDeviceScopes(scopes)), id);
-    return res.changes > 0 ? this.get(id) : null;
+    const device = res.changes > 0 ? this.get(id) : null;
+    if (device) for (const l of this.listeners) l({ kind: "scopes", device });
+    return device;
   }
 
   get(id: string): DeviceRecord | null {
@@ -158,6 +174,8 @@ export class DeviceStore {
     const res = this.db
       .prepare("UPDATE devices SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL")
       .run(this.now(), id);
+    const device = res.changes > 0 ? this.get(id) : null;
+    if (device) for (const l of this.listeners) l({ kind: "revoked", device });
     return res.changes > 0;
   }
 
