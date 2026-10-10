@@ -84,23 +84,40 @@ export function writeManifest(root: string, manifest: BackupManifest): void {
   });
 }
 
-/** Size and SHA-256 of a file, read in 1 MiB pieces. */
-export function hashFile(file: string): { size: number; sha256: string } {
+/** How much of a file is hashed between two turns of the caller's event loop (a database can be gigabytes). */
+const HASH_SLICE = 8 << 20;
+
+/**
+ * Size and SHA-256 of a file, read in 1 MiB pieces; yields after every `HASH_SLICE` bytes so a caller that drains
+ * it asynchronously lets its event loop run in the middle of a big file, not only between files.
+ */
+function* hashSteps(file: string): Generator<void, { size: number; sha256: string }> {
   const hash = crypto.createHash("sha256");
   const fd = fs.openSync(file, "r");
   try {
     const buffer = Buffer.allocUnsafe(1 << 20);
     let size = 0;
+    let sinceYield = 0;
     for (;;) {
       const read = fs.readSync(fd, buffer, 0, buffer.length, null);
       if (read === 0) break;
       hash.update(buffer.subarray(0, read));
       size += read;
+      sinceYield += read;
+      if (sinceYield >= HASH_SLICE) {
+        sinceYield = 0;
+        yield;
+      }
     }
     return { size, sha256: hash.digest("hex") };
   } finally {
     fs.closeSync(fd);
   }
+}
+
+/** Size and SHA-256 of a file (synchronous). */
+export function hashFile(file: string): { size: number; sha256: string } {
+  return drain(hashSteps(file));
 }
 
 type Entry = { kind: "file" } | { kind: "link"; target: string };
@@ -129,7 +146,7 @@ function* manifestSteps(root: string): Generator<void, BackupManifest> {
     if (rel === MANIFEST_NAME) continue;
     if (entry.kind === "link") links.push({ path: rel, target: entry.target });
     else {
-      files.push({ path: rel, ...hashFile(path.join(root, ...rel.split("/"))) });
+      files.push({ path: rel, ...(yield* hashSteps(path.join(root, ...rel.split("/")))) });
       yield;
     }
   }
@@ -199,7 +216,7 @@ function* problemSteps(manifest: BackupManifest, mounts: readonly Mount[]): Gene
       else if (found.kind === "link") problems.push({ path: file.path, kind: "link" });
       else {
         const full = isFolder ? path.join(base, ...file.path.slice(mount.rel.length + 1).split("/")) : base;
-        const { size, sha256 } = hashFile(full);
+        const { size, sha256 } = yield* hashSteps(full);
         if (size !== file.size) problems.push({ path: file.path, kind: "size" });
         else if (sha256 !== file.sha256) problems.push({ path: file.path, kind: "checksum" });
         yield;

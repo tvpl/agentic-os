@@ -15,6 +15,25 @@ export function registerOpenApiRoute(app: FastifyInstance): void {
 }
 
 const ERROR_RESPONSE = { $ref: "#/components/responses/Error" };
+const ERROR_CONTENT = { "application/json": { schema: { $ref: "#/components/schemas/Error" } } };
+
+/**
+ * The statuses a route answers beyond the generic 4XX/5XX, with the `error.code` each carries - the ones a client
+ * is expected to act on. Keyed by method and route path as Fastify registered it.
+ */
+const KNOWN_ERRORS: Record<string, Record<string, string>> = {
+  "POST /api/backups": {
+    "409":
+      "error.code restore_in_progress (a restore, a backup or a starting process holds the home: try again), " +
+      "restore_leftover (a restore left something to clear by hand), restore_recovery_failed (a dead restore " +
+      "could not be undone) or restore_lock_unusable (config/run/restore.lock cannot be a lock)",
+  },
+  "POST /api/backups/:name/restore": {
+    "404": "no such backup",
+    "409": "runs are active",
+    "422": "error.code backup_invalid or backup_unsealed",
+  },
+};
 
 export function openApiDocument(routes: readonly ApiRoute[]): Record<string, unknown> {
   const paths: Record<string, Record<string, unknown>> = {};
@@ -31,7 +50,16 @@ export function openApiDocument(routes: readonly ApiRoute[]): Record<string, unk
       parameters: params.map((name) => ({ name, in: "path", required: true, schema: { type: "string" } })),
       security,
       ...(route.config.scope === "owner" ? { "x-mordomo-scope": "owner" } : {}),
-      responses: { "200": { description: "Success" }, "4XX": ERROR_RESPONSE, "5XX": ERROR_RESPONSE },
+      responses: {
+        "200": { description: "Success" },
+        ...Object.fromEntries(
+          Object.entries(KNOWN_ERRORS[`${route.method.toUpperCase()} ${route.url}`] ?? {}).map(
+            ([status, description]) => [status, { description, content: ERROR_CONTENT }],
+          ),
+        ),
+        "4XX": ERROR_RESPONSE,
+        "5XX": ERROR_RESPONSE,
+      },
     };
   }
   return {

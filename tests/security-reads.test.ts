@@ -1626,9 +1626,9 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
   {
     file: "core/src/backup.ts",
     api: "lstatSync",
-    count: 3,
+    count: 4,
     kind: "fixed",
-    why: "restore refuses a backup folder that is a link (name matches full-…); the size walk counts a link as itself; recovery acts only on a .restore-* that is a real folder of the home",
+    why: "restore refuses a backup folder that is a link (name matches full-…); the size walk counts a link as itself; recovery acts only on a .restore-* that is a real folder of the home, and deletes a .removing-* only when it is one",
   },
   {
     file: "core/src/backup.ts",
@@ -1640,9 +1640,9 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
   {
     file: "core/src/backup.ts",
     api: "readdirSync",
-    count: 5,
+    count: 7,
     kind: "names",
-    why: "backup list, size walk, the .restore-* folders of the home (to look for them and to undo them), and the names inside one to see whether it holds old-N (names only; the journal inside is read by name)",
+    why: "backup list, size walk, the .restore-* / .removing-* folders of the home (to look for them, to undo them and to look at them without touching), and the names inside a staging folder (to see whether it holds old-N, and to delete all but the journal first) (names only; the journal inside is read by name)",
   },
   {
     file: "core/src/backup.ts",
@@ -1731,16 +1731,16 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
   {
     file: "core/src/restoreLock.ts",
     api: "openSync",
-    count: 2,
+    count: 3,
     kind: "fixed",
-    why: "creates config/run/restore.lock owner-only, only when it is absent (a descriptor opened and closed on a file this process holds a lock on would release it), and again if it was removed while waiting for it",
+    why: "creates config/run/restore.lock owner-only, only when it is absent (a descriptor opened and closed on a file this process holds a lock on would release it), and again if it was removed while waiting for it; and the read of its first 16 bytes by `inspectLockFile` (read-only, for the commands that must work when it is broken)",
   },
   {
     file: "core/src/restoreLock.ts",
     api: "lstatSync",
-    count: 1,
+    count: 2,
     kind: "fixed",
-    why: "config/run/restore.lock must be a regular file, never a link or a folder",
+    why: "config/run/restore.lock must be a regular file, never a link or a folder (when taking it, and when only looking at it)",
   },
   {
     file: "core/src/restoreLock.ts",

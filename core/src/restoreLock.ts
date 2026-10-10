@@ -26,6 +26,7 @@ export class RestoreLockError extends Error {
   /** What an API answers. */
   readonly statusCode = 409;
   constructor(file: string, reason: string) {
+    // Named from the home (`config/run/restore.lock`), never by its absolute path: an API sends this to a client.
     super(
       `${file} cannot be used as the restore lock (${reason}). If no MordomoOS process is running, remove it by ` +
         "hand and try again; never remove it while one is, that is what the lock is made of.",
@@ -50,6 +51,9 @@ const heldHere = new Map<string, { exclusive: number; shared: number }>();
  * lock, and the garbage collector closing its connection would silently release it.
  */
 const live = new Set<RestoreLock>();
+
+/** The lock file, as the messages name it: from the home. */
+const LOCK_NAME = "config/run/restore.lock";
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -122,7 +126,7 @@ export class RestoreLock {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
     if (!created && held === undefined) tightenMode(file, PRIVATE_FILE_MODE);
-    if (!fs.lstatSync(file).isFile()) throw new RestoreLockError(file, "it is not a regular file");
+    if (!fs.lstatSync(file).isFile()) throw new RestoreLockError(LOCK_NAME, "it is not a regular file");
 
     for (let again = 0; again < 3; again++) {
       const before = fs.statSync(file);
@@ -141,7 +145,7 @@ export class RestoreLock {
         const code = (error as { code?: unknown }).code;
         if (code === "SQLITE_BUSY") throw new RestoreInProgressError();
         if (typeof code === "string" && code.startsWith("SQLITE_")) {
-          throw new RestoreLockError(file, (error as Error).message);
+          throw new RestoreLockError(LOCK_NAME, (error as Error).message);
         }
         throw error;
       }
@@ -164,7 +168,7 @@ export class RestoreLock {
       db.close();
       if (after === null) fs.closeSync(fs.openSync(file, "a", PRIVATE_FILE_MODE));
     }
-    throw new RestoreLockError(file, "it kept being replaced while it was being locked");
+    throw new RestoreLockError(LOCK_NAME, "it kept being replaced while it was being locked");
   }
 
   private static open(file: string, waitMs: number): Database.Database {
@@ -172,7 +176,7 @@ export class RestoreLock {
       // The wait is given at open: the driver's own default (5 s) would otherwise apply to the first statement.
       return new Database(file, { timeout: Math.max(0, Math.floor(waitMs)) });
     } catch (error) {
-      throw new RestoreLockError(file, (error as Error).message);
+      throw new RestoreLockError(LOCK_NAME, (error as Error).message);
     }
   }
 
@@ -206,4 +210,35 @@ export function withRestoreLock<T>(
   } finally {
     lock.release();
   }
+}
+
+/**
+ * Look at `config/run/restore.lock` without taking it, opening it with SQLite or changing anything: why it cannot
+ * be the lock (a folder, a link, bytes that are not a SQLite file), or `null` when it is fine or absent. For the
+ * commands that must work when nothing else does (`doctor`, `status`, `stop`, `backup --list`). Not for a process
+ * that holds the lock: reading the file opens and closes a descriptor on it, which would release the lock.
+ */
+export function inspectLockFile(paths: MordomoPaths): string | null {
+  const file = path.join(paths.run, "restore.lock");
+  let stat: fs.Stats;
+  try {
+    stat = fs.lstatSync(file);
+  } catch {
+    return null;
+  }
+  if (!stat.isFile()) return "it is not a regular file";
+  if (stat.size === 0) return null; // what this code creates: SQLite makes it a database when it is first used
+  try {
+    const fd = fs.openSync(file, "r");
+    try {
+      const header = Buffer.alloc(16);
+      const read = fs.readSync(fd, header, 0, 16, 0);
+      if (read < 16 || header.toString("latin1") !== "SQLite format 3\0") return "it is not a SQLite file";
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return "it cannot be read";
+  }
+  return null;
 }

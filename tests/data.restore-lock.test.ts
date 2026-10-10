@@ -10,6 +10,7 @@ import {
   SettingsSchema,
   SettingsStore,
   createBackup,
+  inspectRestoreState,
   openDb,
   recoverInterruptedRestore,
   resolvePaths,
@@ -20,6 +21,7 @@ import {
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { makeTempHome } from "./helpers.js";
+import { buildManifestAsync } from "../core/src/backupManifest.js";
 import { bundleChild, runChild, src } from "./helpers/childBundle.js";
 
 /**
@@ -118,7 +120,7 @@ function killer(): Promise<string> {
       "let renames = 0;",
       "const real = fs.renameSync.bind(fs);",
       "fs.renameSync = ((from, to) => {",
-      '  if (String(from).includes(".restore-") || String(to).includes(".restore-")) {',
+      '  if ((String(from).includes(".restore-") || String(to).includes(".restore-")) && !String(to).includes(".removing-")) {',
       '    renames++; if (renames === killAt) process.kill(process.pid, "SIGKILL");',
       "  }",
       "  return real(from, to);",
@@ -551,7 +553,8 @@ describe("S4 the restore lock keeps the files of the home from being worked on t
           );
         expect(outcome, `${kind}: ${label}`).toBeInstanceOf(RestoreLockError);
         expect((outcome as Error).message, `${kind}: ${label}`).toContain("remove it by hand");
-        expect((outcome as Error).message).toContain(lockFile(paths));
+        expect((outcome as Error).message).toContain("config/run/restore.lock");
+        expect((outcome as Error).message, "no absolute path for a client").not.toContain(paths.home);
       }
       if (kind === "bytes") expect(fs.readFileSync(lockFile(paths), "utf8")).toBe(junk);
       else expect(fs.statSync(lockFile(paths)).isDirectory()).toBe(true);
@@ -664,6 +667,13 @@ describe("S4 the restore lock keeps the files of the home from being worked on t
           const had = Object.fromEntries(journal.entries.map((e) => [e.slot, e.hadTarget]));
           expect(had.artifacts).toBe(!drop);
           expect(had.syncManifest).toBe(!drop);
+          // The map beside it says, for a person, which thing of the home each old-N is.
+          const map = fs.readFileSync(path.join(fx.home, staging!, "MAPA.txt"), "utf8").split("\n");
+          const lines = map.filter((l) => /^\d+\t(old|new)\t/.test(l));
+          expect(lines).toHaveLength(SLOTS.length);
+          expect(lines.map((l) => l.split("\t")[2])).toContain("artifacts");
+          expect(lines.find((l) => l.endsWith("\tartifacts"))?.split("\t")[1]).toBe(drop ? "new" : "old");
+          expect(lines.map((l) => l.split("\t")[2])).toContain("config/db/mordomo.db");
         }
         const undone = recoverInterruptedRestore(fx.paths);
         expect(undone, `drop=${drop} k=${k}`).toHaveLength(1);
@@ -680,4 +690,152 @@ describe("S4 the restore lock keeps the files of the home from being worked on t
       }
     }
   }, 280_000);
+
+  it("C87 a restore that finished and is killed while its staging folder is deleted leaves a home that works, restored", async () => {
+    // A delete that walks the folder in either order, and dies at its k-th unlink or rmdir.
+    const cleanup = await bundleChild(
+      "cleanup-killed-r3",
+      [
+        'import fs from "node:fs";',
+        'import path from "node:path";',
+        `import { resolvePaths } from ${src("core/src/paths.ts")};`,
+        `import { restoreBackup } from ${src("core/src/backup.ts")};`,
+        "const killAt = Number(process.env.KILL_AT);",
+        'const ascending = process.env.ORDER === "asc";',
+        "let ops = 0;",
+        "const tick = () => { ops++; if (ops === killAt) process.kill(process.pid, 'SIGKILL'); };",
+        "const walk = (target) => {",
+        "  if (fs.lstatSync(target).isDirectory()) {",
+        "    const names = fs.readdirSync(target).sort();",
+        "    if (!ascending) names.reverse();",
+        "    for (const name of names) walk(path.join(target, name));",
+        "    tick(); fs.rmdirSync(target);",
+        "  } else { tick(); fs.unlinkSync(target); }",
+        "};",
+        "const real = fs.rmSync.bind(fs);",
+        "fs.rmSync = (target, options) => {",
+        "  if (/[.](restore|removing)-[0-9]+-[A-Za-z0-9]+$/.test(String(target))) {",
+        "    if (fs.existsSync(target)) walk(String(target));",
+        "    return;",
+        "  }",
+        "  return real(target, options);",
+        "};",
+        "restoreBackup(resolvePaths(process.env.HOME_DIR), process.env.BACKUP_NAME);",
+        "process.stdout.write(String(ops));",
+      ].join("\n"),
+    );
+    for (const order of ["asc", "desc"]) {
+      const dry = await fullFixture(false);
+      const finished = await runChild(cleanup, {
+        HOME_DIR: dry.home,
+        BACKUP_NAME: dry.backup.name,
+        KILL_AT: "0",
+        ORDER: order,
+      });
+      expect(finished.code, finished.stderr).toBe(0);
+      const total = Number(finished.stdout);
+      expect(total, "the deletion has steps to die in").toBeGreaterThan(8);
+      for (let k = 1; k <= total; k++) {
+        const fx = await fullFixture(false);
+        const run = await runChild(cleanup, {
+          HOME_DIR: fx.home,
+          BACKUP_NAME: fx.backup.name,
+          KILL_AT: String(k),
+          ORDER: order,
+        });
+        expect(run.signal, `${order} k=${k}: ${run.stderr}`).toBe("SIGKILL");
+        // Whatever the deletion left is debris, never a restore that looks unfinished.
+        expect(inspectRestoreState(fx.paths).blockers, `${order} k=${k}`).toEqual([]);
+        if (k % 2 === 0) {
+          const engine = new AppContext(fx.home);
+          try {
+            expect(engine.db.prepare("SELECT value FROM meta WHERE key = 'marker'").get()).toEqual({
+              value: "backup",
+            });
+          } finally {
+            engine.close();
+          }
+        } else {
+          const { db } = openDb(fx.paths);
+          try {
+            const sealed = await createBackup(fx.paths, db);
+            expect(fs.readFileSync(path.join(sealed.path, "memory", "note.md"), "utf8")).toBe("note v1\n");
+          } finally {
+            db.close();
+          }
+        }
+        expect(
+          fs.readdirSync(fx.home).filter((n) => n.startsWith(".restore-") || n.startsWith(".removing-")),
+          `${order} k=${k}: swept`,
+        ).toEqual([]);
+        expect(fs.readFileSync(path.join(fx.paths.memory, "note.md"), "utf8"), `${order} k=${k}`).toBe(
+          "note v1\n",
+        );
+        expect(fs.readFileSync(path.join(fx.paths.skills, "x", "SKILL.md"), "utf8")).toBe("skill v1\n");
+      }
+    }
+  }, 280_000);
+
+  it("C88 the hash of a backup gives the event loop back in the middle of a big file, not only between files", async () => {
+    const home = makeTempHome("mordomo-dados-hash-");
+    cleanups.push(home.cleanup);
+    const big = path.join(home.paths.home, "big");
+    fs.mkdirSync(big);
+    fs.writeFileSync(path.join(big, "one.bin"), Buffer.alloc(20 << 20, 7));
+    let turns = 0;
+    const real = globalThis.setImmediate;
+    globalThis.setImmediate = ((...args: Parameters<typeof setImmediate>) => {
+      turns++;
+      return real(...args);
+    }) as typeof setImmediate;
+    try {
+      await buildManifestAsync(big);
+    } finally {
+      globalThis.setImmediate = real;
+    }
+    // One file of 20 MiB: the slice is 8 MiB, so two turns inside it and one after (it used to be one in all).
+    expect(turns).toBeGreaterThanOrEqual(3);
+  });
+
+  it("C90 the API answers 409 with a code for a leftover, a dead restore that cannot be undone and a lock file that cannot be one, and names no path of the home", async () => {
+    const seed = makeTempHome("mordomo-dados-api409-");
+    cleanups.push(seed.cleanup);
+    const ctx = new AppContext(seed.paths.home);
+    const app = await buildServer(ctx);
+    const headers = { "x-mordomo-token": ctx.token() };
+    try {
+      const folder = path.join(seed.paths.home, ".restore-1-aaaaaa");
+      write(path.join(folder, "old-0", "note.md"), "an original");
+      write(path.join(folder, "JOURNAL.json"), "garbage");
+      const leftover = await app.inject({ method: "POST", url: "/api/backups", headers, payload: {} });
+      expect(leftover.statusCode).toBe(409);
+      expect(leftover.json().error.code).toBe("restore_leftover");
+      expect(leftover.json().error.message).toContain(".restore-1-aaaaaa");
+      expect(leftover.json().error.message).not.toContain(seed.paths.home);
+      fs.rmSync(folder, { recursive: true, force: true });
+
+      fs.rmSync(lockFile(seed.paths), { force: true });
+      fs.writeFileSync(lockFile(seed.paths), "x".repeat(64));
+      const unusable = await app.inject({ method: "POST", url: "/api/backups", headers, payload: {} });
+      expect(unusable.statusCode).toBe(409);
+      expect(unusable.json().error.code).toBe("restore_lock_unusable");
+      expect(unusable.json().error.message).not.toContain(seed.paths.home);
+      fs.rmSync(lockFile(seed.paths), { force: true });
+
+      // The statuses a client is meant to act on are in the API description.
+      const doc = (await app.inject({ method: "GET", url: "/api/v1/openapi.json", headers })).json() as {
+        paths: Record<string, Record<string, { responses: Record<string, { description: string }> }>>;
+      };
+      const post = doc.paths["/api/v1/backups"]!.post!;
+      expect(post.responses["409"]!.description).toMatch(
+        /restore_in_progress.*restore_leftover.*restore_recovery_failed.*restore_lock_unusable/,
+      );
+      expect(doc.paths["/api/v1/backups/{name}/restore"]!.post!.responses["422"]!.description).toContain(
+        "backup_invalid",
+      );
+    } finally {
+      await app.close();
+      ctx.close();
+    }
+  }, 60_000);
 });

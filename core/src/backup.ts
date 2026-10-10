@@ -19,7 +19,7 @@ import {
   type Mount,
 } from "./backupManifest.js";
 import { atomicWrite } from "./config/atomicWrite.js";
-import { RestoreInProgressError, RestoreLock, withRestoreLock } from "./restoreLock.js";
+import { RestoreInProgressError, RestoreLock, inspectLockFile, withRestoreLock } from "./restoreLock.js";
 
 export type { BackupInfo };
 
@@ -420,6 +420,8 @@ export function restoreBackupLocked(
       target: e.target,
       hadTarget: fs.existsSync(e.target),
     }));
+    // The map first, the journal after: a journal that exists always has its map beside it.
+    writeMap(paths, staging, journal);
     writeJournal(staging, journal);
     try {
       for (const entry of entries) {
@@ -462,7 +464,7 @@ export function restoreBackupLocked(
     }
     return { safetyBackup };
   } finally {
-    if (!preserveStaging) fs.rmSync(staging, { recursive: true, force: true });
+    if (!preserveStaging) removeStaging(staging);
   }
 }
 
@@ -502,6 +504,55 @@ function restoreSlots(paths: MordomoPaths): Record<RestoreSlot, string> {
     dbShm: `${paths.dbFile}-shm`,
     db: paths.dbFile,
   };
+}
+
+/** What a staging folder is called while it is being deleted: it no longer matches `STAGING_NAME`. */
+const REMOVING_NAME = /^\.removing-\d+-[A-Za-z0-9]+$/;
+
+/**
+ * Delete a staging folder that is no longer needed (the restore finished, was rolled back, or was debris) so that
+ * a process killed half way through the deletion never leaves a restore that looks unfinished. A recursive delete
+ * removes the journal BEFORE the originals (`JOURNAL.json` sorts first), and `old-N` with no journal is exactly
+ * what recovery refuses to guess about. So the folder is renamed first - one atomic step, to a name recovery
+ * knows is only debris (`.removing-…`) - and deleted after; whoever holds the lock next finishes the job
+ * (`recoverLocked`). If the rename is impossible, everything but the journal goes first and the journal last.
+ */
+function removeStaging(staging: string): void {
+  const parked = path.join(
+    path.dirname(staging),
+    path.basename(staging).replace(/^\.restore-/, ".removing-"),
+  );
+  try {
+    fs.renameSync(staging, parked);
+  } catch {
+    try {
+      for (const name of fs.readdirSync(staging)) {
+        if (name !== JOURNAL) fs.rmSync(path.join(staging, name), { recursive: true, force: true });
+      }
+    } catch {
+      /* the folder is already gone */
+    }
+    fs.rmSync(staging, { recursive: true, force: true });
+    return;
+  }
+  fs.rmSync(parked, { recursive: true, force: true });
+}
+
+/** `MAPA.txt`: which thing of the home each `old-N` is, for a person who has to put them back by hand. */
+function writeMap(paths: MordomoPaths, staging: string, journal: RestoreJournal): void {
+  const lines = [
+    "A restore replaced these things of the MordomoOS home. old-N, in this folder, is the original of line N,",
+    "as it was before the restore (a line marked 'new' had no original). The newest backup in config/backups is a",
+    "safety copy of the whole home as it was before the restore.",
+    "",
+    "N<TAB>what<TAB>path from the home",
+  ];
+  const slots = restoreSlots(paths);
+  journal.entries.forEach((entry, index) => {
+    const rel = path.relative(paths.home, slots[entry.slot]).split(path.sep).join("/");
+    lines.push(`${index}\t${entry.hadTarget ? "old" : "new"}\t${rel}`);
+  });
+  atomicWrite(path.join(staging, "MAPA.txt"), lines.join("\n") + "\n");
 }
 
 interface RestoreJournal {
@@ -564,14 +615,21 @@ function readJournal(staging: string): RestoreJournal | "absent" | "damaged" {
 /** The only names a restore's staging folder has, and it is a direct child of the home. */
 const STAGING_NAME = /^\.restore-\d+-[A-Za-z0-9]+$/;
 
+/** Text for a client: the home's own path is not part of it (the full path is for the person at the terminal). */
+const scrub = (text: string, home: string): string => text.split(home).join("<home>");
+
 /** An interrupted restore that cannot be put back: where its files are, why, and what to do by hand. */
 export class RestoreRecoveryError extends Error {
   readonly code = "restore_recovery_failed";
-  constructor(staging: string, causes: unknown[]) {
-    const first = causes[0] instanceof Error ? causes[0].message : String(causes[0]);
+  /** What an API answers. */
+  readonly statusCode = 409;
+  constructor(staging: string, causes: unknown[], home?: string) {
+    const raw = causes[0] instanceof Error ? causes[0].message : String(causes[0]);
+    const first = home === undefined ? raw : scrub(raw, home);
     super(
-      `An interrupted restore could not be undone (${first}). Its files are in ${staging}: for each entry of ` +
-        `${JOURNAL} there, move old-N back over its target, then delete the folder. Nothing else was touched.`,
+      `An interrupted restore could not be undone (${first}). Its files are in ${path.basename(staging)} in the ` +
+        `MordomoOS home: for each entry of ${JOURNAL} there (MAPA.txt lists them), move old-N back over its target, ` +
+        "then delete the folder. Nothing else was touched.",
       { cause: causes[0] },
     );
     this.name = "RestoreRecoveryError";
@@ -580,32 +638,41 @@ export class RestoreRecoveryError extends Error {
 
 /**
  * A `.restore-*` folder that MordomoOS will not delete or act on: it is not a folder, its journal is damaged or
- * was not written by a restore, or it holds files (`old-N`) a damaged journal can no longer place. Whatever is
- * asked of the home (a backup, a restore, an engine) is refused while it is there: nothing is changed.
+ * was not written by a restore, or it holds files (`old-N`) a missing journal can no longer place. Whatever is
+ * asked of the home (a backup, a restore, an engine) is refused while it is there.
  */
 export class RestoreLeftoverError extends Error {
   readonly code = "restore_leftover";
   /** What an API answers. */
   readonly statusCode = 409;
   constructor(
+    /** `folder` is the absolute path, for the terminal; the message names the folder from the home. */
     readonly leftovers: Array<{ name: string; folder: string; reason: string }>,
     /** What was undone in the same pass. */
     readonly recovered: string[] = [],
   ) {
-    const list = leftovers.map((l) => `${l.folder} (${l.reason})`).join("; ");
+    const list = leftovers.map((l) => `${l.name} (${l.reason})`).join("; ");
     super(
-      `The home holds ${leftovers.length} leftover(s) of a restore that cannot be undone safely by itself: ${list}. ` +
-        "Nothing was changed. Look inside (JOURNAL.json, old-N): move back by hand whatever belongs to the home " +
-        "(old-N is the original of the Nth entry), then delete the folder and try again.",
+      `The MordomoOS home holds ${leftovers.length} leftover(s) of a restore that cannot be undone safely by ` +
+        `itself: ${list}. ` +
+        (recovered.length === 0
+          ? "Nothing was changed. "
+          : `Undone before stopping: ${recovered.join(", ")}. `) +
+        "Look inside each folder. MAPA.txt, when there, says which thing of the home each old-N is (old-N is the " +
+        "original of line N). A folder that holds old-N and no JOURNAL.json can be what is left of a restore that " +
+        "FINISHED: if your files are the restored ones, just delete the folder (the originals are also in the " +
+        "safety backup the restore made first, the newest in config/backups). If the restore did NOT finish and the " +
+        "home looks half restored, move each old-N back over its line of MAPA.txt, or restore that safety backup, " +
+        "then delete the folder. Then try again.",
     );
     this.name = "RestoreLeftoverError";
   }
 }
 
-/** Is there a `.restore-*` folder in the home? (Shared holders may look: nothing creates one without the exclusive lock.) */
+/** Is there a `.restore-*` (or `.removing-*`) folder in the home? (Shared holders may look: only the exclusive one makes or removes them.) */
 export function hasStagingFolders(paths: MordomoPaths): boolean {
   try {
-    return fs.readdirSync(paths.home).some((n) => STAGING_NAME.test(n));
+    return fs.readdirSync(paths.home).some((n) => STAGING_NAME.test(n) || REMOVING_NAME.test(n));
   } catch {
     return false;
   }
@@ -614,15 +681,20 @@ export function hasStagingFolders(paths: MordomoPaths): boolean {
 /**
  * The shared restore lock for a backup: any number of backups at once, none while a restore runs (it waits for it
  * a few seconds without blocking the event loop, then is refused). Leftovers of a dead restore are undone first
- * (that takes the exclusive lock, so the shared one is let go and taken again); leftovers that cannot be undone
- * refuse the backup (`RestoreLeftoverError`).
+ * (that takes the exclusive lock, so the shared one is let go and taken again - waiting for it without blocking
+ * the event loop either); leftovers that cannot be undone refuse the backup (`RestoreLeftoverError`).
  */
 async function lockHomeForBackup(paths: MordomoPaths): Promise<RestoreLock> {
   for (let attempt = 0; attempt < 5; attempt++) {
     const lock = await RestoreLock.acquireAsync(paths, BACKUP_GUARD_WAIT_MS, "shared");
     if (!hasStagingFolders(paths)) return lock;
     lock.release();
-    withRestoreLock(paths, 10_000, () => recoverLocked(paths));
+    const exclusive = await RestoreLock.acquireAsync(paths, 10_000, "exclusive");
+    try {
+      recoverLocked(paths);
+    } finally {
+      exclusive.release();
+    }
   }
   throw new RestoreInProgressError();
 }
@@ -631,7 +703,7 @@ async function lockHomeForBackup(paths: MordomoPaths): Promise<RestoreLock> {
  * Undo restores that died: for each `.restore-*` folder in the home, put every target that was moved aside back,
  * remove what was installed from the staging, and remove the folder. A restore that finished (`done`) only has its
  * folder removed; a folder with no journal and nothing of the home inside (its process died before the journal)
- * touched nothing and is removed.
+ * touched nothing and is removed. `.removing-*` folders are what a deletion that was interrupted left: debris.
  *
  * What it cannot place it keeps: a folder that is a link or a file, a journal that is damaged or not a restore's,
  * a folder with `old-N` and no journal. Those are left exactly as they are and, after everything else was dealt
@@ -646,49 +718,115 @@ export function recoverInterruptedRestore(paths: MordomoPaths, waitMs = 10_000):
   return withRestoreLock(paths, waitMs, () => recoverLocked(paths));
 }
 
+type StagingVerdict =
+  | { kind: "gone" }
+  | { kind: "leftover"; reason: string }
+  | { kind: "debris" }
+  | { kind: "journal"; journal: RestoreJournal };
+
+/** What a `.restore-*` folder is, without touching it. */
+function judgeStaging(staging: string): StagingVerdict {
+  try {
+    // A direct child of the home that is a real folder, never a link to somewhere else.
+    if (!fs.lstatSync(staging).isDirectory()) return { kind: "leftover", reason: "not a folder" };
+  } catch {
+    return { kind: "gone" };
+  }
+  const journal = readJournal(staging);
+  if (journal === "damaged") {
+    return { kind: "leftover", reason: "its JOURNAL.json is damaged or was not written by a restore" };
+  }
+  if (journal === "absent") {
+    let holdsOriginals = false;
+    try {
+      holdsOriginals = fs.readdirSync(staging).some((n) => /^old-\d+$/.test(n));
+    } catch {
+      holdsOriginals = true; // cannot tell: do not delete what cannot be seen
+    }
+    return holdsOriginals
+      ? { kind: "leftover", reason: "it holds old-N and no JOURNAL.json: maybe what a finished restore left" }
+      : { kind: "debris" };
+  }
+  return { kind: "journal", journal };
+}
+
+/** What `inspectRestoreState` finds: read-only, takes no lock, opens no database, changes nothing. */
+export interface RestoreState {
+  /** Things that stop every backup, restore and command until a person deals with them. */
+  blockers: Array<{ name: string; folder: string; reason: string }>;
+  /** Folders the next command will undo or delete by itself. */
+  willBeCleaned: string[];
+}
+
+/**
+ * Look at the home for what a restore left, without recovering it (for `doctor`, `status`, `stop` and
+ * `backup --list`, which must be able to say what is wrong when the engine cannot be built). `config/run/restore.lock`
+ * that cannot be a lock is a blocker too.
+ */
+export function inspectRestoreState(paths: MordomoPaths): RestoreState {
+  const state: RestoreState = { blockers: [], willBeCleaned: [] };
+  const lockProblem = inspectLockFile(paths);
+  if (lockProblem !== null) {
+    state.blockers.push({
+      name: "config/run/restore.lock",
+      folder: path.join(paths.run, "restore.lock"),
+      reason: `${lockProblem}: remove it by hand when no MordomoOS process is running`,
+    });
+  }
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(paths.home);
+  } catch {
+    /* no home yet */
+  }
+  for (const name of names) {
+    const folder = path.join(paths.home, name);
+    if (REMOVING_NAME.test(name)) {
+      state.willBeCleaned.push(name);
+      continue;
+    }
+    if (!STAGING_NAME.test(name)) continue;
+    const verdict = judgeStaging(folder);
+    if (verdict.kind === "leftover") state.blockers.push({ name, folder, reason: verdict.reason });
+    else if (verdict.kind !== "gone") state.willBeCleaned.push(name);
+  }
+  return state;
+}
+
 /** `recoverInterruptedRestore` for a caller that holds the restore lock. */
 export function recoverLocked(paths: MordomoPaths): string[] {
   let names: string[];
   try {
-    names = fs.readdirSync(paths.home).filter((n) => STAGING_NAME.test(n));
+    names = fs.readdirSync(paths.home);
   } catch {
     return [];
+  }
+  // A deletion that was interrupted: only debris, whatever it was.
+  for (const name of names.filter((n) => REMOVING_NAME.test(n))) {
+    const parked = path.join(paths.home, name);
+    try {
+      if (fs.lstatSync(parked).isDirectory()) fs.rmSync(parked, { recursive: true, force: true });
+    } catch {
+      /* gone meanwhile */
+    }
   }
   const slots = restoreSlots(paths);
   const recovered: string[] = [];
   const leftovers: RestoreLeftoverError["leftovers"] = [];
-  for (const name of names) {
+  for (const name of names.filter((n) => STAGING_NAME.test(n))) {
     const staging = path.join(paths.home, name);
-    const keep = (reason: string) => leftovers.push({ name, folder: staging, reason });
-    try {
-      // A direct child of the home that is a real folder, never a link to somewhere else.
-      if (!fs.lstatSync(staging).isDirectory()) {
-        keep("not a folder");
-        continue;
-      }
-    } catch {
-      continue; // gone meanwhile
-    }
-    const journal = readJournal(staging);
-    if (journal === "damaged") {
-      keep("its JOURNAL.json is damaged or was not written by a restore");
+    const verdict = judgeStaging(staging);
+    if (verdict.kind === "gone") continue;
+    if (verdict.kind === "leftover") {
+      leftovers.push({ name, folder: staging, reason: verdict.reason });
       continue;
     }
-    if (journal === "absent") {
-      let holdsOriginals = false;
-      try {
-        holdsOriginals = fs.readdirSync(staging).some((n) => /^old-\d+$/.test(n));
-      } catch {
-        holdsOriginals = true; // cannot tell: do not delete what cannot be seen
-      }
-      if (holdsOriginals) {
-        keep("it holds old-N and has no JOURNAL.json");
-        continue;
-      }
-      fs.rmSync(staging, { recursive: true, force: true });
+    if (verdict.kind === "debris") {
+      removeStaging(staging);
       recovered.push(name);
       continue;
     }
+    const journal = verdict.journal;
     const failures: unknown[] = [];
     if (journal.phase === "installing") {
       for (let index = journal.entries.length - 1; index >= 0; index--) {
@@ -708,8 +846,8 @@ export function recoverLocked(paths: MordomoPaths): string[] {
         }
       }
     }
-    if (failures.length > 0) throw new RestoreRecoveryError(staging, failures);
-    fs.rmSync(staging, { recursive: true, force: true });
+    if (failures.length > 0) throw new RestoreRecoveryError(staging, failures, paths.home);
+    removeStaging(staging);
     recovered.push(name);
   }
   if (leftovers.length > 0) throw new RestoreLeftoverError(leftovers, recovered);

@@ -42,10 +42,13 @@ all of it or none of it: if it fails, every file is put back, and if the process
 the middle the next command that opens the home (any `mordomo` command, the service) undoes
 it; a backup waits a few seconds for a restore that is still running and is then refused (`409`), and a restore waits
 for a backup or for a command that is starting. A backup is never taken half way through a restore: it is all of the
-files before the restore or all of them after it. If a `.restore-…` folder in the home cannot be undone by itself (a damaged
-`JOURNAL.json`, for instance) it is left as it is and every backup, restore and command is refused with a message that
-names it: look inside, move back by hand whatever belongs to the home (`old-N` is the original of the Nth entry),
-delete the folder and try again. If `config/run/restore.lock` is reported as unusable, remove it by hand (only when no
+files before the restore or all of them after it. If a `.restore-…` folder in the home cannot be undone by itself (a damaged `JOURNAL.json`, or `old-N` folders with no
+journal) it is left as it is and every backup, restore and command that builds the engine is refused with a message that
+names it (exit code 3). `mordomo doctor`, `status`, `stop` and `backup --list` still work and print the steps. Open the
+folder: `MAPA.txt` says which thing of the home each `old-N` is. If your files are the restored ones (the restore had
+finished and was only cleaning up), delete the folder: the originals are also in the safety backup the restore made first
+(the newest in `config/backups`). If the restore did not finish and the home looks half restored, move each `old-N` back
+over its line of `MAPA.txt`, or restore that safety backup, then delete the folder and try again. If `config/run/restore.lock` is reported as unusable, remove it by hand (only when no
 MordomoOS process is running).
 
 Automatic backups also happen before: DB migrations, sync-compiler overwrites

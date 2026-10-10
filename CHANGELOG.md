@@ -19,7 +19,10 @@
   shared for a backup (all of it, so a backup is never sealed across a restore) and for an engine being
   built (until its database is open). Two commands cannot undo the same dead restore, a dead restore is
   undone whatever the spelling of the path to the home, and what cannot be placed is left alone and
-  refuses backup, restore and engine (`restore_leftover`) until it is removed by hand. A `settings.json` field
+  refuses backup, restore and engine (`restore_leftover`) until it is removed by hand (with a `MAPA.txt`
+  that says what each original is). A restore that finished and is killed while its staging folder is
+  deleted no longer locks the home: the folder is renamed to `.removing-…` first. `doctor`, `status`,
+  `stop` and `backup --list` work on a blocked home, explain it and exit 3. A `settings.json` field
   that cannot be read never opens a permission: fifteen security fields (profile, indexed folders,
   provider binaries, Telegram approvers, memory skills, spend alert, approval and device lifetimes,
   triage budget, the owner's exclusions and the sentinel switches) read as their most restrictive value, the others as their default.

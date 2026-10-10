@@ -131,7 +131,8 @@ function killer(): Promise<string> {
       "let renames = 0;",
       "const real = fs.renameSync.bind(fs);",
       "fs.renameSync = ((from, to) => {",
-      '  if (String(from).includes(".restore-") || String(to).includes(".restore-")) {',
+      '  if (process.env.KILL_ON_CLEANUP && String(to).includes(".removing-")) process.kill(process.pid, "SIGKILL");',
+      '  if ((String(from).includes(".restore-") || String(to).includes(".restore-")) && !String(to).includes(".removing-")) {',
       '    renames++; if (renames === killAt) process.kill(process.pid, "SIGKILL");',
       "  }",
       "  return real(from, to);",
@@ -399,7 +400,8 @@ describe("S4 backups are sealed, verified and kept in number", () => {
     const staged = (from: unknown, to: unknown) =>
       (String(from).includes(".restore-") || String(to).includes(".restore-")) &&
       !String(from).includes("JOURNAL.json") &&
-      !String(to).includes("JOURNAL.json");
+      !String(to).includes("JOURNAL.json") &&
+      !String(to).includes(".removing-");
     const dry = await fixture();
     let total = 0;
     vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
@@ -510,8 +512,11 @@ describe("S4 backups are sealed, verified and kept in number", () => {
     // 5. The CLI: `backup --list` and `backup` on the half restored home.
     ensureCli();
     const e = await crashedRestore({ KILL_AT: k });
+    // (`backup --list` reads a folder: it builds no engine, so it neither recovers nor refuses.)
+    const listed = liveState(e.paths);
     expect(mordomo(e.home, ["backup", "--list"]).status).toBe(0);
-    expect(liveState(e.paths)).toEqual(e.before);
+    expect(liveState(e.paths)).toEqual(listed);
+    expect(stagingFolders(e.paths)).toHaveLength(1);
     const e2 = await crashedRestore({ KILL_AT: k });
     const made = mordomo(e2.home, ["backup"]);
     expect(made.status, made.stderr).toBe(0);
@@ -732,13 +737,20 @@ describe("S4 backups are sealed, verified and kept in number", () => {
       fs.rmSync(dir, { recursive: true, force: true });
       fs.mkdirSync(paths.memory, { recursive: true });
     }
+    // What could be undone in the same pass is said, and is not "nothing was changed".
+    fs.mkdirSync(path.join(paths.home, ".restore-9-zzzzzz"));
     const error = await Promise.resolve()
       .then(() => {
         write(path.join(staging(), "JOURNAL.json"), "garbage");
         return recoverInterruptedRestore(paths);
       })
       .catch((e: unknown) => e as RestoreLeftoverError);
-    expect(error.message).toContain("delete the folder and try again");
+    expect((error as RestoreLeftoverError).recovered).toEqual([".restore-9-zzzzzz"]);
+    expect(error.message).toContain("Undone before stopping: .restore-9-zzzzzz");
+    expect(error.message).not.toContain("Nothing was changed");
+    expect(error.message).toContain("Then try again");
+    expect(error.message).toContain("FINISHED");
+    expect(error.message).not.toContain(paths.home);
     expect((error as RestoreLeftoverError).statusCode).toBe(409);
     expect((error as RestoreLeftoverError).leftovers).toHaveLength(1);
     fs.rmSync(path.join(paths.home, `.restore-${n}-aaaaaa`), { recursive: true, force: true });
@@ -837,6 +849,8 @@ describe("S4 backups are sealed, verified and kept in number", () => {
     expect(message).toContain("ENOENT");
     expect(message).toContain(stagingFolders(stuck.paths)[0]!);
     expect(message).toContain("move old-N back over its target");
+    expect(message, "no absolute path for a client").not.toContain(stuck.paths.home);
+    expect((thrown as RestoreRecoveryError).statusCode).toBe(409);
     expect(stagingFolders(stuck.paths)).toHaveLength(1);
     // The files are all still in the staging folder, so the same recovery finishes the job once it can.
     expect(recoverInterruptedRestore(stuck.paths)).toHaveLength(1);
@@ -846,12 +860,91 @@ describe("S4 backups are sealed, verified and kept in number", () => {
     ensureCli();
     const { paths } = await fixture();
     await startHolder(paths.home);
-    for (const args of [["backup", "--list"]]) {
+    for (const args of [["backup"]]) {
       const run = mordomo(paths.home, args);
       expect(run.status, args.join(" ")).toBe(1);
       expect(run.stderr, args.join(" ")).toContain("restore is in progress");
     }
   }, 120_000);
+
+  it("C89 doctor, status, stop and backup --list say what blocks the home, step by step, and build no engine", async () => {
+    ensureCli();
+    const { paths, backup } = await fixture();
+    const port = await new Promise<number>((resolve) => {
+      const probe = net.createServer().listen(0, "127.0.0.1", () => {
+        const free = (probe.address() as net.AddressInfo).port;
+        probe.close(() => resolve(free));
+      });
+    });
+    new SettingsStore(paths).update({ port, setupCompleted: true });
+    // A service that is running (its engine was built before anything was left behind).
+    const service = spawn(process.execPath, [CLI, "start", "--foreground"], {
+      cwd: repoRoot,
+      env: { ...process.env, MORDOMO_HOME: paths.home, NO_COLOR: "1", PATH: path.dirname(process.execPath) },
+      stdio: "ignore",
+    });
+    children.push(service);
+    await expect
+      .poll(() => fs.existsSync(path.join(paths.run, "server.pid")), { timeout: 30_000 })
+      .toBe(true);
+
+    // A restore's leftover that no code can place: originals and a journal that is garbage.
+    const leftover = path.join(paths.home, ".restore-1-aaaaaa");
+    write(path.join(leftover, "old-0", "note.md"), "an original");
+    write(path.join(leftover, "JOURNAL.json"), "garbage");
+    const kept = tree(leftover);
+
+    const doctor = mordomo(paths.home, ["doctor"]);
+    expect(doctor.status, doctor.stderr).toBe(3);
+    expect(doctor.stdout).toContain("cannot be used");
+    expect(doctor.stdout).toContain(".restore-1-aaaaaa");
+    expect(doctor.stdout).toContain("What to do");
+    expect(doctor.stdout).toContain("MAPA.txt");
+    const doctorJson = mordomo(paths.home, ["doctor", "--json"]);
+    expect(doctorJson.status).toBe(3);
+    expect(JSON.parse(doctorJson.stdout)).toMatchObject({ blocked: true, fail: 1 });
+
+    const status = mordomo(paths.home, ["status"]);
+    expect(status.status).toBe(3);
+    expect(status.stdout).toContain("running");
+    expect(status.stderr).toContain("What to do");
+    const statusJson = JSON.parse(mordomo(paths.home, ["status", "--json"]).stdout) as {
+      running: boolean;
+      homeBlocked: Array<{ name: string }>;
+    };
+    expect(statusJson.running).toBe(true);
+    expect(statusJson.homeBlocked.map((b) => b.name)).toEqual([".restore-1-aaaaaa"]);
+
+    const listed = mordomo(paths.home, ["backup", "--list"]);
+    expect(listed.status).toBe(3);
+    expect(listed.stdout).toContain(backup.name);
+    expect(listed.stderr).toContain("What to do");
+
+    // A command that needs the engine is refused with the cause and the same distinct code, and the terminal is
+    // told which home (an API client is not).
+    const made = mordomo(paths.home, ["backup"]);
+    expect(made.status).toBe(3);
+    expect(made.stderr).toContain("leftover");
+    expect(made.stderr).toContain(`Home: ${paths.home}`);
+
+    // stop works with the service alive and the home blocked.
+    const stopped = mordomo(paths.home, ["stop"]);
+    expect(stopped.status, stopped.stderr).toBe(0);
+    expect(stopped.stdout).toContain("Stopped");
+    expect(stopped.stderr).toContain("What to do");
+    await expect
+      .poll(() => service.exitCode !== null || service.signalCode !== null, { timeout: 30_000 })
+      .toBe(true);
+    expect(tree(leftover)).toEqual(kept);
+
+    // A lock file that cannot be a lock is told the same way.
+    fs.rmSync(leftover, { recursive: true, force: true });
+    fs.writeFileSync(path.join(paths.run, "restore.lock"), "x".repeat(64));
+    const lockStatus = mordomo(paths.home, ["status"]);
+    expect(lockStatus.status).toBe(3);
+    expect(lockStatus.stderr).toContain("config/run/restore.lock");
+    expect(lockStatus.stderr).toContain("not a SQLite file");
+  }, 180_000);
 
   it("C74 retention that loses a race to another process never fails the backup that was made", async () => {
     // Deterministic halves: a backup that vanishes while it is listed is skipped, and a deletion that fails is

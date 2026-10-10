@@ -9,7 +9,11 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import {
   createBackup,
+  inspectRestoreState,
   isSealed,
+  resolvePaths,
+  SettingsStore,
+  type RestoreState,
   listBackups,
   restoreBackup,
   generateRouters,
@@ -49,8 +53,11 @@ import { runDoctor } from "./doctor.js";
 
 const CLI_PATH = cliEntry();
 
-/** Exit codes: 0 ok · 1 runtime failure · 2 usage error (bad flag/argument). */
+/** Exit codes: 0 ok · 1 runtime failure · 2 usage error (bad flag/argument) · 3 the home is blocked by a leftover. */
 const EXIT_USAGE = 2;
+const EXIT_HOME_BLOCKED = 3;
+/** Errors that mean the home itself cannot be used until a person clears something by hand. */
+const HOME_BLOCKED_CODES = new Set(["restore_leftover", "restore_recovery_failed", "restore_lock_unusable"]);
 /** The registered providers, in registration order (the only valid `--provider` values). */
 const PROVIDER_IDS = buildProviderRegistry().ids();
 const SERVICE_LOG_MAX_BYTES = 5 * 1024 * 1024;
@@ -802,8 +809,63 @@ function statusIcon(status: "ok" | "warn" | "fail" | "skip"): string {
         : pc.dim("−");
 }
 
+// ------------------------------------------------- a home that is blocked ----
+
+/**
+ * What `doctor`, `status`, `stop` and `backup --list` say about a home a restore left in a state nothing may
+ * continue over. They do not build the engine for it (building it recovers, and refuses): they look, read-only, and
+ * explain step by step, with the full paths a person at the terminal needs.
+ */
+function homeBlockedLines(home: string, state: RestoreState): string[] {
+  return [
+    `${pc.red("✘")} The MordomoOS home (${home}) cannot be used until this is cleared by hand. Nothing was changed.`,
+    ...state.blockers.map((b) => `    · ${b.name}: ${b.reason}\n      ${b.folder}`),
+    "  What to do:",
+    "    1. Make sure no MordomoOS process is running (`mordomo stop` works even now).",
+    "    2. For a .restore-… folder: open it. MAPA.txt (when there) says which thing of the home each old-N is.",
+    "       old-N with no JOURNAL.json can be the leftover of a restore that FINISHED: if your files are the",
+    "       restored ones, delete the folder (the originals are also in the safety backup the restore made, the",
+    "       newest in config/backups). If the restore did NOT finish, move each old-N back over its line of",
+    "       MAPA.txt, or restore that safety backup, then delete the folder.",
+    "    3. For config/run/restore.lock: delete the file (only with no MordomoOS process running).",
+    "    4. Run the command again.",
+  ];
+}
+
+/** The blockers of the home, printed (to `stderr`, or into a JSON report by the caller); `null` when none. */
+function blockedHome(paths: MordomoPaths): { state: RestoreState; lines: string[] } | null {
+  const state = inspectRestoreState(paths);
+  return state.blockers.length > 0 ? { state, lines: homeBlockedLines(paths.home, state) } : null;
+}
+
 // --------------------------------------------------------------- doctor ----
 async function cmdDoctor(args: CliArgs): Promise<void> {
+  const blocked = blockedHome(resolvePaths());
+  if (blocked) {
+    // The checks need the engine, and the engine cannot be built over this: report it as the one failing check.
+    const detail = blocked.state.blockers.map((b) => `${b.name}: ${b.reason}`).join("; ");
+    if (args.json) {
+      const checks = [{ id: "restore-state", label: "Restore leftovers", status: "fail" as const, detail }];
+      const count = (status: string) => checks.filter((c) => c.status === status).length;
+      const totals = Object.fromEntries(["ok", "warn", "fail"].map((status) => [status, count(status)]));
+      console.log(
+        JSON.stringify(
+          {
+            checks,
+            ...totals,
+            generatedAt: Date.now(),
+            blocked: true,
+          },
+          null,
+          2,
+        ),
+      );
+    } else {
+      console.log(pc.bold(`\nMordomoOS doctor — ${new Date().toLocaleString()}\n`));
+      console.log(blocked.lines.join("\n") + "\n");
+    }
+    process.exit(EXIT_HOME_BLOCKED);
+  }
   const ctx = new AppContext();
   const report = await runDoctor(ctx);
   if (args.json) {
@@ -866,7 +928,7 @@ function serviceLogFile(ctx: Pick<AppContext, "paths">): string {
 }
 
 /** Spawn the foreground server as a detached child and wait for its pidfile (up to ~6 s). */
-async function startDetached(ctx: AppContext): Promise<PidInfo | null> {
+async function startDetached(ctx: Pick<AppContext, "paths">): Promise<PidInfo | null> {
   const logFile = serviceLogFile(ctx);
   fs.mkdirSync(ctx.paths.logs, { recursive: true });
   rotateLogIfNeeded(logFile);
@@ -909,12 +971,24 @@ function openBrowser(url: string): boolean {
 }
 
 /**
+ * What `launch` and `restart` need of the home: its paths and its settings. They start and stop a SERVICE; they
+ * never use the database, so they do not build an engine (a second engine in a process that already has one would
+ * open the same database file twice, and one that recovers a restore has no business in a command that only
+ * starts a process).
+ */
+function lightContext(): { paths: MordomoPaths; settings: () => Settings; close: () => void } {
+  const paths = resolvePaths();
+  const store = new SettingsStore(paths);
+  return { paths, settings: () => store.load(), close: () => undefined };
+}
+
+/**
  * `mordomo launch`: the double-click entry point of a packaged install. Starts
  * the service when nothing answers on the configured port, then opens the
  * Command Centre (the in-UI setup takes over on a fresh home).
  */
 async function cmdLaunch(args: CliArgs): Promise<void> {
-  const ctx = new AppContext();
+  const ctx = lightContext();
   const port = ctx.settings().port;
   const url = `http://127.0.0.1:${port}`;
   // An older build already answering is replaced before the window opens:
@@ -949,7 +1023,7 @@ async function cmdLaunch(args: CliArgs): Promise<void> {
  * service manager restarts it; otherwise a fresh detached process is spawned.
  */
 async function cmdRestart(opts: { keepOpen?: boolean } = {}): Promise<void> {
-  const ctx = new AppContext();
+  const ctx = lightContext();
   const info = readPidInfo(ctx);
   const port = ctx.settings().port;
   // Leftover service processes (a lost port race, another checkout's build)
@@ -1004,26 +1078,29 @@ async function cmdRestart(opts: { keepOpen?: boolean } = {}): Promise<void> {
 }
 
 async function cmdStop(): Promise<void> {
-  const ctx = new AppContext();
+  // No engine: stopping must work when the home is blocked, and building one is not needed to read a pid file.
+  const ctx = { paths: resolvePaths() };
   const info = readPidInfo(ctx);
   if (!info) {
     console.log("Not running.");
-    ctx.close();
-    return;
+  } else {
+    process.kill(info.pid, "SIGTERM");
+    for (let i = 0; i < 25; i++) {
+      await new Promise((r) => setTimeout(r, 200));
+      if (!readPidInfo(ctx)) break;
+    }
+    console.log(readPidInfo(ctx) ? `${pc.yellow("!")} Still stopping…` : `${pc.green("●")} Stopped.`);
   }
-  process.kill(info.pid, "SIGTERM");
-  for (let i = 0; i < 25; i++) {
-    await new Promise((r) => setTimeout(r, 200));
-    if (!readPidInfo(ctx)) break;
-  }
-  console.log(readPidInfo(ctx) ? `${pc.yellow("!")} Still stopping…` : `${pc.green("●")} Stopped.`);
-  ctx.close();
+  const blocked = blockedHome(ctx.paths);
+  if (blocked) console.error(blocked.lines.join("\n"));
 }
 
 async function cmdStatus(args: CliArgs): Promise<void> {
-  const ctx = new AppContext();
+  // No engine (it would recover, and refuse over a leftover): the pid file and the settings are all this reads.
+  const ctx = { paths: resolvePaths() };
   const info = readPidInfo(ctx);
-  const s = ctx.settings();
+  const s = new SettingsStore(ctx.paths).load();
+  const blocked = blockedHome(ctx.paths);
   const foreign = info ? null : await probeServer(s.port);
   if (args.json) {
     console.log(
@@ -1035,6 +1112,9 @@ async function cmdStatus(args: CliArgs): Promise<void> {
         port: info?.port ?? s.port,
         startedAt: info?.startedAt ?? null,
         url: `http://127.0.0.1:${info?.port ?? s.port}`,
+        ...(blocked
+          ? { homeBlocked: blocked.state.blockers.map((b) => ({ name: b.name, reason: b.reason })) }
+          : {}),
       }),
     );
   } else if (info) {
@@ -1048,21 +1128,30 @@ async function cmdStatus(args: CliArgs): Promise<void> {
   } else {
     console.log(`${pc.dim("○")} stopped · configured port ${s.port}`);
   }
-  ctx.close();
+  if (blocked) {
+    if (!args.json) console.error(blocked.lines.join("\n"));
+    process.exit(EXIT_HOME_BLOCKED);
+  }
 }
 
 // --------------------------------------------------------------- backup ----
 async function cmdBackup(args: CliArgs): Promise<void> {
-  const ctx = new AppContext();
   if (args.list) {
-    for (const b of listBackups(ctx.paths)) {
+    // No engine: a list is read from the folder, and must work whatever state a restore left the home in.
+    const paths = resolvePaths();
+    for (const b of listBackups(paths)) {
       console.log(
         `${b.name}  ${(b.sizeBytes / 1024).toFixed(1)} KB  ${new Date(b.createdAt).toLocaleString()}${isSealed(b.path) ? "" : "  unsealed"}`,
       );
     }
-    ctx.close();
+    const blocked = blockedHome(paths);
+    if (blocked) {
+      console.error(blocked.lines.join("\n"));
+      process.exit(EXIT_HOME_BLOCKED);
+    }
     return;
   }
+  const ctx = new AppContext();
   const before = listBackups(ctx.paths).length;
   const info = await createBackup(ctx.paths, ctx.db, {
     includeArtifacts: args.includeArtifacts,
@@ -1507,5 +1596,11 @@ async function installStartupService(ctx: AppContext, interactive: boolean): Pro
 main().catch((err: unknown) => {
   const command = process.argv[2] ?? "help";
   console.error(pc.red(`mordomo ${command}: ${(err as Error).message}`));
+  const code = (err as { code?: unknown }).code;
+  if (typeof code === "string" && HOME_BLOCKED_CODES.has(code)) {
+    // The messages name the home's files from the home (they also go to an API client): the terminal gets the path.
+    console.error(`Home: ${resolvePaths().home}`);
+    process.exit(EXIT_HOME_BLOCKED);
+  }
   process.exit(1);
 });

@@ -206,6 +206,7 @@ export {
   RestoreLeftoverError,
   RestoreRecoveryError,
   hasStagingFolders,
+  inspectRestoreState,
   recoverInterruptedRestore,
   restoreBackup,
   restorePendingDir,
@@ -214,6 +215,7 @@ export {
   type BackupInfo,
   type BackupOptions,
   type RestoreOptions,
+  type RestoreState,
   type RestorePending,
 } from "./backup.js";
 export {
@@ -294,6 +296,7 @@ export {
   RestoreInProgressError,
   RestoreLock,
   RestoreLockError,
+  inspectLockFile,
   withRestoreLock,
   type RestoreLockMode,
 } from "./restoreLock.js";
