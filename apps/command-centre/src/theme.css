@@ -1027,7 +1027,7 @@ canvas.dimmed {
 .launcher-hint {
   margin-top: var(--s-6);
   color: var(--text-faint);
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   text-align: center;
 }
 
@@ -1132,7 +1132,7 @@ canvas.dimmed {
 .palette-empty {
   margin: var(--s-2) 0;
   color: var(--text-faint);
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   text-align: center;
 }
 .palette-form {
@@ -1538,7 +1538,7 @@ textarea.input {
   color: var(--text-dim);
 }
 .field .hint {
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   color: var(--text-faint);
   text-transform: none;
   letter-spacing: 0;
@@ -1758,7 +1758,7 @@ textarea.input {
   font-size: var(--fs-3);
 }
 .empty-state.compact .es-body {
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
 }
 .empty-state .es-icon {
   width: 40px;
@@ -1961,7 +1961,7 @@ textarea.input {
 .modal-hint {
   margin: var(--s-3) 0 0;
   color: var(--text-faint);
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
 }
 .modal .hint,
 .modal .modal-hint {
@@ -2683,7 +2683,7 @@ input[type="range"]::-moz-range-thumb {
   min-height: 0;
 }
 .deck-hint {
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   color: var(--text-faint);
 }
 .btn.icon-only {

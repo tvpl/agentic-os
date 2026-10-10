@@ -363,7 +363,7 @@
 }
 .me-hint {
   margin: 0;
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   color: var(--text-faint);
 }
 .me-popover.closing {
@@ -521,7 +521,7 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
 }
 .cons .approval-inline-desc {
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
 }
 
 /* -------------------------------------------------------------- inbox ---- */
@@ -562,6 +562,7 @@
    fainter text of a faded row no longer reads at 4.5:1. */
 .inbox-row.read .inbox-title {
   color: var(--text-dim);
+  font-weight: 400;
 }
 .inbox-main {
   display: grid;
@@ -1301,7 +1302,7 @@
   width: 260px;
   margin: 0 0 0 -130px;
   text-align: center;
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   color: var(--text-faint);
   opacity: 0;
   pointer-events: none;
@@ -1431,7 +1432,7 @@
 /* notices: an unavailable folder, no provider, a pre-flight problem, a pending approval */
 .cons-note {
   margin: 8px 14px 0;
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
 }
 .cons-note.warn {
   color: var(--warn);
@@ -1452,7 +1453,7 @@
 .cons-empty {
   margin: 0;
   color: var(--text-faint);
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   max-width: 60ch;
 }
 /* the tray: one chip per open panel */
@@ -2028,7 +2029,7 @@
   align-items: center;
   gap: 8px;
   margin: 8px 14px 0;
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   color: var(--agent-text);
   min-height: 18px;
 }
@@ -2085,6 +2086,9 @@
   padding: 2px 0;
   border-bottom: 1px solid var(--border);
 }
+.cons-conversations li.on {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
 .cons-conversations li.on .conv-title {
   color: var(--accent-text);
 }
@@ -2133,7 +2137,7 @@
 }
 .conv-empty {
   margin: var(--s-2) 0 0;
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
 }
 
 /* ------------------------------------------------ refino · Onda 3 ------ */
@@ -2281,7 +2285,7 @@
   display: flex;
   gap: 8px;
   align-items: baseline;
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   color: var(--agent-text);
 }
 .console-artifacts {
@@ -2323,7 +2327,7 @@
 }
 .failure-cause {
   margin: 0;
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
 }
 .failure-actions {
   display: flex;

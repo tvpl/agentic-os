@@ -31,6 +31,11 @@ export function labelAlpha(k: number, showNames: boolean): number {
   return showNames ? 1 : ramp(k, LABEL_RAMP_START, LABEL_RAMP_END);
 }
 
+/** A planet's file count is a detail: it needs room beside the planet, so it fades out below 0.8 and is gone by 0.5. */
+export function planetCountAlpha(k: number): number {
+  return ramp(k, 0.5, 0.8);
+}
+
 export function planetLabelAlpha(k: number): number {
   return ramp(k, PLANET_LABEL_RAMP_START, PLANET_LABEL_RAMP_END);
 }
@@ -256,4 +261,15 @@ export const RING_LABEL_ANGLES: readonly number[] = [
 
 export function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, Math.max(1, max - 1)) + "…" : text;
+}
+
+/** Two letters for an application's badge: the initials of its first two words, or its first two letters. */
+export function initials(name: string): string {
+  const words = name
+    .replace(/\(.*?\)/g, "")
+    .trim()
+    .split(/[\s-]+/)
+    .filter(Boolean);
+  if (words.length >= 2) return (words[0]![0]! + words[1]![0]!).toUpperCase();
+  return (name.slice(0, 2) || "?").toUpperCase();
 }

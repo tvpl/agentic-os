@@ -4,410 +4,29 @@
  * through `font-size`, the `font` shorthand, a token, a relative unit, an
  * inline `style`, nor canvas text. Colour: a colour literal exists only in
  * the token blocks of theme.css, and the stylelint config that says so
- * actually refuses one. The sources are read as trees (postcss for CSS, the
- * TypeScript AST for TS/TSX), never as lines.
+ * actually refuses one. The readers live in testing/sizeScan.ts.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import postcss, { type Declaration, type Root } from "postcss";
-import stylelint from "stylelint";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import postcss from "postcss";
 import ts from "typescript";
+import stylelint from "stylelint";
 import { describe, expect, it } from "vitest";
-
-/** The floor: no text below this many CSS pixels. */
-const FLOOR = 12;
-
-function filesUnder(dir: string, test: (name: string) => boolean): string[] {
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) out.push(...filesUnder(p, test));
-    else if (test(name)) out.push(p);
-  }
-  return out;
-}
-
-const cssFiles = () => filesUnder(__dirname, (n) => n.endsWith(".css"));
-const rel = (file: string) => file.replace(__dirname, "src");
-
-// ---------------------------------------------------------------- CSS sizes
-
-/** Every custom property declared anywhere in the given roots: name -> each value it takes. */
-function customProperties(roots: Root[]): Map<string, string[]> {
-  const out = new Map<string, string[]>();
-  for (const root of roots)
-    root.walkDecls(/^--/, (d) => {
-      const list = out.get(d.prop) ?? [];
-      list.push(d.value);
-      out.set(d.prop, list);
-    });
-  return out;
-}
-
-/** Sizes the browser knows by name. `smaller` depends on the parent: unbounded below. */
-const SIZE_KEYWORDS: Record<string, number> = {
-  "xx-small": 9,
-  "x-small": 10,
-  small: 13,
-  medium: 16,
-  large: 18,
-  "x-large": 24,
-  "xx-large": 32,
-  "xxx-large": 48,
-};
-/** Values that take the parent's size (already held to the floor) or the initial 16px. */
-const INHERITING = new Set(["inherit", "initial", "unset", "revert", "revert-layer", "larger"]);
-
-/**
- * The smallest size, in px, a CSS length expression can resolve to; `null` when
- * it cannot be bounded (an unknown variable, `smaller`, an unknown unit).
- * Units: px; rem at the 16px root; em and % against a 12px parent (the floor
- * itself, the smallest any parent text may be); viewport and container units
- * at 0 (the narrowest window). clamp() is its minimum, min() its smallest
- * argument, max() its largest known one.
- */
-function lowerBound(src: string, props: Map<string, string[]>, seen: string[] = []): number | null {
-  let i = 0;
-  const s = src.trim();
-  const ws = () => {
-    while (i < s.length && /\s/.test(s[i]!)) i++;
-  };
-  const args = (): string[] => {
-    // at '(' : split the argument list at top-level commas
-    const out: string[] = [];
-    let depth = 0;
-    let start = ++i;
-    for (; i < s.length; i++) {
-      const c = s[i]!;
-      if (c === "(") depth++;
-      else if (c === ")") {
-        if (depth === 0) break;
-        depth--;
-      } else if (c === "," && depth === 0) {
-        out.push(s.slice(start, i));
-        start = i + 1;
-      }
-    }
-    out.push(s.slice(start, i));
-    i++; // ')'
-    return out;
-  };
-  const factor = (): number | null => {
-    ws();
-    const fn = /^([a-z-]+)\(/i.exec(s.slice(i));
-    if (fn) {
-      const name = fn[1]!.toLowerCase();
-      i += name.length;
-      const list = args();
-      if (name === "var") {
-        const [prop, ...fb] = list.map((a) => a.trim());
-        const values = props.get(prop!);
-        if (values && !seen.includes(prop!)) {
-          const bounds = values.map((v) => lowerBound(v, props, [...seen, prop!]));
-          if (bounds.some((b) => b === null)) return null;
-          return Math.min(...(bounds as number[]));
-        }
-        return fb.length ? lowerBound(fb.join(","), props, seen) : null;
-      }
-      const bounds = list.map((a) => lowerBound(a, props, seen));
-      if (name === "calc") return bounds[0] ?? null;
-      if (name === "clamp") return bounds[0] ?? null;
-      if (name === "min") return bounds.some((b) => b === null) ? null : Math.min(...(bounds as number[]));
-      if (name === "max") {
-        const known = bounds.filter((b): b is number => b !== null);
-        return known.length ? Math.max(...known) : null;
-      }
-      return null;
-    }
-    if (s[i] === "(") {
-      const inner = args();
-      return lowerBound(inner.join(","), props, seen);
-    }
-    const num = /^([+-]?(?:\d+\.?\d*|\.\d+))([a-z%]*)/i.exec(s.slice(i));
-    if (num) {
-      i += num[0].length;
-      const n = parseFloat(num[1]!);
-      const unit = num[2]!.toLowerCase();
-      if (unit === "" || unit === "px") return n;
-      if (unit === "rem") return n * 16;
-      if (unit === "em") return n * FLOOR;
-      if (unit === "%") return (n / 100) * FLOOR;
-      if (unit === "pt") return (n * 4) / 3;
-      if (/^(s|l|d)?v(w|h|i|b|min|max)$|^cq(w|h|i|b|min|max)$/.test(unit)) return 0;
-      return null;
-    }
-    const word = /^[a-z-]+/i.exec(s.slice(i));
-    if (word) {
-      i += word[0].length;
-      const k = word[0].toLowerCase();
-      return k in SIZE_KEYWORDS ? SIZE_KEYWORDS[k]! : null;
-    }
-    return null;
-  };
-  const product = (): number | null => {
-    let v = factor();
-    for (;;) {
-      ws();
-      const op = s[i];
-      if (op !== "*" && op !== "/") return v;
-      i++;
-      const r = factor();
-      if (v === null || r === null) v = null;
-      else v = op === "*" ? v * r : r === 0 ? null : v / r;
-    }
-  };
-  const sum = (): number | null => {
-    let v = product();
-    for (;;) {
-      ws();
-      const op = s[i];
-      if (op !== "+" && op !== "-") return v;
-      i++;
-      const r = product();
-      v = v === null || r === null ? null : op === "+" ? v + r : v - r;
-    }
-  };
-  const v = sum();
-  ws();
-  return i < s.length ? null : v;
-}
-
-/** Split a value at top-level spaces and slashes, keeping functions whole. */
-function topLevelParts(value: string): string[] {
-  const out: string[] = [];
-  let depth = 0;
-  let cur = "";
-  const flush = () => {
-    if (cur.trim()) out.push(cur.trim());
-    cur = "";
-  };
-  for (const c of value) {
-    if (c === "(") depth++;
-    if (c === ")") depth--;
-    if (depth === 0 && /\s/.test(c)) flush();
-    else if (depth === 0 && c === "/") {
-      flush();
-      out.push("/");
-    } else cur += c;
-  }
-  flush();
-  return out;
-}
-
-const FONT_PREFIX =
-  /^(normal|italic|oblique|small-caps|bold|bolder|lighter|(ultra-|extra-|semi-)?(condensed|expanded)|\d{1,4})$/i;
-const SYSTEM_FONTS = new Set(["caption", "icon", "menu", "message-box", "small-caption", "status-bar"]);
-
-/** The size part of a `font` shorthand, or null when it sets none (`font: inherit`). */
-function shorthandSize(value: string): string | null {
-  const parts = topLevelParts(value.replace(/!important/i, ""));
-  if (parts.length === 1 && (INHERITING.has(parts[0]!) || SYSTEM_FONTS.has(parts[0]!))) return null;
-  const slash = parts.indexOf("/");
-  if (slash > 0) return parts[slash - 1]!;
-  return parts.find((p) => !FONT_PREFIX.test(p)) ?? null;
-}
-
-/** Why a declaration sets text below the floor, or null when it does not. */
-function sizeOffence(decl: Pick<Declaration, "prop" | "value">, props: Map<string, string[]>): string | null {
-  const prop = decl.prop.toLowerCase();
-  let size: string | null;
-  if (prop === "font-size") size = decl.value.replace(/!important/i, "").trim();
-  else if (prop === "font") size = shorthandSize(decl.value);
-  else if (/^--fs-/.test(prop)) size = decl.value.trim();
-  else return null;
-  if (size === null || INHERITING.has(size)) return null;
-  // `font-size: 0` hides a label's text behind its glyph: nothing is drawn.
-  if (prop === "font-size" && size === "0") return null;
-  const min = lowerBound(size, props);
-  if (min === null) return `cannot be bounded: ${size}`;
-  if (min < FLOOR) return `resolves to ${+min.toFixed(2)}px`;
-  return null;
-}
-
-function cssSizeOffences(sources: { file: string; css: string }[], extra: Root[] = []): string[] {
-  const roots = sources.map(({ file, css }) => ({ file, root: postcss.parse(css, { from: file }) }));
-  const props = customProperties([...extra, ...roots.map((r) => r.root)]);
-  const out: string[] = [];
-  for (const { file, root } of roots)
-    root.walkDecls((d) => {
-      const why = sizeOffence(d, props);
-      if (why) out.push(`${rel(file)}:${d.source?.start?.line} ${d.prop}: ${d.value} — ${why}`);
-    });
-  return out;
-}
-
-const treeRoots = () => cssFiles().map((f) => postcss.parse(readFileSync(f, "utf8"), { from: f }));
-
-// --------------------------------------------------------- TS / TSX sizes
-
-/**
- * The smallest number an expression can evaluate to, or null when the source
- * alone cannot bound it. Literals, arithmetic on literals, Math.max/min, a
- * ternary, a `const` in the same file and `size / k` (a canvas drawn under a
- * zoom transform: on screen the text is `size`) are understood; a call to any
- * other function is not — write `Math.max(12, f(x))` there.
- */
-function numberBound(e: ts.Expression, file: ts.SourceFile, seen = new Set<ts.Node>()): number | null {
-  if (ts.isParenthesizedExpression(e) || ts.isNonNullExpression(e) || ts.isAsExpression(e))
-    return numberBound(e.expression, file, seen);
-  if (ts.isNumericLiteral(e)) return Number(e.text);
-  if (ts.isPrefixUnaryExpression(e) && e.operator === ts.SyntaxKind.MinusToken) {
-    const v = numberBound(e.operand, file, seen);
-    return v === null ? null : -v;
-  }
-  if (ts.isConditionalExpression(e)) {
-    const a = numberBound(e.whenTrue, file, seen);
-    const b = numberBound(e.whenFalse, file, seen);
-    return a === null || b === null ? null : Math.min(a, b);
-  }
-  if (ts.isBinaryExpression(e)) {
-    const l = numberBound(e.left, file, seen);
-    const r = numberBound(e.right, file, seen);
-    switch (e.operatorToken.kind) {
-      case ts.SyntaxKind.SlashToken:
-        if (l !== null && r !== null) return l / r;
-        return l; // `size / k`: a world-space size under the canvas zoom
-      case ts.SyntaxKind.AsteriskToken:
-        return l === null || r === null ? null : l * r;
-      case ts.SyntaxKind.PlusToken:
-        return l === null || r === null ? null : l + r;
-      case ts.SyntaxKind.MinusToken:
-        return l === null || r === null ? null : l - r;
-      default:
-        return null;
-    }
-  }
-  if (ts.isCallExpression(e) && ts.isPropertyAccessExpression(e.expression)) {
-    const callee = e.expression.getText(file);
-    const bounds = e.arguments.map((a) => numberBound(a, file, seen));
-    if (callee === "Math.max") {
-      const known = bounds.filter((b): b is number => b !== null);
-      return known.length ? Math.max(...known) : null;
-    }
-    if (callee === "Math.min")
-      return bounds.some((b) => b === null) ? null : Math.min(...(bounds as number[]));
-    if (callee === "Math.round" || callee === "Math.floor" || callee === "Math.ceil")
-      return bounds[0] == null ? null : Math.floor(bounds[0]);
-    return null;
-  }
-  if (ts.isIdentifier(e)) {
-    const local = constDeclaration(e, file);
-    const [decl, home] = local ? [local, file] : (importedConst(e.text, file) ?? [null, file]);
-    if (!decl?.initializer || seen.has(decl)) return null;
-    return numberBound(decl.initializer, home, new Set([...seen, decl]));
-  }
-  return null;
-}
-
-/** `import { NAME } from "./module"` -> that module's top-level `export const NAME = …`. */
-function importedConst(name: string, file: ts.SourceFile): [ts.VariableDeclaration, ts.SourceFile] | null {
-  for (const st of file.statements) {
-    if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) continue;
-    const spec = st.moduleSpecifier.text;
-    const named = st.importClause?.namedBindings;
-    if (!spec.startsWith(".") || !named || !ts.isNamedImports(named)) continue;
-    const el = named.elements.find((x) => x.name.text === name);
-    if (!el) continue;
-    const exported = (el.propertyName ?? el.name).text;
-    const base = join(dirname(file.fileName), spec);
-    const path = [`${base}.ts`, `${base}.tsx`, join(base, "index.ts")].find((p) => existsSync(p));
-    if (!path) return null;
-    const other = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
-    for (const o of other.statements) {
-      if (!ts.isVariableStatement(o) || !(o.declarationList.flags & ts.NodeFlags.Const)) continue;
-      for (const d of o.declarationList.declarations)
-        if (ts.isIdentifier(d.name) && d.name.text === exported) return [d, other];
-    }
-    return null;
-  }
-  return null;
-}
-
-/** The nearest `const` declaration of an identifier visible at its use, in the same file. */
-function constDeclaration(id: ts.Identifier, file: ts.SourceFile): ts.VariableDeclaration | null {
-  for (let scope: ts.Node | undefined = id.parent; scope; scope = scope.parent) {
-    const statements: readonly ts.Statement[] | undefined =
-      ts.isBlock(scope) || ts.isSourceFile(scope) || ts.isModuleBlock(scope) ? scope.statements : undefined;
-    if (!statements) continue;
-    for (const st of statements) {
-      if (!ts.isVariableStatement(st) || !(st.declarationList.flags & ts.NodeFlags.Const)) continue;
-      for (const d of st.declarationList.declarations)
-        if (ts.isIdentifier(d.name) && d.name.text === id.text && d.pos < id.pos) return d;
-    }
-    if (ts.isFunctionLike(scope) && scope.parameters.some((p) => p.name.getText(file) === id.text))
-      return null;
-  }
-  return null;
-}
-
-/**
- * A canvas font string: optional style/weight words, then `<size>px`, then a
- * family that is not another length (`${x}px ${y}px` is a position).
- */
-const CANVAS_FONT =
-  /^\s*(?:(?:normal|italic|oblique|bold|bolder|lighter|small-caps|\d{3}|\$\{\d+\})\s+)*(\$\{(\d+)\}|\d+(?:\.\d+)?)px\s+(?!\$\{\d+\}(?:px|%|r?em|deg)|-?[\d.]+(?:px|%|r?em)?(?:\s|,|$)|(?:solid|dashed|dotted|double|groove|ridge|inset|outset|none|hidden|var\(|rgba?\(|hsla?\(|#))\S/;
-
-function inlineSizeOffences(file: string, text: string, props: Map<string, string[]>): string[] {
-  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const out: string[] = [];
-  const at = (n: ts.Node) => `${rel(file)}:${sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1}`;
-  const visit = (node: ts.Node) => {
-    // style={{ fontSize: … }}, any style object with a fontSize, and el.style.fontSize = …
-    const sizeValue =
-      ts.isPropertyAssignment(node) && node.name.getText(sf).replace(/["']/g, "") === "fontSize"
-        ? node.initializer
-        : ts.isBinaryExpression(node) &&
-            node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-            ts.isPropertyAccessExpression(node.left) &&
-            node.left.name.text === "fontSize"
-          ? node.right
-          : null;
-    if (sizeValue) {
-      const v = sizeValue;
-      let min: number | null;
-      if (ts.isStringLiteralLike(v)) min = lowerBound(v.text, props);
-      else min = numberBound(v, sf);
-      if (min === null) out.push(`${at(node)} fontSize ${v.getText(sf)} — cannot be bounded`);
-      else if (min < FLOOR) out.push(`${at(node)} fontSize ${v.getText(sf)} — ${min}px`);
-    }
-    // canvas font strings: "11px mono", `500 ${size}px ${family}`
-    if (ts.isStringLiteralLike(node) || ts.isTemplateExpression(node)) {
-      let shape: string;
-      const holes: ts.Expression[] = [];
-      if (ts.isTemplateExpression(node)) {
-        shape = node.head.text;
-        node.templateSpans.forEach((span, k) => {
-          holes.push(span.expression);
-          shape += `\${${k}}${span.literal.text}`;
-        });
-      } else shape = node.text;
-      const m = CANVAS_FONT.exec(shape);
-      if (m) {
-        const min = m[2] !== undefined ? numberBound(holes[Number(m[2])]!, sf) : Number(m[1]);
-        const src = ts.isTemplateExpression(node) ? node.getText(sf) : JSON.stringify(shape);
-        if (min === null) out.push(`${at(node)} canvas font ${src} — size cannot be bounded`);
-        else if (min < FLOOR) out.push(`${at(node)} canvas font ${src} — ${+min.toFixed(2)}px`);
-      }
-    }
-    // "500 " + size + "px mono": font strings are templates here
-    if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.PlusToken &&
-      ts.isStringLiteralLike(node.right) &&
-      /^px\s+\S/.test(node.right.text)
-    )
-      out.push(`${at(node)} font string built with + — use a template literal`);
-    ts.forEachChild(node, visit);
-  };
-  visit(sf);
-  return out;
-}
-
-const sourceFiles = () =>
-  // Tests are left out: their font strings feed fake canvases, nothing is drawn on a screen.
-  filesUnder(__dirname, (n) => /\.(ts|tsx)$/.test(n) && !/\.d\.ts$|\.test\.tsx?$/.test(n));
+import {
+  cssFiles,
+  paragraphClasses,
+  proseOffences,
+  cssSizeOffences,
+  customProperties,
+  filesUnder,
+  inlineSizeOffences,
+  rel,
+  sourceFiles,
+  treeRoots,
+} from "./testing/sizeScan";
 
 // ------------------------------------------------------------------- tests
 
@@ -458,6 +77,9 @@ describe("type scale", () => {
     expect(probe("a { font-size: x-small }")).toHaveLength(1);
     expect(probe("a { font-size: calc(var(--fs-2) - 2px) }")).toHaveLength(1);
     expect(probe(":root { --fs-tiny: 10px } a { font-size: var(--fs-tiny) }")).toHaveLength(2);
+    expect(probe("a { font-size: min(10px, 2vw) }")).toHaveLength(1);
+    // min() is its smallest argument: a viewport unit counts as 0, the narrowest window.
+    expect(probe("a { font-size: min(14px, 5vw) }")).toHaveLength(1);
     // …and the sizes the scale allows are not.
     expect(probe("a { font: inherit }")).toEqual([]);
     expect(probe("a { font-size: var(--fs-2) !important }")).toEqual([]);
@@ -465,6 +87,7 @@ describe("type scale", () => {
     expect(probe("a { font: 500 var(--fs-2) var(--font-mono) }")).toEqual([]);
     expect(probe("a { font-size: clamp(var(--fs-2), 1.3vw + 6px, 26px) }")).toEqual([]);
     expect(probe("a { font-size: max(var(--fs-2), 0.84em) }")).toEqual([]);
+    expect(probe("a { font-size: min(20px, 30px) }")).toEqual([]);
     expect(probe("a { font-size: 0 }")).toEqual([]);
     expect(probe("a { font-size: var(--fs-x, 0.75rem) }")).toEqual([]);
 
@@ -486,6 +109,29 @@ describe("type scale", () => {
     expect(probe("c.font = `800 ${Math.max(7, size * 0.62)}px ${mono}`;")).toHaveLength(1);
     expect(probe("const fs = Math.max(8, w * 0.02);\nx.font = `500 ${fs}px ${mono}`;")).toHaveLength(1);
     expect(probe("x.font = `500 ${pal.fs}px ${mono}`;")).toHaveLength(1);
+    // A divisor other than the camera's `k` can leave the screen size under the floor: not bounded.
+    expect(probe("ctx.font = `800 ${12 / Math.max(0.8, k)}px ${font}`;")).toHaveLength(1);
+    expect(probe("ctx.font = `800 ${15 / zoom}px ${font}`;")).toHaveLength(1);
+    expect(probe("ctx.font = `800 ${Math.max(12, 15 * k) / Math.max(0.7, k)}px ${font}`;")).toHaveLength(1);
+    // The size a function returns is the lowest of its `return`s, with its arguments' bounds in it.
+    expect(
+      probe("function small(n: number) { return Math.max(8, n); }\nx.font = `500 ${small(w)}px ${m}`;"),
+    ).toHaveLength(1);
+    expect(probe("const big = (n: number) => Math.max(12, n);\nx.font = `500 ${big(3)}px ${m}`;")).toEqual(
+      [],
+    );
+    expect(
+      probe("function pick(a: number) { if (a) return 10; return 14; }\nx.font = `500 ${pick(1)}px ${m}`;"),
+    ).toHaveLength(1);
+    // JSX and SVG attributes, a shorthand property, setProperty, cssText and an HTML string
+    expect(probe("const a = <text fontSize={9} />;")).toHaveLength(1);
+    expect(probe('const a = <text fontSize="9" />;')).toHaveLength(1);
+    expect(probe("const fontSize = 9;\nconst s = { fontSize };")).toHaveLength(1);
+    expect(probe('el.style.setProperty("font-size", "9px");')).toHaveLength(1);
+    expect(probe('el.style.cssText = "color: red; font-size:9px";')).toHaveLength(1);
+    expect(probe('const html = `<span style="font-size:9px">x</span>`;')).toHaveLength(1);
+    expect(probe("const html = `<span style='font: 11px mono'>x</span>`;")).toHaveLength(1);
+    expect(probe("el.style.cssText = `font-size:${n}px`;")).toHaveLength(1);
     // an imported constant is read from its module (brain/render/labels.ts)
     const fromLabels = (code: string) =>
       inlineSizeOffences(join(__dirname, "brain/render/probe.ts"), code, props);
@@ -500,9 +146,22 @@ describe("type scale", () => {
     // …and the forms that respect the floor, or are not text at all, are not.
     expect(probe(`const a = <span style={{ fontSize: "var(--fs-3)" }} />;`)).toEqual([]);
     expect(probe(`const a = <span style={{ fontSize: 12 }} />;`)).toEqual([]);
+    expect(probe("const a = <text fontSize={12} />;")).toEqual([]);
+    expect(probe("const fontSize = 13;\nconst s = { fontSize };")).toEqual([]);
+    expect(probe('el.style.setProperty("font-size", "var(--fs-3)");')).toEqual([]);
+    expect(probe('el.style.setProperty("--x", "9px");')).toEqual([]);
+    expect(probe('el.style.cssText = "color: red; font-size:13px";')).toEqual([]);
+    expect(probe('const css = "a { margin: 9px }";')).toEqual([]);
     expect(probe("ctx.font = `700 ${12 / k}px ${font}`;")).toEqual([]);
     expect(probe("const fs = Math.max(12, w * 0.02);\nx.font = `500 ${fs}px ${mono}`;")).toEqual([]);
     expect(probe("const f = `600 ${Math.max(12, groupPx(s))}px ${tk.display}`;")).toEqual([]);
+    expect(
+      inlineSizeOffences(
+        join(__dirname, "nucleo/scenes/probe.ts"),
+        'import { groupPx, labelPx } from "./brainLabels";\nconst f = `600 ${groupPx(s)}px ${a} ${labelPx(1, s)}px ${b}`;',
+        props,
+      ),
+    ).toEqual([]);
     expect(probe("el.style.transform = `translate(${x}px, ${y}px)`;")).toEqual([]);
     expect(probe("el.style.backgroundPosition = `${x}px ${y}px`;")).toEqual([]);
     expect(probe(`el.style.boxShadow = "0 2px 8px rgba(0,0,0,.4)";`)).toEqual([]);
@@ -511,6 +170,153 @@ describe("type scale", () => {
     const tokens = customProperties(treeRoots());
     const offenders = sourceFiles().flatMap((f) => inlineSizeOffences(f, readFileSync(f, "utf8"), tokens));
     expect(offenders, offenders.join("\n")).toEqual([]);
+  });
+});
+
+// ------------------------------------------------------------ running text
+
+/**
+ * The classes of `<p>` elements that are labels, counters, key hints or
+ * metadata, not sentences: design.md keeps these at 12px (`--fs-2`) and wants
+ * running text (paragraphs, descriptions, messages) at 13px (`--fs-3`) or more.
+ * Each entry says why it is not running text; a class not listed here that a
+ * `<p>` carries is held to 13px.
+ */
+const MICROCOPY: Record<string, string> = {
+  mono: "monospace utility for data (ids, paths, commands, cron expressions), not a sentence",
+  meta: "metadata line of a list row (author, count, age)",
+  label: "a field or stat label",
+  k: "the key of a key/value pair",
+  v: "the value of a key/value pair",
+  sub: "the subtitle of a tooltip or row: a name and a count",
+  cp: "a name chip in the journal widget",
+  "brain-preview-path": "a file path",
+  "approval-inline-cwd": "a working-directory path",
+  "bs-sheet-path": "a file path",
+  "file-path": "a file path",
+  "run-id": "a run id",
+  "nu-keys": "key hints",
+  "sks-keys": "key hints",
+  "pxs-shortcuts": "key hints",
+  "apps-run-hint": "a key hint (the keys are `kbd` elements)",
+  "sks-eyebrow": "an uppercase eyebrow",
+  "nu-focus-eyebrow": "an uppercase eyebrow",
+  "nu-focus-pos": "the position counter of the focus queue",
+  "bs-eyebrow": "an uppercase eyebrow",
+  "bs-rail-kind": "a kind label",
+  "bs-link-kind": "a kind label",
+  "inbox-section": "an uppercase section label",
+  "settings-group-label": "an uppercase group label",
+  "sks-tags": "tags: metadata",
+  "sks-state": "a state counter line",
+  "sks-count": "a counter",
+  "rs-sub": "run metadata (provider, age)",
+  "run-sheet-line": "run metadata on one line",
+  "nu-focus-err": "a monospace error trace (the focus card's `mono` line)",
+};
+
+describe("running text", () => {
+  it("C15 paragraphs, descriptions and messages are at least 13px", () => {
+    const props = customProperties([postcss.parse(":root { --fs-2: 12px; --fs-3: 13px; }")]);
+    const probe = (css: string, classes = ["note"], exempt: string[] = []) =>
+      proseOffences([{ file: "probe.css", css }], new Set(classes), new Set(exempt), props);
+    // Self-test: a rule that sets small text on a paragraph, or on a class a paragraph carries, is found…
+    expect(probe(".note { font-size: 12px }")).toHaveLength(1);
+    expect(probe(".note { font-size: var(--fs-2) }")).toHaveLength(1);
+    expect(probe(".card .note { font: 400 var(--fs-2) / 1.4 var(--font) }")).toHaveLength(1);
+    expect(probe("p { font-size: 12px }", [])).toHaveLength(1);
+    expect(probe(".panel p { font-size: var(--fs-2) }", [])).toHaveLength(1);
+    expect(probe("p.lead { font-size: 12.5px }", [])).toHaveLength(1);
+    expect(probe("@media (max-width: 600px) { .note { font-size: 12px } }")).toHaveLength(1);
+    // …and 13px or more, a class no paragraph carries, a rule about a child, and a listed microcopy class are not.
+    expect(probe(".note { font-size: var(--fs-3) }")).toEqual([]);
+    expect(probe(".note { font-size: 1rem }")).toEqual([]);
+    expect(probe(".other { font-size: 12px }")).toEqual([]);
+    expect(probe(".note b { font-size: 12px }")).toEqual([]);
+    expect(probe(".note.tiny { font-size: 12px }", ["note"], ["tiny"])).toEqual([]);
+    expect(probe(".note { color: red }")).toEqual([]);
+
+    const classes = new Set<string>();
+    for (const f of sourceFiles())
+      for (const c of paragraphClasses(f, readFileSync(f, "utf8"))) classes.add(c);
+    expect([...paragraphClasses("a.tsx", 'const a = <p className="one two">x</p>;')].sort()).toEqual([
+      "one",
+      "two",
+    ]);
+    expect(
+      [...paragraphClasses("a.tsx", "const a = <p className={`one ${b ? 'two' : ''}`}>x</p>;")].sort(),
+    ).toEqual(["one", "two"]);
+    expect([...paragraphClasses("a.tsx", 'const a = <div className="one">x</div>;')]).toEqual([]);
+    expect(classes.size).toBeGreaterThan(40);
+
+    const tokens = customProperties(treeRoots());
+    const offenders = proseOffences(
+      cssFiles().map((file) => ({ file, css: readFileSync(file, "utf8") })),
+      classes,
+      new Set(Object.keys(MICROCOPY)),
+      tokens,
+    );
+    expect(offenders, offenders.join("\n")).toEqual([]);
+
+    // No listed class has gone unused.
+    const unused = Object.keys(MICROCOPY).filter((c) => !classes.has(c));
+    expect(unused, `not carried by any <p> any more (drop the entry): ${unused.join(", ")}`).toEqual([]);
+  });
+});
+
+// ------------------------------------------------- canvas text, at runtime
+
+/** Where a source draws canvas text: `x.fillText(...)` and `x.strokeText(...)` call sites. */
+function canvasTextSites(file: string, code: string): number[] {
+  const sf = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const lines: number[] = [];
+  const visit = (n: ts.Node) => {
+    if (
+      ts.isCallExpression(n) &&
+      ts.isPropertyAccessExpression(n.expression) &&
+      /^(fill|stroke)Text$/.test(n.expression.name.text)
+    )
+      lines.push(sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1);
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return lines;
+}
+
+/**
+ * Every source that draws text on a canvas, and the test that measures what it
+ * draws where a person sees it (font x transform scale x sprite scale).
+ * C3 reads the size out of the source and cannot see a zoom or a sprite; these
+ * can. A new canvas text site must be added here with its measurement.
+ */
+const MEASURED_AT_RUNTIME: Record<string, string> = {
+  "brain/render/draw.ts": "brain/render/canvasText.test.ts",
+  "brain/render/glyphs.ts": "brain/render/canvasText.test.ts",
+  "nucleo/scenes/brainPaint.ts": "nucleo/scenes/canvasText.test.ts",
+  "nucleo/entity/entityHud.ts": "nucleo/entity/canvasText.test.ts",
+  "runs/Replay.tsx": "runs/Replay.canvasText.test.tsx",
+};
+
+describe("canvas text", () => {
+  it("C17 every source that draws canvas text is measured on screen by a test", () => {
+    // Self-test: a call site is found by its method, not by a name that merely contains it.
+    expect(canvasTextSites("a.ts", "ctx.fillText(t, 0, 0);\nx.strokeText(t, 1, 1);")).toEqual([1, 2]);
+    expect(canvasTextSites("a.ts", "const fillTextStyle = 1; fillText(t); ctx.fillTextAt(t);")).toEqual([]);
+
+    const sites = sourceFiles()
+      .filter((f) => canvasTextSites(f, readFileSync(f, "utf8")).length > 0)
+      .map((f) => rel(f).replace(/^src\//, ""))
+      .sort();
+    expect(sites).toEqual(Object.keys(MEASURED_AT_RUNTIME).sort());
+
+    for (const [source, test] of Object.entries(MEASURED_AT_RUNTIME)) {
+      const path = join(__dirname, test);
+      expect(existsSync(path), `${source} is measured by ${test}`).toBe(true);
+      const code = readFileSync(path, "utf8");
+      // The measurement asserts the floor on what the recording canvas saw.
+      expect(code, test).toMatch(/textDrawnOn\(/);
+      expect(code, test).toMatch(/FLOOR/);
+    }
   });
 });
 
@@ -533,6 +339,64 @@ async function colourWarnings(code: string): Promise<string[]> {
     configFile: stylelintConfig,
   });
   return results.flatMap((r) => r.warnings.map((w) => w.rule));
+}
+
+/**
+ * Where a stylelint switch sits outside the one place it may: every
+ * `stylelint-disable` / `-enable` in the raw text (a comment inside a value is
+ * not a comment node to postcss, but stylelint reads it) must be a top-level
+ * comment of theme.css, and what it switches off must be token blocks only.
+ */
+function exemptionOffences(file: string, css: string): string[] {
+  const root = postcss.parse(css, { from: file });
+  const out: string[] = [];
+  const raw = (css.match(/stylelint-(disable|enable)/g) ?? []).length;
+  let accounted = 0;
+  let off = false;
+  root.each((node) => {
+    if (node.type === "comment" && /stylelint-(disable|enable)/.test(node.text)) {
+      accounted += (node.text.match(/stylelint-(disable|enable)/g) ?? []).length;
+      if (/stylelint-disable-(next-)?line/.test(node.text)) {
+        // A one-line switch has no region to check: it is never allowed.
+        out.push(`${rel(file)}:${node.source?.start?.line} ${node.toString()}`);
+      } else if (/stylelint-disable/.test(node.text)) {
+        if (!file.endsWith("theme.css") || !/^stylelint-disable [a-z, -]+( --|$)/.test(node.text))
+          out.push(`${rel(file)}:${node.source?.start?.line} ${node.toString()}`);
+        off = true;
+      } else off = false;
+    } else if (off && node.type !== "comment") {
+      const selectors = node.type === "rule" ? node.selectors : [];
+      if (!selectors.length || !selectors.every((x) => TOKEN_SELECTOR.test(x.trim())))
+        out.push(
+          `${rel(file)}:${node.source?.start?.line} is not a token block but sits where the lint is off`,
+        );
+    }
+  });
+  if (off) out.push(`${rel(file)} leaves the lint off to the end of the file`);
+  if (raw !== accounted)
+    out.push(
+      `${rel(file)}: ${raw - accounted} stylelint switch(es) outside a top-level comment (inside a rule or a value)`,
+    );
+  return out;
+}
+
+/** What is wrong with the config (its keys, its three colour rules), given `patch` laid over it. */
+function guardedConfig(base: Record<string, unknown>, patch: Record<string, unknown> = {}): string[] {
+  const config = {
+    ...base,
+    ...patch,
+    rules: { ...(base.rules as object), ...((patch.rules as object | undefined) ?? {}) },
+  } as Record<string, unknown>;
+  const out: string[] = [];
+  for (const key of Object.keys(config))
+    if (!["extends", "rules"].includes(key)) out.push(`config key "${key}"`);
+  const rules = (config.rules ?? {}) as Record<string, unknown>;
+  if (rules["color-no-hex"] !== true) out.push("color-no-hex is not plain `true`");
+  if (rules["color-named"] !== "never") out.push('color-named is not "never"');
+  const fns = rules["function-disallowed-list"];
+  for (const fn of ["rgb", "rgba", "hsl", "hsla", "color", "device-cmyk"])
+    if (!Array.isArray(fns) || !fns.includes(fn)) out.push(`function-disallowed-list lacks ${fn}`);
+  return out;
 }
 
 describe("colour tokens", () => {
@@ -578,6 +442,22 @@ describe("colour tokens", () => {
         await colourWarnings("a { border-color: color-mix(in srgb, #fff 30%, var(--accent)); }\n"),
       ).toContain("color-no-hex");
       expect(await colourWarnings("a { color: var(--ok, #4ade80); }\n")).toContain("color-no-hex");
+      expect(await colourWarnings("a { color: color(srgb 1 0 0); }\n")).toContain("function-disallowed-list");
+      expect(await colourWarnings("a { color: oklch(60% 0.2 30); }\n")).toContain("function-disallowed-list");
+      expect(await colourWarnings("a { background: device-cmyk(0 1 1 0); }\n")).toContain(
+        "function-disallowed-list",
+      );
+      expect(await colourWarnings("a { color: light-dark(#fff, #000); }\n")).toContain("color-no-hex");
+      // a colour inside an inline image, and the system colours, which have names too
+      expect(
+        await colourWarnings(`a { background: url("data:image/svg+xml,%3Csvg fill='%23ff0000'/%3E"); }\n`),
+      ).toContain("declaration-property-value-disallowed-list");
+      expect(await colourWarnings("a { color: Canvas; }\n")).toContain(
+        "declaration-property-value-disallowed-list",
+      );
+      expect(await colourWarnings("a { border: 1px solid ButtonFace; }\n")).toContain(
+        "declaration-property-value-disallowed-list",
+      );
       // …and the forms the design allows are not.
       expect(await colourWarnings("a { color: var(--text); }\n")).toEqual([]);
       expect(
@@ -587,45 +467,67 @@ describe("colour tokens", () => {
         await colourWarnings("a {\n  background: transparent;\n  border-color: currentColor;\n}\n"),
       ).toEqual([]);
       expect(await colourWarnings("a { mask-image: linear-gradient(var(--mask-ink) 0 0); }\n")).toEqual([]);
+      expect(await colourWarnings("a { grid-area: field; }\n")).toEqual([]);
     },
     STYLELINT_MS,
   );
 
   it(
     "C6 the tree passes the colour lint",
-    () => {
+    async () => {
       const run = spawnSync("npx", ["stylelint", "apps/command-centre/src/**/*.css"], {
         cwd: repoRoot,
         encoding: "utf8",
       });
       expect(run.status, run.stdout + run.stderr).toBe(0);
 
-      // The rule is switched off only around the token blocks of theme.css.
-      const offenders: string[] = [];
-      for (const file of cssFiles()) {
-        const root = postcss.parse(readFileSync(file, "utf8"), { from: file });
-        let off = false;
-        root.walk((node) => {
-          if (node.type === "comment" && /stylelint-disable/.test(node.text)) {
-            if (
-              !file.endsWith("theme.css") ||
-              node.parent !== root ||
-              !/^stylelint-disable [a-z, -]+( --|$)/.test(node.text)
-            )
-              offenders.push(`${rel(file)}:${node.source?.start?.line} ${node.toString()}`);
-            else off = true;
-          } else if (node.type === "comment" && /stylelint-enable/.test(node.text)) off = false;
-          else if (off && node.parent === root && node.type !== "comment") {
-            const selectors = node.type === "rule" ? node.selectors : [];
-            if (!selectors.length || !selectors.every((x) => TOKEN_SELECTOR.test(x.trim())))
-              offenders.push(
-                `${rel(file)}:${node.source?.start?.line} is not a token block but sits where the lint is off`,
-              );
-          }
-        });
-        if (off) offenders.push(`${rel(file)} leaves the lint off to the end of the file`);
-      }
+      // The rule is switched off only around the token blocks of theme.css…
+      const offenders = cssFiles().flatMap((file) => exemptionOffences(file, readFileSync(file, "utf8")));
       expect(offenders, offenders.join("\n")).toEqual([]);
+
+      // …which the probe below proves it can tell, in every form a disable can take…
+      const theme = join(__dirname, "theme.css");
+      const other = join(__dirname, "desktop/desktop.css");
+      const off = "/* stylelint-disable color-no-hex -- token definitions */";
+      const on = "/* stylelint-enable color-no-hex */";
+      expect(exemptionOffences(theme, `${off}\n:root { --a: #fff; }\n${on}\n`)).toEqual([]);
+      expect(exemptionOffences(other, `${off}\n:root { --a: #fff; }\n${on}\n`)).toHaveLength(1);
+      expect(exemptionOffences(other, "a { color: #fff; /* stylelint-disable-line */ }")).toHaveLength(1);
+      expect(exemptionOffences(other, "/* stylelint-disable-next-line */\na { color: #fff; }")).toHaveLength(
+        1,
+      );
+      // a comment inside the value is not a comment node to postcss, but stylelint honours it
+      expect(exemptionOffences(other, "a { color: #fff /* stylelint-disable-line */; }")).toHaveLength(1);
+      expect(exemptionOffences(theme, "a { color: #fff /* stylelint-disable-line */; }")).toHaveLength(1);
+      expect(exemptionOffences(theme, `${off}\na.card { color: #fff; }\n${on}\n`)).toHaveLength(1);
+      expect(exemptionOffences(theme, `${off}\n:root { --a: #fff; }\n`)).toHaveLength(1);
+      expect(exemptionOffences(theme, `${off}\n@media print { :root { --a: #fff; } }\n${on}\n`)).toHaveLength(
+        1,
+      );
+
+      // …and nothing outside the CSS can excuse a file either: no ignore list, no overrides, no other config.
+      const base = (await import(/* @vite-ignore */ pathToFileURL(stylelintConfig).href)).default;
+      const guarded = (patch?: Record<string, unknown>) => guardedConfig(base, patch);
+      expect(guarded(), "stylelint.config.mjs").toEqual([]);
+      expect(guarded({ ignoreFiles: ["**/nucleo.css"] }).length).toBeGreaterThan(0);
+      expect(
+        guarded({ overrides: [{ files: ["**/desktop.css"], rules: { "color-no-hex": null } }] }).length,
+      ).toBeGreaterThan(0);
+      expect(
+        guarded({ rules: { "color-no-hex": [true, { ignore: ["inside-function"] }] } }).length,
+      ).toBeGreaterThan(0);
+      expect(guarded({ rules: { "color-named": null } }).length).toBeGreaterThan(0);
+      expect(guarded({ rules: { "function-disallowed-list": ["rgb", "rgba"] } }).length).toBeGreaterThan(0);
+      expect(guarded({ plugins: ["./plugin.js"] }).length).toBeGreaterThan(0);
+      for (const other of [
+        ".stylelintignore",
+        ".stylelintrc",
+        ".stylelintrc.json",
+        "stylelint.config.js",
+        ".stylelintrc.js",
+      ])
+        expect(existsSync(join(repoRoot, other)), other).toBe(false);
+      expect(JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")).stylelint).toBeUndefined();
     },
     STYLELINT_MS,
   );

@@ -376,7 +376,7 @@
 }
 .ob-replay-hint {
   margin-top: 20px !important;
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   line-height: 1.6;
 }
 .ob-coach {
@@ -472,7 +472,7 @@
   font-weight: 600;
 }
 .ob-coach p {
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   line-height: 1.7;
 }
 .ob-tags {
@@ -572,7 +572,7 @@
 }
 .ob-feedback {
   margin-top: 9px !important;
-  font-size: var(--fs-2) !important;
+  font-size: var(--fs-3) !important;
   color: var(--accent-text) !important;
 }
 .ob-quiz {
@@ -584,7 +584,7 @@
   text-align: left;
 }
 .ob-missing {
-  font-size: var(--fs-2) !important;
+  font-size: var(--fs-3) !important;
   margin-top: 7px !important;
 }
 .ob-coach-footer {
@@ -775,7 +775,7 @@
     font-size: var(--fs-6);
   }
   .ob-coach p {
-    font-size: var(--fs-2);
+    font-size: var(--fs-3);
   }
   .ob-chapters {
     flex-shrink: 0;

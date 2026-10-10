@@ -53,7 +53,7 @@
 }
 .rs-quiet {
   margin: 28px 0 0;
-  font: 400 var(--fs-2) / 1.5 var(--font-mono);
+  font: 400 var(--fs-3) / 1.5 var(--font-mono);
   letter-spacing: 0.04em;
   color: var(--text-faint);
 }
@@ -361,6 +361,8 @@
 }
 .rs-lane-name[aria-pressed="true"] {
   color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 .rs-flow {
   position: absolute;
@@ -725,7 +727,7 @@
   padding: 8px 10px;
   overflow: auto;
   overflow-wrap: anywhere;
-  font: 400 var(--fs-2) / 1.5 var(--font-mono);
+  font: 400 var(--fs-3) / 1.5 var(--font-mono);
   color: var(--danger);
   background: var(--danger-bg);
 }

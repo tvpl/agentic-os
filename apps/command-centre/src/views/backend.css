@@ -47,7 +47,7 @@
 
 .rt-kind-hint {
   color: var(--text-faint);
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   margin: calc(var(--s-1) * -1) 0 var(--s-2);
 }
 

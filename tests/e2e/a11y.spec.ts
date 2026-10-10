@@ -31,8 +31,15 @@ async function seed(page: Page, shell: Shell, theme: Theme): Promise<void> {
   });
 }
 
-async function open(page: Page, shell: Shell, theme: Theme, path: string): Promise<void> {
+async function open(
+  page: Page,
+  shell: Shell,
+  theme: Theme,
+  path: string,
+  before: (page: Page) => Promise<void> = async () => undefined,
+): Promise<void> {
   await seed(page, shell, theme);
+  await before(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/#${path}`);
   await expect(page.locator(".boot-screen")).toHaveCount(0);
@@ -79,6 +86,28 @@ for (const theme of THEMES) {
       expect(await serious(page)).toEqual([]);
     });
   }
+  test(`C8 the app frame has no serious violation on Memory with an area chosen (${theme})`, async ({
+    page,
+  }) => {
+    // The e2e home indexes one area, so the legend never has a second one to set aside. Give
+    // half of the files another area, so choosing one in the legend dims the other (`.dimmed`).
+    await open(page, "moldura", theme, "/brain", async (p) => {
+      await p.route(/\/api\/(v1\/)?memory\/graph/, async (route) => {
+        const response = await route.fetch();
+        const graph = await response.json();
+        graph.nodes = graph.nodes.map((n: { area: string | null }, i: number) =>
+          i % 2 ? { ...n, area: "Notes" } : n,
+        );
+        await route.fulfill({ response, json: graph });
+      });
+    });
+    const areas = page.locator(".brain2-legend .lg-row button[aria-pressed]:not(.kind-off)");
+    await expect(areas).not.toHaveCount(0);
+    await expect(areas.nth(1)).toBeVisible();
+    await areas.first().click();
+    await expect(page.locator(".brain2-legend button.dimmed")).not.toHaveCount(0);
+    expect(await serious(page)).toEqual([]);
+  });
   for (const [name, path] of NUCLEO_SCREENS) {
     test(`C9 the Núcleo has no serious violation on ${name} (${theme})`, async ({ page }) => {
       await open(page, "nucleo", theme, path);

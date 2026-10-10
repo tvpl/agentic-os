@@ -470,7 +470,7 @@ path.rts-hit {
   padding-left: 10px;
   border-left: 2px solid var(--danger);
   color: var(--danger);
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
 }
 .rts-why-acts {
   display: flex;

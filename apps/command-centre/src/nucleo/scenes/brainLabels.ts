@@ -2,7 +2,7 @@
  * The Brain scene's words on the sky (immersive shell): how big a label may
  * be and where it may go. Sizes live in screen space with a clamp — a title
  * never grows past ~15 px however close its star is, and never shrinks below
- * 11 px while it is shown. Placement is greedy by priority (the star under
+ * 12 px (the text floor) while it is shown. Placement is greedy by priority (the star under
  * the cursor, then the selection, the hubs, the rest by nearness): each label
  * tries below its star, then above, right, left, and is dropped when every
  * side would overlap a label already placed, the floating interface or the

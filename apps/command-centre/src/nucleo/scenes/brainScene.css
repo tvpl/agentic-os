@@ -146,7 +146,7 @@
 .bs-faint {
   margin: 0;
   color: var(--text-faint);
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
 }
 .bs-act,
 .bs-link-btn {
@@ -415,6 +415,8 @@
 .bs-gauge ol button[aria-current] {
   color: var(--agent-text);
   opacity: 1;
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 .bs-gauge-rail {
   position: relative;
@@ -650,6 +652,7 @@
 .bs-tour-btn:hover,
 .bs-tour-btn[aria-pressed="true"] {
   text-shadow: 0 0 14px var(--agent);
+  box-shadow: inset 0 0 0 1px var(--agent-line);
 }
 .bs-more {
   width: 32px;
@@ -838,6 +841,8 @@
 .bs-menu-acts button:hover,
 .bs-menu-acts button[aria-pressed="true"] {
   color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 .bs-menu-acts button:disabled {
   opacity: 0.5;
@@ -905,7 +910,7 @@
   flex-wrap: wrap;
   gap: 2px 12px;
   margin: 0;
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
 }
 .bs-link-kind {
   display: flex;
@@ -1002,6 +1007,7 @@
 .bs-list .brain2-list-item:hover,
 .bs-list .brain2-list-item.selected {
   color: var(--agent-text);
+  box-shadow: inset 2px 0 0 var(--agent);
 }
 
 /* ---- the reader ------------------------------------------------------------------- */
@@ -1224,6 +1230,7 @@
 .bs-outline button[aria-current] {
   color: var(--agent-text);
   border-left-color: var(--agent);
+  font-weight: 600;
 }
 .bs-rail-group {
   margin-top: 12px;

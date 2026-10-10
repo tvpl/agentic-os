@@ -3,13 +3,16 @@
 Profile: ui
 Plan: `.specs/features/design-system/plan.md`
 
-14 checks in 3 slices · 2 one-way doors · 0 open, of which 0 block
+17 checks in 3 slices · 2 one-way doors · 0 open, of which 0 block
 
 Comandos (da raiz): interface `npm run test -w apps/command-centre -- <arquivo> -t "<nome>"`; lint
 `npm run lint`; e2e `npx playwright test --config tests/e2e/playwright.config.ts <spec> -g "<nome>"`.
 
-Fora do alcance destes checks, por tela: espaçamento e peso de tipo (a feature só decide tamanho
-mínimo, cor por token e acessibilidade); a composição das telas não muda.
+Fora do alcance destes checks, por tela: espaçamento e hierarquia de peso e tamanho acima do piso (a
+feature decide tamanho mínimo, texto corrido a 13px, cor por token, estado nunca só por cor e
+acessibilidade); a composição das telas não muda. Duas regras do `design.md` têm exceção enumerada
+no próprio teste, com o motivo de cada entrada: rótulos, contadores, dicas de tecla e metadados a
+12px (C15, `MICROCOPY`) e estados cuja marca vive na marcação (C16, `MARKED_ELSEWHERE`).
 
 ## Checks
 
@@ -19,11 +22,11 @@ mínimo, cor por token e acessibilidade); a composição das telas não muda.
 Proof: `npm run test -w apps/command-centre -- src/typography.test.ts -t "C1 the type scale starts at 12px"`
 Status: closed
 
-**C2** - Lendo cada CSS de `src` como árvore (postcss): nenhum `font-size` nem atalho `font:` abaixo de 12px, resolvendo tokens `--fs-*`, `px`, `rem`/`em` (16px de base) e `calc`/`clamp` com o menor valor; o teste se prova contra `font: 600 11px/1 x`, `font-size: .7rem`, `font-size: var(--fs-1)` e `clamp(10px, 1vw, 14px)` (AC 2)
+**C2** - Lendo cada CSS de `src` como árvore (postcss): nenhum `font-size` nem atalho `font:` abaixo de 12px, resolvendo tokens `--fs-*`, `px`, `rem` (16px), `em` e `%` (contra um pai de 12px, o menor possível), unidades de viewport (0, a janela mais estreita) e `calc`/`clamp`/`min`/`max` com o menor valor; o teste se prova contra `font: 600 11px/1 x`, `font-size: .7rem`, `font-size: var(--fs-1)`, `clamp(10px, 1vw, 14px)` e `min(10px, 2vw)` (AC 2)
 Proof: `npm run test -w apps/command-centre -- src/typography.test.ts -t "C2 no CSS sets text below 12px"`
 Status: closed
 
-**C3** - Lendo os TSX/TS de `src` pela árvore sintática do TypeScript: nenhum `fontSize` em `style` abaixo de 12 e nenhuma atribuição a `ctx.font` com tamanho abaixo de 12px (AC 3)
+**C3** - Lendo os TSX/TS de `src` pela árvore sintática do TypeScript: nenhum `fontSize` abaixo de 12 (objeto `style`, `{ fontSize }`, atributo JSX/SVG, `style.fontSize =`, `setProperty`, `cssText` e string HTML com `font-size:`/`font:`) e nenhuma fonte de canvas abaixo de 12px (AC 3). O tamanho de uma expressão é o menor valor que ela pode ter: literais, constantes, `Math.max/min/round`, funções do próprio código (o menor `return`, com os argumentos) e `x / k` só quando `k` é a escala da câmera; qualquer outro divisor (`Math.max(0.8, k)`, escala de sprite) não é limitado e reprova. O que o canvas desenha sob zoom é medido em C17
 Proof: `npm run test -w apps/command-centre -- src/typography.test.ts -t "C3 no inline or canvas text below 12px"`
 Status: closed
 
@@ -31,13 +34,21 @@ Status: closed
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/a11y.spec.ts -g "C4 badges read at 12px"`
 Status: closed
 
+**C15** - Texto corrido (parágrafos, descrições, mensagens) tem no mínimo 13px (`--fs-3`): toda regra de CSS cujo sujeito é um `<p>`, ou uma classe que algum `<p>` do TSX carrega, fica em 13px ou mais, salvo as classes de rótulo, contador, dica de tecla e metadado enumeradas com o motivo em `MICROCOPY`; o teste se prova contra `p { font-size: 12px }`, `.note { font: 400 var(--fs-2)/1.4 x }` e a mesma regra dentro de `@media`, e falha se uma entrada da lista deixou de ser usada (design.md, Tipografia)
+Proof: `npm run test -w apps/command-centre -- src/typography.test.ts -t "C15 paragraphs, descriptions and messages are at least 13px"`
+Status: closed
+
+**C17** - O texto que o canvas desenha mede no mínimo 12px NA TELA (tamanho da fonte × escala da transformação × escala do sprite × densidade), em zoom mínimo (0.3), padrão (1) e máximo (9) e em cada estado que acrescenta texto, em todas as camadas que desenham texto: o mapa do cérebro (nós, hubs, planetas, órbitas, anéis, núcleo, iniciais dos apps), a cena do cérebro do Núcleo, o HUD da entidade e o Replay; um teste estrutural exige que toda fonte com `fillText`/`strokeText` tenha essa medição (o PixelStudio não desenha texto) (AC 3, design.md Tipografia)
+Proof: `npm run test -w apps/command-centre -- -t "C17"`
+Status: closed
+
 ### S2 - cores por token · 18 files · 110 KB · ~28k
 
-**C5** - `npm run lint` roda o stylelint sobre `apps/command-centre/src/**/*.css` com `color-no-hex`, `color-named: never` e `function-disallowed-list` (rgb, rgba, hsl, hsla), e um arquivo temporário com `a { color: #fff }` faz o comando sair com código ≠ 0 (AC 5)
+**C5** - `npm run lint` roda o stylelint sobre `apps/command-centre/src/**/*.css` com `color-no-hex`, `color-named: never` e `function-disallowed-list` (rgb, rgba, hsl, hsla e as demais funções de cor, `color()` e `device-cmyk()`), mais `declaration-property-value-disallowed-list` para cor dentro de `data:` URI e cores de sistema (`Canvas`, `ButtonFace`…), e um arquivo temporário com `a { color: #fff }` faz o comando sair com código ≠ 0 (AC 5)
 Proof: `npm run test -w apps/command-centre -- src/typography.test.ts -t "C5 the colour lint refuses a literal"`
 Status: closed
 
-**C6** - `npx stylelint "apps/command-centre/src/**/*.css"` sai `0` sobre a árvore (os literais de hoje viraram tokens ou `--mask-ink`), e os únicos trechos com a regra desligada são os blocos de definição de token de `theme.css` (`:root`, `[data-theme]`, `[data-preset]`) (AC 6)
+**C6** - `npx stylelint "apps/command-centre/src/**/*.css"` sai `0` sobre a árvore (os literais de hoje viraram tokens ou `--mask-ink`), e os únicos trechos com a regra desligada são os blocos de definição de token de `theme.css` (`:root`, `[data-theme]`, `[data-preset]`): toda ocorrência de `stylelint-disable` no texto bruto (inclusive um comentário dentro de um valor, que o postcss não vê como comentário) é um comentário de topo de `theme.css`, e a configuração não ganha `ignoreFiles`, `overrides`, `ignore` nem plugin, nem a regra de cor é enfraquecida (AC 6)
 Proof: `npm run test -w apps/command-centre -- src/typography.test.ts -t "C6 the tree passes the colour lint"`
 Status: closed
 
@@ -45,9 +56,13 @@ Status: closed
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/a11y.spec.ts -g "C7 the light theme keeps its own tokens"`
 Status: closed
 
+**C16** - Um estado nunca é comunicado só pela cor (design.md, Cor): toda regra de CSS de estado (`[aria-pressed|checked|selected|current]`, `.on`, `.active`, `.selected`, `.read`, `.off`, `.dimmed`…) é agrupada pelo elemento que estiliza, e cada grupo muda algo além de matiz, opacidade ou brilho (peso, sublinhado, tachado, anel ou barra, preenchimento, glifo) ou consta em `MARKED_ELSEWHERE` com a marca que vive na marcação (ícone trocado, palavra); o teste se prova contra `a[aria-pressed="true"] { color: red }` e `li.read { opacity: .5 }`, e falha se uma entrada da lista deixou de ser só cor
+Proof: `npm run test -w apps/command-centre -- src/states.test.ts -t "C16 a state is never told by colour alone"`
+Status: closed
+
 ### S3 - acessibilidade e galeria · 8 files · 60 KB · ~15k
 
-**C8** - axe (tags `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`) sem violação `serious`/`critical` na moldura: Hoje, Execuções, Skills, Rotinas, Memória, Configurações — tema escuro e claro (AC 8)
+**C8** - axe (tags `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`) sem violação `serious`/`critical` na moldura: Hoje, Execuções, Skills, Rotinas, Memória, Configurações — tema escuro e claro, e Memória com uma área escolhida na legenda (outra fica em `.dimmed`) (AC 8)
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/a11y.spec.ts -g "C8 the app frame has no serious violation"`
 Status: closed
 
@@ -67,9 +82,15 @@ Status: closed
 Proof: `npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/gallery-contrast.spec.ts tests/e2e/surface-contrast.spec.ts`
 Status: closed
 
-**C13** - A suíte e2e completa não ganha nenhuma falha nova em relação à base (lista de antes e depois no relatório do build) (AC 1-10)
-Proof: `npx playwright test --config tests/e2e/playwright.config.ts`
-Status: open
+**C13** - A suíte e2e não ganha nenhuma falha nova em relação à base (AC 1-10). Regra: toda falha na cabeça, rodada com os mesmos timeouts alongados da base (teste 90s, expect 20s, numa configuração temporária não comitada, porque o ambiente compartilhado fica com carga 10 a 19 e a configuração padrão estoura por tempo), também falha na base (`dae68bd`, o pai desta correção) ou passa quando repetida sozinha na cabeça; as specs rodadas são as que a feature toca (a11y, galeria, os dois contrastes) e as que dependem do cérebro, da moldura e do Núcleo
+Proof: `npx playwright test --config <temporária, timeout 90s e expect 20s> tests/e2e/a11y.spec.ts tests/e2e/gallery.spec.ts tests/e2e/gallery-contrast.spec.ts tests/e2e/surface-contrast.spec.ts tests/e2e/brain-context.spec.ts tests/e2e/closeout-recovery.spec.ts tests/e2e/rework.spec.ts tests/e2e/moldura.spec.ts tests/e2e/nucleo-shell.spec.ts tests/e2e/smoke.spec.ts` na cabeça e na base; lista abaixo
+Status: closed
+
+Lista (141 testes nas 10 specs; cabeça: 134 passam, 9 falham):
+
+- passam na cabeça e não são da base: a11y (25), gallery (23), gallery-contrast (2), surface-contrast (16), closeout-recovery, smoke, e as demais de moldura, nucleo-shell e brain-context; depois das últimas mudanças, a11y, gallery e os dois contrastes foram repetidos: 66 passam
+- falham na cabeça e na base, do mesmo jeito (8): `brain-context.spec.ts:27`, `brain-context.spec.ts:61`, `moldura.spec.ts:285` (C20), `moldura.spec.ts:390` (C57), `nucleo-shell.spec.ts:165`, `nucleo-shell.spec.ts:467`, `nucleo-shell.spec.ts:1048`, `rework.spec.ts:49`
+- falha só na cabeça na rodada longa e passa nas três repetições sozinho (1): `nucleo-shell.spec.ts:912`, que também passa na base; é o `slip` de uma pendência que chega durante a carga
 
 **C14** - `npm run typecheck`, `npm run lint` e a suíte da interface saem `0` (AC 1-10)
 Proof: `npm run typecheck && npm run lint && npm run test -w apps/command-centre`
@@ -77,19 +98,22 @@ Status: closed
 
 ## Coverage
 
-| Set (size)                                 | Member -> proof                                                                                                                                                                                              | Unproven |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
-| formas de tamanho de texto (6)             | `font-size` C2 · atalho `font:` C2 · token C1, C2 · rem/em C2 · `style` inline C3 · canvas C3                                                                                                                | -        |
-| formas de cor literal (5)                  | hex C5, C6 · `rgb/rgba` C5, C6 · `hsl/hsla` C5, C6 · nome C5, C6 · máscara C6                                                                                                                                | -        |
-| telas no axe, cada uma nos dois temas (10) | Hoje C8 · Execuções (moldura) C8 · Skills (moldura) C8 · Rotinas C8 · Memória C8 · Configurações (moldura) C8 · início do Núcleo C9 · Execuções (Núcleo) C9 · Skills (Núcleo) C9 · Configurações (Núcleo) C9 | -        |
-| camadas na galeria (3)                     | base (existente) C11 · Núcleo C10, C11 · moldura C10, C11                                                                                                                                                    | -        |
-| doors (2)                                  | piso da escala C1 · linter C5, C6                                                                                                                                                                            | -        |
+| Set (size)                                 | Member -> proof                                                                                                                                                                                                                                          | Unproven |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| formas de tamanho de texto (7)             | `font-size` C2 · atalho `font:` C2 · token C1, C2 · rem/em C2 · `style` inline, JSX, `setProperty`, `cssText`, string HTML C3 · canvas na fonte C3 · canvas na tela C17                                                                                  | -        |
+| texto corrido (1)                          | parágrafos, descrições e mensagens a 13px C15                                                                                                                                                                                                            | -        |
+| camadas que desenham texto em canvas (5)   | mapa do cérebro C17 · cena do cérebro do Núcleo C17 · HUD da entidade C17 · Replay C17 · PixelStudio (não desenha texto; o teste estrutural de C17 reprova o primeiro `fillText` que apareça sem medição)                                                | -        |
+| estados (1)                                | on/off/active/selected/read/dimmed têm marca não cromática ou marca na marcação enumerada C16                                                                                                                                                            | -        |
+| formas de cor literal (8)                  | hex C5, C6 · `rgb/rgba` C5, C6 · `hsl/hsla` C5, C6 · nome C5, C6 · máscara C6 · `color()`/`device-cmyk()`/funções wide-gamut C5 · cor em `data:` URI e cor de sistema C5 · desligar o lint por comentário no valor, `ignoreFiles` ou `overrides` C6      | -        |
+| telas no axe, cada uma nos dois temas (11) | Memória com área escolhida (`.dimmed`) C8 · Hoje C8 · Execuções (moldura) C8 · Skills (moldura) C8 · Rotinas C8 · Memória C8 · Configurações (moldura) C8 · início do Núcleo C9 · Execuções (Núcleo) C9 · Skills (Núcleo) C9 · Configurações (Núcleo) C9 | -        |
+| camadas na galeria (3)                     | base (existente) C11 · Núcleo C10, C11 · moldura C10, C11                                                                                                                                                                                                | -        |
+| doors (2)                                  | piso da escala C1 · linter C5, C6                                                                                                                                                                                                                        | -        |
 
 ## Binding sources
 
 | Source                                    | Rules                                    | Checks |
 | ----------------------------------------- | ---------------------------------------- | ------ |
-| `.specs/features/design-system/design.md` | tipografia, cor, acessibilidade, galeria | C1-C11 |
+| `.specs/features/design-system/design.md` | tipografia, cor, acessibilidade, galeria | C1-C17 |
 
 ## Test policy
 
@@ -103,12 +127,12 @@ Evidence:
 - `theme.css` tokens and `typography.test.ts` -> configuration
 - closest analogue in the repo: `tests/e2e/surface-contrast.spec.ts` (axe por rota nos dois temas)
 
-Cost: testes estendidos em `typography.test.ts`, 1 spec e2e nova, galeria estendida, 14 provas.
+Cost: testes estendidos em `typography.test.ts` (com os leitores em `src/testing`), `states.test.ts` e quatro testes de medição de canvas, 1 spec e2e nova, galeria estendida, 17 provas.
 
 ## Swept
 
 - validation: C5 (lint recusa literal)
-- failure modes: C2, C3 (cada forma de burlar o piso)
+- failure modes: C2, C3, C17 (cada forma de burlar o piso, e o que o canvas faz com zoom e sprite)
 - idempotency: n/a - nada é gravado
 - authorization: n/a - nenhuma rota
 - concurrency: n/a - nenhum estado

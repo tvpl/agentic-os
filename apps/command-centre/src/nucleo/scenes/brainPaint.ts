@@ -1489,7 +1489,7 @@ export class Painter {
           (grp && !hot ? 0.45 : 1) *
           clamp(depthFade(pr.d) + 0.25, 0, 1);
         if (alpha < 0.04) return;
-        const size = Math.max(12, groupPx(span));
+        const size = groupPx(span);
         const font = `600 ${size}px ${tk.display}`;
         const text = spaced((stage.groupText[gi] ?? g.key).toUpperCase());
         const count = String(g.members.length);
@@ -1605,7 +1605,7 @@ export class Painter {
       else if ((!quiet || lit(i)) && lw.notes > 0.15 && this.ps[i]! > 0.85) pri = 4;
       else continue;
       const centre = hop === 0;
-      const px = Math.max(12, labelPx(pri < 0 ? 0 : pri, this.ps[i]!));
+      const px = labelPx(pri < 0 ? 0 : pri, this.ps[i]!);
       const tfont = centre ? `600 ${px}px ${tk.display}` : `${pri <= 0 ? 600 : 500} ${px}px ${tk.body}`;
       const title = this.fit(tfont, m.label[i]!, centre ? 320 : pri <= 0 ? 280 : 220);
       const tw = this.width(tfont, title);

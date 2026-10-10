@@ -25,7 +25,7 @@
 }
 .write-toggle .hint {
   margin: 0;
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
 }
 
 .runs-table td.num {
@@ -121,7 +121,7 @@
 .approval-inline-desc {
   margin: 0;
   color: var(--text-dim);
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
 }
 .approval-inline-cwd {
   margin: 0;

@@ -712,6 +712,7 @@
 }
 .nu-voice .cons-more.active {
   color: var(--accent-text);
+  box-shadow: inset 0 -2px 0 var(--accent-text);
 }
 .nu-voice .cons-more svg {
   width: 15px;
@@ -876,7 +877,7 @@
 }
 .nu-voice .cons-empty {
   padding: 0 4px;
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
 }
 
 /* A long provider warning keeps to one short line; the tooltip has it all. */
@@ -1696,7 +1697,7 @@
   padding: 10px 12px;
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 8%, transparent);
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   overflow-wrap: anywhere;
 }
 .nu-focus-diff {

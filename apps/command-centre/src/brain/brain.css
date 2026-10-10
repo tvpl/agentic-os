@@ -52,7 +52,7 @@
 }
 .brain-hint {
   margin: 0;
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
   color: var(--text-faint);
   line-height: 1.35;
 }
@@ -231,17 +231,16 @@
   margin-top: 6px;
   padding-top: 6px;
 }
-/* A kind that is switched off is struck through and faint; fading the button
-   with opacity would drop its text under 4.5:1. */
-.brain2-legend .lg-row button[aria-pressed="false"].kind-off {
+/* A kind that is switched off, or an area that another area's pick sets aside,
+   is struck through and faint: fading the button with opacity would drop its
+   text under 4.5:1, and colour alone would not say which state it is in. */
+.brain2-legend .lg-row button[aria-pressed="false"].kind-off,
+.brain2-legend .lg-row button.dimmed {
   color: var(--text-faint);
   text-decoration: line-through;
 }
 .brain2-legend .lg-row button {
   width: 100%;
-}
-.brain2-legend .lg-row button.dimmed {
-  opacity: 0.45;
 }
 .brain2-legend .lg-row .truncate {
   max-width: 110px;

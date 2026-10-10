@@ -14,8 +14,13 @@ export interface SpriteSet {
   halo(color: string): HTMLCanvasElement;
   /** Eight-point star with a baked glow (skills ring). */
   spark(color: string, hovered: boolean): HTMLCanvasElement;
-  /** Application hexagon with initials, baked glow, and active / official variants. */
-  hex(label: string, color: string, official: boolean, active: boolean, hovered: boolean): HTMLCanvasElement;
+  /**
+   * Application hexagon with baked glow, and active / official variants. It
+   * carries no text: baked into a 96px sprite shown at 36px, letters would
+   * scale with both the sprite and the zoom, so the initials are drawn live
+   * over it (draw.ts) at a size that holds on screen.
+   */
+  hex(color: string, official: boolean, active: boolean, hovered: boolean): HTMLCanvasElement;
   /** Drop every cached sprite (theme change). */
   reset(): void;
   size: number;
@@ -25,6 +30,8 @@ export const GLOW_SIZE = 40;
 export const HALO_SIZE = 96;
 export const SPARK_SIZE = 72;
 export const HEX_SIZE = 96;
+/** Radius of the hexagon inside its sprite (sprite px). */
+export const hexSpriteRadius = (hovered: boolean) => (hovered ? 15 : 12) * 2.4;
 
 export function createSprites(tokens: CanvasTokens): SpriteSet {
   const cache = new Map<string, HTMLCanvasElement>();
@@ -98,10 +105,10 @@ export function createSprites(tokens: CanvasTokens): SpriteSet {
         c.arc(0, 0, Math.max(1.5, size * 0.16), 0, TWO_PI);
         c.fill();
       }),
-    hex: (label, color, official, active, hovered) =>
-      make(`x:${label}:${color}:${official ? 1 : 0}${active ? 1 : 0}${hovered ? 1 : 0}`, HEX_SIZE, (c) => {
+    hex: (color, official, active, hovered) =>
+      make(`x:${color}:${official ? 1 : 0}${active ? 1 : 0}${hovered ? 1 : 0}`, HEX_SIZE, (c) => {
         const h = HEX_SIZE / 2;
-        const size = (hovered ? 15 : 12) * 2.4;
+        const size = hexSpriteRadius(hovered);
         c.translate(h, h);
         c.globalAlpha = active ? 1 : 0.72;
         if (official || hovered) {
@@ -125,21 +132,6 @@ export function createSprites(tokens: CanvasTokens): SpriteSet {
         c.strokeStyle = color;
         c.lineWidth = 2.4 * 1.6;
         c.stroke();
-        c.fillStyle = color;
-        c.font = `800 ${Math.max(7, size * 0.62)}px ${tokens.mono}`;
-        c.textAlign = "center";
-        c.textBaseline = "middle";
-        c.fillText(initials(label), 0, 1);
       }),
   };
-}
-
-export function initials(name: string): string {
-  const words = name
-    .replace(/\(.*?\)/g, "")
-    .trim()
-    .split(/[\s-]+/)
-    .filter(Boolean);
-  if (words.length >= 2) return (words[0]![0]! + words[1]![0]!).toUpperCase();
-  return (name.slice(0, 2) || "?").toUpperCase();
 }
