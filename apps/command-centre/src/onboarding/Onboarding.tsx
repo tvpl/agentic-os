@@ -1,6 +1,14 @@
 import { getVoiceNotify, speak } from "../hooks/systemNotify";
 import { readHandsFree } from "../desktop/console/voice";
-import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -20,7 +28,8 @@ import {
   Terminal,
   X,
 } from "lucide-react";
-import { DialogPortal, useDialogDepth } from "../components/dialog";
+import { createPortal } from "react-dom";
+import { useDialogDepth } from "../ui";
 import { PROVIDER_GATE_EVENT } from "../components/providerReadiness";
 import { readConsoleDraft, storeConsoleDraft } from "../desktop/consoleDraft";
 import { useLang, useLocale } from "../i18n";
@@ -38,6 +47,11 @@ import {
 } from "./state";
 import { useTourFocus, useTourTarget } from "./useTourSurface";
 import "./onboarding.css";
+
+/** The tour is a layer of its own (it owns the keyboard while it is up), drawn outside the shell like a dialog. */
+function InModalRoot({ children }: { children: ReactNode }) {
+  return createPortal(children, document.getElementById("modal-root") ?? document.body);
+}
 
 /** The scenes the "modes" step lets you travel to (the first three on the spine). */
 const SCENE_STOPS = ["/", "/brain", "/runs"] as const;
@@ -236,7 +250,7 @@ export function Onboarding() {
   const complete = screen === "complete";
 
   return (
-    <DialogPortal>
+    <InModalRoot>
       <div className={`onboarding ${guided ? "ob-guided" : "ob-centered"}`} data-testid="onboarding">
         {guided && target ? (
           <>
@@ -583,7 +597,7 @@ export function Onboarding() {
           )}
         </div>
       </div>
-    </DialogPortal>
+    </InModalRoot>
   );
 }
 

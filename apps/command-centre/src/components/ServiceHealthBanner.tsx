@@ -12,6 +12,7 @@ import { useT } from "../i18n";
 import { useApiQuery } from "../queries";
 import { Button } from "./primitives";
 import { useToast } from "./ui";
+import { Tooltip } from "../ui";
 
 const DISMISS_KEY = "mordomo.serviceBanner.dismissed";
 
@@ -135,15 +136,11 @@ export default function ServiceHealthBanner({ name }: { name: string }) {
           </Button>
         )}
         {!restarting && (
-          <button
-            type="button"
-            className="os-tool"
-            aria-label={t("service.later")}
-            title={t("service.later")}
-            onClick={dismiss}
-          >
-            <X aria-hidden />
-          </button>
+          <Tooltip label={t("service.later")}>
+            <button type="button" className="os-tool" aria-label={t("service.later")} onClick={dismiss}>
+              <X aria-hidden />
+            </button>
+          </Tooltip>
         )}
       </div>
     </div>

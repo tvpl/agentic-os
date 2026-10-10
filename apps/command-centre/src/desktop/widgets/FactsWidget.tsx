@@ -12,6 +12,7 @@ import { timeAgo, useToast } from "../../components/ui";
 import { useDesktopActions } from "../actions";
 import { WidgetGate } from "./WidgetGate";
 import type { WidgetProps } from "../widgetTypes";
+import { Tooltip } from "../../ui";
 
 interface Fact {
   id: number;
@@ -70,16 +71,17 @@ export default function FactsWidget(_props: WidgetProps) {
               ) : (
                 <span className="dm">{timeAgo(f.validFrom, locale)}</span>
               )}
-              <button
-                type="button"
-                className="go icon quiet"
-                aria-label={t("desktop.facts.retract")}
-                title={t("desktop.facts.retract")}
-                disabled={retract.isPending}
-                onClick={() => retract.mutate(f.id)}
-              >
-                <Undo2 aria-hidden />
-              </button>
+              <Tooltip label={t("desktop.facts.retract")}>
+                <button
+                  type="button"
+                  className="go icon quiet"
+                  aria-label={t("desktop.facts.retract")}
+                  disabled={retract.isPending}
+                  onClick={() => retract.mutate(f.id)}
+                >
+                  <Undo2 aria-hidden />
+                </button>
+              </Tooltip>
             </div>
           ))}
         </div>

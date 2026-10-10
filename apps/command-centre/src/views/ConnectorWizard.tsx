@@ -12,6 +12,7 @@ import { useT } from "../i18n";
 import { qk } from "../queries";
 import { Badge, Button } from "../components/primitives";
 import { timeAgo, useToast } from "../components/ui";
+import { Tooltip } from "../ui";
 
 type Step = 1 | 2 | 3;
 
@@ -109,15 +110,16 @@ export function ConnectorWizard({ connector }: { connector: Connector }) {
                 <li key={i}>
                   <span>{line}</span>
                   {code && (
-                    <button
-                      type="button"
-                      className="go icon quiet"
-                      aria-label={t("common.copy")}
-                      title={t("common.copy")}
-                      onClick={() => copy(code)}
-                    >
-                      <Copy aria-hidden />
-                    </button>
+                    <Tooltip label={t("common.copy")}>
+                      <button
+                        type="button"
+                        className="go icon quiet"
+                        aria-label={t("common.copy")}
+                        onClick={() => copy(code)}
+                      >
+                        <Copy aria-hidden />
+                      </button>
+                    </Tooltip>
                   )}
                 </li>
               );

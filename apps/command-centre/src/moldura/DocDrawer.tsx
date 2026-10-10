@@ -2,7 +2,7 @@
 import { useRef } from "react";
 import { X } from "lucide-react";
 import { useT } from "../i18n";
-import { useDialog } from "../components/dialog";
+import { useDrawer } from "../ui";
 import DocWindow from "../desktop/DocWindow";
 import { docId } from "../desktop/docIds";
 import { useScrimPress } from "./hooks";
@@ -12,7 +12,7 @@ export function DocDrawer({ path, onClose }: { path: string; onClose: () => void
   const ref = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   // Focus goes in, the rest of the frame is inert, Esc closes, focus returns to what opened it.
-  useDialog(ref, onClose, { initialFocus: () => closeButton.current });
+  useDrawer(ref, onClose, { initialFocus: () => closeButton.current });
   useScrimPress(onClose, true);
   const name = path.split(/[\\/]/).pop() || path;
   return (

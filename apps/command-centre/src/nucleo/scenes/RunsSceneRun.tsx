@@ -21,6 +21,7 @@ import { narrate } from "../../runs/humanize";
 import { formatTokens, formatUsd, totalTokens } from "../../runs/usage";
 import { isNotFound, isRunActive, isRunFailed, useRunQuery, useRunStream } from "../../runs/useRunStream";
 import RunDetail from "../../runs/RunDetail";
+import { Tabs, Tooltip } from "../../ui";
 import { askAbout, refWord } from "../subject";
 import { compactSteps, extractSteps, isGap, resultSummary } from "./runsTrace";
 import { laneOf, runLabel, runStart, toneOf } from "./runsRiver";
@@ -136,15 +137,11 @@ export default function RunsRun({
     </section>
   );
   const back = (
-    <button
-      type="button"
-      className="rs-back"
-      aria-label={t("concept.runs.back")}
-      title={`${t("concept.runs.back")} · Esc`}
-      onClick={onClose}
-    >
-      <ArrowLeft aria-hidden />
-    </button>
+    <Tooltip label={`${t("concept.runs.back")} · Esc`}>
+      <button type="button" className="rs-back" aria-label={t("concept.runs.back")} onClick={onClose}>
+        <ArrowLeft aria-hidden />
+      </button>
+    </Tooltip>
   );
   if (record.isError && isNotFound(record.error)) {
     return shell(
@@ -227,160 +224,151 @@ export default function RunsRun({
         )}
       </header>
 
-      <div className="rs-tabs" role="tablist" aria-label={t("concept.runs.tabs")}>
-        {TABS.map((k) => (
-          <button
-            key={k}
-            type="button"
-            role="tab"
-            id={`rs-tab-${k}`}
-            aria-selected={tab === k}
-            aria-controls="rs-run-panel"
-            onClick={() => setTab(k)}
-          >
-            {t(`concept.runs.tab.${k}`)}
-          </button>
-        ))}
-      </div>
-
-      <div
-        id="rs-run-panel"
-        className="rs-run-panel"
-        role="tabpanel"
-        aria-labelledby={`rs-tab-${tab}`}
-        data-tab={tab}
-        key={tab}
+      <Tabs.Root
+        value={tab}
+        onChange={(k) => setTab(k as Tab)}
+        ids={{ tab: (k) => `rs-tab-${k}`, panel: () => "rs-run-panel" }}
       >
-        {tab === "summary" && (
-          <>
-            <p className="rs-agent-line" data-tone={failed ? "fail" : undefined} aria-live="polite">
-              <span className="rs-agent-dot" aria-hidden />
-              {agentLine}
-            </p>
-            {error && <p className="rs-err">{error}</p>}
-            {login && fix?.action.kind === "login" && <code className="rs-login-cmd mono">{login}</code>}
-            <div className="rs-run-acts">
-              <button
-                type="button"
-                className="nu-act primary"
-                disabled={again.isPending || !run.request || active}
-                title={t("runs.actions.againTitle")}
-                onClick={() => again.mutate()}
-              >
-                <RefreshCw aria-hidden />
-                <span>{t("scene.runs.again")}</span>
-              </button>
-              <button
-                type="button"
-                className="nu-act"
-                aria-expanded={followUp !== null}
-                onClick={() => setFollowUp((cur) => (cur === null ? "" : null))}
-              >
-                <CornerDownRight aria-hidden />
-                <span>{t("concept.runs.continue")}</span>
-              </button>
-              <button
-                type="button"
-                className="nu-act"
-                onClick={() =>
-                  askAbout(
-                    {
-                      id: `subject:run:${run.id}`,
-                      kind: "run",
-                      ref: refWord("run", run.id.slice(0, 8)),
-                      title: `${label} · ${statusWord} (run ${run.id})`,
-                    },
-                    t("concept.runs.askPrompt", { what: label }),
-                  )
-                }
-              >
-                <MessageCircleQuestion aria-hidden />
-                <span>{t("concept.runs.ask")}</span>
-              </button>
-            </div>
-            {followUp !== null && (
-              <form className="rs-follow" onSubmit={submitFollowUp}>
-                <input
-                  ref={followRef}
-                  className="input"
-                  value={followUp}
-                  aria-label={t("concept.runs.continue")}
-                  placeholder={t("runs.actions.continuePh")}
-                  onChange={(e) => setFollowUp(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setFollowUp(null);
-                    }
-                  }}
-                />
+        <Tabs.List variant="pill" label={t("concept.runs.tabs")} className="rs-tabs">
+          {TABS.map((k) => (
+            <Tabs.Tab key={k} value={k}>
+              {t(`concept.runs.tab.${k}`)}
+            </Tabs.Tab>
+          ))}
+        </Tabs.List>
+
+        <Tabs.Panel className="rs-run-panel" data-tab={tab} key={tab}>
+          {tab === "summary" && (
+            <>
+              <p className="rs-agent-line" data-tone={failed ? "fail" : undefined} aria-live="polite">
+                <span className="rs-agent-dot" aria-hidden />
+                {agentLine}
+              </p>
+              {error && <p className="rs-err">{error}</p>}
+              {login && fix?.action.kind === "login" && <code className="rs-login-cmd mono">{login}</code>}
+              <div className="rs-run-acts">
                 <button
-                  type="submit"
-                  className="rs-follow-send"
-                  aria-label={t("concept.runs.send")}
-                  disabled={!followUp.trim() || continueRun.isPending}
+                  type="button"
+                  className="nu-act primary"
+                  disabled={again.isPending || !run.request || active}
+                  title={t("runs.actions.againTitle")}
+                  onClick={() => again.mutate()}
                 >
-                  <Send aria-hidden />
+                  <RefreshCw aria-hidden />
+                  <span>{t("scene.runs.again")}</span>
                 </button>
-              </form>
-            )}
-          </>
-        )}
-        {tab === "steps" && (
-          <>
-            <ol className="rs-chain" aria-label={t("scene.runs.trace.steps")}>
-              {chain.map((s, i) =>
-                isGap(s) ? (
-                  <li key={s.key} className="rs-step gap" style={{ animationDelay: `${i * 60}ms` }}>
-                    <button type="button" className="rs-gap" onClick={() => setExpanded(true)}>
-                      {t("scene.runs.trace.more", { n: s.gap })}
-                    </button>
-                  </li>
-                ) : (
-                  <li
-                    key={s.key}
-                    className="rs-step"
-                    data-tone={s.tone}
-                    style={{ animationDelay: `${i * 60}ms` }}
+                <button
+                  type="button"
+                  className="nu-act"
+                  aria-expanded={followUp !== null}
+                  onClick={() => setFollowUp((cur) => (cur === null ? "" : null))}
+                >
+                  <CornerDownRight aria-hidden />
+                  <span>{t("concept.runs.continue")}</span>
+                </button>
+                <button
+                  type="button"
+                  className="nu-act"
+                  onClick={() =>
+                    askAbout(
+                      {
+                        id: `subject:run:${run.id}`,
+                        kind: "run",
+                        ref: refWord("run", run.id.slice(0, 8)),
+                        title: `${label} · ${statusWord} (run ${run.id})`,
+                      },
+                      t("concept.runs.askPrompt", { what: label }),
+                    )
+                  }
+                >
+                  <MessageCircleQuestion aria-hidden />
+                  <span>{t("concept.runs.ask")}</span>
+                </button>
+              </div>
+              {followUp !== null && (
+                <form className="rs-follow" onSubmit={submitFollowUp}>
+                  <input
+                    ref={followRef}
+                    className="input"
+                    value={followUp}
+                    aria-label={t("concept.runs.continue")}
+                    placeholder={t("runs.actions.continuePh")}
+                    onChange={(e) => setFollowUp(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setFollowUp(null);
+                      }
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    className="rs-follow-send"
+                    aria-label={t("concept.runs.send")}
+                    disabled={!followUp.trim() || continueRun.isPending}
                   >
-                    <b>
-                      {s.text}
-                      {s.count > 1 && (
-                        <span className="rs-times"> {t("scene.runs.trace.times", { n: s.count })}</span>
-                      )}
-                    </b>
-                    {s.subject && (
-                      <code className="rs-subject" title={s.subject}>
-                        {s.subject}
-                      </code>
-                    )}
-                    <small className="mono">
-                      {i === 0 || s.ts < start
-                        ? formatWhen(s.ts, now, locale)
-                        : `+${formatDuration(Math.max(0, s.ts - start), locale)}`}
-                      {s.durationMs != null && s.durationMs > 0
-                        ? ` · ${formatDuration(s.durationMs, locale)}`
-                        : ""}
-                    </small>
-                    {s.error && <p className="rs-err">{s.error}</p>}
-                  </li>
-                ),
+                    <Send aria-hidden />
+                  </button>
+                </form>
               )}
-            </ol>
-            {steps.length > 9 && expanded && (
-              <button type="button" className="rs-gap" onClick={() => setExpanded(false)}>
-                {t("scene.runs.trace.collapse")}
-              </button>
-            )}
-          </>
-        )}
-        {tab === "log" && (
-          <div className="rs-run-log">
-            <RunDetail id={id} embedded />
-          </div>
-        )}
-      </div>
+            </>
+          )}
+          {tab === "steps" && (
+            <>
+              <ol className="rs-chain" aria-label={t("scene.runs.trace.steps")}>
+                {chain.map((s, i) =>
+                  isGap(s) ? (
+                    <li key={s.key} className="rs-step gap" style={{ animationDelay: `${i * 60}ms` }}>
+                      <button type="button" className="rs-gap" onClick={() => setExpanded(true)}>
+                        {t("scene.runs.trace.more", { n: s.gap })}
+                      </button>
+                    </li>
+                  ) : (
+                    <li
+                      key={s.key}
+                      className="rs-step"
+                      data-tone={s.tone}
+                      style={{ animationDelay: `${i * 60}ms` }}
+                    >
+                      <b>
+                        {s.text}
+                        {s.count > 1 && (
+                          <span className="rs-times"> {t("scene.runs.trace.times", { n: s.count })}</span>
+                        )}
+                      </b>
+                      {s.subject && (
+                        <code className="rs-subject" title={s.subject}>
+                          {s.subject}
+                        </code>
+                      )}
+                      <small className="mono">
+                        {i === 0 || s.ts < start
+                          ? formatWhen(s.ts, now, locale)
+                          : `+${formatDuration(Math.max(0, s.ts - start), locale)}`}
+                        {s.durationMs != null && s.durationMs > 0
+                          ? ` · ${formatDuration(s.durationMs, locale)}`
+                          : ""}
+                      </small>
+                      {s.error && <p className="rs-err">{s.error}</p>}
+                    </li>
+                  ),
+                )}
+              </ol>
+              {steps.length > 9 && expanded && (
+                <button type="button" className="rs-gap" onClick={() => setExpanded(false)}>
+                  {t("scene.runs.trace.collapse")}
+                </button>
+              )}
+            </>
+          )}
+          {tab === "log" && (
+            <div className="rs-run-log">
+              <RunDetail id={id} embedded />
+            </div>
+          )}
+        </Tabs.Panel>
+      </Tabs.Root>
     </>,
   );
 }

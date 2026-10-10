@@ -5,7 +5,7 @@
  * then the shell, then each screen that registers keys — so it says what
  * the keys do where you are, and nothing else.
  */
-import { Modal } from "./ui";
+import { Modal } from "../ui";
 import { useT, type TKey } from "../i18n";
 import { APPS, type AppKind } from "../desktop/apps";
 import { useRegisteredCommands, scopeRank, type Command, type CommandScope } from "../commands/registry";

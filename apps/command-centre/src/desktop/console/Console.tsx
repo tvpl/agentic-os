@@ -59,6 +59,7 @@ import type { Skill } from "../../api";
 import { ConsoleThread, type Reply } from "./ConsoleThread";
 import { ConsoleTray } from "./ConsoleTray";
 import { ConsoleControls, type Mode, type ModelChoice } from "./ConsoleControls";
+import { Tooltip } from "../../ui";
 
 /** Fired on every keystroke; the core ripples with it (mirrors nucleo/CoreOrb's TYPING_EVENT). */
 const TYPING_EVENT = "mordomo:typing";
@@ -809,40 +810,43 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
               }}
             />
             {canListen && (
-              <button
-                type="button"
-                className={`os-tool cons-handsfree${handsFree ? " active" : ""}`}
-                aria-pressed={handsFree}
-                aria-label={handsFree ? t("desktop.console.handsFreeOff") : t("desktop.console.handsFree")}
-                title={handsFree ? t("desktop.console.handsFreeOff") : t("desktop.console.handsFree")}
-                onClick={() => setHandsFree(!handsFree)}
-              >
-                <Headphones aria-hidden />
-              </button>
+              <Tooltip label={handsFree ? t("desktop.console.handsFreeOff") : t("desktop.console.handsFree")}>
+                <button
+                  type="button"
+                  className={`os-tool cons-handsfree${handsFree ? " active" : ""}`}
+                  aria-pressed={handsFree}
+                  aria-label={handsFree ? t("desktop.console.handsFreeOff") : t("desktop.console.handsFree")}
+                  onClick={() => setHandsFree(!handsFree)}
+                >
+                  <Headphones aria-hidden />
+                </button>
+              </Tooltip>
             )}
             {canListen && (
+              <Tooltip label={listening ? t("desktop.console.micStop") : t("desktop.console.mic")}>
+                <button
+                  type="button"
+                  className={`os-tool cons-mic${listening ? " active" : ""}`}
+                  aria-pressed={listening}
+                  aria-label={listening ? t("desktop.console.micStop") : t("desktop.console.mic")}
+                  onClick={toggleListening}
+                >
+                  {listening ? <MicOff aria-hidden /> : <Mic aria-hidden />}
+                </button>
+              </Tooltip>
+            )}
+            <Tooltip label={t("nucleo.voice.more")}>
               <button
                 type="button"
-                className={`os-tool cons-mic${listening ? " active" : ""}`}
-                aria-pressed={listening}
-                aria-label={listening ? t("desktop.console.micStop") : t("desktop.console.mic")}
-                title={listening ? t("desktop.console.micStop") : t("desktop.console.mic")}
-                onClick={toggleListening}
+                className={`os-tool cons-more${sideOpen ? " active" : ""}`}
+                aria-expanded={sideOpen}
+                aria-controls="cons-side"
+                aria-label={t("nucleo.voice.more")}
+                onClick={() => setSideOpen(!sideOpen)}
               >
-                {listening ? <MicOff aria-hidden /> : <Mic aria-hidden />}
+                <SlidersHorizontal aria-hidden />
               </button>
-            )}
-            <button
-              type="button"
-              className={`os-tool cons-more${sideOpen ? " active" : ""}`}
-              aria-expanded={sideOpen}
-              aria-controls="cons-side"
-              aria-label={t("nucleo.voice.more")}
-              title={t("nucleo.voice.more")}
-              onClick={() => setSideOpen(!sideOpen)}
-            >
-              <SlidersHorizontal aria-hidden />
-            </button>
+            </Tooltip>
             <button
               type="button"
               className="cbtn cons-skills"

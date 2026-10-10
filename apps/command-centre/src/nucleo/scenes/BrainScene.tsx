@@ -29,9 +29,8 @@ import {
   type RoutineStatus,
   type Skill,
 } from "../../api";
-import { Popover } from "../../components/primitives";
+import { getDialogDepth, Popover, Tooltip } from "../../ui";
 import { timeAgo, useToast } from "../../components/ui";
-import { getDialogDepth } from "../../components/dialog";
 import { useWorkspace } from "../../components/Workspace";
 import { useLang, useT, type TKey } from "../../i18n";
 import { useOsEvent } from "../../hooks/useEventStream";
@@ -1633,27 +1632,29 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
             <button type="button" className="bs-tour-btn" onClick={startTour} aria-pressed={tour !== null}>
               {t("scene.brain.tour")} <span aria-hidden>▸</span>
             </button>
-            <button
-              type="button"
-              className="bs-help-btn"
-              aria-label={t("scene.brain.help")}
-              title={t("scene.brain.help")}
-              aria-expanded={help}
-              onClick={toggleHelp}
-            >
-              ?
-            </button>
-            <button
-              ref={moreRef}
-              type="button"
-              className="bs-more"
-              aria-label={t("scene.brain.more")}
-              title={t("scene.brain.more")}
-              aria-expanded={menuOpen}
-              onClick={() => setMenuOpen((v) => !v)}
-            >
-              ⋯
-            </button>
+            <Tooltip label={t("scene.brain.help")}>
+              <button
+                type="button"
+                className="bs-help-btn"
+                aria-label={t("scene.brain.help")}
+                aria-expanded={help}
+                onClick={toggleHelp}
+              >
+                ?
+              </button>
+            </Tooltip>
+            <Tooltip label={t("scene.brain.more")}>
+              <button
+                ref={moreRef}
+                type="button"
+                className="bs-more"
+                aria-label={t("scene.brain.more")}
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((v) => !v)}
+              >
+                ⋯
+              </button>
+            </Tooltip>
           </div>
           {q && (
             <div className="bs-results" data-open={searchFocus || !sheetOpen ? "" : undefined}>
@@ -1804,46 +1805,46 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
             {caption}
           </p>
           <div className="bs-tour-ctl">
-            <button
-              type="button"
-              aria-label={t("scene.brain.tour.prev")}
-              title={t("scene.brain.tour.prev")}
-              disabled={tour.step === 0}
-              onClick={() =>
-                setTour((c) => (c ? { ...c, step: Math.max(0, c.step - 1), playing: false } : c))
-              }
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              aria-label={tour.playing ? t("scene.brain.tour.pause") : t("scene.brain.tour.play")}
-              title={tour.playing ? t("scene.brain.tour.pause") : t("scene.brain.tour.play")}
-              onClick={() => setTour((c) => (c ? { ...c, playing: !c.playing } : c))}
-            >
-              {tour.playing ? "❚❚" : "▶"}
-            </button>
-            <button
-              type="button"
-              aria-label={t("scene.brain.tour.next")}
-              title={t("scene.brain.tour.next")}
-              disabled={tour.step >= tour.plan.stops.length - 1}
-              onClick={() =>
-                setTour((c) =>
-                  c ? { ...c, step: Math.min(c.plan.stops.length - 1, c.step + 1), playing: false } : c,
-                )
-              }
-            >
-              ›
-            </button>
-            <button
-              type="button"
-              aria-label={t("scene.brain.tour.stop")}
-              title={t("scene.brain.tour.stop")}
-              onClick={() => setTour(null)}
-            >
-              ×
-            </button>
+            <Tooltip label={t("scene.brain.tour.prev")}>
+              <button
+                type="button"
+                aria-label={t("scene.brain.tour.prev")}
+                disabled={tour.step === 0}
+                onClick={() =>
+                  setTour((c) => (c ? { ...c, step: Math.max(0, c.step - 1), playing: false } : c))
+                }
+              >
+                ‹
+              </button>
+            </Tooltip>
+            <Tooltip label={tour.playing ? t("scene.brain.tour.pause") : t("scene.brain.tour.play")}>
+              <button
+                type="button"
+                aria-label={tour.playing ? t("scene.brain.tour.pause") : t("scene.brain.tour.play")}
+                onClick={() => setTour((c) => (c ? { ...c, playing: !c.playing } : c))}
+              >
+                {tour.playing ? "❚❚" : "▶"}
+              </button>
+            </Tooltip>
+            <Tooltip label={t("scene.brain.tour.next")}>
+              <button
+                type="button"
+                aria-label={t("scene.brain.tour.next")}
+                disabled={tour.step >= tour.plan.stops.length - 1}
+                onClick={() =>
+                  setTour((c) =>
+                    c ? { ...c, step: Math.min(c.plan.stops.length - 1, c.step + 1), playing: false } : c,
+                  )
+                }
+              >
+                ›
+              </button>
+            </Tooltip>
+            <Tooltip label={t("scene.brain.tour.stop")}>
+              <button type="button" aria-label={t("scene.brain.tour.stop")} onClick={() => setTour(null)}>
+                ×
+              </button>
+            </Tooltip>
           </div>
         </div>
       ) : (
@@ -1859,21 +1860,22 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
                 {dateLabel && <span className="bs-faint"> · {dateLabel}</span>}
                 <span className="bs-faint"> · {t("scene.brain.present", { n: present })}</span>
               </span>
-              <button
-                type="button"
-                className="bs-time-play"
-                aria-label={replaying ? t("scene.brain.pause") : t("scene.brain.play")}
-                title={replaying ? t("scene.brain.pause") : t("scene.brain.play")}
-                onClick={() => {
-                  if (replaying) setReplaying(false);
-                  else {
-                    setDaysAgo(span);
-                    setReplaying(true);
-                  }
-                }}
-              >
-                {replaying ? "❚❚" : "▶"}
-              </button>
+              <Tooltip label={replaying ? t("scene.brain.pause") : t("scene.brain.play")}>
+                <button
+                  type="button"
+                  className="bs-time-play"
+                  aria-label={replaying ? t("scene.brain.pause") : t("scene.brain.play")}
+                  onClick={() => {
+                    if (replaying) setReplaying(false);
+                    else {
+                      setDaysAgo(span);
+                      setReplaying(true);
+                    }
+                  }}
+                >
+                  {replaying ? "❚❚" : "▶"}
+                </button>
+              </Tooltip>
             </div>
             <div className="bs-hist" aria-hidden>
               {hist.map((v, i) => (

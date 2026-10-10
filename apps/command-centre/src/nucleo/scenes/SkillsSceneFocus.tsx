@@ -18,6 +18,7 @@ import { useLocale, useT, type TKey } from "../../i18n";
 import { timeAgo } from "../../components/ui";
 import type { SkillEntry } from "./skillsEntries";
 import { askAbout, refWord } from "../subject";
+import { Tooltip } from "../../ui";
 
 export interface FocusActions {
   onRun: () => void;
@@ -67,28 +68,30 @@ export function SkillFocus({
   return (
     <div className={`sks-focus${compact ? " compact" : ""}`} data-mode={s.mode} aria-live="polite">
       <div className="sks-eyebrow-row">
-        <button
-          type="button"
-          className="sks-icon"
-          aria-pressed={entry.favorite}
-          aria-label={t(entry.favorite ? "scene.skills.unfavorite" : "scene.skills.favorite")}
-          title={t(entry.favorite ? "scene.skills.unfavorite" : "scene.skills.favorite")}
-          disabled={actions.favoriteBusy}
-          onClick={actions.onFavorite}
-        >
-          <Star aria-hidden fill={entry.favorite ? "currentColor" : "none"} />
-        </button>
-        <p className="sks-eyebrow">{t(`scene.skills.cat.${entry.category}` as TKey)}</p>
-        {s.enabled && (
+        <Tooltip label={t(entry.favorite ? "scene.skills.unfavorite" : "scene.skills.favorite")}>
           <button
             type="button"
             className="sks-icon"
-            aria-label={t("scene.skills.configure")}
-            title={t("scene.skills.configure")}
-            onClick={(e: MouseEvent<HTMLButtonElement>) => actions.onConfigure(e.currentTarget)}
+            aria-pressed={entry.favorite}
+            aria-label={t(entry.favorite ? "scene.skills.unfavorite" : "scene.skills.favorite")}
+            disabled={actions.favoriteBusy}
+            onClick={actions.onFavorite}
           >
-            <SlidersHorizontal aria-hidden />
+            <Star aria-hidden fill={entry.favorite ? "currentColor" : "none"} />
           </button>
+        </Tooltip>
+        <p className="sks-eyebrow">{t(`scene.skills.cat.${entry.category}` as TKey)}</p>
+        {s.enabled && (
+          <Tooltip label={t("scene.skills.configure")}>
+            <button
+              type="button"
+              className="sks-icon"
+              aria-label={t("scene.skills.configure")}
+              onClick={(e: MouseEvent<HTMLButtonElement>) => actions.onConfigure(e.currentTarget)}
+            >
+              <SlidersHorizontal aria-hidden />
+            </button>
+          </Tooltip>
         )}
       </div>
       <h2 className="sks-name">{entry.name}</h2>
@@ -132,35 +135,38 @@ export function SkillFocus({
           </button>
         )}
         {/* Compact: the same two actions as labelled glyphs, so the row stays one row. */}
-        <button
-          type="button"
-          className={compact ? "sks-icon" : "sks-act"}
-          title={t("scene.skills.askHint", { slug: s.slug })}
-          aria-label={compact ? t("scene.skills.ask") : undefined}
-          onClick={actions.onAsk}
-        >
-          {compact ? <MessageSquarePlus aria-hidden /> : t("scene.skills.ask")}
-        </button>
-        <button
-          type="button"
-          className={compact ? "sks-icon" : "sks-act"}
-          aria-pressed={actions.detailsOpen}
-          title={compact ? t("scene.skills.details") : undefined}
-          aria-label={compact ? t("scene.skills.details") : undefined}
-          onClick={actions.onDetails}
-        >
-          {compact ? <Info aria-hidden /> : t("scene.skills.details")}
-        </button>
-        <button
-          type="button"
-          className={compact ? "sks-icon" : "sks-act"}
-          data-details
-          title={compact ? t("scene.skills.edit") : undefined}
-          aria-label={compact ? t("scene.skills.edit") : undefined}
-          onClick={actions.onEdit}
-        >
-          {compact ? <PanelRightOpen aria-hidden /> : t("scene.skills.edit")}
-        </button>
+        <Tooltip label={t("scene.skills.askHint", { slug: s.slug })}>
+          <button
+            type="button"
+            className={compact ? "sks-icon" : "sks-act"}
+            aria-label={compact ? t("scene.skills.ask") : undefined}
+            onClick={actions.onAsk}
+          >
+            {compact ? <MessageSquarePlus aria-hidden /> : t("scene.skills.ask")}
+          </button>
+        </Tooltip>
+        <Tooltip label={compact ? t("scene.skills.details") : undefined}>
+          <button
+            type="button"
+            className={compact ? "sks-icon" : "sks-act"}
+            aria-pressed={actions.detailsOpen}
+            aria-label={compact ? t("scene.skills.details") : undefined}
+            onClick={actions.onDetails}
+          >
+            {compact ? <Info aria-hidden /> : t("scene.skills.details")}
+          </button>
+        </Tooltip>
+        <Tooltip label={compact ? t("scene.skills.edit") : undefined}>
+          <button
+            type="button"
+            className={compact ? "sks-icon" : "sks-act"}
+            data-details
+            aria-label={compact ? t("scene.skills.edit") : undefined}
+            onClick={actions.onEdit}
+          >
+            {compact ? <PanelRightOpen aria-hidden /> : t("scene.skills.edit")}
+          </button>
+        </Tooltip>
       </div>
     </div>
   );

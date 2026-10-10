@@ -173,6 +173,8 @@
   --z-chrome: 20;
   --z-drawer: 30;
   --z-modal: 40;
+  --z-popover: 45; /* a popover or a menu, above the sheet that holds it */
+  --z-tip: 48; /* a hint, above everything but the toasts */
   --z-toast: 50;
 
   /* motion --------------------------------------------------------------- */
@@ -689,10 +691,6 @@ canvas.dimmed {
     animation: fade-up var(--dur-slow) var(--ease-out) both;
     animation-delay: var(--enter-delay, 0ms);
   }
-  /* the command palette opens as an iris from the centre */
-  .launcher-panel.palette {
-    animation: hud-iris 260ms var(--ease-emphasized) both;
-  }
   /* toasts arrive as a transmission: a scan line sweeps the card once */
   .toast::before {
     content: "";
@@ -707,42 +705,10 @@ canvas.dimmed {
     pointer-events: none;
   }
 
-  .launcher {
-    animation: fade-in var(--dur-base) var(--ease-out) both;
-  }
-  .launcher-panel {
-    animation: scale-in-96 240ms var(--ease-emphasized) both;
-  }
   .launcher-tile {
     animation: fade-up var(--dur-slow) var(--ease-out) both;
     animation-delay: calc(var(--i, 0) * 20ms);
   }
-  .launcher.closing {
-    animation: fade-out var(--dur-exit) var(--ease-standard) both;
-  }
-  .launcher.closing .launcher-panel {
-    animation: scale-out-96 var(--dur-exit) var(--ease-standard) both;
-  }
-  .launcher.closing .launcher-tile {
-    animation: none;
-  }
-
-  .modal {
-    animation: modal-in var(--dur-base) var(--ease-emphasized) both;
-  }
-  .modal-backdrop.closing {
-    animation: fade-out var(--dur-exit) var(--ease-standard) both;
-  }
-  .modal-backdrop.closing .modal {
-    animation: scale-out-98 var(--dur-exit) var(--ease-standard) both;
-  }
-  .popover {
-    animation: spring-in 260ms var(--ease-spring) both;
-  }
-  .popover.closing {
-    animation: fade-out var(--dur-exit) var(--ease-standard) both;
-  }
-
   .toast {
     animation: toast-in var(--dur-slow) var(--ease-out) both;
   }
@@ -867,16 +833,6 @@ canvas.dimmed {
 }
 
 /* launcher overlay (rendered through #modal-root) */
-.launcher {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-modal);
-  background: color-mix(in srgb, var(--bg) 78%, transparent);
-  backdrop-filter: blur(14px);
-  display: grid;
-  place-items: center;
-  padding: var(--s-6);
-}
 .launcher-panel {
   width: min(620px, 100%);
 }
@@ -1221,23 +1177,6 @@ canvas.dimmed {
 }
 .shortcut-label {
   color: var(--text-dim);
-}
-
-/* popover primitive (anchored, non-modal; see primitives.tsx) */
-.popover {
-  position: fixed;
-  z-index: var(--z-drawer);
-  min-width: 180px;
-  max-width: min(380px, calc(100vw - 16px));
-  padding: var(--s-3);
-  background: var(--bg-raise);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-3);
-  box-shadow:
-    var(--shadow-drawer),
-    0 0 24px var(--accent-soft);
-  transform-origin: var(--popover-origin, top center);
-  outline: none;
 }
 
 /* fullscreen app frame: chrome is in normal flow (sticky), never fixed */
@@ -1683,39 +1622,6 @@ textarea.input {
   overflow-x: auto;
 }
 
-.tabs {
-  display: flex;
-  gap: var(--s-1);
-  border-bottom: 1px solid var(--border);
-  margin-bottom: var(--s-5);
-  overflow-x: auto;
-}
-.tabs [role="tab"] {
-  padding: var(--s-2) var(--s-3);
-  border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  background: none;
-  color: var(--text-dim);
-  font: inherit;
-  font-weight: 700;
-  font-size: var(--fs-2);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    color var(--dur-fast) var(--ease-standard),
-    border-color var(--dur-fast) var(--ease-standard);
-}
-.tabs [role="tab"]:hover {
-  color: var(--text);
-}
-.tabs [role="tab"][aria-selected="true"] {
-  color: var(--accent-text);
-  border-bottom-color: var(--accent);
-}
-
 .kbd {
   font-family: var(--font-mono);
   font-size: var(--fs-2);
@@ -1859,33 +1765,6 @@ textarea.input {
   margin: 0 auto;
 }
 
-/* modal / dialogs (rendered through #modal-root) */
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-modal);
-  background: color-mix(in srgb, var(--shadow-ink) 62%, transparent);
-  backdrop-filter: blur(3px);
-  display: grid;
-  place-items: center;
-  padding: var(--s-6);
-}
-.modal {
-  background: var(--bg-raise);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-3);
-  box-shadow:
-    var(--shadow),
-    0 0 40px var(--accent-soft);
-  width: min(680px, 100%);
-  max-height: 86vh;
-  overflow-y: auto;
-  padding: var(--s-5);
-  outline: none;
-}
-.modal.narrow {
-  width: min(440px, 100%);
-}
 .provider-gate-backdrop {
   z-index: calc(var(--z-modal) + 1);
 }
@@ -1938,79 +1817,10 @@ textarea.input {
 .provider-gate-actions {
   flex-wrap: wrap;
 }
-.modal-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--s-3);
-}
-.modal h2 {
-  margin: 0 0 14px;
-  font-size: var(--fs-4);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--text);
-  font-family: var(--font-display);
-}
-.modal-body {
-  color: var(--text-dim);
-  margin: 0 0 var(--s-5);
-}
-.modal-intro {
-  margin: 0 0 var(--s-4);
-  color: var(--text-dim);
-  font-size: var(--fs-3);
-  max-width: 60ch;
-}
-.modal-hint {
-  margin: var(--s-3) 0 0;
-  color: var(--text-faint);
-  font-size: var(--fs-3);
-}
-.modal .hint,
-.modal .modal-hint {
-  color: var(--text-dim);
-}
 .req {
   color: var(--danger);
   font-weight: 800;
   margin-left: 2px;
-}
-.modal-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--s-2);
-  margin-top: var(--s-4);
-}
-@media (max-width: 760px), (max-height: 600px) {
-  .modal-backdrop {
-    padding: 12px;
-  }
-  .modal {
-    max-height: calc(100dvh - 24px);
-    padding: 16px;
-  }
-  .modal-head {
-    position: sticky;
-    top: -16px;
-    z-index: 2;
-    background: var(--bg-raise);
-    padding-top: 8px;
-  }
-  .modal-head h2 {
-    overflow-wrap: anywhere;
-  }
-  .modal-head > button {
-    flex-shrink: 0;
-  }
-  .modal-actions {
-    position: sticky;
-    bottom: -16px;
-    background: var(--bg-raise);
-    padding: 12px 0;
-    z-index: 2;
-  }
 }
 
 /* toasts */

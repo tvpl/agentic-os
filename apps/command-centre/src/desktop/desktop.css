@@ -267,15 +267,9 @@
 
 /* --------------------------------------------- model × effort popover ---- */
 .me-popover {
-  position: fixed;
-  z-index: var(--z-modal);
   display: grid;
   gap: var(--s-2);
-  padding: var(--s-3);
-  border-radius: var(--r-3);
-  background: var(--surface);
-  border: 1px solid var(--accent-line);
-  box-shadow: var(--shadow-drawer);
+  width: 300px;
 }
 .me-head {
   display: flex;
@@ -365,10 +359,6 @@
   margin: 0;
   font-size: var(--fs-3);
   color: var(--text-faint);
-}
-.me-popover.closing {
-  opacity: 0;
-  transition: opacity 160ms var(--ease-standard);
 }
 
 /* -------------------------------------------------------------- board ---- */
@@ -1718,10 +1708,6 @@
   color: var(--accent-text);
   font-size: var(--fs-2);
   flex: none;
-}
-/* the MODEL + EFFORT matrix over its control */
-.me-popover.cons-model {
-  top: auto;
 }
 @media (prefers-reduced-motion: reduce) {
   .cons,

@@ -50,6 +50,7 @@ import { burst } from "./Sparks";
 import { talk } from "./events";
 import type { Briefing } from "./useBriefing";
 import type { HumanEvent } from "../runs/humanize";
+import { Tooltip } from "../ui";
 
 export interface NucleoSceneProps {
   coreState: CoreState;
@@ -437,22 +438,23 @@ export default function NucleoScene({
           {t(`desktop.core.${coreState}`)}
         </span>
         {/* The core is the way in: a touch blooms the day, a hold talks to it. */}
-        <button
-          type="button"
-          className="nu-core-hit"
-          aria-expanded={bloom}
-          aria-label={t(bloom ? "nucleo.core.fold" : "nucleo.core.bloom")}
-          title={t("nucleo.core.hint")}
-          data-testid="core-bloom"
-          onPointerDown={onDown}
-          onPointerUp={onUp}
-          onPointerLeave={onUp}
-          onClick={(e) => toggle(e.currentTarget)}
-        >
-          <svg className="nu-core-hold" viewBox="0 0 100 100" aria-hidden>
-            <circle cx="50" cy="50" r="48" />
-          </svg>
-        </button>
+        <Tooltip label={t("nucleo.core.hint")}>
+          <button
+            type="button"
+            className="nu-core-hit"
+            aria-expanded={bloom}
+            aria-label={t(bloom ? "nucleo.core.fold" : "nucleo.core.bloom")}
+            data-testid="core-bloom"
+            onPointerDown={onDown}
+            onPointerUp={onUp}
+            onPointerLeave={onUp}
+            onClick={(e) => toggle(e.currentTarget)}
+          >
+            <svg className="nu-core-hold" viewBox="0 0 100 100" aria-hidden>
+              <circle cx="50" cy="50" r="48" />
+            </svg>
+          </button>
+        </Tooltip>
         <div className="nu-caption">
           <h1>{greet}.</h1>
           {bloom && briefing ? (

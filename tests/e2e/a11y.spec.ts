@@ -53,8 +53,10 @@ async function open(
   await page.waitForTimeout(500);
 }
 
-async function serious(page: Page) {
-  const result = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+async function serious(page: Page, leaveOut: string[] = []) {
+  const builder = new AxeBuilder({ page }).withTags(WCAG_TAGS);
+  for (const selector of leaveOut) builder.exclude(selector);
+  const result = await builder.analyze();
   return result.violations
     .filter((v) => v.impact === "serious" || v.impact === "critical")
     .map((v) => ({
@@ -222,3 +224,68 @@ test("C7 the light theme keeps its own tokens", async ({ page }) => {
   expect((await textColourSeenBy(page, "")).colour).toBe(JARVIS_TEXT);
   expect((await textColourSeenBy(page, "display-digits")).colour).toBe(JARVIS_TEXT);
 });
+
+/**
+ * C29 (.specs/features/primitivas): axe over the primitives while they are open.
+ * The gallery opens each one for real (popover, menu, modal, tooltip) and holds
+ * the static pieces of both layers at rest; the palette is opened in each shell.
+ */
+/** The gallery's instrument plates hold their own scrollable lâmina bodies, which are not this feature's. */
+const GALLERY_NOT_THIS_FEATURE = ["#story-widgets"];
+
+for (const theme of THEMES) {
+  test(`C29 the primitives, at rest in both layers and open in the gallery, have no serious violation (${theme})`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(`/gallery.html?theme=${theme}`);
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForLoadState("networkidle");
+    // At rest: the bare story and the Núcleo and frame layers (a switch, a tab, an open menu and a hint each).
+    for (const layer of ["primitives", "nucleo-layer", "frame-layer"]) {
+      await expect(page.locator(`#story-${layer} [role="switch"]`).first()).toBeVisible();
+      await expect(page.locator(`#story-${layer} [role="tab"]`).first()).toBeVisible();
+      await expect(page.locator(`#story-${layer} .ui-menu`)).toBeVisible();
+      await expect(page.locator(`#story-${layer} .ui-tip`)).toBeVisible();
+    }
+    expect(await serious(page, GALLERY_NOT_THIS_FEATURE)).toEqual([]);
+
+    // The popover.
+    await page.getByRole("button", { name: "Open popover" }).click();
+    await expect(page.getByRole("dialog", { name: "Model and effort" })).toBeVisible();
+    expect(await serious(page, GALLERY_NOT_THIS_FEATURE)).toEqual([]);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Model and effort" })).toHaveCount(0);
+
+    // The menu, open from its trigger.
+    await page.locator("#story-primitives").getByRole("button", { name: "Actions" }).click();
+    await expect(page.getByRole("menu", { name: "Actions", exact: true })).toBeVisible();
+    expect(await serious(page, GALLERY_NOT_THIS_FEATURE)).toEqual([]);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu", { name: "Actions", exact: true })).toHaveCount(0);
+
+    // The tooltip, from the keyboard focus.
+    await page.locator("#story-primitives").getByRole("button", { name: "Delete run" }).focus();
+    // The live hint (Radix marks it with a state); the two layers hold static ones at rest.
+    await expect(page.locator(".ui-tip[data-state]")).toBeVisible();
+    expect(await serious(page, GALLERY_NOT_THIS_FEATURE)).toEqual([]);
+    await page.keyboard.press("Escape");
+
+    // The modal.
+    await page.getByRole("button", { name: "Modal", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "New skill" })).toBeVisible();
+    expect(await serious(page, GALLERY_NOT_THIS_FEATURE)).toEqual([]);
+  });
+
+  for (const shell of ["moldura", "nucleo"] as const) {
+    test(`C29 the command palette open has no serious violation: ${shell === "moldura" ? "the app frame" : "the Núcleo"} (${theme})`, async ({
+      page,
+    }) => {
+      await open(page, shell, theme, "/");
+      await page.keyboard.press("Control+k");
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await expect(page.getByRole("combobox")).toBeVisible();
+      expect(await serious(page)).toEqual([]);
+    });
+  }
+}

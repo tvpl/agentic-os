@@ -10,7 +10,8 @@ import { Download, RefreshCw } from "lucide-react";
 import { api } from "../../api";
 import { qk, useApiQuery, useInvalidate } from "../../queries";
 import { useT } from "../../i18n";
-import { Modal, useToast } from "../../components/ui";
+import { useToast } from "../../components/ui";
+import { Modal } from "../../ui";
 import { Button } from "../../components/primitives";
 import { errorMessage } from "../shared";
 

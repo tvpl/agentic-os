@@ -32,6 +32,7 @@ import {
   type ViewKind,
 } from "./engine/world";
 import { GROUP_PALETTE, MODIFIED_RANGES, SIZE_RANGES, type BrainUi } from "./state";
+import { Switch, Tooltip } from "../ui";
 
 export interface TimelineState {
   range: [number, number] | null;
@@ -138,17 +139,18 @@ export function BrainPanel(p: BrainPanelProps) {
 
   return (
     <div className={`brain2-panel${collapsed ? " collapsed" : ""}`} aria-label={t("brain.controls")}>
-      <button
-        type="button"
-        className="os-chip brain-panel-toggle"
-        onClick={() => setCollapsed(!collapsed)}
-        aria-expanded={!collapsed}
-        aria-label={t("brain.controls")}
-        title={t("brain.controls")}
-      >
-        {collapsed ? <PanelRightOpen aria-hidden /> : <PanelRightClose aria-hidden />}
-        {!collapsed && t("brain.controls")}
-      </button>
+      <Tooltip label={t("brain.controls")}>
+        <button
+          type="button"
+          className="os-chip brain-panel-toggle"
+          onClick={() => setCollapsed(!collapsed)}
+          aria-expanded={!collapsed}
+          aria-label={t("brain.controls")}
+        >
+          {collapsed ? <PanelRightOpen aria-hidden /> : <PanelRightClose aria-hidden />}
+          {!collapsed && t("brain.controls")}
+        </button>
+      </Tooltip>
       <input
         ref={p.searchRef}
         className="input"
@@ -214,18 +216,16 @@ export function BrainPanel(p: BrainPanelProps) {
             {EDGE_KINDS.filter((k) => (p.kindCounts.get(k) ?? 0) > 0 || k === "markdown-link").map((k) => {
               const on = ui.edgeKinds.includes(k);
               return (
-                <button
+                <Switch
                   key={k}
-                  type="button"
-                  role="switch"
-                  aria-checked={on}
+                  checked={on}
                   className={`brain-chip kind${on ? " on" : ""}`}
-                  onClick={() => patch({ edgeKinds: toggleIn(ui.edgeKinds, k) as EdgeKind[] })}
+                  onCheckedChange={() => patch({ edgeKinds: toggleIn(ui.edgeKinds, k) as EdgeKind[] })}
                 >
                   <span className={`brain-kind-swatch ${k}`} aria-hidden />
                   {t(KIND_KEYS[k])}
                   <span className="count">{p.kindCounts.get(k) ?? 0}</span>
-                </button>
+                </Switch>
               );
             })}
           </div>

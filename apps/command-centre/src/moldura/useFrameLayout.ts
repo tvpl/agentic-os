@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MessageSquare } from "lucide-react";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { CONSOLE_DRAFT_EVENT } from "../desktop/consoleDraft";
-import { getDialogDepth } from "../components/dialog";
+import { getDialogDepth } from "../ui";
 import { useCommands, type Command } from "../commands/registry";
 
 export const CHAT_KEY = "mordomo.moldura.chat.v1";

@@ -96,3 +96,16 @@
   width: 100%;
   max-width: 440px;
 }
+/* An open menu and a hint drawn in place (the real ones are placed by Radix on open). */
+.story-menu,
+.story-tip {
+  position: static;
+  display: inline-grid;
+}
+.story-tip {
+  display: inline-block;
+}
+/* A tab strip and its panel stack in the row, not side by side. */
+.story-tabs {
+  min-width: 0;
+}

@@ -3,7 +3,7 @@ import { useRef } from "react";
 import { Link } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useT } from "../i18n";
-import { useDialog } from "../components/dialog";
+import { useDrawer } from "../ui";
 import { useScrimPress } from "./hooks";
 import { NAV_GROUPS, type NavItem } from "./nav";
 
@@ -21,7 +21,7 @@ export interface SidebarProps {
 export function Sidebar({ name, current, collapsed, overlay, pending, onToggle, onFold }: SidebarProps) {
   const t = useT();
   const ref = useRef<HTMLElement>(null);
-  useDialog(ref, onFold, {
+  useDrawer(ref, onFold, {
     open: overlay,
     initialFocus: () => ref.current?.querySelector<HTMLElement>('[aria-current="page"]'),
   });

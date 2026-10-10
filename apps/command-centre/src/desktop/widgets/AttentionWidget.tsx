@@ -20,6 +20,7 @@ import { useDesktopRoutines, useDesktopRuns } from "../data";
 import { isFreshFailure } from "../signal";
 import { mute, readMuted } from "../attentionMute";
 import { WidgetGate } from "./WidgetGate";
+import { Tooltip } from "../../ui";
 
 interface Approval {
   id: string;
@@ -85,25 +86,27 @@ export default function AttentionWidget() {
       <button type="button" className="go" onClick={() => openRun(r.id)}>
         {t("desktop.attention.open")}
       </button>
-      <button
-        type="button"
-        className="go icon"
-        aria-label={t("desktop.attention.rerun")}
-        title={t("desktop.attention.rerun")}
-        disabled={retry.isPending}
-        onClick={() => retry.mutate(r.id)}
-      >
-        <RotateCcw aria-hidden />
-      </button>
-      <button
-        type="button"
-        className="go icon quiet"
-        aria-label={t("desktop.attention.mute")}
-        title={t("desktop.attention.mute")}
-        onClick={() => silence(r.id)}
-      >
-        <BellOff aria-hidden />
-      </button>
+      <Tooltip label={t("desktop.attention.rerun")}>
+        <button
+          type="button"
+          className="go icon"
+          aria-label={t("desktop.attention.rerun")}
+          disabled={retry.isPending}
+          onClick={() => retry.mutate(r.id)}
+        >
+          <RotateCcw aria-hidden />
+        </button>
+      </Tooltip>
+      <Tooltip label={t("desktop.attention.mute")}>
+        <button
+          type="button"
+          className="go icon quiet"
+          aria-label={t("desktop.attention.mute")}
+          onClick={() => silence(r.id)}
+        >
+          <BellOff aria-hidden />
+        </button>
+      </Tooltip>
     </div>
   );
 

@@ -12,6 +12,7 @@ import { qk, useApiQuery } from "../../queries";
 import { timeAgo, useToast } from "../../components/ui";
 import { WidgetGate } from "./WidgetGate";
 import type { WidgetProps } from "../widgetTypes";
+import { Tooltip } from "../../ui";
 
 const ORDER = { fail: 0, warn: 1, ok: 2, skip: 3 } as const;
 
@@ -42,25 +43,27 @@ export default function HealthWidget(_props: WidgetProps) {
           <span className="tg t">{doctor.data?.warn ?? 0}</span>
           <span className="tg f">{doctor.data?.fail ?? 0}</span>
           <span className="sp" />
-          <button
-            type="button"
-            className="go icon"
-            title={t("desktop.health.again")}
-            aria-label={t("desktop.health.again")}
-            onClick={() => void doctor.refetch()}
-          >
-            <RefreshCw aria-hidden />
-          </button>
-          <button
-            type="button"
-            className="go icon quiet"
-            title={t("desktop.health.restart")}
-            aria-label={t("desktop.health.restart")}
-            disabled={restart.isPending || restarting}
-            onClick={() => restart.mutate()}
-          >
-            <RotateCcw aria-hidden />
-          </button>
+          <Tooltip label={t("desktop.health.again")}>
+            <button
+              type="button"
+              className="go icon"
+              aria-label={t("desktop.health.again")}
+              onClick={() => void doctor.refetch()}
+            >
+              <RefreshCw aria-hidden />
+            </button>
+          </Tooltip>
+          <Tooltip label={t("desktop.health.restart")}>
+            <button
+              type="button"
+              className="go icon quiet"
+              aria-label={t("desktop.health.restart")}
+              disabled={restart.isPending || restarting}
+              onClick={() => restart.mutate()}
+            >
+              <RotateCcw aria-hidden />
+            </button>
+          </Tooltip>
         </div>
         {newer ? (
           <div className="rw health-update">

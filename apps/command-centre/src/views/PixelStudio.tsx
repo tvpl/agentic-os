@@ -30,6 +30,7 @@ import { downloadUrl as downloadFile } from "./shared";
 import "./apps.css";
 import { useCommands, type Command } from "../commands/registry";
 import { isTypingTarget } from "../commands/keys";
+import { Tooltip } from "../ui";
 
 /* =========================================================================
    Pixel Studio — a self-contained pixel-art drawing + animation micro-app.
@@ -717,14 +718,14 @@ export default function PixelStudio() {
             <h2>{t("pixel.palette")}</h2>
             <div className="pxs-swatches">
               {PALETTE.map((c) => (
-                <button
-                  key={c}
-                  className={`pxs-swatch${color === c ? " active" : ""}`}
-                  style={{ background: c }}
-                  onClick={() => chooseColor(c)}
-                  aria-label={c}
-                  title={c}
-                />
+                <Tooltip key={c} label={c}>
+                  <button
+                    className={`pxs-swatch${color === c ? " active" : ""}`}
+                    style={{ background: c }}
+                    onClick={() => chooseColor(c)}
+                    aria-label={c}
+                  />
+                </Tooltip>
               ))}
             </div>
             <div className="pxs-current">
@@ -745,13 +746,14 @@ export default function PixelStudio() {
                 onChange={(e) => chooseColor(e.target.value)}
                 aria-label={t("pixel.custom")}
               />
-              <button
-                className={`pxs-swatch pxs-checker${color === null ? " active" : ""}`}
-                style={{ width: 30, height: 30, flexShrink: 0 }}
-                onClick={() => setColor(null)}
-                aria-label={t("pixel.transparent")}
-                title={t("pixel.transparent")}
-              />
+              <Tooltip label={t("pixel.transparent")}>
+                <button
+                  className={`pxs-swatch pxs-checker${color === null ? " active" : ""}`}
+                  style={{ width: 30, height: 30, flexShrink: 0 }}
+                  onClick={() => setColor(null)}
+                  aria-label={t("pixel.transparent")}
+                />
+              </Tooltip>
               <span className="mono" style={{ fontSize: 12, color: "var(--text-faint)" }}>
                 {color ?? t("pixel.transparent")}
               </span>
@@ -764,14 +766,14 @@ export default function PixelStudio() {
             </div>
             <div className="pxs-recent" role="group" aria-label={t("apps.pixel.recent")}>
               {recents.map((c) => (
-                <button
-                  key={c}
-                  className={`pxs-swatch${color === c ? " active" : ""}`}
-                  style={{ background: c }}
-                  onClick={() => chooseColor(c)}
-                  aria-label={c}
-                  title={c}
-                />
+                <Tooltip key={c} label={c}>
+                  <button
+                    className={`pxs-swatch${color === c ? " active" : ""}`}
+                    style={{ background: c }}
+                    onClick={() => chooseColor(c)}
+                    aria-label={c}
+                  />
+                </Tooltip>
               ))}
             </div>
             <p className="pxs-shortcuts">

@@ -1,26 +1,24 @@
 /**
- * Shared dialog machinery: portal into #modal-root, focus trap, initial
- * focus, focus restore, Escape handled on the dialog (never leaking to the
- * OS shell) and `inert` on everything behind the top-most dialog. A dialog
- * that has to stay mounted where it is (a drawer of the app frame) may skip
- * the portal: the dialog stack inerts everything but its path to the root.
+ * The stack of dialog layers (.specs/features/primitivas, door 3).
+ *
+ * Radix owns the focus, Tab and Escape of a dialog it renders; what the rest
+ * of the app reads about "a dialog is up" lives here: the stack decides which
+ * layer is on top, which part of the page is `inert` behind it, and how many
+ * dialogs cover the shell (`getDialogDepth()`, which the command registry's
+ * `modal` scope and the shell's depth push both read). A Radix dialog
+ * registers with `useDialogLayer`; the two panels that stay where they are in
+ * the tree (the narrow sidebar and the conversation drawer, which hold live
+ * content and cannot be remounted into a portal) use `useDrawer`, which also
+ * does what Radix does for the others: the focus trap, Escape and the restore.
  */
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-  type RefObject,
-} from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type RefObject } from "react";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-const FIELD = 'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])';
+export const FIELD =
+  'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])';
 
-/** Open dialogs, bottom → top. Only the top one traps focus. */
+/** Open dialog layers, bottom → top. */
 const stack: HTMLElement[] = [];
 
 /* ---- depth store: how many dialogs are open (drives the depth push) ---- */
@@ -38,7 +36,7 @@ export function subscribeDialogDepth(fn: () => void): () => void {
   };
 }
 /**
- * Dialogs that cover the shell (Modal, Confirm, palette: portaled out of it).
+ * Dialogs that cover the shell (a Modal, a confirmation, the palette: portaled out of it).
  * The shell sets `data-depth="pushed"` when > 0 and recedes behind them. A
  * dialog that lives inside the shell (a drawer of the app frame) is part of
  * what would recede, so it does not count.
@@ -110,26 +108,66 @@ export function focusables(root: HTMLElement): HTMLElement[] {
   );
 }
 
-export interface UseDialogOptions {
-  /** Where focus lands on open; default: first field, else the dialog itself. */
+/** Put `el` (or its portal child) on the stack; the returned function takes it off again. */
+function pushLayer(el: HTMLElement): () => void {
+  // The portal child is the backdrop; the dialog may be nested inside it.
+  const entry = (el.closest("#modal-root > *") as HTMLElement | null) ?? el;
+  stack.push(entry);
+  syncInert();
+  notifyDepth();
+  return () => {
+    const i = stack.lastIndexOf(entry);
+    if (i >= 0) stack.splice(i, 1);
+    syncInert();
+    notifyDepth();
+  };
+}
+
+/**
+ * Register the dialog element `ref` points at as a layer for as long as it is
+ * mounted (and `open`): the page behind it goes `inert`, the depth counts it.
+ * It does nothing with the keyboard: that is Radix's.
+ */
+export function useDialogLayer(ref: RefObject<HTMLElement | null>, open = true): void {
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !open) return;
+    return pushLayer(el);
+  }, [ref, open]);
+}
+
+/** Where focus lands on open: the first field, else the first control that is not "close", else the dialog. */
+export function initialTarget(el: HTMLElement): HTMLElement {
+  const items = focusables(el);
+  return (
+    items.find((candidate) => candidate.matches(FIELD)) ??
+    items.find((f) => !f.hasAttribute("data-dialog-close")) ??
+    el
+  );
+}
+
+export interface UseDrawerOptions {
+  /** Where focus lands on open; default: first field, else the drawer itself. */
   initialFocus?: () => HTMLElement | null | undefined;
   /**
-   * For a component that stays mounted while closed (renders `null`): the
-   * dialog registers when this turns true and leaves the stack when it turns
-   * false. A component that mounts only while open can leave it out.
+   * For a component that stays mounted while closed: the drawer registers when
+   * this turns true and leaves the stack when it turns false.
    */
   open?: boolean;
 }
 
 /**
- * Attach to the element carrying role="dialog" (give it tabIndex={-1}).
+ * A panel that stays where it is in the tree and is a dialog only some of the
+ * time (the sidebar when it unfolds over a narrow window, the conversation as
+ * a drawer): Radix mounts its layer together with the content, so these two do
+ * not use it. Attach to the element carrying `role="dialog"` (tabIndex -1).
  * `onClose` may be an inline arrow: it is read through a ref, so the effect
- * runs once per mount and focus is never stolen on parent re-renders.
+ * runs once per open and focus is never stolen on parent re-renders.
  */
-export function useDialog(
-  ref: RefObject<HTMLElement>,
+export function useDrawer(
+  ref: RefObject<HTMLElement | null>,
   onClose: () => void,
-  opts: UseDialogOptions = {},
+  opts: UseDrawerOptions = {},
 ): void {
   const onCloseRef = useRef(onClose);
   const initialRef = useRef(opts.initialFocus);
@@ -143,21 +181,13 @@ export function useDialog(
     const el = ref.current;
     if (!el || !open) return;
     const previous = document.activeElement as HTMLElement | null;
-    // The portal child is the backdrop; the dialog may be nested inside it.
-    const portalChild = el.closest("#modal-root > *") as HTMLElement | null;
-    const entry = portalChild ?? el;
-    stack.push(entry);
-    syncInert();
-    notifyDepth();
+    const release = pushLayer(el);
+    const entry = (el.closest("#modal-root > *") as HTMLElement | null) ?? el;
 
-    const target =
-      initialRef.current?.() ??
-      focusables(el).find((candidate) => candidate.matches(FIELD)) ??
-      focusables(el).find((f) => !f.hasAttribute("data-dialog-close")) ??
-      el;
+    const target = initialRef.current?.() ?? initialTarget(el);
     // The frame can land late (a busy stage, a canvas repaint). If the user
     // — or an automation — has already put focus on a field inside the
-    // dialog by then, that choice stands: stealing it mid-typing sent the
+    // drawer by then, that choice stands: stealing it mid-typing sent the
     // second field's text into the first.
     const raf = requestAnimationFrame(() => {
       const active = document.activeElement;
@@ -192,51 +222,14 @@ export function useDialog(
       }
     };
     // A focused control can be disabled or removed after an async action,
-    // returning focus to body. The top dialog still owns Escape and Tab.
+    // returning focus to body. The top drawer still owns Escape and Tab.
     document.addEventListener("keydown", onKey);
     return () => {
       cancelAnimationFrame(raf);
       document.removeEventListener("keydown", onKey);
-      const i = stack.lastIndexOf(entry);
-      if (i >= 0) stack.splice(i, 1);
-      syncInert();
-      notifyDepth();
+      release();
       if (previous && previous.isConnected && typeof previous.focus === "function")
         previous.focus({ preventScroll: true });
     };
   }, [ref, open]);
-}
-
-/** Render dialog markup outside the OS shell so the shell can be made inert. */
-export function DialogPortal({ children }: { children: ReactNode }) {
-  const host = document.getElementById("modal-root") ?? document.body;
-  return createPortal(children, host);
-}
-
-/**
- * Keep a node mounted while its exit animation plays.
- * `mounted` → render it; `closing` → add the exit class.
- */
-export function usePresence(open: boolean, exitMs = 160): { mounted: boolean; closing: boolean } {
-  const [mounted, setMounted] = useState(open);
-  const [closing, setClosing] = useState(false);
-  useEffect(() => {
-    if (open) {
-      setMounted(true);
-      setClosing(false);
-      return;
-    }
-    if (!mounted) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setMounted(false);
-      return;
-    }
-    setClosing(true);
-    const timer = window.setTimeout(() => {
-      setMounted(false);
-      setClosing(false);
-    }, exitMs);
-    return () => window.clearTimeout(timer);
-  }, [open, mounted, exitMs]);
-  return { mounted, closing };
 }

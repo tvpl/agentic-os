@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Copy, RefreshCw, ShieldAlert } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -6,7 +6,7 @@ import { api, type ProviderId, type ProviderSnapshot } from "../api";
 import { useT } from "../i18n";
 import { useOsProviders } from "../queries";
 import { copyText, errorMessage } from "../views/shared";
-import { DialogPortal, useDialog } from "./dialog";
+import { DialogSurface, Tooltip } from "../ui";
 import { Button } from "./primitives";
 import { useToast } from "./ui";
 import {
@@ -29,7 +29,6 @@ export function ProviderGate() {
   const [skipped, setSkipped] = useState(providerGateSkipped);
   const reason = skipped ? null : gateReason(providers.data);
   const open = reason !== null;
-  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open) document.documentElement.dataset.providerGate = "1";
@@ -56,67 +55,60 @@ export function ProviderGate() {
     skipProviderGate();
     setSkipped(true);
   };
-  // The gate stays mounted while closed: the dialog follows `open`.
-  useDialog(ref, skip, { open });
-  if (!open) return null;
-
   const list = (providers.data ?? []).filter((p) => p.enabled);
   return (
-    <DialogPortal>
-      <div className="modal-backdrop provider-gate-backdrop">
-        <div
-          ref={ref}
-          className="modal provider-gate"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="provider-gate-title"
-          tabIndex={-1}
-          data-testid="provider-gate"
-        >
-          <div className="provider-gate-head">
-            <ShieldAlert aria-hidden />
-            <div>
-              <h2 id="provider-gate-title">{t("gate.title")}</h2>
-              <p className="sub">{t(reason === "no_provider" ? "gate.noProvider" : "gate.body")}</p>
-            </div>
-          </div>
-          {reason === "not_ready" && (
-            <ul className="provider-gate-list">
-              {list.map((prov) => (
-                <GateRow
-                  key={prov.id}
-                  prov={prov}
-                  busy={redetect.isPending && redetect.variables === prov.id}
-                  disabled={redetect.isPending}
-                  onDetect={() => redetect.mutate(prov.id)}
-                  onCopy={(command) =>
-                    void copyText(command).then((ok) =>
-                      toast(t(ok ? "common.copied" : "skills.copyFailed"), ok ? "ok" : "danger"),
-                    )
-                  }
-                />
-              ))}
-            </ul>
-          )}
-          <div className="modal-actions provider-gate-actions">
-            <Link className="btn secondary" to="/settings?tab=providers" onClick={skip}>
-              {t("gate.openSettings")}
-            </Link>
-            <Button variant="ghost" onClick={skip}>
-              {t("gate.skip")}
-            </Button>
-            <Button
-              variant="primary"
-              icon={<RefreshCw aria-hidden />}
-              onClick={() => recheck.mutate()}
-              loading={recheck.isPending}
-            >
-              {t("gate.recheck")}
-            </Button>
-          </div>
+    // The gate stays mounted while closed: the dialog follows `open`. It closes by its own buttons and Escape, not by a press outside.
+    <DialogSurface
+      open={open}
+      onOpenChange={(next) => !next && skip()}
+      labelledBy="provider-gate-title"
+      backdrop="modal-backdrop provider-gate-backdrop"
+      className="modal provider-gate"
+      dismissOnPress={false}
+      sheetProps={{ "data-testid": "provider-gate" }}
+    >
+      <div className="provider-gate-head">
+        <ShieldAlert aria-hidden />
+        <div>
+          <h2 id="provider-gate-title">{t("gate.title")}</h2>
+          <p className="sub">{t(reason === "no_provider" ? "gate.noProvider" : "gate.body")}</p>
         </div>
       </div>
-    </DialogPortal>
+      {reason === "not_ready" && (
+        <ul className="provider-gate-list">
+          {list.map((prov) => (
+            <GateRow
+              key={prov.id}
+              prov={prov}
+              busy={redetect.isPending && redetect.variables === prov.id}
+              disabled={redetect.isPending}
+              onDetect={() => redetect.mutate(prov.id)}
+              onCopy={(command) =>
+                void copyText(command).then((ok) =>
+                  toast(t(ok ? "common.copied" : "skills.copyFailed"), ok ? "ok" : "danger"),
+                )
+              }
+            />
+          ))}
+        </ul>
+      )}
+      <div className="modal-actions provider-gate-actions">
+        <Link className="btn secondary" to="/settings?tab=providers" onClick={skip}>
+          {t("gate.openSettings")}
+        </Link>
+        <Button variant="ghost" onClick={skip}>
+          {t("gate.skip")}
+        </Button>
+        <Button
+          variant="primary"
+          icon={<RefreshCw aria-hidden />}
+          onClick={() => recheck.mutate()}
+          loading={recheck.isPending}
+        >
+          {t("gate.recheck")}
+        </Button>
+      </div>
+    </DialogSurface>
   );
 }
 
@@ -164,14 +156,15 @@ function GateRow({
           <p className="hint">{t(problem === "not_installed" ? "gate.installHint" : "gate.loginHint")}</p>
           <div className="setup-cmd">
             <pre className="preview-pre tight">{command}</pre>
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<Copy aria-hidden />}
-              aria-label={t("common.copy")}
-              title={t("common.copy")}
-              onClick={() => onCopy(command)}
-            />
+            <Tooltip label={t("common.copy")}>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<Copy aria-hidden />}
+                aria-label={t("common.copy")}
+                onClick={() => onCopy(command)}
+              />
+            </Tooltip>
             <Button size="sm" variant="secondary" loading={busy} disabled={disabled} onClick={onDetect}>
               {t("setup.detectAgain")}
             </Button>

@@ -4,12 +4,12 @@
  * never as lines; the readers have self-tests, so a reader that goes blind
  * fails here before it lets a listener through.
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { dictionaries } from "../i18n";
-import { OUTSIDE_THE_REGISTRY } from "./listenersAllowlist";
+import { OUTSIDE_THE_REGISTRY, OUTSIDE_THE_REGISTRY_DEPS } from "./listenersAllowlist";
 
 const SRC = join(__dirname, "..");
 
@@ -674,6 +674,48 @@ describe("C16 the migrated screens own no keydown listener", () => {
       expect(namesUsed(readFileSync(join(SRC, file), "utf8"), [...RETIRED, ...RETIRED_EVENTS]), file).toEqual(
         [],
       );
+  });
+});
+
+describe("C18 the keyboard listeners of the dependencies are listed like the app's", () => {
+  /** The Radix packages the app installed (the six it asks for and what they pull in), by name. */
+  const radix = () => {
+    const dir = join(SRC, "..", "..", "..", "node_modules", "@radix-ui");
+    return readdirSync(dir).map((name) => ({
+      name: `@radix-ui/${name}`,
+      dist: join(dir, name, "dist", "index.mjs"),
+    }));
+  };
+  /** How many places of a package's code add a `keydown` listener to the document or window. */
+  const keydownSites = (code: string) =>
+    (code.match(/(?:document|window|ownerDocument)\s*\.addEventListener\(\s*["']keydown["']/g) ?? []).length;
+
+  it("C18 the reader finds a listener in a package's code, in either spelling", () => {
+    expect(keydownSites('document.addEventListener("keydown", f, { capture: true });')).toBe(1);
+    expect(keydownSites("ownerDocument.addEventListener('keydown', f);")).toBe(1);
+    expect(
+      keydownSites('window.addEventListener("keydown", f); document.addEventListener("keydown", g);'),
+    ).toBe(2);
+    expect(keydownSites('el.addEventListener("keydown", f); document.addEventListener("keyup", f);')).toBe(0);
+  });
+
+  it("C18 the packages that listen are exactly the listed ones, with the counts, and no entry is for a file that is gone", () => {
+    const found = radix()
+      .filter((p) => existsSync(p.dist))
+      .map((p) => [p.name, keydownSites(readFileSync(p.dist, "utf8"))] as const)
+      .filter(([, n]) => n > 0);
+    expect(Object.fromEntries(found)).toEqual(
+      Object.fromEntries(Object.entries(OUTSIDE_THE_REGISTRY_DEPS).map(([name, [n]]) => [name, n])),
+    );
+    for (const [name, [, why]] of Object.entries(OUTSIDE_THE_REGISTRY_DEPS)) {
+      expect(why.length, name).toBeGreaterThan(20);
+      expect(name.startsWith("@radix-ui/"), name).toBe(true);
+    }
+    for (const file of Object.keys(OUTSIDE_THE_REGISTRY))
+      expect(existsSync(join(SRC, file)), file).toBe(true);
+    // The two files the dialog machinery used to be in no longer listen.
+    expect(Object.keys(OUTSIDE_THE_REGISTRY)).not.toContain("components/dialog.tsx");
+    expect(Object.keys(OUTSIDE_THE_REGISTRY)).not.toContain("components/primitives.tsx");
   });
 });
 

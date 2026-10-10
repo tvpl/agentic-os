@@ -116,17 +116,7 @@
 /* ---- rows, tiles and cells: rounded, not pills --------------------------------- */
 .nu-shell
   .nu-scene.luz
-  :is(
-    .art-card,
-    .sks-item,
-    .rts-row,
-    .cx-card-head,
-    .pxs-frame,
-    .pxs-tool,
-    .settings-nav-item,
-    .sks-last,
-    .rts-act
-  ) {
+  :is(.art-card, .sks-item, .rts-row, .cx-card-head, .pxs-frame, .pxs-tool, .sks-last, .rts-act) {
   border-radius: var(--luz-r);
 }
 .nu-shell .nu-scene.luz .pxs-swatch {
@@ -145,38 +135,10 @@
   border-radius: 999px;
 }
 
-/* ---- dialogs: a glass sheet over the conversation's veil ------------------------ */
-html:has(.nu-shell) .modal-backdrop {
-  background:
-    radial-gradient(
-      ellipse 70% 60% at 50% 100%,
-      color-mix(in srgb, var(--agent) 9%, transparent),
-      transparent 70%
-    ),
-    color-mix(in srgb, var(--bg) 54%, transparent);
-  backdrop-filter: blur(12px) saturate(0.75) brightness(0.85);
-  animation: luz-veil-in 0.4s var(--nu-ease, ease) both;
-}
+/* ---- dialogs: the sheet, the veil and their motion are the primitives' (ui/ui.css, by the shell's tokens);
+   what stays here is the Luz skin of the controls inside a sheet ------------------------------------ */
 /* Not inside the app frame: a dialog drawn there keeps the frame's own look (it
    only matters where both interfaces share one page, as in the gallery). */
-html:has(.nu-shell) .modal:not([data-shell="moldura"] *) {
-  clip-path: none;
-  border: 0;
-  border-radius: 26px;
-  background:
-    radial-gradient(120% 55% at 50% 0%, color-mix(in srgb, var(--agent) 10%, transparent), transparent 62%),
-    color-mix(in srgb, var(--bg) 62%, transparent);
-  backdrop-filter: blur(28px) saturate(1.4);
-  box-shadow:
-    inset 0 0 0 1px var(--luz-edge),
-    inset 0 1px 0 color-mix(in srgb, var(--highlight-ink) 7%, transparent),
-    0 0 70px -24px color-mix(in srgb, var(--agent) 70%, transparent),
-    0 44px 120px -30px color-mix(in srgb, var(--shadow-ink) 85%, transparent);
-  animation: luz-sheet-in 0.42s var(--luz-spring) both;
-}
-html:has(.nu-shell) .modal-backdrop.closing .modal:not([data-shell="moldura"] *) {
-  animation: luz-sheet-out 0.16s var(--nu-ease, ease) both;
-}
 html:has(.nu-shell) .modal:not([data-shell="moldura"] *) :is(.btn, button) {
   clip-path: none;
   border-radius: 999px;
@@ -184,29 +146,6 @@ html:has(.nu-shell) .modal:not([data-shell="moldura"] *) :is(.btn, button) {
 html:has(.nu-shell) .modal:not([data-shell="moldura"] *) :is(input, textarea, select, .input) {
   clip-path: none;
   border-radius: var(--luz-r);
-}
-@keyframes luz-veil-in {
-  from {
-    opacity: 0;
-  }
-}
-@keyframes luz-sheet-in {
-  from {
-    opacity: 0;
-    transform: translateY(36px) scale(0.94);
-    filter: blur(8px);
-  }
-}
-@keyframes luz-sheet-out {
-  to {
-    opacity: 0;
-    transform: translateY(18px) scale(0.97);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  html:has(.nu-shell) :is(.modal, .modal-backdrop) {
-    animation-duration: 0.01ms;
-  }
 }
 
 /* ---- the galleries (S6): one glass bar of chips, glowing tiles --------------------- */

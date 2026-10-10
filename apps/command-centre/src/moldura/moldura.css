@@ -370,18 +370,10 @@
   position: relative;
 }
 .mold-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: var(--z-drawer);
   width: min(380px, calc(100vw - 32px));
   max-height: min(520px, 70vh);
   padding: var(--s-2);
   overflow-y: auto;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-4);
-  background: var(--surface);
-  box-shadow: var(--shadow-drawer);
 }
 
 .mold-main {

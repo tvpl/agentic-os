@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { api } from "../../api";
 import { useT } from "../../i18n";
-import { Modal, useToast } from "../../components/ui";
+import { useToast } from "../../components/ui";
+import { Modal } from "../../ui";
 import { Badge, Button, Field, type BadgeTone } from "../../components/primitives";
 import { errorMessage } from "../shared";
 

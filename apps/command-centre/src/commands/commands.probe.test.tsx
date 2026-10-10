@@ -12,11 +12,17 @@
  * allowed. The recorder patches `EventTarget.prototype.addEventListener` (and
  * `window`'s own method), so it does not matter how the call is spelled. The
  * `on…` properties of the page are checked as well: they stay null.
+ *
+ * A listener is attributed to the first frame of the call that is the app's own
+ * source, React DOM (its delegation of `onKeyDown`) or a package in
+ * `node_modules`: the primitives are Radix, which listens by itself, and that
+ * has to show up as Radix's (.specs/features/primitivas, C18 and C19) and not be
+ * counted as React's.
  */
 import { act, cleanup, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type * as ApiModule from "../api";
-import { OUTSIDE_THE_REGISTRY } from "./listenersAllowlist";
+import { OUTSIDE_THE_REGISTRY, OUTSIDE_THE_REGISTRY_DEPS } from "./listenersAllowlist";
 import { installHarness, mountShell } from "./testkit";
 
 // Before any import of the app (vi.hoisted runs first): record what reaches the page.
@@ -26,16 +32,21 @@ const probe = vi.hoisted(() => {
   /** One entry per listener added: the file and the call site that added it. */
   const seen: Array<{ file: string; site: string }> = [];
   /**
-   * Where a listener was added from: the first frame that is the app's own source — or React DOM, which
-   * delegates every event (keydown included) to the container of each root and portal. That one is
-   * how `onKeyDown` works, not a listener of the app; it is counted apart and never allowed to grow.
+   * Where a listener was added from: the first frame that is the app's own source, a package of
+   * `node_modules` (named by the package) — or React DOM, which delegates every event (keydown
+   * included) to the container of each root and portal. That one is how `onKeyDown` works, not a
+   * listener of the app; it is counted apart and never allowed to grow.
    */
   const origin = () => {
     for (const line of (new Error().stack ?? "").split("\n")) {
       if (/commands\/(testkit|commands\.)/.test(line)) continue;
       const m = /\/src\/(.+?\.tsx?):(\d+):(\d+)/.exec(line);
       if (m && !line.includes("node_modules")) return { file: m[1]!, site: `${m[1]}:${m[2]}:${m[3]}` };
-      if (line.includes("node_modules/react-dom/")) return { file: "react-dom", site: "react-dom" };
+      const dep = /node_modules\/((?:@[^/]+\/)?[^/]+)\/[^:)]*:(\d+):(\d+)/.exec(line);
+      if (dep) {
+        if (dep[1] === "react-dom") return { file: "react-dom", site: "react-dom" };
+        return { file: dep[1]!, site: `${dep[1]}:${dep[2]}:${dep[3]}` };
+      }
     }
     return { file: "unknown", site: "unknown" };
   };
@@ -72,6 +83,25 @@ vi.mock("../nucleo/scenes/BrainSceneCanvas", () => ({ BrainSceneCanvas: () => nu
 installHarness();
 
 const REGISTRY = "commands/registry.ts";
+/** The test runner: a listener a test adds on purpose has it under the test's own frame. */
+const HARNESS = /^(?:@vitest\/|vitest$)/;
+/** A name the probe gave a listener: a file of `src`, or an npm package of `node_modules`. */
+const isListed = (file: string) => file in OUTSIDE_THE_REGISTRY || file in OUTSIDE_THE_REGISTRY_DEPS;
+/** The packages that put a listener on the page and are not in the list (a file of `src` has a `.` extension and a `/`). */
+const unlistedPackages = (entries: Array<{ file: string }>) => [
+  ...new Set(
+    entries
+      .map((e) => e.file)
+      .filter(
+        (file) =>
+          !HARNESS.test(file) &&
+          file !== "react-dom" &&
+          file !== "unknown" &&
+          !/\.tsx?$/.test(file) &&
+          !isListed(file),
+      ),
+  ),
+];
 /** React DOM's own delegation of keydown to the roots and portals (how `onKeyDown` works): not the app's. */
 const REACT = "react-dom";
 const startup = probe.seen.slice().filter((e) => e.file !== REACT);
@@ -103,13 +133,11 @@ describe("C16 what reaches the page while the app mounts", () => {
     // The recorder was installed before the app's first import: the static modules have loaded by now.
     expect(startup.filter((e) => e.file === REGISTRY)).toEqual([]);
     for (const { file, site } of startup)
-      expect(file in OUTSIDE_THE_REGISTRY, `${site} put a keydown listener on the page when it loaded`).toBe(
-        true,
-      );
+      expect(isListed(file), `${site} put a keydown listener on the page when it loaded`).toBe(true);
     expect(Object.values(onHandlers()).every((handler) => handler === null)).toBe(true);
   });
 
-  it("C16 each shell and each screen puts exactly one registry listener on the page, and none that is not listed", async () => {
+  it("C16 and C18 each shell and each screen puts exactly one registry listener on the page, and none that is not listed", async () => {
     const states: Array<["nucleo" | "moldura", string]> = [
       ...[
         "/",
@@ -144,7 +172,7 @@ describe("C16 what reaches the page while the app mounts", () => {
         `${label}: ${JSON.stringify(mine)}`,
       ).toHaveLength(1);
       for (const { file, site } of mine.filter((e) => e.file !== REGISTRY && e.file !== REACT))
-        expect(file in OUTSIDE_THE_REGISTRY, `${label} — ${site} is not in the allowlist`).toBe(true);
+        expect(isListed(file), `${label} — ${site} is not in the allowlist`).toBe(true);
       expect(onHandlers(), `${label}: an on… handler was set on the page`).toEqual(
         Object.fromEntries(Object.keys(onHandlers()).map((k) => [k, null])),
       );
@@ -177,14 +205,17 @@ describe("C16 what reaches the page while the app mounts", () => {
     expect([...(sites.get(REGISTRY) ?? [])].length, "the registry's sites").toBe(1);
     for (const [file, set] of sites) {
       if (file === REGISTRY || file === REACT) continue;
-      const allowedHere = OUTSIDE_THE_REGISTRY[file]?.[0] ?? 0;
+      const allowedHere = (OUTSIDE_THE_REGISTRY[file] ?? OUTSIDE_THE_REGISTRY_DEPS[file])?.[0] ?? 0;
       expect(
         [...set].length,
         `${file} put keydown listeners from ${[...set].join(", ")}`,
       ).toBeLessThanOrEqual(allowedHere);
     }
-    // The dialogs did open: the probe reached the listeners it is there to count.
-    expect(sites.has("components/dialog.tsx")).toBe(true);
+    // The dialogs did open: the probe reached the listeners it is there to count. Radix's Escape is
+    // one of them, and it is Radix's (not React DOM's, which only delegates `onKeyDown`).
+    expect(sites.has("@radix-ui/react-dismissable-layer")).toBe(true);
+    expect(sites.has("@radix-ui/react-menu")).toBe(true);
+    expect(unlistedPackages(probe.seen)).toEqual([]);
   }, 300_000);
 
   it("C16 the probe sees a listener the source reader cannot read, wherever it is spelled", () => {
@@ -203,5 +234,28 @@ describe("C16 what reaches the page while the app mounts", () => {
     // …nor is another event.
     window.addEventListener("resize", () => undefined);
     expect(probe.seen.length).toBe(before + 3);
+  });
+
+  it("C19 the probe names the package that added a listener, and a package that is not listed fails", () => {
+    // A listener added by code that lives in node_modules (the frame says so by its script name).
+    const fromPackage = (name: string) =>
+      new Function("add", `add();\n//# sourceURL=/app/node_modules/${name}/dist/index.mjs`) as (
+        add: () => void,
+      ) => void;
+    const before = probe.seen.length;
+    fromPackage("@radix-ui/react-menu")(() => window.addEventListener("keydown", () => undefined));
+    fromPackage("@radix-ui/react-new-thing")(() => document.addEventListener("keydown", () => undefined));
+    fromPackage("leftpad")(() => document.body.addEventListener("keydown", () => undefined));
+    const mine = probe.seen.slice(before);
+    expect(mine.map((e) => e.file)).toEqual(["@radix-ui/react-menu", "@radix-ui/react-new-thing", "leftpad"]);
+    // The listed one passes; the two that are not listed are the findings, scoped packages and bare ones alike.
+    expect(unlistedPackages(mine)).toEqual(["@radix-ui/react-new-thing", "leftpad"]);
+    // …and what the real run recorded (Radix's own listeners) is all listed, with a count and a reason.
+    expect(unlistedPackages(probe.seen.slice(0, before))).toEqual([]);
+    for (const [name, [count, why]] of Object.entries(OUTSIDE_THE_REGISTRY_DEPS)) {
+      expect(name.startsWith("@radix-ui/"), name).toBe(true);
+      expect(count, name).toBeGreaterThan(0);
+      expect(why.length, name).toBeGreaterThan(20);
+    }
   });
 });

@@ -8,6 +8,7 @@ import { BellPopover } from "./BellPopover";
 import { comboLabel } from "../commands/keys";
 import { PALETTE_KEY } from "../commands/global";
 import { CHAT_TOGGLE } from "./useFrameLayout";
+import { Tooltip } from "../ui";
 
 export interface TopBarProps {
   title: string;
@@ -23,7 +24,6 @@ export function TopBar({ title, chatOpen, modalOpen, onOpenPalette, onToggleChat
   const { pathname } = useLocation();
   const { unread } = useNotifications();
   const [bell, setBell] = useState(false);
-  const wrap = useRef<HTMLDivElement>(null);
   const bellButton = useRef<HTMLButtonElement>(null);
   // A new page, or a drawer over this one, is a new subject.
   useEffect(() => setBell(false), [pathname, modalOpen]);
@@ -44,33 +44,26 @@ export function TopBar({ title, chatOpen, modalOpen, onOpenPalette, onToggleChat
         <kbd className="mold-kbd mono">{comboLabel(PALETTE_KEY)}</kbd>
       </button>
       <span className="mold-top-sp" />
-      <div className="mold-bell-wrap" ref={wrap}>
-        <button
-          type="button"
-          ref={bellButton}
-          className="mold-icon-btn mold-bell"
-          aria-label={bellName}
-          title={bellName}
-          aria-expanded={bell}
-          aria-haspopup="dialog"
-          onClick={() => setBell((v) => !v)}
-        >
-          <Bell aria-hidden />
-          {unread > 0 && (
-            <span className="mold-dot-count mono" aria-hidden>
-              {unread > 99 ? "99+" : unread}
-            </span>
-          )}
-        </button>
-        {bell && (
-          <BellPopover
-            anchor={wrap}
-            onClose={(restoreFocus) => {
-              setBell(false);
-              if (restoreFocus) bellButton.current?.focus();
-            }}
-          />
-        )}
+      <div className="mold-bell-wrap">
+        <Tooltip label={bellName}>
+          <button
+            type="button"
+            ref={bellButton}
+            className="mold-icon-btn mold-bell"
+            aria-label={bellName}
+            aria-expanded={bell}
+            aria-haspopup="dialog"
+            onClick={() => setBell((v) => !v)}
+          >
+            <Bell aria-hidden />
+            {unread > 0 && (
+              <span className="mold-dot-count mono" aria-hidden>
+                {unread > 99 ? "99+" : unread}
+              </span>
+            )}
+          </button>
+        </Tooltip>
+        <BellPopover open={bell} anchor={bellButton} onClose={() => setBell(false)} />
       </div>
       <button
         type="button"

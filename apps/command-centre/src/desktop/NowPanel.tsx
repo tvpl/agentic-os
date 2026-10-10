@@ -31,6 +31,7 @@ import {
   useTicker,
   type GraphNodeLite,
 } from "./data";
+import { Tooltip } from "../ui";
 
 const DAY_MS = 86_400_000;
 
@@ -235,15 +236,16 @@ function ActiveRunRow({ run, now }: { run: RunRecord; now: number }) {
           </span>
         )}
       </button>
-      <Button
-        size="sm"
-        variant="ghost"
-        icon={<Square aria-hidden />}
-        aria-label={t("runs.cancel")}
-        title={t("runs.cancel")}
-        onClick={() => void onCancel()}
-        loading={cancel.isPending}
-      />
+      <Tooltip label={t("runs.cancel")}>
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<Square aria-hidden />}
+          aria-label={t("runs.cancel")}
+          onClick={() => void onCancel()}
+          loading={cancel.isPending}
+        />
+      </Tooltip>
     </div>
   );
 }

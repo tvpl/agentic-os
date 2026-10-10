@@ -1130,56 +1130,6 @@
   width: 18px;
   height: 18px;
 }
-.sks-menu {
-  position: absolute;
-  top: calc(100% + 10px);
-  right: 0;
-  z-index: 5;
-  display: grid;
-  min-width: 240px;
-  padding: 6px;
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--bg) 70%, transparent);
-  backdrop-filter: blur(22px) saturate(1.3);
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--agent) 22%, transparent),
-    0 20px 60px -20px color-mix(in srgb, var(--shadow-ink) 80%, transparent),
-    0 0 40px -20px var(--agent);
-  transform-origin: top right;
-  animation: sks-menu-in 0.32s cubic-bezier(0.2, 1.2, 0.35, 1) both;
-}
-@keyframes sks-menu-in {
-  from {
-    opacity: 0;
-    transform: scale(0.9) translateY(-6px);
-  }
-}
-.sks-menu button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 0;
-  border-radius: 12px;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-  font-size: var(--fs-3);
-  color: var(--text-dim);
-}
-.sks-menu button:hover,
-.sks-menu button:focus-visible {
-  outline: none;
-  color: var(--text);
-  background: color-mix(in srgb, var(--agent) 10%, transparent);
-}
-.sks-menu button.new {
-  color: var(--accent-text);
-}
-.sks-menu svg {
-  width: 16px;
-  height: 16px;
-}
 /* The ring takes the width the side columns held, under the bar. */
 .sks:not([data-narrow]) .sks-stage {
   top: calc(var(--sks-top) + var(--sks-bar-h) + 12px);
@@ -1253,7 +1203,6 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .sks-bar,
-  .sks-menu,
   .sks-read {
     animation: none;
   }

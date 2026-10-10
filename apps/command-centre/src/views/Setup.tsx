@@ -12,6 +12,7 @@ import { PRESETS, applyPreset, type PresetId } from "../theme";
 import { DEFAULT_HUD, HUD_CATALOGUE, hudTitleKey, naturalSide, toggleInHud, type Hud } from "../desktop/hud";
 import { copyText, errorMessage, isAbsolutePath, isOffline } from "./shared";
 import "./apps.css";
+import { Tooltip } from "../ui";
 
 /** Connectors offered in the "connect data" step (the widgets that read them). */
 const DATA_KINDS = /calendar|mail|email/i;
@@ -154,18 +155,19 @@ export default function Setup({ onDone }: { onDone: () => void }) {
               <p className="sub">{t("setup.notDone")}</p>
               <div className="setup-cmd">
                 <pre className="preview-pre tight">npx mordomo setup</pre>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  icon={<Copy aria-hidden />}
-                  aria-label={t("brain.copyPath")}
-                  title={t("brain.copyPath")}
-                  onClick={() =>
-                    void copyText("npx mordomo setup").then((ok) =>
-                      toast(ok ? t("brain.copied") : t("skills.copyFailed"), ok ? "ok" : "danger"),
-                    )
-                  }
-                />
+                <Tooltip label={t("brain.copyPath")}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon={<Copy aria-hidden />}
+                    aria-label={t("brain.copyPath")}
+                    onClick={() =>
+                      void copyText("npx mordomo setup").then((ok) =>
+                        toast(ok ? t("brain.copied") : t("skills.copyFailed"), ok ? "ok" : "danger"),
+                      )
+                    }
+                  />
+                </Tooltip>
               </div>
             </details>
           </div>
@@ -237,14 +239,15 @@ export default function Setup({ onDone }: { onDone: () => void }) {
                             {command && (
                               <div className="setup-cmd">
                                 <pre className="preview-pre tight">{command}</pre>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  icon={<Copy aria-hidden />}
-                                  aria-label={t("common.copy")}
-                                  title={t("common.copy")}
-                                  onClick={() => void copyCommand(command)}
-                                />
+                                <Tooltip label={t("common.copy")}>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    icon={<Copy aria-hidden />}
+                                    aria-label={t("common.copy")}
+                                    onClick={() => void copyCommand(command)}
+                                  />
+                                </Tooltip>
                               </div>
                             )}
                             <Button

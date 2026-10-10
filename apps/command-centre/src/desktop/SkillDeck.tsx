@@ -7,15 +7,15 @@
  * you are about to ask for something — and closes the moment one is picked.
  *
  * It is a real dialog, not a flourish: it renders outside the shell so the
- * shell can be made inert, and `useDialog` gives it Escape, the focus trap and
- * focus restore. Every skill is reachable from the keyboard.
+ * shell can be made inert, and the dialog surface gives it Escape, the focus
+ * trap and focus restore. Every skill is reachable from the keyboard.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useNavigate } from "react-router-dom";
 import { MoreHorizontal, Sparkles } from "lucide-react";
 import { useLang, useLocale, useT } from "../i18n";
 import { useOsSkills } from "../queries";
-import { DialogPortal, useDialog, usePresence } from "../components/dialog";
+import { DialogSurface } from "../ui";
 import { localizeSkill } from "../views/Skills/localize";
 import { useDesktopActions } from "./actions";
 import { useDesktopRuns } from "./data";
@@ -33,26 +33,41 @@ const SPAN = 148;
 const EXIT_MS = 320;
 
 export default function SkillDeck({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { mounted, closing } = usePresence(open, EXIT_MS);
-  if (!mounted) return null;
+  const t = useT();
+  const searchRef = useRef<HTMLInputElement>(null);
+  // Mount at the centre, then fan out on the next frame so the transition has
+  // two states to interpolate between; fan back in while the dialog leaves.
+  const [fanned, setFanned] = useState(false);
+  useEffect(() => {
+    if (!open) {
+      setFanned(false);
+      return;
+    }
+    const raf = requestAnimationFrame(() => setFanned(true));
+    return () => cancelAnimationFrame(raf);
+  }, [open]);
   return (
-    <DialogPortal>
-      <Deck closing={closing} onClose={onClose} />
-    </DialogPortal>
+    <DialogSurface
+      open={open}
+      onOpenChange={(next) => !next && onClose()}
+      label={t("desktop.deck.title")}
+      backdrop={false}
+      className={`skill-deck${fanned ? " open" : ""}`}
+      exitMs={EXIT_MS}
+      initialFocus={() => searchRef.current}
+    >
+      <Deck onClose={onClose} searchRef={searchRef} />
+    </DialogSurface>
   );
 }
 
-function Deck({ closing, onClose }: { closing: boolean; onClose: () => void }) {
+function Deck({ onClose, searchRef }: { onClose: () => void; searchRef: RefObject<HTMLInputElement> }) {
   const t = useT();
   const lang = useLang();
   const locale = useLocale();
   const skills = useOsSkills();
   const { runSkill, runningSkills } = useDesktopActions();
   const navigate = useNavigate();
-  const ref = useRef<HTMLDivElement>(null);
-  // Mount at the centre, then fan out on the next frame so the transition has
-  // two states to interpolate between.
-  const [fanned, setFanned] = useState(false);
 
   // Favourites first: the arc is small, so what earns a slot matters. What
   // does not fit is not hidden — the last seat says how many are left and
@@ -112,8 +127,6 @@ function Deck({ closing, onClose }: { closing: boolean; onClose: () => void }) {
     } as React.CSSProperties;
   };
 
-  const searchRef = useRef<HTMLInputElement>(null);
-  useDialog(ref, onClose, { initialFocus: () => searchRef.current });
   // ⌘J opened the deck; with the deck up (a modal), ⌘J is the deck's own and puts it away.
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -132,20 +145,8 @@ function Deck({ closing, onClose }: { closing: boolean; onClose: () => void }) {
   );
   useCommands(commands);
 
-  useEffect(() => {
-    const raf = requestAnimationFrame(() => setFanned(true));
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
   return (
-    <div
-      className={`skill-deck${fanned && !closing ? " open" : ""}`}
-      role="dialog"
-      aria-modal="true"
-      aria-label={t("desktop.deck.title")}
-      tabIndex={-1}
-      ref={ref}
-    >
+    <>
       <button type="button" className="deck-scrim" aria-label={t("common.close")} onClick={onClose} />
       <span className="deck-rim" aria-hidden />
       <span className="deck-rim b" aria-hidden />
@@ -225,6 +226,6 @@ function Deck({ closing, onClose }: { closing: boolean; onClose: () => void }) {
           <p className="deck-hint">{query ? t("desktop.deck.noMatch") : t("desktop.deck.hint")}</p>
         )}
       </div>
-    </div>
+    </>
   );
 }

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Interface (primitivas)**: dialogs, popovers, tabs, switches, the "+" menu and icon-button hints
+  are built on Radix (`apps/command-centre/src/ui`, six `@radix-ui/*` packages at exact versions) and
+  drawn by one stylesheet in both interfaces; the Núcleo keeps its glass and the frame its flat sheet
+  through `--ui-*` tokens, not through rules of its own. Focus enters, Tab stays inside, Escape closes
+  the top layer only and focus goes back to what held it. The Settings navigation is one tab stop
+  with arrow keys; the bell and the console popovers no longer trap focus or freeze the page; an
+  icon-only button shows its name in a themed hint that also appears with the keyboard (the native
+  `title` stays only on data and where the design names it). The page still has one command listener:
+  the listeners Radix adds are listed by package, with count and reason, and the runtime probe attributes
+  them. The gallery shows the primitives bare and in both layers (JS gzip +7.1%, recorded by
+  `node scripts/bundle-size.mjs`).
 - **Data (dados-v2)**: opening the database from two processes at once migrates it once (the
   migration runs in an exclusive transaction that re-reads the schema version; a failing
   migration rolls back and names itself; a database from a newer version is refused untouched;

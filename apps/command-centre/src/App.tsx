@@ -22,7 +22,8 @@ import {
   readStoredPreset,
 } from "./theme";
 import { Skeleton, ToastProvider } from "./components/ui";
-import { useDialogDepth, usePresence } from "./components/dialog";
+import { UiProvider, useDialogDepth } from "./ui";
+import { usePresence } from "./hooks/usePresence";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { CommandPalette, OPEN_PANEL_EVENT, type PaletteOpenDetail } from "./components/CommandPalette";
 import { WorkspaceProvider } from "./components/Workspace";
@@ -130,29 +131,31 @@ function AppInner() {
 
   return (
     <I18nContext.Provider value={i18nValue}>
-      <ToastProvider>
-        <ConfirmProvider>
-          <NotificationsProvider>
-            {/* Route changes are urgent; animation is handled by useOsNavigate. */}
-            <HashRouter useTransitions={false}>
-              {needsPairing() ? (
-                <PairingScreen meta={meta} />
-              ) : meta.setupCompleted ? (
-                <>
-                  <WorkspaceProvider>
-                    <OsShell meta={meta} onMetaChanged={loadMeta} />
-                  </WorkspaceProvider>
-                  <BootSequence meta={meta} />
-                </>
-              ) : (
-                <Suspense fallback={<Skeleton page lines={6} />}>
-                  <Setup onDone={loadMeta} />
-                </Suspense>
-              )}
-            </HashRouter>
-          </NotificationsProvider>
-        </ConfirmProvider>
-      </ToastProvider>
+      <UiProvider>
+        <ToastProvider>
+          <ConfirmProvider>
+            <NotificationsProvider>
+              {/* Route changes are urgent; animation is handled by useOsNavigate. */}
+              <HashRouter useTransitions={false}>
+                {needsPairing() ? (
+                  <PairingScreen meta={meta} />
+                ) : meta.setupCompleted ? (
+                  <>
+                    <WorkspaceProvider>
+                      <OsShell meta={meta} onMetaChanged={loadMeta} />
+                    </WorkspaceProvider>
+                    <BootSequence meta={meta} />
+                  </>
+                ) : (
+                  <Suspense fallback={<Skeleton page lines={6} />}>
+                    <Setup onDone={loadMeta} />
+                  </Suspense>
+                )}
+              </HashRouter>
+            </NotificationsProvider>
+          </ConfirmProvider>
+        </ToastProvider>
+      </UiProvider>
     </I18nContext.Provider>
   );
 }

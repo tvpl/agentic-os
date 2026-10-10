@@ -15,8 +15,9 @@ import { StrictMode, useMemo, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Bell, Play, Sparkles, Trash2 } from "lucide-react";
+import { Bell, Copy, Pencil, Play, Sparkles, Trash2 } from "lucide-react";
 import "../theme.css";
+import "../ui/ui.css";
 import "../desktop/desktop.css";
 import "../nucleo/nucleo.css";
 import "../nucleo/luz.css";
@@ -25,8 +26,19 @@ import "./gallery.css";
 import { I18nContext, type Lang } from "../i18n";
 import { qk } from "../queries";
 import { applyAccentTokens, applyPreset, isPresetId } from "../theme";
-import { ToastProvider, Modal, StatusBadge, Skeleton, useToast } from "../components/ui";
-import { Badge, Button, EmptyState, Field, Popover, Segmented, Tabs } from "../components/primitives";
+import { ToastProvider, StatusBadge, Skeleton, useToast } from "../components/ui";
+import { Badge, Button, EmptyState, Field, Segmented } from "../components/primitives";
+import {
+  DropdownMenu,
+  Modal,
+  Popover,
+  Switch,
+  Tabs,
+  Tooltip,
+  UiProvider,
+  type TabItem,
+  type TabsVariant,
+} from "../ui";
 import { CommandPalette } from "../components/CommandPalette";
 import { ShortcutsHelp } from "../components/ShortcutsHelp";
 import { CommandsProvider } from "../commands/registry";
@@ -396,6 +408,101 @@ function StaticDialog({ title, idPrefix }: { title: string; idPrefix: string }) 
   );
 }
 
+/**
+ * An open menu and a visible hint drawn in place. The real ones are portaled and
+ * placed by Radix on open, so a screenshot would need a pointer; these are the
+ * same markup and classes, with the first item highlighted as the arrow keys leave it.
+ */
+function StaticMenu({ label }: { label: string }) {
+  return (
+    <div className="ui-menu story-menu" role="menu" aria-label={label}>
+      <div className="ui-menu-item" role="menuitem" data-highlighted="">
+        <Pencil aria-hidden />
+        Rename
+      </div>
+      <div className="ui-menu-item" role="menuitem">
+        <Copy aria-hidden />
+        Duplicate
+      </div>
+      <div className="ui-menu-item" role="menuitem" aria-disabled="true" data-disabled="">
+        <Trash2 aria-hidden />
+        Delete
+      </div>
+    </div>
+  );
+}
+
+function StaticTip({ children }: { children: ReactNode }) {
+  return (
+    <span className="ui-tip story-tip" role="tooltip">
+      {children}
+    </span>
+  );
+}
+
+/** A tab strip with the panel its active tab opens: a tab always points at a panel that exists. */
+function TabsDemo({
+  id,
+  label,
+  tabs,
+  variant,
+  orientation,
+}: {
+  id: string;
+  label: string;
+  tabs: TabItem[];
+  variant?: TabsVariant;
+  orientation?: "horizontal" | "vertical";
+}) {
+  const [active, setActive] = useState(tabs[0]!.id);
+  return (
+    <div className="story-tabs">
+      <Tabs
+        id={id}
+        ariaLabel={label}
+        variant={variant}
+        orientation={orientation}
+        active={active}
+        onChange={setActive}
+        tabs={tabs}
+      >
+        <p>The {active} panel.</p>
+      </Tabs>
+    </div>
+  );
+}
+
+const tabsOf = (...ids: string[]): TabItem[] => ids.map((id) => ({ id, label: id }));
+
+/** Switch, a tab strip, an open menu and a hint: the Radix primitives, as a layer dresses them. */
+function LayerRadix({ idPrefix }: { idPrefix: string }) {
+  const [on, setOn] = useState(true);
+  return (
+    <>
+      <Row label="switch">
+        <Switch
+          checked={on}
+          onCheckedChange={setOn}
+          aria-label="Run on schedule"
+          data-testid={`${idPrefix}-switch`}
+        />
+        <Switch checked={false} onCheckedChange={() => undefined} aria-label="Off" />
+        <Switch checked disabled onCheckedChange={() => undefined} aria-label="Locked on" />
+      </Row>
+      <Row label="tabs">
+        <TabsDemo id={`${idPrefix}-tabs`} label="Run views" tabs={tabsOf("runs", "events", "output")} />
+      </Row>
+      <Row label="menu">
+        <StaticMenu label={`${idPrefix} actions`} />
+      </Row>
+      <Row label="tooltip">
+        <Button variant="ghost" icon={<Trash2 aria-hidden />} aria-label="Delete run" />
+        <StaticTip>Delete run</StaticTip>
+      </Row>
+    </>
+  );
+}
+
 /** What a layer draws with the shared primitives: buttons, badges, a field and a dialog. */
 function LayerPrimitives({ idPrefix }: { idPrefix: string }) {
   return (
@@ -426,6 +533,7 @@ function LayerPrimitives({ idPrefix }: { idPrefix: string }) {
           <input id={`${idPrefix}-cron`} className="input mono" defaultValue="30 7 * * 1-5" />
         </Field>
       </Row>
+      <LayerRadix idPrefix={idPrefix} />
       <Row label="dialog">
         <StaticDialog title="New skill" idPrefix={idPrefix} />
       </Row>
@@ -506,9 +614,62 @@ function Overlays() {
   );
 }
 
+function Primitives() {
+  const [on, setOn] = useState(true);
+  return (
+    <>
+      <Row label="switch">
+        <Switch checked={on} onCheckedChange={setOn} aria-label="Run on schedule" />
+        <Switch checked={!on} onCheckedChange={(v) => setOn(!v)} aria-label="Paused" />
+        <Switch checked disabled onCheckedChange={() => undefined} aria-label="Locked on" />
+        <Switch checked={false} disabled onCheckedChange={() => undefined} aria-label="Locked off" />
+      </Row>
+      <Row label="tabs line">
+        <TabsDemo id="g-prim-line" label="Run views" tabs={tabsOf("runs", "events", "output")} />
+      </Row>
+      <Row label="tabs list">
+        <TabsDemo
+          id="g-prim-list"
+          label="Settings sections"
+          variant="list"
+          orientation="vertical"
+          tabs={[
+            { id: "identity", label: "identity", group: "Workspace" },
+            { id: "providers", label: "providers" },
+            { id: "memory", label: "memory", group: "Data" },
+          ]}
+        />
+      </Row>
+      <Row label="tabs pill">
+        <TabsDemo
+          id="g-prim-pill"
+          label="Run scene"
+          variant="pill"
+          tabs={tabsOf("scene", "timeline", "files")}
+        />
+      </Row>
+      <Row label="menu">
+        <DropdownMenu
+          trigger={<Button variant="secondary">Actions</Button>}
+          items={[
+            { id: "rename", label: "Rename", icon: <Pencil aria-hidden />, onSelect: () => undefined },
+            { id: "copy", label: "Duplicate", icon: <Copy aria-hidden />, onSelect: () => undefined },
+          ]}
+        />
+        <StaticMenu label="Open menu" />
+      </Row>
+      <Row label="tooltip">
+        <Tooltip label="Delete run">
+          <Button variant="ghost" icon={<Trash2 aria-hidden />} aria-label="Delete run" />
+        </Tooltip>
+        <StaticTip>Delete run</StaticTip>
+      </Row>
+    </>
+  );
+}
+
 function Gallery() {
   const [seg, setSeg] = useState("rings");
-  const [tab, setTab] = useState("identity");
   return (
     <main className="gallery">
       <header className="gallery-head">
@@ -603,12 +764,10 @@ function Gallery() {
           />
         </Row>
         <Row label="tabs">
-          <Tabs
+          <TabsDemo
             id="g-tabs"
-            ariaLabel="Settings"
-            active={tab}
-            onChange={setTab}
-            tabs={["identity", "providers", "memory", "security"].map((id) => ({ id, label: id }))}
+            label="Settings"
+            tabs={tabsOf("identity", "providers", "memory", "security")}
           />
         </Row>
       </Story>
@@ -633,6 +792,10 @@ function Gallery() {
 
       <Story id="overlays" title="Popover, command palette, shortcuts, notifications">
         <Overlays />
+      </Story>
+
+      <Story id="primitives" title="Switch, tabs, menu and tooltip">
+        <Primitives />
       </Story>
 
       <Story id="widgets" title="Instruments as lâminas">
@@ -704,15 +867,17 @@ function Root() {
   return (
     <QueryClientProvider client={client}>
       <I18nContext.Provider value={i18n}>
-        <ToastProvider>
-          <ConfirmProvider>
-            <NotificationsProvider>
-              <HashRouter>
-                <Gallery />
-              </HashRouter>
-            </NotificationsProvider>
-          </ConfirmProvider>
-        </ToastProvider>
+        <UiProvider>
+          <ToastProvider>
+            <ConfirmProvider>
+              <NotificationsProvider>
+                <HashRouter>
+                  <Gallery />
+                </HashRouter>
+              </NotificationsProvider>
+            </ConfirmProvider>
+          </ToastProvider>
+        </UiProvider>
       </I18nContext.Provider>
     </QueryClientProvider>
   );

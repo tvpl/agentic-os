@@ -11,6 +11,7 @@ import { isValidMicroAppHref } from "./shared";
 import type { SettingsShape } from "./shared";
 import { useOsUiPreferences, useSaveUiPreferences } from "../../queries";
 import { ErrorBox, Skeleton, useToast } from "../../components/ui";
+import { Tooltip } from "../../ui";
 
 export function DesktopTab(_props: { s: SettingsShape; put: Put }) {
   // The instruments are projected on demand now (lâminas), so there is no
@@ -103,14 +104,15 @@ function MicroAppsCard({ initial }: { initial: MicroApp[] }) {
                 onBlur={() => commit(rows)}
               />
             </Field>
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<Trash2 aria-hidden />}
-              aria-label={`${t("common.delete")} ${row.name || row.id}`}
-              title={t("common.delete")}
-              onClick={() => commit(rows.filter((_, j) => j !== i))}
-            />
+            <Tooltip label={t("common.delete")}>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<Trash2 aria-hidden />}
+                aria-label={`${t("common.delete")} ${row.name || row.id}`}
+                onClick={() => commit(rows.filter((_, j) => j !== i))}
+              />
+            </Tooltip>
           </div>
         );
       })}

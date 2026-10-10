@@ -1,21 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
-import { getDialogDepth } from "../components/dialog";
-
-/** Call `onPress` for a pointer press outside `ref` (the bell's popover), while `enabled`. */
-export function useOutsidePress(ref: RefObject<HTMLElement | null>, onPress: () => void, enabled = true) {
-  const pressRef = useRef(onPress);
-  pressRef.current = onPress;
-  useEffect(() => {
-    if (!enabled) return;
-    const onDown = (e: PointerEvent) => {
-      const el = e.target instanceof Node ? e.target : null;
-      if (el && ref.current?.contains(el)) return;
-      pressRef.current();
-    };
-    window.addEventListener("pointerdown", onDown);
-    return () => window.removeEventListener("pointerdown", onDown);
-  }, [ref, enabled]);
-}
+import { getDialogDepth } from "../ui";
 
 /**
  * Close a modal drawer when the press lands on what it covers. Everything

@@ -13,6 +13,7 @@ const SECTIONS = [
   "controls",
   "states",
   "dialogs",
+  "primitives",
   "widgets",
   "now",
   "timeline",

@@ -13,6 +13,7 @@ import { useToast } from "../../components/ui";
 import { useDesktopActions } from "../actions";
 import { WidgetGate } from "./WidgetGate";
 import type { WidgetProps } from "../widgetTypes";
+import { Tooltip } from "../../ui";
 
 const STEP_KEY: Record<string, TKey> = {
   pending: "desktop.objectives.pending",
@@ -76,16 +77,17 @@ export default function MissionWidget(_props: WidgetProps) {
                     {p.done}/{p.total}
                   </span>
                   {o.status !== "completed" && (
-                    <button
-                      type="button"
-                      className="go icon"
-                      title={t("desktop.objectives.continue")}
-                      aria-label={t("desktop.objectives.continue")}
-                      disabled={dispatch.isPending}
-                      onClick={() => dispatch.mutate(o.id)}
-                    >
-                      <Play aria-hidden />
-                    </button>
+                    <Tooltip label={t("desktop.objectives.continue")}>
+                      <button
+                        type="button"
+                        className="go icon"
+                        aria-label={t("desktop.objectives.continue")}
+                        disabled={dispatch.isPending}
+                        onClick={() => dispatch.mutate(o.id)}
+                      >
+                        <Play aria-hidden />
+                      </button>
+                    </Tooltip>
                   )}
                 </div>
                 <div className="mission-bar" aria-hidden>
@@ -106,16 +108,17 @@ export default function MissionWidget(_props: WidgetProps) {
                         </button>
                       )}
                       {s.status === "blocked" && (
-                        <button
-                          type="button"
-                          className="go icon"
-                          title={t("desktop.attention.rerun")}
-                          aria-label={t("desktop.attention.rerun")}
-                          disabled={retry.isPending}
-                          onClick={() => retry.mutate({ id: o.id, step: s.id })}
-                        >
-                          <RotateCcw aria-hidden />
-                        </button>
+                        <Tooltip label={t("desktop.attention.rerun")}>
+                          <button
+                            type="button"
+                            className="go icon"
+                            aria-label={t("desktop.attention.rerun")}
+                            disabled={retry.isPending}
+                            onClick={() => retry.mutate({ id: o.id, step: s.id })}
+                          >
+                            <RotateCcw aria-hidden />
+                          </button>
+                        </Tooltip>
                       )}
                     </li>
                   ))}

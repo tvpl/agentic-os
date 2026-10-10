@@ -16,6 +16,7 @@ import { useOsNavigate } from "../../hooks/useViewTransition";
 import { notificationText } from "../../hooks/notificationText";
 import { triageNotifications, type NotificationGroup } from "../../hooks/notificationGroups";
 import type { WidgetProps } from "../widgetTypes";
+import { Tooltip } from "../../ui";
 
 export interface InboxListProps {
   limit: number;
@@ -102,38 +103,41 @@ export function InboxList({ limit, unreadOnly = false }: InboxListProps) {
         <span className="inbox-age mono">{timeAgo(item.ts, locale)}</span>
         {actionable ? (
           <span className="inbox-actions">
-            <button
-              type="button"
-              className="btn sm outline-accent icon-only"
-              aria-label={t("desktop.inbox.approve")}
-              title={t("desktop.inbox.approve")}
-              disabled={resolve.isPending}
-              onClick={() => resolve.mutate({ id: item.approvalId!, decision: "approved" })}
-            >
-              <Check aria-hidden />
-            </button>
-            <button
-              type="button"
-              className="btn sm ghost icon-only"
-              aria-label={t("desktop.inbox.deny")}
-              title={t("desktop.inbox.deny")}
-              disabled={resolve.isPending}
-              onClick={() => resolve.mutate({ id: item.approvalId!, decision: "denied" })}
-            >
-              <X aria-hidden />
-            </button>
+            <Tooltip label={t("desktop.inbox.approve")}>
+              <button
+                type="button"
+                className="btn sm outline-accent icon-only"
+                aria-label={t("desktop.inbox.approve")}
+                disabled={resolve.isPending}
+                onClick={() => resolve.mutate({ id: item.approvalId!, decision: "approved" })}
+              >
+                <Check aria-hidden />
+              </button>
+            </Tooltip>
+            <Tooltip label={t("desktop.inbox.deny")}>
+              <button
+                type="button"
+                className="btn sm ghost icon-only"
+                aria-label={t("desktop.inbox.deny")}
+                disabled={resolve.isPending}
+                onClick={() => resolve.mutate({ id: item.approvalId!, decision: "denied" })}
+              >
+                <X aria-hidden />
+              </button>
+            </Tooltip>
           </span>
         ) : (
           item.href && (
-            <button
-              type="button"
-              className="btn sm ghost icon-only"
-              aria-label={t("desktop.inbox.open")}
-              title={t("desktop.inbox.open")}
-              onClick={() => open(group)}
-            >
-              <ExternalLink aria-hidden />
-            </button>
+            <Tooltip label={t("desktop.inbox.open")}>
+              <button
+                type="button"
+                className="btn sm ghost icon-only"
+                aria-label={t("desktop.inbox.open")}
+                onClick={() => open(group)}
+              >
+                <ExternalLink aria-hidden />
+              </button>
+            </Tooltip>
           )
         )}
       </div>

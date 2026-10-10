@@ -319,7 +319,6 @@ function Turn({
                   className="console-link"
                   onClick={() => speak(reply.text, locale, { force: true, byUser: true })}
                   aria-label={t("desktop.console.read")}
-                  title={t("desktop.console.read")}
                 >
                   <Volume2 aria-hidden /> {t("desktop.console.read")}
                 </button>

@@ -32,6 +32,7 @@ import { contextWindowFor } from "./models";
 import { contextUsed, foldUsage, formatTokens, formatUsd, totalTokens } from "./usage";
 import { isNotFound, isRunActive, useRunQuery, useRunStream } from "./useRunStream";
 import { useCommands, type Command } from "../commands/registry";
+import { Tooltip } from "../ui";
 
 type DetailTab = "timeline" | "replay";
 
@@ -381,14 +382,15 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
                 <code className="mono truncate" title={run.cwd}>
                   {run.cwd}
                 </code>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  icon={<Copy aria-hidden />}
-                  aria-label={t("brain.copyPath")}
-                  title={t("brain.copyPath")}
-                  onClick={() => void copy(run.cwd!)}
-                />
+                <Tooltip label={t("brain.copyPath")}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon={<Copy aria-hidden />}
+                    aria-label={t("brain.copyPath")}
+                    onClick={() => void copy(run.cwd!)}
+                  />
+                </Tooltip>
               </div>
             )}
             <p className="run-id mono">{run.id}</p>
@@ -651,14 +653,15 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
                     >
                       {t("common.open")}
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      icon={<Copy aria-hidden />}
-                      aria-label={t("brain.copyPath")}
-                      title={t("brain.copyPath")}
-                      onClick={() => void copy(a.path!)}
-                    />
+                    <Tooltip label={t("brain.copyPath")}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        icon={<Copy aria-hidden />}
+                        aria-label={t("brain.copyPath")}
+                        onClick={() => void copy(a.path!)}
+                      />
+                    </Tooltip>
                   </>
                 )}
               </span>

@@ -4,11 +4,12 @@
  * the pager, and a single "+" that holds the management actions
  * (marketplace, export, new skill). Nothing on the sides.
  */
-import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type RefObject } from "react";
+import type { ChangeEvent, KeyboardEvent, RefObject } from "react";
 import { ChevronLeft, ChevronRight, Plus, Search, Star, Store, Upload, WandSparkles } from "lucide-react";
 import { useT } from "../../i18n";
 import { providerOptions } from "../../providers/options";
 import { useOsProviders } from "../../queries";
+import { DropdownMenu, Tooltip } from "../../ui";
 import type { ModeFilter, ProviderFilter, SkillFilters } from "./skillsMatch";
 
 const MODES: ModeFilter[] = ["all", "read_only", "write"];
@@ -100,25 +101,27 @@ export default function SkillsTools(p: ToolsProps) {
       </p>
       {p.pages > 1 && (
         <span className="sks-pager">
-          <button
-            type="button"
-            className="sks-icon"
-            aria-label={t("scene.skills.prevPage")}
-            title={t("scene.skills.prevPage")}
-            onClick={() => p.onPage(-1)}
-          >
-            <ChevronLeft aria-hidden />
-          </button>
+          <Tooltip label={t("scene.skills.prevPage")}>
+            <button
+              type="button"
+              className="sks-icon"
+              aria-label={t("scene.skills.prevPage")}
+              onClick={() => p.onPage(-1)}
+            >
+              <ChevronLeft aria-hidden />
+            </button>
+          </Tooltip>
           <span className="mono">{t("scene.skills.page", { n: p.page + 1, total: p.pages })}</span>
-          <button
-            type="button"
-            className="sks-icon"
-            aria-label={t("scene.skills.nextPage")}
-            title={t("scene.skills.nextPage")}
-            onClick={() => p.onPage(1)}
-          >
-            <ChevronRight aria-hidden />
-          </button>
+          <Tooltip label={t("scene.skills.nextPage")}>
+            <button
+              type="button"
+              className="sks-icon"
+              aria-label={t("scene.skills.nextPage")}
+              onClick={() => p.onPage(1)}
+            >
+              <ChevronRight aria-hidden />
+            </button>
+          </Tooltip>
         </span>
       )}
       <MoreMenu onMarket={p.onMarket} onExport={p.onExport} onNew={p.onNew} />
@@ -137,72 +140,32 @@ function MoreMenu({
   onNew: () => void;
 }) {
   const t = useT();
-  const [open, setOpen] = useState(false);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    menuRef.current?.querySelector<HTMLElement>("[role='menuitem']")?.focus();
-    const onDown = (e: PointerEvent) => {
-      const el = e.target as Node;
-      if (!menuRef.current?.contains(el) && !btnRef.current?.contains(el)) setOpen(false);
-    };
-    window.addEventListener("pointerdown", onDown, true);
-    return () => window.removeEventListener("pointerdown", onDown, true);
-  }, [open]);
-  const pick = (fn: () => void) => () => {
-    setOpen(false);
-    fn();
-  };
-  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    const items = [...(menuRef.current?.querySelectorAll<HTMLElement>("[role='menuitem']") ?? [])];
-    const at = items.indexOf(document.activeElement as HTMLElement);
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      setOpen(false);
-      btnRef.current?.focus();
-    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      const next = (at + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
-      items[next]?.focus();
-    }
-  };
   return (
     <span className="sks-more">
-      <button
-        ref={btnRef}
-        type="button"
-        className="sks-plus"
-        data-testid="skills-more"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={t("scene.skills.manage")}
-        title={t("scene.skills.manage")}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <Plus aria-hidden />
-      </button>
-      {open && (
-        <div
-          ref={menuRef}
-          className="sks-menu"
-          role="menu"
-          tabIndex={-1}
-          aria-label={t("scene.skills.manage")}
-          onKeyDown={onKey}
-        >
-          <button type="button" role="menuitem" onClick={pick(onMarket)}>
-            <Store aria-hidden /> {t("skills.market.title")}
+      <DropdownMenu
+        tip={t("scene.skills.manage")}
+        trigger={
+          <button
+            type="button"
+            className="sks-plus"
+            data-testid="skills-more"
+            aria-label={t("scene.skills.manage")}
+          >
+            <Plus aria-hidden />
           </button>
-          <button type="button" role="menuitem" onClick={pick(onExport)}>
-            <Upload aria-hidden /> {t("skills.export")}
-          </button>
-          <button type="button" role="menuitem" className="new" onClick={pick(onNew)}>
-            <WandSparkles aria-hidden /> {t("skills.new")}
-          </button>
-        </div>
-      )}
+        }
+        items={[
+          { id: "market", label: t("skills.market.title"), icon: <Store aria-hidden />, onSelect: onMarket },
+          { id: "export", label: t("skills.export"), icon: <Upload aria-hidden />, onSelect: onExport },
+          {
+            id: "new",
+            label: t("skills.new"),
+            icon: <WandSparkles aria-hidden />,
+            onSelect: onNew,
+            className: "new",
+          },
+        ]}
+      />
     </span>
   );
 }

@@ -38,7 +38,7 @@ import {
 } from "react";
 import type { LucideIcon } from "lucide-react";
 import type { TKey } from "../i18n";
-import { getDialogDepth } from "../components/dialog";
+import { getDialogDepth } from "../ui";
 import { canonicalCombo, hasModifier, isMac, isTypingTarget, matchesCombo } from "./keys";
 
 export type CommandScope = "global" | "moldura" | "nucleo" | `view:${string}` | "overlay" | "modal";

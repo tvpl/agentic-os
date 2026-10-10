@@ -17,7 +17,7 @@ import type { Meta } from "../api";
 import { useT } from "../i18n";
 import { Skeleton } from "../components/ui";
 import { ErrorBoundary } from "../components/ErrorBoundary";
-import { useDialog } from "../components/dialog";
+import { Tooltip, useDrawer } from "../ui";
 import { appForPath } from "../desktop/apps";
 import { AppRouteContext, type AppRoute } from "../desktop/appRoute";
 import { DesktopActionsProvider } from "../desktop/actions";
@@ -53,7 +53,7 @@ export default function Moldura({ meta, onMetaChanged, onOpenPalette }: MolduraP
   // The conversation as a drawer is a dialog that stays where it is: it holds a live conversation.
   const chat = useRef<HTMLElement>(null);
   const closeChat = () => layout.setChat(false);
-  useDialog(chat, closeChat, {
+  useDrawer(chat, closeChat, {
     open: layout.chatDrawer,
     initialFocus: () => chat.current?.querySelector<HTMLElement>("textarea"),
   });
@@ -144,15 +144,16 @@ export default function Moldura({ meta, onMetaChanged, onOpenPalette }: MolduraP
           >
             <div className="mold-chat-head">
               <span className="mold-chat-t">{t("moldura.top.chat")}</span>
-              <button
-                type="button"
-                className="mold-icon-btn"
-                aria-label={t("moldura.chat.close")}
-                title={t("moldura.chat.close")}
-                onClick={closeChat}
-              >
-                <X aria-hidden />
-              </button>
+              <Tooltip label={t("moldura.chat.close")}>
+                <button
+                  type="button"
+                  className="mold-icon-btn"
+                  aria-label={t("moldura.chat.close")}
+                  onClick={closeChat}
+                >
+                  <X aria-hidden />
+                </button>
+              </Tooltip>
             </div>
             <Console
               busy={activeRuns > 0}

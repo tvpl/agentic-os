@@ -16,6 +16,7 @@ import {
   type ViewKind,
 } from "../../brain/engine/world";
 import { MODIFIED_RANGES, SIZE_RANGES, type BrainUi } from "../../brain/state";
+import { Switch } from "../../ui";
 
 const KIND_KEYS: Record<EdgeKind, TKey> = {
   "markdown-link": "brain.kind.markdown-link",
@@ -115,16 +116,14 @@ export function BrainSceneMenu(p: BrainSceneMenuProps) {
           {EDGE_KINDS.filter((k) => (p.kindCounts.get(k) ?? 0) > 0 || k === "markdown-link").map((k) => {
             const on = ui.edgeKinds.includes(k);
             return (
-              <button
+              <Switch
                 key={k}
-                type="button"
-                role="switch"
-                aria-checked={on}
-                onClick={() => patch({ edgeKinds: toggleIn(ui.edgeKinds, k) as EdgeKind[] })}
+                checked={on}
+                onCheckedChange={() => patch({ edgeKinds: toggleIn(ui.edgeKinds, k) as EdgeKind[] })}
               >
                 <span className={`bs-kind k-${k}`} aria-hidden />
                 {t(KIND_KEYS[k])} <small>{p.kindCounts.get(k) ?? 0}</small>
-              </button>
+              </Switch>
             );
           })}
         </div>
@@ -135,14 +134,14 @@ export function BrainSceneMenu(p: BrainSceneMenuProps) {
           {t("brain.local")}
         </p>
         <div className="bs-row">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={ui.local}
-            onClick={() => patch({ local: !ui.local })}
-          >
-            {ui.local ? t("scene.brain.on") : t("scene.brain.off")}
-          </button>
+          <span className="bs-switch-row">
+            <Switch
+              checked={ui.local}
+              onCheckedChange={(local) => patch({ local })}
+              aria-labelledby={`${ids}-local ${ids}-local-state`}
+            />
+            <span id={`${ids}-local-state`}>{ui.local ? t("scene.brain.on") : t("scene.brain.off")}</span>
+          </span>
           <label className="bs-range" htmlFor={`${ids}-hops`}>
             {t("brain.hops")}
             <input

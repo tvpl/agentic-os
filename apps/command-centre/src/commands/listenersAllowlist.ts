@@ -7,11 +7,10 @@
  */
 export const OUTSIDE_THE_REGISTRY: Record<string, [count: number, why: string]> = {
   "commands/registry.ts": [1, "the one listener of the key manager"],
-  "components/dialog.tsx": [
+  "ui/layers.ts": [
     1,
-    "the dialog stack: Escape and Tab of the dialog on top, stopped before they leave it",
+    "`useDrawer`: Escape and Tab of the panel on top that stays where it is in the tree (the narrow sidebar, the conversation and the document drawers), stopped before they leave it",
   ],
-  "components/primitives.tsx": [1, "a popover's own Escape, captured while it is open"],
   "nucleo/pending/FocusMode.tsx": [
     1,
     "the focus mode is a layer of its own: while it is up it is the only surface (design: stays)",
@@ -32,4 +31,23 @@ export const OUTSIDE_THE_REGISTRY: Record<string, [count: number, why: string]> 
   ],
   "nucleo/scenes/RoutinesScene.tsx": [1, "Escape closes the classic sheet, captured before the shell's"],
   "nucleo/NucleoScene.tsx": [1, "Escape folds the bloomed core, before the shell's"],
+};
+
+/**
+ * The key listeners that a dependency puts on the page while the app runs
+ * (.specs/features/primitivas, door 5): package by package, how many call sites,
+ * and why none of them is a command. The primitives are Radix, which listens on
+ * its own; the runtime probe attributes a listener to the package whose code
+ * added it (not to React DOM, which only delegates `onKeyDown`) and fails on a
+ * package that is not here.
+ */
+export const OUTSIDE_THE_REGISTRY_DEPS: Record<string, [count: number, why: string]> = {
+  "@radix-ui/react-dismissable-layer": [
+    1,
+    "Escape of the top layer of a dialog, popover, menu or tooltip, on the document in capture; it runs the layer's close and marks the key handled, so the registry (which ignores a key already handled) never sees it",
+  ],
+  "@radix-ui/react-menu": [
+    1,
+    "remembers whether the last input was the keyboard (for the focus ring of a menu item); it reads no key and runs no command",
+  ],
 };

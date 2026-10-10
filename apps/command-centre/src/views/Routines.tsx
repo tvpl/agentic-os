@@ -27,7 +27,8 @@ import {
 } from "../api";
 import { useLocale, useT, type TKey } from "../i18n";
 import { qk, useApiQuery, useOsProviders, useOsRoutines, useOsSettings, useOsSkills } from "../queries";
-import { ErrorBox, Modal, Skeleton, StatusBadge, timeAgo, useToast } from "../components/ui";
+import { ErrorBox, Skeleton, StatusBadge, timeAgo, useToast } from "../components/ui";
+import { Modal, Tooltip } from "../ui";
 import { Badge, Button, EmptyState, Field, Segmented } from "../components/primitives";
 import { useConfirm } from "../hooks/useConfirm";
 import { errorMessage, isOffline } from "./shared";
@@ -252,38 +253,41 @@ export default function Routines() {
                 >
                   {r.enabled ? t("routines.pause") : t("routines.resume")}
                 </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  icon={<Pencil aria-hidden />}
-                  aria-label={`${t("common.edit")} ${r.name}`}
-                  title={t("common.edit")}
-                  onClick={() => setEditing(r)}
-                />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  icon={<Copy aria-hidden />}
-                  aria-label={t("routines.duplicate")}
-                  title={t("routines.duplicate")}
-                  onClick={() =>
-                    act.mutate({
-                      fn: () => api.post(`/api/routines/${encodeURIComponent(r.id)}/duplicate`),
-                      okMsg: t("routines.duplicated"),
-                    })
-                  }
-                />
+                <Tooltip label={t("common.edit")}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={<Pencil aria-hidden />}
+                    aria-label={`${t("common.edit")} ${r.name}`}
+                    onClick={() => setEditing(r)}
+                  />
+                </Tooltip>
+                <Tooltip label={t("routines.duplicate")}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={<Copy aria-hidden />}
+                    aria-label={t("routines.duplicate")}
+                    onClick={() =>
+                      act.mutate({
+                        fn: () => api.post(`/api/routines/${encodeURIComponent(r.id)}/duplicate`),
+                        okMsg: t("routines.duplicated"),
+                      })
+                    }
+                  />
+                </Tooltip>
                 <Button size="sm" variant="secondary" onClick={() => setHistoryFor(r)}>
                   {t("routines.history")}
                 </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  icon={<Trash2 aria-hidden />}
-                  aria-label={`${t("common.delete")} ${r.name}`}
-                  title={t("common.delete")}
-                  onClick={() => void remove(r)}
-                />
+                <Tooltip label={t("common.delete")}>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    icon={<Trash2 aria-hidden />}
+                    aria-label={`${t("common.delete")} ${r.name}`}
+                    onClick={() => void remove(r)}
+                  />
+                </Tooltip>
               </div>
             </div>
           );

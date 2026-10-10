@@ -12,6 +12,7 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { PANEL_GLYPH, type PanelKind } from "../desktop/panelKinds";
 import { flipFrom, freshOrigin } from "./travel";
 import { burst } from "./Sparks";
+import { Tooltip } from "../ui";
 
 export interface LaminaSpec {
   id: string;
@@ -83,36 +84,39 @@ export default function Lamina({ spec, leaving, onDismiss, onReference, onOpenSc
           {spec.icon ?? PANEL_GLYPH[spec.kind]}
         </span>
         <h2 className="nu-lamina-title">{spec.title}</h2>
-        <button
-          type="button"
-          className="nu-lamina-ref mono"
-          title={t("desktop.doc.reference")}
-          aria-label={`${t("desktop.doc.reference")}: @${spec.refName}`}
-          onClick={onReference}
-        >
-          @{spec.refName}
-        </button>
-        <span className="sp" />
-        {onOpenScene && (
+        <Tooltip label={t("desktop.doc.reference")}>
           <button
             type="button"
-            className="nu-lamina-b"
-            aria-label={`${t("nucleo.lamina.openScene")}: ${spec.title}`}
-            title={t("nucleo.lamina.openScene")}
-            onClick={onOpenScene}
+            className="nu-lamina-ref mono"
+            aria-label={`${t("desktop.doc.reference")}: @${spec.refName}`}
+            onClick={onReference}
           >
-            <ArrowUpRight aria-hidden />
+            @{spec.refName}
           </button>
+        </Tooltip>
+        <span className="sp" />
+        {onOpenScene && (
+          <Tooltip label={t("nucleo.lamina.openScene")}>
+            <button
+              type="button"
+              className="nu-lamina-b"
+              aria-label={`${t("nucleo.lamina.openScene")}: ${spec.title}`}
+              onClick={onOpenScene}
+            >
+              <ArrowUpRight aria-hidden />
+            </button>
+          </Tooltip>
         )}
-        <button
-          type="button"
-          className="nu-lamina-b x"
-          aria-label={`${t("nucleo.lamina.dismiss")}: ${spec.title}`}
-          title={t("nucleo.lamina.dismiss")}
-          onClick={onDismiss}
-        >
-          <X aria-hidden />
-        </button>
+        <Tooltip label={t("nucleo.lamina.dismiss")}>
+          <button
+            type="button"
+            className="nu-lamina-b x"
+            aria-label={`${t("nucleo.lamina.dismiss")}: ${spec.title}`}
+            onClick={onDismiss}
+          >
+            <X aria-hidden />
+          </button>
+        </Tooltip>
       </header>
       {/* A region the keyboard can scroll. */}
       <div className="nu-lamina-body" role="region" aria-label={spec.title} tabIndex={0}>

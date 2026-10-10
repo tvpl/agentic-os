@@ -287,7 +287,6 @@ const MICROCOPY: Record<string, string> = {
   ".bs-link-kind": "a kind label",
   ".bs-rail-kind": "a kind label",
   ".inbox-section": "an uppercase section label",
-  ".settings-group-label": "an uppercase group label",
   ".nu-focus-pos": "the position counter of the focus queue",
   ".sks-tags": "tags: metadata",
   ".sks-state": "a state counter line",

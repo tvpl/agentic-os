@@ -22,6 +22,7 @@ import { useT, type Lang, type TKey } from "../i18n";
 import { useToast } from "../components/ui";
 import { Badge, Button, Field } from "../components/primitives";
 import { copyText } from "./shared";
+import { Tooltip } from "../ui";
 
 /** Outcome of a settings PUT — never rejects, so `void put()` callers stay safe. */
 export type SaveResult = { ok: true } | { ok: false; error: string };
@@ -529,18 +530,19 @@ export function ReadOnlyPathField({
           data-testid={testId}
           style={{ flex: 1, minWidth: 0, opacity: 0.8 }}
         />
-        <Button
-          size="sm"
-          variant="secondary"
-          icon={<Copy aria-hidden />}
-          aria-label={t("common.copy")}
-          title={t("common.copy")}
-          disabled={!value}
-          onClick={async () => {
-            const copied = await copyText(value);
-            toast(t(copied ? "common.copied" : "skills.copyFailed"), copied ? "ok" : "danger");
-          }}
-        />
+        <Tooltip label={t("common.copy")}>
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<Copy aria-hidden />}
+            aria-label={t("common.copy")}
+            disabled={!value}
+            onClick={async () => {
+              const copied = await copyText(value);
+              toast(t(copied ? "common.copied" : "skills.copyFailed"), copied ? "ok" : "danger");
+            }}
+          />
+        </Tooltip>
       </div>
     </Field>
   );

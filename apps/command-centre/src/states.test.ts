@@ -87,8 +87,6 @@ const MARKED_ELSEWHERE: Record<string, string> = {
   '.cx-orb[data-state="ok"]': "the orb sits beside the `.cx-state` word (Connected / Off)",
   '.cx-orb[data-state="warn"]': "the orb sits beside the `.cx-state` word",
   '.cx-orb[data-state="danger"]': "the orb sits beside the `.cx-state` word",
-  '.tabs [role="tab"][aria-selected="true"]':
-    "the 2px bottom border every tab has (transparent) becomes the underline",
 };
 
 const sources = () => cssFiles().map((file) => ({ file, css: readFileSync(file, "utf8") }));

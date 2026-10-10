@@ -17,7 +17,7 @@ import { api } from "../api";
 import { dictionaries } from "../i18n";
 import { qk } from "../queries";
 import { useNotifications, type NotificationItem } from "../hooks/useNotifications";
-import { useDialog } from "../components/dialog";
+import { useDrawer } from "../ui";
 import { dismiss, getLaminas, project } from "../nucleo/projections";
 import { horizonRing } from "../nucleo/scenes";
 import { runPanelId } from "../desktop/runPanels";
@@ -76,7 +76,7 @@ describe("R1 the doors found while building", () => {
     const run = { g: vi.fn(), n: vi.fn(), v: vi.fn(), m: vi.fn(), o: vi.fn() };
     function RealDialog() {
       const ref = useRef<HTMLDivElement>(null);
-      useDialog(ref, () => undefined);
+      useDrawer(ref, () => undefined);
       return (
         <div role="dialog" aria-modal="true" tabIndex={-1} ref={ref}>
           <button type="button">inside</button>

@@ -12,6 +12,7 @@ import { ErrorBox } from "../components/ui";
 import { useT } from "../i18n";
 import { APP_COLOR, EDGE_KINDS, ROUTINE_COLOR, SKILL_COLOR, type EdgeKind } from "./engine/world";
 import type { BrainUi } from "./state";
+import { Tooltip } from "../ui";
 
 export interface HoverInfo {
   x: number;
@@ -128,23 +129,25 @@ export function BrainChrome(p: BrainChromeProps) {
           </button>
         ) : (
           <div className="brain-topbar-actions">
-            <button
-              className="btn sm"
-              onClick={p.onRefresh}
-              disabled={p.refreshing}
-              title={t("brain.refresh")}
-              aria-label={t("brain.refresh")}
-            >
-              {p.refreshing ? <span className="spinner" aria-hidden /> : <RefreshCw aria-hidden />}
-            </button>
-            <button
-              className="btn sm"
-              onClick={() => p.setPresenting(true)}
-              title={`${t("brain.present")} (p)`}
-              aria-label={t("brain.present")}
-            >
-              <Tv aria-hidden />
-            </button>
+            <Tooltip label={t("brain.refresh")}>
+              <button
+                className="btn sm"
+                onClick={p.onRefresh}
+                disabled={p.refreshing}
+                aria-label={t("brain.refresh")}
+              >
+                {p.refreshing ? <span className="spinner" aria-hidden /> : <RefreshCw aria-hidden />}
+              </button>
+            </Tooltip>
+            <Tooltip label={`${t("brain.present")} (p)`}>
+              <button
+                className="btn sm"
+                onClick={() => p.setPresenting(true)}
+                aria-label={t("brain.present")}
+              >
+                <Tv aria-hidden />
+              </button>
+            </Tooltip>
             {/* On the stage the brain is a panel: the desktop is behind it, and
                 the palette is ⌘K — neither needs a chip inside the app (G2). */}
             {!inPanel && (
@@ -164,38 +167,26 @@ export function BrainChrome(p: BrainChromeProps) {
       {!presenting && (
         <div className="zoom-stack">
           {p.zoomReadout}
-          <button
-            className="os-tool"
-            onClick={p.zoom.in}
-            aria-label={t("brain.zoomIn")}
-            title={`${t("brain.zoomIn")} (⌘+)`}
-          >
-            <Plus aria-hidden />
-          </button>
-          <button
-            className="os-tool"
-            onClick={p.zoom.out}
-            aria-label={t("brain.zoomOut")}
-            title={`${t("brain.zoomOut")} (⌘−)`}
-          >
-            <Minus aria-hidden />
-          </button>
-          <button
-            className="os-tool"
-            onClick={p.zoom.fit}
-            aria-label={t("brain.zoomFit")}
-            title={t("brain.zoomFit")}
-          >
-            <Maximize2 aria-hidden />
-          </button>
-          <button
-            className="os-tool"
-            onClick={p.zoom.reset}
-            aria-label={t("brain.resetCamera")}
-            title={`${t("brain.resetCamera")} (⌘0)`}
-          >
-            <Scan aria-hidden />
-          </button>
+          <Tooltip label={`${t("brain.zoomIn")} (⌘+)`}>
+            <button className="os-tool" onClick={p.zoom.in} aria-label={t("brain.zoomIn")}>
+              <Plus aria-hidden />
+            </button>
+          </Tooltip>
+          <Tooltip label={`${t("brain.zoomOut")} (⌘−)`}>
+            <button className="os-tool" onClick={p.zoom.out} aria-label={t("brain.zoomOut")}>
+              <Minus aria-hidden />
+            </button>
+          </Tooltip>
+          <Tooltip label={t("brain.zoomFit")}>
+            <button className="os-tool" onClick={p.zoom.fit} aria-label={t("brain.zoomFit")}>
+              <Maximize2 aria-hidden />
+            </button>
+          </Tooltip>
+          <Tooltip label={`${t("brain.resetCamera")} (⌘0)`}>
+            <button className="os-tool" onClick={p.zoom.reset} aria-label={t("brain.resetCamera")}>
+              <Scan aria-hidden />
+            </button>
+          </Tooltip>
         </div>
       )}
 

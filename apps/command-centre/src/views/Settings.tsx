@@ -1,6 +1,6 @@
 import { OnboardingButton } from "../onboarding/Onboarding";
 import { useCurrentShell } from "../moldura/shell";
-import { useContext, useEffect, useState } from "react";
+import { Fragment, useContext, useEffect, useState } from "react";
 import { usePanelSearchParams } from "../desktop/appRoute";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type SettingsPatch } from "../api";
@@ -21,6 +21,7 @@ import { SecurityTab } from "./settings/security";
 import { NotificationsTab, SentinelsCard } from "./settings/notifications";
 import { BackupsTab } from "./settings/backups";
 import { DiagnosticsTab } from "./settings/diagnostics";
+import { Tabs } from "../ui";
 import { TAB_IDS, isValidMicroAppHref, type Approval, type TabId } from "./settings/shared";
 
 import type { SettingsShape } from "./settings/shared";
@@ -161,7 +162,13 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
         {/* The tour points at the Núcleo's places; the frame has none of them (plan Assumptions). */}
         {shell === "nucleo" && <OnboardingButton />}
       </div>
-      <div className="settings-shell">
+      <Tabs.Root
+        value={tab}
+        onChange={(id) => setTab(id as TabId)}
+        orientation="vertical"
+        id="settings-tabs"
+        className="settings-shell"
+      >
         <nav className="settings-nav" aria-label={t("settings.title")}>
           <input
             type="search"
@@ -176,39 +183,25 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
             }}
           />
           {visible.length === 0 && <p className="hint">{t("settings.searchNone")}</p>}
-          <div role="tablist" id="settings-tabs" aria-orientation="vertical">
+          <Tabs.List variant="list">
             {visible.map((g) => (
-              <div key={g.id} className="settings-group">
-                <p className="settings-group-label">{g.label}</p>
+              <Fragment key={g.id}>
+                <Tabs.Group>{g.label}</Tabs.Group>
                 {g.items.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    role="tab"
-                    id={`settings-tabs-tab-${item.id}`}
-                    aria-selected={tab === item.id}
-                    aria-controls={`settings-tabs-panel-${item.id}`}
-                    className={`settings-nav-item${tab === item.id ? " on" : ""}`}
-                    onClick={() => setTab(item.id)}
-                  >
+                  <Tabs.Tab key={item.id} value={item.id}>
                     {item.label}
-                  </button>
+                  </Tabs.Tab>
                 ))}
-              </div>
+              </Fragment>
             ))}
-          </div>
+          </Tabs.List>
           <p className="hint settings-autosave" data-testid="settings-autosave-note">
             {t("settings.autosaveNote")}
           </p>
         </nav>
         <div className="settings-body">
           <h2 className="settings-section-title">{title}</h2>
-          <div
-            className="tab-panel"
-            role="tabpanel"
-            id={`settings-tabs-panel-${tab}`}
-            aria-labelledby={`settings-tabs-tab-${tab}`}
-          >
+          <Tabs.Panel className="tab-panel">
             {tab === "identity" && <IdentityTab s={s} put={put} setLang={setLang} />}
             {tab === "theme" && <ThemeTab s={s} put={put} />}
             {tab === "providers" && <ProvidersTab s={s} put={put} />}
@@ -224,9 +217,9 @@ export default function Settings({ onMetaChanged }: { onMetaChanged: () => void 
             {tab === "trends" && <TrendsTab />}
             {tab === "backups" && <BackupsTab />}
             {tab === "diagnostics" && <DiagnosticsTab />}
-          </div>
+          </Tabs.Panel>
         </div>
-      </div>
+      </Tabs.Root>
     </div>
   );
 }

@@ -34,7 +34,7 @@ vi.setConfig({ testTimeout: 30_000 });
 import { ToastProvider } from "../components/ui";
 import { ConfirmProvider } from "../hooks/useConfirm";
 import { NotificationsProvider, useNotifications } from "../hooks/useNotifications";
-import { getDialogDepth } from "../components/dialog";
+import { getDialogDepth } from "../ui";
 import { LAUNCHER_EVENT } from "../App";
 import { PRESETS } from "../theme";
 import { WorkspaceProvider } from "../components/Workspace";

@@ -19,6 +19,7 @@ import {
   type Put,
 } from "../SettingsFields";
 import type { SettingsShape } from "./shared";
+import { Tooltip } from "../../ui";
 
 export function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
   const t = useT();
@@ -78,14 +79,15 @@ export function MemoryTab({ s, put }: { s: SettingsShape; put: Put }) {
                 </option>
               ))}
             </select>
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<X aria-hidden />}
-              aria-label={`${t("common.delete")} ${f.path}`}
-              title={t("common.delete")}
-              onClick={() => void removeFolder(f.path)}
-            />
+            <Tooltip label={t("common.delete")}>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<X aria-hidden />}
+                aria-label={`${t("common.delete")} ${f.path}`}
+                onClick={() => void removeFolder(f.path)}
+              />
+            </Tooltip>
           </div>
         ))}
       </div>

@@ -31,6 +31,7 @@ import { absoluteTime, eventBody, relativeOffset, searchIndices, splitMatches } 
 import { humanizeEvent } from "./humanize";
 import { formatTokens, formatUsd } from "./usage";
 import type { RunEventView } from "./useRunStream";
+import { Tooltip } from "../ui";
 
 type Item =
   | { kind: "text"; stream: "stdout" | "stderr"; ts: number; lines: string[] }
@@ -187,35 +188,38 @@ const EventTimeline = forwardRef<EventTimelineHandle, EventTimelineProps>(functi
                     ? t("runs.timeline.noMatch")
                     : `${Math.min(cursor, matches.length - 1) + 1}/${matches.length}`}
                 </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  icon={<ChevronUp aria-hidden />}
-                  aria-label={t("runs.timeline.prev")}
-                  title={t("runs.timeline.prev")}
-                  disabled={matches.length === 0}
-                  onClick={() => step(-1)}
-                />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  icon={<ChevronDown aria-hidden />}
-                  aria-label={t("runs.timeline.next")}
-                  title={t("runs.timeline.next")}
-                  disabled={matches.length === 0}
-                  onClick={() => step(1)}
-                />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  icon={<X aria-hidden />}
-                  aria-label={t("runs.timeline.clear")}
-                  title={t("runs.timeline.clear")}
-                  onClick={() => {
-                    setQuery("");
-                    setCursor(0);
-                  }}
-                />
+                <Tooltip label={t("runs.timeline.prev")}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon={<ChevronUp aria-hidden />}
+                    aria-label={t("runs.timeline.prev")}
+                    disabled={matches.length === 0}
+                    onClick={() => step(-1)}
+                  />
+                </Tooltip>
+                <Tooltip label={t("runs.timeline.next")}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon={<ChevronDown aria-hidden />}
+                    aria-label={t("runs.timeline.next")}
+                    disabled={matches.length === 0}
+                    onClick={() => step(1)}
+                  />
+                </Tooltip>
+                <Tooltip label={t("runs.timeline.clear")}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon={<X aria-hidden />}
+                    aria-label={t("runs.timeline.clear")}
+                    onClick={() => {
+                      setQuery("");
+                      setCursor(0);
+                    }}
+                  />
+                </Tooltip>
               </>
             )}
           </div>

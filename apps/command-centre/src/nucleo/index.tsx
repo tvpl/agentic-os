@@ -89,6 +89,7 @@ import "./luz.css";
 import { setSubject, useSubject } from "./subject";
 import { CommandsGate, useCommands, type Command } from "../commands/registry";
 import { isTypingTarget } from "../commands/keys";
+import { Tooltip } from "../ui";
 
 /** The scenes that take the shared language (luz.css); the Núcleo and the Brain draw their own worlds. */
 const LUZ = (id: SceneId) => (id === "nucleo" || id === "brain" ? "" : " luz");
@@ -729,18 +730,19 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
                   <span className="nu-dialog-t">{t("nucleo.dialog.title")}</span>
                   <span className="nu-dialog-state mono">{t(`desktop.core.${coreState}`)}</span>
                   <span className="sp" />
-                  <button
-                    type="button"
-                    className="nu-dialog-x"
-                    aria-label={t("nucleo.dialog.close")}
-                    title={`${t("nucleo.dialog.close")} · Esc`}
-                    onClick={() => {
-                      setDialog(false);
-                      (document.activeElement as HTMLElement | null)?.blur();
-                    }}
-                  >
-                    <ChevronDown aria-hidden />
-                  </button>
+                  <Tooltip label={`${t("nucleo.dialog.close")} · Esc`}>
+                    <button
+                      type="button"
+                      className="nu-dialog-x"
+                      aria-label={t("nucleo.dialog.close")}
+                      onClick={() => {
+                        setDialog(false);
+                        (document.activeElement as HTMLElement | null)?.blur();
+                      }}
+                    >
+                      <ChevronDown aria-hidden />
+                    </button>
+                  </Tooltip>
                 </header>
               )}
               {!dialog && (activeRuns > 0 || coreState !== "idle") && (

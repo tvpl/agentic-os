@@ -4,7 +4,8 @@ import { naturalToCron } from "../naturalSchedule";
 import { api } from "../../api";
 import { qk, useInvalidate } from "../../queries";
 import { useT } from "../../i18n";
-import { Modal, useToast } from "../../components/ui";
+import { useToast } from "../../components/ui";
+import { Modal } from "../../ui";
 import { Button, Field } from "../../components/primitives";
 import { errorMessage, SLUG_RE, slugify } from "../shared";
 

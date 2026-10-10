@@ -9,7 +9,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type ModelishOption, type ProviderId, type ProviderSnapshot, type Skill } from "../api";
 import { useT } from "../i18n";
 import { qk, useApiQuery } from "../queries";
-import { Modal, useToast } from "../components/ui";
+import { useToast } from "../components/ui";
+import { Modal } from "../ui";
 import { Segmented } from "../components/primitives";
 
 export const EFFORTS = ["low", "medium", "high", "default"] as const;

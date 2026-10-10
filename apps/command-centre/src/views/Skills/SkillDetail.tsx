@@ -30,7 +30,8 @@ import { qk, useApiQuery, useInvalidate } from "../../queries";
 import { useLang, useT } from "../../i18n";
 import { localizeSkill } from "./localize";
 import { formatBytes, useToast } from "../../components/ui";
-import { Badge, Button, EmptyState, Field, Segmented, Tabs } from "../../components/primitives";
+import { Badge, Button, EmptyState, Field, Segmented } from "../../components/primitives";
+import { Tabs, Tooltip } from "../../ui";
 import { ModelEffortMatrix, skillEffort, type Effort } from "../../desktop/SkillMatrixModal";
 import { ApprovalCard } from "../../runs/ApprovalCards";
 import { copyText, errorMessage } from "../shared";
@@ -447,12 +448,7 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
                 { id: "resources", label: `${t("apps.skills.tabResources")} (${resources.length})` },
                 { id: "notes", label: t("skills.notes.tab") },
               ]}
-            />
-            <div
-              className="tab-panel"
-              role="tabpanel"
-              id={`skill-panes-panel-${pane}`}
-              aria-labelledby={`skill-panes-tab-${pane}`}
+              panelClassName="tab-panel"
             >
               {pane === "body" ? (
                 <>
@@ -504,14 +500,13 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
                   )}
                   <p className="mono file-path" title={skill.skillFile}>
                     {skill.skillFile}
-                    <Button
+                    <Tooltip label={t("brain.copyPath")}><Button
                       size="sm"
                       variant="ghost"
                       icon={<Copy aria-hidden />}
                       aria-label={t("brain.copyPath")}
-                      title={t("brain.copyPath")}
                       onClick={() => void copyPath()}
-                    />
+                    /></Tooltip>
                   </p>
                 </>
               ) : pane === "resources" ? (
@@ -519,7 +514,7 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
               ) : (
                 <NotesPane slug={skill.slug} />
               )}
-            </div>
+            </Tabs>
           </div>
         </div>
       </div>
