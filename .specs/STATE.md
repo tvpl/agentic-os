@@ -21,10 +21,10 @@
 
 ## Handoff
 
-**Feature**: api-v1 (integrando na branch e verificando); adaptadores-tipados pronto na worktree `feat/adaptadores-tipados`; moldura-app em construção na worktree `feat/moldura-app`
-**Where**: dados-v2 construída em `feat/dados-v2` (checks C1-C43 fechados pelo autor, aguardando o verificador independente); seguranca-p0, ci-gate, motor-composicao e capacidades-aplicadas verificadas. contratos, preferencias-ui e provedores-plugaveis fecharam com escalonamento ao dono: 3 rodadas de verificação cada, todas as lacunas fechadas, e os mutantes sobreviventes da 3ª rodada corrigidos e mortos pelo autor (contratos `c438d30`; preferencias-ui `3b9cd3f`; provedores-plugaveis `0d8cf82`), não por um verificador independente
-**In progress**: integração das features 7 → 8, cada uma com verificação; construção da 9
-**Next step**: verificar api-v1; depois adaptadores-tipados e moldura-app; planejar 10 (design-system), 11 (comandos-atalhos), 12 (limpeza-legado)
+**Feature**: escopos-dispositivo (S2) em planejamento/construção na worktree `feat/escopos-dispositivo`
+**Where**: na branch `chore/tlc-spec-lean-skill`, integradas e com `verification.md`: seguranca-p0, ci-gate, motor-composicao, capacidades-aplicadas, contratos, preferencias-ui, provedores-plugaveis, api-v1, adaptadores-tipados, moldura-app, seguranca-p1, dados-v2, comandos-atalhos e design-system. As que usaram as três rodadas de verificação fecharam com escalonamento ao dono (nota no fim de cada `verification.md`); os aceites pendentes estão em "Perguntas ao dono".
+**In progress**: escopos-dispositivo (S2)
+**Next step**: verificar escopos-dispositivo; depois primitivas (10b), limpeza-legado (12), sdk-core (S4), contratos-rest (S5), cerebro-v2 (13), distribuicao (14), licenca-comercial (15)
 **Blockers**: nenhum
 **Dependências**: `escopos-dispositivo` fecha o resíduo de seguranca-p1: Codex em `read-only` e Cursor leem o disco inteiro (o `cwd` não os contém), então um dispositivo pareado que inicia uma execução neles alcança `config/token`; o plano dessa feature precisa de escopos por dispositivo (o que pode iniciar) ou de um sandbox do sistema operacional (AD-011) Também dependência dela: o handshake do lançador (um segredo que o navegador recebe) que fecha o token do dono servido a um programa do usuário em `GET /` (hoje só uma redução, AD-012), a credencial `rc_` por dispositivo e o `rc_`/`brk_` fora do ambiente do processo.
 **Uncommitted**: nenhum
