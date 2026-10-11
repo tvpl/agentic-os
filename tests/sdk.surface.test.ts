@@ -140,6 +140,8 @@ describe("S5 the surface is a closed list", () => {
       "skill_unavailable",
       "workspace_unavailable",
       "engine_locked",
+      "approval_expired",
+      "approval_resolved",
     ]);
     const docs = read("docs/sdk.md");
     for (const code of ENGINE_ERROR_CODES) expect(docs, code).toContain(`\`${code}\``);

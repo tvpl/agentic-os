@@ -10,7 +10,7 @@ ones you want. The adapters for Claude Code, Cursor Agent and Codex live in thei
 npm install @mordomo/core
 ```
 
-Node 22 or newer. The package is licensed under the [Functional Source License](./LICENSE) (FSL-1.1-ALv2).
+Node 22 or newer (and, for TypeScript, `@types/node` 22 or newer, which the declarations use). The package is licensed under the [Functional Source License](./LICENSE) (FSL-1.1-ALv2).
 
 ## A first run
 
@@ -122,10 +122,11 @@ them:
 
 Two engines in one process share nothing: events, allowlists and caches belong to the engine that made them. A home
 has one owner at a time: a second `start()` on the same home, in this process or another, throws
-`EngineLockedError`.
+`EngineLockedError`. Keep the `Engine` you start: `stop()` or `close()` gives the home back, and an engine whose
+reference is lost holds it until the process ends.
 
 ## Where to read more
 
-- [docs/sdk.md](../docs/sdk.md): every export, with what it throws.
+- [docs/sdk.md](https://github.com/tvpl/agentic-os/blob/main/docs/sdk.md): every export, with what it throws.
 - `@mordomo/core/internal` is what the MordomoOS app and the adapter packages use. It has no stability promise;
   anything you need from it is a candidate for the public surface, so say so.

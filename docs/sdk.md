@@ -22,13 +22,20 @@ While the version is `0.x`, an incompatible change to the public surface raises 
 - **Engine.** `createEngine({ home, providers })`. It opens (and migrates) the database of one home and changes nothing
   else; `start()` makes the process the owner of the home. Two engines in one process share nothing: events, the
   allowlist of executables, caches and locks are per engine. Two engines on the same home cannot both `start()`.
+  The one thing a process shares is the answer to "does an engine of this process own this home?", kept on
+  `globalThis` so that two copies of the package (two versions in `node_modules`) agree on it.
+- **Keep the engine you start.** `stop()` or `close()` gives the home back. An engine whose reference was lost, never
+  stopped, owns the home until the process ends: the next `start()` on it throws `EngineLockedError`, and nothing but
+  the engine itself can release it. Hold the reference (or stop the engine in a `finally`).
 - **Provider.** A manifest (data: id, binary, capabilities) and an adapter factory (code). The core knows no provider by
   name; the adapters for Claude Code, Cursor Agent and Codex are separate packages in the repository.
 - **Run.** One execution of a provider: `queued`, `running`, then `done`, `failed`, `cancelled`, `timed_out` or
   `interrupted`; `waiting_approval` while a human has to decide.
 - **`startedBy`.** Who asked, a required field of every call that starts work: `null` is your own program, `"owner"`
   the person at the machine, `"device:<id>"` a paired phone. Rules depend on it (a device only runs on providers whose
-  reads stay in the working folder, always has its writes parked, and never approves what it asked for).
+  reads stay in the working folder, always has its writes parked, and never approves what it asked for). Leaving it out
+  is a `ZodError`, not a run for nobody, and the strings `"null"` and `"program"` are refused: the engine writes the
+  program down by those names, so they are not names of anyone else.
 - **Home.** The folder with the engine's state: `config/` (settings, database, token), `skills/`, `memory/`,
   `artifacts/`, `logs/` and `workspace/`, the default working directory of a run.
 
@@ -50,7 +57,8 @@ timer and recovers nothing: call `engine.start()` for that.
 What `createEngine` returns: `home`, `events`, `execution`, `providers`, `settings()`, `updateSettings(patch)`,
 `start()`, `stop(timeoutMs?)` and `close()`. `start()` throws `EngineLockedError` when another engine - in this process
 or another - owns the home; `stop()` interrupts the runs in progress (they end `interrupted`), waits for them, releases the home and closes the
-database; `close()` does the release and the close at once.
+database; `close()` does the release and the close at once. A run that an earlier process left `running` or `queued` is
+marked `interrupted` by `start()` (the recovery announces `run.finished`, so a `wait` on it ends).
 
 ### `EngineOptions`
 
@@ -84,7 +92,7 @@ events.
 | `cancel(runId, reason?)`                         | Cancels a queued, parked or running run. Resolves whether anything was cancelled.                                                             |
 | `events(runId, afterId?)`                        | The persisted events of a run, in order.                                                                                                      |
 | `subscribe(runId, listener)`                     | Live events of a run; returns the function that stops them.                                                                                   |
-| `wait(runId, options?)`                          | Resolves with the run when it has ended. Aborting `options.signal` rejects with the signal's reason and leaves the run alone.                 |
+| `wait(runId, options?)`                          | Resolves with the run when it has ended (at once if it already has; rejects 404 for an unknown run). Aborting `options.signal` rejects with the signal's reason and leaves the run alone. |
 
 ### `StartPromptInput`
 
@@ -92,7 +100,9 @@ events.
 conversation's, then `settings.defaultProvider`), `model`, `effort`, `mode` (`"read_only"`, the default, or `"write"`),
 `cwd`, `timeoutMs` (10 000 to 3 600 000), `sessionId` (continue a conversation: its provider and working folder are
 the defaults), `parentRunId` and `submissionId` (a UUID that makes the call idempotent: the same id with the same
-body and asker returns the first result, a different body or asker is `submission_conflict`).
+body and asker returns the first result, a different body or asker is `submission_conflict`). `timeoutMs` is held to
+that range when a caller gives it; the default the engine applies (`settings.limits.defaultTimeoutMs`, which only has a
+floor) is not.
 
 Refusals happen before anything is created - no conversation, no run: a `ZodError` for the bounds, `profile_refused`
 for a write under `read_only`, `PathAccessError` for a `cwd` outside the home and the indexed folders, `unknown_provider`
@@ -319,6 +329,8 @@ The codes, in this order:
 | `skill_unavailable`       | 409    | The skill a run or a step names no longer exists                                       |
 | `workspace_unavailable`   | 409    | `<home>/workspace` exists and is not a folder                                          |
 | `engine_locked`           | -      | Another engine owns the home (`EngineLockedError`)                                     |
+| `approval_expired`        | 409    | The approval is past its time (or was marked expired) and can no longer be decided     |
+| `approval_resolved`       | 409    | The approval was already approved or denied                                            |
 
 ### `EngineErrorCode`
 
@@ -355,8 +367,11 @@ move to a public entry point when someone outside the repository writes one.
 
 - `exports` has two entry points; `files` ships `dist`, the README and the license, without sourcemaps, tests or
   fixtures.
-- The license is the Functional Source License 1.1 with the Apache 2.0 future license (`FSL-1.1-ALv2`), the text of the
-  `LICENSE` in the package. The `LICENSE` at the root of the repository stays as it is until the commercial license
-  feature.
+- The license is the Functional Source License 1.1 with the Apache 2.0 future license (`FSL-1.1-ALv2`). Each package
+  carries a copy of the `LICENSE` at the root of the repository (a test requires the copies to be equal); `license`
+  in `package.json` points at it (`SEE LICENSE IN LICENSE`). The root `LICENSE` is a draft for the owner to review: the
+  licensor is still `[A PREENCHER PELO DONO]`.
 - `@mordomo/contracts` is the package that `@mordomo/core` depends on, and has the same metadata.
 - Native code: `better-sqlite3`. The package has no install script of its own.
+- The declarations use the types of Node, so `@types/node` (22 or newer) is an optional peer dependency of `@mordomo/core`: a TypeScript program installs it, a JavaScript one does not need it.
+- `repository` names the repository and the folder of each package.

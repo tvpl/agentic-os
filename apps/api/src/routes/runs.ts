@@ -7,6 +7,7 @@ import {
   ProviderId,
   EffortLevel,
   NotRegularFileError,
+  RUN_LIMITS,
   inspectPath,
   checkWorkspacePath,
   findOnPath,
@@ -69,13 +70,13 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     const body = z
       .object({
         submissionId: z.string().uuid().optional(),
-        prompt: z.string().min(1).max(20_000),
+        prompt: z.string().min(1).max(RUN_LIMITS.promptMaxChars),
         provider: ProviderId.optional(),
         model: z.string().nullable().optional(),
         effort: EffortLevel.optional(),
         mode: z.enum(["read_only", "write"]).default("read_only"),
         cwd: z.string().optional(),
-        timeoutMs: z.number().int().min(10_000).max(3_600_000).optional(),
+        timeoutMs: z.number().int().min(RUN_LIMITS.timeoutMinMs).max(RUN_LIMITS.timeoutMaxMs).optional(),
         sessionId: UuidParam.optional(),
       })
       .parse(req.body);
@@ -98,13 +99,13 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
     if (!parent) throw httpError(404, "Run not found");
     const body = z
       .object({
-        prompts: z.array(z.string().min(1).max(20_000)).min(1).max(8),
+        prompts: z.array(z.string().min(1).max(RUN_LIMITS.promptMaxChars)).min(1).max(8),
         provider: ProviderId.optional(),
         model: z.string().nullable().optional(),
         effort: EffortLevel.optional(),
         mode: z.enum(["read_only", "write"]).default("read_only"),
         cwd: z.string().optional(),
-        timeoutMs: z.number().int().min(10_000).max(3_600_000).optional(),
+        timeoutMs: z.number().int().min(RUN_LIMITS.timeoutMinMs).max(RUN_LIMITS.timeoutMaxMs).optional(),
       })
       .parse(req.body);
     const { prompts, ...shared } = body;

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import ts from "typescript";
 import { ZodError } from "zod";
 import {
   MordomoError,
@@ -50,6 +51,26 @@ const refusal = (fn: () => unknown): MordomoError => {
 
 const skillFront = (slug: string, extra = "", providers = "echo") =>
   `name: ${slug}\nslug: ${slug}\ndescription: A skill for ${slug}\nproviders: [${providers}]\n${extra}`;
+
+const parked = (engine: Engine, extra: Record<string, unknown> = {}) =>
+  engine.execution.startPrompt({ prompt: "change it", mode: "write", startedBy: null, ...extra });
+
+/** The members of `ApprovalKind`, read from the type itself, so a kind added to the union is not missed by a list typed here. */
+function approvalKindsInContracts(): string[] {
+  const file = path.resolve(import.meta.dirname, "../contracts/src/policy.ts");
+  const sf = ts.createSourceFile(file, fs.readFileSync(file, "utf8"), ts.ScriptTarget.ES2022, true);
+  const alias = sf.statements.find(
+    (statement): statement is ts.TypeAliasDeclaration =>
+      ts.isTypeAliasDeclaration(statement) && statement.name.text === "ApprovalKind",
+  );
+  if (!alias || !ts.isUnionTypeNode(alias.type))
+    throw new Error("ApprovalKind is no longer a union of literals");
+  return alias.type.types.map((member) => {
+    if (!ts.isLiteralTypeNode(member) || !ts.isStringLiteral(member.literal))
+      throw new Error("ApprovalKind has a member that is not a string literal");
+    return member.literal.text;
+  });
+}
 
 function emptyOf(engine: Engine): void {
   expect(rowCount(engine, "sessions")).toBe(0);
@@ -180,9 +201,6 @@ describe("S1 a program with only @mordomo/core runs an agent", () => {
 });
 
 describe("S2 the rules of the engine hold for a library caller", () => {
-  const parked = (engine: Engine, extra: Record<string, unknown> = {}) =>
-    engine.execution.startPrompt({ prompt: "change it", mode: "write", startedBy: null, ...extra });
-
   it("C8 under review_before_write a write is parked for approval and the provider is not called", () => {
     const echo = echoProvider();
     const engine = buildEngine([echo], { profile: "review_before_write" });
@@ -321,6 +339,8 @@ describe("S2 the rules of the engine hold for a library caller", () => {
       "send_external_data",
       "overwrite_existing_config",
     ] as const;
+    // The list above is the whole of `ApprovalKind`: a new kind has to be given a row here (and a rule in the engine).
+    expect([...kinds].sort()).toEqual(approvalKindsInContracts().sort());
     const deviceMayApprove = new Set(["write_run", "tool_use"]);
     for (const kind of kinds) {
       const approval = requests.request(kind, `a ${kind}`, {}, "device:other");
@@ -610,5 +630,316 @@ describe("S2 the rules of the engine hold for a library caller", () => {
     expect(record.status).toBe("failed");
     expect(record.error).toContain("boom");
     expect(reported).toBe(0);
+  });
+});
+
+describe("S6 the facade holds where the first verification attacked it", () => {
+  /** Count the listeners an engine's bus has from now on (the engine's own were installed when it was built). */
+  function countListeners(engine: Engine): () => number {
+    const bus = internals(engine).events;
+    const subscribe = bus.subscribe.bind(bus);
+    let live = 0;
+    bus.subscribe = (listener) => {
+      live += 1;
+      const off = subscribe(listener);
+      let once = true;
+      return () => {
+        if (once) live -= 1;
+        once = false;
+        return off();
+      };
+    };
+    return () => live;
+  }
+
+  const orphanRun = (engine: Engine) => {
+    const inner = internals(engine);
+    const run = inner.runs.create({
+      origin: "manual",
+      provider: "echo",
+      prompt: "left behind",
+      cwd: inner.runs.defaultCwd(),
+      model: null,
+      effort: "default",
+      mode: "read_only",
+      timeoutMs: 60_000,
+      profile: "read_only",
+      startedBy: null,
+    });
+    inner.db
+      .prepare("UPDATE runs SET status = 'running', started_at = ? WHERE id = ?")
+      .run(Date.now(), run.id);
+    return run.id;
+  };
+
+  it("C52 wait resolves a run that has already ended, refuses an unknown one, and leaves no listener behind", async () => {
+    const echo = echoProvider();
+    const engine = buildEngine([echo]);
+    const listeners = countListeners(engine);
+    const { runId } = engine.execution.startPrompt({ prompt: "hi", startedBy: null });
+    const during = await engine.execution.wait(runId);
+    expect(during.status).toBe("done");
+    expect(listeners()).toBe(0);
+    // Asked again after the end: the run is already terminal, and nothing will announce it a second time.
+    const after = await Promise.race([
+      engine.execution.wait(runId),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("wait never resolved")), 1500)),
+    ]);
+    expect(after).toEqual(during);
+    expect(listeners()).toBe(0);
+    const unknown = await engine.execution.wait(uuid()).catch((e: MordomoError) => e);
+    expect([(unknown as MordomoError).statusCode]).toEqual([404]);
+    expect(listeners()).toBe(0);
+    // Ended by the signal while the run goes on.
+    echo.state.hold = true;
+    const held = engine.execution.startPrompt({ prompt: "slow", startedBy: null });
+    await until(() => echo.state.calls === 2, "the provider to start");
+    const abort = new AbortController();
+    const waiting = engine.execution.wait(held.runId, { signal: abort.signal });
+    expect(listeners()).toBe(1);
+    abort.abort(new Error("enough"));
+    await expect(waiting).rejects.toThrow("enough");
+    expect(listeners()).toBe(0);
+    echo.state.release();
+    await engine.execution.wait(held.runId);
+  });
+
+  it("C53 wait ends for a run that the recovery of a restart marks interrupted", async () => {
+    const engine = buildEngine([echoProvider()]);
+    const orphan = orphanRun(engine);
+    const waiting = engine.execution.wait(orphan);
+    const announced: Array<{ runId: string; status: string }> = [];
+    engine.events.subscribe((event) => {
+      if (event.type === "run.finished") announced.push(event.payload as never);
+    });
+    expect(internals(engine).runs.recoverInterrupted()).toBe(1);
+    const record = await Promise.race([
+      waiting,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("wait never resolved")), 1500)),
+    ]);
+    expect(record.status).toBe("interrupted");
+    expect(announced).toEqual([expect.objectContaining({ runId: orphan, status: "interrupted" })]);
+  });
+
+  it("C54 a retry of a retry stays in the first run's lineage and keeps what the run was asked to do", async () => {
+    const home = tempHome();
+    writeSkill(home, "say-hi", skillFront("say-hi"));
+    const echo = echoProvider();
+    const engine = buildEngine([echo], { home, profile: "controlled_write" });
+    const retry = async (of: string, by: string | null = "owner") => {
+      const again = engine.execution.retry(of, { submissionId: uuid(), startedBy: by });
+      await engine.execution.wait(again.runId);
+      return again.runId;
+    };
+    const first = engine.execution.startPrompt({
+      prompt: "edit the file",
+      mode: "write",
+      startedBy: "owner",
+    });
+    await engine.execution.wait(first.runId);
+    const second = await retry(first.runId);
+    const third = await retry(second);
+    expect(engine.execution.get(second)?.parentRunId).toBe(first.runId);
+    expect(engine.execution.get(third)?.parentRunId).toBe(first.runId);
+    // The mode is the retained request's: a write stays a write (the provider is handed it, and so is the record).
+    for (const id of [first.runId, second, third]) {
+      expect(engine.execution.get(id)?.request, id).toMatchObject({ kind: "prompt", mode: "write" });
+    }
+    expect(echo.state.runs.map((run) => run.mode)).toEqual(["write", "write", "write"]);
+
+    const skill = engine.execution.startSkill({ slug: "say-hi", startedBy: "owner" });
+    await engine.execution.wait(skill.runId);
+    const skillSecond = await retry(skill.runId);
+    const skillThird = await retry(skillSecond);
+    expect(engine.execution.get(skillSecond)?.parentRunId).toBe(skill.runId);
+    expect(engine.execution.get(skillThird)?.parentRunId).toBe(skill.runId);
+  });
+
+  it("C55 a retry by the program is recorded as the program's, and a failed retry gives its submissionId back", async () => {
+    const engine = buildEngine([echoProvider()], { profile: "controlled_write" });
+    const first = engine.execution.startPrompt({ prompt: "edit", mode: "write", startedBy: "owner" });
+    await engine.execution.wait(first.runId);
+    const receipt = (id: string) =>
+      internals(engine).db.prepare("SELECT requested_by FROM run_action_receipts WHERE id = ?").get(id) as
+        { requested_by: string | null } | undefined;
+    const byProgram = uuid();
+    const repeated = engine.execution.retry(first.runId, { submissionId: byProgram, startedBy: null });
+    await engine.execution.wait(repeated.runId);
+    expect(receipt(byProgram)?.requested_by).toBe("program");
+    expect(engine.execution.retry(first.runId, { submissionId: byProgram, startedBy: null })).toEqual(
+      repeated,
+    );
+    expect(
+      refusal(() => engine.execution.retry(first.runId, { submissionId: byProgram, startedBy: "owner" }))
+        .code,
+    ).toBe("submission_conflict");
+    const byOwner = uuid();
+    const owned = engine.execution.retry(first.runId, { submissionId: byOwner, startedBy: "owner" });
+    await engine.execution.wait(owned.runId);
+    expect(receipt(byOwner)?.requested_by).toBe("owner");
+
+    // A retry the rules refuse leaves no receipt: the same submissionId is free for the retry that works.
+    const refusedId = uuid();
+    engine.updateSettings({ securityProfile: "read_only" });
+    const before = rowCount(engine, "run_action_receipts");
+    expect(
+      refusal(() => engine.execution.retry(first.runId, { submissionId: refusedId, startedBy: "owner" }))
+        .code,
+    ).toBe("profile_refused");
+    expect(receipt(refusedId)).toBeUndefined();
+    expect(rowCount(engine, "run_action_receipts")).toBe(before);
+    engine.updateSettings({ securityProfile: "controlled_write" });
+    const later = engine.execution.retry(first.runId, { submissionId: refusedId, startedBy: "owner" });
+    await engine.execution.wait(later.runId);
+    expect(receipt(refusedId)?.requested_by).toBe("owner");
+  });
+
+  it("C56 who asked cannot be left out at run time, and the names of the program are not names of anyone", () => {
+    const home = tempHome();
+    writeSkill(home, "say-hi", skillFront("say-hi"));
+    const engine = buildEngine([echoProvider()], { home });
+    const id = uuid();
+    const attempts: Array<[string, () => unknown]> = [
+      ["prompt without startedBy", () => engine.execution.startPrompt({ prompt: "hi" } as never)],
+      ["skill without startedBy", () => engine.execution.startSkill({ slug: "say-hi" } as never)],
+      ["retry without startedBy", () => engine.execution.retry(id, { submissionId: uuid() } as never)],
+      [
+        "prompt as undefined",
+        () => engine.execution.startPrompt({ prompt: "hi", startedBy: undefined } as never),
+      ],
+      ["prompt as an empty name", () => engine.execution.startPrompt({ prompt: "hi", startedBy: "" })],
+      ["prompt as 'null'", () => engine.execution.startPrompt({ prompt: "hi", startedBy: "null" })],
+      ["prompt as 'program'", () => engine.execution.startPrompt({ prompt: "hi", startedBy: "program" })],
+      ["skill as 'program'", () => engine.execution.startSkill({ slug: "say-hi", startedBy: "program" })],
+      ["retry as 'null'", () => engine.execution.retry(id, { submissionId: uuid(), startedBy: "null" })],
+    ];
+    for (const [label, call] of attempts) expect(call, label).toThrow(ZodError);
+    emptyOf(engine);
+  });
+
+  it("C57 a provider that confines no write is parked unless the profile is approved_automation", async () => {
+    const table: Array<[SecurityProfile, "broker" | "none", "waiting_approval" | "queued"]> = [
+      ["controlled_write", "broker", "queued"],
+      ["controlled_write", "none", "waiting_approval"],
+      ["approved_automation", "none", "queued"],
+      ["review_before_write", "none", "waiting_approval"],
+    ];
+    for (const [profile, writeConfinement, expected] of table) {
+      const echo = echoProvider({ writeConfinement });
+      const engine = buildEngine([echo], { profile });
+      const started = parked(engine, { startedBy: "owner" });
+      expect(started.status, `${profile} / ${writeConfinement}`).toBe(expected);
+      if (expected === "queued") await engine.execution.wait(started.runId);
+      else expect(echo.state.calls, `${profile} / ${writeConfinement}`).toBe(0);
+    }
+  });
+
+  it("C58 the daily budget of a skill refuses when it is spent to the cent, and caps the run with what is left", async () => {
+    const home = tempHome();
+    writeSkill(home, "budgeted", skillFront("budgeted", "budgetUsd: 1"));
+    const engine = buildEngine([echoProvider()], { home });
+    const inner = internals(engine);
+    const spend = (usd: number) => {
+      const run = inner.runs.create({
+        origin: "skill",
+        provider: "echo",
+        prompt: "(skill: budgeted)",
+        cwd: inner.runs.defaultCwd(),
+        model: null,
+        effort: "default",
+        mode: "read_only",
+        timeoutMs: 60_000,
+        profile: "read_only",
+        skillSlug: "budgeted",
+        startedBy: null,
+      });
+      inner.db.prepare("UPDATE runs SET status = 'done', cost_usd = ? WHERE id = ?").run(usd, run.id);
+    };
+    spend(0.75);
+    const started = engine.execution.startSkill({ slug: "budgeted", startedBy: null });
+    await engine.execution.wait(started.runId);
+    expect(engine.execution.get(started.runId)?.maxCostUsd).toBeCloseTo(0.25, 5);
+    // Spent to the cent: 0.75 and the 0.25 of the run just made.
+    inner.db.prepare("UPDATE runs SET cost_usd = 0.25 WHERE id = ?").run(started.runId);
+    const error = refusal(() => engine.execution.startSkill({ slug: "budgeted", startedBy: null }));
+    expect([error.statusCode, error.code]).toEqual([409, "budget_exhausted"]);
+    inner.db.prepare("UPDATE runs SET cost_usd = 0.2 WHERE id = ?").run(started.runId);
+    const left = engine.execution.startSkill({ slug: "budgeted", startedBy: null });
+    await engine.execution.wait(left.runId);
+    expect(engine.execution.get(left.runId)?.maxCostUsd).toBeCloseTo(0.05, 5);
+  });
+
+  it("C59 resolveApproval announces the decision on the bus, with the run it launched", async () => {
+    const engine = buildEngine([echoProvider()], { profile: "review_before_write" });
+    const heard: Array<Record<string, unknown>> = [];
+    engine.events.subscribe((event) => {
+      if (event.type === "approval.resolved") heard.push(event.payload as never);
+    });
+    const approved = parked(engine, { prompt: "change one" });
+    const denied = parked(engine, { prompt: "change two" });
+    await engine.execution.resolveApproval(approved.pendingApproval!.id, "approved", "owner");
+    await engine.execution.resolveApproval(denied.pendingApproval!.id, "denied", "owner");
+    await engine.execution.wait(approved.runId);
+    expect(heard).toEqual([
+      { id: approved.pendingApproval!.id, kind: "write_run", status: "approved", runId: approved.runId },
+      { id: denied.pendingApproval!.id, kind: "write_run", status: "denied", runId: null },
+    ]);
+  });
+
+  it("C60 an approval that was decided or that expired is refused with a MordomoError and a stable code", async () => {
+    const engine = buildEngine([echoProvider()], { profile: "review_before_write" });
+    engine.updateSettings({ limits: { approvalTtlDays: 1 } });
+    const decided = parked(engine, { prompt: "change one" });
+    await engine.execution.resolveApproval(decided.pendingApproval!.id, "approved", "owner");
+    const again = await engine.execution
+      .resolveApproval(decided.pendingApproval!.id, "approved", "owner")
+      .catch((e: unknown) => e);
+    expect(again).toBeInstanceOf(MordomoError);
+    expect([(again as MordomoError).statusCode, (again as MordomoError).code]).toEqual([
+      409,
+      "approval_resolved",
+    ]);
+
+    const age = (id: string) =>
+      internals(engine)
+        .db.prepare("UPDATE approvals SET created_at = created_at - ? WHERE id = ?")
+        .run(2 * 86_400_000, id);
+    // Past its time and swept by the call: it is expired, and said so.
+    const late = parked(engine, { prompt: "change two" });
+    age(late.pendingApproval!.id);
+    const expired = await engine.execution
+      .resolveApproval(late.pendingApproval!.id, "approved", "owner")
+      .catch((e: unknown) => e);
+    expect(expired).toBeInstanceOf(MordomoError);
+    expect([(expired as MordomoError).statusCode, (expired as MordomoError).code]).toEqual([
+      409,
+      "approval_expired",
+    ]);
+    // Past its time and not yet swept: the store itself refuses the same way.
+    const unswept = parked(engine, { prompt: "change three" });
+    age(unswept.pendingApproval!.id);
+    const direct = refusal(() =>
+      internals(engine).approvals.resolve(unswept.pendingApproval!.id, "approved"),
+    );
+    expect([direct.statusCode, direct.code]).toEqual([409, "approval_expired"]);
+  });
+  it("C65 cancel keeps the reason it was given, for a parked run and for one in progress", async () => {
+    const echo = echoProvider();
+    echo.state.hold = true;
+    const engine = buildEngine([echo], { profile: "controlled_write" });
+    const waiting = parked(engine, { startedBy: "device:abc" });
+    expect(waiting.status).toBe("waiting_approval");
+    expect(await engine.execution.cancel(waiting.runId, "the owner changed their mind")).toBe(true);
+    const record = engine.execution.get(waiting.runId)!;
+    expect([record.status, record.error]).toEqual(["cancelled", "the owner changed their mind"]);
+
+    const running = engine.execution.startPrompt({ prompt: "slow", startedBy: null });
+    await until(() => echo.state.calls === 1, "the provider to start");
+    expect(await engine.execution.cancel(running.runId, "taking too long")).toBe(true);
+    await engine.execution.wait(running.runId);
+    const noted = engine.execution
+      .events(running.runId)
+      .some(({ event }) => event.type === "permission" && event.detail === "taking too long");
+    expect(noted).toBe(true);
   });
 });

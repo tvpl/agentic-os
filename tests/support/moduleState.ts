@@ -12,7 +12,9 @@ import ts from "typescript";
  *     says why it is not;
  *   - a `Map` or `Set` given its entries (`new Set(["a", "b"])`, a lookup table) only when this file adds to it;
  *   - a `const` array or object literal that this file mutates (`.push(`, `.set(`, `x[k] =`, `x.k =`, `delete x.k`,
- *     `Object.assign(x, ...)`), and a class with a `static` property that has an initializer.
+ *     `Object.assign(x, ...)`), and a class with a `static` property that has an initializer;
+ *   - any use of `globalThis` (once per file): what lives there is shared by every copy of a package loaded in the
+ *     process, so it is state whatever the code around it looks like.
  *
  * What it does not see, said once: state behind a function call (`const cache = makeCache()`), and a table that
  * another file mutates. The list in the test that uses it is the closed answer for the first; code review is the
@@ -111,6 +113,16 @@ export function moduleState(source: string, file = "file.ts"): StateFinding[] {
   const findings: StateFinding[] = [];
   const add = (node: ts.Node, name: string, why: string) =>
     findings.push({ file, name, line: sf.getLineAndCharacterOfPosition(node.getStart()).line + 1, why });
+  const usesGlobalThis = (node: ts.Node): ts.Node | null => {
+    if (ts.isIdentifier(node) && node.text === "globalThis") return node;
+    let found: ts.Node | null = null;
+    ts.forEachChild(node, (child) => {
+      found ??= usesGlobalThis(child);
+    });
+    return found;
+  };
+  const global = usesGlobalThis(sf);
+  if (global) add(global, "globalThis", "process-wide through globalThis");
   for (const statement of sf.statements) {
     if (ts.isVariableStatement(statement)) {
       const isConst = (statement.declarationList.flags & ts.NodeFlags.Const) !== 0;

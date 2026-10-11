@@ -20,13 +20,23 @@
   `engine.events`, the provider contract and the errors (`docs/sdk.md`) - and everything else moved to
   `@mordomo/core/internal`. The logic that decides whether a run may start (write policy, working folders, who asked,
   `submissionId` receipts, the approval flow) moved from the HTTP routes into the core, and the routes and the CLI are
-  clients of it; their answers do not change, except that `mordomo run` now also refuses a disabled skill, a provider
-  that is not enabled and a missing required input, as the Command Centre always did. The event bus, the allowlist of
+  clients of it; their answers do not change, with these exceptions: `mordomo run` now also refuses a disabled skill,
+  a provider that is not enabled, a provider the skill does not list and a missing required input, as the Command
+  Centre always did, and applies the skill's daily budget (exit 1 when it is spent) and the cost cap that what is left
+  of it puts on the run, which the CLI did not apply before; the replay of a retry that was parked for approval (same
+  `submissionId`) answers `202`, like the call it repeats, where it answered `200` with the same body; a `startedBy` of
+  `"null"` or `"program"` is refused (they are the names the receipts keep the program under); and a restart that marks
+  runs `interrupted` now announces `run.finished` for each, so a `wait` on one ends and the memory journal gets a line.
+  The event bus, the allowlist of
   executables (`SpawnPolicy`) and the memo of related files are per engine instead of per process, so two engines in
-  one process no longer hear or overwrite each other; a second `start()` on the same home in the same process now
-  throws `EngineLockedError` instead of taking the lock. A connector command named like a provider binary now needs
-  `connectors.allowedCommands`. `@mordomo/core` and `@mordomo/contracts` carry the metadata to be packed (license
-  FSL-1.1-ALv2, `exports`, `files`, `engines`, `sideEffects`, README); nothing is published.
+  one process no longer hear or overwrite each other; a second `start()` on the same home in the same process (also
+  through another spelling of the path, or from another copy of the package) now throws `EngineLockedError` instead
+  of taking the lock; an engine that was started and never stopped, with its reference lost, holds the home until
+  the process ends. Approvals that were decided or expired are refused with a `MordomoError` (`approval_resolved`,
+  `approval_expired`, both 409 as before). A connector command named like a provider binary now needs
+  `connectors.allowedCommands`. `@mordomo/core` and `@mordomo/contracts` carry the metadata to be packed (`license` pointing at a
+  `LICENSE` that is a copy of the repository's, `repository`, `exports`, `files`, `engines`, `sideEffects`, README; the
+  core also names `@types/node` as an optional peer dependency, as its declarations use it); nothing is published.
 - **Interface (primitivas)**: dialogs, popovers, tabs, switches, the "+" menu and icon-button hints
   are built on Radix (`apps/command-centre/src/ui`, six `@radix-ui/*` packages at exact versions) and
   drawn by one stylesheet in both interfaces; the Núcleo keeps its glass and the frame its flat sheet

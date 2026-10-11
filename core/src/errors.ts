@@ -15,6 +15,8 @@ export const ENGINE_ERROR_CODES = [
   "skill_unavailable",
   "workspace_unavailable",
   "engine_locked",
+  "approval_expired",
+  "approval_resolved",
 ] as const;
 
 /** One of `ENGINE_ERROR_CODES`. */

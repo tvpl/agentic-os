@@ -43,6 +43,16 @@ describe("C49 the reader of module-level state", () => {
     ["array spliced", "const queue = [1, 2];\nexport function take() { queue.splice(0, 1); }", ["queue"]],
     ["array indexed", "const slots = [0];\nexport function set() { slots[0] = 1; }", ["slots"]],
     ["a static property with a value", "class Pool { static open = new Map(); }", ["Pool.open"]],
+    [
+      "a registry kept on globalThis",
+      "const KEY = Symbol.for('x');\nexport function held() { return ((globalThis as any)[KEY] ??= new Map()); }",
+      ["globalThis"],
+    ],
+    [
+      "globalThis read in a function",
+      "export const now = () => globalThis.performance.now();",
+      ["globalThis"],
+    ],
   ];
   for (const [label, source, expected] of accused) {
     it(`accuses ${label}`, () => {
@@ -78,6 +88,7 @@ describe("C49 the reader of module-level state", () => {
       "a class without static state",
       "class Holder { items = new Map(); static make() { return new Holder(); } }",
     ],
+    ["a word globalThis in a string", "export const note = 'not globalThis at all';"],
     [
       "a let inside a function",
       "export function f() { let n = 0; const m = new Map(); n += 1; return m.size + n; }",

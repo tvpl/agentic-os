@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { createEngine, EngineLockedError, type Engine, type OsEventType } from "@mordomo/core";
@@ -51,8 +51,8 @@ const PROCESS_SCOPED: Record<string, string> = {
     "keyed by the process id of a child, a name in the operating system's table; only the safeSpawn that made the child stores or reads its entry",
   "core/src/spawn/which.ts pathCache":
     "memo of the PATH of the process (30 s) and the folders on disk; it holds nothing an engine decided",
-  "core/src/ownerLock.ts heldByThisProcess":
-    "the owner locks this process holds: whether a lock file naming this pid belongs to a live engine is a question only the process can answer (door 7)",
+  "core/src/ownerLock.ts globalThis":
+    "the owner locks this process holds, on globalThis under a Symbol.for key so that two copies of the package in one process share one registry: whether a lock file naming this pid belongs to a live engine is a question only the process can answer (door 7)",
   "core/src/notifications/recorder.ts installed":
     "WeakMap keyed by the EventBus: one entry per bus, gone with it",
   "core/src/memory/journal.ts installed": "WeakMap keyed by the EventBus: one entry per bus, gone with it",
@@ -305,6 +305,46 @@ describe("S4 nothing of an engine is shared with another", () => {
     const d = buildEngine([echoProvider()], { home });
     expect(() => d.start()).not.toThrow();
     expect(JSON.parse(fs.readFileSync(lockFile, "utf8")).token).not.toBe("left-behind");
+  });
+
+  it("C66 the owner of a home is found under another spelling of its path, and from another copy of the package", async () => {
+    const home = tempHome();
+    const spelling = `${home}-link`;
+    fs.symlinkSync(home, spelling);
+    try {
+      const a = buildEngine([echoProvider()], { home });
+      a.start();
+      // The same folder through a link: the same lock.
+      const viaLink = buildEngine([echoProvider()], { home: spelling });
+      expect(() => viaLink.start()).toThrow(EngineLockedError);
+
+      // A second copy of the package in the process (two versions in node_modules) shares the registry of locks.
+      vi.resetModules();
+      const copy = await import("@mordomo/core");
+      expect(copy.createEngine).not.toBe(createEngine);
+      const provider = echoProvider();
+      const other = copy.createEngine({
+        home,
+        seedDir: null,
+        providers: new copy.ProviderRegistry().register(provider.manifest, provider.factory),
+      });
+      try {
+        let refusal: unknown;
+        try {
+          other.start();
+        } catch (error) {
+          refusal = error;
+        }
+        expect((refusal as { code?: string } | undefined)?.code).toBe("engine_locked");
+        expect((refusal as { holderPid?: number }).holderPid).toBe(process.pid);
+      } finally {
+        other.close();
+      }
+      await a.stop(500);
+      expect(() => viaLink.start()).not.toThrow();
+    } finally {
+      fs.rmSync(spelling, { force: true });
+    }
   });
 
   it("C36 a restore of one home does not hold up an engine of another, and two engines of one home are built", () => {

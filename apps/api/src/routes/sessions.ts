@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { EffortLevel, ProviderId } from "@mordomo/core/internal";
+import { EffortLevel, ProviderId, RUN_LIMITS } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
 import { httpError, startedByOf } from "./common.js";
 import { UuidParams } from "./params.js";
@@ -39,11 +39,11 @@ export function registerSessionRoutes(app: FastifyInstance, ctx: AppContext): vo
     const body = z
       .object({
         submissionId: z.string().uuid().optional(),
-        prompt: z.string().min(1).max(20_000),
+        prompt: z.string().min(1).max(RUN_LIMITS.promptMaxChars),
         mode: z.enum(["read_only", "write"]).default("read_only"),
         effort: EffortLevel.optional(),
         model: z.string().nullable().optional(),
-        timeoutMs: z.number().int().min(10_000).max(3_600_000).optional(),
+        timeoutMs: z.number().int().min(RUN_LIMITS.timeoutMinMs).max(RUN_LIMITS.timeoutMaxMs).optional(),
       })
       .parse(req.body);
     // Provider and cwd come from the session itself (`startPrompt` resolves

@@ -8,8 +8,21 @@ export const RUN_LIMITS = {
   timeoutMaxMs: 3_600_000,
 } as const;
 
+/**
+ * Names that stand for "the program itself" in what the engine writes down: a receipt keeps `null` as `null` in one
+ * place and as `program` in another, so a person called either would be taken for the program. Not names of anyone.
+ */
+const RESERVED_ASKERS: ReadonlySet<string> = new Set(["null", "program"]);
+
 /** `null` is the program itself (the CLI, an embedder, a routine); the field cannot be left out. */
-const StartedBy = z.string().min(1).max(200).nullable();
+const StartedBy = z
+  .string()
+  .min(1)
+  .max(200)
+  .refine((name) => !RESERVED_ASKERS.has(name), {
+    message: 'startedBy "null" and "program" are reserved for the program itself: pass null',
+  })
+  .nullable();
 
 const Timeout = z.number().int().min(RUN_LIMITS.timeoutMinMs).max(RUN_LIMITS.timeoutMaxMs);
 

@@ -30,14 +30,29 @@ describe("S5 package metadata", () => {
       expect(m.publishConfig, dir).toEqual({ access: "public" });
       expect(Object.keys(m), dir).not.toContain("private");
       expect(m.type, dir).toBe("module");
+      // Where the code lives, for the registry page; the directory says which package of the repository it is.
+      expect(m.repository, dir).toEqual({
+        type: "git",
+        url: "git+https://github.com/tvpl/agentic-os.git",
+        directory: dir,
+      });
+      // The readme is the front page of the package: nothing in it points outside the tarball by a relative path.
+      const readme = read(`${dir}/README.md`);
+      expect(readme.match(/\]\((?!https?:|#)[^)]*\.\.\/[^)]*\)/g) ?? [], dir).toEqual([]);
       // One licence text for the repository: each package ships a copy of the root LICENSE (the licensor is
       // still the owner's to fill in, see STATE "revisão jurídica do dono").
       const license = read(`${dir}/LICENSE`);
       expect(license, dir).toBe(read("LICENSE"));
+      // Whatever the root has (today a notice for the owner's review above the text; the owner removes it).
       expect(license, dir).toContain("# Functional Source License, Version 1.1, ALv2 Future License");
       expect(license, dir).not.toContain("${");
       expect(fs.existsSync(path.join(root, dir, "README.md")), dir).toBe(true);
     }
+    // The declarations of the core use the types of Node (`node:child_process`): a consumer is told to have them.
+    // Optional: a program in JavaScript needs none, and the lockfile must not count the types as shipped software.
+    expect(manifest("core").peerDependencies).toEqual({ "@types/node": ">=22" });
+    expect(manifest("core").peerDependenciesMeta).toEqual({ "@types/node": { optional: true } });
+    expect(manifest("contracts").peerDependencies).toBeUndefined();
     expect(manifest("core").exports).toEqual({
       ".": { types: "./dist/index.d.ts", default: "./dist/index.js" },
       "./internal": { types: "./dist/internal.d.ts", default: "./dist/internal.js" },
@@ -117,10 +132,15 @@ describe("S5 the tarballs, installed in an empty project", () => {
       execFileSync("tar", ["-xzf", path.join(work, packed.filename), "-C", target, "--strip-components=1"]);
     }
     // What the packages depend on is installed from the repository: the test is about the package, not the registry.
-    const needed = new Set<string>(["@types/node", "typescript"]);
+    // Only what the manifests declare (dependencies and peer dependencies), and the compiler: a type the
+    // declarations need and no manifest names would be missing here, as it is for a consumer.
+    const needed = new Set<string>(["typescript"]);
     for (const dir of ["core", "contracts"]) {
-      for (const name of Object.keys((manifest(dir).dependencies as Record<string, string>) ?? {}))
-        if (!name.startsWith("@mordomo/")) needed.add(name);
+      const declared = {
+        ...(manifest(dir).dependencies as object),
+        ...(manifest(dir).peerDependencies as object),
+      };
+      for (const name of Object.keys(declared)) if (!name.startsWith("@mordomo/")) needed.add(name);
     }
     for (const name of needed) {
       const target = path.join(modules, name);

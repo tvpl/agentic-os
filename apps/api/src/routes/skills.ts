@@ -2,7 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { ProviderId, EffortLevel, SkillFrontmatterSchema, statWorkspacePath } from "@mordomo/core/internal";
+import {
+  ProviderId,
+  EffortLevel,
+  RUN_LIMITS,
+  SkillFrontmatterSchema,
+  statWorkspacePath,
+} from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
 import { httpError, startedByOf } from "./common.js";
 import { IdParam, SlugParams } from "./params.js";
@@ -20,7 +26,7 @@ const RunSkillBody = z.object({
   effort: EffortLevel.optional(),
   inputs: z.record(z.string()).default({}),
   cwd: z.string().optional(),
-  timeoutMs: z.number().int().min(10_000).max(3_600_000).optional(),
+  timeoutMs: z.number().int().min(RUN_LIMITS.timeoutMinMs).max(RUN_LIMITS.timeoutMaxMs).optional(),
 });
 
 export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void {

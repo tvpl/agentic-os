@@ -1,7 +1,13 @@
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import type { StartedRun } from "@mordomo/core";
-import { EffortLevel, ProviderId, type RunRequestSpec, type SkillRunInput } from "@mordomo/core/internal";
+import {
+  EffortLevel,
+  ProviderId,
+  RUN_LIMITS,
+  type RunRequestSpec,
+  type SkillRunInput,
+} from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
 import { httpError, requireProvider, startedByOf } from "./common.js";
 import { UuidParams } from "./params.js";
@@ -10,13 +16,13 @@ const requestSchema = z.discriminatedUnion("kind", [
   z.object({
     version: z.literal(1),
     kind: z.literal("prompt"),
-    prompt: z.string().min(1).max(20_000),
+    prompt: z.string().min(1).max(RUN_LIMITS.promptMaxChars),
     mode: z.enum(["read_only", "write"]),
   }),
   z.object({
     version: z.literal(1),
     kind: z.literal("system"),
-    prompt: z.string().min(1).max(20_000),
+    prompt: z.string().min(1).max(RUN_LIMITS.promptMaxChars),
     mode: z.enum(["read_only", "write"]),
   }),
   z.object({
@@ -99,7 +105,7 @@ export function registerObjectiveRoutes(app: FastifyInstance, ctx: AppContext): 
         model: z.string().nullable().optional(),
         effort: EffortLevel.optional(),
         cwd: z.string().optional(),
-        timeoutMs: z.number().int().min(10_000).max(3_600_000).optional(),
+        timeoutMs: z.number().int().min(RUN_LIMITS.timeoutMinMs).max(RUN_LIMITS.timeoutMaxMs).optional(),
       })
       .default({})
       .parse(req.body ?? {});
@@ -140,7 +146,9 @@ export function registerObjectiveRoutes(app: FastifyInstance, ctx: AppContext): 
             effort,
             mode: step.request.mode,
             cwd,
-            timeoutMs,
+            // Only what the caller asked for: the engine applies the setting's default itself, and that default is
+            // not held to the cap on a request (the setting only has a floor).
+            timeoutMs: body.timeoutMs,
             startedBy: startedByOf(req),
           },
           { onError, composed: true },

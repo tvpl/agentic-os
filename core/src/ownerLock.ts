@@ -9,13 +9,24 @@ import { EngineLockedError } from "./errors.js";
 export { EngineLockedError };
 
 /**
+ * Where the registry lives: on `globalThis`, under a symbol of the global registry, so every copy of this package
+ * loaded in the process (two versions in `node_modules`, a bundle and the package itself) reads and writes the same
+ * one. Two copies with a registry each would each see the other's lock as stale (the pid is this process's, the token
+ * is not in their map) and take it from under a running engine.
+ */
+const HELD_LOCKS = Symbol.for("@mordomo/core/owner-lock/held");
+
+/**
  * The owner locks this PROCESS holds, by lock file (resolved through the real folder) -> the token it wrote. Process
  * scoped on purpose: the question it answers - "is that lock held by a live engine of this very process?" - can only
  * be asked by someone who knows every engine of the process, and the lock file alone cannot say (it carries the same
  * pid for the engine that holds it and for one that died without releasing). A lock whose token is here is held; one
  * with this process's pid and a token that is not here is stale, as `lockIsStale` says.
  */
-const heldByThisProcess = new Map<string, string>();
+function heldByThisProcess(): Map<string, string> {
+  const host = globalThis as { [HELD_LOCKS]?: Map<string, string> };
+  return (host[HELD_LOCKS] ??= new Map<string, string>());
+}
 
 /** A temporary file of `acquire()`: `<lock>.<pid>.<token>.tmp` (an older release wrote `<lock>.<pid>.<ms>.tmp`). */
 const TEMP_NAME = /\.(\d+)\.(?:[0-9a-f]{32}|\d+)\.tmp$/;
@@ -122,10 +133,10 @@ export class OwnerLock {
               if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
             }
             const holder = readLock(this.file);
-            if (holder?.token !== undefined && heldByThisProcess.get(this.lockKey()) === holder.token) {
+            if (holder?.token !== undefined && heldByThisProcess().get(this.lockKey()) === holder.token) {
               throw new EngineLockedError(
                 process.pid,
-                `Another MordomoOS engine of this process (pid ${process.pid}) owns this home; stop it first.`,
+                `Another MordomoOS engine of this process (pid ${process.pid}) owns this home; call stop() or close() on it first (an engine nobody holds a reference to any more can only be ended by ending the process).`,
               );
             }
             if (!lockIsStale(holder, this.probe, process.pid))
@@ -146,7 +157,7 @@ export class OwnerLock {
         .immediate();
       this.token = token;
       this.key = this.lockKey();
-      heldByThisProcess.set(this.key, token);
+      heldByThisProcess().set(this.key, token);
     } finally {
       fs.rmSync(temp, { force: true });
     }
@@ -180,7 +191,7 @@ export class OwnerLock {
     if (this.token === null) return;
     const mine = this.token;
     this.token = null;
-    if (this.key !== null && heldByThisProcess.get(this.key) === mine) heldByThisProcess.delete(this.key);
+    if (this.key !== null && heldByThisProcess().get(this.key) === mine) heldByThisProcess().delete(this.key);
     this.key = null;
     if (readLock(this.file)?.token === mine) fs.rmSync(this.file, { force: true });
   }

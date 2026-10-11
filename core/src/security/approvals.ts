@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import type { Db } from "../db/db.js";
+import { MordomoError } from "../errors.js";
 import type { Approval, ApprovalKind } from "@mordomo/contracts";
 
 export type { Approval };
@@ -118,21 +119,18 @@ export class ApprovalStore {
     if (!current) return null;
     if (current.status === "pending" && current.expiresAt <= Date.now()) {
       this.expireStale();
-      throw Object.assign(
-        new Error(
-          `Approval ${id} expired on ${new Date(current.expiresAt).toISOString()} and can no longer be resolved. Request the action again.`,
-        ),
-        {
-          statusCode: 409,
-          code: "approval_expired",
-        },
+      throw new MordomoError(
+        409,
+        `Approval ${id} expired on ${new Date(current.expiresAt).toISOString()} and can no longer be resolved. Request the action again.`,
+        "approval_expired",
       );
     }
     if (current.status !== "pending") {
-      throw Object.assign(new Error(`Approval ${id} is already ${current.status}.`), {
-        statusCode: 409,
-        code: current.status === "expired" ? "approval_expired" : "approval_resolved",
-      });
+      throw new MordomoError(
+        409,
+        `Approval ${id} is already ${current.status}.`,
+        current.status === "expired" ? "approval_expired" : "approval_resolved",
+      );
     }
     if (patch && Object.keys(patch).length > 0) {
       this.db

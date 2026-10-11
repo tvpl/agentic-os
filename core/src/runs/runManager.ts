@@ -414,9 +414,10 @@ export class RunManager {
         note += `; process ${row.pid} was not signalled because ownership could not be verified`;
         this.log({ event: "orphan_unverified", runId: row.id, pid: row.pid });
       }
+      // Settled like any other end, so `run.finished` is announced: whoever waits on the run (`execution.wait`) is
+      // told it ended, instead of waiting for ever.
       if (
-        this.transition(row.id, ["running", "queued"], "interrupted", {
-          finished_at: Date.now(),
+        this.settle(row.id, ["running", "queued"], "interrupted", {
           error: row.error ? `${row.error}; ${note}` : note,
         })
       ) {

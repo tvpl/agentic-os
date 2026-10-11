@@ -3,14 +3,14 @@
 Profile: standard
 Plan: `.specs/features/sdk-core/plan.md`
 
-51 checks in 5 slices (mais as lacunas achadas ao escrever) · 7 one-way doors · 3 open, of which 0 block
+68 checks in 6 slices (S6 e as lacunas C47-C51 achadas depois) · 9 one-way doors (1-9, mais a 2a) · 3 open, of which 0 block
 
 Comandos (da raiz):
 
 - unit: `npx vitest run tests/<arquivo> -t "<nome>"`; o nome de cada teste começa por `C<n> ` (com o espaço), então `-t "C1 "` não casa `C10 `
 - tipos: `npx tsc -p typetests/tsconfig.json` (arquivos `typetests/*.ts` com `// @ts-expect-error`; compila contra os `.d.ts` construídos, então roda depois de `npm run build:server`)
 - build: `npm run build`, `npm run typecheck`, `npm run lint`, `npx vitest run`
-- arquivos novos de teste: `tests/sdk.execution.test.ts` (S1, S2), `tests/sdk.api-thin.test.ts` (S3), `tests/sdk.instances.test.ts` (S4), `tests/sdk.surface.test.ts` e `tests/sdk.package.test.ts` (S5), apoio em `tests/support/sdk.ts` (provedor em processo, home temporária) e `tests/support/moduleState.ts` (o leitor de estado de módulo, com autotestes em `tests/sdk.module-state.test.ts`)
+- arquivos novos de teste: `tests/sdk.execution.test.ts` (S1, S2, S6), `tests/sdk.api-thin.test.ts` (S3, S6), `tests/sdk.api-http.test.ts` e `tests/sdk.cli.test.ts` (S6), `tests/sdk.instances.test.ts` (S4, S6), `tests/sdk.surface.test.ts` e `tests/sdk.package.test.ts` (S5), apoio em `tests/support/sdk.ts` (provedor em processo, home temporária) e `tests/support/moduleState.ts` (o leitor de estado de módulo, com autotestes em `tests/sdk.module-state.test.ts`)
 - o provedor de teste é um adaptador EM PROCESSO (`echo`, sem CLI): a mesma classe que o exemplo do README mostra; os CLIs falsos só entram onde o claim é do adaptador real (C47)
 - base da feature: `795306e`. Falhas que a base já tem (rodada inteira de `vitest` na base, 6 min): `tests/security-git.test.ts` C39 e `tests/api.v1.test.ts` C38 - o gate compara com isso
 
@@ -76,7 +76,7 @@ Status: closed
 Proof: `npx vitest run tests/sdk.execution.test.ts -t "C14 "`
 Status: closed
 
-**C15** - `resolveApproval(id, "approved", "device:abc")` lança 403 `self_approval` quando `device:abc` pediu a aprovação, e para cada um dos 11 tipos de aprovação criada por outro pedinte lança 403 `owner_only` em 9 deles e deixa passar `write_run` e `tool_use`; a aprovação continua `pending` nos casos que lançam (AC 15)
+**C15** - `resolveApproval(id, "approved", "device:abc")` lança 403 `self_approval` quando `device:abc` pediu a aprovação, e para cada um dos 11 tipos de aprovação criada por outro pedinte lança 403 `owner_only` em 9 deles e deixa passar `write_run` e `tool_use`; a lista dos 11 do teste é igual, lida da árvore sintática de `contracts/src/policy.ts`, à união `ApprovalKind` (um tipo novo sem linha reprova); a aprovação continua `pending` nos casos que lançam (AC 15)
 Proof: `npx vitest run tests/sdk.execution.test.ts -t "C15 "`
 Status: closed
 
@@ -130,18 +130,18 @@ Status: closed
 
 ### S3 - a API e a CLI são clientes finos · 14 files · 160 KB · ~40k
 
-**C28** - Lendo o código (árvore sintática), os únicos arquivos fora de testes que chamam `runs.create(` ou `runs.execute(` são `core/src/engine.ts` (a execução parada do gate), os de `core/src/execution/`, `core/src/routines/scheduler.ts` e `core/src/sentinels/triage.ts`; nenhum arquivo de `apps/api/src` os chama, nenhum chama `gateWrite(` fora de `core/src/engine.ts` e `core/src/execution/`, e nenhum escreve em `prompt_submissions` nem em `run_action_receipts` fora de `core/src/execution/` (AC 28)
+**C28** - Lendo o código (árvore sintática), os únicos arquivos fora de testes que iniciam uma execução (`runs.create`, `runs.execute`: chamados, por elemento de acesso `["create"]`, por conversão de tipo, por um alias de `runs` ou desestruturados) são `core/src/engine.ts` (a execução parada do gate), os de `core/src/execution/`, `core/src/routines/scheduler.ts` e `core/src/sentinels/triage.ts`; nenhum arquivo de `apps/api/src` os usa, nenhum chama `gateWrite` fora de `core/src/engine.ts` e `core/src/execution/`, nenhum escreve em `prompt_submissions` nem em `run_action_receipts` fora de `core/src/execution/`, e o único arquivo fora de `core/src/execution/` que chama `gateAndLaunchSkill`, `launchSkillRun` ou `launchPromptRun` é `apps/api/src/routes/objectives.ts`, uma vez; o leitor é provado contra fontes de exemplo de cada forma (AC 28; F41, F42, F43)
 Proof: `npx vitest run tests/sdk.api-thin.test.ts -t "C28 "`
 Status: closed
 
-**C29** - As oito suítes `tests/api.profiles.test.ts`, `tests/api.submission.test.ts`, `tests/api.run-retry.test.ts`, `tests/api.hardening.test.ts`, `tests/device-scopes.test.ts`, `tests/api.sessions.test.ts`, `tests/api.objectives.test.ts` e `tests/cli.write-gate.test.ts` passam com as asserções iguais às da base `795306e` (o diff dessas suítes contra a base `795306e` só altera linhas de importação e linhas que mencionam `events`, verificado por um teste que reprova qualquer outra linha alterada) (AC 29)
+**C29** - As oito suítes `tests/api.profiles.test.ts`, `tests/api.submission.test.ts`, `tests/api.run-retry.test.ts`, `tests/api.hardening.test.ts`, `tests/device-scopes.test.ts`, `tests/api.sessions.test.ts`, `tests/api.objectives.test.ts` e `tests/cli.write-gate.test.ts` passam com as asserções iguais às da base `795306e` (o diff dessas suítes contra a base `795306e` só altera linhas de importação e linhas que mencionam `events`, verificado por um teste que reprova qualquer outra linha alterada); as respostas que a feature muda de propósito têm os checks C61 e C63 (AC 29)
 Proof: `npx vitest run tests/sdk.api-thin.test.ts -t "C29 "`
 Proof: `npx vitest run tests/api.profiles.test.ts tests/api.submission.test.ts tests/api.run-retry.test.ts tests/api.hardening.test.ts tests/device-scopes.test.ts tests/api.sessions.test.ts tests/api.objectives.test.ts tests/cli.write-gate.test.ts`
 Status: closed
 
 ### S4 - dois motores no mesmo processo não compartilham estado · 18 files · 230 KB · ~35k
 
-**C30** - Lendo o código (árvore sintática) de `core/src` e dos três adaptadores, o estado mutável de nível de módulo é exatamente os 9 itens da lista fechada (`restoreLock.ts` `heldHere` e `live`, `safeSpawn.ts` `ownedKillers`, `which.ts` `pathCache`, `ownerLock.ts` o registro de locks, `notifications/recorder.ts` e `memory/journal.ts` `installed` e `memory/related.ts` `caches`, chaveados pela instância, e `channels/pushEndpoint.ts` `PRIVATE`, a tabela de faixas enchida ao carregar), cada um com um motivo escrito na lista; um item novo ou removido reprova (AC 30)
+**C30** - Lendo o código (árvore sintática) de `core/src` e dos três adaptadores, o estado mutável de nível de módulo é exatamente os 9 itens da lista fechada (`restoreLock.ts` `heldHere` e `live`, `safeSpawn.ts` `ownedKillers`, `which.ts` `pathCache`, `ownerLock.ts` o registro de locks, em `globalThis` sob `Symbol.for` (o leitor acusa qualquer `globalThis`), `notifications/recorder.ts` e `memory/journal.ts` `installed` e `memory/related.ts` `caches`, chaveados pela instância, e `channels/pushEndpoint.ts` `PRIVATE`, a tabela de faixas enchida ao carregar), cada um com um motivo escrito na lista; um item novo ou removido reprova (AC 30)
 Proof: `npx vitest run tests/sdk.instances.test.ts -t "C30 "`
 Status: closed
 
@@ -187,7 +187,7 @@ Status: closed
 Proof: `npx tsc -p typetests/tsconfig.json`
 Status: closed
 
-**C41** - `core/package.json` e `contracts/package.json` têm, literalmente, `license` `"SEE LICENSE IN LICENSE"`, `engines` `{ "node": ">=22" }`, `sideEffects` `false`, `files` `["dist", "!dist/**/*.map", "!dist/**/*.tsbuildinfo", "README.md", "LICENSE"]`, `publishConfig` `{ "access": "public" }` e nenhum `private`; `core/package.json` tem `exports` igual aos dois pontos da door 2; o `LICENSE` de cada um começa por `# Functional Source License, Version 1.1, ALv2 Future License` e contém o titular de `LICENSE` da raiz (`[A PREENCHER PELO DONO: titular dos direitos autorais]`) (AC 41)
+**C41** - `core/package.json` e `contracts/package.json` têm, literalmente, `license` `"SEE LICENSE IN LICENSE"`, `engines` `{ "node": ">=22" }`, `sideEffects` `false`, `files` `["dist", "!dist/**/*.map", "!dist/**/*.tsbuildinfo", "README.md", "LICENSE"]`, `publishConfig` `{ "access": "public" }` e nenhum `private`, `repository` `{ type: "git", url: "git+https://github.com/tvpl/agentic-os.git", directory }`; `core/package.json` tem `exports` igual aos dois pontos da door 2 e `peerDependencies` `{ "@types/node": ">=22" }` com `peerDependenciesMeta` opcional; o `LICENSE` de cada um é igual, byte a byte, ao `LICENSE` da raiz e contém `# Functional Source License, Version 1.1, ALv2 Future License` (a raiz hoje abre com o bloco de aviso `<!-- MINUTA PARA REVISÃO DO DONO`, que o dono apaga depois da revisão; o teste não depende dele) e o `README.md` de cada um não tem link relativo que saia do pacote (AC 41)
 Proof: `npx vitest run tests/sdk.package.test.ts -t "C41 "`
 Status: closed
 
@@ -195,7 +195,7 @@ Status: closed
 Proof: `npx vitest run tests/sdk.package.test.ts -t "C42 "`
 Status: closed
 
-**C43** - Com os dois `.tgz` extraídos num projeto vazio (dependências ligadas ao repositório), `node` roda o exemplo do README com saída 0, o exemplo do README e um `.ts` que importa `createEngine` e os tipos públicos compilam com `tsc --noEmit` (strict, `skipLibCheck: false`), e `import("@mordomo/core/dist/engine.js")` falha com `ERR_PACKAGE_PATH_NOT_EXPORTED` (AC 43)
+**C43** - Com os dois `.tgz` extraídos num projeto vazio (ligadas ao repositório só as dependências e `peerDependencies` que os manifestos declaram, e o `typescript`), `node` roda o exemplo do README com saída 0, o exemplo do README e um `.ts` que importa `createEngine` e os tipos públicos compilam com `tsc --noEmit` (strict, `skipLibCheck: false`), e `import("@mordomo/core/dist/engine.js")` falha com `ERR_PACKAGE_PATH_NOT_EXPORTED` (AC 43)
 Proof: `npx vitest run tests/sdk.package.test.ts -t "C43 "`
 Status: closed
 
@@ -221,11 +221,11 @@ Status: closed
 Proof: `npm run dist:quick && stage=$(ls -d build/package/*/ | head -1) && MORDOMO_HOME=$(mktemp -d) MORDOMO_SKIP_NPM_AUDIT=1 "$stage/bin/mordomo" status --json | grep -q '"running":false'` (o passo "Packager smoke" do CI, depois de `npm run build`)
 Status: closed
 
-**C49** - O leitor de estado de módulo (`tests/support/moduleState.ts`) acusa cada uma destas formas em fontes de exemplo: `let x`, `var x`, `const m = new Map()`, `const s = new Set()` com `.add` no arquivo, `const o = {}` com atribuição de propriedade no arquivo, `const a = []` com `.push` no arquivo, `const e = new EventBus()`; e não acusa: `const T = [..]` e `const O = {..}` só lidos, `const R = /x/`, `const f = () => {}`, uma classe, e um `let` dentro de função (AC 30)
+**C49** - O leitor de estado de módulo (`tests/support/moduleState.ts`) acusa cada uma destas formas em fontes de exemplo: `let x`, `var x`, `const m = new Map()`, `const s = new Set()` com `.add` no arquivo, `const o = {}` com atribuição de propriedade no arquivo, `const a = []` com `.push` no arquivo, `const e = new EventBus()`, `globalThis` usado num registro ou lido numa função; e não acusa: `const T = [..]` e `const O = {..}` só lidos, `const R = /x/`, `const f = () => {}`, uma classe, e um `let` dentro de função (AC 30)
 Proof: `npx vitest run tests/sdk.module-state.test.ts -t "C49 "`
 Status: closed
 
-**C50** - `ENGINE_ERROR_CODES` é, em `toEqual`, a lista de 12 códigos da door 5 (`profile_refused`, `unknown_provider`, `device_provider_refused`, `self_approval`, `owner_only`, `submission_conflict`, `submission_uncertain`, `budget_exhausted`, `request_unavailable`, `skill_unavailable`, `workspace_unavailable`, `engine_locked`) e cada um aparece em `docs/sdk.md` (door 5)
+**C50** - `ENGINE_ERROR_CODES` é, em `toEqual`, a lista de 14 códigos da door 5 (`profile_refused`, `unknown_provider`, `device_provider_refused`, `self_approval`, `owner_only`, `submission_conflict`, `submission_uncertain`, `budget_exhausted`, `request_unavailable`, `skill_unavailable`, `workspace_unavailable`, `engine_locked`, `approval_expired`, `approval_resolved`) e cada um aparece em `docs/sdk.md` (door 5)
 Proof: `npx vitest run tests/sdk.surface.test.ts -t "C50 "`
 Status: closed
 
@@ -233,14 +233,86 @@ Status: closed
 Proof: `npx vitest run tests/sdk.execution.test.ts -t "C51 "`
 Status: closed
 
+### S6 - a fachada segura onde a primeira verificação a atacou · 30 files · 110 KB · ~28k
+
+Acrescentado na correção da rodada 1 (11/10/2026), depois de a verificação achar uma regressão HTTP e 21 mutantes vivos; cada check mata os mutantes que o relatório nomeia (`verification.md`, "Faults injected").
+
+**C52** - `wait` de uma execução que já terminou devolve o registro (sem esperar um evento que não virá) e `wait` de um id sem execução rejeita com `statusCode` 404; depois de resolver, de rejeitar e de ser abortado, o barramento do motor não tem ouvinte a mais (AC 47; F22, F16)
+Proof: `npx vitest run tests/sdk.execution.test.ts -t "C52 "`
+Status: closed
+
+**C53** - Uma execução deixada `running` por um processo morto, com um `wait` já registrado, termina quando `runs.recoverInterrupted()` a marca `interrupted`: `run.finished` é anunciado com esse status e o `wait` devolve o registro (AC 48)
+Proof: `npx vitest run tests/sdk.execution.test.ts -t "C53 "`
+Status: closed
+
+**C54** - `retry` de um `retry` cria uma execução cujo `parentRunId` é a primeira da linhagem (não o retry), e a requisição retida de um prompt de escrita continua `write` (o provedor recebe `mode` `write` três vezes); o mesmo vale para uma skill (AC 49; F05, H14)
+Proof: `npx vitest run tests/sdk.execution.test.ts -t "C54 "`
+Status: closed
+
+**C55** - `retry` com `startedBy` `null` grava `program` no recibo (`run_action_receipts.requested_by`), repete para `null` e dá `submission_conflict` para `"owner"`; um `retry` que o gate recusa depois do recibo (perfil `read_only`) apaga o recibo e o mesmo `submissionId` serve ao retry seguinte (AC 50; F04, F06)
+Proof: `npx vitest run tests/sdk.execution.test.ts -t "C55 "`
+Status: closed
+
+**C56** - `startPrompt`, `startSkill` e `retry` sem `startedBy`, com `undefined`, com `""`, com `"null"` e com `"program"` lançam `ZodError` e não deixam sessão nem execução (AC 51; F44)
+Proof: `npx vitest run tests/sdk.execution.test.ts -t "C56 "`
+Status: closed
+
+**C57** - Com um provedor de `writeConfinement` `"none"`, `startPrompt` de escrita pelo `owner` devolve `"waiting_approval"` (e o provedor com 0 chamadas) sob `controlled_write` e `review_before_write`, e `"queued"` sob `approved_automation`; com `"broker"` sob `controlled_write` devolve `"queued"` (AC 52; F25)
+Proof: `npx vitest run tests/sdk.execution.test.ts -t "C57 "`
+Status: closed
+
+**C58** - Uma skill de `budgetUsd` 1 com 0,75 gasto roda com `maxCostUsd` 0,25; com o gasto somado em exatamente 1,00 `startSkill` lança 409 `budget_exhausted`; com 0,95 roda com `maxCostUsd` 0,05 (AC 53; F11)
+Proof: `npx vitest run tests/sdk.execution.test.ts -t "C58 "`
+Status: closed
+
+**C59** - `resolveApproval` aprovando e negando duas escritas paradas anuncia, nessa ordem, `approval.resolved` com `{ id, kind: "write_run", status, runId }`, o `runId` da execução lançada ao aprovar e `null` ao negar (AC 54; H11)
+Proof: `npx vitest run tests/sdk.execution.test.ts -t "C59 "`
+Status: closed
+
+**C60** - `resolveApproval` de uma aprovação já decidida lança `MordomoError` 409 `approval_resolved`; de uma além do TTL, varrida pela chamada ou chamada direto no `ApprovalStore` antes da varredura, lança `MordomoError` 409 `approval_expired` (AC 55)
+Proof: `npx vitest run tests/sdk.execution.test.ts -t "C60 "`
+Status: closed
+
+**C61** - Com `settings.limits.defaultTimeoutMs` 7 200 000, `POST /api/objectives/:id/dispatch` de um passo de prompt com 20 000 caracteres responde 200, a execução tem `timeoutMs` 7 200 000 e prompt maior que 20 000 (o pacote de contexto); `timeoutMs` 3 600 001 no corpo responde 400 e 3 600 000 responde 200; `POST /api/runs` com prompt de 20 001 responde 400 e sem `timeoutMs` toma o default do setting (AC 56; F18, a regressão HTTP)
+Proof: `npx vitest run tests/sdk.api-http.test.ts -t "C61 "`
+Status: closed
+
+**C62** - `closeAllSse(servidorA)` fecha o canal aberto por uma requisição de A e não o de B, no mesmo processo (AC 57; F35)
+Proof: `npx vitest run tests/sdk.api-http.test.ts -t "C62 "`
+Status: closed
+
+**C63** - Repetir `POST /api/runs/:id/retry` com o `submissionId` de um retry que estacionou responde 202 com o mesmo corpo, e com o de um que ficou `queued` responde 200 (AC 58)
+Proof: `npx vitest run tests/sdk.api-http.test.ts -t "C63 "`
+Status: closed
+
+**C64** - A execução que `POST /api/skills/:slug/notes/promote` estaciona e a que `POST /api/providers/:id/smoke` roda têm `startedBy` `"owner"` (AC 59; G04, G12)
+Proof: `npx vitest run tests/sdk.api-http.test.ts -t "C64 "`
+Status: closed
+
+**C65** - `cancel(runId, motivo)` de uma execução parada deixa `error` igual ao motivo, e de uma em andamento grava um evento `permission` com `detail` igual ao motivo (AC 60; H08)
+Proof: `npx vitest run tests/sdk.execution.test.ts -t "C65 "`
+Status: closed
+
+**C66** - Com o motor A em `start()` numa home, o `start()` de um motor da mesma pasta escrita por um link lança `EngineLockedError`, e o de um motor de outra cópia do pacote (módulos recarregados) lança um erro de `code` `"engine_locked"` e `holderPid` `process.pid`; depois de `A.stop()` o `start()` pelo link passa (AC 61; F33, o registro em `globalThis`)
+Proof: `npx vitest run tests/sdk.instances.test.ts -t "C66 "`
+Status: closed
+
+**C67** - `mordomo run` (a CLI construída) sai com 1, imprime o motivo e deixa 0 execuções novas para: skill desabilitada, skill que não lista o provedor, provedor não habilitado, entrada obrigatória ausente ou em branco, e orçamento diário gasto; com 0,40 gasto de `budgetUsd` 1 a execução que cria tem `max_cost_usd` 0,6 (AC 62)
+Proof: `npx vitest run tests/sdk.cli.test.ts -t "C67 "`
+Status: closed
+
+**C68** - Lendo o código (árvore sintática) de `apps/api/src`, os únicos `.min(`/`.max(` com um número igual a um dos de `RUN_LIMITS` (20 000, 10 000, 3 600 000) são o excerto de `routes/memory.ts` e a descrição de `routes/objectives.ts`; os de pedido de execução importam `RUN_LIMITS` (AC 63)
+Proof: `npx vitest run tests/sdk.api-thin.test.ts -t "C68 "`
+Status: closed
+
 ## Coverage
 
 | Set (size)                                                           | Member -> proof                                                                                                                                                                                                                                                                                                                                                                                                                                            | Unproven |
 | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | métodos de `Execution` (12)                                          | `startPrompt` C1 · `startSkill` C19 · `retry` C21 · `resolveApproval` C9 · `smokeTest` C23 · `get` C5 · `list` C5 · `cancel` C4 · `events` C2 · `subscribe` C3 · `wait` C1 · `pendingApprovals` C27                                                                                                                                                                                                                                                        | -        |
-| códigos de `ENGINE_ERROR_CODES` (12)                                 | `profile_refused` C11 · `unknown_provider` C16 · `device_provider_refused` C13 · `self_approval` C15 · `owner_only` C15 · `submission_conflict` C17 · `submission_uncertain` C17 · `budget_exhausted` C19 · `request_unavailable` C21 · `skill_unavailable` C21 · `workspace_unavailable` C26 · `engine_locked` C35                                                                                                                                        | -        |
+| códigos de `ENGINE_ERROR_CODES` (14)                                 | `profile_refused` C11 · `unknown_provider` C16 · `device_provider_refused` C13 · `self_approval` C15 · `owner_only` C15 · `submission_conflict` C17 · `submission_uncertain` C17 · `budget_exhausted` C19 · `request_unavailable` C21 · `skill_unavailable` C21 · `workspace_unavailable` C26 · `engine_locked` C35 · `approval_expired` C60 · `approval_resolved` C60                                                                                     | -        |
 | perfil × pedinte em escrita (8)                                      | C14, table-driven over all 8 (4 perfis × `owner` e `device:abc`)                                                                                                                                                                                                                                                                                                                                                                                           | -        |
-| `ApprovalKind` aprovado por dispositivo (11)                         | C15, table-driven over all 11                                                                                                                                                                                                                                                                                                                                                                                                                              | -        |
+| `ApprovalKind` aprovado por dispositivo (11)                         | C15, table-driven over all 11, a lista conferida contra a união do contrato                                                                                                                                                                                                                                                                                                                                                                                | -        |
 | recusas de `startSkill` (5)                                          | skill ausente C19 · desabilitada C19 · provedor não listado C19 · entrada obrigatória em branco C19 · orçamento gasto C19                                                                                                                                                                                                                                                                                                                                  | -        |
 | arestas de limite de `startPrompt` (7)                               | prompt vazio C7 · prompt 20 000 C7 · prompt 20 001 C7 · prazo 9 999 C7 · prazo 10 000 C7 · prazo 3 600 000 C7 · prazo 3 600 001 C7                                                                                                                                                                                                                                                                                                                         | -        |
 | desfechos de uma aprovação parada (3)                                | aprovada C9 · negada C10 · expirada C22                                                                                                                                                                                                                                                                                                                                                                                                                    | -        |
@@ -256,12 +328,19 @@ Status: closed
 | pacotes (2)                                                          | `@mordomo/core` C42 · `@mordomo/contracts` C42                                                                                                                                                                                                                                                                                                                                                                                                             | -        |
 | startup config: resolução de `@mordomo/core/internal` (5 assemblies) | `tsc -b` C46 · alias do `vitest.config.ts` C37 · projeto de tipos `typetests` C40 · instalação do `.tgz` C43 · empacotador `dist:quick` C48                                                                                                                                                                                                                                                                                                                | -        |
 | startup config: o exemplo do README (2 assemblies)                   | contra os fontes C44 · contra o `.tgz` instalado C43                                                                                                                                                                                                                                                                                                                                                                                                       | -        |
-| doors (9)                                                            | 1 C1, C8, C40 · 2 e 2a C37, C41 · 3 C31 · 4 C32, C33, C47 · 5 C50 · 6 C41, C42 · 7 C35 · 8 C40, C43 · 9 C43                                                                                                                                                                                                                                                                                                                                                | -        |
+| doors (9)                                                            | 1 C1, C8, C40 · 2 e 2a C37, C41 · 3 C31 · 4 C32, C33, C47 · 5 C50, C60 · 6 C41, C42, C43 · 7 C35, C66 · 8 C40, C43 · 9 C43                                                                                                                                                                                                                                                                                                                                 | -        |
+| respostas HTTP que a feature muda de propósito (2)                   | `dispatch` com o default de setting acima do teto C61 (corrigida: 200 como na base) · replay de um retry estacionado C63 (202, dito em AD-022 e)                                                                                                                                                                                                                                                                                                           | -        |
+| pedinte gravado por rotas que o relatório nomeou (2)                 | `notes/promote` C64 · smoke de provedor C64                                                                                                                                                                                                                                                                                                                                                                                                                | -        |
+| recusas e teto de `mordomo run` (7)                                  | skill desabilitada C67 · provedor que a skill não lista C67 · provedor não habilitado C67 · entrada ausente C67 · entrada em branco C67 · orçamento gasto C67 · teto de custo da run C67                                                                                                                                                                                                                                                                   | -        |
+| formas de iniciar uma execução que o C28 acusa (7)                   | `runs.create` chamado C28 · `[\"create\"]` com conversão C28 · alias de `runs` C28 · desestruturado C28 · `gateAndLaunchSkill` direto C28 · `launchPromptRun` C28 · chave calculada C28                                                                                                                                                                                                                                                                    | -        |
+| números de `RUN_LIMITS` que as rotas importam (3)                    | 20 000 C68 · 10 000 C68 · 3 600 000 C68                                                                                                                                                                                                                                                                                                                                                                                                                    | -        |
+| `startedBy` recusado em tempo de execução (5)                        | ausente C56 · `undefined` C56 · vazio C56 · `"null"` C56 · `"program"` C56                                                                                                                                                                                                                                                                                                                                                                                 | -        |
 
 - Claims naming a status code, route or response shape: C11, C13, C15, C16, C17, C19, C21, C22, C24, C26 (cada um tem uma prova que cruza a fronteira da fachada); as rotas HTTP não mudam e continuam provadas pelas oito suítes de C29, que cruzam o HTTP
 - C29 usa as suítes inteiras de propósito: o claim é "continuam passando sem mudar de asserção", e a prova de que as asserções não mudaram é o teste de diff, não o nome de um caso
 - C28 e C49 leem a árvore sintática do TypeScript (lição L-029), não regex; C49 prova o leitor contra formas que ele deve e que não deve acusar
-- C14, C15, C31 e C37 são table-driven: a enumeração mora no teste (lição L-030)
+- C14, C15, C31, C37 e C57 são table-driven: a enumeração mora no teste (lição L-030)
+- Claims naming a status code, route or response shape, acrescentados na rodada 1: C60, C61, C63, C67 (cada um cruza a fronteira: a fachada, o HTTP ou a CLI construída)
 - Nenhum outro check afirma mais que o caso que a sua prova exercita
 
 ## Test policy
@@ -295,14 +374,16 @@ Cost: 6 arquivos de teste novos e 3 de apoio (`tests/support/`), 2 fixtures e 1 
 - data lifecycle: n/a - nenhum dado novo é gravado e nenhuma tabela muda; execuções, recibos e aprovações mantêm a retenção que já têm (dados-v2)
 - dependency failure: C16 (provedor não registrado ou desabilitado), C51 (o adaptador falha no meio), C13 (o provedor lê o disco inteiro)
 - state transitions: C4 (`running` para `cancelled`), C8 e C9 (`waiting_approval` para `queued`/`done`), C10 (`waiting_approval` para `cancelled`), C22 (aprovação expirada)
-- observability: C2 e C3 (os eventos de uma execução), C31 (o barramento de cada motor), C50 (os códigos de erro são uma lista documentada)
+- observability: C2 e C3 (os eventos de uma execução), C31 (o barramento de cada motor), C50 (os códigos de erro são uma lista documentada), C53 e C59 (`run.finished` da recuperação e `approval.resolved` da decisão)
+- cleanup: C52 (o ouvinte do `wait` sai nos três desfechos), C55 (o recibo de um retry que falhou sai)
+- upgrade and compatibility: C61 (o default de setting que a base aceitava), C63 (a única resposta HTTP que mudou, dita em AD-022 e)
 
 ## Out of scope
 
 - Publicar no registro, o escopo `@mordomo` e a tag de release - ação remota do dono (regra 8); pergunta 1 em STATE
 - Publicar os adaptadores e abrir um kit de adaptador público - pergunta 3 em STATE
 - Skills, rotinas, memória, objetivos, conectores, sentinelas e sync na fachada pública - cada área vira API quando houver quem a consuma
-- A licença do `LICENSE` da raiz - feature 15 `licenca-comercial`
+- O texto e o titular do `LICENSE` da raiz, que os pacotes copiam, e a revisão jurídica - feature 15 `licenca-comercial`
 
 ## Handoff
 
@@ -312,10 +393,13 @@ Tamanho, com a conta (bytes dos arquivos que cada fatia toca, lidos em parte, ma
 - S3 (a API fina) já está dentro de S1+S2 (as mesmas rotas) mais `tests/sdk.api-thin.test.ts` 10 KB ≈ 3k
 - S4 (por instância) ≈ events.ts 2 KB + store.ts 15 KB + objectiveStore.ts 18 KB + notifications/store.ts 8 KB + sessionStore.ts 9 KB + indexer.ts (trechos) 10 KB + scheduler.ts (trechos) 12 KB + backup.ts (trechos) 8 KB + runner.ts 7 KB + safeSpawn.ts 10 KB + related.ts 9 KB + ownerLock.ts 7 KB + engine.ts (já contado) + 3 adaptadores (trechos) 20 KB + testes novos 45 KB = 180 KB ≈ 45k
 - S5 (pacote) ≈ index.ts 15 KB + os 93 arquivos de importação (script, sem leitura) + package.json x2 + docs/sdk.md 25 KB + README 6 KB + LICENSE x2 8 KB + testes novos 55 KB + typetests 6 KB = 115 KB ≈ 29k
-- total ≈ 134k, abaixo dos 150k do `budget`; a leitura de saídas de teste e de compilação pesa acima disso - one builder
+- S6 (a correção da rodada 1) ≈ service.ts 20 KB + ownerLock.ts 7 KB + runManager.ts (trechos) 6 KB + as quatro rotas 40 KB + testes novos e alterados 70 KB + os documentos 35 KB = 178 KB ≈ 28k (ciclo de correção: não entra nos 150k do `budget` da construção)
+- total da construção ≈ 134k, abaixo dos 150k do `budget`; a leitura de saídas de teste e de compilação pesa acima disso - one builder
 
 Mechanism: one builder (a estimativa cabe; construção delegada pelo orquestrador, que não tem como abrir o diálogo da mecânica)
 
 - **Boundary:** C1-C51 closed at `75eae19` (build, typecheck, lint e `vitest` inteiro: 99 arquivos, 1126 provas; `npm run dist:quick` e o `status --json` do pacote; e2e: provider-gate, smoke, product-workflows, objective-engine, approval-request-layout e boot-recovery, 37 provas numa configuração temporária não comitada, com a porta 4894 e prazos alongados: 35 passam; `boot-recovery.spec.ts:3` falha igual na base `795306e` (medido numa cópia limpa dela) e `product-workflows.spec.ts:77` estourou o prazo sob carga e passou na repetição)
 - **Settled mid-build:** (1) quatro enumerações do plano estavam erradas e foram emendadas no `plan.md` e aqui, antes de qualquer verificação: o estado de módulo que fica é de nove itens, não sete (o memo de `related.ts` chaveado por `Db` e a tabela `PRIVATE` de `pushEndpoint.ts` entram), os valores públicos são onze (`SpawnPolicy` entra, door 2a), os nomes tirados do barril são três (`setProbeEnvDrop` nunca esteve nele) e as rotas e os lugares que iniciam uma execução incluem `engine.ts`; (2) as doors 2a, 8 e 9 foram escritas no `plan.md` depois do código que as fecha, não antes (a regra do build pede antes); (3) o limite de 20 000 caracteres do prompt vale para texto que um chamador digitou: o prompt que o motor monta de registros seus (o pacote de contexto de um objetivo) e o de um `retry` passam por `composed`/pelo registro, que não o aplicam; (4) o recibo de um `retry` de quem é `null` leva o nome `program`; (5) o C48 tem como prova o comando do passo "Packager smoke" do CI, não um teste do `vitest`, porque pede a interface construída; (6) a prova do C29 compara cada suíte com a base sem importações e sem o caminho até o barramento (`ctx.events.` lido como `events.`); (7) `security-git` C39 e `api.v1` C38 falharam na base sob carga (medição da base) e passaram na cabeça nas duas rodadas completas
 - **Abandoned:** o barramento global como valor padrão de quem não passa `bus` (o singleton continuaria existindo); `probe` livre em `safeSpawn.ts` (a doctor usa `new SpawnPolicy().probe`); as classes de erro do banco em `db.ts` e as de trava em `ownerLock.ts`/`restoreLock.ts` (os `.d.ts` públicos puxavam os tipos do driver do SQLite: `tsc` do consumidor com `skipLibCheck: false` falhava); `SettingsPatch` como tipo público de `updateSettings`; `slug` de skill com o padrão de id na fachada (o catálogo responde 404 como sempre)
+- **Round 1 (11/10/2026):** a verificação deu FAIL (`verification.md`: uma regressão HTTP, 21 mutantes vivos, mudanças de comportamento não ditas, cinco pontos de contrato, menores e deriva da integração); tudo foi corrigido na branch `fix/sdk-core-r1` e C52-C68 fecham os achados. Gate no fim da rodada: `npm run build`, `npm run typecheck` (inclui `typetests`), `npm run lint`, `vitest` inteiro (104 arquivos, 1434 provas, 0 falhas; uma rodada anterior à troca do `peerDependencies` por opcional deu 7 falhas em `tests/legal.*`, porque o lockfile passou a contar `@types/node` e `undici-types` como distribuídos), `npm run dist:quick` e o `status --json` do pacote, e2e (`provider-gate`, `objective-engine`, `approval-request-layout`: 12 provas, porta 4894, configuração temporária não comitada). Os 25 mutantes da rodada (F22, F16, recuperação sem `run.finished`, F05, H14, F04, F06, F44, nomes reservados, F25, F11, H11, erros de aprovação, H08, F33, F35, F18, a regressão do dispatch, replay 202, G04, G12, F41, F42, F43, C68) foram reaplicados e todos morreram pelo check que o nomeia. Ficam como pontos cegos declarados F45 e F46 (`tests/support/moduleState.ts`); o Handoff de `STATE.md` ainda diz "o `LICENSE` MIT da raiz e o `FSL-1.1-ALv2` dos pacotes convivem" e não foi tocado (é do coordenador)
+- **Settled in round 1:** (1) o teto de 3 600 000 ms vale para o `timeoutMs` que o chamador pede e a rota do `dispatch` passa só esse (o engine aplica o default do setting, que só tem mínimo), em vez de dar teto ao setting, porque isso invalidaria um `settings.json` que a base aceitava; (2) `startedBy` `"null"` e `"program"` são recusados no esquema em vez de o recibo ganhar um prefixo, porque o prefixo invalidaria os recibos existentes; (3) a recuperação de `start()` usa `settle` (anuncia `run.finished`) em vez de a fachada consultar o banco no `wait`, porque assim também as notificações, o diário e as credenciais de run saem pelo caminho de todo fim de execução; (4) o motor vazado é documentado e a mensagem do `EngineLockedError` diz como sair, sem `Symbol.dispose`, porque o tipo exigiria a lib `esnext.disposable` de quem consome os `.d.ts` e a superfície pública é uma lista fechada; (5) o `@types/node` é peer opcional e o `README` linka o `docs/sdk.md` por URL do repositório (`origin`), porque copiar o documento para o tarball exigiria um teste de igualdade a mais e mudaria `files` (literal da door 6)
