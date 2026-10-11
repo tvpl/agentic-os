@@ -118,8 +118,9 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
   device's run asks for inherits the run's `requestedBy`. `resolveApproval`, the one place a decision is
   applied, refuses `approved` from a device when `requestedBy` is that device (`403 self_approval`) or when the
   kind is not `write_run` or `tool_use` (`403 owner_only`: `expose_port`, `connector_write` and the rest are the
-  owner's); `denied` is open to every kind, so a device can withdraw its own request. The owner, a person on
-  Telegram's `allowedUserIds` and another device holding `approve` can approve it. The broker still only denies
+  owner's); `denied` is open to every kind, so a device can withdraw its own request. The owner (in the Command
+  Centre, after the whole request is shown) and another device holding `approve` can approve a device's write; a
+  person on Telegram's `allowedUserIds` can deny it but not approve it (the chat shows a one-line label). The broker still only denies
   its own prompt (AD-002). An approval raised before this existed has no `requestedBy` and a device holding
   `approve` can approve it.
 - **What a device may start.** A run asked for by a device is only accepted on a provider whose manifest declares
@@ -144,8 +145,10 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
   whatever those say). **A proxy on this machine is trusted as this machine is:** the page carries the owner's
   token to a request from a loopback socket whose `Host` is a loopback name, and a proxy that forwards a visitor
   from elsewhere while rewriting `Host` to `127.0.0.1` is that request. The page therefore withholds the token
-  from a request that names a proxy (`X-Forwarded-*`, `Forwarded`, `X-Real-IP`, `Via`), which is what nginx,
-  Caddy and cloudflared are configured to add; a proxy that adds none and rewrites `Host` cannot be told from the
+  from a request that carries any of a closed list of proxy and CDN headers: `X-Forwarded-*` (`X-Forwarded-For`,
+  `-Host`, `-Proto`...), `X-Original-Forwarded-*`, `Forwarded`, `Via`, `X-Real-IP`, `X-Client-IP`, `True-Client-IP`,
+  `Fastly-Client-IP`, `X-Envoy-External-Address` and every `CF-*` (`CF-Connecting-IP`, `CF-Ray`...), which is what
+  nginx, Caddy, Envoy, Cloudflare and Fastly add (`carriesProxyHeaders`; any other header is not read); a proxy that adds none and rewrites `Host` cannot be told from the
   owner's browser, so keep the original `Host` (and list it in `remote.allowedHosts`) or add one of those headers.
 - **No token in the URL, except where a header is impossible.** `?token=` is accepted only
   on `GET` of the routes marked `config: { queryToken: true }`: `/api/events`,
@@ -171,19 +174,31 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
   names it and where it points is checked (`core/src/channels/pushEndpoint.ts`): `https` on the default port, no
   credentials, no single-label or local-only name (`localhost`, `.local`, `.internal`...), and every address the name
   resolves to is public (not loopback, private, link-local, `169.254.169.254`, multicast, documentation, `::`,
-  IPv4-mapped or NAT64 forms of those); an IP literal is judged the same way. It is checked when the subscription is
-  registered and again just before every send (a name can move), and a send never follows a redirect. The owner may
+  IPv4-mapped, IPv4-compatible, 6to4, Teredo, local NAT64 or site-local forms of those); an IP literal is judged the
+  same way. It is checked when the subscription is registered and again just before every send (a name can move), and
+  a send never follows a redirect. Two limits are said plainly. The check resolves the name and `fetch` resolves it
+  again, so a name that changes between the two is not caught by the check; only the owner can name a server of their
+  own (a device is held to the browsers' names), and the owner is trusted. And a name that cannot be resolved at send
+  time (no network, a resolver that timed out, an empty answer) is **a failed delivery, counted**, like any other:
+  the subscription goes after eight failures in a row and not at the first, so a laptop that was offline for one
+  notification keeps its phones; only an endpoint that now points inside, or that the policy refuses, is dropped. The owner may
   register any public `https` endpoint (a self-hosted push server included); **a paired device** needs `content`
-  (a push carries the inbox's titles and bodies) and may name only the push services of the browsers (FCM, Mozilla
-  autopush, Apple, Windows), cannot take an endpoint someone else registered, and removes only its own. A
+  (a push carries the inbox's titles and bodies) and may name only the push services of the browsers (five patterns, each anchored at
+  both ends: `fcm.googleapis.com`, `android.googleapis.com`, `<label>.push.services.mozilla.com`,
+  `<label>.push.apple.com` and `<labels>.notify.windows.com`; an IP literal is never one), cannot take an endpoint someone else registered, and removes only its own. A
   subscription belongs to the device that registered it: revoking the device, its expiry, or taking `content` away
   deletes it. The inbox and the subscriptions are the owner's, shared by every device: a device reads the inbox
   (`monitor`) and does not clear it (`POST /api/notifications/read` and `DELETE /api/notifications/:id` are `owner`).
 - **The owner reads the whole request before approving.** The approval of a write asked by a device (or anyone)
   carries the complete request in its payload (the prompt in full; for a skill, every input; the provider, model,
   mode and folder) and the approvals screens show all of it, with who asked, in a box that scrolls and that the
-  keyboard reaches; nothing is cut. The one-line description keeps only the first 600 characters of a prompt, says it
-  was cut and by how much, and a chat message shows that line: a long request is read on the desktop.
+  keyboard reaches; nothing is cut. Who asked is the device's name as it was paired (kept on the approval, so a
+  revoked device still has its name), and a request from before who-asked was recorded reads "unknown origin". The
+  one-line description keeps only the first 600 characters of a prompt, says it was cut and by how much, and a chat
+  message shows that line, so a long request is read on the desktop: **a quick way to approve never approves a
+  device's write without the request in front of the person.** The inbox's tick on such a row becomes "review the
+  whole request" (it opens Settings › Security), ⌘⇧A in the Núcleo opens the Resolver instead of approving, and
+  Telegram can deny it but answers an approve with where to read it (`resolveApprovalForChat`).
   Cancelling a write that waits for a human denies its approval (`resolvedBy: system`), so approving it later
   starts nothing; a `submissionId` (and a retry receipt) replays only for the principal that made it.
 - **Attempt limits** (`apps/api/src/rateLimit.ts`, in memory, reset on restart).

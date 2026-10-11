@@ -75,6 +75,8 @@ export function ApprovalCard({ approval, onLaunched, compact = false }: Approval
             {target.cwd}
           </p>
         )}
+        {/* Before the buttons in the page's order: the request is read before Approve is reached. */}
+        <ApprovalRequest approval={approval} />
       </div>
       <div className="approval-inline-actions">
         <Button
@@ -96,7 +98,6 @@ export function ApprovalCard({ approval, onLaunched, compact = false }: Approval
           {t("runs.approve.deny")}
         </Button>
       </div>
-      <ApprovalRequest approval={approval} />
     </div>
   );
 }

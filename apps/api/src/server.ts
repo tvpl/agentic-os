@@ -131,14 +131,23 @@ export function isLoopbackAddress(address: string | undefined): boolean {
 }
 
 /**
- * Whether the request names a proxy on its way (`X-Forwarded-*`, `Forwarded`, `X-Real-IP`, `Via`). A browser on this
- * machine sends none of these; a reverse proxy on this machine that forwards a visitor from elsewhere usually adds
- * one, and that visitor must not be handed the owner's token just because the proxy's own socket is loopback and it
- * rewrote the `Host` header to `127.0.0.1`. A proxy that adds none and rewrites `Host` cannot be told from the owner's
- * browser: `docs/security.md` (limits) says to keep the original `Host` or to add one of these.
+ * The header names that say a proxy or a CDN stands between the visitor and this process: the standard ones
+ * (`X-Forwarded-*` including `X-Forwarded-Host`, `Forwarded`, `Via`), the single-address ones proxies and CDNs add
+ * (`X-Real-IP`, `X-Client-IP`, `True-Client-IP`, `Fastly-Client-IP`, `X-Envoy-External-Address`) and Cloudflare's own
+ * (`CF-*`: `CF-Connecting-IP`, `CF-Ray`, `CF-Visitor`...). The list is closed: a header that is not in it is not read.
+ */
+const PROXY_HEADER =
+  /^(?:x-forwarded-|x-original-forwarded-|x-real-ip$|x-client-ip$|true-client-ip$|fastly-client-ip$|x-envoy-external-address$|forwarded$|via$|cf-)/;
+
+/**
+ * Whether the request names a proxy on its way (`PROXY_HEADER`). A browser on this machine sends none of these; a
+ * reverse proxy on this machine that forwards a visitor from elsewhere usually adds one, and that visitor must not
+ * be handed the owner's token just because the proxy's own socket is loopback and it rewrote the `Host` header to
+ * `127.0.0.1`. A proxy that adds none and rewrites `Host` cannot be told from the owner's browser:
+ * `docs/security.md` (limits) says to keep the original `Host` or to add one of these.
  */
 export function carriesProxyHeaders(headers: FastifyRequest["headers"]): boolean {
-  return Object.keys(headers).some((name) => /^(?:x-forwarded-|x-real-ip$|forwarded$|via$)/.test(name));
+  return Object.keys(headers).some((name) => PROXY_HEADER.test(name.toLowerCase()));
 }
 
 /**

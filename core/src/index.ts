@@ -532,6 +532,9 @@ export {
 } from "./channels/pushChannel.js";
 export {
   checkPushEndpoint,
+  classifyPushEndpoint,
+  KNOWN_PUSH_HOSTS,
+  type EndpointVerdict,
   endpointProblem,
   isKnownPushHost,
   isPublicAddress,

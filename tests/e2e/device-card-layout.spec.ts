@@ -8,7 +8,8 @@ import { test, expect, type APIRequestContext, type Locator, type Page } from "@
 
 const headers = () => ({ "x-mordomo-token": process.env.MORDOMO_TOKEN!, "content-type": "application/json" });
 const WIDTHS = [1440, 1100, 900, 800, 700, 500, 390];
-const NAMES = ["Pixel 8 Pro do escritório principal", "iPad"];
+// The first is the longest name a device may have (80 characters) and has no space to break at: the name has to wrap inside its column, anywhere, and still be whole.
+const NAMES = ["PixelOitoProDoEscritorioPrincipalSemEspacoNenhumQueQuebreALinha-0123456789-abcde", "iPad"];
 
 type Box = { x: number; y: number; width: number; height: number };
 const overlap = (a: Box, b: Box) =>
@@ -179,6 +180,12 @@ for (const shell of ["moldura", "nucleo"] as const) {
         // The free box answers; the locked one does not.
         const free = group.locator("input:enabled");
         await expect(free).toHaveCount(2);
+        for (const input of await free.all()) {
+          const cursor = await input.evaluate((el) => getComputedStyle(el).cursor);
+          expect(cursor, `${label} a free box keeps the pointer`).toBe("pointer");
+          const outline = await input.evaluate((el) => getComputedStyle(el).outlineStyle);
+          expect(outline, `${label} a free box has no dashed ring`).not.toBe("dashed");
+        }
         void panel;
       }
     });

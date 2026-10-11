@@ -227,12 +227,6 @@ export interface PromptRunResponse {
   };
 }
 
-/**
- * One place where a prompt run is created, whether it comes from the prompt
- * box or from "continue this conversation": resolve the session's defaults
- * (provider and cwd, unless the caller overrides them), apply the write gate,
- * then launch. 202 + `waiting_approval` when the profile wants a human first.
- */
 /** The longest text an approval's one-line label quotes; the approval's payload holds the whole request. */
 const LABEL_QUOTE_CHARS = 600;
 
@@ -246,6 +240,12 @@ export function clipForLabel(text: string): string {
   return `${text.slice(0, LABEL_QUOTE_CHARS)}… (+${text.length - LABEL_QUOTE_CHARS} more characters; the approval holds the full request)`;
 }
 
+/**
+ * One place where a prompt run is created, whether it comes from the prompt
+ * box or from "continue this conversation": resolve the session's defaults
+ * (provider and cwd, unless the caller overrides them), apply the write gate,
+ * then launch. 202 + `waiting_approval` when the profile wants a human first.
+ */
 export function submitPromptRun(
   ctx: AppContext,
   body: PromptRunRequest,

@@ -51,6 +51,7 @@ describe("approval payloads", () => {
       effort: null,
       mode: null,
       inputs: [],
+      requestedByName: null,
     });
     expect(approvalTarget(approval({ payload: { kind: "skill", input: { slug: "tidy" } } })).skillSlug).toBe(
       "tidy",
@@ -65,7 +66,14 @@ describe("approval payloads", () => {
       effort: null,
       mode: null,
       inputs: [],
+      requestedByName: null,
     });
+    // A skill held for approval writes, and says so though its input does not carry a mode; the name is kept.
+    expect(
+      approvalTarget(
+        approval({ payload: { kind: "skill", requestedByName: "Pixel", input: { slug: "tidy" } } }),
+      ),
+    ).toMatchObject({ mode: "write", requestedByName: "Pixel" });
     // A skill's inputs keep their order; a value that is not text is shown as JSON, never dropped.
     expect(
       approvalTarget(
@@ -130,5 +138,16 @@ describe("approvalForRun", () => {
       approvalLabel(approval({ payload: { kind: "prompt", input: { prompt: "line one\nline two" } } }), "?"),
     ).toBe("line one");
     expect(approvalLabel(approval({ description: "" }), "fallback")).toBe("fallback");
+  });
+});
+
+describe("which approvals are a device's write", () => {
+  it("is a write run with a device behind it, and nothing else", async () => {
+    const { isDeviceWriteApproval } = await import("./approvals");
+    expect(isDeviceWriteApproval({ kind: "write_run", requestedBy: "device:abc" })).toBe(true);
+    for (const requestedBy of ["owner", null, "telegram:42", "broker:r1"]) {
+      expect(isDeviceWriteApproval({ kind: "write_run", requestedBy }), String(requestedBy)).toBe(false);
+    }
+    expect(isDeviceWriteApproval({ kind: "tool_use", requestedBy: "device:abc" })).toBe(false);
   });
 });

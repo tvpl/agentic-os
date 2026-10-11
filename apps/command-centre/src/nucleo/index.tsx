@@ -77,6 +77,7 @@ import FocusMode from "./pending/FocusMode";
 import { usePending } from "./pending/usePending";
 import { describePending } from "./pending/describe";
 import { useResolveApproval } from "../runs/ApprovalCards";
+import { isDeviceWriteApproval } from "../runs/approvals";
 import { useBriefing } from "./useBriefing";
 import VoiceHints from "./VoiceHints";
 import { ACTIVITY_EVENT, FOCUS_EVENT } from "./events";
@@ -459,7 +460,14 @@ export default function Nucleo({ meta, onMetaChanged }: { meta: Meta; onMetaChan
     };
     const resolveFirst = (decision: "approved" | "denied") => () => {
       const first = firstDecision();
-      if (first) resolveRef.current.mutate({ id: first.id, decision });
+      if (!first) return;
+      // A write a paired device asked for is not approved from a key: ⌘⇧A opens the Resolver, which shows the whole
+      // request, and the person approves there. Denying needs no review.
+      if (decision === "approved" && isDeviceWriteApproval(first)) {
+        setFocus(true);
+        return;
+      }
+      resolveRef.current.mutate({ id: first.id, decision });
     };
     return [
       ...MAIN_SCENES.map((scene, i) =>

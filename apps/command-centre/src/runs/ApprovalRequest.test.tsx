@@ -64,11 +64,14 @@ describe("ApprovalRequest", () => {
         },
       }),
     );
-    const box = screen.getByRole("region", { name: new RegExp(`Prompt, ${LONG.length} characters`) });
+    const box = screen.getByRole("region", {
+      name: new RegExp(`^Prompt \\(a1\\), ${LONG.length} characters`),
+    });
     expect(box.textContent).toBe(LONG);
     expect(box.getAttribute("tabindex")).toBe("0");
     const text = screen.getByTestId("approval-request").textContent ?? "";
-    expect(text).toContain("paired device 01234567");
+    // The record carries no name (an approval raised before the name was kept): the short id stands in.
+    expect(text).toContain("a paired device (01234567)");
     expect(text).toContain("claude · opus · high");
     expect(text).toContain("write");
     expect(text).toContain("/home/me/notes");
@@ -88,8 +91,12 @@ describe("ApprovalRequest", () => {
     const t = screen.getByTestId("approval-request").textContent ?? "";
     expect(t).toContain("/digest");
     expect(t).toContain("you (the owner)");
+    // A skill that is held for approval is a skill that writes: the mode is said even though the input does not carry it.
+    expect(t).toMatch(/Mode\s*write/);
     for (const [key, value] of Object.entries(inputs)) {
-      const box = screen.getByRole("region", { name: new RegExp(`^${key}, ${value.length} characters`) });
+      const box = screen.getByRole("region", {
+        name: new RegExp(`^${key} \\(a1\\), ${value.length} characters`),
+      });
       expect(box.textContent).toBe(value);
     }
   });
@@ -104,9 +111,63 @@ describe("ApprovalRequest", () => {
     );
     const t = screen.getByTestId("approval-request").textContent ?? "";
     expect(t).toContain("Pedido por");
-    expect(t).toContain("uma rotina, um sentinela ou a linha de comando");
+    expect(t).toContain("origem desconhecida");
+    expect(t).toMatch(/Modo\s*write/);
     expect(t).toContain("Entradas");
     expect(t).toContain("nenhuma");
+  });
+
+  it("names the device by the name it was paired with", () => {
+    show(
+      approval({
+        payload: {
+          kind: "prompt",
+          requestedByName: "Pixel do escritório",
+          input: { prompt: "x", provider: "claude", mode: "write", cwd: "/w" },
+        },
+      }),
+    );
+    const text = screen.getByTestId("approval-request").textContent ?? "";
+    expect(text).toContain("Pixel do escritório, a paired device");
+    expect(text).not.toContain("01234567");
+  });
+
+  it("an approval from before who-asked was kept says its origin is unknown, and one from the owner says so", () => {
+    show(
+      approval({
+        requestedBy: null,
+        payload: { kind: "prompt", input: { prompt: "x", provider: "claude" } },
+      }),
+    );
+    expect(screen.getByTestId("approval-request").textContent).toContain("unknown origin");
+    expect(screen.getByTestId("approval-request").textContent).not.toContain("routine");
+    expect(screen.getByTestId("approval-request").className).not.toContain("from-device");
+  });
+
+  it("two held writes on one screen have regions with names of their own", () => {
+    const input = { prompt: "x".repeat(40), provider: "claude", mode: "write", cwd: "/w" };
+    render(
+      createElement(
+        I18nContext.Provider,
+        { value: { lang: "en", setLang: () => undefined } },
+        createElement(
+          "div",
+          null,
+          createElement(ApprovalRequest, {
+            approval: approval({ id: "aaaaaaaa-1", payload: { kind: "prompt", input } }),
+          }),
+          createElement(ApprovalRequest, {
+            approval: approval({ id: "bbbbbbbb-2", payload: { kind: "prompt", input } }),
+          }),
+        ),
+      ),
+    );
+    const names = [
+      ...screen.getAllByTestId("approval-request").map((e) => e.getAttribute("aria-label")),
+      ...Array.from(document.querySelectorAll("pre[role=region]")).map((e) => e.getAttribute("aria-label")),
+    ];
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).toHaveLength(4);
   });
 
   it("renders nothing for an approval that is not a write run", () => {
@@ -114,7 +175,7 @@ describe("ApprovalRequest", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("sits after the actions inside the inline approval card, for the page, the widget and the run", () => {
+  it("comes before the actions in the inline approval card, so the request is read before Approve is reached", () => {
     const a = approval({
       payload: { kind: "prompt", input: { prompt: LONG, provider: "claude", mode: "write", cwd: "/w" } },
     });
@@ -134,11 +195,15 @@ describe("ApprovalRequest", () => {
       expect(
         Array.from(card.children).map((c) => c.className.split(" ")[0]),
         String(compact),
-      ).toEqual(
-        ["approval-inline-main", "approval-inline-actions", "approval-request from-device"].map(
-          (x) => x.split(" ")[0],
-        ),
-      );
+      ).toEqual(["approval-inline-main", "approval-inline-actions"]);
+      // In the order of the page (and so of Tab): the request, then the buttons.
+      const request = card.querySelector(".approval-request")!;
+      const approve = Array.from(card.querySelectorAll("button")).find((b) => b.textContent === "Approve")!;
+      expect(
+        request.compareDocumentPosition(approve) & Node.DOCUMENT_POSITION_FOLLOWING,
+        String(compact),
+      ).toBeTruthy();
+      expect(card.querySelector(".approval-inline-main")!.contains(request)).toBe(true);
       expect(card.querySelector(".approval-request-text")!.textContent).toBe(LONG);
       cleanup();
     }

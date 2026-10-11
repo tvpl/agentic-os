@@ -547,11 +547,19 @@ export class MordomoEngine {
       profile: this.settings().securityProfile,
       status: "waiting_approval",
     }).id;
+    // What the person who approves reads about who asked: the device's name as it was paired, kept with the approval
+    // because the device may be revoked (or renamed on the desk) before the decision, and a device that holds
+    // `approve` cannot list devices.
+    const startedBy = payload.input.startedBy;
+    const askedByName =
+      isDeviceActor(startedBy) && startedBy
+        ? this.devices.get(startedBy.slice("device:".length))?.name
+        : undefined;
     const approval = this.approvals.request(
       "write_run",
       description,
-      { ...payload, runId },
-      payload.input.startedBy,
+      { ...payload, runId, ...(askedByName ? { requestedByName: askedByName } : {}) },
+      startedBy,
     );
     events.emit("approval.requested", { id: approval.id, kind: approval.kind, description, runId });
     return { pendingApproval: approval, runId };

@@ -863,7 +863,7 @@ describe("S3 who asked does not approve", () => {
     expect(ctx.runs.get(runId)?.status).toBe("cancelled");
   });
 
-  it("C19 another principal approves what a device asked for", async () => {
+  it("C19 another principal approves what a device asked for; chat only denies it", async () => {
     const asker = pair(["run"], "asker");
     const approver = pair(["approve"], "second device");
     const bystander = pair(["run"], "bystander");
@@ -881,13 +881,37 @@ describe("S3 who asked does not approve", () => {
     expect(await approvedBy((id) => resolve(id, as(approver.token), "approved"))).toBe(
       `device:${approver.id}`,
     );
-    expect(
-      await approvedBy(async (id) => {
-        // The Telegram poller resolves through this function with the sender's id.
-        const done = await resolveApprovalForChat(ctx, id, "approved", "telegram:42");
-        return { statusCode: done.ok ? 200 : 500 };
-      }),
-    ).toBe("telegram:42");
+    // Telegram can deny what a device asked for but not approve it: a chat message carries a one-line label, and a
+    // write from a device is approved by someone who read all of it (the Command Centre shows the whole request).
+    {
+      const { approvalId, runId } = await askForWrite(asker, `a long ask ${"x".repeat(900)}`);
+      const launchesBefore = launches().length;
+      const refused = await resolveApprovalForChat(ctx, approvalId, "approved", "telegram:42");
+      expect(refused.ok).toBe(false);
+      expect(refused.message).toContain("asker");
+      expect(refused.message).toContain("Settings › Security");
+      expect(ctx.approvals.get(approvalId)).toMatchObject({ status: "pending", resolvedBy: null });
+      expect(ctx.runs.get(runId)?.status).toBe("waiting_approval");
+      expect(launches()).toHaveLength(launchesBefore);
+      // By the id prefix a chat command types, too.
+      const byPrefix = await resolveApprovalForChat(ctx, approvalId.slice(0, 8), "approved", "telegram:42");
+      expect(byPrefix.ok).toBe(false);
+      expect(ctx.approvals.get(approvalId)?.status).toBe("pending");
+      const denied = await resolveApprovalForChat(ctx, approvalId, "denied", "telegram:42");
+      expect(denied.ok).toBe(true);
+      expect(ctx.approvals.get(approvalId)).toMatchObject({ status: "denied", resolvedBy: "telegram:42" });
+      // What is not a device's request is still approved from chat.
+      const own = await post("/api/v1/runs", owner(), { prompt: "owner write", mode: "write" });
+      const ownApproval = (own.json() as { pendingApproval?: { id: string } }).pendingApproval;
+      if (ownApproval) {
+        const done = await resolveApprovalForChat(ctx, ownApproval.id, "approved", "telegram:42");
+        expect(done.ok).toBe(true);
+        expect(ctx.approvals.get(ownApproval.id)).toMatchObject({
+          status: "approved",
+          resolvedBy: "telegram:42",
+        });
+      }
+    }
 
     const { approvalId } = await askForWrite(asker);
     const nope = await resolve(approvalId, as(bystander.token), "approved");
@@ -992,6 +1016,64 @@ describe("S3 who asked does not approve", () => {
     const ownersApproval = await toolApproval(ownersRun.id, ownersBroker);
     expect(ctx.approvals.get(ownersApproval)?.requestedBy).toBe("owner");
     expect((await resolve(ownersApproval, as(device.token), "approved")).statusCode).toBe(200);
+  });
+
+  it("C22 migrations 17, 18 and 19 can run again over populated data and change nothing", () => {
+    const tmp = makeTempHome("mordomo-scopes-again-");
+    try {
+      const raw = new Database(tmp.paths.dbFile);
+      for (const m of MIGRATIONS) {
+        if (m.sql) raw.exec(m.sql);
+        m.up?.(raw);
+      }
+      raw
+        .prepare(
+          "INSERT INTO devices (id, name, token_hash, created_at, last_seen_at, expires_at, revoked_at, scopes) VALUES ('d1', 'phone', 'h', 1, 2, NULL, NULL, '[\"monitor\"]')",
+        )
+        .run();
+      raw
+        .prepare(
+          "INSERT INTO push_subscriptions (id, endpoint, p256dh, auth, label, created_at, failures, device_id) VALUES ('ps_1', 'https://fcm.googleapis.com/x', 'k', 'a', 'l', 3, 0, 'd1')",
+        )
+        .run();
+      raw
+        .prepare(
+          "INSERT INTO run_action_receipts (id, action, source_run_id, created_at, response, requested_by) VALUES ('r1', 'retry', 'run', 4, '{}', 'device:d1')",
+        )
+        .run();
+      raw
+        .prepare(
+          "INSERT INTO approvals (id, created_at, kind, description, payload, status, requested_by) VALUES ('a1', 5, 'write_run', 'd', '{}', 'pending', 'device:d1')",
+        )
+        .run();
+      const snapshot = () =>
+        JSON.stringify(
+          ["devices", "push_subscriptions", "run_action_receipts", "approvals", "runs"].map((table) => ({
+            table,
+            columns: (raw.pragma(`table_info(${table})`) as Array<{ name: string; type: string }>).map(
+              (c) => `${c.name}:${c.type}`,
+            ),
+            rows: raw.prepare(`SELECT * FROM ${table}`).all(),
+          })),
+        );
+      const before = snapshot();
+      const later = MIGRATIONS.filter((m) =>
+        ["device-scopes-and-who-asked", "push-subscription-device", "run-action-receipt-requester"].includes(
+          m.name,
+        ),
+      );
+      expect(later.map((m) => m.version)).toEqual([17, 18, 19]);
+      for (let again = 0; again < 3; again++) for (const m of later) m.up?.(raw);
+      expect(snapshot()).toBe(before);
+      // The columns are the ones the code reads, each once.
+      const names = (table: string) =>
+        (raw.pragma(`table_info(${table})`) as Array<{ name: string }>).map((c) => c.name);
+      expect(names("push_subscriptions").filter((n) => n === "device_id")).toHaveLength(1);
+      expect(names("run_action_receipts").filter((n) => n === "requested_by")).toHaveLength(1);
+      raw.close();
+    } finally {
+      tmp.cleanup();
+    }
   });
 
   it("C22 old rows read back without the new facts", () => {
@@ -1134,6 +1216,17 @@ describe("S6 the documents say the same as the router", () => {
         "A subscription is a URL the server will `POST` to",
       ],
       ["the owner reads the whole request", "The owner reads the whole request before approving"],
+      [
+        "no quick way approves a device's write unread",
+        "a quick way to approve never approves a device's write",
+      ],
+      ["a name that cannot be resolved is a failed delivery", "is **a failed delivery, counted**"],
+      [
+        "the window between the check and the fetch",
+        "a name that changes between the two is not caught by the check",
+      ],
+      ["the list of proxy headers is closed", "carries any of a closed list of proxy and CDN headers"],
+      ["the push services are five anchored patterns", "five patterns, each anchored at"],
       ["the listener without TLS is not always 127.0.0.1", "the loopback name `bindAddress` itself gives"],
     ];
     for (const [what, phrase] of open) expect(page.replace(/\s+/g, " "), what).toContain(phrase);
@@ -1302,6 +1395,118 @@ describe("round 1 the gaps the first verification found", () => {
       expect(launches(), who).toHaveLength(before.launches);
       expect(ctx.runs.list({ limit: 500 }), who).toHaveLength(before.runs);
     }
+  });
+
+  it("C52 cancelling one parked write leaves every other approval alone", async () => {
+    const a = pair(["run"], "first phone");
+    const b = pair(["run"], "second phone");
+    const first = await askForWrite(a, "first parked write");
+    const second = await askForWrite(b, "second parked write");
+    const third = await askForWrite(a, "third parked write");
+    const cancelled = await post(`/api/v1/runs/${first.runId}/cancel`, as(a.token), {});
+    expect(cancelled.statusCode).toBe(200);
+    expect(ctx.approvals.get(first.approvalId)).toMatchObject({ status: "denied", resolvedBy: "system" });
+    for (const other of [second, third]) {
+      expect(ctx.approvals.get(other.approvalId)).toMatchObject({ status: "pending", resolvedBy: null });
+      expect(ctx.runs.get(other.runId)?.status).toBe("waiting_approval");
+    }
+    // The ones that are left still work: the owner approves the second and it launches.
+    const before = launches().length;
+    expect((await resolve(second.approvalId, owner(), "approved")).statusCode).toBe(200);
+    await settle(second.runId);
+    expect(launches()).toHaveLength(before + 1);
+    expect(ctx.approvals.get(third.approvalId)?.status).toBe("pending");
+    await resolve(third.approvalId, owner(), "denied");
+  });
+
+  it("C47 the approval carries the whole request; only the one-line description is cut", async () => {
+    const { clipForLabel } = await import("../apps/api/src/routes/common.js");
+    // The cut on its own: nothing up to 600 characters, then 600 and the count of the rest, said in words.
+    expect(clipForLabel("a".repeat(600))).toBe("a".repeat(600));
+    expect(clipForLabel("a".repeat(601))).toBe(
+      `${"a".repeat(600)}… (+1 more characters; the approval holds the full request)`,
+    );
+    expect(clipForLabel("b".repeat(5000))).toBe(
+      `${"b".repeat(600)}… (+4400 more characters; the approval holds the full request)`,
+    );
+
+    const device = pair(["run"], "Pixel do escritório");
+    const lengths = [599, 600, 601, 5000, 19_999];
+    const seen: Array<{ id: string; runId: string; prompt: string }> = [];
+    for (const n of lengths) {
+      // Different first and last characters, so a prefix, a suffix or a middle cut cannot pass for the whole.
+      const prompt = `<${"x".repeat(n - 2)}>`;
+      expect(prompt.length).toBe(n);
+      const asked = await post("/api/v1/runs", as(device.token), { prompt, mode: "write" });
+      expect(asked.statusCode, String(n)).toBe(202);
+      const { runId, pendingApproval } = asked.json() as { runId: string; pendingApproval: { id: string } };
+      // What the owner's screen reads: the list over HTTP.
+      const listed = (
+        (await app.inject({ method: "GET", url: "/api/v1/approvals", headers: owner() })).json() as Array<{
+          id: string;
+          description: string;
+          requestedBy: string;
+          payload: { kind: string; runId: string; requestedByName?: string; input: Record<string, unknown> };
+        }>
+      ).find((a) => a.id === pendingApproval.id)!;
+      expect(listed.payload.kind, String(n)).toBe("prompt");
+      expect(listed.payload.input.prompt, String(n)).toBe(prompt);
+      expect(listed.payload.input, String(n)).toMatchObject({
+        provider: "claude",
+        mode: "write",
+        startedBy: `device:${device.id}`,
+      });
+      expect(typeof listed.payload.input.cwd).toBe("string");
+      expect(listed.requestedBy).toBe(`device:${device.id}`);
+      expect(listed.payload.requestedByName).toBe("Pixel do escritório");
+      const label = `Write-mode prompt run with claude: "`;
+      expect(listed.description, String(n)).toBe(
+        n <= 600
+          ? `${label}${prompt}"`
+          : `${label}${prompt.slice(0, 600)}… (+${n - 600} more characters; the approval holds the full request)"`,
+      );
+      // The same through the single-approval route, and the parked run keeps the whole request too.
+      const one = (
+        await app.inject({ method: "GET", url: `/api/v1/approvals/${pendingApproval.id}`, headers: owner() })
+      ).json() as { payload: { input: { prompt: string } } };
+      expect(one.payload.input.prompt, String(n)).toBe(prompt);
+      expect(ctx.runs.get(runId)?.request).toMatchObject({ kind: "prompt", prompt });
+      seen.push({ id: pendingApproval.id, runId, prompt });
+    }
+    // Approving runs the whole request, not the label.
+    const longest = seen.at(-1)!;
+    expect((await resolve(longest.id, owner(), "approved")).statusCode).toBe(200);
+    const ran = await settle(longest.runId);
+    expect(ran.request).toMatchObject({ kind: "prompt", prompt: longest.prompt });
+    for (const rest of seen.slice(0, -1)) await resolve(rest.id, owner(), "denied");
+
+    // A skill: every input is in the payload, whole, and the label names the skill and not its inputs.
+    const made = await post("/api/v1/skills", owner(), {
+      frontmatter: {
+        name: "Round 2 writer",
+        slug: "round2-writer",
+        description: "writes",
+        mode: "write",
+        providers: ["claude"],
+      },
+      body: "Write a note.",
+    });
+    expect(made.statusCode).toBe(200);
+    const inputs = { topic: "weekly", body: `[${"y".repeat(4000)}]`, chave: "valor ñ" };
+    const bySkill = await post("/api/v1/skills/round2-writer/run", as(device.token), {
+      provider: "claude",
+      inputs,
+    });
+    expect(bySkill.statusCode).toBe(202);
+    const skillApproval = (bySkill.json() as { pendingApproval: { id: string } }).pendingApproval.id;
+    const shown = ctx.approvals.get(skillApproval)!;
+    expect(shown.payload).toMatchObject({
+      kind: "skill",
+      requestedByName: "Pixel do escritório",
+      input: { slug: "round2-writer", inputs, provider: "claude" },
+    });
+    expect(shown.description).toBe("Write-mode skill run: /round2-writer with claude");
+    await resolve(skillApproval, owner(), "denied");
   });
 
   it("C53 who asked is never left out, and no route at exactly /api slips past the gate", async () => {

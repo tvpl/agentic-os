@@ -428,8 +428,8 @@ describe("S2 one error shape", () => {
 const OK_EXEMPT: ReadonlyArray<{ file: string; sites: number; why: string }> = [
   {
     file: "approvalActions.ts",
-    sites: 3,
-    why: "resolveApprovalForChat's result goes to the Telegram poller (server.ts wires it as `resolve`), which turns it into a chat reply; no route calls it",
+    sites: 4,
+    why: "resolveApprovalForChat's result goes to the Telegram poller (server.ts wires it as `resolve`), which turns it into a chat reply; no route calls it (escopos-dispositivo, round 2: the fourth site is its refusal to approve a device's write)",
   },
   {
     file: "doctor.ts",

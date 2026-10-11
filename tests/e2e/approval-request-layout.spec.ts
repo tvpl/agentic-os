@@ -3,6 +3,7 @@
  * Security, in both shells, both languages and three widths, a prompt far longer than the box that shows it is in the
  * page whole, the box scrolls and takes the keyboard's focus, and nothing leaves the card or the page.
  */
+import AxeBuilder from "@axe-core/playwright";
 import { test, expect, type Page } from "@playwright/test";
 import { openPendingFocus } from "./shell";
 
@@ -39,6 +40,7 @@ async function stubApprovals(page: Page, language: "en" | "pt-BR", width: number
               cwd: "/home/me/notes",
               startedBy: "device:0123456789abcdef",
             },
+            requestedByName: "Pixel do escritório",
           },
           status: "pending",
           resolvedAt: null,
@@ -88,7 +90,9 @@ for (const shell of ["moldura", "nucleo"] as const) {
         const panel = page.locator("#settings-tabs-panel-security");
         const requests = panel.getByTestId("approval-request");
         await expect(requests).toHaveCount(2);
-        const prompt = requests.first().getByRole("region", { name: /Prompt, \d+ (characters|caracteres)/ });
+        const prompt = requests
+          .first()
+          .getByRole("region", { name: /^(Prompt) \(appr_lon\), \d+ (characters|caracteres)/ });
         await prompt.scrollIntoViewIfNeeded();
         // The whole text is in the page, not only the part the box shows.
         expect(await prompt.textContent(), `${label} prompt text`).toBe(PROMPT);
@@ -107,7 +111,9 @@ for (const shell of ["moldura", "nucleo"] as const) {
           )
           .toBe(true);
         // Each input of the skill is whole too.
-        const input = requests.nth(1).getByRole("region", { name: /^body, \d+ (characters|caracteres)/ });
+        const input = requests
+          .nth(1)
+          .getByRole("region", { name: /^body \(appr_ski\), \d+ (characters|caracteres)/ });
         expect(await input.textContent(), `${label} skill input`).toBe(SKILL_INPUT);
         // Nothing leaves the card or the page.
         const card = await prompt.evaluate((el) => {
@@ -123,8 +129,30 @@ for (const shell of ["moldura", "nucleo"] as const) {
         expect(sideways, `${label} page scrolls sideways`).toBeLessThanOrEqual(2);
         // Who asked is said in words, and the device's request carries the heavier rule.
         await expect(requests.first()).toContainText(
-          language === "en" ? "paired device 01234567" : "dispositivo pareado 01234567",
+          language === "en"
+            ? "Pixel do escritório, a paired device"
+            : "Pixel do escritório, um dispositivo pareado",
         );
+        // A skill held for approval is a write, and the mode line says so.
+        await expect(requests.nth(1)).toContainText(language === "en" ? "Mode" : "Modo");
+        await expect(requests.nth(1)).toContainText("write");
+        // Two held writes at once: no region name is used twice (the axe rule that found it).
+        const unique = await new AxeBuilder({ page })
+          .withRules(["landmark-unique"])
+          .include("#settings-tabs-panel-security")
+          .analyze();
+        expect(
+          unique.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`),
+          `${label} landmark-unique`,
+        ).toEqual([]);
+        const names = await panel
+          .locator("[aria-label]")
+          .evaluateAll((els) =>
+            els
+              .filter((e) => e.getAttribute("role") === "region" || e.tagName === "SECTION")
+              .map((e) => e.getAttribute("aria-label")),
+          );
+        expect(new Set(names).size, `${label} region names ${names.join(" | ")}`).toBe(names.length);
         await expect(requests.first()).toHaveClass(/from-device/);
       }
     });
@@ -145,7 +173,7 @@ test("C47 the Resolver card of the Núcleo holds the whole request inside the ca
     const focus = await openPendingFocus(page);
     const request1 = focus.getByTestId("approval-request");
     await expect(request1).toHaveCount(1);
-    const prompt = request1.getByRole("region", { name: /Prompt, \d+ characters/ });
+    const prompt = request1.getByRole("region", { name: /^Prompt \(appr_lon\), \d+ characters/ });
     expect(await prompt.textContent(), `${width} prompt text`).toBe(PROMPT);
     const inside = await prompt.evaluate((el) => {
       const card = (el.closest(".nu-focus-item") ?? document.body).getBoundingClientRect();
@@ -159,4 +187,61 @@ test("C47 the Resolver card of the Núcleo holds the whole request inside the ca
     );
     expect(sideways, `${width} page scrolls sideways`).toBeLessThanOrEqual(2);
   }
+});
+
+test("C47 the inline card on the Runs page reads the request before it offers Approve", async ({
+  page,
+  request,
+}) => {
+  const set = await request.put("/api/ui-preferences", { headers: headers(), data: { shell: "moldura" } });
+  expect(set.ok()).toBe(true);
+  for (const width of [1440, 800, 390]) {
+    await stubApprovals(page, "en", width, "prompt");
+    await page.goto(`/?width=${width}#/runs`);
+    await expect(page.locator(".boot-screen")).toHaveCount(0);
+    const card = page.locator(".approval-inline").first();
+    await expect(card).toBeVisible();
+    const prompt = card.getByRole("region", { name: /^Prompt \(appr_lon\), \d+ characters/ });
+    expect(await prompt.textContent(), `${width} prompt text`).toBe(PROMPT);
+    // The request is in the card, before the buttons in the page's order, and inside the card's width.
+    const order = await card.evaluate((el) => {
+      const text = el.querySelector(".approval-request")!;
+      const approve = Array.from(el.querySelectorAll("button")).find((b) =>
+        /approve/i.test(b.textContent ?? ""),
+      )!;
+      return {
+        before: Boolean(text.compareDocumentPosition(approve) & Node.DOCUMENT_POSITION_FOLLOWING),
+        left: text.getBoundingClientRect().left - el.getBoundingClientRect().left,
+        right: el.getBoundingClientRect().right - text.getBoundingClientRect().right,
+      };
+    });
+    expect(order.before, `${width} request before Approve`).toBe(true);
+    expect(order.left, `${width} left`).toBeGreaterThanOrEqual(-1);
+    expect(order.right, `${width} right`).toBeGreaterThanOrEqual(-1);
+    const sideways = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(sideways, `${width} page scrolls sideways`).toBeLessThanOrEqual(2);
+  }
+});
+
+test("C59 in the Núcleo, ⌘⇧A on a device's write opens the Resolver and approves nothing", async ({
+  page,
+  request,
+}) => {
+  const set = await request.put("/api/ui-preferences", { headers: headers(), data: { shell: "nucleo" } });
+  expect(set.ok()).toBe(true);
+  const resolved: string[] = [];
+  page.on("request", (req) => {
+    if (req.method() === "POST" && /\/approvals\/[^/]+\/resolve/.test(req.url())) resolved.push(req.url());
+  });
+  await stubApprovals(page, "en", 1440, "prompt");
+  await page.goto("/?width=1440#/");
+  await expect(page.locator(".boot-screen")).toHaveCount(0);
+  await expect(page.locator(".nu-shell")).toBeVisible();
+  await expect(page.locator(".nu-focus")).toHaveCount(0);
+  await page.keyboard.press("Control+Shift+A");
+  await expect(page.locator(".nu-focus")).toBeVisible();
+  await expect(page.locator(".nu-focus").getByTestId("approval-request")).toHaveCount(1);
+  expect(resolved).toEqual([]);
 });

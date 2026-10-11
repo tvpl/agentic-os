@@ -181,7 +181,7 @@ cap for providers that report cost while running.
 - **Telegram** (Settings › Notifications): set the bot token in the
   environment variable named there, paste your chat id, pick the lowest tone.
   Turn on **Answer from the phone** and every alert about an approval
-  carries **Approve / Deny** buttons; `/pending` lists what waits and
+  carries **Approve / Deny** buttons (a write that a paired phone asked for can be denied there but not approved: the chat shows one line, so you read the whole request in the Command Centre and approve it there); `/pending` lists what waits and
   `/approve <id>` / `/deny <id>` work as text. Only your chat id is honoured;
   anyone else who finds the bot gets silence. Decisions go through the same
   code path as the button in the Command Centre.

@@ -245,6 +245,14 @@ describe("round 1: what a proxy or a header cannot make true", () => {
       { forwarded: "for=198.51.100.4;host=mordomo.example" },
       { "x-real-ip": "198.51.100.4" },
       { via: "1.1 nginx" },
+      { "cf-connecting-ip": "198.51.100.4" },
+      { "cf-ray": "8a1b2c3d4e5f-GRU" },
+      { "true-client-ip": "198.51.100.4" },
+      { "x-client-ip": "198.51.100.4" },
+      { "fastly-client-ip": "198.51.100.4" },
+      { "x-envoy-external-address": "198.51.100.4" },
+      { "x-original-forwarded-for": "198.51.100.4" },
+      { "X-Forwarded-For": "" },
     ];
     for (const headers of proxied) {
       const res = await page(headers);
@@ -255,6 +263,35 @@ describe("round 1: what a proxy or a header cannot make true", () => {
     // The rule itself: names a proxy adds, in any case; the ordinary request headers of a browser are not.
     expect(carriesProxyHeaders({ "x-forwarded-for": "1.2.3.4" })).toBe(true);
     expect(carriesProxyHeaders({ via: "1.0 x" })).toBe(true);
+    for (const name of [
+      "X-Forwarded-For",
+      "FORWARDED",
+      "Via",
+      "X-Real-IP",
+      "X-Client-IP",
+      "True-Client-IP",
+      "Fastly-Client-IP",
+      "X-Envoy-External-Address",
+      "X-Original-Forwarded-For",
+      "CF-Connecting-IP",
+      "CF-Ray",
+      "CF-Visitor",
+      "X-Forwarded-Host",
+    ]) {
+      expect(carriesProxyHeaders({ [name]: "v" }), name).toBe(true);
+    }
+    // Close but not in the list: a header is read only if it is named above.
+    for (const name of [
+      "x-forwarding",
+      "forwarded-for-x",
+      "x-real",
+      "cfx-ray",
+      "xcf-ray",
+      "viax",
+      "user-agent",
+    ]) {
+      expect(carriesProxyHeaders({ [name]: "v" }), name).toBe(false);
+    }
     expect(
       carriesProxyHeaders({
         host: "127.0.0.1",

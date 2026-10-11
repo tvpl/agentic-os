@@ -2,7 +2,7 @@ import type { Settings } from "../config/schema.js";
 import type { EventBus, OsEvent } from "../events.js";
 import type { NotificationRecord } from "../notifications/store.js";
 import type { PushStore } from "../notifications/pushStore.js";
-import { checkPushEndpoint, systemResolver, type HostResolver } from "./pushEndpoint.js";
+import { classifyPushEndpoint, systemResolver, type HostResolver } from "./pushEndpoint.js";
 import { toneAtLeast } from "./telegram.js";
 import { sendWebPush } from "./webpush.js";
 
@@ -47,10 +47,18 @@ export async function deliverPush(
   await Promise.all(
     targets.map(async (t) => {
       // Checked again at send time: a subscription outlives the check that let it in, and the name's records move.
-      // A subscription whose endpoint now points inside is dropped, not retried.
-      if ((await checkPushEndpoint(t.sub.endpoint, resolve)) !== null) {
+      // An endpoint the policy now refuses (it points inside) is dropped for good. A name that could not be
+      // resolved right now (no network, a resolver that timed out) says nothing about where it points: it is a failed
+      // delivery like any other, counted, and the subscription goes only after the usual run of failures.
+      const found = await classifyPushEndpoint(t.sub.endpoint, resolve);
+      if (found.verdict === "rejected") {
         dropped++;
         deps.store.remove(t.id);
+        return;
+      }
+      if (found.verdict === "unresolved") {
+        failed++;
+        if (deps.store.markFailure(t.id)) dropped++;
         return;
       }
       const r = await sendWebPush(t.sub, payload, {

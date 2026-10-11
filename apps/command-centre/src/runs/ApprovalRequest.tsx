@@ -1,5 +1,5 @@
 /**
- * What a held write run would do, whole (.specs/features/escopos-dispositivo, round 1): who asked, the provider and
+ * What a held write run would do, whole (.specs/features/escopos-dispositivo, rounds 1 and 2): who asked, the provider and
  * model, the mode and folder, and the prompt or the skill with every input it is given. The approval's one-line
  * description is a label and cuts long text; the person who approves reads this instead. Nothing is cut: a long
  * text sits in a bounded box that scrolls and that the keyboard can reach (the box says its length), so a request
@@ -10,26 +10,30 @@ import type { ApprovalRecord } from "../api";
 import { approvalTarget } from "./approvals";
 import "./approvalRequest.css";
 
-function Long({ label, text }: { label: string; text: string }) {
+function Long({ label, text, reference }: { label: string; text: string; reference: string }) {
   const t = useT();
   return (
     <pre
       className="approval-request-text mono"
       tabIndex={0}
       role="region"
-      aria-label={t("runs.request.scroll", { label, n: text.length })}
+      aria-label={t("runs.request.scroll", { label, ref: reference, n: text.length })}
     >
       {text}
     </pre>
   );
 }
 
-export function askedBy(requestedBy: string | null, t: ReturnType<typeof useT>): string {
+/** Who asked, in words: the device by the name it was paired with (kept on the approval), else by a short id. */
+export function askedBy(requestedBy: string | null, name: string | null, t: ReturnType<typeof useT>): string {
   if (requestedBy === "owner") return t("runs.request.byOwner");
   if (requestedBy?.startsWith("device:")) {
-    return t("runs.request.byDevice", { id: requestedBy.slice("device:".length, "device:".length + 8) });
+    return name
+      ? t("runs.request.byDevice", { name })
+      : t("runs.request.byDeviceUnnamed", { id: requestedBy.slice("device:".length, "device:".length + 8) });
   }
-  return t("runs.request.byNone");
+  // An approval from before who-asked was recorded, a routine, a sentinel, the command line: nothing says which.
+  return t("runs.request.byUnknown");
 }
 
 export function ApprovalRequest({ approval }: { approval: ApprovalRecord }) {
@@ -37,16 +41,18 @@ export function ApprovalRequest({ approval }: { approval: ApprovalRecord }) {
   if (approval.kind !== "write_run") return null;
   const target = approvalTarget(approval);
   const fromDevice = approval.requestedBy?.startsWith("device:") === true;
+  // Two held writes on one screen must not share a name: the short id tells their regions apart.
+  const reference = approval.id.slice(0, 8);
   return (
     <section
       className={`approval-request${fromDevice ? " from-device" : ""}`}
-      aria-label={t("runs.request.title")}
+      aria-label={`${t("runs.request.title")} · ${reference}`}
       data-testid="approval-request"
     >
       <dl>
         <div>
           <dt>{t("runs.request.askedBy")}</dt>
-          <dd>{askedBy(approval.requestedBy, t)}</dd>
+          <dd>{askedBy(approval.requestedBy, target.requestedByName, t)}</dd>
         </div>
         {target.provider && (
           <div>
@@ -78,7 +84,7 @@ export function ApprovalRequest({ approval }: { approval: ApprovalRecord }) {
           <div className="wide">
             <dt>{t("runs.request.prompt")}</dt>
             <dd>
-              <Long label={t("runs.request.prompt")} text={target.prompt} />
+              <Long label={t("runs.request.prompt")} text={target.prompt} reference={reference} />
             </dd>
           </div>
         )}
@@ -93,7 +99,7 @@ export function ApprovalRequest({ approval }: { approval: ApprovalRecord }) {
               <div className="wide" key={key}>
                 <dt className="mono">{key}</dt>
                 <dd>
-                  <Long label={key} text={value} />
+                  <Long label={key} text={value} reference={reference} />
                 </dd>
               </div>
             ))

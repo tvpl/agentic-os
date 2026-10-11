@@ -621,6 +621,9 @@
 .scope-picker .check:has(input:disabled) {
   cursor: not-allowed;
 }
+.scope-picker input[type="checkbox"]:enabled {
+  cursor: pointer;
+}
 .scope-picker input[type="checkbox"]:disabled {
   cursor: not-allowed;
   outline: 1px dashed var(--text-dim);

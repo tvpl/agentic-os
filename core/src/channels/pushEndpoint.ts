@@ -16,15 +16,18 @@ export type HostResolver = (host: string) => Promise<string[]>;
 export const systemResolver: HostResolver = async (host) =>
   (await dns.promises.lookup(host, { all: true, verbatim: true })).map((a) => a.address);
 
-/** The push services of the browsers: Chrome/Edge (FCM), Firefox (autopush), Safari (APNs web push), Windows (WNS). */
-const KNOWN_PUSH_HOSTS: ReadonlyArray<RegExp> = [
+/**
+ * The push services of the browsers: Chrome/Edge (FCM, and the older `android.googleapis.com`), Firefox (autopush,
+ * `updates.push.services.mozilla.com` and its siblings), Safari (APNs web push, `web.push.apple.com` and its siblings)
+ * and Windows (WNS, `*.notify.windows.com`). Five patterns, each anchored at both ends and tested one by one
+ * (`tests/push-security.test.ts`): a name that merely starts or ends like one of them is not one.
+ */
+export const KNOWN_PUSH_HOSTS: ReadonlyArray<RegExp> = [
   /^fcm\.googleapis\.com$/,
   /^android\.googleapis\.com$/,
-  /^updates\.push\.services\.mozilla\.com$/,
   /^[a-z0-9-]+\.push\.services\.mozilla\.com$/,
-  /^web\.push\.apple\.com$/,
   /^[a-z0-9-]+\.push\.apple\.com$/,
-  /^[a-z0-9.-]+\.notify\.windows\.com$/,
+  /^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.notify\.windows\.com$/,
 ];
 
 export function isKnownPushHost(host: string): boolean {
@@ -58,6 +61,14 @@ for (const [net6, prefix] of [
   ["ff00::", 8],
   ["2001:db8::", 32],
   ["100::", 64],
+  // Forms that can carry or stand for a private IPv4 address, or that no push service uses: IPv4-compatible
+  // (`::a.b.c.d`), the local-use NAT64 prefix, IPv4-translated (SIIT), 6to4, Teredo and the retired site-local range.
+  ["::", 96],
+  ["64:ff9b:1::", 48],
+  ["::ffff:0:0:0", 96],
+  ["2002::", 16],
+  ["2001::", 32],
+  ["fec0::", 10],
 ] as const) {
   PRIVATE.addSubnet(net6, prefix, "ipv6");
 }
@@ -121,28 +132,56 @@ export function endpointProblem(endpoint: string): string | null {
   return null;
 }
 
-/** The same, then every address the name resolves to must be public (a name that points inside is refused). */
+/** What `classifyPushEndpoint` found: fine, refused by the policy, or not decidable now (the name did not resolve). */
+export type EndpointVerdict =
+  { verdict: "ok" } | { verdict: "rejected"; reason: string } | { verdict: "unresolved"; reason: string };
+
+/**
+ * The policy applied to an endpoint, with the reason a name could not be judged kept apart from the reason it was
+ * refused: a name that does not resolve (no network, a resolver that timed out, an empty answer) says nothing about
+ * where the endpoint points, so a sender counts it as a failed delivery and tries again, while an endpoint that
+ * points inside, or that the policy refuses on its face, is dropped.
+ */
+export async function classifyPushEndpoint(
+  endpoint: string,
+  resolve: HostResolver,
+  opts: { knownServicesOnly?: boolean } = {},
+): Promise<EndpointVerdict> {
+  const problem = endpointProblem(endpoint);
+  if (problem) return { verdict: "rejected", reason: problem };
+  const url = new URL(endpoint);
+  const host = url.hostname.toLowerCase().replace(/\.$/, "");
+  if (opts.knownServicesOnly && !isKnownPushHost(host)) {
+    return {
+      verdict: "rejected",
+      reason: "A paired device registers only the push services of browsers (FCM, Mozilla, Apple, Windows).",
+    };
+  }
+  if (net.isIP(host.replace(/^\[|\]$/g, "")) !== 0) return { verdict: "ok" };
+  let addresses: string[];
+  try {
+    addresses = await resolve(host);
+  } catch {
+    return { verdict: "unresolved", reason: "The endpoint's host does not resolve." };
+  }
+  if (addresses.length === 0) {
+    return { verdict: "unresolved", reason: "The endpoint's host does not resolve." };
+  }
+  if (!addresses.every(isPublicAddress)) {
+    return {
+      verdict: "rejected",
+      reason: "The endpoint's host resolves to an address of this machine or its network.",
+    };
+  }
+  return { verdict: "ok" };
+}
+
+/** The same as one answer for a caller that only needs to refuse: null when the endpoint is acceptable now. */
 export async function checkPushEndpoint(
   endpoint: string,
   resolve: HostResolver,
   opts: { knownServicesOnly?: boolean } = {},
 ): Promise<string | null> {
-  const problem = endpointProblem(endpoint);
-  if (problem) return problem;
-  const url = new URL(endpoint);
-  const host = url.hostname.toLowerCase().replace(/\.$/, "");
-  if (opts.knownServicesOnly && !isKnownPushHost(host)) {
-    return "A paired device registers only the push services of browsers (FCM, Mozilla, Apple, Windows).";
-  }
-  if (net.isIP(host.replace(/^\[|\]$/g, "")) !== 0) return null;
-  let addresses: string[];
-  try {
-    addresses = await resolve(host);
-  } catch {
-    return "The endpoint's host does not resolve.";
-  }
-  if (addresses.length === 0 || !addresses.every(isPublicAddress)) {
-    return "The endpoint's host resolves to an address of this machine or its network.";
-  }
-  return null;
+  const found = await classifyPushEndpoint(endpoint, resolve, opts);
+  return found.verdict === "ok" ? null : found.reason;
 }

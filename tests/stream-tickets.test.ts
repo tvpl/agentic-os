@@ -361,12 +361,17 @@ describe("S5 stream tickets", () => {
     const refused = await fetch(`${base}/api/v1/events?ticket=${secret}`);
     expect(refused.status).toBe(401);
     await refused.text();
+    // A refused ticket on a route that takes none is logged like any other request, and redacted.
+    const elsewhere = await fetch(`${base}/api/v1/runs?ticket=${secret}y`);
+    expect(elsewhere.status).toBe(401);
+    await elsewhere.text();
     const runStream = await fetch(`${base}/api/v1/runs/${crypto.randomUUID()}/stream?ticket=${secret}x`);
     expect(runStream.status).toBe(401);
     await runStream.text();
     await new Promise((r) => setTimeout(r, 200));
     const log = fs.readFileSync(path.join(ctx.paths.logs, "api.jsonl"), "utf8");
     expect(log).toContain("/api/events?ticket=[REDACTED]");
+    expect(log).toContain("/api/runs?ticket=[REDACTED]");
     expect(log).not.toContain(secret);
     expect(log).not.toContain(live);
   });

@@ -21,11 +21,21 @@ export interface ApprovalTarget {
   mode: string | null;
   /** What a skill run is given, in the order it was written (empty for a prompt run). */
   inputs: Array<[string, string]>;
+  /** The name of the paired device that asked, kept with the approval when it was raised (null: not recorded). */
+  requestedByName: string | null;
+}
+
+/**
+ * A write run a paired device asked for. Whoever decides it reads the whole request first (the approvals screens show
+ * it), so the quick ways to approve (the inbox's tick, the Núcleo's ⌘⇧A) send the person to that review instead.
+ */
+export function isDeviceWriteApproval(approval: Pick<ApprovalRecord, "kind" | "requestedBy">): boolean {
+  return approval.kind === "write_run" && approval.requestedBy?.startsWith("device:") === true;
 }
 
 /** Read the launch input out of an approval payload without trusting its shape. */
 export function approvalTarget(approval: ApprovalRecord): ApprovalTarget {
-  const payload = (approval.payload ?? {}) as { kind?: unknown; input?: unknown };
+  const payload = (approval.payload ?? {}) as { kind?: unknown; input?: unknown; requestedByName?: unknown };
   const input = (payload.input ?? {}) as Record<string, unknown>;
   const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
   const kind = payload.kind === "prompt" || payload.kind === "skill" ? payload.kind : "other";
@@ -37,7 +47,9 @@ export function approvalTarget(approval: ApprovalRecord): ApprovalTarget {
     provider: str(input.provider),
     model: str(input.model),
     effort: str(input.effort),
-    mode: str(input.mode),
+    // A prompt run says its mode; a skill run does not, and only a skill that writes is held for approval.
+    mode: str(input.mode) ?? (kind === "skill" ? "write" : null),
+    requestedByName: str(payload.requestedByName),
     inputs:
       input.inputs && typeof input.inputs === "object" && !Array.isArray(input.inputs)
         ? Object.entries(input.inputs as Record<string, unknown>).map(([k, v]) => [

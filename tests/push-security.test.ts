@@ -6,9 +6,11 @@ import type { FastifyInstance } from "fastify";
 import {
   b64url,
   checkPushEndpoint,
+  classifyPushEndpoint,
   deliverPush,
   endpointProblem,
   isKnownPushHost,
+  KNOWN_PUSH_HOSTS,
   isPublicAddress,
   type DeviceScope,
   type HostResolver,
@@ -370,5 +372,277 @@ describe("C46 the send is checked too", () => {
     } finally {
       dnsTable.set("rebinding.example", ["93.184.216.34"]);
     }
+  });
+});
+
+describe("C58 each rule of the endpoint policy, on its own", () => {
+  it("a name belongs to a push service only when the whole name does, pattern by pattern", () => {
+    expect(KNOWN_PUSH_HOSTS).toHaveLength(5);
+    const cases: Array<{ pattern: string; yes: string[]; no: string[] }> = [
+      {
+        pattern: "fcm.googleapis.com",
+        yes: ["fcm.googleapis.com"],
+        no: [
+          "fcm.googleapis.com.evil.example",
+          "evilfcm.googleapis.com",
+          "_fcm.googleapis.com",
+          "x.fcm.googleapis.com",
+        ],
+      },
+      {
+        pattern: "android.googleapis.com",
+        yes: ["android.googleapis.com"],
+        no: [
+          "android.googleapis.com.evil.example",
+          "evilandroid.googleapis.com",
+          "_android.googleapis.com",
+          "x.android.googleapis.com",
+        ],
+      },
+      {
+        pattern: "*.push.services.mozilla.com",
+        yes: ["updates.push.services.mozilla.com", "autopush-1.push.services.mozilla.com"],
+        no: [
+          "push.services.mozilla.com",
+          "updates.push.services.mozilla.com.evil.example",
+          "evil-push.services.mozilla.com",
+          "a_b.push.services.mozilla.com",
+          "a.b.push.services.mozilla.com",
+        ],
+      },
+      {
+        pattern: "*.push.apple.com",
+        yes: ["web.push.apple.com", "17.push.apple.com"],
+        no: [
+          "push.apple.com",
+          "web.push.apple.com.evil.example",
+          "evilpush.apple.com",
+          "x_.push.apple.com",
+          "a.b.push.apple.com",
+        ],
+      },
+      {
+        pattern: "*.notify.windows.com",
+        yes: ["wns2-par02p.notify.windows.com", "db5.notify.windows.com", "a.b.notify.windows.com"],
+        no: [
+          "notify.windows.com",
+          "wns.notify.windows.com.evil.example",
+          "evilnotify.windows.com",
+          "ev_il.notify.windows.com",
+          "x.notifyxwindows.com",
+        ],
+      },
+    ];
+    for (const c of cases) {
+      const matching = KNOWN_PUSH_HOSTS.filter((re) => c.yes.every((h) => re.test(h)));
+      expect(matching, c.pattern).toHaveLength(1);
+      for (const host of c.yes) expect(isKnownPushHost(host), `${c.pattern}: ${host}`).toBe(true);
+      for (const host of c.no) expect(isKnownPushHost(host), `${c.pattern}: ${host}`).toBe(false);
+      // The name has to be the pattern's alone: no other pattern lets a refused name through.
+      for (const host of c.no)
+        expect(
+          KNOWN_PUSH_HOSTS.some((re) => re.test(host)),
+          host,
+        ).toBe(false);
+    }
+  });
+
+  it("an address is public unless a range names it: every range, at both of its edges, and its neighbours", () => {
+    const inside: Array<[string, string[]]> = [
+      ["0.0.0.0/8", ["0.0.0.0", "0.255.255.255"]],
+      ["10/8", ["10.0.0.0", "10.255.255.255"]],
+      ["100.64/10", ["100.64.0.0", "100.127.255.255"]],
+      ["127/8", ["127.0.0.0", "127.255.255.255"]],
+      ["169.254/16", ["169.254.0.0", "169.254.169.254", "169.254.255.255"]],
+      ["172.16/12", ["172.16.0.0", "172.31.255.255"]],
+      ["192.0.0/24", ["192.0.0.0", "192.0.0.255"]],
+      ["192.0.2/24", ["192.0.2.0", "192.0.2.255"]],
+      ["192.168/16", ["192.168.0.0", "192.168.255.255"]],
+      ["198.18/15", ["198.18.0.0", "198.19.255.255"]],
+      ["198.51.100/24", ["198.51.100.0", "198.51.100.255"]],
+      ["203.0.113/24", ["203.0.113.0", "203.0.113.255"]],
+      ["224/4", ["224.0.0.1", "239.255.255.255"]],
+      ["240/4", ["240.0.0.1", "255.255.255.255"]],
+      ["::", ["::"]],
+      ["::1", ["::1"]],
+      ["fc00::/7", ["fc00::1", "fdff:ffff::1"]],
+      ["fe80::/10", ["fe80::1", "febf::1"]],
+      ["ff00::/8", ["ff02::1", "ffff::1"]],
+      ["2001:db8::/32", ["2001:db8::1", "2001:db8:ffff::1"]],
+      ["100::/64", ["100::1", "100::ffff:ffff:ffff:ffff"]],
+      ["::/96 (IPv4-compatible)", ["::7f00:1", "::127.0.0.1", "::8.8.8.8", "::a00:1"]],
+      ["64:ff9b:1::/48 (local NAT64)", ["64:ff9b:1::7f00:1", "64:ff9b:1:ffff::1"]],
+      ["::ffff:0:0:0/96 (SIIT)", ["::ffff:0:7f00:1", "::ffff:0:a00:1"]],
+      ["2002::/16 (6to4)", ["2002:7f00:1::1", "2002:808:808::1"]],
+      ["2001::/32 (Teredo)", ["2001::1", "2001:0:ffff::1"]],
+      ["fec0::/10 (site-local)", ["fec0::1", "feff::1"]],
+      [
+        "mapped and NAT64 forms of a private address",
+        ["::ffff:10.0.0.1", "::ffff:a00:1", "64:ff9b::a00:1", "64:ff9b::10.0.0.1", "::ffff:127.0.0.1"],
+      ],
+    ];
+    for (const [range, addresses] of inside) {
+      for (const address of addresses) expect(isPublicAddress(address), `${range}: ${address}`).toBe(false);
+    }
+    const outside = [
+      "1.0.0.1",
+      "9.255.255.255",
+      "11.0.0.0",
+      "100.63.255.255",
+      "100.128.0.0",
+      "126.255.255.255",
+      "128.0.0.1",
+      "169.253.255.255",
+      "169.255.0.0",
+      "172.15.255.255",
+      "172.32.0.0",
+      "192.0.1.1",
+      "192.0.3.1",
+      "192.167.255.255",
+      "192.169.0.0",
+      "198.17.255.255",
+      "198.20.0.0",
+      "198.51.99.1",
+      "198.51.101.1",
+      "203.0.112.255",
+      "203.0.114.1",
+      "223.255.255.255",
+      "8.8.8.8",
+      "2606:4700:4700::1111",
+      "2a00:1450:4001::1",
+      "2001:4860:4860::8888",
+      "2001:db9::1",
+      "fbff::1",
+      "100:0:0:1::1",
+      "::ffff:8.8.8.8",
+      "::ffff:808:808",
+      "64:ff9b::808:808",
+    ];
+    for (const address of outside) expect(isPublicAddress(address), address).toBe(true);
+  });
+
+  it("a name is local when it ends like one of the local suffixes, or is one label, with or without a final dot", () => {
+    for (const host of [
+      "x.localhost",
+      "x.local",
+      "x.internal",
+      "x.localdomain",
+      "x.lan",
+      "x.home",
+      "x.corp",
+      "x.intranet",
+      "printer",
+      "localhost",
+      "localhost.",
+      "x.lan.",
+      "[fe80::1]",
+    ]) {
+      expect(endpointProblem(`https://${host}/send`), host).not.toBeNull();
+    }
+    for (const host of [
+      "x.lanx.example",
+      "homepage.example",
+      "corp.example.com",
+      "fcm.googleapis.com.",
+      "8.8.8.8",
+    ]) {
+      expect(endpointProblem(`https://${host}/send`), host).toBeNull();
+    }
+  });
+
+  it("an empty answer and a failing resolver are 'unresolved', never 'points inside'", async () => {
+    const empty: HostResolver = async () => [];
+    const failing: HostResolver = async () => {
+      throw Object.assign(new Error("getaddrinfo EAI_AGAIN"), { code: "EAI_AGAIN" });
+    };
+    for (const r of [empty, failing]) {
+      expect(await classifyPushEndpoint(FCM, r)).toMatchObject({ verdict: "unresolved" });
+      expect(await checkPushEndpoint(FCM, r)).toMatch(/does not resolve/);
+    }
+    expect(await classifyPushEndpoint(FCM, resolver)).toEqual({ verdict: "ok" });
+    expect(await classifyPushEndpoint("https://internal.example/x", resolver)).toMatchObject({
+      verdict: "rejected",
+    });
+    expect(await classifyPushEndpoint("https://127.0.0.1/x", failing)).toMatchObject({ verdict: "rejected" });
+    // A final dot on the name is the same name.
+    expect(
+      await checkPushEndpoint("https://fcm.googleapis.com./fcm/send/abc", resolver, {
+        knownServicesOnly: true,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("C58 the send and the routes keep what they promised", () => {
+  it("a resolver that fails is a failed delivery, counted; the subscription goes only after the usual run of failures", async () => {
+    expect((await subscribe(ctx.token(), FCM)).statusCode).toBe(200);
+    const calls: string[] = [];
+    const fetchImpl = (async (url: string | URL | Request) => {
+      calls.push(String(url));
+      return new Response(null, { status: 201 });
+    }) as unknown as typeof fetch;
+    const flaky: HostResolver = async () => {
+      throw Object.assign(new Error("getaddrinfo EAI_AGAIN fcm.googleapis.com"), { code: "EAI_AGAIN" });
+    };
+    const deps = { getSettings: () => ctx.settings(), store: ctx.push, fetchImpl, resolveHost: flaky };
+    const first = await deliverPush(deps, notification());
+    expect(first).toEqual({ sent: 0, failed: 1, dropped: 0 });
+    expect(ctx.push.list().map((r) => [r.endpoint, r.failures])).toEqual([[FCM, 1]]);
+    expect(calls).toEqual([]);
+    // The network comes back: it is delivered to, and the count starts over.
+    expect(await deliverPush({ ...deps, resolveHost: resolver }, notification())).toEqual({
+      sent: 1,
+      failed: 0,
+      dropped: 0,
+    });
+    expect(ctx.push.list()[0]!.failures).toBe(0);
+    // Eight in a row and it goes, as for any other failure.
+    let last = { sent: 0, failed: 0, dropped: 0 };
+    for (let i = 0; i < 8; i++) last = await deliverPush(deps, notification());
+    expect(last).toEqual({ sent: 0, failed: 1, dropped: 1 });
+    expect(ctx.push.list()).toHaveLength(0);
+    // An endpoint that now points inside is another matter: dropped at once.
+    expect((await subscribe(ctx.token(), "https://rebinding.example/sub/2")).statusCode).toBe(200);
+    dnsTable.set("rebinding.example", ["10.1.1.1"]);
+    try {
+      expect(await deliverPush({ ...deps, resolveHost: resolver }, notification())).toEqual({
+        sent: 0,
+        failed: 0,
+        dropped: 1,
+      });
+    } finally {
+      dnsTable.set("rebinding.example", ["93.184.216.34"]);
+    }
+  });
+
+  it("a device cannot name an IP literal, even a public one; the owner can; a final dot changes nothing", async () => {
+    const device = pair(["content"]);
+    const literal = await subscribe(device.token, "https://8.8.8.8/x");
+    expect(literal.statusCode).toBe(400);
+    expect(literal.json()).toMatchObject({ error: { code: "invalid_push_endpoint" } });
+    expect((literal.json() as { error: { message: string } }).error.message).toMatch(
+      /only the push services/,
+    );
+    expect((await subscribe(ctx.token(), "https://8.8.8.8/x")).statusCode).toBe(200);
+    expect((await subscribe(device.token, "https://fcm.googleapis.com./fcm/send/dot")).statusCode).toBe(200);
+  });
+
+  it("the owner who registers an endpoint a device registered takes it over", async () => {
+    const device = pair(["content"]);
+    expect((await subscribe(device.token, FCM)).statusCode).toBe(200);
+    expect(ctx.push.ownerOf(FCM)).toBe(device.id);
+    expect((await subscribe(ctx.token(), FCM)).statusCode).toBe(200);
+    expect(ctx.push.ownerOf(FCM)).toBeNull();
+    expect(ctx.push.list()).toHaveLength(1);
+    // It is the owner's now: revoking the device leaves it, and the device can no longer remove it.
+    const gone = await app.inject({
+      method: "POST",
+      url: "/api/push/unsubscribe",
+      headers: as(device.token),
+      payload: { endpoint: FCM },
+    });
+    expect(gone.json()).toEqual({ removed: false });
+    ctx.devices.revoke(device.id);
+    expect(ctx.push.list().map((r) => r.endpoint)).toEqual([FCM]);
   });
 });
