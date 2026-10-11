@@ -29,7 +29,7 @@ import {
   type RoutineStatus,
   type Skill,
 } from "../../api";
-import { getDialogDepth, Popover, Tooltip } from "../../ui";
+import { floatingLayerOpen, getDialogDepth, Popover, Tooltip } from "../../ui";
 import { timeAgo, useToast } from "../../components/ui";
 import { useWorkspace } from "../../components/Workspace";
 import { useLang, useT, type TKey } from "../../i18n";
@@ -1355,7 +1355,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
-      if (escState.current.menuOpen || getDialogDepth() > 0) return; // the popover / a dialog has it
+      if (escState.current.menuOpen || getDialogDepth() > 0 || floatingLayerOpen()) return; // a popover, a hint or a dialog has it
       const target = e.target instanceof Node ? e.target : null;
       const el = target instanceof Element ? target : null;
       if (el?.closest('[role="dialog"], .nu-voice, .nu-laminas')) return;
@@ -1380,7 +1380,8 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
   // Shift+1…4: the four arrangements.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || !e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.defaultPrevented || !e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || floatingLayerOpen())
+        return;
       const m = /^Digit([1-4])$/.exec(e.code);
       if (!m) return;
       const el = e.target instanceof HTMLElement ? e.target : null;

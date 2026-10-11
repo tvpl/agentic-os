@@ -52,7 +52,8 @@ leitor de estados de `states.test.ts` e a galeria.
    que sai); a profundidade e o `inert` continuam sendo o que o resto do app lê.
 3. Tecla: o Radix trata Esc (ouvinte de documento em captura) e Tab (armadilha de foco) da camada de
    cima e marca o evento `defaultPrevented`; `commands/registry.ts` (exists) ignora o que já foi
-   tratado e continua com o único ouvinte de comandos da página.
+   tratado e continua com o único ouvinte de comandos da página. `useDrawer` e os ouvintes de janela em
+   captura das cenas do Núcleo leem a mesma marca (e `floatingLayerOpen()`): um Esc fecha uma coisa, a de cima.
 4. `commands/listenersAllowlist.ts` (exists) ganha a lista das dependências que escutam teclado
    (door 5); `commands.probe.test.tsx` (exists) atribui o ouvinte ao pacote do Radix, e não ao React DOM.
 5. `ui/ui.css` (new, door 4) desenha tudo por tokens `--ui-*`; `html:has(.nu-shell)` e
@@ -75,6 +76,9 @@ leitor de estados de `states.test.ts` e a galeria.
 | screen      | o Núcleo perde o véu/folha escritos por cima de `.modal` em `luz.css` e os ganha pelos tokens do material; o sino, o menu "⋯" do Cérebro, o menu "+" de Skills e os popovers do console ficam com a superfície das primitivas (vidro no Núcleo, folha opaca na moldura)                                                                                                                                                                           |
 | screen      | 81 botões só de ícone trocam o `title` nativo por uma dica das primitivas (atraso de 400 ms, aparece com o foco do teclado); os `title` que carregam dado (caminho, texto cortado, resumo) ficam                                                                                                                                                                                                                                                  |
 | test        | `commands/listenersAllowlist.ts` e `commands.probe.test.tsx` passam a contar também as dependências; a entrada `components/dialog.tsx` vira `ui/layers.ts` (a gaveta) e a de `components/primitives.tsx` sai (o Esc do popover é do Radix, com o ouvinte listado como dependência); as listas `MICROCOPY` e `MARKED_ELSEWHERE` perdem as entradas dos seletores que somem e ganham as das primitivas, cada uma com o motivo                       |
+| screen      | um menu aberto é uma camada para o registro de comandos (`overlay`), como um diálogo: as letras e o `Mod+K` não chegam à tela atrás dele; um diálogo aberto por um item de menu ou por um controle de popover devolve o foco ao controle de que o painel pendia, quando o item sumiu; um Esc com dica, popover ou menu aberto fecha essa camada antes de qualquer gaveta ou cena                                                                  |
+| screen      | a dica de um controle cujo nome ela repete deixa de ser a sua descrição (`aria-describedby`): o leitor de tela dizia o nome duas vezes a cada foco; o vidro dos popovers do Núcleo passa de 70% a 86% de opacidade; a folha de detalhes de Skills, que era desenhada duas vezes (`ui.css` e `skillsScene.css`), fica só com o material das primitivas: o recorte de canto e o vidro próprio saem                                                  |
+| test        | `tests/bundle-size.test.ts` e `scripts/bundle-baseline.json` (o guarda de peso, no CI); `tests/ui-deps.test.ts` lê a lista de partida da própria feature e não o histórico do git                                                                                                                                                                                                                                                                 |
 | stored data | nada a migrar                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 ## Relations
@@ -99,6 +103,8 @@ None - nothing consumed outside; a superfície interna (`src/ui/index.ts`) é a 
 | 7. Material do shell, tokens acrescentados na construção (door 4, additive) | além dos oito, `--ui-sheet-edge`, `--ui-sheet-shadow`, `--ui-sheet-blur`, `--ui-sheet-in`, `--ui-sheet-out`, `--ui-veil-in`, `--ui-pop-edge`, `--ui-pop-shadow`, `--ui-item-r`, `--ui-item-clip`, todos em `ui/ui.css` (`:root` e `[data-shell="moldura"]` para a moldura, `html:has(.nu-shell)` e `.nu-shell` para o Núcleo); o `animation` da folha é `animation: var(--ui-sheet-in)` dentro do bloco `no-preference` | declarar a pele de vidro do Núcleo como regras num bloco `html:has(.nu-shell) .modal` dentro de `ui.css` (uma segunda regra por peça: o que `luz.css` já fazia, só mudou de arquivo) |
 | 8. Ouvintes de dependência, nomes achados na construção (door 5, additive) | na versão fixada o ouvinte de Esc está em `@radix-ui/react-dismissable-layer` (`document`, captura, só a camada de cima) e o do `@radix-ui/react-menu` (`document`, captura) só marca se a última tecla foi do teclado; a lista é `"@radix-ui/react-dismissable-layer": [1, …]` e `"@radix-ui/react-menu": [1, …]`; `@radix-ui/react-use-escape-keydown` do exemplo da porta 5 não existe nesta linha | manter o nome do exemplo (a sonda reprovaria um pacote que não escuta e deixaria passar os dois que escutam) |
 | 9. Gaveta do documento fica em `useDrawer` e o menu não é modal (door 3, additive; achado na construção) | `moldura/DocDrawer` chama `useDrawer(ref, onClose)` (não `DialogSurface`), e `DropdownMenu` passa `modal={false}` ao Radix; `useDrawer` é importado por exatamente `moldura/Sidebar.tsx`, `moldura/Moldura.tsx` e `moldura/DocDrawer.tsx` | `DialogSurface portal={false}` na gaveta: o Radix põe `aria-hidden` em todo irmão de um modal que não sai do lugar, `#modal-root` incluído, e a paleta aberta de dentro da gaveta mora lá e ficava escondida do leitor de tela (achado ao migrar, revertido); menu modal: o Radix põe `aria-hidden` e `pointer-events: none` na página inteira, e o axe reprova conteúdo focável sob `aria-hidden` (`aria-hidden-focus`) |
+
+| 10. Camadas flutuantes e rodada 1 da verificação (doors 2, 3 e 6, additive) | `ui/index.ts` passa a exportar também `floatingLayerOpen` (14 valores); `useDrawer` retorna sem agir quando `e.defaultPrevented`; `DropdownMenu` mantém `useCommandScope("overlay", open)`; `Tooltip` não deixa `aria-describedby` no controle quando o texto da dica é o seu `aria-label`; `Dialog` guarda o controle de que o painel (menu ou popover) pendia e o usa se o opener sumiu; o guarda de peso lê `scripts/bundle-baseline.json` (`tolerance` 1.05, `before`, `after[]` com motivo) e roda por `npm run bundle:check` no CI | tratar o Esc do popover na gaveta pelo registro (a gaveta também prende o Tab, que o registro não trata, e o Esc dela já é lido pela marca `defaultPrevented`: o mesmo efeito sem um terceiro caminho); `modal` no menu (rejeitado na door 9); manter `AFTER` como constante no script (o limite se movia sem uma linha revisável) |
 
 - Nothing else in this change is hard to reverse
 
@@ -170,6 +176,21 @@ O inventário de `design.md` é uma lista fechada: o que migra e o que fica, com
 32. The typecheck, the lint (ESLint and stylelint), the interface suite and the root suite SHALL pass, and the e2e specs of the migrated screens SHALL show no failure that the base does not show
 
 **Independent test:** `npm run build` e `node scripts/bundle-size.mjs --check`.
+
+### S5: Rodada 1 da verificação (P1)
+
+O verificador independente achou o que o construtor não viu: duas camadas respondendo a um mesmo Esc, três popovers sem prova, e algumas provas que não podiam falhar. As regras abaixo fecham o que mudou de comportamento; o que foi só prova mais forte está nas emendas de `checks.md`.
+
+**Acceptance Criteria**
+
+33. WHEN a Radix layer (a popover, a hint or a menu) is above a panel kept by `useDrawer` and Escape is pressed THEN only that layer SHALL close; the panel SHALL close on the next Escape, and an Escape already marked handled SHALL NOT close any of the three drawers
+34. WHILE a hint, a popover or a menu is up, the Escape that a scene of the Núcleo listens for in the window capture SHALL reach that layer first (`floatingLayerOpen()`), and one Escape SHALL close one thing, in the frame and in the Núcleo
+35. WHILE a menu is open the registry SHALL hold an `overlay` layer: no command of the screen behind it (a letter, `Mod+K`) SHALL run, and the keys SHALL answer again when it closes
+36. WHEN a dialog opened from an item of a menu, or from a control inside a popover, closes and the opener is gone, focus SHALL go to the control the menu or the popover hung from
+37. WHERE a Tooltip's label is the accessible name of its control, the control SHALL NOT point `aria-describedby` at the hint (it would be said twice)
+38. The weight guard SHALL run in CI, read a versioned baseline in which every entry says why, and hold the tolerance at 5% by a test that fails a build above it
+
+**Independent test:** `npm run test -w apps/command-centre -- src/ui/drawer.test.tsx` e `MORDOMO_E2E_PORT=4888 npx playwright test --config <temporária> tests/e2e/primitives.spec.ts`.
 
 ## Out of scope
 

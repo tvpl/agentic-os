@@ -6,8 +6,9 @@
  * a dialog, and it says so with `aria-modal="false"`, which is what the command
  * registry reads to keep the screen behind a popover live.
  */
-import { useEffect, useMemo, useRef, type RefObject, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, type RefObject, type ReactNode } from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
+import { registerHangsFrom } from "./layers";
 
 export type PopoverPlacement = "bottom-start" | "bottom-end" | "bottom" | "top-start" | "top-end" | "top";
 
@@ -49,7 +50,15 @@ export function Popover({
   portal = true,
 }: PopoverProps) {
   const pressedOutside = useRef(false);
-  const contentRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  // The panel says what it hangs from, so a dialog opened from inside it can give focus back there.
+  const panelRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      contentRef.current = el;
+      if (el) registerHangsFrom(el, () => anchorElement(anchor));
+    },
+    [anchor],
+  );
   const virtualAnchor = useMemo(
     () => ({
       get current() {
@@ -65,7 +74,6 @@ export function Popover({
       const back = anchorElement(anchor);
       const active = document.activeElement;
       // The panel is still in the tree here (it leaves when its exit ends), so the ref is current.
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- read as the popover closes, not as it opens
       const here = active === document.body || contentRef.current?.contains(active);
       if (!pressedOutside.current && here && back?.isConnected) back.focus({ preventScroll: true });
       pressedOutside.current = false;
@@ -74,7 +82,7 @@ export function Popover({
   const [side, align] = placement.split("-") as ["top" | "bottom", ("start" | "end")?];
   const content = (
     <PopoverPrimitive.Content
-      ref={contentRef}
+      ref={panelRef}
       side={side}
       align={align ?? "center"}
       sideOffset={offset}

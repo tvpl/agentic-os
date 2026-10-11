@@ -4,6 +4,9 @@
  * is `role="tooltip"` referenced by `aria-describedby`, and goes away with Escape
  * without moving focus. It never replaces the control's name: the control keeps
  * its own `aria-label`, so touch and the platform's accessibility tree still have it.
+ * When the hint says only the name (the usual case) the control is not pointed at it:
+ * a screen reader would say the same words twice on every focus. A hint that adds
+ * something to the name (the key that runs it) is the control's description.
  */
 import {
   cloneElement,
@@ -15,6 +18,9 @@ import {
   type ReactNode,
 } from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+
+/** Cloned onto a control whose name the hint repeats: Radix's `aria-describedby` gives way to it. */
+const NOT_DESCRIBED = { "aria-describedby": undefined } as Record<string, unknown>;
 
 /** Whether a provider is already above (one provider keeps the "skip the delay" window between neighbours). */
 const InProvider = createContext(false);
@@ -50,10 +56,13 @@ export const Tooltip = forwardRef<HTMLButtonElement, TooltipProps>(function Tool
   const inProvider = useContext(InProvider);
   if (label === undefined || label === null || label === false || label === "")
     return cloneElement(children, { ...forwarded, ref } as Record<string, unknown>);
+  const name = (children.props as { "aria-label"?: unknown })["aria-label"];
+  const control =
+    typeof label === "string" && name === label ? cloneElement(children, NOT_DESCRIBED) : children;
   const tip = (
     <TooltipPrimitive.Root>
       <TooltipPrimitive.Trigger asChild {...forwarded} ref={ref}>
-        {children}
+        {control}
       </TooltipPrimitive.Trigger>
       <TooltipPrimitive.Portal>
         <TooltipPrimitive.Content

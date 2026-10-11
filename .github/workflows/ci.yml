@@ -37,6 +37,9 @@ jobs:
         if: runner.os == 'Windows'
         run: npx vitest run --exclude tests/adapters.test.ts --exclude tests/api.test.ts --exclude tests/core.runs.test.ts --exclude tests/seeds.test.ts
       - run: npm run build
+      - name: Bundle weight (the guard of scripts/bundle-size.mjs)
+        if: runner.os == 'Linux'
+        run: npm run bundle:check
       - run: npm audit --audit-level=high
       - name: Packager smoke (bundle + launchers, system Node, no archive)
         if: runner.os != 'Windows'

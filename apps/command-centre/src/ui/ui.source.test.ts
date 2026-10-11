@@ -11,7 +11,7 @@ import postcss from "postcss";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { cssSizeOffences, treeRoots } from "../testing/sizeScan";
-import { colourOnlyStates, stateGroups } from "../testing/stateScan";
+import { colourOnlyStates, hardShadow, stateGroups } from "../testing/stateScan";
 
 const SRC = join(__dirname, "..");
 const UI = join(SRC, "ui");
@@ -108,6 +108,7 @@ describe("C3 the primitives live in src/ui, and only there is Radix imported", (
         "Tabs",
         "Tooltip",
         "UiProvider",
+        "floatingLayerOpen",
         "focusables",
         "getDialogDepth",
         "subscribeDialogDepth",
@@ -234,8 +235,43 @@ describe("C16 the stylesheet obeys the design system's rules on its own", () => 
         '.ui-tabs-list[data-variant="list"] [role="tab"][aria-selected="true"]',
         '.ui-tabs-list[data-variant="pill"] [role="tab"][aria-selected="true"]',
         '.ui-switch:not(.chip)[aria-checked="true"]',
+        ".ui-menu-item[data-highlighted]",
       ]),
     );
+  });
+
+  /** The declarations a rule with exactly this selector makes. */
+  const declared = (selector: string, prop: string): string[] => {
+    const values: string[] = [];
+    postcss.parse(css()).walkRules((rule) => {
+      if (rule.selectors.map((x) => x.trim()).includes(selector))
+        rule.walkDecls(prop, (d) => void values.push(d.value));
+    });
+    return values;
+  };
+
+  it("C16 the mark each state carries is the one the check names: a bar or ring that is hard, and a thumb that moves", () => {
+    // The reader counts any fill as a mark (a 10% tint included); the claim says a bar, so the bar is read.
+    for (const selector of [
+      '.ui-tabs-list[data-variant="line"] [role="tab"][aria-selected="true"]',
+      '.ui-tabs-list[data-variant="list"] [role="tab"][aria-selected="true"]',
+      '.ui-tabs-list[data-variant="pill"] [role="tab"][aria-selected="true"]',
+      ".ui-menu-item[data-highlighted]",
+    ]) {
+      const shadows = declared(selector, "box-shadow");
+      expect(shadows.length, `${selector} declares a box-shadow`).toBeGreaterThan(0);
+      expect(
+        shadows.some(hardShadow),
+        `${selector} has a bar or ring with no blur: ${shadows.join(" | ")}`,
+      ).toBe(true);
+    }
+    expect(declared('.ui-switch:not(.chip)[aria-checked="true"]::before', "transform")).toEqual([
+      "translateX(14px)",
+    ]);
+    // And the reading itself can tell a bar from a glow and from nothing.
+    expect(hardShadow("inset 2px 0 0 var(--accent)")).toBe(true);
+    expect(hardShadow("0 0 18px -8px var(--agent)")).toBe(false);
+    expect(hardShadow("none")).toBe(false);
   });
 
   it("C16 no text under 12px and no colour literal in ui.css", () => {
@@ -262,8 +298,19 @@ interface TitleSite {
   tag: string;
   title: string;
   aria: string | null;
+  /** The control shows no word of its own: nothing but an icon element or a symbol. */
+  wordless: boolean;
 }
 const normalised = (text: string) => text.replace(/\s+/g, " ").slice(0, 90);
+/** Whether an element's content has a word: letters or digits in its text, or an expression (`{t("x")}`). */
+function hasWords(el: ts.JsxElement): boolean {
+  return el.children.some((c) => {
+    if (ts.isJsxText(c)) return /[\p{L}\p{N}]/u.test(c.text);
+    if (ts.isJsxExpression(c)) return true;
+    if (ts.isJsxElement(c)) return hasWords(c);
+    return false;
+  });
+}
 /** The `title` of every button, Button, a and Link, with its `aria-label` when it has one. */
 function titleSites(code: string): TitleSite[] {
   const out: TitleSite[] = [];
@@ -279,6 +326,7 @@ function titleSites(code: string): TitleSite[] {
         tag,
         title: normalised(title.initializer.getText()),
         aria: aria?.initializer ? normalised(aria.initializer.getText()) : null,
+        wordless: !(ts.isJsxOpeningElement(n) && ts.isJsxElement(n.parent) && hasWords(n.parent)),
       });
   });
   return out;
@@ -333,7 +381,6 @@ const TITLE_STAYS: Record<string, [reason: "DATA" | "WORDS" | "BINDING" | "DECK"
   'desktop/console/ConsoleControls.tsx :: {t("desktop.console.conversations")}': ["WORDS", 1],
   'desktop/console/ConsoleControls.tsx :: {t("desktop.cost.budget")}': ["WORDS", 1],
   "desktop/console/ConsoleThread.tsx :: {`${p.path} § ${p.section}`}": ["DATA", 1],
-  'desktop/console/ConsoleThread.tsx :: {t("desktop.artifact.send")}': ["WORDS", 1],
   "desktop/console/ConsoleTray.tsx :: {panel.path ?? panel.title}": ["DATA", 1],
   'desktop/widgets/AttentionWidget.tsx :: {t("desktop.attention.staleHint")}': ["WORDS", 1],
   "desktop/widgets/BoardWidget.tsx :: {r.name}": ["DATA", 1],
@@ -373,13 +420,13 @@ describe("C25 an icon-only control names itself and hints with a Tooltip, not wi
   it("C25 the reader finds titles in every spelling of the element", () => {
     const sites = (code: string) => titleSites(code);
     expect(sites('<button title="Save" aria-label="Save"><X /></button>')).toEqual([
-      { tag: "button", title: '"Save"', aria: '"Save"' },
+      { tag: "button", title: '"Save"', aria: '"Save"', wordless: true },
     ]);
     expect(sites("<Button title={t('a')} aria-label={t('a')} />")).toEqual([
-      { tag: "Button", title: "{t('a')}", aria: "{t('a')}" },
+      { tag: "Button", title: "{t('a')}", aria: "{t('a')}", wordless: true },
     ]);
     expect(sites("<Link to='/x' title={`${a}`} />")).toEqual([
-      { tag: "Link", title: "{`${a}`}", aria: null },
+      { tag: "Link", title: "{`${a}`}", aria: null, wordless: true },
     ]);
     expect(sites('<a href="/x" title="Open" aria-label="Open" />')).toHaveLength(1);
     expect(sites('<div title="x" /><span title="y" aria-label="y" /><button aria-label="z" />')).toEqual([]);
@@ -388,6 +435,25 @@ describe("C25 an icon-only control names itself and hints with a Tooltip, not wi
     ]);
     expect(tooltips('<Tooltip label="Save"><button /></Tooltip>')).toEqual([{ label: true, named: false }]);
     expect(tooltips("<Tooltip><button aria-label='x' /></Tooltip>")).toEqual([{ label: false, named: true }]);
+  });
+
+  it("C25 the reader tells a control with words from one with an icon or a glyph", () => {
+    const wordless = (code: string) => titleSites(code).map((s) => s.wordless);
+    expect(wordless('<button title="a">Save</button>')).toEqual([false]);
+    expect(wordless('<button title="a"><X aria-hidden /> {t("k")}</button>')).toEqual([false]);
+    expect(wordless('<button title="a"><span>Run now</span></button>')).toEqual([false]);
+    expect(wordless('<button title="a">✈</button>')).toEqual([true]);
+    expect(wordless('<button title="a"><X aria-hidden /></button>')).toEqual([true]);
+    expect(wordless('<Button title="a" icon={<X />} />')).toEqual([true]);
+  });
+
+  it("C25 no title that stays 'for visible words' sits on a control that shows none", () => {
+    const wrong: string[] = [];
+    for (const file of sources().filter((f) => f.endsWith(".tsx") && !f.startsWith("ui/")))
+      for (const s of titleSites(read(file)))
+        if (TITLE_STAYS[`${file} :: ${s.title}`]?.[0] === "WORDS" && s.wordless && s.aria === null)
+          wrong.push(`${file}: ${s.title}`);
+    expect(wrong).toEqual([]);
   });
 
   it("C25 no control has its aria-label and its title say the same thing", () => {
@@ -597,10 +663,15 @@ describe("C26 what is still hand-made is on a closed list, with its reason", () 
 
 /* ---- C27: one language, the shell's material by token -------------------------------- */
 
-const PART = /\.(modal|modal-backdrop|launcher|launcher-panel|popover|tabs|ui-[\w-]+)(?![\w-])/;
+const STATIC_PARTS = ["modal", "modal-backdrop", "launcher", "launcher-panel", "popover", "tabs"];
+const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** The subject of a rule is a part when it carries one of these classes (or any `ui-*`). */
+const partOf = (extra: readonly string[] = []) =>
+  new RegExp(`\\.(${[...STATIC_PARTS, ...extra].map(escapeRe).join("|")}|ui-[\\w-]+)(?![\\w-])`);
 const CHROME = /^(background|border|box-shadow|backdrop-filter|clip-path|animation)/;
 /** Rules whose subject (last compound selector) is a primitive's part and that declare its chrome. */
-function chromeOutside(css: string, file: string): string[] {
+function chromeOutside(css: string, file: string, extra: readonly string[] = []): string[] {
+  const part = partOf(extra);
   const out: string[] = [];
   postcss.parse(css, { from: file }).walkRules((rule) => {
     for (const selector of rule.selectors) {
@@ -608,7 +679,7 @@ function chromeOutside(css: string, file: string): string[] {
         .trim()
         .split(/[\s>+~]+(?![^()]*\))/)
         .pop()!;
-      if (!PART.test(subject)) continue;
+      if (!part.test(subject)) continue;
       rule.walkDecls((d) => {
         if (d.parent === rule && CHROME.test(d.prop)) out.push(`${file}: ${selector} { ${d.prop} }`);
       });
@@ -616,6 +687,46 @@ function chromeOutside(css: string, file: string): string[] {
   });
   return out;
 }
+
+/**
+ * The classes a screen gives to a primitive's part: whatever string a `className` or `backdrop` attribute
+ * of a dialog, popover, menu or tab list carries (`<Popover className="me-popover">`). These are parts too: a
+ * rule on `.me-popover` that paints a background is the primitive drawn a second time. (A switch's chip face
+ * and a tab panel are the screen's own content, and are left out.)
+ */
+const PRIMITIVE_TAGS = new Set(["Popover", "Modal", "DialogSurface", "DropdownMenu", "Tabs", "Tabs.List"]);
+function wrapperClasses(code: string): string[] {
+  const out = new Set<string>();
+  const strings = (node: ts.Node) =>
+    visit(node, (n) => {
+      if (ts.isStringLiteralLike(n)) for (const c of n.text.split(/\s+/)) if (c) out.add(c);
+      if (ts.isTemplateHead(n) || ts.isTemplateMiddle(n) || ts.isTemplateTail(n))
+        for (const c of n.text.split(/\s+/)) if (c) out.add(c);
+    });
+  visit(parse(code), (n) => {
+    const element = ts.isJsxSelfClosingElement(n) ? n : ts.isJsxOpeningElement(n) ? n : null;
+    if (!element || !PRIMITIVE_TAGS.has(element.tagName.getText())) return;
+    for (const attribute of element.attributes.properties)
+      if (
+        ts.isJsxAttribute(attribute) &&
+        ["className", "backdrop"].includes(attribute.name.getText()) &&
+        attribute.initializer
+      )
+        strings(attribute.initializer);
+  });
+  // `open` is the state a class carries (`skill-deck open`), not a part of a primitive.
+  out.delete("open");
+  return [...out].sort();
+}
+/** Screens only: the primitives' own files write the classes of their parts, which ui.css draws. */
+const allWrapperClasses = () =>
+  [
+    ...new Set(
+      sources()
+        .filter((f) => !f.startsWith("ui/"))
+        .flatMap((f) => wrapperClasses(read(f))),
+    ),
+  ].sort();
 const MATERIAL = [
   "--ui-sheet-r",
   "--ui-sheet-bg",
@@ -645,10 +756,37 @@ describe("C27 the two shells draw a primitive with the same rules", () => {
     expect(chromeOutside(".modal .field { border: 0 }", "a.css")).toEqual([]);
   });
 
-  it("C27 no stylesheet but ui.css gives a primitive's part its own chrome", () => {
+  it("C27 the reader finds the classes a screen gives a primitive, and the chrome on them", () => {
+    expect(
+      wrapperClasses(
+        '<Popover open className="me-popover cons-x" /><Modal className={`a ${b ? "c" : "d"}`}><Tabs.List className="e" /></Modal><div className="not-this" /><DialogSurface backdrop="f g" /><Switch className="chip" /><Tabs.Panel className="panel" />',
+      ),
+    ).toEqual(["a", "c", "cons-x", "d", "e", "f", "g", "me-popover"]);
+    const wrapped = ["me-popover", "mold-popover", "bs-menu"];
+    expect(chromeOutside(".me-popover { background: red }", "a.css", wrapped)).toHaveLength(1);
+    expect(chromeOutside(".mold-popover { box-shadow: 0 0 0 9px #000 }", "a.css", wrapped)).toHaveLength(1);
+    expect(
+      chromeOutside("html:has(.nu-shell) .bs-menu { backdrop-filter: none }", "a.css", wrapped),
+    ).toHaveLength(1);
+    expect(chromeOutside(".me-popover { width: 3px; max-height: 4px }", "a.css", wrapped)).toEqual([]);
+    expect(chromeOutside(".me-popover .btn { background: red }", "a.css", wrapped)).toEqual([]);
+    // Without the list the reader is blind to them: the gap this closes.
+    expect(chromeOutside(".me-popover { background: red }", "a.css")).toEqual([]);
+  });
+
+  it("C27 the wrapper classes the reader takes from the source are the ones the screens give", () => {
+    const found = allWrapperClasses();
+    for (const expected of ["me-popover", "cons-conversations", "mold-popover", "bs-menu", "sks-sheet"])
+      expect(found, expected).toContain(expected);
+  });
+
+  it("C27 no stylesheet but ui.css gives a primitive's part, or a class a screen hangs on it, its own chrome", () => {
     const files = cssIn(SRC).filter((f) => f !== join(UI, "ui.css"));
     expect(files.length).toBeGreaterThan(8);
-    const offenders = files.flatMap((f) => chromeOutside(readFileSync(f, "utf8"), relative(SRC, f)));
+    const wrappers = allWrapperClasses();
+    const offenders = files.flatMap((f) =>
+      chromeOutside(readFileSync(f, "utf8"), relative(SRC, f), wrappers),
+    );
     expect(offenders).toEqual([]);
     // luz.css, the Núcleo's skin, no longer rewrites the sheet or the veil.
     expect(readFileSync(join(SRC, "nucleo", "luz.css"), "utf8")).not.toMatch(
@@ -679,5 +817,72 @@ describe("C27 the two shells draw a primitive with the same rules", () => {
       expect(specs, file).toEqual(expect.arrayContaining([theme, ui]));
       expect(specs.indexOf(ui), file).toBe(specs.indexOf(theme) + 1);
     }
+  });
+});
+
+/* ---- C34: the scenes that listen on the window before Radix do ----------------------------- */
+
+/** Whether a file calls `floatingLayerOpen()` (taken from the folder `ui`). */
+function asksFloatingLayer(code: string): boolean {
+  let imported = false;
+  let called = false;
+  visit(parse(code), (n) => {
+    if (
+      ts.isImportDeclaration(n) &&
+      ts.isStringLiteral(n.moduleSpecifier) &&
+      /(^|\/)ui$/.test(n.moduleSpecifier.text) &&
+      n.importClause?.namedBindings &&
+      ts.isNamedImports(n.importClause.namedBindings)
+    )
+      for (const e of n.importClause.namedBindings.elements)
+        if (e.name.text === "floatingLayerOpen") imported = true;
+    if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === "floatingLayerOpen")
+      called = true;
+  });
+  return imported && called;
+}
+
+describe("C34 a scene that listens in the window capture lets a hint, a popover or a menu take the Escape first", () => {
+  it("C34 the reader tells a file that asks from one that only mentions it", () => {
+    expect(
+      asksFloatingLayer('import { floatingLayerOpen } from "../../ui"; if (floatingLayerOpen()) return;'),
+    ).toBe(true);
+    expect(asksFloatingLayer('import { floatingLayerOpen } from "../../ui";')).toBe(false);
+    expect(asksFloatingLayer('import { other } from "../../ui"; floatingLayerOpen();')).toBe(false);
+    expect(asksFloatingLayer('import { floatingLayerOpen } from "./elsewhere"; floatingLayerOpen();')).toBe(
+      false,
+    );
+  });
+
+  it("C34 every file that listens for Escape in the window capture asks", () => {
+    // The files OUTSIDE_THE_REGISTRY lists with a capture listener on the window, by reading them: each must ask.
+    const capture = sources().filter((f) => {
+      if (f.startsWith("ui/") || f.startsWith("commands/") || f.startsWith("onboarding/")) return false;
+      let found = false;
+      visit(parse(read(f), f), (n) => {
+        if (
+          ts.isCallExpression(n) &&
+          ts.isPropertyAccessExpression(n.expression) &&
+          n.expression.name.text === "addEventListener" &&
+          n.expression.expression.getText() === "window" &&
+          n.arguments.length >= 3 &&
+          n.arguments[0]!.getText() === '"keydown"' &&
+          n.arguments[2]!.getText() === "true"
+        )
+          found = true;
+      });
+      return found;
+    });
+    expect(capture.sort()).toEqual(
+      [
+        "nucleo/pending/FocusMode.tsx",
+        "nucleo/scenes/BrainScene.tsx",
+        "nucleo/scenes/RoutinesScene.tsx",
+        "nucleo/scenes/RunsScene.tsx",
+        "nucleo/scenes/SkillsScene.tsx",
+      ].sort(),
+    );
+    for (const file of capture)
+      expect(asksFloatingLayer(read(file)), `${file} asks floatingLayerOpen`).toBe(true);
   });
 });

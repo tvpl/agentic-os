@@ -89,12 +89,95 @@ for (const shell of SHELLS) {
       await control.focus();
       const hint = page.getByRole("tooltip");
       await expect(hint).toBeVisible();
-      // The hint says what the control is called, and the control keeps its own name and is tied to the hint.
+      // The hint says what the control is called; the control keeps its own name and is not also
+      // described by the same words (a screen reader would say them twice).
       await expect(hint).toHaveText(name!);
-      await expect(control).toHaveAttribute("aria-describedby", /.+/);
+      await expect(control).toHaveAttribute("aria-label", name!);
+      await expect(control).not.toHaveAttribute("aria-describedby", /.+/);
       await page.keyboard.press("Escape");
       await expect(hint).toHaveCount(0);
       await expect(control).toBeFocused();
     });
   });
 }
+
+/**
+ * One Escape closes one thing: the layer on top. These are the places where two things were up at once
+ * and an Escape used to reach the one below (or the page behind a menu answered the letters).
+ */
+test.describe("C34 one Escape closes one thing", () => {
+  test("C34 in the frame, a popover of the console over the narrow chat drawer closes first and the drawer next", async ({
+    page,
+  }) => {
+    await openApp(page, "moldura", "reduce");
+    await page.setViewportSize({ width: 800, height: 800 });
+    await page.locator(".mold-chat-btn").click();
+    const drawer = page.locator("aside.mold-chat");
+    await expect(drawer).toHaveAttribute("role", "dialog");
+    await drawer.locator(".cons-more").click();
+    const chip = drawer.locator('.cons-ctl button[aria-haspopup="dialog"]').first();
+    await chip.click();
+    const popover = page.locator("#modal-root .popover");
+    await expect(popover).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(popover).toHaveCount(0);
+    await expect(drawer).toBeVisible();
+    await expect(drawer).toHaveAttribute("role", "dialog");
+    await page.keyboard.press("Escape");
+    await expect(drawer).toBeHidden();
+  });
+
+  test("C34 in the Núcleo, the hint on the brain's help button closes before the help card does", async ({
+    page,
+  }) => {
+    await openApp(page, "nucleo", "reduce");
+    await page.goto("/#/brain");
+    const help = page.locator(".bs-help");
+    await expect(page.locator(".bs-help-btn")).toBeVisible();
+    if ((await help.count()) === 0) await page.locator(".bs-help-btn").click();
+    await expect(help).toBeVisible();
+    await page.locator(".bs-help-btn").focus();
+    const hint = page.locator(".ui-tip[data-state]");
+    await expect(hint).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(hint).toHaveCount(0);
+    await expect(help).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(help).toHaveCount(0);
+  });
+
+  test("C35 in the Núcleo, an open menu is a layer: the screen's letters do not reach the screen, and they do again when it closes", async ({
+    page,
+  }) => {
+    await openApp(page, "nucleo", "reduce");
+    await page.goto("/#/skills");
+    const more = page.getByTestId("skills-more");
+    await expect(more).toBeVisible();
+    await more.click();
+    const menu = page.getByRole("menu");
+    await expect(menu).toBeVisible();
+    await page.keyboard.press("p");
+    await expect(page.locator("div.nu-focus")).toHaveCount(0);
+    await expect(menu).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await page.locator("body").click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press("p");
+    await expect(page.locator("div.nu-focus")).toHaveCount(1);
+  });
+
+  test("C36 a dialog opened from an item of the Skills menu gives focus back to the menu's button when it closes", async ({
+    page,
+  }) => {
+    await openApp(page, "nucleo", "reduce");
+    await page.goto("/#/skills");
+    const more = page.getByTestId("skills-more");
+    await more.click();
+    await page.getByRole("menuitem").nth(1).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(more).toBeFocused();
+  });
+});

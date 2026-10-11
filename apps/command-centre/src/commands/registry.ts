@@ -14,9 +14,9 @@
  *   this way is skipped, not consumed.
  * - `modal` and `overlay` are layers: while one is up, nothing under it is
  *   active — the screen behind a dialog is inert, so its keys must not fire.
- *   `modal` is up while a dialog of `components/dialog.tsx` is open or the key
+ *   `modal` is up while a dialog on the stack of `ui/layers.ts` is open or the key
  *   comes from inside a `role="dialog"` that is modal (not a popover); `overlay`
- *   is held with `useCommandScope` (the focus mode). A layer's own commands
+ *   is held with `useCommandScope` (the focus mode, an open menu). A layer's own commands
  *   (a dialog closing itself with its toggle key) are registered in it.
  * - Of several mounted instances of one screen (`exclusive`), the newest owns
  *   the keys; a screen on its way out stands down (`CommandsGate`).
@@ -176,7 +176,7 @@ export class CommandRegistry {
       for (const c of e.commands) last.set(c.scope, i);
     });
     for (const [scope, n] of this.layers) if (n > 0 && !last.has(scope)) last.set(scope, -1);
-    // A dialog is up (the stack in components/dialog), or the key came from inside one. A popover
+    // A dialog is up (the stack in ui/layers), or the key came from inside one. A popover
     // (`aria-modal="false"`: the frame's bell) is not a modal: the screen behind it stays live.
     const inDialog =
       target instanceof Element && target.closest('[role="dialog"]:not([aria-modal="false"])') !== null;

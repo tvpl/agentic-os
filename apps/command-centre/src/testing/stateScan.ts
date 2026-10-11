@@ -25,7 +25,7 @@ const STATUS = String.raw`\.(?:ok|bad|warn|warning|danger|err|error|failed|fail|
 const STATE = new RegExp(
   [
     String.raw`\[aria-(?:pressed|checked|selected|current|expanded|invalid|busy)(?:=["']?[\w-]+["']?)?\]`,
-    String.raw`\[data-(?:state|active|status|selected|open|current)(?:=["']?[\w-]+["']?)?\]`,
+    String.raw`\[data-(?:state|active|status|selected|open|current|highlighted)(?:=["']?[\w-]+["']?)?\]`,
     String.raw`\[open\]`,
     String.raw`\[class\*=["']?(?:active|selected|open|current|on|off)["']?\]`,
     String.raw`:checked`,
@@ -55,7 +55,7 @@ const COLOUR_PROPS =
   /^(color|opacity|fill|stroke|fill-opacity|stroke-opacity|stop-color|filter|text-shadow|box-shadow|background(-color|-image)?|border(-(top|right|bottom|left))?(-color)?|outline(-color)?|-webkit-text-fill-color)$/;
 
 /** A `box-shadow` is a mark only when one of its layers is hard: offset or spread, no blur (a bar or a ring, not a glow). */
-function hardShadow(value: string): boolean {
+export function hardShadow(value: string): boolean {
   const layers: string[] = [];
   let depth = 0;
   let cur = "";

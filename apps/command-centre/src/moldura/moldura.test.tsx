@@ -1111,6 +1111,63 @@ describe("R2.3 the drawers are dialogs", () => {
     expect(within(top()).queryByRole("dialog", { name: "Notificações" })).toBeNull();
   });
 
+  it("primitivas C33 over the narrow chat drawer a hint and a popover take the first Escape, and the drawer takes the next", async () => {
+    viewport.width = 800;
+    await mountShell("/");
+    fireEvent.click(chatButton());
+    await waitFor(() => expect(aside().getAttribute("role")).toBe("dialog"));
+    const hint = () => document.querySelector(".ui-tip");
+
+    // A hint on a control inside the drawer.
+    const close = within(aside()).getByRole("button", { name: "Fechar conversa" });
+    act(() => close.focus());
+    await waitFor(() => expect(hint()).not.toBeNull());
+    escape(close);
+    await waitFor(() => expect(hint()).toBeNull());
+    expect(aside().hidden).toBe(false);
+
+    // The popover of the console's conversations chip.
+    fireEvent.click(within(aside()).getByRole("button", { name: "Contexto e controles" }));
+    const chip = await within(aside()).findByRole("button", { name: /Conversas/ });
+    fireEvent.click(chip);
+    const popover = await screen.findByRole("dialog", { name: /Conversas/ });
+    escape(popover);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Conversas/ })).toBeNull());
+    expect(aside().hidden).toBe(false);
+    expect(getDialogDepth()).toBe(1);
+
+    escape(aside());
+    expect(aside().hidden).toBe(true);
+    expect(getDialogDepth()).toBe(0);
+  });
+
+  it("primitivas C33 an Escape another layer already took does not close the document drawer or the unfolded sidebar", async () => {
+    const taken = (e: Event) => e.preventDefault();
+    const handled = (target: Element) => {
+      document.addEventListener("keydown", taken, true);
+      fireEvent.keyDown(target, { key: "Escape" });
+      document.removeEventListener("keydown", taken, true);
+    };
+    await mountShell("/");
+    openDoc();
+    const dialog = await within(main()).findByRole("dialog", { name: "Documento" });
+    handled(dialog);
+    expect(drawer()).not.toBeNull();
+    escape(dialog);
+    expect(drawer()).toBeNull();
+
+    viewport.width = 800;
+    cleanup();
+    await mountShell("/");
+    const toggle = within(nav()).getByRole("button", { name: "Barra lateral" });
+    fireEvent.click(toggle);
+    await waitFor(() => expect(nav().contains(document.activeElement)).toBe(true));
+    handled(nav());
+    expect(nav().hasAttribute("data-overlay")).toBe(true);
+    escape(nav());
+    expect(nav().hasAttribute("data-overlay")).toBe(false);
+  });
+
   it("C43 a press on what a modal drawer covers closes it, a press inside does not", async () => {
     await mountShell("/");
     openDoc();

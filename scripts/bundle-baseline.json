@@ -1,0 +1,28 @@
+{
+  "tolerance": 1.05,
+  "before": {
+    "commit": "9c82fc1",
+    "jsRaw": 1445758,
+    "jsGzip": 470410,
+    "cssRaw": 337189,
+    "cssGzip": 70728
+  },
+  "after": [
+    {
+      "feature": "primitivas",
+      "reason": "Radix under the dialogs, popovers, tabs, switches, menu and hints, and the code that stood on them",
+      "jsRaw": 1552075,
+      "jsGzip": 503649,
+      "cssRaw": 340497,
+      "cssGzip": 71459
+    },
+    {
+      "feature": "primitivas-r1",
+      "reason": "the round 1 fixes: the menu as a command layer, the focus fallback, floatingLayerOpen in the scenes, the hint without a duplicate description",
+      "jsRaw": 1557112,
+      "jsGzip": 505237,
+      "cssRaw": 341343,
+      "cssGzip": 71930
+    }
+  ]
+}

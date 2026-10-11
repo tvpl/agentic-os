@@ -5,8 +5,9 @@
  * puts focus back on the trigger. The menu is named by its trigger, which is
  * what Radix points `aria-labelledby` at.
  */
-import type { ReactElement, ReactNode } from "react";
+import { useState, type ReactElement, type ReactNode } from "react";
 import * as MenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { useCommandScope } from "../commands/registry";
 import { Tooltip } from "./Tooltip";
 
 export interface MenuItem {
@@ -29,10 +30,14 @@ export interface DropdownMenuProps {
 }
 
 export function DropdownMenu({ trigger, tip, items, align = "end", className }: DropdownMenuProps) {
+  const [open, setOpen] = useState(false);
+  // While it is open the menu is a layer for the command registry, as a dialog is: the letters it
+  // types to find an item, and the keys of the screen behind it, are not the screen's to answer.
+  useCommandScope("overlay", open);
   return (
     // Not modal, like the popover: the page behind stays as it is (nothing `aria-hidden` with focus inside it);
     // a press outside closes the menu, and Tab inside it is held by the menu.
-    <MenuPrimitive.Root modal={false}>
+    <MenuPrimitive.Root modal={false} open={open} onOpenChange={setOpen}>
       <MenuPrimitive.Trigger asChild>
         <Tooltip label={tip}>{trigger}</Tooltip>
       </MenuPrimitive.Trigger>

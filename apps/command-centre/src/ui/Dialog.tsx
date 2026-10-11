@@ -10,7 +10,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { useT } from "../i18n";
 import { prefersReducedMotion, usePresence } from "../hooks/usePresence";
-import { initialTarget, useDialogLayer } from "./layers";
+import { controlOfPanelAround, initialTarget, useDialogLayer } from "./layers";
 
 const EXIT_MS = 160;
 
@@ -56,6 +56,9 @@ function Sheet({
   const ref = useRef<HTMLDivElement>(null);
   // What held focus when the dialog opened: Radix hands focus back to a trigger only, and these have none.
   const opener = useRef<HTMLElement | null>(document.activeElement as HTMLElement | null);
+  // ...and, if that was an item of a menu or a control of a popover, what the panel hung from: the item
+  // is gone by the time the dialog closes, the control is not.
+  const [control] = useState(() => controlOfPanelAround(document.activeElement));
   useDialogLayer(ref);
   return (
     <DialogPrimitive.Content
@@ -77,7 +80,7 @@ function Sheet({
       // Radix runs this once the sheet is gone and its focus trap with it, so the opener can take focus back.
       onCloseAutoFocus={(event) => {
         event.preventDefault();
-        const previous = opener.current;
+        const previous = opener.current?.isConnected ? opener.current : control;
         if (previous && previous.isConnected && typeof previous.focus === "function")
           previous.focus({ preventScroll: true });
       }}

@@ -4,7 +4,7 @@
  * Escape (focus back to its anchor) or by a press outside (focus where the press put it).
  */
 import { useRef, useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Popover, getDialogDepth } from ".";
@@ -72,17 +72,32 @@ describe("C10 the popover", () => {
     expect(document.activeElement).toBe(elsewhere);
   });
 
-  it("C10 a press on the anchor itself is the anchor's toggle: the popover closes once and stays closed", async () => {
+  it("C10 a press on the anchor itself is the anchor's own: it does not ask the popover to close (a press elsewhere does)", async () => {
     motion.reduced = true;
-    mount(<Anchored />);
+    // The anchor does not toggle here: whatever asks the popover to close is the popover's own dismissal,
+    // and with the anchor's toggle it would close on the press and reopen on the click.
+    const onClose = vi.fn();
+    function Fixed() {
+      const anchor = useRef<HTMLButtonElement>(null);
+      return (
+        <>
+          <button ref={anchor}>anchor</button>
+          <button>elsewhere</button>
+          <Popover open onClose={onClose} anchor={anchor} ariaLabel="Notes">
+            <button>inside</button>
+          </Popover>
+        </>
+      );
+    }
+    mount(<Fixed />);
     const user = userEvent.setup();
-    const anchor = screen.getByRole("button", { name: "anchor" });
-    await user.click(anchor);
     await tick();
-    expect(popover()).not.toBeNull();
-    await user.click(anchor);
+    await user.click(screen.getByRole("button", { name: "anchor" }));
     await tick();
-    expect(popover()).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "elsewhere" }));
+    await tick();
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("C10 can stay in its parent's place in the tree (portal={false})", async () => {

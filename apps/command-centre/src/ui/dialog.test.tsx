@@ -4,11 +4,11 @@
  * goes in and comes back, what Tab and Escape do, what is `inert` behind it,
  * and when `onClose` runs. Each claim is asserted on the DOM a person meets.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import { CommandRegistry, CommandsProvider, useCommands, type Command } from "../commands/registry";
-import { DialogSurface, Modal, getDialogDepth, useDialogDepth } from ".";
+import { DialogSurface, DropdownMenu, Modal, Popover, getDialogDepth, useDialogDepth } from ".";
 import { installPage, mount, motion, tick } from "./testkit";
 
 installPage();
@@ -148,6 +148,79 @@ describe("C5 focus comes back to what held it", () => {
     await tick();
     expect(dialogs()).toHaveLength(0);
     expect(document.activeElement).toBe(opener);
+  });
+});
+
+describe("C36 what held focus is gone: focus goes to the control the menu or the popover hung from", () => {
+  it("C36 a dialog opened from an item of a menu hands focus back to the menu's trigger when it closes", async () => {
+    motion.reduced = true;
+    function Host() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <DropdownMenu
+            trigger={<button>more</button>}
+            items={[{ id: "export", label: "Export", onSelect: () => setOpen(true) }]}
+          />
+          {open && (
+            <Modal title="Export" onClose={() => setOpen(false)}>
+              <button>go</button>
+            </Modal>
+          )}
+        </>
+      );
+    }
+    mount(<Host />);
+    const trigger = screen.getByRole("button", { name: "more" });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    await tick();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Export" }));
+    await screen.findByRole("dialog", { name: "Export" });
+    press("Escape");
+    await tick(30);
+    expect(dialogs()).toHaveLength(0);
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("C36 a dialog opened from a control inside a popover hands focus back to the popover's anchor", async () => {
+    motion.reduced = true;
+    function Host() {
+      const anchor = useRef<HTMLButtonElement>(null);
+      const [pop, setPop] = useState(true);
+      const [modal, setModal] = useState(false);
+      return (
+        <>
+          <button ref={anchor}>bell</button>
+          <Popover open={pop} onClose={() => setPop(false)} anchor={anchor} ariaLabel="Notes">
+            <button
+              onClick={() => {
+                setPop(false);
+                setModal(true);
+              }}
+            >
+              open one
+            </button>
+          </Popover>
+          {modal && (
+            <Modal title="Doc" onClose={() => setModal(false)}>
+              <button>go</button>
+            </Modal>
+          )}
+        </>
+      );
+    }
+    mount(<Host />);
+    await tick();
+    const inside = screen.getByRole("button", { name: "open one" });
+    inside.focus();
+    fireEvent.click(inside);
+    await screen.findByRole("dialog", { name: "Doc" });
+    press("Escape");
+    await tick(30);
+    expect(dialogs()).toHaveLength(0);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "bell" }));
   });
 });
 

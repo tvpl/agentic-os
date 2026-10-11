@@ -22,6 +22,9 @@ import { BrainSceneMenu } from "../nucleo/scenes/BrainSceneMenu";
 import SkillsTools from "../nucleo/scenes/SkillsSceneTools";
 import { CommandRegistry } from "../commands/registry";
 import { PROVIDERS, installHarness, mountShell, openHelp, press } from "../commands/testkit";
+import { server } from "../commands/testserver";
+import ModelEffortPopover from "../desktop/ModelEffortPopover";
+import type { ProviderSnapshot, Skill } from "../api";
 import { getDialogDepth } from ".";
 
 vi.mock("../api", async (importOriginal) =>
@@ -183,6 +186,144 @@ describe("C21 the popovers", () => {
     press({ key: "Escape" }, popover);
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /^Model/ })).toBeNull());
     expect(document.activeElement).toBe(chip);
+  });
+});
+
+/**
+ * What every popover of the interface does, said once and asked of each: it opens from its control as
+ * a dialog that is not modal (nothing inert, not in the depth), Escape closes it and focus goes back to
+ * the control, a press elsewhere closes it and leaves focus where the press put it, and a press on the
+ * control while it is open closes it for good (the press does not close it so that the click reopens it).
+ */
+async function popoverBehaves(control: () => HTMLElement, name: RegExp | string) {
+  const dialog = () => screen.queryByRole("dialog", { name });
+  const opened = async () => {
+    fireEvent.click(control());
+    return screen.findByRole("dialog", { name });
+  };
+  const first = await opened();
+  expect(first.getAttribute("aria-modal")).toBe("false");
+  expect(document.querySelectorAll("[inert]")).toHaveLength(0);
+  expect(getDialogDepth()).toBe(0);
+
+  // Escape: closes, and the control has focus again.
+  press({ key: "Escape" }, first);
+  await waitFor(() => expect(dialog()).toBeNull());
+  expect(document.activeElement).toBe(control());
+
+  // A press elsewhere: closes, and focus stays with what was pressed.
+  await opened();
+  const elsewhere = document.createElement("button");
+  document.body.appendChild(elsewhere);
+  fireEvent.pointerDown(elsewhere);
+  fireEvent.mouseDown(elsewhere);
+  elsewhere.focus();
+  fireEvent.pointerUp(elsewhere);
+  fireEvent.click(elsewhere);
+  await waitFor(() => expect(dialog()).toBeNull());
+  expect(document.activeElement).toBe(elsewhere);
+  elsewhere.remove();
+
+  // The control's own press: it closes, once, and stays closed.
+  await opened();
+  fireEvent.pointerDown(control());
+  fireEvent.mouseDown(control());
+  fireEvent.pointerUp(control());
+  fireEvent.click(control());
+  await waitFor(() => expect(dialog()).toBeNull());
+  await settle();
+  expect(dialog()).toBeNull();
+}
+
+describe("C21 every popover opens, closes, gives focus back and does not reopen on the press that closed it", () => {
+  it("C21 the console's conversations chip", async () => {
+    withModalRoot();
+    await mountShell("/", "moldura");
+    const chips = () =>
+      Array.from(document.querySelectorAll<HTMLElement>('.cons-ctl button[aria-haspopup="dialog"]'));
+    await waitFor(() => expect(chips()).toHaveLength(2));
+    await popoverBehaves(() => chips()[1]!, "Conversations");
+  });
+
+  it("C21 the brain's more-controls popover in the Núcleo", async () => {
+    withModalRoot();
+    server.graph = {
+      nodes: [0, 1, 2].map((id) => ({
+        id,
+        name: `n${id}.md`,
+        rel: `n${id}.md`,
+        path: `/h/n${id}.md`,
+        ext: "md",
+        area: "Docs",
+        dir: "/h",
+        size: 10,
+        mtime: Date.now(),
+        title: null,
+        tags: [],
+      })),
+      edges: [{ source: 0, target: 1, kind: "markdown-link", why: "link" }],
+      truncated: false,
+      totalFiles: 3,
+    };
+    try {
+      await mountShell("/brain", "nucleo");
+      const more = () => document.querySelector<HTMLElement>(".bs-more")!;
+      await waitFor(() => expect(more()).not.toBeNull(), SLOW);
+      await popoverBehaves(more, "More brain controls");
+      // It carries the menu, and the popover is the one that hangs from the button.
+      fireEvent.click(more());
+      const popover = await screen.findByRole("dialog", { name: "More brain controls" });
+      expect(popover.className).toContain("bs-menu");
+      expect(within(popover).getAllByRole("switch").length).toBeGreaterThan(0);
+    } finally {
+      server.graph = null;
+    }
+  });
+
+  it("C21 the deck's model and effort popover hangs from the card's button and gives focus back to it", async () => {
+    withModalRoot();
+    const skill = {
+      slug: "code-review",
+      name: "Code review",
+      recommendedModel: null,
+      recommendedEffort: "default",
+      providers: ["claude"],
+      enabled: true,
+    } as unknown as Skill;
+    function Host() {
+      const [open, setOpen] = useState(false);
+      const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
+      return (
+        <>
+          <button ref={setAnchor} onClick={() => setOpen((v) => !v)}>
+            card
+          </button>
+          {anchor && (
+            <ModelEffortPopover
+              skill={skill}
+              providers={PROVIDERS as unknown as ProviderSnapshot[]}
+              anchor={anchor}
+              open={open}
+              onClose={() => setOpen(false)}
+              onSaved={() => undefined}
+            />
+          )}
+        </>
+      );
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <I18nContext.Provider value={{ lang: "en", setLang: () => undefined }}>
+          <Host />
+        </I18nContext.Provider>
+      </QueryClientProvider>,
+      {
+        container:
+          document.getElementById("root") ?? document.body.appendChild(document.createElement("div")),
+      },
+    );
+    await popoverBehaves(() => screen.getByRole("button", { name: "card" }), /Model/i);
   });
 });
 

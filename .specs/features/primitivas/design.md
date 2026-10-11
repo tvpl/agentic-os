@@ -42,6 +42,7 @@ importa `@radix-ui/*`.
 | `moldura/DocDrawer` em `useDrawer` (door 9 do plano)                                         | tentada em `DialogSurface` sem portal e revertida: o Radix põe `aria-hidden` em todo irmão de um modal que fica no lugar, `#modal-root` incluído, e a paleta aberta de dentro da gaveta mora lá e ficava escondida do leitor de tela. A gaveta mantém Esc, a armadilha de foco, o foco de volta e o `inert` até a raiz pelo gancho |
 | `onboarding/Onboarding` (tour guiado)                                                        | é dono do teclado enquanto está de pé (`document.documentElement.dataset.onboarding` desliga o registro); o modo guiado não é modal                                                                                                                                                                                                |
 | `nucleo/pending/FocusMode`                                                                   | camada `overlay` própria (design do `comandos-atalhos`)                                                                                                                                                                                                                                                                            |
+| `.sks-sheet` (folha de detalhes de Skills, `Modal className="sks-sheet"`)                    | só posição e tamanho ficam em `skillsScene.css`; a folha era desenhada duas vezes (a regra de `ui.css` e a do cenário, com vidro, recorte de canto, sombra e entrada próprios) e ficou a de `ui.css`: o recorte de canto e o vidro próprio saem, uma mudança visível (STATE, Perguntas ao dono)                                    |
 | `ToastProvider` (`components/ui.tsx`)                                                        | pequeno, com região viva certa, fora do `inert` de propósito; o Radix Toast instala um ouvinte de F8 no documento                                                                                                                                                                                                                  |
 | `<select>` (≈55) e `<input type="checkbox">` (≈25)                                           | controles nativos de formulário; não há widget feito à mão equivalente; a pele de vidro do Núcleo para caixas de marcar (`luz.css`) é a pele de controles, não uma das seis                                                                                                                                                        |
 | `Segmented`, `QuestionCard`, listas `role="listbox"` (paleta, console, busca, arquivos)      | `radiogroup` e `listbox` com teclado próprio; o Radix não tem listbox e RadioGroup/ToggleGroup estão fora das seis                                                                                                                                                                                                                 |
@@ -79,10 +80,12 @@ de trilho (trilho e botão que anda, sinal que não é cor) e variante de ficha 
 Radix aponta `aria-labelledby` para ele: não há prop de nome), itens `role="menuitem"`; setas com volta
 (`loop`), Home, End e digitação; Enter/Espaço executa e fecha; Esc fecha e devolve o foco ao gatilho. Não
 é modal (`modal={false}`, door 9): a página atrás não ganha `aria-hidden`, um clique fora fecha, e o Tab
-não sai do menu. `tip` envolve o gatilho num `Tooltip`.
+não sai do menu. Aberto, é uma camada `overlay` para o registro de comandos (`useCommandScope`), como um
+diálogo: as letras de busca do menu e o `Mod+K` não chegam à tela atrás dele (AC 35). `tip` envolve o gatilho num `Tooltip`.
 
 **Tooltip.** Envolve um controle que já tem `aria-label`; aparece com o foco do teclado e depois de
-400 ms de ponteiro parado; `role="tooltip"` e `aria-describedby`; Esc fecha sem mexer no foco (e, enquanto
+400 ms de ponteiro parado; `role="tooltip"`, e `aria-describedby` no controle quando a dica diz mais que o
+nome (uma dica que só repete o `aria-label` não vira a descrição: seria dita duas vezes, AC 37); Esc fecha sem mexer no foco (e, enquanto
 ela está aberta, o Radix a trata como a camada de cima e consome o primeiro Esc: ver "Perguntas ao dono"); o
 conteúdo mínimo é 12px; entra por `UiProvider` (a primitiva monta o seu próprio provedor quando não
 há um acima, para uma view solta num teste).
@@ -92,6 +95,20 @@ há um acima, para uma view solta num teste).
 - A pilha (`ui/layers.ts`) contém os diálogos Radix (registrados por `useDialogLayer`) e as três gavetas
   (`useDrawer`: barra lateral estreita, conversa e documento): daí vêm o `inert`, a profundidade que empurra o shell (`data-depth="pushed"`) e o
   escopo `modal` do registro de comandos. Um `Popover` não entra.
+- `useDrawer` lê `defaultPrevented` antes de tudo: o Esc que uma camada Radix acima dele (popover do
+  console sobre a gaveta da conversa, dica num controle da barra lateral ou da gaveta do documento) já
+  tomou não fecha também a gaveta (AC 33). **Por que as três gavetas não passam a usar o Esc do registro**:
+  a gaveta também prende o Tab, que o registro não trata (é fluxo de digitação, não comando); o Esc dela, lido
+  pela mesma marca que o registro lê, dá o mesmo efeito de camadas sem um terceiro caminho, e o ouvinte
+  único continua um item contado e explicado em `OUTSIDE_THE_REGISTRY`.
+- `floatingLayerOpen()` (de `ui/layers.ts`) diz se há dica, popover ou menu aberto. Os ouvintes de janela
+  em captura das cenas do Núcleo (`BrainScene`, `RunsScene`, `RoutinesScene`, `SkillsScene`, `FocusMode`) o
+  consultam e não respondem ao Esc enquanto há uma: o Radix escuta no documento, depois da janela, e sem isso
+  a cena fechava o que é dela antes de a dica fechar (AC 34). Os de letras (`SkillsScene`, `BrainScene`
+  Shift+1-4) também.
+- Um diálogo aberto de dentro de um painel flutuante (um item de menu, um botão do sino) guarda, ao abrir, o
+  controle de que o painel pendia (`ui/layers.ts: controlOfPanelAround`; o menu do Radix nomeia o seu
+  gatilho, o `Popover` registra a sua âncora) e devolve o foco a ele se o opener já não existe (AC 36).
 - O Radix trata Esc num ouvinte de documento em captura (`@radix-ui/react-dismissable-layer`, só a
   camada de cima; o `@radix-ui/react-menu` tem outro, que só anota se a última tecla foi do teclado) e
   marca o evento como tratado; o registro, que ouve a janela em bolha, já o ignora quando
@@ -114,9 +131,12 @@ Declarados uma vez em `ui/ui.css`: o padrão em `:root` e em `[data-shell="moldu
 | `--ui-veil`      | `shadow-ink` 62%   | gradiente do agente sobre `color-mix(var(--bg) 54%)`        |
 | `--ui-veil-blur` | `3px`              | `12px saturate(0.75) brightness(0.85)`                      |
 | `--ui-pop-r`     | `var(--r-3)`       | `18px`                                                      |
-| `--ui-pop-bg`    | `var(--surface)`   | `color-mix(var(--bg) 70%)`                                  |
+| `--ui-pop-bg`    | `var(--surface)`   | `color-mix(var(--bg) 86%)`                                  |
 | `--ui-pop-blur`  | `none`             | `blur(22px) saturate(1.3)`                                  |
 | `--ui-pop-clip`  | `none`             | `none`                                                      |
+
+A classe `ui-material-default` volta aos valores da moldura dentro de uma página do Núcleo (a seção "nua" da
+galeria, que divide a página com a camada do Núcleo e do contrário vestiria o vidro dele).
 
 Tokens acrescentados na construção (door 7 do plano, mesmos lugares): `--ui-sheet-edge`,
 `--ui-sheet-shadow`, `--ui-sheet-blur`, `--ui-sheet-in`, `--ui-sheet-out`, `--ui-veil-in`, `--ui-pop-edge`,

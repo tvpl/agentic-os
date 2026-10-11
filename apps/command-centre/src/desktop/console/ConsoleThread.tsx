@@ -28,6 +28,7 @@ import { openFocus } from "../../nucleo/events";
 import QuestionCard from "../../nucleo/QuestionCard";
 import { isQuestion } from "../../nucleo/question";
 import { activityKind } from "../../nucleo/activity";
+import { Tooltip } from "../../ui";
 import { useApprovals } from "../../runs/ApprovalCards";
 import Markdown from "../../views/Skills/Markdown";
 
@@ -271,15 +272,17 @@ function Turn({
                     <small className="dm">{Math.max(1, Math.round(a.sizeBytes / 1024))} kB</small>
                   )}
                 </button>
-                <button
-                  type="button"
-                  className="console-link"
-                  title={t("desktop.artifact.send")}
-                  disabled={send.isPending}
-                  onClick={() => send.mutate(a)}
-                >
-                  ✈
-                </button>
+                <Tooltip label={t("desktop.artifact.send")}>
+                  <button
+                    type="button"
+                    className="console-link"
+                    aria-label={t("desktop.artifact.send")}
+                    disabled={send.isPending}
+                    onClick={() => send.mutate(a)}
+                  >
+                    <span aria-hidden>✈</span>
+                  </button>
+                </Tooltip>
               </div>
             ))}
           </div>

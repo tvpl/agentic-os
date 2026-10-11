@@ -34,7 +34,8 @@
     "test:ui": "npm run test -w apps/command-centre",
     "gallery": "vite --config apps/command-centre/vite.config.ts apps/command-centre --open /gallery.html",
     "dist": "node scripts/package.mjs",
-    "dist:quick": "node scripts/package.mjs --skip-build --node none --no-archive"
+    "dist:quick": "node scripts/package.mjs --skip-build --node none --no-archive",
+    "bundle:check": "node scripts/bundle-size.mjs --check"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

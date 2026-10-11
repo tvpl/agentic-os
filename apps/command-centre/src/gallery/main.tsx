@@ -795,7 +795,10 @@ function Gallery() {
       </Story>
 
       <Story id="primitives" title="Switch, tabs, menu and tooltip">
-        <Primitives />
+        {/* The page also holds the Núcleo's layer, whose glass would reach this story: it shows the default. */}
+        <div className="ui-material-default">
+          <Primitives />
+        </div>
       </Story>
 
       <Story id="widgets" title="Instruments as lâminas">

@@ -10,7 +10,7 @@ installPage();
 const button = () => screen.getByRole("button", { name: "Fold" });
 
 describe("C14 tooltip", () => {
-  it("C14 keyboard focus shows the hint, the button points at it, and Escape takes it away with focus unchanged", async () => {
+  it("C14 keyboard focus shows the hint, the button points at it (a hint that adds to the name), and Escape takes it away with focus unchanged", async () => {
     mount(
       <UiProvider>
         <Tooltip label="Fold the sidebar">
@@ -78,5 +78,28 @@ describe("C14 tooltip", () => {
     );
     fireEvent.click(button());
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("C37 a hint that only repeats the control's name does not become its description (it would be said twice)", async () => {
+    mount(
+      <UiProvider>
+        <Tooltip label="Fold">
+          <button aria-label="Fold">«</button>
+        </Tooltip>
+        <Tooltip label="Unfold (⌘B)">
+          <button aria-label="Unfold">»</button>
+        </Tooltip>
+      </UiProvider>,
+    );
+    act(() => button().focus());
+    await tick();
+    expect(screen.getByRole("tooltip").textContent).toContain("Fold");
+    expect(button().getAttribute("aria-label")).toBe("Fold");
+    expect(button().hasAttribute("aria-describedby")).toBe(false);
+    act(() => screen.getByRole("button", { name: "Unfold" }).focus());
+    await tick();
+    expect(screen.getByRole("button", { name: "Unfold" }).getAttribute("aria-describedby")).toBe(
+      screen.getByRole("tooltip").id,
+    );
   });
 });

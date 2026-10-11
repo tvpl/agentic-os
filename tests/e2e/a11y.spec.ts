@@ -289,3 +289,57 @@ for (const theme of THEMES) {
     });
   }
 }
+
+/**
+ * C29 on the real components in each shell: the gallery's layers draw the menu and the hint in place (so a
+ * screenshot needs no pointer), and these are the same pieces opened by the people who open them.
+ */
+for (const theme of THEMES) {
+  test(`C29 the frame with its real popover, hint and modal open has no serious violation (${theme})`, async ({
+    page,
+  }) => {
+    await open(page, "moldura", theme, "/skills");
+    const bell = page.getByRole("dialog", { name: /Notifications|Notificações/ });
+    await page.locator(".mold-bell").click();
+    await expect(bell).toBeVisible();
+    expect(await serious(page)).toEqual([]);
+    await page.keyboard.press("Escape");
+    await expect(bell).toHaveCount(0);
+
+    await page.locator(".mold-bell").focus();
+    await expect(page.locator(".ui-tip[data-state]")).toBeVisible();
+    expect(await serious(page)).toEqual([]);
+    await page.keyboard.press("Escape");
+
+    await page
+      .getByRole("button", { name: /new skill|nova skill/i })
+      .first()
+      .click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    expect(await serious(page)).toEqual([]);
+  });
+
+  test(`C29 the Núcleo with its real menu, hint and modal open has no serious violation (${theme})`, async ({
+    page,
+  }) => {
+    await open(page, "nucleo", theme, "/skills");
+    const more = page.getByTestId("skills-more");
+    await more.click();
+    await expect(page.getByRole("menu")).toBeVisible();
+    expect(await serious(page)).toEqual([]);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+
+    await more.click();
+    await page.getByRole("menuitem").nth(2).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    expect(await serious(page)).toEqual([]);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    // Last: the line's tools raise the conversation over the scene.
+    await page.locator(".cons-more").focus();
+    await expect(page.locator(".ui-tip[data-state]")).toBeVisible();
+    expect(await serious(page)).toEqual([]);
+  });
+}

@@ -13,9 +13,11 @@
    conversation, a rounded sheet, a neon edge. A dialog is portaled out of both
    shells, so the Núcleo's values are set on the page that holds one
    (`html:has(.nu-shell)`) and, for the gallery, which shows both on one page,
-   on `.nu-shell` itself; `[data-shell="moldura"]` takes them back. */
+   on `.nu-shell` itself; `[data-shell="moldura"]` takes them back, and so does `.ui-material-default`,
+   for a place that sits in a Núcleo page and must show the default (the gallery's bare story). */
 :root,
-[data-shell="moldura"] {
+[data-shell="moldura"],
+.ui-material-default {
   --ui-sheet-r: var(--r-3);
   --ui-sheet-bg: var(--bg-raise);
   --ui-sheet-edge: 1px solid var(--border-strong);
@@ -61,7 +63,7 @@ html:has(.nu-shell),
   --ui-sheet-out: ui-sheet-out 0.16s var(--ease-standard) both;
   --ui-veil-in: ui-veil-in 0.4s var(--ease-standard) both;
   --ui-pop-r: 18px;
-  --ui-pop-bg: color-mix(in srgb, var(--bg) 70%, transparent);
+  --ui-pop-bg: color-mix(in srgb, var(--bg) 86%, transparent);
   --ui-pop-edge: 0;
   --ui-pop-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--agent) 22%, transparent),

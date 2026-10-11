@@ -4,13 +4,11 @@
  * lockfile is made of licences the product can ship under (the list printed
  * here is what the NOTICE of the distribution feature starts from).
  */
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const ROOT = join(import.meta.dirname, "..");
-const BASE = "9c82fc1"; // chore/tlc-spec-lean-skill, where this feature started
 
 const PINNED: Record<string, string> = {
   "@radix-ui/react-dialog": "1.1.23",
@@ -37,21 +35,34 @@ const json = <T>(file: string): T => JSON.parse(readFileSync(join(ROOT, file), "
 const manifest = () => json<Manifest>("apps/command-centre/package.json");
 const lock = () => json<{ packages: Record<string, LockEntry> }>("package-lock.json").packages;
 
-/** A file as it was at the start of the feature, or null where the history is not here (a shallow checkout). */
-function atBase<T>(file: string): T | null {
-  try {
-    const text = execFileSync("git", ["show", `${BASE}:${file}`], {
-      cwd: ROOT,
-      encoding: "utf8",
-      maxBuffer: 1 << 28,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    return JSON.parse(text) as T;
-  } catch {
-    return null;
-  }
-}
-const base = atBase<Manifest>("apps/command-centre/package.json");
+/**
+ * The app's dependencies as the feature found them (chore/tlc-spec-lean-skill at 9c82fc1), kept here so the
+ * check needs no git history (a shallow clone has none). A feature that adds a dependency adds it here,
+ * in the commit that does it: the six below are the only ones this feature brought.
+ */
+const AT_START: Required<Manifest> = {
+  dependencies: {
+    "@mordomo/contracts": "0.8.0",
+    "@tanstack/react-query": "^5.102.8",
+    "@tanstack/react-virtual": "^3.14.10",
+    "d3-force": "^3.0.0",
+    "lucide-react": "^0.468.0",
+    react: "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.1.0",
+  },
+  devDependencies: {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.6",
+    "@types/d3-force": "^3.0.10",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^6.1.1",
+    jsdom: "^30.0.1",
+    vite: "^8.2.2",
+  },
+};
 
 /** Everything the six need, by walking `dependencies` through the lockfile (npm hoisted it all to the root). */
 function closure(packages: Record<string, LockEntry>): string[] {
@@ -85,21 +96,21 @@ describe("C1 the six primitives are pinned", () => {
     expect(radix.sort()).toEqual(Object.keys(PINNED).sort());
   });
 
-  it.skipIf(base === null)(
-    "C1 against the start of the feature, the six are the only dependency added or changed",
-    () => {
-      const now = manifest();
-      const changed = (list: "dependencies" | "devDependencies") => {
-        const before = base![list] ?? {};
-        const after = now[list] ?? {};
-        return Object.keys({ ...before, ...after })
-          .filter((name) => before[name] !== after[name])
-          .sort();
-      };
-      expect(changed("dependencies")).toEqual(Object.keys(PINNED).sort());
-      expect(changed("devDependencies")).toEqual([]);
-    },
-  );
+  it("C1 against the start of the feature, the six are the only dependency added, and none of the others changed", () => {
+    const now = manifest();
+    for (const list of ["dependencies", "devDependencies"] as const) {
+      const before = AT_START[list];
+      const after = now[list] ?? {};
+      const added = Object.keys(after).filter((name) => !(name in before));
+      expect(added.sort(), `${list} added`).toEqual(
+        list === "dependencies" ? Object.keys(PINNED).sort() : [],
+      );
+      expect(
+        Object.keys(before).filter((name) => after[name] !== before[name]),
+        `${list} changed or removed`,
+      ).toEqual([]);
+    }
+  });
 });
 
 describe("C2 the lockfile and the licences", () => {

@@ -98,6 +98,41 @@ function syncInert() {
   }
 }
 
+/**
+ * Whether a hint, a popover or a menu is up. Radix hears Escape on the document, after the window; a
+ * scene that listens on the window (capture, to run before the shell's own Escape) and meets this
+ * answers nothing, so that Escape reaches the layer on top first: one Escape closes one thing.
+ */
+export function floatingLayerOpen(): boolean {
+  return (
+    document.querySelector(
+      '.ui-tip[data-state="delayed-open"], .ui-tip[data-state="instant-open"], .popover[data-state="open"], .ui-menu[data-state="open"]',
+    ) !== null
+  );
+}
+
+/* ---- where focus goes back to when what held it is gone ------------------------------- */
+
+/**
+ * The control a floating panel hangs from, by the panel's element. A dialog opened from something inside a
+ * menu or a popover (an item that says "Export", a button in the bell) finds that something gone when it
+ * closes, because the panel left with the choice: focus then goes to the control the panel hung from.
+ */
+const hangsFrom = new WeakMap<Element, () => HTMLElement | null>();
+export function registerHangsFrom(panel: Element, control: () => HTMLElement | null): void {
+  hangsFrom.set(panel, control);
+}
+/** The control the panel around `el` hangs from, if `el` is inside one: a menu (Radix names its trigger) or a popover. */
+export function controlOfPanelAround(el: Element | null): HTMLElement | null {
+  for (let node: Element | null = el; node; node = node.parentElement) {
+    const control = hangsFrom.get(node);
+    if (control) return control();
+  }
+  const menu = el?.closest('[role="menu"][aria-labelledby]');
+  const trigger = menu ? document.getElementById(menu.getAttribute("aria-labelledby")!) : null;
+  return trigger instanceof HTMLElement ? trigger : null;
+}
+
 export function focusables(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
     (el) =>
@@ -196,6 +231,10 @@ export function useDrawer(
     });
 
     const onKey = (e: KeyboardEvent) => {
+      // A Radix layer above this panel (a popover over the chat drawer, a hint on a control inside the
+      // sidebar) already took the key in its capture listener and marked it handled: that Escape was
+      // its own, and the panel closes on the next one. The registry reads the mark the same way.
+      if (e.defaultPrevented) return;
       if (stack[stack.length - 1] !== entry) return;
       if (e.key === "Escape") {
         e.preventDefault();

@@ -669,7 +669,6 @@
 
 /* ---- the details sheet ----------------------------------------------------------- */
 .sks-sheet {
-  --cut: 16px;
   position: absolute;
   z-index: 3;
   top: var(--sks-top);
@@ -678,37 +677,6 @@
   width: var(--sks-sheet-w);
   display: flex;
   flex-direction: column;
-  background: var(--nu-glass, var(--bg-raise));
-  backdrop-filter: blur(16px) saturate(1.2);
-  box-shadow:
-    inset 0 0 0 1px var(--nu-edge, var(--border)),
-    0 30px 80px -30px color-mix(in srgb, var(--shadow-ink) 80%, transparent);
-  clip-path: polygon(
-    var(--cut) 0,
-    100% 0,
-    100% calc(100% - var(--cut)),
-    calc(100% - var(--cut)) 100%,
-    0 100%,
-    0 var(--cut)
-  );
-  animation: sks-sheet-in 0.6s var(--sks-ease) both;
-}
-.sks-sheet::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--agent), transparent);
-  opacity: 0.7;
-}
-@keyframes sks-sheet-in {
-  from {
-    opacity: 0;
-    transform: translateX(40px);
-    filter: blur(6px);
-  }
 }
 .sks-sheet-head {
   display: flex;
@@ -964,7 +932,6 @@
     transition: none;
   }
   .sks-focus,
-  .sks-sheet,
   .sks-item[data-live] .hx-w,
   .sks-chip[data-live] .hx-w,
   .sks-live::before {
