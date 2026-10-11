@@ -3,7 +3,7 @@
 Profile: ui
 Plan: `.specs/features/primitivas/plan.md`
 
-38 checks in 5 slices · 10 one-way doors · 0 open, of which 0 block
+39 checks in 5 slices · 10 one-way doors · 0 open, of which 0 block
 
 Comandos (da raiz): interface `npm run test -w apps/command-centre -- <arquivo> -t "<nome>"`; raiz
 `npx vitest run tests/ui-deps.test.ts -t "<nome>"`; lint `npm run lint`; e2e
@@ -31,7 +31,7 @@ Proof: `npx vitest run tests/ui-deps.test.ts -t "C2 the lockfile and the licence
 Proof: `npm ci --dry-run`
 Status: closed
 
-**C3** - `src/ui/index.ts` exporta exatamente `Modal`, `DialogSurface`, `Popover`, `Tabs`, `Switch`, `DropdownMenu`, `Tooltip`, `UiProvider`, `getDialogDepth`, `subscribeDialogDepth`, `useDialogDepth`, `useDrawer` e `focusables`; nenhum arquivo de `src` fora de `src/ui/` importa `@radix-ui/*`; `components/ui.tsx` não exporta `Modal`, `components/primitives.tsx` não exporta `Popover` nem `Tabs` e `components/dialog.tsx` não existe (lido pela árvore sintática, com autoteste de cada forma de importação: `import`, `export … from`, `import()`, `require`) (AC 3)
+**C3** - `src/ui/index.ts` exporta exatamente `Modal`, `DialogSurface`, `Popover`, `Tabs`, `Switch`, `DropdownMenu`, `Tooltip`, `UiProvider`, `getDialogDepth`, `subscribeDialogDepth`, `useDialogDepth`, `useDrawer`, `focusables`, `escapeLayerOpen` e `keyLayerOpen`; nenhum arquivo de `src` fora de `src/ui/` importa `@radix-ui/*`; `components/ui.tsx` não exporta `Modal`, `components/primitives.tsx` não exporta `Popover` nem `Tabs` e `components/dialog.tsx` não existe (lido pela árvore sintática, com autoteste de cada forma de importação: `import`, `export … from`, `import()`, `require`) (AC 3)
 Proof: `npm run test -w apps/command-centre -- src/ui/ui.source.test.ts -t "C3"`
 Status: closed
 
@@ -155,7 +155,7 @@ Status: closed
 Proof: `MORDOMO_E2E_PORT=4888 npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/primitives.spec.ts`
 Status: closed
 
-**C31** - `scripts/bundle-size.mjs` mede `apps/command-centre/dist` (JS e CSS, bruto e gzip) e sai `1` quando o JS gzip passa de 5% sobre o valor medido depois da feature (gravado no próprio script); a medição antes (`9c82fc1`) e depois está gravada no script: JS 1 445 758 B bruto e 470 410 B gzip antes, 1 552 075 e 503 649 depois (e 1 557 112 e 505 237 ao fim da rodada 1, a entrada mais nova de `scripts/bundle-baseline.json`) (mais 7,1% gzip, o custo do Radix e das dicas); CSS 337 189 e 70 728 antes, 340 497 e 71 459 depois (AC 31)
+**C31** - `scripts/bundle-size.mjs` mede `apps/command-centre/dist` (JS e CSS, bruto e gzip) e sai `1` quando o JS gzip passa de 5% sobre o valor medido depois da feature (gravado no próprio script); a medição antes (`9c82fc1`) e depois está gravada no script: JS 1 445 758 B bruto e 470 410 B gzip antes, 1 552 075 e 503 649 depois (e 1 557 112 e 505 237 ao fim da rodada 1, 1 559 932 e 505 903 ao fim da rodada 2, a entrada mais nova de `scripts/bundle-baseline.json`) (mais 7,1% gzip, o custo do Radix e das dicas); CSS 337 189 e 70 728 antes, 340 497 e 71 459 depois (AC 31)
 Proof: `node scripts/bundle-size.mjs --check`
 Status: closed
 
@@ -168,13 +168,15 @@ Resultado de C32, medido na construção, com a configuração temporária (test
 
 ### S5 - rodada 1 da verificação · 14 files · 120 KB · ~25k
 
-**C33** - `useDrawer` não age sobre um Esc já tratado: com uma camada Radix acima de um painel em `useDrawer` (popover do console sobre a gaveta da conversa em 800 px, dica num controle da gaveta ou da barra lateral, menu), o primeiro Esc fecha só a camada e o segundo a gaveta; um Esc marcado `defaultPrevented` não fecha a gaveta da conversa, a do documento nem a barra lateral estreita; o Esc que a gaveta toma é marcado e não chega à janela (AC 33)
+**C33** - `useDrawer` não age sobre um Esc já tratado: com uma camada Radix acima de um painel em `useDrawer` (popover do console sobre a gaveta da conversa em 800 px, dica num controle da gaveta ou da barra lateral, menu), o primeiro Esc fecha só a camada e o segundo a gaveta; um Esc marcado `defaultPrevented` não fecha a gaveta da conversa, a do documento nem a barra lateral estreita; o Esc que a gaveta toma é marcado e não chega à janela; e um segundo Esc dado com 0, 100 ou 200 ms de intervalo, enquanto o popover ainda sai, fecha a gaveta (o Radix ainda trata e marca esse Esc; a gaveta só o deixa à camada que o tomou aberta) (AC 33)
 Proof: `npm run test -w apps/command-centre -- src/ui/drawer.test.tsx -t "C33"`
 Proof: `npm run test -w apps/command-centre -- src/moldura/moldura.test.tsx -t "primitivas C33"`
+Proof: `MORDOMO_E2E_PORT=4888 npx playwright test --config <temporária> tests/e2e/primitives.spec.ts -g "C33"`
 Status: closed
 
-**C34** - No navegador, um Esc fecha uma coisa: na moldura em 800 px o popover do console sobre a gaveta da conversa fecha antes dela, e no Núcleo a dica do botão de ajuda do cérebro fecha antes do cartão de ajuda; `floatingLayerOpen()` é falso em repouso e verdadeiro com cada uma das três camadas abertas (AC 34)
+**C34** - No navegador, um Esc fecha uma coisa: na moldura em 800 px o popover do console sobre a gaveta da conversa fecha antes dela, e no Núcleo a dica do botão de ajuda do cérebro fecha antes do cartão de ajuda; `escapeLayerOpen()` é falso em repouso e verdadeiro com cada uma das três camadas abertas (a dica por foco, a dica pelo ponteiro depois de 400 ms, o popover e o menu) e falso para uma camada que está saindo (`data-state="closed"`); e cada guarda de Esc das cenas tem prova de comportamento própria: com uma dica, um popover ou um menu aberto, o Esc deixa `RunsScene` (a execução), `RoutinesScene` (a folha clássica), `FocusMode` e `BrainScene` (o cartão de ajuda) onde estão, e o seguinte os fecha; a folha de detalhes de Skills é um `Modal` e o Esc dela é o do Radix (AC 34)
 Proof: `npm run test -w apps/command-centre -- src/ui/layers.test.tsx -t "C34"`
+Proof: `npm run test -w apps/command-centre -- src/ui/scenes.test.tsx -t "C34"`
 Proof: `npm run test -w apps/command-centre -- src/ui/ui.source.test.ts -t "C34"`
 Proof: `MORDOMO_E2E_PORT=4888 npx playwright test --config <temporária> tests/e2e/primitives.spec.ts -g "C34"`
 Status: closed
@@ -184,18 +186,24 @@ Proof: `npm run test -w apps/command-centre -- src/ui/layers.test.tsx -t "C35"`
 Proof: `MORDOMO_E2E_PORT=4888 npx playwright test --config <temporária> tests/e2e/primitives.spec.ts -g "C35"`
 Status: closed
 
-**C36** - Um diálogo aberto por um item de menu (Skills "+" > Exportar) ou por um controle dentro de um popover devolve, ao fechar, o foco ao gatilho do menu ou à âncora do popover (e não ao `body`) (AC 36)
+**C36** - Um diálogo aberto por um item de menu (Skills "+" > Exportar), por um controle dentro de um popover ou por um controle dentro de outro diálogo (paleta > "Atalhos do teclado") devolve, ao fechar, o foco ao gatilho do menu, à âncora do popover ou ao que o primeiro diálogo devolveria (e não ao `body`) (AC 36)
 Proof: `npm run test -w apps/command-centre -- src/ui/dialog.test.tsx -t "C36"`
 Proof: `MORDOMO_E2E_PORT=4888 npx playwright test --config <temporária> tests/e2e/primitives.spec.ts -g "C36"`
 Status: closed
 
-**C37** - Uma dica cujo texto é o `aria-label` do controle não liga `aria-describedby` nele; uma dica que diz mais que o nome (a tecla que o roda) liga (AC 37)
+**C37** - Uma dica cujo texto é o `aria-label` do controle não liga `aria-describedby` nele; uma dica que diz mais que o nome (a tecla que o roda) liga; a descrição que o controle declarou ele mesmo fica, e o texto é comparado sem o espaço das pontas (AC 37)
 Proof: `npm run test -w apps/command-centre -- src/ui/tooltip.test.tsx -t "C37"`
 Proof: `MORDOMO_E2E_PORT=4888 npx playwright test --config <temporária> tests/e2e/primitives.spec.ts -g "C30 the hint"`
 Status: closed
 
-**C38** - O guarda de peso roda no CI depois da construção (`npm run bundle:check`), lê `scripts/bundle-baseline.json` (tolerância 1.05 fixada por teste, cada entrada de `after` com motivo, a mais nova nunca abaixo da construção anterior) e sai `1` para um `dist` acima do limite e para uma pasta sem nada a medir (AC 38)
+**C38** - O guarda de peso roda no CI depois da construção (`npm run bundle:check`), lê `scripts/bundle-baseline.json` (tolerância 1.05 fixada por teste, cada entrada de `after` com motivo, a mais nova nunca abaixo da construção anterior) e sai `1` para um `dist` acima do limite (logo acima, não longe) e para uma pasta sem nada a medir; o limite é o da entrada mais nova; o passo do CI é um passo só, sem `if`, sem `continue-on-error` e sem `|| true`; e `--check` mede também quando o caminho do repositório tem espaço ou letra fora do ASCII (AC 38)
 Proof: `npx vitest run tests/bundle-size.test.ts -t "C31 the weight guard"`
+Status: closed
+
+**C39** - Com uma dica aberta (por foco ou por ponteiro) as setas e as letras da cena de Skills e o Shift+1-4 do cérebro continuam respondendo; com um popover ou um menu aberto não respondem; a leitura da fonte vê todo ouvinte de `keydown` na janela (captura por `true` ou por `{ capture: true }`) e pede às cenas de captura `escapeLayerOpen` e às de teclas simples `keyLayerOpen` (AC 39)
+Proof: `npm run test -w apps/command-centre -- src/ui/scenes.test.tsx -t "C35"`
+Proof: `npm run test -w apps/command-centre -- src/ui/ui.source.test.ts -t "C35"`
+Proof: `MORDOMO_E2E_PORT=4888 npx playwright test --config <temporária> tests/e2e/primitives.spec.ts -g "C35 in the Núcleo, after a dialog|C35 in the Núcleo, with the pointer"`
 Status: closed
 
 ### Emendas da rodada 1 (texto de checks que ficaram imprecisos; as provas é que mudaram)
@@ -207,17 +215,25 @@ Status: closed
 - **C17**: "takes Escape once" não afirmava `preventDefault` nem `stopPropagation`; a afirmação mora em C33 (`drawer.test.tsx`).
 - **C21**: os cinco popovers têm prova de comportamento (abre como diálogo não modal, Esc devolve o foco, um clique fora fecha e deixa o foco onde o clique o pôs, o clique no controle fecha uma vez e não reabre): o sino e a ficha de modelo já tinham; ganham `ConversationsPopover`, o menu "⋯" do cérebro e o popover de modelo e esforço do deck (`migration.test.tsx`, "every popover").
 - **C25**: a lista dos `title` que ficam tem 51 entradas, não 52: o botão `✈` de enviar por Telegram (`ConsoleThread.tsx`) era só um glifo com `title`, não "controle com palavras visíveis", e ganhou `Tooltip` e `aria-label`; o leitor passa a recusar uma entrada `WORDS` sobre um controle sem palavra.
-- **C26**: a chave `useDrawer` não muda; `ui/index.ts` exporta 14 valores (`floatingLayerOpen`).
+- **C26**: a chave `useDrawer` não muda; `ui/index.ts` exporta 15 valores (`escapeLayerOpen` e `keyLayerOpen`, as duas que a rodada 2 separou de `floatingLayerOpen`).
 - **C27**: o leitor passa a incluir as classes que as telas penduram numa peça (`me-popover`, `cons-model`, `cons-conversations`, `mold-popover`, `bs-menu`, `sks-sheet`, lidas da fonte: `className` e `backdrop` de diálogo, popover, menu e lista de abas) e, com elas, achou a folha de detalhes de Skills desenhada duas vezes; a regra repetida saiu de `skillsScene.css`.
 - **C29**: além da galeria (que desenha o menu e a dica no lugar), axe com os componentes reais abertos em cada shell e tema.
 - **C31**: o guarda é o de C38 (a medição e os números não mudam).
+
+### Emendas da rodada 2
+
+- **C25**: o leitor `hasWords` não conta como palavra uma expressão que é um ícone (`{icon}`, `{aberto ? <A/> : <B/>}`).
+- **C27**: o leitor lê também a classe que chega a uma peça por uma variável do mesmo arquivo (`const k = "a b"; <Popover className={k}>`); o vidro do Núcleo nos popovers passa a 92% e um teste o segura em pelo menos 90%.
+- **C29**: além do axe, o contraste computado do texto da dica e dos itens do menu abertos, em cada shell e tema (axe não decide o vidro translúcido).
+- **C3**: 15 exportações (`escapeLayerOpen` e `keyLayerOpen` no lugar de `floatingLayerOpen`).
+- **C34/C35**: `floatingLayerOpen` era uma pergunta só e calava as teclas da cena sob qualquer dica; são duas, e o menu "+" > Exportar > Esc deixava a dica aberta e a cena morta (achado 1 da rodada 2).
 
 ## Coverage
 
 | Set (size)                                                     | Member -> proof                                                                                                                                                                                                                                                                                                                                 | Unproven |
 | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | pacotes `@radix-ui` fixados (6)                                | dialog C1, C2 · dropdown-menu C1, C2 · popover C1, C2 · switch C1, C2 · tabs C1, C2 · tooltip C1, C2                                                                                                                                                                                                                                            | -        |
-| exportações de `src/ui/index.ts` (13)                          | `Modal` C3 · `DialogSurface` C3 · `Popover` C3 · `Tabs` C3 · `Switch` C3 · `DropdownMenu` C3 · `Tooltip` C3 · `UiProvider` C3 · `getDialogDepth` C3 · `subscribeDialogDepth` C3 · `useDialogDepth` C3 · `useDrawer` C3 · `focusables` C3                                                                                                        | -        |
+| exportações de `src/ui/index.ts` (15)                          | `Modal` C3 · `DialogSurface` C3 · `Popover` C3 · `Tabs` C3 · `Switch` C3 · `DropdownMenu` C3 · `Tooltip` C3 · `UiProvider` C3 · `getDialogDepth` C3 · `subscribeDialogDepth` C3 · `useDialogDepth` C3 · `useDrawer` C3 · `focusables` C3 · `escapeLayerOpen` C3 · `keyLayerOpen` C3                                                             | -        |
 | contrato do diálogo (14)                                       | portal em `#modal-root` C4 · `role="dialog"` C4 · `aria-modal="true"` C4 · nome C4 · foco inicial, quatro casos C4 · foco volta C5 · Tab C6 · Shift+Tab C6 · Esc só o de cima C7 · Esc não chega ao registro C7 · `inert` C8 · profundidade C8 · fundo fecha C9 · saída de 160 ms e movimento reduzido C9                                       | -        |
 | formas de fechar o diálogo (4)                                 | Esc C5, C7 · botão C5 · fundo C5, C9 · `open={false}` C5                                                                                                                                                                                                                                                                                        | -        |
 | contrato do popover (5)                                        | `aria-modal="false"` C10 · sem `inert` C10 · fora da profundidade C10 · Esc devolve o foco C10 · clique fora não move o foco C10                                                                                                                                                                                                                | -        |
@@ -245,6 +261,8 @@ Status: closed
 | aberturas de diálogo cujo opener some (2)                      | item de menu C36 · controle de popover C36                                                                                                                                                                                                                                                                                                      | -        |
 | ouvintes de janela das cenas que olham `floatingLayerOpen` (5) | `BrainScene` C34 · `RunsScene` C34 · `RoutinesScene` C34 · `SkillsScene` C34 · `FocusMode` C34                                                                                                                                                                                                                                                  | -        |
 | popovers com prova de comportamento (5)                        | sino C21 · modelo do console C21 · conversas C21 · menu do cérebro C21 · modelo e esforço do deck C21                                                                                                                                                                                                                                           | -        |
+| formas da dica (3)                                             | por foco (`instant-open`) C34 · por ponteiro (`delayed-open`) C34 · saindo (`closed`, não conta) C34                                                                                                                                                                                                                                            | -        |
+| intervalos do segundo Esc durante a saída (3)                  | 0 ms C33 · 100 ms C33 · 200 ms C33                                                                                                                                                                                                                                                                                                              | -        |
 | rotas da Surface (0)                                           | nenhuma (a Surface é `None`)                                                                                                                                                                                                                                                                                                                    | -        |
 
 - Claims naming a status code, route or response shape: nenhum (não há rota nova); os que nomeiam a tela (C28-C30) têm prova no navegador
@@ -323,3 +341,8 @@ Sem estas linhas, o contrato de foco e de Esc só seria provado pelo caminho que
 
 - Corrigidos com teste que falha sem a correção (mutante morto): 1 (C33), 2 (C21), 3 (C27), 4 (C10, C33), 5 (C16), 6 (C25), 7 (C37), 8 (C36), 9 (C35), 10 (C38), 11 (a seção "nua" da galeria, o vidro do popover do Núcleo a 86%, e o Q9), 12 (a, b, c, d, e, f).
 - A reconsideração pedida (as três gavetas no Esc do registro) está em `design.md`, "Camadas": ficam em `useDrawer`, que agora lê a mesma marca que o registro.
+
+### Rodada 2 da verificação (FAIL, 11 achados)
+
+- 1 (as teclas da cena morriam sob qualquer dica): `keyLayerOpen` sem a dica, C39 com prova por sítio e no navegador. 2 (seis dos sete sítios sem prova): `ui/scenes.test.tsx`, uma prova de comportamento por sítio (mutantes `(guarda && false)` mortos nos sete) e o leitor vê `{ capture: true }`; o ouvinte de Esc de `SkillsScene` era código morto (a folha é um `Modal` e a raiz fica inerte) e saiu. 3 (a dica por ponteiro): C34. 4 (o segundo Esc engolido): `noteEscape`, C33 a 0/100/200 ms. 5 (guarda de peso): `.at(-1)`, o passo do CI, o caminho com espaço e acento (um erro real do script, `import.meta.url` comparado como texto), C38. 6 (foco depois de paleta > atalhos): C36. 7 (baixos): C37, C29, C27, C25, as exportações; o vidro a 92%.
+- Não feito: a nota 11 (e) (o Esc do Radix roda depois de `onKeyDown` do React que não lê `defaultPrevented`, por exemplo `views/Settings.tsx`) não foi sondada nem corrigida; fica como risco.

@@ -48,7 +48,7 @@ import { scheduleInWords, type Translate } from "./routinesWords";
 import { RoutineEditor, RoutinesClassic, allowWebhooks } from "./routinesEditor";
 import RoutinesSceneDial, { type DialRoutineView, type PastFire } from "./RoutinesSceneDial";
 import RoutinesSceneDetail from "./RoutinesSceneDetail";
-import { floatingLayerOpen } from "../../ui";
+import { escapeLayerOpen } from "../../ui";
 import "./routinesScene.css";
 
 /** The clock the dial reads: a re-render every `ms`, and at once when the tab comes back. */
@@ -185,7 +185,7 @@ export default function RoutinesScene(_props: SceneViewProps) {
     classicRef.current?.focus();
     // Capture: the sheet closes before the shell's own Escape (lâminas, home) sees it.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented || floatingLayerOpen()) return;
+      if (e.key !== "Escape" || e.defaultPrevented || escapeLayerOpen()) return;
       const el = e.target instanceof Element ? e.target : null;
       if (el?.closest('[role="dialog"]')) return; // the view's own modals close first
       e.preventDefault();

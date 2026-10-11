@@ -102,4 +102,37 @@ describe("C14 tooltip", () => {
       screen.getByRole("tooltip").id,
     );
   });
+
+  it("C37 the description a control declared itself stays when the hint repeats its name; the comparison ignores the padding", async () => {
+    mount(
+      <UiProvider>
+        <p id="d">Saves the draft</p>
+        <Tooltip label="Save ">
+          <button aria-label="Save" aria-describedby="d">
+            s
+          </button>
+        </Tooltip>
+      </UiProvider>,
+    );
+    const save = screen.getByRole("button", { name: "Save" });
+    act(() => save.focus());
+    await tick();
+    expect(screen.getByRole("tooltip")).toBeTruthy();
+    expect(save.getAttribute("aria-describedby")).toBe("d");
+  });
+
+  it("C37 a control with no description of its own has none while the hint only repeats its name, even when padded", async () => {
+    mount(
+      <UiProvider>
+        <Tooltip label="Save ">
+          <button aria-label="Save">s</button>
+        </Tooltip>
+      </UiProvider>,
+    );
+    const save = screen.getByRole("button", { name: "Save" });
+    act(() => save.focus());
+    await tick();
+    expect(screen.getByRole("tooltip")).toBeTruthy();
+    expect(save.hasAttribute("aria-describedby")).toBe(false);
+  });
 });

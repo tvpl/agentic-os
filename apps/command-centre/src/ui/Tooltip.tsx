@@ -13,14 +13,13 @@ import {
   createContext,
   forwardRef,
   useContext,
+  useRef,
   type HTMLAttributes,
   type ReactElement,
   type ReactNode,
 } from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
-
-/** Cloned onto a control whose name the hint repeats: Radix's `aria-describedby` gives way to it. */
-const NOT_DESCRIBED = { "aria-describedby": undefined } as Record<string, unknown>;
+import { noteEscape } from "./layers";
 
 /** Whether a provider is already above (one provider keeps the "skip the delay" window between neighbours). */
 const InProvider = createContext(false);
@@ -54,11 +53,19 @@ export const Tooltip = forwardRef<HTMLButtonElement, TooltipProps>(function Tool
   ref,
 ) {
   const inProvider = useContext(InProvider);
+  const panel = useRef<HTMLDivElement>(null);
   if (label === undefined || label === null || label === false || label === "")
     return cloneElement(children, { ...forwarded, ref } as Record<string, unknown>);
-  const name = (children.props as { "aria-label"?: unknown })["aria-label"];
-  const control =
-    typeof label === "string" && name === label ? cloneElement(children, NOT_DESCRIBED) : children;
+  // A hint that repeats the control's name is not its description: the control keeps whatever description
+  // it declared itself, and Radix's pointer at the hint gives way (a child's own props win in the merge).
+  const own = children.props as { "aria-label"?: unknown; "aria-describedby"?: string };
+  const same =
+    typeof label === "string" &&
+    typeof own["aria-label"] === "string" &&
+    own["aria-label"].trim() === label.trim();
+  const control = same
+    ? cloneElement(children, { "aria-describedby": own["aria-describedby"] } as Record<string, unknown>)
+    : children;
   const tip = (
     <TooltipPrimitive.Root>
       <TooltipPrimitive.Trigger asChild {...forwarded} ref={ref}>
@@ -66,6 +73,8 @@ export const Tooltip = forwardRef<HTMLButtonElement, TooltipProps>(function Tool
       </TooltipPrimitive.Trigger>
       <TooltipPrimitive.Portal>
         <TooltipPrimitive.Content
+          ref={panel}
+          onEscapeKeyDown={(event) => noteEscape(event, panel.current)}
           className="ui-tip"
           side={side}
           align={align}

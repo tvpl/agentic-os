@@ -15,6 +15,7 @@
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
 
 const DIST = join(import.meta.dirname, "..", "apps", "command-centre", "dist");
@@ -55,7 +56,8 @@ const delta = (now, then) =>
     ? `${now >= then ? "+" : "-"}${kb(Math.abs(now - then))} (${(((now - then) / then) * 100).toFixed(1)}%)`
     : "";
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Compared as URLs: a path with a space or a letter outside ASCII is percent-encoded in `import.meta.url`.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const at = process.argv.indexOf("--dist");
   const now = measure(at >= 0 ? process.argv[at + 1] : DIST);
   const rows = [

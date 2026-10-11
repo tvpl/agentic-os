@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DropdownMenu, Popover, Tooltip, useDrawer } from ".";
+import { noteEscape } from "./layers";
 import { installPage, mount, motion, tick } from "./testkit";
 
 installPage();
@@ -62,6 +63,27 @@ describe("C33 the drawer takes Escape for itself and leaves to a layer above it 
     document.removeEventListener("keydown", taken, true);
     expect(onClose).not.toHaveBeenCalled();
     act(() => void document.activeElement!.dispatchEvent(escapeEvent()));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("C33 an Escape that a layer took while it was already leaving (data-state closed) does not keep the drawer open; one it took while open does", async () => {
+    const onClose = vi.fn();
+    mount(<Drawer onClose={onClose}>{() => <button>first</button>}</Drawer>);
+    await settle();
+    const panel = document.createElement("div");
+    document.body.appendChild(panel);
+    // What Radix does: its layer takes the Escape in the document capture and marks it handled.
+    const layer = (e: Event) => {
+      noteEscape(e, panel);
+      e.preventDefault();
+    };
+    document.addEventListener("keydown", layer, true);
+    panel.setAttribute("data-state", "open");
+    act(() => void document.activeElement!.dispatchEvent(escapeEvent()));
+    expect(onClose).not.toHaveBeenCalled();
+    panel.setAttribute("data-state", "closed");
+    act(() => void document.activeElement!.dispatchEvent(escapeEvent()));
+    document.removeEventListener("keydown", layer, true);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

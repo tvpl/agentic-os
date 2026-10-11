@@ -18,8 +18,8 @@ export const OUTSIDE_THE_REGISTRY: Record<string, [count: number, why: string]> 
   "onboarding/useTourSurface.ts": [1, "the guided tour owns the keyboard while it is up (design: stays)"],
   "runs/Replay.tsx": [1, "the replay's own transport keys (design: stays)"],
   "nucleo/scenes/SkillsScene.tsx": [
-    2,
-    "the Skills ring's type-to-find (design: stays) and its sheet's Escape, captured before the shell's",
+    1,
+    "the Skills ring's type-to-find and arrows (design: stays); the sheet is a Modal, which takes its own Escape",
   ],
   "nucleo/scenes/BrainScene.tsx": [
     2,

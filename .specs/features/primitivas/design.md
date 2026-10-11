@@ -85,7 +85,7 @@ diálogo: as letras de busca do menu e o `Mod+K` não chegam à tela atrás dele
 
 **Tooltip.** Envolve um controle que já tem `aria-label`; aparece com o foco do teclado e depois de
 400 ms de ponteiro parado; `role="tooltip"`, e `aria-describedby` no controle quando a dica diz mais que o
-nome (uma dica que só repete o `aria-label` não vira a descrição: seria dita duas vezes, AC 37); Esc fecha sem mexer no foco (e, enquanto
+nome (uma dica que só repete o `aria-label` não vira a descrição: seria dita duas vezes, e a descrição que o controle declarou fica, AC 37); Esc fecha sem mexer no foco (e, enquanto
 ela está aberta, o Radix a trata como a camada de cima e consome o primeiro Esc: ver "Perguntas ao dono"); o
 conteúdo mínimo é 12px; entra por `UiProvider` (a primitiva monta o seu próprio provedor quando não
 há um acima, para uma view solta num teste).
@@ -101,14 +101,22 @@ há um acima, para uma view solta num teste).
   a gaveta também prende o Tab, que o registro não trata (é fluxo de digitação, não comando); o Esc dela, lido
   pela mesma marca que o registro lê, dá o mesmo efeito de camadas sem um terceiro caminho, e o ouvinte
   único continua um item contado e explicado em `OUTSIDE_THE_REGISTRY`.
-- `floatingLayerOpen()` (de `ui/layers.ts`) diz se há dica, popover ou menu aberto. Os ouvintes de janela
-  em captura das cenas do Núcleo (`BrainScene`, `RunsScene`, `RoutinesScene`, `SkillsScene`, `FocusMode`) o
-  consultam e não respondem ao Esc enquanto há uma: o Radix escuta no documento, depois da janela, e sem isso
-  a cena fechava o que é dela antes de a dica fechar (AC 34). Os de letras (`SkillsScene`, `BrainScene`
-  Shift+1-4) também.
+- Duas perguntas em `ui/layers.ts`, e só o que está `open` conta (`data-state`), não o que está saindo:
+  `escapeLayerOpen()` (dica, popover ou menu) e `keyLayerOpen()` (popover ou menu, **sem** a dica). Os ouvintes
+  de janela em captura das cenas do Núcleo (`BrainScene`, `RunsScene`, `RoutinesScene`, `FocusMode`) perguntam
+  a primeira antes de agir no Esc: o Radix escuta no documento, depois da janela, e sem isso a cena fechava o
+  que é dela antes de a dica fechar (AC 34). Os de letras, setas e Shift+1-4 (`SkillsScene`, `BrainScene`)
+  perguntam a segunda: uma dica abre sozinha onde o ponteiro para ou o foco cai (ao fechar um diálogo aberto do
+  menu "+", o foco volta ao "+" e a dica abre) e não é dona do teclado; só um popover ou um menu é (AC 39). A
+  folha de detalhes de Skills é um `Modal`: o Esc dela é o do Radix, e a cena não tem ouvinte de Esc para ela.
+- O Radix mantém uma camada na sua pilha enquanto a saída toca, trata o Esc dado então e o marca; `useDrawer` lê a
+  marca para deixar à camada o Esc que ela tomou aberta, e não pode deixar-lhe o que ela tomou saindo (o segundo
+  toque de um duplo toque rápido). Os conteúdos de popover, menu e dica chamam `noteEscape` em
+  `onEscapeKeyDown`, que anota o Esc tomado com `data-state="closed"`; a gaveta o fecha mesmo marcado (AC 33).
 - Um diálogo aberto de dentro de um painel flutuante (um item de menu, um botão do sino) guarda, ao abrir, o
   controle de que o painel pendia (`ui/layers.ts: controlOfPanelAround`; o menu do Radix nomeia o seu
-  gatilho, o `Popover` registra a sua âncora) e devolve o foco a ele se o opener já não existe (AC 36).
+  gatilho, o `Popover` registra a sua âncora) e devolve o foco a ele se o opener já não existe (AC 36). Um diálogo registra também o que ele próprio devolve, e
+  o diálogo aberto de dentro dele (a paleta > "Atalhos do teclado") devolve o foco ao mesmo lugar.
 - O Radix trata Esc num ouvinte de documento em captura (`@radix-ui/react-dismissable-layer`, só a
   camada de cima; o `@radix-ui/react-menu` tem outro, que só anota se a última tecla foi do teclado) e
   marca o evento como tratado; o registro, que ouve a janela em bolha, já o ignora quando
@@ -131,7 +139,7 @@ Declarados uma vez em `ui/ui.css`: o padrão em `:root` e em `[data-shell="moldu
 | `--ui-veil`      | `shadow-ink` 62%   | gradiente do agente sobre `color-mix(var(--bg) 54%)`        |
 | `--ui-veil-blur` | `3px`              | `12px saturate(0.75) brightness(0.85)`                      |
 | `--ui-pop-r`     | `var(--r-3)`       | `18px`                                                      |
-| `--ui-pop-bg`    | `var(--surface)`   | `color-mix(var(--bg) 86%)`                                  |
+| `--ui-pop-bg`    | `var(--surface)`   | `color-mix(var(--bg) 92%)`                                  |
 | `--ui-pop-blur`  | `none`             | `blur(22px) saturate(1.3)`                                  |
 | `--ui-pop-clip`  | `none`             | `none`                                                      |
 

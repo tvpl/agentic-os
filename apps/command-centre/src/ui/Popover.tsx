@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, type RefObject, type ReactNode } from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
-import { registerHangsFrom } from "./layers";
+import { noteEscape, registerHangsFrom } from "./layers";
 
 export type PopoverPlacement = "bottom-start" | "bottom-end" | "bottom" | "top-start" | "top-end" | "top";
 
@@ -91,6 +91,7 @@ export function Popover({
       aria-label={ariaLabel}
       className={["popover", className ?? ""].filter(Boolean).join(" ")}
       style={matchWidth ? { width: "var(--radix-popover-trigger-width)" } : undefined}
+      onEscapeKeyDown={(event) => noteEscape(event, contentRef.current)}
       onOpenAutoFocus={(event) => {
         const target = initialFocus?.();
         if (!target) return;

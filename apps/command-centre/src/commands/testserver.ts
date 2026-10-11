@@ -93,6 +93,8 @@ export function mockApi(mod: typeof ApiModule) {
     if (url === "/api/doctor?audit=0") return server.doctor();
     if (url.startsWith("/api/memory/graph") && server.graph)
       return Promise.resolve(structuredClone(server.graph));
+    if (url.startsWith("/api/routines/summary"))
+      return Promise.resolve({ firedToday: 0, totalToday: 0, byRunner: { local: 0 }, byKind: {} });
     if (url.startsWith("/api/providers")) return Promise.resolve(structuredClone(PROVIDERS));
     if (url === "/api/runs/r1") return Promise.resolve({ run: structuredClone(RUN), events: [] });
     if (url.startsWith("/api/runs")) return Promise.resolve([structuredClone(RUN)]);

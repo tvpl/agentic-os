@@ -63,7 +63,7 @@ html:has(.nu-shell),
   --ui-sheet-out: ui-sheet-out 0.16s var(--ease-standard) both;
   --ui-veil-in: ui-veil-in 0.4s var(--ease-standard) both;
   --ui-pop-r: 18px;
-  --ui-pop-bg: color-mix(in srgb, var(--bg) 86%, transparent);
+  --ui-pop-bg: color-mix(in srgb, var(--bg) 92%, transparent);
   --ui-pop-edge: 0;
   --ui-pop-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--agent) 22%, transparent),

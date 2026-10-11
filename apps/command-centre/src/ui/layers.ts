@@ -98,17 +98,41 @@ function syncInert() {
   }
 }
 
-/**
- * Whether a hint, a popover or a menu is up. Radix hears Escape on the document, after the window; a
- * scene that listens on the window (capture, to run before the shell's own Escape) and meets this
- * answers nothing, so that Escape reaches the layer on top first: one Escape closes one thing.
+/*
+ * What is up above the screen, for the code that listens on the window before Radix does. Radix hears
+ * Escape on the document, after the window, so a scene that listens there answers first and takes the key
+ * from the layer on top. Only what is OPEN counts (`data-state`): a layer that is leaving still has its
+ * element for the length of its exit, and a second Escape pressed then is not its own.
  */
-export function floatingLayerOpen(): boolean {
-  return (
-    document.querySelector(
-      '.ui-tip[data-state="delayed-open"], .ui-tip[data-state="instant-open"], .popover[data-state="open"], .ui-menu[data-state="open"]',
-    ) !== null
-  );
+const HINTS = '.ui-tip[data-state="delayed-open"], .ui-tip[data-state="instant-open"]';
+const PANELS = '.popover[data-state="open"], .ui-menu[data-state="open"]';
+
+/**
+ * Whether a hint, a popover or a menu is open: Escape belongs to it, one Escape closes one thing. The
+ * Escape guards of the scenes ask this.
+ */
+export function escapeLayerOpen(): boolean {
+  return document.querySelector(`${HINTS}, ${PANELS}`) !== null;
+}
+
+/**
+ * Whether a popover or a menu is open: the letters and arrows of the screen behind it are not the screen's
+ * (a menu types to find an item). A hint is not asked: it opens by itself where the pointer rests or focus
+ * lands, and does not own the keyboard, so the keys of the scene go on answering under it.
+ */
+export function keyLayerOpen(): boolean {
+  return document.querySelector(PANELS) !== null;
+}
+
+/**
+ * Escapes a Radix layer took, and whether that layer was already on its way out. Radix keeps a layer in its
+ * stack while its exit plays, handles the Escape pressed then and marks it handled; `useDrawer` reads the
+ * mark to leave the Escape of a layer that is open to it, and must not leave it the Escape of one that is
+ * already closing (the second tap of a quick double tap).
+ */
+const escapeTakenClosing = new WeakSet<Event>();
+export function noteEscape(event: Event, panel: Element | null): void {
+  if (panel?.getAttribute("data-state") === "closed") escapeTakenClosing.add(event);
 }
 
 /* ---- where focus goes back to when what held it is gone ------------------------------- */
@@ -234,7 +258,7 @@ export function useDrawer(
       // A Radix layer above this panel (a popover over the chat drawer, a hint on a control inside the
       // sidebar) already took the key in its capture listener and marked it handled: that Escape was
       // its own, and the panel closes on the next one. The registry reads the mark the same way.
-      if (e.defaultPrevented) return;
+      if (e.defaultPrevented && !escapeTakenClosing.has(e)) return;
       if (stack[stack.length - 1] !== entry) return;
       if (e.key === "Escape") {
         e.preventDefault();

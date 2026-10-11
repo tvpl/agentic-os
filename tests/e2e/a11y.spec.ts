@@ -291,6 +291,61 @@ for (const theme of THEMES) {
 }
 
 /**
+ * The lowest contrast ratio, computed from the page's own colours, of the text of the elements that match
+ * `selector` against what is behind them (their background layers composited up the tree). Axe cannot
+ * decide a translucent glass, and says "needs review"; this reads the colours and decides.
+ */
+async function lowestContrast(page: Page, selector: string): Promise<{ count: number; lowest: number }> {
+  return page.evaluate((sel) => {
+    type Rgba = [number, number, number, number];
+    const parse = (value: string): Rgba => {
+      const numbers = (text: string) =>
+        text
+          .match(/-?\d*\.?\d+(?:e-?\d+)?%?/g)!
+          .map((n) => (n.endsWith("%") ? parseFloat(n) / 100 : parseFloat(n)));
+      if (value.startsWith("color(")) {
+        const [r, g, b, a = 1] = numbers(value.slice(value.indexOf(" ")));
+        return [r! * 255, g! * 255, b! * 255, a];
+      }
+      const [r, g, b, a = 1] = numbers(value);
+      return [r!, g!, b!, a];
+    };
+    const over = (top: Rgba, under: Rgba): Rgba => {
+      const a = top[3] + under[3] * (1 - top[3]);
+      if (a === 0) return [0, 0, 0, 0];
+      const mix = (i: 0 | 1 | 2) => (top[i] * top[3] + under[i] * under[3] * (1 - top[3])) / a;
+      return [mix(0), mix(1), mix(2), a];
+    };
+    const light = ([r, g, b]: Rgba) => {
+      const f = (c: number) => (c / 255 <= 0.03928 ? c / 255 / 12.92 : ((c / 255 + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    let lowest = Infinity;
+    let count = 0;
+    for (const el of document.querySelectorAll<HTMLElement>(sel)) {
+      const box = el.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue;
+      let behind: Rgba = [0, 0, 0, 0];
+      for (let node: Element | null = el; node; node = node.parentElement) {
+        behind = over(parse(getComputedStyle(node).backgroundColor), behind);
+        if (behind[3] >= 0.999) break;
+      }
+      behind = over(behind, [255, 255, 255, 1]);
+      const text = over(parse(getComputedStyle(el).color), behind);
+      const [hi, lo] = [light(text), light(behind)].sort((x, y) => y - x);
+      lowest = Math.min(lowest, (hi! + 0.05) / (lo! + 0.05));
+      count++;
+    }
+    return { count, lowest };
+  }, selector);
+}
+const readable = async (page: Page, selector: string) => {
+  const { count, lowest } = await lowestContrast(page, selector);
+  expect(count, `${selector} is on screen`).toBeGreaterThan(0);
+  expect(lowest, `the text of ${selector} reads (4.5:1)`).toBeGreaterThanOrEqual(4.5);
+};
+
+/**
  * C29 on the real components in each shell: the gallery's layers draw the menu and the hint in place (so a
  * screenshot needs no pointer), and these are the same pieces opened by the people who open them.
  */
@@ -309,6 +364,7 @@ for (const theme of THEMES) {
     await page.locator(".mold-bell").focus();
     await expect(page.locator(".ui-tip[data-state]")).toBeVisible();
     expect(await serious(page)).toEqual([]);
+    await readable(page, ".ui-tip[data-state]");
     await page.keyboard.press("Escape");
 
     await page
@@ -327,6 +383,7 @@ for (const theme of THEMES) {
     await more.click();
     await expect(page.getByRole("menu")).toBeVisible();
     expect(await serious(page)).toEqual([]);
+    await readable(page, '.ui-menu[data-state="open"] .ui-menu-item:not([data-disabled])');
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
 
@@ -341,5 +398,6 @@ for (const theme of THEMES) {
     await page.locator(".cons-more").focus();
     await expect(page.locator(".ui-tip[data-state]")).toBeVisible();
     expect(await serious(page)).toEqual([]);
+    await readable(page, ".ui-tip[data-state]");
   });
 }

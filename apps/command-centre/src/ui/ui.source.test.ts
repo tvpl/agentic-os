@@ -108,7 +108,8 @@ describe("C3 the primitives live in src/ui, and only there is Radix imported", (
         "Tabs",
         "Tooltip",
         "UiProvider",
-        "floatingLayerOpen",
+        "escapeLayerOpen",
+        "keyLayerOpen",
         "focusables",
         "getDialogDepth",
         "subscribeDialogDepth",
@@ -302,11 +303,23 @@ interface TitleSite {
   wordless: boolean;
 }
 const normalised = (text: string) => text.replace(/\s+/g, " ").slice(0, 90);
-/** Whether an element's content has a word: letters or digits in its text, or an expression (`{t("x")}`). */
+/**
+ * Whether an element's content has a word: letters or digits in its text, or an expression that yields
+ * text (`{t("x")}`, `{label}`, `{n} items`). An expression that is an icon (`{icon}`, `{<X />}`) or a
+ * conditional of icons is not a word: a control with only that is still an icon-only control.
+ */
 function hasWords(el: ts.JsxElement): boolean {
+  const isIcon = (e: ts.Expression): boolean => {
+    if (ts.isJsxElement(e) || ts.isJsxSelfClosingElement(e) || ts.isJsxFragment(e)) return true;
+    if (ts.isIdentifier(e)) return /icon|glyph|svg/i.test(e.text);
+    if (ts.isParenthesizedExpression(e)) return isIcon(e.expression);
+    if (ts.isConditionalExpression(e)) return isIcon(e.whenTrue) && isIcon(e.whenFalse);
+    if (ts.isBinaryExpression(e)) return isIcon(e.right);
+    return false;
+  };
   return el.children.some((c) => {
     if (ts.isJsxText(c)) return /[\p{L}\p{N}]/u.test(c.text);
-    if (ts.isJsxExpression(c)) return true;
+    if (ts.isJsxExpression(c)) return c.expression !== undefined && !isIcon(c.expression);
     if (ts.isJsxElement(c)) return hasWords(c);
     return false;
   });
@@ -445,6 +458,10 @@ describe("C25 an icon-only control names itself and hints with a Tooltip, not wi
     expect(wordless('<button title="a">✈</button>')).toEqual([true]);
     expect(wordless('<button title="a"><X aria-hidden /></button>')).toEqual([true]);
     expect(wordless('<Button title="a" icon={<X />} />')).toEqual([true]);
+    expect(wordless('<button title="a">{icon}</button>')).toEqual([true]);
+    expect(wordless('<button title="a">{open ? <A /> : <B />}</button>')).toEqual([true]);
+    expect(wordless('<button title="a">{open && <A />}</button>')).toEqual([true]);
+    expect(wordless('<button title="a">{n} items</button>')).toEqual([false]);
   });
 
   it("C25 no title that stays 'for visible words' sits on a control that shows none", () => {
@@ -697,13 +714,25 @@ function chromeOutside(css: string, file: string, extra: readonly string[] = [])
 const PRIMITIVE_TAGS = new Set(["Popover", "Modal", "DialogSurface", "DropdownMenu", "Tabs", "Tabs.List"]);
 function wrapperClasses(code: string): string[] {
   const out = new Set<string>();
-  const strings = (node: ts.Node) =>
-    visit(node, (n) => {
-      if (ts.isStringLiteralLike(n)) for (const c of n.text.split(/\s+/)) if (c) out.add(c);
-      if (ts.isTemplateHead(n) || ts.isTemplateMiddle(n) || ts.isTemplateTail(n))
-        for (const c of n.text.split(/\s+/)) if (c) out.add(c);
+  const add = (text: string) => {
+    for (const c of text.split(/\s+/)) if (c) out.add(c);
+  };
+  const tree = parse(code);
+  /** The strings a name is declared with in this file (`const cls = "a b"`, `const cls = on ? "a" : "b"`). */
+  const declared = (name: string) => {
+    visit(tree, (n) => {
+      if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === name && n.initializer)
+        strings(n.initializer, false);
     });
-  visit(parse(code), (n) => {
+  };
+  const strings = (node: ts.Node, follow: boolean) =>
+    visit(node, (n) => {
+      if (ts.isStringLiteralLike(n)) add(n.text);
+      if (ts.isTemplateHead(n) || ts.isTemplateMiddle(n) || ts.isTemplateTail(n)) add(n.text);
+      // A class that reaches the primitive through a variable: read what the variable is given.
+      if (follow && ts.isIdentifier(n) && !ts.isPropertyAccessExpression(n.parent)) declared(n.text);
+    });
+  visit(tree, (n) => {
     const element = ts.isJsxSelfClosingElement(n) ? n : ts.isJsxOpeningElement(n) ? n : null;
     if (!element || !PRIMITIVE_TAGS.has(element.tagName.getText())) return;
     for (const attribute of element.attributes.properties)
@@ -712,7 +741,7 @@ function wrapperClasses(code: string): string[] {
         ["className", "backdrop"].includes(attribute.name.getText()) &&
         attribute.initializer
       )
-        strings(attribute.initializer);
+        strings(attribute.initializer, true);
   });
   // `open` is the state a class carries (`skill-deck open`), not a part of a primitive.
   out.delete("open");
@@ -757,6 +786,16 @@ describe("C27 the two shells draw a primitive with the same rules", () => {
   });
 
   it("C27 the reader finds the classes a screen gives a primitive, and the chrome on them", () => {
+    expect(wrapperClasses('const k = "from-var other"; <Popover className={k} />;')).toEqual([
+      "from-var",
+      "other",
+    ]);
+    expect(wrapperClasses('const k = on ? "a" : "b"; <Modal className={`x ${k}`} />;')).toEqual([
+      "a",
+      "b",
+      "x",
+    ]);
+    expect(wrapperClasses('const k = "unused"; <div className={k} />;')).toEqual([]);
     expect(
       wrapperClasses(
         '<Popover open className="me-popover cons-x" /><Modal className={`a ${b ? "c" : "d"}`}><Tabs.List className="e" /></Modal><div className="not-this" /><DialogSurface backdrop="f g" /><Switch className="chip" /><Tabs.Panel className="panel" />',
@@ -808,6 +847,19 @@ describe("C27 the two shells draw a primitive with the same rules", () => {
       for (const token of MATERIAL) expect(declared(host).has(token), `${host} declares ${token}`).toBe(true);
   });
 
+  it("C27 the Núcleo's popover glass is at least 90% opaque (the text behind it showed through at the edge at 70% and 86%)", () => {
+    const root = postcss.parse(readFileSync(join(UI, "ui.css"), "utf8"));
+    const values: string[] = [];
+    root.walkRules((rule) => {
+      if (rule.selectors.map((x) => x.trim()).includes("html:has(.nu-shell)"))
+        rule.walkDecls("--ui-pop-bg", (d) => void values.push(d.value));
+    });
+    expect(values).toHaveLength(1);
+    const share = /var\(--bg\)\s+(\d+)%/.exec(values[0]!);
+    expect(share, values[0]).not.toBeNull();
+    expect(Number(share![1])).toBeGreaterThanOrEqual(90);
+  });
+
   it("C27 both assemblies load ui.css right after theme.css", () => {
     for (const [file, theme, ui] of [
       ["main.tsx", "./theme.css", "./ui/ui.css"],
@@ -820,10 +872,10 @@ describe("C27 the two shells draw a primitive with the same rules", () => {
   });
 });
 
-/* ---- C34: the scenes that listen on the window before Radix do ----------------------------- */
+/* ---- C34 and C35: the scenes that listen on the window before Radix does ----------------- */
 
-/** Whether a file calls `floatingLayerOpen()` (taken from the folder `ui`). */
-function asksFloatingLayer(code: string): boolean {
+/** Whether a file calls `name()` taken from the folder `ui`. */
+function asks(code: string, name: string): boolean {
   let imported = false;
   let called = false;
   visit(parse(code), (n) => {
@@ -834,55 +886,81 @@ function asksFloatingLayer(code: string): boolean {
       n.importClause?.namedBindings &&
       ts.isNamedImports(n.importClause.namedBindings)
     )
-      for (const e of n.importClause.namedBindings.elements)
-        if (e.name.text === "floatingLayerOpen") imported = true;
-    if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === "floatingLayerOpen")
-      called = true;
+      for (const e of n.importClause.namedBindings.elements) if (e.name.text === name) imported = true;
+    if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === name) called = true;
   });
   return imported && called;
 }
 
-describe("C34 a scene that listens in the window capture lets a hint, a popover or a menu take the Escape first", () => {
+/** The `window.addEventListener("keydown", …)` calls of a file, with whether each is in the capture phase. */
+function windowKeyListeners(code: string): Array<{ capture: boolean }> {
+  const out: Array<{ capture: boolean }> = [];
+  visit(parse(code), (n) => {
+    if (
+      !ts.isCallExpression(n) ||
+      !ts.isPropertyAccessExpression(n.expression) ||
+      n.expression.name.text !== "addEventListener" ||
+      n.expression.expression.getText() !== "window" ||
+      n.arguments[0]?.getText() !== '"keydown"'
+    )
+      return;
+    const third = n.arguments[2];
+    let capture = third?.getText() === "true";
+    if (third && ts.isObjectLiteralExpression(third))
+      capture = third.properties.some(
+        (p) =>
+          ts.isPropertyAssignment(p) && p.name.getText() === "capture" && p.initializer.getText() === "true",
+      );
+    out.push({ capture });
+  });
+  return out;
+}
+
+describe("C34 and C35 a scene that listens in the window lets the layer that owns the key have it", () => {
   it("C34 the reader tells a file that asks from one that only mentions it", () => {
-    expect(
-      asksFloatingLayer('import { floatingLayerOpen } from "../../ui"; if (floatingLayerOpen()) return;'),
-    ).toBe(true);
-    expect(asksFloatingLayer('import { floatingLayerOpen } from "../../ui";')).toBe(false);
-    expect(asksFloatingLayer('import { other } from "../../ui"; floatingLayerOpen();')).toBe(false);
-    expect(asksFloatingLayer('import { floatingLayerOpen } from "./elsewhere"; floatingLayerOpen();')).toBe(
-      false,
-    );
+    const ask = (code: string) => asks(code, "escapeLayerOpen");
+    expect(ask('import { escapeLayerOpen } from "../../ui"; if (escapeLayerOpen()) return;')).toBe(true);
+    expect(ask('import { escapeLayerOpen } from "../../ui";')).toBe(false);
+    expect(ask('import { other } from "../../ui"; escapeLayerOpen();')).toBe(false);
+    expect(ask('import { escapeLayerOpen } from "./elsewhere"; escapeLayerOpen();')).toBe(false);
   });
 
-  it("C34 every file that listens for Escape in the window capture asks", () => {
-    // The files OUTSIDE_THE_REGISTRY lists with a capture listener on the window, by reading them: each must ask.
-    const capture = sources().filter((f) => {
-      if (f.startsWith("ui/") || f.startsWith("commands/") || f.startsWith("onboarding/")) return false;
-      let found = false;
-      visit(parse(read(f), f), (n) => {
-        if (
-          ts.isCallExpression(n) &&
-          ts.isPropertyAccessExpression(n.expression) &&
-          n.expression.name.text === "addEventListener" &&
-          n.expression.expression.getText() === "window" &&
-          n.arguments.length >= 3 &&
-          n.arguments[0]!.getText() === '"keydown"' &&
-          n.arguments[2]!.getText() === "true"
-        )
-          found = true;
-      });
-      return found;
-    });
+  it("C34 the reader finds a window keydown listener in either spelling of capture", () => {
+    expect(windowKeyListeners('window.addEventListener("keydown", f, true);')).toEqual([{ capture: true }]);
+    expect(windowKeyListeners('window.addEventListener("keydown", f, { capture: true });')).toEqual([
+      { capture: true },
+    ]);
+    expect(windowKeyListeners('window.addEventListener("keydown", f, { capture: false });')).toEqual([
+      { capture: false },
+    ]);
+    expect(windowKeyListeners('window.addEventListener("keydown", f);')).toEqual([{ capture: false }]);
+    expect(
+      windowKeyListeners(
+        'document.addEventListener("keydown", f, true); window.addEventListener("click", f);',
+      ),
+    ).toEqual([]);
+  });
+
+  const scenes = () =>
+    sources().filter((f) => !/^(ui|commands|onboarding)\//.test(f) && windowKeyListeners(read(f)).length > 0);
+
+  it("C34 every file that listens for keys in the window capture asks escapeLayerOpen, and the list of them is closed", () => {
+    const capture = scenes().filter((f) => windowKeyListeners(read(f)).some((l) => l.capture));
     expect(capture.sort()).toEqual(
       [
         "nucleo/pending/FocusMode.tsx",
         "nucleo/scenes/BrainScene.tsx",
         "nucleo/scenes/RoutinesScene.tsx",
         "nucleo/scenes/RunsScene.tsx",
-        "nucleo/scenes/SkillsScene.tsx",
       ].sort(),
     );
-    for (const file of capture)
-      expect(asksFloatingLayer(read(file)), `${file} asks floatingLayerOpen`).toBe(true);
+    for (const file of capture) expect(asks(read(file), "escapeLayerOpen"), `${file} asks`).toBe(true);
+  });
+
+  it("C35 the scenes whose plain keys (letters, arrows, Shift+digits) are in the window ask keyLayerOpen, not escapeLayerOpen", () => {
+    const keys = ["nucleo/scenes/BrainScene.tsx", "nucleo/scenes/SkillsScene.tsx"];
+    for (const file of keys) expect(asks(read(file), "keyLayerOpen"), `${file} asks keyLayerOpen`).toBe(true);
+    // The Skills scene has no Escape of its own (its sheet is a Modal): it must not ask the Escape variant.
+    expect(asks(read("nucleo/scenes/SkillsScene.tsx"), "escapeLayerOpen")).toBe(false);
   });
 });

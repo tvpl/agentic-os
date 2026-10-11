@@ -9,7 +9,7 @@
  *
  * Keys: ↑/↓ (j/k) choose, A approve, D deny, Enter the primary action, Esc back.
  */
-import { floatingLayerOpen } from "../../ui";
+import { escapeLayerOpen } from "../../ui";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -350,7 +350,7 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key;
       // A hint or a popover on a control inside the queue takes this Escape first.
-      if (k === "Escape" && floatingLayerOpen()) return;
+      if (k === "Escape" && escapeLayerOpen()) return;
       let handled = true;
       if (k === "Escape") onClose();
       else if (k === "ArrowDown" || k === "j") {

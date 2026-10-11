@@ -181,3 +181,75 @@ test.describe("C34 one Escape closes one thing", () => {
     await expect(more).toBeFocused();
   });
 });
+
+test.describe("C33 a quick second Escape is not swallowed by the layer that is leaving", () => {
+  for (const gap of [0, 100, 200]) {
+    test(`C33 in the frame at 800 px, the popover and then the chat drawer close with ${gap} ms between the two Escapes (motion on)`, async ({
+      page,
+    }) => {
+      await openApp(page, "moldura", "no-preference");
+      await page.setViewportSize({ width: 800, height: 800 });
+      await page.locator(".mold-chat-btn").click();
+      const drawer = page.locator("aside.mold-chat");
+      await expect(drawer).toHaveAttribute("role", "dialog");
+      await drawer.locator(".cons-more").click();
+      await drawer.locator('.cons-ctl button[aria-haspopup="dialog"]').first().click();
+      await expect(page.locator("#modal-root .popover")).toBeVisible();
+      await page.keyboard.press("Escape");
+      if (gap > 0) await page.waitForTimeout(gap);
+      await page.keyboard.press("Escape");
+      await expect(page.locator("#modal-root .popover")).toHaveCount(0);
+      await expect(drawer).toBeHidden();
+    });
+  }
+});
+
+test.describe("C35 the keys of a scene answer under a hint", () => {
+  test("C35 in the Núcleo, after a dialog opened from the Skills menu closes, the hint on the menu's button is up and a letter still types in the filter", async ({
+    page,
+  }) => {
+    await openApp(page, "nucleo", "reduce");
+    await page.goto("/#/skills");
+    const more = page.getByTestId("skills-more");
+    await more.click();
+    await page.getByRole("menuitem").nth(1).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(more).toBeFocused();
+    await expect(page.locator(".ui-tip[data-state]")).toBeVisible();
+    await page.keyboard.press("a");
+    await expect(page.locator(".sks-bar input[type='search']")).toHaveValue("a");
+  });
+
+  test("C35 in the Núcleo, with the pointer resting on a button (its hint up) a letter still types in the filter", async ({
+    page,
+  }) => {
+    await openApp(page, "nucleo", "reduce");
+    await page.goto("/#/skills");
+    await page.getByTestId("skills-more").hover();
+    await expect(page.locator(".ui-tip[data-state]")).toBeVisible();
+    await page.locator("body").click({ position: { x: 5, y: 5 } });
+    await page.getByTestId("skills-more").hover();
+    await expect(page.locator(".ui-tip[data-state]")).toBeVisible();
+    await page.keyboard.press("b");
+    await expect(page.locator(".sks-bar input[type='search']")).toHaveValue("b");
+  });
+});
+
+for (const shell of SHELLS) {
+  test(`C36 ${shell === "moldura" ? "in the frame" : "in the Núcleo"}, palette > Keyboard shortcuts > Escape gives focus back to what the palette was opened from`, async ({
+    page,
+  }) => {
+    await openApp(page, shell, "reduce");
+    // Not the voice line's tools: focusing them raises the conversation, a dialog of its own.
+    const holder = page.locator(shell === "moldura" ? ".mold-search" : ".nu-mod").first();
+    await holder.focus();
+    await page.keyboard.press("Control+k");
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.locator(".palette-help").click();
+    await expect(page.getByRole("dialog", { name: /Keyboard shortcuts/i })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(holder).toBeFocused();
+  });
+}

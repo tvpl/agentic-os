@@ -224,6 +224,50 @@ describe("C36 what held focus is gone: focus goes to the control the menu or the
   });
 });
 
+describe("C36 a dialog opened from inside another dialog goes back to what the first one went back to", () => {
+  it("C36 palette > Keyboard shortcuts > Escape: focus is on the control the palette was opened from, not on the body", async () => {
+    motion.reduced = true;
+    function Host() {
+      const [palette, setPalette] = useState(false);
+      const [help, setHelp] = useState(false);
+      return (
+        <>
+          <button onClick={() => setPalette(true)}>console</button>
+          {palette && (
+            <Modal title="Palette" onClose={() => setPalette(false)}>
+              <button
+                onClick={() => {
+                  setPalette(false);
+                  setHelp(true);
+                }}
+              >
+                Keyboard shortcuts
+              </button>
+            </Modal>
+          )}
+          {help && (
+            <Modal title="Shortcuts" onClose={() => setHelp(false)}>
+              <button>x</button>
+            </Modal>
+          )}
+        </>
+      );
+    }
+    mount(<Host />);
+    const opener = screen.getByRole("button", { name: "console" });
+    opener.focus();
+    fireEvent.click(opener);
+    const row = await screen.findByRole("button", { name: "Keyboard shortcuts" });
+    row.focus();
+    fireEvent.click(row);
+    await screen.findByRole("dialog", { name: "Shortcuts" });
+    press("Escape");
+    await tick(30);
+    expect(dialogs()).toHaveLength(0);
+    expect(document.activeElement).toBe(opener);
+  });
+});
+
 describe("C6 Tab stays in the dialog", () => {
   it("C6 Tab on the last control goes to the first, Shift+Tab on the first goes to the last", async () => {
     mount(

@@ -10,7 +10,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { useT } from "../i18n";
 import { prefersReducedMotion, usePresence } from "../hooks/usePresence";
-import { controlOfPanelAround, initialTarget, useDialogLayer } from "./layers";
+import { controlOfPanelAround, initialTarget, registerHangsFrom, useDialogLayer } from "./layers";
 
 const EXIT_MS = 160;
 
@@ -60,6 +60,12 @@ function Sheet({
   // is gone by the time the dialog closes, the control is not.
   const [control] = useState(() => controlOfPanelAround(document.activeElement));
   useDialogLayer(ref);
+  // A dialog opened from inside this one (the palette's "Keyboard shortcuts") finds this one gone when it
+  // closes: it goes back to what this one goes back to.
+  useEffect(() => {
+    const el = ref.current;
+    if (el) registerHangsFrom(el, () => (opener.current?.isConnected ? opener.current : control));
+  }, [control]);
   return (
     <DialogPrimitive.Content
       {...sheetProps}

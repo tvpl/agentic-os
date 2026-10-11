@@ -23,6 +23,14 @@
       "jsGzip": 505237,
       "cssRaw": 341343,
       "cssGzip": 71930
+    },
+    {
+      "feature": "primitivas-r2",
+      "reason": "the round 2 fixes (two layer questions, the closing-layer Escape, the chained focus fallback) on top of the integrated escopos-dispositivo changes",
+      "jsRaw": 1559932,
+      "jsGzip": 505903,
+      "cssRaw": 341687,
+      "cssGzip": 71975
     }
   ]
 }

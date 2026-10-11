@@ -17,7 +17,8 @@ export type { DropdownMenuProps, MenuItem } from "./Menu";
 export { Tooltip, UiProvider } from "./Tooltip";
 export type { TooltipProps } from "./Tooltip";
 export {
-  floatingLayerOpen,
+  escapeLayerOpen,
+  keyLayerOpen,
   getDialogDepth,
   subscribeDialogDepth,
   useDialogDepth,

@@ -10,7 +10,16 @@ import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CommandRegistry, CommandsProvider, useCommands, type Command } from "../commands/registry";
-import { DropdownMenu, Modal, Popover, Tooltip, floatingLayerOpen, getDialogDepth, useDrawer } from ".";
+import {
+  DropdownMenu,
+  Modal,
+  Popover,
+  Tooltip,
+  escapeLayerOpen,
+  getDialogDepth,
+  keyLayerOpen,
+  useDrawer,
+} from ".";
 import { installPage, mount, motion, tick } from "./testkit";
 
 installPage();
@@ -182,55 +191,81 @@ describe("C35 an open menu is a layer for the registry: the screen's letters do 
   });
 });
 
-describe("C34 a scene that listens before Radix can tell that a hint, a popover or a menu is up", () => {
-  it("C34 floatingLayerOpen is false at rest and true while each of the three is open", async () => {
+describe("C34 a scene that listens before Radix can tell which layer is open, and which of them owns the keys", () => {
+  function Host() {
+    const anchor = useRef<HTMLButtonElement>(null);
+    const [pop, setPop] = useState(false);
+    return (
+      <>
+        <Tooltip label="Hint">
+          <button aria-label="Hint control">h</button>
+        </Tooltip>
+        <button ref={anchor} onClick={() => setPop(true)}>
+          pop
+        </button>
+        <Popover open={pop} onClose={() => setPop(false)} anchor={anchor} ariaLabel="P">
+          <p>x</p>
+        </Popover>
+        <DropdownMenu
+          trigger={<button>menu</button>}
+          items={[{ id: "a", label: "A", onSelect: () => undefined }]}
+        />
+      </>
+    );
+  }
+
+  it("C34 both are false at rest; a hint (by focus) is an Escape layer and not a key layer; a popover and a menu are both", async () => {
     motion.reduced = true;
-    function Host() {
-      const anchor = useRef<HTMLButtonElement>(null);
-      const [pop, setPop] = useState(false);
-      return (
-        <>
-          <Tooltip label="Hint">
-            <button aria-label="Hint control">h</button>
-          </Tooltip>
-          <button ref={anchor} onClick={() => setPop(true)}>
-            pop
-          </button>
-          <Popover open={pop} onClose={() => setPop(false)} anchor={anchor} ariaLabel="P">
-            <p>x</p>
-          </Popover>
-          <DropdownMenu
-            trigger={<button>menu</button>}
-            items={[{ id: "a", label: "A", onSelect: () => undefined }]}
-          />
-        </>
-      );
-    }
     mount(<Host />);
     const user = userEvent.setup();
-    expect(floatingLayerOpen()).toBe(false);
+    expect([escapeLayerOpen(), keyLayerOpen()]).toEqual([false, false]);
 
     act(() => screen.getByRole("button", { name: "Hint control" }).focus());
     await tick();
-    expect(floatingLayerOpen()).toBe(true);
+    expect([escapeLayerOpen(), keyLayerOpen()], "hint by focus").toEqual([true, false]);
     await user.keyboard("{Escape}");
     await tick();
-    expect(floatingLayerOpen()).toBe(false);
+    expect([escapeLayerOpen(), keyLayerOpen()]).toEqual([false, false]);
 
     await user.click(screen.getByRole("button", { name: "pop" }));
     await tick();
-    expect(floatingLayerOpen()).toBe(true);
+    expect([escapeLayerOpen(), keyLayerOpen()], "popover").toEqual([true, true]);
     await user.keyboard("{Escape}");
     await tick();
-    expect(floatingLayerOpen()).toBe(false);
+    expect([escapeLayerOpen(), keyLayerOpen()]).toEqual([false, false]);
 
     screen.getByRole("button", { name: "menu" }).focus();
     await user.keyboard("{Enter}");
     await tick();
-    expect(floatingLayerOpen()).toBe(true);
+    expect([escapeLayerOpen(), keyLayerOpen()], "menu").toEqual([true, true]);
     await user.keyboard("{Escape}");
     await tick();
-    expect(floatingLayerOpen()).toBe(false);
+    expect([escapeLayerOpen(), keyLayerOpen()]).toEqual([false, false]);
+  });
+
+  it("C34 a hint the pointer opened after 400 ms (the delayed form) counts too, and is not a key layer", async () => {
+    vi.useFakeTimers();
+    mount(<Host />);
+    fireEvent.pointerMove(screen.getByRole("button", { name: "Hint control" }), { pointerType: "mouse" });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(300)));
+    expect(escapeLayerOpen()).toBe(false);
+    await act(async () => void (await vi.advanceTimersByTimeAsync(200)));
+    expect(document.querySelector(".ui-tip")?.getAttribute("data-state")).toBe("delayed-open");
+    expect([escapeLayerOpen(), keyLayerOpen()]).toEqual([true, false]);
+  });
+
+  it("C34 a layer that is leaving (data-state closed) is not open: the Escape pressed during its exit is not its own", () => {
+    const leaving = (cls: string, state: string) => {
+      document.body.insertAdjacentHTML("beforeend", `<div class="${cls}" data-state="${state}"></div>`);
+    };
+    leaving("popover", "closed");
+    leaving("ui-menu", "closed");
+    leaving("ui-tip", "closed");
+    expect([escapeLayerOpen(), keyLayerOpen()]).toEqual([false, false]);
+    leaving("ui-tip", "instant-open");
+    expect([escapeLayerOpen(), keyLayerOpen()]).toEqual([true, false]);
+    leaving("ui-menu", "open");
+    expect([escapeLayerOpen(), keyLayerOpen()]).toEqual([true, true]);
   });
 });
 

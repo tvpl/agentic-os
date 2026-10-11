@@ -28,7 +28,7 @@ import { api } from "../../api";
 import { useLang, useT } from "../../i18n";
 import { qk, useInvalidate, useOsProviders, useOsSkills } from "../../queries";
 import { ErrorBox, Skeleton, useToast } from "../../components/ui";
-import { floatingLayerOpen, Modal } from "../../ui";
+import { keyLayerOpen, Modal } from "../../ui";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { usePanelParams, usePanelSearchParams } from "../../desktop/appRoute";
@@ -298,22 +298,13 @@ export default function SkillsScene(_props: SceneViewProps) {
     : null;
 
   /* ---- keys the scene answers to anywhere ------------------------------------ */
-  const keyState = useRef({ step, sheetOpen, closeDetails, onQuery, query });
-  keyState.current = { step, sheetOpen, closeDetails, onQuery, query };
+  const keyState = useRef({ step, onQuery, query });
+  keyState.current = { step, onQuery, query };
   useEffect(() => {
     const outside = (el: Element | null) =>
       Boolean(el?.closest('[role="dialog"], .nu-voice, .nu-laminas, .sks-sheet'));
-    // Escape closes the sheet before the shell takes a lâmina away (capture runs first).
-    const onEscape = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented || !keyState.current.sheetOpen || floatingLayerOpen())
-        return;
-      const el = e.target instanceof Element ? e.target : null;
-      if (el?.closest('[role="dialog"], .nu-voice') || rootRef.current?.closest("[inert]")) return;
-      e.preventDefault();
-      keyState.current.closeDetails();
-    };
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || floatingLayerOpen()) return;
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || keyLayerOpen()) return;
       if (document.documentElement.dataset.onboarding || rootRef.current?.closest("[inert]")) return;
       const el = e.target instanceof Element ? e.target : null;
       if (isEditable(el) || outside(el) || el?.closest(".sks-items, .sks-list")) return;
@@ -329,10 +320,8 @@ export default function SkillsScene(_props: SceneViewProps) {
         keyState.current.onQuery(keyState.current.query + e.key);
       }
     };
-    window.addEventListener("keydown", onEscape, true);
     window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener("keydown", onEscape, true);
       window.removeEventListener("keydown", onKey);
     };
   }, []);
