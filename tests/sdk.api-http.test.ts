@@ -107,6 +107,97 @@ describe.skipIf(!FAKE_CLIS_RUNNABLE)("the routes answer as they did", () => {
     ctx.settingsStore.save(settings);
   });
 
+  it("C69 every route that starts a run takes the setting's default timeout as it is, above the cap on a request", async () => {
+    const settings = ctx.settings();
+    settings.limits.defaultTimeoutMs = 7_200_000;
+    ctx.settingsStore.save(settings);
+    try {
+      const parent = await post("/api/runs", { prompt: "the parent" });
+      const parentId = parent.json().runId as string;
+      const sessionId = parent.json().sessionId as string;
+      await finished(parentId);
+      const retry = (id: string) => post(`/api/runs/${id}/retry`, { submissionId: crypto.randomUUID() });
+      const skillRun = await post("/api/skills/noted/run", {});
+      await finished(skillRun.json().runId as string);
+
+      const objective = async (request: Record<string, unknown>) => {
+        const created = await post("/api/objectives", {
+          title: "Objective",
+          steps: [{ title: "Step", request }],
+        });
+        const dispatched = await post(`/api/objectives/${created.json().id}/dispatch`, { limit: 1 });
+        return dispatched.json().dispatched[0]?.runId as string;
+      };
+      const callers: Array<[string, () => Promise<string | undefined>]> = [
+        ["POST /api/runs", async () => parentId],
+        [
+          "POST /api/runs/:id/children",
+          async () =>
+            (await post(`/api/runs/${parentId}/children`, { prompts: ["a child"] })).json().runs[0]?.runId,
+        ],
+        [
+          "POST /api/sessions/:id/continue",
+          async () =>
+            (await post(`/api/sessions/${sessionId}/continue`, { prompt: "and again" })).json().runId,
+        ],
+        ["POST /api/skills/:slug/run", async () => skillRun.json().runId],
+        ["POST /api/runs/:id/retry of a prompt", async () => (await retry(parentId)).json().runId],
+        [
+          "POST /api/runs/:id/retry of a skill",
+          async () => (await retry(skillRun.json().runId)).json().runId,
+        ],
+        [
+          "dispatch of a prompt step",
+          () => objective({ version: 1, kind: "prompt", prompt: "a step", mode: "read_only" }),
+        ],
+        [
+          "dispatch of a skill step",
+          () => objective({ version: 1, kind: "skill", skillSlug: "noted", inputs: {}, mode: "read_only" }),
+        ],
+      ];
+      for (const [label, start] of callers) {
+        const runId = await start();
+        expect(runId, label).toBeTruthy();
+        await finished(runId!);
+        expect(ctx.runs.get(runId!)?.timeoutMs, label).toBe(7_200_000);
+      }
+      // A retry of a run that recorded no timeout takes the default too.
+      ctx.db
+        .prepare("UPDATE runs SET timeout_ms = NULL WHERE id IN (?, ?)")
+        .run(parentId, skillRun.json().runId);
+      for (const id of [parentId, skillRun.json().runId as string]) {
+        const again = (await retry(id)).json().runId as string;
+        await finished(again);
+        expect(ctx.runs.get(again)?.timeoutMs, `retry of ${id} with no timeout recorded`).toBe(7_200_000);
+      }
+    } finally {
+      settings.limits.defaultTimeoutMs = 600_000;
+      ctx.settingsStore.save(settings);
+    }
+  });
+
+  it("C70 a timeout a caller asks for is held to 3 600 000 by every route that takes one", async () => {
+    const parent = await post("/api/runs", { prompt: "the parent" });
+    await finished(parent.json().runId as string);
+    const asks: Array<[string, string, Record<string, unknown>]> = [
+      ["/api/runs", "runs", { prompt: "x" }],
+      [`/api/runs/${parent.json().runId}/children`, "children", { prompts: ["x"] }],
+      [`/api/sessions/${parent.json().sessionId}/continue`, "continue", { prompt: "x" }],
+      ["/api/skills/noted/run", "skills run", {}],
+    ];
+    for (const [url, label, body] of asks) {
+      const over = await post(url, { ...body, timeoutMs: 3_600_001 });
+      expect(over.statusCode, `${label}: 3 600 001`).toBe(400);
+      const under = await post(url, { ...body, timeoutMs: 9_999 });
+      expect(under.statusCode, `${label}: 9 999`).toBe(400);
+      const edge = await post(url, { ...body, timeoutMs: 3_600_000 });
+      expect(edge.statusCode, `${label}: 3 600 000 ${edge.body}`).toBe(200);
+      const runId = (edge.json().runId ?? edge.json().runs?.[0]?.runId) as string;
+      await finished(runId);
+      expect(ctx.runs.get(runId)?.timeoutMs, label).toBe(3_600_000);
+    }
+  });
+
   it("C63 the replay of a retry that was parked answers 202, like the call it repeats", async () => {
     // Before this feature the replay answered 200 with the same body; the body says `waiting_approval`, and the
     // status now says it too (AD-022 e).

@@ -23,7 +23,12 @@ While the version is `0.x`, an incompatible change to the public surface raises 
   else; `start()` makes the process the owner of the home. Two engines in one process share nothing: events, the
   allowlist of executables, caches and locks are per engine. Two engines on the same home cannot both `start()`.
   The one thing a process shares is the answer to "does an engine of this process own this home?", kept on
-  `globalThis` so that two copies of the package (two versions in `node_modules`) agree on it.
+  `globalThis` and keyed by the lock file itself (its device and inode), so that two copies of the package (two
+  versions in `node_modules`), another spelling of the home (a link, another case on a file system that ignores it) and
+  a home folder renamed while its engine runs all meet the same lock. It holds for one JavaScript realm: a worker
+  thread has its own `globalThis`, so engines of the same home in two threads of one process do not see each other
+  (the lock file carries the process's pid for both, and the second takes it); keep the engines of a home in one
+  thread.
 - **Keep the engine you start.** `stop()` or `close()` gives the home back. An engine whose reference was lost, never
   stopped, owns the home until the process ends: the next `start()` on it throws `EngineLockedError`, and nothing but
   the engine itself can release it. Hold the reference (or stop the engine in a `finally`).
@@ -369,7 +374,7 @@ move to a public entry point when someone outside the repository writes one.
   fixtures.
 - The license is the Functional Source License 1.1 with the Apache 2.0 future license (`FSL-1.1-ALv2`). Each package
   carries a copy of the `LICENSE` at the root of the repository (a test requires the copies to be equal); `license`
-  in `package.json` points at it (`SEE LICENSE IN LICENSE`). The root `LICENSE` is a draft for the owner to review: the
+  in `package.json` is the identifier `FSL-1.1-ALv2`. The root `LICENSE` is a draft for the owner to review: the
   licensor is still `[A PREENCHER PELO DONO]`.
 - `@mordomo/contracts` is the package that `@mordomo/core` depends on, and has the same metadata. Besides the root it
   has two subpaths a browser can take without zod: `./policy` (the write policy) and `./events` (which events exist,

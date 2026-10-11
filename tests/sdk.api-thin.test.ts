@@ -272,6 +272,67 @@ describe("S3 the API and the CLI start nothing of their own", () => {
     ]);
   });
 
+  it("C68 the request schemas take their bounds from RUN_LIMITS through RunTimeout and RunPrompt, and nothing else", () => {
+    const flat = (text: string) => text.replace(/\s+/g, "");
+    const parse = (file: string) =>
+      ts.createSourceFile(file, fs.readFileSync(path.join(root, file), "utf8"), ts.ScriptTarget.ES2022, true);
+    // The definitions: one place each, written in terms of RUN_LIMITS.
+    const definition = (file: string, name: string): string => {
+      const sf = parse(file);
+      let found = "";
+      const visit = (node: ts.Node): void => {
+        if (ts.isVariableDeclaration(node) && node.name.getText(sf) === name && node.initializer)
+          found = flat(node.initializer.getText(sf));
+        ts.forEachChild(node, visit);
+      };
+      visit(sf);
+      return found;
+    };
+    expect(definition("contracts/src/api/common.ts", "RunTimeout")).toBe(
+      flat("z.number().int().min(RUN_LIMITS.timeoutMinMs).max(RUN_LIMITS.timeoutMaxMs)"),
+    );
+    expect(definition("contracts/src/api/common.ts", "RunPrompt")).toBe(
+      flat("z.string().min(1).max(RUN_LIMITS.promptMaxChars)"),
+    );
+    expect(definition("core/src/execution/schemas.ts", "Timeout")).toBe(
+      flat("z.number().int().min(RUN_LIMITS.timeoutMinMs).max(RUN_LIMITS.timeoutMaxMs)"),
+    );
+    // The users: every request field of the contract's routes named `timeoutMs`, `prompt` or `prompts` is built from
+    // them (the responses in `wire.ts` describe what is stored, not what is asked).
+    const used: string[] = [];
+    const wrong: string[] = [];
+    for (const file of sources("contracts/src/api")) {
+      if (path.basename(file) === "wire.ts") continue;
+      const sf = ts.createSourceFile(file, fs.readFileSync(file, "utf8"), ts.ScriptTarget.ES2022, true);
+      const visit = (node: ts.Node): void => {
+        if (
+          ts.isPropertyAssignment(node) &&
+          ["timeoutMs", "prompt", "prompts"].includes(node.name.getText(sf))
+        ) {
+          const name = node.name.getText(sf);
+          const code = flat(node.initializer.getText(sf));
+          const wanted = name === "timeoutMs" ? "RunTimeout" : "RunPrompt";
+          used.push(`${rel(file)} ${name}`);
+          if (!code.includes(wanted) || /\d_?\d{3}/.test(code)) wrong.push(`${rel(file)} ${name}: ${code}`);
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(sf);
+    }
+    expect(wrong).toEqual([]);
+    expect(used.sort()).toEqual([
+      "contracts/src/api/routines.ts prompt",
+      "contracts/src/api/routines.ts prompt",
+      "contracts/src/api/routines.ts timeoutMs",
+      "contracts/src/api/runs.ts prompt",
+      "contracts/src/api/runs.ts prompt",
+      "contracts/src/api/runs.ts prompts",
+      "contracts/src/api/runs.ts timeoutMs",
+      "contracts/src/api/runs.ts timeoutMs",
+      "contracts/src/api/skills.ts timeoutMs",
+    ]);
+  });
+
   /** Every `<path>.events.` read as `events.`, and no whitespace. */
   const squash = (code: string): string =>
     code.replace(/(?:[A-Za-z_]\w*\.)*events\./g, "events.").replace(/\s+/g, "");

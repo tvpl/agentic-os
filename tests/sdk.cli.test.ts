@@ -34,9 +34,11 @@ function prepare(): string {
   );
   writeSkill(home, "budgeted", front("budgeted", "budgetUsd: 1"));
   writeSkill(home, "spent", front("spent", "budgetUsd: 1"));
+  writeSkill(home, "plain", front("plain"));
   const engine = buildEngine([echoProvider({ id: "claude" })], { home });
   engine.updateSettings({
     setupCompleted: true,
+    limits: { defaultTimeoutMs: 7_200_000 },
     providers: { claude: { enabled: true, binaryPath: path.join(FAKE_BIN, "claude") } },
   });
   const inner = internals(engine);
@@ -77,12 +79,17 @@ function runCli(home: string, ...args: string[]) {
   return { status: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
 }
 
-function runs(
-  home: string,
-): Array<{ skill_slug: string | null; status: string; max_cost_usd: number | null }> {
+function runs(home: string): Array<{
+  skill_slug: string | null;
+  status: string;
+  max_cost_usd: number | null;
+  timeout_ms: number | null;
+}> {
   const { db } = openDb(resolvePaths(home));
   try {
-    return db.prepare("SELECT skill_slug, status, max_cost_usd FROM runs ORDER BY created_at").all() as never;
+    return db
+      .prepare("SELECT skill_slug, status, max_cost_usd, timeout_ms FROM runs ORDER BY created_at")
+      .all() as never;
   } finally {
     db.close();
   }
@@ -115,5 +122,12 @@ describe.skipIf(!FAKE_CLIS_RUNNABLE || !fs.existsSync(CLI))("mordomo run meets t
     const started = runs(home).filter((run) => run.skill_slug === "budgeted" && run.max_cost_usd !== null);
     expect(started).toHaveLength(1);
     expect(started[0]?.max_cost_usd).toBeCloseTo(0.6, 5);
+  });
+  it("C69 mordomo run takes the default timeout of the setting as it is, above the cap on a timeout somebody asks for", () => {
+    const home = prepare();
+    const res = runCli(home, "plain", "--provider", "claude", "--json");
+    expect(res.status, res.stderr).toBe(0);
+    const started = runs(home).filter((run) => run.skill_slug === "plain");
+    expect(started.map((run) => run.timeout_ms)).toEqual([7_200_000]);
   });
 });

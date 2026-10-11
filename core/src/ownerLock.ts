@@ -17,8 +17,9 @@ export { EngineLockedError };
 const HELD_LOCKS = Symbol.for("@mordomo/core/owner-lock/held");
 
 /**
- * The owner locks this PROCESS holds, by lock file (resolved through the real folder) -> the token it wrote. Process
- * scoped on purpose: the question it answers - "is that lock held by a live engine of this very process?" - can only
+ * The owner locks this PROCESS holds, by the identity of the lock file on disk (`dev:ino`, so another spelling of the
+ * home - a link, another case on a file system that ignores it, a folder renamed while the engine runs - is the same
+ * lock) -> the token it wrote. Process scoped on purpose: the question it answers - "is that lock held by a live engine of this very process?" - can only
  * be asked by someone who knows every engine of the process, and the lock file alone cannot say (it carries the same
  * pid for the engine that holds it and for one that died without releasing). A lock whose token is here is held; one
  * with this process's pid and a token that is not here is stale, as `lockIsStale` says.
@@ -26,6 +27,23 @@ const HELD_LOCKS = Symbol.for("@mordomo/core/owner-lock/held");
 function heldByThisProcess(): Map<string, string> {
   const host = globalThis as { [HELD_LOCKS]?: Map<string, string> };
   return (host[HELD_LOCKS] ??= new Map<string, string>());
+}
+
+/** The identity of a file on disk, whatever name it is reached by; `null` when it cannot be read. */
+function fileIdentity(file: string): string | null {
+  try {
+    const stat = fs.statSync(file, { bigint: true });
+    return `${stat.dev}:${stat.ino}`;
+  } catch {
+    return null;
+  }
+}
+
+/** The names a lock file is known by in the registry: its identity, and the real path when the identity is unreadable. */
+function lockKeys(file: string): string[] {
+  const keys = [fileIdentity(file)];
+  keys.push(`path:${path.join(realpathLenient(path.dirname(file)), path.basename(file))}`);
+  return keys.filter((key): key is string => key !== null);
 }
 
 /** A temporary file of `acquire()`: `<lock>.<pid>.<token>.tmp` (an older release wrote `<lock>.<pid>.<ms>.tmp`). */
@@ -133,7 +151,10 @@ export class OwnerLock {
               if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
             }
             const holder = readLock(this.file);
-            if (holder?.token !== undefined && heldByThisProcess().get(this.lockKey()) === holder.token) {
+            if (
+              holder?.token !== undefined &&
+              lockKeys(this.file).some((key) => heldByThisProcess().get(key) === holder.token)
+            ) {
               throw new EngineLockedError(
                 process.pid,
                 `Another MordomoOS engine of this process (pid ${process.pid}) owns this home; call stop() or close() on it first (an engine nobody holds a reference to any more can only be ended by ending the process).`,
@@ -156,16 +177,11 @@ export class OwnerLock {
         })
         .immediate();
       this.token = token;
-      this.key = this.lockKey();
+      this.key = lockKeys(this.file)[0]!;
       heldByThisProcess().set(this.key, token);
     } finally {
       fs.rmSync(temp, { force: true });
     }
-  }
-
-  /** The lock file as the process registry names it: the real folder, so another spelling of the home is the same lock. */
-  private lockKey(): string {
-    return path.join(realpathLenient(path.dirname(this.file)), path.basename(this.file));
   }
 
   /** A process killed between writing its temporary file and publishing it leaves the file: sweep those of dead ones. */

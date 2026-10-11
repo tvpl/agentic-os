@@ -20,27 +20,37 @@
   `engine.events`, the provider contract and the errors (`docs/sdk.md`) - and everything else moved to
   `@mordomo/core/internal`. The logic that decides whether a run may start (write policy, working folders, who asked,
   `submissionId` receipts, the approval flow) moved from the HTTP routes into the core, and the routes and the CLI are
-  clients of it; their answers do not change, with these exceptions: `mordomo run` now also refuses a disabled skill,
-  a provider that is not enabled, a provider the skill does not list and a missing required input, as the Command
-  Centre always did, and applies the skill's daily budget (exit 1 when it is spent) and the cost cap that what is left
-  of it puts on the run, which the CLI did not apply before; the replay of a retry that was parked for approval (same
-  `submissionId`) answers `202`, like the call it repeats, where it answered `200` with the same body; a `startedBy` of
-  `"null"` or `"program"` is refused (they are the names the receipts keep the program under); and a restart that marks
-  runs `interrupted` now announces `run.finished` for each, so a `wait` on one ends and the memory journal gets a line.
-  The event bus, the allowlist of
-  executables (`SpawnPolicy`) and the memo of related files are per engine instead of per process, so two engines in
-  one process no longer hear or overwrite each other; a second `start()` on the same home in the same process (also
-  through another spelling of the path, or from another copy of the package) now throws `EngineLockedError` instead
-  of taking the lock; an engine that was started and never stopped, with its reference lost, holds the home until
-  the process ends. Approvals that were decided or expired are refused with a `MordomoError` (`approval_resolved`,
-  `approval_expired`, both 409 as before). A connector command named like a provider binary now needs
-  `connectors.allowedCommands`. `@mordomo/core` and `@mordomo/contracts` carry the metadata to be packed (`license` pointing at a
-  `LICENSE` that is a copy of the repository's, `repository`, `exports`, `files`, `engines`, `sideEffects`, README; the
-  core also names `@types/node` as an optional peer dependency, as its declarations use it); nothing is published.
-  one process no longer hear or overwrite each other; a second `start()` on the same home in the same process now
-  throws `EngineLockedError` instead of taking the lock. A connector command named like a provider binary now needs
-  `connectors.allowedCommands`. `@mordomo/core` and `@mordomo/contracts` carry the metadata to be packed (license
-  FSL-1.1-ALv2, `exports`, `files`, `engines`, `sideEffects`, README); nothing is published.
+  clients of it. The event bus, the allowlist of executables (`SpawnPolicy`) and the memo of related files are per
+  engine instead of per process, so two engines in one process no longer hear or overwrite each other.
+  `@mordomo/core` and `@mordomo/contracts` carry the metadata to be packed (`license` `FSL-1.1-ALv2` with a `LICENSE`
+  that is a copy of the repository's, `repository`, `exports`, `files`, `engines`, `sideEffects`, README; the core also
+  names `@types/node` as an optional peer dependency, as its declarations use it); nothing is published.
+  What does not answer as before, and how to go back (the defaults and the reasons are in `.specs/STATE.md`, AD-022 e,
+  questions 7, 9 and 12 to 15):
+  - `mordomo run` also refuses a disabled skill, a provider that is not enabled, a provider the skill does not list and a
+    missing required input (as the Command Centre always did), and applies the skill's daily budget (exit 1 when it is
+    spent) and the cost cap that what is left of it puts on the run. To go back, `launchSkillRun` in
+    `core/src/execution/launch.ts` would need a parameter that skips the budget for the CLI.
+  - The replay of a retry that was parked for approval (same `submissionId`) answers `202`, like the call it repeats,
+    where it answered `200` with the same body. To go back, the route must be told that an answer is a replay.
+  - A `startedBy` of `"null"` or `"program"` is refused (the receipts keep the program under those names). To go back,
+    drop the `refine` of `StartedBy` in `core/src/execution/schemas.ts`.
+  - A restart that marks runs `interrupted` announces `run.finished` for each, so a `wait` on one ends, the memory
+    journal gets a line, and an objective step whose run was `running` is blocked with `Interrupted by service
+    restart` / `Reconcile workspace effects before retrying` (it was `Previous attempt may have changed external state` /
+    `Reconcile effects before retrying`; it stays blocked with the effects uncertain, and one more `objective.changed`
+    is announced). To go back, use `transition` instead of `settle` in `recoverInterrupted` (`core/src/runs/runManager.ts`).
+  - A second `start()` on the same home in the same process throws `EngineLockedError` instead of taking the lock,
+    also through a link or a renamed folder and from another copy of the package; it holds per JavaScript realm (a
+    worker thread has its own registry), and an engine that was started and never stopped, with its reference lost,
+    holds the home until the process ends. To go back, remove the registry in `core/src/ownerLock.ts`.
+  - Approvals that were decided or expired are refused with a `MordomoError` (`approval_resolved`, `approval_expired`,
+    both 409 as before). Nothing to go back to: the HTTP answer is the same.
+  - A connector command named like a provider binary now needs `connectors.allowedCommands`. To go back, hand the
+    engine's `SpawnPolicy` to `fetchConnectorData` (the API and the sentinels).
+  - The 3 600 000 ms cap is for the `timeoutMs` a caller asks for; the default of the setting `limits.defaultTimeoutMs`
+    is taken as it is (as before this change). To cap the setting too, give it a maximum in `contracts/src/settings.ts`
+    (a `settings.json` with a larger value would then be read as the default and kept in `settings.json.invalid`).
 - **API (contratos-rest)**: one table (`API` in `@mordomo/contracts`) describes every route under `/api` — method,
   path, scope, `params`/`query`/`body` and a response schema per status, the errors the route raises and the headers
   it sets — and the server registers routes only through it (`bind`): a part that fails answers `400 validation`

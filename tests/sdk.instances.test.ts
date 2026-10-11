@@ -347,6 +347,23 @@ describe("S4 nothing of an engine is shared with another", () => {
     }
   });
 
+  it("C71 the owner of a home is found by the lock file itself, so a home that is renamed while its engine runs is still owned", async () => {
+    const home = tempHome();
+    const moved = `${home}-moved`;
+    try {
+      const a = buildEngine([echoProvider()], { home });
+      a.start();
+      fs.renameSync(home, moved);
+      // Same folder, new name: the registry knows the lock file, not the name it was reached by.
+      const b = buildEngine([echoProvider()], { home: moved });
+      expect(() => b.start()).toThrow(EngineLockedError);
+      await a.stop(500);
+      expect(() => b.start()).not.toThrow();
+    } finally {
+      fs.rmSync(moved, { recursive: true, force: true });
+    }
+  });
+
   it("C36 a restore of one home does not hold up an engine of another, and two engines of one home are built", () => {
     const busy = resolvePaths(tempHome());
     fs.mkdirSync(busy.run, { recursive: true });

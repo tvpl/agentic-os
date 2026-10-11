@@ -942,4 +942,65 @@ describe("S6 the facade holds where the first verification attacked it", () => {
       .some(({ event }) => event.type === "permission" && event.detail === "taking too long");
     expect(noted).toBe(true);
   });
+  it("C69 every way the library starts a run takes the setting's default timeout as it is, above the cap on a request", async () => {
+    // `limits.defaultTimeoutMs` has a floor only, so two hours is a value the owner may have chosen; the cap of
+    // 3 600 000 belongs to the `timeoutMs` a caller asks for. A clamp in any one of these paths brings the round 1
+    // regression back in a sibling of the route that was fixed.
+    const home = tempHome();
+    writeSkill(home, "say-hi", skillFront("say-hi"));
+    const engine = buildEngine([echoProvider()], { home });
+    engine.updateSettings({ limits: { defaultTimeoutMs: 7_200_000 } });
+    const timeoutOf = async (runId: string) => {
+      await engine.execution.wait(runId);
+      return engine.execution.get(runId)?.timeoutMs;
+    };
+    const prompt = engine.execution.startPrompt({ prompt: "hi", startedBy: null });
+    const skill = engine.execution.startSkill({ slug: "say-hi", startedBy: null });
+    expect(await timeoutOf(prompt.runId)).toBe(7_200_000);
+    expect(await timeoutOf(skill.runId)).toBe(7_200_000);
+    // The retry copies what the source recorded...
+    const retryOf = (source: string) =>
+      engine.execution.retry(source, { submissionId: uuid(), startedBy: null }).runId;
+    expect(await timeoutOf(retryOf(prompt.runId))).toBe(7_200_000);
+    expect(await timeoutOf(retryOf(skill.runId))).toBe(7_200_000);
+    // ...and takes the default for a source that recorded none.
+    internals(engine).db.prepare("UPDATE runs SET timeout_ms = NULL").run();
+    expect(await timeoutOf(retryOf(prompt.runId))).toBe(7_200_000);
+    expect(await timeoutOf(retryOf(skill.runId))).toBe(7_200_000);
+    // What a caller asks for stays held to the range.
+    expect(() =>
+      engine.execution.startSkill({ slug: "say-hi", timeoutMs: 3_600_001, startedBy: null }),
+    ).toThrow(ZodError);
+  });
+  it("C72 a step whose run was running when the process died is blocked with the effects still uncertain, and the restart says so with the run's own words", () => {
+    // AD-022 e: the recovery now settles the run like any other end, so the step is synchronized from the run
+    // (`Interrupted by service restart`) after `objectives.recover` marked it; the base left the first words.
+    const engine = buildEngine([echoProvider()]);
+    const inner = internals(engine);
+    const objective = inner.objectives.create({
+      title: "Interrupted",
+      steps: [{ title: "Step", request: { version: 1, kind: "prompt", prompt: "do it", mode: "read_only" } }],
+    });
+    const runId = orphanRun(engine);
+    const stepId = objective.steps[0]!.id;
+    inner.objectives.markDispatched(stepId, runId);
+    const announced: string[] = [];
+    engine.events.subscribe((event) => {
+      if (event.type === "objective.changed") announced.push(String(event.payload.status));
+    });
+    engine.start();
+    const row = inner.db
+      .prepare(
+        "SELECT status, blocked_reason, next_action, effects_uncertain FROM objective_steps WHERE id = ?",
+      )
+      .get(stepId);
+    expect(row).toEqual({
+      status: "blocked",
+      blocked_reason: "Interrupted by service restart",
+      next_action: "Reconcile workspace effects before retrying",
+      effects_uncertain: 1,
+    });
+    // One `objective.changed`, from the synchronization of the run that ended; the recovery of the step announced none.
+    expect(announced).toEqual(["blocked"]);
+  });
 });

@@ -213,3 +213,11 @@ n/a - profile standard; o plano não marca fonte vinculante (a única fonte exte
 ## Gate
 
 Árvore `4389dd1` limpa, carga 9-16: `npx vitest run` (suíte inteira) 104 arquivos, 1489 passaram, 0 falharam (nenhuma das falhas conhecidas sob carga apareceu); arquivos afetados em lote: 12 arquivos, 447 passaram; `npm run build`, `npm run typecheck`, `npm run lint`, `npx tsc -p typetests/tsconfig.json`, `npm run dist:quick` e `status --json` do pacote (`"running":false`): exit 0. Em `d6bf5ad`: 19 arquivos, 524 passaram. `validate_verification.py sdk-core` sai com 1 porque o veredito é FAIL (o relatório não contradiz as próprias linhas).
+
+---
+
+## Fechamento após a rodada 2 (a rodada 3 não foi aberta)
+
+Duas rodadas de verificação, as duas FAIL. A correção da rodada 2 (`0b90d1d`): C69 cobre o default de 7.200.000 em cada um dos 13 caminhos que iniciam uma run; C68 assere na árvore sintática que `RunTimeout`/`RunPrompt` vêm de `RUN_LIMITS`; C70 testa 3.600.001/9.999/3.600.000 em runs, children, continue e skills run; licença `FSL-1.1-ALv2` em todos os textos (emenda 4); efeito de AC 48 nas etapas de objetivo provado (C72) e documentado; registro de locks chaveado por `dev:ino` (C71). Uma terceira rodada de verificação independente fica pendente.
+
+Aberto para o dono: URL do `repository` (vinda do `origin`), o link do README para `docs/sdk.md` no ramo `main`, o bloco "MINUTA" no `LICENSE` empacotado, publicação no npm e escopo; um thread de worker no mesmo processo não enxerga o lock de outro (limite declarado).

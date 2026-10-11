@@ -1779,6 +1779,13 @@ const ALLOWED: Array<{ file: string; api: string; count: number; kind: string; w
     why: "config/run/engine.lock",
   },
   {
+    file: "core/src/ownerLock.ts",
+    api: "statSync",
+    count: 1,
+    kind: "fixed",
+    why: "the identity (device and inode) of config/run/engine.lock, which names the lock in the registry of this process, so that a home reached by another name is the same lock",
+  },
+  {
     file: "core/src/processIdentity.ts",
     api: "readFileSync",
     count: 1,
