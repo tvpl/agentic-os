@@ -106,4 +106,23 @@ Details: [docs/security.md](docs/security.md).
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MordomoOS is licensed under the **Functional Source License, Version 1.1, ALv2 Future License
+(FSL-1.1-ALv2)** — see [LICENSE](LICENSE). The source is visible: you may use, copy, modify and
+redistribute it for any purpose except a _Competing Use_ (as the license defines it), and **each version
+becomes available under the Apache License 2.0 on the second anniversary of the date it was released**.
+
+- **Drafts.** The legal texts of this repository — the license holder's details in `LICENSE`,
+  [CONTRIBUTING.md](CONTRIBUTING.md), [EULA](legal/EULA.md), [privacy policy](legal/PRIVACY.md) and
+  [NOTICE](legal/NOTICE.md) — are **drafts for the owner's legal review, not legal advice**; every blank is
+  marked `[A PREENCHER PELO DONO: …]`. Do not ship an installer with them before that review.
+- **Third-party software.** [THIRD_PARTY_NOTICES.md](legal/THIRD_PARTY_NOTICES.md) lists every component the
+  installer carries with its license (generated: `npm run licenses:write`; `npm run licenses:check` rejects
+  a license outside [the allowed list](legal/license-policy.json)); `npm run sbom` writes a CycloneDX SBOM.
+- **Third-party CLIs.** MordomoOS _orchestrates_ Claude Code, Cursor Agent and OpenAI Codex CLI. It does not
+  bundle, redistribute or sublicense them: you install each one yourself, sign in with your own account, and
+  each follows its supplier's terms. Product names are trademarks of their owners, cited only to say what
+  MordomoOS works with, without endorsement ([EULA §4](legal/EULA.md)).
+- **Privacy.** Your data stays on your machine, MordomoOS sends nothing to its licensor's servers, and it has
+  **no telemetry**. Every network destination the code knows is listed in the
+  [privacy policy](legal/PRIVACY.md) and checked by a test (`npm run network:scan`).
+- **Contributing.** Commits carry a `Signed-off-by:` line (DCO): see [CONTRIBUTING.md](CONTRIBUTING.md).

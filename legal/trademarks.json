@@ -1,0 +1,272 @@
+{
+  "note": "MINUTA para revisão do dono: as marcas de terceiros que o repositório cita (README, docs, interface, conectores, manifestos dos adaptadores). `probe` é a expressão que a varredura de tests/legal.docs.test.ts usa para achar a citação; o titular de cada marca e a política de uso dela são pendência de revisão jurídica do dono. Engenharia, não aconselhamento jurídico.",
+  "brands": [
+    {
+      "name": "Claude Code",
+      "kind": "CLI de terceiros que o MordomoOS orquestra",
+      "probe": "Claude Code"
+    },
+    {
+      "name": "Claude",
+      "kind": "produto de terceiros (modelos e CLI)",
+      "probe": "Claude\\b"
+    },
+    {
+      "name": "Codex",
+      "kind": "CLI de terceiros que o MordomoOS orquestra",
+      "probe": "Codex"
+    },
+    {
+      "name": "OpenAI",
+      "kind": "fornecedor de terceiros",
+      "probe": "OpenAI"
+    },
+    {
+      "name": "Cursor Agent",
+      "kind": "CLI de terceiros que o MordomoOS orquestra",
+      "probe": "Cursor Agent|cursor-agent"
+    },
+    {
+      "name": "Cursor",
+      "kind": "produto de terceiros",
+      "probe": "Cursor\\b"
+    },
+    {
+      "name": "Telegram",
+      "kind": "serviço de terceiros (canal opcional)",
+      "probe": "Telegram"
+    },
+    {
+      "name": "GitHub",
+      "kind": "serviço de terceiros",
+      "probe": "GitHub"
+    },
+    {
+      "name": "Apple",
+      "kind": "plataforma de terceiros",
+      "probe": "Apple"
+    },
+    {
+      "name": "macOS",
+      "kind": "plataforma de terceiros",
+      "probe": "macOS"
+    },
+    {
+      "name": "iOS",
+      "kind": "plataforma de terceiros",
+      "probe": "\\biOS\\b"
+    },
+    {
+      "name": "Safari",
+      "kind": "navegador de terceiros",
+      "probe": "Safari"
+    },
+    {
+      "name": "WebKit",
+      "kind": "tecnologia de terceiros",
+      "probe": "WebKit"
+    },
+    {
+      "name": "Windows",
+      "kind": "plataforma de terceiros",
+      "probe": "Windows"
+    },
+    {
+      "name": "PowerShell",
+      "kind": "plataforma de terceiros",
+      "probe": "PowerShell"
+    },
+    {
+      "name": "Microsoft",
+      "kind": "plataforma de terceiros",
+      "probe": "Microsoft"
+    },
+    {
+      "name": "Playwright",
+      "kind": "ferramenta de terceiros",
+      "probe": "Playwright"
+    },
+    {
+      "name": "Google",
+      "kind": "serviço de terceiros",
+      "probe": "Google"
+    },
+    {
+      "name": "Gmail",
+      "kind": "serviço de terceiros",
+      "probe": "Gmail"
+    },
+    {
+      "name": "Google Calendar",
+      "kind": "serviço de terceiros",
+      "probe": "Google Calendar|calendar-google"
+    },
+    {
+      "name": "Chrome",
+      "kind": "navegador de terceiros",
+      "probe": "\\bChrome\\b"
+    },
+    {
+      "name": "Chromium",
+      "kind": "navegador de terceiros",
+      "probe": "Chromium"
+    },
+    {
+      "name": "Firefox",
+      "kind": "navegador de terceiros",
+      "probe": "Firefox"
+    },
+    {
+      "name": "Mozilla",
+      "kind": "navegador de terceiros",
+      "probe": "Mozilla"
+    },
+    {
+      "name": "Linux",
+      "kind": "plataforma de terceiros",
+      "probe": "Linux"
+    },
+    {
+      "name": "Ubuntu",
+      "kind": "plataforma de terceiros",
+      "probe": "Ubuntu"
+    },
+    {
+      "name": "Node.js",
+      "kind": "tecnologia de terceiros",
+      "probe": "Node\\.js"
+    },
+    {
+      "name": "npm",
+      "kind": "tecnologia de terceiros",
+      "probe": "\\bnpm\\b"
+    },
+    {
+      "name": "SQLite",
+      "kind": "tecnologia de terceiros",
+      "probe": "SQLite"
+    },
+    {
+      "name": "Syncthing",
+      "kind": "ferramenta de terceiros",
+      "probe": "Syncthing"
+    },
+    {
+      "name": "Tailscale",
+      "kind": "serviço de terceiros",
+      "probe": "Tailscale"
+    },
+    {
+      "name": "Cloudflare",
+      "kind": "serviço de terceiros",
+      "probe": "Cloudflare"
+    },
+    {
+      "name": "Caddy",
+      "kind": "ferramenta de terceiros",
+      "probe": "Caddy"
+    },
+    {
+      "name": "nginx",
+      "kind": "ferramenta de terceiros",
+      "probe": "nginx"
+    },
+    {
+      "name": "Electron",
+      "kind": "tecnologia de terceiros",
+      "probe": "Electron"
+    },
+    {
+      "name": "Homebrew",
+      "kind": "ferramenta de terceiros",
+      "probe": "Homebrew"
+    },
+    {
+      "name": "React",
+      "kind": "biblioteca de terceiros",
+      "probe": "\\bReact\\b"
+    },
+    {
+      "name": "Radix UI",
+      "kind": "biblioteca de terceiros",
+      "probe": "Radix"
+    },
+    {
+      "name": "Fastify",
+      "kind": "biblioteca de terceiros",
+      "probe": "Fastify"
+    },
+    {
+      "name": "Vite",
+      "kind": "ferramenta de terceiros",
+      "probe": "\\bVite\\b"
+    },
+    {
+      "name": "Vitest",
+      "kind": "ferramenta de terceiros",
+      "probe": "Vitest"
+    },
+    {
+      "name": "TypeScript",
+      "kind": "tecnologia de terceiros",
+      "probe": "TypeScript"
+    },
+    {
+      "name": "Zod",
+      "kind": "biblioteca de terceiros",
+      "probe": "\\bZod\\b"
+    },
+    {
+      "name": "JetBrains Mono",
+      "kind": "fonte de terceiros",
+      "probe": "JetBrains"
+    },
+    {
+      "name": "Rajdhani",
+      "kind": "fonte de terceiros",
+      "probe": "Rajdhani"
+    },
+    {
+      "name": "Obsidian",
+      "kind": "produto de terceiros",
+      "probe": "Obsidian"
+    }
+  ],
+  "watch": {
+    "note": "nomes que o repositório não cita hoje; se um deles aparecer no texto que a varredura lê, o teste exige que entre em `brands`",
+    "probes": [
+      "Docker",
+      "Slack",
+      "Notion",
+      "WhatsApp",
+      "Discord",
+      "Gemini",
+      "Copilot",
+      "Windsurf",
+      "Zapier",
+      "Stripe",
+      "Ollama",
+      "VS Code",
+      "Tauri",
+      "Spotify",
+      "YouTube",
+      "Anthropic",
+      "Amazon",
+      "AWS",
+      "Azure",
+      "Hugging Face",
+      "Perplexity",
+      "Mistral",
+      "DeepSeek",
+      "xAI",
+      "Grok",
+      "Jira",
+      "Linear",
+      "Figma",
+      "Vercel",
+      "Netlify",
+      "Supabase",
+      "Firebase"
+    ]
+  }
+}

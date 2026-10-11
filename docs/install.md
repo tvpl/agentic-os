@@ -17,6 +17,15 @@ Homebrew, npm/pnpm/bun global prefixes, fnm/nvm/volta/asdf/n, `%APPDATA%\npm`…
 — and shows the install or login command for the missing ones, with a
 **Detect again** button. Nothing is installed on your behalf.
 
+## License and terms
+
+The installer carries the license ([`LICENSE`](../LICENSE): Functional Source License 1.1, Apache-2.0
+future license), the notices of the third-party components it bundles, and the draft terms and privacy policy
+in its `legal/` folder (the same files as [`legal/`](../legal/) in the repository, plus a CycloneDX SBOM).
+Those legal texts are **drafts for the owner's review, not legal advice**. MordomoOS orchestrates the
+provider CLIs and does not bundle or sublicense them: each follows its supplier's terms and uses your own
+account.
+
 ## A. Packaged app
 
 Download the archive for your platform (or build it: see *Building a

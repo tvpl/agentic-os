@@ -1,0 +1,405 @@
+{
+  "note": "MINUTA para revisão do dono: política de rede do MordomoOS em forma de máquina. Ela é a fonte de `legal/PRIVACY.md` e é conferida contra o código por `node scripts/network-scan.mjs --check` e por tests/legal.network.test.ts. Quem acrescenta um destino de rede no código acrescenta uma linha aqui e um parágrafo em PRIVACY.md, no mesmo commit. Engenharia, não aconselhamento jurídico.",
+  "hosts": [
+    {
+      "id": "loopback",
+      "label": "O próprio serviço (127.0.0.1)",
+      "role": "local",
+      "match": [],
+      "implicit": true,
+      "trigger": "sempre: a interface, o CLI `mordomo`, o broker de permissão e o MCP do Mordomo falam com o serviço em 127.0.0.1",
+      "default": "ligado",
+      "data": "tudo que o produto faz; não sai da máquina (o acesso remoto é opcional, exige TLS ou túnel e vem desligado)"
+    },
+    {
+      "id": "github-releases",
+      "label": "Verificação de versão (api.github.com)",
+      "role": "contact",
+      "match": [
+        "api.github.com"
+      ],
+      "trigger": "só quando `updates.check` está ligado ou quando o dono pede \"Verificar agora\" (`GET /api/updates?force=1`)",
+      "default": "desligado",
+      "data": "um GET anônimo a /repos/tvpl/agentic-os/releases/latest com o cabeçalho `user-agent: mordomo-os`; nenhum identificador do produto, da instalação ou da pessoa; o GitHub vê o endereço IP; a resposta fica em cache por seis horas"
+    },
+    {
+      "id": "github-links",
+      "label": "Links do GitHub mostrados ao usuário (github.com)",
+      "role": "link",
+      "match": [
+        "github.com"
+      ],
+      "trigger": "a página de releases e as páginas de origem dos conectores (campo `origin` de connectors/*.json) são mostradas como link; quem decide abri-las é a pessoa, no navegador",
+      "default": "nunca acessado pelo produto",
+      "data": "nada: o produto não abre conexão para esses endereços"
+    },
+    {
+      "id": "telegram",
+      "label": "Canal Telegram (api.telegram.org)",
+      "role": "contact",
+      "match": [
+        "api.telegram.org"
+      ],
+      "trigger": "só com `channels.telegram.enabled`, um token de bot numa variável de ambiente e um `chatId`; receber respostas (`getUpdates`) exige também `channels.telegram.inbound`",
+      "default": "desligado",
+      "data": "o texto dos avisos do inbox acima do tom mínimo (título e corpo), os botões de aprovação e as respostas de quem escreve no chat; o token do bot vai na URL, como a API do Telegram exige"
+    },
+    {
+      "id": "push-browsers",
+      "label": "Notificações push dos navegadores (fcm.googleapis.com e outros)",
+      "role": "contact",
+      "match": [
+        "fcm.googleapis.com",
+        "android.googleapis.com",
+        "*.push.services.mozilla.com",
+        "*.push.apple.com",
+        "*.notify.windows.com"
+      ],
+      "trigger": "só com `channels.push.enabled` ligado e depois que o dono, ou um dispositivo pareado com o escopo `content`, assina notificações num navegador; o serviço então envia cada aviso ao endereço da assinatura, e resolve o nome desse endereço no DNS do sistema antes de cada envio",
+      "default": "desligado; sem assinatura, nada é enviado",
+      "data": "o aviso (título e corpo) cifrado de ponta a ponta (RFC 8291, chave do navegador que assinou), com uma credencial VAPID assinada que leva o campo `channels.push.subject` (por padrão `mailto:mordomo@localhost`; se o dono puser um e-mail seu ali, o serviço de push o vê); o serviço do navegador vê o endereço da assinatura, o tamanho e o horário, não o texto"
+    },
+    {
+      "id": "push-custom",
+      "label": "Servidor de push escolhido pelo dono",
+      "role": "user-defined",
+      "match": [],
+      "trigger": "só com `channels.push.enabled` ligado e quando o dono (nunca um dispositivo) registra uma assinatura cujo endereço é um servidor https público dele",
+      "default": "nenhum",
+      "data": "o mesmo aviso cifrado das notificações push; o endereço é validado (https, porta padrão, só endereços públicos) a cada envio"
+    },
+    {
+      "id": "webhook",
+      "label": "Webhook de rotina (endereço do dono)",
+      "role": "user-defined",
+      "match": [],
+      "trigger": "só com `routines.allowWebhooks` ligado e uma rotina com entrega por webhook; o endereço é o que o dono escreveu na rotina",
+      "default": "desligado",
+      "data": "POST com o id e o nome da rotina, o id e o status da execução, a duração, os artefatos, o horário e um resumo de até 4.000 caracteres com segredos reconhecíveis redigidos"
+    },
+    {
+      "id": "skill-registry",
+      "label": "Registro de skills (endereço do dono)",
+      "role": "user-defined",
+      "match": [],
+      "trigger": "só quando o dono adiciona um registro em `marketplace.registries` e abre o marketplace ou instala uma skill; https obrigatório (ou uma pasta local `file://`)",
+      "default": "nenhum registro",
+      "data": "GETs do índice e dos arquivos da skill, sem corpo e sem redirecionamento; o servidor do registro vê o endereço IP e os caminhos pedidos"
+    },
+    {
+      "id": "connector-api",
+      "label": "Conector de dados por API (endereço do dono)",
+      "role": "user-defined",
+      "match": [],
+      "trigger": "só com um conector de dados do tipo API configurado pelo dono (`dataMapping.url`, http ou https) e sincronizado",
+      "default": "nenhum conector configurado",
+      "data": "GET com os cabeçalhos que o dono escreveu (podem trazer um token lido de variável de ambiente), sem redirecionamento"
+    },
+    {
+      "id": "mcp-connectors",
+      "label": "Conectores MCP de terceiros (Gmail, Google Calendar, Playwright…)",
+      "role": "cli",
+      "match": [],
+      "implicit": true,
+      "trigger": "só com um conector do tipo MCP configurado pelo dono e o comando dele em `settings.connectors.allowedCommands`; o MordomoOS inicia esse programa de terceiros ao sincronizar e este fala com o serviço dele (Google, por exemplo)",
+      "default": "nenhum conector vem configurado",
+      "data": "o que o programa do conector enviar ao serviço dele, sob os termos desse serviço; o MordomoOS recebe o resultado e o guarda na casa"
+    },
+    {
+      "id": "npm-registry",
+      "label": "Auditoria de dependências do doctor (registro do npm)",
+      "role": "cli",
+      "match": [],
+      "implicit": true,
+      "trigger": "`mordomo doctor` (e a rota `GET /api/doctor` para o dono) roda `npm audit` quando o CLI do npm está ao lado do Node e a pasta de dados tem `package-lock.json`; o instalador, que leva só o binário do Node, pula o item",
+      "default": "ligado ao pedir o diagnóstico, exceto com MORDOMO_SKIP_NPM_AUDIT=1",
+      "data": "o npm envia nomes e versões das dependências ao registro configurado nele (por padrão registry.npmjs.org); o MordomoOS não envia nada além disso"
+    },
+    {
+      "id": "cli-providers",
+      "label": "Provedores dos CLIs (Claude Code, Codex, Cursor Agent)",
+      "role": "cli",
+      "match": [],
+      "implicit": true,
+      "trigger": "toda execução: o MordomoOS inicia o CLI que o usuário escolheu e este fala com o servidor do provedor dele, com a conta do usuário",
+      "default": "ligado, por definição do produto",
+      "data": "o prompt e os arquivos da pasta da execução, sob os termos e a política de privacidade do provedor, não desta; o MordomoOS não vê nem guarda a chave ou o login do provedor"
+    },
+    {
+      "id": "install-links",
+      "label": "Comando de instalação do Cursor (cursor.com)",
+      "role": "link",
+      "match": [
+        "cursor.com"
+      ],
+      "trigger": "o endereço `https://cursor.com/install` aparece como instrução na tela de configuração; o produto não o executa",
+      "default": "nunca acessado pelo produto",
+      "data": "nada: o produto não abre conexão para esse endereço"
+    },
+    {
+      "id": "skill-doc-links",
+      "label": "Documentação citada em skills embutidas (code.claude.com)",
+      "role": "link",
+      "match": [
+        "code.claude.com"
+      ],
+      "trigger": "a skill embutida `claude-mobile-optimize` cita páginas da documentação do Claude Code no texto de suas instruções; quem as abriria seria o agente (o CLI) ou a pessoa, nunca o código do MordomoOS",
+      "default": "nunca acessado pelo MordomoOS",
+      "data": "nada: o MordomoOS não abre conexão para esse endereço"
+    },
+    {
+      "id": "node-download",
+      "label": "Download do Node.js ao gerar o instalador (nodejs.org)",
+      "role": "build",
+      "match": [
+        "nodejs.org"
+      ],
+      "trigger": "só na máquina de quem gera o instalador (`npm run dist`, `scripts/package.mjs`, e a mensagem de `scripts/setup.sh`): baixa o binário oficial do Node.js e confere o SHA-256; ao empacotar para outra plataforma, o `prebuild-install` baixa o módulo nativo do SQLite do GitHub",
+      "default": "nunca roda no computador de quem usa o produto",
+      "data": "um GET do binário e da lista de somas; nada do usuário"
+    }
+  ],
+  "ignored": [
+    {
+      "match": "www.w3.org",
+      "reason": "identificador de espaço de nomes XML/SVG (xmlns), nunca contatado"
+    },
+    {
+      "match": "www.apple.com",
+      "reason": "identificador do DTD de um arquivo plist, nunca contatado"
+    },
+    {
+      "match": "cyclonedx.org",
+      "reason": "identificador do esquema do SBOM, nunca contatado"
+    },
+    {
+      "match": "example.com",
+      "reason": "exemplo escrito num texto de ajuda de formulário"
+    },
+    {
+      "match": "weather.gov",
+      "reason": "rótulo de demonstração do Núcleo (dados de exemplo), nunca contatado"
+    },
+    {
+      "match": "command-centre.local",
+      "reason": "base fictícia para `new URL` em api.ts, nunca resolvida"
+    }
+  ],
+  "sites": [
+    {
+      "file": "apps/api/src/doctor.ts",
+      "kind": "program:npm-cli",
+      "count": 1,
+      "hosts": [
+        "npm-registry"
+      ]
+    },
+    {
+      "file": "apps/api/src/instances.ts",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "loopback"
+      ]
+    },
+    {
+      "file": "apps/api/src/mcp/mordomo.ts",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "loopback"
+      ]
+    },
+    {
+      "file": "apps/api/src/mcp/permission.ts",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "loopback"
+      ]
+    },
+    {
+      "file": "apps/api/src/server.ts",
+      "kind": "module:https",
+      "count": 1,
+      "hosts": [],
+      "note": "listener TLS do acesso remoto: entrada, não saída"
+    },
+    {
+      "file": "apps/api/src/server.ts",
+      "kind": "module:net",
+      "count": 1,
+      "hosts": [],
+      "note": "listener e leitura do endereço do par: entrada, não saída"
+    },
+    {
+      "file": "apps/api/src/server.ts",
+      "kind": "module:tls",
+      "count": 1,
+      "hosts": [],
+      "note": "listener TLS: entrada, não saída"
+    },
+    {
+      "file": "apps/api/src/updates.ts",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "github-releases"
+      ]
+    },
+    {
+      "file": "apps/command-centre/public/boot-recovery.js",
+      "kind": "fetch",
+      "count": 2,
+      "hosts": [
+        "loopback"
+      ],
+      "note": "mesma origem que serve a página"
+    },
+    {
+      "file": "apps/command-centre/public/sw.js",
+      "kind": "fetch",
+      "count": 2,
+      "hosts": [
+        "loopback"
+      ],
+      "note": "mesma origem que serve a página"
+    },
+    {
+      "file": "apps/command-centre/src/api.ts",
+      "kind": "eventsource",
+      "count": 2,
+      "hosts": [
+        "loopback"
+      ],
+      "note": "mesma origem que serve a página"
+    },
+    {
+      "file": "apps/command-centre/src/api.ts",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "loopback"
+      ],
+      "note": "mesma origem que serve a página"
+    },
+    {
+      "file": "apps/command-centre/src/components/ServiceHealthBanner.tsx",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "loopback"
+      ],
+      "note": "mesma origem que serve a página"
+    },
+    {
+      "file": "apps/command-centre/src/views/Skills/SkillDetail.tsx",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "loopback"
+      ],
+      "note": "mesma origem que serve a página"
+    },
+    {
+      "file": "core/src/channels/pushEndpoint.ts",
+      "kind": "module:dns",
+      "count": 1,
+      "hosts": [
+        "push-browsers",
+        "push-custom"
+      ],
+      "note": "resolve o nome do endereço da assinatura antes de enviar"
+    },
+    {
+      "file": "core/src/channels/pushEndpoint.ts",
+      "kind": "module:net",
+      "count": 1,
+      "hosts": [],
+      "note": "só classifica endereços IP (BlockList), não abre conexão"
+    },
+    {
+      "file": "core/src/channels/telegram.ts",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "telegram"
+      ]
+    },
+    {
+      "file": "core/src/channels/telegramInbound.ts",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "telegram"
+      ]
+    },
+    {
+      "file": "core/src/channels/webpush.ts",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "push-browsers",
+        "push-custom"
+      ]
+    },
+    {
+      "file": "core/src/connectors/client.ts",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "connector-api"
+      ]
+    },
+    {
+      "file": "core/src/routines/scheduler.ts",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "webhook"
+      ]
+    },
+    {
+      "file": "core/src/security/tls.ts",
+      "kind": "module:net",
+      "count": 1,
+      "hosts": [],
+      "note": "só classifica endereços IP, não abre conexão"
+    },
+    {
+      "file": "core/src/skills/registry.ts",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "skill-registry"
+      ]
+    },
+    {
+      "file": "scripts/capacity-api.mjs",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "loopback"
+      ],
+      "note": "teste de carga, só desenvolvimento"
+    },
+    {
+      "file": "scripts/package.mjs",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "node-download"
+      ],
+      "note": "só na máquina que gera o instalador"
+    },
+    {
+      "file": "scripts/soak-api.mjs",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "loopback"
+      ],
+      "note": "teste de longa duração, só desenvolvimento"
+    }
+  ]
+}

@@ -30,3 +30,7 @@ release/
 .claude/skills/
 .cursor/skills/
 .windsurf/skills/
+
+# Legal texts: authored wrapping, and the generated notice must stay byte for byte what the script writes
+legal/
+LICENSE

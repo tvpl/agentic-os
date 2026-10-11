@@ -2,6 +2,7 @@
   "name": "@mordomo/contracts",
   "version": "0.8.0",
   "private": true,
+  "license": "SEE LICENSE IN LICENSE",
   "description": "The shapes that cross the engine / API / UI boundary: wire types, the settings schema, the typed event map and the write policy.",
   "type": "module",
   "main": "dist/index.js",

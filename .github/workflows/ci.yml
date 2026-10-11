@@ -49,6 +49,14 @@ jobs:
           export MORDOMO_HOME="$RUNNER_TEMP/pkg-home" MORDOMO_SKIP_NPM_AUDIT=1
           "$cli" status --json | grep -q '"running":false'
           "$cli" doctor | grep -q "Node.js version"
+          # The legal side travels with the app (inside the .app on macOS).
+          res="$stage"; [ -d "$stage/MordomoOS.app" ] && res="$stage/MordomoOS.app/Contents/Resources"
+          test -f "$res/LICENSE"
+          test -f "$res/legal/EULA.md"
+          test -f "$res/legal/PRIVACY.md"
+          test -f "$res/legal/NOTICE.md"
+          test -f "$res/legal/THIRD_PARTY_NOTICES.md"
+          test -f "$res/legal/sbom.cdx.json"
 
   e2e:
     name: e2e (playwright)

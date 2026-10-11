@@ -1,0 +1,3 @@
+# The legal texts are compared byte for byte (tests/legal.*.test.ts): a Windows checkout must not turn them into CRLF.
+LICENSE text eol=lf
+legal/** text eol=lf

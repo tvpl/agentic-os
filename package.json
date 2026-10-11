@@ -3,7 +3,7 @@
   "version": "0.8.0",
   "private": true,
   "description": "MordomoOS — a local, vendor-neutral agentic operating system (ARMS) over Claude Code, Cursor Agent and OpenAI Codex.",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -35,7 +35,11 @@
     "gallery": "vite --config apps/command-centre/vite.config.ts apps/command-centre --open /gallery.html",
     "dist": "node scripts/package.mjs",
     "dist:quick": "node scripts/package.mjs --skip-build --node none --no-archive",
-    "bundle:check": "node scripts/bundle-size.mjs --check"
+    "bundle:check": "node scripts/bundle-size.mjs --check",
+    "licenses:write": "node scripts/licenses.mjs --write",
+    "licenses:check": "node scripts/licenses.mjs --check",
+    "sbom": "node scripts/sbom.mjs",
+    "network:scan": "node scripts/network-scan.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

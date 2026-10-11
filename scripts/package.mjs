@@ -31,6 +31,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { build } from "rolldown";
+import { stageLegal } from "./legal-stage.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
@@ -123,7 +124,8 @@ fs.writeFileSync(
     2,
   ),
 );
-fs.copyFileSync(path.join(ROOT, "LICENSE"), path.join(payload, "LICENSE"));
+// LICENSE, the legal texts, the third-party notices and the SBOM travel with the app (.specs/features/licenca-comercial, door 6).
+stageLegal(ROOT, payload);
 
 // ---- 4. Node runtime ---------------------------------------------------------------
 if (nodeVersion) {
@@ -473,6 +475,9 @@ plan to enable "start at login" from Settings.
 }
 Terminal (optional): ${cli} setup | start | stop | status | doctor | restart | launch
 Uninstall: ${cli} uninstall (keeps your data; add --purge to remove it), then delete this folder.
+License: LICENSE (Functional Source License 1.1, Apache-2.0 future license). legal/ holds the third-party
+notices, the SBOM and the draft terms and privacy policy. MordomoOS orchestrates Claude Code, Cursor Agent
+and Codex; it does not bundle them, and each follows its supplier's terms.
 
 PT-BR
 -----
@@ -492,6 +497,9 @@ ativar "iniciar no login" nas Configurações.
 }
 Terminal (opcional): ${cli} setup | start | stop | status | doctor | restart | launch
 Desinstalar: ${cli} uninstall (mantém seus dados; use --purge para removê-los) e apague esta pasta.
+Licença: LICENSE (Functional Source License 1.1, licença futura Apache-2.0). A pasta legal/ tem os avisos de
+terceiros, o SBOM e as minutas dos termos e da privacidade. O MordomoOS orquestra o Claude Code, o Cursor Agent e
+o Codex; não os inclui, e cada um segue os termos do seu fornecedor.
 
 Runtime: ${nodeVersion ? `Node.js ${nodeVersion} (bundled in runtime/)` : "uses the Node.js 22+ installed on this computer"}.
 `;

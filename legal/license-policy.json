@@ -1,0 +1,61 @@
+{
+  "note": "MINUTA para revisão do dono: a lista de licenças e os textos de terceiros são engenharia, não aconselhamento jurídico. Quem muda uma lista abaixo muda o que o instalador pode levar: faça-o num commit próprio, com o motivo.",
+  "allowedDistributed": [
+    "MIT",
+    "MIT-0",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Apache-2.0",
+    "0BSD",
+    "BlueOak-1.0.0",
+    "CC0-1.0",
+    "Python-2.0",
+    "Unlicense",
+    "Zlib"
+  ],
+  "allowedToolingExtra": ["MPL-2.0", "CC-BY-4.0"],
+  "overrides": {
+    "svg-tags@1.0.0": {
+      "license": "MIT",
+      "reason": "ferramenta de build (dependência do stylelint): o package.json declara só licenses[].url apontando para a MIT e o LICENSE do pacote é a MIT (Athan Reines, 2014); a exceção vale só para esta versão"
+    }
+  },
+  "bundled": [
+    {
+      "name": "Node.js",
+      "license": "MIT",
+      "where": "pasta runtime/ do instalador (binário oficial do Node.js; o instalador copia o LICENSE do Node, que reúne os avisos das dependências do próprio Node, para runtime/LICENSE). Com `--node none` o instalador usa o Node do sistema e não leva nada.",
+      "url": "https://github.com/nodejs/node/blob/main/LICENSE",
+      "note": "a versão embutida é a do computador que gera o instalador (`node scripts/package.mjs --node <versão>`); a de cada instalador está em runtime/LICENSE e no nome do binário baixado."
+    },
+    {
+      "name": "SQLite",
+      "license": "Domínio público (SQLite blessing)",
+      "where": "compilado dentro do módulo nativo do pacote better-sqlite3 (lib/node_modules/better-sqlite3 do instalador)",
+      "url": "https://www.sqlite.org/copyright.html",
+      "note": "o pacote better-sqlite3 (MIT) tem o próprio aviso na seção 2."
+    },
+    {
+      "name": "JetBrains Mono (fonte)",
+      "license": "SIL Open Font License 1.1",
+      "where": "apps/command-centre/public/fonts/jetbrains-mono-latin.woff2, servida pelo Command Centre",
+      "url": "https://github.com/JetBrains/JetBrainsMono",
+      "note": "texto copiado de https://raw.githubusercontent.com/JetBrains/JetBrainsMono/master/OFL.txt em 11/10/2026. A origem do arquivo .woff2 do repositório não está registrada: o dono deve confirmar que ele vem desse projeto (ver `.specs/STATE.md`).",
+      "textFile": "legal/vendor/fonts/JetBrainsMono-OFL.txt",
+      "files": ["apps/command-centre/public/fonts/jetbrains-mono-latin.woff2"]
+    },
+    {
+      "name": "Rajdhani (fonte)",
+      "license": "SIL Open Font License 1.1",
+      "where": "apps/command-centre/public/fonts/rajdhani-600-latin.woff2 e rajdhani-700-latin.woff2, servidas pelo Command Centre",
+      "url": "https://github.com/itfoundry/rajdhani",
+      "note": "texto copiado de https://raw.githubusercontent.com/google/fonts/main/ofl/rajdhani/OFL.txt em 11/10/2026. A origem dos arquivos .woff2 do repositório não está registrada: o dono deve confirmar que eles vêm desse projeto (ver `.specs/STATE.md`).",
+      "textFile": "legal/vendor/fonts/Rajdhani-OFL.txt",
+      "files": [
+        "apps/command-centre/public/fonts/rajdhani-600-latin.woff2",
+        "apps/command-centre/public/fonts/rajdhani-700-latin.woff2"
+      ]
+    }
+  ]
+}
