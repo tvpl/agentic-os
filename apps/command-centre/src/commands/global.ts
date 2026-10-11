@@ -26,7 +26,8 @@ import {
   SunMoon,
   Volume2,
 } from "lucide-react";
-import { api, type BackupCreated, type DoctorReport, type UiShell } from "../api";
+import { api, type UiShell } from "../api";
+import { apiCall } from "../apiCall";
 import { useT, type TKey } from "../i18n";
 import { qk, useSaveUiPreferences } from "../queries";
 import { useToast } from "../components/ui";
@@ -148,7 +149,7 @@ export function useGlobalCommands(opts: GlobalCommandsOptions): void {
         keywords: ["index", "rebuild", "memory", "reindexar"],
         palette: true,
         run: task("shell.action.reindex", async () => {
-          await api.post("/api/memory/index");
+          await apiCall("POST /api/memory/index");
           live.current.toast(live.current.t("shell.action.reindexDone"), "ok");
           await live.current.qc.invalidateQueries({ queryKey: ["memory"] });
         }),
@@ -162,7 +163,7 @@ export function useGlobalCommands(opts: GlobalCommandsOptions): void {
         keywords: ["backup", "export", "save"],
         palette: true,
         run: task("shell.action.backup", async () => {
-          const res = await api.post<BackupCreated>("/api/backups", {});
+          const res = await apiCall("POST /api/backups", { body: {} });
           live.current.toast(live.current.t("shell.action.backupDone", { name: res.name }), "ok");
           await live.current.qc.invalidateQueries({ queryKey: qk.backups });
         }),
@@ -176,7 +177,7 @@ export function useGlobalCommands(opts: GlobalCommandsOptions): void {
         keywords: ["doctor", "health", "diagnostics", "check", "diagnostico"],
         palette: true,
         run: task("shell.action.doctor", async () => {
-          const rep = await api.get<DoctorReport>("/api/doctor?audit=0");
+          const rep = await apiCall("GET /api/doctor", { query: { audit: "0" } });
           const { t, toast, notify, qc, navigate } = live.current;
           const text = t("shell.action.doctorDone", { ok: rep.ok, warn: rep.warn, fail: rep.fail });
           toast(text, rep.fail > 0 ? "danger" : "ok");

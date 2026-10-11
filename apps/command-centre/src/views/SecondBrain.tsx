@@ -9,7 +9,8 @@ import { errorMessage } from "./shared";
  * selection, translates canvas hits into navigation and lays the pieces out.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { api, type GraphData, type IndexProgressPayload, type MemoryPreview, type RunRecord } from "../api";
+import { api, type GraphData, type IndexProgressPayload, type RunSummary } from "../api";
+import { apiCall } from "../apiCall";
 import { useToast } from "../components/ui";
 import { useLang, useT, type TKey } from "../i18n";
 import { useOsEvent } from "../hooks/useEventStream";
@@ -288,8 +289,7 @@ export default function SecondBrain() {
       centerOn(x, y, dive ? FILE_DIVE_K : undefined);
     }
     setPreview({ node, content: null, kind: "loading", message: null });
-    void api
-      .get<MemoryPreview>(`/api/memory/preview?p=${encodeURIComponent(node.path)}`)
+    void apiCall("GET /api/memory/preview", { query: { p: node.path } })
       .then((pv) => {
         if (!cancelled && token === previewToken.current)
           setPreview({ node, content: pv.content, kind: pv.kind, message: pv.message });
@@ -312,10 +312,7 @@ export default function SecondBrain() {
     }
     let cancelled = false;
     const id = window.setTimeout(() => {
-      void api
-        .get<Array<{ id: number; name: string; rel: string }>>(
-          `/api/memory/search?q=${encodeURIComponent(q)}&limit=8`,
-        )
+      void apiCall("GET /api/memory/search", { query: { q: q, limit: 8 } })
         .then((res) => {
           if (!cancelled) setHits(res);
         })
@@ -348,7 +345,7 @@ export default function SecondBrain() {
   const runs = runsQuery.data;
   useEffect(() => {
     const w = world.current;
-    const active = (runs ?? []).filter((r: RunRecord) => r.status === "running" || r.status === "queued");
+    const active = (runs ?? []).filter((r: RunSummary) => r.status === "running" || r.status === "queued");
     for (const id of prevActive.current) {
       if (active.some((r) => r.id === id)) continue;
       const finished = (runs ?? []).find((r) => r.id === id);
@@ -382,8 +379,8 @@ export default function SecondBrain() {
     setRefreshing(true);
     void (async () => {
       try {
-        const res = await api.post<{ stats: { scanned: number; added: number } }>("/api/memory/index");
-        await api.post("/api/memory/routers");
+        const res = await apiCall("POST /api/memory/index");
+        await apiCall("POST /api/memory/routers");
         await invalidate(qk.memoryGraph(GRAPH_PARAMS), qk.memoryStatus);
         toast(t("brain.indexed", { n: res.stats.scanned, added: res.stats.added }), "ok");
       } catch (err) {

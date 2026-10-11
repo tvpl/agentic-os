@@ -7,7 +7,8 @@
  */
 import { useEffect, useState } from "react";
 import { RefreshCw, Skull, X } from "lucide-react";
-import { api, apiUrl, type SystemInfo } from "../api";
+import { apiUrl, type SystemInfo } from "../api";
+import { apiCall } from "../apiCall";
 import { useT } from "../i18n";
 import { useApiQuery } from "../queries";
 import { Button } from "./primitives";
@@ -77,7 +78,7 @@ export default function ServiceHealthBanner({ name }: { name: string }) {
   const restart = async () => {
     setBusy(true);
     try {
-      await api.post("/api/system/restart");
+      await apiCall("POST /api/system/restart");
       setRestarting(true);
     } catch (err) {
       toast((err as Error).message, "danger");
@@ -87,7 +88,7 @@ export default function ServiceHealthBanner({ name }: { name: string }) {
   const reap = async () => {
     setBusy(true);
     try {
-      const res = await api.post<{ stopped: number[] }>("/api/system/reap");
+      const res = await apiCall("POST /api/system/reap");
       toast(t("service.reaped", { n: res.stopped.length }), "ok");
       await info.refetch();
     } catch (err) {

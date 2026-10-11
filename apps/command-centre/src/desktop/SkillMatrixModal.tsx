@@ -6,7 +6,8 @@
  */
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type ModelishOption, type ProviderId, type ProviderSnapshot, type Skill } from "../api";
+import { type ModelishOption, type ProviderId, type ProviderSnapshot, type Skill } from "../api";
+import { apiCall } from "../apiCall";
 import { useT } from "../i18n";
 import { qk, useApiQuery } from "../queries";
 import { useToast } from "../components/ui";
@@ -67,9 +68,12 @@ export function useSaveSkillMatrix(skill: Skill, onSaved: (model: string | null,
         ...front
       } = skill as Skill & Record<string, unknown>;
       delete (front as Record<string, unknown>).dir;
-      await api.put(`/api/skills/${encodeURIComponent(skill.slug)}`, {
-        frontmatter: { ...front, recommendedModel: model, recommendedEffort: effort },
-        body,
+      await apiCall("PUT /api/skills/:slug", {
+        params: { slug: skill.slug },
+        body: {
+          frontmatter: { ...front, recommendedModel: model, recommendedEffort: effort },
+          body,
+        },
       });
       return { model, effort };
     },

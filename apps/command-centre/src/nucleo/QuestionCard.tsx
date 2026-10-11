@@ -8,7 +8,8 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Send } from "lucide-react";
-import { api, type ApprovalRecord } from "../api";
+import { type ApprovalRecord } from "../api";
+import { apiCall } from "../apiCall";
 import { useT } from "../i18n";
 import { qk } from "../queries";
 import { useToast } from "../components/ui";
@@ -33,9 +34,12 @@ export default function QuestionCard({
   const ready = complete(questions, answers);
   const send = useMutation({
     mutationFn: (decision: "approved" | "denied") =>
-      api.post(`/api/approvals/${encodeURIComponent(approval.id)}/resolve`, {
-        decision,
-        ...(decision === "approved" ? { answers } : {}),
+      apiCall("POST /api/approvals/:id/resolve", {
+        params: { id: approval.id },
+        body: {
+          decision,
+          ...(decision === "approved" ? { answers } : {}),
+        },
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.approvals }).catch(() => undefined);

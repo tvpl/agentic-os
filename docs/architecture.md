@@ -67,11 +67,30 @@ SSE channels, then close the DB. `unhandledRejection` is logged, never fatal.
   `monitor`/`content`/`run`/`approve` scope a paired device must hold); the table, the `?token=` rule, the
   stream tickets, the TLS rule for other machines and the attempt limits are described in
   [security.md](security.md#authentication).
-- **Route document.** `GET /api/v1/openapi.json` (authenticated) is an OpenAPI 3.1
-  document generated at startup from the route table an `onRoute` hook collects
-  (`app.apiRoutes`, `apps/api/src/openapi.ts`): every route with its method, path
-  parameters, `security` and `x-mordomo-scope: "owner"` where it applies. Request and
-  response bodies are not described yet.
+- **One table of routes.** `API` in `@mordomo/contracts` (`contracts/src/api`) has one entry for every route under
+  `/api`: method, path, scope, `params`/`query`/`body` schemas, a response schema per success status, the errors the
+  route raises and the headers it sets. The server registers a route only through `bind(app, "<id>", handler)`
+  (`apps/api/src/contract.ts`): the entry decides the method, the path and the access, the three request parts reach
+  the handler already parsed (a part that fails answers `400 validation` before the handler runs), and the handler's
+  return type is the union of the entry's success bodies. A route registered any other way, or an entry nobody bound,
+  stops `buildServer`. The Command Centre calls a route by its key (`apiCall("GET /api/runs/:id", { params })`), with
+  parameters, query, body and result typed by the same entry.
+- **Responses are checked where it is cheap.** In development and in tests (`validateResponses`, default on for
+  `NODE_ENV=test|development`, `MORDOMO_VALIDATE_RESPONSES=1|0` decides either way; off in the installed service) each
+  JSON answer is checked against its entry: the status is declared, the body satisfies the schema and names no key the
+  schema does not, an error is a `(status, code)` the route or `COMMON_ERRORS` declares. A departure answers
+  `500 response_contract_violation` and is logged without the body.
+- **Route document.** `GET /api/v1/openapi.json` (authenticated) is an OpenAPI 3.1 document generated from the table
+  (`apps/api/src/openapi.ts`): every route with its method, path, parameters, request body, the response of each
+  success status, the error envelope for each documented error (`400`, `401`, `403`, `404`, `409`, `413`, `415`,
+  `422`, `429`, ...), `security` and `x-mordomo-scope` (the only extension). A test validates it with
+  `@apidevtools/swagger-parser` and checks real answers against its schemas; another refuses a route that has no
+  schema.
+- **Events are versioned per type.** Each event type has its own list of versions
+  (`@mordomo/contracts`, `EVENT_VERSIONS`), the bus envelope is a union discriminated by `type` and `v`, and the frames
+  of a run's stream carry `v`. A client ignores an unknown type or a version above the highest it knows
+  (`classifyEvent`, at `@mordomo/contracts/events`, which does not pull in zod). The policy and the fields of every
+  version are in [events.md](events.md), generated from the schemas.
 
 The CLI (`apps/api/src/cli.ts`, `node:util.parseArgs`) drives the same
 `AppContext` directly for setup/doctor/index/sync/run/backup/restore, and
@@ -87,8 +106,8 @@ zod only, so the browser can import it: the wire types (`RunRecord`, `RunEvent`,
 `MetricsSample`), the settings schema (`SettingsSchema`), the write policy
 (`writeDecision`, `PROFILES`; also at `@mordomo/contracts/policy`, without zod) and the
 typed event map. Every event the bus emits is `{ id, type, ts, v, payload }`, with
-`payload` typed by `OsEventMap[type]` and `v` = 1; a payload whose shape changes bumps
-`v`. The core re-exports these under the same names (the UI-only `BrainSettings`,
+`payload` typed by `OsEventMap[type]` and `v` the current version of that type; a payload whose shape
+changes incompatibly adds a version to the type's list ([events.md](events.md)). The core re-exports these under the same names (the UI-only `BrainSettings`,
 `MicroApp` and `DEFAULT_HUD` stay in the contract). `typetests/` holds compile-time
 proofs (`npm run typecheck`).
 

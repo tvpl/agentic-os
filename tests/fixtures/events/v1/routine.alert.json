@@ -1,0 +1,12 @@
+{
+  "id": 6,
+  "type": "routine.alert",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "routineId": "daily-digest",
+    "runId": "3f1d2c4a-0b7e-4c1a-9a55-2b6d8e0f1a11",
+    "status": "failed",
+    "summary": "The run failed."
+  }
+}

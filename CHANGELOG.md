@@ -37,6 +37,23 @@
   `connectors.allowedCommands`. `@mordomo/core` and `@mordomo/contracts` carry the metadata to be packed (`license` pointing at a
   `LICENSE` that is a copy of the repository's, `repository`, `exports`, `files`, `engines`, `sideEffects`, README; the
   core also names `@types/node` as an optional peer dependency, as its declarations use it); nothing is published.
+  one process no longer hear or overwrite each other; a second `start()` on the same home in the same process now
+  throws `EngineLockedError` instead of taking the lock. A connector command named like a provider binary now needs
+  `connectors.allowedCommands`. `@mordomo/core` and `@mordomo/contracts` carry the metadata to be packed (license
+  FSL-1.1-ALv2, `exports`, `files`, `engines`, `sideEffects`, README); nothing is published.
+- **API (contratos-rest)**: one table (`API` in `@mordomo/contracts`) describes every route under `/api` — method,
+  path, scope, `params`/`query`/`body` and a response schema per status, the errors the route raises and the headers
+  it sets — and the server registers routes only through it (`bind`): a part that fails answers `400 validation`
+  before the handler runs, a handler cannot return a body the entry does not name, a route without an entry or an
+  entry without a route stops the service from starting. In development and tests every JSON answer is checked
+  against its entry (off in the installed service; `MORDOMO_VALIDATE_RESPONSES=1|0` decides either way). `GET
+  /api/v1/openapi.json` now carries the request and response schemas and the error envelope of each documented
+  status (`400`, `401`, `403`, `404`, `409`, `413`, `415`, `422`, `429`, ...), validated by a real OpenAPI 3.1
+  validator in the tests. Events are versioned per type (`EVENT_VERSIONS`, a union discriminated by `type` and `v`),
+  the frames of a run's stream carry `v`, a client ignores an unknown type or version (`@mordomo/contracts/events`),
+  and `docs/events.md` is generated from the schemas. The Command Centre calls the routes through `apiCall("GET
+  /api/runs/:id", { params })`, typed by the table; `useRouteQuery` does the same for queries. Routes, error codes
+  and the error envelope are unchanged, and `/api/*` still answers like `/api/v1/*`.
 - **Interface (primitivas)**: dialogs, popovers, tabs, switches, the "+" menu and icon-button hints
   are built on Radix (`apps/command-centre/src/ui`, six `@radix-ui/*` packages at exact versions) and
   drawn by one stylesheet in both interfaces; the Núcleo keeps its glass and the frame its flat sheet

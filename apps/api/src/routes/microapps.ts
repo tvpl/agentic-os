@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import { writeWorkspaceFile } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
+import { bind } from "../contract.js";
 
 const PNG_PREFIX = "data:image/png;base64,";
 const MAX_PNG_BYTES = 2 * 1024 * 1024;
@@ -33,16 +33,7 @@ export function registerMicroappRoutes(app: FastifyInstance, ctx: AppContext): v
    * The name regex is the only path input — no separators, no dots — so the
    * destination is contained in <artifacts>/pixel-studio by construction.
    */
-  app.post("/api/microapps/pixel/save", { config: { scope: "owner" } }, async (req) => {
-    const body = z
-      .object({
-        name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/),
-        dataUrl: z.string(),
-        spriteSheetDataUrl: z.string().optional(),
-        frames: z.number().int().min(1).optional(),
-      })
-      .parse(req.body);
-
+  bind(app, "microapps.pixelSave", async ({ body }) => {
     const png = decodePngDataUrl(body.dataUrl, "dataUrl");
     const sheet =
       body.spriteSheetDataUrl !== undefined

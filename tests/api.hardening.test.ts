@@ -4,7 +4,10 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { API, route } from "@mordomo/contracts";
 import { AppContext, readRestorePending } from "../apps/api/src/context.js";
+import { bindEntry } from "../apps/api/src/contract.js";
 import { buildServer, isAllowedHost, safeUrl, tokenMatches } from "../apps/api/src/server.js";
 import { deepMergeSettings, SettingsPatchSchema } from "../apps/api/src/routes/system.js";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "./helpers.js";
@@ -41,10 +44,6 @@ beforeAll(async () => {
   ctx.reloadAdapters();
   token = ctx.token();
   app = await buildServer(ctx);
-  // A route that throws an internal error, to assert the 500 envelope hides details.
-  app.get("/api/__boom", { config: { scope: "owner" } }, async () => {
-    throw new Error(`secret path ${home}/config/token`);
-  });
 });
 
 afterAll(async () => {
@@ -132,14 +131,35 @@ describe("error envelope (audit #7)", () => {
   });
 
   it("unknown errors → 500 without leaking the message", async () => {
-    const res = await app.inject({ method: "GET", url: "/api/__boom", headers: auth() });
-    expect(res.statusCode).toBe(500);
-    expect(res.json()).toEqual({
-      error: { code: "internal", message: "Internal error" },
-      message: "Internal error",
+    // A route that throws an internal error, to assert the 500 envelope hides details. Registered through bind's own
+    // function, as every route is; its entry joins the table only while this server lives (a server will not start
+    // with an entry nobody bound, so it must not outlive the test).
+    const boomApp = await buildServer(ctx);
+    const boom = route({
+      method: "GET",
+      path: "/api/__boom",
+      scope: "owner",
+      summary: "A route that throws an internal error",
+      tag: "test",
+      responses: { 200: z.object({}) },
     });
-    expect(res.body).not.toContain("secret path");
-    expect(res.body).not.toContain(home);
+    (API as unknown as Record<string, unknown>)["zz.boom"] = boom;
+    try {
+      bindEntry(boomApp, "zz.boom", boom, async () => {
+        throw new Error(`secret path ${home}/config/token`);
+      });
+      const res = await boomApp.inject({ method: "GET", url: "/api/__boom", headers: auth() });
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({
+        error: { code: "internal", message: "Internal error" },
+        message: "Internal error",
+      });
+      expect(res.body).not.toContain("secret path");
+      expect(res.body).not.toContain(home);
+    } finally {
+      delete (API as unknown as Record<string, unknown>)["zz.boom"];
+      await boomApp.close();
+    }
   });
 
   it("statusCode errors keep their status and a code", async () => {
@@ -574,8 +594,9 @@ describe("SSE streams (audit #23, #27)", () => {
   });
 
   it("/api/events replays from Last-Event-ID / ?since and streams live events", async () => {
-    const a = ctx.events.emit("settings.changed", { keys: ["a"] });
-    const b = ctx.events.emit("settings.changed", { keys: ["b"] });
+    // Payloads as the service sends them (the settings document); the system name tells the two events apart.
+    const a = ctx.events.emit("settings.changed", { settings: { ...ctx.settings(), systemName: "event-a" } });
+    const b = ctx.events.emit("settings.changed", { settings: { ...ctx.settings(), systemName: "event-b" } });
     const pending = readSse(`${base}/api/events?token=${token}&since=${a.id}`, {}, 700);
     await new Promise((r) => setTimeout(r, 200));
     const live = ctx.events.emit("routine.changed", { id: "x", action: "test" });
@@ -585,7 +606,7 @@ describe("SSE streams (audit #23, #27)", () => {
     expect(out.text).not.toContain(`id: ${a.id}\n`);
     expect(out.text).toContain(`id: ${b.id}\nevent: settings.changed\n`);
     expect(out.text).toContain(`id: ${live.id}\nevent: routine.changed\n`);
-    expect(out.text).toContain('"keys":["b"]');
+    expect(out.text).toContain('"systemName":"event-b"');
 
     const viaHeader = await readSse(
       `${base}/api/events?token=${token}`,

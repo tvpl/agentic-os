@@ -1,0 +1,19 @@
+{
+  "id": 19,
+  "type": "notification.created",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "id": "n_0123abcd-4567",
+    "kind": "run",
+    "tone": "warn",
+    "title": "Run failed",
+    "body": null,
+    "href": "/runs",
+    "approvalId": null,
+    "runId": "3f1d2c4a-0b7e-4c1a-9a55-2b6d8e0f1a11",
+    "ts": 1760000000000,
+    "read": false,
+    "dedupeKey": null
+  }
+}

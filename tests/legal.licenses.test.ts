@@ -242,7 +242,7 @@ describe("C7 the notice lists every distributed package with its license text", 
     const reached = reachableFromWorkspaces();
     expect([...reached].filter((k) => !flagged.has(k))).toEqual([]);
     expect([...flagged].filter((k) => !reached.has(k))).toEqual([]);
-    expect(flagged.size).toBe(184);
+    expect(flagged.size).toBe(185);
   });
 
   it("C7 every distributed package has its name, version, SPDX and tarball URL in a row, and the text of its license file", () => {
@@ -266,7 +266,7 @@ describe("C7 the notice lists every distributed package with its license text", 
         for (const text of files) expect(notice, `${name} license text`).toContain(text);
       }
     }
-    expect(withText + withoutFile).toBe(184);
+    expect(withText + withoutFile).toBe(185);
     // The two packages that ship no license file are named, not hidden.
     expect(withoutFile).toBeLessThanOrEqual(5);
   });
@@ -732,8 +732,8 @@ describe("C16 the SBOM", () => {
       .map((c) => `${c.name}@${c.version}`);
     expect(new Set(got)).toEqual(expected);
     expect(got).toHaveLength(expected.size);
-    expect(expected.size).toBe(183);
-    expect(distributedKeys).toHaveLength(184);
+    expect(expected.size).toBe(184);
+    expect(distributedKeys).toHaveLength(185);
     const refs = bom.components.map((c) => c["bom-ref"]);
     expect(new Set(refs).size).toBe(refs.length);
   });
@@ -790,7 +790,7 @@ describe("C16 the SBOM", () => {
       }).status,
     ).toBe(0);
     expect(fs.readFileSync(a, "utf8")).toBe(fs.readFileSync(b, "utf8"));
-    expect(JSON.parse(fs.readFileSync(a, "utf8")).components).toHaveLength(183 + 4);
+    expect(JSON.parse(fs.readFileSync(a, "utf8")).components).toHaveLength(184 + 4);
   });
 
   it("C16 npm run sbom is the script, and the default output is build/sbom/mordomo-os.cdx.json", () => {
@@ -805,16 +805,16 @@ describe("C16 the SBOM", () => {
 // ---- C17 --------------------------------------------------------------------------------------------------------------
 
 describe("C17 the real lockfile passes", () => {
-  it("C17 no distributed package and no build tool has a license the lists refuse; --check exits 0 with 184 and 484", () => {
+  it("C17 no distributed package and no build tool has a license the lists refuse; --check exits 0 with 185 and 493", () => {
     const report = lic.buildReport(ROOT);
     expect(report.environment).toEqual([]);
     expect(report.problems).toEqual([]);
-    expect(report.distributed).toHaveLength(184);
+    expect(report.distributed).toHaveLength(185);
     expect(report.tooling).toHaveLength(toolingKeys.length);
     expect(report.tooling.length).toBeGreaterThanOrEqual(480);
     const res = run(["--check"], ROOT);
     expect(res.code, res.err).toBe(0);
-    expect(res.out).toContain("184 distributed");
+    expect(res.out).toContain("185 distributed");
   });
 
   it("C17 the tools under MPL-2.0 and CC-BY-4.0 are known and none of them is a distributed package", () => {
@@ -1091,7 +1091,7 @@ describe("C36 the SBOM is a valid CycloneDX 1.5 document, and what it says is wh
     expect(named("Rajdhani")).toMatchObject({ type: "file", licenses: [{ license: { id: "OFL-1.1" } }] });
     const notice = committed;
     for (const b of REAL_POLICY.bundled) expect(notice, b.name).toContain(`### ${b.name} —`);
-    expect(bom.components).toHaveLength(183 + REAL_POLICY.bundled.length);
+    expect(bom.components).toHaveLength(184 + REAL_POLICY.bundled.length);
   });
 
   it("C36 the application's own licence is the manifest's SPDX id", () => {

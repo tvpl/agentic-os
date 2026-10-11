@@ -4,7 +4,7 @@
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Undo2 } from "lucide-react";
-import { api } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useLocale, useT } from "../../i18n";
 import { useApiQuery } from "../../queries";
 import { EmptyState } from "../../components/primitives";
@@ -39,7 +39,7 @@ export default function FactsWidget(_props: WidgetProps) {
     refetchInterval: 120_000,
   });
   const retract = useMutation({
-    mutationFn: (id: number) => api.post(`/api/memory/facts/${id}/retract`),
+    mutationFn: (id: number) => apiCall("POST /api/memory/facts/:id/retract", { params: { id } }),
     onSuccess: () => {
       toast(t("desktop.facts.retracted"), "ok");
       qc.invalidateQueries({ queryKey: ["memory", "facts"] }).catch(() => undefined);

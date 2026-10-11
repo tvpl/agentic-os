@@ -388,7 +388,7 @@ describe("daily journal", () => {
     expect(again).toBe(dispose);
 
     bus.emit("run.finished", { runId: "run-1", status: "done", durationMs: 4200 });
-    bus.emit("run.started", { runId: "run-2" });
+    bus.emit("run.started", { runId: "run-2", pid: null });
     let runs = journalSections(readJournal(ctx.paths, localDateString())!.content).find(
       (s) => s.name === "Runs",
     )!;
@@ -396,7 +396,7 @@ describe("daily journal", () => {
     expect(runs.lines[0]).toContain("run run-1 → done in 4s");
 
     dispose();
-    bus.emit("run.finished", { runId: "run-3", status: "failed" });
+    bus.emit("run.finished", { runId: "run-3", status: "failed", durationMs: 1 });
     runs = journalSections(readJournal(ctx.paths, localDateString())!.content).find(
       (s) => s.name === "Runs",
     )!;

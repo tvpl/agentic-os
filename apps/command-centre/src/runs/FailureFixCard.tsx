@@ -4,7 +4,7 @@
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { api } from "../api";
+import { apiCall } from "../apiCall";
 import { useT } from "../i18n";
 import { qk, useOsProviders } from "../queries";
 import { useToast } from "../components/ui";
@@ -32,8 +32,11 @@ export function FailureFixCard({
   const fix = failureFix(failure, provider, status, providers.data);
   const retry = useMutation({
     mutationFn: () =>
-      api.post<{ runId: string | null }>(`/api/runs/${encodeURIComponent(runId)}/retry`, {
-        submissionId: crypto.randomUUID(),
+      apiCall("POST /api/runs/:id/retry", {
+        params: { id: runId },
+        body: {
+          submissionId: crypto.randomUUID(),
+        },
       }),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["runs"] }).catch(() => undefined);

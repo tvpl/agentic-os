@@ -6,7 +6,7 @@ O MordomoOS é distribuído sob a Functional Source License 1.1 com licença fut
 
 Gerado por `node scripts/licenses.mjs --write` a partir de `package-lock.json`, dos arquivos de licença dos pacotes instalados e de `legal/license-policy.json`. **Não edite à mão**: `npm run licenses:write` reescreve e `npm run licenses:check` reprova um arquivo que não bate.
 
-Pacotes npm de runtime: 184 · ferramentas de build (não distribuídas): 484
+Pacotes npm de runtime: 185 · ferramentas de build (não distribuídas): 493
 
 "Runtime" é o que o `package-lock.json` marca como não-`dev`: as dependências que o produto precisa para rodar. É um **superconjunto** do que o instalador leva (o código vai em dois bundles que usam só parte desses pacotes, e o módulo nativo do SQLite vai à parte): listar todos é o lado seguro para os avisos, e o aviso não afirma que cada um está dentro do instalador.
 
@@ -416,8 +416,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 | util-deprecate | 1.0.2 | MIT | https://registry.npmjs.org/util-deprecate/-/util-deprecate-1.0.2.tgz |
 | wrappy | 1.0.2 | ISC | https://registry.npmjs.org/wrappy/-/wrappy-1.0.2.tgz |
 | zod | 3.25.76 | MIT | https://registry.npmjs.org/zod/-/zod-3.25.76.tgz |
+| zod-to-json-schema | 3.25.2 | ISC | https://registry.npmjs.org/zod-to-json-schema/-/zod-to-json-schema-3.25.2.tgz |
 
-### Textos de licença (115 textos distintos)
+### Textos de licença (116 textos distintos)
 
 #### Texto 1 — 2 pacotes
 
@@ -3904,6 +3905,28 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~~
 
+#### Texto 116 — 1 pacote
+
+zod-to-json-schema@3.25.2
+
+~~~~text
+ISC License
+
+Copyright (c) 2020, Stefan Terdell
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+~~~~
+
 ## 3. Ferramentas de build (não distribuídas)
 
 Usadas para compilar, testar e empacotar. Nenhuma entra no instalador; por isso aparecem só com nome, versão e licença. Uma ferramenta sob `MPL-2.0` ou `CC-BY-4.0` é aceita aqui e reprovada se virar dependência de runtime.
@@ -3911,6 +3934,10 @@ Usadas para compilar, testar e empacotar. Nenhuma entra no instalador; por isso 
 | Pacote | Versão | Licença (SPDX) |
 | --- | --- | --- |
 | @adobe/css-tools | 4.5.0 | MIT |
+| @apidevtools/json-schema-ref-parser | 16.0.3 | MIT |
+| @apidevtools/openapi-schemas | 2.1.0 | MIT |
+| @apidevtools/swagger-methods | 3.0.2 | MIT |
+| @apidevtools/swagger-parser | 13.1.0 | MIT |
 | @asamuzakjp/css-color | 6.0.7 | MIT |
 | @asamuzakjp/dom-selector | 8.3.2 | MIT |
 | @axe-core/playwright | 4.13.0 | MPL-2.0 |
@@ -4026,11 +4053,13 @@ Usadas para compilar, testar e empacotar. Nenhuma entra no instalador; por isso 
 | acorn-jsx | 5.3.2 | MIT |
 | ajv | 6.15.0 | MIT |
 | ajv | 6.15.0 | MIT |
+| ajv-draft-04 | 1.0.0 | MIT |
 | ansi-regex | 5.0.1 | MIT |
 | ansi-regex | 6.4.0 | MIT |
 | ansi-styles | 4.3.0 | MIT |
 | ansi-styles | 4.3.0 | MIT |
 | ansi-styles | 5.2.0 | MIT |
+| argparse | 2.0.1 | Python-2.0 |
 | argparse | 2.0.1 | Python-2.0 |
 | argparse | 2.0.1 | Python-2.0 |
 | aria-query | 5.3.0 | Apache-2.0 |
@@ -4063,6 +4092,7 @@ Usadas para compilar, testar e empacotar. Nenhuma entra no instalador; por isso 
 | call-bind | 1.0.9 | MIT |
 | call-bind-apply-helpers | 1.0.2 | MIT |
 | call-bound | 1.0.4 | MIT |
+| call-me-maybe | 1.0.2 | MIT |
 | callsites | 3.1.0 | MIT |
 | caniuse-lite | 1.0.30001810 | CC-BY-4.0 |
 | chai | 6.2.2 | MIT |
@@ -4215,6 +4245,7 @@ Usadas para compilar, testar e empacotar. Nenhuma entra no instalador; por isso 
 | isexe | 2.0.0 | ISC |
 | js-yaml | 4.3.2 | MIT |
 | js-yaml | 4.3.2 | MIT |
+| js-yaml | 5.4.3 | MIT |
 | jsdom | 30.0.1 | MIT |
 | jsesc | 3.1.0 | MIT |
 | json-buffer | 3.0.1 | MIT |
@@ -4273,6 +4304,7 @@ Usadas para compilar, testar e empacotar. Nenhuma entra no instalador; por isso 
 | object.fromentries | 2.0.8 | MIT |
 | object.values | 1.2.1 | MIT |
 | obug | 2.1.4 | MIT |
+| openapi-types | 12.1.3 | MIT |
 | optionator | 0.9.4 | MIT |
 | own-keys | 1.0.2 | MIT |
 | p-limit | 3.1.0 | MIT |
@@ -4366,7 +4398,7 @@ Usadas para compilar, testar e empacotar. Nenhuma entra no instalador; por isso 
 | typescript | 5.9.3 | Apache-2.0 |
 | typescript-eslint | 8.69.0 | MIT |
 | unbox-primitive | 1.1.0 | MIT |
-| undici | 8.10.1 | MIT |
+| undici | 8.11.2 | MIT |
 | undici-types | 6.21.0 | MIT |
 | unicorn-magic | 0.4.1 | MIT |
 | update-browserslist-db | 1.3.2 | MIT |

@@ -24,7 +24,7 @@ import {
 } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { api } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useLang, useT } from "../../i18n";
 import { qk, useInvalidate, useOsProviders, useOsSkills } from "../../queries";
 import { ErrorBox, Skeleton, useToast } from "../../components/ui";
@@ -234,12 +234,12 @@ export default function SkillsScene(_props: SceneViewProps) {
 
   /* ---- the chosen skill's actions ------------------------------------------- */
   const favorite = useMutation({
-    mutationFn: (slug: string) => api.post(`/api/skills/${encodeURIComponent(slug)}/favorite`),
+    mutationFn: (slug: string) => apiCall("POST /api/skills/:slug/favorite", { params: { slug } }),
     onSuccess: () => invalidate(qk.skills),
     onError: (err) => toast(errorMessage(err), "danger"),
   });
   const enable = useMutation({
-    mutationFn: (slug: string) => api.post(`/api/skills/${encodeURIComponent(slug)}/toggle`),
+    mutationFn: (slug: string) => apiCall("POST /api/skills/:slug/toggle", { params: { slug } }),
     onSuccess: () => invalidate(qk.skills),
     onError: (err) => toast(errorMessage(err), "danger"),
   });

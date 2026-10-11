@@ -5,7 +5,8 @@
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Play, RotateCcw, Target } from "lucide-react";
-import { api, type Objective, type ObjectiveStep } from "../../api";
+import { type Objective, type ObjectiveStep } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useT, type TKey } from "../../i18n";
 import { qk, useOsObjectives } from "../../queries";
 import { EmptyState } from "../../components/primitives";
@@ -40,7 +41,7 @@ export default function MissionWidget(_props: WidgetProps) {
   };
   const dispatch = useMutation({
     mutationFn: (id: string) =>
-      api.post<{ dispatched: unknown[] }>(`/api/objectives/${encodeURIComponent(id)}/dispatch`, { limit: 3 }),
+      apiCall("POST /api/objectives/:id/dispatch", { params: { id }, body: { limit: 3 } }),
     onSuccess: (r) => {
       toast(t("desktop.objectives.dispatchedCount", { n: r.dispatched.length }), "ok");
       refresh();
@@ -49,7 +50,7 @@ export default function MissionWidget(_props: WidgetProps) {
   });
   const retry = useMutation({
     mutationFn: ({ id, step }: { id: string; step: string }) =>
-      api.post(`/api/objectives/${encodeURIComponent(id)}/steps/${encodeURIComponent(step)}/retry`, {}),
+      apiCall("POST /api/objectives/:id/steps/:stepId/retry", { params: { id, stepId: step }, body: {} }),
     onSuccess: refresh,
     onError: (err: Error) => toast(err.message, "danger"),
   });

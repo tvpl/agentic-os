@@ -10,7 +10,8 @@ import {
 import ServiceHealthBanner from "./components/ServiceHealthBanner";
 import { HashRouter, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, needsPairing, setDeviceToken, type Meta } from "./api";
+import { needsPairing, setDeviceToken, type Meta } from "./api";
+import { apiCall } from "./apiCall";
 import { I18nContext, useT, type Lang, type TKey } from "./i18n";
 import { qk, useOsUiPreferences } from "./queries";
 import {
@@ -71,7 +72,7 @@ function AppInner() {
   const qc = useQueryClient();
   const metaQuery = useQuery({
     queryKey: qk.meta,
-    queryFn: ({ signal }) => api.get<Meta>("/api/meta", { signal }),
+    queryFn: ({ signal }) => apiCall("GET /api/meta", undefined, { signal }),
     retry: 1,
   });
   const meta = metaQuery.data ?? null;
@@ -251,7 +252,7 @@ function PairingScreen({ meta }: { meta: Meta }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.post<{ token: string }>("/api/pair/claim", { code, name });
+      const res = await apiCall("POST /api/pair/claim", { body: { code, name } });
       setDeviceToken(res.token);
       location.reload();
     } catch (err) {

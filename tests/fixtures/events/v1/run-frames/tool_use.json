@@ -1,0 +1,12 @@
+{
+  "type": "tool_use",
+  "ts": 1760000000300,
+  "tool": "Read",
+  "detail": "/tmp/x",
+  "paths": ["/tmp/x"],
+  "callId": "c1",
+  "phase": "end",
+  "durationMs": 12,
+  "outcome": "ok",
+  "v": 1
+}

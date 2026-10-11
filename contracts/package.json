@@ -23,6 +23,10 @@
     "./policy": {
       "types": "./dist/policy.d.ts",
       "default": "./dist/policy.js"
+    },
+    "./events": {
+      "types": "./dist/eventRegistry.d.ts",
+      "default": "./dist/eventRegistry.js"
     }
   },
   "files": [

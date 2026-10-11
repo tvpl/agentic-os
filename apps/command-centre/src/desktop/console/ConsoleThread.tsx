@@ -20,7 +20,8 @@ import type { HumanEvent } from "../../runs/humanize";
 import type { OpenPanel } from "../panelKinds";
 import { appKindOf } from "../apps";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type ArtifactEntry } from "../../api";
+import { type ArtifactEntry } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useOsArtifacts, useOsProviders } from "../../queries";
 import { useToast } from "../../components/ui";
 import { FailureFixCard } from "../../runs/FailureFixCard";
@@ -123,14 +124,16 @@ function Turn({
   const providers = useOsProviders();
   const send = useMutation({
     mutationFn: (a: ArtifactEntry) =>
-      api.post<{ ok: true }>("/api/channels/telegram/send", {
-        text: `${a.file}\n${a.path}`,
+      apiCall("POST /api/channels/telegram/send", {
+        body: {
+          text: `${a.file}\n${a.path}`,
+        },
       }),
     onSuccess: () => toast(t("desktop.artifact.sent"), "ok"),
     onError: (err: Error) => toast(err.message, "danger"),
   });
   const forget = useMutation({
-    mutationFn: (id: number) => api.post(`/api/memory/facts/${id}/retract`),
+    mutationFn: (id: number) => apiCall("POST /api/memory/facts/:id/retract", { params: { id } }),
     onSuccess: () => {
       toast(t("desktop.facts.retracted"), "ok");
       qc.invalidateQueries({ queryKey: ["memory", "facts"] }).catch(() => undefined);

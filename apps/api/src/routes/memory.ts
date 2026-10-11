@@ -1,8 +1,6 @@
 import path from "node:path";
-import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import {
-  JOURNAL_SECTIONS,
   appendJournal,
   assertFact,
   buildGraph,
@@ -12,7 +10,6 @@ import {
   generateRouters,
   homeReadScope,
   installJournalHooks,
-  isJournalDate,
   journalSections,
   listFacets,
   listJournalDates,
@@ -34,9 +31,8 @@ import {
   type ReadScope,
 } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
+import { bind } from "../contract.js";
 import { httpError } from "./common.js";
-
-const JournalDateParam = z.string().refine(isJournalDate, { message: "expected YYYY-MM-DD" });
 
 /**
  * What `POST /api/memory/open` hands to the OS (docs/security.md): documents
@@ -75,44 +71,24 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     disposeJournalHooks();
   });
 
-  app.get("/api/memory/status", { config: { scope: "monitor" } }, async () => {
+  bind(app, "memory.status", async () => {
     const last = ctx.indexer.lastIndex();
     const facets = listFacets(ctx.db);
     return { lastIndex: last, facets };
   });
 
-  app.post("/api/memory/index", { config: { scope: "owner" } }, async () => {
+  bind(app, "memory.index", async () => {
     // Chunked, non-blocking indexing: emits index.progress / index.finished on the bus.
     const stats = await ctx.indexer.indexAllAsync();
     return { stats };
   });
 
-  app.get("/api/memory/search", { config: { scope: "content" } }, async (req) => {
-    const q = z
-      .object({
-        q: z.string().default(""),
-        area: z.string().optional(),
-        ext: z.string().optional(),
-        dir: z.string().optional(),
-        tag: z.string().optional(),
-        modifiedAfter: z.coerce.number().optional(),
-        limit: z.coerce.number().int().min(1).max(200).optional(),
-      })
-      .parse(req.query);
+  bind(app, "memory.search", async ({ query: q }) => {
     // Rows are judged by today's policy as they are read (an old index may still hold a private path).
     return searchFiles(ctx.db, { query: q.q, ...q, allow: ctx.indexer.rowFilter() });
   });
 
-  app.get("/api/memory/graph", { config: { scope: "content" } }, async (req) => {
-    const q = z
-      .object({
-        area: z.string().optional(),
-        dir: z.string().optional(),
-        q: z.string().optional(),
-        maxNodes: z.coerce.number().int().min(10).max(4000).optional(),
-        related: z.coerce.boolean().optional(),
-      })
-      .parse(req.query);
+  bind(app, "memory.graph", async ({ query: q }) => {
     return buildGraph(ctx.db, {
       area: q.area,
       dir: q.dir,
@@ -122,13 +98,11 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     });
   });
 
-  app.get("/api/memory/related", { config: { scope: "content" } }, async (req) => {
-    const { id } = z.object({ id: z.coerce.number().int() }).parse(req.query);
+  bind(app, "memory.related", async ({ query: { id } }) => {
     return relatedFiles(ctx.db, id);
   });
 
-  app.get("/api/memory/preview", { config: { scope: "content" } }, async (req) => {
-    const { p } = z.object({ p: z.string() }).parse(req.query);
+  bind(app, "memory.preview", async ({ query: { p } }) => {
     // previewFile enforces root containment, the secret blocklist and the home's
     // private config/ and logs/ (403 on violation).
     try {
@@ -148,8 +122,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
    * Open a file with the OS default application — explicit user action only.
    * The executable is a fixed platform constant; the path is containment-checked.
    */
-  app.post("/api/memory/open", { config: { scope: "owner" } }, async (req) => {
-    const { p } = z.object({ p: z.string() }).parse(req.body);
+  bind(app, "memory.open", async ({ body: { p } }) => {
     // Same filter as the preview and the indexer; PathAccessError → 403.
     const access = { homeDir: ctx.paths.home };
     const resolved = resolveOpenablePath(ctx.settings(), [ctx.paths.home], p, access);
@@ -166,29 +139,17 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     return { opened: resolved };
   });
 
-  app.post("/api/memory/routers", { config: { scope: "owner" } }, async () => {
+  bind(app, "memory.routers", async () => {
     const result = generateRouters(ctx.db, ctx.paths, ctx.settings());
     return { written: result.written };
   });
 
-  app.get("/api/memory/routers/check", { config: { scope: "content" } }, async () =>
-    checkRouters(ctx.db, ctx.paths, ctx.settings()),
-  );
+  bind(app, "memory.routers.check", async () => checkRouters(ctx.db, ctx.paths, ctx.settings()));
 
   // ---- memory v2: layered recall, journal, hygiene, facts, inline fields ----
 
   /** Layered retrieval (the deterministic `brain.js`): keywords → index → top-K → sections → pointers. */
-  app.get("/api/memory/recall", { config: { scope: "content" } }, async (req) => {
-    const q = z
-      .object({
-        q: z.string().min(1).max(2000),
-        k: z.coerce.number().int().min(1).max(10).optional(),
-        area: z.string().optional(),
-        excerptChars: z.coerce.number().int().min(200).max(20_000).optional(),
-        /** Skip the frequency bookkeeping (dry runs, UI previews). */
-        record: z.coerce.boolean().optional(),
-      })
-      .parse(req.query);
+  bind(app, "memory.recall", async ({ query: q }, req) => {
     const result = recall(ctx.db, ctx.paths, ctx.settings(), q.q, {
       k: q.k,
       area: q.area,
@@ -200,18 +161,12 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     return result;
   });
 
-  app.get("/api/memory/recall/stats", { config: { scope: "content" } }, async (req) => {
-    const { limit } = z
-      .object({ limit: z.coerce.number().int().min(1).max(500).optional() })
-      .parse(req.query);
+  bind(app, "memory.recall.stats", async ({ query: { limit } }) => {
     return recallStats(ctx.db, limit);
   });
 
   /** A day's journal (created from the template on first access) — or the last N days with `days=`. */
-  app.get("/api/memory/journal", { config: { scope: "content" } }, async (req) => {
-    const q = z
-      .object({ date: JournalDateParam.optional(), days: z.coerce.number().int().min(1).max(90).optional() })
-      .parse(req.query);
+  bind(app, "memory.journal", async ({ query: q }) => {
     if (q.days) {
       const today = q.date ?? localDateString();
       const days = recentJournals(ctx.paths, q.days, today);
@@ -221,30 +176,14 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     return { ...day, sections: journalSections(day.content), dates: listJournalDates(ctx.paths) };
   });
 
-  app.post("/api/memory/journal/append", { config: { scope: "owner" } }, async (req) => {
-    const body = z
-      .object({
-        text: z.string().min(1).max(4000),
-        section: z.enum(JOURNAL_SECTIONS).optional(),
-        date: JournalDateParam.optional(),
-        timestamp: z.boolean().optional(),
-      })
-      .parse(req.body);
+  bind(app, "memory.journal.append", async ({ body }, req) => {
     if (req.principal?.kind === "run") ctx.noteMemoryWrite(req.principal.runId);
     const day = appendJournal(ctx.paths, body);
     return { ...day, sections: journalSections(day.content) };
   });
 
   /** Orphans, dangling router links, stale files, skills never run, silent routines, unused connectors. */
-  app.get("/api/memory/hygiene", { config: { scope: "content" } }, async (req) => {
-    const q = z
-      .object({
-        staleDays: z.coerce.number().int().min(1).max(3650).optional(),
-        silentRoutineDays: z.coerce.number().int().min(1).max(3650).optional(),
-        unusedConnectorDays: z.coerce.number().int().min(1).max(3650).optional(),
-        perKind: z.coerce.number().int().min(1).max(500).optional(),
-      })
-      .parse(req.query);
+  bind(app, "memory.hygiene", async ({ query: q }) => {
     return memoryHygiene(
       ctx.db,
       ctx.paths,
@@ -261,30 +200,11 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   });
 
   /** Bi-temporal facts: currently valid by default; `asOf=` for a point in time; `includeExpired=true` for history. */
-  app.get("/api/memory/facts", { config: { scope: "content" } }, async (req) => {
-    const q = z
-      .object({
-        subject: z.string().max(2000).optional(),
-        predicate: z.string().max(2000).optional(),
-        asOf: z.coerce.number().int().optional(),
-        includeExpired: z.coerce.boolean().optional(),
-        limit: z.coerce.number().int().min(1).max(2000).optional(),
-      })
-      .parse(req.query);
+  bind(app, "memory.facts.list", async ({ query: q }) => {
     return { facts: queryFacts(ctx.db, q), stats: factStats(ctx.db) };
   });
 
-  app.post("/api/memory/facts", { config: { scope: "owner" } }, async (req, reply) => {
-    const body = z
-      .object({
-        subject: z.string().min(1).max(2000),
-        predicate: z.string().min(1).max(2000),
-        object: z.string().min(1).max(2000),
-        validFrom: z.number().int().optional(),
-        sourceRunId: z.string().max(200).nullable().optional(),
-        sourcePath: z.string().max(4096).nullable().optional(),
-      })
-      .parse(req.body);
+  bind(app, "memory.facts.assert", async ({ body }, req, reply) => {
     // A run's credential says which run asserted the fact; the body cannot name another.
     if (req.principal?.kind === "run") {
       ctx.noteMemoryWrite(req.principal.runId);
@@ -295,21 +215,14 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     return result;
   });
 
-  app.post("/api/memory/facts/:id/retract", { config: { scope: "owner" } }, async (req) => {
-    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+  bind(app, "memory.facts.retract", async ({ params: { id } }) => {
     const fact = retractFact(ctx.db, id);
     if (!fact) throw httpError(404, "Fact not found", "not_found");
     return fact;
   });
 
   /** Dataview-style query over inline `key:: value` fields: `where=key`, `key:value` or `key:~substring`. */
-  app.get("/api/memory/query", { config: { scope: "content" } }, async (req) => {
-    const q = z
-      .object({
-        where: z.string().min(1).max(500),
-        limit: z.coerce.number().int().min(1).max(1000).optional(),
-      })
-      .parse(req.query);
+  bind(app, "memory.query", async ({ query: q }) => {
     return { where: q.where, files: queryFilesByField(ctx.db, q) };
   });
 }

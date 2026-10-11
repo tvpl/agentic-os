@@ -7,7 +7,8 @@
 import { useState } from "react";
 import { NotebookPen } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type RunRecord } from "../api";
+import { type RunRecord } from "../api";
+import { apiCall } from "../apiCall";
 import { useT } from "../i18n";
 import { qk, useApiQuery } from "../queries";
 import { useToast } from "../components/ui";
@@ -34,9 +35,12 @@ export function SkillNoteCard({ run }: { run: RunRecord }) {
   const [text, setText] = useState("");
   const save = useMutation({
     mutationFn: (body: string) =>
-      api.post<{ notes: string }>(`/api/skills/${encodeURIComponent(slug)}/notes`, {
-        text: body,
-        runId: run.id,
+      apiCall("POST /api/skills/:slug/notes", {
+        params: { slug },
+        body: {
+          text: body,
+          runId: run.id,
+        },
       }),
     onSuccess: () => {
       setText("");

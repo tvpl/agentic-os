@@ -64,7 +64,7 @@ const skills: Skill[] = ["workspace-digest", "code-review", "daily-tech-news", "
     inputs: [],
     providers: ["claude", "cursor", "codex"],
     recommendedModel: i % 2 ? "claude-sonnet-5" : null,
-    recommendedEffort: ["low", "medium", "high", "default"][i % 4]!,
+    recommendedEffort: (["low", "medium", "high", "default"] as const)[i % 4]!,
     mode: i === 1 ? "write" : "read_only",
     enabled: true,
     version: "1.0.0",

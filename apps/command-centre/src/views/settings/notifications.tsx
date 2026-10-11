@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { Bell, BellOff } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../../api";
+import { apiCall } from "../../apiCall";
 
 import { useLocale, useT } from "../../i18n";
 import { readQuietHours, storeQuietHours, type QuietHours } from "../../hooks/rhythm";
@@ -235,7 +235,7 @@ export function SentinelsCard({ s, put }: { s: SettingsShape; put: Put }) {
   const channels = s.channels;
   const test = useMutation({
     // A failure is an error envelope (409 channel_not_configured, 502 channel_failed): its message is the reason.
-    mutationFn: () => api.post<{ ok: true }>("/api/channels/telegram/test", {}),
+    mutationFn: () => apiCall("POST /api/channels/telegram/test", { body: {} }),
     onSuccess: () => toast(t("apps.settings.telegramOk"), "ok"),
     onError: (err: Error) => toast(`${t("apps.settings.telegramFailed")}: ${err.message}`, "danger"),
   });
@@ -401,14 +401,14 @@ function PushServerCard({ s, put }: { s: SettingsShape; put: Put }) {
     "/api/push/subscriptions",
   );
   const test = useMutation({
-    mutationFn: () => api.post<{ ok: true }>("/api/push/test", {}),
+    mutationFn: () => apiCall("POST /api/push/test", { body: {} }),
     onSuccess: () => toast(t("apps.settings.telegramOk").replace("Telegram", "Push"), "ok"),
     onError: (err: Error) => toast(`${t("apps.settings.pushFailed")}: ${err.message}`, "danger"),
     // Failed deliveries count against a subscription either way.
     onSettled: () => qc.invalidateQueries({ queryKey: qk.pushSubscriptions }).catch(() => undefined),
   });
   const remove = useMutation({
-    mutationFn: (id: string) => api.del(`/api/push/subscriptions/${encodeURIComponent(id)}`),
+    mutationFn: (id: string) => apiCall("DELETE /api/push/subscriptions/:id", { params: { id } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.pushSubscriptions }).catch(() => undefined),
   });
   if (!channels) return null;

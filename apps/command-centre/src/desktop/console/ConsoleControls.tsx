@@ -7,13 +7,8 @@
 import { useRef, useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  api,
-  type ProviderId,
-  type ProviderSnapshot,
-  type SessionDetail,
-  type SessionRecord,
-} from "../../api";
+import { type ProviderId, type ProviderSnapshot, type SessionDetail, type SessionRecord } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useLocale, useT } from "../../i18n";
 import { qk, useApiQuery } from "../../queries";
 import { timeAgo, useToast } from "../../components/ui";
@@ -93,7 +88,7 @@ export function ConsoleControls({
   // The provider control cycles the enabled providers; the default is what a
   // fresh conversation will use, so that is what it sets.
   const switchDefault = useMutation({
-    mutationFn: (next: ProviderId) => api.put("/api/providers/default", { provider: next }),
+    mutationFn: (next: ProviderId) => apiCall("PUT /api/providers/default", { body: { provider: next } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.providers }).catch(() => undefined);
       qc.invalidateQueries({ queryKey: qk.meta }).catch(() => undefined);
@@ -350,12 +345,12 @@ function ConversationList({ currentId, onPick }: { currentId: string | null; onP
   });
   const rename = useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) =>
-      api.patch(`/api/sessions/${encodeURIComponent(id)}`, { title }),
+      apiCall("PATCH /api/sessions/:id", { params: { id }, body: { title } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }).catch(() => undefined),
     onError: (err: Error) => toast(err.message, "danger"),
   });
   const forget = useMutation({
-    mutationFn: (id: string) => api.del(`/api/sessions/${encodeURIComponent(id)}`),
+    mutationFn: (id: string) => apiCall("DELETE /api/sessions/:id", { params: { id } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }).catch(() => undefined),
     onError: (err: Error) => toast(err.message, "danger"),
   });

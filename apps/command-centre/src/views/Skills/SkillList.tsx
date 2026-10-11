@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { usePanelSearchParams } from "../../desktop/appRoute";
 import { useMutation } from "@tanstack/react-query";
 import { Plus, Search, Sparkles, Star, Upload, Store } from "lucide-react";
-import { api, type ProviderId, type Skill } from "../../api";
+import { type ProviderId, type Skill } from "../../api";
+import { apiCall } from "../../apiCall";
 import { providerOptions } from "../../providers/options";
 import { qk, useInvalidate, useOsProviders } from "../../queries";
 import { useLang, useT } from "../../i18n";
@@ -37,7 +38,7 @@ export default function SkillList({ skills }: { skills: Skill[] }) {
   const [favOnly, setFavOnly] = useState(false);
 
   const favorite = useMutation({
-    mutationFn: (slug: string) => api.post(`/api/skills/${encodeURIComponent(slug)}/favorite`),
+    mutationFn: (slug: string) => apiCall("POST /api/skills/:slug/favorite", { params: { slug } }),
     onSuccess: () => invalidate(qk.skills),
     onError: (err) => toast(errorMessage(err), "danger"),
   });

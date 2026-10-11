@@ -10,7 +10,8 @@ import { Link } from "react-router-dom";
 import { useState } from "react";
 import { Activity, CalendarClock, FileText, Play, Sparkles, Square, Target } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type ArtifactEntry, type Objective, type RoutineStatus, type RunRecord } from "../api";
+import { type ArtifactEntry, type Objective, type RoutineStatus, type RunSummary } from "../api";
+import { apiCall } from "../apiCall";
 import { useLocale, useT } from "../i18n";
 import { qk, useOsConnectors, useOsObjectives, useOsSettings } from "../queries";
 import { isConfigured } from "./appRows";
@@ -36,7 +37,7 @@ import { Tooltip } from "../ui";
 const DAY_MS = 86_400_000;
 
 /** One-line summary of a finished run: the skill or the prompt, plus its status. */
-export function runSummary(run: RunRecord, fallback: string): string {
+export function runSummary(run: RunSummary, fallback: string): string {
   const head = run.skillSlug ? `/${run.skillSlug}` : run.promptSummary.trim().split(/\r?\n/)[0]?.slice(0, 60);
   return head && head.length > 0 ? head : fallback;
 }
@@ -126,8 +127,11 @@ function ObjectiveWork({ objectives }: { objectives: Objective[] }) {
     objectives.find((objective) => objective.status === "completed");
   const dispatch = useMutation({
     mutationFn: () =>
-      api.post<{ dispatched: unknown[] }>(`/api/objectives/${encodeURIComponent(current!.id)}/dispatch`, {
-        limit: 2,
+      apiCall("POST /api/objectives/:id/dispatch", {
+        params: { id: current!.id },
+        body: {
+          limit: 2,
+        },
       }),
     onSuccess: (result) => {
       toast(t("desktop.objectives.dispatchedCount", { n: result.dispatched.length }), "ok");
@@ -182,7 +186,7 @@ function ObjectiveWork({ objectives }: { objectives: Objective[] }) {
   );
 }
 
-function ActiveRunRow({ run, now }: { run: RunRecord; now: number }) {
+function ActiveRunRow({ run, now }: { run: RunSummary; now: number }) {
   const t = useT();
   const toast = useToast();
   const confirm = useConfirm();
@@ -200,7 +204,7 @@ function ActiveRunRow({ run, now }: { run: RunRecord; now: number }) {
     }
   }
   const cancel = useMutation({
-    mutationFn: () => api.post(`/api/runs/${encodeURIComponent(run.id)}/cancel`),
+    mutationFn: () => apiCall("POST /api/runs/:id/cancel", { params: { id: run.id } }),
     onSuccess: () => {
       toast(t("runs.cancelled"), "ok");
       qc.invalidateQueries({ queryKey: ["runs"] }).catch(() => undefined);
@@ -250,7 +254,7 @@ function ActiveRunRow({ run, now }: { run: RunRecord; now: number }) {
   );
 }
 
-function FinishedRunRow({ run }: { run: RunRecord }) {
+function FinishedRunRow({ run }: { run: RunSummary }) {
   const t = useT();
   const locale = useLocale();
   return (
@@ -287,7 +291,7 @@ function PausedRoutine({ routine }: { routine: RoutineStatus }) {
   const toast = useToast();
   const qc = useQueryClient();
   const enable = useMutation({
-    mutationFn: () => api.post(`/api/routines/${encodeURIComponent(routine.id)}/toggle`),
+    mutationFn: () => apiCall("POST /api/routines/:id/toggle", { params: { id: routine.id } }),
     onSuccess: () => {
       toast(t("desktop.now.enabled"), "ok");
       qc.invalidateQueries({ queryKey: qk.routines }).catch(() => undefined);
@@ -357,7 +361,7 @@ const STEP_LINK: Record<StepId, string> = {
   connector: "/connectors",
 };
 
-function NextStep({ runs, routines }: { runs: RunRecord[]; routines: RoutineStatus[] }) {
+function NextStep({ runs, routines }: { runs: RunSummary[]; routines: RoutineStatus[] }) {
   const t = useT();
   const settings = useOsSettings();
   const connectors = useOsConnectors({ staleTime: 60_000, retry: false });

@@ -1,4 +1,6 @@
 import type * as Contracts from "@mordomo/contracts";
+// The subpath that does not pull in zod: the interface asks which events it can read, and never validates a payload.
+import { classifyEvent, classifyRunFrame } from "@mordomo/contracts/events";
 
 /** Typed-ish fetch layer for the local MordomoOS API. */
 
@@ -274,6 +276,9 @@ export const api = {
             } catch {
               return; // ignore malformed
             }
+            // A frame of a type this build does not know, or of a version newer than it reads, is dropped: the
+            // stream goes on with the next one (docs/events.md, rule 3).
+            if (classifyRunFrame(data).kind !== "known") return;
             onEvent(data);
             // The server ends the stream after this frame: reopening it would only ask for the same ending.
             if (data.type === "run_state") {
@@ -313,7 +318,11 @@ export const api = {
         const type = typeof parsed.type === "string" ? parsed.type : fallbackType;
         if (!type) return;
         // The server speaks the contract; the named SSE event supplies `type` when the data omits it.
-        onEvent({ ...parsed, type } as Contracts.OsEvent);
+        const event = { ...parsed, type };
+        // An event of a type this build does not know, or of a version newer than it reads, is dropped: the
+        // stream goes on with the next one (docs/events.md, rule 3).
+        if (classifyEvent(event).kind !== "known") return;
+        onEvent(event as Contracts.OsEvent);
       } catch {
         /* ignore malformed */
       }
@@ -406,6 +415,9 @@ export interface ProviderSnapshot {
 /** Localized display name/description keyed by UI language (e.g. "pt-BR"). */
 export type SkillI18n = Record<string, { name?: string; description?: string }>;
 
+/** One input a skill asks for, as the contract defines it. */
+export type SkillInput = Contracts.SkillInput;
+
 export interface Skill {
   slug: string;
   name: string;
@@ -415,17 +427,10 @@ export interface Skill {
   /** Daily spend cap for runs of this skill in USD (0 = none). */
   budgetUsd?: number;
   triggers: string[];
-  inputs: Array<{
-    name: string;
-    label: string;
-    type: string;
-    required: boolean;
-    placeholder?: string;
-    options?: string[];
-  }>;
+  inputs: SkillInput[];
   providers: ProviderId[];
   recommendedModel: string | null;
-  recommendedEffort: string;
+  recommendedEffort: Contracts.EffortLevel;
   mode: "read_only" | "write";
   enabled: boolean;
   version: string;
@@ -442,6 +447,9 @@ export interface Skill {
 }
 
 export type RunRecord = Contracts.RunRecord;
+
+/** A run as `GET /api/runs` lists it: the record without its `request` (the full record is `GET /api/runs/:id`). */
+export type RunSummary = Contracts.ApiCallResult<"GET /api/runs">[number];
 
 /** Token usage persisted on a run. */
 export type RunUsage = Contracts.RunUsage;
@@ -499,8 +507,8 @@ export interface RoutineStatus {
   webhookUrl?: string | null;
   provider: ProviderId;
   model: string | null;
-  effort: string;
-  missedPolicy: string;
+  effort: Contracts.EffortLevel;
+  missedPolicy: Contracts.Routine["missedPolicy"];
   enabled: boolean;
   /** Why the routine disabled itself, e.g. `run_once_fired`. */
   endedReason?: string | null;
@@ -516,7 +524,7 @@ export interface RoutineStatus {
   /** Daily spend cap in USD (0 = none). */
   budgetUsd?: number;
   retryOnTimeout?: boolean;
-  profile: string;
+  profile: Contracts.Routine["profile"];
   inputs: Record<string, string>;
   notify: boolean;
   backoffMs: number;
@@ -528,24 +536,24 @@ export interface RoutineStatus {
 export interface Connector {
   id: string;
   name: string;
-  kind: string;
+  kind: Contracts.Connector["kind"];
   origin: string;
   maintainer: string;
   official: boolean;
-  authMethod: string;
+  authMethod: Contracts.Connector["authMethod"];
   permissions: string[];
   readOperations: string[];
   writeOperations: string[];
   writeEnabled: boolean;
   risks: string[];
-  status: string;
+  status: Contracts.Connector["status"];
   notes: string;
   compatibleProviders: ProviderId[];
   /** Last successful read through `GET /api/connectors/:id/data`. */
   lastUsedAt?: number | null;
   /** Present when the connector declares a read-only data mapping. */
   dataMapping?: {
-    transport?: string;
+    transport?: Contracts.DataMapping["transport"];
     command?: string | null;
     url?: string | null;
     env?: string[];

@@ -12,7 +12,7 @@ import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, ClipboardList, Copy, CornerDownRight, FileText, RefreshCw, Square } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api";
+import { apiCall } from "../apiCall";
 import { useLocale, useT } from "../i18n";
 import { useOsArtifacts, useOsObjectives, useOsProviders } from "../queries";
 import { ErrorBox, Skeleton, StatusBadge, formatDuration, timeAgo, useToast } from "../components/ui";
@@ -85,7 +85,7 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
   const contextWindow = contextWindowFor(usage?.model ?? run?.model ?? null);
 
   const cancel = useMutation({
-    mutationFn: () => api.post(`/api/runs/${encodeURIComponent(id)}/cancel`),
+    mutationFn: () => apiCall("POST /api/runs/:id/cancel", { params: { id } }),
     onSuccess: () => {
       toast(t("runs.cancelled"), "ok");
       qc.invalidateQueries({ queryKey: ["run", id] }).catch(() => undefined);
@@ -128,8 +128,11 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
   };
   const repeat = useMutation({
     mutationFn: () =>
-      api.post<LaunchResponse>(`/api/runs/${encodeURIComponent(id)}/retry`, {
-        submissionId: receipt("retry"),
+      apiCall("POST /api/runs/:id/retry", {
+        params: { id },
+        body: {
+          submissionId: receipt("retry"),
+        },
       }),
     onSuccess: (res) => {
       onLaunched(res, "retry");
@@ -139,31 +142,35 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
   const continueRun = useMutation({
     mutationFn: (prompt: string) =>
       run?.sessionId
-        ? api.post<LaunchResponse>(`/api/sessions/${encodeURIComponent(run.sessionId)}/continue`, {
-            submissionId: receipt("continue"),
-            prompt,
-            mode: run.request?.mode ?? "read_only",
-            model: run.model,
-            effort: run.effort,
-            ...(run.timeoutMs ? { timeoutMs: run.timeoutMs } : {}),
+        ? apiCall("POST /api/sessions/:id/continue", {
+            params: { id: run.sessionId },
+            body: {
+              submissionId: receipt("continue"),
+              prompt,
+              mode: run.request?.mode ?? "read_only",
+              model: run.model,
+              effort: run.effort,
+              ...(run.timeoutMs ? { timeoutMs: run.timeoutMs } : {}),
+            },
           })
-        : api.post<LaunchResponse>("/api/runs", {
-            submissionId: receipt("continue"),
-            prompt,
-            mode: run?.request?.mode ?? "read_only",
-            provider: run?.provider,
-            model: run?.model,
-            effort: run?.effort,
-            cwd: run?.cwd,
-            ...(run?.timeoutMs ? { timeoutMs: run.timeoutMs } : {}),
+        : apiCall("POST /api/runs", {
+            body: {
+              submissionId: receipt("continue"),
+              prompt,
+              mode: run?.request?.mode ?? "read_only",
+              provider: run?.provider,
+              model: run?.model,
+              effort: run?.effort,
+              cwd: run?.cwd ?? undefined,
+              ...(run?.timeoutMs ? { timeoutMs: run.timeoutMs } : {}),
+            },
           }),
     onSuccess: (res) => onLaunched(res, "continue"),
     onError: (err: Error) => toast(err.message, "danger"),
   });
 
   const open = useMutation({
-    mutationFn: (p: string) =>
-      api.get<{ path: string; content: string | null }>(`/api/artifacts/file?p=${encodeURIComponent(p)}`),
+    mutationFn: (p: string) => apiCall("GET /api/artifacts/file", { query: { p: p } }),
     onSuccess: setPreview,
     onError: (err: Error) => toast(err.message, "danger"),
   });

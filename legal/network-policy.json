@@ -532,6 +532,13 @@
       "note": "`npx -y @gongrzhe/server-gmail-autoauth-mcp`"
     },
     {
+      "file": "contracts/src/api/runs.ts",
+      "kind": "program:git",
+      "count": 1,
+      "hosts": [],
+      "note": "o rótulo `kind` \"git\" do resultado do diff no contrato da rota; não executa nada"
+    },
+    {
       "file": "core/src/channels/pushEndpoint.ts",
       "kind": "module:dns",
       "count": 1,

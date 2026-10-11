@@ -188,7 +188,7 @@ describe("run manager", () => {
         started.resolve();
         await release.promise;
       }
-      yield { type: "result", ts: Date.now(), exitCode: 0, summary: "OK", durationMs: 1 };
+      yield { type: "result", ts: Date.now(), exitCode: 0, summary: "OK", durationMs: 1, timedOut: false };
     };
     manager = new RunManager(
       db,

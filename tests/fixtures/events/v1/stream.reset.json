@@ -1,0 +1,9 @@
+{
+  "id": 23,
+  "type": "stream.reset",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "lastId": 23
+  }
+}

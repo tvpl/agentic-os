@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CornerDownRight, MessageCircleQuestion, RefreshCw, Send, Square } from "lucide-react";
-import { api } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useLocale, useT } from "../../i18n";
 import { formatDuration, useToast } from "../../components/ui";
 import { useConfirm } from "../../hooks/useConfirm";
@@ -79,7 +79,7 @@ export default function RunsRun({
   }, [following]);
 
   const cancel = useMutation({
-    mutationFn: () => api.post(`/api/runs/${encodeURIComponent(id)}/cancel`),
+    mutationFn: () => apiCall("POST /api/runs/:id/cancel", { params: { id } }),
     onSuccess: () => {
       toast(t("runs.cancelled"), "ok");
       qc.invalidateQueries({ queryKey: ["run", id] }).catch(() => undefined);
@@ -97,8 +97,11 @@ export default function RunsRun({
   };
   const again = useMutation({
     mutationFn: () =>
-      api.post<{ runId: string | null }>(`/api/runs/${encodeURIComponent(id)}/retry`, {
-        submissionId: crypto.randomUUID(),
+      apiCall("POST /api/runs/:id/retry", {
+        params: { id },
+        body: {
+          submissionId: crypto.randomUUID(),
+        },
       }),
     onSuccess: launched,
     onError: (err: Error) => toast(err.message, "danger"),
@@ -106,23 +109,28 @@ export default function RunsRun({
   const continueRun = useMutation({
     mutationFn: (prompt: string) =>
       run?.sessionId
-        ? api.post<{ runId: string | null }>(`/api/sessions/${encodeURIComponent(run.sessionId)}/continue`, {
-            submissionId: crypto.randomUUID(),
-            prompt,
-            mode: run.request?.mode ?? "read_only",
-            model: run.model,
-            effort: run.effort,
-            ...(run.timeoutMs ? { timeoutMs: run.timeoutMs } : {}),
+        ? apiCall("POST /api/sessions/:id/continue", {
+            params: { id: run.sessionId },
+            body: {
+              submissionId: crypto.randomUUID(),
+              prompt,
+              mode: run.request?.mode ?? "read_only",
+              model: run.model,
+              effort: run.effort,
+              ...(run.timeoutMs ? { timeoutMs: run.timeoutMs } : {}),
+            },
           })
-        : api.post<{ runId: string | null }>("/api/runs", {
-            submissionId: crypto.randomUUID(),
-            prompt,
-            mode: run?.request?.mode ?? "read_only",
-            provider: run?.provider,
-            model: run?.model,
-            effort: run?.effort,
-            cwd: run?.cwd,
-            ...(run?.timeoutMs ? { timeoutMs: run.timeoutMs } : {}),
+        : apiCall("POST /api/runs", {
+            body: {
+              submissionId: crypto.randomUUID(),
+              prompt,
+              mode: run?.request?.mode ?? "read_only",
+              provider: run?.provider,
+              model: run?.model,
+              effort: run?.effort,
+              cwd: run?.cwd ?? undefined,
+              ...(run?.timeoutMs ? { timeoutMs: run.timeoutMs } : {}),
+            },
           }),
     onSuccess: (res) => {
       setFollowUp(null);

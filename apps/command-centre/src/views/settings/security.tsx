@@ -8,7 +8,8 @@ import {
   closeDeviceScopes,
   type DeviceScope,
 } from "@mordomo/contracts/policy";
-import { api, type ApprovalRecord, type DeviceRecord, type SettingsDoc } from "../../api";
+import { type ApprovalRecord, type DeviceRecord, type SettingsDoc } from "../../api";
+import { apiCall } from "../../apiCall";
 
 import { useLocale, useT } from "../../i18n";
 import { qk, useApiQuery, useOsMeta } from "../../queries";
@@ -35,7 +36,7 @@ export function SecurityTab({ s, put }: { s: SettingsShape; put: Put }) {
   const approvals = useApiQuery<ApprovalRecord[]>(qk.approvals, "/api/approvals");
   const resolve = useMutation({
     mutationFn: ({ id, decision }: { id: string; decision: "approved" | "denied" }) =>
-      api.post(`/api/approvals/${encodeURIComponent(id)}/resolve`, { decision }),
+      apiCall("POST /api/approvals/:id/resolve", { params: { id }, body: { decision } }),
     onSuccess: (_r, vars) => {
       toast(vars.decision === "approved" ? t("settings.approved") : t("settings.denied"), "ok");
       qc.invalidateQueries({ queryKey: qk.approvals }).catch(() => undefined);
@@ -219,16 +220,21 @@ function RemoteAccess({ s, put }: { s: SettingsShape; put: Put }) {
   const [editing, setEditing] = useState<{ id: string; scopes: DeviceScope[] } | null>(null);
   const start = useMutation({
     mutationFn: () =>
-      api.post<{ code: string; expiresAt: number }>("/api/pair/start", {
-        scopes: closeDeviceScopes(newScopes),
+      apiCall("POST /api/pair/start", {
+        body: {
+          scopes: closeDeviceScopes(newScopes),
+        },
       }),
     onSuccess: (res) => setPairing(res),
     onError: (err: Error) => toast(err.message, "danger"),
   });
   const rescope = useMutation({
     mutationFn: (vars: { id: string; scopes: DeviceScope[] }) =>
-      api.patch<DeviceRecord>(`/api/devices/${encodeURIComponent(vars.id)}`, {
-        scopes: closeDeviceScopes(vars.scopes),
+      apiCall("PATCH /api/devices/:id", {
+        params: { id: vars.id },
+        body: {
+          scopes: closeDeviceScopes(vars.scopes),
+        },
       }),
     onSuccess: () => {
       setEditing(null);
@@ -237,7 +243,7 @@ function RemoteAccess({ s, put }: { s: SettingsShape; put: Put }) {
     onError: (err: Error) => toast(err.message, "danger"),
   });
   const revoke = useMutation({
-    mutationFn: (id: string) => api.del(`/api/devices/${encodeURIComponent(id)}`),
+    mutationFn: (id: string) => apiCall("DELETE /api/devices/:id", { params: { id } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.devices }).catch(() => undefined),
     onError: (err: Error) => toast(err.message, "danger"),
   });

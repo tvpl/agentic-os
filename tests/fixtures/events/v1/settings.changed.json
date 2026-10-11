@@ -1,0 +1,171 @@
+{
+  "id": 17,
+  "type": "settings.changed",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "settings": {
+      "version": 2,
+      "systemName": "MordomoOS",
+      "language": "en",
+      "theme": "dark",
+      "accentColor": "#f97316",
+      "port": 4777,
+      "bindAddress": "127.0.0.1",
+      "timezone": "UTC",
+      "autostart": false,
+      "setupCompleted": false,
+      "defaultProvider": "claude",
+      "securityProfile": "review_before_write",
+      "providers": {
+        "claude": {
+          "enabled": false,
+          "defaultModel": null,
+          "defaultEffort": "default",
+          "binaryPath": null
+        },
+        "cursor": {
+          "enabled": false,
+          "defaultModel": null,
+          "defaultEffort": "default",
+          "binaryPath": null
+        },
+        "codex": {
+          "enabled": false,
+          "defaultModel": null,
+          "defaultEffort": "default",
+          "binaryPath": null
+        }
+      },
+      "remote": {
+        "enabled": false,
+        "allowedHosts": [],
+        "deviceTtlDays": 90,
+        "tls": {
+          "enabled": false,
+          "port": null
+        }
+      },
+      "marketplace": {
+        "registries": []
+      },
+      "updates": {
+        "check": false
+      },
+      "indexedFolders": [],
+      "excludes": [
+        ".git",
+        "node_modules",
+        "dist",
+        "build",
+        "out",
+        "target",
+        ".next",
+        ".cache",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "coverage",
+        "tmp",
+        ".tmp",
+        ".DS_Store",
+        ".env",
+        ".env.*",
+        "*.pem",
+        "*.key",
+        "*.p12",
+        "*.pfx",
+        "id_rsa*",
+        "id_ed25519*",
+        "*.keystore",
+        "credentials*.json",
+        ".credentials*",
+        ".npmrc",
+        ".netrc",
+        "secrets",
+        ".secrets",
+        ".aws",
+        ".ssh",
+        ".gnupg"
+      ],
+      "areas": ["Worker", "Documentos", "Finanças", "Projetos"],
+      "limits": {
+        "maxConcurrentRuns": 3,
+        "skillNotesMax": 40,
+        "defaultTimeoutMs": 900000,
+        "logRetentionDays": 30,
+        "logMaxFileBytes": 5242880,
+        "maxIndexedFileBytes": 2097152,
+        "previewMaxBytes": 262144,
+        "runRetentionDays": 90,
+        "runRetentionMax": 2000,
+        "backupRetention": 10,
+        "routineHistoryRetentionDays": 90,
+        "approvalTtlDays": 7,
+        "dailyBudgetUsd": 0,
+        "toolApprovalTimeoutMs": 600000
+      },
+      "favoriteSkills": [],
+      "memorySkills": ["recall", "consolidate-memory"],
+      "routines": {
+        "allowWebhooks": false,
+        "heartbeatIntervalMinutes": 30,
+        "heartbeatOkToken": "HEARTBEAT_OK"
+      },
+      "connectors": {
+        "dataCacheTtlMs": 300000,
+        "dataTimeoutMs": 30000,
+        "allowedCommands": []
+      },
+      "memory": {
+        "journalBudgetTokens": 1200
+      },
+      "sentinels": {
+        "fsWatch": {
+          "enabled": false,
+          "debounceMs": 30000
+        },
+        "repeatedFailure": {
+          "enabled": true,
+          "threshold": 2,
+          "windowHours": 24
+        },
+        "silentRoutine": {
+          "enabled": true,
+          "factor": 2
+        },
+        "connectorDelta": {
+          "enabled": true,
+          "maxItems": 50
+        },
+        "repeatDetector": {
+          "enabled": true,
+          "days": 30,
+          "minRuns": 2,
+          "similarity": 0.6
+        },
+        "triage": {
+          "enabled": true,
+          "model": "haiku",
+          "dailyBudgetUsd": 0.25,
+          "timeoutMs": 90000
+        }
+      },
+      "channels": {
+        "telegram": {
+          "enabled": false,
+          "botTokenEnv": "MORDOMO_TELEGRAM_TOKEN",
+          "chatId": "",
+          "minTone": "warn",
+          "inbound": false,
+          "allowedUserIds": []
+        },
+        "push": {
+          "enabled": false,
+          "minTone": "warn",
+          "subject": "mailto:mordomo@localhost"
+        }
+      }
+    }
+  }
+}

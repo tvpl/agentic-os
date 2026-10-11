@@ -1,7 +1,7 @@
-import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import { checkPushEndpoint, deliverPush } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
+import { bind } from "../contract.js";
 import { httpError } from "./common.js";
 
 /**
@@ -17,22 +17,13 @@ import { httpError } from "./common.js";
  * time. A subscription a device registers is its own: it alone removes it, it is deleted when the device is revoked
  * or loses `content`, and it never replaces the keys of one that someone else registered.
  */
-const Subscription = z.object({
-  endpoint: z.string().url().max(2048),
-  keys: z.object({ p256dh: z.string().min(80).max(120), auth: z.string().min(16).max(32) }),
-  expirationTime: z.number().nullable().optional(),
-});
-
 export function registerPushRoutes(app: FastifyInstance, ctx: AppContext): void {
-  app.get("/api/push/vapid", { config: { scope: "monitor" } }, async () => ({
+  bind(app, "push.vapid", async () => ({
     publicKey: ctx.push.vapidKeys().publicKey,
     enabled: ctx.settings().channels.push.enabled,
   }));
 
-  app.post("/api/push/subscribe", { config: { scope: "content" } }, async (req) => {
-    const body = z
-      .object({ subscription: Subscription, label: z.string().max(120).optional() })
-      .parse(req.body);
+  bind(app, "push.subscribe", async ({ body }, req) => {
     const deviceId = req.principal?.kind === "device" ? req.principal.deviceId : null;
     const problem = await checkPushEndpoint(body.subscription.endpoint, ctx.pushResolver, {
       knownServicesOnly: deviceId !== null,
@@ -45,21 +36,19 @@ export function registerPushRoutes(app: FastifyInstance, ctx: AppContext): void 
     return ctx.push.upsert(body.subscription, body.label ?? null, deviceId);
   });
 
-  app.post("/api/push/unsubscribe", { config: { scope: "monitor" } }, async (req) => {
-    const { endpoint } = z.object({ endpoint: z.string().url().max(2048) }).parse(req.body ?? {});
+  bind(app, "push.unsubscribe", async ({ body: { endpoint } }, req) => {
     const deviceId = req.principal?.kind === "device" ? req.principal.deviceId : undefined;
     return { removed: ctx.push.removeByEndpoint(endpoint, deviceId) };
   });
 
-  app.get("/api/push/subscriptions", { config: { scope: "owner" } }, async () => ctx.push.list());
+  bind(app, "push.subscriptions", async () => ctx.push.list());
 
-  app.delete("/api/push/subscriptions/:id", { config: { scope: "owner" } }, async (req) => {
-    const { id } = z.object({ id: z.string().regex(/^ps_[0-9a-f-]{8,64}$/i) }).parse(req.params);
+  bind(app, "push.remove", async ({ params: { id } }) => {
     if (!ctx.push.remove(id)) throw httpError(404, "Subscription not found");
-    return { removed: true };
+    return { removed: true as const };
   });
 
-  app.post("/api/push/test", { config: { scope: "owner" } }, async () => {
+  bind(app, "push.test", async () => {
     const settings = ctx.settings();
     if (!settings.channels.push.enabled)
       throw httpError(409, "Push is off in Settings › Notifications.", "channel_not_configured");
@@ -82,6 +71,6 @@ export function registerPushRoutes(app: FastifyInstance, ctx: AppContext): void 
     if (r.skipped === "none") throw httpError(409, "No device subscribed yet.", "channel_not_configured");
     if (r.sent === 0)
       throw httpError(502, `Sent to nobody (${r.failed} failed, ${r.dropped} dropped).`, "channel_failed");
-    return { ok: true, ...r };
+    return { ok: true as const, ...r };
   });
 }

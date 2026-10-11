@@ -84,7 +84,8 @@ test("a remote indexing failure clears an observer's progress through the event 
         const detail = (event as CustomEvent<{ type: string; payload: unknown }>).detail;
         this.dispatchEvent(
           new MessageEvent(detail.type, {
-            data: JSON.stringify({ ...detail, id: 100, ts: Date.now() }),
+            // A frame of the real feed carries its version (`v`); the client drops one that does not.
+            data: JSON.stringify({ ...detail, id: 100, ts: Date.now(), v: 1 }),
           }),
         );
       };

@@ -247,7 +247,7 @@ describe("S3 the API and the CLI start nothing of their own", () => {
   it("C68 the routes take the bounds of a run request from RUN_LIMITS, not from numbers of their own", () => {
     const bounds = new Set<number>(Object.values(RUN_LIMITS));
     const literals: string[] = [];
-    for (const file of sources("apps/api/src")) {
+    for (const file of [...sources("apps/api/src"), ...sources("contracts/src/api")]) {
       const sf = ts.createSourceFile(file, fs.readFileSync(file, "utf8"), ts.ScriptTarget.ES2022, true);
       const visit = (node: ts.Node): void => {
         if (
@@ -263,22 +263,174 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       };
       visit(sf);
     }
-    // The two that are not the bound of a run request: the excerpt a memory search returns, and the description of an objective.
+    // The route bodies live in the contract since contratos-rest (`contracts/src/api`, which takes the bounds of a run
+    // request from the same `RUN_LIMITS`), so the scan reads both places. The two that are not the bound of a run
+    // request: the excerpt a memory search returns, and the description of an objective.
     expect(literals.sort()).toEqual([
-      "apps/api/src/routes/memory.ts .max(20000)",
-      "apps/api/src/routes/objectives.ts .max(10000)",
+      "contracts/src/api/memory.ts .max(20000)",
+      "contracts/src/api/routines.ts .max(10000)",
     ]);
   });
+
+  /** Every `<path>.events.` read as `events.`, and no whitespace. */
+  const squash = (code: string): string =>
+    code.replace(/(?:[A-Za-z_]\w*\.)*events\./g, "events.").replace(/\s+/g, "");
 
   /** A source with its imports dropped, every `<path>.events.` read as `events.`, and no whitespace. */
   function comparable(source: string): string {
     const sf = ts.createSourceFile("t.ts", source, ts.ScriptTarget.ES2022, true);
     const kept = sf.statements.filter((s) => !ts.isImportDeclaration(s));
-    return kept
-      .map((s) => s.getText(sf))
-      .join("\n")
-      .replace(/(?:[A-Za-z_]\w*\.)*events\./g, "events.")
-      .replace(/\s+/g, "");
+    return squash(kept.map((s) => s.getText(sf)).join("\n"));
+  }
+
+  /**
+   * What contratos-rest changed in these suites, and nothing else: a route registered under `/api` must be bound to an
+   * entry of the route table, and an event the bus announces must be one the contract describes. Each amendment is a
+   * piece of the base (`base`) and what it became (`head`); the comparison applies them to the base before it
+   * compares, and each must match exactly once, so an assertion that changed anywhere else still fails.
+   */
+  const AMENDMENTS: Array<{ suite: string; why: string; base: string[]; head: string[] }> = [
+    {
+      suite: "tests/api.hardening.test.ts",
+      why: "a route that throws, registered by hand for the file",
+      base: [
+        "  // A route that throws an internal error, to assert the 500 envelope hides details.",
+        '  app.get("/api/__boom", { config: { scope: "owner" } }, async () => {',
+        "    throw new Error(`secret path ${home}/config/token`);",
+        "  });",
+      ],
+      head: [],
+    },
+    {
+      suite: "tests/api.hardening.test.ts",
+      why: "the route that throws is registered through bindEntry for the one test that reads it",
+      base: [
+        '    const res = await app.inject({ method: "GET", url: "/api/__boom", headers: auth() });',
+        "    expect(res.statusCode).toBe(500);",
+        "    expect(res.json()).toEqual({",
+        '      error: { code: "internal", message: "Internal error" },',
+        '      message: "Internal error",',
+        "    });",
+        '    expect(res.body).not.toContain("secret path");',
+        "    expect(res.body).not.toContain(home);",
+      ],
+      head: [
+        "    // A route that throws an internal error, to assert the 500 envelope hides details. Registered through bind's own",
+        "    // function, as every route is; its entry joins the table only while this server lives (a server will not start",
+        "    // with an entry nobody bound, so it must not outlive the test).",
+        "    const boomApp = await buildServer(ctx);",
+        "    const boom = route({",
+        '      method: "GET",',
+        '      path: "/api/__boom",',
+        '      scope: "owner",',
+        '      summary: "A route that throws an internal error",',
+        '      tag: "test",',
+        "      responses: { 200: z.object({}) },",
+        "    });",
+        '    (API as unknown as Record<string, unknown>)["zz.boom"] = boom;',
+        "    try {",
+        '      bindEntry(boomApp, "zz.boom", boom, async () => {',
+        "        throw new Error(`secret path ${home}/config/token`);",
+        "      });",
+        '      const res = await boomApp.inject({ method: "GET", url: "/api/__boom", headers: auth() });',
+        "      expect(res.statusCode).toBe(500);",
+        "      expect(res.json()).toEqual({",
+        '        error: { code: "internal", message: "Internal error" },',
+        '        message: "Internal error",',
+        "      });",
+        '      expect(res.body).not.toContain("secret path");',
+        "      expect(res.body).not.toContain(home);",
+        "    } finally {",
+        '      delete (API as unknown as Record<string, unknown>)["zz.boom"];',
+        "      await boomApp.close();",
+        "    }",
+      ],
+    },
+    {
+      suite: "tests/api.hardening.test.ts",
+      why: "the settings.changed events carry the payload the contract describes",
+      base: [
+        '    const a = ctx.events.emit("settings.changed", { keys: ["a"] });',
+        '    const b = ctx.events.emit("settings.changed", { keys: ["b"] });',
+      ],
+      head: [
+        "    // Payloads as the service sends them (the settings document); the system name tells the two events apart.",
+        '    const a = ctx.events.emit("settings.changed", { settings: { ...ctx.settings(), systemName: "event-a" } });',
+        '    const b = ctx.events.emit("settings.changed", { settings: { ...ctx.settings(), systemName: "event-b" } });',
+      ],
+    },
+    {
+      suite: "tests/api.hardening.test.ts",
+      why: "\u2026and the test reads the field that tells them apart",
+      base: ['    expect(out.text).toContain(\'"keys":["b"]\');'],
+      head: ['    expect(out.text).toContain(\'"systemName":"event-b"\');'],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "a route registered by hand under /api is refused for the contract it lacks, public or scoped",
+      base: [
+        '      expect(() => fresh.get("/api/zz-public", { config: { public: true } }, async () => ({}))).not.toThrow();',
+        "      expect(() =>",
+        '        fresh.get("/api/zz-monitor", { config: { scope: "monitor" } }, async () => ({})),',
+        "      ).not.toThrow();",
+      ],
+      head: [
+        "      // A scope is not enough since contratos-rest: every route also names its entry of the route table (bind), so a",
+        "      // public or scoped route registered by hand is refused for the contract it lacks.",
+        '      expect(() => fresh.get("/api/zz-public", { config: { public: true } }, async () => ({}))).toThrow(',
+        "        /declares no contract/,",
+        "      );",
+        '      expect(() => fresh.get("/api/zz-monitor", { config: { scope: "monitor" } }, async () => ({}))).toThrow(',
+        "        /declares no contract/,",
+        "      );",
+      ],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "the route at exactly /api is registered through bindEntry",
+      base: ['      fresh.get("/api", { config: { scope: "owner" } }, async () => ({ root: true }));'],
+      head: [
+        "      // Registered through bind, with an entry of the table that the server was not built with.",
+        "      const rootEntry = route({",
+        '        method: "GET",',
+        '        path: "/api" as never,',
+        '        scope: "owner",',
+        '        summary: "A route at exactly /api",',
+        '        tag: "test",',
+        "        responses: { 200: z.object({ root: z.literal(true) }) },",
+        "      });",
+        '      (API as unknown as Record<string, unknown>)["zz.root"] = rootEntry;',
+        '      bindEntry(fresh, "zz.root", rootEntry, async () => ({ root: true }));',
+      ],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "\u2026and its table entry leaves the table with the test",
+      base: [
+        "      expect(viaQuery.statusCode).toBe(401);",
+        "    } finally {",
+        "      await fresh.close();",
+        "    }",
+      ],
+      head: [
+        "      expect(viaQuery.statusCode).toBe(401);",
+        "    } finally {",
+        '      delete (API as unknown as Record<string, unknown>)["zz.root"];',
+        "      await fresh.close();",
+        "    }",
+      ],
+    },
+  ];
+
+  function amended(suite: string, comparableBase: string): string {
+    let out = comparableBase;
+    for (const a of AMENDMENTS.filter((x) => x.suite === suite)) {
+      const from = squash(a.base.join("\n"));
+      const to = squash(a.head.join("\n"));
+      expect(out.split(from).length - 1, `${suite}: ${a.why}`).toBe(1);
+      out = out.replace(from, () => to);
+    }
+    return out;
   }
 
   const SUITES = [
@@ -300,7 +452,7 @@ describe("S3 the API and the CLI start nothing of their own", () => {
         maxBuffer: 64 * 1024 * 1024,
       });
       const head = fs.readFileSync(path.join(root, suite), "utf8");
-      expect(comparable(head), suite).toBe(comparable(base));
+      expect(comparable(head), suite).toBe(amended(suite, comparable(base)));
     }
   });
 

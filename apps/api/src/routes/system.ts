@@ -2,12 +2,10 @@ import fs from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { z } from "zod";
+import { SettingsPatchSchema, type HandlerCall, type SettingsPatch } from "@mordomo/contracts";
 import type { FastifyInstance } from "fastify";
 import type { Settings } from "@mordomo/core";
 import {
-  ProviderId,
-  ProviderSettingsSchema,
   SettingsSchema,
   UI_PREFERENCE_KEYS,
   UiPreferencesSchema,
@@ -33,6 +31,7 @@ import {
   isStartupServiceInstalled,
 } from "@mordomo/core/internal";
 import { clearRestorePending, readRestorePending, writeRestorePending, type AppContext } from "../context.js";
+import { bind } from "../contract.js";
 import { runDoctor } from "../doctor.js";
 import { cliEntry } from "../entry.js";
 import {
@@ -57,7 +56,6 @@ function tlsInfo(ctx: AppContext): { port: number; fingerprint: string; hosts: s
   }
 }
 import { httpError, principalName, requireAdapter, requireProvider, startedByOf } from "./common.js";
-import { BackupNameParams, UuidParams } from "./params.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -86,12 +84,7 @@ export const PKG_VERSION = readPackageVersion();
 
 // ---- Settings patch: deep-merge for providers.* and limits ------------------
 
-const ProviderPatch = ProviderSettingsSchema.partial();
-export const SettingsPatchSchema = SettingsSchema.partial().extend({
-  providers: z.record(ProviderId, ProviderPatch).optional(),
-  limits: SettingsSchema.shape.limits.removeDefault().partial().optional(),
-});
-export type SettingsPatch = z.infer<typeof SettingsPatchSchema>;
+export { SettingsPatchSchema };
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -236,15 +229,7 @@ export function artifactTitle(scope: ReadScope, abs: string, kind: ArtifactKind)
   return base;
 }
 
-const ArtifactListQuery = z.object({
-  q: z.string().max(200).optional(),
-  skill: z.string().max(100).optional(),
-  folder: z.string().max(200).optional(),
-  kind: z.enum(["image", "video", "html", "markdown", "code", "other"]).optional(),
-  since: z.coerce.number().int().min(0).optional(),
-  limit: z.coerce.number().int().min(1).max(500).default(200),
-});
-type ArtifactListQueryT = z.infer<typeof ArtifactListQuery>;
+type ArtifactListQueryT = HandlerCall<"artifacts.list">["query"];
 
 /** Walk artifacts/ (bounded), merge run metadata by relative path, filter and sort newest first. */
 export function listArtifacts(
@@ -340,7 +325,7 @@ export function registerSystemRoutes(
    * at?" when a checkout and a packaged app share a machine. Token-protected
    * (paths are not for the pre-auth page).
    */
-  app.get("/api/system/info", { config: { scope: "monitor" } }, async () => {
+  bind(app, "system.info", async () => {
     const snap = await instanceSnapshot();
     return {
       version: PKG_VERSION,
@@ -372,7 +357,7 @@ export function registerSystemRoutes(
    * terminates us (or the login service does) and starts a fresh process;
    * the UI polls `/api/meta` and reloads once it answers again.
    */
-  app.post("/api/system/restart", { config: { scope: "owner" } }, async () => {
+  bind(app, "system.restart", async () => {
     const child = spawn(process.execPath, [cliEntry(), "restart"], {
       detached: true,
       stdio: "ignore",
@@ -380,11 +365,11 @@ export function registerSystemRoutes(
     });
     child.on("error", () => undefined);
     child.unref();
-    return { ok: true, pid: process.pid };
+    return { ok: true as const, pid: process.pid };
   });
 
   /** Stop lingering sibling service processes (never this one). */
-  app.post("/api/system/reap", { config: { scope: "owner" } }, async () => {
+  bind(app, "system.reap", async () => {
     const snap = await instanceSnapshot(process.pid, 0);
     const orphans = orphanProcesses(snap.processes, process.pid, process.pid, undefined, snap.listening);
     const stopped = await terminate(orphans);
@@ -393,15 +378,15 @@ export function registerSystemRoutes(
   });
 
   /** Release check: only when enabled in settings, or explicitly asked for (`?force=1`). */
-  app.get("/api/updates", { config: { scope: "monitor" } }, async (req) => {
-    const force = (req.query as { force?: string }).force === "1";
+  bind(app, "updates.check", async ({ query }) => {
+    const force = query.force === "1";
     const enabled = ctx.settings().updates.check;
     if (!enabled && !force) return { enabled, current: PKG_VERSION, url: RELEASES_PAGE, status: null };
     return { enabled, current: PKG_VERSION, url: RELEASES_PAGE, status: await updates.check(force) };
   });
 
   // Public (no token): only non-sensitive branding needed before the UI boots.
-  app.get("/api/meta", { config: { public: true } }, async () => {
+  bind(app, "meta.get", async () => {
     const s = ctx.settings();
     return {
       name: s.systemName,
@@ -420,17 +405,17 @@ export function registerSystemRoutes(
     };
   });
 
-  app.get("/api/health", { config: { scope: "monitor" } }, async () => {
+  bind(app, "health.get", async () => {
     // A closed database is an honest 503 in the envelope (a poller reads it as "not ready", and it is
     // not an unhandled error to log on every poll), never a 200 with `ok: false`.
     if (!ctx.db.open) throw httpError(503, "The database is closed", "service_unavailable");
     const runs = ctx.activeRunCount();
     return {
       // Always true here, and always `db.open`: the soak script and the e2e soak read both of them.
-      ok: true,
+      ok: true as const,
       uptimeMs: Date.now() - ctx.startedAt,
       version: PKG_VERSION,
-      db: { open: true, path: ctx.paths.dbFile },
+      db: { open: true as const, path: ctx.paths.dbFile },
       scheduler: { running: ctx.schedulerRunning() },
       activeRuns: runs.running,
       queuedRuns: runs.queued,
@@ -440,19 +425,13 @@ export function registerSystemRoutes(
     };
   });
 
-  app.get("/api/settings", { config: { scope: "monitor" } }, async () => ctx.settings());
+  bind(app, "settings.get", async () => ctx.settings());
 
   // ---- UI preferences (config/ui-preferences.json) ---------------------------
-  app.get("/api/ui-preferences", { config: { scope: "monitor" } }, async () => ctx.uiPreferences.load());
+  bind(app, "uiPreferences.get", async () => ctx.uiPreferences.load());
 
-  const UiPreferencesPatchSchema = UiPreferencesSchema.partial().extend({
-    /** Strict on write: an unknown shell is refused, not read back as the default. */
-    shell: UiPreferencesSchema.shape.shell.removeCatch().optional(),
-    /** The layout this writer started from; a different stored layout means another window saved first. */
-    dashboardLayoutBase: UiPreferencesSchema.shape.dashboardLayout.removeDefault().optional(),
-  });
-  app.put("/api/ui-preferences", { config: { scope: "owner" } }, async (req) => {
-    const { dashboardLayoutBase, ...patch } = UiPreferencesPatchSchema.parse(req.body ?? {});
+  bind(app, "uiPreferences.update", async ({ body }) => {
+    const { dashboardLayoutBase, ...patch } = body;
     const before = ctx.uiPreferences.load();
     if (
       patch.dashboardLayout &&
@@ -471,7 +450,7 @@ export function registerSystemRoutes(
     return ctx.uiPreferences.save(UiPreferencesSchema.parse(merged));
   });
 
-  app.put("/api/settings", { config: { scope: "owner" } }, async (req) => {
+  bind(app, "settings.update", async ({ body: patch }, req) => {
     // What only the Command Centre reads moved to /api/ui-preferences (settings version 2).
     // A body that is not an object (a string, a number) falls through to the schema's 400.
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
@@ -483,7 +462,6 @@ export function registerSystemRoutes(
         "moved_to_ui_preferences",
       );
     }
-    const patch = SettingsPatchSchema.parse(req.body);
     const before = ctx.settings();
     // A pinned binary is allowlisted by its path: a new one must be the program the manifest names.
     for (const [id, provider] of Object.entries(patch.providers ?? {})) {
@@ -522,13 +500,12 @@ export function registerSystemRoutes(
     return { settings: saved, pendingApproval };
   });
 
-  app.get("/api/providers", { config: { scope: "monitor" } }, async (req) => {
-    const force = (req.query as { force?: string }).force === "1";
+  bind(app, "providers.list", async ({ query }) => {
+    const force = query.force === "1";
     return ctx.providerSnapshot(force);
   });
 
-  app.post("/api/providers/:id/detect", { config: { scope: "owner" } }, async (req) => {
-    const { id } = z.object({ id: ProviderId }).parse(req.params);
+  bind(app, "providers.detect", async ({ params: { id } }) => {
     const adapter = requireAdapter(ctx, id);
     const detection = await adapter.detect();
     const auth = await adapter.authenticate();
@@ -543,41 +520,35 @@ export function registerSystemRoutes(
     return { detection, auth, models };
   });
 
-  app.get("/api/providers/:id/models", { config: { scope: "owner" } }, async (req) => {
-    const { id } = z.object({ id: ProviderId }).parse(req.params);
+  bind(app, "providers.models", async ({ params: { id } }) => {
     return requireAdapter(ctx, id).listModels();
   });
 
-  app.put("/api/providers/default", { config: { scope: "owner" } }, async (req) => {
-    const { provider } = z.object({ provider: ProviderId }).parse(req.body);
+  bind(app, "providers.setDefault", async ({ body: { provider } }) => {
     if (!requireProvider(ctx, provider).enabled) throw httpError(400, `Provider ${provider} is not enabled`);
     return ctx.settingsStore.update({ defaultProvider: provider });
   });
 
   /** Safe, file-change-free smoke test for one provider. */
-  app.post("/api/providers/:id/smoke", { config: { scope: "owner" } }, async (req) => {
-    const { id } = z.object({ id: ProviderId }).parse(req.params);
+  bind(app, "providers.smoke", async ({ params: { id } }, req) => {
     const { run, passed } = await ctx.execution.smokeTest(id, startedByOf(req));
     return { run, passed };
   });
 
-  app.get("/api/doctor", { config: { scope: "monitor" } }, async (req) => {
-    const { audit } = z.object({ audit: z.enum(["0", "1"]).optional() }).parse(req.query);
+  bind(app, "doctor.get", async ({ query: { audit } }, req) => {
     // The HUD of a paired phone asks for the report too; `npm audit` (a network call, 20 s) is for the owner at the desk.
     return runDoctor(ctx, { npmAudit: audit !== "0" && req.principal?.kind !== "device" });
   });
 
   /** Hourly samples of the last N days plus their daily fold (Settings › Trends). */
-  app.get("/api/metrics/history", { config: { scope: "monitor" } }, async (req) => {
-    const q = z.object({ days: z.coerce.number().int().min(1).max(90).default(14) }).parse(req.query ?? {});
+  bind(app, "metrics.history", async ({ query: q }) => {
     const samples = ctx.metricsHistory.series(q.days);
     return { days: q.days, samples, daily: dailyPoints(samples) };
   });
 
-  app.get("/api/approvals", { config: { scope: "monitor" } }, async () => ctx.approvals.list("pending"));
+  bind(app, "approvals.list", async () => ctx.approvals.list("pending"));
   /** One approval by id, any status (the permission tool polls this). */
-  app.get("/api/approvals/:id", { config: { scope: "monitor" } }, async (req) => {
-    const { id } = UuidParams.parse(req.params);
+  bind(app, "approvals.get", async ({ params: { id } }, req) => {
     const approval = ctx.approvals.get(id);
     if (!approval) throw httpError(404, "Approval not found");
     if (req.brokerRunId && approval.payload.runId !== req.brokerRunId)
@@ -589,15 +560,7 @@ export function registerSystemRoutes(
    * permission MCP server parks it here; the Console, the run page and the
    * inbox offer Approve / Deny; the server answers the CLI when resolved.
    */
-  app.post("/api/approvals/tool", { config: { scope: "owner" } }, async (req) => {
-    const body = z
-      .object({
-        runId: z.string().uuid(),
-        toolName: z.string().min(1).max(200),
-        input: z.record(z.unknown()).default({}),
-        toolUseId: z.string().max(200).optional(),
-      })
-      .parse(req.body);
+  bind(app, "approvals.requestTool", async ({ body }, req) => {
     if (req.brokerRunId && body.runId !== req.brokerRunId)
       throw httpError(403, "The permission broker can only ask for its own run", "forbidden");
     const run = ctx.runs.get(body.runId);
@@ -637,15 +600,7 @@ export function registerSystemRoutes(
     });
     return approval;
   });
-  app.post("/api/approvals/:id/resolve", { config: { scope: "approve" } }, async (req) => {
-    const { id } = UuidParams.parse(req.params);
-    const { decision, answers } = z
-      .object({
-        decision: z.enum(["approved", "denied"]),
-        // Answers to a question the agent asked: question text → answer.
-        answers: z.record(z.string().max(4000)).optional(),
-      })
-      .parse(req.body);
+  bind(app, "approvals.resolve", async ({ params: { id }, body: { decision, answers } }, req) => {
     if (req.brokerRunId) {
       // The broker only gives up on its own prompt (timeout); approving is the owner's.
       const approval = ctx.approvals.get(id);
@@ -665,11 +620,8 @@ export function registerSystemRoutes(
   });
 
   // ---- Backups ---------------------------------------------------------------
-  app.get("/api/backups", { config: { scope: "owner" } }, async () => listBackups(ctx.paths));
-  app.post("/api/backups", { config: { scope: "owner" } }, async (req) => {
-    const { includeArtifacts } = z
-      .object({ includeArtifacts: z.boolean().default(false) })
-      .parse(req.body ?? {});
+  bind(app, "backups.list", async () => listBackups(ctx.paths));
+  bind(app, "backups.create", async ({ body: { includeArtifacts } }) => {
     return createBackup(ctx.paths, ctx.db, {
       bus: ctx.events,
       includeArtifacts,
@@ -683,8 +635,7 @@ export function registerSystemRoutes(
    * on its next boot, before the DB is opened (see AppContext.applyPendingRestore).
    * Refused while any run is active.
    */
-  app.post("/api/backups/:name/restore", { config: { scope: "owner" } }, async (req, reply) => {
-    const { name } = BackupNameParams.parse(req.params);
+  bind(app, "backups.restore", async ({ params: { name } }, _req, reply) => {
     const src = path.join(ctx.paths.backups, name);
     if (!isInside(ctx.paths.backups, src) || !fs.existsSync(src))
       throw httpError(404, `Backup not found: ${name}`);
@@ -700,8 +651,8 @@ export function registerSystemRoutes(
     const staged = writeRestorePending(ctx.paths, name);
     reply.code(202);
     return {
-      staged: true,
-      restored: false,
+      staged: true as const,
+      restored: false as const,
       name,
       stagedAt: staged.stagedAt,
       apply: "mordomo stop && mordomo start",
@@ -710,37 +661,31 @@ export function registerSystemRoutes(
         "(a safety backup is taken first). Restart with: mordomo stop && mordomo start",
     };
   });
-  app.get("/api/backups/restore-pending", { config: { scope: "owner" } }, async () => ({
+  bind(app, "backups.pending", async () => ({
     restorePending: readRestorePending(ctx.paths),
   }));
-  app.delete("/api/backups/restore-pending", { config: { scope: "owner" } }, async () => {
+  bind(app, "backups.cancelPending", async () => {
     const pending = readRestorePending(ctx.paths);
     clearRestorePending(ctx.paths);
     return { cancelled: pending?.name ?? null };
   });
 
   // ---- Sync ------------------------------------------------------------------
-  app.get("/api/sync/plan", { config: { scope: "owner" } }, async (req) => {
-    const { target } = z.object({ target: z.string().optional() }).parse(req.query);
+  bind(app, "sync.plan", async ({ query: { target } }) => {
     return ctx.sync.plan(resolveSyncTarget(ctx, target));
   });
-  app.post("/api/sync/apply", { config: { scope: "owner" } }, async (req) => {
-    const body = z
-      .object({ target: z.string().optional(), approvedConflicts: z.array(z.string()).default([]) })
-      .parse(req.body ?? {});
+  bind(app, "sync.apply", async ({ body }) => {
     const plan = ctx.sync.plan(resolveSyncTarget(ctx, body.target));
     return ctx.sync.apply(plan, body.approvedConflicts);
   });
 
   // ---- Artifacts gallery (desktop search, /artifacts, /generations) --------
-  app.get("/api/artifacts/list", { config: { scope: "content" } }, async (req) => {
-    const q = ArtifactListQuery.parse(req.query);
+  bind(app, "artifacts.list", async ({ query: q }) => {
     return listArtifacts(ctx, q);
   });
 
   /** Binary artifact (images / video) for thumbnails — strictly inside the artifacts dir, allow-listed types only. */
-  app.get("/api/artifacts/raw", { config: { scope: "content", queryToken: true } }, async (req, reply) => {
-    const { p } = z.object({ p: z.string() }).parse(req.query);
+  bind(app, "artifacts.raw", async ({ query: { p } }, _req, reply) => {
     let file: WorkspaceFile;
     try {
       // PathAccessError → 403; the descriptor, not the path, is what gets streamed.
@@ -765,11 +710,9 @@ export function registerSystemRoutes(
     return reply.send(file.createReadStream());
   });
 
-  app.get("/api/startup-plan", { config: { scope: "owner" } }, async () =>
-    planStartupService(ctx.paths, process.execPath),
-  );
+  bind(app, "startup.plan", async () => planStartupService(ctx.paths, process.execPath));
 
-  app.get("/api/diagnostics/export", { config: { scope: "owner" } }, async () => {
+  bind(app, "diagnostics.export", async () => {
     const doctor = await runDoctor(ctx, { npmAudit: false });
     const bundle = {
       generatedAt: new Date().toISOString(),

@@ -12,7 +12,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Headphones, Mic, MicOff, Play, SlidersHorizontal } from "lucide-react";
-import { api, ApiError, type LaunchRunResponse, type ProviderId, type SessionDetail } from "../../api";
+import { ApiError, type LaunchRunResponse, type ProviderId } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useLocale, useT } from "../../i18n";
 import {
   getVoiceNotify,
@@ -27,7 +28,7 @@ import { authRecovery } from "../../runs/authRecovery";
 import { providerProblem } from "../../components/providerReadiness";
 import { Button } from "../../components/primitives";
 import { useToast } from "../../components/ui";
-import { useRunStream, type RunDetailPayload } from "../../runs/useRunStream";
+import { useRunStream } from "../../runs/useRunStream";
 import { loadPromptSubmission, savePromptSubmission } from "../promptSubmission";
 import { useDesktopActions } from "../actions";
 import { isActiveStatus } from "../data";
@@ -341,7 +342,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
   const [ask, setAsk] = useState<{ skill: Skill; values: Record<string, string> } | null>(null);
   const askRun = useMutation({
     mutationFn: ({ skill, values }: { skill: Skill; values: Record<string, string> }) =>
-      api.post<LaunchRunResponse>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, { inputs: values }),
+      apiCall("POST /api/skills/:slug/run", { params: { slug: skill.slug }, body: { inputs: values } }),
     onSuccess: (res) => {
       setAsk(null);
       setPrompt("");
@@ -403,7 +404,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
   const session = useQuery({
     queryKey: qk.session(sessionId ?? ""),
     queryFn: ({ signal }) =>
-      api.get<SessionDetail>(`/api/sessions/${encodeURIComponent(sessionId ?? "")}`, { signal }),
+      apiCall("GET /api/sessions/:id", { params: { id: sessionId ?? "" } }, { signal }),
     enabled: sessionId !== null,
     retry: false,
     refetchInterval: (q) => (q.state.data?.runs.some((r) => isActiveStatus(r.status)) ? 20_000 : false),
@@ -428,7 +429,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
     queries: finishedIds.map((id) => ({
       queryKey: qk.run(id),
       queryFn: ({ signal }: { signal?: AbortSignal }) =>
-        api.get<RunDetailPayload>(`/api/runs/${encodeURIComponent(id)}`, { signal }),
+        apiCall("GET /api/runs/:id", { params: { id } }, { signal }),
       staleTime: 5 * 60_000,
       retry: false,
     })),
@@ -492,19 +493,24 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
       const submissionId = submission.current.id;
       const tuning = { model: choice.model, effort: choice.effort };
       if (sessionId)
-        return api.post<LaunchRunResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/continue`, {
+        return apiCall("POST /api/sessions/:id/continue", {
+          params: { id: sessionId },
+          body: {
+            prompt: text,
+            submissionId,
+            mode,
+            ...tuning,
+          },
+        });
+      return apiCall("POST /api/runs", {
+        body: {
           prompt: text,
           submissionId,
           mode,
           ...tuning,
-        });
-      return api.post<LaunchRunResponse>("/api/runs", {
-        prompt: text,
-        submissionId,
-        mode,
-        ...tuning,
-        ...(cwd ? { cwd } : {}),
-        ...(defaultProvider ? { provider: defaultProvider as ProviderId } : {}),
+          ...(cwd ? { cwd } : {}),
+          ...(defaultProvider ? { provider: defaultProvider as ProviderId } : {}),
+        },
       });
     },
     onSuccess: (res) => {
@@ -539,7 +545,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
   });
 
   const stop = useMutation({
-    mutationFn: (runId: string) => api.post(`/api/runs/${encodeURIComponent(runId)}/cancel`),
+    mutationFn: (runId: string) => apiCall("POST /api/runs/:id/cancel", { params: { id: runId } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }).catch(() => undefined),
     onError: (err: Error) => toast(err.message, "danger"),
   });

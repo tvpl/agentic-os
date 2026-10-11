@@ -1,0 +1,11 @@
+{
+  "id": 4,
+  "type": "run.finished",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "runId": "3f1d2c4a-0b7e-4c1a-9a55-2b6d8e0f1a11",
+    "status": "done",
+    "durationMs": 1234
+  }
+}

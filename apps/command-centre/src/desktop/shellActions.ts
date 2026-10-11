@@ -7,7 +7,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { api, type LaunchRunResponse, type RunRecord, type Skill } from "../api";
+import { type RunRecord, type Skill } from "../api";
+import { apiCall } from "../apiCall";
 import { useT } from "../i18n";
 import { useToast } from "../components/ui";
 import { OPEN_PANEL_EVENT } from "../components/CommandPalette";
@@ -31,8 +32,11 @@ export function useRunSkill(onOutcome: (outcome: RunOutcome) => void): (skill: S
   const { mutate } = useMutation({
     mutationFn: async (skill: Skill): Promise<RunOutcome> => {
       if (skill.inputs.some((i) => i.required)) return { form: skill.slug };
-      const res = await api.post<LaunchRunResponse>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, {
-        inputs: {},
+      const res = await apiCall("POST /api/skills/:slug/run", {
+        params: { slug: skill.slug },
+        body: {
+          inputs: {},
+        },
       });
       if (res.status === "waiting_approval" || !res.runId) {
         toast(t("runs.approvalPending"), "info");

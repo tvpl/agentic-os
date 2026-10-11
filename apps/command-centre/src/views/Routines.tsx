@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  api,
   type ProviderId,
   type RoutineDelivery,
   type RoutineHistoryEntry,
@@ -25,6 +24,7 @@ import {
   type RoutineSummary,
   type Skill,
 } from "../api";
+import { apiCall } from "../apiCall";
 import { useLocale, useT, type TKey } from "../i18n";
 import { qk, useApiQuery, useOsProviders, useOsRoutines, useOsSettings, useOsSkills } from "../queries";
 import { ErrorBox, Skeleton, StatusBadge, timeAgo, useToast } from "../components/ui";
@@ -128,7 +128,7 @@ export default function Routines() {
       })
     ) {
       act.mutate({
-        fn: () => api.del(`/api/routines/${encodeURIComponent(r.id)}`),
+        fn: () => apiCall("DELETE /api/routines/:id", { params: { id: r.id } }),
         okMsg: t("routines.deleted"),
       });
     }
@@ -136,7 +136,7 @@ export default function Routines() {
   const testRun = (r: RoutineStatus) =>
     act.mutate({
       fn: async () => {
-        const res = await api.post<{ runId: string | null }>(`/api/routines/${encodeURIComponent(r.id)}/run`);
+        const res = await apiCall("POST /api/routines/:id/run", { params: { id: r.id } });
         if (res.runId) navigate(`/runs/${res.runId}`);
       },
     });
@@ -248,7 +248,9 @@ export default function Routines() {
                   variant="secondary"
                   icon={r.enabled ? <Pause aria-hidden /> : <Play aria-hidden />}
                   onClick={() =>
-                    act.mutate({ fn: () => api.post(`/api/routines/${encodeURIComponent(r.id)}/toggle`) })
+                    act.mutate({
+                      fn: () => apiCall("POST /api/routines/:id/toggle", { params: { id: r.id } }),
+                    })
                   }
                 >
                   {r.enabled ? t("routines.pause") : t("routines.resume")}
@@ -270,7 +272,7 @@ export default function Routines() {
                     aria-label={t("routines.duplicate")}
                     onClick={() =>
                       act.mutate({
-                        fn: () => api.post(`/api/routines/${encodeURIComponent(r.id)}/duplicate`),
+                        fn: () => apiCall("POST /api/routines/:id/duplicate", { params: { id: r.id } }),
                         okMsg: t("routines.duplicated"),
                       })
                     }
@@ -474,8 +476,8 @@ export function RoutineModal({
         artifactsSubdir: routine?.artifactsSubdir ?? null,
         createdAt: routine?.createdAt ?? Date.now(),
       };
-      if (routine) await api.put(`/api/routines/${encodeURIComponent(routine.id)}`, payload);
-      else await api.post("/api/routines", payload);
+      if (routine) await apiCall("PUT /api/routines/:id", { params: { id: routine.id }, body: payload });
+      else await apiCall("POST /api/routines", { body: payload });
     },
     onSuccess: () => {
       toast(t("common.saved"), "ok");
@@ -904,7 +906,7 @@ export function RoutineModal({
             id="rt-missed"
             className="input"
             value={form.missedPolicy}
-            onChange={(e) => set({ missedPolicy: e.target.value })}
+            onChange={(e) => set({ missedPolicy: e.target.value as RoutineStatus["missedPolicy"] })}
           >
             <option value="skip">{t("routines.missed.skip")}</option>
             <option value="run_on_boot">{t("routines.missed.run_on_boot")}</option>
@@ -948,7 +950,7 @@ export function RoutineModal({
           id="rt-profile"
           className="input"
           value={form.profile}
-          onChange={(e) => set({ profile: e.target.value })}
+          onChange={(e) => set({ profile: e.target.value as RoutineStatus["profile"] })}
         >
           {PROFILES.map((prof) => (
             <option key={prof} value={prof}>

@@ -4,6 +4,7 @@
  * Every envelope carries `v`; changing a payload's shape bumps it.
  */
 import type { ApprovalKind } from "./policy.js";
+import type { EventVersionOf } from "./eventRegistry.js";
 import type { Approval, NotificationRecord } from "./records.js";
 import type { RunEvent, RunOrigin, RunStatus } from "./runs.js";
 import type { ProviderId, Settings } from "./settings.js";
@@ -47,7 +48,10 @@ export type OsEventType =
    */
   | "stream.reset";
 
-/** Version of the event envelope and payloads. */
+/**
+ * The first version of every event. The version of one event is `v` in its envelope, from the list of its type
+ * (`EVENT_VERSIONS`, `./eventRegistry.ts`); this stays for the code that stamped `1` before there was a list.
+ */
 export const OS_EVENT_VERSION = 1 as const;
 
 export interface IndexStats {
@@ -165,7 +169,7 @@ export type OsEvent<K extends OsEventType = OsEventType> = {
     id: number;
     type: P;
     ts: number;
-    v: typeof OS_EVENT_VERSION;
+    v: EventVersionOf<P>;
     payload: OsEventMap[P];
   };
 }[K];

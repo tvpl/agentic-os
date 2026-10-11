@@ -1,4 +1,5 @@
 import path from "node:path";
+import { isJournalDate } from "@mordomo/contracts";
 import type { MordomoPaths } from "../paths.js";
 import { PathAccessError } from "../security/paths.js";
 import { homeReadScope, listWorkspaceDir, readWorkspaceText } from "../security/safeFs.js";
@@ -34,7 +35,6 @@ export interface JournalDay {
   created: boolean;
 }
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_LINE_CHARS = 2000;
 /** A day's journal is notes, not a log: past this the read is refused rather than truncated. */
 const MAX_JOURNAL_BYTES = 2 * 1024 * 1024;
@@ -72,12 +72,7 @@ export function localDateString(at: Date = new Date()): string {
   return `${y}-${m}-${d}`;
 }
 
-export function isJournalDate(value: string): boolean {
-  if (!DATE_RE.test(value)) return false;
-  const [y, m, d] = value.split("-").map(Number) as [number, number, number];
-  const date = new Date(y, m - 1, d);
-  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
-}
+export { isJournalDate };
 
 export function shiftDate(date: string, days: number): string {
   const [y, m, d] = date.split("-").map(Number) as [number, number, number];

@@ -25,10 +25,10 @@ import {
   type GraphData,
   type GraphNode,
   type IndexProgressPayload,
-  type MemoryPreview,
   type RoutineStatus,
   type Skill,
 } from "../../api";
+import { apiCall } from "../../apiCall";
 import { escapeLayerOpen, getDialogDepth, keyLayerOpen, Popover, Tooltip } from "../../ui";
 import { timeAgo, useToast } from "../../components/ui";
 import { useWorkspace } from "../../components/Workspace";
@@ -470,8 +470,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
         continue;
       }
       inflight.current++;
-      void api
-        .get<MemoryPreview>(`/api/memory/preview?p=${encodeURIComponent(f.path)}`)
+      void apiCall("GET /api/memory/preview", { query: { p: f.path } })
         .then((pv) => EXCERPTS.set(key, pv.kind === "text" && pv.content ? excerptOf(pv.content, 160) : ""))
         .catch(() => EXCERPTS.set(key, ""))
         .finally(() => {
@@ -602,8 +601,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
     }
     let cancelled = false;
     setPreview({ node: selNode, content: null, kind: "loading", message: null });
-    void api
-      .get<MemoryPreview>(`/api/memory/preview?p=${encodeURIComponent(selNode.path)}`)
+    void apiCall("GET /api/memory/preview", { query: { p: selNode.path } })
       .then((pv) => {
         if (cancelled) return;
         setPreview({ node: selNode, content: pv.content, kind: pv.kind, message: pv.message });
@@ -686,8 +684,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
     setRelated([]);
     if (!selNode) return;
     let cancelled = false;
-    void api
-      .get<Array<{ file: { id: number }; why: string }>>(`/api/memory/related?id=${selNode.id}`)
+    void apiCall("GET /api/memory/related", { query: { id: selNode.id } })
       .then((res) => {
         if (!cancelled) setRelated(res.map((r) => ({ id: r.file.id, why: r.why })));
       })
@@ -776,10 +773,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
     }
     let cancelled = false;
     const id = window.setTimeout(() => {
-      void api
-        .get<Array<{ id: number; name: string; rel: string }>>(
-          `/api/memory/search?q=${encodeURIComponent(q)}&limit=8`,
-        )
+      void apiCall("GET /api/memory/search", { query: { q: q, limit: 8 } })
         .then((res) => {
           if (!cancelled) setHits(res);
         })
@@ -1046,8 +1040,8 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
     setRefreshing(true);
     void (async () => {
       try {
-        const res = await api.post<{ stats: { scanned: number; added: number } }>("/api/memory/index");
-        await api.post("/api/memory/routers");
+        const res = await apiCall("POST /api/memory/index");
+        await apiCall("POST /api/memory/routers");
         await invalidate(qk.memoryGraph(GRAPH_PARAMS), qk.memoryStatus);
         toast(t("brain.indexed", { n: res.stats.scanned, added: res.stats.added }), "ok");
       } catch (err) {
@@ -1492,9 +1486,9 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
   }, [preview, toast, t]);
   const onEditor = useCallback(() => {
     if (!preview) return;
-    void api
-      .post("/api/memory/open", { p: preview.node.path })
-      .catch((e: Error) => toast(e.message, "danger"));
+    void apiCall("POST /api/memory/open", { body: { p: preview.node.path } }).catch((e: Error) =>
+      toast(e.message, "danger"),
+    );
   }, [preview, toast]);
 
   return (

@@ -1,9 +1,7 @@
-import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { EffortLevel, ProviderId, RUN_LIMITS } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
+import { bind } from "../contract.js";
 import { httpError, startedByOf } from "./common.js";
-import { UuidParams } from "./params.js";
 
 /**
  * Conversations (Onda 1). A session groups the runs that continue one
@@ -13,39 +11,20 @@ import { UuidParams } from "./params.js";
  * containment and the profile rules are identical.
  */
 export function registerSessionRoutes(app: FastifyInstance, ctx: AppContext): void {
-  app.get("/api/sessions", { config: { scope: "monitor" } }, async (req, reply) => {
-    const q = z
-      .object({
-        limit: z.coerce.number().int().min(1).max(200).default(50),
-        offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
-        provider: ProviderId.optional(),
-      })
-      .parse(req.query);
+  bind(app, "sessions.list", async ({ query: q }, _req, reply) => {
     // Same convention as /api/runs: a plain array plus the total in a header.
     reply.header("x-total-count", String(ctx.runs.sessions.count(q)));
     return ctx.runs.sessions.list(q);
   });
 
-  app.get("/api/sessions/:id", { config: { scope: "monitor" } }, async (req) => {
-    const { id } = UuidParams.parse(req.params);
+  bind(app, "sessions.get", async ({ params: { id } }) => {
     const session = ctx.runs.sessions.get(id);
     if (!session) throw httpError(404, "Session not found");
     return { session, runs: ctx.runs.list({ sessionId: id, limit: 200 }) };
   });
 
   /** Continue the conversation: a new run that resumes the provider session. */
-  app.post("/api/sessions/:id/continue", { config: { scope: "run" } }, async (req, reply) => {
-    const { id } = UuidParams.parse(req.params);
-    const body = z
-      .object({
-        submissionId: z.string().uuid().optional(),
-        prompt: z.string().min(1).max(RUN_LIMITS.promptMaxChars),
-        mode: z.enum(["read_only", "write"]).default("read_only"),
-        effort: EffortLevel.optional(),
-        model: z.string().nullable().optional(),
-        timeoutMs: z.number().int().min(RUN_LIMITS.timeoutMinMs).max(RUN_LIMITS.timeoutMaxMs).optional(),
-      })
-      .parse(req.body);
+  bind(app, "sessions.continue", async ({ params: { id }, body }, req, reply) => {
     // Provider and cwd come from the session itself (`startPrompt` resolves
     // them); a 404 for an unknown session comes from there too.
     const started = ctx.execution.startPrompt(
@@ -57,17 +36,16 @@ export function registerSessionRoutes(app: FastifyInstance, ctx: AppContext): vo
   });
 
   /** Rename a conversation (refino item 49). */
-  app.patch("/api/sessions/:id", { config: { scope: "owner" } }, async (req) => {
-    const { id } = UuidParams.parse(req.params);
-    const body = z.object({ title: z.string().min(1).max(200) }).parse(req.body);
+  bind(app, "sessions.rename", async ({ params: { id }, body }) => {
     if (!ctx.runs.sessions.get(id)) throw httpError(404, "Session not found");
     ctx.runs.sessions.rename(id, body.title);
-    return ctx.runs.sessions.get(id);
+    const renamed = ctx.runs.sessions.get(id);
+    if (!renamed) throw httpError(404, "Session not found");
+    return renamed;
   });
 
   /** Forget a conversation. Its runs stay in the history, unlinked. */
-  app.delete("/api/sessions/:id", { config: { scope: "owner" } }, async (req) => {
-    const { id } = UuidParams.parse(req.params);
+  bind(app, "sessions.delete", async ({ params: { id } }) => {
     if (!ctx.runs.sessions.get(id)) throw httpError(404, "Session not found");
     return ctx.runs.sessions.delete(id);
   });

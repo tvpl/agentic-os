@@ -6,7 +6,8 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { RefreshCw, RotateCcw } from "lucide-react";
-import { api, type DoctorReport, type UpdateCheck } from "../../api";
+import { type DoctorReport, type UpdateCheck } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useLocale, useT } from "../../i18n";
 import { qk, useApiQuery } from "../../queries";
 import { timeAgo, useToast } from "../../components/ui";
@@ -24,7 +25,7 @@ export default function HealthWidget(_props: WidgetProps) {
   const updates = useApiQuery<UpdateCheck>(["updates"], "/api/updates", { refetchInterval: 1_800_000 });
   const [restarting, setRestarting] = useState(false);
   const restart = useMutation({
-    mutationFn: () => api.post("/api/system/restart"),
+    mutationFn: () => apiCall("POST /api/system/restart"),
     onSuccess: () => {
       setRestarting(true);
       toast(t("service.restarting"), "info");

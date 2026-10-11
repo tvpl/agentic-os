@@ -7,7 +7,8 @@ import { errorMessage } from "../views/shared";
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Copy, ExternalLink, Pin, Sparkles, Terminal, X } from "lucide-react";
-import { api, type MemoryPreview } from "../api";
+
+import { apiCall } from "../apiCall";
 import { formatBytes, timeAgo, useToast } from "../components/ui";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import {
@@ -77,9 +78,7 @@ export function PreviewPanel({
     if (sending) return;
     setSending(true);
     try {
-      const latest = await api.get<MemoryPreview>(
-        `/api/memory/preview?p=${encodeURIComponent(preview.node.path)}`,
-      );
+      const latest = await apiCall("GET /api/memory/preview", { query: { p: preview.node.path } });
       if (latest.kind === "blocked") throw new Error(t("brain.blocked"));
       const base = readConsoleDraft();
       // "Ask for a summary" (refino item 24): the question comes with the file.
@@ -333,9 +332,9 @@ export function PreviewPanel({
         <button
           className="btn sm"
           onClick={() =>
-            void api
-              .post("/api/memory/open", { p: node.path })
-              .catch((e: Error) => toast(e.message, "danger"))
+            void apiCall("POST /api/memory/open", { body: { p: node.path } }).catch((e: Error) =>
+              toast(e.message, "danger"),
+            )
           }
         >
           <ExternalLink aria-hidden /> {t("brain.openEditor")}

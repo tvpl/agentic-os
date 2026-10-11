@@ -262,9 +262,9 @@ describe("C24 the code and the policy agree, in both directions", () => {
     expect(cli.status, cli.stderr).toBe(0);
   });
 
-  it("C24 the real code has the network points the research found (36) and the hosts the policy names", () => {
+  it("C24 the real code has the network points the research found (37) and the hosts the policy names", () => {
     const found = realScan;
-    expect(found.sites).toHaveLength(36);
+    expect(found.sites).toHaveLength(37);
     const fetchFiles = found.sites.filter((s) => s.kind === "fetch").map((s) => s.file);
     for (const file of [
       "apps/api/src/updates.ts",

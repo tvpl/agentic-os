@@ -5,7 +5,7 @@
  * part of the day, as before; dismissing it marks the notices read.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api";
+import { apiCall } from "../apiCall";
 import { useLocale, useT } from "../i18n";
 import { useOsMetrics, useOsSettings } from "../queries";
 import { getVoiceNotify, speak } from "../hooks/systemNotify";
@@ -69,9 +69,9 @@ export function useBriefing(): Briefing | null {
       } catch {
         /* ignore */
       }
-      void api
-        .post("/api/channels/telegram/send", { text: briefing.lines.join("\n") })
-        .catch(() => undefined);
+      void apiCall("POST /api/channels/telegram/send", { body: { text: briefing.lines.join("\n") } }).catch(
+        () => undefined,
+      );
     }
   }, [briefing, locale, telegram, phase]);
 

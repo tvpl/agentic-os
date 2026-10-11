@@ -371,7 +371,11 @@ move to a public entry point when someone outside the repository writes one.
   carries a copy of the `LICENSE` at the root of the repository (a test requires the copies to be equal); `license`
   in `package.json` points at it (`SEE LICENSE IN LICENSE`). The root `LICENSE` is a draft for the owner to review: the
   licensor is still `[A PREENCHER PELO DONO]`.
-- `@mordomo/contracts` is the package that `@mordomo/core` depends on, and has the same metadata.
+- `@mordomo/contracts` is the package that `@mordomo/core` depends on, and has the same metadata. Besides the root it
+  has two subpaths a browser can take without zod: `./policy` (the write policy) and `./events` (which events exist,
+  the versions each has had, and `classifyEvent`; the policy is in [events.md](events.md)). The root also holds the
+  route table `API` and the OpenAPI document is generated from it, so a client generated for the HTTP API starts from
+  [the same schemas](architecture.md#the-api-contract-v1).
 - Native code: `better-sqlite3`. The package has no install script of its own.
 - The declarations use the types of Node, so `@types/node` (22 or newer) is an optional peer dependency of `@mordomo/core`: a TypeScript program installs it, a JavaScript one does not need it.
 - `repository` names the repository and the folder of each package.

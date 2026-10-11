@@ -6,7 +6,8 @@
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { BellOff, Check, ExternalLink, ScanSearch, X } from "lucide-react";
-import { api, type ApprovalRecord } from "../../api";
+import { type ApprovalRecord } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useLocale, useT } from "../../i18n";
 import { qk, useApiQuery } from "../../queries";
 import { requiresFullReview } from "../../runs/approvals";
@@ -43,7 +44,7 @@ export function InboxList({ limit, unreadOnly = false }: InboxListProps) {
 
   const resolve = useMutation({
     mutationFn: ({ id, decision }: { id: string; decision: "approved" | "denied" }) =>
-      api.post(`/api/approvals/${encodeURIComponent(id)}/resolve`, { decision }),
+      apiCall("POST /api/approvals/:id/resolve", { params: { id }, body: { decision } }),
     onSuccess: (_data, vars) => {
       toast(
         vars.decision === "approved" ? t("desktop.prompt.approved") : t("desktop.prompt.denied"),

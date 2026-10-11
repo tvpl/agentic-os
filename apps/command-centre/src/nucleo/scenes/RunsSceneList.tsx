@@ -4,7 +4,7 @@
  * the window. Type, not a table grid.
  */
 import { useLocale, useT } from "../../i18n";
-import type { RunRecord } from "../../api";
+import type { RunSummary } from "../../api";
 import { formatDuration } from "../../components/ui";
 import { formatTokens, formatUsd, totalTokens } from "../../runs/usage";
 import { laneOf, runLabel, runStart, toneOf } from "./runsRiver";
@@ -22,7 +22,7 @@ export default function RunsList({
   onLoadOlder,
   statusText,
 }: {
-  runs: readonly RunRecord[];
+  runs: readonly RunSummary[];
   now: number;
   selectedId: string | null;
   asc: boolean;

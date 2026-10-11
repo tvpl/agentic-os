@@ -1,8 +1,8 @@
-import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import { type Settings } from "@mordomo/core";
 import { formatNotification, sendTelegramMessage, telegramToken } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
+import { bind } from "../contract.js";
 import { httpError } from "./common.js";
 
 /**
@@ -18,7 +18,7 @@ import { httpError } from "./common.js";
  */
 export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): void {
   /** Inbound poller health for the Settings card. */
-  app.get("/api/channels/telegram/status", { config: { scope: "monitor" } }, async () => {
+  bind(app, "telegram.status", async () => {
     const p = ctx.telegramPoller;
     return {
       inbound: p?.enabled() ?? false,
@@ -30,15 +30,14 @@ export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): vo
   });
 
   /** Send one line to the configured chat (refino item 45: an artifact or a reply, on demand). */
-  app.post("/api/channels/telegram/send", { config: { scope: "owner" } }, async (req) => {
-    const body = z.object({ text: z.string().min(1).max(4000) }).parse(req.body);
+  bind(app, "telegram.send", async ({ body }) => {
     const settings = ctx.settings();
     const cfg = settings.channels.telegram;
     const token = telegramDestination(settings);
     return delivered(await sendTelegramMessage({ token, chatId: cfg.chatId, text: body.text }));
   });
 
-  app.post("/api/channels/telegram/test", { config: { scope: "owner" } }, async () => {
+  bind(app, "telegram.test", async () => {
     const settings = ctx.settings();
     const cfg = settings.channels.telegram;
     const token = telegramDestination(settings);

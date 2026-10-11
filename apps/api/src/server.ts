@@ -15,6 +15,7 @@ import Fastify, {
 import fastifyStatic from "@fastify/static";
 import { ZodError } from "zod";
 import { EngineLockedError, PathAccessError } from "@mordomo/core";
+import { API } from "@mordomo/contracts";
 import {
   JsonlLogger,
   TelegramPoller,
@@ -54,6 +55,7 @@ import { closeAllSse } from "./routes/sse.js";
 import { isApiRequest, isApiRoutePath, rewriteApiUrl, successorHeaders } from "./apiVersion.js";
 import { SlidingWindow } from "./rateLimit.js";
 import { registerOpenApiRoute } from "./openapi.js";
+import { installResponseCheck, responsesValidated } from "./contract.js";
 import { principalName, type Principal } from "./routes/common.js";
 import { ticketKey } from "./tickets.js";
 import { ignoredBindMessage, listenPlan } from "./transport.js";
@@ -258,6 +260,8 @@ declare module "fastify" {
     queryToken?: boolean;
     /** A `GET` that may carry a stream ticket in `?ticket=` (`POST /api/stream-tickets`), and refuses a device's `?token=`. */
     ticket?: boolean;
+    /** The entry of the route table (`API`) this route was bound from (`bind`): the id its contract is known by. */
+    route?: string;
   }
   interface FastifyInstance {
     /** Every /api route as registered (filled by an `onRoute` hook): the OpenAPI document's source. */
@@ -274,6 +278,12 @@ export interface ApiRoute {
   config: FastifyContextConfig;
 }
 
+/** Why a route was not bound: the message of `buildServer` for an entry of `API` that no route claimed. */
+function unboundMessage(id: string): string {
+  const entry = API[id as keyof typeof API];
+  return `${entry.method} ${entry.path} (${id}) is in the route table but no route was bound to it`;
+}
+
 export function tokenMatches(supplied: unknown, expected: string): boolean {
   if (typeof supplied !== "string" || supplied.length === 0) return false;
   const a = Buffer.from(supplied, "utf8");
@@ -285,6 +295,11 @@ export function tokenMatches(supplied: unknown, expected: string): boolean {
 /** Strip the token and the stream ticket from a URL before it reaches any log line. */
 export function safeUrl(url: string): string {
   return url.replace(/([?&](?:token|ticket)=)[^&#]*/gi, "$1[REDACTED]");
+}
+
+/** The `error.code` of an error that raised a status and no code of its own. */
+export function defaultErrorCode(status: number): string {
+  return STATUS_CODES[status] ?? "error";
 }
 
 const STATUS_CODES: Record<number, string> = {
@@ -329,7 +344,12 @@ function buildLoggerOptions(ctx: AppContext) {
 
 export async function buildServer(
   ctx: AppContext,
-  options: { uiDist?: string; updates?: UpdateChecker } = {},
+  options: {
+    uiDist?: string;
+    updates?: UpdateChecker;
+    /** Check each JSON response against its entry of the route table (default: `responsesValidated()`). */
+    validateResponses?: boolean;
+  } = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: buildLoggerOptions(ctx),
@@ -354,6 +374,12 @@ export async function buildServer(
     if (route.config?.public !== true && route.config?.scope === undefined) {
       throw new Error(
         `${[route.method].flat().join("/")} ${route.url} declares no scope: add config: { scope } (owner, monitor, content, run or approve), or public: true`,
+      );
+    }
+    // One table describes the API: a route registered outside `bind` has no contract, so it does not exist.
+    if (route.config?.route === undefined || !(route.config.route in API)) {
+      throw new Error(
+        `${[route.method].flat().join("/")} ${route.url} declares no contract: register it with bind(app, id, handler) and add its entry to the route table (contracts/src/api)`,
       );
     }
     for (const method of [route.method].flat()) {
@@ -529,7 +555,7 @@ export async function buildServer(
       if (status < 500 || status === 502 || status === 503) {
         // Fastify's own codes (FST_ERR_*) are internal names; clients get the status's code.
         const own = typeof err.code === "string" && err.code && !err.code.startsWith("FST_");
-        const code = own ? err.code! : (STATUS_CODES[status] ?? "error");
+        const code = own ? err.code! : defaultErrorCode(status);
         return reply.code(status).send(errorBody(code, err.message));
       }
       // Never leak internals (paths, stack, SQL) to the client; keep them in the log.
@@ -541,6 +567,9 @@ export async function buildServer(
   app.addHook("onClose", async () => {
     closeAllSse(app);
   });
+
+  // Development and tests: a response that departs from its route's entry is a 500 that names the paths.
+  if (options.validateResponses ?? responsesValidated()) installResponseCheck(app);
 
   // ---- API routes -----------------------------------------------------------
   registerSystemRoutes(app, ctx, { updates: options.updates });
@@ -559,6 +588,9 @@ export async function buildServer(
   registerEventRoutes(app, ctx);
   registerObjectiveRoutes(app, ctx);
   registerOpenApiRoute(app);
+  // The table and the router describe the same API: an entry nobody bound is a route that was forgotten.
+  const bound = new Set(app.apiRoutes.map((r) => r.config.route));
+  for (const id of Object.keys(API)) if (!bound.has(id)) throw new Error(unboundMessage(id));
 
   // ---- Command Centre static UI --------------------------------------------
   const uiDist =

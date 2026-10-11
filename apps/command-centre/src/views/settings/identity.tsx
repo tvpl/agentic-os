@@ -1,6 +1,7 @@
 /** Settings › identity (split out of Settings.tsx, refino item 17). */
 import { useMutation } from "@tanstack/react-query";
-import { api, type SystemInfo, type UpdateCheck } from "../../api";
+import { type SystemInfo, type UpdateCheck } from "../../api";
+import { apiCall } from "../../apiCall";
 
 import { useT, type Lang } from "../../i18n";
 import { useApiQuery } from "../../queries";
@@ -23,7 +24,7 @@ function SystemInfoFields({ s, put }: { s: SettingsShape; put: Put }) {
   const info = useApiQuery<SystemInfo>(["system", "info"], "/api/system/info", { staleTime: 60_000 });
   const updates = useApiQuery<UpdateCheck>(["updates"], "/api/updates", { staleTime: 60_000 });
   const check = useMutation({
-    mutationFn: () => api.get<UpdateCheck>("/api/updates?force=1"),
+    mutationFn: () => apiCall("GET /api/updates", { query: { force: "1" } }),
   });
   const result = check.data ?? updates.data;
   const status = result?.status ?? null;

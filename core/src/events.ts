@@ -11,7 +11,13 @@
  * A store built without a bus announces nothing.
  */
 
-import { OS_EVENT_VERSION, type OsEvent, type OsEventMap, type OsEventType } from "@mordomo/contracts";
+import {
+  OS_EVENT_VERSION,
+  currentEventVersion,
+  type OsEvent,
+  type OsEventMap,
+  type OsEventType,
+} from "@mordomo/contracts";
 
 export { OS_EVENT_VERSION, type OsEvent, type OsEventMap, type OsEventType };
 
@@ -27,7 +33,7 @@ export class EventBus {
 
   /** Announce an event; the payload type is the one `OsEventMap` names for `type`. */
   emit<K extends OsEventType>(type: K, payload: OsEventMap[K]): OsEvent<K> {
-    const event: OsEvent<K> = { id: ++this.seq, type, ts: Date.now(), v: OS_EVENT_VERSION, payload };
+    const event: OsEvent<K> = { id: ++this.seq, type, ts: Date.now(), v: currentEventVersion(type), payload };
     const stored = event as OsEvent;
     this.ring.push(stored);
     if (this.ring.length > this.ringSize) this.ring.shift();

@@ -312,7 +312,7 @@ describe("routines v2 · scheduler", () => {
       profile: "read_only",
       skillSlug: "workspace-digest",
     });
-    bus.emit("run.finished", { runId: trigger.id, status: trigger.status });
+    bus.emit("run.finished", { runId: trigger.id, status: trigger.status, durationMs: 1 });
     for (let i = 0; i < 40 && scheduler.history("after-digest").length === 0; i++) await wait(50);
     scheduler.stop();
     await scheduler.drain();

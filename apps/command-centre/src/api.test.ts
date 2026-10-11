@@ -118,6 +118,46 @@ describe("streams without a credential in the URL", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(FakeEventSource.instances).toHaveLength(before);
   });
+
+  it("C32 a frame of an unknown type or a future version is dropped", async () => {
+    // The bus feed: a type this build has never heard of, a version it does not read, a number, a string, null.
+    const heard: string[] = [];
+    const stopEvents = api.streamEvents((e) => heard.push(`${e.type}@${String(e.v)}`), {
+      onError: () => undefined,
+    });
+    await settle();
+    const feed = FakeEventSource.instances.at(-1)!;
+    const send = (es: FakeEventSource, data: string) => es.onmessage?.({ data, lastEventId: "" });
+    send(feed, JSON.stringify({ type: "run.finished", v: 1, payload: {} }));
+    send(feed, JSON.stringify({ type: "coffee.brewed", v: 1, payload: {} }));
+    send(feed, JSON.stringify({ type: "run.finished", v: 2, payload: {} }));
+    send(feed, JSON.stringify({ type: "run.finished", payload: {} }));
+    send(feed, JSON.stringify(7));
+    send(feed, JSON.stringify("run.finished"));
+    send(feed, "null");
+    send(feed, "{not json");
+    send(feed, JSON.stringify({ type: "settings.changed", v: 1, payload: {} }));
+    expect(heard).toEqual(["run.finished@1", "settings.changed@1"]);
+    // None of it closed the stream.
+    expect(feed.closed).toBe(false);
+    stopEvents();
+
+    // A run's stream: the same, and a frame without `v` (a server that predates it) reads as version 1.
+    const frames: string[] = [];
+    const stopRun = api.streamRun("22222222-2222-4222-8222-222222222222", (e) =>
+      frames.push(`${String(e.type)}@${String(e.v)}`),
+    );
+    await settle();
+    const run = FakeEventSource.instances.at(-1)!;
+    send(run, JSON.stringify({ type: "assistant", v: 1, text: "a" }));
+    send(run, JSON.stringify({ type: "hologram", v: 1 }));
+    send(run, JSON.stringify({ type: "assistant", v: 9, text: "b" }));
+    send(run, JSON.stringify({ type: "assistant", text: "old server" }));
+    send(run, JSON.stringify([1, 2]));
+    send(run, JSON.stringify({ type: "run_state", v: 1, status: "done" }));
+    expect(frames).toEqual(["assistant@1", "assistant@undefined", "run_state@1"]);
+    stopRun();
+  });
 });
 
 describe("which credential the page runs with", () => {

@@ -1,0 +1,441 @@
+/** The second brain: the file index, search, graph, previews, recall, the journal, hygiene and bi-temporal facts. */
+import { z } from "zod";
+import { err, notFound } from "./common.js";
+import { route } from "./route.js";
+
+// ---- schemas ---------------------------------------------------------------------------------------------------
+
+export const JOURNAL_SECTION_NAMES = ["Today", "Decisions", "Open loops", "Runs"] as const;
+
+const IndexStatsSchema = z.object({
+  scanned: z.number(),
+  added: z.number(),
+  updated: z.number(),
+  removed: z.number(),
+  skippedExcluded: z.number(),
+  skippedBinary: z.number(),
+  related: z.number(),
+  durationMs: z.number(),
+});
+
+const FileRowSchema = z.object({
+  id: z.number(),
+  root: z.string(),
+  path: z.string(),
+  rel: z.string(),
+  name: z.string(),
+  ext: z.string(),
+  dir: z.string(),
+  area: z.string().nullable(),
+  size: z.number(),
+  mtime: z.number(),
+  indexedAt: z.number(),
+  title: z.string().nullable(),
+  tags: z.array(z.string()),
+  /** Dataview-style `key:: value` inline fields (markdown only): the keys are the user's. */
+  fields: z.record(z.string()),
+});
+
+const SearchHitSchema = FileRowSchema.extend({ snippet: z.string().nullable(), score: z.number() });
+
+const AreaCountSchema = z.object({ area: z.string(), count: z.number() });
+const ExtCountSchema = z.object({ ext: z.string(), count: z.number() });
+const TagCountSchema = z.object({ tag: z.string(), count: z.number() });
+
+const GraphNodeSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  rel: z.string(),
+  path: z.string(),
+  ext: z.string(),
+  area: z.string().nullable(),
+  dir: z.string(),
+  size: z.number(),
+  mtime: z.number(),
+  title: z.string().nullable(),
+  tags: z.array(z.string()),
+  fields: z.record(z.string()).optional(),
+});
+
+const GraphDataSchema = z.object({
+  nodes: z.array(GraphNodeSchema),
+  edges: z.array(
+    z.object({
+      source: z.number(),
+      target: z.number(),
+      kind: z.enum(["markdown-link", "same-dir", "same-area", "related"]),
+      why: z.string(),
+    }),
+  ),
+  truncated: z.boolean(),
+  totalFiles: z.number(),
+});
+
+const PreviewResultSchema = z.object({
+  kind: z.enum(["text", "binary", "blocked", "too-large"]),
+  content: z.string().nullable(),
+  truncated: z.boolean(),
+  size: z.number(),
+  message: z.string().nullable(),
+});
+
+const RecallResultSchema = z.object({
+  question: z.string(),
+  keywords: z.array(z.string()),
+  answerContext: z.array(
+    z.object({
+      path: z.string(),
+      section: z.string(),
+      excerpt: z.string(),
+      score: z.number(),
+      why: z.string(),
+      via: z.string().optional(),
+    }),
+  ),
+  tokensEstimate: z.number(),
+  candidatesConsidered: z.number(),
+  opened: z.number(),
+  candidates: z.array(z.object({ path: z.string(), score: z.number(), why: z.string() })),
+  durationMs: z.number(),
+});
+
+const RecallStatsSchema = z.object({
+  totalRecalls: z.number(),
+  totalTokens: z.number(),
+  paths: z.array(z.object({ path: z.string(), count: z.number(), lastAt: z.number() })),
+  lastAt: z.number().nullable(),
+});
+
+const JournalSectionsSchema = z.array(z.object({ name: z.string(), lines: z.array(z.string()) }));
+
+const JournalDaySchema = z.object({
+  date: z.string(),
+  path: z.string(),
+  content: z.string(),
+  /** True when the file was created by this call. */
+  created: z.boolean(),
+});
+
+const HygieneKind = z.enum([
+  "orphan",
+  "dangling-link",
+  "stale",
+  "skill-never-run",
+  "silent-routine",
+  "unused-connector",
+]);
+
+const HygieneReportSchema = z.object({
+  generatedAt: z.number(),
+  counts: z.object({
+    orphan: z.number(),
+    "dangling-link": z.number(),
+    stale: z.number(),
+    "skill-never-run": z.number(),
+    "silent-routine": z.number(),
+    "unused-connector": z.number(),
+  }),
+  items: z.array(
+    z.object({
+      kind: HygieneKind,
+      id: z.string(),
+      name: z.string(),
+      detail: z.string(),
+      action: z.enum(["open", "disconnect", "archive", "link"]),
+    }),
+  ),
+  thresholds: z.object({
+    staleDays: z.number(),
+    silentRoutineDays: z.number(),
+    unusedConnectorDays: z.number(),
+  }),
+});
+
+export const FactSchema = z.object({
+  id: z.number(),
+  subject: z.string(),
+  predicate: z.string(),
+  object: z.string(),
+  validFrom: z.number(),
+  validTo: z.number().nullable(),
+  sourceRunId: z.string().nullable(),
+  sourcePath: z.string().nullable(),
+  createdAt: z.number(),
+});
+
+/** A real calendar day as `YYYY-MM-DD`: `2026-02-30` is not one. */
+export function isJournalDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y, m, d] = value.split("-").map(Number) as [number, number, number];
+  const date = new Date(y, m - 1, d);
+  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
+}
+
+const journalDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD")
+  .refine(isJournalDate, { message: "expected YYYY-MM-DD" });
+
+const memoryScopeNote = "A run's own credential recalls from the memory folder only";
+
+// ---- routes ----------------------------------------------------------------------------------------------------
+
+export const memoryRoutes = {
+  "memory.status": route({
+    method: "GET",
+    path: "/api/memory/status",
+    summary: "The last index run and the facets of the index (areas, extensions, tags)",
+    tag: "memory",
+    scope: "monitor",
+    responses: {
+      200: z.object({
+        lastIndex: z.object({ at: z.number(), stats: IndexStatsSchema }).nullable(),
+        facets: z.object({
+          areas: z.array(AreaCountSchema),
+          exts: z.array(ExtCountSchema),
+          tags: z.array(TagCountSchema),
+          total: z.number(),
+        }),
+      }),
+    },
+  }),
+  "memory.index": route({
+    method: "POST",
+    path: "/api/memory/index",
+    summary: "Index every granted folder (chunked; progress arrives as index.* events)",
+    tag: "memory",
+    scope: "owner",
+    responses: { 200: z.object({ stats: IndexStatsSchema }) },
+    errors: [
+      err(
+        409,
+        "index_scan_incomplete",
+        "The scan could not read a folder it needs; the previous index is kept",
+      ),
+    ],
+  }),
+  "memory.search": route({
+    method: "GET",
+    path: "/api/memory/search",
+    summary: "Full-text search over the index",
+    tag: "memory",
+    scope: "content",
+    query: z.object({
+      q: z.string().default(""),
+      area: z.string().optional(),
+      ext: z.string().optional(),
+      dir: z.string().optional(),
+      tag: z.string().optional(),
+      modifiedAfter: z.coerce.number().optional(),
+      limit: z.coerce.number().int().min(1).max(200).optional(),
+    }),
+    responses: { 200: z.array(SearchHitSchema) },
+  }),
+  "memory.graph": route({
+    method: "GET",
+    path: "/api/memory/graph",
+    summary: "Files and their links for the visual second brain",
+    tag: "memory",
+    scope: "content",
+    query: z.object({
+      area: z.string().optional(),
+      dir: z.string().optional(),
+      q: z.string().optional(),
+      maxNodes: z.coerce.number().int().min(10).max(4000).optional(),
+      related: z.coerce.boolean().optional(),
+    }),
+    responses: { 200: GraphDataSchema },
+  }),
+  "memory.related": route({
+    method: "GET",
+    path: "/api/memory/related",
+    summary: "The files linked to one indexed file, and why",
+    tag: "memory",
+    scope: "content",
+    query: z.object({ id: z.coerce.number().int() }),
+    responses: { 200: z.array(z.object({ file: FileRowSchema, why: z.string() })) },
+  }),
+  "memory.preview": route({
+    method: "GET",
+    path: "/api/memory/preview",
+    summary: "A text preview of a file inside the granted folders",
+    tag: "memory",
+    scope: "content",
+    query: z.object({ p: z.string() }),
+    responses: { 200: PreviewResultSchema },
+    errors: [
+      err(
+        404,
+        "source_missing",
+        "The source was moved or removed: refresh the index and select an existing file",
+      ),
+    ],
+  }),
+  "memory.open": route({
+    method: "POST",
+    path: "/api/memory/open",
+    summary: "Open a document or folder with the operating system's default application",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({ p: z.string() }),
+    responses: { 200: z.object({ opened: z.string() }) },
+    errors: [
+      err(
+        415,
+        "unsupported_type",
+        "Only documents, media and folders open from here; an executable or an app bundle is refused",
+      ),
+    ],
+  }),
+  "memory.routers": route({
+    method: "POST",
+    path: "/api/memory/routers",
+    summary: "Regenerate the router files of the second brain",
+    tag: "memory",
+    scope: "owner",
+    responses: { 200: z.object({ written: z.array(z.string()) }) },
+  }),
+  "memory.routers.check": route({
+    method: "GET",
+    path: "/api/memory/routers/check",
+    summary: "Problems found in the router files (missing master, dangling links, staleness)",
+    tag: "memory",
+    scope: "content",
+    responses: { 200: z.array(z.object({ file: z.string(), problem: z.string() })) },
+  }),
+  "memory.recall": route({
+    method: "GET",
+    path: "/api/memory/recall",
+    summary: `Layered recall: keywords, index, top files, sections, pointers. ${memoryScopeNote}`,
+    tag: "memory",
+    scope: "content",
+    query: z.object({
+      q: z.string().min(1).max(2000),
+      k: z.coerce.number().int().min(1).max(10).optional(),
+      area: z.string().optional(),
+      excerptChars: z.coerce.number().int().min(200).max(20_000).optional(),
+      /** Skip the frequency bookkeeping (dry runs, UI previews). */
+      record: z.coerce.boolean().optional(),
+    }),
+    responses: { 200: RecallResultSchema },
+  }),
+  "memory.recall.stats": route({
+    method: "GET",
+    path: "/api/memory/recall/stats",
+    summary: "How often each path was recalled",
+    tag: "memory",
+    scope: "content",
+    query: z.object({ limit: z.coerce.number().int().min(1).max(500).optional() }),
+    responses: { 200: RecallStatsSchema },
+  }),
+  "memory.journal": route({
+    method: "GET",
+    path: "/api/memory/journal",
+    summary: "A day's journal (created from the template on first access), or the last N days with days=",
+    tag: "memory",
+    scope: "content",
+    query: z.object({
+      date: journalDate.optional(),
+      days: z.coerce.number().int().min(1).max(90).optional(),
+    }),
+    responses: {
+      200: z.union([
+        JournalDaySchema.extend({ sections: JournalSectionsSchema, dates: z.array(z.string()) }),
+        z.object({
+          today: z.string(),
+          days: z.array(JournalDaySchema.extend({ sections: JournalSectionsSchema })),
+        }),
+      ]),
+    },
+  }),
+  "memory.journal.append": route({
+    method: "POST",
+    path: "/api/memory/journal/append",
+    summary: "Add a line under a section of a day's journal",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      text: z.string().min(1).max(4000),
+      section: z.enum(JOURNAL_SECTION_NAMES).optional(),
+      date: journalDate.optional(),
+      timestamp: z.boolean().optional(),
+    }),
+    responses: { 200: JournalDaySchema.extend({ sections: JournalSectionsSchema }) },
+  }),
+  "memory.hygiene": route({
+    method: "GET",
+    path: "/api/memory/hygiene",
+    summary: "Orphans, dangling links, stale files, skills never run, silent routines and unused connectors",
+    tag: "memory",
+    scope: "content",
+    query: z.object({
+      staleDays: z.coerce.number().int().min(1).max(3650).optional(),
+      silentRoutineDays: z.coerce.number().int().min(1).max(3650).optional(),
+      unusedConnectorDays: z.coerce.number().int().min(1).max(3650).optional(),
+      perKind: z.coerce.number().int().min(1).max(500).optional(),
+    }),
+    responses: { 200: HygieneReportSchema },
+  }),
+  "memory.facts.list": route({
+    method: "GET",
+    path: "/api/memory/facts",
+    summary:
+      "Bi-temporal facts: currently valid by default, asOf for a point in time, includeExpired for history",
+    tag: "memory",
+    scope: "content",
+    query: z.object({
+      subject: z.string().max(2000).optional(),
+      predicate: z.string().max(2000).optional(),
+      asOf: z.coerce.number().int().optional(),
+      includeExpired: z.coerce.boolean().optional(),
+      limit: z.coerce.number().int().min(1).max(2000).optional(),
+    }),
+    responses: {
+      200: z.object({
+        facts: z.array(FactSchema),
+        stats: z.object({ open: z.number(), expired: z.number(), subjects: z.number() }),
+      }),
+    },
+  }),
+  "memory.facts.assert": route({
+    method: "POST",
+    path: "/api/memory/facts",
+    summary: "Assert a fact (201 when new, 200 when an identical open fact already existed)",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      subject: z.string().min(1).max(2000),
+      predicate: z.string().min(1).max(2000),
+      object: z.string().min(1).max(2000),
+      validFrom: z.number().int().optional(),
+      sourceRunId: z.string().max(200).nullable().optional(),
+      sourcePath: z.string().max(4096).nullable().optional(),
+    }),
+    responses: {
+      200: z.object({ fact: FactSchema, invalidated: z.array(FactSchema), unchanged: z.boolean() }),
+      201: z.object({ fact: FactSchema, invalidated: z.array(FactSchema), unchanged: z.boolean() }),
+    },
+  }),
+  "memory.facts.retract": route({
+    method: "POST",
+    path: "/api/memory/facts/:id/retract",
+    summary: "Close a fact at this instant",
+    tag: "memory",
+    scope: "owner",
+    params: z.object({ id: z.coerce.number().int().positive() }),
+    responses: { 200: FactSchema },
+    errors: [notFound("The fact")],
+  }),
+  "memory.query": route({
+    method: "GET",
+    path: "/api/memory/query",
+    summary: "Dataview-style query over inline `key:: value` fields: where=key, key:value or key:~substring",
+    tag: "memory",
+    scope: "content",
+    query: z.object({
+      where: z.string().min(1).max(500),
+      limit: z.coerce.number().int().min(1).max(1000).optional(),
+    }),
+    responses: { 200: z.object({ where: z.string(), files: z.array(FileRowSchema) }) },
+  }),
+} as const;

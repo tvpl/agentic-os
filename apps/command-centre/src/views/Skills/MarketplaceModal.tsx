@@ -7,7 +7,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Download, RefreshCw } from "lucide-react";
-import { api } from "../../api";
+import { apiCall } from "../../apiCall";
 import { qk, useApiQuery, useInvalidate } from "../../queries";
 import { useT } from "../../i18n";
 import { useToast } from "../../components/ui";
@@ -47,12 +47,12 @@ export default function MarketplaceModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   // Refresh bypasses the server-side index cache, not only the client one.
   const refresh = useMutation({
-    mutationFn: () => api.get<RegistryResponse>("/api/skills/registry?refresh=1"),
+    mutationFn: () => apiCall("GET /api/skills/registry", { query: { refresh: true } }),
     onSuccess: (data) => qc.setQueryData(qk.skillRegistry, data),
   });
   const install = useMutation({
     mutationFn: (row: RegistrySkillRow) =>
-      api.post("/api/skills/install", { slug: row.slug, registry: row.registry, force: row.installed }),
+      apiCall("POST /api/skills/install", { body: { slug: row.slug, registry: row.registry, force: row.installed } }),
     onSuccess: async (_r, row) => {
       toast(t("skills.market.installed", { name: row.name }), "ok");
       await invalidate(qk.skills);

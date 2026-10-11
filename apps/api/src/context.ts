@@ -8,6 +8,7 @@ import {
   installedVersion,
   versionStatus,
   type BudgetCrossedPayload,
+  type EffortLevel,
   type HostResolver,
   type MetricsSample,
   type ProviderId,
@@ -37,7 +38,7 @@ export interface ProviderSnapshot {
   /** The range this MordomoOS release was developed against; null when the provider declares none. */
   testedVersions: TestedVersions | null;
   defaultModel: string | null;
-  defaultEffort: string;
+  defaultEffort: EffortLevel;
 }
 
 export {

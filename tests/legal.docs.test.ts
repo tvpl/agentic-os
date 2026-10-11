@@ -293,7 +293,7 @@ describe("C6 the installer carries the legal side", () => {
       components: unknown[];
     };
     expect(bom.bomFormat).toBe("CycloneDX");
-    expect(bom.components).toHaveLength(183 + 4);
+    expect(bom.components).toHaveLength(184 + 4);
     expect(fs.existsSync(path.join(payload, "legal", "vendor", "FSL-1.1-ALv2.template.md"))).toBe(true);
     // The CycloneDX schemas are test fixtures of the repository, not part of what the installer carries.
     expect(fs.existsSync(path.join(payload, "legal", "vendor", "cyclonedx"))).toBe(false);
@@ -1079,7 +1079,7 @@ describe("C42 the runtime set is not presented as the content of the installer",
       ),
     ).toContain("a superset of what the installer's bundles contain");
     const notice = flat(text("legal/THIRD_PARTY_NOTICES.md"));
-    expect(notice).toContain("Pacotes npm de runtime: 184");
+    expect(notice).toContain("Pacotes npm de runtime: 185");
     expect(notice).toContain("superconjunto do que o instalador leva");
     expect(notice).toContain("o aviso não afirma que cada um está dentro do instalador");
   });

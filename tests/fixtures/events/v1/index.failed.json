@@ -1,0 +1,10 @@
+{
+  "id": 10,
+  "type": "index.failed",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "code": "index_scan_incomplete",
+    "previousIndexPreserved": true
+  }
+}

@@ -17,15 +17,8 @@ import {
   Scissors,
   Settings2,
 } from "lucide-react";
-import {
-  api,
-  getToken,
-  type ApprovalRecord,
-  type ProviderId,
-  type ProviderSnapshot,
-  type Skill,
-  type SkillResource,
-} from "../../api";
+import { getToken, type ApprovalRecord, type ProviderId, type ProviderSnapshot, type Skill, type SkillResource } from "../../api";
+import { apiCall } from "../../apiCall";
 import { qk, useApiQuery, useInvalidate } from "../../queries";
 import { useLang, useT } from "../../i18n";
 import { localizeSkill } from "./localize";
@@ -52,12 +45,6 @@ const EFFORT_VALUES: readonly Effort[] = ["default", "low", "medium", "high"];
 
 function isEffort(value: string | undefined): value is Effort {
   return value !== undefined && (EFFORT_VALUES as readonly string[]).includes(value);
-}
-
-interface RunResponse {
-  runId: string | null;
-  status?: string;
-  pendingApproval?: ApprovalRecord | null;
 }
 
 export default function SkillDetail({ skill, providers }: { skill: Skill; providers: ProviderSnapshot[] }) {
@@ -95,7 +82,7 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
   }, [skill.slug, provider, model, effort, inputs]);
 
   const toggle = useMutation({
-    mutationFn: () => api.post(`/api/skills/${encodeURIComponent(skill.slug)}/toggle`),
+    mutationFn: () => apiCall("POST /api/skills/:slug/toggle", { params: { slug: skill.slug } }),
     onSuccess: async () => {
       await invalidate(qk.skills);
       toast(
@@ -110,12 +97,12 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
 
   const run = useMutation({
     mutationFn: () =>
-      api.post<RunResponse>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, {
+      apiCall("POST /api/skills/:slug/run", { params: { slug: skill.slug }, body: {
         provider,
         model,
         effort,
         inputs,
-      }),
+      } }),
     onSuccess: (res) => {
       if (res.status === "waiting_approval" || !res.runId) {
         // The security profile put the run on hold: decide it here (analysis 4.3 item 21).
@@ -537,7 +524,7 @@ function NotesPane({ slug }: { slug: string }) {
   const [text, setText] = useState("");
   const add = useMutation({
     mutationFn: (body: string) =>
-      api.post<{ notes: string }>(`/api/skills/${encodeURIComponent(slug)}/notes`, { text: body }),
+      apiCall("POST /api/skills/:slug/notes", { params: { slug }, body: { text: body } }),
     onSuccess: () => {
       setText("");
       qc.invalidateQueries({ queryKey: qk.skillNotes(slug) }).catch(() => undefined);
@@ -547,15 +534,11 @@ function NotesPane({ slug }: { slug: string }) {
   // A write-mode run that folds recurring notes into SKILL.md (parked for approval under review profiles).
   const promote = useMutation({
     mutationFn: () =>
-      api.post<{ runId?: string; status?: string; run?: { id: string; status: string } }>(
-        `/api/skills/${encodeURIComponent(slug)}/notes/promote`,
-        {},
-      ),
+      apiCall("POST /api/skills/:slug/notes/promote", { params: { slug } }),
     onSuccess: (res) => {
-      const status = res.status ?? res.run?.status ?? "";
-      const id = res.runId ?? res.run?.id;
+      const id = res.runId;
       toast(
-        status === "waiting_approval" ? t("skills.notes.promoteParked") : t("skills.notes.promoteStarted"),
+        res.status === "waiting_approval" ? t("skills.notes.promoteParked") : t("skills.notes.promoteStarted"),
         "ok",
       );
       qc.invalidateQueries({ queryKey: ["runs"] }).catch(() => undefined);

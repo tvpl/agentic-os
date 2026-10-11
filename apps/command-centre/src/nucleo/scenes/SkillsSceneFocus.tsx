@@ -13,7 +13,7 @@ import {
   SlidersHorizontal,
   Star,
 } from "lucide-react";
-import type { RunRecord } from "../../api";
+import type { RunSummary } from "../../api";
 import { useLocale, useT, type TKey } from "../../i18n";
 import { timeAgo } from "../../components/ui";
 import type { SkillEntry } from "./skillsEntries";
@@ -55,8 +55,8 @@ export function SkillFocus({
 }: {
   entry: SkillEntry;
   /** The run in flight for this skill, when there is one. */
-  live: RunRecord | null;
-  lastRun: RunRecord | null;
+  live: RunSummary | null;
+  lastRun: RunSummary | null;
   actions: FocusActions;
   compact?: boolean;
 }) {
@@ -179,7 +179,7 @@ export function SkillReadings({
   onOpenRun,
 }: {
   entry: SkillEntry;
-  runs: readonly RunRecord[];
+  runs: readonly RunSummary[];
   onOpenRun: (runId: string) => void;
 }) {
   const t = useT();

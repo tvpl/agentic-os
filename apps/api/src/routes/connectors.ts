@@ -1,5 +1,4 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 import {
   ConnectorDataCache,
   ConnectorSchema,
@@ -9,18 +8,16 @@ import {
   setupChecklist,
 } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
+import { bind } from "../contract.js";
 import { httpError } from "./common.js";
-import { IdParams } from "./params.js";
-
-const DataQuery = z.object({ refresh: z.string().optional() });
 
 export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): void {
   // One cache per server process; the TTL comes from settings at read time.
   const cache = new ConnectorDataCache(ctx.settings().connectors.dataCacheTtlMs);
 
-  app.get("/api/connectors", { config: { scope: "content" } }, async () => ctx.connectors.list());
+  bind(app, "connectors.list", async () => ctx.connectors.list());
 
-  app.get("/api/connectors/audit", { config: { scope: "owner" } }, async () =>
+  bind(app, "connectors.audit", async () =>
     runAudit(ctx.connectors, undefined, homeConfigFilesOf(ctx.providers.manifests())),
   );
 
@@ -29,9 +26,7 @@ export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): 
    * mail, … Never writes; the client refuses any tool outside the connector's
    * declared read mapping. `?refresh=1` bypasses the 5-minute TTL cache.
    */
-  app.get("/api/connectors/:id/data", { config: { scope: "content" } }, async (req) => {
-    const { id } = IdParams.parse(req.params);
-    const { refresh } = DataQuery.parse(req.query ?? {});
+  bind(app, "connectors.data", async ({ params: { id }, query: { refresh } }) => {
     const connector = ctx.connectors.get(id);
     if (!connector) throw httpError(404, "Connector not found");
     const settings = ctx.settings();
@@ -62,8 +57,7 @@ export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): 
   });
 
   /** The setup checklist alone (install command, env var NAMES, allowlist step) — never any secret value. */
-  app.get("/api/connectors/:id/setup", { config: { scope: "owner" } }, async (req) => {
-    const { id } = IdParams.parse(req.params);
+  bind(app, "connectors.setup", async ({ params: { id } }) => {
     const connector = ctx.connectors.get(id);
     if (!connector) throw httpError(404, "Connector not found");
     return {
@@ -72,11 +66,11 @@ export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): 
     };
   });
 
-  app.put("/api/connectors/:id", { config: { scope: "owner" } }, async (req) => {
-    const { id } = IdParams.parse(req.params);
+  bind(app, "connectors.update", async ({ params: { id }, body }) => {
     const existing = ctx.connectors.get(id);
     if (!existing) throw httpError(404, "Connector not found");
-    const updated = ConnectorSchema.parse({ ...(req.body as object), id });
+    // The id in the URL names the connector; the body may leave its own out.
+    const updated = ConnectorSchema.parse({ ...body, id });
     cache.invalidate(id);
 
     // Enabling write operations on a connector is always approval-gated.
@@ -94,15 +88,13 @@ export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): 
     return { connector: ctx.connectors.save(updated), pendingApproval: null };
   });
 
-  app.post("/api/connectors", { config: { scope: "owner" } }, async (req) => {
-    const connector = ConnectorSchema.parse(req.body);
+  bind(app, "connectors.create", async ({ body: connector }) => {
     if (ctx.connectors.get(connector.id)) throw httpError(409, `Connector "${connector.id}" already exists`);
     // New connectors always start not-configured with writes off.
     return ctx.connectors.save({ ...connector, status: "not_configured", writeEnabled: false });
   });
 
-  app.delete("/api/connectors/:id", { config: { scope: "owner" } }, async (req) => {
-    const { id } = IdParams.parse(req.params);
+  bind(app, "connectors.delete", async ({ params: { id } }) => {
     if (!ctx.connectors.remove(id)) throw httpError(404, "Connector not found");
     cache.invalidate(id);
     return { deleted: id };

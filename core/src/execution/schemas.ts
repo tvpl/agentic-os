@@ -1,12 +1,9 @@
 import { z } from "zod";
+import { RUN_LIMITS } from "@mordomo/contracts";
 import { EffortLevel, ProviderId } from "../config/schema.js";
 
-/** The bounds the engine holds every run request to; the HTTP routes use the same numbers. */
-export const RUN_LIMITS = {
-  promptMaxChars: 20_000,
-  timeoutMinMs: 10_000,
-  timeoutMaxMs: 3_600_000,
-} as const;
+/** The bounds the engine holds every run request to; the HTTP routes use the same numbers (they live in the contract). */
+export { RUN_LIMITS };
 
 /**
  * Names that stand for "the program itself" in what the engine writes down: a receipt keeps `null` as `null` in one

@@ -1,0 +1,9 @@
+{
+  "id": 13,
+  "type": "approval.expired",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "count": 2
+  }
+}

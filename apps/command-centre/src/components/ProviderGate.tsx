@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Copy, RefreshCw, ShieldAlert } from "lucide-react";
 import { Link } from "react-router-dom";
-import { api, type ProviderId, type ProviderSnapshot } from "../api";
+import { type ProviderId, type ProviderSnapshot } from "../api";
+import { apiCall } from "../apiCall";
 import { useT } from "../i18n";
 import { useOsProviders } from "../queries";
 import { copyText, errorMessage } from "../views/shared";
@@ -40,13 +41,13 @@ export function ProviderGate() {
   }, [open]);
 
   const redetect = useMutation({
-    mutationFn: (id: ProviderId) => api.post(`/api/providers/${id}/detect`),
+    mutationFn: (id: ProviderId) => apiCall("POST /api/providers/:id/detect", { params: { id } }),
     onSettled: () => void providers.refetch(),
     onError: (err: Error) => toast(errorMessage(err, t), "danger"),
   });
   const recheck = useMutation({
     mutationFn: async () => {
-      await api.get("/api/providers?force=1");
+      await apiCall("GET /api/providers", { query: { force: "1" } });
       await providers.refetch();
     },
     onError: (err: Error) => toast(errorMessage(err, t), "danger"),

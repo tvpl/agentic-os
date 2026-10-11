@@ -9,8 +9,8 @@ import ts from "typescript";
  *   body), passed to `.send(…)`, through parentheses, casts, `await`, both arms of `?:`/`??`/`||`, a local
  *   variable (its initialiser, its assignments, `Object.assign(local, …)` and `local.ok = …`), a spread
  *   (`{ ...{ ok } }`, `{ ...local }`), `Object.assign({}, …)`, or the return of a same-file function it
- *   calls. Handlers are the function arguments of `<x>.get|post|put|patch|delete|head|options|all("/…", …)`
- *   and the `handler` of `<x>.route({ … })`, inline or by name.
+ *   calls. Handlers are the function arguments of `<x>.get|post|put|patch|delete|head|options|all("/…", …)`,
+ *   the third argument of `bind(app, "<id>", …)` and the `handler` of `<x>.route({ … })`, inline or by name.
  * - `okLiteralSites`: every object literal of a file with an `ok` key (and every `x.ok = …`) whose value is
  *   not `true`, wherever it sits. Run over the whole of `apps/api/src`, it covers a body built by a function
  *   of another file that a route calls, which the first scan cannot follow. What it flags and is not an
@@ -46,6 +46,17 @@ const keyOf = (name: ts.PropertyName): string | null => {
   return null;
 };
 
+/** The literal `true`, also as `true as const` (what a handler writes so that the contract's `z.literal(true)` accepts it). */
+const isTrue = (e: ts.Expression): boolean => {
+  while (
+    ts.isParenthesizedExpression(e) ||
+    ts.isSatisfiesExpression(e) ||
+    (ts.isAsExpression(e) && ts.isTypeReferenceNode(e.type) && e.type.typeName.getText() === "const")
+  )
+    e = e.expression;
+  return e.kind === ts.SyntaxKind.TrueKeyword;
+};
+
 /** `x.ok` / `x["ok"]` as the target of an assignment. */
 const isOkTarget = (n: ts.Expression): boolean => {
   if (ts.isPropertyAccessExpression(n)) return n.name.text === "ok";
@@ -70,7 +81,7 @@ export function okLiteralSites(source: string, fileName = "source.ts"): string[]
     if (ts.isObjectLiteralExpression(n)) {
       for (const p of n.properties) {
         if (!p.name || keyOf(p.name) !== "ok") continue;
-        if (ts.isPropertyAssignment(p) && p.initializer.kind === ts.SyntaxKind.TrueKeyword) continue;
+        if (ts.isPropertyAssignment(p) && isTrue(p.initializer)) continue;
         note(p);
       }
     }
@@ -78,7 +89,7 @@ export function okLiteralSites(source: string, fileName = "source.ts"): string[]
       ts.isBinaryExpression(n) &&
       n.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
       isOkTarget(n.left) &&
-      n.right.kind !== ts.SyntaxKind.TrueKeyword
+      !isTrue(n.right)
     )
       note(n);
     ts.forEachChild(n, visit);
@@ -111,6 +122,17 @@ export function okNotTrueSites(
 
   const handlers = new Set<Fn>();
   const findHandlers = (n: ts.Node) => {
+    // `bind(app, "runs.get", handler)`: the way every route is registered since contratos-rest.
+    if (
+      ts.isCallExpression(n) &&
+      ts.isIdentifier(n.expression) &&
+      n.expression.text === "bind" &&
+      n.arguments[1] &&
+      ts.isStringLiteral(n.arguments[1])
+    ) {
+      const fn = asFn(n.arguments[2]);
+      if (fn) handlers.add(fn);
+    }
     if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)) {
       const method = n.expression.name.text;
       const [first] = n.arguments;
@@ -150,7 +172,7 @@ export function okNotTrueSites(
         continue;
       }
       if (!p.name || keyOf(p.name) !== "ok") continue;
-      if (ts.isPropertyAssignment(p) && p.initializer.kind === ts.SyntaxKind.TrueKeyword) continue;
+      if (ts.isPropertyAssignment(p) && isTrue(p.initializer)) continue;
       note(p);
     }
   };
@@ -196,7 +218,7 @@ export function okNotTrueSites(
             isOkTarget(n.left) &&
             (n.left as ts.PropertyAccessExpression | ts.ElementAccessExpression).expression.getText(file) ===
               e.text &&
-            n.right.kind !== ts.SyntaxKind.TrueKeyword
+            !isTrue(n.right)
           )
             note(n);
         }

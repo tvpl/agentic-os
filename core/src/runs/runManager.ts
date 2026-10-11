@@ -1683,7 +1683,8 @@ function fromRow(row: RawRun): RunRecord {
     origin: row.origin as RunOrigin,
     provider: row.provider as ProviderId,
     model: row.model,
-    effort: row.effort as EffortLevel,
+    // The column is nullable (a run stored before the effort existed has none): the record says `default`, as its type does.
+    effort: (row.effort ?? "default") as EffortLevel,
     status: row.status as RunStatus,
     exitCode: row.exit_code,
     durationMs: row.duration_ms,

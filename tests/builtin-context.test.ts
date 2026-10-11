@@ -390,7 +390,7 @@ describe.skipIf(!POSIX)(
       });
       expect(maps().run.has(credential)).toBe(true);
       expect(maps().broker.has(broker)).toBe(true);
-      s.ctx.events.emit("run.finished", { runId: record.id, status: "done" } as never);
+      s.ctx.events.emit("run.finished", { runId: record.id, status: "done", durationMs: 1 });
       expect(maps().run.has(credential)).toBe(false);
       expect(maps().broker.has(broker)).toBe(false);
       // and a run that finishes for real leaves nothing behind

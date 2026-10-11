@@ -22,7 +22,7 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react";
-import { api } from "../api";
+import { apiCall } from "../apiCall";
 import { useT, type TKey } from "../i18n";
 import { useToast } from "../components/ui";
 import { useConfirm } from "../hooks/useConfirm";
@@ -604,7 +604,7 @@ export default function PixelStudio() {
         frames: frames.length,
       };
       if (frames.length > 1) body.spriteSheetDataUrl = sheetToPngDataUrl(frames, size, EXPORT_SCALE);
-      const res = await api.post<{ saved: string[] }>("/api/microapps/pixel/save", body);
+      const res = await apiCall("POST /api/microapps/pixel/save", { body: body });
       toast(`${t("pixel.saved")} ${res.saved.join(", ")}`, "ok");
       dirtyRef.current = false;
     } catch (err) {

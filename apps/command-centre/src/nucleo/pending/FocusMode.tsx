@@ -29,7 +29,7 @@ import {
   LogIn,
   X,
 } from "lucide-react";
-import { api } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useLocale, useT } from "../../i18n";
 import { qk, useOsProviders } from "../../queries";
 import { timeAgo, useToast } from "../../components/ui";
@@ -139,8 +139,11 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
     mutationFn: (ids: string[]) =>
       Promise.all(
         ids.map((id) =>
-          api.post<{ runId: string | null }>(`/api/runs/${encodeURIComponent(id)}/retry`, {
-            submissionId: crypto.randomUUID(),
+          apiCall("POST /api/runs/:id/retry", {
+            params: { id },
+            body: {
+              submissionId: crypto.randomUUID(),
+            },
           }),
         ),
       ),

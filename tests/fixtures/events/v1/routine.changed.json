@@ -1,0 +1,10 @@
+{
+  "id": 7,
+  "type": "routine.changed",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "id": "daily-digest",
+    "action": "updated"
+  }
+}

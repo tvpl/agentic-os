@@ -1,7 +1,8 @@
 /** Settings › providers (split out of Settings.tsx, refino item 17). */
 import { RefreshCw } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type ProviderId, type ProviderSnapshot, type SettingsDoc } from "../../api";
+import { type ProviderId, type ProviderSnapshot, type SettingsDoc } from "../../api";
+import { apiCall } from "../../apiCall";
 
 import { useT } from "../../i18n";
 import { qk, useOsProviders } from "../../queries";
@@ -25,15 +26,12 @@ export function ProvidersTab({ s, put }: { s: SettingsShape; put: Put }) {
   const qc = useQueryClient();
   const providers = useOsProviders();
   const recheck = useMutation({
-    mutationFn: () => api.get<ProviderSnapshot[]>("/api/providers?force=1"),
+    mutationFn: () => apiCall("GET /api/providers", { query: { force: "1" } }),
     onSuccess: (data) => qc.setQueryData(qk.providers, data),
     onError: (err: Error) => toast(err.message, "danger"),
   });
   const smoke = useMutation({
-    mutationFn: (id: ProviderId) =>
-      api.post<{ run: { status: string; durationMs: number | null }; passed: boolean }>(
-        `/api/providers/${id}/smoke`,
-      ),
+    mutationFn: (id: ProviderId) => apiCall("POST /api/providers/:id/smoke", { params: { id } }),
     onSuccess: (res, id) => {
       toast(`${id}: ${res.passed ? t("settings.smokeOk") : res.run.status}`, res.passed ? "ok" : "danger");
       qc.invalidateQueries({ queryKey: qk.providers }).catch(() => undefined);

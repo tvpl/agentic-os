@@ -1,0 +1,14 @@
+{
+  "id": 22,
+  "type": "sentinel.fired",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "sentinel": "fsWatch",
+    "title": "Files changed",
+    "body": "3 files changed in Projetos",
+    "severity": "info",
+    "href": "/brain",
+    "dedupeKey": "sentinel:fsWatch:1"
+  }
+}

@@ -29,75 +29,146 @@ describe("S1 the contracts package", () => {
     expect(Object.keys(pkg.dependencies ?? {})).toEqual(["zod"]);
   });
 
-  it("C16 the contracts package publishes exactly two entry points", () => {
+  it("C16 the contracts package publishes exactly three entry points", () => {
     const pkg = JSON.parse(read("contracts/package.json")) as {
       exports: Record<string, { types: string; default: string }>;
     };
     expect(pkg.exports).toEqual({
       ".": { types: "./dist/index.d.ts", default: "./dist/index.js" },
       "./policy": { types: "./dist/policy.d.ts", default: "./dist/policy.js" },
+      "./events": { types: "./dist/eventRegistry.d.ts", default: "./dist/eventRegistry.js" },
     });
-    // The subpath exists so a browser can take the policy without zod: follow every
-    // value import and re-export from policy.ts (type-only ones are erased) and
-    // check none of them reaches zod.
-    const reached = new Set<string>();
-    const walk = (rel: string) => {
-      if (reached.has(rel)) return;
-      reached.add(rel);
-      const src = read(rel);
-      const specifiers = [
-        ...src.matchAll(/^\s*(?:import|export)\s+(?!type\b)[^;]*?\bfrom\s+(["'])([^"']+)\1/gms),
-        ...src.matchAll(/^\s*import\s+(["'])([^"']+)\1/gm),
-        ...src.matchAll(/\bimport\(\s*(["'])([^"']+)\1\s*\)/g),
-      ].map((m) => m[2]!);
-      for (const spec of specifiers) {
-        if (spec.startsWith("."))
-          walk(path.posix.join(path.posix.dirname(rel), spec.replace(/\.js$/, ".ts")));
-        else reached.add(spec);
-      }
+    // The subpaths exist so a browser can take the policy and the event registry without zod: follow every
+    // value import and re-export from their entry files (type-only ones are erased) and check none of them
+    // reaches zod, or anything else outside contracts/src.
+    const reachFrom = (entry: string) => {
+      const reached = new Set<string>();
+      const walk = (rel: string) => {
+        if (reached.has(rel)) return;
+        reached.add(rel);
+        const src = read(rel);
+        const specifiers = [
+          ...src.matchAll(/^\s*(?:import|export)\s+(?!type\b)[^;]*?\bfrom\s+(["'])([^"']+)\1/gms),
+          ...src.matchAll(/^\s*import\s+(["'])([^"']+)\1/gm),
+          ...src.matchAll(/\bimport\(\s*(["'])([^"']+)\1\s*\)/g),
+        ].map((m) => m[2]!);
+        for (const spec of specifiers) {
+          if (spec.startsWith("."))
+            walk(path.posix.join(path.posix.dirname(rel), spec.replace(/\.js$/, ".ts")));
+          else reached.add(spec);
+        }
+      };
+      walk(entry);
+      return [...reached];
     };
-    walk("contracts/src/policy.ts");
-    expect([...reached].filter((m) => !m.startsWith("contracts/src/"))).toEqual([]);
+    for (const entry of ["contracts/src/policy.ts", "contracts/src/eventRegistry.ts"]) {
+      expect(
+        reachFrom(entry).filter((m) => !m.startsWith("contracts/src/")),
+        entry,
+      ).toEqual([]);
+    }
+    // The walker does see a value import of zod: the root entry reaches it.
+    expect(reachFrom("contracts/src/settings.ts")).toContain("zod");
   });
 
   it("C41 the device pieces are the only new exports", () => {
-    // The whole runtime surface of the package, pinned: a name added or removed is a change to a door.
+    // The whole runtime surface of the package, pinned: a name added or removed is a change to a door (contratos-rest
+    // adds the route table, its checks, the event registry and schemas, and the shapes that moved here from the core).
     expect(Object.keys(contracts).sort()).toEqual(
       [
+        "API",
+        "ActiveHoursSchema",
+        "AuditReportSchema",
         "BUILTIN_PROVIDER_IDS",
         "BrainSettingsSchema",
+        "COMMON_ERRORS",
         "CURRENT_SETTINGS_VERSION",
         "ChannelSettingsSchema",
         "ClaudeStreamMessage",
         "CodexStreamEvent",
+        "ConnectorDataSchema",
+        "ConnectorItemSchema",
+        "ConnectorSchema",
         "DEFAULT_DEVICE_SCOPES",
         "DEFAULT_EXCLUDES",
         "DEFAULT_HUD",
         "DEVICE_SCOPES",
+        "DataMappingSchema",
+        "EVENT_ENVELOPES",
+        "EVENT_SCHEMAS",
+        "EVENT_VERSIONS",
         "EffortLevel",
+        "ErrorEnvelope",
+        "EverySchema",
+        "FieldSpecSchema",
+        "HeartbeatSchema",
         "IndexedFolderSchema",
+        "ItemFieldsSchema",
         "KnownStreamTypes",
         "MicroAppSchema",
+        "NAMED_SCHEMAS",
         "NOTIFICATION_KINDS",
+        "OS_EVENT_TYPES",
         "OS_EVENT_VERSION",
+        "OnExitSchema",
+        "OsEventSchema",
         "PROFILES",
         "ProviderId",
         "ProviderSettingsSchema",
+        "RUN_FRAME_SCHEMAS",
+        "RUN_FRAME_TYPES",
+        "RUN_FRAME_VERSIONS",
+        "RUN_LIMITS",
+        "RoutineContext",
+        "RoutineDelivery",
+        "RoutineHistoryEntrySchema",
+        "RoutineRunner",
+        "RoutineSchema",
+        "RoutineStatusSchema",
+        "RoutineSummarySchema",
+        "RunFrameSchema",
         "SENTINEL_IDS",
+        "ScheduleKind",
         "SecurityProfile",
         "SentinelSettingsSchema",
         "SessionId",
+        "SettingsPatchSchema",
         "SettingsSchema",
+        "SilentRoutineSchema",
+        "SkillFrontmatterSchema",
+        "SkillI18nSchema",
+        "SkillInputSchema",
+        "SkillResourceSchema",
+        "SkillSchema",
         "TERMINAL_STATUSES",
+        "ToolMappingSchema",
         "UI_PREFERENCE_KEYS",
         "UI_SHELLS",
+        "UiPreferencesPatchSchema",
         "UiPreferencesSchema",
         "UiShellSchema",
+        "binary",
+        "checkBody",
+        "checkResponse",
+        "classifyEvent",
+        "classifyRunFrame",
         "closeDeviceScopes",
+        "commonErrorsFor",
+        "currentEventVersion",
+        "currentRunFrameVersion",
+        "declaredErrors",
         "defaultSettings",
         "defaultUiPreferences",
         "detectTimezone",
         "isDeviceActor",
+        "isJournalDate",
+        "isRawResponse",
+        "normalizeLangTag",
+        "readOsEvent",
+        "route",
+        "routeKey",
+        "stream",
+        "toWire",
         "writeDecision",
       ].sort(),
     );

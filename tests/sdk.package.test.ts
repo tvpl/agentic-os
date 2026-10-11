@@ -60,6 +60,8 @@ describe("S5 package metadata", () => {
     expect(manifest("contracts").exports).toEqual({
       ".": { types: "./dist/index.d.ts", default: "./dist/index.js" },
       "./policy": { types: "./dist/policy.d.ts", default: "./dist/policy.js" },
+      // contratos-rest: the event registry a browser reads without zod.
+      "./events": { types: "./dist/eventRegistry.d.ts", default: "./dist/eventRegistry.js" },
     });
   });
 });

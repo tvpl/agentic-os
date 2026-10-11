@@ -2,7 +2,8 @@ import { useState, type CSSProperties } from "react";
 import { ChevronDown, MessageCircleQuestion, Plug, Search, ShieldCheck } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ConnectorWizard, connectorStateLabel } from "./ConnectorWizard";
-import { api, type Connector } from "../api";
+import { type Connector } from "../api";
+import { apiCall } from "../apiCall";
 import { useLocale, useT } from "../i18n";
 import { qk, useOsConnectors } from "../queries";
 import { ErrorBox, Skeleton, useToast } from "../components/ui";
@@ -29,16 +30,19 @@ export default function Connectors() {
   const connectors = useOsConnectors();
 
   const runAudit = useMutation({
-    mutationFn: () => api.get<AuditReport>("/api/connectors/audit"),
+    mutationFn: () => apiCall("GET /api/connectors/audit"),
     onSuccess: (report) => setAudit(report),
     onError: (err: Error) => toast(err.message, "danger"),
   });
 
   const requestWrite = useMutation({
     mutationFn: (c: Connector) =>
-      api.put<{ pendingApproval: { id: string } | null }>(`/api/connectors/${encodeURIComponent(c.id)}`, {
-        ...c,
-        writeEnabled: true,
+      apiCall("PUT /api/connectors/:id", {
+        params: { id: c.id },
+        body: {
+          ...c,
+          writeEnabled: true,
+        },
       }),
     onSuccess: (res) => {
       toast(

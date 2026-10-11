@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { CalendarDays, Check, Copy, ExternalLink, Eye, EyeOff, Mail, Plug, RefreshCw } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { providerOptions } from "../providers/options";
-import { api, type Connector, type ProviderId, type ProviderSnapshot, type SettingsDoc } from "../api";
+import { api, type Connector, type ProviderId, type ProviderSnapshot } from "../api";
+import { apiCall } from "../apiCall";
 import { I18nContext, useT, type Lang } from "../i18n";
 import { qk, useApiQuery } from "../queries";
 import { ErrorBox, Skeleton, useToast } from "../components/ui";
@@ -33,7 +34,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0);
   // "Detect again": re-probe one CLI (a fresh install or login) and refresh the list.
   const redetect = useMutation({
-    mutationFn: (id: ProviderId) => api.post(`/api/providers/${id}/detect`),
+    mutationFn: (id: ProviderId) => apiCall("POST /api/providers/:id/detect", { params: { id } }),
     onSettled: () => void providers.refetch(),
     onError: (err: Error) => toast(errorMessage(err, t), "danger"),
   });
@@ -92,9 +93,11 @@ export default function Setup({ onDone }: { onDone: () => void }) {
       await Promise.all(
         (Object.entries(enabled) as Array<[ProviderId, boolean]>)
           .filter(([, on]) => on)
-          .map(([id]) => api.post(`/api/providers/${id}/detect`).catch(() => undefined)),
+          .map(([id]) =>
+            apiCall("POST /api/providers/:id/detect", { params: { id } }).catch(() => undefined),
+          ),
       );
-      const current = await api.get<SettingsDoc>("/api/settings");
+      const current = await apiCall("GET /api/settings");
       const provSettings = current.providers;
       for (const id of providerOptions(providers.data))
         provSettings[id] = { ...provSettings[id]!, enabled: enabled[id] ?? false };
@@ -120,8 +123,8 @@ export default function Setup({ onDone }: { onDone: () => void }) {
       });
       if (folder.trim()) {
         setPhase("indexing");
-        await api.post("/api/memory/index");
-        await api.post("/api/memory/routers");
+        await apiCall("POST /api/memory/index");
+        await apiCall("POST /api/memory/routers");
       }
     },
     onSuccess: () => onDone(),

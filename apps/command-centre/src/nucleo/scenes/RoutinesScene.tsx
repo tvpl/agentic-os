@@ -22,7 +22,8 @@ import {
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
-import { api, type RoutineHistoryEntry, type RoutineStatus, type RoutineSummary } from "../../api";
+import { type RoutineStatus, type RoutineSummary } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useLocale, useT, type TKey } from "../../i18n";
 import { qk, useApiQuery, useOsSettings, useOsSkills } from "../../queries";
 import { ErrorBox, Skeleton, useToast } from "../../components/ui";
@@ -93,7 +94,7 @@ export default function RoutinesScene(_props: SceneViewProps) {
     queries: list.slice(0, MAX_HISTORIES).map((r) => ({
       queryKey: qk.routineHistory(r.id),
       queryFn: ({ signal }: { signal?: AbortSignal }) =>
-        api.get<RoutineHistoryEntry[]>(`/api/routines/${encodeURIComponent(r.id)}/history`, { signal }),
+        apiCall("GET /api/routines/:id/history", { params: { id: r.id } }, { signal }),
       staleTime: 60_000,
     })),
   });
@@ -212,18 +213,21 @@ export default function RoutinesScene(_props: SceneViewProps) {
     },
     onError: (err: Error) => toast(err.message, "danger"),
   });
-  const path = (r: RoutineStatus, tail = "") => `/api/routines/${encodeURIComponent(r.id)}${tail}`;
   const runNow = (r: RoutineStatus) =>
     act.mutate({
       fn: async () => {
-        const res = await api.post<{ runId: string | null }>(path(r, "/run"));
+        const res = await apiCall("POST /api/routines/:id/run", { params: { id: r.id } });
         if (res.runId) actions.openRun(res.runId);
         else toast(`▶ ${r.name}`, "ok");
       },
     });
-  const toggle = (r: RoutineStatus) => act.mutate({ fn: () => api.post(path(r, "/toggle")) });
+  const toggle = (r: RoutineStatus) =>
+    act.mutate({ fn: () => apiCall("POST /api/routines/:id/toggle", { params: { id: r.id } }) });
   const duplicate = (r: RoutineStatus) =>
-    act.mutate({ fn: () => api.post(path(r, "/duplicate")), okMsg: t("routines.duplicated") });
+    act.mutate({
+      fn: () => apiCall("POST /api/routines/:id/duplicate", { params: { id: r.id } }),
+      okMsg: t("routines.duplicated"),
+    });
   const remove = async (r: RoutineStatus) => {
     const ok = await confirm({
       title: `${t("common.delete")} "${r.name}"?`,
@@ -232,7 +236,10 @@ export default function RoutinesScene(_props: SceneViewProps) {
       confirmLabel: t("common.delete"),
     });
     if (!ok) return;
-    act.mutate({ fn: () => api.del(path(r)), okMsg: t("routines.deleted") });
+    act.mutate({
+      fn: () => apiCall("DELETE /api/routines/:id", { params: { id: r.id } }),
+      okMsg: t("routines.deleted"),
+    });
     if (selParam === r.id) select(null);
   };
   const ask = (r: RoutineStatus) => {

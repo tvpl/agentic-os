@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Activity } from "lucide-react";
-import type { Metrics, RunRecord } from "../../api";
+import type { Metrics, RunSummary } from "../../api";
 import { useLocale, useT } from "../../i18n";
 import { useOsMetrics } from "../../queries";
 import { StatusBadge, formatDuration, timeAgo } from "../../components/ui";
@@ -32,7 +32,7 @@ function PulseBody({
   days,
 }: {
   metrics: Metrics;
-  runs: RunRecord[];
+  runs: RunSummary[];
   onRunSkill: () => void;
   days: number;
 }) {

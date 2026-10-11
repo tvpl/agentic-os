@@ -1,10 +1,8 @@
-import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { DEVICE_SCOPES } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
+import { bind } from "../contract.js";
 import { SlidingWindow } from "../rateLimit.js";
 import { httpError } from "./common.js";
-import { UuidParams } from "./params.js";
 
 /**
  * Pairing and paired devices (plan Onda 3 §1). Starting a pairing needs the
@@ -15,15 +13,10 @@ import { UuidParams } from "./params.js";
  * may do is chosen when the code is shown and changed later by the owner
  * (`PATCH /api/devices/:id`); the set is closed (`closeDeviceScopes`).
  */
-const ScopesBody = z.array(z.enum(DEVICE_SCOPES)).max(DEVICE_SCOPES.length);
-
 export function registerDeviceRoutes(app: FastifyInstance, ctx: AppContext): void {
   const claims = new SlidingWindow(10, 60_000);
 
-  app.post("/api/pair/start", { config: { scope: "owner" } }, async (req) => {
-    const body = z
-      .object({ name: z.string().max(80).optional(), scopes: ScopesBody.optional() })
-      .parse(req.body ?? {});
+  bind(app, "pair.start", async ({ body }) => {
     const pairing = ctx.devices.startPairing(body.name ?? null, body.scopes);
     const settings = ctx.settings();
     return {
@@ -35,46 +28,48 @@ export function registerDeviceRoutes(app: FastifyInstance, ctx: AppContext): voi
     };
   });
 
-  app.post("/api/pair/claim", { config: { public: true } }, async (req, reply) => {
-    // Counted before the code is even read: a guesser learns nothing past the limit.
-    const wait = claims.retryAfter(req.ip);
-    if (wait > 0) {
-      reply.header("Retry-After", String(wait));
-      throw httpError(
-        429,
-        "Too many pairing attempts from this address; try again later",
-        "too_many_requests",
-      );
-    }
-    claims.hit(req.ip);
-    const body = z
-      .object({ code: z.string().regex(/^\d{6}$/), name: z.string().max(80).default("") })
-      .parse(req.body ?? {});
-    const settings = ctx.settings();
-    if (!settings.remote.enabled) throw httpError(403, "Remote access is off");
-    const ttlMs = settings.remote.deviceTtlDays * 86_400_000;
-    const claimed = ctx.devices.claim(body.code, body.name, ttlMs);
-    if (!claimed) throw httpError(401, "Wrong or expired code", "pair_failed");
-    return { token: claimed.token, device: claimed.device };
-  });
+  bind(
+    app,
+    "pair.claim",
+    async ({ body }) => {
+      const settings = ctx.settings();
+      if (!settings.remote.enabled) throw httpError(403, "Remote access is off");
+      const ttlMs = settings.remote.deviceTtlDays * 86_400_000;
+      const claimed = ctx.devices.claim(body.code, body.name, ttlMs);
+      if (!claimed) throw httpError(401, "Wrong or expired code", "pair_failed");
+      return { token: claimed.token, device: claimed.device };
+    },
+    {
+      // Counted before anything of the request is read, the body included: a guesser learns nothing past the limit.
+      preHandler: async (req, reply) => {
+        const wait = claims.retryAfter(req.ip);
+        if (wait > 0) {
+          reply.header("Retry-After", String(wait));
+          throw httpError(
+            429,
+            "Too many pairing attempts from this address; try again later",
+            "too_many_requests",
+          );
+        }
+        claims.hit(req.ip);
+      },
+    },
+  );
 
-  app.get("/api/devices", { config: { scope: "owner" } }, async () => ({
+  bind(app, "devices.list", async () => ({
     devices: ctx.devices.list(),
     pairing: ctx.devices.pairingOpen() !== null,
   }));
 
   /** Replace what a paired device may do; its next request is judged by the new set. */
-  app.patch("/api/devices/:id", { config: { scope: "owner" } }, async (req) => {
-    const { id } = UuidParams.parse(req.params);
-    const { scopes } = z.object({ scopes: ScopesBody }).parse(req.body ?? {});
+  bind(app, "devices.update", async ({ params: { id }, body: { scopes } }) => {
     const device = ctx.devices.setScopes(id, scopes);
     if (!device) throw httpError(404, "Device not found or already revoked");
     return device;
   });
 
-  app.delete("/api/devices/:id", { config: { scope: "owner" } }, async (req) => {
-    const { id } = UuidParams.parse(req.params);
+  bind(app, "devices.revoke", async ({ params: { id } }) => {
     if (!ctx.devices.revoke(id)) throw httpError(404, "Device not found or already revoked");
-    return { revoked: true };
+    return { revoked: true as const };
   });
 }

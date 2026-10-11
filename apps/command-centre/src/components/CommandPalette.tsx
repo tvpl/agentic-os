@@ -41,11 +41,11 @@ import {
   type Meta,
   type ModelishOption,
   type ProviderId,
-  type RunLaunchResponse,
-  type RunRecord,
+  type RunSummary,
   type Skill,
   type UiShell,
 } from "../api";
+import { apiCall } from "../apiCall";
 import { ARRANGE_VERBS, arrangeFor } from "../desktop/arrange";
 import { ARRANGE_EVENT, PANEL_GLYPH, getPanels } from "../desktop/panelKinds";
 import { HUD_CATALOGUE, hudTitleKey } from "../desktop/hud";
@@ -242,9 +242,12 @@ export function CommandPalette({
         go(`/skills/${encodeURIComponent(skill.slug)}`);
         return;
       }
-      const res = await api.post<RunLaunchResponse>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, {
-        inputs: {},
-        ...opts,
+      const res = await apiCall("POST /api/skills/:slug/run", {
+        params: { slug: skill.slug },
+        body: {
+          inputs: {},
+          ...opts,
+        },
       });
       if (res.status === "waiting_approval" || !res.runId) {
         toast(t("runs.approvalPending"), "info");
@@ -356,10 +359,13 @@ export function CommandPalette({
     const controller = new AbortController();
     setFilesLoading(true);
     const timer = window.setTimeout(() => {
-      api
-        .get<MemorySearchHit[]>(`/api/memory/search?q=${encodeURIComponent(needle)}&limit=8`, {
+      apiCall(
+        "GET /api/memory/search",
+        { query: { q: needle, limit: 8 } },
+        {
           signal: controller.signal,
-        })
+        },
+      )
         .then((hits) => {
           setFiles(Array.isArray(hits) ? hits : []);
           setFilesLoading(false);
@@ -391,7 +397,7 @@ export function CommandPalette({
   /* ---------- runs ---------- */
   const runRows = useMemo<Row[]>(
     () =>
-      (runs.data ?? []).slice(0, 8).map((r: RunRecord) => ({
+      (runs.data ?? []).slice(0, 8).map((r: RunSummary) => ({
         id: `run:${r.id}`,
         section: "runs" as const,
         label: r.skillSlug ? `/${r.skillSlug}` : r.promptSummary || r.id.slice(0, 8),

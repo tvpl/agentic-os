@@ -7,7 +7,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy } from "lucide-react";
-import { api, type Connector, type ConnectorData } from "../api";
+import { type Connector } from "../api";
+import { apiCall } from "../apiCall";
 import { useT } from "../i18n";
 import { qk } from "../queries";
 import { Badge, Button } from "../components/primitives";
@@ -34,19 +35,23 @@ export function ConnectorWizard({ connector }: { connector: Connector }) {
   const toast = useToast();
   const qc = useQueryClient();
   const [step, setStep] = useState<Step>(connector.status === "not_configured" ? 1 : 3);
-  const base = `/api/connectors/${encodeURIComponent(connector.id)}`;
   const setup = useQuery<{ steps: string[] }>({
     queryKey: [...qk.connectors, connector.id, "setup"],
-    queryFn: ({ signal }) => api.get<{ steps: string[] }>(`${base}/setup`, { signal }),
+    queryFn: ({ signal }) =>
+      apiCall("GET /api/connectors/:id/setup", { params: { id: connector.id } }, { signal }),
     enabled: Boolean(connector.dataMapping) && step >= 2,
     retry: false,
     staleTime: 5 * 60_000,
   });
   const test = useMutation({
-    mutationFn: () => api.get<ConnectorData>(`${base}/data?refresh=1`),
+    mutationFn: () =>
+      apiCall("GET /api/connectors/:id/data", { params: { id: connector.id }, query: { refresh: "1" } }),
     onSuccess: async (d) => {
       if (d.status === "ok" && connector.status === "not_configured") {
-        await api.put(base, { ...connector, status: "configured" }).catch(() => undefined);
+        await apiCall("PUT /api/connectors/:id", {
+          params: { id: connector.id },
+          body: { ...connector, status: "configured" },
+        }).catch(() => undefined);
       }
       qc.invalidateQueries({ queryKey: qk.connectors }).catch(() => undefined);
     },

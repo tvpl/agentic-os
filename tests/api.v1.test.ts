@@ -1258,6 +1258,11 @@ describe("Round 2 - the first verification's gaps", () => {
       'app.get("/api/p", async () => delivered(r));\nfunction delivered(r) { return { ok: r.ok }; }',
       'app.get("/api/q", async () => await Promise.resolve(x) ?? { ok: false });',
       "app.get(`/api/r`, async () => ({ ok: null }));",
+      // contratos-rest: every route is registered with bind(app, id, handler, options?).
+      'bind(app, "x.s", async () => ({ ok: false }));',
+      'bind(app, "x.t", async ({ body }, req) => { return { ok: body.sent }; }, { onSend: keep });',
+      'const h = async () => ({ ok: maybe });\nbind(app, "x.u", h);',
+      'bind(app, "x.y", async () => ({ ok: false as const }));',
     ];
     for (const code of FLAG) expect(flagged(code), code).toBe(1);
     // Shapes it must not flag.
@@ -1271,11 +1276,16 @@ describe("Round 2 - the first verification's gaps", () => {
       'app.get("/api/e", async () => ({ message: "ok: false is gone" }));',
       'app.get("/api/f", async () => {\n  // return { ok: false };\n  return { okay: false, notOk: false };\n});',
       'function unrelated() { return { ok: false }; }\napp.get("/api/g", async () => ({ ok: true }));',
+      'bind(app, "x.v", async () => ({ ok: true }));',
+      'bind(app, "x.x", async () => ({ ok: true as const, pid }));',
+      "bind(app, name, async () => ({ ok: false }));",
+      "bind(async () => ({ ok: false }));",
     ];
     for (const code of PASS) expect(flagged(code), code).toBe(0);
     expect(
       okNotTrueSites('app.get("/x", async () => 1); app.route({ handler: h }); function h() {}').handlers,
     ).toBe(2);
+    expect(okNotTrueSites('bind(app, "x.w", async () => 1);').handlers).toBe(1);
   });
 
   it("C36 the CLI probe asks v1 first and falls back for an older service", async () => {

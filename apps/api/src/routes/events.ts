@@ -1,11 +1,10 @@
-import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import type { OsEvent } from "@mordomo/core";
 import { OS_EVENT_VERSION } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
+import { bind } from "../contract.js";
 import { ticketKey } from "../tickets.js";
 import { httpError } from "./common.js";
-import { UuidParam } from "./params.js";
 import { lastEventId, openSse } from "./sse.js";
 
 /**
@@ -24,13 +23,7 @@ export function registerEventRoutes(app: FastifyInstance, ctx: AppContext): void
    * (`EventSource`). It carries the principal that asked, so the stream is judged as that principal, and it opens
    * only the stream it was asked for (door 5 of `.specs/features/escopos-dispositivo`).
    */
-  app.post("/api/stream-tickets", { config: { scope: "monitor" } }, async (req) => {
-    const body = z
-      .discriminatedUnion("target", [
-        z.object({ target: z.literal("events") }),
-        z.object({ target: z.literal("run"), runId: UuidParam }),
-      ])
-      .parse(req.body ?? {});
+  bind(app, "streams.ticket", async ({ body }, req) => {
     const key =
       body.target === "events"
         ? ticketKey("/api/events", {})
@@ -42,37 +35,33 @@ export function registerEventRoutes(app: FastifyInstance, ctx: AppContext): void
     return minted;
   });
 
-  app.get(
-    "/api/events",
-    { config: { scope: "monitor", queryToken: true, ticket: true } },
-    async (req, reply) => {
-      const since = lastEventId(req);
-      const ch = openSse(req, reply);
-      const stale = since !== null && since > ctx.events.lastId;
-      if (stale) {
-        // Not emitted on the bus: it concerns this connection only. Its `id:` moves the
-        // browser's resume point to this process's range.
-        const reset: OsEvent<"stream.reset"> = {
-          id: ctx.events.lastId,
-          type: "stream.reset",
-          ts: Date.now(),
-          v: OS_EVENT_VERSION,
-          payload: { lastId: ctx.events.lastId },
-        };
-        ch.send({ id: reset.id, event: reset.type, data: reset });
-      }
-      // Without a resume point nothing is replayed: start after the current id.
-      let seen = stale ? 0 : (since ?? ctx.events.lastId);
-      const push = (e: OsEvent) => {
-        if (e.id <= seen) return; // already sent (replay/live overlap)
-        seen = e.id;
-        ch.send({ id: e.id, event: e.type, data: e });
+  bind(app, "events.stream", async (_call, req, reply) => {
+    const since = lastEventId(req);
+    const ch = openSse(req, reply);
+    const stale = since !== null && since > ctx.events.lastId;
+    if (stale) {
+      // Not emitted on the bus: it concerns this connection only. Its `id:` moves the
+      // browser's resume point to this process's range.
+      const reset: OsEvent<"stream.reset"> = {
+        id: ctx.events.lastId,
+        type: "stream.reset",
+        ts: Date.now(),
+        v: OS_EVENT_VERSION,
+        payload: { lastId: ctx.events.lastId },
       };
-      // Subscribe before replaying so nothing emitted in between is lost.
-      ch.onClose(ctx.events.subscribe(push));
-      for (const e of ctx.events.since(seen)) push(e);
-      ch.comment(`connected lastEventId=${ctx.events.lastId}`);
-      return reply;
-    },
-  );
+      ch.send({ id: reset.id, event: reset.type, data: reset });
+    }
+    // Without a resume point nothing is replayed: start after the current id.
+    let seen = stale ? 0 : (since ?? ctx.events.lastId);
+    const push = (e: OsEvent) => {
+      if (e.id <= seen) return; // already sent (replay/live overlap)
+      seen = e.id;
+      ch.send({ id: e.id, event: e.type, data: e });
+    };
+    // Subscribe before replaying so nothing emitted in between is lost.
+    ch.onClose(ctx.events.subscribe(push));
+    for (const e of ctx.events.since(seen)) push(e);
+    ch.comment(`connected lastEventId=${ctx.events.lastId}`);
+    return reply;
+  });
 }

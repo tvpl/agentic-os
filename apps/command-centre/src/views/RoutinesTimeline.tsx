@@ -6,7 +6,8 @@
  */
 import { useQueries } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { api, type RoutineStatus } from "../api";
+import { type RoutineStatus } from "../api";
+import { apiCall } from "../apiCall";
 import { dictionaries, useLocale, useT, type TKey } from "../i18n";
 import { fireOutcome } from "../nucleo/scenes/routinesDial";
 import { qk } from "../queries";
@@ -48,7 +49,7 @@ export function RoutinesTimeline({
     queries: rows.map((r) => ({
       queryKey: qk.routineHistory(r.id),
       queryFn: ({ signal }: { signal?: AbortSignal }) =>
-        api.get<HistoryEntry[]>(`/api/routines/${encodeURIComponent(r.id)}/history`, { signal }),
+        apiCall("GET /api/routines/:id/history", { params: { id: r.id } }, { signal }),
       staleTime: 60_000,
     })),
   });

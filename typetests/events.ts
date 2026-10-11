@@ -3,7 +3,7 @@
  * payload the event map names, and the map covers every event type exactly.
  */
 import { EventBus } from "@mordomo/core/internal";
-import type { OsEvent, OsEventMap, OsEventType } from "@mordomo/contracts";
+import type { EventVersionOf, OsEvent, OsEventMap, OsEventType, OsEventTypeName } from "@mordomo/contracts";
 
 const bus = new EventBus();
 
@@ -52,3 +52,11 @@ export const resetExtra: ResetEvent["payload"] = { lastId: 3, more: true };
 export const resetVersion: ResetEvent["v"] = 1;
 // @ts-expect-error the envelope is version 1
 export const resetWrongVersion: ResetEvent["v"] = 2;
+
+// Contratos REST, C22 — the names the browser-safe registry lists are the ones the event map has, in both directions,
+// and the version of an envelope is one of the versions its type has had.
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+export const registryNames: Same<OsEventTypeName, OsEventType> = true;
+export const versionOfRunFinished: EventVersionOf<"run.finished"> = 1;
+// @ts-expect-error run.finished has had no version 2
+export const noVersionTwo: EventVersionOf<"run.finished"> = 2;
