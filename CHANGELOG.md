@@ -26,7 +26,7 @@
   that is a copy of the repository's, `repository`, `exports`, `files`, `engines`, `sideEffects`, README; the core also
   names `@types/node` as an optional peer dependency, as its declarations use it); nothing is published.
   What does not answer as before, and how to go back (the defaults and the reasons are in `.specs/STATE.md`, AD-022 e,
-  questions 7, 9 and 12 to 15):
+  questions 7 to 9 and 12 to 15):
   - `mordomo run` also refuses a disabled skill, a provider that is not enabled, a provider the skill does not list and a
     missing required input (as the Command Centre always did), and applies the skill's daily budget (exit 1 when it is
     spent) and the cost cap that what is left of it puts on the run. To go back, `launchSkillRun` in
@@ -46,8 +46,8 @@
     holds the home until the process ends. To go back, remove the registry in `core/src/ownerLock.ts`.
   - Approvals that were decided or expired are refused with a `MordomoError` (`approval_resolved`, `approval_expired`,
     both 409 as before). Nothing to go back to: the HTTP answer is the same.
-  - A connector command named like a provider binary now needs `connectors.allowedCommands`. To go back, hand the
-    engine's `SpawnPolicy` to `fetchConnectorData` (the API and the sentinels).
+  - A connector command named like a provider binary (`claude`, `codex`, `cursor-agent`) now needs
+    `connectors.allowedCommands`. To go back, add an optional `spawnPolicy` to `FetchOptions` (`core/src/connectors/client.ts`; it has none today, only `allowedCommands`), pass it as the third argument of `assertAllowed` at the three places that call it there (lines ~150, ~552 and ~672), and set it to `engine.spawnPolicy` where the API (`routes/connectors.ts`) and the sentinels call `fetchConnectorData`.
   - The 3 600 000 ms cap is for the `timeoutMs` a caller asks for; the default of the setting `limits.defaultTimeoutMs`
     is taken as it is (as before this change). To cap the setting too, give it a maximum in `contracts/src/settings.ts`
     (a `settings.json` with a larger value would then be read as the default and kept in `settings.json.invalid`).

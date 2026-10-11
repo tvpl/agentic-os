@@ -289,3 +289,11 @@ Nenhum defeito de comportamento: toda sonda minha no código real passou. Os 19 
 ## Fechamento após a rodada 3 (escalar ao dono)
 
 Três rodadas de verificação, as três FAIL. As pendências da rodada 2 fecharam (N12-N17, licença, AC 48, registro de locks por `dev:ino`), e o que sobra são lacunas de prova sem defeito de comportamento: o prazo efetivo do adaptador e `notes/promote` (achado 1), o varredor de C68 que lê texto (achado 2) e cinco casos do registro de locks (achado 3), mais quatro linhas de texto (achado 4). Cada uma tem correção de poucas linhas de teste; o dono decide entre mandar uma quarta correção ou aceitar as lacunas como nota (nenhuma delas muda o que o código faz hoje). Aberto para o dono, além disso: URL do `repository`, o link do README para `docs/sdk.md` no ramo `main`, o bloco "MINUTA" e o titular no `LICENSE`, a publicação no npm e o escopo.
+
+---
+
+## Fechamento após a rodada 3 (escalonamento ao dono)
+
+Três rodadas usadas, todas FAIL. A rodada 3 não achou defeito de comportamento: o FAIL foi por 19 mutantes vivos (testes fracos). A última correção (`8469556`, `82b4bbd`) só toca testes e textos: C69 lê o `AgentRun.timeoutMs` efetivo que o provedor falso recebe e inclui `notes/promote`; C74 testa os dez campos de pedido no schema parseado e proíbe combinadores além de `.optional()` em `RunTimeout`/`RunPrompt`; C73 prova seis casos do registro de locks; textos de Pergunta 2, AD-022(e), CHANGELOG e do "como voltar" do conector corrigidos. Sem quarta verificação independente.
+
+Aberto para o dono: URL do `repository` (do `origin`), link do README para `docs/sdk.md` no ramo `main`, bloco "MINUTA" no `LICENSE` empacotado, publicação no npm e escopo; thread de worker não vê o lock de outro; sistemas de arquivos que ignoram caixa não foram medidos; C02 (`dev` fora da chave do registro) é nota.

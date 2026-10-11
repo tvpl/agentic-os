@@ -948,11 +948,15 @@ describe("S6 the facade holds where the first verification attacked it", () => {
     // regression back in a sibling of the route that was fixed.
     const home = tempHome();
     writeSkill(home, "say-hi", skillFront("say-hi"));
-    const engine = buildEngine([echoProvider()], { home });
+    const echo = echoProvider();
+    const engine = buildEngine([echo], { home });
     engine.updateSettings({ limits: { defaultTimeoutMs: 7_200_000 } });
+    // What is stored, and what the provider is actually handed (`AgentRun.timeoutMs`, the one the CLI enforces).
     const timeoutOf = async (runId: string) => {
       await engine.execution.wait(runId);
-      return engine.execution.get(runId)?.timeoutMs;
+      const handed = echo.state.runs.find((run) => run.runId === runId)?.timeoutMs;
+      expect(handed, `handed to the provider for ${runId}`).toBe(engine.execution.get(runId)?.timeoutMs);
+      return handed;
     };
     const prompt = engine.execution.startPrompt({ prompt: "hi", startedBy: null });
     const skill = engine.execution.startSkill({ slug: "say-hi", startedBy: null });

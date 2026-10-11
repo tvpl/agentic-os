@@ -364,6 +364,93 @@ describe("S4 nothing of an engine is shared with another", () => {
     }
   });
 
+  describe("C73 the registry of locks, case by case", () => {
+    const REGISTRY = Symbol.for("@mordomo/core/owner-lock/held");
+    const registry = () => (globalThis as { [REGISTRY]?: Map<string, string> })[REGISTRY]!;
+    const lockOf = (home: string) => path.join(home, "config", "run", "engine.lock");
+    const mockStat = () => {
+      const real = fs.statSync;
+      return vi.spyOn(fs, "statSync").mockImplementation(((target: fs.PathLike, options?: unknown) => {
+        if (String(target).endsWith("engine.lock")) throw Object.assign(new Error("EIO"), { code: "EIO" });
+        return real(target, options as never);
+      }) as typeof fs.statSync);
+    };
+
+    it("C73 every home has its own entry: a lock stays protected while engines of other homes start", () => {
+      const [h1, h2] = [tempHome(), tempHome()];
+      const [a, b] = [h1, h2].map((home) => buildEngine([echoProvider()], { home }));
+      a!.start();
+      b!.start();
+      expect(registry().size).toBeGreaterThanOrEqual(2);
+      // The first is still held after the second took its own, and the second is held too.
+      expect(() => buildEngine([echoProvider()], { home: h1 }).start()).toThrow(EngineLockedError);
+      expect(() => buildEngine([echoProvider()], { home: h2 }).start()).toThrow(EngineLockedError);
+    });
+
+    it("C73 a lock whose file identity cannot be read is still found by its real path", () => {
+      const home = tempHome();
+      const spy = mockStat();
+      try {
+        const a = buildEngine([echoProvider()], { home });
+        a.start();
+        // Still unreadable when the second engine asks.
+        expect(() => buildEngine([echoProvider()], { home }).start()).toThrow(EngineLockedError);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("C73 a lock registered by its path is found when the identity is readable again", () => {
+      const home = tempHome();
+      const spy = mockStat();
+      const a = buildEngine([echoProvider()], { home });
+      try {
+        a.start();
+      } finally {
+        spy.mockRestore();
+      }
+      expect(() => buildEngine([echoProvider()], { home }).start()).toThrow(EngineLockedError);
+    });
+
+    it("C73 a lock file that names this process with a token the registry does not hold for it is taken over", () => {
+      const home = tempHome();
+      const a = buildEngine([echoProvider()], { home });
+      a.start();
+      // The same file (same identity), rewritten by hand with another token: the registry holds a different one.
+      fs.writeFileSync(
+        lockOf(home),
+        JSON.stringify({ v: 2, pid: process.pid, startedAt: 1, token: "left-behind", procStart: null }),
+      );
+      const b = buildEngine([echoProvider()], { home });
+      expect(() => b.start()).not.toThrow();
+      expect(JSON.parse(fs.readFileSync(lockOf(home), "utf8")).token).not.toBe("left-behind");
+    });
+
+    it("C73 releasing a lock removes only its own entry", async () => {
+      const home = tempHome();
+      const a = buildEngine([echoProvider()], { home });
+      a.start();
+      const entry = [...registry().entries()].find(
+        ([, token]) => token === JSON.parse(fs.readFileSync(lockOf(home), "utf8")).token,
+      )!;
+      // Somebody else's token under the same name (as a takeover of the same file would leave it).
+      registry().set(entry[0], "someone-else");
+      await a.stop(500);
+      expect(registry().get(entry[0])).toBe("someone-else");
+      registry().delete(entry[0]);
+    });
+
+    it("C73 stopping leaves no entry behind", async () => {
+      const home = tempHome();
+      const before = registry()?.size ?? 0;
+      const a = buildEngine([echoProvider()], { home });
+      a.start();
+      expect(registry().size).toBe(before + 1);
+      await a.stop(500);
+      expect(registry().size).toBe(before);
+    });
+  });
+
   it("C36 a restore of one home does not hold up an engine of another, and two engines of one home are built", () => {
     const busy = resolvePaths(tempHome());
     fs.mkdirSync(busy.run, { recursive: true });

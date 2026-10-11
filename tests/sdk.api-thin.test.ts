@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import { API } from "@mordomo/contracts";
 import { RUN_LIMITS } from "@mordomo/core/internal";
 
 /**
@@ -331,6 +332,107 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       "contracts/src/api/runs.ts timeoutMs",
       "contracts/src/api/skills.ts timeoutMs",
     ]);
+  });
+
+  it("C74 the schemas the routes parse with hold the bounds: 20 000 characters, 10 000 to 3 600 000 ms, in the ten fields", () => {
+    // The text of the schema can say RUN_LIMITS and still not bound anything (`RunTimeout.or(z.number())`): this reads
+    // the schema that is parsed.
+    const long = (n: number) => "p".repeat(n);
+    const step = (kind: "prompt" | "system", prompt: string) => ({
+      title: "Step",
+      request: { version: 1, kind, prompt, mode: "read_only" },
+    });
+    const fields: Array<{
+      label: string;
+      schema: { safeParse(value: unknown): { success: boolean } };
+      prompt?: (n: number) => unknown;
+      timeout?: (ms: number) => unknown;
+    }> = [
+      {
+        label: "runs.create",
+        schema: API["runs.create"].body,
+        prompt: (n) => ({ prompt: long(n) }),
+        timeout: (ms) => ({ prompt: "x", timeoutMs: ms }),
+      },
+      {
+        label: "runs.children.create",
+        schema: API["runs.children.create"].body,
+        prompt: (n) => ({ prompts: [long(n)] }),
+        timeout: (ms) => ({ prompts: ["x"], timeoutMs: ms }),
+      },
+      {
+        label: "sessions.continue",
+        schema: API["sessions.continue"].body,
+        prompt: (n) => ({ prompt: long(n) }),
+        timeout: (ms) => ({ prompt: "x", timeoutMs: ms }),
+      },
+      { label: "skills.run", schema: API["skills.run"].body, timeout: (ms) => ({ timeoutMs: ms }) },
+      {
+        label: "objectives.create (prompt step)",
+        schema: API["objectives.create"].body,
+        prompt: (n) => ({ title: "O", steps: [step("prompt", long(n))] }),
+      },
+      {
+        label: "objectives.create (system step)",
+        schema: API["objectives.create"].body,
+        prompt: (n) => ({ title: "O", steps: [step("system", long(n))] }),
+      },
+      {
+        label: "objectives.dispatch",
+        schema: API["objectives.dispatch"].body,
+        timeout: (ms) => ({ timeoutMs: ms }),
+      },
+    ];
+    let checked = 0;
+    for (const { label, schema, prompt, timeout } of fields) {
+      if (prompt) {
+        expect(schema.safeParse(prompt(RUN_LIMITS.promptMaxChars)).success, `${label}: 20 000`).toBe(true);
+        expect(schema.safeParse(prompt(RUN_LIMITS.promptMaxChars + 1)).success, `${label}: 20 001`).toBe(
+          false,
+        );
+        expect(schema.safeParse(prompt(0)).success, `${label}: empty`).toBe(false);
+        checked += 1;
+      }
+      if (timeout) {
+        expect(schema.safeParse(timeout(RUN_LIMITS.timeoutMinMs)).success, `${label}: 10 000`).toBe(true);
+        expect(schema.safeParse(timeout(RUN_LIMITS.timeoutMaxMs)).success, `${label}: 3 600 000`).toBe(true);
+        expect(schema.safeParse(timeout(RUN_LIMITS.timeoutMinMs - 1)).success, `${label}: 9 999`).toBe(false);
+        expect(schema.safeParse(timeout(RUN_LIMITS.timeoutMaxMs + 1)).success, `${label}: 3 600 001`).toBe(
+          false,
+        );
+        expect(
+          schema.safeParse(timeout(1.5 * RUN_LIMITS.timeoutMinMs + 0.5)).success,
+          `${label}: fraction`,
+        ).toBe(false);
+        checked += 1;
+      }
+    }
+    // Five prompts (runs, children, continue, the two kinds of step) and five timeouts (runs, children, continue,
+    // skills run, dispatch): the fields of the contract that carry the bounds of a run request.
+    expect(checked).toBe(10);
+  });
+
+  it("C74 RunTimeout and RunPrompt are used as they are: nothing but .optional() is chained to them anywhere", () => {
+    const misuse: string[] = [];
+    for (const file of [...sources("contracts/src"), ...sources("apps/api/src"), ...sources("core/src")]) {
+      const sf = ts.createSourceFile(file, fs.readFileSync(file, "utf8"), ts.ScriptTarget.ES2022, true);
+      const visit = (node: ts.Node): void => {
+        if (ts.isIdentifier(node) && (node.text === "RunTimeout" || node.text === "RunPrompt")) {
+          const parent = node.parent;
+          if (
+            ts.isPropertyAccessExpression(parent) &&
+            parent.expression === node &&
+            parent.name.text !== "optional"
+          )
+            misuse.push(`${rel(file)}: ${parent.getText(sf)}`);
+          if (ts.isElementAccessExpression(parent) && parent.expression === node)
+            misuse.push(`${rel(file)}: ${parent.getText(sf)}`);
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(sf);
+    }
+    expect(misuse).toEqual([]);
   });
 
   /** Every `<path>.events.` read as `events.`, and no whitespace. */

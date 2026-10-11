@@ -110,7 +110,17 @@ describe.skipIf(!FAKE_CLIS_RUNNABLE)("the routes answer as they did", () => {
   it("C69 every route that starts a run takes the setting's default timeout as it is, above the cap on a request", async () => {
     const settings = ctx.settings();
     settings.limits.defaultTimeoutMs = 7_200_000;
+    settings.securityProfile = "controlled_write";
     ctx.settingsStore.save(settings);
+    // What the provider is actually handed (`AgentRun.timeoutMs`): the adapter is watched after the settings are saved
+    // (saving them rebuilds the adapters).
+    const handed = new Map<string, number>();
+    const adapter = ctx.adapters.claude;
+    const execute = adapter.execute.bind(adapter);
+    adapter.execute = (run) => {
+      handed.set(run.runId, run.timeoutMs);
+      return execute(run);
+    };
     try {
       const parent = await post("/api/runs", { prompt: "the parent" });
       const parentId = parent.json().runId as string;
@@ -128,6 +138,7 @@ describe.skipIf(!FAKE_CLIS_RUNNABLE)("the routes answer as they did", () => {
         const dispatched = await post(`/api/objectives/${created.json().id}/dispatch`, { limit: 1 });
         return dispatched.json().dispatched[0]?.runId as string;
       };
+      await post("/api/skills/noted/notes", { text: "Always check the invoice number twice." });
       const callers: Array<[string, () => Promise<string | undefined>]> = [
         ["POST /api/runs", async () => parentId],
         [
@@ -141,6 +152,10 @@ describe.skipIf(!FAKE_CLIS_RUNNABLE)("the routes answer as they did", () => {
             (await post(`/api/sessions/${sessionId}/continue`, { prompt: "and again" })).json().runId,
         ],
         ["POST /api/skills/:slug/run", async () => skillRun.json().runId],
+        [
+          "POST /api/skills/:slug/notes/promote",
+          async () => (await post("/api/skills/noted/notes/promote")).json().runId,
+        ],
         ["POST /api/runs/:id/retry of a prompt", async () => (await retry(parentId)).json().runId],
         [
           "POST /api/runs/:id/retry of a skill",
@@ -160,6 +175,7 @@ describe.skipIf(!FAKE_CLIS_RUNNABLE)("the routes answer as they did", () => {
         expect(runId, label).toBeTruthy();
         await finished(runId!);
         expect(ctx.runs.get(runId!)?.timeoutMs, label).toBe(7_200_000);
+        expect(handed.get(runId!), `${label}: handed to the provider`).toBe(7_200_000);
       }
       // A retry of a run that recorded no timeout takes the default too.
       ctx.db
@@ -169,8 +185,10 @@ describe.skipIf(!FAKE_CLIS_RUNNABLE)("the routes answer as they did", () => {
         const again = (await retry(id)).json().runId as string;
         await finished(again);
         expect(ctx.runs.get(again)?.timeoutMs, `retry of ${id} with no timeout recorded`).toBe(7_200_000);
+        expect(handed.get(again), `retry of ${id} with no timeout recorded: handed`).toBe(7_200_000);
       }
     } finally {
+      settings.securityProfile = "read_only";
       settings.limits.defaultTimeoutMs = 600_000;
       ctx.settingsStore.save(settings);
     }
