@@ -66,6 +66,8 @@ function schemaOptions(except?: string, named = true) {
     // No pointers into the middle of another schema (the converter's own sharing): only to a named one, below.
     $refStrategy: "none" as const,
     target: "jsonSchema7" as const,
+    // A request is its input type (what goes into the first schema of a pipe); a response, already rebuilt, has none.
+    pipeStrategy: "input" as const,
     override: (def: unknown) => {
       // A flag in a query is the four texts it reads, not the boolean it becomes.
       if (def === QueryFlag._def) return { type: "string", enum: [...QUERY_FLAG_TEXTS] };
@@ -89,37 +91,70 @@ const UNEXPRESSIBLE = new Set([
   "ZodSet",
 ]);
 
-/** The name of the first zod type under `schema` that has no JSON Schema, or null. */
-export function findUnexpressible(schema: z.ZodTypeAny, seen = new Set<unknown>()): string | null {
-  if (seen.has(schema)) return null;
-  seen.add(schema);
-  const def = schema._def as Record<string, unknown> & { typeName?: string };
-  if (def.typeName && UNEXPRESSIBLE.has(def.typeName)) return def.typeName;
-  const children: unknown[] = [];
-  for (const key of ["innerType", "schema", "type", "valueType", "keyType", "left", "right"])
-    children.push(def[key]);
-  if (typeof def.shape === "function")
-    children.push(...Object.values((def.shape as () => Record<string, unknown>)()));
-  if (Array.isArray(def.options)) children.push(...def.options);
-  else if (def.options instanceof Map) children.push(...def.options.values());
-  if (Array.isArray(def.items)) children.push(...def.items);
-  if (def.rest) children.push(def.rest);
-  for (const child of children) {
-    if (child && typeof child === "object" && "_def" in child) {
-      const found = findUnexpressible(child as z.ZodTypeAny, seen);
-      if (found) return found;
+/**
+ * The name of the first zod type under `schema` that has no JSON Schema, or null. A recursive schema (a `z.lazy` that
+ * reaches itself) has none either: the converter would write `{}` where the recursion closes, and the document would
+ * say "anything" about a part the server checks.
+ */
+export function findUnexpressible(schema: z.ZodTypeAny): string | null {
+  const done = new Set<unknown>();
+  const walk = (node: z.ZodTypeAny, path: Set<unknown>): string | null => {
+    if (path.has(node)) return "ZodLazy (recursive)";
+    if (done.has(node)) return null;
+    const def = node._def as Record<string, unknown> & { typeName?: string };
+    if (def.typeName && UNEXPRESSIBLE.has(def.typeName)) return def.typeName;
+    const children: unknown[] = [];
+    for (const key of ["innerType", "schema", "type", "valueType", "keyType", "left", "right", "in", "out"])
+      children.push(def[key]);
+    if (typeof def.shape === "function")
+      children.push(...Object.values((def.shape as () => Record<string, unknown>)()));
+    if (typeof def.getter === "function") children.push((def.getter as () => unknown)());
+    if (Array.isArray(def.options)) children.push(...def.options);
+    else if (def.options instanceof Map) children.push(...def.options.values());
+    if (Array.isArray(def.items)) children.push(...def.items);
+    if (def.rest) children.push(def.rest);
+    // Every object has a `never` catch-all (the converter reads it as "no other key"); any other one is a schema.
+    const catchall = def.catchall as z.ZodTypeAny | undefined;
+    if (catchall && catchall._def.typeName !== "ZodNever") children.push(catchall);
+    const next = new Set(path).add(node);
+    for (const child of children) {
+      if (child && typeof child === "object" && "_def" in child) {
+        const found = walk(child as z.ZodTypeAny, next);
+        if (found) return found;
+      }
     }
+    done.add(node);
+    return null;
+  };
+  return walk(schema, new Set());
+}
+
+/**
+ * The converter writes JSON Schema draft 7; the document is 2020-12, where a tuple is `prefixItems` (with `items` for
+ * what follows) and `items` as a list is not valid. Values the schema carries as data (`default`, `enum`, `const`,
+ * examples) are left as they are.
+ */
+export function toDialect2020(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(toDialect2020);
+  if (node === null || typeof node !== "object") return node;
+  const source = node as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  const tuple = Array.isArray(source.items);
+  for (const [key, value] of Object.entries(source)) {
+    if (["default", "enum", "const", "example", "examples"].includes(key)) out[key] = value;
+    else if (tuple && key === "items") out.prefixItems = toDialect2020(value);
+    else if (tuple && key === "additionalItems") out.items = toDialect2020(value);
+    else out[key] = toDialect2020(value);
   }
-  return null;
+  return out;
 }
 
 /** The schema of a request part (`wire` false: its input type) or of what a response carries (`wire` true). */
 function toJsonSchema(schema: z.ZodTypeAny, where: string, wire = false): JsonSchema {
   const bad = findUnexpressible(schema);
   if (bad) throw new Error(`${where}: ${bad} has no JSON Schema, so the route cannot be described`);
-  const out = zodToJsonSchema(
-    wire ? wireSchema(schema) : schema,
-    schemaOptions(undefined, wire),
+  const out = toDialect2020(
+    zodToJsonSchema(wire ? wireSchema(schema) : schema, schemaOptions(undefined, wire)),
   ) as JsonSchema & {
     $schema?: string;
   };
@@ -266,7 +301,9 @@ export function openApiDocument(table: Readonly<Record<string, RouteDefinition>>
   const schemas: Record<string, JsonSchema> = {};
   for (const [name, schema] of Object.entries(NAMED_SCHEMAS)) {
     // A named schema may name another one: it is described next to them, not inside them.
-    const json = zodToJsonSchema(wireSchema(schema), schemaOptions(name)) as JsonSchema;
+    const bad = findUnexpressible(schema);
+    if (bad) throw new Error(`components.schemas.${name}: ${bad} has no JSON Schema`);
+    const json = toDialect2020(zodToJsonSchema(wireSchema(schema), schemaOptions(name))) as JsonSchema;
     delete json.$schema;
     schemas[name] = json;
   }

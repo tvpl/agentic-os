@@ -3,6 +3,7 @@
  * document is generated and the interface types its calls. Adding a route is adding an entry here; the server will
  * not start with a route that has none, nor with an entry no route was bound to.
  */
+import { deepFreeze } from "../freeze.js";
 import { deviceRoutes } from "./devices.js";
 import { memoryRoutes } from "./memory.js";
 import { routineRoutes } from "./routines.js";
@@ -12,7 +13,8 @@ import { streamRoutes } from "./streams.js";
 import { systemRoutes } from "./system.js";
 import type { RouteCall, RouteDefinition, RouteInput, RouteResult, SuccessBodies } from "./route.js";
 
-export const API = {
+/** A constant: the table itself is frozen like its entries, so no entry can be added, replaced or removed at run time. */
+export const API = deepFreeze({
   ...systemRoutes,
   ...runRoutes,
   ...skillRoutes,
@@ -20,7 +22,7 @@ export const API = {
   ...memoryRoutes,
   ...deviceRoutes,
   ...streamRoutes,
-} as const;
+} as const);
 
 export type ApiTable = typeof API;
 export type RouteId = keyof ApiTable;

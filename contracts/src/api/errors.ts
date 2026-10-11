@@ -28,36 +28,93 @@ const guarded = (route: RouteDefinition): boolean => route.public !== true;
 const always = (): boolean => true;
 
 /**
- * The routes that read or write under the folders the owner granted, or that the engine resolves a path for: only
- * these can answer the refusals of the path filter (`403 forbidden_path`) or of the safe reader (`404 not_a_file`,
- * `413 file_too_large`). They are not common errors: `GET /api/settings` cannot answer them. The areas that touch
- * files are named by path prefix (the memory, the skills, the artifacts, the sync, the micro apps); the routes
- * outside them that take a folder or file the caller names are listed.
+ * The routes that can answer the refusals of the path filter (`403 forbidden_path`) and of the safe reader (`404
+ * not_a_file`, `413 file_too_large`). They are not common errors: `GET /api/settings` never touches a path. The lists
+ * are not an opinion about which routes "look like" they read files: `tests/api.refusals.test.ts` calls each of the
+ * 127 routes with every call into the path filter and the safe reader refusing, and compares the routes that
+ * answered the refusal with these lists in both directions. A route that gains a read, or loses one, fails there
+ * with the route named; the lists are changed to what the probe printed.
  */
-const FILE_AREAS = [
-  "/api/memory/",
-  "/api/skills",
-  "/api/artifacts/",
-  "/api/sync/",
-  "/api/microapps/",
-] as const;
-const FILE_ROUTES: ReadonlySet<string> = new Set(["GET /api/runs/:id/diff"]);
-const PATH_ROUTES: ReadonlySet<string> = new Set([
-  ...FILE_ROUTES,
+const FORBIDDEN_PATH_ROUTES: ReadonlySet<string> = new Set([
+  "DELETE /api/skills/:slug",
+  "GET /api/artifacts/file",
+  "GET /api/artifacts/raw",
+  "GET /api/connectors",
+  "GET /api/connectors/:id/data",
+  "GET /api/connectors/:id/setup",
+  "GET /api/connectors/audit",
+  "GET /api/diagnostics/export",
+  "GET /api/doctor",
+  "GET /api/memory/hygiene",
+  "GET /api/memory/journal",
+  "GET /api/memory/preview",
+  "GET /api/routines",
+  "GET /api/routines/silent",
+  "GET /api/routines/summary",
+  "GET /api/runs/:id/diff",
+  "GET /api/skills",
+  "GET /api/skills/:slug",
+  "GET /api/skills/:slug/notes",
+  "GET /api/skills/:slug/resource",
+  "GET /api/skills/registry",
+  "GET /api/sync/plan",
+  "POST /api/connectors",
+  "POST /api/memory/journal/append",
+  "POST /api/memory/open",
+  "POST /api/memory/routers",
+  "POST /api/microapps/pixel/save",
+  "POST /api/objectives/:id/dispatch",
+  "POST /api/providers/:id/smoke",
+  "POST /api/routines",
+  "POST /api/routines/:id/duplicate",
+  "POST /api/routines/:id/run",
+  "POST /api/routines/:id/toggle",
   "POST /api/runs",
   "POST /api/runs/:id/children",
   "POST /api/runs/:id/retry",
   "POST /api/sessions/:id/continue",
-  "POST /api/objectives/:id/dispatch",
-  "POST /api/routines",
+  "POST /api/skills",
+  "POST /api/skills/:slug/notes",
+  "POST /api/skills/:slug/notes/promote",
+  "POST /api/skills/:slug/run",
+  "POST /api/skills/:slug/toggle",
+  "POST /api/skills/import",
+  "POST /api/skills/install",
+  "POST /api/sync/apply",
+  "PUT /api/connectors/:id",
   "PUT /api/routines/:id",
+  "PUT /api/skills/:slug",
+]);
+
+const READER_ROUTES: ReadonlySet<string> = new Set([
+  "DELETE /api/skills/:slug",
+  "GET /api/connectors/:id/data",
+  "GET /api/connectors/:id/setup",
+  "GET /api/memory/journal",
+  "GET /api/skills/:slug",
+  "GET /api/skills/:slug/notes",
+  "GET /api/skills/:slug/resource",
+  "POST /api/connectors",
+  "POST /api/memory/journal/append",
+  "POST /api/memory/routers",
+  "POST /api/routines",
+  "POST /api/routines/:id/duplicate",
   "POST /api/routines/:id/run",
+  "POST /api/routines/:id/toggle",
+  "POST /api/skills",
+  "POST /api/skills/:slug/notes",
+  "POST /api/skills/:slug/notes/promote",
+  "POST /api/skills/:slug/run",
+  "POST /api/skills/:slug/toggle",
+  "POST /api/skills/import",
+  "POST /api/skills/install",
+  "PUT /api/connectors/:id",
+  "PUT /api/routines/:id",
+  "PUT /api/skills/:slug",
 ]);
 const keyOf = (route: RouteDefinition): string => `${route.method} ${route.path}`;
-const inFileArea = (route: RouteDefinition): boolean =>
-  FILE_AREAS.some((prefix) => route.path.startsWith(prefix));
-const readsFiles = (route: RouteDefinition): boolean => inFileArea(route) || FILE_ROUTES.has(keyOf(route));
-const namesPaths = (route: RouteDefinition): boolean => inFileArea(route) || PATH_ROUTES.has(keyOf(route));
+const namesPaths = (route: RouteDefinition): boolean => FORBIDDEN_PATH_ROUTES.has(keyOf(route));
+const readsFiles = (route: RouteDefinition): boolean => READER_ROUTES.has(keyOf(route));
 
 /** What any route can answer, whatever its entry says: the gate before the route, the parser and the server. */
 export const COMMON_ERRORS: readonly CommonError[] = deepFreeze([

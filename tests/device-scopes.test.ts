@@ -7,7 +7,7 @@ import type { FastifyInstance } from "fastify";
 import Database from "better-sqlite3";
 import { type ApprovalKind, type ProviderManifest } from "@mordomo/core";
 import { z } from "zod";
-import { API, route } from "@mordomo/contracts";
+import { route } from "@mordomo/contracts";
 import {
   DEFAULT_DEVICE_SCOPES,
   DEVICE_SCOPES,
@@ -22,7 +22,7 @@ import {
 } from "@mordomo/core/internal";
 import { claudeManifest, createClaudeAdapter } from "@mordomo/adapter-claude";
 import { AppContext } from "../apps/api/src/context.js";
-import { bindEntry } from "../apps/api/src/contract.js";
+import { registerSyntheticEntry } from "./helpers/syntheticEntry.js";
 import { buildServer, deviceVerdict, type RouteScope } from "../apps/api/src/server.js";
 import { resolveApprovalForChat } from "../apps/api/src/approvalActions.js";
 import { FAKE_BIN, makeTempHome } from "./helpers.js";
@@ -1530,7 +1530,7 @@ describe("round 1 the gaps the first verification found", () => {
     const fresh = await buildServer(ctx);
     try {
       expect(() => fresh.get("/api", async () => ({ root: true }))).toThrow(/GET \/api declares no scope/);
-      // Registered through bind, with an entry of the table that the server was not built with.
+      // Registered through the test helper: the table is frozen, so the entry belongs to this server alone.
       const rootEntry = route({
         method: "GET",
         path: "/api" as never,
@@ -1539,8 +1539,7 @@ describe("round 1 the gaps the first verification found", () => {
         tag: "test",
         responses: { 200: z.object({ root: z.literal(true) }) },
       });
-      (API as unknown as Record<string, unknown>)["zz.root"] = rootEntry;
-      bindEntry(fresh, "zz.root", rootEntry, async () => ({ root: true }));
+      registerSyntheticEntry(fresh, "zz.root", rootEntry, async () => ({ root: true }));
       const device = pair(["monitor", "content", "run", "approve"], "root");
       const call = (headers: Record<string, string>) =>
         fresh.inject({ method: "GET", url: "/api", headers: { host: "127.0.0.1", ...headers } });
@@ -1557,7 +1556,6 @@ describe("round 1 the gaps the first verification found", () => {
       });
       expect(viaQuery.statusCode).toBe(401);
     } finally {
-      delete (API as unknown as Record<string, unknown>)["zz.root"];
       await fresh.close();
     }
   });

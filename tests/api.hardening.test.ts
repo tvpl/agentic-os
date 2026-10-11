@@ -5,9 +5,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { API, route } from "@mordomo/contracts";
+import { route } from "@mordomo/contracts";
 import { AppContext, readRestorePending } from "../apps/api/src/context.js";
-import { bindEntry } from "../apps/api/src/contract.js";
+import { registerSyntheticEntry } from "./helpers/syntheticEntry.js";
 import { buildServer, isAllowedHost, safeUrl, tokenMatches } from "../apps/api/src/server.js";
 import { deepMergeSettings, SettingsPatchSchema } from "../apps/api/src/routes/system.js";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "./helpers.js";
@@ -131,9 +131,8 @@ describe("error envelope (audit #7)", () => {
   });
 
   it("unknown errors → 500 without leaking the message", async () => {
-    // A route that throws an internal error, to assert the 500 envelope hides details. Registered through bind's own
-    // function, as every route is; its entry joins the table only while this server lives (a server will not start
-    // with an entry nobody bound, so it must not outlive the test).
+    // A route that throws an internal error, to assert the 500 envelope hides details. Registered through the test
+    // helper, as the table is frozen: its entry belongs to this server alone and goes with it.
     const boomApp = await buildServer(ctx);
     const boom = route({
       method: "GET",
@@ -143,9 +142,8 @@ describe("error envelope (audit #7)", () => {
       tag: "test",
       responses: { 200: z.object({}) },
     });
-    (API as unknown as Record<string, unknown>)["zz.boom"] = boom;
     try {
-      bindEntry(boomApp, "zz.boom", boom, async () => {
+      registerSyntheticEntry(boomApp, "zz.boom", boom, async () => {
         throw new Error(`secret path ${home}/config/token`);
       });
       const res = await boomApp.inject({ method: "GET", url: "/api/__boom", headers: auth() });
@@ -157,7 +155,6 @@ describe("error envelope (audit #7)", () => {
       expect(res.body).not.toContain("secret path");
       expect(res.body).not.toContain(home);
     } finally {
-      delete (API as unknown as Record<string, unknown>)["zz.boom"];
       await boomApp.close();
     }
   });

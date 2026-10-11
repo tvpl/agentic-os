@@ -14,7 +14,12 @@ import {
   routeKey,
   type RouteDefinition,
 } from "@mordomo/contracts";
-import { openApiDocument, type OpenApiDocument } from "../apps/api/src/openapi.js";
+import {
+  findUnexpressible,
+  openApiDocument,
+  toDialect2020,
+  type OpenApiDocument,
+} from "../apps/api/src/openapi.js";
 import { buildWorld, runScenarios, type Result, type World } from "./helpers/contractWorld.js";
 
 // ajv and ajv-formats are CommonJS: the default export may be the module or its `default`.
@@ -310,39 +315,134 @@ describe("S3 the document", () => {
     );
   });
 
-  it("C17 the refusals of the file readers are listed only by the routes that read files", () => {
-    // `403 forbidden_path`, `404 not_a_file` and `413 file_too_large` were on all 127 operations; `GET /api/settings`
-    // cannot answer them. Each is listed by the routes that name a path or read a file, and by no other.
-    const where = (status: number, code: string) =>
-      entries
-        .filter(([, e]) => declaredErrors(e).some((x) => x.status === status && x.code === code))
-        .map(([, e]) => routeKey(e))
-        .sort();
-    const files = where(404, "not_a_file");
-    expect(where(413, "file_too_large")).toEqual(files);
-    // The areas that read and write files, and the one route outside them that reads a changed file.
-    const areas = ["/api/memory/", "/api/skills", "/api/artifacts/", "/api/sync/", "/api/microapps/"];
-    expect(files).toEqual(
-      entries
-        .map(([, e]) => e)
-        .filter((e) => areas.some((a) => e.path.startsWith(a)) || routeKey(e) === "GET /api/runs/:id/diff")
-        .map(routeKey)
-        .sort(),
-    );
-    expect(files).toContain("GET /api/memory/preview");
-    expect(files).toContain("GET /api/runs/:id/diff");
-    const paths = where(403, "forbidden_path");
-    for (const file of files) expect(paths).toContain(file);
-    expect(paths).toContain("POST /api/runs");
+  it("C17 the refusals of the file readers are in the document where the contract declares them, and only there", () => {
+    // Which routes answer `403 forbidden_path`, `404 not_a_file` and `413 file_too_large` is not decided here: the probe
+    // of tests/api.refusals.test.ts (C46) calls the 127 routes with the path filter and the safe reader refusing and
+    // compares the routes that answered with the contract. The document must say what the contract says.
+    for (const [status, code] of [
+      [403, "forbidden_path"],
+      [404, "not_a_file"],
+      [413, "file_too_large"],
+    ] as const) {
+      let documented = 0;
+      for (const [id, entry] of entries) {
+        const declared = declaredErrors(entry).some((e) => e.status === status && e.code === code);
+        const text = operationOf(entry).responses[String(status)]?.description ?? "";
+        expect(text.includes(code), `${id} ${status} ${code}`).toBe(declared);
+        if (declared) documented += 1;
+      }
+      expect(documented, `${code} routes`).toBeGreaterThan(20);
+      expect(documented, `${code} routes`).toBeLessThan(70);
+    }
+    // The quiet routes do not carry them.
     for (const quiet of [
       "GET /api/settings",
       "GET /api/health",
       "GET /api/metrics",
       "DELETE /api/sessions/:id",
-    ])
-      expect(paths, quiet).not.toContain(quiet);
-    expect(paths.length).toBeLessThan(70);
-    expect(paths.length).toBeGreaterThan(40);
+    ]) {
+      const entry = entries.map(([, e]) => e).find((e) => routeKey(e) === quiet)!;
+      expect(
+        declaredErrors(entry).some((e) => e.code === "forbidden_path"),
+        quiet,
+      ).toBe(false);
+    }
+    // The nine routes of the verifier's round-2 report declare all three.
+    for (const k of [
+      "POST /api/routines",
+      "PUT /api/routines/:id",
+      "POST /api/routines/:id/toggle",
+      "POST /api/routines/:id/duplicate",
+      "POST /api/routines/:id/run",
+      "POST /api/connectors",
+      "PUT /api/connectors/:id",
+      "GET /api/connectors/:id/data",
+      "GET /api/connectors/:id/setup",
+    ]) {
+      const entry = entries.map(([, e]) => e).find((e) => routeKey(e) === k)!;
+      const codes = declaredErrors(entry).map((e) => e.code);
+      for (const code of ["forbidden_path", "not_a_file", "file_too_large"])
+        expect(codes, `${k} ${code}`).toContain(code);
+    }
+  });
+
+  describe("C54 what the document cannot say stops the build; what it says another way is said in 2020-12", () => {
+    const tableOf = (response: z.ZodTypeAny) => ({
+      "zz.probe": route({
+        method: "GET",
+        path: "/api/zz-probe",
+        scope: "monitor",
+        summary: "A route that only the generator reads",
+        tag: "test",
+        responses: { 200: response },
+      }),
+    });
+
+    it("refuses a recursive schema, a set, a map, a promise and a function", () => {
+      type Node = { v: string; next?: Node };
+      const node: z.ZodType<Node> = z.object({ v: z.string(), next: z.lazy(() => node).optional() });
+      expect(findUnexpressible(node)).toBe("ZodLazy (recursive)");
+      expect(findUnexpressible(z.array(z.object({ inside: node })))).toBe("ZodLazy (recursive)");
+      expect(findUnexpressible(z.set(z.string()))).toBe("ZodSet");
+      expect(findUnexpressible(z.object({ m: z.map(z.string(), z.string()) }))).toBe("ZodMap");
+      expect(findUnexpressible(z.promise(z.string()))).toBe("ZodPromise");
+      expect(findUnexpressible(z.function())).toBe("ZodFunction");
+      expect(findUnexpressible(z.string().pipe(z.set(z.string())))).toBe("ZodSet");
+      // A lazy that does not reach itself is fine, and so is the same schema used twice.
+      const twice = z.object({ a: z.string() });
+      expect(findUnexpressible(z.object({ x: twice, y: twice, z: z.lazy(() => twice) }))).toBeNull();
+      expect(() => openApiDocument(tableOf(node))).toThrow(/recursive/);
+      expect(() => openApiDocument(tableOf(z.object({ s: z.set(z.string()) })))).toThrow(/ZodSet/);
+    });
+
+    it("writes a tuple as prefixItems, valid in OpenAPI 3.1", async () => {
+      const tuple = z.object({
+        pair: z.tuple([z.string(), z.number()]),
+        more: z.tuple([z.string()]).rest(z.number()),
+        items: z.array(z.string()),
+      });
+      const document = openApiDocument(tableOf(tuple));
+      const schema = (
+        document.paths["/api/v1/zz-probe"]!.get as {
+          responses: Record<string, { content: Record<string, { schema: Record<string, unknown> }> }>;
+        }
+      ).responses["200"]!.content["application/json"]!.schema as {
+        properties: Record<string, Record<string, unknown>>;
+      };
+      expect(schema.properties.pair).toMatchObject({
+        type: "array",
+        prefixItems: [{ type: "string" }, { type: "number" }],
+        minItems: 2,
+        maxItems: 2,
+      });
+      expect(schema.properties.pair).not.toHaveProperty("items");
+      expect(schema.properties.more).toMatchObject({
+        prefixItems: [{ type: "string" }],
+        items: { type: "number" },
+      });
+      expect(schema.properties.more).not.toHaveProperty("additionalItems");
+      // A key that happens to be called `items` is a key, not a list.
+      expect(schema.properties.items).toMatchObject({ type: "array", items: { type: "string" } });
+      const ajv = new Ajv2020({ strict: false, allErrors: true });
+      const validate = ajv.compile(schema);
+      expect(validate({ pair: ["a", 1], more: ["a", 2, 3], items: ["x"] })).toBe(true);
+      expect(validate({ pair: ["a", "b"], more: ["a"], items: [] })).toBe(false);
+      await expect(SwaggerParser.validate(structuredClone(document) as never)).resolves.toBeDefined();
+    });
+
+    it("leaves the data a schema carries alone", () => {
+      expect(
+        toDialect2020({ default: { items: [1] }, enum: [{ items: [2] }], const: { items: [3] } }),
+      ).toEqual({
+        default: { items: [1] },
+        enum: [{ items: [2] }],
+        const: { items: [3] },
+      });
+      expect(toDialect2020({ items: [{ type: "string" }], additionalItems: { type: "number" } })).toEqual({
+        prefixItems: [{ type: "string" }],
+        items: { type: "number" },
+      });
+    });
   });
 
   it("C18 the 403, 409, 413, 422 and 429 of the earlier features are documented", () => {

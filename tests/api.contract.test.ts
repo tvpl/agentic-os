@@ -22,9 +22,10 @@ import {
 } from "@mordomo/contracts";
 import { AppContext } from "../apps/api/src/context.js";
 import { bindEntry, bind, responsesValidated } from "../apps/api/src/contract.js";
-import { buildServer, defaultErrorCode } from "../apps/api/src/server.js";
+import { buildServer, defaultErrorCode, unboundEntries } from "../apps/api/src/server.js";
 import { httpError } from "../apps/api/src/routes/common.js";
 import { makeTempHome } from "./helpers.js";
+import { registerSyntheticEntry } from "./helpers/syntheticEntry.js";
 import { EXPECTED_ROUTE_SCOPES, PUBLIC_ROUTES } from "./helpers/routeScopes.js";
 import {
   SCENARIOS,
@@ -34,7 +35,7 @@ import {
   type Result,
   type World,
 } from "./helpers/contractWorld.js";
-import { boundIds, scanSource, sourceFiles } from "./helpers/errorScan.js";
+import { UNRESOLVED, boundIds, scanSource, sourceFiles } from "./helpers/errorScan.js";
 
 /**
  * The route table is the contract of the API (.specs/features/contratos-rest): the router has an entry for each route,
@@ -281,6 +282,81 @@ describe("S1 the route table and the registration", () => {
     await bare.close();
   });
 
+  it("C57 a precheck runs after the params and the query and before the body; a throw from it stops the handler", async () => {
+    const entry = route({
+      method: "PUT",
+      path: "/api/zz/:n",
+      scope: "monitor",
+      summary: "A route that looks its resource up before it reads the body",
+      tag: "test",
+      params: z.object({ n: z.coerce.number().int() }),
+      query: z.object({ limit: z.coerce.number().int().default(5) }),
+      body: z.object({ name: z.string() }),
+      responses: { 200: z.object({ ok: z.literal(true) }) },
+    });
+    const log: string[] = [];
+    // The body is parsed after the precheck: a body the schema refuses shows as `body` only when the precheck let it by.
+    const watchedBody = z.object({ name: z.string() }).transform((value) => {
+      log.push("body");
+      return value;
+    });
+    const watched = route({ ...entry, body: watchedBody } as never);
+    const seenByPrecheck: unknown[] = [];
+    let gone = false;
+    const bare = Fastify();
+    bindEntry(
+      bare,
+      "zz.precheck",
+      watched,
+      async (call) => {
+        log.push("handler");
+        return { ok: true, call };
+      },
+      {
+        precheck: async (parts: unknown) => {
+          log.push("precheck");
+          seenByPrecheck.push(parts);
+          if (gone) throw Object.assign(new Error("gone"), { statusCode: 404 });
+        },
+      } as never,
+    );
+    bare.setErrorHandler((error: Error & { statusCode?: number }, _req, reply) =>
+      reply.code(error instanceof z.ZodError ? 400 : (error.statusCode ?? 500)).send({ at: log.join(",") }),
+    );
+    const put = (url: string, payload: unknown) =>
+      bare.inject({ method: "PUT", url, payload: payload as object });
+
+    // Everything valid: params and query, then the precheck (with them parsed), then the body, then the handler.
+    expect((await put("/api/zz/7?limit=2", { name: "n" })).statusCode).toBe(200);
+    expect(log).toEqual(["precheck", "body", "handler"]);
+    expect(seenByPrecheck[0]).toEqual({ params: { n: 7 }, query: { limit: 2 } });
+
+    // The params invalid: refused before the precheck, which does not run (it would look up a resource that cannot exist).
+    log.length = 0;
+    seenByPrecheck.length = 0;
+    expect((await put("/api/zz/abc", { name: "n" })).statusCode).toBe(400);
+    expect((await put("/api/zz/1?limit=many", { name: "n" })).statusCode).toBe(400);
+    expect(log).toEqual([]);
+    expect(seenByPrecheck).toEqual([]);
+
+    // The precheck throws: the answer is its own, the body is not read and the handler does not run - even for a body that is
+    // wrong. That is the order the four routes had before the table: 404 for a resource that is not there, before 400.
+    gone = true;
+    for (const payload of [{ name: "n" }, { name: 3 }, {}]) {
+      log.length = 0;
+      const res = await put("/api/zz/9", payload);
+      expect(res.statusCode, JSON.stringify(payload)).toBe(404);
+      expect(log, JSON.stringify(payload)).toEqual(["precheck"]);
+    }
+
+    // The resource is there and the body is wrong: the body is refused after the precheck, and the handler does not run.
+    gone = false;
+    log.length = 0;
+    expect((await put("/api/zz/9", { name: 3 })).statusCode).toBe(400);
+    expect(log).toEqual(["precheck"]);
+    await bare.close();
+  });
+
   /**
    * Candidates for a value a schema rejects, and for one it accepts, found by asking the schema itself: the test
    * does not know what a route validates, the route's own entry does.
@@ -441,9 +517,9 @@ describe("S1 the route table and the registration", () => {
       await fresh.close();
     }
 
-    // An entry nobody bound is a route that was forgotten: the server does not start.
-    const table = API as unknown as Record<string, RouteDefinition>;
-    table["zz.forgotten"] = route({
+    // An entry nobody bound is a route that was forgotten: the server does not start. The table is frozen, so the
+    // check is run on a table with one more entry, and on the real one.
+    const forgotten = route({
       method: "GET",
       path: "/api/zz-forgotten",
       scope: "monitor",
@@ -451,10 +527,14 @@ describe("S1 the route table and the registration", () => {
       tag: "test",
       responses: { 200: z.object({}) },
     });
+    const app = await buildServer(ctx);
     try {
-      await expect(buildServer(ctx)).rejects.toThrow(/zz\.forgotten.*no route was bound/);
+      expect(unboundEntries(API, app.apiRoutes)).toEqual([]);
+      expect(unboundEntries({ ...API, "zz.forgotten": forgotten }, app.apiRoutes)).toEqual([
+        "GET /api/zz-forgotten (zz.forgotten) is in the route table but no route was bound to it",
+      ]);
     } finally {
-      delete table["zz.forgotten"];
+      await app.close();
     }
   });
 });
@@ -498,12 +578,10 @@ describe("S2 the real answer is checked", () => {
   ];
 
   it("C9 a response that departs from its entry is replaced by response_contract_violation", async () => {
-    const table = API as unknown as Record<string, RouteDefinition>;
     const app = await buildServer(ctx, { validateResponses: true });
-    // The entry joins the table after the server was built (a server refuses an entry nobody bound) and leaves it at the end.
-    table["zz.answer"] = violationEntry;
+    // The entry belongs to this server alone (the table is frozen) and goes away with it.
     let mode = "ok";
-    bindEntry(app, "zz.answer", violationEntry, async (_call, _req, reply) => {
+    registerSyntheticEntry(app, "zz.answer", violationEntry, async (_call, _req, reply) => {
       if (mode === "ok") return { name: "n", count: 1 };
       if (mode === "declared") throw httpError(409, "fine", "declared");
       return MODES.find((m) => m.mode === mode)!.reply(reply);
@@ -526,7 +604,6 @@ describe("S2 the real answer is checked", () => {
         expect(body.error.message, m.mode).toContain(m.names);
       }
     } finally {
-      delete table["zz.answer"];
       await app.close();
     }
 
@@ -570,13 +647,11 @@ describe("S2 the real answer is checked", () => {
       tag: "test",
       responses: { 200: spy },
     });
-    const table = API as unknown as Record<string, RouteDefinition>;
     try {
       for (const validate of [false, true]) {
         calls.mockClear();
         const app = await buildServer(ctx, { validateResponses: validate });
-        table["zz.unchecked"] = entry;
-        bindEntry(app, "zz.unchecked", entry, async () => ({ name: 1, extra: true }));
+        registerSyntheticEntry(app, "zz.unchecked", entry, async () => ({ name: 1, extra: true }));
         const res = await app.inject({ method: "GET", url: "/api/v1/zz-unchecked", headers: owner() });
         if (validate) {
           expect(res.statusCode).toBe(500);
@@ -586,11 +661,10 @@ describe("S2 the real answer is checked", () => {
           expect(res.json()).toEqual({ name: 1, extra: true });
           expect(calls).not.toHaveBeenCalled();
         }
-        delete table["zz.unchecked"];
         await app.close();
       }
     } finally {
-      delete table["zz.unchecked"];
+      /* the entry went with each server */
     }
   });
 
@@ -911,9 +985,17 @@ describe("S2 the real answer is checked", () => {
       .map(([pair, where]) => `${pair} (${where})`);
     expect(undocumented).toEqual([]);
     // The set the scan reads today, pinned: a raise that appears or disappears is a change to the contract of some route.
-    expect(raised.size).toBe(48);
+    expect(raised.size).toBe(49);
     expect([...raised.keys()].filter((pair) => pair.includes("<unresolved>"))).toEqual([]);
     expect(raised.has("409 approval_resolved")).toBe(true);
+    // The other way: every pair an entry lists as its own is raised somewhere in the tree. A documented answer no code
+    // gives is a lie of the document (`409 settings_newer` was one: the core threw it without a status, and the server
+    // answered `500 internal`).
+    const neverRaised: string[] = [];
+    for (const [id, entry] of entries)
+      for (const e of entry.errors ?? [])
+        if (!raised.has(pairOf(e.status, e.code))) neverRaised.push(`${id} ${e.status} ${e.code}`);
+    expect(neverRaised).toEqual([]);
 
     // And the stricter reading for the route files: what a file raises is documented by the entries it registers.
     const routeDir = path.join(repoRoot, "apps/api/src/routes");
@@ -934,8 +1016,86 @@ describe("S2 the real answer is checked", () => {
     expect(problems).toEqual([]);
   });
 
+  it("C56 the scanner reads a code through a constant, parentheses and a cast, and fails loudly on one it cannot read", () => {
+    const documentedPairs = new Set<string>();
+    for (const [, entry] of entries)
+      for (const e of entry.errors ?? []) documentedPairs.add(`${e.status} ${e.code}`);
+    for (const e of COMMON_ERRORS) documentedPairs.add(`${e.status} ${e.code}`);
+    /** What C13 would report for this source: the pairs it raises that no entry documents. */
+    const undocumentedIn = (source: string): string[] =>
+      scanSource(source)
+        .map((r) => pairOf(r.status, r.code))
+        .filter((pair) => !documentedPairs.has(pair));
+
+    // E1: a constant of the file holding the literal.
+    expect(scanSource(`const TAKEN = "name_taken"; throw httpError(409, "m", TAKEN);`)).toMatchObject([
+      { status: 409, code: "name_taken" },
+    ]);
+    expect(
+      scanSource(
+        `const GONE = "gone"; throw Object.assign(new Error("m"), { statusCode: 410, code: GONE });`,
+      ),
+    ).toMatchObject([{ status: 410, code: "gone" }]);
+    // The constant is the one in the file: another name is not read as it.
+    expect(scanSource(`const TAKEN = "name_taken"; httpError(409, "m", OTHER);`)).toMatchObject([
+      { status: 409, code: UNRESOLVED },
+    ]);
+    // E4: through parentheses, `as` and `satisfies`, alone and around a conditional.
+    for (const code of [`("taken")`, `("taken" as string)`, `("taken" satisfies string)`, `(("taken"))`])
+      expect(scanSource(`httpError(409, "m", ${code});`), code).toMatchObject([
+        { status: 409, code: "taken" },
+      ]);
+    expect(scanSource(`httpError(409, "m", (ok ? "a" : "b") as string);`)).toMatchObject([
+      { status: 409, code: "a" },
+      { status: 409, code: "b" },
+    ]);
+    expect(scanSource(`httpError(409, "m", ok ? ("a") : ("b" as const));`)).toMatchObject([
+      { status: 409, code: "a" },
+      { status: 409, code: "b" },
+    ]);
+    // E3: a code the scan cannot read is `<unresolved>` - not "no code", which would read as the status's own code and
+    // pass as documented. The proof of C13 reports it.
+    for (const source of [
+      `httpError(409, "m", compute());`,
+      `httpError(409, "m", err.code);`,
+      'httpError(409, "m", `x_${kind}`);',
+      `throw Object.assign(new Error("m"), { statusCode: 409, code: pick() });`,
+    ]) {
+      const raised = scanSource(source);
+      expect(raised, source).toHaveLength(1);
+      expect(raised[0]!.code, source).toBe(UNRESOLVED);
+      expect(undocumentedIn(source), source).toEqual([`409 ${UNRESOLVED}`]);
+    }
+    // And a documented pair is not reported: the proof does not cry wolf.
+    expect(undocumentedIn(`httpError(409, "m", "approval_resolved");`)).toEqual([]);
+    expect(undocumentedIn(`httpError(404, "m");`)).toEqual([]);
+  });
+
+  it("C50 a settings file written by a newer version answers 409 settings_newer, not 500", async () => {
+    // `config/settings.json` with a version this build does not know: the write refuses to overwrite it, and says so.
+    const tmp = makeTempHome("mordomo-settings-newer-");
+    const own = new AppContext(tmp.paths.home);
+    const app = await buildServer(own, { validateResponses: true });
+    try {
+      const newer = JSON.stringify({ version: 99, systemName: "Futuro", somethingNew: true }, null, 2) + "\n";
+      fs.writeFileSync(own.paths.settingsFile, newer);
+      const res = await app.inject({
+        method: "PUT",
+        url: "/api/v1/settings",
+        headers: { "x-mordomo-token": own.token(), "content-type": "application/json" },
+        payload: JSON.stringify({ systemName: "Casa" }),
+      });
+      expect(res.statusCode).toBe(409);
+      expect((res.json() as { error: { code: string } }).error.code).toBe("settings_newer");
+      expect(fs.readFileSync(own.paths.settingsFile, "utf8")).toBe(newer);
+    } finally {
+      await app.close();
+      own.close();
+      tmp.cleanup();
+    }
+  });
+
   it("C14 a violation is logged without the body", async () => {
-    const table = API as unknown as Record<string, RouteDefinition>;
     const entry = route({
       method: "GET",
       path: "/api/zz-log",
@@ -945,8 +1105,7 @@ describe("S2 the real answer is checked", () => {
       responses: { 200: z.object({ name: z.string() }) },
     });
     const app = await buildServer(ctx, { validateResponses: true });
-    table["zz.log"] = entry;
-    bindEntry(app, "zz.log", entry, async () => ({
+    registerSyntheticEntry(app, "zz.log", entry, async () => ({
       name: "n",
       leaked: "TOP-SECRET-PROMPT",
       count: "TOP-SECRET-COUNT",
@@ -970,7 +1129,6 @@ describe("S2 the real answer is checked", () => {
       expect(JSON.stringify(line)).toContain("$.leaked");
       expect(JSON.stringify(line)).not.toContain("TOP-SECRET");
     } finally {
-      delete table["zz.log"];
       await app.close();
     }
   });

@@ -15,7 +15,7 @@ import Fastify, {
 import fastifyStatic from "@fastify/static";
 import { ZodError } from "zod";
 import { EngineLockedError, PathAccessError } from "@mordomo/core";
-import { API } from "@mordomo/contracts";
+import { API, type RouteDefinition } from "@mordomo/contracts";
 import {
   JsonlLogger,
   TelegramPoller,
@@ -266,6 +266,12 @@ declare module "fastify" {
   interface FastifyInstance {
     /** Every /api route as registered (filled by an `onRoute` hook): the OpenAPI document's source. */
     apiRoutes: ApiRoute[];
+    /**
+     * Entries that belong to this server alone, beside the route table: empty in the service, filled only by the test
+     * suite (`tests/helpers/syntheticEntry.ts`) to prove what the server does with an entry of its own. The table
+     * `API` is frozen; nothing in the service writes here.
+     */
+    readonly syntheticEntries: Map<string, RouteDefinition>;
   }
 }
 
@@ -278,10 +284,18 @@ export interface ApiRoute {
   config: FastifyContextConfig;
 }
 
-/** Why a route was not bound: the message of `buildServer` for an entry of `API` that no route claimed. */
-function unboundMessage(id: string): string {
-  const entry = API[id as keyof typeof API];
-  return `${entry.method} ${entry.path} (${id}) is in the route table but no route was bound to it`;
+/** The entries of `table` that no route of the router was bound to, as the message the server stops with. */
+export function unboundEntries(
+  table: Readonly<Record<string, RouteDefinition>>,
+  routes: readonly ApiRoute[],
+): string[] {
+  const bound = new Set(routes.map((r) => r.config.route));
+  return Object.entries(table)
+    .filter(([id]) => !bound.has(id))
+    .map(
+      ([id, entry]) =>
+        `${entry.method} ${entry.path} (${id}) is in the route table but no route was bound to it`,
+    );
 }
 
 export function tokenMatches(supplied: unknown, expected: string): boolean {
@@ -368,6 +382,7 @@ export async function buildServer(
   app.decorateRequest("brokerRunId", null);
   app.decorateRequest("principal", null);
   app.decorate("apiRoutes", [] as ApiRoute[]);
+  app.decorate("syntheticEntries", new Map<string, RouteDefinition>());
   app.addHook("onRoute", (route) => {
     if (!isApiRoutePath(route.url)) return;
     // Denied by default: a route that does not say who may call it does not exist.
@@ -377,7 +392,10 @@ export async function buildServer(
       );
     }
     // One table describes the API: a route registered outside `bind` has no contract, so it does not exist.
-    if (route.config?.route === undefined || !Object.hasOwn(API, route.config.route)) {
+    if (
+      route.config?.route === undefined ||
+      !(Object.hasOwn(API, route.config.route) || app.syntheticEntries.has(route.config.route))
+    ) {
       throw new Error(
         `${[route.method].flat().join("/")} ${route.url} declares no contract: register it with bind(app, id, handler) and add its entry to the route table (contracts/src/api)`,
       );
@@ -589,8 +607,8 @@ export async function buildServer(
   registerObjectiveRoutes(app, ctx);
   registerOpenApiRoute(app);
   // The table and the router describe the same API: an entry nobody bound is a route that was forgotten.
-  const bound = new Set(app.apiRoutes.map((r) => r.config.route));
-  for (const id of Object.keys(API)) if (!bound.has(id)) throw new Error(unboundMessage(id));
+  const unbound = unboundEntries(API, app.apiRoutes);
+  if (unbound.length > 0) throw new Error(unbound[0]);
 
   // ---- Command Centre static UI --------------------------------------------
   const uiDist =

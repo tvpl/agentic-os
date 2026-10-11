@@ -3,7 +3,7 @@
 Profile: standard
 Plan: `.specs/features/contratos-rest/plan.md`
 
-44 checks in 7 slices · 10 one-way doors · 0 open, of which 0 block
+51 checks in 8 slices · 10 one-way doors · 0 open, of which 0 block
 
 Comandos (da raiz do repositório):
 
@@ -71,7 +71,8 @@ Status: built (proof green at the build commit; not yet verified by someone else
 Proof: `npx vitest run tests/api.contract.test.ts -t "C12 every route answers what its entry declares"`
 Status: built (proof green at the build commit; not yet verified by someone else)
 
-**C13** - Todo par `(status, code)` de erro que o código sob `apps/api/src` e `core/src` pode lançar (as chamadas `httpError(status, msg, code)`, os objetos com `statusCode` e `code`, as classes com `readonly statusCode`; 48 pares hoje, fixados no teste) está em `errors` de alguma entrada ou em `COMMON_ERRORS`, e cada par de `httpError` de um arquivo de rotas está nos `errors` das entradas que aquele arquivo registra ou em `COMMON_ERRORS` (a leitura é feita na árvore sintática, com autoteste de cada forma que ela cobre e de cada falso positivo que ela não pode apontar; em `httpError`, `new MordomoError`, objeto com `statusCode` e classe, o código pode ser um literal, uma constante do arquivo ou os dois ramos de um condicional, e um código que a leitura não resolve vira `<unresolved>`, que nenhuma entrada documenta e reprova) (AC 14)
+**C13** - Todo par `(status, code)` de erro que o código sob `apps/api/src` e `core/src` pode lançar (as chamadas `httpError(status, msg, code)`, os objetos com `statusCode` e `code`, as classes com `readonly statusCode`; 49 pares hoje, fixados no teste) está em `errors` de alguma entrada ou em `COMMON_ERRORS`, e cada par de `httpError` de um arquivo de rotas está nos `errors` das entradas que aquele arquivo registra ou em `COMMON_ERRORS` (a leitura é feita na árvore sintática, com autoteste de cada forma que ela cobre e de cada falso positivo que ela não pode apontar; em `httpError`, `new MordomoError`, objeto com `statusCode` e classe, o código pode ser um literal, uma constante do arquivo ou os dois ramos de um condicional, e um código que a leitura não resolve vira `<unresolved>`, que nenhuma entrada documenta e reprova; e o sentido inverso: todo par que uma entrada lista como seu é lançado em algum lugar da árvore) (AC 14)
+Amendment (rodada 1 e 2): o texto aprovado dizia 50 pares; a contagem certa era 48, e com `409 settings_newer` lançado de verdade (C46) são 49; o sentido inverso e o `<unresolved>` foram acrescentados. Registrado em plan.md, Landing, Emendas.
 Proof: `npx vitest run tests/api.contract.test.ts -t "C13 every error a handler raises is documented"`
 Status: built (proof green at the build commit; not yet verified by someone else)
 
@@ -94,6 +95,7 @@ Proof: `npx vitest run tests/api.openapi.test.ts -t "C17 each operation lists th
 Status: built (proof green at the build commit; not yet verified by someone else)
 
 **C18** - O documento traz os dez pares nomeados no AC 18: `403 owner_only`, `403 scope_required`, `403 tls_required`, `403 self_approval`, `409 restore_in_progress`, `409 restore_leftover`, `409 restore_recovery_failed`, `409 restore_lock_unusable`, `422 backup_invalid` e `422 backup_unsealed`, cada um nas operações que os respondem, e o `413` (corpo grande e arquivo grande) e o `429` (`too_many_requests`; o cabeçalho `Retry-After` em todas as operações é afirmado aqui e em C17) (AC 18)
+Amendment (rodada 1, dita na rodada 2): o texto aprovado dizia "o `429` (`too_many_requests`, com o cabeçalho `Retry-After`)"; o cabeçalho em todas as operações passou a ser afirmado aqui e em C17. Registrado em plan.md, Landing, Emendas.
 Proof: `npx vitest run tests/api.openapi.test.ts -t "C18 the 403, 409, 413, 422 and 429 of the earlier features are documented"`
 Status: built (proof green at the build commit; not yet verified by someone else)
 
@@ -173,7 +175,8 @@ Status: built (proof green at the build commit; not yet verified by someone else
 Proof: `npx vitest run tests/api.contract.test.ts -t "C34 the unversioned alias answers as v1"`
 Status: built (proof green at the build commit; not yet verified by someone else)
 
-**C35** - O envelope de erro, a tabela de escopos, o documento de rotas e os códigos de restauração das features anteriores seguem passando sem alteração do teste: `tests/api.hardening.test.ts` ("error envelope"), `tests/api.v1.test.ts` (C20, C21), `tests/device-scopes.test.ts` (C3) e `tests/data.restore-lock.test.ts` (C90) (AC 35; exceção dita: dentro de "error envelope", o teste "unknown errors → 500 without leaking the message" foi reescrito, porque a rota de erro `/api/__boom` passa por `bindEntry` e só vive nele; as asserções de `500 internal` e de não vazar o caminho ficaram iguais, e a emenda é uma entrada de `AMENDMENTS` em `tests/sdk.api-thin.test.ts`)
+**C35** - O envelope de erro, a tabela de escopos, o documento de rotas e os códigos de restauração das features anteriores seguem passando sem alteração do teste: `tests/api.hardening.test.ts` ("error envelope"), `tests/api.v1.test.ts` (C20, C21), `tests/device-scopes.test.ts` (C3) e `tests/data.restore-lock.test.ts` (C90) (AC 35; exceção dita: dentro de "error envelope", o teste "unknown errors → 500 without leaking the message" foi reescrito, porque a rota de erro `/api/__boom` passa por `bindEntry` e só vive nele; as asserções de `500 internal` e de não vazar o caminho ficaram iguais, e a emenda é uma entrada de `AMENDMENTS` em `tests/sdk.api-thin.test.ts`; registrado em plan.md, Landing, Emendas)
+Amendment (rodada 1, dita na rodada 2): a exceção entre parênteses não estava no texto aprovado.
 Proof: `npx vitest run tests/api.hardening.test.ts -t "error envelope"`
 Proof: `npx vitest run tests/api.v1.test.ts -t "C20 the document lists every route"`
 Proof: `npx vitest run tests/api.v1.test.ts -t "C21 each operation carries its scope"`
@@ -213,14 +216,54 @@ Status: built (proof green at the build commit; not yet verified by someone else
 Proof: `npx vitest run tests/api.contract.test.ts -t "C35 a wrong body for a resource that is not there is a 404"`
 Status: built (proof green at the build commit; not yet verified by someone else)
 
-**C43** - O documento mantém todo objeto aberto (nenhum schema, nas operações ou nos componentes, tem `additionalProperties: false`, e uma resposta real com uma chave a mais, no topo e em cada objeto descrito por `properties`, valida no Ajv), declara `servers` e `info.license`, e lista `403 forbidden_path`, `404 not_a_file` e `413 file_too_large` só nas áreas que tocam arquivo (memória, skills, artefatos, sync, micro apps) e nas rotas que resolvem um caminho que o chamador nomeia, não nas 127 (AC 16, AC 17, AC 26)
+**C43** - O documento mantém todo objeto aberto (nenhum schema, nas operações ou nos componentes, tem `additionalProperties: false`, e uma resposta real com uma chave a mais, no topo e em cada objeto descrito por `properties`, valida no Ajv), declara `servers` e `info.license`, e lista `403 forbidden_path`, `404 not_a_file` e `413 file_too_large` onde o contrato as declara (C45 prova quais rotas as respondem), não nas 127 (AC 16, AC 17, AC 26)
+Amendment (rodada 2): a rodada 1 dizia "só nas áreas que tocam arquivo (memória, skills, artefatos, sync, micro apps) e nas rotas que resolvem um caminho que o chamador nomeia"; a lista por prefixo esqueceu nove rotas de rotinas e conectores (F1 da rodada 2) e foi trocada pela lista que a sonda de C45 prova.
 Proof: `npx vitest run tests/api.openapi.test.ts -t "C21 the document keeps every object open"`
-Proof: `npx vitest run tests/api.openapi.test.ts -t "C17 the refusals of the file readers are listed only by the routes that read files"`
+Proof: `npx vitest run tests/api.openapi.test.ts -t "C17 the refusals of the file readers are in the document where the contract declares them"`
 Proof: `npx vitest run tests/api.openapi.test.ts -t "C16 the document validates as OpenAPI 3.1"`
 Status: built (proof green at the build commit; not yet verified by someone else)
 
-**C44** - Cada entrada de `API` (listas de `errors`, cabeçalhos), `COMMON_ERRORS`, `EVENT_VERSIONS` e `RUN_FRAME_VERSIONS` está congelada em tempo de execução (escrever nelas lança `TypeError`), um `id` herdado (`constructor`, `toString`, `__proto__`) não é entrada da tabela para `bind` nem para o `onRoute`, `stream.reset` leva a versão de `currentEventVersion`, e um evento inválido emitido depois do último teste de um arquivo reprova o arquivo (o guarda tem um `afterAll`) (AC 5, AC 22)
+**C44** - Cada entrada de `API` (listas de `errors`, cabeçalhos), `COMMON_ERRORS`, `EVENT_VERSIONS` e `RUN_FRAME_VERSIONS` está congelada em tempo de execução (escrever nelas lança `TypeError`), um `id` herdado (`constructor`, `toString`, `__proto__`) não é entrada da tabela para `bind` nem para o `onRoute`, `stream.reset` leva a versão de `currentEventVersion`, e um evento inválido emitido depois do último teste de um arquivo reprova o arquivo (o guarda tem um `afterAll`, provado por C50) (AC 5, AC 22)
+Amendment (rodada 2): o objeto `API` de topo também é congelado (C51); `stream.reset` com `currentEventVersion` é um mutante equivalente hoje (a lista de `stream.reset` é `[1]`, então `currentEventVersion("stream.reset")` e `1` são o mesmo número): só deixa de ser equivalente quando a lista ganhar a versão 2, e o teste de C22 (o barramento carimba a versão corrente) é o que o mata nesse dia.
 Proof: `npx vitest run tests/contracts.api.test.ts -t "C2 an entry, the lists of errors and the version lists cannot be written to"`
+Proof: `npx vitest run tests/api.contract.test.ts -t "C6 a route outside bind and an unbound entry stop the server"`
+Status: built (proof green at the build commit; not yet verified by someone else)
+
+### S8 - correções da verificação (rodada 2)
+
+**C45** - Cada uma das 127 rotas é chamada como o seu cenário a chama, três vezes, num mundo em que toda chamada ao filtro de caminhos e ao leitor seguro (`core/src/security/safeFs.ts`, a única origem desses erros) recusa de um jeito: fora das pastas concedidas, uma pasta ou um arquivo especial no lugar do arquivo, um arquivo maior que o teto (só para o leitor que pediu `strict`); as rotas que respondem `403 forbidden_path`, `404 not_a_file` e `413 file_too_large` são, nos dois sentidos, as que declaram o par (`declaredErrors`), sem lista de prefixo; e nove rotas que o verificador achou (`POST /api/routines`, `PUT /api/routines/:id`, `POST /api/routines/:id/{toggle,duplicate,run}`, `POST /api/connectors`, `PUT /api/connectors/:id`, `GET /api/connectors/:id/{data,setup}`), chamadas com um arquivo de verdade em `routines/` e `connectors/` (um acima do teto, uma pasta com nome de arquivo, um link para fora), respondem `413`, `404 not_a_file` e `403 forbidden_path` com a conferência de resposta ligada; remover `POST /api/routines`, `POST /api/sessions/:id/continue` ou `POST /api/objectives/:id/dispatch` da lista reprova (mutantes D2, D3, D4) (AC 14, AC 17)
+Proof: `npx vitest run tests/api.refusals.test.ts -t "C45 the probe runs one scenario for each route"`
+Proof: `npx vitest run tests/api.refusals.test.ts -t "C46 the routes that answer"`
+Proof: `npx vitest run tests/api.refusals.test.ts -t "C48 real hostile files"`
+Proof: `npx vitest run tests/api.openapi.test.ts -t "C17 the refusals of the file readers are in the document where the contract declares them"`
+Status: built (proof green at the build commit; not yet verified by someone else)
+
+**C46** - `PUT /api/settings` com `config/settings.json` de `version: 99` responde `409 settings_newer` (o core lança com `statusCode: 409`) e o arquivo fica como estava; e todo par `(status, code)` que uma entrada lista como seu é lançado em algum lugar da árvore (o sentido inverso de C13), então nenhum par documentado é morto (AC 14)
+Proof: `npx vitest run tests/api.contract.test.ts -t "C50 a settings file written by a newer version answers 409 settings_newer"`
+Proof: `npx vitest run tests/api.contract.test.ts -t "C13 every error a handler raises is documented"`
+Status: built (proof green at the build commit; not yet verified by someone else)
+
+**C47** - `wireSchema` reconstrói o tipo de saída em cada ramo: um `.default()` dentro de união, interseção, refinamento de verdade (`ZodEffects` do tipo `refinement`, não um `.min`), tupla (com `rest`), `lazy` (também recursivo), conjunto, mapa e `pipe` é chave obrigatória no fio; o refinamento continua reprovando; a descrição de `default`, `catch`, `transform` e `pipe` é mantida e a de dentro vence; e um nó que ele não sabe reconstruir (um tipo desconhecido, `promise`, `function`) interrompe o build com o nome do tipo, em vez de passar como estava (mutantes W7, W9, W10, W14, W15, W16) (AC 8)
+Proof: `npx vitest run tests/contracts.api.test.ts -t "C51 a default under a union"`
+Proof: `npx vitest run tests/contracts.api.test.ts -t "C52 a set, a map and a pipe are rebuilt too"`
+Proof: `npx vitest run tests/contracts.api.test.ts -t "C53 the description a default"`
+Status: built (proof green at the build commit; not yet verified by someone else)
+
+**C48** - O gerador do documento recusa o que o documento não sabe dizer (um schema recursivo, conjunto, mapa, `promise`, `function`, e esses também dentro de `pipe` e de lista) com o nome do tipo, em vez de escrever `{}`; uma tupla sai como `prefixItems` (com `items` para o resto) e valida no Ajv 2020-12 e no `swagger-parser`, sem tocar em `default`, `enum` e `const` (dados), nem na chave que se chama `items` (AC 15, AC 16)
+Proof: `npx vitest run tests/api.openapi.test.ts -t "C54 what the document cannot say stops the build"`
+Status: built (proof green at the build commit; not yet verified by someone else)
+
+**C49** - O leitor de erros de C13 lê o código por constante do arquivo, por parênteses, `as` e `satisfies` (também ao redor de um condicional) e chama de `<unresolved>` o que não lê (uma chamada, `err.code`, um template, uma chamada dentro de objeto com `statusCode`), e a prova de C13 reporta `409 <unresolved>` como não documentado (um leitor que devolvesse "sem código" faria o par passar como o código padrão do status) (mutantes E1, E3, E4) (AC 14)
+Proof: `npx vitest run tests/api.contract.test.ts -t "C56 the scanner reads a code through a constant"`
+Status: built (proof green at the build commit; not yet verified by someone else)
+
+**C50** - O guarda de eventos reprova o teste que emite um evento fora do schema e reprova o arquivo que emite um depois do último teste (autoteste: três arquivos rodados num `vitest` próprio, com o guarda da configuração da raiz; o que passa, o que reprova no teste e o que reprova no `afterAll`) (mutante F8) (AC 28)
+Proof: `npx vitest run tests/events.guard.test.ts -t "C55 an invalid event fails the test that made it"`
+Status: built (proof green at the build commit; not yet verified by someone else)
+
+**C51** - O `precheck` de `bindEntry` tem prova na sua camada: roda depois de `params` e `query` (recebendo-os já lidos) e antes do corpo, não roda com `params` ou `query` inválidos, e um erro dele responde o seu status sem ler o corpo nem chamar o handler, mesmo com o corpo errado; e o objeto `API` de topo é congelado (adicionar, trocar ou remover uma entrada lança `TypeError`), o único caminho para uma rota fora da tabela é `registerSyntheticEntry` (só em `tests/helpers`, por servidor, sem sombrear uma entrada da tabela), e a verificação de entrada sem rota (`unboundEntries`) roda sobre uma tabela com uma entrada a mais (AC 5, AC 35)
+Proof: `npx vitest run tests/api.contract.test.ts -t "C57 a precheck runs after the params and the query"`
+Proof: `npx vitest run tests/contracts.api.test.ts -t "C58 the table itself is frozen"`
 Proof: `npx vitest run tests/api.contract.test.ts -t "C6 a route outside bind and an unbound entry stop the server"`
 Status: built (proof green at the build commit; not yet verified by someone else)
 
@@ -228,7 +271,7 @@ Status: built (proof green at the build commit; not yet verified by someone else
 
 | Set (size)                                                                       | Member -> proof                                                                                                                                                                                                                                                                                                     | Unproven |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| rotas `/api` (127)                                                               | tabela C1, table-driven over all 127 · cenário real C12, table-driven over all 127 · documento C15, table-driven over all 127 · resposta no documento C21, table-driven over all 127 · apelido sem versão C34, table-driven over all 127                                                                            | -        |
+| rotas `/api` (127)                                                               | tabela C1, table-driven over all 127 · recusas de arquivo C45, table-driven over all 127 · cenário real C12, table-driven over all 127 · documento C15, table-driven over all 127 · resposta no documento C21, table-driven over all 127 · apelido sem versão C34, table-driven over all 127                        | -        |
 | acessos (6)                                                                      | `owner` (63) C3 · `monitor` (33) C3 · `content` (22) C3 · `run` (6) C3 · `approve` (1) C3 · `public` (2) C3                                                                                                                                                                                                         | -        |
 | flags de acesso (2)                                                              | `queryToken` (4 rotas) C3 · `ticket` (2 rotas) C3                                                                                                                                                                                                                                                                   | -        |
 | tipos crus de resposta (2)                                                       | `stream` (2 rotas) C12 · `binary` (2 rotas) C12                                                                                                                                                                                                                                                                     | -        |

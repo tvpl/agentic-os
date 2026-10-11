@@ -116,7 +116,8 @@ Second Brain view) is `UiPreferences`, stored in `config/ui-preferences.json` an
 by `GET`/`PUT /api/ui-preferences`; the engine stores it and never interprets it.
 `settings.json` carries `version` (now 2): an older file is migrated on its first read
 (`core/src/config/migrations.ts`, the original kept as `settings.json.v<n>.bak`), and a
-file written by a newer version is never overwritten (`code: "settings_newer"`).
+file written by a newer version is never overwritten (`code: "settings_newer"`; `PUT /api/settings`
+answers `409`).
 
 ## Core modules (`core/src`)
 

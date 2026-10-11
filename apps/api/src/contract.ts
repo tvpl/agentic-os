@@ -119,7 +119,9 @@ export function installResponseCheck(
 ): void {
   app.addHook("preSerialization", async (req, reply, payload) => {
     const id = req.routeOptions?.config?.route;
-    const entry = id ? table[id] : undefined;
+    const entry = id
+      ? ((Object.hasOwn(table, id) ? table[id] : undefined) ?? app.syntheticEntries.get(id))
+      : undefined;
     if (!id || !entry) return payload;
     const problems = checkResponse(entry, reply.statusCode, payload);
     if (problems.length === 0) return payload;

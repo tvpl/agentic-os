@@ -12,6 +12,9 @@
  * The same schema is the one the response check parses with and the one the document is generated from, so the two
  * cannot disagree about which keys are mandatory. It is memoised: the same schema gives the same result, so a named
  * schema used in several places is one object (the document points at it).
+ *
+ * A node whose children it does not know how to rebuild is an error, not a pass-through: a schema left as it was would
+ * keep a `.default()` underneath that the rest of the contract believes is gone.
  */
 import { z } from "zod";
 
@@ -90,10 +93,46 @@ function build(schema: z.ZodTypeAny): z.ZodTypeAny {
       });
     case z.ZodFirstPartyTypeKind.ZodLazy:
       return rebuild(schema, { ...def, getter: () => wire((def.getter as () => z.ZodTypeAny)()) });
+    case z.ZodFirstPartyTypeKind.ZodSet:
+      return rebuild(schema, { ...def, valueType: wire(def.valueType as z.ZodTypeAny) });
+    case z.ZodFirstPartyTypeKind.ZodMap:
+      return rebuild(schema, {
+        ...def,
+        keyType: wire(def.keyType as z.ZodTypeAny),
+        valueType: wire(def.valueType as z.ZodTypeAny),
+      });
+    case z.ZodFirstPartyTypeKind.ZodPipeline: {
+      // `a.pipe(b)`: the value that leaves is `b`'s output; what `a` made of the input is already behind it.
+      const out = wire(def.out as z.ZodTypeAny);
+      return def.description && !out.description ? out.describe(def.description) : out;
+    }
     default:
-      return schema;
+      if (LEAVES.has(def.typeName as string)) return schema;
+      throw new Error(
+        `wireSchema: ${String(def.typeName)} has no output-type rebuild, so the contract cannot say what it sends`,
+      );
   }
 }
+
+/** The zod types with nothing underneath: they are their own output type. */
+const LEAVES: ReadonlySet<string> = new Set([
+  z.ZodFirstPartyTypeKind.ZodString,
+  z.ZodFirstPartyTypeKind.ZodNumber,
+  z.ZodFirstPartyTypeKind.ZodNaN,
+  z.ZodFirstPartyTypeKind.ZodBigInt,
+  z.ZodFirstPartyTypeKind.ZodBoolean,
+  z.ZodFirstPartyTypeKind.ZodDate,
+  z.ZodFirstPartyTypeKind.ZodSymbol,
+  z.ZodFirstPartyTypeKind.ZodUndefined,
+  z.ZodFirstPartyTypeKind.ZodNull,
+  z.ZodFirstPartyTypeKind.ZodAny,
+  z.ZodFirstPartyTypeKind.ZodUnknown,
+  z.ZodFirstPartyTypeKind.ZodNever,
+  z.ZodFirstPartyTypeKind.ZodVoid,
+  z.ZodFirstPartyTypeKind.ZodLiteral,
+  z.ZodFirstPartyTypeKind.ZodEnum,
+  z.ZodFirstPartyTypeKind.ZodNativeEnum,
+]);
 
 /** The schema of the output type of `schema`: what a response carries, with nothing left to fill in. */
 export function wireSchema(schema: z.ZodTypeAny): z.ZodTypeAny {

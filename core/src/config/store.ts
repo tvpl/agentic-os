@@ -238,7 +238,7 @@ export class SettingsStore {
         new Error(
           `config/settings.json was written by a newer MordomoOS (settings version ${version}); this version (${CURRENT_SETTINGS_VERSION}) will not overwrite it.`,
         ),
-        { code: "settings_newer" },
+        { code: "settings_newer", statusCode: 409 },
       );
     }
     let dropsFields = false;

@@ -94,7 +94,7 @@ const png1x1 = Buffer.from(
   "base64",
 );
 
-export async function buildWorld(): Promise<World> {
+export async function buildWorld(options: { validateResponses?: boolean } = {}): Promise<World> {
   const restorePath = withFakeBinPath();
   const tmp = makeTempHome("mordomo-contract-");
   const home = tmp.paths.home;
@@ -126,7 +126,7 @@ export async function buildWorld(): Promise<World> {
   ctx.reloadAdapters();
   (ctx as unknown as { skillRegistry: SkillRegistry }).skillRegistry = new SkillRegistry(registryFetcher);
   const token = ctx.token();
-  const app = await buildServer(ctx, { validateResponses: true });
+  const app = await buildServer(ctx, { validateResponses: options.validateResponses ?? true });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const address = app.server.address();
   const baseUrl = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;

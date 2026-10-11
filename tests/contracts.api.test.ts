@@ -13,10 +13,13 @@ import {
   checkBody,
   checkResponse,
   isRawResponse,
+  route,
   wireSchema,
   type RouteDefinition,
 } from "@mordomo/contracts";
 import { AppContext } from "../apps/api/src/context.js";
+import { bindEntry } from "../apps/api/src/contract.js";
+import { registerSyntheticEntry } from "./helpers/syntheticEntry.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "./helpers.js";
 
@@ -274,6 +277,124 @@ describe("S2 the schema of the wire", () => {
   });
 });
 
+describe("S2 each branch of wireSchema", () => {
+  /** `a` has a default: the schema fills it in, the wire must carry it. */
+  const withA = () => z.object({ a: z.string().default("") });
+  const withB = () => z.object({ b: z.number().default(0) });
+  const wireOk = (schema: z.ZodTypeAny, value: unknown) => wireSchema(schema).safeParse(value).success;
+
+  it("C51 a default under a union, an intersection, a refinement, a tuple or a lazy is a mandatory key", () => {
+    // Each case: the schema parses `{}` (it fills the default in), the wire form refuses it and accepts the full value.
+    const union = z.union([withA(), withB().extend({ c: z.string() })]);
+    expect(union.safeParse({}).success).toBe(true);
+    expect(wireOk(union, {})).toBe(false);
+    expect(wireOk(union, { a: "" })).toBe(true);
+    expect(wireOk(union, { b: 1, c: "c" })).toBe(true);
+
+    const intersection = z.intersection(withA(), withB());
+    expect(intersection.safeParse({}).success).toBe(true);
+    expect(wireOk(intersection, { a: "" })).toBe(false);
+    expect(wireOk(intersection, { b: 0 })).toBe(false);
+    expect(wireOk(intersection, { a: "", b: 0 })).toBe(true);
+
+    // A real refinement (a `ZodEffects` of type `refinement`, not a `.min`): it keeps refusing, and its inner default is mandatory.
+    const refined = withA().refine((v) => v.a !== "bad", "bad value");
+    expect((refined._def as { effect: { type: string } }).effect.type).toBe("refinement");
+    expect(refined.safeParse({}).success).toBe(true);
+    expect(wireOk(refined, {})).toBe(false);
+    expect(wireOk(refined, { a: "bad" })).toBe(false);
+    expect(wireOk(refined, { a: "fine" })).toBe(true);
+    const refinedTwice = z
+      .string()
+      .default("x")
+      .refine((v) => v.length > 1, "short");
+    expect(wireOk(refinedTwice, undefined)).toBe(false);
+    expect(wireOk(refinedTwice, "x")).toBe(false);
+    expect(wireOk(refinedTwice, "xy")).toBe(true);
+
+    const tuple = z.tuple([withA()]).rest(withB());
+    expect(tuple.safeParse([{}, {}]).success).toBe(true);
+    expect(wireOk(tuple, [{}])).toBe(false);
+    expect(wireOk(tuple, [{ a: "" }, {}])).toBe(false);
+    expect(wireOk(tuple, [{ a: "" }, { b: 0 }])).toBe(true);
+
+    const lazy = z.lazy(() => withA());
+    expect(lazy.safeParse({}).success).toBe(true);
+    expect(wireOk(lazy, {})).toBe(false);
+    expect(wireOk(lazy, { a: "" })).toBe(true);
+    // And one that reaches itself: the child is the wire form too.
+    type Node = { v: string; next?: Node };
+    const node: z.ZodType<Node, z.ZodTypeDef, unknown> = z.object({
+      v: z.string().default(""),
+      next: z.lazy(() => node).optional(),
+    });
+    expect(node.safeParse({ next: {} }).success).toBe(true);
+    expect(wireOk(node, { v: "a", next: {} })).toBe(false);
+    expect(wireOk(node, { v: "a", next: { v: "b" } })).toBe(true);
+  });
+
+  it("C52 a set, a map and a pipe are rebuilt too, and a node it cannot rebuild stops the build", () => {
+    const set = z.set(withA());
+    expect(set.safeParse(new Set([{}])).success).toBe(true);
+    expect(wireOk(set, new Set([{}]))).toBe(false);
+    expect(wireOk(set, new Set([{ a: "" }]))).toBe(true);
+    const map = z.map(z.string(), withA());
+    expect(map.safeParse(new Map([["k", {}]])).success).toBe(true);
+    expect(wireOk(map, new Map([["k", {}]]))).toBe(false);
+    expect(wireOk(map, new Map([["k", { a: "" }]]))).toBe(true);
+    const pipe = z.preprocess((v) => v, withA()).pipe(withA().extend({ b: z.number().default(1) }));
+    expect(pipe.safeParse({}).success).toBe(true);
+    expect(wireOk(pipe, { a: "" })).toBe(false);
+    expect(wireOk(pipe, { a: "", b: 1 })).toBe(true);
+
+    // The loud failure: a type with no rebuild is an error, not a schema left as it was.
+    const odd = z.string();
+    (odd._def as { typeName: string }).typeName = "ZodSomethingNew";
+    expect(() => wireSchema(odd)).toThrow(/ZodSomethingNew has no output-type rebuild/);
+    expect(() => wireSchema(z.object({ inside: z.array(odd) }))).toThrow(/ZodSomethingNew/);
+    expect(() => wireSchema(z.promise(z.string()))).toThrow(/ZodPromise/);
+    expect(() => wireSchema(z.function())).toThrow(/ZodFunction/);
+    // Every type that holds nothing is its own output.
+    for (const leaf of [
+      z.string(),
+      z.number(),
+      z.nan(),
+      z.bigint(),
+      z.boolean(),
+      z.date(),
+      z.symbol(),
+      z.undefined(),
+      z.null(),
+      z.any(),
+      z.unknown(),
+      z.never(),
+      z.void(),
+      z.literal("x"),
+      z.enum(["a", "b"]),
+    ])
+      expect(wireSchema(leaf), leaf._def.typeName).toBe(leaf);
+  });
+
+  it("C53 the description a default, a catch, a transform or a pipe carries is kept; the inner one wins", () => {
+    expect(wireSchema(z.string().default("x").describe("the name")).description).toBe("the name");
+    expect(wireSchema(z.string().catch("x").describe("the catch")).description).toBe("the catch");
+    expect(
+      wireSchema(
+        z
+          .string()
+          .transform((v) => v.length)
+          .describe("the length"),
+      ).description,
+    ).toBe("the length");
+    expect(wireSchema(z.string().pipe(z.string()).describe("the pipe")).description).toBe("the pipe");
+    // The inner description is the one already written: it is not replaced by the outer.
+    expect(wireSchema(z.string().describe("inner").default("x").describe("outer")).description).toBe("inner");
+    // And inside an object the key carries it.
+    const shape = wireSchema(z.object({ a: z.string().default("x").describe("a key") })) as z.AnyZodObject;
+    expect(shape.shape.a!.description).toBe("a key");
+  });
+});
+
 describe("S2 the flags of a query", () => {
   const FLAGS: Array<[string, string]> = [
     ["notifications.list", "unread"],
@@ -336,5 +457,55 @@ describe("S1 the table is a constant", () => {
     expect(() => runsGet.errors.push({})).toThrow(TypeError);
     expect(() => (EVENT_VERSIONS["run.created"] as unknown as number[]).push(2)).toThrow(TypeError);
     expect(Object.isFrozen(COMMON_ERRORS)).toBe(true);
+  });
+
+  it("C58 the table itself is frozen: an entry cannot be added, replaced or removed; a test's entry belongs to one server", async () => {
+    const table = API as unknown as Record<string, RouteDefinition>;
+    expect(Object.isFrozen(API)).toBe(true);
+    expect(() => {
+      table["zz.added"] = API["runs.get"];
+    }).toThrow(TypeError);
+    expect(() => {
+      table["runs.get"] = API["runs.list"];
+    }).toThrow(TypeError);
+    expect(() => {
+      delete table["runs.get"];
+    }).toThrow(TypeError);
+    expect(Object.keys(API)).toHaveLength(127);
+
+    // The only route outside the table is a test's, bound to one server, and it cannot shadow an entry of the table.
+    const tmp = makeTempHome("mordomo-synthetic-");
+    const ctx = new AppContext(tmp.paths.home);
+    const first = await buildServer(ctx, { validateResponses: true });
+    const second = await buildServer(ctx, { validateResponses: true });
+    try {
+      const entry = route({
+        method: "GET",
+        path: "/api/zz-own",
+        scope: "monitor",
+        summary: "An entry that belongs to one server",
+        tag: "test",
+        responses: { 200: z.object({ ok: z.literal(true) }) },
+      });
+      registerSyntheticEntry(first, "zz.own", entry, async () => ({ ok: true }));
+      expect(first.syntheticEntries.has("zz.own")).toBe(true);
+      expect(second.syntheticEntries.size).toBe(0);
+      expect(() => registerSyntheticEntry(first, "zz.own", entry, async () => ({ ok: true }))).toThrow(
+        /already registered/,
+      );
+      expect(() => registerSyntheticEntry(first, "runs.get", entry, async () => ({ ok: true }))).toThrow(
+        /is an entry of the route table/,
+      );
+      // The second server refuses a route that names the first one's entry: it has no contract there.
+      expect(() => bindEntry(second, "zz.own", entry, async () => ({ ok: true }))).toThrow(
+        /declares no contract/,
+      );
+      expect(Object.hasOwn(API, "zz.own")).toBe(false);
+    } finally {
+      await first.close();
+      await second.close();
+      ctx.close();
+      tmp.cleanup();
+    }
   });
 });

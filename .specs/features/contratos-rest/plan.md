@@ -112,6 +112,16 @@ seguem respondendo o mesmo (`/api/v1/<rest>` e o apelido sem versão, `Deprecati
 
 - Nothing else in this change is hard to reverse
 
+### Emendas
+
+Texto de um check ou de uma porta que mudou depois de aprovado, dito aqui e no check, para quem verifica não ter de descobrir pela diferença (regra 4: a parada e a pergunta pertencem a um check errado; estas são correções de contagem, de redação ou de escopo que a verificação pediu, com o dono avisado em "Perguntas ao dono"):
+
+- **Door 7 (rodada 2).** `403 forbidden_path`, `404 not_a_file` e `413 file_too_large` não são mais `COMMON_ERRORS` de todas as rotas: cada rota as declara se a sonda de `tests/api.refusals.test.ts` (C45) a vê respondê-las com o filtro de caminhos e o leitor seguro recusando; a lista de `contracts/src/api/errors.ts` é a que a sonda imprimiu, comparada nos dois sentidos. O resto de door 7 (o par `(status, code)` de uma resposta tem de estar na entrada ou em `COMMON_ERRORS`) não muda.
+- **C13 (rodada 1, dita na rodada 2).** O texto aprovado dizia 50 pares; a contagem certa era 48 (as 51 chaves da verificação contam `status null` repetidas) e o texto ganhou o `<unresolved>`; com `409 settings_newer` lançado de verdade (C46) são 49, fixados no teste, e o teste ganhou o sentido inverso (todo par próprio de uma entrada é lançado em algum lugar).
+- **C18 (rodada 1, dita na rodada 2).** Acrescentou que o `Retry-After` do `429` está em todas as operações (afirmado em C17 e C18).
+- **C35 (rodada 1, dita na rodada 2).** Acrescentou a exceção de `unknown errors → 500` dentro de "error envelope" (a rota de erro passa por `bindEntry`); a emenda é uma entrada de `AMENDMENTS` em `tests/sdk.api-thin.test.ts`.
+- **C43 e C44 (rodada 2).** C43 trocou "só nas áreas que tocam arquivo" por "só nas rotas que a sonda de C45 prova"; C44 acrescentou que o objeto `API` de topo é congelado e que uma entrada de teste pertence a um servidor (C51).
+
 ## Criteria
 
 ### S1: Uma tabela de rotas é a fonte única (P1)
