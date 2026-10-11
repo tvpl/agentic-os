@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { NotificationStore, openDb, type Db, type MordomoPaths } from "@mordomo/core";
+import { NotificationStore, openDb, type Db, type MordomoPaths } from "@mordomo/core/internal";
 import { makeTempHome } from "./helpers.js";
 
 /** The persisted inbox store: append, dedupe, read state, prune. */

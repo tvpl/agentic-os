@@ -13,7 +13,7 @@ import type { Routine, RoutineRunner, RoutineStatus, RoutineSummary, SilentRouti
 import { isHeartbeatOk, nextRunFor, startOfDayIn } from "./schedule.js";
 import { isStartupServiceInstalled, type StartupPlatform } from "./osIntegration.js";
 import { JsonlLogger } from "../logs/jsonl.js";
-import { events, type OsEvent } from "../events.js";
+import type { EventBus, OsEvent } from "../events.js";
 
 /**
  * Internal scheduler (documented fallback + default engine).
@@ -80,6 +80,8 @@ export interface SchedulerOptions {
   homeDir?: string;
   /** Timeout for webhook deliveries. */
   webhookTimeoutMs?: number;
+  /** The engine's bus: the scheduler listens to it while running and announces routine events on it. */
+  bus?: EventBus;
 }
 
 /** Hard cap on croner steps when searching for the previous slot. */
@@ -136,7 +138,7 @@ export class RoutineScheduler {
     this.running = true;
     this.abort = new AbortController();
     this.unsubscribeBus?.();
-    this.unsubscribeBus = events.subscribe((e) => this.onBusEvent(e));
+    this.unsubscribeBus = this.opts.bus?.subscribe((e) => this.onBusEvent(e)) ?? null;
     this.reload();
     this.catchUpMissed();
   }
@@ -285,7 +287,7 @@ export class RoutineScheduler {
       const timer = this.timers.get(routineId);
       if (timer) clearTimeout(timer);
       this.timers.delete(routineId);
-      events.emit("routine.changed", { id: routineId, action: "ended", reason });
+      this.opts.bus?.emit("routine.changed", { id: routineId, action: "ended", reason });
     } catch (err) {
       this.log({ event: "end_routine_failed", routineId, error: (err as Error).message });
     }
@@ -417,7 +419,7 @@ export class RoutineScheduler {
       if (b.spent >= b.budgetUsd) {
         const note = `Daily budget of US$ ${b.budgetUsd.toFixed(2)} for ${b.label} exhausted (spent or reserved US$ ${b.spent.toFixed(2)}); skipped.`;
         if (!opts.historyAlreadyRecorded) this.recordHistory(routine.id, null, scheduledFor, "skipped", note);
-        if (!this.alertedForBudgetToday(routine.id)) events.emit("routine.alert", { routineId: routine.id, runId: null, summary: note, reason: "budget", spentUsd: b.spent, budgetUsd: b.budgetUsd });
+        if (!this.alertedForBudgetToday(routine.id)) this.opts.bus?.emit("routine.alert", { routineId: routine.id, runId: null, summary: note, reason: "budget", spentUsd: b.spent, budgetUsd: b.budgetUsd });
         throw Object.assign(new Error(note), { statusCode: 409, code: "budget_exhausted" });
       }
       caps.push(b.budgetUsd - b.spent);
@@ -474,7 +476,7 @@ export class RoutineScheduler {
       this.recordHistory(routine.id, first.id, scheduledFor, reason === "manual" ? "fired" : reason, note);
     }
     if (routine.delivery !== "none") {
-      events.emit("routine.fired", { routineId: routine.id, runId: first.id });
+      this.opts.bus?.emit("routine.fired", { routineId: routine.id, runId: first.id });
     }
 
     const task = this.runWithRetries(routine, first, buildPrompt, mode, createRun, scheduledFor)
@@ -558,7 +560,7 @@ export class RoutineScheduler {
       const excerpt = summary.replace(/\s+/g, " ").slice(0, 200);
       this.updateNote(routine.id, first.id, quiet ? `${HEARTBEAT_NOTE_QUIET} ${excerpt}` : `${HEARTBEAT_NOTE_ALERT} ${excerpt}`);
       if (!quiet && routine.delivery !== "none") {
-        events.emit("routine.alert", {
+        this.opts.bus?.emit("routine.alert", {
           routineId: routine.id,
           runId: final.id,
           status: final.status,

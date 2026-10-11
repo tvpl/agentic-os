@@ -1,15 +1,15 @@
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { EffortLevel, ProviderId } from "@mordomo/core";
+import { EffortLevel, ProviderId } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
-import { httpError, startedByOf, submitPromptRun } from "./common.js";
+import { httpError, startedByOf } from "./common.js";
 import { UuidParams } from "./params.js";
 
 /**
  * Conversations (Onda 1). A session groups the runs that continue one
  * provider-side conversation; `POST /api/runs` starts one implicitly, this
  * router lists them, opens one and continues it. Continuing goes through the
- * same `submitPromptRun` as the prompt box, so the write gate, the path
+ * same `engine.execution.startPrompt` as the prompt box, so the write gate, the path
  * containment and the profile rules are identical.
  */
 export function registerSessionRoutes(app: FastifyInstance, ctx: AppContext): void {
@@ -46,13 +46,14 @@ export function registerSessionRoutes(app: FastifyInstance, ctx: AppContext): vo
         timeoutMs: z.number().int().min(10_000).max(3_600_000).optional(),
       })
       .parse(req.body);
-    // Provider and cwd come from the session itself (submitPromptRun resolves
+    // Provider and cwd come from the session itself (`startPrompt` resolves
     // them); a 404 for an unknown session comes from there too.
-    const result = submitPromptRun(ctx, { ...body, sessionId: id }, startedByOf(req), (err, runId) =>
-      req.log.error({ err, runId, sessionId: id, msg: "run failed to execute" }),
+    const started = ctx.execution.startPrompt(
+      { ...body, sessionId: id, startedBy: startedByOf(req) },
+      { onError: (err, runId) => req.log.error({ err, runId, sessionId: id, msg: "run failed to execute" }) },
     );
-    if (result.statusCode !== 200) reply.code(result.statusCode);
-    return result.body;
+    if (started.status === "waiting_approval") reply.code(202);
+    return started;
   });
 
   /** Rename a conversation (refino item 49). */

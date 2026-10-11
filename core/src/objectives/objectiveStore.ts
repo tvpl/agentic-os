@@ -3,7 +3,7 @@ import path from "node:path";
 import type { Db } from "../db/db.js";
 import type { MordomoPaths } from "../paths.js";
 import type { RunManager, RunRecord, RunRequestSpec } from "../runs/runManager.js";
-import { events } from "../events.js";
+import type { EventBus } from "../events.js";
 import { homeReadScope, openWorkspaceFile } from "../security/safeFs.js";
 
 export type ObjectiveStatus = "active" | "blocked" | "completed" | "cancelled";
@@ -112,6 +112,8 @@ export class ObjectiveStore {
   constructor(
     private readonly db: Db,
     private readonly paths: MordomoPaths,
+    /** Where a change is announced (`objective.changed`); without one it is silent. */
+    private readonly bus?: EventBus,
   ) {}
 
   create(input: CreateObjectiveInput): Objective {
@@ -174,7 +176,7 @@ export class ObjectiveStore {
       );
     })();
     const objective = this.get(id)!;
-    events.emit("objective.changed", { objectiveId: id, status: objective.status });
+    this.bus?.emit("objective.changed", { objectiveId: id, status: objective.status });
     return objective;
   }
 
@@ -191,7 +193,7 @@ export class ObjectiveStore {
 
   delete(id: string): boolean {
     const changed = this.db.prepare("DELETE FROM objectives WHERE id = ?").run(id).changes > 0;
-    if (changed) events.emit("objective.changed", { objectiveId: id, deleted: true });
+    if (changed) this.bus?.emit("objective.changed", { objectiveId: id, deleted: true });
     return changed;
   }
 
@@ -238,7 +240,7 @@ export class ObjectiveStore {
       .run(waitingApproval ? "waiting_approval" : "dispatched", runId, Date.now(), stepId).changes;
     if (changed !== 1) throw new Error("Objective step is no longer ready for dispatch");
     this.touchByStep(stepId);
-    events.emit("objective.changed", { objectiveId: this.stepById(stepId)?.objectiveId, stepId });
+    this.bus?.emit("objective.changed", { objectiveId: this.stepById(stepId)?.objectiveId, stepId });
   }
 
   retryStep(stepId: string, effectsReconciled: boolean): ObjectiveStep {
@@ -298,7 +300,7 @@ export class ObjectiveStore {
       );
     }
     this.recomputeObjective(step.objectiveId);
-    events.emit("objective.changed", {
+    this.bus?.emit("objective.changed", {
       objectiveId: step.objectiveId,
       stepId: step.id,
       status: this.get(step.objectiveId)?.status,

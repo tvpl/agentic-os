@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { FastifyInstance } from "fastify";
-import { b64url, deliverPush, decryptPayload } from "@mordomo/core";
+import { b64url, deliverPush, decryptPayload } from "@mordomo/core/internal";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { makeTempHome } from "./helpers.js";

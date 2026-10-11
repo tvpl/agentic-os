@@ -2,7 +2,8 @@ import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { events, seedHome, type AgentRun } from "@mordomo/core";
+import type { AgentRun } from "@mordomo/core";
+import { seedHome } from "@mordomo/core/internal";
 import { ClaudeAdapter } from "@mordomo/adapter-claude";
 import { startSecureServer, type SecureServer } from "./helpers/securityHarness.js";
 
@@ -389,7 +390,7 @@ describe.skipIf(!POSIX)(
       });
       expect(maps().run.has(credential)).toBe(true);
       expect(maps().broker.has(broker)).toBe(true);
-      events.emit("run.finished", { runId: record.id, status: "done" } as never);
+      s.ctx.events.emit("run.finished", { runId: record.id, status: "done" } as never);
       expect(maps().run.has(credential)).toBe(false);
       expect(maps().broker.has(broker)).toBe(false);
       // and a run that finishes for real leaves nothing behind

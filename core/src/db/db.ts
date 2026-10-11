@@ -3,7 +3,10 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { PRIVATE_DIR_MODE, PRIVATE_FILE_MODE, tightenMode, type MordomoPaths } from "../paths.js";
+import { DbNewerVersionError, MigrationError } from "./errors.js";
 import { MIGRATIONS, type Migration } from "./migrations.js";
+
+export { DbNewerVersionError, MigrationError };
 
 export type Db = Database.Database;
 
@@ -11,41 +14,6 @@ export interface MigrationResult {
   fromVersion: number;
   toVersion: number;
   backupPath: string | null;
-}
-
-/** The database was written by a newer MordomoOS than this one: nothing was changed. */
-export class DbNewerVersionError extends Error {
-  readonly code = "db_newer";
-  constructor(
-    readonly found: number,
-    readonly supported: number,
-  ) {
-    super(
-      `This database is at schema version ${found}, newer than the ${supported} this MordomoOS understands. ` +
-        "Use that version or restore a compatible backup.",
-    );
-    this.name = "DbNewerVersionError";
-  }
-}
-
-/** A migration threw: the whole run was rolled back and the database is at `fromVersion`. */
-export class MigrationError extends Error {
-  readonly code = "db_migration_failed";
-  constructor(
-    readonly version: number,
-    readonly migration: string,
-    readonly fromVersion: number,
-    readonly backupPath: string | null,
-    cause: unknown,
-  ) {
-    super(
-      `Migration ${version} "${migration}" failed: ${cause instanceof Error ? cause.message : String(cause)}. ` +
-        `Everything this run changed was rolled back; the database is still at version ${fromVersion}.` +
-        (backupPath ? ` A copy of it from before this attempt is at ${backupPath}.` : ""),
-      { cause },
-    );
-    this.name = "MigrationError";
-  }
 }
 
 export function openDb(

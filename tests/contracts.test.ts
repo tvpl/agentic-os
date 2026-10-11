@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 import * as contracts from "@mordomo/contracts";
 import * as policy from "@mordomo/contracts/policy";
-import * as core from "@mordomo/core";
+import * as core from "@mordomo/core/internal";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { makeTempHome } from "./helpers.js";
@@ -165,8 +165,8 @@ describe("S2 typed, versioned events", () => {
       const res = await fetch(`${base}/api/events?token=${ctx.token()}`, { signal: ac.signal });
       const reader = res.body!.getReader();
       setTimeout(() => {
-        core.events.emit("routine.changed", { id: "x", action: "test" });
-        core.events.emit("approval.expired", { count: 2 });
+        ctx.events.emit("routine.changed", { id: "x", action: "test" });
+        ctx.events.emit("approval.expired", { count: 2 });
       }, 100);
       let text = "";
       const deadline = Date.now() + 2000;

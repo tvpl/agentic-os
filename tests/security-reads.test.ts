@@ -7,11 +7,11 @@ import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import type { FastifyInstance } from "fastify";
 import ts from "typescript";
+import { PathAccessError, type AgentAdapter } from "@mordomo/core";
 import {
   FileTooLargeError,
   MemoryIndexer,
   NotRegularFileError,
-  PathAccessError,
   RoutineSchema,
   RunManager,
   SettingsStore,
@@ -27,8 +27,7 @@ import {
   readWorkspaceText,
   resolveWorkspaceCwd,
   statWorkspacePath,
-  type AgentAdapter,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { ClaudeAdapter } from "@mordomo/adapter-claude";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";

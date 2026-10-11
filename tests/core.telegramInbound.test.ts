@@ -5,7 +5,7 @@ import {
   defaultSettings,
   parseCommand,
   type TelegramUpdate,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 
 /** The phone answers back: buttons and commands become decisions, strangers get silence. */
 

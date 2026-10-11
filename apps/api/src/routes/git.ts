@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { safeSpawn } from "@mordomo/core";
+import { safeSpawn } from "@mordomo/core/internal";
 
 /**
  * The one way the API runs `git` inside a repository an agent may have edited.

@@ -3,8 +3,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { RestoreInProgressError } from "@mordomo/core";
 import {
-  RestoreInProgressError,
   RestoreLock,
   RestoreLockError,
   SettingsSchema,
@@ -17,7 +17,7 @@ import {
   restoreBackup,
   verifyBackup,
   type MordomoPaths,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { makeTempHome } from "./helpers.js";
@@ -389,7 +389,7 @@ describe("S4 the restore lock keeps the files of the home from being worked on t
       "engine-opening-r3",
       [
         'import fs from "node:fs";',
-        `import { createEngine } from ${src("core/src/engine.ts")};`,
+        `import { MordomoEngine } from ${src("core/src/engine.ts")};`,
         `import { ProviderRegistry } from ${src("core/src/agents/registry.ts")};`,
         "let paused = false;",
         "for (const name of ['statSync', 'lstatSync', 'openSync']) {",
@@ -403,7 +403,7 @@ describe("S4 the restore lock keeps the files of the home from being worked on t
         "    return real(target, ...rest);",
         "  };",
         "}",
-        "const engine = createEngine({ home: process.env.HOME_DIR, providers: new ProviderRegistry(), seedDir: null });",
+        "const engine = new MordomoEngine({ home: process.env.HOME_DIR, providers: new ProviderRegistry(), seedDir: null });",
         'process.stdout.write("built\\n");',
         "engine.close();",
       ].join("\n"),

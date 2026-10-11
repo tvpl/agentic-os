@@ -5,18 +5,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { ESLint } from "eslint";
+import { ProviderRegistry, createEngine } from "@mordomo/core";
 import {
-  ProviderRegistry,
   SettingsSchema,
   SettingsStore,
   UI_PREFERENCE_KEYS,
   createBackup,
-  createEngine,
-  events,
   ensureDirs,
   resolvePaths,
   restoreBackup,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { claudeManifest, createClaudeAdapter } from "@mordomo/adapter-claude";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
@@ -472,7 +470,7 @@ describe("Rodada 2 - gaps of the first verification", () => {
   it("C19 a saved preference is announced as settings.changed", async () => {
     const s = await server();
     const seen: string[] = [];
-    const stop = events.subscribe((event) => {
+    const stop = s.ctx.events.subscribe((event) => {
       if (event.type === "settings.changed") seen.push(event.type);
     });
     try {

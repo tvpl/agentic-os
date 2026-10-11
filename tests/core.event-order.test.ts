@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { EventBus } from "@mordomo/core";
+import { EventBus } from "@mordomo/core/internal";
 
 it("delivers nested notifications after their source event to every SSE-style observer", () => {
   const bus = new EventBus();

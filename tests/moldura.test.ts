@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ProviderRegistry, UiPreferencesStore, createEngine, ensureDirs, resolvePaths } from "@mordomo/core";
+import { ProviderRegistry } from "@mordomo/core";
+import { MordomoEngine, UiPreferencesStore, ensureDirs, resolvePaths } from "@mordomo/core/internal";
 import { claudeManifest, createClaudeAdapter } from "@mordomo/adapter-claude";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
@@ -89,7 +90,7 @@ describe("S3 the shell preference", () => {
     );
     const fresh = tempHome();
     for (const home of [migrated, fresh]) {
-      createEngine({
+      new MordomoEngine({
         home,
         seedDir: null,
         providers: new ProviderRegistry().register(claudeManifest, createClaudeAdapter),

@@ -2,10 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ensureDirs, resolvePaths, setProviderBinaries, type MordomoPaths } from "@mordomo/core";
-import { claudeManifest } from "@mordomo/adapter-claude";
-import { codexManifest } from "@mordomo/adapter-codex";
-import { cursorManifest } from "@mordomo/adapter-cursor";
+import { ensureDirs, resolvePaths, type MordomoPaths } from "@mordomo/core/internal";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const FAKE_BIN = path.join(here, "fixtures", "fake-bin");
@@ -20,10 +17,6 @@ if (process.platform !== "win32") {
     }
   }
 }
-
-// The builtin providers' executables are allowlisted the way the API's engine
-// does it, so tests that drive an adapter without an engine can still spawn them.
-setProviderBinaries([claudeManifest, cursorManifest, codexManifest].map((m) => m.binary));
 
 /**
  * The fake CLIs under fixtures/fake-bin are bash scripts: tests that need a

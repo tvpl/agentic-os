@@ -5,14 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import Database from "better-sqlite3";
-import {
-  DbNewerVersionError,
-  MIGRATIONS,
-  MigrationError,
-  openDb,
-  tightenHomeFiles,
-  tightenMode,
-} from "@mordomo/core";
+import { DbNewerVersionError, MigrationError } from "@mordomo/core";
+import { MIGRATIONS, openDb, tightenHomeFiles, tightenMode } from "@mordomo/core/internal";
 import { makeTempHome } from "./helpers.js";
 import { bundleChild, repoRoot, runChild, src } from "./helpers/childBundle.js";
 import { slowMigrations } from "./helpers/slowMigrations.js";

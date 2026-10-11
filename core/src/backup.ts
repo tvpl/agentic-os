@@ -4,7 +4,7 @@ import { MIGRATIONS } from "./db/migrations.js";
 import path from "node:path";
 import { PRIVATE_DIR_MODE, PRIVATE_FILE_MODE, tightenMode, type MordomoPaths } from "./paths.js";
 import type { Db } from "./db/db.js";
-import { events } from "./events.js";
+import type { EventBus } from "./events.js";
 import type { BackupInfo } from "@mordomo/contracts";
 import {
   MANIFEST_NAME,
@@ -63,6 +63,8 @@ export interface BackupOptions {
   includeArtifacts?: boolean;
   /** Backups to keep: after this one is published, the sealed ones beyond the `keep` newest are deleted. */
   keep?: number;
+  /** Where `backup.created` is announced; without one it is silent. */
+  bus?: EventBus;
 }
 
 export interface RestoreOptions {
@@ -140,7 +142,7 @@ async function createBackupLocked(paths: MordomoPaths, db: Db, opts: BackupOptio
         /* the backup exists; a retention pass that lost a race with another process runs again next time */
       }
     }
-    events.emit("backup.created", info);
+    opts.bus?.emit("backup.created", info);
     return info;
   } catch (error) {
     fs.rmSync(dest, { recursive: true, force: true });

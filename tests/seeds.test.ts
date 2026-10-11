@@ -14,7 +14,7 @@ import {
   runAudit,
   homeConfigFilesOf,
   nextRunAt,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "./helpers.js";
 import { ClaudeAdapter, claudeManifest } from "@mordomo/adapter-claude";
 import { codexManifest } from "@mordomo/adapter-codex";

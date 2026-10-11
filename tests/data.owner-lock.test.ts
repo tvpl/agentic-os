@@ -3,23 +3,21 @@ import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { EngineLockedError, ProviderRegistry } from "@mordomo/core";
 import {
-  EngineLockedError,
   ObjectiveStore,
   OwnerLock,
-  ProviderRegistry,
   RunManager,
   SettingsStore,
-  createEngine,
   ensureDirs,
   openDb,
   processStartMarker,
   readLock,
   resolvePaths,
   type LockRecord,
-  type MordomoEngine,
+  MordomoEngine,
   type ProbeIo,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { claudeManifest, createClaudeAdapter } from "@mordomo/adapter-claude";
 import { bundleChild, runChild, src } from "./helpers/childBundle.js";
 
@@ -47,7 +45,7 @@ function tempHome(): string {
 }
 
 function engineFor(home: string): MordomoEngine {
-  const engine = createEngine({
+  const engine = new MordomoEngine({
     home,
     providers: new ProviderRegistry().register(claudeManifest, createClaudeAdapter),
     seedDir: null,

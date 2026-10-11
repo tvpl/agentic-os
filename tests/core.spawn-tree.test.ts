@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { it, expect } from "vitest";
-import { safeSpawn } from "@mordomo/core";
+import { safeSpawn } from "@mordomo/core/internal";
 import { processAlive } from "./helpers.js";
 
 it.skipIf(process.platform === "win32")(

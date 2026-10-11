@@ -4,7 +4,7 @@
  * from the inbox rows it wrote, so the panel and the bell never disagree.
  */
 import type { FastifyInstance } from "fastify";
-import { SENTINEL_IDS } from "@mordomo/core";
+import { SENTINEL_IDS } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
 
 export interface SentinelStatusRow {

@@ -4,8 +4,6 @@
  */
 import type {
   Approval,
-  DeviceRecord,
-  DeviceScope,
   NotificationRecord,
   OsEvent,
   OsEventMap,
@@ -16,9 +14,8 @@ import type {
   RunUsage,
   SessionRecord,
   Settings,
-  TestedVersions,
-  VersionStatus,
 } from "@mordomo/core";
+import type { DeviceRecord, DeviceScope, TestedVersions, VersionStatus } from "@mordomo/core/internal";
 import type * as Contracts from "@mordomo/contracts";
 
 // Strict identity (an `any` on either side fails it), not mutual assignability.

@@ -1,7 +1,9 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { PathAccessError } from "@mordomo/core";
 import {
+  EventBus,
   MemoryIndexer,
   SettingsStore,
   openDb,
@@ -13,11 +15,9 @@ import {
   generateRouters,
   checkRouters,
   resolveOpenablePath,
-  PathAccessError,
-  events,
   type Db,
   type MordomoPaths,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { makeTempHome } from "./helpers.js";
 
 let ctx: { paths: MordomoPaths; cleanup: () => void };
@@ -52,7 +52,8 @@ afterEach(() => {
 
 describe("memory indexer", () => {
   it("preserves the previous snapshot when directory enumeration fails", async () => {
-    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home });
+    const bus = new EventBus();
+    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home }, bus);
     indexer.indexAll();
     const before = db.prepare("SELECT * FROM files ORDER BY id").all();
     const lastIndex = indexer.lastIndex();
@@ -60,7 +61,7 @@ describe("memory indexer", () => {
       throw Object.assign(new Error("fixture permission denied"), { code: "EACCES" });
     });
     const terminal: unknown[] = [];
-    const unsubscribe = events.subscribe((event) => {
+    const unsubscribe = bus.subscribe((event) => {
       if (event.type === "index.failed" || event.type === "index.finished") terminal.push(event);
     });
     try {
@@ -82,7 +83,8 @@ describe("memory indexer", () => {
   });
 
   it("does not mistake an unavailable configured root for intentionally removed files", () => {
-    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home });
+    const bus = new EventBus();
+    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home }, bus);
     indexer.indexAll();
     const detached = workspace + "-detached";
     fs.renameSync(workspace, detached);
@@ -115,7 +117,8 @@ describe("memory indexer", () => {
   });
 
   it("is incremental: unchanged files are not re-added", () => {
-    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home });
+    const bus = new EventBus();
+    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home }, bus);
     indexer.indexAll();
     const second = indexer.indexAll();
     expect(second.added).toBe(0);
@@ -127,7 +130,8 @@ describe("memory indexer", () => {
   });
 
   it("removes deleted files from the index", () => {
-    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home });
+    const bus = new EventBus();
+    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home }, bus);
     indexer.indexAll();
     fs.unlinkSync(path.join(workspace, "notes.md"));
     const stats = indexer.indexAll();
@@ -213,7 +217,8 @@ describe("memory indexer", () => {
         { path: nested, area: "Finanças", enabled: true },
       ],
     });
-    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home });
+    const bus = new EventBus();
+    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home }, bus);
     indexer.indexAll();
     const budget = db.prepare("SELECT root, area, rel FROM files WHERE name = 'budget-2026.md'").get() as {
       root: string;
@@ -243,9 +248,10 @@ describe("memory indexer", () => {
 
   it("indexAllAsync yields between chunks and emits progress/finished events", async () => {
     for (let i = 0; i < 450; i++) fs.writeFileSync(path.join(workspace, `n${i}.txt`), `note ${i}`);
-    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home });
+    const bus = new EventBus();
+    const indexer = new MemoryIndexer(db, () => store.load(), { homeDir: ctx.paths.home }, bus);
     const seen: string[] = [];
-    const unsubscribe = events.subscribe((e) => {
+    const unsubscribe = bus.subscribe((e) => {
       if (e.type === "index.progress" || e.type === "index.finished") seen.push(e.type);
     });
     let ticks = 0;

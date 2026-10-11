@@ -1,9 +1,11 @@
 /** Runs as they cross the wire: the record, its request, its events and its usage. */
 import type { EffortLevel, ProviderId, SecurityProfile } from "./settings.js";
 
+/** Whether a run may change files. */
 export type RunMode = "read_only" | "write";
 
 export type RunOrigin = "manual" | "skill" | "routine" | "api" | "sentinel";
+/** Where a run is in its life. */
 export type RunStatus =
   "queued" | "running" | "waiting_approval" | "done" | "failed" | "cancelled" | "timed_out" | "interrupted";
 
@@ -36,6 +38,7 @@ export interface RunFailure {
   effectsUncertain: boolean;
 }
 
+/** A run as stored: its status, provider, working folder, asker, usage and outcome. */
 export interface RunRecord {
   id: string;
   createdAt: number;
@@ -77,6 +80,7 @@ export interface RunRecord {
   usage: RunUsage | null;
 }
 
+/** One thing a provider reported while a run was going. */
 export type RunEvent = (
   | { type: "started"; ts: number; pid: number | null }
   | { type: "text"; ts: number; stream: "stdout" | "stderr"; text: string }

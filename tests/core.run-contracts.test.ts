@@ -1,16 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { type AgentAdapter, type AgentRun, type RunEvent } from "@mordomo/core";
 import {
   EventBus,
   RunManager,
   SettingsStore,
   openDb,
   triageSentinel,
-  type AgentAdapter,
-  type AgentRun,
   type Db,
-  type RunEvent,
   classifyRunFailure,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { claudeManifest } from "@mordomo/adapter-claude";
 import { makeTempHome } from "./helpers.js";
 

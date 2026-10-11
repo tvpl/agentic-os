@@ -3,17 +3,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ProviderRegistry, type RunRecord, type Settings } from "@mordomo/core";
 import {
-  ProviderRegistry,
   SettingsStore,
-  createEngine,
   resolvePaths,
-  type MordomoEngine,
+  MordomoEngine,
   type ProviderId,
-  type RunRecord,
   type SecurityProfile,
-  type Settings,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { claudeManifest, createClaudeAdapter } from "@mordomo/adapter-claude";
 import { codexManifest, createCodexAdapter } from "@mordomo/adapter-codex";
 import { cursorManifest, createCursorAdapter } from "@mordomo/adapter-cursor";
@@ -52,7 +49,7 @@ function engine(patch: (s: Settings) => void = () => undefined): MordomoEngine {
   settings.providers.codex.binaryPath = path.join(FAKE_BIN, "codex");
   patch(settings);
   store.save(settings);
-  const e = createEngine({
+  const e = new MordomoEngine({
     home,
     seedDir: null,
     providers: new ProviderRegistry()

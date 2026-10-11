@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
+import type { Settings } from "@mordomo/core";
 import {
   ProviderId,
   ProviderSettingsSchema,
@@ -12,7 +13,6 @@ import {
   UiPreferencesSchema,
   deepMergeSettings as deepMerge,
   createBackup,
-  events,
   executableName,
   isDeviceActor,
   isInside,
@@ -27,12 +27,11 @@ import {
   redactSecrets,
   resolveReadable,
   type ReadScope,
-  type Settings,
   type WorkspaceEntry,
   type WorkspaceFile,
   dailyPoints,
   isStartupServiceInstalled,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { clearRestorePending, readRestorePending, writeRestorePending, type AppContext } from "../context.js";
 import { runDoctor } from "../doctor.js";
 import { cliEntry } from "../entry.js";
@@ -46,7 +45,6 @@ import {
 } from "../instances.js";
 import { spawn } from "node:child_process";
 import { RELEASES_PAGE, UpdateChecker } from "../updates.js";
-import { resolveApproval } from "../approvalActions.js";
 import { tlsListenerFor } from "../server.js";
 import { API_VERSION } from "../apiVersion.js";
 
@@ -437,7 +435,7 @@ export function registerSystemRoutes(
       activeRuns: runs.running,
       queuedRuns: runs.queued,
       pendingApprovals: ctx.approvals.list("pending").length,
-      lastEventId: events.lastId,
+      lastEventId: ctx.events.lastId,
       restorePending: readRestorePending(ctx.paths),
     };
   });
@@ -559,31 +557,8 @@ export function registerSystemRoutes(
   /** Safe, file-change-free smoke test for one provider. */
   app.post("/api/providers/:id/smoke", { config: { scope: "owner" } }, async (req) => {
     const { id } = z.object({ id: ProviderId }).parse(req.params);
-    const providerSettings = requireProvider(ctx, id);
-    const run = ctx.runs.create({
-      origin: "manual",
-      provider: id,
-      prompt: "Smoke test: reply with exactly MORDOMO_OK and do nothing else.",
-      cwd: ctx.runs.defaultCwd(),
-      model: providerSettings.defaultModel,
-      effort: "low",
-      mode: "read_only",
-      timeoutMs: 180_000,
-      profile: "read_only",
-      startedBy: startedByOf(req),
-    });
-    const finished = await ctx.runs.execute(
-      run.id,
-      "Smoke test: reply with exactly MORDOMO_OK and do nothing else. Do not read or write any file.",
-      "read_only",
-    );
-    const runEvents = ctx.runs.eventsFor(run.id);
-    const sawOk = runEvents.some(
-      (e) =>
-        (e.event.type === "assistant" || e.event.type === "result") &&
-        JSON.stringify(e.event).includes("MORDOMO_OK"),
-    );
-    return { run: finished, passed: finished.status === "done" && sawOk };
+    const { run, passed } = await ctx.execution.smokeTest(id, startedByOf(req));
+    return { run, passed };
   });
 
   app.get("/api/doctor", { config: { scope: "monitor" } }, async (req) => {
@@ -654,7 +629,7 @@ export function registerSystemRoutes(
       ts: Date.now(),
       detail: `${description} (approval ${approval.id})`,
     });
-    events.emit("approval.requested", {
+    ctx.events.emit("approval.requested", {
       id: approval.id,
       kind: approval.kind,
       description,
@@ -682,7 +657,10 @@ export function registerSystemRoutes(
     const onError = (err: unknown, runId: string) =>
       req.log.error({ err, runId, msg: "approved run failed to execute" });
     const by = req.principal ? principalName(req.principal) : null;
-    const result = await resolveApproval(ctx, id, decision, by, onError, answers);
+    const result = await ctx.execution.resolveApproval(id, decision, by, {
+      onError,
+      ...(answers ? { answers } : {}),
+    });
     return { ...ctx.approvals.get(id)!, runId: result.runId };
   });
 
@@ -693,6 +671,7 @@ export function registerSystemRoutes(
       .object({ includeArtifacts: z.boolean().default(false) })
       .parse(req.body ?? {});
     return createBackup(ctx.paths, ctx.db, {
+      bus: ctx.events,
       includeArtifacts,
       keep: ctx.settings().limits.backupRetention,
     });

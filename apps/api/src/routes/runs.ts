@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
+import { type RunEvent } from "@mordomo/core";
 import {
   ProviderId,
   EffortLevel,
@@ -12,19 +13,9 @@ import {
   openWorkspaceFile,
   previewFile,
   statWorkspacePath,
-  type RunEvent,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
-import {
-  gateWrite,
-  grantedRoots,
-  httpError,
-  launchSkillRun,
-  requireProvider,
-  startedByOf,
-  submitPromptRun,
-  type SkillRunInput,
-} from "./common.js";
+import { grantedRoots, httpError, startedByOf } from "./common.js";
 import { runGit } from "./git.js";
 import { UuidParam, UuidParams } from "./params.js";
 import { lastEventId, openSse } from "./sse.js";
@@ -88,11 +79,12 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
         sessionId: UuidParam.optional(),
       })
       .parse(req.body);
-    const result = submitPromptRun(ctx, body, startedByOf(req), (err, id) =>
-      req.log.error({ err, runId: id, msg: "run failed to execute" }),
+    const started = ctx.execution.startPrompt(
+      { ...body, startedBy: startedByOf(req) },
+      { onError: (err, id) => req.log.error({ err, runId: id, msg: "run failed to execute" }) },
     );
-    if (result.statusCode !== 200) reply.code(result.statusCode);
-    return result.body;
+    if (started.status === "waiting_approval") reply.code(202);
+    return started;
   });
 
   /**
@@ -115,22 +107,26 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
         timeoutMs: z.number().int().min(10_000).max(3_600_000).optional(),
       })
       .parse(req.body);
-    const results = body.prompts.map((prompt) =>
-      submitPromptRun(
-        ctx,
+    const { prompts, ...shared } = body;
+    const cwd = body.cwd ?? parent.cwd;
+    const runs = prompts.map((prompt) =>
+      ctx.execution.startPrompt(
         {
-          ...body,
+          ...shared,
           prompt,
-          cwd: body.cwd ?? parent.cwd ?? undefined,
+          ...(cwd ? { cwd } : {}),
           provider: body.provider ?? parent.provider,
           parentRunId: id,
+          startedBy: startedByOf(req),
         },
-        startedByOf(req),
-        (err, runId) => req.log.error({ err, runId, parentRunId: id, msg: "child run failed to execute" }),
+        {
+          onError: (err, runId) =>
+            req.log.error({ err, runId, parentRunId: id, msg: "child run failed to execute" }),
+        },
       ),
     );
-    if (results.some((r) => r.statusCode === 202)) reply.code(202);
-    return { runs: results.map((r) => r.body) };
+    if (runs.some((r) => r.status === "waiting_approval")) reply.code(202);
+    return { runs };
   });
 
   /** The children of a run (a squad), newest first. */
@@ -163,7 +159,7 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
 
   app.post("/api/runs/:id/cancel", { config: { scope: "run" } }, async (req) => {
     const { id } = UuidParams.parse(req.params);
-    const ok = await ctx.runs.cancel(id);
+    const ok = await ctx.execution.cancel(id);
     return { cancelled: ok };
   });
 
@@ -171,100 +167,13 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
   app.post("/api/runs/:id/retry", { config: { scope: "run" } }, async (req, reply) => {
     const { id } = UuidParams.parse(req.params);
     const { submissionId } = z.object({ submissionId: z.string().uuid() }).parse(req.body);
-    const source = ctx.runs.get(id);
-    if (!source) throw httpError(404, "Run not found");
-    if (!source.request) {
-      throw httpError(409, "This older run has no complete request to repeat safely.", "request_unavailable");
-    }
-    const requestedBy = startedByOf(req);
-    const prior = ctx.db
-      .prepare("SELECT action, source_run_id, requested_by, response FROM run_action_receipts WHERE id = ?")
-      .get(submissionId) as
-      | { action: string; source_run_id: string; requested_by: string | null; response: string | null }
-      | undefined;
-    if (prior) {
-      // A receipt holds the run its maker was given: it replays for that principal only (a receipt from before the
-      // column existed has none and replays for nobody).
-      if (prior.action !== "retry" || prior.source_run_id !== id || prior.requested_by !== requestedBy)
-        throw httpError(409, "Submission identity was reused for another action.", "submission_conflict");
-      if (!prior.response)
-        throw httpError(
-          409,
-          "This retry has an uncertain result. Check execution history.",
-          "submission_uncertain",
-        );
-      return JSON.parse(prior.response);
-    }
-    // The provider comes from the recorded run: refuse one that is no longer
-    // registered (`400 unknown_provider`) before a receipt or a run exists.
-    requireProvider(ctx, source.provider);
-    ctx.db
-      .prepare(
-        "INSERT INTO run_action_receipts(id, action, source_run_id, created_at, requested_by) VALUES (?, 'retry', ?, ?, ?)",
-      )
-      .run(submissionId, id, Date.now(), requestedBy);
-    let result: Record<string, unknown>;
-    try {
-      const lineage = source.parentRunId ?? source.id;
-      if (source.request.kind === "skill") {
-        const skill = ctx.skills.load(source.request.skillSlug);
-        if (!skill)
-          throw httpError(
-            409,
-            `Skill "${source.request.skillSlug}" is no longer available.`,
-            "skill_unavailable",
-          );
-        const retryMode = skill.mode === "write" ? "write" : "read_only";
-        const input: SkillRunInput = {
-          slug: source.request.skillSlug,
-          inputs: source.request.inputs,
-          provider: source.provider,
-          model: source.model,
-          effort: source.effort,
-          cwd: source.cwd ?? ctx.runs.defaultCwd(),
-          timeoutMs: source.timeoutMs ?? ctx.settings().limits.defaultTimeoutMs,
-          parentRunId: lineage,
-          startedBy: requestedBy,
-        };
-        const gated = gateWrite(ctx, retryMode, "skill", `Repeat /${input.slug} with ${source.provider}`, {
-          kind: "skill",
-          input,
-        });
-        if (gated.pendingApproval) reply.code(202);
-        result = gated.pendingApproval
-          ? { runId: gated.runId, status: "waiting_approval", pendingApproval: gated.pendingApproval }
-          : {
-              ...launchSkillRun(ctx, input, (err, runId) => req.log.error({ err, runId, retryOf: id })),
-              status: "queued",
-            };
-      } else {
-        const repeated = submitPromptRun(
-          ctx,
-          {
-            submissionId,
-            prompt: source.request.prompt,
-            provider: source.provider,
-            model: source.model,
-            effort: source.effort,
-            mode: source.request.mode,
-            cwd: source.cwd ?? ctx.runs.defaultCwd(),
-            timeoutMs: source.timeoutMs ?? ctx.settings().limits.defaultTimeoutMs,
-            parentRunId: lineage,
-          },
-          requestedBy,
-          (err, runId) => req.log.error({ err, runId, retryOf: id }),
-        );
-        if (repeated.statusCode !== 200) reply.code(repeated.statusCode);
-        result = repeated.body;
-      }
-    } catch (error) {
-      ctx.db.prepare("DELETE FROM run_action_receipts WHERE id = ?").run(submissionId);
-      throw error;
-    }
-    ctx.db
-      .prepare("UPDATE run_action_receipts SET response = ? WHERE id = ?")
-      .run(JSON.stringify(result), submissionId);
-    return result;
+    const started = ctx.execution.retry(
+      id,
+      { submissionId, startedBy: startedByOf(req) },
+      { onError: (err, runId) => req.log.error({ err, runId, retryOf: id }) },
+    );
+    if (started.status === "waiting_approval") reply.code(202);
+    return started;
   });
 
   /**

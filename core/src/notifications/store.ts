@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { Db } from "../db/db.js";
 import { redactSecrets } from "../security/redact.js";
-import { events } from "../events.js";
+import type { EventBus } from "../events.js";
 import {
   NOTIFICATION_KINDS,
   type NotificationKind,
@@ -52,7 +52,11 @@ const TITLE_MAX = 160;
 const BODY_MAX = 500;
 
 export class NotificationStore {
-  constructor(private readonly db: Db) {}
+  constructor(
+    private readonly db: Db,
+    /** Where rows are announced (`notification.created`, `notification.read`); without one it is silent. */
+    private readonly bus?: EventBus,
+  ) {}
 
   /**
    * Append a row and announce it. When `dedupeKey` is set, a row with the same
@@ -101,7 +105,7 @@ export class NotificationStore {
       );
     const record = this.get(id);
     if (!record) throw new Error("notification insert failed");
-    events.emit("notification.created", record);
+    this.bus?.emit("notification.created", record);
     return record;
   }
 
@@ -129,13 +133,13 @@ export class NotificationStore {
       return updated;
     });
     const updated = tx(ids) as number;
-    if (updated) events.emit("notification.read", { ids });
+    if (updated) this.bus?.emit("notification.read", { ids });
     return updated;
   }
 
   markAllRead(): number {
     const updated = this.db.prepare("UPDATE notifications SET read = 1 WHERE read = 0").run().changes;
-    if (updated) events.emit("notification.read", { all: true });
+    if (updated) this.bus?.emit("notification.read", { all: true });
     return updated;
   }
 

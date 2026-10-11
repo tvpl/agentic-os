@@ -9,15 +9,15 @@ import type { FastifyInstance } from "fastify";
 import ts from "typescript";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
+import { PathAccessError } from "@mordomo/core";
 import {
-  PathAccessError,
   checkWorkspacePath,
   makeWorkspaceFilter,
   previewFile,
   resolveOpenablePath,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { inspectRepo, runGit, GIT_NEUTRAL_ARGS, NULL_DEVICE } from "../apps/api/src/routes/git.js";
-import { findOnPath, createBackup, JsonlLogger, events } from "@mordomo/core";
+import { findOnPath, createBackup, JsonlLogger } from "@mordomo/core/internal";
 import { makeTempHome } from "./helpers.js";
 
 /**
@@ -930,13 +930,13 @@ describe("S4 the event stream recovers from a restart", () => {
   }
 
   const emitSome = () =>
-    [1, 2, 3].map((n) => events.emit("routine.changed", { id: `p1-${n}`, action: "test" }).id);
+    [1, 2, 3].map((n) => ctx.events.emit("routine.changed", { id: `p1-${n}`, action: "test" }).id);
 
   it("C11 a stale resume point gets a stream reset", async () => {
     for (const how of ["Last-Event-ID", "?since"] as const) {
       emitSome();
-      const ringIds = events.since(0).map((e) => e.id);
-      const last = events.lastId;
+      const ringIds = ctx.events.since(0).map((e) => e.id);
+      const last = ctx.events.lastId;
       const stale = last + 1200;
       let live = 0;
       const out = await readEvents(
@@ -944,7 +944,7 @@ describe("S4 the event stream recovers from a restart", () => {
         how === "Last-Event-ID" ? { "Last-Event-ID": String(stale) } : {},
         900,
         () => {
-          live = events.emit("routine.changed", { id: "p1-live", action: "after" }).id;
+          live = ctx.events.emit("routine.changed", { id: "p1-live", action: "after" }).id;
         },
       );
       expect(out.status, how).toBe(200);
@@ -967,7 +967,7 @@ describe("S4 the event stream recovers from a restart", () => {
 
   it("C12 an in-range resume point replays as before", async () => {
     const [a, b, c] = emitSome() as [number, number, number];
-    const last = events.lastId;
+    const last = ctx.events.lastId;
     const fromA = await readEvents("", { "Last-Event-ID": String(a) }, 500);
     expect(fromA.frames.map((f) => f.id)).toEqual([b, c]);
     const viaQuery = await readEvents(`&since=${a}`, {}, 500);

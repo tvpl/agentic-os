@@ -14,6 +14,7 @@
 import { ProviderId } from "../config/schema.js";
 import type { AgentAdapter } from "./types.js";
 import type { ProviderCapabilities, TestedVersions, VersionStatus } from "@mordomo/contracts";
+import type { SpawnPolicy } from "../spawn/policy.js";
 
 export type { ProviderCapabilities, TestedVersions, VersionStatus };
 
@@ -29,6 +30,7 @@ export interface ProviderNativeLayout {
   commandsDir: string | null;
 }
 
+/** A provider as data: identity, executable, capabilities and native file layout. */
 export interface ProviderManifest {
   id: ProviderId;
   displayName: string;
@@ -95,10 +97,17 @@ export function versionStatus(
   return "tested";
 }
 
+/** What the engine gives an adapter factory. */
 export interface AdapterFactoryOptions {
   binaryPath: string | null;
   homeDir?: string;
+  /**
+   * The engine's spawn policy (the executables it allows, what its probes do not inherit). A factory hands it to
+   * the adapter it builds; without one the adapter allows only `node` and its own binary.
+   */
+  spawn?: SpawnPolicy;
 }
+/** Builds the adapter of one provider for one engine. */
 export type AdapterFactory = (opts: AdapterFactoryOptions) => AgentAdapter;
 
 interface Entry {
@@ -106,6 +115,7 @@ interface Entry {
   factory: AdapterFactory;
 }
 
+/** A rule of the registry was broken: a malformed or repeated id, an unknown id, a factory that built another provider's adapter. */
 export class ProviderRegistryError extends Error {
   constructor(message: string) {
     super(message);
@@ -113,6 +123,7 @@ export class ProviderRegistryError extends Error {
   }
 }
 
+/** The providers an engine can run: one manifest and one adapter factory each. */
 export class ProviderRegistry {
   private readonly entries = new Map<ProviderId, Entry>();
 
@@ -162,9 +173,11 @@ export class ProviderRegistry {
   createAll(
     binaryPathOf: (id: ProviderId) => string | null,
     homeDir?: string,
+    spawn?: SpawnPolicy,
   ): Record<ProviderId, AgentAdapter> {
     const out = {} as Record<ProviderId, AgentAdapter>;
-    for (const id of this.ids()) out[id] = this.create(id, { binaryPath: binaryPathOf(id), homeDir });
+    for (const id of this.ids())
+      out[id] = this.create(id, { binaryPath: binaryPathOf(id), homeDir, ...(spawn ? { spawn } : {}) });
     return out;
   }
 }

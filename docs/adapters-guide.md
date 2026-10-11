@@ -69,9 +69,12 @@ streamed events (`started`, `assistant`, `tool_use`, `permission`, `text`,
 6. Test it against a **fake CLI**: add an executable script to
    `tests/fixtures/fake-bin/` that answers `--version`, `--help` and emits the
    provider's real streaming shapes, and mirror `tests/adapters.test.ts`. A test
-   that drives the adapter without an engine allowlists the binary itself with
-   `setProviderBinaries` (see `tests/helpers.ts`); `tests/providers.pluggable.test.ts`
-   registers a provider that ships nowhere but the test.
+   that drives the adapter without an engine needs no setup: an adapter built
+   alone allows `node` and its own manifest's `binary` (its `SpawnPolicy`); an
+   adapter built by an engine gets that engine's policy through
+   `AdapterFactoryOptions.spawn`. `tests/providers.pluggable.test.ts` registers a
+   provider that ships nowhere but the test, and `core/README.md` shows one that
+   runs in the process.
 
 ## Rules
 

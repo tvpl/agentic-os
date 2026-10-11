@@ -8,7 +8,6 @@ import {
   buildGraph,
   checkRouters,
   ensureJournal,
-  events,
   factStats,
   generateRouters,
   homeReadScope,
@@ -33,7 +32,7 @@ import {
   statWorkspacePath,
   workspaceScope,
   type ReadScope,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
 import { httpError } from "./common.js";
 
@@ -71,7 +70,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   // Journal hooks: `memory/` becomes an indexed root (journal notes are
   // searchable and recallable) and every finished run leaves one line under
   // "Runs". Idempotent, so adding the same call to AppContext later is safe.
-  const disposeJournalHooks = installJournalHooks(events, ctx.paths, { indexer: ctx.indexer });
+  const disposeJournalHooks = installJournalHooks(ctx.events, ctx.paths, { indexer: ctx.indexer });
   app.addHook("onClose", async () => {
     disposeJournalHooks();
   });

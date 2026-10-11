@@ -7,6 +7,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { parseArgs, type ParseArgsConfig } from "node:util";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
+import { type Settings } from "@mordomo/core";
 import {
   createBackup,
   inspectRestoreState,
@@ -27,13 +28,12 @@ import {
   ProviderSettingsSchema,
   type IndexStats,
   type IndexProgress,
-  type Settings,
   ensureSigningKeys,
   publishRegistry,
   type MordomoPaths,
   type ProviderId,
   type ProviderSettings,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { AppContext } from "./context.js";
 import { cliEntry } from "./entry.js";
 import { buildProviderRegistry } from "./providers.js";
@@ -737,23 +737,7 @@ async function cmdSetup(args: CliArgs): Promise<void> {
         const s2 = p.spinner();
         s2.start(`Smoke-testing ${id}…`);
         try {
-          const run = ctx.runs.create({
-            origin: "manual",
-            provider: id,
-            prompt: "Smoke test",
-            cwd: ctx.runs.defaultCwd(),
-            model: prefsOf(id).defaultModel,
-            effort: "low",
-            mode: "read_only",
-            timeoutMs: 180_000,
-            profile: "read_only",
-            startedBy: null,
-          });
-          const rec = await ctx.runs.execute(
-            run.id,
-            "Smoke test: reply with exactly MORDOMO_OK and do nothing else. Do not read or write any file.",
-            "read_only",
-          );
+          const { run: rec } = await ctx.execution.smokeTest(id, null);
           if (rec.status === "done") s2.stop(`${id}: ${pc.green("OK")} (${rec.durationMs} ms)`);
           else s2.stop(`${id}: ${pc.red(rec.status)} — ${rec.error ?? ""}`);
         } catch (err) {
@@ -1155,6 +1139,7 @@ async function cmdBackup(args: CliArgs): Promise<void> {
   const ctx = new AppContext();
   const before = listBackups(ctx.paths).length;
   const info = await createBackup(ctx.paths, ctx.db, {
+    bus: ctx.events,
     includeArtifacts: args.includeArtifacts,
     keep: ctx.settings().limits.backupRetention,
   });
@@ -1457,69 +1442,48 @@ async function cmdRun(args: CliArgs): Promise<void> {
     ctx.close();
     process.exit(EXIT_USAGE);
   }
-  const mode = skill.mode === "write" ? "write" : "read_only";
-  const model = args.model ?? skill.recommendedModel ?? settings.providers[provider]?.defaultModel ?? null;
-  const effort = args.effort ?? skill.recommendedEffort;
-  // The same write policy as the Command Centre: refuse, park for approval, or run.
-  let gate;
+  // The same write policy and the same rules as the Command Centre: refuse, park for approval, or run.
+  let started;
   try {
-    gate = ctx.gateWrite(mode, "skill", `Write-mode skill run /${slug} (CLI)`, {
-      kind: "skill",
-      input: {
-        slug,
-        inputs: args.inputs,
-        provider,
-        model,
-        effort,
-        cwd: ctx.runs.defaultCwd(),
-        timeoutMs: settings.limits.defaultTimeoutMs,
-        startedBy: null,
-      },
+    started = ctx.execution.startSkill({
+      slug,
+      inputs: args.inputs,
+      provider,
+      ...(args.model !== undefined ? { model: args.model } : {}),
+      ...(args.effort !== undefined ? { effort: args.effort } : {}),
+      startedBy: null,
     });
   } catch (err) {
     console.error(`${pc.red("✘")} ${(err as Error).message}`);
     ctx.close();
     process.exit(1);
   }
-  if (gate.pendingApproval) {
+  if (started.pendingApproval) {
     if (args.json) {
       console.log(
         JSON.stringify({
           status: "waiting_approval",
-          runId: gate.runId,
-          pendingApproval: gate.pendingApproval,
+          runId: started.runId,
+          pendingApproval: started.pendingApproval,
         }),
       );
     } else {
       console.log(
-        `${pc.yellow("◐")} Waiting for approval ${gate.pendingApproval.id} (run ${gate.runId}): approve it in the Command Centre; the run starts then.`,
+        `${pc.yellow("◐")} Waiting for approval ${started.pendingApproval.id} (run ${started.runId}): approve it in the Command Centre; the run starts then.`,
       );
     }
     ctx.close();
     process.exit(0);
   }
-  const run = ctx.runs.create({
-    origin: "skill",
-    provider,
-    prompt: `(skill: ${slug})`,
-    cwd: ctx.runs.defaultCwd(),
-    model,
-    effort,
-    mode,
-    timeoutMs: settings.limits.defaultTimeoutMs,
-    profile: skill.mode === "write" ? settings.securityProfile : "read_only",
-    skillSlug: slug,
-    startedBy: null,
-  });
-  if (!args.json) console.log(`${pc.cyan("▶")} Running ${skill.name} via ${provider} (run ${run.id})…`);
-  const prompt = ctx.skills.buildRunPrompt(skill, args.inputs, path.join(ctx.paths.artifacts, run.id));
+  if (!args.json)
+    console.log(`${pc.cyan("▶")} Running ${skill.name} via ${provider} (run ${started.runId})…`);
   const unsubscribe = args.json
     ? () => undefined
-    : ctx.runs.onEvent(run.id, (event) => {
+    : ctx.execution.subscribe(started.runId, (event) => {
         if (event.type === "assistant") console.log(pc.dim(event.text.split("\n")[0]!.slice(0, 120)));
         if (event.type === "tool_use") console.log(pc.dim(`  ⚙ ${event.tool}`));
       });
-  const record = await ctx.runs.execute(run.id, prompt, skill.mode === "write" ? "write" : "read_only");
+  const record = await ctx.execution.wait(started.runId);
   unsubscribe();
   if (args.json) {
     console.log(JSON.stringify(record));

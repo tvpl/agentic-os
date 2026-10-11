@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createBackup, ensureDirs, resolvePaths, restoreBackup } from "@mordomo/core";
+import { createBackup, ensureDirs, resolvePaths, restoreBackup } from "@mordomo/core/internal";
 import { AppContext } from "../../apps/api/dist/context.js";
 import { startServer } from "../../apps/api/dist/server.js";
 import { returningUserState } from "./returning-user";

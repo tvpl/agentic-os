@@ -1,0 +1,351 @@
+import { afterEach, describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { createEngine, EngineLockedError, type Engine, type OsEventType } from "@mordomo/core";
+import {
+  RestoreLock,
+  RoutineSchema,
+  createBackup,
+  relatedEdges,
+  openDb,
+  resolvePaths,
+  type EventBus,
+  type Db,
+} from "@mordomo/core/internal";
+import { ClaudeAdapter } from "@mordomo/adapter-claude";
+import { FAKE_BIN, FAKE_CLIS_RUNNABLE } from "./helpers.js";
+import { moduleState } from "./support/moduleState.js";
+import { buildEngine, closeAll, echoProvider, internals, registryOf, tempHome } from "./support/sdk.js";
+
+/**
+ * Two engines in one process share nothing (.specs/features/sdk-core, S4): not the event bus, not the allowlist of
+ * executables, not the memo of related files, not the owner lock of a home. What the operating system makes
+ * process-wide is listed, each with its reason (C30).
+ */
+
+afterEach(closeAll);
+
+const root = path.resolve(import.meta.dirname, "..");
+
+function sourcesUnder(dir: string): string[] {
+  const out: string[] = [];
+  const walk = (current: string) => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== "node_modules" && entry.name !== "dist") walk(full);
+      } else if (/\.tsx?$/.test(entry.name) && !/\.test\./.test(entry.name)) out.push(full);
+    }
+  };
+  walk(path.join(root, dir));
+  return out;
+}
+
+/** The module-level state that stays, with the reason it is not an engine's. */
+const PROCESS_SCOPED: Record<string, string> = {
+  "core/src/restoreLock.ts heldHere":
+    "POSIX file locks belong to the process and the inode: a second lock on a file closes the first one's, so the process must know which lock files it holds, whichever engine asks",
+  "core/src/restoreLock.ts live":
+    "keeps every held RestoreLock reachable, because the garbage collector closing the connection of a dropped lock would release the lock",
+  "core/src/spawn/safeSpawn.ts ownedKillers":
+    "keyed by the process id of a child, a name in the operating system's table; only the safeSpawn that made the child stores or reads its entry",
+  "core/src/spawn/which.ts pathCache":
+    "memo of the PATH of the process (30 s) and the folders on disk; it holds nothing an engine decided",
+  "core/src/ownerLock.ts heldByThisProcess":
+    "the owner locks this process holds: whether a lock file naming this pid belongs to a live engine is a question only the process can answer (door 7)",
+  "core/src/notifications/recorder.ts installed":
+    "WeakMap keyed by the EventBus: one entry per bus, gone with it",
+  "core/src/memory/journal.ts installed": "WeakMap keyed by the EventBus: one entry per bus, gone with it",
+  "core/src/memory/related.ts caches": "WeakMap keyed by the Db: one memo per database, gone with it",
+  "core/src/channels/pushEndpoint.ts PRIVATE":
+    "the address ranges a push endpoint may not point into, filled once when the module loads and only read afterwards",
+};
+
+describe("S4 nothing of an engine is shared with another", () => {
+  it("C30 the module-level mutable state of the core and the adapters is the closed list", () => {
+    const files = [
+      ...sourcesUnder("core/src"),
+      ...sourcesUnder("adapters/claude/src"),
+      ...sourcesUnder("adapters/cursor/src"),
+      ...sourcesUnder("adapters/codex/src"),
+    ];
+    const found = files.flatMap((file) => {
+      const relative = path.relative(root, file).split(path.sep).join("/");
+      return moduleState(fs.readFileSync(file, "utf8"), relative).map((f) => `${f.file} ${f.name}`);
+    });
+    expect(found.sort()).toEqual(Object.keys(PROCESS_SCOPED).sort());
+    for (const [item, reason] of Object.entries(PROCESS_SCOPED))
+      expect(reason.length, item).toBeGreaterThan(20);
+  });
+
+  it("C31 what one engine announces, another never hears", async () => {
+    const echo = echoProvider();
+    const a = buildEngine([echo]);
+    const b = buildEngine([echoProvider({ id: "other" })], { enable: false });
+    expect(b.events.lastId).toBe(0);
+    const heardByB: string[] = [];
+    b.events.subscribe((event) => heardByB.push(event.type));
+    const heardByA: string[] = [];
+    a.events.subscribe((event) => heardByA.push(event.type));
+    const inner = internals(a);
+
+    const failing = () => {
+      echo.state.failWith = "boom";
+      return a.execution.startPrompt({ prompt: "this fails the same way", startedBy: null }).runId;
+    };
+    const rows: Array<[string, OsEventType, () => unknown]> = [
+      ["config/store", "settings.changed", () => a.updateSettings({ systemName: "A" })],
+      ["ui-preferences", "settings.changed", () => inner.uiPreferences.update({ themePreset: "mono" })],
+      [
+        "objectiveStore",
+        "objective.changed",
+        () =>
+          inner.objectives.create({
+            title: "o",
+            steps: [{ title: "s", request: { version: 1, kind: "prompt", prompt: "p", mode: "read_only" } }],
+          }),
+      ],
+      [
+        "notifications/store",
+        "notification.created",
+        () => inner.notifications.add({ kind: "system", tone: "info", title: "t", body: "b" }),
+      ],
+      [
+        "backup",
+        "backup.created",
+        () => createBackup(inner.paths, inner.db, { bus: inner.events as EventBus }),
+      ],
+      [
+        "sessionStore",
+        "session.created",
+        () => inner.runs.sessions.create({ provider: "echo", cwd: null, profile: null, title: "t" }),
+      ],
+      [
+        "runManager",
+        "run.finished",
+        async () => a.execution.wait(a.execution.startPrompt({ prompt: "hi", startedBy: null }).runId),
+      ],
+      ["indexer", "index.finished", () => inner.indexer.indexAllAsync()],
+      [
+        "scheduler",
+        "routine.fired",
+        async () => {
+          inner.routines.save(
+            RoutineSchema.parse({ id: "r1", name: "r1", prompt: "hi", schedule: "0 0 1 1 *", enabled: true }),
+          );
+          await inner.scheduler.fire("r1");
+        },
+      ],
+      [
+        "engine approvals",
+        "approval.requested",
+        () => {
+          a.updateSettings({ securityProfile: "review_before_write" });
+          return a.execution.startPrompt({ prompt: "change", mode: "write", startedBy: null });
+        },
+      ],
+      [
+        "sentinels",
+        "sentinel.fired",
+        async () => {
+          a.updateSettings({ securityProfile: "read_only" });
+          a.start();
+          for (let i = 0; i < 2; i++) await a.execution.wait(failing());
+        },
+      ],
+    ];
+    for (const [module, type, act] of rows) {
+      const before = heardByA.length;
+      await act();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(heardByA.slice(before), module).toContain(type);
+      expect(heardByB, module).toEqual([]);
+    }
+    expect(a.events.lastId).toBeGreaterThan(0);
+    expect(b.events.lastId).toBe(0);
+  });
+
+  it("C32 each engine allows the executables of its own providers, whatever order they were built in", () => {
+    const a = buildEngine([echoProvider({ id: "alpha", binary: "alpha" })]);
+    const b = buildEngine([echoProvider({ id: "beta", binary: "beta" })]);
+    const allowed = (engine: Engine, executable: string, allowPaths?: string[]) => {
+      try {
+        internals(engine).spawnPolicy.assertAllowed(executable, allowPaths);
+        return true;
+      } catch (error) {
+        expect((error as Error).name).toBe("ExecutableNotAllowedError");
+        return false;
+      }
+    };
+    internals(a).reloadAdapters();
+    for (const [engine, own, other] of [
+      [a, "alpha", "beta"],
+      [b, "beta", "alpha"],
+    ] as const) {
+      expect(allowed(engine, `/usr/bin/${own}`), `${own} allowed`).toBe(true);
+      expect(allowed(engine, `/usr/bin/${other}`), `${other} refused`).toBe(false);
+      expect(allowed(engine, process.execPath), "node allowed").toBe(true);
+      expect(allowed(engine, "/opt/pinned/tool"), "a path nobody named").toBe(false);
+      expect(allowed(engine, "/opt/pinned/tool", ["/opt/pinned/tool"]), "a pinned path").toBe(true);
+    }
+  });
+
+  it("C33 each engine's probes drop the environment of its own settings", async () => {
+    const a = buildEngine([echoProvider()]);
+    const b = buildEngine([echoProvider({ id: "other" })]);
+    a.updateSettings({ channels: { telegram: { botTokenEnv: "SDK_A_SECRET" } } });
+    b.updateSettings({ channels: { telegram: { botTokenEnv: "SDK_B_SECRET" } } });
+    internals(a).reloadAdapters();
+    internals(b).reloadAdapters();
+    process.env.SDK_A_SECRET = "a";
+    process.env.SDK_B_SECRET = "b";
+    process.env.MORDOMO_SDK_PROBE = "1";
+    try {
+      const envOf = async (engine: Engine) => {
+        const result = await internals(engine).spawnPolicy.probe(
+          process.execPath,
+          ["-e", "console.log(JSON.stringify(Object.keys(process.env)))"],
+          process.cwd(),
+        );
+        return JSON.parse(result.stdout) as string[];
+      };
+      const seenByA = await envOf(a);
+      const seenByB = await envOf(b);
+      expect([seenByA.includes("SDK_A_SECRET"), seenByA.includes("SDK_B_SECRET")]).toEqual([false, true]);
+      expect([seenByB.includes("SDK_A_SECRET"), seenByB.includes("SDK_B_SECRET")]).toEqual([true, false]);
+      expect(seenByA.includes("MORDOMO_SDK_PROBE") || seenByB.includes("MORDOMO_SDK_PROBE")).toBe(false);
+    } finally {
+      delete process.env.SDK_A_SECRET;
+      delete process.env.SDK_B_SECRET;
+      delete process.env.MORDOMO_SDK_PROBE;
+    }
+  });
+
+  it("C34 related files are memoised per database", () => {
+    const seed = (db: Db, shared: string, filler: string[]) => {
+      const insert = db.prepare("INSERT INTO files_fts(rowid, name, rel, content) VALUES (?, ?, ?, ?)");
+      const bodies = [shared, shared, ...filler];
+      bodies.forEach((body, index) => insert.run(index + 1, `n${index + 1}.md`, `n${index + 1}.md`, body));
+    };
+    const filler = (words: string) =>
+      [1, 2, 3].map((n) => `${words} ${n} unrelated filler text number ${n}${n} here`);
+    const a = openDb(resolvePaths(tempHome())).db;
+    const b = openDb(resolvePaths(tempHome())).db;
+    try {
+      seed(a, "tides lunar orbit gravity ocean moon basin swell current", filler("alpha beta gamma"));
+      seed(
+        b,
+        "compiler parser grammar syntax token lexer scanner symbol table",
+        filler("delta epsilon zeta"),
+      );
+      const files = [1, 2, 3, 4, 5].map((id) => ({ id, mtime: 100 }));
+      const termsOf = (db: Db) => relatedEdges(db, files).flatMap((edge) => edge.terms);
+      const expectA = ["tides", "lunar", "orbit", "gravity", "ocean", "moon", "basin", "swell", "current"];
+      const expectB = [
+        "compil",
+        "parser",
+        "grammar",
+        "syntax",
+        "token",
+        "lexer",
+        "scanner",
+        "symbol",
+        "tabl",
+      ];
+      for (const order of [
+        ["a", "b", "a"],
+        ["b", "a", "b"],
+      ]) {
+        for (const which of order) {
+          const terms = termsOf(which === "a" ? a : b);
+          const wanted = which === "a" ? expectA : expectB;
+          expect(terms.length, `${order.join("")} ${which}`).toBeGreaterThan(0);
+          for (const term of terms)
+            expect(
+              wanted.some((w) => w.startsWith(term.slice(0, 4))),
+              `${term} in ${which}`,
+            ).toBe(true);
+        }
+      }
+    } finally {
+      a.close();
+      b.close();
+    }
+  });
+
+  it("C35 a home has one owner in a process, and a lock nobody holds is taken over", async () => {
+    const home = tempHome();
+    const provider = echoProvider();
+    const a = buildEngine([provider], { home });
+    const b = buildEngine([echoProvider()], { home });
+    const lockFile = path.join(home, "config", "run", "engine.lock");
+    a.start();
+    const held = fs.readFileSync(lockFile, "utf8");
+    let refusal: unknown;
+    try {
+      b.start();
+    } catch (error) {
+      refusal = error;
+    }
+    expect(refusal).toBeInstanceOf(EngineLockedError);
+    expect((refusal as EngineLockedError).holderPid).toBe(process.pid);
+    expect((refusal as EngineLockedError).code).toBe("engine_locked");
+    expect(fs.readFileSync(lockFile, "utf8")).toBe(held);
+    await a.stop(500);
+    expect(() => b.start()).not.toThrow();
+    // Another home is another lock.
+    const c = buildEngine([echoProvider()]);
+    expect(() => c.start()).not.toThrow();
+    // A lock naming this process that no engine of it holds is a dead engine's: taken over.
+    await b.stop(500);
+    fs.writeFileSync(
+      lockFile,
+      JSON.stringify({ v: 2, pid: process.pid, startedAt: 1, token: "left-behind", procStart: null }),
+    );
+    const d = buildEngine([echoProvider()], { home });
+    expect(() => d.start()).not.toThrow();
+    expect(JSON.parse(fs.readFileSync(lockFile, "utf8")).token).not.toBe("left-behind");
+  });
+
+  it("C36 a restore of one home does not hold up an engine of another, and two engines of one home are built", () => {
+    const busy = resolvePaths(tempHome());
+    fs.mkdirSync(busy.run, { recursive: true });
+    const lock = RestoreLock.acquire(busy, 0, "exclusive");
+    try {
+      const started = Date.now();
+      const other = createEngine({
+        home: tempHome(),
+        seedDir: null,
+        providers: registryOf(echoProvider()),
+        restoreWaitMs: 10_000,
+      });
+      expect(Date.now() - started).toBeLessThan(1000);
+      other.close();
+    } finally {
+      lock.release();
+    }
+    const home = tempHome();
+    const first = createEngine({ home, seedDir: null, providers: registryOf(echoProvider()) });
+    const second = createEngine({ home, seedDir: null, providers: registryOf(echoProvider()) });
+    first.close();
+    second.close();
+  });
+
+  it("C47 the factory is given the engine's spawn policy, and an adapter built alone allows only its own binary", async () => {
+    const provider = echoProvider();
+    const engine = buildEngine([provider]);
+    expect(provider.state.factoryOptions.length).toBeGreaterThan(0);
+    for (const options of provider.state.factoryOptions)
+      expect(options.spawn).toBe(internals(engine).spawnPolicy);
+    internals(engine).reloadAdapters();
+    expect(provider.state.factoryOptions.at(-1)?.spawn).toBe(internals(engine).spawnPolicy);
+
+    if (!FAKE_CLIS_RUNNABLE) return;
+    const own = await new ClaudeAdapter({ binaryPath: path.join(FAKE_BIN, "claude") }).detect();
+    expect(own.version).not.toBeNull();
+    expect(own.notes.filter((note) => /failed/.test(note))).toEqual([]);
+    const foreign = await new ClaudeAdapter({ binaryPath: path.join(FAKE_BIN, "cursor-agent") }).detect();
+    expect(foreign.version).toBeNull();
+    expect(foreign.notes.join("\n")).toMatch(/--version failed: Executable is not on the allowlist/);
+  });
+});

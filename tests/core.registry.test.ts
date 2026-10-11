@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import { SkillRegistry, parseIndex, type Fetcher } from "@mordomo/core";
+import { SkillRegistry, parseIndex, type Fetcher } from "@mordomo/core/internal";
 
 /** Registry index parsing and verified staging (no network: a fake fetcher). */
 

@@ -1,10 +1,13 @@
 {
   "name": "@mordomo/contracts",
   "version": "0.8.0",
-  "private": true,
   "license": "SEE LICENSE IN LICENSE",
   "description": "The shapes that cross the engine / API / UI boundary: wire types, the settings schema, the typed event map and the write policy.",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "sideEffects": false,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -16,6 +19,16 @@
       "types": "./dist/policy.d.ts",
       "default": "./dist/policy.js"
     }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.map",
+    "!dist/**/*.tsbuildinfo",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "zod": "^3.25.0"

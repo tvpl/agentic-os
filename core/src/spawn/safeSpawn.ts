@@ -1,28 +1,19 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import { GUARDIAN_SOURCE } from "./guardian.js";
+import type { DropEnv, SpawnPolicy } from "./policy.js";
 import { augmentedPath } from "./which.js";
 
 /**
  * Controlled child-process layer.
  * - argv arrays only; never a shell string, never `eval`.
- * - executable allowlist: `node` plus the `binary` of every registered provider
- *   manifest (`setProviderBinaries`), by name, and optional pinned absolute paths.
+ * - executable allowlist: `node`, the provider binaries of the `SpawnPolicy` the caller passes
+ *   (one per engine), by name, and optional pinned absolute paths.
  * - cwd must be provided explicitly by the caller (already containment-checked).
  * - timeout kills the whole process group.
  * - stdout/stderr are accumulated in memory only up to a bounded tail
  *   (`MAX_CAPTURED_BYTES` each); streaming callbacks still see every chunk.
  */
-
-/**
- * The registered providers' executable names. The engine sets it whenever it
- * builds the adapters (`MordomoEngine`); until then only `node` is allowed.
- */
-let providerBinaries = new Set<string>();
-
-export function setProviderBinaries(binaries: string[]): void {
-  providerBinaries = new Set(binaries);
-}
 
 /** The program an executable path names: its basename, on Windows without `.exe`/`.cmd`/`.bat` (case-insensitive). */
 export function executableName(executable: string, platform: NodeJS.Platform = process.platform): string {
@@ -38,6 +29,11 @@ export const MAX_CAPTURED_BYTES = 1024 * 1024;
 
 /** Grace between SIGTERM and SIGKILL for cancel/timeout. */
 const DEFAULT_KILL_GRACE_MS = 5000;
+
+/**
+ * Process-scoped on purpose: a child's process id is a name in the operating system's table, not an engine's, and
+ * only the `safeSpawn` that made the child ever stores or reads its entry.
+ */
 const ownedKillers = new Map<number, (signal: NodeJS.Signals) => void>();
 
 /** Capture a live handle's killer; callers must retain this closure, not re-resolve a PID later. */
@@ -56,7 +52,9 @@ export interface SpawnOptions {
   cwd: string;
   env?: Record<string, string | undefined>;
   /** Variables of this process the child must not inherit (exact names and prefixes); `env` still applies on top. */
-  dropEnv?: { names: string[]; prefixes: string[] };
+  dropEnv?: DropEnv;
+  /** The engine's allowlist of provider binaries; without one only `node` and `allowPaths` are allowed. */
+  policy?: SpawnPolicy;
   timeoutMs?: number;
   /** Extra absolute paths allowed (e.g. a pinned provider binary). */
   allowPaths?: string[];
@@ -86,9 +84,9 @@ export interface SpawnHandle {
   kill: (signal: NodeJS.Signals) => void;
 }
 
-export function assertAllowed(executable: string, allowPaths: string[] = []): void {
+export function assertAllowed(executable: string, allowPaths: string[] = [], policy?: SpawnPolicy): void {
   const name = executableName(executable);
-  if (name === "node" || providerBinaries.has(name)) return;
+  if (name === "node" || policy?.allows(name) === true) return;
   if (allowPaths.some((p) => path.resolve(p) === path.resolve(executable))) return;
   throw new ExecutableNotAllowedError(executable);
 }
@@ -141,7 +139,7 @@ function inheritedEnv(drop: SpawnOptions["dropEnv"]): NodeJS.ProcessEnv {
 }
 
 export function safeSpawn(executable: string, args: string[], opts: SpawnOptions): SpawnHandle {
-  assertAllowed(executable, opts.allowPaths);
+  assertAllowed(executable, opts.allowPaths, opts.policy);
   const started = Date.now();
   const supervised = process.platform !== "win32";
   const child = spawn(
@@ -280,26 +278,4 @@ export function safeSpawn(executable: string, args: string[], opts: SpawnOptions
     },
     kill: (signal) => killTree(signal),
   };
-}
-
-/**
- * What every provider probe drops from the inherited environment. The engine
- * sets it from the settings (`MordomoEngine`); until then MordomoOS's own
- * `MORDOMO_*` variables are dropped.
- */
-let probeEnvDrop: { names: string[]; prefixes: string[] } = { names: [], prefixes: ["MORDOMO_"] };
-
-export function setProbeEnvDrop(drop: { names: string[]; prefixes: string[] }): void {
-  probeEnvDrop = { names: [...drop.names], prefixes: [...drop.prefixes] };
-}
-
-/** Convenience for short, non-streamed probes of a provider CLI (--version, --help, auth status). */
-export async function probe(
-  executable: string,
-  args: string[],
-  cwd: string,
-  timeoutMs = 15_000,
-): Promise<SpawnResult> {
-  const handle = safeSpawn(executable, args, { cwd, timeoutMs, dropEnv: probeEnvDrop });
-  return handle.result;
 }

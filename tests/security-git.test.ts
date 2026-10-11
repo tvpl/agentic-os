@@ -2,7 +2,7 @@ import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { findOnPath } from "@mordomo/core";
+import { findOnPath } from "@mordomo/core/internal";
 import { startSecureServer, type SecureServer } from "./helpers/securityHarness.js";
 
 /**

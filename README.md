@@ -86,7 +86,7 @@ tests/  docs/  scripts/
 
 - [User manual](docs/user-manual.md) — day-to-day usage + the 7-day adoption plan
 - [Architecture](docs/architecture.md) · [Security & threat model](docs/security.md)
-- [Creating skills](docs/skills-guide.md) · [Creating routines](docs/routines-guide.md) · [Adding adapters](docs/adapters-guide.md)
+- [Creating skills](docs/skills-guide.md) · [Creating routines](docs/routines-guide.md) · [Adding adapters](docs/adapters-guide.md) · [Using the engine as a library (SDK)](docs/sdk.md)
 - [Installing & building a distributable](docs/install.md) · [Backup, restore & uninstall](docs/backup-restore-uninstall.md)
 - [Windows / WSL](docs/windows.md) · [Always-on VPS + Syncthing (optional)](docs/vps-syncthing.md)
 - [Product spec](docs/product-spec.md) · [Validation report](docs/validation-report.md)

@@ -14,7 +14,7 @@ import { resolveApprovalForChat } from "../apps/api/src/approvalActions.js";
 import { probeServer } from "../apps/api/src/instances.js";
 import { isApiRequest } from "../apps/api/src/apiVersion.js";
 import Database from "better-sqlite3";
-import { MIGRATIONS, TelegramPoller, type DeviceScope, type TelegramUpdate } from "@mordomo/core";
+import { MIGRATIONS, TelegramPoller, type DeviceScope, type TelegramUpdate } from "@mordomo/core/internal";
 import { FAKE_BIN, makeTempHome } from "./helpers.js";
 import { okLiteralSites, okNotTrueSites } from "./helpers/okScanner.js";
 import { unversionedApiUrls } from "./helpers/apiUrlScanner.js";

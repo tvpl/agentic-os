@@ -14,17 +14,16 @@ import Fastify, {
 } from "fastify";
 import fastifyStatic from "@fastify/static";
 import { ZodError } from "zod";
+import { EngineLockedError, PathAccessError } from "@mordomo/core";
 import {
-  EngineLockedError,
   JsonlLogger,
-  PathAccessError,
   TelegramPoller,
   certificateHosts,
   ensureTlsMaterial,
   redactSecrets,
   type DeviceScope,
   type TlsMaterial,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { AppContext } from "./context.js";
 import { uiDistCandidates } from "./entry.js";
 import {
@@ -540,7 +539,7 @@ export async function buildServer(
   );
 
   app.addHook("onClose", async () => {
-    closeAllSse();
+    closeAllSse(app);
   });
 
   // ---- API routes -----------------------------------------------------------

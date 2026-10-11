@@ -2,7 +2,7 @@ import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { SkillCatalog, parseSkillFile, publishRegistry } from "@mordomo/core";
+import { SkillCatalog, parseSkillFile, publishRegistry } from "@mordomo/core/internal";
 import { startSecureServer, type SecureServer } from "./helpers/securityHarness.js";
 import { makeTempHome } from "./helpers.js";
 

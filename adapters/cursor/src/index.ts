@@ -2,22 +2,19 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  executeInvocation,
-  findExecutable,
-  parseHelpFlags,
-  probe,
+  SpawnPolicy,
   type AgentAdapter,
   type AgentRun,
   type AuthStatus,
   type DetectionResult,
   type HealthStatus,
-  type LineParser,
   type ModelOption,
   type RunEvent,
   type SafeInvocation,
   type ValidationResult,
   type AdapterFactoryOptions,
 } from "@mordomo/core";
+import { executeInvocation, findExecutable, parseHelpFlags, type LineParser } from "@mordomo/core/internal";
 import { cursorManifest } from "./manifest.js";
 
 /**
@@ -36,14 +33,25 @@ export { cursorManifest };
 
 /** Factory used by the provider registry (`apps/api/src/providers.ts`). */
 export const createCursorAdapter = (opts: AdapterFactoryOptions): AgentAdapter =>
-  new CursorAdapter({ binaryPath: opts.binaryPath, ...(opts.homeDir ? { homeDir: opts.homeDir } : {}) });
+  new CursorAdapter({
+    binaryPath: opts.binaryPath,
+    ...(opts.homeDir ? { homeDir: opts.homeDir } : {}),
+    ...(opts.spawn ? { spawn: opts.spawn } : {}),
+  });
 
 export class CursorAdapter implements AgentAdapter {
   readonly id = "cursor" as const;
   readonly manifest = cursorManifest;
   private detection: DetectionResult | null = null;
 
-  constructor(private readonly opts: { binaryPath?: string | null; homeDir?: string } = {}) {}
+  /** The engine's spawn policy; an adapter built alone allows only `node` and its own binary. */
+  private readonly spawn: SpawnPolicy;
+
+  constructor(
+    private readonly opts: { binaryPath?: string | null; homeDir?: string; spawn?: SpawnPolicy } = {},
+  ) {
+    this.spawn = opts.spawn ?? new SpawnPolicy({ binaries: [cursorManifest.binary] });
+  }
 
   private binary(): string {
     return this.opts.binaryPath ?? findExecutable("cursor-agent") ?? "cursor-agent";
@@ -68,13 +76,13 @@ export class CursorAdapter implements AgentAdapter {
     let version: string | null = null;
     let supportedFlags: string[] = [];
     try {
-      const v = await probe(binaryPath, ["--version"], os.tmpdir());
+      const v = await this.spawn.probe(binaryPath, ["--version"], os.tmpdir());
       version = (v.stdout || v.stderr).trim().split("\n")[0] ?? null;
     } catch (err) {
       notes.push(`--version failed: ${(err as Error).message}`);
     }
     try {
-      const h = await probe(binaryPath, ["--help"], os.tmpdir());
+      const h = await this.spawn.probe(binaryPath, ["--help"], os.tmpdir());
       supportedFlags = parseHelpFlags(h.stdout + h.stderr);
       if (!supportedFlags.includes("--print") && !supportedFlags.includes("-p")) {
         notes.push("Installed cursor-agent does not advertise --print; headless runs may fail.");
@@ -100,7 +108,7 @@ export class CursorAdapter implements AgentAdapter {
     if (!binaryPath) return { authenticated: false, method: null, detail: "cursor-agent is not installed." };
     try {
       // `cursor-agent status` prints login state without exposing tokens.
-      const res = await probe(binaryPath, ["status"], os.tmpdir());
+      const res = await this.spawn.probe(binaryPath, ["status"], os.tmpdir());
       const out = (res.stdout + res.stderr).toLowerCase();
       // Negated status contains the positive substring: inspect it first.
       if (/not logged in|unauthenticated|not authenticated|login required/.test(out)) {

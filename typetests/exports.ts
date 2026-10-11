@@ -19,7 +19,7 @@ import type {
   TestedVersions,
   VersionStatus,
 } from "@mordomo/contracts";
-import type { CreateRunInput } from "@mordomo/core";
+import type { CreateRunInput } from "@mordomo/core/internal";
 
 export type ContractExports = [
   Approval,

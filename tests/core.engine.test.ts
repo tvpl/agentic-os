@@ -4,20 +4,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { EngineLockedError, PathAccessError, ProviderRegistry, type Settings } from "@mordomo/core";
 import {
-  EngineLockedError,
   ObjectiveStore,
-  PathAccessError,
-  ProviderRegistry,
   RunManager,
   SettingsStore,
-  createEngine,
   ensureDirs,
   openDb,
   resolvePaths,
-  type MordomoEngine,
-  type Settings,
-} from "@mordomo/core";
+  MordomoEngine,
+} from "@mordomo/core/internal";
 import { claudeManifest, createClaudeAdapter } from "@mordomo/adapter-claude";
 import { FAKE_BIN, FAKE_CLIS_RUNNABLE, withFakeBinPath } from "./helpers.js";
 
@@ -50,7 +46,7 @@ function registry(): ProviderRegistry {
 }
 
 function engineFor(home: string): MordomoEngine {
-  const engine = createEngine({ home, providers: registry(), seedDir: null });
+  const engine = new MordomoEngine({ home, providers: registry(), seedDir: null });
   engines.push(engine);
   return engine;
 }

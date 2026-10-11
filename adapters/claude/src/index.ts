@@ -3,6 +3,19 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  SpawnPolicy,
+  type AgentAdapter,
+  type AgentRun,
+  type AuthStatus,
+  type DetectionResult,
+  type HealthStatus,
+  type ModelOption,
+  type RunEvent,
+  type SafeInvocation,
+  type ValidationResult,
+  type AdapterFactoryOptions,
+} from "@mordomo/core";
+import {
   ClaudeStreamMessage,
   KnownStreamTypes,
   resumableSessionId,
@@ -10,21 +23,10 @@ import {
   executeInvocation,
   findExecutable,
   parseHelpFlags,
-  probe,
-  type AgentAdapter,
-  type AgentRun,
-  type AuthStatus,
-  type DetectionResult,
-  type HealthStatus,
   type LineParser,
-  type ModelOption,
   type RejectedLine,
-  type RunEvent,
-  type SafeInvocation,
-  type ValidationResult,
-  type AdapterFactoryOptions,
   readTypedLine,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { claudeManifest } from "./manifest.js";
 
 /**
@@ -43,7 +45,11 @@ export { claudeManifest };
 
 /** Factory used by the provider registry (`apps/api/src/providers.ts`). */
 export const createClaudeAdapter = (opts: AdapterFactoryOptions): AgentAdapter =>
-  new ClaudeAdapter({ binaryPath: opts.binaryPath, ...(opts.homeDir ? { homeDir: opts.homeDir } : {}) });
+  new ClaudeAdapter({
+    binaryPath: opts.binaryPath,
+    ...(opts.homeDir ? { homeDir: opts.homeDir } : {}),
+    ...(opts.spawn ? { spawn: opts.spawn } : {}),
+  });
 
 export class ClaudeAdapter implements AgentAdapter {
   readonly id = "claude" as const;
@@ -51,7 +57,14 @@ export class ClaudeAdapter implements AgentAdapter {
   private detection: DetectionResult | null = null;
   private authCommandSupported = false;
 
-  constructor(private readonly opts: { binaryPath?: string | null; homeDir?: string } = {}) {}
+  /** The engine's spawn policy; an adapter built alone allows only `node` and its own binary. */
+  private readonly spawn: SpawnPolicy;
+
+  constructor(
+    private readonly opts: { binaryPath?: string | null; homeDir?: string; spawn?: SpawnPolicy } = {},
+  ) {
+    this.spawn = opts.spawn ?? new SpawnPolicy({ binaries: [claudeManifest.binary] });
+  }
 
   private binary(): string {
     return this.opts.binaryPath ?? findExecutable("claude") ?? "claude";
@@ -80,13 +93,13 @@ export class ClaudeAdapter implements AgentAdapter {
     let version: string | null = null;
     let supportedFlags: string[] = [];
     try {
-      const v = await probe(binaryPath, ["--version"], os.tmpdir());
+      const v = await this.spawn.probe(binaryPath, ["--version"], os.tmpdir());
       version = v.stdout.trim().split("\n")[0] ?? null;
     } catch (err) {
       notes.push(`--version failed: ${(err as Error).message}`);
     }
     try {
-      const h = await probe(binaryPath, ["--help"], os.tmpdir());
+      const h = await this.spawn.probe(binaryPath, ["--help"], os.tmpdir());
       supportedFlags = parseHelpFlags(h.stdout + h.stderr);
       this.authCommandSupported = /^\s*auth(?:\s|\[|$)/m.test(h.stdout);
       for (const required of ["--print", "--output-format", "--model"]) {
@@ -114,7 +127,7 @@ export class ClaudeAdapter implements AgentAdapter {
     await this.ensureDetection();
     if (this.authCommandSupported && !this.opts.homeDir) {
       try {
-        const result = await probe(this.binary(), ["auth", "status", "--json"], os.tmpdir(), 5000);
+        const result = await this.spawn.probe(this.binary(), ["auth", "status", "--json"], os.tmpdir(), 5000);
         if (!result.timedOut) {
           const status: unknown = JSON.parse(result.stdout);
           if (status && typeof status === "object" && "loggedIn" in status) {

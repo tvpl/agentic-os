@@ -4,7 +4,6 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
-import { events } from "@mordomo/core";
 import { AppContext, readRestorePending } from "../apps/api/src/context.js";
 import { buildServer, isAllowedHost, safeUrl, tokenMatches } from "../apps/api/src/server.js";
 import { deepMergeSettings, SettingsPatchSchema } from "../apps/api/src/routes/system.js";
@@ -225,7 +224,7 @@ describe("settings deep-merge + adapter reload (audit #6)", () => {
     expect(binaryPath).toBeTruthy();
     const adapterBefore = ctx.adapters.claude;
     let seen = 0;
-    const unsub = events.subscribe((e) => {
+    const unsub = ctx.events.subscribe((e) => {
       if (e.type === "settings.changed") seen++;
     });
     const res = await app.inject({
@@ -575,11 +574,11 @@ describe("SSE streams (audit #23, #27)", () => {
   });
 
   it("/api/events replays from Last-Event-ID / ?since and streams live events", async () => {
-    const a = events.emit("settings.changed", { keys: ["a"] });
-    const b = events.emit("settings.changed", { keys: ["b"] });
+    const a = ctx.events.emit("settings.changed", { keys: ["a"] });
+    const b = ctx.events.emit("settings.changed", { keys: ["b"] });
     const pending = readSse(`${base}/api/events?token=${token}&since=${a.id}`, {}, 700);
     await new Promise((r) => setTimeout(r, 200));
-    const live = events.emit("routine.changed", { id: "x", action: "test" });
+    const live = ctx.events.emit("routine.changed", { id: "x", action: "test" });
     const out = await pending;
     expect(out.status).toBe(200);
     expect(out.contentType).toContain("text/event-stream");

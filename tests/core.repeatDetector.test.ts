@@ -13,7 +13,7 @@ import {
   skillCoversGroup,
   type Db,
   type MordomoPaths,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { makeTempHome } from "./helpers.js";
 
 /**

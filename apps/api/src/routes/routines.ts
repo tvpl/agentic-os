@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { RoutineSchema, events } from "@mordomo/core";
+import { RoutineSchema } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
 import { httpError, requireProvider } from "./common.js";
 import { IdParams } from "./params.js";
@@ -8,7 +8,7 @@ import { IdParams } from "./params.js";
 const SilentQuery = z.object({ days: z.coerce.number().int().min(1).max(365).default(30) });
 
 export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): void {
-  const changed = (id: string, action: string) => events.emit("routine.changed", { id, action });
+  const changed = (id: string, action: string) => ctx.events.emit("routine.changed", { id, action });
   /**
    * Webhook delivery is a settings-level opt-in: `settings.routines.allowWebhooks`.
    * The store refuses `delivery: "webhook"` when it is off, which surfaces as a 400.

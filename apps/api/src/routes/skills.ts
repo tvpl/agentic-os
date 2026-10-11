@@ -2,23 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import {
-  ProviderId,
-  EffortLevel,
-  SkillFrontmatterSchema,
-  statWorkspacePath,
-  type RunMode,
-} from "@mordomo/core";
+import { ProviderId, EffortLevel, SkillFrontmatterSchema, statWorkspacePath } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
-import {
-  gateWrite,
-  httpError,
-  launchSkillRun,
-  requireProvider,
-  startedByOf,
-  submitPromptRun,
-  type SkillRunInput,
-} from "./common.js";
+import { httpError, startedByOf } from "./common.js";
 import { IdParam, SlugParams } from "./params.js";
 
 /** Previews stream at most this much (brand PDFs are a few MB; nothing in a skill should be bigger). */
@@ -151,14 +137,14 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
       `Move every note you applied to ${ctx.skills.archiveFile(skill)} (append, keep the date, mark each one (promoted)); leave one-off notes in NOTES.md.`,
       "Do not touch any other file. Finish with a short summary of what changed.",
     ].join("\n");
-    const result = submitPromptRun(
-      ctx,
-      { prompt, mode: "write", cwd: skill.dir },
-      startedByOf(req),
-      (err, runId) => req.log.error({ err, runId, msg: "notes promotion run failed to execute" }),
+    const started = ctx.execution.startPrompt(
+      { prompt, mode: "write", cwd: skill.dir, startedBy: startedByOf(req) },
+      {
+        onError: (err, runId) => req.log.error({ err, runId, msg: "notes promotion run failed to execute" }),
+      },
     );
-    if (result.statusCode !== 200) reply.code(result.statusCode);
-    return result.body;
+    if (started.status === "waiting_approval") reply.code(202);
+    return started;
   });
 
   app.post("/api/skills/:slug/toggle", { config: { scope: "owner" } }, async (req) => {
@@ -277,49 +263,12 @@ export function registerSkillRoutes(app: FastifyInstance, ctx: AppContext): void
   app.post("/api/skills/:slug/run", { config: { scope: "run" } }, async (req, reply) => {
     const { slug } = SlugParams.parse(req.params);
     const body = RunSkillBody.parse(req.body ?? {});
-    const skill = ctx.skills.load(slug);
-    if (!skill) throw httpError(404, "Skill not found");
-    if (!skill.enabled) throw httpError(400, "Skill is disabled");
-
-    const settings = ctx.settings();
-    const provider = body.provider ?? settings.defaultProvider;
-    const providerSettings = requireProvider(ctx, provider, settings);
-    if (!providerSettings.enabled) throw httpError(400, `Provider ${provider} is not enabled`);
-    if (!skill.providers.includes(provider))
-      throw httpError(400, `Skill ${slug} does not support provider ${provider}`);
-    for (const input of skill.inputs) {
-      if (input.required && !body.inputs[input.name]?.trim()) {
-        throw httpError(400, `Missing required input: ${input.label}`);
-      }
-    }
-
-    const cwd = ctx.resolveCwd(body.cwd);
-    const mode: RunMode = skill.mode === "write" ? "write" : "read_only";
-    const input: SkillRunInput = {
-      slug,
-      inputs: body.inputs,
-      provider,
-      model:
-        body.model !== undefined ? body.model : (skill.recommendedModel ?? providerSettings.defaultModel),
-      effort:
-        body.effort ??
-        (skill.recommendedEffort !== "default" ? skill.recommendedEffort : providerSettings.defaultEffort),
-      cwd,
-      timeoutMs: body.timeoutMs ?? settings.limits.defaultTimeoutMs,
-      startedBy: startedByOf(req),
-    };
-    const gate = gateWrite(ctx, mode, "skill", `Write-mode skill run: /${slug} with ${provider}`, {
-      kind: "skill",
-      input,
-    });
-    if (gate.pendingApproval) {
-      // 202 + the parked run row: the write is visible in Runs as `waiting_approval`.
-      reply.code(202);
-      return { runId: gate.runId, status: "waiting_approval", pendingApproval: gate.pendingApproval };
-    }
-    const { runId } = launchSkillRun(ctx, input, (err, id) =>
-      req.log.error({ err, runId: id, msg: "skill run failed to execute" }),
+    const started = ctx.execution.startSkill(
+      { ...body, slug, startedBy: startedByOf(req) },
+      { onError: (err, id) => req.log.error({ err, runId: id, msg: "skill run failed to execute" }) },
     );
-    return { runId, status: "queued" };
+    // 202 + the parked run row: the write is visible in Runs as `waiting_approval`.
+    if (started.status === "waiting_approval") reply.code(202);
+    return started;
   });
 }

@@ -3,11 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { PathAccessError } from "@mordomo/core";
 import {
   DEFAULT_COPY_LIMITS,
   atomicWrite,
   ensureJournal,
-  PathAccessError,
   copyTreeWithoutLinks,
   homeReadScope,
   openWorkspaceFile,
@@ -16,8 +16,9 @@ import {
   resolveWorkspaceCwd,
   tightenMode,
   writeWorkspaceFile,
-} from "@mordomo/core";
-import { RunManager, type AgentAdapter, type AgentRun } from "@mordomo/core";
+} from "@mordomo/core/internal";
+import { type AgentAdapter, type AgentRun } from "@mordomo/core";
+import { RunManager } from "@mordomo/core/internal";
 import { ClaudeAdapter } from "@mordomo/adapter-claude";
 import { AppContext } from "../apps/api/src/context.js";
 import { startSecureServer, type SecureServer } from "./helpers/securityHarness.js";

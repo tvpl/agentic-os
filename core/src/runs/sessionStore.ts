@@ -3,7 +3,7 @@ import type { Db } from "../db/db.js";
 import type { ProviderId, SecurityProfile } from "../config/schema.js";
 import type { RunUsage } from "../agents/types.js";
 import { redactSecrets } from "../security/redact.js";
-import { events } from "../events.js";
+import type { EventBus } from "../events.js";
 import type { SessionRecord } from "@mordomo/contracts";
 
 export type { SessionRecord };
@@ -58,7 +58,11 @@ export interface RecordRunInput {
 const TITLE_MAX = 160;
 
 export class SessionStore {
-  constructor(private readonly db: Db) {}
+  constructor(
+    private readonly db: Db,
+    /** Where conversations are announced (`session.created`, `session.updated`); without one it is silent. */
+    private readonly bus?: EventBus,
+  ) {}
 
   create(input: CreateSessionInput): SessionRecord {
     const id = crypto.randomUUID();
@@ -80,7 +84,7 @@ export class SessionStore {
       );
     const record = this.get(id);
     if (!record) throw new Error("session insert failed");
-    events.emit("session.created", { sessionId: id, provider: record.provider, title: record.title });
+    this.bus?.emit("session.created", { sessionId: id, provider: record.provider, title: record.title });
     return record;
   }
 
@@ -148,7 +152,7 @@ export class SessionStore {
       )
       .run(providerSessionId, Date.now(), id, providerSessionId).changes;
     if (changed === 0) return false;
-    events.emit("session.updated", { sessionId: id, providerSessionId });
+    this.bus?.emit("session.updated", { sessionId: id, providerSessionId });
     return true;
   }
 
@@ -181,7 +185,7 @@ export class SessionStore {
     if (changed === 0) return null;
     const record = this.get(id);
     if (record) {
-      events.emit("session.updated", {
+      this.bus?.emit("session.updated", {
         sessionId: id,
         lastRunId: record.lastRunId,
         turns: record.turns,
@@ -196,7 +200,7 @@ export class SessionStore {
     const changed = this.db
       .prepare("UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?")
       .run(sessionTitle(title), Date.now(), id).changes;
-    if (changed > 0) events.emit("session.updated", { sessionId: id, title: sessionTitle(title) });
+    if (changed > 0) this.bus?.emit("session.updated", { sessionId: id, title: sessionTitle(title) });
     return changed > 0;
   }
 
@@ -209,7 +213,7 @@ export class SessionStore {
       .prepare("UPDATE runs SET session_id = NULL WHERE session_id = ?")
       .run(id).changes;
     const deleted = this.db.prepare("DELETE FROM sessions WHERE id = ?").run(id).changes > 0;
-    if (deleted) events.emit("session.updated", { sessionId: id, deleted: true, runsKept });
+    if (deleted) this.bus?.emit("session.updated", { sessionId: id, deleted: true, runsKept });
     return { deleted, runsKept };
   }
 }

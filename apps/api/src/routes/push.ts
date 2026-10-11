@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { checkPushEndpoint, deliverPush } from "@mordomo/core";
+import { checkPushEndpoint, deliverPush } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
 import { httpError } from "./common.js";
 

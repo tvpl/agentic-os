@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Db } from "../db/db.js";
 import type { IndexedFolder, Settings } from "../config/schema.js";
-import { events } from "../events.js";
+import type { EventBus } from "../events.js";
 import { relatedFromTerms, termFrequencies } from "./related.js";
 import { PathAccessError, realpathLenient } from "../security/paths.js";
 import { openWorkspaceFile, readScope, statWorkspacePath, type ReadScope } from "../security/safeFs.js";
@@ -93,6 +93,8 @@ export class MemoryIndexer {
     private readonly getSettings: () => Settings,
     /** `homeDir`: the MordomoOS home, whose `config/` and `logs/` are never indexed (required: no indexer without it). */
     private readonly filterOptions: { homeDir: string; platform?: NodeJS.Platform },
+    /** Where a pass is announced (`index.progress`, `index.finished`, `index.failed`); without one it is silent. */
+    private readonly bus?: EventBus,
   ) {}
 
   /**
@@ -231,7 +233,7 @@ export class MemoryIndexer {
           removed: stats.removed,
         };
         onProgress?.(p);
-        events.emit("index.progress", p);
+        this.bus?.emit("index.progress", p);
       };
 
       // Phase 1: scan (no content is read here).
@@ -328,10 +330,10 @@ export class MemoryIndexer {
       });
       finish();
       emit(total);
-      events.emit("index.finished", { stats });
+      this.bus?.emit("index.finished", { stats });
       return stats;
     } catch (error) {
-      events.emit("index.failed", {
+      this.bus?.emit("index.failed", {
         code: error instanceof IncompleteIndexScanError ? error.code : "index_failed",
         previousIndexPreserved: error instanceof IncompleteIndexScanError,
       });

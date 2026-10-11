@@ -1,4 +1,4 @@
-import type { Migration } from "@mordomo/core";
+import type { Migration } from "@mordomo/core/internal";
 
 /** Block this thread for `ms` (a migration that takes a while, so processes opening together overlap). */
 export function sleepSync(ms: number): void {

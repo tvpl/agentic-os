@@ -2,23 +2,9 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 import { PRIVATE_DIR_MODE, PRIVATE_FILE_MODE, tightenMode, type MordomoPaths } from "./paths.js";
+import { RestoreInProgressError } from "./errors.js";
 
-/**
- * Something holds the home in a way that must not overlap what was asked: a restore (or the undoing of one that
- * died), or - for a restore - a backup or a process that is starting.
- */
-export class RestoreInProgressError extends Error {
-  readonly code = "restore_in_progress";
-  /** What an API answers. */
-  readonly statusCode = 409;
-  constructor() {
-    super(
-      "A restore is in progress, or the home is held by something that must not overlap one (a backup, a process " +
-        "that is starting): config/run/restore.lock is taken. Try again when it has finished.",
-    );
-    this.name = "RestoreInProgressError";
-  }
-}
+export { RestoreInProgressError };
 
 /** `config/run/restore.lock` cannot be used as a lock: it is not a file, or not a database file. */
 export class RestoreLockError extends Error {

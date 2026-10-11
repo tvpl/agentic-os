@@ -16,6 +16,7 @@ export type ProviderId = z.infer<typeof ProviderId>;
 export const BUILTIN_PROVIDER_IDS = ["claude", "cursor", "codex"] as const;
 export type BuiltinProviderId = (typeof BUILTIN_PROVIDER_IDS)[number];
 
+/** How a write run is treated: refused, parked for approval, or run. */
 export const SecurityProfile = z.enum([
   "read_only",
   "review_before_write",
@@ -24,6 +25,7 @@ export const SecurityProfile = z.enum([
 ]);
 export type SecurityProfile = z.infer<typeof SecurityProfile>;
 
+/** How much reasoning a provider that supports it is asked for. */
 export const EffortLevel = z.enum(["low", "medium", "high", "default"]);
 export type EffortLevel = z.infer<typeof EffortLevel>;
 
@@ -397,6 +399,7 @@ export const SettingsSchema = z.object({
   /** External delivery channels (Onda 2, item 4). Tokens live in the environment, never here. */
   channels: ChannelSettingsSchema.default({}),
 });
+/** The settings document (`config/settings.json`). */
 export type Settings = z.infer<typeof SettingsSchema>;
 
 export function defaultSettings(): Settings {

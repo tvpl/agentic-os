@@ -9,7 +9,7 @@ import {
   SettingsStore,
   parseTolerant,
   type MordomoPaths,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { makeTempHome } from "./helpers.js";

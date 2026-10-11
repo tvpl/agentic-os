@@ -5,6 +5,7 @@ import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { RestoreInProgressError } from "@mordomo/core";
 import {
   BackupVerificationError,
   MIGRATIONS,
@@ -15,7 +16,6 @@ import {
   listBackups,
   openDb,
   readRestorePending,
-  RestoreInProgressError,
   RestoreLeftoverError,
   RestoreLock,
   RestoreRecoveryError,
@@ -24,7 +24,7 @@ import {
   restoreBackup,
   writeRestorePending,
   type MordomoPaths,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import net from "node:net";
 import { AppContext } from "../apps/api/src/context.js";
 import { startServer } from "../apps/api/src/server.js";

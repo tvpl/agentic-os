@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { writeWorkspaceFile } from "@mordomo/core";
+import { writeWorkspaceFile } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
 
 const PNG_PREFIX = "data:image/png;base64,";

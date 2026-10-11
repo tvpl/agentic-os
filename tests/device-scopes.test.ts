@@ -5,6 +5,7 @@ import path from "node:path";
 import type * as ChildProcess from "node:child_process";
 import type { FastifyInstance } from "fastify";
 import Database from "better-sqlite3";
+import { type ApprovalKind, type ProviderManifest } from "@mordomo/core";
 import {
   DEFAULT_DEVICE_SCOPES,
   DEVICE_SCOPES,
@@ -15,10 +16,8 @@ import {
   MIGRATIONS,
   closeDeviceScopes,
   triageSentinel,
-  type ApprovalKind,
   type DeviceScope,
-  type ProviderManifest,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { claudeManifest, createClaudeAdapter } from "@mordomo/adapter-claude";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer, deviceVerdict, type RouteScope } from "../apps/api/src/server.js";

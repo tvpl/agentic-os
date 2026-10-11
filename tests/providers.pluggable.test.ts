@@ -7,30 +7,30 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 import ts from "typescript";
-import * as core from "@mordomo/core";
+import * as core from "@mordomo/core/internal";
+import {
+  ProviderRegistry,
+  ProviderRegistryError,
+  type AdapterFactory,
+  type AgentAdapter,
+  type ProviderManifest,
+  type RunRecord,
+} from "@mordomo/core";
 import {
   ConnectorRegistry,
   ConnectorSchema,
   ExecutableNotAllowedError,
   ProviderId,
-  ProviderRegistry,
-  ProviderRegistryError,
   RoutineSchema,
   RoutineStore,
   SettingsStore,
   SkillCatalog,
-  assertAllowed,
-  createEngine,
   homeConfigFilesOf,
   resolvePaths,
   runAudit,
-  type AdapterFactory,
-  type AgentAdapter,
-  type MordomoEngine,
-  type ProviderManifest,
-  type RunRecord,
+  MordomoEngine,
   type RunRequestSpec,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { claudeManifest, createClaudeAdapter } from "@mordomo/adapter-claude";
 import { codexManifest, createCodexAdapter } from "@mordomo/adapter-codex";
 import { cursorManifest, createCursorAdapter } from "@mordomo/adapter-cursor";
@@ -107,7 +107,7 @@ function engineWith(
   settings.providers.claude.binaryPath = path.join(FAKE_BIN, "claude");
   patch(settings);
   store.save(settings);
-  const e = createEngine({ home, seedDir: null, providers: registry });
+  const e = new MordomoEngine({ home, seedDir: null, providers: registry });
   engines.push(e);
   return e;
 }
@@ -135,7 +135,7 @@ describe("S1 an open provider id that never drops what is stored", () => {
       // A save keeps the unknown entry (nothing stored is dropped) and the engine still builds.
       store.save(settings);
       expect(new SettingsStore(paths).load().providers.gemini?.enabled).toBe(true);
-      const e = createEngine({ home: paths.home, seedDir: null, providers: builtinRegistry() });
+      const e = new MordomoEngine({ home: paths.home, seedDir: null, providers: builtinRegistry() });
       engines.push(e);
       expect(e.settings().defaultProvider).toBe("gemini");
     } finally {
@@ -357,19 +357,19 @@ describe("S2 each adapter carries its own manifest", () => {
 describe("S3 the allowlist comes from the manifests", () => {
   it("C14 the allowlist follows the registered manifests", () => {
     const e = engineWith(builtinRegistry());
-    expect(() => assertAllowed("/tmp/x/acme-cli")).toThrow(ExecutableNotAllowedError);
-    expect(() => assertAllowed(process.execPath)).not.toThrow();
+    expect(() => e.spawnPolicy.assertAllowed("/tmp/x/acme-cli")).toThrow(ExecutableNotAllowedError);
+    expect(() => e.spawnPolicy.assertAllowed(process.execPath)).not.toThrow();
     e.providers.register(acmeManifest, createAcmeAdapter);
     e.reloadAdapters();
-    expect(() => assertAllowed("/tmp/x/acme-cli")).not.toThrow();
-    expect(() => assertAllowed("/usr/bin/node")).not.toThrow();
+    expect(() => e.spawnPolicy.assertAllowed("/tmp/x/acme-cli")).not.toThrow();
+    expect(() => e.spawnPolicy.assertAllowed("/usr/bin/node")).not.toThrow();
   });
 
   it("C15 an unregistered binary is not allowed", () => {
-    engineWith(new ProviderRegistry().register(claudeManifest, createClaudeAdapter));
-    expect(() => assertAllowed("/usr/bin/claude")).not.toThrow();
-    expect(() => assertAllowed("/usr/bin/cursor-agent")).toThrow(ExecutableNotAllowedError);
-    expect(() => assertAllowed("/usr/bin/codex")).toThrow(ExecutableNotAllowedError);
+    const e = engineWith(new ProviderRegistry().register(claudeManifest, createClaudeAdapter));
+    expect(() => e.spawnPolicy.assertAllowed("/usr/bin/claude")).not.toThrow();
+    expect(() => e.spawnPolicy.assertAllowed("/usr/bin/cursor-agent")).toThrow(ExecutableNotAllowedError);
+    expect(() => e.spawnPolicy.assertAllowed("/usr/bin/codex")).toThrow(ExecutableNotAllowedError);
   });
 
   it("names a Windows executable without its extension", () => {
@@ -676,7 +676,7 @@ describe("the API with an unregistered provider", () => {
 // Pure: runs on every platform, including the Windows CI leg.
 describe("the stored binary path check", () => {
   it("C29 the stored binary path check follows the platform's executable names", () => {
-    const registry = new core.ProviderRegistry()
+    const registry = new ProviderRegistry()
       .register(claudeManifest, createClaudeAdapter)
       .register(codexManifest, createCodexAdapter);
     const ignored = (binaryPath: string | null, platform: NodeJS.Platform) =>

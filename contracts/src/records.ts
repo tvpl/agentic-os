@@ -2,6 +2,7 @@
 import type { ApprovalKind } from "./policy.js";
 import type { ProviderId, SecurityProfile } from "./settings.js";
 
+/** A decision a human has to take (a write, a tool, a change of settings), with who asked and who decided. */
 export interface Approval {
   id: string;
   createdAt: number;
@@ -37,6 +38,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "system",
 ];
 
+/** A row of the inbox: an approval, a failed run, an alert, a budget warning. */
 export interface NotificationRecord {
   /** `n_<uuid>` — the prefix is what tells the UI a row came from the server. */
   id: string;
@@ -55,6 +57,7 @@ export interface NotificationRecord {
   dedupeKey: string | null;
 }
 
+/** A conversation: the runs that continue one provider-side thread. */
 export interface SessionRecord {
   id: string;
   provider: ProviderId;
@@ -92,6 +95,7 @@ export interface TestedVersions {
  */
 export type VersionStatus = "tested" | "older" | "newer" | "unknown";
 
+/** What a provider can do and where it stops. */
 export interface ProviderCapabilities {
   /** `read_only` is enforced by the CLI itself (sandbox / permission rules), not just asked for in the prompt. */
   enforcesReadOnly: boolean;

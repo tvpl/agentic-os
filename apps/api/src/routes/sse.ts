@@ -1,4 +1,4 @@
-import type { FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { successorHeaders } from "../apiVersion.js";
 
 /**
@@ -7,7 +7,7 @@ import { successorHeaders } from "../apiVersion.js";
  * - `id:` lines so browsers resume with `Last-Event-ID`;
  * - a heartbeat comment every 15 s keeps proxies and idle sockets alive;
  * - cleanup callbacks run exactly once, on client close or explicit end;
- * - every open channel is tracked so `closeAllSse()` (server shutdown) can
+ * - every open channel is tracked per server so `closeAllSse(app)` (server shutdown) can
  *   end them instead of leaving `app.close()` waiting on live connections.
  */
 
@@ -25,10 +25,25 @@ export interface SseChannel {
   readonly closed: boolean;
 }
 
-const OPEN_CHANNELS = new Set<SseChannel>();
+/** The streams each server has open: closing one server must not end the streams of another in the same process. */
+const OPEN_CHANNELS = new WeakMap<object, Set<SseChannel>>();
 
-export function closeAllSse(): void {
-  for (const ch of [...OPEN_CHANNELS]) ch.end();
+function channelsOf(app: object): Set<SseChannel> {
+  let open = OPEN_CHANNELS.get(app);
+  if (!open) {
+    open = new Set();
+    OPEN_CHANNELS.set(app, open);
+  }
+  return open;
+}
+
+/** The server a request belongs to (a request that carries none is its own owner). */
+function serverOf(req: FastifyRequest): object {
+  return (req as { server?: FastifyInstance }).server ?? req;
+}
+
+export function closeAllSse(app: FastifyInstance): void {
+  for (const ch of [...channelsOf(app)]) ch.end();
 }
 
 /** `Last-Event-ID` header, or `?since=` query, as a non-negative integer. */
@@ -103,7 +118,7 @@ export function openSse(
     raw.off("drain", drain);
     pending.length = 0;
     bufferedBytes = 0;
-    OPEN_CHANNELS.delete(channel);
+    channelsOf(serverOf(req)).delete(channel);
     for (const fn of cleanups.splice(0)) {
       try {
         fn();
@@ -142,7 +157,7 @@ export function openSse(
       else cleanups.push(fn);
     },
   };
-  OPEN_CHANNELS.add(channel);
+  channelsOf(serverOf(req)).add(channel);
   req.raw.on("close", runCleanups);
   raw.on("close", runCleanups);
   return channel;

@@ -3,7 +3,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { PRIVATE_DIR_MODE, PRIVATE_FILE_MODE, type MordomoPaths } from "../paths.js";
 import { CURRENT_SETTINGS_VERSION, SettingsSchema, type Settings, defaultSettings } from "./schema.js";
-import { events } from "../events.js";
+import type { EventBus } from "../events.js";
 import { JsonlLogger } from "../logs/jsonl.js";
 import { SETTINGS_FAIL_CLOSED } from "./failClosed.js";
 import { parseTolerant, type SettingsIssue } from "./tolerant.js";
@@ -37,6 +37,16 @@ export function deepMergeSettings<T extends Record<string, unknown>>(base: T, pa
 
 export type SettingsPatch = Partial<Settings> | ((current: Settings) => Partial<Settings>);
 
+/** Every key optional, at any depth; arrays are replaced whole, as `deepMergeSettings` does. */
+export type DeepPartial<T> = T extends readonly unknown[]
+  ? T
+  : T extends object
+    ? { [K in keyof T]?: DeepPartial<T[K]> }
+    : T;
+
+/** A change to the settings: only the keys that change, nested objects merged (`Engine.updateSettings`). */
+export type SettingsUpdate = DeepPartial<Settings>;
+
 /** `settings.json.corrupt.<ms>` copies kept. */
 const MAX_CORRUPT_COPIES = 5;
 
@@ -56,7 +66,11 @@ export class SettingsStore {
   private cache: CacheEntry | null = null;
   private queue: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly paths: MordomoPaths) {}
+  constructor(
+    private readonly paths: MordomoPaths,
+    /** Where a save is announced (`settings.changed`); without one a save is silent. */
+    private readonly bus?: EventBus,
+  ) {}
 
   load(): Settings {
     let stat: fs.Stats;
@@ -263,7 +277,7 @@ export class SettingsStore {
     } catch {
       this.cache = null;
     }
-    events.emit("settings.changed", { settings: parsed });
+    this.bus?.emit("settings.changed", { settings: parsed });
     return parsed;
   }
 

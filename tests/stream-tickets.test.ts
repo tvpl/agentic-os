@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { FastifyInstance } from "fastify";
-import { events, type DeviceScope } from "@mordomo/core";
+import { type DeviceScope } from "@mordomo/core/internal";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer, safeUrl } from "../apps/api/src/server.js";
 import type { Principal } from "../apps/api/src/routes/common.js";
@@ -151,7 +151,7 @@ describe("S5 stream tickets", () => {
       const feed = await open(`${base}/api/v1/events?ticket=${ticket}`);
       expect(feed.status).toBe(200);
       expect(feed.type).toContain("text/event-stream");
-      events.emit("notification.read", { all: true });
+      ctx.events.emit("notification.read", { all: true });
       expect(await feed.next(/event: notification\.read/)).toContain("event: notification.read");
       feed.close();
       const principal = seen.find((s) => s.url.includes("/api/events"))?.principal;

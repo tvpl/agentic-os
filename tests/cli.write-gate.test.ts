@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { SettingsStore, openDb, resolvePaths, type SecurityProfile } from "@mordomo/core";
+import { SettingsStore, openDb, resolvePaths, type SecurityProfile } from "@mordomo/core/internal";
 import { FAKE_BIN, FAKE_CLIS_RUNNABLE } from "./helpers.js";
 
 /**

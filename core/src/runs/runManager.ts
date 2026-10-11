@@ -20,8 +20,9 @@ import {
   type ReadScope,
 } from "../security/safeFs.js";
 import { ownedProcessKiller } from "../spawn/safeSpawn.js";
-import { events } from "../events.js";
+import type { EventBus } from "../events.js";
 import { boundedPaths } from "../agents/eventPaths.js";
+import { MordomoError } from "../errors.js";
 import { SessionStore } from "./sessionStore.js";
 import { emulatedPrompt } from "./emulatedSession.js";
 import {
@@ -184,6 +185,7 @@ export class RunManager {
   private readonly skillAccess: ((slug: string) => SkillAccess | null) | null;
   private readonly runApiAccess: RunApiAccessFactory | null;
   private readonly platform: NodeJS.Platform | undefined;
+  private readonly bus: EventBus | null;
   /** Conversations these runs may belong to (`runs.session_id`). */
   readonly sessions: SessionStore;
   private readonly emitter = new EventEmitter();
@@ -212,6 +214,8 @@ export class RunManager {
       runApiAccess?: RunApiAccessFactory;
       /** Platform whose file-name rules apply to working directories (tests only); defaults to this process's. */
       platform?: NodeJS.Platform;
+      /** Where runs are announced (`run.*`) and the conversations' changes (`session.*`); without one it is silent. */
+      bus?: EventBus;
     } = {},
   ) {
     this.permissionBroker = opts.permissionBroker ?? null;
@@ -219,7 +223,8 @@ export class RunManager {
     this.runApiAccess = opts.runApiAccess ?? null;
     this.platform = opts.platform;
     const s = getSettings();
-    this.sessions = new SessionStore(db);
+    this.bus = opts.bus ?? null;
+    this.sessions = new SessionStore(db, opts.bus);
     this.logger = new JsonlLogger(paths.logs, "runs", s.limits.logMaxFileBytes, s.limits.logRetentionDays);
     this.emitter.setMaxListeners(100);
     this.eventCap = opts.eventCap ?? DEFAULT_EVENT_CAP;
@@ -458,11 +463,10 @@ export class RunManager {
       fs.mkdirSync(this.paths.workspace, { recursive: true });
     } catch (err) {
       // A file, or a link that points nowhere, is where the folder should be: say what to do, not "EEXIST".
-      throw Object.assign(
-        new Error(
-          `The default working directory ${this.paths.workspace} cannot be used (it exists and is not a folder, or cannot be made): remove or rename it. ${(err as Error).message}`,
-        ),
-        { statusCode: 409, code: "workspace_unavailable" },
+      throw new MordomoError(
+        409,
+        `The default working directory ${this.paths.workspace} cannot be used (it exists and is not a folder, or cannot be made): remove or rename it. ${(err as Error).message}`,
+        "workspace_unavailable",
       );
     }
     return resolveWorkspaceCwd(this.scope(), this.paths.workspace);
@@ -547,11 +551,10 @@ export class RunManager {
     const adapter = this.getAdapter(provider);
     if (adapter?.manifest?.capabilities?.readConfinement === "workdir") return;
     const name = adapter?.manifest?.displayName ?? provider;
-    throw Object.assign(
-      new Error(
-        `${name} reads everything the user can read, so a paired device cannot start a run on it. Start it from the desktop, or choose a provider that keeps reads in the working folder.`,
-      ),
-      { statusCode: 403, code: "device_provider_refused" },
+    throw new MordomoError(
+      403,
+      `${name} reads everything the user can read, so a paired device cannot start a run on it. Start it from the desktop, or choose a provider that keeps reads in the working folder.`,
+      "device_provider_refused",
     );
   }
 
@@ -605,7 +608,7 @@ export class RunManager {
       );
     const record = this.get(id);
     if (!record) throw new Error("run insert failed");
-    events.emit("run.created", {
+    this.bus?.emit("run.created", {
       runId: id,
       origin: input.origin,
       provider: input.provider,
@@ -798,7 +801,7 @@ export class RunManager {
           active.pid = event.pid;
           active.forceKill = event.pid == null ? undefined : ownedProcessKiller(event.pid);
           this.db.prepare("UPDATE runs SET pid = ? WHERE id = ?").run(event.pid, runId);
-          events.emit("run.started", { runId, pid: event.pid });
+          this.bus?.emit("run.started", { runId, pid: event.pid });
         }
         if (event.type === "session" && record.sessionId) {
           // Last one wins: a resumed conversation may fork into a new id.
@@ -984,7 +987,7 @@ export class RunManager {
         exitCode: patch.exit_code ?? null,
         error: patch.error ?? null,
       });
-      events.emit("run.finished", { runId, status: to, durationMs });
+      this.bus?.emit("run.finished", { runId, status: to, durationMs });
     }
     return ok;
   }
@@ -1167,7 +1170,7 @@ export class RunManager {
   private emit(runId: string, event: RunEvent, eventId?: number): void {
     this.emitter.emit(`run:${runId}`, event, eventId);
     this.emitter.emit("run:*", { runId, event });
-    events.emit("run.event", { runId, event });
+    this.bus?.emit("run.event", { runId, event });
   }
 
   onAny(listener: (payload: { runId: string; event: RunEvent }) => void): () => void {

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { formatNotification, sendTelegramMessage, telegramToken, type Settings } from "@mordomo/core";
+import { type Settings } from "@mordomo/core";
+import { formatNotification, sendTelegramMessage, telegramToken } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
 import { httpError } from "./common.js";
 

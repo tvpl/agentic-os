@@ -3,6 +3,7 @@ import fs from "node:fs";
 import Database from "better-sqlite3";
 import path from "node:path";
 import {
+  EventBus,
   UiPreferencesSchema,
   SettingsStore,
   defaultSettings,
@@ -20,8 +21,7 @@ import {
   InvalidIdError,
   JsonlLogger,
   rotateFile,
-  events,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { claudeManifest } from "@mordomo/adapter-claude";
 import { cursorManifest } from "@mordomo/adapter-cursor";
 import { makeTempHome } from "./helpers.js";
@@ -69,9 +69,10 @@ describe("settings store", () => {
   it("caches by mtime+size, deep-merges patches and emits settings.changed", () => {
     const { paths, cleanup } = makeTempHome();
     try {
-      const store = new SettingsStore(paths);
+      const bus = new EventBus();
+      const store = new SettingsStore(paths, bus);
       const changes: number[] = [];
-      const unsubscribe = events.subscribe((e) => {
+      const unsubscribe = bus.subscribe((e) => {
         if (e.type === "settings.changed") changes.push(e.id);
       });
       try {

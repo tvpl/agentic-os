@@ -2,19 +2,19 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { PathAccessError } from "@mordomo/core";
 import {
   redactSecrets,
   redactObject,
   isInside,
   isInsideAny,
   resolveInsideRoots,
-  PathAccessError,
   makeExcludeMatcher,
   isSecretFile,
   assertAllowed,
   ExecutableNotAllowedError,
   safeSpawn,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { makeTempHome } from "./helpers.js";
 
 describe("secret redaction", () => {

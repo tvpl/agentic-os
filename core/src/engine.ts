@@ -1,7 +1,8 @@
 /**
- * The engine, assembled (.specs/features/motor-composicao). `createEngine()`
- * builds every store and manager over one MordomoOS home and changes nothing
- * on disk beyond opening (and migrating) the database. Only the process that
+ * The engine, assembled (.specs/features/motor-composicao). `new MordomoEngine()`
+ * (`createEngine()` for a library caller, see `sdk.ts`) builds every store and manager
+ * over one MordomoOS home and changes nothing on disk beyond opening (and migrating)
+ * the database. Only the process that
  * calls `start()` owns the home: it takes `config/run/engine.lock`, prunes,
  * recovers objective steps and orphaned runs, and starts the scheduler and the
  * sentinels. CLI commands build an engine and never start it, so they cannot
@@ -27,12 +28,20 @@ import { RestoreInProgressError, RestoreLock } from "./restoreLock.js";
 import { installPushChannel } from "./channels/pushChannel.js";
 import { systemResolver, type HostResolver } from "./channels/pushEndpoint.js";
 import { installTelegramChannel } from "./channels/telegram.js";
-import type { EffortLevel, ProviderId, SecurityProfile, Settings } from "./config/schema.js";
-import { SettingsStore } from "./config/store.js";
+import {
+  ProviderSettingsSchema,
+  type ProviderId,
+  type ProviderSettings,
+  type SecurityProfile,
+  type Settings,
+} from "./config/schema.js";
+import { SettingsStore, type SettingsUpdate } from "./config/store.js";
 import { UiPreferencesStore } from "./config/preferences.js";
 import { ConnectorRegistry } from "./connectors/registry.js";
 import { openDb, type Db } from "./db/db.js";
-import { events } from "./events.js";
+import { EventBus } from "./events.js";
+import { MordomoError } from "./errors.js";
+import { ExecutionService } from "./execution/service.js";
 import { MemoryIndexer } from "./memory/indexer.js";
 import { installJournalHooks } from "./memory/journal.js";
 import { MetricsHistory } from "./metrics/history.js";
@@ -52,10 +61,12 @@ import { writeDecision, type WriteOrigin } from "./security/profiles.js";
 import { SentinelRunner } from "./sentinels/runner.js";
 import { SkillCatalog } from "./skills/catalog.js";
 import { SkillRegistry } from "./skills/registry.js";
-import { executableName, setProbeEnvDrop, setProviderBinaries } from "./spawn/safeSpawn.js";
+import { executableName } from "./spawn/safeSpawn.js";
+import { SpawnPolicy } from "./spawn/policy.js";
+import { promptRunFields, type GatedRunPayload, type SkillRunInput } from "./execution/inputs.js";
 import { SyncCompiler } from "./sync/compiler.js";
 
-export interface EngineOptions {
+export interface MordomoEngineOptions {
   /** The MordomoOS home; defaults to `MORDOMO_HOME` / the platform default (`resolvePaths`). */
   home?: string;
   /** Registered providers (manifest + factory per adapter package). */
@@ -74,44 +85,6 @@ export interface EngineOptions {
   /** How a push endpoint's host name is resolved before it is accepted and before a send (default: the system's DNS). */
   pushResolver?: HostResolver;
 }
-
-/** What a gated write run carries: the prompt or skill run to launch once a human approves. */
-export interface PromptRunInput {
-  prompt: string;
-  provider: ProviderId;
-  model: string | null;
-  effort: EffortLevel;
-  mode: RunMode;
-  cwd: string;
-  timeoutMs: number;
-  /** Conversation this run belongs to, so a run released from approval resumes it. */
-  sessionId?: string;
-  /** Squad: the run this one was fanned out from. */
-  parentRunId?: string;
-  /**
-   * Who asked, by the names `Approval.resolvedBy` uses (`owner`, `device:<id>`); null for the CLI. Required so each
-   * caller decides: a write asked by a paired device always waits for a human (`gateWrite`).
-   */
-  startedBy: string | null;
-}
-
-export interface SkillRunInput {
-  slug: string;
-  inputs: Record<string, string>;
-  provider: ProviderId;
-  model: string | null;
-  effort: EffortLevel;
-  cwd: string;
-  timeoutMs: number;
-  /** First run in the lineage when this is a deliberate retry. */
-  parentRunId?: string | null;
-  /** Who asked (see `PromptRunInput.startedBy`). */
-  startedBy: string | null;
-}
-
-/** What an approved `write_run` approval replays (also its stored payload shape). */
-export type GatedRunPayload =
-  { kind: "prompt"; input: PromptRunInput } | { kind: "skill"; input: SkillRunInput };
 
 export interface WriteGate {
   /** Pending approval created instead of launching the run (profile `review_before_write`). */
@@ -150,13 +123,29 @@ export function ignoredBinaryPaths(
 }
 
 /** One adapter per registered provider; their executables become the spawn allowlist. */
-function buildAdapters(registry: ProviderRegistry, settings: Settings): Record<ProviderId, AgentAdapter> {
-  setProviderBinaries(registry.manifests().map((m) => m.binary));
+function buildAdapters(
+  registry: ProviderRegistry,
+  settings: Settings,
+  policy: SpawnPolicy,
+): Record<ProviderId, AgentAdapter> {
+  policy.setBinaries(registry.manifests().map((m) => m.binary));
+  policy.setProbeEnvDrop(providerEnvDrop(settings));
   const ignored = new Set(ignoredBinaryPaths(registry, settings).map((i) => i.provider));
-  return registry.createAll((id) => (ignored.has(id) ? null : (settings.providers[id]?.binaryPath ?? null)));
+  return registry.createAll(
+    (id) => (ignored.has(id) ? null : (settings.providers[id]?.binaryPath ?? null)),
+    undefined,
+    policy,
+  );
 }
 
 export class MordomoEngine {
+  /**
+   * This engine's event bus. Every store that announces something is given it, and nothing else is: two engines in
+   * one process never hear each other (`.specs/features/sdk-core`, door 3).
+   */
+  readonly events: EventBus = new EventBus();
+  /** What this engine's children may be (executables by name) and what its probes do not inherit. */
+  readonly spawnPolicy: SpawnPolicy = new SpawnPolicy();
   readonly paths: MordomoPaths;
   readonly settingsStore: SettingsStore;
   /** What only the Command Centre reads and writes (`config/ui-preferences.json`). */
@@ -187,8 +176,10 @@ export class MordomoEngine {
   readonly pushResolver: HostResolver;
   /** Hourly metrics snapshots. */
   readonly metricsHistory: MetricsHistory;
+  /** Starting, following, cancelling and approving runs, with the engine's rules (`engine.execution`). */
+  readonly execution: ExecutionService;
   readonly startedAt = Date.now();
-  /** Restore applied while building (see `EngineOptions.applyPendingRestore`). */
+  /** Restore applied while building (see `MordomoEngineOptions.applyPendingRestore`). */
   readonly restoredAtBoot: RestorePending | null;
   /**
    * A restore staged for this boot that failed verification (a backup that is tampered, truncated or unsealed):
@@ -198,10 +189,10 @@ export class MordomoEngine {
 
   private adapterRecord: Record<ProviderId, AgentAdapter>;
   private readonly disposers: Array<() => void> = [];
-  private readonly brokerFactory: EngineOptions["permissionBroker"];
+  private readonly brokerFactory: MordomoEngineOptions["permissionBroker"];
   private ownerLock: OwnerLock | null = null;
 
-  constructor(opts: EngineOptions) {
+  constructor(opts: MordomoEngineOptions) {
     this.paths = resolvePaths(opts.home);
     ensureDirs(this.paths);
     // The files of the home are not ours to build on while a restore replaces them: wait for it to finish, or
@@ -241,11 +232,11 @@ export class MordomoEngine {
       }
       if (opts.seedDir) seedHome(this.paths, opts.seedDir);
       this.brokerFactory = opts.permissionBroker;
-      this.settingsStore = new SettingsStore(this.paths);
+      this.settingsStore = new SettingsStore(this.paths, this.events);
       // A saved preference is announced like a settings change, so every open
       // Command Centre refreshes it (the event map has no separate type for it).
       this.uiPreferences = new UiPreferencesStore(this.paths, () =>
-        events.emit("settings.changed", { settings: this.settings() }),
+        this.events.emit("settings.changed", { settings: this.settings() }),
       );
       this.db = openDb(this.paths).db;
     } finally {
@@ -255,8 +246,7 @@ export class MordomoEngine {
     this.restoreRejectedAtBoot = restoreRejectedAtBoot;
     tightenHomeFiles(this.paths);
     this.providers = opts.providers;
-    this.adapterRecord = buildAdapters(this.providers, this.settingsStore.load());
-    setProbeEnvDrop(providerEnvDrop(this.settingsStore.load()));
+    this.adapterRecord = buildAdapters(this.providers, this.settingsStore.load(), this.spawnPolicy);
     this.skills = new SkillCatalog(this.paths, () => this.settings().memorySkills);
     // The adapter callback reads the CURRENT record, so `reloadAdapters()`
     // takes effect for the next run without rebuilding the RunManager.
@@ -268,6 +258,7 @@ export class MordomoEngine {
       (id) => this.adapters[id],
       {
         pruneOnBoot: false,
+        bus: this.events,
         permissionBroker: (run) => this.permissionBrokerFor(run),
         skillAccess: (slug) => {
           const skill = this.skills.load(slug);
@@ -276,8 +267,13 @@ export class MordomoEngine {
         runApiAccess: (run, mode) => this.runApiAccessFor(run, mode),
       },
     );
-    this.objectives = new ObjectiveStore(this.db, this.paths);
-    this.indexer = new MemoryIndexer(this.db, () => this.settings(), { homeDir: this.paths.home });
+    this.objectives = new ObjectiveStore(this.db, this.paths, this.events);
+    this.indexer = new MemoryIndexer(
+      this.db,
+      () => this.settings(),
+      { homeDir: this.paths.home },
+      this.events,
+    );
     // An index from before the home's config/ was private may hold rows of it: they go now, not at the next pass.
     try {
       this.indexer.purgeExcluded();
@@ -285,8 +281,14 @@ export class MordomoEngine {
       /* best effort: the next index pass removes them as well, and readers filter rows as they read */
     }
     this.routines = new RoutineStore(this.paths);
-    this.scheduler = new RoutineScheduler(this.db, this.paths, this.routines, this.runs, this.skills, () =>
-      this.settings(),
+    this.scheduler = new RoutineScheduler(
+      this.db,
+      this.paths,
+      this.routines,
+      this.runs,
+      this.skills,
+      () => this.settings(),
+      { bus: this.events },
     );
     this.connectors = new ConnectorRegistry(this.paths);
     this.sync = new SyncCompiler(
@@ -301,19 +303,22 @@ export class MordomoEngine {
     // The daily journal listens for finished runs, also in CLI paths (`mordomo
     // index`, `mordomo run`); the install is idempotent.
     this.disposers.push(
-      installJournalHooks(events, this.paths, {
+      installJournalHooks(this.events, this.paths, {
         indexer: this.indexer,
         runs: { get: (id) => this.runs.get(id), lastReply: (id) => this.runs.lastAssistantText(id) },
       }),
     );
     // The inbox listens on the same bus: approvals, failed runs, heartbeat
     // alerts and budget thresholds become rows that survive a closed tab.
-    this.notifications = new NotificationStore(this.db);
+    this.notifications = new NotificationStore(this.db, this.events);
     this.disposers.push(
-      installNotificationRecorder(events, this.notifications, { runs: this.runs, routines: this.routines }),
+      installNotificationRecorder(this.events, this.notifications, {
+        runs: this.runs,
+        routines: this.routines,
+      }),
     );
     this.disposers.push(
-      events.subscribe((event) => {
+      this.events.subscribe((event) => {
         if (event.type !== "run.finished") return;
         const runId = (event.payload as { runId?: string }).runId;
         const run = runId ? this.runs.get(runId) : null;
@@ -323,7 +328,7 @@ export class MordomoEngine {
     // A write parked for a human that is cancelled (by whoever asked, or the owner) takes its approval with it: left
     // pending, a later "approve" would start a fresh run nobody is waiting for any more.
     this.disposers.push(
-      events.subscribe((event) => {
+      this.events.subscribe((event) => {
         if (event.type !== "run.finished") return;
         const { runId, status } = event.payload as { runId?: string; status?: string };
         if (!runId || status !== "cancelled") return;
@@ -331,7 +336,7 @@ export class MordomoEngine {
           if (approval.kind !== "write_run" || approval.payload.runId !== runId) continue;
           const denied = this.approvals.resolve(approval.id, "denied", undefined, "system");
           if (denied) {
-            events.emit("approval.resolved", {
+            this.events.emit("approval.resolved", {
               id: denied.id,
               kind: denied.kind,
               status: denied.status,
@@ -344,7 +349,7 @@ export class MordomoEngine {
     // Alerts leave the tab: Telegram (bot token read from the environment at
     // send time) and Web Push to installed PWAs.
     this.disposers.push(
-      installTelegramChannel(events, {
+      installTelegramChannel(this.events, {
         getSettings: () => this.settings(),
         needsReview: (id) => {
           const approval = this.approvals.get(id);
@@ -366,7 +371,7 @@ export class MordomoEngine {
     );
     this.metricsHistory = new MetricsHistory(this.db);
     this.disposers.push(
-      installPushChannel(events, {
+      installPushChannel(this.events, {
         getSettings: () => this.settings(),
         store: this.push,
         resolveHost: this.pushResolver,
@@ -383,9 +388,10 @@ export class MordomoEngine {
       connectors: this.connectors,
       skills: this.skills,
       indexer: this.indexer,
-      bus: events,
+      bus: this.events,
       selfSchedule: false,
     });
+    this.execution = new ExecutionService(this);
   }
 
   /** Live adapters — rebuilt by `reloadAdapters()` whenever settings change. */
@@ -400,12 +406,52 @@ export class MordomoEngine {
 
   /** Re-create the provider adapters from the settings on disk (binaryPath etc.). */
   reloadAdapters(): void {
-    this.adapterRecord = buildAdapters(this.providers, this.settings());
-    setProbeEnvDrop(providerEnvDrop(this.settings()));
+    this.adapterRecord = buildAdapters(this.providers, this.settings(), this.spawnPolicy);
   }
 
   settings(): Settings {
     return this.settingsStore.load();
+  }
+
+  /** Change settings: validated and merged like a file edit (objects merge, arrays and scalars replace), then saved. */
+  updateSettings(patch: SettingsUpdate): Settings {
+    // `update` deep-merges and validates the whole document, so a patch that names part of a nested object is fine.
+    return this.settingsStore.update(patch as Partial<Settings>);
+  }
+
+  /** The MordomoOS home this engine works on. */
+  get home(): string {
+    return this.paths.home;
+  }
+
+  /**
+   * The settings of a registered provider (the defaults when `settings.json` has no entry for it);
+   * `400 unknown_provider` when no adapter is registered for the id. A provider id is only a format.
+   */
+  requireProvider(id: ProviderId, settings: Settings = this.settings()): ProviderSettings {
+    if (!this.providers.has(id)) {
+      throw new MordomoError(
+        400,
+        `Unknown provider "${id}": no adapter is registered for it`,
+        "unknown_provider",
+      );
+    }
+    return settings.providers[id] ?? ProviderSettingsSchema.parse({});
+  }
+
+  /**
+   * Sweep approvals past their TTL and cancel the runs they were gating. Called when an approval is resolved, and
+   * by the service on boot and hourly. Returns how many expired.
+   */
+  expireStaleApprovals(): number {
+    const expired = this.approvals.expireStale();
+    for (const approval of expired) {
+      const runId = approval.payload.runId;
+      if (typeof runId !== "string") continue;
+      void this.runs.cancel(runId, `Approval expired after ${this.settings().limits.approvalTtlDays} days`);
+    }
+    if (expired.length > 0) this.events.emit("approval.expired", { count: expired.length });
+    return expired.length;
   }
 
   /** The permission broker for a write run; subclasses (the API) issue its credential. */
@@ -514,11 +560,10 @@ export class MordomoEngine {
   assertWriteAllowed(mode: RunMode, origin: WriteOrigin): void {
     if (mode !== "write") return;
     if (writeDecision(this.settings().securityProfile, origin) === "refuse") {
-      throw Object.assign(
-        new Error(
-          "The current security profile does not allow write runs; change it in Settings › Security.",
-        ),
-        { statusCode: 403, code: "profile_refused" },
+      throw new MordomoError(
+        403,
+        "The current security profile does not allow write runs; change it in Settings › Security.",
+        "profile_refused",
       );
     }
   }
@@ -534,10 +579,11 @@ export class MordomoEngine {
     const profile = this.settings().securityProfile;
     const provider = payload.input.provider;
     if (!this.providers.has(provider)) {
-      throw Object.assign(new Error(`Unknown provider "${provider}": no adapter is registered for it`), {
-        statusCode: 400,
-        code: "unknown_provider",
-      });
+      throw new MordomoError(
+        400,
+        `Unknown provider "${provider}": no adapter is registered for it`,
+        "unknown_provider",
+      );
     }
     const confinement = this.providers.manifest(provider).capabilities.writeConfinement;
     // A provider that confines nothing gets a human first, unless the owner
@@ -569,7 +615,7 @@ export class MordomoEngine {
       { ...payload, runId, ...(askedByName ? { requestedByName: askedByName } : {}) },
       startedBy,
     );
-    events.emit("approval.requested", { id: approval.id, kind: approval.kind, description, runId });
+    this.events.emit("approval.requested", { id: approval.id, kind: approval.kind, description, runId });
     return { pendingApproval: approval, runId };
   }
 
@@ -593,27 +639,4 @@ export class MordomoEngine {
       startedBy: input.startedBy,
     };
   }
-}
-
-/** The run fields a free prompt run is created with. */
-export function promptRunFields(input: PromptRunInput): Omit<CreateRunInput, "profile"> {
-  return {
-    origin: "manual",
-    provider: input.provider,
-    prompt: input.prompt,
-    request: { version: 1, kind: "prompt", prompt: input.prompt, mode: input.mode },
-    cwd: input.cwd,
-    model: input.model,
-    effort: input.effort,
-    mode: input.mode,
-    timeoutMs: input.timeoutMs,
-    ...(input.sessionId ? { sessionId: input.sessionId } : {}),
-    ...(input.parentRunId ? { parentRunId: input.parentRunId } : {}),
-    startedBy: input.startedBy,
-  };
-}
-
-/** Build the engine over one home. Building changes nothing; call `start()` to own the home. */
-export function createEngine(opts: EngineOptions): MordomoEngine {
-  return new MordomoEngine(opts);
 }

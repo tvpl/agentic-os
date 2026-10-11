@@ -5,7 +5,7 @@ import type { FastifyInstance } from "fastify";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { makeTempHome } from "./helpers.js";
-import { events, localDateString } from "@mordomo/core";
+import { localDateString } from "@mordomo/core/internal";
 
 let ctx: AppContext;
 let app: FastifyInstance;
@@ -134,7 +134,7 @@ describe("memory v2 API — journal", () => {
   });
 
   it("logs finished runs into today's journal through the event bus", async () => {
-    events.emit("run.finished", { runId: "run-api-1", status: "done", durationMs: 1200 });
+    ctx.events.emit("run.finished", { runId: "run-api-1", status: "done", durationMs: 1200 });
     const res = await app.inject({ method: "GET", url: "/api/memory/journal", headers: auth() });
     const day = res.json() as { sections: Array<{ name: string; lines: string[] }> };
     expect(day.sections.find((s) => s.name === "Runs")!.lines.join("\n")).toContain("run-api-1 → done");

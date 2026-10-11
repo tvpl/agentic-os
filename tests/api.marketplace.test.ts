@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import { SkillRegistry, type Fetcher } from "@mordomo/core";
+import { SkillRegistry, type Fetcher } from "@mordomo/core/internal";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { makeTempHome } from "./helpers.js";

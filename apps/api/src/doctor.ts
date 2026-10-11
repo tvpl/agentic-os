@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { checkRouters, probe, type ProviderId } from "@mordomo/core";
+import { SpawnPolicy } from "@mordomo/core";
+import { checkRouters, type ProviderId } from "@mordomo/core/internal";
 import type { AppContext } from "./context.js";
 import { ignoredBindMessage, isLoopbackBind, listenPlan } from "./transport.js";
 
@@ -51,7 +52,7 @@ export async function npmAuditCheck(home: string, timeoutMs = 20_000): Promise<D
     return { id, label, status: "skip", detail: "npm CLI not found next to the Node binary" };
   }
   try {
-    const res = await probe(
+    const res = await new SpawnPolicy().probe(
       process.execPath,
       [npmCli, "audit", "--json", "--audit-level=high"],
       home,

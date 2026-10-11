@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { dailyPoints, HOUR_MS, type MetricsSample } from "@mordomo/core";
+import { dailyPoints, HOUR_MS, type MetricsSample } from "@mordomo/core/internal";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { makeTempHome } from "./helpers.js";

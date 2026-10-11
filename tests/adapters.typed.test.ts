@@ -22,21 +22,19 @@ import { execFileSync } from "node:child_process";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { ClaudeStreamMessage, CodexStreamEvent } from "@mordomo/contracts";
+import { type AgentAdapter, type AgentRun, type RunEvent } from "@mordomo/core";
 import {
   RunManager,
   SettingsStore,
   executeInvocation,
   installedVersion,
   openDb,
-  type AgentAdapter,
-  type AgentRun,
   type Db,
   type LineParser,
   type MordomoPaths,
   type ProviderId,
-  type RunEvent,
   versionStatus,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { ClaudeAdapter, claudeManifest, claudeStreamParser } from "@mordomo/adapter-claude";
 import { CodexAdapter, codexManifest, codexStreamParser } from "@mordomo/adapter-codex";
 import { cursorManifest, cursorStreamParser } from "@mordomo/adapter-cursor";

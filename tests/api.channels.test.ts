@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { deliverToTelegram, events, formatNotification, type NotificationRecord } from "@mordomo/core";
+import type { NotificationRecord } from "@mordomo/core";
+import { deliverToTelegram, formatNotification } from "@mordomo/core/internal";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { makeTempHome } from "./helpers.js";
@@ -178,6 +179,6 @@ describe("notification.created delivery", () => {
     // The channel listens on the bus and delivers out of band.
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(events.lastId).toBeGreaterThan(0);
+    expect(ctx.events.lastId).toBeGreaterThan(0);
   });
 });

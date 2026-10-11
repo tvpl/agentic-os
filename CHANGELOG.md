@@ -16,6 +16,18 @@
   telemetry and none was added; the privacy policy says so and says what would have to hold if one is ever added.
   The lockfile entries of `@clack/core` and `ret` said 0.6.0 while their tarballs are 0.5.0 (a version bump had
   rewritten them); corrected.
+- **SDK (sdk-core)**: `@mordomo/core` is now a small public surface - `createEngine`, `engine.execution`
+  (`startPrompt`, `startSkill`, `retry`, `resolveApproval`, `get`, `list`, `cancel`, `events`, `subscribe`, `wait`),
+  `engine.events`, the provider contract and the errors (`docs/sdk.md`) - and everything else moved to
+  `@mordomo/core/internal`. The logic that decides whether a run may start (write policy, working folders, who asked,
+  `submissionId` receipts, the approval flow) moved from the HTTP routes into the core, and the routes and the CLI are
+  clients of it; their answers do not change, except that `mordomo run` now also refuses a disabled skill, a provider
+  that is not enabled and a missing required input, as the Command Centre always did. The event bus, the allowlist of
+  executables (`SpawnPolicy`) and the memo of related files are per engine instead of per process, so two engines in
+  one process no longer hear or overwrite each other; a second `start()` on the same home in the same process now
+  throws `EngineLockedError` instead of taking the lock. A connector command named like a provider binary now needs
+  `connectors.allowedCommands`. `@mordomo/core` and `@mordomo/contracts` carry the metadata to be packed (license
+  FSL-1.1-ALv2, `exports`, `files`, `engines`, `sideEffects`, README); nothing is published.
 - **Interface (primitivas)**: dialogs, popovers, tabs, switches, the "+" menu and icon-button hints
   are built on Radix (`apps/command-centre/src/ui`, six `@radix-ui/*` packages at exact versions) and
   drawn by one stylesheet in both interfaces; the Núcleo keeps its glass and the frame its flat sheet

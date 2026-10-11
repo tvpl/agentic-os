@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { DEVICE_SCOPES } from "@mordomo/core";
+import { DEVICE_SCOPES } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
 import { SlidingWindow } from "../rateLimit.js";
 import { httpError } from "./common.js";

@@ -1,25 +1,21 @@
 import crypto from "node:crypto";
+import type { HealthStatus, PermissionBroker, ProviderCapabilities, RunMode } from "@mordomo/core";
 import {
   MordomoEngine,
   ProviderSettingsSchema,
   budgetDedupeKey,
-  events,
   localDay,
   installedVersion,
   versionStatus,
   type BudgetCrossedPayload,
-  type HealthStatus,
   type HostResolver,
   type MetricsSample,
-  type PermissionBroker,
-  type ProviderCapabilities,
   type ProviderId,
-  type RunMode,
   type SecurityProfile,
   type TelegramPoller,
   type TestedVersions,
   type VersionStatus,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { cliEntry, seedDir } from "./entry.js";
 import { buildProviderRegistry } from "./providers.js";
 import { TicketStore } from "./tickets.js";
@@ -52,7 +48,7 @@ export {
   restorePendingDir,
   writeRestorePending,
   type RestorePending,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 
 export interface AppContextOptions {
   /** How long to wait for a restore running in another process before refusing (ms). */
@@ -97,7 +93,7 @@ export class AppContext extends MordomoEngine {
       ...(opts.pushResolver ? { pushResolver: opts.pushResolver } : {}),
       ...(opts.restoreWaitMs !== undefined ? { restoreWaitMs: opts.restoreWaitMs } : {}),
     });
-    this.unsubscribeCredentials = events.subscribe((e) => {
+    this.unsubscribeCredentials = this.events.subscribe((e) => {
       if (e.type !== "run.finished") return;
       const runId = (e.payload as { runId?: string }).runId;
       if (runId) this.forgetCredentialsOf(runId);
@@ -287,21 +283,6 @@ export class AppContext extends MordomoEngine {
   }
 
   /**
-   * Sweep approvals past their TTL and cancel the runs they were gating.
-   * Called on boot and hourly by the service. Returns how many expired.
-   */
-  expireStaleApprovals(): number {
-    const expired = this.approvals.expireStale();
-    for (const approval of expired) {
-      const runId = approval.payload.runId;
-      if (typeof runId !== "string") continue;
-      void this.runs.cancel(runId, `Approval expired after ${this.settings().limits.approvalTtlDays} days`);
-    }
-    if (expired.length > 0) events.emit("approval.expired", { count: expired.length });
-    return expired.length;
-  }
-
-  /**
    * Warn once a day when today's spend crosses 80 % or 100 % of
    * `settings.limits.dailyBudgetUsd` (0 = no budget). Called at boot and
    * hourly by the service; the `budget.crossed` event becomes an inbox row
@@ -317,7 +298,7 @@ export class AppContext extends MordomoEngine {
     // Once per day per level, even across restarts: the row is the ledger.
     if (this.notifications.hasDedupeKey(budgetDedupeKey(day, level))) return null;
     const payload: BudgetCrossedPayload = { level, day, spentUsd, budgetUsd };
-    events.emit("budget.crossed", payload);
+    this.events.emit("budget.crossed", payload);
     return level;
   }
 

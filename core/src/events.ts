@@ -1,10 +1,14 @@
 /**
- * Process-wide typed event bus.
+ * Typed event bus.
  *
- * One place where the core announces what is happening (runs, routines,
+ * One place where an engine announces what is happening (runs, routines,
  * indexing, approvals) so the API can fan it out over SSE (`/api/events`)
  * and the Command Centre can stop polling. Emitters never await listeners;
  * a throwing listener is isolated and reported on the "error" channel.
+ *
+ * There is no bus of the process: every engine builds its own (`MordomoEngine.events`) and
+ * hands it to the stores that announce, so two engines in one process never hear each other.
+ * A store built without a bus announces nothing.
  */
 
 import { OS_EVENT_VERSION, type OsEvent, type OsEventMap, type OsEventType } from "@mordomo/contracts";
@@ -62,5 +66,5 @@ export class EventBus {
   }
 }
 
-/** Shared bus for the process. Tests may construct their own `EventBus`. */
-export const events = new EventBus();
+/** What a reader of an engine's events may do: listen, replay from an id, read the last id. Emitting is the engine's. */
+export type EventFeed = Pick<EventBus, "subscribe" | "since" | "lastId">;

@@ -7,7 +7,7 @@ import {
   homeConfigFilesOf,
   runAudit,
   setupChecklist,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
 import { httpError } from "./common.js";
 import { IdParams } from "./params.js";

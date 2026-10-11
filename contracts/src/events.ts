@@ -8,6 +8,7 @@ import type { Approval, NotificationRecord } from "./records.js";
 import type { RunEvent, RunOrigin, RunStatus } from "./runs.js";
 import type { ProviderId, Settings } from "./settings.js";
 
+/** The names of the events an engine announces. */
 export type OsEventType =
   | "run.created"
   | "run.started"

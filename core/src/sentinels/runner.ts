@@ -1,7 +1,7 @@
 import type { Db } from "../db/db.js";
 import type { MordomoPaths } from "../paths.js";
 import type { Settings } from "../config/schema.js";
-import { events as defaultBus, type EventBus, type OsEvent } from "../events.js";
+import type { EventBus, OsEvent } from "../events.js";
 import type { Connector } from "../connectors/registry.js";
 import type { RoutineStatus, SilentRoutine } from "../routines/types.js";
 import type { NotificationInput } from "../notifications/store.js";
@@ -39,7 +39,8 @@ export interface SentinelRunnerDeps {
   connectors: { list(): Connector[] };
   skills: { list(): ReadonlyArray<{ name: string; description: string }> };
   indexer?: { indexAllAsync(): Promise<unknown> };
-  bus?: EventBus;
+  /** The engine's bus: the sentinels announce on it and the triage listens to it. */
+  bus: EventBus;
   /** Own hourly timer. The API passes false: it drives `hourly()` from its own sweep. */
   selfSchedule?: boolean;
   /** Injected by tests (see `checkConnectorDeltas`). */
@@ -64,7 +65,7 @@ export class SentinelRunner {
   private running = false;
 
   constructor(private readonly deps: SentinelRunnerDeps) {
-    this.bus = deps.bus ?? defaultBus;
+    this.bus = deps.bus;
     this.fsWatch = new FsWatchSentinel({
       bus: this.bus,
       getSettings: deps.getSettings,

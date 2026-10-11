@@ -6,7 +6,7 @@ it.skipIf(process.platform === "win32")(
   async () => {
     const ready = Promise.withResolvers<number>();
     const provider = "process.on('SIGTERM',()=>{});console.log(process.pid);setInterval(()=>{},1000)";
-    const code = `import {safeSpawn} from './core/dist/index.js';safeSpawn(process.execPath,['-e',${JSON.stringify(provider)}],{cwd:process.cwd(),onStdout:chunk=>process.stdout.write(chunk)});`;
+    const code = `import {safeSpawn} from './core/dist/internal.js';safeSpawn(process.execPath,['-e',${JSON.stringify(provider)}],{cwd:process.cwd(),onStdout:chunk=>process.stdout.write(chunk)});`;
     const parent = spawn(process.execPath, ["--input-type=module", "-e", code], {
       cwd: process.cwd(),
       stdio: ["ignore", "pipe", "pipe"],

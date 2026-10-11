@@ -19,7 +19,7 @@ import {
   type RoutineStatus,
   type SentinelFiredPayload,
   type SilentRoutineCandidate,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { makeTempHome } from "./helpers.js";
 
 /**

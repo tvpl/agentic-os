@@ -2,6 +2,19 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  SpawnPolicy,
+  type AgentAdapter,
+  type AgentRun,
+  type AuthStatus,
+  type DetectionResult,
+  type HealthStatus,
+  type ModelOption,
+  type RunEvent,
+  type SafeInvocation,
+  type ValidationResult,
+  type AdapterFactoryOptions,
+} from "@mordomo/core";
+import {
   CodexStreamEvent,
   KnownStreamTypes,
   boundedPaths,
@@ -10,22 +23,11 @@ import {
   findExecutable,
   parseHelpFlags,
   plainText,
-  probe,
-  type AgentAdapter,
-  type AgentRun,
-  type AuthStatus,
-  type DetectionResult,
-  type HealthStatus,
   type LineParser,
-  type ModelOption,
-  type RunEvent,
-  type SafeInvocation,
-  type ValidationResult,
-  type AdapterFactoryOptions,
   readTypedLine,
   resumableSessionId,
   type RejectedLine,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { codexManifest } from "./manifest.js";
 
 /**
@@ -43,7 +45,11 @@ export { codexManifest };
 
 /** Factory used by the provider registry (`apps/api/src/providers.ts`). */
 export const createCodexAdapter = (opts: AdapterFactoryOptions): AgentAdapter =>
-  new CodexAdapter({ binaryPath: opts.binaryPath, ...(opts.homeDir ? { homeDir: opts.homeDir } : {}) });
+  new CodexAdapter({
+    binaryPath: opts.binaryPath,
+    ...(opts.homeDir ? { homeDir: opts.homeDir } : {}),
+    ...(opts.spawn ? { spawn: opts.spawn } : {}),
+  });
 
 export class CodexAdapter implements AgentAdapter {
   readonly id = "codex" as const;
@@ -52,7 +58,14 @@ export class CodexAdapter implements AgentAdapter {
   /** Whether the installed `codex exec` advertises the `resume` subcommand (set by detect()). */
   private resumeSupported = false;
 
-  constructor(private readonly opts: { binaryPath?: string | null; homeDir?: string } = {}) {}
+  /** The engine's spawn policy; an adapter built alone allows only `node` and its own binary. */
+  private readonly spawn: SpawnPolicy;
+
+  constructor(
+    private readonly opts: { binaryPath?: string | null; homeDir?: string; spawn?: SpawnPolicy } = {},
+  ) {
+    this.spawn = opts.spawn ?? new SpawnPolicy({ binaries: [codexManifest.binary] });
+  }
 
   private binary(): string {
     return this.opts.binaryPath ?? findExecutable("codex") ?? "codex";
@@ -75,13 +88,13 @@ export class CodexAdapter implements AgentAdapter {
     let version: string | null = null;
     let supportedFlags: string[] = [];
     try {
-      const v = await probe(binaryPath, ["--version"], os.tmpdir());
+      const v = await this.spawn.probe(binaryPath, ["--version"], os.tmpdir());
       version = (v.stdout || v.stderr).trim().split("\n")[0] ?? null;
     } catch (err) {
       notes.push(`--version failed: ${(err as Error).message}`);
     }
     try {
-      const h = await probe(binaryPath, ["exec", "--help"], os.tmpdir());
+      const h = await this.spawn.probe(binaryPath, ["exec", "--help"], os.tmpdir());
       supportedFlags = parseHelpFlags(h.stdout + h.stderr);
       if (!supportedFlags.includes("--json")) {
         notes.push("codex exec does not advertise --json; falling back to plain text parsing.");

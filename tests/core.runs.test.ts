@@ -2,19 +2,18 @@ import { describe, expect, it, beforeEach, afterEach, beforeAll, afterAll } from
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { type AgentAdapter, type RunEvent } from "@mordomo/core";
 import {
+  EventBus,
   ApprovalStore,
   RunManager,
   SettingsStore,
   openDb,
-  events,
   type Db,
   type MordomoPaths,
-  type AgentAdapter,
   type ProviderId,
-  type RunEvent,
   type CreateRunInput,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { ClaudeAdapter } from "@mordomo/adapter-claude";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "./helpers.js";
 
@@ -27,6 +26,7 @@ afterAll(() => restorePath());
 let ctx: { paths: MordomoPaths; cleanup: () => void };
 let db: Db;
 let manager: RunManager;
+let bus: EventBus;
 let store: SettingsStore;
 
 function adapterFor(_id: ProviderId): AgentAdapter {
@@ -62,7 +62,8 @@ beforeEach(() => {
   ctx = makeTempHome();
   db = openDb(ctx.paths).db;
   store = new SettingsStore(ctx.paths);
-  manager = new RunManager(db, ctx.paths, () => store.load(), adapterFor);
+  bus = new EventBus();
+  manager = new RunManager(db, ctx.paths, () => store.load(), adapterFor, { bus });
 });
 
 afterEach(async () => {
@@ -76,7 +77,7 @@ afterEach(async () => {
 describe("run manager", () => {
   it("executes a run end-to-end with persisted, redacted events, pid and bus events", async () => {
     const seen: string[] = [];
-    const unsubscribe = events.subscribe((e) => seen.push(e.type));
+    const unsubscribe = bus.subscribe((e) => seen.push(e.type));
     try {
       const run = manager.create(input({ prompt: "Do the thing with password=SuperSecretValue99" }));
       expect(run.status).toBe("queued");

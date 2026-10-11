@@ -1,16 +1,9 @@
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { EffortLevel, ProviderId, type RunRequestSpec } from "@mordomo/core";
+import type { StartedRun } from "@mordomo/core";
+import { EffortLevel, ProviderId, type RunRequestSpec, type SkillRunInput } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
-import {
-  gateWrite,
-  httpError,
-  launchSkillRun,
-  requireProvider,
-  startedByOf,
-  submitPromptRun,
-  type SkillRunInput,
-} from "./common.js";
+import { httpError, requireProvider, startedByOf } from "./common.js";
 import { UuidParams } from "./params.js";
 
 const requestSchema = z.discriminatedUnion("kind", [
@@ -121,19 +114,12 @@ export function registerObjectiveRoutes(app: FastifyInstance, ctx: AppContext): 
       const model = body.model !== undefined ? body.model : providerSettings.defaultModel;
       const effort = body.effort ?? providerSettings.defaultEffort;
       const packet = JSON.stringify(ctx.objectives.contextPacket(id, step.id), null, 2);
-      let runId: string | null;
-      let status: "queued" | "waiting_approval";
+      const onError = (error: unknown, failedRunId: string) =>
+        req.log.error({ error, runId: failedRunId, objectiveId: id, stepId: step.id });
+      let started: StartedRun;
       if (step.request.kind === "skill") {
-        const skill = ctx.skills.load(step.request.skillSlug);
-        if (!skill)
-          throw httpError(
-            409,
-            `Skill "${step.request.skillSlug}" is no longer available.`,
-            "skill_unavailable",
-          );
-        const mode = skill.mode === "write" ? "write" : "read_only";
         const input: SkillRunInput = {
-          slug: skill.slug,
+          slug: step.request.skillSlug,
           inputs: step.request.inputs,
           provider,
           model,
@@ -142,32 +128,25 @@ export function registerObjectiveRoutes(app: FastifyInstance, ctx: AppContext): 
           timeoutMs,
           startedBy: startedByOf(req),
         };
-        const gated = gateWrite(ctx, mode, "skill", `Objective step: ${step.title}`, {
-          kind: "skill",
-          input,
-        });
-        if (gated.pendingApproval) {
-          runId = gated.runId;
-          status = "waiting_approval";
-        } else {
-          runId = launchSkillRun(ctx, input, (error, failedRunId) =>
-            req.log.error({ error, runId: failedRunId, objectiveId: id, stepId: step.id }),
-          ).runId;
-          status = "queued";
-        }
+        started = ctx.execution.gateAndLaunchSkill(input, `Objective step: ${step.title}`, onError);
       } else {
         const prompt = `Objective context packet (local, versioned):\n${packet}\n\nStep request:\n${step.request.prompt}`;
-        const launched = submitPromptRun(
-          ctx,
-          { prompt, provider, model, effort, mode: step.request.mode, cwd, timeoutMs },
-          startedByOf(req),
-          (error, failedRunId) =>
-            req.log.error({ error, runId: failedRunId, objectiveId: id, stepId: step.id }),
+        // The prompt is assembled here from the objective's own records, not typed by a caller.
+        started = ctx.execution.startPrompt(
+          {
+            prompt,
+            provider,
+            model,
+            effort,
+            mode: step.request.mode,
+            cwd,
+            timeoutMs,
+            startedBy: startedByOf(req),
+          },
+          { onError, composed: true },
         );
-        runId = launched.body.runId;
-        status = launched.body.status;
       }
-      if (!runId) throw httpError(500, "Objective dispatch did not create a run");
+      const { runId, status } = started;
       ctx.objectives.markDispatched(step.id, runId, status === "waiting_approval");
       const current = ctx.runs.get(runId);
       if (current && !["queued", "running", "waiting_approval"].includes(current.status))

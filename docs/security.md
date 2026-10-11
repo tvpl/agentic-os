@@ -115,8 +115,8 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
   approval `requestedBy` (`owner`, `device:<id>`, or null for a routine, a sentinel, the CLI and what predates
   this). A write run asked for by a device always waits for a human, whatever the profile would have let the
   owner do (`MordomoEngine.gateWrite`); under `read_only` it is refused as before. The approval of a tool a
-  device's run asks for inherits the run's `requestedBy`. `resolveApproval`, the one place a decision is
-  applied, refuses `approved` from a device when `requestedBy` is that device (`403 self_approval`) or when the
+  device's run asks for inherits the run's `requestedBy`. `engine.execution.resolveApproval`, the one place a
+  decision is applied (the Command Centre, Telegram and a program that uses the core as a library all come through it), refuses `approved` from a device when `requestedBy` is that device (`403 self_approval`) or when the
   kind is not `write_run` or `tool_use` (`403 owner_only`: `expose_port`, `connector_write` and the rest are the
   owner's); `denied` is open to every kind, so a device can withdraw its own request. The owner (in the Command
   Centre, after the whole request is shown) and another device holding `approve` can approve a device's write; a
@@ -295,8 +295,8 @@ each manifest declares (`core/src/agents/registry.ts`):
   provider process, including the short probes (`--version`, `--help`,
   `auth status`); everything else (PATH, HOME, the provider's own API keys,
   proxies) passes through.
-- **The CLI follows the same policy.** `mordomo run` passes a write skill through
-  the engine's `gateWrite`: refused under `read_only` (exit 1), parked as a
+- **The CLI follows the same policy.** `mordomo run` starts the skill through
+  `engine.execution.startSkill`, which passes a write skill through the engine's `gateWrite`: refused under `read_only` (exit 1), parked as a
   `write_run` approval when the profile or the provider asks for one (exit 0,
   `waiting_approval`), run only when the policy allows it.
 

@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { type Settings } from "@mordomo/core";
 import {
   ConnectorSchema,
   EventBus,
@@ -39,8 +40,7 @@ import {
   stemLite,
   type Db,
   type MordomoPaths,
-  type Settings,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { makeTempHome } from "./helpers.js";
 
 let ctx: { paths: MordomoPaths; cleanup: () => void };

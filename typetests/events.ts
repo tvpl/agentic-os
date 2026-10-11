@@ -2,7 +2,7 @@
  * Contracts (.specs/features/contratos, C8, C9): the bus only accepts the
  * payload the event map names, and the map covers every event type exactly.
  */
-import { EventBus } from "@mordomo/core";
+import { EventBus } from "@mordomo/core/internal";
 import type { OsEvent, OsEventMap, OsEventType } from "@mordomo/contracts";
 
 const bus = new EventBus();

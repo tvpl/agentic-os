@@ -1,13 +1,34 @@
 {
   "name": "@mordomo/core",
   "version": "0.8.0",
-  "private": true,
+  "description": "The MordomoOS engine as a library: run an agent from a program, with the write policy, the working-folder rules and the approvals of the app.",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "sideEffects": false,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": "./dist/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "default": "./dist/internal.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.map",
+    "!dist/**/*.tsbuildinfo",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@mordomo/contracts": "0.8.0",

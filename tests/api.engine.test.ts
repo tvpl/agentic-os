@@ -4,16 +4,15 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { EngineLockedError, type Settings } from "@mordomo/core";
 import {
-  EngineLockedError,
   ObjectiveStore,
   RunManager,
   SettingsStore,
   ensureDirs,
   openDb,
   resolvePaths,
-  type Settings,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { AppContext } from "../apps/api/src/context.js";
 import { startServer } from "../apps/api/src/server.js";
 import { processAlive } from "./helpers.js";

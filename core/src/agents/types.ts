@@ -4,6 +4,7 @@ import type { RunEvent, RunMode, RunUsage, RunUsageEvent } from "@mordomo/contra
 
 export type { RunEvent, RunMode, RunUsage, RunUsageEvent };
 
+/** What `detect` found about a provider's CLI. */
 export interface DetectionResult {
   installed: boolean;
   binaryPath: string | null;
@@ -13,12 +14,14 @@ export interface DetectionResult {
   notes: string[];
 }
 
+/** Whether a provider is signed in; never the credential itself. */
 export interface AuthStatus {
   authenticated: boolean | "unknown";
   method: string | null; // e.g. "session", "api-key" — never the credential itself
   detail: string;
 }
 
+/** A model a provider offers. */
 export interface ModelOption {
   /** Concrete model id passed to the CLI. */
   id: string;
@@ -32,11 +35,13 @@ export interface ModelOption {
   aliases?: string[];
 }
 
+/** What `validateConfig` found. */
 export interface ValidationResult {
   ok: boolean;
   issues: string[];
 }
 
+/** A provider's health at a moment: installed, signed in, version. */
 export interface HealthStatus {
   ok: boolean;
   installed: boolean;
@@ -53,6 +58,7 @@ export interface PermissionBroker {
   env: Record<string, string>;
 }
 
+/** What an adapter receives to execute: the prompt, where to run, the limits and the cancellation signal. */
 export interface AgentRun {
   runId: string;
   prompt: string;
@@ -108,6 +114,7 @@ export interface AgentRun {
   signal?: AbortSignal;
 }
 
+/** The command an adapter would run: executable, arguments and environment. */
 export interface SafeInvocation {
   executable: string;
   args: string[];

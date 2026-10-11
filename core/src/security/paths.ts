@@ -1,5 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import { PathAccessError } from "../errors.js";
+
+export { PathAccessError };
 
 /** True when `child` is `parent` or inside it (after resolution). */
 export function isInside(parent: string, child: string): boolean {
@@ -46,18 +49,6 @@ export function realpathLenient(absolute: string): string {
       tail.unshift(path.basename(head));
       head = parent;
     }
-  }
-}
-
-export class PathAccessError extends Error {
-  /** HTTP status the API should map this to. */
-  readonly statusCode = 403;
-  constructor(
-    public readonly attempted: string,
-    message?: string,
-  ) {
-    super(message ?? `Path is outside the granted folders: ${attempted}`);
-    this.name = "PathAccessError";
   }
 }
 

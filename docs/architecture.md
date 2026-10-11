@@ -27,7 +27,7 @@
 │  ├─ serves apps/command-centre/dist (token injected into index.html)  │
 │  ├─ REST API (zod-validated, uniform error envelope) + SSE            │
 │  │    ├─ /api/runs/:id/stream  per-run events (Last-Event-ID resume)  │
-│  │    └─ /api/events           one feed over the process event bus    │
+│  │    └─ /api/events           one feed over the engine's event bus   │
 │  ├─ request log → logs/api.jsonl (redacted; no bodies)                │
 │  ├─ RunManager ── state machine, concurrency + bounded queue,         │
 │  │    timeouts, cancellation, retention, graceful shutdown            │
@@ -106,10 +106,13 @@ file written by a newer version is never overwritten (`code: "settings_newer"`).
 | `config/` | Zod `SettingsSchema`, atomic file store with an mtime-keyed cache and deep-merge `update()`, local token; a field that fails the schema reads as its default, the file is left alone and the original is kept in `settings.json.invalid` |
 | `db/` | open + versioned SQL migrations (once, in an `EXCLUSIVE` transaction that re-reads the version after the lock), pre-migration snapshot (`VACUUM INTO`), `MigrationError` / `DbNewerVersionError` |
 | `security/` | redaction, path containment (realpath), the safe-read primitive (`safeFs.ts`: the one way a path chosen by a request, a record, an index row or a link is read), id validation for file-backed stores, exclusion matcher, secret blocklist, profiles, approval store |
-| `spawn/` | argv-only spawn, basename allowlist + optional pinned path, timeouts, kill-tree, bounded stdout/stderr capture, `--help` probing helpers |
+| `spawn/` | argv-only spawn, basename allowlist (one `SpawnPolicy` per engine) + optional pinned path, timeouts, kill-tree, bounded stdout/stderr capture, `--help` probing helpers |
 | `agents/` | `AgentAdapter` types, shared streaming executor |
 | `runs/` | `RunManager`: explicit state transitions (`queued → running → done / failed / cancelled / timed_out / interrupted`), bounded queue, `parent_run_id` for retries, JSONL logs (rotating, redacted), metrics, boot recovery, retention pruning |
-| `events.ts` | in-process event bus with a ring buffer (`run.*`, `routine.*`, `index.*`, `approval.*`, `settings.changed`, `backup.created`) behind `/api/events` |
+| `events.ts` | the `EventBus` with a ring buffer (`run.*`, `routine.*`, `index.*`, `approval.*`, `settings.changed`, `backup.created`) behind `/api/events`; each engine owns one (`engine.events`), there is none of the process |
+| `execution/` | `engine.execution`: start, follow, cancel and approve runs with the engine's rules (write policy, working folders, who asked, idempotency); the API and the CLI are its clients |
+| `errors.ts` | `MordomoError` and the stable codes of the engine's rules; `EngineLockedError`, `RestoreInProgressError`, `PathAccessError` |
+| `sdk.ts` / `index.ts` / `internal.ts` | `createEngine` and the public surface of `@mordomo/core` ([sdk.md](sdk.md)); `internal` is the rest, for the app and the adapter packages |
 | `skills/` | catalog (frontmatter + SKILL.md + resources), thick detection, run-prompt builder |
 | `memory/` | shared exclusion policy (user globs + hard directory blocklist + secret basenames + content-based binary detection), indexer, FTS5 search, graph + relation explanations, router generator + staleness check, safe preview |
 | `routines/` | JSON store, croner scheduler, missed-run catch-up, retries as linked runs, timezone inheritance, quoted OS unit generation |
@@ -117,7 +120,21 @@ file written by a newer version is never overwritten (`code: "settings_newer"`).
 | `sync/` | config compiler: plan → diff → backup → apply with per-file conflict approval |
 | `backup.ts` / `backupManifest.ts` | online backup (`db.backup()`) sealed with `manifest.json` (SHA-256 per file), restore that verifies the staged copies against it, journals the install and is undone if its process dies, pre-restore safety backup, staged restore applied at boot, retention (`limits.backupRetention`) |
 | `restoreLock.ts` | the restore lock (the lock of `config/run/restore.lock`, released by the kernel): exclusive for a restore, the undoing of a dead one and a staged restore; shared for a backup (all of it) and for an engine being built (until its database is open) |
-| `ownerLock.ts` / `processIdentity.ts` | the owner lock of a home: process identity (pid + start time + boot id), stale-lock takeover serialised by the database, release by token |
+| `ownerLock.ts` / `processIdentity.ts` | the owner lock of a home: process identity (pid + start time + boot id), stale-lock takeover serialised by the database, release by token; a lock that names this process and is held by an engine of it is not stale (a second engine on the same home in one process is refused) |
+
+### The SDK and what an engine owns
+
+`@mordomo/core` is the public surface (`createEngine`, `engine.execution`, `engine.events`, the provider contract and
+the errors; [sdk.md](sdk.md)); `@mordomo/core/internal` is everything the app and the adapter packages are made of,
+with no stability promise. The HTTP routes and the CLI start, cancel and approve runs only through `engine.execution`,
+so the write policy, the working-folder rule, the asker rules and the idempotency receipts are applied once, in the
+core.
+
+An engine owns its event bus, its spawn policy (the executables its providers may run and the environment its probes
+drop) and its caches; two engines in one process share none of it. What stays at module level is the closed list in
+`tests/sdk.instances.test.ts` (C30), each item with its reason: the operating system's process-wide resources (POSIX
+locks, child pids, the PATH), the owner locks this process holds, memos keyed by the bus or the database they belong to,
+and one table filled at load.
 
 ## Adapters
 
