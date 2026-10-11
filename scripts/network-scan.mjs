@@ -74,19 +74,28 @@ const NETWORK_GLOBALS = new Map([
   ["XMLHttpRequest", "xhr"],
   ["WebTransport", "webtransport"],
 ]);
-/** Strings that mean the code reaches the network through a program. */
+/** Strings that mean the code reaches the network through a program (a spawn of any of them is a network point). */
 const NETWORK_PROGRAMS = new Map([
   ["npm-cli.js", "npm-cli"],
   ["npx-cli.js", "npm-cli"],
-  ["curl", "curl"],
-  ["wget", "wget"],
+  ...["npm", "npx", "git", "ssh", "scp", "sftp", "ftp", "rsync", "nc", "ncat", "telnet", "curl", "wget"].map(
+    (n) => [n, n],
+  ),
 ]);
 
 /** Hosts that never leave the machine. */
 const LOOPBACK = /^(localhost|127(\.\d{1,3}){3}|0\.0\.0\.0|\[?::1\]?|\[?::\]?)$/i;
-/** Top-level domains a bare host constant or a host regular expression can end in (`in`, `local`, `co`… are also i18n key tails). */
-const TLDS = "com|org|net|io|dev|app|software|ai|tv|cloud|edu|gov";
+/**
+ * Top-level domains a bare host constant or a host regular expression can end in. Left out on purpose: `in`, `local`,
+ * `info`, `co`, `md`, `sh`, `ts`, `js`… are also the tails of i18n keys and file names; a host in a constant whose
+ * name says it is one (`HOST`, `origin`, `baseUrl`…) is read whatever it ends in.
+ */
+const TLDS =
+  "com|org|net|io|dev|app|software|ai|tv|cloud|edu|gov|xyz|tech|us|uk|de|fr|br|jp|cn|ru|nl|es|it|ca|au|ch|se|fi|dk|pl|kr|tw|hk|sg|mx|ar|cl|pt|be|cz|nz|za|tr|ua|il|eu";
 const BARE_HOST = new RegExp(`^(?:[a-z0-9-]+\\.)+(?:${TLDS})$`);
+const DOTTED = /^(?:[a-z0-9-]+\.)+[a-z0-9-]+$/i;
+const HOST_NAME = /host|domain|origin|server|endpoint|base_?url|\burl\b/i;
+const BARE_IP = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?::\d+)?$/;
 const HOST_IN_TEXT = new RegExp(`(?:[a-z0-9-]+\\.)+(?:${TLDS})(?![a-z0-9-])`, "g");
 const URL_HOST = /\b(?:https?|wss?):\/\/(?:[^\s/@'"`<>]*@)?(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)(?::\d+)?/gi;
 
@@ -139,13 +148,30 @@ export function scanSource(source, fileName = "source.ts") {
   const hosts = new Set();
   const point = (name) => points.set(name, (points.get(name) ?? 0) + 1);
 
-  const hostsInString = (text) => {
+  const hostsInString = (text, named = false) => {
     for (const m of text.matchAll(URL_HOST)) hosts.add(hostOf(m[1]));
-    if (BARE_HOST.test(text)) hosts.add(text.toLowerCase());
+    if (BARE_HOST.test(text) || (named && DOTTED.test(text))) hosts.add(text.toLowerCase());
+    const ip = BARE_IP.exec(text);
+    if (ip && ip.slice(1).every((o) => Number(o) <= 255)) hosts.add(text.replace(/:\d+$/, ""));
   };
   const moduleSpecifier = (spec) => {
+    if (/^https?:\/\//i.test(spec)) {
+      point("module:url");
+      hostsInString(spec);
+      return;
+    }
     const name = spec.replace(/^node:/, "");
     if (NETWORK_MODULES.has(name)) point(`module:${name}`);
+  };
+  /** The name a string is bound to (`const HOST = "…"`, `{ origin: "…" }`), or "". */
+  const boundName = (node) => {
+    const p = node.parent;
+    if (
+      (ts.isVariableDeclaration(p) || ts.isPropertyAssignment(p) || ts.isPropertyDeclaration(p)) &&
+      p.initializer === node
+    )
+      return ts.isIdentifier(p.name) || ts.isStringLiteralLike(p.name) ? p.name.text : "";
+    return "";
   };
 
   const visit = (node) => {
@@ -153,13 +179,31 @@ export function scanSource(source, fileName = "source.ts") {
       if (node.text === "fetch" && !isTypePosition(node) && !isDeclarationName(node)) point("fetch");
       else if (NETWORK_GLOBALS.has(node.text) && !isTypePosition(node) && !isDeclarationName(node))
         point(NETWORK_GLOBALS.get(node.text));
-    } else if (ts.isPropertyAccessExpression(node) && node.name.text === "sendBeacon") point("beacon");
-    else if (
-      ts.isElementAccessExpression(node) &&
-      ts.isStringLiteralLike(node.argumentExpression) &&
-      node.argumentExpression.text === "sendBeacon"
-    )
-      point("beacon");
+    } else if (ts.isPropertyAccessExpression(node)) {
+      if (node.name.text === "sendBeacon") point("beacon");
+      else if (
+        node.name.text === "binding" &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === "process"
+      )
+        point("process-binding");
+    } else if (ts.isElementAccessExpression(node)) {
+      const arg = node.argumentExpression;
+      if (ts.isStringLiteralLike(arg)) {
+        if (arg.text === "sendBeacon") point("beacon");
+        else if (isGlobalObject(node.expression) && arg.text === "fetch") point("fetch");
+        else if (isGlobalObject(node.expression) && NETWORK_GLOBALS.has(arg.text))
+          point(NETWORK_GLOBALS.get(arg.text));
+        else if (
+          node.expression.kind === ts.SyntaxKind.Identifier &&
+          node.expression.text === "process" &&
+          arg.text === "binding"
+        )
+          point("process-binding");
+      } else if (isGlobalObject(node.expression)) point("dynamic-global");
+    }
+    if (ts.isIdentifier(node) && node.text === "createRequire" && !isDeclarationName(node))
+      point("module:dynamic");
 
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier))
       moduleSpecifier(node.moduleSpecifier.text);
@@ -168,11 +212,13 @@ export function scanSource(source, fileName = "source.ts") {
     else if (
       ts.isCallExpression(node) &&
       node.arguments.length > 0 &&
-      ts.isStringLiteralLike(node.arguments[0]) &&
       ((ts.isIdentifier(node.expression) && node.expression.text === "require") ||
         node.expression.kind === ts.SyntaxKind.ImportKeyword)
-    )
-      moduleSpecifier(node.arguments[0].text);
+    ) {
+      // A module named by a variable can be any of them: it is a point of its own.
+      if (ts.isStringLiteralLike(node.arguments[0])) moduleSpecifier(node.arguments[0].text);
+      else point("module:dynamic");
+    }
 
     if (
       ts.isStringLiteralLike(node) ||
@@ -183,7 +229,7 @@ export function scanSource(source, fileName = "source.ts") {
       const parent = node.parent;
       const isImportSpec = ts.isImportDeclaration(parent) || ts.isExportDeclaration(parent);
       if (!isImportSpec) {
-        hostsInString(node.text);
+        hostsInString(node.text, HOST_NAME.test(boundName(node)));
         if (NETWORK_PROGRAMS.has(node.text)) point(`program:${NETWORK_PROGRAMS.get(node.text)}`);
       }
     } else if (ts.isRegularExpressionLiteral(node)) {
@@ -196,11 +242,24 @@ export function scanSource(source, fileName = "source.ts") {
   return { points, hosts };
 }
 
-/** The hosts of a text file (CSS, HTML, JSON, shell): a URL, anywhere. */
-export function scanText(text) {
+/**
+ * The hosts and programs of a text file: a URL anywhere; `curl` and `wget` as a command in prose or in a shell script;
+ * the `"command"` of a connector (`npx`, `git`…). A text file cannot connect by itself, but it tells an agent, a
+ * shell or the connector runner to.
+ */
+export function scanText(text, fileName = "") {
   const hosts = new Set();
+  const points = new Map();
+  const point = (name) => points.set(name, (points.get(name) ?? 0) + 1);
   for (const m of text.matchAll(URL_HOST)) hosts.add(hostOf(m[1]));
-  return { points: new Map(), hosts };
+  if (/\.(md|sh|ps1)$/.test(fileName))
+    for (const m of text.matchAll(/(?:^|[\s`$(;|&"'])(curl|wget)(?=\s)/gm)) point(`program:${m[1]}`);
+  if (/\.json$/.test(fileName))
+    for (const m of text.matchAll(/"command"\s*:\s*"([^"]+)"/g)) {
+      const name = path.basename(m[1]);
+      if (NETWORK_PROGRAMS.has(name)) point(`program:${NETWORK_PROGRAMS.get(name)}`);
+    }
+  return { points, hosts };
 }
 
 // ---- the tree -----------------------------------------------------------------------------------------------
@@ -227,7 +286,7 @@ export function scanTree(root = ROOT) {
   const hosts = new Map();
   for (const file of files.sort(cmp)) {
     const source = fs.readFileSync(path.join(root, file), "utf8");
-    const result = CODE.test(file) ? scanSource(source, file) : scanText(source);
+    const result = CODE.test(file) ? scanSource(source, file) : scanText(source, file);
     for (const [kind, count] of [...result.points].sort((a, b) => cmp(a[0], b[0])))
       sites.push({ file, kind, count });
     for (const host of result.hosts) {
@@ -289,14 +348,21 @@ export function compare(found, policy) {
   }
 
   const patterns = hostEntries.flatMap((h) => (h.match ?? []).map((m) => ({ id: h.id, m })));
-  const ignored = policy.ignored.map((i) => i.match);
+  /** An ignored host is ignored in the files its entry names (all files when it names none). */
+  const isIgnored = (host, files) =>
+    policy.ignored.some(
+      (i) => covers(i.match, host) && (!i.files || files.every((f) => i.files.includes(f))),
+    );
   const covered = new Set();
   for (const { host, files } of found.hosts) {
     const hit = patterns.filter((p) => covers(p.m, host));
     for (const p of hit) covered.add(`${p.id}\u0000${p.m}`);
-    if (hit.length === 0 && !ignored.some((m) => covers(m, host)))
+    if (hit.length === 0 && !isIgnored(host, files))
       problems.push(`new host: ${host} (${files.join(", ")}) has no entry in ${POLICY_FILE}`);
   }
+  for (const i of policy.ignored)
+    if (!found.hosts.some((h) => covers(i.match, h.host)))
+      problems.push(`stale ignored host: ${i.match} is not in the code any more`);
   for (const h of hostEntries) {
     if (h.implicit === true) continue;
     for (const m of h.match ?? [])

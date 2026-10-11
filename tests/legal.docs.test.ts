@@ -97,7 +97,7 @@ describe("C2 the canonical texts are pinned", () => {
 
 // ---- C3 ---------------------------------------------------------------------------------------------------------------
 
-describe("C3 every package.json says SEE LICENSE IN LICENSE", () => {
+describe("C3 every package.json says FSL-1.1-ALv2, the abbreviation of the LICENSE", () => {
   const root = JSON.parse(text("package.json")) as { workspaces: string[] };
   const files = ["package.json", ...root.workspaces.map((w) => `${w}/package.json`)];
 
@@ -116,13 +116,13 @@ describe("C3 every package.json says SEE LICENSE IN LICENSE", () => {
 
   for (const file of files)
     it(`C3 ${file}`, () => {
-      expect((JSON.parse(text(file)) as { license?: string }).license).toBe("SEE LICENSE IN LICENSE");
+      expect((JSON.parse(text(file)) as { license?: string }).license).toBe("FSL-1.1-ALv2");
     });
 
   it("C3 the lockfile says the same for the root and the workspaces, so npm install does not rewrite it", () => {
     const lock = JSON.parse(text("package-lock.json")) as { packages: Record<string, { license?: string }> };
     for (const key of ["", ...root.workspaces])
-      expect(lock.packages[key]?.license, key || "root").toBe("SEE LICENSE IN LICENSE");
+      expect(lock.packages[key]?.license, key || "root").toBe("FSL-1.1-ALv2");
   });
 });
 
@@ -293,8 +293,11 @@ describe("C6 the installer carries the legal side", () => {
       components: unknown[];
     };
     expect(bom.bomFormat).toBe("CycloneDX");
-    expect(bom.components).toHaveLength(183);
+    expect(bom.components).toHaveLength(183 + 4);
     expect(fs.existsSync(path.join(payload, "legal", "vendor", "FSL-1.1-ALv2.template.md"))).toBe(true);
+    // The CycloneDX schemas are test fixtures of the repository, not part of what the installer carries.
+    expect(fs.existsSync(path.join(payload, "legal", "vendor", "cyclonedx"))).toBe(false);
+    expect(fs.existsSync(path.join(ROOT, "legal", "vendor", "cyclonedx", "bom-1.5.schema.json"))).toBe(true);
   });
 
   it("C6 scripts/package.mjs calls stageLegal(ROOT, payload) and still copies the Node LICENSE next to the runtime", () => {
@@ -389,7 +392,7 @@ describe("C19 the EULA says what the product does with the CLIs", () => {
   });
 });
 
-// ---- C20 --------------------------------------------------------------------------------------------------------------
+// ---- C20, C37 ------------------------------------------------------------------------------------------------------------
 
 interface Trademarks {
   brands: Array<{ name: string; kind: string; probe: string }>;
@@ -398,32 +401,43 @@ interface Trademarks {
 }
 const marks = JSON.parse(text("legal/trademarks.json")) as Trademarks;
 
-/** The text the product shows or ships, as the sweep reads it (no tests, no dependencies, none of the legal files). */
+const TEXT_EXT = /\.(ts|tsx|js|mjs|cjs|json|css|html|md|sh|ps1|swift|yml|yaml|webmanifest|plist)$/;
+const SKIP_DIRS = new Set([
+  "node_modules",
+  "dist",
+  "build",
+  "release",
+  "coverage",
+  ".git",
+  ".specs",
+  ".claude",
+  ".agents",
+  ".cursor",
+  ".windsurf",
+  "legal",
+  "tests",
+  "test-results",
+  "playwright-report",
+  "logs",
+  "config",
+  "artifacts",
+  "memory",
+  "workspace",
+]);
+const SKIP_FILES = /^(package-lock\.json|LICENSE|CONTRIBUTING\.md|CHANGELOG\.md)$|\.(test|spec)\.|\.d\.ts$/;
+
+/** All the text the product shows or ships, as the sweep reads it: README, docs/** (every folder), code, skills, scripts, public files, connectors. */
 function citedText(): Array<{ file: string; text: string }> {
   const out: Array<{ file: string; text: string }> = [];
-  const add = (file: string) => out.push({ file, text: text(file) });
-  const walk = (dir: string, accept: RegExp) => {
+  const walk = (dir: string) => {
     for (const d of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
-      const rel = `${dir}/${d.name}`;
+      const rel = dir ? `${dir}/${d.name}` : d.name;
       if (d.isDirectory()) {
-        if (!["node_modules", "dist", "build", "release"].includes(d.name)) walk(rel, accept);
-      } else if (accept.test(d.name) && !/\.(test|spec)\.|\.d\.ts$/.test(d.name)) add(rel);
+        if (!SKIP_DIRS.has(d.name)) walk(rel);
+      } else if (TEXT_EXT.test(d.name) && !SKIP_FILES.test(d.name)) out.push({ file: rel, text: text(rel) });
     }
   };
-  add("README.md");
-  for (const d of fs.readdirSync(path.join(ROOT, "docs"), { withFileTypes: true }))
-    if (d.isFile() && d.name.endsWith(".md")) add(`docs/${d.name}`);
-  for (const dir of [
-    "core/src",
-    "contracts/src",
-    "adapters",
-    "apps/api/src",
-    "apps/command-centre/src",
-    "connectors",
-    "routines",
-  ])
-    walk(dir, /\.(ts|tsx|json|css)$/);
-  add("apps/command-centre/index.html");
+  walk("");
   return out;
 }
 /** Names from `names` (regular expressions as strings) that the text cites. */
@@ -431,56 +445,102 @@ function citations(content: string, names: string[]): string[] {
   return names.filter((source) => new RegExp(source).test(content));
 }
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const watchProbe = (name: string) => `(?<![\\w.-])${escapeRe(name)}(?![\\w-])`;
 
-describe("C20 every third-party brand the product cites is listed, and the EULA names them all", () => {
+/** The names the EULA lists in section 4, one `- Kind: A, B, C.` line per kind. */
+function eulaBrands(): Array<{ kind: string; names: string[] }> {
+  return section("legal/EULA.md", "4.")
+    .split("\n")
+    .filter((l) => l.startsWith("- "))
+    .map((l) => {
+      const [kind, rest] = [l.slice(2, l.indexOf(":")), l.slice(l.indexOf(":") + 1)];
+      return { kind, names: rest.trim().replace(/\.$/, "").split(", ") };
+    });
+}
+
+describe("C20 every third-party brand the product cites is listed, and the EULA names exactly those", () => {
   const files = citedText();
 
-  it("C20 the sweep reads README, docs, the interface, the connectors and the adapters (some 300 files)", () => {
-    expect(files.length).toBeGreaterThan(250);
+  it("C20 the sweep reads the README, every folder of docs/, the interface, the connectors, the skills, the scripts and the public files", () => {
+    expect(files.length).toBeGreaterThan(500);
     const names = files.map((f) => f.file);
     for (const file of [
       "README.md",
       "docs/install.md",
       "docs/README.pt-BR.md",
+      "docs/analysis-2026-09/README.md",
+      "docs/review-2026-09-06/README.md",
       "connectors/playwright.json",
       "adapters/cursor/src/manifest.ts",
+      "skills/claude-mobile-optimize/SKILL.md",
+      "scripts/package.mjs",
+      "apps/command-centre/public/sw.js",
+      "apps/command-centre/src/hooks/systemNotify.ts",
+      "apps/api/src/server.ts",
+      ".github/workflows/ci.yml",
     ])
       expect(names, file).toContain(file);
+    for (const file of names)
+      expect(file, "not the legal texts, the specs, the tests or a dependency").not.toMatch(
+        /^(legal|tests|\.specs)\/|node_modules/,
+      );
   });
 
-  it("C20 there are 46 brands and 32 watched names", () => {
-    expect(marks.brands).toHaveLength(46);
-    expect(marks.watch.probes).toHaveLength(32);
-    expect(new Set(marks.brands.map((b) => b.name)).size).toBe(46);
+  it("C20 there are as many entries as the list holds and no name twice", () => {
+    expect(marks.brands.length).toBeGreaterThanOrEqual(88);
+    expect(new Set(marks.brands.map((b) => b.name)).size).toBe(marks.brands.length);
+    expect(marks.watch.probes.length).toBeGreaterThanOrEqual(70);
+    expect(new Set(marks.watch.probes).size).toBe(marks.watch.probes.length);
   });
 
-  it("C20 no watched name (a brand the repository does not cite today) appears in the text; if one does it must be added to brands", () => {
-    const watched = marks.watch.probes.map((p) => `\\b${escapeRe(p)}\\b`);
+  it("C20 no watched name (a brand the repository does not cite today) appears in the text; if one does it must move to brands", () => {
     const found: Record<string, string[]> = {};
-    for (const f of files) for (const hit of citations(f.text, watched)) (found[hit] ??= []).push(f.file);
+    for (const f of files)
+      for (const hit of citations(f.text, marks.watch.probes.map(watchProbe)))
+        (found[hit] ??= []).push(f.file);
     expect(found).toEqual({});
   });
 
   it("C20 the sweep does find a brand that is added (self-test: Docker and Anthropic in a fixture text)", () => {
-    const watched = marks.watch.probes.map((p) => `\\b${escapeRe(p)}\\b`);
-    expect(citations("Run it in Docker, with a model from Anthropic.", watched).sort()).toEqual([
-      "\\bAnthropic\\b",
-      "\\bDocker\\b",
-    ]);
-    expect(citations("dockerfile, a linear scale", watched)).toEqual([]);
+    const watched = marks.watch.probes.map(watchProbe);
+    expect(citations("Run it in Docker, with a model from Anthropic.", watched).sort().length).toBe(1); // Docker is a brand now; Anthropic is watched
+    expect(citations("Run it with Redis and Kubernetes.", watched)).toHaveLength(2);
+    expect(citations("dockerfile, a linear scale, redistribute", watched)).toEqual([]);
   });
 
-  it("C20 every brand of the list is still cited in the product's text (the list holds nothing stale)", () => {
+  it("C20 every brand of the list is still cited in the product's text, as a name of its own (the list holds nothing stale)", () => {
     const stale = marks.brands
       .filter((b) => !files.some((f) => new RegExp(b.probe).test(f.text)))
       .map((b) => b.name);
     expect(stale).toEqual([]);
   });
 
-  for (const brand of marks.brands)
-    it(`C20 ${brand.name} is named in the EULA's trademark section`, () => {
-      expect(section("legal/EULA.md", "4.")).toContain(brand.name);
-    });
+  it("C20 the brands the first sweep missed are in the list (Android, Edge, iPhone, iPad, Xcode, Gradle, Kotlin, Docker, Notion, Slack, WhatsApp, Discord…)", () => {
+    const names = new Set(marks.brands.map((b) => b.name));
+    for (const name of [
+      "Android",
+      "Microsoft Edge",
+      "iPhone",
+      "iPad",
+      "Xcode",
+      "Gradle",
+      "Kotlin",
+      "Metro",
+      "Watchman",
+      "Dart",
+      "Docker",
+      "Notion",
+      "Slack",
+      "WhatsApp",
+      "Discord",
+      "Stripe",
+      "PayPal",
+      "YouTube",
+      "Tauri",
+      "Debian",
+    ])
+      expect(names.has(name), name).toBe(true);
+  });
 
   it("C20 the section says the names are cited to identify compatibility, without endorsement and without logos", () => {
     const f = flat(section("legal/EULA.md", "4."));
@@ -495,6 +555,61 @@ describe("C20 every third-party brand the product cites is listed, and the EULA 
       "[A PREENCHER PELO DONO: confirmar o titular e a política de uso de marca",
     );
     expect(marks.note).toContain("MINUTA");
+  });
+});
+
+describe("C37 the list is not presented as complete, the EULA matches it name by name, and a brand inside another brand's name is not enough", () => {
+  it("C37 the EULA says the list is not exhaustive, and does not say the names below are all the names cited", () => {
+    const f = flat(section("legal/EULA.md", "4."));
+    expect(f).toContain("A lista abaixo não é exaustiva");
+    expect(f).not.toMatch(/Os nomes abaixo, citados no reposit/);
+  });
+
+  it("C37 the names of the EULA are exactly the names of legal/trademarks.json, grouped by the same kinds, each name once", () => {
+    const listed = eulaBrands();
+    const flatNames = listed.flatMap((l) => l.names);
+    expect(flatNames.length).toBe(new Set(flatNames).size);
+    expect([...flatNames].sort()).toEqual(marks.brands.map((b) => b.name).sort());
+    for (const { kind, names } of listed) {
+      const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+      expect(
+        names.every((n) => capital(marks.brands.find((b) => b.name === n)!.kind) === kind),
+        kind,
+      ).toBe(true);
+    }
+  });
+
+  it("C37 a short name that is only part of a longer brand does not satisfy the EULA (self-test: Claude inside 'Claude Code', Vite inside 'Vitest')", () => {
+    const only = ["Claude Code", "Vitest", "Google Calendar", "Cursor Agent"];
+    for (const name of ["Claude", "Vite", "Google", "Cursor"]) expect(only.includes(name), name).toBe(false);
+    // The old check was substring-based; the new one compares whole names.
+    expect(only.some((n) => n.includes("Vite"))).toBe(true);
+    expect(only.includes("Vite")).toBe(false);
+  });
+
+  const BY_NAME = Object.fromEntries(marks.brands.map((b) => [b.name, b.probe]));
+  it("C37 the probes of Claude, Cursor, Google and Vite find the name alone and not as part of another brand", () => {
+    const alone = (name: string, content: string) => new RegExp(BY_NAME[name]!).test(content);
+    expect(alone("Claude", "uses Claude Code and Claude Code")).toBe(false);
+    expect(alone("Claude", "ask Claude to")).toBe(true);
+    expect(alone("Claude", "Claude Code, then Claude.")).toBe(true);
+    expect(alone("Cursor", "the Cursor Agent CLI")).toBe(false);
+    expect(alone("Cursor", "the Cursor editor")).toBe(true);
+    expect(alone("Google", "Google Calendar and Google Calendar")).toBe(false);
+    expect(alone("Google", "a Google account")).toBe(true);
+    expect(alone("Vite", "tests with Vitest")).toBe(false);
+    expect(alone("Vite", "built with Vite 8")).toBe(true);
+    expect(alone("Claude Code", "Claude Code")).toBe(true);
+    expect(alone("Codex", "OpenAI Codex CLI")).toBe(true);
+  });
+
+  it("C37 each of those four is cited alone somewhere in the product (not only inside another name)", () => {
+    const files = citedText();
+    for (const name of ["Claude", "Cursor", "Google", "Vite"])
+      expect(
+        files.some((f) => new RegExp(BY_NAME[name]!).test(f.text)),
+        name,
+      ).toBe(true);
   });
 });
 
@@ -731,5 +846,294 @@ describe("C32 the changelog", () => {
       "There is no telemetry",
     ])
       expect(unreleased, phrase).toContain(phrase);
+  });
+});
+
+// ---- round 1 ----------------------------------------------------------------------------------------------------------
+
+describe("C38 the legal texts invent no company, value, contact or link, and the sentences about the licensor hold only the owner's mark", () => {
+  const MARK = "⟦⟧";
+  const dco = text("legal/vendor/DCO-1.1.txt").trim();
+  const bodyOf = (file: string) => {
+    let t = text(file);
+    if (file === "CONTRIBUTING.md") t = t.replace(dco, "");
+    return t.replace(PLACEHOLDER, MARK);
+  };
+  const FILES = [
+    "LICENSE",
+    "CONTRIBUTING.md",
+    "legal/EULA.md",
+    "legal/PRIVACY.md",
+    "legal/NOTICE.md",
+    "legal/README.md",
+  ];
+  const COMPANY =
+    /\b(Ltda\.?|S\.A\.|S\/A|EIRELI|LLC|Inc\.?|Corp\.?|GmbH|Ltd\.?|B\.V\.|S\.r\.l\.|Pty|Co\.)(?![\w])/;
+  const MONEY = /R\$|US\$|€|£|\$\s?\d|\b(USD|BRL|EUR|GBP)\b|\d+\s*(reais|dólares|euros)\b/i;
+  const PHONE = /\(\d{2}\)\s?\d{4,5}-?\d{4}|\+\d{2}\s?\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4}/;
+  const ALLOWED_URL_HOSTS = new Set([
+    "fsl.software",
+    "developercertificate.org",
+    "www.conventionalcommits.org",
+    "raw.githubusercontent.com",
+    "github.com",
+    "cursor.com",
+    "www.apache.org",
+  ]);
+  const urlHosts = (t: string) =>
+    [...t.matchAll(/https?:\/\/([A-Za-z0-9.-]+)/g)].map((m) => m[1]!.toLowerCase());
+
+  it("C38 the detectors see an invented company, a value, a phone and a link (self-test)", () => {
+    expect("Acme Software Ltda").toMatch(COMPANY);
+    expect("Foo Inc.").toMatch(COMPANY);
+    expect("teto de R$ 100,00").toMatch(MONEY);
+    expect("pague US$ 5").toMatch(MONEY);
+    expect("1.000 reais").toMatch(MONEY);
+    expect("(11) 91234-5678").toMatch(PHONE);
+    expect(urlHosts("veja https://acme.example.com/x e http://b.test")).toEqual([
+      "acme.example.com",
+      "b.test",
+    ]);
+    expect("$XDG_DATA_HOME e ${year}").not.toMatch(MONEY);
+  });
+
+  for (const file of FILES)
+    it(`C38 ${file}: no company name, monetary value, phone, e-mail or link outside the allowlist`, () => {
+      const t = bodyOf(file);
+      expect(t, "company").not.toMatch(COMPANY);
+      expect(t, "money").not.toMatch(MONEY);
+      expect(t, "phone").not.toMatch(PHONE);
+      expect(t, "e-mail").not.toMatch(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
+      expect(
+        urlHosts(t).filter((h) => !ALLOWED_URL_HOSTS.has(h)),
+        "links",
+      ).toEqual([]);
+    });
+
+  const skeleton = (file: string, from: string, to: string) => {
+    const t = bodyOf(file);
+    const a = t.indexOf(from);
+    const b = t.indexOf(to, a);
+    expect(a, `${file} has "${from}"`).toBeGreaterThanOrEqual(0);
+    return t.slice(a, b).replace(/`/g, "").replace(/\s+/g, " ").trim();
+  };
+
+  it("C38 the EULA names the licensor with the owner's marks and nothing else", () => {
+    expect(skeleton("legal/EULA.md", "1.3. O titular", "## 2.")).toBe(
+      `1.3. O titular dos direitos e licenciante é ${MARK}, inscrito sob o documento ${MARK}, com endereço em ${MARK}. Contato jurídico e de privacidade: ${MARK}.`,
+    );
+  });
+
+  it("C38 the privacy policy does the same, and the notice carries the copyright line as a mark", () => {
+    expect(skeleton("legal/PRIVACY.md", "Licenciante:", "Como o licenciante")).toBe(
+      `Licenciante: ${MARK}, documento ${MARK}, endereço ${MARK}. Contato de privacidade: ${MARK}. ${MARK}`,
+    );
+    expect(bodyOf("legal/NOTICE.md")).toContain(`MordomoOS\nCopyright 2026 ${MARK}\n`);
+    expect(bodyOf("LICENSE")).toContain(`Copyright 2026 ${MARK}\n`);
+  });
+
+  it("C38 the old licensor name and the repository's own handle are not in the texts as a licensor", () => {
+    for (const file of FILES) expect(bodyOf(file), file).not.toMatch(/Thiago|Lopes/);
+  });
+});
+
+describe("C40 the SPDX identifier", () => {
+  it("C40 FSL-1.1-ALv2 is the abbreviation in LICENSE and the license field of the 8 manifests; FSL-1.1-Apache-2.0 is neither", () => {
+    const license = text("LICENSE");
+    expect(license).toMatch(/## Abbreviation\n\nFSL-1\.1-ALv2\n/);
+    const root = JSON.parse(text("package.json")) as { workspaces: string[] };
+    for (const f of ["package.json", ...root.workspaces.map((w) => `${w}/package.json`)]) {
+      const m = JSON.parse(text(f)) as { license: string };
+      expect(m.license, f).toBe("FSL-1.1-ALv2");
+      expect(m.license, f).not.toBe("FSL-1.1-Apache-2.0");
+    }
+  });
+
+  it("C40 the identifier is in the SPDX list that the vendored CycloneDX schema carries; the name of the request is not", () => {
+    const spdx = (JSON.parse(text("legal/vendor/cyclonedx/spdx.schema.json")) as { enum: string[] }).enum;
+    expect(spdx).toContain("FSL-1.1-ALv2");
+    expect(spdx).toContain("FSL-1.1-MIT");
+    expect(spdx).not.toContain("FSL-1.1-Apache-2.0");
+  });
+
+  it("C40 the two published packages say the same and ship a copy of the LICENSE", () => {
+    for (const dir of ["core", "contracts"]) {
+      expect((JSON.parse(text(`${dir}/package.json`)) as { license: string }).license, dir).toBe(
+        "FSL-1.1-ALv2",
+      );
+      expect(text(`${dir}/LICENSE`), dir).toBe(text("LICENSE"));
+    }
+  });
+
+  it("C40 no text still says the identifier could not be confirmed, or that SEE LICENSE IN LICENSE is the value", () => {
+    for (const file of ["legal/README.md", "CHANGELOG.md", "README.md", "legal/EULA.md", "legal/PRIVACY.md"])
+      expect(text(file), file).not.toMatch(/SEE LICENSE IN LICENSE|não conseguiu confirmar/);
+    expect(flat(text("legal/README.md"))).toContain("é um identificador SPDX");
+    const state = text(".specs/STATE.md");
+    expect(state).not.toMatch(/Padrão: `SEE LICENSE IN LICENSE` nos oito/);
+  });
+});
+
+describe("C41 the EULA quotes the FSL literally where it says it does, and says what it adds", () => {
+  const eula = text("legal/EULA.md");
+  const collapse = (s: string) => s.replace(/\s+/g, " ").trim();
+  const license = collapse(text("LICENSE"));
+  const quotes = eula
+    .split("\n")
+    .filter((l) => l.startsWith("> FSL: "))
+    .map((l) => collapse(l.slice("> FSL: ".length)));
+
+  it("C41 there are at least 15 literal passages and every one of them is in the LICENSE", () => {
+    expect(quotes.length).toBeGreaterThanOrEqual(15);
+    for (const q of quotes) expect(license, q.slice(0, 60)).toContain(q);
+  });
+
+  it("C41 a passage that is not in the LICENSE would be caught (self-test)", () => {
+    expect(license).not.toContain("the Licensor may terminate this license");
+    expect(license).not.toContain("loss of data, profit or opportunity");
+    expect(license).not.toContain("cease distributing");
+  });
+
+  it("C41 the Competing Use passage carries the 'exists as of the date' qualifier, and the Portuguese summary says it", () => {
+    expect(quotes.some((q) => q.includes("that exists as of the date we make the Software available"))).toBe(
+      true,
+    );
+    expect(flat(eula)).toContain("e que já exista na data em que a versão foi disponibilizada");
+  });
+
+  it("C41 the liability passage is the FSL's, and loss of data, profit and opportunity is marked as an additional term", () => {
+    expect(quotes.some((q) => q.startsWith("IN NO EVENT WILL WE HAVE ANY LIABILITY TO YOU"))).toBe(true);
+    const paragraph = eula
+      .split("\n\n")
+      .map((p) => p.replace(/\s+/g, " "))
+      .find((p) => p.includes("perda de dados, de lucro ou de oportunidade"))!;
+    expect(paragraph).toContain("**Termo adicional (a revisar)");
+    expect(paragraph).toContain("Essa lista não está no `LICENSE`");
+  });
+
+  it("C41 the licence has no termination clause or duty to stop distributing, and the EULA says so instead of attributing one to it", () => {
+    expect(license).not.toMatch(/terminat|cease distribut|stop distribut/i);
+    const s9 = flat(section("legal/EULA.md", "9."));
+    expect(s9).toContain(
+      "O LICENSE não tem cláusula de término do contrato nem dever de parar de distribuir o software",
+    );
+    expect(s9).not.toMatch(/perde o direito|pode exigir que pare/);
+    expect(s9).toContain("Termo adicional (a revisar)");
+  });
+
+  it("C41 the THIRD_PARTY_NOTICES duty is marked as coming from the third-party licenses and not from the LICENSE", () => {
+    const s2 = flat(section("legal/EULA.md", "2."));
+    expect(s2).toContain("Essa exigência não vem do LICENSE");
+    expect(s2).not.toMatch(/como o próprio `?LICENSE`? exige/);
+  });
+
+  it("C41 the EULA never says 'as the LICENSE says' about a text the LICENSE does not hold", () => {
+    const outsideQuotes = eula
+      .split("\n")
+      .filter((l) => !l.startsWith("> FSL: "))
+      .join("\n");
+    expect(outsideQuotes).not.toMatch(/como (o próprio )?`?LICENSE`? (diz|exige)|como diz o `?LICENSE/);
+  });
+
+  it("C41 the section on liability and on term each carry an additional-term mark", () => {
+    for (const n of ["2.", "7.", "9."]) expect(section("legal/EULA.md", n), n).toContain("Termo adicional");
+  });
+});
+
+describe("C42 the runtime set is not presented as the content of the installer", () => {
+  const TEXTS = [
+    "README.md",
+    "docs/install.md",
+    "docs/README.pt-BR.md",
+    "legal/README.md",
+    "legal/NOTICE.md",
+    "legal/EULA.md",
+    "legal/PRIVACY.md",
+  ];
+
+  it("C42 no text says that the notice lists everything the installer carries, or that the 184 are the installer's", () => {
+    for (const file of TEXTS)
+      expect(flat(text(file)), file).not.toMatch(
+        /(every|all) (the )?components? (that )?the installer carries|184 (packages|pacotes) (the installer carries|que o instalador leva)/i,
+      );
+    const changelog = text("CHANGELOG.md");
+    const unreleased = changelog.slice(
+      changelog.indexOf("## Unreleased"),
+      changelog.indexOf("\n## ", changelog.indexOf("## Unreleased") + 5),
+    );
+    expect(flat(unreleased)).not.toMatch(/184 packages the installer carries/);
+  });
+
+  it("C42 the README, the CHANGELOG and the notice say 'runtime dependency set' and 'superset'", () => {
+    expect(flat(section("README.md", "License"))).toMatch(/runtime dependency set/);
+    expect(flat(section("README.md", "License"))).toContain(
+      "superset of what the installer's bundles contain",
+    );
+    const changelog = text("CHANGELOG.md");
+    expect(
+      flat(
+        changelog.slice(
+          changelog.indexOf("## Unreleased"),
+          changelog.indexOf("\n## ", changelog.indexOf("## Unreleased") + 5),
+        ),
+      ),
+    ).toContain("a superset of what the installer's bundles contain");
+    const notice = flat(text("legal/THIRD_PARTY_NOTICES.md"));
+    expect(notice).toContain("Pacotes npm de runtime: 184");
+    expect(notice).toContain("superconjunto do que o instalador leva");
+    expect(notice).toContain("o aviso não afirma que cada um está dentro do instalador");
+  });
+
+  it("C42 the first sentence of the SBOM doc and the notice section agree: runtime, not 'distributed'", () => {
+    expect(text("legal/THIRD_PARTY_NOTICES.md")).toContain("## 2. Pacotes npm de runtime");
+    expect(text("legal/THIRD_PARTY_NOTICES.md")).not.toContain("## 2. Pacotes npm distribuídos");
+  });
+});
+
+describe("C43 traceability and the wording of the privacy text", () => {
+  const SPECS = [".specs/features/licenca-comercial/plan.md", ".specs/features/licenca-comercial/checks.md"];
+  const stateLicense = () => {
+    const state = text(".specs/STATE.md");
+    return (
+      state
+        .split("\n")
+        .filter((l) => l.startsWith("| AD-021") || l.startsWith("| AD-022"))
+        .join("\n") + state.slice(state.indexOf("### licenca-comercial"))
+    );
+  };
+
+  it("C43 the specs cite no commit that the integration left out (40fee52, a678a34, 4ffa643, 9a91385, 61ef40f)", () => {
+    for (const file of SPECS)
+      for (const h of ["40fee52", "a678a34", "4ffa643", "9a91385", "61ef40f"])
+        expect(text(file), `${file} ${h}`).not.toContain(h);
+    for (const h of ["40fee52", "a678a34", "4ffa643", "9a91385", "61ef40f"])
+      expect(stateLicense(), h).not.toContain(h);
+  });
+
+  it("C43 the Landing row of door 4 keeps its original title and the amendments are recorded below the table", () => {
+    const plan = text(".specs/features/licenca-comercial/plan.md");
+    expect(plan).toMatch(/^\| 4\. SBOM\s+\|/m);
+    expect(plan).not.toContain("a forma mudou na construção");
+    expect(plan).toContain("**Emendas da rodada 1");
+    expect(plan.indexOf("**Emendas da rodada 1")).toBeGreaterThan(plan.indexOf("| 7. SBOM"));
+  });
+
+  it("C43 the privacy text does not say 'no product identifier' beside the user-agent header; it says what the header is", () => {
+    const privacy = text("legal/PRIVACY.md");
+    expect(privacy).not.toMatch(/nenhum identificador do produto/);
+    expect(privacy).toContain("`user-agent: mordomo-os` (o nome do produto, sem versão)");
+    expect(privacy).toContain("nenhum identificador da instalação, da máquina ou da pessoa");
+  });
+
+  it("C43 the privacy text says the provider credentials in the environment are passed to the CLI, and does not say MordomoOS never sees them", () => {
+    const privacy = flat(text("legal/PRIVACY.md"));
+    expect(privacy).toContain(
+      "o ambiente do processo dele (inclusive ANTHROPIC_API_KEY e OPENAI_API_KEY, se você as definiu) é repassado ao CLI",
+    );
+    expect(privacy).not.toMatch(/não vê (a sua )?chave/);
+    const code = text("core/src/spawn/safeSpawn.ts");
+    expect(code).toContain("{ ...process.env }");
+    expect(text("adapters/claude/src/index.ts")).toContain("process.env.ANTHROPIC_API_KEY");
+    expect(text("adapters/codex/src/index.ts")).toContain("process.env.OPENAI_API_KEY");
   });
 });

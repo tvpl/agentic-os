@@ -4,13 +4,12 @@
 
 - **License and legal texts (licenca-comercial)**: the product is licensed under the Functional Source License
   1.1 with the Apache-2.0 future license (FSL-1.1-ALv2; the canonical text from fsl.software in `LICENSE`, the
-  `license` field of the 8 manifests reads `SEE LICENSE IN LICENSE`); `CONTRIBUTING.md` asks for a DCO sign-off and no
+  `license` field of the 8 manifests is the SPDX id `FSL-1.1-ALv2`); `CONTRIBUTING.md` asks for a DCO sign-off and no
   CLA. `legal/` holds an EULA, a privacy policy and a product notice, **all drafts for the owner's legal review, not
   legal advice**, with every blank marked `[A PREENCHER PELO DONO: …]`. `npm run licenses:write` generates
-  `legal/THIRD_PARTY_NOTICES.md` from the lockfile (the 184 packages the installer carries, with the full text of each
-  license, plus Node.js, SQLite and the two bundled fonts), `npm run licenses:check` rejects a license outside
+  `legal/THIRD_PARTY_NOTICES.md` from the lockfile (the 184 npm packages of the lockfile's runtime dependency set, a superset of what the installer's bundles contain, with the full text of each license, plus Node.js, SQLite and the two bundled fonts), `npm run licenses:check` rejects a license outside
   `legal/license-policy.json` (GPL, AGPL, SSPL, MPL, unknown… in what ships; MPL-2.0 and CC-BY-4.0 only in build tools)
-  and a stale notice, and `npm run sbom` writes a CycloneDX SBOM of the same set; the installer carries `LICENSE`,
+  and a stale notice, and `npm run sbom` writes a CycloneDX SBOM of the same set (a test validates it against the official 1.5 schema); the installer carries `LICENSE`,
   `legal/` and the SBOM. `npm run network:scan` lists every network point and host in the code and its `--check`
   (run by the tests) fails on one that `legal/network-policy.json` and the privacy policy do not name. There is no
   telemetry and none was added; the privacy policy says so and says what would have to hold if one is ever added.

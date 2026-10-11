@@ -3,11 +3,26 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsSchema } from "../contracts/src/index.js";
 import { deliverPush } from "../core/src/channels/pushChannel.js";
 import { sendTelegramMessage } from "../core/src/channels/telegram.js";
 import { npmAuditCheck } from "../apps/api/src/doctor.js";
+import { UpdateChecker } from "../apps/api/src/updates.js";
+import { defaultFetcher } from "../core/src/skills/registry.js";
+import {
+  ConnectorSchema,
+  EventBus,
+  RoutineScheduler,
+  RoutineStore,
+  RunManager,
+  SettingsStore,
+  SkillCatalog,
+  fetchConnectorData,
+  openDb,
+  type DataMapping,
+} from "@mordomo/core/internal";
+import { makeTempHome } from "./helpers.js";
 
 /**
  * The sweep of every network point of the code, the privacy policy that has to name them, and "no telemetry"
@@ -36,6 +51,8 @@ interface HostEntry {
   role: string;
   match: string[];
   implicit?: boolean;
+  defaultState?: string;
+  gate?: { setting?: string; seeds?: string };
   trigger: string;
   default: string;
   data: string;
@@ -118,7 +135,7 @@ describe("C23 the reader finds every kind of network point and every source of a
     });
     expect(read(`run("curl", [url]);`).points).toEqual({ "program:curl": 1 });
     expect(read(`run("wget", [url]);`).points).toEqual({ "program:wget": 1 });
-    expect(read(`const a = "curly"; const b = "npm"; const c = "curl -s";`).points).toEqual({});
+    expect(read(`const a = "curly"; const b = "npm install"; const c = "curl -s";`).points).toEqual({});
   });
 
   it("C23 hosts: a URL literal, a template, a bare constant and a regular expression give their host", () => {
@@ -196,7 +213,7 @@ function project(files: Record<string, string>, policyJson?: unknown): string {
   }
   return dir;
 }
-const GOOD_SOURCE = `export const HOST = "api.example.net";\nexport const go = () => fetch("https://" + HOST + "/x");\n`;
+const GOOD_SOURCE = `export const NS = "http://www.w3.org/2000/svg";\nexport const HOST = "api.example.net";\nexport const go = () => fetch("https://" + HOST + "/x");\n`;
 const GOOD_POLICY = (): Policy => ({
   note: "fixture",
   hosts: [
@@ -245,9 +262,9 @@ describe("C24 the code and the policy agree, in both directions", () => {
     expect(cli.status, cli.stderr).toBe(0);
   });
 
-  it("C24 the real code has the network points the research found (26) and the hosts the policy names", () => {
+  it("C24 the real code has the network points the research found (36) and the hosts the policy names", () => {
     const found = realScan;
-    expect(found.sites).toHaveLength(26);
+    expect(found.sites).toHaveLength(36);
     const fetchFiles = found.sites.filter((s) => s.kind === "fetch").map((s) => s.file);
     for (const file of [
       "apps/api/src/updates.ts",
@@ -317,7 +334,7 @@ describe("C24 the code and the policy agree, in both directions", () => {
   });
 
   it("C24 an ignored host is accepted, and an implicit entry may have no match in the code", () => {
-    const res = check({ "core/src/a.ts": GOOD_SOURCE + `export const ns = "http://www.w3.org/2000/svg";\n` });
+    const res = check({ "core/src/a.ts": GOOD_SOURCE });
     expect(res.code, res.err).toBe(0);
   });
 
@@ -548,8 +565,20 @@ describe("C27 the product has no telemetry", () => {
 
   it("C27 the sweep finds no beacon, no WebSocket, no XMLHttpRequest, no curl and no wget in the product", () => {
     const kinds = new Set(realScan.sites.map((s) => s.kind));
-    for (const kind of ["beacon", "websocket", "xhr", "webtransport", "program:curl", "program:wget"])
+    for (const kind of [
+      "beacon",
+      "websocket",
+      "xhr",
+      "webtransport",
+      "program:wget",
+      "program:ssh",
+      "program:scp",
+    ])
       expect(kinds.has(kind), kind).toBe(false);
+    // The one curl is an instruction to the agent, aimed at the local service.
+    expect(realScan.sites.filter((s) => s.kind === "program:curl").map((s) => s.file)).toEqual([
+      "skills/recall/SKILL.md",
+    ]);
   });
 
   it("C27 no setting, default or schema, has a name with telemetry, analytics or crash in it", () => {
@@ -588,5 +617,404 @@ describe("C27 the product has no telemetry", () => {
     for (const dir of ["core/src", "apps/api/src", "apps/command-centre/src", "contracts/src", "adapters"])
       walk(path.join(ROOT, dir));
     expect(hits).toEqual([]);
+  });
+});
+
+// ---- round 1 ------------------------------------------------------------------------------------------------------------
+
+const defaultSettings = SettingsSchema.parse({}) as unknown as Record<string, unknown>;
+const at = (obj: unknown, dotted: string): unknown =>
+  dotted
+    .split(".")
+    .reduce<unknown>(
+      (o, k) => (o && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined),
+      obj,
+    );
+
+describe("C34 what the policy says about each destination is tied to the real defaults and to the code's own roles", () => {
+  const WORD: Record<string, RegExp> = {
+    on: /^ligado/,
+    off: /^desligado/,
+    none: /^nenhum/,
+    never: /^nunca/,
+    mixed: /^\(1\)/,
+  };
+
+  for (const entry of policy.hosts)
+    it(`C34 ${entry.id}: the default it declares is the one the code has`, () => {
+      expect(Object.keys(WORD), entry.id).toContain(entry.defaultState);
+      expect(entry.default, entry.id).toMatch(WORD[entry.defaultState!]!);
+      // A destination the product contacts on its own initiative may only be "on" if it is the product's own service,
+      // a CLI the person chose, or the npm audit that only runs when the diagnostic is asked for.
+      if (entry.role === "contact" || entry.role === "user-defined")
+        expect(["off", "none"], entry.id).toContain(entry.defaultState);
+      if (entry.role === "link" || entry.role === "build") expect(entry.defaultState, entry.id).toBe("never");
+      if (entry.defaultState === "on") expect(["local", "cli"], entry.id).toContain(entry.role);
+      if (entry.gate?.setting) {
+        const value = at(defaultSettings, entry.gate.setting);
+        expect(
+          value === false || (Array.isArray(value) && value.length === 0),
+          `${entry.id} ${entry.gate.setting} = ${JSON.stringify(value)}`,
+        ).toBe(true);
+      } else if (entry.defaultState === "off") {
+        throw new Error(`${entry.id} is "off" and names no setting that turns it off`);
+      }
+    });
+
+  it("C34 a destination that says 'ligado' on a gate the code has off would fail (self-test: the real values)", () => {
+    expect(at(defaultSettings, "updates.check")).toBe(false);
+    expect(at(defaultSettings, "channels.telegram.enabled")).toBe(false);
+    expect(at(defaultSettings, "channels.push.enabled")).toBe(false);
+    expect(at(defaultSettings, "routines.allowWebhooks")).toBe(false);
+    expect(at(defaultSettings, "marketplace.registries")).toEqual([]);
+    expect(at(defaultSettings, "connectors.allowedCommands")).toEqual([]);
+    expect(at(defaultSettings, "no.such.setting")).toBeUndefined();
+  });
+
+  it("C34 the connectors the product ships are all 'not_configured' and none carries a URL, so 'nenhum conector vem configurado' is true", () => {
+    const dir = path.join(ROOT, "connectors");
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json"));
+    expect(files.length).toBeGreaterThanOrEqual(4);
+    for (const f of files) {
+      const c = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")) as {
+        kind: string;
+        status: string;
+        dataMapping?: { url?: string | null } | null;
+      };
+      if (c.kind === "micro-app") continue; // Pixel Studio is a built-in screen, not a connector to a service
+      expect(c.status, f).toBe("not_configured");
+      expect(c.dataMapping?.url ?? null, f).toBeNull();
+    }
+    expect(
+      policy.hosts
+        .filter((h) => h.gate?.seeds)
+        .map((h) => h.id)
+        .sort(),
+    ).toEqual(["connector-api", "mcp-connectors"]);
+  });
+
+  it("C34 a site that opens a connection points only at an entry the product contacts (not link, not cli, not an implicit entry with an address)", () => {
+    const byId = new Map(policy.hosts.map((h) => [h.id, h]));
+    for (const site of policy.sites) {
+      const opens = /^(fetch|eventsource|module:(dns|https?|http2|net|tls)|dynamic)/.test(site.kind);
+      for (const id of site.hosts) {
+        const h = byId.get(id)!;
+        if (opens && /^(fetch|eventsource)/.test(site.kind))
+          expect(
+            ["contact", "user-defined", "local", "build"],
+            `${site.file} ${site.kind} -> ${id}`,
+          ).toContain(h.role);
+      }
+    }
+    for (const h of policy.hosts) {
+      // "implicit" means "no address in the code": an entry that names an address cannot be implicit, whatever its role.
+      if (h.implicit) expect(h.match, h.id).toEqual([]);
+      if (h.role === "cli") expect(h.match, h.id).toEqual([]);
+      if (h.role === "link")
+        for (const site of policy.sites) expect(site.hosts, `${site.file} -> ${h.id}`).not.toContain(h.id);
+    }
+  });
+
+  it("C34 the real fetch sites are not pointed at a 'link' entry: GitHub is two entries, the contacted one is 'contact' (Y01)", () => {
+    const releases = policy.hosts.find((h) => h.id === "github-releases")!;
+    expect(releases.role).toBe("contact");
+    const site = policy.sites.find((s) => s.file === "apps/api/src/updates.ts" && s.kind === "fetch")!;
+    expect(site.hosts).toEqual(["github-releases"]);
+  });
+});
+
+describe("C35 the numbers and states in the privacy text are the code's, proved where the code does them", () => {
+  const dirsToClean: Array<() => void> = [];
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    for (const c of dirsToClean.splice(0)) c();
+  });
+
+  it("C35 the version check keeps its answer six hours, not five and not seven (privacy text: seis horas)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-11T00:00:00Z"));
+    const calls: string[] = [];
+    const checker = new UpdateChecker("0.8.0", async (url) => {
+      calls.push(url);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ tag_name: "v0.8.0", html_url: "https://example.test/r" }),
+      };
+    });
+    await checker.check();
+    vi.setSystemTime(new Date("2026-10-11T05:59:00Z"));
+    await checker.check();
+    expect(calls).toHaveLength(1);
+    vi.setSystemTime(new Date("2026-10-11T06:01:00Z"));
+    await checker.check();
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toBe("https://api.github.com/repos/tvpl/agentic-os/releases/latest");
+    expect(policy.hosts.find((h) => h.id === "github-releases")!.data).toContain("seis horas");
+    expect(privacy).toContain("em cache por seis horas");
+  });
+
+  it("C35 the version check sends the user-agent 'mordomo-os' and nothing that names the installation", async () => {
+    let init: { headers?: Record<string, string> } | undefined;
+    await new UpdateChecker("0.8.0", async (_url, i) => {
+      init = i;
+      return { ok: true, status: 200, json: async () => ({ tag_name: "v0.8.0" }) };
+    }).check(true);
+    expect(init?.headers).toEqual({ accept: "application/vnd.github+json", "user-agent": "mordomo-os" });
+    const data = policy.hosts.find((h) => h.id === "github-releases")!.data;
+    expect(data).toContain("`user-agent: mordomo-os`");
+    expect(data).not.toMatch(/nenhum identificador do produto/);
+  });
+
+  function scheduler() {
+    const home = makeTempHome();
+    dirsToClean.push(home.cleanup);
+    const { db } = openDb(home.paths);
+    dirsToClean.push(() => db.close());
+    const bus = new EventBus();
+    const settings = new SettingsStore(home.paths, bus);
+    const runs = new RunManager(db, home.paths, () => settings.load(), (() => null) as never, { bus });
+    const sched = new RoutineScheduler(
+      db,
+      home.paths,
+      new RoutineStore(home.paths),
+      runs,
+      new SkillCatalog(home.paths),
+      () => settings.load(),
+      { bus },
+    );
+    dirsToClean.push(() => sched.stop());
+    return { sched, settings };
+  }
+  const run = (id: string) => ({ id, status: "done", durationMs: 5, artifacts: [], createdAt: 1 });
+  const hook = { id: "hook", name: "Hook", webhookUrl: "https://hooks.example.test/in", delivery: "webhook" };
+  type Poster = { postWebhook: (r: unknown, f: unknown, l: unknown, summary: string) => Promise<void> };
+
+  it("C35 with routines.allowWebhooks off the scheduler sends NOTHING, even to a routine that already has a webhook (the guard at the send)", async () => {
+    const fetchSpy = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", fetchSpy);
+    const { sched } = scheduler();
+    await (sched as unknown as Poster).postWebhook(hook, run("r1"), run("r1"), "a summary");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("C35 with it on, one POST goes to the routine's own URL and the summary is cut at 4000 characters (privacy text: 4000)", async () => {
+    const fetchSpy = vi.fn(
+      async (_url: string, _init: { body: string; method: string }) => new Response("ok"),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+    const { sched, settings } = scheduler();
+    const cfg = settings.load();
+    settings.save({ ...cfg, routines: { ...cfg.routines, allowWebhooks: true } });
+    await (sched as unknown as Poster).postWebhook(hook, run("r1"), run("r1"), "x".repeat(40_000));
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0]!;
+    expect(url).toBe("https://hooks.example.test/in");
+    expect(init.method).toBe("POST");
+    const body = JSON.parse(init.body) as Record<string, unknown>;
+    expect((body.summary as string).length).toBe(4000);
+    expect(Object.keys(body).sort()).toEqual([
+      "artifacts",
+      "durationMs",
+      "firedAt",
+      "name",
+      "routineId",
+      "runId",
+      "status",
+      "summary",
+    ]);
+    expect(policy.hosts.find((h) => h.id === "webhook")!.data).toContain("até 4000 caracteres");
+    expect(privacy).not.toMatch(/40\.?000/);
+  });
+
+  it("C35 the skill registry and the connector API follow no redirect (privacy text: sem redirecionamento)", async () => {
+    const seen: Array<{ redirect?: string; method?: string }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_u: string, init: { redirect?: string }) => (seen.push(init), new Response("{}"))),
+    );
+    await defaultFetcher("https://registry.example.test/index.json");
+    expect(seen[0]!.redirect).toBe("error");
+    const mapping = {
+      transport: "api",
+      command: null,
+      args: [],
+      env: [],
+      url: "https://api.example.test/items",
+      headers: {},
+      tools: {
+        list: { name: "GET", args: {}, parse: "json", path: "items", fields: { id: "id", title: "name" } },
+      },
+      install: null,
+      setup: [],
+    } as unknown as DataMapping;
+    const connector = ConnectorSchema.parse({
+      id: "x",
+      name: "X",
+      kind: "api",
+      origin: "t",
+      maintainer: "t",
+      dataMapping: mapping,
+    });
+    const fetchImpl = vi.fn(
+      async (_u: string, init: { redirect?: string; method?: string }) => (
+        seen.push(init),
+        new Response(JSON.stringify({ items: [] }))
+      ),
+    );
+    await fetchConnectorData(connector, { fetchImpl: fetchImpl as never });
+    expect(seen[1]).toMatchObject({ redirect: "error", method: "GET" });
+    for (const id of ["skill-registry", "connector-api"])
+      expect(policy.hosts.find((h) => h.id === id)!.data, id).toContain("sem redirecionamento");
+    expect(privacy).not.toMatch(/seguindo redirecionamento/);
+  });
+
+  it("C35 the push subject that reaches the push service is the default the policy names", () => {
+    const subject = at(defaultSettings, "channels.push.subject");
+    expect(subject).toBe("mailto:mordomo@localhost");
+    expect(policy.hosts.find((h) => h.id === "push-browsers")!.data).toContain(`\`${String(subject)}\``);
+  });
+
+  it("C35 the Telegram token goes in the URL, as the privacy text says", () => {
+    const telegram = fs.readFileSync(path.join(ROOT, "core/src/channels/telegram.ts"), "utf8");
+    expect(telegram).toContain("`${TELEGRAM_API_ORIGIN}/bot${encodeURIComponent(token)}/sendMessage`");
+    expect(policy.hosts.find((h) => h.id === "telegram")!.data).toContain("o token do bot vai na URL");
+  });
+});
+
+describe("C39 the scanner reads the evasions it can decide, and the text says what it cannot", () => {
+  it("C39 a global fetch by a string key, a global object by a variable key, and process.binding are points", () => {
+    expect(read(`globalThis["fetch"](u);`).points).toEqual({ fetch: 1 });
+    expect(read(`window["WebSocket"];`).points).toEqual({ websocket: 1 });
+    expect(read(`globalThis[name](u);`).points).toEqual({ "dynamic-global": 1 });
+    expect(read(`process.binding("tcp_wrap");`).points).toEqual({ "process-binding": 1 });
+    expect(read(`process["binding"]("tcp_wrap");`).points).toEqual({ "process-binding": 1 });
+  });
+
+  it("C39 a module named by a variable, createRequire and a URL module are points; a literal local module is not", () => {
+    expect(read(`const m = await import(name);`).points).toEqual({ "module:dynamic": 1 });
+    expect(read(`const m = require(name);`, "x.cjs").points).toEqual({ "module:dynamic": 1 });
+    expect(read(`const r = createRequire(import.meta.url);`).points).toEqual({ "module:dynamic": 1 });
+    expect(read(`import x from "https://cdn.example.net/x.js";`)).toEqual({
+      points: { "module:url": 1 },
+      hosts: ["cdn.example.net"],
+    });
+    expect(read(`const m = await import("https://cdn.example.net/y.js");`).points).toEqual({
+      "module:url": 1,
+    });
+    expect(
+      read(`import a from "./local.js"; const b = require("./other.cjs"); import c from "node:path";`).points,
+    ).toEqual({});
+  });
+
+  it("C39 spawning npm, npx, git, ssh, scp, sftp, ftp, rsync, nc, ncat, telnet, curl or wget is a point", () => {
+    for (const program of [
+      "npm",
+      "npx",
+      "git",
+      "ssh",
+      "scp",
+      "sftp",
+      "ftp",
+      "rsync",
+      "nc",
+      "ncat",
+      "telnet",
+      "curl",
+      "wget",
+    ])
+      expect(read(`run("${program}", ["x"]);`).points, program).toEqual({ [`program:${program}`]: 1 });
+    expect(read(`run("gitlab", ["x"]); const s = "ssh-keygen"; const t = "npm install";`).points).toEqual({});
+  });
+
+  it("C39 an address as a bare IP is a host (public or private), a malformed one and a version string are not", () => {
+    expect(read(`const a = "203.0.113.9"; const b = "10.1.2.3:8080";`).hosts).toEqual([
+      "10.1.2.3",
+      "203.0.113.9",
+    ]);
+    expect(read(`const a = "http://198.51.100.7:8080/x";`).hosts).toEqual(["198.51.100.7"]);
+    expect(read(`const a = "256.1.1.1"; const b = "1.2.3"; const c = "0.8.0.1.5";`).hosts).toEqual([]);
+  });
+
+  it("C39 a dotted string named like an address is a host whatever it ends in; the same string unnamed, and an i18n key, are not", () => {
+    expect(read(`const API_HOST = "relay.corp";`).hosts).toEqual(["relay.corp"]);
+    expect(read(`const cfg = { origin: "svc.internal.zzz", server: "a.b.local" };`).hosts).toEqual([
+      "a.b.local",
+      "svc.internal.zzz",
+    ]);
+    expect(read(`const k = "svc.internal.zzz"; const key = "scene.routines.in";`).hosts).toEqual([]);
+    expect(read(`const x = "api.example.xyz"; const y = "api.example.de";`).hosts).toEqual([
+      "api.example.de",
+      "api.example.xyz",
+    ]);
+  });
+
+  it("C39 text files: curl and wget in prose or a script, and the command of a connector, are points; a URL is a host", () => {
+    const md = scan.scanText(
+      "Run `curl -s http://x.example.net/a` then\n  wget -q y\nbut curlies are not.",
+      "SKILL.md",
+    );
+    expect(Object.fromEntries(md.points)).toEqual({ "program:curl": 1, "program:wget": 1 });
+    expect([...md.hosts]).toEqual(["x.example.net"]);
+    const json = scan.scanText('{ "dataMapping": { "command": "npx", "args": ["-y", "p"] } }', "c.json");
+    expect(Object.fromEntries(json.points)).toEqual({ "program:npx": 1 });
+    expect(Object.fromEntries(scan.scanText('{ "command": "/usr/bin/git" }', "c.json").points)).toEqual({
+      "program:git": 1,
+    });
+    expect(Object.fromEntries(scan.scanText('{ "command": "node" }', "c.json").points)).toEqual({});
+    expect(Object.fromEntries(scan.scanText("curl x", "notes.txt").points)).toEqual({});
+  });
+
+  it("C39 in the real tree the connectors' npx, the skill's curl and the doctor's npm are counted, and the policy knows them", () => {
+    const kinds = realScan.sites.map((s) => `${s.file} ${s.kind}`);
+    for (const k of [
+      "connectors/calendar-google.json program:npx",
+      "connectors/email-gmail.json program:npx",
+      "skills/recall/SKILL.md program:curl",
+      "apps/api/src/doctor.ts program:npm",
+    ])
+      expect(kinds, k).toContain(k);
+    expect(scan.compare(realScan, policy)).toEqual([]);
+  });
+
+  it("C39 an ignored host is ignored only in the files its entry names, and an ignored host the code no longer has is stale", () => {
+    const pol = GOOD_POLICY() as Policy & {
+      ignored: Array<{ match: string; reason: string; files?: string[] }>;
+    };
+    pol.ignored = [{ match: "www.w3.org", reason: "namespace", files: ["core/src/b.ts"] }];
+    const found = (files: string[]) => ({
+      sites: [{ file: "core/src/a.ts", kind: "fetch", count: 1 }],
+      hosts: [
+        { host: "api.example.net", files: ["core/src/a.ts"] },
+        { host: "www.w3.org", files },
+      ],
+    });
+    expect(scan.compare(found(["core/src/b.ts"]), pol)).toEqual([]);
+    expect(scan.compare(found(["core/src/c.ts"]), pol).join("\n")).toContain("new host: www.w3.org");
+    expect(scan.compare({ sites: found([]).sites, hosts: [found([]).hosts[0]!] }, pol).join("\n")).toContain(
+      "stale ignored host: www.w3.org",
+    );
+  });
+
+  it("C39 the privacy text names the npx download from the npm registry and lists what the sweep cannot see; it no longer claims a test that catches every network point", () => {
+    const f = privacy.replace(/\s+/g, " ");
+    expect(f).toContain("`npx -y <pacote>`");
+    expect(f).toContain("registry.npmjs.org");
+    expect(f).toContain("O que a varredura não vê");
+    for (const limit of [
+      "endereço montado em tempo de execução",
+      "`eval`",
+      "texto em prosa",
+      "código fora das pastas que ela lê",
+    ])
+      expect(f, limit).toContain(limit);
+    expect(f).toContain("reconhecido pela varredura");
+    expect(f).not.toContain("nenhum ponto de rede que não esteja na lista acima e");
+    const mcp = policy.hosts.find((h) => h.id === "mcp-connectors")!;
+    expect(mcp.trigger).toContain("npx -y");
+    const npm = policy.hosts.find((h) => h.id === "npm-registry")!;
+    expect(npm.trigger).toContain("npx -y <pacote>");
+    expect(npm.data).toContain("o nome do pacote do conector");
   });
 });

@@ -2,7 +2,7 @@
   "name": "@mordomo/core",
   "version": "0.8.0",
   "description": "The MordomoOS engine as a library: run an agent from a program, with the write policy, the working-folder rules and the approvals of the app.",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "FSL-1.1-ALv2",
   "type": "module",
   "engines": {
     "node": ">=22"

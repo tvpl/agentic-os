@@ -38,11 +38,23 @@ O CI roda tudo isso em `npm test` (`tests/legal.*.test.ts`).
 | `fonts/JetBrainsMono-OFL.txt`            | https://raw.githubusercontent.com/JetBrains/JetBrainsMono/master/OFL.txt (11/10/2026)     | `a76abf002c49097d146e86740a3105a5d00450b1592e820a1109a8c5680cd697` |
 | `fonts/Rajdhani-OFL.txt`                 | https://raw.githubusercontent.com/google/fonts/main/ofl/rajdhani/OFL.txt (11/10/2026)     | `f62ef357d3a1c3d27edd35a6e1ba350e8a8d13499797964eeadefbf0b3b15d1f` |
 
+### Esquemas do CycloneDX (`vendor/cyclonedx/`, só para o teste do SBOM, não vão no instalador)
+
+Copiados sem alteração de https://github.com/CycloneDX/specification/tree/master/schema (11/10/2026), publicados
+pelo projeto CycloneDX sob a Apache-2.0 (o aviso está no próprio esquema). `tests/legal.licenses.test.ts` valida
+o SBOM contra eles.
+
+| Arquivo                  | SHA-256                                                            |
+| ------------------------ | ------------------------------------------------------------------ |
+| `bom-1.5.schema.json`    | `2d956c1d05c092695457a91f3b5c57c749793c013ec224a0935807cfc8ae4480` |
+| `spdx.schema.json`       | `4b345e2329f209f34e960ae2a8e7cb46a166907e6a45e94978565925dc47b359` |
+| `jsf-0.82.schema.json`   | `8bae002c25e723db7ee1f26afde680ae1a2b1a8f6b4b4b0fd65dc3becb090aae` |
+
 Mudar o texto de uma licença é uma edição deliberada: o teste compara o SHA-256 acima e o `LICENSE` com o
 modelo (só o ano e o titular diferem).
 
 ## Identificador da licença
 
-O nome abreviado oficial do texto é **FSL-1.1-ALv2**. Nos `package.json` o campo `license` é
-`SEE LICENSE IN LICENSE`, que o npm entende como "leia o arquivo", em vez de um identificador SPDX cuja
-existência na lista do SPDX esta minuta não conseguiu confirmar.
+O nome abreviado oficial do texto é **FSL-1.1-ALv2**, e é um identificador SPDX (consta da lista do SPDX,
+inclusive da cópia dela que o esquema do CycloneDX vendorado em `vendor/cyclonedx/` traz). Os oito `package.json`
+dizem `"license": "FSL-1.1-ALv2"`, com o `LICENSE` ao lado. `FSL-1.1-Apache-2.0` **não** é um identificador.

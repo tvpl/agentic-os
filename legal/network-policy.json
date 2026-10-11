@@ -9,7 +9,8 @@
       "implicit": true,
       "trigger": "sempre: a interface, o CLI `mordomo`, o broker de permissão e o MCP do Mordomo falam com o serviço em 127.0.0.1",
       "default": "ligado",
-      "data": "tudo que o produto faz; não sai da máquina (o acesso remoto é opcional, exige TLS ou túnel e vem desligado)"
+      "data": "tudo que o produto faz; não sai da máquina (o acesso remoto é opcional, exige TLS ou túnel e vem desligado)",
+      "defaultState": "on"
     },
     {
       "id": "github-releases",
@@ -20,7 +21,11 @@
       ],
       "trigger": "só quando `updates.check` está ligado ou quando o dono pede \"Verificar agora\" (`GET /api/updates?force=1`)",
       "default": "desligado",
-      "data": "um GET anônimo a /repos/tvpl/agentic-os/releases/latest com o cabeçalho `user-agent: mordomo-os`; nenhum identificador do produto, da instalação ou da pessoa; o GitHub vê o endereço IP; a resposta fica em cache por seis horas"
+      "data": "um GET anônimo a /repos/tvpl/agentic-os/releases/latest com o cabeçalho `user-agent: mordomo-os` (o nome do produto, sem versão); nenhum identificador da instalação, da máquina ou da pessoa; o GitHub vê o endereço IP; a resposta fica em cache por seis horas",
+      "defaultState": "off",
+      "gate": {
+        "setting": "updates.check"
+      }
     },
     {
       "id": "github-links",
@@ -31,7 +36,8 @@
       ],
       "trigger": "a página de releases e as páginas de origem dos conectores (campo `origin` de connectors/*.json) são mostradas como link; quem decide abri-las é a pessoa, no navegador",
       "default": "nunca acessado pelo produto",
-      "data": "nada: o produto não abre conexão para esses endereços"
+      "data": "nada: o produto não abre conexão para esses endereços",
+      "defaultState": "never"
     },
     {
       "id": "telegram",
@@ -42,7 +48,11 @@
       ],
       "trigger": "só com `channels.telegram.enabled`, um token de bot numa variável de ambiente e um `chatId`; receber respostas (`getUpdates`) exige também `channels.telegram.inbound`",
       "default": "desligado",
-      "data": "o texto dos avisos do inbox acima do tom mínimo (título e corpo), os botões de aprovação e as respostas de quem escreve no chat; o token do bot vai na URL, como a API do Telegram exige"
+      "data": "o texto dos avisos do inbox acima do tom mínimo (título e corpo), os botões de aprovação e as respostas de quem escreve no chat; o token do bot vai na URL, como a API do Telegram exige",
+      "defaultState": "off",
+      "gate": {
+        "setting": "channels.telegram.enabled"
+      }
     },
     {
       "id": "push-browsers",
@@ -57,7 +67,11 @@
       ],
       "trigger": "só com `channels.push.enabled` ligado e depois que o dono, ou um dispositivo pareado com o escopo `content`, assina notificações num navegador; o serviço então envia cada aviso ao endereço da assinatura, e resolve o nome desse endereço no DNS do sistema antes de cada envio",
       "default": "desligado; sem assinatura, nada é enviado",
-      "data": "o aviso (título e corpo) cifrado de ponta a ponta (RFC 8291, chave do navegador que assinou), com uma credencial VAPID assinada que leva o campo `channels.push.subject` (por padrão `mailto:mordomo@localhost`; se o dono puser um e-mail seu ali, o serviço de push o vê); o serviço do navegador vê o endereço da assinatura, o tamanho e o horário, não o texto"
+      "data": "o aviso (título e corpo) cifrado de ponta a ponta (RFC 8291, chave do navegador que assinou), com uma credencial VAPID assinada que leva o campo `channels.push.subject` (por padrão `mailto:mordomo@localhost`; se o dono puser um e-mail seu ali, o serviço de push o vê); o serviço do navegador vê o endereço da assinatura, o tamanho e o horário, não o texto",
+      "defaultState": "off",
+      "gate": {
+        "setting": "channels.push.enabled"
+      }
     },
     {
       "id": "push-custom",
@@ -66,7 +80,11 @@
       "match": [],
       "trigger": "só com `channels.push.enabled` ligado e quando o dono (nunca um dispositivo) registra uma assinatura cujo endereço é um servidor https público dele",
       "default": "nenhum",
-      "data": "o mesmo aviso cifrado das notificações push; o endereço é validado (https, porta padrão, só endereços públicos) a cada envio"
+      "data": "o mesmo aviso cifrado das notificações push; o endereço é validado (https, porta padrão, só endereços públicos) a cada envio",
+      "defaultState": "none",
+      "gate": {
+        "setting": "channels.push.enabled"
+      }
     },
     {
       "id": "webhook",
@@ -75,7 +93,11 @@
       "match": [],
       "trigger": "só com `routines.allowWebhooks` ligado e uma rotina com entrega por webhook; o endereço é o que o dono escreveu na rotina",
       "default": "desligado",
-      "data": "POST com o id e o nome da rotina, o id e o status da execução, a duração, os artefatos, o horário e um resumo de até 4.000 caracteres com segredos reconhecíveis redigidos"
+      "data": "POST com o id e o nome da rotina, o id e o status da execução, a duração, os artefatos, o horário e um resumo de até 4000 caracteres com segredos reconhecíveis redigidos",
+      "defaultState": "off",
+      "gate": {
+        "setting": "routines.allowWebhooks"
+      }
     },
     {
       "id": "skill-registry",
@@ -84,7 +106,11 @@
       "match": [],
       "trigger": "só quando o dono adiciona um registro em `marketplace.registries` e abre o marketplace ou instala uma skill; https obrigatório (ou uma pasta local `file://`)",
       "default": "nenhum registro",
-      "data": "GETs do índice e dos arquivos da skill, sem corpo e sem redirecionamento; o servidor do registro vê o endereço IP e os caminhos pedidos"
+      "data": "GETs do índice e dos arquivos da skill, sem corpo e sem redirecionamento; o servidor do registro vê o endereço IP e os caminhos pedidos",
+      "defaultState": "none",
+      "gate": {
+        "setting": "marketplace.registries"
+      }
     },
     {
       "id": "connector-api",
@@ -93,7 +119,11 @@
       "match": [],
       "trigger": "só com um conector de dados do tipo API configurado pelo dono (`dataMapping.url`, http ou https) e sincronizado",
       "default": "nenhum conector configurado",
-      "data": "GET com os cabeçalhos que o dono escreveu (podem trazer um token lido de variável de ambiente), sem redirecionamento"
+      "data": "GET com os cabeçalhos que o dono escreveu (podem trazer um token lido de variável de ambiente), sem redirecionamento",
+      "defaultState": "none",
+      "gate": {
+        "seeds": "connectors/*.json: status not_configured"
+      }
     },
     {
       "id": "mcp-connectors",
@@ -101,19 +131,25 @@
       "role": "cli",
       "match": [],
       "implicit": true,
-      "trigger": "só com um conector do tipo MCP configurado pelo dono e o comando dele em `settings.connectors.allowedCommands`; o MordomoOS inicia esse programa de terceiros ao sincronizar e este fala com o serviço dele (Google, por exemplo)",
+      "trigger": "só com um conector do tipo MCP configurado pelo dono e o comando dele em `settings.connectors.allowedCommands`; o MordomoOS inicia esse programa de terceiros ao sincronizar (os embutidos de Gmail e Google Calendar o fazem por `npx -y`, que primeiro baixa o pacote: ver \"Registro do npm\") e este fala com o serviço dele (Google, por exemplo)",
       "default": "nenhum conector vem configurado",
-      "data": "o que o programa do conector enviar ao serviço dele, sob os termos desse serviço; o MordomoOS recebe o resultado e o guarda na casa"
+      "data": "o que o programa do conector enviar ao serviço dele, sob os termos desse serviço; o MordomoOS recebe o resultado e o guarda na casa",
+      "defaultState": "none",
+      "gate": {
+        "setting": "connectors.allowedCommands",
+        "seeds": "connectors/*.json: status not_configured"
+      }
     },
     {
       "id": "npm-registry",
-      "label": "Auditoria de dependências do doctor (registro do npm)",
+      "label": "Registro do npm (auditoria do doctor e npx dos conectores)",
       "role": "cli",
       "match": [],
       "implicit": true,
-      "trigger": "`mordomo doctor` (e a rota `GET /api/doctor` para o dono) roda `npm audit` quando o CLI do npm está ao lado do Node e a pasta de dados tem `package-lock.json`; o instalador, que leva só o binário do Node, pula o item",
-      "default": "ligado ao pedir o diagnóstico, exceto com MORDOMO_SKIP_NPM_AUDIT=1",
-      "data": "o npm envia nomes e versões das dependências ao registro configurado nele (por padrão registry.npmjs.org); o MordomoOS não envia nada além disso"
+      "trigger": "(1) `mordomo doctor` (e a rota `GET /api/doctor` para o dono) roda `npm audit` quando o CLI do npm está ao lado do Node e a pasta de dados tem `package-lock.json`; o instalador, que leva só o binário do Node, pula o item. (2) Os conectores embutidos de Gmail e Google Calendar usam o comando `npx -y <pacote>`: se o dono os configurar e o MordomoOS os iniciar, o npm baixa o pacote do conector do registro do npm (`registry.npmjs.org`, por padrão) a cada uso, sem cache garantido",
+      "default": "(1) ligado ao pedir o diagnóstico, exceto com MORDOMO_SKIP_NPM_AUDIT=1; (2) nenhum conector vem configurado",
+      "data": "(1) o npm envia nomes e versões das dependências ao registro configurado nele; (2) o nome do pacote do conector. O MordomoOS não envia nada além disso; o que o pacote baixado faz depois está em \"Conectores MCP de terceiros\"",
+      "defaultState": "mixed"
     },
     {
       "id": "cli-providers",
@@ -123,7 +159,8 @@
       "implicit": true,
       "trigger": "toda execução: o MordomoOS inicia o CLI que o usuário escolheu e este fala com o servidor do provedor dele, com a conta do usuário",
       "default": "ligado, por definição do produto",
-      "data": "o prompt e os arquivos da pasta da execução, sob os termos e a política de privacidade do provedor, não desta; o MordomoOS não vê nem guarda a chave ou o login do provedor"
+      "data": "o prompt e os arquivos da pasta da execução, sob os termos e a política de privacidade do provedor, não desta; o MordomoOS não lê nem grava o conteúdo das credenciais do provedor (só verifica se o login do CLI ou a variável ANTHROPIC_API_KEY / OPENAI_API_KEY existe), mas o ambiente do processo dele, essas variáveis inclusive, é repassado ao CLI que ele inicia",
+      "defaultState": "on"
     },
     {
       "id": "install-links",
@@ -134,7 +171,8 @@
       ],
       "trigger": "o endereço `https://cursor.com/install` aparece como instrução na tela de configuração; o produto não o executa",
       "default": "nunca acessado pelo produto",
-      "data": "nada: o produto não abre conexão para esse endereço"
+      "data": "nada: o produto não abre conexão para esse endereço",
+      "defaultState": "never"
     },
     {
       "id": "skill-doc-links",
@@ -145,7 +183,8 @@
       ],
       "trigger": "a skill embutida `claude-mobile-optimize` cita páginas da documentação do Claude Code no texto de suas instruções; quem as abriria seria o agente (o CLI) ou a pessoa, nunca o código do MordomoOS",
       "default": "nunca acessado pelo MordomoOS",
-      "data": "nada: o MordomoOS não abre conexão para esse endereço"
+      "data": "nada: o MordomoOS não abre conexão para esse endereço",
+      "defaultState": "never"
     },
     {
       "id": "node-download",
@@ -156,7 +195,8 @@
       ],
       "trigger": "só na máquina de quem gera o instalador (`npm run dist`, `scripts/package.mjs`, e a mensagem de `scripts/setup.sh`): baixa o binário oficial do Node.js e confere o SHA-256; ao empacotar para outra plataforma, o `prebuild-install` baixa o módulo nativo do SQLite do GitHub",
       "default": "nunca roda no computador de quem usa o produto",
-      "data": "um GET do binário e da lista de somas; nada do usuário"
+      "data": "um GET do binário e da lista de somas; nada do usuário",
+      "defaultState": "never"
     }
   ],
   "ignored": [
@@ -183,9 +223,151 @@
     {
       "match": "command-centre.local",
       "reason": "base fictícia para `new URL` em api.ts, nunca resolvida"
+    },
+    {
+      "match": "10.0.0.0",
+      "reason": "base de faixa de endereços do BlockList de pushEndpoint.ts, que RECUSA o destino que cair nela (definição, não contato)",
+      "files": [
+        "core/src/channels/pushEndpoint.ts"
+      ]
+    },
+    {
+      "match": "100.64.0.0",
+      "reason": "base de faixa de endereços do BlockList de pushEndpoint.ts, que RECUSA o destino que cair nela (definição, não contato)",
+      "files": [
+        "core/src/channels/pushEndpoint.ts"
+      ]
+    },
+    {
+      "match": "169.254.0.0",
+      "reason": "base de faixa de endereços do BlockList de pushEndpoint.ts, que RECUSA o destino que cair nela (definição, não contato)",
+      "files": [
+        "core/src/channels/pushEndpoint.ts"
+      ]
+    },
+    {
+      "match": "172.16.0.0",
+      "reason": "base de faixa de endereços do BlockList de pushEndpoint.ts, que RECUSA o destino que cair nela (definição, não contato)",
+      "files": [
+        "core/src/channels/pushEndpoint.ts"
+      ]
+    },
+    {
+      "match": "192.0.0.0",
+      "reason": "base de faixa de endereços do BlockList de pushEndpoint.ts, que RECUSA o destino que cair nela (definição, não contato)",
+      "files": [
+        "core/src/channels/pushEndpoint.ts"
+      ]
+    },
+    {
+      "match": "192.0.2.0",
+      "reason": "base de faixa de endereços do BlockList de pushEndpoint.ts, que RECUSA o destino que cair nela (definição, não contato)",
+      "files": [
+        "core/src/channels/pushEndpoint.ts"
+      ]
+    },
+    {
+      "match": "192.168.0.0",
+      "reason": "base de faixa de endereços do BlockList de pushEndpoint.ts, que RECUSA o destino que cair nela (definição, não contato)",
+      "files": [
+        "core/src/channels/pushEndpoint.ts"
+      ]
+    },
+    {
+      "match": "198.18.0.0",
+      "reason": "base de faixa de endereços do BlockList de pushEndpoint.ts, que RECUSA o destino que cair nela (definição, não contato)",
+      "files": [
+        "core/src/channels/pushEndpoint.ts"
+      ]
+    },
+    {
+      "match": "198.51.100.0",
+      "reason": "base de faixa de endereços do BlockList de pushEndpoint.ts, que RECUSA o destino que cair nela (definição, não contato)",
+      "files": [
+        "core/src/channels/pushEndpoint.ts"
+      ]
+    },
+    {
+      "match": "203.0.113.0",
+      "reason": "base de faixa de endereços do BlockList de pushEndpoint.ts, que RECUSA o destino que cair nela (definição, não contato)",
+      "files": [
+        "core/src/channels/pushEndpoint.ts"
+      ]
+    },
+    {
+      "match": "224.0.0.0",
+      "reason": "base de faixa de endereços do BlockList de pushEndpoint.ts, que RECUSA o destino que cair nela (definição, não contato)",
+      "files": [
+        "core/src/channels/pushEndpoint.ts"
+      ]
+    },
+    {
+      "match": "240.0.0.0",
+      "reason": "base de faixa de endereços do BlockList de pushEndpoint.ts, que RECUSA o destino que cair nela (definição, não contato)",
+      "files": [
+        "core/src/channels/pushEndpoint.ts"
+      ]
+    },
+    {
+      "match": "1.3.6.1.5.5.7.3.1",
+      "reason": "identificador de objeto (OID) X.509 do certificado TLS local de tls.ts, não um endereço",
+      "files": [
+        "core/src/security/tls.ts"
+      ]
+    },
+    {
+      "match": "2.5.29.15",
+      "reason": "identificador de objeto (OID) X.509 do certificado TLS local de tls.ts, não um endereço",
+      "files": [
+        "core/src/security/tls.ts"
+      ]
+    },
+    {
+      "match": "2.5.29.17",
+      "reason": "identificador de objeto (OID) X.509 do certificado TLS local de tls.ts, não um endereço",
+      "files": [
+        "core/src/security/tls.ts"
+      ]
+    },
+    {
+      "match": "2.5.29.19",
+      "reason": "identificador de objeto (OID) X.509 do certificado TLS local de tls.ts, não um endereço",
+      "files": [
+        "core/src/security/tls.ts"
+      ]
+    },
+    {
+      "match": "2.5.29.37",
+      "reason": "identificador de objeto (OID) X.509 do certificado TLS local de tls.ts, não um endereço",
+      "files": [
+        "core/src/security/tls.ts"
+      ]
+    },
+    {
+      "match": "2.5.4.10",
+      "reason": "identificador de objeto (OID) X.509 do certificado TLS local de tls.ts, não um endereço",
+      "files": [
+        "core/src/security/tls.ts"
+      ]
+    },
+    {
+      "match": "2.5.4.3",
+      "reason": "identificador de objeto (OID) X.509 do certificado TLS local de tls.ts, não um endereço",
+      "files": [
+        "core/src/security/tls.ts"
+      ]
     }
   ],
   "sites": [
+    {
+      "file": "apps/api/src/doctor.ts",
+      "kind": "program:npm",
+      "count": 1,
+      "hosts": [
+        "npm-registry"
+      ],
+      "note": "o nome `npm` no caminho até o npm-cli.js"
+    },
     {
       "file": "apps/api/src/doctor.ts",
       "kind": "program:npm-cli",
@@ -217,6 +399,13 @@
       "hosts": [
         "loopback"
       ]
+    },
+    {
+      "file": "apps/api/src/routes/runs.ts",
+      "kind": "program:git",
+      "count": 4,
+      "hosts": [],
+      "note": "uma é `findOnPath(\"git\")` (git local: diff e status do repositório da execução, sem remoto e sem fetch); as outras três são o rótulo `kind: \"git\"` do resultado"
     },
     {
       "file": "apps/api/src/server.ts",
@@ -284,6 +473,13 @@
       "note": "mesma origem que serve a página"
     },
     {
+      "file": "apps/command-centre/src/api.ts",
+      "kind": "program:git",
+      "count": 1,
+      "hosts": [],
+      "note": "o rótulo `kind`/`source` \"git\" do resultado do diff; não executa nada"
+    },
+    {
       "file": "apps/command-centre/src/components/ServiceHealthBanner.tsx",
       "kind": "fetch",
       "count": 1,
@@ -293,6 +489,20 @@
       "note": "mesma origem que serve a página"
     },
     {
+      "file": "apps/command-centre/src/runs/FilesChanged.tsx",
+      "kind": "program:git",
+      "count": 2,
+      "hosts": [],
+      "note": "o rótulo `kind`/`source` \"git\" do resultado do diff; não executa nada"
+    },
+    {
+      "file": "apps/command-centre/src/runs/diff.ts",
+      "kind": "program:git",
+      "count": 4,
+      "hosts": [],
+      "note": "o rótulo `kind`/`source` \"git\" do resultado do diff; não executa nada"
+    },
+    {
       "file": "apps/command-centre/src/views/Skills/SkillDetail.tsx",
       "kind": "fetch",
       "count": 1,
@@ -300,6 +510,26 @@
         "loopback"
       ],
       "note": "mesma origem que serve a página"
+    },
+    {
+      "file": "connectors/calendar-google.json",
+      "kind": "program:npx",
+      "count": 1,
+      "hosts": [
+        "npm-registry",
+        "mcp-connectors"
+      ],
+      "note": "`npx -y @cocal/google-calendar-mcp`"
+    },
+    {
+      "file": "connectors/email-gmail.json",
+      "kind": "program:npx",
+      "count": 1,
+      "hosts": [
+        "npm-registry",
+        "mcp-connectors"
+      ],
+      "note": "`npx -y @gongrzhe/server-gmail-autoauth-mcp`"
     },
     {
       "file": "core/src/channels/pushEndpoint.ts",
@@ -375,6 +605,13 @@
       ]
     },
     {
+      "file": "core/src/spawn/which.ts",
+      "kind": "program:npm",
+      "count": 1,
+      "hosts": [],
+      "note": "o nome `npm` na lista de pastas de instalação onde se procura um CLI; não executa nada"
+    },
+    {
       "file": "scripts/capacity-api.mjs",
       "kind": "fetch",
       "count": 1,
@@ -393,6 +630,13 @@
       "note": "só na máquina que gera o instalador"
     },
     {
+      "file": "scripts/package.mjs",
+      "kind": "program:npm",
+      "count": 1,
+      "hosts": [],
+      "note": "`npm run build` local, só na máquina que gera o instalador"
+    },
+    {
       "file": "scripts/soak-api.mjs",
       "kind": "fetch",
       "count": 1,
@@ -400,6 +644,15 @@
         "loopback"
       ],
       "note": "teste de longa duração, só desenvolvimento"
+    },
+    {
+      "file": "skills/recall/SKILL.md",
+      "kind": "program:curl",
+      "count": 1,
+      "hosts": [
+        "loopback"
+      ],
+      "note": "instrução ao agente: `curl` no serviço local ($MORDOMO_URL)"
     }
   ]
 }

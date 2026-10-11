@@ -9,7 +9,7 @@
     {
       "name": "Claude",
       "kind": "produto de terceiros (modelos e CLI)",
-      "probe": "Claude\\b"
+      "probe": "Claude\\b(?! Code)"
     },
     {
       "name": "Codex",
@@ -29,7 +29,7 @@
     {
       "name": "Cursor",
       "kind": "produto de terceiros",
-      "probe": "Cursor\\b"
+      "probe": "Cursor\\b(?! Agent)"
     },
     {
       "name": "Telegram",
@@ -89,7 +89,7 @@
     {
       "name": "Google",
       "kind": "serviço de terceiros",
-      "probe": "Google"
+      "probe": "Google\\b(?! Calendar)"
     },
     {
       "name": "Gmail",
@@ -230,26 +230,297 @@
       "name": "Obsidian",
       "kind": "produto de terceiros",
       "probe": "Obsidian"
+    },
+    {
+      "name": "Android",
+      "kind": "plataforma de terceiros",
+      "probe": "\\bAndroid\\b"
+    },
+    {
+      "name": "iPhone",
+      "kind": "plataforma de terceiros",
+      "probe": "\\biPhone\\b"
+    },
+    {
+      "name": "iPad",
+      "kind": "plataforma de terceiros",
+      "probe": "\\biPad\\b"
+    },
+    {
+      "name": "Microsoft Edge",
+      "kind": "navegador de terceiros",
+      "probe": "\\\"Edge\\\"|Microsoft Edge|Chrome/Edge"
+    },
+    {
+      "name": "Gatekeeper",
+      "kind": "plataforma de terceiros",
+      "probe": "Gatekeeper"
+    },
+    {
+      "name": "SmartScreen",
+      "kind": "plataforma de terceiros",
+      "probe": "SmartScreen"
+    },
+    {
+      "name": "WSL",
+      "kind": "plataforma de terceiros",
+      "probe": "\\bWSL\\b"
+    },
+    {
+      "name": "Developer ID",
+      "kind": "plataforma de terceiros",
+      "probe": "Developer ID"
+    },
+    {
+      "name": "Xcode",
+      "kind": "ferramenta de terceiros",
+      "probe": "\\bXcode\\b"
+    },
+    {
+      "name": "Gradle",
+      "kind": "ferramenta de terceiros",
+      "probe": "\\bGradle\\b"
+    },
+    {
+      "name": "Kotlin",
+      "kind": "tecnologia de terceiros",
+      "probe": "\\bKotlin\\b"
+    },
+    {
+      "name": "Metro",
+      "kind": "ferramenta de terceiros",
+      "probe": "\\bMetro\\b"
+    },
+    {
+      "name": "Watchman",
+      "kind": "ferramenta de terceiros",
+      "probe": "\\bWatchman\\b"
+    },
+    {
+      "name": "Dart",
+      "kind": "tecnologia de terceiros",
+      "probe": "\\bDart\\b"
+    },
+    {
+      "name": "Flutter",
+      "kind": "tecnologia de terceiros",
+      "probe": "\\bFlutter\\b"
+    },
+    {
+      "name": "Swift",
+      "kind": "tecnologia de terceiros",
+      "probe": "\\bSwift\\b"
+    },
+    {
+      "name": "React Native",
+      "kind": "tecnologia de terceiros",
+      "probe": "React Native"
+    },
+    {
+      "name": "Expo",
+      "kind": "ferramenta de terceiros",
+      "probe": "\\bExpo\\b"
+    },
+    {
+      "name": "Docker",
+      "kind": "ferramenta de terceiros",
+      "probe": "\\bDocker\\b"
+    },
+    {
+      "name": "Tauri",
+      "kind": "tecnologia de terceiros",
+      "probe": "\\bTauri\\b"
+    },
+    {
+      "name": "DigitalOcean",
+      "kind": "serviço de terceiros",
+      "probe": "DigitalOcean"
+    },
+    {
+      "name": "Debian",
+      "kind": "plataforma de terceiros",
+      "probe": "\\bDebian\\b"
+    },
+    {
+      "name": "Discord",
+      "kind": "serviço de terceiros",
+      "probe": "\\bDiscord\\b"
+    },
+    {
+      "name": "Notion",
+      "kind": "serviço de terceiros",
+      "probe": "\\bNotion\\b"
+    },
+    {
+      "name": "Slack",
+      "kind": "serviço de terceiros",
+      "probe": "\\bSlack\\b"
+    },
+    {
+      "name": "WhatsApp",
+      "kind": "serviço de terceiros",
+      "probe": "\\bWhatsApp\\b"
+    },
+    {
+      "name": "Stripe",
+      "kind": "serviço de terceiros",
+      "probe": "\\bStripe\\b"
+    },
+    {
+      "name": "PayPal",
+      "kind": "serviço de terceiros",
+      "probe": "\\bPayPal\\b"
+    },
+    {
+      "name": "YouTube",
+      "kind": "serviço de terceiros",
+      "probe": "\\bYouTube\\b"
+    },
+    {
+      "name": "Logseq",
+      "kind": "produto de terceiros",
+      "probe": "\\bLogseq\\b"
+    },
+    {
+      "name": "Zapier",
+      "kind": "serviço de terceiros",
+      "probe": "\\bZapier\\b"
+    },
+    {
+      "name": "Cline",
+      "kind": "produto de terceiros",
+      "probe": "\\bCline\\b"
+    },
+    {
+      "name": "Hermes",
+      "kind": "produto de terceiros",
+      "probe": "\\bHermes\\b"
+    },
+    {
+      "name": "Fastly",
+      "kind": "serviço de terceiros",
+      "probe": "\\bFastly\\b"
+    },
+    {
+      "name": "Envoy",
+      "kind": "ferramenta de terceiros",
+      "probe": "\\bEnvoy\\b"
+    },
+    {
+      "name": "esbuild",
+      "kind": "ferramenta de terceiros",
+      "probe": "\\besbuild\\b"
+    },
+    {
+      "name": "Prettier",
+      "kind": "ferramenta de terceiros",
+      "probe": "\\bPrettier\\b"
+    },
+    {
+      "name": "ESLint",
+      "kind": "ferramenta de terceiros",
+      "probe": "\\bESLint\\b"
+    },
+    {
+      "name": "pnpm",
+      "kind": "ferramenta de terceiros",
+      "probe": "\\bpnpm\\b"
+    },
+    {
+      "name": "Storybook",
+      "kind": "ferramenta de terceiros",
+      "probe": "\\bStorybook\\b"
+    },
+    {
+      "name": "JavaScript",
+      "kind": "tecnologia de terceiros",
+      "probe": "\\bJavaScript\\b"
+    },
+    {
+      "name": "MCP",
+      "kind": "tecnologia de terceiros",
+      "probe": "\\bMCP\\b"
+    },
+    {
+      "name": "OpenClaw",
+      "kind": "produto de terceiros",
+      "probe": "OpenClaw|openclaw"
+    },
+    {
+      "name": "OpenFang",
+      "kind": "produto de terceiros",
+      "probe": "\\bOpenFang\\b"
+    },
+    {
+      "name": "Letta",
+      "kind": "produto de terceiros",
+      "probe": "\\bLetta\\b"
+    },
+    {
+      "name": "Glance",
+      "kind": "produto de terceiros",
+      "probe": "\\bGlance\\b"
+    },
+    {
+      "name": "AIOS",
+      "kind": "produto de terceiros",
+      "probe": "\\bAIOS\\b"
+    },
+    {
+      "name": "RUBRIC",
+      "kind": "produto de terceiros",
+      "probe": "\\bRUBRIC\\b"
+    },
+    {
+      "name": "RoboNuggets",
+      "kind": "produto de terceiros",
+      "probe": "RoboNuggets"
+    },
+    {
+      "name": "Raycast",
+      "kind": "produto de terceiros",
+      "probe": "\\bRaycast\\b"
+    },
+    {
+      "name": "Linear",
+      "kind": "serviço de terceiros",
+      "probe": "\\bRaycast, Linear\\b|, Linear,"
+    },
+    {
+      "name": "cmdk",
+      "kind": "biblioteca de terceiros",
+      "probe": "\\bcmdk\\b"
+    },
+    {
+      "name": "HumanLayer",
+      "kind": "produto de terceiros",
+      "probe": "HumanLayer"
+    },
+    {
+      "name": "Spotlight",
+      "kind": "plataforma de terceiros",
+      "probe": "\\bSpotlight\\b"
+    },
+    {
+      "name": "Finder",
+      "kind": "plataforma de terceiros",
+      "probe": "\\bFinder\\b"
+    },
+    {
+      "name": "JARVIS",
+      "kind": "nome de ficção de terceiros",
+      "probe": "\\bJARVIS\\b"
     }
   ],
   "watch": {
     "note": "nomes que o repositório não cita hoje; se um deles aparecer no texto que a varredura lê, o teste exige que entre em `brands`",
     "probes": [
-      "Docker",
-      "Slack",
-      "Notion",
-      "WhatsApp",
-      "Discord",
       "Gemini",
       "Copilot",
       "Windsurf",
-      "Zapier",
-      "Stripe",
       "Ollama",
       "VS Code",
-      "Tauri",
       "Spotify",
-      "YouTube",
       "Anthropic",
       "Amazon",
       "AWS",
@@ -261,12 +532,62 @@
       "xAI",
       "Grok",
       "Jira",
-      "Linear",
       "Figma",
       "Vercel",
       "Netlify",
       "Supabase",
-      "Firebase"
+      "Firebase",
+      "Jenkins",
+      "CircleCI",
+      "Terraform",
+      "Ansible",
+      "VirtualBox",
+      "VMware",
+      "Steam",
+      "TensorFlow",
+      "PyTorch",
+      "Jupyter",
+      "Django",
+      "Flask",
+      "Laravel",
+      "Bing",
+      "DuckDuckGo",
+      "Yahoo",
+      "Skype",
+      "FaceTime",
+      "iMessage",
+      "WeChat",
+      "Twitch",
+      "iCloud",
+      "OneDrive",
+      "Nextcloud",
+      "Bitwarden",
+      "1Password",
+      "LangChain",
+      "LlamaIndex",
+      "OpenRouter",
+      "Midjourney",
+      "ChatGPT",
+      "Llama",
+      "Aider",
+      "Sentry",
+      "Datadog",
+      "Grafana",
+      "Prometheus",
+      "Redis",
+      "PostgreSQL",
+      "MySQL",
+      "MongoDB",
+      "Kafka",
+      "Okta",
+      "Twilio",
+      "Shopify",
+      "WordPress",
+      "Raspberry Pi",
+      "Kubernetes",
+      "Bitbucket",
+      "GitLab",
+      "Heroku"
     ]
   }
 }

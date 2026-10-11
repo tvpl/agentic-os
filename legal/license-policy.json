@@ -14,7 +14,10 @@
     "Unlicense",
     "Zlib"
   ],
-  "allowedToolingExtra": ["MPL-2.0", "CC-BY-4.0"],
+  "allowedToolingExtra": [
+    "MPL-2.0",
+    "CC-BY-4.0"
+  ],
   "overrides": {
     "svg-tags@1.0.0": {
       "license": "MIT",
@@ -27,14 +30,29 @@
       "license": "MIT",
       "where": "pasta runtime/ do instalador (binário oficial do Node.js; o instalador copia o LICENSE do Node, que reúne os avisos das dependências do próprio Node, para runtime/LICENSE). Com `--node none` o instalador usa o Node do sistema e não leva nada.",
       "url": "https://github.com/nodejs/node/blob/main/LICENSE",
-      "note": "a versão embutida é a do computador que gera o instalador (`node scripts/package.mjs --node <versão>`); a de cada instalador está em runtime/LICENSE e no nome do binário baixado."
+      "note": "a versão embutida é a do computador que gera o instalador (`node scripts/package.mjs --node <versão>`); a de cada instalador está em runtime/LICENSE e no nome do binário baixado.",
+      "sbom": {
+        "ref": "bundled:node.js",
+        "type": "platform",
+        "license": {
+          "id": "MIT"
+        }
+      }
     },
     {
       "name": "SQLite",
       "license": "Domínio público (SQLite blessing)",
       "where": "compilado dentro do módulo nativo do pacote better-sqlite3 (lib/node_modules/better-sqlite3 do instalador)",
       "url": "https://www.sqlite.org/copyright.html",
-      "note": "o pacote better-sqlite3 (MIT) tem o próprio aviso na seção 2."
+      "note": "o pacote better-sqlite3 (MIT) tem o próprio aviso na seção 2.",
+      "sbom": {
+        "ref": "bundled:sqlite",
+        "type": "library",
+        "license": {
+          "name": "Public Domain"
+        },
+        "purl": "pkg:generic/sqlite"
+      }
     },
     {
       "name": "JetBrains Mono (fonte)",
@@ -43,7 +61,16 @@
       "url": "https://github.com/JetBrains/JetBrainsMono",
       "note": "texto copiado de https://raw.githubusercontent.com/JetBrains/JetBrainsMono/master/OFL.txt em 11/10/2026. A origem do arquivo .woff2 do repositório não está registrada: o dono deve confirmar que ele vem desse projeto (ver `.specs/STATE.md`).",
       "textFile": "legal/vendor/fonts/JetBrainsMono-OFL.txt",
-      "files": ["apps/command-centre/public/fonts/jetbrains-mono-latin.woff2"]
+      "files": [
+        "apps/command-centre/public/fonts/jetbrains-mono-latin.woff2"
+      ],
+      "sbom": {
+        "ref": "bundled:font:jetbrains-mono",
+        "type": "file",
+        "license": {
+          "id": "OFL-1.1"
+        }
+      }
     },
     {
       "name": "Rajdhani (fonte)",
@@ -55,7 +82,14 @@
       "files": [
         "apps/command-centre/public/fonts/rajdhani-600-latin.woff2",
         "apps/command-centre/public/fonts/rajdhani-700-latin.woff2"
-      ]
+      ],
+      "sbom": {
+        "ref": "bundled:font:rajdhani",
+        "type": "file",
+        "license": {
+          "id": "OFL-1.1"
+        }
+      }
     }
   ]
 }

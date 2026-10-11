@@ -6,7 +6,9 @@ O MordomoOS é distribuído sob a Functional Source License 1.1 com licença fut
 
 Gerado por `node scripts/licenses.mjs --write` a partir de `package-lock.json`, dos arquivos de licença dos pacotes instalados e de `legal/license-policy.json`. **Não edite à mão**: `npm run licenses:write` reescreve e `npm run licenses:check` reprova um arquivo que não bate.
 
-Componentes npm distribuídos: 184 · ferramentas de build (não distribuídas): 484
+Pacotes npm de runtime: 184 · ferramentas de build (não distribuídas): 484
+
+"Runtime" é o que o `package-lock.json` marca como não-`dev`: as dependências que o produto precisa para rodar. É um **superconjunto** do que o instalador leva (o código vai em dois bundles que usam só parte desses pacotes, e o módulo nativo do SQLite vai à parte): listar todos é o lado seguro para os avisos, e o aviso não afirma que cada um está dentro do instalador.
 
 ## 1. Componentes que não vêm do npm
 
@@ -226,7 +228,7 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 ~~~~
 
-## 2. Pacotes npm distribuídos
+## 2. Pacotes npm de runtime
 
 | Pacote | Versão | Licença (SPDX) | Origem |
 | --- | --- | --- | --- |
@@ -3904,7 +3906,7 @@ SOFTWARE.
 
 ## 3. Ferramentas de build (não distribuídas)
 
-Usadas para compilar, testar e empacotar. Nenhuma entra no instalador; por isso aparecem só com nome, versão e licença. Uma ferramenta sob `MPL-2.0` ou `CC-BY-4.0` é aceita aqui e reprovada se virar componente distribuído.
+Usadas para compilar, testar e empacotar. Nenhuma entra no instalador; por isso aparecem só com nome, versão e licença. Uma ferramenta sob `MPL-2.0` ou `CC-BY-4.0` é aceita aqui e reprovada se virar dependência de runtime.
 
 | Pacote | Versão | Licença (SPDX) |
 | --- | --- | --- |

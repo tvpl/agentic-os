@@ -25,11 +25,23 @@ function hashOf(integrity) {
   return m ? [{ alg: ALGORITHMS[m[1]], content: Buffer.from(m[2], "base64").toString("hex") }] : [];
 }
 
-function licensesOf(expression) {
+/** The licence ids the CycloneDX 1.5 schema accepts in `license.id` (its own copy of the SPDX list, vendored). */
+let spdxIds = null;
+function schemaIds(root) {
+  if (spdxIds === null) {
+    const file = path.join(root, "legal", "vendor", "cyclonedx", "spdx.schema.json");
+    spdxIds = new Set(fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")).enum : []);
+  }
+  return spdxIds;
+}
+
+/** One id the schema knows → `license.id`; an expression (OR, AND, WITH) → `expression`, whole; anything else → `name`. */
+function licensesOf(expression, ids) {
   if (expression === null) return [];
   const tree = parseSpdx(expression);
   if (tree === null) return [{ license: { name: expression } }];
-  if (tree.id && !tree.exception) return [{ license: { id: tree.id } }];
+  if (tree.id && !tree.exception)
+    return ids.has(tree.id) ? [{ license: { id: tree.id } }] : [{ license: { name: tree.id } }];
   return [{ expression }];
 }
 
@@ -53,6 +65,7 @@ export function buildSbom(root = ROOT) {
   const byKey = new Map(distributed.map((p) => [p.key, p]));
   const keys = new Set(Object.keys(lock.packages));
 
+  const ids = schemaIds(root);
   const ref = (p) => purlOf(p.name, p.version);
   // Two copies of one name@version (a nested semver next to another) are one component: bom-ref is unique.
   const unique = [...new Map(distributed.map((p) => [ref(p), p])).values()];
@@ -65,7 +78,7 @@ export function buildSbom(root = ROOT) {
       version: p.version,
       scope: "required",
       purl: ref(p),
-      licenses: licensesOf(expression),
+      licenses: licensesOf(expression, ids),
       hashes: hashOf(p.integrity),
       externalReferences: p.resolved ? [{ type: "distribution", url: p.resolved }] : [],
     };
@@ -100,6 +113,30 @@ export function buildSbom(root = ROOT) {
       ].sort(),
     })),
   ].sort((a, b) => (a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0));
+  // What the installer carries and npm does not name: Node.js, SQLite, the fonts (legal/license-policy.json `bundled`).
+  const bundled = policy.bundled.map((b) => ({
+    type: b.sbom.type,
+    "bom-ref": b.sbom.ref,
+    name: b.name.replace(/ \(fonte\)$/, ""),
+    scope: "required",
+    ...(b.sbom.purl ? { purl: b.sbom.purl } : {}),
+    licenses: [
+      {
+        license:
+          b.sbom.license.id && ids.has(b.sbom.license.id)
+            ? { id: b.sbom.license.id }
+            : { name: b.sbom.license.id ?? b.sbom.license.name },
+      },
+    ],
+    ...(b.url ? { externalReferences: [{ type: "website", url: b.url }] } : {}),
+  }));
+  components.push(...bundled);
+  dependencies[dependencies.findIndex((d) => d.ref === appRef)].dependsOn.push(
+    ...bundled.map((b) => b["bom-ref"]),
+  );
+  dependencies[dependencies.findIndex((d) => d.ref === appRef)].dependsOn.sort();
+  dependencies.push(...bundled.map((b) => ({ ref: b["bom-ref"], dependsOn: [] })));
+  dependencies.sort((a, b) => (a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0));
   components.sort((a, b) => (a["bom-ref"] < b["bom-ref"] ? -1 : a["bom-ref"] > b["bom-ref"] ? 1 : 0));
 
   // A serial number that follows the content: RFC 4122 layout (version 5 style) over a SHA-1 of the purls.
@@ -125,7 +162,7 @@ export function buildSbom(root = ROOT) {
         "bom-ref": appRef,
         name: rootManifest.name,
         version: rootManifest.version,
-        licenses: [{ license: { name: "FSL-1.1-ALv2" } }],
+        licenses: licensesOf(rootManifest.license, ids),
       },
     },
     components,

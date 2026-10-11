@@ -115,9 +115,11 @@ becomes available under the Apache License 2.0 on the second anniversary of the 
   [CONTRIBUTING.md](CONTRIBUTING.md), [EULA](legal/EULA.md), [privacy policy](legal/PRIVACY.md) and
   [NOTICE](legal/NOTICE.md) — are **drafts for the owner's legal review, not legal advice**; every blank is
   marked `[A PREENCHER PELO DONO: …]`. Do not ship an installer with them before that review.
-- **Third-party software.** [THIRD_PARTY_NOTICES.md](legal/THIRD_PARTY_NOTICES.md) lists every component the
-  installer carries with its license (generated: `npm run licenses:write`; `npm run licenses:check` rejects
-  a license outside [the allowed list](legal/license-policy.json)); `npm run sbom` writes a CycloneDX SBOM.
+- **Third-party software.** [THIRD_PARTY_NOTICES.md](legal/THIRD_PARTY_NOTICES.md) lists the npm packages of the
+  lockfile's runtime dependency set, with the full text of each license, and the runtime and fonts that do not come
+  from npm. That set is a **superset** of what the installer's bundles contain (listing more is the safe side).
+  It is generated (`npm run licenses:write`); `npm run licenses:check` rejects a license outside
+  [the allowed list](legal/license-policy.json); `npm run sbom` writes a CycloneDX SBOM of the same set.
 - **Third-party CLIs.** MordomoOS _orchestrates_ Claude Code, Cursor Agent and OpenAI Codex CLI. It does not
   bundle, redistribute or sublicense them: you install each one yourself, sign in with your own account, and
   each follows its supplier's terms. Product names are trademarks of their owners, cited only to say what

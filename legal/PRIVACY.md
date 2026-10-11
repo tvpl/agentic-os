@@ -66,16 +66,16 @@ Nas tabelas, "o dono" é a pessoa que instalou e administra o MordomoOS (você),
 | Destino | Endereços | Quando | Padrão | O que é enviado |
 | --- | --- | --- | --- | --- |
 | O próprio serviço (127.0.0.1) | (nenhum endereço fixo) | sempre: a interface, o CLI `mordomo`, o broker de permissão e o MCP do Mordomo falam com o serviço em 127.0.0.1 | ligado | tudo que o produto faz; não sai da máquina (o acesso remoto é opcional, exige TLS ou túnel e vem desligado) |
-| Verificação de versão (api.github.com) | `api.github.com` | só quando `updates.check` está ligado ou quando o dono pede "Verificar agora" (`GET /api/updates?force=1`) | desligado | um GET anônimo a /repos/tvpl/agentic-os/releases/latest com o cabeçalho `user-agent: mordomo-os`; nenhum identificador do produto, da instalação ou da pessoa; o GitHub vê o endereço IP; a resposta fica em cache por seis horas |
+| Verificação de versão (api.github.com) | `api.github.com` | só quando `updates.check` está ligado ou quando o dono pede "Verificar agora" (`GET /api/updates?force=1`) | desligado | um GET anônimo a /repos/tvpl/agentic-os/releases/latest com o cabeçalho `user-agent: mordomo-os` (o nome do produto, sem versão); nenhum identificador da instalação, da máquina ou da pessoa; o GitHub vê o endereço IP; a resposta fica em cache por seis horas |
 | Canal Telegram (api.telegram.org) | `api.telegram.org` | só com `channels.telegram.enabled`, um token de bot numa variável de ambiente e um `chatId`; receber respostas (`getUpdates`) exige também `channels.telegram.inbound` | desligado | o texto dos avisos do inbox acima do tom mínimo (título e corpo), os botões de aprovação e as respostas de quem escreve no chat; o token do bot vai na URL, como a API do Telegram exige |
 | Notificações push dos navegadores (fcm.googleapis.com e outros) | `fcm.googleapis.com`, `android.googleapis.com`, `*.push.services.mozilla.com`, `*.push.apple.com`, `*.notify.windows.com` | só com `channels.push.enabled` ligado e depois que o dono, ou um dispositivo pareado com o escopo `content`, assina notificações num navegador; o serviço então envia cada aviso ao endereço da assinatura, e resolve o nome desse endereço no DNS do sistema antes de cada envio | desligado; sem assinatura, nada é enviado | o aviso (título e corpo) cifrado de ponta a ponta (RFC 8291, chave do navegador que assinou), com uma credencial VAPID assinada que leva o campo `channels.push.subject` (por padrão `mailto:mordomo@localhost`; se o dono puser um e-mail seu ali, o serviço de push o vê); o serviço do navegador vê o endereço da assinatura, o tamanho e o horário, não o texto |
 | Servidor de push escolhido pelo dono | (o endereço que você escreve) | só com `channels.push.enabled` ligado e quando o dono (nunca um dispositivo) registra uma assinatura cujo endereço é um servidor https público dele | nenhum | o mesmo aviso cifrado das notificações push; o endereço é validado (https, porta padrão, só endereços públicos) a cada envio |
-| Webhook de rotina (endereço do dono) | (o endereço que você escreve) | só com `routines.allowWebhooks` ligado e uma rotina com entrega por webhook; o endereço é o que o dono escreveu na rotina | desligado | POST com o id e o nome da rotina, o id e o status da execução, a duração, os artefatos, o horário e um resumo de até 4.000 caracteres com segredos reconhecíveis redigidos |
+| Webhook de rotina (endereço do dono) | (o endereço que você escreve) | só com `routines.allowWebhooks` ligado e uma rotina com entrega por webhook; o endereço é o que o dono escreveu na rotina | desligado | POST com o id e o nome da rotina, o id e o status da execução, a duração, os artefatos, o horário e um resumo de até 4000 caracteres com segredos reconhecíveis redigidos |
 | Registro de skills (endereço do dono) | (o endereço que você escreve) | só quando o dono adiciona um registro em `marketplace.registries` e abre o marketplace ou instala uma skill; https obrigatório (ou uma pasta local `file://`) | nenhum registro | GETs do índice e dos arquivos da skill, sem corpo e sem redirecionamento; o servidor do registro vê o endereço IP e os caminhos pedidos |
 | Conector de dados por API (endereço do dono) | (o endereço que você escreve) | só com um conector de dados do tipo API configurado pelo dono (`dataMapping.url`, http ou https) e sincronizado | nenhum conector configurado | GET com os cabeçalhos que o dono escreveu (podem trazer um token lido de variável de ambiente), sem redirecionamento |
-| Conectores MCP de terceiros (Gmail, Google Calendar, Playwright…) | (nenhum endereço fixo) | só com um conector do tipo MCP configurado pelo dono e o comando dele em `settings.connectors.allowedCommands`; o MordomoOS inicia esse programa de terceiros ao sincronizar e este fala com o serviço dele (Google, por exemplo) | nenhum conector vem configurado | o que o programa do conector enviar ao serviço dele, sob os termos desse serviço; o MordomoOS recebe o resultado e o guarda na casa |
-| Auditoria de dependências do doctor (registro do npm) | (nenhum endereço fixo) | `mordomo doctor` (e a rota `GET /api/doctor` para o dono) roda `npm audit` quando o CLI do npm está ao lado do Node e a pasta de dados tem `package-lock.json`; o instalador, que leva só o binário do Node, pula o item | ligado ao pedir o diagnóstico, exceto com MORDOMO_SKIP_NPM_AUDIT=1 | o npm envia nomes e versões das dependências ao registro configurado nele (por padrão registry.npmjs.org); o MordomoOS não envia nada além disso |
-| Provedores dos CLIs (Claude Code, Codex, Cursor Agent) | (nenhum endereço fixo) | toda execução: o MordomoOS inicia o CLI que o usuário escolheu e este fala com o servidor do provedor dele, com a conta do usuário | ligado, por definição do produto | o prompt e os arquivos da pasta da execução, sob os termos e a política de privacidade do provedor, não desta; o MordomoOS não vê nem guarda a chave ou o login do provedor |
+| Conectores MCP de terceiros (Gmail, Google Calendar, Playwright…) | (nenhum endereço fixo) | só com um conector do tipo MCP configurado pelo dono e o comando dele em `settings.connectors.allowedCommands`; o MordomoOS inicia esse programa de terceiros ao sincronizar (os embutidos de Gmail e Google Calendar o fazem por `npx -y`, que primeiro baixa o pacote: ver "Registro do npm") e este fala com o serviço dele (Google, por exemplo) | nenhum conector vem configurado | o que o programa do conector enviar ao serviço dele, sob os termos desse serviço; o MordomoOS recebe o resultado e o guarda na casa |
+| Registro do npm (auditoria do doctor e npx dos conectores) | (nenhum endereço fixo) | (1) `mordomo doctor` (e a rota `GET /api/doctor` para o dono) roda `npm audit` quando o CLI do npm está ao lado do Node e a pasta de dados tem `package-lock.json`; o instalador, que leva só o binário do Node, pula o item. (2) Os conectores embutidos de Gmail e Google Calendar usam o comando `npx -y <pacote>`: se o dono os configurar e o MordomoOS os iniciar, o npm baixa o pacote do conector do registro do npm (`registry.npmjs.org`, por padrão) a cada uso, sem cache garantido | (1) ligado ao pedir o diagnóstico, exceto com MORDOMO_SKIP_NPM_AUDIT=1; (2) nenhum conector vem configurado | (1) o npm envia nomes e versões das dependências ao registro configurado nele; (2) o nome do pacote do conector. O MordomoOS não envia nada além disso; o que o pacote baixado faz depois está em "Conectores MCP de terceiros" |
+| Provedores dos CLIs (Claude Code, Codex, Cursor Agent) | (nenhum endereço fixo) | toda execução: o MordomoOS inicia o CLI que o usuário escolheu e este fala com o servidor do provedor dele, com a conta do usuário | ligado, por definição do produto | o prompt e os arquivos da pasta da execução, sob os termos e a política de privacidade do provedor, não desta; o MordomoOS não lê nem grava o conteúdo das credenciais do provedor (só verifica se o login do CLI ou a variável ANTHROPIC_API_KEY / OPENAI_API_KEY existe), mas o ambiente do processo dele, essas variáveis inclusive, é repassado ao CLI que ele inicia |
 
 ### 4.2. Endereços que aparecem sem o MordomoOS se conectar a eles
 
@@ -92,7 +92,7 @@ Quando você manda o MordomoOS executar algo, ele inicia o CLI que você escolhe
 Cursor Agent) com o seu prompt e a pasta de trabalho da execução. **Quem fala com o provedor é o CLI**,
 com a sua conta: o prompt, os arquivos que o CLI ler e o resultado passam pelo servidor do provedor, sob
 os termos e a política de privacidade **dele**, não desta. Leia-os antes de usar um CLI com dados que não
-podem sair do seu computador. O MordomoOS não vê a sua chave ou login do provedor. Os perfis de segurança e
+podem sair do seu computador. O MordomoOS não lê nem grava o conteúdo das suas credenciais do provedor, mas o ambiente do processo dele (inclusive `ANTHROPIC_API_KEY` e `OPENAI_API_KEY`, se você as definiu) é repassado ao CLI que ele inicia. Os perfis de segurança e
 as aprovações do MordomoOS limitam o que o agente pode fazer no seu computador, não o que o provedor faz
 com o que recebe.
 
@@ -105,8 +105,21 @@ verificação de versão (desligada por padrão e sem identificador) e a auditor
 (só ao pedir o diagnóstico, e só se o npm estiver ao lado do Node); ambos estão na seção 4.1.
 
 Isto é conferido por testes (`tests/legal.network.test.ts`): nenhuma dependência de telemetria no
-`package-lock.json`, nenhum ponto de rede que não esteja na lista acima e nenhuma configuração com
-`telemetry`, `analytics` ou `crash` no nome.
+`package-lock.json`, nenhum ponto de rede **reconhecido pela varredura** que não esteja na lista acima e
+nenhuma configuração com `telemetry`, `analytics` ou `crash` no nome.
+
+**O que a varredura não vê** (limites, ditos para ninguém tomar o teste por mais do que ele é):
+
+- um endereço montado em tempo de execução (concatenação, variável de ambiente, o que o dono escreve numa
+  configuração) não é literal no código; a varredura conta o ponto de rede (`fetch` e semelhantes), e é por isso
+  que os destinos "do dono" estão nas tabelas sem endereço fixo;
+- código fora das pastas que ela lê (testes, `.github`, `docs`, `node_modules`) e o que um CLI ou um programa de
+  conector de terceiros faz por conta própria; o código de terceiros que o instalador leva (React, Fastify…) não
+  é varrido, só conferido contra a lista de pacotes de telemetria;
+- `eval`, `new Function`, um programa escolhido por variável, `sh -c` com `curl` dentro de uma cadeia composta, e
+  texto em prosa que manda um agente acessar um endereço (só URLs e `curl`/`wget` em prosa são lidos);
+- um endereço escrito sem esquema numa constante cujo nome não diz que é um endereço e cujo domínio de topo não
+  está na lista conhecida da varredura.
 
 **Se um dia houver telemetria**, ela será: opt-in e desligada por padrão; mínima, sem identificador pessoal
 nem conteúdo de prompts, arquivos ou memória; com uma tela de consentimento que mostra exatamente o que seria

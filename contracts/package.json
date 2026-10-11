@@ -1,7 +1,7 @@
 {
   "name": "@mordomo/contracts",
   "version": "0.8.0",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "FSL-1.1-ALv2",
   "description": "The shapes that cross the engine / API / UI boundary: wire types, the settings schema, the typed event map and the write policy.",
   "type": "module",
   "engines": {

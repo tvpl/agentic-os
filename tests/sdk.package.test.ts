@@ -23,7 +23,7 @@ describe("S5 package metadata", () => {
   it("C41 both packages carry the literal fields of the Landing, and the license text is the FSL", () => {
     for (const dir of ["core", "contracts"]) {
       const m = manifest(dir);
-      expect(m.license, dir).toBe("SEE LICENSE IN LICENSE");
+      expect(m.license, dir).toBe("FSL-1.1-ALv2");
       expect(m.engines, dir).toEqual({ node: ">=22" });
       expect(m.sideEffects, dir).toBe(false);
       expect(m.files, dir).toEqual(FILES);

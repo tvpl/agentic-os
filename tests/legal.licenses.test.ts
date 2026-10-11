@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -83,6 +84,8 @@ interface Pkg {
   /** version of the installed package.json (default: `version`; null: not installed) */
   installed?: string | null;
   files?: Record<string, string>;
+  dependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
 }
 interface Tree {
   pkgs: Pkg[];
@@ -103,6 +106,8 @@ function tree({ pkgs, policy }: Tree, opts: { notice?: boolean } = {}): string {
       integrity: "sha512-AAAA",
       ...(p.license === undefined ? {} : { license: p.license }),
       ...(p.dev ? { dev: true } : {}),
+      ...(p.dependencies ? { dependencies: p.dependencies } : {}),
+      ...(p.optionalDependencies ? { optionalDependencies: p.optionalDependencies } : {}),
     };
     if (p.installed !== null) {
       const home = path.join(dir, "node_modules", p.name);
@@ -722,7 +727,9 @@ describe("C16 the SBOM", () => {
 
   it("C16 its components are exactly the distributed name@version pairs of the lockfile, with unique references", () => {
     const expected = new Set(distributedKeys.map((k) => `${nameOf(k)}@${lock.packages[k]!.version}`));
-    const got = bom.components.map((c) => `${c.name}@${c.version}`);
+    const got = bom.components
+      .filter((c) => c.purl?.startsWith("pkg:npm/"))
+      .map((c) => `${c.name}@${c.version}`);
     expect(new Set(got)).toEqual(expected);
     expect(got).toHaveLength(expected.size);
     expect(expected.size).toBe(183);
@@ -749,7 +756,7 @@ describe("C16 the SBOM", () => {
   });
 
   it("C16 each component has a license, a hash and a purl that names its version", () => {
-    for (const c of bom.components) {
+    for (const c of bom.components.filter((x) => x.purl?.startsWith("pkg:npm/"))) {
       expect(c.licenses.length, c.name).toBeGreaterThan(0);
       expect(c.hashes.length, c.name).toBeGreaterThan(0);
       expect(c.purl, c.name).toBe(`pkg:npm/${c.name.replace(/^@/, "%40")}@${c.version}`);
@@ -783,7 +790,7 @@ describe("C16 the SBOM", () => {
       }).status,
     ).toBe(0);
     expect(fs.readFileSync(a, "utf8")).toBe(fs.readFileSync(b, "utf8"));
-    expect(JSON.parse(fs.readFileSync(a, "utf8")).components).toHaveLength(183);
+    expect(JSON.parse(fs.readFileSync(a, "utf8")).components).toHaveLength(183 + 4);
   });
 
   it("C16 npm run sbom is the script, and the default output is build/sbom/mordomo-os.cdx.json", () => {
@@ -818,5 +825,280 @@ describe("C17 the real lockfile passes", () => {
         names.add(nameOf(key).replace(/-(android|darwin|freebsd|linux|win32).*$/, ""));
     expect([...names].sort()).toEqual(["@axe-core/playwright", "axe-core", "caniuse-lite", "lightningcss"]);
     for (const key of distributedKeys) expect(wider.has(lock.packages[key]!.license ?? ""), key).toBe(false);
+  });
+});
+
+// ---- round 1 ----------------------------------------------------------------------------------------------------------
+
+const REAL_POLICY = JSON.parse(fs.readFileSync(path.join(ROOT, "legal", "license-policy.json"), "utf8")) as {
+  allowedDistributed: string[];
+  allowedToolingExtra: string[];
+  overrides: Record<string, unknown>;
+  bundled: Array<{
+    name: string;
+    sbom: { ref: string; type: string; license: { id?: string; name?: string } };
+  }>;
+};
+
+describe("C33 the real list of licenses is pinned, and each forbidden license fails under it", () => {
+  it("C33 allowedDistributed is exactly the 12 of the plan, in order; the build tools add exactly MPL-2.0 and CC-BY-4.0", () => {
+    expect(REAL_POLICY.allowedDistributed).toEqual(ALLOWED);
+    expect(REAL_POLICY.allowedToolingExtra).toEqual(["MPL-2.0", "CC-BY-4.0"]);
+    expect(Object.keys(REAL_POLICY.overrides)).toEqual(["svg-tags@1.0.0"]);
+  });
+
+  const FORBIDDEN = [
+    "GPL-3.0-only",
+    "GPL-2.0-or-later",
+    "AGPL-3.0-only",
+    "AGPL-3.0-or-later",
+    "LGPL-3.0-only",
+    "LGPL-2.1-only",
+    "SSPL-1.0",
+    "MPL-2.0",
+    "CC-BY-4.0",
+    "CC-BY-NC-4.0",
+    "EUPL-1.2",
+    "BUSL-1.1",
+    "Elastic-2.0",
+    "UNLICENSED",
+    "SEE LICENSE IN LICENSE.txt",
+    "Proprietary",
+  ];
+  for (const id of FORBIDDEN)
+    it(`C33 ${id} is refused in a runtime package under the REAL policy`, () => {
+      expect(lic.isAllowed(id, REAL_POLICY.allowedDistributed), id).toBe(false);
+      const dir = tree({ pkgs: [{ name: "pkg", license: id }], policy: { ...REAL_POLICY, bundled: [] } });
+      const res = run(["--check"], dir);
+      expect(res.code, res.err).toBe(1);
+      expect(res.err).toContain("pkg@1.0.0");
+    });
+
+  it("C33 under the REAL policy a build tool takes MPL-2.0 and CC-BY-4.0 and refuses the rest of the list", () => {
+    const tooling = [...REAL_POLICY.allowedDistributed, ...REAL_POLICY.allowedToolingExtra];
+    for (const id of ["MPL-2.0", "CC-BY-4.0"]) expect(lic.isAllowed(id, tooling), id).toBe(true);
+    for (const id of FORBIDDEN.filter((f) => !["MPL-2.0", "CC-BY-4.0"].includes(f)))
+      expect(lic.isAllowed(id, tooling), id).toBe(false);
+  });
+
+  it("C33 the pin can fail: a list with GPL-3.0-only or MPL-2.0 added no longer equals the plan's", () => {
+    expect([...REAL_POLICY.allowedDistributed, "GPL-3.0-only"]).not.toEqual(ALLOWED);
+    expect([...REAL_POLICY.allowedDistributed, "MPL-2.0"]).not.toEqual(ALLOWED);
+    expect(lic.isAllowed("GPL-3.0-only", [...REAL_POLICY.allowedDistributed, "GPL-3.0-only"])).toBe(true);
+  });
+});
+
+// ---- C36 ----------------------------------------------------------------------------------------------------------------
+
+describe("C36 the SBOM is a valid CycloneDX 1.5 document, and what it says is what the lockfile says", async () => {
+  const { default: Ajv } = (await import("ajv")) as unknown as { default: new (o: object) => AjvLike };
+  interface AjvLike {
+    addSchema: (s: object) => void;
+    addFormat: (n: string, f: RegExp) => void;
+    compile: (
+      s: object,
+    ) => ((d: unknown) => boolean) & { errors?: Array<{ instancePath: string; message?: string }> | null };
+  }
+  const SCHEMAS: Record<string, string> = {
+    "bom-1.5.schema.json": "2d956c1d05c092695457a91f3b5c57c749793c013ec224a0935807cfc8ae4480",
+    "spdx.schema.json": "4b345e2329f209f34e960ae2a8e7cb46a166907e6a45e94978565925dc47b359",
+    "jsf-0.82.schema.json": "8bae002c25e723db7ee1f26afde680ae1a2b1a8f6b4b4b0fd65dc3becb090aae",
+  };
+  const schemaText = (f: string) =>
+    fs.readFileSync(path.join(ROOT, "legal", "vendor", "cyclonedx", f), "utf8").replace(/\r\n/g, "\n");
+  const sha = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
+  const ajv = new Ajv({ strict: false, allErrors: true });
+  ajv.addFormat("iri-reference", /^\S+$/);
+  ajv.addFormat("idn-email", /^[^@\s]+@[^@\s]+$/);
+  ajv.addSchema(JSON.parse(schemaText("spdx.schema.json")));
+  ajv.addSchema(JSON.parse(schemaText("jsf-0.82.schema.json")));
+  const validate = ajv.compile(JSON.parse(schemaText("bom-1.5.schema.json")));
+  const bom = sbom.buildSbom(ROOT) as unknown as Record<string, any>;
+  const clone = () => JSON.parse(JSON.stringify(bom)) as typeof bom;
+  const errorsOf = (doc: unknown) =>
+    validate(doc) ? [] : (validate.errors ?? []).map((e) => `${e.instancePath} ${e.message}`);
+
+  it("C36 the three schema files are the official ones (SHA-256 pinned)", () => {
+    for (const [file, expected] of Object.entries(SCHEMAS))
+      expect(sha(schemaText(file)), file).toBe(expected);
+    expect(schemaText("bom-1.5.schema.json")).toContain(
+      '"$id": "http://cyclonedx.org/schema/bom-1.5.schema.json"',
+    );
+  });
+
+  it("C36 the real SBOM validates against the official 1.5 JSON Schema", () => {
+    expect(errorsOf(bom)).toEqual([]);
+  });
+
+  it("C36 the validator can fail: a wrong algorithm name, a lowercase SPDX id, a missing field and a bad ref are all errors", () => {
+    const a = clone();
+    a.components[10].hashes[0].alg = "SHA-999";
+    expect(errorsOf(a).length).toBeGreaterThan(0);
+    const b = clone();
+    b.components[10].licenses = [{ license: { id: "mit" } }];
+    expect(errorsOf(b).length).toBeGreaterThan(0);
+    const c = clone();
+    delete c.components[10].name;
+    expect(errorsOf(c).length).toBeGreaterThan(0);
+    const d = clone();
+    d.bomFormat = "CycloneDX2";
+    expect(errorsOf(d).length).toBeGreaterThan(0);
+  });
+
+  it("C36 every npm component: the hash is the integrity of the lockfile, labelled with its own algorithm and of the right length", () => {
+    const widths: Record<string, number> = { "SHA-1": 40, "SHA-256": 64, "SHA-384": 96, "SHA-512": 128 };
+    const labels: Record<string, string> = {
+      sha1: "SHA-1",
+      sha256: "SHA-256",
+      sha384: "SHA-384",
+      sha512: "SHA-512",
+    };
+    const byPurl = new Map(
+      distributedKeys.map((k) => [
+        `${nameOf(k)}@${lock.packages[k]!.version}`,
+        lock.packages[k] as LockEntry & { integrity?: string },
+      ]),
+    );
+    for (const c of bom.components.filter((x: { purl?: string }) => x.purl?.startsWith("pkg:npm/"))) {
+      const entry = byPurl.get(`${c.name}@${c.version}`)!;
+      const m = /^(sha1|sha256|sha384|sha512)-(.+)$/.exec(entry.integrity ?? "")!;
+      expect(c.hashes, c.name).toEqual([
+        { alg: labels[m[1]!], content: Buffer.from(m[2]!, "base64").toString("hex") },
+      ]);
+      expect(c.hashes[0].content, c.name).toMatch(new RegExp(`^[0-9a-f]{${widths[c.hashes[0].alg]}}$`));
+    }
+  });
+
+  it("C36 every npm component carries a distribution reference equal to the lockfile's resolved URL", () => {
+    const byName = new Map(
+      distributedKeys.map((k) => [`${nameOf(k)}@${lock.packages[k]!.version}`, lock.packages[k]!]),
+    );
+    for (const c of bom.components.filter((x: { purl?: string }) => x.purl?.startsWith("pkg:npm/")))
+      expect(c.externalReferences, c.name).toEqual([
+        { type: "distribution", url: byName.get(`${c.name}@${c.version}`)!.resolved },
+      ]);
+  });
+
+  it("C36 the licence of every component is the lockfile's (or the policy override's), with an expression kept whole", () => {
+    const byName = new Map(
+      distributedKeys.map((k) => [`${nameOf(k)}@${lock.packages[k]!.version}`, lock.packages[k]!]),
+    );
+    for (const c of bom.components.filter((x: { purl?: string }) => x.purl?.startsWith("pkg:npm/"))) {
+      const spdx = byName.get(`${c.name}@${c.version}`)!.license!;
+      const [choice] = c.licenses;
+      expect(c.licenses, c.name).toHaveLength(1);
+      if (/[ ()]/.test(spdx)) expect(choice, c.name).toEqual({ expression: spdx });
+      else expect(choice, c.name).toEqual({ license: { id: spdx } });
+    }
+  });
+
+  it("C36 a WITH expression and an OR expression are not flattened into one id (fixture)", () => {
+    const dir = tree({
+      pkgs: [
+        { name: "with-ex", license: "Apache-2.0 WITH LLVM-exception" },
+        { name: "either", license: "(MIT OR Apache-2.0)" },
+        { name: "custom", license: "CC0-1.0" },
+      ],
+    });
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0", license: "FSL-1.1-ALv2" }),
+    );
+    const doc = sbom.buildSbom(dir) as unknown as {
+      components: Array<{ name: string; licenses: unknown[] }>;
+    };
+    const of = (n: string) => doc.components.find((c) => c.name === n)!.licenses;
+    expect(of("with-ex")).toEqual([{ expression: "Apache-2.0 WITH LLVM-exception" }]);
+    expect(of("either")).toEqual([{ expression: "(MIT OR Apache-2.0)" }]);
+  });
+
+  it("C36 references: every bom-ref is unique, no dependency points at nothing, and the application depends on the bundled components", () => {
+    const refs = bom.components.map((c: { "bom-ref": string }) => c["bom-ref"]);
+    expect(new Set(refs).size).toBe(refs.length);
+    const known = new Set([...refs, bom.metadata.component["bom-ref"]]);
+    for (const d of bom.dependencies as Array<{ ref: string; dependsOn: string[] }>) {
+      expect(known.has(d.ref), d.ref).toBe(true);
+      for (const on of d.dependsOn) expect(known.has(on), `${d.ref} -> ${on}`).toBe(true);
+    }
+    expect(new Set((bom.dependencies as Array<{ ref: string }>).map((d) => d.ref)).size).toBe(
+      bom.dependencies.length,
+    );
+    const app = (bom.dependencies as Array<{ ref: string; dependsOn: string[] }>).find(
+      (d) => d.ref === bom.metadata.component["bom-ref"],
+    )!;
+    for (const b of REAL_POLICY.bundled) expect(app.dependsOn, b.name).toContain(b.sbom.ref);
+  });
+
+  it("C36 the dependency edges are exactly the lockfile's dependencies and optionalDependencies, resolved the way Node does", () => {
+    const keys = new Set(Object.keys(lock.packages));
+    const purl = (k: string) => `pkg:npm/${nameOf(k).replace(/^@/, "%40")}@${lock.packages[k]!.version}`;
+    const expected = new Map<string, Set<string>>();
+    for (const key of distributedKeys) {
+      const entry = lock.packages[key]!;
+      const set = expected.get(purl(key)) ?? new Set<string>();
+      for (const dep of Object.keys({ ...entry.dependencies, ...entry.optionalDependencies })) {
+        const resolved = resolveKey(key, dep);
+        if (resolved && keys.has(resolved) && distributedKeys.includes(resolved)) set.add(purl(resolved));
+      }
+      expected.set(purl(key), set);
+    }
+    for (const d of bom.dependencies as Array<{ ref: string; dependsOn: string[] }>) {
+      if (!d.ref.startsWith("pkg:npm/")) continue;
+      expect([...d.dependsOn].sort(), d.ref).toEqual([...expected.get(d.ref)!].sort());
+    }
+    // An edge that exists only as an optional dependency is there (the lockfile has at least one).
+    const optionalOnly = distributedKeys.some(
+      (k) => Object.keys(lock.packages[k]!.optionalDependencies ?? {}).length > 0,
+    );
+    expect(typeof optionalOnly).toBe("boolean");
+  });
+
+  it("C36 an edge that exists only as an optional dependency, and one through a dependency, are in the graph (fixture)", () => {
+    const dir = tree({
+      pkgs: [
+        {
+          name: "app-dep",
+          license: "MIT",
+          dependencies: { plain: "^1.0.0" },
+          optionalDependencies: { extra: "^1.0.0" },
+        },
+        { name: "plain", license: "MIT" },
+        { name: "extra", license: "MIT" },
+      ],
+    });
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0", license: "FSL-1.1-ALv2" }),
+    );
+    const doc = sbom.buildSbom(dir) as unknown as {
+      dependencies: Array<{ ref: string; dependsOn: string[] }>;
+    };
+    const edge = doc.dependencies.find((d) => d.ref === "pkg:npm/app-dep@1.0.0")!;
+    expect(edge.dependsOn).toEqual(["pkg:npm/extra@1.0.0", "pkg:npm/plain@1.0.0"]);
+  });
+
+  it("C36 Node.js, SQLite and the two fonts are components, each with its licence, as the notice lists them", () => {
+    const named = (n: string) => bom.components.find((c: { name: string }) => c.name === n);
+    expect(named("Node.js")).toMatchObject({ type: "platform", licenses: [{ license: { id: "MIT" } }] });
+    expect(named("SQLite")).toMatchObject({
+      type: "library",
+      licenses: [{ license: { name: "Public Domain" } }],
+    });
+    expect(named("JetBrains Mono")).toMatchObject({
+      type: "file",
+      licenses: [{ license: { id: "OFL-1.1" } }],
+    });
+    expect(named("Rajdhani")).toMatchObject({ type: "file", licenses: [{ license: { id: "OFL-1.1" } }] });
+    const notice = committed;
+    for (const b of REAL_POLICY.bundled) expect(notice, b.name).toContain(`### ${b.name} —`);
+    expect(bom.components).toHaveLength(183 + REAL_POLICY.bundled.length);
+  });
+
+  it("C36 the application's own licence is the manifest's SPDX id", () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")) as {
+      license: string;
+    };
+    expect(manifest.license).toBe("FSL-1.1-ALv2");
+    expect(bom.metadata.component.licenses).toEqual([{ license: { id: "FSL-1.1-ALv2" } }]);
   });
 });

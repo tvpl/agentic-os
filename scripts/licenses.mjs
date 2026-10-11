@@ -315,7 +315,12 @@ export function renderNotice(root, policy, distributed, tooling) {
       "pacotes instalados e de `legal/license-policy.json`. **Não edite à mão**: `npm run licenses:write` reescreve " +
       "e `npm run licenses:check` reprova um arquivo que não bate.",
     "",
-    `Componentes npm distribuídos: ${distributed.length} · ferramentas de build (não distribuídas): ${tooling.length}`,
+    `Pacotes npm de runtime: ${distributed.length} · ferramentas de build (não distribuídas): ${tooling.length}`,
+    "",
+    '"Runtime" é o que o `package-lock.json` marca como não-`dev`: as dependências que o produto precisa para rodar. É um ' +
+      "**superconjunto** do que o instalador leva (o código vai em dois bundles que usam só parte desses pacotes, e o " +
+      "módulo nativo do SQLite vai à parte): listar todos é o lado seguro para os avisos, e o aviso não afirma que cada " +
+      "um está dentro do instalador.",
     "",
   );
 
@@ -332,7 +337,7 @@ export function renderNotice(root, policy, distributed, tooling) {
     push("");
   }
 
-  push("## 2. Pacotes npm distribuídos", "");
+  push("## 2. Pacotes npm de runtime", "");
   push("| Pacote | Versão | Licença (SPDX) | Origem |", "| --- | --- | --- | --- |");
   for (const r of distributed)
     push(
@@ -366,7 +371,7 @@ export function renderNotice(root, policy, distributed, tooling) {
   push("## 3. Ferramentas de build (não distribuídas)", "");
   push(
     "Usadas para compilar, testar e empacotar. Nenhuma entra no instalador; por isso aparecem só com nome, versão e " +
-      "licença. Uma ferramenta sob `MPL-2.0` ou `CC-BY-4.0` é aceita aqui e reprovada se virar componente distribuído.",
+      "licença. Uma ferramenta sob `MPL-2.0` ou `CC-BY-4.0` é aceita aqui e reprovada se virar dependência de runtime.",
     "",
   );
   push("| Pacote | Versão | Licença (SPDX) |", "| --- | --- | --- |");

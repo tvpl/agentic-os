@@ -7,7 +7,7 @@ Plan: `.specs/features/licenca-comercial/plan.md`
 > jurídico**. Os checks provam que o texto existe, é coerente com o código e não inventa dados; eles não
 > provam que o texto é juridicamente suficiente. Isso é a revisão do dono.
 
-32 checks in 6 slices · 7 one-way doors · 3 open, of which 2 block go-live
+43 checks in 7 slices · 7 one-way doors · 3 open, of which 2 block go-live
 
 Comandos (da raiz): `npx vitest run tests/legal.docs.test.ts -t "<nome>"`,
 `npx vitest run tests/legal.licenses.test.ts -t "<nome>"`, `npx vitest run tests/legal.network.test.ts -t "<nome>"`.
@@ -25,7 +25,7 @@ Status: closed
 Proof: `npx vitest run tests/legal.docs.test.ts -t "C2 "`
 Status: closed
 
-**C3** - O campo `license` dos 8 `package.json` (raiz, `contracts`, `core`, `adapters/claude`, `adapters/cursor`, `adapters/codex`, `apps/api`, `apps/command-centre`) é exatamente `SEE LICENSE IN LICENSE`, e nenhum workspace do `package.json` raiz fica de fora da lista (AC 3)
+**C3** - O campo `license` dos 8 `package.json` (raiz, `contracts`, `core`, `adapters/claude`, `adapters/cursor`, `adapters/codex`, `apps/api`, `apps/command-centre`) é exatamente `FSL-1.1-ALv2` (rodada 1: o identificador SPDX, AD-023), e nenhum workspace do `package.json` raiz fica de fora da lista (AC 3)
 Proof: `npx vitest run tests/legal.docs.test.ts -t "C3 "`
 Status: closed
 
@@ -76,11 +76,11 @@ Status: closed
 Proof: `npx vitest run tests/legal.licenses.test.ts -t "C14 "`
 Status: closed
 
-**C15** - Uma entrada da trava com `version` diferente do tarball de `resolved` (caso real corrigido em `40fee52`), um pacote distribuído que `node_modules` não tem, e um instalado em versão diferente da travada fazem `--check`, `--write` e `--stdout` sairem `2` citando o pacote; um `legal/license-policy.json` ilegível sai `2` (AC 15)
+**C15** - Uma entrada da trava com `version` diferente do tarball de `resolved` (caso real, corrigido na integração, `adfe2c5`), um pacote distribuído que `node_modules` não tem, e um instalado em versão diferente da travada fazem `--check`, `--write` e `--stdout` sairem `2` citando o pacote; um `legal/license-policy.json` ilegível sai `2` (AC 15)
 Proof: `npx vitest run tests/legal.licenses.test.ts -t "C15 "`
 Status: closed
 
-**C16** - `sbom.mjs` escreve um CycloneDX 1.5 (`bomFormat`, `specVersion`, `serialNumber` `urn:uuid:`) cujos componentes são exatamente os `nome@versão` distribuídos (183 `bom-ref` únicos para 184 entradas da trava: dois `semver@7.8.5` aninhados), sem nenhuma ferramenta de build (`vitest`, `typescript`, `vite`), cada componente com licença, hash e `purl`, toda referência de `dependencies` aponta para um componente, e duas execuções escrevem os mesmos bytes (AC 16)
+**C16** - `sbom.mjs` escreve um CycloneDX 1.5 (`bomFormat`, `specVersion`, `serialNumber` `urn:uuid:`) cujos componentes npm são exatamente os `nome@versão` distribuídos (183 `bom-ref` únicos para 184 entradas da trava: dois `semver@7.8.5` aninhados), sem nenhuma ferramenta de build (`vitest`, `typescript`, `vite`), cada componente com licença, hash e `purl`, toda referência de `dependencies` aponta para um componente, e duas execuções escrevem os mesmos bytes (AC 16)
 Proof: `npx vitest run tests/legal.licenses.test.ts -t "C16 "`
 Status: closed
 
@@ -99,7 +99,7 @@ Status: closed
 Proof: `npx vitest run tests/legal.docs.test.ts -t "C19 "`
 Status: closed
 
-**C20** - Toda marca da lista de vigia (as 46 de `legal/trademarks.json` mais 32 nomes que o repositório não cita hoje) que aparece no texto que o produto mostra (README, `docs/*.md`, `docs/README.pt-BR.md`, textos da interface, conectores, manifestos dos adaptadores) está em `legal/trademarks.json`; toda entrada de `brands` ainda é citada em algum desses arquivos e aparece no EULA; a varredura acha uma marca acrescentada num texto de teste (AC 19)
+**C20** - Toda marca da lista de vigia (as 102 de `legal/trademarks.json` mais 73 nomes que o repositório não cita hoje; ampliada na rodada 1, ver C37) que aparece no texto que o produto mostra (README, `docs/*.md`, `docs/README.pt-BR.md`, textos da interface, conectores, manifestos dos adaptadores) está em `legal/trademarks.json`; toda entrada de `brands` ainda é citada em algum desses arquivos e aparece no EULA; a varredura acha uma marca acrescentada num texto de teste (AC 19)
 Proof: `npx vitest run tests/legal.docs.test.ts -t "C20 "`
 Status: closed
 
@@ -159,6 +159,54 @@ Status: closed
 Proof: `npx vitest run tests/legal.docs.test.ts -t "C32 "`
 Status: closed
 
+### S7 - correção da rodada 1 da verificação · 9 files · 90 KB · ~25k
+
+**C33** - A lista real `allowedDistributed` de `legal/license-policy.json` é, por `toEqual`, as 12 licenças do plano, na ordem; `allowedToolingExtra` é `["MPL-2.0","CC-BY-4.0"]`; `overrides` só tem `svg-tags@1.0.0`; e cada uma de 16 licenças proibidas (`GPL-3.0-only`, `GPL-2.0-or-later`, `AGPL-3.0-only`, `AGPL-3.0-or-later`, `LGPL-3.0-only`, `LGPL-2.1-only`, `SSPL-1.0`, `MPL-2.0`, `CC-BY-4.0`, `CC-BY-NC-4.0`, `EUPL-1.2`, `BUSL-1.1`, `Elastic-2.0`, `UNLICENSED`, `SEE LICENSE IN LICENSE.txt`, `Proprietary`) reprova com `--check` em `1` sob a política real, e na ferramenta só `MPL-2.0` e `CC-BY-4.0` passam (AC 34)
+Proof: `npx vitest run tests/legal.licenses.test.ts -t "C33 "`
+Status: closed
+
+**C34** - Cada uma das 15 entradas de `hosts` declara `defaultState` (`on`, `off`, `none`, `never`, `mixed`) e o texto de `default` começa pela palavra desse estado; uma entrada `contact` ou `user-defined` só é `off` ou `none`, `link` e `build` só `never`, `on` só em `local` ou `cli`; o `gate.setting` de cada entrada `off` ou `none` vale `false` ou `[]` nas configurações padrão reais; os conectores embutidos são todos `not_configured` e sem URL; um site `fetch` ou `eventsource` só aponta para `contact`, `user-defined`, `local` ou `build`, uma entrada `implicit` ou `cli` não tem endereço e nenhum site aponta para `link` (AC 35)
+Proof: `npx vitest run tests/legal.network.test.ts -t "C34 "`
+Status: closed
+
+**C35** - O código faz o que o texto de privacidade diz: o aviso de versão guarda a resposta por seis horas (5h59 reaproveita, 6h01 busca de novo) e envia só `user-agent: mordomo-os`; o agendador não envia webhook algum com `routines.allowWebhooks` desligado, mesmo numa rotina que já tem a URL, e com ele ligado faz um `POST` à URL da rotina com resumo de 4000 caracteres e os oito campos do corpo; o registro de skills e a API de conector fazem `fetch` com `redirect: "error"`; o `subject` padrão do push é `mailto:mordomo@localhost`; o token do Telegram vai na URL (AC 36)
+Proof: `npx vitest run tests/legal.network.test.ts -t "C35 "`
+Status: closed
+
+**C36** - O SBOM valida contra o esquema oficial CycloneDX 1.5 (três arquivos com SHA-256 fixado) e o validador reprova um rótulo de algoritmo inventado, um `license.id` em minúsculas, um campo faltando e um `bomFormat` errado; cada componente npm tem o hash igual ao `integrity` da trava, rotulado pelo próprio prefixo e com o comprimento do algoritmo, `externalReferences` igual a `resolved`, licença inteira (uma expressão `OR`/`AND`/`WITH` não vira id); os `bom-ref` são únicos, nenhuma referência de `dependencies` aponta para nada, as arestas são exatamente as `dependencies` e `optionalDependencies` da trava; Node.js, SQLite e as duas fontes são componentes, e a licença do aplicativo é o `license` do manifesto (AC 37)
+Proof: `npx vitest run tests/legal.licenses.test.ts -t "C36 "`
+Status: closed
+
+**C37** - A varredura de marcas lê todo o texto do produto (mais de 500 arquivos: README, `docs/**` de todas as pastas, código, skills, scripts, arquivos públicos, conectores, workflows), nenhum nome de vigia aparece nele, cada uma das 102 marcas ainda é citada, `Claude`, `Cursor`, `Google` e `Vite` só valem como nome isolado (não dentro de `Claude Code`, `Cursor Agent`, `Google Calendar`, `Vitest`), os nomes do EULA são exatamente os de `legal/trademarks.json` agrupados pelos mesmos tipos, e o EULA diz que a lista não é exaustiva (AC 38)
+Proof: `npx vitest run tests/legal.docs.test.ts -t "C37 "`
+Proof: `npx vitest run tests/legal.docs.test.ts -t "C20 "`
+Status: closed
+
+**C38** - Nenhum dos seis textos jurídicos traz nome de empresa (`Ltda`, `S.A.`, `Inc`, `LLC`…), valor em dinheiro (`R$`, `US$`, `$ 5`, "reais"), telefone, e-mail nem link fora da lista de domínios permitidos; a frase que nomeia o licenciante no EULA e na privacidade e a linha de copyright do aviso e do `LICENSE` só têm a marcação do dono; os detectores acham `Acme Software Ltda`, `R$ 100,00`, um telefone e um link inventado (AC 39)
+Proof: `npx vitest run tests/legal.docs.test.ts -t "C38 "`
+Status: closed
+
+**C39** - A varredura conta `globalThis["fetch"]`, `window["WebSocket"]`, `globalThis[nome]`, `process.binding`, módulo por variável (`import(x)`, `require(x)`), `createRequire`, módulo por URL, o `spawn` de `npm`, `npx`, `git`, `ssh`, `scp`, `sftp`, `ftp`, `rsync`, `nc`, `ncat`, `telnet`, `curl` e `wget`, `curl`/`wget` em prosa e o `command` de um conector; lê IP puro e constante com nome de endereço como host, e não lê chave de tradução; um host ignorado só vale nos arquivos que a entrada nomeia e um ignorado sem uso é velho; a privacidade nomeia o `npx -y <pacote>` e o registro do npm e lista o que a varredura não vê (AC 40)
+Proof: `npx vitest run tests/legal.network.test.ts -t "C39 "`
+Status: closed
+
+**C40** - O `license` dos 8 `package.json` é `FSL-1.1-ALv2`, igual à abreviatura do `LICENSE` e presente na lista SPDX que o esquema do CycloneDX vendorado carrega, `FSL-1.1-Apache-2.0` não está nela, `core` e `contracts` dizem o mesmo e levam cópia do `LICENSE`, e nenhum texto diz mais que o identificador não foi confirmado (AC 41)
+Proof: `npx vitest run tests/legal.docs.test.ts -t "C40 "`
+Proof: `npx vitest run tests/sdk.package.test.ts -t "C41 both packages carry the literal fields"`
+Status: closed
+
+**C41** - Cada uma de pelo menos 15 linhas do EULA marcadas `> FSL:` aparece, uma a uma, no `LICENSE`; a ressalva "that exists as of the date we make the Software available" está citada; perda de dados, de lucro e de oportunidade, término do contrato e dever de parar de distribuir (que o `LICENSE` não tem) e a exigência do `THIRD_PARTY_NOTICES.md` estão marcados "Termo adicional (a revisar)" ou como vindos de outra licença; o EULA nunca diz "como o `LICENSE` diz/exige" fora de uma citação; e um trecho inventado não aparece no `LICENSE` (AC 42)
+Proof: `npx vitest run tests/legal.docs.test.ts -t "C41 "`
+Status: closed
+
+**C42** - O README (seção License), o CHANGELOG e o cabeçalho do aviso dizem "runtime dependency set" e "superset"/"superconjunto" e que o aviso não afirma que cada pacote está dentro do instalador; nenhum texto diz que o aviso lista tudo que o instalador leva nem que os 184 são do instalador; a seção 2 do aviso se chama "Pacotes npm de runtime" (AC 43)
+Proof: `npx vitest run tests/legal.docs.test.ts -t "C42 "`
+Status: closed
+
+**C43** - Os specs e a STATE não citam nenhum commit que a integração deixou de fora (cinco hashes do histórico anterior à integração, listados no teste); a porta 4 do plano tem o título original e as emendas estão registradas abaixo da tabela; a privacidade não diz "nenhum identificador do produto" ao lado do `user-agent: mordomo-os`, diz que ele é o nome do produto sem versão, diz que o ambiente do processo (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) é repassado ao CLI e não diz que o MordomoOS "não vê" a chave; o código confirma as três coisas (`{ ...process.env }`, as duas leituras de variável) (AC 44)
+Proof: `npx vitest run tests/legal.docs.test.ts -t "C43 "`
+Status: closed
+
 ## Coverage
 
 | Set (size)                                           | Member -> proof                                                                                                                                                                                                                                                                                                           | Unproven |
@@ -179,7 +227,7 @@ Status: closed
 | fatos que o SBOM deve ter (5)                        | formato e versão C16 · componentes C16 · ferramentas ausentes C16 · referências C16 · determinismo C16                                                                                                                                                                                                                    | -        |
 | seções do EULA (9)                                   | objeto e licença C18 · uso C18 · CLIs C18, C19 · marcas C18, C20 · garantia C18 · responsabilidade C18 · suporte C18 · vigência C18 · lei e foro C18                                                                                                                                                                      | -        |
 | frases do EULA sobre os CLIs (5)                     | orquestra C19 · não inclui C19 · não redistribui C19 · não sublicencia C19 · termos do fornecedor e conta própria C19                                                                                                                                                                                                     | -        |
-| marcas citadas (46)                                  | cada uma de `brands` C20 (citada no repositório e no EULA), table-driven over all 46                                                                                                                                                                                                                                      | -        |
+| marcas citadas (102)                                 | cada uma de `brands` C20, C37 (citada no repositório, como nome isolado, e no EULA), table-driven over all 102                                                                                                                                                                                                            | -        |
 | dados do dono (8)                                    | titular C21 · documento C21 · endereço C21 · contato C21 · suporte C21 · preço e modelo C21 · lei e foro C21 · garantia C21                                                                                                                                                                                               | -        |
 | famílias de ponto de rede (10)                       | `fetch` C23 · `module:*` C23 · `eventsource` C23 · `websocket` C23 · `xhr` C23 · `webtransport` C23 · `beacon` C23 · `program:npm-cli` C23 · `program:curl` C23 · `program:wget` C23                                                                                                                                      | -        |
 | fontes de host (4)                                   | URL literal C23 · template C23 · constante C23 · expressão regular C23                                                                                                                                                                                                                                                    | -        |
@@ -194,6 +242,24 @@ Status: closed
 | textos jurídicos com aviso de minuta (7)             | `LICENSE` C30 · `CONTRIBUTING.md` C30 · `EULA.md` C30 · `PRIVACY.md` C30 · `NOTICE.md` C30 · `legal/README.md` C30 · `THIRD_PARTY_NOTICES.md` C30                                                                                                                                                                         | -        |
 | JSONs da política com `note` de minuta (3)           | `license-policy.json` C30 · `network-policy.json` C30 · `trademarks.json` C30                                                                                                                                                                                                                                             | -        |
 | rotas da superfície do plano (0)                     | `None - nothing consumed outside`: nenhuma rota nova                                                                                                                                                                                                                                                                      | -        |
+| listas da política real pinadas (3)                  | `allowedDistributed` C33 · `allowedToolingExtra` C33 · `overrides` C33                                                                                                                                                                                                                                                    | -        |
+| licenças proibidas sob a política real (16)          | cada uma das 16 de C33, table-driven over all 16                                                                                                                                                                                                                                                                          | -        |
+| estados padrão das entradas de `hosts` (5)           | `on` C34 · `off` C34 · `none` C34 · `never` C34 · `mixed` C34                                                                                                                                                                                                                                                             | -        |
+| entradas de `hosts` com `defaultState` (15)          | C34, table-driven over all 15                                                                                                                                                                                                                                                                                             | -        |
+| fatos do código que a privacidade afirma (7)         | cache de seis horas C35 · `user-agent` C35 · webhook desligado não envia C35 · resumo de 4000 C35 · `redirect: "error"` C35 · `subject` do push C35 · token do Telegram na URL C35                                                                                                                                        | -        |
+| exigências do SBOM contra o esquema (9)              | esquema oficial C36 · algoritmo C36 · hash C36 · referência de distribuição C36 · licença inteira C36 · `bom-ref` único C36 · referências soltas C36 · arestas da trava C36 · componentes fora do npm C36                                                                                                                 | -        |
+| arquivos do esquema CycloneDX (3)                    | `bom-1.5.schema.json` C36 · `spdx.schema.json` C36 · `jsf-0.82.schema.json` C36                                                                                                                                                                                                                                           | -        |
+| marcas que a primeira varredura perdeu (20)          | `Android` C37 · `Microsoft Edge` C37 · `iPhone` C37 · `iPad` C37 · `Xcode` C37 · `Gradle` C37 · `Kotlin` C37 · `Metro` C37 · `Watchman` C37 · `Dart` C37 · `Docker` C37 · `Notion` C37 · `Slack` C37 · `WhatsApp` C37 · `Discord` C37 · `Stripe` C37 · `PayPal` C37 · `YouTube` C37 · `Tauri` C37 · `Debian` C37          | -        |
+| marcas que só valem como nome isolado (4)            | `Claude` C37 · `Cursor` C37 · `Google` C37 · `Vite` C37                                                                                                                                                                                                                                                                   | -        |
+| formas de dado inventado (5)                         | empresa C38 · dinheiro C38 · telefone C38 · e-mail C38 · link C38                                                                                                                                                                                                                                                         | -        |
+| frases do licenciante só com a marcação (4)          | EULA 1.3 C38 · privacidade §2 C38 · `NOTICE.md` C38 · `LICENSE` C38                                                                                                                                                                                                                                                       | -        |
+| evasões novas da varredura (12)                      | `globalThis["fetch"]` C39 · chave dinâmica C39 · `process.binding` C39 · módulo por variável C39 · `createRequire` C39 · módulo por URL C39 · spawn de programa C39 · prosa `curl`/`wget` C39 · `command` de conector C39 · IP puro C39 · constante com nome de endereço C39 · ignorado por arquivo C39                   | -        |
+| programas de rede (13)                               | `npm` C39 · `npx` C39 · `git` C39 · `ssh` C39 · `scp` C39 · `sftp` C39 · `ftp` C39 · `rsync` C39 · `nc` C39 · `ncat` C39 · `telnet` C39 · `curl` C39 · `wget` C39                                                                                                                                                         | -        |
+| limites ditos na privacidade (4)                     | endereço montado C39 · `eval` C39 · texto em prosa C39 · código fora das pastas C39                                                                                                                                                                                                                                       | -        |
+| identificador SPDX (4)                               | manifestos C40 · abreviatura do `LICENSE` C40 · lista SPDX do esquema C40 · pacotes publicáveis C40                                                                                                                                                                                                                       | -        |
+| fontes de verdade do EULA (3)                        | citação literal conferida no `LICENSE` C41 · termo adicional marcado C41 · atribuição falsa ausente C41                                                                                                                                                                                                                   | -        |
+| textos que falavam em "distribuído" (4)              | README C42 · CHANGELOG C42 · aviso C42 · seção 2 do aviso C42                                                                                                                                                                                                                                                             | -        |
+| rastreabilidade (5)                                  | hashes fora da integração C43 · porta 4 íntegra C43 · `user-agent` C43 · credenciais no ambiente C43 · confirmação no código C43                                                                                                                                                                                          | -        |
 
 - Claims naming a status code, route or response shape: none (nenhuma rota); os códigos de saída dos comandos (`0`, `1`, `2`) são provados rodando o comando (C9, C15, C24)
 - Nenhum outro check afirma mais que o caso único que a sua prova exercita
@@ -229,6 +295,7 @@ Cost: 3 arquivos de teste novos, 32 checks, cerca de 150 casos; sem estas linhas
 - data lifecycle: n/a - nenhum dado do usuário é criado, movido ou apagado; o aviso e a política são do repositório, e `legal/` vai ao instalador (C6)
 - dependency failure: C15 (dependência ausente ou fora da trava), C6 (o instalador monta sem rede: o SBOM e o aviso não pedem rede); o `npm sbom` que omitia 23 pacotes está fora (door 7)
 - state transitions: n/a - nenhuma máquina de estados; o único "estado" é aviso fresco × velho (C9)
+- round 1: C33-C43 fecham as lacunas de prova da verificação; validation (C36 esquema), failure modes (C35 o envio com a flag desligada), observability (C34/C39)
 - observability: C24 (mensagem de falha cita arquivo, tipo e host), C9 e C11 (citam pacote, versão e licença), C23 (a listagem dos pontos de rede é a observabilidade que a feature entrega)
 
 ## Out of scope

@@ -9,7 +9,12 @@ import { buildSbom } from "./sbom.mjs";
 
 export function stageLegal(root, payload) {
   fs.copyFileSync(path.join(root, "LICENSE"), path.join(payload, "LICENSE"));
-  fs.cpSync(path.join(root, "legal"), path.join(payload, "legal"), { recursive: true });
+  // The CycloneDX schemas (Apache-2.0) are test fixtures of the repository, not something the installer carries.
+  const schemas = path.join(root, "legal", "vendor", "cyclonedx");
+  fs.cpSync(path.join(root, "legal"), path.join(payload, "legal"), {
+    recursive: true,
+    filter: (src) => src !== schemas,
+  });
   fs.writeFileSync(
     path.join(payload, "legal", "sbom.cdx.json"),
     JSON.stringify(buildSbom(root), null, 2) + "\n",
