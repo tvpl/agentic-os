@@ -4,6 +4,20 @@ import type { Approval, ApprovalKind } from "@mordomo/contracts";
 
 export type { Approval };
 
+/**
+ * An approval whose request the person must read whole before approving, because a paired device chose it: a write run
+ * a device asked for, and a tool a run that a device started asks to use (the tool's input is what the agent was led
+ * to ask, and a one-line label cuts it). A chat message or a row of the inbox carries only a label, so such an approval
+ * is denied from there but approved where the whole request is shown (Settings › Security, the Resolver).
+ */
+export function requiresFullReview(approval: Pick<Approval, "kind" | "requestedBy">): boolean {
+  return (
+    (approval.kind === "write_run" || approval.kind === "tool_use") &&
+    typeof approval.requestedBy === "string" &&
+    approval.requestedBy.startsWith("device:")
+  );
+}
+
 /** Default lifetime of a pending approval (settings.limits.approvalTtlDays). */
 export const DEFAULT_APPROVAL_TTL_MS = 7 * 86_400_000;
 

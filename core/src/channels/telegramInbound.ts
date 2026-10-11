@@ -56,13 +56,15 @@ export interface InboundDeps {
 }
 
 /** Inline keyboard for an approval message (attached by delivery when the row has an approvalId). */
-export function approvalKeyboard(approvalId: string): Record<string, unknown> {
+export function approvalKeyboard(
+  approvalId: string,
+  opts: { denyOnly?: boolean } = {},
+): Record<string, unknown> {
+  const deny = { text: "⛔ Deny", callback_data: `dn:${approvalId}` };
   return {
+    // A request that must be read whole before it is approved (a paired device's) offers only Deny here.
     inline_keyboard: [
-      [
-        { text: "✅ Approve", callback_data: `ap:${approvalId}` },
-        { text: "⛔ Deny", callback_data: `dn:${approvalId}` },
-      ],
+      opts.denyOnly ? [deny] : [{ text: "✅ Approve", callback_data: `ap:${approvalId}` }, deny],
     ],
   };
 }

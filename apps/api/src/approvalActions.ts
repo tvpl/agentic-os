@@ -1,4 +1,4 @@
-import { events, isDeviceActor, type ApprovalKind } from "@mordomo/core";
+import { events, isDeviceActor, requiresFullReview, type ApprovalKind } from "@mordomo/core";
 import type { AppContext } from "./context.js";
 import {
   launchPromptRun,
@@ -117,16 +117,17 @@ export async function resolveApprovalForChat(
       ok: false,
       message: `"${idOrPrefix}" matches ${matches.length} approvals; send more characters.`,
     };
-  // A write a paired device asked for is approved by someone who has read all of it. A chat message carries a
-  // one-line label that cuts a long request, so chat can deny it but not approve it: the owner reads the whole
-  // request in the Command Centre (Settings › Security, or the Resolver) and decides there.
+  // A write a paired device asked for, or a tool a run it started asks to use, is approved by someone who has read
+  // all of it. A chat message carries a one-line label that cuts a long request, so chat can deny it but not approve
+  // it: the owner reads the whole request in the Command Centre (Settings › Security, or the Resolver) and decides there.
   const asked = matches[0]!;
-  if (decision === "approved" && asked.kind === "write_run" && isDeviceActor(asked.requestedBy)) {
-    const name =
+  if (decision === "approved" && requiresFullReview(asked)) {
+    const who =
       typeof asked.payload.requestedByName === "string" ? asked.payload.requestedByName : "a paired device";
+    const what = asked.kind === "tool_use" ? "a tool in a run it started" : "this write";
     return {
       ok: false,
-      message: `${name} asked for this write. Read the whole request in the Command Centre (Settings › Security) and approve it there; you can deny it from here.`,
+      message: `${who} asked for ${what}. Read the whole request in the Command Centre (Settings › Security) and approve it there; you can deny it from here.`,
     };
   }
   try {

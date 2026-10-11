@@ -7,7 +7,7 @@
  */
 import { useT } from "../i18n";
 import type { ApprovalRecord } from "../api";
-import { approvalTarget } from "./approvals";
+import { approvalTarget, deviceRef, requiresFullReview, toolRequest } from "./approvals";
 import "./approvalRequest.css";
 
 function Long({ label, text, reference }: { label: string; text: string; reference: string }) {
@@ -29,8 +29,8 @@ export function askedBy(requestedBy: string | null, name: string | null, t: Retu
   if (requestedBy === "owner") return t("runs.request.byOwner");
   if (requestedBy?.startsWith("device:")) {
     return name
-      ? t("runs.request.byDevice", { name })
-      : t("runs.request.byDeviceUnnamed", { id: requestedBy.slice("device:".length, "device:".length + 8) });
+      ? t("runs.request.byDevice", { name, id: deviceRef(requestedBy) ?? "" })
+      : t("runs.request.byDeviceUnnamed", { id: deviceRef(requestedBy) ?? "" });
   }
   // An approval from before who-asked was recorded, a routine, a sentinel, the command line: nothing says which.
   return t("runs.request.byUnknown");
@@ -38,6 +38,9 @@ export function askedBy(requestedBy: string | null, name: string | null, t: Retu
 
 export function ApprovalRequest({ approval }: { approval: ApprovalRecord }) {
   const t = useT();
+  // A write run, or a tool that a run a paired device started asks to use: the two a device chooses the text of.
+  if (approval.kind === "tool_use")
+    return requiresFullReview(approval) ? <ToolRequest approval={approval} /> : null;
   if (approval.kind !== "write_run") return null;
   const target = approvalTarget(approval);
   const fromDevice = approval.requestedBy?.startsWith("device:") === true;
@@ -104,6 +107,40 @@ export function ApprovalRequest({ approval }: { approval: ApprovalRecord }) {
               </div>
             ))
           ))}
+      </dl>
+    </section>
+  );
+}
+
+/** The tool a run a paired device started asks to use, with every field of its input whole. */
+function ToolRequest({ approval }: { approval: ApprovalRecord }) {
+  const t = useT();
+  const { tool, fields } = toolRequest(approval);
+  const target = approvalTarget(approval);
+  const reference = approval.id.slice(0, 8);
+  return (
+    <section
+      className="approval-request from-device"
+      aria-label={`${t("runs.request.toolTitle")} · ${reference}`}
+      data-testid="approval-request"
+    >
+      <dl>
+        <div>
+          <dt>{t("runs.request.askedBy")}</dt>
+          <dd>{askedBy(approval.requestedBy, target.requestedByName, t)}</dd>
+        </div>
+        <div>
+          <dt>{t("runs.request.tool")}</dt>
+          <dd className="mono">{tool}</dd>
+        </div>
+        {fields.map(([key, value]) => (
+          <div className="wide" key={key}>
+            <dt className="mono">{key}</dt>
+            <dd>
+              <Long label={key} text={value} reference={reference} />
+            </dd>
+          </div>
+        ))}
       </dl>
     </section>
   );

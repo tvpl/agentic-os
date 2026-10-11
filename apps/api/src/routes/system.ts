@@ -14,6 +14,7 @@ import {
   createBackup,
   events,
   executableName,
+  isDeviceActor,
   isInside,
   listBackups,
   verifyBackup,
@@ -638,6 +639,13 @@ export function registerSystemRoutes(
         toolName: body.toolName,
         input: body.input,
         ...(body.toolUseId ? { toolUseId: body.toolUseId } : {}),
+        // The device that started the run, by the name it was paired with, for the person who decides.
+        ...(isDeviceActor(run.startedBy) && run.startedBy
+          ? (() => {
+              const name = ctx.devices.get(run.startedBy.slice("device:".length))?.name;
+              return name ? { requestedByName: name } : {};
+            })()
+          : {}),
       },
       run.startedBy,
     );

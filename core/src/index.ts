@@ -66,7 +66,7 @@ export {
   type WriteDecision,
   type WriteOrigin,
 } from "./security/profiles.js";
-export { ApprovalStore, type Approval } from "./security/approvals.js";
+export { ApprovalStore, requiresFullReview, type Approval } from "./security/approvals.js";
 export {
   safeSpawn,
   probe,
@@ -491,6 +491,8 @@ export {
 } from "@mordomo/contracts";
 export {
   DeviceStore,
+  DEVICE_NAME_MAX,
+  sanitizeDeviceName,
   hashToken,
   PAIRING_TTL_MS,
   PAIRING_MAX_ATTEMPTS,

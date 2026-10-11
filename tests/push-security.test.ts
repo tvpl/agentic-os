@@ -447,6 +447,76 @@ describe("C58 each rule of the endpoint policy, on its own", () => {
     }
   });
 
+  it("each dot of a pattern is a dot: the name with any other character in its place is not a push service", () => {
+    // One real host of each pattern; every dot of it replaced by a letter, a digit and a hyphen in turn. A pattern
+    // whose dot is unescaped lets `fcmXgoogleapis.com` (a name anyone can register) through.
+    const canonical = [
+      "fcm.googleapis.com",
+      "android.googleapis.com",
+      "updates.push.services.mozilla.com",
+      "web.push.apple.com",
+      "wns2-par02p.notify.windows.com",
+    ];
+    for (const host of canonical) {
+      expect(isKnownPushHost(host), host).toBe(true);
+      for (let at = 0; at < host.length; at++) {
+        if (host[at] !== ".") continue;
+        for (const other of ["x", "7", "-"]) {
+          const changed = `${host.slice(0, at)}${other}${host.slice(at + 1)}`;
+          expect(isKnownPushHost(changed), changed).toBe(false);
+        }
+      }
+    }
+    for (const host of [
+      "fcmXgoogleapis.com",
+      "androidXgoogleapis.com",
+      "a.push.servicesXmozilla.com",
+      "services-mozilla.com",
+      "a.pushXapple.com",
+      "push-apple.com",
+      "a.notifyXwindows.com",
+    ]) {
+      expect(isKnownPushHost(host), host).toBe(false);
+    }
+  });
+
+  it("a hexadecimal IPv4 inside an IPv6 address is read byte by byte, in order", () => {
+    // Each byte of the embedded address decides one of these, so a swapped or mis-shifted byte shows.
+    const private4 = [
+      ["::ffff:a00:1", "10.0.0.1"],
+      ["::ffff:ac10:1", "172.16.0.1"],
+      ["::ffff:c0a8:101", "192.168.1.1"],
+      ["::ffff:7f00:1", "127.0.0.1"],
+      ["::ffff:a9fe:a9fe", "169.254.169.254"],
+      ["::ffff:cb00:7101", "203.0.113.1"],
+      ["::ffff:6440:1", "100.64.0.1"],
+      ["64:ff9b::a00:1", "10.0.0.1"],
+      ["64:ff9b::c0a8:1", "192.168.0.1"],
+      ["64:ff9b::cb00:7101", "203.0.113.1"],
+    ] as const;
+    for (const [v6, v4] of private4) {
+      expect(isPublicAddress(v6), `${v6} (${v4})`).toBe(false);
+      expect(isPublicAddress(v4), v4).toBe(false);
+    }
+    // The neighbour of each, one step over the edge on the byte that decides, is public.
+    const public4 = [
+      ["::ffff:b00:1", "11.0.0.1"],
+      ["::ffff:ac20:1", "172.32.0.1"],
+      ["::ffff:c0a9:101", "192.169.1.1"],
+      ["::ffff:cb00:7201", "203.0.114.1"],
+      ["::ffff:6480:1", "100.128.0.1"],
+      ["::ffff:808:808", "8.8.8.8"],
+      ["::ffff:808:404", "8.8.4.4"],
+      ["64:ff9b::c0a9:1", "192.169.0.1"],
+      ["64:ff9b::cb00:7201", "203.0.114.1"],
+      ["64:ff9b::808:808", "8.8.8.8"],
+    ] as const;
+    for (const [v6, v4] of public4) {
+      expect(isPublicAddress(v6), `${v6} (${v4})`).toBe(true);
+      expect(isPublicAddress(v4), v4).toBe(true);
+    }
+  });
+
   it("an address is public unless a range names it: every range, at both of its edges, and its neighbours", () => {
     const inside: Array<[string, string[]]> = [
       ["0.0.0.0/8", ["0.0.0.0", "0.255.255.255"]],
@@ -625,6 +695,18 @@ describe("C58 the send and the routes keep what they promised", () => {
     );
     expect((await subscribe(ctx.token(), "https://8.8.8.8/x")).statusCode).toBe(200);
     expect((await subscribe(device.token, "https://fcm.googleapis.com./fcm/send/dot")).statusCode).toBe(200);
+  });
+
+  it("a device that subscribes its own endpoint again keeps it as its own, and revoking it still deletes it", async () => {
+    const device = pair(["content"]);
+    expect((await subscribe(device.token, FCM)).statusCode).toBe(200);
+    const again = await subscribe(device.token, FCM);
+    expect(again.statusCode).toBe(200);
+    expect(ctx.push.ownerOf(FCM)).toBe(device.id);
+    expect(ctx.push.list()).toHaveLength(1);
+    expect(ctx.push.list()[0]!.deviceId).toBe(device.id);
+    ctx.devices.revoke(device.id);
+    expect(ctx.push.list()).toHaveLength(0);
   });
 
   it("the owner who registers an endpoint a device registered takes it over", async () => {

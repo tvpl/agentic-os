@@ -26,11 +26,38 @@ export interface ApprovalTarget {
 }
 
 /**
- * A write run a paired device asked for. Whoever decides it reads the whole request first (the approvals screens show
- * it), so the quick ways to approve (the inbox's tick, the Núcleo's ⌘⇧A) send the person to that review instead.
+ * An approval a paired device chose: a write run it asked for, or a tool that a run it started asks to use. Whoever
+ * decides it reads the whole request first (the approvals screens show it), so the quick ways to approve (the inbox's
+ * tick, the Núcleo's ⌘⇧A, Telegram) send the person to that review instead. Mirrors `requiresFullReview` in the core.
  */
-export function isDeviceWriteApproval(approval: Pick<ApprovalRecord, "kind" | "requestedBy">): boolean {
-  return approval.kind === "write_run" && approval.requestedBy?.startsWith("device:") === true;
+export function requiresFullReview(approval: Pick<ApprovalRecord, "kind" | "requestedBy">): boolean {
+  return (
+    (approval.kind === "write_run" || approval.kind === "tool_use") &&
+    approval.requestedBy?.startsWith("device:") === true
+  );
+}
+
+/** A tool approval's request: the tool and every field of its input, whole (objects as indented JSON). */
+export function toolRequest(approval: ApprovalRecord): { tool: string; fields: Array<[string, string]> } {
+  const payload = (approval.payload ?? {}) as { toolName?: unknown; input?: unknown };
+  const input =
+    payload.input && typeof payload.input === "object" && !Array.isArray(payload.input)
+      ? (payload.input as Record<string, unknown>)
+      : {};
+  return {
+    tool: typeof payload.toolName === "string" ? payload.toolName : "tool",
+    fields: Object.entries(input).map(([k, v]) => [
+      k,
+      typeof v === "string" ? v : JSON.stringify(v, null, 2),
+    ]),
+  };
+}
+
+/** The short id shown beside a device's name: names are chosen by the one who pairs and are not unique. */
+export function deviceRef(requestedBy: string | null | undefined): string | null {
+  return requestedBy?.startsWith("device:")
+    ? requestedBy.slice("device:".length, "device:".length + 6)
+    : null;
 }
 
 /** Read the launch input out of an approval payload without trusting its shape. */

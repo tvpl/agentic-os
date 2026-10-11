@@ -181,7 +181,7 @@ cap for providers that report cost while running.
 - **Telegram** (Settings › Notifications): set the bot token in the
   environment variable named there, paste your chat id, pick the lowest tone.
   Turn on **Answer from the phone** and every alert about an approval
-  carries **Approve / Deny** buttons (a write that a paired phone asked for can be denied there but not approved: the chat shows one line, so you read the whole request in the Command Centre and approve it there); `/pending` lists what waits and
+  carries **Approve / Deny** buttons (a write that a paired phone asked for, or a tool that a run it started asks to use, can be denied there but not approved, and the alert offers only Deny: the chat shows one line, so you read the whole request in the Command Centre and approve it there); `/pending` lists what waits and
   `/approve <id>` / `/deny <id>` work as text. Only your chat id is honoured;
   anyone else who finds the bot gets silence. Decisions go through the same
   code path as the button in the Command Centre.
@@ -294,7 +294,7 @@ permissions at any time with its **Permissions** button; the change applies to
 its next request. A write a device asks for waits in your approvals with the
 whole request in front of you: who asked, the provider, folder and mode, the
 full prompt or every input of the skill, in boxes that scroll when they are
-long (nothing is cut). Cancelling it from the phone withdraws the approval
+long (nothing is cut). The same goes for a tool a run started from the phone asks to use: its whole input is shown. A phone's name is whatever was typed when it paired (cleaned of control and invisible characters), so approvals and the device list show a short id beside it (`Name · a1b2c3`). Cancelling it from the phone withdraws the approval
 too. Codex and Cursor read the whole disk, so a device cannot
 start a run on them (you can, from the desktop); settings, backups, skills,
 routines, connectors and memory writes stay yours alone.

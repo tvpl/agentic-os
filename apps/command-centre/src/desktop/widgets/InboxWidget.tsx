@@ -9,7 +9,7 @@ import { BellOff, Check, ExternalLink, ScanSearch, X } from "lucide-react";
 import { api, type ApprovalRecord } from "../../api";
 import { useLocale, useT } from "../../i18n";
 import { qk, useApiQuery } from "../../queries";
-import { isDeviceWriteApproval } from "../../runs/approvals";
+import { requiresFullReview } from "../../runs/approvals";
 import { EmptyState } from "../../components/primitives";
 import { timeAgo, useToast } from "../../components/ui";
 import { useNotifications } from "../../hooks/useNotifications";
@@ -39,7 +39,7 @@ export function InboxList({ limit, unreadOnly = false }: InboxListProps) {
   const pending = new Set((approvals.data ?? []).map((a) => a.id));
   // A write a paired device asked for is not approved from a one-line row: the tick becomes "review", which opens the
   // approvals screen where the whole request is shown.
-  const deviceWrites = new Set((approvals.data ?? []).filter(isDeviceWriteApproval).map((a) => a.id));
+  const deviceWrites = new Set((approvals.data ?? []).filter(requiresFullReview).map((a) => a.id));
 
   const resolve = useMutation({
     mutationFn: ({ id, decision }: { id: string; decision: "approved" | "denied" }) =>

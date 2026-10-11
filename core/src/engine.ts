@@ -45,7 +45,7 @@ import { ensureDirs, resolvePaths, seedHome, tightenHomeFiles, type MordomoPaths
 import { RoutineScheduler } from "./routines/scheduler.js";
 import { RoutineStore } from "./routines/store.js";
 import { RunManager, providerEnvDrop, type CreateRunInput } from "./runs/runManager.js";
-import { ApprovalStore, type Approval } from "./security/approvals.js";
+import { ApprovalStore, requiresFullReview, type Approval } from "./security/approvals.js";
 import { DeviceStore } from "./security/devices.js";
 import { grantedReadScope, readScope, type ReadScope } from "./security/safeFs.js";
 import { writeDecision, type WriteOrigin } from "./security/profiles.js";
@@ -343,7 +343,15 @@ export class MordomoEngine {
     );
     // Alerts leave the tab: Telegram (bot token read from the environment at
     // send time) and Web Push to installed PWAs.
-    this.disposers.push(installTelegramChannel(events, { getSettings: () => this.settings() }));
+    this.disposers.push(
+      installTelegramChannel(events, {
+        getSettings: () => this.settings(),
+        needsReview: (id) => {
+          const approval = this.approvals.get(id);
+          return approval !== null && approval.status === "pending" && requiresFullReview(approval);
+        },
+      }),
+    );
     this.push = new PushStore(this.db, this.paths.config);
     this.pushResolver = opts.pushResolver ?? systemResolver;
     // A subscription a paired device registered follows the device: gone with it when it is revoked or expires, and when

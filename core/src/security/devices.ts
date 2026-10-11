@@ -38,6 +38,25 @@ export const PAIRING_MAX_ATTEMPTS = 5;
 export const DEFAULT_DEVICE_TTL_MS = 90 * 86_400_000;
 const LAST_SEEN_GRANULARITY_MS = 60_000;
 
+/** The longest device name kept, in characters (not UTF-16 units: an emoji is one). */
+export const DEVICE_NAME_MAX = 80;
+
+/**
+ * A device name is chosen by whoever pairs, and it is shown to the owner next to a request to approve. It keeps its
+ * letters, digits, punctuation and emoji, and loses what could make it look like something else: control characters
+ * and line breaks (a name must not start a new line in a chat message or a list), the invisible format characters
+ * (zero-width spaces and joiners, the bidirectional marks, embeddings, overrides and isolates, which can reverse the
+ * text around them), repeated and odd spaces. At most `DEVICE_NAME_MAX` characters. Names are not unique: the screens
+ * show a short id with the name.
+ */
+export function sanitizeDeviceName(name: string): string {
+  const cleaned = name
+    .replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, " ")
+    .replace(/\p{Z}+|\s+/gu, " ")
+    .trim();
+  return Array.from(cleaned).slice(0, DEVICE_NAME_MAX).join("").trim();
+}
+
 export function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token, "utf8").digest("hex");
 }
@@ -74,7 +93,12 @@ export class DeviceStore {
     const expiresAt = this.now() + PAIRING_TTL_MS;
     const closed = closeDeviceScopes(scopes);
     this.pending.clear();
-    this.pending.set(code, { expiresAt, attempts: 0, name, scopes: closed });
+    this.pending.set(code, {
+      expiresAt,
+      attempts: 0,
+      name: name ? sanitizeDeviceName(name) : name,
+      scopes: closed,
+    });
     return { code, expiresAt, scopes: closed };
   }
 
@@ -108,7 +132,7 @@ export class DeviceStore {
     const token = crypto.randomBytes(32).toString("base64url");
     const id = crypto.randomUUID();
     const createdAt = this.now();
-    const label = (name.trim() || entry.name || "device").slice(0, 80);
+    const label = sanitizeDeviceName(name) || sanitizeDeviceName(entry.name ?? "") || "device";
     this.db
       .prepare(
         `INSERT INTO devices (id, name, token_hash, created_at, last_seen_at, expires_at, revoked_at, scopes)
@@ -214,7 +238,8 @@ export function readScopes(raw: string | null): DeviceScope[] {
 function fromRow(r: RawDevice): DeviceRecord {
   return {
     id: r.id,
-    name: r.name,
+    // Cleaned on the way out too: a row written before names were cleaned is shown the same way.
+    name: sanitizeDeviceName(r.name) || "device",
     createdAt: r.created_at,
     lastSeenAt: r.last_seen_at,
     expiresAt: r.expires_at,

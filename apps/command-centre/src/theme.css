@@ -3478,6 +3478,13 @@ input[type="range"]::-moz-range-thumb {
 .approval-desc {
   font-size: var(--fs-3);
   margin-top: var(--s-1);
+  /* A word with no space (a hash, a path, a token) wraps here instead of widening the card past the screen. */
+  overflow-wrap: anywhere;
+}
+.approval-row-main {
+  /* The text side of a row of approvals may shrink below its longest word; the buttons keep their place. */
+  flex: 1 1 0;
+  min-width: 0;
 }
 .conn-risks {
   margin: var(--s-1) 0;

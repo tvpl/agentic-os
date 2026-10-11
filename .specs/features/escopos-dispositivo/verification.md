@@ -230,3 +230,11 @@ Esta é a terceira rodada: o limite do processo é três, então o veredito vai 
 2. Os nove casos de ponto nos padrões de serviço (item 2): um nome com um caractere no lugar de cada ponto, por padrão, e `::ffff:c0a8:101`, `::ffff:ac10:1` e `64:ff9b::c0a8:1` em `isPublicAddress` (item 4a), e um caso do dispositivo que assina de novo o próprio endpoint (item 4b).
 3. Decisões do dono, que o construtor não deve tomar sozinho: (a) `tool_use` de uma execução de dispositivo, aprovável por Telegram, inbox e ⌘⇧A com 160 caracteres: estender os guardas de `write_run` ou registrar como limite (item 3); (b) manter `readConfinement: "workdir"` no Claude, com a medição parcial desta rodada, ou declarar `"none"` (item 7a); (c) o botão "Approve" do alerta do Telegram para escrita de dispositivo (item 7d); (d) o nome do dispositivo: único, ou o id curto à vista (item 5).
 4. Texto: mover as perguntas 17 e 18 para `### escopos-dispositivo` (item 6a), atualizar o Handoff do STATE e o de `checks.md` (6b), a frase de C40 (6c) e a de `docs/security.md:250` (6d).
+
+---
+
+## Fechamento após a rodada 3 (escalonamento ao dono)
+
+Três rodadas usadas. Os achados da rodada 3 foram corrigidos pelo corretor (a074dbb): `overflow-wrap`/`min-width: 0` nos cartões de aprovação e Resolver em uma coluna, com o check C60 medindo palavras sem quebra de 64/150/700 caracteres em 390/800/1440 px; pontos de cada padrão de host de push, ramo hex de `embeddedV4` e re-assinatura do próprio endpoint provados; `tool_use` de run de dispositivo tratado como escrita (`requiresFullReview`); botão Aprovar do Telegram removido onde só nega; nomes de dispositivo saneados com id curto (AD-020). Sem quarta verificação completa.
+
+Aberto para o dono: aceite do AD-019/AD-020 e das perguntas 14–22 (Telegram não aprova escrita nem `tool_use` de dispositivo; falha de DNS conta como entrega falha; Claude `readConfinement` mantido em `"workdir"` com a alternativa `"none"`); janela entre a checagem do endpoint de push e o `fetch`; `GET /` ainda serve o token a quem não parece proxy; adaptador do Claude de ponta a ponta, Codex/Cursor e sockets IPv6 não medidos.

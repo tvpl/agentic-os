@@ -41,6 +41,15 @@ vi.mock("../../hooks/useNotifications", () => ({
         approvalId: "a-owner",
         tone: "warn",
       },
+      {
+        id: "n_tool",
+        kind: "approval",
+        title: "Approval requested",
+        ts: 0,
+        read: false,
+        approvalId: "a-tool",
+        tone: "warn",
+      },
     ],
   }),
 }));
@@ -54,10 +63,14 @@ afterEach(() => {
   marked.mockClear();
 });
 
-const approval = (id: string, requestedBy: string | null): ApprovalRecord => ({
+const approval = (
+  id: string,
+  requestedBy: string | null,
+  kind: ApprovalRecord["kind"] = "write_run",
+): ApprovalRecord => ({
   id,
   createdAt: 1,
-  kind: "write_run",
+  kind,
   description: "Write-mode prompt run",
   payload: { kind: "prompt", input: { prompt: "x" } },
   status: "pending",
@@ -68,10 +81,14 @@ const approval = (id: string, requestedBy: string | null): ApprovalRecord => ({
 });
 
 describe("the inbox's tick", () => {
-  it("C59 reviews a device's write and approves the owner's", async () => {
+  it("C59 reviews a device's write or tool and approves the owner's", async () => {
     const post = vi.spyOn(api, "post").mockResolvedValue({});
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-    qc.setQueryData(qk.approvals, [approval("a-device", "device:abc"), approval("a-owner", "owner")]);
+    qc.setQueryData(qk.approvals, [
+      approval("a-device", "device:abc"),
+      approval("a-owner", "owner"),
+      approval("a-tool", "device:abc", "tool_use"),
+    ]);
     render(
       createElement(
         I18nContext.Provider,
@@ -89,16 +106,19 @@ describe("the inbox's tick", () => {
     );
     // One row of each: the device's has a review button and no approve button, the owner's the other way round.
     const rows = Array.from(document.querySelectorAll(".inbox-row"));
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     const names = rows.map((r) =>
       Array.from(r.querySelectorAll("button[aria-label]")).map((b) => b.getAttribute("aria-label")),
     );
     expect(names).toEqual([
       ["Review the whole request", "Deny"],
       ["Approve", "Deny"],
+      ["Review the whole request", "Deny"],
     ]);
     expect(screen.getAllByRole("button", { name: "Approve" })).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "Review the whole request" }));
+    // The write of a device and the tool of a device's run both send the person to the review.
+    expect(screen.getAllByRole("button", { name: "Review the whole request" })).toHaveLength(2);
+    fireEvent.click(screen.getAllByRole("button", { name: "Review the whole request" })[1]!);
     expect(navigate).toHaveBeenCalledWith("/settings?tab=security");
     expect(post).not.toHaveBeenCalled();
     // Denying a device's write needs no review.

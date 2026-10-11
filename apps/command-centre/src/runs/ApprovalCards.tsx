@@ -148,6 +148,8 @@ export function ToolApprovalCard({ approval }: { approval: ApprovalRecord }) {
           <span className="approval-inline-when">{timeAgo(approval.createdAt, locale)}</span>
         </div>
         <p className="approval-inline-desc">{t("runs.toolApprove.hint")}</p>
+        {/* A tool a run a paired device started asks to use: its whole input, before the buttons. */}
+        <ApprovalRequest approval={approval} />
       </div>
       <div className="approval-inline-actions">
         <Button

@@ -128,7 +128,7 @@ export function SecurityTab({ s, put }: { s: SettingsShape; put: Put }) {
         ) : (
           (approvals.data ?? []).map((a) => (
             <div className="list-row" key={a.id}>
-              <div>
+              <div className="approval-row-main">
                 <Badge kind="state" tone="warn">
                   {a.kind}
                 </Badge>
@@ -349,6 +349,8 @@ function RemoteAccess({ s, put }: { s: SettingsShape; put: Put }) {
               <div className="device-main">
                 <strong>{d.name}</strong>
                 <span className="meta mono">
+                  {/* Names are chosen by whoever pairs and are not unique: the short id tells two apart. */}
+                  {d.id.slice(0, 6)} ·{" "}
                   {d.lastSeenAt ? timeAgo(d.lastSeenAt, locale) : t("apps.settings.deviceNeverSeen")}
                   {d.expiresAt
                     ? ` · ${t("apps.settings.deviceExpires", { date: new Date(d.expiresAt).toLocaleDateString(locale) })}`

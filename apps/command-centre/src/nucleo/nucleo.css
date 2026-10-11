@@ -1676,6 +1676,7 @@
   font: 600 clamp(1.6rem, 2.6vw, 2.6rem) / 1.08 var(--font-display);
   letter-spacing: 0.01em;
   text-wrap: balance;
+  overflow-wrap: anywhere;
 }
 .nu-focus-subject {
   display: inline-block;
@@ -1693,6 +1694,7 @@
   font-size: var(--fs-4);
   line-height: 1.5;
   max-width: 70ch;
+  overflow-wrap: anywhere;
 }
 .nu-focus-err {
   margin: 0 0 14px;
@@ -3656,5 +3658,18 @@
   .nu-focus-ghost,
   .nu-focus-clear {
     animation-duration: 0.01ms;
+  }
+}
+
+/* The Resolver on a narrow screen: the queue above the card, not beside it (the two-column rules above come later in
+   the file than the first narrow-screen rule and would otherwise put the card past the right edge of a phone). */
+@media (max-width: 760px) {
+  .nu-focus-body,
+  .nu-focus-body[data-clear] {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+  .nu-focus-ghost-lane {
+    left: 12px;
   }
 }

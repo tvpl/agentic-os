@@ -141,13 +141,40 @@ describe("approvalForRun", () => {
   });
 });
 
-describe("which approvals are a device's write", () => {
+describe("which approvals are a device's to choose", () => {
   it("is a write run with a device behind it, and nothing else", async () => {
-    const { isDeviceWriteApproval } = await import("./approvals");
-    expect(isDeviceWriteApproval({ kind: "write_run", requestedBy: "device:abc" })).toBe(true);
+    const { requiresFullReview } = await import("./approvals");
+    expect(requiresFullReview({ kind: "write_run", requestedBy: "device:abc" })).toBe(true);
     for (const requestedBy of ["owner", null, "telegram:42", "broker:r1"]) {
-      expect(isDeviceWriteApproval({ kind: "write_run", requestedBy }), String(requestedBy)).toBe(false);
+      expect(requiresFullReview({ kind: "write_run", requestedBy }), String(requestedBy)).toBe(false);
     }
-    expect(isDeviceWriteApproval({ kind: "tool_use", requestedBy: "device:abc" })).toBe(false);
+    expect(requiresFullReview({ kind: "tool_use", requestedBy: "device:abc" })).toBe(true);
+    expect(requiresFullReview({ kind: "tool_use", requestedBy: "owner" })).toBe(false);
+    expect(requiresFullReview({ kind: "expose_port", requestedBy: "device:abc" })).toBe(false);
+  });
+});
+
+describe("what a tool approval and a device carry", () => {
+  it("reads every field of a tool's input, objects as JSON, and the short id of a device", async () => {
+    const { toolRequest, deviceRef } = await import("./approvals");
+    expect(
+      toolRequest(
+        approval({
+          kind: "tool_use",
+          payload: { toolName: "Edit", input: { file_path: "/a", n: 2, o: { k: [1] } } },
+        }),
+      ),
+    ).toEqual({
+      tool: "Edit",
+      fields: [
+        ["file_path", "/a"],
+        ["n", "2"],
+        ["o", JSON.stringify({ k: [1] }, null, 2)],
+      ],
+    });
+    expect(toolRequest(approval({ kind: "tool_use", payload: {} }))).toEqual({ tool: "tool", fields: [] });
+    expect(deviceRef("device:0123456789abcdef")).toBe("012345");
+    expect(deviceRef("owner")).toBeNull();
+    expect(deviceRef(null)).toBeNull();
   });
 });
