@@ -377,7 +377,7 @@ export async function buildServer(
       );
     }
     // One table describes the API: a route registered outside `bind` has no contract, so it does not exist.
-    if (route.config?.route === undefined || !(route.config.route in API)) {
+    if (route.config?.route === undefined || !Object.hasOwn(API, route.config.route)) {
       throw new Error(
         `${[route.method].flat().join("/")} ${route.url} declares no contract: register it with bind(app, id, handler) and add its entry to the route table (contracts/src/api)`,
       );

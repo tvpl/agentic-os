@@ -115,6 +115,8 @@ describe("S1 the contracts package", () => {
         "PROFILES",
         "ProviderId",
         "ProviderSettingsSchema",
+        "QUERY_FLAG_TEXTS",
+        "QueryFlag",
         "RUN_FRAME_SCHEMAS",
         "RUN_FRAME_TYPES",
         "RUN_FRAME_VERSIONS",
@@ -169,6 +171,7 @@ describe("S1 the contracts package", () => {
         "routeKey",
         "stream",
         "toWire",
+        "wireSchema",
         "writeDecision",
       ].sort(),
     );

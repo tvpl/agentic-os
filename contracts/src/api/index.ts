@@ -48,7 +48,8 @@ export function routeKey(entry: Pick<RouteDefinition, "method" | "path">): strin
 export * from "./route.js";
 export { COMMON_ERRORS, ErrorEnvelope, commonErrorsFor, declaredErrors } from "./errors.js";
 export { checkBody, checkResponse, toWire } from "./check.js";
+export { wireSchema } from "./wireSchema.js";
 export { SettingsPatchSchema, UiPreferencesPatchSchema, type SettingsPatch } from "./system.js";
 export { isJournalDate } from "./memory.js";
-export { RUN_LIMITS } from "./common.js";
+export { QUERY_FLAG_TEXTS, QueryFlag, RUN_LIMITS } from "./common.js";
 export { NAMED_SCHEMAS } from "./schemas.js";

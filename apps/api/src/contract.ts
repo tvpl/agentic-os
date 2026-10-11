@@ -27,8 +27,23 @@ export type Handler<K extends RouteId> = (
   reply: FastifyReply,
 ) => Promise<Returned<K>> | Returned<K>;
 
-/** Route options a route may add on top of what the entry decides (a route-level `onSend`; a `preHandler` that runs before the parts are parsed). */
-export type BindOptions = Pick<RouteShorthandOptions, "onSend" | "preHandler">;
+/**
+ * What a route may check between its path and its body: `params` and `query` are parsed, the body is not yet. A route
+ * whose base behaviour answered `404` for a resource that is not there before it read the body keeps that order here:
+ * a body that is wrong for a resource that does not exist is a `404`, as it always was.
+ */
+export type Precheck<K extends RouteId = RouteId> = (
+  call: Pick<HandlerCall<K>, "params" | "query">,
+  req: FastifyRequest,
+) => void | Promise<void>;
+
+/** Route options a route may add on top of what the entry decides (a route-level `onSend`; a `preHandler`; a `precheck`). */
+export type BindOptions<K extends RouteId = RouteId> = Pick<
+  RouteShorthandOptions,
+  "onSend" | "preHandler"
+> & {
+  precheck?: Precheck<K>;
+};
 
 type AnyHandler = (call: unknown, req: FastifyRequest, reply: FastifyReply) => unknown;
 
@@ -41,8 +56,9 @@ export function bindEntry(
   id: string,
   entry: RouteDefinition,
   handler: AnyHandler,
-  options: BindOptions = {},
+  options: BindOptions<never> = {},
 ): void {
+  const { precheck, ...routeOptions } = options as BindOptions & { precheck?: Precheck };
   app.route({
     method: entry.method,
     url: entry.path,
@@ -52,11 +68,15 @@ export function bindEntry(
       ...(entry.queryToken ? { queryToken: true } : {}),
       ...(entry.ticket ? { ticket: true } : {}),
     },
-    ...options,
+    ...routeOptions,
     handler: async (req, reply) => {
-      const call = {
+      const parts = {
         params: entry.params ? entry.params.parse(req.params) : undefined,
         query: entry.query ? entry.query.parse(req.query ?? {}) : undefined,
+      };
+      if (precheck) await precheck(parts as never, req);
+      const call = {
+        ...parts,
         body: entry.body ? entry.body.parse(entry.bodyOptional ? (req.body ?? {}) : req.body) : undefined,
       };
       return handler(call, req, reply);
@@ -68,11 +88,11 @@ export function bind<K extends RouteId>(
   app: FastifyInstance,
   id: K,
   handler: Handler<K>,
-  options?: BindOptions,
+  options?: BindOptions<K>,
 ): void {
-  const entry = API[id] as RouteDefinition | undefined;
+  const entry = (Object.hasOwn(API, id) ? API[id] : undefined) as RouteDefinition | undefined;
   if (!entry) throw new Error(`bind: "${String(id)}" is not an entry of the route table (contracts/src/api)`);
-  bindEntry(app, id, entry, handler as AnyHandler, options);
+  bindEntry(app, id, entry, handler as AnyHandler, options as BindOptions<never>);
 }
 
 // ---- response validation ------------------------------------------------------------------------------------------

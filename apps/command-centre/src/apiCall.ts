@@ -21,14 +21,16 @@ interface CallParts {
 
 /**
  * The query as the route reads it, each key and value encoded as `encodeURIComponent` does (a space is `%20`, as in
- * the URLs the screens spelled by hand): a key with no value is left out, and a flag that is off is the same as not
- * sending it (the route's flag schemas read `true`/`1` as set and anything else as not set); a flag that is on is `1`.
+ * the URLs the screens spelled by hand): a key with no value is left out; a flag (`QueryFlag`) that is on is `1` and a
+ * flag that is off is `0`, never left out, because a route may default to on (`memory/recall?record=0`).
  */
 export function queryString(query: Record<string, unknown> | undefined): string {
   const pairs: string[] = [];
   for (const [key, value] of Object.entries(query ?? {})) {
-    if (value === undefined || value === null || value === false) continue;
-    pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(value === true ? "1" : String(value))}`);
+    if (value === undefined || value === null) continue;
+    pairs.push(
+      `${encodeURIComponent(key)}=${encodeURIComponent(value === true ? "1" : value === false ? "0" : String(value))}`,
+    );
   }
   return pairs.join("&");
 }

@@ -63,7 +63,9 @@
   the frames of a run's stream carry `v`, a client ignores an unknown type or version (`@mordomo/contracts/events`),
   and `docs/events.md` is generated from the schemas. The Command Centre calls the routes through `apiCall("GET
   /api/runs/:id", { params })`, typed by the table; `useRouteQuery` does the same for queries. Routes, error codes
-  and the error envelope are unchanged, and `/api/*` still answers like `/api/v1/*`.
+  and the error envelope are unchanged, and `/api/*` still answers like `/api/v1/*`. One bug of the base is fixed on the
+  way: the flags of a query (`unread`, `refresh`, `related`, `record`, `includeExpired`) read `0` and `false` as off
+  (they read as on), and other text is a `400 validation`.
 - **Interface (primitivas)**: dialogs, popovers, tabs, switches, the "+" menu and icon-button hints
   are built on Radix (`apps/command-centre/src/ui`, six `@radix-ui/*` packages at exact versions) and
   drawn by one stylesheet in both interfaces; the Núcleo keeps its glass and the frame its flat sheet

@@ -5,12 +5,14 @@
  * A response satisfies the contract when
  *  - its status is a success status of the entry, or an error `(status, error.code)` the entry or `COMMON_ERRORS` lists;
  *  - its JSON body satisfies the schema of that status (the envelope, for an error);
+ *  - it has every key the schema names (a key with a default is mandatory here: the schema checked is the output type);
  *  - and the body has no key the schema does not name. The schemas themselves are tolerant (a client must not break on
  *    an additive field); this is where a field added to a response without a change of the contract is caught.
  */
 import { ErrorEnvelope, declaredErrors } from "./errors.js";
 import { isRawResponse, type RouteDefinition } from "./route.js";
 import type { z } from "zod";
+import { wireSchema } from "./wireSchema.js";
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -64,7 +66,9 @@ function describe(issue: z.ZodIssue): string {
 /** Problems of `body` against `schema`, as `path: what` strings; empty when it satisfies it and names every key. */
 export function checkBody(schema: z.ZodTypeAny, body: unknown): string[] {
   const wire = toWire(body);
-  const result = schema.safeParse(wire);
+  // What is checked is what is on the wire: the output type, so a key the schema would fill in (a default, a catch) is
+  // required, and a key that is missing is a problem (`wireSchema`).
+  const result = wireSchema(schema).safeParse(wire);
   if (!result.success) {
     return result.error.issues.map((issue) => `${pathOf(issue.path)}: ${describe(issue)}`);
   }

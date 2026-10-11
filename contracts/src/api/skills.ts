@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { EffortLevel, ProviderId } from "../settings.js";
 import { SkillFrontmatterSchema, SkillSchema } from "../skills.js";
-import { IdParam, RunTimeout, SlugParams, DeletedSchema, err, notFound } from "./common.js";
+import { IdParam, QueryFlag, RunTimeout, SlugParams, DeletedSchema, err, notFound } from "./common.js";
 import { RunLaunchSchema } from "./runs.js";
 import { binary, route } from "./route.js";
 
@@ -196,7 +196,7 @@ export const skillRoutes = {
     summary: "Every skill the configured registries offer",
     tag: "skills",
     scope: "owner",
-    query: z.object({ refresh: z.coerce.boolean().optional() }),
+    query: z.object({ refresh: QueryFlag }),
     responses: {
       200: z.object({
         registries: z.array(z.string()),

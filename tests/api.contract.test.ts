@@ -12,6 +12,7 @@ import {
   API,
   COMMON_ERRORS,
   RunFrameSchema,
+  wireSchema,
   checkBody,
   checkResponse,
   isRawResponse,
@@ -67,6 +68,33 @@ const entries = Object.entries(API) as Array<[string, RouteDefinition]>;
 let ctx: AppContext;
 let cleanup: () => void;
 let world: World;
+/** The routes whose response schemas have `.default()`, `.catch()`, `preprocess` or `transform` somewhere in them. */
+const EFFECT_ROUTES = [
+  "GET /api/meta",
+  "GET /api/settings",
+  "PUT /api/settings",
+  "GET /api/ui-preferences",
+  "PUT /api/ui-preferences",
+  "PUT /api/providers/default",
+  "GET /api/diagnostics/export",
+  "GET /api/skills",
+  "GET /api/skills/:slug",
+  "POST /api/skills",
+  "PUT /api/skills/:slug",
+  "POST /api/skills/:slug/toggle",
+  "POST /api/skills/import",
+  "POST /api/skills/install",
+  "GET /api/routines",
+  "POST /api/routines",
+  "PUT /api/routines/:id",
+  "POST /api/routines/:id/toggle",
+  "POST /api/routines/:id/duplicate",
+  "GET /api/connectors",
+  "GET /api/connectors/audit",
+  "PUT /api/connectors/:id",
+  "POST /api/connectors",
+];
+
 let results: Result[];
 
 beforeAll(async () => {
@@ -85,6 +113,32 @@ afterAll(async () => {
 
 const owner = () => ({ "x-mordomo-token": ctx.token() });
 const ownerOfWorld = () => ({ "x-mordomo-token": world.token });
+
+/** Resources that exist now (the scenarios deleted or consumed the seeded ones), for the routes that look one up before reading the body. */
+async function freshResources() {
+  const objective = (
+    await world.call("POST", "/api/objectives", {
+      title: "Order",
+      steps: [{ title: "Passo", request: { version: 1, kind: "prompt", prompt: "x", mode: "read_only" } }],
+    })
+  ).body as { id: string };
+  const run = (await world.call("POST", "/api/runs", { prompt: "order" })).body as { runId: string };
+  await world.call("POST", "/api/connectors", {
+    id: "order-connector",
+    name: "Order",
+    kind: "api",
+    origin: "test",
+    maintainer: "test",
+  });
+  await world.call("POST", "/api/routines", {
+    id: "order-routine",
+    name: "Order",
+    prompt: "say hi",
+    kind: "every",
+    every: { value: 1, unit: "hours" },
+  });
+  return { objective, run };
+}
 
 describe("S1 the route table and the registration", () => {
   it("C1 every route of the router has an entry", async () => {
@@ -258,13 +312,12 @@ describe("S1 the route table and the registration", () => {
     return candidates.find((c) => schema.safeParse(c).success) ?? {};
   };
 
-  /** The query parts that take any text for each key they name (a flag or a free string): their schema has no value to refuse. */
+  /** The query parts that take any text for each key they name (a flag is no longer one: it refuses other text) (a flag or a free string): their schema has no value to refuse. */
   const ACCEPTS_ANYTHING: Record<string, string[]> = {
     "GET /api/connectors/:id/data": ["query"],
     "GET /api/events": ["query"],
     "GET /api/providers": ["query"],
     "GET /api/runs/:id/stream": ["query"],
-    "GET /api/skills/registry": ["query"],
     "GET /api/sync/plan": ["query"],
     "GET /api/updates": ["query"],
   };
@@ -272,6 +325,15 @@ describe("S1 the route table and the registration", () => {
   it("C5 every part an entry declares is validated before the handler runs", async () => {
     const asked: string[] = [];
     const accepting: Record<string, string[]> = {};
+    // These four look their resource up before they read the body (`precheck`), so a bad body reaches the schema
+    // only for a resource that exists.
+    const fresh = await freshResources();
+    const existing: Record<string, string> = {
+      "POST /api/objectives/:id/dispatch": `/api/objectives/${fresh.objective.id}/dispatch`,
+      "POST /api/runs/:id/children": `/api/runs/${fresh.run.runId}/children`,
+      "PUT /api/connectors/:id": "/api/connectors/order-connector",
+      "PUT /api/routines/:id": "/api/routines/order-routine",
+    };
     for (const [, entry] of entries) {
       const k = routeKey(entry);
       const parts = ["params", "query", "body"] as const;
@@ -302,6 +364,7 @@ describe("S1 the route table and the registration", () => {
         const paramsValue = value("params") as Record<string, unknown> | undefined;
         for (const [name, v] of Object.entries(paramsValue ?? {}))
           url = url.replace(`:${name}`, encodeURIComponent(String(v)));
+        if (part === "body" && existing[k]) url = existing[k]!;
         const query = value("query") as Record<string, unknown> | undefined;
         const qs =
           query && typeof query === "object"
@@ -358,6 +421,22 @@ describe("S1 the route table and the registration", () => {
         }),
       ).toThrow(/declares no contract/);
       expect(() => bind(fresh, "does.not.exist" as never, async () => ({}) as never)).toThrow(/not an entry/);
+      // The names every object has are not entries either (`"constructor" in API` is true).
+      for (const inherited of ["constructor", "toString", "__proto__"]) {
+        expect(() => bind(fresh, inherited as never, async () => ({}) as never), inherited).toThrow(
+          /not an entry/,
+        );
+        expect(
+          () =>
+            fresh.route({
+              method: "GET",
+              url: `/api/zz-${inherited}`,
+              config: { scope: "monitor", route: inherited },
+              handler: async () => ({}),
+            }),
+          inherited,
+        ).toThrow(/declares no contract/);
+      }
     } finally {
       await fresh.close();
     }
@@ -478,9 +557,11 @@ describe("S2 the real answer is checked", () => {
 
   it("C10 with validateResponses off the response is sent as the handler made it", async () => {
     const spy = z.object({ name: z.string() });
-    const original = spy.safeParse.bind(spy);
+    // The check parses with the wire form of the schema (`wireSchema`), so that is the one watched.
+    const watched = wireSchema(spy);
+    const original = watched.safeParse.bind(watched);
     const calls = vi.fn(original);
-    (spy as unknown as { safeParse: typeof calls }).safeParse = calls;
+    (watched as unknown as { safeParse: typeof calls }).safeParse = calls;
     const entry = route({
       method: "GET",
       path: "/api/zz-unchecked",
@@ -643,6 +724,133 @@ describe("S2 the real answer is checked", () => {
     }
   });
 
+  it("C12 a key the schema would fill in is mandatory on the wire", () => {
+    // `parse` fills a `.default()` or a `.catch()` in, so a body that lacks the key still parses. A response is the
+    // output type: the key is always there, and its absence is a departure. For every real answer of a route whose
+    // schema has such keys, remove each of them in turn (at any depth the answer reaches) and the check must object.
+    const kind = (schema: z.ZodTypeAny) => (schema._def as { typeName: string }).typeName;
+    const filled = (schema: z.ZodTypeAny): boolean => {
+      const def = schema._def as { typeName: string; innerType?: z.ZodTypeAny; schema?: z.ZodTypeAny };
+      if (def.typeName === "ZodDefault" || def.typeName === "ZodCatch") return true;
+      if (def.typeName === "ZodEffects") return filled(def.schema!);
+      if (def.typeName === "ZodOptional" || def.typeName === "ZodNullable") return filled(def.innerType!);
+      return false;
+    };
+    const paths: Array<Array<string | number>> = [];
+    const walk = (schema: z.ZodTypeAny, value: unknown, at: Array<string | number>): void => {
+      const def = schema._def as Record<string, unknown>;
+      switch (kind(schema)) {
+        case "ZodDefault":
+        case "ZodCatch":
+        case "ZodOptional":
+        case "ZodNullable":
+          return value == null ? undefined : walk(def.innerType as z.ZodTypeAny, value, at);
+        case "ZodEffects":
+          return walk(def.schema as z.ZodTypeAny, value, at);
+        case "ZodArray":
+          return Array.isArray(value)
+            ? value.slice(0, 2).forEach((item, i) => walk(def.type as z.ZodTypeAny, item, [...at, i]))
+            : undefined;
+        case "ZodRecord":
+          return typeof value === "object" && value
+            ? Object.entries(value)
+                .slice(0, 2)
+                .forEach(([k, v]) => walk(def.valueType as z.ZodTypeAny, v, [...at, k]))
+            : undefined;
+        case "ZodObject": {
+          if (typeof value !== "object" || value === null || Array.isArray(value)) return;
+          const shape = (def.shape as () => Record<string, z.ZodTypeAny>)();
+          for (const [key, child] of Object.entries(shape)) {
+            if (!(key in value)) continue;
+            if (filled(child)) paths.push([...at, key]);
+            walk(child, (value as Record<string, unknown>)[key], [...at, key]);
+          }
+          return;
+        }
+        case "ZodUnion":
+        case "ZodDiscriminatedUnion": {
+          const member = (def.options as z.ZodTypeAny[]).find((o) => wireSchema(o).safeParse(value).success);
+          if (member) walk(member, value, at);
+          return;
+        }
+        default:
+      }
+    };
+    const withoutKey = (value: unknown, at: Array<string | number>): unknown => {
+      const copy = JSON.parse(JSON.stringify(value)) as unknown;
+      let node = copy as Record<string | number, unknown>;
+      for (const step of at.slice(0, -1)) node = node[step] as Record<string | number, unknown>;
+      delete node[at[at.length - 1]!];
+      return copy;
+    };
+    const covered = new Map<string, number>();
+    for (const { key, entry, answer } of results) {
+      const spec = entry.responses[answer.status];
+      if (!spec || isRawResponse(spec)) continue;
+      paths.length = 0;
+      walk(spec, JSON.parse(JSON.stringify(answer.body ?? null)), []);
+      for (const at of [...paths]) {
+        expect(
+          checkResponse(entry, answer.status, withoutKey(answer.body, at)),
+          `${key}: ${at.join(".")} removed`,
+        ).not.toEqual([]);
+        covered.set(key, (covered.get(key) ?? 0) + 1);
+      }
+    }
+    // The routes whose responses have a default, a catch, a preprocess or a transform: each is in the table above.
+    expect([...covered.keys()].sort()).toEqual([...EFFECT_ROUTES].sort());
+    expect(EFFECT_ROUTES).toHaveLength(23);
+  });
+
+  it("C35 a wrong body for a resource that is not there is a 404, as before the table", async () => {
+    // The base looked the resource up before it read the body; `bind` parses the body first unless a route asks for a
+    // `precheck`. These four routes do, so the order of their answers did not change.
+    const ghost = crypto.randomUUID();
+    const fresh = await freshResources();
+    const { objective, run } = fresh;
+    const routes: Array<[string, string, string, unknown]> = [
+      [
+        "POST",
+        `/api/objectives/${ghost}/dispatch`,
+        `/api/objectives/${objective.id}/dispatch`,
+        { limit: "many" },
+      ],
+      ["POST", `/api/runs/${ghost}/children`, `/api/runs/${run.runId}/children`, { prompts: [] }],
+      ["PUT", "/api/connectors/no-such-connector", "/api/connectors/order-connector", { kind: "nope" }],
+      ["PUT", "/api/routines/no-such-routine", "/api/routines/order-routine", { name: 7 }],
+    ];
+    for (const [method, missing, present, wrongBody] of routes) {
+      const absent = await world.call(method, missing, wrongBody);
+      expect(absent.status, `${method} ${missing}`).toBe(404);
+      expect((absent.body as { error: { code: string } }).error.code).toBe("not_found");
+      const there = await world.call(method, present, wrongBody);
+      expect(there.status, `${method} ${present}`).toBe(400);
+      expect((there.body as { error: { code: string } }).error.code).toBe("validation");
+    }
+  });
+
+  it("C30 a flag in a query switches off, and other text is a 400 validation", async () => {
+    // `record=false` used to read as true (`z.coerce.boolean`): a recall could not be made without recording it.
+    const recalls = async () =>
+      ((await world.call("GET", "/api/memory/recall/stats")).body as { totalRecalls: number }).totalRecalls;
+    const before = await recalls();
+    expect((await world.call("GET", "/api/memory/recall?q=alfa&record=false")).status).toBe(200);
+    expect((await world.call("GET", "/api/memory/recall?q=alfa&record=0")).status).toBe(200);
+    expect(await recalls()).toBe(before);
+    expect((await world.call("GET", "/api/memory/recall?q=alfa&record=1")).status).toBe(200);
+    expect((await world.call("GET", "/api/memory/recall?q=alfa")).status).toBe(200);
+    expect(await recalls()).toBe(before + 2);
+    for (const url of [
+      "/api/memory/recall?q=alfa&record=maybe",
+      "/api/notifications?unread=yes",
+      "/api/skills/registry?refresh=2",
+    ]) {
+      const answer = await world.call("GET", url);
+      expect(answer.status, url).toBe(400);
+      expect((answer.body as { error: { code: string } }).error.code, url).toBe("validation");
+    }
+  });
+
   it("C13 every error a handler raises is documented", () => {
     // The scanner first: each shape it covers, and each text it must not take for a raise.
     expect(scanSource(`httpError(404, "x"); httpError(409, "y", "taken");`)).toMatchObject([
@@ -702,7 +910,10 @@ describe("S2 the real answer is checked", () => {
       .filter(([pair]) => !documented.has(pair))
       .map(([pair, where]) => `${pair} (${where})`);
     expect(undocumented).toEqual([]);
-    expect(raised.size).toBeGreaterThanOrEqual(40);
+    // The set the scan reads today, pinned: a raise that appears or disappears is a change to the contract of some route.
+    expect(raised.size).toBe(48);
+    expect([...raised.keys()].filter((pair) => pair.includes("<unresolved>"))).toEqual([]);
+    expect(raised.has("409 approval_resolved")).toBe(true);
 
     // And the stricter reading for the route files: what a file raises is documented by the entries it registers.
     const routeDir = path.join(repoRoot, "apps/api/src/routes");

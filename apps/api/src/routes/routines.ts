@@ -55,20 +55,29 @@ export function registerRoutineRoutes(app: FastifyInstance, ctx: AppContext): vo
     return saved;
   });
 
-  bind(app, "routines.update", async ({ params: { id }, body }) => {
-    if (!ctx.routines.get(id)) throw httpError(404, "Routine not found");
-    // The id in the URL names the routine; the body may leave its own out.
-    const routine = RoutineSchema.parse({ ...body, id });
-    requireProvider(ctx, routine.provider);
-    checkWorkingDir(routine.workingDir);
-    if (routine.skillSlug && !ctx.skills.load(routine.skillSlug)) {
-      throw httpError(400, `Unknown skill: ${routine.skillSlug}`);
-    }
-    const saved = save(() => ctx.routines.save(routine, saveOpts()));
-    ctx.scheduler.reload();
-    changed(id, "updated");
-    return saved;
-  });
+  bind(
+    app,
+    "routines.update",
+    async ({ params: { id }, body }) => {
+      // The id in the URL names the routine; the body may leave its own out.
+      const routine = RoutineSchema.parse({ ...body, id });
+      requireProvider(ctx, routine.provider);
+      checkWorkingDir(routine.workingDir);
+      if (routine.skillSlug && !ctx.skills.load(routine.skillSlug)) {
+        throw httpError(400, `Unknown skill: ${routine.skillSlug}`);
+      }
+      const saved = save(() => ctx.routines.save(routine, saveOpts()));
+      ctx.scheduler.reload();
+      changed(id, "updated");
+      return saved;
+    },
+    {
+      // The routine is looked for before the body is read, as it always was.
+      precheck: ({ params: { id } }) => {
+        if (!ctx.routines.get(id)) throw httpError(404, "Routine not found");
+      },
+    },
+  );
 
   bind(app, "routines.toggle", async ({ params: { id } }) => {
     const routine = ctx.routines.get(id);

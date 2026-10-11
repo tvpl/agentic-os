@@ -39,6 +39,29 @@ export const RunTimeout = z.number().int().min(RUN_LIMITS.timeoutMinMs).max(RUN_
 /** The prompt of a run. */
 export const RunPrompt = z.string().min(1).max(RUN_LIMITS.promptMaxChars);
 
+const FLAG_VALUES = { "1": true, true: true, "0": false, false: false } as const;
+
+/**
+ * A flag in a query string. `1` and `true` set it, `0` and `false` clear it, and a key that is absent is absent (the
+ * handler's own default decides: `record` records unless it is cleared). Any other text is a `400 validation`:
+ * `z.coerce.boolean()` read `"0"` and `"false"` as true, and a flag that cannot be switched off is no flag. The
+ * document describes it as the four texts; a client (`apiCall`) may pass a boolean, which is sent as `1` or `0`.
+ */
+export const QueryFlag = z.preprocess(
+  (value) =>
+    typeof value === "string" && value in FLAG_VALUES
+      ? FLAG_VALUES[value as keyof typeof FLAG_VALUES]
+      : value,
+  z.boolean().optional(),
+) as unknown as z.ZodType<
+  boolean | undefined,
+  z.ZodTypeDef,
+  boolean | "1" | "true" | "0" | "false" | undefined
+>;
+
+/** The texts a `QueryFlag` accepts. */
+export const QUERY_FLAG_TEXTS = ["1", "true", "0", "false"] as const;
+
 /** `limit` and `offset` of a list that answers a plain array with the total in `x-total-count`. */
 export const PageQuery = {
   limit: z.coerce.number().int().min(1).max(200).default(50),

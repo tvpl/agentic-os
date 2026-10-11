@@ -63,30 +63,39 @@ export function registerRunRoutes(app: FastifyInstance, ctx: AppContext): void {
    * Each child is an ordinary prompt run (same gate, its own session, its own
    * artifacts) that carries `parentRunId`; the parent's page shows the tree.
    */
-  bind(app, "runs.children.create", async ({ params: { id }, body }, req, reply) => {
-    const parent = ctx.runs.get(id);
-    if (!parent) throw httpError(404, "Run not found");
-    const { prompts, ...shared } = body;
-    const cwd = body.cwd ?? parent.cwd;
-    const runs = prompts.map((prompt) =>
-      ctx.execution.startPrompt(
-        {
-          ...shared,
-          prompt,
-          ...(cwd ? { cwd } : {}),
-          provider: body.provider ?? parent.provider,
-          parentRunId: id,
-          startedBy: startedByOf(req),
-        },
-        {
-          onError: (err, runId) =>
-            req.log.error({ err, runId, parentRunId: id, msg: "child run failed to execute" }),
-        },
-      ),
-    );
-    if (runs.some((r) => r.status === "waiting_approval")) reply.code(202);
-    return { runs };
-  });
+  bind(
+    app,
+    "runs.children.create",
+    async ({ params: { id }, body }, req, reply) => {
+      const parent = ctx.runs.get(id)!;
+      const { prompts, ...shared } = body;
+      const cwd = body.cwd ?? parent.cwd;
+      const runs = prompts.map((prompt) =>
+        ctx.execution.startPrompt(
+          {
+            ...shared,
+            prompt,
+            ...(cwd ? { cwd } : {}),
+            provider: body.provider ?? parent.provider,
+            parentRunId: id,
+            startedBy: startedByOf(req),
+          },
+          {
+            onError: (err, runId) =>
+              req.log.error({ err, runId, parentRunId: id, msg: "child run failed to execute" }),
+          },
+        ),
+      );
+      if (runs.some((r) => r.status === "waiting_approval")) reply.code(202);
+      return { runs };
+    },
+    {
+      // The parent run is looked for before the body is read, as it always was.
+      precheck: ({ params: { id } }) => {
+        if (!ctx.runs.get(id)) throw httpError(404, "Run not found");
+      },
+    },
+  );
 
   /** The children of a run (a squad), newest first. */
   bind(app, "runs.children.list", async ({ params: { id } }) => {

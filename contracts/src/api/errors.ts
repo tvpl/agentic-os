@@ -3,6 +3,7 @@
  * `errors` of its entry; a response whose `(status, error.code)` is in neither list departs from the contract.
  */
 import { z } from "zod";
+import { deepFreeze } from "../freeze.js";
 import type { ErrorDoc, RouteDefinition } from "./route.js";
 
 /** Every status `>= 400` is `{ error: { code, message, issues? }, message }`; the top-level `message` repeats the inner one. */
@@ -26,8 +27,40 @@ const writes = (route: RouteDefinition): boolean => route.method !== "GET";
 const guarded = (route: RouteDefinition): boolean => route.public !== true;
 const always = (): boolean => true;
 
+/**
+ * The routes that read or write under the folders the owner granted, or that the engine resolves a path for: only
+ * these can answer the refusals of the path filter (`403 forbidden_path`) or of the safe reader (`404 not_a_file`,
+ * `413 file_too_large`). They are not common errors: `GET /api/settings` cannot answer them. The areas that touch
+ * files are named by path prefix (the memory, the skills, the artifacts, the sync, the micro apps); the routes
+ * outside them that take a folder or file the caller names are listed.
+ */
+const FILE_AREAS = [
+  "/api/memory/",
+  "/api/skills",
+  "/api/artifacts/",
+  "/api/sync/",
+  "/api/microapps/",
+] as const;
+const FILE_ROUTES: ReadonlySet<string> = new Set(["GET /api/runs/:id/diff"]);
+const PATH_ROUTES: ReadonlySet<string> = new Set([
+  ...FILE_ROUTES,
+  "POST /api/runs",
+  "POST /api/runs/:id/children",
+  "POST /api/runs/:id/retry",
+  "POST /api/sessions/:id/continue",
+  "POST /api/objectives/:id/dispatch",
+  "POST /api/routines",
+  "PUT /api/routines/:id",
+  "POST /api/routines/:id/run",
+]);
+const keyOf = (route: RouteDefinition): string => `${route.method} ${route.path}`;
+const inFileArea = (route: RouteDefinition): boolean =>
+  FILE_AREAS.some((prefix) => route.path.startsWith(prefix));
+const readsFiles = (route: RouteDefinition): boolean => inFileArea(route) || FILE_ROUTES.has(keyOf(route));
+const namesPaths = (route: RouteDefinition): boolean => inFileArea(route) || PATH_ROUTES.has(keyOf(route));
+
 /** What any route can answer, whatever its entry says: the gate before the route, the parser and the server. */
-export const COMMON_ERRORS: readonly CommonError[] = [
+export const COMMON_ERRORS: readonly CommonError[] = deepFreeze([
   {
     status: 400,
     code: "validation",
@@ -84,20 +117,20 @@ export const COMMON_ERRORS: readonly CommonError[] = [
     code: "forbidden_path",
     description:
       "A path the request names, or a link inside a folder it reads, is outside the folders the owner granted, inside the home's config/ or logs/, or a secret file name",
-    applies: always,
+    applies: namesPaths,
   },
   {
     status: 404,
     code: "not_a_file",
     description:
       "A path the route reads names something that is not a regular file (a folder, a device, a link out of the folders)",
-    applies: always,
+    applies: readsFiles,
   },
   {
     status: 413,
     code: "file_too_large",
     description: "A file the route reads is larger than the route reads",
-    applies: always,
+    applies: readsFiles,
   },
   {
     status: 413,
@@ -131,7 +164,7 @@ export const COMMON_ERRORS: readonly CommonError[] = [
     description: "An unhandled error; the detail is in logs/api.jsonl, never in the response",
     applies: always,
   },
-];
+]);
 
 /** The common errors that apply to a route. */
 export function commonErrorsFor(route: RouteDefinition): ErrorDoc[] {

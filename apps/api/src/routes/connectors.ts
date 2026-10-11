@@ -66,27 +66,36 @@ export function registerConnectorRoutes(app: FastifyInstance, ctx: AppContext): 
     };
   });
 
-  bind(app, "connectors.update", async ({ params: { id }, body }) => {
-    const existing = ctx.connectors.get(id);
-    if (!existing) throw httpError(404, "Connector not found");
-    // The id in the URL names the connector; the body may leave its own out.
-    const updated = ConnectorSchema.parse({ ...body, id });
-    cache.invalidate(id);
+  bind(
+    app,
+    "connectors.update",
+    async ({ params: { id }, body }) => {
+      const existing = ctx.connectors.get(id)!;
+      // The id in the URL names the connector; the body may leave its own out.
+      const updated = ConnectorSchema.parse({ ...body, id });
+      cache.invalidate(id);
 
-    // Enabling write operations on a connector is always approval-gated.
-    if (updated.writeEnabled && !existing.writeEnabled) {
-      const approval = ctx.approvals.request(
-        "connector_write",
-        `Enable WRITE operations for connector "${existing.name}" (${existing.writeOperations.join(", ") || "unspecified"}).`,
-        { connectorId: id },
-      );
-      return {
-        connector: ctx.connectors.save({ ...updated, writeEnabled: false }),
-        pendingApproval: approval,
-      };
-    }
-    return { connector: ctx.connectors.save(updated), pendingApproval: null };
-  });
+      // Enabling write operations on a connector is always approval-gated.
+      if (updated.writeEnabled && !existing.writeEnabled) {
+        const approval = ctx.approvals.request(
+          "connector_write",
+          `Enable WRITE operations for connector "${existing.name}" (${existing.writeOperations.join(", ") || "unspecified"}).`,
+          { connectorId: id },
+        );
+        return {
+          connector: ctx.connectors.save({ ...updated, writeEnabled: false }),
+          pendingApproval: approval,
+        };
+      }
+      return { connector: ctx.connectors.save(updated), pendingApproval: null };
+    },
+    {
+      // The connector is looked for before the body is read, as it always was.
+      precheck: ({ params: { id } }) => {
+        if (!ctx.connectors.get(id)) throw httpError(404, "Connector not found");
+      },
+    },
+  );
 
   bind(app, "connectors.create", async ({ body: connector }) => {
     if (ctx.connectors.get(connector.id)) throw httpError(409, `Connector "${connector.id}" already exists`);

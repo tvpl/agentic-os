@@ -14,6 +14,7 @@
  * `checkResponse`, which the test and the development server use to reject a response with a key the contract does
  * not name.
  */
+import { deepFreeze } from "../freeze.js";
 import type { z } from "zod";
 import type { DeviceScope } from "../devices.js";
 
@@ -68,7 +69,8 @@ export interface RouteDefinition {
 
 /** Identity function that keeps the literal types of an entry (method, path, the statuses of `responses`). */
 export function route<const R extends RouteDefinition>(definition: R): R {
-  return definition;
+  // An entry is a constant of the contract: its plain parts (errors, headers, the lists) cannot be written to.
+  return deepFreeze(definition);
 }
 
 /** Marks a status that answers a stream of server-sent events. */

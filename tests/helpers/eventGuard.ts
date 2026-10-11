@@ -1,4 +1,4 @@
-import { afterEach, beforeAll } from "vitest";
+import { afterAll, afterEach, beforeAll } from "vitest";
 import { EVENT_ENVELOPES, checkBody } from "@mordomo/contracts";
 
 /**
@@ -33,4 +33,12 @@ afterEach(() => {
   if (violations.length === 0) return;
   const found = violations.splice(0);
   throw new Error(`an event departs from its schema: ${found.join("; ")}`);
+});
+
+// An event announced after the last test of a file (a timer, a delivery that ends late) has no `afterEach` left to
+// fail: the file fails here, so it cannot slip through.
+afterAll(() => {
+  if (violations.length === 0) return;
+  const found = violations.splice(0);
+  throw new Error(`an event departs from its schema after the last test: ${found.join("; ")}`);
 });

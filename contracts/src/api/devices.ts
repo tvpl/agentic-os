@@ -1,7 +1,7 @@
 /** Pairing and the paired devices, the persisted inbox, the delivery channels and the small owner-only writers. */
 import { z } from "zod";
 import { DEVICE_SCOPES } from "../devices.js";
-import { OkSchema, UuidParams, err, notFound } from "./common.js";
+import { OkSchema, QueryFlag, UuidParams, err, notFound } from "./common.js";
 import { route } from "./route.js";
 import { DeviceRecordSchema, DeviceScopeSchema, NotificationRecordSchema } from "./wire.js";
 
@@ -117,7 +117,7 @@ export const deviceRoutes = {
     scope: "monitor",
     query: z.object({
       limit: z.coerce.number().int().min(1).max(500).default(200),
-      unread: z.coerce.boolean().optional(),
+      unread: QueryFlag,
     }),
     responses: { 200: z.object({ items: z.array(NotificationRecordSchema), unread: z.number() }) },
   }),

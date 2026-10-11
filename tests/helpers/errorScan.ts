@@ -15,6 +15,9 @@ import ts from "typescript";
  * A status below 400 is not an error, a `statusCode` that is not a literal is not a pair, and text in a comment or
  * a string is not code. A pair with no `code` carries the code of its status (`defaultCode`).
  */
+/** The code of a raise whose code is computed in a way the scan cannot read. */
+export const UNRESOLVED = "<unresolved>";
+
 export interface RaisedError {
   status: number;
   code: string | null;
@@ -30,15 +33,30 @@ export function scanSource(source: string, file = "source.ts"): RaisedError[] {
     node && ts.isNumericLiteral(node) ? Number(node.text) : undefined;
   const str = (node: ts.Node | undefined): string | undefined =>
     node && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) ? node.text : undefined;
-  /** The codes an expression can be: a literal, or either branch of a conditional whose branches are literals. */
-  const codesOf = (node: ts.Expression): Array<string | null> => {
+  /** A `const NAME = "literal"` of this file, by name: the codes a handler names through a constant. */
+  const constants = new Map<string, string>();
+  const collect = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      const value = str(node.initializer);
+      if (value !== undefined) constants.set(node.name.text, value);
+    }
+    ts.forEachChild(node, collect);
+  };
+  collect(sf);
+  /**
+   * The codes an expression can be: a literal, a constant of the file holding one, either branch of a conditional, or
+   * (through parentheses, `as` and `satisfies`) any of those. What it cannot read is `UNRESOLVED`, which no entry
+   * documents, so a code that is computed fails the proof loudly instead of passing as "no code".
+   */
+  const codesOf = (node: ts.Expression): string[] => {
     const literal = str(node);
     if (literal !== undefined) return [literal];
-    if (ts.isConditionalExpression(node)) {
-      const branches = [...codesOf(node.whenTrue), ...codesOf(node.whenFalse)];
-      if (branches.every((b) => b !== null)) return [...new Set(branches)];
-    }
-    return [null];
+    if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node))
+      return codesOf(node.expression);
+    if (ts.isIdentifier(node) && constants.has(node.text)) return [constants.get(node.text)!];
+    if (ts.isConditionalExpression(node))
+      return [...new Set([...codesOf(node.whenTrue), ...codesOf(node.whenFalse)])];
+    return [UNRESOLVED];
   };
   const add = (status: number | undefined, codes: Array<string | null>, node: ts.Node) => {
     if (status === undefined || status < 400) return;
@@ -51,14 +69,14 @@ export function scanSource(source: string, file = "source.ts"): RaisedError[] {
       ts.isIdentifier(node.expression) &&
       node.expression.text === "httpError"
     ) {
-      add(num(node.arguments[0]), [str(node.arguments[2]) ?? null], node);
+      add(num(node.arguments[0]), node.arguments[2] ? codesOf(node.arguments[2]) : [null], node);
     }
     if (
       ts.isNewExpression(node) &&
       ts.isIdentifier(node.expression) &&
       node.expression.text === "MordomoError"
     ) {
-      add(num(node.arguments?.[0]), [node.arguments?.[2] ? (str(node.arguments[2]) ?? null) : null], node);
+      add(num(node.arguments?.[0]), node.arguments?.[2] ? codesOf(node.arguments[2]) : [null], node);
     }
     if (ts.isObjectLiteralExpression(node)) {
       let status: number | undefined;
@@ -76,7 +94,7 @@ export function scanSource(source: string, file = "source.ts"): RaisedError[] {
       for (const member of node.members) {
         if (ts.isPropertyDeclaration(member) && ts.isIdentifier(member.name)) {
           if (member.name.text === "statusCode") status = num(member.initializer);
-          if (member.name.text === "code") codes = [str(member.initializer) ?? null];
+          if (member.name.text === "code") codes = member.initializer ? codesOf(member.initializer) : [null];
         }
         if (ts.isConstructorDeclaration(member)) {
           for (const param of member.parameters) {

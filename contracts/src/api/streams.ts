@@ -49,7 +49,13 @@ export const streamRoutes = {
     responses: {
       200: z.object({
         openapi: z.literal("3.1.0"),
-        info: z.object({ title: z.string(), version: z.string(), description: z.string() }),
+        info: z.object({
+          title: z.string(),
+          version: z.string(),
+          description: z.string(),
+          license: z.object({ name: z.string(), url: z.string() }),
+        }),
+        servers: z.array(z.object({ url: z.string(), description: z.string() })),
         /** The operations by path: their own shape is the OpenAPI specification's. */
         paths: z.record(z.record(z.unknown())),
         components: z.record(z.unknown()),

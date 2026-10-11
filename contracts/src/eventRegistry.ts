@@ -11,6 +11,8 @@
  *    type (`classifyEvent`), without throwing and without closing the stream.
  */
 
+import { deepFreeze } from "./freeze.js";
+
 /** Every event the bus emits and `GET /api/events` relays, in the order of `OsEventMap`. */
 export const OS_EVENT_TYPES = [
   "run.created",
@@ -57,7 +59,7 @@ export const RUN_FRAME_TYPES = [
 export type RunFrameType = (typeof RUN_FRAME_TYPES)[number];
 
 /** The versions each event type has had, oldest first and contiguous from 1; the current version is the last. */
-export const EVENT_VERSIONS = {
+export const EVENT_VERSIONS = deepFreeze({
   "run.created": [1],
   "run.started": [1],
   "run.event": [1],
@@ -81,13 +83,13 @@ export const EVENT_VERSIONS = {
   "budget.crossed": [1],
   "sentinel.fired": [1],
   "stream.reset": [1],
-} as const satisfies { readonly [K in OsEventTypeName]: readonly number[] };
+} as const satisfies { readonly [K in OsEventTypeName]: readonly number[] });
 
 /** The versions an event of this type may carry in its envelope. */
 export type EventVersionOf<K extends OsEventTypeName> = (typeof EVENT_VERSIONS)[K][number];
 
 /** The same for the frames of a run's stream. */
-export const RUN_FRAME_VERSIONS: { readonly [K in RunFrameType]: readonly number[] } = {
+export const RUN_FRAME_VERSIONS: { readonly [K in RunFrameType]: readonly number[] } = deepFreeze({
   started: [1],
   text: [1],
   assistant: [1],
@@ -98,7 +100,7 @@ export const RUN_FRAME_VERSIONS: { readonly [K in RunFrameType]: readonly number
   error: [1],
   usage: [1],
   run_state: [1],
-};
+});
 
 /** The version an emitter stamps on an event of this type. */
 export function currentEventVersion<K extends OsEventTypeName>(type: K): EventVersionOf<K> {

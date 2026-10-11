@@ -33,13 +33,17 @@ describe("apiCall", () => {
     await apiCall("GET /api/runs/:id", { params: { id: "a b/../c" } });
     expect(seen[0]).toMatchObject({ method: "GET", url: "/api/v1/runs/a%20b%2F..%2Fc", body: undefined });
 
-    // The query is serialised: numbers as text, a flag as 1, a flag that is off and a key with no value left out.
+    // The query is serialised: numbers as text, a flag as 1 (and 0 when off), a key with no value left out.
     await apiCall("GET /api/runs", { query: { limit: 5, status: "failed", provider: undefined } });
     expect(seen[1]!.url).toBe("/api/v1/runs?limit=5&status=failed");
     await apiCall("GET /api/skills/registry", { query: { refresh: true } });
     expect(seen[2]!.url).toBe("/api/v1/skills/registry?refresh=1");
+    // An off flag is sent as 0, not left out: a route may default to on (`record`).
     await apiCall("GET /api/skills/registry", { query: { refresh: false } });
-    expect(seen[3]!.url).toBe("/api/v1/skills/registry");
+    expect(seen[3]!.url).toBe("/api/v1/skills/registry?refresh=0");
+    await apiCall("GET /api/memory/recall", { query: { q: "x", record: false } });
+    expect(seen[4]!.url).toBe("/api/v1/memory/recall?q=x&record=0");
+    seen.splice(4, 1);
     await apiCall("GET /api/artifacts/file", { query: { p: "notes/a&b.md" } });
     expect(seen[4]!.url).toBe("/api/v1/artifacts/file?p=notes%2Fa%26b.md");
     // A space is %20, as in the URLs the screens spelled by hand, and the keys keep the order they were given.

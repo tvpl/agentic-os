@@ -4,7 +4,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { z } from "zod";
-import { API, SettingsSchema, checkResponse, isRawResponse, type RouteDefinition } from "@mordomo/contracts";
+import {
+  API,
+  COMMON_ERRORS,
+  EVENT_VERSIONS,
+  RUN_FRAME_VERSIONS,
+  SettingsSchema,
+  checkBody,
+  checkResponse,
+  isRawResponse,
+  wireSchema,
+  type RouteDefinition,
+} from "@mordomo/contracts";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "./helpers.js";
@@ -222,5 +233,108 @@ describe("S6 dependencies and tolerance", () => {
       visit(sf);
     }
     expect([...found].sort()).toEqual(Object.keys(OPEN_FIELDS).sort());
+  });
+});
+
+describe("S2 the schema of the wire", () => {
+  it("C9 wireSchema is the output type: a default or a catch is a mandatory key, a refinement stays", () => {
+    const schema = z.object({
+      a: z.string().default("x"),
+      b: z.number().catch(0),
+      c: z.preprocess((v) => v ?? "p", z.string()),
+      d: z.string().transform((v) => v.length),
+      e: z.string().optional(),
+      f: z.array(z.object({ g: z.boolean().default(false) })),
+      h: z.discriminatedUnion("k", [z.object({ k: z.literal("one"), v: z.string().default("") })]),
+      i: z.string().min(3),
+    });
+    const full = { a: "x", b: 1, c: "c", d: "d", f: [{ g: true }], h: { k: "one", v: "" }, i: "abc" };
+    expect(checkBody(schema, full)).toEqual([]);
+    // Each of these keys parses without it (the schema fills it in), and none may be absent on the wire.
+    expect(schema.safeParse({ ...full, a: undefined }).success).toBe(true);
+    for (const [path, body] of [
+      ["$.a", { ...full, a: undefined }],
+      ["$.b", { ...full, b: undefined }],
+      ["$.f[0].g", { ...full, f: [{}] }],
+      ["$.h.v", { ...full, h: { k: "one" } }],
+    ] as const)
+      expect(checkBody(schema, body).join(), path).toContain(path);
+    // An optional key stays optional, and a refinement still refuses.
+    expect(checkBody(schema, { ...full, e: undefined })).toEqual([]);
+    expect(checkBody(schema, { ...full, i: "ab" })).not.toEqual([]);
+    // Memoised: the same schema, the same result (the document points at one object).
+    expect(wireSchema(schema)).toBe(wireSchema(schema));
+    // The case the verifier found: a settings document that lacks what the schema would fill in.
+    expect(checkResponse(API["settings.get"], 200, {})).not.toEqual([]);
+    expect(
+      checkResponse(API["connectors.list"], 200, [
+        { id: "c", name: "n", kind: "mcp", origin: "o", maintainer: "m" },
+      ]),
+    ).not.toEqual([]);
+  });
+});
+
+describe("S2 the flags of a query", () => {
+  const FLAGS: Array<[string, string]> = [
+    ["notifications.list", "unread"],
+    ["skills.registry", "refresh"],
+    ["memory.graph", "related"],
+    ["memory.recall", "record"],
+    ["memory.facts.list", "includeExpired"],
+  ];
+  const base: Record<string, Record<string, string>> = { "memory.recall": { q: "x" }, "memory.graph": {} };
+
+  it("C30 a flag reads 1 and true as set, 0 and false as cleared, and refuses other text", () => {
+    for (const [id, flag] of FLAGS) {
+      const query = API[id as keyof typeof API].query!;
+      const read = (value?: string) =>
+        query.safeParse({ ...base[id], ...(value === undefined ? {} : { [flag]: value }) });
+      for (const [text, expected] of [
+        ["1", true],
+        ["true", true],
+        ["0", false],
+        ["false", false],
+      ] as const) {
+        const result = read(text);
+        expect(result.success, `${id} ${flag}=${text}`).toBe(true);
+        expect((result as { data: Record<string, unknown> }).data[flag], `${id} ${flag}=${text}`).toBe(
+          expected,
+        );
+      }
+      // Absent stays absent: the route's own default decides (`record` records unless it is cleared).
+      expect(
+        (read() as { data: Record<string, unknown> }).data[flag],
+        `${id} ${flag} absent`,
+      ).toBeUndefined();
+      for (const text of ["maybe", "yes", "no", "TRUE", "2", ""])
+        expect(read(text).success, `${id} ${flag}=${JSON.stringify(text)}`).toBe(false);
+    }
+    expect(new Set(FLAGS.map(([, flag]) => flag)).size).toBe(5);
+  });
+});
+
+describe("S1 the table is a constant", () => {
+  it("C2 an entry, the lists of errors and the version lists cannot be written to", () => {
+    const writable: string[] = [];
+    const visit = (value: unknown, at: string): void => {
+      if (typeof value !== "object" || value === null || isZod(value)) return;
+      const proto = Object.getPrototypeOf(value) as unknown;
+      if (proto !== Object.prototype && proto !== Array.prototype) return;
+      if (!Object.isFrozen(value)) writable.push(at);
+      for (const [key, child] of Object.entries(value)) visit(child, `${at}.${key}`);
+    };
+    for (const [id, entry] of entries) visit(entry, id);
+    visit(COMMON_ERRORS, "COMMON_ERRORS");
+    visit(EVENT_VERSIONS, "EVENT_VERSIONS");
+    visit(RUN_FRAME_VERSIONS, "RUN_FRAME_VERSIONS");
+    expect(writable).toEqual([]);
+    // Writing is an error, not a silent no-op (modules are strict).
+    const runsGet = API["runs.get"] as unknown as { summary: string; errors: unknown[] };
+    expect(() => {
+      runsGet.summary = "changed";
+    }).toThrow(TypeError);
+    expect(() => runsGet.errors.push({})).toThrow(TypeError);
+    expect(() => (EVENT_VERSIONS["run.created"] as unknown as number[]).push(2)).toThrow(TypeError);
+    expect(Object.isFrozen(COMMON_ERRORS)).toBe(true);
   });
 });

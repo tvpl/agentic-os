@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { OsEvent } from "@mordomo/core";
-import { OS_EVENT_VERSION } from "@mordomo/core/internal";
+import { currentEventVersion } from "@mordomo/contracts/events";
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { ticketKey } from "../tickets.js";
@@ -46,7 +46,7 @@ export function registerEventRoutes(app: FastifyInstance, ctx: AppContext): void
         id: ctx.events.lastId,
         type: "stream.reset",
         ts: Date.now(),
-        v: OS_EVENT_VERSION,
+        v: currentEventVersion("stream.reset"),
         payload: { lastId: ctx.events.lastId },
       };
       ch.send({ id: reset.id, event: reset.type, data: reset });

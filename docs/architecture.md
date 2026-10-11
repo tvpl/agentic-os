@@ -77,8 +77,8 @@ SSE channels, then close the DB. `unhandledRejection` is logged, never fatal.
   parameters, query, body and result typed by the same entry.
 - **Responses are checked where it is cheap.** In development and in tests (`validateResponses`, default on for
   `NODE_ENV=test|development`, `MORDOMO_VALIDATE_RESPONSES=1|0` decides either way; off in the installed service) each
-  JSON answer is checked against its entry: the status is declared, the body satisfies the schema and names no key the
-  schema does not, an error is a `(status, code)` the route or `COMMON_ERRORS` declares. A departure answers
+  JSON answer is checked against its entry: the status is declared, the body satisfies the schema as an OUTPUT type (a key with
+  a default is mandatory on the wire: `wireSchema`) and names no key the schema does not, an error is a `(status, code)` the route or `COMMON_ERRORS` declares. A departure answers
   `500 response_contract_violation` and is logged without the body.
 - **Route document.** `GET /api/v1/openapi.json` (authenticated) is an OpenAPI 3.1 document generated from the table
   (`apps/api/src/openapi.ts`): every route with its method, path, parameters, request body, the response of each

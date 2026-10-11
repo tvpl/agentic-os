@@ -7,6 +7,7 @@ import addFormatsModule from "ajv-formats";
 import { z } from "zod";
 import {
   API,
+  NAMED_SCHEMAS,
   declaredErrors,
   isRawResponse,
   route,
@@ -138,6 +139,12 @@ describe("S3 the document", () => {
     const copy = JSON.parse(JSON.stringify(doc)) as OpenApiDocument;
     const validated = (await SwaggerParser.validate(copy as never)) as { openapi: string };
     expect(validated.openapi).toBe("3.1.0");
+    // What a linter asks of a document the API publishes: where it is served from, and under which license.
+    expect(doc.servers).toEqual([expect.objectContaining({ url: "/" })]);
+    expect(doc.info.license).toEqual({
+      name: "FSL-1.1-ALv2",
+      url: expect.stringMatching(/^https:\/\/.+\/LICENSE$/),
+    });
     // The validator is not asleep: it refuses a response with no description (OpenAPI 3.1 requires one)…
     const broken = JSON.parse(JSON.stringify(doc)) as OpenApiDocument;
     const responses = (
@@ -196,6 +203,73 @@ describe("S3 the document", () => {
     expect([...pointers].filter((n) => !names.includes(n))).toEqual([]);
   });
 
+  it("C15 a key the server always sends is required in the document, a default or not", () => {
+    // The document describes what a response carries (the output type): a key with `.default()` or `.catch()` is
+    // always there, so a client generated from the document must not read it as optional. Only `.optional()` is optional.
+    const inner = (schema: z.ZodTypeAny): z.ZodTypeAny => {
+      const def = schema._def as { typeName: string; schema?: z.ZodTypeAny };
+      return def.typeName === "ZodEffects" ? inner(def.schema!) : schema;
+    };
+    const optional = (schema: z.ZodTypeAny): boolean => {
+      const def = schema._def as { typeName: string; innerType?: z.ZodTypeAny; schema?: z.ZodTypeAny };
+      if (def.typeName === "ZodOptional") return true;
+      if (def.typeName === "ZodDefault" || def.typeName === "ZodCatch") return optional(def.innerType!);
+      if (def.typeName === "ZodEffects") return optional(def.schema!);
+      return false;
+    };
+    const named = doc.components.schemas as Record<string, { required?: string[] }>;
+    let objects = 0;
+    let defaulted = 0;
+    for (const [name, schema] of Object.entries(NAMED_SCHEMAS)) {
+      const object = inner(schema);
+      if ((object._def as { typeName: string }).typeName !== "ZodObject") continue;
+      const shape = (object as z.AnyZodObject).shape as Record<string, z.ZodTypeAny>;
+      const expected = Object.entries(shape)
+        .filter(([, child]) => !optional(child))
+        .map(([key]) => key)
+        .sort();
+      expect([...(named[name]!.required ?? [])].sort(), name).toEqual(expected);
+      objects += 1;
+      defaulted += Object.values(shape).filter(
+        (child) => (child._def as { typeName: string }).typeName === "ZodDefault",
+      ).length;
+    }
+    expect(objects).toBeGreaterThanOrEqual(15);
+    // The ones the converter used to leave out are in this proof: Settings, UiPreferences, Connector, Skill, Routine.
+    expect(defaulted).toBeGreaterThan(40);
+    for (const name of ["Settings", "UiPreferences", "Connector", "Skill", "Routine"])
+      expect(named[name]!.required?.length, name).toBeGreaterThan(5);
+    // And in the operations: the inline schema of a response with a default is as strict (`GET /api/meta`).
+    const meta = (
+      doc.paths["/api/v1/meta"]!.get as {
+        responses: Record<string, { content: Record<string, { schema: { required?: string[] } }> }>;
+      }
+    ).responses["200"]!.content["application/json"]!.schema;
+    expect([...(meta.required ?? [])].sort()).toEqual(
+      Object.keys(((API["meta.get"].responses[200] as z.AnyZodObject).shape ?? {}) as object)
+        .filter((key) => !optional((API["meta.get"].responses[200] as z.AnyZodObject).shape[key]))
+        .sort(),
+    );
+  });
+
+  it("C15 the flags of a query are documented as the texts they read", () => {
+    const flags: Array<[string, string]> = [
+      ["/api/v1/notifications", "unread"],
+      ["/api/v1/skills/registry", "refresh"],
+      ["/api/v1/memory/graph", "related"],
+      ["/api/v1/memory/recall", "record"],
+      ["/api/v1/memory/facts", "includeExpired"],
+    ];
+    for (const [path, name] of flags) {
+      const parameters = (doc.paths[path]!.get as { parameters: Array<{ name: string; schema: unknown }> })
+        .parameters;
+      expect(parameters.find((p) => p.name === name)!.schema, `${path} ${name}`).toEqual({
+        type: "string",
+        enum: ["1", "true", "0", "false"],
+      });
+    }
+  });
+
   it("C17 each operation lists the error envelope for its errors", () => {
     let checked = 0;
     for (const [id, entry] of entries) {
@@ -221,7 +295,9 @@ describe("S3 the document", () => {
           entry.body !== undefined ||
           entry.method !== "GET",
       );
-      expect(has(413), `${id} 413`).toBe(true);
+      expect(has(413), `${id} 413`).toBe(
+        entry.method !== "GET" || declaredErrors(entry).some((e) => e.status === 413),
+      );
       expect(has(415), `${id} 415`).toBe(
         entry.method !== "GET" || entry.errors?.some((e) => e.status === 415) === true,
       );
@@ -232,6 +308,41 @@ describe("S3 the document", () => {
     expect(operationOf(API["backups.create"]).responses["409"]!.description).toMatch(
       /restore_in_progress.*restore_leftover.*restore_recovery_failed.*restore_lock_unusable/,
     );
+  });
+
+  it("C17 the refusals of the file readers are listed only by the routes that read files", () => {
+    // `403 forbidden_path`, `404 not_a_file` and `413 file_too_large` were on all 127 operations; `GET /api/settings`
+    // cannot answer them. Each is listed by the routes that name a path or read a file, and by no other.
+    const where = (status: number, code: string) =>
+      entries
+        .filter(([, e]) => declaredErrors(e).some((x) => x.status === status && x.code === code))
+        .map(([, e]) => routeKey(e))
+        .sort();
+    const files = where(404, "not_a_file");
+    expect(where(413, "file_too_large")).toEqual(files);
+    // The areas that read and write files, and the one route outside them that reads a changed file.
+    const areas = ["/api/memory/", "/api/skills", "/api/artifacts/", "/api/sync/", "/api/microapps/"];
+    expect(files).toEqual(
+      entries
+        .map(([, e]) => e)
+        .filter((e) => areas.some((a) => e.path.startsWith(a)) || routeKey(e) === "GET /api/runs/:id/diff")
+        .map(routeKey)
+        .sort(),
+    );
+    expect(files).toContain("GET /api/memory/preview");
+    expect(files).toContain("GET /api/runs/:id/diff");
+    const paths = where(403, "forbidden_path");
+    for (const file of files) expect(paths).toContain(file);
+    expect(paths).toContain("POST /api/runs");
+    for (const quiet of [
+      "GET /api/settings",
+      "GET /api/health",
+      "GET /api/metrics",
+      "DELETE /api/sessions/:id",
+    ])
+      expect(paths, quiet).not.toContain(quiet);
+    expect(paths.length).toBeLessThan(70);
+    expect(paths.length).toBeGreaterThan(40);
   });
 
   it("C18 the 403, 409, 413, 422 and 429 of the earlier features are documented", () => {
@@ -247,6 +358,9 @@ describe("S3 the document", () => {
       [422, "backup_invalid"],
       [422, "backup_unsealed"],
     ];
+    // The 429 of the lock-out says how long to wait: every operation carries `Retry-After` on it.
+    for (const [id, entry] of entries)
+      expect(operationOf(entry).responses["429"]!.headers, `${id} 429`).toHaveProperty("Retry-After");
     for (const [status, code] of named) {
       const ops = entries.filter(([, e]) =>
         declaredErrors(e).some((x) => x.status === status && x.code === code),
@@ -373,5 +487,63 @@ describe("S3 the document", () => {
     expect(validate({ run: {}, events: [] })).toBe(false);
     expect(validate({ ...(run.answer.body as object), events: "none" })).toBe(false);
     expect(routeKey(run.entry)).toBe("GET /api/runs/:id");
+  });
+
+  it("C21 the document keeps every object open: a key it does not name is accepted", () => {
+    // Decision 4 of the owner questions, AC 26 and the text of `info.description`: a client ignores a key it does not
+    // know, so the document must not close an object (`additionalProperties: false` would break a generated client
+    // at the first additive field). No schema of the document is closed, in a component or in an operation...
+    const closed: string[] = [];
+    const visit = (node: unknown, at: string): void => {
+      if (Array.isArray(node)) return node.forEach((item, i) => visit(item, `${at}[${i}]`));
+      if (typeof node !== "object" || node === null) return;
+      for (const [key, value] of Object.entries(node)) {
+        if (key === "additionalProperties" && value === false) closed.push(at);
+        visit(value, `${at}.${key}`);
+      }
+    };
+    visit(doc.paths, "paths");
+    visit(doc.components.schemas, "components.schemas");
+    expect(closed).toEqual([]);
+    // ...and a real response with an extra key, at the top and in every object below, still validates.
+    const ajv = new Ajv2020({ strict: false, allErrors: true });
+    addFormats(ajv);
+    // Add the key to every object the schema describes by `properties` (not to a map, whose values are of one type).
+    type Node = {
+      $ref?: string;
+      properties?: Record<string, Node>;
+      items?: Node;
+      additionalProperties?: Node | boolean;
+    };
+    const resolve = (node: Node): Node =>
+      node.$ref ? (doc.components.schemas[node.$ref.split("/").pop()!] as Node) : node;
+    const widen = (schema: Node, value: unknown): unknown => {
+      const node = resolve(schema);
+      if (Array.isArray(value)) return node.items ? value.map((item) => widen(node.items!, item)) : value;
+      if (typeof value !== "object" || value === null) return value;
+      const entries = Object.entries(value).map(([key, child]) => {
+        const next =
+          node.properties?.[key] ??
+          (typeof node.additionalProperties === "object" ? node.additionalProperties : null);
+        return [key, next ? widen(next, child) : child];
+      });
+      return node.properties
+        ? { ...Object.fromEntries(entries), "x-added-later": 1 }
+        : Object.fromEntries(entries);
+    };
+    let checked = 0;
+    for (const { entry, answer } of results) {
+      const spec = entry.responses[answer.status]!;
+      if (isRawResponse(spec)) continue;
+      const schema =
+        operationOf(entry).responses[String(answer.status)]!.content!["application/json"]!.schema;
+      const validate = ajv.compile({ ...(schema as object), components: doc.components });
+      expect(
+        validate(widen(schema as Node, answer.body)),
+        `${routeKey(entry)}: ${JSON.stringify(validate.errors?.slice(0, 2))}`,
+      ).toBe(true);
+      checked += 1;
+    }
+    expect(checked).toBeGreaterThan(100);
   });
 });

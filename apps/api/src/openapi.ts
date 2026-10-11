@@ -4,8 +4,11 @@ import type { z } from "zod";
 import {
   API,
   NAMED_SCHEMAS,
+  QUERY_FLAG_TEXTS,
+  QueryFlag,
   declaredErrors,
   isRawResponse,
+  wireSchema,
   type ErrorDoc,
   type RouteDefinition,
 } from "@mordomo/contracts";
@@ -28,7 +31,14 @@ export type JsonSchema = Record<string, unknown>;
 
 export interface OpenApiDocument {
   openapi: "3.1.0";
-  info: { title: string; version: string; description: string };
+  info: {
+    title: string;
+    version: string;
+    description: string;
+    license: { name: string; url: string };
+  };
+  /** The API is served from the root of the origin that served the document. */
+  servers: Array<{ url: string; description: string }>;
   paths: Record<string, Record<string, Record<string, unknown>>>;
   components: {
     securitySchemes: Record<string, unknown>;
@@ -36,13 +46,20 @@ export interface OpenApiDocument {
   };
 }
 
-/** The named schemas by the zod definition that stands for them: where one is used, the document points at it. */
+/**
+ * The named schemas by the zod definition that stands for them (the wire form of each: what a response carries), so
+ * that where a response uses one, the document points at it.
+ */
 const NAME_OF = new Map<unknown, string>(
-  Object.entries(NAMED_SCHEMAS).map(([name, schema]) => [schema._def, name]),
+  Object.entries(NAMED_SCHEMAS).map(([name, schema]) => [wireSchema(schema)._def, name]),
 );
 
-/** Converter options. `except` is the named schema being described itself: its own body is not a pointer to itself. */
-function schemaOptions(except?: string) {
+/**
+ * Converter options. `except` is the named schema being described itself: its own body is not a pointer to itself.
+ * `named` is false for a request part: a request is described by its INPUT type (a key with a default is optional),
+ * so it is not pointed at the components, which are the output types.
+ */
+function schemaOptions(except?: string, named = true) {
   return {
     // The wire is closed by `checkResponse`, not by the schema: a reader accepts a key it does not know (docs/events.md).
     removeAdditionalStrategy: "strict" as const,
@@ -50,7 +67,9 @@ function schemaOptions(except?: string) {
     $refStrategy: "none" as const,
     target: "jsonSchema7" as const,
     override: (def: unknown) => {
-      const name = NAME_OF.get(def);
+      // A flag in a query is the four texts it reads, not the boolean it becomes.
+      if (def === QueryFlag._def) return { type: "string", enum: [...QUERY_FLAG_TEXTS] };
+      const name = named ? NAME_OF.get(def) : undefined;
       return name !== undefined && name !== except
         ? { $ref: `#/components/schemas/${name}` }
         : ignoreOverride;
@@ -94,10 +113,16 @@ export function findUnexpressible(schema: z.ZodTypeAny, seen = new Set<unknown>(
   return null;
 }
 
-function toJsonSchema(schema: z.ZodTypeAny, where: string): JsonSchema {
+/** The schema of a request part (`wire` false: its input type) or of what a response carries (`wire` true). */
+function toJsonSchema(schema: z.ZodTypeAny, where: string, wire = false): JsonSchema {
   const bad = findUnexpressible(schema);
   if (bad) throw new Error(`${where}: ${bad} has no JSON Schema, so the route cannot be described`);
-  const out = zodToJsonSchema(schema, schemaOptions()) as JsonSchema & { $schema?: string };
+  const out = zodToJsonSchema(
+    wire ? wireSchema(schema) : schema,
+    schemaOptions(undefined, wire),
+  ) as JsonSchema & {
+    $schema?: string;
+  };
   // The schema is a node of the document, not a document: its dialect is the document's.
   delete out.$schema;
   return out;
@@ -183,7 +208,7 @@ function operation(id: string, route: RouteDefinition): Record<string, unknown> 
           )
         : undefined;
     if (isRawResponse(spec)) {
-      const frame = spec.frame ? toJsonSchema(spec.frame, `${where} ${status} frame`) : null;
+      const frame = spec.frame ? toJsonSchema(spec.frame, `${where} ${status} frame`, true) : null;
       responses[status] = {
         description: spec.description,
         content: Object.fromEntries(
@@ -199,7 +224,7 @@ function operation(id: string, route: RouteDefinition): Record<string, unknown> 
     } else {
       responses[status] = {
         description: "Success",
-        content: { "application/json": { schema: toJsonSchema(spec, `${where} ${status}`) } },
+        content: { "application/json": { schema: toJsonSchema(spec, `${where} ${status}`, true) } },
         ...(headers ? { headers } : {}),
       };
     }
@@ -241,7 +266,7 @@ export function openApiDocument(table: Readonly<Record<string, RouteDefinition>>
   const schemas: Record<string, JsonSchema> = {};
   for (const [name, schema] of Object.entries(NAMED_SCHEMAS)) {
     // A named schema may name another one: it is described next to them, not inside them.
-    const json = zodToJsonSchema(schema, schemaOptions(name)) as JsonSchema;
+    const json = zodToJsonSchema(wireSchema(schema), schemaOptions(name)) as JsonSchema;
     delete json.$schema;
     schemas[name] = json;
   }
@@ -250,6 +275,10 @@ export function openApiDocument(table: Readonly<Record<string, RouteDefinition>>
     info: {
       title: "MordomoOS API",
       version: String(API_VERSION),
+      license: {
+        name: "FSL-1.1-ALv2",
+        url: "https://github.com/tvpl/agentic-os/blob/main/LICENSE",
+      },
       description:
         "Local API of MordomoOS. /api/v1 is the documented path; the unversioned /api is a deprecated alias. " +
         "Every route that is not public declares the scope that may call it (x-mordomo-scope): the owner (the local " +
@@ -258,6 +287,7 @@ export function openApiDocument(table: Readonly<Record<string, RouteDefinition>>
         "POST /api/v1/stream-tickets. Every status >= 400 is the single error envelope (components.schemas.Error). " +
         "The schemas describe what the server sends; a client must ignore a key it does not know (docs/events.md).",
     },
+    servers: [{ url: "/", description: "The origin that served this document (the local service)" }],
     paths,
     components: {
       securitySchemes: {

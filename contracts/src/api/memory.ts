@@ -1,6 +1,6 @@
 /** The second brain: the file index, search, graph, previews, recall, the journal, hygiene and bi-temporal facts. */
 import { z } from "zod";
-import { err, notFound } from "./common.js";
+import { QueryFlag, err, notFound } from "./common.js";
 import { route } from "./route.js";
 
 // ---- schemas ---------------------------------------------------------------------------------------------------
@@ -242,7 +242,7 @@ export const memoryRoutes = {
       dir: z.string().optional(),
       q: z.string().optional(),
       maxNodes: z.coerce.number().int().min(10).max(4000).optional(),
-      related: z.coerce.boolean().optional(),
+      related: QueryFlag,
     }),
     responses: { 200: GraphDataSchema },
   }),
@@ -315,7 +315,7 @@ export const memoryRoutes = {
       area: z.string().optional(),
       excerptChars: z.coerce.number().int().min(200).max(20_000).optional(),
       /** Skip the frequency bookkeeping (dry runs, UI previews). */
-      record: z.coerce.boolean().optional(),
+      record: QueryFlag,
     }),
     responses: { 200: RecallResultSchema },
   }),
@@ -387,7 +387,7 @@ export const memoryRoutes = {
       subject: z.string().max(2000).optional(),
       predicate: z.string().max(2000).optional(),
       asOf: z.coerce.number().int().optional(),
-      includeExpired: z.coerce.boolean().optional(),
+      includeExpired: QueryFlag,
       limit: z.coerce.number().int().min(1).max(2000).optional(),
     }),
     responses: {
