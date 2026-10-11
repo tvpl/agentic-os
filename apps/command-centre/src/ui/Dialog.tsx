@@ -10,7 +10,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { useT } from "../i18n";
 import { prefersReducedMotion, usePresence } from "../hooks/usePresence";
-import { controlOfPanelAround, initialTarget, registerHangsFrom, useDialogLayer } from "./layers";
+import { controlOfPanelAround, initialTarget, noteEscape, registerHangsFrom, useDialogLayer } from "./layers";
 
 const EXIT_MS = 160;
 
@@ -48,10 +48,18 @@ function Sheet({
   initialFocus,
   dismissOnPress,
   sheetProps,
+  open,
   children,
 }: Pick<
   DialogSurfaceProps,
-  "label" | "labelledBy" | "className" | "initialFocus" | "dismissOnPress" | "sheetProps" | "children"
+  | "label"
+  | "labelledBy"
+  | "className"
+  | "initialFocus"
+  | "dismissOnPress"
+  | "sheetProps"
+  | "children"
+  | "open"
 >) {
   const ref = useRef<HTMLDivElement>(null);
   // What held focus when the dialog opened: Radix hands focus back to a trigger only, and these have none.
@@ -59,7 +67,9 @@ function Sheet({
   // ...and, if that was an item of a menu or a control of a popover, what the panel hung from: the item
   // is gone by the time the dialog closes, the control is not.
   const [control] = useState(() => controlOfPanelAround(document.activeElement));
-  useDialogLayer(ref);
+  // On the stack while it is open: a dialog that is leaving (its exit plays for 160 ms) no longer holds the
+  // page inert nor the registry's modal scope, so the next Escape is the screen's.
+  useDialogLayer(ref, open);
   // A dialog opened from inside this one (the palette's "Keyboard shortcuts") finds this one gone when it
   // closes: it goes back to what this one goes back to.
   useEffect(() => {
@@ -78,6 +88,7 @@ function Sheet({
       tabIndex={-1}
       // Radix focuses the first control it finds; the app wants a field first, and says where when it knows.
       // (Doing it here, rather than by hand, lets the focus trap know where focus is from the start.)
+      onEscapeKeyDown={(event) => noteEscape(event, ref.current)}
       onOpenAutoFocus={(event) => {
         event.preventDefault();
         const el = ref.current;
@@ -125,6 +136,7 @@ export function DialogSurface({
       initialFocus={initialFocus}
       dismissOnPress={dismissOnPress}
       sheetProps={sheetProps}
+      open={open}
     >
       {children}
     </Sheet>

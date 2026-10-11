@@ -135,4 +135,19 @@ describe("C14 tooltip", () => {
     expect(screen.getByRole("tooltip")).toBeTruthy();
     expect(save.hasAttribute("aria-describedby")).toBe(false);
   });
+
+  it('C37 the padding is ignored on the control\'s side too: aria-label "Save " against the hint "Save" adds nothing', async () => {
+    mount(
+      <UiProvider>
+        <Tooltip label="Save">
+          <button aria-label="Save ">s</button>
+        </Tooltip>
+      </UiProvider>,
+    );
+    const save = screen.getByRole("button", { name: "Save" });
+    act(() => save.focus());
+    await tick();
+    expect(screen.getByRole("tooltip")).toBeTruthy();
+    expect(save.hasAttribute("aria-describedby")).toBe(false);
+  });
 });

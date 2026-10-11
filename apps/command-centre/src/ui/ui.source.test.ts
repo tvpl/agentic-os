@@ -109,6 +109,7 @@ describe("C3 the primitives live in src/ui, and only there is Radix imported", (
         "Tooltip",
         "UiProvider",
         "escapeLayerOpen",
+        "escapeWasForAnOpenLayer",
         "keyLayerOpen",
         "focusables",
         "getDialogDepth",

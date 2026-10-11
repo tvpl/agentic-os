@@ -113,6 +113,15 @@ há um acima, para uma view solta num teste).
   marca para deixar à camada o Esc que ela tomou aberta, e não pode deixar-lhe o que ela tomou saindo (o segundo
   toque de um duplo toque rápido). Os conteúdos de popover, menu e dica chamam `noteEscape` em
   `onEscapeKeyDown`, que anota o Esc tomado com `data-state="closed"`; a gaveta o fecha mesmo marcado (AC 33).
+- O diálogo que sai (o `Modal` toca 160 ms de saída) obedece à mesma regra, e por mais três lugares: `Dialog` chama
+  `noteEscape` no seu `onEscapeKeyDown`; a folha entra na pilha de `ui/layers.ts` só enquanto `open`
+  (`useDialogLayer(ref, open)`), de modo que um diálogo que sai não segura o `inert`, a profundidade nem o escopo
+  `modal`; e o registro pergunta `escapeWasForAnOpenLayer(e)` (exportada de `ui/layers.ts`: marcado e não tomado
+  saindo) no lugar de qualquer `defaultPrevented`, e não trata como "quem digita" o campo de um
+  `[role="dialog"][data-state="closed"]` para o Esc (o `home` do Núcleo não roda num campo). Com isso o segundo
+  Esc de um duplo toque, 0, 100 ou 200 ms depois, é da tela (AC 40). O Esc de `RunsScene` não deixa um diálogo que
+  sai segurá-lo; as guardas de `RoutinesScene` e do cérebro não precisam do mesmo (o comando `home` do registro
+  as alcança), e por isso não mudam.
 - Um diálogo aberto de dentro de um painel flutuante (um item de menu, um botão do sino) guarda, ao abrir, o
   controle de que o painel pendia (`ui/layers.ts: controlOfPanelAround`; o menu do Radix nomeia o seu
   gatilho, o `Popover` registra a sua âncora) e devolve o foco a ele se o opener já não existe (AC 36). Um diálogo registra também o que ele próprio devolve, e

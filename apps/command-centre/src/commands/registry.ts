@@ -38,7 +38,7 @@ import {
 } from "react";
 import type { LucideIcon } from "lucide-react";
 import type { TKey } from "../i18n";
-import { getDialogDepth } from "../ui";
+import { escapeWasForAnOpenLayer, getDialogDepth } from "../ui";
 import { canonicalCombo, hasModifier, isMac, isTypingTarget, matchesCombo } from "./keys";
 
 export type CommandScope = "global" | "moldura" | "nucleo" | `view:${string}` | "overlay" | "modal";
@@ -177,9 +177,11 @@ export class CommandRegistry {
     });
     for (const [scope, n] of this.layers) if (n > 0 && !last.has(scope)) last.set(scope, -1);
     // A dialog is up (the stack in ui/layers), or the key came from inside one. A popover
-    // (`aria-modal="false"`: the frame's bell) is not a modal: the screen behind it stays live.
+    // (`aria-modal="false"`: the frame's bell) is not a modal: the screen behind it stays live; nor is a
+    // dialog that is leaving (`data-state="closed"`, its exit still playing with focus inside it).
     const inDialog =
-      target instanceof Element && target.closest('[role="dialog"]:not([aria-modal="false"])') !== null;
+      target instanceof Element &&
+      target.closest('[role="dialog"]:not([aria-modal="false"]):not([data-state="closed"])') !== null;
     if ((getDialogDepth() > 0 || inDialog) && !last.has("modal")) last.set("modal", -1);
     const scopes = [...last.keys()].sort(
       (a, b) => scopeRank(b) - scopeRank(a) || last.get(b)! - last.get(a)!,
@@ -193,10 +195,18 @@ export class CommandRegistry {
     // A key that belongs to someone else: already handled (`defaultPrevented`), part of an IME
     // composition (`isComposing`, and keyCode 229, which is all Safari says for the key that
     // ends one), or the guided tour's (it owns the keyboard while it is up).
-    if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return false;
+    if (escapeWasForAnOpenLayer(e) || e.isComposing || e.keyCode === 229) return false;
     if (document.documentElement.dataset.onboarding) return false;
     const mac = isMac();
-    const typing = isTypingTarget(e.target);
+    // A field inside a dialog that is leaving (`data-state="closed"`, focus still in it for the length of
+    // its exit) is not one the person is typing in any more: its Escape is the screen's.
+    const typing =
+      isTypingTarget(e.target) &&
+      !(
+        e.key === "Escape" &&
+        e.target instanceof Element &&
+        e.target.closest('[role="dialog"][data-state="closed"]')
+      );
     for (const scope of this.activeScopes(e.target)) {
       for (const c of this.snapshot) {
         if (c.scope !== scope) continue;

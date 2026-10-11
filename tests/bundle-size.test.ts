@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import zlib from "node:zlib";
+import { parse } from "yaml";
 import { afterEach, describe, expect, it } from "vitest";
 
 /**
@@ -14,6 +15,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const script = path.join(root, "scripts", "bundle-size.mjs");
+const bounds = path.join(root, "scripts", "bundle-bounds.mjs");
 const baseline = JSON.parse(fs.readFileSync(path.join(root, "scripts", "bundle-baseline.json"), "utf8")) as {
   tolerance: number;
   before: { commit: string; jsGzip: number };
@@ -61,13 +63,13 @@ describe("C31 the weight guard", () => {
     // The bundle only gets recorded heavier, with a reason: the newest entry is never below the build before.
     expect(baseline.after.at(-1)!.jsGzip).toBeGreaterThanOrEqual(baseline.before.jsGzip);
     // The script takes its numbers from the baseline and holds no tolerance of its own.
-    const source = fs.readFileSync(script, "utf8");
+    const source = fs.readFileSync(bounds, "utf8");
     expect(source).toContain("bundle-baseline.json");
     expect(source).not.toMatch(/TOLERANCE\s*=\s*[\d.]+/);
   });
 
   it("C31 the limit is the NEWEST recorded build's: a build between the oldest and the newest limit passes", async () => {
-    const mod = (await import(pathToFileURL(script).href)) as {
+    const mod = (await import(pathToFileURL(bounds).href)) as {
       AFTER: { jsGzip: number };
       measure: (dir: string) => { jsGzip: number };
     };
@@ -98,7 +100,7 @@ describe("C31 the weight guard", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "bundle é dir "));
     dirs.push(home);
     fs.mkdirSync(path.join(home, "scripts"));
-    for (const file of ["bundle-size.mjs", "bundle-baseline.json"])
+    for (const file of ["bundle-size.mjs", "bundle-bounds.mjs", "bundle-baseline.json"])
       fs.copyFileSync(path.join(root, "scripts", file), path.join(home, "scripts", file));
     const limit = Math.round(baseline.after.at(-1)!.jsGzip * 1.05);
     const run = (dir: string) =>
@@ -113,40 +115,68 @@ describe("C31 the weight guard", () => {
     expect(under.stdout).toContain("within");
   });
 
+  // A symlink needs a privilege on Windows; the check has no link-dependent code (the next test reads that).
+  it.skipIf(process.platform === "win32")(
+    "C31 the check measures when the checkout is reached through a symlink (the command has no entry-point test to disagree)",
+    () => {
+      const home = fs.mkdtempSync(path.join(os.tmpdir(), "bundle-link-"));
+      dirs.push(home);
+      const link = path.join(home, "checkout link");
+      fs.symlinkSync(root, link, "dir");
+      const limit = Math.round(baseline.after.at(-1)!.jsGzip * 1.05);
+      const run = (dir: string) =>
+        spawnSync(
+          process.execPath,
+          [path.join(link, "scripts", "bundle-size.mjs"), "--check", "--dist", dir],
+          {
+            encoding: "utf8",
+          },
+        );
+      const over = run(dist(limit + 150_000));
+      expect(over.status, "an oversized bundle fails through a link").toBe(1);
+      expect(over.stdout.length).toBeGreaterThan(0);
+      expect(run(dist(limit - 20_000)).status).toBe(0);
+    },
+  );
+
+  it("C31 the command measures however it is called: its source holds no test of how it was reached", () => {
+    const source = fs.readFileSync(script, "utf8");
+    expect(source).not.toMatch(/import\.meta\.(url|main)|process\.argv\[1\]|pathToFileURL|realpath/);
+  });
+
   it("C31 a folder with nothing to measure fails the check instead of passing it", () => {
     const empty = fs.mkdtempSync(path.join(os.tmpdir(), "bundle-"));
     dirs.push(empty);
     expect(check(empty).status).toBe(1);
   });
 
-  it("C31 package.json has the script, and CI runs it after the build as a step of its own: no condition, no escape", () => {
+  it("C31 package.json has the script, and CI runs it after the build as a step of its own: no condition, no escape (the workflow is parsed)", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as {
       scripts: Record<string, string>;
     };
     expect(pkg.scripts["bundle:check"]).toBe("node scripts/bundle-size.mjs --check");
-    const lines = fs.readFileSync(path.join(root, ".github", "workflows", "ci.yml"), "utf8").split(/\r?\n/);
-    const at = lines.findIndex((line) => /run:\s*npm run bundle:check/.test(line));
+    type Step = Record<string, unknown>;
+    type Job = Record<string, unknown> & { steps: Step[]; strategy?: { matrix?: Record<string, unknown> } };
+    const workflow = parse(fs.readFileSync(path.join(root, ".github", "workflows", "ci.yml"), "utf8")) as {
+      jobs: Record<string, Job>;
+    };
+    const job = workflow.jobs.check!;
+    expect(job, "the job `check` exists").toBeTruthy();
+    // The job runs on every leg of its matrix, and nothing it does is allowed to fail quietly.
+    for (const key of ["if", "continue-on-error", "needs"]) expect(job[key], `job ${key}`).toBeUndefined();
+    const matrix = job.strategy?.matrix ?? {};
+    for (const key of ["exclude", "include"]) expect(matrix[key], `matrix ${key}`).toBeUndefined();
+    expect(matrix.os).toEqual(["ubuntu-latest", "macos-latest", "windows-latest"]);
+    const at = job.steps.findIndex((step) => typeof step.run === "string" && /bundle:check/.test(step.run));
     expect(at, "the step exists").toBeGreaterThan(0);
-    // The step: from its `- ` line to the line before the next one at the same indent.
-    let start = at;
-    while (start > 0 && !/^\s*- /.test(lines[start]!)) start--;
-    const indent = /^(\s*)- /.exec(lines[start]!)![1]!.length;
-    let end = start + 1;
-    while (
-      end < lines.length &&
-      !(new RegExp(`^ {${indent}}- `).test(lines[end]!) || /^\S/.test(lines[end]!))
-    )
-      end++;
-    const step = lines.slice(start, end).join("\n");
-    expect(step, "run is exactly the script").toMatch(/run:\s*npm run bundle:check\s*$/m);
-    expect(step).not.toMatch(/\bif:/);
-    expect(step).not.toMatch(/continue-on-error/);
-    expect(step).not.toMatch(/\|\||&&|;/);
-    // In the `check` job (before the e2e job), after the build.
-    const build = lines.findIndex((line) => /run:\s*npm run build\s*$/.test(line));
-    const e2e = lines.findIndex((line) => /^ {2}e2e:/.test(line));
-    expect(build).toBeGreaterThan(0);
-    expect(start).toBeGreaterThan(build);
-    expect(start).toBeLessThan(e2e);
+    const step = job.steps[at]!;
+    expect(step.run).toBe("npm run bundle:check");
+    expect(Object.keys(step).sort(), "a step of its own: a name and a run, nothing else").toEqual([
+      "name",
+      "run",
+    ]);
+    const build = job.steps.findIndex((other) => other.run === "npm run build");
+    expect(build, "after the build").toBeGreaterThanOrEqual(0);
+    expect(at).toBeGreaterThan(build);
   });
 });

@@ -11,7 +11,7 @@ import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DropdownMenu, Popover, Tooltip, useDrawer } from ".";
 import { noteEscape } from "./layers";
-import { installPage, mount, motion, tick } from "./testkit";
+import { giveLayersAnExit, installPage, mount, motion, tick } from "./testkit";
 
 installPage();
 
@@ -168,4 +168,55 @@ describe("C33 the drawer takes Escape for itself and leaves to a layer above it 
       },
     );
   });
+
+  /** The same, with the layer's exit playing when the second Escape comes: the layer is still in Radix's stack, closed. */
+  const quickSecondEscape = async (
+    ui: (state: { onClose: () => void }) => React.ReactElement,
+    layer: () => HTMLElement | null,
+    reach: (user: ReturnType<typeof userEvent.setup>) => Promise<void>,
+    wait: number,
+  ) => {
+    const exit = giveLayersAnExit();
+    try {
+      const onClose = vi.fn();
+      mount(ui({ onClose }));
+      await settle();
+      const user = userEvent.setup();
+      await reach(user);
+      await tick();
+      expect(layer()?.getAttribute("data-state")).toBe("open");
+      await user.keyboard("{Escape}");
+      await tick(wait);
+      const leaving = layer();
+      expect(leaving?.getAttribute("data-state"), "the exit is playing").toBe("closed");
+      expect(onClose).not.toHaveBeenCalled();
+      await user.keyboard("{Escape}");
+      expect(onClose, "the second Escape is the drawer's").toHaveBeenCalledTimes(1);
+      exit.finish(leaving!);
+    } finally {
+      exit.restore();
+    }
+  };
+
+  for (const wait of [0, 100, 200])
+    it(`C33 a menu in the drawer that is leaving (second Escape ${wait} ms after the first) does not swallow the second Escape`, async () => {
+      await quickSecondEscape(
+        (s) => (
+          <Drawer {...s}>
+            {() => (
+              <DropdownMenu
+                trigger={<button>more</button>}
+                items={[{ id: "a", label: "Alpha", onSelect: () => undefined }]}
+              />
+            )}
+          </Drawer>
+        ),
+        () => document.querySelector<HTMLElement>(".ui-menu"),
+        async (user) => {
+          screen.getByRole("button", { name: "more" }).focus();
+          await user.keyboard("{Enter}");
+        },
+        wait,
+      );
+    });
 });

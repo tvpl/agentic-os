@@ -131,6 +131,10 @@ export function keyLayerOpen(): boolean {
  * already closing (the second tap of a quick double tap).
  */
 const escapeTakenClosing = new WeakSet<Event>();
+/** Whether an Escape marked handled was a layer's own: one taken while the layer was open (not while it was leaving). */
+export function escapeWasForAnOpenLayer(event: Event): boolean {
+  return event.defaultPrevented && !escapeTakenClosing.has(event);
+}
 export function noteEscape(event: Event, panel: Element | null): void {
   if (panel?.getAttribute("data-state") === "closed") escapeTakenClosing.add(event);
 }
@@ -258,7 +262,7 @@ export function useDrawer(
       // A Radix layer above this panel (a popover over the chat drawer, a hint on a control inside the
       // sidebar) already took the key in its capture listener and marked it handled: that Escape was
       // its own, and the panel closes on the next one. The registry reads the mark the same way.
-      if (e.defaultPrevented && !escapeTakenClosing.has(e)) return;
+      if (escapeWasForAnOpenLayer(e)) return;
       if (stack[stack.length - 1] !== entry) return;
       if (e.key === "Escape") {
         e.preventDefault();

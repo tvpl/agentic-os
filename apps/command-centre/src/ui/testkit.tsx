@@ -5,7 +5,7 @@
  */
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, vi } from "vitest";
-import { cleanup, render, type RenderResult } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, type RenderResult } from "@testing-library/react";
 import { I18nContext } from "../i18n";
 
 export const motion = { reduced: false };
@@ -58,3 +58,35 @@ export function mount(ui: ReactElement): RenderResult {
 
 /** Let the timers Radix sets at mount (the outside-press listener is added on the next tick) run. */
 export const tick = (ms = 5) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * jsdom plays no animation, so a Radix layer is gone the moment it closes and "a layer that is leaving"
+ * cannot be seen. This gives every element that carries a `data-state` an exit: while it reads `closed` it
+ * has a running animation, so Radix keeps it mounted (still `data-state="closed"`, still in its layer stack)
+ * until `finish` ends the animation, as a browser does after the CSS exit. Returns `restore` too.
+ */
+export function giveLayersAnExit() {
+  const real = window.getComputedStyle.bind(window);
+  const hadCss = "CSS" in globalThis;
+  if (!hadCss) (globalThis as { CSS?: unknown }).CSS = { escape: (name: string) => name };
+  window.getComputedStyle = ((el: Element, pseudo?: string | null) => {
+    const style = real(el, pseudo);
+    if (!el.getAttribute?.("data-state")) return style;
+    return new Proxy(style, {
+      get(target, key) {
+        if (key === "animationName")
+          return el.getAttribute("data-state") === "closed" ? "ui-exit" : "ui-enter";
+        const value = Reflect.get(target, key) as unknown;
+        return typeof value === "function" ? (value as () => unknown).bind(target) : value;
+      },
+    });
+  }) as typeof window.getComputedStyle;
+  return {
+    /** The exit is over: the layer unmounts. */
+    finish: (el: Element) => act(() => void fireEvent.animationEnd(el, { animationName: "ui-exit" })),
+    restore: () => {
+      window.getComputedStyle = real;
+      if (!hadCss) delete (globalThis as { CSS?: unknown }).CSS;
+    },
+  };
+}

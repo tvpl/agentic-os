@@ -18,6 +18,7 @@ export { Tooltip, UiProvider } from "./Tooltip";
 export type { TooltipProps } from "./Tooltip";
 export {
   escapeLayerOpen,
+  escapeWasForAnOpenLayer,
   keyLayerOpen,
   getDialogDepth,
   subscribeDialogDepth,

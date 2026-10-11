@@ -6,6 +6,10 @@
  *
  * Escape guards (hint, popover or menu open): Runs, Routines (the classic sheet), the focus mode, the Brain.
  * Key guards (popover or menu open, not a hint): the Brain's Shift+1-4, the Skills ring's arrows and letters.
+ * A layer that is leaving (its exit still playing: a menu, a dialog) is no longer the one to leave the key to.
+ *
+ * No test waits a fixed time: each waits for the thing it needs (`waitFor`), and a claim that something did not
+ * happen is made after the key's own work is done (`flush`), on the marker the scene would have set.
  */
 import { useRef, useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,7 +19,8 @@ import type * as ApiModule from "../api";
 import { CommandRegistry } from "../commands/registry";
 import { installHarness, mountShell, press } from "../commands/testkit";
 import { server } from "../commands/testserver";
-import { DropdownMenu, Popover, Tooltip } from ".";
+import { DialogSurface, DropdownMenu, Popover, Tooltip } from ".";
+import { giveLayersAnExit } from "./testkit";
 
 vi.mock("../api", async (importOriginal) =>
   (await import("../commands/testserver")).mockApi(await importOriginal<typeof ApiModule>()),
@@ -24,18 +29,22 @@ vi.mock("../brain/BrainCanvas", () => ({ BrainCanvas: () => null }));
 vi.mock("../nucleo/scenes/BrainSceneCanvas", () => ({ BrainSceneCanvas: () => null }));
 
 installHarness();
-beforeEach(() => {
-  window.sessionStorage.clear();
-  window.localStorage.clear();
-});
+// (The harness marks the tour as done before each test and clears the storage after: clearing it here too
+// would put the tour back, and its Escape would swallow the key.)
+beforeEach(() => window.sessionStorage.clear());
 
 const SLOW = { timeout: 15_000 };
-const settle = (ms = 30) => act(async () => new Promise((r) => setTimeout(r, ms)));
+/** Let what the key set off (state, effects, microtasks) finish: not a wait for time to pass. */
+const flush = () => act(async () => undefined);
 
-/** Three ways to have a layer open, beside the scene: a hint, a popover and a menu. */
+/**
+ * Four ways to have a layer open, beside the scene: a hint, a popover, a menu and a dialog whose exit is long
+ * (a minute: once asked to close it stays, `closed`, for the whole test, so "leaving" is not a race).
+ */
 function Layers() {
   const anchor = useRef<HTMLButtonElement>(null);
   const [pop, setPop] = useState(false);
+  const [sheet, setSheet] = useState(false);
   return (
     <div data-testid="layers">
       <Tooltip label="Hint">
@@ -51,6 +60,15 @@ function Layers() {
         trigger={<button>menu</button>}
         items={[{ id: "a", label: "Alpha", onSelect: () => undefined }]}
       />
+      <button onClick={() => setSheet(true)}>sheet</button>
+      <DialogSurface
+        open={sheet}
+        onOpenChange={(next) => !next && setSheet(false)}
+        label="Sheet"
+        exitMs={60_000}
+      >
+        <input aria-label="in the sheet" />
+      </DialogSurface>
     </div>
   );
 }
@@ -60,14 +78,29 @@ const open = async (kind: Kind) => {
   if (kind === "hint") act(() => screen.getByRole("button", { name: "Hint control" }).focus());
   else if (kind === "popover") await user.click(screen.getByRole("button", { name: "pop" }));
   else await user.click(screen.getByRole("button", { name: "menu" }));
-  await settle();
+  await waitFor(() => expect(layerUp()).toBe(true));
 };
+/** Open the dialog and put the key where a person's is: in its field. Returns the dialog. */
+const openSheet = async () => {
+  await userEvent.setup().click(screen.getByRole("button", { name: "sheet" }));
+  const dialog = await screen.findByRole("dialog", { name: "Sheet" });
+  await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+  return dialog;
+};
+const escapeInTheSheet = () => press({ key: "Escape" }, document.activeElement ?? document.body);
 const layerUp = () =>
   document.querySelector(
     '.ui-tip[data-state$="open"], .popover[data-state="open"], .ui-menu[data-state="open"]',
   ) !== null;
 /** The key goes to the page, as a person's does when focus is on nothing in particular. */
 const onPage = (init: KeyboardEventInit) => press(init);
+
+/** The first Escape closes the layer; once it is closed (and what the key set off is done) the scene has not moved. */
+const layerTakesTheFirst = async () => {
+  onPage({ key: "Escape" });
+  await waitFor(() => expect(layerUp()).toBe(false));
+  await flush();
+};
 
 const mount = (path: string) =>
   mountShell(path, "nucleo", "en", new CommandRegistry(), { inside: <Layers /> });
@@ -76,52 +109,87 @@ describe("C34 Escape: the layer on top takes it, the scene on the next one", () 
   const KINDS: Kind[] = ["hint", "popover", "menu"];
 
   describe("the Runs scene: Escape steps back from the run", () => {
+    const run = () => document.querySelector(".rs-run");
+    const ready = async () => {
+      await mount("/runs/r1");
+      await waitFor(() => expect(run()).not.toBeNull(), SLOW);
+    };
     for (const kind of KINDS)
       it(`C34 with a ${kind} open the run stays; the next Escape leaves it`, async () => {
-        await mount("/runs/r1");
-        await waitFor(() => expect(document.querySelector(".rs-run")).not.toBeNull(), SLOW);
-        expect(window.location.hash).toBe("#/runs/r1");
-        await settle(200);
+        await ready();
         await open(kind);
-        onPage({ key: "Escape" });
-        await settle(500);
+        await layerTakesTheFirst();
+        expect(run()?.classList.contains("bye"), "the run is not leaving").toBe(false);
         expect(window.location.hash, "the run is still open").toBe("#/runs/r1");
-        await waitFor(() => expect(layerUp()).toBe(false));
         onPage({ key: "Escape" });
         await waitFor(() => expect(window.location.hash).toBe("#/runs"), SLOW);
       });
+
+    it("C34 a menu that is already leaving (its exit is playing) does not hold the Escape: the run steps back", async () => {
+      const exit = giveLayersAnExit();
+      try {
+        await ready();
+        await open("menu");
+        onPage({ key: "Escape" });
+        await waitFor(() =>
+          expect(document.querySelector(".ui-menu")?.getAttribute("data-state")).toBe("closed"),
+        );
+        onPage({ key: "Escape" });
+        await waitFor(() => expect(window.location.hash).toBe("#/runs"), SLOW);
+      } finally {
+        exit.restore();
+      }
+    });
+
+    it("C34 a dialog that is leaving (its exit is playing, focus still in it) does not hold the Escape: the run steps back", async () => {
+      await ready();
+      const dialog = await openSheet();
+      escapeInTheSheet();
+      await waitFor(() => expect(dialog.getAttribute("data-state")).toBe("closed"));
+      expect(run()?.classList.contains("bye"), "the first Escape was the dialog's").toBe(false);
+      escapeInTheSheet();
+      await waitFor(() => expect(window.location.hash).toBe("#/runs"), SLOW);
+    });
   });
 
   describe("the Routines scene: Escape closes the classic sheet", () => {
+    const sheet = () => document.querySelector(".rts-sheet");
+    const ready = async () => {
+      await mount("/routines");
+      fireEvent.click(await screen.findByRole("button", { name: "All routines" }, SLOW));
+      await waitFor(() => expect(sheet()).not.toBeNull());
+    };
     for (const kind of KINDS)
       it(`C34 with a ${kind} open the sheet stays; the next Escape closes it`, async () => {
-        await mount("/routines");
-        fireEvent.click(await screen.findByRole("button", { name: "All routines" }, SLOW));
-        await screen.findByRole("region", { name: /./ }, SLOW).catch(() => undefined);
-        const sheet = () => document.querySelector(".rts-sheet");
-        await waitFor(() => expect(sheet()).not.toBeNull());
+        await ready();
         await open(kind);
-        onPage({ key: "Escape" });
-        await settle(100);
+        await layerTakesTheFirst();
         expect(sheet(), "the sheet is still open").not.toBeNull();
-        await waitFor(() => expect(layerUp()).toBe(false));
         onPage({ key: "Escape" });
         await waitFor(() => expect(sheet()).toBeNull());
       });
+
+    it("C34 a dialog that is leaving does not hold the Escape: the next one closes the sheet", async () => {
+      await ready();
+      const dialog = await openSheet();
+      escapeInTheSheet();
+      await waitFor(() => expect(dialog.getAttribute("data-state")).toBe("closed"));
+      expect(sheet(), "the first Escape was the dialog's").not.toBeNull();
+      escapeInTheSheet();
+      await waitFor(() => expect(sheet()).toBeNull());
+    });
   });
 
   describe("the focus mode: Escape leaves it", () => {
+    const mode = () => document.querySelector("div.nu-focus");
     for (const kind of KINDS)
       it(`C34 with a ${kind} open the focus mode stays; the next Escape leaves it`, async () => {
         await mount("/");
         onPage({ key: "p" });
-        const mode = () => document.querySelector("div.nu-focus");
         await waitFor(() => expect(mode()).not.toBeNull(), SLOW);
         await open(kind);
-        onPage({ key: "Escape" });
-        await settle(100);
+        await layerTakesTheFirst();
         expect(mode(), "the focus mode is still up").not.toBeNull();
-        await waitFor(() => expect(layerUp()).toBe(false));
         onPage({ key: "Escape" });
         await waitFor(() => expect(mode()).toBeNull());
       });
@@ -157,16 +225,31 @@ describe("C34 the Brain scene", () => {
         const help = () => document.querySelector(".bs-help");
         await waitFor(() => expect(help()).not.toBeNull(), SLOW);
         await open(kind);
-        onPage({ key: "Escape" });
-        await settle(100);
+        await layerTakesTheFirst();
         expect(help(), "the help card is still open").not.toBeNull();
-        await waitFor(() => expect(layerUp()).toBe(false));
         onPage({ key: "Escape" });
         await waitFor(() => expect(help()).toBeNull());
       } finally {
         server.graph = null;
       }
     });
+
+  it("C34 a dialog that is leaving does not hold the Escape: the next one closes the help card", async () => {
+    server.graph = graph();
+    try {
+      await mount("/brain");
+      const help = () => document.querySelector(".bs-help");
+      await waitFor(() => expect(help()).not.toBeNull(), SLOW);
+      const dialog = await openSheet();
+      escapeInTheSheet();
+      await waitFor(() => expect(dialog.getAttribute("data-state")).toBe("closed"));
+      expect(help(), "the first Escape was the dialog's").not.toBeNull();
+      escapeInTheSheet();
+      await waitFor(() => expect(help()).toBeNull());
+    } finally {
+      server.graph = null;
+    }
+  });
 
   /** Shift+1-4 change the arrangement (`data-dim`); a popover or a menu has the keys, a hint does not. */
   const dimAfter = async (kind: Kind | null) => {
@@ -178,7 +261,7 @@ describe("C34 the Brain scene", () => {
       const before = root().getAttribute("data-dim");
       if (kind) await open(kind);
       onPage({ key: "@", code: "Digit2", shiftKey: true });
-      await settle(50);
+      await flush();
       return { before, after: root().getAttribute("data-dim") };
     } finally {
       server.graph = null;
@@ -201,7 +284,6 @@ describe("C35 the Skills scene", () => {
   const ready = async () => {
     await mount("/skills");
     await waitFor(() => expect(filter()).not.toBeNull(), SLOW);
-    await settle(100);
   };
   for (const kind of [null, "hint"] as const)
     it(`C35 under ${kind ?? "nothing"} a letter starts the filter and the arrows are the scene's (default prevented)`, async () => {
@@ -209,8 +291,7 @@ describe("C35 the Skills scene", () => {
       if (kind) await open(kind);
       expect(fireEvent.keyDown(document.body, { key: "ArrowRight" }), "the arrow").toBe(false);
       onPage({ key: "d" });
-      await settle(30);
-      expect(filter().value, "the letter").toBe("d");
+      await waitFor(() => expect(filter().value, "the letter").toBe("d"));
     });
   for (const kind of ["popover", "menu"] as const)
     it(`C35 under a ${kind} the letter and the arrow are not the scene's`, async () => {
@@ -219,7 +300,7 @@ describe("C35 the Skills scene", () => {
       const arrow = fireEvent.keyDown(document.body, { key: "ArrowRight" });
       expect(arrow, "the arrow is left alone").toBe(true);
       onPage({ key: "d" });
-      await settle(30);
+      await flush();
       expect(filter().value).toBe("");
     });
   it("C34 the details sheet is a Modal: Escape closes it (the scene has no Escape of its own)", async () => {

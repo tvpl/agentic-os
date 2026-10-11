@@ -16,10 +16,12 @@ import {
   Popover,
   Tooltip,
   escapeLayerOpen,
+  escapeWasForAnOpenLayer,
   getDialogDepth,
   keyLayerOpen,
   useDrawer,
 } from ".";
+import { noteEscape } from "./layers";
 import { installPage, mount, motion, tick } from "./testkit";
 
 installPage();
@@ -309,5 +311,35 @@ describe("C17 a panel that stays in the tree and is a dialog only some of the ti
     expect(getDialogDepth()).toBe(0);
     expect(document.querySelectorAll("[inert]")).toHaveLength(0);
     expect(document.activeElement).toBe(opener);
+  });
+});
+
+describe("C33 an Escape is a layer's only while that layer is open", () => {
+  const escape = () => new KeyboardEvent("keydown", { key: "Escape", cancelable: true });
+  const panel = (state: string) => {
+    const el = document.createElement("div");
+    el.setAttribute("data-state", state);
+    return el;
+  };
+  it("C33 an Escape nobody handled is nobody's", () => {
+    expect(escapeWasForAnOpenLayer(escape())).toBe(false);
+  });
+  it("C33 an Escape a layer handled is that layer's", () => {
+    const event = escape();
+    noteEscape(event, panel("open"));
+    event.preventDefault();
+    expect(escapeWasForAnOpenLayer(event)).toBe(true);
+  });
+  it("C33 an Escape handled by a layer that was already leaving (data-state closed) is no layer's: the next one down answers", () => {
+    const event = escape();
+    noteEscape(event, panel("closed"));
+    event.preventDefault();
+    expect(escapeWasForAnOpenLayer(event)).toBe(false);
+  });
+  it("C33 an Escape handled by someone with no panel to name (a text field's own) stays that one's", () => {
+    const event = escape();
+    noteEscape(event, null);
+    event.preventDefault();
+    expect(escapeWasForAnOpenLayer(event)).toBe(true);
   });
 });

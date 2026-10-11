@@ -268,6 +268,56 @@ describe("C36 a dialog opened from inside another dialog goes back to what the f
   });
 });
 
+describe("C36 the chain: an item of a menu > a dialog > a dialog opened from it", () => {
+  it("C36 Escape on the last one puts focus on the menu's trigger: each hands on what it would go back to, not the control it came from, which is gone", async () => {
+    motion.reduced = true;
+    function Host() {
+      const [first, setFirst] = useState(false);
+      const [second, setSecond] = useState(false);
+      return (
+        <>
+          <DropdownMenu
+            trigger={<button>more</button>}
+            items={[{ id: "export", label: "Export", onSelect: () => setFirst(true) }]}
+          />
+          {first && (
+            <Modal title="First" onClose={() => setFirst(false)}>
+              <button
+                onClick={() => {
+                  setFirst(false);
+                  setSecond(true);
+                }}
+              >
+                Next
+              </button>
+            </Modal>
+          )}
+          {second && (
+            <Modal title="Second" onClose={() => setSecond(false)}>
+              <button>x</button>
+            </Modal>
+          )}
+        </>
+      );
+    }
+    mount(<Host />);
+    const trigger = screen.getByRole("button", { name: "more" });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    await tick();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Export" }));
+    const next = await screen.findByRole("button", { name: "Next" });
+    next.focus();
+    fireEvent.click(next);
+    await screen.findByRole("dialog", { name: "Second" });
+    press("Escape");
+    await tick(30);
+    expect(dialogs()).toHaveLength(0);
+    expect(document.activeElement).toBe(trigger);
+  });
+});
+
 describe("C6 Tab stays in the dialog", () => {
   it("C6 Tab on the last control goes to the first, Shift+Tab on the first goes to the last", async () => {
     mount(
@@ -375,6 +425,60 @@ describe("C7 Escape closes the layer on top, once", () => {
     await act(async () => void (await vi.advanceTimersByTimeAsync(300)));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+});
+
+describe("C7 a dialog that is leaving is not in the way of the next Escape", () => {
+  /** A screen with an Escape of its own (the shell's "home": not for a field), under a Modal with a field in it. */
+  function Stage({ ran, onClose }: { ran: (scope: string) => void; onClose: () => void }) {
+    useCommands([
+      {
+        id: "esc.home",
+        title: "common.close",
+        group: "navigation",
+        scope: "global",
+        keys: ["Escape"],
+        run: () => ran("home"),
+      },
+    ]);
+    const [open, setOpen] = useState(true);
+    return open ? (
+      <Modal
+        title="Sheet"
+        onClose={() => {
+          onClose();
+          setOpen(false);
+        }}
+      >
+        <input aria-label="field" />
+      </Modal>
+    ) : null;
+  }
+  for (const wait of [0, 100, 200])
+    it(`C7 the first Escape closes the Modal and only it; the second, ${wait} ms later (exit playing: 160 ms), is the screen's`, async () => {
+      vi.useFakeTimers();
+      const ran = vi.fn();
+      const onClose = vi.fn();
+      mount(
+        <CommandsProvider registry={new CommandRegistry()}>
+          <Stage ran={ran} onClose={onClose} />
+        </CommandsProvider>,
+      );
+      await act(async () => void (await vi.advanceTimersByTimeAsync(10)));
+      expect(getDialogDepth()).toBe(1);
+      const field = screen.getByLabelText("field");
+      expect(document.activeElement).toBe(field);
+      press("Escape");
+      expect(ran, "the first Escape is the Modal's").not.toHaveBeenCalled();
+      await act(async () => void (await vi.advanceTimersByTimeAsync(wait)));
+      // Within the exit the sheet is still there, with focus in it, and no longer a layer.
+      expect(dialogs()).toHaveLength(wait < 160 ? 1 : 0);
+      expect(getDialogDepth()).toBe(0);
+      press("Escape", {}, wait < 160 ? field : document.body);
+      expect(ran, "the second Escape reaches the screen").toHaveBeenCalledTimes(1);
+      await act(async () => void (await vi.advanceTimersByTimeAsync(300)));
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(ran).toHaveBeenCalledTimes(1);
+    });
 });
 
 describe("C8 the page behind is inert and the depth counts", () => {

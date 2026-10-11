@@ -204,6 +204,32 @@ test.describe("C33 a quick second Escape is not swallowed by the layer that is l
   }
 });
 
+test.describe("C33 a quick second Escape after a Modal (the details sheet of a skill; its exit plays for 160 ms)", () => {
+  for (const gap of [0, 100, 200]) {
+    test(`C33 in the Núcleo, the sheet of /skills/code-review closes with the first Escape and the second, ${gap} ms later, goes home (motion on)`, async ({
+      page,
+    }) => {
+      await openApp(page, "nucleo", "no-preference");
+      await page.goto("/#/skills/code-review?d=1");
+      await expect(page.getByRole("dialog")).toBeVisible();
+      // Both keys from the page, so that the gap is the page's own and not a round trip of the test runner's
+      // (on a busy machine that alone can outlast the 160 ms of the exit).
+      await page.evaluate(async (wait) => {
+        const escape = () =>
+          (document.activeElement ?? document.body).dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+          );
+        escape();
+        // (at 0, the next task: two keys of one task are not something a hand can press)
+        await new Promise((resolve) => setTimeout(resolve, wait));
+        escape();
+      }, gap);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect.poll(() => new URL(page.url()).hash).toBe("#/");
+    });
+  }
+});
+
 test.describe("C35 the keys of a scene answer under a hint", () => {
   test("C35 in the Núcleo, after a dialog opened from the Skills menu closes, the hint on the menu's button is up and a letter still types in the filter", async ({
     page,
