@@ -42,6 +42,7 @@
     "sbom": "node scripts/sbom.mjs",
     "network:scan": "node scripts/network-scan.mjs",
     "licenses:write:rust": "node scripts/licenses-rust.mjs --write",
+    "version:check": "node scripts/version-sync.mjs --check",
     "desktop:payload": "node scripts/package.mjs --payload apps/desktop/payload"
   },
   "devDependencies": {
