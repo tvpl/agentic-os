@@ -6,7 +6,7 @@ import { errorMessage } from "../views/shared";
  * relations card (edges grouped by kind with counts, item 33).
  */
 import { useEffect, useMemo, useState } from "react";
-import { Copy, ExternalLink, Pin, Sparkles, Terminal, X } from "lucide-react";
+import { Copy, ExternalLink, Pencil, Pin, Sparkles, Terminal, X } from "lucide-react";
 
 import { apiCall } from "../apiCall";
 import { Markdown } from "../components/Markdown";
@@ -19,6 +19,7 @@ import {
   CONSOLE_DRAFT_EVENT,
 } from "../desktop/consoleDraft";
 import { useT } from "../i18n";
+import { openNoteEditor } from "./noteEditor";
 import { relationsOf } from "./engine/graph";
 import type { EdgeKind, FileNode, World } from "./engine/world";
 import { collectReferences, parseMarkdown, resolveReference, type Block } from "./markdown";
@@ -28,6 +29,8 @@ export interface PreviewState {
   content: string | null;
   kind: string;
   message: string | null;
+  /** The file is a note the owner can edit (`GET /api/memory/preview`). */
+  editable?: boolean;
 }
 
 export interface PreviewPanelProps {
@@ -177,6 +180,11 @@ export function PreviewPanel({
         >
           <Sparkles aria-hidden /> {t("brain.summarize")}
         </button>
+        {preview.editable && (
+          <button className="btn sm" onClick={() => openNoteEditor({ mode: "edit", path: node.path })}>
+            <Pencil aria-hidden /> {t("note.edit")}
+          </button>
+        )}
         <button
           className="btn sm"
           onClick={() => {

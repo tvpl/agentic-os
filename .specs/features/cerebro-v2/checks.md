@@ -302,7 +302,7 @@ Size, with the arithmetic (`wc -c` of the files each slice touches / 4, plus the
 Status of slices (updated in the commit that closes each):
 
 - S1: closed (C1-C17, C57 green; the hash is on the Boundary line below)
-- S1b: open
+- S1b: closed except the PreviewPanel half of C19/C22 (the Edit button present/absent), proven with the links tests in S2 (C19, C22 gain that Proof line there)
 - S2: open
 - S3: open
 - S4: open

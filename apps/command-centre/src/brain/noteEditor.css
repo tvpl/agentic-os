@@ -1,0 +1,141 @@
+/* The note editor (.specs/features/cerebro-v2, design.md): colours are tokens, prose is 13px, nothing under 12px. */
+.modal.note-editor {
+  width: min(880px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  max-height: 86vh;
+}
+.note-editor .modal-head h2 {
+  margin: 0;
+}
+.note-editor-sub {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.note-editor-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--fs-3);
+}
+.note-editor-title strong {
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+.note-editor-path {
+  font-size: var(--fs-2);
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+.note-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  flex-shrink: 0;
+  font-size: var(--fs-2);
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.note-state svg {
+  width: 14px;
+  height: 14px;
+}
+.note-state.saved svg {
+  color: var(--ok);
+}
+.note-state.dirty svg {
+  color: var(--warn);
+}
+.note-state.conflict,
+.note-state.error {
+  color: var(--danger);
+  font-weight: 700;
+}
+.note-state .spin {
+  animation: note-spin 1s linear infinite;
+}
+@keyframes note-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .note-state .spin {
+    animation: none;
+  }
+}
+textarea.input.note-editor-field {
+  flex: 1;
+  min-height: 320px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-3);
+  line-height: var(--lh-body);
+  resize: vertical;
+}
+.note-editor-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+.note-editor-foot .modal-actions {
+  margin-top: 0;
+}
+.note-editor-size {
+  font-size: var(--fs-2);
+  color: var(--text-faint);
+}
+.note-editor-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: var(--s-5) 0;
+  font-size: var(--fs-3);
+  color: var(--text-dim);
+}
+.note-editor-failed,
+.note-editor-reason,
+.note-editor-error {
+  margin: 0;
+  font-size: var(--fs-3);
+  color: var(--text-dim);
+}
+.note-editor-error {
+  color: var(--danger);
+}
+.note-editor-banner {
+  display: flex;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--warn);
+  border-radius: var(--r-3);
+  background: var(--warn-bg);
+  font-size: var(--fs-3);
+  color: var(--text);
+}
+.note-editor-banner > svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--warn);
+}
+.note-editor-banner p {
+  margin: 0 0 var(--s-2);
+}
+.note-editor-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.note-check {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-3);
+  color: var(--text-dim);
+}

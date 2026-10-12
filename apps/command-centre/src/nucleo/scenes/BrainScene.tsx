@@ -604,7 +604,13 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
     void apiCall("GET /api/memory/preview", { query: { p: selNode.path } })
       .then((pv) => {
         if (cancelled) return;
-        setPreview({ node: selNode, content: pv.content, kind: pv.kind, message: pv.message });
+        setPreview({
+          node: selNode,
+          content: pv.content,
+          kind: pv.kind,
+          message: pv.message,
+          editable: pv.editable,
+        });
         if (pv.kind === "text" && pv.content) EXCERPTS.set(excerptKey(selNode), excerptOf(pv.content, 160));
       })
       .catch((err: Error) => {

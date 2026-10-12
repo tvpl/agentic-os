@@ -98,6 +98,8 @@ const PreviewResultSchema = z.object({
   truncated: z.boolean(),
   size: z.number(),
   message: z.string().nullable(),
+  /** Whether the file is a note the owner can edit (a `.md` under memory/ that is not generated). */
+  editable: z.boolean(),
 });
 
 const RecallResultSchema = z.object({

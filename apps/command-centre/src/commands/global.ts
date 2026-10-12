@@ -11,6 +11,7 @@ import {
   Archive,
   BrainCircuit,
   CalendarClock,
+  FilePlus,
   Grid3x3,
   Keyboard,
   LayoutGrid,
@@ -36,6 +37,7 @@ import { useOsNavigate } from "../hooks/useViewTransition";
 import { getNotifySound, setNotifySound, useNotifications } from "../hooks/useNotifications";
 import { errorMessage } from "../views/shared";
 import { openOnboarding } from "../onboarding/state";
+import { openNoteEditor } from "../brain/noteEditor";
 import { useCommands, type Command } from "./registry";
 
 /** Opens the palette (and closes it: the palette registers the same keys in its own `modal` scope). */
@@ -201,6 +203,16 @@ export function useGlobalCommands(opts: GlobalCommandsOptions): void {
         keywords: ["skill", "create", "nova"],
         palette: true,
         run: go("/skills?new=1"),
+      },
+      {
+        id: "action:new-note",
+        title: "note.new",
+        group: "actions",
+        scope: "global",
+        icon: FilePlus,
+        keywords: ["note", "nota", "memory", "memoria", "write", "escrever", "create", "criar"],
+        palette: true,
+        run: () => openNoteEditor({ mode: "new" }),
       },
       {
         id: "action:now",

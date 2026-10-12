@@ -57,6 +57,7 @@ import {
 import { saveLocalSettings, settingsFromUi } from "../brain/state";
 import "../brain/brain.css";
 import { useCommands, type Command } from "../commands/registry";
+import { openNoteEditor } from "../brain/noteEditor";
 
 const GRAPH_PARAMS = { maxNodes: 3000 };
 /**
@@ -292,7 +293,13 @@ export default function SecondBrain() {
     void apiCall("GET /api/memory/preview", { query: { p: node.path } })
       .then((pv) => {
         if (!cancelled && token === previewToken.current)
-          setPreview({ node, content: pv.content, kind: pv.kind, message: pv.message });
+          setPreview({
+            node,
+            content: pv.content,
+            kind: pv.kind,
+            message: pv.message,
+            editable: pv.editable,
+          });
       })
       .catch((err: Error) => {
         if (!cancelled && token === previewToken.current)
@@ -567,6 +574,7 @@ export default function SecondBrain() {
         setSearchAsk((n) => n + 1);
       }),
       key("brain.present", "shell.shortcuts.brainPresent", ["p"], () => setPresenting((v) => !v)),
+      key("brain.newNote", "note.new", ["n"], () => openNoteEditor({ mode: "new" })),
       key("brain.local", "cmd.brain.local", ["f"], () =>
         keyActs.current.patch({ local: !uiRef.current.local }),
       ),

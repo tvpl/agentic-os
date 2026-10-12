@@ -24,6 +24,7 @@ import {
   resolveReference,
   type Block,
 } from "../../brain/markdown";
+import { openNoteEditor } from "../../brain/noteEditor";
 import { BrainGlyph } from "./BrainGlyph";
 import type { ContentKind } from "./brainGlyphs";
 import { starLabel } from "./brainModel";
@@ -34,6 +35,8 @@ export interface SheetPreview {
   content: string | null;
   kind: string;
   message: string | null;
+  /** The file is a note the owner can edit (`GET /api/memory/preview`). */
+  editable?: boolean;
 }
 
 export interface RailEntry {
@@ -381,6 +384,15 @@ export const BrainSceneReader = memo(function BrainSceneReader(p: BrainSceneRead
         <button type="button" className="bs-act" onClick={p.onCopy}>
           {t("brain.copyPath")}
         </button>
+        {p.preview.editable && (
+          <button
+            type="button"
+            className="bs-act"
+            onClick={() => openNoteEditor({ mode: "edit", path: p.preview.node.path })}
+          >
+            {t("note.edit")}
+          </button>
+        )}
         <button type="button" className="bs-act" onClick={p.onEditor}>
           {t("brain.openEditor")}
         </button>

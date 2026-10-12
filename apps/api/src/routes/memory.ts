@@ -5,6 +5,7 @@ import {
   assertFact,
   buildGraph,
   checkRouters,
+  classifyNotePath,
   createNote,
   ensureJournal,
   factStats,
@@ -65,6 +66,16 @@ export function openerFor(platform: NodeJS.Platform, resolved: string): [string,
   return ["xdg-open", [resolved]];
 }
 
+/** Whether the preview of `p` offers "Edit": a text file that is an editable note (nothing about it may throw). */
+function previewIsEditable(note: Parameters<typeof classifyNotePath>[0], p: string, kind: string): boolean {
+  if (kind !== "text") return false;
+  try {
+    return classifyNotePath(note, p).editable;
+  } catch {
+    return false;
+  }
+}
+
 export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): void {
   // Journal hooks: `memory/` becomes an indexed root (journal notes are
   // searchable and recallable) and every finished run leaves one line under
@@ -109,7 +120,8 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     // previewFile enforces root containment, the secret blocklist and the home's
     // private config/ and logs/ (403 on violation).
     try {
-      return previewFile(ctx.settings(), [ctx.paths.home], p, { homeDir: ctx.paths.home });
+      const preview = previewFile(ctx.settings(), [ctx.paths.home], p, { homeDir: ctx.paths.home });
+      return { ...preview, editable: previewIsEditable(noteContext(), p, preview.kind) };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT")
         throw httpError(
