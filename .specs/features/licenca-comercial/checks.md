@@ -364,3 +364,10 @@ Cost: 3 arquivos de teste novos, 32 checks, cerca de 150 casos; sem estas linhas
 
 - S1-S6 = ~62k tokens: scripts 3 (`licenses.mjs`, `sbom.mjs`, `network-scan.mjs`, ~48 KB), tests 3 (~60 KB), textos (`LICENSE`, `CONTRIBUTING.md`, `legal/*`, ~240 KB com o aviso gerado de 205 KB, que se escreve por comando e não se lê), docs (~12 KB). O que se lê e escreve à mão soma ~190 KB ≈ 48k tokens, mais o gate; abaixo do orçamento de 150k - one builder
 - Mechanism: one builder (cabe no orçamento, não houve pergunta)
+
+## Rodada 3: consertos pequenos depois da verificação (N1 a N3)
+
+**C53** - Toda página `.html` na raiz do app de UI entra na varredura de rede (`SCAN_DIRS`), em particular `gallery.html`, que o instalador leva; uma página nova sem entrada reprova (N1)
+Proof: `npx vitest run tests/legal.network.test.ts -t "C53 "`
+
+N2: as três provas de `package.json` (`licenses:write`, `licenses:check`, `network:scan`) ficam junto do C16 (`tests/legal.licenses.test.ts`), onde já estava `sbom`. N3: a reescrita de C7, C16 e C17 da rodada 2 está registrada em AD-026(e). N4 a N7 do verificador são informativos (limites do guard de contagem e da varredura, "ambiente repassado" um pouco além do real, do lado seguro) e ficam como estão.

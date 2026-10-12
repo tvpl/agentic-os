@@ -834,6 +834,9 @@ describe("C16 the SBOM", () => {
       scripts: Record<string, string>;
     };
     expect(pkg.scripts["sbom"]).toBe("node scripts/sbom.mjs");
+    expect(pkg.scripts["licenses:write"]).toBe("node scripts/licenses.mjs --write");
+    expect(pkg.scripts["licenses:check"]).toBe("node scripts/licenses.mjs --check");
+    expect(pkg.scripts["network:scan"]).toBe("node scripts/network-scan.mjs");
     expect(fs.readFileSync(SBOM, "utf8")).toContain('path.join("build", "sbom", "mordomo-os.cdx.json")');
   });
 });

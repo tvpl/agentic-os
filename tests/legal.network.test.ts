@@ -990,6 +990,14 @@ describe("C39 the scanner reads the evasions it can decide, and the text says wh
       expect(f, limit).toContain(limit);
   });
 
+  it("C53 every HTML page at the root of the UI app is scanned, so a tracker added to one the installer ships is seen", () => {
+    const uiRoot = path.join(ROOT, "apps", "command-centre");
+    const pages = fs.readdirSync(uiRoot).filter((f) => f.endsWith(".html"));
+    expect(pages).toContain("index.html");
+    expect(pages).toContain("gallery.html");
+    for (const page of pages) expect(scan.SCAN_DIRS, page).toContain(`apps/command-centre/${page}`);
+  });
+
   it("C39 an address as a bare IP is a host (public or private), a malformed one and a version string are not", () => {
     expect(read(`const a = "203.0.113.9"; const b = "10.1.2.3:8080";`).hosts).toEqual([
       "10.1.2.3",

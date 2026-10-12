@@ -40,6 +40,7 @@ export const SCAN_DIRS = [
   "apps/command-centre/src",
   "apps/command-centre/public",
   "apps/command-centre/index.html",
+  "apps/command-centre/gallery.html",
   "scripts",
   "connectors",
   "routines",
