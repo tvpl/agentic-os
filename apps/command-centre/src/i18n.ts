@@ -161,6 +161,7 @@ const baseEn = {
   "status.running": "running",
   "status.waiting_approval": "waiting approval",
   "status.done": "done",
+  "status.completed": "completed",
   "status.failed": "failed",
   "status.cancelled": "cancelled",
   "status.interrupted": "interrupted",
@@ -707,6 +708,7 @@ const basePtBR = {
   "status.running": "executando",
   "status.waiting_approval": "aguardando aprovação",
   "status.done": "concluída",
+  "status.completed": "concluído",
   "status.failed": "falhou",
   "status.cancelled": "cancelada",
   "status.interrupted": "interrompida",
@@ -1119,9 +1121,16 @@ export const I18nContext = createContext<{ lang: Lang; setLang: (l: Lang) => voi
 
 export type TVars = Record<string, string | number>;
 
+/**
+ * The keys asked for that no dictionary has, kept only while a test runs so `i18n.test.ts` can fail on one
+ * (limpeza-legado, round 1: `status.completed` was asked 344 times and did not exist). `undefined` in the product.
+ */
+export const missingKeys: Set<string> | undefined = import.meta.env.MODE === "test" ? new Set() : undefined;
+
 /** Pure lookup with `{name}` interpolation — usable outside React (canvas loops, tests). */
 export function tf(lang: Lang, key: TKey, vars?: TVars): string {
   const raw = dictionaries[lang][key] ?? key;
+  if (raw === key && missingKeys) missingKeys.add(key);
   if (!vars) return plural(raw, undefined);
   return plural(raw, vars).replace(/\{(\w+)\}/g, (match, name: string) =>
     name in vars ? String(vars[name]) : match,

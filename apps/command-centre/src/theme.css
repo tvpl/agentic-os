@@ -1110,56 +1110,6 @@ canvas.dimmed {
   color: var(--text-dim);
 }
 
-/* fullscreen app frame: chrome is in normal flow (sticky), never fixed */
-.app-frame {
-  position: absolute;
-  inset: 0;
-  overflow-y: auto;
-  background: var(--bg);
-  display: flex;
-  flex-direction: column;
-}
-.app-frame-chrome {
-  position: sticky;
-  top: 0;
-  z-index: var(--z-chrome);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-2);
-  padding: var(--s-2) var(--s-4);
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.app-frame-chrome .left,
-.app-frame-chrome .right {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  min-width: 0;
-}
-.app-frame-title {
-  font-family: var(--font-display);
-  font-size: var(--fs-2);
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.app-frame-title::before {
-  content: "/";
-  margin-right: var(--s-2);
-  color: var(--border-strong);
-}
-.app-frame-body {
-  flex: 1;
-  min-height: 0;
-}
 .main {
   flex: 1;
   overflow-y: auto;
@@ -1561,14 +1511,6 @@ textarea.input {
   border: 1px solid var(--border-strong);
   background: var(--bg-raise-2);
   color: var(--text-dim);
-}
-
-.empty {
-  padding: 36px var(--s-5);
-  text-align: center;
-  color: var(--text-faint);
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius);
 }
 .empty-state {
   display: flex;
@@ -2421,12 +2363,6 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* Widgets: deck, workspace, pulse, board, attention, micro apps */
-.deck {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
 .deck-hint {
   font-size: var(--fs-3);
   color: var(--text-faint);
@@ -2505,12 +2441,6 @@ input[type="range"]::-moz-range-thumb {
   align-items: center;
   gap: var(--s-3);
   margin: 0 0 var(--s-2);
-}
-.run-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-1);
-  margin-bottom: var(--s-2);
 }
 .run-cwd {
   display: flex;
@@ -3686,11 +3616,6 @@ fieldset.field {
   font-size: var(--fs-7);
   letter-spacing: 0.3em;
   text-align: center;
-}
-@media (max-width: 899px) {
-  .app-frame-body {
-    padding-bottom: 64px;
-  }
 }
 
 /* ==== post-review fixes ==== */

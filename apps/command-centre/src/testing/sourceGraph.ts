@@ -288,8 +288,8 @@ function takesOnlyDefault(call: ts.CallExpression): boolean {
   );
 }
 
-/** The names each file's importers take: file -> names ("*" for all of them). */
-function usedNames(tree: Tree): Map<string, Set<string>> {
+/** The names each file's importers take: file -> names ("*" for all of them). A spec is an importer unless `specsUse` is false. */
+function usedNames(tree: Tree, specsUse = true): Map<string, Set<string>> {
   const used = new Map<string, Set<string>>();
   const mark = (file: string, name: string) => {
     let set = used.get(file);
@@ -297,7 +297,7 @@ function usedNames(tree: Tree): Map<string, Set<string>> {
     set.add(name);
   };
   for (const file of tree.keys()) {
-    if (!isScript(file)) continue;
+    if (!isScript(file) || (!specsUse && isSpec(file))) continue;
     const sf = syntax(tree, file);
     visit(sf, (n) => {
       if (ts.isImportDeclaration(n)) {
@@ -322,10 +322,11 @@ function usedNames(tree: Tree): Map<string, Set<string>> {
 /**
  * Exported names nobody uses: no importer takes the name (directly or through a
  * barrel that itself has a taker), no `import * as` or `import()` reaches the
- * module, and the file does not mention it outside its own declaration.
+ * module, and the file does not mention it outside its own declaration. A spec is an importer, and so a use,
+ * unless `specsUse` is false: then the answer is what only a test keeps alive.
  */
-export function deadExports(tree: Tree): ExportedName[] {
-  const used = usedNames(tree);
+export function deadExports(tree: Tree, options: { specsUse?: boolean } = {}): ExportedName[] {
+  const used = usedNames(tree, options.specsUse ?? true);
   const declared = new Map<string, ReturnType<typeof declaredExports>>();
   for (const file of tree.keys()) if (isScript(file)) declared.set(file, declaredExports(tree, file));
 
@@ -370,6 +371,28 @@ export function deadExports(tree: Tree): ExportedName[] {
     }
   }
   return dead.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.name.localeCompare(b.name));
+}
+
+/**
+ * The modules some production `import()` takes whole, not just their default (`lazy(() => import("./x"))` takes
+ * only the default): every export of such a module counts as used, whatever the code does with the result.
+ */
+export function wholeModuleImports(tree: Tree): string[] {
+  const out = new Set<string>();
+  for (const file of tree.keys()) {
+    if (!isScript(file) || isSpec(file)) continue;
+    visit(syntax(tree, file), (n) => {
+      if (
+        ts.isCallExpression(n) &&
+        n.expression.kind === ts.SyntaxKind.ImportKeyword &&
+        !takesOnlyDefault(n)
+      ) {
+        const to = resolveSpecifier(tree, file, stringOf(n.arguments[0]) ?? "");
+        if (to) out.add(to);
+      }
+    });
+  }
+  return [...out].sort();
 }
 
 // ------------------------------------------------------------- spelled words

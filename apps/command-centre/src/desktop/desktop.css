@@ -5,34 +5,6 @@
     }
   }
 }
-/* The stacked desktop scrolls one column: fixed arcs would cover it. */
-
-/* ------------------------------------------------------ app rail (F3) ----
-   Costs a spine until reached for. Hover, focus or the toggle open it. */
-.app-rail {
-  position: absolute;
-  left: 0;
-  top: 96px;
-  bottom: 100px;
-  z-index: var(--z-drawer);
-  width: 16px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  pointer-events: auto;
-  transition: width var(--dur-slow) var(--ease-emphasized);
-}
-.app-rail.open {
-  width: 232px;
-}
-
-/* The stacked (narrow) desktop scrolls one column: a fixed rail would cover it. */
-@media (max-width: 1023px) {
-  .app-rail {
-    display: none;
-  }
-}
-
 /* ------------------------------------------- document window (F5) ------- */
 .doc-window {
   display: flex;
@@ -180,10 +152,7 @@
   gap: var(--s-3);
 }
 
-/* --------------------------------------------------------------- deck ---- */
-.deck-card.running {
-  border-color: var(--accent);
-}
+/* ------------------------------------------------------- model colours ---- */
 .model-haiku {
   color: var(--ok);
 }
@@ -523,21 +492,12 @@
   display: flex;
   gap: 4px;
 }
-.os-tool.bell {
-  position: relative;
-}
 .microapp-row .ma-name.dim {
   color: var(--text-faint);
   font-weight: 600;
 }
 .microapp-row.add {
   border-style: dashed;
-}
-
-/* ------------------------------------------------------------- agenda ---- */
-.agenda {
-  display: grid;
-  gap: var(--s-2);
 }
 
 /* --------------------------------------------------------------- cost ---- */
@@ -1746,17 +1706,6 @@
   text-overflow: ellipsis;
 }
 
-/* Item 5 / 38: the decision, on the console, above the field. */
-.decision {
-  margin: 10px 14px 0;
-  padding: 10px 12px;
-  border: 1px solid var(--warn);
-  background: color-mix(in srgb, var(--warn) 8%, var(--bg-raise));
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-  display: grid;
-  gap: 6px;
-}
-
 /* Item 3: hands-free — the transcript forms above the field. */
 .cons-interim {
   display: flex;
@@ -1786,11 +1735,6 @@
   background: var(--agent-soft);
 }
 
-/* Item 4: the briefing opens the day, in the agent's voice. */
-.cons .console-msg.briefing {
-  margin: 10px 14px 0;
-  max-width: none;
-}
 .console-thinking.waiting {
   color: var(--warn);
 }

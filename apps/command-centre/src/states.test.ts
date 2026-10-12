@@ -44,8 +44,6 @@ const MARKED_ELSEWHERE: Record<string, string> = {
     "the `.cx-state` label is the word (Connected / Off) and the orb sits beside it",
   '.nu-dialog-pulse[data-state="idle"]':
     "decorative pulse (slower, fainter when idle); the dialog's header says the state in words",
-  ".deck-card.running":
-    "no element carries it today: the deck has no `.deck-card`, only a `.btn` inside one is focused by a shortcut",
   ".console-link.danger":
     "a button whose label says what it does (Stop); the hue marks the destructive variant",
   ".cost-gauge.warn":
