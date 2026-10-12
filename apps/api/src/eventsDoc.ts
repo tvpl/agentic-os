@@ -27,9 +27,12 @@ const EVENT_DESCRIPTIONS: Record<OsEventTypeName, string> = {
   "routine.fired": "A routine started a run.",
   "routine.alert": "A routine's run needs attention, or its daily budget stopped a fire.",
   "routine.changed": "A routine was created, edited, enabled, disabled, ended or deleted.",
-  "index.progress": "The memory index advanced.",
+  "index.started":
+    "A memory index pass started, in a worker thread of the service or (without the worker script) in its own thread.",
+  "index.progress": "The memory index advanced; `phase` and `runId` name where, when the pass reports them.",
   "index.finished": "The memory index finished.",
   "index.failed": "The memory index could not finish; the previous index is kept when it says so.",
+  "index.cancelled": "A memory index pass was cancelled; the blocks it had committed stay.",
   "approval.requested": "An approval is waiting for a human.",
   "approval.resolved": "An approval was decided.",
   "approval.expired": "Pending approvals past their time to live were swept to expired.",

@@ -18,9 +18,11 @@ export type OsEventType =
   | "routine.fired"
   | "routine.alert"
   | "routine.changed"
+  | "index.started"
   | "index.progress"
   | "index.finished"
   | "index.failed"
+  | "index.cancelled"
   | "approval.requested"
   | "approval.resolved"
   | "approval.expired"
@@ -67,8 +69,18 @@ export interface IndexStats {
   durationMs: number;
 }
 
+/** The phases of an index pass, in order (`index.progress`). */
+export const INDEX_PHASES = ["scan", "index", "prune", "related", "vectors"] as const;
+export type IndexPhase = (typeof INDEX_PHASES)[number];
+
+/** Where an index pass runs: a `worker_thread` of the service, or the service's own thread (no worker script). */
+export type IndexMode = "worker" | "inline";
+
 /** Payload of `index.progress` events and of the `indexAllAsync` callback. */
 export interface IndexProgress {
+  /** The pass this belongs to (`index.started`). */
+  runId?: string;
+  phase?: IndexPhase;
   scanned: number;
   /** Known once the scan phase finished. */
   total?: number;
@@ -137,9 +149,11 @@ export interface OsEventMap {
       }
     | { routineId: string; runId: string; status: RunStatus; summary: string };
   "routine.changed": { id: string; action: string; reason?: string | null };
+  "index.started": { runId: string; mode: IndexMode };
   "index.progress": IndexProgress;
-  "index.finished": { stats: IndexStats };
-  "index.failed": { code: string; previousIndexPreserved: boolean };
+  "index.finished": { stats: IndexStats; runId?: string };
+  "index.failed": { code: string; previousIndexPreserved: boolean; runId?: string };
+  "index.cancelled": { runId: string };
   "approval.requested": { id: string; kind: ApprovalKind; description: string; runId?: string | null };
   "approval.resolved": { id: string; kind: ApprovalKind; status: Approval["status"]; runId: string | null };
   "approval.expired": { count: number };

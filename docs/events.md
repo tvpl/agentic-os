@@ -25,7 +25,7 @@ The version of an event is the `v` in its envelope (or its frame).
 The schemas are the contract: `EVENT_SCHEMAS[type][v]` for the bus and `RUN_FRAME_SCHEMAS[type][v]` for the run stream. The files
 `tests/fixtures/events/v1/` are frozen examples of version 1 of every type, and the tests fail if a change makes one stop parsing.
 
-## Events of the bus (23)
+## Events of the bus (25)
 
 ### `run.created`
 
@@ -135,9 +135,9 @@ Payload, version 1:
 | `action` | string | yes |
 | `reason` | string \| null | no |
 
-### `index.progress`
+### `index.started`
 
-The memory index advanced.
+A memory index pass started, in a worker thread of the service or (without the worker script) in its own thread.
 
 Versions: 1 (current 1).
 
@@ -145,6 +145,21 @@ Payload, version 1:
 
 | Field | Type | Required |
 | --- | --- | --- |
+| `runId` | string | yes |
+| `mode` | "worker" \| "inline" | yes |
+
+### `index.progress`
+
+The memory index advanced; `phase` and `runId` name where, when the pass reports them.
+
+Versions: 1 (current 1).
+
+Payload, version 1:
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `runId` | string | no |
+| `phase` | "scan" \| "index" \| "prune" \| "related" \| "vectors" | no |
 | `scanned` | number | yes |
 | `total` | number | no |
 | `added` | number | yes |
@@ -162,6 +177,7 @@ Payload, version 1:
 | Field | Type | Required |
 | --- | --- | --- |
 | `stats` | object | yes |
+| `runId` | string | no |
 
 ### `index.failed`
 
@@ -175,6 +191,19 @@ Payload, version 1:
 | --- | --- | --- |
 | `code` | string | yes |
 | `previousIndexPreserved` | boolean | yes |
+| `runId` | string | no |
+
+### `index.cancelled`
+
+A memory index pass was cancelled; the blocks it had committed stay.
+
+Versions: 1 (current 1).
+
+Payload, version 1:
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `runId` | string | yes |
 
 ### `approval.requested`
 

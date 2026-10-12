@@ -1,0 +1,10 @@
+{
+  "id": 7,
+  "type": "index.started",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "runId": "5b1c3a52-0d4e-4f0a-9d65-7e3f1f0f7a11",
+    "mode": "worker"
+  }
+}

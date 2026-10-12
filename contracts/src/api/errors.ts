@@ -31,7 +31,7 @@ const always = (): boolean => true;
  * The routes that can answer the refusals of the path filter (`403 forbidden_path`) and of the safe reader (`404
  * not_a_file`, `413 file_too_large`). They are not common errors: `GET /api/settings` never touches a path. The lists
  * are not an opinion about which routes "look like" they read files: `tests/api.refusals.test.ts` calls each of the
- * 131 routes with every call into the path filter and the safe reader refusing, and compares the routes that
+ * 132 routes with every call into the path filter and the safe reader refusing, and compares the routes that
  * answered the refusal with these lists in both directions. A route that gains a read, or loses one, fails there
  * with the route named; the lists are changed to what the probe printed.
  */

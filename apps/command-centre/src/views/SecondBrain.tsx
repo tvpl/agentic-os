@@ -9,7 +9,7 @@ import { errorMessage } from "./shared";
  * selection, translates canvas hits into navigation and lays the pieces out.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { api, type GraphData, type IndexProgressPayload, type RunSummary } from "../api";
+import { ApiError, api, type GraphData, type IndexProgressPayload, type RunSummary } from "../api";
 import { apiCall } from "../apiCall";
 import { useToast } from "../components/ui";
 import { useLang, useT, type TKey } from "../i18n";
@@ -122,6 +122,8 @@ export default function SecondBrain() {
     playing: false,
   });
   const [progress, setProgress] = useState<IndexProgressPayload | null>(null);
+  /** How the last index pass ended when it did not finish: shown as text until the next one starts. */
+  const [indexNote, setIndexNote] = useState<"cancelled" | "failed" | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [layoutToast, setLayoutToast] = useState<string | null>(null);
   const [liveCount, setLiveCount] = useState(0);
@@ -376,11 +378,19 @@ export default function SecondBrain() {
   }, [runs, world, dirty]);
 
   /* ---------- indexing ---------- */
+  useOsEvent("index.started", () => setIndexNote(null));
   useOsEvent("index.progress", (e) => setProgress(e.payload as IndexProgressPayload));
-  useOsEvent(["index.finished", "index.failed"], () => {
+  useOsEvent(["index.finished", "index.failed", "index.cancelled"], (e) => {
     setProgress(null);
+    // A pass that ends otherwise than finished says so in text, where the progress was.
+    setIndexNote(e.type === "index.cancelled" ? "cancelled" : e.type === "index.failed" ? "failed" : null);
     void invalidate(qk.memoryGraph(GRAPH_PARAMS), qk.memoryStatus);
   });
+  const cancelIndex = useCallback(() => {
+    void apiCall("POST /api/memory/index/cancel", { body: {} }).catch((err: unknown) =>
+      toast(errorMessage(err, t), "danger"),
+    );
+  }, [toast, t]);
 
   const refresh = useCallback(() => {
     setRefreshing(true);
@@ -391,7 +401,12 @@ export default function SecondBrain() {
         await invalidate(qk.memoryGraph(GRAPH_PARAMS), qk.memoryStatus);
         toast(t("brain.indexed", { n: res.stats.scanned, added: res.stats.added }), "ok");
       } catch (err) {
-        toast(errorMessage(err, t), "danger");
+        // A cancel and a failure are shown in the bar (index.cancelled, index.failed), not twice as a toast.
+        if (!(
+          err instanceof ApiError &&
+          ["index_cancelled", "index_worker_crashed", "index_worker_out_of_memory"].includes(err.code)
+        ))
+          toast(errorMessage(err, t), "danger");
       } finally {
         setRefreshing(false);
         setProgress(null);
@@ -704,6 +719,8 @@ export default function SecondBrain() {
         error={!graph && graphQuery.isError ? graphQuery.error.message : null}
         onRetry={() => void graphQuery.refetch()}
         progress={progress}
+        indexNote={indexNote}
+        onCancelIndex={cancelIndex}
         refreshing={refreshing}
         onRefresh={refresh}
         liveCount={liveCount}

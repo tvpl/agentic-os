@@ -369,6 +369,20 @@
   font-size: var(--fs-2);
   color: var(--text-dim);
 }
+.brain-progress .btn {
+  justify-self: end;
+}
+.brain-progress.note {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-3);
+}
+.brain-progress.note svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
 .brain-progress .bar {
   height: 3px;
   border-radius: 2px;

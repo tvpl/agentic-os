@@ -647,6 +647,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     },
   },
   [key("POST", "/api/memory/index")]: { run: (w) => w.call("POST", "/api/memory/index") },
+  [key("POST", "/api/memory/index/cancel")]: { run: (w) => w.call("POST", "/api/memory/index/cancel") },
   [key("POST", "/api/memory/notes")]: {
     run: (w) => w.call("POST", "/api/memory/notes", { title: "Cenário de criação" }),
   },

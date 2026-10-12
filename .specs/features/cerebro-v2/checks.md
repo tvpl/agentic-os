@@ -133,7 +133,7 @@ Proof: `npx vitest run tests/memory.worker.test.ts -t "C34 "`
 **C35** - A second pass over unchanged files opens zero files; a worker terminated after the second block and then a new pass give the same `files` rows, FTS rows and stats a clean pass gives (AC 35)
 Proof: `npx vitest run tests/memory.worker.test.ts -t "C35 "`
 
-**C36** - A worker that exits with code 1, one that throws, and one over its heap limit each end with `index.failed` `index_worker_crashed` (twice) and `index_worker_out_of_memory`, the caller gets `500` with that code, the restore lock is released, the previous rows stay, and the next pass starts a new worker (AC 36)
+**C36** - A worker that exits with code 1, one that throws, and one over its heap limit each end with `index.failed` `index_worker_crashed` (twice) and `index_worker_out_of_memory`, the caller gets `503` with that code, the restore lock is released, the previous rows stay, and the next pass starts a new worker (AC 36)
 Proof: `npx vitest run tests/memory.worker.test.ts -t "C36 "`
 
 **C37** - While another connection holds the exclusive restore lock `POST /api/memory/index` answers `409 restore_in_progress` and no worker starts; during a pass `RestoreLock.acquire(…, "exclusive")` throws `RestoreInProgressError`; after the pass ends (finished, failed and cancelled) an exclusive acquire succeeds (AC 37)
@@ -199,7 +199,7 @@ Proof: `npx vitest run tests/api.refusals.test.ts tests/device-scopes.test.ts -t
 **C54** - `licenses:check`, `network:scan --check` and `bundle:check` exit 0; `THIRD_PARTY_NOTICES.md` and the SBOM name `sqlite-vec` and its five platform packages; the installer script copies `indexWorker.mjs` and, for the host target, the `sqlite-vec` binary, and the dependency is exact in `core/package.json` (AC 54, door 3)
 Proof: `npm run licenses:check`
 Proof: `npm run network:scan -- --check`
-Proof: `npx vitest run tests/legal.licenses.test.ts tests/bundle-size.test.ts tests/sdk.package.test.ts -t "C54 "`
+Proof: `npx vitest run tests/legal.licenses.test.ts tests/bundle-size.test.ts tests/sdk.package.test.ts tests/memory.packaging.test.ts -t "C54 "`
 
 **C55** - The raw-fs audit (`ALLOWED`) lists no new row except the ones the plan moved, and the module-state list of `sdk.instances` is unchanged (nine) (AC 55)
 Proof: `npx vitest run tests/security-reads.test.ts tests/sdk.instances.test.ts -t "C55 "`
@@ -307,7 +307,7 @@ Status of slices (updated in the commit that closes each):
 - S1: closed (C1-C17, C57 green; the hash is on the Boundary line below)
 - S1b: closed (C18-C23; the Edit button of the preview is proven in `PreviewPanel.test.tsx` under C19 and C22, an added Proof line)
 - S2: closed (C24-C31, C56 for `note_links`; the `file_vectors` half of C56 closes with S4)
-- S3: open
+- S3: closed (C32-C42, C58; C54 closes its installer half here, the dependency half with S4)
 - S4: open
 - cross-cutting: open
 
@@ -315,3 +315,6 @@ Status of slices (updated in the commit that closes each):
 - **Settled mid-build:** MCP tool names are `note_create`/`note_read`/`note_save` (the server is already namespaced `mordomo`, and the other tools carry no prefix); a link planted on the name a new note would take is `403 forbidden_path` (never skipped silently); the five NoteError classes are one class per status so the contract scan (`api.contract` C13) can read the codes; the internal barrel gains only `createNote`, `readNote`, `saveNote` (the other helpers are imported by path in tests)
 - **Deliberate changes to earlier pins:** route totals 127 -> 130 and the scope counts (`owner` 65, `content` 23) in `api.contract`, `api.openapi`, `device-scopes`, `events.contract`, `api.refusals`; the raised-errors set 49 -> 56 (`api.contract` C13); the internal names of `sdk.surface` C38 (+3); `docs/security.md` table
 - **Settled mid-build (S1b, S2):** the editor shows no "N notes point here" count and the links section no "(+N)" for ambiguous wikilinks (the editor has a path, the route takes an id; `alternatives` is in the API) - `design.md` was corrected to match; the error icon of the editor is `CircleAlert` (distinct from the conflict's `AlertTriangle`); `outgoing` keeps document order (`ORDER BY line, rowid`); the Núcleo reader sheet got the Edit action too
+- **Boundary:** S2 (C24-C31, C56 `note_links`) closed at `db540ff`
+- **Settled mid-build (S3):** the worker failures answer `503` (not the `500` the plan wrote: a `500` is "internal", and the response contract reserves it for what nobody named; `index_worker_crashed` and `index_worker_out_of_memory` are named, retryable conditions) - the Surface and AC 36 were edited to `503` before the commit that closes them, recorded here and in AD-026; the progress bar was split into `IndexProgress.tsx` so C42 is proven on the component, not through the 60-prop chrome; `index.progress` is announced by the host (translating the worker's messages) and by the inline pass, the worker itself announces nothing; the related edges an interrupted pass owed are found again by comparing `file_terms.updated_at` with `index.related_at` (C35 caught that a killed pass left a different edge set than a clean one); `POST /api/memory/index/cancel` is `owner`; `engine.close()` terminates the thread and releases the restore lock before returning, `stop()` additionally awaits the pass
+- **Deliberate changes to earlier pins (S3):** route totals 131 -> 132, `owner` 66; the raised-errors set 56 -> 59; `OS_EVENT_TYPES` 23 -> 25 (`index.started`, `index.cancelled`) with their fixtures; `docs/events.md` regenerated

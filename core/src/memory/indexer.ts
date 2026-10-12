@@ -10,7 +10,7 @@ import { isBinaryBuffer, makeWorkspaceFilter } from "./excludes.js";
 import { fieldsFromDb, parseInlineFields } from "./fields.js";
 import { parseFrontMatter } from "./frontMatter.js";
 import { extractLinks } from "./linkParser.js";
-import type { IndexProgress, IndexStats } from "@mordomo/contracts";
+import type { IndexPhase, IndexProgress, IndexStats } from "@mordomo/contracts";
 
 export type { IndexProgress, IndexStats };
 
@@ -28,6 +28,8 @@ const LAST_INDEX_KEY = "last_index";
 /** Which version of the link extraction the stored `note_links` come from (the first pass after migration 20 fills them). */
 const NOTE_LINKS_KEY = "index.note_links";
 const NOTE_LINKS_VERSION = "1";
+/** When the related-by-content edges were last refreshed: the files whose terms are newer than this still owe them. */
+const RELATED_AT_KEY = "index.related_at";
 
 /** An incomplete scan cannot prove that previously indexed files disappeared. */
 export class IncompleteIndexScanError extends Error {
@@ -40,6 +42,25 @@ export class IncompleteIndexScanError extends Error {
 }
 
 
+
+/** The pass was cancelled (`POST /api/memory/index/cancel`); the blocks it had committed stay. */
+export class IndexCancelledError extends Error {
+  readonly code = "index_cancelled";
+  readonly statusCode = 409;
+  constructor() {
+    super("The index pass was cancelled. What it had already indexed was kept.");
+    this.name = "IndexCancelledError";
+  }
+}
+
+/**
+ * Whatever runs a pass on behalf of `indexAllAsync` and `requestIndexPaths` when it is more than the loop below: the
+ * worker host (`indexHost.ts`). Without one the pass runs in the caller's own thread.
+ */
+export interface IndexRunner {
+  isRunning(): boolean;
+  run(request: { only?: readonly string[]; onProgress?: (p: IndexProgress) => void }): Promise<IndexStats>;
+}
 
 export interface FileRow {
   id: number;
@@ -95,6 +116,8 @@ export class MemoryIndexer {
   /** Paths asked for through `requestIndexPaths` that no pass has taken yet, and the run that will take them. */
   private readonly requested = new Set<string>();
   private requestedRun: Promise<void> | null = null;
+  private runner: IndexRunner | null = null;
+  private cancelRequested = false;
 
   constructor(
     private readonly db: Db,
@@ -166,7 +189,7 @@ export class MemoryIndexer {
 
   /** True while an index run (sync or async) is in progress. */
   isIndexing(): boolean {
-    return this.running;
+    return this.running || (this.runner?.isRunning() ?? false);
   }
 
   indexAll(): IndexStats {
@@ -183,19 +206,61 @@ export class MemoryIndexer {
    */
   indexAllAsync(onProgress?: (p: IndexProgress) => void): Promise<IndexStats> {
     if (this.inFlight) return this.inFlight;
-    const run = (async () => {
-      const gen = this.steps(onProgress);
-      let step = gen.next();
-      while (!step.done) {
-        await new Promise<void>((resolve) => setImmediate(resolve));
-        step = gen.next();
-      }
-      return step.value;
-    })();
+    const run = this.runner
+      ? this.runner.run(onProgress ? { onProgress } : {})
+      : this.runInline(undefined, onProgress);
     this.inFlight = run.finally(() => {
       this.inFlight = null;
     });
     return this.inFlight;
+  }
+
+  /** Hand the passes to a runner (the worker host) from now on. */
+  attachRunner(runner: IndexRunner | null): void {
+    this.runner = runner;
+  }
+
+  /**
+   * A pass in this thread, in chunks: between chunks the event loop gets a turn. `runId` labels its events; `only`
+   * limits it to these paths. Cancelled by `cancelInline`, between two chunks.
+   */
+  async runInline(
+    runId: string | undefined,
+    onProgress?: (p: IndexProgress) => void,
+    only?: readonly string[],
+  ): Promise<IndexStats> {
+    this.cancelRequested = false;
+    const gen = this.steps(onProgress, only, runId);
+    let step = gen.next();
+    while (!step.done) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      if (this.cancelRequested) {
+        this.cancelRequested = false;
+        gen.return(undefined as never);
+        throw new IndexCancelledError();
+      }
+      step = gen.next();
+    }
+    return step.value;
+  }
+
+  /** Ask the pass that runs in this thread to stop at the next chunk. False when none runs. */
+  cancelInline(): boolean {
+    if (!this.running) return false;
+    this.cancelRequested = true;
+    return true;
+  }
+
+  /**
+   * The pass as a generator, for a caller that drives it itself (the worker thread): each `yield` is a safe point to
+   * stop at, and nothing is announced on any bus. `only` and `runId` are as in `runInline`.
+   */
+  iteratePass(
+    onProgress: (p: IndexProgress) => void,
+    only?: readonly string[],
+    runId?: string,
+  ): Generator<void, IndexStats> {
+    return this.steps(onProgress, only, runId);
   }
 
   /** A pass over these paths only (a note that was just saved), synchronously. Same rules as `indexAll`. */
@@ -225,7 +290,8 @@ export class MemoryIndexer {
         while (this.requested.size > 0) {
           const batch = [...this.requested];
           this.requested.clear();
-          this.indexPaths(batch);
+          if (this.runner) await this.runner.run({ only: batch });
+          else this.indexPaths(batch);
         }
       } finally {
         if (this.requestedRun === own.run) this.requestedRun = null;
@@ -247,6 +313,8 @@ export class MemoryIndexer {
     onProgress: ((p: IndexProgress) => void) | undefined,
     /** Only these paths: no scan, no pruning of the files not named, and `last_index` stays as it was. */
     only?: readonly string[],
+    /** The pass these events belong to (`index.started`). */
+    runId?: string,
   ): Generator<void, IndexStats> {
     if (this.running) throw new Error("An index run is already in progress.");
     this.running = true;
@@ -273,8 +341,10 @@ export class MemoryIndexer {
       // Every byte below is read through the safe-read primitive on the real path, under these roots.
       const scope = readScope({ ...this.filterOptions, roots, excludes: settings.excludes });
 
-      const emit = (total?: number) => {
+      const emit = (total?: number, phase?: IndexPhase) => {
         const p: IndexProgress = {
+          ...(runId ? { runId } : {}),
+          ...(phase ? { phase } : {}),
           scanned: stats.scanned,
           ...(total !== undefined ? { total } : {}),
           added: stats.added,
@@ -329,11 +399,14 @@ export class MemoryIndexer {
           }
           if (++dirsSinceYield >= 50) {
             dirsSinceYield = 0;
-            emit();
+            emit(undefined, "scan");
             yield;
           }
         }
       }
+
+      emit(candidates.length, "scan");
+      yield;
 
       // Phase 2: upserts, one transaction per chunk.
       const pending = this.loadPendingLinks();
@@ -350,9 +423,10 @@ export class MemoryIndexer {
           seen.add(c.full);
         }
       });
+      emit(total, "index");
       for (let i = 0; i < candidates.length; i += INDEX_CHUNK_SIZE) {
         upsertChunk(candidates.slice(i, i + INDEX_CHUNK_SIZE));
-        emit(total);
+        emit(total, "index");
         yield;
       }
 
@@ -362,9 +436,10 @@ export class MemoryIndexer {
       const removeChunk = this.db.transaction((rows: Array<{ id: number; path: string }>) => {
         for (const row of rows) this.removeFile(row.id, row.path, pending, stats);
       });
+      emit(total, "prune");
       for (let i = 0; i < stale.length; i += INDEX_CHUNK_SIZE) {
         removeChunk(stale.slice(i, i + INDEX_CHUNK_SIZE));
-        emit(total);
+        emit(total, "prune");
         yield;
       }
 
@@ -372,25 +447,37 @@ export class MemoryIndexer {
       if (!only) this.backfillNoteLinks();
 
       // Phase 4: related-by-content edges for what changed (IDF over the whole corpus).
-      stats.related = this.refreshRelated(this.touched);
+      emit(total, "related");
+      yield;
+      // What this pass changed, and what an earlier pass changed and died before it could relate (their terms are
+      // newer than the last refresh): a pass that is cut short and then repeated ends with the same edges as one that
+      // was not.
+      const relatedFrom = Date.now();
+      const owing = this.relatedOwed();
+      for (const id of this.touched) owing.add(id);
+      stats.related = this.refreshRelated(owing);
       this.touched = new Set();
 
       stats.durationMs = Date.now() - started;
       const finish = this.db.transaction(() => {
         this.savePendingLinks(pending);
+        this.db
+          .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+          .run(RELATED_AT_KEY, String(relatedFrom));
         if (only) return;
         this.db
           .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
           .run(LAST_INDEX_KEY, JSON.stringify({ at: Date.now(), stats }));
       });
       finish();
-      emit(total);
-      this.bus?.emit("index.finished", { stats });
+      emit(total, "related");
+      this.bus?.emit("index.finished", { stats, ...(runId ? { runId } : {}) });
       return stats;
     } catch (error) {
       this.bus?.emit("index.failed", {
         code: error instanceof IncompleteIndexScanError ? error.code : "index_failed",
         previousIndexPreserved: error instanceof IncompleteIndexScanError,
+        ...(runId ? { runId } : {}),
       });
       throw error;
     } finally {
@@ -601,6 +688,14 @@ export class MemoryIndexer {
         .run(NOTE_LINKS_KEY, NOTE_LINKS_VERSION);
     });
     run();
+  }
+
+  /** Ids of the files whose terms were stored after the last refresh of the related edges. */
+  private relatedOwed(): Set<number> {
+    const at = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(RELATED_AT_KEY) as { value: string } | undefined;
+    const since = at ? Number(at.value) : 0;
+    const rows = this.db.prepare("SELECT file_id FROM file_terms WHERE updated_at >= ?").all(since) as Array<{ file_id: number }>;
+    return new Set(rows.map((row) => row.file_id));
   }
 
   private insertLink(src: number, dst: number): void {

@@ -36,6 +36,7 @@ const DYNAMIC_PREFIXES: Record<string, string> = {
   "desktop.objectives.": "desktop/NowPanel.tsx: the status of the focused objective",
   "doctor.status.": "views/settings/diagnostics.tsx: the status of a check",
   "gate.state.": "desktop/console/Console.tsx, ConsoleControls.tsx: the problem a provider has",
+  "brain.index.phase.": "brain/BrainChrome.tsx: the phase of an index pass (`brain.index.phase.${phase}`)",
   "note.state.": "brain/NoteEditor.tsx: the state of the editor (`note.state.${kind}`)",
   "nucleo.pending.level.": "nucleo/pending/FocusMode.tsx: the level of a pending item",
   "profile.": "views/Routines.tsx, views/settings/security.tsx: the security profile",

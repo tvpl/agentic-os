@@ -43,6 +43,7 @@ import { EventBus } from "./events.js";
 import { MordomoError } from "./errors.js";
 import { ExecutionService } from "./execution/service.js";
 import { MemoryIndexer } from "./memory/indexer.js";
+import { IndexWorkerHost } from "./memory/indexHost.js";
 import { installJournalHooks } from "./memory/journal.js";
 import { MetricsHistory } from "./metrics/history.js";
 import { PushStore } from "./notifications/pushStore.js";
@@ -155,6 +156,8 @@ export class MordomoEngine {
   readonly objectives: ObjectiveStore;
   readonly skills: SkillCatalog;
   readonly indexer: MemoryIndexer;
+  /** Runs the index passes: in a worker thread when the worker script is there (`memory/indexHost.ts`). */
+  readonly indexHost: IndexWorkerHost;
   readonly routines: RoutineStore;
   readonly scheduler: RoutineScheduler;
   readonly connectors: ConnectorRegistry;
@@ -274,6 +277,13 @@ export class MordomoEngine {
       { homeDir: this.paths.home },
       this.events,
     );
+    this.indexHost = new IndexWorkerHost({
+      paths: this.paths,
+      db: this.db,
+      bus: this.events,
+      getSettings: () => this.settings(),
+      indexer: this.indexer,
+    });
     // An index from before the home's config/ was private may hold rows of it: they go now, not at the next pass.
     try {
       this.indexer.purgeExcluded();
@@ -488,6 +498,8 @@ export class MordomoEngine {
     const recovered = this.runs.recoverInterrupted();
     this.scheduler.start();
     this.sentinels.start();
+    // An index pass that died with the previous process is taken up again (it is incremental: what it committed stays).
+    this.indexHost.resumeInterrupted();
     return { recovered };
   }
 
@@ -496,6 +508,7 @@ export class MordomoEngine {
     this.sentinels.stop();
     this.scheduler.stop();
     if (this.db.open) await this.runs.shutdown(timeoutMs);
+    await this.indexHost.disposeAsync();
     this.close();
   }
 
@@ -504,6 +517,8 @@ export class MordomoEngine {
     for (const dispose of this.disposers.splice(0)) dispose();
     this.sentinels.stop();
     this.scheduler.stop();
+    // A pass in a worker thread is cancelled and its thread stopped before the database it writes to goes away.
+    this.indexHost.dispose();
     this.releaseLock();
     if (this.db.open) this.db.close();
   }

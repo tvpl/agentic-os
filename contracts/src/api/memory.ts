@@ -81,6 +81,18 @@ const OutgoingLinkSchema = z.object({
   alternatives: z.array(FileRowSchema),
 });
 
+const IndexingStatusSchema = z.object({
+  state: z.enum(["idle", "running"]),
+  /** Where a pass runs: a worker thread, or (no worker script) the service's own thread. */
+  mode: z.enum(["worker", "inline"]),
+  runId: z.string().nullable(),
+  phase: z.enum(["scan", "index", "prune", "related", "vectors"]).nullable(),
+  scanned: z.number(),
+  total: z.number().nullable(),
+  /** A pass of the previous process died; the start of this one takes it up again. */
+  interrupted: z.boolean(),
+});
+
 const AreaCountSchema = z.object({ area: z.string(), count: z.number() });
 const ExtCountSchema = z.object({ ext: z.string(), count: z.number() });
 const TagCountSchema = z.object({ tag: z.string(), count: z.number() });
@@ -241,6 +253,7 @@ export const memoryRoutes = {
           tags: z.array(TagCountSchema),
           total: z.number(),
         }),
+        indexing: IndexingStatusSchema,
       }),
     },
   }),
@@ -257,7 +270,31 @@ export const memoryRoutes = {
         "index_scan_incomplete",
         "The scan could not read a folder it needs; the previous index is kept",
       ),
+      err(
+        409,
+        "index_cancelled",
+        "The pass was cancelled (POST /api/memory/index/cancel); what it had committed stays",
+      ),
+      err(409, "restore_in_progress", "A restore holds the home; no pass starts until it has finished"),
+      err(
+        503,
+        "index_worker_crashed",
+        "The index worker died or broke the protocol; the previous index is kept",
+      ),
+      err(
+        503,
+        "index_worker_out_of_memory",
+        "The index worker ran past its memory limit; the previous index is kept",
+      ),
     ],
+  }),
+  "memory.index.cancel": route({
+    method: "POST",
+    path: "/api/memory/index/cancel",
+    summary: "Stop the index pass that runs, at its next block; what it had committed stays",
+    tag: "memory",
+    scope: "owner",
+    responses: { 200: z.object({ cancelled: z.boolean(), runId: z.string().nullable() }) },
   }),
   "memory.search": route({
     method: "GET",

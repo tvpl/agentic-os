@@ -38,8 +38,8 @@ const names = (dir: string) =>
 
 describe("S4 the registry", () => {
   it("C22 every event type has a version list", () => {
-    expect(OS_EVENT_TYPES).toHaveLength(23);
-    expect(new Set(OS_EVENT_TYPES).size).toBe(23);
+    expect(OS_EVENT_TYPES).toHaveLength(25);
+    expect(new Set(OS_EVENT_TYPES).size).toBe(25);
     expect(Object.keys(EVENT_VERSIONS).sort()).toEqual([...OS_EVENT_TYPES].sort());
     expect(Object.keys(EVENT_SCHEMAS).sort()).toEqual([...OS_EVENT_TYPES].sort());
     for (const type of OS_EVENT_TYPES) {
@@ -226,6 +226,7 @@ describe("S4 the bus and the document", () => {
       "run.finished",
       "routine.changed",
       "routine.fired",
+      "index.started",
       "index.finished",
       "approval.requested",
       "approval.resolved",
@@ -248,7 +249,7 @@ describe("S4 the bus and the document", () => {
       const entry = EVENT_ENVELOPES.find((e) => e.type === type && e.v === sent.v)!;
       expect(checkBody(entry.schema, sent), type).toEqual([]);
     }
-    expect(Object.keys(SCENARIOS)).toHaveLength(131);
+    expect(Object.keys(SCENARIOS)).toHaveLength(132);
   });
 
   it("C29 docs/events.md equals the generated text", () => {

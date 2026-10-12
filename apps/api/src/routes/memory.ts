@@ -89,7 +89,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   bind(app, "memory.status", async () => {
     const last = ctx.indexer.lastIndex();
     const facets = listFacets(ctx.db);
-    return { lastIndex: last, facets };
+    return { lastIndex: last, facets, indexing: ctx.indexHost.status() };
   });
 
   bind(app, "memory.index", async () => {
@@ -97,6 +97,8 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     const stats = await ctx.indexer.indexAllAsync();
     return { stats };
   });
+
+  bind(app, "memory.index.cancel", async () => ctx.indexHost.cancel());
 
   bind(app, "memory.search", async ({ query: q }) => {
     // Rows are judged by today's policy as they are read (an old index may still hold a private path).

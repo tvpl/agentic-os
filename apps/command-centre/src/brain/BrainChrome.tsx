@@ -3,13 +3,14 @@
  * indexing progress, the zoom stack, the legend (groups, rings and edge-kind
  * toggles), the layout pill and the hover tooltip. Presentational only.
  */
-import { type CSSProperties, type ReactNode, useContext } from "react";
+import { type ReactNode, useContext } from "react";
 import { ArrowLeft, Diamond, Maximize2, Menu, Minus, Plus, RefreshCw, Scan, Tv, X, Zap } from "lucide-react";
 import type { IndexProgressPayload } from "../api";
 import { LAUNCHER_EVENT } from "../App";
 import { AppRouteContext } from "../desktop/appRoute";
 import { ErrorBox } from "../components/ui";
 import { useT } from "../i18n";
+import { IndexProgress } from "./IndexProgress";
 import { APP_COLOR, EDGE_KINDS, ROUTINE_COLOR, SKILL_COLOR, type EdgeKind } from "./engine/world";
 import type { BrainUi } from "./state";
 import { Tooltip } from "../ui";
@@ -33,6 +34,9 @@ export interface BrainChromeProps {
   error: string | null;
   onRetry: () => void;
   progress: IndexProgressPayload | null;
+  /** How the last pass ended when it did not finish (text, with its icon). */
+  indexNote: "cancelled" | "failed" | null;
+  onCancelIndex: () => void;
   refreshing: boolean;
   onRefresh: () => void;
   liveCount: number;
@@ -69,7 +73,6 @@ export function BrainChrome(p: BrainChromeProps) {
   const t = useT();
   const inPanel = useContext(AppRouteContext) !== null;
   const { ui, patch, presenting, progress } = p;
-  const ratio = progress?.total ? Math.min(1, progress.scanned / progress.total) : 0;
 
   return (
     <>
@@ -89,17 +92,12 @@ export function BrainChrome(p: BrainChromeProps) {
           <ErrorBox message={p.error} onRetry={p.onRetry} />
         </div>
       )}
-      {(progress !== null || p.refreshing) && (
-        <div className="brain-progress" role="status" aria-live="polite">
-          <span>
-            {t("brain.indexing")}
-            {progress ? ` · ${progress.scanned}${progress.total ? ` / ${progress.total}` : ""}` : "…"}
-          </span>
-          <div className={`bar${progress?.total ? "" : " indeterminate"}`}>
-            <span style={{ "--p": ratio } as CSSProperties} />
-          </div>
-        </div>
-      )}
+      <IndexProgress
+        progress={progress}
+        refreshing={p.refreshing}
+        note={p.indexNote}
+        onCancel={p.onCancelIndex}
+      />
 
       <div className={`brain2-topbar${inPanel ? " in-panel" : ""}`}>
         <div>

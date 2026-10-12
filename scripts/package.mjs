@@ -14,6 +14,7 @@
  *
  * Output (per platform) — nothing in it is source code:
  *   lib/mordomo.mjs            the whole API + CLI as one minified bundle
+ *   lib/indexWorker.mjs        the memory index worker (a worker_thread the service starts; next to mordomo.mjs)
  *   lib/node_modules/          the SQLite native addon (the only non-bundled dependency)
  *   ui/                        the built Command Centre
  *   seed/                      default skills, routines and connectors (copied to the user home on first run)
@@ -59,7 +60,11 @@ if (!args.skipBuild) {
   log("Building workspaces…");
   run("npm", ["run", "build"], ROOT);
 }
-for (const required of ["apps/api/dist/cli.js", "apps/command-centre/dist/index.html"]) {
+for (const required of [
+  "apps/api/dist/cli.js",
+  "core/dist/memory/indexWorker.js",
+  "apps/command-centre/dist/index.html",
+]) {
   if (!fs.existsSync(path.join(ROOT, required))) fail(`${required} is missing — run npm run build`);
 }
 
@@ -79,6 +84,21 @@ await build({
     minify: true,
     sourcemap: false,
     banner: `/* MordomoOS ${pkg.version} — ${new Date().toISOString()} */`,
+  },
+});
+
+// The index worker is its own entry: the service starts it with `new Worker(file)`, so it cannot live inside the bundle above.
+// It reads the same better-sqlite3 addon (copied below) and nothing else of the service.
+await build({
+  input: path.join(ROOT, "core", "dist", "memory", "indexWorker.js"),
+  platform: "node",
+  external: ["better-sqlite3"],
+  logLevel: "silent",
+  output: {
+    file: path.join(payload, "lib", "indexWorker.mjs"),
+    format: "esm",
+    minify: true,
+    sourcemap: false,
   },
 });
 
