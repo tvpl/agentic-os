@@ -1,6 +1,6 @@
 /**
- * The signal contract (redesign F1, `docs/plans/desktop-agentico-redesign.md`;
- * refined by `docs/plans/desktop-jarvis-refino.md` items 21 and 30).
+ * The signal contract (redesign F1, `docs/internal/plans/desktop-agentico-redesign.md`;
+ * refined by `docs/internal/plans/desktop-jarvis-refino.md` items 21 and 30).
  *
  * A widget answers two questions with two different renderers. The *signal* is
  * the permanent one: an icon, one number and a level. It never scrolls and

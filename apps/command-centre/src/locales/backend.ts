@@ -88,7 +88,6 @@ export const en = {
   "backend.history.outcome": "Outcome",
 
   // ---- connectors ----
-  "backend.conn.data": "Data",
   "backend.conn.dataOk": "Reading fine",
   "backend.conn.dataError": "Read failed",
   "backend.conn.dataNotConfigured": "Not configured",
@@ -104,13 +103,6 @@ export const en = {
   "backend.conn.noSteps": "Nothing to set up on this machine.",
   "backend.conn.connectedAgo": "Connected · last read {ago}",
   "backend.conn.testRead": "Test read",
-  "backend.conn.testReadHint": "Runs the declared read-only tool once and shows the first 3 items.",
-  "backend.conn.firstItems": "First {n} items",
-  "backend.conn.noItems": "The read succeeded but returned nothing.",
-  "backend.conn.checklist": "Setup checklist",
-  "backend.conn.syncedAt": "Read {ago}",
-  "backend.conn.refresh": "Refresh",
-  "backend.conn.tools": "Tools offered",
   "backend.conn.readOnly": "Read-only: MordomoOS never calls a write tool through this client.",
 } as const;
 
@@ -194,7 +186,6 @@ export const ptBR = {
   "backend.outcome.alert": "alerta",
   "backend.history.outcome": "Resultado",
 
-  "backend.conn.data": "Dados",
   "backend.conn.dataOk": "Lendo normalmente",
   "backend.conn.dataError": "Falha na leitura",
   "backend.conn.dataNotConfigured": "Não configurado",
@@ -210,14 +201,6 @@ export const ptBR = {
   "backend.conn.noSteps": "Nada a configurar nesta máquina.",
   "backend.conn.connectedAgo": "Conectado · última leitura {ago}",
   "backend.conn.testRead": "Testar leitura",
-  "backend.conn.testReadHint":
-    "Executa uma vez a ferramenta somente-leitura declarada e mostra os 3 primeiros itens.",
-  "backend.conn.firstItems": "Primeiros {n} itens",
-  "backend.conn.noItems": "A leitura funcionou, mas não retornou nada.",
-  "backend.conn.checklist": "Passos de configuração",
-  "backend.conn.syncedAt": "Lido {ago}",
-  "backend.conn.refresh": "Atualizar",
-  "backend.conn.tools": "Ferramentas oferecidas",
   "backend.conn.readOnly":
     "Somente leitura: o MordomoOS nunca chama uma ferramenta de escrita por este cliente.",
 } satisfies Record<keyof typeof en, string>;

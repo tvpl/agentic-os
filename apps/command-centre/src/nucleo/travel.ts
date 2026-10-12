@@ -37,11 +37,6 @@ export function freshOrigin(now = Date.now()): Origin | null {
   return last && now - last.at <= ORIGIN_TTL_MS ? last : null;
 }
 
-/** Tests only. */
-export function resetOrigin(): void {
-  last = null;
-}
-
 /** The control a press landed on: the nearest button, link or marked target. */
 export function pressTarget(target: EventTarget | null): Element | null {
   if (!(target instanceof Element)) return null;

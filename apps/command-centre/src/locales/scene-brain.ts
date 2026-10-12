@@ -4,14 +4,12 @@
  * `ptBR` must carry exactly the keys of `en`.
  */
 export const en = {
-  "scene.brain.label": "Brain",
   "scene.brain.canvas":
     "Constellation of your notes in 3D. Drag to orbit, right-drag or Shift+drag to pan, scroll or pinch to fly towards the cursor — close to a star, keep scrolling to dive into it; inside a note, scroll out to leave. Click a star to read it, double-click to dive. W A S D or the arrows fly, Q and E rise and sink, + and − zoom, F frames the selection, 0 returns to the whole sky.",
   "scene.brain.count": "{n} note[|s] · {links} link[links?|s]",
   "scene.brain.areas": "Areas",
   "scene.brain.folders": "Folders",
   "scene.brain.legend": "Areas of the brain",
-  "scene.brain.legendToggle": "Show areas",
   "scene.brain.moreAreas": "+{n} more",
   "scene.brain.fewerAreas": "fewer",
   "scene.brain.search": "Search the brain",
@@ -107,7 +105,6 @@ export const en = {
   "scene.brain.rel.other": "Other links",
   "scene.brain.nearby": "Close, but not linked",
   "scene.brain.terms": "Key terms",
-  "scene.brain.termStars": "{n} star[|s] share “{term}”",
   "scene.brain.termPin": "Light up the notes that share “{term}” ({n})",
   "scene.brain.explain": "Explain",
   "scene.brain.askExplain":
@@ -147,14 +144,12 @@ export const en = {
 } as const;
 
 export const ptBR = {
-  "scene.brain.label": "Cérebro",
   "scene.brain.canvas":
     "Constelação das suas notas em 3D. Arraste para girar, botão direito ou Shift+arrastar para deslocar, role ou faça pinça para voar em direção ao cursor — perto de uma estrela, continue rolando para mergulhar nela; dentro de uma nota, role para trás para sair. Clique numa estrela para ler, duplo clique para mergulhar. W A S D ou as setas voam, Q e E sobem e descem, + e − aproximam, F enquadra a seleção, 0 volta ao céu inteiro.",
   "scene.brain.count": "{n} nota[|s] · {links} ligaç[links?ão|ões]",
   "scene.brain.areas": "Áreas",
   "scene.brain.folders": "Pastas",
   "scene.brain.legend": "Áreas do cérebro",
-  "scene.brain.legendToggle": "Mostrar áreas",
   "scene.brain.moreAreas": "+{n} mais",
   "scene.brain.fewerAreas": "menos",
   "scene.brain.search": "Buscar no cérebro",
@@ -250,7 +245,6 @@ export const ptBR = {
   "scene.brain.rel.other": "Outras ligações",
   "scene.brain.nearby": "Perto, sem ligação",
   "scene.brain.terms": "Termos-chave",
-  "scene.brain.termStars": "{n} estrela[|s] com “{term}”",
   "scene.brain.termPin": "Acender as notas que têm “{term}” ({n})",
   "scene.brain.explain": "Explicar",
   "scene.brain.askExplain":

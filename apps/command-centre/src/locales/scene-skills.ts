@@ -4,7 +4,6 @@
  * `ptBR` must carry exactly the keys of `en`.
  */
 export const en = {
-  "scene.skills.label": "Skills",
   "scene.skills.arsenal": "Skill arsenal",
   "scene.skills.tools": "Skills tools",
   "scene.skills.filterPh": "Find a skill…",
@@ -13,7 +12,6 @@ export const en = {
   "scene.skills.mode.all": "All",
   "scene.skills.mode.read_only": "Read-only",
   "scene.skills.mode.write": "Writes files",
-  "scene.skills.provider": "Provider",
   "scene.skills.provider.all": "all",
   "scene.skills.favorites": "Favourites",
   "scene.skills.paused": "Paused ({n})",
@@ -49,15 +47,12 @@ export const en = {
   "scene.skills.inputs": "Inputs",
   "scene.skills.model": "Model",
   "scene.skills.auto": "auto",
-  "scene.skills.closeDetails": "Close details",
-  "scene.skills.detailsOf": "Details: {name}",
   "scene.skills.noMatchDim": "Nothing matches “{q}”",
   "scene.skills.back": "All skills",
   "scene.skills.edit": "Edit",
 } as const;
 
 export const ptBR = {
-  "scene.skills.label": "Habilidades",
   "scene.skills.arsenal": "Arsenal de habilidades",
   "scene.skills.tools": "Ferramentas das habilidades",
   "scene.skills.filterPh": "Encontrar habilidade…",
@@ -66,7 +61,6 @@ export const ptBR = {
   "scene.skills.mode.all": "Todos",
   "scene.skills.mode.read_only": "Somente leitura",
   "scene.skills.mode.write": "Escreve arquivos",
-  "scene.skills.provider": "Provedor",
   "scene.skills.provider.all": "todos",
   "scene.skills.favorites": "Favoritas",
   "scene.skills.paused": "Pausadas ({n})",
@@ -102,8 +96,6 @@ export const ptBR = {
   "scene.skills.inputs": "Entradas",
   "scene.skills.model": "Modelo",
   "scene.skills.auto": "automático",
-  "scene.skills.closeDetails": "Fechar detalhes",
-  "scene.skills.detailsOf": "Detalhes: {name}",
   "scene.skills.noMatchDim": "Nada corresponde a “{q}”",
   "scene.skills.back": "Todas as habilidades",
   "scene.skills.edit": "Editar",

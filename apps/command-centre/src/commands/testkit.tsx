@@ -21,7 +21,7 @@ import { qk } from "../queries";
 import { comboParts, canonicalCombo } from "./keys";
 import { CommandRegistry, CommandsProvider, useCommands, type Command, type CommandScope } from "./registry";
 
-export { PREFS, PROVIDERS, RUN, SKILL, server, mockApi } from "./testserver";
+export { PROVIDERS, server } from "./testserver";
 import { PREFS, PROVIDERS, server } from "./testserver";
 
 /** Register the browser shims and the per-test reset. Call once, at the top of a test file. */

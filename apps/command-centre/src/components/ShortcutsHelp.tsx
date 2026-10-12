@@ -96,5 +96,3 @@ export function ShortcutsHelp({ onClose, open = true }: { onClose: () => void; o
     </Modal>
   );
 }
-
-export default ShortcutsHelp;

@@ -5,27 +5,8 @@
  */
 
 /* ---- run list ------------------------------------------------------------ */
-.quick-prompt {
-  resize: vertical;
-  min-height: 56px;
-  font: inherit;
-  line-height: var(--lh-body);
-}
 .quick-hint {
   margin: 0;
-}
-.quick-options {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-}
-.write-toggle {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-2);
-}
-.write-toggle .hint {
-  margin: 0;
-  font-size: var(--fs-3);
 }
 
 .runs-table td.num {

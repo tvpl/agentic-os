@@ -8,7 +8,3 @@ export default function Runs() {
   if (id) return <RunDetail key={id} id={id} />;
   return <RunList />;
 }
-
-export { default as Replay } from "./Replay";
-export { useRunningSkills } from "./useRunningSkills";
-export { runningSkillMap } from "./runningSkills";

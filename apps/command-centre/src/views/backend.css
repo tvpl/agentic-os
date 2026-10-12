@@ -85,21 +85,6 @@
 }
 
 /* ---- connectors ---- */
-
-.conn-data {
-  margin-top: var(--s-2);
-  padding-top: var(--s-2);
-  border-top: 1px solid var(--border);
-  display: grid;
-  gap: var(--s-2);
-}
-.conn-data-head {
-  display: flex;
-  gap: var(--s-2);
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-}
 .conn-items {
   list-style: none;
   margin: 0;
@@ -115,36 +100,8 @@
   border-left: 2px solid var(--border-strong);
   padding-left: var(--s-2);
 }
-.conn-items li.flagged {
-  border-left-color: var(--accent);
-}
-.conn-items .conn-item-sub {
-  color: var(--text-faint);
-  font-size: var(--fs-2);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.conn-checklist {
-  margin: 0;
-  padding-left: 1.1em;
-  display: grid;
-  gap: 4px;
-  color: var(--text-dim);
-  font-size: var(--fs-2);
-}
-.conn-checklist li {
-  overflow-wrap: anywhere;
-}
-.conn-summary-chips {
-  display: flex;
-  gap: var(--s-1);
-  flex-wrap: wrap;
-}
 
 @media (prefers-reduced-motion: no-preference) {
-  .conn-data,
   .rt-fires ul li {
     animation: backend-rise var(--dur-base) var(--ease-out) both;
   }

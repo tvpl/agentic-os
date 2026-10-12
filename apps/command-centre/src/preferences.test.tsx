@@ -180,7 +180,7 @@ function lastServerBlob(): unknown {
 }
 
 describe("S3 the UI reads and writes preferences through their route", () => {
-  it("C23 setup completion saves the preset and the HUD as UI preferences", async () => {
+  it("C23 setup completion saves the preset as a UI preference, and no HUD (limpeza-legado AC 10)", async () => {
     render(<Setup onDone={() => undefined} />, { wrapper });
     const next = async () => fireEvent.click(await screen.findByRole("button", { name: "Next" }));
     for (let i = 0; i < 4; i++) await next();
@@ -190,7 +190,8 @@ describe("S3 the UI reads and writes preferences through their route", () => {
     await waitFor(() => expect(api.putUiPreferences).toHaveBeenCalledTimes(1));
     const prefs = vi.mocked(api.putUiPreferences).mock.calls[0]![0];
     expect(prefs.themePreset).toBe("jarvis");
-    expect(prefs.hud?.l.length).toBeGreaterThan(0);
+    // The step that arranged the HUD is gone; the stored `hud` is only ever read back, never written by the Setup.
+    expect(prefs).not.toHaveProperty("hud");
     const writes = settingsWrites();
     expect(writes).toHaveLength(1);
     expect(writes[0]).toMatchObject({ setupCompleted: true, systemName: "MordomoOS" });

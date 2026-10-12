@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Legacy cleanup (limpeza-legado)**: what the two interfaces, the design system and the primitives left behind,
+  removed only where a scan that a test repeats proves nothing reaches it. Removed: 39 exported names with no user,
+  `runs/policy.ts` and the hook only a dead line reached, the `SkillMatrixModal` component; 55 CSS classes, 20
+  `@keyframes` and 4 custom properties; 276 translation keys; the three Markdown renderers (now one, with the same
+  HTML and one rule for what a link may be: `http`, `https` and `mailto` only, always `rel="noreferrer noopener"`; a
+  skill body now draws its tables and a `#anchor` in it is text); the arcs of the Setup's last step, which now only
+  picks the look ("Appearance"). Kept, because it is reachable: the 12 widgets of `desktop/` and `desktop.css` (the
+  frame's Today page and the Núcleo's lâminas use them) and both brains (the frame mounts the Second Brain, the
+  Núcleo the constellation and the Second Brain as its "classic map"). Pixel Studio is registered through an
+  `AppPlugin` in `src/plugins/pixel/` (still its own chunk); the build is 7.1 KB lighter in JS gzip. `docs/` keeps
+  the guides, the history moved to `docs/internal/`; the README describes the two interfaces, lists every CLI
+  command and the development scripts. Nothing changes for an existing `ui-preferences.json`: the `hud` field is
+  still read, served and kept, it is only no longer arranged in the Setup.
 - **License and legal texts (licenca-comercial)**: the product is licensed under the Functional Source License
   1.1 with the Apache-2.0 future license (FSL-1.1-ALv2; the canonical text from fsl.software in `LICENSE`, the
   `license` field of the 8 manifests is the SPDX id `FSL-1.1-ALv2`); `CONTRIBUTING.md` asks for a DCO sign-off and no

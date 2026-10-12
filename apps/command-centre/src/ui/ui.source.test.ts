@@ -374,9 +374,9 @@ function tooltips(code: string): Array<{ label: boolean; named: boolean }> {
 const TITLE_STAYS: Record<string, [reason: "DATA" | "WORDS" | "BINDING" | "DECK" | "TOUR", count: number]> = {
   'brain/BrainPanel.tsx :: {`${t("brain.local")} (f)`}': ["WORDS", 1],
   "brain/FileList.tsx :: {n.path}": ["DATA", 1],
-  'brain/PreviewPanel.tsx :: {t("brain.ring.skills")}': ["WORDS", 1],
-  'brain/PreviewPanel.tsx :: {t("brain.clickToSelect")}': ["WORDS", 1],
-  "brain/PreviewPanel.tsx :: {n.href}": ["DATA", 1],
+  'components/Markdown.tsx :: {t("brain.ring.skills")}': ["WORDS", 1],
+  // The title of a note link is the reference itself (a path or an address) or the sentence that says what a click does.
+  "components/Markdown.tsx :: {title}": ["DATA", 2],
   'brain/PreviewPanel.tsx :: {t("brain.unpin")}': ["WORDS", 1],
   "brain/PreviewPanel.tsx :: {e.why || e.name}": ["DATA", 1],
   'desktop/DocWindow.tsx :: {t("desktop.doc.reference")}': ["WORDS", 1],
@@ -409,7 +409,6 @@ const TITLE_STAYS: Record<string, [reason: "DATA" | "WORDS" | "BINDING" | "DECK"
   'nucleo/scenes/BrainSceneGauge.tsx :: {t("scene.brain.zoomTo", { level: t(KEYS[z]) })}': ["WORDS", 1],
   'nucleo/scenes/BrainSceneLegend.tsx :: {`${d === "areas" ? areasLabel : t(DIM_KEYS[d])} · ${t("scene.brain.dimKey", { n: k + 1 })':
     ["WORDS", 1],
-  "nucleo/scenes/BrainSceneMarkdown.tsx :: {title}": ["DATA", 1],
   'nucleo/scenes/BrainSceneReader.tsx :: {t("scene.brain.termPin", { term: k.term, n: k.n })}': ["WORDS", 1],
   'nucleo/scenes/BrainSceneReader.tsx :: {t("scene.brain.travel", { name: e.label })}': ["WORDS", 1],
   "nucleo/scenes/BrainSceneTrail.tsx :: {c.label}": ["DATA", 1],
@@ -425,7 +424,7 @@ const TITLE_STAYS: Record<string, [reason: "DATA" | "WORDS" | "BINDING" | "DECK"
   'runs/RunDetail.tsx :: {t("runs.actions.againTitle")}': ["WORDS", 1],
   'runs/RunDetail.tsx :: {t("runs.actions.continueTitle")}': ["WORDS", 1],
   "views/Artifacts.tsx :: {item.path}": ["DATA", 1],
-  'views/PixelStudio.tsx :: {t("pixel.onion")}': ["WORDS", 1],
+  'plugins/pixel/PixelStudio.tsx :: {t("pixel.onion")}': ["WORDS", 1],
   "views/RoutinesTimeline.tsx :: {`${fmtHour(h.firedAt)} · ${said}`}": ["DATA", 1],
   'views/Skills/SkillDetail.tsx :: {t("skills.notes.promoteHint")}': ["WORDS", 1],
 };
@@ -542,7 +541,6 @@ function usesFromUi(code: string, file: string): { rendered: Set<string>; import
 const MIGRATED: Array<[file: string, primitive: string]> = [
   ["components/ShortcutsHelp.tsx", "Modal"],
   ["components/primitives.tsx", "Modal"],
-  ["desktop/SkillMatrixModal.tsx", "Modal"],
   ["views/Skills/ExportModal.tsx", "Modal"],
   ["views/Skills/MarketplaceModal.tsx", "Modal"],
   ["views/Skills/NewSkillModal.tsx", "Modal"],

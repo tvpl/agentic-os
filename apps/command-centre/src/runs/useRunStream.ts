@@ -29,7 +29,7 @@ export interface RunDetailPayload {
   events: RunEventView[];
 }
 
-export { ACTIVE_RUN_STATUSES, isRunActive, isRunFailed } from "./status";
+export { isRunActive, isRunFailed } from "./status";
 
 export function isNotFound(err: unknown): boolean {
   return err instanceof ApiError && err.status === 404;

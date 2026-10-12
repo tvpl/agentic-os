@@ -1,6 +1,6 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarDays, Check, Copy, ExternalLink, Eye, EyeOff, Mail, Plug, RefreshCw } from "lucide-react";
+import { CalendarDays, Check, Copy, ExternalLink, Mail, Plug, RefreshCw } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { providerOptions } from "../providers/options";
 import { api, type Connector, type ProviderId, type ProviderSnapshot } from "../api";
@@ -10,7 +10,6 @@ import { qk, useApiQuery } from "../queries";
 import { ErrorBox, Skeleton, useToast } from "../components/ui";
 import { Badge, Button, Field } from "../components/primitives";
 import { PRESETS, applyPreset, type PresetId } from "../theme";
-import { DEFAULT_HUD, HUD_CATALOGUE, hudTitleKey, naturalSide, toggleInHud, type Hud } from "../desktop/hud";
 import { copyText, errorMessage, isAbsolutePath, isOffline } from "./shared";
 import "./apps.css";
 import { Tooltip } from "../ui";
@@ -21,7 +20,7 @@ const LAST_STEP = 4;
 
 /**
  * In-UI setup for when the guided terminal setup was skipped: five steps
- * (providers → identity → folders → connect data → your desktop).
+ * (providers → identity → folders → connect data → appearance).
  * Everything is editable later in Settings.
  */
 export default function Setup({ onDone }: { onDone: () => void }) {
@@ -51,9 +50,6 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   const [folderError, setFolderError] = useState<string | null>(null);
   const [phase, setPhase] = useState<"idle" | "saving" | "indexing">("idle");
   const [preset, setPreset] = useState<PresetId>("hud-orange");
-  // The HUD (G5): which instruments sit on the pod arcs. Starts as the
-  // default composition; the wizard's last step is where it becomes yours.
-  const [hud, setHud] = useState<Hud>(() => ({ l: [...DEFAULT_HUD.l], r: [...DEFAULT_HUD.r] }));
 
   useEffect(() => {
     if (!providers.data) return;
@@ -106,9 +102,9 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         : (Object.entries(enabled).find(([, v]) => v)?.[0] ?? defaultProvider);
       const folders = current.indexedFolders;
       const chosenPreset = PRESETS.find((p) => p.id === preset) ?? PRESETS[0]!;
-      // The preset and the arcs are UI preferences (config/ui-preferences.json). They are
-      // saved first, so `setupCompleted` only flips once both writes have landed.
-      await api.putUiPreferences({ themePreset: chosenPreset.id, hud });
+      // The preset is a UI preference (config/ui-preferences.json). It is saved first,
+      // so `setupCompleted` only flips once both writes have landed.
+      await api.putUiPreferences({ themePreset: chosenPreset.id });
       await api.putSettings({
         systemName: name.trim() || "MordomoOS",
         language: lang,
@@ -141,7 +137,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     t("setup.stepIdentity"),
     t("setup.stepFolders"),
     t("apps.setup.stepConnect"),
-    t("apps.setup.stepDesktopHud"),
+    t("apps.setup.stepAppearance"),
   ];
   const anyEnabled = enabled ? Object.values(enabled).some(Boolean) : false;
   const folderOk = !folder.trim() || isAbsolutePath(folder);
@@ -350,14 +346,12 @@ export default function Setup({ onDone }: { onDone: () => void }) {
             )}
             {step === 3 && <ConnectStep />}
             {step === 4 && (
-              <DesktopStep
+              <AppearanceStep
                 preset={preset}
                 onPreset={(id) => {
                   setPreset(id);
                   applyPreset(id);
                 }}
-                hud={hud}
-                onToggle={(id) => setHud((prev) => toggleInHud(prev, id))}
               />
             )}
             <div className="modal-actions">
@@ -453,44 +447,13 @@ function ConnectorRow({ connector }: { connector: Connector }) {
   );
 }
 
-/* ------------------------------------------------------- your desktop ------ */
+/* ------------------------------------------------------- appearance ------ */
 
-function DesktopStep({
-  preset,
-  onPreset,
-  hud,
-  onToggle,
-}: {
-  preset: PresetId;
-  onPreset: (id: PresetId) => void;
-  hud: Hud;
-  onToggle: (id: string) => void;
-}) {
+function AppearanceStep({ preset, onPreset }: { preset: PresetId; onPreset: (id: PresetId) => void }) {
   const t = useT();
-  const on = (id: string) => hud.l.includes(id) || hud.r.includes(id);
-  const arc = (side: "l" | "r", label: string) => (
-    <div className="apps-hud-arc" role="group" aria-label={label}>
-      <span className="hud-label">{label}</span>
-      <div className="apps-widgets">
-        {HUD_CATALOGUE.filter((id) => naturalSide(id) === side).map((id) => (
-          <button
-            key={id}
-            type="button"
-            className="apps-widget-toggle"
-            aria-pressed={on(id)}
-            data-hud={id}
-            onClick={() => onToggle(id)}
-          >
-            {on(id) ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
-            <span className="truncate">{t(hudTitleKey(id))}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
   return (
     <div className="stack">
-      <p className="hint">{t("apps.setup.desktopHint")}</p>
+      <p className="hint">{t("apps.setup.appearanceHint")}</p>
       <div className="apps-presets">
         {PRESETS.map((p) => (
           <button
@@ -513,8 +476,6 @@ function DesktopStep({
           </button>
         ))}
       </div>
-      {arc("l", t("apps.setup.hudLeft"))}
-      {arc("r", t("apps.setup.hudRight"))}
     </div>
   );
 }

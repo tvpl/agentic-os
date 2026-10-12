@@ -41,8 +41,8 @@ runs on a schedule. The UI (Routines → New routine) writes these files for you
   `backoffMs × attempt` waits.
 - Every firing creates a normal run (origin `routine`) — full event log,
   artifacts in `artifacts/<runId>/`, cancellation, timeout.
-- **Health**: 2+ failures in 3 days marks the routine unhealthy on the
-  Dashboard and in `mordomo doctor`.
+- **Health**: 2+ failures in 3 days marks the routine unhealthy on
+  Today (the app frame), in the Núcleo's pendências and in `mordomo doctor`.
 
 ## Testing and operating
 

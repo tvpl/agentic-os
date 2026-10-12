@@ -31,7 +31,7 @@ import { isQuestion } from "../../nucleo/question";
 import { activityKind } from "../../nucleo/activity";
 import { Tooltip } from "../../ui";
 import { useApprovals } from "../../runs/ApprovalCards";
-import Markdown from "../../views/Skills/Markdown";
+import { Markdown } from "../../components/Markdown";
 
 export type Reply = ReturnType<typeof replyFromEvents>;
 
@@ -172,7 +172,7 @@ function Turn({
         <span className="console-who">{t("desktop.console.agent")}</span>
         {/* What it said so far, and — below it — what it waits on: a question
             is usually asked after a few words, and still answered here. */}
-        {reply?.text && <Markdown source={reply.text} className="console-md" />}
+        {reply?.text && <Markdown source={reply.text} shape="page" className="console-md" />}
         {question ? (
           // The agent asked you something: that is conversation, answered here.
           <QuestionCard approval={question} />

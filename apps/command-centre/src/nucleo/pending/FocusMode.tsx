@@ -57,8 +57,6 @@ const ICON: Record<PendingKind, ReactNode> = {
   notice: <Bell aria-hidden />,
 };
 
-export { askAgent } from "../subject";
-
 interface Act {
   key: string;
   label: string;

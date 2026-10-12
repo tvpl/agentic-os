@@ -6,7 +6,6 @@
 export const en = {
   // ---- Skills detail ----
   "apps.skills.tabResources": "Resources",
-  "apps.skills.tabChecks": "Guardrails & success",
   "apps.skills.viewSource": "Source",
   "apps.skills.viewRendered": "Rendered",
   "apps.skills.copyBody": "Copy",
@@ -20,7 +19,6 @@ export const en = {
   "apps.skills.noResourcesBody":
     "Add brand HTML, images, PDFs or reference markdown under resources/ — they are previewed here and the run prompt points the agent to them.",
   "apps.skills.resourceCount": "{n} file(s)",
-  "apps.skills.preview": "Preview",
   "apps.skills.openNewTab": "Open in new tab",
   "apps.skills.noPreview": "No inline preview for this file type.",
   "apps.skills.previewFailed": "Could not load the preview.",
@@ -37,9 +35,6 @@ export const en = {
   "apps.skills.approvalTitle": "Approval needed",
   "apps.skills.approvalBody":
     "This run writes files under your security profile. Approve here to launch it now, or deny to cancel.",
-  "apps.skills.approvalLaunched": "Approved — run started.",
-  "apps.skills.approvalDenied": "Denied — nothing was run.",
-  "apps.skills.approvalGone": "This approval was already resolved elsewhere.",
   "apps.skills.htmlPreview": "HTML preview (sandboxed, scripts disabled)",
   // ---- Settings ----
   "settings.group.who": "Who you are",
@@ -92,7 +87,6 @@ export const en = {
   "trends.table": "Table",
   "trends.chart": "Chart",
   "trends.empty": "No samples yet — the first one lands within the hour.",
-  "trends.samples": "{n} samples",
   "apps.settings.budget": "Daily budget (USD)",
   "apps.settings.budgetHint":
     "Spend across every provider per day. The desktop warns at 80 % and flags the day as over budget at 100 %. 0 disables it.",
@@ -100,9 +94,6 @@ export const en = {
   "apps.settings.presetsHint":
     "A preset sets the accent and the surface family. The accent can still be fine-tuned under Identity.",
   "apps.settings.presetApplied": "Preset applied: {name}",
-  "apps.settings.widgets": "Dashboard widgets",
-  "apps.settings.widgetsHint":
-    "Choose which widgets the desktop shows. Position and size are edited on the desktop itself.",
   "apps.settings.microApps": "Micro apps",
   "apps.settings.microAppsHint":
     "Extra entries for the desktop Micro apps widget: internal routes (/pixel) or http(s) URLs.",
@@ -147,9 +138,6 @@ export const en = {
   "skills.market.installed": "Installed {name}.",
   "skills.market.files": "{n} file(s)",
   "skills.market.empty": "Nothing matches.",
-  "skills.market.noRegistry": "No registry configured",
-  "skills.market.noRegistryBody":
-    "Add an https index URL under Settings › Memory & folders › Skill registries. Every file is digest-checked before it lands in the catalog.",
   "apps.settings.registries": "Skill registries",
   "apps.settings.registriesHint":
     "One https:// or file:// index.json per line. Append #key=<public key> to require the publisher's Ed25519 signature (mordomo skills key prints yours).",
@@ -249,24 +237,15 @@ export const en = {
   "apps.settings.soundOn": "On",
   "apps.settings.soundOff": "Off",
   "apps.settings.notificationsHint": "Notifications appear in the Inbox widget and in the top-bar bell.",
-  "apps.widget.prompt": "Prompt bar",
-  "apps.widget.inbox": "Inbox",
-  "apps.widget.agenda": "Agenda",
-  "apps.widget.calendar": "Calendar",
-  "apps.widget.email": "E-mail",
-  "apps.widget.cost": "Cost",
   // ---- Setup ----
   "apps.setup.stepConnect": "Connect data",
-  "apps.setup.stepDesktop": "Your desktop",
   "apps.setup.connectHint":
     "Calendar and e-mail widgets read through connectors. Nothing needs to be configured now — the checklist stays available under Connectors.",
   "apps.setup.openConnectors": "Open the connectors checklist",
   "apps.setup.noConnectors": "No calendar or e-mail connector is registered.",
-  "apps.setup.stepDesktopHud": "Build your HUD",
-  "apps.setup.desktopHint":
-    "Pick a look and the instruments on your HUD: apps on the left arc, readings on the right. Everything can change later from the dock's Edit HUD.",
-  "apps.setup.hudLeft": "Left arc · apps",
-  "apps.setup.hudRight": "Right arc · readings",
+  "apps.setup.stepAppearance": "Appearance",
+  "apps.setup.appearanceHint":
+    "Pick a look. It applies to both interfaces and you can change it at any time in Settings › Theme.",
   "apps.setup.status.not_configured": "not configured",
   "apps.setup.status.configured": "configured",
   // ---- Pixel Studio ----
@@ -285,7 +264,6 @@ export const en = {
 
 export const ptBR = {
   "apps.skills.tabResources": "Recursos",
-  "apps.skills.tabChecks": "Guardrails e sucesso",
   "apps.skills.viewSource": "Fonte",
   "apps.skills.viewRendered": "Renderizado",
   "apps.skills.copyBody": "Copiar",
@@ -299,7 +277,6 @@ export const ptBR = {
   "apps.skills.noResourcesBody":
     "Adicione HTML de marca, imagens, PDFs ou markdown de referência em resources/ — eles aparecem aqui em preview e o prompt da execução aponta o agente para eles.",
   "apps.skills.resourceCount": "{n} arquivo(s)",
-  "apps.skills.preview": "Preview",
   "apps.skills.openNewTab": "Abrir em nova aba",
   "apps.skills.noPreview": "Sem preview inline para este tipo de arquivo.",
   "apps.skills.previewFailed": "Não foi possível carregar o preview.",
@@ -316,9 +293,6 @@ export const ptBR = {
   "apps.skills.approvalTitle": "Aprovação necessária",
   "apps.skills.approvalBody":
     "Esta execução escreve arquivos sob o seu perfil de segurança. Aprove aqui para iniciar agora, ou negue para cancelar.",
-  "apps.skills.approvalLaunched": "Aprovado — execução iniciada.",
-  "apps.skills.approvalDenied": "Negado — nada foi executado.",
-  "apps.skills.approvalGone": "Esta aprovação já foi resolvida em outro lugar.",
   "apps.skills.htmlPreview": "Preview HTML (sandbox, scripts desativados)",
   "settings.group.who": "Quem é você",
   "settings.group.think": "Como o agente pensa",
@@ -370,7 +344,6 @@ export const ptBR = {
   "trends.table": "Tabela",
   "trends.chart": "Gráfico",
   "trends.empty": "Ainda sem amostras — a primeira chega dentro de uma hora.",
-  "trends.samples": "{n} amostras",
   "apps.settings.budget": "Orçamento diário (US$)",
   "apps.settings.budgetHint":
     "Gasto somado de todos os provedores por dia. O desktop avisa aos 80 % e marca o dia como estourado aos 100 %. 0 desliga.",
@@ -378,9 +351,6 @@ export const ptBR = {
   "apps.settings.presetsHint":
     "Um preset define o accent e a família de superfícies. O accent ainda pode ser ajustado em Identidade.",
   "apps.settings.presetApplied": "Preset aplicado: {name}",
-  "apps.settings.widgets": "Widgets do painel",
-  "apps.settings.widgetsHint":
-    "Escolha quais widgets o desktop mostra. Posição e tamanho são editados no próprio desktop.",
   "apps.settings.microApps": "Micro apps",
   "apps.settings.microAppsHint":
     "Entradas extras para o widget Micro apps do desktop: rotas internas (/pixel) ou URLs http(s).",
@@ -425,9 +395,6 @@ export const ptBR = {
   "skills.market.installed": "{name} instalada.",
   "skills.market.files": "{n} arquivo(s)",
   "skills.market.empty": "Nada corresponde.",
-  "skills.market.noRegistry": "Nenhum registro configurado",
-  "skills.market.noRegistryBody":
-    "Adicione uma URL https de índice em Configurações › Memória & pastas › Registros de skills. Cada arquivo tem o digest conferido antes de entrar no catálogo.",
   "apps.settings.registries": "Registros de skills",
   "apps.settings.registriesHint":
     "Um index.json https:// ou file:// por linha. Acrescente #key=<chave pública> para exigir a assinatura Ed25519 do publicador (mordomo skills key mostra a sua).",
@@ -529,23 +496,14 @@ export const ptBR = {
   "apps.settings.soundOn": "Ligado",
   "apps.settings.soundOff": "Desligado",
   "apps.settings.notificationsHint": "As notificações aparecem no widget Inbox e no sino da barra superior.",
-  "apps.widget.prompt": "Barra de prompt",
-  "apps.widget.inbox": "Inbox",
-  "apps.widget.agenda": "Agenda",
-  "apps.widget.calendar": "Calendário",
-  "apps.widget.email": "E-mail",
-  "apps.widget.cost": "Custo",
   "apps.setup.stepConnect": "Conectar dados",
-  "apps.setup.stepDesktop": "Seu desktop",
   "apps.setup.connectHint":
     "Os widgets de calendário e e-mail leem através de conectores. Nada precisa ser configurado agora — o checklist continua disponível em Conectores.",
   "apps.setup.openConnectors": "Abrir o checklist de conectores",
   "apps.setup.noConnectors": "Nenhum conector de calendário ou e-mail está registrado.",
-  "apps.setup.stepDesktopHud": "Monte seu HUD",
-  "apps.setup.desktopHint":
-    "Escolha um visual e os instrumentos do seu HUD: apps no arco da esquerda, leituras no da direita. Tudo pode mudar depois em Editar HUD, no dock.",
-  "apps.setup.hudLeft": "Arco da esquerda · apps",
-  "apps.setup.hudRight": "Arco da direita · leituras",
+  "apps.setup.stepAppearance": "Aparência",
+  "apps.setup.appearanceHint":
+    "Escolha um visual. Vale para as duas interfaces e dá para mudar quando quiser em Configurações › Tema.",
   "apps.setup.status.not_configured": "não configurado",
   "apps.setup.status.configured": "configurado",
   "apps.pixel.redo": "Refazer",

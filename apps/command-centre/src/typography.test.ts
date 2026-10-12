@@ -254,7 +254,6 @@ const MICROCOPY: Record<string, string> = {
   ".rs-row-title.mono": "a run title that is a skill name or a command",
   ".rts-facts dd.mono": "a routine fact value (a cron expression, a time zone)",
   ".sks-fchip.mono": "a filter chip in monospace",
-  ".sks-opt.mono": "a filter option in monospace",
   ".sks-read .v.mono": "a value in monospace",
   ".sks-read .k": "the key of a key/value pair",
   ".sks-read .v": "the value of a key/value pair",

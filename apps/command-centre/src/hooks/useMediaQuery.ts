@@ -12,7 +12,3 @@ export function useMediaQuery(query: string): boolean {
   }, [query]);
   return matches;
 }
-
-export function usePrefersReducedMotion(): boolean {
-  return useMediaQuery("(prefers-reduced-motion: reduce)");
-}

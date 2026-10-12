@@ -12,16 +12,20 @@ mordomo start        # the same, without opening the browser
 The first visit shows the **setup screen**: which provider CLIs were found on
 this computer (with the install or login command for the missing ones and a
 *Detect again* button), your name/theme/language, one folder to index, data
-connectors and the desktop look. Everything is editable later in Settings.
+connectors and the look of the app. Everything is editable later in Settings.
 If none of the enabled providers can run yet (not installed, or signed out),
 the OS opens with **Connect your AI first** and the top bar reads *login
 required* until a `claude auth login` / `codex login` / `cursor-agent login`
 succeeds; the console will not start a run before that.
 
-The Command Centre opens on the **Dashboard**: active provider + quick
-Claude/Cursor/Codex switcher, favorite skills with Run buttons, routines and
-next executions, recent artifacts, in-progress runs, failures needing
-attention, and 7-day metrics. The Second Brain card is the centrepiece.
+The Command Centre has two interfaces, switched in **Settings → Theme →
+Interface**. The **app frame** (what a new install opens) has a sidebar, a
+page for each place and the chat with the agent fixed on the right; its first
+page, **Today**, lists what needs you, what is running, today's routines, the
+inbox, the journal and the cost. The **Núcleo** is the immersive one: each
+place is a full-screen scene (core, brain, runs, skills, routines, keys `1` to
+`5`) around the agent's living core and one voice line. Both answer the same
+keys: the command palette (Ctrl/⌘ K) and the shortcut list (`?`).
 
 Language (English/Português) and theme (dark/light/system) live in
 **Settings → Identity**, next to the running version, the data folder and an
@@ -30,7 +34,7 @@ exports a redacted diagnostics file for bug reports.
 
 ## 2. Skills (your SOPs as commands)
 
-- **Run**: Dashboard button, or Skills → open → choose provider/model/effort +
+- **Run**: Skills → open → choose provider/model/effort +
   fill inputs → Run. Terminal: `mordomo run <slug> --provider codex --input focus=Finanças`.
 - **Create**: Skills → New skill. Rule of thumb from ARMS: *if you prompted the
   same task twice, make it a skill*; keep SKILL.md under 60 lines.
@@ -55,7 +59,7 @@ exports a redacted diagnostics file for bug reports.
   paragraph); children are listed under the parent and follow its profile.
 
 Every run writes its outputs to `artifacts/<run-id>/`; artifacts appear on the
-Dashboard and in the run's page.
+Today (the frame), the pendências (the Núcleo) and in the run's page.
 
 ### 2.1 Sharing skills: the marketplace
 
@@ -127,7 +131,7 @@ unless you tick Enabled — including the seeded *Daily workspace digest*.
 
 - **Test now** fires it immediately and links to the live run.
 - **History** shows every firing with its run; repeatedly failing routines are
-  flagged on the Dashboard.
+  flagged on Today and in the Núcleo.
 - Routines fire while the MordomoOS service is running. For login autostart:
   `mordomo service install` (systemd --user on Linux, launchd on macOS, Task
   Scheduler on Windows) — always shown and confirmed before anything is
@@ -146,7 +150,8 @@ without you.
 
 ## 5.1 The Console (talk to the agent)
 
-The **Console** widget on the desktop is a conversation, not a one-shot
+The **Console** (the chat at the right of the app frame; the voice line of the
+Núcleo) is a conversation, not a one-shot
 prompt. Every message continues the same session: MordomoOS resumes the
 provider's own conversation (`claude --resume`, `codex exec resume`), so the
 agent remembers what you said two turns ago. The thread shows each turn — what
@@ -164,7 +169,7 @@ quoted transcript (newest six turns, capped) and marks the run with a
 
 ## 5.2 Budget and the inbox
 
-Set a **daily budget** (Settings › Security). The Cost widget shows the bar,
+Set a **daily budget** (Settings › Security). The Cost card on Today (the Núcleo's cost lâmina) shows the bar,
 "Needs attention" flags 80 % and 100 %, and the inbox gets one row per day per
 level. The inbox itself is persisted on the server: approvals, failed runs,
 routine alerts and budget crossings survive a closed tab and are read from
@@ -202,14 +207,14 @@ cap for providers that report cost while running.
 
 ### 5.2.2 Trends
 
-**Settings › Trends** charts the numbers the desktop shows live — spend,
+**Settings › Trends** charts the numbers the app shows live — spend,
 runs, failures, tokens, inbox unread, approval wait — from one sample per
 hour (`metrics_samples`, 90 days), folded per day, with a table view. The
 first sample lands at boot; the plan's §9 targets are measured here.
 
 ## 5.3 The HUD
 
-The desktop core reacts to what the agent does — thinking, using a tool,
+In the Núcleo, the core reacts to what the agent does — thinking, using a tool,
 answering, alerting, done — and a HUD layer adds scanlines, corner brackets,
 a radar sweep and telemetry. **Settings › Theme › HUD intensity** scales all
 of it (0 turns it off); the **JARVIS** preset is the cyan-on-black look.

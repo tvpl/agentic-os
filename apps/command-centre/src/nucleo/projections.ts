@@ -68,7 +68,3 @@ export function subscribeLaminas(fn: Listener): () => void {
 export function useLaminas(): readonly string[] {
   return useSyncExternalStore(subscribeLaminas, getLaminas, getLaminas);
 }
-/** Tests only. */
-export function resetLaminas(): void {
-  set([]);
-}

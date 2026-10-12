@@ -105,7 +105,6 @@
   /* live-canvas palette (desktop wallpaper, brain) — read by Wallpaper.tsx */
   --canvas-star: #efe9da;
   --canvas-particle: #94a3b8;
-  --canvas-line: #7a6d4a;
   /* opaque surfaces for panels that sit over live canvases (no backdrop-filter) */
   --surface: color-mix(in srgb, var(--bg-raise) 90%, var(--bg));
   --surface-2: color-mix(in srgb, var(--bg-raise-2) 92%, var(--bg));
@@ -161,14 +160,12 @@
      regiões"): the strip on top, the pod rail on the left, the console drawer
      above the dock, and the stage in what is left. The drawer's measured
      height is written into --console-h on .desktop at runtime. */
-  --stage-top: 40px;
   --stage-bottom: 46px;
   --rail-w: 72px;
   --console-h: 0px;
   --radius-sm: 7px;
 
   /* layers --------------------------------------------------------------- */
-  --z-base: 0;
   --z-widget: 10;
   --z-chrome: 20;
   --z-drawer: 30;
@@ -181,7 +178,6 @@
   --dur-fast: 120ms; /* hover / press feedback */
   --dur-base: 200ms; /* state changes, FLIP moves */
   --dur-slow: 320ms; /* entrances, height changes */
-  --dur-enter: 480ms; /* first paint of a surface */
   --dur-exit: 160ms; /* every exit (modals, toasts, palette) */
   --dur-push: 240ms; /* depth push of the layer behind a dialog */
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
@@ -220,7 +216,6 @@
   --grid-dot: rgba(32, 28, 20, 0.05);
   --canvas-star: #3b3630;
   --canvas-particle: #6b7280;
-  --canvas-line: #9a9080;
   --hud-intensity: 0.25;
   color-scheme: light;
 }
@@ -248,7 +243,6 @@
   --grid-dot: rgba(160, 200, 240, 0.06);
   --canvas-star: #dbe9f7;
   --canvas-particle: #7fb3d6;
-  --canvas-line: #34506b;
   --hud-intensity: 0.85;
   --display-weight: 800;
 }
@@ -264,7 +258,6 @@
   --text-faint: #5c6c80;
   --canvas-star: #2b3947;
   --canvas-particle: #5b7f9e;
-  --canvas-line: #8fa3b8;
   --hud-intensity: 0.3;
 }
 [data-preset="forest"] {
@@ -279,7 +272,6 @@
   --grid-dot: rgba(200, 230, 205, 0.05);
   --canvas-star: #dff0e2;
   --canvas-particle: #7fa78a;
-  --canvas-line: #4d6b56;
 }
 [data-preset="ocean"] {
   --bg: #070a0f;
@@ -293,7 +285,6 @@
   --grid-dot: rgba(200, 220, 240, 0.05);
   --canvas-star: #e2edf8;
   --canvas-particle: #7d9fc2;
-  --canvas-line: #4b6180;
 }
 [data-preset="mono"] {
   --bg: #0a0a0a;
@@ -307,7 +298,6 @@
   --grid-dot: rgba(255, 255, 255, 0.045);
   --canvas-star: #ececec;
   --canvas-particle: #9a9a9a;
-  --canvas-line: #5c5c5c;
   --display-weight: 700;
 }
 [data-theme="light"][data-preset="forest"] {
@@ -321,7 +311,6 @@
   --text-faint: #5f6d61;
   --canvas-star: #2f3a31;
   --canvas-particle: #5f7a66;
-  --canvas-line: #c3d0c1;
 }
 [data-theme="light"][data-preset="ocean"] {
   --bg: #eff3f7;
@@ -334,7 +323,6 @@
   --text-faint: #5c6a79;
   --canvas-star: #2c3947;
   --canvas-particle: #5b768f;
-  --canvas-line: #c0ccd9;
 }
 [data-theme="light"][data-preset="mono"] {
   --bg: #f4f4f4;
@@ -347,7 +335,6 @@
   --text-faint: #666666;
   --canvas-star: #333333;
   --canvas-particle: #7a7a7a;
-  --canvas-line: #cfcfcf;
   --display-weight: 700;
 }
 /* stylelint-enable color-no-hex, color-named, function-disallowed-list */
@@ -471,11 +458,6 @@ pre,
     transform: none;
   }
 }
-@keyframes blink {
-  50% {
-    opacity: 0.35;
-  }
-}
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -500,29 +482,6 @@ pre,
   to {
     opacity: 1;
     transform: none;
-  }
-}
-@keyframes hud-wipe {
-  from {
-    clip-path: inset(0 0 100% 0);
-  }
-  to {
-    clip-path: inset(0 0 0 0);
-  }
-}
-/* the bevel line doubles as the scan line while the widget wipes in */
-@keyframes hud-scanline {
-  from {
-    top: 0;
-    opacity: 1;
-    height: 2px;
-    background: var(--accent);
-  }
-  to {
-    top: 100%;
-    opacity: 0;
-    height: 2px;
-    background: var(--accent);
   }
 }
 @keyframes hud-iris {
@@ -565,16 +524,6 @@ pre,
     transform: scale(0.96);
   }
 }
-@keyframes scale-in-98 {
-  from {
-    opacity: 0;
-    transform: scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
 @keyframes modal-in {
   from {
     transform: translateY(6px) scale(0.98);
@@ -591,16 +540,6 @@ pre,
   to {
     opacity: 0;
     transform: scale(0.98);
-  }
-}
-@keyframes slide-left {
-  from {
-    opacity: 0;
-    transform: translateX(24px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
   }
 }
 @keyframes toast-in {
@@ -630,13 +569,11 @@ pre,
   }
 }
 
-.pulse-glow,
-.pulse-ring {
+.pulse-glow {
   position: relative;
   isolation: isolate;
 }
-.pulse-glow::after,
-.pulse-ring::after {
+.pulse-glow::after {
   content: "";
   position: absolute;
   inset: -3px;
@@ -646,11 +583,6 @@ pre,
   filter: blur(6px);
   opacity: 0.45;
   pointer-events: none;
-}
-/* FLIP helpers: apply `.flip` to a moving element and change its transform. */
-.flip {
-  transition: transform var(--dur-base) var(--ease-emphasized);
-  will-change: transform;
 }
 /* Layer behind an open dialog / search / edit mode (set data-depth="pushed" on an ancestor). */
 .depth-layer {
@@ -673,8 +605,7 @@ canvas.dimmed {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .pulse-glow::after,
-  .pulse-ring::after {
+  .pulse-glow::after {
     animation: pulse-ring 2.4s ease-in-out infinite;
   }
   .spring-in {
@@ -2877,9 +2808,6 @@ input[type="range"]::-moz-range-thumb {
   flex-wrap: wrap;
   gap: var(--s-1);
 }
-.matrix-provider {
-  margin: var(--s-2) 0;
-}
 .notice {
   padding: var(--s-3);
   border-radius: var(--radius-sm);
@@ -3614,11 +3542,6 @@ fieldset.field {
 .os-root[data-palette="open"] .hud-bracket.br,
 .os-root[data-depth="pushed"] .hud-bracket.br {
   transform: translate(-8px, -8px);
-}
-@keyframes hud-blink {
-  50% {
-    opacity: 0.15;
-  }
 }
 
 @media (max-width: 899px) {

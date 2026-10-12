@@ -875,5 +875,3 @@ export function CommandPalette({
     </DialogSurface>
   );
 }
-
-export default CommandPalette;

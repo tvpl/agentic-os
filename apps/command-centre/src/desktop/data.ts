@@ -1,6 +1,6 @@
 /** Small shared helpers for the desktop: queries with the desktop's cadence, tickers, palettes. */
 import { useEffect, useState } from "react";
-import { ApiError, type ArtifactListResponse, type ConnectorData } from "../api";
+import { ApiError, type ArtifactListResponse } from "../api";
 import { qk, useApiQuery, useOsArtifacts, useOsRoutines, useOsRuns } from "../queries";
 
 export const ACTIVE_STATUSES = ["queued", "running", "waiting_approval"] as const;
@@ -47,57 +47,7 @@ export function formatCountdown(ms: number): string {
   return `${s}s`;
 }
 
-/** Compact age for chips: "now", "5m", "3h", "2d". */
-export function shortAge(ts: number, now = Date.now()): string {
-  const minutes = Math.floor((now - ts) / 60_000);
-  if (minutes < 1) return "now";
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
-}
-
-export const AREA_COLORS = ["#c084fc", "#f472b6", "#fb923c", "#22d3ee", "#fde047", "#4ade80", "#a5b4fc"];
-/** Same hues, darkened for a light ground where additive glow is off. */
-export const AREA_COLORS_LIGHT = [
-  "#7e22ce",
-  "#be185d",
-  "#c2410c",
-  "#0e7490",
-  "#a16207",
-  "#15803d",
-  "#4338ca",
-];
-
 /* ---- desktop additions -------------------------------------------------- */
-const NOT_CONFIGURED: ConnectorData = { status: "not_configured", syncedAt: null, items: [] };
-
-/**
- * `GET /api/connectors/:id/data` (F-BACKEND). A 404 (route not landed yet)
- * or any hard failure degrades to `not_configured`, never to a blank widget.
- */
-export function useConnectorData(id: string) {
-  const q = useApiQuery<ConnectorData>(
-    [...qk.connectors, id, "data"],
-    `/api/connectors/${encodeURIComponent(id)}/data`,
-    {
-      staleTime: 60_000,
-      refetchInterval: 5 * 60_000,
-      retry: false,
-    },
-  );
-  const missing =
-    q.isError && q.error instanceof ApiError && (q.error.status === 404 || q.error.status === 501);
-  const data: ConnectorData | undefined =
-    q.data ??
-    (q.isError
-      ? missing
-        ? NOT_CONFIGURED
-        : { status: "error", syncedAt: null, items: [], message: q.error?.message }
-      : undefined);
-  return { ...q, data, isPending: q.isPending && !q.isError, isError: false as const };
-}
-
 /** Model family for colouring: Haiku green, Sonnet blue, Opus purple, Fable orange, other = accent. */
 export type ModelFamily = "haiku" | "sonnet" | "opus" | "fable" | "other";
 export function modelFamily(model: string | null | undefined): ModelFamily {
@@ -107,13 +57,6 @@ export function modelFamily(model: string | null | undefined): ModelFamily {
   if (m.includes("opus")) return "opus";
   if (m.includes("fable")) return "fable";
   return "other";
-}
-
-/** Start of the local day for `ts`. */
-export function startOfDay(ts: number): number {
-  const d = new Date(ts);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
 }
 
 /* ---- graph + artifact sources for the wallpaper ring ---------------------- */

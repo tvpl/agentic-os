@@ -48,29 +48,36 @@ mordomo run workspace-digest        # roda uma skill pelo terminal
 mordomo backup       # backup completo (mordomo backup --list para listar)
 ```
 
-No **Command Centre** (o painel web local):
+O **Command Centre** é o app web local, em duas interfaces que você alterna em Configurações → Tema → Interface:
 
-- **Painel** — provedor ativo com seletor rápido Claude/Cursor/Codex, skills
-  favoritas com botão Executar, rotinas e próximas execuções, artefatos
-  recentes, execuções em andamento, falhas e métricas.
-- **Skills** — catálogo canônico; criar, favoritar, executar com
-  provedor/modelo/esforço por execução, e **exportar** para os três ambientes
-  (CLAUDE.md, AGENTS.md, .claude/, .cursor/, .agents/) com backup e aprovação
-  de conflitos por arquivo.
-- **Segundo Cérebro** — seu workspace como grafo/grade: busca enquanto digita,
+- a **moldura de app** (a que uma instalação nova abre): barra lateral (Hoje, Execuções, Skills, Rotinas, Memória;
+  em "Mais", Conectores, Artefatos, Gerações e Pixel Studio; Configurações), uma página de lista e detalhe para
+  cada uma e o chat com o agente fixo à direita;
+- o **Núcleo imersivo**: cada lugar ocupa a tela como uma cena (o núcleo, o cérebro, execuções, skills e rotinas;
+  teclas `1`–`5`) ao redor de um núcleo vivo e de uma única linha de voz para o agente.
+
+As duas mostram os mesmos dados e respondem às mesmas teclas: a paleta de comandos (Ctrl/⌘ K) e a lista de
+atalhos (`?`). Nas páginas:
+
+- **Hoje** (moldura) — o que pede você, o que está em execução, as rotinas de hoje, a caixa de entrada, o diário
+  e o custo.
+- **Skills** — catálogo canônico; criar, executar com provedor/modelo/esforço por execução, e **exportar** para
+  os três ambientes (CLAUDE.md, AGENTS.md, .claude/, .cursor/, .agents/) com backup e aprovação de conflitos
+  por arquivo.
+- **Segundo Cérebro** (Memória, na moldura) — seu workspace como mapa e como constelação: busca enquanto digita,
   filtros por área e tipo, prévia segura, caminho copiável, relações explicadas.
-- **Rotinas** — agenda cron + timezone, política "computador desligado",
-  testar agora, pausar, duplicar, histórico. A rotina de exemplo
-  *Daily workspace digest* vem **pausada** — habilite com um clique.
-- **Conectores** — auditoria somente leitura (nunca revela credenciais),
-  no máximo 3 recomendações; habilitar escrita exige aprovação.
-- **Configurações** — idioma **Português/English**, tema escuro/claro, cor,
-  porta, pastas, exclusões, perfil de segurança, aprovações pendentes,
-  backups e doctor.
+- **Rotinas** — agenda cron + timezone, política "computador desligado", testar agora, pausar, duplicar,
+  histórico. A rotina de exemplo *Daily workspace digest* vem **pausada** — habilite com um clique.
+- **Conectores** — auditoria somente leitura (nunca revela credenciais), no máximo 3 recomendações; habilitar
+  escrita exige aprovação.
+- **Configurações** — idioma **Português/English**, tema escuro/claro, cor, interface, porta, pastas, exclusões,
+  perfil de segurança, aprovações pendentes, backups e doctor.
+- **Pixel Studio** — editor de pixel art e animação, exporta PNG, folha de sprites e SVG; só carrega quando você o
+  abre.
 
 ## Trocar de provedor
 
-A qualquer momento: pelo seletor no topo do Painel, por execução na tela da
+A qualquer momento: pelo seletor do console, por execução na tela da
 skill, por rotina no formulário da rotina, ou em Configurações → Provedores.
 Nada precisa ser reconstruído — Claude, Cursor e Codex são adaptadores sobre a
 mesma base.

@@ -454,9 +454,6 @@
 }
 
 /* tooltip with actions (open / copy) */
-.brain2-tooltip.interactive {
-  pointer-events: auto;
-}
 .brain2-tooltip .actions {
   display: flex;
   gap: 4px;

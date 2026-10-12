@@ -10,58 +10,6 @@ import {
 } from "react";
 import { X } from "lucide-react";
 import { useT } from "../i18n";
-import { ApiError } from "../api";
-
-/* ---------- data fetching (legacy; prefer useApiQuery from ../queries) ---------- */
-export function useApi<T>(
-  fetcher: () => Promise<T>,
-  deps: unknown[] = [],
-): {
-  data: T | null;
-  error: string | null;
-  offline: boolean;
-  loading: boolean;
-  reload: () => void;
-} {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [offline, setOffline] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [tick, setTick] = useState(0);
-  const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
-  // Serialise the deps so the effect has a static dependency list.
-  const depsKey = deps
-    .map((d) => (typeof d === "object" && d !== null ? JSON.stringify(d) : String(d)))
-    .join(" ");
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetcherRef
-      .current()
-      .then((result) => {
-        if (cancelled) return;
-        setData(result);
-        setError(null);
-        setOffline(false);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        const message = err instanceof Error ? err.message : String(err);
-        // Only unreachable-service errors are "offline"; a TypeError from a
-        // bug is a bug and is shown as such.
-        setOffline(err instanceof ApiError && err.unreachable);
-        setError(message);
-      })
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [tick, depsKey]);
-
-  return { data, error, offline, loading, reload: useCallback(() => setTick((t) => t + 1), []) };
-}
 
 /* ---------- toasts ---------- */
 type ToastKind = "ok" | "danger" | "info";
@@ -154,16 +102,6 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
 }
 
 /* ---------- state blocks ---------- */
-export function Loading() {
-  const t = useT();
-  return (
-    <div className="empty" role="status">
-      <span className="spinner" aria-hidden /> {t("common.loading")}
-    </div>
-  );
-}
-
-/** Content-shaped placeholder; prefer over `Loading` inside cards and tables. */
 export function Skeleton({
   lines = 3,
   height,
@@ -213,10 +151,6 @@ export function ErrorBox({
       )}
     </div>
   );
-}
-
-export function Empty({ children }: { children: ReactNode }) {
-  return <div className="empty">{children}</div>;
 }
 
 /* ---------- misc ---------- */

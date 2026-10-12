@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
+import ts from "typescript";
 import * as contracts from "@mordomo/contracts";
 import * as policy from "@mordomo/contracts/policy";
 import * as core from "@mordomo/core/internal";
@@ -284,9 +285,58 @@ describe("S3 the UI uses the contract", () => {
     expect(api.match(/mirrors core/g) ?? []).toEqual([]);
   });
 
-  it("C11 the UI write policy comes from the contract", () => {
-    const policy = read("apps/command-centre/src/runs/policy.ts");
-    expect(policy).toMatch(/import \{[^}]*\bwriteDecision\b[^}]*\} from "@mordomo\/contracts(\/policy)?";/);
-    expect(policy).not.toMatch(/\b(read_only|review_before_write|controlled_write|approved_automation)\s*:/);
+  it("C11 the UI has no profile table: no source file of the interface keys anything by a security profile", () => {
+    // The helper that once asked the contract (`writeDecision`) for the UI left with the box it served
+    // (.specs/features/limpeza-legado, C9): what is left to hold is that nobody wrote the table instead.
+    const profiles = new Set(Object.keys(contracts.PROFILES));
+    const keyed = (code: string): string[] => {
+      const found: string[] = [];
+      const visit = (n: ts.Node) => {
+        const named =
+          ts.isPropertyAssignment(n) ||
+          ts.isShorthandPropertyAssignment(n) ||
+          ts.isPropertySignature(n) ||
+          ts.isPropertyDeclaration(n) ||
+          ts.isEnumMember(n);
+        if (named) {
+          const name = n.name;
+          const text =
+            ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name)
+              ? name.text
+              : ts.isComputedPropertyName(name) && ts.isStringLiteralLike(name.expression)
+                ? name.expression.text
+                : null;
+          if (text !== null && profiles.has(text)) found.push(text);
+        }
+        n.forEachChild(visit);
+      };
+      visit(ts.createSourceFile("x.tsx", code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX));
+      return found;
+    };
+    // The reader sees a key in every spelling and not a profile used as a value.
+    expect(
+      keyed("const a = { read_only: 1, 'review_before_write': 2, ['controlled_write']: 3, other: 4 };"),
+    ).toEqual(["read_only", "review_before_write", "controlled_write"]);
+    expect(keyed("interface I { approved_automation: string } enum E { read_only = 1 }")).toEqual([
+      "approved_automation",
+      "read_only",
+    ]);
+    expect(
+      keyed('const mode: Mode = "read_only"; const list = ["controlled_write"]; f({ mode: "read_only" });'),
+    ).toEqual([]);
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const abs = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(abs);
+        else if (/\.tsx?$/.test(entry.name) && !/\.(test|typetest)\.tsx?$/.test(entry.name)) files.push(abs);
+      }
+    };
+    walk(path.join(repoRoot, "apps/command-centre/src"));
+    expect(files.length).toBeGreaterThan(300);
+    const offenders = files.flatMap((f) =>
+      keyed(fs.readFileSync(f, "utf8")).map((k) => `${path.relative(repoRoot, f)}: ${k}`),
+    );
+    expect(offenders).toEqual([]);
   });
 });

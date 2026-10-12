@@ -26,7 +26,7 @@ import { Skeleton, ToastProvider } from "./components/ui";
 import { UiProvider, useDialogDepth } from "./ui";
 import { usePresence } from "./hooks/usePresence";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { CommandPalette, OPEN_PANEL_EVENT, type PaletteOpenDetail } from "./components/CommandPalette";
+import { CommandPalette, type PaletteOpenDetail } from "./components/CommandPalette";
 import { WorkspaceProvider } from "./components/Workspace";
 import { ShortcutsHelp } from "./components/ShortcutsHelp";
 import { ConfirmProvider } from "./hooks/useConfirm";
@@ -47,7 +47,6 @@ const Setup = lazyRoute(() => import("./views/Setup"));
 
 /** Fire this event from anywhere to open the command palette (CustomEvent `detail`: PaletteOpenDetail). */
 export const LAUNCHER_EVENT = "mordomo:launcher";
-export { OPEN_PANEL_EVENT };
 
 const queryClient = new QueryClient({
   defaultOptions: {

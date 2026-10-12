@@ -5,9 +5,6 @@
 import { forwardRef, useRef, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
 import { useT } from "../i18n";
 import { Modal } from "../ui";
-import { Skeleton } from "./ui";
-
-export { Skeleton };
 
 /* ---------- Button ---------- */
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "outline";

@@ -14,7 +14,6 @@ import {
   BrainCircuit,
   CalendarClock,
   FolderOpen,
-  Grid3x3,
   Images,
   ListTree,
   Plug,
@@ -24,6 +23,8 @@ import {
 } from "lucide-react";
 import type { TKey } from "../i18n";
 import { lazyRoute } from "../lazyRoute";
+import { pixelPlugin } from "../plugins/pixel";
+import type { AppPlugin } from "../plugins/types";
 
 export const APP_KINDS = [
   "brain",
@@ -49,6 +50,12 @@ export interface AppDef {
   Icon: LucideIcon;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the views take their own props
   Component: ComponentType<any>;
+}
+
+/** An app that lives in `src/plugins/` becomes an entry of `APPS`; its view is fetched when the route opens. */
+function fromPlugin(plugin: AppPlugin & { kind: AppKind }): AppDef {
+  const { load, ...def } = plugin;
+  return { ...def, Component: lazyRoute(load) };
 }
 
 export const APPS: Record<AppKind, AppDef> = {
@@ -124,15 +131,7 @@ export const APPS: Record<AppKind, AppDef> = {
     Icon: ListTree,
     Component: lazyRoute(() => import("../runs")),
   },
-  pixel: {
-    kind: "pixel",
-    route: "/pixel",
-    titleKey: "nav.pixel",
-    refKey: "desktop.ref.app.pixel",
-    descKey: "microapp.pixel.desc",
-    Icon: Grid3x3,
-    Component: lazyRoute(() => import("../views/PixelStudio")),
-  },
+  pixel: fromPlugin(pixelPlugin),
 };
 
 const PREFIX = "app:";

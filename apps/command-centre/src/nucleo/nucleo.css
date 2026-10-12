@@ -865,15 +865,8 @@
   margin: 0 0 6px;
   padding: 0 4px;
 }
-.nu-voice .briefing-lines {
-  list-style: none;
-  padding-left: 0;
-  gap: 1px;
-  font-size: var(--fs-4);
-}
 .nu-voice .cons-note,
-.nu-voice .cons .approval-inline.tool,
-.nu-voice .cons .promptw-approval {
+.nu-voice .cons .approval-inline.tool {
   margin-left: 4px;
   margin-right: 4px;
 }
@@ -1796,16 +1789,6 @@
   gap: 26px;
   color: var(--text-dim);
   font-size: var(--fs-5);
-}
-.nu-focus-clear-ring {
-  width: 140px;
-  height: 140px;
-  border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--ok) 50%, transparent);
-  box-shadow:
-    0 0 40px color-mix(in srgb, var(--ok) 25%, transparent),
-    inset 0 0 30px color-mix(in srgb, var(--ok) 15%, transparent);
-  animation: nu-aura-breathe 3s ease-in-out infinite;
 }
 
 /* ---- alerts live with the pendências: toasts arrive top-left -------------------- */

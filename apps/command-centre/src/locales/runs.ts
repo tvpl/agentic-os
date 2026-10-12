@@ -5,15 +5,6 @@
  */
 export const en = {
   /* ---- run list -------------------------------------------------------- */
-  "runs.submitHint": "⌘/Ctrl + Enter runs the prompt.",
-  "runs.mode": "Mode",
-  "runs.cwdLabel": "Working directory",
-  "runs.cwdHint": "Must stay inside your home or an indexed folder.",
-  "runs.cwdDefault": "Home (default)",
-  "runs.write.toggle": "Write mode",
-  "runs.write.allowed": "Writes apply immediately under this profile.",
-  "runs.write.approval": "Write runs wait for your approval.",
-  "runs.write.refused": "This security profile does not allow write runs.",
   "runs.cost": "Cost",
   "runs.tokens": "Tokens",
   "runs.pagination": "Pagination",
@@ -108,7 +99,6 @@ export const en = {
   "trace.finished": "finished",
   "trace.failed": "failed",
   "trace.timedOut": "ran out of time",
-  "trace.details": "details",
   /* ---- a failure with a cause and a way out (refino item 43) --------- */
   "runs.fix.auth": "The provider's login expired. Sign in again and run it once more.",
   "runs.fix.budget": "The daily budget is used up. Raise it or wait for tomorrow.",
@@ -173,15 +163,6 @@ export const en = {
 
 export const ptBR = {
   /* ---- lista de execuções ---------------------------------------------- */
-  "runs.submitHint": "⌘/Ctrl + Enter executa o prompt.",
-  "runs.mode": "Modo",
-  "runs.cwdLabel": "Diretório de trabalho",
-  "runs.cwdHint": "Precisa ficar dentro da sua home ou de uma pasta indexada.",
-  "runs.cwdDefault": "Home (padrão)",
-  "runs.write.toggle": "Modo de escrita",
-  "runs.write.allowed": "Neste perfil, as escritas são aplicadas de imediato.",
-  "runs.write.approval": "Execuções com escrita aguardam a sua aprovação.",
-  "runs.write.refused": "Este perfil de segurança não permite execuções com escrita.",
   "runs.cost": "Custo",
   "runs.tokens": "Tokens",
   "runs.pagination": "Paginação",
@@ -278,7 +259,6 @@ export const ptBR = {
   "trace.finished": "concluí",
   "trace.failed": "falhei",
   "trace.timedOut": "estourei o tempo",
-  "trace.details": "detalhes",
   /* ---- falha com causa e saída (refino item 43) ------------------------ */
   "runs.fix.auth": "O login do provedor expirou. Entre de novo e execute mais uma vez.",
   "runs.fix.budget": "O orçamento do dia acabou. Aumente ou espere amanhã.",

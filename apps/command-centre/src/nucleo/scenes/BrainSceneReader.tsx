@@ -13,6 +13,7 @@
  * explanation, project it as a lâmina, copy the path, open the editor.
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
+import { Markdown } from "../../components/Markdown";
 import { formatBytes, timeAgo } from "../../components/ui";
 import { useT, type TKey } from "../../i18n";
 import type { FileNode } from "../../brain/engine/world";
@@ -24,7 +25,6 @@ import {
   type Block,
 } from "../../brain/markdown";
 import { BrainGlyph } from "./BrainGlyph";
-import { BrainSceneMarkdown } from "./BrainSceneMarkdown";
 import type { ContentKind } from "./brainGlyphs";
 import { starLabel } from "./brainModel";
 import { outlineOf, readingMinutes, stripFrontmatter, type RelationKind } from "./brainReading";
@@ -328,15 +328,21 @@ export const BrainSceneReader = memo(function BrainSceneReader(p: BrainSceneRead
           {p.preview.kind === "loading" ? (
             <p className="bs-faint bs-breathe">{t("scene.brain.reading")}</p>
           ) : blocks ? (
-            <BrainSceneMarkdown
+            <Markdown
               blocks={blocks}
-              resolve={resolve}
-              skills={p.skills}
-              onNote={p.onNote}
-              onSkill={p.onSkill}
-              headingIds={headingIds}
-              onPeek={p.onPeek}
-              kindOf={p.kindOfId}
+              shape="scene"
+              refs={{
+                resolve,
+                skills: p.skills,
+                onNote: p.onNote,
+                onSkill: p.onSkill,
+                onPeek: p.onPeek,
+                headingIds,
+                iconOf: (id) => {
+                  const kind = p.kindOfId(id);
+                  return kind ? <BrainGlyph kind={kind} size={13} className="bs-md-link-icon" /> : null;
+                },
+              }}
             />
           ) : p.preview.kind === "text" ? (
             <pre className="bs-md-pre bs-read-plain">{p.preview.content}</pre>

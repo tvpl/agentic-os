@@ -1,5 +1,5 @@
 /**
- * The immersive shell (docs/plans/nucleo-imersivo.md, rounds 1–3): one
+ * The immersive shell (docs/internal/plans/nucleo-imersivo.md, rounds 1–3): one
  * scene at a time, reached through the module spine on the left; what waits
  * on you in the pendências (top-left) and resolved in focus; at most two
  * lâminas beside the core; one voice line in the same place everywhere, with

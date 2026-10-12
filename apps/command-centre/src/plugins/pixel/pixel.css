@@ -1,0 +1,63 @@
+/* Pixel Studio's own rules. The stage, the grid and the swatches it shares with the shells are in theme.css, desktop.css and luz.css. */
+.pxs-recent {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: var(--s-2);
+  min-height: 22px;
+}
+.pxs-recent .pxs-swatch {
+  width: 22px;
+  height: 22px;
+}
+.pxs-brush {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+.pxs-brush .pxs-brush-dots {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+.pxs-brush .pxs-brush-dots i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--text-faint);
+}
+.pxs-brush .pxs-brush-dots i.on {
+  background: var(--accent);
+  transform: scale(1.25);
+}
+.pxs-frame-nav {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.pxs-shortcuts {
+  font-size: var(--fs-2);
+  color: var(--text-faint);
+  margin: var(--s-2) 0 0;
+  line-height: 1.6;
+}
+.pxs-hint-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+  font-size: var(--fs-2);
+  color: var(--text-faint);
+}
+.pxs-secondary {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  margin-left: -12px;
+  margin-top: 12px;
+  flex-shrink: 0;
+}

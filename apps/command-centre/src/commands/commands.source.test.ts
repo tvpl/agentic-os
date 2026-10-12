@@ -461,7 +461,7 @@ const MIGRATED = [
   "App.tsx",
   "nucleo/index.tsx",
   "moldura/Moldura.tsx",
-  "views/PixelStudio.tsx",
+  "plugins/pixel/PixelStudio.tsx",
   "views/SecondBrain.tsx",
   "runs/RunDetail.tsx",
 ];

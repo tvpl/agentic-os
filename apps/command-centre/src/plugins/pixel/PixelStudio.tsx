@@ -22,15 +22,15 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react";
-import { apiCall } from "../apiCall";
-import { useT, type TKey } from "../i18n";
-import { useToast } from "../components/ui";
-import { useConfirm } from "../hooks/useConfirm";
-import { downloadUrl as downloadFile } from "./shared";
-import "./apps.css";
-import { useCommands, type Command } from "../commands/registry";
-import { isTypingTarget } from "../commands/keys";
-import { Tooltip } from "../ui";
+import { apiCall } from "../../apiCall";
+import { useT, type TKey } from "../../i18n";
+import { useToast } from "../../components/ui";
+import { useConfirm } from "../../hooks/useConfirm";
+import { downloadUrl as downloadFile } from "../../views/shared";
+import { useCommands, type Command } from "../../commands/registry";
+import { isTypingTarget } from "../../commands/keys";
+import { Tooltip } from "../../ui";
+import "./pixel.css";
 
 /* =========================================================================
    Pixel Studio — a self-contained pixel-art drawing + animation micro-app.

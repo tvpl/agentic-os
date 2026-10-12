@@ -138,9 +138,6 @@ export const useOsRuns = (
   params: { limit?: number; status?: Contracts.RunStatus; provider?: string } = {},
   o?: ApiQueryOptions<Result<"GET /api/runs">>,
 ) => useRouteQuery(qk.runs(params), "GET /api/runs", { query: params }, o);
-/** `GET /api/runs/:id`: `{ run, events }`, the run record and the events persisted for it. */
-export const useOsRun = (id: string, o?: ApiQueryOptions<Result<"GET /api/runs/:id">>) =>
-  useRouteQuery(qk.run(id), "GET /api/runs/:id", { params: { id } }, o);
 export const useOsMetrics = (o?: ApiQueryOptions<Result<"GET /api/metrics">>) =>
   useRouteQuery(qk.metrics, "GET /api/metrics", undefined, o);
 export const useOsArtifacts = (o?: ApiQueryOptions<Result<"GET /api/artifacts/recent">>) =>

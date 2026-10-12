@@ -14,14 +14,6 @@ interface ViewTransitionLike {
 }
 type StartViewTransition = (update: () => void | Promise<void>) => ViewTransitionLike;
 
-export function supportsViewTransition(): boolean {
-  return (
-    typeof document !== "undefined" &&
-    typeof (document as Document & { startViewTransition?: StartViewTransition }).startViewTransition ===
-      "function"
-  );
-}
-
 export function prefersReducedMotion(): boolean {
   return (
     typeof window !== "undefined" &&

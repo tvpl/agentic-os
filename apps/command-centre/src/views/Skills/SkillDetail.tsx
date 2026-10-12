@@ -28,7 +28,7 @@ import { Tabs, Tooltip } from "../../ui";
 import { ModelEffortMatrix, skillEffort, type Effort } from "../../desktop/SkillMatrixModal";
 import { ApprovalCard } from "../../runs/ApprovalCards";
 import { copyText, errorMessage } from "../shared";
-import Markdown from "./Markdown";
+import { Markdown } from "../../components/Markdown";
 import {
   canPreviewInline,
   groupByFolder,
@@ -483,7 +483,7 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
                       </code>
                     </pre>
                   ) : (
-                    <Markdown source={skill.body} />
+                    <Markdown source={skill.body} shape="page" />
                   )}
                   <p className="mono file-path" title={skill.skillFile}>
                     {skill.skillFile}
@@ -550,7 +550,7 @@ function NotesPane({ slug }: { slug: string }) {
   const hasEntries = /^- /m.test(body);
   return (
     <div className="skill-notes">
-      {body.trim() ? <Markdown source={body} /> : <p className="widget-muted">{t("skills.notes.empty")}</p>}
+      {body.trim() ? <Markdown source={body} shape="page" /> : <p className="widget-muted">{t("skills.notes.empty")}</p>}
       {(notes.data?.archived ?? 0) > 0 && (
         <p className="hint">{t("skills.notes.archived", { n: notes.data!.archived })}</p>
       )}
@@ -705,5 +705,5 @@ function MarkdownResource({ slug, rel }: { slug: string; rel: string }) {
   if (query.isPending) return <div className="apps-res-fallback">{t("common.loading")}</div>;
   if (query.error || typeof query.data !== "string")
     return <div className="apps-res-fallback">{t("apps.skills.previewFailed")}</div>;
-  return <Markdown source={query.data} />;
+  return <Markdown source={query.data} shape="page" />;
 }

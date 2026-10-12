@@ -22,11 +22,6 @@ export function useApprovals(options: ApiQueryOptions<ApprovalRecord[]> = {}) {
   });
 }
 
-export interface ResolveResult extends ApprovalRecord {
-  /** Id of the run the API launched when the approval was granted. */
-  runId?: string | null;
-}
-
 /** `POST /api/approvals/:id/resolve` — same payload as Settings › Security. */
 export function useResolveApproval(onLaunched?: (runId: string | null) => void) {
   const t = useT();

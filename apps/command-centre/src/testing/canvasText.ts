@@ -67,21 +67,6 @@ function callSite(): { site: string; line: number } {
   return { site: "(unknown)", line: 0 };
 }
 
-/** The `file:line` of every call that drew text on `canvas` (sprites included), sorted. */
-export function textLinesOn(canvas: { width: number }): string[] {
-  return [...new Set(textDrawnOn(canvas).map((t) => `${t.site}:${t.line}`))].sort();
-}
-
-/** The `file:line` of every assignment of a font that some text was then drawn with, sorted. */
-export function fontLinesOn(canvas: { width: number }): string[] {
-  return [...new Set(textDrawnOn(canvas).map((t) => t.fontAt))].filter(Boolean).sort();
-}
-
-/** The files the text on `canvas` was drawn from (sprites included), sorted. */
-export function textSitesOn(canvas: { width: number }): string[] {
-  return [...new Set(textDrawnOn(canvas).map((t) => t.site))].sort();
-}
-
 function multiply(a: Matrix, b: Matrix): Matrix {
   return [
     a[0] * b[0] + a[2] * b[1],

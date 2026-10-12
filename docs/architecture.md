@@ -111,13 +111,36 @@ changes incompatibly adds a version to the type's list ([events.md](events.md)).
 `MicroApp` and `DEFAULT_HUD` stay in the contract). `typetests/` holds compile-time
 proofs (`npm run typecheck`).
 
-What only the Command Centre reads and writes (theme preset, micro apps, layouts, HUD,
-Second Brain view) is `UiPreferences`, stored in `config/ui-preferences.json` and served
+What only the Command Centre reads and writes (the interface — `shell`: `moldura` or `nucleo` —, the theme
+preset, micro apps, layouts, the Second Brain view, and a HUD that is kept but that no screen arranges any
+more) is `UiPreferences`, stored in `config/ui-preferences.json` and served
 by `GET`/`PUT /api/ui-preferences`; the engine stores it and never interprets it.
 `settings.json` carries `version` (now 2): an older file is migrated on its first read
 (`core/src/config/migrations.ts`, the original kept as `settings.json.v<n>.bak`), and a
 file written by a newer version is never overwritten (`code: "settings_newer"`; `PUT /api/settings`
 answers `409`).
+
+## The interface (`apps/command-centre/src`)
+
+A React app (Vite) that the API serves from `apps/command-centre/dist`, with two interfaces over the same data
+and the same routes, chosen by `UiPreferences.shell`:
+
+| Folder | What it is |
+|---|---|
+| `moldura/` | the app frame: sidebar, one page per place, the chat fixed on the right, the "Today" page |
+| `nucleo/` | the immersive Núcleo: one scene per place around a living core, a single voice line |
+| `desktop/` | the instruments both mount: the console (chat), the panels registry (the cards of Today, the lâminas of the Núcleo), signals, the run and document panels |
+| `views/`, `runs/`, `brain/` | the pages: skills, routines, connectors, settings, runs, the Second Brain view |
+| `ui/` | the primitives (dialog, popover, tabs, switch, menu, tooltip) over Radix; the only folder that imports `@radix-ui/*`, and the stack of layers |
+| `commands/` | the typed registry of commands and shortcuts: one keyboard listener for the page, scopes, the shortcut help |
+| `components/Markdown.tsx` | the one renderer of Markdown: a block tree turned into elements, never HTML; one rule for what a link may be |
+| `plugins/` | apps that load on demand through an `AppPlugin` (Pixel Studio): their code is a chunk of its own, reached only by the manifest's `import()` |
+
+What keeps it honest is read from the tree by tests: the type floor of 12 px and colours only by token
+(`typography.test.ts`, stylelint), the single key listener (`commands.source.test.ts`), the layers
+(`ui.source.test.ts`), what no entry reaches, which exports, classes, animations, properties and translation keys
+nobody uses (`legacy.graph.test.ts`, `legacy.css.test.ts`, `i18n.orphans.test.ts`), the weight of the build
+(`npm run bundle:check`) and the accessibility and gallery specs in `tests/e2e/`.
 
 ## Core modules (`core/src`)
 

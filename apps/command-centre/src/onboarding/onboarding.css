@@ -717,9 +717,6 @@
   }
 }
 @media (max-width: 699px) {
-  :root[data-onboarding="active"] .desktop-widgets.stacked {
-    padding-bottom: calc(68dvh + 24px);
-  }
   :root[data-onboarding="active"] [data-widget-id="prompt"] {
     scroll-margin-top: 84px;
   }
