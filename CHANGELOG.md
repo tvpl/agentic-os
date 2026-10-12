@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- **Desktop app, signed installers and releases by tag (distribuicao)**: `apps/desktop` is a Tauri 2 app (Rust) that
+  starts the bundled service as a child on a free loopback port with a secret made for that launch, waits for it to
+  serve the Command Centre, shows it in its own window and stops it when the window closes; a service that cannot start
+  shows a failure screen (English and Portuguese) with *Try again* and *Quit*, a second launch comes forward, and the
+  window loads only its own pages and the service's origin (a strict content-security-policy, one capability of three app
+  commands, every other address to the system browser). The service has a sidecar mode for it (`mordomo start --foreground
+  --sidecar`: ready line, stops when its stdin closes, never stops another service) and `GET /` hands the owner's token
+  only to a window that has the launch secret, which closes the "any program that sends a browser's headers" path for the
+  app (`docs/security.md`, T1). `mordomo --version`, `-v` and `mordomo version` print the version, and
+  `node scripts/version-sync.mjs --check` keeps the nine `package.json`, the lockfile, `tauri.conf.json`, `Cargo.toml` and
+  `Cargo.lock` on one version. Pushing a tag `v<version>` builds installers for macOS (arm64, Intel), Windows and Linux
+  (`.deb`, `.AppImage`) and writes a **draft** release with `SHA256SUMS.txt`, both SBOMs, both third-party notices, the
+  notes of the CHANGELOG section and, when everything was signed, `latest.json` for the signed updater (a Tauri updater
+  with a minisign key, off unless `updates.check` is on or the person asks from the menu, declared in the network policy
+  and the privacy text). Secrets the owner registers (`docs/release.md`): macOS Developer ID and notarization, Windows
+  Authenticode, the updater key; without them the installers are built and named `UNSIGNED`, and nothing is invented.
+  `npm run licenses:check` also checks the 476 Rust crates against a `rust` policy (five `MPL-2.0` crates of the Tauri tree
+  are named exceptions) and `legal/THIRD_PARTY_NOTICES.desktop.md` and `legal/sbom.desktop.cdx.json` carry them. What was
+  never run here (Windows, macOS, notarization, the workflow on GitHub, a real update) is listed in `docs/release.md` §8.
+  Changes to what existed: `legal/network-policy.json` gains the desktop updater and the signing timestamp and
+  `github-links` no longer owns `github.com`; `tests/legal.network.test.ts` counts 41 network points and 17 entries (was 37 and
+  15); the release workflow no longer publishes the portable archive and no longer has a manual-only trigger.
 - **Legacy cleanup (limpeza-legado)**: what the two interfaces, the design system and the primitives left behind,
   removed only where a scan that a test repeats proves nothing reaches it. Removed: 39 exported names with no user,
   `runs/policy.ts` and the hook only a dead line reached, the `SkillMatrixModal` component; 55 CSS classes, 20
