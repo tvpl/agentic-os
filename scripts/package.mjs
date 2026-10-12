@@ -5,6 +5,12 @@
  *   node scripts/package.mjs [--out release] [--skip-build] [--node <version>|none]
  *                            [--platform darwin|linux|win32] [--arch arm64|x64] [--no-archive]
  *                            [--sign "<Developer ID Application: …>"] [--notarize <notarytool-profile>]
+ *                            [--payload <dir>]
+ *
+ * --payload <dir> writes only what the desktop app (apps/desktop, Tauri) carries as its resources: lib/, ui/, seed/,
+ * runtime/, legal/, package.json, in exactly that folder, with no launcher, no README and no archive; on macOS the
+ * native code in it (the Node binary, the SQLite addon) is signed here, with --sign or ad hoc, because the Tauri
+ * bundler signs the app and not the resources inside it.
  *
  * macOS signing: without --sign the app gets an ad-hoc signature (Gatekeeper
  * asks once). With a Developer ID identity (`security find-identity -v -p
@@ -32,6 +38,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { build } from "rolldown";
 import { stageLegal } from "./legal-stage.mjs";
+import { stageDesktopLegal } from "./legal-stage.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
@@ -46,9 +53,11 @@ const stageRoot = path.join(ROOT, "build", "package");
 const label = `${platform === "darwin" ? "MordomoOS" : platform === "win32" ? "MordomoOS" : "mordomo-os"}-${pkg.version}-${
   { darwin: "macos", win32: "windows", linux: "linux" }[platform] ?? platform
 }-${arch}`;
-const stage = path.join(stageRoot, label);
+const payloadOnly = args.payload !== undefined;
+const stage = payloadOnly ? path.resolve(ROOT, args.payload) : path.join(stageRoot, label);
 // On macOS everything lives inside the .app so it can be dropped in /Applications as one item.
-const payload = platform === "darwin" ? path.join(stage, "MordomoOS.app", "Contents", "Resources") : stage;
+const payload =
+  platform === "darwin" && !payloadOnly ? path.join(stage, "MordomoOS.app", "Contents", "Resources") : stage;
 
 if (!["darwin", "linux", "win32"].includes(platform)) fail(`Unsupported platform: ${platform}`);
 log(
@@ -126,11 +135,22 @@ fs.writeFileSync(
 );
 // LICENSE, the legal texts, the third-party notices and the SBOM travel with the app (.specs/features/licenca-comercial, door 6).
 stageLegal(ROOT, payload);
+if (payloadOnly) stageDesktopLegal(ROOT, payload);
 
 // ---- 4. Node runtime ---------------------------------------------------------------
 if (nodeVersion) {
   log(`Fetching Node ${nodeVersion} for ${platform}/${arch}…`);
   await fetchNode(nodeVersion, platform, arch, path.join(payload, "runtime"));
+}
+
+if (payloadOnly) {
+  // ---- 5. the desktop app's payload: sign the native code in it and stop -----------------
+  if (platform === "darwin" && process.platform === "darwin" && commandExists("codesign")) {
+    signNative(machObjects(payload), args.sign ?? "-", path.join(payload, "runtime", "bin", "node"));
+    if (args.sign) log(`Signed the native code with ${args.sign}`);
+  } else if (args.sign) fail("--sign needs macOS with codesign");
+  log(`Payload: ${stage}`);
+  process.exit(0);
 }
 
 // ---- 5. launchers --------------------------------------------------------------------
@@ -303,52 +323,10 @@ fi
     if (process.platform === "darwin" && commandExists("codesign")) {
       const app = path.join(stage, "MordomoOS.app");
       const identity = args.sign ?? "-";
-      const flags = args.sign ? ["--options", "runtime", "--timestamp"] : [];
       // Every Mach-O in the payload must carry the Developer ID signature and a
       // timestamp or the notary service rejects the archive: the Node binary,
       // the SQLite addon, anything else that looks like native code, then the app.
-      // The hardened runtime forbids JIT unless the binary carries the JIT
-      // entitlements; V8 needs them or Node dies with SIGTRAP at startup.
-      const entitlements = path.join(os.tmpdir(), `mordomo-${process.pid}-entitlements.plist`);
-      fs.writeFileSync(
-        entitlements,
-        `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>com.apple.security.cs.allow-jit</key><true/>
-  <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>
-</dict>
-</plist>
-`,
-      );
-      const nodeBinary = path.join(payload, "runtime", "bin", "node");
-      const targets = [...machObjects(payload), app];
-      for (const target of targets) {
-        const withEntitlements = args.sign && target === nodeBinary;
-        const res = spawnSync(
-          "codesign",
-          [
-            "--force",
-            ...flags,
-            ...(withEntitlements ? ["--entitlements", entitlements] : []),
-            "--sign",
-            identity,
-            target,
-          ],
-          { stdio: "inherit" },
-        );
-        if (res.status !== 0) fail(`codesign failed for ${path.relative(stage, target)}`);
-      }
-      fs.rmSync(entitlements, { force: true });
-      if (args.sign && fs.existsSync(nodeBinary)) {
-        // Prove the signed runtime still starts before spending a notarization round trip.
-        const probe = spawnSync(nodeBinary, ["-e", "process.exit(42)"], { stdio: "ignore" });
-        if (probe.status !== 42)
-          fail(
-            `the signed Node runtime does not start (status ${probe.status}, signal ${probe.signal}) — check the entitlements`,
-          );
-      }
+      signNative([...machObjects(payload), app], identity, path.join(payload, "runtime", "bin", "node"));
       if (args.sign) log(`Signed with ${args.sign}`);
     } else if (args.sign) fail("--sign needs macOS with codesign");
     writeExecutable(
@@ -396,6 +374,53 @@ function machObjects(dir) {
   };
   walk(dir);
   return out;
+}
+
+/**
+ * Sign `targets` in order. With a Developer ID identity: hardened runtime and a secure timestamp, and the JIT
+ * entitlements on the Node binary (V8 needs them or Node dies with SIGTRAP at startup); with "-": an ad-hoc signature.
+ * A signed Node binary that no longer starts fails here, before a notarization round trip is spent on it.
+ */
+function signNative(targets, identity, nodeBinary) {
+  const signed = identity !== "-";
+  const flags = signed ? ["--options", "runtime", "--timestamp"] : [];
+  const entitlements = path.join(os.tmpdir(), `mordomo-${process.pid}-entitlements.plist`);
+  fs.writeFileSync(
+    entitlements,
+    `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key><true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>
+</dict>
+</plist>
+`,
+  );
+  for (const target of targets) {
+    const withEntitlements = signed && target === nodeBinary;
+    const res = spawnSync(
+      "codesign",
+      [
+        "--force",
+        ...flags,
+        ...(withEntitlements ? ["--entitlements", entitlements] : []),
+        "--sign",
+        identity,
+        target,
+      ],
+      { stdio: "inherit" },
+    );
+    if (res.status !== 0) fail(`codesign failed for ${path.relative(stage, target)}`);
+  }
+  fs.rmSync(entitlements, { force: true });
+  if (signed && fs.existsSync(nodeBinary)) {
+    const probe = spawnSync(nodeBinary, ["-e", "process.exit(42)"], { stdio: "ignore" });
+    if (probe.status !== 42)
+      fail(
+        `the signed Node runtime does not start (status ${probe.status}, signal ${probe.signal}) — check the entitlements`,
+      );
+  }
 }
 
 /** Compile the Swift shell for the target architecture; false when swiftc is unavailable. */
@@ -617,6 +642,7 @@ function parseArgs(argv) {
     else if (a === "--arch") out.arch = next();
     else if (a === "--sign") out.sign = next();
     else if (a === "--notarize") out.notarize = next();
+    else if (a === "--payload") out.payload = next();
     else if (a === "--skip-build") out.skipBuild = true;
     else if (a === "--no-archive") out.archive = false;
     else if (a === "--help" || a === "-h") {

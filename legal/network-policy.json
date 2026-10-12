@@ -28,15 +28,30 @@
       }
     },
     {
+      "id": "desktop-updater",
+      "label": "Atualização do app desktop (github.com)",
+      "role": "contact",
+      "match": [
+        "github.com",
+        "release-assets.githubusercontent.com",
+        "objects.githubusercontent.com"
+      ],
+      "trigger": "só no app desktop instalado, numa compilação que leva a chave pública de atualização, e só quando `updates.check` está ligado (ao abrir o app) ou quando o dono escolhe \"Check for Updates…\" no menu do app; o app pede o manifesto `latest.json` do último release publicado e, se o dono confirmar, baixa o instalador",
+      "default": "desligado",
+      "data": "um GET anônimo a `https://github.com/tvpl/agentic-os/releases/latest/download/latest.json` e, se houver versão nova e o dono confirmar, um GET ao instalador (o GitHub redireciona para `release-assets.githubusercontent.com` ou `objects.githubusercontent.com`); sem corpo, com o cabeçalho `user-agent: tauri-plugin-updater/<versão do plugin>` e sem versão do app, sistema ou identificador na URL; o GitHub vê o endereço IP; a assinatura minisign do instalador é conferida contra a chave pública do app antes de qualquer instalação",
+      "defaultState": "off",
+      "gate": {
+        "setting": "updates.check"
+      }
+    },
+    {
       "id": "github-links",
       "label": "Links do GitHub mostrados ao usuário (github.com)",
       "role": "link",
-      "match": [
-        "github.com"
-      ],
+      "match": [],
       "trigger": "a página de releases e as páginas de origem dos conectores (campo `origin` de connectors/*.json) são mostradas como link; quem decide abri-las é a pessoa, no navegador",
       "default": "nunca acessado pelo produto",
-      "data": "nada: o produto não abre conexão para esses endereços",
+      "data": "nada: o produto não abre conexão para esses endereços por causa desses links (o único acesso do produto a github.com é o atualizador do app desktop, a entrada \"Atualização do app desktop\")",
       "defaultState": "never"
     },
     {
@@ -197,6 +212,18 @@
       "default": "nunca roda no computador de quem usa o produto",
       "data": "um GET do binário e da lista de somas; nada do usuário",
       "defaultState": "never"
+    },
+    {
+      "id": "signing-timestamp",
+      "label": "Carimbo de tempo da assinatura do instalador do Windows (timestamp.digicert.com)",
+      "role": "build",
+      "match": [
+        "timestamp.digicert.com"
+      ],
+      "trigger": "só na máquina de quem gera o instalador do Windows com um certificado de assinatura (`scripts/desktop-build.mjs`, no workflow de release); nunca no app instalado",
+      "default": "nunca roda no computador de quem usa o produto",
+      "data": "o resumo (hash) da assinatura do instalador, para o carimbo de tempo RFC 3161; nada do usuário",
+      "defaultState": "never"
     }
   ],
   "ignored": [
@@ -356,6 +383,14 @@
       "files": [
         "core/src/security/tls.ts"
       ]
+    },
+    {
+      "match": "schema.tauri.app",
+      "reason": "endereço do esquema JSON no campo `$schema` de `tauri.conf.json`, só para o editor; nunca contatado"
+    },
+    {
+      "match": "ipc.localhost",
+      "reason": "origem interna do IPC do Tauri na política de segurança de conteúdo (`connect-src`) das telas locais do app desktop; o Tauri a trata sem rede"
     }
   ],
   "sites": [
@@ -510,6 +545,42 @@
         "loopback"
       ],
       "note": "mesma origem que serve a página"
+    },
+    {
+      "file": "apps/desktop/shell-core/src/probe.rs",
+      "kind": "rust:net",
+      "count": 1,
+      "hosts": [
+        "loopback"
+      ],
+      "note": "`GET /` em 127.0.0.1 para saber se o serviço local serve o Command Centre; abre um soquete só em loopback"
+    },
+    {
+      "file": "apps/desktop/src-tauri/Cargo.toml",
+      "kind": "rust:crate:tauri-plugin-updater",
+      "count": 1,
+      "hosts": [
+        "desktop-updater"
+      ],
+      "note": "o plugin do atualizador, atrás da feature `updater` (só compilações com a chave pública do dono)"
+    },
+    {
+      "file": "apps/desktop/src-tauri/src/updater.rs",
+      "kind": "rust:updater",
+      "count": 1,
+      "hosts": [
+        "desktop-updater"
+      ],
+      "note": "a única chamada do atualizador: `check()`, ao abrir (com `updates.check`) ou pelo menu"
+    },
+    {
+      "file": "apps/desktop/src-tauri/tauri.updater.conf.json",
+      "kind": "tauri:updater",
+      "count": 1,
+      "hosts": [
+        "desktop-updater"
+      ],
+      "note": "endpoint e chave pública do atualizador, só em `--config` de uma compilação com atualizador"
     },
     {
       "file": "connectors/calendar-google.json",

@@ -130,7 +130,7 @@ export class AppContext extends MordomoEngine {
       command: process.execPath,
       args: [cliEntry(), "mcp", "permission"],
       env: {
-        MORDOMO_URL: `http://127.0.0.1:${settings.port}`,
+        MORDOMO_URL: `http://127.0.0.1:${this.servicePort()}`,
         MORDOMO_TOKEN: credential,
         MORDOMO_RUN_ID: run.id,
         MORDOMO_APPROVAL_TIMEOUT_MS: String(settings.limits.toolApprovalTimeoutMs ?? 600_000),
@@ -141,6 +141,17 @@ export class AppContext extends MordomoEngine {
 
   token(): string {
     return this.settingsStore.getOrCreateToken();
+  }
+
+  /** A desktop shell's launch secret (`start --sidecar`), set by `startServer` before the server is built. */
+  launchSecret: string | undefined = undefined;
+
+  /** The port the listener bound, set by `startServer` (a desktop shell's service may not listen on `settings.port`). */
+  boundPort: number | null = null;
+
+  /** Where this service answers: the bound port once it listens, the configured one before. */
+  servicePort(): number {
+    return this.boundPort ?? this.settings().port;
   }
 
   /** Permission-broker credential → the run it was issued for. In memory: a restart interrupts every run anyway. */
@@ -171,7 +182,7 @@ export class AppContext extends MordomoEngine {
   override runApiAccessFor(run: { id: string }, mode: RunMode): { url: string; token: string } | null {
     const credential = `rc_${crypto.randomBytes(32).toString("base64url")}`;
     this.runApiCredentials.set(credential, { runId: run.id, writable: mode === "write" });
-    return { url: `http://127.0.0.1:${this.settings().port}`, token: credential };
+    return { url: `http://127.0.0.1:${this.servicePort()}`, token: credential };
   }
 
   runApiRunFor(credential: string): { runId: string; active: boolean; writable: boolean } | null {

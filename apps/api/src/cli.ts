@@ -48,14 +48,20 @@ import {
 import { PKG_VERSION } from "./routes/system.js";
 import { servePermissionTool } from "./mcp/permission.js";
 import { httpApi, serveMordomoMcp } from "./mcp/mordomo.js";
-import { startServer } from "./server.js";
+import { LAUNCH_SECRET_MIN_LENGTH, PortInUseError, startServer, type SidecarOptions } from "./server.js";
+import { EngineLockedError } from "@mordomo/core";
 import { runDoctor } from "./doctor.js";
 
 const CLI_PATH = cliEntry();
 
-/** Exit codes: 0 ok · 1 runtime failure · 2 usage error (bad flag/argument) · 3 the home is blocked by a leftover. */
+/**
+ * Exit codes: 0 ok · 1 runtime failure · 2 usage error (bad flag/argument) · 3 the home is blocked by a leftover ·
+ * 4 another MordomoOS service holds the home (`--sidecar` only) · 5 the port asked of `--sidecar` is taken.
+ */
 const EXIT_USAGE = 2;
 const EXIT_HOME_BLOCKED = 3;
+const EXIT_HOME_IN_USE = 4;
+const EXIT_PORT_BUSY = 5;
 /** Errors that mean the home itself cannot be used until a person clears something by hand. */
 const HOME_BLOCKED_CODES = new Set(["restore_leftover", "restore_recovery_failed", "restore_lock_unusable"]);
 /** The registered providers, in registration order (the only valid `--provider` values). */
@@ -82,6 +88,7 @@ const COMMANDS = [
   "recall",
   "mcp",
   "skills",
+  "version",
   "help",
 ] as const;
 type Command = (typeof COMMANDS)[number];
@@ -89,6 +96,9 @@ type Command = (typeof COMMANDS)[number];
 /** Every option the CLI knows, typed once; each command opts into a subset. */
 const OPTION_SPECS = {
   help: { type: "boolean", short: "h" },
+  version: { type: "boolean", short: "v" },
+  sidecar: { type: "boolean" },
+  port: { type: "string" },
   json: { type: "boolean" },
   defaults: { type: "boolean" },
   foreground: { type: "boolean" },
@@ -115,7 +125,7 @@ type OptionName = keyof typeof OPTION_SPECS;
 const COMMAND_OPTIONS: Record<Command, readonly OptionName[]> = {
   setup: ["defaults"],
   doctor: ["json"],
-  start: ["foreground"],
+  start: ["foreground", "sidecar", "port"],
   stop: [],
   restart: [],
   launch: ["no-browser"],
@@ -130,6 +140,7 @@ const COMMAND_OPTIONS: Record<Command, readonly OptionName[]> = {
   recall: ["json"],
   mcp: [],
   skills: ["out", "base-url", "name", "unsigned", "json"],
+  version: [],
   help: [],
 };
 
@@ -137,6 +148,10 @@ export interface CliArgs {
   command: Command;
   positionals: string[];
   help: boolean;
+  version: boolean;
+  /** `start`: run as a desktop shell's service (docs/release.md); `port` is then the port to ask for. */
+  sidecar: boolean;
+  port: number | undefined;
   json: boolean;
   defaults: boolean;
   foreground: boolean;
@@ -170,7 +185,7 @@ function isCommand(value: string): value is Command {
  * Throws `UsageError` for unknown commands/options, missing values and enum
  * violations (`--provider`, `--effort`) so the caller can exit with code 2.
  */
-export function parseCliArgs(argv: readonly string[]): CliArgs {
+export function parseCliArgs(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): CliArgs {
   let values: Record<string, unknown>;
   let positionals: string[];
   try {
@@ -186,13 +201,15 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 
   const [first = "help", ...rest] = positionals;
   const help = values.help === true;
+  const version = values.version === true;
   if (!isCommand(first)) {
+    if (version) return { ...emptyArgs("version"), version: true };
     if (help) return { ...emptyArgs("help"), help: true };
     throw new UsageError(`Unknown command "${first}". Commands: ${COMMANDS.join(", ")}`);
   }
   const command = first;
 
-  const allowed = new Set<string>([...COMMAND_OPTIONS[command], "help"]);
+  const allowed = new Set<string>([...COMMAND_OPTIONS[command], "help", "version"]);
   for (const name of Object.keys(values)) {
     if (!allowed.has(name)) {
       throw new UsageError(`Option --${name} is not valid for "mordomo ${command}"`);
@@ -218,6 +235,24 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
     }
     effort = parsed.data;
   }
+  let port: number | undefined;
+  if (values.port !== undefined) {
+    const text = String(values.port);
+    port = /^\d{1,5}$/.test(text) ? Number(text) : Number.NaN;
+    if (!(port >= 0 && port <= 65535))
+      throw new UsageError(
+        `Invalid --port "${text}". Expected a number from 0 to 65535 (0 lets the system choose)`,
+      );
+    if (values.sidecar !== true) throw new UsageError("--port is only valid with --sidecar");
+  }
+  if (values.sidecar === true) {
+    const secret = env.MORDOMO_LAUNCH_TOKEN ?? "";
+    if (secret.length < LAUNCH_SECRET_MIN_LENGTH)
+      throw new UsageError(
+        `--sidecar needs MORDOMO_LAUNCH_TOKEN in the environment, ${LAUNCH_SECRET_MIN_LENGTH} characters or more`,
+      );
+    if (values.foreground !== true) throw new UsageError("--sidecar is only valid with --foreground");
+  }
   const inputs: Record<string, string> = {};
   for (const raw of (values.input as string[] | undefined) ?? []) {
     const eq = raw.indexOf("=");
@@ -229,6 +264,9 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
     command,
     positionals: rest,
     help,
+    version,
+    sidecar: values.sidecar === true,
+    port,
     json: values.json === true,
     defaults: values.defaults === true,
     foreground: values.foreground === true,
@@ -257,6 +295,9 @@ function emptyArgs(command: Command): CliArgs {
     command,
     positionals: [],
     help: false,
+    version: false,
+    sidecar: false,
+    port: undefined,
     json: false,
     defaults: false,
     foreground: false,
@@ -442,6 +483,10 @@ async function main(): Promise<void> {
     }
     throw err;
   }
+  if (args.version || args.command === "version") {
+    console.log(`mordomo ${PKG_VERSION}`);
+    return;
+  }
   if (args.help || args.command === "help") {
     printHelp();
     return;
@@ -493,6 +538,8 @@ ${pc.bold("MordomoOS")} — local agentic OS over Claude Code, Cursor Agent and 
   mordomo setup            Guided, idempotent configuration (add --defaults for non-interactive)
   mordomo doctor           Full diagnostic (providers, auth, index, routines, security) (--json)
   mordomo start            Start the local service + Command Centre (add --foreground to stay attached)
+                           For a desktop shell: --foreground --sidecar --port <n|0> with MORDOMO_LAUNCH_TOKEN set;
+                           prints MORDOMO_READY {json} when it listens and shuts down when stdin closes
   mordomo stop             Stop the local service
   mordomo restart          Restart the local service (also the login service, after an update)
   mordomo launch           Start if needed and open the Command Centre in the browser (--no-browser)
@@ -511,10 +558,11 @@ ${pc.bold("MordomoOS")} — local agentic OS over Claude Code, Cursor Agent and 
   mordomo restore <name>   Restore a backup after checking it against its manifest (a safety backup is
                            taken first; --allow-unverified restores one made before backups were sealed)
   mordomo service          Startup service: mordomo service install | remove | plan  (--yes skips confirmation)
+  mordomo version          Print the version (also: mordomo --version, mordomo -v)
   mordomo uninstall        Remove services/processes; data is PRESERVED unless you pass --purge
                            (--purge asks for confirmation; add --yes when not attached to a terminal)
 
-  Exit codes: 0 ok · 1 failure · 2 usage error
+  Exit codes: 0 ok · 1 failure · 2 usage error · 3 home blocked · 4 home held by another service and 5 port taken (--sidecar)
 `);
 }
 
@@ -870,6 +918,7 @@ async function cmdDoctor(args: CliArgs): Promise<void> {
 
 // ---------------------------------------------------------------- start ----
 async function cmdStart(args: CliArgs): Promise<void> {
+  if (args.sidecar) return cmdSidecar(args);
   if (args.foreground) {
     const handle = await startServer();
     // The server writes a minimal pidfile; enrich it with identity so `status`/`stop`
@@ -906,6 +955,68 @@ async function cmdStart(args: CliArgs): Promise<void> {
     console.log(`${pc.green("●")} MordomoOS started (pid ${info.pid}) → http://127.0.0.1:${info.port}`);
   else console.log(`${pc.red("✘")} Service did not report healthy — check ${serviceLogFile(ctx)}`);
   ctx.close();
+}
+
+/**
+ * `start --foreground --sidecar`: the service a desktop shell starts and owns (docs/release.md, "The shell and its
+ * service"). The shell's secret is in `MORDOMO_LAUNCH_TOKEN` (never in argv); the service listens on the port it
+ * was asked for (0: the system's choice), never stops another service to get the home or the port, says
+ * `MORDOMO_READY {json}` on stdout once it listens, and shuts down when its stdin closes: the shell's own exit,
+ * clean or not, closes the pipe, so a service never outlives the window that was showing it.
+ */
+async function cmdSidecar(args: CliArgs): Promise<void> {
+  const sidecar: SidecarOptions = {
+    port: args.port ?? 0,
+    launchSecret: process.env.MORDOMO_LAUNCH_TOKEN ?? "",
+  };
+  // The secret is the shell's; a child of this service (a provider CLI) has no use for it.
+  delete process.env.MORDOMO_LAUNCH_TOKEN;
+  let handle;
+  try {
+    handle = await startServer(undefined, sidecar);
+  } catch (err) {
+    if (err instanceof EngineLockedError) {
+      console.error(
+        `[mordomo] another MordomoOS service holds this home${err.holderPid === null ? "" : ` (pid ${err.holderPid})`}; stop it (mordomo stop) and open the app again`,
+      );
+      process.exit(EXIT_HOME_IN_USE);
+    }
+    if (err instanceof PortInUseError) {
+      console.error(`[mordomo] ${err.message}`);
+      process.exit(EXIT_PORT_BUSY);
+    }
+    throw err;
+  }
+  const port = handle.listeners.plain.port;
+  writePidFile(handle.ctx, port);
+  console.log(
+    `MORDOMO_READY ${JSON.stringify({
+      v: 1,
+      pid: process.pid,
+      port,
+      version: PKG_VERSION,
+      updatesCheck: handle.ctx.settings().updates.check,
+    })}`,
+  );
+  let closing = false;
+  const shutdown = () => {
+    if (closing) return;
+    closing = true;
+    handle
+      .close()
+      .then(() => process.exit(0))
+      .catch((err: unknown) => {
+        console.error(pc.red(`[mordomo] shutdown failed: ${(err as Error).message}`));
+        process.exit(1);
+      });
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+  // EOF (or a broken pipe) on stdin is the shell going away.
+  process.stdin.on("end", shutdown);
+  process.stdin.on("close", shutdown);
+  process.stdin.on("error", shutdown);
+  process.stdin.resume();
 }
 
 function serviceLogFile(ctx: Pick<AppContext, "paths">): string {

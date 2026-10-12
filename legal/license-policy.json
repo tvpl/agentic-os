@@ -91,5 +91,51 @@
         }
       }
     }
-  ]
+  ],
+  "rust": {
+    "note": "Crates Rust do app desktop (`apps/desktop`, Tauri 2), conferidas por `node scripts/licenses-rust.mjs --check` contra `cargo metadata --locked --all-features`. `allowed` é a lista de runtime acrescida do que a árvore do Tauri precisa: `Unicode-3.0` (tabelas Unicode das crates `icu_*` e `unicode-ident`, permissiva) e `CDLA-Permissive-2.0` (a crate `webpki-root-certs`, que leva a lista de autoridades certificadoras). Quem acrescenta um item faz num commit próprio, com o motivo.",
+    "allowed": [
+      "MIT",
+      "MIT-0",
+      "ISC",
+      "BSD-2-Clause",
+      "BSD-3-Clause",
+      "Apache-2.0",
+      "0BSD",
+      "BlueOak-1.0.0",
+      "CC0-1.0",
+      "Python-2.0",
+      "Unlicense",
+      "Zlib",
+      "Unicode-3.0",
+      "CDLA-Permissive-2.0"
+    ],
+    "exceptions": [
+      {
+        "crate": "cssparser",
+        "license": "MPL-2.0",
+        "reason": "entra pela árvore do Tauri (`tauri-utils` e `dirs`), sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
+      },
+      {
+        "crate": "cssparser-macros",
+        "license": "MPL-2.0",
+        "reason": "entra pela árvore do Tauri (`tauri-utils` e `dirs`), sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
+      },
+      {
+        "crate": "dtoa-short",
+        "license": "MPL-2.0",
+        "reason": "entra pela árvore do Tauri (`tauri-utils` e `dirs`), sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
+      },
+      {
+        "crate": "option-ext",
+        "license": "MPL-2.0",
+        "reason": "entra pela árvore do Tauri (`tauri-utils` e `dirs`), sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
+      },
+      {
+        "crate": "selectors",
+        "license": "MPL-2.0",
+        "reason": "entra pela árvore do Tauri (`tauri-utils` e `dirs`), sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
+      }
+    ]
+  }
 }

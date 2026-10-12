@@ -42,14 +42,15 @@ export const SCAN_DIRS = [
   "apps/command-centre/index.html",
   "apps/command-centre/gallery.html",
   "scripts",
+  "apps/desktop",
   "connectors",
   "routines",
   "skills",
 ];
 const CODE = /\.(ts|tsx|mjs|js|cjs)$/;
-const TEXT = /\.(css|html|json|webmanifest|sh|ps1|swift|plist|md)$/;
+const TEXT = /\.(css|html|json|webmanifest|sh|ps1|swift|plist|md|rs|toml)$/;
 const SKIPPED =
-  /(^|\/)(node_modules|dist|build|release|coverage)(\/|$)|\.test\.[a-z]+$|\.d\.ts$|\.spec\.[a-z]+$|^scripts\/network-scan\.mjs$/;
+  /(^|\/)(node_modules|dist|build|release|coverage)(\/|$)|\.test\.[a-z]+$|\.d\.ts$|\.spec\.[a-z]+$|^scripts\/network-scan\.mjs$|^apps\/desktop\/(target|payload|src-tauri\/gen)(\/|$)|^apps\/desktop\/[^/]+\/tests\//;
 
 const NETWORK_MODULES = new Set([
   "http",
@@ -294,8 +295,25 @@ export function scanText(text, fileName = "") {
   const hosts = new Set();
   const points = new Map();
   const point = (name) => points.set(name, (points.get(name) ?? 0) + 1);
+  if (fileName.endsWith(".rs")) text = text.split("\n#[cfg(test)]")[0];
   for (const m of text.matchAll(URL_HOST)) hosts.add(hostOf(m[1]));
   for (const m of text.matchAll(SCHEMELESS_IN_TEXT)) hosts.add(hostOf(m[1]));
+  if (fileName.endsWith(".rs")) {
+    // The desktop shell (apps/desktop): a socket it opens or accepts, the updater it asks, and a bare host in a string.
+    for (const _call of text.matchAll(
+      /\b(?:TcpStream|TcpListener|UdpSocket)::(?:connect(?:_timeout)?|bind)\b/g,
+    ))
+      point("rust:net");
+    for (const _call of text.matchAll(/\.updater\(\)/g)) point("rust:updater");
+    for (const m of text.matchAll(/"([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|org|net|io|dev|app))"/g))
+      hosts.add(m[1]);
+  }
+  if (fileName.endsWith("Cargo.toml"))
+    for (const m of text.matchAll(
+      /^(tauri-plugin-(?:updater|http|websocket|upload)|reqwest|hyper|ureq|isahc|surf|attohttpc)\s*=/gm,
+    ))
+      point(`rust:crate:${m[1]}`);
+  if (/tauri(?:\.[a-z]+)?\.conf\.json$/.test(fileName) && /"updater"\s*:/.test(text)) point("tauri:updater");
   if (/\.(md|sh|ps1)$/.test(fileName))
     for (const m of text.matchAll(/(?:^|[\s`$(;|&"'])(curl|wget)(?=\s)/gm)) point(`program:${m[1]}`);
   if (/\.json$/.test(fileName))

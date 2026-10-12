@@ -22,6 +22,9 @@ export default tseslint.config(
       "config/**",
       "logs/**",
       "**/*.tsbuildinfo",
+      // the desktop shell: Cargo's output and the payload (a minified bundle) are not source
+      "apps/desktop/target/**",
+      "apps/desktop/payload/**",
     ],
   },
   js.configs.recommended,
@@ -93,6 +96,11 @@ export default tseslint.config(
     // Plain scripts served as-is by the Command Centre (boot recovery, service worker).
     files: ["apps/command-centre/public/**/*.js"],
     languageOptions: { globals: { ...globals.browser, ...globals.serviceworker, ...globals.es2021 } },
+  },
+  {
+    // The shell's own two screens: plain scripts loaded by the webview (apps/desktop/ui).
+    files: ["apps/desktop/ui/**/*.js"],
+    languageOptions: { globals: { ...globals.browser, ...globals.es2021 } },
   },
   {
     // Playwright scripts evaluate callbacks inside the browser page.
