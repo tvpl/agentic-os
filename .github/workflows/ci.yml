@@ -58,6 +58,49 @@ jobs:
           test -f "$res/legal/THIRD_PARTY_NOTICES.md"
           test -f "$res/legal/sbom.cdx.json"
 
+  desktop:
+    name: desktop (rust shell, linux)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Rust toolchain (the version of apps/desktop/rust-toolchain.toml)
+        run: rustup toolchain install 1.97.0 --profile minimal --component rustfmt,clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop/target
+          key: desktop-${{ runner.os }}-${{ hashFiles('apps/desktop/Cargo.lock', 'apps/desktop/rust-toolchain.toml') }}
+      - name: Linux libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf file xvfb xdotool metacity dbus-x11
+      - run: npm ci
+      - run: npm run build
+      - name: Rust format, lint and tests (the shell logic runs without a display)
+        working-directory: apps/desktop
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --locked --workspace --all-targets --features mordomo-desktop/updater -- -D warnings
+          cargo test --locked -p mordomo-shell-core
+          cargo check --locked -p mordomo-desktop
+      - name: Licenses of the Rust crates (cargo is required here)
+        run: node scripts/licenses-rust.mjs --check --require-cargo
+      - name: Payload, legal files and the window smoke test
+        run: |
+          set -euo pipefail
+          node scripts/package.mjs --payload apps/desktop/payload --skip-build
+          for file in LICENSE legal/EULA.md legal/PRIVACY.md legal/NOTICE.md legal/THIRD_PARTY_NOTICES.md legal/THIRD_PARTY_NOTICES.desktop.md legal/sbom.cdx.json legal/sbom.desktop.cdx.json; do
+            test -f "apps/desktop/payload/$file"
+          done
+          (cd apps/desktop && cargo build --locked -p mordomo-desktop)
+          apps/desktop/smoke/gui.sh apps/desktop/target/debug/mordomo-desktop apps/desktop/payload
+
   e2e:
     name: e2e (playwright)
     runs-on: ubuntu-latest

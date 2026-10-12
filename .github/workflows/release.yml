@@ -1,142 +1,340 @@
 name: Release
 
-# Builds the packaged distributable for every platform and attaches the
-# archives to a GitHub release. Manual only: nothing runs on push or tag;
-# trigger it from the Actions tab and give it the tag to build.
+# Pushing a tag `v<version>` builds the desktop installers (macOS arm64 and x64, Windows x64, Linux x64) and attaches them
+# to a DRAFT release, with SHA256SUMS.txt, the two SBOMs, the third-party notices, the notes of the version's CHANGELOG
+# section and, when everything was signed, the updater manifest latest.json. Nothing is published without the tag, and
+# this workflow never publishes: the owner reads the draft and publishes it. `workflow_dispatch` builds the same
+# installers and keeps them as artifacts of the run, with no release.
+# Runbook (secrets, cutting a release, verifying signatures, rollback): docs/release.md.
 #
-# Optional secrets for macOS (without them the app is ad-hoc signed and users
-# must right-click → Open once):
-#   MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD  — Developer ID Application certificate
-#   MACOS_SIGN_IDENTITY                          — "Developer ID Application: Name (TEAMID)"
-#   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD  — notarytool credentials
+# Every secret is optional. A platform whose secrets are not registered is built UNSIGNED, and the file names, the release
+# notes and the first lines of the run's summary say so.
+#   macOS:    MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD  - Developer ID Application certificate (.p12, base64) and its password
+#             MACOS_SIGN_IDENTITY                          - "Developer ID Application: Name (TEAMID)"
+#             APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD  - notarytool credentials (without them the app is signed, not notarized)
+#   Windows:  WINDOWS_CERT_PFX_BASE64, WINDOWS_CERT_PASSWORD - Authenticode certificate (.pfx, base64) and its password
+#   Updater:  TAURI_SIGNING_PRIVATE_KEY                    - the minisign private key (`npx tauri signer generate`); its public half
+#             TAURI_SIGNING_PRIVATE_KEY_PASSWORD             goes in apps/desktop/src-tauri/tauri.updater.conf.json
+# Nothing here invents, stores or prints a secret; the repository never holds one.
 
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Tag to build (defaults to the current ref)"
-        required: false
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      mac_signed: ${{ steps.signing.outputs.mac_signed }}
+      mac_notarize: ${{ steps.signing.outputs.mac_notarize }}
+      windows_signed: ${{ steps.signing.outputs.windows_signed }}
+      updater: ${{ steps.signing.outputs.updater }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Version, tag and CHANGELOG agree
+        id: version
+        env:
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          set -euo pipefail
+          if [ -n "$TAG" ]; then node scripts/version-sync.mjs --check --tag "$TAG"; else node scripts/version-sync.mjs --check; fi
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ -n "$TAG" ]; then node scripts/release-notes.mjs --version "$VERSION" --check; fi
+      - name: The updater configuration is well formed
+        id: updater_config
+        run: |
+          node scripts/updater-config.mjs --check
+          echo "state=$(node scripts/updater-config.mjs --state)" >> "$GITHUB_OUTPUT"
+      - name: Which signing material is registered
+        id: signing
+        env:
+          HAS_MAC_CERT: ${{ secrets.MACOS_CERT_P12_BASE64 != '' && secrets.MACOS_CERT_PASSWORD != '' && secrets.MACOS_SIGN_IDENTITY != '' }}
+          HAS_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
+          HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_CERT_PFX_BASE64 != '' && secrets.WINDOWS_CERT_PASSWORD != '' }}
+          HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+          KEY_STATE: ${{ steps.updater_config.outputs.state }}
+        run: |
+          set -euo pipefail
+          yes_if() { if [ "$1" = true ] && [ "${2:-true}" = true ]; then echo true; else echo false; fi; }
+          MAC_SIGNED=$(yes_if "$HAS_MAC_CERT")
+          MAC_NOTARIZE=$(yes_if "$MAC_SIGNED" "$HAS_NOTARY")
+          WINDOWS_SIGNED=$(yes_if "$HAS_WINDOWS_CERT")
+          UPDATER=$(yes_if "$HAS_UPDATER_KEY" "$([ "$KEY_STATE" = valid ] && echo true || echo false)")
+          {
+            echo "mac_signed=$MAC_SIGNED"
+            echo "mac_notarize=$MAC_NOTARIZE"
+            echo "windows_signed=$WINDOWS_SIGNED"
+            echo "updater=$UPDATER"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "## Signing plan"
+            echo "- macOS signed: $MAC_SIGNED, notarized: $MAC_NOTARIZE"
+            echo "- Windows signed: $WINDOWS_SIGNED"
+            echo "- Updater (minisign key registered and public key in the repository): $UPDATER"
+            if [ "$MAC_SIGNED" != true ] || [ "$WINDOWS_SIGNED" != true ]; then
+              echo
+              echo "**UNSIGNED / NÃO ASSINADO: the artifacts of the platforms above that say false are built without a certificate and carry UNSIGNED in their names.**"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$HAS_UPDATER_KEY" = true ] && [ "$KEY_STATE" != valid ]; then
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY is registered but apps/desktop/src-tauri/tauri.updater.conf.json has no valid public key: the build has no updater."
+          fi
+
+  verify:
+    name: Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: rustup toolchain install 1.97.0 --profile minimal --component rustfmt,clippy
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npx vitest run
+      - run: node scripts/licenses.mjs --check
+      - run: node scripts/licenses-rust.mjs --check --require-cargo
+      - run: node scripts/network-scan.mjs --check
+      - name: Desktop shell tests (no webview needed)
+        working-directory: apps/desktop
+        run: cargo test --locked -p mordomo-shell-core
+
   package:
-    name: ${{ matrix.label }}
+    name: ${{ matrix.platform }}
+    needs: [plan, verify]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
-            label: macos-arm64
-          - os: macos-13
-            label: macos-x64
-          - os: ubuntu-22.04
-            label: linux-x64
-          - os: ubuntu-22.04-arm
-            label: linux-arm64
-          - os: windows-2022
-            label: windows-x64
+          - platform: macos-arm64
+            os: macos-14
+          - platform: macos-x64
+            os: macos-15-intel
+          - platform: windows-x64
+            os: windows-2022
+          - platform: linux-x64
+            os: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - name: Rust toolchain
+        shell: bash
+        run: rustup toolchain install 1.97.0 --profile minimal
+      - name: Linux libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf file xvfb xdotool metacity dbus-x11
       - run: npm ci
       - run: npm run build
 
-      - name: Import the Developer ID certificate (macOS, optional)
-        if: runner.os == 'macOS' && env.CERT != ''
+      - name: Import the Developer ID certificate
+        if: runner.os == 'macOS' && needs.plan.outputs.mac_signed == 'true'
         env:
           CERT: ${{ secrets.MACOS_CERT_P12_BASE64 }}
           CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
         run: |
+          set -euo pipefail
           echo "$CERT" | base64 --decode > "$RUNNER_TEMP/cert.p12"
           security create-keychain -p ci "$RUNNER_TEMP/build.keychain"
           security default-keychain -s "$RUNNER_TEMP/build.keychain"
           security unlock-keychain -p ci "$RUNNER_TEMP/build.keychain"
           security import "$RUNNER_TEMP/cert.p12" -k "$RUNNER_TEMP/build.keychain" -P "$CERT_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k ci "$RUNNER_TEMP/build.keychain"
-      - name: Store notarytool credentials (macOS, optional)
-        if: runner.os == 'macOS' && env.APPLE_ID != ''
+          rm -f "$RUNNER_TEMP/cert.p12"
+      - name: Import the Authenticode certificate
+        id: windows_cert
+        if: runner.os == 'Windows' && needs.plan.outputs.windows_signed == 'true'
+        shell: pwsh
         env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        run: xcrun notarytool store-credentials mordomo --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
+          CERT: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "authenticode.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT))
+          $imported = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString $env:CERT_PASSWORD -AsPlainText -Force)
+          Remove-Item $pfx
+          "thumbprint=$($imported.Thumbprint)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Package (signed + notarized)
-        if: runner.os == 'macOS' && env.IDENTITY != '' && env.APPLE_ID != ''
+      - name: Payload (macOS, signed native code)
+        if: runner.os == 'macOS' && needs.plan.outputs.mac_signed == 'true'
         env:
           IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-        run: node scripts/package.mjs --skip-build --sign "$IDENTITY" --notarize mordomo
-      - name: Package (signed)
-        if: runner.os == 'macOS' && env.IDENTITY != '' && env.APPLE_ID == ''
-        env:
-          IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-        run: node scripts/package.mjs --skip-build --sign "$IDENTITY"
-      - name: Package
-        if: runner.os != 'macOS' || env.IDENTITY == ''
-        env:
-          IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
-        run: node scripts/package.mjs --skip-build
-
-      - name: Smoke-test the package (POSIX)
-        if: runner.os != 'Windows'
+        run: node scripts/package.mjs --payload apps/desktop/payload --skip-build --sign "$IDENTITY"
+      - name: Payload
+        if: runner.os != 'macOS' || needs.plan.outputs.mac_signed != 'true'
+        run: node scripts/package.mjs --payload apps/desktop/payload --skip-build
+      - name: The license and the legal texts are in the payload
         shell: bash
         run: |
           set -euo pipefail
-          stage=$(ls -d build/package/*/ | head -1)
-          if [ -x "$stage/mordomo" ]; then cli="$stage/mordomo"; else cli="$stage/bin/mordomo"; fi
-          export MORDOMO_HOME="$RUNNER_TEMP/home" MORDOMO_SKIP_NPM_AUDIT=1
-          mkdir -p "$MORDOMO_HOME/config"; echo '{"version":1,"port":4799}' > "$MORDOMO_HOME/config/settings.json"
-          env -i HOME="$HOME" PATH=/usr/bin:/bin MORDOMO_HOME="$MORDOMO_HOME" "$cli" --help >/dev/null
-          env -i HOME="$HOME" PATH=/usr/bin:/bin MORDOMO_HOME="$MORDOMO_HOME" "$cli" launch --no-browser
-          curl -fsS -o /dev/null -w '%{content_type}\n' http://127.0.0.1:4799/ | grep -q text/html
-          asset=$(grep -o '/assets/main-[^"]*\.js' "$stage"/*/Contents/Resources/ui/index.html "$stage"/ui/index.html 2>/dev/null | head -1 | sed 's/.*:\///')
-          curl -fsS -o /dev/null -w '%{content_type}\n' "http://127.0.0.1:4799/$asset" | grep -q javascript
-          env -i HOME="$HOME" PATH=/usr/bin:/bin MORDOMO_HOME="$MORDOMO_HOME" "$cli" stop
-      - name: Smoke-test the package (Windows)
+          for file in LICENSE legal/EULA.md legal/PRIVACY.md legal/NOTICE.md legal/THIRD_PARTY_NOTICES.md legal/THIRD_PARTY_NOTICES.desktop.md legal/sbom.cdx.json legal/sbom.desktop.cdx.json; do
+            test -f "apps/desktop/payload/$file" || { echo "::error::apps/desktop/payload/$file is missing"; exit 1; }
+          done
+
+      - name: Build installers (macOS)
+        if: runner.os == 'macOS'
+        env:
+          MAC_SIGNED: ${{ needs.plan.outputs.mac_signed }}
+          MAC_NOTARIZE: ${{ needs.plan.outputs.mac_notarize }}
+          UPDATER_ENABLED: ${{ needs.plan.outputs.updater }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: node scripts/desktop-build.mjs --platform ${{ matrix.platform }}
+      - name: Build installers (Windows)
+        if: runner.os == 'Windows'
+        env:
+          WINDOWS_CERT_THUMBPRINT: ${{ steps.windows_cert.outputs.thumbprint }}
+          UPDATER_ENABLED: ${{ needs.plan.outputs.updater }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: node scripts/desktop-build.mjs --platform ${{ matrix.platform }}
+      - name: Build installers (Linux)
+        if: runner.os == 'Linux'
+        env:
+          UPDATER_ENABLED: ${{ needs.plan.outputs.updater }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: node scripts/desktop-build.mjs --platform ${{ matrix.platform }}
+
+      - name: Verify the signature and the notarization (macOS)
+        if: runner.os == 'macOS' && needs.plan.outputs.mac_signed == 'true'
+        run: |
+          set -euo pipefail
+          app=apps/desktop/target/release/bundle/macos/MordomoOS.app
+          codesign --verify --deep --strict --verbose=2 "$app"
+          if [ "${{ needs.plan.outputs.mac_notarize }}" = true ]; then
+            xcrun stapler validate "$app"
+            spctl --assess --type execute --verbose=4 "$app"
+          fi
+      - name: The installed app starts its service and serves the Command Centre (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          export MORDOMO_HOME="$RUNNER_TEMP/mordomo-home" MORDOMO_SKIP_NPM_AUDIT=1
+          out=$("apps/desktop/target/release/bundle/macos/MordomoOS.app/Contents/MacOS/mordomo-desktop" --self-test | tail -1)
+          echo "$out"
+          echo "$out" | node -e 'const r=JSON.parse(require("fs").readFileSync(0,"utf8")); process.exit(r.ok ? 0 : 1)'
+      - name: Install the package and run the window smoke test (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo dpkg -i apps/desktop/target/release/bundle/deb/*.deb
+          apps/desktop/smoke/gui.sh /usr/bin/mordomo-desktop
+      - name: Install silently and start the service (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $stage = (Get-ChildItem build/package -Directory | Select-Object -First 1).FullName
-          $env:MORDOMO_HOME = "$env:RUNNER_TEMP\home"; $env:MORDOMO_SKIP_NPM_AUDIT = "1"
-          New-Item -ItemType Directory -Force "$env:MORDOMO_HOME\config" | Out-Null
-          '{"version":1,"port":4799}' | Set-Content "$env:MORDOMO_HOME\config\settings.json"
-          & "$stage\bin\mordomo.cmd" --help | Out-Null
-          & "$stage\bin\mordomo.cmd" launch --no-browser
-          $r = Invoke-WebRequest http://127.0.0.1:4799/ -UseBasicParsing
-          if ($r.Headers["Content-Type"] -notmatch "text/html") { throw "index is not HTML" }
-          & "$stage\bin\mordomo.cmd" stop
+          $setup = Get-ChildItem apps/desktop/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          Start-Process -FilePath $setup.FullName -ArgumentList "/S" -Wait
+          $exe = @("MordomoOS", "Programs\MordomoOS") | ForEach-Object { Join-Path $env:LOCALAPPDATA $_ } | Where-Object { Test-Path $_ } | ForEach-Object { Get-ChildItem $_ -Recurse -Filter mordomo-desktop.exe } | Select-Object -First 1
+          if (-not $exe) { throw "mordomo-desktop.exe was not installed under $env:LOCALAPPDATA" }
+          $env:MORDOMO_HOME = Join-Path $env:RUNNER_TEMP "mordomo-home"
+          $env:MORDOMO_SKIP_NPM_AUDIT = "1"
+          $out = (& $exe.FullName --self-test | Select-Object -Last 1)
+          Write-Output $out
+          if (-not (($out | ConvertFrom-Json).ok)) { throw "the self-test failed" }
+      - name: Verify the Authenticode signature (Windows)
+        if: runner.os == 'Windows' && needs.plan.outputs.windows_signed == 'true'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem apps/desktop/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          $signature = Get-AuthenticodeSignature $setup.FullName
+          Write-Output $signature.Status
+          if ($signature.Status -ne "Valid") { throw "the installer's Authenticode signature is $($signature.Status)" }
 
+      - name: Name the installers and say what was signed
+        shell: bash
+        env:
+          MAC_SIGNED: ${{ needs.plan.outputs.mac_signed }}
+          MAC_NOTARIZE: ${{ needs.plan.outputs.mac_notarize }}
+          WINDOWS_SIGNED: ${{ needs.plan.outputs.windows_signed }}
+        run: |
+          set -euo pipefail
+          case "$RUNNER_OS" in
+            macOS) CODE_SIGNED=$MAC_SIGNED; NOTARIZED=$MAC_NOTARIZE ;;
+            Windows) CODE_SIGNED=$WINDOWS_SIGNED; NOTARIZED=false ;;
+            *) CODE_SIGNED=false; NOTARIZED=false ;;
+          esac
+          node scripts/release-collect.mjs --platform "${{ matrix.platform }}" \
+            --bundle apps/desktop/target/release/bundle --out release \
+            --version "${{ needs.plan.outputs.version }}" \
+            --code-signed "$CODE_SIGNED" --notarized "$NOTARIZED" \
+            --updater-signed "${{ needs.plan.outputs.updater }}"
       - uses: actions/upload-artifact@v4
         with:
-          name: mordomo-os-${{ matrix.label }}
+          name: release-${{ matrix.platform }}
           path: release/*
           if-no-files-found: error
 
   publish:
-    name: GitHub release
-    needs: package
+    name: Draft release
+    needs: [plan, package]
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
-    if: inputs.tag != '' || startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - uses: actions/download-artifact@v4
         with:
+          pattern: release-*
           path: artifacts
           merge-multiple: true
-      - name: Checksums
-        run: cd artifacts && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
-          files: artifacts/*
-          generate_release_notes: true
-          draft: true
+      - name: Notes, updater manifest, SBOM, notices, checksums
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          node scripts/release-notes.mjs --version "$VERSION" --status artifacts --out notes.md
+          status=0
+          node scripts/updater-manifest.mjs --dir artifacts --version "$VERSION" --tag "$TAG" --notes notes.md --out artifacts/latest.json || status=$?
+          if [ "$status" -ne 0 ] && [ "$status" -ne 3 ]; then exit "$status"; fi
+          if [ "$status" -eq 3 ]; then echo "latest.json is not part of this release: not every platform was signed (see above)."; fi
+          node scripts/sbom.mjs --out artifacts/sbom.cdx.json
+          node scripts/sbom-rust.mjs --out artifacts/sbom.desktop.cdx.json
+          cp legal/THIRD_PARTY_NOTICES.md legal/THIRD_PARTY_NOTICES.desktop.md artifacts/
+          rm -f artifacts/status-*.json
+          (cd artifacts && sha256sum -- * > ../SHA256SUMS.txt && mv ../SHA256SUMS.txt SHA256SUMS.txt && cat SHA256SUMS.txt)
+      - name: Create or refresh the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true ] || { echo "::error::$TAG is already published; this workflow only writes drafts"; exit 1; }
+            gh release edit "$TAG" --draft --title "MordomoOS $VERSION" --notes-file notes.md
+            gh release upload "$TAG" artifacts/* --clobber
+          else
+            gh release create "$TAG" --draft --verify-tag --title "MordomoOS $VERSION" --notes-file notes.md artifacts/*
+          fi
