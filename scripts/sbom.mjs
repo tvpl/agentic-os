@@ -27,7 +27,7 @@ function hashOf(integrity) {
 
 /** The licence ids the CycloneDX 1.5 schema accepts in `license.id` (its own copy of the SPDX list, vendored). */
 let spdxIds = null;
-function schemaIds(root) {
+export function schemaIds(root) {
   if (spdxIds === null) {
     const file = path.join(root, "legal", "vendor", "cyclonedx", "spdx.schema.json");
     spdxIds = new Set(fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")).enum : []);
@@ -36,7 +36,7 @@ function schemaIds(root) {
 }
 
 /** One id the schema knows → `license.id`; an expression (OR, AND, WITH) → `expression`, whole; anything else → `name`. */
-function licensesOf(expression, ids) {
+export function licensesOf(expression, ids) {
   if (expression === null) return [];
   const tree = parseSpdx(expression);
   if (tree === null) return [{ license: { name: expression } }];

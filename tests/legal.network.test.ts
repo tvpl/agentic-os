@@ -262,9 +262,9 @@ describe("C24 the code and the policy agree, in both directions", () => {
     expect(cli.status, cli.stderr).toBe(0);
   });
 
-  it("C24 the real code has the network points the research found (37) and the hosts the policy names", () => {
+  it("C24 the real code has the network points the research found (37, plus the 4 of the desktop shell: distribuicao) and the hosts the policy names", () => {
     const found = realScan;
-    expect(found.sites).toHaveLength(37);
+    expect(found.sites).toHaveLength(41);
     const fetchFiles = found.sites.filter((s) => s.kind === "fetch").map((s) => s.file);
     for (const file of [
       "apps/api/src/updates.ts",
@@ -352,10 +352,10 @@ describe("C24 the code and the policy agree, in both directions", () => {
 describe("C25 the privacy policy repeats the network policy", () => {
   const ROLES = ["local", "contact", "user-defined", "cli", "link", "build"];
 
-  it("C25 there are 15 entries, ids are unique, roles are the six, and no site names an id that is missing", () => {
-    expect(policy.hosts).toHaveLength(15);
+  it("C25 there are 17 entries (15, plus the desktop updater and the signing timestamp: distribuicao), ids are unique, roles are the six, and no site names an id that is missing", () => {
+    expect(policy.hosts).toHaveLength(17);
     const ids = policy.hosts.map((h) => h.id);
-    expect(new Set(ids).size).toBe(15);
+    expect(new Set(ids).size).toBe(17);
     expect([...new Set(policy.hosts.map((h) => h.role))].sort()).toEqual([...ROLES].sort());
     for (const site of policy.sites)
       for (const id of site.hosts) expect(ids, `${site.file} ${site.kind}`).toContain(id);
