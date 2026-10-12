@@ -285,12 +285,6 @@
   margin: var(--s-1) 0 var(--s-2);
   color: var(--text-dim);
 }
-.apps-approval .desc {
-  font-size: var(--fs-3);
-  font-family: var(--font-mono);
-  color: var(--text);
-  word-break: break-word;
-}
 @media (prefers-reduced-motion: no-preference) {
   .apps-approval,
   .apps-res-preview {

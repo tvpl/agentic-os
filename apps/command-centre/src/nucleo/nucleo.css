@@ -861,10 +861,6 @@
   font-size: var(--fs-2);
   letter-spacing: 0.14em;
 }
-.nu-voice .cons .console-msg.briefing {
-  margin: 0 0 6px;
-  padding: 0 4px;
-}
 .nu-voice .cons-note,
 .nu-voice .cons .approval-inline.tool {
   margin-left: 4px;

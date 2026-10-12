@@ -132,7 +132,7 @@ and the same routes, chosen by `UiPreferences.shell`:
 | `desktop/` | the instruments both mount: the console (chat), the panels registry (the cards of Today, the lâminas of the Núcleo), signals, the run and document panels |
 | `views/`, `runs/`, `brain/` | the pages: skills, routines, connectors, settings, runs, the Second Brain view |
 | `ui/` | the primitives (dialog, popover, tabs, switch, menu, tooltip) over Radix; the only folder that imports `@radix-ui/*`, and the stack of layers |
-| `commands/` | the typed registry of commands and shortcuts: one keyboard listener for the page, scopes, the shortcut help |
+| `commands/` | the typed registry of commands and shortcuts: one key manager with one listener on the page, scopes, the shortcut help; ten more key listeners in nine files stay outside it on purpose (a layer's Escape and Tab, the focus mode, the tour, the replay, the Núcleo scenes), each listed with its reason in `listenersAllowlist.ts` and counted by `commands.source.test.ts` |
 | `components/Markdown.tsx` | the one renderer of Markdown: a block tree turned into elements, never HTML; one rule for what a link may be |
 | `plugins/` | apps that load on demand through an `AppPlugin` (Pixel Studio): their code is a chunk of its own, reached only by the manifest's `import()` |
 

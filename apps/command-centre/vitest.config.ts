@@ -5,5 +5,6 @@ export default defineConfig({
   test: {
     include: ["src/**/*.test.{ts,tsx}"],
     environment: "node",
+    setupFiles: ["src/testing/missingKeys.setup.ts"],
   },
 });

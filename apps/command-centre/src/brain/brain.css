@@ -453,21 +453,6 @@
   }
 }
 
-/* tooltip with actions (open / copy) */
-.brain2-tooltip .actions {
-  display: flex;
-  gap: 4px;
-  margin-top: 5px;
-}
-.brain2-tooltip .actions .btn {
-  padding: 2px 6px;
-  font-size: var(--fs-2);
-}
-.brain2-tooltip .actions .btn svg {
-  width: 11px;
-  height: 11px;
-}
-
 /* preview panel */
 .brain-preview-head {
   display: flex;

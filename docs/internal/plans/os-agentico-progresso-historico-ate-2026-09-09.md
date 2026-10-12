@@ -28,7 +28,7 @@ Atualizado em 06/09/2026. Estado: execução em andamento; conclusão integral N
 
 ## Preservação e baseline
 
-Workspace: `/Users/thiagolopes/Projects/agentic-os`. Há diffs anteriores de implementação e do usuário, incluindo packages, remoção de Approvals.tsx e introdução de ApprovalCards.tsx; não resetar nem atribuir todos os diffs à rodada atual. Planos e relatório foram lidos. Não há AGENTS.md encontrado no workspace pelo inventário inicial.
+Workspace: `<repo>`. Há diffs anteriores de implementação e do usuário, incluindo packages, remoção de Approvals.tsx e introdução de ApprovalCards.tsx; não resetar nem atribuir todos os diffs à rodada atual. Planos e relatório foram lidos. Não há AGENTS.md encontrado no workspace pelo inventário inicial.
 
 Mapa inicial e decisões: `docs/execution-2026-09-06/baseline.md`.
 
