@@ -776,6 +776,23 @@ describe("C41 the build passes only the signing material this machine has, never
     ).toEqual([]);
   });
 
+  it("C41 a signing variable that is set and empty is dropped even when its group is on (an unregistered secret reaches tauri as nothing)", () => {
+    const env = desktopBuild.plan("macos-arm64", {
+      MAC_SIGNED: "true",
+      MAC_NOTARIZE: "true",
+      APPLE_SIGNING_IDENTITY: "Developer ID Application: X (T)",
+      APPLE_ID: "",
+      APPLE_PASSWORD: "",
+      APPLE_TEAM_ID: "T",
+      APPLE_CERTIFICATE: "",
+    }).env;
+    expect(
+      Object.keys(env)
+        .filter((k) => k.startsWith("APPLE_"))
+        .sort(),
+    ).toEqual(["APPLE_SIGNING_IDENTITY", "APPLE_TEAM_ID"]);
+  });
+
   it("C41 Windows: a certificate thumbprint becomes a --config with SHA-256 and a timestamp; without one there is none", () => {
     const signed = desktopBuild.plan("windows-x64", { WINDOWS_CERT_THUMBPRINT: "AB12CD" });
     const config = JSON.parse(signed.args[signed.args.indexOf("--config") + 1]) as {
