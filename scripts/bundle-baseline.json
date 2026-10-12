@@ -42,11 +42,11 @@
     },
     {
       "feature": "limpeza-legado",
-      "reason": "the legacy removed: 39 dead exports and their chains, 55 CSS classes, 20 @keyframes, 4 custom properties, 276 translation keys, the three Markdown renderers joined into one, and Pixel Studio's own rules moved out of the shared stylesheet into its chunk (7.1 KB less JS gzip and 2.0 KB less CSS gzip than primitivas-r3)",
-      "jsRaw": 1534787,
-      "jsGzip": 499906,
-      "cssRaw": 329679,
-      "cssGzip": 69931
+      "reason": "the legacy removed: 39 dead exports and their chains, 55 CSS classes, 20 @keyframes, 4 custom properties, 276 translation keys, the three Markdown renderers joined into one, and Pixel Studio's own rules moved out of the shared stylesheet into its chunk and, after round 1, 17 more dead selectors and the status.completed key; the numbers are the ones the final build measures (7.0 KB less JS gzip and 2.5 KB less CSS gzip than primitivas-r3)",
+      "jsRaw": 1535092,
+      "jsGzip": 499992,
+      "cssRaw": 326857,
+      "cssGzip": 69452
     }
   ]
 }

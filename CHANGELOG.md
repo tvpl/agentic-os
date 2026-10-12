@@ -235,7 +235,7 @@ suggested, each shipped with its tests.
 
 ## 0.7.0 — 2026-09-04
 
-Every remaining item of the evolution plan (`docs/plan-2026-09/`): the rest
+Every remaining item of the evolution plan (`docs/internal/plan-2026-09/`): the rest
 of Onda 1 and 2, Onda 3 and Onda 4. Nothing in the plan is pending.
 
 - **Tool approvals mid-run** (Onda 1): in `review_before_write` and
@@ -284,7 +284,7 @@ of Onda 1 and 2, Onda 3 and Onda 4. Nothing in the plan is pending.
 
 ## 0.6.0 — 2026-09-04
 
-The evolution plan (`docs/plan-2026-09/`) executed: Onda 0 in full, the
+The evolution plan (`docs/internal/plan-2026-09/`) executed: Onda 0 in full, the
 desktop harmony pass, the "HUD Mordomo" visual layer, sessions with a
 conversational Console (Onda 1) and the first slice of Onda 2 (budget,
 persisted inbox).
@@ -336,7 +336,7 @@ persisted inbox).
 
 ## 0.5.0 — 2026-09-03
 
-The September analysis (`docs/analysis-2026-09/`) executed end to end: the frame
+The September analysis (`docs/internal/analysis-2026-09/`) executed end to end: the frame
 by frame study of the RUBRIC "Agentic OS" plus the open-source state of the art,
 turned into code across seven frontiers.
 
@@ -398,7 +398,7 @@ turned into code across seven frontiers.
 
 ## 0.4.0 — 2026-09-02
 
-Hardening release: the September audit (`docs/audit-2026-09/`) executed end to end.
+Hardening release: the September audit (`docs/internal/audit-2026-09/`) executed end to end.
 
 - **Security**: every `:id`/`:slug` route parameter validated (path traversal in
   `DELETE /api/routines` and `/api/connectors` closed, also at the store level);
