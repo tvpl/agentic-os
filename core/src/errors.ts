@@ -72,6 +72,20 @@ export class RestoreInProgressError extends Error {
   }
 }
 
+/**
+ * A save was refused because the file is not the one the caller read: its bytes hash to something other than the
+ * version the caller holds (`writeWorkspaceFile`'s `expectSha256`). Nothing was written.
+ */
+export class EditConflictError extends Error {
+  readonly code = "edit_conflict";
+  /** What an API answers. */
+  readonly statusCode = 409;
+  constructor() {
+    super("The file changed after it was read. Nothing was written; read it again and merge.");
+    this.name = "EditConflictError";
+  }
+}
+
 /** A path is outside what the engine may touch: not in the home or an indexed folder, or in `config/` or `logs/`. */
 export class PathAccessError extends Error {
   /** HTTP status the API should map this to. */

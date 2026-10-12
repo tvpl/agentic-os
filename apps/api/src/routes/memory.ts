@@ -5,6 +5,7 @@ import {
   assertFact,
   buildGraph,
   checkRouters,
+  createNote,
   ensureJournal,
   factStats,
   generateRouters,
@@ -18,6 +19,7 @@ import {
   previewFile,
   queryFacts,
   queryFilesByField,
+  readNote,
   recall,
   recallStats,
   recentJournals,
@@ -25,6 +27,7 @@ import {
   relatedFiles,
   resolveOpenablePath,
   retractFact,
+  saveNote,
   searchFiles,
   statWorkspacePath,
   workspaceScope,
@@ -137,6 +140,37 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     });
     child.unref();
     return { opened: resolved };
+  });
+
+  // ---- notes: create and edit the Markdown files under memory/ -----------------------------------------
+
+  /** After a write, the index learns about the file on its own time; the answer does not wait for it. */
+  const reindex = (notePath: string): void => {
+    ctx.indexer.requestIndexPaths([notePath]).catch(() => undefined);
+  };
+  const noteContext = () => ({ paths: ctx.paths, settings: ctx.settings() });
+
+  bind(app, "memory.note", async ({ query: { p } }) => {
+    try {
+      return readNote(noteContext(), p);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT")
+        throw httpError(404, "The note does not exist.", "note_missing");
+      throw err;
+    }
+  });
+
+  bind(app, "memory.notes.create", async ({ body }, _req, reply) => {
+    const written = createNote(noteContext(), body);
+    reindex(written.path);
+    reply.code(201);
+    return written;
+  });
+
+  bind(app, "memory.notes.save", async ({ body }) => {
+    const written = saveNote(noteContext(), body);
+    reindex(written.path);
+    return written;
   });
 
   bind(app, "memory.routers", async () => {

@@ -8,6 +8,7 @@ import { PathAccessError, realpathLenient } from "../security/paths.js";
 import { openWorkspaceFile, readScope, statWorkspacePath, type ReadScope } from "../security/safeFs.js";
 import { isBinaryBuffer, makeWorkspaceFilter } from "./excludes.js";
 import { fieldsFromDb, parseInlineFields } from "./fields.js";
+import { parseFrontMatter } from "./frontMatter.js";
 import type { IndexProgress, IndexStats } from "@mordomo/contracts";
 
 export type { IndexProgress, IndexStats };
@@ -87,6 +88,9 @@ export class MemoryIndexer {
   private implicitRoots: IndexedFolder[] = [];
   /** Ids added or updated during the current pass (their related edges are refreshed at the end). */
   private touched = new Set<number>();
+  /** Paths asked for through `requestIndexPaths` that no pass has taken yet, and the run that will take them. */
+  private readonly requested = new Set<string>();
+  private requestedRun: Promise<void> | null = null;
 
   constructor(
     private readonly db: Db,
@@ -190,6 +194,43 @@ export class MemoryIndexer {
     return this.inFlight;
   }
 
+  /** A pass over these paths only (a note that was just saved), synchronously. Same rules as `indexAll`. */
+  indexPaths(paths: readonly string[]): IndexStats {
+    const gen = this.steps(undefined, paths);
+    let step = gen.next();
+    while (!step.done) step = gen.next();
+    return step.value;
+  }
+
+  /**
+   * Ask for these paths to be indexed soon: the request waits behind a pass that is running, and every request made
+   * meanwhile becomes ONE pass over the union of their paths. Resolves when the pass that covered them ended.
+   */
+  requestIndexPaths(paths: readonly string[]): Promise<void> {
+    for (const p of paths) this.requested.add(path.resolve(p));
+    if (this.requestedRun) return this.requestedRun;
+    const own: { run?: Promise<void> } = {};
+    own.run = (async () => {
+      // The run is stored below before any of it executes: a request made while it works joins it.
+      await Promise.resolve();
+      try {
+        // Let a running pass finish first: it cannot see what changed after its scan.
+        while (this.running || this.inFlight) {
+          await (this.inFlight ?? new Promise<void>((resolve) => setTimeout(resolve, 5))).catch(() => undefined);
+        }
+        while (this.requested.size > 0) {
+          const batch = [...this.requested];
+          this.requested.clear();
+          this.indexPaths(batch);
+        }
+      } finally {
+        if (this.requestedRun === own.run) this.requestedRun = null;
+      }
+    })();
+    this.requestedRun = own.run;
+    return own.run;
+  }
+
   lastIndex(): { at: number; stats: IndexStats } | null {
     const row = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(LAST_INDEX_KEY) as
       | { value: string }
@@ -198,7 +239,11 @@ export class MemoryIndexer {
   }
 
   /** The whole run as a generator; each `yield` is a safe point to give the loop a turn. */
-  private *steps(onProgress: ((p: IndexProgress) => void) | undefined): Generator<void, IndexStats> {
+  private *steps(
+    onProgress: ((p: IndexProgress) => void) | undefined,
+    /** Only these paths: no scan, no pruning of the files not named, and `last_index` stays as it was. */
+    only?: readonly string[],
+  ): Generator<void, IndexStats> {
     if (this.running) throw new Error("An index run is already in progress.");
     this.running = true;
     try {
@@ -238,8 +283,10 @@ export class MemoryIndexer {
 
       // Phase 1: scan (no content is read here).
       const candidates: Candidate[] = [];
+      const gone = new Set<string>();
       let dirsSinceYield = 0;
-      for (const root of roots) {
+      if (only) this.collectPaths(only, roots, rootArea, filter, scope, stats, candidates, gone);
+      for (const root of only ? [] : roots) {
         // The home check compares real paths; the walk never follows a symlink,
         // so only the root can be spelled through one.
         const realRoot = realpathLenient(root);
@@ -307,7 +354,7 @@ export class MemoryIndexer {
 
       // Phase 3: rows whose file vanished or whose root is no longer indexed.
       const all = this.db.prepare("SELECT id, path FROM files").all() as Array<{ id: number; path: string }>;
-      const stale = all.filter((row) => !seen.has(row.path));
+      const stale = all.filter((row) => (only ? gone.has(row.path) : !seen.has(row.path)));
       const removeChunk = this.db.transaction((rows: Array<{ id: number; path: string }>) => {
         for (const row of rows) this.removeFile(row.id, row.path, pending, stats);
       });
@@ -324,6 +371,7 @@ export class MemoryIndexer {
       stats.durationMs = Date.now() - started;
       const finish = this.db.transaction(() => {
         this.savePendingLinks(pending);
+        if (only) return;
         this.db
           .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
           .run(LAST_INDEX_KEY, JSON.stringify({ at: Date.now(), stats }));
@@ -340,6 +388,47 @@ export class MemoryIndexer {
       throw error;
     } finally {
       this.running = false;
+    }
+  }
+
+  /**
+   * The candidates for a pass over named paths: each must lie under an indexed root, pass the same filter the scan
+   * applies, and be reached without a link on the way. A path that is not there any more is `gone` (its row, if any,
+   * is removed).
+   */
+  private collectPaths(
+    only: readonly string[],
+    roots: readonly string[],
+    rootArea: ReadonlyMap<string, string | null>,
+    filter: ReturnType<typeof makeWorkspaceFilter>,
+    scope: ReadScope,
+    stats: IndexStats,
+    candidates: Candidate[],
+    gone: Set<string>,
+  ): void {
+    for (const wanted of only) {
+      const full = path.resolve(wanted);
+      const root = roots
+        .filter((r) => full === r || full.startsWith(r + path.sep))
+        .sort((a, b) => b.length - a.length)[0];
+      if (root === undefined || full === root) continue;
+      const rel = path.relative(root, full);
+      const realRoot = realpathLenient(root);
+      if (filter.isExcluded(rel, path.join(realRoot, rel))) {
+        stats.skippedExcluded++;
+        continue;
+      }
+      try {
+        const { path: real, stat } = statWorkspacePath(scope, full);
+        // A link on the way (or at the end) makes the real path another one: the scan does not follow links.
+        if (real !== path.join(realRoot, rel) || !stat.isFile()) continue;
+      } catch (err) {
+        if (err instanceof PathAccessError) stats.skippedExcluded++;
+        else if ((err as NodeJS.ErrnoException).code === "ENOENT") gone.add(full);
+        continue;
+      }
+      stats.scanned++;
+      candidates.push({ root, full, rel, area: rootArea.get(root) ?? null });
     }
   }
 
@@ -392,8 +481,10 @@ export class MemoryIndexer {
         content = "";
       }
       if (ext === ".md" || ext === ".markdown") {
-        title = content.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? null;
-        tags = [...new Set([...content.matchAll(/(?:^|\s)#([\p{L}\d_-]{2,30})\b/gu)].map((m) => m[1]!))].slice(0, 20);
+        const header = parseFrontMatter(content);
+        title = header?.title ?? content.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? null;
+        const inline = [...content.matchAll(/(?:^|\s)#([\p{L}\d_-]{2,30})\b/gu)].map((m) => m[1]!);
+        tags = [...new Set([...(header?.tags ?? []), ...inline])].slice(0, 20);
         fields = parseInlineFields(content);
       }
     }

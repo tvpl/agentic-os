@@ -1,5 +1,7 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { EditConflictError } from "../errors.js";
 import { realpathLenient } from "./paths.js";
 import {
   O_NOFOLLOW,
@@ -39,6 +41,13 @@ export interface WriteOptions {
   mode?: WriteMode;
   /** Permission bits of a file this call creates (before the umask). Default `0o666`. */
   fileMode?: number;
+  /**
+   * `replace` only: the file must exist and its bytes must hash to this SHA-256 (hex) at the moment of the write,
+   * read through the very descriptor that is then truncated; any other bytes throw `EditConflictError` before a
+   * byte is changed (a missing file is `ENOENT`, never created). This is what lets a save refuse to overwrite an
+   * edit it never saw.
+   */
+  expectSha256?: string;
 }
 
 /**
@@ -65,8 +74,12 @@ export function writeWorkspaceFile(
   options: WriteOptions = {},
 ): string {
   const mode = options.mode ?? "replace";
+  const expected = options.expectSha256;
+  if (expected !== undefined && mode !== "replace") {
+    throw new TypeError("expectSha256 only applies to mode 'replace'");
+  }
   const real = assertWritablePath(scope, candidate);
-  fs.mkdirSync(path.dirname(real), { recursive: true });
+  if (expected === undefined) fs.mkdirSync(path.dirname(real), { recursive: true });
   // The folders are made: look at the path again before the open, so a link that took a folder's place while they
   // were being made is not opened through (the window that is left is the one between this and the open).
   if (assertWritablePath(scope, candidate) !== real) throw changed(candidate);
@@ -76,7 +89,11 @@ export function writeWorkspaceFile(
   } catch {
     existed = false;
   }
-  const base = fs.constants.O_WRONLY | fs.constants.O_CREAT | O_NOFOLLOW | O_NONBLOCK;
+  // A guarded replace reads the file first, so it opens for reading too, and it never creates.
+  const base =
+    expected !== undefined
+      ? fs.constants.O_RDWR | O_NOFOLLOW | O_NONBLOCK
+      : fs.constants.O_WRONLY | fs.constants.O_CREAT | O_NOFOLLOW | O_NONBLOCK;
   const flags =
     mode === "append" ? base | fs.constants.O_APPEND : mode === "create" ? base | fs.constants.O_EXCL : base;
   let fd: number;
@@ -100,6 +117,8 @@ export function writeWorkspaceFile(
       const named = fs.lstatSync(real);
       if (named.ino !== stat.ino || named.dev !== stat.dev) throw changed(candidate);
     }
+    if (expected !== undefined && sha256OfDescriptor(fd, stat.size) !== expected)
+      throw new EditConflictError();
     if (mode === "replace") fs.ftruncateSync(fd, 0);
     const bytes = typeof data === "string" ? Buffer.from(data, "utf8") : data;
     let written = 0;
@@ -113,6 +132,20 @@ export function writeWorkspaceFile(
   } finally {
     fs.closeSync(fd);
   }
+}
+
+/** SHA-256 (hex) of the first `size` bytes of an open file, read in blocks so a large file is never held in memory. */
+function sha256OfDescriptor(fd: number, size: number): string {
+  const hash = crypto.createHash("sha256");
+  const block = Buffer.allocUnsafe(64 * 1024);
+  let at = 0;
+  while (at < size) {
+    const n = fs.readSync(fd, block, 0, Math.min(block.length, size - at), at);
+    if (n === 0) break;
+    hash.update(block.subarray(0, n));
+    at += n;
+  }
+  return hash.digest("hex");
 }
 
 /** Remove the file this call created and then refused, only if `real` still names that very file. */

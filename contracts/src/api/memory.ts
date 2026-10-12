@@ -38,6 +38,27 @@ const FileRowSchema = z.object({
 
 const SearchHitSchema = FileRowSchema.extend({ snippet: z.string().nullable(), score: z.number() });
 
+/** The version of a note: `sha256:` plus the hex digest of its exact bytes. */
+export const NoteVersionSchema = z
+  .string()
+  .regex(/^sha256:[0-9a-f]{64}$/, "expected sha256: and 64 hex digits");
+
+const NoteWrittenSchema = z.object({
+  /** The file as the index names it. */
+  path: z.string(),
+  name: z.string(),
+  version: NoteVersionSchema,
+  size: z.number(),
+  mtime: z.number(),
+});
+
+const NoteReadSchema = NoteWrittenSchema.extend({
+  content: z.string(),
+  /** False for a file that is not an editable note under `memory/`; `reason` says why. */
+  editable: z.boolean(),
+  reason: z.string().optional(),
+});
+
 const AreaCountSchema = z.object({ area: z.string(), count: z.number() });
 const ExtCountSchema = z.object({ ext: z.string(), count: z.number() });
 const TagCountSchema = z.object({ tag: z.string(), count: z.number() });
@@ -285,6 +306,75 @@ export const memoryRoutes = {
         "unsupported_type",
         "Only documents, media and folders open from here; an executable or an app bundle is refused",
       ),
+    ],
+  }),
+  "memory.note": route({
+    method: "GET",
+    path: "/api/memory/note",
+    summary: "A note's whole text and its version, for editing; `editable` says whether it can be saved",
+    tag: "memory",
+    scope: "content",
+    query: z.object({ p: z.string().min(1) }),
+    responses: { 200: NoteReadSchema },
+    errors: [
+      err(
+        403,
+        "forbidden_path",
+        "The path is outside the granted folders or inside the home's config/ or logs/",
+      ),
+      err(404, "not_a_file", "The path names something that is not a regular file"),
+      err(404, "note_missing", "The file does not exist"),
+      err(
+        413,
+        "note_too_large",
+        "The note is larger than the editing limit; the preview still shows its start",
+      ),
+    ],
+  }),
+  "memory.notes.create": route({
+    method: "POST",
+    path: "/api/memory/notes",
+    summary:
+      "Create a Markdown note under memory/notes (an area gives it a folder); a name that exists gets -2, -3…",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      title: z.string().min(1).max(600),
+      area: z.string().min(1).max(200).optional(),
+      content: z.string().max(2_000_000).optional(),
+      frontMatter: z.boolean().optional(),
+      tags: z.array(z.string().max(100)).max(100).optional(),
+    }),
+    responses: { 201: NoteWrittenSchema },
+    errors: [
+      err(400, "unknown_area", "The area is not one of the areas in the settings"),
+      err(403, "forbidden_path", "A link on the way or a private file would be written through"),
+      err(409, "note_exists", "Ninety-nine notes already have this name"),
+      err(413, "note_too_large", "The note is larger than the editing limit"),
+    ],
+  }),
+  "memory.notes.save": route({
+    method: "PUT",
+    path: "/api/memory/notes",
+    summary: "Replace a note, only if it is still the version the caller read (baseVersion)",
+    tag: "memory",
+    scope: "owner",
+    body: z.object({
+      path: z.string().min(1),
+      content: z.string().max(2_000_000),
+      baseVersion: NoteVersionSchema,
+    }),
+    responses: { 200: NoteWrittenSchema },
+    errors: [
+      err(403, "forbidden_path", "A link on the way or a private file would be written through"),
+      err(
+        403,
+        "note_not_editable",
+        "Not a .md file under memory/, or a file the engine generates (ROUTER.md, areas/, journal/)",
+      ),
+      err(404, "note_missing", "The note does not exist any more; it is not created"),
+      err(409, "edit_conflict", "The file changed after it was read; nothing was written"),
+      err(413, "note_too_large", "The note is larger than the editing limit"),
     ],
   }),
   "memory.routers": route({

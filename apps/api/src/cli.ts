@@ -10,6 +10,9 @@ import pc from "picocolors";
 import { type Settings } from "@mordomo/core";
 import {
   createBackup,
+  createNote,
+  readNote,
+  saveNote,
   inspectRestoreState,
   isSealed,
   resolvePaths,
@@ -80,6 +83,7 @@ const COMMANDS = [
   "run",
   "service",
   "recall",
+  "note",
   "mcp",
   "skills",
   "help",
@@ -109,6 +113,10 @@ const OPTION_SPECS = {
   "base-url": { type: "string" },
   name: { type: "string" },
   unsigned: { type: "boolean" },
+  area: { type: "string" },
+  "front-matter": { type: "boolean" },
+  tag: { type: "string", multiple: true },
+  base: { type: "string" },
 } as const satisfies ParseArgsConfig["options"];
 type OptionName = keyof typeof OPTION_SPECS;
 
@@ -128,6 +136,7 @@ const COMMAND_OPTIONS: Record<Command, readonly OptionName[]> = {
   run: ["provider", "model", "effort", "input", "json"],
   service: ["yes"],
   recall: ["json"],
+  note: ["json", "area", "front-matter", "tag", "base"],
   mcp: [],
   skills: ["out", "base-url", "name", "unsigned", "json"],
   help: [],
@@ -157,6 +166,10 @@ export interface CliArgs {
   baseUrl: string | undefined;
   name: string | undefined;
   unsigned: boolean;
+  area: string | undefined;
+  frontMatter: boolean;
+  tags: string[];
+  base: string | undefined;
 }
 
 class UsageError extends Error {}
@@ -245,6 +258,10 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
     baseUrl: values["base-url"] as string | undefined,
     name: values.name as string | undefined,
     unsigned: values.unsigned === true,
+    area: values.area as string | undefined,
+    frontMatter: values["front-matter"] === true,
+    tags: (values.tag as string[] | undefined) ?? [],
+    base: values.base as string | undefined,
     provider,
     model: values.model as string | undefined,
     effort,
@@ -277,6 +294,10 @@ function emptyArgs(command: Command): CliArgs {
     baseUrl: undefined,
     name: undefined,
     unsigned: false,
+    area: undefined,
+    frontMatter: false,
+    tags: [],
+    base: undefined,
   };
 }
 
@@ -477,6 +498,8 @@ async function main(): Promise<void> {
       return cmdService(args);
     case "recall":
       return cmdRecall(args);
+    case "note":
+      return cmdNote(args);
     case "mcp":
       return cmdMcp(args);
     case "skills":
@@ -506,6 +529,9 @@ ${pc.bold("MordomoOS")} — local agentic OS over Claude Code, Cursor Agent and 
   mordomo run <skill>      Run a skill headlessly (--provider ${PROVIDER_IDS.join("|")}, --model <m>,
                            --effort ${EffortLevel.options.join("|")}, --input k=v ...)
   mordomo recall <question>  Layered memory retrieval: only the sections worth reading (--json)
+  mordomo note new <title>   Create a note under memory/notes (--area <a>, --front-matter, --tag <t> ..., --json)
+  mordomo note show <path>   Print a note (--json: text and version); mordomo note save <path> --base <version>
+                           saves the text on stdin if the note is still that version
   mordomo mcp              Serve MordomoOS as an MCP server (stdio) to Claude/Cursor/Codex
   mordomo backup           Create a backup (--list to list, --include-artifacts to include outputs)
   mordomo restore <name>   Restore a backup after checking it against its manifest (a safety backup is
@@ -1371,6 +1397,72 @@ async function cmdRecall(args: CliArgs): Promise<void> {
           .join("\n"),
       );
     }
+  } finally {
+    ctx.close();
+  }
+}
+
+// ----------------------------------------------------------------- note ----
+
+/** `mordomo note new|show|save`: the notes of `memory/`, offline, through the same functions as the routes. */
+async function cmdNote(args: CliArgs): Promise<void> {
+  const [sub, ...rest] = args.positionals;
+  const usage = (): never => {
+    console.error(
+      pc.red(
+        'Usage: mordomo note new "<title>" [--area <a>] [--front-matter] [--tag <t> ...]\n' +
+          "       mordomo note show <path> [--json]\n" +
+          "       mordomo note save <path> --base <version>   (the new text on stdin)",
+      ),
+    );
+    return process.exit(EXIT_USAGE);
+  };
+  if (sub !== "new" && sub !== "show" && sub !== "save") return usage();
+  const ctx = new AppContext();
+  try {
+    const noteContext = { paths: ctx.paths, settings: ctx.settings() };
+    if (sub === "new") {
+      const title = rest.join(" ").trim();
+      if (!title) return usage();
+      const made = createNote(noteContext, {
+        title,
+        ...(args.area ? { area: args.area } : {}),
+        ...(args.frontMatter ? { frontMatter: true } : {}),
+        ...(args.tags.length > 0 ? { tags: args.tags } : {}),
+      });
+      ctx.indexer.indexPaths([made.path]);
+      console.log(args.json ? JSON.stringify(made) : `${made.path}\n${made.version}`);
+      return;
+    }
+    const file = rest[0];
+    if (!file) return usage();
+    if (sub === "show") {
+      const note = readNote(noteContext, file);
+      if (args.json) console.log(JSON.stringify(note));
+      else {
+        process.stdout.write(note.content);
+        console.error(
+          pc.dim(
+            `${note.path}\n${note.version}${note.editable ? "" : `\n(read-only: ${note.reason ?? ""})`}`,
+          ),
+        );
+      }
+      return;
+    }
+    if (!args.base) return usage();
+    const chunks: Buffer[] = [];
+    for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+    const saved = saveNote(noteContext, {
+      path: file,
+      content: Buffer.concat(chunks).toString("utf8"),
+      baseVersion: args.base,
+    });
+    ctx.indexer.indexPaths([saved.path]);
+    console.log(args.json ? JSON.stringify(saved) : `${saved.path}\n${saved.version}`);
+  } catch (err) {
+    const e = err as { code?: unknown; message?: unknown };
+    console.error(pc.red(`${typeof e.code === "string" ? e.code : "error"}: ${String(e.message ?? err)}`));
+    process.exitCode = 1;
   } finally {
     ctx.close();
   }

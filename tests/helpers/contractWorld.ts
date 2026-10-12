@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { API, routeKey, type RouteDefinition } from "@mordomo/contracts";
-import { SkillRegistry, b64url, type Fetcher } from "@mordomo/core/internal";
+import { SkillRegistry, b64url, createNote, type Fetcher } from "@mordomo/core/internal";
 import { AppContext } from "../../apps/api/src/context.js";
 import { buildServer } from "../../apps/api/src/server.js";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "../helpers.js";
@@ -335,6 +335,10 @@ const uuid = () => crypto.randomUUID();
  * One scenario for each route, by `METHOD path` as the router knows it. The order matters for the routes that change
  * what the others read: it is the order of this object, destructive ones last.
  */
+/** A note made by the engine itself (clean of any fault a probe injects into the request that follows). */
+const noteOf = (w: World, title: string) =>
+  createNote({ paths: w.ctx.paths, settings: w.ctx.settings() }, { title });
+
 export const SCENARIOS: Record<string, Scenario> = {
   // ---- reads
   [key("GET", "/api/system/info")]: { run: (w) => w.call("GET", "/api/system/info") },
@@ -424,6 +428,10 @@ export const SCENARIOS: Record<string, Scenario> = {
   [key("GET", "/api/memory/hygiene")]: { run: (w) => w.call("GET", "/api/memory/hygiene") },
   [key("GET", "/api/memory/facts")]: { run: (w) => w.call("GET", "/api/memory/facts") },
   [key("GET", "/api/memory/query")]: { run: (w) => w.call("GET", "/api/memory/query?where=status") },
+  [key("GET", "/api/memory/note")]: {
+    run: (w) =>
+      w.call("GET", `/api/memory/note?p=${encodeURIComponent(noteOf(w, "Cenário de leitura").path)}`),
+  },
   [key("GET", "/api/devices")]: { run: (w) => w.call("GET", "/api/devices") },
   [key("GET", "/api/notifications")]: { run: (w) => w.call("GET", "/api/notifications") },
   [key("GET", "/api/push/vapid")]: { run: (w) => w.call("GET", "/api/push/vapid") },
@@ -633,6 +641,19 @@ export const SCENARIOS: Record<string, Scenario> = {
     },
   },
   [key("POST", "/api/memory/index")]: { run: (w) => w.call("POST", "/api/memory/index") },
+  [key("POST", "/api/memory/notes")]: {
+    run: (w) => w.call("POST", "/api/memory/notes", { title: "Cenário de criação" }),
+  },
+  [key("PUT", "/api/memory/notes")]: {
+    run: (w) => {
+      const note = noteOf(w, "Cenário de escrita");
+      return w.call("PUT", "/api/memory/notes", {
+        path: note.path,
+        content: "# Cenário de escrita\n\nsalva\n",
+        baseVersion: note.version,
+      });
+    },
+  },
   [key("POST", "/api/memory/open")]: {
     run: (w) => w.call("POST", "/api/memory/open", { p: path.join(w.workspace, "plan.md") }),
   },

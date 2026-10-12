@@ -4,8 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { PathAccessError } from "@mordomo/core";
+import crypto from "node:crypto";
 import {
   DEFAULT_COPY_LIMITS,
+  EditConflictError,
   atomicWrite,
   ensureJournal,
   copyTreeWithoutLinks,
@@ -1267,3 +1269,80 @@ describe.skipIf(!POSIX)(
     });
   },
 );
+
+// ---------------------------------------------------------------------------
+describe.skipIf(!POSIX)("C57 the guarded replace of the write primitive (cerebro-v2, door 5)", () => {
+  let base: string;
+  let home: string;
+  const TOKEN = "OWNER-TOKEN-0123456789abcdef0123456789abcdef0123456789abcdef";
+  const sha = (bytes: string | Buffer) => crypto.createHash("sha256").update(bytes).digest("hex");
+  const scope = () => homeReadScope(home, [path.join(home, "memory")]);
+  const note = () => path.join(home, "memory", "nota.md");
+
+  beforeAll(() => {
+    base = real(fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-guarded-")));
+    home = path.join(base, "home");
+    write(path.join(home, "config", "token"), TOKEN);
+    write(note(), "versão um\n");
+  });
+  afterAll(() => fs.rmSync(base, { recursive: true, force: true }));
+
+  it("C57 replaces only when the bytes hash to the expected digest, and never truncates before the check", () => {
+    const first = fs.readFileSync(note());
+    writeWorkspaceFile(scope(), note(), "versão dois\n", { mode: "replace", expectSha256: sha(first) });
+    expect(fs.readFileSync(note(), "utf8")).toBe("versão dois\n");
+    // a mismatch: bytes and mtime stay, and the error is the conflict
+    const info = fs.statSync(note());
+    expect(() =>
+      writeWorkspaceFile(scope(), note(), "x", { mode: "replace", expectSha256: sha(first) }),
+    ).toThrow(EditConflictError);
+    expect(fs.readFileSync(note(), "utf8")).toBe("versão dois\n");
+    expect(fs.statSync(note()).mtimeMs).toBe(info.mtimeMs);
+    // a larger file than one read block is hashed whole
+    const big = Buffer.alloc(200_000, "a");
+    fs.writeFileSync(note(), big);
+    writeWorkspaceFile(scope(), note(), "pequeno", { mode: "replace", expectSha256: sha(big) });
+    expect(fs.readFileSync(note(), "utf8")).toBe("pequeno");
+    // an empty file has the digest of nothing
+    fs.writeFileSync(note(), "");
+    writeWorkspaceFile(scope(), note(), "de novo", { mode: "replace", expectSha256: sha("") });
+    expect(fs.readFileSync(note(), "utf8")).toBe("de novo");
+  });
+
+  it("C57 never creates: a missing file is ENOENT and no folder is made", () => {
+    const missing = path.join(home, "memory", "nova-pasta", "nada.md");
+    expect(() =>
+      writeWorkspaceFile(scope(), missing, "x", { mode: "replace", expectSha256: sha("") }),
+    ).toThrow(expect.objectContaining({ code: "ENOENT" }));
+    expect(fs.existsSync(path.dirname(missing))).toBe(false);
+  });
+
+  it("C57 still refuses a link, a hard link of a private file, a private folder and a folder, with the file untouched", () => {
+    const token = path.join(home, "config", "token");
+    const link = path.join(home, "memory", "ligada.md");
+    fs.symlinkSync(token, link);
+    expect(() =>
+      writeWorkspaceFile(scope(), link, "x", { mode: "replace", expectSha256: sha(TOKEN) }),
+    ).toThrow(PathAccessError);
+    const hard = path.join(home, "memory", "dura.md");
+    fs.linkSync(token, hard);
+    expect(() =>
+      writeWorkspaceFile(scope(), hard, "x", { mode: "replace", expectSha256: sha(TOKEN) }),
+    ).toThrow(PathAccessError);
+    expect(() =>
+      writeWorkspaceFile(scope(), token, "x", { mode: "replace", expectSha256: sha(TOKEN) }),
+    ).toThrow(PathAccessError);
+    expect(() =>
+      writeWorkspaceFile(scope(), path.join(home, "memory"), "x", { mode: "replace", expectSha256: sha("") }),
+    ).toThrow();
+    expect(fs.readFileSync(token, "utf8")).toBe(TOKEN);
+  });
+
+  it("C57 the guard is a property of replace: append and create refuse it", () => {
+    for (const mode of ["append", "create"] as const) {
+      expect(() => writeWorkspaceFile(scope(), note(), "x", { mode, expectSha256: sha("") })).toThrow(
+        TypeError,
+      );
+    }
+  });
+});

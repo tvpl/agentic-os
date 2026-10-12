@@ -112,6 +112,9 @@ describe("S5 the surface is a closed list", () => {
         "DropEnv",
         "EventFeed",
         "clipForLabel",
+        "createNote",
+        "readNote",
+        "saveNote",
       ].sort(),
     );
   });

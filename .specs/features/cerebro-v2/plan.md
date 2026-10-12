@@ -125,7 +125,7 @@ A pessoa, a CLI ou um agente cria `memory/notes/<nome>.md` e salva edições; qu
 14. WHILE `POST /api/memory/notes` or `PUT /api/memory/notes` is called with a device token or a run credential, the system SHALL answer `403` (`owner_only` for a device; the run credential's closed list of routes for a run), and `GET /api/memory/note` and `GET /api/memory/links` SHALL answer for a device that holds `content`.
 15. WHEN a note is created or saved THEN the system SHALL request an index pass for that path only, and the next `GET /api/memory/search` for a word of the note SHALL return it once that pass finished (`index.finished` announced).
 16. WHEN the owner runs `mordomo note new "<título>"`, `mordomo note show <caminho>` or `mordomo note save <caminho> --base <versão>` (the text on stdin) THEN the command SHALL call the same core functions and print the path and the version; IF the version is stale THEN it SHALL exit with code 1 and `edit_conflict` on stderr.
-17. WHEN an MCP client calls `mordomo_note_create`, `mordomo_note_read` or `mordomo_note_save` THEN the server SHALL answer with the route's result, and a conflict SHALL come back as an error result naming `edit_conflict`.
+17. WHEN an MCP client calls `note_create`, `note_read` or `note_save` THEN the server SHALL answer with the route's result, and a conflict SHALL come back as an error result naming `edit_conflict`.
 
 ### S1b: o editor na interface (P1)
 
@@ -245,7 +245,7 @@ A pessoa, a CLI ou um agente cria `memory/notes/<nome>.md` e salva edições; qu
 | all new `/api/memory/*` routes                         | who may call                                  | AC 14                                                                                                                                    |
 | all new `/api/memory/*` routes                         | versioning, rate limits                       | n/a - `/api/v1` é o mesmo conjunto de rotas (api-v1) e nenhuma rota nova tem limite próprio além do da API                               |
 | command `mordomo note`                                 | output, flags, exit codes                     | AC 16                                                                                                                                    |
-| MCP tools `mordomo_note_*`                             | output and errors                             | AC 17                                                                                                                                    |
+| MCP tools `note_*`                                     | output and errors                             | AC 17                                                                                                                                    |
 | command "Nova nota"                                    | document or copy a person reads               | AC 18                                                                                                                                    |
 | events `index.*`                                       | versioning                                    | AC 33                                                                                                                                    |
 

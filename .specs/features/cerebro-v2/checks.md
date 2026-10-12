@@ -59,7 +59,7 @@ Proof: `npx vitest run tests/memory.notes.test.ts -t "C15 "`
 **C16** - `mordomo note new "T"` prints the path and the version; `note show` prints the content; `note save <path> --base <v>` with stdin saves; with a stale `--base` the exit code is 1 and stderr names `edit_conflict` (AC 16)
 Proof: `npx vitest run tests/memory.notes.cli.test.ts -t "C16 "`
 
-**C17** - The MCP tools `mordomo_note_create`, `mordomo_note_read` and `mordomo_note_save` return the route's result and a stale save returns an error result naming `edit_conflict` (AC 17)
+**C17** - The MCP tools `note_create`, `note_read` and `note_save` return the route's result and a stale save returns an error result naming `edit_conflict` (AC 17)
 Proof: `npx vitest run tests/memory.notes.cli.test.ts -t "C17 "`
 
 **C57** - `writeWorkspaceFile(scope, path, data, {mode:"replace", expectSha256})` replaces only when the file's bytes hash to `expectSha256`: with a mismatch it throws `EditConflictError` and leaves bytes and `mtimeMs` unchanged, it never truncates before the check, and it still refuses a link, a hard link of a private file and a folder (door 5)
@@ -301,9 +301,13 @@ Size, with the arithmetic (`wc -c` of the files each slice touches / 4, plus the
 
 Status of slices (updated in the commit that closes each):
 
-- S1: open
+- S1: closed (C1-C17, C57 green; the hash is on the Boundary line below)
 - S1b: open
 - S2: open
 - S3: open
 - S4: open
 - cross-cutting: open
+
+- **Boundary:** S1 (C1-C17, C57) closed at the commit `feat(memory): create and edit notes ...`; its hash is written by the next commit
+- **Settled mid-build:** MCP tool names are `note_create`/`note_read`/`note_save` (the server is already namespaced `mordomo`, and the other tools carry no prefix); a link planted on the name a new note would take is `403 forbidden_path` (never skipped silently); the five NoteError classes are one class per status so the contract scan (`api.contract` C13) can read the codes; the internal barrel gains only `createNote`, `readNote`, `saveNote` (the other helpers are imported by path in tests)
+- **Deliberate changes to earlier pins:** route totals 127 -> 130 and the scope counts (`owner` 65, `content` 23) in `api.contract`, `api.openapi`, `device-scopes`, `events.contract`, `api.refusals`; the raised-errors set 49 -> 56 (`api.contract` C13); the internal names of `sdk.surface` C38 (+3); `docs/security.md` table
