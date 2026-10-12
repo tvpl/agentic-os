@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MordomoOS</title>
+    <link rel="stylesheet" href="shell.css" />
+  </head>
+  <body>
+    <main class="shell" aria-live="polite">
+      <img class="mark" src="icon.png" alt="" width="64" height="64" />
+      <section id="starting" class="panel" role="status">
+        <div class="spinner" aria-hidden="true"></div>
+        <h1 data-i18n="starting.title">Starting MordomoOS…</h1>
+        <p data-i18n="starting.body">The local service is starting. This takes a few seconds.</p>
+        <p id="slow" class="note" hidden data-i18n="starting.slow">
+          Still starting. The first launch prepares your data folder.
+        </p>
+      </section>
+      <section id="failure" class="panel" role="alert" hidden>
+        <h1 id="failure-title"></h1>
+        <p id="failure-body"></p>
+        <p class="detail">
+          <span data-i18n="failure.detail">Detail</span>: <code id="failure-detail"></code>
+        </p>
+        <details id="failure-tail-box">
+          <summary data-i18n="failure.tail">What the service wrote</summary>
+          <pre id="failure-tail"></pre>
+        </details>
+        <div class="actions">
+          <button id="retry" type="button" data-i18n="failure.retry">Try again</button>
+          <button id="quit" type="button" class="secondary" data-i18n="failure.quit">Quit</button>
+        </div>
+      </section>
+      <p class="version"><span id="version"></span></p>
+    </main>
+    <script src="shell.js"></script>
+  </body>
+</html>

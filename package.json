@@ -15,7 +15,8 @@
     "adapters/cursor",
     "adapters/codex",
     "apps/api",
-    "apps/command-centre"
+    "apps/command-centre",
+    "apps/desktop"
   ],
   "scripts": {
     "build": "tsc -b contracts core adapters/claude adapters/cursor adapters/codex apps/api && npm run build -w apps/command-centre",

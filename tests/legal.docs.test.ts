@@ -101,7 +101,7 @@ describe("C3 every package.json says FSL-1.1-ALv2, the abbreviation of the LICEN
   const root = JSON.parse(text("package.json")) as { workspaces: string[] };
   const files = ["package.json", ...root.workspaces.map((w) => `${w}/package.json`)];
 
-  it("C3 there are 8 manifests: the root and the 7 workspaces", () => {
+  it("C3 there are 9 manifests: the root and the 8 workspaces (the 8th is apps/desktop: distribuicao)", () => {
     expect(files).toEqual([
       "package.json",
       "contracts/package.json",
@@ -111,6 +111,7 @@ describe("C3 every package.json says FSL-1.1-ALv2, the abbreviation of the LICEN
       "adapters/codex/package.json",
       "apps/api/package.json",
       "apps/command-centre/package.json",
+      "apps/desktop/package.json",
     ]);
   });
 

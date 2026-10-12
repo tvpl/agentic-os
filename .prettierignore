@@ -34,3 +34,8 @@ release/
 # Legal texts: authored wrapping, and the generated notice must stay byte for byte what the script writes
 legal/
 LICENSE
+
+# desktop shell: build output and the generated payload (Rust is formatted by cargo fmt)
+apps/desktop/target/
+apps/desktop/payload/
+apps/desktop/src-tauri/gen/

@@ -6,7 +6,7 @@ O MordomoOS é distribuído sob a Functional Source License 1.1 com licença fut
 
 Gerado por `node scripts/licenses.mjs --write` a partir de `package-lock.json`, dos arquivos de licença dos pacotes instalados e de `legal/license-policy.json`. **Não edite à mão**: `npm run licenses:write` reescreve e `npm run licenses:check` reprova um arquivo que não bate.
 
-Pacotes npm de runtime: 185 · ferramentas de build (não distribuídas): 493
+Pacotes npm de runtime: 185 · ferramentas de build (não distribuídas): 505
 
 "Runtime" é o que o `package-lock.json` marca como não-`dev`: as dependências que o produto precisa para rodar. É um **superconjunto** do que o instalador leva (o código vai em dois bundles que usam só parte desses pacotes, e o módulo nativo do SQLite vai à parte): listar todos é o lado seguro para os avisos, e o aviso não afirma que cada um está dentro do instalador.
 
@@ -4016,6 +4016,18 @@ Usadas para compilar, testar e empacotar. Nenhuma entra no instalador; por isso 
 | @rolldown/pluginutils | 1.0.1 | MIT |
 | @sindresorhus/merge-streams | 4.0.0 | MIT |
 | @standard-schema/spec | 1.1.0 | MIT |
+| @tauri-apps/cli | 2.12.2 | Apache-2.0 OR MIT |
+| @tauri-apps/cli-darwin-arm64 | 2.12.2 | Apache-2.0 OR MIT |
+| @tauri-apps/cli-darwin-x64 | 2.12.2 | Apache-2.0 OR MIT |
+| @tauri-apps/cli-linux-arm-gnueabihf | 2.12.2 | Apache-2.0 OR MIT |
+| @tauri-apps/cli-linux-arm64-gnu | 2.12.2 | Apache-2.0 OR MIT |
+| @tauri-apps/cli-linux-arm64-musl | 2.12.2 | Apache-2.0 OR MIT |
+| @tauri-apps/cli-linux-riscv64-gnu | 2.12.2 | Apache-2.0 OR MIT |
+| @tauri-apps/cli-linux-x64-gnu | 2.12.2 | Apache-2.0 OR MIT |
+| @tauri-apps/cli-linux-x64-musl | 2.12.2 | Apache-2.0 OR MIT |
+| @tauri-apps/cli-win32-arm64-msvc | 2.12.2 | Apache-2.0 OR MIT |
+| @tauri-apps/cli-win32-ia32-msvc | 2.12.2 | Apache-2.0 OR MIT |
+| @tauri-apps/cli-win32-x64-msvc | 2.12.2 | Apache-2.0 OR MIT |
 | @testing-library/dom | 10.4.1 | MIT |
 | @testing-library/jest-dom | 7.0.1 | MIT |
 | @testing-library/react | 16.3.3 | MIT |

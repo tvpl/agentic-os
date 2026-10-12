@@ -1,0 +1,198 @@
+/* The shell's own screens (starting, failure). Colors are tokens, as in the Command Centre (apps/command-centre/src/theme.css):
+   no color literal outside the two token blocks, no text under 12px, state never by color alone. */
+:root {
+  color-scheme: light dark;
+  --bg: #f5f3ee;
+  --text: #201c14;
+  --muted: #4d4636;
+  --line: #cfc8b8;
+  --accent: #b64a05;
+  --accent-ink: #ffffff;
+  --danger: #a3261a;
+  --code-bg: #ebe7dd;
+  --focus: #1c5fd6;
+  --fs-3: 13px;
+  --fs-4: 14px;
+  --fs-5: 16px;
+  --fs-6: 20px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0a08;
+    --text: #f2eee3;
+    --muted: #bdb6a5;
+    --line: #3a352a;
+    --accent: #f97316;
+    --accent-ink: #1a0f04;
+    --danger: #ff8a7a;
+    --code-bg: #17140f;
+    --focus: #8ab4ff;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font:
+    var(--fs-4) / 1.5 system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+}
+
+.shell {
+  min-height: 100%;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 20px;
+  padding: 32px 24px;
+}
+
+.mark {
+  border-radius: 14px;
+}
+
+.panel {
+  width: min(560px, 100%);
+  text-align: center;
+}
+
+h1 {
+  margin: 12px 0 8px;
+  font-size: var(--fs-6);
+  font-weight: 600;
+}
+
+p {
+  margin: 0 0 12px;
+  font-size: var(--fs-5);
+  color: var(--muted);
+}
+
+.note,
+.detail,
+.version {
+  font-size: var(--fs-3);
+}
+
+.detail {
+  color: var(--muted);
+}
+
+#failure h1 {
+  color: var(--danger);
+}
+
+#failure h1::before {
+  content: "\26A0\FE0E  ";
+}
+
+code,
+pre {
+  font:
+    var(--fs-3) / 1.45 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  background: var(--code-bg);
+  border-radius: 6px;
+}
+
+code {
+  padding: 1px 6px;
+}
+
+details {
+  margin: 12px 0;
+  text-align: left;
+  font-size: var(--fs-3);
+  color: var(--muted);
+}
+
+summary {
+  cursor: pointer;
+}
+
+pre {
+  margin: 8px 0 0;
+  padding: 12px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+button {
+  font: inherit;
+  font-size: var(--fs-4);
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--line);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+    border-top-color: var(--line);
+    border-right-color: var(--accent);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.version {
+  margin: 0;
+  color: var(--muted);
+}
