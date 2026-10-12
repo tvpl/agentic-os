@@ -14,7 +14,10 @@
  * schema used in several places is one object (the document points at it).
  *
  * A node whose children it does not know how to rebuild is an error, not a pass-through: a schema left as it was would
- * keep a `.default()` underneath that the rest of the contract believes is gone.
+ * keep a `.default()` underneath that the rest of the contract believes is gone. The nodes no schema of the
+ * contract uses (`readonly`, `brand`, `nativeEnum`, an object with a `catchall`) are in that case on purpose: they stop
+ * the build with the type's name, so a schema that starts using one is a rebuild to write and a test for it, not a
+ * rule that silently goes wrong.
  */
 import { z } from "zod";
 
@@ -46,24 +49,18 @@ function build(schema: z.ZodTypeAny): z.ZodTypeAny {
     case z.ZodFirstPartyTypeKind.ZodObject: {
       const shape = (def.shape as () => Record<string, z.ZodTypeAny>)();
       const mapped = Object.fromEntries(Object.entries(shape).map(([key, value]) => [key, wire(value)]));
-      return rebuild(schema, {
-        ...def,
-        shape: () => mapped,
-        ...(def.catchall ? { catchall: wire(def.catchall as z.ZodTypeAny) } : {}),
-      });
+      // The catch-all of an object is `never` (no other key) unless `.catchall(x)` made it a schema, which is a node
+      // this does not rebuild: no schema of the contract has one, and the day one does it is a decision, not a default.
+      const catchall = def.catchall as z.ZodTypeAny | undefined;
+      if (catchall && (catchall._def as Def).typeName !== z.ZodFirstPartyTypeKind.ZodNever)
+        throw new Error("wireSchema: an object with a catchall schema has no output-type rebuild");
+      return rebuild(schema, { ...def, shape: () => mapped });
     }
     case z.ZodFirstPartyTypeKind.ZodArray:
       return rebuild(schema, { ...def, type: wire(def.type as z.ZodTypeAny) });
     case z.ZodFirstPartyTypeKind.ZodOptional:
     case z.ZodFirstPartyTypeKind.ZodNullable:
-    case z.ZodFirstPartyTypeKind.ZodReadonly:
-    case z.ZodFirstPartyTypeKind.ZodBranded:
-      return rebuild(schema, {
-        ...def,
-        ...(def.innerType
-          ? { innerType: wire(def.innerType as z.ZodTypeAny) }
-          : { type: wire(def.type as z.ZodTypeAny) }),
-      });
+      return rebuild(schema, { ...def, innerType: wire(def.innerType as z.ZodTypeAny) });
     case z.ZodFirstPartyTypeKind.ZodRecord:
       return rebuild(schema, { ...def, valueType: wire(def.valueType as z.ZodTypeAny) });
     case z.ZodFirstPartyTypeKind.ZodUnion:
@@ -131,7 +128,6 @@ const LEAVES: ReadonlySet<string> = new Set([
   z.ZodFirstPartyTypeKind.ZodVoid,
   z.ZodFirstPartyTypeKind.ZodLiteral,
   z.ZodFirstPartyTypeKind.ZodEnum,
-  z.ZodFirstPartyTypeKind.ZodNativeEnum,
 ]);
 
 /** The schema of the output type of `schema`: what a response carries, with nothing left to fill in. */

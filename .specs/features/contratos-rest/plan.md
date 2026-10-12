@@ -121,6 +121,8 @@ Texto de um check ou de uma porta que mudou depois de aprovado, dito aqui e no c
 - **C18 (rodada 1, dita na rodada 2).** Acrescentou que o `Retry-After` do `429` está em todas as operações (afirmado em C17 e C18).
 - **C35 (rodada 1, dita na rodada 2).** Acrescentou a exceção de `unknown errors → 500` dentro de "error envelope" (a rota de erro passa por `bindEntry`); a emenda é uma entrada de `AMENDMENTS` em `tests/sdk.api-thin.test.ts`.
 - **C43 e C44 (rodada 2).** C43 trocou "só nas áreas que tocam arquivo" por "só nas rotas que a sonda de C45 prova"; C44 acrescentou que o objeto `API` de topo é congelado e que uma entrada de teste pertence a um servidor (C51).
+- **Door 7 (correção após a rodada 3).** A sonda de C45 chama cada rota uma vez por tipo de leitura do cenário (um tipo recusa por vez), e `404 not_a_file` e `413 file_too_large` têm uma lista cada em `contracts/src/api/errors.ts`; `GET /api/sync/plan` e `POST /api/sync/apply` entram nas duas. `409 settings_newer` e `409 settings_unpreserved` saem de `PUT /api/settings` para as cinco rotas que gravam settings (`settingsWriteErrors`). O limite dito em Q20 do STATE (a sonda "não vê uma entrada que o cenário não manda") era da classe errada e foi reescrito.
+- **C47 e C48 (correção após a rodada 3).** `readonly`, `brand`, `nativeEnum` e `catchall` passam a interromper o build de `wireSchema` com o nome do tipo (antes eram reconstruídos sem prova); o verificador de inexprimíveis tem casos para os quatro tipos e para cada lugar por onde desce (C55).
 
 ## Criteria
 
