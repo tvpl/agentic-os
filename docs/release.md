@@ -223,8 +223,8 @@ read this, the job named is what proves it.
 **Run on Linux, with a throwaway key:** the Rust tests (`cargo test`), `clippy -D warnings`; the real window under Xvfb with
 a window manager and a D-Bus session (`smoke/gui.sh`: token handshake, single instance, close, crash, retry, held home);
 a release build with the updater feature that produced a `.deb`, an `.AppImage` and their `.sig` files; the `.deb` installed
-with `dpkg` and its `--self-test`; the AppImage's `--self-test`. A throwaway minisign key was used and discarded; the
-real key does not exist yet.
+with `dpkg` and its `--self-test`; the AppImage's `--self-test`; the minisign check of section 4 on that AppImage's `.sig` (it verifies, and fails once one byte is
+added). A throwaway minisign key was used and discarded; the real key does not exist yet.
 
 Downloads that happen **while building** (not in the product): Node.js and the SQLite prebuild (`nodejs.org`, GitHub), the
 Rust crates (`crates.io`), the Tauri bundler's helper tools (`linuxdeploy`, NSIS; GitHub `tauri-apps/binary-releases`), and
