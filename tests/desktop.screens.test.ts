@@ -22,9 +22,17 @@ interface Copy {
 }
 /** kind -> { en, pt } from the table of design.md. */
 const SPEC = new Map<string, { en: Copy; pt: Copy }>();
+// The table is formatted by prettier (padded cells): read cells, not columns of characters.
+const cellOf = (text: string) => {
+  const m = /^\*\*(.+?)\*\* — (.+)$/.exec(text);
+  return m ? { title: m[1]!, body: m[2]! } : null;
+};
 for (const line of design.split("\n")) {
-  const m = /^\| `([a-z_]+)` \| \*\*(.+?)\*\* — (.+?) \| \*\*(.+?)\*\* — (.+?) \|$/.exec(line);
-  if (m) SPEC.set(m[1]!, { en: { title: m[2]!, body: m[3]! }, pt: { title: m[4]!, body: m[5]! } });
+  const cells = line.split("|").map((c) => c.trim());
+  const kind = /^`([a-z_]+)`$/.exec(cells[1] ?? "")?.[1];
+  const en = cellOf(cells[2] ?? "");
+  const pt = cellOf(cells[3] ?? "");
+  if (kind && en && pt) SPEC.set(kind, { en, pt });
 }
 const KINDS = [
   "payload_missing",
