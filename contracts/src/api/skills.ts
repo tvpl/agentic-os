@@ -2,7 +2,16 @@
 import { z } from "zod";
 import { EffortLevel, ProviderId } from "../settings.js";
 import { SkillFrontmatterSchema, SkillSchema } from "../skills.js";
-import { IdParam, QueryFlag, RunTimeout, SlugParams, DeletedSchema, err, notFound } from "./common.js";
+import {
+  IdParam,
+  QueryFlag,
+  RunTimeout,
+  SlugParams,
+  DeletedSchema,
+  err,
+  notFound,
+  settingsWriteErrors,
+} from "./common.js";
 import { RunLaunchSchema } from "./runs.js";
 import { binary, route } from "./route.js";
 
@@ -156,6 +165,7 @@ export const skillRoutes = {
     scope: "owner",
     params: SlugParams,
     responses: { 200: z.object({ slug: z.string(), favorite: z.boolean() }) },
+    errors: [...settingsWriteErrors],
   }),
   "skills.delete": route({
     method: "DELETE",
