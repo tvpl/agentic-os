@@ -67,6 +67,8 @@ export interface IndexStats {
   /** Related-by-content edges (re)computed for the files that changed. */
   related: number;
   durationMs: number;
+  /** Vectors (re)computed by the pass; present only while the semantic search is on. */
+  embedded?: number;
 }
 
 /** The phases of an index pass, in order (`index.progress`). */

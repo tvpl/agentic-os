@@ -118,7 +118,12 @@
         "allowedCommands": []
       },
       "memory": {
-        "journalBudgetTokens": 1200
+        "journalBudgetTokens": 1200,
+        "embeddings": {
+          "enabled": false,
+          "provider": "hash",
+          "sendRemote": false
+        }
       },
       "sentinels": {
         "fsWatch": {

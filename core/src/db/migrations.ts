@@ -504,4 +504,21 @@ CREATE TABLE IF NOT EXISTS note_links (
 CREATE INDEX IF NOT EXISTS idx_note_links_target ON note_links(kind, target);
 `,
   },
+  {
+    version: 21,
+    name: "file-vectors",
+    // cerebro-v2, door 2: at most one embedding per indexed file, as a plain BLOB (Float32 little-endian, L2 norm 1)
+    // with the provider that made it, its length, and the size and mtime of the file it was made from. Not a `vec0`
+    // virtual table: that fixes the dimension in the schema and would make the sqlite-vec extension mandatory.
+    sql: `
+CREATE TABLE IF NOT EXISTS file_vectors (
+  file_id INTEGER PRIMARY KEY,
+  provider TEXT NOT NULL,
+  dim INTEGER NOT NULL,
+  vec BLOB NOT NULL,
+  mtime INTEGER NOT NULL,
+  size INTEGER NOT NULL
+);
+`,
+  },
 ];

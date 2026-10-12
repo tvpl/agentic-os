@@ -338,6 +338,15 @@ validated (absolute, existing directory, outside `config/`) but not approval-gat
   (`index_worker_out_of_memory`) and the previous index stays. It sleeps between blocks, and a cancel is read
   between blocks (a worker that does not reach its next block is stopped after five seconds).
 
+- **Semantic search sends nothing unless the owner turns it on and names an endpoint.** `memory.embeddings`
+  is off by default and reads off when it cannot be read (`SETTINGS_FAIL_CLOSED`). The `hash` provider never
+  leaves the process. The `http` provider sends note text only to a loopback address, or over `https` with
+  `sendRemote` on, never to an address with a credential in it, with no redirects, a 30 s timeout and an 8 MB cap
+  on the answer; the API key is read from the environment, never stored. A paired device cannot change these
+  settings (`PUT /api/settings` is an owner route). The destination is in `legal/network-policy.json` and
+  `legal/PRIVACY.md`. The `sqlite-vec` extension is a native library loaded only when the search is on; it is
+  MIT OR Apache-2.0 and is pinned exactly in `core/package.json`.
+
 ## Logging rules
 
 - Structured JSONL under `logs/`: `runs.jsonl` (run lifecycle), `scheduler.jsonl`,

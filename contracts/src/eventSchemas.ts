@@ -35,6 +35,8 @@ const IndexStatsSchema = z.object({
   skippedBinary: z.number(),
   related: z.number(),
   durationMs: z.number(),
+  /** Vectors (re)computed by the pass; present only while the semantic search is on. */
+  embedded: z.number().optional(),
 });
 
 const SentinelFiredSchema = z.object({

@@ -80,7 +80,7 @@ export interface RecallResult {
 
 // ------------------------------------------------------------ keywords ----
 
-const STOPWORDS = new Set(
+export const STOPWORDS = new Set(
   (
     "a an the and or but if then else when while of to in on at by for from with without about into over under " +
     "is are was were be been being am do does did doing have has had having can could should would will shall may might must " +

@@ -7,7 +7,7 @@
  * Written from package-lock.json, the same source and the same distributed set as the third-party
  * notice (`scripts/licenses.mjs`), so the two cannot disagree. No timestamp and no random value: the same
  * lockfile yields the same bytes. `npm sbom` was tried first and left out: in this monorepo it omits 23 of the
- * 184 distributed packages (react, react-dom, zod, ajv, picocolors…) whatever the flags.
+ * 190 distributed packages (react, react-dom, zod, ajv, picocolors…) whatever the flags.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";

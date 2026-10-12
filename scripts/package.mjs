@@ -15,7 +15,8 @@
  * Output (per platform) — nothing in it is source code:
  *   lib/mordomo.mjs            the whole API + CLI as one minified bundle
  *   lib/indexWorker.mjs        the memory index worker (a worker_thread the service starts; next to mordomo.mjs)
- *   lib/node_modules/          the SQLite native addon (the only non-bundled dependency)
+ *   lib/node_modules/          the SQLite native addon (the only required non-bundled dependency) and, for the machine that
+ *                              packages, the optional sqlite-vec extension
  *   ui/                        the built Command Centre
  *   seed/                      default skills, routines and connectors (copied to the user home on first run)
  *   runtime/                   an official Node.js binary (unless --node none)
@@ -118,6 +119,23 @@ if (
 ) {
   await fetchSqlitePrebuild(path.join(nm, "better-sqlite3"), platform, arch, targetNode);
 }
+
+// The semantic search's SQLite extension (cerebro-v2, door 3): optional at run time, so a target without it still
+// works (the search then ranks in JavaScript). Only the machine that packages can supply it: the binary of another
+// platform is a package this script does not download (that would be a new network point at packaging time).
+if (platform === process.platform && arch === process.arch) {
+  const os = platform === "win32" ? "windows" : platform;
+  const ext = platform === "win32" ? "dll" : platform === "darwin" ? "dylib" : "so";
+  const native = `sqlite-vec-${os}-${arch}`;
+  if (fs.existsSync(path.join(ROOT, "node_modules", native))) {
+    log("Copying the sqlite-vec extension…");
+    copyPackage("sqlite-vec", nm, ["package.json", "index.cjs"]);
+    copyPackage(native, nm, ["package.json", `vec0.${ext}`]);
+  } else log(`sqlite-vec is not installed for ${platform}/${arch}: the installer ranks in JavaScript`);
+} else
+  log(
+    `No sqlite-vec for ${platform}/${arch} (packaged on ${process.platform}/${process.arch}): the installer ranks in JavaScript`,
+  );
 
 // ---- 3. UI, seeds, manifest, docs ------------------------------------------------
 log("Copying the Command Centre and seed data…");

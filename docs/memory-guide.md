@@ -273,6 +273,31 @@ the Second Brain). A pass that died with the service is taken up again at the ne
 incremental, so what was committed stays. `GET /api/memory/status` says `indexing.mode`: `worker`, or `inline`
 when the worker script is not next to the service (a source checkout).
 
+**Semantic search (optional, off by default).** `GET /api/memory/search` ranks by words (BM25 over the
+full-text index). With `memory.embeddings.enabled` on (`PUT /api/settings`, owner only) the index also keeps one
+vector per Markdown or text file, and a search fuses the two orders (reciprocal rank fusion, k = 60): each hit says
+`via` `text`, `semantic` or `both`, and `mode` is `auto` (the default), `text` or `semantic` (`409 semantic_disabled`
+while the search is off). Nothing is embedded, no extension is loaded and no connection is opened while it is off;
+turning it off deletes the vectors at the next index pass.
+
+- **`provider: "hash"`** (the default once enabled) computes 256 numbers from the spelling of the words, in this
+  process, the same on every machine: no model, no download, no network. It finds a note by the words a question
+  shares with it even when other words of the question are not in the note (which the strict word search misses),
+  but it does **not** understand synonyms: "refund" and "reimbursement" are as far apart as any two words. On the
+  fixed corpus of `tests/fixtures/semantic-corpus.json` (24 notes, 12 questions) the hybrid search puts the right
+  note in the first three for 11 questions and the words alone for 5; the one it misses asks for a synonym.
+- **`provider: "http"`** sends the text of each note (cut at 8 000 characters, 16 per request) to `endpoint`, an
+  OpenAI-style `POST` `{ "model", "input": [...] }` answering `{ "data": [{ "embedding": [...] }] }`, which gives real
+  semantics. It is sent only to a loopback address (an embeddings server on this machine) or, with `sendRemote`
+  on, to an `https` address; `model` and `dimensions` (the length of one vector) are required; the key is read from
+  the environment variable named by `apiKeyEnv`, never from `settings.json`; there are no redirects, a 30-second
+  timeout and an 8 MB cap on the answer. If the endpoint fails, the pass still ends with the word index complete and
+  `GET /api/memory/status` (`semantic.error`) says why; the next pass embeds the rest. This is a network point:
+  `legal/PRIVACY.md` lists it, off by default.
+- **Ranking** uses the `sqlite-vec` extension when it loads (`semantic.backend: "sqlite-vec"`) and the same cosine in
+  JavaScript when it does not (a platform it does not ship for, a missing package): the order is the same, only
+  slower on a very large index. The installer carries the extension for the machine that built it.
+
 ---
 
 ## 8. Where things live
@@ -289,6 +314,7 @@ when the worker script is not next to the service (a source checkout).
 | `core/src/memory/notes.ts`, `frontMatter.ts` | Create and save notes (guarded replace), front matter |
 | `core/src/memory/linkParser.ts`, `links.ts` | Reading links out of Markdown; backlinks and broken links, resolved when asked |
 | `core/src/memory/indexHost.ts`, `indexWorker.ts`, `indexProtocol.ts` | The pass in a worker thread: host, worker, messages |
+| `core/src/memory/embeddings.ts`, `vectors.ts`, `semantic.ts` | Embedding providers and the endpoint policy; vectors and sqlite-vec ranking; fusion with the words |
 | `apps/api/src/routes/memory.ts` | All endpoints above; installs the journal hooks |
 | `skills/recall/`, `skills/consolidate-memory/` | The agent-facing side |
 | `routines/nightly-consolidation.json` | 03:00, disabled by default, `review_before_write` |

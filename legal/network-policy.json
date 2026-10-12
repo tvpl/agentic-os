@@ -100,6 +100,19 @@
       }
     },
     {
+      "id": "embeddings",
+      "label": "Embeddings da busca semântica (endereço do dono)",
+      "role": "user-defined",
+      "match": [],
+      "trigger": "só com `memory.embeddings.enabled` ligado, `memory.embeddings.provider` igual a `http` e um `endpoint` que o dono escreveu: um endereço de loopback (um servidor de embeddings na própria máquina) ou, com `memory.embeddings.sendRemote` ligado, um endereço https; com o provedor `hash` (o padrão) nada é enviado a lugar nenhum",
+      "default": "desligado",
+      "data": "POST com o modelo e o texto de cada nota indexada (até 8000 caracteres, em lotes de até 16) e, no cabeçalho, a chave lida da variável de ambiente `memory.embeddings.apiKeyEnv`; a chave nunca fica em `settings.json`; sem redirecionamento, 30 segundos de limite e 8 MB de resposta",
+      "defaultState": "off",
+      "gate": {
+        "setting": "memory.embeddings.enabled"
+      }
+    },
+    {
       "id": "skill-registry",
       "label": "Registro de skills (endereço do dono)",
       "role": "user-defined",
@@ -587,6 +600,22 @@
       "hosts": [
         "connector-api"
       ]
+    },
+    {
+      "file": "core/src/memory/embeddings.ts",
+      "kind": "fetch",
+      "count": 1,
+      "hosts": [
+        "embeddings"
+      ],
+      "note": "o provedor `http`, só depois da política do endereço (loopback, ou https com `sendRemote`)"
+    },
+    {
+      "file": "core/src/memory/vectors.ts",
+      "kind": "module:dynamic",
+      "count": 1,
+      "hosts": [],
+      "note": "carrega o pacote local `sqlite-vec` (uma extensão do SQLite que calcula distâncias; não abre conexão)"
     },
     {
       "file": "core/src/routines/scheduler.ts",

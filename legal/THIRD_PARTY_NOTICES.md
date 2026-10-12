@@ -6,7 +6,7 @@ O MordomoOS é distribuído sob a Functional Source License 1.1 com licença fut
 
 Gerado por `node scripts/licenses.mjs --write` a partir de `package-lock.json`, dos arquivos de licença dos pacotes instalados e de `legal/license-policy.json`. **Não edite à mão**: `npm run licenses:write` reescreve e `npm run licenses:check` reprova um arquivo que não bate.
 
-Pacotes npm de runtime: 185 · ferramentas de build (não distribuídas): 493
+Pacotes npm de runtime: 191 · ferramentas de build (não distribuídas): 493
 
 "Runtime" é o que o `package-lock.json` marca como não-`dev`: as dependências que o produto precisa para rodar. É um **superconjunto** do que o instalador leva (o código vai em dois bundles que usam só parte desses pacotes, e o módulo nativo do SQLite vai à parte): listar todos é o lado seguro para os avisos, e o aviso não afirma que cada um está dentro do instalador.
 
@@ -400,6 +400,12 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 | sonic-boom | 4.2.1 | MIT | https://registry.npmjs.org/sonic-boom/-/sonic-boom-4.2.1.tgz |
 | split2 | 4.2.0 | ISC | https://registry.npmjs.org/split2/-/split2-4.2.0.tgz |
 | sprintf-js | 1.0.3 | BSD-3-Clause | https://registry.npmjs.org/sprintf-js/-/sprintf-js-1.0.3.tgz |
+| sqlite-vec | 0.1.9 | MIT OR Apache | https://registry.npmjs.org/sqlite-vec/-/sqlite-vec-0.1.9.tgz |
+| sqlite-vec-darwin-arm64 | 0.1.9 | MIT OR Apache | https://registry.npmjs.org/sqlite-vec-darwin-arm64/-/sqlite-vec-darwin-arm64-0.1.9.tgz |
+| sqlite-vec-darwin-x64 | 0.1.9 | MIT OR Apache | https://registry.npmjs.org/sqlite-vec-darwin-x64/-/sqlite-vec-darwin-x64-0.1.9.tgz |
+| sqlite-vec-linux-arm64 | 0.1.9 | MIT OR Apache | https://registry.npmjs.org/sqlite-vec-linux-arm64/-/sqlite-vec-linux-arm64-0.1.9.tgz |
+| sqlite-vec-linux-x64 | 0.1.9 | MIT OR Apache | https://registry.npmjs.org/sqlite-vec-linux-x64/-/sqlite-vec-linux-x64-0.1.9.tgz |
+| sqlite-vec-windows-x64 | 0.1.9 | MIT OR Apache | https://registry.npmjs.org/sqlite-vec-windows-x64/-/sqlite-vec-windows-x64-0.1.9.tgz |
 | statuses | 2.0.2 | MIT | https://registry.npmjs.org/statuses/-/statuses-2.0.2.tgz |
 | string_decoder | 1.3.0 | MIT | https://registry.npmjs.org/string_decoder/-/string_decoder-1.3.0.tgz |
 | strip-bom-string | 1.0.0 | MIT | https://registry.npmjs.org/strip-bom-string/-/strip-bom-string-1.0.0.tgz |
@@ -418,7 +424,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 | zod | 3.25.76 | MIT | https://registry.npmjs.org/zod/-/zod-3.25.76.tgz |
 | zod-to-json-schema | 3.25.2 | ISC | https://registry.npmjs.org/zod-to-json-schema/-/zod-to-json-schema-3.25.2.tgz |
 
-### Textos de licença (116 textos distintos)
+### Textos de licença (118 textos distintos)
 
 #### Texto 1 — 2 pacotes
 
@@ -3624,7 +3630,23 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ~~~~
 
-#### Texto 107 — 1 pacote
+#### Texto 107 — 2 pacotes
+
+sqlite-vec@0.1.9, sqlite-vec-linux-x64@0.1.9
+
+~~~~text
+(O pacote não inclui arquivo de licença. Licença declarada: MIT OR Apache. Autor declarado: Alex Garcia.)
+~~~~
+
+#### Texto 108 — 4 pacotes
+
+sqlite-vec-darwin-arm64@0.1.9, sqlite-vec-darwin-x64@0.1.9, sqlite-vec-linux-arm64@0.1.9, sqlite-vec-windows-x64@0.1.9
+
+~~~~text
+(O pacote não inclui arquivo de licença. Licença declarada: MIT OR Apache.)
+~~~~
+
+#### Texto 109 — 1 pacote
 
 statuses@2.0.2
 
@@ -3653,7 +3675,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ~~~~
 
-#### Texto 108 — 1 pacote
+#### Texto 110 — 1 pacote
 
 strip-bom-string@1.0.0
 
@@ -3681,7 +3703,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ~~~~
 
-#### Texto 109 — 1 pacote
+#### Texto 111 — 1 pacote
 
 strip-json-comments@2.0.1
 
@@ -3709,7 +3731,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ~~~~
 
-#### Texto 110 — 1 pacote
+#### Texto 112 — 1 pacote
 
 toad-cache@3.7.4
 
@@ -3737,7 +3759,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~~
 
-#### Texto 111 — 1 pacote
+#### Texto 113 — 1 pacote
 
 toidentifier@1.0.1
 
@@ -3765,7 +3787,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~~
 
-#### Texto 112 — 1 pacote
+#### Texto 114 — 1 pacote
 
 tslib@2.8.1
 
@@ -3784,7 +3806,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ~~~~
 
-#### Texto 113 — 1 pacote
+#### Texto 115 — 1 pacote
 
 tunnel-agent@0.6.0
 
@@ -3846,7 +3868,7 @@ If the Work includes a "NOTICE" text file as part of its distribution, then any 
 END OF TERMS AND CONDITIONS
 ~~~~
 
-#### Texto 114 — 1 pacote
+#### Texto 116 — 1 pacote
 
 util-deprecate@1.0.2
 
@@ -3877,7 +3899,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ~~~~
 
-#### Texto 115 — 1 pacote
+#### Texto 117 — 1 pacote
 
 zod@3.25.76
 
@@ -3905,7 +3927,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~~
 
-#### Texto 116 — 1 pacote
+#### Texto 118 — 1 pacote
 
 zod-to-json-schema@3.25.2
 

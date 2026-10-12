@@ -515,4 +515,42 @@ describe("C30 migration 20 on a database that already holds an index", () => {
       db.close();
     }
   });
+
+  it("C56 file_vectors has exactly the shape of door 2, and the database ends at version 21", () => {
+    const home = tempHome();
+    const { db } = openDb(home.paths);
+    try {
+      const columns = (
+        db.pragma("table_info(file_vectors)") as Array<{
+          name: string;
+          type: string;
+          notnull: number;
+          pk: number;
+        }>
+      ).map(({ name, type, notnull, pk }) => ({ name, type, notnull, pk }));
+      expect(columns).toEqual([
+        { name: "file_id", type: "INTEGER", notnull: 0, pk: 1 },
+        { name: "provider", type: "TEXT", notnull: 1, pk: 0 },
+        { name: "dim", type: "INTEGER", notnull: 1, pk: 0 },
+        { name: "vec", type: "BLOB", notnull: 1, pk: 0 },
+        { name: "mtime", type: "INTEGER", notnull: 1, pk: 0 },
+        { name: "size", type: "INTEGER", notnull: 1, pk: 0 },
+      ]);
+      // not a vec0 virtual table: it needs no extension to exist
+      const table = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'file_vectors'").get() as {
+        sql: string;
+      };
+      expect(table.sql).not.toMatch(/virtual|vec0/i);
+      expect(db.pragma("user_version", { simple: true })).toBe(21);
+      expect(MIGRATIONS.at(-1)!.version).toBe(21);
+      expect(MIGRATIONS.slice(-2).map((m) => m.name)).toEqual(["note-links", "file-vectors"]);
+      // the migration SQL twice leaves the table as it was
+      const sql = MIGRATIONS.find((m) => m.version === 21)!.sql!;
+      db.exec(sql);
+      db.exec(sql);
+      expect((db.pragma("table_info(file_vectors)") as unknown[]).length).toBe(6);
+    } finally {
+      db.close();
+    }
+  });
 });

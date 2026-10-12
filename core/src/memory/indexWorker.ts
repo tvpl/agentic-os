@@ -10,6 +10,7 @@
  */
 import { parentPort } from "node:worker_threads";
 import Database from "better-sqlite3";
+import type { IndexProgress } from "@mordomo/contracts";
 import type { Settings } from "../config/schema.js";
 import { IncompleteIndexScanError, MemoryIndexer } from "./indexer.js";
 import { StartMessage, type WorkerMessage } from "./indexProtocol.js";
@@ -23,7 +24,7 @@ function sleep(ms: number): void {
   if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-function run(start: StartMessage): void {
+async function run(start: StartMessage): Promise<void> {
   const db = new Database(start.dbFile, { fileMustExist: true });
   try {
     db.pragma("busy_timeout = 5000");
@@ -34,18 +35,39 @@ function run(start: StartMessage): void {
     });
     for (const folder of start.implicitRoots) indexer.addImplicitRoot(folder);
     const cancel = new Int32Array(start.cancel);
-    const pass = indexer.iteratePass((progress) => post({ t: "progress", progress }), start.only, start.runId);
+    const stopped = () => Atomics.load(cancel, 0) === 1;
+    const cancelled = () => post({ t: "failed", code: "index_cancelled", message: "cancelled", previousIndexPreserved: true });
+    const onProgress = (progress: IndexProgress) => post({ t: "progress", progress });
+    const pass = indexer.iteratePass(onProgress, start.only, start.runId);
     let step = pass.next();
     while (!step.done) {
-      if (Atomics.load(cancel, 0) === 1) {
+      if (stopped()) {
         pass.return(undefined as never);
-        post({ t: "failed", code: "index_cancelled", message: "cancelled", previousIndexPreserved: true });
+        cancelled();
         return;
       }
       sleep(start.paceMs);
       step = pass.next();
     }
-    post({ t: "done", stats: step.value });
+    const stats = step.value;
+    // The vectors phase is async (an endpoint answers when it answers); the flag is read from a timer meanwhile.
+    const abort = new AbortController();
+    const watch = setInterval(() => stopped() && abort.abort(), 50);
+    try {
+      await indexer.runVectors(stats, start.only !== undefined, {
+        signal: abort.signal,
+        shouldStop: stopped,
+        onProgress,
+        runId: start.runId,
+      });
+    } finally {
+      clearInterval(watch);
+    }
+    if (stopped()) {
+      cancelled();
+      return;
+    }
+    post({ t: "done", stats });
   } catch (error) {
     const preserved = error instanceof IncompleteIndexScanError;
     post({
@@ -65,5 +87,5 @@ port.once("message", (raw: unknown) => {
     post({ t: "failed", code: "index_failed", message: "The start message did not fit its schema.", previousIndexPreserved: true });
     return;
   }
-  run(parsed.data);
+  void run(parsed.data);
 });

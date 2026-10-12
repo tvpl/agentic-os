@@ -16,6 +16,8 @@ const IndexStatsSchema = z.object({
   skippedBinary: z.number(),
   related: z.number(),
   durationMs: z.number(),
+  /** Vectors (re)computed by the pass; present only while the semantic search is on. */
+  embedded: z.number().optional(),
 });
 
 const FileRowSchema = z.object({
@@ -36,7 +38,24 @@ const FileRowSchema = z.object({
   fields: z.record(z.string()),
 });
 
-const SearchHitSchema = FileRowSchema.extend({ snippet: z.string().nullable(), score: z.number() });
+const SearchHitSchema = FileRowSchema.extend({
+  snippet: z.string().nullable(),
+  /** `via` `text`: the BM25 of FTS5 (lower is better); otherwise the reciprocal-rank-fusion score (higher is better). */
+  score: z.number(),
+  /** Which half of the search found the file: the words, the vectors, or both. */
+  via: z.enum(["text", "semantic", "both"]),
+});
+
+const SemanticStatusSchema = z.object({
+  enabled: z.boolean(),
+  provider: z.string().nullable(),
+  /** Where the cosine is computed; null while the search is off (nothing is loaded then). */
+  backend: z.enum(["sqlite-vec", "js"]).nullable(),
+  vectors: z.number(),
+  /** Why an enabled search has no endpoint it may use. */
+  blocked: z.string().nullable(),
+  error: z.string().nullable(),
+});
 
 /** The version of a note: `sha256:` plus the hex digest of its exact bytes. */
 export const NoteVersionSchema = z
@@ -254,6 +273,7 @@ export const memoryRoutes = {
           total: z.number(),
         }),
         indexing: IndexingStatusSchema,
+        semantic: SemanticStatusSchema,
       }),
     },
   }),
@@ -299,11 +319,13 @@ export const memoryRoutes = {
   "memory.search": route({
     method: "GET",
     path: "/api/memory/search",
-    summary: "Full-text search over the index",
+    summary:
+      "Full-text search over the index; with the semantic search on, the words and the vectors fused (mode auto, text or semantic)",
     tag: "memory",
     scope: "content",
     query: z.object({
       q: z.string().default(""),
+      mode: z.enum(["auto", "text", "semantic"]).optional(),
       area: z.string().optional(),
       ext: z.string().optional(),
       dir: z.string().optional(),
@@ -312,6 +334,13 @@ export const memoryRoutes = {
       limit: z.coerce.number().int().min(1).max(200).optional(),
     }),
     responses: { 200: z.array(SearchHitSchema) },
+    errors: [
+      err(
+        409,
+        "semantic_disabled",
+        "mode=semantic while memory.embeddings is off or has no endpoint it may use",
+      ),
+    ],
   }),
   "memory.graph": route({
     method: "GET",

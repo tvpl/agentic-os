@@ -10,6 +10,7 @@ import { isBinaryBuffer, makeWorkspaceFilter } from "./excludes.js";
 import { fieldsFromDb, parseInlineFields } from "./fields.js";
 import { parseFrontMatter } from "./frontMatter.js";
 import { extractLinks } from "./linkParser.js";
+import { embedPending } from "./vectors.js";
 import type { IndexPhase, IndexProgress, IndexStats } from "@mordomo/contracts";
 
 export type { IndexProgress, IndexStats };
@@ -230,18 +231,90 @@ export class MemoryIndexer {
     only?: readonly string[],
   ): Promise<IndexStats> {
     this.cancelRequested = false;
-    const gen = this.steps(onProgress, only, runId);
-    let step = gen.next();
-    while (!step.done) {
-      await new Promise<void>((resolve) => setImmediate(resolve));
+    const stopped = () => this.cancelRequested;
+    try {
+      const gen = this.steps(onProgress, only, runId, false);
+      let step = gen.next();
+      while (!step.done) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        if (this.cancelRequested) {
+          this.cancelRequested = false;
+          gen.return(undefined as never);
+          throw new IndexCancelledError();
+        }
+        step = gen.next();
+      }
+      const stats = step.value;
+      const abort = new AbortController();
+      const watch = setInterval(() => stopped() && abort.abort(), 50);
+      try {
+        await this.runVectors(stats, only !== undefined, { signal: abort.signal, shouldStop: stopped, onProgress, runId });
+      } finally {
+        clearInterval(watch);
+      }
       if (this.cancelRequested) {
         this.cancelRequested = false;
-        gen.return(undefined as never);
         throw new IndexCancelledError();
       }
-      step = gen.next();
+      this.bus?.emit("index.finished", { stats, ...(runId ? { runId } : {}) });
+      return stats;
+    } catch (error) {
+      if (!(error instanceof IndexCancelledError)) {
+        this.bus?.emit("index.failed", {
+          code: error instanceof IncompleteIndexScanError ? error.code : "index_failed",
+          previousIndexPreserved: error instanceof IncompleteIndexScanError,
+          ...(runId ? { runId } : {}),
+        });
+      }
+      throw error;
     }
-    return step.value;
+  }
+
+  /**
+   * The vectors phase of a pass, after the files: embed what owes a vector (`embedPending`), fold the count into the
+   * stats, and into the `last_index` the pass stored. Needs no extension (a vector is a BLOB); a failure of the
+   * provider ends this phase and is remembered, never the pass.
+   */
+  async runVectors(
+    stats: IndexStats,
+    only: boolean,
+    options: {
+      signal?: AbortSignal | undefined;
+      shouldStop?: (() => boolean) | undefined;
+      onProgress?: ((p: IndexProgress) => void) | undefined;
+      runId?: string | undefined;
+    } = {},
+  ): Promise<void> {
+    const config = this.getSettings().memory.embeddings;
+    let announced = false;
+    const { embedded } = await embedPending(this.db, config, {
+      ...(options.signal ? { signal: options.signal } : {}),
+      ...(options.shouldStop ? { shouldStop: options.shouldStop } : {}),
+      onProgress: (done, total) => {
+        announced = true;
+        const p: IndexProgress = {
+          ...(options.runId ? { runId: options.runId } : {}),
+          phase: "vectors",
+          scanned: done,
+          total,
+          added: stats.added,
+          updated: stats.updated,
+          removed: stats.removed,
+        };
+        options.onProgress?.(p);
+        this.bus?.emit("index.progress", p);
+      },
+    });
+    void announced;
+    if (embedded > 0 || config.enabled) stats.embedded = embedded;
+    if (!only && stats.embedded !== undefined) {
+      const row = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(LAST_INDEX_KEY) as { value: string } | undefined;
+      if (row) {
+        const last = JSON.parse(row.value) as { at: number; stats: IndexStats };
+        last.stats.embedded = stats.embedded;
+        this.db.prepare("UPDATE meta SET value = ? WHERE key = ?").run(JSON.stringify(last), LAST_INDEX_KEY);
+      }
+    }
   }
 
   /** Ask the pass that runs in this thread to stop at the next chunk. False when none runs. */
@@ -260,7 +333,7 @@ export class MemoryIndexer {
     only?: readonly string[],
     runId?: string,
   ): Generator<void, IndexStats> {
-    return this.steps(onProgress, only, runId);
+    return this.steps(onProgress, only, runId, false);
   }
 
   /** A pass over these paths only (a note that was just saved), synchronously. Same rules as `indexAll`. */
@@ -315,6 +388,8 @@ export class MemoryIndexer {
     only?: readonly string[],
     /** The pass these events belong to (`index.started`). */
     runId?: string,
+    /** Announce `index.finished` / `index.failed` here (the caller that adds a phase after this one announces them itself). */
+    announce = true,
   ): Generator<void, IndexStats> {
     if (this.running) throw new Error("An index run is already in progress.");
     this.running = true;
@@ -471,14 +546,15 @@ export class MemoryIndexer {
       });
       finish();
       emit(total, "related");
-      this.bus?.emit("index.finished", { stats, ...(runId ? { runId } : {}) });
+      if (announce) this.bus?.emit("index.finished", { stats, ...(runId ? { runId } : {}) });
       return stats;
     } catch (error) {
-      this.bus?.emit("index.failed", {
-        code: error instanceof IncompleteIndexScanError ? error.code : "index_failed",
-        previousIndexPreserved: error instanceof IncompleteIndexScanError,
-        ...(runId ? { runId } : {}),
-      });
+      if (announce)
+        this.bus?.emit("index.failed", {
+          code: error instanceof IncompleteIndexScanError ? error.code : "index_failed",
+          previousIndexPreserved: error instanceof IncompleteIndexScanError,
+          ...(runId ? { runId } : {}),
+        });
       throw error;
     } finally {
       this.running = false;
@@ -719,6 +795,7 @@ export class MemoryIndexer {
     this.db.prepare("DELETE FROM files_fts WHERE rowid = ?").run(id);
     this.db.prepare("DELETE FROM file_links WHERE src_id = ? OR dst_id = ?").run(id, id);
     this.db.prepare("DELETE FROM note_links WHERE src_id = ?").run(id);
+    this.db.prepare("DELETE FROM file_vectors WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_terms WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_related WHERE src_id = ? OR dst_id = ?").run(id, id);
     this.touched.delete(id);

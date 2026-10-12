@@ -388,6 +388,26 @@ export const SettingsSchema = z.object({
     .object({
       /** Token budget for today's + yesterday's journal inside memory/ROUTER.md (chars/4). */
       journalBudgetTokens: z.number().int().min(100).max(20_000).default(1200),
+      /**
+       * Semantic search over the notes (.specs/features/cerebro-v2, S4). OFF by default: nothing is embedded, no
+       * extension is loaded and no connection is made until the owner turns it on. `hash` is computed in this
+       * process from the text alone (no model, no network); `http` sends the text of each note to `endpoint`
+       * (OpenAI-style `POST` `{ model, input }`), which is a loopback address (a local embeddings server) or, with
+       * `sendRemote`, an `https` one. The key is read from the environment variable `apiKeyEnv`, never from here.
+       */
+      embeddings: z
+        .object({
+          enabled: z.boolean().default(false),
+          provider: z.enum(["hash", "http"]).default("hash"),
+          endpoint: z.string().max(2000).optional(),
+          model: z.string().max(200).optional(),
+          apiKeyEnv: z.string().max(200).optional(),
+          /** What the `http` endpoint answers: the length of one vector (8 to 4096). */
+          dimensions: z.number().int().min(8).max(4096).optional(),
+          /** A non-loopback endpoint receives note text only when this is on. */
+          sendRemote: z.boolean().default(false),
+        })
+        .default({}),
     })
     .default({}),
   /**

@@ -10,6 +10,7 @@ import {
   parseTolerant,
   type MordomoPaths,
 } from "@mordomo/core/internal";
+import { chooseProvider } from "../core/src/memory/embeddings.js";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { makeTempHome } from "./helpers.js";
@@ -836,5 +837,87 @@ describe("S3 settings tolerate an invalid field", () => {
       .map((line) => JSON.parse(line) as { path: string; closed?: true });
     const closed = Object.fromEntries(records.map((r) => [r.path, r.closed === true]));
     expect(closed).toEqual({ port: false, securityProfile: true, limits: true, "memorySkills.0": true });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// cerebro-v2, S4: the settings of the semantic search read OFF when they cannot be read
+
+describe("C52 memory.embeddings", () => {
+  const EMBEDDINGS_LEAVES = [
+    "enabled",
+    "provider",
+    "endpoint",
+    "model",
+    "apiKeyEnv",
+    "dimensions",
+    "sendRemote",
+  ];
+
+  it("C52 the schema has exactly the seven leaves, off by default, and the two that open something are closed", () => {
+    const embeddings = (SettingsSchema.parse({}) as any).memory.embeddings;
+    expect(embeddings).toEqual({ enabled: false, provider: "hash", sendRemote: false });
+    // Every leaf is accepted as written, and nothing else is kept: the schema has exactly these seven.
+    const all = {
+      enabled: true,
+      provider: "http",
+      endpoint: "http://127.0.0.1:11434/v1/embeddings",
+      model: "nomic",
+      apiKeyEnv: "KEY",
+      dimensions: 768,
+      sendRemote: true,
+    };
+    const parsed = (SettingsSchema.parse({ memory: { embeddings: { ...all, extra: 1 } } }) as any).memory
+      .embeddings;
+    expect(parsed).toEqual(all);
+    expect(Object.keys(parsed).sort()).toEqual([...EMBEDDINGS_LEAVES].sort());
+    const closed = SETTINGS_FAIL_CLOSED.filter((rule) => rule.path.startsWith("memory.embeddings.")).map(
+      (rule) => [rule.path, rule.closed],
+    );
+    expect(closed).toEqual([
+      ["memory.embeddings.enabled", false],
+      ["memory.embeddings.sendRemote", false],
+      ["memory.embeddings.provider", "hash"],
+    ]);
+  });
+
+  it("C52 a value that cannot be read leaves the search off (or without an endpoint it may use) and keeps the file as settings.json.invalid", () => {
+    const bad: unknown[] = [
+      "yes",
+      7,
+      { enabled: "yes" },
+      { enabled: 1, provider: "http", endpoint: "https://example.com", sendRemote: "true" },
+      { enabled: true, provider: 7 },
+      { enabled: true, provider: "http", dimensions: "many" },
+      { enabled: true, provider: "http", endpoint: 5 },
+    ];
+    for (const value of bad) {
+      const { paths, store, write } = setup();
+      const original = write({ version: 2, memory: { embeddings: value } });
+      const loaded = store.load();
+      // Off, or on without an endpoint or a length it can use: in neither case is a note embedded or sent anywhere.
+      expect(chooseProvider(loaded.memory.embeddings).state, JSON.stringify(value)).not.toBe("ready");
+      expect(loaded.memory.embeddings.sendRemote, JSON.stringify(value)).toBe(false);
+      expect(fs.readFileSync(`${paths.settingsFile}.invalid`, "utf8")).toBe(original);
+      expect(fs.readFileSync(paths.settingsFile, "utf8")).toBe(original);
+    }
+  });
+
+  it("C52 a field that is fine is kept: only the value that cannot be read costs anything", () => {
+    const { store, write } = setup();
+    write({
+      memory: {
+        embeddings: {
+          enabled: true,
+          provider: "http",
+          endpoint: "http://127.0.0.1:11434/v1/embeddings",
+          model: "m",
+          dimensions: "x",
+        },
+      },
+    });
+    const loaded = store.load();
+    expect(loaded.memory.embeddings).toMatchObject({ enabled: true, provider: "http", model: "m" });
+    expect(loaded.memory.embeddings.dimensions).toBeUndefined();
   });
 });

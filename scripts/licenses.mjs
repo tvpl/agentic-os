@@ -11,7 +11,7 @@
  * trusted (a lockfile entry that is not what it says, an installed package that is not the locked one, a
  * policy file that cannot be read) or a usage error.
  *
- * The distributed set is what `package-lock.json` marks as not `dev`: the 184 packages the installer
+ * The distributed set is what `package-lock.json` marks as not `dev`: the 190 packages the installer
  * carries. The build tools are the rest. The output depends on nothing but the lockfile, the license files
  * of the installed packages and `legal/license-policy.json`: no date, no path of the machine, no locale.
  *
@@ -133,6 +133,9 @@ export function lockPackages(root = ROOT) {
       license: entry.license,
       author: entry.author,
       dependencies: { ...(entry.dependencies ?? {}), ...(entry.optionalDependencies ?? {}) },
+      optional: entry.optional === true,
+      os: Array.isArray(entry.os) ? entry.os : null,
+      cpu: Array.isArray(entry.cpu) ? entry.cpu : null,
       tier: entry.dev === true || entry.devOptional === true ? "tooling" : "distributed",
     });
   }
@@ -186,6 +189,23 @@ export function loadPolicy(root = ROOT) {
 }
 
 export class EnvironmentError extends Error {}
+
+/**
+ * An optional package that npm installs only on the platform it is built for (`sqlite-vec-darwin-arm64`): it is
+ * locked, listed, noticed and in the SBOM on every machine, but it can only be installed on its own. `os` and `cpu`
+ * are npm's own lists, with `!name` for a platform it refuses.
+ */
+export function isForeignOptional(pkg, host = { os: process.platform, cpu: process.arch }) {
+  if (!pkg.optional || (pkg.os === null && pkg.cpu === null)) return false;
+  const fits = (list, value) => {
+    if (list === null || list.length === 0) return true;
+    const refused = list.filter((x) => x.startsWith("!")).map((x) => x.slice(1));
+    if (refused.includes(value)) return false;
+    const wanted = list.filter((x) => !x.startsWith("!"));
+    return wanted.length === 0 || wanted.includes(value);
+  };
+  return !(fits(pkg.os, host.os) && fits(pkg.cpu, host.cpu));
+}
 
 // ---- reading the installed packages -----------------------------------------------------------------------------
 
@@ -271,6 +291,8 @@ export function buildReport(root = ROOT) {
   const tooling = rows.filter((r) => r.tier === "tooling");
 
   for (const pkg of distributed) {
+    // Foreign to this machine: it cannot be installed here, so its absence is not a broken tree.
+    if (isForeignOptional(pkg)) continue;
     let installed = null;
     try {
       installed = readJson(path.join(root, pkg.key, "package.json")).version;

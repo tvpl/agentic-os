@@ -49,6 +49,12 @@ export const SETTINGS_FAIL_CLOSED: readonly FailClosedField[] = [
       ]),
     ],
   },
+  // Semantic search sends nothing and loads nothing while it is off; a value that cannot be read leaves it off, and
+  // a remote endpoint stays refused.
+  { path: "memory.embeddings.enabled", closed: false },
+  { path: "memory.embeddings.sendRemote", closed: false },
+  // An embedder that cannot be read is not replaced by another one the owner did not choose: the search goes off.
+  { path: "memory.embeddings.provider", closed: "hash", also: [{ sibling: "enabled", value: false }] },
   // A flag that switches something ON reads OFF when it cannot be read. These are the ones whose default is on:
   // the model run of the triage and the hourly read of connectors start processes; the rest only notify, and are
   // closed with them so that no unreadable flag ever turns anything on.

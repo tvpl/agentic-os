@@ -28,6 +28,10 @@ interface Licenses {
   parseSpdx: (text: string) => unknown;
   isAllowed: (expression: string, allowed: string[]) => boolean;
   buildReport: (root?: string) => Report;
+  isForeignOptional: (
+    pkg: { optional: boolean; os: string[] | null; cpu: string[] | null },
+    host?: { os: string; cpu: string },
+  ) => boolean;
   main: (argv: string[], io: { out: (s: string) => void; err: (s: string) => void }) => number;
   normalizeText: (text: string) => string;
   versionOfTarball: (resolved: string, name: string) => string | null;
@@ -86,6 +90,9 @@ interface Pkg {
   files?: Record<string, string>;
   dependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
+  /** npm's own marks of a package built for one platform */
+  optional?: boolean;
+  os?: string[];
 }
 interface Tree {
   pkgs: Pkg[];
@@ -106,6 +113,8 @@ function tree({ pkgs, policy }: Tree, opts: { notice?: boolean } = {}): string {
       integrity: "sha512-AAAA",
       ...(p.license === undefined ? {} : { license: p.license }),
       ...(p.dev ? { dev: true } : {}),
+      ...(p.optional ? { optional: true } : {}),
+      ...(p.os ? { os: p.os } : {}),
       ...(p.dependencies ? { dependencies: p.dependencies } : {}),
       ...(p.optionalDependencies ? { optionalDependencies: p.optionalDependencies } : {}),
     };
@@ -220,9 +229,20 @@ function reachableFromWorkspaces(): Set<string> {
   return new Set([...seen].filter((k) => !lock.packages[k]!.link));
 }
 
+function lockPackage(key: string) {
+  const entry = lock.packages[key]!;
+  return {
+    optional: entry.optional === true,
+    os: Array.isArray(entry.os) ? (entry.os as string[]) : null,
+    cpu: Array.isArray(entry.cpu) ? (entry.cpu as string[]) : null,
+  };
+}
+
 /** The text of the license files of an installed package, the way the notice must reproduce it. */
 function licenseFiles(key: string): string[] {
   const dir = path.join(ROOT, key);
+  // A package built for another platform (`sqlite-vec-darwin-arm64`) is locked but cannot be installed here.
+  if (!fs.existsSync(dir) && lic.isForeignOptional(lockPackage(key))) return [];
   return fs
     .readdirSync(dir, { withFileTypes: true })
     .filter(
@@ -242,7 +262,7 @@ describe("C7 the notice lists every distributed package with its license text", 
     const reached = reachableFromWorkspaces();
     expect([...reached].filter((k) => !flagged.has(k))).toEqual([]);
     expect([...flagged].filter((k) => !reached.has(k))).toEqual([]);
-    expect(flagged.size).toBe(185);
+    expect(flagged.size).toBe(191);
   });
 
   it("C7 every distributed package has its name, version, SPDX and tarball URL in a row, and the text of its license file", () => {
@@ -266,9 +286,9 @@ describe("C7 the notice lists every distributed package with its license text", 
         for (const text of files) expect(notice, `${name} license text`).toContain(text);
       }
     }
-    expect(withText + withoutFile).toBe(185);
-    // The two packages that ship no license file are named, not hidden.
-    expect(withoutFile).toBeLessThanOrEqual(5);
+    expect(withText + withoutFile).toBe(191);
+    // The packages that ship no license file are named, not hidden: two older ones, sqlite-vec and its five platform builds.
+    expect(withoutFile).toBeLessThanOrEqual(8);
   });
 
   it("C7 a package under a license that ships text gets its text in the notice, and one that does not gets a sentence that says so (fixture)", () => {
@@ -732,8 +752,8 @@ describe("C16 the SBOM", () => {
       .map((c) => `${c.name}@${c.version}`);
     expect(new Set(got)).toEqual(expected);
     expect(got).toHaveLength(expected.size);
-    expect(expected.size).toBe(184);
-    expect(distributedKeys).toHaveLength(185);
+    expect(expected.size).toBe(190);
+    expect(distributedKeys).toHaveLength(191);
     const refs = bom.components.map((c) => c["bom-ref"]);
     expect(new Set(refs).size).toBe(refs.length);
   });
@@ -790,7 +810,7 @@ describe("C16 the SBOM", () => {
       }).status,
     ).toBe(0);
     expect(fs.readFileSync(a, "utf8")).toBe(fs.readFileSync(b, "utf8"));
-    expect(JSON.parse(fs.readFileSync(a, "utf8")).components).toHaveLength(184 + 4);
+    expect(JSON.parse(fs.readFileSync(a, "utf8")).components).toHaveLength(190 + 4);
   });
 
   it("C16 npm run sbom is the script, and the default output is build/sbom/mordomo-os.cdx.json", () => {
@@ -805,16 +825,16 @@ describe("C16 the SBOM", () => {
 // ---- C17 --------------------------------------------------------------------------------------------------------------
 
 describe("C17 the real lockfile passes", () => {
-  it("C17 no distributed package and no build tool has a license the lists refuse; --check exits 0 with 185 and 493", () => {
+  it("C17 no distributed package and no build tool has a license the lists refuse; --check exits 0 with 191 and 493", () => {
     const report = lic.buildReport(ROOT);
     expect(report.environment).toEqual([]);
     expect(report.problems).toEqual([]);
-    expect(report.distributed).toHaveLength(185);
+    expect(report.distributed).toHaveLength(191);
     expect(report.tooling).toHaveLength(toolingKeys.length);
     expect(report.tooling.length).toBeGreaterThanOrEqual(480);
     const res = run(["--check"], ROOT);
     expect(res.code, res.err).toBe(0);
-    expect(res.out).toContain("185 distributed");
+    expect(res.out).toContain("191 distributed");
   });
 
   it("C17 the tools under MPL-2.0 and CC-BY-4.0 are known and none of them is a distributed package", () => {
@@ -1091,7 +1111,7 @@ describe("C36 the SBOM is a valid CycloneDX 1.5 document, and what it says is wh
     expect(named("Rajdhani")).toMatchObject({ type: "file", licenses: [{ license: { id: "OFL-1.1" } }] });
     const notice = committed;
     for (const b of REAL_POLICY.bundled) expect(notice, b.name).toContain(`### ${b.name} —`);
-    expect(bom.components).toHaveLength(184 + REAL_POLICY.bundled.length);
+    expect(bom.components).toHaveLength(190 + REAL_POLICY.bundled.length);
   });
 
   it("C36 the application's own licence is the manifest's SPDX id", () => {
@@ -1100,5 +1120,41 @@ describe("C36 the SBOM is a valid CycloneDX 1.5 document, and what it says is wh
     };
     expect(manifest.license).toBe("FSL-1.1-ALv2");
     expect(bom.metadata.component.licenses).toEqual([{ license: { id: "FSL-1.1-ALv2" } }]);
+  });
+});
+
+describe("C54 an optional package built for another platform", () => {
+  const pkg = (over: Partial<{ optional: boolean; os: string[] | null; cpu: string[] | null }> = {}) => ({
+    optional: true,
+    os: ["darwin"],
+    cpu: ["arm64"],
+    ...over,
+  });
+  const linux = { os: "linux", cpu: "x64" };
+
+  it("C54 is foreign only when it is optional and its os or cpu list leaves this machine out", () => {
+    expect(lic.isForeignOptional(pkg(), linux)).toBe(true);
+    expect(lic.isForeignOptional(pkg({ os: ["linux"], cpu: ["arm64"] }), linux)).toBe(true);
+    expect(lic.isForeignOptional(pkg({ os: ["linux"], cpu: ["x64"] }), linux)).toBe(false);
+    expect(lic.isForeignOptional(pkg({ os: ["linux"], cpu: null }), linux)).toBe(false);
+    expect(lic.isForeignOptional(pkg({ os: ["!linux"], cpu: null }), linux)).toBe(true);
+    expect(lic.isForeignOptional(pkg({ os: ["darwin", "linux"], cpu: ["x64", "arm64"] }), linux)).toBe(false);
+    // not optional: it must be installed whatever its os says
+    expect(lic.isForeignOptional(pkg({ optional: false }), linux)).toBe(false);
+    // no platform at all: nothing makes it foreign
+    expect(lic.isForeignOptional(pkg({ os: null, cpu: null }), linux)).toBe(false);
+  });
+
+  it("C54 the check still reports a package that must be here and is not, and skips one that cannot be", () => {
+    const dir = tree({
+      pkgs: [
+        { name: "a" },
+        { name: "b", optional: true, os: ["definitely-not-this-os"], installed: null },
+        { name: "c", installed: null },
+      ],
+    });
+    const report = lic.buildReport(dir);
+    // `c` is missing and could be installed: reported. `b` cannot be installed here: it is not.
+    expect(report.environment.map((line) => line.split(":")[0])).toEqual(["c@1.0.0"]);
   });
 });

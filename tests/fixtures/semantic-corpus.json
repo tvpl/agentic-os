@@ -1,0 +1,163 @@
+{
+  "note": "24 notes and 12 questions for the quality test of the hybrid search (.specs/features/cerebro-v2, C46). Five questions are keywords, six are sentences with words the notes do not all share, one asks for a synonym: the hash provider reads spelling, not meaning, so that one is expected to miss.",
+  "notes": [
+    {
+      "name": "refund-policy",
+      "text": "# Refund policy\n\nCustomer refunds are processed within ten days of the request. A refund needs the order number and the reason the customer gives. Damaged items get a full refund and the customer keeps the item; partial refunds apply when only some parts of the order come back. Finance approves every refund above two hundred dollars.\n"
+    },
+    {
+      "name": "onboarding-checklist",
+      "text": "# Onboarding checklist\n\nOn the first day a new employee receives a laptop, an account and access to the team tools. The manager schedules a welcome lunch and a first week plan. Security training must be completed before access to production systems is granted. Buddy assignments last three months.\n"
+    },
+    {
+      "name": "deploy-runbook",
+      "text": "# Deploy runbook\n\nSteps to deploy the service to production: merge the release branch, wait for the build, run the smoke tests in staging, then promote the build to production. Watch the dashboards for fifteen minutes after the deploy. If the error rate rises, roll back with the previous release tag.\n"
+    },
+    {
+      "name": "database-backup",
+      "text": "# Database backup\n\nThe production database is backed up every night at two in the morning and the copies are kept for thirty days. Backups are encrypted and stored in a separate region. A weekly job verifies that the latest database backup can be opened.\n"
+    },
+    {
+      "name": "incident-postmortem",
+      "text": "# Incident postmortem template\n\nWrite the timeline of the outage, the impact on customers, the root cause and the follow up actions. Postmortems are blameless and are reviewed in the weekly engineering meeting. Every action has an owner and a due date.\n"
+    },
+    {
+      "name": "hiring-process",
+      "text": "# Hiring process\n\nCandidates go through a recruiter screen, a technical interview and a team conversation. Feedback is written within one day. The hiring manager decides after the debrief and the recruiter sends the offer letter with the salary band.\n"
+    },
+    {
+      "name": "vacation-policy",
+      "text": "# Vacation policy\n\nEmployees have twenty five days of paid vacation per year. Vacation requests are sent to the manager at least two weeks ahead. Unused vacation days carry over until March of the next year. Public holidays are not counted as vacation.\n"
+    },
+    {
+      "name": "expense-reports",
+      "text": "# Expense reports\n\nSubmit receipts for business trips and meals in the expense tool within thirty days. Each receipt needs a project code and a short description. Reports above five hundred dollars need the approval of a director. Reimbursement arrives with the next payroll.\n"
+    },
+    {
+      "name": "api-rate-limits",
+      "text": "# API rate limits\n\nThe public API allows one hundred requests per minute for each key. Requests above the limit receive status 429 with a retry after header. Enterprise customers can ask for higher rate limits. Batch endpoints count as ten requests.\n"
+    },
+    {
+      "name": "security-keys-rotation",
+      "text": "# Security key rotation\n\nSigning keys are rotated every ninety days and access tokens every thirty days. The rotation is automated and logged. After a rotation the old key stays valid for twenty four hours so that clients can update. Emergency rotation follows the incident process.\n"
+    },
+    {
+      "name": "weekly-meeting-notes",
+      "text": "# Weekly meeting notes\n\nDiscussed the launch date, the open bugs and the staffing plan. Alex will update the launch checklist and Maria will talk to the vendor about the invoice. Next meeting is on Tuesday at ten.\n"
+    },
+    {
+      "name": "roadmap-q4",
+      "text": "# Roadmap for the fourth quarter\n\nThe fourth quarter focuses on the mobile app, the billing rewrite and the new onboarding flow. The search improvements move to the next year. Each theme has a lead and a measurable goal.\n"
+    },
+    {
+      "name": "pricing-tiers",
+      "text": "# Pricing tiers\n\nThere are three pricing tiers: free, team and enterprise. The team tier is billed per seat each month. Enterprise pricing is negotiated and includes support and single sign on. Annual billing gets a discount.\n"
+    },
+    {
+      "name": "customer-interview-insights",
+      "text": "# Customer interview insights\n\nWe talked to twelve customers about how they use the product. Most customers said setup takes too long and that reports are hard to share. Several customers were confused by the plans and asked for a simpler comparison. Nobody asked for more integrations.\n"
+    },
+    {
+      "name": "design-system-tokens",
+      "text": "# Design system tokens\n\nColors, spacing and type sizes are defined as tokens. Components never use raw color values. A token change is reviewed by the design team and published with the component library.\n"
+    },
+    {
+      "name": "release-checklist",
+      "text": "# Release checklist\n\nBefore a release confirm that the changelog is written, the version number is bumped and the documentation is updated. Run the full test suite and the security scan. The release manager signs off in the release channel.\n"
+    },
+    {
+      "name": "on-call-schedule",
+      "text": "# On call schedule\n\nEngineers rotate on call every week. The pager goes to the primary engineer and, after fifteen minutes without an answer, to the secondary. Handover happens on Monday morning. Night pages are compensated with a day off.\n"
+    },
+    {
+      "name": "data-retention",
+      "text": "# Data retention\n\nLogs are purged after ninety days. Customer records are erased two years after the contract ends, unless the law requires otherwise. Deletion requests from users are completed within thirty days.\n"
+    },
+    {
+      "name": "travel-booking",
+      "text": "# Travel booking\n\nBook flights and hotels through the travel portal at least two weeks before the trip. Economy class is the default for flights shorter than six hours. Hotel prices are capped per city. Change fees need approval from the manager.\n"
+    },
+    {
+      "name": "brand-voice",
+      "text": "# Brand voice\n\nWe write in a clear and friendly tone. Avoid jargon and long sentences. Headlines are short and in sentence case. Every page says what the reader can do next.\n"
+    },
+    {
+      "name": "sprint-retro",
+      "text": "# Sprint retrospective\n\nWhat went well: the team finished the planned stories and the demos were useful. What to improve: reviews wait too long and estimates drift. Actions: pair on reviews and limit work in progress.\n"
+    },
+    {
+      "name": "escalation-contacts",
+      "text": "# Escalation contacts\n\nFor a serious outage contact the incident commander first, then the head of engineering. Customer communication goes through the support lead. Phone numbers are in the shared contact sheet.\n"
+    },
+    {
+      "name": "invoice-process",
+      "text": "# Invoice process\n\nVendors send invoices to the finance inbox. Finance matches each invoice with a purchase order and schedules payment thirty days after the invoice date. Disputed invoices go back to the requester.\n"
+    },
+    {
+      "name": "backup-restore-drill",
+      "text": "# Backup restore drill\n\nOnce each quarter the team restores a backup into a clean environment and checks the application against it. The drill report lists the time to restore and the problems found.\n"
+    }
+  ],
+  "questions": [
+    {
+      "q": "refund policy",
+      "expected": "refund-policy",
+      "kind": "keyword"
+    },
+    {
+      "q": "database backup",
+      "expected": "database-backup",
+      "kind": "keyword"
+    },
+    {
+      "q": "vacation policy",
+      "expected": "vacation-policy",
+      "kind": "keyword"
+    },
+    {
+      "q": "api rate limits",
+      "expected": "api-rate-limits",
+      "kind": "keyword"
+    },
+    {
+      "q": "key rotation",
+      "expected": "security-keys-rotation",
+      "kind": "keyword"
+    },
+    {
+      "q": "what is the process when a customer wants a refund for a damaged item",
+      "expected": "refund-policy",
+      "kind": "natural"
+    },
+    {
+      "q": "which steps do I follow to deploy the service to production",
+      "expected": "deploy-runbook",
+      "kind": "natural"
+    },
+    {
+      "q": "who should I call when the pager goes off at night",
+      "expected": "on-call-schedule",
+      "kind": "natural"
+    },
+    {
+      "q": "when does a new employee get access to the tools",
+      "expected": "onboarding-checklist",
+      "kind": "natural"
+    },
+    {
+      "q": "where do I submit receipts for my business trip",
+      "expected": "expense-reports",
+      "kind": "natural"
+    },
+    {
+      "q": "what did we learn from talking to customers about the product",
+      "expected": "customer-interview-insights",
+      "kind": "natural"
+    },
+    {
+      "q": "how long do we keep personal information before it is removed",
+      "expected": "data-retention",
+      "kind": "synonym"
+    }
+  ]
+}

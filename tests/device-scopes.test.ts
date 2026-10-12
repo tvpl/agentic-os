@@ -1095,6 +1095,7 @@ describe("S3 who asked does not approve", () => {
         "push-subscription-device",
         "run-action-receipt-requester",
         "note-links",
+        "file-vectors",
       ]);
       const raw = new Database(tmp.paths.dbFile);
       for (const m of MIGRATIONS.filter((x) => x.version < target)) {

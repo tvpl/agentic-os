@@ -30,7 +30,6 @@ import {
   resolveOpenablePath,
   retractFact,
   saveNote,
-  searchFiles,
   statWorkspacePath,
   workspaceScope,
   type ReadScope,
@@ -89,7 +88,7 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
   bind(app, "memory.status", async () => {
     const last = ctx.indexer.lastIndex();
     const facets = listFacets(ctx.db);
-    return { lastIndex: last, facets, indexing: ctx.indexHost.status() };
+    return { lastIndex: last, facets, indexing: ctx.indexHost.status(), semantic: ctx.semantic.status() };
   });
 
   bind(app, "memory.index", async () => {
@@ -102,7 +101,8 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   bind(app, "memory.search", async ({ query: q }) => {
     // Rows are judged by today's policy as they are read (an old index may still hold a private path).
-    return searchFiles(ctx.db, { query: q.q, ...q, allow: ctx.indexer.rowFilter() });
+    const { mode, ...filters } = q;
+    return ctx.semantic.search({ ...filters, query: q.q, allow: ctx.indexer.rowFilter() }, mode ?? "auto");
   });
 
   bind(app, "memory.graph", async ({ query: q }) => {

@@ -44,6 +44,7 @@ import { MordomoError } from "./errors.js";
 import { ExecutionService } from "./execution/service.js";
 import { MemoryIndexer } from "./memory/indexer.js";
 import { IndexWorkerHost } from "./memory/indexHost.js";
+import { SemanticSearch } from "./memory/semantic.js";
 import { installJournalHooks } from "./memory/journal.js";
 import { MetricsHistory } from "./metrics/history.js";
 import { PushStore } from "./notifications/pushStore.js";
@@ -158,6 +159,8 @@ export class MordomoEngine {
   readonly indexer: MemoryIndexer;
   /** Runs the index passes: in a worker thread when the worker script is there (`memory/indexHost.ts`). */
   readonly indexHost: IndexWorkerHost;
+  /** The semantic half of the search (off until `memory.embeddings.enabled`); one per engine. */
+  readonly semantic: SemanticSearch;
   readonly routines: RoutineStore;
   readonly scheduler: RoutineScheduler;
   readonly connectors: ConnectorRegistry;
@@ -277,6 +280,7 @@ export class MordomoEngine {
       { homeDir: this.paths.home },
       this.events,
     );
+    this.semantic = new SemanticSearch(this.db, () => this.settings());
     this.indexHost = new IndexWorkerHost({
       paths: this.paths,
       db: this.db,

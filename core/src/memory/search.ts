@@ -13,9 +13,14 @@ export interface SearchFilters {
   allow?: (row: { root: string; rel: string }) => boolean;
 }
 
+/** Which half of the search found a file: the words (`text`), the vectors (`semantic`), or both. */
+export type SearchVia = "text" | "semantic" | "both";
+
 export interface SearchHit extends FileRow {
   snippet: string | null;
+  /** `text` hits: the BM25 of FTS5 (lower is better). Fused hits: the reciprocal-rank score (higher is better). */
   score: number;
+  via: SearchVia;
 }
 
 /** Escape user input for FTS5: quote each term so no query syntax leaks through. */
@@ -29,10 +34,8 @@ function toFtsQuery(input: string): string {
   return terms.map((t) => `"${t}"*`).join(" ");
 }
 
-export function searchFiles(db: Db, filters: SearchFilters): SearchHit[] {
-  const limit = Math.min(filters.limit ?? 50, 200);
-  const fts = toFtsQuery(filters.query);
-
+/** The `WHERE` clauses the facets of a search add, over `files f`: shared by the words and the vectors. */
+export function searchFilters(filters: Omit<SearchFilters, "query">): { clauses: string[]; params: unknown[] } {
   const clauses: string[] = [];
   const params: unknown[] = [];
   if (filters.area) {
@@ -55,6 +58,13 @@ export function searchFiles(db: Db, filters: SearchFilters): SearchHit[] {
     clauses.push("f.mtime > ?");
     params.push(filters.modifiedAfter);
   }
+  return { clauses, params };
+}
+
+export function searchFiles(db: Db, filters: SearchFilters): SearchHit[] {
+  const limit = Math.min(filters.limit ?? 50, 200);
+  const fts = toFtsQuery(filters.query);
+  const { clauses, params } = searchFilters(filters);
 
   if (!fts) {
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
@@ -62,7 +72,7 @@ export function searchFiles(db: Db, filters: SearchFilters): SearchHit[] {
       .prepare(`SELECT f.* FROM files f ${where} ORDER BY f.mtime DESC LIMIT ?`)
       .all(...params, limit) as Array<Record<string, unknown>>;
     return rows
-      .map((r) => ({ ...fileRowFromDb(r), snippet: null, score: 0 }))
+      .map((r) => ({ ...fileRowFromDb(r), snippet: null, score: 0, via: "text" as const }))
       .filter((hit) => filters.allow?.(hit) ?? true);
   }
 
@@ -83,6 +93,7 @@ export function searchFiles(db: Db, filters: SearchFilters): SearchHit[] {
       ...fileRowFromDb(r),
       snippet: (r.snip as string | null) ?? null,
       score: r.score as number,
+      via: "text" as const,
     }))
     .filter((hit) => filters.allow?.(hit) ?? true);
 }
