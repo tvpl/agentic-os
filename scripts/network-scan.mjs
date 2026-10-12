@@ -97,6 +97,15 @@ const DOTTED = /^(?:[a-z0-9-]+\.)+[a-z0-9-]+$/i;
 const HOST_NAME = /host|domain|origin|server|endpoint|base_?url|\burl\b/i;
 const BARE_IP = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?::\d+)?$/;
 const HOST_IN_TEXT = new RegExp(`(?:[a-z0-9-]+\\.)+(?:${TLDS})(?![a-z0-9-])`, "g");
+/**
+ * A command line that starts with `curl` / `wget`, given whole to a function that runs a command (`exec("curl -s https://…")`,
+ * `spawn("sh", ["-c", "curl …"])`). Only there: the same words in a string shown to the person (an install hint) run nothing.
+ */
+const DOWNLOAD_COMMAND = /^\s*(?:curl|wget)(?:\s+(?:-|https?:)|\s+$)/;
+const RUNNERS = /^(exec|execSync|execFile|execFileSync|spawn|spawnSync|execa|execaSync|system|popen)$/;
+/** A host written without a scheme, as a whole string (`"//cdn.example.com/x.js"`) or after a quote, `(` or `=` in text. */
+const SCHEMELESS_STRING = new RegExp(`^//((?:[a-z0-9-]+\\.)+(?:${TLDS}))(?=[/:?#]|$)`, "i");
+const SCHEMELESS_IN_TEXT = new RegExp(`(?<=["'(=])//((?:[a-z0-9-]+\\.)+(?:${TLDS}))(?=[/:?#"')\\s]|$)`, "gi");
 const URL_HOST = /\b(?:https?|wss?):\/\/(?:[^\s/@'"`<>]*@)?(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)(?::\d+)?/gi;
 
 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -150,6 +159,8 @@ export function scanSource(source, fileName = "source.ts") {
 
   const hostsInString = (text, named = false) => {
     for (const m of text.matchAll(URL_HOST)) hosts.add(hostOf(m[1]));
+    const schemeless = SCHEMELESS_STRING.exec(text);
+    if (schemeless) hosts.add(hostOf(schemeless[1]));
     if (BARE_HOST.test(text) || (named && DOTTED.test(text))) hosts.add(text.toLowerCase());
     const ip = BARE_IP.exec(text);
     if (ip && ip.slice(1).every((o) => Number(o) <= 255)) hosts.add(text.replace(/:\d+$/, ""));
@@ -202,6 +213,37 @@ export function scanSource(source, fileName = "source.ts") {
           point("process-binding");
       } else if (isGlobalObject(node.expression)) point("dynamic-global");
     }
+    if (ts.isCallExpression(node)) {
+      const callee = ts.isIdentifier(node.expression)
+        ? node.expression.text
+        : ts.isPropertyAccessExpression(node.expression)
+          ? node.expression.name.text
+          : "";
+      if (RUNNERS.test(callee)) {
+        const candidates = node.arguments.flatMap((a) =>
+          ts.isArrayLiteralExpression(a) ? [...a.elements] : [a],
+        );
+        for (const a of candidates) {
+          const text = ts.isStringLiteralLike(a) ? a.text : ts.isTemplateExpression(a) ? a.head.text : null;
+          const command = text === null ? null : DOWNLOAD_COMMAND.exec(text);
+          if (command) point(`program:${command[0].trim().split(/\s/)[0]}`);
+        }
+      }
+    }
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "Reflect" &&
+      node.expression.name.text === "get" &&
+      node.arguments.length >= 2 &&
+      isGlobalObject(node.arguments[0])
+    ) {
+      const key = node.arguments[1];
+      if (!ts.isStringLiteralLike(key)) point("dynamic-global");
+      else if (key.text === "fetch") point("fetch");
+      else if (NETWORK_GLOBALS.has(key.text)) point(NETWORK_GLOBALS.get(key.text));
+    }
     if (ts.isIdentifier(node) && node.text === "createRequire" && !isDeclarationName(node))
       point("module:dynamic");
 
@@ -252,6 +294,7 @@ export function scanText(text, fileName = "") {
   const points = new Map();
   const point = (name) => points.set(name, (points.get(name) ?? 0) + 1);
   for (const m of text.matchAll(URL_HOST)) hosts.add(hostOf(m[1]));
+  for (const m of text.matchAll(SCHEMELESS_IN_TEXT)) hosts.add(hostOf(m[1]));
   if (/\.(md|sh|ps1)$/.test(fileName))
     for (const m of text.matchAll(/(?:^|[\s`$(;|&"'])(curl|wget)(?=\s)/gm)) point(`program:${m[1]}`);
   if (/\.json$/.test(fileName))

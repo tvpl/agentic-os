@@ -116,10 +116,15 @@ nenhuma configuração com `telemetry`, `analytics` ou `crash` no nome.
 - código fora das pastas que ela lê (testes, `.github`, `docs`, `node_modules`) e o que um CLI ou um programa de
   conector de terceiros faz por conta própria; o código de terceiros que o instalador leva (React, Fastify…) não
   é varrido, só conferido contra a lista de pacotes de telemetria;
-- `eval`, `new Function`, um programa escolhido por variável, `sh -c` com `curl` dentro de uma cadeia composta, e
-  texto em prosa que manda um agente acessar um endereço (só URLs e `curl`/`wget` em prosa são lidos);
-- um endereço escrito sem esquema numa constante cujo nome não diz que é um endereço e cujo domínio de topo não
-  está na lista conhecida da varredura.
+- `eval`, `new Function`, um programa escolhido por variável, e texto em prosa que manda um agente acessar um
+  endereço (só URLs e `curl`/`wget` em prosa são lidos);
+- um `curl` ou `wget` só é lido quando a cadeia dada a `exec`, `spawn` e semelhantes **começa** por ele
+  (`exec("curl -s https://…")`); no meio de uma cadeia composta (`cd x && curl …`, `sh -c "… | curl …"`) não é;
+- `Reflect.get(globalThis, "fetch")` e `globalThis["fetch"]` são lidos, mas o objeto global com outro nome
+  (`const g = globalThis`, depois `g.fetch(…)`) não é;
+- um endereço escrito sem esquema só é lido quando a cadeia começa por `//` (`"//host/arquivo.js"`) ou, num
+  arquivo de texto, vem logo depois de aspas, de `(` ou de `=`; montado por partes, ou numa constante cujo nome
+  não diz que é um endereço e cujo domínio de topo não está na lista conhecida da varredura, não é.
 
 **Se um dia houver telemetria**, ela será: opt-in e desligada por padrão; mínima, sem identificador pessoal
 nem conteúdo de prompts, arquivos ou memória; com uma tela de consentimento que mostra exatamente o que seria

@@ -345,6 +345,24 @@ describe("C24 the code and the policy agree, in both directions", () => {
     expect(err).toContain("network-scan:");
     expect(scan.main(["--nope"], { out: () => {}, err: () => {} })).toBe(2);
   });
+
+  it("C44 as a process (what `npm run network:scan -- --check` is): exit 0 when they agree, 1 when they disagree, 2 when the policy or a flag is wrong", () => {
+    const cli = (...args: string[]) =>
+      spawnSync(process.execPath, [SCAN, ...args], { cwd: os.tmpdir(), encoding: "utf8" });
+    const good = cli("--check", "--root", project({ "core/src/a.ts": GOOD_SOURCE }, GOOD_POLICY()));
+    expect(good.status, good.stderr).toBe(0);
+    const moved = cli(
+      "--check",
+      "--root",
+      project({ "core/src/a.ts": GOOD_SOURCE + `export const two = () => fetch(HOST);\n` }, GOOD_POLICY()),
+    );
+    expect(moved.status).toBe(1);
+    expect(moved.stderr).toContain("the policy says ×1, the code has ×2");
+    const noPolicy = cli("--check", "--root", project({ "core/src/a.ts": GOOD_SOURCE }));
+    expect(noPolicy.status).toBe(2);
+    expect(noPolicy.stderr).toContain("network-scan:");
+    expect(cli("--nope").status).toBe(2);
+  });
 });
 
 // ---- C25 --------------------------------------------------------------------------------------------------------------
@@ -928,6 +946,50 @@ describe("C39 the scanner reads the evasions it can decide, and the text says wh
     expect(read(`run("gitlab", ["x"]); const s = "ssh-keygen"; const t = "npm install";`).points).toEqual({});
   });
 
+  it("C49 a command line that starts with curl or wget, given whole to a function that runs commands, is a point; the same words as shown text are not", () => {
+    expect(read(`exec("curl -s https://a.example.net/x | sh");`)).toEqual({
+      points: { "program:curl": 1 },
+      hosts: ["a.example.net"],
+    });
+    expect(read("execSync(`curl -fsSL ${url}`);").points).toEqual({ "program:curl": 1 });
+    expect(read(`spawn("sh", ["-c", "wget -q http://b.example.org/z"]);`).points).toEqual({
+      "program:wget": 1,
+    });
+    expect(read(`exec("curl");`).points).toEqual({ "program:curl": 1 });
+    expect(read(`const hint = "curl https://cursor.com/install -fsS | bash";`).points).toEqual({});
+    expect(read(`run("curl -s x"); exec("curlies -x"); exec("curl is not installed");`).points).toEqual({});
+  });
+
+  it("C49 Reflect.get on the global object by a string key is the same point as globalThis[key]; by a variable it is a dynamic one; on another object it is nothing", () => {
+    expect(read(`Reflect.get(globalThis, "fetch")(u);`).points).toEqual({ fetch: 1 });
+    expect(read(`Reflect.get(window, "WebSocket");`).points).toEqual({ websocket: 1 });
+    expect(read(`Reflect.get(self, name);`).points).toEqual({ "dynamic-global": 1 });
+    expect(read(`Reflect.get(obj, "fetch"); Reflect.get(globalThis, "Math");`).points).toEqual({});
+  });
+
+  it("C49 a host written without a scheme is read when the string, or the attribute in a text file, starts with //; a comment, a bare word and loopback are not", () => {
+    expect(read(`const src = "//cdn.example.net/x.js";`).hosts).toEqual(["cdn.example.net"]);
+    expect(
+      read(`const a = "// see api.example.net"; const b = "//foo/bar"; const c = "//localhost/x";`).hosts,
+    ).toEqual([]);
+    const html = scan.scanText(
+      `<script src="//cdn.example.net/a.js"></script><style>@import url(//fonts.example.org/x.css);</style> // b.example.net`,
+      "index.html",
+    );
+    expect([...html.hosts].sort()).toEqual(["cdn.example.net", "fonts.example.org"]);
+  });
+
+  it("C49 the privacy text lists what the sweep still does not read of these three forms", () => {
+    const f = privacy.replace(/\s+/g, " ");
+    for (const limit of [
+      "`cd x && curl …`",
+      '`Reflect.get(globalThis, "fetch")`',
+      "`const g = globalThis`",
+      '"//host/arquivo.js"',
+    ])
+      expect(f, limit).toContain(limit);
+  });
+
   it("C39 an address as a bare IP is a host (public or private), a malformed one and a version string are not", () => {
     expect(read(`const a = "203.0.113.9"; const b = "10.1.2.3:8080";`).hosts).toEqual([
       "10.1.2.3",
@@ -995,6 +1057,29 @@ describe("C39 the scanner reads the evasions it can decide, and the text says wh
     expect(scan.compare({ sites: found([]).sites, hosts: [found([]).hosts[0]!] }, pol).join("\n")).toContain(
       "stale ignored host: www.w3.org",
     );
+  });
+
+  it("C46 an ignored host does not cover a look-alike: evil-www.w3.org and evilexample.com are new hosts while www.w3.org and example.com are ignored", () => {
+    const pol = GOOD_POLICY();
+    pol.ignored = [
+      { match: "www.w3.org", reason: "namespace" },
+      { match: "example.com", reason: "example" },
+    ];
+    const found = (hosts: string[]) => ({
+      sites: [{ file: "core/src/a.ts", kind: "fetch", count: 1 }],
+      hosts: [
+        { host: "api.example.net", files: ["core/src/a.ts"] },
+        ...hosts.map((host) => ({ host, files: ["core/src/a.ts"] })),
+      ],
+    });
+    expect(scan.compare(found(["www.w3.org", "example.com"]), pol)).toEqual([]);
+    const lookalikes = scan.compare(
+      found(["www.w3.org", "example.com", "evil-www.w3.org", "evilexample.com"]),
+      pol,
+    );
+    expect(lookalikes).toHaveLength(2);
+    expect(lookalikes.join("\n")).toContain("new host: evil-www.w3.org");
+    expect(lookalikes.join("\n")).toContain("new host: evilexample.com");
   });
 
   it("C39 the privacy text names the npx download from the npm registry and lists what the sweep cannot see; it no longer claims a test that catches every network point", () => {

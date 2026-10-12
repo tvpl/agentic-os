@@ -11,8 +11,9 @@
  * trusted (a lockfile entry that is not what it says, an installed package that is not the locked one, a
  * policy file that cannot be read) or a usage error.
  *
- * The distributed set is what `package-lock.json` marks as not `dev`: the 184 packages the installer
- * carries. The build tools are the rest. The output depends on nothing but the lockfile, the license files
+ * The distributed set is what `package-lock.json` marks as not `dev`: the runtime dependency set, a superset of
+ * what the installer's bundles contain (the count is asserted by tests/legal.licenses.test.ts, not written here).
+ * The build tools are the rest. The output depends on nothing but the lockfile, the license files
  * of the installed packages and `legal/license-policy.json`: no date, no path of the machine, no locale.
  *
  * DRAFT for the owner's legal review: this is engineering, not legal advice.

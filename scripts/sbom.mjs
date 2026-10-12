@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
- * CycloneDX SBOM of what the installer carries (.specs/features/licenca-comercial, door 7).
+ * CycloneDX SBOM of the lockfile's runtime dependency set (.specs/features/licenca-comercial, door 7), a superset of
+ * what the installer's bundles contain, plus Node.js, SQLite and the two fonts.
  *
  *   node scripts/sbom.mjs [--out <file>] [--root <dir>]     default: build/sbom/mordomo-os.cdx.json
  *
  * Written from package-lock.json, the same source and the same distributed set as the third-party
  * notice (`scripts/licenses.mjs`), so the two cannot disagree. No timestamp and no random value: the same
- * lockfile yields the same bytes. `npm sbom` was tried first and left out: in this monorepo it omits 23 of the
- * 184 distributed packages (react, react-dom, zod, ajv, picocolors…) whatever the flags.
+ * lockfile yields the same bytes. `npm sbom` was tried first and left out: in this monorepo it omits packages of
+ * the runtime set (react, react-dom, zod, ajv, picocolors…) whatever the flags.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -26,13 +27,13 @@ function hashOf(integrity) {
 }
 
 /** The licence ids the CycloneDX 1.5 schema accepts in `license.id` (its own copy of the SPDX list, vendored). */
-let spdxIds = null;
+const spdxIds = new Map();
 function schemaIds(root) {
-  if (spdxIds === null) {
+  if (!spdxIds.has(root)) {
     const file = path.join(root, "legal", "vendor", "cyclonedx", "spdx.schema.json");
-    spdxIds = new Set(fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")).enum : []);
+    spdxIds.set(root, new Set(fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")).enum : []));
   }
-  return spdxIds;
+  return spdxIds.get(root);
 }
 
 /** One id the schema knows → `license.id`; an expression (OR, AND, WITH) → `expression`, whole; anything else → `name`. */
