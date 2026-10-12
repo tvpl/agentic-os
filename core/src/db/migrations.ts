@@ -486,4 +486,22 @@ CREATE INDEX IF NOT EXISTS idx_objective_steps_run ON objective_steps(run_id);
       }
     },
   },
+  {
+    version: 20,
+    name: "note-links",
+    // cerebro-v2, door 1: what each Markdown file says about other files, as text. Which file a target is, is decided
+    // when somebody asks, so nothing here changes when a file appears, moves or goes. Created empty: the first index
+    // pass after this migration fills it from the content the index already holds (no file is read again).
+    sql: `
+CREATE TABLE IF NOT EXISTS note_links (
+  src_id INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  target TEXT NOT NULL,
+  label TEXT,
+  line INTEGER NOT NULL,
+  PRIMARY KEY (src_id, kind, target, line)
+);
+CREATE INDEX IF NOT EXISTS idx_note_links_target ON note_links(kind, target);
+`,
+  },
 ];

@@ -837,3 +837,47 @@
 .app-panel .brain2-topbar.in-panel {
   padding: 8px 12px;
 }
+
+/* links of a note (.specs/features/cerebro-v2): backlinks and the links that lead nowhere */
+.brain-links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin: var(--s-3) 0;
+}
+.brain-links-state {
+  margin: 0;
+  font-size: var(--fs-3);
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.brain-links-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--fs-3);
+}
+.brain-links-list li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+.brain-links-list.broken li {
+  color: var(--text-dim);
+}
+.brain-links-list.broken svg {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  align-self: center;
+}
+.brain-links-meta {
+  margin-left: auto;
+  font-size: var(--fs-2);
+  color: var(--text-faint);
+}

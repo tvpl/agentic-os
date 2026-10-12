@@ -9,6 +9,7 @@ import { openWorkspaceFile, readScope, statWorkspacePath, type ReadScope } from 
 import { isBinaryBuffer, makeWorkspaceFilter } from "./excludes.js";
 import { fieldsFromDb, parseInlineFields } from "./fields.js";
 import { parseFrontMatter } from "./frontMatter.js";
+import { extractLinks } from "./linkParser.js";
 import type { IndexProgress, IndexStats } from "@mordomo/contracts";
 
 export type { IndexProgress, IndexStats };
@@ -24,6 +25,9 @@ const TEXT_EXTENSIONS = new Set([
 export const INDEX_CHUNK_SIZE = 200;
 const PENDING_LINKS_KEY = "index.pending_links";
 const LAST_INDEX_KEY = "last_index";
+/** Which version of the link extraction the stored `note_links` come from (the first pass after migration 20 fills them). */
+const NOTE_LINKS_KEY = "index.note_links";
+const NOTE_LINKS_VERSION = "1";
 
 /** An incomplete scan cannot prove that previously indexed files disappeared. */
 export class IncompleteIndexScanError extends Error {
@@ -364,6 +368,9 @@ export class MemoryIndexer {
         yield;
       }
 
+      // Files that did not change since migration 20 get their links from the stored text.
+      if (!only) this.backfillNoteLinks();
+
       // Phase 4: related-by-content edges for what changed (IDF over the whole corpus).
       stats.related = this.refreshRelated(this.touched);
       this.touched = new Set();
@@ -527,6 +534,7 @@ export class MemoryIndexer {
     }
     if (ext === ".md" || ext === ".markdown") {
       this.refreshLinks(id, full, content, pending);
+      this.storeNoteLinks(id, full, content);
     }
     return "kept";
   }
@@ -563,6 +571,38 @@ export class MemoryIndexer {
     }
   }
 
+  /** Replace what one Markdown file says about other files (`note_links`). */
+  private storeNoteLinks(id: number, full: string, content: string): void {
+    this.db.prepare("DELETE FROM note_links WHERE src_id = ?").run(id);
+    const insert = this.db.prepare(
+      "INSERT OR IGNORE INTO note_links (src_id, kind, target, label, line) VALUES (?, ?, ?, ?, ?)",
+    );
+    for (const link of extractLinks(content, full)) insert.run(id, link.kind, link.target, link.label, link.line);
+  }
+
+  /**
+   * After migration 20 (or a change in how links are read) the files that did not change have no `note_links` yet:
+   * they are filled from the text the index already stores, so no file is opened for it.
+   */
+  private backfillNoteLinks(): void {
+    const stored = this.db.prepare("SELECT value FROM meta WHERE key = ?").get(NOTE_LINKS_KEY) as { value: string } | undefined;
+    if (stored?.value === NOTE_LINKS_VERSION) return;
+    const rows = this.db
+      .prepare("SELECT id, path FROM files WHERE ext IN ('.md', '.markdown')")
+      .all() as Array<{ id: number; path: string }>;
+    const textOf = this.db.prepare("SELECT content FROM files_fts WHERE rowid = ?");
+    const run = this.db.transaction(() => {
+      for (const row of rows) {
+        const text = textOf.get(row.id) as { content: string } | undefined;
+        this.storeNoteLinks(row.id, row.path, text?.content ?? "");
+      }
+      this.db
+        .prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        .run(NOTE_LINKS_KEY, NOTE_LINKS_VERSION);
+    });
+    run();
+  }
+
   private insertLink(src: number, dst: number): void {
     if (src === dst) return;
     this.db
@@ -583,6 +623,7 @@ export class MemoryIndexer {
     this.db.prepare("DELETE FROM files WHERE id = ?").run(id);
     this.db.prepare("DELETE FROM files_fts WHERE rowid = ?").run(id);
     this.db.prepare("DELETE FROM file_links WHERE src_id = ? OR dst_id = ?").run(id, id);
+    this.db.prepare("DELETE FROM note_links WHERE src_id = ?").run(id);
     this.db.prepare("DELETE FROM file_terms WHERE file_id = ?").run(id);
     this.db.prepare("DELETE FROM file_related WHERE src_id = ? OR dst_id = ?").run(id, id);
     this.touched.delete(id);

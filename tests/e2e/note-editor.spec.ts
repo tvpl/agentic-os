@@ -177,3 +177,40 @@ test("C20 closing with unsaved changes asks first, with Keep editing focused", a
     .click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
+
+test("C31 the preview of a note lists who links to it and the links of its own that lead nowhere", async ({
+  page,
+}) => {
+  await openBrain(page, "dark");
+  const target = `Alvo ${stamp}`;
+  const slug = target.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const made = await api(page, "POST", "/api/memory/notes", {
+    title: target,
+    content: `[[fantasma-${stamp}]] não existe`,
+  });
+  expect(made.status).toBe(201);
+  const source = await api(page, "POST", "/api/memory/notes", {
+    title: `Origem ${stamp}`,
+    content: `aponta para [[${slug}]]`,
+  });
+  expect(source.status).toBe(201);
+  const indexed = await api(page, "POST", "/api/memory/index", {});
+  expect(indexed.status).toBe(200);
+
+  // the page learns of the new files from index.finished (the event stream refreshes the graph)
+  await page.getByRole("button", { name: "List view" }).click();
+  const list = page.getByRole("complementary", { name: "List view" });
+  await list.getByRole("textbox", { name: "Search" }).fill(`alvo-${stamp}`);
+  await list.getByRole("option", { name: new RegExp(`alvo-${stamp}`) }).click();
+  const links = page.getByRole("region", { name: "Links" });
+  await expect(links.getByText("Backlinks (1)")).toBeVisible();
+  await expect(links.getByRole("button", { name: `Origem ${stamp}` })).toBeVisible();
+  await expect(links.getByText("Links to nothing (1)")).toBeVisible();
+  await expect(links.getByText(`fantasma-${stamp}`)).toBeVisible();
+  if (process.env.NOTE_EDITOR_SHOTS)
+    await page.screenshot({ path: `${process.env.NOTE_EDITOR_SHOTS}/links.png` });
+  expect(await serious(page)).toEqual([]);
+  // the edit action is on the same panel
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Edit note" })).toBeVisible();
+});

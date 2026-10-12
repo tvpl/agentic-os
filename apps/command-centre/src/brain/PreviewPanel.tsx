@@ -19,6 +19,7 @@ import {
   CONSOLE_DRAFT_EVENT,
 } from "../desktop/consoleDraft";
 import { useT } from "../i18n";
+import { LinksSection } from "./LinksSection";
 import { openNoteEditor } from "./noteEditor";
 import { relationsOf } from "./engine/graph";
 import type { EdgeKind, FileNode, World } from "./engine/world";
@@ -236,6 +237,8 @@ export function PreviewPanel({
           ))}
         </section>
       )}
+
+      {isMarkdown && <LinksSection fileId={node.id} onSelectId={onSelectId} />}
 
       <div className="brain-preview-body">
         {preview.kind === "loading" ? (

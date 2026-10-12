@@ -23,8 +23,7 @@ de criação abaixo e depois este), "Editar" no preview de uma nota editável, e
   estado: ícone + texto (`Salvo` com `Check`, `Alterações não salvas` com `Circle`, `Salvando…` com `Loader`, `Conflito` com
   `AlertTriangle`, `Erro ao salvar` com `AlertTriangle`). O estado é `role="status"`; o conflito e o erro repetem-se no corpo.
 - Corpo: um `<textarea>` com rótulo (`aria-label` = "Texto da nota"), fonte mono 13px, `spellcheck` ligado, ocupa a altura toda,
-  sem editor rico. Abaixo, uma linha de apoio: tamanho em bytes / limite (`12 KB de 1 MB`) e "N notas apontam para esta" (a contagem
-  de backlinks; some enquanto carrega ou se falhar).
+  sem editor rico. Abaixo, uma linha de apoio: tamanho em bytes / limite (`12 KB de 1 MB`).
 - Rodapé: "Fechar" (`.btn`), "Salvar" (`.btn.primary`, desabilitado enquanto o texto é igual ao salvo ou enquanto salva).
   ⌘S / Ctrl+S salva (tecla do campo, registrada no escopo `modal` do registro).
 - Carregando: spinner + "Carregando…" no lugar do corpo. Erro de leitura: mensagem + "Tentar de novo". Não editável: a razão
@@ -48,7 +47,6 @@ Seção `aria-label="Links"` logo abaixo das relações existentes, no `PreviewP
 - "Backlinks (N)": lista de botões `.brain-md-link` (o nome da nota de origem, a linha, o texto do link); clicar seleciona a nota.
 - "Links quebrados (N)": os destinos que não resolvem, em lista simples com o texto do link e o ícone `Unlink`; sem botão.
 - Vazio: "Nenhuma nota aponta para esta." Carregando: spinner + texto. Erro: mensagem + "Tentar de novo".
-- Um wikilink com várias candidatas mostra "(+N)" no destino e a lista das outras no `title`.
 
 ## Tela - Progresso da indexação
 
@@ -82,11 +80,12 @@ Na barra do Segundo Cérebro (onde "Reindexar" já mora): enquanto roda, a fase 
 | `note.discard.confirm`      | Discard                                        | Descartar                                         |
 | `note.discard.keep`         | Keep editing                                   | Continuar editando                                |
 | `note.size`                 | {size} of {limit}                              | {size} de {limit}                                 |
-| `note.backlinks.count`      | {n} notes point here                           | {n} notas apontam para esta                       |
 | `brain.links`               | Links                                          | Links                                             |
 | `brain.links.backlinks`     | Backlinks                                      | Backlinks                                         |
-| `brain.links.broken`        | Broken links                                   | Links quebrados                                   |
+| `brain.links.broken`        | Links to nothing                               | Links quebrados                                   |
 | `brain.links.none`          | No note points here.                           | Nenhuma nota aponta para esta.                    |
+| `brain.links.retry`         | Try again                                      | Tentar de novo                                    |
+| `brain.links.line`          | line {n}                                       | linha {n}                                         |
 | `brain.index.phase.scan`    | Scanning                                       | Varrendo                                          |
 | `brain.index.phase.index`   | Indexing                                       | Indexando                                         |
 | `brain.index.phase.prune`   | Removing                                       | Removendo                                         |

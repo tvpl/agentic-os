@@ -147,10 +147,10 @@ describe("S1 the route table and the registration", () => {
     try {
       const router = app.apiRoutes.map((r) => `${r.method} ${r.url}`).sort();
       const table = entries.map(([, e]) => routeKey(e)).sort();
-      expect(router).toHaveLength(130);
+      expect(router).toHaveLength(131);
       expect(table).toEqual(router);
-      expect(new Set(table).size).toBe(130);
-      expect(new Set(entries.map(([id]) => id)).size).toBe(130);
+      expect(new Set(table).size).toBe(131);
+      expect(new Set(entries.map(([id]) => id)).size).toBe(131);
       for (const [id, entry] of entries) {
         expect(id, id).toMatch(/^[a-zA-Z]+(\.[a-zA-Z]+)+$/);
         expect(entry.summary.length, `${id} summary`).toBeGreaterThan(8);
@@ -179,7 +179,7 @@ describe("S1 the route table and the registration", () => {
         const k = e.public ? "public" : e.scope!;
         counts[k] = (counts[k] ?? 0) + 1;
       }
-      expect(counts).toEqual({ owner: 65, monitor: 33, content: 23, run: 6, approve: 1, public: 2 });
+      expect(counts).toEqual({ owner: 65, monitor: 33, content: 24, run: 6, approve: 1, public: 2 });
       expect(entries.filter(([, e]) => e.public && e.scope !== undefined)).toEqual([]);
 
       expect(
@@ -712,7 +712,7 @@ describe("S2 the real answer is checked", () => {
     // A route with no scenario, or a scenario for no route: both are a hole in this proof.
     expect(Object.keys(SCENARIOS).sort()).toEqual(router);
     expect(Object.keys(SCENARIOS).sort()).toEqual(tabled);
-    expect(results).toHaveLength(130);
+    expect(results).toHaveLength(131);
     const problems: string[] = [];
     for (const { key, entry, answer, id } of results) {
       const scenario = SCENARIOS[key]!;

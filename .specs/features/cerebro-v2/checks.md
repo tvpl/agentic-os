@@ -72,6 +72,7 @@ Proof: `npm run test -w apps/command-centre -- src/brain/NoteEditor.test.tsx -t 
 
 **C19** - "Editar" in the preview of an editable note opens the editor with the file's text; each state (`Salvo`, `Alterações não salvas`, `Salvando…`, `Conflito`, `Erro ao salvar`) shows its text and its own icon, and the status text is the same in the accessible name of the status region (AC 19)
 Proof: `npm run test -w apps/command-centre -- src/brain/NoteEditor.test.tsx -t "C19 "`
+Proof: `npm run test -w apps/command-centre -- src/brain/PreviewPanel.test.tsx -t "C19 "`
 
 **C20** - "Salvar" is disabled while the text equals the saved one and while saving; closing by Esc, "Fechar" or the veil with changes asks "Descartar as alterações não salvas?" (initial focus "Continuar editando"), and without changes closes at once (AC 20)
 Proof: `npm run test -w apps/command-centre -- src/brain/NoteEditor.test.tsx -t "C20 "`
@@ -81,6 +82,7 @@ Proof: `npm run test -w apps/command-centre -- src/brain/NoteEditor.test.tsx -t 
 
 **C22** - `413`, `403` and a network failure on save each show their message in the dialog with the text kept and the dialog open; loading shows a spinner with "Carregando…"; a not-editable file shows its `reason` and neither "Editar" nor "Salvar" (AC 22)
 Proof: `npm run test -w apps/command-centre -- src/brain/NoteEditor.test.tsx -t "C22 "`
+Proof: `npm run test -w apps/command-centre -- src/brain/PreviewPanel.test.tsx -t "C22 "`
 
 **C23** - The editor is a dynamic `import()` (no static import of it from the entry), the entry bundle passes `bundle:check` against its recorded entry, and the open dialog on the Second Brain screen passes axe (no `serious`/`critical`) in the light and dark themes, with prose at 13px and nothing under 12px (AC 23)
 Proof: `npm run test -w apps/command-centre -- src/brain/NoteEditor.test.tsx -t "C23 "`
@@ -114,7 +116,8 @@ Proof: `npx vitest run tests/data.migration.test.ts -t "C30 "`
 Proof: `npx vitest run tests/data.migration.test.ts -t "C56 "`
 
 **C31** - The preview of a note shows "Backlinks (N)" with its list (clicking one selects that note), "Links quebrados (N)" for the unresolved ones, "Nenhuma nota aponta para esta." for none, a spinner with text while loading and an error with "Tentar de novo" that retries (AC 31)
-Proof: `npm run test -w apps/command-centre -- src/brain/LinksSection.test.tsx -t "C31 "`
+Proof: `npm run test -w apps/command-centre -- src/brain/PreviewPanel.test.tsx -t "C31 "`
+Proof: `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/note-editor.spec.ts -g "C31 "`
 
 ### S3 - indexação em worker · ~12 files · ~170 KB · ~60k
 
@@ -302,12 +305,13 @@ Size, with the arithmetic (`wc -c` of the files each slice touches / 4, plus the
 Status of slices (updated in the commit that closes each):
 
 - S1: closed (C1-C17, C57 green; the hash is on the Boundary line below)
-- S1b: closed except the PreviewPanel half of C19/C22 (the Edit button present/absent), proven with the links tests in S2 (C19, C22 gain that Proof line there)
-- S2: open
+- S1b: closed (C18-C23; the Edit button of the preview is proven in `PreviewPanel.test.tsx` under C19 and C22, an added Proof line)
+- S2: closed (C24-C31, C56 for `note_links`; the `file_vectors` half of C56 closes with S4)
 - S3: open
 - S4: open
 - cross-cutting: open
 
-- **Boundary:** S1 (C1-C17, C57) closed at the commit `feat(memory): create and edit notes ...`; its hash is written by the next commit
+- **Boundary:** S1 (C1-C17, C57) closed at `df74efa`; S1b (C18-C23) closed at `96f05f5`
 - **Settled mid-build:** MCP tool names are `note_create`/`note_read`/`note_save` (the server is already namespaced `mordomo`, and the other tools carry no prefix); a link planted on the name a new note would take is `403 forbidden_path` (never skipped silently); the five NoteError classes are one class per status so the contract scan (`api.contract` C13) can read the codes; the internal barrel gains only `createNote`, `readNote`, `saveNote` (the other helpers are imported by path in tests)
 - **Deliberate changes to earlier pins:** route totals 127 -> 130 and the scope counts (`owner` 65, `content` 23) in `api.contract`, `api.openapi`, `device-scopes`, `events.contract`, `api.refusals`; the raised-errors set 49 -> 56 (`api.contract` C13); the internal names of `sdk.surface` C38 (+3); `docs/security.md` table
+- **Settled mid-build (S1b, S2):** the editor shows no "N notes point here" count and the links section no "(+N)" for ambiguous wikilinks (the editor has a path, the route takes an id; `alternatives` is in the API) - `design.md` was corrected to match; the error icon of the editor is `CircleAlert` (distinct from the conflict's `AlertTriangle`); `outgoing` keeps document order (`ORDER BY line, rowid`); the Núcleo reader sheet got the Edit action too

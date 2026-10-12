@@ -114,6 +114,7 @@ describe("S5 the surface is a closed list", () => {
         "classifyNotePath",
         "clipForLabel",
         "createNote",
+        "linksOf",
         "readNote",
         "saveNote",
       ].sort(),

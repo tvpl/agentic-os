@@ -407,3 +407,112 @@ describe("S1 the database is migrated once", () => {
     expect(fs.existsSync(`${junk.paths.dbFile}-wal`)).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// cerebro-v2: migration 20 (`note_links`, door 1)
+
+describe("C30 migration 20 on a database that already holds an index", () => {
+  it("C30 creates note_links empty, changes no row, and the first pass fills it from the stored text without opening a file", async () => {
+    const { AppContext } = await import("../apps/api/src/context.js");
+    const home = tempHome();
+    const memory = home.paths.memory;
+    const write = (rel: string, text: string) => {
+      fs.mkdirSync(path.dirname(path.join(memory, rel)), { recursive: true });
+      fs.writeFileSync(path.join(memory, rel), text);
+    };
+    write("a.md", "# A\n\n[[b]] e [x](./c.md)\n");
+    write("b.md", "# B\n\n```\n[[nao]]\n```\n[[a|volta]]\n");
+    write("c.md", "sem links\n");
+    write("pasta/d.txt", "[[b]] num arquivo que não é Markdown\n");
+
+    const first = new AppContext(home.paths.home);
+    first.indexer.indexAll();
+    const links = (db: Database.Database) =>
+      db
+        .prepare("SELECT src_id, kind, target, label, line FROM note_links ORDER BY src_id, line, rowid")
+        .all();
+    const expected = links(first.db);
+    expect(expected.length).toBe(3); // two in a.md, one in b.md (the fenced one and the .txt file give none)
+    const dump = (db: Database.Database) => ({
+      files: db.prepare("SELECT * FROM files ORDER BY id").all(),
+      fts: db.prepare("SELECT rowid, name, rel, content FROM files_fts ORDER BY rowid").all(),
+    });
+    first.close();
+
+    // the state a release before migration 20 left: no table, no marker, version 19
+    const old = new Database(home.paths.dbFile);
+    old.exec("DROP TABLE note_links");
+    old.prepare("DELETE FROM meta WHERE key = 'index.note_links'").run();
+    old.pragma("user_version = 19");
+    const before = dump(old);
+    old.close();
+
+    const second = new AppContext(home.paths.home);
+    try {
+      expect(second.db.pragma("user_version", { simple: true })).toBeGreaterThanOrEqual(20);
+      expect(links(second.db)).toEqual([]);
+      expect(dump(second.db)).toEqual(before);
+
+      const opened: string[] = [];
+      const realOpen = fs.openSync;
+      vi.spyOn(fs, "openSync").mockImplementation(((file: fs.PathLike, ...rest: unknown[]) => {
+        if (String(file).startsWith(memory)) opened.push(String(file));
+        return (realOpen as (...a: unknown[]) => number)(file, ...rest);
+      }) as typeof fs.openSync);
+      second.indexer.indexAll();
+      vi.restoreAllMocks();
+      expect(opened).toEqual([]);
+      expect(links(second.db)).toEqual(expected);
+
+      // twice: the migration SQL again, and a second pass, leave the same rows
+      const sql = MIGRATIONS.find((m) => m.version === 20)!.sql!;
+      second.db.exec(sql);
+      second.db.exec(sql);
+      expect(links(second.db)).toEqual(expected);
+      second.indexer.indexAll();
+      expect(links(second.db)).toEqual(expected);
+      second.db.prepare("DELETE FROM meta WHERE key = 'index.note_links'").run();
+      second.indexer.indexAll();
+      expect(links(second.db)).toEqual(expected);
+    } finally {
+      second.close();
+    }
+  });
+
+  it("C56 note_links has exactly the shape of door 1: columns, key and index", () => {
+    const home = tempHome();
+    const { db } = openDb(home.paths);
+    try {
+      const columns = (
+        db.pragma("table_info(note_links)") as Array<{
+          name: string;
+          type: string;
+          notnull: number;
+          pk: number;
+        }>
+      ).map(({ name, type, notnull, pk }) => ({ name, type, notnull, pk }));
+      expect(columns).toEqual([
+        { name: "src_id", type: "INTEGER", notnull: 1, pk: 1 },
+        { name: "kind", type: "TEXT", notnull: 1, pk: 2 },
+        { name: "target", type: "TEXT", notnull: 1, pk: 3 },
+        { name: "label", type: "TEXT", notnull: 0, pk: 0 },
+        { name: "line", type: "INTEGER", notnull: 1, pk: 4 },
+      ]);
+      const indexes = (
+        db.pragma("index_list(note_links)") as Array<{ name: string; unique: number; origin: string }>
+      )
+        .map(({ name, unique, origin }) => ({ name, unique, origin }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      expect(indexes.map((i) => [i.origin, i.unique])).toEqual([
+        ["c", 0],
+        ["pk", 1],
+      ]);
+      expect(indexes.find((i) => i.origin === "c")!.name).toBe("idx_note_links_target");
+      expect(
+        (db.pragma("index_info(idx_note_links_target)") as Array<{ name: string }>).map((c) => c.name),
+      ).toEqual(["kind", "target"]);
+    } finally {
+      db.close();
+    }
+  });
+});

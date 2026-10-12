@@ -59,6 +59,28 @@ const NoteReadSchema = NoteWrittenSchema.extend({
   reason: z.string().optional(),
 });
 
+const LinkKindSchema = z.enum(["markdown-link", "wikilink"]);
+
+const BacklinkSchema = z.object({
+  /** The file that holds the link. */
+  file: FileRowSchema,
+  kind: LinkKindSchema,
+  line: z.number(),
+  label: z.string().nullable(),
+});
+
+const OutgoingLinkSchema = z.object({
+  kind: LinkKindSchema,
+  /** Markdown link: the absolute path it names. Wikilink: the name it uses (`folder/name`, lower case, no `.md`). */
+  target: z.string(),
+  label: z.string().nullable(),
+  line: z.number(),
+  /** The file the link leads to today; `null` when it leads nowhere (a broken link). */
+  resolved: FileRowSchema.nullable(),
+  /** Other files a wikilink could have meant; `resolved` is the one the resolution order took. */
+  alternatives: z.array(FileRowSchema),
+});
+
 const AreaCountSchema = z.object({ area: z.string(), count: z.number() });
 const ExtCountSchema = z.object({ ext: z.string(), count: z.number() });
 const TagCountSchema = z.object({ tag: z.string(), count: z.number() });
@@ -277,6 +299,22 @@ export const memoryRoutes = {
     scope: "content",
     query: z.object({ id: z.coerce.number().int() }),
     responses: { 200: z.array(z.object({ file: FileRowSchema, why: z.string() })) },
+  }),
+  "memory.links": route({
+    method: "GET",
+    path: "/api/memory/links",
+    summary: "Who points at an indexed file (backlinks) and where its own links lead, broken ones included",
+    tag: "memory",
+    scope: "content",
+    query: z.object({ id: z.coerce.number().int() }),
+    responses: {
+      200: z.object({
+        file: FileRowSchema,
+        backlinks: z.array(BacklinkSchema),
+        outgoing: z.array(OutgoingLinkSchema),
+      }),
+    },
+    errors: [notFound("The file")],
   }),
   "memory.preview": route({
     method: "GET",

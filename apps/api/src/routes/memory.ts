@@ -14,6 +14,7 @@ import {
   installJournalHooks,
   journalSections,
   listFacets,
+  linksOf,
   listJournalDates,
   localDateString,
   memoryHygiene,
@@ -114,6 +115,13 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   bind(app, "memory.related", async ({ query: { id } }) => {
     return relatedFiles(ctx.db, id);
+  });
+
+  bind(app, "memory.links", async ({ query: { id } }) => {
+    // Rows are judged by today's policy as they are read: a stale row under a private path is not a file here.
+    const links = linksOf(ctx.db, id, ctx.indexer.rowFilter());
+    if (!links) throw httpError(404, "File not found", "not_found");
+    return links;
   });
 
   bind(app, "memory.preview", async ({ query: { p } }) => {

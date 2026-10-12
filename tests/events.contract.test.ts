@@ -248,7 +248,7 @@ describe("S4 the bus and the document", () => {
       const entry = EVENT_ENVELOPES.find((e) => e.type === type && e.v === sent.v)!;
       expect(checkBody(entry.schema, sent), type).toEqual([]);
     }
-    expect(Object.keys(SCENARIOS)).toHaveLength(130);
+    expect(Object.keys(SCENARIOS)).toHaveLength(131);
   });
 
   it("C29 docs/events.md equals the generated text", () => {

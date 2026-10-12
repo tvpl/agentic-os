@@ -428,6 +428,12 @@ export const SCENARIOS: Record<string, Scenario> = {
   [key("GET", "/api/memory/hygiene")]: { run: (w) => w.call("GET", "/api/memory/hygiene") },
   [key("GET", "/api/memory/facts")]: { run: (w) => w.call("GET", "/api/memory/facts") },
   [key("GET", "/api/memory/query")]: { run: (w) => w.call("GET", "/api/memory/query?where=status") },
+  [key("GET", "/api/memory/links")]: {
+    run: async (w) => {
+      const hits = (await w.call("GET", "/api/memory/search?q=Alfa")).body as Array<{ id: number }>;
+      return w.call("GET", `/api/memory/links?id=${hits[0]?.id ?? 1}`);
+    },
+  },
   [key("GET", "/api/memory/note")]: {
     run: (w) =>
       w.call("GET", `/api/memory/note?p=${encodeURIComponent(noteOf(w, "Cenário de leitura").path)}`),

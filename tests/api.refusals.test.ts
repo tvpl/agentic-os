@@ -10,7 +10,7 @@ import { buildWorld, runScenarios, SCENARIOS, type Result } from "./helpers/cont
 /**
  * The refusals of the path filter and of the safe reader (.specs/features/contratos-rest, round 3 of the fixes): the
  * routes that may answer `403 forbidden_path`, `404 not_a_file` and `413 file_too_large` are not listed by hand and
- * trusted. Each of the 130 routes is called as its scenario calls it, in a world where every call into the path
+ * trusted. Each of the 131 routes is called as its scenario calls it, in a world where every call into the path
  * filter or the safe reader (`core/src/security/safeFs.ts`, the only place those errors come from) refuses in the
  * way a hostile file would: outside the granted folders, a folder or a link out in place of a file, a file past its
  * cap. The routes that answer the refusal are the routes that must declare it; the contract is compared with them.
@@ -167,9 +167,9 @@ const declares = (entry: RouteDefinition, fault: (typeof FAULTS)[number]): boole
 
 describe("S1 the refusals of the file readers", () => {
   it("C45 the probe runs one scenario for each route, and the refusals reach the routes", () => {
-    expect(Object.keys(SCENARIOS)).toHaveLength(130);
+    expect(Object.keys(SCENARIOS)).toHaveLength(131);
     for (const fault of FAULTS) {
-      expect(answered[fault], fault).toHaveLength(130);
+      expect(answered[fault], fault).toHaveLength(131);
       expect(injected[fault], `${fault} injected`).toBeGreaterThan(20);
       // A probe that finds nothing would pass every comparison below.
       expect(answering(fault).length, `${fault} answered`).toBeGreaterThan(5);

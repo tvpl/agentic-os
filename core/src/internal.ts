@@ -123,6 +123,7 @@ export {
   type StepEvidence,
   type CreateObjectiveInput,
 } from "./objectives/objectiveStore.js";
+export { linksOf } from "./memory/links.js";
 export { classifyNotePath, createNote, readNote, saveNote } from "./memory/notes.js";
 export { MemoryIndexer, fileRowFromDb, type IndexStats, type FileRow } from "./memory/indexer.js";
 export { searchFiles, listFacets, type SearchFilters, type SearchHit } from "./memory/search.js";
