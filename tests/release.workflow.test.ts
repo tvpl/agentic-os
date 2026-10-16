@@ -327,6 +327,26 @@ describe("C45 the license and the legal texts are in the payload before an insta
     expect(run).toContain("node scripts/licenses-rust.mjs --check --require-cargo");
   });
 
+  it("C45 ci.yml desktop job: the payload is built before anything that compiles the app (build.rs refuses a missing `../payload`)", () => {
+    const steps = ci.jobs.desktop!.steps;
+    const first = (needle: RegExp) => steps.findIndex((s) => needle.test(s.run ?? ""));
+    const payload = first(/node scripts\/package\.mjs --payload apps\/desktop\/payload/);
+    expect(payload).toBeGreaterThan(-1);
+    // every command that makes cargo build `mordomo-desktop` (clippy and check over the workspace, build, run) comes after it
+    for (const needle of [
+      /cargo clippy/,
+      /cargo check --locked -p mordomo-desktop/,
+      /cargo build --locked -p mordomo-desktop/,
+      /smoke\/gui\.sh/,
+    ]) {
+      const at = first(needle);
+      expect(at, String(needle)).toBeGreaterThan(-1);
+      expect(at, `${needle} must run after the payload step`).toBeGreaterThan(payload);
+    }
+    // the tauri build script is what refuses it: the claim above is about this file, not a guess
+    expect(read("apps/desktop/src-tauri/tauri.conf.json")).toContain('"../payload"');
+  });
+
   it("C45 the Rust toolchain installed by the workflows is the one of rust-toolchain.toml", () => {
     const pinned = /channel = "([\d.]+)"/.exec(read("apps/desktop/rust-toolchain.toml"))![1]!;
     for (const text of [releaseText, ciText]) {

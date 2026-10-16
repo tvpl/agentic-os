@@ -82,6 +82,15 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf file xvfb xdotool metacity dbus-x11
       - run: npm ci
       - run: npm run build
+      # The payload comes first: `tauri_build` (the build script of mordomo-desktop) refuses a `resources` path that does
+      # not exist, so clippy, `cargo check` and `cargo build` of the app all need `apps/desktop/payload`.
+      - name: Payload and the legal files in it
+        run: |
+          set -euo pipefail
+          node scripts/package.mjs --payload apps/desktop/payload --skip-build
+          for file in LICENSE legal/EULA.md legal/PRIVACY.md legal/NOTICE.md legal/THIRD_PARTY_NOTICES.md legal/THIRD_PARTY_NOTICES.desktop.md legal/sbom.cdx.json legal/sbom.desktop.cdx.json; do
+            test -f "apps/desktop/payload/$file"
+          done
       - name: Rust format, lint and tests (the shell logic runs without a display)
         working-directory: apps/desktop
         run: |
@@ -91,13 +100,9 @@ jobs:
           cargo check --locked -p mordomo-desktop
       - name: Licenses of the Rust crates (cargo is required here)
         run: node scripts/licenses-rust.mjs --check --require-cargo
-      - name: Payload, legal files and the window smoke test
+      - name: Build the app and run the window smoke test
         run: |
           set -euo pipefail
-          node scripts/package.mjs --payload apps/desktop/payload --skip-build
-          for file in LICENSE legal/EULA.md legal/PRIVACY.md legal/NOTICE.md legal/THIRD_PARTY_NOTICES.md legal/THIRD_PARTY_NOTICES.desktop.md legal/sbom.cdx.json legal/sbom.desktop.cdx.json; do
-            test -f "apps/desktop/payload/$file"
-          done
           (cd apps/desktop && cargo build --locked -p mordomo-desktop)
           apps/desktop/smoke/gui.sh apps/desktop/target/debug/mordomo-desktop apps/desktop/payload
 
