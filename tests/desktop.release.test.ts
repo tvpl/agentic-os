@@ -1051,6 +1051,15 @@ describe("C56 `package.mjs --payload <dir>` empties only a folder that is empty,
       JSON.stringify({ name: "mordomo-os", private: true, packagedAt: "2026-10-16T00:00:00.000Z" }),
     );
     expect(() => guard(half)).toThrow(/is not a payload/);
+    // nor is the bundle with a manifest that was never stamped by the packager (no `packagedAt`, or not a string)
+    for (const packagedAt of [undefined, 1760572800000, null]) {
+      const unstamped = ownPayload();
+      fs.writeFileSync(
+        path.join(unstamped, "package.json"),
+        JSON.stringify({ name: "mordomo-os", private: true, packagedAt }),
+      );
+      expect(() => guard(unstamped), String(packagedAt)).toThrow(/is not a payload/);
+    }
   });
 
   it("C56 the repository, its parents, the working directory, the home folder, the file system root and a file are refused", () => {
