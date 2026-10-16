@@ -195,6 +195,112 @@ describe("C23 the starting screen, the buttons and the version", () => {
   });
 });
 
+/** The page on a clock the test drives: nothing waits in real time, and the 10 s of the "still starting" note are exact. */
+async function openOnClock(language: string, statuses: () => Status) {
+  const dom = new JSDOM(html, { runScripts: "outside-only", pretendToBeVisual: true });
+  const { window } = dom;
+  Object.defineProperty(window.navigator, "language", { value: language, configurable: true });
+  let now = 0;
+  let nextId = 1;
+  const timers = new Map<number, { at: number; fn: () => void }>();
+  const w = window as unknown as Record<string, unknown>;
+  w.setTimeout = (fn: () => void, ms = 0) => {
+    const id = nextId++;
+    timers.set(id, { at: now + ms, fn });
+    return id;
+  };
+  w.clearTimeout = (id: number) => void timers.delete(id);
+  const calls: string[] = [];
+  (window as unknown as { __TAURI__: unknown }).__TAURI__ = {
+    core: {
+      invoke: (command: string) => {
+        calls.push(command);
+        return Promise.resolve(command === "shell_status" ? statuses() : null);
+      },
+    },
+  };
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+  };
+  const advance = async (ms: number) => {
+    const end = now + ms;
+    for (;;) {
+      const due = [...timers.entries()].filter(([, t]) => t.at <= end).sort((a, b) => a[1].at - b[1].at)[0];
+      if (!due) break;
+      timers.delete(due[0]);
+      now = Math.max(now, due[1].at);
+      due[1].fn();
+      await settle();
+    }
+    now = end;
+  };
+  window.eval(script);
+  await settle();
+  const doc = window.document;
+  const hidden = (sel: string) => (doc.querySelector(sel) as HTMLElement).hidden;
+  return { doc, calls, advance, hidden, text: (sel: string) => doc.querySelector(sel)?.textContent ?? "" };
+}
+
+describe("C54 the note 'still starting' appears 10 s into a wait, and again in every wait after Try again", () => {
+  const starting: Status = { state: "starting", failure: null, version: "0.8.0" };
+  const slowCopy = /nota lenta "([^"]+)" \/ "([^"]+)"/.exec(design.replace(/\s+/g, " "))!;
+
+  it("C54 the text is the one of design.md in each language, and it is hidden until 10 s have passed", async () => {
+    for (const [language, expected] of [
+      ["en-US", slowCopy[1]],
+      ["pt-BR", slowCopy[2]],
+    ] as const) {
+      const page = await openOnClock(language, () => starting);
+      expect(page.text("#slow")).toBe(expected);
+      expect(page.hidden("#slow")).toBe(true);
+      await page.advance(9_000);
+      expect(page.hidden("#slow")).toBe(true);
+      await page.advance(1_500);
+      expect(page.hidden("#slow")).toBe(false);
+    }
+  });
+
+  it("C54 a failure on screen at the 10 s mark never shows it; after Try again the note comes 10 s into the new wait, not before", async () => {
+    let status: Status = starting;
+    const page = await openOnClock("en-US", () => status);
+    await page.advance(3_000);
+    status = failed("crashed");
+    await page.advance(1_000); // the failure is up
+    expect(page.hidden("#failure")).toBe(false);
+    await page.advance(8_000); // past the 10 s of the first wait
+    expect(page.hidden("#slow")).toBe(true);
+    status = starting; // the shell answers 'starting' once Try again is pressed
+    (page.doc.getElementById("retry") as HTMLButtonElement).click();
+    expect(page.calls).toContain("shell_retry");
+    expect(page.hidden("#starting")).toBe(false);
+    expect(page.hidden("#slow")).toBe(true);
+    await page.advance(9_000);
+    expect(page.hidden("#slow")).toBe(true);
+    await page.advance(1_500);
+    expect(page.hidden("#slow")).toBe(false);
+  });
+
+  it("C54 a failure that arrives after the note was shown takes it away with the starting screen, and a restart brings the wait back from zero", async () => {
+    let status: Status = starting;
+    const page = await openOnClock("en-US", () => status);
+    await page.advance(10_500);
+    expect(page.hidden("#slow")).toBe(false);
+    status = failed("stopped");
+    await page.advance(1_000);
+    expect(page.hidden("#starting")).toBe(true);
+    expect(page.hidden("#slow")).toBe(true);
+    // the service is started by something other than the button (the menu's Reload while it restarts, say)
+    status = starting;
+    await page.advance(1_000);
+    expect(page.hidden("#starting")).toBe(false);
+    expect(page.hidden("#slow")).toBe(true);
+    await page.advance(8_500);
+    expect(page.hidden("#slow")).toBe(true);
+    await page.advance(1_500);
+    expect(page.hidden("#slow")).toBe(false);
+  });
+});
+
 describe("C23 arrangement: one column, in this order", () => {
   it("C23 main.shell holds the mark, one of the two screens at a time, and the version, in that order", () => {
     const dom = new JSDOM(html);

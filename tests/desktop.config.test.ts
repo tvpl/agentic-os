@@ -206,3 +206,60 @@ describe("C31 a build without the updater's key has no updater at all", () => {
     expect(updater).not.toMatch(/dangerous/i);
   });
 });
+
+describe("C55 the native menu is the one design.md describes: About, Edit, View, Window, and nothing else", () => {
+  const menu = read(TAURI, "src", "menu.rs");
+  const flat = menu.replace(/\s+/g, " ");
+
+  it("C55 four submenus in this order, named as the operating system's own", () => {
+    expect([...flat.matchAll(/SubmenuBuilder::new\(app, "([^"]+)"\)/g)].map((m) => m[1])).toEqual([
+      "MordomoOS",
+      "Edit",
+      "View",
+      "Window",
+    ]);
+    expect(flat).toContain(".items(&[&application, &edit, &view, &window])");
+  });
+
+  it("C55 MordomoOS: About with the version and the license, Quit last; 'Check for Updates…' only in a build with the updater", () => {
+    expect(flat).toMatch(/\.about\(Some\(about\)\)/);
+    expect(flat).toContain('.version(Some(env!("CARGO_PKG_VERSION")))');
+    expect(flat).toContain('.license(Some("Functional Source License 1.1 (Apache-2.0 future license)"))');
+    expect(read(ROOT, "LICENSE")).toContain("Functional Source License");
+    expect(flat).toMatch(/let application = application\.separator\(\)\.quit\(\)\.build\(\)\?;/);
+    expect(flat).toMatch(
+      /#\[cfg\(feature = "updater"\)\] \{ let check = MenuItemBuilder::with_id\(CHECK_FOR_UPDATES, "Check for Updates…"\)/,
+    );
+    expect((flat.match(/"Check for Updates…"/g) ?? []).length).toBe(1);
+    // Services and Hide are macOS's
+    expect(flat).toMatch(
+      /#\[cfg\(target_os = "macos"\)\] \{ application = application \.separator\(\) \.services\(\) \.separator\(\) \.hide\(\)/,
+    );
+  });
+
+  it("C55 Edit: Undo, Redo, Cut, Copy, Paste, Select All, in this order (what a page needs for the clipboard)", () => {
+    expect(flat).toContain(
+      'SubmenuBuilder::new(app, "Edit") .undo() .redo() .separator() .cut() .copy() .paste() .select_all() .build()?',
+    );
+  });
+
+  it("C55 View: Reload with Ctrl/Cmd+R that reloads the window; full screen only on macOS", () => {
+    expect(flat).toContain('MenuItemBuilder::with_id(RELOAD, "Reload") .accelerator("CmdOrCtrl+R")');
+    expect(flat).toMatch(
+      /RELOAD => \{ if let Some\(window\) = app\.get_webview_window\(crate::shell::MAIN_WINDOW\) \{ let _ = window\.eval\("window\.location\.reload\(\)"\);/,
+    );
+    expect(flat).toMatch(/#\[cfg\(target_os = "macos"\)\] \{ view = view\.separator\(\)\.fullscreen\(\); \}/);
+  });
+
+  it("C55 Window: Minimize, Maximize outside macOS, Close", () => {
+    expect(flat).toMatch(/SubmenuBuilder::new\(app, "Window"\)\.minimize\(\);/);
+    expect(flat).toMatch(/#\[cfg\(not\(target_os = "macos"\)\)\] \{ window = window\.maximize\(\); \}/);
+    expect(flat).toContain("window.close_window().build()?");
+  });
+
+  it("C55 no toolbar and no tray icon: the crate has neither the feature nor a call", () => {
+    expect(cargoToml).not.toMatch(/tray-icon/);
+    for (const file of fs.readdirSync(path.join(TAURI, "src")))
+      expect(read(TAURI, "src", file), file).not.toMatch(/TrayIcon|tray_icon|\.toolbar\(|Toolbar/);
+  });
+});
