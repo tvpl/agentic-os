@@ -133,6 +133,9 @@ nenhuma configuração com `telemetry`, `analytics` ou `crash` no nome.
   (`exec("curl -s https://…")`); no meio de uma cadeia composta (`cd x && curl …`, `sh -c "… | curl …"`) não é;
 - `Reflect.get(globalThis, "fetch")` e `globalThis["fetch"]` são lidos, mas o objeto global com outro nome
   (`const g = globalThis`, depois `g.fetch(…)`) não é;
+- No que é Rust (`apps/desktop`): `Command::new` só é lido com o nome do programa escrito na chamada (um nome que vem
+  de uma variável não é), uma macro que gera código, um `include!` e o que um `build.rs` baixa ao compilar não são
+  lidos, e o que está em `#[cfg(test)]` é deixado de lado (o código depois dele é lido);
 - um endereço escrito sem esquema só é lido quando a cadeia começa por `//` (`"//host/arquivo.js"`) ou, num
   arquivo de texto, vem logo depois de aspas, de `(` ou de `=`; montado por partes, ou numa constante cujo nome
   não diz que é um endereço e cujo domínio de topo não está na lista conhecida da varredura, não é.

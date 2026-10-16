@@ -39,6 +39,8 @@ interface Point {
   count: number;
 }
 interface Scan {
+  scanText: (text: string, fileName?: string) => { points: Map<string, number>; hosts: Set<string> };
+  withoutRustTests: (text: string) => string;
   scanSource: (source: string, fileName?: string) => { points: Map<string, number>; hosts: Set<string> };
   scanTree: (root?: string) => { sites: Point[]; hosts: Array<{ host: string; files: string[] }> };
   compare: (found: ReturnType<Scan["scanTree"]>, policy: Policy) => string[];
@@ -1109,5 +1111,68 @@ describe("C39 the scanner reads the evasions it can decide, and the text says wh
     const npm = policy.hosts.find((h) => h.id === "npm-registry")!;
     expect(npm.trigger).toContain("npx -y <pacote>");
     expect(npm.data).toContain("o nome do pacote do conector");
+  });
+});
+
+describe("C57 the scan of the desktop shell's Rust and Cargo files has no blind spot of its own", () => {
+  const kinds = (text: string, file: string) => Object.fromEntries(scan.scanText(text, file).points);
+
+  it("C57 production code after a #[cfg(test)] module is read; the test module itself, with braces in strings and comments, is not", () => {
+    const source = [
+      "fn first() {}",
+      "#[cfg(test)]",
+      "mod tests {",
+      "    fn t<'a>(x: &'a str) { let s = \"}\"; let c = '}'; let r = r#\"} \"#; /* } */ // }",
+      '        std::net::TcpStream::connect("test.example.com:1").unwrap();',
+      "    }",
+      "}",
+      "fn production() {",
+      '    std::net::UdpSocket::bind("0.0.0.0:0").unwrap();',
+      "}",
+      "#[cfg(test)]",
+      "use std::net::TcpStream;",
+      "#[cfg(test)]",
+      "fn only_in_tests() { TcpStream::connect_timeout(todo!(), todo!()); }",
+      "",
+    ].join("\n");
+    expect(kinds(source, "apps/desktop/shell-core/src/x.rs")).toEqual({ "rust:net": 1 });
+    expect(scan.scanText(source, "x.rs").hosts.has("test.example.com")).toBe(false);
+    // braces that never balance are not cut: the scan reads more, never less
+    expect(kinds("#[cfg(test)]\nmod t { fn a() {\nfn b() { UdpSocket::bind(x); }", "x.rs")).toEqual({
+      "rust:net": 1,
+    });
+  });
+
+  it("C57 a network crate is seen as a table, in a target table and under another name", () => {
+    expect(kinds('reqwest = "0.12"\n', "apps/desktop/Cargo.toml")).toEqual({ "rust:crate:reqwest": 1 });
+    expect(kinds('[dependencies.reqwest]\nversion = "0.12"\n', "apps/desktop/src-tauri/Cargo.toml")).toEqual({
+      "rust:crate:reqwest": 1,
+    });
+    expect(kinds("[target.'cfg(unix)'.dependencies.ureq]\nversion = \"2\"\n", "Cargo.toml")).toEqual({
+      "rust:crate:ureq": 1,
+    });
+    expect(kinds('http-client = { package = "hyper", version = "1" }\n', "Cargo.toml")).toEqual({
+      "rust:crate:hyper": 1,
+    });
+    expect(kinds("[dependencies.tauri-plugin-updater]\noptional = true\n", "Cargo.toml")).toEqual({
+      "rust:crate:tauri-plugin-updater": 1,
+    });
+    // a crate that is not a client, and a comment about one, are not points
+    expect(
+      kinds('serde = "1"\n# reqwest = "0.12"\n[dependencies.serde_json]\nversion = "1"\n', "Cargo.toml"),
+    ).toEqual({});
+  });
+
+  it("C57 a network program started by name is a point, whatever its path or suffix; other programs are not", () => {
+    expect(
+      kinds('fn f() { Command::new("curl"); std::process::Command::new( "/usr/bin/wget.exe" ); }', "a.rs"),
+    ).toEqual({ "program:curl": 1, "program:wget": 1 });
+    expect(kinds('fn f() { Command::new("node"); Command::new(&payload.node); }', "a.rs")).toEqual({});
+  });
+
+  it("C57 the privacy text lists what is left: a program or a macro the scan cannot name in the Rust of the shell", () => {
+    const f = privacy.replace(/\s+/g, " ");
+    expect(f).toContain("No que é Rust");
+    expect(f).toContain("`Command::new` só é lido com o nome do programa escrito na chamada");
   });
 });
