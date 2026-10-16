@@ -196,6 +196,12 @@ describe("C31 a build without the updater's key has no updater at all", () => {
     expect(order.every((i) => i > 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(updater).toContain('host_str() != Some("github.com")');
+    // the order stop -> install -> (on failure) start again is shell-core's `install_with_service_stopped`, tested there;
+    // this file must go through it and give it the real way back
+    expect(updater).toMatch(
+      /install_with_service_stopped\(\s*\|\| app\.state::<crate::shell::Shell>\(\)\.stop_sidecar\(\),\s*\|\| update\.install\(&bytes\),\s*\|\| crate::shell::spawn_start\(app\.clone\(\)\),\s*\)\?;/,
+    );
+    expect(updater.match(/stop_sidecar\(\)/g)).toHaveLength(1);
     expect(updater).not.toMatch(/download_and_install/);
     expect(updater).not.toMatch(/dangerous/i);
   });
