@@ -120,7 +120,8 @@ mod tests {
     fn look_alikes_and_userinfo_do_not_pass_for_the_origin() {
         for address in [
             "http://127.0.0.1.evil.example:41234/",
-            "http://127.0.0.1.evil.example:41234/",
+            // userinfo: the host is evil.example, `127.0.0.1:41234` is the user name and password
+            "http://127.0.0.1:41234@evil.example/",
             "http://user:pw@127.0.0.1:41234/",
             "http://evil.example/?next=http://127.0.0.1:41234/",
             "http://tauri.localhost.evil.example/",
