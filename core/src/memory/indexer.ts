@@ -50,9 +50,13 @@ const RELATED_WRITE_ROWS = 500;
 export const WRITE_REST_RATIO = 6;
 const PENDING_LINKS_KEY = "index.pending_links";
 const LAST_INDEX_KEY = "last_index";
-/** Which version of the link extraction the stored `note_links` come from (the first pass after migration 20 fills them). */
+/**
+ * Which version of the link extraction the stored `note_links` come from (the first full pass after migration 20, or
+ * after the version moves, fills them again from the stored text, opening no file). "2": wikilink keys are NFC and
+ * Unicode lower case (`foldName`); version "1" lowered them without composing them.
+ */
 const NOTE_LINKS_KEY = "index.note_links";
-const NOTE_LINKS_VERSION = "1";
+const NOTE_LINKS_VERSION = "2";
 /** When the related-by-content edges were last refreshed: the files whose terms are newer than this still owe them. */
 const RELATED_AT_KEY = "index.related_at";
 

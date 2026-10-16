@@ -10,7 +10,7 @@ export type LinkKind = "markdown-link" | "wikilink";
 
 export interface ParsedLink {
   kind: LinkKind;
-  /** Markdown link: the absolute path it names. Wikilink: the key (`folder/name` without `.md`, lower case). */
+  /** Markdown link: the absolute path it names. Wikilink: the key (`folder/name` without `.md`, folded: `foldName`). */
   target: string;
   label: string | null;
   /** 1-based line of the link in the file. */
@@ -49,12 +49,21 @@ export function proseOf(content: string): string {
     .join("\n");
 }
 
-/** The key a wikilink target is looked up by: no heading, no `.md`, forward slashes, lower case. */
+/**
+ * A name as links and files are compared: composed (NFC) and lower case in the Unicode sense. A file system may hand
+ * back `E` + a combining accent where the person typed `É`, and SQLite's `lower()` folds ASCII only, so the folding is
+ * done here, on both sides, and never by the database.
+ */
+export function foldName(name: string): string {
+  return name.normalize("NFC").toLowerCase().normalize("NFC");
+}
+
+/** The key a wikilink target is looked up by: no heading, no `.md`, forward slashes, folded (`foldName`). */
 export function wikilinkKey(raw: string): string {
   let target = raw.split("#")[0]!.trim().replace(/\\/g, "/");
   target = target.replace(/^\.?\/+/, "");
   for (const ext of MARKDOWN_EXTENSIONS) if (target.toLowerCase().endsWith(ext)) target = target.slice(0, -ext.length);
-  return target.toLowerCase();
+  return foldName(target);
 }
 
 /** Every link in a Markdown file, in the order they appear. `source` is the absolute path of the file (for relative links). */

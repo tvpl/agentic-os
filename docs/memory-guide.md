@@ -259,7 +259,9 @@ or to save your text as a copy. The limit is the smaller of `limits.maxIndexedFi
 Markdown links, never the ones inside code blocks, code spans or the front matter. `GET /api/memory/links?id=`
 answers who points at a file and where its own links lead; a link that leads nowhere is listed as broken. A
 name that several files share resolves to the one in the same folder, else the shortest path, else the first
-alphabetically, and the others come back as `alternatives`. **Renaming a note never rewrites other files**: the
+alphabetically, and the others come back as `alternatives`. Names are compared without regard to case or to how an
+accent is spelled (`[[Édito]]`, `[[édito]]` and a file the system stored as `E` plus a combining accent are one name;
+without the accent it is another). **Renaming a note never rewrites other files**: the
 links that pointed at the old name show as broken in their sources until you fix them (or rename it back).
 
 **The index worker.** The pass that scans, reads, indexes, links and relates the files runs in a
