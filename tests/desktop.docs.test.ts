@@ -129,6 +129,12 @@ describe("C62 what the window cannot do is written where a person looks, and say
     );
   });
 
+  it("C62 docs/security.md says the launch secret stays readable to the same user in /proc/<pid>/environ and is removed from what the service starts", () => {
+    const security = read("docs/security.md").replace(/\s+/g, " ");
+    expect(security).toContain("`/proc/<pid>/environ` of the service");
+    expect(security).toContain("so what it starts does not inherit it");
+  });
+
   it("C62 the README of the desktop crate says which cargo commands need the payload first", () => {
     const readme = read("apps/desktop/README.md").replace(/\s+/g, " ");
     expect(readme).toContain("needs `apps/desktop/payload` first");

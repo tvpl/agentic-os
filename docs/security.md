@@ -248,7 +248,9 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
   headers of a browser or not). `Lax` and not the design's `Strict` because the first request comes from the shell's
   `tauri://` page, another site, and a `Strict` cookie is not sent through that redirect (seen under WebKitGTK). The service
   started that way (`start --foreground --sidecar`) also refuses to stop another service for the home or the port. The
-  secret is not a boundary against a process that can read `config/token`; it removes the "any program that sends a
+  secret is not a boundary against a process that can read `config/token`, nor against one that runs as the same user and
+  reads `/proc/<pid>/environ` of the service (the environment it was started with; the service deletes the variable from its
+  own `process.env`, so what it starts does not inherit it); it removes the "any program that sends a
   browser's headers gets the token from the page" path for the desktop app. `mordomo launch` in a browser is unchanged.
 - **Opening a file never runs it.** `POST /api/memory/open` hands the OS only folders and
   files whose extension is in `OPENABLE_EXTENSIONS` (`apps/api/src/routes/memory.ts`:
