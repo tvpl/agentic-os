@@ -104,3 +104,33 @@ describe("C50 the runbook has what the owner needs, and says what was not run", 
     expect(unreleased).toContain("41 network points and 17 entries (was 37 and");
   });
 });
+
+describe("C62 what the window cannot do is written where a person looks, and says what was and was not observed", () => {
+  const install = read("docs/install.md").replace(/\s+/g, " ");
+  const notRun = runbook.slice(runbook.indexOf("## 8.")).replace(/\s+/g, " ");
+
+  it("C62 saving a file from the window (blob: downloads) is a limit in the install guide and a 'not run' row in the runbook: seen on Linux, other systems unobserved, fix is an owner question", () => {
+    expect(install).toContain("Exports that download a file do not save anything from the app's window");
+    expect(install).toContain("Seen on Linux; macOS and Windows were not tried");
+    expect(notRun).toContain('`<a download href="blob:…">`');
+    expect(notRun).toContain("On **Linux** it was run");
+    expect(notRun).toContain("macOS and Windows were **not** observed");
+    expect(notRun).toContain("owner question");
+  });
+
+  it("C62 the claim is true of the code: the address policy refuses blob: and data:, and the window has no download handler", () => {
+    const nav = read("apps/desktop/shell-core/src/nav.rs");
+    expect(nav).toContain('"blob:http://127.0.0.1:41234/uuid"');
+    expect(nav).toContain('"data:text/html,<script>1</script>"');
+    expect(read("apps/desktop/src-tauri/src/shell.rs")).not.toContain("on_download");
+    // and the page does build such a link (so the limit is real, not hypothetical)
+    expect(read("apps/command-centre/src/views/settings/diagnostics.tsx")).toContain(
+      "URL.createObjectURL(blob)",
+    );
+  });
+
+  it("C62 the README of the desktop crate says which cargo commands need the payload first", () => {
+    const readme = read("apps/desktop/README.md").replace(/\s+/g, " ");
+    expect(readme).toContain("needs `apps/desktop/payload` first");
+  });
+});

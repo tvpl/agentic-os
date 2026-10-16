@@ -68,6 +68,12 @@ Limits worth knowing:
   one finds the data folder taken and says so.
 - The menu is in English like the operating system's; the screens of the app
   speak English and Portuguese.
+- **Exports that download a file do not save anything from the app's window.**
+  Settings › Diagnostics › Export diagnostics and the Pixel Studio exports build
+  a file in the page and ask the window to download it; the window refuses that
+  address on purpose and says nothing. Seen on Linux; macOS and Windows were not
+  tried. It is a known limit, not a decision; the way to fix it is an open
+  question to the owner (`docs/release.md` §8).
 - **Updates.** Only a build made with the owner's update key has an updater
   (*About* says when there is none). It asks the releases page for `latest.json`
   at start only if *Settings › Identity › check for updates* is on (off by
