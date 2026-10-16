@@ -31,7 +31,7 @@ const isZod = (value: unknown): value is z.ZodTypeAny => value instanceof z.ZodT
 
 describe("S1 the table", () => {
   it("C2 every entry has a schema or a raw kind for each success status", () => {
-    expect(entries).toHaveLength(127);
+    expect(entries).toHaveLength(132);
     const raw: string[] = [];
     for (const [id, entry] of entries) {
       const statuses = Object.keys(entry.responses).map(Number);
@@ -471,7 +471,7 @@ describe("S1 the table is a constant", () => {
     expect(() => {
       delete table["runs.get"];
     }).toThrow(TypeError);
-    expect(Object.keys(API)).toHaveLength(127);
+    expect(Object.keys(API)).toHaveLength(132);
 
     // The only route outside the table is a test's, bound to one server, and it cannot shadow an entry of the table.
     const tmp = makeTempHome("mordomo-synthetic-");

@@ -128,9 +128,16 @@ describe("C28 the weight of the build is recorded", () => {
     }>;
   };
 
-  it("C28 the newest entry is limpeza-legado, with a reason, the four numbers, and no more JS than the build before", () => {
-    const entry = baseline.after.at(-1)!;
-    const before = baseline.after.at(-2)!;
+  it("C28 the limpeza-legado entry has a reason, the four numbers, and no more JS than the build before; a later entry (cerebro-v2) says why it grew", () => {
+    const at = baseline.after.findIndex((e) => e.feature === "limpeza-legado");
+    expect(at).toBeGreaterThan(0);
+    const entry = baseline.after[at]!;
+    const before = baseline.after[at - 1]!;
+    for (const later of baseline.after.slice(at + 1)) {
+      expect(later.reason.length, later.feature).toBeGreaterThan(40);
+      for (const key of ["jsRaw", "jsGzip", "cssRaw", "cssGzip"] as const)
+        expect(Number.isInteger(later[key]) && later[key] > 0, `${later.feature} ${key}`).toBe(true);
+    }
     expect(entry.feature).toBe("limpeza-legado");
     expect(entry.reason.length).toBeGreaterThan(40);
     for (const key of ["jsRaw", "jsGzip", "cssRaw", "cssGzip"] as const)

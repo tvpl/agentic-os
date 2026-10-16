@@ -103,6 +103,7 @@ describe("S1 the contracts package", () => {
         "EverySchema",
         "FieldSpecSchema",
         "HeartbeatSchema",
+        "INDEX_PHASES",
         "IndexedFolderSchema",
         "ItemFieldsSchema",
         "KnownStreamTypes",

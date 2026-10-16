@@ -452,7 +452,7 @@ describe("S3 the API and the CLI start nothing of their own", () => {
    * piece of the base (`base`) and what it became (`head`); the comparison applies them to the base before it
    * compares, and each must match exactly once, so an assertion that changed anywhere else still fails.
    */
-  const AMENDMENTS: Array<{ suite: string; why: string; base: string[]; head: string[] }> = [
+  const AMENDMENTS: Array<{ suite: string; why: string; base: string[]; head: string[]; times?: number }> = [
     {
       suite: "tests/api.hardening.test.ts",
       why: "a route that throws, registered by hand for the file",
@@ -562,6 +562,66 @@ describe("S3 the API and the CLI start nothing of their own", () => {
         '      registerSyntheticEntry(fresh, "zz.root", rootEntry, async () => ({ root: true }));',
       ],
     },
+    // cerebro-v2 added five routes (a note, two writes, the links of a note, the cancel of a pass): only the totals the
+    // suite pins moved, and a migration (the links between notes) and one (the vectors) joined the later ones.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-v2: five routes more under /api",
+      base: ["    expect(routes).toHaveLength(125);"],
+      head: ["    expect(routes).toHaveLength(130);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-v2: owners and scoped routes",
+      base: ["    expect([owners, scoped]).toEqual([63, 62]);"],
+      head: ["    expect([owners, scoped]).toEqual([66, 64]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-v2: the registered routes",
+      base: ["    expect(Object.keys(registered)).toHaveLength(125);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(130);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-v2: the routes of each scope, in the router and in the document",
+      times: 2,
+      base: ["toEqual({ owner: 63, monitor: 33, content: 22, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 66, monitor: 33, content: 24, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-v2: the routes after the pairing passes",
+      base: ["    expect(apiRoutes()).toHaveLength(125);"],
+      head: ["    expect(apiRoutes()).toHaveLength(130);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-v2: the migrations after the scopes one include the links between notes and the vectors",
+      base: [
+        "      // Two later migrations (round 1) also run over these rows: who a push subscription and a retry receipt belong to.",
+        "      expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([",
+        '        "push-subscription-device",',
+        '        "run-action-receipt-requester",',
+        "      ]);",
+      ],
+      head: [
+        "      // Later migrations also run over these rows: who a push subscription and a retry receipt belong to (round 1), and",
+        "      // the table of links between notes (cerebro-v2), which touches none of them.",
+        "      expect(MIGRATIONS.filter((m) => m.version > target).map((m) => m.name)).toEqual([",
+        '        "push-subscription-device",',
+        '        "run-action-receipt-requester",',
+        '        "note-links",',
+        '        "file-vectors",',
+        "      ]);",
+      ],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-v2: the operations of the route document",
+      base: ["    expect(operations).toBe(127);"],
+      head: ["    expect(operations).toBe(132);"],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {
@@ -569,8 +629,8 @@ describe("S3 the API and the CLI start nothing of their own", () => {
     for (const a of AMENDMENTS.filter((x) => x.suite === suite)) {
       const from = squash(a.base.join("\n"));
       const to = squash(a.head.join("\n"));
-      expect(out.split(from).length - 1, `${suite}: ${a.why}`).toBe(1);
-      out = out.replace(from, () => to);
+      expect(out.split(from).length - 1, `${suite}: ${a.why}`).toBe(a.times ?? 1);
+      out = out.split(from).join(to);
     }
     return out;
   }

@@ -150,21 +150,33 @@ export function endpointPolicy(config: Pick<EmbeddingSettings, "endpoint" | "sen
   return { ok: true, url };
 }
 
-/** The body of a response, never more than `limit` bytes of it. */
+/** The body of a response, never more than `limit` bytes of it (a declared length past it is refused unread). */
 async function readCapped(response: Response, limit: number): Promise<string> {
+  const tooLarge = () => new EmbeddingError("malformed", `the response is larger than ${limit} bytes`);
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > limit) {
+    await response.body?.cancel().catch(() => undefined);
+    throw tooLarge();
+  }
   const reader = response.body?.getReader();
   if (!reader) return "";
   const chunks: Uint8Array[] = [];
   let total = 0;
   for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > limit) {
-      await reader.cancel();
-      throw new EmbeddingError("malformed", `the response is larger than ${limit} bytes`);
+    let step: ReadableStreamReadResult<Uint8Array>;
+    try {
+      step = await reader.read();
+    } catch (error) {
+      throw new EmbeddingError("network", `the answer broke off: ${error instanceof Error ? error.message : String(error)}`);
     }
-    chunks.push(value);
+    if (step.done) break;
+    total += step.value.byteLength;
+    if (total > limit) {
+      // The stream may already be torn down by the other end; the verdict is the same.
+      await reader.cancel().catch(() => undefined);
+      throw tooLarge();
+    }
+    chunks.push(step.value);
   }
   return Buffer.concat(chunks).toString("utf8");
 }

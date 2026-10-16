@@ -162,11 +162,20 @@ export class IndexWorkerHost implements IndexRunner {
     if (joined) {
       // Behind the pass that runs: a second full request while one waits shares that wait.
       if (!only && this.waitingFull) return this.waitingFull;
-      const wait = joined.promise.then(
-        () => this.run(request),
-        () => this.run(request),
-      );
-      if (!only) this.waitingFull = wait.finally(() => (this.waitingFull = null));
+      // When the pass ahead ends, this request runs. It must not find itself as the waiting full pass (that would wait
+      // for its own end), so it is let go of before it asks again.
+      const again = (): Promise<IndexStats> => {
+        if (!only) this.waitingFull = null;
+        return this.run(request);
+      };
+      const wait = joined.promise.then(again, again);
+      if (!only) {
+        this.waitingFull = wait;
+        const clear = (): void => {
+          if (this.waitingFull === wait) this.waitingFull = null;
+        };
+        wait.then(clear, clear);
+      }
       return wait;
     }
     return this.start(request);
