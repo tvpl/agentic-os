@@ -157,6 +157,14 @@ export function renderNotice(crates, policy) {
       `A licença declarada está na tabela da seção 1; o pacote publicado de cada uma destas não traz o arquivo: ${list(without)}.`,
       "",
     );
+  out.push(
+    "## 5. Bibliotecas do sistema no AppImage (não são crates)",
+    "",
+    "O pacote `.AppImage` do Linux leva, além do app, as bibliotecas compartilhadas de que a janela depende: WebKitGTK, GTK, GLib, Cairo, Pango e as que elas puxam, cerca de 200 arquivos (contados pela verificação da rodada 1 de `distribuicao` numa compilação em Linux; o conjunto exato depende da máquina que gera o pacote). Muitas são `LGPL-2.1-or-later` ou `LGPL-3.0-or-later`; as demais têm licenças próprias. Nem este arquivo nem `sbom.desktop.cdx.json` (só crates Rust) as cobrem, e o texto dessas licenças e a oferta do código-fonte que a LGPL pede não foram reproduzidos aqui. O `.deb` não as embute: depende das do sistema (`libwebkit2gtk-4.1-0`, `libgtk-3-0`; o conteúdo do `.deb` não foi relistado nesta rodada).",
+    "",
+    "**Pergunta ao advogado (`.specs/STATE.md`, Perguntas ao dono, distribuicao):** o AppImage cumpre a LGPL com o que o instalador leva hoje? Se não, o padrão adotado é parar de publicar o AppImage e ficar com o `.deb` até haver um inventário dessas bibliotecas e uma oferta de código-fonte.",
+    "",
+  );
   return out.join("\n").replace(/\n+$/, "\n");
 }
 

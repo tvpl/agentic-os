@@ -367,3 +367,44 @@ describe("C48 the SBOM of the Rust crates is a valid CycloneDX 1.5 document with
     );
   });
 });
+
+describe("C60 the legal drafts for the lawyer say what the desktop installers carry that the crate list does not", () => {
+  const notice = fs.readFileSync(path.join(ROOT, "legal", "THIRD_PARTY_NOTICES.desktop.md"), "utf8");
+  const policy = JSON.parse(fs.readFileSync(path.join(ROOT, "legal", "license-policy.json"), "utf8")) as {
+    rust: { exceptions: Array<{ crate: string; reason: string }> };
+  };
+
+  it("C60 the notice has the section on the system libraries of the AppImage (about 200, LGPL), says the SBOM does not cover them and hands the question to the lawyer", () => {
+    expect(notice).toContain("## 5. Bibliotecas do sistema no AppImage (não são crates)");
+    const section = notice.slice(notice.indexOf("## 5."));
+    for (const part of ["WebKitGTK", "cerca de 200", "LGPL", "sbom.desktop.cdx.json", "Pergunta ao advogado"])
+      expect(section, part).toContain(part);
+    // it comes from the generator, so --check keeps it: the section is in renderNotice, not only in the file
+    expect(rust.renderNotice([], { rust: { exceptions: [] } })).toContain(
+      "## 5. Bibliotecas do sistema no AppImage",
+    );
+    expect(fs.readFileSync(path.join(ROOT, "legal", "README.md"), "utf8")).toContain("AppImage");
+  });
+
+  it("C60 each of the five MPL-2.0 exceptions says how that crate gets in (its own path), not one sentence repeated", () => {
+    const reasons = new Map(policy.rust.exceptions.map((e) => [e.crate, e.reason]));
+    expect([...reasons.keys()].sort()).toEqual([
+      "cssparser",
+      "cssparser-macros",
+      "dtoa-short",
+      "option-ext",
+      "selectors",
+    ]);
+    expect(new Set(reasons.values()).size).toBe(5);
+    expect(reasons.get("option-ext")).toContain("dirs-sys");
+    for (const crate of ["cssparser", "cssparser-macros", "dtoa-short", "selectors"])
+      expect(reasons.get(crate), crate).toContain("dom_query");
+  });
+
+  it("C60 docs/install.md does not say the launch secret keeps everything else on the computer from the token", () => {
+    const install = fs.readFileSync(path.join(ROOT, "docs", "install.md"), "utf8").replace(/\s+/g, " ");
+    expect(install).not.toContain("lets the window, and nothing else on the computer, receive your token");
+    expect(install).toContain("not a wall against a program that already runs as you");
+    expect(install).toContain("`config/token`");
+  });
+});

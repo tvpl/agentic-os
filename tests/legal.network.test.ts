@@ -1176,3 +1176,34 @@ describe("C57 the scan of the desktop shell's Rust and Cargo files has no blind 
     expect(f).toContain("`Command::new` só é lido com o nome do programa escrito na chamada");
   });
 });
+
+describe("C61 the destination the Windows installer contacts is named, though it is not the product's code", () => {
+  it("C61 the policy lists the WebView2 bootstrapper under `installers`, the privacy text repeats it in 4.3, and tauri.conf.json chooses that mode on purpose", () => {
+    const installers = (policy as unknown as { installers: Array<Record<string, any>> }).installers;
+    expect(installers.map((i) => i.id)).toEqual(["webview2-bootstrapper"]);
+    const entry = installers[0]!;
+    for (const field of ["label", "trigger", "default", "data"])
+      expect(privacy, field).toContain(entry[field]);
+    expect(privacy).toContain("### 4.3. Destinos de instaladores de terceiros");
+    for (const host of entry.match as string[]) expect(privacy).toContain(host);
+    // the host is in the Tauri CLI's NSIS template, not in a file the scan reads: that is why it is not in `hosts`
+    expect(policy.hosts.some((h) => h.match.includes("go.microsoft.com"))).toBe(false);
+    const conf = JSON.parse(
+      fs.readFileSync(path.join(ROOT, "apps", "desktop", "src-tauri", "tauri.conf.json"), "utf8"),
+    ) as { bundle: { windows: { webviewInstallMode: { type: string } } } };
+    expect(conf.bundle.windows.webviewInstallMode).toEqual({ type: "downloadBootstrapper" });
+  });
+
+  it("C61 the privacy text says the webview keeps its own storage beside desktop-state.json, and where that was seen", () => {
+    const f = privacy.replace(/\s+/g, " ");
+    expect(f).not.toContain("O app guarda uma coisa a mais");
+    for (const part of [
+      "`localStorage`",
+      "service worker",
+      "`hsts-storage.sqlite`",
+      "Linux (WebKitGTK)",
+      "não foi inventariado",
+    ])
+      expect(f, part).toContain(part);
+  });
+});
