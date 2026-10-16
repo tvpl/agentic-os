@@ -132,6 +132,8 @@ const isLiteral = (e: ts.Node): e is ts.StringLiteral | ts.NoSubstitutionTemplat
  * A piece glued to an expression is a whole class when it does not end (or start) with a delimiter, because the
  * expression is usually `" open"` or `""` (`` `cons${busy ? " busy" : ""}` ``); one that ends in `-` or `_`
  * (`pill-`) is the head of a class the data completes, one that starts with `-` or `_` (`-open`) is its tail.
+ * Declared limit (F12): a piece glued AFTER an expression without a delimiter (`${x}zzglue`) is taken as a whole
+ * class too, since the expression may be empty; the guard errs towards "alive" (pinned in `legacy.css.test.ts`).
  */
 function takeClasses(use: ClassUse, text: string, before: boolean, after: boolean): void {
   const parts = text.split(/\s+/);
