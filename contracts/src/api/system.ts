@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { UI_PREFERENCE_KEYS, UiPreferencesSchema } from "../preferences.js";
 import { EffortLevel, ProviderId, ProviderSettingsSchema, SettingsSchema } from "../settings.js";
-import { BackupNameParams, UuidParams, err, notFound } from "./common.js";
+import { BackupNameParams, UuidParams, err, notFound, settingsWriteErrors } from "./common.js";
 import { binary, route } from "./route.js";
 import {
   ApprovalSchema,
@@ -334,16 +334,7 @@ export const systemRoutes = {
         "bad_request",
         "A folder to index is not absolute, does not exist, is not a directory or is the config directory",
       ),
-      err(
-        409,
-        "settings_unpreserved",
-        "The settings file on disk was written by a newer version and cannot be preserved",
-      ),
-      err(
-        409,
-        "settings_newer",
-        "The settings file on disk was written by a newer version and is not overwritten",
-      ),
+      ...settingsWriteErrors,
     ],
   }),
   "uiPreferences.get": route({
@@ -394,7 +385,7 @@ export const systemRoutes = {
         models: z.array(ModelOptionSchema),
       }),
     },
-    errors: [err(400, "unknown_provider", "No adapter is registered for the id")],
+    errors: [err(400, "unknown_provider", "No adapter is registered for the id"), ...settingsWriteErrors],
   }),
   "providers.models": route({
     method: "GET",
@@ -417,6 +408,7 @@ export const systemRoutes = {
     errors: [
       err(400, "unknown_provider", "No adapter is registered for the id"),
       err(400, "bad_request", "The provider is not enabled"),
+      ...settingsWriteErrors,
     ],
   }),
   "providers.smoke": route({
@@ -512,6 +504,7 @@ export const systemRoutes = {
       err(409, "budget_exhausted", "The skill's daily budget is exhausted"),
       err(400, "unknown_provider", "The approved write names a provider that is no longer registered"),
       err(403, "profile_refused", "The security profile no longer allows the write"),
+      ...settingsWriteErrors,
     ],
   }),
   "backups.list": route({

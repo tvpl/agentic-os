@@ -1,0 +1,14 @@
+{
+  "bundle": {
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "[A PREENCHER PELO DONO: chave publica minisign (npx tauri signer generate); veja docs/release.md]",
+      "endpoints": ["https://github.com/tvpl/agentic-os/releases/latest/download/latest.json"],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

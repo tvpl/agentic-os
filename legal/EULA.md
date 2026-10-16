@@ -82,7 +82,9 @@ um.
 3.3. **Cada CLI segue os termos do seu fornecedor.** A pessoa usa **a própria conta** de cada fornecedor,
 entra nela pelo próprio CLI e é a única responsável por ter o direito de usá-lo, pelos termos de uso, pelos
 limites de uso e pelo custo dessa conta, inclusive quando o MordomoOS o inicia por uma rotina ou por um
-dispositivo pareado. O MordomoOS não vê nem guarda a chave ou o login do provedor.
+dispositivo pareado. O MordomoOS não lê nem grava o conteúdo das suas credenciais do provedor, mas o ambiente
+do processo dele (inclusive `ANTHROPIC_API_KEY` e `OPENAI_API_KEY`, se você as definiu) é repassado ao CLI que ele
+inicia (`legal/PRIVACY.md`, seção 5).
 
 3.4. Os fornecedores podem mudar seus programas, seus termos e seus preços, ou restringir o uso
 automatizado ou por terceiros, quando quiserem. O licenciante não controla isso e não garante que um CLI

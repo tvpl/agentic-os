@@ -388,6 +388,30 @@ describe("S3 the document", () => {
       expect(findUnexpressible(z.promise(z.string()))).toBe("ZodPromise");
       expect(findUnexpressible(z.function())).toBe("ZodFunction");
       expect(findUnexpressible(z.string().pipe(z.set(z.string())))).toBe("ZodSet");
+      // Each type the converter has no JSON Schema for, and each place a walk must look into to find one.
+      expect(findUnexpressible(z.symbol())).toBe("ZodSymbol");
+      expect(findUnexpressible(z.void())).toBe("ZodVoid");
+      expect(findUnexpressible(z.never())).toBe("ZodNever");
+      expect(findUnexpressible(z.nan())).toBe("ZodNaN");
+      const inside: Array<[string, z.ZodTypeAny]> = [
+        ["a refinement", z.symbol().refine(() => true)],
+        ["the values of a record", z.record(z.symbol())],
+        ["the keys of a record", z.record(z.symbol(), z.string())],
+        ["the left of an intersection", z.intersection(z.symbol(), z.object({}))],
+        ["the right of an intersection", z.intersection(z.object({}), z.symbol())],
+        ["a tuple", z.tuple([z.string(), z.symbol()])],
+        ["the rest of a tuple", z.tuple([z.string()]).rest(z.symbol())],
+        ["a catch-all", z.object({}).catchall(z.symbol())],
+        ["the option of a union", z.union([z.string(), z.symbol()])],
+        [
+          "the option of a discriminated union",
+          z.discriminatedUnion("k", [
+            z.object({ k: z.literal("a") }),
+            z.object({ k: z.literal("b"), v: z.symbol() }),
+          ]),
+        ],
+      ];
+      for (const [where, schema] of inside) expect(findUnexpressible(schema), where).toBe("ZodSymbol");
       // A lazy that does not reach itself is fine, and so is the same schema used twice.
       const twice = z.object({ a: z.string() });
       expect(findUnexpressible(z.object({ x: twice, y: twice, z: z.lazy(() => twice) }))).toBeNull();

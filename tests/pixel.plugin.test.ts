@@ -128,17 +128,15 @@ describe("C28 the weight of the build is recorded", () => {
     }>;
   };
 
-  it("C28 the limpeza-legado entry has a reason, the four numbers, and no more JS than the build before; a later entry (cerebro-v2) says why it grew", () => {
-    const at = baseline.after.findIndex((e) => e.feature === "limpeza-legado");
-    expect(at).toBeGreaterThan(0);
-    const entry = baseline.after[at]!;
-    const before = baseline.after[at - 1]!;
-    for (const later of baseline.after.slice(at + 1)) {
-      expect(later.reason.length, later.feature).toBeGreaterThan(40);
-      for (const key of ["jsRaw", "jsGzip", "cssRaw", "cssGzip"] as const)
-        expect(Number.isInteger(later[key]) && later[key] > 0, `${later.feature} ${key}`).toBe(true);
-    }
-    expect(entry.feature).toBe("limpeza-legado");
+  /** The entry this feature recorded and the one before it, found by name: a later feature may append its own. */
+  const own = () => {
+    const i = baseline.after.findIndex((e) => e.feature === "limpeza-legado");
+    return { i, entry: baseline.after[i]!, before: baseline.after[i - 1]! };
+  };
+
+  it("C28 the limpeza-legado entry is recorded with a reason, the four numbers, and no more JS than the build before", () => {
+    const { i, entry, before } = own();
+    expect(i, "the entry exists, and a build came before it").toBeGreaterThan(0);
     expect(entry.reason.length).toBeGreaterThan(40);
     for (const key of ["jsRaw", "jsGzip", "cssRaw", "cssGzip"] as const)
       expect(Number.isInteger(entry[key]) && entry[key] > 0, key).toBe(true);
@@ -147,17 +145,21 @@ describe("C28 the weight of the build is recorded", () => {
   });
 
   it(
-    "C28 the recorded numbers are the ones this build measures, within 2%",
+    "C28 the recorded numbers are the ones this build measures, within 2%, and the build is no heavier than the one before",
     { timeout: 240_000 },
     async () => {
       build();
       const mod = (await import(pathToFileURL(path.join(root, "scripts", "bundle-bounds.mjs")).href)) as {
         measure: (dir: string) => Record<"jsRaw" | "jsGzip" | "cssRaw" | "cssGzip", number>;
       };
-      const entry = baseline.after.at(-1)!;
+      const newest = baseline.after.at(-1)!;
       const now = mod.measure(out);
       for (const key of ["jsRaw", "jsGzip", "cssRaw", "cssGzip"] as const)
-        expect(Math.abs(now[key] - entry[key]) / entry[key], key).toBeLessThan(0.02);
+        expect(Math.abs(now[key] - newest[key]) / newest[key], key).toBeLessThan(0.02);
+      // The ceiling of AC 28 is on the build this test measures, not on the recorded number: while this feature's
+      // entry is the newest, the build weighs no more JS gzip than the build before it recorded. Once a later feature
+      // appends its entry, its own reason and `bundle:check` (1.05 x the newest) are the rule.
+      if (newest.feature === "limpeza-legado") expect(now.jsGzip).toBeLessThanOrEqual(own().before.jsGzip);
     },
   );
 });

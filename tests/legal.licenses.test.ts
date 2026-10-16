@@ -813,11 +813,52 @@ describe("C16 the SBOM", () => {
     expect(JSON.parse(fs.readFileSync(a, "utf8")).components).toHaveLength(190 + 4);
   });
 
+  it("C44 as a process: exit 0 and the file when the tree is sound, 1 when the lockfile cannot be read, 2 for a flag that does not exist", () => {
+    const cli = (...args: string[]) =>
+      spawnSync(process.execPath, [SBOM, ...args], { cwd: os.tmpdir(), encoding: "utf8" });
+    const dir = tree({ pkgs: [{ name: "a", license: "MIT" }] });
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0", license: "FSL-1.1-ALv2" }),
+    );
+    const out = path.join(dir, "out", "bom.json");
+    const ok = cli("--root", dir, "--out", out);
+    expect(ok.status, ok.stderr).toBe(0);
+    expect(JSON.parse(fs.readFileSync(out, "utf8")).bomFormat).toBe("CycloneDX");
+    fs.writeFileSync(path.join(dir, "package-lock.json"), "{ not json");
+    fs.rmSync(out);
+    const broken = cli("--root", dir, "--out", out);
+    expect(broken.status).toBe(1);
+    expect(broken.stderr).toContain("sbom:");
+    expect(fs.existsSync(out)).toBe(false);
+    expect(cli("--nope").status).toBe(2);
+  });
+
+  it("C47 the SPDX ids the schema accepts are read per root: a tree without the vendored schema first, the real one after, and the other way round", () => {
+    const dir = tree({ pkgs: [{ name: "a", license: "MIT" }] });
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "fixture", version: "1.0.0", license: "FSL-1.1-ALv2" }),
+    );
+    const licenseOfA = (root: string) =>
+      (
+        sbom.buildSbom(root) as unknown as { components: Array<{ name: string; licenses: unknown[] }> }
+      ).components.find((c) => c.name === "a" || c.name === "react")!.licenses;
+    expect(licenseOfA(dir)).toEqual([{ license: { name: "MIT" } }]);
+    expect(licenseOfA(ROOT)).toEqual([{ license: { id: "MIT" } }]);
+    expect(licenseOfA(dir)).toEqual([{ license: { name: "MIT" } }]);
+  });
+
   it("C16 npm run sbom is the script, and the default output is build/sbom/mordomo-os.cdx.json", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")) as {
       scripts: Record<string, string>;
     };
     expect(pkg.scripts["sbom"]).toBe("node scripts/sbom.mjs");
+    expect(pkg.scripts["licenses:write"]).toBe("node scripts/licenses.mjs --write");
+    expect(pkg.scripts["licenses:check"]).toBe(
+      "node scripts/licenses.mjs --check && node scripts/licenses-rust.mjs --check",
+    );
+    expect(pkg.scripts["network:scan"]).toBe("node scripts/network-scan.mjs");
     expect(fs.readFileSync(SBOM, "utf8")).toContain('path.join("build", "sbom", "mordomo-os.cdx.json")');
   });
 });
@@ -901,9 +942,13 @@ describe("C33 the real list of licenses is pinned, and each forbidden license fa
       expect(lic.isAllowed(id, tooling), id).toBe(false);
   });
 
-  it("C33 the pin can fail: a list with GPL-3.0-only or MPL-2.0 added no longer equals the plan's", () => {
-    expect([...REAL_POLICY.allowedDistributed, "GPL-3.0-only"]).not.toEqual(ALLOWED);
-    expect([...REAL_POLICY.allowedDistributed, "MPL-2.0"]).not.toEqual(ALLOWED);
+  it("C33 the pin can fail: the very assertion of the pin throws on a list with GPL-3.0-only or MPL-2.0 added, or one id missing", () => {
+    const pin = (list: string[]) => () => expect(list).toEqual(ALLOWED);
+    expect(pin(REAL_POLICY.allowedDistributed)).not.toThrow();
+    expect(pin([...REAL_POLICY.allowedDistributed, "GPL-3.0-only"])).toThrow();
+    expect(pin([...REAL_POLICY.allowedDistributed, "MPL-2.0"])).toThrow();
+    expect(pin(REAL_POLICY.allowedDistributed.slice(1))).toThrow();
+    // ... and without the pin a widened list would let the license through, which is why the pin exists.
     expect(lic.isAllowed("GPL-3.0-only", [...REAL_POLICY.allowedDistributed, "GPL-3.0-only"])).toBe(true);
   });
 });
@@ -944,6 +989,17 @@ describe("C36 the SBOM is a valid CycloneDX 1.5 document, and what it says is wh
     expect(schemaText("bom-1.5.schema.json")).toContain(
       '"$id": "http://cyclonedx.org/schema/bom-1.5.schema.json"',
     );
+  });
+
+  it("C51 the README says exactly which schema files carry the Apache-2.0 notice, and the files bear it out", () => {
+    const comment = (f: string) =>
+      String((JSON.parse(schemaText(f)) as Record<string, unknown>)["$comment"] ?? "");
+    const carrying = Object.keys(SCHEMAS).filter((f) => /Apache License 2\.0/.test(comment(f)));
+    expect(carrying).toEqual(["bom-1.5.schema.json", "jsf-0.82.schema.json"]);
+    const readme = fs.readFileSync(path.join(ROOT, "legal", "README.md"), "utf8").replace(/\s+/g, " ");
+    expect(readme).toContain("`bom-1.5.schema.json` e `jsf-0.82.schema.json` trazem o aviso num `$comment`");
+    expect(readme).toContain("`spdx.schema.json` não traz aviso algum");
+    expect(readme).not.toContain("o aviso está no próprio esquema");
   });
 
   it("C36 the real SBOM validates against the official 1.5 JSON Schema", () => {
@@ -1066,11 +1122,8 @@ describe("C36 the SBOM is a valid CycloneDX 1.5 document, and what it says is wh
       if (!d.ref.startsWith("pkg:npm/")) continue;
       expect([...d.dependsOn].sort(), d.ref).toEqual([...expected.get(d.ref)!].sort());
     }
-    // An edge that exists only as an optional dependency is there (the lockfile has at least one).
-    const optionalOnly = distributedKeys.some(
-      (k) => Object.keys(lock.packages[k]!.optionalDependencies ?? {}).length > 0,
-    );
-    expect(typeof optionalOnly).toBe("boolean");
+    // The comparison above already counts optionalDependencies. No distributed package of the real lockfile has one
+    // today, so that edge is proved on the fixture of the next test, which fails when it is dropped.
   });
 
   it("C36 an edge that exists only as an optional dependency, and one through a dependency, are in the graph (fixture)", () => {

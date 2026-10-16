@@ -162,13 +162,7 @@ html:has(.nu-shell),
   font-size: var(--fs-3);
   max-width: 60ch;
 }
-.modal-hint {
-  margin: var(--s-3) 0 0;
-  color: var(--text-faint);
-  font-size: var(--fs-3);
-}
-.modal .hint,
-.modal .modal-hint {
+.modal .hint {
   color: var(--text-dim);
 }
 .modal-actions {

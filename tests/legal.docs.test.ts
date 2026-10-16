@@ -101,7 +101,7 @@ describe("C3 every package.json says FSL-1.1-ALv2, the abbreviation of the LICEN
   const root = JSON.parse(text("package.json")) as { workspaces: string[] };
   const files = ["package.json", ...root.workspaces.map((w) => `${w}/package.json`)];
 
-  it("C3 there are 8 manifests: the root and the 7 workspaces", () => {
+  it("C3 there are 9 manifests: the root and the 8 workspaces (the 8th is apps/desktop: distribuicao)", () => {
     expect(files).toEqual([
       "package.json",
       "contracts/package.json",
@@ -111,6 +111,7 @@ describe("C3 every package.json says FSL-1.1-ALv2, the abbreviation of the LICEN
       "adapters/codex/package.json",
       "apps/api/package.json",
       "apps/command-centre/package.json",
+      "apps/desktop/package.json",
     ]);
   });
 
@@ -388,7 +389,10 @@ describe("C19 the EULA says what the product does with the CLIs", () => {
   it("C19 each follows its supplier's terms and the person uses their own account", () => {
     expect(f).toContain("Cada CLI segue os termos do seu fornecedor");
     expect(f).toContain("a própria conta");
-    expect(f).toContain("O MordomoOS não vê nem guarda a chave ou o login do provedor");
+    expect(f).toContain("O MordomoOS não lê nem grava o conteúdo das suas credenciais do provedor");
+    expect(f).toContain(
+      "o ambiente do processo dele (inclusive ANTHROPIC_API_KEY e OPENAI_API_KEY, se você as definiu) é repassado ao CLI que ele inicia",
+    );
   });
 });
 
@@ -402,13 +406,14 @@ interface Trademarks {
 const marks = JSON.parse(text("legal/trademarks.json")) as Trademarks;
 
 const TEXT_EXT = /\.(ts|tsx|js|mjs|cjs|json|css|html|md|sh|ps1|swift|yml|yaml|webmanifest|plist)$/;
-const SKIP_DIRS = new Set([
-  "node_modules",
-  "dist",
-  "build",
-  "release",
-  "coverage",
-  ".git",
+/** Folders that are never the product's text, wherever they are. */
+const SKIP_DIRS = new Set(["node_modules", "dist", "build", "release", "coverage", ".git"]);
+/**
+ * Folders of the repository root that are not the product's text: the legal texts themselves, the specs, the tests,
+ * the agents' folders, and the runtime state a checkout can hold (`config`, `logs`, `memory`, `workspace`, `artifacts`).
+ * Only at the root: `core/src/memory`, `core/src/config` and `core/src/logs` are code and are read.
+ */
+const SKIP_ROOT_DIRS = new Set([
   ".specs",
   ".claude",
   ".agents",
@@ -433,7 +438,7 @@ function citedText(): Array<{ file: string; text: string }> {
     for (const d of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
       const rel = dir ? `${dir}/${d.name}` : d.name;
       if (d.isDirectory()) {
-        if (!SKIP_DIRS.has(d.name)) walk(rel);
+        if (!SKIP_DIRS.has(d.name) && !(dir === "" && SKIP_ROOT_DIRS.has(d.name))) walk(rel);
       } else if (TEXT_EXT.test(d.name) && !SKIP_FILES.test(d.name)) out.push({ file: rel, text: text(rel) });
     }
   };
@@ -484,6 +489,18 @@ describe("C20 every third-party brand the product cites is listed, and the EULA 
       expect(file, "not the legal texts, the specs, the tests or a dependency").not.toMatch(
         /^(legal|tests|\.specs)\/|node_modules/,
       );
+  });
+
+  it("C48 the runtime-state folders (config, memory, logs, workspace, artifacts) are skipped at the root only: the code folders core/src/memory, core/src/config and core/src/logs are read", () => {
+    const names = files.map((f) => f.file);
+    for (const file of ["core/src/memory/facts.ts", "core/src/config/store.ts", "core/src/logs/jsonl.ts"])
+      expect(names, file).toContain(file);
+    for (const dir of ["core/src/memory/", "core/src/config/", "core/src/logs/"])
+      expect(names.filter((n) => n.startsWith(dir)).length, dir).toBeGreaterThan(0);
+    // Not read: a state folder at the root, the specs and the legal texts.
+    expect(
+      names.filter((n) => /^(memory|config|logs|workspace|artifacts|\.specs|legal|tests)\//.test(n)),
+    ).toEqual([]);
   });
 
   it("C20 there are as many entries as the list holds and no name twice", () => {
@@ -1084,9 +1101,67 @@ describe("C42 the runtime set is not presented as the content of the installer",
     expect(notice).toContain("o aviso não afirma que cada um está dentro do instalador");
   });
 
+  it("C50 no text or script comment hard-codes the number of packages: the proofs of legal.licenses assert it, a copy would go stale with the next dependency", () => {
+    const COUNT = /\b\d{3}\b(?:\s+\w+){0,3}\s+(packages|pacotes|dependências|dependencies)\b/i;
+    const changelog = text("CHANGELOG.md");
+    const unreleased = changelog.slice(
+      changelog.indexOf("## Unreleased"),
+      changelog.indexOf("\n## ", changelog.indexOf("## Unreleased") + 5),
+    );
+    const state = text(".specs/STATE.md");
+    const decisions = state
+      .split("\n")
+      .filter((l) => /^\| AD-0(21|23|26) /.test(l))
+      .join("\n");
+    const owner = state.slice(state.indexOf("### licenca-comercial"), state.indexOf("### contratos-rest"));
+    for (const [name, content] of Object.entries({
+      "CHANGELOG.md (Unreleased)": unreleased,
+      "scripts/licenses.mjs": text("scripts/licenses.mjs"),
+      "scripts/sbom.mjs": text("scripts/sbom.mjs"),
+      "STATE.md (AD-021, AD-023, AD-026)": decisions,
+      "STATE.md (licenca-comercial)": owner,
+    }))
+      expect(flat(content).match(COUNT), name).toBeNull();
+    // The guard sees the sentences it is about.
+    expect(COUNT.test("the 184 npm packages of the lockfile")).toBe(true);
+    expect(COUNT.test("184 pacotes de runtime")).toBe(true);
+    expect(COUNT.test("omite 23 dos 184 pacotes")).toBe(true);
+    expect(COUNT.test("the npm packages of the lockfile")).toBe(false);
+  });
+
   it("C42 the first sentence of the SBOM doc and the notice section agree: runtime, not 'distributed'", () => {
     expect(text("legal/THIRD_PARTY_NOTICES.md")).toContain("## 2. Pacotes npm de runtime");
     expect(text("legal/THIRD_PARTY_NOTICES.md")).not.toContain("## 2. Pacotes npm distribuídos");
+  });
+});
+
+describe("C45 no text says the opposite of what the privacy text says about the credentials", () => {
+  it("C45 the EULA 3.3 and the privacy text say the same: the content of the credentials is not read or stored, the environment is passed to the CLI", () => {
+    const eula = flat(section("legal/EULA.md", "3."));
+    const privacy = flat(text("legal/PRIVACY.md"));
+    for (const sentence of [
+      "não lê nem grava o conteúdo das suas credenciais do provedor",
+      "o ambiente do processo dele (inclusive ANTHROPIC_API_KEY e OPENAI_API_KEY, se você as definiu) é repassado ao CLI que ele inicia",
+    ]) {
+      expect(eula, sentence).toContain(sentence);
+      expect(privacy, sentence).toContain(sentence);
+    }
+  });
+
+  it("C45 none of the legal texts, the README or the guides says that the MordomoOS does not see, or does not keep, the key or the login", () => {
+    const CLAIM =
+      /n[ãa]o v[êe] (nem guarda )?(a |as )?(sua |suas )?(chave|credenciais|login)|n[ãa]o guarda (a |as )?(sua |suas )?(chave|credenciais)|never (sees|stores) (your |the )?(provider )?(api )?(key|credentials)/i;
+    for (const file of [
+      ...LEGAL_TEXTS,
+      "README.md",
+      "docs/install.md",
+      "docs/README.pt-BR.md",
+      "docs/security.md",
+    ])
+      expect(flat(text(file)), file).not.toMatch(CLAIM);
+    // The guard sees the sentence the EULA used to have.
+    expect("O MordomoOS não vê nem guarda a chave ou o login do provedor.").toMatch(CLAIM);
+    expect("O MordomoOS não lê nem grava o conteúdo das suas credenciais").not.toMatch(CLAIM);
   });
 });
 
@@ -1135,5 +1210,35 @@ describe("C43 traceability and the wording of the privacy text", () => {
     expect(code).toContain("{ ...process.env }");
     expect(text("adapters/claude/src/index.ts")).toContain("process.env.ANTHROPIC_API_KEY");
     expect(text("adapters/codex/src/index.ts")).toContain("process.env.OPENAI_API_KEY");
+  });
+});
+
+describe("C52 the edits made to approved items after the approval are recorded, and the value of license is a question to the owner", () => {
+  const state = text(".specs/STATE.md");
+  const owner = state.slice(state.indexOf("### licenca-comercial"), state.indexOf("### contratos-rest"));
+
+  it("C52 AD-026 names the Landing row of door 1, C3, C15, C16 and C20, and the change of license from SEE LICENSE IN LICENSE to FSL-1.1-ALv2 in the publishable packages", () => {
+    const row = state.split("\n").find((l) => l.startsWith("| AD-026 "));
+    expect(row, "AD-026 row").toBeTruthy();
+    for (const piece of [
+      "porta 1",
+      "C3, C15, C16 e C20",
+      "SEE LICENSE IN LICENSE",
+      "FSL-1.1-ALv2",
+      "`core` e `contracts`",
+      "pergunta ao dono",
+    ])
+      expect(row, piece).toContain(piece);
+  });
+
+  it("C52 the owner questions of licenca-comercial ask for the value of license (point 10) and about the Apache-2.0 text next to the CycloneDX schemas (point 11)", () => {
+    expect(owner).toMatch(/^10\. \*\*Valor de `license` dos pacotes/m);
+    expect(owner).toMatch(/^11\. \*\*Esquemas do CycloneDX sem o texto da Apache-2\.0/m);
+    expect(owner).toContain("`SEE LICENSE IN LICENSE`");
+  });
+
+  it("C52 the manifests of the publishable packages say what AD-026 says they say", () => {
+    for (const file of ["core/package.json", "contracts/package.json"])
+      expect((JSON.parse(text(file)) as { license: string }).license, file).toBe("FSL-1.1-ALv2");
   });
 });

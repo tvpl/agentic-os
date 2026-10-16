@@ -1,0 +1,294 @@
+# Distribuição checks
+
+Profile: ui
+Plan: `.specs/features/distribuicao/plan.md`
+
+## Intent
+
+50 checks in 7 slices · 12 one-way doors · 4 open, of which 2 block go-live
+
+Os comandos são os que o repositório já tem (`npx vitest run`, `npm run …`) mais os do crate Rust
+(`cd apps/desktop && cargo …`, toolchain `1.97.0` de `apps/desktop/rust-toolchain.toml`) e o teste de janela
+`apps/desktop/smoke/gui.sh` (Linux, Xvfb, `dbus-run-session`, `xdotool`, um gerenciador de janelas). `<bin>` é
+`apps/desktop/target/debug/mordomo-desktop` depois de `cargo build -p mordomo-desktop` e de
+`node scripts/package.mjs --payload apps/desktop/payload`. Um check cuja prova só roda no Windows, no macOS ou com
+um segredo real diz **Não verificado aqui** na seção do mesmo nome, com o job que o prova; ele não é dado como verde.
+
+## Checks
+
+### S1 - O serviço sabe ser filho de um shell · 4 files · 134 KB · ~33k
+
+**C1** - `mordomo --version`, `mordomo -v` and `mordomo version` each print exactly `mordomo <version>` followed by a newline, `<version>` being the `version` of the root `package.json`, and exit `0` (AC 1)
+Proof: `npx vitest run tests/desktop.sidecar.test.ts -t "C1 "`
+
+**C2** - `mordomo --help` exits `0` and lists `mordomo version`, `--version` and `--sidecar` (AC 2)
+Proof: `npx vitest run tests/desktop.sidecar.test.ts -t "C2 "`
+
+**C3** - Each of 9 misuses of `--sidecar` and `--port` exits `2`, names the variable or the flag, prints no ready line and starts nothing: no secret, a 31-character secret, `--port 65536`, `--port=-1`, `--port abc`, `--port` without `--sidecar`, `--sidecar` on `stop`, `--port` on `status`, `--sidecar` without `--foreground` (AC 4, AC 5)
+Proof: `npx vitest run tests/desktop.sidecar.test.ts -t "C3 "`
+
+**C4** - `start --foreground --sidecar --port 0` with a 43-character secret prints exactly one stdout line `MORDOMO_READY {json}` whose keys are `v`, `pid`, `port`, `version`, `updatesCheck` with `v` 1, the child's pid, the bound port, the root version and the `updates.check` setting (`true` when the home's settings say so), and the service answers `200` on `127.0.0.1:<port>` with the same port in `config/run/server.pid` (AC 3)
+Proof: `npx vitest run tests/desktop.sidecar.test.ts -t "C4 "`
+
+**C5** - A second sidecar over a home that a live sidecar holds exits `4` with `(pid <holder>)` on stderr, prints no ready line, and the holder keeps answering `200` (AC 7)
+Proof: `npx vitest run tests/desktop.sidecar.test.ts -t "C5 "`
+
+**C6** - A sidecar asked for a port that another process holds exits `5`, prints no ready line, and the holder is still listening (AC 8)
+Proof: `npx vitest run tests/desktop.sidecar.test.ts -t "C6 "`
+
+**C7** - Closing the sidecar's stdin ends it with exit `0` through the shutdown path, and `config/run/server.pid` is gone (AC 6)
+Proof: `npx vitest run tests/desktop.sidecar.test.ts -t "C7 "`
+
+**C8** - While a launch secret is set, a browser-looking `GET /`, `GET /index.html` and a deep link `GET /settings` from loopback without the secret answer `200` with `<meta name="mordomo-token" content="">` and a body without the owner's token (AC 9)
+Proof: `npx vitest run tests/desktop.sidecar.test.ts -t "C8 "`
+
+**C9** - `GET /?launch=<secret>` answers `302` to the same path (`/`, `/settings`; a `//evil` path stays on the origin) with `Set-Cookie: mordomo_launch=<secret>; HttpOnly; SameSite=Lax; Path=/` and `Cache-Control: no-store`, and the next `GET /` carrying the cookie and browser headers has the owner's token in the meta, while the cookie without browser headers does not; the same holds through the real `start --sidecar` (AC 10)
+Proof: `npx vitest run tests/desktop.sidecar.test.ts -t "C9 "` (the real-sidecar case runs where the interface is built; `gui.sh` is its proof in CI)
+
+**C10** - A wrong, truncated, extended or empty `?launch=` and a wrong cookie answer `200` with an empty meta and no `Set-Cookie`, and a correct secret behind a proxy header (`X-Forwarded-For`) is not accepted (AC 11)
+Proof: `npx vitest run tests/desktop.sidecar.test.ts -t "C10 "`
+
+**C11** - `safeUrl` turns `launch=<secret>` into `launch=[REDACTED]` anywhere in the query, as it does for `token` and `ticket`, so the request log never holds the secret; and `cookieValue` reads one cookie among several without matching a longer name (AC 12)
+Proof: `npx vitest run tests/desktop.sidecar.test.ts -t "C11 "`
+Proof: `bash apps/desktop/smoke/gui.sh <bin> apps/desktop/payload` (the log of a real launch holds no 43-character `launch=`)
+
+**C12** - Without a launch secret nothing changed: a browser-looking `GET /` gets the owner's token, `?launch=` is ignored (`200`, no cookie), and `buildServer` is still called with the defaults and no option by `startServer`; the suites that already proved the page and the token keep passing (AC 13)
+Proof: `npx vitest run tests/desktop.sidecar.test.ts -t "C12 "`
+Proof: `npx vitest run tests/api.contract.test.ts -t "C11 validateResponses defaults"`
+Proof: `npx vitest run tests/api.security-p0.test.ts tests/api.ui-assets.test.ts`
+
+### S2 - O supervisor do shell · 15 files · 58 KB · ~14k
+
+**C13** - A launch token is 43 URL-safe base64 characters from 32 bytes (all zero bytes give 43 `A`, all ones give 42 `_` and `8`, `0xfb` first gives `-w`), two tokens differ, and `Debug` prints `LaunchToken(<redacted>)` and not the secret (AC 14)
+Proof: `cd apps/desktop && cargo test -p mordomo-shell-core token::`
+
+**C14** - `parse_ready_line` returns the five fields of a well-formed `MORDOMO_READY` line (with `\n` or `\r\n`), accepts ports 1 and 65535, and rejects a wrong or missing prefix, malformed JSON, `v` other than 1, port 0, 65536, -1 and a text port, and each of the 5 missing fields (AC 15)
+Proof: `cd apps/desktop && cargo test -p mordomo-shell-core ready::`
+
+**C15** - Started with a real Node over a stand-in service, the child gets argv `["start","--foreground","--sidecar","--port","0"]` (the preferred port when there is one) and the 43-character secret in its environment and not in its argv, no `NODE_OPTIONS` even when the shell has one, and `start` returns only after the ready line and a `200 text/html` on `GET /`; a line that is not a ready line (`BadReady`) and a `200` that is not HTML (`UiNotServed`) kill the child and fail (AC 16)
+Proof: `cd apps/desktop && cargo test -p mordomo-shell-core --test supervisor -- a_service_that_listens the_preferred_port_is a_line_that_is_not a_service_that_listens_but_serves_no_page`
+Proof: `cd apps/desktop && cargo test -p mordomo-shell-core --test node_options`
+Proof: `cd apps/desktop && cargo test -p mordomo-shell-core probe::`
+
+**C16** - A child that exits before the ready line gives its exit code and its last stderr lines, classified `home_in_use` for `4`, `home_blocked` for `3`, `port_busy` for `5` and `crashed` for `1`, `2` and any other (AC 17)
+Proof: `cd apps/desktop && cargo test -p mordomo-shell-core --test supervisor -- an_early_exit a_busy_port_with_no_fallback`
+
+**C17** - A child that never prints a ready line is killed after the startup time (2 s in the test, 30 s by default) and the failure is `timeout` with the child gone (AC 18)
+Proof: `cd apps/desktop && cargo test -p mordomo-shell-core --test supervisor -- a_service_that_never_says_ready`
+
+**C18** - `stop` closes the child's stdin and a child that obeys ends with `Exited(Some(0))` well before the grace period, a child that ignores stdin is killed only after the grace (800 ms in the test) with `Killed`, a second `stop` returns the first outcome, dropping a running `Sidecar` stops it, and a service that ends by itself is seen as not running with its exit code (AC 19)
+Proof: `cd apps/desktop && cargo test -p mordomo-shell-core --test supervisor -- stop_closes_stdin a_service_that_ignores_stdin dropping_a_running a_service_that_ends_on_its_own`
+
+**C19** - A payload without its Node binary or entry file is `payload_missing` naming that path (a folder where the file should be counts as missing), no Node is looked for on `PATH`, and a Node the system will not run is `spawn_failed` (AC 20)
+Proof: `cd apps/desktop && cargo test -p mordomo-shell-core payload::`
+Proof: `cd apps/desktop && cargo test -p mordomo-shell-core --test supervisor -- a_payload_missing a_node_that_the_system_will_not_run`
+
+**C20** - A busy preferred port starts the service once more with port 0 and the second port is the one the service reports; `desktop-state.json` round-trips a port, and a missing, empty, non-object, text, negative, zero, 70000 or privileged (< 1024) port reads as no preference, with the file written through a temporary name and a rename (AC 21)
+Proof: `cd apps/desktop && cargo test -p mordomo-shell-core --test supervisor -- a_busy_preferred_port`
+Proof: `cd apps/desktop && cargo test -p mordomo-shell-core state::`
+
+**C21** - `decide` allows `http://127.0.0.1:<the sidecar's port>` (and nothing before the service said its port), `tauri://localhost`, `http(s)://tauri.localhost` and `about:blank`; sends every other `http`, `https` and `mailto` address, another port of `127.0.0.1`, `localhost`, `[::1]`, `https://127.0.0.1` and userinfo or look-alike hosts included, to the system browser; and refuses `javascript:`, `file:`, `data:`, `blob:`, `ftp:`, `ssh:`, custom schemes, `view-source:`, an empty string, and text that is not a URL (AC 22)
+Proof: `cd apps/desktop && cargo test -p mordomo-shell-core nav::`
+
+### S3 - O app · 15 files · 62 KB · ~15k
+
+**C22** - Opened, the window loads the Command Centre: in the real window the launch secret is traded for the cookie (`302` on `/?launch=[REDACTED]` in the service's log), the page reaches the API as the owner, `desktop-state.json` holds the port the service listens on, and exactly one service runs (AC 23)
+Proof: `bash apps/desktop/smoke/gui.sh <bin> apps/desktop/payload` (scenario A)
+
+**C23** - The failure screen shows, for each of the 10 kinds of failure and in English and Portuguese, the title and the explanation of `design.md`, the failure section and not the starting one, the detail, the service's last lines as text (markup in them stays text), the language on `<html lang>`, a retry that asks the shell and returns to the starting screen, and a quit that asks the shell; an unknown kind reads as `crashed`; the arrangement is the one of `design.md`; no color literal outside the two token blocks, no font under 12px, the sign before the title, visible focus and reduced motion (AC 24)
+Proof: `npx vitest run tests/desktop.screens.test.ts -t "C23 "`
+
+**C24** - A service that ends while the Command Centre is shown puts the `stopped` failure on the shell's screen inside 5 seconds with _Try again_ focused (Enter starts a new service); the screen of `stopped` reads "The local service stopped" (AC 25)
+Proof: `npx vitest run tests/desktop.screens.test.ts -t "C24 "`
+Proof: `bash apps/desktop/smoke/gui.sh <bin> apps/desktop/payload` (scenario D: `kill -9` the service, 5 s, Enter, a new service)
+
+**C25** - Closing the window stops the app and its service through stdin, leaving no process, no `engine.lock` and no `server.pid` (AC 26)
+Proof: `bash apps/desktop/smoke/gui.sh <bin> apps/desktop/payload` (scenarios C and D end)
+
+**C26** - A second launch exits at once, the first instance stays, and no second service starts (AC 27)
+Proof: `bash apps/desktop/smoke/gui.sh <bin> apps/desktop/payload` (scenario B)
+
+**C27** - The webview's content-security-policy is exactly `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src ipc: http://ipc.localhost; base-uri 'none'; form-action 'none'; frame-ancestors 'none'` with the prototype frozen; the only capability is `main.json` on the window `main` with `allow-shell-status`, `allow-shell-retry`, `allow-shell-quit` and no `remote`; those three are the commands `build.rs` declares and `lib.rs` registers; the Rust dependencies are the 8 of the plan and none of the shell, fs, http, process, os or websocket plugins; the shell's pages have one external script, no inline script, no event attribute, no remote address and no eval, network or HTML sink; the window is made in code with `on_navigation` and an `on_new_window` that only denies; the identifier is `com.mordomo.desktop`, the product `MordomoOS`, the resources `{"../payload": "payload"}` (AC 28)
+Proof: `npx vitest run tests/desktop.config.test.ts -t "C27 "`
+
+**C28** - `mordomo-desktop --self-test` locates the payload, starts the service, probes the page and stops it without a window, printing `{"ok":true,"port":…,"version":…,"stopped":"Exited(Some(0))"}` and exiting `0`; over a home another service holds it prints `{"ok":false,"error":{"kind":"home_in_use",…}}`, exits `1`, and the holder is still running; from the installed `.deb` it finds its own payload (AC 29)
+Proof: `bash apps/desktop/smoke/gui.sh <bin> apps/desktop/payload` (self-test and scenario E)
+Proof: `bash apps/desktop/smoke/gui.sh /usr/bin/mordomo-desktop` after `dpkg -i` of the built `.deb` (the `desktop` and `package` jobs)
+
+### S4 - Atualização assinada · 4 files · 50 KB · ~12k
+
+**C29** - The app asks for an update at start only through `check_for_update_at_start(updater_built, ready)`: true only when the build has an updater and the ready line says `updatesCheck`, false for the other 3 combinations; the menu is the other way in, and `shell.rs` has one call of that check and `updater.rs` one `updater()` call (AC 30)
+Proof: `cd apps/desktop && cargo test -p mordomo-shell-core policy::`
+Proof: `npx vitest run tests/desktop.config.test.ts -t "C29 "`
+
+**C30** - In the code of an update the order is: refuse a download address whose scheme is not `https` or whose host is not `github.com`, `download` (the plugin verifies the minisign signature there and returns nothing otherwise), stop the sidecar, `install`; there is no `download_and_install` and no `dangerous` flag (AC 31)
+Proof: `npx vitest run tests/desktop.config.test.ts -t "C30 "`
+
+**C31** - A build without the update key has no updater: `tauri-plugin-updater` is `optional` behind the feature `updater` that is not a default, the base `tauri.conf.json` has no `plugins` and no `createUpdaterArtifacts`, the plugin, the menu item and the checks are behind `cfg(feature = "updater")`, About says "This build has no updater.", and both builds (with and without the feature) compile and pass `clippy -D warnings` (AC 32)
+Proof: `npx vitest run tests/desktop.config.test.ts -t "C31 "`
+Proof: `cd apps/desktop && cargo clippy --locked --workspace --all-targets --features mordomo-desktop/updater -- -D warnings && cargo check --locked -p mordomo-desktop`
+
+**C32** - The update endpoint is exactly `https://github.com/tvpl/agentic-os/releases/latest/download/latest.json`; the committed `tauri.updater.conf.json` carries a minisign public key or the placeholder, `createUpdaterArtifacts: true` and no insecure-transport flag, and a different endpoint, two endpoints, a missing flag and a bad key each fail `--check`; the policy declares `desktop-updater` (contact, off, `updates.check`, the three GitHub hosts) and `signing-timestamp`, `PRIVACY.md` repeats both, and the scan reads the Rust and Tauri files and finds 41 network points and 17 entries (AC 33)
+Proof: `npx vitest run tests/desktop.release.test.ts -t "C32 "`
+Proof: `npx vitest run tests/legal.network.test.ts`
+Proof: `node scripts/network-scan.mjs --check`
+
+### S5 - Uma versão só · 1 file · 8 KB · ~2k
+
+**C33** - `version-sync --check` exits `0` on a consistent tree and `1` naming file and value for each of 7 kinds of difference (a workspace `package.json`, the desktop `package.json`, an exact `@mordomo` pin, a workspace entry of the lockfile, `tauri.conf.json`, `Cargo.toml`, a crate of `Cargo.lock`), a root version that is not semantic exits `1` and a missing file `2`; the 14 places of the fixture and the 40 of the real tree all say the root version (AC 34)
+Proof: `npx vitest run tests/desktop.release.test.ts -t "C33 "`
+Proof: `node scripts/version-sync.mjs --check`
+
+**C34** - `--check --tag <tag>` exits `0` only for `v<version>`; `v<other>`, no `v`, `v1.2`, a longer version, a prefix, an upper-case `V` and a prerelease suffix not in the version exit `1`, an empty tag `2` (AC 35)
+Proof: `npx vitest run tests/desktop.release.test.ts -t "C34 "`
+
+**C35** - `--write 2.0.0-rc.1` sets the 14 places (the exact `@mordomo` pins included) and leaves other dependencies and unrelated lockfile and Cargo lines alone, after which `--check --tag v2.0.0-rc.1` exits `0`; `1.2`, `v1.2.3`, `1.2.3.4`, `latest`, `01.2.3x` and an empty string exit `2` and write nothing (AC 36)
+Proof: `npx vitest run tests/desktop.release.test.ts -t "C35 "`
+
+### S6 - Release por tag · 9 files · 119 KB · ~29k
+
+**C36** - The release workflow's triggers are exactly `push` of tags `["v*"]` and `workflow_dispatch` (no branch, `pull_request`, `pull_request_target`, `schedule`, `workflow_run`, `repository_dispatch` or `release`), and the job that publishes has `if: github.ref_type == 'tag'` and needs `plan` and `package` (AC 37)
+Proof: `npx vitest run tests/release.workflow.test.ts -t "C36 "`
+
+**C37** - Permissions are `contents: read` at the top and `contents: write` only in `publish`, with no `id-token`, `pull-requests`, `packages` or `write-all`; two runs of one tag share a `concurrency` group that never cancels; the release is only ever created or refreshed with `--draft`, never `--draft=false`, `--latest`, `--prerelease`, `publish` or `delete`, an already published release is refused, and only the `publish` job runs `gh release` (AC 37)
+Proof: `npx vitest run tests/release.workflow.test.ts -t "C37 "`
+
+**C38** - A secret is named only in `env` values, in exactly these steps with exactly these secrets: _Which signing material is registered_ (the nine, only as `!= ''`), _Import the Developer ID certificate_ (2), _Import the Authenticode certificate_ (2), _Payload (macOS, signed native code)_ (1), _Build installers (macOS)_ (6), _Build installers (Windows)_ (2), _Build installers (Linux)_ (2); never in a script, a condition or a `with`; no step traces; the Windows and Linux builds get no secret of another platform (AC 38)
+Proof: `npx vitest run tests/release.workflow.test.ts -t "C38 "`
+
+**C39** - In `release.yml` and `ci.yml` every `uses:` is `actions/<name>@v<N>` or `<owner>/<name>@<40 hex>`, and the release workflow uses first-party actions only, so no third party sees a signing secret (AC 38)
+Proof: `npx vitest run tests/release.workflow.test.ts -t "C39 "`
+
+**C40** - Without a secret the platform still builds and its files carry `_UNSIGNED` (macOS and Windows; Linux never says it and its status is `null`): the certificate imports, the signed payload and the verifications run only when the plan says `mac_signed` or `windows_signed` is `true`, the matrix is `macos-arm64` on `macos-14`, `macos-x64` on `macos-15-intel`, `windows-x64` on `windows-2022`, `linux-x64` on `ubuntu-22.04` (no `macos-13`), and the collected names and `status-<platform>.json` follow the flags of the plan; a missing installer, a missing `.sig` when the key was configured and a `.sig` when it was not fail (AC 39)
+Proof: `npx vitest run tests/release.workflow.test.ts -t "C40 "`
+Proof: `npx vitest run tests/desktop.release.test.ts -t "C40 "`
+
+**C41** - `desktop-build` hands `tauri build` only the material the machine has: nothing registered gives `build --ci --bundles <list>` with no APPLE or TAURI_SIGNING variable, no `--features` and no `--config`; macOS keeps the identity only with `MAC_SIGNED` and the notary credentials only with `MAC_NOTARIZE` too, none off macOS; a Windows thumbprint becomes a `--config` with SHA-256 and a timestamp; the updater adds `--features updater` and `src-tauri/tauri.updater.conf.json` only when enabled with a private key (an enabled updater with no key is an error, and the key never reaches a build without it); it runs the Tauri CLI of the lockfile, not `npx` (AC 38, AC 39)
+Proof: `npx vitest run tests/desktop.release.test.ts -t "C41 "`
+
+**C42** - A draft release carries the notes (the CHANGELOG section of the version, a banner naming each unsigned platform and a table of what was signed), the updater manifest only when complete, `sbom.cdx.json`, `sbom.desktop.cdx.json`, both third-party notices and `SHA256SUMS.txt`, created with `--draft --verify-tag`, with the status files removed from the upload; the section is found under `## 1.2.3 — date` and `## [1.2.2] - date`, stops at the next heading, and Linux reads "not applicable" (AC 40)
+Proof: `npx vitest run tests/release.workflow.test.ts -t "C42 "`
+Proof: `npx vitest run tests/desktop.release.test.ts -t "C42 "`
+
+**C43** - `latest.json` is built from the four platforms with `version`, `notes`, `pub_date` and `darwin-aarch64`, `darwin-x86_64`, `windows-x86_64`, `linux-x86_64` each with the `.sig` content and a `https://github.com/tvpl/agentic-os/releases/download/<tag>/<file>` address; with a platform that has no updater signature, a macOS or Windows build the system does not trust, a job that never finished or a missing file, no manifest is written, the exit is `3` and the reasons are listed; a tag that is not `v<version>` is a usage error (AC 40)
+Proof: `npx vitest run tests/desktop.release.test.ts -t "C43 "`
+
+**C44** - A tag that is not the version, or a version with no section in the CHANGELOG, fails before anything is built: `plan` runs `version-sync --check --tag "$TAG"` and `release-notes --check`, `verify` runs the typecheck, lint, vitest, both license checks and the network scan, `package` needs both, and `release-notes` exits `1` for a missing version, an empty section, a prefix of another version, with `Unreleased` never passed (AC 41)
+Proof: `npx vitest run tests/release.workflow.test.ts -t "C44 "`
+Proof: `npx vitest run tests/desktop.release.test.ts -t "C44 "`
+
+**C45** - The license and the legal files are in the payload before an installer is built: a step lists `LICENSE` and the 7 files of `legal/` and fails the job when one is missing, between _Payload_ and the builds, and the `desktop` job of `ci.yml` checks the same 8 and runs the shell tests, the Rust license check and the window test; `package.mjs --payload` writes `lib`, `ui`, `seed`, `legal`, `LICENSE` and `package.json` (and `runtime` with a Node) and no launcher, README or archive, without `legal/vendor/cyclonedx` (AC 42)
+Proof: `npx vitest run tests/release.workflow.test.ts -t "C45 "`
+Proof: `npx vitest run tests/desktop.release.test.ts -t "C45 "` (runs where `npm run build` has been run; the `desktop` job of `ci.yml` does the same listing in shell, because `npm test` runs there before the interface is built)
+
+### S7 - Licenças e rede do que é Rust · 4 files · 34 KB · ~8k
+
+**C46** - The runtime crates are those reached through normal dependencies (build and dev edges not followed, a crate that is also a build dependency kept, workspace members and cycles handled); a crate whose license is not in the `rust` policy fails (`GPL-3.0-only`, `AGPL-3.0-or-later`, `SSPL-1.0`, `MPL-2.0`, `LGPL-2.1-only`, `BUSL-1.1`; `MIT AND GPL-3.0-only`; no license; `SEE LICENSE IN`), `OR` needs one allowed alternative and `AND` both, an exception counts only for that crate and license with a reason and is reported stale when unused, a stale or missing notice fails, and a written notice checks clean; the real policy is the 12 of the runtime list plus `Unicode-3.0` and `CDLA-Permissive-2.0` and five named `MPL-2.0` exceptions, and cargo's real graph of 476 crates meets it (AC 43)
+Proof: `npx vitest run tests/desktop.licenses.test.ts -t "C46 "`
+Proof: `node scripts/licenses-rust.mjs --check --require-cargo`
+
+**C47** - Without `cargo` the Rust license check prints that the crates were NOT checked and names `--require-cargo`, exits `0`; with `--require-cargo` it exits `2`; an unknown flag or none exits `2`; and `npm run licenses:check` is the npm check and then this one (AC 44)
+Proof: `npx vitest run tests/desktop.licenses.test.ts -t "C47 "`
+
+**C48** - The Rust SBOM validates against the official CycloneDX 1.5 schema, has one component per crate of the notice with `pkg:cargo/<name>@<version>`, the declared license and the SHA-256 of `Cargo.lock`, the same bytes twice, and is written into the payload as `legal/sbom.desktop.cdx.json` (AC 40, AC 42)
+Proof: `npx vitest run tests/desktop.licenses.test.ts -t "C48 "`
+
+### Docs · 4 files · 52 KB · ~12k
+
+**C49** - The workflow uses exactly 10 secrets, its header comment names the same 10, and `docs/release.md` documents each in a table row and documents no other (AC 38)
+Proof: `npx vitest run tests/desktop.docs.test.ts -t "C49 "`
+
+**C50** - `docs/release.md` has the 9 sections (what a release is, the secrets, cutting, verifying, the updater, rolling back, the shell, what was not run, when something fails), its list of what was not run names Windows, macOS, notarization, the workflow on GitHub and a real updater roundtrip, every script and `npm run` it names exists, the README and the install guide link it and the CHANGELOG has the entry (AC 38, AC 42)
+Proof: `npx vitest run tests/desktop.docs.test.ts -t "C50 "`
+
+## Coverage
+
+| Set (size)                                          | Member -> proof                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Unproven |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| spellings of the version command (3)                | `--version` C1 · `-v` C1 · `version` C1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | -        |
+| misuses of `--sidecar` and `--port` (9)             | C3, table-driven over all 9                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | -        |
+| exit codes of the sidecar (4)                       | `0` C7 · `2` C3 · `4` C5 · `5` C6                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | -        |
+| `GET /` and `GET /?launch=` statuses (2)            | `302` C9 · `200` C8, C10, C12                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | -        |
+| fields of the ready line (5)                        | `v` C4 · `pid` C4 · `port` C4 · `version` C4 · `updatesCheck` C4                                                                                                                                                                                                                                                                                                                                                                                                                                                            | -        |
+| ready-line rejections (6)                           | prefix C14 · JSON C14 · `v` C14 · port 0 C14 · port range C14 · missing field C14 (each of the 5)                                                                                                                                                                                                                                                                                                                                                                                                                           | -        |
+| kinds of failure (10)                               | `payload_missing` C19, C23 · `spawn_failed` C19, C23 · `home_in_use` C16, C23 · `home_blocked` C16, C23 · `port_busy` C16, C23 · `crashed` C16, C23 · `timeout` C17, C23 · `bad_ready` C15, C23 · `ui_not_served` C15, C23 · `stopped` C24, C23                                                                                                                                                                                                                                                                             | -        |
+| navigation answers (3)                              | allow C21 · open externally C21 · deny C21                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | -        |
+| screens of the shell (2) and its buttons (2)        | starting C23 · failure C23 · retry C23 · quit C23                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | -        |
+| capability commands (3)                             | `shell_status` C27 · `shell_retry` C27 · `shell_quit` C27                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | -        |
+| Rust dependencies of the app (8)                    | `mordomo-shell-core` C27 · `serde` C27 · `serde_json` C27 · `tauri` C27 · `tauri-plugin-dialog` C27 · `tauri-plugin-opener` C27 · `tauri-plugin-single-instance` C27 · `tauri-plugin-updater` C27, C31                                                                                                                                                                                                                                                                                                                      | -        |
+| combinations of updater built x setting (4)         | C29, table-driven over all 4                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | -        |
+| startup configuration: the launch secret (3 places) | `buildServer` option C8, C10 · `startServer` through the context C9 (real `start --sidecar`), C12 · the app's own launch C22                                                                                                                                                                                                                                                                                                                                                                                                | -        |
+| the 14 places of a version in a tree (14)           | root `package.json` C33, C35 · `core/package.json` C33, C35 · `apps/api/package.json` version C33, C35 · its exact `@mordomo/core` pin C33, C35 · `apps/desktop/package.json` C33, C35 · lockfile root C33, C35 · lockfile `apps/api` version C33, C35 · lockfile `apps/api` pin C33, C35 · lockfile `apps/desktop` C33, C35 · lockfile `core` C33, C35 · `tauri.conf.json` C33, C35 · `Cargo.toml` C33, C35 · `Cargo.lock` `mordomo-desktop` C33, C35 · `Cargo.lock` `mordomo-shell-core` C33, C35                         | -        |
+| platforms (4)                                       | `macos-arm64` C40 · `macos-x64` C40 · `windows-x64` C40 · `linux-x64` C40; manifest keys C43                                                                                                                                                                                                                                                                                                                                                                                                                                | -        |
+| secrets (10)                                        | C38, table-driven over the steps · C49, table-driven over all 10                                                                                                                                                                                                                                                                                                                                                                                                                                                            | -        |
+| workflow triggers (2)                               | tag `v*` C36 · `workflow_dispatch` C36                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | -        |
+| jobs of the release (4)                             | `plan` C44 · `verify` C44 · `package` C40, C45 · `publish` C37, C42                                                                                                                                                                                                                                                                                                                                                                                                                                                         | -        |
+| files of a draft release (9)                        | installers C40 · `SHA256SUMS.txt` C42 · `sbom.cdx.json` C42 · `sbom.desktop.cdx.json` C42, C48 · `THIRD_PARTY_NOTICES.md` C42 · `THIRD_PARTY_NOTICES.desktop.md` C42 · `latest.json` C43 · notes C42 · `.sig` files C40                                                                                                                                                                                                                                                                                                     | -        |
+| files the payload must hold (8)                     | `LICENSE` C45 · `EULA.md` C45 · `PRIVACY.md` C45 · `NOTICE.md` C45 · `THIRD_PARTY_NOTICES.md` C45 · `THIRD_PARTY_NOTICES.desktop.md` C45 · `sbom.cdx.json` C45 · `sbom.desktop.cdx.json` C45, C48                                                                                                                                                                                                                                                                                                                           | -        |
+| licenses allowed by the `rust` policy (14)          | `MIT` C46 · `MIT-0` C46 · `ISC` C46 · `BSD-2-Clause` C46 · `BSD-3-Clause` C46 · `Apache-2.0` C46 · `0BSD` C46 · `BlueOak-1.0.0` C46 · `CC0-1.0` C46 · `Python-2.0` C46 · `Unlicense` C46 · `Zlib` C46 · `Unicode-3.0` C46 · `CDLA-Permissive-2.0` C46                                                                                                                                                                                                                                                                       | -        |
+| `MPL-2.0` exceptions of the `rust` policy (5)       | `cssparser` C46 · `cssparser-macros` C46 · `dtoa-short` C46 · `option-ext` C46 · `selectors` C46                                                                                                                                                                                                                                                                                                                                                                                                                            | -        |
+| Landing doors (12)                                  | 1 C27 · 2 C27 · 3 C32 · 4 C32, C43 · 5 C38, C49 · 6 C38 · 7 C3-C9, C13-C18 · 8 C45 · 9 C27, C46 · 10 C36-C39 · 11 C32 · 12 C46, C48                                                                                                                                                                                                                                                                                                                                                                                         | -        |
+| acceptance criteria (44)                            | AC1 C1 · AC2 C2 · AC3 C4 · AC4 C3 · AC5 C3 · AC6 C7 · AC7 C5 · AC8 C6 · AC9 C8 · AC10 C9 · AC11 C10 · AC12 C11 · AC13 C12 · AC14 C13 · AC15 C14 · AC16 C15 · AC17 C16 · AC18 C17 · AC19 C18 · AC20 C19 · AC21 C20 · AC22 C21 · AC23 C22 · AC24 C23 · AC25 C24 · AC26 C25 · AC27 C26 · AC28 C27 · AC29 C28 · AC30 C29 · AC31 C30 · AC32 C31 · AC33 C32 · AC34 C33 · AC35 C34 · AC36 C35 · AC37 C36, C37 · AC38 C38, C39, C41, C49 · AC39 C40, C41 · AC40 C42, C43, C48 · AC41 C44 · AC42 C45, C48, C50 · AC43 C46 · AC44 C47 | -        |
+
+- Claims naming a status code, route or response shape: C8, C9, C10, C12 - each has a proof that crosses the boundary (`inject` on the built server, and a real `fetch` to the real sidecar for C9); C1-C7 run the built CLI as a process
+- No other check claims more than the single case its proof exercises
+- The proofs of C22, C24, C25, C26 and C28 are one script on one platform (Linux); the same script is what the `desktop` job of `ci.yml` and the Linux `package` job run. Their Windows and macOS counterparts are in **Não verificado aqui**.
+
+## Test policy
+
+O repositório diz onde os testes moram e como rodá-los (`tests/*.test.ts` na raiz, `vitest`; `cargo test` para o crate novo, que não tinha precedente de linguagem) e não diz qual nível prova qual código nem quanto da entrada tem de ser afirmada. Estas linhas são a barra desta construção.
+
+| Code                                                             | Required proofs                                                            | Coverage expectation                                                                           |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Decides, reached across a boundary (a process, a socket, a file) | one at the boundary **and** one at its own layer                           | the contract at the boundary; one asserted case per row of the decision table at its own layer |
+| Decides, not reached across a boundary                           | one at its own layer                                                       | one asserted case per row of the decision table                                                |
+| Entry point that decides nothing                                 | one at the boundary                                                        | accepted input, each rejected input, each error path                                           |
+| Configuration and workflow files                                 | one that reads them as data (parsed, not grepped where a structure exists) | every guarantee the plan names, each against a mutation of the file                            |
+| Instrumentation, pass-throughs                                   | none of its own                                                            | covered by its consumer's proof                                                                |
+
+Evidence:
+
+- `apps/desktop/shell-core/src/nav.rs`: 3 answers over 8 branch points (scheme, host, port, userinfo, about) -> decides, not reached across a boundary; 5 tests over about 45 addresses
+- `apps/desktop/shell-core/src/ready.rs`: 4 reject branches (prefix, JSON, `v`, port) -> decides; 3 tests, every branch and the 5 missing fields
+- `apps/desktop/shell-core/src/supervisor.rs` + `failure.rs`: the start state machine (ready, bad line, early exit, timeout, probe failure) and the mapping of exit codes 3, 4, 5 to kinds, 14 branch points -> decides, reached across a process boundary: 14 integration tests with a real Node and a stand-in service (the boundary) and the table of `Failure::from` (its own layer)
+- `apps/desktop/shell-core/src/state.rs`, `probe.rs`, `payload.rs`, `token.rs`, `policy.rs`: small decisions (a port filter, a status line, two paths, an encoding, a conjunction) -> decides, own layer, one test per row
+- `apps/api/src/server.ts` `serveIndex`: 5 inputs (secret set, offered, cookie, loopback, browser headers) -> decides, reached across HTTP: `inject` over the table of C8-C12 and a real sidecar for C9; `apps/api/src/cli.ts` `parseCliArgs`: 9 usage errors -> entry point, boundary only: the module runs `main()` when imported, so it is proven through the built CLI as a process (C1-C3). **Gap, accepted:** `parseCliArgs` has no test at its own layer.
+- `apps/desktop/src-tauri/src/shell.rs`: the generation guard of `start` and `monitor` (4 branch points) -> decides, reached across the webview boundary: proven only by `gui.sh` (C22, C24, C25), not at its own layer, because a `Shell` needs an `App`. **Gap, accepted.**
+- `src-tauri/src/menu.rs`, `selftest.rs`, `main.rs`, `lib.rs` wiring: forwards to the supervisor or builds a menu, no conditional that decides -> instrumentation; `lib.rs` is read for the three registered commands (C27)
+- `scripts/version-sync.mjs`, `release-collect.mjs`, `release-notes.mjs`, `updater-manifest.mjs`, `updater-config.mjs`, `desktop-build.mjs`, `licenses-rust.mjs`, `sbom-rust.mjs`: each decides over a table (places, platforms and flags, headings, platform status, key shapes, environment, SPDX expressions, notice rows) -> decides, own layer: 55 tests over fixture trees; the first three also against the real tree
+- `.github/workflows/release.yml`, `ci.yml`: structure only -> workflow files, parsed with `yaml`
+- closest analogues in the repo: `tests/legal.network.test.ts` (a script that scans a tree, with fixtures and the real tree) for the scripts, `tests/ci.workflow.test.ts` (triggers) for the workflow file, `tests/cli.test.ts` (the built CLI as a process) for C1-C7
+
+Cost: 14 proofs at their own layer across 7 Rust files and about 55 across 8 scripts, plus one real-window script. Without these rows the supervisor would be proven only by the window test, and the release scripts only by a release nobody can run here.
+
+## Swept
+
+- validation: C3 (secret length, port range, flag misuse) · C14 (ready line) · C33, C35 (semantic versions) · C46 (SPDX expressions)
+- failure modes: C16, C17, C19 (start failures) · C23, C24 (what the person sees) · C28 (self-test says why) · C43 (a manifest that cannot be complete) · C40 (a missing installer or `.sig` fails the job)
+- idempotency: C18 (`stop` twice) · C35 (`--write` then `--check`) · C37 (re-running a tag refreshes the draft and refuses a published release)
+- authorization: C8-C10 (the token only to the window that has the secret) · C27 (the capability grants three commands and no remote) · C37 (`contents: write` only in `publish`) · C38, C39 (secrets only in the steps that need them, first-party actions only) · existing - every `/api` route is still decided by `config.scope` (AD-015), nothing here adds one
+- concurrency: C5 (a second service over one home) · C26 (a second launch) · C20 (the system's port 0 is race-free, the preferred port falls back once) · C37 (`concurrency` group per tag, never cancelled)
+- data lifecycle: C20 (`desktop-state.json` is one port, written atomically, damaged reads as none) · n/a for the draft and its artifacts: GitHub's retention applies and nothing here persists beyond them
+- dependency failure: C16, C19 (Node refused, payload damaged) · C47 (no `cargo`) · C43 (a platform's job did not finish) · **not verified:** the update endpoint unreachable (the code returns the error: a dialog on the menu path, a line on stderr at start) and the Apple, Authenticode and GitHub services being down
+- state transitions: C22 → C24 → retry (starting, ready, failed, starting) in `gui.sh` D · C18 (running, stopped, stopped again) · C23 (starting and failure never shown together)
+- observability: C23 (kind, detail and the service's last lines on the screen) · C28 (one JSON line from `--self-test`) · C11 (the secret never in a log) · C42 (the notes' signature table and banner) · C38/C40 (the plan job's summary names what will be signed) · the service's own logs in the home's `logs/`
+
+## Não verificado aqui
+
+Nada abaixo foi executado neste ambiente (Linux, sem certificado, sem conta Apple, sem Windows, sem macOS, sem push). Cada linha diz o que prova.
+
+| Check                                                                | O que não rodou                                                                                                                                                                              | Comando ou job que prova                                                                                                                                                      |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C22, C24-C26, C28 on Windows                                         | o app, o filho com `CREATE_NO_WINDOW`, fechar o stdin no Windows, a instalação silenciosa do NSIS e `--self-test` do instalado                                                               | job `package` / `windows-x64` do `release.yml`: _Install silently and start the service (Windows)_                                                                            |
+| C22, C24-C26, C28 on macOS                                           | o app e o `.dmg`, o Node e o addon assinados com hardened runtime, o filho dentro do `.app`, `--self-test` do pacote                                                                         | jobs `package` / `macos-arm64` e `macos-x64`: _The installed app starts its service (macOS)_                                                                                  |
+| C40 signed paths                                                     | a importação do certificado, a assinatura do código nativo, a assinatura e a notarização do Tauri, `codesign`, `stapler`, `spctl` e `Get-AuthenticodeSignature` com segredos reais           | os jobs acima com os segredos de `docs/release.md` §2 registrados, passos _Verify the signature and the notarization (macOS)_ e _Verify the Authenticode signature (Windows)_ |
+| C30 the update roundtrip                                             | achar, baixar, verificar, instalar e reiniciar para a versão nova, e a recusa de uma assinatura que não confere; só o que a camada de código garante (ordem, host) foi lido                  | o ensaio de `docs/release.md` §5, uma vez, antes do primeiro release publicado                                                                                                |
+| C36-C45 on GitHub                                                    | o `release.yml` e a parte nova do `ci.yml` rodando de verdade: os repasses de artefato entre jobs, `gh release create`, `macos-15-intel`, o `sudo apt-get` do Linux, `dpkg -i` dentro do job | um `workflow_dispatch` do Release e, depois, a primeira tag; o job `desktop` do CI em um pull request                                                                         |
+| C31 the AppImage on other systems, `.deb` on other releases, Wayland | só o `.deb` e o `.AppImage` de Ubuntu 24.04 com WebKitGTK 2.52, sob Xvfb                                                                                                                     | o job `linux-x64` (Ubuntu 22.04) e as máquinas que o dono quiser                                                                                                              |
+| C32 timestamp and Tauri bundler downloads                            | os acessos de build (`timestamp.digicert.com`, `tauri-apps/binary-releases`) com a rede real do CI                                                                                           | o job `windows-x64` e o `linux-x64`                                                                                                                                           |
+| Everything with a real update key                                    | o par de chaves do dono não existe: uma chave descartável gerou `.sig` do `.deb` e do `.AppImage` e foi apagada                                                                              | `docs/release.md` §2 e §4                                                                                                                                                     |
+
+## Handoff
+
+- S1 = 33k (`apps/api` + `tests/desktop.sidecar.test.ts`), S2 = 14k (`shell-core`), S3 = 15k (`src-tauri`, `ui`, `smoke`, 2 testes), S4 = 12k, S5 = 2k, S6 = 29k, S7 = 8k, Docs = 12k: 125k de arquivos tocados, mais `plan.md`, `design.md`, `checks.md` e `STATE.md` (~21k): ~146k, abaixo dos 150k do orçamento: um construtor, sem pergunta
+- Mecanismo: one builder (sem handoff: o delegado não tinha a quem entregar um segundo lote; compactação aceita)

@@ -2,7 +2,7 @@
  * What nobody reaches and nobody uses (.specs/features/limpeza-legado, C1, C2, C3, C9, C14, C16, C24, C25).
  * The reader is `testing/sourceGraph.ts`: the TypeScript syntax tree, never lines.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import ts from "typescript";
 import {
   deadExports,
@@ -15,8 +15,13 @@ import {
   syntax,
   unreached,
   visit,
+  wholeModuleImports,
   type Tree,
 } from "./testing/sourceGraph";
+
+// Reading and parsing the whole tree takes from 1 s to 6 s as the machine is loaded (one run at load 14 passed the
+// 5 s default); the guards are a reading of the source, not a race, so the limit says so (round 1, F5).
+vi.setConfig({ testTimeout: 30_000 });
 
 const tree = loadTree();
 const made = (files: Record<string, string>): Tree => new Map(Object.entries(files));
@@ -35,6 +40,8 @@ const UNREACHED: Record<string, string> = {
   "testing/canvasText.ts": "a reader of the design-system guards: specs only",
   "testing/cssUsage.ts": "a reader of the legacy guards (stylesheets): specs only",
   "testing/fontSize.ts": "a reader of the design-system guards: specs only",
+  "testing/missingKeys.setup.ts":
+    "the setup of every spec: fails a file that asked for a translation key no dictionary has",
   "testing/sizeScan.ts": "a reader of the design-system guards: specs only",
   "testing/stateScan.ts": "a reader of the design-system guards: specs only",
   "testing/sourceGraph.ts": "a reader of the legacy guards: specs only",
@@ -99,8 +106,88 @@ describe("C2 the exports nobody uses", () => {
   });
 });
 
+/**
+ * Round 1, F3: C2 counts a spec as a user, so an export that only a test takes passes it. These are those
+ * (production files; the test material of C1 is not production). Each is a pure function a spec holds to its
+ * behaviour; none is reached by the product. The list is a ledger, not a verdict: taking one out of the module
+ * is the owner's call (STATE, "Perguntas ao dono — limpeza-legado", 6), and a new entry, or one that gains a
+ * production user or leaves the file, fails the guard so that the change is seen.
+ */
+const ONLY_A_SPEC_USES_IT = [
+  "brain/engine/world.ts :: setMatched",
+  "brain/render/labels.ts :: rankLabels",
+  "components/paletteMatch.ts :: highlightRange",
+  "desktop/apps.tsx :: appLocationOf",
+  "desktop/decision.ts :: pendingDecisions",
+  "desktop/defaultLayout.ts :: orderedIds",
+  "desktop/defaultLayout.ts :: isWidgetId",
+  "desktop/defaultLayout.ts :: shouldStack",
+  "desktop/panelKinds.ts :: requestPanelAction",
+  "desktop/registry.tsx :: hasSurface",
+  "desktop/signal.ts :: isLit",
+  "hooks/useNotifications.ts :: initialNotificationsState",
+  "nucleo/entity/entityParams.ts :: orbitPoint",
+  "nucleo/scenes.ts :: ringOffset",
+  "nucleo/scenes.ts :: travelBetween",
+  "nucleo/scenes/brainCurve.ts :: bezierTangent",
+  "nucleo/scenes/brainCurve.ts :: curveLength",
+  "nucleo/scenes/brainCurve.ts :: quad2",
+  "nucleo/scenes/brainDimensions.ts :: bowCentre",
+  "nucleo/scenes/brainEgo.ts :: egoAll",
+  "nucleo/scenes/brainSpace.ts :: centroid",
+  "nucleo/scenes/brainSpace.ts :: frameDistance",
+  "nucleo/scenes/brainSpace.ts :: pick",
+  "nucleo/scenes/brainSpace.ts :: project",
+  "nucleo/scenes/brainSpace.ts :: reach",
+  "nucleo/scenes/brainTimeline.ts :: ageDays",
+  "nucleo/scenes/brainTour.ts :: shortestPath",
+  "nucleo/scenes/brainZoom.ts :: levelName",
+  "runs/sparkline.ts :: sumBy",
+  "theme.ts :: nextPreset",
+  "views/Settings.tsx :: isValidMicroAppHref",
+];
+
+/** The modules a production `import()` takes whole: every export of one counts as used (F4). */
+const WHOLE_MODULE_IMPORTS: Record<string, string> = {
+  "plugins/pixel/PixelStudio.tsx":
+    'the manifest\'s `load: () => import("./PixelStudio")` is read by the host, which takes the default export',
+};
+
+describe("C2 what only a test keeps alive, and what an import() of a whole module hides", () => {
+  it("C2 the exports that no production file takes are exactly the listed ones", () => {
+    const test = new Set(unreached(tree));
+    const found = names(
+      deadExports(tree, { specsUse: false }).filter((d) => !(d.file in PUBLIC_SURFACE) && !test.has(d.file)),
+    ).sort((a, b) => a.localeCompare(b));
+    expect(found).toEqual([...ONLY_A_SPEC_USES_IT].sort((a, b) => a.localeCompare(b)));
+  });
+
+  it("C2 the modules taken whole by an import() are exactly the listed ones", () => {
+    expect(wholeModuleImports(tree)).toEqual(Object.keys(WHOLE_MODULE_IMPORTS));
+  });
+});
+
 describe("C3 the reader of dead exports", () => {
   const dead = (files: Record<string, string>) => names(deadExports(made(files)));
+
+  it("C3 can leave the specs out of the users, and tells an import() of a whole module from a lazy default", () => {
+    const t = made({
+      "lib.ts": "export const used = 1; export const onlyTested = 2; export const none = 3;",
+      "app.ts": 'import { used } from "./lib"; export const a = used;',
+      "lib.test.ts": 'import { onlyTested } from "./lib"; export const b = onlyTested;',
+      "m.ts": "export default 1; export const z = 1;",
+      "n.ts": "export default 1; export const w = 1;",
+      "load.ts":
+        'export const m = () => import("./m"); export const n = lazyRoute(() => import("./n")); export const p = lazy(() => import("./n"));',
+    });
+    expect(names(deadExports(t)).filter((d) => d.startsWith("lib.ts"))).toEqual(["lib.ts :: none"]);
+    expect(names(deadExports(t, { specsUse: false })).filter((d) => d.startsWith("lib.ts"))).toEqual([
+      "lib.ts :: none",
+      "lib.ts :: onlyTested",
+    ]);
+    expect(wholeModuleImports(t)).toEqual(["m.ts"]);
+    expect(names(deadExports(t)).filter((d) => /^[mn]\.ts/.test(d))).toEqual(["n.ts :: w"]);
+  });
 
   it("C3 finds a function, a constant, a class, an interface, a type and a default that nobody uses", () => {
     expect(
@@ -212,8 +299,16 @@ describe("C9 the box that served the run composer", () => {
 });
 
 describe("C14 nothing in the interface reads or writes the hud preference", () => {
-  /** The Entity's own HUD canvas has a `hud` of its own, which is not the preference. */
-  const OWN_HUD = "nucleo/entity/";
+  /**
+   * The files that spell a `hud` that is not the preference, with how many sites each has: the Entity's own HUD
+   * canvas (the engine keeps a `hud: EntityHud` and a palette key), and the test double that mimics the server's
+   * whole answer, `hud` included (C1's closed list). Round 1, F4: a count, not a folder, so a new site in these
+   * files is seen too.
+   */
+  const OWN_HUD_SITES: Record<string, number> = {
+    "commands/testserver.ts": 1,
+    "nucleo/entity/entityEngine.ts": 8,
+  };
   const hudSites = (file: string, code: string): string[] => {
     const found: string[] = [];
     const sf = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -233,17 +328,13 @@ describe("C14 nothing in the interface reads or writes the hud preference", () =
   };
 
   it("C14 no source file names the preference by property, key, shorthand or destructuring", () => {
-    const offenders = [...tree]
-      // Test doubles (the closed list of C1) mimic the server's whole answer, `hud` included.
-      .filter(
-        ([f]) =>
-          /\.tsx?$/.test(f) &&
-          !/\.(test|typetest)\.tsx?$/.test(f) &&
-          !f.startsWith(OWN_HUD) &&
-          !(f in UNREACHED),
-      )
-      .flatMap(([f, code]) => hudSites(f, code));
-    expect(offenders).toEqual([]);
+    const sites: Record<string, number> = {};
+    for (const [f, code] of tree) {
+      if (!/\.tsx?$/.test(f) || /\.(test|typetest)\.tsx?$/.test(f)) continue;
+      const n = hudSites(f, code).length;
+      if (n > 0) sites[f] = n;
+    }
+    expect(sites).toEqual(OWN_HUD_SITES);
   });
 
   it("C14 the reader finds each spelling and passes a variable, a string and a class name", () => {

@@ -31,8 +31,10 @@ const always = (): boolean => true;
  * The routes that can answer the refusals of the path filter (`403 forbidden_path`) and of the safe reader (`404
  * not_a_file`, `413 file_too_large`). They are not common errors: `GET /api/settings` never touches a path. The lists
  * are not an opinion about which routes "look like" they read files: `tests/api.refusals.test.ts` calls each of the
- * 132 routes with every call into the path filter and the safe reader refusing, and compares the routes that
- * answered the refusal with these lists in both directions. A route that gains a read, or loses one, fails there
+ * 132 routes, once for each kind of read the route makes (one kind refuses at a time: a hostile file is one file, and
+ * a refusal that only exists after an earlier read succeeded is not seen when that read refuses too), and compares
+ * the routes that answered the refusal with these lists in both directions. `404` and `413` have a list each: a route
+ * can answer one and not the other. A route that gains a read, or loses one, fails there
  * with the route named; the lists are changed to what the probe printed.
  */
 const FORBIDDEN_PATH_ROUTES: ReadonlySet<string> = new Set([
@@ -86,7 +88,7 @@ const FORBIDDEN_PATH_ROUTES: ReadonlySet<string> = new Set([
   "PUT /api/skills/:slug",
 ]);
 
-const READER_ROUTES: ReadonlySet<string> = new Set([
+const NOT_A_FILE_ROUTES: ReadonlySet<string> = new Set([
   "DELETE /api/skills/:slug",
   "GET /api/connectors/:id/data",
   "GET /api/connectors/:id/setup",
@@ -94,6 +96,7 @@ const READER_ROUTES: ReadonlySet<string> = new Set([
   "GET /api/skills/:slug",
   "GET /api/skills/:slug/notes",
   "GET /api/skills/:slug/resource",
+  "GET /api/sync/plan",
   "POST /api/connectors",
   "POST /api/memory/journal/append",
   "POST /api/memory/routers",
@@ -108,13 +111,44 @@ const READER_ROUTES: ReadonlySet<string> = new Set([
   "POST /api/skills/:slug/toggle",
   "POST /api/skills/import",
   "POST /api/skills/install",
+  "POST /api/sync/apply",
+  "PUT /api/connectors/:id",
+  "PUT /api/routines/:id",
+  "PUT /api/skills/:slug",
+]);
+
+const TOO_LARGE_ROUTES: ReadonlySet<string> = new Set([
+  "DELETE /api/skills/:slug",
+  "GET /api/connectors/:id/data",
+  "GET /api/connectors/:id/setup",
+  "GET /api/memory/journal",
+  "GET /api/skills/:slug",
+  "GET /api/skills/:slug/notes",
+  "GET /api/skills/:slug/resource",
+  "GET /api/sync/plan",
+  "POST /api/connectors",
+  "POST /api/memory/journal/append",
+  "POST /api/memory/routers",
+  "POST /api/routines",
+  "POST /api/routines/:id/duplicate",
+  "POST /api/routines/:id/run",
+  "POST /api/routines/:id/toggle",
+  "POST /api/skills",
+  "POST /api/skills/:slug/notes",
+  "POST /api/skills/:slug/notes/promote",
+  "POST /api/skills/:slug/run",
+  "POST /api/skills/:slug/toggle",
+  "POST /api/skills/import",
+  "POST /api/skills/install",
+  "POST /api/sync/apply",
   "PUT /api/connectors/:id",
   "PUT /api/routines/:id",
   "PUT /api/skills/:slug",
 ]);
 const keyOf = (route: RouteDefinition): string => `${route.method} ${route.path}`;
 const namesPaths = (route: RouteDefinition): boolean => FORBIDDEN_PATH_ROUTES.has(keyOf(route));
-const readsFiles = (route: RouteDefinition): boolean => READER_ROUTES.has(keyOf(route));
+const isNotAFile = (route: RouteDefinition): boolean => NOT_A_FILE_ROUTES.has(keyOf(route));
+const isTooLarge = (route: RouteDefinition): boolean => TOO_LARGE_ROUTES.has(keyOf(route));
 
 /** What any route can answer, whatever its entry says: the gate before the route, the parser and the server. */
 export const COMMON_ERRORS: readonly CommonError[] = deepFreeze([
@@ -181,13 +215,13 @@ export const COMMON_ERRORS: readonly CommonError[] = deepFreeze([
     code: "not_a_file",
     description:
       "A path the route reads names something that is not a regular file (a folder, a device, a link out of the folders)",
-    applies: readsFiles,
+    applies: isNotAFile,
   },
   {
     status: 413,
     code: "file_too_large",
     description: "A file the route reads is larger than the route reads",
-    applies: readsFiles,
+    applies: isTooLarge,
   },
   {
     status: 413,

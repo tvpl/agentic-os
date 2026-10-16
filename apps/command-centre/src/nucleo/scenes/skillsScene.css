@@ -515,10 +515,6 @@
 .sks-find input::placeholder {
   color: var(--text-faint);
 }
-.sks-filters {
-  display: grid;
-  gap: 10px;
-}
 .sks-count {
   margin: 0;
   padding-left: 6px;
@@ -656,9 +652,6 @@
   .sks-find {
     flex: 0 0 200px;
   }
-  .sks-filters {
-    display: contents;
-  }
   .sks-count {
     white-space: nowrap;
   }
@@ -692,14 +685,6 @@
   width: auto;
   gap: 8px;
   padding-top: 4px;
-}
-.sks[data-narrow] .sks-filters {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  mask-image: linear-gradient(to right, var(--mask-ink) calc(100% - 24px), transparent);
 }
 .sks[data-narrow] .sks-count {
   display: none;

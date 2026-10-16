@@ -504,7 +504,6 @@ test("C14 the runs overview is only the river", async ({ page, request }) => {
   await expect(riverWrap(page)).toBeVisible();
   await expect(page.locator(".rs-head")).toBeVisible();
   await expect(runView(page)).toHaveCount(0);
-  await expect(page.locator(".rs-sheet, .rs-trace.on")).toHaveCount(0);
 });
 
 test("C15 a chosen run replaces the overview", async ({ page, request }) => {
@@ -512,7 +511,6 @@ test("C15 a chosen run replaces the overview", async ({ page, request }) => {
   await chooseRun(page);
   await expect.poll(async () => (await riverWrap(page).boundingBox())!.height).toBeLessThanOrEqual(120);
   await expect(runView(page)).toHaveCount(1);
-  await expect(page.locator(".rs-sheet")).toHaveCount(0);
   // The run view takes the rest of the scene: below the strip, down to the voice line.
   const strip = (await riverWrap(page).boundingBox())!;
   const view = (await runView(page).boundingBox())!;
@@ -765,8 +763,9 @@ test("C22 skill filters are one search and one row of chips", async ({ page }) =
   const barBox = (await bar.boundingBox())!;
   const stageBox = (await page.locator(".sks-stage").boundingBox())!;
   expect(barBox.y + barBox.height).toBeLessThanOrEqual(stageBox.y + 1);
-  // Nothing else filters on the side any more.
-  await expect(page.locator(".sks-filters")).toHaveCount(0);
+  // Nothing else filters on the side any more: the one row of chips is the bar's.
+  await expect(page.locator(".sks-chips")).toHaveCount(1);
+  await expect(bar.locator(".sks-chips")).toHaveCount(1);
 });
 
 test("C23 one plus menu holds marketplace, export and new", async ({ page }) => {

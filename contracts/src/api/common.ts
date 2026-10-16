@@ -83,3 +83,22 @@ export const err = (status: number, code: string, description: string): ErrorDoc
 
 /** The statuses `404`/`409`/… without an `error.code` of their own carry the code of their status. */
 export const notFound = (what: string): ErrorDoc => err(404, "not_found", `${what} does not exist`);
+
+/**
+ * What a route that saves `config/settings.json` may answer when the file on disk is one this version will not
+ * replace: written by a newer MordomoOS, or holding values this version drops and cannot keep aside first. The save is refused and
+ * the file is left as it was. `tests/api.refusals.test.ts` calls the 127 routes over such a file and compares the routes
+ * that answer these with the routes that list them, in both directions.
+ */
+export const settingsWriteErrors: readonly ErrorDoc[] = [
+  err(
+    409,
+    "settings_unpreserved",
+    "The settings file on disk holds values this version cannot read and a copy of it could not be kept; it is not replaced",
+  ),
+  err(
+    409,
+    "settings_newer",
+    "The settings file on disk was written by a newer version and is not overwritten",
+  ),
+];

@@ -28,12 +28,22 @@ only when you open it.
 
 ## Quick start
 
-**Packaged app** (no Node.js, no terminal): download the archive for your
-platform, extract it and open **MordomoOS** (`MordomoOS.app`, `MordomoOS` or
-`MordomoOS.cmd`). The local service starts and the browser opens the setup
-screen, which detects Claude Code, Cursor Agent and Codex on the computer and
+**Desktop app** (no Node.js, no terminal): install the package for your system
+from the releases page (`.dmg` on macOS, `-setup.exe` on Windows, `.deb` or
+`.AppImage` on Linux) and open **MordomoOS**. The app starts the local service
+on a free loopback port, shows the Command Centre in its own window, and stops
+the service when you close it; if the service cannot start, the window says why.
+The setup screen detects Claude Code, Cursor Agent and Codex on the computer and
 tells you how to install or sign in to each one. Data lives in your user
-profile. Details and platform notes: [docs/install.md](docs/install.md).
+profile. Installers are signed when the owner's signing secrets were registered
+and carry `UNSIGNED` in their name when they were not; updates, if you turn
+them on, are verified against a public key built into the app. Details:
+[docs/install.md](docs/install.md); how a release is cut and verified:
+[docs/release.md](docs/release.md).
+
+**Portable archive** (`npm run dist`): extract it and open **MordomoOS**
+(`MordomoOS.app`, `MordomoOS` or `MordomoOS.cmd`); the service starts and the
+browser opens the setup screen. Platform notes: [docs/install.md](docs/install.md).
 
 **From source** (Node.js ≥ 22, git):
 
@@ -72,6 +82,7 @@ Build your own distributable with `npm run dist` ([how it works](docs/install.md
 | `mordomo note new "<title>"`                    | Create a Markdown note under `memory/notes`; `note show <path>` prints it and `note save <path> --base <version>` replaces it (refused with `edit_conflict` if it changed since that version).                                     |
 | `mordomo mcp`                                   | Serve MordomoOS as an MCP server (stdio) to Claude, Cursor and Codex.                                                                                                                                                              |
 | `mordomo skills publish` / `mordomo skills key` | Publish the canonical skills to a signed registry folder (`publish [dir] --out <dir>`); print this machine's signing public key.                                                                                                   |
+| `mordomo version`                               | Print the version (also `mordomo --version` and `-v`): the one of `package.json`, which the desktop app and its installers carry too.                                                                                              |
 | `mordomo uninstall`                             | Stops everything; **data is preserved by default** (`--purge` to remove state).                                                                                                                                                    |
 
 ## What's inside
@@ -88,6 +99,7 @@ connectors/          # connector registry entries
 artifacts/  logs/  config/
 apps/api             # Fastify API on 127.0.0.1 + mordomo CLI
 apps/command-centre  # React Command Centre: the app frame and the Núcleo (dark/light, EN/pt-BR)
+apps/desktop         # Tauri 2 desktop app (Rust): window, service supervisor, updater
 tests/  docs/  scripts/  legal/
 ```
 
@@ -96,7 +108,7 @@ tests/  docs/  scripts/  legal/
 - [User manual](docs/user-manual.md) — day-to-day usage + the 7-day adoption plan
 - [Architecture](docs/architecture.md) · [Security & threat model](docs/security.md)
 - [Creating skills](docs/skills-guide.md) · [Creating routines](docs/routines-guide.md) · [Adding adapters](docs/adapters-guide.md) · [Using the engine as a library (SDK)](docs/sdk.md)
-- [Installing & building a distributable](docs/install.md) · [Backup, restore & uninstall](docs/backup-restore-uninstall.md)
+- [Installing & building a distributable](docs/install.md) · [Cutting, signing and verifying a release](docs/release.md) · [Backup, restore & uninstall](docs/backup-restore-uninstall.md)
 - [Windows / WSL](docs/windows.md) · [Always-on VPS + Syncthing (optional)](docs/vps-syncthing.md)
 - [Product spec](docs/product-spec.md) · [Events](docs/events.md) · [Memory guide](docs/memory-guide.md)
 - Project history (analyses, audits and plans written while building it; not product documentation): [docs/internal](docs/internal/README.md)
@@ -111,6 +123,8 @@ npm test              # engine, API and SDK tests (vitest)
 npm run test:ui       # the interface's tests (vitest, jsdom)
 npm run test:e2e      # browser tests (Playwright) over the built interface
 npm run bundle:check  # fails if the interface's JS grew more than 5% over the recorded build
+npm run version:check # every version (packages, lockfile, Tauri, Cargo) is the same
+npm run desktop:payload # the folder the desktop app carries (then: cd apps/desktop && cargo test)
 npm run gallery       # the component gallery (every primitive, in both interfaces and both themes)
 ```
 

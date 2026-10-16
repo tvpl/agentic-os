@@ -137,15 +137,15 @@ Cada família num commit seu (`git revert` a desfaz). Os números são os da bas
 - **Trocadas, não removidas:** `apps.setup.stepDesktopHud`, `apps.setup.desktopHint`, `apps.setup.hudLeft` e
   `apps.setup.hudRight` viraram `apps.setup.stepAppearance` e `apps.setup.appearanceHint` (en e pt-BR).
 
-Medidas (a build de `primitivas-r3` contra a de agora, `scripts/bundle-baseline.json`):
+Medidas (a build de `primitivas-r3` contra a final da rodada 1 de correção, `scripts/bundle-baseline.json`; as da primeira construção eram 499 906 de JS gzip e 335 499 do chunk principal, antes dos 17 seletores e da chave `status.completed`):
 
 |                                     | antes     | depois    | diferença                                                              |
 | ----------------------------------- | --------- | --------- | ---------------------------------------------------------------------- |
-| JS raw                              | 1 562 270 | 1 534 787 | −27 483                                                                |
-| JS gzip                             | 507 021   | 499 906   | −7 115 (−1,4%)                                                         |
-| CSS raw                             | 341 687   | 329 679   | −12 008                                                                |
-| CSS gzip                            | 71 975    | 69 931    | −2 044                                                                 |
-| chunk principal (`ui-*.js`)         | 362 540   | 335 499   | −27 041                                                                |
+| JS raw                              | 1 562 270 | 1 535 092 | −27 178                                                                |
+| JS gzip                             | 507 021   | 499 992   | −7 029 (−1,4%)                                                         |
+| CSS raw                             | 341 687   | 326 857   | −14 830                                                                |
+| CSS gzip                            | 71 975    | 69 452    | −2 523                                                                 |
+| chunk principal (`ui-*.js`)         | 362 540   | 335 804   | −26 736                                                                |
 | chunk do Pixel (`PixelStudio-*.js`) | 20 020    | 19 992    | −28 (e um `PixelStudio-*.css` de 915 bytes que antes ia em `apps.css`) |
 
 ## Provas que mudaram de endereço

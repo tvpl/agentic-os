@@ -241,6 +241,15 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
   and a bookmark, needs a "locked" screen, and the e2e suite needs the cookie; and a program that can read the
   page without it can read `config/token` from disk, so it narrows who can ask and not what a run that goes
   looking for the file reaches.
+  **Built for the desktop app (`distribuicao`):** the app starts its service with a launch secret
+  (`MORDOMO_LAUNCH_TOKEN`, 256 random bits made for that launch, in the environment and never in argv) and opens the window
+  on `/?launch=<secret>`; the service trades it for an `HttpOnly`, `SameSite=Lax` cookie with a `302`, and while the secret is
+  set it serves the token only to a request that carries the cookie (`GET /` without it answers the page with an empty meta,
+  headers of a browser or not). `Lax` and not the design's `Strict` because the first request comes from the shell's
+  `tauri://` page, another site, and a `Strict` cookie is not sent through that redirect (seen under WebKitGTK). The service
+  started that way (`start --foreground --sidecar`) also refuses to stop another service for the home or the port. The
+  secret is not a boundary against a process that can read `config/token`; it removes the "any program that sends a
+  browser's headers gets the token from the page" path for the desktop app. `mordomo launch` in a browser is unchanged.
 - **Opening a file never runs it.** `POST /api/memory/open` hands the OS only folders and
   files whose extension is in `OPENABLE_EXTENSIONS` (`apps/api/src/routes/memory.ts`:
   documents, images, audio, video, `html`, office files); anything else — `.app`,

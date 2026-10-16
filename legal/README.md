@@ -41,8 +41,12 @@ O CI roda tudo isso em `npm test` (`tests/legal.*.test.ts`).
 ### Esquemas do CycloneDX (`vendor/cyclonedx/`, só para o teste do SBOM, não vão no instalador)
 
 Copiados sem alteração de https://github.com/CycloneDX/specification/tree/master/schema (11/10/2026), publicados
-pelo projeto CycloneDX sob a Apache-2.0 (o aviso está no próprio esquema). `tests/legal.licenses.test.ts` valida
-o SBOM contra eles.
+pelo projeto CycloneDX sob a Apache-2.0. `bom-1.5.schema.json` e `jsf-0.82.schema.json` trazem o aviso num
+`$comment` ("published under the terms of the Apache License 2.0"); `spdx.schema.json` não traz aviso algum, só a
+lista de ids SPDX. O texto da Apache-2.0 e um eventual `NOTICE` do projeto **não** foram copiados para cá: estão no
+arquivo `LICENSE` do repositório de origem, e os três arquivos não vão no instalador. Se reproduzir o texto ao lado
+dos esquemas é exigido, é pergunta ao advogado (`.specs/STATE.md`, "Perguntas ao dono", licenca-comercial).
+`tests/legal.licenses.test.ts` valida o SBOM contra eles.
 
 | Arquivo                  | SHA-256                                                            |
 | ------------------------ | ------------------------------------------------------------------ |

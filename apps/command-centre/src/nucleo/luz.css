@@ -128,7 +128,7 @@
 .nu-shell .nu-scene.luz .pxs-swatch {
   border-radius: 10px;
 }
-.nu-shell .nu-scene.luz :is(.card, .panel, .widget, .modal-body, .badge, .pill) {
+.nu-shell .nu-scene.luz :is(.card, .modal-body, .badge) {
   clip-path: none;
 }
 .nu-shell .nu-scene.luz .card {

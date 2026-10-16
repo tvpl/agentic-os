@@ -15,7 +15,7 @@ Versão da minuta: 11/10/2026 · vale para o MordomoOS 0.8.0 em diante
    serviço nosso a que ele se conecte.
 3. **Nenhuma telemetria.** Nem de uso, nem de erros, nem anônima.
 4. O que sai do seu computador sai porque você configurou (Telegram, push, webhook, registro de skills,
-   conector, verificação de versão) ou porque os CLIs que você escolheu (Claude Code, Codex, Cursor Agent)
+   conector, verificação de versão, atualização do app desktop) ou porque os CLIs que você escolheu (Claude Code, Codex, Cursor Agent)
    falam com o provedor deles. A seção 4 lista todos.
 5. Você controla cada um desses destinos nas Configurações (ou em `config/settings.json`), e a maioria vem desligada.
 
@@ -61,6 +61,15 @@ Desligar a busca semântica apaga os vetores na próxima indexação.
 `mordomo backup` copia a casa para dentro dela mesma (`config/backups/`). Apagar a casa apaga tudo que o
 MordomoOS guardou; ele não mantém cópia em outro lugar.
 
+O app desktop (o instalador do Windows, do macOS ou do Linux) é uma janela em volta do mesmo serviço local: ao abrir,
+ele inicia o serviço em `127.0.0.1`, numa porta que o sistema escolhe (a última usada, se estiver livre), com um segredo
+gerado a cada abertura que só o app e o serviço conhecem, e o desliga ao fechar. A janela carrega só as telas do próprio
+app e o endereço desse serviço; qualquer outro endereço da web é aberto no seu navegador, nunca na janela. O app guarda
+uma coisa a mais no seu computador, `desktop-state.json` na pasta de dados do app (a última porta usada). Nada sai dele
+além do que a seção 4 lista: o atualizador ("Atualização do app desktop") só existe numa compilação que leva a chave
+pública do dono, só consulta o GitHub com `updates.check` ligado ou quando você escolhe "Check for Updates…" no menu, e só
+instala um arquivo cuja assinatura minisign confere com a chave pública do app.
+
 ## 4. O que sai do seu computador
 
 Esta é a lista inteira dos destinos de rede que o código do MordomoOS conhece. Cada linha vem de
@@ -73,6 +82,7 @@ Nas tabelas, "o dono" é a pessoa que instalou e administra o MordomoOS (você),
 | --- | --- | --- | --- | --- |
 | O próprio serviço (127.0.0.1) | (nenhum endereço fixo) | sempre: a interface, o CLI `mordomo`, o broker de permissão e o MCP do Mordomo falam com o serviço em 127.0.0.1 | ligado | tudo que o produto faz; não sai da máquina (o acesso remoto é opcional, exige TLS ou túnel e vem desligado) |
 | Verificação de versão (api.github.com) | `api.github.com` | só quando `updates.check` está ligado ou quando o dono pede "Verificar agora" (`GET /api/updates?force=1`) | desligado | um GET anônimo a /repos/tvpl/agentic-os/releases/latest com o cabeçalho `user-agent: mordomo-os` (o nome do produto, sem versão); nenhum identificador da instalação, da máquina ou da pessoa; o GitHub vê o endereço IP; a resposta fica em cache por seis horas |
+| Atualização do app desktop (github.com) | `github.com`, `release-assets.githubusercontent.com`, `objects.githubusercontent.com` | só no app desktop instalado, numa compilação que leva a chave pública de atualização, e só quando `updates.check` está ligado (ao abrir o app) ou quando o dono escolhe "Check for Updates…" no menu do app; o app pede o manifesto `latest.json` do último release publicado e, se o dono confirmar, baixa o instalador | desligado | um GET anônimo a `https://github.com/tvpl/agentic-os/releases/latest/download/latest.json` e, se houver versão nova e o dono confirmar, um GET ao instalador (o GitHub redireciona para `release-assets.githubusercontent.com` ou `objects.githubusercontent.com`); sem corpo, com o cabeçalho `user-agent: tauri-plugin-updater/<versão do plugin>` e sem versão do app, sistema ou identificador na URL; o GitHub vê o endereço IP; a assinatura minisign do instalador é conferida contra a chave pública do app antes de qualquer instalação |
 | Canal Telegram (api.telegram.org) | `api.telegram.org` | só com `channels.telegram.enabled`, um token de bot numa variável de ambiente e um `chatId`; receber respostas (`getUpdates`) exige também `channels.telegram.inbound` | desligado | o texto dos avisos do inbox acima do tom mínimo (título e corpo), os botões de aprovação e as respostas de quem escreve no chat; o token do bot vai na URL, como a API do Telegram exige |
 | Notificações push dos navegadores (fcm.googleapis.com e outros) | `fcm.googleapis.com`, `android.googleapis.com`, `*.push.services.mozilla.com`, `*.push.apple.com`, `*.notify.windows.com` | só com `channels.push.enabled` ligado e depois que o dono, ou um dispositivo pareado com o escopo `content`, assina notificações num navegador; o serviço então envia cada aviso ao endereço da assinatura, e resolve o nome desse endereço no DNS do sistema antes de cada envio | desligado; sem assinatura, nada é enviado | o aviso (título e corpo) cifrado de ponta a ponta (RFC 8291, chave do navegador que assinou), com uma credencial VAPID assinada que leva o campo `channels.push.subject` (por padrão `mailto:mordomo@localhost`; se o dono puser um e-mail seu ali, o serviço de push o vê); o serviço do navegador vê o endereço da assinatura, o tamanho e o horário, não o texto |
 | Servidor de push escolhido pelo dono | (o endereço que você escreve) | só com `channels.push.enabled` ligado e quando o dono (nunca um dispositivo) registra uma assinatura cujo endereço é um servidor https público dele | nenhum | o mesmo aviso cifrado das notificações push; o endereço é validado (https, porta padrão, só endereços públicos) a cada envio |
@@ -88,10 +98,11 @@ Nas tabelas, "o dono" é a pessoa que instalou e administra o MordomoOS (você),
 
 | Destino | Endereços | Quando | Padrão | O que é enviado |
 | --- | --- | --- | --- | --- |
-| Links do GitHub mostrados ao usuário (github.com) | `github.com` | a página de releases e as páginas de origem dos conectores (campo `origin` de connectors/*.json) são mostradas como link; quem decide abri-las é a pessoa, no navegador | nunca acessado pelo produto | nada: o produto não abre conexão para esses endereços |
+| Links do GitHub mostrados ao usuário (github.com) | (o endereço aparece como link; ver a linha "Atualização do app desktop") | a página de releases e as páginas de origem dos conectores (campo `origin` de connectors/*.json) são mostradas como link; quem decide abri-las é a pessoa, no navegador | nunca acessado pelo produto | nada: o produto não abre conexão para esses endereços por causa desses links (o único acesso do produto a github.com é o atualizador do app desktop, a entrada "Atualização do app desktop") |
 | Comando de instalação do Cursor (cursor.com) | `cursor.com` | o endereço `https://cursor.com/install` aparece como instrução na tela de configuração; o produto não o executa | nunca acessado pelo produto | nada: o produto não abre conexão para esse endereço |
 | Documentação citada em skills embutidas (code.claude.com) | `code.claude.com` | a skill embutida `claude-mobile-optimize` cita páginas da documentação do Claude Code no texto de suas instruções; quem as abriria seria o agente (o CLI) ou a pessoa, nunca o código do MordomoOS | nunca acessado pelo MordomoOS | nada: o MordomoOS não abre conexão para esse endereço |
 | Download do Node.js ao gerar o instalador (nodejs.org) | `nodejs.org` | só na máquina de quem gera o instalador (`npm run dist`, `scripts/package.mjs`, e a mensagem de `scripts/setup.sh`): baixa o binário oficial do Node.js e confere o SHA-256; ao empacotar para outra plataforma, o `prebuild-install` baixa o módulo nativo do SQLite do GitHub | nunca roda no computador de quem usa o produto | um GET do binário e da lista de somas; nada do usuário |
+| Carimbo de tempo da assinatura do instalador do Windows (timestamp.digicert.com) | `timestamp.digicert.com` | só na máquina de quem gera o instalador do Windows com um certificado de assinatura (`scripts/desktop-build.mjs`, no workflow de release); nunca no app instalado | nunca roda no computador de quem usa o produto | o resumo (hash) da assinatura do instalador, para o carimbo de tempo RFC 3161; nada do usuário |
 
 ## 5. Os CLIs e os provedores de IA
 
@@ -123,10 +134,15 @@ nenhuma configuração com `telemetry`, `analytics` ou `crash` no nome.
 - código fora das pastas que ela lê (testes, `.github`, `docs`, `node_modules`) e o que um CLI ou um programa de
   conector de terceiros faz por conta própria; o código de terceiros que o instalador leva (React, Fastify…) não
   é varrido, só conferido contra a lista de pacotes de telemetria;
-- `eval`, `new Function`, um programa escolhido por variável, `sh -c` com `curl` dentro de uma cadeia composta, e
-  texto em prosa que manda um agente acessar um endereço (só URLs e `curl`/`wget` em prosa são lidos);
-- um endereço escrito sem esquema numa constante cujo nome não diz que é um endereço e cujo domínio de topo não
-  está na lista conhecida da varredura.
+- `eval`, `new Function`, um programa escolhido por variável, e texto em prosa que manda um agente acessar um
+  endereço (só URLs e `curl`/`wget` em prosa são lidos);
+- um `curl` ou `wget` só é lido quando a cadeia dada a `exec`, `spawn` e semelhantes **começa** por ele
+  (`exec("curl -s https://…")`); no meio de uma cadeia composta (`cd x && curl …`, `sh -c "… | curl …"`) não é;
+- `Reflect.get(globalThis, "fetch")` e `globalThis["fetch"]` são lidos, mas o objeto global com outro nome
+  (`const g = globalThis`, depois `g.fetch(…)`) não é;
+- um endereço escrito sem esquema só é lido quando a cadeia começa por `//` (`"//host/arquivo.js"`) ou, num
+  arquivo de texto, vem logo depois de aspas, de `(` ou de `=`; montado por partes, ou numa constante cujo nome
+  não diz que é um endereço e cujo domínio de topo não está na lista conhecida da varredura, não é.
 
 **Se um dia houver telemetria**, ela será: opt-in e desligada por padrão; mínima, sem identificador pessoal
 nem conteúdo de prompts, arquivos ou memória; com uma tela de consentimento que mostra exatamente o que seria

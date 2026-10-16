@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-window",
+  "description": "The shell's own screen (starting, failure) may ask the shell for its state, retry, and quit. The Command Centre, loaded from the local service's origin, is not a local page and has no capability at all.",
+  "windows": ["main"],
+  "permissions": ["allow-shell-status", "allow-shell-retry", "allow-shell-quit"]
+}

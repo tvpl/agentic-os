@@ -1,0 +1,887 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, it } from "vitest";
+/* The scripts are plain ESM without declarations: what the tests use of them is checked by running it. */
+const versionSync: any = await import("../scripts/version-sync.mjs");
+const releaseNotes: any = await import("../scripts/release-notes.mjs");
+const collect: any = await import("../scripts/release-collect.mjs");
+const manifest: any = await import("../scripts/updater-manifest.mjs");
+const updaterConfig: any = await import("../scripts/updater-config.mjs");
+const desktopBuild: any = await import("../scripts/desktop-build.mjs");
+
+/**
+ * distribuicao: the scripts the release leans on (.specs/features/distribuicao, AC 34-36, 39-41).
+ * Each runs against a small tree built here, and the version script also against the real one.
+ */
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const temps: string[] = [];
+const temp = (prefix: string) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  temps.push(dir);
+  return dir;
+};
+afterEach(() => {
+  for (const dir of temps.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+});
+
+interface Io {
+  out: string;
+  err: string;
+  io: { out: (s: string) => void; err: (s: string) => void };
+}
+const capture = (): Io => {
+  const c: Io = { out: "", err: "", io: { out: (s) => (c.out += s), err: (s) => (c.err += s) } };
+  return c;
+};
+const run = (main: (argv: string[], io: Io["io"]) => number, argv: string[]) => {
+  const c = capture();
+  return { code: main(argv, c.io), out: c.out, err: c.err };
+};
+
+// ---- version-sync ------------------------------------------------------------------------------------------
+
+function versionTree(version = "1.2.3"): string {
+  const root = temp("mordomo-vs-");
+  const put = (file: string, text: string) => {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), text);
+  };
+  const json = (v: unknown) => JSON.stringify(v, null, 2) + "\n";
+  put(
+    "package.json",
+    json({ name: "mordomo-os", version, workspaces: ["core", "apps/api", "apps/desktop"] }),
+  );
+  put("core/package.json", json({ name: "@mordomo/core", version }));
+  put(
+    "apps/api/package.json",
+    json({ name: "@mordomo/api", version, dependencies: { "@mordomo/core": version, zod: "^3.25.0" } }),
+  );
+  put(
+    "apps/desktop/package.json",
+    json({ name: "@mordomo/desktop", version, devDependencies: { "@tauri-apps/cli": "2.12.2" } }),
+  );
+  put(
+    "package-lock.json",
+    json({
+      lockfileVersion: 3,
+      packages: {
+        "": { name: "mordomo-os", version },
+        core: { name: "@mordomo/core", version },
+        "apps/api": {
+          name: "@mordomo/api",
+          version,
+          dependencies: { "@mordomo/core": version, zod: "^3.25.0" },
+        },
+        "apps/desktop": { name: "@mordomo/desktop", version },
+        "node_modules/zod": { version: "3.25.1" },
+      },
+    }),
+  );
+  put("apps/desktop/src-tauri/tauri.conf.json", json({ productName: "MordomoOS", version }));
+  put(
+    "apps/desktop/Cargo.toml",
+    `[workspace]\nmembers = ["shell-core"]\n\n[workspace.package]\nversion = "${version}"\nedition = "2021"\n`,
+  );
+  put(
+    "apps/desktop/Cargo.lock",
+    `version = 4\n\n[[package]]\nname = "libc"\nversion = "0.2.1"\n\n[[package]]\nname = "mordomo-desktop"\nversion = "${version}"\ndependencies = [\n "libc",\n]\n\n[[package]]\nname = "mordomo-shell-core"\nversion = "${version}"\n`,
+  );
+  return root;
+}
+
+describe("C33 version-sync --check names every place whose version differs", () => {
+  it("C33 a consistent tree passes, and the places counted are the ones of the plan", () => {
+    const root = versionTree();
+    const res = run(versionSync.main, ["--check", "--root", root]);
+    expect(res.err).toBe("");
+    expect(res.code).toBe(0);
+    const places = versionSync
+      .readVersions(root)
+      .map((p: { file: string; what: string }) => `${p.file} ${p.what}`);
+    expect(places).toEqual([
+      "package.json version",
+      "core/package.json version",
+      "apps/api/package.json version",
+      "apps/api/package.json dependencies.@mordomo/core",
+      "apps/desktop/package.json version",
+      'package-lock.json packages[""].version',
+      'package-lock.json packages["apps/api"].version',
+      'package-lock.json packages["apps/api"].dependencies.@mordomo/core',
+      'package-lock.json packages["apps/desktop"].version',
+      'package-lock.json packages["core"].version',
+      "apps/desktop/src-tauri/tauri.conf.json version",
+      "apps/desktop/Cargo.toml [workspace.package] version",
+      "apps/desktop/Cargo.lock crate mordomo-desktop",
+      "apps/desktop/Cargo.lock crate mordomo-shell-core",
+    ]);
+  });
+
+  const mutations: Array<[string, string, (text: string) => string]> = [
+    ["a workspace package.json", "core/package.json", (t) => t.replace('"1.2.3"', '"1.2.4"')],
+    [
+      "the desktop package.json",
+      "apps/desktop/package.json",
+      (t) => t.replace('"version": "1.2.3"', '"version": "9.9.9"'),
+    ],
+    [
+      "an exact @mordomo pin",
+      "apps/api/package.json",
+      (t) => t.replace('"@mordomo/core": "1.2.3"', '"@mordomo/core": "1.2.2"'),
+    ],
+    [
+      "the lockfile's workspace entry",
+      "package-lock.json",
+      (t) =>
+        t.replace(
+          '"name": "@mordomo/core",\n      "version": "1.2.3"',
+          '"name": "@mordomo/core",\n      "version": "1.0.0"',
+        ),
+    ],
+    ["tauri.conf.json", "apps/desktop/src-tauri/tauri.conf.json", (t) => t.replace("1.2.3", "1.2.0")],
+    ["Cargo.toml", "apps/desktop/Cargo.toml", (t) => t.replace('version = "1.2.3"', 'version = "1.2.5"')],
+    [
+      "a crate of Cargo.lock",
+      "apps/desktop/Cargo.lock",
+      (t) =>
+        t.replace(
+          'name = "mordomo-shell-core"\nversion = "1.2.3"',
+          'name = "mordomo-shell-core"\nversion = "0.0.1"',
+        ),
+    ],
+  ];
+  for (const [what, file, mutate] of mutations)
+    it(`C33 ${what} that differs exits 1 and names ${file}`, () => {
+      const root = versionTree();
+      const target = path.join(root, file);
+      const before = fs.readFileSync(target, "utf8");
+      fs.writeFileSync(target, mutate(before));
+      expect(fs.readFileSync(target, "utf8")).not.toBe(before);
+      const res = run(versionSync.main, ["--check", "--root", root]);
+      expect(res.code).toBe(1);
+      expect(res.err).toContain(file);
+      expect(res.err).toContain("expected 1.2.3");
+    });
+
+  it("C33 a root version that is not semantic, and a missing file, are reported, not guessed", () => {
+    const root = versionTree();
+    fs.writeFileSync(
+      path.join(root, "package.json"),
+      JSON.stringify({ name: "x", version: "1.2", workspaces: [] }),
+    );
+    expect(run(versionSync.main, ["--check", "--root", root]).code).toBe(1);
+    fs.rmSync(path.join(root, "apps/desktop/Cargo.lock"));
+    fs.writeFileSync(
+      path.join(root, "package.json"),
+      JSON.stringify({ name: "x", version: "1.2.3", workspaces: ["core"] }),
+    );
+    expect(run(versionSync.main, ["--check", "--root", root]).code).toBe(2);
+  });
+
+  it("C33 the real repository is in step (every place of the plan, one version)", () => {
+    const res = run(versionSync.main, ["--check"]);
+    expect(res.err).toBe("");
+    expect(res.code).toBe(0);
+    const rootVersion = (
+      JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")) as { version: string }
+    ).version;
+    expect(new Set(versionSync.readVersions(ROOT).map((p: { version: string }) => p.version))).toEqual(
+      new Set([rootVersion]),
+    );
+    expect(versionSync.packageFiles(ROOT)).toContain("apps/desktop/package.json");
+  });
+});
+
+describe("C34 a tag has to be v<version>", () => {
+  it("C34 v<version> passes; another tag, no v, a prefix and a longer version fail with exit 1", () => {
+    const root = versionTree("1.2.3");
+    expect(run(versionSync.main, ["--check", "--tag", "v1.2.3", "--root", root]).code).toBe(0);
+    for (const tag of ["v1.2.4", "1.2.3", "v1.2", "v1.2.3.1", "release-1.2.3", "v1.2.3-rc.1", "V1.2.3"]) {
+      const res = run(versionSync.main, ["--check", "--tag", tag, "--root", root]);
+      expect(res.code, tag).toBe(1);
+      expect(res.err, tag).toContain("is not v1.2.3");
+    }
+    expect(run(versionSync.main, ["--check", "--tag", "", "--root", root]).code).toBe(2);
+    expect(run(versionSync.main, ["--tag", "v1.2.3", "--root", root]).code).toBe(2);
+  });
+});
+
+describe("C35 version-sync --write sets every place and --check then passes", () => {
+  it("C35 --write 2.0.0-rc.1 changes all 14 places, including the exact pins, and leaves the other dependencies alone", () => {
+    const root = versionTree("1.2.3");
+    expect(run(versionSync.main, ["--write", "2.0.0-rc.1", "--root", root]).code).toBe(0);
+    expect(run(versionSync.main, ["--check", "--tag", "v2.0.0-rc.1", "--root", root]).code).toBe(0);
+    const api = JSON.parse(fs.readFileSync(path.join(root, "apps/api/package.json"), "utf8")) as {
+      dependencies: Record<string, string>;
+    };
+    expect(api.dependencies).toEqual({ "@mordomo/core": "2.0.0-rc.1", zod: "^3.25.0" });
+    const lock = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8")) as {
+      packages: Record<string, { version: string }>;
+    };
+    expect(lock.packages["node_modules/zod"]!.version).toBe("3.25.1");
+    expect(fs.readFileSync(path.join(root, "apps/desktop/Cargo.lock"), "utf8")).toContain(
+      'name = "libc"\nversion = "0.2.1"',
+    );
+    expect(fs.readFileSync(path.join(root, "apps/desktop/Cargo.toml"), "utf8")).toContain('edition = "2021"');
+  });
+
+  it("C35 a version that is not semantic is refused with exit 2 and nothing is written", () => {
+    const root = versionTree("1.2.3");
+    for (const bad of ["1.2", "v1.2.3", "1.2.3.4", "latest", "01.2.3x", ""]) {
+      expect(run(versionSync.main, ["--write", bad, "--root", root]).code, bad).toBe(2);
+    }
+    expect(run(versionSync.main, ["--check", "--root", root]).code).toBe(0);
+  });
+});
+
+// ---- release notes -----------------------------------------------------------------------------------------
+
+const CHANGELOG = `# Changelog
+
+## Unreleased
+
+- something new
+
+## 1.2.3 — 2026-10-01
+
+- the fix
+- another line
+
+## [1.2.2] - 2026-09-01
+
+- older
+
+## 1.2.1
+
+## 1.2.0 — 2026-08-01
+
+- oldest
+`;
+
+describe("C42 the notes of a release come from the CHANGELOG section of its version", () => {
+  it("C42 the section is found under an em dash, a hyphen with brackets, and stops at the next ## heading", () => {
+    expect(releaseNotes.changelogSection(CHANGELOG, "1.2.3")).toBe("- the fix\n- another line");
+    expect(releaseNotes.changelogSection(CHANGELOG, "1.2.2")).toBe("- older");
+    expect(releaseNotes.changelogSection(CHANGELOG.replace(/\n/g, "\r\n"), "1.2.3")).toBe(
+      "- the fix\n- another line",
+    );
+  });
+
+  it("C44 a version with no section, an empty section, a prefix of another version and `Unreleased` are all refused", () => {
+    expect(releaseNotes.changelogSection(CHANGELOG, "9.9.9")).toBeNull();
+    expect(releaseNotes.changelogSection(CHANGELOG, "1.2.1")).toBeNull();
+    expect(releaseNotes.changelogSection(CHANGELOG, "1.2")).toBeNull();
+    expect(releaseNotes.changelogSection(CHANGELOG, "1.2.30")).toBeNull();
+    expect(releaseNotes.changelogSection(CHANGELOG, "Unreleased")).not.toBeNull(); // a heading is a heading: the CLI never passes it
+    const root = temp("mordomo-notes-");
+    fs.writeFileSync(path.join(root, "CHANGELOG.md"), CHANGELOG);
+    const refused = run(releaseNotes.main, ["--version", "9.9.9", "--check", "--root", root]);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain('has no section "## 9.9.9"');
+    expect(run(releaseNotes.main, ["--version", "1.2.3", "--check", "--root", root]).code).toBe(0);
+    expect(run(releaseNotes.main, ["--check", "--root", root]).code).toBe(2);
+  });
+
+  const status = (
+    platform: string,
+    codeSigned: boolean | null,
+    notarized: boolean | null,
+    updaterSigned: boolean,
+  ) => ({
+    platform,
+    codeSigned,
+    notarized,
+    updaterSigned,
+  });
+
+  it("C42 an unsigned platform is named in a banner at the top and in the table; Linux says it has no operating-system signature", () => {
+    const text: string = releaseNotes.renderNotes("1.2.3", "- the fix", [
+      status("windows-x64", false, null, false),
+      status("macos-arm64", true, true, true),
+      status("linux-x64", null, null, false),
+      status("macos-x64", false, false, false),
+    ]);
+    expect(text.split("\n")[0]).toContain("UNSIGNED / NÃO ASSINADO: macos-x64, windows-x64");
+    expect(text).toContain("- the fix");
+    expect(text).toContain("| macos-arm64 | yes | yes | yes |");
+    expect(text).toContain("| macos-x64 | NO | NO | no (no updater key) |");
+    expect(text).toContain("| windows-x64 | NO | not applicable | no (no updater key) |");
+    expect(text).toContain("| linux-x64 | not applicable | not applicable | no (no updater key) |");
+    expect(text).toContain("Linux packages carry no operating-system signature");
+    // a fully signed release has no banner
+    const clean: string = releaseNotes.renderNotes("1.2.3", "- the fix", [
+      status("macos-arm64", true, true, true),
+      status("linux-x64", null, null, true),
+    ]);
+    expect(clean).not.toContain("UNSIGNED");
+    expect(clean.startsWith("- the fix")).toBe(true);
+  });
+
+  it("C42 the status files are read from a folder tree, and the notes are written to --out", () => {
+    const root = temp("mordomo-notes2-");
+    fs.writeFileSync(path.join(root, "CHANGELOG.md"), CHANGELOG);
+    fs.mkdirSync(path.join(root, "artifacts", "nested"), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, "artifacts", "status-windows-x64.json"),
+      JSON.stringify(status("windows-x64", false, null, false)),
+    );
+    fs.writeFileSync(
+      path.join(root, "artifacts", "nested", "status-linux-x64.json"),
+      JSON.stringify(status("linux-x64", null, null, false)),
+    );
+    fs.writeFileSync(path.join(root, "artifacts", "other.json"), "{}");
+    const res = run(releaseNotes.main, [
+      "--version",
+      "1.2.3",
+      "--status",
+      "artifacts",
+      "--out",
+      "notes.md",
+      "--root",
+      root,
+    ]);
+    expect(res.code).toBe(0);
+    const notes = fs.readFileSync(path.join(root, "notes.md"), "utf8");
+    expect(notes).toContain("UNSIGNED / NÃO ASSINADO: windows-x64");
+    expect(notes).toContain("| linux-x64 |");
+  });
+});
+
+// ---- release-collect and the updater manifest -----------------------------------------------------------------
+
+function bundleTree(platform: string, withSigs: boolean): string {
+  const bundle = temp("mordomo-bundle-");
+  const spec = (collect.PLATFORMS as Record<string, { os: string }>)[platform]!;
+  const put = (rel: string) => {
+    fs.mkdirSync(path.dirname(path.join(bundle, rel)), { recursive: true });
+    fs.writeFileSync(path.join(bundle, rel), `bytes of ${rel}`);
+  };
+  const sig = (rel: string) => put(`${rel}.sig`);
+  if (spec.os === "macos") {
+    put("dmg/MordomoOS_1.2.3_aarch64.dmg");
+    put("macos/MordomoOS.app.tar.gz");
+    if (withSigs) sig("macos/MordomoOS.app.tar.gz");
+  } else if (spec.os === "windows") {
+    put("nsis/MordomoOS_1.2.3_x64-setup.exe");
+    if (withSigs) sig("nsis/MordomoOS_1.2.3_x64-setup.exe");
+  } else {
+    put("deb/MordomoOS_1.2.3_amd64.deb");
+    put("appimage/MordomoOS_1.2.3_amd64.AppImage");
+    // the .deb is signed too when the key is there (seen in a real build)
+    if (withSigs) {
+      sig("deb/MordomoOS_1.2.3_amd64.deb");
+      sig("appimage/MordomoOS_1.2.3_amd64.AppImage");
+    }
+  }
+  return bundle;
+}
+
+describe("C40 an installer the operating system will not trust says so in its name", () => {
+  const base = { version: "1.2.3", notarized: false };
+  it("C40 macOS and Windows built without a certificate carry _UNSIGNED, and their status says so", () => {
+    for (const [platform, files] of [
+      [
+        "macos-arm64",
+        ["MordomoOS_1.2.3_macos-arm64_UNSIGNED.dmg", "MordomoOS_1.2.3_macos-arm64_UNSIGNED.app.tar.gz"],
+      ],
+      ["windows-x64", ["MordomoOS_1.2.3_windows-x64_UNSIGNED-setup.exe"]],
+    ] as const) {
+      const out = temp("mordomo-out-");
+      const res = collect.collect({
+        ...base,
+        platform,
+        bundle: bundleTree(platform, false),
+        out,
+        codeSigned: false,
+        updaterSigned: false,
+      });
+      expect(res.written).toEqual(files);
+      expect(fs.readdirSync(out).sort()).toEqual([...files, `status-${platform}.json`].sort());
+      const status = JSON.parse(fs.readFileSync(path.join(out, `status-${platform}.json`), "utf8")) as Record<
+        string,
+        unknown
+      >;
+      expect(status).toMatchObject({ platform, codeSigned: false, updaterSigned: false });
+    }
+  });
+
+  it("C40 signed builds carry no label; with an updater key the file that is signed is uploaded with its .sig", () => {
+    const out = temp("mordomo-out-");
+    const res = collect.collect({
+      ...base,
+      platform: "macos-x64",
+      bundle: bundleTree("macos-x64", true),
+      out,
+      codeSigned: true,
+      notarized: true,
+      updaterSigned: true,
+    });
+    expect(res.written).toEqual([
+      "MordomoOS_1.2.3_macos-x64.dmg",
+      "MordomoOS_1.2.3_macos-x64.app.tar.gz",
+      "MordomoOS_1.2.3_macos-x64.app.tar.gz.sig",
+    ]);
+    expect(res.status).toEqual({
+      platform: "macos-x64",
+      codeSigned: true,
+      notarized: true,
+      updaterSigned: true,
+    });
+  });
+
+  it("C40 with the updater key Linux uploads the .sig of the AppImage and of the .deb, which Tauri signs too", () => {
+    const out = temp("mordomo-out-");
+    const res = collect.collect({
+      ...base,
+      platform: "linux-x64",
+      bundle: bundleTree("linux-x64", true),
+      out,
+      codeSigned: false,
+      updaterSigned: true,
+    });
+    expect(res.written).toEqual([
+      "MordomoOS_1.2.3_linux-x64.deb",
+      "MordomoOS_1.2.3_linux-x64.deb.sig",
+      "MordomoOS_1.2.3_linux-x64.AppImage",
+      "MordomoOS_1.2.3_linux-x64.AppImage.sig",
+    ]);
+  });
+
+  it("C40 Linux never says UNSIGNED (it has no operating-system signature) and its status says null", () => {
+    const out = temp("mordomo-out-");
+    const res = collect.collect({
+      ...base,
+      platform: "linux-x64",
+      bundle: bundleTree("linux-x64", false),
+      out,
+      codeSigned: false,
+      updaterSigned: false,
+    });
+    expect(res.written).toEqual(["MordomoOS_1.2.3_linux-x64.deb", "MordomoOS_1.2.3_linux-x64.AppImage"]);
+    expect(res.status).toEqual({
+      platform: "linux-x64",
+      codeSigned: null,
+      notarized: null,
+      updaterSigned: false,
+    });
+  });
+
+  it("C40 a missing installer, a missing .sig when the key was configured, and a .sig when it was not, all fail", () => {
+    const args = { ...base, platform: "windows-x64", codeSigned: true };
+    expect(() =>
+      collect.collect({ ...args, bundle: temp("mordomo-empty-"), out: temp("o-"), updaterSigned: false }),
+    ).toThrow(/expected one file/);
+    expect(() =>
+      collect.collect({
+        ...args,
+        bundle: bundleTree("windows-x64", false),
+        out: temp("o-"),
+        updaterSigned: true,
+      }),
+    ).toThrow(/is missing though the updater key/);
+    expect(() =>
+      collect.collect({
+        ...args,
+        bundle: bundleTree("windows-x64", true),
+        out: temp("o-"),
+        updaterSigned: false,
+      }),
+    ).toThrow(/exists though no updater key/);
+    expect(() =>
+      collect.collect({
+        ...args,
+        platform: "plan9-x64",
+        bundle: temp("b-"),
+        out: temp("o-"),
+        updaterSigned: false,
+      }),
+    ).toThrow(/unknown platform/);
+    const cli = run(collect.main, ["--platform", "windows-x64"]);
+    expect(cli.code).toBe(1);
+    expect(cli.err).toContain("--bundle is required");
+  });
+});
+
+describe("C43 latest.json exists only when it can be complete, and names the four platforms", () => {
+  /** A folder as the publish job finds it after the four package jobs. */
+  function releaseDir(
+    overrides: Partial<Record<string, { codeSigned?: boolean | null; updaterSigned?: boolean }>> = {},
+  ): string {
+    const dir = temp("mordomo-release-");
+    for (const platform of Object.keys(collect.PLATFORMS)) {
+      const o = overrides[platform] ?? {};
+      const os = (collect.PLATFORMS as Record<string, { os: string }>)[platform]!.os;
+      const codeSigned = o.codeSigned ?? (os === "linux" ? null : true);
+      const updaterSigned = o.updaterSigned ?? true;
+      fs.writeFileSync(
+        path.join(dir, `status-${platform}.json`),
+        JSON.stringify({ platform, codeSigned, notarized: null, updaterSigned }),
+      );
+      const file = `MordomoOS_1.2.3_${platform}${os === "macos" ? ".app.tar.gz" : os === "windows" ? "-setup.exe" : ".AppImage"}`;
+      fs.writeFileSync(path.join(dir, file), "installer");
+      if (updaterSigned) fs.writeFileSync(path.join(dir, `${file}.sig`), `signature of ${platform}\n`);
+    }
+    return dir;
+  }
+  const args = {
+    version: "1.2.3",
+    tag: "v1.2.3",
+    notes: "the notes",
+    date: "2026-10-12T00:00:00.000Z",
+    repo: "tvpl/agentic-os",
+  };
+
+  it("C43 four signed platforms give the Tauri static manifest: version, notes, pub_date and a signature and url per target", () => {
+    const result = manifest.buildManifest({ ...args, dir: releaseDir() });
+    expect(result.missing).toBeUndefined();
+    expect(result.manifest).toEqual({
+      version: "1.2.3",
+      notes: "the notes",
+      pub_date: "2026-10-12T00:00:00.000Z",
+      platforms: {
+        "darwin-aarch64": {
+          signature: "signature of macos-arm64",
+          url: "https://github.com/tvpl/agentic-os/releases/download/v1.2.3/MordomoOS_1.2.3_macos-arm64.app.tar.gz",
+        },
+        "darwin-x86_64": {
+          signature: "signature of macos-x64",
+          url: "https://github.com/tvpl/agentic-os/releases/download/v1.2.3/MordomoOS_1.2.3_macos-x64.app.tar.gz",
+        },
+        "windows-x86_64": {
+          signature: "signature of windows-x64",
+          url: "https://github.com/tvpl/agentic-os/releases/download/v1.2.3/MordomoOS_1.2.3_windows-x64-setup.exe",
+        },
+        "linux-x86_64": {
+          signature: "signature of linux-x64",
+          url: "https://github.com/tvpl/agentic-os/releases/download/v1.2.3/MordomoOS_1.2.3_linux-x64.AppImage",
+        },
+      },
+    });
+  });
+
+  const gaps: Array<[string, Parameters<typeof releaseDir>[0], RegExp]> = [
+    [
+      "a platform with no updater signature",
+      { "linux-x64": { updaterSigned: false } },
+      /linux-x64: no updater signature/,
+    ],
+    [
+      "a macOS build the system will not trust",
+      { "macos-arm64": { codeSigned: false } },
+      /macos-arm64: not signed by the operating system/,
+    ],
+    [
+      "a Windows build the system will not trust",
+      { "windows-x64": { codeSigned: false } },
+      /windows-x64: not signed by the operating system/,
+    ],
+  ];
+  for (const [what, overrides, message] of gaps)
+    it(`C43 ${what}: no manifest, exit 3 and the reason`, () => {
+      const dir = releaseDir(overrides);
+      expect(manifest.buildManifest({ ...args, dir }).missing.join("\n")).toMatch(message);
+      const out = path.join(dir, "latest.json");
+      const res = run(manifest.main, ["--dir", dir, "--version", "1.2.3", "--tag", "v1.2.3", "--out", out]);
+      expect(res.code).toBe(3);
+      expect(res.err).toMatch(message);
+      expect(fs.existsSync(out)).toBe(false);
+    });
+
+  it("C43 a platform whose job never finished, and a file that is not there, leave the manifest out; a tag that is not v<version> is a usage error", () => {
+    const dir = releaseDir();
+    fs.rmSync(path.join(dir, "status-windows-x64.json"));
+    expect(manifest.buildManifest({ ...args, dir }).missing.join("\n")).toContain(
+      "windows-x64: no status-windows-x64.json",
+    );
+    const dir2 = releaseDir();
+    fs.rmSync(path.join(dir2, "MordomoOS_1.2.3_macos-x64.app.tar.gz.sig"));
+    expect(manifest.buildManifest({ ...args, dir: dir2 }).missing.join("\n")).toContain(
+      "macos-x64: MordomoOS_1.2.3_macos-x64.app.tar.gz or its .sig",
+    );
+    const bad = run(manifest.main, [
+      "--dir",
+      dir,
+      "--version",
+      "1.2.3",
+      "--tag",
+      "v1.2.4",
+      "--out",
+      path.join(dir, "latest.json"),
+    ]);
+    expect(bad.code).toBe(2);
+  });
+
+  it("C43 the CLI writes latest.json when everything is there (exit 0)", () => {
+    const dir = releaseDir();
+    const notes = path.join(dir, "notes.md");
+    fs.writeFileSync(notes, "  Notes of 1.2.3\n");
+    const out = path.join(dir, "latest.json");
+    const res = run(manifest.main, [
+      "--dir",
+      dir,
+      "--version",
+      "1.2.3",
+      "--tag",
+      "v1.2.3",
+      "--notes",
+      notes,
+      "--out",
+      out,
+      "--date",
+      "2026-10-12T00:00:00.000Z",
+    ]);
+    expect(res.code, res.err).toBe(0);
+    const written = JSON.parse(fs.readFileSync(out, "utf8")) as {
+      notes: string;
+      platforms: Record<string, unknown>;
+    };
+    expect(written.notes).toBe("Notes of 1.2.3");
+    expect(Object.keys(written.platforms).sort()).toEqual([
+      "darwin-aarch64",
+      "darwin-x86_64",
+      "linux-x86_64",
+      "windows-x86_64",
+    ]);
+  });
+});
+
+// ---- the updater's configuration --------------------------------------------------------------------------------
+
+describe("C32 the updater's public key is the owner's, a placeholder, or refused", () => {
+  const minisign = (comment: string, key: Buffer) =>
+    Buffer.from(`untrusted comment: ${comment}\n${key.toString("base64")}\n`).toString("base64");
+  const realKey = Buffer.concat([Buffer.from("Ed"), Buffer.alloc(8, 7), Buffer.alloc(32, 9)]);
+
+  it("C32 a minisign public key as `tauri signer generate` writes it is valid; the placeholder is a placeholder; the rest is invalid", () => {
+    expect(updaterConfig.keyState(minisign("minisign public key: ABCD", realKey))).toBe("valid");
+    expect(updaterConfig.keyState("[A PREENCHER PELO DONO: chave publica minisign]")).toBe("placeholder");
+    for (const bad of [
+      "",
+      undefined,
+      null,
+      42,
+      "not base64 at all !!",
+      minisign("something else", realKey),
+      minisign("minisign public key: ABCD", Buffer.concat([Buffer.from("Ed"), Buffer.alloc(39)])), // 41 bytes
+      minisign("minisign public key: ABCD", Buffer.concat([Buffer.from("XX"), Buffer.alloc(40)])), // not Ed25519
+      Buffer.from("untrusted comment: minisign public key: ABCD\n").toString("base64"), // no key line
+    ])
+      expect(updaterConfig.keyState(bad), String(bad)).toBe("invalid");
+  });
+
+  it("C32 the committed file is well formed with exactly the one GitHub endpoint, and a key that is a placeholder or valid", () => {
+    const res = updaterConfig.inspect(ROOT);
+    expect(res.problems).toEqual([]);
+    expect(["placeholder", "valid"]).toContain(res.state);
+    expect(updaterConfig.ENDPOINT).toBe(
+      "https://github.com/tvpl/agentic-os/releases/latest/download/latest.json",
+    );
+    expect(run(updaterConfig.main, ["--check"]).code).toBe(0);
+  });
+
+  it("C32 another endpoint, a second endpoint, plain http, a missing flag and a bad key each fail --check", () => {
+    const file = "apps/desktop/src-tauri/tauri.updater.conf.json";
+    const good = JSON.parse(fs.readFileSync(path.join(ROOT, file), "utf8")) as Record<string, any>;
+    const cases: Array<[string, (c: Record<string, any>) => void, RegExp]> = [
+      [
+        "another endpoint",
+        (c) => (c.plugins.updater.endpoints = ["https://example.com/latest.json"]),
+        /endpoints must be exactly/,
+      ],
+      [
+        "two endpoints",
+        (c) => c.plugins.updater.endpoints.push("https://example.com/x.json"),
+        /endpoints must be exactly/,
+      ],
+      ["no endpoint", (c) => delete c.plugins.updater.endpoints, /endpoints must be exactly/],
+      ["no artifacts flag", (c) => delete c.bundle.createUpdaterArtifacts, /createUpdaterArtifacts/],
+      [
+        "insecure transport",
+        (c) => (c.plugins.updater.dangerousInsecureTransportProtocol = true),
+        /dangerousInsecureTransportProtocol/,
+      ],
+      ["a bad key", (c) => (c.plugins.updater.pubkey = "garbage"), /not a minisign public key/],
+    ];
+    for (const [name, mutate, message] of cases) {
+      const root = temp("mordomo-uc-");
+      const conf = structuredClone(good);
+      mutate(conf);
+      fs.mkdirSync(path.join(root, path.dirname(file)), { recursive: true });
+      fs.writeFileSync(path.join(root, file), JSON.stringify(conf));
+      const res = run(updaterConfig.main, ["--check", "--root", root]);
+      expect(res.code, name).toBe(1);
+      expect(res.err, name).toMatch(message);
+      expect(run(updaterConfig.main, ["--state", "--root", root]).out.trim(), name).toBe("invalid");
+    }
+  });
+});
+
+// ---- desktop-build ------------------------------------------------------------------------------------------------
+
+describe("C41 the build passes only the signing material this machine has, never an empty variable", () => {
+  const apple = {
+    APPLE_SIGNING_IDENTITY: "Developer ID Application: X (T)",
+    APPLE_ID: "a@b",
+    APPLE_PASSWORD: "pw",
+    APPLE_TEAM_ID: "T",
+  };
+  it("C41 nothing registered: no signing variable reaches tauri, installers are still built, no --features and no --config", () => {
+    for (const [platform, bundles] of [
+      ["macos-arm64", "app,dmg"],
+      ["windows-x64", "nsis"],
+      ["linux-x64", "deb,appimage"],
+    ] as const) {
+      const built = desktopBuild.plan(platform, {
+        PATH: "/bin",
+        APPLE_SIGNING_IDENTITY: "",
+        APPLE_ID: "",
+        TAURI_SIGNING_PRIVATE_KEY: "",
+        MAC_SIGNED: "false",
+        UPDATER_ENABLED: "false",
+      });
+      expect(built.args).toEqual(["build", "--ci", "--bundles", bundles]);
+      expect(
+        Object.keys(built.env).filter((k) => k.startsWith("APPLE_") || k.startsWith("TAURI_SIGNING")),
+      ).toEqual([]);
+    }
+  });
+
+  it("C41 macOS: the identity only with MAC_SIGNED; the notary credentials only with MAC_NOTARIZE too; none of it off macOS", () => {
+    expect(
+      Object.keys(
+        desktopBuild.plan("macos-x64", { ...apple, MAC_SIGNED: "false", MAC_NOTARIZE: "true" }).env,
+      ).filter((k) => k.startsWith("APPLE_")),
+    ).toEqual([]);
+    expect(
+      Object.keys(
+        desktopBuild.plan("macos-x64", { ...apple, MAC_SIGNED: "true", MAC_NOTARIZE: "false" }).env,
+      ).filter((k) => k.startsWith("APPLE_")),
+    ).toEqual(["APPLE_SIGNING_IDENTITY"]);
+    expect(
+      Object.keys(desktopBuild.plan("macos-x64", { ...apple, MAC_SIGNED: "true", MAC_NOTARIZE: "true" }).env)
+        .filter((k) => k.startsWith("APPLE_"))
+        .sort(),
+    ).toEqual(["APPLE_ID", "APPLE_PASSWORD", "APPLE_SIGNING_IDENTITY", "APPLE_TEAM_ID"]);
+    expect(
+      Object.keys(
+        desktopBuild.plan("linux-x64", { ...apple, MAC_SIGNED: "true", MAC_NOTARIZE: "true" }).env,
+      ).filter((k) => k.startsWith("APPLE_")),
+    ).toEqual([]);
+    expect(
+      Object.keys(desktopBuild.plan("windows-x64", { ...apple, MAC_SIGNED: "true" }).env).filter((k) =>
+        k.startsWith("APPLE_"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("C41 a signing variable that is set and empty is dropped even when its group is on (an unregistered secret reaches tauri as nothing)", () => {
+    const env = desktopBuild.plan("macos-arm64", {
+      MAC_SIGNED: "true",
+      MAC_NOTARIZE: "true",
+      APPLE_SIGNING_IDENTITY: "Developer ID Application: X (T)",
+      APPLE_ID: "",
+      APPLE_PASSWORD: "",
+      APPLE_TEAM_ID: "T",
+      APPLE_CERTIFICATE: "",
+    }).env;
+    expect(
+      Object.keys(env)
+        .filter((k) => k.startsWith("APPLE_"))
+        .sort(),
+    ).toEqual(["APPLE_SIGNING_IDENTITY", "APPLE_TEAM_ID"]);
+  });
+
+  it("C41 Windows: a certificate thumbprint becomes a --config with SHA-256 and a timestamp; without one there is none", () => {
+    const signed = desktopBuild.plan("windows-x64", { WINDOWS_CERT_THUMBPRINT: "AB12CD" });
+    const config = JSON.parse(signed.args[signed.args.indexOf("--config") + 1]) as {
+      bundle: { windows: Record<string, string> };
+    };
+    expect(config.bundle.windows).toEqual({
+      certificateThumbprint: "AB12CD",
+      digestAlgorithm: "sha256",
+      timestampUrl: "http://timestamp.digicert.com",
+    });
+    expect(desktopBuild.plan("windows-x64", { WINDOWS_CERT_THUMBPRINT: "" }).args).not.toContain("--config");
+    expect(desktopBuild.plan("linux-x64", { WINDOWS_CERT_THUMBPRINT: "AB12CD" }).args).not.toContain(
+      "--config",
+    );
+  });
+
+  it("C41 the updater: the feature and its config only when enabled and the private key is there; enabled without a key is an error, and the key never reaches a build without the updater", () => {
+    const on = desktopBuild.plan("linux-x64", {
+      UPDATER_ENABLED: "true",
+      TAURI_SIGNING_PRIVATE_KEY: "k",
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "",
+    });
+    expect(on.args).toEqual([
+      "build",
+      "--ci",
+      "--bundles",
+      "deb,appimage",
+      "--features",
+      "updater",
+      "--config",
+      "src-tauri/tauri.updater.conf.json",
+    ]);
+    expect(on.env.TAURI_SIGNING_PRIVATE_KEY).toBe("k");
+    expect(on.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD).toBe(""); // a key with no password is a key with an empty one
+    expect(() =>
+      desktopBuild.plan("linux-x64", { UPDATER_ENABLED: "true", TAURI_SIGNING_PRIVATE_KEY: "" }),
+    ).toThrow(/TAURI_SIGNING_PRIVATE_KEY is not set/);
+    const off = desktopBuild.plan("linux-x64", { UPDATER_ENABLED: "false", TAURI_SIGNING_PRIVATE_KEY: "k" });
+    expect(off.args).not.toContain("--features");
+    expect(off.env.TAURI_SIGNING_PRIVATE_KEY).toBeUndefined();
+    expect(() => desktopBuild.plan("amiga", {})).toThrow(/unknown platform/);
+  });
+});
+
+// ---- the payload ---------------------------------------------------------------------------------------------------
+
+describe("C45 the payload is lib, ui, seed, legal, LICENSE and the manifest, and nothing else", () => {
+  const built =
+    fs.existsSync(path.join(ROOT, "apps", "api", "dist", "cli.js")) &&
+    fs.existsSync(path.join(ROOT, "apps", "command-centre", "dist", "index.html"));
+  it.runIf(built)(
+    "C45 `package.mjs --payload <dir> --node none` writes those and no launcher, README or archive, with the eight legal files",
+    async () => {
+      const { spawnSync } = await import("node:child_process");
+      const out = path.join(temp("mordomo-payload-"), "payload");
+      const res = spawnSync(
+        process.execPath,
+        [path.join(ROOT, "scripts", "package.mjs"), "--payload", out, "--skip-build", "--node", "none"],
+        {
+          encoding: "utf8",
+          timeout: 120_000,
+        },
+      );
+      expect(res.status, res.stderr).toBe(0);
+      // no `runtime/` here: --node none; the desktop build always has it (the CI step lists it)
+      expect(fs.readdirSync(out).sort()).toEqual(["LICENSE", "legal", "lib", "package.json", "seed", "ui"]);
+      for (const file of [
+        "LICENSE",
+        "legal/EULA.md",
+        "legal/PRIVACY.md",
+        "legal/NOTICE.md",
+        "legal/THIRD_PARTY_NOTICES.md",
+        "legal/THIRD_PARTY_NOTICES.desktop.md",
+        "legal/sbom.cdx.json",
+        "legal/sbom.desktop.cdx.json",
+        "lib/mordomo.mjs",
+        "ui/index.html",
+      ])
+        expect(fs.existsSync(path.join(out, file)), file).toBe(true);
+      expect(fs.existsSync(path.join(out, "legal", "vendor", "cyclonedx"))).toBe(false);
+      const manifest = JSON.parse(fs.readFileSync(path.join(out, "package.json"), "utf8")) as {
+        name: string;
+        version: string;
+      };
+      expect(manifest).toMatchObject({
+        name: "mordomo-os",
+        version: versionSync.readVersions(ROOT)[0].version,
+      });
+    },
+    180_000,
+  );
+});

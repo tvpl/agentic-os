@@ -7,7 +7,7 @@ Plan: `.specs/features/licenca-comercial/plan.md`
 > jurídico**. Os checks provam que o texto existe, é coerente com o código e não inventa dados; eles não
 > provam que o texto é juridicamente suficiente. Isso é a revisão do dono.
 
-43 checks in 7 slices · 7 one-way doors · 3 open, of which 2 block go-live
+52 checks in 8 slices · 7 one-way doors · 3 open, of which 2 block go-live
 
 Comandos (da raiz): `npx vitest run tests/legal.docs.test.ts -t "<nome>"`,
 `npx vitest run tests/legal.licenses.test.ts -t "<nome>"`, `npx vitest run tests/legal.network.test.ts -t "<nome>"`.
@@ -44,7 +44,7 @@ Status: closed
 
 ### S2 - o aviso de terceiros nasce da trava · 7 files · 70 KB · ~20k
 
-**C7** - `legal/THIRD_PARTY_NOTICES.md` tem, para cada um dos pacotes distribuídos da trava (184 hoje), uma linha com nome, versão, expressão SPDX e a URL `resolved` do tarball, e contém o texto do arquivo de licença do pacote instalado, lido pelo teste direto de `node_modules` (AC 7)
+**C7** - `legal/THIRD_PARTY_NOTICES.md` tem, para cada um dos pacotes distribuídos da trava (185 na trava de hoje; a prova fixa o número), uma linha com nome, versão, expressão SPDX e a URL `resolved` do tarball, e contém o texto do arquivo de licença do pacote instalado, lido pelo teste direto de `node_modules` (AC 7)
 Proof: `npx vitest run tests/legal.licenses.test.ts -t "C7 "`
 Status: closed
 
@@ -80,11 +80,11 @@ Status: closed
 Proof: `npx vitest run tests/legal.licenses.test.ts -t "C15 "`
 Status: closed
 
-**C16** - `sbom.mjs` escreve um CycloneDX 1.5 (`bomFormat`, `specVersion`, `serialNumber` `urn:uuid:`) cujos componentes npm são exatamente os `nome@versão` distribuídos (183 `bom-ref` únicos para 184 entradas da trava: dois `semver@7.8.5` aninhados), sem nenhuma ferramenta de build (`vitest`, `typescript`, `vite`), cada componente com licença, hash e `purl`, toda referência de `dependencies` aponta para um componente, e duas execuções escrevem os mesmos bytes (AC 16)
+**C16** - `sbom.mjs` escreve um CycloneDX 1.5 (`bomFormat`, `specVersion`, `serialNumber` `urn:uuid:`) cujos componentes npm são exatamente os `nome@versão` distribuídos (184 `bom-ref` únicos para 185 entradas da trava: dois `semver@7.8.5` aninhados), sem nenhuma ferramenta de build (`vitest`, `typescript`, `vite`), cada componente com licença, hash e `purl`, toda referência de `dependencies` aponta para um componente, e duas execuções escrevem os mesmos bytes (AC 16)
 Proof: `npx vitest run tests/legal.licenses.test.ts -t "C16 "`
 Status: closed
 
-**C17** - No `package-lock.json` real, nenhum pacote distribuído tem licença fora da lista e nenhuma ferramenta tem licença fora da lista ampliada: `node scripts/licenses.mjs --check` sai `0` (184 distribuídos, 484 ferramentas) (AC 11, 12 sobre os dados reais)
+**C17** - No `package-lock.json` real, nenhum pacote distribuído tem licença fora da lista e nenhuma ferramenta tem licença fora da lista ampliada: `node scripts/licenses.mjs --check` sai `0` (185 distribuídos, 493 ferramentas) (AC 11, 12 sobre os dados reais)
 Proof: `npx vitest run tests/legal.licenses.test.ts -t "C17 "`
 Proof: `node scripts/licenses.mjs --check`
 Status: closed
@@ -207,6 +207,50 @@ Status: closed
 Proof: `npx vitest run tests/legal.docs.test.ts -t "C43 "`
 Status: closed
 
+### S8 - correção da rodada 2 da verificação · 11 files · 40 KB · ~10k
+
+Origem: `verification.md`, "Rodada 2", achados G1 a G10. Cada check abaixo tem uma prova que reprova sem o conserto (mutante conferido pelo construtor, ver `## Swept`). G8 e G9 não pedem comportamento novo: G8 é o registro (C52) e G9 trocou duas asserções vazias por reais (sem check próprio). Os textos continuam **minuta para o dono e o advogado**.
+
+**C44** - `node scripts/network-scan.mjs --check` rodado como processo sai `0` quando o código e a política concordam, `1` quando discordam (um segundo `fetch`) e `2` quando a política não existe ou a flag não existe; `node scripts/sbom.mjs --root` como processo sai `0` e escreve o arquivo, `1` com a trava ilegível (sem escrever) e `2` com flag que não existe; assim, um `main()` chamado sem atribuir `process.exitCode` reprova (G1)
+Proof: `npx vitest run tests/legal.network.test.ts -t "C44 "`
+Proof: `npx vitest run tests/legal.licenses.test.ts -t "C44 "`
+Status: closed
+
+**C45** - O §3.3 do EULA e a seção 5 da privacidade dizem as mesmas duas frases (o MordomoOS "não lê nem grava o conteúdo das suas credenciais do provedor"; o ambiente do processo, `ANTHROPIC_API_KEY` e `OPENAI_API_KEY` inclusive, "é repassado ao CLI que ele inicia"), e nenhum dos textos jurídicos, o README e os guias de instalação e de segurança dizem que o MordomoOS "não vê nem guarda a chave", "não vê as credenciais" ou "never sees your key" (G2)
+Proof: `npx vitest run tests/legal.docs.test.ts -t "C45 "`
+Proof: `npx vitest run tests/legal.docs.test.ts -t "C19 "`
+Status: closed
+
+**C46** - Um host ignorado pela política não cobre um sósia: com `www.w3.org` e `example.com` ignorados, `evil-www.w3.org` e `evilexample.com` saem como `new host` e os dois originais continuam ignorados (G3)
+Proof: `npx vitest run tests/legal.network.test.ts -t "C46 "`
+Status: closed
+
+**C47** - Os ids SPDX que o esquema do CycloneDX aceita são lidos por raiz: o SBOM de uma árvore sem o esquema vendorado traz a licença MIT como `name`, o do repositório real como `id`, nessa ordem e na inversa, no mesmo processo (G4)
+Proof: `npx vitest run tests/legal.licenses.test.ts -t "C47 "`
+Status: closed
+
+**C48** - A varredura de marcas pula `config`, `memory`, `logs`, `workspace` e `artifacts` só na raiz do repositório: `core/src/memory`, `core/src/config` e `core/src/logs` são lidos e nenhum nome de marca fora das listas aparece neles; a raiz `memory/`, `config/`, `logs/`, `.specs/`, `legal/` e `tests/` não são lidos (G5)
+Proof: `npx vitest run tests/legal.docs.test.ts -t "C48 "`
+Proof: `npx vitest run tests/legal.docs.test.ts -t "C20 "`
+Status: closed
+
+**C49** - A varredura de rede lê `exec`/`execSync`/`spawn` com uma cadeia que começa por `curl` ou `wget` (`exec("curl -s https://…")`, um modelo de texto `curl ${url}`, `["-c", "wget …"]`) como ponto e o host dela; lê `Reflect.get(globalThis, "fetch")` como `fetch`, `Reflect.get(window, nome)` como `dynamic-global` e não lê `Reflect.get(obj, "fetch")`; lê `"//cdn.exemplo.net/x.js"` (e `src="//…"`, `url(//…)` num arquivo de texto) como host e não lê um comentário, `"//foo/bar"` nem loopback; o texto de instalação do Cursor (`curl https://cursor.com/install …`, mostrado, não executado) continua não sendo ponto; o mesmo `--check` real continua em 37 pontos e 36 hosts; a privacidade lista o que ainda passa: `cd x && curl …`, `const g = globalThis`, `"//host/arquivo.js"` só no começo da cadeia (G6)
+Proof: `npx vitest run tests/legal.network.test.ts -t "C49 "`
+Proof: `node scripts/network-scan.mjs --check`
+Status: closed
+
+**C50** - O CHANGELOG (Unreleased), os comentários de `scripts/licenses.mjs` e `scripts/sbom.mjs`, as linhas AD-021, AD-023 e AD-026 e a seção `licenca-comercial` da STATE não escrevem o número de pacotes (nenhum "184 pacotes", "184 npm packages", "184 dependências"): quem o fixa são as provas de C7, C16 e C17; os números de `checks.md` (185, 184, 493) são os que elas afirmam (G7)
+Proof: `npx vitest run tests/legal.docs.test.ts -t "C50 "`
+Status: closed
+
+**C51** - O `legal/README.md` diz que `bom-1.5.schema.json` e `jsf-0.82.schema.json` trazem o aviso da Apache-2.0 num `$comment` e que `spdx.schema.json` não traz aviso algum, que o texto da licença não foi copiado e que a dúvida é do advogado; os `$comment` dos arquivos confirmam, e a frase "o aviso está no próprio esquema" não existe mais (G10)
+Proof: `npx vitest run tests/legal.licenses.test.ts -t "C51 "`
+Status: closed
+
+**C52** - A STATE tem a decisão AD-026 com as edições feitas depois da aprovação (a linha da porta 1 do `Landing`, C3, C15, C16 e C20) e a troca de `license` de `SEE LICENSE IN LICENSE` para `FSL-1.1-ALv2` nos pacotes publicáveis `core` e `contracts`; e, na seção `licenca-comercial` de "Perguntas ao dono", os pontos 10 (valor de `license`, padrão e alternativa) e 11 (texto da Apache-2.0 junto dos esquemas do CycloneDX); os dois manifestos dizem `FSL-1.1-ALv2` (G8)
+Proof: `npx vitest run tests/legal.docs.test.ts -t "C52 "`
+Status: closed
+
 ## Coverage
 
 | Set (size)                                           | Member -> proof                                                                                                                                                                                                                                                                                                           | Unproven |
@@ -222,8 +266,8 @@ Status: closed
 | fecho dos seis do Radix (45)                         | cada pacote C10, table-driven over the 45 computed from `tests/ui-deps.test.ts`'s walk                                                                                                                                                                                                                                    | -        |
 | componentes que não vêm do npm (4)                   | Node.js C10 · SQLite C10 · JetBrains Mono C10 · Rajdhani C10                                                                                                                                                                                                                                                              | -        |
 | arquivos de fonte em `public/fonts` (3)              | `jetbrains-mono-latin.woff2` C10 · `rajdhani-600-latin.woff2` C10 · `rajdhani-700-latin.woff2` C10                                                                                                                                                                                                                        | -        |
-| pacotes distribuídos no aviso (184)                  | C7, table-driven over all 184 in the lockfile                                                                                                                                                                                                                                                                             | -        |
-| componentes do SBOM (183)                            | C16, table-driven over all 183 (the set of name@version compared with the lockfile's; the 184th lock entry is a duplicate purl)                                                                                                                                                                                           | -        |
+| pacotes distribuídos no aviso (185)                  | C7, table-driven over all 185 in the lockfile                                                                                                                                                                                                                                                                             | -        |
+| componentes do SBOM (184)                            | C16, table-driven over all 184 (the set of name@version compared with the lockfile's; the 185th lock entry is a duplicate purl)                                                                                                                                                                                           | -        |
 | fatos que o SBOM deve ter (5)                        | formato e versão C16 · componentes C16 · ferramentas ausentes C16 · referências C16 · determinismo C16                                                                                                                                                                                                                    | -        |
 | seções do EULA (9)                                   | objeto e licença C18 · uso C18 · CLIs C18, C19 · marcas C18, C20 · garantia C18 · responsabilidade C18 · suporte C18 · vigência C18 · lei e foro C18                                                                                                                                                                      | -        |
 | frases do EULA sobre os CLIs (5)                     | orquestra C19 · não inclui C19 · não redistribui C19 · não sublicencia C19 · termos do fornecedor e conta própria C19                                                                                                                                                                                                     | -        |
@@ -260,6 +304,15 @@ Status: closed
 | fontes de verdade do EULA (3)                        | citação literal conferida no `LICENSE` C41 · termo adicional marcado C41 · atribuição falsa ausente C41                                                                                                                                                                                                                   | -        |
 | textos que falavam em "distribuído" (4)              | README C42 · CHANGELOG C42 · aviso C42 · seção 2 do aviso C42                                                                                                                                                                                                                                                             | -        |
 | rastreabilidade (5)                                  | hashes fora da integração C43 · porta 4 íntegra C43 · `user-agent` C43 · credenciais no ambiente C43 · confirmação no código C43                                                                                                                                                                                          | -        |
+| saídas dos comandos como processo (6)                | `network-scan` exit `0` C44 · `network-scan` exit `1` C44 · `network-scan` exit `2` C44 · `sbom` exit `0` C44 · `sbom` exit `1` C44 · `sbom` exit `2` C44                                                                                                                                                                 | -        |
+| sósias de host ignorado (2)                          | `evil-www.w3.org` C46 · `evilexample.com` C46                                                                                                                                                                                                                                                                             | -        |
+| formas de ponto da rodada 2 (3)                      | cadeia de `exec`/`spawn` que começa por `curl`/`wget` C49 · `Reflect.get(globalThis, "fetch")` C49 · host sem esquema `//host/…` C49                                                                                                                                                                                      | -        |
+| limites da rodada 2 na privacidade (3)               | `curl` no meio da cadeia C49 · objeto global com outro nome C49 · endereço sem esquema fora do começo da cadeia C49                                                                                                                                                                                                       | -        |
+| pastas de código com nome de pasta de estado (3)     | `core/src/memory` C48 · `core/src/config` C48 · `core/src/logs` C48                                                                                                                                                                                                                                                       | -        |
+| textos que diziam o contrário da privacidade (1)     | EULA §3.3 C45                                                                                                                                                                                                                                                                                                             | -        |
+| arquivos do esquema CycloneDX e o aviso (3)          | `bom-1.5` com aviso C51 · `jsf-0.82` com aviso C51 · `spdx` sem aviso C51                                                                                                                                                                                                                                                 | -        |
+| edições depois da aprovação (5)                      | linha da porta 1 C52 · C3 C52 · C15 C52 · C16 C52 · C20 C52                                                                                                                                                                                                                                                               | -        |
+| textos com contagem de pacotes (5)                   | CHANGELOG C50 · `licenses.mjs` C50 · `sbom.mjs` C50 · AD-021/AD-023/AD-026 C50 · seção `licenca-comercial` da STATE C50                                                                                                                                                                                                   | -        |
 
 - Claims naming a status code, route or response shape: none (nenhuma rota); os códigos de saída dos comandos (`0`, `1`, `2`) são provados rodando o comando (C9, C15, C24)
 - Nenhum outro check afirma mais que o caso único que a sua prova exercita
@@ -296,6 +349,7 @@ Cost: 3 arquivos de teste novos, 32 checks, cerca de 150 casos; sem estas linhas
 - dependency failure: C15 (dependência ausente ou fora da trava), C6 (o instalador monta sem rede: o SBOM e o aviso não pedem rede); o `npm sbom` que omitia 23 pacotes está fora (door 7)
 - state transitions: n/a - nenhuma máquina de estados; o único "estado" é aviso fresco × velho (C9)
 - round 1: C33-C43 fecham as lacunas de prova da verificação; validation (C36 esquema), failure modes (C35 o envio com a flag desligada), observability (C34/C39)
+- round 2: C44-C52 fecham G1-G10. failure modes: C44 (os códigos `1` e `2` do processo; a rodada 1 só provou `0`), C49 (a varredura vê três formas a mais; as que passam estão ditas na privacidade); validation: C46 (sósia de host), C47 (id SPDX por raiz), C51 (o aviso de cada esquema); consistência entre textos: C45 (EULA × privacidade), C50 (nenhum texto repete uma contagem que uma prova fixa); processo: C52 (edições depois da aprovação registradas). Mutantes conferidos pelo construtor, cada um reprova a prova que o nomeia: `process.exitCode` tirado de `network-scan.mjs` e de `sbom.mjs` (C44), `endsWith` no lugar de `covers` (C46), cache de ids sem chave (C47), pasta de estado pulada em qualquer profundidade (C48), regra de `exec("curl …")`/`Reflect.get`/`//host` removida (C49), "o aviso está no próprio esquema" de volta (C51), "184 npm packages" de volta no CHANGELOG (C50), "não vê nem guarda a chave" de volta no EULA (C19, C45)
 - observability: C24 (mensagem de falha cita arquivo, tipo e host), C9 e C11 (citam pacote, versão e licença), C23 (a listagem dos pontos de rede é a observabilidade que a feature entrega)
 
 ## Out of scope
@@ -310,3 +364,10 @@ Cost: 3 arquivos de teste novos, 32 checks, cerca de 150 casos; sem estas linhas
 
 - S1-S6 = ~62k tokens: scripts 3 (`licenses.mjs`, `sbom.mjs`, `network-scan.mjs`, ~48 KB), tests 3 (~60 KB), textos (`LICENSE`, `CONTRIBUTING.md`, `legal/*`, ~240 KB com o aviso gerado de 205 KB, que se escreve por comando e não se lê), docs (~12 KB). O que se lê e escreve à mão soma ~190 KB ≈ 48k tokens, mais o gate; abaixo do orçamento de 150k - one builder
 - Mechanism: one builder (cabe no orçamento, não houve pergunta)
+
+## Rodada 3: consertos pequenos depois da verificação (N1 a N3)
+
+**C53** - Toda página `.html` na raiz do app de UI entra na varredura de rede (`SCAN_DIRS`), em particular `gallery.html`, que o instalador leva; uma página nova sem entrada reprova (N1)
+Proof: `npx vitest run tests/legal.network.test.ts -t "C53 "`
+
+N2: as três provas de `package.json` (`licenses:write`, `licenses:check`, `network:scan`) ficam junto do C16 (`tests/legal.licenses.test.ts`), onde já estava `sbom`. N3: a reescrita de C7, C16 e C17 da rodada 2 está registrada em AD-026(e). N4 a N7 do verificador são informativos (limites do guard de contagem e da varredura, "ambiente repassado" um pouco além do real, do lado seguro) e ficam como estão.

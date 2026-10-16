@@ -8,7 +8,7 @@ Two ways to install. Both end at the same place: the Command Centre at
 | Needs | nothing — Node.js is bundled | Node.js ≥ 22, git |
 | Setup | in the browser | guided terminal setup (`mordomo setup`) or in the browser |
 | Code | one minified bundle, no sources | the full checkout |
-| Updates | replace the folder/app, then `mordomo restart` | `git pull && npm run build && mordomo restart` |
+| Updates | install the new installer (or the signed updater), or replace the folder, then `mordomo restart` | `git pull && npm run build && mordomo restart` |
 
 Provider CLIs (Claude Code, Cursor Agent, Codex) are **not** bundled: they are
 personal tools with their own login. The setup screen detects the ones already
@@ -28,10 +28,58 @@ account.
 
 ## A. Packaged app
 
-Download the archive for your platform (or build it: see *Building a
-distributable* below) and extract it.
+Two forms: the **desktop app** (an installer; recommended) and the **portable
+archive** (what `npm run dist` writes; extract and run). Both carry the same
+service, the same Command Centre and the same bundled Node.js.
 
-### macOS
+### Desktop app (installers)
+
+Download the installer of your system from the releases page of the repository.
+Every release is a draft until the owner publishes it; an installer built
+without the owner's signing certificate carries `UNSIGNED` in its file name and
+the operating system will warn before opening it.
+
+| System | File | Install |
+| --- | --- | --- |
+| macOS 12+ (arm64, Intel) | `MordomoOS_<version>_macos-<arch>.dmg` | open it, drag **MordomoOS** to Applications |
+| Windows 10+ (x64) | `MordomoOS_<version>_windows-x64-setup.exe` | run it; it installs for your user, no administrator needed |
+| Linux (x64) | `MordomoOS_<version>_linux-x64.deb` or `.AppImage` | `sudo apt install ./<file>.deb` (needs `libwebkit2gtk-4.1-0` and `libgtk-3-0`), or `chmod +x` the AppImage and run it |
+
+What the app does when you open it: starts the bundled service on a free port of
+`127.0.0.1` (the last port it used, when that is still free, so the interface
+keeps its settings), with a secret that exists only for this launch and is what
+lets the window, and nothing else on the computer, receive your token; shows the
+Command Centre in its own window; and stops the service when you close the
+window or quit. If the service cannot start the window says why, in English or
+Portuguese, with **Try again** and **Quit**. A second launch brings the first
+window forward. The data folder is the same as the archive's (below).
+
+Limits worth knowing:
+
+- Closing the app stops the service, so routines do not run while it is closed.
+  To keep them running use the login service (`mordomo service install`, from the
+  terminal CLI of the archive or a checkout); then the app and the login service
+  cannot both own the data folder, and the app says "MordomoOS is already
+  running" until you stop the service (`mordomo stop`).
+- On Linux the single-instance lock needs a D-Bus session, which every desktop
+  has; without one (a bare X server) two launches are not stopped, and the second
+  one finds the data folder taken and says so.
+- The menu is in English like the operating system's; the screens of the app
+  speak English and Portuguese.
+- **Updates.** Only a build made with the owner's update key has an updater
+  (*About* says when there is none). It asks the releases page for `latest.json`
+  at start only if *Settings › Identity › check for updates* is on (off by
+  default), or when you choose **MordomoOS › Check for Updates…**; it installs a
+  file only after its signature verifies against the public key inside the app.
+  What is contacted: [`legal/PRIVACY.md`](../legal/PRIVACY.md) §4. How releases are
+  cut and verified: [release.md](release.md).
+
+### Portable archive
+
+Build it (see *Building a distributable* below) or take it from a release that
+publishes one, and extract it.
+
+### macOS (archive)
 
 1. Move `MordomoOS.app` to `/Applications` (optional, but do it before enabling
    *start at login*).
@@ -54,7 +102,7 @@ distributable* below) and extract it.
 5. Terminal (optional): the `mordomo` script next to the app is the CLI
    (`./mordomo status`). Add it to your PATH if you use it often.
 
-### Linux
+### Linux (archive)
 
 1. Extract the archive anywhere (for example `~/Apps/mordomo-os`).
 2. Run `./MordomoOS` (double-click in most file managers) — or install the
@@ -62,7 +110,7 @@ distributable* below) and extract it.
    and copy it to `~/.local/share/applications/`.
 3. Terminal (optional): `bin/mordomo`.
 
-### Windows
+### Windows (archive)
 
 1. Extract the archive (for example `C:\Users\you\MordomoOS`).
 2. Double-click `MordomoOS.cmd`. Windows Defender SmartScreen may ask once
@@ -176,7 +224,9 @@ running the engine on a server you control.
 
 ## Updating
 
-- Packaged: replace the app/folder with the new one, then `mordomo restart`
+- Desktop app: install the newer installer over it, or let the updater do it (see
+  *Desktop app*). Data and settings are untouched.
+- Portable archive: replace the app/folder with the new one, then `mordomo restart`
   (or open the app again). Data and settings are untouched.
 - Source: `git pull && npm install && npm run build && mordomo restart`.
 - Settings › Identity shows the running version, whether it is a packaged app

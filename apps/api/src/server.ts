@@ -306,9 +306,29 @@ export function tokenMatches(supplied: unknown, expected: string): boolean {
   return crypto.timingSafeEqual(a, b);
 }
 
-/** Strip the token and the stream ticket from a URL before it reaches any log line. */
+/** Strip the token, the stream ticket and a desktop shell's launch secret from a URL before it reaches any log line. */
 export function safeUrl(url: string): string {
-  return url.replace(/([?&](?:token|ticket)=)[^&#]*/gi, "$1[REDACTED]");
+  return url.replace(/([?&](?:token|ticket|launch)=)[^&#]*/gi, "$1[REDACTED]");
+}
+
+/**
+ * The secret a desktop shell hands the service it started (`MORDOMO_LAUNCH_TOKEN`, `start --sidecar`;
+ * docs/security.md, T1). While one is set, `GET /` serves the owner's token only to a request that carries it,
+ * first in `?launch=` (traded at once for the cookie and a redirect, so it is in one URL only) and then in the cookie.
+ */
+export const LAUNCH_COOKIE = "mordomo_launch";
+/** The shortest secret `--sidecar` accepts (the shell makes 43 characters from 32 random bytes). */
+export const LAUNCH_SECRET_MIN_LENGTH = 32;
+
+/** The value of one cookie in a `Cookie` header, or `undefined`. */
+export function cookieValue(header: string | string[] | undefined, name: string): string | undefined {
+  const raw = Array.isArray(header) ? header.join(";") : header;
+  if (!raw) return undefined;
+  for (const part of raw.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq > 0 && part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim();
+  }
+  return undefined;
 }
 
 /** The `error.code` of an error that raised a status and no code of its own. */
@@ -363,6 +383,8 @@ export async function buildServer(
     updates?: UpdateChecker;
     /** Check each JSON response against its entry of the route table (default: `responsesValidated()`). */
     validateResponses?: boolean;
+    /** A desktop shell's launch secret: without it `GET /` serves no owner token (see `LAUNCH_COOKIE`). */
+    launchSecret?: string;
   } = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({
@@ -624,19 +646,35 @@ export async function buildServer(
       wildcard: true,
       index: false,
     });
+    const launchSecret = options.launchSecret ?? ctx.launchSecret;
     const serveIndex = (req: FastifyRequest, reply: FastifyReply) => {
       // The local token is injected into the same-origin page only, and only
       // when the page is opened from this machine (loopback socket AND loopback
       // Host) and names no proxy on the way (`carriesProxyHeaders`); a remote device pairs and keeps its own token in
       // the browser.
       // Foreign origins cannot read the meta (CORS) nor send it (custom header + no CORS).
-      const inject =
+      const fromThisMachine =
         isLoopbackHost(req.headers.host) &&
         isLoopbackAddress(req.socket.remoteAddress) &&
-        !carriesProxyHeaders(req.headers) &&
-        looksLikeBrowserNavigation(req)
-          ? token
-          : "";
+        !carriesProxyHeaders(req.headers);
+      // A desktop shell's service adds a proof of who opened the page: its launch secret, in the query once and then
+      // in an HttpOnly cookie. A program that only sends the headers of a browser no longer gets the token.
+      let launchProven = launchSecret === undefined;
+      if (launchSecret !== undefined && fromThisMachine) {
+        const offered = (req.query as { launch?: unknown } | undefined)?.launch;
+        if (tokenMatches(offered, launchSecret)) {
+          // Trade the query for the cookie and drop it from the address: the secret is in one URL, once.
+          // `Lax`, not `Strict`: this first request is the shell's `tauri://` page going to this origin, which is another
+          // site, and a browser engine does not send a `Strict` cookie on the redirect that follows (seen under WebKitGTK).
+          // The webview loads no other site, and a `Lax` cookie is not sent on a cross-site POST or subresource.
+          return reply
+            .header("Cache-Control", "no-store")
+            .header("Set-Cookie", `${LAUNCH_COOKIE}=${launchSecret}; HttpOnly; SameSite=Lax; Path=/`)
+            .redirect(`/${(req.url.split("?")[0] ?? "").replace(/^\/+/, "")}`, 302);
+        }
+        launchProven = tokenMatches(cookieValue(req.headers.cookie, LAUNCH_COOKIE), launchSecret);
+      }
+      const inject = fromThisMachine && launchProven && looksLikeBrowserNavigation(req) ? token : "";
       const html = fs
         .readFileSync(indexFile, "utf8")
         .replace(
@@ -712,9 +750,30 @@ async function listenWithRetry(
   }
 }
 
-export async function startServer(homeOverride?: string): Promise<ServerHandle> {
+/**
+ * What a desktop shell asks of the service it starts (`mordomo start --foreground --sidecar`, docs/release.md).
+ * Without `sidecar` nothing here applies and the service starts exactly as it always did.
+ */
+export interface SidecarOptions {
+  /** The port to listen on; 0 lets the system choose. Default: `settings.port`. */
+  port: number;
+  /** The shell's launch secret (`LAUNCH_SECRET_MIN_LENGTH` characters or more). */
+  launchSecret: string;
+}
+
+/** The sidecar's port is taken: it never stops the process that holds it (the standing service does; a shell does not). */
+export class PortInUseError extends Error {
+  constructor(readonly port: number) {
+    super(`port ${port} is already in use`);
+    this.name = "PortInUseError";
+  }
+}
+
+export async function startServer(homeOverride?: string, sidecar?: SidecarOptions): Promise<ServerHandle> {
   const ctx = new AppContext(homeOverride, { applyPendingRestore: true });
   const settings = ctx.settings();
+  // The shell's launch secret travels on the context, so the service is built with the defaults and no option of its own.
+  ctx.launchSecret = sidecar?.launchSecret;
   const app = await buildServer(ctx);
 
   if (ctx.restoreRejectedAtBoot) {
@@ -741,7 +800,8 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
     try {
       ({ recovered } = ctx.start());
     } catch (err) {
-      if (!(err instanceof EngineLockedError) || err.holderPid === null) throw err;
+      // A shell's service never stops another service to take its place: it reports who holds the home.
+      if (sidecar || !(err instanceof EngineLockedError) || err.holderPid === null) throw err;
       const leftover = listServiceProcesses().filter((p) => p.pid === err.holderPid);
       if (leftover.length === 0) throw err;
       const stopped = await terminate(leftover);
@@ -815,10 +875,17 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
     app.log.warn({ bindAddress: plan.ignoredBind, msg: ignoredBindMessage(plan.ignoredBind) });
     console.warn(`[mordomo] ${ignoredBindMessage(plan.ignoredBind)}`);
   }
+  const wantedPort = sidecar?.port ?? settings.port;
   try {
-    await app.listen({ port: settings.port, host: plan.plainHost });
+    await app.listen({ port: wantedPort, host: plan.plainHost });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "EADDRINUSE") throw err;
+    if (sidecar) {
+      clearInterval(approvalSweep);
+      await app.close();
+      ctx.close();
+      throw new PortInUseError(wantedPort);
+    }
     const snap = await instanceSnapshot(process.pid, 0);
     const holder = portHolder(settings.port);
     const holding = snap.processes.filter((p) => p.pid === holder);
@@ -833,7 +900,10 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
     app.log.warn({ pids: stopped, port: settings.port, msg: "stopped MordomoOS processes holding the port" });
     await listenWithRetry(app, settings.port, plan.plainHost, 40);
   }
-  const url = `http://127.0.0.1:${settings.port}`;
+  // The port the system gave (a sidecar asks for 0); the services that call this one back use it from here on.
+  const listenPort = (app.server.address() as AddressInfo).port;
+  ctx.boundPort = listenPort;
+  const url = `http://127.0.0.1:${listenPort}`;
 
   // Remote access over TLS (follow-up 10): a second listener with the
   // self-signed certificate, sharing the same request handler. Loopback keeps
@@ -853,7 +923,7 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
 
   const pidFile = path.join(ctx.paths.run, "server.pid");
   fs.mkdirSync(ctx.paths.run, { recursive: true });
-  fs.writeFileSync(pidFile, JSON.stringify({ pid: process.pid, port: settings.port, startedAt: Date.now() }));
+  fs.writeFileSync(pidFile, JSON.stringify({ pid: process.pid, port: listenPort, startedAt: Date.now() }));
 
   // ---- Lifecycle: idempotent close, signal + unhandledRejection safety net ---
   let closing: Promise<void> | null = null;

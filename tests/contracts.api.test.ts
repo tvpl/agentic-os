@@ -354,6 +354,17 @@ describe("S2 each branch of wireSchema", () => {
     expect(() => wireSchema(z.object({ inside: z.array(odd) }))).toThrow(/ZodSomethingNew/);
     expect(() => wireSchema(z.promise(z.string()))).toThrow(/ZodPromise/);
     expect(() => wireSchema(z.function())).toThrow(/ZodFunction/);
+    // The nodes that no schema of the contract uses stop the build too, at any depth: a rebuild for one is a decision.
+    expect(() => wireSchema(z.string().readonly())).toThrow(/ZodReadonly/);
+    expect(() => wireSchema(z.string().brand<"id">())).toThrow(/ZodBranded/);
+    expect(() => wireSchema(z.nativeEnum({ A: "a" } as const))).toThrow(/ZodNativeEnum/);
+    expect(() => wireSchema(z.object({ inside: z.array(z.string().readonly()) }))).toThrow(/ZodReadonly/);
+    expect(() => wireSchema(z.object({ a: z.string() }).catchall(z.string().default("x")))).toThrow(
+      /catchall/,
+    );
+    // The catch-all every object has (`never`, or `unknown` for a passthrough) is not one.
+    expect(() => wireSchema(z.object({ a: z.string() }).strict())).not.toThrow();
+    expect(() => wireSchema(z.object({ a: z.string() }).passthrough())).not.toThrow();
     // Every type that holds nothing is its own output.
     for (const leaf of [
       z.string(),
