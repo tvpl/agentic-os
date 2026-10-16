@@ -120,11 +120,13 @@ function endOfBlock(text, open) {
 
 /**
  * A Rust file without its test code: `#[cfg(test)]` and the item it marks (a `mod` or `fn` with a body, or a `use` up to
- * its `;`) are cut out, wherever they are, so production code after a test module is still read. A body whose braces
- * do not balance is not cut (the scan then reads more, never less).
+ * its `;`) are cut out, wherever they are, so production code after a test module is still read. The attribute counts
+ * only where it is code, as the first thing on its line: `#[cfg(test)]` named in a doc comment or a `//` comment
+ * (`/// … #[cfg(test)] …`) marks nothing and must not hide the function after it. A body whose braces do not balance is
+ * not cut (the scan then reads more, never less).
  */
 export function withoutRustTests(text) {
-  const marker = /#\[cfg\(test\)\]/g;
+  const marker = /^[ \t]*#\[cfg\(test\)\]/gm;
   let out = "";
   let from = 0;
   for (let m = marker.exec(text); m !== null; m = marker.exec(text)) {
@@ -369,6 +371,18 @@ export function scanText(text, fileName = "") {
       const name = path.basename(m[1].replace(/\.exe$/i, ""));
       if (NETWORK_PROGRAMS.has(name)) point(`program:${NETWORK_PROGRAMS.get(name)}`);
     }
+    // A shell given the command as an argument (`Command::new("sh").arg("-c").arg("curl …")`): the strings of that
+    // statement are read for a command that starts with curl / wget (a chain or a name built at run time is a limit).
+    for (const m of text.matchAll(
+      /\bCommand::new\(\s*"(?:[^"]*[\\/])?(?:sh|bash|dash|zsh|ash|cmd|powershell|pwsh)(?:\.exe)?"/gi,
+    )) {
+      const end = text.indexOf(";", m.index);
+      const statement = text.slice(m.index, end < 0 ? text.length : end);
+      for (const arg of statement.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
+        const command = DOWNLOAD_COMMAND.exec(arg[1].replace(/^[\s]+/, ""));
+        if (command) point(`program:${command[0].trim().split(/\s/)[0]}`);
+      }
+    }
     for (const m of text.matchAll(/"([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|org|net|io|dev|app))"/g))
       hosts.add(m[1]);
   }
@@ -382,6 +396,14 @@ export function scanText(text, fileName = "") {
       ),
     ))
       point(`rust:crate:${m[1] ?? m[2] ?? m[3]}`);
+    // The dotted form (`reqwest.workspace = true`, `reqwest.version = "1"`, `ureq.features = [...]`) is one dependency,
+    // however many keys spell it, once per section.
+    for (const section of text.split(/^(?=\[)/m)) {
+      const dotted = new Set();
+      for (const m of section.matchAll(new RegExp(`^(${NETWORK_CRATES})\\.[A-Za-z_-]+\\s*=`, "gm")))
+        dotted.add(m[1]);
+      for (const name of dotted) point(`rust:crate:${name}`);
+    }
   }
   if (/tauri(?:\.[a-z]+)?\.conf\.json$/.test(fileName) && /"updater"\s*:/.test(text)) point("tauri:updater");
   if (/\.(md|sh|ps1)$/.test(fileName))

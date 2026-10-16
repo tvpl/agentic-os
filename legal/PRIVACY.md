@@ -157,7 +157,12 @@ nenhuma configuração com `telemetry`, `analytics` ou `crash` no nome.
   (`const g = globalThis`, depois `g.fetch(…)`) não é;
 - No que é Rust (`apps/desktop`): `Command::new` só é lido com o nome do programa escrito na chamada (um nome que vem
   de uma variável não é), uma macro que gera código, um `include!` e o que um `build.rs` baixa ao compilar não são
-  lidos, e o que está em `#[cfg(test)]` é deixado de lado (o código depois dele é lido);
+  lidos, e o que está em `#[cfg(test)]` é deixado de lado (o código depois dele é lido; o atributo só vale como
+  código, no começo da linha, não citado num comentário). Um `Command::new("sh")` com o `curl` ou o `wget` na
+  cadeia do mesmo comando (`.arg("-c").arg("curl …")`) é lido; uma cadeia composta ou montada em tempo de execução
+  não é. No `Cargo.toml`, a tabela, o nome renomeado (`package = "…"`) e a dependência escrita em chave com ponto
+  (`reqwest.workspace = true`) são lidos; uma crate de rede que chega por outra crate (dependência indireta) não
+  aparece no `Cargo.toml` do app e vem pelo `Cargo.lock`, que a varredura não lê;
 - um endereço escrito sem esquema só é lido quando a cadeia começa por `//` (`"//host/arquivo.js"`) ou, num
   arquivo de texto, vem logo depois de aspas, de `(` ou de `=`; montado por partes, ou numa constante cujo nome
   não diz que é um endereço e cujo domínio de topo não está na lista conhecida da varredura, não é.

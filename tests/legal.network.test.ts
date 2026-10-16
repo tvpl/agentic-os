@@ -1143,6 +1143,22 @@ describe("C57 the scan of the desktop shell's Rust and Cargo files has no blind 
     });
   });
 
+  it("C57 #[cfg(test)] named in a comment marks nothing: the function after it is production code and is read", () => {
+    const call = 'std::net::TcpStream::connect("1.2.3.4:80").unwrap();';
+    for (const comment of [
+      "/// Only reached outside #[cfg(test)] builds.",
+      "//! see #[cfg(test)] below",
+      "// #[cfg(test)]",
+      "    /// #[cfg(test)] mod tests { is another file",
+    ])
+      expect(kinds(`${comment}\nfn real() { ${call} }\n`, "x.rs"), comment).toEqual({ "rust:net": 1 });
+    // control: the attribute as code, indented or on the same line as its item, still hides what it marks
+    expect(kinds(`    #[cfg(test)]\n    fn only_in_tests() { ${call} }\n`, "x.rs")).toEqual({});
+    expect(kinds(`#[cfg(test)] mod tests { fn t() { ${call} } }\nfn real() { ${call} }\n`, "x.rs")).toEqual({
+      "rust:net": 1,
+    });
+  });
+
   it("C57 a network crate is seen as a table, in a target table and under another name", () => {
     expect(kinds('reqwest = "0.12"\n', "apps/desktop/Cargo.toml")).toEqual({ "rust:crate:reqwest": 1 });
     expect(kinds('[dependencies.reqwest]\nversion = "0.12"\n', "apps/desktop/src-tauri/Cargo.toml")).toEqual({
@@ -1157,6 +1173,22 @@ describe("C57 the scan of the desktop shell's Rust and Cargo files has no blind 
     expect(kinds("[dependencies.tauri-plugin-updater]\noptional = true\n", "Cargo.toml")).toEqual({
       "rust:crate:tauri-plugin-updater": 1,
     });
+    // the dotted form is one dependency however many keys spell it, once per section
+    expect(kinds("[dependencies]\nreqwest.workspace = true\n", "apps/desktop/Cargo.toml")).toEqual({
+      "rust:crate:reqwest": 1,
+    });
+    expect(
+      kinds(
+        '[dependencies]\nreqwest.version = "1"\nreqwest.features = ["json"]\nureq.version = "2"\n',
+        "Cargo.toml",
+      ),
+    ).toEqual({ "rust:crate:reqwest": 1, "rust:crate:ureq": 1 });
+    expect(kinds('tauri-plugin-updater.version = "2"\n', "Cargo.toml")).toEqual({
+      "rust:crate:tauri-plugin-updater": 1,
+    });
+    expect(
+      kinds('serde.version = "1"\nreqwest-like.workspace = true\n# reqwest.workspace = true\n', "Cargo.toml"),
+    ).toEqual({});
     // a crate that is not a client, and a comment about one, are not points
     expect(
       kinds('serde = "1"\n# reqwest = "0.12"\n[dependencies.serde_json]\nversion = "1"\n', "Cargo.toml"),
@@ -1170,10 +1202,38 @@ describe("C57 the scan of the desktop shell's Rust and Cargo files has no blind 
     expect(kinds('fn f() { Command::new("node"); Command::new(&payload.node); }', "a.rs")).toEqual({});
   });
 
+  it("C57 a shell given a command that starts with curl or wget is a point; a shell running something else is not", () => {
+    expect(
+      kinds(
+        'fn f() { Command::new("sh").arg("-c").arg("curl -s https://x.example.com/a").spawn(); }',
+        "a.rs",
+      ),
+    ).toEqual({ "program:curl": 1 });
+    expect(
+      kinds(
+        'fn f() { Command::new("/bin/bash").args(["-c", "wget -q http://y.example.com"]).output(); }',
+        "a.rs",
+      ),
+    ).toMatchObject({ "program:wget": 1 });
+    expect(
+      kinds('fn f() { Command::new("cmd.exe").args(["/C", "curl -L https://z.example.com"]); }', "a.rs"),
+    ).toMatchObject({
+      "program:curl": 1,
+    });
+    expect(kinds('fn f() { Command::new("sh").arg("-c").arg("echo hello").spawn(); }', "a.rs")).toEqual({});
+    // the statement ends at its `;`: a curl in the next one is not this shell's
+    expect(
+      kinds('fn f() { Command::new("sh").arg("-c").arg("true"); log("curl -s http://q"); }', "a.rs"),
+    ).toEqual({});
+  });
+
   it("C57 the privacy text lists what is left: a program or a macro the scan cannot name in the Rust of the shell", () => {
     const f = privacy.replace(/\s+/g, " ");
     expect(f).toContain("No que é Rust");
     expect(f).toContain("`Command::new` só é lido com o nome do programa escrito na chamada");
+    // the shell form that is read, and the ones that are not
+    expect(f).toContain('`Command::new("sh")` com o `curl`');
+    expect(f).toContain("a dependência escrita em chave com ponto");
   });
 });
 
