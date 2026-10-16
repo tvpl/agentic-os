@@ -133,6 +133,8 @@ describe("C27 the webview loads only its own files and the service's loopback or
     expect(shell).not.toMatch(/=>\s*(true|false)\b/); // no arm of the shell decides by itself
     expect(shell).not.toMatch(/\bdecide\(/); // the policy is reached through on_navigation / on_new_window only
     expect(shell).toContain("on_new_window(url.as_str()");
+    // a service that ends after it was ready is reported as `stopped` (the kind is proven in failure.rs)
+    expect(shell).toContain("Failure::stopped(sidecar.exit_code(), sidecar.stderr_tail())");
   });
 
   it("C27 the installer carries the payload as a resource and nothing else of the repository; the identifier, product name and macOS hardening are the doors", () => {
