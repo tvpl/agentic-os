@@ -10,6 +10,7 @@ const collect: any = await import("../scripts/release-collect.mjs");
 const manifest: any = await import("../scripts/updater-manifest.mjs");
 const updaterConfig: any = await import("../scripts/updater-config.mjs");
 const desktopBuild: any = await import("../scripts/desktop-build.mjs");
+const payloadGuard: any = await import("../scripts/payload-guard.mjs");
 
 /**
  * distribuicao: the scripts the release leans on (.specs/features/distribuicao, AC 34-36, 39-41).
@@ -1012,4 +1013,87 @@ describe("C45 the payload is lib, ui, seed, legal, LICENSE and the manifest, and
     },
     180_000,
   );
+});
+
+describe("C56 `package.mjs --payload <dir>` empties only a folder that is empty, missing or a payload it wrote", () => {
+  const ownPayload = () => {
+    const dir = temp("mordomo-own-payload-");
+    fs.mkdirSync(path.join(dir, "lib"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "lib", "mordomo.mjs"), "// bundle");
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "mordomo-os", private: true, packagedAt: "2026-10-16T00:00:00.000Z" }),
+    );
+    return dir;
+  };
+  const guard = (dir: string) => payloadGuard.assertEmptiablePayloadDir(dir, { root: ROOT });
+
+  it("C56 a folder with something else in it is refused, and nothing in it is touched", () => {
+    const dir = temp("mordomo-sentinel-");
+    fs.mkdirSync(path.join(dir, "docs"));
+    fs.writeFileSync(path.join(dir, "docs", "important.txt"), "keep me");
+    expect(() => guard(dir)).toThrow(/is not empty and is not a payload/);
+    expect(fs.readFileSync(path.join(dir, "docs", "important.txt"), "utf8")).toBe("keep me");
+    // a package.json is not enough: this repository's has the same name
+    const lookalike = temp("mordomo-lookalike-");
+    fs.writeFileSync(
+      path.join(lookalike, "package.json"),
+      fs.readFileSync(path.join(ROOT, "package.json"), "utf8"),
+    );
+    expect(() => guard(lookalike)).toThrow(/is not a payload/);
+    // nor is a payload manifest without the bundle beside it
+    const half = temp("mordomo-half-");
+    fs.writeFileSync(
+      path.join(half, "package.json"),
+      JSON.stringify({ name: "mordomo-os", private: true, packagedAt: "2026-10-16T00:00:00.000Z" }),
+    );
+    expect(() => guard(half)).toThrow(/is not a payload/);
+  });
+
+  it("C56 the repository, its parents, the working directory, the home folder, the file system root and a file are refused", () => {
+    expect(() => guard(ROOT)).toThrow(/repository or one of its parent folders/);
+    expect(() => guard(path.dirname(ROOT))).toThrow(/repository or one of its parent folders/);
+    expect(() => guard(path.join(ROOT, "apps", "..", "."))).toThrow(/repository/);
+    const cwd = temp("mordomo-cwd-");
+    expect(() =>
+      payloadGuard.assertEmptiablePayloadDir(cwd, { root: ROOT, cwd: path.join(cwd, "sub") }),
+    ).toThrow(/working directory/);
+    const home = temp("mordomo-home-");
+    expect(() => payloadGuard.assertEmptiablePayloadDir(home, { root: ROOT, home })).toThrow(/home folder/);
+    expect(() => guard(path.parse(ROOT).root)).toThrow(/root of the file system/);
+    const file = path.join(temp("mordomo-file-"), "f");
+    fs.writeFileSync(file, "x");
+    expect(() => guard(file)).toThrow(/not a folder/);
+  });
+
+  it("C56 a missing folder, an empty one and a payload written before are allowed", () => {
+    expect(() => guard(path.join(temp("mordomo-missing-"), "payload"))).not.toThrow();
+    expect(() => guard(temp("mordomo-empty-"))).not.toThrow();
+    expect(() => guard(ownPayload())).not.toThrow();
+    // the folder the workflows use sits in the repository and is not the repository
+    expect(() => guard(path.join(ROOT, "apps", "desktop", "payload"))).not.toThrow();
+  });
+
+  it("C56 the script itself stops before it deletes: exit 1, the folder as it was", async () => {
+    const { spawnSync } = await import("node:child_process");
+    const dir = temp("mordomo-sentinel-");
+    fs.mkdirSync(path.join(dir, "docs"));
+    fs.writeFileSync(path.join(dir, "docs", "important.txt"), "keep me");
+    const res = spawnSync(
+      process.execPath,
+      [path.join(ROOT, "scripts", "package.mjs"), "--payload", dir, "--skip-build", "--node", "none"],
+      { encoding: "utf8", timeout: 60_000 },
+    );
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("refusing to empty");
+    expect(fs.readFileSync(path.join(dir, "docs", "important.txt"), "utf8")).toBe("keep me");
+    const repo = spawnSync(
+      process.execPath,
+      [path.join(ROOT, "scripts", "package.mjs"), "--payload", ".", "--skip-build", "--node", "none"],
+      { encoding: "utf8", timeout: 60_000, cwd: ROOT },
+    );
+    expect(repo.status).toBe(1);
+    expect(repo.stderr).toContain("repository or one of its parent folders");
+    expect(fs.existsSync(path.join(ROOT, "package.json"))).toBe(true);
+  });
 });

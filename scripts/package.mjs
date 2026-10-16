@@ -39,6 +39,7 @@ import { fileURLToPath } from "node:url";
 import { build } from "rolldown";
 import { stageLegal } from "./legal-stage.mjs";
 import { stageDesktopLegal } from "./legal-stage.mjs";
+import { assertEmptiablePayloadDir } from "./payload-guard.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
@@ -60,6 +61,14 @@ const payload =
   platform === "darwin" && !payloadOnly ? path.join(stage, "MordomoOS.app", "Contents", "Resources") : stage;
 
 if (!["darwin", "linux", "win32"].includes(platform)) fail(`Unsupported platform: ${platform}`);
+// --payload empties the folder it is given: only a missing, an empty or a former payload folder.
+if (payloadOnly) {
+  try {
+    assertEmptiablePayloadDir(stage, { root: ROOT });
+  } catch (err) {
+    fail(err.message);
+  }
+}
 log(
   `Packaging MordomoOS ${pkg.version} for ${platform}/${arch}${nodeVersion ? ` with Node ${nodeVersion}` : " (system Node)"}`,
 );
