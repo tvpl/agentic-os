@@ -111,41 +111,65 @@ describe("C2 the exports nobody uses", () => {
  * (production files; the test material of C1 is not production). Each is a pure function a spec holds to its
  * behaviour; none is reached by the product. The list is a ledger, not a verdict: taking one out of the module
  * is the owner's call (STATE, "Perguntas ao dono — limpeza-legado", 6), and a new entry, or one that gains a
- * production user or leaves the file, fails the guard so that the change is seen.
+ * production user or leaves the file, fails the guard so that the change is seen. A taker outside the product
+ * (the dev harness, a test kit) does not count as production (F9). Each entry carries its one-line reason.
  */
-const ONLY_A_SPEC_USES_IT = [
-  "brain/engine/world.ts :: setMatched",
-  "brain/render/labels.ts :: rankLabels",
-  "components/paletteMatch.ts :: highlightRange",
-  "desktop/apps.tsx :: appLocationOf",
-  "desktop/decision.ts :: pendingDecisions",
-  "desktop/defaultLayout.ts :: orderedIds",
-  "desktop/defaultLayout.ts :: isWidgetId",
-  "desktop/defaultLayout.ts :: shouldStack",
-  "desktop/panelKinds.ts :: requestPanelAction",
-  "desktop/registry.tsx :: hasSurface",
-  "desktop/signal.ts :: isLit",
-  "hooks/useNotifications.ts :: initialNotificationsState",
-  "nucleo/entity/entityParams.ts :: orbitPoint",
-  "nucleo/scenes.ts :: ringOffset",
-  "nucleo/scenes.ts :: travelBetween",
-  "nucleo/scenes/brainCurve.ts :: bezierTangent",
-  "nucleo/scenes/brainCurve.ts :: curveLength",
-  "nucleo/scenes/brainCurve.ts :: quad2",
-  "nucleo/scenes/brainDimensions.ts :: bowCentre",
-  "nucleo/scenes/brainEgo.ts :: egoAll",
-  "nucleo/scenes/brainSpace.ts :: centroid",
-  "nucleo/scenes/brainSpace.ts :: frameDistance",
-  "nucleo/scenes/brainSpace.ts :: pick",
-  "nucleo/scenes/brainSpace.ts :: project",
-  "nucleo/scenes/brainSpace.ts :: reach",
-  "nucleo/scenes/brainTimeline.ts :: ageDays",
-  "nucleo/scenes/brainTour.ts :: shortestPath",
-  "nucleo/scenes/brainZoom.ts :: levelName",
-  "runs/sparkline.ts :: sumBy",
-  "theme.ts :: nextPreset",
-  "views/Settings.tsx :: isValidMicroAppHref",
-];
+const ONLY_A_SPEC_USES_IT: Record<string, string> = {
+  "brain/engine/world.ts :: setMatched":
+    "search-match marker; `brain/engine/engine.test.ts` holds it to its behaviour",
+  "brain/render/labels.ts :: rankLabels":
+    "label ranking; `brain/engine/engine.test.ts` holds it to its behaviour",
+  "components/paletteMatch.ts :: highlightRange":
+    "match-range helper; `components/paletteMatch.test.ts` is its only taker",
+  "desktop/apps.tsx :: appLocationOf":
+    "no spec names it either: only `moldura/moldura.test.tsx`'s `import type * as` of the module keeps it off the default C2 list; nothing calls it",
+  "desktop/decision.ts :: pendingDecisions": "pure filter; `desktop/decision.test.ts` is its only taker",
+  "desktop/defaultLayout.ts :: orderedIds":
+    "layout helper; `desktop/defaultLayout.test.ts` is its only taker",
+  "desktop/defaultLayout.ts :: isWidgetId":
+    "layout helper; `desktop/defaultLayout.test.ts` is its only taker",
+  "desktop/defaultLayout.ts :: shouldStack":
+    "layout helper; `desktop/defaultLayout.test.ts` is its only taker",
+  "desktop/panelKinds.ts :: requestPanelAction":
+    "panel action request; `moldura/moldura.test.tsx` is its only taker",
+  "desktop/registry.tsx :: hasSurface": "registry lookup; `desktop/registry.test.ts` is its only taker",
+  "desktop/signal.ts :: isLit": "signal predicate; `desktop/signal.test.ts` is its only taker",
+  "hooks/useNotifications.ts :: initialNotificationsState":
+    "reducer seed; `hooks/useNotifications.test.ts` is its only taker",
+  "i18n.ts :: ownKeys":
+    "the key lists the pt-BR parity guard reads without the English fallback (F11); `i18n.test.ts` and `i18n.orphans.test.ts` are its takers by design",
+  "nucleo/entity/Entity.tsx :: SPEAK_EVENT":
+    "re-export; its only taker is the dev harness `nucleo/entity/harness.tsx`, which is outside the product (F9)",
+  "nucleo/entity/entityParams.ts :: orbitPoint":
+    "orbit geometry; `nucleo/entity/entityParams.test.ts` is its only taker",
+  "nucleo/scenes.ts :: ringOffset": "ring geometry; `nucleo/shell.test.ts` is its only taker",
+  "nucleo/scenes.ts :: travelBetween": "scene travel; `nucleo/shell.test.ts` is its only taker",
+  "nucleo/scenes/brainCurve.ts :: bezierTangent":
+    "curve maths; `nucleo/scenes/brainCurve.test.ts` is its only taker",
+  "nucleo/scenes/brainCurve.ts :: curveLength":
+    "curve maths; `nucleo/scenes/brainCurve.test.ts` is its only taker",
+  "nucleo/scenes/brainCurve.ts :: quad2": "curve maths; `nucleo/scenes/brainCurve.test.ts` is its only taker",
+  "nucleo/scenes/brainDimensions.ts :: bowCentre":
+    "layout maths; `nucleo/scenes/brainDimensions.test.ts` is its only taker",
+  "nucleo/scenes/brainEgo.ts :: egoAll":
+    "ego-network helper; `nucleo/scenes/brainEgo.test.ts` is its only taker",
+  "nucleo/scenes/brainSpace.ts :: centroid":
+    "3D helper; `nucleo/scenes/brainSpace.test.ts` is its only taker",
+  "nucleo/scenes/brainSpace.ts :: frameDistance":
+    "3D helper; `nucleo/scenes/brainSpace.test.ts` is its only taker",
+  "nucleo/scenes/brainSpace.ts :: pick": "3D helper; `nucleo/scenes/brainSpace.test.ts` is its only taker",
+  "nucleo/scenes/brainSpace.ts :: project": "3D helper; `nucleo/scenes/brainSpace.test.ts` is its only taker",
+  "nucleo/scenes/brainSpace.ts :: reach": "3D helper; `nucleo/scenes/brainSpace.test.ts` is its only taker",
+  "nucleo/scenes/brainTimeline.ts :: ageDays":
+    "timeline helper; `nucleo/scenes/brainTimeline.test.ts` is its only taker",
+  "nucleo/scenes/brainTour.ts :: shortestPath":
+    "graph search; `nucleo/scenes/brainTour.test.ts` is its only taker",
+  "nucleo/scenes/brainZoom.ts :: levelName":
+    "zoom label; `nucleo/scenes/brainZoom.test.ts` is its only taker",
+  "runs/sparkline.ts :: sumBy": "series helper; `runs/sparkline.test.ts` is its only taker",
+  "theme.ts :: nextPreset": "preset cycling; `theme.test.ts` is its only taker",
+  "views/Settings.tsx :: isValidMicroAppHref": "href check; `views/Settings.href.test.ts` is its only taker",
+};
 
 /** The modules a production `import()` takes whole: every export of one counts as used (F4). */
 const WHOLE_MODULE_IMPORTS: Record<string, string> = {
@@ -159,7 +183,12 @@ describe("C2 what only a test keeps alive, and what an import() of a whole modul
     const found = names(
       deadExports(tree, { specsUse: false }).filter((d) => !(d.file in PUBLIC_SURFACE) && !test.has(d.file)),
     ).sort((a, b) => a.localeCompare(b));
-    expect(found).toEqual([...ONLY_A_SPEC_USES_IT].sort((a, b) => a.localeCompare(b)));
+    expect(found).toEqual(Object.keys(ONLY_A_SPEC_USES_IT).sort((a, b) => a.localeCompare(b)));
+  });
+
+  it("C2 every entry of the ledger carries a reason of one line", () => {
+    for (const [entry, reason] of Object.entries(ONLY_A_SPEC_USES_IT))
+      expect(reason.trim().length > 10 && !reason.includes("\n"), entry).toBe(true);
   });
 
   it("C2 the modules taken whole by an import() are exactly the listed ones", () => {
@@ -172,6 +201,7 @@ describe("C3 the reader of dead exports", () => {
 
   it("C3 can leave the specs out of the users, and tells an import() of a whole module from a lazy default", () => {
     const t = made({
+      "main.tsx": 'import "./app"; import "./load";',
       "lib.ts": "export const used = 1; export const onlyTested = 2; export const none = 3;",
       "app.ts": 'import { used } from "./lib"; export const a = used;',
       "lib.test.ts": 'import { onlyTested } from "./lib"; export const b = onlyTested;',
@@ -187,6 +217,23 @@ describe("C3 the reader of dead exports", () => {
     ]);
     expect(wholeModuleImports(t)).toEqual(["m.ts"]);
     expect(names(deadExports(t)).filter((d) => /^[mn]\.ts/.test(d))).toEqual(["n.ts :: w"]);
+  });
+
+  it("C3 a file the entry does not reach (a dev harness) does not keep a name alive, but a whole-module take of it still does (F9)", () => {
+    const t = made({
+      "main.tsx": 'import { a } from "./app"; export const m = a;',
+      "app.ts": "export const a = 1; export const harnessOnly = 2; export const viaNamespace = 3;",
+      "harness.tsx": 'import { harnessOnly } from "./app"; export const h = harnessOnly;',
+      "kit.ts": 'import type * as App from "./other"; export type K = typeof App;',
+      "other.ts": "export const o = 1;",
+    });
+    expect(names(deadExports(t)).filter((d) => d.startsWith("app.ts"))).toEqual(["app.ts :: viaNamespace"]);
+    expect(names(deadExports(t, { specsUse: false })).filter((d) => d.startsWith("app.ts"))).toEqual([
+      "app.ts :: harnessOnly",
+      "app.ts :: viaNamespace",
+    ]);
+    // `other.ts` is taken whole by a file outside the product: the take stays honoured (conservative).
+    expect(names(deadExports(t, { specsUse: false })).filter((d) => d.startsWith("other.ts"))).toEqual([]);
   });
 
   it("C3 finds a function, a constant, a class, an interface, a type and a default that nobody uses", () => {

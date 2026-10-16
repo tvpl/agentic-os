@@ -288,8 +288,14 @@ function takesOnlyDefault(call: ts.CallExpression): boolean {
   );
 }
 
-/** The names each file's importers take: file -> names ("*" for all of them). A spec is an importer unless `specsUse` is false. */
+/**
+ * The names each file's importers take: file -> names ("*" for all of them). A spec is an importer unless
+ * `specsUse` is false. Then a file no entry reaches (the dev harness, the test kits) is not a taker of a NAME
+ * either, because it is not the product (F9). A whole-module take (`import * as`, `import()`) is still honoured
+ * from such a file: it cannot say which names it needs, and the safe direction is to leave them all alone.
+ */
 function usedNames(tree: Tree, specsUse = true): Map<string, Set<string>> {
+  const product = specsUse ? undefined : reachable(tree);
   const used = new Map<string, Set<string>>();
   const mark = (file: string, name: string) => {
     let set = used.get(file);
@@ -297,20 +303,24 @@ function usedNames(tree: Tree, specsUse = true): Map<string, Set<string>> {
     set.add(name);
   };
   for (const file of tree.keys()) {
-    if (!isScript(file) || (!specsUse && isSpec(file))) continue;
+    if (!isScript(file) || (product && isSpec(file))) continue;
+    const outside = product !== undefined && !product.has(file);
     const sf = syntax(tree, file);
     visit(sf, (n) => {
       if (ts.isImportDeclaration(n)) {
         const to = resolveSpecifier(tree, file, stringOf(n.moduleSpecifier) ?? "");
         const clause = n.importClause;
         if (!to || !clause) return;
-        if (clause.name) mark(to, "default");
         const bindings = clause.namedBindings;
         if (bindings && ts.isNamespaceImport(bindings)) mark(to, "*");
-        else if (bindings) for (const el of bindings.elements) mark(to, (el.propertyName ?? el.name).text);
+        if (outside) return;
+        if (clause.name) mark(to, "default");
+        if (bindings && !ts.isNamespaceImport(bindings))
+          for (const el of bindings.elements) mark(to, (el.propertyName ?? el.name).text);
       } else if (ts.isCallExpression(n) && n.expression.kind === ts.SyntaxKind.ImportKeyword) {
         const to = resolveSpecifier(tree, file, stringOf(n.arguments[0]) ?? "");
-        if (to) mark(to, takesOnlyDefault(n) ? "default" : "*");
+        const onlyDefault = takesOnlyDefault(n);
+        if (to && !(outside && onlyDefault)) mark(to, onlyDefault ? "default" : "*");
       } else if (ts.isExportDeclaration(n) && n.moduleSpecifier && !n.exportClause) {
         // `export * from "./m"`: the importers of this file take whatever they want of m; handled below.
       }
@@ -323,7 +333,8 @@ function usedNames(tree: Tree, specsUse = true): Map<string, Set<string>> {
  * Exported names nobody uses: no importer takes the name (directly or through a
  * barrel that itself has a taker), no `import * as` or `import()` reaches the
  * module, and the file does not mention it outside its own declaration. A spec is an importer, and so a use,
- * unless `specsUse` is false: then the answer is what only a test keeps alive.
+ * unless `specsUse` is false: then the answer is what only a test, or a file outside the product (the dev harness),
+ * keeps alive.
  */
 export function deadExports(tree: Tree, options: { specsUse?: boolean } = {}): ExportedName[] {
   const used = usedNames(tree, options.specsUse ?? true);
