@@ -351,6 +351,7 @@ describe("C42 the notes of a release come from the CHANGELOG section of its vers
 
 // ---- release-collect and the updater manifest -----------------------------------------------------------------
 
+/** What `tauri build` leaves: with `withSigs` as with the updater key (`createUpdaterArtifacts`), without as with no key. */
 function bundleTree(platform: string, withSigs: boolean): string {
   const bundle = temp("mordomo-bundle-");
   const spec = (collect.PLATFORMS as Record<string, { os: string }>)[platform]!;
@@ -361,8 +362,13 @@ function bundleTree(platform: string, withSigs: boolean): string {
   const sig = (rel: string) => put(`${rel}.sig`);
   if (spec.os === "macos") {
     put("dmg/MordomoOS_1.2.3_aarch64.dmg");
-    put("macos/MordomoOS.app.tar.gz");
-    if (withSigs) sig("macos/MordomoOS.app.tar.gz");
+    // The bundler writes the `.app` folder always and the `.app.tar.gz` (with its .sig) only under
+    // `createUpdaterArtifacts`, i.e. with an updater key (tauri-bundler `bundle.rs`: `if let Some(updater)`).
+    put("macos/MordomoOS.app/Contents/Info.plist");
+    if (withSigs) {
+      put("macos/MordomoOS.app.tar.gz");
+      sig("macos/MordomoOS.app.tar.gz");
+    }
   } else if (spec.os === "windows") {
     put("nsis/MordomoOS_1.2.3_x64-setup.exe");
     if (withSigs) sig("nsis/MordomoOS_1.2.3_x64-setup.exe");
@@ -382,10 +388,8 @@ describe("C40 an installer the operating system will not trust says so in its na
   const base = { version: "1.2.3", notarized: false };
   it("C40 macOS and Windows built without a certificate carry _UNSIGNED, and their status says so", () => {
     for (const [platform, files] of [
-      [
-        "macos-arm64",
-        ["MordomoOS_1.2.3_macos-arm64_UNSIGNED.dmg", "MordomoOS_1.2.3_macos-arm64_UNSIGNED.app.tar.gz"],
-      ],
+      // no secrets at all (AC 39): the bundle has the .dmg and the .app folder, no updater archive
+      ["macos-arm64", ["MordomoOS_1.2.3_macos-arm64_UNSIGNED.dmg"]],
       ["windows-x64", ["MordomoOS_1.2.3_windows-x64_UNSIGNED-setup.exe"]],
     ] as const) {
       const out = temp("mordomo-out-");
@@ -468,6 +472,106 @@ describe("C40 an installer the operating system will not trust says so in its na
     });
   });
 
+  it("C40 with the updater key a Linux bundle whose .deb has no .sig fails (the manifest needs it for the .deb entry)", () => {
+    const bundle = bundleTree("linux-x64", true);
+    fs.rmSync(path.join(bundle, "deb", "MordomoOS_1.2.3_amd64.deb.sig"));
+    expect(() =>
+      collect.collect({
+        ...base,
+        platform: "linux-x64",
+        bundle,
+        out: temp("o-"),
+        codeSigned: false,
+        updaterSigned: true,
+      }),
+    ).toThrow(/deb.*\.sig is missing though the updater key/);
+  });
+
+  it("C40 AC 39: with no secret at all the four platforms still collect (macOS has the .dmg and no updater archive), and the draft says everything is unsigned", () => {
+    const out = temp("mordomo-out-");
+    const files: string[] = [];
+    for (const platform of Object.keys(collect.PLATFORMS)) {
+      const os = (collect.PLATFORMS as Record<string, { os: string }>)[platform]!.os;
+      const res = collect.collect({
+        ...base,
+        platform,
+        bundle: bundleTree(platform, false),
+        out,
+        codeSigned: false,
+        updaterSigned: false,
+      });
+      // no updater archive and no .sig anywhere: nothing the bundler does not write without a key
+      expect(res.written.some((n: string) => n.endsWith(".sig") || n.endsWith(".app.tar.gz"))).toBe(false);
+      if (os === "macos") expect(res.written).toEqual([`MordomoOS_1.2.3_${platform}_UNSIGNED.dmg`]);
+      files.push(...res.written);
+    }
+    expect(files).toEqual([
+      "MordomoOS_1.2.3_macos-arm64_UNSIGNED.dmg",
+      "MordomoOS_1.2.3_macos-x64_UNSIGNED.dmg",
+      "MordomoOS_1.2.3_windows-x64_UNSIGNED-setup.exe",
+      "MordomoOS_1.2.3_linux-x64.deb",
+      "MordomoOS_1.2.3_linux-x64.AppImage",
+    ]);
+    // what the publish job does next with that folder: notes with the banner, and no latest.json (exit 3)
+    const root = temp("mordomo-notes3-");
+    fs.writeFileSync(path.join(root, "CHANGELOG.md"), "## 1.2.3\n\n- the fix\n");
+    const notes = run(releaseNotes.main, [
+      "--version",
+      "1.2.3",
+      "--status",
+      out,
+      "--out",
+      "notes.md",
+      "--root",
+      root,
+    ]);
+    expect(notes.code, notes.err).toBe(0);
+    expect(fs.readFileSync(path.join(root, "notes.md"), "utf8")).toContain(
+      "UNSIGNED / NÃO ASSINADO: macos-arm64, macos-x64, windows-x64",
+    );
+    const latest = path.join(out, "latest.json");
+    const m = run(manifest.main, ["--dir", out, "--version", "1.2.3", "--tag", "v1.2.3", "--out", latest]);
+    expect(m.code).toBe(3);
+    expect(fs.existsSync(latest)).toBe(false);
+  });
+
+  it("C40 macOS signed by the operating system but with no updater key: the .dmg alone, no label; with the key the archive is required and shipped with its .sig", () => {
+    const out = temp("mordomo-out-");
+    const noKey = collect.collect({
+      ...base,
+      platform: "macos-arm64",
+      bundle: bundleTree("macos-arm64", false),
+      out,
+      codeSigned: true,
+      notarized: true,
+      updaterSigned: false,
+    });
+    expect(noKey.written).toEqual(["MordomoOS_1.2.3_macos-arm64.dmg"]);
+    // updater on but the archive was not written (the key was not really used): fail, naming the folder
+    const archiveless = bundleTree("macos-arm64", false);
+    expect(() =>
+      collect.collect({
+        ...base,
+        platform: "macos-arm64",
+        bundle: archiveless,
+        out: temp("o-"),
+        codeSigned: true,
+        updaterSigned: true,
+      }),
+    ).toThrow(/macos: expected one file matching .*tar.*found 0/);
+    // an archive that no key asked for is refused rather than shipped unsigned
+    expect(() =>
+      collect.collect({
+        ...base,
+        platform: "macos-arm64",
+        bundle: bundleTree("macos-arm64", true),
+        out: temp("o-"),
+        codeSigned: true,
+        updaterSigned: false,
+      }),
+    ).toThrow(/exists though no updater key/);
+  });
+
   it("C40 a missing installer, a missing .sig when the key was configured, and a .sig when it was not, all fail", () => {
     const args = { ...base, platform: "windows-x64", codeSigned: true };
     expect(() =>
@@ -522,6 +626,11 @@ describe("C43 latest.json exists only when it can be complete, and names the fou
       const file = `MordomoOS_1.2.3_${platform}${os === "macos" ? ".app.tar.gz" : os === "windows" ? "-setup.exe" : ".AppImage"}`;
       fs.writeFileSync(path.join(dir, file), "installer");
       if (updaterSigned) fs.writeFileSync(path.join(dir, `${file}.sig`), `signature of ${platform}\n`);
+      if (os === "linux") {
+        fs.writeFileSync(path.join(dir, `MordomoOS_1.2.3_${platform}.deb`), "deb");
+        if (updaterSigned)
+          fs.writeFileSync(path.join(dir, `MordomoOS_1.2.3_${platform}.deb.sig`), `signature of the deb\n`);
+      }
     }
     return dir;
   }
@@ -557,8 +666,26 @@ describe("C43 latest.json exists only when it can be complete, and names the fou
           signature: "signature of linux-x64",
           url: "https://github.com/tvpl/agentic-os/releases/download/v1.2.3/MordomoOS_1.2.3_linux-x64.AppImage",
         },
+        // an installed .deb asks for `linux-x86_64-deb` first (tauri-plugin-updater get_urls) and cannot install an AppImage
+        "linux-x86_64-deb": {
+          signature: "signature of the deb",
+          url: "https://github.com/tvpl/agentic-os/releases/download/v1.2.3/MordomoOS_1.2.3_linux-x64.deb",
+        },
       },
     });
+  });
+
+  it("C43 a .deb that is missing, or whose .sig is, leaves the manifest out (a .deb install would be told to fetch an AppImage)", () => {
+    const noSig = releaseDir();
+    fs.rmSync(path.join(noSig, "MordomoOS_1.2.3_linux-x64.deb.sig"));
+    expect(manifest.buildManifest({ ...args, dir: noSig }).missing.join("\n")).toContain(
+      "linux-x64: MordomoOS_1.2.3_linux-x64.deb or its .sig is not in",
+    );
+    const noDeb = releaseDir();
+    fs.rmSync(path.join(noDeb, "MordomoOS_1.2.3_linux-x64.deb"));
+    expect(manifest.buildManifest({ ...args, dir: noDeb }).missing.join("\n")).toContain(
+      "a .deb install could not update",
+    );
   });
 
   const gaps: Array<[string, Parameters<typeof releaseDir>[0], RegExp]> = [
@@ -642,6 +769,7 @@ describe("C43 latest.json exists only when it can be complete, and names the fou
       "darwin-aarch64",
       "darwin-x86_64",
       "linux-x86_64",
+      "linux-x86_64-deb",
       "windows-x86_64",
     ]);
   });

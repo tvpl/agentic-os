@@ -16,6 +16,13 @@ import { fileURLToPath } from "node:url";
 import { PLATFORMS } from "./release-collect.mjs";
 
 const UPDATER_FILE = { macos: ".app.tar.gz", windows: "-setup.exe", linux: ".AppImage" };
+/**
+ * A Debian install updates through its own entry. `tauri-plugin-updater` (2.13.3, `updater.rs` `get_urls` and
+ * `install_inner`) asks for `<os>-<arch>-<installer>` first and falls back to `<os>-<arch>`; for a .deb the installer
+ * is `deb`, and what it downloads must be a .deb (`install_deb` returns `InvalidUpdaterFormat` for an AppImage). The
+ * AppImage is the plain `linux-x86_64` entry (the fallback); an AppImage install never asks for `-deb`.
+ */
+const INSTALLER_ENTRY = { linux: { suffix: "-deb", file: ".deb" } };
 
 /** `{ manifest }`, or `{ missing: [reasons] }`. */
 export function buildManifest({ dir, version, tag, notes, date, repo }) {
@@ -42,10 +49,21 @@ export function buildManifest({ dir, version, tag, notes, date, repo }) {
       missing.push(`${platform}: ${file} or its .sig is not in ${dir}`);
       continue;
     }
-    platforms[spec.updater] = {
-      signature: fs.readFileSync(sig, "utf8").trim(),
-      url: `https://github.com/${repo}/releases/download/${tag}/${file}`,
-    };
+    const entry = (name, sigPath) => ({
+      signature: fs.readFileSync(sigPath, "utf8").trim(),
+      url: `https://github.com/${repo}/releases/download/${tag}/${name}`,
+    });
+    const extra = INSTALLER_ENTRY[spec.os];
+    if (extra) {
+      const deb = `MordomoOS_${version}_${platform}${extra.file}`;
+      const debSig = path.join(dir, `${deb}.sig`);
+      if (!fs.existsSync(path.join(dir, deb)) || !fs.existsSync(debSig)) {
+        missing.push(`${platform}: ${deb} or its .sig is not in ${dir} (a .deb install could not update)`);
+        continue;
+      }
+      platforms[`${spec.updater}${extra.suffix}`] = entry(deb, debSig);
+    }
+    platforms[spec.updater] = entry(file, sig);
   }
   if (missing.length > 0) return { missing };
   return { manifest: { version, notes, pub_date: date, platforms } };
