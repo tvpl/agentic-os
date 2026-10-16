@@ -20,7 +20,7 @@ pub mod token;
 mod testutil;
 
 pub use failure::{Failure, FailureKind};
-pub use nav::{decide, NavAction};
+pub use nav::{decide, on_navigation, on_new_window, Handling, NavAction};
 pub use payload::{Payload, PayloadError};
 pub use ready::{parse_ready_line, Ready, ReadyError, READY_PREFIX};
 pub use supervisor::{Config, Sidecar, StartError, StopOutcome};

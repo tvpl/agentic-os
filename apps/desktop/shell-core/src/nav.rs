@@ -45,6 +45,44 @@ pub fn decide(address: &str, sidecar_port: Option<u16>) -> NavAction {
     }
 }
 
+/// What the shell does about one request, as the two things it can do: load the address in the window, or hand it to the
+/// system. Never both; for anything `decide` does not allow, never the first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Handling {
+    /// The webview goes on to load the address (the answer of the navigation handler).
+    pub load_in_window: bool,
+    /// The address is opened by the system (browser or mail client) instead.
+    pub open_in_system: bool,
+}
+
+/// The window itself is navigating to `address` (a click, a redirect, a script). Only `Allow` loads; an address of
+/// another origin is never loaded in the window, it goes to the system browser.
+pub fn on_navigation(address: &str, sidecar_port: Option<u16>) -> Handling {
+    match decide(address, sidecar_port) {
+        NavAction::Allow => Handling {
+            load_in_window: true,
+            open_in_system: false,
+        },
+        NavAction::OpenExternally => Handling {
+            load_in_window: false,
+            open_in_system: true,
+        },
+        NavAction::Deny => Handling {
+            load_in_window: false,
+            open_in_system: false,
+        },
+    }
+}
+
+/// A page asked for a new window (`window.open`, `target=_blank`). No second webview is ever created, so nothing loads
+/// in a window; what the policy allows or sends out is shown by the system browser, the rest is dropped.
+pub fn on_new_window(address: &str, sidecar_port: Option<u16>) -> Handling {
+    Handling {
+        load_in_window: false,
+        open_in_system: decide(address, sidecar_port) != NavAction::Deny,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,7 +120,7 @@ mod tests {
     fn look_alikes_and_userinfo_do_not_pass_for_the_origin() {
         for address in [
             "http://127.0.0.1.evil.example:41234/",
-            "http://127.0.0.1:41234@evil.example/",
+            "http://127.0.0.1.evil.example:41234/",
             "http://user:pw@127.0.0.1:41234/",
             "http://evil.example/?next=http://127.0.0.1:41234/",
             "http://tauri.localhost.evil.example/",
@@ -123,6 +161,80 @@ mod tests {
             "//evil.example/",
         ] {
             assert_eq!(decide(address, PORT), Deny, "{address:?}");
+        }
+    }
+
+    fn handling(load_in_window: bool, open_in_system: bool) -> Handling {
+        Handling {
+            load_in_window,
+            open_in_system,
+        }
+    }
+
+    #[test]
+    fn the_window_never_loads_an_address_of_another_origin_it_hands_it_to_the_system() {
+        for address in [
+            "https://github.com/tvpl/agentic-os",
+            "http://example.com/",
+            "http://127.0.0.1:41235/",
+            "http://127.0.0.1.evil.example:41234/",
+            "http://localhost:41234/",
+            "mailto:dono@example.com",
+        ] {
+            assert_eq!(on_navigation(address, PORT), handling(false, true), "{address}");
+        }
+        // before the service said where it listens, even its own address is another origin
+        assert_eq!(
+            on_navigation("http://127.0.0.1:41234/", None),
+            handling(false, true)
+        );
+    }
+
+    #[test]
+    fn the_window_loads_only_what_is_allowed_and_nothing_else_reaches_the_system() {
+        for address in [
+            "tauri://localhost/index.html",
+            "http://tauri.localhost/",
+            "http://127.0.0.1:41234/?launch=abc",
+            "about:blank",
+        ] {
+            assert_eq!(on_navigation(address, PORT), handling(true, false), "{address}");
+        }
+        for address in [
+            "javascript:alert(1)",
+            "file:///etc/passwd",
+            "data:text/html,x",
+            "blob:http://127.0.0.1:41234/u",
+            "",
+        ] {
+            assert_eq!(
+                on_navigation(address, PORT),
+                handling(false, false),
+                "{address:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_new_window_is_never_made_what_is_allowed_or_sent_out_opens_in_the_system() {
+        for address in [
+            "http://127.0.0.1:41234/artifact/1",
+            "https://github.com/tvpl/agentic-os",
+            "mailto:dono@example.com",
+        ] {
+            assert_eq!(on_new_window(address, PORT), handling(false, true), "{address}");
+        }
+        for address in [
+            "javascript:alert(1)",
+            "file:///etc/passwd",
+            "data:text/html,x",
+            "not a url",
+        ] {
+            assert_eq!(
+                on_new_window(address, PORT),
+                handling(false, false),
+                "{address:?}"
+            );
         }
     }
 }

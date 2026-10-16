@@ -125,6 +125,16 @@ describe("C27 the webview loads only its own files and the service's loopback or
     expect(shell).not.toMatch(/NewWindowResponse::(Allow|Create)/);
   });
 
+  it("C27 the navigation handler answers with the policy's own verdict (shell-core `on_navigation`, tested there) and never with a constant", () => {
+    const shell = read(TAURI, "src", "shell.rs");
+    const gate = /fn gate\([^)]*\) -> bool \{([\s\S]*?)\n\}/.exec(shell)?.[1] ?? "";
+    expect(gate).toContain("on_navigation(url.as_str(), app.state::<Shell>().sidecar_port())");
+    expect(gate.trim().endsWith("handling.load_in_window")).toBe(true);
+    expect(shell).not.toMatch(/=>\s*(true|false)\b/); // no arm of the shell decides by itself
+    expect(shell).not.toMatch(/\bdecide\(/); // the policy is reached through on_navigation / on_new_window only
+    expect(shell).toContain("on_new_window(url.as_str()");
+  });
+
   it("C27 the installer carries the payload as a resource and nothing else of the repository; the identifier, product name and macOS hardening are the doors", () => {
     expect(conf.identifier).toBe("com.mordomo.desktop");
     expect(conf.productName).toBe("MordomoOS");
