@@ -219,6 +219,7 @@ read this, the job named is what proves it.
 | A **real updater roundtrip** (old build finds, downloads, verifies, installs, restarts into the new one) | section 5's rehearsal, once, before the first published release |
 | The **AppImage on other distributions**, the `.deb` on other versions, **Wayland** | the Linux job and a manual check on the machines you care about |
 | Windows or Linux **ARM64**, `.rpm` | not built; not promised |
+| **Saving a file from the window**: `<a download href="blob:…">` (Settings › Diagnostics › export, the Pixel Studio exports). On **Linux** it was run: the click happens and no file is written and nothing is said, because the address policy refuses `blob:` and `data:`. macOS and Windows were **not** observed | not fixed. A fix needs the window to allow the service's own `blob:` addresses and a download handler that picks a destination, which changes the approved address policy (AC 22): it is an owner question (`.specs/STATE.md`, distribuicao, with a default) |
 
 **Run on Linux, with a throwaway key:** the Rust tests (`cargo test`), `clippy -D warnings`; the real window under Xvfb with
 a window manager and a D-Bus session (`smoke/gui.sh`: token handshake, single instance, close, crash, retry, held home);

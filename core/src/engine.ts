@@ -139,6 +139,12 @@ function buildAdapters(
 }
 
 export class MordomoEngine {
+  /** The port the listener of this process bound, set by the server (a desktop shell's service may not listen on `settings.port`). */
+  boundPort: number | null = null;
+  /** Where this service answers: the bound port once it listens, the configured one before. Every address handed out uses it. */
+  servicePort(): number {
+    return this.boundPort ?? this.settings().port;
+  }
   /**
    * This engine's event bus. Every store that announces something is given it, and nothing else is: two engines in
    * one process never hear each other (`.specs/features/sdk-core`, door 3).
@@ -351,6 +357,7 @@ export class MordomoEngine {
     this.disposers.push(
       installTelegramChannel(this.events, {
         getSettings: () => this.settings(),
+        servicePort: () => this.servicePort(),
         needsReview: (id) => {
           const approval = this.approvals.get(id);
           return approval !== null && approval.status === "pending" && requiresFullReview(approval);

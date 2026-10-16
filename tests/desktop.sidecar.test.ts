@@ -5,9 +5,9 @@ import path from "node:path";
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance } from "fastify";
 import { AppContext } from "../apps/api/src/context.js";
-import { buildServer, cookieValue, safeUrl } from "../apps/api/src/server.js";
+import { buildServer, cookieValue, safeUrl, takeLaunchSecret } from "../apps/api/src/server.js";
 import { makeTempHome } from "./helpers.js";
 
 /**
@@ -323,6 +323,73 @@ describe("C8 while a launch secret is set GET / hands the owner's token only to 
     expect(proxied.statusCode).toBe(200);
     expect(proxied.headers["set-cookie"]).toBeUndefined();
     expect(meta(proxied.body)).toBe("");
+  });
+
+  it("C10 the right secret from a TLS socket that is not this machine's is no use: 200, no cookie, an empty meta; from loopback it is traded", async () => {
+    // Over plain http another machine is refused by the global guard before `GET /` is reached (403 tls_required). The
+    // launch trade has to hold on its own for the other way in, a TLS connection from another machine: make the mock
+    // sockets of `inject` TLS ones for this test (`encrypted`), and give them a far address.
+    const probe = Fastify();
+    let socketPrototype: object | null = null;
+    probe.get("/", (req) => {
+      socketPrototype = Object.getPrototypeOf(req.raw.socket) as object;
+      return "";
+    });
+    await probe.inject("/");
+    await probe.close();
+    expect(socketPrototype).not.toBeNull();
+    Object.defineProperty(socketPrototype!, "encrypted", { value: true, configurable: true });
+    try {
+      const far = await app.inject({
+        url: `/?launch=${SECRET}`,
+        headers: BROWSER,
+        remoteAddress: "203.0.113.9",
+      });
+      expect(far.statusCode).toBe(200);
+      expect(far.headers["set-cookie"]).toBeUndefined();
+      expect(meta(far.body)).toBe("");
+      const farWithCookie = await app.inject({
+        url: "/",
+        headers: { ...BROWSER, cookie: `mordomo_launch=${SECRET}` },
+        remoteAddress: "203.0.113.9",
+      });
+      expect(farWithCookie.statusCode).toBe(200);
+      expect(meta(farWithCookie.body)).toBe("");
+      // the control that gives the two above their meaning: the same requests from loopback are traded and served the token
+      const near = await app.inject({
+        url: `/?launch=${SECRET}`,
+        headers: BROWSER,
+        remoteAddress: "127.0.0.1",
+      });
+      expect(near.statusCode).toBe(302);
+      const nearWithCookie = await app.inject({
+        url: "/",
+        headers: { ...BROWSER, cookie: `mordomo_launch=${SECRET}` },
+        remoteAddress: "127.0.0.1",
+      });
+      expect(meta(nearWithCookie.body)).toBe(ctx.token());
+    } finally {
+      delete (socketPrototype as { encrypted?: boolean }).encrypted;
+    }
+    // a forged Host is the global guard's (403) and sets no cookie either
+    const forged = await app.inject({
+      url: `/?launch=${SECRET}`,
+      headers: { ...BROWSER, host: "evil.example" },
+    });
+    expect(forged.statusCode).toBe(403);
+    expect(forged.headers["set-cookie"]).toBeUndefined();
+  });
+
+  it("C58 the launch secret is taken out of the environment the service hands to what it starts, and cmdSidecar uses that", () => {
+    const env: NodeJS.ProcessEnv = { MORDOMO_LAUNCH_TOKEN: SECRET, PATH: "/usr/bin" };
+    expect(takeLaunchSecret(env)).toBe(SECRET);
+    expect(env.MORDOMO_LAUNCH_TOKEN).toBeUndefined();
+    expect(env.PATH).toBe("/usr/bin");
+    expect(takeLaunchSecret(env)).toBe(""); // already taken
+    expect(takeLaunchSecret({})).toBe("");
+    const cliSource = fs.readFileSync(path.join(repoRoot, "apps", "api", "src", "cli.ts"), "utf8");
+    expect(cliSource).toContain("launchSecret: takeLaunchSecret(process.env)");
+    expect(cliSource).not.toMatch(/launchSecret:\s*process\.env/);
   });
 
   it("C11 the request log never holds the secret: safeUrl redacts launch, and cookieValue reads one cookie of many", () => {

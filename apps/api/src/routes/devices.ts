@@ -24,7 +24,7 @@ export function registerDeviceRoutes(app: FastifyInstance, ctx: AppContext): voi
       remoteEnabled: settings.remote.enabled,
       allowedHosts: settings.remote.allowedHosts,
       bindAddress: settings.bindAddress,
-      port: settings.port,
+      port: ctx.servicePort(),
     };
   });
 

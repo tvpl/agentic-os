@@ -86,8 +86,12 @@ async fn run(app: &AppHandle, interactive: bool) -> Result<(), Box<dyn std::erro
     // The plugin checks the minisign signature of what it downloaded against the public key in the configuration;
     // `download` fails, and nothing is installed, when it does not verify.
     let bytes = update.download(|_chunk, _total| {}, || {}).await?;
-    // Stop the service before the installer replaces the files it runs from (on Windows they would be locked).
-    app.state::<crate::shell::Shell>().stop_sidecar();
-    update.install(bytes)?;
+    // Stop the service before the installer replaces the files it runs from (on Windows they would be locked); when the
+    // install fails the files are the old ones, so the service is started again and the window goes back to it.
+    mordomo_shell_core::policy::install_with_service_stopped(
+        || app.state::<crate::shell::Shell>().stop_sidecar(),
+        || update.install(&bytes),
+        || crate::shell::spawn_start(app.clone()),
+    )?;
     app.restart();
 }

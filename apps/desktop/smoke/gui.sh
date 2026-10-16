@@ -9,7 +9,8 @@
 # What it settles: the page of the Command Centre gets the owner's token through the launch secret, a second launch
 # comes forward instead of starting a service, closing the window stops the service and leaves no lock behind, a service
 # that dies shows the failure screen (Retry is the focused control, so Enter starts it again), and `--self-test` says
-# `ok` or the reason. It cannot say how the window looks: tests/desktop.screens.test.ts reads the two screens.
+# `ok` or the reason, and (debug build) a page that sends the window to another origin finds it still on the Command
+# Centre, the other origin unasked and the address handed to the system. It cannot say how the window looks: tests/desktop.screens.test.ts reads the two screens.
 set -euo pipefail
 
 BIN=${1:?usage: gui.sh <mordomo-desktop binary> [payload dir]}
@@ -95,6 +96,40 @@ ok "D. the dead service showed the failure screen and Try again started a new on
 xdotool key alt+F4
 until_true 30 "the app did not exit" bash -c "! kill -0 $APP"
 until_true 20 "the service outlived the app" service_count_is 0
+
+# ---- F. a page that sends the window to another origin is not shown there (AC 22) ------------------------------
+# (Placed before E, which leaves a holder of the home running.) A debug build only: it points the app at a COPY of the
+# payload whose page, a second after it loads, sets `location.href` to a server of another origin that this script
+# runs. The window must stay on the Command Centre (the page then reaches the API again), that server must never be
+# asked for anything, and the address must have been handed to the system's opener, which here is a stub `xdg-open`.
+if [ -n "${MORDOMO_DESKTOP_PAYLOAD:-}" ]; then
+  PROBE=$WORK/payload-probe
+  cp -a "$MORDOMO_DESKTOP_PAYLOAD" "$PROBE"
+  node -e '
+    const http = require("http"), fs = require("fs");
+    const server = http.createServer((req, res) => { fs.appendFileSync(process.argv[1], req.url + "\n"); res.end("another origin"); });
+    server.listen(0, "127.0.0.1", () => fs.writeFileSync(process.argv[2], String(server.address().port)));
+  ' "$WORK/other-origin.requests" "$WORK/other-origin.port" & PIDS+=($!)
+  until_true 10 "the other-origin server did not start" test -s "$WORK/other-origin.port"
+  OTHER=$(cat "$WORK/other-origin.port")
+  printf 'setTimeout(function () { location.href = "http://127.0.0.1:%s/left-the-window"; }, 1000);\nsetTimeout(function () { fetch("/probe-alive"); }, 4000);\n' "$OTHER" >"$PROBE/ui/nav-probe.js"
+  sed -i 's#<head>#<head><script src="/nav-probe.js"></script>#' "$PROBE/ui/index.html"
+  mkdir -p "$WORK/bin"
+  printf '#!/bin/sh\necho "$1" >> "%s"\n' "$WORK/opened-by-system" >"$WORK/bin/xdg-open"
+  chmod +x "$WORK/bin/xdg-open"
+  MORDOMO_DESKTOP_PAYLOAD=$PROBE PATH="$WORK/bin:$PATH" "$BIN" >"$WORK/app3.out" 2>"$WORK/app3.err" & APP=$!; PIDS+=($APP)
+  until_true 40 "the service did not start for scenario F" service_count_is 1
+  until_true 30 "the page with the probe was not served" log_has 'nav-probe.js'
+  until_true 30 "the address was not handed to the system opener" grep -q "left-the-window" "$WORK/opened-by-system"
+  until_true 30 "the page was replaced: it never reached the API again" log_has 'probe-alive'
+  test ! -s "$WORK/other-origin.requests" || fail "the window asked another origin for: $(cat "$WORK/other-origin.requests")"
+  ok "F. the window stayed on the Command Centre; the other origin was handed to the system and never asked for anything"
+  xdotool key alt+F4
+  until_true 30 "the app did not exit" bash -c "! kill -0 $APP"
+  until_true 20 "the service outlived the app" service_count_is 0
+else
+  echo "skipped: F. needs a debug build (MORDOMO_DESKTOP_PAYLOAD): the installed package cannot be given a page that leaves"
+fi
 
 # ---- E. another service holds the home: the app says so and starts nothing --------------------------------------
 HOLD=$WORK/hold; mkfifo "$HOLD"

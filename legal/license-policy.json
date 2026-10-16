@@ -114,27 +114,27 @@
       {
         "crate": "cssparser",
         "license": "MPL-2.0",
-        "reason": "entra pela árvore do Tauri (`tauri-utils` e `dirs`), sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
+        "reason": "entra por `dom_query 0.28.0` (de `tauri-utils 2.10.1`, base de `tauri`) e por `selectors 0.38.0`; é o analisador de CSS, sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
       },
       {
         "crate": "cssparser-macros",
         "license": "MPL-2.0",
-        "reason": "entra pela árvore do Tauri (`tauri-utils` e `dirs`), sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
+        "reason": "entra só por `cssparser 0.37.0` (macros do analisador de CSS, de `dom_query` via `tauri-utils 2.10.1`); é uma macro de compilação, sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
       },
       {
         "crate": "dtoa-short",
         "license": "MPL-2.0",
-        "reason": "entra pela árvore do Tauri (`tauri-utils` e `dirs`), sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
+        "reason": "entra só por `cssparser 0.37.0` (escrita de números do analisador de CSS, de `dom_query` via `tauri-utils 2.10.1`), sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
       },
       {
         "crate": "option-ext",
         "license": "MPL-2.0",
-        "reason": "entra pela árvore do Tauri (`tauri-utils` e `dirs`), sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
+        "reason": "entra por `dirs-sys 0.5.0` (de `dirs 7.0.0`, usada por `tauri 2.12.3` e `wry 0.57.0`); é uma extensão de `Option`, não tem relação com CSS, sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
       },
       {
         "crate": "selectors",
         "license": "MPL-2.0",
-        "reason": "entra pela árvore do Tauri (`tauri-utils` e `dirs`), sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
+        "reason": "entra por `dom_query 0.28.0` (de `tauri-utils 2.10.1`); é o motor de seletores CSS, sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
       }
     ]
   }
