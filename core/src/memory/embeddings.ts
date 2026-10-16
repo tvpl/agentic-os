@@ -163,7 +163,7 @@ async function readCapped(response: Response, limit: number): Promise<string> {
   const chunks: Uint8Array[] = [];
   let total = 0;
   for (;;) {
-    let step: ReadableStreamReadResult<Uint8Array>;
+    let step: Awaited<ReturnType<typeof reader.read>>;
     try {
       step = await reader.read();
     } catch (error) {

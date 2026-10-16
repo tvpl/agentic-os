@@ -50,11 +50,11 @@
     },
     {
       "feature": "cerebro-v2",
-      "reason": "the note editor and the new-note dialog as a lazy chunk (NoteEditor, 7.2 KB raw JS and 2.1 KB CSS, fetched on the first request and not by the entry), the links section of the preview, the index progress component, the editor and links strings in two languages, and the Cancel/phase/outcome states of the index bar (5.3 KB more JS gzip than limpeza-legado)",
-      "jsRaw": 1550604,
-      "jsGzip": 505174,
-      "cssRaw": 332617,
-      "cssGzip": 70790
+      "reason": "the note editor and the new-note dialog as a lazy chunk (NoteEditor, 7.2 KB raw JS and 2.1 KB CSS, fetched on the first request and not by the entry), the links section of the preview, the index progress component, the editor and links strings in two languages, and the Cancel/phase/outcome states of the index bar (5.2 KB more JS gzip and 0.9 KB more CSS gzip than limpeza-legado)",
+      "jsRaw": 1550667,
+      "jsGzip": 505172,
+      "cssRaw": 329795,
+      "cssGzip": 70310
     }
   ]
 }
