@@ -1309,6 +1309,63 @@ describe.skipIf(!POSIX)("C57 the guarded replace of the write primitive (cerebro
     expect(fs.readFileSync(note(), "utf8")).toBe("de novo");
   });
 
+  const strays = () => fs.readdirSync(path.dirname(note())).filter((f) => f.endsWith(".tmp"));
+  const failing = (code: string) => Object.assign(new Error(`${code}: injected`), { code });
+
+  it.each([
+    ["the write of the new bytes runs out of space", "writeSync", "ENOSPC"],
+    ["the flush to the disk fails", "fsyncSync", "EIO"],
+    ["the rename fails", "renameSync", "EXDEV"],
+  ] as const)(
+    "C57 when %s the old text is still the file's, whole, and no temporary file is left",
+    (_why, call, code) => {
+      const before = "versão antiga, inteira\n".repeat(50);
+      fs.writeFileSync(note(), before);
+      const info = fs.statSync(note());
+      const spy = vi.spyOn(fs, call).mockImplementationOnce(() => {
+        throw failing(code);
+      });
+      try {
+        expect(() =>
+          writeWorkspaceFile(scope(), note(), "texto novo\n", { mode: "replace", expectSha256: sha(before) }),
+        ).toThrow(expect.objectContaining({ code }));
+      } finally {
+        spy.mockRestore();
+      }
+      expect(fs.readFileSync(note(), "utf8")).toBe(before);
+      expect(fs.statSync(note()).mtimeMs).toBe(info.mtimeMs);
+      expect(strays()).toEqual([]);
+      // and the next save, with the failure gone, goes through
+      writeWorkspaceFile(scope(), note(), "texto novo\n", { mode: "replace", expectSha256: sha(before) });
+      expect(fs.readFileSync(note(), "utf8")).toBe("texto novo\n");
+    },
+  );
+
+  it("C57 an edit that lands while the new bytes are being written is a conflict, not overwritten", () => {
+    fs.writeFileSync(note(), "base\n");
+    const spy = vi.spyOn(fs, "fsyncSync").mockImplementationOnce(() => {
+      fs.writeFileSync(note(), "alguém escreveu aqui\n"); // between the first check and the rename
+    });
+    try {
+      expect(() =>
+        writeWorkspaceFile(scope(), note(), "meu texto\n", { mode: "replace", expectSha256: sha("base\n") }),
+      ).toThrow(EditConflictError);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(fs.readFileSync(note(), "utf8")).toBe("alguém escreveu aqui\n");
+    expect(strays()).toEqual([]);
+  });
+
+  it("C57 the replacement keeps the permission bits of the file it replaces", () => {
+    fs.writeFileSync(note(), "um\n");
+    fs.chmodSync(note(), 0o640);
+    writeWorkspaceFile(scope(), note(), "dois\n", { mode: "replace", expectSha256: sha("um\n") });
+    expect(fs.statSync(note()).mode & 0o777).toBe(0o640);
+    expect(fs.readFileSync(note(), "utf8")).toBe("dois\n");
+    fs.chmodSync(note(), 0o644);
+  });
+
   it("C57 never creates: a missing file is ENOENT and no folder is made", () => {
     const missing = path.join(home, "memory", "nova-pasta", "nada.md");
     expect(() =>
