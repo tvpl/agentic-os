@@ -166,10 +166,8 @@ function replaceBeside(
   bytes: Uint8Array,
   closeTarget: () => void,
 ): void {
-  const temp = path.join(
-    path.dirname(real),
-    `.${path.basename(real)}.${crypto.randomBytes(6).toString("hex")}.tmp`,
-  );
+  // a short name of a fixed shape: the note's own name may already be as long as a name can be
+  const temp = path.join(path.dirname(real), `.mordomo-save-${crypto.randomBytes(6).toString("hex")}.tmp`);
   let tempFd: number | undefined;
   try {
     // O_EXCL does not follow a link either: a name planted in the folder fails the save instead of being written through

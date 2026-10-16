@@ -1357,6 +1357,15 @@ describe.skipIf(!POSIX)("C57 the guarded replace of the write primitive (cerebro
     expect(strays()).toEqual([]);
   });
 
+  it("C57 a note whose own name is as long as a name can be is replaced too (the temporary name does not grow with it)", () => {
+    const long = path.join(path.dirname(note()), `${"n".repeat(252)}.md`);
+    fs.writeFileSync(long, "longo\n");
+    writeWorkspaceFile(scope(), long, "novo\n", { mode: "replace", expectSha256: sha("longo\n") });
+    expect(fs.readFileSync(long, "utf8")).toBe("novo\n");
+    expect(strays()).toEqual([]);
+    fs.rmSync(long);
+  });
+
   it("C57 the replacement keeps the permission bits of the file it replaces", () => {
     fs.writeFileSync(note(), "um\n");
     fs.chmodSync(note(), 0o640);
