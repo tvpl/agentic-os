@@ -91,6 +91,9 @@ pub fn open_main_window(app: &AppHandle) -> tauri::Result<()> {
         .inner_size(1280.0, 860.0)
         .min_inner_size(800.0, 560.0)
         .on_navigation(move |url| gate(&for_navigation, url))
+        // A click on `<a target="_blank">` never reaches `on_new_window` in WebKitGTK (observed); the script turns the click
+        // into `window.open(address, "_blank")`, which does. It runs before the page's own scripts and has no access to the shell.
+        .initialization_script(include_str!("new-window.js"))
         // No second webview is ever created. A link that wants a new window goes where the policy says.
         .on_new_window(move |url, _features| {
             // The service's own origin in a new window (an artifact or a file) is shown by the system browser, not

@@ -10,7 +10,8 @@
 # comes forward instead of starting a service, closing the window stops the service and leaves no lock behind, a service
 # that dies shows the failure screen (Retry is the focused control, so Enter starts it again), and `--self-test` says
 # `ok` or the reason, and (debug build) a page that sends the window to another origin finds it still on the Command
-# Centre, the other origin unasked and the address handed to the system. It cannot say how the window looks: tests/desktop.screens.test.ts reads the two screens.
+# Centre, the other origin unasked and the address handed to the system, and a real click on `<a target="_blank">` (with
+# and without rel="noreferrer noopener") hands its address to the system and leaves the window where it is. It cannot say how the window looks: tests/desktop.screens.test.ts reads the two screens.
 set -euo pipefail
 
 BIN=${1:?usage: gui.sh <mordomo-desktop binary> [payload dir]}
@@ -102,6 +103,9 @@ until_true 20 "the service outlived the app" service_count_is 0
 # payload whose page, a second after it loads, sets `location.href` to a server of another origin that this script
 # runs. The window must stay on the Command Centre (the page then reaches the API again), that server must never be
 # asked for anything, and the address must have been handed to the system's opener, which here is a stub `xdg-open`.
+# Then the same page puts a link over the whole window, `target="_blank"`, and a real click (xdotool) on it must hand its
+# address to the opener, once for the plain form and once for rel="noreferrer noopener" (the Command Centre's form): in
+# WebKitGTK that click alone reaches nothing, the window script (src-tauri/src/new-window.js) is what routes it.
 if [ -n "${MORDOMO_DESKTOP_PAYLOAD:-}" ]; then
   PROBE=$WORK/payload-probe
   cp -a "$MORDOMO_DESKTOP_PAYLOAD" "$PROBE"
@@ -112,7 +116,28 @@ if [ -n "${MORDOMO_DESKTOP_PAYLOAD:-}" ]; then
   ' "$WORK/other-origin.requests" "$WORK/other-origin.port" & PIDS+=($!)
   until_true 10 "the other-origin server did not start" test -s "$WORK/other-origin.port"
   OTHER=$(cat "$WORK/other-origin.port")
-  printf 'setTimeout(function () { location.href = "http://127.0.0.1:%s/left-the-window"; }, 1000);\nsetTimeout(function () { fetch("/probe-alive"); }, 4000);\n' "$OTHER" >"$PROBE/ui/nav-probe.js"
+  cat >"$PROBE/ui/nav-probe.js" <<JS
+setTimeout(function () { location.href = "http://127.0.0.1:$OTHER/left-the-window"; }, 1000);
+setTimeout(function () { fetch("/probe-alive"); }, 4000);
+setTimeout(function () {
+  var variants = [["/blank-plain", ""], ["/blank-noopener", "noreferrer noopener"]], n = 0;
+  var a = document.createElement("a");
+  a.textContent = "link"; a.target = "_blank";
+  a.style.cssText = "position:fixed;left:0;top:0;width:100%;height:100%;z-index:99999";
+  function next() {
+    a.href = "http://127.0.0.1:$OTHER" + variants[n][0];
+    if (variants[n][1]) a.rel = variants[n][1]; else a.removeAttribute("rel");
+  }
+  next();
+  document.body.appendChild(a);
+  a.addEventListener("click", function () {
+    n++;
+    if (n < variants.length) setTimeout(next, 300);
+    else setTimeout(function () { fetch("/probe-links-done"); }, 2000);
+  });
+  fetch("/probe-anchor-ready");
+}, 6000);
+JS
   sed -i 's#<head>#<head><script src="/nav-probe.js"></script>#' "$PROBE/ui/index.html"
   mkdir -p "$WORK/bin"
   printf '#!/bin/sh\necho "$1" >> "%s"\n' "$WORK/opened-by-system" >"$WORK/bin/xdg-open"
@@ -122,8 +147,27 @@ if [ -n "${MORDOMO_DESKTOP_PAYLOAD:-}" ]; then
   until_true 30 "the page with the probe was not served" log_has 'nav-probe.js'
   until_true 30 "the address was not handed to the system opener" grep -q "left-the-window" "$WORK/opened-by-system"
   until_true 30 "the page was replaced: it never reached the API again" log_has 'probe-alive'
+  ok "F. a page that navigates away stays on the Command Centre; the address went to the system"
+  until_true 30 "the page did not put its link over the window" log_has 'probe-anchor-ready'
+  click_window() {
+    local win geometry X Y WIDTH HEIGHT
+    win=$(xdotool search --onlyvisible --name '^MordomoOS$' | head -1)
+    if [ -n "$win" ]; then
+      eval "$(xdotool getwindowgeometry --shell "$win")"
+      xdotool mousemove $((X + WIDTH / 2)) $((Y + HEIGHT / 2)) click 1
+    else
+      xdotool mousemove 640 400 click 1
+    fi
+  }
+  click_window
+  until_true 20 "a click on target=_blank was not handed to the system opener" grep -q "/blank-plain" "$WORK/opened-by-system"
+  sleep 1
+  click_window
+  until_true 20 "a click on target=_blank rel=noreferrer noopener was not handed to the system opener" grep -q "/blank-noopener" "$WORK/opened-by-system"
+  until_true 30 "the page was replaced by a click on target=_blank: it never reached the API again" log_has 'probe-links-done'
+  test "$(grep -c "/blank-" "$WORK/opened-by-system")" = 2 || fail "the links were handed to the system more or less than once each: $(cat "$WORK/opened-by-system")"
   test ! -s "$WORK/other-origin.requests" || fail "the window asked another origin for: $(cat "$WORK/other-origin.requests")"
-  ok "F. the window stayed on the Command Centre; the other origin was handed to the system and never asked for anything"
+  ok "F. a click on target=_blank (plain and noreferrer noopener) was handed to the system; the window stayed on the Command Centre and no other origin was asked for anything"
   xdotool key alt+F4
   until_true 30 "the app did not exit" bash -c "! kill -0 $APP"
   until_true 20 "the service outlived the app" service_count_is 0

@@ -125,6 +125,17 @@ describe("C27 the webview loads only its own files and the service's loopback or
     expect(shell).not.toMatch(/NewWindowResponse::(Allow|Create)/);
   });
 
+  it("C63 the window carries the script that routes `<a target=_blank>` to window.open (WebKitGTK never calls on_new_window for that click), from a file of its own and with no capability added", () => {
+    const shell = read(TAURI, "src", "shell.rs");
+    expect(shell).toContain('.initialization_script(include_str!("new-window.js"))');
+    expect(shell.match(/initialization_script/g)).toHaveLength(1);
+    expect(fs.existsSync(path.join(TAURI, "src", "new-window.js"))).toBe(true);
+    // the script is no reason for a permission: the capability still names three commands of the shell and no remote
+    const capability = JSON.parse(read(TAURI, "capabilities", "main.json")) as Record<string, unknown>;
+    expect(capability.permissions).toEqual(["allow-shell-status", "allow-shell-retry", "allow-shell-quit"]);
+    expect(capability).not.toHaveProperty("remote");
+  });
+
   it("C27 the navigation handler answers with the policy's own verdict (shell-core `on_navigation`, tested there) and never with a constant", () => {
     const shell = read(TAURI, "src", "shell.rs");
     const gate = /fn gate\([^)]*\) -> bool \{([\s\S]*?)\n\}/.exec(shell)?.[1] ?? "";

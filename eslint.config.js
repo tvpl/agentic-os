@@ -98,8 +98,9 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.browser, ...globals.serviceworker, ...globals.es2021 } },
   },
   {
-    // The shell's own two screens: plain scripts loaded by the webview (apps/desktop/ui).
-    files: ["apps/desktop/ui/**/*.js"],
+    // The shell's own two screens: plain scripts loaded by the webview (apps/desktop/ui), and the script the window
+    // injects into the service's pages (apps/desktop/src-tauri/src/new-window.js).
+    files: ["apps/desktop/ui/**/*.js", "apps/desktop/src-tauri/src/*.js"],
     languageOptions: { globals: { ...globals.browser, ...globals.es2021 } },
   },
   {
