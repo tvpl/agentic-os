@@ -474,6 +474,39 @@ describe("S3 the index pass in a worker", () => {
     expect((await r.ctx.indexer.indexAllAsync()).scanned).toBeGreaterThan(0);
   }, 300_000);
 
+  it("C36 a folder the worker cannot read ends the pass as 409 index_scan_incomplete, announced as such, with every row kept", async () => {
+    const r = rig({ files: 30 });
+    const app = await buildServer(r.ctx);
+    cleanups.push(() => app.close());
+    const headers = { "x-mordomo-token": r.ctx.token() };
+    await r.ctx.indexer.indexAllAsync();
+    const rows = () => (r.ctx.db.prepare("SELECT COUNT(*) AS c FROM files").get() as { c: number }).c;
+    const before = { rows: rows(), last: r.ctx.indexer.lastIndex() };
+    expect(before.rows).toBe(30);
+    // the folder goes away between two passes (a disk that is not mounted): the scan cannot prove what vanished
+    const away = `${r.corpus}-away`;
+    fs.renameSync(r.corpus, away);
+    r.events.length = 0;
+    const refused = await app.inject({ method: "POST", url: "/api/memory/index", headers, payload: {} });
+    // the pass really ran in the worker thread
+    expect((r.events[0]!.payload as { mode: string }).mode).toBe("worker");
+    expect([refused.statusCode, (refused.json() as any).error.code]).toEqual([409, "index_scan_incomplete"]);
+    expect((refused.json() as any).message).toContain("previous index was preserved");
+    expect(r.events.find((e) => e.type === "index.failed")?.payload).toMatchObject({
+      code: "index_scan_incomplete",
+      previousIndexPreserved: true,
+    });
+    expect(r.ctx.indexHost.status().state).toBe("idle");
+    expect(rows()).toBe(30);
+    expect(r.ctx.indexer.lastIndex()).toEqual(before.last);
+    RestoreLock.acquire(r.ctx.paths, 0, "exclusive").release();
+    // the folder is back and the next pass is a pass
+    fs.renameSync(away, r.corpus);
+    const retry = await app.inject({ method: "POST", url: "/api/memory/index", headers, payload: {} });
+    expect(retry.statusCode).toBe(200);
+    expect(rows()).toBe(30);
+  }, 120_000);
+
   it("C37 while a restore holds the home the pass is refused and no worker starts; during a pass a restore is refused; after it the lock is free", async () => {
     const r = rig();
     const marker = path.join(r.home, "worker-started");
