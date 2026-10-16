@@ -334,6 +334,13 @@ jobs:
           if gh release view "$TAG" > /dev/null 2>&1; then
             [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true ] || { echo "::error::$TAG is already published; this workflow only writes drafts"; exit 1; }
             gh release edit "$TAG" --draft --title "MordomoOS $VERSION" --notes-file notes.md
+            # --clobber replaces files of the same name and deletes none: what this run no longer produces (the signed
+            # installers of an earlier run now built UNSIGNED, a latest.json it did not write) goes first.
+            gh release view "$TAG" --json assets --jq '.assets[].name' > existing-assets.txt
+            node scripts/release-stale-assets.mjs --existing existing-assets.txt --dir artifacts > stale-assets.txt
+            while IFS= read -r name; do
+              [ -n "$name" ] && gh release delete-asset "$TAG" "$name" --yes
+            done < stale-assets.txt
             gh release upload "$TAG" artifacts/* --clobber
           else
             gh release create "$TAG" --draft --verify-tag --title "MordomoOS $VERSION" --notes-file notes.md artifacts/*

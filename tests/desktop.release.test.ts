@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +12,8 @@ const manifest: any = await import("../scripts/updater-manifest.mjs");
 const updaterConfig: any = await import("../scripts/updater-config.mjs");
 const desktopBuild: any = await import("../scripts/desktop-build.mjs");
 const payloadGuard: any = await import("../scripts/payload-guard.mjs");
+const minisign: any = await import("../scripts/minisign.mjs");
+const staleAssets: any = await import("../scripts/release-stale-assets.mjs");
 
 /**
  * distribuicao: the scripts the release leans on (.specs/features/distribuicao, AC 34-36, 39-41).
@@ -1095,5 +1098,242 @@ describe("C56 `package.mjs --payload <dir>` empties only a folder that is empty,
     expect(repo.status).toBe(1);
     expect(repo.stderr).toContain("repository or one of its parent folders");
     expect(fs.existsSync(path.join(ROOT, "package.json"))).toBe(true);
+  });
+});
+
+// ---- the signatures verify against the committed public key ----------------------------------------------------------
+
+/**
+ * A throwaway minisign key pair made in memory (nothing is stored), signing the way `tauri signer sign` does: `ED`, the
+ * BLAKE2b-512 of the file, and a trusted comment signed over the signature. The interoperability with the real signer
+ * was run by hand against `tauri signer generate` and `tauri signer sign` (checks.md, "Correções da rodada 1").
+ */
+function minisignPair(legacy = false) {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  const raw = publicKey.export({ type: "spki", format: "der" }).subarray(-32);
+  const id = crypto.randomBytes(8);
+  const pubText = `untrusted comment: minisign public key: ${id.toString("hex").toUpperCase()}\n${Buffer.concat([Buffer.from("Ed"), id, raw]).toString("base64")}\n`;
+  return {
+    pubkey: Buffer.from(pubText).toString("base64"),
+    sign(data: Buffer, trusted = "timestamp:1 file:x"): string {
+      const signed = legacy ? data : crypto.createHash("blake2b512").update(data).digest();
+      const sig = crypto.sign(null, signed, privateKey);
+      const header = Buffer.concat([Buffer.from(legacy ? "Ed" : "ED"), id, sig]).toString("base64");
+      const global = crypto
+        .sign(null, Buffer.concat([sig, Buffer.from(trusted)]), privateKey)
+        .toString("base64");
+      const text = `untrusted comment: signature from tauri secret key\n${header}\ntrusted comment: ${trusted}\n${global}\n`;
+      return Buffer.from(text).toString("base64");
+    },
+  };
+}
+
+describe("C59 a signature is checked against the public key before a file or a manifest ships", () => {
+  const data = Buffer.from("the installer");
+
+  it("C59 a minisign signature (prehashed or legacy) of the file by the key verifies; another file, another key, another comment do not", () => {
+    for (const legacy of [false, true]) {
+      const key = minisignPair(legacy);
+      const sig = key.sign(data);
+      expect(() => minisign.verifyMinisign({ pubkey: key.pubkey, signature: sig, data })).not.toThrow();
+      // the plain four lines are accepted as well as their base64
+      expect(() =>
+        minisign.verifyMinisign({
+          pubkey: key.pubkey,
+          signature: Buffer.from(sig, "base64").toString("utf8"),
+          data,
+        }),
+      ).not.toThrow();
+      expect(() =>
+        minisign.verifyMinisign({ pubkey: key.pubkey, signature: sig, data: Buffer.from("another file") }),
+      ).toThrow(/does not verify/);
+    }
+    const key = minisignPair();
+    const other = minisignPair();
+    expect(() => minisign.verifyMinisign({ pubkey: other.pubkey, signature: key.sign(data), data })).toThrow(
+      /another key/,
+    );
+    const text = Buffer.from(key.sign(data), "base64").toString("utf8").replace("timestamp:1", "timestamp:2");
+    expect(() => minisign.verifyMinisign({ pubkey: key.pubkey, signature: text, data })).toThrow(
+      /trusted comment/,
+    );
+    expect(() => minisign.verifyMinisign({ pubkey: key.pubkey, signature: "garbage", data })).toThrow(
+      /not a minisign signature/,
+    );
+    expect(() => minisign.verifyMinisign({ pubkey: "garbage", signature: key.sign(data), data })).toThrow(
+      /not a minisign public key/,
+    );
+  });
+
+  /** A repository tree with only the updater configuration, carrying `pubkey`. */
+  function rootWithKey(pubkey: string): string {
+    const root = temp("mordomo-root-");
+    const file = "apps/desktop/src-tauri/tauri.updater.conf.json";
+    const conf = JSON.parse(fs.readFileSync(path.join(ROOT, file), "utf8")) as Record<string, any>;
+    conf.plugins.updater.pubkey = pubkey;
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), JSON.stringify(conf));
+    return root;
+  }
+  /** `bundleTree` with real signatures by `key` over the bytes `bundleTree` wrote. */
+  function signedBundle(platform: string, key: ReturnType<typeof minisignPair>): string {
+    const bundle = bundleTree(platform, true);
+    const walk = (dir: string): string[] =>
+      fs
+        .readdirSync(dir, { withFileTypes: true })
+        .flatMap((d) => (d.isDirectory() ? walk(path.join(dir, d.name)) : [path.join(dir, d.name)]));
+    for (const file of walk(bundle).filter((f) => f.endsWith(".sig")))
+      fs.writeFileSync(file, key.sign(fs.readFileSync(file.slice(0, -4))));
+    return bundle;
+  }
+
+  it("C59 release-collect with the key copies a .sig that verifies and refuses one that does not (signed file changed, other key)", () => {
+    const key = minisignPair();
+    const ok = collect.collect({
+      version: "1.2.3",
+      platform: "linux-x64",
+      bundle: signedBundle("linux-x64", key),
+      out: temp("o-"),
+      codeSigned: false,
+      updaterSigned: true,
+      publicKey: key.pubkey,
+    });
+    expect(ok.written).toContain("MordomoOS_1.2.3_linux-x64.AppImage.sig");
+    const changed = signedBundle("linux-x64", key);
+    fs.appendFileSync(path.join(changed, "appimage", "MordomoOS_1.2.3_amd64.AppImage"), "tampered");
+    const args = { version: "1.2.3", platform: "linux-x64", codeSigned: false, updaterSigned: true };
+    expect(() =>
+      collect.collect({ ...args, bundle: changed, out: temp("o-"), publicKey: key.pubkey }),
+    ).toThrow(/AppImage\.sig: the signature does not verify/);
+    expect(() =>
+      collect.collect({
+        ...args,
+        bundle: signedBundle("linux-x64", key),
+        out: temp("o-"),
+        publicKey: minisignPair().pubkey,
+      }),
+    ).toThrow(/another key.*tauri\.updater\.conf\.json/);
+  });
+
+  it("C59 release-collect's command line reads the committed key: a placeholder with the updater on is an error, a matching pair passes", () => {
+    const key = minisignPair();
+    const argv = (bundle: string, root: string) => [
+      "--platform",
+      "windows-x64",
+      "--bundle",
+      bundle,
+      "--out",
+      temp("o-"),
+      "--version",
+      "1.2.3",
+      "--code-signed",
+      "true",
+      "--updater-signed",
+      "true",
+      "--root",
+      root,
+    ];
+    const good = run(collect.main, argv(signedBundle("windows-x64", key), rootWithKey(key.pubkey)));
+    expect(good.code, good.err).toBe(0);
+    const mismatch = run(
+      collect.main,
+      argv(signedBundle("windows-x64", key), rootWithKey(minisignPair().pubkey)),
+    );
+    expect(mismatch.code).toBe(1);
+    expect(mismatch.err).toMatch(/another key/);
+    const placeholder = run(
+      collect.main,
+      argv(signedBundle("windows-x64", key), rootWithKey("[A PREENCHER PELO DONO: chave]")),
+    );
+    expect(placeholder.code).toBe(1);
+    expect(placeholder.err).toMatch(/is placeholder, not a minisign key/);
+  });
+
+  it("C59 the manifest with the key lists a platform only when its signature verifies; the command line reads the committed key", () => {
+    const key = minisignPair();
+    const dir = temp("mordomo-release-");
+    for (const platform of Object.keys(collect.PLATFORMS)) {
+      const out = dir;
+      collect.collect({
+        version: "1.2.3",
+        platform,
+        bundle: signedBundle(platform, key),
+        out,
+        codeSigned: platform.startsWith("linux") ? false : true,
+        updaterSigned: true,
+        publicKey: key.pubkey,
+      });
+    }
+    const args = {
+      version: "1.2.3",
+      tag: "v1.2.3",
+      notes: "n",
+      date: "2026-10-12T00:00:00.000Z",
+      repo: "o/r",
+    };
+    const built = manifest.buildManifest({ ...args, dir, publicKey: key.pubkey });
+    expect(built.missing).toBeUndefined();
+    expect(Object.keys(built.manifest.platforms).sort()).toEqual([
+      "darwin-aarch64",
+      "darwin-x86_64",
+      "linux-x86_64",
+      "linux-x86_64-deb",
+      "windows-x86_64",
+    ]);
+    const wrong = manifest.buildManifest({ ...args, dir, publicKey: minisignPair().pubkey });
+    expect(wrong.missing).toHaveLength(4);
+    expect(wrong.missing.join("\n")).toMatch(/linux-x64: .*another key/);
+    // one signature that is not the file's
+    fs.appendFileSync(path.join(dir, "MordomoOS_1.2.3_windows-x64-setup.exe"), "x");
+    const one = manifest.buildManifest({ ...args, dir, publicKey: key.pubkey });
+    expect(one.missing).toHaveLength(1);
+    expect(one.missing[0]).toMatch(/^windows-x64: the signature does not verify/);
+    // the command line: the committed key decides
+    fs.appendFileSync(path.join(dir, "MordomoOS_1.2.3_windows-x64-setup.exe"), "");
+    const cli = (root: string) =>
+      run(manifest.main, [
+        "--dir",
+        dir,
+        "--version",
+        "1.2.3",
+        "--tag",
+        "v1.2.3",
+        "--out",
+        path.join(dir, "latest.json"),
+        "--root",
+        root,
+      ]);
+    expect(cli(rootWithKey(key.pubkey)).code).toBe(3); // the tampered installer above is still there
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("C59 a re-run of a tag leaves the draft with this run's files only", () => {
+  it("C59 the assets of the draft that this run does not produce are the ones to delete, and an empty folder deletes nothing", () => {
+    const dir = temp("mordomo-artifacts-");
+    for (const name of ["MordomoOS_1.2.3_macos-arm64_UNSIGNED.dmg", "SHA256SUMS.txt"])
+      fs.writeFileSync(path.join(dir, name), "x");
+    const existing = path.join(temp("mordomo-existing-"), "existing.txt");
+    fs.writeFileSync(
+      existing,
+      [
+        "MordomoOS_1.2.3_macos-arm64.dmg", // signed, by the earlier run
+        "MordomoOS_1.2.3_macos-arm64_UNSIGNED.dmg", // this run's
+        "latest.json", // this run could not write one
+        "SHA256SUMS.txt",
+        "",
+      ].join("\n"),
+    );
+    expect(staleAssets.staleAssets(fs.readFileSync(existing, "utf8").split("\n"), dir)).toEqual([
+      "MordomoOS_1.2.3_macos-arm64.dmg",
+      "latest.json",
+    ]);
+    const res = run(staleAssets.main, ["--existing", existing, "--dir", dir]);
+    expect(res.code).toBe(0);
+    expect(res.out).toBe("MordomoOS_1.2.3_macos-arm64.dmg\nlatest.json\n");
+    const empty = run(staleAssets.main, ["--existing", existing, "--dir", temp("mordomo-empty-")]);
+    expect(empty.code).toBe(1);
+    expect(empty.out).toBe("");
+    expect(run(staleAssets.main, ["--dir", dir]).code).toBe(2);
   });
 });

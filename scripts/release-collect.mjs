@@ -5,7 +5,7 @@
  * an installer the operating system will not trust says so in its name (`_UNSIGNED`).
  *
  *   node scripts/release-collect.mjs --platform macos-arm64 --bundle <tauri bundle dir> --out release --version 0.9.0
- *        --code-signed true|false [--notarized true|false] --updater-signed true|false
+ *        --code-signed true|false [--notarized true|false] --updater-signed true|false [--root <repository>]
  *
  * Out: `MordomoOS_<version>_<platform>[_UNSIGNED]<suffix>` for each installer of the platform and, with an updater
  * key, the updater archive of macOS (`.app.tar.gz`, which Tauri writes only then) and the `.sig` that Tauri wrote beside
@@ -15,6 +15,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyMinisign } from "./minisign.mjs";
+import { CONFIG_FILE, ROOT, inspect } from "./updater-config.mjs";
 
 export const PLATFORMS = {
   "macos-arm64": { os: "macos", updater: "darwin-aarch64" },
@@ -48,7 +50,24 @@ const bool = (v, name) => {
   throw new Error(`${name} must be true or false`);
 };
 
-export function collect({ platform, bundle, out, version, codeSigned, notarized, updaterSigned }) {
+/** Throws unless `sigFile` is a signature of `file` by `publicKey` (the key of the updater configuration). */
+function verifySig(file, sigFile, publicKey) {
+  try {
+    verifyMinisign({
+      pubkey: publicKey,
+      signature: fs.readFileSync(sigFile, "utf8"),
+      data: fs.readFileSync(file),
+    });
+  } catch (err) {
+    throw new Error(`${sigFile}: ${err.message} (the public key is the one in ${CONFIG_FILE})`);
+  }
+}
+
+/**
+ * `publicKey`: the minisign public key of the updater configuration. With it, every `.sig` that is collected must
+ * verify against the file beside it; without it (a test, or a build with no updater) nothing is verified.
+ */
+export function collect({ platform, bundle, out, version, codeSigned, notarized, updaterSigned, publicKey }) {
   const spec = PLATFORMS[platform];
   if (!spec) throw new Error(`unknown platform ${platform} (${Object.keys(PLATFORMS).join(", ")})`);
   fs.mkdirSync(out, { recursive: true });
@@ -75,6 +94,7 @@ export function collect({ platform, bundle, out, version, codeSigned, notarized,
       if (artifact.updater && !fs.existsSync(sig))
         throw new Error(`${sig} is missing though the updater key was configured`);
       if (fs.existsSync(sig)) {
+        if (publicKey !== undefined) verifySig(path.join(dir, names[0]), sig, publicKey);
         fs.copyFileSync(sig, path.join(out, `${target}.sig`));
         written.push(`${target}.sig`);
       }
@@ -108,6 +128,18 @@ export function main(
   try {
     for (const need of ["platform", "bundle", "out", "version", "code-signed", "updater-signed"])
       if (o[need] === undefined) throw new Error(`--${need} is required`);
+    // With the updater on, the signatures are checked against the public key that is committed: the one every app holds.
+    let publicKey;
+    const updaterSigned = bool(o["updater-signed"], "--updater-signed");
+    if (updaterSigned) {
+      const root = o.root ? path.resolve(o.root) : ROOT;
+      const { state } = inspect(root);
+      if (state !== "valid")
+        throw new Error(
+          `--updater-signed is true but the public key in ${CONFIG_FILE} is ${state}, not a minisign key`,
+        );
+      publicKey = JSON.parse(fs.readFileSync(path.join(root, CONFIG_FILE), "utf8")).plugins.updater.pubkey;
+    }
     const { written } = collect({
       platform: o.platform,
       bundle: path.resolve(o.bundle),
@@ -115,7 +147,8 @@ export function main(
       version: o.version,
       codeSigned: bool(o["code-signed"], "--code-signed"),
       notarized: bool(o.notarized ?? "false", "--notarized"),
-      updaterSigned: bool(o["updater-signed"], "--updater-signed"),
+      updaterSigned,
+      publicKey,
     });
     io.out(`release-collect: ${written.join(", ")}\n`);
     return 0;
