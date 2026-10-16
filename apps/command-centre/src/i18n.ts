@@ -560,8 +560,11 @@ const en = {
 /** Every string is widened to `string`: locale modules may use `as const`. */
 type Dict = { [K in keyof typeof en]: string };
 
-const basePtBR = {
-  ...baseEn,
+/**
+ * The base strings pt-BR translates itself, with no English underneath: what the key-parity test reads
+ * (`ownKeys`), because `basePtBR` below starts from `baseEn` and so hides a key missing only here.
+ */
+const basePtBROwn = {
   "nav.dashboard": "Núcleo",
   "nav.skills": "Skills",
   "nav.brain": "Segundo Cérebro",
@@ -1094,8 +1097,11 @@ const basePtBR = {
   "pixel.leave": "Sair",
 };
 
-const ptBR: Dict = {
-  ...basePtBR,
+/** The runtime base: English fills any base key pt-BR has not translated (the locale modules fill their own). */
+const basePtBR = { ...baseEn, ...basePtBROwn };
+
+/** The locale modules' pt-BR strings, in the order they merge. */
+const localePtBR = {
   ...brainL.ptBR,
   ...desktopL.ptBR,
   ...shellL.ptBR,
@@ -1111,7 +1117,18 @@ const ptBR: Dict = {
   ...commandsL.ptBR,
 };
 
+const ptBR: Dict = { ...basePtBR, ...localePtBR };
+
 export const dictionaries: Record<Lang, Dict> = { en, "pt-BR": ptBR };
+
+/**
+ * The keys each language spells itself, with no fallback underneath. `dictionaries["pt-BR"]` starts from the
+ * English base, so it can never miss a base key; this is the list a parity test must read instead.
+ */
+export const ownKeys: Record<Lang, string[]> = {
+  en: Object.keys(en),
+  "pt-BR": Object.keys({ ...basePtBROwn, ...localePtBR }),
+};
 export type TKey = keyof Dict;
 
 export const I18nContext = createContext<{ lang: Lang; setLang: (l: Lang) => void }>({
