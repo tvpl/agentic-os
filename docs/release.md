@@ -198,7 +198,13 @@ there, open N and choose *Check for Updates…*. A pre-release on GitHub is not 
 - **The window** loads only its own two pages and the service's origin; any other web address goes to the system browser,
   every other scheme is refused, no second window is ever created, and the window may call exactly three app commands
   (`shell_status`, `shell_retry`, `shell_quit`). The Command Centre, being a page of another origin, has no access to the
-  shell at all.
+  shell at all. A click on a link that asks for a new window (`target="_blank"`, which every external link of the Command
+  Centre does) reaches the system browser through a small script of the window (`apps/desktop/src-tauri/src/new-window.js`);
+  without it that click does nothing in WebKitGTK (seen on Linux; macOS and Windows not observed). Known limit:
+  `http(s)://tauri.localhost`, the address of the shell's own pages on Windows, is allowed on every system; on Linux and
+  macOS it is a name for this machine's port 80, so a page of the service could send the window to whatever listens there
+  (observed in verification round 2: the window left the Command Centre and a server on port 80 got the request; no app
+  command is reachable from there, which was read in Tauri's source and not run). Owner question 20 in `.specs/STATE.md`.
 - **Checks you can run**: `cd apps/desktop && cargo test -p mordomo-shell-core` (no display needed);
   `mordomo-desktop --self-test` (the payload, the supervisor and the page, without a window; one JSON line, exit `0`/`1`);
   `apps/desktop/smoke/gui.sh <binary>` (Linux: window, token, single instance, close, crash and retry).
@@ -219,6 +225,7 @@ read this, the job named is what proves it.
 | A **real updater roundtrip** (old build finds, downloads, verifies, installs, restarts into the new one) | section 5's rehearsal, once, before the first published release |
 | The **AppImage on other distributions**, the `.deb` on other versions, **Wayland** | the Linux job and a manual check on the machines you care about |
 | Windows or Linux **ARM64**, `.rpm` | not built; not promised |
+| A click on a link that opens a new window (`target="_blank"`) and the failure screen after an update whose install failed and whose restart failed too. The click was run on **Linux** (real click, Xvfb); macOS and Windows were **not** observed, and the double failure was never provoked (only its decision is tested) | a scenario like `smoke/gui.sh` F in the macOS and Windows jobs; section 5's rehearsal |
 | **Saving a file from the window**: `<a download href="blob:…">` (Settings › Diagnostics › export, the Pixel Studio exports). On **Linux** it was run: the click happens and no file is written and nothing is said, because the address policy refuses `blob:` and `data:`. macOS and Windows were **not** observed | not fixed. A fix needs the window to allow the service's own `blob:` addresses and a download handler that picks a destination, which changes the approved address policy (AC 22): it is an owner question (`.specs/STATE.md`, distribuicao, with a default) |
 
 **Run on Linux, with a throwaway key:** the Rust tests (`cargo test`), `clippy -D warnings`; the real window under Xvfb with

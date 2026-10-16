@@ -56,3 +56,12 @@ prepares your data folder." / "Ainda iniciando. A primeira abertura prepara a su
 Em inglês, como os do sistema: **MordomoOS** (About com versão e licença; "Check for Updates…" só numa compilação com
 atualizador; Quit; no macOS Services, Hide), **Edit** (Undo, Redo, Cut, Copy, Paste, Select All), **View** (Reload; no
 macOS tela cheia), **Window** (Minimize, Maximize fora do macOS, Close). Sem barra de ferramentas, sem bandeja.
+
+## Endereços da janela (aditivo, rodada 2)
+
+Não é uma tela; é o que a pessoa vê quando um clique tenta sair do Command Centre. O veredito é `nav.rs`
+(`on_navigation`, `on_new_window`): o que for de outra origem vai para o navegador do sistema e a janela fica onde está.
+Um clique em `<a target="_blank">` chega ao mesmo veredito por `window.open`, por um script da janela. Se um início
+falha com a janela fora da tela do shell (a atualização que falhou ao instalar e cujo reinício também falhou), a janela
+volta para a tela de falha. **Limite dito:** `http(s)://tauri.localhost` é permitido em todos os sistemas (é a origem das
+páginas do próprio app só no Windows); no Linux e no macOS é um nome da porta 80 desta máquina. Pergunta 20 do dono.
