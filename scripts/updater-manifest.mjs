@@ -57,7 +57,12 @@ export function buildManifest({ dir, version, tag, notes, date, repo, publicKey 
       const signature = fs.readFileSync(sigPath, "utf8").trim();
       // What every installed app does before it installs: the signature must verify against the public key it holds.
       if (publicKey !== undefined)
-        verifyMinisign({ pubkey: publicKey, signature, data: fs.readFileSync(path.join(dir, name)) });
+        verifyMinisign({
+          pubkey: publicKey,
+          signature,
+          version,
+          data: fs.readFileSync(path.join(dir, name)),
+        });
       return { signature, url: `https://github.com/${repo}/releases/download/${tag}/${name}` };
     };
     const extra = INSTALLER_ENTRY[spec.os];

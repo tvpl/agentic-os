@@ -8,6 +8,12 @@
  * Public key as Tauri holds it in `tauri.updater.conf.json`: base64 of the two-line `.pub` file, whose second line is
  * base64 of `Ed` + 8-byte key id + 32-byte key. Signature as Tauri's `.sig` and `latest.json` hold it: base64 of the
  * four-line `.sig` file (the plain four lines are accepted too).
+ *
+ * The version the file was signed for: `tauri-plugin-updater` reads `version:` out of the trusted comment (tab-separated
+ * `key:value` pairs), once the signature verified, and refuses an update whose signed version differs from the one the
+ * endpoint announced. `verifyMinisign({ version })` does the same, so a manifest that pairs a new version number with an
+ * older release's file is found here and not by every installed app. As in the plugin (its `require_signed_version` is
+ * off, and this app does not turn it on), a signature that records no version is accepted.
  */
 import crypto from "node:crypto";
 
@@ -38,8 +44,28 @@ export function parsePublicKey(pubkey) {
   };
 }
 
-/** Throws an Error saying why `signature` is not a valid signature of `data` by `pubkey`; returns when it is. */
-export function verifyMinisign({ pubkey, signature, data }) {
+const SEMVER =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$/;
+
+/** The plugin's comparison: as semver (leading `v`s dropped) when both are, otherwise the two strings as written. */
+export function sameVersion(signed, announced) {
+  const bare = (v) => v.replace(/^v+/, "");
+  return SEMVER.test(bare(signed)) && SEMVER.test(bare(announced))
+    ? bare(signed) === bare(announced)
+    : signed === announced;
+}
+
+/** The `version:` field of a trusted comment, or undefined. */
+export function signedVersion(trustedComment) {
+  for (const field of trustedComment.split("\t")) if (field.startsWith("version:")) return field.slice(8);
+  return undefined;
+}
+
+/**
+ * Throws an Error saying why `signature` is not a valid signature of `data` by `pubkey`; returns when it is. With
+ * `version`, the version recorded in the signed trusted comment (when there is one) must be that version.
+ */
+export function verifyMinisign({ pubkey, signature, data, version }) {
   const { id, key } = parsePublicKey(pubkey);
   const [, sigLine, trustedLine, globalLine] = lines(plainText(signature, "signature"));
   const sig = Buffer.from((sigLine ?? "").trim(), "base64");
@@ -56,4 +82,8 @@ export function verifyMinisign({ pubkey, signature, data }) {
   const message = Buffer.concat([sig.subarray(10), Buffer.from(trusted, "utf8")]);
   if (globalSig.length !== 64 || !crypto.verify(null, message, key, globalSig))
     throw new Error("the trusted comment does not verify (global signature)");
+  // Only now is the comment worth reading: the global signature above covers it.
+  const signedFor = signedVersion(trusted);
+  if (version !== undefined && signedFor !== undefined && !sameVersion(signedFor, version))
+    throw new Error(`the signature is for version ${signedFor}, not ${version} (signed version differs)`);
 }

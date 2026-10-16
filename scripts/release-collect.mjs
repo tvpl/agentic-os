@@ -51,9 +51,10 @@ const bool = (v, name) => {
 };
 
 /** Throws unless `sigFile` is a signature of `file` by `publicKey` (the key of the updater configuration). */
-function verifySig(file, sigFile, publicKey) {
+function verifySig(file, sigFile, publicKey, version) {
   try {
     verifyMinisign({
+      version,
       pubkey: publicKey,
       signature: fs.readFileSync(sigFile, "utf8"),
       data: fs.readFileSync(file),
@@ -94,7 +95,7 @@ export function collect({ platform, bundle, out, version, codeSigned, notarized,
       if (artifact.updater && !fs.existsSync(sig))
         throw new Error(`${sig} is missing though the updater key was configured`);
       if (fs.existsSync(sig)) {
-        if (publicKey !== undefined) verifySig(path.join(dir, names[0]), sig, publicKey);
+        if (publicKey !== undefined) verifySig(path.join(dir, names[0]), sig, publicKey, version);
         fs.copyFileSync(sig, path.join(out, `${target}.sig`));
         written.push(`${target}.sig`);
       }

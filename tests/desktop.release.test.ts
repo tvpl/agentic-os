@@ -1174,6 +1174,43 @@ describe("C59 a signature is checked against the public key before a file or a m
     );
   });
 
+  it("C59 the version recorded in the signed trusted comment is the one the endpoint announces, as tauri-plugin-updater compares it; a signature with no version is accepted", () => {
+    const key = minisignPair();
+    const signedFor = (v: string) => key.sign(data, `timestamp:1\tfile:x\tversion:${v}`);
+    const check = (signature: string, version?: string) =>
+      minisign.verifyMinisign({ pubkey: key.pubkey, signature, data, version });
+    // equal as semver, a leading `v` on either side included
+    for (const [signed, announced] of [
+      ["1.2.3", "1.2.3"],
+      ["v1.2.3", "1.2.3"],
+      ["1.2.3", "v1.2.3"],
+      ["1.2.3-rc.1", "1.2.3-rc.1"],
+      ["nightly", "nightly"], // not semver on either side: the two strings as written
+    ])
+      expect(() => check(signedFor(signed!), announced), `${signed} / ${announced}`).not.toThrow();
+    // another version, another prerelease, build metadata, or a non-semver spelling that differs
+    for (const [signed, announced] of [
+      ["1.2.2", "1.2.3"],
+      ["1.2.3", "1.2.3-rc.1"],
+      ["1.2.3+a", "1.2.3"],
+      ["nightly", "Nightly"],
+      ["nightly", "1.2.3"],
+    ])
+      expect(() => check(signedFor(signed!), announced), `${signed} / ${announced}`).toThrow(
+        /signed version differs/,
+      );
+    expect(() => check(signedFor("1.2.2"), "1.2.3")).toThrow(/for version 1\.2\.2, not 1\.2\.3/);
+    // no `version:` in the comment (older signatures): accepted, as the plugin does with its default; and no
+    // announced version: nothing to compare
+    expect(() => check(key.sign(data), "1.2.3")).not.toThrow();
+    expect(() => check(signedFor("1.2.2"))).not.toThrow();
+    // the field is read from the tab-separated pairs only
+    expect(() => check(key.sign(data, "timestamp:1\tfile:version:9.9.9"), "1.2.3")).not.toThrow();
+    // a version edited into the comment after signing is the global signature's refusal, not a version match
+    const text = Buffer.from(signedFor("1.2.2"), "base64").toString("utf8").replace("1.2.2", "1.2.3");
+    expect(() => check(text, "1.2.3")).toThrow(/trusted comment/);
+  });
+
   /** A repository tree with only the updater configuration, carrying `pubkey`. */
   function rootWithKey(pubkey: string): string {
     const root = temp("mordomo-root-");
@@ -1185,14 +1222,14 @@ describe("C59 a signature is checked against the public key before a file or a m
     return root;
   }
   /** `bundleTree` with real signatures by `key` over the bytes `bundleTree` wrote. */
-  function signedBundle(platform: string, key: ReturnType<typeof minisignPair>): string {
+  function signedBundle(platform: string, key: ReturnType<typeof minisignPair>, trusted?: string): string {
     const bundle = bundleTree(platform, true);
     const walk = (dir: string): string[] =>
       fs
         .readdirSync(dir, { withFileTypes: true })
         .flatMap((d) => (d.isDirectory() ? walk(path.join(dir, d.name)) : [path.join(dir, d.name)]));
     for (const file of walk(bundle).filter((f) => f.endsWith(".sig")))
-      fs.writeFileSync(file, key.sign(fs.readFileSync(file.slice(0, -4))));
+      fs.writeFileSync(file, key.sign(fs.readFileSync(file.slice(0, -4)), trusted));
     return bundle;
   }
 
@@ -1222,6 +1259,47 @@ describe("C59 a signature is checked against the public key before a file or a m
         publicKey: minisignPair().pubkey,
       }),
     ).toThrow(/another key.*tauri\.updater\.conf\.json/);
+  });
+
+  it("C59 release-collect and the manifest refuse a signature made for another version than the one being released", () => {
+    const key = minisignPair();
+    const old = "timestamp:1\tfile:x\tversion:1.2.2";
+    expect(() =>
+      collect.collect({
+        version: "1.2.3",
+        platform: "linux-x64",
+        bundle: signedBundle("linux-x64", key, old),
+        out: temp("o-"),
+        codeSigned: false,
+        updaterSigned: true,
+        publicKey: key.pubkey,
+      }),
+    ).toThrow(/\.sig: the signature is for version 1\.2\.2, not 1\.2\.3/);
+    // the manifest: the files are this release's, one signature is an older release's
+    const dir = temp("mordomo-release-");
+    for (const platform of Object.keys(collect.PLATFORMS))
+      collect.collect({
+        version: "1.2.3",
+        platform,
+        bundle: signedBundle(platform, key, "timestamp:1\tfile:x\tversion:1.2.3"),
+        out: dir,
+        codeSigned: !platform.startsWith("linux"),
+        updaterSigned: true,
+        publicKey: key.pubkey,
+      });
+    const args = {
+      version: "1.2.3",
+      tag: "v1.2.3",
+      notes: "n",
+      date: "2026-10-12T00:00:00.000Z",
+      repo: "o/r",
+    };
+    expect(manifest.buildManifest({ ...args, dir, publicKey: key.pubkey }).missing).toBeUndefined();
+    const winSig = path.join(dir, "MordomoOS_1.2.3_windows-x64-setup.exe.sig");
+    fs.writeFileSync(winSig, key.sign(fs.readFileSync(winSig.slice(0, -4)), old));
+    const stale = manifest.buildManifest({ ...args, dir, publicKey: key.pubkey });
+    expect(stale.missing).toHaveLength(1);
+    expect(stale.missing[0]).toMatch(/^windows-x64: .*for version 1\.2\.2, not 1\.2\.3/);
   });
 
   it("C59 release-collect's command line reads the committed key: a placeholder with the updater on is an error, a matching pair passes", () => {
