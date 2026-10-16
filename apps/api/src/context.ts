@@ -146,13 +146,7 @@ export class AppContext extends MordomoEngine {
   /** A desktop shell's launch secret (`start --sidecar`), set by `startServer` before the server is built. */
   launchSecret: string | undefined = undefined;
 
-  /** The port the listener bound, set by `startServer` (a desktop shell's service may not listen on `settings.port`). */
-  boundPort: number | null = null;
-
-  /** Where this service answers: the bound port once it listens, the configured one before. */
-  servicePort(): number {
-    return this.boundPort ?? this.settings().port;
-  }
+  // `boundPort` (set by `startServer`) and `servicePort()` are the engine's: the Telegram channel reads them too.
 
   /** Permission-broker credential → the run it was issued for. In memory: a restart interrupts every run anyway. */
   private readonly brokerCredentials = new Map<string, string>();

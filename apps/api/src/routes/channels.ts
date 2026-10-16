@@ -58,7 +58,7 @@ export function registerChannelRoutes(app: FastifyInstance, ctx: AppContext): vo
           read: true,
           dedupeKey: null,
         },
-        settings.port,
+        ctx.servicePort(),
       ),
     });
     return delivered(result);

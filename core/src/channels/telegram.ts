@@ -112,6 +112,8 @@ export function telegramToken(settings: Settings, env: NodeJS.ProcessEnv = proce
 
 export interface TelegramChannelDeps {
   getSettings: () => Settings;
+  /** The port the links back into the Command Centre name (the one the service listens on); default `settings.port`. */
+  servicePort?: () => number;
   fetchImpl?: typeof fetch;
   env?: NodeJS.ProcessEnv;
   now?: () => number;
@@ -139,12 +141,13 @@ export async function deliverToTelegram(
   if (!token || !cfg.chatId)
     return { ok: false, skipped: "not_configured", error: "Channel not configured." };
   const reviewOnly = Boolean(row.approvalId && deps.needsReview?.(row.approvalId));
+  const port = deps.servicePort?.() ?? settings.port;
   return sendTelegramMessage({
     token,
     chatId: cfg.chatId,
     text: reviewOnly
-      ? `${formatNotification(row, settings.port)}\n\nA paired device asked for this. Read the whole request in the Command Centre (Settings › Security) to approve it; you can deny it here.`
-      : formatNotification(row, settings.port),
+      ? `${formatNotification(row, port)}\n\nA paired device asked for this. Read the whole request in the Command Centre (Settings › Security) to approve it; you can deny it here.`
+      : formatNotification(row, port),
     // With inbound on, an approval row carries Approve / Deny buttons (Deny alone when it has to be read first).
     ...(cfg.inbound && row.approvalId
       ? { replyMarkup: approvalKeyboard(row.approvalId, { denyOnly: reviewOnly }) }
