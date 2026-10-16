@@ -320,6 +320,16 @@ export const LAUNCH_COOKIE = "mordomo_launch";
 /** The shortest secret `--sidecar` accepts (the shell makes 43 characters from 32 random bytes). */
 export const LAUNCH_SECRET_MIN_LENGTH = 32;
 
+/**
+ * The shell's launch secret, taken out of `env`: it is the shell's alone. What this service starts (git, an MCP server,
+ * a provider CLI) inherits the environment it is given, and none of it has a use for the secret.
+ */
+export function takeLaunchSecret(env: NodeJS.ProcessEnv): string {
+  const secret = env.MORDOMO_LAUNCH_TOKEN ?? "";
+  delete env.MORDOMO_LAUNCH_TOKEN;
+  return secret;
+}
+
 /** The value of one cookie in a `Cookie` header, or `undefined`. */
 export function cookieValue(header: string | string[] | undefined, name: string): string | undefined {
   const raw = Array.isArray(header) ? header.join(";") : header;
