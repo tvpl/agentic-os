@@ -144,3 +144,14 @@ Em `vclean2`, uma falha por vez, `git checkout` e `git clean` entre as falhas. E
 7. **Incidental (da base, fora de escopo)** - `desktop/shellActions.ts:72` consulta `.deck-card .btn`, que nenhum elemento tem em `61ed8c9` nem em `9a5db70`: `focusSkillDeck`, ligado como `focusDeck` em `moldura/useFrameActions.ts:129` e `nucleo/index.tsx:380`, é um no-op desde antes. Pré-existente; a correção só apagou a entrada de `states.test.ts` que o dizia. Decisão do dono (consertar o seletor ou tirar o comando).
 
 Conferido e mantido: o parsing e o escopo do leitor de CSS (11 formas em `legacy.css.test.ts:174`), os 12 prefixos dinâmicos, as 11 classes de `SET_BY_A_VALUE` (cada uma tem o elemento: `mission-card ${o.status}`, `boot-screen ${phase}`, `diff-line ${line.kind}`, `brain-kind-swatch ${k}`, `Button variant="outline"`, `cc static budget ${budget.tone}`), `testing/missingKeys.setup.ts` (só ativa sob `MODE === "test"`, `undefined` no produto), a entrada do baseline (corrigida para o build final), os números de `design.md`, o escopo de `docs/`. Não confirmado: Windows/macOS/WebKit, não rodados.
+
+## Fechamento após a rodada 2 (escalonamento ao dono)
+
+Duas rodadas independentes, ambas FAIL. A rodada 2 confirmou as correções da rodada 1 (guard de CSS, seletores removidos sem elemento, nada vivo removido) e achou F11 (paridade pt-BR que não podia falhar), F9 (ledger de exportações só-de-teste com uma a menos), F12 e F13. Esses quatro foram consertados depois dela (`ace4170`, `b8bcdd4`, `f0f74b1`, `7461394`): F11 e F9 com prova que reprova sem o conserto, F12 declarado como limite, F13 nos documentos. Sem terceira verificação independente: o que resta não é defeito de código.
+
+Aberto para o dono:
+
+- **F2 (bloqueia o PASS):** o item 12 de `.specs/roadmap.md:22` manda remover widgets, `desktop.css` e dois cérebros; a feature os mantém, com evidência de uso. Aceitar o padrão (ficam) corrigindo a linha 22, ou mandar remover (feature nova).
+- `focusSkillDeck` (`desktop/shellActions.ts:72`) é um no-op antes e depois desta feature (STATE, limpeza-legado, pergunta 14).
+- `import type * as M` faz um módulo inteiro contar como usado: 20 tipos em `api.ts` e `appLocationOf` ficam sem remoção (limite declarado, STATE pergunta 6).
+- `desktop-parity.spec.ts:22` e `concept.spec.ts:727` falham também na base `b05da05` (pré-existentes); `concept.spec.ts:393` é intermitente por tempo.
