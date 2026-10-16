@@ -1,4 +1,6 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -370,6 +372,74 @@ describe("C45 the license and the legal texts are in the payload before an insta
     );
     expect(del).toBeGreaterThan(stale);
     expect(upload).toBeGreaterThan(del);
+  });
+
+  it("C59 release.yml: the step RUN against a published release stops before it edits, deletes or uploads anything; against a draft it deletes only the stale assets", () => {
+    const run = release.jobs.publish!.steps.find(
+      (x) => x.name === "Create or refresh the draft release",
+    )!.run!;
+    const attempt = (isDraft: "true" | "false", existing: string[]) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-release-step-"));
+      try {
+        fs.mkdirSync(path.join(dir, "bin"));
+        fs.mkdirSync(path.join(dir, "artifacts"));
+        // a copy, not a link: the script runs its `main` only when it is the file node was started on
+        fs.mkdirSync(path.join(dir, "scripts"));
+        fs.copyFileSync(
+          path.join(ROOT, "scripts", "release-stale-assets.mjs"),
+          path.join(dir, "scripts", "release-stale-assets.mjs"),
+        );
+        fs.writeFileSync(path.join(dir, "notes.md"), "notes");
+        for (const name of ["a.dmg", "latest.json"]) fs.writeFileSync(path.join(dir, "artifacts", name), "x");
+        fs.writeFileSync(path.join(dir, "existing.txt"), existing.join("\n") + "\n");
+        // a stand-in `gh`: it answers the two reads the step makes and records every other call
+        fs.writeFileSync(
+          path.join(dir, "bin", "gh"),
+          [
+            "#!/bin/bash",
+            'case "$*" in',
+            '  *"--json isDraft"*) echo "$STUB_IS_DRAFT";;',
+            '  *"--json assets"*) cat "$STUB_DIR/existing.txt";;',
+            '  "release view "*) exit 0;;',
+            '  *) echo "$*" >> "$STUB_DIR/calls.log";;',
+            "esac",
+          ].join("\n"),
+          { mode: 0o755 },
+        );
+        const res = spawnSync("bash", ["-c", run], {
+          cwd: dir,
+          encoding: "utf8",
+          env: {
+            PATH: `${path.join(dir, "bin")}:${process.env.PATH}`,
+            STUB_DIR: dir,
+            STUB_IS_DRAFT: isDraft,
+            TAG: "v9.9.9",
+            VERSION: "9.9.9",
+            GH_TOKEN: "unused",
+          },
+        });
+        const calls = fs.existsSync(path.join(dir, "calls.log"))
+          ? fs.readFileSync(path.join(dir, "calls.log"), "utf8").trim().split("\n")
+          : [];
+        return { status: res.status, stderr: res.stderr, stdout: res.stdout, calls };
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    const published = attempt("false", ["a.dmg", "old_UNSIGNED.dmg", "latest.json"]);
+    expect(published.status).toBe(1);
+    expect(published.stdout).toContain("v9.9.9 is already published; this workflow only writes drafts");
+    expect(published.calls).toEqual([]);
+    // control: the same step over a draft runs to the end and removes exactly what the run no longer produces
+    const draft = attempt("true", ["a.dmg", "old_UNSIGNED.dmg", "latest.json"]);
+    expect(draft.status, draft.stderr).toBe(0);
+    expect(draft.calls).toEqual([
+      "release edit v9.9.9 --draft --title MordomoOS 9.9.9 --notes-file notes.md",
+      "release delete-asset v9.9.9 old_UNSIGNED.dmg --yes",
+      "release upload v9.9.9 artifacts/a.dmg artifacts/latest.json --clobber",
+    ]);
+    // anything else `gh` answers for isDraft is not a draft either
+    expect(attempt("", ["old.dmg"]).calls).toEqual([]);
   });
 
   it("C59 release.yml: the signatures are checked against the committed key in the package job (release-collect) and in the publish job (updater-manifest)", () => {
