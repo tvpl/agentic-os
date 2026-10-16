@@ -120,6 +120,19 @@
     return tauri.core.invoke(command);
   }
 
+  // The "still starting" note appears 10 s into a wait for the service, and again in every wait that follows a Try again.
+  var slowTimer = null;
+  function watchSlow(waiting) {
+    if (slowTimer !== null) clearTimeout(slowTimer);
+    slowTimer = null;
+    $("slow").hidden = true;
+    if (!waiting) return;
+    slowTimer = setTimeout(function () {
+      slowTimer = null;
+      $("slow").hidden = $("starting").hidden;
+    }, 10000);
+  }
+
   var shown = null;
   function show(status) {
     var failed = status.state === "failed" && status.failure;
@@ -127,9 +140,11 @@
     $("failure").hidden = !failed;
     $("version").textContent = status.version ? text.version + " " + status.version : "";
     if (!failed) {
+      if (shown !== null) watchSlow(true); // back from a failure (a restart began somewhere else): a new wait
       shown = null;
       return;
     }
+    watchSlow(false);
     var key = JSON.stringify(status.failure);
     if (key === shown) return;
     shown = key;
@@ -156,14 +171,13 @@
     $("starting").hidden = false;
     $("failure").hidden = true;
     shown = null;
+    watchSlow(true);
     invoke("shell_retry").catch(function () {});
   });
   $("quit").addEventListener("click", function () {
     invoke("shell_quit").catch(function () {});
   });
-  setTimeout(function () {
-    $("slow").hidden = $("starting").hidden;
-  }, 10000);
+  watchSlow(true);
 
   poll();
 })();

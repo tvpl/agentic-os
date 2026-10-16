@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { dictionaries, plural, tf } from "./i18n";
+import { dictionaries, ownKeys, plural, tf } from "./i18n";
 
 describe("i18n dictionaries", () => {
   it("pt-BR and en carry exactly the same keys", () => {
-    const en = Object.keys(dictionaries.en).sort();
-    const pt = Object.keys(dictionaries["pt-BR"]).sort();
-    expect(pt).toEqual(en);
+    // The OWN keys of pt-BR: `dictionaries["pt-BR"]` starts from the English base, so it cannot miss a base key.
+    expect([...ownKeys["pt-BR"]].sort()).toEqual([...ownKeys.en].sort());
+  });
+
+  it("the pt-BR dictionary the app reads still answers every key of en (the runtime fallback is unchanged)", () => {
+    expect(Object.keys(dictionaries["pt-BR"]).sort()).toEqual(Object.keys(dictionaries.en).sort());
   });
 
   it("no value is empty", () => {

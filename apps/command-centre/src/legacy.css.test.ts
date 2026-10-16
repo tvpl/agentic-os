@@ -202,6 +202,11 @@ describe("C6 the reader of the stylesheets", () => {
       false,
       false,
     ]);
+    // A declared limit (F12): text glued AFTER an expression with no delimiter (`${x}zzglue`) counts as a whole class,
+    // because the expression can be empty; so a rule `.zzglue` is read as alive, and `.xzzglue` is not. The guard
+    // errs towards "alive"; no live class depends on it today. If this line changes, change the limit in checks.md.
+    const glued = read("const a = <i className={`${x}zzglue`} />;");
+    expect(has(glued, "zzglue", "xzzglue", "-zzglue")).toEqual([true, false, false]);
     // What is not a class: a sentence, a key, an id, a comparison, a query.
     const not = read(
       'const id = `app-${n}`; const k = t("shell.empty"); const s = "bell"; const w = <p title="deck">decision</p>; const c = <i className={kind === "agenda" ? "p" : "q"} id={id} />; document.querySelector(".quick-hint");',

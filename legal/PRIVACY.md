@@ -65,7 +65,12 @@ O app desktop (o instalador do Windows, do macOS ou do Linux) é uma janela em v
 ele inicia o serviço em `127.0.0.1`, numa porta que o sistema escolhe (a última usada, se estiver livre), com um segredo
 gerado a cada abertura que só o app e o serviço conhecem, e o desliga ao fechar. A janela carrega só as telas do próprio
 app e o endereço desse serviço; qualquer outro endereço da web é aberto no seu navegador, nunca na janela. O app guarda
-uma coisa a mais no seu computador, `desktop-state.json` na pasta de dados do app (a última porta usada). Nada sai dele
+`desktop-state.json` na pasta de dados do app (a última porta usada) e, ao lado dele, o webview do sistema guarda por
+conta própria o que uma janela de navegador guardaria da interface: o `localStorage` da origem `127.0.0.1:<porta>`,
+o cache dos arquivos da interface, o registro do service worker, cookies e `hsts-storage.sqlite`. Isso foi visto numa
+execução em Linux (WebKitGTK), na pasta `com.mordomo.desktop` dos dados do usuário; no macOS e no Windows o webview é
+outro e o que ele guarda não foi inventariado. Essa pasta é do app e fica fora da casa de dados acima, e o cookie de
+abertura (`mordomo_launch`) vale uma abertura: o segredo muda a cada vez. Nada sai dele
 além do que a seção 4 lista: o atualizador ("Atualização do app desktop") só existe numa compilação que leva a chave
 pública do dono, só consulta o GitHub com `updates.check` ligado ou quando você escolhe "Check for Updates…" no menu, e só
 instala um arquivo cuja assinatura minisign confere com a chave pública do app.
@@ -104,6 +109,16 @@ Nas tabelas, "o dono" é a pessoa que instalou e administra o MordomoOS (você),
 | Download do Node.js ao gerar o instalador (nodejs.org) | `nodejs.org` | só na máquina de quem gera o instalador (`npm run dist`, `scripts/package.mjs`, e a mensagem de `scripts/setup.sh`): baixa o binário oficial do Node.js e confere o SHA-256; ao empacotar para outra plataforma, o `prebuild-install` baixa o módulo nativo do SQLite do GitHub | nunca roda no computador de quem usa o produto | um GET do binário e da lista de somas; nada do usuário |
 | Carimbo de tempo da assinatura do instalador do Windows (timestamp.digicert.com) | `timestamp.digicert.com` | só na máquina de quem gera o instalador do Windows com um certificado de assinatura (`scripts/desktop-build.mjs`, no workflow de release); nunca no app instalado | nunca roda no computador de quem usa o produto | o resumo (hash) da assinatura do instalador, para o carimbo de tempo RFC 3161; nada do usuário |
 
+### 4.3. Destinos de instaladores de terceiros (fora do código do MordomoOS)
+
+O instalador do Windows é gerado pelo Tauri (NSIS), e o que ele faz ao instalar não é código do MordomoOS: por isso
+esta linha não está na tabela 4.1, que a varredura confere contra o código. Ela está em `legal/network-policy.json`
+(`installers`) e `tests/legal.network.test.ts` a confere.
+
+| Destino | Endereços | Quando | Padrão | O que é enviado |
+| --- | --- | --- | --- | --- |
+| Instalador do Windows: WebView2 da Microsoft (go.microsoft.com) | `go.microsoft.com` | só ao executar o instalador do Windows (`MordomoOS_<versão>_windows-x64-setup.exe`) num computador em que o WebView2 ainda não está instalado; o instalador baixa o pequeno instalador do WebView2 (`webviewInstallMode: downloadBootstrapper`, escolha explícita em `tauri.conf.json`); nunca no app já instalado | ligado no instalador do Windows (é o padrão do Tauri); um computador que já tem o WebView2 não o baixa | um GET anônimo, por HTTPS, a `go.microsoft.com/fwlink/p/?LinkId=2124703`, que a Microsoft redireciona para os servidores dela (o endereço final não foi observado aqui); a Microsoft vê o endereço IP e o que o plugin de download do NSIS (`NSISdl`) manda numa requisição HTTP (o conteúdo exato não foi inspecionado aqui) |
+
 ## 5. Os CLIs e os provedores de IA
 
 Quando você manda o MordomoOS executar algo, ele inicia o CLI que você escolheu (Claude Code, Codex ou
@@ -140,6 +155,9 @@ nenhuma configuração com `telemetry`, `analytics` ou `crash` no nome.
   (`exec("curl -s https://…")`); no meio de uma cadeia composta (`cd x && curl …`, `sh -c "… | curl …"`) não é;
 - `Reflect.get(globalThis, "fetch")` e `globalThis["fetch"]` são lidos, mas o objeto global com outro nome
   (`const g = globalThis`, depois `g.fetch(…)`) não é;
+- No que é Rust (`apps/desktop`): `Command::new` só é lido com o nome do programa escrito na chamada (um nome que vem
+  de uma variável não é), uma macro que gera código, um `include!` e o que um `build.rs` baixa ao compilar não são
+  lidos, e o que está em `#[cfg(test)]` é deixado de lado (o código depois dele é lido);
 - um endereço escrito sem esquema só é lido quando a cadeia começa por `//` (`"//host/arquivo.js"`) ou, num
   arquivo de texto, vem logo depois de aspas, de `(` ou de `=`; montado por partes, ou numa constante cujo nome
   não diz que é um endereço e cujo domínio de topo não está na lista conhecida da varredura, não é.

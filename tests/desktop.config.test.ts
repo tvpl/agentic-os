@@ -125,6 +125,18 @@ describe("C27 the webview loads only its own files and the service's loopback or
     expect(shell).not.toMatch(/NewWindowResponse::(Allow|Create)/);
   });
 
+  it("C27 the navigation handler answers with the policy's own verdict (shell-core `on_navigation`, tested there) and never with a constant", () => {
+    const shell = read(TAURI, "src", "shell.rs");
+    const gate = /fn gate\([^)]*\) -> bool \{([\s\S]*?)\n\}/.exec(shell)?.[1] ?? "";
+    expect(gate).toContain("on_navigation(url.as_str(), app.state::<Shell>().sidecar_port())");
+    expect(gate.trim().endsWith("handling.load_in_window")).toBe(true);
+    expect(shell).not.toMatch(/=>\s*(true|false)\b/); // no arm of the shell decides by itself
+    expect(shell).not.toMatch(/\bdecide\(/); // the policy is reached through on_navigation / on_new_window only
+    expect(shell).toContain("on_new_window(url.as_str()");
+    // a service that ends after it was ready is reported as `stopped` (the kind is proven in failure.rs)
+    expect(shell).toContain("Failure::stopped(sidecar.exit_code(), sidecar.stderr_tail())");
+  });
+
   it("C27 the installer carries the payload as a resource and nothing else of the repository; the identifier, product name and macOS hardening are the doors", () => {
     expect(conf.identifier).toBe("com.mordomo.desktop");
     expect(conf.productName).toBe("MordomoOS");
@@ -184,7 +196,70 @@ describe("C31 a build without the updater's key has no updater at all", () => {
     expect(order.every((i) => i > 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(updater).toContain('host_str() != Some("github.com")');
+    // the order stop -> install -> (on failure) start again is shell-core's `install_with_service_stopped`, tested there;
+    // this file must go through it and give it the real way back
+    expect(updater).toMatch(
+      /install_with_service_stopped\(\s*\|\| app\.state::<crate::shell::Shell>\(\)\.stop_sidecar\(\),\s*\|\| update\.install\(&bytes\),\s*\|\| crate::shell::spawn_start\(app\.clone\(\)\),\s*\)\?;/,
+    );
+    expect(updater.match(/stop_sidecar\(\)/g)).toHaveLength(1);
     expect(updater).not.toMatch(/download_and_install/);
     expect(updater).not.toMatch(/dangerous/i);
+  });
+});
+
+describe("C55 the native menu is the one design.md describes: About, Edit, View, Window, and nothing else", () => {
+  const menu = read(TAURI, "src", "menu.rs");
+  const flat = menu.replace(/\s+/g, " ");
+
+  it("C55 four submenus in this order, named as the operating system's own", () => {
+    expect([...flat.matchAll(/SubmenuBuilder::new\(app, "([^"]+)"\)/g)].map((m) => m[1])).toEqual([
+      "MordomoOS",
+      "Edit",
+      "View",
+      "Window",
+    ]);
+    expect(flat).toContain(".items(&[&application, &edit, &view, &window])");
+  });
+
+  it("C55 MordomoOS: About with the version and the license, Quit last; 'Check for Updates…' only in a build with the updater", () => {
+    expect(flat).toMatch(/\.about\(Some\(about\)\)/);
+    expect(flat).toContain('.version(Some(env!("CARGO_PKG_VERSION")))');
+    expect(flat).toContain('.license(Some("Functional Source License 1.1 (Apache-2.0 future license)"))');
+    expect(read(ROOT, "LICENSE")).toContain("Functional Source License");
+    expect(flat).toMatch(/let application = application\.separator\(\)\.quit\(\)\.build\(\)\?;/);
+    expect(flat).toMatch(
+      /#\[cfg\(feature = "updater"\)\] \{ let check = MenuItemBuilder::with_id\(CHECK_FOR_UPDATES, "Check for Updates…"\)/,
+    );
+    expect((flat.match(/"Check for Updates…"/g) ?? []).length).toBe(1);
+    // Services and Hide are macOS's
+    expect(flat).toMatch(
+      /#\[cfg\(target_os = "macos"\)\] \{ application = application \.separator\(\) \.services\(\) \.separator\(\) \.hide\(\)/,
+    );
+  });
+
+  it("C55 Edit: Undo, Redo, Cut, Copy, Paste, Select All, in this order (what a page needs for the clipboard)", () => {
+    expect(flat).toContain(
+      'SubmenuBuilder::new(app, "Edit") .undo() .redo() .separator() .cut() .copy() .paste() .select_all() .build()?',
+    );
+  });
+
+  it("C55 View: Reload with Ctrl/Cmd+R that reloads the window; full screen only on macOS", () => {
+    expect(flat).toContain('MenuItemBuilder::with_id(RELOAD, "Reload") .accelerator("CmdOrCtrl+R")');
+    expect(flat).toMatch(
+      /RELOAD => \{ if let Some\(window\) = app\.get_webview_window\(crate::shell::MAIN_WINDOW\) \{ let _ = window\.eval\("window\.location\.reload\(\)"\);/,
+    );
+    expect(flat).toMatch(/#\[cfg\(target_os = "macos"\)\] \{ view = view\.separator\(\)\.fullscreen\(\); \}/);
+  });
+
+  it("C55 Window: Minimize, Maximize outside macOS, Close", () => {
+    expect(flat).toMatch(/SubmenuBuilder::new\(app, "Window"\)\.minimize\(\);/);
+    expect(flat).toMatch(/#\[cfg\(not\(target_os = "macos"\)\)\] \{ window = window\.maximize\(\); \}/);
+    expect(flat).toContain("window.close_window().build()?");
+  });
+
+  it("C55 no toolbar and no tray icon: the crate has neither the feature nor a call", () => {
+    expect(cargoToml).not.toMatch(/tray-icon/);
+    for (const file of fs.readdirSync(path.join(TAURI, "src")))
+      expect(read(TAURI, "src", file), file).not.toMatch(/TrayIcon|tray_icon|\.toolbar\(|Toolbar/);
   });
 });

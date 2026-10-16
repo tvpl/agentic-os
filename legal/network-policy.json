@@ -761,5 +761,18 @@
       ],
       "note": "instrução ao agente: `curl` no serviço local ($MORDOMO_URL)"
     }
+  ],
+  "installers": [
+    {
+      "id": "webview2-bootstrapper",
+      "label": "Instalador do Windows: WebView2 da Microsoft (go.microsoft.com)",
+      "match": [
+        "go.microsoft.com"
+      ],
+      "trigger": "só ao executar o instalador do Windows (`MordomoOS_<versão>_windows-x64-setup.exe`) num computador em que o WebView2 ainda não está instalado; o instalador baixa o pequeno instalador do WebView2 (`webviewInstallMode: downloadBootstrapper`, escolha explícita em `tauri.conf.json`); nunca no app já instalado",
+      "default": "ligado no instalador do Windows (é o padrão do Tauri); um computador que já tem o WebView2 não o baixa",
+      "data": "um GET anônimo, por HTTPS, a `go.microsoft.com/fwlink/p/?LinkId=2124703`, que a Microsoft redireciona para os servidores dela (o endereço final não foi observado aqui); a Microsoft vê o endereço IP e o que o plugin de download do NSIS (`NSISdl`) manda numa requisição HTTP (o conteúdo exato não foi inspecionado aqui)",
+      "note": "código do instalador NSIS do Tauri (tauri-bundler 2.10.2, a URL está no binário do CLI), não do MordomoOS: por isso fica fora de `hosts`, que a varredura confere contra o código"
+    }
   ]
 }

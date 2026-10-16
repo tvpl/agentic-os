@@ -85,6 +85,65 @@ const NETWORK_PROGRAMS = new Map([
   ),
 ]);
 
+/** Crates that open connections or ask a server for something (`Cargo.toml` of `apps/desktop`). */
+const NETWORK_CRATES =
+  "tauri-plugin-(?:updater|http|websocket|upload)|reqwest|hyper|ureq|isahc|surf|attohttpc";
+
+/** The index of the `}` that closes the `{` at `open`, skipping strings, characters and comments; -1 if none does. */
+function endOfBlock(text, open) {
+  let depth = 0;
+  for (let j = open; j < text.length; j++) {
+    const c = text[j];
+    if (c === "/" && text[j + 1] === "/") {
+      const nl = text.indexOf("\n", j);
+      if (nl < 0) return -1;
+      j = nl;
+    } else if (c === "/" && text[j + 1] === "*") {
+      const close = text.indexOf("*/", j + 2);
+      if (close < 0) return -1;
+      j = close + 1;
+    } else if (c === "r" && /^r#*"/.test(text.slice(j, j + 40)) && !/[\w]/.test(text[j - 1] ?? " ")) {
+      const hashes = /^r(#*)"/.exec(text.slice(j, j + 40))[1];
+      const close = text.indexOf(`"${hashes}`, j + 2 + hashes.length);
+      if (close < 0) return -1;
+      j = close + hashes.length;
+    } else if (c === '"') {
+      for (j++; j < text.length && text[j] !== '"'; j++) if (text[j] === "\\") j++;
+    } else if (c === "'") {
+      const ch = /^'(?:\\.[^']*|[^\\'])'/.exec(text.slice(j, j + 12));
+      if (ch) j += ch[0].length - 1; // a character; otherwise a lifetime
+    } else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) return j;
+  }
+  return -1;
+}
+
+/**
+ * A Rust file without its test code: `#[cfg(test)]` and the item it marks (a `mod` or `fn` with a body, or a `use` up to
+ * its `;`) are cut out, wherever they are, so production code after a test module is still read. A body whose braces
+ * do not balance is not cut (the scan then reads more, never less).
+ */
+export function withoutRustTests(text) {
+  const marker = /#\[cfg\(test\)\]/g;
+  let out = "";
+  let from = 0;
+  for (let m = marker.exec(text); m !== null; m = marker.exec(text)) {
+    if (m.index < from) continue; // inside a part already cut
+    let i = m.index + m[0].length;
+    // further attributes, then the item's head up to its body or its end
+    while (i < text.length && text[i] !== "{" && text[i] !== ";") i++;
+    let end = i + 1;
+    if (text[i] === "{") {
+      const j = endOfBlock(text, i);
+      if (j < 0) continue; // unbalanced: keep it
+      end = j + 1;
+    }
+    out += text.slice(from, m.index);
+    from = end;
+  }
+  return out + text.slice(from);
+}
+
 /** Hosts that never leave the machine. */
 const LOOPBACK = /^(localhost|127(\.\d{1,3}){3}|0\.0\.0\.0|\[?::1\]?|\[?::\]?)$/i;
 /**
@@ -295,7 +354,7 @@ export function scanText(text, fileName = "") {
   const hosts = new Set();
   const points = new Map();
   const point = (name) => points.set(name, (points.get(name) ?? 0) + 1);
-  if (fileName.endsWith(".rs")) text = text.split("\n#[cfg(test)]")[0];
+  if (fileName.endsWith(".rs")) text = withoutRustTests(text);
   for (const m of text.matchAll(URL_HOST)) hosts.add(hostOf(m[1]));
   for (const m of text.matchAll(SCHEMELESS_IN_TEXT)) hosts.add(hostOf(m[1]));
   if (fileName.endsWith(".rs")) {
@@ -305,14 +364,25 @@ export function scanText(text, fileName = "") {
     ))
       point("rust:net");
     for (const _call of text.matchAll(/\.updater\(\)/g)) point("rust:updater");
+    // A program run by name: only the ones that reach the network are points (a name chosen at run time is a limit, in PRIVACY).
+    for (const m of text.matchAll(/\bCommand::new\(\s*"([^"]+)"/g)) {
+      const name = path.basename(m[1].replace(/\.exe$/i, ""));
+      if (NETWORK_PROGRAMS.has(name)) point(`program:${NETWORK_PROGRAMS.get(name)}`);
+    }
     for (const m of text.matchAll(/"([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|org|net|io|dev|app))"/g))
       hosts.add(m[1]);
   }
-  if (fileName.endsWith("Cargo.toml"))
+  if (fileName.endsWith("Cargo.toml")) {
+    // `name = ...`, the table `[dependencies.name]` (also `[target.'cfg(unix)'.dependencies.name]`) and a renamed
+    // dependency (`other = { package = "name" }`) all bring the crate in.
     for (const m of text.matchAll(
-      /^(tauri-plugin-(?:updater|http|websocket|upload)|reqwest|hyper|ureq|isahc|surf|attohttpc)\s*=/gm,
+      new RegExp(
+        `^(?:(${NETWORK_CRATES})\\s*=|\\[[^\\]]*dependencies\\.(${NETWORK_CRATES})\\s*\\]|[^#\\n]*\\bpackage\\s*=\\s*"(${NETWORK_CRATES})")`,
+        "gm",
+      ),
     ))
-      point(`rust:crate:${m[1]}`);
+      point(`rust:crate:${m[1] ?? m[2] ?? m[3]}`);
+  }
   if (/tauri(?:\.[a-z]+)?\.conf\.json$/.test(fileName) && /"updater"\s*:/.test(text)) point("tauri:updater");
   if (/\.(md|sh|ps1)$/.test(fileName))
     for (const m of text.matchAll(/(?:^|[\s`$(;|&"'])(curl|wget)(?=\s)/gm)) point(`program:${m[1]}`);

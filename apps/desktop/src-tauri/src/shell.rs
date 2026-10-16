@@ -1,7 +1,9 @@
 //! The shell's state (starting, ready, failed), the window, and the three commands its own screen may call.
 
 use mordomo_shell_core::state::DesktopState;
-use mordomo_shell_core::{decide, Config, Failure, LaunchToken, NavAction, Payload, Sidecar, StartError};
+use mordomo_shell_core::{
+    on_navigation, on_new_window, Config, Failure, LaunchToken, Payload, Sidecar, StartError,
+};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Mutex;
@@ -91,11 +93,11 @@ pub fn open_main_window(app: &AppHandle) -> tauri::Result<()> {
         .on_navigation(move |url| gate(&for_navigation, url))
         // No second webview is ever created. A link that wants a new window goes where the policy says.
         .on_new_window(move |url, _features| {
-            match decide(url.as_str(), for_new_window.state::<Shell>().sidecar_port()) {
-                NavAction::Deny => {}
-                // The service's own origin in a new window (an artifact or a file) is shown by the system browser, not
-                // by a webview this shell would have to police.
-                NavAction::Allow | NavAction::OpenExternally => open_externally(&for_new_window, &url),
+            // The service's own origin in a new window (an artifact or a file) is shown by the system browser, not
+            // by a webview this shell would have to police.
+            let handling = on_new_window(url.as_str(), for_new_window.state::<Shell>().sidecar_port());
+            if handling.open_in_system {
+                open_externally(&for_new_window, &url);
             }
             NewWindowResponse::Deny
         })
@@ -104,19 +106,18 @@ pub fn open_main_window(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+/// The navigation handler of the window: its answer is whether the webview loads `url`. The decision is
+/// `mordomo_shell_core::on_navigation`, tested there; `smoke/gui.sh` (scenario F) proves the window obeys it.
 fn gate(app: &AppHandle, url: &Url) -> bool {
-    match decide(url.as_str(), app.state::<Shell>().sidecar_port()) {
-        NavAction::Allow => true,
-        NavAction::OpenExternally => {
-            open_externally(app, url);
-            false
-        }
-        NavAction::Deny => false,
+    let handling = on_navigation(url.as_str(), app.state::<Shell>().sidecar_port());
+    if handling.open_in_system {
+        open_externally(app, url);
     }
+    handling.load_in_window
 }
 
 fn open_externally(app: &AppHandle, url: &Url) {
-    // Only what `decide` classed as a web or mail address reaches here.
+    // Only what the policy classed as a web or mail address (or the service's own origin) reaches here.
     if matches!(url.scheme(), "http" | "https" | "mailto") {
         let _ = app.opener().open_url(url.as_str(), None::<&str>);
     }

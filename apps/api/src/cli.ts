@@ -51,7 +51,13 @@ import {
 import { PKG_VERSION } from "./routes/system.js";
 import { servePermissionTool } from "./mcp/permission.js";
 import { httpApi, serveMordomoMcp } from "./mcp/mordomo.js";
-import { LAUNCH_SECRET_MIN_LENGTH, PortInUseError, startServer, type SidecarOptions } from "./server.js";
+import {
+  LAUNCH_SECRET_MIN_LENGTH,
+  PortInUseError,
+  startServer,
+  takeLaunchSecret,
+  type SidecarOptions,
+} from "./server.js";
 import { EngineLockedError } from "@mordomo/core";
 import { runDoctor } from "./doctor.js";
 
@@ -993,10 +999,9 @@ async function cmdStart(args: CliArgs): Promise<void> {
 async function cmdSidecar(args: CliArgs): Promise<void> {
   const sidecar: SidecarOptions = {
     port: args.port ?? 0,
-    launchSecret: process.env.MORDOMO_LAUNCH_TOKEN ?? "",
+    // The secret is the shell's; a child of this service (a provider CLI) has no use for it.
+    launchSecret: takeLaunchSecret(process.env),
   };
-  // The secret is the shell's; a child of this service (a provider CLI) has no use for it.
-  delete process.env.MORDOMO_LAUNCH_TOKEN;
   let handle;
   try {
     handle = await startServer(undefined, sidecar);

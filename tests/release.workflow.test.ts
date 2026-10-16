@@ -88,7 +88,16 @@ describe("C36 the release runs on a v* tag, by hand without publishing, and nowh
     const run = release.jobs.publish!.steps.map((s) => s.run ?? "").join("\n");
     expect(run).toMatch(/gh release create "\$TAG" --draft --verify-tag/);
     expect(run).toMatch(/gh release edit "\$TAG" --draft/);
-    expect(run).not.toMatch(/--draft=false|--latest|--prerelease|gh release (publish|delete)|--publish/);
+    // never a publish and never the deletion of a release; `delete-asset` (C59: stale files of a draft this run refreshes) is another command
+    expect(run).not.toMatch(
+      /--draft=false|--latest|--prerelease|gh release (publish|delete)(?![-\w])|--publish/,
+    );
+    const deletions = [...run.matchAll(/gh release delete-asset[^\n]*/g)].map((m) => m[0]);
+    expect(deletions).toEqual(['gh release delete-asset "$TAG" "$name" --yes']);
+    // and it sits after the refusal of a published release, in the branch of an existing draft
+    expect(run.indexOf("gh release delete-asset")).toBeGreaterThan(
+      run.indexOf("this workflow only writes drafts"),
+    );
     expect(run).toMatch(/already published; this workflow only writes drafts/);
     expect(
       stepsOf(release)
@@ -325,6 +334,51 @@ describe("C45 the license and the legal texts are in the payload before an insta
     expect(run).toContain("apps/desktop/smoke/gui.sh");
     expect(run).toContain("cargo test --locked -p mordomo-shell-core");
     expect(run).toContain("node scripts/licenses-rust.mjs --check --require-cargo");
+  });
+
+  it("C45 ci.yml desktop job: the payload is built before anything that compiles the app (build.rs refuses a missing `../payload`)", () => {
+    const steps = ci.jobs.desktop!.steps;
+    const first = (needle: RegExp) => steps.findIndex((s) => needle.test(s.run ?? ""));
+    const payload = first(/node scripts\/package\.mjs --payload apps\/desktop\/payload/);
+    expect(payload).toBeGreaterThan(-1);
+    // every command that makes cargo build `mordomo-desktop` (clippy and check over the workspace, build, run) comes after it
+    for (const needle of [
+      /cargo clippy/,
+      /cargo check --locked -p mordomo-desktop/,
+      /cargo build --locked -p mordomo-desktop/,
+      /smoke\/gui\.sh/,
+    ]) {
+      const at = first(needle);
+      expect(at, String(needle)).toBeGreaterThan(-1);
+      expect(at, `${needle} must run after the payload step`).toBeGreaterThan(payload);
+    }
+    // the tauri build script is what refuses it: the claim above is about this file, not a guess
+    expect(read("apps/desktop/src-tauri/tauri.conf.json")).toContain('"../payload"');
+  });
+
+  it("C59 release.yml: a refreshed draft first loses the assets this run does not produce, then gets the new ones", () => {
+    const step = release.jobs.publish!.steps.find((x) => x.name === "Create or refresh the draft release")!;
+    const run = step.run ?? "";
+    const stale = run.indexOf(
+      "scripts/release-stale-assets.mjs --existing existing-assets.txt --dir artifacts",
+    );
+    const del = run.indexOf('gh release delete-asset "$TAG" "$name" --yes');
+    const upload = run.indexOf('gh release upload "$TAG" artifacts/* --clobber');
+    expect(stale).toBeGreaterThan(-1);
+    expect(run).toContain(
+      "gh release view \"$TAG\" --json assets --jq '.assets[].name' > existing-assets.txt",
+    );
+    expect(del).toBeGreaterThan(stale);
+    expect(upload).toBeGreaterThan(del);
+  });
+
+  it("C59 release.yml: the signatures are checked against the committed key in the package job (release-collect) and in the publish job (updater-manifest)", () => {
+    const collect = release.jobs.package!.steps.find(
+      (x) => x.name === "Name the installers and say what was signed",
+    )!;
+    expect(collect.run).toContain('--updater-signed "${{ needs.plan.outputs.updater }}"');
+    const publish = release.jobs.publish!.steps.find((x) => x.name?.startsWith("Notes, updater manifest"))!;
+    expect(publish.run).toContain("scripts/updater-manifest.mjs --dir artifacts");
   });
 
   it("C45 the Rust toolchain installed by the workflows is the one of rust-toolchain.toml", () => {

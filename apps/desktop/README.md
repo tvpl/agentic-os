@@ -22,5 +22,9 @@ MORDOMO_HOME=$(mktemp -d) MORDOMO_DESKTOP_PAYLOAD=$PWD/payload ./target/debug/mo
 smoke/gui.sh ./target/debug/mordomo-desktop payload
 ```
 
+Every cargo command that compiles `mordomo-desktop` (`check`, `clippy --workspace`, `build`) needs `apps/desktop/payload` first:
+the Tauri build script refuses a `resources` path that does not exist (`ci.yml` builds the payload before them, and a test keeps that
+order). `cargo test -p mordomo-shell-core` does not compile the app and needs neither the payload nor GTK.
+
 Installers are built by `node scripts/desktop-build.mjs --platform <p>` (what the release workflow runs) and signed only with
 the secrets of `docs/release.md` §2. Keep `target/` out of the commit and out of the way: it is several gigabytes.

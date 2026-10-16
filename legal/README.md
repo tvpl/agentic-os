@@ -29,6 +29,15 @@ npm run network:scan          # lista os pontos de rede e os hosts do código; c
 
 O CI roda tudo isso em `npm test` (`tests/legal.*.test.ts`).
 
+## Perguntas ao advogado sobre o app desktop
+
+- **Bibliotecas do sistema no AppImage.** O `.AppImage` do Linux embute cerca de 200 bibliotecas compartilhadas (WebKitGTK,
+  GTK, GLib…), muitas sob LGPL, que nem `THIRD_PARTY_NOTICES.desktop.md` (seção 5) nem `sbom.desktop.cdx.json` (só crates
+  Rust) cobrem. O texto das licenças e a oferta do código-fonte que a LGPL pede não vão no AppImage por este projeto.
+- **Exceções `MPL-2.0`.** Cinco crates Rust (`cssparser`, `cssparser-macros`, `dtoa-short`, `option-ext`, `selectors`), cada uma com o
+  caminho pelo qual entra em `license-policy.json`.
+- **WebView2 no instalador do Windows.** O instalador baixa o WebView2 da Microsoft se ele faltar (`PRIVACY.md`, seção 4.3).
+
 ## Textos canônicos em `vendor/`
 
 | Arquivo                                  | Origem                                                                                    | SHA-256                                                            |

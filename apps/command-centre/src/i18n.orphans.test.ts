@@ -4,7 +4,7 @@
  * The parity of `en` and `pt-BR` is `i18n.test.ts`'s and is run here too, as the second half of C7.
  */
 import { describe, expect, it } from "vitest";
-import { dictionaries } from "./i18n";
+import { dictionaries, ownKeys } from "./i18n";
 import { loadTree, productionFiles, spelledIn, type Tree } from "./testing/sourceGraph";
 
 const tree = loadTree();
@@ -59,7 +59,8 @@ describe("C7 the keys of the dictionaries", () => {
 
   it("C7 pt-BR has exactly the keys of en, in both directions", () => {
     const en = new Set(keys);
-    const pt = new Set(Object.keys(dictionaries["pt-BR"]));
+    // The own keys: `dictionaries["pt-BR"]` starts from the English base and could never miss one (F11).
+    const pt = new Set(ownKeys["pt-BR"]);
     expect([...en].filter((k) => !pt.has(k))).toEqual([]);
     expect([...pt].filter((k) => !en.has(k))).toEqual([]);
   });

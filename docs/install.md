@@ -47,8 +47,10 @@ the operating system will warn before opening it.
 
 What the app does when you open it: starts the bundled service on a free port of
 `127.0.0.1` (the last port it used, when that is still free, so the interface
-keeps its settings), with a secret that exists only for this launch and is what
-lets the window, and nothing else on the computer, receive your token; shows the
+keeps its settings), with a secret that exists only for this launch: it stops a
+program that merely sends a browser's headers from getting your token off the
+page, and it is not a wall against a program that already runs as you and can
+read `config/token` in your data folder (`docs/security.md`, T1); shows the
 Command Centre in its own window; and stops the service when you close the
 window or quit. If the service cannot start the window says why, in English or
 Portuguese, with **Try again** and **Quit**. A second launch brings the first
@@ -66,6 +68,12 @@ Limits worth knowing:
   one finds the data folder taken and says so.
 - The menu is in English like the operating system's; the screens of the app
   speak English and Portuguese.
+- **Exports that download a file do not save anything from the app's window.**
+  Settings › Diagnostics › Export diagnostics and the Pixel Studio exports build
+  a file in the page and ask the window to download it; the window refuses that
+  address on purpose and says nothing. Seen on Linux; macOS and Windows were not
+  tried. It is a known limit, not a decision; the way to fix it is an open
+  question to the owner (`docs/release.md` §8).
 - **Updates.** Only a build made with the owner's update key has an updater
   (*About* says when there is none). It asks the releases page for `latest.json`
   at start only if *Settings › Identity › check for updates* is on (off by

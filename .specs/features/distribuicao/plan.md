@@ -109,6 +109,19 @@ Superfícies de processo (sem código de status HTTP; o que decide é o código 
 
 - Nada mais nesta mudança é difícil de reverter
 
+**Emendas da rodada 1 (verificação de 16/10/2026), registradas em vez de reescritas** (AD-030):
+
+- AC 28: a política de conteúdo do shell tem `connect-src ipc: http://ipc.localhost`, não só `ipc:`. O Tauri 2 faz as chamadas
+  de comando por `ipc:` no macOS e no Linux e por `http://ipc.localhost` no Windows; sem o segundo, a tela do shell não chamaria
+  `shell_status` nem `shell_retry` no Windows. O resto da política é como o AC 28 diz. Vale o que `tauri.conf.json` e C27 já
+  traziam; o AC 28 original fica como foi aprovado.
+- Porta 8: o payload carrega também `LICENSE` (na raiz do payload), além de `lib/`, `ui/`, `seed/`, `runtime/`, `legal/` e
+  `package.json`. É o que o AC 42 e C45 exigem (os oito arquivos legais, um deles a licença); a porta 8 só não o dizia.
+- AC 31 e AC 40 (manifesto do atualizador): `latest.json` ganha a chave `linux-x86_64-deb`, ao lado de `linux-x86_64` (o
+  AppImage). O `tauri-plugin-updater` 2.13.3 procura `<os>-<arch>-<instalador>` antes de `<os>-<arch>` e uma instalação `.deb`
+  só aceita um `.deb` (`install_deb` recusa outra coisa), de modo que sem a chave o `.deb` baixava o AppImage e não atualizava.
+- AC 31: se a instalação da atualização falha, o serviço que foi parado para instalar é iniciado de novo (a janela volta a ele).
+
 ## Criteria
 
 ### S1: O serviço sabe ser filho de um shell (P1)

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,6 +11,9 @@ const collect: any = await import("../scripts/release-collect.mjs");
 const manifest: any = await import("../scripts/updater-manifest.mjs");
 const updaterConfig: any = await import("../scripts/updater-config.mjs");
 const desktopBuild: any = await import("../scripts/desktop-build.mjs");
+const payloadGuard: any = await import("../scripts/payload-guard.mjs");
+const minisign: any = await import("../scripts/minisign.mjs");
+const staleAssets: any = await import("../scripts/release-stale-assets.mjs");
 
 /**
  * distribuicao: the scripts the release leans on (.specs/features/distribuicao, AC 34-36, 39-41).
@@ -351,6 +355,7 @@ describe("C42 the notes of a release come from the CHANGELOG section of its vers
 
 // ---- release-collect and the updater manifest -----------------------------------------------------------------
 
+/** What `tauri build` leaves: with `withSigs` as with the updater key (`createUpdaterArtifacts`), without as with no key. */
 function bundleTree(platform: string, withSigs: boolean): string {
   const bundle = temp("mordomo-bundle-");
   const spec = (collect.PLATFORMS as Record<string, { os: string }>)[platform]!;
@@ -361,8 +366,13 @@ function bundleTree(platform: string, withSigs: boolean): string {
   const sig = (rel: string) => put(`${rel}.sig`);
   if (spec.os === "macos") {
     put("dmg/MordomoOS_1.2.3_aarch64.dmg");
-    put("macos/MordomoOS.app.tar.gz");
-    if (withSigs) sig("macos/MordomoOS.app.tar.gz");
+    // The bundler writes the `.app` folder always and the `.app.tar.gz` (with its .sig) only under
+    // `createUpdaterArtifacts`, i.e. with an updater key (tauri-bundler `bundle.rs`: `if let Some(updater)`).
+    put("macos/MordomoOS.app/Contents/Info.plist");
+    if (withSigs) {
+      put("macos/MordomoOS.app.tar.gz");
+      sig("macos/MordomoOS.app.tar.gz");
+    }
   } else if (spec.os === "windows") {
     put("nsis/MordomoOS_1.2.3_x64-setup.exe");
     if (withSigs) sig("nsis/MordomoOS_1.2.3_x64-setup.exe");
@@ -382,10 +392,8 @@ describe("C40 an installer the operating system will not trust says so in its na
   const base = { version: "1.2.3", notarized: false };
   it("C40 macOS and Windows built without a certificate carry _UNSIGNED, and their status says so", () => {
     for (const [platform, files] of [
-      [
-        "macos-arm64",
-        ["MordomoOS_1.2.3_macos-arm64_UNSIGNED.dmg", "MordomoOS_1.2.3_macos-arm64_UNSIGNED.app.tar.gz"],
-      ],
+      // no secrets at all (AC 39): the bundle has the .dmg and the .app folder, no updater archive
+      ["macos-arm64", ["MordomoOS_1.2.3_macos-arm64_UNSIGNED.dmg"]],
       ["windows-x64", ["MordomoOS_1.2.3_windows-x64_UNSIGNED-setup.exe"]],
     ] as const) {
       const out = temp("mordomo-out-");
@@ -468,6 +476,106 @@ describe("C40 an installer the operating system will not trust says so in its na
     });
   });
 
+  it("C40 with the updater key a Linux bundle whose .deb has no .sig fails (the manifest needs it for the .deb entry)", () => {
+    const bundle = bundleTree("linux-x64", true);
+    fs.rmSync(path.join(bundle, "deb", "MordomoOS_1.2.3_amd64.deb.sig"));
+    expect(() =>
+      collect.collect({
+        ...base,
+        platform: "linux-x64",
+        bundle,
+        out: temp("o-"),
+        codeSigned: false,
+        updaterSigned: true,
+      }),
+    ).toThrow(/deb.*\.sig is missing though the updater key/);
+  });
+
+  it("C40 AC 39: with no secret at all the four platforms still collect (macOS has the .dmg and no updater archive), and the draft says everything is unsigned", () => {
+    const out = temp("mordomo-out-");
+    const files: string[] = [];
+    for (const platform of Object.keys(collect.PLATFORMS)) {
+      const os = (collect.PLATFORMS as Record<string, { os: string }>)[platform]!.os;
+      const res = collect.collect({
+        ...base,
+        platform,
+        bundle: bundleTree(platform, false),
+        out,
+        codeSigned: false,
+        updaterSigned: false,
+      });
+      // no updater archive and no .sig anywhere: nothing the bundler does not write without a key
+      expect(res.written.some((n: string) => n.endsWith(".sig") || n.endsWith(".app.tar.gz"))).toBe(false);
+      if (os === "macos") expect(res.written).toEqual([`MordomoOS_1.2.3_${platform}_UNSIGNED.dmg`]);
+      files.push(...res.written);
+    }
+    expect(files).toEqual([
+      "MordomoOS_1.2.3_macos-arm64_UNSIGNED.dmg",
+      "MordomoOS_1.2.3_macos-x64_UNSIGNED.dmg",
+      "MordomoOS_1.2.3_windows-x64_UNSIGNED-setup.exe",
+      "MordomoOS_1.2.3_linux-x64.deb",
+      "MordomoOS_1.2.3_linux-x64.AppImage",
+    ]);
+    // what the publish job does next with that folder: notes with the banner, and no latest.json (exit 3)
+    const root = temp("mordomo-notes3-");
+    fs.writeFileSync(path.join(root, "CHANGELOG.md"), "## 1.2.3\n\n- the fix\n");
+    const notes = run(releaseNotes.main, [
+      "--version",
+      "1.2.3",
+      "--status",
+      out,
+      "--out",
+      "notes.md",
+      "--root",
+      root,
+    ]);
+    expect(notes.code, notes.err).toBe(0);
+    expect(fs.readFileSync(path.join(root, "notes.md"), "utf8")).toContain(
+      "UNSIGNED / NÃO ASSINADO: macos-arm64, macos-x64, windows-x64",
+    );
+    const latest = path.join(out, "latest.json");
+    const m = run(manifest.main, ["--dir", out, "--version", "1.2.3", "--tag", "v1.2.3", "--out", latest]);
+    expect(m.code).toBe(3);
+    expect(fs.existsSync(latest)).toBe(false);
+  });
+
+  it("C40 macOS signed by the operating system but with no updater key: the .dmg alone, no label; with the key the archive is required and shipped with its .sig", () => {
+    const out = temp("mordomo-out-");
+    const noKey = collect.collect({
+      ...base,
+      platform: "macos-arm64",
+      bundle: bundleTree("macos-arm64", false),
+      out,
+      codeSigned: true,
+      notarized: true,
+      updaterSigned: false,
+    });
+    expect(noKey.written).toEqual(["MordomoOS_1.2.3_macos-arm64.dmg"]);
+    // updater on but the archive was not written (the key was not really used): fail, naming the folder
+    const archiveless = bundleTree("macos-arm64", false);
+    expect(() =>
+      collect.collect({
+        ...base,
+        platform: "macos-arm64",
+        bundle: archiveless,
+        out: temp("o-"),
+        codeSigned: true,
+        updaterSigned: true,
+      }),
+    ).toThrow(/macos: expected one file matching .*tar.*found 0/);
+    // an archive that no key asked for is refused rather than shipped unsigned
+    expect(() =>
+      collect.collect({
+        ...base,
+        platform: "macos-arm64",
+        bundle: bundleTree("macos-arm64", true),
+        out: temp("o-"),
+        codeSigned: true,
+        updaterSigned: false,
+      }),
+    ).toThrow(/exists though no updater key/);
+  });
+
   it("C40 a missing installer, a missing .sig when the key was configured, and a .sig when it was not, all fail", () => {
     const args = { ...base, platform: "windows-x64", codeSigned: true };
     expect(() =>
@@ -522,6 +630,11 @@ describe("C43 latest.json exists only when it can be complete, and names the fou
       const file = `MordomoOS_1.2.3_${platform}${os === "macos" ? ".app.tar.gz" : os === "windows" ? "-setup.exe" : ".AppImage"}`;
       fs.writeFileSync(path.join(dir, file), "installer");
       if (updaterSigned) fs.writeFileSync(path.join(dir, `${file}.sig`), `signature of ${platform}\n`);
+      if (os === "linux") {
+        fs.writeFileSync(path.join(dir, `MordomoOS_1.2.3_${platform}.deb`), "deb");
+        if (updaterSigned)
+          fs.writeFileSync(path.join(dir, `MordomoOS_1.2.3_${platform}.deb.sig`), `signature of the deb\n`);
+      }
     }
     return dir;
   }
@@ -557,8 +670,26 @@ describe("C43 latest.json exists only when it can be complete, and names the fou
           signature: "signature of linux-x64",
           url: "https://github.com/tvpl/agentic-os/releases/download/v1.2.3/MordomoOS_1.2.3_linux-x64.AppImage",
         },
+        // an installed .deb asks for `linux-x86_64-deb` first (tauri-plugin-updater get_urls) and cannot install an AppImage
+        "linux-x86_64-deb": {
+          signature: "signature of the deb",
+          url: "https://github.com/tvpl/agentic-os/releases/download/v1.2.3/MordomoOS_1.2.3_linux-x64.deb",
+        },
       },
     });
+  });
+
+  it("C43 a .deb that is missing, or whose .sig is, leaves the manifest out (a .deb install would be told to fetch an AppImage)", () => {
+    const noSig = releaseDir();
+    fs.rmSync(path.join(noSig, "MordomoOS_1.2.3_linux-x64.deb.sig"));
+    expect(manifest.buildManifest({ ...args, dir: noSig }).missing.join("\n")).toContain(
+      "linux-x64: MordomoOS_1.2.3_linux-x64.deb or its .sig is not in",
+    );
+    const noDeb = releaseDir();
+    fs.rmSync(path.join(noDeb, "MordomoOS_1.2.3_linux-x64.deb"));
+    expect(manifest.buildManifest({ ...args, dir: noDeb }).missing.join("\n")).toContain(
+      "a .deb install could not update",
+    );
   });
 
   const gaps: Array<[string, Parameters<typeof releaseDir>[0], RegExp]> = [
@@ -642,6 +773,7 @@ describe("C43 latest.json exists only when it can be complete, and names the fou
       "darwin-aarch64",
       "darwin-x86_64",
       "linux-x86_64",
+      "linux-x86_64-deb",
       "windows-x86_64",
     ]);
   });
@@ -884,4 +1016,324 @@ describe("C45 the payload is lib, ui, seed, legal, LICENSE and the manifest, and
     },
     180_000,
   );
+});
+
+describe("C56 `package.mjs --payload <dir>` empties only a folder that is empty, missing or a payload it wrote", () => {
+  const ownPayload = () => {
+    const dir = temp("mordomo-own-payload-");
+    fs.mkdirSync(path.join(dir, "lib"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "lib", "mordomo.mjs"), "// bundle");
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "mordomo-os", private: true, packagedAt: "2026-10-16T00:00:00.000Z" }),
+    );
+    return dir;
+  };
+  const guard = (dir: string) => payloadGuard.assertEmptiablePayloadDir(dir, { root: ROOT });
+
+  it("C56 a folder with something else in it is refused, and nothing in it is touched", () => {
+    const dir = temp("mordomo-sentinel-");
+    fs.mkdirSync(path.join(dir, "docs"));
+    fs.writeFileSync(path.join(dir, "docs", "important.txt"), "keep me");
+    expect(() => guard(dir)).toThrow(/is not empty and is not a payload/);
+    expect(fs.readFileSync(path.join(dir, "docs", "important.txt"), "utf8")).toBe("keep me");
+    // a package.json is not enough: this repository's has the same name
+    const lookalike = temp("mordomo-lookalike-");
+    fs.writeFileSync(
+      path.join(lookalike, "package.json"),
+      fs.readFileSync(path.join(ROOT, "package.json"), "utf8"),
+    );
+    expect(() => guard(lookalike)).toThrow(/is not a payload/);
+    // nor is a payload manifest without the bundle beside it
+    const half = temp("mordomo-half-");
+    fs.writeFileSync(
+      path.join(half, "package.json"),
+      JSON.stringify({ name: "mordomo-os", private: true, packagedAt: "2026-10-16T00:00:00.000Z" }),
+    );
+    expect(() => guard(half)).toThrow(/is not a payload/);
+  });
+
+  it("C56 the repository, its parents, the working directory, the home folder, the file system root and a file are refused", () => {
+    expect(() => guard(ROOT)).toThrow(/repository or one of its parent folders/);
+    expect(() => guard(path.dirname(ROOT))).toThrow(/repository or one of its parent folders/);
+    expect(() => guard(path.join(ROOT, "apps", "..", "."))).toThrow(/repository/);
+    const cwd = temp("mordomo-cwd-");
+    expect(() =>
+      payloadGuard.assertEmptiablePayloadDir(cwd, { root: ROOT, cwd: path.join(cwd, "sub") }),
+    ).toThrow(/working directory/);
+    const home = temp("mordomo-home-");
+    expect(() => payloadGuard.assertEmptiablePayloadDir(home, { root: ROOT, home })).toThrow(/home folder/);
+    expect(() => guard(path.parse(ROOT).root)).toThrow(/root of the file system/);
+    const file = path.join(temp("mordomo-file-"), "f");
+    fs.writeFileSync(file, "x");
+    expect(() => guard(file)).toThrow(/not a folder/);
+  });
+
+  it("C56 a missing folder, an empty one and a payload written before are allowed", () => {
+    expect(() => guard(path.join(temp("mordomo-missing-"), "payload"))).not.toThrow();
+    expect(() => guard(temp("mordomo-empty-"))).not.toThrow();
+    expect(() => guard(ownPayload())).not.toThrow();
+    // the folder the workflows use sits in the repository and is not the repository
+    expect(() => guard(path.join(ROOT, "apps", "desktop", "payload"))).not.toThrow();
+  });
+
+  it("C56 the script itself stops before it deletes: exit 1, the folder as it was", async () => {
+    const { spawnSync } = await import("node:child_process");
+    const dir = temp("mordomo-sentinel-");
+    fs.mkdirSync(path.join(dir, "docs"));
+    fs.writeFileSync(path.join(dir, "docs", "important.txt"), "keep me");
+    const res = spawnSync(
+      process.execPath,
+      [path.join(ROOT, "scripts", "package.mjs"), "--payload", dir, "--skip-build", "--node", "none"],
+      { encoding: "utf8", timeout: 60_000 },
+    );
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("refusing to empty");
+    expect(fs.readFileSync(path.join(dir, "docs", "important.txt"), "utf8")).toBe("keep me");
+    const repo = spawnSync(
+      process.execPath,
+      [path.join(ROOT, "scripts", "package.mjs"), "--payload", ".", "--skip-build", "--node", "none"],
+      { encoding: "utf8", timeout: 60_000, cwd: ROOT },
+    );
+    expect(repo.status).toBe(1);
+    expect(repo.stderr).toContain("repository or one of its parent folders");
+    expect(fs.existsSync(path.join(ROOT, "package.json"))).toBe(true);
+  });
+});
+
+// ---- the signatures verify against the committed public key ----------------------------------------------------------
+
+/**
+ * A throwaway minisign key pair made in memory (nothing is stored), signing the way `tauri signer sign` does: `ED`, the
+ * BLAKE2b-512 of the file, and a trusted comment signed over the signature. The interoperability with the real signer
+ * was run by hand against `tauri signer generate` and `tauri signer sign` (checks.md, "Correções da rodada 1").
+ */
+function minisignPair(legacy = false) {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  const raw = publicKey.export({ type: "spki", format: "der" }).subarray(-32);
+  const id = crypto.randomBytes(8);
+  const pubText = `untrusted comment: minisign public key: ${id.toString("hex").toUpperCase()}\n${Buffer.concat([Buffer.from("Ed"), id, raw]).toString("base64")}\n`;
+  return {
+    pubkey: Buffer.from(pubText).toString("base64"),
+    sign(data: Buffer, trusted = "timestamp:1 file:x"): string {
+      const signed = legacy ? data : crypto.createHash("blake2b512").update(data).digest();
+      const sig = crypto.sign(null, signed, privateKey);
+      const header = Buffer.concat([Buffer.from(legacy ? "Ed" : "ED"), id, sig]).toString("base64");
+      const global = crypto
+        .sign(null, Buffer.concat([sig, Buffer.from(trusted)]), privateKey)
+        .toString("base64");
+      const text = `untrusted comment: signature from tauri secret key\n${header}\ntrusted comment: ${trusted}\n${global}\n`;
+      return Buffer.from(text).toString("base64");
+    },
+  };
+}
+
+describe("C59 a signature is checked against the public key before a file or a manifest ships", () => {
+  const data = Buffer.from("the installer");
+
+  it("C59 a minisign signature (prehashed or legacy) of the file by the key verifies; another file, another key, another comment do not", () => {
+    for (const legacy of [false, true]) {
+      const key = minisignPair(legacy);
+      const sig = key.sign(data);
+      expect(() => minisign.verifyMinisign({ pubkey: key.pubkey, signature: sig, data })).not.toThrow();
+      // the plain four lines are accepted as well as their base64
+      expect(() =>
+        minisign.verifyMinisign({
+          pubkey: key.pubkey,
+          signature: Buffer.from(sig, "base64").toString("utf8"),
+          data,
+        }),
+      ).not.toThrow();
+      expect(() =>
+        minisign.verifyMinisign({ pubkey: key.pubkey, signature: sig, data: Buffer.from("another file") }),
+      ).toThrow(/does not verify/);
+    }
+    const key = minisignPair();
+    const other = minisignPair();
+    expect(() => minisign.verifyMinisign({ pubkey: other.pubkey, signature: key.sign(data), data })).toThrow(
+      /another key/,
+    );
+    const text = Buffer.from(key.sign(data), "base64").toString("utf8").replace("timestamp:1", "timestamp:2");
+    expect(() => minisign.verifyMinisign({ pubkey: key.pubkey, signature: text, data })).toThrow(
+      /trusted comment/,
+    );
+    expect(() => minisign.verifyMinisign({ pubkey: key.pubkey, signature: "garbage", data })).toThrow(
+      /not a minisign signature/,
+    );
+    expect(() => minisign.verifyMinisign({ pubkey: "garbage", signature: key.sign(data), data })).toThrow(
+      /not a minisign public key/,
+    );
+  });
+
+  /** A repository tree with only the updater configuration, carrying `pubkey`. */
+  function rootWithKey(pubkey: string): string {
+    const root = temp("mordomo-root-");
+    const file = "apps/desktop/src-tauri/tauri.updater.conf.json";
+    const conf = JSON.parse(fs.readFileSync(path.join(ROOT, file), "utf8")) as Record<string, any>;
+    conf.plugins.updater.pubkey = pubkey;
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), JSON.stringify(conf));
+    return root;
+  }
+  /** `bundleTree` with real signatures by `key` over the bytes `bundleTree` wrote. */
+  function signedBundle(platform: string, key: ReturnType<typeof minisignPair>): string {
+    const bundle = bundleTree(platform, true);
+    const walk = (dir: string): string[] =>
+      fs
+        .readdirSync(dir, { withFileTypes: true })
+        .flatMap((d) => (d.isDirectory() ? walk(path.join(dir, d.name)) : [path.join(dir, d.name)]));
+    for (const file of walk(bundle).filter((f) => f.endsWith(".sig")))
+      fs.writeFileSync(file, key.sign(fs.readFileSync(file.slice(0, -4))));
+    return bundle;
+  }
+
+  it("C59 release-collect with the key copies a .sig that verifies and refuses one that does not (signed file changed, other key)", () => {
+    const key = minisignPair();
+    const ok = collect.collect({
+      version: "1.2.3",
+      platform: "linux-x64",
+      bundle: signedBundle("linux-x64", key),
+      out: temp("o-"),
+      codeSigned: false,
+      updaterSigned: true,
+      publicKey: key.pubkey,
+    });
+    expect(ok.written).toContain("MordomoOS_1.2.3_linux-x64.AppImage.sig");
+    const changed = signedBundle("linux-x64", key);
+    fs.appendFileSync(path.join(changed, "appimage", "MordomoOS_1.2.3_amd64.AppImage"), "tampered");
+    const args = { version: "1.2.3", platform: "linux-x64", codeSigned: false, updaterSigned: true };
+    expect(() =>
+      collect.collect({ ...args, bundle: changed, out: temp("o-"), publicKey: key.pubkey }),
+    ).toThrow(/AppImage\.sig: the signature does not verify/);
+    expect(() =>
+      collect.collect({
+        ...args,
+        bundle: signedBundle("linux-x64", key),
+        out: temp("o-"),
+        publicKey: minisignPair().pubkey,
+      }),
+    ).toThrow(/another key.*tauri\.updater\.conf\.json/);
+  });
+
+  it("C59 release-collect's command line reads the committed key: a placeholder with the updater on is an error, a matching pair passes", () => {
+    const key = minisignPair();
+    const argv = (bundle: string, root: string) => [
+      "--platform",
+      "windows-x64",
+      "--bundle",
+      bundle,
+      "--out",
+      temp("o-"),
+      "--version",
+      "1.2.3",
+      "--code-signed",
+      "true",
+      "--updater-signed",
+      "true",
+      "--root",
+      root,
+    ];
+    const good = run(collect.main, argv(signedBundle("windows-x64", key), rootWithKey(key.pubkey)));
+    expect(good.code, good.err).toBe(0);
+    const mismatch = run(
+      collect.main,
+      argv(signedBundle("windows-x64", key), rootWithKey(minisignPair().pubkey)),
+    );
+    expect(mismatch.code).toBe(1);
+    expect(mismatch.err).toMatch(/another key/);
+    const placeholder = run(
+      collect.main,
+      argv(signedBundle("windows-x64", key), rootWithKey("[A PREENCHER PELO DONO: chave]")),
+    );
+    expect(placeholder.code).toBe(1);
+    expect(placeholder.err).toMatch(/is placeholder, not a minisign key/);
+  });
+
+  it("C59 the manifest with the key lists a platform only when its signature verifies; the command line reads the committed key", () => {
+    const key = minisignPair();
+    const dir = temp("mordomo-release-");
+    for (const platform of Object.keys(collect.PLATFORMS)) {
+      const out = dir;
+      collect.collect({
+        version: "1.2.3",
+        platform,
+        bundle: signedBundle(platform, key),
+        out,
+        codeSigned: platform.startsWith("linux") ? false : true,
+        updaterSigned: true,
+        publicKey: key.pubkey,
+      });
+    }
+    const args = {
+      version: "1.2.3",
+      tag: "v1.2.3",
+      notes: "n",
+      date: "2026-10-12T00:00:00.000Z",
+      repo: "o/r",
+    };
+    const built = manifest.buildManifest({ ...args, dir, publicKey: key.pubkey });
+    expect(built.missing).toBeUndefined();
+    expect(Object.keys(built.manifest.platforms).sort()).toEqual([
+      "darwin-aarch64",
+      "darwin-x86_64",
+      "linux-x86_64",
+      "linux-x86_64-deb",
+      "windows-x86_64",
+    ]);
+    const wrong = manifest.buildManifest({ ...args, dir, publicKey: minisignPair().pubkey });
+    expect(wrong.missing).toHaveLength(4);
+    expect(wrong.missing.join("\n")).toMatch(/linux-x64: .*another key/);
+    // one signature that is not the file's
+    fs.appendFileSync(path.join(dir, "MordomoOS_1.2.3_windows-x64-setup.exe"), "x");
+    const one = manifest.buildManifest({ ...args, dir, publicKey: key.pubkey });
+    expect(one.missing).toHaveLength(1);
+    expect(one.missing[0]).toMatch(/^windows-x64: the signature does not verify/);
+    // the command line: the committed key decides
+    fs.appendFileSync(path.join(dir, "MordomoOS_1.2.3_windows-x64-setup.exe"), "");
+    const cli = (root: string) =>
+      run(manifest.main, [
+        "--dir",
+        dir,
+        "--version",
+        "1.2.3",
+        "--tag",
+        "v1.2.3",
+        "--out",
+        path.join(dir, "latest.json"),
+        "--root",
+        root,
+      ]);
+    expect(cli(rootWithKey(key.pubkey)).code).toBe(3); // the tampered installer above is still there
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("C59 a re-run of a tag leaves the draft with this run's files only", () => {
+  it("C59 the assets of the draft that this run does not produce are the ones to delete, and an empty folder deletes nothing", () => {
+    const dir = temp("mordomo-artifacts-");
+    for (const name of ["MordomoOS_1.2.3_macos-arm64_UNSIGNED.dmg", "SHA256SUMS.txt"])
+      fs.writeFileSync(path.join(dir, name), "x");
+    const existing = path.join(temp("mordomo-existing-"), "existing.txt");
+    fs.writeFileSync(
+      existing,
+      [
+        "MordomoOS_1.2.3_macos-arm64.dmg", // signed, by the earlier run
+        "MordomoOS_1.2.3_macos-arm64_UNSIGNED.dmg", // this run's
+        "latest.json", // this run could not write one
+        "SHA256SUMS.txt",
+        "",
+      ].join("\n"),
+    );
+    expect(staleAssets.staleAssets(fs.readFileSync(existing, "utf8").split("\n"), dir)).toEqual([
+      "MordomoOS_1.2.3_macos-arm64.dmg",
+      "latest.json",
+    ]);
+    const res = run(staleAssets.main, ["--existing", existing, "--dir", dir]);
+    expect(res.code).toBe(0);
+    expect(res.out).toBe("MordomoOS_1.2.3_macos-arm64.dmg\nlatest.json\n");
+    const empty = run(staleAssets.main, ["--existing", existing, "--dir", temp("mordomo-empty-")]);
+    expect(empty.code).toBe(1);
+    expect(empty.out).toBe("");
+    expect(run(staleAssets.main, ["--dir", dir]).code).toBe(2);
+  });
 });
