@@ -148,6 +148,23 @@ describe("C27 the webview loads only its own files and the service's loopback or
     expect(shell).toContain("Failure::stopped(sidecar.exit_code(), sidecar.stderr_tail())");
   });
 
+  it("C64 a start that fails puts the window on the shell's own screen unless it is there (policy::failure_needs_the_shell_screen, tested in shell-core), so a failed restart after a failed install never leaves it on a dead service", () => {
+    const shell = read(TAURI, "src", "shell.rs");
+    // the failure arm of `start` records the failure for the generation it belongs to, then moves the window
+    const arm = /Err\(failure\) => \{([\s\S]*?)\n {8}\}\n {8}Ok\(\(sidecar/.exec(shell)?.[1] ?? "";
+    expect(arm).toContain("inner.status = Status::Failed(failure);");
+    expect(arm).toContain("show_failure_on_shell_screen(app, local);");
+    expect(arm.indexOf("inner.generation == generation")).toBeGreaterThan(-1);
+    expect(arm.indexOf("inner.generation == generation")).toBeLessThan(
+      arm.indexOf("show_failure_on_shell_screen"),
+    );
+    const mover = /fn show_failure_on_shell_screen\([^)]*\) \{([\s\S]*?)\n\}/.exec(shell)?.[1] ?? "";
+    expect(mover).toContain("mordomo_shell_core::policy::failure_needs_the_shell_screen(");
+    expect(mover).toContain("window.navigate(local)");
+    // and the install path starts the service again through `start`, which is the arm above
+    expect(read(TAURI, "src", "updater.rs")).toContain("|| crate::shell::spawn_start(app.clone()),");
+  });
+
   it("C27 the installer carries the payload as a resource and nothing else of the repository; the identifier, product name and macOS hardening are the doors", () => {
     expect(conf.identifier).toBe("com.mordomo.desktop");
     expect(conf.productName).toBe("MordomoOS");

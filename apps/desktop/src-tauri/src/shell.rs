@@ -181,6 +181,11 @@ fn start(app: &AppHandle) {
             let mut inner = shell.lock();
             if inner.generation == generation {
                 inner.status = Status::Failed(failure);
+                let local = inner.local_screen.clone();
+                drop(inner);
+                // A start that follows a service that was stopped (an update whose install failed, then a restart that
+                // failed too) finds the window on the old Command Centre: show the failure on the shell's own screen.
+                show_failure_on_shell_screen(app, local);
             }
         }
         Ok((sidecar, _cfg)) => {
@@ -208,6 +213,22 @@ fn start(app: &AppHandle) {
             if mordomo_shell_core::policy::check_for_update_at_start(cfg!(feature = "updater"), &ready) {
                 crate::updater::check_in_background(app);
             }
+        }
+    }
+}
+
+/// Put the window on the shell's own screen, where the failure is shown, unless it is there already.
+fn show_failure_on_shell_screen(app: &AppHandle, local: Option<Url>) {
+    let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
+        return;
+    };
+    let current = window.url().ok();
+    if mordomo_shell_core::policy::failure_needs_the_shell_screen(
+        current.as_ref().map(Url::as_str),
+        local.as_ref().map(Url::as_str),
+    ) {
+        if let Some(local) = local {
+            let _ = window.navigate(local);
         }
     }
 }
