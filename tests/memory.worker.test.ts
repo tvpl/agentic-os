@@ -154,6 +154,7 @@ describe("S3 the index pass in a worker", () => {
       }
     })();
     let stats;
+    const passBegan = performance.now();
     try {
       stats = await r.ctx.indexer.indexAllAsync();
     } catch (error) {
@@ -165,6 +166,7 @@ describe("S3 the index pass in a worker", () => {
     }
     return {
       stats,
+      passMs: performance.now() - passBegan,
       writes: waits.length,
       longestWriteMs: Math.max(...waits),
       slowWrites: waits.filter((ms) => ms >= 100).length,
@@ -189,6 +191,11 @@ describe("S3 the index pass in a worker", () => {
     // the delay of the loop between its own turns: its 99th percentile, because a single scheduler stall of a shared
     // machine says nothing about the pass (the longest wait for the worker is the line above)
     expect(during.loopP99Ms, "loop p99").toBeLessThan(100);
+    // The price of a pass that never holds the lock for long: it rests six times what it held, so the same 3 000 files
+    // take about 2.2 times as long (29.7 s against 13.2 s measured, one writer on the service connection; 15 s with the
+    // rest at 0). A loose bound, four times the measurement, so a rest or a wave that grows without limit is caught and a
+    // loaded machine is not.
+    expect(during.passMs, "the pass").toBeLessThan(120_000);
   }, 300_000);
 
   it("C32 the same probe sees a worker that holds the write lock for 300 ms (so the bound on the longest write can fail)", async () => {
