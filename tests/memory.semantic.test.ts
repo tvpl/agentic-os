@@ -16,6 +16,7 @@ import {
   hashEmbed,
   type EmbeddingSettings,
 } from "../core/src/memory/embeddings.js";
+import { STOPWORDS } from "../core/src/memory/recall.js";
 import { SemanticSearch, fuse } from "../core/src/memory/semantic.js";
 import { VectorIndex } from "../core/src/memory/vectors.js";
 import { makeTempHome } from "./helpers.js";
@@ -33,6 +34,10 @@ interface Corpus {
 }
 const corpus = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/semantic-corpus.json"), "utf8"),
+) as Corpus;
+
+const morphology = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, "tests/fixtures/semantic-morphology.json"), "utf8"),
 ) as Corpus;
 
 const cleanups: Array<() => void | Promise<void>> = [];
@@ -75,6 +80,28 @@ const vectorRows = (ctx: AppContext) =>
     size: number;
   }>;
 const names = (hits: Array<{ name: string }>) => hits.map((h) => h.name.replace(/\.md$/, ""));
+/**
+ * The strongest cheap search WITHOUT vectors: the words of the question that are not stop words, any of them
+ * (`OR`, prefix match, the same FTS5 index and tokenizer), best BM25 first. The strict search of the product wants
+ * all of the words (`AND`); this is what the vectors have to beat to show they add something.
+ */
+function wordsAnyOf(ctx: AppContext, question: string, limit = 50): Array<{ name: string }> {
+  const terms = [
+    ...new Set(
+      question
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter((t) => t.length > 1 && !STOPWORDS.has(t)),
+    ),
+  ];
+  if (terms.length === 0) return [];
+  return ctx.db
+    .prepare(
+      `SELECT f.name AS name FROM files_fts JOIN files f ON f.id = files_fts.rowid
+        WHERE files_fts MATCH ? ORDER BY bm25(files_fts) LIMIT ?`,
+    )
+    .all(terms.map((t) => `"${t}"*`).join(" OR "), limit) as Array<{ name: string }>;
+}
 
 describe("S4 semantic search, off by default", () => {
   it("C43 with the defaults nothing is embedded, no extension is loaded, nothing is fetched; semantic is 409 and auto is the text search", async () => {
@@ -214,29 +241,64 @@ describe("S4 semantic search, off by default", () => {
     expect(ext).toEqual([]);
   });
 
-  it("C46 on the fixed corpus the hybrid search has the expected note in the top 3 for 11 of 12 questions and the words alone for 5", async () => {
+  it("C46 on the fixed corpus the hybrid search has the expected note in the top 3 for 11 of 12 questions and the strict words search for 5; an OR of the words also gets 11, so the gain of these questions is the relaxed match, not the vectors", async () => {
     const r = rig({ enabled: true, provider: "hash" });
     await r.ctx.indexer.indexAllAsync();
     expect(corpus.notes).toHaveLength(24);
     expect(corpus.questions).toHaveLength(12);
     const hit = (hits: Array<{ name: string }>, expected: string) =>
       names(hits).slice(0, 3).includes(expected);
-    let text = 0;
-    let hybrid = 0;
-    const missed: string[] = [];
+    const found = {
+      and: [] as string[],
+      or: [] as string[],
+      vectors: [] as string[],
+      hybrid: [] as string[],
+    };
     for (const q of corpus.questions) {
-      const viaText = await r.ctx.semantic.search({ query: q.q }, "text");
-      const viaBoth = await r.ctx.semantic.search({ query: q.q }, "auto");
-      if (hit(viaText, q.expected)) text++;
-      if (hit(viaBoth, q.expected)) hybrid++;
-      else missed.push(`${q.kind}: ${q.q}`);
+      if (hit(await r.ctx.semantic.search({ query: q.q }, "text"), q.expected)) found.and.push(q.q);
+      if (hit(wordsAnyOf(r.ctx, q.q), q.expected)) found.or.push(q.q);
+      if (hit(await r.ctx.semantic.search({ query: q.q }, "semantic"), q.expected)) found.vectors.push(q.q);
+      if (hit(await r.ctx.semantic.search({ query: q.q }, "auto"), q.expected)) found.hybrid.push(q.q);
     }
-    expect(hybrid).toBeGreaterThanOrEqual(11);
-    expect(text).toBeLessThanOrEqual(6);
+    const missed = corpus.questions
+      .filter((q) => !found.hybrid.includes(q.q))
+      .map((q) => `${q.kind}: ${q.q}`);
+    expect(found.hybrid.length).toBeGreaterThanOrEqual(11);
+    expect(found.and.length).toBeLessThanOrEqual(6);
+    expect(found.and).toHaveLength(5);
+    expect(found.hybrid).toHaveLength(11);
     // The one the hash cannot answer is the synonym: it reads spelling, not meaning (documented, not hidden).
     expect(missed).toEqual([`synonym: ${corpus.questions.find((q) => q.kind === "synonym")!.q}`]);
-    expect(text).toBe(5);
-    expect(hybrid).toBe(11);
+    // What the numbers do not say, said here: the words with OR find the same eleven. On these questions the vectors
+    // add no question to the words; the gain over the strict search comes from not requiring every word.
+    expect(found.or).toHaveLength(11);
+    expect(found.or).toEqual(found.hybrid);
+    expect(found.vectors.length).toBeGreaterThan(0);
+  });
+
+  it("C46 where the words fail (all of them, and any of them) and only the vectors can win: the other number of a -ção word, which porter leaves apart and the hash provider joins", async () => {
+    const r = rig({ enabled: true, provider: "hash" }, morphology.notes);
+    await r.ctx.indexer.indexAllAsync();
+    const hit = (hits: Array<{ name: string }>, expected: string) =>
+      names(hits).slice(0, 3).includes(expected);
+    const rows: Array<[string, boolean, boolean, boolean, boolean]> = [];
+    for (const q of morphology.questions) {
+      rows.push([
+        q.kind,
+        hit(await r.ctx.semantic.search({ query: q.q }, "text"), q.expected),
+        hit(wordsAnyOf(r.ctx, q.q), q.expected),
+        hit(await r.ctx.semantic.search({ query: q.q }, "semantic"), q.expected),
+        hit(await r.ctx.semantic.search({ query: q.q }, "auto"), q.expected),
+      ]);
+    }
+    expect(morphology.questions.filter((q) => q.kind === "other-number")).toHaveLength(6);
+    expect(morphology.questions.filter((q) => q.kind === "control")).toHaveLength(2);
+    // [kind, words AND, words OR, vectors alone, hybrid]
+    expect(rows).toEqual([
+      ...Array.from({ length: 6 }, () => ["other-number", false, false, true, true]),
+      ["control", true, true, true, true],
+      ["control", true, true, true, true],
+    ]);
   });
 
   it("C47 sqlite-vec ranks when it loads; when it does not (missing package, a platform it does not support, loadExtension failing) the same cosine runs in JavaScript, with no error, in the same order", async () => {
@@ -525,6 +587,44 @@ describe("S4 the http provider", () => {
     expect(server.requests).toHaveLength(1);
   }, 120_000);
 
+  it("C49 a row that today's policy excludes is not sent by a pass over a few paths either", async () => {
+    const server = await endpoint();
+    const r = rig(undefined, manyNotes(4));
+    fs.mkdirSync(path.join(r.dir, "privado"), { recursive: true });
+    fs.writeFileSync(
+      path.join(r.dir, "privado", "segredo.md"),
+      "# Segredo\n\nSEGREDO-QUE-NAO-SAI da maquina\n",
+    );
+    // indexed while nothing excluded it and nothing was sent
+    await r.ctx.indexer.indexAllAsync();
+    expect(
+      r.ctx.db.prepare("SELECT COUNT(*) AS c FROM files WHERE path LIKE '%segredo.md'").get(),
+    ).toMatchObject({ c: 1 });
+    // the owner now excludes the folder and turns the endpoint on; a note is saved (a pass over its path only)
+    const settings = r.ctx.settings();
+    settings.excludes = [...settings.excludes, "privado"];
+    settings.memory.embeddings = {
+      ...settings.memory.embeddings,
+      ...httpSettings(server.url),
+    } as EmbeddingSettings;
+    r.ctx.settingsStore.save(settings);
+    const fresh = path.join(r.dir, "nova.md");
+    fs.writeFileSync(fresh, "# Nova\n\numa nota nova\n");
+    await r.ctx.indexer.requestIndexPaths([fresh]);
+    const sent = server.requests.flatMap((q) => q.body.input as string[]);
+    expect(sent.length).toBe(5); // the four notes that were already there and the new one
+    expect(sent.some((text) => text.includes("SEGREDO-QUE-NAO-SAI"))).toBe(false);
+    expect(vectorRows(r.ctx)).toHaveLength(5);
+    // a full pass prunes the stale row, and still sends nothing of it
+    await r.ctx.indexer.indexAllAsync();
+    expect(
+      r.ctx.db.prepare("SELECT COUNT(*) AS c FROM files WHERE path LIKE '%segredo.md'").get(),
+    ).toMatchObject({ c: 0 });
+    expect(
+      server.requests.flatMap((q) => q.body.input as string[]).some((t) => t.includes("SEGREDO-QUE-NAO-SAI")),
+    ).toBe(false);
+  }, 120_000);
+
   it("C50 a provider that times out, answers 500, answers the wrong length or garbage leaves the pass finished with the words complete, names the failure, and the next pass embeds the rest", async () => {
     const real = AbortSignal.timeout.bind(AbortSignal);
     vi.spyOn(AbortSignal, "timeout").mockImplementation(() => real(150));
@@ -539,7 +639,12 @@ describe("S4 the http provider", () => {
     for (const [mode, message] of kinds) {
       server.mode.current = mode;
       const stats = await r.ctx.indexer.indexAllAsync();
-      expect(stats.added + stats.updated + (stats.embedded ?? 0) >= 0).toBe(true);
+      // the words are complete (all forty files added on the first pass, nothing left to add after) and nothing embedded
+      expect([stats.added, stats.updated, stats.embedded ?? 0], mode).toEqual([
+        mode === "hang" ? 40 : 0,
+        0,
+        0,
+      ]);
       expect(r.ctx.semantic.status().error, mode).toMatch(message);
       expect(
         r.ctx.db.prepare("SELECT COUNT(*) AS c FROM files WHERE path LIKE ?").get(`${r.dir}%`),

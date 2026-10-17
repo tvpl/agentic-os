@@ -68,6 +68,12 @@ export interface EmbedPendingOptions {
   /** True once the pass was asked to stop: checked between batches. */
   shouldStop?: () => boolean;
   onProgress?: (done: number, total: number) => void;
+  /**
+   * Today's policy over a stored row (`MemoryIndexer.rowFilter`). A row it refuses is not embedded: with an endpoint the
+   * text leaves the machine, and a row that a new exclude or a private folder now covers stays in `files` until a full
+   * pass prunes it - a pass over a few paths (a note just saved) does not.
+   */
+  allow?: (row: { root: string; rel: string }) => boolean;
 }
 
 /**
@@ -92,15 +98,16 @@ export async function embedPending(
   // A vector of a file that is gone, or of a kind that is not embedded, is not kept.
   db.prepare(`DELETE FROM file_vectors WHERE file_id NOT IN (SELECT id FROM files WHERE ext IN ${EMBEDDED_EXTENSIONS})`).run();
 
-  const owed = db
+  const due = db
     .prepare(
-      `SELECT f.id AS id, f.mtime AS mtime, f.size AS size
+      `SELECT f.id AS id, f.mtime AS mtime, f.size AS size, f.root AS root, f.rel AS rel
          FROM files f LEFT JOIN file_vectors v ON v.file_id = f.id
         WHERE f.ext IN ${EMBEDDED_EXTENSIONS}
           AND (v.file_id IS NULL OR v.provider != ? OR v.dim != ? OR v.mtime != f.mtime OR v.size != f.size)
         ORDER BY f.id`,
     )
-    .all(provider.id, provider.dim) as Array<{ id: number; mtime: number; size: number }>;
+    .all(provider.id, provider.dim) as Array<{ id: number; mtime: number; size: number; root: string; rel: string }>;
+  const owed = options.allow ? due.filter((row) => options.allow!(row)) : due;
   const textOf = db.prepare("SELECT substr(content, 1, ?) AS text FROM files_fts WHERE rowid = ?");
   const write = db.prepare(
     `INSERT INTO file_vectors (file_id, provider, dim, vec, mtime, size) VALUES (?, ?, ?, ?, ?, ?)
@@ -114,7 +121,9 @@ export async function embedPending(
   for (let from = 0; from < owed.length; from += size) {
     if (options.shouldStop?.()) return { embedded, stopped: true };
     const batch = owed.slice(from, from + size).map((row) => ({
-      ...row,
+      id: row.id,
+      mtime: row.mtime,
+      size: row.size,
       text: (textOf.get(provider.maxChars, row.id) as { text: string } | undefined)?.text ?? "",
     }));
     const sendable = batch.filter((row) => hasWords(row.text));

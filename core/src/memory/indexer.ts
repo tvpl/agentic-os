@@ -369,6 +369,7 @@ export class MemoryIndexer {
     const config = this.getSettings().memory.embeddings;
     let announced = false;
     const { embedded } = await embedPending(this.db, config, {
+      allow: this.rowFilter(),
       ...(options.signal ? { signal: options.signal } : {}),
       ...(options.shouldStop ? { shouldStop: options.shouldStop } : {}),
       onProgress: (done, total) => {
