@@ -41,11 +41,11 @@
 
 ## Handoff
 
-**Feature**: ciclo atual: contratos-rest (rodada 3), limpeza-legado (rodada 1) e licenca-comercial (rodada 2) em verificação; cerebro-v2 (13) e distribuicao (14) em construção
+**Feature**: ciclo atual encerrado: todas as features do roteiro até a 15 (inclui limpeza-legado 12, cerebro-v2 13, distribuicao 14, licenca-comercial 15) estão integradas, verificadas e fechadas com escalonamento ao dono; falta o relatório final
 **Where**: na branch `chore/tlc-spec-lean-skill`, integradas e com `verification.md` (as que usaram as três rodadas fecharam com escalonamento ao dono, nota no fim de cada relatório): seguranca-p0, ci-gate, motor-composicao, capacidades-aplicadas, contratos, preferencias-ui, provedores-plugaveis, api-v1, adaptadores-tipados, moldura-app, seguranca-p1, dados-v2, comandos-atalhos, design-system, escopos-dispositivo. Também integradas e fechadas com escalonamento: primitivas e sdk-core (três rodadas FAIL). Integradas e ainda em verificação: contratos-rest (rodadas 1 e 2 FAIL, correções integradas), licenca-comercial (rodada 1 FAIL, correção integrada; todo texto jurídico é minuta para o dono), limpeza-legado (integrada, rodada 1). Aceites pendentes do dono: "Perguntas ao dono" (AD-014, AD-018 a AD-025).
-**In progress**: verificações independentes de contratos-rest (R3), limpeza-legado (R1) e licenca-comercial (R2); construção de cerebro-v2 e distribuicao em worktrees à parte
-**Next step**: integrar cerebro-v2 e distribuicao, verificá-las (≤3 rodadas); depois o relatório final. Do dono: aceites de "Perguntas ao dono", revisão jurídica, segredos de assinatura, publicação npm, limpar o zip do histórico
-**Blockers**: nenhum; publicar pacotes npm e a revisão jurídica dependem do dono
+**In progress**: nada em worktree; resta a decisão do dono sobre os FAIL residuais (ver o fim de cada `verification.md`)
+**Next step**: o dono responde "Perguntas ao dono" (em especial limpeza-legado 1, distribuicao 16-20, cerebro-v2 13-18, licenca-comercial 10-11), registra os segredos de assinatura e a chave do atualizador, faz a revisão jurídica e decide publicar os pacotes npm; os números AD-0xx marcados "provisório" ficam como estão (sem colisão)
+**Blockers**: dependem do dono: segredos de assinatura e chave do atualizador (nenhum release assinado sem eles), revisão jurídica (EULA, PRIVACY, NOTICE, titular do LICENSE), publicação npm, F2 do limpeza-legado
 **Dependências**: as da fechamento anterior seguem (token do dono em disco, `rc_`/`brk_` no ambiente, agente com shell aprovado). Nova: a raiz já é a minuta FSL (`licenca-comercial`) e os pacotes `core` e `contracts` levam cópia byte a byte dela, com `license` `FSL-1.1-ALv2`; o titular segue `[A PREENCHER PELO DONO]`.
 **Uncommitted**: nenhum
 **Branch**: chore/tlc-spec-lean-skill
