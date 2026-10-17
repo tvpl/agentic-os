@@ -31,12 +31,37 @@ interface Anchor {
   attrs: Record<string, string>;
 }
 
-/** Runs the script on a page at `origin`; returns what it registered and a way to click. */
-function page(location: { protocol: string; hostname: string }) {
-  const listeners: Array<{ type: string; run: (event: unknown) => void }> = [];
+/** A DOM event as far as the script can tell: `defaultPrevented` turns true when anyone calls `preventDefault`. */
+interface FakeEvent {
+  defaultPrevented: boolean;
+  button: number;
+  preventDefault: () => void;
+  target: { closest: (selector: string) => unknown };
+}
+
+/**
+ * Runs the script on a page at `origin`; returns what it registered and a way to click. The fake DOM has the two phases
+ * that matter to the script: a click reaches the `document` listeners registered to capture first, then the page's own
+ * handlers on the link (`pageHandlers`, the router or menu that may take the click), then the `document` listeners that
+ * bubble. A listener registered with `true` or `{ capture: true }` is a capturing one; with nothing, a bubbling one.
+ */
+function page(
+  location: { protocol: string; hostname: string },
+  pageHandlers: Array<(event: FakeEvent) => void> = [],
+) {
+  const listeners: Array<{ type: string; run: (event: FakeEvent) => void; capture: boolean }> = [];
   const opened: Opened[] = [];
   const document = {
-    addEventListener: (type: string, run: (event: unknown) => void) => listeners.push({ type, run }),
+    addEventListener: (
+      type: string,
+      run: (event: FakeEvent) => void,
+      options?: boolean | { capture?: boolean },
+    ) =>
+      listeners.push({
+        type,
+        run,
+        capture: options === true || (typeof options === "object" && options.capture === true),
+      }),
   };
   const window = { open: (address: unknown, name: unknown) => opened.push({ address, name }) };
   vm.runInNewContext(SCRIPT, { location, document, window });
@@ -46,17 +71,19 @@ function page(location: { protocol: string; hostname: string }) {
     anchor: Anchor | null,
     { defaultPrevented = false, button = 0 }: { defaultPrevented?: boolean; button?: number } = {},
   ) => {
-    let prevented = false;
     const element = anchor && {
       hasAttribute: (name: string) => name in anchor.attrs,
       getAttribute: (name: string) => anchor.attrs[name] ?? null,
       href: anchor.href,
     };
-    const event = {
+    let inScript = false;
+    let scriptPrevented = false;
+    const event: FakeEvent = {
       defaultPrevented,
       button,
       preventDefault: () => {
-        prevented = true;
+        event.defaultPrevented = true;
+        if (inScript) scriptPrevented = true;
       },
       target: {
         closest: (selector: string) => {
@@ -66,8 +93,14 @@ function page(location: { protocol: string; hostname: string }) {
         },
       },
     };
-    for (const l of listeners.filter((x) => x.type === "click")) l.run(event);
-    return prevented;
+    const clicks = listeners.filter((x) => x.type === "click");
+    inScript = true;
+    for (const l of clicks.filter((x) => x.capture)) l.run(event);
+    inScript = false;
+    if (anchor) for (const handle of pageHandlers) handle(event);
+    inScript = true;
+    for (const l of clicks.filter((x) => !x.capture)) l.run(event);
+    return scriptPrevented; // whether the script took the click (the page's own preventDefault does not count)
   };
   return { listeners, opened, click, selectors };
 }
@@ -137,6 +170,21 @@ describe("C63 a click on a link that asks for a new window is handed to window.o
     untouched("the page prevented it", link("https://example.com/"), { defaultPrevented: true });
     untouched("middle button", link("https://example.com/"), { button: 1 });
     untouched("right button", link("https://example.com/"), { button: 2 });
+  });
+
+  it("C63 the script listens in the bubbling phase, after the page's own handlers, so a click the page took is left alone", () => {
+    const p = page(SERVICE);
+    expect(p.listeners).toHaveLength(1);
+    expect(p.listeners[0].capture).toBe(false);
+    // a router that takes the click on the link itself (a handler on the link runs before one on the document that bubbles)
+    const router = (event: FakeEvent) => event.preventDefault();
+    const taken = page(SERVICE, [router]);
+    expect(taken.click(link("https://example.com/"))).toBe(false); // the script did not take it
+    expect(taken.opened).toEqual([]);
+    // the same click with a page handler that leaves it alone is rerouted, so the test above is about the phase
+    const untouched = page(SERVICE, [() => undefined]);
+    untouched.click(link("https://example.com/"));
+    expect(untouched.opened).toEqual([{ address: "https://example.com/", name: "_blank" }]);
   });
 
   it("C63 the script listens on pages of the service's origin only; the shell's own screens and any other origin get no listener", () => {
