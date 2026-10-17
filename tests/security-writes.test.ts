@@ -2,6 +2,7 @@ import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { PathAccessError } from "@mordomo/core";
 import crypto from "node:crypto";
@@ -1797,5 +1798,23 @@ describe.skipIf(!POSIX)("C57 the guarded replace of the write primitive (cerebro
         TypeError,
       );
     }
+  });
+});
+
+describe("C57 the limits of the guarded save are written where the owner reads about security", () => {
+  const doc = fs
+    .readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "docs", "security.md"),
+      "utf8",
+    )
+    .replace(/\s+/g, " ");
+
+  it("C57 docs/security.md says that two processes saving one note at the same instant can both be told it was saved", () => {
+    expect(doc).toContain("Limit: two processes saving one note at the same instant");
+    expect(doc).toContain("`mordomo note save`");
+    expect(doc).toContain("more than one can be answered success");
+    expect(doc).toContain("the last rename wins");
+    expect(doc).toContain("there is no lock file");
+    expect(doc).toContain("Inside one process it is exact");
   });
 });

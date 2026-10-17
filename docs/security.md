@@ -348,6 +348,15 @@ validated (absolute, existing directory, outside `config/`) but not approval-gat
   the user). A link on the way, a hard link of a private file, a path
   outside `memory/`, `ROUTER.md`, `areas/` and `journal/` are refused (`403 forbidden_path`, `403
   note_not_editable`).
+- **Limit: two processes saving one note at the same instant.** The digest check is made by one process on
+  its own descriptor; between processes nothing orders the check and the swap, and there is no lock file. When two
+  processes (the service and `mordomo note save`, which runs in the CLI's own process, or two CLIs) save the same
+  note with the same `baseVersion` at the same instant, **more than one can be answered success** and the last
+  rename wins: one of the two texts is lost, and the loser was told it was saved. Measured with six processes: more
+  than one success in 7 of 40 rounds and in 27 of 80, never a round without a winner, and no torn file (each rename is
+  whole). Inside one process it is exact (twelve parallel saves: one `200`, eleven `409`). A person editing in the
+  Command Centre while an agent saves through the CLI is the case to keep in mind; the guard stays what it is for an
+  editor that saves in between by itself (`409 edit_conflict`).
 - **The worker is not the engine.** The index worker thread opens its own connection to the database and runs
   the indexer; its imports reach no engine, no owner lock, no restore lock and no migrations (a test walks the
   graph). It applies the same filter and reads through the same safe reader as the pass in the service's
