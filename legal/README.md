@@ -46,6 +46,14 @@ O CI roda tudo isso em `npm test` (`tests/legal.*.test.ts`).
 | `DCO-1.1.txt`                            | https://developercertificate.org/ (lido em 11/10/2026); `CONTRIBUTING.md` o reproduz       | `f7ac75b443f4ca16b503241344b41aeff9503b0c30bedc2b119551d83cb0fa90` |
 | `fonts/JetBrainsMono-OFL.txt`            | https://raw.githubusercontent.com/JetBrains/JetBrainsMono/master/OFL.txt (11/10/2026)     | `a76abf002c49097d146e86740a3105a5d00450b1592e820a1109a8c5680cd697` |
 | `fonts/Rajdhani-OFL.txt`                 | https://raw.githubusercontent.com/google/fonts/main/ofl/rajdhani/OFL.txt (11/10/2026)     | `f62ef357d3a1c3d27edd35a6e1ba350e8a8d13499797964eeadefbf0b3b15d1f` |
+| `sqlite-vec/LICENSE-MIT`                 | https://raw.githubusercontent.com/asg017/sqlite-vec/v0.1.9/LICENSE-MIT (17/10/2026)       | `6ce72bbe12d975bd5286e5ab0a064c069693300c47bccbc57bec18485f1621ea` |
+| `sqlite-vec/LICENSE-APACHE`              | https://raw.githubusercontent.com/asg017/sqlite-vec/v0.1.9/LICENSE-APACHE (17/10/2026)    | `a38070a94d4afd9cd710e3ce67bd1de78097cfe1784c1f0109ac95d3c196bfdc` |
+
+`sqlite-vec` e os cinco pacotes de plataforma dele declaram `MIT OR Apache` e **não trazem arquivo de licença** no pacote
+npm; o repositório do autor tem `LICENSE-MIT` e `LICENSE-APACHE` e nenhum `NOTICE` (404 na etiqueta `v0.1.9`). Os dois
+textos acima entram em `THIRD_PARTY_NOTICES.md` pela chave `licenseTexts` de `license-policy.json`; um arquivo de
+licença que o pacote instalado trouxer num release futuro vale no lugar deles. A escolha entre as duas licenças e a
+exigência de reproduzir o texto da Apache-2.0 ao lado de um binário nativo são perguntas ao advogado.
 
 ### Esquemas do CycloneDX (`vendor/cyclonedx/`, só para o teste do SBOM, não vão no instalador)
 

@@ -152,6 +152,31 @@ interface Classified {
  * `config/` and `logs/` are not "not editable", they are not there at all: they throw `PathAccessError` (403).
  */
 export function classifyNotePath(ctx: NoteContext, candidate: string): Classified {
+  return unnameableIsForbidden(candidate, () => classify(ctx, candidate));
+}
+
+/** Errors of the file system for a path that cannot be a name at all (`GET /api/memory/preview` answers them 403 too). */
+const UNNAMEABLE = new Set(["ENAMETOOLONG", "ERR_INVALID_ARG_VALUE", "EINVAL", "ELOOP"]);
+
+/**
+ * Run `work` for a path the caller named: one with a NUL byte, a component past the file system's limit or a loop of
+ * links is no file anyone could have (`403 forbidden_path`, like the preview), not an internal error. `ENOENT` and the
+ * like pass through for the route to call "missing".
+ */
+function unnameableIsForbidden<T>(candidate: string, work: () => T): T {
+  if (candidate.includes("\0")) throw new PathAccessError(candidate, "The path cannot name a file: it holds a NUL byte.");
+  try {
+    return work();
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== undefined && UNNAMEABLE.has(code)) {
+      throw new PathAccessError(candidate, "The path cannot name a file: a name in it is too long or it loops.");
+    }
+    throw err;
+  }
+}
+
+function classify(ctx: NoteContext, candidate: string): Classified {
   const logical = path.resolve(ctx.paths.memory, candidate);
   const real = realpathLenient(logical);
   const probe = homeReadScope(ctx.paths.home, [ctx.paths.home]);
@@ -201,6 +226,10 @@ function assertText(bytes: Buffer): string | null {
  * limit is `413 note_too_large` (the preview still shows its head); a file that is not UTF-8 text is read-only.
  */
 export function readNote(ctx: NoteContext, candidate: string): NoteRead {
+  return unnameableIsForbidden(candidate, () => readClassified(ctx, candidate));
+}
+
+function readClassified(ctx: NoteContext, candidate: string): NoteRead {
   const classified = classifyNotePath(ctx, candidate);
   const limit = noteLimitBytes(ctx.settings);
   const scope = workspaceScope(ctx.settings, [ctx.paths.home], { homeDir: ctx.paths.home });
@@ -312,7 +341,9 @@ export function saveNote(ctx: NoteContext, input: SaveNoteInput): NoteWritten {
   const bytes = Buffer.from(input.content, "utf8");
   if (bytes.length > limit) throw new NoteTooLargeError(limit);
   try {
-    writeWorkspaceFile(memoryScope(ctx), classified.logical, bytes, { mode: "replace", expectSha256: match[1]! });
+    unnameableIsForbidden(input.path, () =>
+      writeWorkspaceFile(memoryScope(ctx), classified.logical, bytes, { mode: "replace", expectSha256: match[1]! }),
+    );
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       throw new NoteMissingError("The note does not exist any more; it was not created.");

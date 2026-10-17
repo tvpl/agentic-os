@@ -336,8 +336,10 @@ validated (absolute, existing directory, outside `config/`) but not approval-gat
   make permanent. Reading a note for editing (`GET /api/memory/note`) is `content`.
 - **Every byte goes through the safe primitives.** A note is read with `openWorkspaceFile` and written with
   `writeWorkspaceFile`: `create` for a new one (never over what exists), and for a save a `replace` guarded by
-  `expectSha256`, checked on the very descriptor that is then truncated, so a file that changed is `409
-  edit_conflict` with its bytes and mtime untouched. A link on the way, a hard link of a private file, a path
+  `expectSha256`, checked on the very descriptor the file was opened through and again before the swap, so a file
+  that changed is `409 edit_conflict` with its bytes and mtime untouched. The new text is written to a temporary
+  file beside the note, flushed to the disk and renamed over it: a write that fails halfway (disk full, power) leaves
+  the old text whole. A link on the way, a hard link of a private file, a path
   outside `memory/`, `ROUTER.md`, `areas/` and `journal/` are refused (`403 forbidden_path`, `403
   note_not_editable`).
 - **The worker is not the engine.** The index worker thread opens its own connection to the database and runs
@@ -346,14 +348,20 @@ validated (absolute, existing directory, outside `config/`) but not approval-gat
   thread. The host holds the shared restore lock for it, so a restore cannot replace the database under a
   pass, and no pass starts under a restore.
 - **Limits.** The worker's heap is capped (512 MB old generation); one that runs past it dies alone
-  (`index_worker_out_of_memory`) and the previous index stays. It sleeps between blocks, and a cancel is read
-  between blocks (a worker that does not reach its next block is stopped after five seconds).
+  (`index_worker_out_of_memory`) and the previous index stays. It reads a block of files with no lock, writes it in one short transaction and rests several times as long as that
+  transaction held the database's write lock (the service writes to the same file, and waits for the lock with its
+  loop stopped), and a cancel is read between blocks (a worker that does not reach its next block is stopped after five seconds).
 
 - **Semantic search sends nothing unless the owner turns it on and names an endpoint.** `memory.embeddings`
   is off by default and reads off when it cannot be read (`SETTINGS_FAIL_CLOSED`). The `hash` provider never
-  leaves the process. The `http` provider sends note text only to a loopback address, or over `https` with
+  leaves the process. The `http` provider sends text only to a loopback address, or over `https` with
   `sendRemote` on, never to an address with a credential in it, with no redirects, a 30 s timeout and an 8 MB cap
-  on the answer; the API key is read from the environment, never stored. A paired device cannot change these
+  on the answer. **What it sends**: the text of every indexed `.md` and `.txt` file (the owner's folders too, not
+  only notes), and **the question of each search** in mode `auto` or `semantic` once a vector exists (the screen, the
+  CLI, MCP and paired devices alike); `mode=text` and a search with embeddings off send nothing. The API key is read
+  from the environment, never stored; `apiKeyEnv` names the variable and its value goes to the endpoint on every
+  request, so the name is held to capital letters, digits and `_`, and never `MORDOMO_*` (the service's own); an
+  owner who names the variable of another credential sends that credential there (the setting is the owner's). A paired device cannot change these
   settings (`PUT /api/settings` is an owner route). The destination is in `legal/network-policy.json` and
   `legal/PRIVACY.md`. The `sqlite-vec` extension is a native library loaded only when the search is on; it is
   MIT OR Apache-2.0 and is pinned exactly in `core/package.json`.

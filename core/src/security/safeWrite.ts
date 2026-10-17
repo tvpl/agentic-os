@@ -43,9 +43,14 @@ export interface WriteOptions {
   fileMode?: number;
   /**
    * `replace` only: the file must exist and its bytes must hash to this SHA-256 (hex) at the moment of the write,
-   * read through the very descriptor that is then truncated; any other bytes throw `EditConflictError` before a
+   * read through the very descriptor that was opened for it; any other bytes throw `EditConflictError` before a
    * byte is changed (a missing file is `ENOENT`, never created). This is what lets a save refuse to overwrite an
    * edit it never saw.
+   *
+   * A guarded replace never writes into the file itself: the new bytes go to a temporary file beside it (same folder,
+   * same permission bits), are flushed to the disk, are checked against the digest once more, and replace the name by
+   * a `rename`. A write that fails halfway (the disk is full, the power goes) leaves the old file whole; the temporary
+   * file is removed. The file is a new file afterwards (another inode: a hard link to the note keeps the old text).
    */
   expectSha256?: string;
 }
@@ -105,6 +110,7 @@ export function writeWorkspaceFile(
     throw err;
   }
   let stat: fs.Stats | null = null;
+  let open = true;
   try {
     stat = fs.fstatSync(fd);
     if (!stat.isFile()) throw new NotRegularFileError(candidate);
@@ -119,18 +125,99 @@ export function writeWorkspaceFile(
     }
     if (expected !== undefined && sha256OfDescriptor(fd, stat.size) !== expected)
       throw new EditConflictError();
-    if (mode === "replace") fs.ftruncateSync(fd, 0);
     const bytes = typeof data === "string" ? Buffer.from(data, "utf8") : data;
-    let written = 0;
-    while (written < bytes.length) {
-      written += fs.writeSync(fd, bytes, written, bytes.length - written, mode === "append" ? null : written);
+    if (expected !== undefined) {
+      replaceBeside(scope, candidate, real, stat, fd, expected, bytes, () => {
+        open = false;
+        fs.closeSync(fd);
+      });
+      return real;
     }
+    if (mode === "replace") fs.ftruncateSync(fd, 0);
+    writeAll(fd, bytes, mode === "append");
     return real;
   } catch (err) {
     if (!existed && stat?.isFile()) removeIfStillOurs(real, stat);
     throw err;
   } finally {
-    fs.closeSync(fd);
+    if (open) fs.closeSync(fd);
+  }
+}
+
+function writeAll(fd: number, bytes: Uint8Array, append: boolean): void {
+  let written = 0;
+  while (written < bytes.length) {
+    written += fs.writeSync(fd, bytes, written, bytes.length - written, append ? null : written);
+  }
+}
+
+/**
+ * The write of a guarded replace (see `WriteOptions.expectSha256`): temporary file beside the target, `fsync`, the
+ * digest and the name checked again, `rename`. `fd` is the descriptor the first check read through; it is closed
+ * (`closeTarget`) before the rename, since a file with an open handle cannot always be replaced on Windows.
+ */
+function replaceBeside(
+  scope: ReadScope,
+  candidate: string,
+  real: string,
+  stat: fs.Stats,
+  fd: number,
+  expected: string,
+  bytes: Uint8Array,
+  closeTarget: () => void,
+): void {
+  // a short name of a fixed shape: the note's own name may already be as long as a name can be
+  const temp = path.join(path.dirname(real), `.mordomo-save-${crypto.randomBytes(6).toString("hex")}.tmp`);
+  let tempFd: number | undefined;
+  try {
+    // O_EXCL does not follow a link either: a name planted in the folder fails the save instead of being written through
+    tempFd = fs.openSync(
+      temp,
+      fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | O_NOFOLLOW,
+      0o600,
+    );
+    // the bits of the file it replaces, not the umask's reading of them
+    if (process.platform !== "win32") fs.fchmodSync(tempFd, stat.mode & 0o7777);
+    writeAll(tempFd, bytes, false);
+    fs.fsyncSync(tempFd);
+    fs.closeSync(tempFd);
+    tempFd = undefined;
+    // Writing took time: the bytes the edit was based on must still be the ones in the file, and the name must still
+    // be that file on the path that was checked
+    if (sha256OfDescriptor(fd, fs.fstatSync(fd).size) !== expected) throw new EditConflictError();
+    if (assertWritablePath(scope, candidate) !== real) throw changed(candidate);
+    if (process.platform !== "win32") {
+      const named = fs.lstatSync(real);
+      if (named.ino !== stat.ino || named.dev !== stat.dev) throw changed(candidate);
+    }
+    closeTarget();
+    fs.renameSync(temp, real);
+  } catch (err) {
+    if (tempFd !== undefined) {
+      try {
+        fs.closeSync(tempFd);
+      } catch {
+        /* closed already */
+      }
+    }
+    fs.rmSync(temp, { force: true }); // the name is random and was created here: nobody else's file
+    throw err;
+  }
+  syncFolder(path.dirname(real));
+}
+
+/** Make the rename durable. Best effort: a folder cannot be opened for this on Windows, and the data is safe already. */
+function syncFolder(dir: string): void {
+  if (process.platform === "win32") return;
+  try {
+    const fd = fs.openSync(dir, fs.constants.O_RDONLY);
+    try {
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    /* some file systems refuse it */
   }
 }
 

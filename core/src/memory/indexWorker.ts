@@ -12,7 +12,7 @@ import { parentPort } from "node:worker_threads";
 import Database from "better-sqlite3";
 import type { IndexProgress } from "@mordomo/contracts";
 import type { Settings } from "../config/schema.js";
-import { IncompleteIndexScanError, MemoryIndexer } from "./indexer.js";
+import { IncompleteIndexScanError, MemoryIndexer, WRITE_REST_RATIO } from "./indexer.js";
 import { StartMessage, type WorkerMessage } from "./indexProtocol.js";
 
 const port = parentPort;
@@ -39,6 +39,7 @@ async function run(start: StartMessage): Promise<void> {
     const cancelled = () => post({ t: "failed", code: "index_cancelled", message: "cancelled", previousIndexPreserved: true });
     const onProgress = (progress: IndexProgress) => post({ t: "progress", progress });
     const pass = indexer.iteratePass(onProgress, start.only, start.runId);
+    let began = performance.now();
     let step = pass.next();
     while (!step.done) {
       if (stopped()) {
@@ -46,7 +47,13 @@ async function run(start: StartMessage): Promise<void> {
         cancelled();
         return;
       }
-      sleep(start.paceMs);
+      // The write lock is the service's too. The service polls for it at growing intervals and does not queue, so the
+      // lock has to be free for at least `WRITE_REST_RATIO` times as long as it was held: what the step spent reading
+      // files counts, the rest is slept (never less than the pace the host asked for). See `WRITE_REST_RATIO`.
+      const held = indexer.takeWriteMs();
+      const free = performance.now() - began - held;
+      sleep(Math.max(start.paceMs, Math.ceil(held * WRITE_REST_RATIO - free)));
+      began = performance.now();
       step = pass.next();
     }
     const stats = step.value;

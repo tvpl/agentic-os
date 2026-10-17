@@ -78,6 +78,28 @@ describe("S4 nothing of an engine is shared with another", () => {
       expect(reason.length, item).toBeGreaterThan(20);
   });
 
+  it("C55 the module-state list is still the nine, and none of them belongs to the second brain's new modules", () => {
+    expect(Object.keys(PROCESS_SCOPED)).toHaveLength(9);
+    const memory = Object.keys(PROCESS_SCOPED).filter((item) => item.startsWith("core/src/memory/"));
+    // the two that were there before it (a WeakMap per bus, a memo per database)
+    expect(memory.sort()).toEqual([
+      "core/src/memory/journal.ts installed",
+      "core/src/memory/related.ts caches",
+    ]);
+    // the worker host, the notes, the links and the semantic search keep their state on an instance
+    for (const file of [
+      "indexHost",
+      "notes",
+      "links",
+      "linkParser",
+      "semantic",
+      "embeddings",
+      "vectors",
+      "indexWorker",
+    ])
+      expect(Object.keys(PROCESS_SCOPED).join("\n"), file).not.toContain(`core/src/memory/${file}.ts`);
+  });
+
   it("C31 what one engine announces, another never hears", async () => {
     const echo = echoProvider();
     const a = buildEngine([echo]);

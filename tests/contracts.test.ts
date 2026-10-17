@@ -95,6 +95,7 @@ describe("S1 the contracts package", () => {
         "DEFAULT_HUD",
         "DEVICE_SCOPES",
         "DataMappingSchema",
+        "EMBEDDINGS_KEY_ENV",
         "EVENT_ENVELOPES",
         "EVENT_SCHEMAS",
         "EVENT_VERSIONS",

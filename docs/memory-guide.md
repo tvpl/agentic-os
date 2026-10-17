@@ -259,7 +259,9 @@ or to save your text as a copy. The limit is the smaller of `limits.maxIndexedFi
 Markdown links, never the ones inside code blocks, code spans or the front matter. `GET /api/memory/links?id=`
 answers who points at a file and where its own links lead; a link that leads nowhere is listed as broken. A
 name that several files share resolves to the one in the same folder, else the shortest path, else the first
-alphabetically, and the others come back as `alternatives`. **Renaming a note never rewrites other files**: the
+alphabetically, and the others come back as `alternatives`. Names are compared without regard to case or to how an
+accent is spelled (`[[Édito]]`, `[[édito]]` and a file the system stored as `E` plus a combining accent are one name;
+without the accent it is another). **Renaming a note never rewrites other files**: the
 links that pointed at the old name show as broken in their sources until you fix them (or rename it back).
 
 **The index worker.** The pass that scans, reads, indexes, links and relates the files runs in a
@@ -285,12 +287,21 @@ turning it off deletes the vectors at the next index pass.
   shares with it even when other words of the question are not in the note (which the strict word search misses),
   but it does **not** understand synonyms: "refund" and "reimbursement" are as far apart as any two words. On the
   fixed corpus of `tests/fixtures/semantic-corpus.json` (24 notes, 12 questions) the hybrid search puts the right
-  note in the first three for 11 questions and the words alone for 5; the one it misses asks for a synonym.
-- **`provider: "http"`** sends the text of each note (cut at 8 000 characters, 16 per request) to `endpoint`, an
+  note in the first three for 11 questions and the strict word search (every word of the question) for 5; the one it
+  misses asks for a synonym. **What that number does not show**: a search for _any_ of the words, ranked by BM25,
+  also gets the same 11, so on those questions the gain comes from not requiring every word, and the vectors add
+  nothing to it. What the `hash` vectors do add is measured on `tests/fixtures/semantic-morphology.json`: a question
+  made of the other number of Portuguese `-ção` and `-ão` words ("devoluções" for a note that says "devolução")
+  finds its note by the vectors, and neither the strict nor the any-word search finds it. Meaning (synonyms, a
+  question that shares no word with the note) needs the `http` provider.
+- **`provider: "http"`** sends the text of each indexed `.md` or `.txt` file (the folders you indexed, not only your
+  notes; cut at 8 000 characters, 16 per request) and **the question of every search** in mode `auto` or `semantic`
+  (once there is a vector; mode `text` sends nothing) to `endpoint`, an
   OpenAI-style `POST` `{ "model", "input": [...] }` answering `{ "data": [{ "embedding": [...] }] }`, which gives real
   semantics. It is sent only to a loopback address (an embeddings server on this machine) or, with `sendRemote`
   on, to an `https` address; `model` and `dimensions` (the length of one vector) are required; the key is read from
-  the environment variable named by `apiKeyEnv`, never from `settings.json`; there are no redirects, a 30-second
+  the environment variable named by `apiKeyEnv` (capital letters, digits and `_`, not `MORDOMO_*`; its value goes to the
+  endpoint on every request, so name a key made for it), never from `settings.json`; there are no redirects, a 30-second
   timeout and an 8 MB cap on the answer. If the endpoint fails, the pass still ends with the word index complete and
   `GET /api/memory/status` (`semantic.error`) says why; the next pass embeds the rest. This is a network point:
   `legal/PRIVACY.md` lists it, off by default.

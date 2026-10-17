@@ -21,6 +21,7 @@ import {
   type OpenApiDocument,
 } from "../apps/api/src/openapi.js";
 import { buildWorld, runScenarios, type Result, type World } from "./helpers/contractWorld.js";
+import { CEREBRO_V2_ROUTES } from "./helpers/routeScopes.js";
 
 // ajv and ajv-formats are CommonJS: the default export may be the module or its `default`.
 const Ajv2020 = ((Ajv2020Module as unknown as { default?: unknown }).default ??
@@ -85,6 +86,31 @@ afterAll(async () => {
 });
 
 describe("S3 the document", () => {
+  it("C53 the document carries the five routes of the second brain: operation id, scope, the request it reads, the success status and every declared error", () => {
+    for (const [key, want] of Object.entries(CEREBRO_V2_ROUTES)) {
+      const entry = API[want.id]!;
+      const op = operationOf(entry);
+      expect(op, key).toBeDefined();
+      expect(op.operationId, key).toBe(want.id);
+      expect(op["x-mordomo-scope"], key).toBe(want.scope);
+      expect(
+        Object.keys(op.responses).filter((s) => s.startsWith("2")),
+        key,
+      ).toEqual(want.success.map(String));
+      for (const error of want.errors) {
+        const [status, code] = error.split(" ");
+        const response = op.responses[status!];
+        expect(response, `${key} ${error}`).toBeDefined();
+        expect(JSON.stringify(response), `${key} ${error}`).toContain(code!);
+      }
+      expect(
+        op.parameters.some((p) => p.in === "query"),
+        `${key} query`,
+      ).toBe(want.reads === "query");
+      expect(op.requestBody !== undefined, `${key} body`).toBe(want.reads === "body");
+    }
+  });
+
   it("C15 every route has parameters, request body and a response schema", () => {
     expect(doc.openapi).toBe("3.1.0");
     const operations = Object.values(doc.paths).reduce((n, methods) => n + Object.keys(methods).length, 0);

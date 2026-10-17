@@ -97,6 +97,11 @@ describe("C24 the links a Markdown file holds", () => {
 
   it("C24 a wikilink key has no heading, no .md, forward slashes and lower case", () => {
     expect(wikilinkKey(" Pasta\\Sub/Nota.MD#Parte ")).toBe("pasta/sub/nota");
+    // accents: composed (NFC) and lower case in the Unicode sense, however the person or the file system spelled them
+    expect(wikilinkKey("Édito")).toBe("édito");
+    expect(wikilinkKey("E\u0301dito")).toBe("édito");
+    expect(wikilinkKey("AÇÃO.MD")).toBe("ação");
+    expect(wikilinkKey("Índice/Pão de Queijo")).toBe("índice/pão de queijo");
     expect(wikilinkKey("./Nota.markdown")).toBe("nota");
     expect(wikilinkKey("foto.PNG")).toBe("foto.png");
     expect(wikilinkKey("#só-heading")).toBe("");
@@ -223,6 +228,122 @@ describe("S2 backlinks and broken links", () => {
       [sameFolder, 1],
     ]);
     expect((await links(alpha)).backlinks.map((b) => b.file.path)).toEqual([sameFolder]);
+  });
+
+  it("C26 a wikilink to a note whose name starts with an accented capital resolves, however it is typed or stored", async () => {
+    const root = area();
+    const edito = put(path.join(root, "Édito.md"), "# Édito\n");
+    const indice = put(path.join(root, "Índice.md"), "# Índice\n");
+    const acao = put(path.join(root, "Ação.md"), "# Ação\n");
+    const acaoOutra = put(path.join(root, "zz", "Ação.md"), "# Ação, outra\n");
+    const queijo = put(path.join(root, "Pão de Queijo.md"), "# Queijo\n");
+    const cafe = put(path.join(root, "Cafe\u0301.md"), "# Café, NFD no disco\n"); // 'e' + combining acute
+    const pasta = put(path.join(root, "pt-BR", "Édito.md"), "# Édito, na pasta\n");
+    // one link a line: a line's links to the same name are one row
+    const typed = [
+      "[[Édito]]", //                       1  the same name typed four ways: the file in this folder wins
+      "[[édito]]",
+      "[[ÉDITO]]",
+      "[[E\u0301dito]]", //                 4
+      "[[Índice]]", //                       5
+      "[[índice|o índice]]",
+      "[[ação]]", //                         7  two files are called Ação: the shortest path wins
+      "[[AÇÃO]]",
+      "[[Pão de Queijo]]", //                9
+      "[[pão de queijo#Receita]]",
+      "[[Café]]", //                        11  a file name stored decomposed
+      "[[cafe\u0301]]",
+      "[[CAFÉ]]",
+      "[[Edito]]", //                       14  without the accent it is another name
+      "[[Acao]]",
+      "[[pt-BR/Édito]]", //                 16
+      "[[../Édito]]", //                    17  not a key
+    ];
+    const source = put(path.join(root, "pt-BR", "fonte.md"), typed.join("\n") + "\n");
+    const fromRoot = put(path.join(root, "raiz.md"), "[[Édito]]\n");
+    await ctx.indexer.indexAllAsync();
+    const outgoing = (await links(source)).outgoing;
+    expect(outgoing).toHaveLength(typed.length);
+    expect(outgoing.map((o) => o.resolved?.path ?? null)).toEqual([
+      pasta,
+      pasta,
+      pasta,
+      pasta,
+      indice,
+      indice,
+      acao,
+      acao,
+      queijo,
+      queijo,
+      cafe,
+      cafe,
+      cafe,
+      null,
+      null,
+      pasta,
+      null,
+    ]);
+    expect(outgoing[6]!.alternatives.map((a) => a.path)).toEqual([acaoOutra]);
+    expect(outgoing.map((o) => o.target).slice(0, 4)).toEqual(["édito", "édito", "édito", "édito"]);
+    // each target has its backlinks, the same note's other files none of them
+    expect((await links(pasta)).backlinks.map((b) => [b.file.path, b.line])).toEqual([
+      [source, 1],
+      [source, 2],
+      [source, 3],
+      [source, 4],
+      [source, 16],
+    ]);
+    expect((await links(edito)).backlinks.map((b) => [b.file.path, b.line])).toEqual([[fromRoot, 1]]);
+    expect((await links(indice)).backlinks.map((b) => b.line)).toEqual([5, 6]);
+    expect((await links(acao)).backlinks.map((b) => b.line)).toEqual([7, 8]);
+    expect((await links(acaoOutra)).backlinks).toEqual([]);
+    expect((await links(queijo)).backlinks.map((b) => b.line)).toEqual([9, 10]);
+    expect((await links(cafe)).backlinks.map((b) => b.line)).toEqual([11, 12, 13]);
+  });
+
+  it("C30 links stored by the first extraction (decomposed accents) are folded by the next full pass, opening no file", async () => {
+    const root = area();
+    const alvo = put(path.join(root, "Édito.md"), "# Édito\n");
+    const source = put(path.join(root, "origem.md"), "[[E\u0301dito]]\n[[Édito#parte]]\n[[outro]]\n");
+    await ctx.indexer.indexAllAsync();
+    expect((await links(source)).outgoing.map((o) => o.resolved?.path ?? null)).toEqual([alvo, alvo, null]);
+    // what version 1 stored: lower case, never composed (and the marker of that version)
+    ctx.db
+      .prepare("UPDATE note_links SET target = 'e\u0301dito' WHERE src_id = ? AND target = 'édito'")
+      .run(idOf(source));
+    ctx.db.prepare("UPDATE meta SET value = '1' WHERE key = 'index.note_links'").run();
+    expect((await links(source)).outgoing.map((o) => o.target)).toEqual([
+      "e\u0301dito",
+      "e\u0301dito",
+      "outro",
+    ]);
+    expect((await links(source)).outgoing.map((o) => o.resolved?.path ?? null)).toEqual([null, null, null]);
+    expect((await links(alvo)).backlinks).toEqual([]);
+
+    const opened: string[] = [];
+    const realOpen = fs.openSync;
+    (fs as any).openSync = (file: fs.PathLike, ...rest: unknown[]) => {
+      if (String(file).startsWith(root)) opened.push(String(file));
+      return (realOpen as (...a: unknown[]) => number)(file, ...rest);
+    };
+    try {
+      await ctx.indexer.indexAllAsync();
+    } finally {
+      (fs as any).openSync = realOpen;
+    }
+    expect(opened).toEqual([]);
+    expect((await links(source)).outgoing.map((o) => [o.target, o.resolved?.path ?? null])).toEqual([
+      ["édito", alvo],
+      ["édito", alvo],
+      ["outro", null],
+    ]);
+    expect((await links(alvo)).backlinks.map((b) => [b.file.path, b.line])).toEqual([
+      [source, 1],
+      [source, 2],
+    ]);
+    expect(ctx.db.prepare("SELECT value FROM meta WHERE key = 'index.note_links'").get()).toEqual({
+      value: "2",
+    });
   });
 
   it("C27 creating the target of a broken link resolves it and deleting it breaks it again, without reading any source", async () => {

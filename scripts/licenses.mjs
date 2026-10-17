@@ -186,6 +186,19 @@ export function loadPolicy(root = ROOT) {
       throw new EnvironmentError(`${POLICY_FILE}: "${name}" must be a list of SPDX identifiers`);
   policy.overrides ??= {};
   policy.bundled ??= [];
+  policy.licenseTexts ??= {};
+  for (const [id, entry] of Object.entries(policy.licenseTexts))
+    if (
+      !Array.isArray(entry.files) ||
+      entry.files.length === 0 ||
+      entry.files.some((f) => typeof f !== "string") ||
+      typeof entry.source !== "string" ||
+      typeof entry.reason !== "string" ||
+      !entry.reason.trim()
+    )
+      throw new EnvironmentError(
+        `${POLICY_FILE}: licenseTexts["${id}"] needs "files" (a list of paths), "source" and "reason"`,
+      );
   return policy;
 }
 
@@ -229,6 +242,25 @@ export function licenseTextOf(root, pkg) {
   const texts = files.map((name) => normalizeText(fs.readFileSync(path.join(dir, name), "utf8")));
   if (files.length === 1) return texts[0];
   return files.map((name, i) => `[${name}]\n${texts[i]}`).join("\n\n");
+}
+
+/**
+ * The text of a package that ships none of its own, from the files the policy names for it (`licenseTexts`, kept under
+ * `legal/vendor/`). The installed package always wins: this is read only when `licenseTextOf` found nothing. The
+ * text is the same for every package an entry names, so they share one block in the notice; nothing in it depends on
+ * the machine that generates it.
+ */
+export function vendoredTextOf(root, policy, pkg) {
+  const entry = policy.licenseTexts[`${pkg.name}@${pkg.version}`];
+  if (!entry) return null;
+  const head =
+    `(O pacote não inclui arquivo de licença. Licença declarada: ${pkg.expression}. ` +
+    `Os textos abaixo são os do repositório do autor, copiados sem alteração de ${entry.source}; ` +
+    `quem recebe o software pode escolher qualquer um dos dois.)`;
+  const files = entry.files.map(
+    (file) => `[${path.basename(file)}]\n${normalizeText(fs.readFileSync(path.join(root, file), "utf8"))}`,
+  );
+  return [head, ...files].join("\n\n");
 }
 
 function authorOf(pkg, root) {
@@ -370,7 +402,7 @@ export function renderNotice(root, policy, distributed, tooling) {
 
   const groups = new Map();
   for (const r of distributed) {
-    let text = licenseTextOf(root, r);
+    let text = licenseTextOf(root, r) ?? vendoredTextOf(root, policy, r);
     if (text === null) {
       const author = r.author ?? authorOf(r, root);
       text =

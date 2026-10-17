@@ -1,0 +1,71 @@
+{
+  "about": "Written before the hash provider was run on it. Six pt-BR notes and, for each, a question made only of the -ção/-ções and -ão/-ões forms the other number of the note's own words: SQLite's porter stemmer (English) leaves those apart, the stemmer of the hash provider (stemLite) joins them. Control questions use the very words of the note, so the words find it too.",
+  "notes": [
+    {
+      "name": "politica-de-devolucao",
+      "text": "# Política de devolução\n\nA devolução de um produto é aceita em até trinta dias. A reclamação deve trazer o número do pedido. A solicitação é analisada pela equipe de atendimento.\n"
+    },
+    {
+      "name": "inscricao-no-evento",
+      "text": "# Inscrição no evento\n\nA inscrição é feita pelo formulário. A confirmação chega por mensagem e a alteração dos dados é possível até a véspera. A participação exige documento com foto.\n"
+    },
+    {
+      "name": "pagamento-de-fornecedores",
+      "text": "# Pagamento de fornecedores\n\nO pagamento acontece em trinta dias. Cada fatura passa por aprovação e conferência. A cobrança em atraso gera multa e a negociação é feita pelo financeiro.\n"
+    },
+    {
+      "name": "manutencao-dos-servidores",
+      "text": "# Manutenção dos servidores\n\nA manutenção preventiva ocorre aos domingos. A atualização dos pacotes e a verificação dos discos são registradas. A interrupção do serviço é avisada com antecedência.\n"
+    },
+    {
+      "name": "contratacao-de-pessoas",
+      "text": "# Contratação de pessoas\n\nA contratação segue etapas: seleção, entrevista e proposta. A avaliação técnica é feita por duas pessoas. A integração começa na primeira semana.\n"
+    },
+    {
+      "name": "reuniao-semanal",
+      "text": "# Reunião semanal\n\nA reunião acontece às terças. A pauta é enviada na véspera e a decisão fica registrada na ata. As ações têm responsável e prazo.\n"
+    }
+  ],
+  "questions": [
+    {
+      "q": "devoluções reclamações solicitações",
+      "expected": "politica-de-devolucao",
+      "kind": "other-number"
+    },
+    {
+      "q": "inscrições confirmações alterações",
+      "expected": "inscricao-no-evento",
+      "kind": "other-number"
+    },
+    {
+      "q": "aprovações negociações",
+      "expected": "pagamento-de-fornecedores",
+      "kind": "other-number"
+    },
+    {
+      "q": "manutenções atualizações verificações interrupções",
+      "expected": "manutencao-dos-servidores",
+      "kind": "other-number"
+    },
+    {
+      "q": "contratações seleções avaliações integrações",
+      "expected": "contratacao-de-pessoas",
+      "kind": "other-number"
+    },
+    {
+      "q": "reuniões decisões",
+      "expected": "reuniao-semanal",
+      "kind": "other-number"
+    },
+    {
+      "q": "devolução reclamação solicitação",
+      "expected": "politica-de-devolucao",
+      "kind": "control"
+    },
+    {
+      "q": "reunião decisão ações",
+      "expected": "reuniao-semanal",
+      "kind": "control"
+    }
+  ]
+}

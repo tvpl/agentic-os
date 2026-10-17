@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { EMBEDDINGS_KEY_ENV } from "@mordomo/contracts";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -900,6 +901,64 @@ describe("C52 memory.embeddings", () => {
       expect(loaded.memory.embeddings.sendRemote, JSON.stringify(value)).toBe(false);
       expect(fs.readFileSync(`${paths.settingsFile}.invalid`, "utf8")).toBe(original);
       expect(fs.readFileSync(paths.settingsFile, "utf8")).toBe(original);
+    }
+  });
+
+  it("C52 apiKeyEnv names a conventional environment variable (capital letters, digits, _; not MORDOMO_*) and nothing else; empty means no key", () => {
+    const read = (apiKeyEnv: string) => SettingsSchema.safeParse({ memory: { embeddings: { apiKeyEnv } } });
+    for (const name of ["OPENAI_API_KEY", "KEY", "A", "EMBEDDINGS_KEY_2", "X".repeat(64), ""]) {
+      const parsed = read(name);
+      expect(parsed.success, name).toBe(true);
+      expect((parsed.data as any).memory.embeddings.apiKeyEnv, name).toBe(name);
+    }
+    const refused = [
+      "lower",
+      "Mixed_Case",
+      "1KEY",
+      "_KEY",
+      "MORDOMO_TOKEN",
+      "MORDOMO_",
+      "MORDOMO_TEST_EMBEDDINGS_KEY",
+      "KEY WITH SPACE",
+      " KEY",
+      "KEY\n",
+      "A-B",
+      "KEY=1",
+      "$HOME",
+      "KÉY",
+      "X".repeat(65),
+    ];
+    for (const name of refused) expect(read(name).success, JSON.stringify(name)).toBe(false);
+    // the predicate the request is made through says the same
+    expect(refused.filter((name) => EMBEDDINGS_KEY_ENV.test(name))).toEqual([]);
+    expect(["OPENAI_API_KEY", "KEY"].every((name) => EMBEDDINGS_KEY_ENV.test(name))).toBe(true);
+  });
+
+  it("C52 a settings.json whose apiKeyEnv is not a conventional name reads as no key, keeps the other fields, and the file as settings.json.invalid", () => {
+    for (const name of ["MORDOMO_TOKEN", "lower case", "x".repeat(300)]) {
+      const { paths, store, write } = setup();
+      const original = write({
+        version: 2,
+        memory: {
+          embeddings: {
+            enabled: true,
+            provider: "http",
+            endpoint: "http://127.0.0.1:11434/v1/embeddings",
+            model: "m",
+            dimensions: 8,
+            apiKeyEnv: name,
+          },
+        },
+      });
+      const loaded = store.load();
+      expect(loaded.memory.embeddings.apiKeyEnv, name).toBeUndefined();
+      expect(loaded.memory.embeddings, name).toMatchObject({
+        enabled: true,
+        provider: "http",
+        model: "m",
+        dimensions: 8,
+      });
+      expect(fs.readFileSync(`${paths.settingsFile}.invalid`, "utf8")).toBe(original);
     }
   });
 

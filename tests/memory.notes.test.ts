@@ -18,6 +18,7 @@ let temp: ReturnType<typeof makeTempHome>;
 let ctx: AppContext;
 let app: FastifyInstance;
 let token: string;
+const cleanups: Array<() => Promise<unknown> | unknown> = [];
 const memory = () => temp.paths.memory;
 const sha = (bytes: string | Buffer) => `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}`;
 const owner = () => ({ "x-mordomo-token": token, "content-type": "application/json" });
@@ -34,6 +35,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  for (const cleanup of cleanups.splice(0)) await cleanup();
   await app.close();
   ctx.close();
   temp.cleanup();
@@ -51,6 +53,14 @@ async function read(p: string, headers: Record<string, string> = owner()) {
   const res = await app.inject({
     method: "GET",
     url: `/api/memory/note?p=${encodeURIComponent(p)}`,
+    headers,
+  });
+  return { status: res.statusCode, body: res.json() as Record<string, any> };
+}
+async function preview(p: string, headers: Record<string, string> = owner()) {
+  const res = await app.inject({
+    method: "GET",
+    url: `/api/memory/preview?p=${encodeURIComponent(p)}`,
     headers,
   });
   return { status: res.statusCode, body: res.json() as Record<string, any> };
@@ -222,6 +232,30 @@ describe("S1 create and edit a note", () => {
     expect(fs.readFileSync(made.body.path, "utf8")).toBe("v3");
   });
 
+  it("C6 a PUT with a malformed baseVersion is 400 validation and writes nothing", async () => {
+    const made = await create({ title: "Versão torta" });
+    const file = made.body.path as string;
+    const before = fs.readFileSync(file);
+    const bad = [
+      "",
+      "sha256:",
+      "sha256:abc",
+      "sha256:" + "g".repeat(64),
+      "sha256:" + "A".repeat(64),
+      "sha1:" + "0".repeat(40),
+      made.body.version.slice("sha256:".length),
+      made.body.version + "0",
+    ];
+    for (const baseVersion of bad) {
+      const res = await save({ path: file, content: "trocado", baseVersion });
+      expect([res.status, errorCode(res)], baseVersion).toEqual([400, "validation"]);
+    }
+    expect((await save({ path: file, content: "trocado" } as Record<string, unknown>)).status).toBe(400);
+    expect(fs.readFileSync(file).equals(before)).toBe(true);
+    // the well-formed one still saves
+    expect((await save({ path: file, content: "trocado", baseVersion: made.body.version })).status).toBe(200);
+  });
+
   it("C8 a PUT over a file that changed outside keeps its bytes and its mtime, even in the same millisecond", async () => {
     const made = await create({ title: "Conflito" });
     const file = made.body.path as string;
@@ -309,6 +343,38 @@ describe("S1 create and edit a note", () => {
     expect((await read(mine.body.path)).body.editable).toBe(true);
   });
 
+  it("C11 the preview says editable: true for a note and false for each of the six paths that are not one", async () => {
+    const outside = path.join(temp.paths.workspace, "fora-do-preview.md");
+    fs.writeFileSync(outside, "# fora\n");
+    fs.mkdirSync(path.join(memory(), "areas"), { recursive: true });
+    fs.mkdirSync(path.join(memory(), "journal"), { recursive: true });
+    const cases: Record<string, string> = {
+      "outside memory/": outside,
+      "ROUTER.md": path.join(memory(), "ROUTER.md"),
+      "areas/": path.join(memory(), "areas", "preview.md"),
+      "journal/": path.join(memory(), "journal", "2026-02-02.md"),
+      ".txt": path.join(memory(), "notes", "preview.txt"),
+      "no extension": path.join(memory(), "notes", "previewsemextensao"),
+    };
+    for (const [name, file] of Object.entries(cases)) {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, "texto\n");
+      const got = await preview(file);
+      expect(got.status, `${name} status`).toBe(200);
+      expect(got.body.kind, `${name} kind`).toBe("text");
+      expect(got.body.editable, name).toBe(false);
+    }
+    const mine = await create({ title: "Editável no preview" });
+    const got = await preview(mine.body.path);
+    expect([got.status, got.body.kind, got.body.editable]).toEqual([200, "text", true]);
+    // a file that is not text is never offered for editing, whatever its name
+    const image = path.join(memory(), "notes", "imagem.md");
+    fs.writeFileSync(image, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]));
+    const binary = await preview(image);
+    expect(binary.status).toBe(200);
+    expect(binary.body.editable).toBe(false);
+  });
+
   it("C12 PUT and POST do not write through a link, a linked folder or a hard link of the token", async () => {
     const outside = path.join(temp.paths.workspace, "alvo.md");
     fs.writeFileSync(outside, "alvo\n");
@@ -343,6 +409,51 @@ describe("S1 create and edit a note", () => {
     expect(errorCode(viaFolder)).toBe("forbidden_path");
     expect(fs.existsSync(path.join(temp.paths.config, "pela-pasta.md"))).toBe(false);
     expect(fs.readFileSync(tokenFile).equals(tokenBytes)).toBe(true);
+  });
+
+  it("C13 a path with a NUL byte or a 300-character name answers the 403 forbidden_path of the preview on GET note and PUT notes", async () => {
+    const strict = await buildServer(ctx, { validateResponses: true }); // an answer the contract does not declare is a 500
+    cleanups.push(() => strict.close());
+    const version = sha("x");
+    const probes: Record<string, string> = {
+      "a NUL byte": path.join(memory(), "notes", "a\0b.md"),
+      "a NUL byte, relative": "notes/a\0b.md",
+      "a 300-character name": path.join(memory(), "notes", `${"y".repeat(300)}.md`),
+      "a 300-character folder": path.join(memory(), "notes", "d".repeat(300), "a.md"),
+      "a 256-character name": path.join(memory(), "notes", `${"z".repeat(253)}.md`),
+      "a very deep path": path.join(memory(), `${"q/".repeat(2500)}a.md`),
+    };
+    for (const [name, p] of Object.entries(probes)) {
+      const asked = [
+        await strict.inject({
+          method: "GET",
+          url: `/api/memory/preview?p=${encodeURIComponent(p)}`,
+          headers: owner(),
+        }),
+        await strict.inject({
+          method: "GET",
+          url: `/api/memory/note?p=${encodeURIComponent(p)}`,
+          headers: owner(),
+        }),
+        await strict.inject({
+          method: "PUT",
+          url: "/api/memory/notes",
+          headers: owner(),
+          payload: { path: p, content: "x", baseVersion: version },
+        }),
+      ];
+      expect(
+        asked.map((r) => [r.statusCode, r.json().error?.code]),
+        name,
+      ).toEqual([
+        [403, "forbidden_path"],
+        [403, "forbidden_path"],
+        [403, "forbidden_path"],
+      ]);
+    }
+    // the longest name a file system takes is a missing note, as before
+    const longest = path.join(memory(), "notes", `${"z".repeat(252)}.md`);
+    expect((await read(longest)).status).toBe(404);
   });
 
   it("C13 GET /api/memory/note answers the whole text and the version, and the refusals of the route", async () => {

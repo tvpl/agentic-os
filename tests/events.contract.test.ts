@@ -252,6 +252,26 @@ describe("S4 the bus and the document", () => {
     expect(Object.keys(SCENARIOS)).toHaveLength(132);
   });
 
+  it("C53 docs/events.md describes the two events of the index worker and the phases of its progress, and equals the generated text", () => {
+    const generated = eventsDocument();
+    const file = path.join(repoRoot, "docs/events.md");
+    expect(fs.readFileSync(file, "utf8")).toBe(generated);
+    for (const type of ["index.started", "index.cancelled"]) {
+      expect(OS_EVENT_TYPES, type).toContain(type);
+      expect(generated, type).toContain(`### \`${type}\``);
+    }
+    const started = generated.slice(generated.indexOf("### `index.started`"));
+    expect(started.slice(0, started.indexOf("\n### ", 5))).toContain(
+      '| `mode` | "worker" \\| "inline" | yes |',
+    );
+    expect(started.slice(0, started.indexOf("\n### ", 5))).toContain("| `runId` | string | yes |");
+    const progress = generated.slice(generated.indexOf("### `index.progress`"));
+    const section = progress.slice(0, progress.indexOf("\n### ", 5));
+    for (const phase of ["scan", "index", "prune", "related", "vectors"])
+      expect(section, phase).toContain(phase);
+    expect(section).toContain("`runId`");
+  });
+
   it("C29 docs/events.md equals the generated text", () => {
     const generated = eventsDocument();
     const file = path.join(repoRoot, "docs/events.md");

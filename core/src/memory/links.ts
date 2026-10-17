@@ -1,6 +1,6 @@
 import type { Db } from "../db/db.js";
 import { fileRowFromDb, type FileRow } from "./indexer.js";
-import { MARKDOWN_EXTENSIONS, type LinkKind } from "./linkParser.js";
+import { MARKDOWN_EXTENSIONS, foldName, type LinkKind } from "./linkParser.js";
 
 /**
  * Who points at a file and where its links lead (.specs/features/cerebro-v2, S2). The targets are stored as text
@@ -35,28 +35,51 @@ export interface LinksOf {
 
 type Allow = (row: { root: string; rel: string }) => boolean;
 
+/** A path as wikilink keys are compared: forward slashes, folded (`foldName`: NFC and Unicode lower case). */
+const keyed = (rel: string): string => foldName(rel.replace(/\\/g, "/"));
+
 const stemOf = (rel: string): string => {
-  const lower = rel.replace(/\\/g, "/").toLowerCase();
+  const lower = keyed(rel);
   const ext = MARKDOWN_EXTENSIONS.find((e) => lower.endsWith(e));
   return ext ? lower.slice(0, -ext.length) : lower;
 };
+
+/** Anything outside printable ASCII. */
+const NON_ASCII = /[^\x20-\x7e]/;
+
+/** The rows whose file name has a character outside printable ASCII (SQL compares those as bytes: see below). */
+const accentedRows = (db: Db): FileRow[] =>
+  (db.prepare("SELECT * FROM files WHERE name GLOB '*[^ -~]*'").all() as Array<Record<string, unknown>>).map(fileRowFromDb);
 
 /**
  * The files a wikilink key can mean, best first: the one in the source's own folder, else the shortest relative path,
  * else the first in alphabetical order. A key with a folder (`pasta/alvo`) must match the end of the path.
  */
-export function resolveWikilink(db: Db, source: { dir: string }, key: string, allow: Allow): FileRow[] {
+export function resolveWikilink(
+  db: Db,
+  source: { dir: string },
+  key: string,
+  allow: Allow,
+  /** The files with a non-ASCII name, when the caller has them already (one request resolves many links). */
+  accented: () => FileRow[] = () => accentedRows(db),
+): FileRow[] {
   const last = key.slice(key.lastIndexOf("/") + 1);
   const names = [`${last}.md`, `${last}.markdown`, last];
-  const rows = db
-    .prepare(`SELECT * FROM files WHERE lower(name) IN (${names.map(() => "?").join(",")})`)
-    .all(...names) as Array<Record<string, unknown>>;
+  // SQLite's lower() folds ASCII only, so a key with an accent is compared in JavaScript, against the files whose
+  // name has one (a name that folds to a non-ASCII key has a non-ASCII character itself). A key in plain ASCII is
+  // looked up in SQL as before; the one name that folds into plain ASCII from outside it (the Kelvin sign) is not found.
+  const rows: FileRow[] = NON_ASCII.test(last)
+    ? accented().filter((file) => names.includes(foldName(file.name)))
+    : (
+        db
+          .prepare(`SELECT * FROM files WHERE lower(name) IN (${names.map(() => "?").join(",")})`)
+          .all(...names) as Array<Record<string, unknown>>
+      ).map(fileRowFromDb);
   return rows
-    .map(fileRowFromDb)
     .filter((file) => allow(file))
     .filter((file) => {
       const stem = stemOf(file.rel);
-      const named = file.rel.replace(/\\/g, "/").toLowerCase();
+      const named = keyed(file.rel);
       return stem === key || stem.endsWith(`/${key}`) || named === key || named.endsWith(`/${key}`);
     })
     .sort(
@@ -73,8 +96,8 @@ function keysOf(file: FileRow): string[] {
   const keys: string[] = [];
   for (let i = 0; i < parts.length; i++) keys.push(parts.slice(i).join("/"));
   // a link to a file that is not Markdown keeps its extension (`[[foto.png]]`)
-  const named = file.rel.replace(/\\/g, "/").toLowerCase().split("/");
-  if (!MARKDOWN_EXTENSIONS.some((e) => file.rel.toLowerCase().endsWith(e)))
+  const named = keyed(file.rel).split("/");
+  if (!MARKDOWN_EXTENSIONS.some((e) => keyed(file.rel).endsWith(e)))
     for (let i = 0; i < named.length; i++) keys.push(named.slice(i).join("/"));
   return [...new Set(keys)];
 }
@@ -92,6 +115,9 @@ export function linksOf(db: Db, id: number, allow: Allow): LinksOf | null {
     const f = r ? fileRowFromDb(r) : null;
     return f && allow(f) ? f : null;
   };
+
+  let accented: FileRow[] | null = null;
+  const accentedOnce = () => (accented ??= accentedRows(db));
 
   const backlinks: BacklinkRow[] = [];
   const direct = db
@@ -111,7 +137,7 @@ export function linksOf(db: Db, id: number, allow: Allow): LinksOf | null {
     const source = fileOf(hit.src_id);
     if (!source) continue;
     // A key several files share goes to one of them: it is a backlink of this file only if this one wins.
-    if (resolveWikilink(db, source, hit.target, allow)[0]?.id !== file.id) continue;
+    if (resolveWikilink(db, source, hit.target, allow, accentedOnce)[0]?.id !== file.id) continue;
     backlinks.push({ file: source, kind: "wikilink", line: hit.line, label: hit.label });
   }
   backlinks.sort((a, b) => (a.file.rel < b.file.rel ? -1 : a.file.rel > b.file.rel ? 1 : a.line - b.line));
@@ -126,7 +152,7 @@ export function linksOf(db: Db, id: number, allow: Allow): LinksOf | null {
       const resolved = hit ? fileRowFromDb(hit) : null;
       return { ...link, resolved: resolved && allow(resolved) ? resolved : null, alternatives: [] };
     }
-    const [resolved, ...alternatives] = resolveWikilink(db, file, link.target, allow);
+    const [resolved, ...alternatives] = resolveWikilink(db, file, link.target, allow, accentedOnce);
     return { ...link, resolved: resolved ?? null, alternatives };
   });
   return { file, backlinks, outgoing };

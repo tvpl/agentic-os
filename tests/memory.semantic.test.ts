@@ -14,8 +14,10 @@ import {
   chooseProvider,
   endpointPolicy,
   hashEmbed,
+  httpProvider,
   type EmbeddingSettings,
 } from "../core/src/memory/embeddings.js";
+import { STOPWORDS } from "../core/src/memory/recall.js";
 import { SemanticSearch, fuse } from "../core/src/memory/semantic.js";
 import { VectorIndex } from "../core/src/memory/vectors.js";
 import { makeTempHome } from "./helpers.js";
@@ -33,6 +35,10 @@ interface Corpus {
 }
 const corpus = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/semantic-corpus.json"), "utf8"),
+) as Corpus;
+
+const morphology = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, "tests/fixtures/semantic-morphology.json"), "utf8"),
 ) as Corpus;
 
 const cleanups: Array<() => void | Promise<void>> = [];
@@ -75,6 +81,28 @@ const vectorRows = (ctx: AppContext) =>
     size: number;
   }>;
 const names = (hits: Array<{ name: string }>) => hits.map((h) => h.name.replace(/\.md$/, ""));
+/**
+ * The strongest cheap search WITHOUT vectors: the words of the question that are not stop words, any of them
+ * (`OR`, prefix match, the same FTS5 index and tokenizer), best BM25 first. The strict search of the product wants
+ * all of the words (`AND`); this is what the vectors have to beat to show they add something.
+ */
+function wordsAnyOf(ctx: AppContext, question: string, limit = 50): Array<{ name: string }> {
+  const terms = [
+    ...new Set(
+      question
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter((t) => t.length > 1 && !STOPWORDS.has(t)),
+    ),
+  ];
+  if (terms.length === 0) return [];
+  return ctx.db
+    .prepare(
+      `SELECT f.name AS name FROM files_fts JOIN files f ON f.id = files_fts.rowid
+        WHERE files_fts MATCH ? ORDER BY bm25(files_fts) LIMIT ?`,
+    )
+    .all(terms.map((t) => `"${t}"*`).join(" OR "), limit) as Array<{ name: string }>;
+}
 
 describe("S4 semantic search, off by default", () => {
   it("C43 with the defaults nothing is embedded, no extension is loaded, nothing is fetched; semantic is 409 and auto is the text search", async () => {
@@ -214,29 +242,64 @@ describe("S4 semantic search, off by default", () => {
     expect(ext).toEqual([]);
   });
 
-  it("C46 on the fixed corpus the hybrid search has the expected note in the top 3 for 11 of 12 questions and the words alone for 5", async () => {
+  it("C46 on the fixed corpus the hybrid search has the expected note in the top 3 for 11 of 12 questions and the strict words search for 5; an OR of the words also gets 11, so the gain of these questions is the relaxed match, not the vectors", async () => {
     const r = rig({ enabled: true, provider: "hash" });
     await r.ctx.indexer.indexAllAsync();
     expect(corpus.notes).toHaveLength(24);
     expect(corpus.questions).toHaveLength(12);
     const hit = (hits: Array<{ name: string }>, expected: string) =>
       names(hits).slice(0, 3).includes(expected);
-    let text = 0;
-    let hybrid = 0;
-    const missed: string[] = [];
+    const found = {
+      and: [] as string[],
+      or: [] as string[],
+      vectors: [] as string[],
+      hybrid: [] as string[],
+    };
     for (const q of corpus.questions) {
-      const viaText = await r.ctx.semantic.search({ query: q.q }, "text");
-      const viaBoth = await r.ctx.semantic.search({ query: q.q }, "auto");
-      if (hit(viaText, q.expected)) text++;
-      if (hit(viaBoth, q.expected)) hybrid++;
-      else missed.push(`${q.kind}: ${q.q}`);
+      if (hit(await r.ctx.semantic.search({ query: q.q }, "text"), q.expected)) found.and.push(q.q);
+      if (hit(wordsAnyOf(r.ctx, q.q), q.expected)) found.or.push(q.q);
+      if (hit(await r.ctx.semantic.search({ query: q.q }, "semantic"), q.expected)) found.vectors.push(q.q);
+      if (hit(await r.ctx.semantic.search({ query: q.q }, "auto"), q.expected)) found.hybrid.push(q.q);
     }
-    expect(hybrid).toBeGreaterThanOrEqual(11);
-    expect(text).toBeLessThanOrEqual(6);
+    const missed = corpus.questions
+      .filter((q) => !found.hybrid.includes(q.q))
+      .map((q) => `${q.kind}: ${q.q}`);
+    expect(found.hybrid.length).toBeGreaterThanOrEqual(11);
+    expect(found.and.length).toBeLessThanOrEqual(6);
+    expect(found.and).toHaveLength(5);
+    expect(found.hybrid).toHaveLength(11);
     // The one the hash cannot answer is the synonym: it reads spelling, not meaning (documented, not hidden).
     expect(missed).toEqual([`synonym: ${corpus.questions.find((q) => q.kind === "synonym")!.q}`]);
-    expect(text).toBe(5);
-    expect(hybrid).toBe(11);
+    // What the numbers do not say, said here: the words with OR find the same eleven. On these questions the vectors
+    // add no question to the words; the gain over the strict search comes from not requiring every word.
+    expect(found.or).toHaveLength(11);
+    expect(found.or).toEqual(found.hybrid);
+    expect(found.vectors.length).toBeGreaterThan(0);
+  });
+
+  it("C46 where the words fail (all of them, and any of them) and only the vectors can win: the other number of a -ção word, which porter leaves apart and the hash provider joins", async () => {
+    const r = rig({ enabled: true, provider: "hash" }, morphology.notes);
+    await r.ctx.indexer.indexAllAsync();
+    const hit = (hits: Array<{ name: string }>, expected: string) =>
+      names(hits).slice(0, 3).includes(expected);
+    const rows: Array<[string, boolean, boolean, boolean, boolean]> = [];
+    for (const q of morphology.questions) {
+      rows.push([
+        q.kind,
+        hit(await r.ctx.semantic.search({ query: q.q }, "text"), q.expected),
+        hit(wordsAnyOf(r.ctx, q.q), q.expected),
+        hit(await r.ctx.semantic.search({ query: q.q }, "semantic"), q.expected),
+        hit(await r.ctx.semantic.search({ query: q.q }, "auto"), q.expected),
+      ]);
+    }
+    expect(morphology.questions.filter((q) => q.kind === "other-number")).toHaveLength(6);
+    expect(morphology.questions.filter((q) => q.kind === "control")).toHaveLength(2);
+    // [kind, words AND, words OR, vectors alone, hybrid]
+    expect(rows).toEqual([
+      ...Array.from({ length: 6 }, () => ["other-number", false, false, true, true]),
+      ["control", true, true, true, true],
+      ["control", true, true, true, true],
+    ]);
   });
 
   it("C47 sqlite-vec ranks when it loads; when it does not (missing package, a platform it does not support, loadExtension failing) the same cosine runs in JavaScript, with no error, in the same order", async () => {
@@ -385,11 +448,11 @@ function manyNotes(count: number, words = 30): Corpus["notes"] {
 describe("S4 the http provider", () => {
   it("C48 sends the note text in batches of 16, each cut at 8000 characters, with the key from the environment, once per batch, and never writes the key down", async () => {
     const server = await endpoint();
-    process.env.MORDOMO_TEST_EMBEDDINGS_KEY = "sk-test-0123456789";
-    cleanups.push(() => void delete process.env.MORDOMO_TEST_EMBEDDINGS_KEY);
+    process.env.EMBEDDINGS_TEST_KEY = "sk-test-0123456789";
+    cleanups.push(() => void delete process.env.EMBEDDINGS_TEST_KEY);
     const notes = manyNotes(37);
     notes.push({ name: "enorme", text: `# Enorme\n\n${"palavra ".repeat(5000)}\n` });
-    const r = rig(httpSettings(server.url, { apiKeyEnv: "MORDOMO_TEST_EMBEDDINGS_KEY" }), notes);
+    const r = rig(httpSettings(server.url, { apiKeyEnv: "EMBEDDINGS_TEST_KEY" }), notes);
     const stats = await r.ctx.indexer.indexAllAsync();
     expect(stats.embedded).toBe(38);
     expect(server.requests.map((q) => q.body.input.length)).toEqual([16, 16, 6]);
@@ -413,7 +476,7 @@ describe("S4 the http provider", () => {
     // the key is in no file the home holds
     const settingsText = fs.readFileSync(r.ctx.paths.settingsFile, "utf8");
     expect(settingsText).not.toContain("sk-test-0123456789");
-    expect(settingsText).toContain("MORDOMO_TEST_EMBEDDINGS_KEY");
+    expect(settingsText).toContain("EMBEDDINGS_TEST_KEY");
     const walk = (dir: string): string[] =>
       fs
         .readdirSync(dir, { withFileTypes: true })
@@ -421,7 +484,7 @@ describe("S4 the http provider", () => {
     for (const file of walk(r.home).filter((f) => !f.endsWith(".db") && !f.includes(".db-")))
       expect(fs.readFileSync(file, "utf8").includes("sk-test-0123456789"), file).toBe(false);
     // without the variable no header is sent
-    delete process.env.MORDOMO_TEST_EMBEDDINGS_KEY;
+    delete process.env.EMBEDDINGS_TEST_KEY;
     fs.writeFileSync(path.join(r.dir, "nova.md"), "# Nova\n\numa nota nova\n");
     server.requests.length = 0;
     await r.ctx.indexer.indexAllAsync();
@@ -525,6 +588,138 @@ describe("S4 the http provider", () => {
     expect(server.requests).toHaveLength(1);
   }, 120_000);
 
+  it("C49 a row that today's policy excludes is not sent by a pass over a few paths either", async () => {
+    const server = await endpoint();
+    const r = rig(undefined, manyNotes(4));
+    fs.mkdirSync(path.join(r.dir, "privado"), { recursive: true });
+    fs.writeFileSync(
+      path.join(r.dir, "privado", "segredo.md"),
+      "# Segredo\n\nSEGREDO-QUE-NAO-SAI da maquina\n",
+    );
+    // indexed while nothing excluded it and nothing was sent
+    await r.ctx.indexer.indexAllAsync();
+    expect(
+      r.ctx.db.prepare("SELECT COUNT(*) AS c FROM files WHERE path LIKE '%segredo.md'").get(),
+    ).toMatchObject({ c: 1 });
+    // the owner now excludes the folder and turns the endpoint on; a note is saved (a pass over its path only)
+    const settings = r.ctx.settings();
+    settings.excludes = [...settings.excludes, "privado"];
+    settings.memory.embeddings = {
+      ...settings.memory.embeddings,
+      ...httpSettings(server.url),
+    } as EmbeddingSettings;
+    r.ctx.settingsStore.save(settings);
+    const fresh = path.join(r.dir, "nova.md");
+    fs.writeFileSync(fresh, "# Nova\n\numa nota nova\n");
+    await r.ctx.indexer.requestIndexPaths([fresh]);
+    const sent = server.requests.flatMap((q) => q.body.input as string[]);
+    expect(sent.length).toBe(5); // the four notes that were already there and the new one
+    expect(sent.some((text) => text.includes("SEGREDO-QUE-NAO-SAI"))).toBe(false);
+    expect(vectorRows(r.ctx)).toHaveLength(5);
+    // a full pass prunes the stale row, and still sends nothing of it
+    await r.ctx.indexer.indexAllAsync();
+    expect(
+      r.ctx.db.prepare("SELECT COUNT(*) AS c FROM files WHERE path LIKE '%segredo.md'").get(),
+    ).toMatchObject({ c: 0 });
+    expect(
+      server.requests.flatMap((q) => q.body.input as string[]).some((t) => t.includes("SEGREDO-QUE-NAO-SAI")),
+    ).toBe(false);
+  }, 120_000);
+
+  it("C52 the question of a search goes to the http endpoint, once per search, in auto and semantic and never in text mode: it is what PRIVACY.md says", async () => {
+    const server = await endpoint();
+    const r = rig(httpSettings(server.url), manyNotes(6));
+    const asked = () => server.requests.flatMap((q) => q.body.input as string[]);
+    // no vector yet: nothing to compare the question with, nothing sent
+    await r.ctx.semantic.search({ query: "PERGUNTA-DIGITADA-ANTES" }, "auto");
+    expect(asked()).toEqual([]);
+    await r.ctx.indexer.indexAllAsync();
+    server.requests.length = 0;
+    const question = "PERGUNTA-DIGITADA palavra3 palavra7";
+    await r.ctx.semantic.search({ query: question }, "text");
+    expect(asked()).toEqual([]);
+    await r.ctx.semantic.search({ query: question }, "auto");
+    expect(asked()).toEqual([question]);
+    await r.ctx.semantic.search({ query: question }, "semantic");
+    expect(asked()).toEqual([question, question]);
+    expect(server.requests.every((q) => q.method === "POST" && q.body.model === "test-model")).toBe(true);
+    // through the route, as the screen, the CLI and MCP ask
+    const app = await buildServer(r.ctx);
+    cleanups.push(() => app.close());
+    server.requests.length = 0;
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/memory/search?q=${encodeURIComponent("OUTRA-PERGUNTA palavra4")}`,
+      headers: { "x-mordomo-token": r.ctx.token() },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(asked()).toEqual(["OUTRA-PERGUNTA palavra4"]);
+    // a question longer than a note's cut is cut the same
+    server.requests.length = 0;
+    await r.ctx.semantic.search({ query: `palavra3 ${"x".repeat(9000)}` }, "auto");
+    expect(asked()[0]!.length).toBe(HTTP_MAX_CHARS);
+    // the hash provider sends it nowhere
+    const local = rig({ enabled: true, provider: "hash" }, manyNotes(6));
+    await local.ctx.indexer.indexAllAsync();
+    const fetched = vi.spyOn(globalThis, "fetch");
+    await local.ctx.semantic.search({ query: question }, "auto");
+    expect(fetched).not.toHaveBeenCalled();
+  }, 120_000);
+
+  it("C52 apiKeyEnv: a name that is not a conventional variable is refused by PUT /api/settings; one the request meets is never read (MORDOMO_*, lower case)", async () => {
+    const server = await endpoint();
+    process.env.MORDOMO_SECRET_THAT_MUST_STAY = "service-own-secret";
+    process.env.lowercase_key = "lowercase-secret";
+    process.env.EMBEDDINGS_TEST_KEY = "sk-fine";
+    cleanups.push(() => {
+      delete process.env.MORDOMO_SECRET_THAT_MUST_STAY;
+      delete process.env.lowercase_key;
+      delete process.env.EMBEDDINGS_TEST_KEY;
+    });
+    const r = rig(undefined, manyNotes(3));
+    const app = await buildServer(r.ctx);
+    cleanups.push(() => app.close());
+    const headers = { "x-mordomo-token": r.ctx.token(), "content-type": "application/json" };
+    for (const name of ["MORDOMO_SECRET_THAT_MUST_STAY", "lowercase_key", "HOME DIR", "X".repeat(65)]) {
+      const refused = await app.inject({
+        method: "PUT",
+        url: "/api/settings",
+        headers,
+        payload: { memory: { embeddings: { ...httpSettings(server.url), apiKeyEnv: name } } },
+      });
+      expect(refused.statusCode, name).toBe(400);
+      expect(r.ctx.settings().memory.embeddings.apiKeyEnv, name).toBeUndefined();
+    }
+    const accepted = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers,
+      payload: { memory: { embeddings: { ...httpSettings(server.url), apiKeyEnv: "EMBEDDINGS_TEST_KEY" } } },
+    });
+    expect(accepted.statusCode).toBe(200);
+    // the request itself checks the name again, whatever put it in the settings
+    const provider = httpProvider(
+      new URL(server.url),
+      { ...(httpSettings(server.url) as EmbeddingSettings), apiKeyEnv: "MORDOMO_SECRET_THAT_MUST_STAY" },
+      8,
+    );
+    await provider.embed(["um texto"], new AbortController().signal);
+    const lower = httpProvider(
+      new URL(server.url),
+      { ...(httpSettings(server.url) as EmbeddingSettings), apiKeyEnv: "lowercase_key" },
+      8,
+    );
+    await lower.embed(["um texto"], new AbortController().signal);
+    expect(server.requests.map((q) => q.headers.authorization)).toEqual([undefined, undefined]);
+    const fine = httpProvider(
+      new URL(server.url),
+      { ...(httpSettings(server.url) as EmbeddingSettings), apiKeyEnv: "EMBEDDINGS_TEST_KEY" },
+      8,
+    );
+    await fine.embed(["um texto"], new AbortController().signal);
+    expect(server.requests.at(-1)!.headers.authorization).toBe("Bearer sk-fine");
+  }, 120_000);
+
   it("C50 a provider that times out, answers 500, answers the wrong length or garbage leaves the pass finished with the words complete, names the failure, and the next pass embeds the rest", async () => {
     const real = AbortSignal.timeout.bind(AbortSignal);
     vi.spyOn(AbortSignal, "timeout").mockImplementation(() => real(150));
@@ -539,7 +734,12 @@ describe("S4 the http provider", () => {
     for (const [mode, message] of kinds) {
       server.mode.current = mode;
       const stats = await r.ctx.indexer.indexAllAsync();
-      expect(stats.added + stats.updated + (stats.embedded ?? 0) >= 0).toBe(true);
+      // the words are complete (all forty files added on the first pass, nothing left to add after) and nothing embedded
+      expect([stats.added, stats.updated, stats.embedded ?? 0], mode).toEqual([
+        mode === "hang" ? 40 : 0,
+        0,
+        0,
+      ]);
       expect(r.ctx.semantic.status().error, mode).toMatch(message);
       expect(
         r.ctx.db.prepare("SELECT COUNT(*) AS c FROM files WHERE path LIKE ?").get(`${r.dir}%`),

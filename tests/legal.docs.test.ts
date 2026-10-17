@@ -32,6 +32,9 @@ const VENDORED: Record<string, string> = {
   "legal/vendor/fonts/JetBrainsMono-OFL.txt":
     "a76abf002c49097d146e86740a3105a5d00450b1592e820a1109a8c5680cd697",
   "legal/vendor/fonts/Rajdhani-OFL.txt": "f62ef357d3a1c3d27edd35a6e1ba350e8a8d13499797964eeadefbf0b3b15d1f",
+  "legal/vendor/sqlite-vec/LICENSE-MIT": "6ce72bbe12d975bd5286e5ab0a064c069693300c47bccbc57bec18485f1621ea",
+  "legal/vendor/sqlite-vec/LICENSE-APACHE":
+    "a38070a94d4afd9cd710e3ce67bd1de78097cfe1784c1f0109ac95d3c196bfdc",
 };
 const OWNER_LINE = "[A PREENCHER PELO DONO: titular dos direitos autorais]";
 
@@ -89,9 +92,15 @@ describe("C2 the canonical texts are pinned", () => {
   });
 
   it("C2 the policy points to the font texts that the pins cover", () => {
-    const policy = JSON.parse(text("legal/license-policy.json")) as { bundled: Array<{ textFile?: string }> };
+    const policy = JSON.parse(text("legal/license-policy.json")) as {
+      bundled: Array<{ textFile?: string }>;
+      licenseTexts: Record<string, { files: string[] }>;
+    };
     for (const item of policy.bundled)
       if (item.textFile) expect(Object.keys(VENDORED)).toContain(item.textFile);
+    // and to the texts of packages that ship none (sqlite-vec)
+    for (const [id, entry] of Object.entries(policy.licenseTexts))
+      for (const file of entry.files) expect(Object.keys(VENDORED), id).toContain(file);
   });
 });
 

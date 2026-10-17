@@ -26,7 +26,7 @@ import { buildServer, defaultErrorCode, unboundEntries } from "../apps/api/src/s
 import { httpError } from "../apps/api/src/routes/common.js";
 import { makeTempHome } from "./helpers.js";
 import { registerSyntheticEntry } from "./helpers/syntheticEntry.js";
-import { EXPECTED_ROUTE_SCOPES, PUBLIC_ROUTES } from "./helpers/routeScopes.js";
+import { CEREBRO_V2_ROUTES, EXPECTED_ROUTE_SCOPES, PUBLIC_ROUTES } from "./helpers/routeScopes.js";
 import {
   SCENARIOS,
   buildWorld,
@@ -142,6 +142,50 @@ async function freshResources() {
 }
 
 describe("S1 the route table and the registration", () => {
+  it("C53 the scope list and docs/security.md name the five routes of the second brain with the scope they have", () => {
+    const page = fs.readFileSync(path.join(repoRoot, "docs", "security.md"), "utf8");
+    const row = (scope: string) =>
+      page.split("\n").find((l) => new RegExp(`^\\| \`${scope}\` \\(\\d+\\) \\|`).test(l)) ?? "";
+    for (const [key, want] of Object.entries(CEREBRO_V2_ROUTES)) {
+      expect(EXPECTED_ROUTE_SCOPES[key], key).toBe(want.scope);
+      expect(API[want.id]!.scope, key).toBe(want.scope);
+      const other = want.scope === "owner" ? "content" : "owner";
+      expect(row(want.scope), key).toContain(`\`${key}\``);
+      expect(row(other), key).not.toContain(`\`${key}\``);
+    }
+    // the prose about the notes says the same as the table
+    expect(page).toContain("`POST /api/memory/notes` and `PUT /api/memory/notes` are `owner` routes");
+    expect(page).toContain("(`GET /api/memory/note`) is `content`");
+  });
+
+  it("C53 the table holds the five routes of the second brain with scope, what they read, a schema per success status and their declared errors", () => {
+    expect(entries).toHaveLength(132);
+    for (const [key, want] of Object.entries(CEREBRO_V2_ROUTES)) {
+      const entry = API[want.id];
+      expect(entry, key).toBeDefined();
+      expect(routeKey(entry!), want.id).toBe(key);
+      expect(entry!.scope, key).toBe(want.scope);
+      expect(entry!.summary.length, key).toBeGreaterThan(8);
+      expect(Object.keys(entry!.responses).map(Number), key).toEqual(want.success);
+      for (const schema of Object.values(entry!.responses)) expect(schema, key).toBeDefined();
+      expect(Boolean(entry!.query), `${key} query`).toBe(want.reads === "query");
+      expect(Boolean(entry!.body), `${key} body`).toBe(want.reads === "body");
+      expect((entry!.errors ?? []).map((e) => `${e.status} ${e.code}`).sort(), key).toEqual(
+        [...want.errors].sort(),
+      );
+      for (const e of entry!.errors ?? [])
+        expect(e.description.length, `${key} ${e.code}`).toBeGreaterThan(10);
+    }
+    // the only entries that name the five codes of a note are these routes' own
+    const named = entries
+      .filter(([, e]) =>
+        (e.errors ?? []).some((d) => d.code.startsWith("note_") || d.code === "edit_conflict"),
+      )
+      .map(([, e]) => routeKey(e))
+      .sort();
+    expect(named).toEqual(["GET /api/memory/note", "POST /api/memory/notes", "PUT /api/memory/notes"]);
+  });
+
   it("C1 every route of the router has an entry", async () => {
     const app = await buildServer(ctx);
     try {

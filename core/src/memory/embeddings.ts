@@ -1,3 +1,4 @@
+import { EMBEDDINGS_KEY_ENV } from "@mordomo/contracts";
 import type { Settings } from "../config/schema.js";
 import { STOPWORDS, stemLite } from "./recall.js";
 
@@ -205,7 +206,8 @@ async function postBatch(
   input: string[],
   signal: AbortSignal,
 ): Promise<Float32Array[]> {
-  const key = config.apiKeyEnv ? process.env[config.apiKeyEnv] : undefined;
+  // The settings schema only lets a conventional name through; the name is checked again where the value is read
+  const key = config.apiKeyEnv && EMBEDDINGS_KEY_ENV.test(config.apiKeyEnv) ? process.env[config.apiKeyEnv] : undefined;
   const timeout = AbortSignal.timeout(HTTP_TIMEOUT_MS);
   let response: Response;
   try {

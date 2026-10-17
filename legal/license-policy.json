@@ -24,6 +24,56 @@
       "reason": "ferramenta de build (dependência do stylelint): o package.json declara só licenses[].url apontando para a MIT e o LICENSE do pacote é a MIT (Athan Reines, 2014); a exceção vale só para esta versão"
     }
   },
+  "licenseTexts": {
+    "sqlite-vec@0.1.9": {
+      "files": [
+        "legal/vendor/sqlite-vec/LICENSE-MIT",
+        "legal/vendor/sqlite-vec/LICENSE-APACHE"
+      ],
+      "source": "https://github.com/asg017/sqlite-vec/tree/v0.1.9 (LICENSE-MIT e LICENSE-APACHE; o repositório não tem NOTICE)",
+      "reason": "o pacote npm não inclui arquivo de licença (nem este nem os cinco de plataforma) e declara \"MIT OR Apache\"; os dois textos são os do repositório do autor, na etiqueta desta versão, copiados sem alteração; quem recebe o software pode escolher qualquer um dos dois. Um arquivo de licença que o pacote instalado trouxer num release futuro vale no lugar deste."
+    },
+    "sqlite-vec-darwin-arm64@0.1.9": {
+      "files": [
+        "legal/vendor/sqlite-vec/LICENSE-MIT",
+        "legal/vendor/sqlite-vec/LICENSE-APACHE"
+      ],
+      "source": "https://github.com/asg017/sqlite-vec/tree/v0.1.9 (LICENSE-MIT e LICENSE-APACHE; o repositório não tem NOTICE)",
+      "reason": "o pacote npm não inclui arquivo de licença (nem este nem os cinco de plataforma) e declara \"MIT OR Apache\"; os dois textos são os do repositório do autor, na etiqueta desta versão, copiados sem alteração; quem recebe o software pode escolher qualquer um dos dois. Um arquivo de licença que o pacote instalado trouxer num release futuro vale no lugar deste."
+    },
+    "sqlite-vec-darwin-x64@0.1.9": {
+      "files": [
+        "legal/vendor/sqlite-vec/LICENSE-MIT",
+        "legal/vendor/sqlite-vec/LICENSE-APACHE"
+      ],
+      "source": "https://github.com/asg017/sqlite-vec/tree/v0.1.9 (LICENSE-MIT e LICENSE-APACHE; o repositório não tem NOTICE)",
+      "reason": "o pacote npm não inclui arquivo de licença (nem este nem os cinco de plataforma) e declara \"MIT OR Apache\"; os dois textos são os do repositório do autor, na etiqueta desta versão, copiados sem alteração; quem recebe o software pode escolher qualquer um dos dois. Um arquivo de licença que o pacote instalado trouxer num release futuro vale no lugar deste."
+    },
+    "sqlite-vec-linux-arm64@0.1.9": {
+      "files": [
+        "legal/vendor/sqlite-vec/LICENSE-MIT",
+        "legal/vendor/sqlite-vec/LICENSE-APACHE"
+      ],
+      "source": "https://github.com/asg017/sqlite-vec/tree/v0.1.9 (LICENSE-MIT e LICENSE-APACHE; o repositório não tem NOTICE)",
+      "reason": "o pacote npm não inclui arquivo de licença (nem este nem os cinco de plataforma) e declara \"MIT OR Apache\"; os dois textos são os do repositório do autor, na etiqueta desta versão, copiados sem alteração; quem recebe o software pode escolher qualquer um dos dois. Um arquivo de licença que o pacote instalado trouxer num release futuro vale no lugar deste."
+    },
+    "sqlite-vec-linux-x64@0.1.9": {
+      "files": [
+        "legal/vendor/sqlite-vec/LICENSE-MIT",
+        "legal/vendor/sqlite-vec/LICENSE-APACHE"
+      ],
+      "source": "https://github.com/asg017/sqlite-vec/tree/v0.1.9 (LICENSE-MIT e LICENSE-APACHE; o repositório não tem NOTICE)",
+      "reason": "o pacote npm não inclui arquivo de licença (nem este nem os cinco de plataforma) e declara \"MIT OR Apache\"; os dois textos são os do repositório do autor, na etiqueta desta versão, copiados sem alteração; quem recebe o software pode escolher qualquer um dos dois. Um arquivo de licença que o pacote instalado trouxer num release futuro vale no lugar deste."
+    },
+    "sqlite-vec-windows-x64@0.1.9": {
+      "files": [
+        "legal/vendor/sqlite-vec/LICENSE-MIT",
+        "legal/vendor/sqlite-vec/LICENSE-APACHE"
+      ],
+      "source": "https://github.com/asg017/sqlite-vec/tree/v0.1.9 (LICENSE-MIT e LICENSE-APACHE; o repositório não tem NOTICE)",
+      "reason": "o pacote npm não inclui arquivo de licença (nem este nem os cinco de plataforma) e declara \"MIT OR Apache\"; os dois textos são os do repositório do autor, na etiqueta desta versão, copiados sem alteração; quem recebe o software pode escolher qualquer um dos dois. Um arquivo de licença que o pacote instalado trouxer num release futuro vale no lugar deste."
+    }
+  },
   "bundled": [
     {
       "name": "Node.js",
