@@ -21,15 +21,14 @@ de criação abaixo e depois este), "Editar" no preview de uma nota editável, e
 
 - Cabeçalho: o título da nota (o `# ` da primeira linha ou o nome do arquivo), o caminho em fonte mono 12px, e à direita o
   estado: ícone + texto (`Salvo` com `Check`, `Alterações não salvas` com `Circle`, `Salvando…` com `Loader`, `Conflito` com
-  `AlertTriangle`, `Erro ao salvar` com `CircleAlert`: dois estados, dois ícones, como a prova C19 pede). O estado é `role="status"`; o conflito e o erro repetem-se no corpo.
+  `AlertTriangle`, `Erro ao salvar` com `AlertTriangle`). O estado é `role="status"`; o conflito e o erro repetem-se no corpo.
 - Corpo: um `<textarea>` com rótulo (`aria-label` = "Texto da nota"), fonte mono 13px, `spellcheck` ligado, ocupa a altura toda,
-  sem editor rico. Abaixo, uma linha de apoio: tamanho em bytes / limite (`12 KB de 1 MB`).
+  sem editor rico. Abaixo, uma linha de apoio: tamanho em bytes / limite (`12 KB de 1 MB`) e "N notas apontam para esta" (a contagem
+  de backlinks; some enquanto carrega ou se falhar).
 - Rodapé: "Fechar" (`.btn`), "Salvar" (`.btn.primary`, desabilitado enquanto o texto é igual ao salvo ou enquanto salva).
   ⌘S / Ctrl+S salva (tecla do campo, registrada no escopo `modal` do registro).
 - Carregando: spinner + "Carregando…" no lugar do corpo. Erro de leitura: mensagem + "Tentar de novo". Não editável: a razão
-  (`reason`) acima do campo, que fica somente leitura (o texto continua legível e copiável), o selo "Somente leitura" no lugar do
-  estado e nenhum "Salvar" (emenda da rodada 1: o desenho dizia que a razão tomava o lugar do campo; a tela construída mantém o
-  texto, a prova C22 afirma `readOnly` e a ausência de "Salvar", e ver o texto de um arquivo que não se edita é o que o preview já faz).
+  (`reason`) no lugar do campo e nenhum "Salvar".
 - Conflito: faixa `role="alert"` acima do campo: "Esta nota mudou no disco depois que você a abriu." com "Carregar a versão do disco"
   (troca o texto pelo do disco, descarta o seu) e "Salvar como cópia" (cria `<título> (cópia)` com o seu texto e abre a cópia).
   Enquanto a faixa está, "Salvar" fica desabilitado; o texto da pessoa nunca é apagado sem ela escolher.
@@ -49,6 +48,7 @@ Seção `aria-label="Links"` logo abaixo das relações existentes, no `PreviewP
 - "Backlinks (N)": lista de botões `.brain-md-link` (o nome da nota de origem, a linha, o texto do link); clicar seleciona a nota.
 - "Links quebrados (N)": os destinos que não resolvem, em lista simples com o texto do link e o ícone `Unlink`; sem botão.
 - Vazio: "Nenhuma nota aponta para esta." Carregando: spinner + texto. Erro: mensagem + "Tentar de novo".
+- Um wikilink com várias candidatas mostra "(+N)" no destino e a lista das outras no `title`.
 
 ## Tela - Progresso da indexação
 
@@ -58,45 +58,65 @@ Na barra do Segundo Cérebro (onde "Reindexar" já mora): enquanto roda, a fase 
 
 ## Texto (as duas línguas; as chaves entram em `locales/brain.ts`, `en` e `ptBR` com as mesmas chaves)
 
-| Chave                       | en                                                | pt-BR                                             |
-| --------------------------- | ------------------------------------------------- | ------------------------------------------------- |
-| `note.new`                  | New note                                          | Nova nota                                         |
-| `note.new.title`            | Title                                             | Título                                            |
-| `note.new.area`             | Area (optional)                                   | Área (opcional)                                   |
-| `note.new.frontMatter`      | YAML header                                       | Cabeçalho YAML                                    |
-| `note.new.create`           | Create                                            | Criar                                             |
-| `note.edit`                 | Edit                                              | Editar                                            |
-| `note.edit.title`           | Edit note                                         | Editar nota                                       |
-| `note.field`                | Note text                                         | Texto da nota                                     |
-| `note.save`                 | Save                                              | Salvar                                            |
-| `note.state.saved`          | Saved                                             | Salvo                                             |
-| `note.state.dirty`          | Unsaved changes                                   | Alterações não salvas                             |
-| `note.state.saving`         | Saving…                                           | Salvando…                                         |
-| `note.state.conflict`       | Conflict                                          | Conflito                                          |
-| `note.state.error`          | Could not save                                    | Erro ao salvar                                    |
-| `note.loading`              | Loading…                                          | Carregando…                                       |
-| `note.conflict.body`        | This note changed on disk after you opened it.    | Esta nota mudou no disco depois que você a abriu. |
-| `note.conflict.reload`      | Load the version on disk                          | Carregar a versão do disco                        |
-| `note.conflict.copy`        | Save as a copy                                    | Salvar como cópia                                 |
-| `note.discard.title`        | Discard unsaved changes?                          | Descartar as alterações não salvas?               |
-| `note.discard.confirm`      | Discard                                           | Descartar                                         |
-| `note.discard.keep`         | Keep editing                                      | Continuar editando                                |
-| `note.size`                 | {size} of {limit}                                 | {size} de {limit}                                 |
-| `note.readonly`             | Read-only                                         | Somente leitura                                   |
-| `note.copySuffix`           | (copy)                                            | (cópia)                                           |
-| `note.loadFailed`           | Could not open the note.                          | Não foi possível abrir a nota.                    |
-| `note.noArea`               | No area                                           | Sem área                                          |
-| `brain.index.failed`        | The indexer stopped; the previous index was kept. | O indexador parou; o índice anterior foi mantido. |
-| `brain.links`               | Links                                             | Links                                             |
-| `brain.links.backlinks`     | Backlinks                                         | Backlinks                                         |
-| `brain.links.broken`        | Links to nothing                                  | Links quebrados                                   |
-| `brain.links.none`          | No note points here.                              | Nenhuma nota aponta para esta.                    |
-| `brain.links.retry`         | Try again                                         | Tentar de novo                                    |
-| `brain.links.line`          | line {n}                                          | linha {n}                                         |
-| `brain.index.phase.scan`    | Scanning                                          | Varrendo                                          |
-| `brain.index.phase.index`   | Indexing                                          | Indexando                                         |
-| `brain.index.phase.prune`   | Removing                                          | Removendo                                         |
-| `brain.index.phase.related` | Computing relations                               | Calculando relações                               |
-| `brain.index.phase.vectors` | Vectors                                           | Vetores                                           |
-| `brain.index.cancel`        | Cancel                                            | Cancelar                                          |
-| `brain.index.cancelled`     | Indexing cancelled                                | Indexação cancelada                               |
+| Chave                       | en                                             | pt-BR                                             |
+| --------------------------- | ---------------------------------------------- | ------------------------------------------------- |
+| `note.new`                  | New note                                       | Nova nota                                         |
+| `note.new.title`            | Title                                          | Título                                            |
+| `note.new.area`             | Area (optional)                                | Área (opcional)                                   |
+| `note.new.frontMatter`      | YAML header                                    | Cabeçalho YAML                                    |
+| `note.new.create`           | Create                                         | Criar                                             |
+| `note.edit`                 | Edit                                           | Editar                                            |
+| `note.edit.title`           | Edit note                                      | Editar nota                                       |
+| `note.field`                | Note text                                      | Texto da nota                                     |
+| `note.save`                 | Save                                           | Salvar                                            |
+| `note.state.saved`          | Saved                                          | Salvo                                             |
+| `note.state.dirty`          | Unsaved changes                                | Alterações não salvas                             |
+| `note.state.saving`         | Saving…                                        | Salvando…                                         |
+| `note.state.conflict`       | Conflict                                       | Conflito                                          |
+| `note.state.error`          | Could not save                                 | Erro ao salvar                                    |
+| `note.loading`              | Loading…                                       | Carregando…                                       |
+| `note.conflict.body`        | This note changed on disk after you opened it. | Esta nota mudou no disco depois que você a abriu. |
+| `note.conflict.reload`      | Load the version on disk                       | Carregar a versão do disco                        |
+| `note.conflict.copy`        | Save as a copy                                 | Salvar como cópia                                 |
+| `note.discard.title`        | Discard unsaved changes?                       | Descartar as alterações não salvas?               |
+| `note.discard.confirm`      | Discard                                        | Descartar                                         |
+| `note.discard.keep`         | Keep editing                                   | Continuar editando                                |
+| `note.size`                 | {size} of {limit}                              | {size} de {limit}                                 |
+| `note.backlinks.count`      | {n} notes point here                           | {n} notas apontam para esta                       |
+| `brain.links`               | Links                                          | Links                                             |
+| `brain.links.backlinks`     | Backlinks                                      | Backlinks                                         |
+| `brain.links.broken`        | Broken links                                   | Links quebrados                                   |
+| `brain.links.none`          | No note points here.                           | Nenhuma nota aponta para esta.                    |
+| `brain.index.phase.scan`    | Scanning                                       | Varrendo                                          |
+| `brain.index.phase.index`   | Indexing                                       | Indexando                                         |
+| `brain.index.phase.prune`   | Removing                                       | Removendo                                         |
+| `brain.index.phase.related` | Computing relations                            | Calculando relações                               |
+| `brain.index.phase.vectors` | Vectors                                        | Vetores                                           |
+| `brain.index.cancel`        | Cancel                                         | Cancelar                                          |
+| `brain.index.cancelled`     | Indexing cancelled                             | Indexação cancelada                               |
+
+## Emendas depois da aprovação, registradas em vez de reescritas
+
+O texto acima é o que foi aprovado e fica como estava. A tela construída difere dele nos pontos abaixo; **nenhum foi aceito pelo
+dono ainda**: é a pergunta 17 de "Perguntas ao dono", cerebro-v2 (`.specs/STATE.md`), com o padrão "o desenho vale como a tela
+está" e o caminho para voltar. Decisão e data: AD-034. Onde esta seção e o texto acima divergem, vale a tela construída até o dono
+responder; se ele recusar, a tela volta ao texto acima.
+
+**Da rodada 1 (F11, fechado por emenda e não por conserto; `NoteEditor.tsx:368,403`):**
+
+- Estado de erro: o ícone é `CircleAlert`, não `AlertTriangle` (o conflito mantém `AlertTriangle`). A prova C19 pede um ícone próprio
+  por estado, e com o mesmo ícone os dois estados só se distinguiriam pelo texto.
+- Nota que não se edita: o texto fica **visível e somente leitura** (legível e copiável), a razão (`reason`) aparece **acima** do
+  campo e o selo "Somente leitura" toma o lugar do estado; continua sem "Salvar". O texto aprovado dizia que a razão tomava o
+  lugar do campo. A prova C22 afirma `readOnly` e a ausência de "Salvar".
+- Cinco chaves de texto a mais, nas duas línguas: `note.readonly` (Read-only / Somente leitura), `note.copySuffix` ((copy) /
+  (cópia)), `note.loadFailed` (Could not open the note. / Não foi possível abrir a nota.), `note.noArea` (No area / Sem área) e
+  `brain.index.failed` (The indexer stopped; the previous index was kept. / O indexador parou; o índice anterior foi mantido.).
+
+**Da construção (S1b e S2; já constavam em `checks.md`, "Settled mid-build"):**
+
+- O editor não mostra "N notas apontam para esta" e a chave `note.backlinks.count` não existe (o editor tem um caminho; a rota de
+  links pede um id).
+- A seção de links não mostra "(+N)" para um wikilink com várias candidatas (o campo `alternatives` está na API).
+- `brain.links.broken` em inglês é "Links to nothing" (no desenho: "Broken links"); `brain.links.retry` (Try again / Tentar de novo)
+  e `brain.links.line` (line {n} / linha {n}) entraram.

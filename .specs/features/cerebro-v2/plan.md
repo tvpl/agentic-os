@@ -250,6 +250,28 @@ A pessoa, a CLI ou um agente cria `memory/notes/<nome>.md` e salva edições; qu
 | command "Nova nota"                                    | document or copy a person reads               | AC 18                                                                                                                                    |
 | events `index.*`                                       | versioning                                    | AC 33                                                                                                                                    |
 
+## Emendas depois da aprovação, registradas em vez de reescritas
+
+O texto aprovado acima fica como foi aprovado. O que mudou depois fica aqui, com a decisão (AD-034) e a pergunta ao dono que a
+acompanha (`.specs/STATE.md`, "Perguntas ao dono", cerebro-v2). Enquanto o dono não responde, vale a emenda.
+
+- **AC 32 (o atraso do laço de eventos), emenda da rodada 1 e medida na rodada 2; pergunta 18.** O AC diz que, num índice de 3 000
+  arquivos, o **maior** atraso do laço do serviço fica abaixo de 100 ms. O que o teste afirma desde a rodada 1 (C32) é um limite
+  **estatístico** sobre o que de fato pára o laço, a espera do serviço pela trava de escrita do SQLite enquanto o worker escreve
+  (cada escrita do serviço, a cada 10 ms, é cronometrada): **no máximo 3 escritas** esperam 100 ms ou mais e **nenhuma** espera
+  250 ms, e o p99 do atraso do laço fica abaixo de 100 ms; o **máximo** do atraso do laço não é afirmado, porque um soluço do
+  escalonador de uma máquina carregada (290 ms vistos em carga 8 a 10) não diz nada sobre a passada. Medido pelo verificador
+  (3 000 arquivos, o worker de verdade, um escritor na conexão do serviço): a promessa literal do AC se cumpre na maioria das
+  passadas (de 9 em máquina quieta, 7 com a maior espera em 35 ms ou menos, uma em 54 ms e uma em 114 ms de escrita e 118 ms de
+  laço, esta não reproduzida em três repetições; 54 e 79 ms com a máquina carregada), mas **não é garantia**: ela depende do
+  escalonador. **O preço:** a passada completa fica cerca de **2,2 vezes mais lenta** (3 000 arquivos sem outro escritor: **29,7 s**
+  contra **13,2 s** antes da emenda; 15 s com o descanso em 0), porque o worker descansa seis vezes o que segurou a trava. Sem a
+  emenda a passada nem termina com um escritor ativo na conexão do serviço (morre em ~200 ms com `database is locked`). Um limite
+  frouxo agora cobre o preço: a passada de 3 000 arquivos termina em menos de 120 s (C32). Padrão: o AC vale como está nesta emenda.
+  Alternativas: exigir o máximo literal (o teste falharia em máquina carregada sem que o código mudasse) ou aceitar a passada mais
+  lenta mas dizer o limite em minutos. Reverter: devolver ao teste de C32 as asserções de máximo, o que obriga a tirar a
+  estatística (mudar `memory.worker.test.ts` e o texto de C32).
+
 ## Sources
 
 - `.specs/roadmap.md` item 13 (cerebro-v2) — o escopo: captura e edição, backlinks, embeddings (sqlite-vec) e indexação em worker.
