@@ -10,6 +10,7 @@ import {
   atomicWrite,
   ensureJournal,
   copyTreeWithoutLinks,
+  NotRegularFileError,
   homeReadScope,
   openWorkspaceFile,
   readScope,
@@ -1590,6 +1591,23 @@ describe.skipIf(!POSIX)("C57 the guarded replace of the write primitive (cerebro
     fs.writeFileSync(note(), "base\n");
   });
 
+  it("C57 the in-place fallback refuses a name that became a pipe with NotRegularFileError, not a raw EINVAL, and writes nothing", () => {
+    // an EMPTY note: a pipe under its name has the size and the digest the edit expects, so only the kind of file tells
+    fs.writeFileSync(note(), "");
+    const spy = refuseTemp("EACCES", () => {
+      fs.rmSync(note());
+      execFileSync("mkfifo", [note()]);
+    });
+    try {
+      expect(() => guarded("meu texto\n", "")).toThrow(NotRegularFileError);
+    } finally {
+      spy.mockRestore();
+      fs.rmSync(note(), { force: true }); // writing to a pipe with nobody reading would block the next test
+    }
+    expect(strays()).toEqual([]);
+    fs.writeFileSync(note(), "base\n");
+  });
+
   it("C57 the in-place fallback does not write through a folder that became a link", () => {
     const dir = path.join(home, "memory", "troca-2");
     const away = `${dir}-away`;
@@ -1743,6 +1761,29 @@ describe.skipIf(!POSIX)("C57 the guarded replace of the write primitive (cerebro
       aged(theirs, 10 * STALE_SAVE_TEMP_MS);
       expect(removeStaleSaveTemp(theirs)).toBe(false);
       expect(fs.existsSync(theirs)).toBe(true);
+    });
+
+    it("removes the names it writes, 12 to 32 lowercase hex digits, and only those", () => {
+      const dir = folder();
+      const hex = (n: number) => "0123456789abcdef".repeat(3).slice(0, n);
+      const ours = [12, 16, 32].map((n) => `.mordomo-save-${hex(n)}.tmp`);
+      const notOurs = [
+        ".mordomo-save-abc.tmp", // a user's file with a short word
+        `.mordomo-save-${hex(11)}.tmp`, // one digit short of the first build's names
+        `.mordomo-save-${hex(33)}.tmp`, // one digit over the longest name
+        `.mordomo-save-${hex(40)}.tmp`,
+        `.mordomo-save-${hex(16).toUpperCase()}.tmp`,
+        `x.mordomo-save-${hex(16)}.tmp`, // something before the dot: the name is anchored at its start
+        `x.mordomo-save-${hex(32)}.tmp`,
+      ];
+      for (const name of [...ours, ...notOurs]) {
+        const file = path.join(dir, name);
+        fs.writeFileSync(file, "texto\n");
+        aged(file, 10 * STALE_SAVE_TEMP_MS);
+      }
+      for (const name of ours) expect(removeStaleSaveTemp(path.join(dir, name)), name).toBe(true);
+      for (const name of notOurs) expect(removeStaleSaveTemp(path.join(dir, name)), name).toBe(false);
+      expect(fs.readdirSync(dir).sort()).toEqual([...notOurs].sort());
     });
 
     it("never throws for a name that is not there", () => {
