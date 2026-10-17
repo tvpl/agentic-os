@@ -7,7 +7,6 @@ import { PathAccessError } from "@mordomo/core";
 import crypto from "node:crypto";
 import {
   DEFAULT_COPY_LIMITS,
-  STALE_SAVE_TEMP_MS,
   atomicWrite,
   ensureJournal,
   copyTreeWithoutLinks,
@@ -15,12 +14,13 @@ import {
   openWorkspaceFile,
   readScope,
   readWorkspaceText,
-  removeStaleSaveTemp,
   resolveWorkspaceCwd,
   tightenMode,
   writeWorkspaceFile,
 } from "@mordomo/core/internal";
 import { type AgentAdapter, type AgentRun } from "@mordomo/core";
+// not part of the package surface: imported by path (sdk.surface C38 lists what the barrels grew by)
+import { STALE_SAVE_TEMP_MS, removeStaleSaveTemp } from "../core/src/security/safeWrite.js";
 import { RunManager } from "@mordomo/core/internal";
 import { ClaudeAdapter } from "@mordomo/adapter-claude";
 import { AppContext } from "../apps/api/src/context.js";
