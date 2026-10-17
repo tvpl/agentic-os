@@ -1315,6 +1315,10 @@ describe("C57 the scan of the desktop shell's Rust and Cargo files has no blind 
         "a.rs",
       ),
     ).toEqual({ "program:curl": 1 });
+    // ... also when what stops it is a comment or a string that never closes
+    expect(
+      kinds('fn f() { Command::new("sh").arg("curl -s https://x.example.com") // the last line', "a.rs"),
+    ).toEqual({ "program:curl": 1 });
     // a statement that never ends is read to the end of the file: more, never less
     expect(kinds('fn f() { Command::new("sh").arg("curl -s https://x.example.com")', "a.rs")).toEqual({
       "program:curl": 1,
