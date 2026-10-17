@@ -1,0 +1,90 @@
+/**
+ * The hint of a control that has only an icon, on Radix (.specs/features/primitivas).
+ * It appears with the keyboard focus and after the pointer rests on the control,
+ * is `role="tooltip"` referenced by `aria-describedby`, and goes away with Escape
+ * without moving focus. It never replaces the control's name: the control keeps
+ * its own `aria-label`, so touch and the platform's accessibility tree still have it.
+ * When the hint says only the name (the usual case) the control is not pointed at it:
+ * a screen reader would say the same words twice on every focus. A hint that adds
+ * something to the name (the key that runs it) is the control's description.
+ */
+import {
+  cloneElement,
+  createContext,
+  forwardRef,
+  useContext,
+  useRef,
+  type HTMLAttributes,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+import { noteEscape } from "./layers";
+
+/** Whether a provider is already above (one provider keeps the "skip the delay" window between neighbours). */
+const InProvider = createContext(false);
+
+/** Mount once, at the root of an app (the shell, the gallery). A `Tooltip` outside one brings its own. */
+export function UiProvider({ children }: { children: ReactNode }) {
+  return (
+    <InProvider.Provider value>
+      <TooltipPrimitive.Provider delayDuration={400} skipDelayDuration={300}>
+        {children}
+      </TooltipPrimitive.Provider>
+    </InProvider.Provider>
+  );
+}
+
+export interface TooltipProps extends Omit<HTMLAttributes<HTMLElement>, "children"> {
+  /** What the hint says: the control's name, and the key that runs it when it has one. No label, no hint. */
+  label?: ReactNode;
+  /** The control: one element that takes a ref (a button, a link). */
+  children: ReactElement;
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
+}
+
+/**
+ * Props and ref given to a `Tooltip` go to its control, so a `Tooltip` can sit
+ * under another Radix trigger (`asChild`) and the two share one element.
+ */
+export const Tooltip = forwardRef<HTMLButtonElement, TooltipProps>(function Tooltip(
+  { label, children, side = "top", align = "center", ...forwarded },
+  ref,
+) {
+  const inProvider = useContext(InProvider);
+  const panel = useRef<HTMLDivElement>(null);
+  if (label === undefined || label === null || label === false || label === "")
+    return cloneElement(children, { ...forwarded, ref } as Record<string, unknown>);
+  // A hint that repeats the control's name is not its description: the control keeps whatever description
+  // it declared itself, and Radix's pointer at the hint gives way (a child's own props win in the merge).
+  const own = children.props as { "aria-label"?: unknown; "aria-describedby"?: string };
+  const same =
+    typeof label === "string" &&
+    typeof own["aria-label"] === "string" &&
+    own["aria-label"].trim() === label.trim();
+  const control = same
+    ? cloneElement(children, { "aria-describedby": own["aria-describedby"] } as Record<string, unknown>)
+    : children;
+  const tip = (
+    <TooltipPrimitive.Root>
+      <TooltipPrimitive.Trigger asChild {...forwarded} ref={ref}>
+        {control}
+      </TooltipPrimitive.Trigger>
+      <TooltipPrimitive.Portal>
+        <TooltipPrimitive.Content
+          ref={panel}
+          onEscapeKeyDown={(event) => noteEscape(event, panel.current)}
+          className="ui-tip"
+          side={side}
+          align={align}
+          sideOffset={6}
+          collisionPadding={8}
+        >
+          {label}
+        </TooltipPrimitive.Content>
+      </TooltipPrimitive.Portal>
+    </TooltipPrimitive.Root>
+  );
+  return inProvider ? tip : <UiProvider>{tip}</UiProvider>;
+});

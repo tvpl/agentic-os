@@ -67,7 +67,7 @@
   backdrop-filter: blur(10px) saturate(1.2);
   box-shadow:
     inset 0 0 0 1px var(--agent-line),
-    0 16px 36px -18px rgba(0, 0, 0, 0.75);
+    0 16px 36px -18px color-mix(in srgb, var(--shadow-ink) 75%, transparent);
   clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
   opacity: 0;
   transition: opacity 0.14s;
@@ -94,7 +94,7 @@
   overflow-wrap: anywhere;
 }
 .bs-card-meta {
-  font: 500 var(--fs-0) / 1.35 var(--font-mono);
+  font: 500 var(--fs-2) / 1.35 var(--font-mono);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--agent-text);
@@ -109,7 +109,7 @@
   margin-top: 2px;
   padding-top: 6px;
   border-top: 1px solid var(--bs-line);
-  font: 500 var(--fs-0) / 1.35 var(--font-mono);
+  font: 500 var(--fs-2) / 1.35 var(--font-mono);
   letter-spacing: 0.06em;
   color: var(--text-faint);
 }
@@ -138,7 +138,7 @@
 /* ---- shared type ---------------------------------------------------------- */
 .bs-eyebrow {
   margin: 0;
-  font: 500 var(--fs-0) / 1.5 var(--font-mono);
+  font: 500 var(--fs-2) / 1.5 var(--font-mono);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -146,7 +146,7 @@
 .bs-faint {
   margin: 0;
   color: var(--text-faint);
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
 }
 .bs-act,
 .bs-link-btn {
@@ -272,7 +272,7 @@
   padding: 6px 9px 6px 8px;
   border: 0;
   background: none;
-  font: 600 var(--fs-0) / 1 var(--font-display);
+  font: 600 var(--fs-2) / 1 var(--font-display);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -338,7 +338,7 @@
   white-space: nowrap;
 }
 .bs-area small {
-  font: 400 var(--fs-0) / 1 var(--font-mono);
+  font: 400 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.06em;
   color: var(--text-faint);
 }
@@ -398,7 +398,7 @@
   padding: 2px 0;
   border: 0;
   background: none;
-  font: 500 var(--fs-0) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -415,6 +415,8 @@
 .bs-gauge ol button[aria-current] {
   color: var(--agent-text);
   opacity: 1;
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 .bs-gauge-rail {
   position: relative;
@@ -474,7 +476,7 @@
   fill: var(--agent);
 }
 .bs-zoomread {
-  font: 500 var(--fs-0) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.08em;
   color: var(--text-faint);
 }
@@ -650,6 +652,7 @@
 .bs-tour-btn:hover,
 .bs-tour-btn[aria-pressed="true"] {
   text-shadow: 0 0 14px var(--agent);
+  box-shadow: inset 0 0 0 1px var(--agent-line);
 }
 .bs-more {
   width: 32px;
@@ -662,9 +665,13 @@
   color: var(--text-dim);
   cursor: pointer;
 }
-.bs-more:hover,
+.bs-more:hover {
+  color: var(--accent-text);
+}
+/* Open: a bar under the glyph, so the state is not the hue alone. */
 .bs-more[aria-expanded="true"] {
   color: var(--accent-text);
+  box-shadow: inset 0 -2px 0 currentColor;
 }
 .bs-help-btn {
   display: inline-grid;
@@ -677,7 +684,7 @@
   border-radius: 50%;
   background: none;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-faint) 55%, transparent);
-  font: 600 var(--fs-1) / 1 var(--font-mono);
+  font: 600 var(--fs-2) / 1 var(--font-mono);
   color: var(--text-dim);
   cursor: pointer;
 }
@@ -732,13 +739,13 @@
   display: contents;
 }
 .bs-help dt {
-  font: 500 var(--fs-0) / 1.35 var(--font-mono);
+  font: 500 var(--fs-2) / 1.35 var(--font-mono);
   letter-spacing: 0.04em;
   color: var(--text);
 }
 .bs-help dd {
   margin: 0;
-  font: 400 var(--fs-1) / 1.35 var(--font);
+  font: 400 var(--fs-2) / 1.35 var(--font);
   color: var(--text-dim);
 }
 .bs-results {
@@ -782,7 +789,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--fs-0);
+  font-size: var(--fs-2);
   color: var(--text-faint);
 }
 .bs-hits button:hover {
@@ -801,14 +808,6 @@
   max-height: min(72vh, 640px);
   overflow: auto;
   padding: 16px 18px 18px;
-  border: 0;
-  border-radius: 0;
-  background: var(--nu-glass, var(--bg-raise));
-  backdrop-filter: blur(18px);
-  box-shadow:
-    inset 0 0 0 1px var(--nu-edge, var(--border)),
-    0 30px 80px -30px rgba(0, 0, 0, 0.8);
-  clip-path: polygon(14px 0, 100% 0, 100% 100%, 0 100%, 0 14px);
   scrollbar-width: thin;
 }
 .bs-menu-body {
@@ -838,6 +837,8 @@
 .bs-menu-acts button:hover,
 .bs-menu-acts button[aria-pressed="true"] {
   color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 .bs-menu-acts button:disabled {
   opacity: 0.5;
@@ -876,7 +877,7 @@
   color: var(--text);
 }
 .bs-chips small {
-  font: 400 var(--fs-0) / 1 var(--font-mono);
+  font: 400 var(--fs-2) / 1 var(--font-mono);
   color: var(--text-faint);
 }
 .bs-row {
@@ -884,6 +885,13 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+.bs-switch-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-2);
+  color: var(--text-dim);
 }
 .bs-range {
   display: inline-flex;
@@ -905,14 +913,14 @@
   flex-wrap: wrap;
   gap: 2px 12px;
   margin: 0;
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
 }
 .bs-link-kind {
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 10px 0 2px;
-  font: 500 var(--fs-1) / 1.4 var(--font-mono);
+  font: 500 var(--fs-2) / 1.4 var(--font-mono);
   letter-spacing: 0.06em;
   color: var(--text-dim);
 }
@@ -983,7 +991,7 @@
 }
 .bs-list .brain2-list-group {
   margin: 12px 0 2px;
-  font: 500 var(--fs-0) / 1.5 var(--font-mono);
+  font: 500 var(--fs-2) / 1.5 var(--font-mono);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -1002,6 +1010,7 @@
 .bs-list .brain2-list-item:hover,
 .bs-list .brain2-list-item.selected {
   color: var(--agent-text);
+  box-shadow: inset 2px 0 0 var(--agent);
 }
 
 /* ---- the reader ------------------------------------------------------------------- */
@@ -1110,7 +1119,7 @@
 }
 .bs-sheet-path {
   margin: 0;
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   line-height: 1.5;
   color: var(--text-faint);
   overflow-wrap: anywhere;
@@ -1143,7 +1152,7 @@
     box-shadow 0.2s;
 }
 .bs-terms button small {
-  font: 400 var(--fs-0) / 1 var(--font-mono);
+  font: 400 var(--fs-2) / 1 var(--font-mono);
   color: var(--text-faint);
 }
 .bs-terms button:hover,
@@ -1224,6 +1233,7 @@
 .bs-outline button[aria-current] {
   color: var(--agent-text);
   border-left-color: var(--agent);
+  font-weight: 600;
 }
 .bs-rail-group {
   margin-top: 12px;
@@ -1233,7 +1243,7 @@
   align-items: baseline;
   gap: 7px;
   margin: 0 0 4px;
-  font: 500 var(--fs-1) / 1.4 var(--font-mono);
+  font: 500 var(--fs-2) / 1.4 var(--font-mono);
   letter-spacing: 0.04em;
   color: var(--text-dim);
 }
@@ -1442,7 +1452,7 @@
 }
 .bs-md code {
   padding: 0.1em 0.35em;
-  font: 400 0.84em var(--font-mono);
+  font: 400 max(var(--fs-2), 0.84em) var(--font-mono);
   color: var(--agent-text);
   background: color-mix(in srgb, var(--agent) 8%, transparent);
 }
@@ -1467,7 +1477,7 @@
 }
 .bs-md-ext {
   margin-left: 2px;
-  font-size: 0.8em;
+  font-size: max(var(--fs-2), 0.8em);
 }
 .bs-md-pre {
   position: relative;
@@ -1487,7 +1497,7 @@
   position: absolute;
   right: 10px;
   top: 6px;
-  font: 500 var(--fs-0) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -1525,7 +1535,7 @@
 }
 .bs-md-skill {
   font-family: var(--font-mono);
-  font-size: 0.84em;
+  font-size: max(var(--fs-2), 0.84em);
   color: var(--accent-text);
   text-decoration-color: var(--accent-line);
 }
@@ -1543,7 +1553,7 @@
 }
 .bs-md-label {
   margin-right: 8px;
-  font: 500 var(--fs-0) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -1577,7 +1587,7 @@
   vertical-align: top;
 }
 .bs-md-table th {
-  font: 500 var(--fs-0) / 1.4 var(--font-mono);
+  font: 500 var(--fs-2) / 1.4 var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -1618,7 +1628,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: right;
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   letter-spacing: 0.06em;
   color: var(--text-dim);
 }
@@ -1629,7 +1639,7 @@
   padding: 2px 4px;
   border: 0;
   background: none;
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   color: var(--accent-text);
   cursor: pointer;
 }

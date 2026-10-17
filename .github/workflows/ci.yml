@@ -1,8 +1,11 @@
 name: CI
 
-# Manual only: nothing runs on push or pull request. Trigger it from the
-# Actions tab when you want a full check on a clean machine.
+# Every pull request and every push to main is checked; the Actions tab can
+# still run it by hand on any branch.
 on:
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -34,6 +37,8 @@ jobs:
         if: runner.os == 'Windows'
         run: npx vitest run --exclude tests/adapters.test.ts --exclude tests/api.test.ts --exclude tests/core.runs.test.ts --exclude tests/seeds.test.ts
       - run: npm run build
+      - name: Bundle weight (the guard of scripts/bundle-size.mjs)
+        run: npm run bundle:check
       - run: npm audit --audit-level=high
       - name: Packager smoke (bundle + launchers, system Node, no archive)
         if: runner.os != 'Windows'
@@ -44,6 +49,62 @@ jobs:
           export MORDOMO_HOME="$RUNNER_TEMP/pkg-home" MORDOMO_SKIP_NPM_AUDIT=1
           "$cli" status --json | grep -q '"running":false'
           "$cli" doctor | grep -q "Node.js version"
+          # The legal side travels with the app (inside the .app on macOS).
+          res="$stage"; [ -d "$stage/MordomoOS.app" ] && res="$stage/MordomoOS.app/Contents/Resources"
+          test -f "$res/LICENSE"
+          test -f "$res/legal/EULA.md"
+          test -f "$res/legal/PRIVACY.md"
+          test -f "$res/legal/NOTICE.md"
+          test -f "$res/legal/THIRD_PARTY_NOTICES.md"
+          test -f "$res/legal/sbom.cdx.json"
+
+  desktop:
+    name: desktop (rust shell, linux)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Rust toolchain (the version of apps/desktop/rust-toolchain.toml)
+        run: rustup toolchain install 1.97.0 --profile minimal --component rustfmt,clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop/target
+          key: desktop-${{ runner.os }}-${{ hashFiles('apps/desktop/Cargo.lock', 'apps/desktop/rust-toolchain.toml') }}
+      - name: Linux libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf file xvfb xdotool metacity dbus-x11
+      - run: npm ci
+      - run: npm run build
+      # The payload comes first: `tauri_build` (the build script of mordomo-desktop) refuses a `resources` path that does
+      # not exist, so clippy, `cargo check` and `cargo build` of the app all need `apps/desktop/payload`.
+      - name: Payload and the legal files in it
+        run: |
+          set -euo pipefail
+          node scripts/package.mjs --payload apps/desktop/payload --skip-build
+          for file in LICENSE legal/EULA.md legal/PRIVACY.md legal/NOTICE.md legal/THIRD_PARTY_NOTICES.md legal/THIRD_PARTY_NOTICES.desktop.md legal/sbom.cdx.json legal/sbom.desktop.cdx.json; do
+            test -f "apps/desktop/payload/$file"
+          done
+      - name: Rust format, lint and tests (the shell logic runs without a display)
+        working-directory: apps/desktop
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --locked --workspace --all-targets --features mordomo-desktop/updater -- -D warnings
+          cargo test --locked -p mordomo-shell-core
+          cargo check --locked -p mordomo-desktop
+      - name: Licenses of the Rust crates (cargo is required here)
+        run: node scripts/licenses-rust.mjs --check --require-cargo
+      - name: Build the app and run the window smoke test
+        run: |
+          set -euo pipefail
+          (cd apps/desktop && cargo build --locked -p mordomo-desktop)
+          apps/desktop/smoke/gui.sh apps/desktop/target/debug/mordomo-desktop apps/desktop/payload
 
   e2e:
     name: e2e (playwright)

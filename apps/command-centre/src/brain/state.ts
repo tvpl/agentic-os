@@ -60,7 +60,7 @@ const isKind = (v: unknown): v is EdgeKind =>
 const num = (v: unknown, min: number, max: number): number | undefined =>
   typeof v === "number" && Number.isFinite(v) && v >= min && v <= max ? v : undefined;
 
-/** Validate an untrusted blob (server `settings.brain`, localStorage) into a partial settings object. */
+/** Validate an untrusted blob (server `brain` from the UI preferences, localStorage) into a partial settings object. */
 export function parseBrainSettings(raw: unknown): Partial<BrainSettings> {
   if (!raw || typeof raw !== "object") return {};
   const r = raw as Record<string, unknown>;

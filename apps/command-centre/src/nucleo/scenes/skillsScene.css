@@ -105,7 +105,7 @@
   width: 120px;
   margin: -7px 0 0 -60px;
   text-align: center;
-  font: 500 var(--fs-0) / 14px var(--font-mono);
+  font: 500 var(--fs-2) / 14px var(--font-mono);
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -139,8 +139,7 @@
     filter 0.35s;
 }
 .sks-item .hx,
-.sks-chip .hx,
-.sks-sheet-head .hx {
+.sks-chip .hx {
   display: grid;
   place-items: center;
   width: 100%;
@@ -155,8 +154,7 @@
     color 0.2s;
 }
 .sks-item[data-mode="write"] .hx,
-.sks-chip[data-mode="write"] .hx,
-.sks-sheet-head .hx[data-mode="write"] {
+.sks-chip[data-mode="write"] .hx {
   background: color-mix(in srgb, var(--agent) 17%, transparent);
   color: var(--agent-text);
 }
@@ -280,7 +278,7 @@
 }
 .sks-eyebrow {
   margin: 0;
-  font: 500 var(--fs-1) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--accent-text);
@@ -324,7 +322,7 @@
   align-items: baseline;
   gap: 2px 12px;
   margin: 0;
-  font: 500 var(--fs-1) / 1.3 var(--font-mono);
+  font: 500 var(--fs-2) / 1.3 var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -347,7 +345,7 @@
 }
 .sks-state {
   margin: 8px 0 0;
-  font: 400 var(--fs-1) / 1.3 var(--font-mono);
+  font: 400 var(--fs-2) / 1.3 var(--font-mono);
   color: var(--text-faint);
 }
 .sks-state button {
@@ -452,6 +450,7 @@
 }
 .sks-icon[aria-pressed="true"] {
   color: var(--accent-text);
+  box-shadow: inset 0 -1px 0 var(--accent);
 }
 .sks-focus.compact .sks-desc,
 .sks-focus.compact .sks-tags .tg {
@@ -516,78 +515,16 @@
 .sks-find input::placeholder {
   color: var(--text-faint);
 }
-.sks-filters {
-  display: grid;
-  gap: 10px;
-}
-.sks-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 4px;
-}
-.sks-opt {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
-  border: 0;
-  background: none;
-  color: var(--text-faint);
-  font: 600 var(--fs-2) / 1.2 var(--font-display);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.sks-opt.mono {
-  font: 400 var(--fs-1) / 1.2 var(--font-mono);
-  letter-spacing: 0.04em;
-  text-transform: none;
-}
-.sks-opt svg {
-  width: 12px;
-  height: 12px;
-}
-.sks-opt:hover,
-.sks-opt:focus-visible {
-  color: var(--text);
-}
-.sks-opt[aria-pressed="true"] {
-  color: var(--accent-text);
-  box-shadow: inset 0 -1px 0 var(--accent);
-}
-.sks-opt[data-mode="write"][aria-pressed="true"] {
-  color: var(--agent-text);
-  box-shadow: inset 0 -1px 0 var(--agent);
-}
-.sks-opt:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
 .sks-count {
   margin: 0;
   padding-left: 6px;
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   letter-spacing: 0.08em;
   color: var(--text-faint);
 }
 .sks-pager span {
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   color: var(--text-dim);
-}
-.sks-manage {
-  margin-top: 6px;
-  padding-top: 10px;
-  border-top: 1px solid color-mix(in srgb, var(--text-faint) 22%, transparent);
-  flex-direction: column;
-  align-items: flex-start;
-}
-.sks-manage .sks-opt {
-  color: var(--text-dim);
-}
-.sks-manage .sks-opt.new {
-  color: var(--accent-text);
 }
 .sks-nomatch {
   position: absolute;
@@ -596,7 +533,7 @@
   z-index: 1;
   margin: 0;
   transform: translateX(-50%);
-  font: 400 var(--fs-2) / 1.2 var(--font-mono);
+  font: 400 var(--fs-3) / 1.2 var(--font-mono);
   color: var(--text-faint);
 }
 .sks-keys {
@@ -604,7 +541,7 @@
   left: var(--sks-gut);
   bottom: var(--sks-bottom);
   margin: 0;
-  font-size: var(--fs-0);
+  font-size: var(--fs-2);
   letter-spacing: 0.08em;
   color: var(--text-faint);
   pointer-events: none;
@@ -620,7 +557,7 @@
 }
 .sks-read .k {
   margin: 18px 0 8px;
-  font: 500 var(--fs-0) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -636,7 +573,7 @@
 }
 .sks-read .v.mono {
   font-family: var(--font-mono);
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
 }
 .sks-read .faint {
   color: var(--text-faint);
@@ -658,7 +595,7 @@
   border: 0;
   background: none;
   color: var(--text-dim);
-  font: 400 var(--fs-1) / 1.3 var(--font-mono);
+  font: 400 var(--fs-2) / 1.3 var(--font-mono);
   cursor: pointer;
 }
 .sks-runs button:hover .when,
@@ -668,7 +605,6 @@
 
 /* ---- the details sheet ----------------------------------------------------------- */
 .sks-sheet {
-  --cut: 16px;
   position: absolute;
   z-index: 3;
   top: var(--sks-top);
@@ -677,82 +613,6 @@
   width: var(--sks-sheet-w);
   display: flex;
   flex-direction: column;
-  background: var(--nu-glass, var(--bg-raise));
-  backdrop-filter: blur(16px) saturate(1.2);
-  box-shadow:
-    inset 0 0 0 1px var(--nu-edge, var(--border)),
-    0 30px 80px -30px rgba(0, 0, 0, 0.8);
-  clip-path: polygon(
-    var(--cut) 0,
-    100% 0,
-    100% calc(100% - var(--cut)),
-    calc(100% - var(--cut)) 100%,
-    0 100%,
-    0 var(--cut)
-  );
-  animation: sks-sheet-in 0.6s var(--sks-ease) both;
-}
-.sks-sheet::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--agent), transparent);
-  opacity: 0.7;
-}
-@keyframes sks-sheet-in {
-  from {
-    opacity: 0;
-    transform: translateX(40px);
-    filter: blur(6px);
-  }
-}
-.sks-sheet-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 14px 10px 20px;
-  flex: none;
-}
-.sks-sheet-head .hx {
-  width: 20px;
-  height: 23px;
-  flex: none;
-  font-size: var(--fs-1);
-}
-.sks-sheet-head h2 {
-  margin: 0;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font: 600 var(--fs-6) / 1.1 var(--font-display);
-  letter-spacing: 0.03em;
-}
-.sks-sheet-head .sp {
-  flex: 1;
-}
-.sks-sheet-x {
-  display: inline-grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  flex: none;
-  border: 0;
-  background: none;
-  color: var(--text-dim);
-  cursor: pointer;
-}
-.sks-sheet-x svg {
-  width: 16px;
-  height: 16px;
-}
-.sks-sheet-x:hover,
-.sks-sheet-x:focus-visible {
-  color: var(--text);
-  background: color-mix(in srgb, var(--text) 8%, transparent);
 }
 .sks-sheet-body {
   flex: 1 1 auto;
@@ -792,19 +652,6 @@
   .sks-find {
     flex: 0 0 200px;
   }
-  .sks-filters {
-    display: contents;
-  }
-  .sks-row {
-    flex-wrap: nowrap;
-  }
-  .sks-manage {
-    margin: 0;
-    padding: 0 0 0 12px;
-    border-top: 0;
-    border-left: 1px solid color-mix(in srgb, var(--text-faint) 22%, transparent);
-    flex-direction: row;
-  }
   .sks-count {
     white-space: nowrap;
   }
@@ -831,7 +678,7 @@
   display: block;
   overflow: auto;
   scrollbar-width: none;
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+  mask-image: linear-gradient(to bottom, var(--mask-ink) calc(100% - 20px), transparent);
 }
 .sks[data-narrow] .sks-tools {
   position: static;
@@ -839,26 +686,8 @@
   gap: 8px;
   padding-top: 4px;
 }
-.sks[data-narrow] .sks-filters {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
-}
-.sks[data-narrow] .sks-row {
-  flex-wrap: nowrap;
-}
 .sks[data-narrow] .sks-count {
   display: none;
-}
-.sks[data-narrow] .sks-manage {
-  flex-direction: row;
-  margin: 0;
-  padding: 0 0 0 12px;
-  border-top: 0;
-  border-left: 1px solid color-mix(in srgb, var(--text-faint) 22%, transparent);
 }
 .sks[data-narrow] .sks-nomatch {
   position: static;
@@ -895,7 +724,7 @@
 }
 .sks-list-h {
   margin: 0 0 8px;
-  font: 500 var(--fs-0) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -926,7 +755,7 @@
   margin: 0;
 }
 .sks-chip .hx {
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
 }
 .sks-chip .nm {
   min-width: 0;
@@ -963,7 +792,6 @@
     transition: none;
   }
   .sks-focus,
-  .sks-sheet,
   .sks-item[data-live] .hx-w,
   .sks-chip[data-live] .hx-w,
   .sks-live::before {
@@ -1056,7 +884,7 @@
     box-shadow 0.25s;
 }
 .sks-fchip.mono {
-  font: 400 var(--fs-1) / 1.2 var(--font-mono);
+  font: 400 var(--fs-2) / 1.2 var(--font-mono);
 }
 .sks-fchip svg {
   width: 13px;
@@ -1097,7 +925,7 @@
   align-items: center;
   gap: 4px;
   flex: none;
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   color: var(--text-dim);
 }
 .sks-more {
@@ -1115,7 +943,7 @@
   color: var(--accent-contrast);
   background: radial-gradient(
     circle at 34% 28%,
-    color-mix(in srgb, #fff 30%, var(--accent)),
+    color-mix(in srgb, var(--highlight-ink) 30%, var(--accent)),
     var(--accent) 60%
   );
   box-shadow: 0 0 18px -4px var(--accent-glow);
@@ -1128,56 +956,6 @@
 .sks-plus svg {
   width: 18px;
   height: 18px;
-}
-.sks-menu {
-  position: absolute;
-  top: calc(100% + 10px);
-  right: 0;
-  z-index: 5;
-  display: grid;
-  min-width: 240px;
-  padding: 6px;
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--bg) 70%, transparent);
-  backdrop-filter: blur(22px) saturate(1.3);
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--agent) 22%, transparent),
-    0 20px 60px -20px rgba(0, 0, 0, 0.8),
-    0 0 40px -20px var(--agent);
-  transform-origin: top right;
-  animation: sks-menu-in 0.32s cubic-bezier(0.2, 1.2, 0.35, 1) both;
-}
-@keyframes sks-menu-in {
-  from {
-    opacity: 0;
-    transform: scale(0.9) translateY(-6px);
-  }
-}
-.sks-menu button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 0;
-  border-radius: 12px;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-  font-size: var(--fs-3);
-  color: var(--text-dim);
-}
-.sks-menu button:hover,
-.sks-menu button:focus-visible {
-  outline: none;
-  color: var(--text);
-  background: color-mix(in srgb, var(--agent) 10%, transparent);
-}
-.sks-menu button.new {
-  color: var(--accent-text);
-}
-.sks-menu svg {
-  width: 16px;
-  height: 16px;
 }
 /* The ring takes the width the side columns held, under the bar. */
 .sks:not([data-narrow]) .sks-stage {
@@ -1252,7 +1030,6 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .sks-bar,
-  .sks-menu,
   .sks-read {
     animation: none;
   }

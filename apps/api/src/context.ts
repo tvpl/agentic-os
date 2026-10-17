@@ -1,291 +1,112 @@
-import fs from "node:fs";
-import path from "node:path";
+import crypto from "node:crypto";
+import type { HealthStatus, PermissionBroker, ProviderCapabilities, RunMode } from "@mordomo/core";
 import {
-  ApprovalStore,
-  ConnectorRegistry,
-  MemoryIndexer,
-  NotificationStore,
-  ObjectiveStore,
-  RoutineScheduler,
-  RoutineStore,
-  RunManager,
-  SentinelRunner,
-  SettingsStore,
-  SkillCatalog,
-  SyncCompiler,
+  MordomoEngine,
+  ProviderSettingsSchema,
   budgetDedupeKey,
-  ensureDirs,
-  events,
-  installJournalHooks,
-  installNotificationRecorder,
-  installTelegramChannel,
   localDay,
-  openDb,
-  resolvePaths,
-  seedHome,
-  restoreBackup,
-  type AgentAdapter,
+  installedVersion,
+  versionStatus,
   type BudgetCrossedPayload,
-  type Db,
-  type HealthStatus,
-  type MordomoPaths,
-  type ProviderCapabilities,
-  type ProviderId,
-  type ProviderRegistry,
-  type Settings,
-  DeviceStore,
-  SkillRegistry,
-  type SecurityProfile,
-  type PermissionBroker,
-  PushStore,
-  type TelegramPoller,
-  installPushChannel,
-  MetricsHistory,
+  type EffortLevel,
+  type HostResolver,
   type MetricsSample,
-} from "@mordomo/core";
+  type ProviderId,
+  type SecurityProfile,
+  type TelegramPoller,
+  type TestedVersions,
+  type VersionStatus,
+} from "@mordomo/core/internal";
 import { cliEntry, seedDir } from "./entry.js";
 import { buildProviderRegistry } from "./providers.js";
+import { TicketStore } from "./tickets.js";
 
 export interface ProviderSnapshot {
   id: ProviderId;
   displayName: string;
   capabilities: ProviderCapabilities;
   installHint: string;
+  /** What a person runs in a terminal to sign the CLI in (from the manifest). */
+  loginCommand: string;
   enabled: boolean;
   isDefault: boolean;
   health: HealthStatus;
+  /** The `major.minor.patch` read from `health.version` (the CLI's own `--version` text); null when there is none. */
+  installedVersion: string | null;
+  /** `installedVersion` against `testedVersions`; only informs, never blocks a run. */
+  versionStatus: VersionStatus;
+  /** The range this MordomoOS release was developed against; null when the provider declares none. */
+  testedVersions: TestedVersions | null;
   defaultModel: string | null;
-  defaultEffort: string;
+  defaultEffort: EffortLevel;
 }
 
+export {
+  RESTORE_PENDING_DIR,
+  applyPendingRestore,
+  clearRestorePending,
+  readRestorePending,
+  restorePendingDir,
+  writeRestorePending,
+  type RestorePending,
+} from "@mordomo/core/internal";
+
 export interface AppContextOptions {
+  /** How long to wait for a restore running in another process before refusing (ms). */
+  restoreWaitMs?: number;
   /**
    * Apply a restore staged by `POST /api/backups/:name/restore` before the
    * database is opened. Only the long-running server passes this; CLI
    * commands that merely open the context must not silently restore.
    */
   applyPendingRestore?: boolean;
-}
-
-/** Marker + copy written by the API when a restore cannot run against the open DB. */
-export interface RestorePending {
-  name: string;
-  stagedAt: number;
-  stagedPath: string;
-}
-
-export const RESTORE_PENDING_DIR = "restore-pending";
-const RESTORE_MARKER = "PENDING.json";
-
-export function restorePendingDir(paths: MordomoPaths): string {
-  return path.join(paths.config, RESTORE_PENDING_DIR);
-}
-
-export function readRestorePending(paths: MordomoPaths): RestorePending | null {
-  const marker = path.join(restorePendingDir(paths), RESTORE_MARKER);
-  try {
-    const raw = JSON.parse(fs.readFileSync(marker, "utf8")) as Partial<RestorePending>;
-    if (typeof raw.name !== "string" || typeof raw.stagedAt !== "number") return null;
-    return {
-      name: raw.name,
-      stagedAt: raw.stagedAt,
-      stagedPath: path.join(restorePendingDir(paths), raw.name),
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function writeRestorePending(paths: MordomoPaths, name: string): RestorePending {
-  const dir = restorePendingDir(paths);
-  const stagedPath = path.join(dir, name);
-  fs.rmSync(dir, { recursive: true, force: true });
-  fs.mkdirSync(dir, { recursive: true });
-  fs.cpSync(path.join(paths.backups, name), stagedPath, { recursive: true });
-  const info: RestorePending = { name, stagedAt: Date.now(), stagedPath };
-  fs.writeFileSync(
-    path.join(dir, RESTORE_MARKER),
-    JSON.stringify({ name, stagedAt: info.stagedAt }, null, 2) + "\n",
-  );
-  return info;
-}
-
-export function clearRestorePending(paths: MordomoPaths): void {
-  fs.rmSync(restorePendingDir(paths), { recursive: true, force: true });
+  /** How a push endpoint's host is resolved (tests replace the system's DNS). */
+  pushResolver?: HostResolver;
 }
 
 /**
- * Apply a staged restore. Must be called with NO database handle open
- * (i.e. before `openDb`). If the original backup directory is gone the
- * staged copy is moved back into `backups/` first.
+ * The engine plus what only the HTTP API needs: the local token, the
+ * permission-broker credentials, the provider health cache and the Telegram
+ * poller. Building one changes nothing (every CLI command builds one); the
+ * service calls `start()` to own the home (`startServer`).
  */
-export function applyPendingRestore(paths: MordomoPaths): { applied: RestorePending | null } {
-  const pending = readRestorePending(paths);
-  if (!pending) return { applied: null };
-  const original = path.join(paths.backups, pending.name);
-  if (!fs.existsSync(original) && fs.existsSync(pending.stagedPath)) {
-    fs.cpSync(pending.stagedPath, original, { recursive: true });
-  }
-  try {
-    restoreBackup(paths, pending.name);
-  } finally {
-    clearRestorePending(paths);
-  }
-  return { applied: pending };
-}
+/** Writes (journal lines, facts) one run credential may make, and all of them together in a day. */
+const MEMORY_WRITES_PER_RUN = 100;
+const MEMORY_WRITES_PER_DAY = 500;
 
-function buildAdapters(registry: ProviderRegistry, settings: Settings): Record<ProviderId, AgentAdapter> {
-  return registry.createAll((id) => settings.providers[id]?.binaryPath ?? null);
-}
+export class AppContext extends MordomoEngine {
+  /** Telegram inbound poller; created and started by the server (needs the approval actions). */
+  telegramPoller: TelegramPoller | null = null;
 
-export class AppContext {
-  readonly paths: MordomoPaths;
-  readonly settingsStore: SettingsStore;
-  readonly db: Db;
-  readonly runs: RunManager;
-  readonly objectives: ObjectiveStore;
-  readonly skills: SkillCatalog;
-  readonly indexer: MemoryIndexer;
-  readonly routines: RoutineStore;
-  readonly scheduler: RoutineScheduler;
-  readonly connectors: ConnectorRegistry;
-  readonly sync: SyncCompiler;
-  readonly approvals: ApprovalStore;
-  /** Persisted inbox (Onda 2): approvals, failed runs, alerts, budget warnings. */
-  readonly notifications: NotificationStore;
-  /** Paired devices for remote access (Onda 3). */
-  readonly devices: DeviceStore;
-  /** Skill registries (Onda 3): cached indexes and verified staging. */
-  readonly skillRegistry: SkillRegistry;
-  /**
-   * Sentinels (Onda 2): the cheap observers plus the triage listener. Built
-   * here, started and stopped with the scheduler in `startServer`; its hourly
-   * pass runs inside the service's existing hourly sweep (`selfSchedule: false`).
-   */
-  readonly sentinels: SentinelRunner;
-  /** Registered providers (manifests + factories); the single place the API learns which providers exist. */
-  readonly providers: ProviderRegistry;
-  readonly startedAt = Date.now();
-  /** Restore applied at boot (see `applyPendingRestore`), for the startup log. */
-  readonly restoredAtBoot: RestorePending | null = null;
+  /** The tickets that open the two SSE streams without a credential in the URL (`POST /api/stream-tickets`). */
+  readonly streamTickets = new TicketStore();
 
-  private adapterRecord: Record<ProviderId, AgentAdapter>;
   private healthCache = new Map<ProviderId, { at: number; health: HealthStatus }>();
   private healthInFlight = new Map<ProviderId, Promise<HealthStatus>>();
 
   constructor(homeOverride?: string, opts: AppContextOptions = {}) {
-    this.paths = resolvePaths(homeOverride);
-    ensureDirs(this.paths);
-    // Packaged installs ship their skills/routines/connectors next to the bundle.
-    const seeds = seedDir();
-    if (seeds) seedHome(this.paths, seeds);
-    if (opts.applyPendingRestore) {
-      this.restoredAtBoot = applyPendingRestore(this.paths).applied;
-    }
-    this.settingsStore = new SettingsStore(this.paths);
-    this.db = openDb(this.paths).db;
-    this.providers = buildProviderRegistry();
-    this.adapterRecord = buildAdapters(this.providers, this.settingsStore.load());
-    this.skills = new SkillCatalog(this.paths);
-    // The adapter callback reads the CURRENT record, so `reloadAdapters()`
-    // takes effect for the next run without rebuilding the RunManager.
-    this.runs = new RunManager(
-      this.db,
-      this.paths,
-      () => this.settings(),
-      (id) => this.adapters[id],
-      { permissionBroker: (run) => this.permissionBrokerFor(run) },
-    );
-    this.objectives = new ObjectiveStore(this.db, this.paths);
-    this.objectives.recover(this.runs);
-    this.indexer = new MemoryIndexer(this.db, () => this.settings());
-    this.routines = new RoutineStore(this.paths);
-    this.scheduler = new RoutineScheduler(this.db, this.paths, this.routines, this.runs, this.skills, () =>
-      this.settings(),
-    );
-    this.connectors = new ConnectorRegistry(this.paths);
-    this.sync = new SyncCompiler(
-      this.paths,
-      () => this.settings(),
-      () => this.skills.list(),
-      () => this.providers.manifests(),
-    );
-    this.approvals = new ApprovalStore(this.db, () => this.settings().limits.approvalTtlDays * 86_400_000);
-    this.devices = new DeviceStore(this.db);
-    this.skillRegistry = new SkillRegistry();
-    // The daily journal listens for finished runs. Installing it here (and not
-    // only when the HTTP routes are registered) means CLI paths — `mordomo
-    // index`, `mordomo run` — also index `memory/journal/**` and log their run
-    // line. The install is idempotent, so the route-level one is a no-op.
-    this.disposeJournalHooks = installJournalHooks(events, this.paths, {
-      indexer: this.indexer,
-      runs: { get: (id) => this.runs.get(id), lastReply: (id) => this.runs.lastAssistantText(id) },
+    super({
+      ...(homeOverride ? { home: homeOverride } : {}),
+      providers: buildProviderRegistry(),
+      // Packaged installs ship their skills/routines/connectors next to the bundle.
+      seedDir: seedDir(),
+      applyPendingRestore: opts.applyPendingRestore === true,
+      ...(opts.pushResolver ? { pushResolver: opts.pushResolver } : {}),
+      ...(opts.restoreWaitMs !== undefined ? { restoreWaitMs: opts.restoreWaitMs } : {}),
     });
-    // The inbox listens on the same bus: approvals, failed runs, heartbeat
-    // alerts and budget thresholds become rows that survive a closed tab.
-    this.notifications = new NotificationStore(this.db);
-    this.disposeNotificationRecorder = installNotificationRecorder(events, this.notifications, {
-      runs: this.runs,
-      routines: this.routines,
-    });
-    this.disposeObjectiveSync = events.subscribe((event) => {
-      if (event.type !== "run.finished") return;
-      const runId = (event.payload as { runId?: string }).runId;
-      const run = runId ? this.runs.get(runId) : null;
-      if (run) this.objectives.syncRun(run, this.runs);
-    });
-    // Alerts leave the tab: rows at or above `channels.telegram.minTone` are
-    // posted to Telegram. The bot token is read from the environment at send
-    // time; failures are logged at most once an hour and never thrown.
-    this.disposeTelegramChannel = installTelegramChannel(events, { getSettings: () => this.settings() });
-    // Web Push to installed PWAs: same rows, encrypted to each subscription.
-    this.push = new PushStore(this.db, this.paths.config);
-    this.metricsHistory = new MetricsHistory(this.db);
-    this.disposePushChannel = installPushChannel(events, {
-      getSettings: () => this.settings(),
-      store: this.push,
-    });
-    // The observers themselves. Nothing is watched or polled until `start()`.
-    this.sentinels = new SentinelRunner({
-      db: this.db,
-      paths: this.paths,
-      getSettings: () => this.settings(),
-      runs: this.runs,
-      notifications: this.notifications,
-      scheduler: this.scheduler,
-      connectors: this.connectors,
-      skills: this.skills,
-      indexer: this.indexer,
-      bus: events,
-      selfSchedule: false,
+    this.unsubscribeCredentials = this.events.subscribe((e) => {
+      if (e.type !== "run.finished") return;
+      const runId = (e.payload as { runId?: string }).runId;
+      if (runId) this.forgetCredentialsOf(runId);
     });
   }
 
-  private readonly disposeJournalHooks: () => void;
-  private readonly disposeNotificationRecorder: () => void;
-  private readonly disposeObjectiveSync: () => void;
-  private readonly disposeTelegramChannel: () => void;
-  private readonly disposePushChannel: () => void;
-  /** Web Push subscriptions and the VAPID pair. */
-  readonly push: PushStore;
-  /** Hourly metrics snapshots (Settings › Trends). */
-  readonly metricsHistory: MetricsHistory;
-  /** Telegram inbound poller; created and started by the server (needs the approval actions). */
-  telegramPoller: TelegramPoller | null = null;
-
-  /** Live adapters — rebuilt by `reloadAdapters()` whenever settings change. */
-  get adapters(): Record<ProviderId, AgentAdapter> {
-    return this.adapterRecord;
-  }
+  private readonly unsubscribeCredentials: () => void;
 
   /** Re-create the provider adapters from the settings on disk (binaryPath etc.). */
-  reloadAdapters(): void {
-    this.adapterRecord = buildAdapters(this.providers, this.settings());
+  override reloadAdapters(): void {
+    super.reloadAdapters();
     this.invalidateProviderCache();
-  }
-
-  settings(): Settings {
-    return this.settingsStore.load();
   }
 
   /**
@@ -294,19 +115,23 @@ export class AppContext {
    * run id in its environment. Profiles that answer prompts themselves
    * (approved_automation) and read-only runs get none.
    */
-  permissionBrokerFor(run: {
+  override permissionBrokerFor(run: {
     id: string;
     permissionProfile: SecurityProfile | null;
   }): PermissionBroker | null {
     const settings = this.settings();
     const profile = run.permissionProfile ?? settings.securityProfile;
     if (profile !== "review_before_write" && profile !== "controlled_write") return null;
+    // Its own credential, never the local token: it can raise, read and deny
+    // this run's approvals only, and dies with the run (AD-002).
+    const credential = `brk_${crypto.randomBytes(32).toString("base64url")}`;
+    this.brokerCredentials.set(credential, run.id);
     return {
       command: process.execPath,
       args: [cliEntry(), "mcp", "permission"],
       env: {
-        MORDOMO_URL: `http://127.0.0.1:${settings.port}`,
-        MORDOMO_TOKEN: this.token(),
+        MORDOMO_URL: `http://127.0.0.1:${this.servicePort()}`,
+        MORDOMO_TOKEN: credential,
         MORDOMO_RUN_ID: run.id,
         MORDOMO_APPROVAL_TIMEOUT_MS: String(settings.limits.toolApprovalTimeoutMs ?? 600_000),
         ...(this.paths.home ? { MORDOMO_HOME: this.paths.home } : {}),
@@ -318,22 +143,106 @@ export class AppContext {
     return this.settingsStore.getOrCreateToken();
   }
 
+  /** A desktop shell's launch secret (`start --sidecar`), set by `startServer` before the server is built. */
+  launchSecret: string | undefined = undefined;
+
+  // `boundPort` (set by `startServer`) and `servicePort()` are the engine's: the Telegram channel reads them too.
+
+  /** Permission-broker credential → the run it was issued for. In memory: a restart interrupts every run anyway. */
+  private readonly brokerCredentials = new Map<string, string>();
+
+  /**
+   * The run a broker credential belongs to, and whether it still counts: only
+   * while that run is queued or running. A dead credential is forgotten.
+   */
+  brokerRunFor(credential: string): { runId: string; active: boolean } | null {
+    const runId = this.brokerCredentials.get(credential);
+    if (!runId) return null;
+    const status = this.runs.get(runId)?.status;
+    if (status === "queued" || status === "running") return { runId, active: true };
+    this.brokerCredentials.delete(credential);
+    return { runId, active: false };
+  }
+
+  /** Run-scoped API credential → the run it was issued for and whether that run may write (same lifetime rule as the broker's). */
+  private readonly runApiCredentials = new Map<string, { runId: string; writable: boolean }>();
+
+  /**
+   * A run of a memory skill calls the memory routes of this API with a credential of its own
+   * (`MORDOMO_RUN_TOKEN`), never with the owner token it cannot read: `rc_` + 32 random bytes, accepted only while
+   * the run is queued or running, only on the routes in `RUN_API_*_ROUTES`, and for the routes that write only
+   * when the run itself may write (docs/security.md, AD-012).
+   */
+  override runApiAccessFor(run: { id: string }, mode: RunMode): { url: string; token: string } | null {
+    const credential = `rc_${crypto.randomBytes(32).toString("base64url")}`;
+    this.runApiCredentials.set(credential, { runId: run.id, writable: mode === "write" });
+    return { url: `http://127.0.0.1:${this.servicePort()}`, token: credential };
+  }
+
+  runApiRunFor(credential: string): { runId: string; active: boolean; writable: boolean } | null {
+    const entry = this.runApiCredentials.get(credential);
+    if (!entry) return null;
+    const status = this.runs.get(entry.runId)?.status;
+    if (status === "queued" || status === "running") return { ...entry, active: true };
+    this.runApiCredentials.delete(credential);
+    return { ...entry, active: false };
+  }
+
+  /** A finished run keeps no credential: both maps drop its entries the moment it settles. */
+  private forgetCredentialsOf(runId: string): void {
+    for (const [credential, id] of this.brokerCredentials)
+      if (id === runId) this.brokerCredentials.delete(credential);
+    for (const [credential, entry] of this.runApiCredentials) {
+      if (entry.runId === runId) this.runApiCredentials.delete(credential);
+    }
+  }
+
+  /** How many writes (journal lines, facts) run credentials made today, and per run. */
+  private readonly memoryWrites = { day: "", total: 0, perRun: new Map<string, number>() };
+
+  /**
+   * One more write by a run credential, or a `429`: a run that loops (or an injected prompt that makes it) cannot
+   * fill the journal or the fact table. The caps are per run and per day across runs.
+   */
+  noteMemoryWrite(runId: string): void {
+    const day = new Date().toISOString().slice(0, 10);
+    if (this.memoryWrites.day !== day) {
+      this.memoryWrites.day = day;
+      this.memoryWrites.total = 0;
+      this.memoryWrites.perRun.clear();
+    }
+    const mine = (this.memoryWrites.perRun.get(runId) ?? 0) + 1;
+    if (mine > MEMORY_WRITES_PER_RUN || this.memoryWrites.total + 1 > MEMORY_WRITES_PER_DAY) {
+      throw Object.assign(new Error("Too many memory writes by runs; try later"), {
+        statusCode: 429,
+        code: "too_many_requests",
+      });
+    }
+    this.memoryWrites.perRun.set(runId, mine);
+    this.memoryWrites.total += 1;
+  }
+
   async providerSnapshot(force = false): Promise<ProviderSnapshot[]> {
     const settings = this.settings();
     const out: ProviderSnapshot[] = [];
     for (const id of this.providers.ids()) {
       const manifest = this.providers.manifest(id);
       const health = await this.providerHealth(id, force);
+      const prefs = settings.providers[id] ?? ProviderSettingsSchema.parse({});
       out.push({
         id,
         displayName: manifest.displayName,
         capabilities: manifest.capabilities,
         installHint: manifest.installHint,
-        enabled: settings.providers[id].enabled,
+        loginCommand: manifest.loginCommand,
+        enabled: prefs.enabled,
         isDefault: settings.defaultProvider === id,
         health,
-        defaultModel: settings.providers[id].defaultModel,
-        defaultEffort: settings.providers[id].defaultEffort,
+        installedVersion: installedVersion(health.version),
+        versionStatus: versionStatus(manifest.testedVersions, health.version),
+        testedVersions: manifest.testedVersions ?? null,
+        defaultModel: prefs.defaultModel,
+        defaultEffort: prefs.defaultEffort,
       });
     }
     return out;
@@ -346,7 +255,7 @@ export class AppContext {
     if (pending) return pending;
     const adapter = this.adapters[id];
     const request = Promise.resolve()
-      .then(() => adapter.healthCheck())
+      .then(() => adapter!.healthCheck())
       .then((health) => {
         // An invalidation/reload may replace this request while its CLI is running.
         if (this.healthInFlight.get(id) === request) {
@@ -380,21 +289,6 @@ export class AppContext {
   }
 
   /**
-   * Sweep approvals past their TTL and cancel the runs they were gating.
-   * Called on boot and hourly by the service. Returns how many expired.
-   */
-  expireStaleApprovals(): number {
-    const expired = this.approvals.expireStale();
-    for (const approval of expired) {
-      const runId = approval.payload.runId;
-      if (typeof runId !== "string") continue;
-      void this.runs.cancel(runId, `Approval expired after ${this.settings().limits.approvalTtlDays} days`);
-    }
-    if (expired.length > 0) events.emit("approval.expired", { count: expired.length });
-    return expired.length;
-  }
-
-  /**
    * Warn once a day when today's spend crosses 80 % or 100 % of
    * `settings.limits.dailyBudgetUsd` (0 = no budget). Called at boot and
    * hourly by the service; the `budget.crossed` event becomes an inbox row
@@ -410,7 +304,7 @@ export class AppContext {
     // Once per day per level, even across restarts: the row is the ledger.
     if (this.notifications.hasDedupeKey(budgetDedupeKey(day, level))) return null;
     const payload: BudgetCrossedPayload = { level, day, spentUsd, budgetUsd };
-    events.emit("budget.crossed", payload);
+    this.events.emit("budget.crossed", payload);
     return level;
   }
 
@@ -446,15 +340,9 @@ export class AppContext {
     );
   }
 
-  close(): void {
-    this.disposeJournalHooks();
-    this.disposeNotificationRecorder();
-    this.disposeObjectiveSync();
-    this.disposeTelegramChannel();
-    this.disposePushChannel();
+  override close(): void {
+    this.unsubscribeCredentials();
     this.telegramPoller?.stop();
-    this.sentinels.stop();
-    this.scheduler.stop();
-    if (this.db.open) this.db.close();
+    super.close();
   }
 }

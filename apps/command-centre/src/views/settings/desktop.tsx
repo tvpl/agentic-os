@@ -5,29 +5,51 @@ import { type MicroApp } from "../../api";
 
 import { useT } from "../../i18n";
 import { Button, Field } from "../../components/primitives";
-import { slugify } from "../shared";
+import { errorMessage, isOffline, slugify } from "../shared";
 import { type Put } from "../SettingsFields";
 import { isValidMicroAppHref } from "./shared";
 import type { SettingsShape } from "./shared";
+import { useOsUiPreferences, useSaveUiPreferences } from "../../queries";
+import { ErrorBox, Skeleton, useToast } from "../../components/ui";
+import { Tooltip } from "../../ui";
 
-export function DesktopTab({ s, put }: { s: SettingsShape; put: Put }) {
+export function DesktopTab(_props: { s: SettingsShape; put: Put }) {
   // The instruments are projected on demand now (lâminas), so there is no
   // desktop composition to toggle; what stays here is the user's own apps.
+  const preferences = useOsUiPreferences();
+  if (preferences.error && !preferences.data)
+    return (
+      <div className="card">
+        <ErrorBox
+          message={errorMessage(preferences.error)}
+          offline={isOffline(preferences.error)}
+          onRetry={() => void preferences.refetch()}
+        />
+      </div>
+    );
+  if (!preferences.data)
+    return (
+      <div className="card">
+        <Skeleton lines={3} />
+      </div>
+    );
   return (
     <div className="stack">
-      <MicroAppsCard s={s} put={put} />
+      <MicroAppsCard initial={preferences.data.microApps} />
     </div>
   );
 }
 
-function MicroAppsCard({ s, put }: { s: SettingsShape; put: Put }) {
+function MicroAppsCard({ initial }: { initial: MicroApp[] }) {
   const t = useT();
-  const [rows, setRows] = useState<MicroApp[]>(() => s.microApps ?? []);
+  const toast = useToast();
+  const savePreferences = useSaveUiPreferences();
+  const [rows, setRows] = useState<MicroApp[]>(() => initial);
 
   const commit = (next: MicroApp[]) => {
     setRows(next);
     const clean = next.filter((r) => r.name.trim() !== "" && isValidMicroAppHref(r.href));
-    void put({ microApps: clean }, true);
+    void savePreferences({ microApps: clean }).catch((err: Error) => toast(err.message, "danger"));
   };
   const patchRow = (i: number, patch: Partial<MicroApp>) => {
     const next = rows.map((r, j) => (j === i ? { ...r, ...patch } : r));
@@ -82,14 +104,15 @@ function MicroAppsCard({ s, put }: { s: SettingsShape; put: Put }) {
                 onBlur={() => commit(rows)}
               />
             </Field>
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<Trash2 aria-hidden />}
-              aria-label={`${t("common.delete")} ${row.name || row.id}`}
-              title={t("common.delete")}
-              onClick={() => commit(rows.filter((_, j) => j !== i))}
-            />
+            <Tooltip label={t("common.delete")}>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<Trash2 aria-hidden />}
+                aria-label={`${t("common.delete")} ${row.name || row.id}`}
+                onClick={() => commit(rows.filter((_, j) => j !== i))}
+              />
+            </Tooltip>
           </div>
         );
       })}

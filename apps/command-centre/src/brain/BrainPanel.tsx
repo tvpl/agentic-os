@@ -4,7 +4,7 @@
  * advanced sliders, workspace mode, bake, hygiene and the minimap.
  * Presentational: state comes from the parent as `ui` + `patch`.
  */
-import { type RefObject, useEffect, useId, useRef, useState } from "react";
+import { type RefObject, useEffect, useId, useState } from "react";
 import {
   ChevronsDownUp,
   PanelRightClose,
@@ -32,6 +32,7 @@ import {
   type ViewKind,
 } from "./engine/world";
 import { GROUP_PALETTE, MODIFIED_RANGES, SIZE_RANGES, type BrainUi } from "./state";
+import { Switch, Tooltip } from "../ui";
 
 export interface TimelineState {
   range: [number, number] | null;
@@ -112,24 +113,6 @@ export function BrainPanel(p: BrainPanelProps) {
   const { ui, patch } = p;
   const ids = useId();
   const { collapsed, onCollapse: setCollapsed } = p;
-  const focusSearch = useRef(false);
-  useEffect(() => {
-    if (!collapsed) {
-      if (focusSearch.current) p.searchRef.current?.focus();
-      focusSearch.current = false;
-      return;
-    }
-    const revealSearch = (event: KeyboardEvent) => {
-      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
-      if ((event.target as HTMLElement)?.closest("input, textarea, select, [contenteditable=true]")) return;
-      focusSearch.current = true;
-      setCollapsed(false);
-    };
-    window.addEventListener("keydown", revealSearch);
-    return () => {
-      window.removeEventListener("keydown", revealSearch);
-    };
-  }, [collapsed, p.searchRef, setCollapsed]);
   const filtersOn =
     ui.filters.exts.length > 0 ||
     ui.filters.tags.length > 0 ||
@@ -156,17 +139,18 @@ export function BrainPanel(p: BrainPanelProps) {
 
   return (
     <div className={`brain2-panel${collapsed ? " collapsed" : ""}`} aria-label={t("brain.controls")}>
-      <button
-        type="button"
-        className="os-chip brain-panel-toggle"
-        onClick={() => setCollapsed(!collapsed)}
-        aria-expanded={!collapsed}
-        aria-label={t("brain.controls")}
-        title={t("brain.controls")}
-      >
-        {collapsed ? <PanelRightOpen aria-hidden /> : <PanelRightClose aria-hidden />}
-        {!collapsed && t("brain.controls")}
-      </button>
+      <Tooltip label={t("brain.controls")}>
+        <button
+          type="button"
+          className="os-chip brain-panel-toggle"
+          onClick={() => setCollapsed(!collapsed)}
+          aria-expanded={!collapsed}
+          aria-label={t("brain.controls")}
+        >
+          {collapsed ? <PanelRightOpen aria-hidden /> : <PanelRightClose aria-hidden />}
+          {!collapsed && t("brain.controls")}
+        </button>
+      </Tooltip>
       <input
         ref={p.searchRef}
         className="input"
@@ -232,18 +216,16 @@ export function BrainPanel(p: BrainPanelProps) {
             {EDGE_KINDS.filter((k) => (p.kindCounts.get(k) ?? 0) > 0 || k === "markdown-link").map((k) => {
               const on = ui.edgeKinds.includes(k);
               return (
-                <button
+                <Switch
                   key={k}
-                  type="button"
-                  role="switch"
-                  aria-checked={on}
+                  checked={on}
                   className={`brain-chip kind${on ? " on" : ""}`}
-                  onClick={() => patch({ edgeKinds: toggleIn(ui.edgeKinds, k) as EdgeKind[] })}
+                  onCheckedChange={() => patch({ edgeKinds: toggleIn(ui.edgeKinds, k) as EdgeKind[] })}
                 >
                   <span className={`brain-kind-swatch ${k}`} aria-hidden />
                   {t(KIND_KEYS[k])}
                   <span className="count">{p.kindCounts.get(k) ?? 0}</span>
-                </button>
+                </Switch>
               );
             })}
           </div>

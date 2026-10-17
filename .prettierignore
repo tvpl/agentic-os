@@ -24,3 +24,18 @@ CHANGELOG.md
 # distributable staging and output
 build/
 release/
+
+# Installed third-party agent skills (keep the installer's content hash valid)
+.agents/
+.claude/skills/
+.cursor/skills/
+.windsurf/skills/
+
+# Legal texts: authored wrapping, and the generated notice must stay byte for byte what the script writes
+legal/
+LICENSE
+
+# desktop shell: build output and the generated payload (Rust is formatted by cargo fmt)
+apps/desktop/target/
+apps/desktop/payload/
+apps/desktop/src-tauri/gen/

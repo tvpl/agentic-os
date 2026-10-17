@@ -31,7 +31,7 @@ test("draft keeps its selected project across scene travel and reload", async ({
   await expect(widget.locator("textarea")).toHaveValue("Review the mobile workspace");
   // Verify the actual submission target without invoking even the fake provider.
   let submitted: { cwd?: string } | undefined;
-  await page.route("**/api/runs", (route) => {
+  await page.route("**/api/v1/runs", (route) => {
     if (route.request().method() !== "POST") return route.continue();
     submitted = route.request().postDataJSON();
     return route.fulfill({
@@ -75,7 +75,7 @@ test("brain reference reaches the voice line without replacing the draft or exec
   page.on("request", (request) => {
     if (
       request.method() === "POST" &&
-      /\/api\/(runs|sessions\/[^/]+\/runs)$/.test(new URL(request.url()).pathname)
+      /\/api\/v1\/(runs|sessions\/[^/]+\/runs)$/.test(new URL(request.url()).pathname)
     )
       launches++;
   });

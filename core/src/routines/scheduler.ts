@@ -1,7 +1,6 @@
-import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { writeDecision } from "../security/profiles.js";
+import { PathAccessError } from "../security/paths.js";
 import { redactSecrets } from "../security/redact.js";
 import { Cron } from "croner";
 import type { Db } from "../db/db.js";
@@ -14,7 +13,7 @@ import type { Routine, RoutineRunner, RoutineStatus, RoutineSummary, SilentRouti
 import { isHeartbeatOk, nextRunFor, startOfDayIn } from "./schedule.js";
 import { isStartupServiceInstalled, type StartupPlatform } from "./osIntegration.js";
 import { JsonlLogger } from "../logs/jsonl.js";
-import { events, type OsEvent } from "../events.js";
+import type { EventBus, OsEvent } from "../events.js";
 
 /**
  * Internal scheduler (documented fallback + default engine).
@@ -39,6 +38,13 @@ import { events, type OsEvent } from "../events.js";
  */
 
 export type FireReason = "fired" | "caught_up" | "manual";
+
+/** Start of the history note and error message when a routine's working directory is no longer allowed. */
+const CWD_REFUSED = "Working directory refused:";
+
+function isPathRefusal(err: unknown): boolean {
+  return err instanceof PathAccessError || (err as Error | undefined)?.name === "PathAccessError";
+}
 
 export interface FireOptions {
   reason?: FireReason;
@@ -74,6 +80,8 @@ export interface SchedulerOptions {
   homeDir?: string;
   /** Timeout for webhook deliveries. */
   webhookTimeoutMs?: number;
+  /** The engine's bus: the scheduler listens to it while running and announces routine events on it. */
+  bus?: EventBus;
 }
 
 /** Hard cap on croner steps when searching for the previous slot. */
@@ -130,7 +138,7 @@ export class RoutineScheduler {
     this.running = true;
     this.abort = new AbortController();
     this.unsubscribeBus?.();
-    this.unsubscribeBus = events.subscribe((e) => this.onBusEvent(e));
+    this.unsubscribeBus = this.opts.bus?.subscribe((e) => this.onBusEvent(e)) ?? null;
     this.reload();
     this.catchUpMissed();
   }
@@ -279,7 +287,7 @@ export class RoutineScheduler {
       const timer = this.timers.get(routineId);
       if (timer) clearTimeout(timer);
       this.timers.delete(routineId);
-      events.emit("routine.changed", { id: routineId, action: "ended", reason });
+      this.opts.bus?.emit("routine.changed", { id: routineId, action: "ended", reason });
     } catch (err) {
       this.log({ event: "end_routine_failed", routineId, error: (err as Error).message });
     }
@@ -411,7 +419,7 @@ export class RoutineScheduler {
       if (b.spent >= b.budgetUsd) {
         const note = `Daily budget of US$ ${b.budgetUsd.toFixed(2)} for ${b.label} exhausted (spent or reserved US$ ${b.spent.toFixed(2)}); skipped.`;
         if (!opts.historyAlreadyRecorded) this.recordHistory(routine.id, null, scheduledFor, "skipped", note);
-        if (!this.alertedForBudgetToday(routine.id)) events.emit("routine.alert", { routineId: routine.id, runId: null, summary: note, reason: "budget", spentUsd: b.spent, budgetUsd: b.budgetUsd });
+        if (!this.alertedForBudgetToday(routine.id)) this.opts.bus?.emit("routine.alert", { routineId: routine.id, runId: null, summary: note, reason: "budget", spentUsd: b.spent, budgetUsd: b.budgetUsd });
         throw Object.assign(new Error(note), { statusCode: 409, code: "budget_exhausted" });
       }
       caps.push(b.budgetUsd - b.spent);
@@ -419,7 +427,10 @@ export class RoutineScheduler {
     return caps.length > 0 ? Math.min(...caps) : null;
     };
 
-    const cwd = routine.context === "isolated" ? this.isolatedCwd(routine) : (routine.workingDir ?? this.paths.home);
+    // `workingDir` is a stored value: whether it is still a place an agent may start in is decided by
+    // `RunManager.create` at every fire (a folder that became private or was revoked refuses here). A routine
+    // with none is asked for the home, which `RunManager.resolveCwd` turns into its default working directory.
+    const cwd = routine.context === "isolated" ? this.runs.scratchDir(`mordomo-${routine.id}-`) : (routine.workingDir ?? this.paths.home);
     const createRun = (attempt: number, parentRunId: string | null) =>
       this.runs.create({
         origin: "routine",
@@ -429,11 +440,13 @@ export class RoutineScheduler {
           ? { version: 1, kind: "skill", skillSlug, inputs: routine.inputs, mode }
           : { version: 1, kind: "prompt", prompt: routine.prompt ?? "", mode },
         cwd,
-        model: routine.model ?? settings.providers[routine.provider].defaultModel,
+        model: routine.model ?? settings.providers[routine.provider]?.defaultModel ?? null,
         effort: routine.effort,
         mode,
         timeoutMs: routine.timeoutMs,
         profile: mode === "write" ? routine.profile : "read_only",
+        // No request started it: the schedule did.
+        startedBy: null,
         skillSlug,
         routineId: routine.id,
         parentRunId,
@@ -441,7 +454,16 @@ export class RoutineScheduler {
         maxCostUsd: remainingBudget(),
       });
 
-    const first = createRun(1, null);
+    let first: RunRecord;
+    try {
+      first = createRun(1, null);
+    } catch (err) {
+      if (!isPathRefusal(err)) throw err;
+      // Recorded like the other refusals (a budget skip, a missing skill): the history says why nothing ran.
+      const note = `${CWD_REFUSED} ${(err as Error).message}`;
+      this.recordHistory(routine.id, null, scheduledFor, "failed_to_fire", note);
+      throw Object.assign(new Error(note), { statusCode: 403, code: "forbidden_path" });
+    }
     if (opts.historyAlreadyRecorded) {
       this.db
         .prepare(
@@ -454,7 +476,7 @@ export class RoutineScheduler {
       this.recordHistory(routine.id, first.id, scheduledFor, reason === "manual" ? "fired" : reason, note);
     }
     if (routine.delivery !== "none") {
-      events.emit("routine.fired", { routineId: routine.id, runId: first.id });
+      this.opts.bus?.emit("routine.fired", { routineId: routine.id, runId: first.id });
     }
 
     const task = this.runWithRetries(routine, first, buildPrompt, mode, createRun, scheduledFor)
@@ -467,15 +489,6 @@ export class RoutineScheduler {
       });
     this.inflight.set(routine.id, task);
     return { runId: first.id, status: first.status };
-  }
-
-  /** Fresh working directory for `context: "isolated"` (outside the workspace; artifacts still land in artifacts/<runId>). */
-  private isolatedCwd(routine: Routine): string {
-    try {
-      return fs.mkdtempSync(path.join(os.tmpdir(), `mordomo-${routine.id}-`));
-    } catch {
-      return this.paths.home;
-    }
   }
 
   private async runWithRetries(
@@ -547,7 +560,7 @@ export class RoutineScheduler {
       const excerpt = summary.replace(/\s+/g, " ").slice(0, 200);
       this.updateNote(routine.id, first.id, quiet ? `${HEARTBEAT_NOTE_QUIET} ${excerpt}` : `${HEARTBEAT_NOTE_ALERT} ${excerpt}`);
       if (!quiet && routine.delivery !== "none") {
-        events.emit("routine.alert", {
+        this.opts.bus?.emit("routine.alert", {
           routineId: routine.id,
           runId: final.id,
           status: final.status,
@@ -647,6 +660,11 @@ export class RoutineScheduler {
     return typeof note === "string" && note.startsWith("Daily budget of");
   }
 
+  /** A working-directory refusal is recorded by fire() itself; callers must not add a second row. */
+  private isCwdRefusal(note: string | null): boolean {
+    return typeof note === "string" && note.startsWith(CWD_REFUSED);
+  }
+
   private safeHistory(
     routineId: string,
     runId: string | null,
@@ -654,7 +672,7 @@ export class RoutineScheduler {
     status: string,
     note: string | null,
   ): void {
-    if (status === "failed_to_fire" && this.isBudgetSkip(note)) return; // fire() already recorded the skip
+    if (status === "failed_to_fire" && (this.isBudgetSkip(note) || this.isCwdRefusal(note))) return; // fire() already recorded it
     try {
       this.recordHistory(routineId, runId, scheduledFor, status, note);
     } catch (err) {

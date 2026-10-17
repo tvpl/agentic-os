@@ -9,6 +9,8 @@ import { TELEGRAM_API_ORIGIN, TELEGRAM_TIMEOUT_MS, telegramToken } from "./teleg
  * Trust rules:
  *  - only updates from the configured `chatId` are honoured; anything else
  *    is dropped without a reply (a stranger who finds the bot gets silence);
+ *  - while `allowedUserIds` is non-empty, only those people (`from.id`) are
+ *    heard inside that chat, so in a group not everyone can approve;
  *  - the poller runs only while `channels.telegram.enabled && inbound` and
  *    a token is present in the environment;
  *  - the same single outbound host as delivery; no other URL is ever fetched;
@@ -19,7 +21,7 @@ import { TELEGRAM_API_ORIGIN, TELEGRAM_TIMEOUT_MS, telegramToken } from "./teleg
 
 export interface TelegramUpdate {
   update_id: number;
-  message?: { message_id: number; chat: { id: number | string }; text?: string };
+  message?: { message_id: number; chat: { id: number | string }; text?: string; from?: { id: number } };
   callback_query?: {
     id: string;
     data?: string;
@@ -36,8 +38,15 @@ export interface PendingApprovalView {
 
 export interface InboundDeps {
   getSettings: () => Settings;
-  /** Resolve through the same path as the HTTP route. Returns a human line for the chat. */
-  resolve: (id: string, decision: "approved" | "denied") => Promise<{ ok: boolean; message: string }>;
+  /**
+   * Resolve through the same path as the HTTP route, recording `by`
+   * (`telegram:<from.id>`) as the decider. Returns a human line for the chat.
+   */
+  resolve: (
+    id: string,
+    decision: "approved" | "denied",
+    by: string,
+  ) => Promise<{ ok: boolean; message: string }>;
   pending: () => PendingApprovalView[];
   fetchImpl?: typeof fetch;
   env?: NodeJS.ProcessEnv;
@@ -47,13 +56,15 @@ export interface InboundDeps {
 }
 
 /** Inline keyboard for an approval message (attached by delivery when the row has an approvalId). */
-export function approvalKeyboard(approvalId: string): Record<string, unknown> {
+export function approvalKeyboard(
+  approvalId: string,
+  opts: { denyOnly?: boolean } = {},
+): Record<string, unknown> {
+  const deny = { text: "⛔ Deny", callback_data: `dn:${approvalId}` };
   return {
+    // A request that must be read whole before it is approved (a paired device's) offers only Deny here.
     inline_keyboard: [
-      [
-        { text: "✅ Approve", callback_data: `ap:${approvalId}` },
-        { text: "⛔ Deny", callback_data: `dn:${approvalId}` },
-      ],
+      opts.denyOnly ? [deny] : [{ text: "✅ Approve", callback_data: `ap:${approvalId}` }, deny],
     ],
   };
 }
@@ -82,6 +93,20 @@ const HELP =
 
 function sameChat(a: number | string | undefined, b: string): boolean {
   return a !== undefined && String(a) === String(b);
+}
+
+/**
+ * Empty list: anyone in the chat (the chat rule alone). Otherwise only the listed people: an update
+ * with no `from` (a channel post, an anonymous admin) or with a `from` that has no numeric id is nobody
+ * on the list, so it is ignored.
+ */
+function allowedPerson(from: { id?: unknown } | undefined, allowed: readonly number[]): boolean {
+  if (allowed.length === 0) return true;
+  return typeof from?.id === "number" && allowed.includes(from.id);
+}
+
+function decider(from: { id: number } | undefined): string {
+  return `telegram:${from?.id ?? "unknown"}`;
 }
 
 export class TelegramPoller {
@@ -190,11 +215,12 @@ export class TelegramPoller {
 
     if (u.callback_query) {
       const q = u.callback_query;
-      if (!sameChat(q.message?.chat.id, chatId)) return; // not our chat: silence
+      // Not our chat, or not a listed person: silence.
+      if (!sameChat(q.message?.chat.id, chatId) || !allowedPerson(q.from, cfg.allowedUserIds)) return;
       const cmd = parseCommand(q.data ?? "");
       let line = "Unknown action.";
       if (cmd && cmd.type === "resolve") {
-        const r = await this.deps.resolve(cmd.id, cmd.decision);
+        const r = await this.deps.resolve(cmd.id, cmd.decision, decider(q.from));
         line = r.message;
         this.handled++;
       }
@@ -215,7 +241,7 @@ export class TelegramPoller {
       return;
     }
     if (u.message?.text) {
-      if (!sameChat(u.message.chat.id, chatId)) return;
+      if (!sameChat(u.message.chat.id, chatId) || !allowedPerson(u.message.from, cfg.allowedUserIds)) return;
       const cmd = parseCommand(u.message.text);
       if (!cmd) return; // ordinary chatter is ignored
       let text: string;
@@ -231,7 +257,7 @@ export class TelegramPoller {
                 )
                 .join("\n");
       } else {
-        const r = await this.deps.resolve(cmd.id, cmd.decision);
+        const r = await this.deps.resolve(cmd.id, cmd.decision, decider(u.message.from));
         text = r.message;
         this.handled++;
       }

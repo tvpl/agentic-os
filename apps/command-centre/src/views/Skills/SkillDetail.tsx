@@ -17,24 +17,18 @@ import {
   Scissors,
   Settings2,
 } from "lucide-react";
-import {
-  api,
-  getToken,
-  type ApprovalRecord,
-  type ProviderId,
-  type ProviderSnapshot,
-  type Skill,
-  type SkillResource,
-} from "../../api";
+import { getToken, type ApprovalRecord, type ProviderId, type ProviderSnapshot, type Skill, type SkillResource } from "../../api";
+import { apiCall } from "../../apiCall";
 import { qk, useApiQuery, useInvalidate } from "../../queries";
 import { useLang, useT } from "../../i18n";
 import { localizeSkill } from "./localize";
 import { formatBytes, useToast } from "../../components/ui";
-import { Badge, Button, EmptyState, Field, Segmented, Tabs } from "../../components/primitives";
+import { Badge, Button, EmptyState, Field, Segmented } from "../../components/primitives";
+import { Tabs, Tooltip } from "../../ui";
 import { ModelEffortMatrix, skillEffort, type Effort } from "../../desktop/SkillMatrixModal";
 import { ApprovalCard } from "../../runs/ApprovalCards";
 import { copyText, errorMessage } from "../shared";
-import Markdown from "./Markdown";
+import { Markdown } from "../../components/Markdown";
 import {
   canPreviewInline,
   groupByFolder,
@@ -45,17 +39,12 @@ import {
 import { clearDraft, readDraft, writeDraft } from "./runDraft";
 import { buildSplitPrompt } from "./splitPrompt";
 import "../apps.css";
+import { useCommands, type Command } from "../../commands/registry";
 
 const EFFORT_VALUES: readonly Effort[] = ["default", "low", "medium", "high"];
 
 function isEffort(value: string | undefined): value is Effort {
   return value !== undefined && (EFFORT_VALUES as readonly string[]).includes(value);
-}
-
-interface RunResponse {
-  runId: string | null;
-  status?: string;
-  pendingApproval?: ApprovalRecord | null;
 }
 
 export default function SkillDetail({ skill, providers }: { skill: Skill; providers: ProviderSnapshot[] }) {
@@ -93,7 +82,7 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
   }, [skill.slug, provider, model, effort, inputs]);
 
   const toggle = useMutation({
-    mutationFn: () => api.post(`/api/skills/${encodeURIComponent(skill.slug)}/toggle`),
+    mutationFn: () => apiCall("POST /api/skills/:slug/toggle", { params: { slug: skill.slug } }),
     onSuccess: async () => {
       await invalidate(qk.skills);
       toast(
@@ -108,12 +97,12 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
 
   const run = useMutation({
     mutationFn: () =>
-      api.post<RunResponse>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, {
+      apiCall("POST /api/skills/:slug/run", { params: { slug: skill.slug }, body: {
         provider,
         model,
         effort,
         inputs,
-      }),
+      } }),
     onSuccess: (res) => {
       if (res.status === "waiting_approval" || !res.runId) {
         // The security profile put the run on hold: decide it here (analysis 4.3 item 21).
@@ -134,21 +123,28 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
   const missingRequired = skill.inputs.some((i) => i.required && !(inputs[i.name] ?? "").trim());
   const canRun = blocked === null && Boolean(provider) && !missingRequired && !run.isPending;
 
-  // ⌘/Ctrl+Enter runs from anywhere on the page, including from inside a field.
+  // ⌘/Ctrl+Enter runs from anywhere on the page, including from inside a field —
+  // a registered command of the `view:skills` scope, so a dialog over the page
+  // (the palette's own ⌘Enter) keeps the key.
   const canRunRef = useRef(canRun);
   canRunRef.current = canRun;
   const runRef = useRef(() => run.mutate());
   runRef.current = () => run.mutate();
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey)) return;
-      if (!canRunRef.current) return;
-      e.preventDefault();
-      runRef.current();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  const commands = useMemo<Command[]>(
+    () => [
+      {
+        id: "skills.run",
+        title: "cmd.skills.run",
+        group: "view",
+        scope: "view:skills",
+        keys: ["Mod+Enter"],
+        when: () => canRunRef.current,
+        run: () => runRef.current(),
+      },
+    ],
+    [],
+  );
+  useCommands(commands);
 
   const copyPath = async () => {
     toast((await copyText(skill.skillFile)) ? t("common.copied") : t("skills.copyFailed"), "ok");
@@ -439,12 +435,7 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
                 { id: "resources", label: `${t("apps.skills.tabResources")} (${resources.length})` },
                 { id: "notes", label: t("skills.notes.tab") },
               ]}
-            />
-            <div
-              className="tab-panel"
-              role="tabpanel"
-              id={`skill-panes-panel-${pane}`}
-              aria-labelledby={`skill-panes-tab-${pane}`}
+              panelClassName="tab-panel"
             >
               {pane === "body" ? (
                 <>
@@ -492,18 +483,17 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
                       </code>
                     </pre>
                   ) : (
-                    <Markdown source={skill.body} />
+                    <Markdown source={skill.body} shape="page" />
                   )}
                   <p className="mono file-path" title={skill.skillFile}>
                     {skill.skillFile}
-                    <Button
+                    <Tooltip label={t("brain.copyPath")}><Button
                       size="sm"
                       variant="ghost"
                       icon={<Copy aria-hidden />}
                       aria-label={t("brain.copyPath")}
-                      title={t("brain.copyPath")}
                       onClick={() => void copyPath()}
-                    />
+                    /></Tooltip>
                   </p>
                 </>
               ) : pane === "resources" ? (
@@ -511,7 +501,7 @@ export default function SkillDetail({ skill, providers }: { skill: Skill; provid
               ) : (
                 <NotesPane slug={skill.slug} />
               )}
-            </div>
+            </Tabs>
           </div>
         </div>
       </div>
@@ -534,7 +524,7 @@ function NotesPane({ slug }: { slug: string }) {
   const [text, setText] = useState("");
   const add = useMutation({
     mutationFn: (body: string) =>
-      api.post<{ notes: string }>(`/api/skills/${encodeURIComponent(slug)}/notes`, { text: body }),
+      apiCall("POST /api/skills/:slug/notes", { params: { slug }, body: { text: body } }),
     onSuccess: () => {
       setText("");
       qc.invalidateQueries({ queryKey: qk.skillNotes(slug) }).catch(() => undefined);
@@ -544,15 +534,11 @@ function NotesPane({ slug }: { slug: string }) {
   // A write-mode run that folds recurring notes into SKILL.md (parked for approval under review profiles).
   const promote = useMutation({
     mutationFn: () =>
-      api.post<{ runId?: string; status?: string; run?: { id: string; status: string } }>(
-        `/api/skills/${encodeURIComponent(slug)}/notes/promote`,
-        {},
-      ),
+      apiCall("POST /api/skills/:slug/notes/promote", { params: { slug } }),
     onSuccess: (res) => {
-      const status = res.status ?? res.run?.status ?? "";
-      const id = res.runId ?? res.run?.id;
+      const id = res.runId;
       toast(
-        status === "waiting_approval" ? t("skills.notes.promoteParked") : t("skills.notes.promoteStarted"),
+        res.status === "waiting_approval" ? t("skills.notes.promoteParked") : t("skills.notes.promoteStarted"),
         "ok",
       );
       qc.invalidateQueries({ queryKey: ["runs"] }).catch(() => undefined);
@@ -564,7 +550,7 @@ function NotesPane({ slug }: { slug: string }) {
   const hasEntries = /^- /m.test(body);
   return (
     <div className="skill-notes">
-      {body.trim() ? <Markdown source={body} /> : <p className="widget-muted">{t("skills.notes.empty")}</p>}
+      {body.trim() ? <Markdown source={body} shape="page" /> : <p className="widget-muted">{t("skills.notes.empty")}</p>}
       {(notes.data?.archived ?? 0) > 0 && (
         <p className="hint">{t("skills.notes.archived", { n: notes.data!.archived })}</p>
       )}
@@ -709,6 +695,8 @@ function ResourcePreview({ slug, resource }: { slug: string; resource: SkillReso
 function MarkdownResource({ slug, rel }: { slug: string; rel: string }) {
   const t = useT();
   const fetchText = useCallback(async () => {
+    // A raw GET on purpose: the resource is text, not the JSON request() parses.
+    // eslint-disable-next-line no-restricted-globals
     const res = await fetch(resourceUrl(slug, rel), { headers: { "x-mordomo-token": getToken() } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.text();
@@ -717,5 +705,5 @@ function MarkdownResource({ slug, rel }: { slug: string; rel: string }) {
   if (query.isPending) return <div className="apps-res-fallback">{t("common.loading")}</div>;
   if (query.error || typeof query.data !== "string")
     return <div className="apps-res-fallback">{t("apps.skills.previewFailed")}</div>;
-  return <Markdown source={query.data} />;
+  return <Markdown source={query.data} shape="page" />;
 }

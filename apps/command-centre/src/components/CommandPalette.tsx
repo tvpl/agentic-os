@@ -1,4 +1,3 @@
-import { openOnboarding } from "../onboarding/state";
 import { errorMessage } from "../views/shared";
 /**
  * Command palette (analysis item 20): the launcher grown into a cmdk-like
@@ -22,47 +21,31 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import {
-  Activity,
-  Archive,
   ArrowDown,
   ArrowLeft,
   ArrowUp,
-  BrainCircuit,
-  CalendarClock,
   ChevronRight,
   CornerDownLeft,
   FileText,
-  Grid3x3,
   Keyboard,
   LayoutGrid,
   ListTree,
-  Palette,
   Play,
-  Plug,
-  Plus,
-  RefreshCw,
   Search,
-  Settings as SettingsIcon,
   Sparkles,
-  Stethoscope,
-  SunMoon,
-  Volume2,
-  VolumeX,
 } from "lucide-react";
 import {
   api,
-  type BackupCreated,
-  type DoctorReport,
   type MemorySearchHit,
   type Meta,
   type ModelishOption,
   type ProviderId,
-  type RunLaunchResponse,
-  type RunRecord,
+  type RunSummary,
   type Skill,
+  type UiShell,
 } from "../api";
+import { apiCall } from "../apiCall";
 import { ARRANGE_VERBS, arrangeFor } from "../desktop/arrange";
 import { ARRANGE_EVENT, PANEL_GLYPH, getPanels } from "../desktop/panelKinds";
 import { HUD_CATALOGUE, hudTitleKey } from "../desktop/hud";
@@ -72,18 +55,15 @@ import { localizeSkill } from "../views/Skills/localize";
 import { qk, useApiQuery, useOsProviders, useOsRuns, useOsSkills } from "../queries";
 import { PRESETS, applyAccentTokens, applyPreset, type PresetId } from "../theme";
 import { useOsNavigate } from "../hooks/useViewTransition";
-import { getNotifySound, setNotifySound, useNotifications } from "../hooks/useNotifications";
+import { getNotifySound } from "../hooks/useNotifications";
 import { StatusBadge, timeAgo, useToast } from "./ui";
 import { Badge, Button, Segmented } from "./primitives";
-import { DialogPortal, useDialog } from "./dialog";
+import { DialogSurface } from "../ui";
 import { rankItems } from "./paletteMatch";
+import { useCommands, useRegisteredCommands, type Command } from "../commands/registry";
+import { ariaShortcut, comboLabel, isMac } from "../commands/keys";
 import { useI18nLang } from "./paletteLang";
 
-/** Fired by the palette's "Reset layout" action; the desktop listens and offers the default composition. */
-export const RESET_LAYOUT_EVENT = "mordomo:reset-layout";
-
-/** Fired by the palette's "Skill deck" action; the desktop fans the radial deck out. */
-export const OPEN_DECK_EVENT = "mordomo:open-deck";
 /** Fired by the palette to put a registered instrument panel on the stage (`detail` = its id). */
 export const OPEN_PANEL_EVENT = "mordomo:open-panel";
 
@@ -92,8 +72,8 @@ export interface PaletteOpenDetail {
   query?: string;
   /** Open the "Run skill →" page for this slug. */
   runSkill?: string;
-  /** `panels`: open on the "Open a panel" page — the dock's "+" (plan step 5). */
-  mode?: "panels";
+  /** `panels`: open on the "Open a panel" page — the dock's "+" (plan step 5); `theme`: on the presets. */
+  mode?: "panels" | "theme";
 }
 
 export interface CommandPaletteProps {
@@ -103,6 +83,12 @@ export interface CommandPaletteProps {
   onMetaChanged: () => void;
   onShortcuts: () => void;
   initial?: PaletteOpenDetail;
+  /**
+   * The shell the palette opened over. The frame has no lâminas, so "Open
+   * panel" and the arrange row are the Núcleo's only; each shell offers the
+   * switch to the other (.specs/features/moldura-app, Tela 4).
+   */
+  shell?: UiShell;
 }
 
 type Section = "apps" | "actions" | "skills" | "files" | "runs" | "themes" | "page";
@@ -116,10 +102,12 @@ interface Row {
   icon: ReactNode;
   keywords?: string[];
   right?: ReactNode;
+  /** The key combinations the row's command answers to (`aria-keyshortcuts`). */
+  shortcuts?: string;
   /** Enter */
-  primary: (el: HTMLElement | null) => void;
+  primary: () => void;
   /** ⌘Enter */
-  secondary?: (el: HTMLElement | null) => void;
+  secondary?: () => void;
   /** ArrowRight */
   nested?: () => void;
   busy?: boolean;
@@ -151,14 +139,13 @@ export function CommandPalette({
   onMetaChanged,
   onShortcuts,
   initial,
+  shell = "nucleo",
 }: CommandPaletteProps) {
   const t = useT();
   const lang = useI18nLang();
   const toast = useToast();
-  const qc = useQueryClient();
   const navigate = useOsNavigate();
-  const { notify } = useNotifications();
-  const ref = useRef<HTMLDivElement>(null);
+  const frame = shell === "moldura";
   const inputRef = useRef<HTMLInputElement>(null);
   // Focus on mount, synchronously: the dialog's own initial focus lands a
   // frame later, and keys typed in that frame went to whatever panel had
@@ -169,7 +156,8 @@ export function CommandPalette({
   const [query, setQuery] = useState(initial?.query ?? "");
   const [selected, setSelected] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
-  const [sound, setSound] = useState(getNotifySound);
+  // Read once per opening: the sound row's badge (the command toggles it and closes the palette).
+  const [sound] = useState(getNotifySound);
 
   const skills = useOsSkills({ staleTime: 60_000 });
   const runs = useOsRuns({ limit: 8 }, { staleTime: 15_000 });
@@ -177,6 +165,7 @@ export function CommandPalette({
 
   const [page, setPage] = useState<Page>(() => {
     if (initial?.mode === "panels") return { kind: "panels" };
+    if (initial?.mode === "theme") return { kind: "theme" };
     if (initial?.runSkill) {
       const skill = skills.data?.find((s) => s.slug === initial.runSkill);
       if (skill) return { kind: "run", skill };
@@ -187,12 +176,27 @@ export function CommandPalette({
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const close = useCallback((opts?: { instant?: boolean }) => closeRef.current(opts), []);
-  useDialog(ref, () => close(), { initialFocus: () => inputRef.current });
+  // The palette is a modal: the global keys that opened it do not reach it, so its own
+  // toggle keys close it (the `modal` scope of the command registry).
+  const toggleKeys = useMemo<Command[]>(
+    () => [
+      {
+        id: "palette.close",
+        title: "common.close",
+        group: "navigation",
+        scope: "modal",
+        keys: ["Mod+K", "Mod+M", "Ctrl+M"],
+        run: () => closeRef.current(),
+      },
+    ],
+    [],
+  );
+  useCommands(toggleKeys);
 
   /* ---------- navigation helpers ---------- */
   const go = useCallback(
-    (to: string, el?: HTMLElement | null, morph = false) => {
-      navigate(to, { morph: morph ? el : null, before: () => close({ instant: true }) });
+    (to: string) => {
+      navigate(to, { before: () => close({ instant: true }) });
     },
     [navigate, close],
   );
@@ -238,9 +242,12 @@ export function CommandPalette({
         go(`/skills/${encodeURIComponent(skill.slug)}`);
         return;
       }
-      const res = await api.post<RunLaunchResponse>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, {
-        inputs: {},
-        ...opts,
+      const res = await apiCall("POST /api/skills/:slug/run", {
+        params: { slug: skill.slug },
+        body: {
+          inputs: {},
+          ...opts,
+        },
       });
       if (res.status === "waiting_approval" || !res.runId) {
         toast(t("runs.approvalPending"), "info");
@@ -253,219 +260,58 @@ export function CommandPalette({
     [go, toast, t],
   );
 
-  /* ---------- apps ---------- */
-  const apps = useMemo<Row[]>(
-    () =>
-      (
-        [
-          [
-            "brain",
-            "/brain",
-            <BrainCircuit aria-hidden />,
-            t("nav.brain"),
-            ["memory", "graph", "brain", "cerebro", "files"],
-          ],
-          ["skills", "/skills", <Sparkles aria-hidden />, t("nav.skills"), ["sop", "commands"]],
-          [
-            "routines",
-            "/routines",
-            <CalendarClock aria-hidden />,
-            t("nav.routines"),
-            ["cron", "schedule", "agenda"],
-          ],
-          ["runs", "/runs", <ListTree aria-hidden />, t("nav.runs"), ["history", "logs", "execucoes"]],
-          ["connectors", "/connectors", <Plug aria-hidden />, t("nav.connectors"), ["mcp", "integrations"]],
-          ["pixel", "/pixel", <Grid3x3 aria-hidden />, t("nav.pixel"), ["pixel", "art", "sprite"]],
-          [
-            "settings",
-            "/settings",
-            <SettingsIcon aria-hidden />,
-            t("nav.settings"),
-            ["preferences", "config", "configuracoes"],
-          ],
-          ["home", "/", <LayoutGrid aria-hidden />, t("nav.dashboard"), ["desktop", "home", "os"]],
-        ] as Array<[string, string, ReactNode, string, string[]]>
-      ).map(([id, to, icon, label, keywords]) => ({
-        id: `app:${id}`,
-        section: "apps" as const,
-        label,
-        icon,
-        keywords,
-        primary: (el) => go(to, el, true),
-      })),
-    [t, go],
-  );
-
-  /* ---------- actions ---------- */
-  const actions = useMemo<Row[]>(() => {
-    const act = (
-      id: string,
-      label: TKey,
-      icon: ReactNode,
-      keywords: string[],
-      primary: Row["primary"],
-      extra: Partial<Row> = {},
-    ): Row => ({
-      id: `action:${id}`,
-      section: "actions",
-      label: t(label),
-      icon,
-      keywords,
-      primary,
-      busy: busy === `action:${id}`,
-      ...extra,
-    });
-    return [
-      act(
-        "onboarding",
-        "shell.action.onboarding",
-        <Sparkles aria-hidden />,
-        ["tour", "guide", "onboarding", "guia", "ajuda", "help", "tutorial"],
-        () => {
-          close();
-          openOnboarding();
-        },
-      ),
-      act(
-        "reindex",
-        "shell.action.reindex",
-        <RefreshCw aria-hidden />,
-        ["index", "rebuild", "memory", "reindexar"],
-        () =>
-          void runAction("action:reindex", t("shell.action.reindex"), async () => {
-            await api.post("/api/memory/index");
-            toast(t("shell.action.reindexDone"), "ok");
-            await qc.invalidateQueries({ queryKey: ["memory"] });
-          }),
-      ),
-      act(
-        "backup",
-        "shell.action.backup",
-        <Archive aria-hidden />,
-        ["backup", "export", "save"],
-        () =>
-          void runAction("action:backup", t("shell.action.backup"), async () => {
-            const res = await api.post<BackupCreated>("/api/backups", {});
-            toast(t("shell.action.backupDone", { name: res.name }), "ok");
-            await qc.invalidateQueries({ queryKey: qk.backups });
-          }),
-      ),
-      act(
-        "doctor",
-        "shell.action.doctor",
-        <Stethoscope aria-hidden />,
-        ["doctor", "health", "diagnostics", "check", "diagnostico"],
-        () =>
-          void runAction(
-            "action:doctor",
-            t("shell.action.doctor"),
-            async () => {
-              const rep = await api.get<DoctorReport>("/api/doctor?audit=0");
-              const text = t("shell.action.doctorDone", { ok: rep.ok, warn: rep.warn, fail: rep.fail });
-              toast(text, rep.fail > 0 ? "danger" : "ok");
-              notify({
-                kind: "system",
-                title: t("shell.action.doctor"),
-                body: text,
-                href: "/settings?tab=diagnostics",
-                tone: rep.fail > 0 ? "danger" : "ok",
-              });
-              qc.setQueryData(qk.doctor, rep);
-              go("/settings?tab=diagnostics");
-            },
-            false,
-          ),
-      ),
-      act("new-skill", "shell.action.newSkill", <Plus aria-hidden />, ["skill", "create", "nova"], (el) =>
-        go("/skills?new=1", el),
-      ),
-      act(
-        "now",
-        "now.title",
-        <Activity aria-hidden />,
-        ["now", "objective", "objetivo", "agora", "steps"],
-        () => inShell(() => window.dispatchEvent(new CustomEvent(OPEN_PANEL_EVENT, { detail: "now" }))),
-      ),
-      act(
-        "skill-deck",
-        "desktop.deck.open",
-        <Sparkles aria-hidden />,
-        ["skill", "deck", "run", "executar", "radial"],
-        () => inShell(() => window.dispatchEvent(new Event(OPEN_DECK_EVENT))),
-      ),
-      // Project an instrument (a lâmina) or travel to an app's scene.
-      act(
-        "open-panel",
-        "desktop.dock.add",
-        <Plus aria-hidden />,
-        ["panel", "painel", "window", "janela", "open", "abrir", "instrument", "widget"],
-        () => {
-          setPage({ kind: "panels" });
-          setQuery("");
-        },
-        {
-          nested: () => setPage({ kind: "panels" }),
-          right: <ChevronRight aria-hidden className="pr-chevron" />,
-        },
-      ),
-      act(
-        "toggle-theme",
-        "shell.action.toggleTheme",
-        <SunMoon aria-hidden />,
-        ["dark", "light", "theme", "tema", "escuro", "claro"],
-        () =>
-          void runAction("action:toggle-theme", t("shell.action.toggleTheme"), async () => {
-            const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
-            await api.put("/api/settings", { theme: next });
-            onMetaChanged();
-            toast(t("shell.palette.themeToggled", { theme: next }), "ok");
-          }),
-      ),
-      act(
-        "presets",
-        "shell.action.presets",
-        <Palette aria-hidden />,
-        ["preset", "accent", "colour", "color", "cor", "forest", "ocean", "mono"],
-        () => setPage({ kind: "theme" }),
-        {
-          nested: () => setPage({ kind: "theme" }),
-          right: <ChevronRight aria-hidden className="pr-chevron" />,
-        },
-      ),
-      act("brain", "shell.action.brain", <BrainCircuit aria-hidden />, ["brain", "memory", "graph"], (el) =>
-        go("/brain", el),
-      ),
-      act(
-        "shortcuts",
-        "shell.action.shortcuts",
-        <Keyboard aria-hidden />,
-        ["keys", "help", "atalhos", "?"],
-        () => {
-          close();
-          onShortcuts();
-        },
-      ),
-      act(
-        "sound",
-        "shell.action.sound",
-        sound ? <Volume2 aria-hidden /> : <VolumeX aria-hidden />,
-        ["sound", "audio", "notification", "som"],
-        () => {
-          const next = !sound;
-          setNotifySound(next);
-          setSound(next);
-          toast(t(next ? "shell.action.soundOn" : "shell.action.soundOff"), "ok");
-        },
-        {
-          right: (
-            <Badge kind="meta" tone={sound ? "ok" : "dim"}>
-              {sound ? "on" : "off"}
-            </Badge>
-          ),
-        },
-      ),
-    ];
-  }, [t, busy, runAction, toast, qc, notify, go, close, onMetaChanged, onShortcuts, sound, inShell]);
+  /* ---------- apps and actions: the registered commands (.specs/features/comandos-atalhos) ---------- */
+  const commands = useRegisteredCommands();
+  const [apps, actions] = useMemo<[Row[], Row[]]>(() => {
+    // Two commands open a page of the palette itself rather than run from it.
+    const nested: Record<string, Page> = {
+      "action:presets": { kind: "theme" },
+      "action:open-panel": { kind: "panels" },
+    };
+    const rows = commands
+      .filter((c) => c.palette && (!c.when || c.when()))
+      .map((c): Row => {
+        const Icon = c.icon;
+        const page = nested[c.id];
+        const keys = [...new Set((c.keys ?? []).map((k) => comboLabel(k)))];
+        return {
+          id: c.id,
+          section: c.group === "apps" ? "apps" : "actions",
+          label: t(c.title),
+          icon: Icon ? <Icon aria-hidden /> : null,
+          keywords: c.keywords,
+          shortcuts:
+            keys.length > 0 ? [...new Set((c.keys ?? []).map((k) => ariaShortcut(k)))].join(" ") : undefined,
+          right:
+            keys.length > 0 ? (
+              <span className="pr-keys">
+                {keys.map((k) => (
+                  <kbd key={k} className="kbd">
+                    {k}
+                  </kbd>
+                ))}
+              </span>
+            ) : page ? (
+              <ChevronRight aria-hidden className="pr-chevron" />
+            ) : c.id === "action:sound" ? (
+              <Badge kind="meta" tone={sound ? "ok" : "dim"}>
+                {sound ? "on" : "off"}
+              </Badge>
+            ) : undefined,
+          primary: page
+            ? () => {
+                setPage(page);
+                setQuery("");
+              }
+            : () => {
+                close();
+                c.run();
+              },
+          nested: page ? () => setPage(page) : undefined,
+        };
+      });
+    return [rows.filter((r) => r.section === "apps"), rows.filter((r) => r.section === "actions")];
+  }, [commands, t, sound, close]);
 
   /* ---------- skills ---------- */
   const skillRows = useMemo<Row[]>(
@@ -492,7 +338,7 @@ export function CommandPalette({
                 <ChevronRight aria-hidden className="pr-chevron" />
               </span>
             ),
-            primary: (el) => go(`/skills/${encodeURIComponent(s.slug)}`, el),
+            primary: () => go(`/skills/${encodeURIComponent(s.slug)}`),
             secondary: () => void runAction(`skill:${s.slug}`, `/${s.slug}`, () => launchSkill(s), false),
             nested: () => setPage({ kind: "run", skill: s }),
           };
@@ -513,10 +359,13 @@ export function CommandPalette({
     const controller = new AbortController();
     setFilesLoading(true);
     const timer = window.setTimeout(() => {
-      api
-        .get<MemorySearchHit[]>(`/api/memory/search?q=${encodeURIComponent(needle)}&limit=8`, {
+      apiCall(
+        "GET /api/memory/search",
+        { query: { q: needle, limit: 8 } },
+        {
           signal: controller.signal,
-        })
+        },
+      )
         .then((hits) => {
           setFiles(Array.isArray(hits) ? hits : []);
           setFilesLoading(false);
@@ -540,7 +389,7 @@ export function CommandPalette({
         label: f.name,
         sub: f.rel,
         icon: <FileText aria-hidden />,
-        primary: (el) => go(`/brain?sel=${f.id}`, el),
+        primary: () => go(`/brain?sel=${f.id}`),
       })),
     [files, go],
   );
@@ -548,7 +397,7 @@ export function CommandPalette({
   /* ---------- runs ---------- */
   const runRows = useMemo<Row[]>(
     () =>
-      (runs.data ?? []).slice(0, 8).map((r: RunRecord) => ({
+      (runs.data ?? []).slice(0, 8).map((r: RunSummary) => ({
         id: `run:${r.id}`,
         section: "runs" as const,
         label: r.skillSlug ? `/${r.skillSlug}` : r.promptSummary || r.id.slice(0, 8),
@@ -556,7 +405,7 @@ export function CommandPalette({
         icon: <ListTree aria-hidden />,
         keywords: [r.id, r.provider, r.status, r.skillSlug ?? "", r.promptSummary],
         right: <StatusBadge status={r.status} />,
-        primary: (el) => go(`/runs/${r.id}`, el),
+        primary: () => go(`/runs/${r.id}`),
       })),
     [runs.data, lang, go],
   );
@@ -629,7 +478,7 @@ export function CommandPalette({
           label: t("shell.palette.openSkill"),
           sub: skill.skillFile,
           icon: <Sparkles aria-hidden />,
-          primary: (el) => go(`/skills/${encodeURIComponent(skill.slug)}`, el),
+          primary: () => go(`/skills/${encodeURIComponent(skill.slug)}`),
         },
       ];
     }
@@ -656,11 +505,11 @@ export function CommandPalette({
               {t("desktop.palette.open")}
             </Badge>
           ) : undefined,
-          primary: (el) => {
+          primary: () => {
             // An app answers to its route (the desktop turns it into a panel);
             // the runs reading is the Runs app, like its pod.
-            if (kind) go(APPS[kind].route, el);
-            else if (id === "runs") go("/runs", el);
+            if (kind) go(APPS[kind].route);
+            else if (id === "runs") go("/runs");
             else inShell(() => window.dispatchEvent(new CustomEvent(OPEN_PANEL_EVENT, { detail: id })));
           },
         };
@@ -690,7 +539,7 @@ export function CommandPalette({
           void runAction(`theme:${p.id}`, p.label, async () => {
             committedPreset.current = true;
             applyPreset(p.id);
-            await api.put("/api/settings", { accentColor: p.accent });
+            await api.putSettings({ accentColor: p.accent });
             onMetaChanged();
             toast(t("shell.palette.themeApplied", { name: p.label }), "ok");
           }),
@@ -717,7 +566,7 @@ export function CommandPalette({
       return base.filter((s) => s.rows.length > 0);
     }
     // "organizar revisar código" → the desk composes itself (refino item 47).
-    const verb = ARRANGE_VERBS.exec(needle);
+    const verb = frame ? null : ARRANGE_VERBS.exec(needle);
     const arrangement = verb ? arrangeFor(verb[1]!) : null;
     const arrangeRow: Row[] = verb
       ? [
@@ -748,7 +597,20 @@ export function CommandPalette({
       { section: "files" as const, rows: fileRows },
       { section: "runs" as const, rows: rankItems(runRows, needle, 8).map((r) => r.item) },
     ].filter((s) => s.rows.length > 0 || (s.section === "files" && filesLoading));
-  }, [page.kind, pageRows, needle, apps, actions, runRows, skillRows, fileRows, filesLoading, t, inShell]);
+  }, [
+    page.kind,
+    pageRows,
+    needle,
+    apps,
+    actions,
+    runRows,
+    skillRows,
+    fileRows,
+    filesLoading,
+    t,
+    inShell,
+    frame,
+  ]);
   const rows = useMemo(() => sections.flatMap((s) => s.rows), [sections]);
 
   useEffect(() => setSelected(0), [needle, page.kind]);
@@ -782,9 +644,8 @@ export function CommandPalette({
     } else if (e.key === "Enter") {
       if (!current) return;
       e.preventDefault();
-      const el = document.getElementById(`${listId}-${current.id}`);
-      if ((e.metaKey || e.ctrlKey) && current.secondary) current.secondary(el);
-      else current.primary(el);
+      if ((e.metaKey || e.ctrlKey) && current.secondary) current.secondary();
+      else current.primary();
     } else if (e.key === "ArrowRight" && current?.nested) {
       const input = e.currentTarget;
       if (input.selectionStart === input.value.length) {
@@ -806,226 +667,211 @@ export function CommandPalette({
         : page.kind === "panels"
           ? t("desktop.palette.panelsPh")
           : t("shell.palette.placeholder");
-  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-  const mod = isMac ? "⌘" : "Ctrl";
+  const mod = isMac() ? "⌘" : "Ctrl";
   let flatIndex = -1;
 
   return (
-    <DialogPortal>
-      <div
-        className={`launcher${closing ? " closing" : ""}`}
-        role="presentation"
-        onMouseDown={(e) => e.target === e.currentTarget && close()}
-      >
-        <div
-          className="launcher-panel palette"
-          role="dialog"
-          aria-modal="true"
+    <DialogSurface
+      open={!closing}
+      onOpenChange={(next) => !next && close()}
+      label={t("shell.palette.title")}
+      backdrop="launcher"
+      className="launcher-panel palette"
+      initialFocus={() => inputRef.current}
+    >
+      {page.kind === "root" ? (
+        <div className="palette-brand">
+          <span className="os-brand">
+            <span className="line1">
+              <span className="brand-mark" aria-hidden>
+                {meta.name.charAt(0).toUpperCase()}
+              </span>
+              <span className="name">
+                <span className="accent">{meta.name.replace(/\s*os$/i, "")}</span> OS
+              </span>
+            </span>
+          </span>
+        </div>
+      ) : (
+        <div className="palette-crumbs">
+          <button type="button" className="os-chip" onClick={back} aria-label={t("shell.palette.hintBack")}>
+            <ArrowLeft aria-hidden /> {t("shell.palette.hintBack")}
+          </button>
+          <span className="palette-crumb">
+            {page.kind === "run"
+              ? t("shell.palette.runPage", { slug: page.skill.slug })
+              : page.kind === "panels"
+                ? t("desktop.dock.add")
+                : t("shell.palette.themes")}
+          </span>
+        </div>
+      )}
+      <div className="launcher-search">
+        <Search aria-hidden />
+        <input
+          ref={inputRef}
+          className="input"
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={onKey}
+          placeholder={placeholder}
           aria-label={t("shell.palette.title")}
-          ref={ref}
-          tabIndex={-1}
-        >
-          {page.kind === "root" ? (
-            <div className="palette-brand">
-              <span className="os-brand">
-                <span className="line1">
-                  <span className="brand-mark" aria-hidden>
-                    {meta.name.charAt(0).toUpperCase()}
-                  </span>
-                  <span className="name">
-                    <span className="accent">{meta.name.replace(/\s*os$/i, "")}</span> OS
-                  </span>
-                </span>
-              </span>
-            </div>
-          ) : (
-            <div className="palette-crumbs">
-              <button
-                type="button"
-                className="os-chip"
-                onClick={back}
-                aria-label={t("shell.palette.hintBack")}
-              >
-                <ArrowLeft aria-hidden /> {t("shell.palette.hintBack")}
-              </button>
-              <span className="palette-crumb">
-                {page.kind === "run"
-                  ? t("shell.palette.runPage", { slug: page.skill.slug })
-                  : page.kind === "panels"
-                    ? t("desktop.dock.add")
-                    : t("shell.palette.themes")}
-              </span>
-            </div>
-          )}
-          <div className="launcher-search">
-            <Search aria-hidden />
-            <input
-              ref={inputRef}
-              className="input"
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={onKey}
-              placeholder={placeholder}
-              aria-label={t("shell.palette.title")}
-              role="combobox"
-              aria-expanded={rows.length > 0}
-              aria-controls={listId}
-              aria-activedescendant={current ? `${listId}-${current.id}` : undefined}
-              aria-autocomplete="list"
-              autoComplete="off"
-              spellCheck={false}
+          role="combobox"
+          aria-expanded={rows.length > 0}
+          aria-controls={listId}
+          aria-activedescendant={current ? `${listId}-${current.id}` : undefined}
+          aria-autocomplete="list"
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </div>
+
+      {page.kind === "run" && (
+        <div className="palette-form">
+          <p className="modal-intro">{t("shell.palette.runPageIntro")}</p>
+          <div className="palette-form-row">
+            <label className="label" htmlFor="palette-model">
+              {t("shell.palette.model")}
+            </label>
+            <select
+              id="palette-model"
+              className="input sm"
+              value={model ?? ""}
+              onChange={(e) => setModel(e.target.value || null)}
+              disabled={models.isPending && runProvider !== null}
+            >
+              <option value="">{t("shell.palette.auto")}</option>
+              {(models.data ?? []).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="palette-form-row">
+            <span className="label">{t("shell.palette.effort")}</span>
+            <Segmented
+              size="sm"
+              ariaLabel={t("shell.palette.effort")}
+              value={effort}
+              onChange={setEffort}
+              options={EFFORTS.map((e) => ({ value: e, label: t(`effort.${e}` as TKey) }))}
             />
           </div>
+        </div>
+      )}
 
-          {page.kind === "run" && (
-            <div className="palette-form">
-              <p className="modal-intro">{t("shell.palette.runPageIntro")}</p>
-              <div className="palette-form-row">
-                <label className="label" htmlFor="palette-model">
-                  {t("shell.palette.model")}
-                </label>
-                <select
-                  id="palette-model"
-                  className="input sm"
-                  value={model ?? ""}
-                  onChange={(e) => setModel(e.target.value || null)}
-                  disabled={models.isPending && runProvider !== null}
-                >
-                  <option value="">{t("shell.palette.auto")}</option>
-                  {(models.data ?? []).map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="palette-form-row">
-                <span className="label">{t("shell.palette.effort")}</span>
-                <Segmented
-                  size="sm"
-                  ariaLabel={t("shell.palette.effort")}
-                  value={effort}
-                  onChange={setEffort}
-                  options={EFFORTS.map((e) => ({ value: e, label: t(`effort.${e}` as TKey) }))}
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="palette-list" id={listId} role="listbox" aria-label={t("shell.palette.title")}>
-            {rows.length === 0 && !filesLoading && (
-              <p className="palette-empty">
-                {needle ? t("shell.palette.noResults", { query: needle }) : t("common.empty")}
-              </p>
-            )}
-            {sections.map(({ section, rows: sectionRows }) => {
-              const tiles = section === "apps" && !needle && page.kind === "root";
-              return (
-                <div key={section} className={`palette-section${tiles ? " tiles" : ""}`}>
-                  {section !== "page" && (
-                    <div className="launcher-section" aria-hidden>
-                      {t(SECTION_LABEL[section])}
-                      {section === "files" && filesLoading && <span className="spinner sm" />}
-                    </div>
-                  )}
-                  {tiles ? (
-                    <div className="launcher-grid">
-                      {sectionRows.map((row, i) => {
-                        flatIndex += 1;
-                        const idx = flatIndex;
-                        return (
-                          <button
-                            key={row.id}
-                            id={`${listId}-${row.id}`}
-                            type="button"
-                            role="option"
-                            aria-selected={idx === selected}
-                            className={`launcher-tile${idx === selected ? " selected" : ""}`}
-                            style={{ "--i": i } as CSSProperties}
-                            onMouseEnter={() => setSelected(idx)}
-                            onClick={(e) => row.primary(e.currentTarget)}
-                          >
-                            <span className="lt-icon">{row.icon}</span>
-                            <span className="lt-name">{row.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="launcher-results">
-                      {sectionRows.map((row) => {
-                        flatIndex += 1;
-                        const idx = flatIndex;
-                        return (
-                          <button
-                            key={row.id}
-                            id={`${listId}-${row.id}`}
-                            type="button"
-                            role="option"
-                            aria-selected={idx === selected}
-                            aria-busy={row.busy || undefined}
-                            className={`launcher-result palette-row${idx === selected ? " selected" : ""}`}
-                            onMouseEnter={() => setSelected(idx)}
-                            onClick={(e) => row.primary(e.currentTarget)}
-                          >
-                            <span className="lr-icon">
-                              {row.busy ? <span className="spinner sm" /> : row.icon}
-                            </span>
-                            <span className="pr-text">
-                              <div className="lr-name">{row.label}</div>
-                              {row.sub && <div className="lr-sub">{row.sub}</div>}
-                            </span>
-                            {row.right && <span className="pr-right">{row.right}</span>}
-                          </button>
-                        );
-                      })}
-                      {section === "files" && filesLoading && sectionRows.length === 0 && (
-                        <p className="palette-empty">{t("shell.palette.searching")}</p>
-                      )}
-                    </div>
+      <div className="palette-list" id={listId} role="listbox" aria-label={t("shell.palette.title")}>
+        {rows.length === 0 && !filesLoading && (
+          <p className="palette-empty">
+            {needle ? t("shell.palette.noResults", { query: needle }) : t("common.empty")}
+          </p>
+        )}
+        {sections.map(({ section, rows: sectionRows }) => {
+          const tiles = section === "apps" && !needle && page.kind === "root";
+          return (
+            <div key={section} className={`palette-section${tiles ? " tiles" : ""}`}>
+              {section !== "page" && (
+                <div className="launcher-section" aria-hidden>
+                  {t(SECTION_LABEL[section])}
+                  {section === "files" && filesLoading && <span className="spinner sm" />}
+                </div>
+              )}
+              {tiles ? (
+                <div className="launcher-grid">
+                  {sectionRows.map((row, i) => {
+                    flatIndex += 1;
+                    const idx = flatIndex;
+                    return (
+                      <button
+                        key={row.id}
+                        id={`${listId}-${row.id}`}
+                        type="button"
+                        role="option"
+                        aria-selected={idx === selected}
+                        className={`launcher-tile${idx === selected ? " selected" : ""}`}
+                        style={{ "--i": i } as CSSProperties}
+                        onMouseEnter={() => setSelected(idx)}
+                        onClick={() => row.primary()}
+                      >
+                        <span className="lt-icon">{row.icon}</span>
+                        <span className="lt-name">{row.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="launcher-results">
+                  {sectionRows.map((row) => {
+                    flatIndex += 1;
+                    const idx = flatIndex;
+                    return (
+                      <button
+                        key={row.id}
+                        id={`${listId}-${row.id}`}
+                        type="button"
+                        role="option"
+                        aria-selected={idx === selected}
+                        aria-busy={row.busy || undefined}
+                        aria-keyshortcuts={row.shortcuts}
+                        className={`launcher-result palette-row${idx === selected ? " selected" : ""}`}
+                        onMouseEnter={() => setSelected(idx)}
+                        onClick={() => row.primary()}
+                      >
+                        <span className="lr-icon">
+                          {row.busy ? <span className="spinner sm" /> : row.icon}
+                        </span>
+                        <span className="pr-text">
+                          <div className="lr-name">{row.label}</div>
+                          {row.sub && <div className="lr-sub">{row.sub}</div>}
+                        </span>
+                        {row.right && <span className="pr-right">{row.right}</span>}
+                      </button>
+                    );
+                  })}
+                  {section === "files" && filesLoading && sectionRows.length === 0 && (
+                    <p className="palette-empty">{t("shell.palette.searching")}</p>
                   )}
                 </div>
-              );
-            })}
-          </div>
-
-          <p className="launcher-hint palette-footer">
-            <span className="kbd">
-              <ArrowUp aria-hidden /> <ArrowDown aria-hidden />
-            </span>{" "}
-            {t("shell.palette.hintNav")} ·{" "}
-            <span className="kbd">
-              <CornerDownLeft aria-hidden />
-            </span>{" "}
-            {t("shell.palette.hintOpen")} ·{" "}
-            <span className="kbd">
-              {mod} <CornerDownLeft aria-hidden />
-            </span>{" "}
-            {t("shell.palette.hintRun")} ·{" "}
-            <span className="kbd">
-              <ChevronRight aria-hidden />
-            </span>{" "}
-            {t("shell.palette.runSkill")} · <span className="kbd">Esc</span> {t("shell.palette.hintClose")}
-            {page.kind === "root" && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="palette-help"
-                icon={<Keyboard aria-hidden />}
-                onClick={() => {
-                  close();
-                  onShortcuts();
-                }}
-              >
-                ?
-              </Button>
-            )}
-          </p>
-        </div>
+              )}
+            </div>
+          );
+        })}
       </div>
-    </DialogPortal>
+
+      <p className="launcher-hint palette-footer">
+        <span className="kbd">
+          <ArrowUp aria-hidden /> <ArrowDown aria-hidden />
+        </span>{" "}
+        {t("shell.palette.hintNav")} ·{" "}
+        <span className="kbd">
+          <CornerDownLeft aria-hidden />
+        </span>{" "}
+        {t("shell.palette.hintOpen")} ·{" "}
+        <span className="kbd">
+          {mod} <CornerDownLeft aria-hidden />
+        </span>{" "}
+        {t("shell.palette.hintRun")} ·{" "}
+        <span className="kbd">
+          <ChevronRight aria-hidden />
+        </span>{" "}
+        {t("shell.palette.runSkill")} · <span className="kbd">Esc</span> {t("shell.palette.hintClose")}
+        {page.kind === "root" && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="palette-help"
+            icon={<Keyboard aria-hidden />}
+            onClick={() => {
+              close();
+              onShortcuts();
+            }}
+          >
+            ?
+          </Button>
+        )}
+      </p>
+    </DialogSurface>
   );
 }
-
-export default CommandPalette;

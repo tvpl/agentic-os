@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 import { useT } from "../i18n";
+import { Tooltip } from "../ui";
 /** One search result: whatever the modal and the list need, nothing more. */
 export type HitKind = "artifact" | "file" | "run" | "skill" | "notification";
 
@@ -142,15 +143,16 @@ export function SearchBar({ query, matches, hits, onQuery, onPick, onFly, onClos
                       <span className="art-hit-path">{hit.path}</span>
                     </button>
                     {onFly && (hit.kind === "file" || hit.kind === "artifact") && (
-                      <button
-                        type="button"
-                        className="art-hit-fly"
-                        title={t("desktop.search.fly")}
-                        aria-label={t("desktop.search.fly")}
-                        onClick={() => onFly(hit)}
-                      >
-                        ✦
-                      </button>
+                      <Tooltip label={t("desktop.search.fly")}>
+                        <button
+                          type="button"
+                          className="art-hit-fly"
+                          aria-label={t("desktop.search.fly")}
+                          onClick={() => onFly(hit)}
+                        >
+                          ✦
+                        </button>
+                      </Tooltip>
                     )}
                   </li>
                 ))}

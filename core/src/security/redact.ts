@@ -18,6 +18,9 @@ const PATTERNS: Array<{ re: RegExp; label: string }> = [
   { re: /AKIA[0-9A-Z]{16}/g, label: "aws-key-id" },
   { re: /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g, label: "jwt" },
   { re: /AIza[0-9A-Za-z_-]{30,}/g, label: "google-key" },
+  // MordomoOS's own per-run credentials: the permission broker's (`brk_`) and a memory skill's run (`rc_`), 32 bytes
+  // of base64url (43 characters); a shorter tail is a word that happens to start that way.
+  { re: /\b(?:brk|rc)_[A-Za-z0-9_-]{40,}/g, label: "run-credential" },
 ];
 
 /**
@@ -25,11 +28,11 @@ const PATTERNS: Array<{ re: RegExp; label: string }> = [
  *  1 key name, 2 separator (with the optional closing quote of a JSON key),
  *  3 double-quoted value body (escapes allowed), 4 single-quoted value body,
  *  5 opening quote of an unterminated value, 6 bare value.
- * Quoted values are consumed whole (including `\"` escapes) and re-emitted
+ * The key may carry a prefix (`MORDOMO_RUN_TOKEN=…`, `x_api_key: …`). Quoted values are consumed whole (including `\"` escapes) and re-emitted
  * with the same quotes, so a redacted JSON document still parses.
  */
 const CREDENTIAL_PAIR =
-  /\b(password|passwd|secret|token|api[_-]?key|authorization|auth)(["']?\s*[=:]\s*)(?:"((?:[^"\\]|\\.){6,})"|'((?:[^'\\]|\\.){6,})'|(["']?)([^\s"',;]{6,}))/gi;
+  /\b(\w*(?:password|passwd|secret|token|api[_-]?key|authorization|auth))(["']?\s*[=:]\s*)(?:"((?:[^"\\]|\\.){6,})"|'((?:[^'\\]|\\.){6,})'|(["']?)([^\s"',;]{6,}))/gi;
 
 export function redactSecrets(input: string): string {
   let out = input;

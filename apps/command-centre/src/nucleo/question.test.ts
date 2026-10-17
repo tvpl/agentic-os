@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { answersFor, complete, isQuestion, questionsOf } from "./question";
 
 const approval = (input: unknown, toolName = "AskUserQuestion") => ({
-  kind: "tool_use",
+  kind: "tool_use" as const,
   payload: { toolName, input },
 });
 

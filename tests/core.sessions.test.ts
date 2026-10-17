@@ -1,16 +1,16 @@
 import { describe, expect, it, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
 import path from "node:path";
+import { type AgentAdapter } from "@mordomo/core";
 import {
+  EventBus,
   RunManager,
   SettingsStore,
   openDb,
-  events,
   type Db,
   type SessionStore,
   type MordomoPaths,
-  type AgentAdapter,
   type ProviderId,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { ClaudeAdapter } from "@mordomo/adapter-claude";
 import { CursorAdapter } from "@mordomo/adapter-cursor";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "./helpers.js";
@@ -24,6 +24,7 @@ afterAll(() => restorePath());
 let ctx: { paths: MordomoPaths; cleanup: () => void };
 let db: Db;
 let manager: RunManager;
+let bus: EventBus;
 let sessions: SessionStore;
 let store: SettingsStore;
 
@@ -36,7 +37,8 @@ beforeEach(() => {
   ctx = makeTempHome();
   db = openDb(ctx.paths).db;
   store = new SettingsStore(ctx.paths);
-  manager = new RunManager(db, ctx.paths, () => store.load(), adapterFor);
+  bus = new EventBus();
+  manager = new RunManager(db, ctx.paths, () => store.load(), adapterFor, { bus });
   sessions = manager.sessions;
 });
 
@@ -49,7 +51,7 @@ afterEach(async () => {
 describe("session store", () => {
   it("creates a conversation with redacted title and empty counters", () => {
     const seen: string[] = [];
-    const unsubscribe = events.subscribe((e) => seen.push(e.type));
+    const unsubscribe = bus.subscribe((e) => seen.push(e.type));
     try {
       const session = sessions.create({
         provider: "claude",
@@ -81,7 +83,7 @@ describe("session store", () => {
   it("accumulates turns, tokens and cost as runs finish", () => {
     const session = sessions.create({ provider: "claude", cwd: null, profile: null, title: "t" });
     const seen: string[] = [];
-    const unsubscribe = events.subscribe((e) => seen.push(e.type));
+    const unsubscribe = bus.subscribe((e) => seen.push(e.type));
     try {
       sessions.recordRun(session.id, {
         runId: "run-1",

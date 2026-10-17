@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { resolvePaths } from "@mordomo/core";
+import { resolvePaths } from "@mordomo/core/internal";
 import {
   formatCommand,
   planStartupService,

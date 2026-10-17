@@ -5,11 +5,13 @@
  */
 import { ShieldCheck, ShieldX } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type ApprovalRecord } from "../api";
+import { type ApprovalRecord } from "../api";
+import { apiCall } from "../apiCall";
 import { useLocale, useT } from "../i18n";
 import { qk, useApiQuery, type ApiQueryOptions } from "../queries";
 import { timeAgo, useToast } from "../components/ui";
 import { Badge, Button } from "../components/primitives";
+import { ApprovalRequest } from "./ApprovalRequest";
 import { approvalLabel, approvalTarget, toolApprovalParts, writeRunApprovals } from "./approvals";
 
 /** Pending approvals (shared cache key with Settings › Security). */
@@ -20,11 +22,6 @@ export function useApprovals(options: ApiQueryOptions<ApprovalRecord[]> = {}) {
   });
 }
 
-export interface ResolveResult extends ApprovalRecord {
-  /** Id of the run the API launched when the approval was granted. */
-  runId?: string | null;
-}
-
 /** `POST /api/approvals/:id/resolve` — same payload as Settings › Security. */
 export function useResolveApproval(onLaunched?: (runId: string | null) => void) {
   const t = useT();
@@ -32,7 +29,7 @@ export function useResolveApproval(onLaunched?: (runId: string | null) => void) 
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, decision }: { id: string; decision: "approved" | "denied" }) =>
-      api.post<ResolveResult>(`/api/approvals/${encodeURIComponent(id)}/resolve`, { decision }),
+      apiCall("POST /api/approvals/:id/resolve", { params: { id }, body: { decision } }),
     onSuccess: (res, vars) => {
       toast(vars.decision === "approved" ? t("runs.approve.approved") : t("runs.approve.denied"), "ok");
       qc.invalidateQueries({ queryKey: qk.approvals }).catch(() => undefined);
@@ -74,6 +71,8 @@ export function ApprovalCard({ approval, onLaunched, compact = false }: Approval
             {target.cwd}
           </p>
         )}
+        {/* Before the buttons in the page's order: the request is read before Approve is reached. */}
+        <ApprovalRequest approval={approval} />
       </div>
       <div className="approval-inline-actions">
         <Button
@@ -145,6 +144,8 @@ export function ToolApprovalCard({ approval }: { approval: ApprovalRecord }) {
           <span className="approval-inline-when">{timeAgo(approval.createdAt, locale)}</span>
         </div>
         <p className="approval-inline-desc">{t("runs.toolApprove.hint")}</p>
+        {/* A tool a run a paired device started asks to use: its whole input, before the buttons. */}
+        <ApprovalRequest approval={approval} />
       </div>
       <div className="approval-inline-actions">
         <Button

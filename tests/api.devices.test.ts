@@ -119,8 +119,18 @@ describe("pairing", () => {
   });
 
   it("injects the local token only for loopback pages", async () => {
-    const local = await app.inject({ method: "GET", url: "/", headers: { host: "127.0.0.1:4777" } });
-    const remote = await app.inject({ method: "GET", url: "/", headers: { host: "mordomo.local:4777" } });
+    // a browser opening the page (the token is not served to a program fetching it: api.security-p0 C53)
+    const browser = { "sec-fetch-dest": "document", "sec-fetch-mode": "navigate" };
+    const local = await app.inject({
+      method: "GET",
+      url: "/",
+      headers: { host: "127.0.0.1:4777", ...browser },
+    });
+    const remote = await app.inject({
+      method: "GET",
+      url: "/",
+      headers: { host: "mordomo.local:4777", ...browser },
+    });
     if (local.statusCode === 200 && local.headers["content-type"]?.toString().includes("text/html")) {
       expect(local.body).toContain(`content="${token}"`);
       expect(remote.body).not.toContain(token);

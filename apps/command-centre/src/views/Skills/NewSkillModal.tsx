@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { naturalToCron } from "../naturalSchedule";
-import { api } from "../../api";
+import { apiCall } from "../../apiCall";
 import { qk, useInvalidate } from "../../queries";
 import { useT } from "../../i18n";
-import { Modal, useToast } from "../../components/ui";
+import { useToast } from "../../components/ui";
+import { Modal } from "../../ui";
 import { Button, Field } from "../../components/primitives";
 import { errorMessage, SLUG_RE, slugify } from "../shared";
 
@@ -47,7 +48,7 @@ export default function NewSkillModal({
 
   const create = useMutation({
     mutationFn: () =>
-      api.post("/api/skills", {
+      apiCall("POST /api/skills", { body: {
         frontmatter: {
           name: name.trim(),
           slug,
@@ -56,20 +57,20 @@ export default function NewSkillModal({
           triggers: [`/${slug}`],
         },
         body,
-      }),
+      } }),
     onSuccess: async () => {
       await invalidate(qk.skills);
       toast(t("skills.created", { name: name.trim() }), "ok");
       if (cron) {
         try {
-          await api.post("/api/routines", {
+          await apiCall("POST /api/routines", { body: {
             id: slug,
             name: name.trim(),
             skillSlug: slug,
             kind: "cron",
             schedule: cron,
             enabled: true,
-          });
+          } });
           await invalidate(qk.routines);
           toast(t("skills.scheduled", { cron }), "ok");
         } catch (err) {

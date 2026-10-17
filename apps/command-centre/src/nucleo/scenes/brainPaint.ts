@@ -1341,7 +1341,7 @@ export class Painter {
         ctx.arc(x, y, rr, 0, Math.PI * 2);
         ctx.stroke();
         ctx.setLineDash([]);
-        const font = `500 11px ${tk.body}`;
+        const font = `500 12px ${tk.body}`;
         const tw = this.width(font, words.enter);
         ctx.font = font;
         ctx.textAlign = "center";
@@ -1493,7 +1493,7 @@ export class Painter {
         const font = `600 ${size}px ${tk.display}`;
         const text = spaced((stage.groupText[gi] ?? g.key).toUpperCase());
         const count = String(g.members.length);
-        const cfont = `500 ${Math.max(10, size - 2)}px ${tk.mono}`;
+        const cfont = `500 ${Math.max(12, size - 2)}px ${tk.mono}`;
         const tw = this.width(font, text);
         const cw = this.width(cfont, count) + 7;
         const glyphW = lay.dim === "types" ? size + 6 : 0;
@@ -1557,7 +1557,7 @@ export class Painter {
 
     /* guide labels: time ticks, link bands */
     if (lay && (lay.dim === "time" || lay.dim === "links") && egoMix < 0.95) {
-      const font = `500 11px ${tk.body}`;
+      const font = `500 12px ${tk.body}`;
       ctx.font = font;
       ctx.textAlign = "center";
       lay.guides.forEach((g, gi) => {
@@ -1624,7 +1624,7 @@ export class Painter {
         if (raw === undefined) stage.need(i);
         else ex = raw;
       }
-      const efont = `400 11px ${tk.body}`;
+      const efont = `400 12px ${tk.body}`;
       const exText = ex ? this.fit(efont, ex, 230) : "";
       const ew = exText ? this.width(efont, exText) : 0;
       const bw = Math.ceil(Math.max(tw + gw, ew)) + 6;
@@ -1690,7 +1690,7 @@ export class Painter {
       const fill = d.pri <= 0 || (d.pri === 1 && ego) ? tk.text : d.pri <= 2 ? tk.agentText : tk.dim;
       outline(d.title, left + gw, baseY, fill, a);
       if (d.ex) {
-        const efont = `400 11px ${tk.body}`;
+        const efont = `400 12px ${tk.body}`;
         ctx.font = efont;
         const ew = this.width(efont, d.ex);
         const ex0 =

@@ -6,12 +6,14 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { RefreshCw, RotateCcw } from "lucide-react";
-import { api, type DoctorReport, type UpdateCheck } from "../../api";
+import { type DoctorReport, type UpdateCheck } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useLocale, useT } from "../../i18n";
 import { qk, useApiQuery } from "../../queries";
 import { timeAgo, useToast } from "../../components/ui";
 import { WidgetGate } from "./WidgetGate";
 import type { WidgetProps } from "../widgetTypes";
+import { Tooltip } from "../../ui";
 
 const ORDER = { fail: 0, warn: 1, ok: 2, skip: 3 } as const;
 
@@ -23,7 +25,7 @@ export default function HealthWidget(_props: WidgetProps) {
   const updates = useApiQuery<UpdateCheck>(["updates"], "/api/updates", { refetchInterval: 1_800_000 });
   const [restarting, setRestarting] = useState(false);
   const restart = useMutation({
-    mutationFn: () => api.post("/api/system/restart"),
+    mutationFn: () => apiCall("POST /api/system/restart"),
     onSuccess: () => {
       setRestarting(true);
       toast(t("service.restarting"), "info");
@@ -42,25 +44,27 @@ export default function HealthWidget(_props: WidgetProps) {
           <span className="tg t">{doctor.data?.warn ?? 0}</span>
           <span className="tg f">{doctor.data?.fail ?? 0}</span>
           <span className="sp" />
-          <button
-            type="button"
-            className="go icon"
-            title={t("desktop.health.again")}
-            aria-label={t("desktop.health.again")}
-            onClick={() => void doctor.refetch()}
-          >
-            <RefreshCw aria-hidden />
-          </button>
-          <button
-            type="button"
-            className="go icon quiet"
-            title={t("desktop.health.restart")}
-            aria-label={t("desktop.health.restart")}
-            disabled={restart.isPending || restarting}
-            onClick={() => restart.mutate()}
-          >
-            <RotateCcw aria-hidden />
-          </button>
+          <Tooltip label={t("desktop.health.again")}>
+            <button
+              type="button"
+              className="go icon"
+              aria-label={t("desktop.health.again")}
+              onClick={() => void doctor.refetch()}
+            >
+              <RefreshCw aria-hidden />
+            </button>
+          </Tooltip>
+          <Tooltip label={t("desktop.health.restart")}>
+            <button
+              type="button"
+              className="go icon quiet"
+              aria-label={t("desktop.health.restart")}
+              disabled={restart.isPending || restarting}
+              onClick={() => restart.mutate()}
+            >
+              <RotateCcw aria-hidden />
+            </button>
+          </Tooltip>
         </div>
         {newer ? (
           <div className="rw health-update">

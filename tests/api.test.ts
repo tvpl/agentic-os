@@ -227,6 +227,35 @@ describe("memory API", () => {
     expect(outside.statusCode).toBe(403);
   });
 
+  it("preview refuses secrets, one case per secret file of the home", async () => {
+    const home = ctx.paths.home;
+    const secrets = [
+      ["config/token", ctx.token()],
+      ["config/vapid.json", '{"privateKey":"x"}'],
+      ["config/registry-signing.json", '{"secret":"x"}'],
+      ["config/settings.json", null],
+      ["config/ui-preferences.json", "{}"],
+      ["config/db/mordomo.db", null],
+      ["config/tls/key.pem", "key"],
+      ["config/backups/x/a.json", "{}"],
+      ["logs/runs.jsonl", "{}\n"],
+    ] as const;
+    for (const [rel, content] of secrets) {
+      const file = path.join(home, rel);
+      if (content !== null) {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, content);
+      }
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/memory/preview?p=${encodeURIComponent(file)}`,
+        headers: auth(),
+      });
+      expect(res.statusCode, rel).toBe(403);
+      expect(res.json().error.code, rel).toBe("forbidden_path");
+    }
+  });
+
   it("generates routers", async () => {
     const res = await app.inject({ method: "POST", url: "/api/memory/routers", headers: auth() });
     expect(res.json().written.length).toBeGreaterThan(1);

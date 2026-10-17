@@ -1,6 +1,10 @@
 import type { EffortLevel, ProviderId, SecurityProfile } from "../config/schema.js";
 import type { ProviderManifest } from "./registry.js";
+import type { RunEvent, RunMode, RunUsage, RunUsageEvent } from "@mordomo/contracts";
 
+export type { RunEvent, RunMode, RunUsage, RunUsageEvent };
+
+/** What `detect` found about a provider's CLI. */
 export interface DetectionResult {
   installed: boolean;
   binaryPath: string | null;
@@ -10,12 +14,14 @@ export interface DetectionResult {
   notes: string[];
 }
 
+/** Whether a provider is signed in; never the credential itself. */
 export interface AuthStatus {
   authenticated: boolean | "unknown";
   method: string | null; // e.g. "session", "api-key" — never the credential itself
   detail: string;
 }
 
+/** A model a provider offers. */
 export interface ModelOption {
   /** Concrete model id passed to the CLI. */
   id: string;
@@ -29,11 +35,13 @@ export interface ModelOption {
   aliases?: string[];
 }
 
+/** What `validateConfig` found. */
 export interface ValidationResult {
   ok: boolean;
   issues: string[];
 }
 
+/** A provider's health at a moment: installed, signed in, version. */
 export interface HealthStatus {
   ok: boolean;
   installed: boolean;
@@ -43,8 +51,6 @@ export interface HealthStatus {
   checkedAt: number;
 }
 
-export type RunMode = "read_only" | "write";
-
 /** Command line of the permission MCP server (spawned by the provider CLI, not by us). */
 export interface PermissionBroker {
   command: string;
@@ -52,6 +58,7 @@ export interface PermissionBroker {
   env: Record<string, string>;
 }
 
+/** What an adapter receives to execute: the prompt, where to run, the limits and the cancellation signal. */
 export interface AgentRun {
   runId: string;
   prompt: string;
@@ -63,7 +70,24 @@ export interface AgentRun {
   profile: SecurityProfile;
   /** Directory where the run should place produced artifacts. */
   artifactsDir: string;
+  /**
+   * Folders outside the working directory the run reads (a skill run reads its own `SKILL.md`). Set by the
+   * RunManager, never by a request. A provider that confines reads to the working directory lets these in too;
+   * one that does not, ignores them.
+   */
+  readDirs?: string[];
+  /**
+   * Folders among `readDirs` the run must not edit (the skill's own folder: its SKILL.md is the definition the next
+   * run trusts). The Claude adapter denies its edit tools there; a provider that cannot, ignores it.
+   */
+  protectedDirs?: string[];
+  /** Variables added to the provider process on top of what it inherits (the run-scoped API credential). */
   extraEnv?: Record<string, string>;
+  /**
+   * Environment the provider process must not inherit from the service:
+   * exact names and name prefixes (MordomoOS's own secrets, set by the RunManager).
+   */
+  dropEnv?: { names: string[]; prefixes: string[] };
   /**
    * Conversation this run belongs to (`sessions.id`). Set by the RunManager
    * from the run row; adapters use it only to decide whether the provider's
@@ -90,80 +114,13 @@ export interface AgentRun {
   signal?: AbortSignal;
 }
 
+/** The command an adapter would run: executable, arguments and environment. */
 export interface SafeInvocation {
   executable: string;
   args: string[];
   env: Record<string, string>;
   stdin?: string;
   description: string;
-}
-
-export type RunEvent = (
-  | { type: "started"; ts: number; pid: number | null }
-  | { type: "text"; ts: number; stream: "stdout" | "stderr"; text: string }
-  | { type: "assistant"; ts: number; text: string }
-  | {
-      type: "tool_use";
-      ts: number;
-      tool: string;
-      detail: string;
-      callId?: string;
-      phase?: "start" | "end";
-      durationMs?: number;
-      outcome?: "ok" | "error" | "denied";
-    }
-  | { type: "permission"; ts: number; detail: string }
-  /**
-   * The provider told us which conversation this run belongs to (Claude's
-   * `session_id`, Codex's `thread_id`). Emitted up front when the adapter
-   * chose the id itself and again from the stream as confirmation — the last
-   * one wins, which is also how a resumed conversation that forks into a new
-   * provider session gets recorded.
-   */
-  | { type: "session"; ts: number; providerSessionId: string }
-  | {
-      type: "result";
-      ts: number;
-      exitCode: number | null;
-      summary: string;
-      durationMs: number;
-      timedOut: boolean;
-      /** True when the process ended because cancellation was requested (or was never spawned because of it). */
-      cancelled?: boolean;
-    }
-  | { type: "error"; ts: number; message: string }
-  | ({ type: "usage"; ts: number } & RunUsageEvent)
-) & {
-  /** Stable execution attempt id. */ attemptId?: string;
-  /** Monotonic within this attempt. */ sequence?: number;
-};
-
-/**
- * Token/cost usage reported by a provider. `scope` tells the RunManager how to
- * fold several events into the run's usage: a `total` snapshot replaces
- * everything seen so far (Claude's `result`, Codex's `turn.completed`),
- * while `turn` events (one per assistant message) are summed until a total
- * arrives. Missing scope means `turn`.
- */
-export interface RunUsageEvent {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens?: number;
-  cacheWriteTokens?: number;
-  /** Provider-reported cost in USD; null when the provider gives tokens but no price. */
-  costUsd?: number | null;
-  model?: string;
-  scope?: "turn" | "total";
-}
-
-/** Usage persisted on the run row (sum of turns, or the provider's total). */
-export interface RunUsage {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens?: number;
-  cacheWriteTokens?: number;
-  costUsd?: number | null;
-  model?: string;
 }
 
 /**

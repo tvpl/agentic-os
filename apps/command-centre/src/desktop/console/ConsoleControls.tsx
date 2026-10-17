@@ -4,20 +4,15 @@
  * chamfered control; the readout at the end doubles as the switch that
  * shows or hides the conversation above the field.
  */
-import { useLayoutEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  api,
-  type ProviderId,
-  type ProviderSnapshot,
-  type SessionDetail,
-  type SessionRecord,
-} from "../../api";
+import { type ProviderId, type ProviderSnapshot, type SessionDetail, type SessionRecord } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useLocale, useT } from "../../i18n";
 import { qk, useApiQuery } from "../../queries";
 import { timeAgo, useToast } from "../../components/ui";
-import { DialogPortal, useDialog, usePresence } from "../../components/dialog";
+import { Popover, Tooltip } from "../../ui";
 import { ModelEffortMatrix, shortModel, type Effort } from "../SkillMatrixModal";
 import { providerProblem } from "../../components/providerReadiness";
 import type { Estimate } from "../estimate";
@@ -93,7 +88,7 @@ export function ConsoleControls({
   // The provider control cycles the enabled providers; the default is what a
   // fresh conversation will use, so that is what it sets.
   const switchDefault = useMutation({
-    mutationFn: (next: ProviderId) => api.put("/api/providers/default", { provider: next }),
+    mutationFn: (next: ProviderId) => apiCall("PUT /api/providers/default", { body: { provider: next } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.providers }).catch(() => undefined);
       qc.invalidateQueries({ queryKey: qk.meta }).catch(() => undefined);
@@ -181,7 +176,7 @@ export function ConsoleControls({
       )}
       <button
         type="button"
-        className={`cc${problem ? " warn" : ""}`}
+        className={`cc${problem ? " problem" : ""}`}
         title={
           problem
             ? `${t("desktop.prompt.provider")}: ${t(`gate.state.${problem}` as "gate.state.login_required")}`
@@ -247,16 +242,17 @@ export function ConsoleControls({
             : t("desktop.budget.left", { usd: money(Math.max(0, budget.budgetUsd - budget.spentUsd)) })}
         </Link>
       )}
-      <button
-        type="button"
-        className="ro"
-        aria-expanded={threadOpen}
-        aria-label={t(threadOpen ? "desktop.console.threadHide" : "desktop.console.thread")}
-        title={t(threadOpen ? "desktop.console.threadHide" : "desktop.console.thread")}
-        onClick={onToggleThread}
-      >
-        {t("desktop.console.turns", { n: turns })} · ${cost.toFixed(3)}
-      </button>
+      <Tooltip label={t(threadOpen ? "desktop.console.threadHide" : "desktop.console.thread")}>
+        <button
+          type="button"
+          className="ro"
+          aria-expanded={threadOpen}
+          aria-label={t(threadOpen ? "desktop.console.threadHide" : "desktop.console.thread")}
+          onClick={onToggleThread}
+        >
+          {t("desktop.console.turns", { n: turns })} · ${cost.toFixed(3)}
+        </button>
+      </Tooltip>
     </div>
   );
 }
@@ -265,8 +261,6 @@ function folderLabel(path: string, folders: FolderOption[], home: string): strin
   if (!path) return home;
   return folders.find((f) => f.path === path)?.label ?? path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
-
-const POP_W = 300;
 
 /** The MODEL + EFFORT matrix over the control, for the next prompt run. */
 function ModelPopover({
@@ -284,73 +278,30 @@ function ModelPopover({
   onChoice: (choice: ModelChoice) => void;
   onClose: () => void;
 }) {
-  // Presence out here, the dialog inside: `useDialog` registers on mount.
-  const { mounted, closing } = usePresence(open, 160);
-  if (!mounted) return null;
-  return (
-    <ModelPopoverBox
-      anchor={anchor}
-      provider={provider}
-      choice={choice}
-      onChoice={onChoice}
-      onClose={onClose}
-      closing={closing}
-    />
-  );
-}
-
-function ModelPopoverBox({
-  anchor,
-  provider,
-  choice,
-  onChoice,
-  onClose,
-  closing,
-}: {
-  anchor: HTMLElement;
-  provider: ProviderId;
-  choice: ModelChoice;
-  onChoice: (choice: ModelChoice) => void;
-  onClose: () => void;
-  closing: boolean;
-}) {
   const t = useT();
-  const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ left: 0, bottom: 0 });
-  useDialog(ref, onClose, { initialFocus: () => ref.current });
-  useLayoutEffect(() => {
-    const r = anchor.getBoundingClientRect();
-    setPos({
-      left: Math.max(8, Math.min(window.innerWidth - POP_W - 8, r.left)),
-      bottom: window.innerHeight - r.top + 6,
-    });
-  }, [anchor]);
   return (
-    <DialogPortal>
-      <div
-        ref={ref}
-        className={`me-popover above cons-model${closing ? " closing" : ""}`}
-        role="dialog"
-        aria-modal="false"
-        aria-label={t("desktop.console.model")}
-        tabIndex={-1}
-        style={{ left: pos.left, bottom: pos.bottom, width: POP_W }}
-      >
-        <div className="me-head">
-          <span className="hud-label accent">{t("desktop.deck.modelEffort")}</span>
-          <span className="mono me-skill">{provider}</span>
-        </div>
-        <ModelEffortMatrix
-          provider={provider}
-          model={choice.model}
-          effort={choice.effort}
-          onPick={(model, effort) => {
-            onChoice({ model, effort });
-            onClose();
-          }}
-        />
+    <Popover
+      open={open}
+      onClose={onClose}
+      anchor={anchor}
+      placement="top-start"
+      ariaLabel={t("desktop.console.model")}
+      className="me-popover cons-model"
+    >
+      <div className="me-head">
+        <span className="hud-label accent">{t("desktop.deck.modelEffort")}</span>
+        <span className="mono me-skill">{provider}</span>
       </div>
-    </DialogPortal>
+      <ModelEffortMatrix
+        provider={provider}
+        model={choice.model}
+        effort={choice.effort}
+        onPick={(model, effort) => {
+          onChoice({ model, effort });
+          onClose();
+        }}
+      />
+    </Popover>
   );
 }
 
@@ -368,94 +319,66 @@ function ConversationsPopover({
   onPick: (id: string) => void;
   onClose: () => void;
 }) {
-  const { mounted, closing } = usePresence(open, 160);
-  if (!mounted) return null;
+  const t = useT();
   return (
-    <ConversationsBox
-      anchor={anchor}
-      currentId={currentId}
-      onPick={onPick}
+    <Popover
+      open={open}
       onClose={onClose}
-      closing={closing}
-    />
+      anchor={anchor}
+      placement="top-start"
+      ariaLabel={t("desktop.console.conversations")}
+      className="me-popover cons-conversations"
+    >
+      <ConversationList currentId={currentId} onPick={onPick} />
+    </Popover>
   );
 }
 
-function ConversationsBox({
-  anchor,
-  currentId,
-  onPick,
-  onClose,
-  closing,
-}: {
-  anchor: HTMLElement;
-  currentId: string | null;
-  onPick: (id: string) => void;
-  onClose: () => void;
-  closing: boolean;
-}) {
+/** Mounted only while the popover is open, so the sessions are asked for when someone looks. */
+function ConversationList({ currentId, onPick }: { currentId: string | null; onPick: (id: string) => void }) {
   const t = useT();
   const locale = useLocale();
   const toast = useToast();
   const qc = useQueryClient();
-  const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ left: 0, bottom: 0 });
-  useDialog(ref, onClose, { initialFocus: () => ref.current });
-  useLayoutEffect(() => {
-    const r = anchor.getBoundingClientRect();
-    setPos({
-      left: Math.max(8, Math.min(window.innerWidth - CONV_W - 8, r.left)),
-      bottom: window.innerHeight - r.top + 6,
-    });
-  }, [anchor]);
   const sessions = useApiQuery<SessionRecord[]>(["sessions", "list", 20], "/api/sessions?limit=20", {
     staleTime: 10_000,
   });
   const rename = useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) =>
-      api.patch(`/api/sessions/${encodeURIComponent(id)}`, { title }),
+      apiCall("PATCH /api/sessions/:id", { params: { id }, body: { title } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }).catch(() => undefined),
     onError: (err: Error) => toast(err.message, "danger"),
   });
   const forget = useMutation({
-    mutationFn: (id: string) => api.del(`/api/sessions/${encodeURIComponent(id)}`),
+    mutationFn: (id: string) => apiCall("DELETE /api/sessions/:id", { params: { id } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }).catch(() => undefined),
     onError: (err: Error) => toast(err.message, "danger"),
   });
   const rows = sessions.data ?? [];
   return (
-    <DialogPortal>
-      <div
-        ref={ref}
-        className={`me-popover above cons-conversations${closing ? " closing" : ""}`}
-        role="dialog"
-        aria-modal="false"
-        aria-label={t("desktop.console.conversations")}
-        tabIndex={-1}
-        style={{ left: pos.left, bottom: pos.bottom, width: CONV_W }}
-      >
-        <div className="me-head">
-          <span className="hud-label accent">{t("desktop.console.conversations")}</span>
-          <span className="mono me-skill">{rows.length}</span>
-        </div>
-        {rows.length === 0 ? (
-          <p className="dim conv-empty">{t("desktop.console.noConversations")}</p>
-        ) : (
-          <ul className="conv-list">
-            {rows.map((row) => (
-              <li key={row.id} className={row.id === currentId ? "on" : ""}>
-                <button type="button" className="conv-main" onClick={() => onPick(row.id)}>
-                  <span className="conv-title">{shortTitle(row.title) || row.id.slice(0, 8)}</span>
-                  <span className="conv-sub mono">
-                    {row.provider} · {t("desktop.console.turns", { n: row.turns })} · $
-                    {row.costUsd.toFixed(3)} · {timeAgo(row.updatedAt, locale)}
-                  </span>
-                </button>
+    <>
+      <div className="me-head">
+        <span className="hud-label accent">{t("desktop.console.conversations")}</span>
+        <span className="mono me-skill">{rows.length}</span>
+      </div>
+      {rows.length === 0 ? (
+        <p className="dim conv-empty">{t("desktop.console.noConversations")}</p>
+      ) : (
+        <ul className="conv-list">
+          {rows.map((row) => (
+            <li key={row.id} className={row.id === currentId ? "on" : ""}>
+              <button type="button" className="conv-main" onClick={() => onPick(row.id)}>
+                <span className="conv-title">{shortTitle(row.title) || row.id.slice(0, 8)}</span>
+                <span className="conv-sub mono">
+                  {row.provider} · {t("desktop.console.turns", { n: row.turns })} · ${row.costUsd.toFixed(3)}{" "}
+                  · {timeAgo(row.updatedAt, locale)}
+                </span>
+              </button>
+              <Tooltip label={t("desktop.console.rename")}>
                 <button
                   type="button"
                   className="conv-act"
                   aria-label={t("desktop.console.rename")}
-                  title={t("desktop.console.rename")}
                   onClick={() => {
                     const next = window.prompt(t("desktop.console.rename"), row.title);
                     if (next && next.trim() && next.trim() !== row.title)
@@ -464,22 +387,21 @@ function ConversationsBox({
                 >
                   <Pencil aria-hidden />
                 </button>
+              </Tooltip>
+              <Tooltip label={t("desktop.console.forget")}>
                 <button
                   type="button"
                   className="conv-act"
                   aria-label={t("desktop.console.forget")}
-                  title={t("desktop.console.forget")}
                   onClick={() => forget.mutate(row.id)}
                 >
                   <Trash2 aria-hidden />
                 </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </DialogPortal>
+              </Tooltip>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
   );
 }
-
-const CONV_W = 360;

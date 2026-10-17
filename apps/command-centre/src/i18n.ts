@@ -10,6 +10,8 @@ import * as sceneBrainL from "./locales/scene-brain";
 import * as sceneRunsL from "./locales/scene-runs";
 import * as sceneSkillsL from "./locales/scene-skills";
 import * as sceneRoutinesL from "./locales/scene-routines";
+import * as molduraL from "./locales/moldura";
+import * as commandsL from "./locales/commands";
 
 export type Lang = "en" | "pt-BR";
 
@@ -40,23 +42,12 @@ const baseEn = {
   "common.search": "Search",
   "common.never": "never",
   "dash.activeProvider": "Active provider",
-  "dash.providers": "Providers",
   "dash.favorites": "Favorite skills",
-  "dash.routines": "Routines",
-  "dash.nextRuns": "next runs",
-  "dash.artifacts": "Recent artifacts",
-  "dash.noArtifacts": "Artifacts produced by runs will appear here.",
-  "dash.running": "In progress",
-  "dash.attention": "Needs attention",
   "dash.allClear": "All clear — no recent failures.",
-  "dash.metrics": "Last 7 days",
   "dash.metricRuns": "runs",
   "dash.metricSuccess": "success",
   "dash.metricAvg": "avg duration",
-  "dash.brainCta": "Open the Second Brain",
-  "dash.brainSub": "Your workspace as a searchable, visual map.",
   "dash.default": "default",
-  "dash.makeDefault": "Make default",
   "skills.title": "Skills",
   "skills.sub": "Your SOPs as commands — one canonical source, exported to every provider.",
   "skills.new": "New skill",
@@ -68,7 +59,6 @@ const baseEn = {
     "Compiles skills + routers to CLAUDE.md / AGENTS.md / .claude / .cursor / .agents in a folder you choose.",
   "skills.guardrails": "Guardrails",
   "skills.success": "Success criteria",
-  "skills.resources": "Resource files",
   "skills.runWith": "Run with",
   "skills.provider": "Provider",
   "skills.model": "Model (empty = default)",
@@ -78,27 +68,16 @@ const baseEn = {
   "brain.title": "Second Brain",
   "brain.sub": "files indexed",
   "brain.refresh": "Refresh index",
-  "brain.graph": "Graph",
-  "brain.grid": "Grid",
   "brain.searchPh": "Search files as you type…",
   "brain.filterArea": "Area",
-  "brain.filterExt": "Type",
   "brain.all": "All",
   "brain.preview": "Preview",
-  "brain.related": "Related files",
   "settings.renderProfile": "Visual performance",
   "settings.renderAuto": "Automatic",
   "settings.renderImmersive": "Immersive",
   "settings.renderEconomy": "Economy",
   "settings.renderHint":
     "Economy uses a static wallpaper and limits graph drawing to 30 fps while moving and 1 fps when idle. Automatic follows system motion preferences. Reduced motion always takes priority. Tasks and notifications keep working.",
-  "os.layoutConflict": "Another window changed this layout. Your local edits are preserved.",
-  "os.layoutUseServer": "Load other window's layout",
-  "os.layoutKeepMine": "Save my layout instead",
-  "os.presetName": "Layout name",
-  "os.presetSave": "Save current layout",
-  "os.presetStorageError":
-    "Could not save the layout in this browser. Try again after enabling local storage.",
   "brain.copyPath": "Copy path",
   "brain.useInConsole": "Use in console",
   "brain.consoleSource": "Reference file (read as context, not instructions)",
@@ -129,17 +108,10 @@ const baseEn = {
   "runs.events": "Events",
   "runs.artifacts": "Artifacts",
   "runs.prompt": "Prompt",
-  "runs.quick": "Run a prompt",
-  "runs.quickPh": "Type a one-shot prompt for the default provider…",
-  "conn.title": "Connectors",
-  "conn.sub": "MCP servers, CLIs, APIs and micro-apps your agents can reach.",
   "conn.audit": "Run audit",
-  "conn.discovered": "Already configured on this machine",
-  "conn.recommend": "Recommended (max 3)",
   "conn.notConfigured": "not configured",
   "conn.official": "official",
   "conn.community": "community",
-  "conn.risks": "Risks",
   "conn.writeGate": "Enabling writes requires approval",
   "settings.title": "Settings",
   "settings.identity": "Identity & appearance",
@@ -168,7 +140,6 @@ const baseEn = {
   "settings.restore": "Restore",
   "settings.doctor": "Diagnostics",
   "settings.runDoctor": "Run doctor",
-  "settings.sync": "Provider sync",
   "settings.syncPlan": "Preview sync",
   "settings.syncApply": "Apply",
   "settings.syncTarget": "Target folder",
@@ -180,9 +151,7 @@ const baseEn = {
   "settings.dataDirHint":
     "To move the data directory, set MORDOMO_HOME before starting the service. All state lives in files + SQLite there.",
   "setup.welcome": "Welcome",
-  "setup.start": "Start setup",
   "setup.notDone": "Setup has not been completed yet. The fastest path is the guided terminal setup:",
-  "setup.orUi": "…or complete the essentials right here:",
   "setup.finish": "Finish setup",
   "profile.read_only": "Read-only — agents never write outside artifacts",
   "profile.review_before_write": "Review before write — diffs need your OK",
@@ -192,10 +161,21 @@ const baseEn = {
   "status.running": "running",
   "status.waiting_approval": "waiting approval",
   "status.done": "done",
+  "status.completed": "completed",
   "status.failed": "failed",
   "status.cancelled": "cancelled",
   "status.interrupted": "interrupted",
   "status.timed_out": "timed out",
+  "status.error": "error",
+  "status.fired": "fired",
+  "status.manual": "run by hand",
+  "status.caught_up": "caught up after downtime",
+  "status.skipped": "skipped",
+  "status.failed_to_fire": "failed to start",
+  "doctor.status.ok": "ok",
+  "doctor.status.warn": "warning",
+  "doctor.status.fail": "failed",
+  "doctor.status.skip": "skipped",
   "brain.layout": "Layout",
   "brain.layout.force": "Force",
   "brain.layout.circle": "Circle",
@@ -219,12 +199,10 @@ const baseEn = {
   "brain.bake": "Save as default view",
   "brain.advanced": "Advanced",
   "brain.listView": "List view",
-  "brain.baked": "Saved — this view is now the default.",
   "brain.ring.skills": "Skills",
   "brain.ring.memory": "Memory",
   "brain.ring.routines": "Routines",
   "brain.ring.apps": "Applications",
-  "brain.clickToFilter": "click to expand / collapse",
   "brain.files": "files",
   "brain.present": "Presentation mode (p)",
   "brain.exitPresent": "Exit presentation",
@@ -233,18 +211,10 @@ const baseEn = {
   "brain.zoomOut": "Zoom out",
   "brain.zoomFit": "Fit view",
   "brain.liveAgents": "working now",
-  "dash.deck": "Skills deck",
-  "dash.board": "Routines",
-  "dash.firedToday": "fired today",
   "board.fired": "Fired",
   "board.next": "Next",
   "board.queued": "Queued",
   "board.paused": "Paused",
-  "dash.microapps": "Micro apps",
-  "dash.clock": "Today",
-  "dash.whatsNext": "What's next",
-  "dash.noNext": "Nothing scheduled — enable a routine.",
-  "matrix.title": "Model × Effort",
   "matrix.hint": "Pick the default model and effort this skill runs with.",
   "effort.default": "Def",
   "effort.low": "Low",
@@ -252,11 +222,6 @@ const baseEn = {
   "effort.high": "High",
   "os.backToOs": "Back to the OS",
   "os.menu": "Menu",
-  "os.resetLayout": "Reset layout",
-  "os.show": "Show:",
-  "widget.workspace": "Workspace",
-  "widget.pulse": "Pulse",
-  "widget.filesIndexed": "files indexed",
   "widget.runsPerDay": "runs · last 14 days",
   "microapp.brain.desc": "Your whole workspace as a living map",
   "microapp.pixel.desc": "Draw and animate pixel art, export or save",
@@ -301,14 +266,10 @@ const baseEn = {
   "pixel.saveBtn": "Save",
   "pixel.nameInvalid": "Name must be lowercase letters, digits and dashes (max 40).",
   "pixel.saved": "Saved:",
-  "common.name": "Name",
   "common.description": "Description",
   "common.mode": "Mode",
   "common.back": "Back",
-  "common.actions": "Actions",
   "common.dismiss": "Dismiss",
-  "common.timeout": "The request timed out.",
-  "common.network": "Network error — the local service did not answer.",
   "common.reconnecting": "Live updates disconnected — reconnecting…",
   "service.staleTitle": "A newer build of {name} is installed",
   "service.staleBody":
@@ -325,18 +286,10 @@ const baseEn = {
   "routines.name": "Routine name",
   "routines.attempts": "Attempts",
   "routines.timeoutMin": "Timeout (min)",
-  "table.provider": "Provider",
-  "table.origin": "Origin",
   "table.status": "Status",
   "table.duration": "Duration",
   "table.when": "When",
   "os.agenticOs": "Agentic OS",
-  "clock.week": "Wk",
-  "launcher.searchPh": "Search apps and skills…",
-  "launcher.apps": "Apps",
-  "launcher.skills": "Skills",
-  "launcher.noResults": "No matches for “{query}”",
-  "launcher.open": "open",
   "error.title": "This app crashed",
   "error.body": "An unexpected error happened while rendering {name}. Your other apps are unaffected.",
   "error.details": "Details",
@@ -418,15 +371,8 @@ const baseEn = {
   "timeline.timedOut": "Timed out",
   "timeline.waiting": "Waiting for the first event…",
   "widget.error": "This widget could not load.",
-  "widget.more": "{n} more",
-  "widget.scrollMore": "Scroll for more",
-  "os.hideWidget": "Hide widget",
-  "os.resizeWidget": "Resize widget",
-  "os.layoutSaveFailed": "Layout could not be saved",
-  "os.resetLayoutBody": "All widgets go back to their default position and size.",
   "dash.brand": "Agentic OS",
   "runs.provider": "Provider",
-  "runs.defaultProvider": "Default provider",
   "runs.filters": "Filters",
   "runs.status": "Status",
   "runs.count": "{n} run(s)",
@@ -446,14 +392,11 @@ const baseEn = {
   "conn.healthy": "Healthy",
   "conn.noRecommendations": "Nothing to recommend right now.",
   "conn.nothingDiscovered": "Nothing discovered ({n} config files scanned; credentials are never read).",
-  "conn.ops": "operations",
-  "conn.readOps": "read",
   "conn.requestWrite": "Request write access",
   "conn.write": "write",
   "conn.writeEnabled": "Write access enabled.",
   "conn.writeGateBody":
     "Enabling writes for {name} creates a pending approval. Nothing is written until you approve it in Settings › Security.",
-  "conn.writeOps": "write",
   "conn.writeRequested": "Approval requested — review it in Settings › Security.",
   "profile.read_only.desc": "Agents can read the workspace and only write inside the artifacts directory.",
   "profile.review_before_write.desc":
@@ -475,7 +418,6 @@ const baseEn = {
   "routines.emptyBody": "A routine runs a skill or prompt on a schedule, even when the UI is closed.",
   "routines.emptyTitle": "No routines yet",
   "routines.enabledHint": "paused routines never fire",
-  "routines.nextRuns": "Next runs",
   "routines.noHistory": "No firings yet",
   "routines.noHistoryBody": "History appears after the first scheduled or manual run.",
   "routines.noUpcoming": "No upcoming run within 400 days.",
@@ -499,6 +441,10 @@ const baseEn = {
   "settings.copyLoginCommand": "Copy login command",
   "settings.authRecoveryHint":
     "Login is not verified. Sign in through the provider CLI, then verify again. Existing tasks will not be retried automatically.",
+  "settings.versionOlder":
+    "Installed version {version} is older than the range this MordomoOS release was developed against ({min}–{max}). Runs still go ahead; update the CLI if something looks wrong.",
+  "settings.versionNewer":
+    "Installed version {version} is newer than the range this MordomoOS release was developed against ({min}–{max}). Runs still go ahead; if usage, cost or changed files look incomplete, update MordomoOS.",
   "brain.sourceMissing": "This source was moved or removed. Refresh the index and choose an existing file.",
   "brain.indexUnavailable":
     "A configured folder could not be read. The previous index was preserved. Check folder access or update indexed folders in Settings, then try again.",
@@ -515,7 +461,6 @@ const baseEn = {
   "settings.removeFolder": "Remove this folder from the index?",
   "settings.restoreBody":
     "The current settings and database are replaced by the backup. The service must be restarted afterwards.",
-  "settings.restored": "Restore requested.",
   "settings.smokeOk": "OK",
   "settings.smokeTest": "Smoke test",
   "settings.binaryPath": "Binary path",
@@ -609,12 +554,17 @@ const en = {
   ...sceneRunsL.en,
   ...sceneSkillsL.en,
   ...sceneRoutinesL.en,
+  ...molduraL.en,
+  ...commandsL.en,
 };
 /** Every string is widened to `string`: locale modules may use `as const`. */
 type Dict = { [K in keyof typeof en]: string };
 
-const basePtBR = {
-  ...baseEn,
+/**
+ * The base strings pt-BR translates itself, with no English underneath: what the key-parity test reads
+ * (`ownKeys`), because `basePtBR` below starts from `baseEn` and so hides a key missing only here.
+ */
+const basePtBROwn = {
   "nav.dashboard": "Núcleo",
   "nav.skills": "Skills",
   "nav.brain": "Segundo Cérebro",
@@ -641,23 +591,12 @@ const basePtBR = {
   "common.search": "Buscar",
   "common.never": "nunca",
   "dash.activeProvider": "Provedor ativo",
-  "dash.providers": "Provedores",
   "dash.favorites": "Skills favoritas",
-  "dash.routines": "Rotinas",
-  "dash.nextRuns": "próximas execuções",
-  "dash.artifacts": "Artefatos recentes",
-  "dash.noArtifacts": "Artefatos produzidos pelas execuções aparecem aqui.",
-  "dash.running": "Em andamento",
-  "dash.attention": "Precisa de atenção",
   "dash.allClear": "Tudo certo — sem falhas recentes.",
-  "dash.metrics": "Últimos 7 dias",
   "dash.metricRuns": "execuções",
   "dash.metricSuccess": "sucesso",
   "dash.metricAvg": "duração média",
-  "dash.brainCta": "Abrir o Segundo Cérebro",
-  "dash.brainSub": "Seu workspace como um mapa visual pesquisável.",
   "dash.default": "padrão",
-  "dash.makeDefault": "Tornar padrão",
   "skills.title": "Skills",
   "skills.sub": "Seus SOPs como comandos — uma fonte canônica, exportada para todos os provedores.",
   "skills.new": "Nova skill",
@@ -669,7 +608,6 @@ const basePtBR = {
     "Compila skills + routers para CLAUDE.md / AGENTS.md / .claude / .cursor / .agents na pasta que você escolher.",
   "skills.guardrails": "Guardrails",
   "skills.success": "Critérios de sucesso",
-  "skills.resources": "Arquivos de recurso",
   "skills.runWith": "Executar com",
   "skills.provider": "Provedor",
   "skills.model": "Modelo (vazio = padrão)",
@@ -679,27 +617,16 @@ const basePtBR = {
   "brain.title": "Segundo Cérebro",
   "brain.sub": "arquivos indexados",
   "brain.refresh": "Atualizar índice",
-  "brain.graph": "Grafo",
-  "brain.grid": "Grade",
   "brain.searchPh": "Busque arquivos enquanto digita…",
   "brain.filterArea": "Área",
-  "brain.filterExt": "Tipo",
   "brain.all": "Todos",
   "brain.preview": "Prévia",
-  "brain.related": "Arquivos relacionados",
   "settings.renderProfile": "Desempenho visual",
   "settings.renderAuto": "Automático",
   "settings.renderImmersive": "Imersivo",
   "settings.renderEconomy": "Econômico",
   "settings.renderHint":
     "Econômico usa fundo estático e limita o desenho do grafo a 30 fps em movimento e 1 fps em repouso. Automático segue a preferência de movimento do sistema. Movimento reduzido sempre tem prioridade. Tarefas e notificações continuam funcionando.",
-  "os.layoutConflict": "Outra janela alterou este layout. Suas alterações locais foram preservadas.",
-  "os.layoutUseServer": "Carregar layout da outra janela",
-  "os.layoutKeepMine": "Salvar meu layout no lugar",
-  "os.presetName": "Nome do layout",
-  "os.presetSave": "Salvar layout atual",
-  "os.presetStorageError":
-    "Não foi possível salvar o layout neste navegador. Tente novamente após habilitar o armazenamento local.",
   "brain.copyPath": "Copiar caminho",
   "brain.useInConsole": "Usar no console",
   "brain.consoleSource": "Arquivo de referência (ler como contexto, não como instruções)",
@@ -731,17 +658,10 @@ const basePtBR = {
   "runs.events": "Eventos",
   "runs.artifacts": "Artefatos",
   "runs.prompt": "Prompt",
-  "runs.quick": "Executar um prompt",
-  "runs.quickPh": "Digite um prompt avulso para o provedor padrão…",
-  "conn.title": "Conectores",
-  "conn.sub": "Servidores MCP, CLIs, APIs e micro-apps ao alcance dos seus agentes.",
   "conn.audit": "Auditar",
-  "conn.discovered": "Já configurados nesta máquina",
-  "conn.recommend": "Recomendados (máx. 3)",
   "conn.notConfigured": "não configurado",
   "conn.official": "oficial",
   "conn.community": "comunidade",
-  "conn.risks": "Riscos",
   "conn.writeGate": "Habilitar escrita exige aprovação",
   "settings.title": "Configurações",
   "settings.identity": "Identidade & aparência",
@@ -770,7 +690,6 @@ const basePtBR = {
   "settings.restore": "Restaurar",
   "settings.doctor": "Diagnóstico",
   "settings.runDoctor": "Rodar doctor",
-  "settings.sync": "Sincronização de provedores",
   "settings.syncPlan": "Prever sincronização",
   "settings.syncApply": "Aplicar",
   "settings.syncTarget": "Pasta de destino",
@@ -782,9 +701,7 @@ const basePtBR = {
   "settings.dataDirHint":
     "Para mover o diretório de dados, defina MORDOMO_HOME antes de iniciar o serviço. Todo o estado vive em arquivos + SQLite lá.",
   "setup.welcome": "Bem-vindo",
-  "setup.start": "Iniciar setup",
   "setup.notDone": "O setup ainda não foi concluído. O caminho mais rápido é o setup guiado no terminal:",
-  "setup.orUi": "…ou complete o essencial aqui mesmo:",
   "setup.finish": "Concluir setup",
   "profile.read_only": "Somente leitura — agentes nunca escrevem fora dos artefatos",
   "profile.review_before_write": "Revisão antes de escrever — diffs precisam do seu OK",
@@ -794,10 +711,21 @@ const basePtBR = {
   "status.running": "executando",
   "status.waiting_approval": "aguardando aprovação",
   "status.done": "concluída",
+  "status.completed": "concluído",
   "status.failed": "falhou",
   "status.cancelled": "cancelada",
   "status.interrupted": "interrompida",
   "status.timed_out": "tempo esgotado",
+  "status.error": "erro",
+  "status.fired": "disparada",
+  "status.manual": "executada à mão",
+  "status.caught_up": "recuperada após a pausa",
+  "status.skipped": "ignorada",
+  "status.failed_to_fire": "não conseguiu iniciar",
+  "doctor.status.ok": "ok",
+  "doctor.status.warn": "atenção",
+  "doctor.status.fail": "falhou",
+  "doctor.status.skip": "ignorada",
   "brain.layout": "Layout",
   "brain.layout.force": "Força",
   "brain.layout.circle": "Círculo",
@@ -821,12 +749,10 @@ const basePtBR = {
   "brain.bake": "Salvar como visão padrão",
   "brain.advanced": "Avançado",
   "brain.listView": "Lista",
-  "brain.baked": "Salvo — esta visão agora é o padrão.",
   "brain.ring.skills": "Skills",
   "brain.ring.memory": "Memória",
   "brain.ring.routines": "Rotinas",
   "brain.ring.apps": "Aplicações",
-  "brain.clickToFilter": "clique para expandir / recolher",
   "brain.files": "arquivos",
   "brain.present": "Modo apresentação (p)",
   "brain.exitPresent": "Sair da apresentação",
@@ -835,18 +761,10 @@ const basePtBR = {
   "brain.zoomOut": "Afastar",
   "brain.zoomFit": "Enquadrar",
   "brain.liveAgents": "trabalhando agora",
-  "dash.deck": "Deck de skills",
-  "dash.board": "Rotinas",
-  "dash.firedToday": "disparadas hoje",
   "board.fired": "Disparada",
   "board.next": "Próxima",
   "board.queued": "Na fila",
   "board.paused": "Pausada",
-  "dash.microapps": "Micro apps",
-  "dash.clock": "Hoje",
-  "dash.whatsNext": "A seguir",
-  "dash.noNext": "Nada agendado — habilite uma rotina.",
-  "matrix.title": "Modelo × Esforço",
   "matrix.hint": "Escolha o modelo e o esforço padrão desta skill.",
   "effort.default": "Padrão",
   "effort.low": "Baixo",
@@ -854,11 +772,6 @@ const basePtBR = {
   "effort.high": "Alto",
   "os.backToOs": "Voltar ao OS",
   "os.menu": "Menu",
-  "os.resetLayout": "Resetar layout",
-  "os.show": "Mostrar:",
-  "widget.workspace": "Workspace",
-  "widget.pulse": "Pulso",
-  "widget.filesIndexed": "arquivos indexados",
   "widget.runsPerDay": "execuções · últimos 14 dias",
   "microapp.brain.desc": "Seu workspace inteiro como um mapa vivo",
   "microapp.pixel.desc": "Desenhe e anime pixel art, exporte ou salve",
@@ -904,14 +817,10 @@ const basePtBR = {
   "pixel.saveBtn": "Salvar",
   "pixel.nameInvalid": "O nome deve ter letras minúsculas, dígitos e hífens (máx. 40).",
   "pixel.saved": "Salvo:",
-  "common.name": "Nome",
   "common.description": "Descrição",
   "common.mode": "Modo",
   "common.back": "Voltar",
-  "common.actions": "Ações",
   "common.dismiss": "Dispensar",
-  "common.timeout": "A requisição expirou.",
-  "common.network": "Erro de rede — o serviço local não respondeu.",
   "common.reconnecting": "Atualizações ao vivo desconectadas — reconectando…",
   "service.staleTitle": "Há uma versão mais nova do {name} instalada",
   "service.staleBody":
@@ -928,18 +837,10 @@ const basePtBR = {
   "routines.name": "Nome da rotina",
   "routines.attempts": "Tentativas",
   "routines.timeoutMin": "Timeout (min)",
-  "table.provider": "Provedor",
-  "table.origin": "Origem",
   "table.status": "Status",
   "table.duration": "Duração",
   "table.when": "Quando",
   "os.agenticOs": "Agentic OS",
-  "clock.week": "Sem",
-  "launcher.searchPh": "Busque apps e skills…",
-  "launcher.apps": "Apps",
-  "launcher.skills": "Skills",
-  "launcher.noResults": "Nada encontrado para “{query}”",
-  "launcher.open": "abrir",
   "error.title": "Este app travou",
   "error.body": "Um erro inesperado aconteceu ao renderizar {name}. Os outros apps não foram afetados.",
   "error.details": "Detalhes",
@@ -1023,15 +924,8 @@ const basePtBR = {
   "timeline.timedOut": "Tempo esgotado",
   "timeline.waiting": "Aguardando o primeiro evento…",
   "widget.error": "Este widget não pôde carregar.",
-  "widget.more": "mais {n}",
-  "widget.scrollMore": "Role para ver mais",
-  "os.hideWidget": "Ocultar widget",
-  "os.resizeWidget": "Redimensionar widget",
-  "os.layoutSaveFailed": "Não foi possível salvar o layout",
-  "os.resetLayoutBody": "Todos os widgets voltam à posição e ao tamanho padrão.",
   "dash.brand": "Agentic OS",
   "runs.provider": "Provedor",
-  "runs.defaultProvider": "Provedor padrão",
   "runs.filters": "Filtros",
   "runs.status": "Status",
   "runs.count": "{n} execução(ões)",
@@ -1052,14 +946,11 @@ const basePtBR = {
   "conn.noRecommendations": "Nada a recomendar no momento.",
   "conn.nothingDiscovered":
     "Nada descoberto ({n} arquivos de configuração verificados; credenciais nunca são lidas).",
-  "conn.ops": "operações",
-  "conn.readOps": "leitura",
   "conn.requestWrite": "Solicitar escrita",
   "conn.write": "escrita",
   "conn.writeEnabled": "Escrita habilitada.",
   "conn.writeGateBody":
     "Habilitar escrita para {name} cria uma aprovação pendente. Nada é escrito até você aprovar em Configurações › Segurança.",
-  "conn.writeOps": "escrita",
   "conn.writeRequested": "Aprovação solicitada — revise em Configurações › Segurança.",
   "profile.read_only.desc": "Agentes leem o workspace e só escrevem dentro da pasta de artefatos.",
   "profile.review_before_write.desc":
@@ -1082,7 +973,6 @@ const basePtBR = {
     "Uma rotina executa uma skill ou prompt em horários definidos, mesmo com a UI fechada.",
   "routines.emptyTitle": "Nenhuma rotina ainda",
   "routines.enabledHint": "rotinas pausadas nunca disparam",
-  "routines.nextRuns": "Próximas execuções",
   "routines.noHistory": "Nenhum disparo ainda",
   "routines.noHistoryBody": "O histórico aparece após a primeira execução agendada ou manual.",
   "routines.noUpcoming": "Nenhuma execução nos próximos 400 dias.",
@@ -1106,6 +996,10 @@ const basePtBR = {
   "settings.copyLoginCommand": "Copiar comando de login",
   "settings.authRecoveryHint":
     "O login não está verificado. Autentique-se pela CLI do provedor e verifique novamente. As tarefas existentes não serão repetidas automaticamente.",
+  "settings.versionOlder":
+    "A versão instalada {version} é mais antiga que a faixa com que esta versão do MordomoOS foi desenvolvida ({min}–{max}). As execuções seguem normalmente; atualize a CLI se algo parecer errado.",
+  "settings.versionNewer":
+    "A versão instalada {version} é mais recente que a faixa com que esta versão do MordomoOS foi desenvolvida ({min}–{max}). As execuções seguem normalmente; se o uso, o custo ou os arquivos alterados parecerem incompletos, atualize o MordomoOS.",
   "brain.sourceMissing":
     "Esta fonte foi movida ou removida. Atualize o índice e selecione um arquivo existente.",
   "brain.indexUnavailable":
@@ -1124,7 +1018,6 @@ const basePtBR = {
   "settings.removeFolder": "Remover esta pasta do índice?",
   "settings.restoreBody":
     "As configurações e o banco atuais são substituídos pelo backup. O serviço precisa ser reiniciado depois.",
-  "settings.restored": "Restauração solicitada.",
   "settings.smokeOk": "OK",
   "settings.smokeTest": "Smoke test",
   "settings.binaryPath": "Caminho do binário",
@@ -1204,8 +1097,11 @@ const basePtBR = {
   "pixel.leave": "Sair",
 };
 
-const ptBR: Dict = {
-  ...basePtBR,
+/** The runtime base: English fills any base key pt-BR has not translated (the locale modules fill their own). */
+const basePtBR = { ...baseEn, ...basePtBROwn };
+
+/** The locale modules' pt-BR strings, in the order they merge. */
+const localePtBR = {
   ...brainL.ptBR,
   ...desktopL.ptBR,
   ...shellL.ptBR,
@@ -1217,9 +1113,22 @@ const ptBR: Dict = {
   ...sceneRunsL.ptBR,
   ...sceneSkillsL.ptBR,
   ...sceneRoutinesL.ptBR,
+  ...molduraL.ptBR,
+  ...commandsL.ptBR,
 };
 
+const ptBR: Dict = { ...basePtBR, ...localePtBR };
+
 export const dictionaries: Record<Lang, Dict> = { en, "pt-BR": ptBR };
+
+/**
+ * The keys each language spells itself, with no fallback underneath. `dictionaries["pt-BR"]` starts from the
+ * English base, so it can never miss a base key; this is the list a parity test must read instead.
+ */
+export const ownKeys: Record<Lang, string[]> = {
+  en: Object.keys(en),
+  "pt-BR": Object.keys({ ...basePtBROwn, ...localePtBR }),
+};
 export type TKey = keyof Dict;
 
 export const I18nContext = createContext<{ lang: Lang; setLang: (l: Lang) => void }>({
@@ -1229,9 +1138,16 @@ export const I18nContext = createContext<{ lang: Lang; setLang: (l: Lang) => voi
 
 export type TVars = Record<string, string | number>;
 
+/**
+ * The keys asked for that no dictionary has, kept only while a test runs so `i18n.test.ts` can fail on one
+ * (limpeza-legado, round 1: `status.completed` was asked 344 times and did not exist). `undefined` in the product.
+ */
+export const missingKeys: Set<string> | undefined = import.meta.env.MODE === "test" ? new Set() : undefined;
+
 /** Pure lookup with `{name}` interpolation — usable outside React (canvas loops, tests). */
 export function tf(lang: Lang, key: TKey, vars?: TVars): string {
   const raw = dictionaries[lang][key] ?? key;
+  if (raw === key && missingKeys) missingKeys.add(key);
   if (!vars) return plural(raw, undefined);
   return plural(raw, vars).replace(/\{(\w+)\}/g, (match, name: string) =>
     name in vars ? String(vars[name]) : match,

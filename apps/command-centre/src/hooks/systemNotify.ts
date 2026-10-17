@@ -6,7 +6,7 @@ import { isQuiet, readQuietHours } from "./rhythm";
  * speechSynthesis. Both are opt-in toggles kept in localStorage; both are
  * no-ops where the browser lacks the API.
  */
-import { api } from "../api";
+import { apiCall } from "../apiCall";
 
 const DESKTOP_KEY = "mordomo.notifications.desktop";
 const VOICE_KEY = "mordomo.notifications.voice";
@@ -257,14 +257,23 @@ export async function enablePush(
   const reg = await registration();
   if (!reg) return { ok: false, reason: "unsupported" };
   try {
-    const { publicKey } = await api.get<{ publicKey: string }>("/api/push/vapid");
+    const { publicKey } = await apiCall("GET /api/push/vapid");
     const sub =
       (await reg.pushManager.getSubscription()) ??
       (await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: toApplicationServerKey(publicKey),
       }));
-    await api.post("/api/push/subscribe", { subscription: sub.toJSON(), label: label ?? deviceLabel() });
+    // `toJSON()` types every part optional; the route needs the endpoint and both keys, and a browser that gave none of
+    // them has a subscription nobody can push to.
+    const { endpoint, keys, expirationTime } = sub.toJSON();
+    if (!endpoint || !keys?.p256dh || !keys.auth) return { ok: false, reason: "failed" };
+    await apiCall("POST /api/push/subscribe", {
+      body: {
+        subscription: { endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth }, expirationTime },
+        label: label ?? deviceLabel(),
+      },
+    });
     return { ok: true };
   } catch {
     return { ok: false, reason: "failed" };
@@ -277,7 +286,7 @@ export async function disablePush(): Promise<void> {
   try {
     const sub = await reg.pushManager.getSubscription();
     if (!sub) return;
-    await api.post("/api/push/unsubscribe", { endpoint: sub.endpoint }).catch(() => undefined);
+    await apiCall("POST /api/push/unsubscribe", { body: { endpoint: sub.endpoint } }).catch(() => undefined);
     await sub.unsubscribe();
   } catch {
     /* ignore */

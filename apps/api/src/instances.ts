@@ -303,3 +303,56 @@ export function isOlderService(probe: ProbedServer, ourInstalledAt: number, tole
     return ourInstalledAt > probe.installedAt + toleranceMs;
   return false;
 }
+
+interface MetaBody {
+  name?: unknown;
+  version?: unknown;
+  apiVersion?: unknown;
+  entry?: unknown;
+  build?: { stale?: unknown; installedAt?: unknown };
+}
+
+/** A JSON object from `url`, or null for any failure: refused, timed out, not `2xx`, not JSON. */
+async function fetchMeta(url: string, signal: AbortSignal): Promise<MetaBody | null> {
+  try {
+    const res = await fetch(url, { signal });
+    if (!res.ok) {
+      await res.body?.cancel();
+      return null;
+    }
+    const body: unknown = await res.json();
+    return body && typeof body === "object" ? (body as MetaBody) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Is a MordomoOS answering on `port`? Used when there is no pidfile we own:
+ * a server started by another checkout, by hand, or whose pidfile was removed.
+ * `/api/v1/meta` needs no token and identifies the app by name and version.
+ * Only a definitive v1 answer (`200`, JSON, with `apiVersion`) is taken from it;
+ * any other answer (`404` from a service older than API v1, but also a `401`, a
+ * `500` or a body that is not JSON) sends the probe to the unversioned
+ * `/api/meta`, and `null` means neither answered. The two requests share one
+ * time budget.
+ */
+export async function probeServer(port: number, timeoutMs = 1500): Promise<ProbedServer | null> {
+  try {
+    const signal = AbortSignal.timeout(timeoutMs);
+    let meta = await fetchMeta(`http://127.0.0.1:${port}/api/v1/meta`, signal);
+    if (typeof meta?.apiVersion !== "number")
+      meta = await fetchMeta(`http://127.0.0.1:${port}/api/meta`, signal);
+    if (!meta) return null;
+    if (typeof meta.version !== "string") return null;
+    return {
+      name: typeof meta.name === "string" ? meta.name : "MordomoOS",
+      version: meta.version,
+      stale: typeof meta.build?.stale === "boolean" ? meta.build.stale : undefined,
+      installedAt: typeof meta.build?.installedAt === "number" ? meta.build.installedAt : undefined,
+      entry: typeof meta.entry === "string" ? meta.entry : undefined,
+    };
+  } catch {
+    return null;
+  }
+}

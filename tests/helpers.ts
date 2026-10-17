@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ensureDirs, resolvePaths, type MordomoPaths } from "@mordomo/core";
+import { ensureDirs, resolvePaths, type MordomoPaths } from "@mordomo/core/internal";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const FAKE_BIN = path.join(here, "fixtures", "fake-bin");
@@ -42,4 +42,27 @@ export function withFakeBinPath(): () => void {
   return () => {
     process.env.PATH = original;
   };
+}
+
+/**
+ * Whether a process is still running. `process.kill(pid, 0)` also succeeds for
+ * a zombie (dead, not yet reaped), which is what a killed grandchild becomes in
+ * a container whose PID 1 does not reap orphans; on Linux the state letter in
+ * /proc/<pid>/stat tells the two apart.
+ */
+export function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return false;
+  }
+  if (process.platform !== "linux") return true;
+  try {
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+    // Format: "<pid> (<comm>) <state> …"; comm may contain spaces and parentheses.
+    const state = stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3);
+    return state !== "Z";
+  } catch {
+    return false;
+  }
 }

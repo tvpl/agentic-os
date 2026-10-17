@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { deliverToTelegram, events, formatNotification, type NotificationRecord } from "@mordomo/core";
+import type { NotificationRecord } from "@mordomo/core";
+import { deliverToTelegram, formatNotification } from "@mordomo/core/internal";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { makeTempHome } from "./helpers.js";
@@ -71,9 +72,10 @@ describe("POST /api/channels/telegram/test", () => {
   it("explains a missing token without calling out", async () => {
     const fetchMock = vi.fn(async () => okResponse());
     vi.stubGlobal("fetch", fetchMock);
-    const body = (await testEndpoint()).json() as { ok: boolean; error?: string };
-    expect(body.ok).toBe(false);
-    expect(body.error).toContain(TOKEN_ENV);
+    const res = await testEndpoint();
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("channel_not_configured");
+    expect(res.json().error.message).toContain(TOKEN_ENV);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -83,10 +85,11 @@ describe("POST /api/channels/telegram/test", () => {
       "fetch",
       vi.fn(async () => new Response("nope", { status: 401 })),
     );
-    const body = (await testEndpoint()).json() as { ok: boolean; error?: string };
-    expect(body.ok).toBe(false);
-    expect(body.error).toContain("401");
-    expect(body.error).not.toContain("bot-secret-token");
+    const res = await testEndpoint();
+    expect(res.statusCode).toBe(502);
+    expect(res.json().error.code).toBe("channel_failed");
+    expect(res.json().error.message).toContain("401");
+    expect(res.body).not.toContain("bot-secret-token");
   });
 
   it("reports a Telegram-level rejection (200 with ok:false)", async () => {
@@ -98,11 +101,15 @@ describe("POST /api/channels/telegram/test", () => {
           new Response(JSON.stringify({ ok: false, description: "chat not found" }), { status: 200 }),
       ),
     );
-    const body = (await testEndpoint()).json() as { ok: boolean; error?: string };
-    expect(body).toEqual({ ok: false, error: "chat not found" });
+    const res = await testEndpoint();
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toEqual({
+      error: { code: "channel_failed", message: "chat not found" },
+      message: "chat not found",
+    });
   });
 
-  it("reports a network failure instead of throwing", async () => {
+  it("reports a network failure as a failed delivery", async () => {
     process.env[TOKEN_ENV] = "bot-secret-token";
     vi.stubGlobal(
       "fetch",
@@ -111,8 +118,8 @@ describe("POST /api/channels/telegram/test", () => {
       }),
     );
     const res = await testEndpoint();
-    expect(res.statusCode).toBe(200);
-    expect((res.json() as { ok: boolean }).ok).toBe(false);
+    expect(res.statusCode).toBe(502);
+    expect(res.json().error.code).toBe("channel_failed");
   });
 
   it("refuses without the local token", async () => {
@@ -172,6 +179,6 @@ describe("notification.created delivery", () => {
     // The channel listens on the bus and delivers out of band.
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(events.lastId).toBeGreaterThan(0);
+    expect(ctx.events.lastId).toBeGreaterThan(0);
   });
 });

@@ -71,5 +71,3 @@ function ErrorFallback({ error, name, onRetry }: { error: Error; name?: string; 
     </div>
   );
 }
-
-export default ErrorBoundary;

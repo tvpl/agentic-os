@@ -5,6 +5,12 @@
  *   node scripts/package.mjs [--out release] [--skip-build] [--node <version>|none]
  *                            [--platform darwin|linux|win32] [--arch arm64|x64] [--no-archive]
  *                            [--sign "<Developer ID Application: …>"] [--notarize <notarytool-profile>]
+ *                            [--payload <dir>]
+ *
+ * --payload <dir> writes only what the desktop app (apps/desktop, Tauri) carries as its resources: lib/, ui/, seed/,
+ * runtime/, legal/, package.json, in exactly that folder, with no launcher, no README and no archive; on macOS the
+ * native code in it (the Node binary, the SQLite addon) is signed here, with --sign or ad hoc, because the Tauri
+ * bundler signs the app and not the resources inside it.
  *
  * macOS signing: without --sign the app gets an ad-hoc signature (Gatekeeper
  * asks once). With a Developer ID identity (`security find-identity -v -p
@@ -14,7 +20,9 @@
  *
  * Output (per platform) — nothing in it is source code:
  *   lib/mordomo.mjs            the whole API + CLI as one minified bundle
- *   lib/node_modules/          the SQLite native addon (the only non-bundled dependency)
+ *   lib/indexWorker.mjs        the memory index worker (a worker_thread the service starts; next to mordomo.mjs)
+ *   lib/node_modules/          the SQLite native addon (the only required non-bundled dependency) and, for the machine that
+ *                              packages, the optional sqlite-vec extension
  *   ui/                        the built Command Centre
  *   seed/                      default skills, routines and connectors (copied to the user home on first run)
  *   runtime/                   an official Node.js binary (unless --node none)
@@ -31,6 +39,9 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { build } from "rolldown";
+import { stageLegal } from "./legal-stage.mjs";
+import { stageDesktopLegal } from "./legal-stage.mjs";
+import { assertEmptiablePayloadDir } from "./payload-guard.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
@@ -45,11 +56,21 @@ const stageRoot = path.join(ROOT, "build", "package");
 const label = `${platform === "darwin" ? "MordomoOS" : platform === "win32" ? "MordomoOS" : "mordomo-os"}-${pkg.version}-${
   { darwin: "macos", win32: "windows", linux: "linux" }[platform] ?? platform
 }-${arch}`;
-const stage = path.join(stageRoot, label);
+const payloadOnly = args.payload !== undefined;
+const stage = payloadOnly ? path.resolve(ROOT, args.payload) : path.join(stageRoot, label);
 // On macOS everything lives inside the .app so it can be dropped in /Applications as one item.
-const payload = platform === "darwin" ? path.join(stage, "MordomoOS.app", "Contents", "Resources") : stage;
+const payload =
+  platform === "darwin" && !payloadOnly ? path.join(stage, "MordomoOS.app", "Contents", "Resources") : stage;
 
 if (!["darwin", "linux", "win32"].includes(platform)) fail(`Unsupported platform: ${platform}`);
+// --payload empties the folder it is given: only a missing, an empty or a former payload folder.
+if (payloadOnly) {
+  try {
+    assertEmptiablePayloadDir(stage, { root: ROOT });
+  } catch (err) {
+    fail(err.message);
+  }
+}
 log(
   `Packaging MordomoOS ${pkg.version} for ${platform}/${arch}${nodeVersion ? ` with Node ${nodeVersion}` : " (system Node)"}`,
 );
@@ -58,7 +79,11 @@ if (!args.skipBuild) {
   log("Building workspaces…");
   run("npm", ["run", "build"], ROOT);
 }
-for (const required of ["apps/api/dist/cli.js", "apps/command-centre/dist/index.html"]) {
+for (const required of [
+  "apps/api/dist/cli.js",
+  "core/dist/memory/indexWorker.js",
+  "apps/command-centre/dist/index.html",
+]) {
   if (!fs.existsSync(path.join(ROOT, required))) fail(`${required} is missing — run npm run build`);
 }
 
@@ -81,6 +106,21 @@ await build({
   },
 });
 
+// The index worker is its own entry: the service starts it with `new Worker(file)`, so it cannot live inside the bundle above.
+// It reads the same better-sqlite3 addon (copied below) and nothing else of the service.
+await build({
+  input: path.join(ROOT, "core", "dist", "memory", "indexWorker.js"),
+  platform: "node",
+  external: ["better-sqlite3"],
+  logLevel: "silent",
+  output: {
+    file: path.join(payload, "lib", "indexWorker.mjs"),
+    format: "esm",
+    minify: true,
+    sourcemap: false,
+  },
+});
+
 // ---- 2. the native SQLite addon (kept outside the bundle) --------------------
 log("Copying the SQLite addon…");
 const nm = path.join(payload, "lib", "node_modules");
@@ -97,6 +137,23 @@ if (
 ) {
   await fetchSqlitePrebuild(path.join(nm, "better-sqlite3"), platform, arch, targetNode);
 }
+
+// The semantic search's SQLite extension (cerebro-v2, door 3): optional at run time, so a target without it still
+// works (the search then ranks in JavaScript). Only the machine that packages can supply it: the binary of another
+// platform is a package this script does not download (that would be a new network point at packaging time).
+if (platform === process.platform && arch === process.arch) {
+  const os = platform === "win32" ? "windows" : platform;
+  const ext = platform === "win32" ? "dll" : platform === "darwin" ? "dylib" : "so";
+  const native = `sqlite-vec-${os}-${arch}`;
+  if (fs.existsSync(path.join(ROOT, "node_modules", native))) {
+    log("Copying the sqlite-vec extension…");
+    copyPackage("sqlite-vec", nm, ["package.json", "index.cjs"]);
+    copyPackage(native, nm, ["package.json", `vec0.${ext}`]);
+  } else log(`sqlite-vec is not installed for ${platform}/${arch}: the installer ranks in JavaScript`);
+} else
+  log(
+    `No sqlite-vec for ${platform}/${arch} (packaged on ${process.platform}/${process.arch}): the installer ranks in JavaScript`,
+  );
 
 // ---- 3. UI, seeds, manifest, docs ------------------------------------------------
 log("Copying the Command Centre and seed data…");
@@ -123,12 +180,24 @@ fs.writeFileSync(
     2,
   ),
 );
-fs.copyFileSync(path.join(ROOT, "LICENSE"), path.join(payload, "LICENSE"));
+// LICENSE, the legal texts, the third-party notices and the SBOM travel with the app (.specs/features/licenca-comercial, door 6).
+stageLegal(ROOT, payload);
+if (payloadOnly) stageDesktopLegal(ROOT, payload);
 
 // ---- 4. Node runtime ---------------------------------------------------------------
 if (nodeVersion) {
   log(`Fetching Node ${nodeVersion} for ${platform}/${arch}…`);
   await fetchNode(nodeVersion, platform, arch, path.join(payload, "runtime"));
+}
+
+if (payloadOnly) {
+  // ---- 5. the desktop app's payload: sign the native code in it and stop -----------------
+  if (platform === "darwin" && process.platform === "darwin" && commandExists("codesign")) {
+    signNative(machObjects(payload), args.sign ?? "-", path.join(payload, "runtime", "bin", "node"));
+    if (args.sign) log(`Signed the native code with ${args.sign}`);
+  } else if (args.sign) fail("--sign needs macOS with codesign");
+  log(`Payload: ${stage}`);
+  process.exit(0);
 }
 
 // ---- 5. launchers --------------------------------------------------------------------
@@ -301,52 +370,10 @@ fi
     if (process.platform === "darwin" && commandExists("codesign")) {
       const app = path.join(stage, "MordomoOS.app");
       const identity = args.sign ?? "-";
-      const flags = args.sign ? ["--options", "runtime", "--timestamp"] : [];
       // Every Mach-O in the payload must carry the Developer ID signature and a
       // timestamp or the notary service rejects the archive: the Node binary,
       // the SQLite addon, anything else that looks like native code, then the app.
-      // The hardened runtime forbids JIT unless the binary carries the JIT
-      // entitlements; V8 needs them or Node dies with SIGTRAP at startup.
-      const entitlements = path.join(os.tmpdir(), `mordomo-${process.pid}-entitlements.plist`);
-      fs.writeFileSync(
-        entitlements,
-        `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>com.apple.security.cs.allow-jit</key><true/>
-  <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>
-</dict>
-</plist>
-`,
-      );
-      const nodeBinary = path.join(payload, "runtime", "bin", "node");
-      const targets = [...machObjects(payload), app];
-      for (const target of targets) {
-        const withEntitlements = args.sign && target === nodeBinary;
-        const res = spawnSync(
-          "codesign",
-          [
-            "--force",
-            ...flags,
-            ...(withEntitlements ? ["--entitlements", entitlements] : []),
-            "--sign",
-            identity,
-            target,
-          ],
-          { stdio: "inherit" },
-        );
-        if (res.status !== 0) fail(`codesign failed for ${path.relative(stage, target)}`);
-      }
-      fs.rmSync(entitlements, { force: true });
-      if (args.sign && fs.existsSync(nodeBinary)) {
-        // Prove the signed runtime still starts before spending a notarization round trip.
-        const probe = spawnSync(nodeBinary, ["-e", "process.exit(42)"], { stdio: "ignore" });
-        if (probe.status !== 42)
-          fail(
-            `the signed Node runtime does not start (status ${probe.status}, signal ${probe.signal}) — check the entitlements`,
-          );
-      }
+      signNative([...machObjects(payload), app], identity, path.join(payload, "runtime", "bin", "node"));
       if (args.sign) log(`Signed with ${args.sign}`);
     } else if (args.sign) fail("--sign needs macOS with codesign");
     writeExecutable(
@@ -394,6 +421,53 @@ function machObjects(dir) {
   };
   walk(dir);
   return out;
+}
+
+/**
+ * Sign `targets` in order. With a Developer ID identity: hardened runtime and a secure timestamp, and the JIT
+ * entitlements on the Node binary (V8 needs them or Node dies with SIGTRAP at startup); with "-": an ad-hoc signature.
+ * A signed Node binary that no longer starts fails here, before a notarization round trip is spent on it.
+ */
+function signNative(targets, identity, nodeBinary) {
+  const signed = identity !== "-";
+  const flags = signed ? ["--options", "runtime", "--timestamp"] : [];
+  const entitlements = path.join(os.tmpdir(), `mordomo-${process.pid}-entitlements.plist`);
+  fs.writeFileSync(
+    entitlements,
+    `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key><true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>
+</dict>
+</plist>
+`,
+  );
+  for (const target of targets) {
+    const withEntitlements = signed && target === nodeBinary;
+    const res = spawnSync(
+      "codesign",
+      [
+        "--force",
+        ...flags,
+        ...(withEntitlements ? ["--entitlements", entitlements] : []),
+        "--sign",
+        identity,
+        target,
+      ],
+      { stdio: "inherit" },
+    );
+    if (res.status !== 0) fail(`codesign failed for ${path.relative(stage, target)}`);
+  }
+  fs.rmSync(entitlements, { force: true });
+  if (signed && fs.existsSync(nodeBinary)) {
+    const probe = spawnSync(nodeBinary, ["-e", "process.exit(42)"], { stdio: "ignore" });
+    if (probe.status !== 42)
+      fail(
+        `the signed Node runtime does not start (status ${probe.status}, signal ${probe.signal}) — check the entitlements`,
+      );
+  }
 }
 
 /** Compile the Swift shell for the target architecture; false when swiftc is unavailable. */
@@ -473,6 +547,9 @@ plan to enable "start at login" from Settings.
 }
 Terminal (optional): ${cli} setup | start | stop | status | doctor | restart | launch
 Uninstall: ${cli} uninstall (keeps your data; add --purge to remove it), then delete this folder.
+License: LICENSE (Functional Source License 1.1, Apache-2.0 future license). legal/ holds the third-party
+notices, the SBOM and the draft terms and privacy policy. MordomoOS orchestrates Claude Code, Cursor Agent
+and Codex; it does not bundle them, and each follows its supplier's terms.
 
 PT-BR
 -----
@@ -492,6 +569,9 @@ ativar "iniciar no login" nas Configurações.
 }
 Terminal (opcional): ${cli} setup | start | stop | status | doctor | restart | launch
 Desinstalar: ${cli} uninstall (mantém seus dados; use --purge para removê-los) e apague esta pasta.
+Licença: LICENSE (Functional Source License 1.1, licença futura Apache-2.0). A pasta legal/ tem os avisos de
+terceiros, o SBOM e as minutas dos termos e da privacidade. O MordomoOS orquestra o Claude Code, o Cursor Agent e
+o Codex; não os inclui, e cada um segue os termos do seu fornecedor.
 
 Runtime: ${nodeVersion ? `Node.js ${nodeVersion} (bundled in runtime/)` : "uses the Node.js 22+ installed on this computer"}.
 `;
@@ -609,6 +689,7 @@ function parseArgs(argv) {
     else if (a === "--arch") out.arch = next();
     else if (a === "--sign") out.sign = next();
     else if (a === "--notarize") out.notarize = next();
+    else if (a === "--payload") out.payload = next();
     else if (a === "--skip-build") out.skipBuild = true;
     else if (a === "--no-archive") out.archive = false;
     else if (a === "--help" || a === "-h") {

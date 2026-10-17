@@ -1,5 +1,5 @@
 /** Pure helpers for skill resources (URL building, sizing, kind detection). Unit-tested. */
-import { getToken, type Skill, type SkillResource, type SkillResourceKind } from "../../api";
+import { apiUrl, getToken, type Skill, type SkillResource, type SkillResourceKind } from "../../api";
 
 const KIND_BY_EXT: Record<string, SkillResourceKind> = {
   md: "markdown",
@@ -35,7 +35,7 @@ export function resourcesOf(skill: Pick<Skill, "resources" | "resourceFiles">): 
 
 /** `GET /api/skills/:slug/resource?rel=` — `withToken` for src attributes (img/iframe cannot send headers). */
 export function resourceUrl(slug: string, rel: string, withToken = false): string {
-  const base = `/api/skills/${encodeURIComponent(slug)}/resource?rel=${encodeURIComponent(rel)}`;
+  const base = apiUrl(`/api/skills/${encodeURIComponent(slug)}/resource?rel=${encodeURIComponent(rel)}`);
   return withToken && getToken() ? `${base}&token=${encodeURIComponent(getToken())}` : base;
 }
 

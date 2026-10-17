@@ -1,17 +1,18 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarDays, Check, Copy, ExternalLink, Eye, EyeOff, Mail, Plug, RefreshCw } from "lucide-react";
+import { CalendarDays, Check, Copy, ExternalLink, Mail, Plug, RefreshCw } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
-import { PROVIDER_LOGIN_COMMANDS } from "../runs/authRecovery";
+import { providerOptions } from "../providers/options";
 import { api, type Connector, type ProviderId, type ProviderSnapshot } from "../api";
+import { apiCall } from "../apiCall";
 import { I18nContext, useT, type Lang } from "../i18n";
 import { qk, useApiQuery } from "../queries";
 import { ErrorBox, Skeleton, useToast } from "../components/ui";
 import { Badge, Button, Field } from "../components/primitives";
 import { PRESETS, applyPreset, type PresetId } from "../theme";
-import { DEFAULT_HUD, HUD_CATALOGUE, hudTitleKey, naturalSide, toggleInHud, type Hud } from "../desktop/hud";
 import { copyText, errorMessage, isAbsolutePath, isOffline } from "./shared";
 import "./apps.css";
+import { Tooltip } from "../ui";
 
 /** Connectors offered in the "connect data" step (the widgets that read them). */
 const DATA_KINDS = /calendar|mail|email/i;
@@ -19,7 +20,7 @@ const LAST_STEP = 4;
 
 /**
  * In-UI setup for when the guided terminal setup was skipped: five steps
- * (providers → identity → folders → connect data → your desktop).
+ * (providers → identity → folders → connect data → appearance).
  * Everything is editable later in Settings.
  */
 export default function Setup({ onDone }: { onDone: () => void }) {
@@ -32,7 +33,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0);
   // "Detect again": re-probe one CLI (a fresh install or login) and refresh the list.
   const redetect = useMutation({
-    mutationFn: (id: ProviderId) => api.post(`/api/providers/${id}/detect`),
+    mutationFn: (id: ProviderId) => apiCall("POST /api/providers/:id/detect", { params: { id } }),
     onSettled: () => void providers.refetch(),
     onError: (err: Error) => toast(errorMessage(err, t), "danger"),
   });
@@ -40,18 +41,15 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     const ok = await copyText(command);
     toast(ok ? t("common.copied") : t("skills.copyFailed"), ok ? "ok" : "danger");
   };
-  const [enabled, setEnabled] = useState<Record<ProviderId, boolean> | null>(null);
-  const installedRef = useRef<Partial<Record<ProviderId, boolean>>>({});
-  const [defaultProvider, setDefaultProvider] = useState<ProviderId>("claude");
+  const [enabled, setEnabled] = useState<{ [id: ProviderId]: boolean } | null>(null);
+  const installedRef = useRef<{ [id: ProviderId]: boolean | undefined }>({});
+  const [defaultProvider, setDefaultProvider] = useState<ProviderId>("");
   const [name, setName] = useState("MordomoOS");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [folder, setFolder] = useState("");
   const [folderError, setFolderError] = useState<string | null>(null);
   const [phase, setPhase] = useState<"idle" | "saving" | "indexing">("idle");
   const [preset, setPreset] = useState<PresetId>("hud-orange");
-  // The HUD (G5): which instruments sit on the pod arcs. Starts as the
-  // default composition; the wizard's last step is where it becomes yours.
-  const [hud, setHud] = useState<Hud>(() => ({ l: [...DEFAULT_HUD.l], r: [...DEFAULT_HUD.r] }));
 
   useEffect(() => {
     if (!providers.data) return;
@@ -72,12 +70,13 @@ export default function Setup({ onDone }: { onDone: () => void }) {
       return;
     }
     for (const s of providers.data) installedRef.current[s.id] = s.health.installed;
-    const next: Record<ProviderId, boolean> = { claude: false, cursor: false, codex: false };
+    const next: { [id: ProviderId]: boolean } = {};
     for (const s of providers.data) next[s.id] = s.health.installed;
     setEnabled(next);
+    // The server's default, unless it is missing here and another CLI is installed.
+    const current = providers.data.find((s) => s.isDefault) ?? providers.data[0];
     const firstInstalled = providers.data.find((s) => s.health.installed)?.id;
-    if (firstInstalled && !providers.data.find((s) => s.id === "claude")?.health.installed)
-      setDefaultProvider(firstInstalled);
+    setDefaultProvider(firstInstalled && !current?.health.installed ? firstInstalled : (current?.id ?? ""));
   }, [providers.data, enabled]);
 
   const finish = useMutation({
@@ -90,18 +89,23 @@ export default function Setup({ onDone }: { onDone: () => void }) {
       await Promise.all(
         (Object.entries(enabled) as Array<[ProviderId, boolean]>)
           .filter(([, on]) => on)
-          .map(([id]) => api.post(`/api/providers/${id}/detect`).catch(() => undefined)),
+          .map(([id]) =>
+            apiCall("POST /api/providers/:id/detect", { params: { id } }).catch(() => undefined),
+          ),
       );
-      const current = await api.get<Record<string, unknown>>("/api/settings");
-      const provSettings = current.providers as Record<ProviderId, Record<string, unknown>>;
-      for (const id of ["claude", "cursor", "codex"] as ProviderId[])
-        provSettings[id] = { ...provSettings[id], enabled: enabled[id] };
+      const current = await apiCall("GET /api/settings");
+      const provSettings = current.providers;
+      for (const id of providerOptions(providers.data))
+        provSettings[id] = { ...provSettings[id]!, enabled: enabled[id] ?? false };
       const chosenDefault = enabled[defaultProvider]
         ? defaultProvider
-        : ((Object.entries(enabled).find(([, v]) => v)?.[0] as ProviderId | undefined) ?? "claude");
-      const folders = current.indexedFolders as Array<Record<string, unknown>>;
+        : (Object.entries(enabled).find(([, v]) => v)?.[0] ?? defaultProvider);
+      const folders = current.indexedFolders;
       const chosenPreset = PRESETS.find((p) => p.id === preset) ?? PRESETS[0]!;
-      await api.put("/api/settings", {
+      // The preset is a UI preference (config/ui-preferences.json). It is saved first,
+      // so `setupCompleted` only flips once both writes have landed.
+      await api.putUiPreferences({ themePreset: chosenPreset.id });
+      await api.putSettings({
         systemName: name.trim() || "MordomoOS",
         language: lang,
         theme,
@@ -110,16 +114,13 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         indexedFolders: folder.trim()
           ? [...folders, { path: folder.trim(), area: null, enabled: true }]
           : folders,
-        themePreset: chosenPreset.id,
         accentColor: chosenPreset.accent,
-        // The stage opens clear (F7); the arcs open the way this step left them.
-        hud,
         setupCompleted: true,
       });
       if (folder.trim()) {
         setPhase("indexing");
-        await api.post("/api/memory/index");
-        await api.post("/api/memory/routers");
+        await apiCall("POST /api/memory/index");
+        await apiCall("POST /api/memory/routers");
       }
     },
     onSuccess: () => onDone(),
@@ -136,7 +137,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
     t("setup.stepIdentity"),
     t("setup.stepFolders"),
     t("apps.setup.stepConnect"),
-    t("apps.setup.stepDesktopHud"),
+    t("apps.setup.stepAppearance"),
   ];
   const anyEnabled = enabled ? Object.values(enabled).some(Boolean) : false;
   const folderOk = !folder.trim() || isAbsolutePath(folder);
@@ -153,18 +154,19 @@ export default function Setup({ onDone }: { onDone: () => void }) {
               <p className="sub">{t("setup.notDone")}</p>
               <div className="setup-cmd">
                 <pre className="preview-pre tight">npx mordomo setup</pre>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  icon={<Copy aria-hidden />}
-                  aria-label={t("brain.copyPath")}
-                  title={t("brain.copyPath")}
-                  onClick={() =>
-                    void copyText("npx mordomo setup").then((ok) =>
-                      toast(ok ? t("brain.copied") : t("skills.copyFailed"), ok ? "ok" : "danger"),
-                    )
-                  }
-                />
+                <Tooltip label={t("brain.copyPath")}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon={<Copy aria-hidden />}
+                    aria-label={t("brain.copyPath")}
+                    onClick={() =>
+                      void copyText("npx mordomo setup").then((ok) =>
+                        toast(ok ? t("brain.copied") : t("skills.copyFailed"), ok ? "ok" : "danger"),
+                      )
+                    }
+                  />
+                </Tooltip>
               </div>
             </details>
           </div>
@@ -205,7 +207,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
                   {(providers.data ?? []).map((prov) => {
                     const installed = prov.health.installed;
                     const loggedIn = prov.health.authenticated === true;
-                    const command = installed ? PROVIDER_LOGIN_COMMANDS[prov.id] : prov.installHint;
+                    const command = installed ? prov.loginCommand : prov.installHint;
                     const busy = redetect.isPending && redetect.variables === prov.id;
                     return (
                       <div key={prov.id} className="setup-provider" data-testid={`setup-provider-${prov.id}`}>
@@ -236,14 +238,15 @@ export default function Setup({ onDone }: { onDone: () => void }) {
                             {command && (
                               <div className="setup-cmd">
                                 <pre className="preview-pre tight">{command}</pre>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  icon={<Copy aria-hidden />}
-                                  aria-label={t("common.copy")}
-                                  title={t("common.copy")}
-                                  onClick={() => void copyCommand(command)}
-                                />
+                                <Tooltip label={t("common.copy")}>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    icon={<Copy aria-hidden />}
+                                    aria-label={t("common.copy")}
+                                    onClick={() => void copyCommand(command)}
+                                  />
+                                </Tooltip>
                               </div>
                             )}
                             <Button
@@ -343,14 +346,12 @@ export default function Setup({ onDone }: { onDone: () => void }) {
             )}
             {step === 3 && <ConnectStep />}
             {step === 4 && (
-              <DesktopStep
+              <AppearanceStep
                 preset={preset}
                 onPreset={(id) => {
                   setPreset(id);
                   applyPreset(id);
                 }}
-                hud={hud}
-                onToggle={(id) => setHud((prev) => toggleInHud(prev, id))}
               />
             )}
             <div className="modal-actions">
@@ -446,44 +447,13 @@ function ConnectorRow({ connector }: { connector: Connector }) {
   );
 }
 
-/* ------------------------------------------------------- your desktop ------ */
+/* ------------------------------------------------------- appearance ------ */
 
-function DesktopStep({
-  preset,
-  onPreset,
-  hud,
-  onToggle,
-}: {
-  preset: PresetId;
-  onPreset: (id: PresetId) => void;
-  hud: Hud;
-  onToggle: (id: string) => void;
-}) {
+function AppearanceStep({ preset, onPreset }: { preset: PresetId; onPreset: (id: PresetId) => void }) {
   const t = useT();
-  const on = (id: string) => hud.l.includes(id) || hud.r.includes(id);
-  const arc = (side: "l" | "r", label: string) => (
-    <div className="apps-hud-arc" role="group" aria-label={label}>
-      <span className="hud-label">{label}</span>
-      <div className="apps-widgets">
-        {HUD_CATALOGUE.filter((id) => naturalSide(id) === side).map((id) => (
-          <button
-            key={id}
-            type="button"
-            className="apps-widget-toggle"
-            aria-pressed={on(id)}
-            data-hud={id}
-            onClick={() => onToggle(id)}
-          >
-            {on(id) ? <Eye aria-hidden /> : <EyeOff aria-hidden />}
-            <span className="truncate">{t(hudTitleKey(id))}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
   return (
     <div className="stack">
-      <p className="hint">{t("apps.setup.desktopHint")}</p>
+      <p className="hint">{t("apps.setup.appearanceHint")}</p>
       <div className="apps-presets">
         {PRESETS.map((p) => (
           <button
@@ -506,8 +476,6 @@ function DesktopStep({
           </button>
         ))}
       </div>
-      {arc("l", t("apps.setup.hudLeft"))}
-      {arc("r", t("apps.setup.hudRight"))}
     </div>
   );
 }

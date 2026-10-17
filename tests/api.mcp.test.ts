@@ -53,7 +53,8 @@ describe("permission decide()", () => {
     await withEnv(async () => {
       let polls = 0;
       const call = async <T>(method: string, path: string): Promise<T> => {
-        if (method === "POST" && path === "/api/approvals/tool") return { id: "a1", status: "pending" } as T;
+        if (method === "POST" && path === "/api/v1/approvals/tool")
+          return { id: "a1", status: "pending" } as T;
         polls += 1;
         return { id: "a1", status: polls >= 2 ? "approved" : "pending" } as T;
       };
@@ -102,7 +103,7 @@ describe("permission decide()", () => {
         ),
       );
       expect(out.behavior).toBe("deny");
-      expect(seen).toContain("POST /api/approvals/a2/resolve");
+      expect(seen).toContain("POST /api/v1/approvals/a2/resolve");
     });
   });
 });
@@ -111,9 +112,10 @@ describe("mordomo MCP tools", () => {
   it("formats recall and skills through the API", async () => {
     const api = {
       get: async <T>(path: string): Promise<T> => {
-        if (path.startsWith("/api/memory/recall"))
+        if (path.startsWith("/api/v1/memory/recall"))
           return { answerContext: [{ path: "a.md", section: "S", excerpt: "x", score: 3 }] } as T;
-        if (path === "/api/skills") return [{ slug: "s", name: "S", description: "d", enabled: true }] as T;
+        if (path === "/api/v1/skills")
+          return [{ slug: "s", name: "S", description: "d", enabled: true }] as T;
         return { items: [] } as T;
       },
       post: async <T>(): Promise<T> => ({ runId: "r", status: "queued" }) as T,

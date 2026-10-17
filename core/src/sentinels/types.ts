@@ -1,4 +1,12 @@
 import type { EventBus } from "../events.js";
+import {
+  SENTINEL_IDS,
+  type SentinelFiredPayload,
+  type SentinelId,
+  type SentinelSeverity,
+} from "@mordomo/contracts";
+
+export { SENTINEL_IDS, type SentinelFiredPayload, type SentinelId, type SentinelSeverity };
 
 /**
  * Sentinels (Onda 2, item 1).
@@ -17,32 +25,6 @@ import type { EventBus } from "../events.js";
  * The split matters: a sentinel that decided what to do with its own finding
  * would need an LLM, and then it would no longer be free.
  */
-
-export type SentinelId = "fsWatch" | "repeatedFailure" | "silentRoutine" | "connectorDelta";
-
-export const SENTINEL_IDS: readonly SentinelId[] = [
-  "fsWatch",
-  "repeatedFailure",
-  "silentRoutine",
-  "connectorDelta",
-];
-
-export type SentinelSeverity = "info" | "warn" | "danger";
-
-/** Payload of `sentinel.fired`. */
-export interface SentinelFiredPayload {
-  sentinel: SentinelId;
-  messageParams?: Record<string, string | number | boolean>;
-  title: string;
-  body: string;
-  severity: SentinelSeverity;
-  /** Where the Command Centre should send the reader. */
-  href?: string;
-  /** Rows sharing this key collapse (see `NotificationStore.hasDedupeKey`). */
-  dedupeKey?: string;
-  /** Ask the triage run to decide what this means (costs money — see `triage.ts`). */
-  triage?: boolean;
-}
 
 /** Emit a finding. Kept in one place so every sentinel announces the same way. */
 export function emitSentinel(bus: EventBus, payload: SentinelFiredPayload): SentinelFiredPayload {

@@ -10,9 +10,10 @@ import {
 import ServiceHealthBanner from "./components/ServiceHealthBanner";
 import { HashRouter, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, needsPairing, setDeviceToken, type Meta } from "./api";
+import { needsPairing, setDeviceToken, type Meta } from "./api";
+import { apiCall } from "./apiCall";
 import { I18nContext, useT, type Lang, type TKey } from "./i18n";
-import { qk, useOsSettings } from "./queries";
+import { qk, useOsUiPreferences } from "./queries";
 import {
   applyAccentTokens,
   applyHudIntensity,
@@ -22,25 +23,24 @@ import {
   readStoredPreset,
 } from "./theme";
 import { Skeleton, ToastProvider } from "./components/ui";
-import { useDialogDepth, usePresence } from "./components/dialog";
+import { UiProvider, useDialogDepth } from "./ui";
+import { usePresence } from "./hooks/usePresence";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import {
-  CommandPalette,
-  OPEN_DECK_EVENT,
-  OPEN_PANEL_EVENT,
-  RESET_LAYOUT_EVENT,
-  type PaletteOpenDetail,
-} from "./components/CommandPalette";
+import { CommandPalette, type PaletteOpenDetail } from "./components/CommandPalette";
 import { WorkspaceProvider } from "./components/Workspace";
 import { ShortcutsHelp } from "./components/ShortcutsHelp";
+import { NoteEditorHost } from "./brain/NoteEditorHost";
 import { ConfirmProvider } from "./hooks/useConfirm";
 import { useEventStream } from "./hooks/useEventStream";
 import { NotificationsProvider } from "./hooks/useNotifications";
-import { useOsNavigate } from "./hooks/useViewTransition";
+import { CommandsProvider, type CommandRegistry } from "./commands/registry";
+import { useGlobalCommands } from "./commands/global";
 
 // The immersive shell is the landing surface and stays in the main chunk:
 // every route is one of its scenes.
 import Nucleo from "./nucleo";
+import Moldura from "./moldura/Moldura";
+import { ShellProvider, useShell } from "./moldura/shell";
 import { lazyRoute } from "./lazyRoute";
 import { Onboarding } from "./onboarding/Onboarding";
 import { ProviderGate } from "./components/ProviderGate";
@@ -48,9 +48,6 @@ const Setup = lazyRoute(() => import("./views/Setup"));
 
 /** Fire this event from anywhere to open the command palette (CustomEvent `detail`: PaletteOpenDetail). */
 export const LAUNCHER_EVENT = "mordomo:launcher";
-/** Fire this event to open the keyboard-shortcuts sheet. */
-export const SHORTCUTS_EVENT = "mordomo:shortcuts";
-export { RESET_LAYOUT_EVENT, OPEN_DECK_EVENT, OPEN_PANEL_EVENT };
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -75,15 +72,15 @@ function AppInner() {
   const qc = useQueryClient();
   const metaQuery = useQuery({
     queryKey: qk.meta,
-    queryFn: ({ signal }) => api.get<Meta>("/api/meta", { signal }),
+    queryFn: ({ signal }) => apiCall("GET /api/meta", undefined, { signal }),
     retry: 1,
   });
   const meta = metaQuery.data ?? null;
   const offline = !meta && metaQuery.isError;
   const [lang, setLang] = useState<Lang>("en");
-  // Theme preset: `settings.themePreset` once the backend has it, else the browser mirror.
-  const settings = useOsSettings({ enabled: !!meta?.setupCompleted, staleTime: 30_000 });
-  const serverPreset = settings.data?.themePreset;
+  // Theme preset: the saved UI preference once the backend answers, else the browser mirror.
+  const uiPreferences = useOsUiPreferences({ enabled: !!meta?.setupCompleted, staleTime: 30_000 });
+  const serverPreset = uiPreferences.data?.themePreset;
   const presetId = isPresetId(serverPreset) ? serverPreset : readStoredPreset();
 
   // Follow the language saved on the server; Settings can still switch live via setLang.
@@ -135,29 +132,31 @@ function AppInner() {
 
   return (
     <I18nContext.Provider value={i18nValue}>
-      <ToastProvider>
-        <ConfirmProvider>
-          <NotificationsProvider>
-            {/* Route changes are urgent; animation is handled by useOsNavigate. */}
-            <HashRouter useTransitions={false}>
-              {needsPairing() ? (
-                <PairingScreen meta={meta} />
-              ) : meta.setupCompleted ? (
-                <>
-                  <WorkspaceProvider>
-                    <OsShell meta={meta} onMetaChanged={loadMeta} />
-                  </WorkspaceProvider>
-                  <BootSequence meta={meta} />
-                </>
-              ) : (
-                <Suspense fallback={<Skeleton page lines={6} />}>
-                  <Setup onDone={loadMeta} />
-                </Suspense>
-              )}
-            </HashRouter>
-          </NotificationsProvider>
-        </ConfirmProvider>
-      </ToastProvider>
+      <UiProvider>
+        <ToastProvider>
+          <ConfirmProvider>
+            <NotificationsProvider>
+              {/* Route changes are urgent; animation is handled by useOsNavigate. */}
+              <HashRouter useTransitions={false}>
+                {needsPairing() ? (
+                  <PairingScreen meta={meta} />
+                ) : meta.setupCompleted ? (
+                  <>
+                    <WorkspaceProvider>
+                      <OsShell meta={meta} onMetaChanged={loadMeta} />
+                    </WorkspaceProvider>
+                    <BootSequence meta={meta} />
+                  </>
+                ) : (
+                  <Suspense fallback={<Skeleton page lines={6} />}>
+                    <Setup onDone={loadMeta} />
+                  </Suspense>
+                )}
+              </HashRouter>
+            </NotificationsProvider>
+          </ConfirmProvider>
+        </ToastProvider>
+      </UiProvider>
     </I18nContext.Provider>
   );
 }
@@ -253,7 +252,7 @@ function PairingScreen({ meta }: { meta: Meta }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.post<{ token: string }>("/api/pair/claim", { code, name });
+      const res = await apiCall("POST /api/pair/claim", { body: { code, name } });
       setDeviceToken(res.token);
       location.reload();
     } catch (err) {
@@ -373,25 +372,35 @@ function RouteSurface({
 
 interface PaletteState {
   open: boolean;
-  /** Skip the exit animation (set when the palette navigates with a shared-element morph). */
+  /** Skip the exit animation (set when the palette closes in the same update as a navigation). */
   instant: boolean;
   initial?: PaletteOpenDetail;
 }
 
-function isEditableTarget(): boolean {
-  const el = document.activeElement;
-  if (!el) return false;
-  if (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName)) return true;
-  return (el as HTMLElement).isContentEditable;
+export function OsShell({
+  registry,
+  ...props
+}: {
+  meta: Meta;
+  onMetaChanged: () => void;
+  /** The command registry to use (a test hands its own to read it); one of its own otherwise. */
+  registry?: CommandRegistry;
+}) {
+  // Every key the shell, its screens and the palette answer goes through one registry.
+  return (
+    <CommandsProvider registry={registry}>
+      <OsShellInner {...props} />
+    </CommandsProvider>
+  );
 }
 
-function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => void }) {
+function OsShellInner({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => void }) {
   const t = useT();
+  const shell = useShell();
   const [palette, setPalette] = useState<PaletteState>({ open: false, instant: false });
   const { mounted: paletteMounted, closing: paletteClosing } = usePresence(palette.open, 160);
   const paletteVisible = paletteMounted && !palette.instant;
   const [help, setHelp] = useState(false);
-  const navigate = useOsNavigate();
   const location = useLocation();
   const { connected } = useEventStream();
   const depth = useDialogDepth();
@@ -409,43 +418,12 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
   useEffect(() => {
     const onLauncher = (e: Event) =>
       openPalette((e as CustomEvent<PaletteOpenDetail | undefined>).detail ?? undefined);
-    const onShortcuts = () => setHelp(true);
     window.addEventListener(LAUNCHER_EVENT, onLauncher);
-    window.addEventListener(SHORTCUTS_EVENT, onShortcuts);
-    return () => {
-      window.removeEventListener(LAUNCHER_EVENT, onLauncher);
-      window.removeEventListener(SHORTCUTS_EVENT, onShortcuts);
-    };
+    return () => window.removeEventListener(LAUNCHER_EVENT, onLauncher);
   }, [openPalette]);
 
-  useEffect(() => {
-    const onKey = (ev: KeyboardEvent) => {
-      // Dialogs handle their own Escape (and stop propagation); never navigate from inside one.
-      if (ev.defaultPrevented || document.documentElement.dataset.onboarding) return;
-      const target = ev.target instanceof Element ? ev.target : null;
-      if (target?.closest('[role="dialog"]')) return;
-      const inField = isEditableTarget();
-      const mod = ev.metaKey || ev.ctrlKey;
-      const key = ev.key.toLowerCase();
-      if (ev.key === "Escape") {
-        if (palette.open) closePalette();
-        else if (location.pathname !== "/" && !inField) navigate("/");
-        return;
-      }
-      if (mod && !ev.altKey && !ev.shiftKey && (key === "k" || key === "m")) {
-        ev.preventDefault();
-        if (palette.open) closePalette();
-        else openPalette();
-        return;
-      }
-      if (ev.key === "?" && !mod && !ev.altKey && !inField && depth === 0) {
-        ev.preventDefault();
-        setHelp(true);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [palette.open, location.pathname, navigate, openPalette, closePalette, depth]);
+  const openHelp = useCallback(() => setHelp(true), []);
+  useGlobalCommands({ shell: shell ?? "moldura", openPalette, openHelp, onMetaChanged });
 
   // Close the palette on navigation — to a page. A deep link bouncing back
   // to `/` (G2: an app opened as a panel) is not a place the user went; a
@@ -454,48 +432,65 @@ function OsShell({ meta, onMetaChanged }: { meta: Meta; onMetaChanged: () => voi
     if (location.pathname !== "/") closePalette();
   }, [location.pathname, closePalette]);
 
-  const shell = (
-    <RouteSurface name="desktop" stable>
-      <Nucleo meta={meta} onMetaChanged={onMetaChanged} />
-    </RouteSurface>
-  );
+  const surface =
+    shell === "nucleo" ? (
+      <RouteSurface name="desktop" stable>
+        <Nucleo meta={meta} onMetaChanged={onMetaChanged} />
+      </RouteSurface>
+    ) : shell === "moldura" ? (
+      <ErrorBoundary name={meta.name}>
+        <Moldura meta={meta} onMetaChanged={onMetaChanged} onOpenPalette={() => openPalette()} />
+      </ErrorBoundary>
+    ) : (
+      // Nothing is known yet (no answer, no mirror of the last one): not an empty page, not a guess.
+      <PageFallback />
+    );
 
   return (
     <div
       className="os-root"
+      data-shell={shell ?? undefined}
       data-depth={depth > 0 ? "pushed" : undefined}
       data-palette={paletteVisible ? "open" : undefined}
     >
       <div className="depth-layer">
         <Routes>
-          {/* Every route is a scene of the shell; the shell reads the path. */}
-          <Route path="/*" element={shell} />
+          {/* Every route is a scene (Núcleo) or a page (frame); the shell reads the path. */}
+          <Route
+            path="/*"
+            element={shell ? <ShellProvider value={shell}>{surface}</ShellProvider> : surface}
+          />
         </Routes>
       </div>
-      {paletteVisible && (
+      {paletteVisible && shell !== null && (
         <CommandPalette
           meta={meta}
           closing={paletteClosing}
           onClose={closePalette}
           onMetaChanged={onMetaChanged}
-          onShortcuts={() => setHelp(true)}
+          onShortcuts={openHelp}
           initial={palette.initial}
+          shell={shell}
         />
       )}
       {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
+      <NoteEditorHost />
       <ServiceHealthBanner name={meta.name} />
       <div className={`sse-dot${connected ? "" : " off"}`} title={t("common.reconnecting")} aria-hidden>
         <span className="dot warn" />
       </div>
       {/* HUD instrumentation layer: scanlines, vignette and corner brackets (CSS only, --hud-intensity). */}
-      <div className="hud-overlay" aria-hidden>
-        <span className="hud-bracket tl" />
-        <span className="hud-bracket tr" />
-        <span className="hud-bracket bl" />
-        <span className="hud-bracket br" />
-      </div>
+      {shell === "nucleo" && (
+        <div className="hud-overlay" aria-hidden>
+          <span className="hud-bracket tl" />
+          <span className="hud-bracket tr" />
+          <span className="hud-bracket bl" />
+          <span className="hud-bracket br" />
+        </div>
+      )}
       <ProviderGate />
-      <Onboarding />
+      {/* The tour points at the Núcleo's places; the frame has none of them (plan Assumptions). */}
+      {shell === "nucleo" && <Onboarding />}
     </div>
   );
 }

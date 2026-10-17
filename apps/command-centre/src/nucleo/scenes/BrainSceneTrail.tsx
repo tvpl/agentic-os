@@ -7,6 +7,7 @@ import { useT } from "../../i18n";
 import { BrainGlyph } from "./BrainGlyph";
 import type { ContentKind } from "./brainGlyphs";
 import type { Trail } from "./brainTrail";
+import { Tooltip } from "../../ui";
 
 export interface TrailCrumb {
   id: number;
@@ -37,26 +38,28 @@ export function BrainSceneTrail({
   const shown = trail.items.slice(start, start + SHOWN).map((id, k) => ({ id, index: start + k }));
   return (
     <nav className="bs-trail" aria-label={t("scene.brain.trail")} data-compact={compact ? "" : undefined}>
-      <button
-        type="button"
-        className="bs-trail-step"
-        onClick={onBack}
-        disabled={trail.pos <= 0}
-        aria-label={t("scene.brain.back")}
-        title={t("scene.brain.back")}
-      >
-        ‹
-      </button>
-      <button
-        type="button"
-        className="bs-trail-step"
-        onClick={onForward}
-        disabled={trail.pos >= trail.items.length - 1}
-        aria-label={t("scene.brain.forward")}
-        title={t("scene.brain.forward")}
-      >
-        ›
-      </button>
+      <Tooltip label={t("scene.brain.back")}>
+        <button
+          type="button"
+          className="bs-trail-step"
+          onClick={onBack}
+          disabled={trail.pos <= 0}
+          aria-label={t("scene.brain.back")}
+        >
+          ‹
+        </button>
+      </Tooltip>
+      <Tooltip label={t("scene.brain.forward")}>
+        <button
+          type="button"
+          className="bs-trail-step"
+          onClick={onForward}
+          disabled={trail.pos >= trail.items.length - 1}
+          aria-label={t("scene.brain.forward")}
+        >
+          ›
+        </button>
+      </Tooltip>
       <ol className="bs-trail-list">
         {start > 0 && (
           <li className="bs-trail-more" aria-hidden>

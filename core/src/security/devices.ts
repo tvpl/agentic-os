@@ -3,19 +3,21 @@
  * token. A pairing code shown on the desktop (six digits, ten minutes, five
  * attempts) is exchanged once for a per-device bearer token; only its SHA-256
  * is stored, so a leaked database reveals nothing usable. Tokens can expire
- * and be revoked; the last use is recorded coarsely (once a minute).
+ * and be revoked; the last use is recorded coarsely (once a minute). Each
+ * device holds a closed set of scopes (`@mordomo/contracts`, `DeviceScope`):
+ * chosen when the code is shown, changed by the owner later, and read as the
+ * default when the row predates scopes.
  */
 import crypto from "node:crypto";
+import {
+  DEFAULT_DEVICE_SCOPES,
+  closeDeviceScopes,
+  type DeviceRecord,
+  type DeviceScope,
+} from "@mordomo/contracts";
 import type { Db } from "../db/db.js";
 
-export interface DeviceRecord {
-  id: string;
-  name: string;
-  createdAt: number;
-  lastSeenAt: number | null;
-  expiresAt: number | null;
-  revokedAt: number | null;
-}
+export type { DeviceRecord };
 
 export interface PairingCode {
   code: string;
@@ -27,6 +29,8 @@ interface PendingCode {
   attempts: number;
   /** Optional name suggested by the desktop side (the device may override it). */
   name: string | null;
+  /** What the device that claims this code will be allowed to do (already closed). */
+  scopes: DeviceScope[];
 }
 
 export const PAIRING_TTL_MS = 10 * 60_000;
@@ -34,26 +38,68 @@ export const PAIRING_MAX_ATTEMPTS = 5;
 export const DEFAULT_DEVICE_TTL_MS = 90 * 86_400_000;
 const LAST_SEEN_GRANULARITY_MS = 60_000;
 
+/** The longest device name kept, in characters (not UTF-16 units: an emoji is one). */
+export const DEVICE_NAME_MAX = 80;
+
+/**
+ * A device name is chosen by whoever pairs, and it is shown to the owner next to a request to approve. It keeps its
+ * letters, digits, punctuation and emoji, and loses what could make it look like something else: control characters
+ * and line breaks (a name must not start a new line in a chat message or a list), the invisible format characters
+ * (zero-width spaces and joiners, the bidirectional marks, embeddings, overrides and isolates, which can reverse the
+ * text around them), repeated and odd spaces. At most `DEVICE_NAME_MAX` characters. Names are not unique: the screens
+ * show a short id with the name.
+ */
+export function sanitizeDeviceName(name: string): string {
+  const cleaned = name
+    .replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, " ")
+    .replace(/\p{Z}+|\s+/gu, " ")
+    .trim();
+  return Array.from(cleaned).slice(0, DEVICE_NAME_MAX).join("").trim();
+}
+
 export function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token, "utf8").digest("hex");
 }
 
+/** What happened to a device that something tied to it must follow (its push subscriptions, for one). */
+export type DeviceChange =
+  { kind: "revoked"; device: DeviceRecord } | { kind: "scopes"; device: DeviceRecord };
+
 export class DeviceStore {
   private readonly pending = new Map<string, PendingCode>();
+  private readonly listeners: Array<(change: DeviceChange) => void> = [];
 
   constructor(
     private readonly db: Db,
     private readonly now: () => number = Date.now,
   ) {}
 
+  /** Hear of a device revoked or given another set of scopes (synchronously, in the same call). Returns the way out. */
+  onChange(listener: (change: DeviceChange) => void): () => void {
+    this.listeners.push(listener);
+    return () => {
+      const i = this.listeners.indexOf(listener);
+      if (i >= 0) this.listeners.splice(i, 1);
+    };
+  }
+
   /** Mint a pairing code. A new code replaces any older pending one. */
-  startPairing(name: string | null = null): PairingCode {
+  startPairing(
+    name: string | null = null,
+    scopes: readonly DeviceScope[] = DEFAULT_DEVICE_SCOPES,
+  ): PairingCode & { scopes: DeviceScope[] } {
     this.sweepCodes();
     const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
     const expiresAt = this.now() + PAIRING_TTL_MS;
+    const closed = closeDeviceScopes(scopes);
     this.pending.clear();
-    this.pending.set(code, { expiresAt, attempts: 0, name });
-    return { code, expiresAt };
+    this.pending.set(code, {
+      expiresAt,
+      attempts: 0,
+      name: name ? sanitizeDeviceName(name) : name,
+      scopes: closed,
+    });
+    return { code, expiresAt, scopes: closed };
   }
 
   /** Whether a pairing is currently open (never reveals the code). */
@@ -86,13 +132,20 @@ export class DeviceStore {
     const token = crypto.randomBytes(32).toString("base64url");
     const id = crypto.randomUUID();
     const createdAt = this.now();
-    const label = (name.trim() || entry.name || "device").slice(0, 80);
+    const label = sanitizeDeviceName(name) || sanitizeDeviceName(entry.name ?? "") || "device";
     this.db
       .prepare(
-        `INSERT INTO devices (id, name, token_hash, created_at, last_seen_at, expires_at, revoked_at)
-         VALUES (?, ?, ?, ?, NULL, ?, NULL)`,
+        `INSERT INTO devices (id, name, token_hash, created_at, last_seen_at, expires_at, revoked_at, scopes)
+         VALUES (?, ?, ?, ?, NULL, ?, NULL, ?)`,
       )
-      .run(id, label, hashToken(token), createdAt, ttlMs > 0 ? createdAt + ttlMs : null);
+      .run(
+        id,
+        label,
+        hashToken(token),
+        createdAt,
+        ttlMs > 0 ? createdAt + ttlMs : null,
+        JSON.stringify(entry.scopes),
+      );
     return { device: this.get(id)!, token };
   }
 
@@ -113,6 +166,24 @@ export class DeviceStore {
     return device;
   }
 
+  /** The device when its token still counts (not revoked, not expired), whatever it may do. */
+  active(id: string): DeviceRecord | null {
+    const device = this.get(id);
+    if (!device || device.revokedAt !== null) return null;
+    if (device.expiresAt !== null && device.expiresAt <= this.now()) return null;
+    return device;
+  }
+
+  /** Replace what a device may do. Null when the device is unknown or revoked; the next request is judged by the new set. */
+  setScopes(id: string, scopes: readonly DeviceScope[]): DeviceRecord | null {
+    const res = this.db
+      .prepare("UPDATE devices SET scopes = ? WHERE id = ? AND revoked_at IS NULL")
+      .run(JSON.stringify(closeDeviceScopes(scopes)), id);
+    const device = res.changes > 0 ? this.get(id) : null;
+    if (device) for (const l of this.listeners) l({ kind: "scopes", device });
+    return device;
+  }
+
   get(id: string): DeviceRecord | null {
     const row = this.db.prepare("SELECT * FROM devices WHERE id = ?").get(id) as RawDevice | undefined;
     return row ? fromRow(row) : null;
@@ -127,6 +198,8 @@ export class DeviceStore {
     const res = this.db
       .prepare("UPDATE devices SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL")
       .run(this.now(), id);
+    const device = res.changes > 0 ? this.get(id) : null;
+    if (device) for (const l of this.listeners) l({ kind: "revoked", device });
     return res.changes > 0;
   }
 
@@ -144,15 +217,33 @@ interface RawDevice {
   last_seen_at: number | null;
   expires_at: number | null;
   revoked_at: number | null;
+  scopes: string | null;
+}
+
+/**
+ * A stored set of scopes: `NULL` (a device paired before scopes existed) reads as the default; text that is not a
+ * JSON list reads as nothing (the safe side), and whatever it holds is closed and cut to the scopes this version knows.
+ */
+export function readScopes(raw: string | null): DeviceScope[] {
+  if (raw === null) return closeDeviceScopes(DEFAULT_DEVICE_SCOPES);
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return closeDeviceScopes(parsed.filter((x): x is string => typeof x === "string"));
+  } catch {
+    return [];
+  }
 }
 
 function fromRow(r: RawDevice): DeviceRecord {
   return {
     id: r.id,
-    name: r.name,
+    // Cleaned on the way out too: a row written before names were cleaned is shown the same way.
+    name: sanitizeDeviceName(r.name) || "device",
     createdAt: r.created_at,
     lastSeenAt: r.last_seen_at,
     expiresAt: r.expires_at,
     revokedAt: r.revoked_at,
+    scopes: readScopes(r.scopes ?? null),
   };
 }

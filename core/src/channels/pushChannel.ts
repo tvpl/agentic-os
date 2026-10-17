@@ -2,6 +2,7 @@ import type { Settings } from "../config/schema.js";
 import type { EventBus, OsEvent } from "../events.js";
 import type { NotificationRecord } from "../notifications/store.js";
 import type { PushStore } from "../notifications/pushStore.js";
+import { classifyPushEndpoint, systemResolver, type HostResolver } from "./pushEndpoint.js";
 import { toneAtLeast } from "./telegram.js";
 import { sendWebPush } from "./webpush.js";
 
@@ -9,6 +10,8 @@ export interface PushChannelDeps {
   getSettings: () => Settings;
   store: PushStore;
   fetchImpl?: typeof fetch;
+  /** Resolves an endpoint's host just before the send (the name may point elsewhere than when it was subscribed). */
+  resolveHost?: HostResolver;
   onError?: (message: string) => void;
 }
 
@@ -37,11 +40,27 @@ export async function deliverPush(
   if (targets.length === 0) return { sent: 0, failed: 0, dropped: 0, skipped: "none" };
   const keys = deps.store.vapidKeys();
   const payload = pushPayload(row);
+  const resolve = deps.resolveHost ?? systemResolver;
   let sent = 0;
   let failed = 0;
   let dropped = 0;
   await Promise.all(
     targets.map(async (t) => {
+      // Checked again at send time: a subscription outlives the check that let it in, and the name's records move.
+      // An endpoint the policy now refuses (it points inside) is dropped for good. A name that could not be
+      // resolved right now (no network, a resolver that timed out) says nothing about where it points: it is a failed
+      // delivery like any other, counted, and the subscription goes only after the usual run of failures.
+      const found = await classifyPushEndpoint(t.sub.endpoint, resolve);
+      if (found.verdict === "rejected") {
+        dropped++;
+        deps.store.remove(t.id);
+        return;
+      }
+      if (found.verdict === "unresolved") {
+        failed++;
+        if (deps.store.markFailure(t.id)) dropped++;
+        return;
+      }
       const r = await sendWebPush(t.sub, payload, {
         keys,
         subject: cfg.subject,

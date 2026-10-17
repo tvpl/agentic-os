@@ -8,7 +8,7 @@
  */
 import { Link } from "react-router-dom";
 import { CalendarClock, Cloud, Monitor, Server } from "lucide-react";
-import type { RoutineStatus, RunRecord } from "../../api";
+import type { RoutineStatus, RunSummary } from "../../api";
 import { useLocale, useT, type TKey } from "../../i18n";
 import { EmptyState } from "../../components/primitives";
 import { sameLocalDay, useDesktopRoutines, useDesktopRuns } from "../data";
@@ -100,7 +100,7 @@ function BoardBody({
   showFooter,
 }: {
   routines: RoutineStatus[];
-  runs: RunRecord[];
+  runs: RunSummary[];
   limit: number;
   fit: number;
   narrow: boolean;

@@ -20,16 +20,18 @@ import type { HumanEvent } from "../../runs/humanize";
 import type { OpenPanel } from "../panelKinds";
 import { appKindOf } from "../apps";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type ArtifactEntry } from "../../api";
-import { useOsArtifacts } from "../../queries";
+import { type ArtifactEntry } from "../../api";
+import { apiCall } from "../../apiCall";
+import { useOsArtifacts, useOsProviders } from "../../queries";
 import { useToast } from "../../components/ui";
 import { FailureFixCard } from "../../runs/FailureFixCard";
 import { openFocus } from "../../nucleo/events";
 import QuestionCard from "../../nucleo/QuestionCard";
 import { isQuestion } from "../../nucleo/question";
 import { activityKind } from "../../nucleo/activity";
+import { Tooltip } from "../../ui";
 import { useApprovals } from "../../runs/ApprovalCards";
-import Markdown from "../../views/Skills/Markdown";
+import { Markdown } from "../../components/Markdown";
 
 export type Reply = ReturnType<typeof replyFromEvents>;
 
@@ -119,17 +121,19 @@ function Turn({
   const toast = useToast();
   const qc = useQueryClient();
   const actions = useDesktopActions();
+  const providers = useOsProviders();
   const send = useMutation({
     mutationFn: (a: ArtifactEntry) =>
-      api.post<{ ok: boolean; error?: string }>("/api/channels/telegram/send", {
-        text: `${a.file}\n${a.path}`,
+      apiCall("POST /api/channels/telegram/send", {
+        body: {
+          text: `${a.file}\n${a.path}`,
+        },
       }),
-    onSuccess: (r) =>
-      toast(r.ok ? t("desktop.artifact.sent") : (r.error ?? t("common.error")), r.ok ? "ok" : "danger"),
+    onSuccess: () => toast(t("desktop.artifact.sent"), "ok"),
     onError: (err: Error) => toast(err.message, "danger"),
   });
   const forget = useMutation({
-    mutationFn: (id: number) => api.post(`/api/memory/facts/${id}/retract`),
+    mutationFn: (id: number) => apiCall("POST /api/memory/facts/:id/retract", { params: { id } }),
     onSuccess: () => {
       toast(t("desktop.facts.retracted"), "ok");
       qc.invalidateQueries({ queryKey: ["memory", "facts"] }).catch(() => undefined);
@@ -156,7 +160,7 @@ function Turn({
     return actions.openPanel(id);
   };
   const cost = run.usage?.costUsd;
-  const recovery = authRecovery(run.provider, `${run.error ?? ""} ${reply?.text ?? ""}`);
+  const recovery = authRecovery(run.provider, `${run.error ?? ""} ${reply?.text ?? ""}`, providers.data);
   const failed = run.status === "failed" || run.status === "timed_out" || run.status === "interrupted";
   return (
     <div className={`console-turn${streaming ? " streaming" : ""}${failed ? " failed" : ""}`}>
@@ -168,7 +172,7 @@ function Turn({
         <span className="console-who">{t("desktop.console.agent")}</span>
         {/* What it said so far, and — below it — what it waits on: a question
             is usually asked after a few words, and still answered here. */}
-        {reply?.text && <Markdown source={reply.text} className="console-md" />}
+        {reply?.text && <Markdown source={reply.text} shape="page" className="console-md" />}
         {question ? (
           // The agent asked you something: that is conversation, answered here.
           <QuestionCard approval={question} />
@@ -271,15 +275,17 @@ function Turn({
                     <small className="dm">{Math.max(1, Math.round(a.sizeBytes / 1024))} kB</small>
                   )}
                 </button>
-                <button
-                  type="button"
-                  className="console-link"
-                  title={t("desktop.artifact.send")}
-                  disabled={send.isPending}
-                  onClick={() => send.mutate(a)}
-                >
-                  ✈
-                </button>
+                <Tooltip label={t("desktop.artifact.send")}>
+                  <button
+                    type="button"
+                    className="console-link"
+                    aria-label={t("desktop.artifact.send")}
+                    disabled={send.isPending}
+                    onClick={() => send.mutate(a)}
+                  >
+                    <span aria-hidden>✈</span>
+                  </button>
+                </Tooltip>
               </div>
             ))}
           </div>
@@ -319,7 +325,6 @@ function Turn({
                   className="console-link"
                   onClick={() => speak(reply.text, locale, { force: true, byUser: true })}
                   aria-label={t("desktop.console.read")}
-                  title={t("desktop.console.read")}
                 >
                   <Volume2 aria-hidden /> {t("desktop.console.read")}
                 </button>

@@ -96,7 +96,7 @@ async function benchmark(size: number, variant: "hero" | "iris", frames: number)
 
 const btn: CSSProperties = {
   font: "inherit",
-  fontSize: "var(--fs-1)",
+  fontSize: "var(--fs-2)",
   letterSpacing: "0.06em",
   textTransform: "uppercase",
   padding: "6px 10px",

@@ -4,10 +4,10 @@
  * `[data-preset="…"]`; this module applies the attribute, the accent-derived
  * tokens and remembers the choice.
  *
- * Source of truth: `settings.themePreset` when the backend exposes it (see the
- * request in the F-SHELL report); until then the value is mirrored in
- * localStorage so it survives reloads. The Settings picker (F-APPS) should
- * call `applyPreset(id)` and PUT `{ themePreset: id, accentColor: preset.accent }`.
+ * Source of truth: `themePreset` in the UI preferences (`/api/ui-preferences`),
+ * mirrored in localStorage so the preset paints before the query answers. The
+ * Settings picker calls `applyPreset(id)`, saves `{ themePreset: id }` to the
+ * UI preferences and `{ accentColor: preset.accent }` to the settings.
  */
 import { accentContrast, ensureContrast, parseColor } from "./color";
 

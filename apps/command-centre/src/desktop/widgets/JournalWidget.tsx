@@ -5,7 +5,7 @@
  */
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useT } from "../../i18n";
 import { useApiQuery } from "../../queries";
 import { EmptyState } from "../../components/primitives";
@@ -32,7 +32,8 @@ export default function JournalWidget(_props: WidgetProps) {
     refetchInterval: 120_000,
   });
   const append = useMutation({
-    mutationFn: (line: string) => api.post("/api/memory/journal/append", { text: line, section: "Today" }),
+    mutationFn: (line: string) =>
+      apiCall("POST /api/memory/journal/append", { body: { text: line, section: "Today" } }),
     onSuccess: () => {
       setText("");
       qc.invalidateQueries({ queryKey: ["memory", "journal"] }).catch(() => undefined);

@@ -4,8 +4,9 @@
  * from the inbox rows it wrote, so the panel and the bell never disagree.
  */
 import type { FastifyInstance } from "fastify";
-import { SENTINEL_IDS } from "@mordomo/core";
+import { SENTINEL_IDS } from "@mordomo/core/internal";
 import type { AppContext } from "../context.js";
+import { bind } from "../contract.js";
 
 export interface SentinelStatusRow {
   id: string;
@@ -18,7 +19,7 @@ export interface SentinelStatusRow {
 }
 
 export function registerSentinelRoutes(app: FastifyInstance, ctx: AppContext): void {
-  app.get("/api/sentinels", async () => {
+  bind(app, "sentinels.list", async () => {
     const settings = ctx.settings();
     const cfg = settings.sentinels as Record<string, Record<string, unknown> & { enabled?: boolean }>;
     const recent = ctx.notifications.list({ limit: 300 });

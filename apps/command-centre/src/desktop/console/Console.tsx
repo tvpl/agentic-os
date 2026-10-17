@@ -12,7 +12,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Headphones, Mic, MicOff, Play, SlidersHorizontal } from "lucide-react";
-import { api, ApiError, type LaunchRunResponse, type ProviderId, type SessionDetail } from "../../api";
+import { ApiError, type LaunchRunResponse, type ProviderId } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useLocale, useT } from "../../i18n";
 import {
   getVoiceNotify,
@@ -21,13 +22,13 @@ import {
   speechRecognitionAvailable,
   stopSpeaking,
 } from "../../hooks/systemNotify";
-import { qk, useOsProviders, useOsSettings, useOsSkills } from "../../queries";
+import { qk, useOsProviders, useOsSettings, useOsSkills, useOsUiPreferences } from "../../queries";
 import { Link } from "react-router-dom";
-import { PROVIDER_LOGIN_COMMANDS, authRecovery } from "../../runs/authRecovery";
+import { authRecovery } from "../../runs/authRecovery";
 import { providerProblem } from "../../components/providerReadiness";
 import { Button } from "../../components/primitives";
 import { useToast } from "../../components/ui";
-import { useRunStream, type RunDetailPayload } from "../../runs/useRunStream";
+import { useRunStream } from "../../runs/useRunStream";
 import { loadPromptSubmission, savePromptSubmission } from "../promptSubmission";
 import { useDesktopActions } from "../actions";
 import { isActiveStatus } from "../data";
@@ -59,6 +60,7 @@ import type { Skill } from "../../api";
 import { ConsoleThread, type Reply } from "./ConsoleThread";
 import { ConsoleTray } from "./ConsoleTray";
 import { ConsoleControls, type Mode, type ModelChoice } from "./ConsoleControls";
+import { Tooltip } from "../../ui";
 
 /** Fired on every keystroke; the core ripples with it (mirrors nucleo/CoreOrb's TYPING_EVENT). */
 const TYPING_EVENT = "mordomo:typing";
@@ -166,6 +168,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
   const providers = useOsProviders();
   const skills = useOsSkills();
   const settings = useOsSettings();
+  const uiPreferences = useOsUiPreferences();
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   /* ---- the draft --------------------------------------------------------- */
@@ -185,7 +188,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
       window.removeEventListener(CONSOLE_DRAFT_EVENT, refresh);
     };
   }, []);
-  const space = settings.data?.activeSpace ?? "work";
+  const space = uiPreferences.data?.activeSpace ?? "work";
   const [mode, setModeState] = useState<Mode>(() => readStoredMode(space));
   const setMode = (next: Mode) => {
     setModeState(next);
@@ -339,7 +342,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
   const [ask, setAsk] = useState<{ skill: Skill; values: Record<string, string> } | null>(null);
   const askRun = useMutation({
     mutationFn: ({ skill, values }: { skill: Skill; values: Record<string, string> }) =>
-      api.post<LaunchRunResponse>(`/api/skills/${encodeURIComponent(skill.slug)}/run`, { inputs: values }),
+      apiCall("POST /api/skills/:slug/run", { params: { slug: skill.slug }, body: { inputs: values } }),
     onSuccess: (res) => {
       setAsk(null);
       setPrompt("");
@@ -401,7 +404,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
   const session = useQuery({
     queryKey: qk.session(sessionId ?? ""),
     queryFn: ({ signal }) =>
-      api.get<SessionDetail>(`/api/sessions/${encodeURIComponent(sessionId ?? "")}`, { signal }),
+      apiCall("GET /api/sessions/:id", { params: { id: sessionId ?? "" } }, { signal }),
     enabled: sessionId !== null,
     retry: false,
     refetchInterval: (q) => (q.state.data?.runs.some((r) => isActiveStatus(r.status)) ? 20_000 : false),
@@ -426,7 +429,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
     queries: finishedIds.map((id) => ({
       queryKey: qk.run(id),
       queryFn: ({ signal }: { signal?: AbortSignal }) =>
-        api.get<RunDetailPayload>(`/api/runs/${encodeURIComponent(id)}`, { signal }),
+        apiCall("GET /api/runs/:id", { params: { id } }, { signal }),
       staleTime: 5 * 60_000,
       retry: false,
     })),
@@ -490,19 +493,24 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
       const submissionId = submission.current.id;
       const tuning = { model: choice.model, effort: choice.effort };
       if (sessionId)
-        return api.post<LaunchRunResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/continue`, {
+        return apiCall("POST /api/sessions/:id/continue", {
+          params: { id: sessionId },
+          body: {
+            prompt: text,
+            submissionId,
+            mode,
+            ...tuning,
+          },
+        });
+      return apiCall("POST /api/runs", {
+        body: {
           prompt: text,
           submissionId,
           mode,
           ...tuning,
-        });
-      return api.post<LaunchRunResponse>("/api/runs", {
-        prompt: text,
-        submissionId,
-        mode,
-        ...tuning,
-        ...(cwd ? { cwd } : {}),
-        ...(defaultProvider ? { provider: defaultProvider as ProviderId } : {}),
+          ...(cwd ? { cwd } : {}),
+          ...(defaultProvider ? { provider: defaultProvider as ProviderId } : {}),
+        },
       });
     },
     onSuccess: (res) => {
@@ -537,7 +545,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
   });
 
   const stop = useMutation({
-    mutationFn: (runId: string) => api.post(`/api/runs/${encodeURIComponent(runId)}/cancel`),
+    mutationFn: (runId: string) => apiCall("POST /api/runs/:id/cancel", { params: { id: runId } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }).catch(() => undefined),
     onError: (err: Error) => toast(err.message, "danger"),
   });
@@ -568,8 +576,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
       setPreflight({
         id: target.id,
         problem,
-        command:
-          problem === "not_installed" ? (target.installHint ?? null) : PROVIDER_LOGIN_COMMANDS[target.id],
+        command: problem === "not_installed" ? (target.installHint ?? null) : (target.loginCommand ?? null),
       });
       return;
     }
@@ -612,7 +619,7 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
   const last = turns[turns.length - 1];
   const recovery =
     !showThread && last
-      ? authRecovery(last.provider, `${last.error ?? ""} ${replies.get(last.id)?.text ?? ""}`)
+      ? authRecovery(last.provider, `${last.error ?? ""} ${replies.get(last.id)?.text ?? ""}`, providers.data)
       : null;
 
   return (
@@ -809,40 +816,43 @@ export default function Console({ busy, deckOpen, onToggleDeck, stacked, lead }:
               }}
             />
             {canListen && (
-              <button
-                type="button"
-                className={`os-tool cons-handsfree${handsFree ? " active" : ""}`}
-                aria-pressed={handsFree}
-                aria-label={handsFree ? t("desktop.console.handsFreeOff") : t("desktop.console.handsFree")}
-                title={handsFree ? t("desktop.console.handsFreeOff") : t("desktop.console.handsFree")}
-                onClick={() => setHandsFree(!handsFree)}
-              >
-                <Headphones aria-hidden />
-              </button>
+              <Tooltip label={handsFree ? t("desktop.console.handsFreeOff") : t("desktop.console.handsFree")}>
+                <button
+                  type="button"
+                  className={`os-tool cons-handsfree${handsFree ? " active" : ""}`}
+                  aria-pressed={handsFree}
+                  aria-label={handsFree ? t("desktop.console.handsFreeOff") : t("desktop.console.handsFree")}
+                  onClick={() => setHandsFree(!handsFree)}
+                >
+                  <Headphones aria-hidden />
+                </button>
+              </Tooltip>
             )}
             {canListen && (
+              <Tooltip label={listening ? t("desktop.console.micStop") : t("desktop.console.mic")}>
+                <button
+                  type="button"
+                  className={`os-tool cons-mic${listening ? " active" : ""}`}
+                  aria-pressed={listening}
+                  aria-label={listening ? t("desktop.console.micStop") : t("desktop.console.mic")}
+                  onClick={toggleListening}
+                >
+                  {listening ? <MicOff aria-hidden /> : <Mic aria-hidden />}
+                </button>
+              </Tooltip>
+            )}
+            <Tooltip label={t("nucleo.voice.more")}>
               <button
                 type="button"
-                className={`os-tool cons-mic${listening ? " active" : ""}`}
-                aria-pressed={listening}
-                aria-label={listening ? t("desktop.console.micStop") : t("desktop.console.mic")}
-                title={listening ? t("desktop.console.micStop") : t("desktop.console.mic")}
-                onClick={toggleListening}
+                className={`os-tool cons-more${sideOpen ? " active" : ""}`}
+                aria-expanded={sideOpen}
+                aria-controls="cons-side"
+                aria-label={t("nucleo.voice.more")}
+                onClick={() => setSideOpen(!sideOpen)}
               >
-                {listening ? <MicOff aria-hidden /> : <Mic aria-hidden />}
+                <SlidersHorizontal aria-hidden />
               </button>
-            )}
-            <button
-              type="button"
-              className={`os-tool cons-more${sideOpen ? " active" : ""}`}
-              aria-expanded={sideOpen}
-              aria-controls="cons-side"
-              aria-label={t("nucleo.voice.more")}
-              title={t("nucleo.voice.more")}
-              onClick={() => setSideOpen(!sideOpen)}
-            >
-              <SlidersHorizontal aria-hidden />
-            </button>
+            </Tooltip>
             <button
               type="button"
               className="cbtn cons-skills"

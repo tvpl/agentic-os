@@ -1,11 +1,21 @@
-export const PROVIDER_LOGIN_COMMANDS = {
-  claude: "claude auth login",
-  codex: "codex login",
-  cursor: "cursor-agent login",
-} as const;
+import type { ProviderSnapshot } from "../api";
+
+type LoginSnapshot = Pick<ProviderSnapshot, "id" | "loginCommand">;
+
+/** The command that signs a provider's CLI in, as its manifest declares it (`GET /api/providers`). */
+export function loginHint(
+  provider: string | null | undefined,
+  snapshots: readonly LoginSnapshot[] | undefined,
+): string | null {
+  return snapshots?.find((s) => s.id === provider)?.loginCommand ?? null;
+}
 
 /** Match authentication failures only; never retry a denied or failed write automatically. */
-export function authRecovery(provider: string, error: string | null | undefined): string | null {
+export function authRecovery(
+  provider: string,
+  error: string | null | undefined,
+  snapshots: readonly LoginSnapshot[] | undefined,
+): string | null {
   if (
     !error ||
     !/(?:failed to authenticate|oauth session expired|not logged in|authentication (?:failed|required)|invalid api key|token (?:has )?expired)/i.test(
@@ -13,8 +23,5 @@ export function authRecovery(provider: string, error: string | null | undefined)
     )
   )
     return null;
-  if (provider === "claude") return PROVIDER_LOGIN_COMMANDS.claude;
-  if (provider === "codex") return PROVIDER_LOGIN_COMMANDS.codex;
-  if (provider === "cursor") return PROVIDER_LOGIN_COMMANDS.cursor;
-  return null;
+  return loginHint(provider, snapshots);
 }

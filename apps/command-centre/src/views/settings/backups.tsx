@@ -1,7 +1,7 @@
 /** Settings › backups (split out of Settings.tsx, refino item 17). */
 import { Download } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../../api";
+import { apiCall } from "../../apiCall";
 
 import { useLocale, useT } from "../../i18n";
 import { qk, useApiQuery } from "../../queries";
@@ -18,7 +18,7 @@ export function BackupsTab() {
   const qc = useQueryClient();
   const backups = useApiQuery<BackupInfo[]>(qk.backups, "/api/backups");
   const create = useMutation({
-    mutationFn: () => api.post<BackupInfo>("/api/backups", {}),
+    mutationFn: () => apiCall("POST /api/backups", { body: {} }),
     onSuccess: (b) => {
       toast(`${b.name} (${formatBytes(b.sizeBytes)})`, "ok");
       qc.invalidateQueries({ queryKey: qk.backups }).catch(() => undefined);
@@ -26,11 +26,8 @@ export function BackupsTab() {
     onError: (err: Error) => toast(err.message, "danger"),
   });
   const restore = useMutation({
-    mutationFn: (name: string) =>
-      api.post<{ note?: string; message?: string; staged?: boolean }>(
-        `/api/backups/${encodeURIComponent(name)}/restore`,
-      ),
-    onSuccess: (res) => toast(res.note ?? res.message ?? t("settings.restored"), "info"),
+    mutationFn: (name: string) => apiCall("POST /api/backups/:name/restore", { params: { name } }),
+    onSuccess: (res) => toast(res.message, "info"),
     onError: (err: Error) => toast(err.message, "danger"),
   });
   const onRestore = async (b: BackupInfo) => {

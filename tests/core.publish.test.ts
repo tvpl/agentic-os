@@ -11,7 +11,7 @@ import {
   publishRegistry,
   signIndex,
   verifyIndex,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 
 function tmp(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-publish-"));

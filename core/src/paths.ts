@@ -53,6 +53,8 @@ export interface MordomoPaths {
   routines: string;
   connectors: string;
   artifacts: string;
+  /** The default working directory of an agent run: the home itself holds `config/`, so it never is one. */
+  workspace: string;
   logs: string;
   config: string;
   db: string;
@@ -60,6 +62,8 @@ export interface MordomoPaths {
   backups: string;
   run: string;
   settingsFile: string;
+  /** What only the Command Centre reads and writes (theme preset, layouts, HUD, Second Brain view). */
+  uiPreferencesFile: string;
   tokenFile: string;
   syncManifest: string;
 }
@@ -77,6 +81,7 @@ export function resolvePaths(homeOverride?: string): MordomoPaths {
     routines: path.join(home, "routines"),
     connectors: path.join(home, "connectors"),
     artifacts: path.join(home, "artifacts"),
+    workspace: path.join(home, "workspace"),
     logs: path.join(home, "logs"),
     config,
     db,
@@ -84,25 +89,88 @@ export function resolvePaths(homeOverride?: string): MordomoPaths {
     backups: path.join(config, "backups"),
     run: path.join(config, "run"),
     settingsFile: path.join(config, "settings.json"),
+    uiPreferencesFile: path.join(config, "ui-preferences.json"),
     tokenFile: path.join(config, "token"),
     syncManifest: path.join(config, "sync-manifest.json"),
   };
 }
 
+/** Directories that hold credentials, the database, backups and run output: owner only. */
+export const PRIVATE_DIR_MODE = 0o700;
+/** The database, its sidecars, backups of it, the token and the logs: owner only. */
+export const PRIVATE_FILE_MODE = 0o600;
+
+/**
+ * Set `target`'s permission bits to `mode` when they differ; a no-op when they
+ * already match, when the path is missing or is a symbolic link (never followed),
+ * on Windows (where POSIX modes do not exist; docs/security.md) and when the
+ * file is not ours to change.
+ */
+export function tightenMode(target: string, mode: number): boolean {
+  if (process.platform === "win32") return false;
+  // A file that already has the mode is not opened at all: closing ANY descriptor on a file SQLite has open (the
+  // database, its -wal and -shm) drops this process's locks on it, and a connection that lost them corrupts the
+  // lock protocol other processes depend on. A link is left alone here too, as below.
+  try {
+    const stat = fs.lstatSync(target);
+    if (stat.isSymbolicLink() || (stat.mode & 0o777) === mode) return false;
+  } catch {
+    return false;
+  }
+  // The descriptor is opened without following a link: a `logs` or `mordomo.db-wal` that somebody replaced
+  // by a link to a file elsewhere is left alone, never chmod-ed through (`stat` + `chmod` follow links).
+  let fd: number;
+  try {
+    fd = fs.openSync(target, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+  } catch {
+    return false;
+  }
+  try {
+    if ((fs.fstatSync(fd).mode & 0o777) === mode) return false;
+    fs.fchmodSync(fd, mode);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 export function ensureDirs(p: MordomoPaths): void {
-  for (const dir of [
-    p.skills,
-    p.memory,
-    p.routines,
-    p.connectors,
-    p.artifacts,
-    p.logs,
-    p.config,
-    p.db,
-    p.backups,
-    p.run,
-  ]) {
+  for (const dir of [p.skills, p.memory, p.routines, p.connectors, p.artifacts, p.workspace]) {
     fs.mkdirSync(dir, { recursive: true });
+  }
+  for (const dir of [p.config, p.db, p.backups, p.logs, p.run]) {
+    fs.mkdirSync(dir, { recursive: true, mode: PRIVATE_DIR_MODE });
+    tightenMode(dir, PRIVATE_DIR_MODE);
+  }
+}
+
+/**
+ * Bring the files of an existing home to owner-only, once per start: the
+ * database and its WAL sidecars, the token, every log, and the backups (their
+ * folders and the database inside each). Only what differs is written.
+ */
+export function tightenHomeFiles(p: MordomoPaths): void {
+  for (const suffix of ["", "-wal", "-shm"]) tightenMode(p.dbFile + suffix, PRIVATE_FILE_MODE);
+  tightenMode(p.tokenFile, PRIVATE_FILE_MODE);
+  const entries = (dir: string): fs.Dirent[] => {
+    try {
+      return fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+  };
+  for (const entry of entries(p.logs)) {
+    if (entry.isFile()) tightenMode(path.join(p.logs, entry.name), PRIVATE_FILE_MODE);
+  }
+  for (const entry of entries(p.backups)) {
+    const full = path.join(p.backups, entry.name);
+    if (entry.isFile()) tightenMode(full, PRIVATE_FILE_MODE);
+    else if (entry.isDirectory()) {
+      tightenMode(full, PRIVATE_DIR_MODE);
+      tightenMode(path.join(full, "config", "db", "mordomo.db"), PRIVATE_FILE_MODE);
+    }
   }
 }
 

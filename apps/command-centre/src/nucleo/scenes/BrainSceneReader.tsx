@@ -13,6 +13,7 @@
  * explanation, project it as a lâmina, copy the path, open the editor.
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
+import { Markdown } from "../../components/Markdown";
 import { formatBytes, timeAgo } from "../../components/ui";
 import { useT, type TKey } from "../../i18n";
 import type { FileNode } from "../../brain/engine/world";
@@ -23,8 +24,8 @@ import {
   resolveReference,
   type Block,
 } from "../../brain/markdown";
+import { openNoteEditor } from "../../brain/noteEditor";
 import { BrainGlyph } from "./BrainGlyph";
-import { BrainSceneMarkdown } from "./BrainSceneMarkdown";
 import type { ContentKind } from "./brainGlyphs";
 import { starLabel } from "./brainModel";
 import { outlineOf, readingMinutes, stripFrontmatter, type RelationKind } from "./brainReading";
@@ -34,6 +35,8 @@ export interface SheetPreview {
   content: string | null;
   kind: string;
   message: string | null;
+  /** The file is a note the owner can edit (`GET /api/memory/preview`). */
+  editable?: boolean;
 }
 
 export interface RailEntry {
@@ -328,15 +331,21 @@ export const BrainSceneReader = memo(function BrainSceneReader(p: BrainSceneRead
           {p.preview.kind === "loading" ? (
             <p className="bs-faint bs-breathe">{t("scene.brain.reading")}</p>
           ) : blocks ? (
-            <BrainSceneMarkdown
+            <Markdown
               blocks={blocks}
-              resolve={resolve}
-              skills={p.skills}
-              onNote={p.onNote}
-              onSkill={p.onSkill}
-              headingIds={headingIds}
-              onPeek={p.onPeek}
-              kindOf={p.kindOfId}
+              shape="scene"
+              refs={{
+                resolve,
+                skills: p.skills,
+                onNote: p.onNote,
+                onSkill: p.onSkill,
+                onPeek: p.onPeek,
+                headingIds,
+                iconOf: (id) => {
+                  const kind = p.kindOfId(id);
+                  return kind ? <BrainGlyph kind={kind} size={13} className="bs-md-link-icon" /> : null;
+                },
+              }}
             />
           ) : p.preview.kind === "text" ? (
             <pre className="bs-md-pre bs-read-plain">{p.preview.content}</pre>
@@ -375,6 +384,15 @@ export const BrainSceneReader = memo(function BrainSceneReader(p: BrainSceneRead
         <button type="button" className="bs-act" onClick={p.onCopy}>
           {t("brain.copyPath")}
         </button>
+        {p.preview.editable && (
+          <button
+            type="button"
+            className="bs-act"
+            onClick={() => openNoteEditor({ mode: "edit", path: p.preview.node.path })}
+          >
+            {t("note.edit")}
+          </button>
+        )}
         <button type="button" className="bs-act" onClick={p.onEditor}>
           {t("brain.openEditor")}
         </button>

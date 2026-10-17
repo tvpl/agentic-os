@@ -1,14 +1,16 @@
 import path from "node:path";
-import { isSecretFile, makeExcludeMatcher } from "../security/paths.js";
+import { isSecretFile, makeExcludeMatcher, realpathLenient } from "../security/paths.js";
 
 /**
  * Workspace exclusion policy shared by the indexer, the preview and the
  * "open with OS" route, so no code path can read what another one refuses.
  *
- * Three layers, all evaluated before any content is read:
+ * Four layers, all evaluated before any content is read:
  *  1. the user's `settings.excludes` glob list (per path segment);
  *  2. a hard directory blocklist that the user cannot switch off;
- *  3. the secret-file basename patterns (`.env`, `*.pem`, `id_rsa*`, …).
+ *  3. the secret-file basename patterns (`.env`, `*.pem`, `id_rsa*`, …);
+ *  4. the MordomoOS home's own `config/` and `logs/` (token, VAPID key, signing
+ *     key, database, prompts and outputs), decided on the real path.
  */
 
 /** Directories never read, whatever the settings say — matched on any path segment. */
@@ -23,6 +25,14 @@ export const HARD_BLOCKED_DIRS: ReadonlyArray<string> = [
 ];
 
 const HARD_BLOCKED = new Set(HARD_BLOCKED_DIRS.map((d) => d.toLowerCase()));
+
+/**
+ * Directories of the MordomoOS home that hold credentials and run output. Unlike
+ * `HARD_BLOCKED_DIRS` they are matched only as direct children of the home
+ * (`<home>/config`, `<home>/logs`): a `config/` folder inside a user's project
+ * stays readable.
+ */
+export const HOME_PRIVATE_DIRS: ReadonlyArray<string> = ["config", "logs"];
 
 /** Maximum bytes sniffed for a NUL byte when deciding text vs binary. */
 export const BINARY_SNIFF_BYTES = 8 * 1024;
@@ -54,24 +64,113 @@ export function isBinaryBuffer(buf: Uint8Array): boolean {
   return false;
 }
 
+export interface WorkspaceFilterOptions {
+  /**
+   * The MordomoOS home. Its `config/` and `logs/` are never served. Required, so
+   * that leaving it out is a type error rather than a silent hole: `null` says
+   * "this filter judges names only and reads nothing" (the file watcher).
+   */
+  homeDir: string | null;
+  /** Platform whose file-name rules apply; defaults to this process's. Case-insensitive on darwin and win32. */
+  platform?: NodeJS.Platform;
+}
+
 export interface WorkspaceFilter {
   /** Why a path must not be read, or null when it may. `rel` is relative to its root. */
   reasonToSkip(rel: string, absolute?: string): string | null;
   /** Convenience boolean form of `reasonToSkip`. */
   isExcluded(rel: string, absolute?: string): boolean;
+  /**
+   * Why `absolute` lies inside the home's private directories, or null. Callers
+   * that answer an API request turn this into a 403 rather than a "blocked" body.
+   */
+  homePrivateReason(absolute: string): string | null;
+  /**
+   * Why a folder cannot be an agent's working directory or an import source because it HOLDS the home's private
+   * directories (it is the home, or a folder above it), or null. Compared as the platform's file system compares
+   * names, like `homePrivateReason`: on macOS and Windows `<base>/.MORDOMO` is the home.
+   */
+  holdsHomePrivateDir(absolute: string): string | null;
+  /** Whether `absolute` (a real path) is the MordomoOS home itself, by the same comparison. */
+  isHomeDir(absolute: string): boolean;
+}
+
+/**
+ * Segments as the platform's file system compares them: case-folded, without the trailing dots/spaces Windows
+ * drops, and on macOS in one Unicode form (APFS and HFS+ treat `é` written as one character or as `e` plus an
+ * accent as the same name).
+ */
+function comparableSegments(p: string, platform: NodeJS.Platform): string[] {
+  const insensitive = platform === "darwin" || platform === "win32";
+  return segmentsOf(p).map((seg) => {
+    const trimmed = platform === "win32" ? seg.replace(/[. ]+$/, "") : seg;
+    const composed = platform === "darwin" ? trimmed.normalize("NFC") : trimmed;
+    return insensitive ? composed.toLowerCase() : composed;
+  });
+}
+
+/**
+ * The home's private directories as comparable segment lists, spelled both
+ * lexically and by real path (a symlinked home or a symlinked `config/` is the
+ * same directory under either name).
+ */
+function homePrivateDirs(homeDir: string, platform: NodeJS.Platform): Array<{ name: string; segs: string[] }> {
+  const found = new Map<string, { name: string; segs: string[] }>();
+  const realHome = realpathLenient(homeDir);
+  for (const name of HOME_PRIVATE_DIRS) {
+    const spellings = [
+      path.join(path.resolve(homeDir), name),
+      path.join(realHome, name),
+      realpathLenient(path.join(homeDir, name)),
+    ];
+    for (const spelling of spellings) {
+      const segs = comparableSegments(spelling, platform);
+      found.set(segs.join("/"), { name, segs });
+    }
+  }
+  return [...found.values()];
 }
 
 /**
  * Build the combined matcher for a settings `excludes` list. `rel` is matched
  * against the user globs and the hard blocklist; `absolute` (when given) is
  * additionally checked against the hard blocklist so a root that itself sits
- * under `.git/` or `.ssh/` is refused too.
+ * under `.git/` or `.ssh/` is refused too, and against the home's private
+ * directories. For the latter `absolute` must be the real path (callers resolve
+ * symlinks first): the comparison is by path, not by name.
  */
-export function makeWorkspaceFilter(excludes: ReadonlyArray<string>): WorkspaceFilter {
+export function makeWorkspaceFilter(
+  excludes: ReadonlyArray<string>,
+  options: WorkspaceFilterOptions,
+): WorkspaceFilter {
   const userMatch = makeExcludeMatcher([...excludes]);
+  const platform = options.platform ?? process.platform;
+  const privateDirs = options.homeDir ? homePrivateDirs(options.homeDir, platform) : [];
+  const homePrivateReason = (absolute: string): string | null => {
+    if (privateDirs.length === 0 || !path.isAbsolute(absolute)) return null;
+    const segs = comparableSegments(path.resolve(absolute), platform);
+    const hit = privateDirs.find((dir) => dir.segs.every((seg, i) => segs[i] === seg));
+    return hit ? `Path is inside the MordomoOS ${hit.name}/ folder, which holds credentials and is never served.` : null;
+  };
+  const homeSpellings = options.homeDir
+    ? [path.resolve(options.homeDir), realpathLenient(options.homeDir)].map((p) => comparableSegments(p, platform))
+    : [];
+  const holdsHomePrivateDir = (absolute: string): string | null => {
+    if (privateDirs.length === 0 || !path.isAbsolute(absolute)) return null;
+    const segs = comparableSegments(path.resolve(absolute), platform);
+    const hit = privateDirs.find((dir) => segs.length <= dir.segs.length && segs.every((seg, i) => dir.segs[i] === seg));
+    return hit ? `Folder would hold the MordomoOS ${hit.name}/ folder, which holds credentials.` : null;
+  };
+  const isHomeDir = (absolute: string): boolean => {
+    if (!path.isAbsolute(absolute)) return false;
+    const segs = comparableSegments(path.resolve(absolute), platform);
+    return homeSpellings.some((home) => home.length === segs.length && home.every((seg, i) => segs[i] === seg));
+  };
   const reasonToSkip = (rel: string, absolute?: string): string | null => {
     const blocked = hardBlockedSegment(absolute ?? rel) ?? hardBlockedSegment(rel);
     if (blocked) return `Path is inside a protected directory (${blocked}/) and is never read.`;
+    const homePrivate = absolute ? homePrivateReason(absolute) : null;
+    if (homePrivate) return homePrivate;
     if (isSecretFile(path.basename(absolute ?? rel))) {
       return "This file matches the secret-file blocklist and is never read.";
     }
@@ -81,5 +180,8 @@ export function makeWorkspaceFilter(excludes: ReadonlyArray<string>): WorkspaceF
   return {
     reasonToSkip,
     isExcluded: (rel, absolute) => reasonToSkip(rel, absolute) !== null,
+    homePrivateReason,
+    holdsHomePrivateDir,
+    isHomeDir,
   };
 }

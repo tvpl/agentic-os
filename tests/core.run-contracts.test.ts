@@ -1,17 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { type AgentAdapter, type AgentRun, type RunEvent } from "@mordomo/core";
 import {
-  BUILTIN_MANIFESTS,
   EventBus,
   RunManager,
   SettingsStore,
   openDb,
   triageSentinel,
-  type AgentAdapter,
-  type AgentRun,
   type Db,
-  type RunEvent,
   classifyRunFailure,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
+import { claudeManifest } from "@mordomo/adapter-claude";
 import { makeTempHome } from "./helpers.js";
 
 describe("durable run contracts", () => {
@@ -67,7 +65,7 @@ describe("durable run contracts", () => {
     let peak = 0;
     adapter = {
       id: "claude",
-      manifest: BUILTIN_MANIFESTS.claude,
+      manifest: claudeManifest,
       async *execute(run: AgentRun): AsyncIterable<RunEvent> {
         const index = started.push(run) - 1;
         peak = Math.max(peak, ++active);
@@ -125,7 +123,7 @@ describe("durable run contracts", () => {
     let peak = 0;
     adapter = {
       id: "claude",
-      manifest: BUILTIN_MANIFESTS.claude,
+      manifest: claudeManifest,
       async *execute(): AsyncIterable<RunEvent> {
         peak = Math.max(peak, ++active);
         await gate.promise;
@@ -175,7 +173,7 @@ describe("durable run contracts", () => {
     let starts = 0;
     adapter = {
       id: "claude",
-      manifest: BUILTIN_MANIFESTS.claude,
+      manifest: claudeManifest,
       async *execute(): AsyncIterable<RunEvent> {
         starts++;
         await gate.promise;
@@ -226,7 +224,7 @@ describe("durable run contracts", () => {
     const gate = Promise.withResolvers<void>();
     adapter = {
       id: "claude",
-      manifest: BUILTIN_MANIFESTS.claude,
+      manifest: claudeManifest,
       async *execute(): AsyncIterable<RunEvent> {
         await gate.promise;
         yield {
@@ -295,7 +293,7 @@ describe("durable run contracts", () => {
   it("adds stable attempt and sequence metadata to persisted events", async () => {
     adapter = {
       id: "claude",
-      manifest: BUILTIN_MANIFESTS.claude,
+      manifest: claudeManifest,
       async *execute(): AsyncIterable<RunEvent> {
         yield { type: "tool_use", ts: 10, tool: "read", detail: "file", callId: "call-1", phase: "start" };
         yield {

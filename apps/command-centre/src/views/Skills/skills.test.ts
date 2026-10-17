@@ -51,10 +51,10 @@ describe("skill resources", () => {
 
   it("builds a containment-safe, encoded resource URL", () => {
     expect(resourceUrl("my-skill", "resources/a b.md")).toBe(
-      "/api/skills/my-skill/resource?rel=resources%2Fa%20b.md",
+      "/api/v1/skills/my-skill/resource?rel=resources%2Fa%20b.md",
     );
     // No token in the test document → `withToken` cannot add one.
-    expect(resourceUrl("s", "a.md", true)).toBe("/api/skills/s/resource?rel=a.md");
+    expect(resourceUrl("s", "a.md", true)).toBe("/api/v1/skills/s/resource?rel=a.md");
   });
 
   it("only previews inline what the panel can actually render", () => {

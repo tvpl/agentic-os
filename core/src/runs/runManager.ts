@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import type { PermissionBroker } from "../agents/types.js";
@@ -8,80 +9,40 @@ import type { MordomoPaths } from "../paths.js";
 import type { Settings, ProviderId, EffortLevel, SecurityProfile } from "../config/schema.js";
 import type { AgentAdapter, AgentRun, RunEvent, RunMode, RunUsage, RunUsageEvent } from "../agents/types.js";
 import { JsonlLogger } from "../logs/jsonl.js";
+import { PathAccessError, isInside, realpathLenient } from "../security/paths.js";
+import { isValidId } from "../security/ids.js";
 import { redactSecrets } from "../security/redact.js";
+import {
+  findPrivateLink,
+  grantedReadScope,
+  isHomeDirectory,
+  resolveWorkspaceCwd,
+  type ReadScope,
+} from "../security/safeFs.js";
 import { ownedProcessKiller } from "../spawn/safeSpawn.js";
-import { events } from "../events.js";
+import type { EventBus } from "../events.js";
+import { boundedPaths } from "../agents/eventPaths.js";
+import { MordomoError } from "../errors.js";
 import { SessionStore } from "./sessionStore.js";
 import { emulatedPrompt } from "./emulatedSession.js";
+import {
+  TERMINAL_STATUSES,
+  isDeviceActor,
+  type RunFailure,
+  type RunOrigin,
+  type RunRecord,
+  type RunRequestSpec,
+  type RunStatus,
+} from "@mordomo/contracts";
 
-export type RunOrigin = "manual" | "skill" | "routine" | "api" | "sentinel";
-export type RunStatus =
-  "queued" | "running" | "waiting_approval" | "done" | "failed" | "cancelled" | "timed_out" | "interrupted";
-
-export const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set([
-  "done",
-  "failed",
-  "cancelled",
-  "timed_out",
-  "interrupted",
-]);
-
-/** Complete local request used to reproduce a run without relying on its UI summary. */
-export type RunRequestSpec =
-  | { version: 1; kind: "prompt"; prompt: string; mode: RunMode }
-  | { version: 1; kind: "skill"; skillSlug: string; inputs: Record<string, string>; mode: RunMode }
-  | { version: 1; kind: "system"; prompt: string; mode: RunMode };
-
-export interface RunFailure {
-  code:
-    | "authentication"
-    | "permission"
-    | "budget"
-    | "timeout"
-    | "cancelled"
-    | "interrupted"
-    | "provider"
-    | "unknown";
-  message: string;
-  recoverable: boolean;
-  effectsUncertain: boolean;
-}
-
-export interface RunRecord {
-  id: string;
-  createdAt: number;
-  startedAt: number | null;
-  finishedAt: number | null;
-  origin: RunOrigin;
-  provider: ProviderId;
-  model: string | null;
-  effort: EffortLevel;
-  status: RunStatus;
-  exitCode: number | null;
-  durationMs: number | null;
-  cwd: string | null;
-  promptSummary: string;
-  /** Complete typed request. Null for runs created before migration 14. */
-  request: RunRequestSpec | null;
-  skillSlug: string | null;
-  routineId: string | null;
-  /** Spend cap for this run (remaining routine/skill budget at launch); null = none. */
-  maxCostUsd: number | null;
-  /** First run of a retry chain (null for the first attempt). */
-  parentRunId: string | null;
-  /** Conversation this run belongs to (`sessions.id`), or null for a one-shot run. */
-  sessionId: string | null;
-  pid: number | null;
-  error: string | null;
-  failure: RunFailure | null;
-  artifacts: string[];
-  filesChanged: string[];
-  attempts: number;
-  timeoutMs: number | null;
-  permissionProfile: SecurityProfile | null;
-  /** Token usage and provider-reported cost; null until a provider reports it. */
-  usage: RunUsage | null;
-}
+export {
+  TERMINAL_STATUSES,
+  type RunFailure,
+  type RunOrigin,
+  type RunRecord,
+  type RunRequestSpec,
+  type RunStatus,
+};
 
 /** `Metrics.cost` — spend and token throughput derived from the runs table. */
 export interface CostMetrics {
@@ -133,6 +94,14 @@ export interface CreateRunInput {
   sessionId?: string | null;
   attempts?: number;
   /**
+   * Who asked for the run, by the names `Approval.resolvedBy` uses (`owner`, `device:<id>`); `null` for what no request
+   * started (a routine, a sentinel, the CLI). Required, so a caller that forgets it does not compile instead of
+   * running as nobody: each way a run is created says who it is for. A paired device only starts runs on a provider
+   * whose reads stay in the working folder (`ProviderCapabilities.readConfinement`), checked here for every way a run
+   * is created.
+   */
+  startedBy: string | null;
+  /**
    * Initial status. `waiting_approval` makes a write run gated by an approval
    * visible in the Runs list; `markApproved()` moves it to `queued`.
    */
@@ -170,6 +139,8 @@ export interface PruneResult {
 /** Events kept per run (first HEAD_KEEP + tail). Applied live and on prune(). */
 const DEFAULT_EVENT_CAP = 5000;
 const HEAD_KEEP = 500;
+/** A run's `filesChanged` never lists more files than this (it is one column of the runs row). */
+const MAX_FILES_CHANGED = 5000;
 /** Queue depth allowed before create() refuses with 429 = maxConcurrentRuns * this. */
 const QUEUE_DEPTH_FACTOR = 10;
 /** How often prune() may compact the database file. */
@@ -202,8 +173,19 @@ interface ActiveRun {
 /** Builds the permission MCP command for a run, or null to let the CLI decide alone. */
 export type PermissionBrokerFactory = (run: RunRecord) => PermissionBroker | null;
 
+/** What a catalog skill is given besides its own folder (`Skill.memoryAccess`, from the owner's `memorySkills`). */
+export interface SkillAccess {
+  memory: boolean;
+}
+/** The run-scoped credential for the memory routes of the local API, or null when the API is not this process's. */
+export type RunApiAccessFactory = (run: RunRecord, mode: RunMode) => { url: string; token: string } | null;
+
 export class RunManager {
   private readonly permissionBroker: PermissionBrokerFactory | null;
+  private readonly skillAccess: ((slug: string) => SkillAccess | null) | null;
+  private readonly runApiAccess: RunApiAccessFactory | null;
+  private readonly platform: NodeJS.Platform | undefined;
+  private readonly bus: EventBus | null;
   /** Conversations these runs may belong to (`runs.session_id`). */
   readonly sessions: SessionStore;
   private readonly emitter = new EventEmitter();
@@ -216,26 +198,45 @@ export class RunManager {
   private readonly activeRuns = new Map<string, ActiveRun>();
   private shuttingDown = false;
   private readonly eventCap: number;
+  /** Real paths of the throwaway directories this manager made for isolated runs (`scratchDir`). */
+  private readonly scratchDirs = new Set<string>();
 
   constructor(
     private readonly db: Db,
     private readonly paths: MordomoPaths,
     private readonly getSettings: () => Settings,
-    private readonly getAdapter: (id: ProviderId) => AgentAdapter,
-    opts: { eventCap?: number; pruneOnBoot?: boolean; permissionBroker?: PermissionBrokerFactory } = {},
+    private readonly getAdapter: (id: ProviderId) => AgentAdapter | undefined,
+    opts: {
+      eventCap?: number;
+      pruneOnBoot?: boolean;
+      permissionBroker?: PermissionBrokerFactory;
+      skillAccess?: (slug: string) => SkillAccess | null;
+      runApiAccess?: RunApiAccessFactory;
+      /** Platform whose file-name rules apply to working directories (tests only); defaults to this process's. */
+      platform?: NodeJS.Platform;
+      /** Where runs are announced (`run.*`) and the conversations' changes (`session.*`); without one it is silent. */
+      bus?: EventBus;
+    } = {},
   ) {
     this.permissionBroker = opts.permissionBroker ?? null;
+    this.skillAccess = opts.skillAccess ?? null;
+    this.runApiAccess = opts.runApiAccess ?? null;
+    this.platform = opts.platform;
     const s = getSettings();
-    this.sessions = new SessionStore(db);
+    this.bus = opts.bus ?? null;
+    this.sessions = new SessionStore(db, opts.bus);
     this.logger = new JsonlLogger(paths.logs, "runs", s.limits.logMaxFileBytes, s.limits.logRetentionDays);
     this.emitter.setMaxListeners(100);
     this.eventCap = opts.eventCap ?? DEFAULT_EVENT_CAP;
-    if (opts.pruneOnBoot !== false) {
-      try {
-        this.prune();
-      } catch (err) {
-        this.log({ event: "prune_failed", error: (err as Error).message });
-      }
+    if (opts.pruneOnBoot !== false) this.pruneLogged();
+  }
+
+  /** `prune()` as a boot step: best effort, a failure is logged and never thrown. */
+  pruneLogged(): void {
+    try {
+      this.prune();
+    } catch (err) {
+      this.log({ event: "prune_failed", error: (err as Error).message });
     }
   }
 
@@ -413,9 +414,10 @@ export class RunManager {
         note += `; process ${row.pid} was not signalled because ownership could not be verified`;
         this.log({ event: "orphan_unverified", runId: row.id, pid: row.pid });
       }
+      // Settled like any other end, so `run.finished` is announced: whoever waits on the run (`execution.wait`) is
+      // told it ended, instead of waiting for ever.
       if (
-        this.transition(row.id, ["running", "queued"], "interrupted", {
-          finished_at: Date.now(),
+        this.settle(row.id, ["running", "queued"], "interrupted", {
           error: row.error ? `${row.error}; ${note}` : note,
         })
       ) {
@@ -425,9 +427,143 @@ export class RunManager {
     return changed;
   }
 
+  // ------------------------------------------------------ working directory --
+
+  /**
+   * The only rule that decides where an agent may start: inside a folder the
+   * user granted (the home and the enabled indexed folders) and outside the
+   * home's `config/` and `logs/`, which hold the owner token. Every run goes
+   * through it twice, whoever asked: `create()` (a request, a routine, a
+   * retry, an objective step) and the launch itself (a stored cwd whose folder
+   * became private or was revoked since). Throws `PathAccessError` (403).
+   *
+   * An agent reads everything below its working directory without asking
+   * (Claude's `Read` inside the cwd, Codex's read-only sandbox), so a directory
+   * that holds `config/token` is never one: the home itself is NOT a working
+   * directory. No `cwd` (`null`), or the home itself (what every run recorded
+   * before this rule has), is the default working directory `<home>/workspace`;
+   * a granted folder that contains the home is refused.
+   */
+  resolveCwd(cwd?: string | null): string {
+    if (cwd === undefined || cwd === null) return this.defaultCwd();
+    const real = realpathLenient(path.resolve(cwd));
+    if ([...this.scratchDirs].some((dir) => isInside(dir, real))) return real;
+    const scope = this.scope();
+    if (isHomeDirectory(scope, real)) return this.defaultCwd();
+    return resolveWorkspaceCwd(scope, cwd);
+  }
+
+  /** The folders an agent may start in: the home and the enabled indexed folders, names compared as this platform does. */
+  private scope(): ReadScope {
+    return grantedReadScope(this.getSettings(), this.paths.home, [], this.platform);
+  }
+
+  /** `<home>/workspace`, made on first use and checked by the same rule (a link there to `config/` is refused). */
+  defaultCwd(): string {
+    try {
+      fs.mkdirSync(this.paths.workspace, { recursive: true });
+    } catch (err) {
+      // A file, or a link that points nowhere, is where the folder should be: say what to do, not "EEXIST".
+      throw new MordomoError(
+        409,
+        `The default working directory ${this.paths.workspace} cannot be used (it exists and is not a folder, or cannot be made): remove or rename it. ${(err as Error).message}`,
+        "workspace_unavailable",
+      );
+    }
+    return resolveWorkspaceCwd(this.scope(), this.paths.workspace);
+  }
+
+  /**
+   * A fresh, empty working directory outside the workspace for an isolated
+   * run. It is the one place outside the granted folders a run may start in,
+   * and only because this manager made it. Falls back to the home when the
+   * system temp folder cannot be written.
+   */
+  scratchDir(prefix: string): string {
+    try {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+      this.scratchDirs.add(realpathLenient(dir));
+      return dir;
+    } catch {
+      return this.defaultCwd();
+    }
+  }
+
+  /**
+   * The agent does not start in the home (it holds config/), so what a skill run needs outside its working
+   * directory is let in by name, as real paths inside the home: the skill's own folder (it reads SKILL.md there)
+   * and, for a skill that works on the second brain, `memory/` plus a credential of this run for the memory
+   * routes of the local API. Never `config/` or `logs/`, and never the owner token.
+   */
+  private skillContext(
+    record: RunRecord,
+    mode: RunMode,
+  ): {
+    readDirs?: string[];
+    protectedDirs?: string[];
+    extraEnv?: Record<string, string>;
+  } {
+    if (!record.skillSlug || !isValidId(record.skillSlug)) return {};
+    const realHome = realpathLenient(this.paths.home);
+    const scope = this.scope();
+    // A folder is let in only when it is a real folder of the home, outside config/ and logs/, and holds no link
+    // (or second name) that leads into them: the agent's own tools follow what the engine's reader refuses.
+    const inHome = (dir: string): string | null => {
+      const real = realpathLenient(dir);
+      if (!isInside(realHome, real) || real === realHome) return null;
+      if (scope.filter.homePrivateReason(real) !== null) return null;
+      const offending = findPrivateLink(scope, real);
+      if (offending) {
+        throw new PathAccessError(
+          real,
+          `Folder holds a link into the MordomoOS config/ or logs/: ${offending}`,
+        );
+      }
+      return real;
+    };
+    const access = this.skillAccess?.(record.skillSlug) ?? null;
+    const skillDir = inHome(path.join(this.paths.skills, record.skillSlug));
+    const dirs = [skillDir];
+    if (access?.memory) dirs.push(inHome(this.paths.memory));
+    const readDirs = dirs.filter((d): d is string => d !== null);
+    let api: { url: string; token: string } | null = null;
+    if (access?.memory) {
+      try {
+        api = this.runApiAccess?.(record, mode) ?? null;
+      } catch {
+        api = null;
+      }
+    }
+    return {
+      ...(readDirs.length > 0 ? { readDirs } : {}),
+      ...(skillDir ? { protectedDirs: [skillDir] } : {}),
+      ...(api ? { extraEnv: { MORDOMO_URL: api.url, MORDOMO_RUN_TOKEN: api.token } } : {}),
+    };
+  }
+
+  /**
+   * A run asked for by a paired device runs only where the CLI's reads stay in the working folder: the owner token sits
+   * in a file under the home, which a provider that reads the whole disk (`readConfinement: "none"`, or a manifest that
+   * says nothing) would hand to a prompt. `403 device_provider_refused` otherwise (`docs/security.md`, T3). `create`
+   * asks it for every run; a caller that would leave something behind first (a conversation) asks it up front.
+   */
+  assertMayStart(startedBy: string | null | undefined, provider: ProviderId): void {
+    if (!isDeviceActor(startedBy)) return;
+    const adapter = this.getAdapter(provider);
+    if (adapter?.manifest?.capabilities?.readConfinement === "workdir") return;
+    const name = adapter?.manifest?.displayName ?? provider;
+    throw new MordomoError(
+      403,
+      `${name} reads everything the user can read, so a paired device cannot start a run on it. Start it from the desktop, or choose a provider that keeps reads in the working folder.`,
+      "device_provider_refused",
+    );
+  }
+
   // -------------------------------------------------------------- create --
 
   create(input: CreateRunInput): RunRecord {
+    this.assertMayStart(input.startedBy, input.provider);
+    const cwd = this.resolveCwd(input.cwd);
     const settings = this.getSettings();
     const maxQueued = settings.limits.maxConcurrentRuns * QUEUE_DEPTH_FACTOR;
     const queued = (
@@ -447,8 +583,8 @@ export class RunManager {
     const promptSummary = redactSecrets(input.prompt.slice(0, 500));
     this.db
       .prepare(
-        `INSERT INTO runs (id, created_at, origin, provider, model, effort, status, cwd, prompt_summary, request_json, skill_slug, routine_id, parent_run_id, session_id, attempts, timeout_ms, permission_profile, max_cost_usd)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO runs (id, created_at, origin, provider, model, effort, status, cwd, prompt_summary, request_json, skill_slug, routine_id, parent_run_id, session_id, attempts, timeout_ms, permission_profile, max_cost_usd, started_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -458,7 +594,7 @@ export class RunManager {
         input.model,
         input.effort,
         status,
-        input.cwd,
+        cwd,
         promptSummary,
         input.request ? JSON.stringify(input.request) : null,
         input.skillSlug ?? null,
@@ -469,10 +605,11 @@ export class RunManager {
         input.timeoutMs,
         input.profile,
         input.maxCostUsd ?? null,
+        input.startedBy,
       );
     const record = this.get(id);
     if (!record) throw new Error("run insert failed");
-    events.emit("run.created", {
+    this.bus?.emit("run.created", {
       runId: id,
       origin: input.origin,
       provider: input.provider,
@@ -567,6 +704,29 @@ export class RunManager {
       this.log({ event: "run_started", runId, provider: record.provider, origin: record.origin });
 
       const adapter = this.getAdapter(record.provider);
+      if (!adapter) throw new Error(`unknown provider "${record.provider}": it is not registered`);
+      // A provider that cannot enforce read-only only gets it as a sentence in the
+      // prompt: acceptable when a person started the run and watches it, never for
+      // the unattended ones (routines, sentinel triage), whose prompts can carry
+      // outside text.
+      const capabilities = adapter.manifest?.capabilities;
+      if (mode === "read_only" && capabilities && !capabilities.enforcesReadOnly) {
+        const name = adapter.manifest.displayName;
+        if (record.origin === "routine" || record.origin === "sentinel") {
+          throw new Error(
+            `${name} cannot enforce read-only, so it cannot run unattended read-only work; choose a provider that enforces it.`,
+          );
+        }
+        this.persistEvent(
+          runId,
+          {
+            type: "permission",
+            ts: Date.now(),
+            detail: `${name} has no read-only sandbox: read-only is only requested in the prompt.`,
+          },
+          active,
+        );
+      }
       const artifactsDir = path.join(this.paths.artifacts, runId);
       fs.mkdirSync(artifactsDir, { recursive: true });
       // A run that continues a conversation hands the adapter the id the
@@ -597,13 +757,17 @@ export class RunManager {
       const agentRun: AgentRun = {
         runId,
         prompt: effectivePrompt,
-        cwd: record.cwd ?? this.paths.home,
+        // Checked again here: the stored folder may have become private or been revoked since create().
+        cwd: this.resolveCwd(record.cwd),
         model: record.model,
         effort: record.effort,
         mode,
         timeoutMs: record.timeoutMs ?? this.getSettings().limits.defaultTimeoutMs,
         profile: record.permissionProfile ?? this.getSettings().securityProfile,
         artifactsDir,
+        ...this.skillContext(record, mode),
+        // MordomoOS's own secrets stay in the service (docs/security.md).
+        dropEnv: providerEnvDrop(this.getSettings()),
         ...(record.sessionId ? { sessionId: record.sessionId } : {}),
         ...(resume ? { resume } : {}),
         ...(this.permissionBroker && mode === "write" ? brokerFor(this.permissionBroker, record) : {}),
@@ -624,16 +788,21 @@ export class RunManager {
       }
 
       const filesChanged = new Set<string>();
+      // Bounded in total as well: events are many, and each event's list is only bounded on its own.
+      const recordFile = (file: string) => {
+        if (filesChanged.size < MAX_FILES_CHANGED) filesChanged.add(file);
+      };
       let resultEvent: Extract<RunEvent, { type: "result" }> | null = null;
       let errorEvent: Extract<RunEvent, { type: "error" }> | null = null;
       const usage = new UsageFolder();
 
-      for await (const event of adapter.execute(agentRun)) {
+      for await (const produced of adapter.execute(agentRun)) {
+        const event = this.boundedEvent(produced);
         if (event.type === "started") {
           active.pid = event.pid;
           active.forceKill = event.pid == null ? undefined : ownedProcessKiller(event.pid);
           this.db.prepare("UPDATE runs SET pid = ? WHERE id = ?").run(event.pid, runId);
-          events.emit("run.started", { runId, pid: event.pid });
+          this.bus?.emit("run.started", { runId, pid: event.pid });
         }
         if (event.type === "session" && record.sessionId) {
           // Last one wins: a resumed conversation may fork into a new id.
@@ -661,8 +830,14 @@ export class RunManager {
           event.type === "tool_use" &&
           (adapter.manifest?.writeToolPattern ?? WRITE_TOOLS).test(event.tool)
         ) {
-          const m = event.detail.match(/(?:^|[\s"'])(\/[^\s"']+|[A-Za-z]:\\[^\s"']+)/);
-          if (m?.[1]) filesChanged.add(m[1]);
+          if (event.paths) {
+            // The adapter listed the files itself (a Codex patch can touch several); `boundedEvent` already bounded the list.
+            for (const file of event.paths) recordFile(file);
+          } else {
+            // Otherwise the first path-looking token of the tool's input is the file it wrote.
+            const m = event.detail.match(/(?:^|[\s"'])(\/[^\s"']+|[A-Za-z]:\\[^\s"']+)/);
+            if (m?.[1]) recordFile(m[1]);
+          }
         }
         if (event.type === "result") resultEvent = event;
         if (event.type === "error") errorEvent = event;
@@ -813,7 +988,7 @@ export class RunManager {
         exitCode: patch.exit_code ?? null,
         error: patch.error ?? null,
       });
-      events.emit("run.finished", { runId, status: to, durationMs });
+      this.bus?.emit("run.finished", { runId, status: to, durationMs });
     }
     return ok;
   }
@@ -907,6 +1082,22 @@ export class RunManager {
 
   // -------------------------------------------------------------- events --
 
+  /**
+   * An adapter is code we did not necessarily write: what it claims about the
+   * files of a tool call is bounded here, where it is used, whatever the
+   * adapter does (`boundedPaths`). A `paths` that is not a list is dropped, so
+   * the run manager reads the call's `detail` as it does for any tool without one.
+   * That is deliberately silent: the junk is not journaled (the event is stored
+   * without it), the file is still recorded from `detail`, and a note per event
+   * would be as unbounded as the stream it complains about (C25, C30).
+   */
+  private boundedEvent(event: RunEvent): RunEvent {
+    if (event.type !== "tool_use" || event.paths === undefined) return event;
+    const { paths: claimed, ...rest } = event;
+    const paths = boundedPaths(claimed);
+    return paths ? { ...rest, paths } : rest;
+  }
+
   private persistEvent(runId: string, event: RunEvent, active?: ActiveRun): void {
     if (active && event.type === "tool_use" && event.callId) {
       const callId = event.callId;
@@ -980,7 +1171,7 @@ export class RunManager {
   private emit(runId: string, event: RunEvent, eventId?: number): void {
     this.emitter.emit(`run:${runId}`, event, eventId);
     this.emitter.emit("run:*", { runId, event });
-    events.emit("run.event", { runId, event });
+    this.bus?.emit("run.event", { runId, event });
   }
 
   onAny(listener: (payload: { runId: string; event: RunEvent }) => void): () => void {
@@ -1391,6 +1582,7 @@ interface RawRun {
   attempts: number;
   timeout_ms: number | null;
   permission_profile: string | null;
+  started_by?: string | null;
   input_tokens?: number | null;
   output_tokens?: number | null;
   cache_read_tokens?: number | null;
@@ -1491,7 +1683,8 @@ function fromRow(row: RawRun): RunRecord {
     origin: row.origin as RunOrigin,
     provider: row.provider as ProviderId,
     model: row.model,
-    effort: row.effort as EffortLevel,
+    // The column is nullable (a run stored before the effort existed has none): the record says `default`, as its type does.
+    effort: (row.effort ?? "default") as EffortLevel,
     status: row.status as RunStatus,
     exitCode: row.exit_code,
     durationMs: row.duration_ms,
@@ -1511,6 +1704,7 @@ function fromRow(row: RawRun): RunRecord {
     attempts: row.attempts,
     timeoutMs: row.timeout_ms,
     permissionProfile: row.permission_profile as SecurityProfile | null,
+    startedBy: row.started_by ?? null,
     usage: usageFromRow(row),
   };
 }
@@ -1600,4 +1794,9 @@ function brokerFor(
   } catch {
     return {};
   }
+}
+
+/** The environment every provider process loses: MordomoOS's own variables and the Telegram bot token. */
+export function providerEnvDrop(settings: Settings): { names: string[]; prefixes: string[] } {
+  return { names: [settings.channels.telegram.botTokenEnv], prefixes: ["MORDOMO_"] };
 }

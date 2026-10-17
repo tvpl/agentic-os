@@ -10,59 +10,6 @@ import {
 } from "react";
 import { X } from "lucide-react";
 import { useT } from "../i18n";
-import { ApiError } from "../api";
-import { DialogPortal, useDialog, usePresence } from "./dialog";
-
-/* ---------- data fetching (legacy; prefer useApiQuery from ../queries) ---------- */
-export function useApi<T>(
-  fetcher: () => Promise<T>,
-  deps: unknown[] = [],
-): {
-  data: T | null;
-  error: string | null;
-  offline: boolean;
-  loading: boolean;
-  reload: () => void;
-} {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [offline, setOffline] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [tick, setTick] = useState(0);
-  const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
-  // Serialise the deps so the effect has a static dependency list.
-  const depsKey = deps
-    .map((d) => (typeof d === "object" && d !== null ? JSON.stringify(d) : String(d)))
-    .join(" ");
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetcherRef
-      .current()
-      .then((result) => {
-        if (cancelled) return;
-        setData(result);
-        setError(null);
-        setOffline(false);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        const message = err instanceof Error ? err.message : String(err);
-        // Only unreachable-service errors are "offline"; a TypeError from a
-        // bug is a bug and is shown as such.
-        setOffline(err instanceof ApiError && err.unreachable);
-        setError(message);
-      })
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [tick, depsKey]);
-
-  return { data, error, offline, loading, reload: useCallback(() => setTick((t) => t + 1), []) };
-}
 
 /* ---------- toasts ---------- */
 type ToastKind = "ok" | "danger" | "info";
@@ -155,16 +102,6 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
 }
 
 /* ---------- state blocks ---------- */
-export function Loading() {
-  const t = useT();
-  return (
-    <div className="empty" role="status">
-      <span className="spinner" aria-hidden /> {t("common.loading")}
-    </div>
-  );
-}
-
-/** Content-shaped placeholder; prefer over `Loading` inside cards and tables. */
 export function Skeleton({
   lines = 3,
   height,
@@ -213,107 +150,6 @@ export function ErrorBox({
         </button>
       )}
     </div>
-  );
-}
-
-export function Empty({ children }: { children: ReactNode }) {
-  return <div className="empty">{children}</div>;
-}
-
-/* ---------- modal ---------- */
-export interface ModalProps {
-  title: string;
-  /**
-   * Called after the exit animation when the user closes the modal (X, Esc,
-   * backdrop). May be an inline arrow; it is read through a ref.
-   */
-  onClose: () => void;
-  children: ReactNode;
-  narrow?: boolean;
-  /** Override the initial focus target (default: first field, else the dialog itself). */
-  initialFocus?: () => HTMLElement | null | undefined;
-  /**
-   * Controlled presence: pass `open={false}` instead of unmounting to get the
-   * exit animation when the parent closes the modal itself (after a save).
-   * Conditional mounting (`{open && <Modal/>}`) still works and animates the
-   * user-initiated closes.
-   */
-  open?: boolean;
-  className?: string;
-}
-
-const MODAL_EXIT_MS = 160;
-
-export function Modal({ open = true, ...props }: ModalProps) {
-  const { mounted, closing } = usePresence(open, MODAL_EXIT_MS);
-  if (!mounted) return null;
-  return <ModalFrame {...props} exiting={closing} />;
-}
-
-function ModalFrame({
-  title,
-  onClose,
-  children,
-  narrow = false,
-  initialFocus,
-  exiting,
-  className,
-}: Omit<ModalProps, "open"> & { exiting: boolean }) {
-  const t = useT();
-  const ref = useRef<HTMLDivElement>(null);
-  const [closing, setClosing] = useState(false);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  const timer = useRef<number | undefined>(undefined);
-
-  // User-initiated close: play the exit, then tell the parent.
-  const requestClose = useCallback(() => {
-    if (timer.current !== undefined) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      onCloseRef.current();
-      return;
-    }
-    setClosing(true);
-    timer.current = window.setTimeout(() => {
-      timer.current = undefined;
-      onCloseRef.current();
-    }, MODAL_EXIT_MS);
-  }, []);
-  useEffect(() => () => window.clearTimeout(timer.current), []);
-
-  useDialog(ref, requestClose, { initialFocus });
-  const out = closing || exiting;
-  return (
-    <DialogPortal>
-      <div
-        className={`modal-backdrop${out ? " closing" : ""}`}
-        role="presentation"
-        onMouseDown={(e) => e.target === e.currentTarget && requestClose()}
-      >
-        <div
-          className={["modal", narrow ? "narrow" : "", className ?? ""].filter(Boolean).join(" ")}
-          role="dialog"
-          aria-modal="true"
-          aria-label={title}
-          ref={ref}
-          tabIndex={-1}
-        >
-          <div className="modal-head">
-            <h2>{title}</h2>
-            <button
-              type="button"
-              className="btn ghost sm icon-only"
-              onClick={requestClose}
-              aria-label={t("common.close")}
-              data-dialog-close
-            >
-              <X aria-hidden />
-            </button>
-          </div>
-          {children}
-        </div>
-      </div>
-    </DialogPortal>
   );
 }
 

@@ -33,7 +33,7 @@ export interface HudPalette {
   faint: string;
   dim: string;
   plate: string;
-  fs0: number;
+  fs2: number;
   mono: string;
 }
 
@@ -111,7 +111,7 @@ export class EntityHud {
 
   setPalette(pal: HudPalette): void {
     this.pal = pal;
-    this.labelFont = `500 ${pal.fs0}px ${pal.mono}`;
+    this.labelFont = `500 ${Math.max(12, pal.fs2)}px ${pal.mono}`;
     this.rebuild();
   }
 
@@ -184,7 +184,8 @@ export class EntityHud {
       return;
     }
     const r = g.ringText * this.size;
-    const fs = Math.max(8, Math.min(pal.fs0, this.size * 0.018));
+    // It used to shrink with the canvas; at the text floor there is nothing left to shrink.
+    const fs = Math.max(12, pal.fs2);
     const c = this.offscreen(r + fs + 2);
     const x = c.getContext("2d");
     if (!x) return;

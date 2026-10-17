@@ -1,28 +1,39 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import https from "node:https";
+import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { Writable } from "node:stream";
+import type { TLSSocket } from "node:tls";
 import Fastify, {
   LogController,
+  type FastifyContextConfig,
   type FastifyInstance,
   type FastifyReply,
   type FastifyRequest,
 } from "fastify";
 import fastifyStatic from "@fastify/static";
 import { ZodError } from "zod";
+import { EngineLockedError, PathAccessError } from "@mordomo/core";
+import { API, type RouteDefinition } from "@mordomo/contracts";
 import {
   JsonlLogger,
-  PathAccessError,
   TelegramPoller,
   certificateHosts,
   ensureTlsMaterial,
   redactSecrets,
+  type DeviceScope,
   type TlsMaterial,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { AppContext } from "./context.js";
 import { uiDistCandidates } from "./entry.js";
-import { instanceSnapshot, orphanProcesses, portHolder, terminate } from "./instances.js";
+import {
+  instanceSnapshot,
+  listServiceProcesses,
+  orphanProcesses,
+  portHolder,
+  terminate,
+} from "./instances.js";
 import { type UpdateChecker } from "./updates.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerSkillRoutes } from "./routes/skills.js";
@@ -41,6 +52,13 @@ import { registerEventRoutes } from "./routes/events.js";
 import { registerObjectiveRoutes } from "./routes/objectives.js";
 import { registerSentinelRoutes } from "./routes/sentinels.js";
 import { closeAllSse } from "./routes/sse.js";
+import { isApiRequest, isApiRoutePath, rewriteApiUrl, successorHeaders } from "./apiVersion.js";
+import { SlidingWindow } from "./rateLimit.js";
+import { registerOpenApiRoute } from "./openapi.js";
+import { installResponseCheck, responsesValidated } from "./contract.js";
+import { principalName, type Principal } from "./routes/common.js";
+import { ticketKey } from "./tickets.js";
+import { ignoredBindMessage, listenPlan } from "./transport.js";
 
 export interface ServerHandle {
   app: FastifyInstance;
@@ -49,6 +67,8 @@ export interface ServerHandle {
   close: () => Promise<void>;
   /** The https URL for remote devices when remote.tls is on. */
   tlsUrl: string | null;
+  /** Where the listeners bound: the one without TLS (loopback only) and the TLS one, when there is one. */
+  listeners: { plain: { host: string; port: number }; tls: { host: string; port: number } | null };
 }
 
 /** Uniform error envelope. `message` is duplicated at the top level for older clients. */
@@ -104,6 +124,180 @@ export function isLoopbackHost(hostHeader: string | string[] | undefined): boole
   return isAllowedHost(hostHeader);
 }
 
+/** The TCP peer is this machine (the Host header alone can be forged by any client). */
+export function isLoopbackAddress(address: string | undefined): boolean {
+  if (!address) return false;
+  const a = address.toLowerCase();
+  return a === "::1" || a.startsWith("127.") || a.startsWith("::ffff:127.");
+}
+
+/**
+ * The header names that say a proxy or a CDN stands between the visitor and this process: the standard ones
+ * (`X-Forwarded-*` including `X-Forwarded-Host`, `Forwarded`, `Via`), the single-address ones proxies and CDNs add
+ * (`X-Real-IP`, `X-Client-IP`, `True-Client-IP`, `Fastly-Client-IP`, `X-Envoy-External-Address`) and Cloudflare's own
+ * (`CF-*`: `CF-Connecting-IP`, `CF-Ray`, `CF-Visitor`...). The list is closed: a header that is not in it is not read.
+ */
+const PROXY_HEADER =
+  /^(?:x-forwarded-|x-original-forwarded-|x-real-ip$|x-client-ip$|true-client-ip$|fastly-client-ip$|x-envoy-external-address$|forwarded$|via$|cf-)/;
+
+/**
+ * Whether the request names a proxy on its way (`PROXY_HEADER`). A browser on this machine sends none of these; a
+ * reverse proxy on this machine that forwards a visitor from elsewhere usually adds one, and that visitor must not
+ * be handed the owner's token just because the proxy's own socket is loopback and it rewrote the `Host` header to
+ * `127.0.0.1`. A proxy that adds none and rewrites `Host` cannot be told from the owner's browser:
+ * `docs/security.md` (limits) says to keep the original `Host` or to add one of these.
+ */
+export function carriesProxyHeaders(headers: FastifyRequest["headers"]): boolean {
+  return Object.keys(headers).some((name) => PROXY_HEADER.test(name.toLowerCase()));
+}
+
+/**
+ * Whether a request for the page is a browser opening it, as opposed to a program fetching it (`curl
+ * http://127.0.0.1:4777/`, which any process of this user, an agent's shell included, can do). A browser or a
+ * web view that supports Fetch Metadata says `Sec-Fetch-Dest: document` and `Sec-Fetch-Mode: navigate`; one that
+ * predates it (WebKit before 16.4) sends neither and a `Mozilla/5.0` user agent; a request from another origin
+ * (`Origin` that is not this host) is never one. This is a reduction, not a boundary: a program can send those
+ * headers too. Closing it takes a secret the launcher hands the browser; `docs/security.md` describes that design,
+ * which `escopos-dispositivo` left unbuilt.
+ */
+export function looksLikeBrowserNavigation(req: FastifyRequest): boolean {
+  const origin = req.headers.origin;
+  if (typeof origin === "string" && origin !== "null") {
+    try {
+      if (new URL(origin).host !== req.headers.host) return false;
+    } catch {
+      return false;
+    }
+  }
+  const dest = req.headers["sec-fetch-dest"];
+  const mode = req.headers["sec-fetch-mode"];
+  if (dest === undefined && mode === undefined) {
+    return /^Mozilla\/5\.0 /.test(String(req.headers["user-agent"] ?? ""));
+  }
+  return dest === "document" && mode === "navigate";
+}
+
+/** Whether the connection this request arrived on is TLS (the second listener of `startServer`, or an https test). */
+export function isTlsConnection(req: FastifyRequest): boolean {
+  return (req.raw.socket as Partial<TLSSocket>).encrypted === true;
+}
+
+const TLS_REQUIRED_MESSAGE =
+  "This service answers other machines over TLS only. Turn on Settings › Security › Remote access › TLS " +
+  "(remote.enabled and remote.tls.enabled) and open the https address, or reach the service through a tunnel that runs on " +
+  "this machine and forwards to 127.0.0.1 (list its host in remote.allowedHosts)";
+
+const UNAUTHORIZED_MESSAGE = "Missing or invalid local token";
+
+/**
+ * Whether a paired device holding `held` may call a route that declares `needed`: a route with no scope, or an
+ * `owner` one, is the owner's (denied by default); any other scope must be one the device holds.
+ */
+export function deviceVerdict(
+  held: readonly DeviceScope[],
+  needed: RouteScope | undefined,
+): "ok" | "owner_only" | "scope_required" {
+  if (needed === undefined || needed === "owner") return "owner_only";
+  return held.includes(needed) ? "ok" : "scope_required";
+}
+
+/**
+ * The principal a stream ticket was minted for, if it still counts: a device is checked again now (not revoked, not
+ * expired, remote access on, still holding the scope of the route), so a ticket cannot outlive what its device lost.
+ */
+function redeemTicket(
+  ctx: AppContext,
+  ticket: string,
+  key: string,
+  config: FastifyContextConfig,
+): Principal | null {
+  const principal = ctx.streamTickets.redeem(ticket, key);
+  if (!principal) return null;
+  if (principal.kind === "owner") return principal;
+  if (principal.kind !== "device" || !ctx.settings().remote.enabled) return null;
+  const device = ctx.devices.active(principal.deviceId);
+  if (!device || deviceVerdict(device.scopes, config.scope) !== "ok") return null;
+  return principal;
+}
+
+/** The only routes a permission-broker credential may call (docs/security.md, AD-002). */
+const BROKER_ROUTES = new Set([
+  "POST /api/approvals/tool",
+  "GET /api/approvals/:id",
+  "POST /api/approvals/:id/resolve",
+]);
+
+/**
+ * The only routes the credential of a memory skill's run may call (AD-012): the memory the skill works on, and
+ * nothing of settings, devices, providers, approvals or other runs. The first set reads and is open to every run
+ * with the credential; the second writes (a journal line, a fact) and only to a run that may write itself.
+ */
+const RUN_API_READ_ROUTES = new Set([
+  "GET /api/memory/recall",
+  "GET /api/memory/recall/stats",
+  "GET /api/memory/journal",
+  "GET /api/memory/facts",
+]);
+const RUN_API_WRITE_ROUTES = new Set(["POST /api/memory/journal/append", "POST /api/memory/facts"]);
+
+declare module "fastify" {
+  interface FastifyRequest {
+    /** Set when the request carries a permission-broker credential: the run it is bound to. */
+    brokerRunId: string | null;
+    /** Who called an authenticated /api route (null on public routes and outside /api). */
+    principal: Principal | null;
+  }
+  interface FastifyContextConfig {
+    /** Reachable without a credential. Every other /api route is denied by default. */
+    public?: boolean;
+    /**
+     * Who may call it (.specs/features/escopos-dispositivo, door 2). Required on every `/api` route that is not
+     * `public`: registering one without it throws. `owner` - only the local token; a paired device gets
+     * `403 owner_only`. Any other value is the scope a paired device must hold (`403 scope_required` otherwise).
+     */
+    scope?: RouteScope;
+    /** A `GET` that may carry its credential in `?token=` (streams and `<img>`/`<iframe>` sources). */
+    queryToken?: boolean;
+    /** A `GET` that may carry a stream ticket in `?ticket=` (`POST /api/stream-tickets`), and refuses a device's `?token=`. */
+    ticket?: boolean;
+    /** The entry of the route table (`API`) this route was bound from (`bind`): the id its contract is known by. */
+    route?: string;
+  }
+  interface FastifyInstance {
+    /** Every /api route as registered (filled by an `onRoute` hook): the OpenAPI document's source. */
+    apiRoutes: ApiRoute[];
+    /**
+     * Entries that belong to this server alone, beside the route table: empty in the service, filled only by the test
+     * suite (`tests/helpers/syntheticEntry.ts`) to prove what the server does with an entry of its own. The table
+     * `API` is frozen; nothing in the service writes here.
+     */
+    readonly syntheticEntries: Map<string, RouteDefinition>;
+  }
+}
+
+/** The scope a route declares: the owner alone, or the scope of a paired device it needs. */
+export type RouteScope = "owner" | DeviceScope;
+
+export interface ApiRoute {
+  method: string;
+  url: string;
+  config: FastifyContextConfig;
+}
+
+/** The entries of `table` that no route of the router was bound to, as the message the server stops with. */
+export function unboundEntries(
+  table: Readonly<Record<string, RouteDefinition>>,
+  routes: readonly ApiRoute[],
+): string[] {
+  const bound = new Set(routes.map((r) => r.config.route));
+  return Object.entries(table)
+    .filter(([id]) => !bound.has(id))
+    .map(
+      ([id, entry]) =>
+        `${entry.method} ${entry.path} (${id}) is in the route table but no route was bound to it`,
+    );
+}
+
 export function tokenMatches(supplied: unknown, expected: string): boolean {
   if (typeof supplied !== "string" || supplied.length === 0) return false;
   const a = Buffer.from(supplied, "utf8");
@@ -112,9 +306,44 @@ export function tokenMatches(supplied: unknown, expected: string): boolean {
   return crypto.timingSafeEqual(a, b);
 }
 
-/** Strip the token from a URL before it reaches any log line. */
+/** Strip the token, the stream ticket and a desktop shell's launch secret from a URL before it reaches any log line. */
 export function safeUrl(url: string): string {
-  return url.replace(/([?&]token=)[^&#]*/gi, "$1[REDACTED]");
+  return url.replace(/([?&](?:token|ticket|launch)=)[^&#]*/gi, "$1[REDACTED]");
+}
+
+/**
+ * The secret a desktop shell hands the service it started (`MORDOMO_LAUNCH_TOKEN`, `start --sidecar`;
+ * docs/security.md, T1). While one is set, `GET /` serves the owner's token only to a request that carries it,
+ * first in `?launch=` (traded at once for the cookie and a redirect, so it is in one URL only) and then in the cookie.
+ */
+export const LAUNCH_COOKIE = "mordomo_launch";
+/** The shortest secret `--sidecar` accepts (the shell makes 43 characters from 32 random bytes). */
+export const LAUNCH_SECRET_MIN_LENGTH = 32;
+
+/**
+ * The shell's launch secret, taken out of `env`: it is the shell's alone. What this service starts (git, an MCP server,
+ * a provider CLI) inherits the environment it is given, and none of it has a use for the secret.
+ */
+export function takeLaunchSecret(env: NodeJS.ProcessEnv): string {
+  const secret = env.MORDOMO_LAUNCH_TOKEN ?? "";
+  delete env.MORDOMO_LAUNCH_TOKEN;
+  return secret;
+}
+
+/** The value of one cookie in a `Cookie` header, or `undefined`. */
+export function cookieValue(header: string | string[] | undefined, name: string): string | undefined {
+  const raw = Array.isArray(header) ? header.join(";") : header;
+  if (!raw) return undefined;
+  for (const part of raw.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq > 0 && part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim();
+  }
+  return undefined;
+}
+
+/** The `error.code` of an error that raised a status and no code of its own. */
+export function defaultErrorCode(status: number): string {
+  return STATUS_CODES[status] ?? "error";
 }
 
 const STATUS_CODES: Record<number, string> = {
@@ -159,7 +388,14 @@ function buildLoggerOptions(ctx: AppContext) {
 
 export async function buildServer(
   ctx: AppContext,
-  options: { uiDist?: string; updates?: UpdateChecker } = {},
+  options: {
+    uiDist?: string;
+    updates?: UpdateChecker;
+    /** Check each JSON response against its entry of the route table (default: `responsesValidated()`). */
+    validateResponses?: boolean;
+    /** A desktop shell's launch secret: without it `GET /` serves no owner token (see `LAUNCH_COOKIE`). */
+    launchSecret?: string;
+  } = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: buildLoggerOptions(ctx),
@@ -171,31 +407,164 @@ export async function buildServer(
     // for them: a browser tab holding `/api/events` open must not keep an old
     // service alive after a restart (that is how leftover processes were born).
     forceCloseConnections: true,
+    // `/api/v1/<rest>` is served by the route registered as `/api/<rest>` (apiVersion.ts).
+    rewriteUrl: (req) => rewriteApiUrl(req.url ?? "/"),
   });
   const token = ctx.token();
+  app.decorateRequest("brokerRunId", null);
+  app.decorateRequest("principal", null);
+  app.decorate("apiRoutes", [] as ApiRoute[]);
+  app.decorate("syntheticEntries", new Map<string, RouteDefinition>());
+  app.addHook("onRoute", (route) => {
+    if (!isApiRoutePath(route.url)) return;
+    // Denied by default: a route that does not say who may call it does not exist.
+    if (route.config?.public !== true && route.config?.scope === undefined) {
+      throw new Error(
+        `${[route.method].flat().join("/")} ${route.url} declares no scope: add config: { scope } (owner, monitor, content, run or approve), or public: true`,
+      );
+    }
+    // One table describes the API: a route registered outside `bind` has no contract, so it does not exist.
+    if (
+      route.config?.route === undefined ||
+      !(Object.hasOwn(API, route.config.route) || app.syntheticEntries.has(route.config.route))
+    ) {
+      throw new Error(
+        `${[route.method].flat().join("/")} ${route.url} declares no contract: register it with bind(app, id, handler) and add its entry to the route table (contracts/src/api)`,
+      );
+    }
+    for (const method of [route.method].flat()) {
+      // HEAD twins of GET routes are added by Fastify itself.
+      if (method !== "HEAD") app.apiRoutes.push({ method, url: route.url, config: route.config ?? {} });
+    }
+  });
+
+  // Twenty 401s in five minutes lock an address out until the window passes;
+  // this machine itself (loopback) is never locked out.
+  const failedAuth = new SlidingWindow(20, 5 * 60_000);
 
   app.addHook("onRequest", async (req: FastifyRequest, reply: FastifyReply) => {
+    // Another machine reaches this service over TLS or not at all (door 6): decided before anything is read from the
+    // request, so a credential that crossed the network in the clear is never even compared. A tunnel or a reverse
+    // proxy on this machine arrives from loopback and is not asked.
+    if (!isLoopbackAddress(req.socket.remoteAddress) && !isTlsConnection(req)) {
+      return reply.code(403).send(errorBody("tls_required", TLS_REQUIRED_MESSAGE));
+    }
     const remote = ctx.settings().remote;
     const extraHosts = remote.enabled ? remote.allowedHosts : [];
     if (!isAllowedHost(req.headers.host, extraHosts)) {
       return reply.code(403).send(errorBody("forbidden_host", "Forbidden host"));
     }
-    if (req.url.startsWith("/api/")) {
-      // Unauthenticated: the meta line the shell boots from, and claiming a pairing code.
-      const open = req.url === "/api/meta" || (req.method === "POST" && req.url === "/api/pair/claim");
-      const supplied =
-        (req.headers["x-mordomo-token"] as string | undefined) ??
-        (req.query as Record<string, string | undefined>)?.token;
-      const ok =
-        tokenMatches(supplied, token) ||
-        (remote.enabled && typeof supplied === "string" && ctx.devices.verify(supplied) !== null);
-      if (!open && !ok) {
-        return reply.code(401).send(errorBody("unauthorized", "Missing or invalid local token"));
-      }
+    const wait = isLoopbackAddress(req.ip) ? 0 : failedAuth.retryAfter(req.ip);
+    if (wait > 0) {
+      return reply
+        .code(429)
+        .header("Retry-After", String(wait))
+        .send(errorBody("too_many_requests", "Too many failed authentications from this address"));
     }
+    // Decided on the route the router matched, never on the raw URL: the
+    // router decodes the path, so `/%61pi/settings` is `/api/settings` here.
+    const route = req.routeOptions.url;
+    const config = req.routeOptions.config;
+    const query = req.query as Record<string, string | undefined> | undefined;
+    const queryToken = query?.token;
+    const queryTicket = query?.ticket;
+    const api = isApiRequest(req.url, route);
+    // A token in the URL lands in proxy logs and browser history: only the
+    // GETs that cannot send a header (EventSource, <img>, <iframe>) take one.
+    // Refused on every other /api request (`isApiRequest`: matched or not, public
+    // routes and methods without a route included) with 401, also on a path
+    // that does not exist: 401 is the safer refusal, it never reveals which
+    // spellings are routes (`req.url` is already rewritten from `/api/v1/…`).
+    if (api && queryToken !== undefined && !(req.method === "GET" && config.queryToken === true)) {
+      return reply
+        .code(401)
+        .send(
+          errorBody("unauthorized", "This route does not accept a token in the URL; send x-mordomo-token"),
+        );
+    }
+    // A ticket is no better than a token anywhere but the two streams it was made for.
+    if (api && queryTicket !== undefined && !(req.method === "GET" && config.ticket === true)) {
+      return reply.code(401).send(errorBody("unauthorized", UNAUTHORIZED_MESSAGE));
+    }
+    if (!isApiRoutePath(route) || config.public === true) return;
+    if (config.ticket === true && queryTicket !== undefined) {
+      const principal = redeemTicket(
+        ctx,
+        queryTicket,
+        ticketKey(route, req.params as Record<string, unknown>),
+        config,
+      );
+      if (!principal) return reply.code(401).send(errorBody("unauthorized", UNAUTHORIZED_MESSAGE));
+      req.principal = principal;
+      return;
+    }
+    const supplied = (req.headers["x-mordomo-token"] as string | undefined) ?? queryToken;
+    if (tokenMatches(supplied, token)) {
+      req.principal = { kind: "owner" };
+      return;
+    }
+    const device = remote.enabled && typeof supplied === "string" ? ctx.devices.verify(supplied) : null;
+    if (device) {
+      // A device credential never rides in the URL of a stream: it asks for a ticket (door 5).
+      if (config.ticket === true && supplied === queryToken && queryToken !== undefined) {
+        return reply
+          .code(401)
+          .send(
+            errorBody(
+              "unauthorized",
+              "A device opens this stream with a ticket: POST /api/v1/stream-tickets, then send ?ticket=",
+            ),
+          );
+      }
+      const needed = config.scope;
+      const verdict = deviceVerdict(device.scopes, needed);
+      if (verdict === "owner_only") {
+        return reply
+          .code(403)
+          .send(errorBody("owner_only", "Only the owner, with the local token, can call this route"));
+      }
+      if (verdict === "scope_required") {
+        return reply
+          .code(403)
+          .send(
+            errorBody(
+              "scope_required",
+              `This device has no "${String(needed)}" permission; the owner grants it in Settings › Security › Remote access`,
+            ),
+          );
+      }
+      req.principal = { kind: "device", deviceId: device.id };
+      return;
+    }
+    const broker = typeof supplied === "string" ? ctx.brokerRunFor(supplied) : null;
+    if (broker?.active) {
+      if (!BROKER_ROUTES.has(`${req.method} ${route}`)) {
+        return reply.code(403).send(errorBody("forbidden", "The permission broker cannot call this route"));
+      }
+      req.brokerRunId = broker.runId;
+      req.principal = { kind: "broker", runId: broker.runId };
+      return;
+    }
+    const runApi = typeof supplied === "string" ? ctx.runApiRunFor(supplied) : null;
+    if (runApi?.active) {
+      const called = `${req.method} ${route}`;
+      if (!RUN_API_READ_ROUTES.has(called) && !RUN_API_WRITE_ROUTES.has(called)) {
+        return reply.code(403).send(errorBody("forbidden", "A run's credential cannot call this route"));
+      }
+      if (RUN_API_WRITE_ROUTES.has(called) && !runApi.writable) {
+        return reply
+          .code(403)
+          .send(errorBody("forbidden", "The credential of a read-only run cannot write to the memory"));
+      }
+      req.principal = { kind: "run", runId: runApi.runId };
+      return;
+    }
+    return reply.code(401).send(errorBody("unauthorized", UNAUTHORIZED_MESSAGE));
   });
 
-  app.addHook("onSend", async (_req, reply, payload) => {
+  app.addHook("onSend", async (req, reply, payload) => {
+    if (reply.statusCode === 401 && !isLoopbackAddress(req.ip)) failedAuth.hit(req.ip);
+    reply.headers(successorHeaders(req));
     reply.header("X-Content-Type-Options", "nosniff");
     reply.header("X-Frame-Options", "DENY");
     reply.header("Referrer-Policy", "no-referrer");
@@ -213,6 +582,8 @@ export async function buildServer(
       status: reply.statusCode,
       ms: Math.round(reply.elapsedTime * 10) / 10,
       reqId: req.id,
+      // Who called: `owner`, `device:<id>`, `broker:<run>`, `run:<run>`; null on public routes.
+      by: req.principal ? principalName(req.principal) : null,
     });
   });
 
@@ -229,8 +600,12 @@ export async function buildServer(
         typeof err.statusCode === "number" && err.statusCode >= 400 && err.statusCode <= 599
           ? err.statusCode
           : 500;
-      if (status < 500) {
-        const code = typeof err.code === "string" && err.code ? err.code : (STATUS_CODES[status] ?? "error");
+      // 502: an upstream (Telegram, a push service) refused; 503: the service cannot answer right now
+      // (a closed database). Their reasons were written for the user.
+      if (status < 500 || status === 502 || status === 503) {
+        // Fastify's own codes (FST_ERR_*) are internal names; clients get the status's code.
+        const own = typeof err.code === "string" && err.code && !err.code.startsWith("FST_");
+        const code = own ? err.code! : defaultErrorCode(status);
         return reply.code(status).send(errorBody(code, err.message));
       }
       // Never leak internals (paths, stack, SQL) to the client; keep them in the log.
@@ -240,8 +615,11 @@ export async function buildServer(
   );
 
   app.addHook("onClose", async () => {
-    closeAllSse();
+    closeAllSse(app);
   });
+
+  // Development and tests: a response that departs from its route's entry is a 500 that names the paths.
+  if (options.validateResponses ?? responsesValidated()) installResponseCheck(app);
 
   // ---- API routes -----------------------------------------------------------
   registerSystemRoutes(app, ctx, { updates: options.updates });
@@ -259,6 +637,10 @@ export async function buildServer(
   registerMicroappRoutes(app, ctx);
   registerEventRoutes(app, ctx);
   registerObjectiveRoutes(app, ctx);
+  registerOpenApiRoute(app);
+  // The table and the router describe the same API: an entry nobody bound is a route that was forgotten.
+  const unbound = unboundEntries(API, app.apiRoutes);
+  if (unbound.length > 0) throw new Error(unbound[0]);
 
   // ---- Command Centre static UI --------------------------------------------
   const uiDist =
@@ -274,12 +656,35 @@ export async function buildServer(
       wildcard: true,
       index: false,
     });
+    const launchSecret = options.launchSecret ?? ctx.launchSecret;
     const serveIndex = (req: FastifyRequest, reply: FastifyReply) => {
       // The local token is injected into the same-origin page only, and only
-      // when the page is opened from this machine; a remote device pairs and
-      // keeps its own token in the browser. Foreign origins cannot read the
-      // meta (CORS) nor send it (custom header + no CORS).
-      const inject = isLoopbackHost(req.headers.host) ? token : "";
+      // when the page is opened from this machine (loopback socket AND loopback
+      // Host) and names no proxy on the way (`carriesProxyHeaders`); a remote device pairs and keeps its own token in
+      // the browser.
+      // Foreign origins cannot read the meta (CORS) nor send it (custom header + no CORS).
+      const fromThisMachine =
+        isLoopbackHost(req.headers.host) &&
+        isLoopbackAddress(req.socket.remoteAddress) &&
+        !carriesProxyHeaders(req.headers);
+      // A desktop shell's service adds a proof of who opened the page: its launch secret, in the query once and then
+      // in an HttpOnly cookie. A program that only sends the headers of a browser no longer gets the token.
+      let launchProven = launchSecret === undefined;
+      if (launchSecret !== undefined && fromThisMachine) {
+        const offered = (req.query as { launch?: unknown } | undefined)?.launch;
+        if (tokenMatches(offered, launchSecret)) {
+          // Trade the query for the cookie and drop it from the address: the secret is in one URL, once.
+          // `Lax`, not `Strict`: this first request is the shell's `tauri://` page going to this origin, which is another
+          // site, and a browser engine does not send a `Strict` cookie on the redirect that follows (seen under WebKitGTK).
+          // The webview loads no other site, and a `Lax` cookie is not sent on a cross-site POST or subresource.
+          return reply
+            .header("Cache-Control", "no-store")
+            .header("Set-Cookie", `${LAUNCH_COOKIE}=${launchSecret}; HttpOnly; SameSite=Lax; Path=/`)
+            .redirect(`/${(req.url.split("?")[0] ?? "").replace(/^\/+/, "")}`, 302);
+        }
+        launchProven = tokenMatches(cookieValue(req.headers.cookie, LAUNCH_COOKIE), launchSecret);
+      }
+      const inject = fromThisMachine && launchProven && looksLikeBrowserNavigation(req) ? token : "";
       const html = fs
         .readFileSync(indexFile, "utf8")
         .replace(
@@ -293,7 +698,8 @@ export async function buildServer(
     app.setNotFoundHandler((req, reply) => {
       const pathname = req.url.split("?")[0]!;
       if (
-        pathname.startsWith("/api/") ||
+        (req.method !== "GET" && req.method !== "HEAD") ||
+        isApiRequest(req.url, undefined) ||
         /^\/(?:assets|fonts|icons)(?:\/|$)/.test(pathname) ||
         path.posix.extname(pathname)
       ) {
@@ -354,30 +760,79 @@ async function listenWithRetry(
   }
 }
 
-export async function startServer(homeOverride?: string): Promise<ServerHandle> {
+/**
+ * What a desktop shell asks of the service it starts (`mordomo start --foreground --sidecar`, docs/release.md).
+ * Without `sidecar` nothing here applies and the service starts exactly as it always did.
+ */
+export interface SidecarOptions {
+  /** The port to listen on; 0 lets the system choose. Default: `settings.port`. */
+  port: number;
+  /** The shell's launch secret (`LAUNCH_SECRET_MIN_LENGTH` characters or more). */
+  launchSecret: string;
+}
+
+/** The sidecar's port is taken: it never stops the process that holds it (the standing service does; a shell does not). */
+export class PortInUseError extends Error {
+  constructor(readonly port: number) {
+    super(`port ${port} is already in use`);
+    this.name = "PortInUseError";
+  }
+}
+
+export async function startServer(homeOverride?: string, sidecar?: SidecarOptions): Promise<ServerHandle> {
   const ctx = new AppContext(homeOverride, { applyPendingRestore: true });
   const settings = ctx.settings();
+  // The shell's launch secret travels on the context, so the service is built with the defaults and no option of its own.
+  ctx.launchSecret = sidecar?.launchSecret;
   const app = await buildServer(ctx);
 
+  if (ctx.restoreRejectedAtBoot) {
+    app.log.warn({
+      backup: ctx.restoreRejectedAtBoot.name,
+      msg: `staged restore refused at boot: ${ctx.restoreRejectedAtBoot.message}`,
+    });
+
+    console.warn(
+      `[mordomo] staged restore of ${ctx.restoreRejectedAtBoot.name} refused: ${ctx.restoreRejectedAtBoot.message}`,
+    );
+  }
   if (ctx.restoredAtBoot) {
     app.log.info({ backup: ctx.restoredAtBoot.name, msg: "applied staged restore at boot" });
 
     console.log(`[mordomo] applied staged restore of backup ${ctx.restoredAtBoot.name}`);
   }
-  const recovered = ctx.runs.recoverInterrupted();
+  // Own the home: lock, prune, recover objective steps and orphaned runs, and
+  // start the scheduler and the sentinels. A leftover MordomoOS service of this
+  // same install still holding the lock is stopped first, as the port takeover
+  // below does; anything else holding it is reported, never killed.
+  let recovered: number;
+  try {
+    try {
+      ({ recovered } = ctx.start());
+    } catch (err) {
+      // A shell's service never stops another service to take its place: it reports who holds the home.
+      if (sidecar || !(err instanceof EngineLockedError) || err.holderPid === null) throw err;
+      const leftover = listServiceProcesses().filter((p) => p.pid === err.holderPid);
+      if (leftover.length === 0) throw err;
+      const stopped = await terminate(leftover);
+      app.log.warn({ pids: stopped, msg: "stopped the MordomoOS service holding the engine lock" });
+      ({ recovered } = ctx.start());
+    }
+  } catch (err) {
+    // Never leave a half-built service behind: no listener, no open database.
+    await app.close();
+    ctx.close();
+    throw err;
+  }
   if (recovered > 0) {
     app.log.info({ recovered, msg: "marked orphaned runs as interrupted" });
 
     console.log(`[mordomo] marked ${recovered} orphaned run(s) as interrupted`);
   }
-  ctx.scheduler.start();
-  // The sentinels observe on the same lifecycle as the scheduler; their hourly
-  // pass rides the sweep below instead of arming a timer of its own.
-  ctx.sentinels.start();
   // Telegram inbound: approve / deny from the phone through the same code path as the UI button.
   ctx.telegramPoller = new TelegramPoller({
     getSettings: () => ctx.settings(),
-    resolve: (id, decision) => resolveApprovalForChat(ctx, id, decision),
+    resolve: (id, decision, by) => resolveApprovalForChat(ctx, id, decision, by),
     pending: () =>
       ctx.approvals.list("pending").map((a) => ({ id: a.id, kind: a.kind, description: a.description })),
     onError: (message) => app.log.warn({ msg: `telegram inbound: ${message}` }),
@@ -425,10 +880,22 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   // process listening there if it is a MordomoOS service, plus leftovers of
   // this same install (a lost port race, a restart still shutting down) — and
   // retry. Other homes and checkouts on other ports are never touched.
+  const plan = listenPlan(settings);
+  if (plan.ignoredBind !== null) {
+    app.log.warn({ bindAddress: plan.ignoredBind, msg: ignoredBindMessage(plan.ignoredBind) });
+    console.warn(`[mordomo] ${ignoredBindMessage(plan.ignoredBind)}`);
+  }
+  const wantedPort = sidecar?.port ?? settings.port;
   try {
-    await app.listen({ port: settings.port, host: settings.bindAddress });
+    await app.listen({ port: wantedPort, host: plan.plainHost });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "EADDRINUSE") throw err;
+    if (sidecar) {
+      clearInterval(approvalSweep);
+      await app.close();
+      ctx.close();
+      throw new PortInUseError(wantedPort);
+    }
     const snap = await instanceSnapshot(process.pid, 0);
     const holder = portHolder(settings.port);
     const holding = snap.processes.filter((p) => p.pid === holder);
@@ -441,9 +908,12 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
     if (leftovers.length === 0) throw err; // something else owns the port: report, never kill
     const stopped = await terminate(leftovers);
     app.log.warn({ pids: stopped, port: settings.port, msg: "stopped MordomoOS processes holding the port" });
-    await listenWithRetry(app, settings.port, settings.bindAddress, 40);
+    await listenWithRetry(app, settings.port, plan.plainHost, 40);
   }
-  const url = `http://127.0.0.1:${settings.port}`;
+  // The port the system gave (a sidecar asks for 0); the services that call this one back use it from here on.
+  const listenPort = (app.server.address() as AddressInfo).port;
+  ctx.boundPort = listenPort;
+  const url = `http://127.0.0.1:${listenPort}`;
 
   // Remote access over TLS (follow-up 10): a second listener with the
   // self-signed certificate, sharing the same request handler. Loopback keeps
@@ -456,14 +926,14 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
     });
     await new Promise<void>((resolve, reject) => {
       tlsServer!.once("error", reject);
-      tlsServer!.listen(tls.port, settings.bindAddress, () => resolve());
+      tlsServer!.listen(tls.port, plan.tlsHost ?? plan.plainHost, () => resolve());
     });
     app.log.info({ port: tls.port, fingerprint: tls.material.fingerprint, msg: "tls listener up" });
   }
 
   const pidFile = path.join(ctx.paths.run, "server.pid");
   fs.mkdirSync(ctx.paths.run, { recursive: true });
-  fs.writeFileSync(pidFile, JSON.stringify({ pid: process.pid, port: settings.port, startedAt: Date.now() }));
+  fs.writeFileSync(pidFile, JSON.stringify({ pid: process.pid, port: listenPort, startedAt: Date.now() }));
 
   // ---- Lifecycle: idempotent close, signal + unhandledRejection safety net ---
   let closing: Promise<void> | null = null;
@@ -511,5 +981,17 @@ export async function startServer(homeOverride?: string): Promise<ServerHandle> 
   process.on("SIGINT", onSignal);
   process.on("unhandledRejection", onRejection);
 
-  return { app, ctx, url, tlsUrl: tls ? `https://${tls.hosts[0] ?? "localhost"}:${tls.port}` : null, close };
+  // What the sockets bound to, as the operating system reports it (not what was asked for).
+  const bound = (server: { address(): unknown }) => {
+    const address = server.address() as AddressInfo;
+    return { host: address.address, port: address.port };
+  };
+  return {
+    app,
+    ctx,
+    url,
+    tlsUrl: tls ? `https://${tls.hosts[0] ?? "localhost"}:${tls.port}` : null,
+    listeners: { plain: bound(app.server), tls: tlsServer ? bound(tlsServer) : null },
+    close,
+  };
 }

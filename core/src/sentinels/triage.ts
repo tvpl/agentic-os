@@ -193,6 +193,7 @@ export async function triageSentinel(
       timeoutMs: triage.timeoutMs,
       profile: "read_only",
       maxCostUsd: triage.dailyBudgetUsd - committed,
+      startedBy: null,
     });
   } catch (err) {
     deps.onError?.(err);

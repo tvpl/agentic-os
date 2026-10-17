@@ -15,11 +15,54 @@ export interface ApprovalTarget {
   prompt: string | null;
   cwd: string | null;
   provider: string | null;
+  model: string | null;
+  effort: string | null;
+  /** `write` for a prompt run held at the gate; a skill run says it by being a write skill. */
+  mode: string | null;
+  /** What a skill run is given, in the order it was written (empty for a prompt run). */
+  inputs: Array<[string, string]>;
+  /** The name of the paired device that asked, kept with the approval when it was raised (null: not recorded). */
+  requestedByName: string | null;
+}
+
+/**
+ * An approval a paired device chose: a write run it asked for, or a tool that a run it started asks to use. Whoever
+ * decides it reads the whole request first (the approvals screens show it), so the quick ways to approve (the inbox's
+ * tick, the Núcleo's ⌘⇧A, Telegram) send the person to that review instead. Mirrors `requiresFullReview` in the core.
+ */
+export function requiresFullReview(approval: Pick<ApprovalRecord, "kind" | "requestedBy">): boolean {
+  return (
+    (approval.kind === "write_run" || approval.kind === "tool_use") &&
+    approval.requestedBy?.startsWith("device:") === true
+  );
+}
+
+/** A tool approval's request: the tool and every field of its input, whole (objects as indented JSON). */
+export function toolRequest(approval: ApprovalRecord): { tool: string; fields: Array<[string, string]> } {
+  const payload = (approval.payload ?? {}) as { toolName?: unknown; input?: unknown };
+  const input =
+    payload.input && typeof payload.input === "object" && !Array.isArray(payload.input)
+      ? (payload.input as Record<string, unknown>)
+      : {};
+  return {
+    tool: typeof payload.toolName === "string" ? payload.toolName : "tool",
+    fields: Object.entries(input).map(([k, v]) => [
+      k,
+      typeof v === "string" ? v : JSON.stringify(v, null, 2),
+    ]),
+  };
+}
+
+/** The short id shown beside a device's name: names are chosen by the one who pairs and are not unique. */
+export function deviceRef(requestedBy: string | null | undefined): string | null {
+  return requestedBy?.startsWith("device:")
+    ? requestedBy.slice("device:".length, "device:".length + 6)
+    : null;
 }
 
 /** Read the launch input out of an approval payload without trusting its shape. */
 export function approvalTarget(approval: ApprovalRecord): ApprovalTarget {
-  const payload = (approval.payload ?? {}) as { kind?: unknown; input?: unknown };
+  const payload = (approval.payload ?? {}) as { kind?: unknown; input?: unknown; requestedByName?: unknown };
   const input = (payload.input ?? {}) as Record<string, unknown>;
   const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
   const kind = payload.kind === "prompt" || payload.kind === "skill" ? payload.kind : "other";
@@ -29,6 +72,18 @@ export function approvalTarget(approval: ApprovalRecord): ApprovalTarget {
     prompt: str(input.prompt),
     cwd: str(input.cwd),
     provider: str(input.provider),
+    model: str(input.model),
+    effort: str(input.effort),
+    // A prompt run says its mode; a skill run does not, and only a skill that writes is held for approval.
+    mode: str(input.mode) ?? (kind === "skill" ? "write" : null),
+    requestedByName: str(payload.requestedByName),
+    inputs:
+      input.inputs && typeof input.inputs === "object" && !Array.isArray(input.inputs)
+        ? Object.entries(input.inputs as Record<string, unknown>).map(([k, v]) => [
+            k,
+            typeof v === "string" ? v : JSON.stringify(v),
+          ])
+        : [],
   };
 }
 

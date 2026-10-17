@@ -3,7 +3,9 @@
  * classifies (`RunFailure.code`); this turns the code into the sentence a
  * person reads and the one action that clears it. Pure and tested.
  */
+import type { ProviderSnapshot } from "../api";
 import type { TKey } from "../i18n";
+import { loginHint } from "./authRecovery";
 
 export type FixAction =
   | { kind: "login"; command: string | null }
@@ -18,16 +20,12 @@ export interface FailureFix {
   action: FixAction;
 }
 
-const LOGIN: Record<string, string> = {
-  claude: "claude auth login",
-  codex: "codex login",
-  cursor: "cursor login",
-};
-
 export function failureFix(
   failure: { code: string; recoverable?: boolean } | null | undefined,
   provider: string | null | undefined,
   status?: string,
+  /** The provider snapshots: where the login command comes from (`loginCommand`). */
+  snapshots?: readonly Pick<ProviderSnapshot, "id" | "loginCommand">[],
 ): FailureFix | null {
   const code =
     failure?.code ?? (status === "timed_out" ? "timeout" : status === "cancelled" ? "cancelled" : null);
@@ -36,7 +34,7 @@ export function failureFix(
     case "authentication":
       return {
         causeKey: "runs.fix.auth",
-        action: { kind: "login", command: provider ? (LOGIN[provider] ?? null) : null },
+        action: { kind: "login", command: loginHint(provider, snapshots) },
       };
     case "budget":
       return { causeKey: "runs.fix.budget", action: { kind: "budget" } };

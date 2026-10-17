@@ -3,24 +3,31 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  executeInvocation,
-  findExecutable,
-  parseHelpFlags,
-  probe,
+  SpawnPolicy,
   type AgentAdapter,
   type AgentRun,
   type AuthStatus,
   type DetectionResult,
   type HealthStatus,
-  type LineParser,
   type ModelOption,
   type RunEvent,
   type SafeInvocation,
   type ValidationResult,
-  BUILTIN_MANIFESTS,
-  type ProviderManifest,
   type AdapterFactoryOptions,
 } from "@mordomo/core";
+import {
+  ClaudeStreamMessage,
+  KnownStreamTypes,
+  resumableSessionId,
+  createUnrecognizedTally,
+  executeInvocation,
+  findExecutable,
+  parseHelpFlags,
+  type LineParser,
+  type RejectedLine,
+  readTypedLine,
+} from "@mordomo/core/internal";
+import { claudeManifest } from "./manifest.js";
 
 /**
  * Claude Code adapter — headless (`claude -p`) with `stream-json` output.
@@ -34,11 +41,15 @@ import {
  * installed CLI advertises them (`--help` probe), so an older binary simply
  * starts a fresh conversation.
  */
-export const claudeManifest: ProviderManifest = BUILTIN_MANIFESTS.claude;
+export { claudeManifest };
 
 /** Factory used by the provider registry (`apps/api/src/providers.ts`). */
 export const createClaudeAdapter = (opts: AdapterFactoryOptions): AgentAdapter =>
-  new ClaudeAdapter({ binaryPath: opts.binaryPath, ...(opts.homeDir ? { homeDir: opts.homeDir } : {}) });
+  new ClaudeAdapter({
+    binaryPath: opts.binaryPath,
+    ...(opts.homeDir ? { homeDir: opts.homeDir } : {}),
+    ...(opts.spawn ? { spawn: opts.spawn } : {}),
+  });
 
 export class ClaudeAdapter implements AgentAdapter {
   readonly id = "claude" as const;
@@ -46,7 +57,14 @@ export class ClaudeAdapter implements AgentAdapter {
   private detection: DetectionResult | null = null;
   private authCommandSupported = false;
 
-  constructor(private readonly opts: { binaryPath?: string | null; homeDir?: string } = {}) {}
+  /** The engine's spawn policy; an adapter built alone allows only `node` and its own binary. */
+  private readonly spawn: SpawnPolicy;
+
+  constructor(
+    private readonly opts: { binaryPath?: string | null; homeDir?: string; spawn?: SpawnPolicy } = {},
+  ) {
+    this.spawn = opts.spawn ?? new SpawnPolicy({ binaries: [claudeManifest.binary] });
+  }
 
   private binary(): string {
     return this.opts.binaryPath ?? findExecutable("claude") ?? "claude";
@@ -75,13 +93,13 @@ export class ClaudeAdapter implements AgentAdapter {
     let version: string | null = null;
     let supportedFlags: string[] = [];
     try {
-      const v = await probe(binaryPath, ["--version"], os.tmpdir());
+      const v = await this.spawn.probe(binaryPath, ["--version"], os.tmpdir());
       version = v.stdout.trim().split("\n")[0] ?? null;
     } catch (err) {
       notes.push(`--version failed: ${(err as Error).message}`);
     }
     try {
-      const h = await probe(binaryPath, ["--help"], os.tmpdir());
+      const h = await this.spawn.probe(binaryPath, ["--help"], os.tmpdir());
       supportedFlags = parseHelpFlags(h.stdout + h.stderr);
       this.authCommandSupported = /^\s*auth(?:\s|\[|$)/m.test(h.stdout);
       for (const required of ["--print", "--output-format", "--model"]) {
@@ -92,7 +110,13 @@ export class ClaudeAdapter implements AgentAdapter {
     } catch (err) {
       notes.push(`--help probe failed: ${(err as Error).message}`);
     }
-    this.detection = { installed: true, binaryPath, version, supportedFlags, notes };
+    this.detection = {
+      installed: true,
+      binaryPath,
+      version,
+      supportedFlags,
+      notes,
+    };
     return this.detection;
   }
 
@@ -103,7 +127,7 @@ export class ClaudeAdapter implements AgentAdapter {
     await this.ensureDetection();
     if (this.authCommandSupported && !this.opts.homeDir) {
       try {
-        const result = await probe(this.binary(), ["auth", "status", "--json"], os.tmpdir(), 5000);
+        const result = await this.spawn.probe(this.binary(), ["auth", "status", "--json"], os.tmpdir(), 5000);
         if (!result.timedOut) {
           const status: unknown = JSON.parse(result.stdout);
           if (status && typeof status === "object" && "loggedIn" in status) {
@@ -201,7 +225,7 @@ export class ClaudeAdapter implements AgentAdapter {
   async buildInvocation(run: AgentRun, newSessionId: string = crypto.randomUUID()): Promise<SafeInvocation> {
     const detection = await this.ensureDetection();
     const args = ["-p", "--output-format", "stream-json", "--verbose"];
-    const resumeId = run.resume?.providerSessionId;
+    const resumeId = resumableSessionId(run);
     if (resumeId && detection.supportedFlags.includes("--resume")) {
       args.push("--resume", resumeId);
     } else if (!resumeId && detection.supportedFlags.includes("--session-id")) {
@@ -211,6 +235,14 @@ export class ClaudeAdapter implements AgentAdapter {
     }
     if (run.model) args.push("--model", run.model);
     args.push("--add-dir", run.artifactsDir);
+    for (const dir of run.readDirs ?? []) args.push("--add-dir", dir);
+    // The folders the run reads but must not edit (a skill's own folder): deny the edit tools there in every mode.
+    // acceptEdits would otherwise pre-approve an edit of the SKILL.md the next run trusts. (Rule syntax as for the
+    // artifacts folder below; not exercised against the installed CLI here.)
+    const protectedRules = (run.protectedDirs ?? []).flatMap((dir) => {
+      const rule = dir.startsWith("/") ? `/${dir}` : dir;
+      return [`Edit(${rule}/**)`, `Write(${rule}/**)`, `MultiEdit(${rule}/**)`];
+    });
     if (run.mode === "read_only") {
       // Headless default mode auto-denies permission prompts; writes are only
       // pre-approved inside the artifacts directory. Claude Code permission
@@ -222,7 +254,7 @@ export class ClaudeAdapter implements AgentAdapter {
         "--allowedTools",
         `Write(${artifactsRule}/**),Edit(${artifactsRule}/**)`,
         "--disallowedTools",
-        "Bash(rm:*),Bash(sudo:*)",
+        ["Bash(rm:*)", "Bash(sudo:*)", ...protectedRules].join(","),
       );
     } else if (run.permissionBroker) {
       // Every prompt the CLI would raise goes to a human through the
@@ -238,11 +270,13 @@ export class ClaudeAdapter implements AgentAdapter {
         "--permission-prompt-tool",
         "mcp__mordomo__approve",
         "--mcp-config",
-        JSON.stringify(mcp),
+        writeMcpConfig(run.runId, mcp),
       );
     } else {
       args.push("--permission-mode", "acceptEdits");
     }
+    if (run.mode !== "read_only" && protectedRules.length > 0)
+      args.push("--disallowedTools", protectedRules.join(","));
     const env: Record<string, string> = {};
     const thinking = { low: "1024", medium: "8192", high: "31999" }[run.effort as string];
     if (thinking) env.MAX_THINKING_TOKENS = thinking;
@@ -260,22 +294,28 @@ export class ClaudeAdapter implements AgentAdapter {
     const build = (r: AgentRun, sessionId: string) => this.buildInvocation(r, sessionId);
     const detect = () => this.ensureDetection();
     return (async function* () {
-      const resumeId = run.resume?.providerSessionId;
+      const resumeId = resumableSessionId(run);
       const providerSessionId = resumeId ?? crypto.randomUUID();
       const detection = await detect();
       const invocation = await build(run, providerSessionId);
-      if (resumeId && !detection.supportedFlags.includes("--resume")) {
-        yield {
-          type: "text",
-          ts: Date.now(),
-          stream: "stderr",
-          text: "[mordomo] resumeSupported: false — the installed claude does not advertise --resume; starting a fresh conversation.",
-        } as RunEvent;
-      } else if (invocation.args.includes("--session-id") || invocation.args.includes("--resume")) {
-        // Known before the first line of output; the stream confirms it later.
-        yield { type: "session", ts: Date.now(), providerSessionId };
+      // From here the broker's MCP config file exists: remove it however the run ends,
+      // including a consumer that abandons the stream before the CLI starts.
+      try {
+        if (resumeId && !detection.supportedFlags.includes("--resume")) {
+          yield {
+            type: "text",
+            ts: Date.now(),
+            stream: "stderr",
+            text: "[mordomo] resumeSupported: false — the installed claude does not advertise --resume; starting a fresh conversation.",
+          } as RunEvent;
+        } else if (invocation.args.includes("--session-id") || invocation.args.includes("--resume")) {
+          // Known before the first line of output; the stream confirms it later.
+          yield { type: "session", ts: Date.now(), providerSessionId };
+        }
+        yield* executeInvocation(run, invocation, claudeStreamParser(), [invocation.executable]);
+      } finally {
+        removeMcpConfig(invocation.args);
       }
-      yield* executeInvocation(run, invocation, claudeStreamParser(), [invocation.executable]);
     })();
   }
 
@@ -293,6 +333,23 @@ export class ClaudeAdapter implements AgentAdapter {
       checkedAt: Date.now(),
     };
   }
+}
+
+/**
+ * The broker's MCP config goes to a 0600 file in a private 0700 directory,
+ * never on argv where `ps` shows it to every user and to the agent itself.
+ */
+function writeMcpConfig(runId: string, config: unknown): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `mordomo-mcp-${runId.replace(/[^A-Za-z0-9-]/g, "_")}-`));
+  const file = path.join(dir, "mcp.json");
+  fs.writeFileSync(file, JSON.stringify(config), { mode: 0o600 });
+  return file;
+}
+
+function removeMcpConfig(args: string[]): void {
+  const i = args.indexOf("--mcp-config");
+  if (i < 0 || !args[i + 1]) return;
+  fs.rmSync(path.dirname(args[i + 1]!), { recursive: true, force: true });
 }
 
 function num(value: unknown): number {
@@ -328,8 +385,20 @@ export function dominantModel(modelUsage: unknown): string | null {
   return best?.model ?? null;
 }
 
-/** Parser for Claude Code's stream-json (one JSON object per line). Exported for tests. */
+/** Names a rejected line for the warning: its type, and whether the schema has that type. */
+const describeClaudeLine = (value: Record<string, unknown>): RejectedLine =>
+  typeof value.type === "string"
+    ? { name: value.type, reason: KnownStreamTypes.claude.has(value.type) ? "invalid" : "unknown" }
+    : { reason: "unknown" };
+
+/**
+ * Parser for Claude Code's stream-json (one JSON object per line). Each line
+ * is checked against `ClaudeStreamMessage` first: a JSON object that matches no
+ * known message is counted, never read, and `finish()` names the count once.
+ * Exported for tests.
+ */
 export function claudeStreamParser(): LineParser {
+  const unrecognized = createUnrecognizedTally("claude");
   let lastAssistantText = "";
   let resultText = "";
   let sessionModel: string | null = null;
@@ -338,55 +407,62 @@ export function claudeStreamParser(): LineParser {
   let seenSessionId: string | null = null;
   return {
     parseLine(line: string): RunEvent[] | null {
-      let obj: Record<string, unknown>;
-      try {
-        obj = JSON.parse(line) as Record<string, unknown>;
-      } catch {
-        return null;
-      }
+      const read = readTypedLine(line, ClaudeStreamMessage, unrecognized, describeClaudeLine);
+      if (!read.ok) return read.events;
+      const obj = read.data;
       const ts = Date.now();
-      const type = obj.type as string;
       const sessionEvents: RunEvent[] = [];
-      if (typeof obj.session_id === "string" && obj.session_id && obj.session_id !== seenSessionId) {
+      if (obj.session_id && obj.session_id !== seenSessionId) {
         seenSessionId = obj.session_id;
         sessionEvents.push({ type: "session", ts, providerSessionId: obj.session_id });
       }
-      if (type === "system") {
-        const subtype = (obj.subtype as string) ?? "";
-        if (subtype === "init" && typeof obj.model === "string") sessionModel = obj.model;
-        return subtype === "init"
+      // A `usage` block that does not match its schema is ignored so the rest of
+      // the line (text, tool calls, cost) is kept; it is still counted, so the
+      // warning shows the drift.
+      const ignoredUsage = (raw: unknown, parsed: unknown) => {
+        if (raw != null && parsed === undefined)
+          unrecognized.note(read.value, { name: obj.type, reason: "invalid" });
+      };
+      if (obj.type === "system") {
+        if (obj.subtype === "init" && obj.model !== undefined) sessionModel = obj.model;
+        return obj.subtype === "init"
           ? [
               ...sessionEvents,
               {
                 type: "text",
                 ts,
                 stream: "stdout",
-                text: `[claude session started: model=${(obj.model as string) ?? "?"}]`,
+                text: `[claude session started: model=${obj.model ?? "?"}]`,
               },
             ]
           : sessionEvents;
       }
-      if (type === "assistant" || type === "user") {
-        const message = obj.message as
-          { content?: Array<Record<string, unknown>>; usage?: unknown; model?: unknown } | undefined;
+      if (obj.type === "assistant" || obj.type === "user") {
+        const message = obj.message;
         const events: RunEvent[] = [...sessionEvents];
         // Per-turn usage (context meter): one event per assistant message.
-        const turn = type === "assistant" ? parseClaudeUsage(message?.usage) : null;
-        if (turn) {
-          const model = typeof message?.model === "string" ? message.model : sessionModel;
-          events.push({
-            type: "usage",
-            ts,
-            scope: "turn",
-            ...turn,
-            costUsd: null,
-            ...(model ? { model } : {}),
-          });
+        if (obj.type === "assistant") {
+          ignoredUsage((read.value.message as { usage?: unknown }).usage, message.usage);
+          const turn = parseClaudeUsage(message.usage);
+          if (turn) {
+            const model = message.model ?? sessionModel;
+            events.push({
+              type: "usage",
+              ts,
+              scope: "turn",
+              ...turn,
+              costUsd: null,
+              ...(model ? { model } : {}),
+            });
+          }
         }
-        for (const block of message?.content ?? []) {
+        for (const block of Array.isArray(message.content) ? message.content : []) {
           if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
-            lastAssistantText = block.text;
-            if (type === "assistant") events.push({ type: "assistant", ts, text: block.text });
+            // The summary is the assistant's last words, never the user's turn.
+            if (obj.type === "assistant") {
+              lastAssistantText = block.text;
+              events.push({ type: "assistant", ts, text: block.text });
+            }
           } else if (block.type === "tool_use") {
             const input = JSON.stringify(block.input ?? {});
             events.push({
@@ -405,7 +481,7 @@ export function claudeStreamParser(): LineParser {
               detail: JSON.stringify(block.content ?? "").slice(0, 300),
               ...(typeof block.tool_use_id === "string" ? { callId: block.tool_use_id } : {}),
               phase: "end",
-              outcome: block.is_error ? "error" : "ok",
+              outcome: "error",
             });
             events.push({
               type: "permission",
@@ -416,12 +492,13 @@ export function claudeStreamParser(): LineParser {
         }
         return events;
       }
-      if (type === "result") {
-        resultText = typeof obj.result === "string" ? obj.result : lastAssistantText;
+      if (obj.type === "result") {
+        ignoredUsage(read.value.usage, obj.usage);
+        resultText = obj.result ?? lastAssistantText;
         // Session totals: tokens + cost. The lifecycle `result` event itself is
         // emitted by the runner with the exit code.
         const total = parseClaudeUsage(obj.usage);
-        const cost = typeof obj.total_cost_usd === "number" ? obj.total_cost_usd : null;
+        const cost = obj.total_cost_usd ?? null;
         if (total || cost != null) {
           const model = dominantModel(obj.modelUsage) ?? sessionModel;
           return [
@@ -446,5 +523,7 @@ export function claudeStreamParser(): LineParser {
     summarize(): string {
       return (resultText || lastAssistantText).slice(0, 2000);
     },
+    finish: () => unrecognized.warning(),
+    dropped: () => unrecognized.noteUnreadable(),
   };
 }

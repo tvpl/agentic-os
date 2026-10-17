@@ -6,6 +6,7 @@ import { RoutineSchema, validateRoutine, type Routine, type RoutineValidationOpt
 import { nextRunFor } from "./schedule.js";
 import { atomicWrite } from "../config/store.js";
 import { resolveInsideDir } from "../security/ids.js";
+import { homeReadScope, listWorkspaceDir, readWorkspaceText } from "../security/safeFs.js";
 
 /** A file the store could not load; reported, never thrown, by `list()`. */
 export interface StoreProblem {
@@ -13,11 +14,28 @@ export interface StoreProblem {
   error: string;
 }
 
+/** A routine is a small JSON file. */
+const MAX_ROUTINE_BYTES = 1024 * 1024;
+
 /** Routines are JSON files in routines/ — files are the source of truth. */
 export class RoutineStore {
   private problems: StoreProblem[] = [];
 
   constructor(private readonly paths: MordomoPaths) {}
+
+  /** Routine files are read through the safe-read primitive, confined to `routines/`. */
+  private readJson(file: string, scope = this.scope()): unknown {
+    return JSON.parse(
+      readWorkspaceText(scope, file, {
+        maxBytes: MAX_ROUTINE_BYTES,
+        strict: true,
+      }).text,
+    );
+  }
+
+  private scope() {
+    return homeReadScope(this.paths.home, [this.paths.routines]);
+  }
 
   /** Files skipped by the most recent `list()` call, with the reason. */
   lastProblems(): StoreProblem[] {
@@ -33,12 +51,12 @@ export class RoutineStore {
     this.problems = [];
     if (!fs.existsSync(this.paths.routines)) return [];
     const out: Routine[] = [];
-    for (const file of fs.readdirSync(this.paths.routines)) {
-      if (!file.endsWith(".json")) continue;
-      const full = path.join(this.paths.routines, file);
+    const scope = this.scope(); // one scope for the whole listing
+    for (const entry of listWorkspaceDir(scope, this.paths.routines)) {
+      if (!entry.isFile || !entry.name.endsWith(".json")) continue;
+      const full = path.join(this.paths.routines, entry.name);
       try {
-        const raw = JSON.parse(fs.readFileSync(full, "utf8"));
-        out.push(RoutineSchema.parse(raw));
+        out.push(RoutineSchema.parse(this.readJson(full, scope)));
       } catch (err) {
         // One bad file must not take the scheduler, the API or the CLI down.
         this.problems.push({ file: full, error: (err as Error).message });
@@ -50,7 +68,7 @@ export class RoutineStore {
   get(id: string): Routine | null {
     const file = this.fileFor(id);
     if (!fs.existsSync(file)) return null;
-    return RoutineSchema.parse(JSON.parse(fs.readFileSync(file, "utf8")));
+    return RoutineSchema.parse(this.readJson(file));
   }
 
   /**

@@ -58,12 +58,6 @@ export function publishPanels(next: readonly OpenPanel[]): void {
   panels = next;
   for (const fn of listeners) fn();
 }
-export function subscribePanels(fn: Listener): () => void {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
 export function getPanels(): readonly OpenPanel[] {
   return panels;
 }

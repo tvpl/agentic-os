@@ -2,24 +2,36 @@ import fs from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { z } from "zod";
+import { SettingsPatchSchema, type HandlerCall, type SettingsPatch } from "@mordomo/contracts";
 import type { FastifyInstance } from "fastify";
+import type { Settings } from "@mordomo/core";
 import {
-  ProviderId,
-  ProviderSettingsSchema,
   SettingsSchema,
+  UI_PREFERENCE_KEYS,
+  UiPreferencesSchema,
+  deepMergeSettings as deepMerge,
   createBackup,
-  events,
+  executableName,
+  isDeviceActor,
   isInside,
   listBackups,
+  verifyBackup,
   planStartupService,
+  NotRegularFileError,
+  listWorkspaceDir,
+  openWorkspaceFile,
+  readWorkspaceText,
+  realpathLenient,
   redactSecrets,
-  resolveInsideRoots,
-  type Settings,
+  resolveReadable,
+  type ReadScope,
+  type WorkspaceEntry,
+  type WorkspaceFile,
   dailyPoints,
   isStartupServiceInstalled,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { clearRestorePending, readRestorePending, writeRestorePending, type AppContext } from "../context.js";
+import { bind } from "../contract.js";
 import { runDoctor } from "../doctor.js";
 import { cliEntry } from "../entry.js";
 import {
@@ -32,8 +44,8 @@ import {
 } from "../instances.js";
 import { spawn } from "node:child_process";
 import { RELEASES_PAGE, UpdateChecker } from "../updates.js";
-import { resolveApproval } from "../approvalActions.js";
 import { tlsListenerFor } from "../server.js";
+import { API_VERSION } from "../apiVersion.js";
 
 function tlsInfo(ctx: AppContext): { port: number; fingerprint: string; hosts: string[] } | null {
   try {
@@ -43,8 +55,7 @@ function tlsInfo(ctx: AppContext): { port: number; fingerprint: string; hosts: s
     return null;
   }
 }
-import { grantedRoots, httpError } from "./common.js";
-import { BackupNameParams, UuidParams } from "./params.js";
+import { httpError, principalName, requireAdapter, requireProvider, startedByOf } from "./common.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -73,19 +84,7 @@ export const PKG_VERSION = readPackageVersion();
 
 // ---- Settings patch: deep-merge for providers.* and limits ------------------
 
-const ProviderPatch = ProviderSettingsSchema.partial();
-export const SettingsPatchSchema = SettingsSchema.partial().extend({
-  dashboardLayoutBase: SettingsSchema.shape.dashboardLayout.removeDefault().optional(),
-  providers: z
-    .object({
-      claude: ProviderPatch.optional(),
-      cursor: ProviderPatch.optional(),
-      codex: ProviderPatch.optional(),
-    })
-    .optional(),
-  limits: SettingsSchema.shape.limits.removeDefault().partial().optional(),
-});
-export type SettingsPatch = z.infer<typeof SettingsPatchSchema>;
+export { SettingsPatchSchema };
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -131,8 +130,8 @@ function assertIndexableFolder(ctx: AppContext, folderPath: string): void {
     throw httpError(400, `Folder does not exist: ${folderPath}`);
   }
   if (!stat.isDirectory()) throw httpError(400, `Not a directory: ${folderPath}`);
-  const real = fs.realpathSync(folderPath);
-  const config = fs.existsSync(ctx.paths.config) ? fs.realpathSync(ctx.paths.config) : ctx.paths.config;
+  const real = realpathLenient(folderPath);
+  const config = realpathLenient(ctx.paths.config);
   if (isInside(config, real) || isInside(real, config)) {
     throw httpError(400, "The MordomoOS config directory cannot be indexed");
   }
@@ -141,7 +140,8 @@ function assertIndexableFolder(ctx: AppContext, folderPath: string): void {
 /** A sync target must live inside the home or an enabled indexed folder. */
 function resolveSyncTarget(ctx: AppContext, target: string | undefined): string {
   if (!target) return ctx.paths.home;
-  return resolveInsideRoots(grantedRoots(ctx), target);
+  // Granted folders, on the real path, outside the home's config/ and logs/ (PathAccessError → 403).
+  return resolveReadable(ctx.readScope(), target).real;
 }
 
 // ---- Artifacts list -----------------------------------------------------------
@@ -204,19 +204,12 @@ export function artifactKind(file: string): ArtifactKind {
 }
 
 /** Title for a file: first `# heading` of a .md, `<title>` of an .html, else the base name. Reads at most 16 KB. */
-export function artifactTitle(abs: string, kind: ArtifactKind): string {
+export function artifactTitle(scope: ReadScope, abs: string, kind: ArtifactKind): string {
   const base = path.basename(abs);
   if (kind !== "markdown" && kind !== "html") return base;
   let head = "";
   try {
-    const fd = fs.openSync(abs, "r");
-    try {
-      const buf = Buffer.alloc(TITLE_SCAN_BYTES);
-      const n = fs.readSync(fd, buf, 0, TITLE_SCAN_BYTES, 0);
-      head = buf.subarray(0, n).toString("utf8");
-    } finally {
-      fs.closeSync(fd);
-    }
+    head = readWorkspaceText(scope, abs, { maxBytes: TITLE_SCAN_BYTES }).text;
   } catch {
     return base;
   }
@@ -236,15 +229,7 @@ export function artifactTitle(abs: string, kind: ArtifactKind): string {
   return base;
 }
 
-const ArtifactListQuery = z.object({
-  q: z.string().max(200).optional(),
-  skill: z.string().max(100).optional(),
-  folder: z.string().max(200).optional(),
-  kind: z.enum(["image", "video", "html", "markdown", "code", "other"]).optional(),
-  since: z.coerce.number().int().min(0).optional(),
-  limit: z.coerce.number().int().min(1).max(500).default(200),
-});
-type ArtifactListQueryT = z.infer<typeof ArtifactListQuery>;
+type ArtifactListQueryT = HandlerCall<"artifacts.list">["query"];
 
 /** Walk artifacts/ (bounded), merge run metadata by relative path, filter and sort newest first. */
 export function listArtifacts(
@@ -266,29 +251,26 @@ export function listArtifacts(
   }
 
   const items: ArtifactListItem[] = [];
+  // Listed and sized through the safe-read primitive: a link in artifacts/ is not an artifact.
+  const scope = ctx.scopeOf([root]);
+  const realRoot = realpathLenient(root);
   const walk = (dir: string, depth: number) => {
     if (items.length >= LIST_MAX_FILES || depth > 6) return;
-    let entries: fs.Dirent[];
+    let entries: WorkspaceEntry[];
     try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
+      entries = listWorkspaceDir(scope, dir);
     } catch {
       return;
     }
     for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
-      const abs = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(abs, depth + 1);
+      if (entry.isDirectory) {
+        walk(entry.path, depth + 1);
         continue;
       }
-      if (!entry.isFile()) continue;
-      let stat: fs.Stats;
-      try {
-        stat = fs.statSync(abs);
-      } catch {
-        continue;
-      }
-      const rel = path.relative(root, abs).split(path.sep).join("/");
+      if (!entry.isFile) continue;
+      const rel = path.relative(realRoot, entry.path).split(path.sep).join("/");
+      const abs = path.join(root, ...rel.split("/"));
       const meta = byRel.get(rel);
       const kind = artifactKind(entry.name);
       const folder = rel.split("/")[0] ?? "";
@@ -298,11 +280,11 @@ export function listArtifacts(
         path: abs,
         runId: meta?.runId ?? null,
         skillSlug: meta?.skillSlug ?? null,
-        createdAt: meta?.createdAt ?? stat.mtimeMs,
+        createdAt: meta?.createdAt ?? entry.mtimeMs,
         kind,
-        title: artifactTitle(abs, kind),
+        title: artifactTitle(scope, abs, kind),
         folder,
-        sizeBytes: stat.size,
+        sizeBytes: entry.size,
         thumbnail: Boolean(RAW_MIME[path.extname(entry.name).toLowerCase()]),
       });
       if (items.length >= LIST_MAX_FILES) return;
@@ -343,7 +325,7 @@ export function registerSystemRoutes(
    * at?" when a checkout and a packaged app share a machine. Token-protected
    * (paths are not for the pre-auth page).
    */
-  app.get("/api/system/info", async () => {
+  bind(app, "system.info", async () => {
     const snap = await instanceSnapshot();
     return {
       version: PKG_VERSION,
@@ -375,7 +357,7 @@ export function registerSystemRoutes(
    * terminates us (or the login service does) and starts a fresh process;
    * the UI polls `/api/meta` and reloads once it answers again.
    */
-  app.post("/api/system/restart", async () => {
+  bind(app, "system.restart", async () => {
     const child = spawn(process.execPath, [cliEntry(), "restart"], {
       detached: true,
       stdio: "ignore",
@@ -383,11 +365,11 @@ export function registerSystemRoutes(
     });
     child.on("error", () => undefined);
     child.unref();
-    return { ok: true, pid: process.pid };
+    return { ok: true as const, pid: process.pid };
   });
 
   /** Stop lingering sibling service processes (never this one). */
-  app.post("/api/system/reap", async () => {
+  bind(app, "system.reap", async () => {
     const snap = await instanceSnapshot(process.pid, 0);
     const orphans = orphanProcesses(snap.processes, process.pid, process.pid, undefined, snap.listening);
     const stopped = await terminate(orphans);
@@ -396,15 +378,15 @@ export function registerSystemRoutes(
   });
 
   /** Release check: only when enabled in settings, or explicitly asked for (`?force=1`). */
-  app.get("/api/updates", async (req) => {
-    const force = (req.query as { force?: string }).force === "1";
+  bind(app, "updates.check", async ({ query }) => {
+    const force = query.force === "1";
     const enabled = ctx.settings().updates.check;
     if (!enabled && !force) return { enabled, current: PKG_VERSION, url: RELEASES_PAGE, status: null };
     return { enabled, current: PKG_VERSION, url: RELEASES_PAGE, status: await updates.check(force) };
   });
 
   // Public (no token): only non-sensitive branding needed before the UI boots.
-  app.get("/api/meta", async () => {
+  bind(app, "meta.get", async () => {
     const s = ctx.settings();
     return {
       name: s.systemName,
@@ -413,6 +395,8 @@ export function registerSystemRoutes(
       language: s.language,
       setupCompleted: s.setupCompleted,
       version: PKG_VERSION,
+      // The contract this service speaks under /api/v1 (the unversioned /api is its alias).
+      apiVersion: API_VERSION,
       // Remote TLS (follow-up 10): the pairing screen shows the fingerprint so a phone can check what it trusts.
       tls: tlsInfo(ctx),
       // Which build answers here (pre-auth on purpose: `mordomo launch` uses it to decide whether to restart an older service).
@@ -421,28 +405,34 @@ export function registerSystemRoutes(
     };
   });
 
-  app.get("/api/health", async () => {
-    const dbOpen = ctx.db.open;
+  bind(app, "health.get", async () => {
+    // A closed database is an honest 503 in the envelope (a poller reads it as "not ready", and it is
+    // not an unhandled error to log on every poll), never a 200 with `ok: false`.
+    if (!ctx.db.open) throw httpError(503, "The database is closed", "service_unavailable");
     const runs = ctx.activeRunCount();
     return {
-      ok: dbOpen,
+      // Always true here, and always `db.open`: the soak script and the e2e soak read both of them.
+      ok: true as const,
       uptimeMs: Date.now() - ctx.startedAt,
       version: PKG_VERSION,
-      db: { open: dbOpen, path: ctx.paths.dbFile },
+      db: { open: true as const, path: ctx.paths.dbFile },
       scheduler: { running: ctx.schedulerRunning() },
       activeRuns: runs.running,
       queuedRuns: runs.queued,
       pendingApprovals: ctx.approvals.list("pending").length,
-      lastEventId: events.lastId,
+      lastEventId: ctx.events.lastId,
       restorePending: readRestorePending(ctx.paths),
     };
   });
 
-  app.get("/api/settings", async () => ctx.settings());
+  bind(app, "settings.get", async () => ctx.settings());
 
-  app.put("/api/settings", async (req) => {
-    const { dashboardLayoutBase, ...patch } = SettingsPatchSchema.parse(req.body);
-    const before = ctx.settings();
+  // ---- UI preferences (config/ui-preferences.json) ---------------------------
+  bind(app, "uiPreferences.get", async () => ctx.uiPreferences.load());
+
+  bind(app, "uiPreferences.update", async ({ body }) => {
+    const { dashboardLayoutBase, ...patch } = body;
+    const before = ctx.uiPreferences.load();
     if (
       patch.dashboardLayout &&
       dashboardLayoutBase !== undefined &&
@@ -452,6 +442,39 @@ export function registerSystemRoutes(
         new Error("Layout changed in another window. Reload it or explicitly save your local version."),
         { statusCode: 409, code: "layout_conflict" },
       );
+    }
+    // Objects merge and arrays replace, like settings; a layout replaces the stored one whole.
+    const { dashboardLayout, ...rest } = patch;
+    const merged = deepMerge(before, rest as Record<string, unknown>);
+    if (dashboardLayout) merged.dashboardLayout = dashboardLayout;
+    return ctx.uiPreferences.save(UiPreferencesSchema.parse(merged));
+  });
+
+  bind(app, "settings.update", async ({ body: patch }, req) => {
+    // What only the Command Centre reads moved to /api/ui-preferences (settings version 2).
+    // A body that is not an object (a string, a number) falls through to the schema's 400.
+    const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+    const moved = UI_PREFERENCE_KEYS.filter((key) => key in body);
+    if (moved.length > 0) {
+      throw httpError(
+        400,
+        `${moved.join(", ")} moved to /api/ui-preferences; save them there.`,
+        "moved_to_ui_preferences",
+      );
+    }
+    const before = ctx.settings();
+    // A pinned binary is allowlisted by its path: a new one must be the program the manifest names.
+    for (const [id, provider] of Object.entries(patch.providers ?? {})) {
+      if (!provider.binaryPath || provider.binaryPath === before.providers[id]?.binaryPath) continue;
+      requireProvider(ctx, id);
+      const { binary } = ctx.providers.manifest(id);
+      if (executableName(provider.binaryPath) !== binary) {
+        throw httpError(
+          400,
+          `providers.${id}.binaryPath must point to the "${binary}" executable, not "${provider.binaryPath}".`,
+          "binary_mismatch",
+        );
+      }
     }
 
     // Approval-gated transitions (docs/security.md).
@@ -477,19 +500,19 @@ export function registerSystemRoutes(
     return { settings: saved, pendingApproval };
   });
 
-  app.get("/api/providers", async (req) => {
-    const force = (req.query as { force?: string }).force === "1";
+  bind(app, "providers.list", async ({ query }) => {
+    const force = query.force === "1";
     return ctx.providerSnapshot(force);
   });
 
-  app.post("/api/providers/:id/detect", async (req) => {
-    const { id } = z.object({ id: ProviderId }).parse(req.params);
-    const detection = await ctx.adapters[id].detect();
-    const auth = await ctx.adapters[id].authenticate();
-    const models = await ctx.adapters[id].listModels();
+  bind(app, "providers.detect", async ({ params: { id } }) => {
+    const adapter = requireAdapter(ctx, id);
+    const detection = await adapter.detect();
+    const auth = await adapter.authenticate();
+    const models = await adapter.listModels();
     if (detection.binaryPath) {
       const s = ctx.settings();
-      s.providers[id].binaryPath = detection.binaryPath;
+      s.providers[id] = { ...requireProvider(ctx, id, s), binaryPath: detection.binaryPath };
       ctx.settingsStore.save(s);
       ctx.reloadAdapters();
     }
@@ -497,65 +520,39 @@ export function registerSystemRoutes(
     return { detection, auth, models };
   });
 
-  app.get("/api/providers/:id/models", async (req) => {
-    const { id } = z.object({ id: ProviderId }).parse(req.params);
-    return ctx.adapters[id].listModels();
+  bind(app, "providers.models", async ({ params: { id } }) => {
+    return requireAdapter(ctx, id).listModels();
   });
 
-  app.put("/api/providers/default", async (req) => {
-    const { provider } = z.object({ provider: ProviderId }).parse(req.body);
-    const s = ctx.settings();
-    if (!s.providers[provider].enabled) throw httpError(400, `Provider ${provider} is not enabled`);
+  bind(app, "providers.setDefault", async ({ body: { provider } }) => {
+    if (!requireProvider(ctx, provider).enabled) throw httpError(400, `Provider ${provider} is not enabled`);
     return ctx.settingsStore.update({ defaultProvider: provider });
   });
 
   /** Safe, file-change-free smoke test for one provider. */
-  app.post("/api/providers/:id/smoke", async (req) => {
-    const { id } = z.object({ id: ProviderId }).parse(req.params);
-    const s = ctx.settings();
-    const run = ctx.runs.create({
-      origin: "manual",
-      provider: id,
-      prompt: "Smoke test: reply with exactly MORDOMO_OK and do nothing else.",
-      cwd: ctx.paths.home,
-      model: s.providers[id].defaultModel,
-      effort: "low",
-      mode: "read_only",
-      timeoutMs: 180_000,
-      profile: "read_only",
-    });
-    const finished = await ctx.runs.execute(
-      run.id,
-      "Smoke test: reply with exactly MORDOMO_OK and do nothing else. Do not read or write any file.",
-      "read_only",
-    );
-    const runEvents = ctx.runs.eventsFor(run.id);
-    const sawOk = runEvents.some(
-      (e) =>
-        (e.event.type === "assistant" || e.event.type === "result") &&
-        JSON.stringify(e.event).includes("MORDOMO_OK"),
-    );
-    return { run: finished, passed: finished.status === "done" && sawOk };
+  bind(app, "providers.smoke", async ({ params: { id } }, req) => {
+    const { run, passed } = await ctx.execution.smokeTest(id, startedByOf(req));
+    return { run, passed };
   });
 
-  app.get("/api/doctor", async (req) => {
-    const { audit } = z.object({ audit: z.enum(["0", "1"]).optional() }).parse(req.query);
-    return runDoctor(ctx, { npmAudit: audit !== "0" });
+  bind(app, "doctor.get", async ({ query: { audit } }, req) => {
+    // The HUD of a paired phone asks for the report too; `npm audit` (a network call, 20 s) is for the owner at the desk.
+    return runDoctor(ctx, { npmAudit: audit !== "0" && req.principal?.kind !== "device" });
   });
 
   /** Hourly samples of the last N days plus their daily fold (Settings › Trends). */
-  app.get("/api/metrics/history", async (req) => {
-    const q = z.object({ days: z.coerce.number().int().min(1).max(90).default(14) }).parse(req.query ?? {});
+  bind(app, "metrics.history", async ({ query: q }) => {
     const samples = ctx.metricsHistory.series(q.days);
     return { days: q.days, samples, daily: dailyPoints(samples) };
   });
 
-  app.get("/api/approvals", async () => ctx.approvals.list("pending"));
+  bind(app, "approvals.list", async () => ctx.approvals.list("pending"));
   /** One approval by id, any status (the permission tool polls this). */
-  app.get("/api/approvals/:id", async (req) => {
-    const { id } = UuidParams.parse(req.params);
+  bind(app, "approvals.get", async ({ params: { id } }, req) => {
     const approval = ctx.approvals.get(id);
     if (!approval) throw httpError(404, "Approval not found");
+    if (req.brokerRunId && approval.payload.runId !== req.brokerRunId)
+      throw httpError(403, "This approval belongs to another run", "forbidden");
     return approval;
   });
   /**
@@ -563,32 +560,39 @@ export function registerSystemRoutes(
    * permission MCP server parks it here; the Console, the run page and the
    * inbox offer Approve / Deny; the server answers the CLI when resolved.
    */
-  app.post("/api/approvals/tool", async (req) => {
-    const body = z
-      .object({
-        runId: z.string().uuid(),
-        toolName: z.string().min(1).max(200),
-        input: z.record(z.unknown()).default({}),
-        toolUseId: z.string().max(200).optional(),
-      })
-      .parse(req.body);
+  bind(app, "approvals.requestTool", async ({ body }, req) => {
+    if (req.brokerRunId && body.runId !== req.brokerRunId)
+      throw httpError(403, "The permission broker can only ask for its own run", "forbidden");
     const run = ctx.runs.get(body.runId);
     if (!run) throw httpError(404, "Run not found");
     if (run.status !== "running" && run.status !== "queued") throw httpError(409, "Run is not active");
     const detail = summarizeToolInput(body.toolName, body.input);
     const description = `${body.toolName}: ${detail}`;
-    const approval = ctx.approvals.request("tool_use", description, {
-      runId: body.runId,
-      toolName: body.toolName,
-      input: body.input,
-      ...(body.toolUseId ? { toolUseId: body.toolUseId } : {}),
-    });
+    // The tool is the run's request, so it is whoever started the run who asked (a device cannot approve it).
+    const approval = ctx.approvals.request(
+      "tool_use",
+      description,
+      {
+        runId: body.runId,
+        toolName: body.toolName,
+        input: body.input,
+        ...(body.toolUseId ? { toolUseId: body.toolUseId } : {}),
+        // The device that started the run, by the name it was paired with, for the person who decides.
+        ...(isDeviceActor(run.startedBy) && run.startedBy
+          ? (() => {
+              const name = ctx.devices.get(run.startedBy.slice("device:".length))?.name;
+              return name ? { requestedByName: name } : {};
+            })()
+          : {}),
+      },
+      run.startedBy,
+    );
     ctx.runs.annotate(body.runId, {
       type: "permission",
       ts: Date.now(),
       detail: `${description} (approval ${approval.id})`,
     });
-    events.emit("approval.requested", {
+    ctx.events.emit("approval.requested", {
       id: approval.id,
       kind: approval.kind,
       description,
@@ -596,28 +600,33 @@ export function registerSystemRoutes(
     });
     return approval;
   });
-  app.post("/api/approvals/:id/resolve", async (req) => {
-    const { id } = UuidParams.parse(req.params);
-    const { decision, answers } = z
-      .object({
-        decision: z.enum(["approved", "denied"]),
-        // Answers to a question the agent asked: question text → answer.
-        answers: z.record(z.string().max(4000)).optional(),
-      })
-      .parse(req.body);
+  bind(app, "approvals.resolve", async ({ params: { id }, body: { decision, answers } }, req) => {
+    if (req.brokerRunId) {
+      // The broker only gives up on its own prompt (timeout); approving is the owner's.
+      const approval = ctx.approvals.get(id);
+      if (!approval) throw httpError(404, "Approval not found");
+      if (approval.payload.runId !== req.brokerRunId)
+        throw httpError(403, "This approval belongs to another run", "forbidden");
+      if (decision !== "denied") throw httpError(403, "The permission broker cannot approve", "forbidden");
+    }
     const onError = (err: unknown, runId: string) =>
       req.log.error({ err, runId, msg: "approved run failed to execute" });
-    const result = await resolveApproval(ctx, id, decision, onError, answers);
+    const by = req.principal ? principalName(req.principal) : null;
+    const result = await ctx.execution.resolveApproval(id, decision, by, {
+      onError,
+      ...(answers ? { answers } : {}),
+    });
     return { ...ctx.approvals.get(id)!, runId: result.runId };
   });
 
   // ---- Backups ---------------------------------------------------------------
-  app.get("/api/backups", async () => listBackups(ctx.paths));
-  app.post("/api/backups", async (req) => {
-    const { includeArtifacts } = z
-      .object({ includeArtifacts: z.boolean().default(false) })
-      .parse(req.body ?? {});
-    return createBackup(ctx.paths, ctx.db, { includeArtifacts });
+  bind(app, "backups.list", async () => listBackups(ctx.paths));
+  bind(app, "backups.create", async ({ body: { includeArtifacts } }) => {
+    return createBackup(ctx.paths, ctx.db, {
+      bus: ctx.events,
+      includeArtifacts,
+      keep: ctx.settings().limits.backupRetention,
+    });
   });
 
   /**
@@ -626,8 +635,7 @@ export function registerSystemRoutes(
    * on its next boot, before the DB is opened (see AppContext.applyPendingRestore).
    * Refused while any run is active.
    */
-  app.post("/api/backups/:name/restore", async (req, reply) => {
-    const { name } = BackupNameParams.parse(req.params);
+  bind(app, "backups.restore", async ({ params: { name } }, _req, reply) => {
     const src = path.join(ctx.paths.backups, name);
     if (!isInside(ctx.paths.backups, src) || !fs.existsSync(src))
       throw httpError(404, `Backup not found: ${name}`);
@@ -638,11 +646,13 @@ export function registerSystemRoutes(
         `Cannot restore while ${active.running + active.queued} run(s) are active. Wait or cancel them first.`,
       );
     }
+    // Verified before it is staged: a backup that fails is a `422` now, not a rejection at the next boot.
+    await verifyBackup(ctx.paths, name);
     const staged = writeRestorePending(ctx.paths, name);
     reply.code(202);
     return {
-      staged: true,
-      restored: false,
+      staged: true as const,
+      restored: false as const,
       name,
       stagedAt: staged.stagedAt,
       apply: "mordomo stop && mordomo start",
@@ -651,56 +661,58 @@ export function registerSystemRoutes(
         "(a safety backup is taken first). Restart with: mordomo stop && mordomo start",
     };
   });
-  app.get("/api/backups/restore-pending", async () => ({ restorePending: readRestorePending(ctx.paths) }));
-  app.delete("/api/backups/restore-pending", async () => {
+  bind(app, "backups.pending", async () => ({
+    restorePending: readRestorePending(ctx.paths),
+  }));
+  bind(app, "backups.cancelPending", async () => {
     const pending = readRestorePending(ctx.paths);
     clearRestorePending(ctx.paths);
     return { cancelled: pending?.name ?? null };
   });
 
   // ---- Sync ------------------------------------------------------------------
-  app.get("/api/sync/plan", async (req) => {
-    const { target } = z.object({ target: z.string().optional() }).parse(req.query);
+  bind(app, "sync.plan", async ({ query: { target } }) => {
     return ctx.sync.plan(resolveSyncTarget(ctx, target));
   });
-  app.post("/api/sync/apply", async (req) => {
-    const body = z
-      .object({ target: z.string().optional(), approvedConflicts: z.array(z.string()).default([]) })
-      .parse(req.body ?? {});
+  bind(app, "sync.apply", async ({ body }) => {
     const plan = ctx.sync.plan(resolveSyncTarget(ctx, body.target));
     return ctx.sync.apply(plan, body.approvedConflicts);
   });
 
   // ---- Artifacts gallery (desktop search, /artifacts, /generations) --------
-  app.get("/api/artifacts/list", async (req) => {
-    const q = ArtifactListQuery.parse(req.query);
+  bind(app, "artifacts.list", async ({ query: q }) => {
     return listArtifacts(ctx, q);
   });
 
   /** Binary artifact (images / video) for thumbnails — strictly inside the artifacts dir, allow-listed types only. */
-  app.get("/api/artifacts/raw", async (req, reply) => {
-    const { p } = z.object({ p: z.string() }).parse(req.query);
-    const resolved = resolveInsideRoots([ctx.paths.artifacts], p); // PathAccessError → 403
-    // resolveInsideRoots already checks real paths, including macOS /var -> /private/var.
-    const mime = RAW_MIME[path.extname(resolved).toLowerCase()];
-    if (!mime) throw httpError(415, "Not a previewable artifact type");
-    let stat: fs.Stats;
+  bind(app, "artifacts.raw", async ({ query: { p } }, _req, reply) => {
+    let file: WorkspaceFile;
     try {
-      stat = fs.statSync(resolved);
-    } catch {
-      throw httpError(404, "Artifact not found");
+      // PathAccessError → 403; the descriptor, not the path, is what gets streamed.
+      file = openWorkspaceFile(ctx.scopeOf([ctx.paths.artifacts]), p);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT" || err instanceof NotRegularFileError)
+        throw httpError(404, "Artifact not found");
+      throw err;
     }
-    if (!stat.isFile()) throw httpError(404, "Artifact not found");
-    if (stat.size > RAW_MAX_BYTES) throw httpError(413, "Artifact larger than 25 MB — open it from disk.");
+    const mime = RAW_MIME[path.extname(file.path).toLowerCase()];
+    if (!mime) {
+      file.close();
+      throw httpError(415, "Not a previewable artifact type");
+    }
+    if (file.stat.size > RAW_MAX_BYTES) {
+      file.close();
+      throw httpError(413, "Artifact larger than 25 MB — open it from disk.");
+    }
     reply.header("content-type", mime);
     reply.header("cache-control", "private, max-age=300");
     reply.header("x-content-type-options", "nosniff");
-    return reply.send(fs.createReadStream(resolved));
+    return reply.send(file.createReadStream());
   });
 
-  app.get("/api/startup-plan", async () => planStartupService(ctx.paths, process.execPath));
+  bind(app, "startup.plan", async () => planStartupService(ctx.paths, process.execPath));
 
-  app.get("/api/diagnostics/export", async () => {
+  bind(app, "diagnostics.export", async () => {
     const doctor = await runDoctor(ctx, { npmAudit: false });
     const bundle = {
       generatedAt: new Date().toISOString(),

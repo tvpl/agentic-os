@@ -3,24 +3,27 @@
   "version": "0.8.0",
   "private": true,
   "description": "MordomoOS — a local, vendor-neutral agentic operating system (ARMS) over Claude Code, Cursor Agent and OpenAI Codex.",
-  "license": "MIT",
+  "license": "FSL-1.1-ALv2",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
   "workspaces": [
+    "contracts",
     "core",
     "adapters/claude",
     "adapters/cursor",
     "adapters/codex",
     "apps/api",
-    "apps/command-centre"
+    "apps/command-centre",
+    "apps/desktop"
   ],
   "scripts": {
-    "build": "tsc -b core adapters/claude adapters/cursor adapters/codex apps/api && npm run build -w apps/command-centre",
-    "build:server": "tsc -b core adapters/claude adapters/cursor adapters/codex apps/api",
-    "typecheck": "tsc -b core adapters/claude adapters/cursor adapters/codex apps/api && npm run typecheck -w apps/command-centre",
-    "lint": "eslint .",
+    "build": "tsc -b contracts core adapters/claude adapters/cursor adapters/codex apps/api && npm run build -w apps/command-centre",
+    "build:server": "tsc -b contracts core adapters/claude adapters/cursor adapters/codex apps/api",
+    "typecheck": "tsc -b contracts core adapters/claude adapters/cursor adapters/codex apps/api && tsc -p typetests/tsconfig.json && npm run typecheck -w apps/command-centre",
+    "lint": "eslint . && npm run lint:css",
+    "lint:css": "stylelint --config stylelint.config.mjs --ignore-path stylelint.ignore \"apps/command-centre/src/**/*.css\"",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -32,13 +35,24 @@
     "test:ui": "npm run test -w apps/command-centre",
     "gallery": "vite --config apps/command-centre/vite.config.ts apps/command-centre --open /gallery.html",
     "dist": "node scripts/package.mjs",
-    "dist:quick": "node scripts/package.mjs --skip-build --node none --no-archive"
+    "dist:quick": "node scripts/package.mjs --skip-build --node none --no-archive",
+    "bundle:check": "node scripts/bundle-size.mjs --check",
+    "licenses:write": "node scripts/licenses.mjs --write",
+    "licenses:check": "node scripts/licenses.mjs --check && node scripts/licenses-rust.mjs --check",
+    "sbom": "node scripts/sbom.mjs",
+    "network:scan": "node scripts/network-scan.mjs",
+    "licenses:write:rust": "node scripts/licenses-rust.mjs --write",
+    "version:check": "node scripts/version-sync.mjs --check",
+    "desktop:payload": "node scripts/package.mjs --payload apps/desktop/payload"
   },
   "devDependencies": {
+    "@apidevtools/swagger-parser": "13.1.0",
     "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^9.39.5",
     "@playwright/test": "^1.62.1",
     "@types/node": "^22.10.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
     "eslint": "^9.39.5",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -46,18 +60,26 @@
     "husky": "^9.1.7",
     "lint-staged": "^17.4.1",
     "playwright-core": "^1.49.0",
+    "postcss": "^8.5.26",
     "prettier": "^3.9.6",
     "rolldown": "^1.2.6",
+    "stylelint": "^17.16.0",
+    "stylelint-config-standard": "^40.0.0",
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.69.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "yaml": "2.9.0"
   },
   "lint-staged": {
     "*.{ts,tsx,js,mjs,cjs}": [
       "eslint --max-warnings=0",
       "prettier --write"
     ],
-    "*.{json,md,css,html,yml,yaml}": "prettier --write --ignore-unknown"
+    "apps/command-centre/src/**/*.css": [
+      "stylelint --config stylelint.config.mjs --ignore-path stylelint.ignore --allow-empty-input --max-warnings=0",
+      "prettier --write"
+    ],
+    "*.{json,md,html,yml,yaml}": "prettier --write --ignore-unknown"
   },
   "allowScripts": {
     "better-sqlite3@12.11.1": true

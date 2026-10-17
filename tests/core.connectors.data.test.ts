@@ -20,7 +20,7 @@ import {
   type ConnectorData,
   type DataMapping,
   type MordomoPaths,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { makeTempHome } from "./helpers.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));

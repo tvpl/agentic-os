@@ -1,0 +1,9 @@
+{
+  "type": "usage",
+  "ts": 1760000000450,
+  "inputTokens": 10,
+  "outputTokens": 20,
+  "costUsd": 0.001,
+  "scope": "total",
+  "v": 1
+}

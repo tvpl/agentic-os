@@ -291,8 +291,8 @@ export type FireOutcome = "ok" | "fail" | "live" | "skip";
 /** One history entry (or a routine's `lastStatus`) as a result on the dial and the list. */
 export function fireOutcome(runStatus: string | null | undefined, status?: string | null): FireOutcome {
   const s = runStatus ?? status ?? "";
-  if (s === "done" || s === "fired" || s === "caught_up") return "ok";
-  if (s === "failed" || s === "timed_out" || s === "error") return "fail";
+  if (s === "done" || s === "fired" || s === "caught_up" || s === "manual") return "ok";
+  if (s === "failed" || s === "timed_out" || s === "error" || s === "failed_to_fire") return "fail";
   if (s === "running" || s === "queued" || s === "waiting_approval" || s === "pending") return "live";
   return "skip";
 }

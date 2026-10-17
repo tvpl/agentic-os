@@ -13,8 +13,10 @@ import {
   type EdgeKind,
   type World,
 } from "../engine/world";
-import { drawClock, drawFolderGlyph, drawPixelCore, drawPlanet, quadPoint } from "./glyphs";
+import { drawClock, drawFolderGlyph, drawHaloText, drawPixelCore, drawPlanet, quadPoint } from "./glyphs";
 import {
+  LABEL_ASCENT_PX,
+  LABEL_DESCENT_PX,
   LABEL_FONT_PX,
   LABEL_BASELINE_PX,
   LabelPlacer,
@@ -22,6 +24,7 @@ import {
   LabelWidthCache,
   RING_LABEL_ANGLES,
   fileLabelBox,
+  initials,
   labelAlpha,
   placeHubLabel,
   placeRanked,
@@ -29,7 +32,7 @@ import {
   quantiseNow,
   truncate,
 } from "./labels";
-import type { SpriteSet } from "./sprites";
+import { hexSpriteRadius, HEX_SIZE, type SpriteSet } from "./sprites";
 import type { CanvasTokens } from "./tokens";
 
 export interface RingDef {
@@ -72,6 +75,9 @@ export interface FrameOptions {
 
 /** Max edges drawn per frame; beyond it the faint kinds are dropped first. */
 const EDGE_BUDGET = 4000;
+/** On-screen px of a hub's name and of the core's label (counts and other labels are LABEL_FONT_PX). */
+const HUB_NAME_PX = 14;
+const CORE_LABEL_PX = 13;
 const PULSE_BUDGET = 240;
 /** Fallback label scratch state for callers that do not keep their own. */
 const sharedRanker = new LabelRanker();
@@ -311,19 +317,20 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
       mono,
       hovered ? accent : textDim,
       dim * (hovered ? 1 : 0.85),
+      tokens.bg,
     );
     const nameAlpha = hovered ? 1 : planetNameAlpha;
     if (nameAlpha > 0) {
       const name = truncate(p.label, 18);
-      ctx.font = `700 ${9 / k}px ${font}`;
+      ctx.font = `700 ${LABEL_FONT_PX / k}px ${font}`;
       ctx.textAlign = "center";
       const width = ctx.measureText(name).width;
       const y2 = p.y + 14 / k;
       const box: [number, number, number, number] = [
         p.x - width / 2,
-        y2 - 8 / k,
+        y2 - LABEL_ASCENT_PX / k,
         p.x + width / 2,
-        y2 + 2 / k,
+        y2 + LABEL_DESCENT_PX / k,
       ];
       if (hovered || placer.tryPlace(...box)) {
         ctx.globalAlpha = nameAlpha * dim * 0.85;
@@ -344,7 +351,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
       ctx.drawImage(sprites.spark(SKILL_COLOR, hovered), orb.x - s, orb.y - s, s * 2, s * 2);
       if (hovered || k > 1.6) {
         ctx.fillStyle = hovered ? accent : textDim;
-        ctx.font = `700 ${10 / k}px ${mono}`;
+        ctx.font = `700 ${LABEL_FONT_PX / k}px ${mono}`;
         ctx.textAlign = "center";
         ctx.fillText(orb.label, orb.x, orb.y - 12 / k);
         ctx.textAlign = "start";
@@ -363,7 +370,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
       );
       if (hovered) {
         ctx.fillStyle = accent;
-        ctx.font = `700 ${10.5 / k}px ${font}`;
+        ctx.font = `700 ${LABEL_FONT_PX / k}px ${font}`;
         ctx.textAlign = "center";
         ctx.fillText(orb.label, orb.x, orb.y - 15 / k);
         ctx.textAlign = "start";
@@ -371,15 +378,30 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
     } else {
       const s = hovered ? 22 : 18;
       ctx.drawImage(
-        sprites.hex(orb.label, APP_COLOR, !!orb.official, orb.active, hovered),
+        sprites.hex(APP_COLOR, !!orb.official, orb.active, hovered),
         orb.x - s,
         orb.y - s,
         s * 2,
         s * 2,
       );
+      // The initials are drawn live, not baked into the sprite: 12px on screen at any zoom,
+      // and left out when the badge is too small to hold them.
+      const initial = initials(orb.label);
+      ctx.font = `800 ${LABEL_FONT_PX / k}px ${mono}`;
+      const hexR = (hexSpriteRadius(hovered) * s) / (HEX_SIZE / 2);
+      if (ctx.measureText(initial).width <= hexR * 1.5) {
+        ctx.fillStyle = APP_COLOR;
+        ctx.globalAlpha = orb.active ? 1 : 0.72;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(initial, orb.x, orb.y + 1 / k);
+        ctx.textBaseline = "alphabetic";
+        ctx.textAlign = "start";
+        ctx.globalAlpha = 1;
+      }
       if (hovered) {
         ctx.fillStyle = accent;
-        ctx.font = `700 ${10.5 / k}px ${font}`;
+        ctx.font = `700 ${LABEL_FONT_PX / k}px ${font}`;
         ctx.textAlign = "center";
         ctx.fillText(orb.label, orb.x, orb.y - 20 / k);
         ctx.textAlign = "start";
@@ -387,8 +409,34 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
     }
   }
 
-  // ---- memory hubs: halo sprite + disc + glyph + label with count beside it ----
+  // ---- words that must not sit on each other: ring names and the core's label are
+  // claimed first (they are fixed), then every hub name steps around them ----
   const hubPlacer = new LabelPlacer();
+  // Ring names: 15px on screen while zoomed in; zoomed out they shrink with the rings, never under the 12px floor.
+  // Each ring gets its own angle so the four names never stack on one meridian. They are drawn last (below).
+  ctx.textAlign = "center";
+  const ringSize = Math.max(LABEL_FONT_PX, 15 * Math.min(1, k / 0.7)) / k;
+  const ringLabels = o.ringDefs.map((ring, ri) => {
+    ctx.font = `800 ${ringSize}px ${font}`;
+    const a = RING_LABEL_ANGLES[ri % RING_LABEL_ANGLES.length]!;
+    const rad = ring.r - RING.labelPad / k + 4;
+    const lx = Math.cos(a) * rad;
+    const ly = Math.sin(a) * rad + ringSize * 0.35;
+    const bw = ctx.measureText(ring.label).width + ringSize * 0.9;
+    hubPlacer.place(lx - bw / 2, ly - ringSize * 0.86, lx + bw / 2, ly + ringSize * 0.32);
+    return { ring, lx, ly, bw };
+  });
+  ctx.font = `800 ${CORE_LABEL_PX / k}px ${font}`;
+  const coreW = ctx.measureText(o.coreLabel).width;
+  const coreY = 36 / k;
+  const coreShown = hubPlacer.tryPlace(
+    -coreW / 2,
+    coreY - LABEL_ASCENT_PX / k,
+    coreW / 2,
+    coreY + LABEL_DESCENT_PX / k,
+  );
+
+  // ---- memory hubs: halo sprite + disc + glyph + label with count beside it ----
   for (const hub of w.hubs) {
     const active = w.filterGroup === hub.key || w.hoverKey === `hub:${hub.key}`;
     const rr = active ? 13 : 10.5;
@@ -402,23 +450,32 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
     ctx.fill();
     drawFolderGlyph(ctx, hub.x, hub.y, rr * 0.9, tokens.glyphInk);
     const short = truncate(hub.key.toUpperCase(), 16);
-    ctx.font = `800 ${11.5 / k}px ${font}`;
+    // The name outranks the count by size and weight (14px bold over 12px regular), both above the floor.
+    const nameFont = `800 ${HUB_NAME_PX / k}px ${font}`;
+    const countFont = `600 ${LABEL_FONT_PX / k}px ${mono}`;
+    ctx.font = nameFont;
     ctx.textAlign = "center";
     const labelW = ctx.measureText(short).width;
-    ctx.font = `800 ${9 / k}px ${mono}`;
+    ctx.font = countFont;
     const countW = ctx.measureText(String(hub.count)).width + 4 / k;
     // Hub names are collision-aware: a name that would sit on another hub's
     // label steps outward along the hub's radius (up to three label heights).
-    const labelH = 13 / k;
+    const labelH = (HUB_NAME_PX + 4) / k;
     const spot = placeHubLabel(hubPlacer, hub, labelW + countW, labelH, rr + 7 / k);
-    ctx.font = `800 ${11.5 / k}px ${font}`;
-    ctx.fillStyle = active ? accent : textDim;
     ctx.globalAlpha = spot.free ? 1 : 0.55;
-    ctx.fillText(short, spot.x - countW / 2, spot.y);
-    ctx.font = `800 ${9 / k}px ${mono}`;
-    ctx.fillStyle = faint;
+    ctx.font = nameFont;
+    drawHaloText(ctx, short, spot.x - countW / 2, spot.y, active ? accent : textDim, tokens.bg, k);
+    ctx.font = countFont;
     ctx.textAlign = "left";
-    ctx.fillText(String(hub.count), spot.x - countW / 2 + labelW / 2 + 4 / k, spot.y);
+    drawHaloText(
+      ctx,
+      String(hub.count),
+      spot.x - countW / 2 + labelW / 2 + 4 / k,
+      spot.y,
+      faint,
+      tokens.bg,
+      k,
+    );
     ctx.textAlign = "start";
     ctx.globalAlpha = 1;
     if (!hub.expanded) {
@@ -433,30 +490,24 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
   }
 
   drawPixelCore(ctx, accent, k, reduceMotion ? 0 : tNow, w.comets.length > 0, sprites);
-  ctx.fillStyle = textDim;
-  ctx.font = `800 ${11 / k}px ${font}`;
-  ctx.textAlign = "center";
-  ctx.fillText(o.coreLabel, 0, 36 / k);
+  if (coreShown) {
+    ctx.font = `800 ${CORE_LABEL_PX / k}px ${font}`;
+    ctx.textAlign = "center";
+    drawHaloText(ctx, o.coreLabel, 0, coreY, textDim, tokens.bg, k);
+  }
 
   // ---- ring labels, drawn last: orbs ride these rings and would otherwise
   // cover the word. A short band of the page background keeps them readable.
-  // Each ring gets its own angle so the four names never stack on one meridian.
-  o.ringDefs.forEach((ring, ri) => {
-    const size = 15 / Math.max(0.7, k);
-    ctx.font = `800 ${size}px ${font}`;
-    ctx.textAlign = "center";
-    const a = RING_LABEL_ANGLES[ri % RING_LABEL_ANGLES.length]!;
-    const rad = ring.r - RING.labelPad / k + 4;
-    const lx = Math.cos(a) * rad;
-    const ly = Math.sin(a) * rad + size * 0.35;
-    const bw = ctx.measureText(ring.label).width + size * 0.9;
+  ctx.textAlign = "center";
+  for (const { ring, lx, ly, bw } of ringLabels) {
+    ctx.font = `800 ${ringSize}px ${font}`;
     ctx.globalAlpha = 0.88 * ringAlpha;
     ctx.fillStyle = tokens.bg;
-    ctx.fillRect(lx - bw / 2, ly - size * 0.86, bw, size * 1.18);
+    ctx.fillRect(lx - bw / 2, ly - ringSize * 0.86, bw, ringSize * 1.18);
     ctx.fillStyle = ring.color;
     ctx.globalAlpha = 0.82 * ringAlpha;
     ctx.fillText(ring.label, lx, ly);
-  });
+  }
   ctx.textAlign = "start";
   ctx.globalAlpha = 1;
   ctx.textAlign = "start";

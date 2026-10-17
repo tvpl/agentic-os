@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { type AgentAdapter, type AgentRun, type RunEvent } from "@mordomo/core";
 import {
   RunManager,
   SettingsStore,
@@ -6,11 +7,8 @@ import {
   hasColumn,
   type Db,
   type MordomoPaths,
-  type AgentAdapter,
-  type AgentRun,
-  type RunEvent,
   type CreateRunInput,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { UsageFolder } from "../core/src/runs/runManager.js";
 import { claudeStreamParser, parseClaudeUsage, dominantModel } from "@mordomo/adapter-claude";
 import { codexStreamParser, parseCodexUsage } from "@mordomo/adapter-codex";

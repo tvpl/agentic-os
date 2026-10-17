@@ -8,7 +8,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { GitFork, Plus } from "lucide-react";
-import { api, type RunRecord } from "../api";
+import { type RunRecord } from "../api";
+import { apiCall } from "../apiCall";
 import { useT } from "../i18n";
 import { qk, useApiQuery } from "../queries";
 import { Button } from "../components/primitives";
@@ -31,10 +32,7 @@ export function SquadCard({ run }: { run: RunRecord }) {
   const [mode, setMode] = useState<"read_only" | "write">("read_only");
   const fanOut = useMutation({
     mutationFn: (prompts: string[]) =>
-      api.post<{ runs: Array<{ runId: string | null; status: string }> }>(
-        `/api/runs/${encodeURIComponent(run.id)}/children`,
-        { prompts, mode },
-      ),
+      apiCall("POST /api/runs/:id/children", { params: { id: run.id }, body: { prompts, mode } }),
     onSuccess: (res) => {
       setText("");
       setOpen(false);

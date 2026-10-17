@@ -2,6 +2,7 @@
   "name": "@mordomo/api",
   "version": "0.8.0",
   "private": true,
+  "license": "FSL-1.1-ALv2",
   "type": "module",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
@@ -21,6 +22,7 @@
     "@mordomo/core": "0.8.0",
     "fastify": "^5.2.0",
     "picocolors": "^1.1.1",
-    "zod": "^3.25.0"
+    "zod": "^3.25.0",
+    "zod-to-json-schema": "3.25.2"
   }
 }

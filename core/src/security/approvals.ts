@@ -1,17 +1,22 @@
 import crypto from "node:crypto";
 import type { Db } from "../db/db.js";
-import type { ApprovalKind } from "./profiles.js";
+import { MordomoError } from "../errors.js";
+import type { Approval, ApprovalKind } from "@mordomo/contracts";
 
-export interface Approval {
-  id: string;
-  createdAt: number;
-  kind: ApprovalKind;
-  description: string;
-  payload: Record<string, unknown>;
-  status: "pending" | "approved" | "denied" | "expired";
-  resolvedAt: number | null;
-  /** When a still-pending approval is swept to `expired` (createdAt + TTL). */
-  expiresAt: number;
+export type { Approval };
+
+/**
+ * An approval whose request the person must read whole before approving, because a paired device chose it: a write run
+ * a device asked for, and a tool a run that a device started asks to use (the tool's input is what the agent was led
+ * to ask, and a one-line label cuts it). A chat message or a row of the inbox carries only a label, so such an approval
+ * is denied from there but approved where the whole request is shown (Settings › Security, the Resolver).
+ */
+export function requiresFullReview(approval: Pick<Approval, "kind" | "requestedBy">): boolean {
+  return (
+    (approval.kind === "write_run" || approval.kind === "tool_use") &&
+    typeof approval.requestedBy === "string" &&
+    approval.requestedBy.startsWith("device:")
+  );
 }
 
 /** Default lifetime of a pending approval (settings.limits.approvalTtlDays). */
@@ -37,7 +42,13 @@ export class ApprovalStore {
     }
   }
 
-  request(kind: ApprovalKind, description: string, payload: Record<string, unknown> = {}): Approval {
+  /** `requestedBy` is who asked (`Approval.requestedBy`): the principal's name, or null when no request caused it. */
+  request(
+    kind: ApprovalKind,
+    description: string,
+    payload: Record<string, unknown> = {},
+    requestedBy: string | null = null,
+  ): Approval {
     const createdAt = Date.now();
     const approval: Approval = {
       id: crypto.randomUUID(),
@@ -47,13 +58,15 @@ export class ApprovalStore {
       payload,
       status: "pending",
       resolvedAt: null,
+      resolvedBy: null,
+      requestedBy,
       expiresAt: createdAt + this.ttlMs(),
     };
     this.db
       .prepare(
-        "INSERT INTO approvals (id, created_at, kind, description, payload, status) VALUES (?, ?, ?, ?, ?, 'pending')",
+        "INSERT INTO approvals (id, created_at, kind, description, payload, status, requested_by) VALUES (?, ?, ?, ?, ?, 'pending', ?)",
       )
-      .run(approval.id, approval.createdAt, kind, description, JSON.stringify(payload));
+      .run(approval.id, approval.createdAt, kind, description, JSON.stringify(payload), requestedBy);
     return approval;
   }
 
@@ -84,10 +97,10 @@ export class ApprovalStore {
     if (stale.length === 0) return [];
     this.db
       .prepare(
-        "UPDATE approvals SET status = 'expired', resolved_at = ? WHERE status = 'pending' AND created_at < ?",
+        "UPDATE approvals SET status = 'expired', resolved_at = ?, resolved_by = 'system' WHERE status = 'pending' AND created_at < ?",
       )
       .run(now, cutoff);
-    return stale.map((a) => ({ ...a, status: "expired" as const, resolvedAt: now }));
+    return stale.map((a) => ({ ...a, status: "expired" as const, resolvedAt: now, resolvedBy: "system" }));
   }
 
   /**
@@ -99,37 +112,38 @@ export class ApprovalStore {
     decision: "approved" | "denied",
     /** Merged into the payload with the decision — e.g. the answers to a question the agent asked. */
     patch?: Record<string, unknown>,
+    /** Who decided (`Approval.resolvedBy`). */
+    resolvedBy: string | null = null,
   ): Approval | null {
     const current = this.get(id);
     if (!current) return null;
     if (current.status === "pending" && current.expiresAt <= Date.now()) {
       this.expireStale();
-      throw Object.assign(
-        new Error(
-          `Approval ${id} expired on ${new Date(current.expiresAt).toISOString()} and can no longer be resolved. Request the action again.`,
-        ),
-        {
-          statusCode: 409,
-          code: "approval_expired",
-        },
+      throw new MordomoError(
+        409,
+        `Approval ${id} expired on ${new Date(current.expiresAt).toISOString()} and can no longer be resolved. Request the action again.`,
+        "approval_expired",
       );
     }
     if (current.status !== "pending") {
-      throw Object.assign(new Error(`Approval ${id} is already ${current.status}.`), {
-        statusCode: 409,
-        code: current.status === "expired" ? "approval_expired" : "approval_resolved",
-      });
+      throw new MordomoError(
+        409,
+        `Approval ${id} is already ${current.status}.`,
+        current.status === "expired" ? "approval_expired" : "approval_resolved",
+      );
     }
     if (patch && Object.keys(patch).length > 0) {
       this.db
         .prepare(
-          "UPDATE approvals SET status = ?, resolved_at = ?, payload = ? WHERE id = ? AND status = 'pending'",
+          "UPDATE approvals SET status = ?, resolved_at = ?, resolved_by = ?, payload = ? WHERE id = ? AND status = 'pending'",
         )
-        .run(decision, Date.now(), JSON.stringify({ ...current.payload, ...patch }), id);
+        .run(decision, Date.now(), resolvedBy, JSON.stringify({ ...current.payload, ...patch }), id);
     } else {
       this.db
-        .prepare("UPDATE approvals SET status = ?, resolved_at = ? WHERE id = ? AND status = 'pending'")
-        .run(decision, Date.now(), id);
+        .prepare(
+          "UPDATE approvals SET status = ?, resolved_at = ?, resolved_by = ? WHERE id = ? AND status = 'pending'",
+        )
+        .run(decision, Date.now(), resolvedBy, id);
     }
     return this.get(id);
   }
@@ -143,6 +157,8 @@ export class ApprovalStore {
       payload: JSON.parse(row.payload) as Record<string, unknown>,
       status: row.status as Approval["status"],
       resolvedAt: row.resolved_at,
+      resolvedBy: row.resolved_by ?? null,
+      requestedBy: row.requested_by ?? null,
       expiresAt: row.created_at + this.ttlMs(),
     };
   }
@@ -156,4 +172,6 @@ interface RawRow {
   payload: string;
   status: string;
   resolved_at: number | null;
+  resolved_by?: string | null;
+  requested_by?: string | null;
 }

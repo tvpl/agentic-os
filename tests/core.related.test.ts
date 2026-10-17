@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { relatedFromTexts, tokenizeForRelated } from "@mordomo/core";
+import { relatedFromTexts, tokenizeForRelated } from "@mordomo/core/internal";
 
 /** Related-by-content edges: TF-IDF cosine over the indexed text, no model needed. */
 describe("related edges", () => {

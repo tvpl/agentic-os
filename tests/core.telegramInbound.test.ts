@@ -5,13 +5,20 @@ import {
   defaultSettings,
   parseCommand,
   type TelegramUpdate,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 
 /** The phone answers back: buttons and commands become decisions, strangers get silence. */
 
 function settingsWith(chatId = "42") {
   const s = defaultSettings();
-  s.channels.telegram = { enabled: true, botTokenEnv: "TG_TOKEN", chatId, minTone: "warn", inbound: true };
+  s.channels.telegram = {
+    enabled: true,
+    botTokenEnv: "TG_TOKEN",
+    chatId,
+    minTone: "warn",
+    inbound: true,
+    allowedUserIds: [],
+  };
   return s;
 }
 

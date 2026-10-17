@@ -1,0 +1,42 @@
+[
+  {
+    "type": "session",
+    "providerSessionId": "5c1d9e2a-0b7f-4e3c-8a6d-1f2e3d4c5b6a"
+  },
+  {
+    "type": "tool_use",
+    "tool": "exec_command_begin",
+    "detail": "{\"type\":\"exec_command_begin\",\"call_id\":\"call_1\",\"command\":[\"bash\",\"-lc\",\"ls\"],\"cwd\":\"/home/owner/project\"}"
+  },
+  {
+    "type": "tool_use",
+    "tool": "exec_command_end",
+    "detail": "{\"type\":\"exec_command_end\",\"call_id\":\"call_1\",\"stdout\":\"README.md\\n\",\"stderr\":\"\",\"exit_code\":0}"
+  },
+  {
+    "type": "tool_use",
+    "tool": "patch_apply_begin",
+    "detail": "{\"type\":\"patch_apply_begin\",\"call_id\":\"call_2\",\"auto_approved\":true,\"changes\":{\"/home/owner/project/README.md\":{\"update\":{\"unified_diff\":\"@@ -1 +1 @@\\n-a\\n+b\\n\"}}}}"
+  },
+  {
+    "type": "tool_use",
+    "tool": "patch_apply_end",
+    "detail": "{\"type\":\"patch_apply_end\",\"call_id\":\"call_2\",\"stdout\":\"Success\",\"stderr\":\"\",\"success\":true}"
+  },
+  {
+    "type": "assistant",
+    "text": "Updated the README."
+  },
+  {
+    "type": "usage",
+    "scope": "total",
+    "inputTokens": 2400,
+    "outputTokens": 310,
+    "cacheReadTokens": 1800,
+    "costUsd": null
+  },
+  {
+    "type": "permission",
+    "detail": "stream disconnected before completion"
+  }
+]

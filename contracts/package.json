@@ -1,0 +1,45 @@
+{
+  "name": "@mordomo/contracts",
+  "version": "0.8.0",
+  "license": "FSL-1.1-ALv2",
+  "description": "The shapes that cross the engine / API / UI boundary: wire types, the settings schema, the typed event map and the write policy.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tvpl/agentic-os.git",
+    "directory": "contracts"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "sideEffects": false,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./policy": {
+      "types": "./dist/policy.d.ts",
+      "default": "./dist/policy.js"
+    },
+    "./events": {
+      "types": "./dist/eventRegistry.d.ts",
+      "default": "./dist/eventRegistry.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.map",
+    "!dist/**/*.tsbuildinfo",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "zod": "^3.25.0"
+  }
+}

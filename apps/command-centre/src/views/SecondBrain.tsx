@@ -9,10 +9,10 @@ import { errorMessage } from "./shared";
  * selection, translates canvas hits into navigation and lays the pieces out.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { api, type GraphData, type IndexProgressPayload, type MemoryPreview, type RunRecord } from "../api";
+import { ApiError, api, type GraphData, type IndexProgressPayload, type RunSummary } from "../api";
+import { apiCall } from "../apiCall";
 import { useToast } from "../components/ui";
-import { getDialogDepth } from "../components/dialog";
-import { useLang, useT } from "../i18n";
+import { useLang, useT, type TKey } from "../i18n";
 import { useOsEvent } from "../hooks/useEventStream";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import {
@@ -23,7 +23,7 @@ import {
   useOsMeta,
   useOsRoutines,
   useOsRuns,
-  useOsSettings,
+  useOsUiPreferences,
   useOsSkills,
 } from "../queries";
 import { BrainCanvas } from "../brain/BrainCanvas";
@@ -56,6 +56,8 @@ import {
 } from "../brain/engine/world";
 import { saveLocalSettings, settingsFromUi } from "../brain/state";
 import "../brain/brain.css";
+import { useCommands, type Command } from "../commands/registry";
+import { openNoteEditor } from "../brain/noteEditor";
 
 const GRAPH_PARAMS = { maxNodes: 3000 };
 /**
@@ -120,6 +122,8 @@ export default function SecondBrain() {
     playing: false,
   });
   const [progress, setProgress] = useState<IndexProgressPayload | null>(null);
+  /** How the last index pass ended when it did not finish: shown as text until the next one starts. */
+  const [indexNote, setIndexNote] = useState<"cancelled" | "failed" | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [layoutToast, setLayoutToast] = useState<string | null>(null);
   const [liveCount, setLiveCount] = useState(0);
@@ -129,7 +133,7 @@ export default function SecondBrain() {
   const skillsQuery = useOsSkills();
   const routinesQuery = useOsRoutines();
   const connectorsQuery = useOsConnectors();
-  const settingsQuery = useOsSettings();
+  const uiPreferencesQuery = useOsUiPreferences();
   const runsQuery = useOsRuns({ limit: 12 }, { refetchInterval: 120_000 });
   const meta = useOsMeta();
 
@@ -159,7 +163,7 @@ export default function SecondBrain() {
     connectors,
     ringLabels,
     timeline: timeline.value,
-    serverBlob: settingsQuery.data?.brain,
+    serverBlob: uiPreferencesQuery.data?.brain,
     dirty,
   });
   const { ui, uiRef, patch, world, version, groupOf, persistWorkspace } = brain;
@@ -288,11 +292,16 @@ export default function SecondBrain() {
       centerOn(x, y, dive ? FILE_DIVE_K : undefined);
     }
     setPreview({ node, content: null, kind: "loading", message: null });
-    void api
-      .get<MemoryPreview>(`/api/memory/preview?p=${encodeURIComponent(node.path)}`)
+    void apiCall("GET /api/memory/preview", { query: { p: node.path } })
       .then((pv) => {
         if (!cancelled && token === previewToken.current)
-          setPreview({ node, content: pv.content, kind: pv.kind, message: pv.message });
+          setPreview({
+            node,
+            content: pv.content,
+            kind: pv.kind,
+            message: pv.message,
+            editable: pv.editable,
+          });
       })
       .catch((err: Error) => {
         if (!cancelled && token === previewToken.current)
@@ -312,10 +321,7 @@ export default function SecondBrain() {
     }
     let cancelled = false;
     const id = window.setTimeout(() => {
-      void api
-        .get<Array<{ id: number; name: string; rel: string }>>(
-          `/api/memory/search?q=${encodeURIComponent(q)}&limit=8`,
-        )
+      void apiCall("GET /api/memory/search", { query: { q: q, limit: 8 } })
         .then((res) => {
           if (!cancelled) setHits(res);
         })
@@ -348,7 +354,7 @@ export default function SecondBrain() {
   const runs = runsQuery.data;
   useEffect(() => {
     const w = world.current;
-    const active = (runs ?? []).filter((r: RunRecord) => r.status === "running" || r.status === "queued");
+    const active = (runs ?? []).filter((r: RunSummary) => r.status === "running" || r.status === "queued");
     for (const id of prevActive.current) {
       if (active.some((r) => r.id === id)) continue;
       const finished = (runs ?? []).find((r) => r.id === id);
@@ -372,22 +378,35 @@ export default function SecondBrain() {
   }, [runs, world, dirty]);
 
   /* ---------- indexing ---------- */
+  useOsEvent("index.started", () => setIndexNote(null));
   useOsEvent("index.progress", (e) => setProgress(e.payload as IndexProgressPayload));
-  useOsEvent(["index.finished", "index.failed"], () => {
+  useOsEvent(["index.finished", "index.failed", "index.cancelled"], (e) => {
     setProgress(null);
+    // A pass that ends otherwise than finished says so in text, where the progress was.
+    setIndexNote(e.type === "index.cancelled" ? "cancelled" : e.type === "index.failed" ? "failed" : null);
     void invalidate(qk.memoryGraph(GRAPH_PARAMS), qk.memoryStatus);
   });
+  const cancelIndex = useCallback(() => {
+    void apiCall("POST /api/memory/index/cancel", { body: {} }).catch((err: unknown) =>
+      toast(errorMessage(err, t), "danger"),
+    );
+  }, [toast, t]);
 
   const refresh = useCallback(() => {
     setRefreshing(true);
     void (async () => {
       try {
-        const res = await api.post<{ stats: { scanned: number; added: number } }>("/api/memory/index");
-        await api.post("/api/memory/routers");
+        const res = await apiCall("POST /api/memory/index");
+        await apiCall("POST /api/memory/routers");
         await invalidate(qk.memoryGraph(GRAPH_PARAMS), qk.memoryStatus);
         toast(t("brain.indexed", { n: res.stats.scanned, added: res.stats.added }), "ok");
       } catch (err) {
-        toast(errorMessage(err, t), "danger");
+        // A cancel and a failure are shown in the bar (index.cancelled, index.failed), not twice as a toast.
+        if (!(
+          err instanceof ApiError &&
+          ["index_cancelled", "index_worker_crashed", "index_worker_out_of_memory"].includes(err.code)
+        ))
+          toast(errorMessage(err, t), "danger");
       } finally {
         setRefreshing(false);
         setProgress(null);
@@ -545,56 +564,74 @@ export default function SecondBrain() {
 
   useMinimapNav(minimapRef, world, dirty, !presenting);
 
-  /* ---------- keyboard ---------- */
+  /* ---------- keyboard (the `view:brain` scope: `/` and `p` are the brain's while it is open) ---------- */
+  // `/` asks for the search field; it is focused once it is on screen (panel open, not presenting).
+  const [searchAsk, setSearchAsk] = useState(0);
+  const searchAnswered = useRef(0);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const inField = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName ?? "");
-      const mod = e.ctrlKey || e.metaKey;
-      if (mod && (e.key === "+" || e.key === "=")) {
-        e.preventDefault();
-        camera.by(1.25);
-      } else if (mod && e.key === "-") {
-        e.preventDefault();
-        camera.by(0.8);
-      } else if (mod && e.key === "0") {
-        e.preventDefault();
-        resetCamera();
-      } else if (inField || mod || e.altKey) {
-        /* typing: single-key shortcuts stay off */
-      } else if (e.key === "/") {
-        e.preventDefault();
+    if (searchAsk === searchAnswered.current || controlsCollapsed || presenting) return;
+    searchAnswered.current = searchAsk;
+    searchRef.current?.focus();
+  }, [searchAsk, controlsCollapsed, presenting]);
+  const keyActs = useRef({ camera, patch, resetCamera, setControlsCollapsed });
+  keyActs.current = { camera, patch, resetCamera, setControlsCollapsed };
+  const commands = useMemo<Command[]>(() => {
+    const key = (id: string, title: TKey, keys: string[], run: () => void) =>
+      ({ id, title, group: "view", scope: "view:brain", keys, run }) satisfies Command;
+    return [
+      key("brain.zoomIn", "cmd.brain.zoomIn", ["Mod+=", "Mod++"], () => keyActs.current.camera.by(1.25)),
+      key("brain.zoomOut", "cmd.brain.zoomOut", ["Mod+-"], () => keyActs.current.camera.by(0.8)),
+      key("brain.zoomReset", "cmd.brain.zoomReset", ["Mod+0"], () => keyActs.current.resetCamera()),
+      key("brain.search", "shell.shortcuts.brainSearch", ["/"], () => {
+        // The field is on screen only with the panel open and out of presentation: bring it, then focus it.
         setPresenting(false);
-        requestAnimationFrame(() => searchRef.current?.focus());
-      } else if (e.key === "p") setPresenting((v) => !v);
-      else if (e.key === "f") patch({ local: !uiRef.current.local });
-      else if (e.key === "l") patch({ showNames: !uiRef.current.showNames });
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [camera, patch, uiRef, resetCamera]);
+        keyActs.current.setControlsCollapsed(false);
+        setSearchAsk((n) => n + 1);
+      }),
+      key("brain.present", "shell.shortcuts.brainPresent", ["p"], () => setPresenting((v) => !v)),
+      key("brain.newNote", "note.new", ["n"], () => openNoteEditor({ mode: "new" })),
+      key("brain.local", "cmd.brain.local", ["f"], () =>
+        keyActs.current.patch({ local: !uiRef.current.local }),
+      ),
+      key("brain.names", "cmd.brain.names", ["l"], () =>
+        keyActs.current.patch({ showNames: !uiRef.current.showNames }),
+      ),
+    ];
+  }, [uiRef]);
+  useCommands(commands);
 
   // Esc closes the preview, then the list, then presentation mode — and only
-  // then bubbles to the shell (which leaves the view).
-  useEffect(() => {
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      // The brain is one panel among others (G2): its Escape is only its own
-      // when it is where the key was pressed, and never while a dialog is
-      // open — a modal in another panel used to lose its Escape here.
-      if (getDialogDepth() > 0) return;
-      const target = e.target instanceof Node ? e.target : null;
-      const inside = target ? rootRef.current?.contains(target) : false;
-      const onPage = target === document.body || target === document.documentElement;
-      if (!inside && !onPage) return;
-      if (uiRef.current.sel !== null) selectId(null);
-      else if (listOpen) setListOpen(false);
-      else if (presenting) setPresenting(false);
-      else return;
-      e.stopPropagation();
-    };
-    window.addEventListener("keydown", onEsc, true);
-    return () => window.removeEventListener("keydown", onEsc, true);
-  }, [listOpen, presenting, selectId, uiRef, setListOpen]);
+  // then falls to the shell (which leaves the view). The brain is one panel
+  // among others (G2): its Escape is only its own when the focus is in it
+  // (or nowhere); a dialog's Escape is the dialog's (the modal scope).
+  const escState = useRef({ listOpen, presenting, selectId, setListOpen });
+  escState.current = { listOpen, presenting, selectId, setListOpen };
+  const escCommands = useMemo<Command[]>(
+    () => [
+      {
+        id: "brain.escape",
+        title: "cmd.brain.escape",
+        group: "view",
+        scope: "view:brain",
+        keys: ["Escape"],
+        allowInInput: true,
+        when: () => {
+          const s = escState.current;
+          const el = document.activeElement;
+          const here = !el || el === document.body || Boolean(rootRef.current?.contains(el));
+          return here && (uiRef.current.sel !== null || s.listOpen || s.presenting);
+        },
+        run: () => {
+          const s = escState.current;
+          if (uiRef.current.sel !== null) s.selectId(null);
+          else if (s.listOpen) s.setListOpen(false);
+          else setPresenting(false);
+        },
+      },
+    ],
+    [uiRef],
+  );
+  useCommands(escCommands);
 
   /* ---------- layout pill ---------- */
   const layoutLabel = t(LAYOUT_KEYS[ui.layout]);
@@ -611,10 +648,10 @@ export default function SecondBrain() {
     const next = settingsFromUi(uiRef.current, workspaceOf(world.current));
     saveLocalSettings(next);
     void api
-      .put("/api/settings", { brain: next })
+      .putUiPreferences({ brain: next })
       .then(() => {
         toast(t("brain.savedServer"), "ok");
-        void invalidate(qk.settings);
+        void invalidate(qk.uiPreferences);
       })
       .catch(() => toast(t("brain.savedLocal"), "info"));
   }, [world, uiRef, toast, t, invalidate]);
@@ -682,6 +719,8 @@ export default function SecondBrain() {
         error={!graph && graphQuery.isError ? graphQuery.error.message : null}
         onRetry={() => void graphQuery.refetch()}
         progress={progress}
+        indexNote={indexNote}
+        onCancelIndex={cancelIndex}
         refreshing={refreshing}
         onRefresh={refresh}
         liveCount={liveCount}

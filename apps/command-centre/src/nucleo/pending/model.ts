@@ -7,7 +7,7 @@
  * Pure: the hook gathers the inputs, this decides what is pending, how
  * loud it is and in what order.
  */
-import type { ApprovalRecord, ProviderSnapshot, RoutineStatus, RunRecord } from "../../api";
+import type { ApprovalRecord, ProviderSnapshot, RoutineStatus, RunSummary } from "../../api";
 import type { NotificationItem } from "../../hooks/useNotifications";
 import type { ProviderProblem } from "../../components/providerReadiness";
 import { isQuestion } from "../question";
@@ -29,7 +29,7 @@ export interface PendingItem {
   /** When it started waiting, for ordering and "há 3 min". */
   at: number;
   approval?: ApprovalRecord;
-  run?: RunRecord;
+  run?: RunSummary;
   routine?: RoutineStatus;
   provider?: { snapshot: ProviderSnapshot; problem: Exclude<ProviderProblem, null> };
   budget?: { tone: "warn" | "over"; ratio: number };
@@ -45,7 +45,7 @@ export interface PendingItem {
 
 export interface PendingInput {
   approvals?: readonly ApprovalRecord[];
-  runs?: readonly RunRecord[];
+  runs?: readonly RunSummary[];
   routines?: readonly RoutineStatus[];
   /** The default provider and its problem, when it has one. */
   provider?: { snapshot: ProviderSnapshot; problem: ProviderProblem } | null;

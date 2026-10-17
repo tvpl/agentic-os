@@ -12,16 +12,20 @@ mordomo start        # the same, without opening the browser
 The first visit shows the **setup screen**: which provider CLIs were found on
 this computer (with the install or login command for the missing ones and a
 *Detect again* button), your name/theme/language, one folder to index, data
-connectors and the desktop look. Everything is editable later in Settings.
+connectors and the look of the app. Everything is editable later in Settings.
 If none of the enabled providers can run yet (not installed, or signed out),
 the OS opens with **Connect your AI first** and the top bar reads *login
 required* until a `claude auth login` / `codex login` / `cursor-agent login`
 succeeds; the console will not start a run before that.
 
-The Command Centre opens on the **Dashboard**: active provider + quick
-Claude/Cursor/Codex switcher, favorite skills with Run buttons, routines and
-next executions, recent artifacts, in-progress runs, failures needing
-attention, and 7-day metrics. The Second Brain card is the centrepiece.
+The Command Centre has two interfaces, switched in **Settings → Theme →
+Interface**. The **app frame** (what a new install opens) has a sidebar, a
+page for each place and the chat with the agent fixed on the right; its first
+page, **Today**, lists what needs you, what is running, today's routines, the
+inbox, the journal and the cost. The **Núcleo** is the immersive one: each
+place is a full-screen scene (core, brain, runs, skills, routines, keys `1` to
+`5`) around the agent's living core and one voice line. Both answer the same
+keys: the command palette (Ctrl/⌘ K) and the shortcut list (`?`).
 
 Language (English/Português) and theme (dark/light/system) live in
 **Settings → Identity**, next to the running version, the data folder and an
@@ -30,7 +34,7 @@ exports a redacted diagnostics file for bug reports.
 
 ## 2. Skills (your SOPs as commands)
 
-- **Run**: Dashboard button, or Skills → open → choose provider/model/effort +
+- **Run**: Skills → open → choose provider/model/effort +
   fill inputs → Run. Terminal: `mordomo run <slug> --provider codex --input focus=Finanças`.
 - **Create**: Skills → New skill. Rule of thumb from ARMS: *if you prompted the
   same task twice, make it a skill*; keep SKILL.md under 60 lines.
@@ -55,7 +59,7 @@ exports a redacted diagnostics file for bug reports.
   paragraph); children are listed under the parent and follow its profile.
 
 Every run writes its outputs to `artifacts/<run-id>/`; artifacts appear on the
-Dashboard and in the run's page.
+Today (the frame), the pendências (the Núcleo) and in the run's page.
 
 ### 2.1 Sharing skills: the marketplace
 
@@ -127,7 +131,7 @@ unless you tick Enabled — including the seeded *Daily workspace digest*.
 
 - **Test now** fires it immediately and links to the live run.
 - **History** shows every firing with its run; repeatedly failing routines are
-  flagged on the Dashboard.
+  flagged on Today and in the Núcleo.
 - Routines fire while the MordomoOS service is running. For login autostart:
   `mordomo service install` (systemd --user on Linux, launchd on macOS, Task
   Scheduler on Windows) — always shown and confirmed before anything is
@@ -146,7 +150,8 @@ without you.
 
 ## 5.1 The Console (talk to the agent)
 
-The **Console** widget on the desktop is a conversation, not a one-shot
+The **Console** (the chat at the right of the app frame; the voice line of the
+Núcleo) is a conversation, not a one-shot
 prompt. Every message continues the same session: MordomoOS resumes the
 provider's own conversation (`claude --resume`, `codex exec resume`), so the
 agent remembers what you said two turns ago. The thread shows each turn — what
@@ -164,7 +169,7 @@ quoted transcript (newest six turns, capped) and marks the run with a
 
 ## 5.2 Budget and the inbox
 
-Set a **daily budget** (Settings › Security). The Cost widget shows the bar,
+Set a **daily budget** (Settings › Security). The Cost card on Today (the Núcleo's cost lâmina) shows the bar,
 "Needs attention" flags 80 % and 100 %, and the inbox gets one row per day per
 level. The inbox itself is persisted on the server: approvals, failed runs,
 routine alerts and budget crossings survive a closed tab and are read from
@@ -181,7 +186,7 @@ cap for providers that report cost while running.
 - **Telegram** (Settings › Notifications): set the bot token in the
   environment variable named there, paste your chat id, pick the lowest tone.
   Turn on **Answer from the phone** and every alert about an approval
-  carries **Approve / Deny** buttons; `/pending` lists what waits and
+  carries **Approve / Deny** buttons (a write that a paired phone asked for, or a tool that a run it started asks to use, can be denied there but not approved, and the alert offers only Deny: the chat shows one line, so you read the whole request in the Command Centre and approve it there); `/pending` lists what waits and
   `/approve <id>` / `/deny <id>` work as text. Only your chat id is honoured;
   anyone else who finds the bot gets silence. Decisions go through the same
   code path as the button in the Command Centre.
@@ -190,18 +195,26 @@ cap for providers that report cost while running.
   and the **Push channel** on the server side. Alerts arrive with the app
   closed. Payloads are encrypted end to end (RFC 8291) with keys the server
   generates once into `config/vapid.json`; the push service only relays
-  ciphertext. Subscribed devices are listed and can be removed.
+  ciphertext. Subscribed devices are listed and can be removed. The server only
+  posts to a public `https` push service: an endpoint that points at this
+  machine or its network (`localhost`, a private address, a name that resolves
+  to one) is refused, when it is registered and again at every send. A paired
+  phone needs *Read content* to register and may name only the browsers' own
+  push services (Chrome/Edge, Firefox, Safari, Windows); its subscription
+  disappears with it when you revoke the device or take that permission away.
+  The inbox is yours: a paired phone reads it, but marking read and deleting
+  alerts happen on the desktop.
 
 ### 5.2.2 Trends
 
-**Settings › Trends** charts the numbers the desktop shows live — spend,
+**Settings › Trends** charts the numbers the app shows live — spend,
 runs, failures, tokens, inbox unread, approval wait — from one sample per
 hour (`metrics_samples`, 90 days), folded per day, with a table view. The
 first sample lands at boot; the plan's §9 targets are measured here.
 
 ## 5.3 The HUD
 
-The desktop core reacts to what the agent does — thinking, using a tool,
+In the Núcleo, the core reacts to what the agent does — thinking, using a tool,
 answering, alerting, done — and a HUD layer adds scanlines, corner brackets,
 a radar sweep and telemetry. **Settings › Theme › HUD intensity** scales all
 of it (0 turns it off); the **JARVIS** preset is the cyan-on-black look.
@@ -241,14 +254,20 @@ the run continues the moment you answer (timeout: `limits.toolApprovalTimeoutMs`
 **Remote access** (Settings › Security): off by default. When enabled, a
 phone or laptop pairs with a 6-digit code and gets its own token (expiry and
 revoke list there); the Command Centre installs as a PWA and keeps its shell
-offline. Only paired devices are accepted on non-loopback hosts.
+offline. Only paired devices are accepted on non-loopback hosts, only over TLS
+or through a tunnel (7.1), and each one only does what you let it (7.1,
+*What a device may do*).
 
 ## 7.1 Remote access
 
 Settings › Security › **Remote access** answers to the hosts you list and
 lets a phone or laptop pair with a six-digit code shown on the desktop; each
-device gets its own token (revocable, with a lifetime). Three ways to reach
-it safely:
+device gets its own token (revocable, with a lifetime). **Another machine is
+served over TLS or through a tunnel, never plain http**: a request from outside
+this machine on plain http is refused (`tls_required`), and `bindAddress`
+beyond `127.0.0.1` only takes effect together with TLS (without it the
+service stays on loopback and says so at start, and `mordomo doctor` warns).
+Two ways to reach it safely:
 
 - **Built-in TLS**: turn on **TLS for remote devices** and restart. A
   second https listener (port + 1) serves a self-signed certificate
@@ -256,13 +275,43 @@ it safely:
   shows its SHA-256 so the phone can compare with the desktop before
   trusting it. Loopback stays plain http on the main port, so the CLI and
   the MCP broker never change.
-- **Tailscale** (recommended for a home network): keep remote access on
-  plain http and add your tailnet name to the allowed hosts — the tunnel is
-  already encrypted and authenticated.
-- **Caddy / a reverse proxy**: terminate a real certificate in front of the
-  http port and forward with the original `Host` header.
+- **A tunnel or reverse proxy running on this machine** (recommended for a
+  home network: Tailscale serve, Caddy, cloudflared): it terminates the
+  encryption and forwards to `127.0.0.1` on the main port with the original
+  `Host` header; add that host to the allowed hosts. **Do not rewrite `Host` to
+  `127.0.0.1`** (nginx does unless told otherwise: add `proxy_set_header Host
+  $host;` and `proxy_set_header X-Forwarded-For $remote_addr;`): a request
+  that reaches the service from this machine with a loopback `Host` is taken
+  for you, and gets the page with your token in it. The page withholds the
+  token from a request that names a proxy (`X-Forwarded-For`, `Forwarded`,
+  `X-Real-IP`, `Via`), so keep the original `Host` and let the proxy say who it
+  forwards. A proxy on another machine is not a tunnel: it would reach plain
+  http and is refused, so point it at the TLS port.
 
-Never expose the plain http port on the open internet.
+**What a device may do.** Before the code is shown you tick what the new
+device will be allowed to: *Monitor* (see runs, approvals, notifications and
+status), *Read content* (files, notes, memory, results), *Start runs*
+(read-only runs on Claude; anything that writes waits for you) and *Approve*
+(decide what other people or devices asked for, never its own requests).
+Ticking one that needs another ticks it for you. The default is the first
+three; a device paired before this existed has them too. Change a device's
+permissions at any time with its **Permissions** button; the change applies to
+its next request. A write a device asks for waits in your approvals with the
+whole request in front of you: who asked, the provider, folder and mode, the
+full prompt or every input of the skill, in boxes that scroll when they are
+long (nothing is cut). The same goes for a tool a run started from the phone asks to use: its whole input is shown. A phone's name is whatever was typed when it paired (cleaned of control and invisible characters), so approvals and the device list show a short id beside it (`Name · a1b2c3`). Cancelling it from the phone withdraws the approval
+too. Codex and Cursor read the whole disk, so a device cannot
+start a run on them (you can, from the desktop); settings, backups, skills,
+routines, connectors and memory writes stay yours alone.
+
+Never expose the main port beyond this machine: it is plain http and it
+listens on loopback only (`127.0.0.1`, or the loopback name `bindAddress`
+gives; an address beyond loopback applies to the TLS listener alone).
+
+Claude is the one provider a phone may use because Claude Code keeps reads to
+the working folder, which its documentation says and this release has not
+measured. If you prefer certainty, set Claude's `readConfinement` to `"none"` in
+`adapters/claude/src/manifest.ts`: no paired device then starts a run at all.
 
 ## 7.2 Windows checklist
 

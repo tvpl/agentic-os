@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { createBackup, listBackups, restoreBackup, openDb, events } from "@mordomo/core";
+import { EventBus, createBackup, listBackups, restoreBackup, openDb } from "@mordomo/core/internal";
 import { makeTempHome } from "./helpers.js";
 
 describe("backup", () => {
@@ -151,8 +151,9 @@ describe("backup", () => {
       expect(wal.size).toBeGreaterThan(0);
 
       const created: unknown[] = [];
-      const off = events.subscribe((e) => e.type === "backup.created" && created.push(e.payload));
-      const info = await createBackup(paths, db);
+      const bus = new EventBus();
+      const off = bus.subscribe((e) => e.type === "backup.created" && created.push(e.payload));
+      const info = await createBackup(paths, db, { bus });
       off();
       expect(created).toHaveLength(1);
       expect(listBackups(paths)[0]?.name).toBe(info.name);

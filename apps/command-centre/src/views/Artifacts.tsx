@@ -8,7 +8,8 @@
  */
 import { useMemo, useState, type CSSProperties } from "react";
 import { FileCode, FileText, Globe, Images, Search } from "lucide-react";
-import { api, artifactRawUrl, type ArtifactKind, type ArtifactListItem } from "../api";
+import { artifactRawUrl, type ArtifactKind, type ArtifactListItem } from "../api";
+import { apiCall } from "../apiCall";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useT, type TKey } from "../i18n";
 import { EmptyState } from "../components/primitives";
@@ -62,9 +63,13 @@ function TextPeek({ item }: { item: ArtifactListItem }) {
   const file = useQuery({
     queryKey: ["artifact", "peek", item.path],
     queryFn: ({ signal }) =>
-      api.get<{ content: string | null }>(`/api/artifacts/file?p=${encodeURIComponent(item.path)}`, {
-        signal,
-      }),
+      apiCall(
+        "GET /api/artifacts/file",
+        { query: { p: item.path } },
+        {
+          signal,
+        },
+      ),
     enabled: small,
     staleTime: 5 * 60_000,
     retry: false,

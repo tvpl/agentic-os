@@ -1,0 +1,93 @@
+# MordomoOS — análise do motor, proposta, UI e animações
+
+Análise em 11/09/2026, horário de São Paulo; 12/09 em UTC. Base: commit `a7a0c72`, workspace inicialmente limpo. Escopo: implementação atual, documentação, interface local e testes. Nenhuma alteração no código de produção ou criação de skills.
+
+**Diagnóstico principal.** O próximo salto do MordomoOS é assumir a continuidade do trabalho: preservar o pedido, organizar etapas, controlar execução, verificar entregas e explicar bloqueios. Já existe infraestrutura relevante para isso. A proposta pode evoluir para: **“Um ambiente local que conduz seus objetivos até entregas verificáveis, preservando contexto e controle entre provedores.”** Essa frase descreve a direção recomendada, não uma capacidade integralmente entregue hoje.
+
+A implementação já oferece adapters, SQLite, máquina de estados, fila limitada, cancelamento com controle de processos, sessões, aprovações, reservas de orçamento para rotinas/skills, busca FTS, fatos com origem, eventos SSE e recuperação visual. UI já possui dock, modos Foco/Explorar, presets, widgets gerenciáveis, worker para física, sprites em cache, tokens de movimento e respeito a movimento reduzido. Esses componentes devem ser reaproveitados.
+
+**1. Correções que antecedem a expansão do motor**
+
+| Prioridade | Achado e evidência | Melhoria concreta | Critério de aceite |
+| --- | --- | --- | --- |
+| P1 | **Repetir e continuar não preservam integralmente o trabalho.** `RunDetail` envia `promptSummary` para `/api/runs`; o resumo tem no máximo 500 caracteres. O follow-up nessa tela também cria uma nova submissão sem `sessionId`. Uma execução de skill pode repetir apenas `(skill: nome)`, sem seus inputs originais. Inspeção de código; os botões não foram acionados contra um provedor real. | Persistir uma especificação versionada de execução: pedido completo protegido, inputs, contexto, modo, modelo, timeout e versão das fontes. Oferecer endpoints próprios de repetir e continuar. Continuação deve reutilizar a sessão quando disponível; repetições devem reaplicar a política vigente. | Pedido acima de 500 caracteres preservado; inputs e timeout preservados; continuação na mesma sessão; nova tentativa ligada à anterior; clique repetido idempotente. |
+| P1 | **Concorrência por sessão não é controlada.** A fila limita execuções globais. Ensaio com SQLite real e adapter em memória observou duas execuções simultâneas recebendo o mesmo `providerSessionId`. | Serializar turnos por sessão e permitir paralelismo entre sessões. Branch explícito quando o usuário quiser explorar em paralelo. Definir conflito de escrita por workspace/recurso. | Duas janelas enviando para a mesma conversa geram turnos ordenados; a segunda recebe o contexto atualizado; sessões independentes continuam paralelas. |
+| P1 | **Triagem escapa da reserva de orçamento.** O admission check soma somente custo já reportado e não define `maxCostUsd`. Duas triagens simultâneas de US$ 0,20 resultaram em US$ 0,40 para teto de US$ 0,25, em simulação sem cobrança. | Fazer todas as origens passarem pelo mesmo serviço de admissão e reserva. Distinguir orçamento informativo de limite aplicado. Tratar custo desconhecido e custo reportado apenas ao final. | Concorrência não reserva duas vezes a mesma verba; triagem recebe limite; custo desconhecido não é contado automaticamente como gratuito; limitações do provedor aparecem na UI. |
+| P1 | **Causa da falha não chega de forma consistente à recuperação.** No serviço local, uma execução apresentava OAuth expirado no log, mas o resumo dizia apenas que o processo saiu com código 1. `RunDetail` não usa o helper de recuperação existente. O scheduler classifica falhas permanentes por regex sobre `record.error`, que pode ter perdido a causa. | Normalizar erro no adapter e persistir `code`, mensagem, recuperabilidade, `retryAfter` e incerteza de efeitos. Reutilizar a mesma apresentação no Console, Execuções, Agora e Rotinas. Suspender novas tentativas automáticas enquanto persistir um bloqueio conhecido do provedor. | Autenticação expirada mostra causa e recuperação na primeira tela; não consome novas tentativas automáticas; erro de ferramenta é distinto de recusa de permissão. |
+| P1 | **O núcleo visual pode comunicar execução durante espera.** O contador inclui `queued` e `waiting_approval`; expirado o destaque temporário, `useCoreState` retorna `thinking` se houver qualquer execução ativa. Cancelamento recebe o mesmo estado/cue de conclusão. | Derivar o estado visual de um snapshot persistente do motor: fila, execução, espera por usuário, indisponibilidade, interrupção e conclusão. Efeitos transitórios decoram esse estado. | Uma aprovação pendente continua identificável após o temporizador e após recarregar; fila nunca é apresentada como processamento confirmado; cancelamento tem rótulo próprio. |
+
+Fontes: [repetir/continuar](<repo>/apps/command-centre/src/runs/RunDetail.tsx:99), [resumo truncado](<repo>/core/src/runs/runManager.ts:417), [limite global de concorrência](<repo>/core/src/runs/runManager.ts:1211), [triagem](<repo>/core/src/sentinels/triage.ts:169), [classificação final](<repo>/core/src/runs/runManager.ts:637), [retries](<repo>/core/src/routines/scheduler.ts:490), [estado do núcleo](<repo>/apps/command-centre/src/desktop/index.tsx:634).
+
+**2. Evolução recomendada da engine**
+
+**Objetivo persistente, acima de cada execução.** Hoje a unidade central é uma invocação do provedor. O Squad dispara prompts filhos, mas não modela dependências, integração dos resultados ou validação do objetivo. Criar a relação `projeto → objetivo → etapas → tentativas → evidências`. Começar com sequências curtas, ramificações paralelas limitadas e uma etapa de integração. Exemplo: “analisar projeto → propor mudança → implementar → verificar → apresentar entrega”. Cada etapa deve ter entrada, saída esperada, orçamento e condição de conclusão. O usuário pode editar o plano e interromper a cadeia.
+
+**Continuidade após reinício.** A recuperação atual marca tanto `running` quanto `queued` como interrompidas; isso é um comportamento conservador válido, mas não oferece execução durável. Persistir a especificação completa e checkpoints de etapas, além de motivo de bloqueio e próxima ação possível. Recolocar na fila trabalhos comprovadamente ainda não iniciados; reconciliar o resultado de ações que podem ter ocorrido antes de retomar. Retomar um objetivo não deve depender de repetir cegamente a última operação externa. [Recuperação atual](<repo>/core/src/runs/runManager.ts:374).
+
+**Admissão e planejamento por recursos.** Centralizar políticas hoje distribuídas entre rotas, scheduler e triagem. A decisão deve considerar capacidade efetiva do adapter, disponibilidade, sessão, prioridade, orçamento e recursos em disputa. Dar preferência a interação humana sobre manutenção, com envelhecimento da prioridade para evitar que tarefas de fundo nunca executem. Expor fila, motivo da espera e última atividade. O fallback para outro provedor deve considerar equivalência de permissões, contexto e possíveis efeitos já produzidos. Reutilizar `ProviderRegistry`, `committedTodayUsd` e a fila atual.
+
+**Conclusão verificável.** O status `done` deriva principalmente de saída 0 do processo. Criar um resultado separado: “execução finalizada” e “entrega verificada”, com verificadores proporcionais ao pedido: arquivo existe e abre; JSON segue schema; testes exigidos passaram; ação externa tem recibo quando disponível. Persistir um manifesto de artefatos e hashes. Atualmente o diff usa `git diff HEAD` no momento da consulta, podendo incluir outras alterações: capturar baseline e mudança atribuível à execução para um histórico confiável. Para tarefas que compartilham arquivos, exigir coordenação ou isolamento antes de atribuir autoria. [Status final](<repo>/core/src/runs/runManager.ts:648), [diff atual](<repo>/apps/api/src/routes/runs.ts:128).
+
+**Contexto próprio do OS.** A memória já tem busca determinística, seções, relações, journal e fatos com origem. Integrar esses recursos em um pacote de contexto por etapa: fontes e versões, trechos selecionados, decisões vigentes, itens pendentes e orçamento de contexto. Mostrar o que foi incluído e permitir excluir ou fixar fontes. A emulação atual guarda seis turnos recentes, corta perguntas em 500 caracteres e respostas em 1.200; isso limita continuidade. Acrescentar resumo estruturado e referências preservadas, com política explícita de retenção e proteção de conteúdo. Avaliar recuperação em perguntas reais em português, incluindo ambiguidades e ausência de resposta, antes de escolher outro mecanismo de busca. [Emulação](<repo>/core/src/runs/emulatedSession.ts:40), [recall](<repo>/core/src/memory/recall.ts:1), [fatos com origem](<repo>/core/src/memory/facts.ts:13).
+
+**Eventos suficientes para explicar o trabalho.** Evoluir `tool_use` com `toolCallId`, início/fim, status, duração, referências de entrada/saída e erro estruturado, sem despejar segredos em logs. Adicionar `taskId`, `stepId`, `attemptId` e sequência durável. Usar esses eventos para timeline, estado visual, orçamento e diagnóstico, mantendo uma representação coerente. O protocolo atual tem pouca informação para distinguir uma ferramenta em andamento de sua última chamada já encerrada. [Contrato atual](<repo>/core/src/agents/types.ts:120).
+
+Há duas oportunidades adicionais a medir: limitar o buffer de linhas/filas no executor de streaming e tratar clientes SSE lentos; `safeSpawn` já limita a captura final, mas `baseExec.lineBuffer` e sua fila não têm teto equivalente, e `openSse` não trata o retorno de `raw.write`. Isso é uma lacuna de implementação inspecionada, não um vazamento reproduzido nesta análise. [Executor](<repo>/core/src/agents/baseExec.ts:47), [SSE](<repo>/apps/api/src/routes/sse.ts:85).
+
+**3. Proposta de produto e experiência principal**
+
+A promessa deve ser julgada por um ciclo completo: pedir algo → compreender o plano → acompanhar → resolver exceção → receber e reutilizar a entrega. ARMS pode continuar organizando a arquitetura, enquanto a experiência se organiza pelo trabalho do usuário.
+
+Proponho três pontos centrais: **meus objetivos**, **trabalho em andamento** e **entregas**. Um projeto reúne contexto, conversas, rotinas, decisões e resultados. O console permanece a entrada rápida, e a tela de execução vira a explicação detalhada do trabalho. Medidas úteis: objetivos concluídos e verificados, tempo até a primeira entrega útil, intervenções necessárias, recuperação bem-sucedida e custo conhecido por resultado. Quantidade de execuções, tokens e arquivos continua como diagnóstico.
+
+A primeira experiência deve provar uma tarefa útil com um provedor disponível. No desktop observado havia dez execuções e 0% de sucesso, enquanto Agora destacava orçamento. Esse retrato local não mede a confiabilidade geral do produto; demonstra que a interface precisa priorizar recuperação e primeiro sucesso. `nextStep` considera quantidade de execuções, sem exigir uma conclusão bem-sucedida. [Prioridade atual](<repo>/apps/command-centre/src/desktop/nextStep.ts:17).
+
+**4. UI: preservar a identidade e aumentar a utilidade**
+
+| Área | Observação | Proposta |
+| --- | --- | --- |
+| Agora | Onboarding aparece antes dos bloqueios operacionais. | Ordenar: ação necessária para trabalho atual, bloqueios de provedor, entrega recente e só então configuração opcional. Cada alerta deve ter causa, consequência e ação. |
+| Desktop em 1280×720 | Vários widgets exigem rolagem interna; o aviso de atenção ficou praticamente só no cabeçalho; Console divide espaço com órbitas, relógio e cards laterais. | Layout dependente também da altura útil, com mínimos em pixels por conteúdo. Dar espaço inicial a Console e trabalho atual; reunir informações secundárias em painéis recolhíveis. Reaproveitar os modos e presets existentes. |
+| Hierarquia visual | Dourado, brilhos, textura, rótulos orbitais e ações disputam atenção. | Reservar destaque forte para ação/seleção/estado. Aumentar opacidade da superfície atrás de texto e reduzir ornamentação na região de leitura. Manter a personalidade espacial no fundo e no modo Explorar. |
+| Detalhe da execução | Erro genérico no topo; causa útil enterrada na timeline; Squad aparece mesmo diante de falha de login. | Abrir com resultado ou bloqueio e próximo passo. Timeline técnica em segundo nível. Mostrar contexto, artefatos e verificações; apresentar divisão em etapas quando fizer sentido para o objetivo. |
+| Segundo Cérebro | Sete arquivos reais no conjunto observado, todos em `unsorted`, com controles de cinco layouts ocupando boa parte da lateral. | Priorizar busca, fonte selecionada, relações e ação. Mover escolhas de layout para configuração secundária. Oferecer grafo causal do objetivo: fonte → decisão → etapa → artefato, aproveitando a proveniência do motor. |
+| Contexto entre telas | Já existe envio de contexto e recuperação de navegação; falta uma visão única do pacote usado na tarefa. | Um painel consistente de fontes anexadas, decisões e entregas, preservado ao alternar entre cérebro, console e execução. |
+
+As observações visuais foram feitas no navegador local com viewport 1280×720 e na configuração existente. Não constituem uma nova auditoria completa de responsividade ou acessibilidade. A lista acessível e a maximização existentes já ajudam; a recomendação é melhorar a composição inicial e o acesso à informação decisiva.
+
+**5. Animações como explicação do estado**
+
+O núcleo já reage a eventos reais e possui transições. A melhoria principal é tornar a semântica persistente e previsível:
+
+| Estado | Movimento proposto | Informação sempre visível |
+| --- | --- | --- |
+| Pronto | Fundo discreto; núcleo estável. | Provedor disponível e projeto selecionado. |
+| Em fila | Indicador leve de posição, sem sugerir ferramenta em execução. | Posição e motivo da espera. |
+| Executando | Pulso moderado; partícula curta da etapa para a ferramenta ao receber evento. | Etapa atual, tempo e última atividade. |
+| Aguardando aprovação | Movimento de execução suspenso; borda âmbar estável. | Ação pendente e alcance da aprovação. |
+| Sem resposta recente | Atenuação do núcleo, sem concluir que houve falha apenas pelo silêncio. | Tempo desde o último evento e estado de conectividade. |
+| Concluído | Transição breve da etapa para o card da entrega. | Resultado e verificações. |
+| Falhou/interrompido | Um sinal breve; estado persistente sem pulsação agressiva contínua. | Causa e ação disponível. |
+
+Reaproveitar tokens existentes e definir durações por interação: aproximadamente 100–160 ms para resposta de controle, 180–240 ms para abrir/encaixar e até 300 ms para uma entrega mudar de região. São parâmetros iniciais de design a validar. Manter navegação e foco utilizáveis durante transições e equivalência em movimento reduzido.
+
+Criar um orçamento de renderização comum a wallpaper, grafo e efeitos: atualização por mudança quando estável, animação sustentada apenas onde útil e redução de detalhes sob carga medida. Já existem pausa em aba oculta, perfil econômico e throttling; o avanço deve ser adaptar esses mecanismos ao trabalho efetivo. Metas propostas: feedback de controle em até 100 ms e p95 de frame dentro de 16,7 ms para perfil de 60 Hz, ou 33,3 ms no perfil de 30 fps, medidos em cenários definidos. Nenhuma dessas metas foi medida nesta sessão. [Wallpaper](<repo>/apps/command-centre/src/desktop/Wallpaper.tsx:628), [canvas](<repo>/apps/command-centre/src/brain/BrainCanvas.tsx:142), [tokens](<repo>/apps/command-centre/src/theme.css:622).
+
+**6. Ordem de execução sugerida**
+
+| Lote | Entrega | Aceite principal |
+| --- | --- | --- |
+| 1 — Integridade e recuperação | Especificação persistida, repetir/continuar corretos, serialização de sessões, triagem com reserva, erros estruturados e estado visual correto. | Reproduções acima convertidas em testes do comportamento desejado; erro resolvível na primeira tela. |
+| 2 — Trabalho durável | Objetivos/etapas, checkpoints, admissão central, evidências de conclusão e contexto por projeto. | Um objetivo com múltiplas etapas atravessa interrupção controlada e termina com entregas verificáveis. |
+| 3 — Experiência integrada | Agora orientado a trabalho, composição para tela baixa, painel de contexto, grafo causal e animações de estado. | Cinco jornadas completas, com medidas de tempo, recuperação, frame e legibilidade; nenhuma ação central depende do efeito visual. |
+
+A primeira entrega que eu escolheria é o lote 1. Ele muda a confiança no produto e dá aos lotes seguintes uma base coerente. A migração pode ser incremental sobre TypeScript, SQLite e os adapters atuais; uma troca ampla de infraestrutura precisaria de um gargalo demonstrado.
+
+**7. Evidência e limites da análise**
+
+- Leitura de código do motor, adapters, API, sessões, scheduler, memória, streaming e componentes principais da UI; inspeção do desktop, Segundo Cérebro e histórico de execuções em `127.0.0.1:4777`.
+- Motor/API: primeira execução da suíte encontrou 442 testes aprovados, dois falhos e três pulados em 53 arquivos, com uma suíte impedida de abrir porta pela sandbox. Os três arquivos afetados foram repetidos com acesso a portas/processos locais: 39/39 testes aprovados. Não somar 442 e 39: há sobreposição. Não houve uma nova passagem global irrestrita.
+- UI: 203/203 testes aprovados em 35 arquivos.
+- Diagnósticos adicionais: dois ensaios em homes descartáveis, SQLite real e adapter em memória confirmaram concorrência da mesma sessão e excesso do orçamento de triagem. Eles documentam o comportamento atual; passar nesses ensaios não significa que os problemas estejam corrigidos. [Código](<repo>/artifacts/engine-review-2026-09-12/observations.test.ts), [resultado](<repo>/artifacts/engine-review-2026-09-12/observations.log).
+- Uma evidência anterior exige atualização de status: o relatório de progresso descreve um soak em andamento, mas o arquivo de resultado registra `needs_investigation`; o log informa timeout e duas lacunas de observação. Isso invalida aquela passagem prolongada, sem demonstrar por si só vazamento ou falha do motor. [Status](<repo>/artifacts/workspace-endurance-1788977125921/status.json), [log](<repo>/artifacts/workspace-endurance-1788977125921/120min.log).
+- Não foram executadas chamadas pagas, alterações nas rotinas pessoais, testes de suspensão do macOS ou uma nova suíte E2E completa. A inspeção visual usa o serviço já publicado; os testes usam os fontes do commit analisado. Não foi feito benchmark externo de concorrentes.

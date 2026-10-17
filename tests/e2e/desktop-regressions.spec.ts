@@ -106,8 +106,8 @@ test("the voice line keeps its place through a run and a dismissed lâmina stays
 test("the readings and the pendências light only what needs you", async ({ page }) => {
   // Two runs the user has to look at; everything else is calm — approvals
   // included, which would make the pendências a decision (refino item 21).
-  await page.route("**/api/approvals", (route) => route.fulfill({ json: [] }));
-  await page.route("**/api/runs?*", (route) =>
+  await page.route("**/api/v1/approvals", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/v1/runs?*", (route) =>
     route.fulfill({
       json: [
         { id: "a", status: "failed", createdAt: Date.now(), promptSummary: "fixture run x" },
@@ -152,7 +152,7 @@ test("the readings and the pendências light only what needs you", async ({ page
 });
 
 test("the skill deck fans out over the voice line and closes with Escape", async ({ page }) => {
-  await page.route("**/api/skills", (route) =>
+  await page.route("**/api/v1/skills", (route) =>
     route.fulfill({
       json: [
         {
@@ -227,11 +227,11 @@ test("the field, the core and the iris are painted, not blank canvases", async (
 });
 
 test("Portuguese notification opens its destination, not just its read state", async ({ page }) => {
-  await page.route("**/api/meta", async (route) => {
+  await page.route("**/api/v1/meta", async (route) => {
     const response = await route.fetch();
     await route.fulfill({ response, json: { ...(await response.json()), language: "pt-BR" } });
   });
-  await page.route("**/api/notifications?*", (route) =>
+  await page.route("**/api/v1/notifications?*", (route) =>
     route.fulfill({
       json: {
         items: [
@@ -277,16 +277,16 @@ test("expired Claude authentication explains recovery and opens provider setting
     durationMs: 2400,
   };
   await page.addInitScript(() => localStorage.setItem("mordomo.console.session", "session-fixture"));
-  await page.route("**/api/sessions/session-fixture", (route) =>
+  await page.route("**/api/v1/sessions/session-fixture", (route) =>
     route.fulfill({
       json: { session: { id: "session-fixture", provider: "claude", turns: 1, costUsd: 0 }, runs: [run] },
     }),
   );
-  await page.route("**/api/runs/auth-fixture", (route) => route.fulfill({ json: { run, events: [] } }));
+  await page.route("**/api/v1/runs/auth-fixture", (route) => route.fulfill({ json: { run, events: [] } }));
   await openShell(page);
   // The failed turn says how to recover, in the conversation.
   await openConversation(page);
-  await expect(page.locator(".auth-recovery")).toContainText("claude auth login");
+  await expect(page.locator(".auth-recovery code")).toHaveText("claude auth login");
   await page.locator(".auth-recovery a").click();
   // The link is a deep link into the Settings scene, on the providers tab.
   await expect(page).toHaveURL(/#\/settings\?tab=providers$/);

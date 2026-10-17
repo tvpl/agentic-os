@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 5,
+  "next_id": 31,
   "lessons": [
     {
       "id": "L-001",
@@ -60,6 +60,396 @@
       "evidence": ["apps/command-centre/src/nucleo/pending/model.ts:144 (checks)"],
       "created": "2026-09-29T12:28:36Z",
       "last_seen": "2026-09-29T12:28:36Z"
+    },
+    {
+      "id": "L-005",
+      "key": "surviving_mutant::prove a state gated credential in every state it must accept not only the first one a fixture can reach",
+      "text": "Prove a state-gated credential in every state it must accept, not only the first one a fixture can reach",
+      "signal": "surviving_mutant",
+      "scope": "auth",
+      "status": "candidate",
+      "features": ["seguranca-p0"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["apps/api/src/context.ts:337 (F3, verification round 1) (auth)"],
+      "created": "2026-10-06T13:30:13Z",
+      "last_seen": "2026-10-06T13:30:13Z"
+    },
+    {
+      "id": "L-006",
+      "key": "ac_gap::an allow list check needs one case per allowed member and one asserting the set has nothing else",
+      "text": "An allow-list check needs one case per allowed member and one asserting the set has nothing else",
+      "signal": "ac_gap",
+      "scope": "validation",
+      "status": "candidate",
+      "features": ["seguranca-p0"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["apps/api/src/routes/memory.ts:52-57 (round 1 coverage) (validation)"],
+      "created": "2026-10-06T13:30:13Z",
+      "last_seen": "2026-10-06T13:30:13Z"
+    },
+    {
+      "id": "L-007",
+      "key": "ac_gap::a rule applied by a shared handler must be proven on every route that reaches the handler",
+      "text": "A rule applied by a shared handler must be proven on every route that reaches the handler",
+      "signal": "ac_gap",
+      "scope": "routes",
+      "status": "candidate",
+      "features": ["seguranca-p0"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["apps/api/src/server.ts:313 (round 1 coverage) (routes)"],
+      "created": "2026-10-06T13:30:13Z",
+      "last_seen": "2026-10-06T13:30:13Z"
+    },
+    {
+      "id": "L-008",
+      "key": "surviving_mutant::assert a configuration filter by its exact value never by a pattern that a look alike value also matches",
+      "text": "Assert a configuration filter by its exact value, never by a pattern that a look-alike value also matches",
+      "signal": "surviving_mutant",
+      "scope": "config",
+      "status": "candidate",
+      "features": ["ci-gate"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["tests/ci.workflow.test.ts:30 (P4, round 1) (config)"],
+      "created": "2026-10-06T14:01:28Z",
+      "last_seen": "2026-10-06T14:01:28Z"
+    },
+    {
+      "id": "L-009",
+      "key": "spec_precision_gap::a claim about every event of a kind must also assert that no filter narrows it",
+      "text": "A claim about every event of a kind must also assert that no filter narrows it",
+      "signal": "spec_precision_gap",
+      "scope": "config",
+      "status": "candidate",
+      "features": ["ci-gate"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["tests/ci.workflow.test.ts:26 (P2/P3, round 1) (config)"],
+      "created": "2026-10-06T14:01:28Z",
+      "last_seen": "2026-10-06T14:01:28Z"
+    },
+    {
+      "id": "L-010",
+      "key": "surviving_mutant::a hand written reader of a structured file needs a proof with comments and reordered keys",
+      "text": "A hand-written reader of a structured file needs a proof with comments and reordered keys",
+      "signal": "surviving_mutant",
+      "scope": "config",
+      "status": "candidate",
+      "features": ["ci-gate"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["tests/ci.workflow.test.ts:18 (P6, round 2) (config)"],
+      "created": "2026-10-06T14:01:28Z",
+      "last_seen": "2026-10-06T14:01:28Z"
+    },
+    {
+      "id": "L-011",
+      "key": "ac_gap::prove every state a lock or guard file can be found in including unreadable and owned by the current process",
+      "text": "Prove every state a lock or guard file can be found in, including unreadable and owned by the current process",
+      "signal": "ac_gap",
+      "scope": "concurrency",
+      "status": "candidate",
+      "features": ["motor-composicao"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["core/src/engine.ts:310-322 (round 1, lock states) (concurrency)"],
+      "created": "2026-10-06T14:27:38Z",
+      "last_seen": "2026-10-06T14:27:38Z"
+    },
+    {
+      "id": "L-012",
+      "key": "ac_gap::a lifecycle method needs one assertion per side effect it promises not only the first",
+      "text": "A lifecycle method needs one assertion per side effect it promises, not only the first",
+      "signal": "ac_gap",
+      "scope": "lifecycle",
+      "status": "candidate",
+      "features": ["motor-composicao"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["core/src/engine.ts:279 (round 1, start effects) (lifecycle)"],
+      "created": "2026-10-06T14:27:38Z",
+      "last_seen": "2026-10-06T14:27:38Z"
+    },
+    {
+      "id": "L-013",
+      "key": "surviving_mutant::prove a rule by every value of the field it branches on including the ones that must keep the old behaviour",
+      "text": "Prove a rule by every value of the field it branches on, including the ones that must keep the old behaviour",
+      "signal": "surviving_mutant",
+      "scope": "policy",
+      "status": "candidate",
+      "features": ["capacidades-aplicadas"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["core/src/runs/runManager.ts:580 (F5, round 1) (policy)"],
+      "created": "2026-10-06T14:56:25Z",
+      "last_seen": "2026-10-06T14:56:25Z"
+    },
+    {
+      "id": "L-014",
+      "key": "ac_gap::a rule about every child process must be proven on each spawn path not only the main one",
+      "text": "A rule about every child process must be proven on each spawn path, not only the main one",
+      "signal": "ac_gap",
+      "scope": "security",
+      "status": "candidate",
+      "features": ["capacidades-aplicadas"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["core/src/spawn/safeSpawn.ts:274 (round 1, probes) (security)"],
+      "created": "2026-10-06T14:56:25Z",
+      "last_seen": "2026-10-06T14:56:25Z"
+    },
+    {
+      "id": "L-015",
+      "key": "ac_gap::list every entry point that can start the guarded action before claiming a policy holds",
+      "text": "List every entry point that can start the guarded action before claiming a policy holds",
+      "signal": "ac_gap",
+      "scope": "policy",
+      "status": "candidate",
+      "features": ["capacidades-aplicadas"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["apps/api/src/cli.ts:1377 (round 1, CLI) (policy)"],
+      "created": "2026-10-06T14:56:25Z",
+      "last_seen": "2026-10-06T14:56:25Z"
+    },
+    {
+      "id": "L-016",
+      "key": "ac_gap::size a coverage set from the ac s own list not from the subset the author thought of when an ac says each of those names the set size is the count in the ac it points back to",
+      "text": "Size a Coverage set from the AC's own list, not from the subset the author thought of: when an AC says 'each of those names', the set size is the count in the AC it points back to.",
+      "signal": "ac_gap",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["contratos"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["contratos round 1: AC3 named 14 re-exported names, Coverage sized the set at 3 (checks)"],
+      "created": "2026-10-06T17:33:09Z",
+      "last_seen": "2026-10-06T17:33:09Z"
+    },
+    {
+      "id": "L-017",
+      "key": "surviving_mutant::a derives from x claim needs a behavioral proof stub x and show the output follows the stub a text check that x is imported survives the old duplicated logic kept beside the import",
+      "text": "A 'derives from X' claim needs a behavioral proof (stub X and show the output follows the stub); a text check that X is imported survives the old duplicated logic kept beside the import.",
+      "signal": "surviving_mutant",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["contratos"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "contratos round 1 P1: C11 text check passed with the duplicated if-chain restored (checks)"
+      ],
+      "created": "2026-10-06T17:33:09Z",
+      "last_seen": "2026-10-06T17:33:09Z"
+    },
+    {
+      "id": "L-018",
+      "key": "spec_precision_gap::when the build adds anything to a one way door s literal shape an extra package export a new field amend the landing row in the same commit and add a check that pins the whole shape with toequal",
+      "text": "When the build adds anything to a one-way door's literal shape (an extra package export, a new field), amend the Landing row in the same commit and add a check that pins the whole shape with toEqual.",
+      "signal": "spec_precision_gap",
+      "scope": "build",
+      "status": "candidate",
+      "features": ["contratos"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": ["contratos round 1: exports['./policy'] shipped beyond the Landing literal shape (build)"],
+      "created": "2026-10-06T17:33:09Z",
+      "last_seen": "2026-10-06T17:33:09Z"
+    },
+    {
+      "id": "L-019",
+      "key": "surviving_mutant::prove module m does not pull dependency d by walking m s value import graph imports re exports side effect and dynamic imports either quote style type only skipped and asserting the reachable set not by filtering lines that start with import",
+      "text": "Prove 'module M does not pull dependency D' by walking M's value-import graph (imports, re-exports, side-effect and dynamic imports, either quote style, type-only skipped) and asserting the reachable set, not by filtering lines that start with import.",
+      "signal": "surviving_mutant",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["contratos"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "contratos rounds 2-3: a value re-export, then a single-quoted import, reached zod through the ./policy subpath (checks)"
+      ],
+      "created": "2026-10-06T17:33:09Z",
+      "last_seen": "2026-10-06T17:33:09Z"
+    },
+    {
+      "id": "L-020",
+      "key": "spec_precision_gap::build a typed envelope with an annotation or satisfies never an as cast the cast lets the compiler accept a missing required field that only a runtime test would catch",
+      "text": "Build a typed envelope with an annotation or satisfies, never an as-cast: the cast lets the compiler accept a missing required field that only a runtime test would catch.",
+      "signal": "spec_precision_gap",
+      "scope": "build",
+      "status": "candidate",
+      "features": ["contratos"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "contratos round 1: event envelope built with 'as OsEvent<K>', tsc accepted it without v (build)"
+      ],
+      "created": "2026-10-06T17:33:09Z",
+      "last_seen": "2026-10-06T17:33:09Z"
+    },
+    {
+      "id": "L-021",
+      "key": "surviving_mutant::when a screen switches data source prove it with a render test where the old and new sources serve different values a source regex misses reformatting aliases and destructuring",
+      "text": "When a screen switches data source, prove it with a render test where the old and new sources serve different values; a source regex misses reformatting, aliases and destructuring.",
+      "signal": "surviving_mutant",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["preferencias-ui"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "preferencias-ui round 1 P1-P3: reverting screens to read/write the old source passed a regex source check (checks)"
+      ],
+      "created": "2026-10-07T00:14:29Z",
+      "last_seen": "2026-10-07T00:14:29Z"
+    },
+    {
+      "id": "L-022",
+      "key": "spec_precision_gap::to forbid moved fields remove them from the read type so any read is ts2339 and give every write path one patch type with the keys as never back it with a runtime guard at the single request function",
+      "text": "To forbid moved fields, remove them from the read type (so any read is TS2339) and give every write path one patch type with the keys as never; back it with a runtime guard at the single request function.",
+      "signal": "spec_precision_gap",
+      "scope": "build",
+      "status": "candidate",
+      "features": ["preferencias-ui"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "preferencias-ui round 2 N1-N3/M21: '?: never' keys still compiled reads and a Partial<> write path let spreads through (build)"
+      ],
+      "created": "2026-10-07T00:14:29Z",
+      "last_seen": "2026-10-07T00:14:29Z"
+    },
+    {
+      "id": "L-023",
+      "key": "surviving_mutant::prove an only after x succeeds claim by making x fail and asserting the dependent step never runs call order alone survives a missing await",
+      "text": "Prove an 'only after X succeeds' claim by making X fail and asserting the dependent step never runs; call order alone survives a missing await.",
+      "signal": "surviving_mutant",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["preferencias-ui"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "preferencias-ui round 3 S2: 'only after both writes succeed' proven by call order; dropping the await survived (checks)"
+      ],
+      "created": "2026-10-07T00:14:29Z",
+      "last_seen": "2026-10-07T00:14:29Z"
+    },
+    {
+      "id": "L-024",
+      "key": "ac_gap::when a migration moves data between files add an ac for restoring a backup made before the migration restore bypasses the upgrade path the migration was tested on",
+      "text": "When a migration moves data between files, add an AC for restoring a backup made before the migration; restore bypasses the upgrade path the migration was tested on.",
+      "signal": "ac_gap",
+      "scope": "plan",
+      "status": "candidate",
+      "features": ["preferencias-ui"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "preferencias-ui round 1 B2: restoring a pre-feature backup lost its UI preferences (plan)"
+      ],
+      "created": "2026-10-07T00:14:29Z",
+      "last_seen": "2026-10-07T00:14:29Z"
+    },
+    {
+      "id": "L-025",
+      "key": "surviving_mutant::a kept byte for byte claim needs a non canonical fixture other indentation key order no trailing newline or re serializing passes as copying",
+      "text": "A 'kept byte for byte' claim needs a non-canonical fixture (other indentation, key order, no trailing newline), or re-serializing passes as copying.",
+      "signal": "surviving_mutant",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["preferencias-ui"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "preferencias-ui round 1 F2: byte-for-byte .bak check passed with re-serialization because the fixture was already canonical (checks)"
+      ],
+      "created": "2026-10-07T00:14:30Z",
+      "last_seen": "2026-10-07T00:14:30Z"
+    },
+    {
+      "id": "L-026",
+      "key": "ac_gap::size the routes that take x set by grepping every route for x in params bodies and the stored record it replays retry resolve run now not from the routes the plan named",
+      "text": "Size the 'routes that take X' set by grepping every route for X in params, bodies and the stored record it replays (retry, resolve, run-now), not from the routes the plan named.",
+      "signal": "ac_gap",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["provedores-plugaveis"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "provedores-plugaveis round 1: retry, routine run and approval resolve took a provider but were not in the route list (checks)"
+      ],
+      "created": "2026-10-07T01:20:30Z",
+      "last_seen": "2026-10-07T01:20:30Z"
+    },
+    {
+      "id": "L-027",
+      "key": "spec_precision_gap::enforce a safety rule where the value is used the engine building adapters not only where it is written the put route stored hand edited and migrated values bypass write time checks",
+      "text": "Enforce a safety rule where the value is used (the engine building adapters), not only where it is written (the PUT route); stored, hand-edited and migrated values bypass write-time checks.",
+      "signal": "spec_precision_gap",
+      "scope": "plan",
+      "status": "candidate",
+      "features": ["provedores-plugaveis"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "provedores-plugaveis round 1: a stored mismatched binaryPath was still executed because only new values were checked (plan)"
+      ],
+      "created": "2026-10-07T01:20:30Z",
+      "last_seen": "2026-10-07T01:20:30Z"
+    },
+    {
+      "id": "L-028",
+      "key": "surviving_mutant::prove platform dependent code by simulating process platform and calling it the way production does no explicit platform argument a test that always passes the platform cannot see a wrong default",
+      "text": "Prove platform-dependent code by simulating process.platform and calling it the way production does (no explicit platform argument); a test that always passes the platform cannot see a wrong default.",
+      "signal": "surviving_mutant",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["provedores-plugaveis"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "provedores-plugaveis rounds 2-3: platform-dependent check passed with a hard-coded platform, first in the body then in the default parameter (checks)"
+      ],
+      "created": "2026-10-07T01:20:30Z",
+      "last_seen": "2026-10-07T01:20:30Z"
+    },
+    {
+      "id": "L-029",
+      "key": "surviving_mutant::write source shape checks on the typescript syntax tree with self tests for each shape the claim covers and each false positive it must not flag regexes over source text miss and over match",
+      "text": "Write source-shape checks on the TypeScript syntax tree, with self-tests for each shape the claim covers and each false positive it must not flag; regexes over source text miss and over-match.",
+      "signal": "surviving_mutant",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["provedores-plugaveis"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "provedores-plugaveis rounds 1-3: regex source detector missed computed/shorthand/cast keys and flagged strings and destructuring (checks)"
+      ],
+      "created": "2026-10-07T01:20:30Z",
+      "last_seen": "2026-10-07T01:20:30Z"
+    },
+    {
+      "id": "L-030",
+      "key": "surviving_mutant::when a guard covers several payload kinds prove it table driven over every kind one representative lets a guard narrowed to that kind survive",
+      "text": "When a guard covers several payload kinds, prove it table-driven over every kind; one representative lets a guard narrowed to that kind survive.",
+      "signal": "surviving_mutant",
+      "scope": "checks",
+      "status": "candidate",
+      "features": ["provedores-plugaveis"],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "provedores-plugaveis round 3 MA2: approval guard proven only on prompt payloads (checks)"
+      ],
+      "created": "2026-10-07T01:20:30Z",
+      "last_seen": "2026-10-07T01:20:30Z"
     }
   ]
 }

@@ -1,9 +1,10 @@
 /** Settings › diagnostics (split out of Settings.tsx, refino item 17). */
 import { Download, Stethoscope } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
-import { api, type DoctorReport } from "../../api";
 
-import { useT } from "../../i18n";
+import { apiCall } from "../../apiCall";
+
+import { useT, type TKey } from "../../i18n";
 import { useToast } from "../../components/ui";
 import { Button } from "../../components/primitives";
 
@@ -11,13 +12,13 @@ export function DiagnosticsTab() {
   const t = useT();
   const toast = useToast();
   const doctor = useMutation({
-    mutationFn: () => api.get<DoctorReport>("/api/doctor"),
+    mutationFn: () => apiCall("GET /api/doctor"),
     onError: (err: Error) => toast(err.message, "danger"),
   });
   // A redacted JSON (settings without secrets, doctor, metrics, recent runs) to attach to a bug report.
   const exportDiag = useMutation({
     mutationFn: async () => {
-      const bundle = await api.get<Record<string, unknown>>("/api/diagnostics/export");
+      const bundle = await apiCall("GET /api/diagnostics/export");
       const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -61,7 +62,7 @@ export function DiagnosticsTab() {
                   className={`dot ${c.status === "ok" ? "ok" : c.status === "warn" ? "warn" : c.status === "fail" ? "danger" : "dim"}`}
                   style={{ marginRight: 8 }}
                 />
-                {c.label}
+                {c.label} <span className="meta mono">{t(`doctor.status.${c.status}` as TKey)}</span>
                 <div className="meta truncate" title={c.detail}>
                   {c.detail}
                 </div>

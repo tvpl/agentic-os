@@ -14,7 +14,7 @@ test("Portuguese desktop remains usable at a 200 percent equivalent CSS viewport
     reducedMotion: "reduce",
   });
   try {
-    await context.route("**/api/meta", async (route) => {
+    await context.route("**/api/v1/meta", async (route) => {
       const response = await route.fetch();
       await route.fulfill({ response, json: { ...(await response.json()), language: "pt-BR" } });
     });

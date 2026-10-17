@@ -11,6 +11,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useT, type TKey } from "../../i18n";
 import type { Stage } from "./brainStage";
 import { ZOOM_LEVELS, type ZoomLevel } from "./brainZoom";
+import { Tooltip } from "../../ui";
 
 const KEYS: Record<ZoomLevel, TKey> = {
   areas: "scene.brain.zoom.areas",
@@ -77,27 +78,28 @@ export function BrainSceneGauge({
           ))}
         </ol>
       </div>
-      <button
-        ref={compassRef}
-        type="button"
-        className="bs-compass"
-        title={t("scene.brain.compass")}
-        aria-label={t("scene.brain.compass")}
-        onClick={onHome}
-      >
-        <svg width={38} height={38} viewBox="-20 -20 40 40" aria-hidden focusable="false">
-          <circle r={17.5} className="bs-compass-ring" />
-          <ellipse className="bs-compass-plane" cx={0} cy={0} rx={12} ry={12} />
-          <g className="bs-compass-dial">
-            <path d="M0 -17 L3 -9.5 L-3 -9.5 Z" className="bs-compass-north" />
-            <path d="M17 0 L13 0 M-17 0 L-13 0 M0 17 L0 13" className="bs-compass-ticks" />
-          </g>
-          <circle r={1.8} className="bs-compass-eye" />
-        </svg>
-        <span ref={readRef} className="bs-zoomread">
-          ×1.0
-        </span>
-      </button>
+      <Tooltip label={t("scene.brain.compass")}>
+        <button
+          ref={compassRef}
+          type="button"
+          className="bs-compass"
+          aria-label={t("scene.brain.compass")}
+          onClick={onHome}
+        >
+          <svg width={38} height={38} viewBox="-20 -20 40 40" aria-hidden focusable="false">
+            <circle r={17.5} className="bs-compass-ring" />
+            <ellipse className="bs-compass-plane" cx={0} cy={0} rx={12} ry={12} />
+            <g className="bs-compass-dial">
+              <path d="M0 -17 L3 -9.5 L-3 -9.5 Z" className="bs-compass-north" />
+              <path d="M17 0 L13 0 M-17 0 L-13 0 M0 17 L0 13" className="bs-compass-ticks" />
+            </g>
+            <circle r={1.8} className="bs-compass-eye" />
+          </svg>
+          <span ref={readRef} className="bs-zoomread">
+            ×1.0
+          </span>
+        </button>
+      </Tooltip>
     </nav>
   );
 }

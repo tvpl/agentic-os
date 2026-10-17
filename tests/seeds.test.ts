@@ -12,10 +12,13 @@ import {
   openDb,
   resolvePaths,
   runAudit,
+  homeConfigFilesOf,
   nextRunAt,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "./helpers.js";
-import { ClaudeAdapter } from "@mordomo/adapter-claude";
+import { ClaudeAdapter, claudeManifest } from "@mordomo/adapter-claude";
+import { codexManifest } from "@mordomo/adapter-codex";
+import { cursorManifest } from "@mordomo/adapter-cursor";
 import fs from "node:fs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -98,7 +101,11 @@ describe("connector auditor", () => {
         fs.copyFileSync(path.join(repoPaths.connectors, f), path.join(paths.connectors, f));
       }
       const registry = new ConnectorRegistry(paths);
-      const report = runAudit(registry, fakeHome);
+      const report = runAudit(
+        registry,
+        fakeHome,
+        homeConfigFilesOf([claudeManifest, cursorManifest, codexManifest]),
+      );
       expect(report.discovered.length).toBe(1);
       expect(report.discovered[0]!.name).toBe("my-server");
       expect(JSON.stringify(report)).not.toContain("sk-secret123456789012345");
@@ -166,7 +173,7 @@ describe("routine scheduler (manual fire, against fake CLI)", () => {
       const db = openDb(paths).db;
       const store = new SettingsStore(paths);
       store.update({ indexedFolders: [{ path: repoPaths.skills, area: "Projetos", enabled: true }] });
-      const stats = new MemoryIndexer(db, () => store.load()).indexAll();
+      const stats = new MemoryIndexer(db, () => store.load(), { homeDir: paths.home }).indexAll();
       expect(stats.added).toBeGreaterThan(5);
       db.close();
     } finally {

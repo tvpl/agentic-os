@@ -1,0 +1,11 @@
+{
+  "id": 16,
+  "type": "objective.changed",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "objectiveId": "o1",
+    "stepId": "s1",
+    "status": "verified"
+  }
+}

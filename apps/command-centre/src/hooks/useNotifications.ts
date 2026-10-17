@@ -22,13 +22,13 @@ import {
   type ReactNode,
 } from "react";
 import {
-  api,
   type ApprovalRequestedPayload,
   type ApprovalResolvedPayload,
   type OsEvent,
   type RoutineFiredPayload,
   type RunFinishedPayload,
 } from "../api";
+import { apiCall } from "../apiCall";
 import { useT } from "../i18n";
 import { notificationText } from "./notificationText";
 import { subscribeOsEvents } from "./useEventStream";
@@ -298,18 +298,9 @@ export function eventToNotification(event: OsEvent, t: NotificationTranslate): N
       };
     }
     case "index.finished": {
-      const stats = ((event.payload as { stats?: Record<string, unknown> } | null)?.stats ?? {}) as Record<
-        string,
-        unknown
-      >;
-      const n =
-        typeof stats.files === "number"
-          ? stats.files
-          : typeof stats.indexed === "number"
-            ? stats.indexed
-            : typeof stats.total === "number"
-              ? stats.total
-              : null;
+      // The contract's IndexStats: `scanned` is how many files the pass looked at.
+      const scanned = (event.payload as { stats?: { scanned?: unknown } } | null)?.stats?.scanned;
+      const n = typeof scanned === "number" ? scanned : null;
       return {
         ...base,
         kind: "index",
@@ -475,7 +466,6 @@ export function fromServer(row: ServerNotification): NotificationItem {
   };
 }
 
-const SERVER_PATH = "/api/notifications";
 /** Ids the server minted (`n_…`) vs. ids derived from live events / local pushes. */
 const isServerId = (id: string) => id.startsWith("n_");
 
@@ -505,10 +495,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   // Seed from the server so the feed survives a closed tab; live events keep it current.
   useEffect(() => {
     const ctrl = new AbortController();
-    api
-      .get<{ items: ServerNotification[] }>(`${SERVER_PATH}?limit=${MAX_NOTIFICATIONS}`, {
-        signal: ctrl.signal,
-      })
+    apiCall("GET /api/notifications", { query: { limit: MAX_NOTIFICATIONS } }, { signal: ctrl.signal })
       .then((res) => {
         if (Array.isArray(res?.items)) {
           serverInbox.current = true;
@@ -531,9 +518,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
             for (const id of payload.ids) dispatch({ type: "markRead", id });
           return;
         }
-        if (event.type === "stream.reconnected") {
-          void api
-            .get<{ items: ServerNotification[] }>(`${SERVER_PATH}?limit=${MAX_NOTIFICATIONS}`)
+        if (event.type === "stream.reconnected" || event.type === "stream.reset") {
+          void apiCall("GET /api/notifications", { query: { limit: MAX_NOTIFICATIONS } })
             .then((res) => {
               if (Array.isArray(res.items)) {
                 serverInbox.current = true;
@@ -601,11 +587,12 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, []);
   const markRead = useCallback((id: string) => {
     dispatch({ type: "markRead", id });
-    if (isServerId(id)) api.post(`${SERVER_PATH}/read`, { ids: [id] }).catch(() => undefined);
+    if (isServerId(id))
+      apiCall("POST /api/notifications/read", { body: { ids: [id] } }).catch(() => undefined);
   }, []);
   const markAllRead = useCallback(() => {
     dispatch({ type: "markAllRead" });
-    api.post(`${SERVER_PATH}/read`, { all: true }).catch(() => undefined);
+    apiCall("POST /api/notifications/read", { body: { all: true } }).catch(() => undefined);
   }, []);
 
   const value = useMemo<NotificationsApi>(

@@ -3,7 +3,11 @@ import { failureFix } from "./failureFix";
 
 describe("failureFix", () => {
   it("names the cause and the one action per code", () => {
-    expect(failureFix({ code: "authentication" }, "claude")).toEqual({
+    expect(
+      failureFix({ code: "authentication" }, "claude", "failed", [
+        { id: "claude", loginCommand: "claude auth login" },
+      ]),
+    ).toEqual({
       causeKey: "runs.fix.auth",
       action: { kind: "login", command: "claude auth login" },
     });

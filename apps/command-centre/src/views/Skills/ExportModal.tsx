@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { api } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useT } from "../../i18n";
-import { Modal, useToast } from "../../components/ui";
+import { useToast } from "../../components/ui";
+import { Modal } from "../../ui";
 import { Badge, Button, Field, type BadgeTone } from "../../components/primitives";
 import { errorMessage } from "../shared";
 
@@ -28,9 +29,7 @@ export default function ExportModal({ onClose }: { onClose: () => void }) {
 
   const preview = useMutation({
     mutationFn: () =>
-      api.get<SyncPlanResp>(
-        `/api/sync/plan${target.trim() ? `?target=${encodeURIComponent(target.trim())}` : ""}`,
-      ),
+      apiCall("GET /api/sync/plan", { query: { target: target.trim() || undefined } }),
     onSuccess: (p) => {
       setPlan(p);
       setApproved([]);
@@ -40,13 +39,10 @@ export default function ExportModal({ onClose }: { onClose: () => void }) {
 
   const apply = useMutation({
     mutationFn: () =>
-      api.post<{ written: string[]; skippedConflicts: string[]; backupDir: string | null }>(
-        "/api/sync/apply",
-        {
+      apiCall("POST /api/sync/apply", { body: {
           target: target.trim() || undefined,
           approvedConflicts: approved,
-        },
-      ),
+        } }),
     onSuccess: (res) => {
       toast(
         `${t("skills.written", { n: res.written.length })}${res.backupDir ? ` ${t("skills.backupCreated")}` : ""}`,

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState, type RefObject } from "react";
-import { focusables } from "../components/dialog";
+import { focusables } from "../ui";
 import { clipTarget, type Rect } from "./state";
 
 /**

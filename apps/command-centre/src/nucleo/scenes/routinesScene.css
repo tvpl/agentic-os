@@ -23,7 +23,7 @@
   font-family: var(--font-mono);
 }
 .rts-eyebrow {
-  font: 500 var(--fs-0) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -75,16 +75,16 @@
   stroke: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 .rts-hour {
-  font: 500 var(--fs-1) var(--font-mono);
+  font: 500 var(--fs-2) var(--font-mono);
   fill: var(--text-faint);
 }
 .rts-night {
   fill: none;
-  stroke: color-mix(in srgb, #8f9bff 12%, transparent);
+  stroke: color-mix(in srgb, var(--blue) 12%, transparent);
   stroke-width: 18;
 }
 [data-theme="light"] .rts-night {
-  stroke: color-mix(in srgb, #3b4bb8 9%, transparent);
+  stroke: color-mix(in srgb, var(--blue) 9%, transparent);
 }
 .rts-disc {
   fill: var(--bg);
@@ -216,14 +216,31 @@ path.rts-hit {
 .rts-lane-dot.done {
   fill-opacity: 0.35;
 }
+/* Focused: a thicker line (a band keeps its own, wider one). */
 .rts-lane.on .rts-lane-span {
   stroke: color-mix(in srgb, var(--accent) 45%, transparent);
+  stroke-width: 2;
+}
+.rts-lane.on.k-band .rts-lane-span {
+  stroke-width: 9;
 }
 .rts-lane.on .rts-lane-dot {
   fill-opacity: 1;
 }
+/*
+ * Paused: dimmed and dashed, so it is not the dimming alone. The caps are
+ * butt: a band's round caps (half its width) would close the gaps.
+ */
 .rts-lane.off {
-  opacity: 0.4;
+  opacity: 0.55;
+}
+.rts-lane.off .rts-lane-span {
+  stroke: color-mix(in srgb, var(--text-dim) 70%, transparent);
+  stroke-dasharray: 3 5;
+  stroke-linecap: butt;
+}
+.rts-lane.off.k-band .rts-lane-span {
+  stroke-dasharray: 6 5;
 }
 .rts-lane.bad .rts-lane-span {
   stroke: color-mix(in srgb, var(--danger) 45%, transparent);
@@ -289,12 +306,12 @@ path.rts-hit {
   font-size: clamp(13px, 3.6cqi, 20px);
 }
 .rts-words {
-  font: 400 var(--fs-1) / 1.45 var(--font-mono);
+  font: 400 var(--fs-2) / 1.45 var(--font-mono);
   color: var(--text-faint);
   max-width: 26ch;
 }
 .rts-bad {
-  font: 500 var(--fs-0) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--danger);
@@ -330,7 +347,7 @@ path.rts-hit {
   overflow-y: auto;
   min-height: 0;
   scrollbar-width: thin;
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+  mask-image: linear-gradient(to bottom, var(--mask-ink) calc(100% - 18px), transparent);
 }
 .rts-empty {
   color: var(--text-dim);
@@ -364,7 +381,7 @@ path.rts-hit {
 .rts-tm small {
   display: block;
   margin-top: 3px;
-  font: 400 var(--fs-0) / 1 var(--font-mono);
+  font: 400 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.08em;
   color: var(--text-faint);
   text-transform: uppercase;
@@ -389,7 +406,7 @@ path.rts-hit {
 }
 .rts-what small {
   display: block;
-  font: 400 var(--fs-1) / 1.5 var(--font-mono);
+  font: 400 var(--fs-2) / 1.5 var(--font-mono);
   color: var(--text-faint);
 }
 .rts-what small.rts-reason {
@@ -406,7 +423,7 @@ path.rts-hit {
   color: var(--text-dim);
 }
 .rts-st {
-  font: 500 var(--fs-0) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.1em;
   color: var(--text-faint);
 }
@@ -446,7 +463,7 @@ path.rts-hit {
   align-items: baseline;
 }
 .rts-facts dt {
-  font: 500 var(--fs-0) / 1.4 var(--font-mono);
+  font: 500 var(--fs-2) / 1.4 var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -458,7 +475,7 @@ path.rts-hit {
   overflow-wrap: anywhere;
 }
 .rts-facts dd.mono {
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
 }
 .rts-facts dd.agent {
   color: var(--agent-text);
@@ -470,7 +487,7 @@ path.rts-hit {
   padding-left: 10px;
   border-left: 2px solid var(--danger);
   color: var(--danger);
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
 }
 .rts-why-acts {
   display: flex;
@@ -482,7 +499,7 @@ path.rts-hit {
 .rts-act {
   all: unset;
   cursor: pointer;
-  font: 500 var(--fs-0) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-dim);
@@ -542,7 +559,7 @@ path.rts-hit {
   grid-template-columns: auto auto auto minmax(0, 1fr);
   gap: 12px;
   align-items: baseline;
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
 }
 .rts-hist li > :last-child {
   justify-self: end;
@@ -568,7 +585,7 @@ path.rts-hit {
   backdrop-filter: blur(16px) saturate(1.2);
   box-shadow:
     inset 0 0 0 1px var(--nu-edge),
-    0 30px 80px -30px rgba(0, 0, 0, 0.9);
+    0 30px 80px -30px color-mix(in srgb, var(--shadow-ink) 90%, transparent);
   clip-path: polygon(
     var(--cut) 0,
     100% 0,

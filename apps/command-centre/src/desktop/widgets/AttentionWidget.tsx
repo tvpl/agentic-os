@@ -10,7 +10,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { BellOff, RotateCcw } from "lucide-react";
-import { api, type RunRecord } from "../../api";
+import { type RunSummary } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useDesktopActions } from "../actions";
 import { useT } from "../../i18n";
 import { qk, useApiQuery, useOsMetrics, useOsSettings } from "../../queries";
@@ -20,16 +21,12 @@ import { useDesktopRoutines, useDesktopRuns } from "../data";
 import { isFreshFailure } from "../signal";
 import { mute, readMuted } from "../attentionMute";
 import { WidgetGate } from "./WidgetGate";
+import { Tooltip } from "../../ui";
 
 interface Approval {
   id: string;
   kind: string;
   reason?: string;
-}
-
-interface LaunchResponse {
-  runId: string | null;
-  pendingApproval?: { id: string } | null;
 }
 
 export default function AttentionWidget() {
@@ -59,8 +56,11 @@ export default function AttentionWidget() {
 
   const retry = useMutation({
     mutationFn: (id: string) =>
-      api.post<LaunchResponse>(`/api/runs/${encodeURIComponent(id)}/retry`, {
-        submissionId: crypto.randomUUID(),
+      apiCall("POST /api/runs/:id/retry", {
+        params: { id },
+        body: {
+          submissionId: crypto.randomUUID(),
+        },
       }),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["runs"] }).catch(() => undefined);
@@ -77,7 +77,7 @@ export default function AttentionWidget() {
 
   const clear = fresh.length === 0 && unhealthy.length === 0 && pending === 0 && !budgetHot;
 
-  const failureRow = (r: RunRecord, dim: boolean) => (
+  const failureRow = (r: RunSummary, dim: boolean) => (
     <div className={`rw${dim ? " stale" : ""}`} key={r.id}>
       <StatusBadge status={r.status} />
       <span className="truncate">{r.skillSlug ?? r.promptSummary.slice(0, 42)}</span>
@@ -85,25 +85,27 @@ export default function AttentionWidget() {
       <button type="button" className="go" onClick={() => openRun(r.id)}>
         {t("desktop.attention.open")}
       </button>
-      <button
-        type="button"
-        className="go icon"
-        aria-label={t("desktop.attention.rerun")}
-        title={t("desktop.attention.rerun")}
-        disabled={retry.isPending}
-        onClick={() => retry.mutate(r.id)}
-      >
-        <RotateCcw aria-hidden />
-      </button>
-      <button
-        type="button"
-        className="go icon quiet"
-        aria-label={t("desktop.attention.mute")}
-        title={t("desktop.attention.mute")}
-        onClick={() => silence(r.id)}
-      >
-        <BellOff aria-hidden />
-      </button>
+      <Tooltip label={t("desktop.attention.rerun")}>
+        <button
+          type="button"
+          className="go icon"
+          aria-label={t("desktop.attention.rerun")}
+          disabled={retry.isPending}
+          onClick={() => retry.mutate(r.id)}
+        >
+          <RotateCcw aria-hidden />
+        </button>
+      </Tooltip>
+      <Tooltip label={t("desktop.attention.mute")}>
+        <button
+          type="button"
+          className="go icon quiet"
+          aria-label={t("desktop.attention.mute")}
+          onClick={() => silence(r.id)}
+        >
+          <BellOff aria-hidden />
+        </button>
+      </Tooltip>
     </div>
   );
 

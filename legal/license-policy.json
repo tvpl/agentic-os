@@ -1,0 +1,191 @@
+{
+  "note": "MINUTA para revisão do dono: a lista de licenças e os textos de terceiros são engenharia, não aconselhamento jurídico. Quem muda uma lista abaixo muda o que o instalador pode levar: faça-o num commit próprio, com o motivo.",
+  "allowedDistributed": [
+    "MIT",
+    "MIT-0",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Apache-2.0",
+    "0BSD",
+    "BlueOak-1.0.0",
+    "CC0-1.0",
+    "Python-2.0",
+    "Unlicense",
+    "Zlib"
+  ],
+  "allowedToolingExtra": [
+    "MPL-2.0",
+    "CC-BY-4.0"
+  ],
+  "overrides": {
+    "svg-tags@1.0.0": {
+      "license": "MIT",
+      "reason": "ferramenta de build (dependência do stylelint): o package.json declara só licenses[].url apontando para a MIT e o LICENSE do pacote é a MIT (Athan Reines, 2014); a exceção vale só para esta versão"
+    }
+  },
+  "licenseTexts": {
+    "sqlite-vec@0.1.9": {
+      "files": [
+        "legal/vendor/sqlite-vec/LICENSE-MIT",
+        "legal/vendor/sqlite-vec/LICENSE-APACHE"
+      ],
+      "source": "https://github.com/asg017/sqlite-vec/tree/v0.1.9 (LICENSE-MIT e LICENSE-APACHE; o repositório não tem NOTICE)",
+      "reason": "o pacote npm não inclui arquivo de licença (nem este nem os cinco de plataforma) e declara \"MIT OR Apache\"; os dois textos são os do repositório do autor, na etiqueta desta versão, copiados sem alteração; quem recebe o software pode escolher qualquer um dos dois. Um arquivo de licença que o pacote instalado trouxer num release futuro vale no lugar deste."
+    },
+    "sqlite-vec-darwin-arm64@0.1.9": {
+      "files": [
+        "legal/vendor/sqlite-vec/LICENSE-MIT",
+        "legal/vendor/sqlite-vec/LICENSE-APACHE"
+      ],
+      "source": "https://github.com/asg017/sqlite-vec/tree/v0.1.9 (LICENSE-MIT e LICENSE-APACHE; o repositório não tem NOTICE)",
+      "reason": "o pacote npm não inclui arquivo de licença (nem este nem os cinco de plataforma) e declara \"MIT OR Apache\"; os dois textos são os do repositório do autor, na etiqueta desta versão, copiados sem alteração; quem recebe o software pode escolher qualquer um dos dois. Um arquivo de licença que o pacote instalado trouxer num release futuro vale no lugar deste."
+    },
+    "sqlite-vec-darwin-x64@0.1.9": {
+      "files": [
+        "legal/vendor/sqlite-vec/LICENSE-MIT",
+        "legal/vendor/sqlite-vec/LICENSE-APACHE"
+      ],
+      "source": "https://github.com/asg017/sqlite-vec/tree/v0.1.9 (LICENSE-MIT e LICENSE-APACHE; o repositório não tem NOTICE)",
+      "reason": "o pacote npm não inclui arquivo de licença (nem este nem os cinco de plataforma) e declara \"MIT OR Apache\"; os dois textos são os do repositório do autor, na etiqueta desta versão, copiados sem alteração; quem recebe o software pode escolher qualquer um dos dois. Um arquivo de licença que o pacote instalado trouxer num release futuro vale no lugar deste."
+    },
+    "sqlite-vec-linux-arm64@0.1.9": {
+      "files": [
+        "legal/vendor/sqlite-vec/LICENSE-MIT",
+        "legal/vendor/sqlite-vec/LICENSE-APACHE"
+      ],
+      "source": "https://github.com/asg017/sqlite-vec/tree/v0.1.9 (LICENSE-MIT e LICENSE-APACHE; o repositório não tem NOTICE)",
+      "reason": "o pacote npm não inclui arquivo de licença (nem este nem os cinco de plataforma) e declara \"MIT OR Apache\"; os dois textos são os do repositório do autor, na etiqueta desta versão, copiados sem alteração; quem recebe o software pode escolher qualquer um dos dois. Um arquivo de licença que o pacote instalado trouxer num release futuro vale no lugar deste."
+    },
+    "sqlite-vec-linux-x64@0.1.9": {
+      "files": [
+        "legal/vendor/sqlite-vec/LICENSE-MIT",
+        "legal/vendor/sqlite-vec/LICENSE-APACHE"
+      ],
+      "source": "https://github.com/asg017/sqlite-vec/tree/v0.1.9 (LICENSE-MIT e LICENSE-APACHE; o repositório não tem NOTICE)",
+      "reason": "o pacote npm não inclui arquivo de licença (nem este nem os cinco de plataforma) e declara \"MIT OR Apache\"; os dois textos são os do repositório do autor, na etiqueta desta versão, copiados sem alteração; quem recebe o software pode escolher qualquer um dos dois. Um arquivo de licença que o pacote instalado trouxer num release futuro vale no lugar deste."
+    },
+    "sqlite-vec-windows-x64@0.1.9": {
+      "files": [
+        "legal/vendor/sqlite-vec/LICENSE-MIT",
+        "legal/vendor/sqlite-vec/LICENSE-APACHE"
+      ],
+      "source": "https://github.com/asg017/sqlite-vec/tree/v0.1.9 (LICENSE-MIT e LICENSE-APACHE; o repositório não tem NOTICE)",
+      "reason": "o pacote npm não inclui arquivo de licença (nem este nem os cinco de plataforma) e declara \"MIT OR Apache\"; os dois textos são os do repositório do autor, na etiqueta desta versão, copiados sem alteração; quem recebe o software pode escolher qualquer um dos dois. Um arquivo de licença que o pacote instalado trouxer num release futuro vale no lugar deste."
+    }
+  },
+  "bundled": [
+    {
+      "name": "Node.js",
+      "license": "MIT",
+      "where": "pasta runtime/ do instalador (binário oficial do Node.js; o instalador copia o LICENSE do Node, que reúne os avisos das dependências do próprio Node, para runtime/LICENSE). Com `--node none` o instalador usa o Node do sistema e não leva nada.",
+      "url": "https://github.com/nodejs/node/blob/main/LICENSE",
+      "note": "a versão embutida é a do computador que gera o instalador (`node scripts/package.mjs --node <versão>`); a de cada instalador está em runtime/LICENSE e no nome do binário baixado.",
+      "sbom": {
+        "ref": "bundled:node.js",
+        "type": "platform",
+        "license": {
+          "id": "MIT"
+        }
+      }
+    },
+    {
+      "name": "SQLite",
+      "license": "Domínio público (SQLite blessing)",
+      "where": "compilado dentro do módulo nativo do pacote better-sqlite3 (lib/node_modules/better-sqlite3 do instalador)",
+      "url": "https://www.sqlite.org/copyright.html",
+      "note": "o pacote better-sqlite3 (MIT) tem o próprio aviso na seção 2.",
+      "sbom": {
+        "ref": "bundled:sqlite",
+        "type": "library",
+        "license": {
+          "name": "Public Domain"
+        },
+        "purl": "pkg:generic/sqlite"
+      }
+    },
+    {
+      "name": "JetBrains Mono (fonte)",
+      "license": "SIL Open Font License 1.1",
+      "where": "apps/command-centre/public/fonts/jetbrains-mono-latin.woff2, servida pelo Command Centre",
+      "url": "https://github.com/JetBrains/JetBrainsMono",
+      "note": "texto copiado de https://raw.githubusercontent.com/JetBrains/JetBrainsMono/master/OFL.txt em 11/10/2026. A origem do arquivo .woff2 do repositório não está registrada: o dono deve confirmar que ele vem desse projeto (ver `.specs/STATE.md`).",
+      "textFile": "legal/vendor/fonts/JetBrainsMono-OFL.txt",
+      "files": [
+        "apps/command-centre/public/fonts/jetbrains-mono-latin.woff2"
+      ],
+      "sbom": {
+        "ref": "bundled:font:jetbrains-mono",
+        "type": "file",
+        "license": {
+          "id": "OFL-1.1"
+        }
+      }
+    },
+    {
+      "name": "Rajdhani (fonte)",
+      "license": "SIL Open Font License 1.1",
+      "where": "apps/command-centre/public/fonts/rajdhani-600-latin.woff2 e rajdhani-700-latin.woff2, servidas pelo Command Centre",
+      "url": "https://github.com/itfoundry/rajdhani",
+      "note": "texto copiado de https://raw.githubusercontent.com/google/fonts/main/ofl/rajdhani/OFL.txt em 11/10/2026. A origem dos arquivos .woff2 do repositório não está registrada: o dono deve confirmar que eles vêm desse projeto (ver `.specs/STATE.md`).",
+      "textFile": "legal/vendor/fonts/Rajdhani-OFL.txt",
+      "files": [
+        "apps/command-centre/public/fonts/rajdhani-600-latin.woff2",
+        "apps/command-centre/public/fonts/rajdhani-700-latin.woff2"
+      ],
+      "sbom": {
+        "ref": "bundled:font:rajdhani",
+        "type": "file",
+        "license": {
+          "id": "OFL-1.1"
+        }
+      }
+    }
+  ],
+  "rust": {
+    "note": "Crates Rust do app desktop (`apps/desktop`, Tauri 2), conferidas por `node scripts/licenses-rust.mjs --check` contra `cargo metadata --locked --all-features`. `allowed` é a lista de runtime acrescida do que a árvore do Tauri precisa: `Unicode-3.0` (tabelas Unicode das crates `icu_*` e `unicode-ident`, permissiva) e `CDLA-Permissive-2.0` (a crate `webpki-root-certs`, que leva a lista de autoridades certificadoras). Quem acrescenta um item faz num commit próprio, com o motivo.",
+    "allowed": [
+      "MIT",
+      "MIT-0",
+      "ISC",
+      "BSD-2-Clause",
+      "BSD-3-Clause",
+      "Apache-2.0",
+      "0BSD",
+      "BlueOak-1.0.0",
+      "CC0-1.0",
+      "Python-2.0",
+      "Unlicense",
+      "Zlib",
+      "Unicode-3.0",
+      "CDLA-Permissive-2.0"
+    ],
+    "exceptions": [
+      {
+        "crate": "cssparser",
+        "license": "MPL-2.0",
+        "reason": "entra por `dom_query 0.28.0` (de `tauri-utils 2.10.1`, base de `tauri`) e por `selectors 0.38.0`; é o analisador de CSS, sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
+      },
+      {
+        "crate": "cssparser-macros",
+        "license": "MPL-2.0",
+        "reason": "entra só por `cssparser 0.37.0` (macros do analisador de CSS, de `dom_query` via `tauri-utils 2.10.1`); é uma macro de compilação, sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
+      },
+      {
+        "crate": "dtoa-short",
+        "license": "MPL-2.0",
+        "reason": "entra só por `cssparser 0.37.0` (escrita de números do analisador de CSS, de `dom_query` via `tauri-utils 2.10.1`), sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
+      },
+      {
+        "crate": "option-ext",
+        "license": "MPL-2.0",
+        "reason": "entra por `dirs-sys 0.5.0` (de `dirs 7.0.0`, usada por `tauri 2.12.3` e `wry 0.57.0`); é uma extensão de `Option`, não tem relação com CSS, sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
+      },
+      {
+        "crate": "selectors",
+        "license": "MPL-2.0",
+        "reason": "entra por `dom_query 0.28.0` (de `tauri-utils 2.10.1`); é o motor de seletores CSS, sem modificação; `MPL-2.0` é copyleft por arquivo: o código-fonte desta versão é o do `crates.io` (endereço e soma em `apps/desktop/Cargo.lock`) e fica disponível a quem receber o instalador. A política barra `MPL-2.0` no que se distribui; esta exceção é nomeada, por crate, e fica sob revisão do dono (`.specs/STATE.md`, Perguntas ao dono, distribuicao)"
+      }
+    ]
+  }
+}

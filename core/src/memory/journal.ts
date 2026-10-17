@@ -1,6 +1,9 @@
-import fs from "node:fs";
 import path from "node:path";
+import { isJournalDate } from "@mordomo/contracts";
 import type { MordomoPaths } from "../paths.js";
+import { PathAccessError } from "../security/paths.js";
+import { homeReadScope, listWorkspaceDir, readWorkspaceText } from "../security/safeFs.js";
+import { writeWorkspaceFile } from "../security/safeWrite.js";
 import type { EventBus, OsEvent } from "../events.js";
 import type { MemoryIndexer } from "./indexer.js";
 
@@ -32,8 +35,30 @@ export interface JournalDay {
   created: boolean;
 }
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_LINE_CHARS = 2000;
+/** A day's journal is notes, not a log: past this the read is refused rather than truncated. */
+const MAX_JOURNAL_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Journal files are read through the safe-read primitive, confined to `memory/`:
+ * `journal/2026-10-09.md` may be a link to another note in `memory/`, never to
+ * `config/token` or to anything outside the folder.
+ */
+function readJournalFile(
+  paths: MordomoPaths,
+  file: string,
+  scope = homeReadScope(paths.home, [paths.memory]),
+): string | null {
+  try {
+    return readWorkspaceText(scope, file, {
+      maxBytes: MAX_JOURNAL_BYTES,
+      strict: true,
+    }).text;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw err;
+  }
+}
 
 export function journalDir(paths: MordomoPaths): string {
   return path.join(paths.memory, "journal");
@@ -47,12 +72,7 @@ export function localDateString(at: Date = new Date()): string {
   return `${y}-${m}-${d}`;
 }
 
-export function isJournalDate(value: string): boolean {
-  if (!DATE_RE.test(value)) return false;
-  const [y, m, d] = value.split("-").map(Number) as [number, number, number];
-  const date = new Date(y, m - 1, d);
-  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
-}
+export { isJournalDate };
 
 export function shiftDate(date: string, days: number): string {
   const [y, m, d] = date.split("-").map(Number) as [number, number, number];
@@ -79,28 +99,45 @@ export function journalTemplate(date: string): string {
 /** Read (creating from the template when missing) the journal for a day. */
 export function ensureJournal(paths: MordomoPaths, date: string = localDateString()): JournalDay {
   const file = journalPath(paths, date);
-  if (fs.existsSync(file)) {
-    return { date, path: file, content: fs.readFileSync(file, "utf8"), created: false };
-  }
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const existing = readJournalFile(paths, file);
+  if (existing !== null) return { date, path: file, content: existing, created: false };
   const content = journalTemplate(date);
-  fs.writeFileSync(file, content, "utf8");
+  try {
+    // `create`: never through a link that is already there (a dangling one included), never over a file.
+    writeWorkspaceFile(homeReadScope(paths.home, [paths.memory]), file, content, { mode: "create" });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    // Another call created the day between the read and the write: take its file.
+    const raced = readJournalFile(paths, file);
+    if (raced === null) throw err;
+    return { date, path: file, content: raced, created: false };
+  }
   return { date, path: file, content, created: true };
 }
 
 /** Read without creating; null when the day has no journal. */
-export function readJournal(paths: MordomoPaths, date: string): JournalDay | null {
+export function readJournal(
+  paths: MordomoPaths,
+  date: string,
+  scope = homeReadScope(paths.home, [paths.memory]),
+): JournalDay | null {
   const file = journalPath(paths, date);
-  if (!fs.existsSync(file)) return null;
-  return { date, path: file, content: fs.readFileSync(file, "utf8"), created: false };
+  const content = readJournalFile(paths, file, scope);
+  return content === null ? null : { date, path: file, content, created: false };
 }
 
 /** Dates that have a journal file, newest first. */
 export function listJournalDates(paths: MordomoPaths, limit = 60): string[] {
-  const dir = journalDir(paths);
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
+  let names: string[];
+  try {
+    names = listWorkspaceDir(homeReadScope(paths.home, [paths.memory]), journalDir(paths))
+      .filter((entry) => entry.isFile)
+      .map((entry) => entry.name);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw err;
+  }
+  return names
     .filter((f) => /^\d{4}-\d{2}-\d{2}\.md$/.test(f))
     .map((f) => f.slice(0, 10))
     .filter(isJournalDate)
@@ -112,9 +149,15 @@ export function listJournalDates(paths: MordomoPaths, limit = 60): string[] {
 /** The last `days` days that have a journal (today included when it exists). */
 export function recentJournals(paths: MordomoPaths, days = 7, today: string = localDateString()): JournalDay[] {
   const out: JournalDay[] = [];
+  const scope = homeReadScope(paths.home, [paths.memory]); // one scope for the whole window
   for (let i = 0; i < days; i++) {
-    const day = readJournal(paths, shiftDate(today, -i));
-    if (day) out.push(day);
+    try {
+      const day = readJournal(paths, shiftDate(today, -i), scope);
+      if (day) out.push(day);
+    } catch (err) {
+      // A day that is a link out of memory/ is left out; it must not stop the others (routers, the journal view).
+      if (!(err instanceof PathAccessError)) throw err;
+    }
   }
   return out;
 }
@@ -146,7 +189,7 @@ export function appendJournal(paths: MordomoPaths, entry: JournalEntry): Journal
   if (start === -1) {
     const tail = day.content.endsWith("\n") ? "" : "\n";
     const content = `${day.content}${tail}\n${heading}\n\n${bullet}\n`;
-    fs.writeFileSync(day.path, content, "utf8");
+    writeWorkspaceFile(homeReadScope(paths.home, [paths.memory]), day.path, content);
     return { ...day, content };
   }
   // Insert before the next heading (or at the end), after the section's last non-empty line.
@@ -164,7 +207,7 @@ export function appendJournal(paths: MordomoPaths, entry: JournalEntry): Journal
   // Keep one blank line before the next heading.
   if (end < lines.length && lines[insertAt + block.length]?.trim() !== "") lines.splice(insertAt + block.length, 0, "");
   const content = lines.join("\n");
-  fs.writeFileSync(day.path, content, "utf8");
+  writeWorkspaceFile(homeReadScope(paths.home, [paths.memory]), day.path, content);
   return { ...day, content };
 }
 

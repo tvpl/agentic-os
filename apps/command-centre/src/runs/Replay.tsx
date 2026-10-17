@@ -20,6 +20,7 @@ import {
   type ReplayModel,
 } from "./replayEngine";
 import type { RunEventView } from "./useRunStream";
+import { Tooltip } from "../ui";
 
 const SPEEDS = [1, 4, 16] as const;
 type Speed = (typeof SPEEDS)[number];
@@ -106,7 +107,7 @@ export default function Replay({ events }: ReplayProps) {
     }
 
     // Nodes.
-    ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     for (const node of placed.values()) {
@@ -281,15 +282,16 @@ export default function Replay({ events }: ReplayProps) {
         >
           {playing ? t("runs.replay.pause") : t("runs.replay.play")}
         </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          icon={<RotateCcw aria-hidden />}
-          aria-label={t("runs.replay.restart")}
-          title={t("runs.replay.restart")}
-          onClick={() => seek(0)}
-          disabled={reduced}
-        />
+        <Tooltip label={t("runs.replay.restart")}>
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={<RotateCcw aria-hidden />}
+            aria-label={t("runs.replay.restart")}
+            onClick={() => seek(0)}
+            disabled={reduced}
+          />
+        </Tooltip>
         <input
           className="replay-scrub"
           type="range"

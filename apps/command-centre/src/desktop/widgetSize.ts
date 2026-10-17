@@ -33,12 +33,3 @@ export const WidgetSizeContext = createContext<WidgetSize>(DEFAULT_WIDGET_SIZE);
 export function useWidgetSize(): WidgetSize {
   return useContext(WidgetSizeContext);
 }
-
-/** Height class from grid rows: "xs" (≤3) · "sm" (4–5) · "md" (6–8) · "lg" (9+). */
-export function heightTier(size: WidgetSize): "xs" | "sm" | "md" | "lg" {
-  if (size.expanded || size.stacked) return "lg";
-  if (size.h <= 3) return "xs";
-  if (size.h <= 5) return "sm";
-  if (size.h <= 8) return "md";
-  return "lg";
-}

@@ -1,10 +1,22 @@
 import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
+import { parseSkillFile } from "./parse.js";
 import type { MordomoPaths } from "../paths.js";
 import { SkillFrontmatterSchema, type Skill, type SkillFrontmatter, type SkillResource, type SkillResourceKind } from "./types.js";
 import { isValidId, resolveInsideDir } from "../security/ids.js";
-import { isInside } from "../security/paths.js";
+import { PathAccessError } from "../security/paths.js";
+import {
+  homeReadScope,
+  listWorkspaceDir,
+  openWorkspaceFile,
+  readWorkspaceText,
+  readScope,
+  resolveReadable,
+  type ReadScope,
+  type WorkspaceFile,
+} from "../security/safeFs.js";
+import { copyTreeWithoutLinks, writeWorkspaceFile } from "../security/safeWrite.js";
 import type { StoreProblem } from "../routines/store.js";
 
 /** A SKILL.md body at or above this many lines is flagged "thick" (ARMS S-L2). */
@@ -72,10 +84,39 @@ export function isSafeResourceRel(rel: unknown): rel is string {
   return segments.every((seg) => seg.length > 0 && seg !== "." && seg !== ".." && !seg.startsWith(".") && !/^[A-Za-z]:$/.test(seg));
 }
 
+/** SKILL.md, NOTES.md and the like are text a person wrote; one past this is not one. */
+const MAX_SKILL_TEXT_BYTES = 2 * 1024 * 1024;
+
 export class SkillCatalog {
   private problems: StoreProblem[] = [];
 
-  constructor(private readonly paths: MordomoPaths) {}
+  /**
+   * `memorySlugs` is the owner's list of skills that work on the second brain (`settings.memorySkills`); the
+   * catalog never learns it from a SKILL.md.
+   */
+  constructor(
+    private readonly paths: MordomoPaths,
+    private readonly memorySlugs: () => readonly string[] = () => [],
+  ) {}
+
+  /**
+   * Every skill file is read through the safe-read primitive, confined to
+   * `skills/`: a SKILL.md, a NOTES.md or a resource that is a link out of the
+   * catalog (to `config/token`, say) is refused, not followed.
+   */
+  private get scope(): ReadScope {
+    return homeReadScope(this.paths.home, [this.paths.skills]);
+  }
+
+  /** The text of a skill file, or null when it does not exist. */
+  private readText(file: string, scope: ReadScope = this.scope): string | null {
+    try {
+      return readWorkspaceText(scope, file, { maxBytes: MAX_SKILL_TEXT_BYTES, strict: true }).text;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw err;
+    }
+  }
 
   /** Skill folders skipped by the most recent `list()` call, with the reason. */
   lastProblems(): StoreProblem[] {
@@ -91,15 +132,16 @@ export class SkillCatalog {
     this.problems = [];
     if (!fs.existsSync(this.paths.skills)) return [];
     const skills: Skill[] = [];
-    for (const entry of fs.readdirSync(this.paths.skills, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
+    const scope = this.scope; // one scope for the whole listing
+    for (const entry of listWorkspaceDir(scope, this.paths.skills)) {
+      if (!entry.isDirectory) continue;
       const full = path.join(this.paths.skills, entry.name);
       if (!isValidId(entry.name)) {
         this.problems.push({ file: full, error: `Folder name is not a valid skill slug: ${entry.name}` });
         continue;
       }
       try {
-        const skill = this.load(entry.name);
+        const skill = this.load(entry.name, scope);
         if (skill) skills.push(skill);
       } catch (err) {
         // One broken SKILL.md must not hide the whole catalog.
@@ -109,21 +151,23 @@ export class SkillCatalog {
     return skills.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  load(slug: string): Skill | null {
+  load(slug: string, scope: ReadScope = this.scope): Skill | null {
     const dir = this.dirFor(slug);
     const skillFile = path.join(dir, "SKILL.md");
-    if (!fs.existsSync(skillFile)) return null;
-    const raw = fs.readFileSync(skillFile, "utf8");
-    const parsed = matter(raw);
-    const front = SkillFrontmatterSchema.safeParse({ slug, ...parsed.data });
+    const raw = this.readText(skillFile, scope);
+    if (raw === null) return null;
+    const parsed = parseSkillFile(raw);
+    // The folder names the skill: a slug written in the file cannot rename it.
+    const front = SkillFrontmatterSchema.safeParse({ ...parsed.data, slug });
     if (!front.success) {
       throw new Error(`Skill "${slug}" has invalid frontmatter: ${front.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
     }
     const body = parsed.content.trim();
-    const resourceFiles = this.listResources(dir);
+    const resourceFiles = this.listResources(dir, scope);
     const bodyLineCount = body.split("\n").length;
     return {
       ...front.data,
+      memoryAccess: this.memorySlugs().includes(slug),
       body,
       dir,
       skillFile,
@@ -139,13 +183,12 @@ export class SkillCatalog {
    * `rel`. Symlinks and hidden entries are skipped (a link could point outside
    * the folder), and the walk stops at MAX_SKILL_RESOURCES entries.
    */
-  private listResources(dir: string): SkillResource[] {
+  private listResources(dir: string, scope: ReadScope = this.scope): SkillResource[] {
     const out: SkillResource[] = [];
-    const root = path.resolve(dir);
     const walk = (current: string, prefix: string) => {
-      let entries: fs.Dirent[];
+      let entries: ReturnType<typeof listWorkspaceDir>;
       try {
-        entries = fs.readdirSync(current, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+        entries = listWorkspaceDir(scope, current).sort((a, b) => a.name.localeCompare(b.name));
       } catch {
         return;
       }
@@ -153,30 +196,21 @@ export class SkillCatalog {
         if (out.length >= MAX_SKILL_RESOURCES) return;
         if (entry.name.startsWith(".")) continue;
         if (entry.name === "SKILL.md" && prefix === "") continue;
-        if (entry.isSymbolicLink()) continue;
-        const full = path.join(current, entry.name);
-        if (!isInside(root, full)) continue;
         const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) walk(full, rel);
-        else if (entry.isFile()) {
-          let size = 0;
-          try {
-            size = fs.statSync(full).size;
-          } catch {
-            continue;
-          }
-          out.push({ name: entry.name, rel, kind: skillResourceKind(entry.name), size });
+        if (entry.isDirectory) walk(entry.path, rel);
+        else if (entry.isFile) {
+          out.push({ name: entry.name, rel, kind: skillResourceKind(entry.name), size: entry.size });
         }
       }
     };
-    walk(root, "");
+    walk(dir, "");
     return out.sort((a, b) => a.rel.localeCompare(b.rel));
   }
 
   /**
-   * Absolute path of one listed resource, or null when `rel` is not a safe
+   * Real path of one listed resource, or null when `rel` is not a safe
    * relative path, is not in the scan (so never SKILL.md, symlinks or hidden
-   * files), or resolves outside the skill folder. Never throws for bad input
+   * files), or resolves outside the catalog. Never throws for bad input
    * other than an invalid slug (InvalidIdError → 400).
    */
   resolveResource(slug: string, rel: unknown): { absPath: string; resource: SkillResource; contentType: string } | null {
@@ -184,24 +218,41 @@ export class SkillCatalog {
     if (!isSafeResourceRel(rel)) return null;
     const resource = this.listResources(dir).find((r) => r.rel === rel);
     if (!resource) return null;
-    const absPath = path.resolve(dir, ...rel.split("/"));
-    if (!isInside(path.resolve(dir), absPath)) return null;
-    let real: string;
     try {
-      real = fs.realpathSync(absPath);
-    } catch {
-      return null;
+      const { real } = resolveReadable(this.scope, path.resolve(dir, ...rel.split("/")));
+      return { absPath: real, resource, contentType: skillResourceContentType(resource.name) };
+    } catch (err) {
+      if (err instanceof PathAccessError || (err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw err;
     }
-    if (!isInside(fs.realpathSync(dir), real)) return null;
-    return { absPath: real, resource, contentType: skillResourceContentType(resource.name) };
+  }
+
+  /**
+   * One listed resource, opened for streaming through the safe-read primitive
+   * (the descriptor belongs to the returned file). Null as for `resolveResource`,
+   * and also when the file is gone or is not a regular file.
+   */
+  openResource(
+    slug: string,
+    rel: unknown,
+  ): { file: WorkspaceFile; resource: SkillResource; contentType: string } | null {
+    const hit = this.resolveResource(slug, rel);
+    if (!hit) return null;
+    try {
+      return { file: openWorkspaceFile(this.scope, hit.absPath), resource: hit.resource, contentType: hit.contentType };
+    } catch (err) {
+      if (err instanceof PathAccessError || (err as NodeJS.ErrnoException).code === "ENOENT" || (err as { code?: string }).code === "not_a_file") return null;
+      throw err;
+    }
   }
 
   save(front: SkillFrontmatter, body: string): Skill {
     const dir = this.dirFor(front.slug);
-    fs.mkdirSync(dir, { recursive: true });
-    const { slug: _omit, ...frontWithoutSlug } = front;
+    // Only the frontmatter fields go to disk: a loaded Skill passed back in (`setEnabled`) also carries what is
+    // derived (body, folder, resources, `memoryAccess`), none of which belongs in the file.
+    const { slug: _omit, ...frontWithoutSlug } = SkillFrontmatterSchema.parse(front);
     const content = matter.stringify(body.trim() + "\n", frontWithoutSlug);
-    fs.writeFileSync(path.join(dir, "SKILL.md"), content, "utf8");
+    writeWorkspaceFile(this.scope, path.join(dir, "SKILL.md"), content);
     const skill = this.load(front.slug);
     if (!skill) throw new Error(`failed to persist skill ${front.slug}`);
     return skill;
@@ -222,30 +273,48 @@ export class SkillCatalog {
    * Import an existing external skill folder (e.g. from ~/.claude/skills) into
    * the canonical catalog. Copies files; never touches the source.
    */
-  importFrom(sourceDir: string, slug?: string): Skill {
+  importFrom(sourceDir: string, slug?: string, sourceScope?: ReadScope): Skill {
     const skillFile = path.join(sourceDir, "SKILL.md");
     if (!fs.existsSync(skillFile)) {
       throw new Error(`No SKILL.md found in ${sourceDir}`);
     }
+    // The folder is read through a scope rooted at itself unless the caller (the import route) passes the
+    // user's granted one: either way a link, a secret file or a private folder at any depth stays behind.
+    const from = sourceScope ?? readScope({ homeDir: this.paths.home, roots: [sourceDir] });
     const finalSlug = (slug ?? path.basename(sourceDir))
       .toLowerCase()
       .replace(/[^a-z0-9-]+/g, "-")
       .replace(/^-+|-+$/g, "");
     const targetDir = this.dirFor(finalSlug);
-    if (fs.existsSync(targetDir)) {
-      throw new Error(`Skill "${finalSlug}" already exists in the catalog.`);
+    // Made here, exclusively: what a failure removes below is the folder THIS call made, never one that another
+    // import (another process) put there in the meantime.
+    fs.mkdirSync(this.paths.skills, { recursive: true });
+    try {
+      fs.mkdirSync(targetDir);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+        throw new Error(`Skill "${finalSlug}" already exists in the catalog.`);
+      }
+      throw err;
     }
-    fs.cpSync(sourceDir, targetDir, { recursive: true });
-    // Normalize frontmatter so the imported skill validates.
-    const raw = fs.readFileSync(path.join(targetDir, "SKILL.md"), "utf8");
-    const parsed = matter(raw);
-    const front = SkillFrontmatterSchema.parse({
-      name: (parsed.data.name as string) ?? finalSlug,
-      slug: finalSlug,
-      description: (parsed.data.description as string) ?? "(imported skill — add a description)",
-      ...normalizeImported(parsed.data),
-    });
-    return this.save(front, parsed.content);
+    try {
+      // Read AND written through the primitive: the copy holds no link, no secret file, nothing from config/.
+      copyTreeWithoutLinks(from, sourceDir, this.scope, targetDir);
+      // Normalize frontmatter so the imported skill validates.
+      const raw = this.readText(path.join(targetDir, "SKILL.md"));
+      if (raw === null) throw new Error(`No SKILL.md found in ${sourceDir}`);
+      const parsed = parseSkillFile(raw);
+      const front = SkillFrontmatterSchema.parse({
+        name: (parsed.data.name as string) ?? finalSlug,
+        slug: finalSlug,
+        description: (parsed.data.description as string) ?? "(imported skill — add a description)",
+        ...normalizeImported(parsed.data),
+      });
+      return this.save(front, parsed.content);
+    } catch (err) {
+      fs.rmSync(targetDir, { recursive: true, force: true }); // a half-copied skill must not stay behind
+      throw err;
+    }
   }
 
   /** Build the prompt used to run a skill headlessly through any provider. */
@@ -259,10 +328,11 @@ export class SkillCatalog {
     if (!skill) return null;
     const file = this.notesFile(skill);
     const archive = this.archiveFile(skill);
+    const archived = this.readText(archive);
     return {
-      notes: fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "",
+      notes: this.readText(file) ?? "",
       path: file,
-      archived: fs.existsSync(archive) ? noteEntries(fs.readFileSync(archive, "utf8")).length : 0,
+      archived: archived === null ? 0 : noteEntries(archived).length,
     };
   }
 
@@ -279,20 +349,27 @@ export class SkillCatalog {
     const skill = this.load(slug);
     if (!skill) return 0;
     const file = this.notesFile(skill);
-    if (!fs.existsSync(file)) return 0;
-    const raw = fs.readFileSync(file, "utf8");
+    const raw = this.readText(file);
+    if (raw === null) return 0;
     const entries = noteEntries(raw);
     if (entries.length <= max) return 0;
     const excess = entries.length - max;
     const moved = entries.slice(0, excess);
     const kept = entries.slice(excess);
     const header = raw.slice(0, entries[0]!.start).trimEnd();
-    fs.writeFileSync(file, `${header}\n${kept.map((e) => e.text).join("")}`);
+    const scope = this.scope;
+    // The archive first: when it cannot be written (a link, a second name for the token) nothing has moved yet.
     const archive = this.archiveFile(skill);
     if (!fs.existsSync(archive)) {
-      fs.writeFileSync(archive, `# Archived notes for ${skill.name}\n\nMoved out of NOTES.md when it passed ${max} entries. Not read by the agent.\n`);
+      writeWorkspaceFile(
+        scope,
+        archive,
+        `# Archived notes for ${skill.name}\n\nMoved out of NOTES.md when it passed ${max} entries. Not read by the agent.\n`,
+        { mode: "create" },
+      );
     }
-    fs.appendFileSync(archive, moved.map((e) => e.text).join(""));
+    writeWorkspaceFile(scope, archive, moved.map((e) => e.text).join(""), { mode: "append" });
+    writeWorkspaceFile(scope, file, `${header}\n${kept.map((e) => e.text).join("")}`);
     return excess;
   }
 
@@ -310,26 +387,50 @@ export class SkillCatalog {
     const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
     const tag = [meta.source, meta.runId ? `run ${meta.runId}` : ""].filter(Boolean).join(", ");
     const entry = `\n- **${stamp}**${tag ? ` (${tag})` : ""}: ${body.replace(/\n+/g, " ")}\n`;
+    const scope = this.scope;
     if (!fs.existsSync(file)) {
-      fs.writeFileSync(
+      writeWorkspaceFile(
+        scope,
         file,
         `# Notes for ${skill.name}\n\nLessons saved from runs. The agent reads this file on every run of the skill; keep entries short and actionable.\n`,
+        { mode: "create" },
       );
     }
-    fs.appendFileSync(file, entry);
+    writeWorkspaceFile(scope, file, entry, { mode: "append" });
     if (meta.max) this.pruneNotes(slug, meta.max);
     return this.readNotes(slug)!;
   }
 
+  /**
+   * Where things are, as absolute paths the engine knows. The run does not start in the home (it holds config/),
+   * so a skill never reaches for `memory/…` or `config/…` relative to where it is: it is told here. A memory skill
+   * is also told how to reach the memory routes of the local API without the owner token.
+   */
+  locationsBlock(skill: Skill): string {
+    const lines = [`Skill folder (yours to read): ${skill.dir}`];
+    if (skill.memoryAccess) {
+      const memory = this.paths.memory;
+      lines.push(
+        `MordomoOS home: ${this.paths.home}`,
+        `Memory folder (an added folder of this run): ${memory}`,
+        `  long-term memory: ${path.join(memory, "MEMORY.md")}`,
+        `  daily journal: ${path.join(memory, "journal")}${path.sep}YYYY-MM-DD.md`,
+        "Local API for the memory routes only: the environment variables MORDOMO_URL (base address) and MORDOMO_RUN_TOKEN (credential of this run only, sent as the header x-mordomo-token). If they are not set, there is no API for this run: use the files above and skip what needs the API, and say so. There is no other token and no other file to read: never look in the config folder of the home.",
+      );
+    }
+    return lines.join("\n");
+  }
+
   buildRunPrompt(skill: Skill, inputs: Record<string, string>, artifactsDir: string): string {
     const notesFile = this.notesFile(skill);
-    const notes = fs.existsSync(notesFile) ? fs.readFileSync(notesFile, "utf8").trim() : "";
+    const notes = (this.readText(notesFile) ?? "").trim();
     const inputLines = skill.inputs
       .map((input) => `- ${input.label} (${input.name}): ${inputs[input.name]?.trim() || "(not provided)"}`)
       .join("\n");
     return [
       `You are executing the "${skill.name}" skill from this machine's MordomoOS skill catalog.`,
       `Read the skill definition at: ${skill.skillFile}`,
+      this.locationsBlock(skill),
       skill.resources.length > 0
         ? `The skill folder contains extra resource files; read ONLY the ones the skill's router points you to for this task.`
         : "",

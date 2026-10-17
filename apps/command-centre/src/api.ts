@@ -1,3 +1,7 @@
+import type * as Contracts from "@mordomo/contracts";
+// The subpath that does not pull in zod: the interface asks which events it can read, and never validates a payload.
+import { classifyEvent, classifyRunFrame } from "@mordomo/contracts/events";
+
 /** Typed-ish fetch layer for the local MordomoOS API. */
 
 const DEVICE_TOKEN_KEY = "mordomo.deviceToken";
@@ -15,8 +19,8 @@ function readDeviceToken(): string {
  * machine; a paired device (plan Onda 3 §1) keeps its own token in the
  * browser instead. Either way every API call carries it in the same header.
  */
-const TOKEN =
-  document.querySelector<HTMLMetaElement>('meta[name="mordomo-token"]')?.content || readDeviceToken();
+const PAGE_TOKEN = document.querySelector<HTMLMetaElement>('meta[name="mordomo-token"]')?.content ?? "";
+const TOKEN = PAGE_TOKEN || readDeviceToken();
 
 /** Local token (injected into the page by the API server / the Vite dev plugin) or the paired-device token. */
 export function getToken(): string {
@@ -31,6 +35,14 @@ export function setDeviceToken(token: string | null): void {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * True when this page runs with a paired device's token rather than the owner's (the token the server injected into
+ * the page): it reaches only what its permissions cover, so a screen that is the owner's does not ask for it.
+ */
+export function isPairedDevice(): boolean {
+  return PAGE_TOKEN === "" && TOKEN.length > 0;
 }
 
 /** True when this page has no credential at all (remote, not yet paired). */
@@ -100,12 +112,64 @@ async function parseError(res: Response): Promise<ApiError> {
   return new ApiError(res.status, message, code, issues);
 }
 
+/** The keys that left the settings for the UI preferences (settings version 2), as values. */
+export const MOVED_SETTING_KEYS = [
+  "themePreset",
+  "microApps",
+  "dashboardLayout",
+  "spaces",
+  "activeSpace",
+  "hud",
+  "brain",
+] as const satisfies readonly Contracts.UiPreferenceKey[];
+
+/**
+ * Runtime backstop for the settings split: a write to `/api/settings` whose body
+ * carries a key that moved to the UI preferences is refused before it leaves the
+ * page, however the call was spelled (`putSettings` behind a cast, `api.put` with
+ * the URL in a variable, a query string). The route would answer the same `400`.
+ * Every UI request goes through `request()`, so this is the one place to check.
+ */
+export function refuseMovedSettingKeys(method: string, url: string, body: unknown): void {
+  if (method.toUpperCase() === "GET" || body === null || typeof body !== "object") return;
+  let path: string;
+  try {
+    path = decodeURIComponent(new URL(url, "http://command-centre.local").pathname);
+  } catch {
+    return;
+  }
+  if (
+    path
+      .replace(/\/{2,}/g, "/")
+      .replace(/\/+$/, "")
+      .toLowerCase()
+      .replace(/^\/api\/v1\//, "/api/") !== "/api/settings"
+  )
+    return;
+  const moved = MOVED_SETTING_KEYS.find((key) => (body as Record<string, unknown>)[key] !== undefined);
+  if (moved)
+    throw new ApiError(
+      400,
+      `"${moved}" moved to the UI preferences: write it through PUT /api/ui-preferences, not ${method.toUpperCase()} /api/settings`,
+      "moved_to_ui_preferences",
+    );
+}
+
+/**
+ * Every API path goes to the documented version: `/api/<rest>` becomes
+ * `/api/v1/<rest>`, exactly once. Anything else is returned unchanged.
+ */
+export function apiUrl(path: string): string {
+  return path.startsWith("/api/") && !path.startsWith("/api/v1/") ? `/api/v1/${path.slice(5)}` : path;
+}
+
 async function request<T>(
   method: string,
   url: string,
   body?: unknown,
   opts: RequestOptions = {},
 ): Promise<T> {
+  refuseMovedSettingKeys(method, url, body);
   const controller = new AbortController();
   let timedOut = false;
   const timer = window.setTimeout(() => {
@@ -119,7 +183,7 @@ async function request<T>(
   }
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await fetch(apiUrl(url), {
       method,
       headers: {
         "x-mordomo-token": TOKEN,
@@ -141,13 +205,13 @@ async function request<T>(
   return (await res.json()) as T;
 }
 
-/** One event from `/api/events` (mirrors core/src/events.ts `OsEvent`). */
-export interface OsEvent<T = unknown> {
-  id?: number;
-  type: string;
-  ts?: number;
-  payload: T;
-}
+/**
+ * One event as the UI sees it: the contract's envelope from `/api/events`
+ * (discriminated by `type`), or the UI's own note that the stream came back.
+ */
+export type OsEvent =
+  | Contracts.OsEvent
+  | { type: "stream.reconnected"; id?: undefined; ts: number; v?: undefined; payload: Record<string, never> };
 
 export interface StreamOptions {
   /** Named SSE event types to subscribe to in addition to unnamed `message` events. */
@@ -164,56 +228,145 @@ export const api = {
   patch: <T>(url: string, body?: unknown, opts?: RequestOptions) => request<T>("PATCH", url, body, opts),
   del: <T>(url: string, opts?: RequestOptions) => request<T>("DELETE", url, undefined, opts),
 
-  /** SSE stream of run events; EventSource cannot set headers → token in query. */
+  /** What only the Command Centre reads and writes (theme preset, micro apps, layouts, HUD, Second Brain view). */
+  uiPreferences: (opts?: RequestOptions) =>
+    request<UiPreferencesDoc>("GET", "/api/ui-preferences", undefined, opts),
+  /** Deep-merged on the server; a `dashboardLayout` replaces the stored one (send `dashboardLayoutBase` to detect a conflict). */
+  putUiPreferences: (patch: UiPreferencesPatch) =>
+    request<UiPreferencesDoc>("PUT", "/api/ui-preferences", patch),
+  /** Every settings write in the UI goes through here; the patch type refuses the keys that moved to the preferences. */
+  putSettings: <T = unknown>(patch: SettingsPatch) => request<T>("PUT", "/api/settings", patch),
+
+  /**
+   * SSE stream of one run's events. An `EventSource` cannot set a header and the credential must not ride in the URL,
+   * so each connection asks for a one-use ticket first (`POST /api/stream-tickets`). A dropped connection cannot resume
+   * on its own (the ticket is spent), so this reopens it with a new ticket and `since` set to the last frame it saw,
+   * until the run's final `run_state` frame arrives or the returned function is called.
+   */
   streamRun(runId: string, onEvent: (data: Record<string, unknown>) => void): () => void {
-    const source = new EventSource(`/api/runs/${encodeURIComponent(runId)}/stream?token=${TOKEN}`);
-    source.onmessage = (e) => {
-      try {
-        onEvent(JSON.parse(e.data as string) as Record<string, unknown>);
-      } catch {
-        /* ignore malformed */
-      }
+    let closed = false;
+    let source: EventSource | null = null;
+    let lastId = "";
+    let attempt = 0;
+    let timer: number | undefined;
+    const retry = () => {
+      if (closed) return;
+      timer = window.setTimeout(open, Math.min(STREAM_MAX_BACKOFF_MS, 1000 * 2 ** attempt));
+      attempt += 1;
     };
-    source.onerror = () => {
-      if (source.readyState === EventSource.CLOSED) source.close();
+    const open = () => {
+      streamTicket({ target: "run", runId }).then(
+        (ticket) => {
+          if (closed) return;
+          const since = lastId ? `&since=${encodeURIComponent(lastId)}` : "";
+          const es = new EventSource(
+            apiUrl(
+              `/api/runs/${encodeURIComponent(runId)}/stream?ticket=${encodeURIComponent(ticket)}${since}`,
+            ),
+          );
+          source = es;
+          es.onopen = () => {
+            attempt = 0;
+          };
+          es.onmessage = (e) => {
+            if (e.lastEventId) lastId = e.lastEventId;
+            let data: Record<string, unknown>;
+            try {
+              data = JSON.parse(e.data as string) as Record<string, unknown>;
+            } catch {
+              return; // ignore malformed
+            }
+            // A frame of a type this build does not know, or of a version newer than it reads, is dropped: the
+            // stream goes on with the next one (docs/events.md, rule 3).
+            if (classifyRunFrame(data).kind !== "known") return;
+            onEvent(data);
+            // The server ends the stream after this frame: reopening it would only ask for the same ending.
+            if (data.type === "run_state") {
+              closed = true;
+              es.close();
+            }
+          };
+          es.onerror = () => {
+            es.close();
+            retry();
+          };
+        },
+        () => retry(),
+      );
     };
-    return () => source.close();
+    open();
+    return () => {
+      closed = true;
+      window.clearTimeout(timer);
+      source?.close();
+    };
   },
 
   /**
-   * SSE stream of OS events (`/api/events`). The browser handles
-   * `Last-Event-ID` on its automatic reconnects; `onError` fires when the
-   * connection is closed for good so callers can back off and reopen.
+   * SSE stream of OS events (`/api/events`), opened with a one-use ticket like `streamRun`. A connection that closes
+   * cannot resume itself (the ticket is spent), so `onError` fires on every close and the caller backs off and opens a
+   * new stream, which asks for the events after the last id this one saw.
    */
   streamEvents(onEvent: (event: OsEvent) => void, opts: StreamOptions = {}): () => void {
-    const source = new EventSource(`/api/events?token=${TOKEN}`);
+    let closed = false;
+    let source: EventSource | null = null;
     const handle = (raw: MessageEvent, fallbackType?: string) => {
+      if (raw.lastEventId) lastFeedEventId = raw.lastEventId;
       try {
-        const parsed = JSON.parse(raw.data as string) as Partial<OsEvent> | null;
+        const parsed = JSON.parse(raw.data as string) as Partial<Contracts.OsEvent> | null;
         if (!parsed || typeof parsed !== "object") return;
         const type = typeof parsed.type === "string" ? parsed.type : fallbackType;
         if (!type) return;
-        onEvent({ id: parsed.id, type, ts: parsed.ts, payload: parsed.payload });
+        // The server speaks the contract; the named SSE event supplies `type` when the data omits it.
+        const event = { ...parsed, type };
+        // An event of a type this build does not know, or of a version newer than it reads, is dropped: the
+        // stream goes on with the next one (docs/events.md, rule 3).
+        if (classifyEvent(event).kind !== "known") return;
+        onEvent(event as Contracts.OsEvent);
       } catch {
         /* ignore malformed */
       }
     };
-    source.onmessage = (e) => handle(e);
-    for (const type of opts.types ?? []) {
-      source.addEventListener(type, (e) => handle(e as MessageEvent, type));
-    }
-    source.onopen = () => opts.onOpen?.();
-    source.onerror = () => {
-      if (source.readyState === EventSource.CLOSED) {
-        source.close();
-        opts.onError?.();
-      }
+    streamTicket({ target: "events" }).then(
+      (ticket) => {
+        if (closed) return;
+        const since = lastFeedEventId ? `&since=${encodeURIComponent(lastFeedEventId)}` : "";
+        const es = new EventSource(apiUrl(`/api/events?ticket=${encodeURIComponent(ticket)}${since}`));
+        source = es;
+        es.onmessage = (e) => handle(e);
+        for (const type of opts.types ?? []) {
+          es.addEventListener(type, (e) => handle(e as MessageEvent, type));
+        }
+        es.onopen = () => opts.onOpen?.();
+        es.onerror = () => {
+          es.close();
+          if (!closed) opts.onError?.();
+        };
+      },
+      () => {
+        if (!closed) opts.onError?.();
+      },
+    );
+    return () => {
+      closed = true;
+      source?.close();
     };
-    return () => source.close();
   },
 };
+
+/** Longest wait before a run stream is reopened. */
+const STREAM_MAX_BACKOFF_MS = 10_000;
+
+/** The id of the last frame the events feed delivered: where the next feed asks to resume. */
+let lastFeedEventId = "";
+
+/** A one-use ticket to open a stream without a credential in its URL (`POST /api/stream-tickets`). */
+function streamTicket(target: { target: "events" } | { target: "run"; runId: string }): Promise<string> {
+  return request<{ ticket: string }>("POST", "/api/stream-tickets", target).then((res) => res.ticket);
+}
+
 // ---- shared shapes (mirror the API responses we rely on) --------------------
-export type ProviderId = "claude" | "cursor" | "codex";
+export type ProviderId = Contracts.ProviderId;
 
 export interface Meta {
   name: string;
@@ -232,12 +385,7 @@ export interface ModelishOption {
   recommendedFor?: string;
 }
 
-export interface ProviderCapabilities {
-  enforcesReadOnly: boolean;
-  supportsEffort: boolean;
-  promptTransport: "stdin" | "argv";
-  streaming: boolean;
-}
+export type ProviderCapabilities = Contracts.ProviderCapabilities;
 
 export interface ProviderSnapshot {
   id: ProviderId;
@@ -245,6 +393,8 @@ export interface ProviderSnapshot {
   displayName?: string;
   capabilities?: ProviderCapabilities;
   installHint?: string;
+  /** What signs the CLI in, run in a terminal (from the manifest; older servers omit it). */
+  loginCommand?: string;
   enabled: boolean;
   isDefault: boolean;
   defaultModel: string | null;
@@ -256,10 +406,17 @@ export interface ProviderSnapshot {
     version: string | null;
     detail: string;
   };
+  /** Installed CLI version (`major.minor.patch`) against the range this release was developed against (older servers omit these). */
+  installedVersion?: string | null;
+  versionStatus?: Contracts.VersionStatus;
+  testedVersions?: Contracts.TestedVersions | null;
 }
 
 /** Localized display name/description keyed by UI language (e.g. "pt-BR"). */
 export type SkillI18n = Record<string, { name?: string; description?: string }>;
+
+/** One input a skill asks for, as the contract defines it. */
+export type SkillInput = Contracts.SkillInput;
 
 export interface Skill {
   slug: string;
@@ -270,17 +427,10 @@ export interface Skill {
   /** Daily spend cap for runs of this skill in USD (0 = none). */
   budgetUsd?: number;
   triggers: string[];
-  inputs: Array<{
-    name: string;
-    label: string;
-    type: string;
-    required: boolean;
-    placeholder?: string;
-    options?: string[];
-  }>;
+  inputs: SkillInput[];
   providers: ProviderId[];
   recommendedModel: string | null;
-  recommendedEffort: string;
+  recommendedEffort: Contracts.EffortLevel;
   mode: "read_only" | "write";
   enabled: boolean;
   version: string;
@@ -296,60 +446,13 @@ export interface Skill {
   skillFile: string;
 }
 
-export interface RunRecord {
-  id: string;
-  createdAt: number;
-  /** Spend cap for this run (remaining routine/skill budget at launch). */
-  maxCostUsd?: number | null;
-  startedAt?: number | null;
-  finishedAt: number | null;
-  origin: string;
-  provider: ProviderId;
-  model: string | null;
-  effort?: string;
-  status: string;
-  durationMs: number | null;
-  cwd?: string | null;
-  promptSummary: string;
-  request?:
-    | { version: 1; kind: "prompt" | "system"; prompt: string; mode: "read_only" | "write" }
-    | {
-        version: 1;
-        kind: "skill";
-        skillSlug: string;
-        inputs: Record<string, string>;
-        mode: "read_only" | "write";
-      }
-    | null;
-  skillSlug: string | null;
-  routineId: string | null;
-  parentRunId?: string | null;
-  sessionId?: string | null;
-  pid?: number | null;
-  error: string | null;
-  failure?: { code: string; message: string; recoverable: boolean; effectsUncertain: boolean } | null;
-  artifacts: string[];
-  /** Absolute paths the run's write tools touched (from the RunManager). */
-  filesChanged?: string[];
-  exitCode: number | null;
-  attempts?: number;
-  timeoutMs?: number | null;
-  /** `read_only` for read-only runs, else the security profile the run ran under. */
-  permissionProfile?: string | null;
-  /** Token usage and provider-reported cost (null until a provider reports it). */
-  usage?: RunUsage | null;
-}
+export type RunRecord = Contracts.RunRecord;
 
-/** Token usage persisted on a run (F-RUNS contract). */
-export interface RunUsage {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens?: number;
-  cacheWriteTokens?: number;
-  /** null = tokens known but the provider gives no price. */
-  costUsd?: number | null;
-  model?: string;
-}
+/** A run as `GET /api/runs` lists it: the record without its `request` (the full record is `GET /api/runs/:id`). */
+export type RunSummary = Contracts.ApiCallResult<"GET /api/runs">[number];
+
+/** Token usage persisted on a run. */
+export type RunUsage = Contracts.RunUsage;
 
 /** Routines v2 schedule kinds (F-BACKEND); a v1 routine reads as `cron`. */
 export type RoutineKind = "cron" | "at" | "every" | "on-exit" | "heartbeat";
@@ -404,8 +507,8 @@ export interface RoutineStatus {
   webhookUrl?: string | null;
   provider: ProviderId;
   model: string | null;
-  effort: string;
-  missedPolicy: string;
+  effort: Contracts.EffortLevel;
+  missedPolicy: Contracts.Routine["missedPolicy"];
   enabled: boolean;
   /** Why the routine disabled itself, e.g. `run_once_fired`. */
   endedReason?: string | null;
@@ -421,7 +524,7 @@ export interface RoutineStatus {
   /** Daily spend cap in USD (0 = none). */
   budgetUsd?: number;
   retryOnTimeout?: boolean;
-  profile: string;
+  profile: Contracts.Routine["profile"];
   inputs: Record<string, string>;
   notify: boolean;
   backoffMs: number;
@@ -433,24 +536,24 @@ export interface RoutineStatus {
 export interface Connector {
   id: string;
   name: string;
-  kind: string;
+  kind: Contracts.Connector["kind"];
   origin: string;
   maintainer: string;
   official: boolean;
-  authMethod: string;
+  authMethod: Contracts.Connector["authMethod"];
   permissions: string[];
   readOperations: string[];
   writeOperations: string[];
   writeEnabled: boolean;
   risks: string[];
-  status: string;
+  status: Contracts.Connector["status"];
   notes: string;
   compatibleProviders: ProviderId[];
   /** Last successful read through `GET /api/connectors/:id/data`. */
   lastUsedAt?: number | null;
   /** Present when the connector declares a read-only data mapping. */
   dataMapping?: {
-    transport?: string;
+    transport?: Contracts.DataMapping["transport"];
     command?: string | null;
     url?: string | null;
     env?: string[];
@@ -556,19 +659,8 @@ export interface MetricsDailyPoint {
   approvalWaitAvgMs: number | null;
   samples: number;
 }
-/** One hourly sample (mirrors core/src/metrics `MetricsSample`). */
-export interface MetricsSample {
-  ts: number;
-  runsTotal: number;
-  runs24h: number;
-  failed24h: number;
-  costTodayUsd: number;
-  tokensToday: number;
-  spendWeekUsd: number;
-  inboxUnread: number;
-  approvalsPending: number;
-  approvalWaitAvgMs: number | null;
-}
+/** One hourly sample. */
+export type MetricsSample = Contracts.MetricsSample;
 export interface MetricsHistory {
   days: number;
   samples: MetricsSample[];
@@ -576,110 +668,34 @@ export interface MetricsHistory {
 }
 
 // ---- settings ----
+/** Stage layout stored in the UI preferences (`dashboardLayout`). */
+export type WindowLayoutDoc = Contracts.UiPreferences["dashboardLayout"];
+
+/** The settings document as `GET /api/settings` returns it. */
+export type SettingsDoc = Contracts.Settings;
+
+/** The keys that left the settings for the UI preferences (settings version 2). */
+export type MovedSettingKey = Contracts.UiPreferenceKey;
 /**
- * The settings document as `GET /api/settings` returns it (mirrors
- * `SettingsSchema` in core/src/config/schema.ts). Fields older servers may
- * omit are optional on `SettingsView`, the shape the shared hook exposes.
+ * `PUT /api/settings` body. A moved key is `never`, so it cannot reach the
+ * settings route, not even through a spread (the route answers 400 for it).
  */
-export type WindowLayoutDoc = Record<
-  string,
-  {
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-    z: number;
-    visible: boolean;
-    minimized?: boolean;
-    config?: Record<string, unknown>;
-  }
->;
+export type SettingsPatch = Partial<SettingsDoc> & { [K in MovedSettingKey]?: never };
 
-export interface SettingsDoc {
-  systemName: string;
-  language: "en" | "pt-BR";
-  theme: "dark" | "light" | "system";
-  accentColor: string;
-  port: number;
-  timezone: string;
-  defaultProvider: ProviderId;
-  securityProfile: string;
-  providers: Record<
-    ProviderId,
-    { enabled: boolean; defaultModel: string | null; defaultEffort: string; binaryPath: string | null }
-  >;
-  indexedFolders: Array<{ path: string; area: string | null; enabled: boolean }>;
-  excludes: string[];
-  areas: string[];
-  setupCompleted: boolean;
-  /** Theme preset id (F-SHELL `PRESETS`). */
-  themePreset: string;
-  microApps: MicroApp[];
-  /** Stage pixels with a stacking order (redesign F4): see `windowModel.ts`. */
-  dashboardLayout: WindowLayoutDoc;
-  /** Named spaces, each remembering its own arrangement (redesign F6). */
-  spaces?: Record<string, { name: string; layout: WindowLayoutDoc }>;
-  /** Id of the space `dashboardLayout` currently belongs to. */
-  activeSpace?: string;
-  /** The pod arcs (redesign G5): instrument ids on the left and right, in order. */
-  hud?: { l: string[]; r: string[] };
-  routines: { allowWebhooks: boolean; heartbeatIntervalMinutes: number; heartbeatOkToken: string };
-  connectors: { dataCacheTtlMs: number; dataTimeoutMs: number; allowedCommands: string[] };
-  limits?: {
-    maxConcurrentRuns?: number;
-    defaultTimeoutMs?: number;
-    /** Daily spend budget in USD (0 = no budget). */
-    dailyBudgetUsd?: number;
-    [key: string]: unknown;
-  }; /** Remote access (Onda 3): paired devices from the listed hosts. */
-  remote?: {
-    enabled: boolean;
-    allowedHosts: string[];
-    deviceTtlDays: number;
-    tls?: { enabled: boolean; port: number | null };
-  };
-  /** Skill registries (Onda 3). */
-  marketplace?: { registries: string[] };
-  updates?: { check: boolean };
-  /** Sentinels and triage (Onda 2). */
-  sentinels?: {
-    fsWatch: { enabled: boolean; debounceMs: number };
-    repeatedFailure: { enabled: boolean; threshold: number; windowHours: number };
-    silentRoutine: { enabled: boolean; factor: number };
-    connectorDelta: { enabled: boolean; maxItems: number };
-    repeatDetector: { enabled: boolean; days: number; minRuns: number; similarity: number };
-    triage: { enabled: boolean; model: string; dailyBudgetUsd: number; timeoutMs: number };
-  };
-  /** External delivery channels (Onda 2). */
-  channels?: {
-    telegram: {
-      enabled: boolean;
-      botTokenEnv: string;
-      chatId: string;
-      minTone: "ok" | "info" | "warn" | "danger";
-      inbound: boolean;
-    };
-    push: { enabled: boolean; minTone: "ok" | "info" | "warn" | "danger"; subject: string };
-  };
-}
+/** `GET /api/ui-preferences`: what only the Command Centre reads and writes. */
+export type UiPreferencesDoc = Contracts.UiPreferences;
+/** Which interface mounts: the app frame or the immersive Núcleo. */
+export type UiShell = UiPreferencesDoc["shell"];
+/** `PUT /api/ui-preferences` body. */
+export type UiPreferencesPatch = Partial<Omit<UiPreferencesDoc, "version">> & {
+  dashboardLayoutBase?: UiPreferencesDoc["dashboardLayout"];
+};
 
-/** `GET /api/devices` */
-export interface DeviceRecord {
-  id: string;
-  name: string;
-  createdAt: number;
-  lastSeenAt: number | null;
-  expiresAt: number | null;
-  revokedAt: number | null;
-}
+/** `GET /api/devices`: a paired device and what it may do. */
+export type DeviceRecord = Contracts.DeviceRecord;
 
-/** Micro app row (mirrors `MicroAppSchema` in core/src/config/schema.ts). */
-export interface MicroApp {
-  id: string;
-  name: string;
-  description: string;
-  href: string;
-}
+/** Micro app row (`microApps` in the UI preferences). */
+export type MicroApp = Contracts.MicroApp;
 
 // ---- desktop ----
 export type ArtifactKind = "image" | "video" | "html" | "markdown" | "code" | "other";
@@ -771,32 +787,17 @@ export interface MetricsCost {
   block5h?: { usedPct: number; resetsAt: number };
 }
 
-export type NotificationKind = "approval" | "run" | "routine" | "index" | "system";
-export interface NotificationItem {
-  id: string;
-  kind: NotificationKind;
-  title: string;
-  body?: string;
-  ts: number;
-  read: boolean;
-  href?: string;
-  approvalId?: string;
-}
+export type NotificationKind = Contracts.NotificationKind;
+export type NotificationItem = Contracts.NotificationRecord;
 
 /** A pending approval as returned by `GET /api/approvals`. */
-export interface ApprovalRecord {
-  id: string;
-  createdAt: number;
-  kind: string;
-  description: string;
-  payload: Record<string, unknown>;
-  status: "pending" | "approved" | "denied" | "expired";
-  resolvedAt: number | null;
-}
+export type ApprovalRecord = Contracts.Approval;
 
 /** Absolute URL of `GET /api/artifacts/raw` for a file (token in the query: `<img>` cannot set headers). */
 export function artifactRawUrl(absolutePath: string): string {
-  return `/api/artifacts/raw?p=${encodeURIComponent(absolutePath)}&token=${encodeURIComponent(TOKEN)}`;
+  return apiUrl(
+    `/api/artifacts/raw?p=${encodeURIComponent(absolutePath)}&token=${encodeURIComponent(TOKEN)}`,
+  );
 }
 
 /** Can `/api/artifacts/raw` serve this file inline? (mirrors the server allow-list) */
@@ -805,7 +806,7 @@ export function isRawViewable(file: string): boolean {
   return [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".mp4", ".webm"].includes(ext);
 }
 
-/** Micro app entry persisted in `settings.microApps` when the schema has it (else route-only list). */
+/** Micro app entry as the UI preferences' `microApps` lists it (else route-only list). */
 export interface MicroAppEntry {
   id: string;
   name: string;
@@ -822,15 +823,6 @@ export interface SkillResource {
   rel: string;
   kind: SkillResourceKind;
   size: number;
-}
-
-/** A user-defined micro app persisted in `settings.microApps`. */
-export interface MicroApp {
-  id: string;
-  name: string;
-  description: string;
-  /** Internal route ("/pixel") or an http(s) URL. */
-  href: string;
 }
 
 /** Response of `POST /api/skills/:slug/run` (202 when an approval is pending). */
@@ -859,35 +851,14 @@ export interface RunLaunchResponse {
   pendingApproval?: { id: string; kind: string; description: string } | null;
 }
 
-/** `POST /api/backups` response (mirrors core BackupInfo). */
-export interface BackupCreated {
-  name: string;
-  path: string;
-  createdAt: number;
-  sizeBytes: number;
-}
+/** `POST /api/backups` response. */
+export type BackupCreated = Contracts.BackupInfo;
 
 /** Payloads of the OS events the notification store understands. */
-export interface ApprovalRequestedPayload {
-  id: string;
-  kind: string;
-  description: string;
-}
-export interface ApprovalResolvedPayload {
-  id: string;
-  kind: string;
-  status: "approved" | "denied" | string;
-  runId: string | null;
-}
-export interface RunFinishedPayload {
-  runId: string;
-  status: string;
-  durationMs: number | null;
-}
-export interface RoutineFiredPayload {
-  routineId: string;
-  runId: string;
-}
+export type ApprovalRequestedPayload = Contracts.OsEventMap["approval.requested"];
+export type ApprovalResolvedPayload = Contracts.OsEventMap["approval.resolved"];
+export type RunFinishedPayload = Contracts.OsEventMap["run.finished"];
+export type RoutineFiredPayload = Contracts.OsEventMap["routine.fired"];
 
 // ---- memory ----
 // F-MEMORY: layered recall, daily journal, hygiene, bi-temporal facts, inline fields.
@@ -984,13 +955,8 @@ export interface UsageSeriesPoint {
   usd: number;
 }
 
-/** `usage` frame of `/api/runs/:id/stream` (mirrors core `RunUsageEvent`). */
-export interface RunUsageEvent extends RunUsage {
-  type: "usage";
-  ts: number;
-  /** `total` replaces the sum of previous `turn` events. */
-  scope?: "turn" | "total";
-}
+/** `usage` frame of `/api/runs/:id/stream`. */
+export type RunUsageEvent = Contracts.RunUsageEvent & { type: "usage"; ts: number };
 
 /** `GET /api/runs/:id/diff?file=` */
 export type RunDiffResult =
@@ -1016,21 +982,7 @@ export interface LaunchRunResponse {
 
 // ---- sessions (Onda 1) ----
 /** A conversation with one provider: runs that continue each other via the provider's own resume. */
-export interface SessionRecord {
-  id: string;
-  provider: ProviderId;
-  providerSessionId: string | null;
-  cwd: string | null;
-  profile: string;
-  title: string;
-  createdAt: number;
-  updatedAt: number;
-  lastRunId: string | null;
-  turns: number;
-  inputTokens: number;
-  outputTokens: number;
-  costUsd: number;
-}
+export type SessionRecord = Contracts.SessionRecord;
 export interface SessionDetail {
   session: SessionRecord;
   runs: RunRecord[];
@@ -1040,7 +992,7 @@ export interface SessionDetail {
 export type ResolveApprovalResponse = ApprovalRecord & { runId: string | null };
 
 // ---- brain ----
-/** Second Brain preferences persisted in `settings.brain` (validated client-side by brain/state.ts). */
+/** Second Brain preferences persisted in the UI preferences' `brain` (validated client-side by brain/state.ts). */
 export interface BrainSettingsPayload {
   layout?: string;
   view?: string;
@@ -1055,14 +1007,8 @@ export interface BrainSettingsPayload {
   workspace?: { pinned: Array<{ id: number; x: number; y: number }>; collapsed: string[] };
 }
 
-/** Payload of the `index.progress` SSE event (mirrors core/src/memory/indexer.ts IndexProgress). */
-export interface IndexProgressPayload {
-  scanned: number;
-  total?: number;
-  added: number;
-  updated: number;
-  removed: number;
-}
+/** Payload of the `index.progress` SSE event. */
+export type IndexProgressPayload = Contracts.IndexProgress;
 
 export interface MemoryPreview {
   kind: "text" | "binary" | "blocked" | "too-large";

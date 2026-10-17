@@ -7,8 +7,17 @@ import { spawn, spawnSync } from "node:child_process";
 import { parseArgs, type ParseArgsConfig } from "node:util";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
+import { type Settings } from "@mordomo/core";
 import {
   createBackup,
+  createNote,
+  readNote,
+  saveNote,
+  inspectRestoreState,
+  isSealed,
+  resolvePaths,
+  SettingsStore,
+  type RestoreState,
   listBackups,
   restoreBackup,
   generateRouters,
@@ -19,34 +28,53 @@ import {
   DEFAULT_EXCLUDES,
   detectTimezone,
   EffortLevel,
-  ProviderId,
+  ProviderSettingsSchema,
   type IndexStats,
   type IndexProgress,
-  type Settings,
   ensureSigningKeys,
   publishRegistry,
   type MordomoPaths,
-} from "@mordomo/core";
+  type ProviderId,
+  type ProviderSettings,
+} from "@mordomo/core/internal";
 import { AppContext } from "./context.js";
 import { cliEntry } from "./entry.js";
+import { buildProviderRegistry } from "./providers.js";
 import {
   installedBuildTime,
   isOlderService,
   listServiceProcesses,
   orphanProcesses,
+  probeServer,
   terminate,
-  type ProbedServer,
 } from "./instances.js";
 import { PKG_VERSION } from "./routes/system.js";
 import { servePermissionTool } from "./mcp/permission.js";
 import { httpApi, serveMordomoMcp } from "./mcp/mordomo.js";
-import { startServer } from "./server.js";
+import {
+  LAUNCH_SECRET_MIN_LENGTH,
+  PortInUseError,
+  startServer,
+  takeLaunchSecret,
+  type SidecarOptions,
+} from "./server.js";
+import { EngineLockedError } from "@mordomo/core";
 import { runDoctor } from "./doctor.js";
 
 const CLI_PATH = cliEntry();
 
-/** Exit codes: 0 ok · 1 runtime failure · 2 usage error (bad flag/argument). */
+/**
+ * Exit codes: 0 ok · 1 runtime failure · 2 usage error (bad flag/argument) · 3 the home is blocked by a leftover ·
+ * 4 another MordomoOS service holds the home (`--sidecar` only) · 5 the port asked of `--sidecar` is taken.
+ */
 const EXIT_USAGE = 2;
+const EXIT_HOME_BLOCKED = 3;
+const EXIT_HOME_IN_USE = 4;
+const EXIT_PORT_BUSY = 5;
+/** Errors that mean the home itself cannot be used until a person clears something by hand. */
+const HOME_BLOCKED_CODES = new Set(["restore_leftover", "restore_recovery_failed", "restore_lock_unusable"]);
+/** The registered providers, in registration order (the only valid `--provider` values). */
+const PROVIDER_IDS = buildProviderRegistry().ids();
 const SERVICE_LOG_MAX_BYTES = 5 * 1024 * 1024;
 
 // ------------------------------------------------------------ arguments ----
@@ -67,8 +95,10 @@ const COMMANDS = [
   "run",
   "service",
   "recall",
+  "note",
   "mcp",
   "skills",
+  "version",
   "help",
 ] as const;
 type Command = (typeof COMMANDS)[number];
@@ -76,12 +106,16 @@ type Command = (typeof COMMANDS)[number];
 /** Every option the CLI knows, typed once; each command opts into a subset. */
 const OPTION_SPECS = {
   help: { type: "boolean", short: "h" },
+  version: { type: "boolean", short: "v" },
+  sidecar: { type: "boolean" },
+  port: { type: "string" },
   json: { type: "boolean" },
   defaults: { type: "boolean" },
   foreground: { type: "boolean" },
   "no-browser": { type: "boolean" },
   list: { type: "boolean" },
   "include-artifacts": { type: "boolean" },
+  "allow-unverified": { type: "boolean" },
   purge: { type: "boolean" },
   yes: { type: "boolean", short: "y" },
   apply: { type: "boolean" },
@@ -95,27 +129,33 @@ const OPTION_SPECS = {
   "base-url": { type: "string" },
   name: { type: "string" },
   unsigned: { type: "boolean" },
+  area: { type: "string" },
+  "front-matter": { type: "boolean" },
+  tag: { type: "string", multiple: true },
+  base: { type: "string" },
 } as const satisfies ParseArgsConfig["options"];
 type OptionName = keyof typeof OPTION_SPECS;
 
 const COMMAND_OPTIONS: Record<Command, readonly OptionName[]> = {
   setup: ["defaults"],
   doctor: ["json"],
-  start: ["foreground"],
+  start: ["foreground", "sidecar", "port"],
   stop: [],
   restart: [],
   launch: ["no-browser"],
   status: ["json"],
   backup: ["list", "include-artifacts"],
-  restore: [],
+  restore: ["allow-unverified"],
   uninstall: ["purge", "yes"],
   index: ["json"],
   sync: ["apply", "approve", "diff"],
   run: ["provider", "model", "effort", "input", "json"],
   service: ["yes"],
   recall: ["json"],
+  note: ["json", "area", "front-matter", "tag", "base"],
   mcp: [],
   skills: ["out", "base-url", "name", "unsigned", "json"],
+  version: [],
   help: [],
 };
 
@@ -123,12 +163,17 @@ export interface CliArgs {
   command: Command;
   positionals: string[];
   help: boolean;
+  version: boolean;
+  /** `start`: run as a desktop shell's service (docs/release.md); `port` is then the port to ask for. */
+  sidecar: boolean;
+  port: number | undefined;
   json: boolean;
   defaults: boolean;
   foreground: boolean;
   noBrowser: boolean;
   list: boolean;
   includeArtifacts: boolean;
+  allowUnverified: boolean;
   purge: boolean;
   yes: boolean;
   apply: boolean;
@@ -142,6 +187,10 @@ export interface CliArgs {
   baseUrl: string | undefined;
   name: string | undefined;
   unsigned: boolean;
+  area: string | undefined;
+  frontMatter: boolean;
+  tags: string[];
+  base: string | undefined;
 }
 
 class UsageError extends Error {}
@@ -155,7 +204,7 @@ function isCommand(value: string): value is Command {
  * Throws `UsageError` for unknown commands/options, missing values and enum
  * violations (`--provider`, `--effort`) so the caller can exit with code 2.
  */
-export function parseCliArgs(argv: readonly string[]): CliArgs {
+export function parseCliArgs(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): CliArgs {
   let values: Record<string, unknown>;
   let positionals: string[];
   try {
@@ -171,13 +220,15 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 
   const [first = "help", ...rest] = positionals;
   const help = values.help === true;
+  const version = values.version === true;
   if (!isCommand(first)) {
+    if (version) return { ...emptyArgs("version"), version: true };
     if (help) return { ...emptyArgs("help"), help: true };
     throw new UsageError(`Unknown command "${first}". Commands: ${COMMANDS.join(", ")}`);
   }
   const command = first;
 
-  const allowed = new Set<string>([...COMMAND_OPTIONS[command], "help"]);
+  const allowed = new Set<string>([...COMMAND_OPTIONS[command], "help", "version"]);
   for (const name of Object.keys(values)) {
     if (!allowed.has(name)) {
       throw new UsageError(`Option --${name} is not valid for "mordomo ${command}"`);
@@ -186,13 +237,12 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
 
   let provider: ProviderId | undefined;
   if (values.provider !== undefined) {
-    const parsed = ProviderId.safeParse(values.provider);
-    if (!parsed.success) {
+    if (typeof values.provider !== "string" || !PROVIDER_IDS.includes(values.provider)) {
       throw new UsageError(
-        `Invalid --provider "${String(values.provider)}". Expected one of: ${ProviderId.options.join(", ")}`,
+        `Invalid --provider "${String(values.provider)}". Expected one of: ${PROVIDER_IDS.join(", ")}`,
       );
     }
-    provider = parsed.data;
+    provider = values.provider;
   }
   let effort: EffortLevel | undefined;
   if (values.effort !== undefined) {
@@ -203,6 +253,24 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
       );
     }
     effort = parsed.data;
+  }
+  let port: number | undefined;
+  if (values.port !== undefined) {
+    const text = String(values.port);
+    port = /^\d{1,5}$/.test(text) ? Number(text) : Number.NaN;
+    if (!(port >= 0 && port <= 65535))
+      throw new UsageError(
+        `Invalid --port "${text}". Expected a number from 0 to 65535 (0 lets the system choose)`,
+      );
+    if (values.sidecar !== true) throw new UsageError("--port is only valid with --sidecar");
+  }
+  if (values.sidecar === true) {
+    const secret = env.MORDOMO_LAUNCH_TOKEN ?? "";
+    if (secret.length < LAUNCH_SECRET_MIN_LENGTH)
+      throw new UsageError(
+        `--sidecar needs MORDOMO_LAUNCH_TOKEN in the environment, ${LAUNCH_SECRET_MIN_LENGTH} characters or more`,
+      );
+    if (values.foreground !== true) throw new UsageError("--sidecar is only valid with --foreground");
   }
   const inputs: Record<string, string> = {};
   for (const raw of (values.input as string[] | undefined) ?? []) {
@@ -215,12 +283,16 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
     command,
     positionals: rest,
     help,
+    version,
+    sidecar: values.sidecar === true,
+    port,
     json: values.json === true,
     defaults: values.defaults === true,
     foreground: values.foreground === true,
     noBrowser: values["no-browser"] === true,
     list: values.list === true,
     includeArtifacts: values["include-artifacts"] === true,
+    allowUnverified: values["allow-unverified"] === true,
     purge: values.purge === true,
     yes: values.yes === true,
     apply: values.apply === true,
@@ -230,6 +302,10 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
     baseUrl: values["base-url"] as string | undefined,
     name: values.name as string | undefined,
     unsigned: values.unsigned === true,
+    area: values.area as string | undefined,
+    frontMatter: values["front-matter"] === true,
+    tags: (values.tag as string[] | undefined) ?? [],
+    base: values.base as string | undefined,
     provider,
     model: values.model as string | undefined,
     effort,
@@ -242,12 +318,16 @@ function emptyArgs(command: Command): CliArgs {
     command,
     positionals: [],
     help: false,
+    version: false,
+    sidecar: false,
+    port: undefined,
     json: false,
     defaults: false,
     foreground: false,
     noBrowser: false,
     list: false,
     includeArtifacts: false,
+    allowUnverified: false,
     purge: false,
     yes: false,
     apply: false,
@@ -261,6 +341,10 @@ function emptyArgs(command: Command): CliArgs {
     baseUrl: undefined,
     name: undefined,
     unsigned: false,
+    area: undefined,
+    frontMatter: false,
+    tags: [],
+    base: undefined,
   };
 }
 
@@ -426,6 +510,10 @@ async function main(): Promise<void> {
     }
     throw err;
   }
+  if (args.version || args.command === "version") {
+    console.log(`mordomo ${PKG_VERSION}`);
+    return;
+  }
   if (args.help || args.command === "help") {
     printHelp();
     return;
@@ -461,6 +549,8 @@ async function main(): Promise<void> {
       return cmdService(args);
     case "recall":
       return cmdRecall(args);
+    case "note":
+      return cmdNote(args);
     case "mcp":
       return cmdMcp(args);
     case "skills":
@@ -477,6 +567,8 @@ ${pc.bold("MordomoOS")} — local agentic OS over Claude Code, Cursor Agent and 
   mordomo setup            Guided, idempotent configuration (add --defaults for non-interactive)
   mordomo doctor           Full diagnostic (providers, auth, index, routines, security) (--json)
   mordomo start            Start the local service + Command Centre (add --foreground to stay attached)
+                           For a desktop shell: --foreground --sidecar --port <n|0> with MORDOMO_LAUNCH_TOKEN set;
+                           prints MORDOMO_READY {json} when it listens and shuts down when stdin closes
   mordomo stop             Stop the local service
   mordomo restart          Restart the local service (also the login service, after an update)
   mordomo launch           Start if needed and open the Command Centre in the browser (--no-browser)
@@ -487,17 +579,22 @@ ${pc.bold("MordomoOS")} — local agentic OS over Claude Code, Cursor Agent and 
   mordomo skills publish [dir] --out <registry-dir> [--base-url <url>] [--name <n>] [--unsigned]
                            Build a signed skill registry (index.json + files) from a skills folder
   mordomo skills key       Print this machine's registry signing public key
-  mordomo run <skill>      Run a skill headlessly (--provider ${ProviderId.options.join("|")}, --model <m>,
+  mordomo run <skill>      Run a skill headlessly (--provider ${PROVIDER_IDS.join("|")}, --model <m>,
                            --effort ${EffortLevel.options.join("|")}, --input k=v ...)
   mordomo recall <question>  Layered memory retrieval: only the sections worth reading (--json)
+  mordomo note new <title>   Create a note under memory/notes (--area <a>, --front-matter, --tag <t> ..., --json)
+  mordomo note show <path>   Print a note (--json: text and version); mordomo note save <path> --base <version>
+                           saves the text on stdin if the note is still that version
   mordomo mcp              Serve MordomoOS as an MCP server (stdio) to Claude/Cursor/Codex
   mordomo backup           Create a backup (--list to list, --include-artifacts to include outputs)
-  mordomo restore <name>   Restore a backup (a safety backup is taken first)
+  mordomo restore <name>   Restore a backup after checking it against its manifest (a safety backup is
+                           taken first; --allow-unverified restores one made before backups were sealed)
   mordomo service          Startup service: mordomo service install | remove | plan  (--yes skips confirmation)
+  mordomo version          Print the version (also: mordomo --version, mordomo -v)
   mordomo uninstall        Remove services/processes; data is PRESERVED unless you pass --purge
                            (--purge asks for confirmation; add --yes when not attached to a terminal)
 
-  Exit codes: 0 ok · 1 failure · 2 usage error
+  Exit codes: 0 ok · 1 failure · 2 usage error · 3 home blocked · 4 home held by another service and 5 port taken (--sidecar)
 `);
 }
 
@@ -511,6 +608,8 @@ async function cmdSetup(args: CliArgs): Promise<void> {
     `Environment: ${process.platform}/${process.arch} · Node ${process.versions.node} · home: ${ctx.paths.home}`,
   );
   let settings = ctx.settings();
+  const prefsOf = (id: ProviderId): ProviderSettings =>
+    (settings.providers[id] ??= ProviderSettingsSchema.parse({}));
 
   // 1. Provider detection (read-only; --help capability probing; no tokens shown)
   const spinner = p.spinner();
@@ -519,20 +618,20 @@ async function cmdSetup(args: CliArgs): Promise<void> {
     ProviderId,
     { installed: boolean; version: string | null; auth: string; notes: string[] }
   >;
-  for (const id of ProviderId.options) {
-    const det = await ctx.adapters[id].detect();
-    const auth = det.installed ? await ctx.adapters[id].authenticate() : null;
+  for (const id of ctx.providers.ids()) {
+    const det = await ctx.adapters[id]!.detect();
+    const auth = det.installed ? await ctx.adapters[id]!.authenticate() : null;
     detections[id] = {
       installed: det.installed,
       version: det.version,
       auth: auth ? `${String(auth.authenticated)}${auth.method ? ` (${auth.method})` : ""}` : "n/a",
       notes: det.notes,
     };
-    if (det.binaryPath) settings.providers[id].binaryPath = det.binaryPath;
+    if (det.binaryPath) prefsOf(id).binaryPath = det.binaryPath;
   }
   spinner.stop("Provider detection finished");
-  for (const id of ProviderId.options) {
-    const d = detections[id];
+  for (const id of ctx.providers.ids()) {
+    const d = detections[id]!;
     p.log.message(
       `${d.installed ? pc.green("●") : pc.red("○")} ${pc.bold(id.padEnd(6))} ${
         d.installed ? `${d.version ?? "installed"} · auth: ${d.auth}` : "not installed"
@@ -541,11 +640,11 @@ async function cmdSetup(args: CliArgs): Promise<void> {
   }
 
   if (nonInteractive) {
-    for (const id of ProviderId.options) {
-      settings.providers[id].enabled = settings.providers[id].enabled || detections[id].installed;
+    for (const id of ctx.providers.ids()) {
+      prefsOf(id).enabled = prefsOf(id).enabled || detections[id]!.installed;
     }
-    if (!settings.providers[settings.defaultProvider].enabled) {
-      const firstEnabled = ProviderId.options.find((i) => settings.providers[i].enabled);
+    if (!settings.providers[settings.defaultProvider]?.enabled) {
+      const firstEnabled = ctx.providers.ids().find((i) => prefsOf(i).enabled);
       if (firstEnabled) settings.defaultProvider = firstEnabled;
     }
     // A stored (or defaulted) "UTC" means nobody ever chose a zone: use the
@@ -558,19 +657,17 @@ async function cmdSetup(args: CliArgs): Promise<void> {
     // 2. Enable providers
     const enabled = await p.multiselect({
       message: "Which providers do you want enabled?",
-      options: ProviderId.options.map((id) => ({
+      options: ctx.providers.ids().map((id) => ({
         value: id,
-        label: `${id}${detections[id].installed ? "" : " (not installed — can be enabled later)"}`,
+        label: `${id}${detections[id]!.installed ? "" : " (not installed — can be enabled later)"}`,
       })),
-      initialValues: ProviderId.options.filter(
-        (id) => settings.providers[id].enabled || detections[id].installed,
-      ),
+      initialValues: ctx.providers.ids().filter((id) => prefsOf(id).enabled || detections[id]!.installed),
       required: true,
     });
     if (p.isCancel(enabled)) return cancel();
     const enabledIds = enabled as ProviderId[];
-    for (const id of ProviderId.options) {
-      settings.providers[id].enabled = enabledIds.includes(id);
+    for (const id of ctx.providers.ids()) {
+      prefsOf(id).enabled = enabledIds.includes(id);
     }
 
     // 3. Default provider
@@ -584,7 +681,7 @@ async function cmdSetup(args: CliArgs): Promise<void> {
 
     // 4. Model + effort per provider
     for (const id of enabledIds) {
-      const models = await ctx.adapters[id].listModels();
+      const models = await ctx.adapters[id]!.listModels();
       const model = await p.select({
         message: `Default model for ${id}?`,
         options: [
@@ -594,10 +691,10 @@ async function cmdSetup(args: CliArgs): Promise<void> {
             label: `${m.label}${m.recommendedFor ? pc.dim(` — ${m.recommendedFor}`) : ""}`,
           })),
         ],
-        initialValue: settings.providers[id].defaultModel ?? "",
+        initialValue: prefsOf(id).defaultModel ?? "",
       });
       if (p.isCancel(model)) return cancel();
-      settings.providers[id].defaultModel = (model as string) || null;
+      prefsOf(id).defaultModel = (model as string) || null;
       const effort = await p.select({
         message: `Default effort/reasoning for ${id}?`,
         options: [
@@ -606,10 +703,10 @@ async function cmdSetup(args: CliArgs): Promise<void> {
           { value: "medium", label: "medium" },
           { value: "high", label: "high" },
         ],
-        initialValue: settings.providers[id].defaultEffort,
+        initialValue: prefsOf(id).defaultEffort,
       });
       if (p.isCancel(effort)) return cancel();
-      settings.providers[id].defaultEffort = effort as EffortLevel;
+      prefsOf(id).defaultEffort = effort as EffortLevel;
     }
 
     // 5. Folders to index
@@ -711,31 +808,16 @@ async function cmdSetup(args: CliArgs): Promise<void> {
       initialValue: true,
     });
     if (!p.isCancel(doSmoke) && doSmoke) {
-      for (const id of ProviderId.options) {
-        if (!settings.providers[id].enabled) continue;
-        if (!detections[id].installed) {
+      for (const id of ctx.providers.ids()) {
+        if (!prefsOf(id).enabled) continue;
+        if (!detections[id]!.installed) {
           p.log.warn(`${id}: skipped (not installed)`);
           continue;
         }
         const s2 = p.spinner();
         s2.start(`Smoke-testing ${id}…`);
         try {
-          const run = ctx.runs.create({
-            origin: "manual",
-            provider: id,
-            prompt: "Smoke test",
-            cwd: ctx.paths.home,
-            model: settings.providers[id].defaultModel,
-            effort: "low",
-            mode: "read_only",
-            timeoutMs: 180_000,
-            profile: "read_only",
-          });
-          const rec = await ctx.runs.execute(
-            run.id,
-            "Smoke test: reply with exactly MORDOMO_OK and do nothing else. Do not read or write any file.",
-            "read_only",
-          );
+          const { run: rec } = await ctx.execution.smokeTest(id, null);
           if (rec.status === "done") s2.stop(`${id}: ${pc.green("OK")} (${rec.durationMs} ms)`);
           else s2.stop(`${id}: ${pc.red(rec.status)} — ${rec.error ?? ""}`);
         } catch (err) {
@@ -792,8 +874,63 @@ function statusIcon(status: "ok" | "warn" | "fail" | "skip"): string {
         : pc.dim("−");
 }
 
+// ------------------------------------------------- a home that is blocked ----
+
+/**
+ * What `doctor`, `status`, `stop` and `backup --list` say about a home a restore left in a state nothing may
+ * continue over. They do not build the engine for it (building it recovers, and refuses): they look, read-only, and
+ * explain step by step, with the full paths a person at the terminal needs.
+ */
+function homeBlockedLines(home: string, state: RestoreState): string[] {
+  return [
+    `${pc.red("✘")} The MordomoOS home (${home}) cannot be used until this is cleared by hand. Nothing was changed.`,
+    ...state.blockers.map((b) => `    · ${b.name}: ${b.reason}\n      ${b.folder}`),
+    "  What to do:",
+    "    1. Make sure no MordomoOS process is running (`mordomo stop` works even now).",
+    "    2. For a .restore-… folder: open it. MAPA.txt (when there) says which thing of the home each old-N is.",
+    "       old-N with no JOURNAL.json can be the leftover of a restore that FINISHED: if your files are the",
+    "       restored ones, delete the folder (the originals are also in the safety backup the restore made, the",
+    "       newest in config/backups). If the restore did NOT finish, move each old-N back over its line of",
+    "       MAPA.txt, or restore that safety backup, then delete the folder.",
+    "    3. For config/run/restore.lock: delete the file (only with no MordomoOS process running).",
+    "    4. Run the command again.",
+  ];
+}
+
+/** The blockers of the home, printed (to `stderr`, or into a JSON report by the caller); `null` when none. */
+function blockedHome(paths: MordomoPaths): { state: RestoreState; lines: string[] } | null {
+  const state = inspectRestoreState(paths);
+  return state.blockers.length > 0 ? { state, lines: homeBlockedLines(paths.home, state) } : null;
+}
+
 // --------------------------------------------------------------- doctor ----
 async function cmdDoctor(args: CliArgs): Promise<void> {
+  const blocked = blockedHome(resolvePaths());
+  if (blocked) {
+    // The checks need the engine, and the engine cannot be built over this: report it as the one failing check.
+    const detail = blocked.state.blockers.map((b) => `${b.name}: ${b.reason}`).join("; ");
+    if (args.json) {
+      const checks = [{ id: "restore-state", label: "Restore leftovers", status: "fail" as const, detail }];
+      const count = (status: string) => checks.filter((c) => c.status === status).length;
+      const totals = Object.fromEntries(["ok", "warn", "fail"].map((status) => [status, count(status)]));
+      console.log(
+        JSON.stringify(
+          {
+            checks,
+            ...totals,
+            generatedAt: Date.now(),
+            blocked: true,
+          },
+          null,
+          2,
+        ),
+      );
+    } else {
+      console.log(pc.bold(`\nMordomoOS doctor — ${new Date().toLocaleString()}\n`));
+      console.log(blocked.lines.join("\n") + "\n");
+    }
+    process.exit(EXIT_HOME_BLOCKED);
+  }
   const ctx = new AppContext();
   const report = await runDoctor(ctx);
   if (args.json) {
@@ -813,6 +950,7 @@ async function cmdDoctor(args: CliArgs): Promise<void> {
 
 // ---------------------------------------------------------------- start ----
 async function cmdStart(args: CliArgs): Promise<void> {
+  if (args.sidecar) return cmdSidecar(args);
   if (args.foreground) {
     const handle = await startServer();
     // The server writes a minimal pidfile; enrich it with identity so `status`/`stop`
@@ -851,16 +989,77 @@ async function cmdStart(args: CliArgs): Promise<void> {
   ctx.close();
 }
 
+/**
+ * `start --foreground --sidecar`: the service a desktop shell starts and owns (docs/release.md, "The shell and its
+ * service"). The shell's secret is in `MORDOMO_LAUNCH_TOKEN` (never in argv); the service listens on the port it
+ * was asked for (0: the system's choice), never stops another service to get the home or the port, says
+ * `MORDOMO_READY {json}` on stdout once it listens, and shuts down when its stdin closes: the shell's own exit,
+ * clean or not, closes the pipe, so a service never outlives the window that was showing it.
+ */
+async function cmdSidecar(args: CliArgs): Promise<void> {
+  const sidecar: SidecarOptions = {
+    port: args.port ?? 0,
+    // The secret is the shell's; a child of this service (a provider CLI) has no use for it.
+    launchSecret: takeLaunchSecret(process.env),
+  };
+  let handle;
+  try {
+    handle = await startServer(undefined, sidecar);
+  } catch (err) {
+    if (err instanceof EngineLockedError) {
+      console.error(
+        `[mordomo] another MordomoOS service holds this home${err.holderPid === null ? "" : ` (pid ${err.holderPid})`}; stop it (mordomo stop) and open the app again`,
+      );
+      process.exit(EXIT_HOME_IN_USE);
+    }
+    if (err instanceof PortInUseError) {
+      console.error(`[mordomo] ${err.message}`);
+      process.exit(EXIT_PORT_BUSY);
+    }
+    throw err;
+  }
+  const port = handle.listeners.plain.port;
+  writePidFile(handle.ctx, port);
+  console.log(
+    `MORDOMO_READY ${JSON.stringify({
+      v: 1,
+      pid: process.pid,
+      port,
+      version: PKG_VERSION,
+      updatesCheck: handle.ctx.settings().updates.check,
+    })}`,
+  );
+  let closing = false;
+  const shutdown = () => {
+    if (closing) return;
+    closing = true;
+    handle
+      .close()
+      .then(() => process.exit(0))
+      .catch((err: unknown) => {
+        console.error(pc.red(`[mordomo] shutdown failed: ${(err as Error).message}`));
+        process.exit(1);
+      });
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+  // EOF (or a broken pipe) on stdin is the shell going away.
+  process.stdin.on("end", shutdown);
+  process.stdin.on("close", shutdown);
+  process.stdin.on("error", shutdown);
+  process.stdin.resume();
+}
+
 function serviceLogFile(ctx: Pick<AppContext, "paths">): string {
   return path.join(ctx.paths.logs, "service.out.log");
 }
 
 /** Spawn the foreground server as a detached child and wait for its pidfile (up to ~6 s). */
-async function startDetached(ctx: AppContext): Promise<PidInfo | null> {
+async function startDetached(ctx: Pick<AppContext, "paths">): Promise<PidInfo | null> {
   const logFile = serviceLogFile(ctx);
   fs.mkdirSync(ctx.paths.logs, { recursive: true });
   rotateLogIfNeeded(logFile);
-  const out = fs.openSync(logFile, "a");
+  const out = fs.openSync(logFile, "a", 0o600);
   const child = spawn(process.execPath, [CLI_PATH, "start", "--foreground"], {
     detached: true,
     stdio: ["ignore", out, out],
@@ -878,34 +1077,6 @@ async function waitForPidFile(ctx: Pick<AppContext, "paths">, ticks: number): Pr
     await new Promise((r) => setTimeout(r, 200));
   }
   return readPidInfo(ctx);
-}
-
-/**
- * Is a MordomoOS answering on `port`? Used when there is no pidfile we own:
- * a server started by another checkout, by hand, or whose pidfile was removed.
- * `/api/meta` needs no token and identifies the app by name and version.
- */
-export async function probeServer(port: number, timeoutMs = 1500): Promise<ProbedServer | null> {
-  try {
-    const res = await fetch(`http://127.0.0.1:${port}/api/meta`, { signal: AbortSignal.timeout(timeoutMs) });
-    if (!res.ok) return null;
-    const meta = (await res.json()) as {
-      name?: unknown;
-      version?: unknown;
-      entry?: unknown;
-      build?: { stale?: unknown; installedAt?: unknown };
-    };
-    if (typeof meta.version !== "string") return null;
-    return {
-      name: typeof meta.name === "string" ? meta.name : "MordomoOS",
-      version: meta.version,
-      stale: typeof meta.build?.stale === "boolean" ? meta.build.stale : undefined,
-      installedAt: typeof meta.build?.installedAt === "number" ? meta.build.installedAt : undefined,
-      entry: typeof meta.entry === "string" ? meta.entry : undefined,
-    };
-  } catch {
-    return null;
-  }
 }
 
 /** Open `url` in the default browser; never throws (headless machines just print the URL). */
@@ -927,12 +1098,24 @@ function openBrowser(url: string): boolean {
 }
 
 /**
+ * What `launch` and `restart` need of the home: its paths and its settings. They start and stop a SERVICE; they
+ * never use the database, so they do not build an engine (a second engine in a process that already has one would
+ * open the same database file twice, and one that recovers a restore has no business in a command that only
+ * starts a process).
+ */
+function lightContext(): { paths: MordomoPaths; settings: () => Settings; close: () => void } {
+  const paths = resolvePaths();
+  const store = new SettingsStore(paths);
+  return { paths, settings: () => store.load(), close: () => undefined };
+}
+
+/**
  * `mordomo launch`: the double-click entry point of a packaged install. Starts
  * the service when nothing answers on the configured port, then opens the
  * Command Centre (the in-UI setup takes over on a fresh home).
  */
 async function cmdLaunch(args: CliArgs): Promise<void> {
-  const ctx = new AppContext();
+  const ctx = lightContext();
   const port = ctx.settings().port;
   const url = `http://127.0.0.1:${port}`;
   // An older build already answering is replaced before the window opens:
@@ -967,7 +1150,7 @@ async function cmdLaunch(args: CliArgs): Promise<void> {
  * service manager restarts it; otherwise a fresh detached process is spawned.
  */
 async function cmdRestart(opts: { keepOpen?: boolean } = {}): Promise<void> {
-  const ctx = new AppContext();
+  const ctx = lightContext();
   const info = readPidInfo(ctx);
   const port = ctx.settings().port;
   // Leftover service processes (a lost port race, another checkout's build)
@@ -1022,26 +1205,29 @@ async function cmdRestart(opts: { keepOpen?: boolean } = {}): Promise<void> {
 }
 
 async function cmdStop(): Promise<void> {
-  const ctx = new AppContext();
+  // No engine: stopping must work when the home is blocked, and building one is not needed to read a pid file.
+  const ctx = { paths: resolvePaths() };
   const info = readPidInfo(ctx);
   if (!info) {
     console.log("Not running.");
-    ctx.close();
-    return;
+  } else {
+    process.kill(info.pid, "SIGTERM");
+    for (let i = 0; i < 25; i++) {
+      await new Promise((r) => setTimeout(r, 200));
+      if (!readPidInfo(ctx)) break;
+    }
+    console.log(readPidInfo(ctx) ? `${pc.yellow("!")} Still stopping…` : `${pc.green("●")} Stopped.`);
   }
-  process.kill(info.pid, "SIGTERM");
-  for (let i = 0; i < 25; i++) {
-    await new Promise((r) => setTimeout(r, 200));
-    if (!readPidInfo(ctx)) break;
-  }
-  console.log(readPidInfo(ctx) ? `${pc.yellow("!")} Still stopping…` : `${pc.green("●")} Stopped.`);
-  ctx.close();
+  const blocked = blockedHome(ctx.paths);
+  if (blocked) console.error(blocked.lines.join("\n"));
 }
 
 async function cmdStatus(args: CliArgs): Promise<void> {
-  const ctx = new AppContext();
+  // No engine (it would recover, and refuse over a leftover): the pid file and the settings are all this reads.
+  const ctx = { paths: resolvePaths() };
   const info = readPidInfo(ctx);
-  const s = ctx.settings();
+  const s = new SettingsStore(ctx.paths).load();
+  const blocked = blockedHome(ctx.paths);
   const foreign = info ? null : await probeServer(s.port);
   if (args.json) {
     console.log(
@@ -1053,6 +1239,9 @@ async function cmdStatus(args: CliArgs): Promise<void> {
         port: info?.port ?? s.port,
         startedAt: info?.startedAt ?? null,
         url: `http://127.0.0.1:${info?.port ?? s.port}`,
+        ...(blocked
+          ? { homeBlocked: blocked.state.blockers.map((b) => ({ name: b.name, reason: b.reason })) }
+          : {}),
       }),
     );
   } else if (info) {
@@ -1066,23 +1255,39 @@ async function cmdStatus(args: CliArgs): Promise<void> {
   } else {
     console.log(`${pc.dim("○")} stopped · configured port ${s.port}`);
   }
-  ctx.close();
+  if (blocked) {
+    if (!args.json) console.error(blocked.lines.join("\n"));
+    process.exit(EXIT_HOME_BLOCKED);
+  }
 }
 
 // --------------------------------------------------------------- backup ----
 async function cmdBackup(args: CliArgs): Promise<void> {
-  const ctx = new AppContext();
   if (args.list) {
-    for (const b of listBackups(ctx.paths)) {
+    // No engine: a list is read from the folder, and must work whatever state a restore left the home in.
+    const paths = resolvePaths();
+    for (const b of listBackups(paths)) {
       console.log(
-        `${b.name}  ${(b.sizeBytes / 1024).toFixed(1)} KB  ${new Date(b.createdAt).toLocaleString()}`,
+        `${b.name}  ${(b.sizeBytes / 1024).toFixed(1)} KB  ${new Date(b.createdAt).toLocaleString()}${isSealed(b.path) ? "" : "  unsealed"}`,
       );
     }
-    ctx.close();
+    const blocked = blockedHome(paths);
+    if (blocked) {
+      console.error(blocked.lines.join("\n"));
+      process.exit(EXIT_HOME_BLOCKED);
+    }
     return;
   }
-  const info = await createBackup(ctx.paths, ctx.db, { includeArtifacts: args.includeArtifacts });
+  const ctx = new AppContext();
+  const before = listBackups(ctx.paths).length;
+  const info = await createBackup(ctx.paths, ctx.db, {
+    bus: ctx.events,
+    includeArtifacts: args.includeArtifacts,
+    keep: ctx.settings().limits.backupRetention,
+  });
   console.log(`${pc.green("●")} Backup created: ${info.path} (${(info.sizeBytes / 1024).toFixed(1)} KB)`);
+  const removed = before + 1 - listBackups(ctx.paths).length;
+  if (removed > 0) console.log(`removed ${removed} old backup(s)`);
   ctx.close();
 }
 
@@ -1101,7 +1306,7 @@ async function cmdRestore(args: CliArgs): Promise<void> {
   }
   const paths = ctx.paths;
   ctx.close(); // release the DB before overwriting it
-  const result = restoreBackup(paths, name);
+  const result = restoreBackup(paths, name, { allowUnverified: args.allowUnverified });
   console.log(
     `${pc.green("●")} Restored ${name}. A safety backup of the previous state is at ${result.safetyBackup.path}`,
   );
@@ -1313,6 +1518,72 @@ async function cmdRecall(args: CliArgs): Promise<void> {
   }
 }
 
+// ----------------------------------------------------------------- note ----
+
+/** `mordomo note new|show|save`: the notes of `memory/`, offline, through the same functions as the routes. */
+async function cmdNote(args: CliArgs): Promise<void> {
+  const [sub, ...rest] = args.positionals;
+  const usage = (): never => {
+    console.error(
+      pc.red(
+        'Usage: mordomo note new "<title>" [--area <a>] [--front-matter] [--tag <t> ...]\n' +
+          "       mordomo note show <path> [--json]\n" +
+          "       mordomo note save <path> --base <version>   (the new text on stdin)",
+      ),
+    );
+    return process.exit(EXIT_USAGE);
+  };
+  if (sub !== "new" && sub !== "show" && sub !== "save") return usage();
+  const ctx = new AppContext();
+  try {
+    const noteContext = { paths: ctx.paths, settings: ctx.settings() };
+    if (sub === "new") {
+      const title = rest.join(" ").trim();
+      if (!title) return usage();
+      const made = createNote(noteContext, {
+        title,
+        ...(args.area ? { area: args.area } : {}),
+        ...(args.frontMatter ? { frontMatter: true } : {}),
+        ...(args.tags.length > 0 ? { tags: args.tags } : {}),
+      });
+      ctx.indexer.indexPaths([made.path]);
+      console.log(args.json ? JSON.stringify(made) : `${made.path}\n${made.version}`);
+      return;
+    }
+    const file = rest[0];
+    if (!file) return usage();
+    if (sub === "show") {
+      const note = readNote(noteContext, file);
+      if (args.json) console.log(JSON.stringify(note));
+      else {
+        process.stdout.write(note.content);
+        console.error(
+          pc.dim(
+            `${note.path}\n${note.version}${note.editable ? "" : `\n(read-only: ${note.reason ?? ""})`}`,
+          ),
+        );
+      }
+      return;
+    }
+    if (!args.base) return usage();
+    const chunks: Buffer[] = [];
+    for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+    const saved = saveNote(noteContext, {
+      path: file,
+      content: Buffer.concat(chunks).toString("utf8"),
+      baseVersion: args.base,
+    });
+    ctx.indexer.indexPaths([saved.path]);
+    console.log(args.json ? JSON.stringify(saved) : `${saved.path}\n${saved.version}`);
+  } catch (err) {
+    const e = err as { code?: unknown; message?: unknown };
+    console.error(pc.red(`${typeof e.code === "string" ? e.code : "error"}: ${String(e.message ?? err)}`));
+    process.exitCode = 1;
+  } finally {
+    ctx.close();
+  }
+}
+
 // ----------------------------------------------------------------- sync ----
 async function cmdSync(args: CliArgs): Promise<void> {
   const ctx = new AppContext();
@@ -1356,7 +1627,7 @@ async function cmdRun(args: CliArgs): Promise<void> {
   const slug = args.positionals[0];
   if (!slug) {
     console.error(
-      `Usage: mordomo run <skill-slug> [--provider ${ProviderId.options.join("|")}] [--model m] [--effort ${EffortLevel.options.join("|")}] [--input key=value]...`,
+      `Usage: mordomo run <skill-slug> [--provider ${PROVIDER_IDS.join("|")}] [--model m] [--effort ${EffortLevel.options.join("|")}] [--input key=value]...`,
     );
     process.exit(EXIT_USAGE);
   }
@@ -1374,27 +1645,53 @@ async function cmdRun(args: CliArgs): Promise<void> {
   }
   const settings = ctx.settings();
   const provider = args.provider ?? settings.defaultProvider;
-  const run = ctx.runs.create({
-    origin: "skill",
-    provider,
-    prompt: `(skill: ${slug})`,
-    cwd: ctx.paths.home,
-    model: args.model ?? skill.recommendedModel ?? settings.providers[provider].defaultModel,
-    effort: args.effort ?? skill.recommendedEffort,
-    mode: skill.mode === "write" ? "write" : "read_only",
-    timeoutMs: settings.limits.defaultTimeoutMs,
-    profile: skill.mode === "write" ? settings.securityProfile : "read_only",
-    skillSlug: slug,
-  });
-  if (!args.json) console.log(`${pc.cyan("▶")} Running ${skill.name} via ${provider} (run ${run.id})…`);
-  const prompt = ctx.skills.buildRunPrompt(skill, args.inputs, path.join(ctx.paths.artifacts, run.id));
+  if (!ctx.providers.has(provider)) {
+    console.error(`Unknown provider "${provider}". Registered: ${PROVIDER_IDS.join(", ")}`);
+    ctx.close();
+    process.exit(EXIT_USAGE);
+  }
+  // The same write policy and the same rules as the Command Centre: refuse, park for approval, or run.
+  let started;
+  try {
+    started = ctx.execution.startSkill({
+      slug,
+      inputs: args.inputs,
+      provider,
+      ...(args.model !== undefined ? { model: args.model } : {}),
+      ...(args.effort !== undefined ? { effort: args.effort } : {}),
+      startedBy: null,
+    });
+  } catch (err) {
+    console.error(`${pc.red("✘")} ${(err as Error).message}`);
+    ctx.close();
+    process.exit(1);
+  }
+  if (started.pendingApproval) {
+    if (args.json) {
+      console.log(
+        JSON.stringify({
+          status: "waiting_approval",
+          runId: started.runId,
+          pendingApproval: started.pendingApproval,
+        }),
+      );
+    } else {
+      console.log(
+        `${pc.yellow("◐")} Waiting for approval ${started.pendingApproval.id} (run ${started.runId}): approve it in the Command Centre; the run starts then.`,
+      );
+    }
+    ctx.close();
+    process.exit(0);
+  }
+  if (!args.json)
+    console.log(`${pc.cyan("▶")} Running ${skill.name} via ${provider} (run ${started.runId})…`);
   const unsubscribe = args.json
     ? () => undefined
-    : ctx.runs.onEvent(run.id, (event) => {
+    : ctx.execution.subscribe(started.runId, (event) => {
         if (event.type === "assistant") console.log(pc.dim(event.text.split("\n")[0]!.slice(0, 120)));
         if (event.type === "tool_use") console.log(pc.dim(`  ⚙ ${event.tool}`));
       });
-  const record = await ctx.runs.execute(run.id, prompt, skill.mode === "write" ? "write" : "read_only");
+  const record = await ctx.execution.wait(started.runId);
   unsubscribe();
   if (args.json) {
     console.log(JSON.stringify(record));
@@ -1474,5 +1771,11 @@ async function installStartupService(ctx: AppContext, interactive: boolean): Pro
 main().catch((err: unknown) => {
   const command = process.argv[2] ?? "help";
   console.error(pc.red(`mordomo ${command}: ${(err as Error).message}`));
+  const code = (err as { code?: unknown }).code;
+  if (typeof code === "string" && HOME_BLOCKED_CODES.has(code)) {
+    // The messages name the home's files from the home (they also go to an API client): the terminal gets the path.
+    console.error(`Home: ${resolvePaths().home}`);
+    process.exit(EXIT_HOME_BLOCKED);
+  }
   process.exit(1);
 });

@@ -1,0 +1,9 @@
+{
+  "id": 20,
+  "type": "notification.read",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "ids": ["n_0123abcd-4567"]
+  }
+}

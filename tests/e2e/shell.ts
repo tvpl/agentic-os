@@ -113,8 +113,8 @@ export async function sendPrompt(page: Page, text: string): Promise<string> {
   const posted = page.waitForResponse(
     (r) =>
       r.request().method() === "POST" &&
-      (/\/api\/runs$/.test(new URL(r.url()).pathname) ||
-        /\/api\/sessions\/[^/]+\/continue$/.test(new URL(r.url()).pathname)),
+      (/\/api\/v1\/runs$/.test(new URL(r.url()).pathname) ||
+        /\/api\/v1\/sessions\/[^/]+\/continue$/.test(new URL(r.url()).pathname)),
   );
   const input = page.locator(".cons-input");
   await input.fill(text);

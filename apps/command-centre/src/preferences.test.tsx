@@ -1,0 +1,362 @@
+// @vitest-environment jsdom
+/**
+ * UI preferences (.specs/features/preferencias-ui, round 2): the screens that
+ * used to read and write the seven moved fields through the settings now go
+ * through the UI preferences. Each test serves different values from the two
+ * routes, so a screen that reads the old source shows the wrong one.
+ */
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
+import type { ReactNode } from "react";
+import type * as ApiModule from "./api";
+import type * as BrainStateModule from "./brain/useBrainState";
+import { api } from "./api";
+import { qk } from "./queries";
+import App from "./App";
+import Console from "./desktop/console/Console";
+import { DesktopActionsProvider, type DesktopActions } from "./desktop/actions";
+import { readConsoleDraft, storeConsoleDraft } from "./desktop/consoleDraft";
+import { DEFAULT_SETTINGS } from "./brain/engine/world";
+import { useBrainState, type BrainStateSources } from "./brain/useBrainState";
+import Setup from "./views/Setup";
+import SecondBrain from "./views/SecondBrain";
+import BrainScene from "./nucleo/scenes/BrainScene";
+import { DesktopTab } from "./views/settings/desktop";
+import { ThemeTab } from "./views/settings/theme";
+
+const MOVED = ["themePreset", "microApps", "dashboardLayout", "spaces", "activeSpace", "hud", "brain"];
+
+/** What `GET /api/settings` answers: an old server's leftovers, never to be shown. */
+const SETTINGS = {
+  version: 2,
+  systemName: "Casa",
+  language: "en",
+  theme: "dark",
+  accentColor: "#ff7a1a",
+  defaultProvider: "claude",
+  providers: {
+    claude: { enabled: true, defaultModel: null, defaultEffort: "default", binaryPath: null },
+    cursor: { enabled: false, defaultModel: null, defaultEffort: "default", binaryPath: null },
+    codex: { enabled: false, defaultModel: null, defaultEffort: "default", binaryPath: null },
+  },
+  indexedFolders: [],
+  themePreset: "forest",
+  activeSpace: "lab",
+  brain: { layout: "hex" },
+  microApps: [{ id: "old", name: "Old app", description: "", href: "/old" }],
+};
+/** `GET /api/meta` for the shell: setup done, so the shell asks for the UI preferences. */
+const META = {
+  name: "Casa",
+  theme: "dark",
+  accentColor: "#ff7a1a",
+  language: "en",
+  setupCompleted: true,
+  version: "0.0.0-test",
+};
+/** What `GET /api/ui-preferences` answers: the values the screens must use. */
+const PREFERENCES = {
+  version: 1,
+  themePreset: "jarvis",
+  microApps: [{ id: "pixel", name: "Pixel", description: "Draw", href: "/pixel" }],
+  dashboardLayout: {},
+  spaces: {},
+  activeSpace: "work",
+  hud: { l: ["app:brain"], r: ["pulse"] },
+  brain: { layout: "rings" },
+};
+
+let preferencesAnswer: () => Promise<unknown> = () => Promise.resolve(PREFERENCES);
+/** Per-test changes to what `GET /api/settings` answers. */
+let settingsOverride: Record<string, unknown> = {};
+
+vi.mock("./api", async (importOriginal) => {
+  const mod = await importOriginal<typeof ApiModule>();
+  const answer = (url: string): Promise<unknown> => {
+    if (url === "/api/settings")
+      return Promise.resolve(structuredClone({ ...SETTINGS, ...settingsOverride }));
+    if (url === "/api/meta") return Promise.resolve(structuredClone(META));
+    if (url === "/api/ui-preferences") return preferencesAnswer();
+    if (url.startsWith("/api/providers"))
+      return Promise.resolve([
+        {
+          id: "claude",
+          displayName: "Claude",
+          enabled: true,
+          isDefault: true,
+          health: { installed: true, ok: true, authenticated: true },
+        },
+      ]);
+    if (url.startsWith("/api/connectors") || url.startsWith("/api/skills") || url.startsWith("/api/routines"))
+      return Promise.resolve([]);
+    if (url.startsWith("/api/runs")) return Promise.resolve([]);
+    return new Promise(() => undefined);
+  };
+  return {
+    ...mod,
+    api: {
+      ...mod.api,
+      get: vi.fn((url: string) => answer(url)),
+      post: vi.fn(() => Promise.resolve({})),
+      put: vi.fn(() => Promise.resolve({})),
+      patch: vi.fn(() => Promise.resolve({})),
+      putSettings: vi.fn(() => Promise.resolve({ settings: SETTINGS, pendingApproval: null })),
+      putUiPreferences: vi.fn((patch: object) => Promise.resolve({ ...PREFERENCES, ...patch })),
+      uiPreferences: vi.fn(() => preferencesAnswer()),
+    },
+  };
+});
+
+// Spy on the brain state hook to see which blob each view hands it as "the server's".
+vi.mock("./brain/useBrainState", async (importOriginal) => {
+  const mod = await importOriginal<typeof BrainStateModule>();
+  return { ...mod, useBrainState: vi.fn(mod.useBrainState) };
+});
+// The canvases paint with a 2D context jsdom does not have; the state plumbing is what is under test.
+vi.mock("./brain/BrainCanvas", () => ({ BrainCanvas: () => null }));
+vi.mock("./nucleo/scenes/BrainSceneCanvas", () => ({ BrainSceneCanvas: () => null }));
+
+beforeAll(() => {
+  window.matchMedia ??= ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+});
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+  vi.useRealTimers();
+  preferencesAnswer = () => Promise.resolve(PREFERENCES);
+  settingsOverride = {};
+  window.localStorage.clear();
+  window.sessionStorage.clear();
+});
+
+function wrapper({ children }: { children: ReactNode }) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  return (
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    </MemoryRouter>
+  );
+}
+
+/** True when a URL, however spelled (variable, query string, absolute), names the settings route. */
+const isSettingsRoute = (url: unknown) =>
+  new URL(String(url), "http://command-centre.local").pathname.replace(/\/{2,}/g, "/").replace(/\/+$/, "") ===
+  "/api/settings";
+
+/** Every `/api/settings` write the UI made, whichever helper it went through. */
+function settingsWrites(): Array<Record<string, unknown>> {
+  const viaHelper = vi.mocked(api.putSettings).mock.calls.map(([patch]) => patch as Record<string, unknown>);
+  const viaRaw = [api.put, api.post, api.patch]
+    .flatMap((fn) => vi.mocked(fn).mock.calls)
+    .filter(([url]) => isSettingsRoute(url))
+    .map(([, body]) => (body ?? {}) as Record<string, unknown>);
+  return [...viaHelper, ...viaRaw];
+}
+
+/** Let the pending query answers land. */
+const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 30)));
+
+/** The `serverBlob` the last render handed to the brain state hook. */
+function lastServerBlob(): unknown {
+  const calls = vi.mocked(useBrainState).mock.calls;
+  return calls[calls.length - 1]?.[0].serverBlob;
+}
+
+describe("S3 the UI reads and writes preferences through their route", () => {
+  it("C23 setup completion saves the preset as a UI preference, and no HUD (limpeza-legado AC 10)", async () => {
+    render(<Setup onDone={() => undefined} />, { wrapper });
+    const next = async () => fireEvent.click(await screen.findByRole("button", { name: "Next" }));
+    for (let i = 0; i < 4; i++) await next();
+    fireEvent.click(await screen.findByRole("button", { name: /JARVIS/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Finish setup" }));
+
+    await waitFor(() => expect(api.putUiPreferences).toHaveBeenCalledTimes(1));
+    const prefs = vi.mocked(api.putUiPreferences).mock.calls[0]![0];
+    expect(prefs.themePreset).toBe("jarvis");
+    // The step that arranged the HUD is gone; the stored `hud` is only ever read back, never written by the Setup.
+    expect(prefs).not.toHaveProperty("hud");
+    const writes = settingsWrites();
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ setupCompleted: true, systemName: "MordomoOS" });
+    for (const key of MOVED) expect(writes[0], key).not.toHaveProperty(key);
+    // The preferences go first: `setupCompleted` only flips once both have been saved.
+    expect(api.putSettings).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(api.putUiPreferences).mock.invocationCallOrder[0]!).toBeLessThan(
+      vi.mocked(api.putSettings).mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("C36 a failed preferences write leaves setup unfinished", async () => {
+    vi.mocked(api.putUiPreferences).mockRejectedValueOnce(new Error("disk full"));
+    const done = vi.fn();
+    render(<Setup onDone={done} />, { wrapper });
+    const next = async () => fireEvent.click(await screen.findByRole("button", { name: "Next" }));
+    for (let i = 0; i < 4; i++) await next();
+    fireEvent.click(await screen.findByRole("button", { name: "Finish setup" }));
+    await waitFor(() => expect(api.putUiPreferences).toHaveBeenCalledTimes(1));
+    await settle();
+    // The settings (and `setupCompleted: true`) are only written after the preferences landed.
+    expect(api.putSettings).not.toHaveBeenCalled();
+    expect(settingsWrites()).toHaveLength(0);
+    expect(done).not.toHaveBeenCalled();
+  });
+
+  it("C24 the brain state saves its view to the UI preferences", async () => {
+    vi.useFakeTimers();
+    const src: BrainStateSources = {
+      graph: null,
+      skills: [],
+      routines: [],
+      connectors: [],
+      ringLabels: { skills: "s", memory: "m", routines: "r", apps: "a" },
+      timeline: null,
+      serverBlob: { layout: "rings" },
+      dirty: () => undefined,
+    };
+    const { result } = renderHook(() => useBrainState(src), { wrapper });
+    // The blob it is handed wins over the local default.
+    expect(result.current.ui.layout).toBe("rings");
+    act(() => result.current.persist({ ...DEFAULT_SETTINGS, layout: "hex" }, true));
+    // Debounced: nothing is sent before 700 ms, one write right at 700 ms.
+    act(() => void vi.advanceTimersByTime(699));
+    expect(api.putUiPreferences).not.toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(1));
+    expect(api.putUiPreferences).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(api.putUiPreferences).mock.calls[0]![0].brain?.layout).toBe("hex");
+    expect(settingsWrites()).toEqual([]);
+  });
+
+  it("C25 the Second Brain reads its saved view from the UI preferences", async () => {
+    render(<SecondBrain />, { wrapper });
+    await waitFor(() => expect(lastServerBlob()).toEqual(PREFERENCES.brain));
+    expect(api.get).toHaveBeenCalledWith("/api/ui-preferences", expect.anything());
+  });
+
+  it("C26 the brain scene reads its saved view from the UI preferences", async () => {
+    render(<BrainScene onMetaChanged={() => undefined} />, { wrapper });
+    await waitFor(() => expect(lastServerBlob()).toEqual(PREFERENCES.brain));
+    expect(api.get).toHaveBeenCalledWith("/api/ui-preferences", expect.anything());
+  });
+
+  it("C27 the theme tab marks the preset saved in the UI preferences", async () => {
+    const put = vi.fn(() => Promise.resolve({ ok: true as const }));
+    render(<ThemeTab s={SETTINGS as never} put={put} />, { wrapper });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /JARVIS/ }).getAttribute("aria-pressed")).toBe("true"),
+    );
+    expect(screen.getByRole("button", { name: /Forest/ }).getAttribute("aria-pressed")).toBe("false");
+
+    // Picking a preset saves it as a UI preference; the settings only get the accent colour.
+    fireEvent.click(screen.getByRole("button", { name: /Forest/ }));
+    await waitFor(() => expect(api.putUiPreferences).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.putUiPreferences).mock.calls[0]![0]).toEqual({ themePreset: "forest" });
+    const tabWrites = put.mock.calls.map((call) => (call as unknown[])[0] as Record<string, unknown>);
+    expect(tabWrites).toHaveLength(1);
+    expect(Object.keys(tabWrites[0]!)).toEqual(["accentColor"]);
+    for (const patch of [...tabWrites, ...settingsWrites()])
+      for (const key of MOVED) expect(patch, key).not.toHaveProperty(key);
+  });
+
+  it("C28 the desktop tab waits, fails and lists from the UI preferences", async () => {
+    preferencesAnswer = () => new Promise(() => undefined);
+    const { container, unmount } = render(
+      <DesktopTab s={SETTINGS as never} put={() => Promise.resolve({ ok: true })} />,
+      { wrapper },
+    );
+    expect(container.querySelector(".skeleton")).not.toBeNull();
+    unmount();
+
+    preferencesAnswer = () => Promise.reject(new Error("preferences unavailable"));
+    render(<DesktopTab s={SETTINGS as never} put={() => Promise.resolve({ ok: true })} />, { wrapper });
+    expect(await screen.findByText(/preferences unavailable/)).toBeTruthy();
+    // The error box offers a retry that asks the route again and shows its answer.
+    const asked = () => vi.mocked(api.get).mock.calls.filter(([url]) => url === "/api/ui-preferences").length;
+    const before = asked();
+    preferencesAnswer = () => Promise.resolve(PREFERENCES);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(asked()).toBe(before + 1));
+    expect(await screen.findByDisplayValue("Pixel")).toBeTruthy();
+    cleanup();
+
+    preferencesAnswer = () => Promise.resolve(PREFERENCES);
+    render(<DesktopTab s={SETTINGS as never} put={() => Promise.resolve({ ok: true })} />, { wrapper });
+    expect(await screen.findByDisplayValue("Pixel")).toBeTruthy();
+    expect(screen.queryByDisplayValue("Old app")).toBeNull();
+  });
+
+  it("C33 the shell applies the theme preset saved in the UI preferences", async () => {
+    // The settings say Forest, the UI preferences say JARVIS, the browser mirror says nothing.
+    delete document.documentElement.dataset.preset;
+    render(<App />);
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/ui-preferences", expect.anything()));
+    await waitFor(() => expect(document.documentElement.dataset.preset).toBe("jarvis"));
+    await settle();
+    expect(document.documentElement.dataset.preset).toBe("jarvis");
+    expect(window.localStorage.getItem("mordomo.themePreset")).toBe("jarvis");
+  });
+
+  it("C34 the console follows the active space saved in the UI preferences", async () => {
+    const actions: DesktopActions = {
+      runSkill: () => undefined,
+      configureSkill: () => undefined,
+      focusDeck: () => undefined,
+      runningSkills: new Set<string>(),
+      openPanels: [],
+      openDoc: () => undefined,
+      openApp: () => undefined,
+      openRun: () => undefined,
+      openSkillForm: () => undefined,
+      openPanel: () => undefined,
+      referencePanel: () => undefined,
+    };
+    const mount = () => {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      qc.setQueryData(qk.providers, []);
+      qc.setQueryData(qk.skills, []);
+      return render(
+        <MemoryRouter>
+          <QueryClientProvider client={qc}>
+            <DesktopActionsProvider value={actions}>
+              <Console busy={false} deckOpen={false} onToggleDeck={() => undefined} stacked={false} />
+            </DesktopActionsProvider>
+          </QueryClientProvider>
+        </MemoryRouter>,
+      );
+    };
+    // A space switch is a different desk: the console drops the folder it was pointed at.
+    // The preferences switch to "focus" while the settings still say "work": the desk changes.
+    preferencesAnswer = () => Promise.resolve({ ...PREFERENCES, activeSpace: "focus" });
+    settingsOverride = { activeSpace: "work" };
+    storeConsoleDraft({ text: "", cwd: "/srv/project" });
+    const first = mount();
+    await waitFor(() => expect(readConsoleDraft().cwd).toBe(""));
+    first.unmount();
+
+    // The preferences stay on "work" while the settings say "focus": the desk stays.
+    preferencesAnswer = () => Promise.resolve({ ...PREFERENCES, activeSpace: "work" });
+    settingsOverride = { activeSpace: "focus" };
+    storeConsoleDraft({ text: "", cwd: "/srv/project" });
+    mount();
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/ui-preferences", expect.anything()));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/settings", expect.anything()));
+    await settle();
+    expect(readConsoleDraft().cwd).toBe("/srv/project");
+  });
+});

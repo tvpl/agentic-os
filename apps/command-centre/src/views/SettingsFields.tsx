@@ -17,15 +17,20 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import type { SettingsDoc } from "../api";
+import type { SettingsDoc, SettingsPatch } from "../api";
 import { useT, type Lang, type TKey } from "../i18n";
 import { useToast } from "../components/ui";
 import { Badge, Button, Field } from "../components/primitives";
 import { copyText } from "./shared";
+import { Tooltip } from "../ui";
 
 /** Outcome of a settings PUT — never rejects, so `void put()` callers stay safe. */
 export type SaveResult = { ok: true } | { ok: false; error: string };
-export type Put = (patch: Partial<SettingsDoc>, silent?: boolean) => Promise<SaveResult>;
+/**
+ * The settings tabs' write. It takes the same patch type as `api.putSettings`, so a
+ * key that moved to the UI preferences is refused here too, even through a spread.
+ */
+export type Put = (patch: SettingsPatch, silent?: boolean) => Promise<SaveResult>;
 
 /** A validated parse: the value to save, or the message to show under the field. */
 export type Parsed<V> = { value: V } | { error: string };
@@ -525,18 +530,19 @@ export function ReadOnlyPathField({
           data-testid={testId}
           style={{ flex: 1, minWidth: 0, opacity: 0.8 }}
         />
-        <Button
-          size="sm"
-          variant="secondary"
-          icon={<Copy aria-hidden />}
-          aria-label={t("common.copy")}
-          title={t("common.copy")}
-          disabled={!value}
-          onClick={async () => {
-            const copied = await copyText(value);
-            toast(t(copied ? "common.copied" : "skills.copyFailed"), copied ? "ok" : "danger");
-          }}
-        />
+        <Tooltip label={t("common.copy")}>
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<Copy aria-hidden />}
+            aria-label={t("common.copy")}
+            disabled={!value}
+            onClick={async () => {
+              const copied = await copyText(value);
+              toast(t(copied ? "common.copied" : "skills.copyFailed"), copied ? "ok" : "danger");
+            }}
+          />
+        </Tooltip>
       </div>
     </Field>
   );

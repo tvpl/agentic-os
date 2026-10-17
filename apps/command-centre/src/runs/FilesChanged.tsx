@@ -7,7 +7,8 @@
 import { useState } from "react";
 import { ChevronRight, Copy, FileDiff } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { api, ApiError } from "../api";
+import { ApiError } from "../api";
+import { apiCall } from "../apiCall";
 import { useT } from "../i18n";
 import { useToast } from "../components/ui";
 import { Badge, Button } from "../components/primitives";
@@ -64,9 +65,13 @@ function FileRow({
   const diff = useQuery<RunDiff, Error>({
     queryKey: ["run", runId, "diff", file],
     queryFn: ({ signal }) =>
-      api.get<RunDiff>(`/api/runs/${encodeURIComponent(runId)}/diff?file=${encodeURIComponent(file)}`, {
-        signal,
-      }),
+      apiCall(
+        "GET /api/runs/:id/diff",
+        { params: { id: runId }, query: { file: file } },
+        {
+          signal,
+        },
+      ),
     enabled: open,
     staleTime: 30_000,
     retry: (count, err) => !(err instanceof ApiError && err.status < 500) && count < 1,

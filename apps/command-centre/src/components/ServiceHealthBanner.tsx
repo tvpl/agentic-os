@@ -7,11 +7,13 @@
  */
 import { useEffect, useState } from "react";
 import { RefreshCw, Skull, X } from "lucide-react";
-import { api, type SystemInfo } from "../api";
+import { apiUrl, type SystemInfo } from "../api";
+import { apiCall } from "../apiCall";
 import { useT } from "../i18n";
 import { useApiQuery } from "../queries";
 import { Button } from "./primitives";
 import { useToast } from "./ui";
+import { Tooltip } from "../ui";
 
 const DISMISS_KEY = "mordomo.serviceBanner.dismissed";
 
@@ -40,7 +42,9 @@ export default function ServiceHealthBanner({ name }: { name: string }) {
     let gone = false;
     const probe = async () => {
       try {
-        const res = await fetch("/api/meta", { cache: "no-store" });
+        // A raw GET on purpose: no token, no timeout, no error envelope while the service restarts.
+        // eslint-disable-next-line no-restricted-globals
+        const res = await fetch(apiUrl("/api/meta"), { cache: "no-store" });
         if (!res.ok) throw new Error(String(res.status));
         const meta = (await res.json()) as { build?: { startedAt?: number } };
         // Reload only after a *new* process answers (its startedAt moved) or the old one was seen down.
@@ -74,7 +78,7 @@ export default function ServiceHealthBanner({ name }: { name: string }) {
   const restart = async () => {
     setBusy(true);
     try {
-      await api.post("/api/system/restart");
+      await apiCall("POST /api/system/restart");
       setRestarting(true);
     } catch (err) {
       toast((err as Error).message, "danger");
@@ -84,7 +88,7 @@ export default function ServiceHealthBanner({ name }: { name: string }) {
   const reap = async () => {
     setBusy(true);
     try {
-      const res = await api.post<{ stopped: number[] }>("/api/system/reap");
+      const res = await apiCall("POST /api/system/reap");
       toast(t("service.reaped", { n: res.stopped.length }), "ok");
       await info.refetch();
     } catch (err) {
@@ -133,15 +137,11 @@ export default function ServiceHealthBanner({ name }: { name: string }) {
           </Button>
         )}
         {!restarting && (
-          <button
-            type="button"
-            className="os-tool"
-            aria-label={t("service.later")}
-            title={t("service.later")}
-            onClick={dismiss}
-          >
-            <X aria-hidden />
-          </button>
+          <Tooltip label={t("service.later")}>
+            <button type="button" className="os-tool" aria-label={t("service.later")} onClick={dismiss}>
+              <X aria-hidden />
+            </button>
+          </Tooltip>
         )}
       </div>
     </div>

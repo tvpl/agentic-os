@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { type Settings } from "@mordomo/core";
 import {
   ConnectorSchema,
   EventBus,
@@ -39,8 +40,7 @@ import {
   stemLite,
   type Db,
   type MordomoPaths,
-  type Settings,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { makeTempHome } from "./helpers.js";
 
 let ctx: { paths: MordomoPaths; cleanup: () => void };
@@ -109,7 +109,7 @@ afterEach(() => {
 });
 
 function index(): void {
-  new MemoryIndexer(db, () => settings()).indexAll();
+  new MemoryIndexer(db, () => settings(), { homeDir: ctx.paths.home }).indexAll();
 }
 
 // --------------------------------------------------------------- keywords ----
@@ -372,7 +372,7 @@ describe("daily journal", () => {
     expect(router).toContain("keep the routers generated");
     expect(router).toContain("mordomo recall");
 
-    const indexer = new MemoryIndexer(db, () => settings());
+    const indexer = new MemoryIndexer(db, () => settings(), { homeDir: ctx.paths.home });
     installJournalHooks(new EventBus(), ctx.paths, { indexer });
     indexer.indexAll();
     const journalFile = path.join(ctx.paths.memory, "journal", `${localDateString()}.md`);
@@ -388,7 +388,7 @@ describe("daily journal", () => {
     expect(again).toBe(dispose);
 
     bus.emit("run.finished", { runId: "run-1", status: "done", durationMs: 4200 });
-    bus.emit("run.started", { runId: "run-2" });
+    bus.emit("run.started", { runId: "run-2", pid: null });
     let runs = journalSections(readJournal(ctx.paths, localDateString())!.content).find(
       (s) => s.name === "Runs",
     )!;
@@ -396,7 +396,7 @@ describe("daily journal", () => {
     expect(runs.lines[0]).toContain("run run-1 → done in 4s");
 
     dispose();
-    bus.emit("run.finished", { runId: "run-3", status: "failed" });
+    bus.emit("run.finished", { runId: "run-3", status: "failed", durationMs: 1 });
     runs = journalSections(readJournal(ctx.paths, localDateString())!.content).find(
       (s) => s.name === "Runs",
     )!;

@@ -1,13 +1,14 @@
 import { describe, expect, it, beforeEach, afterEach, beforeAll, afterAll, vi } from "vitest";
 import path from "node:path";
+import { type AgentAdapter } from "@mordomo/core";
 import {
+  EventBus,
   RoutineScheduler,
   RoutineSchema,
   RoutineStore,
   RunManager,
   SettingsStore,
   SkillCatalog,
-  events,
   intervalMs,
   isHeartbeatOk,
   isWithinActiveHours,
@@ -20,12 +21,11 @@ import {
   startOfDayIn,
   validateCron,
   validateRoutine,
-  type AgentAdapter,
   type Db,
   type MordomoPaths,
   type ProviderId,
   type Routine,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { ClaudeAdapter } from "@mordomo/adapter-claude";
 import { FAKE_BIN, FAKE_CLIS_RUNNABLE, makeTempHome, withFakeBinPath } from "./helpers.js";
 
@@ -39,6 +39,7 @@ let ctx: { paths: MordomoPaths; cleanup: () => void };
 let db: Db;
 let settings: SettingsStore;
 let runs: RunManager;
+let bus: EventBus;
 let store: RoutineStore;
 let scheduler: RoutineScheduler;
 
@@ -53,11 +54,18 @@ function routine(overrides: Partial<Routine> & { id: string }): Routine {
 beforeEach(() => {
   ctx = makeTempHome();
   db = openDb(ctx.paths).db;
-  settings = new SettingsStore(ctx.paths);
-  runs = new RunManager(db, ctx.paths, () => settings.load(), adapterFor);
+  bus = new EventBus();
+  settings = new SettingsStore(ctx.paths, bus);
+  runs = new RunManager(db, ctx.paths, () => settings.load(), adapterFor, { bus });
   store = new RoutineStore(ctx.paths);
-  scheduler = new RoutineScheduler(db, ctx.paths, store, runs, new SkillCatalog(ctx.paths), () =>
-    settings.load(),
+  scheduler = new RoutineScheduler(
+    db,
+    ctx.paths,
+    store,
+    runs,
+    new SkillCatalog(ctx.paths),
+    () => settings.load(),
+    { bus },
   );
 });
 
@@ -304,7 +312,7 @@ describe("routines v2 · scheduler", () => {
       profile: "read_only",
       skillSlug: "workspace-digest",
     });
-    events.emit("run.finished", { runId: trigger.id, status: trigger.status });
+    bus.emit("run.finished", { runId: trigger.id, status: trigger.status, durationMs: 1 });
     for (let i = 0; i < 40 && scheduler.history("after-digest").length === 0; i++) await wait(50);
     scheduler.stop();
     await scheduler.drain();
@@ -344,7 +352,7 @@ describe("routines v2 · scheduler", () => {
         }),
       );
       const alerts: unknown[] = [];
-      const off = events.subscribe(
+      const off = bus.subscribe(
         (e) => e.type === ("routine.alert" as typeof e.type) && alerts.push(e.payload),
       );
       try {
@@ -380,7 +388,7 @@ describe("routines v2 · scheduler", () => {
       routine({ id: "quiet", kind: "every", every: { value: 60, unit: "minutes" }, delivery: "none" }),
     );
     const seen: unknown[] = [];
-    const off = events.subscribe((e) => e.type === "routine.fired" && seen.push(e.payload));
+    const off = bus.subscribe((e) => e.type === "routine.fired" && seen.push(e.payload));
     try {
       await scheduler.fire("quiet");
       await scheduler.drain();

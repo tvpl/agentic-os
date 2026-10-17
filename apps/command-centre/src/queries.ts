@@ -5,24 +5,16 @@
  * shared across the desktop and the apps, and so the `/api/events` stream can
  * invalidate precisely. Add new keys here, never inline in a view.
  */
+import { useCallback } from "react";
 import { useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-query";
-import {
-  api,
-  type SettingsDoc,
-  type ArtifactEntry,
-  type Connector,
-  type Meta,
-  type Objective,
-  type Metrics,
-  type ProviderSnapshot,
-  type RoutineStatus,
-  type RunRecord,
-  type Skill,
-} from "./api";
+import type * as Contracts from "@mordomo/contracts";
+import { api, type SettingsDoc, type UiPreferencesDoc, type UiPreferencesPatch } from "./api";
+import { apiCall, type CallArgs } from "./apiCall";
 
 export const qk = {
   meta: ["meta"] as const,
   settings: ["settings"] as const,
+  uiPreferences: ["uiPreferences"] as const,
   providers: ["providers"] as const,
   skills: ["skills"] as const,
   skill: (slug: string) => ["skills", slug] as const,
@@ -68,13 +60,15 @@ export const invalidationMap: Record<string, readonly (readonly unknown[])[]> = 
   "approval.requested": [["approvals"], ["run"], ["notifications"]],
   "approval.resolved": [["approvals"], ["run"], ["runs"], ["settings"], ["connectors"], ["notifications"]],
   "approval.expired": [["approvals"], ["run"], ["runs"]],
-  "settings.changed": [["settings"], ["meta"], ["providers"]],
+  "settings.changed": [["settings"], ["meta"], ["providers"], ["uiPreferences"]],
   "backup.created": [["backups"]],
   "notification.read": [["notifications"]],
   "notification.created": [["notifications"], ["metrics"]],
   "budget.crossed": [["metrics"], ["notifications"]],
   "sentinel.fired": [["notifications"]],
   "objective.changed": [["objectives"]],
+  // The service restarted and event ids started over: anything may have been missed. The empty key matches every query.
+  "stream.reset": [[]],
 };
 
 /** Named SSE event types the stream subscribes to. */
@@ -94,6 +88,36 @@ export function useApiQuery<T>(key: readonly unknown[], path: string, options: A
   });
 }
 
+/** The routes a query can read: the `GET`s of the contract table. */
+export type GetRouteKey = Extract<Contracts.RouteKey, `GET ${string}`>;
+
+/** What `useRouteQuery` takes after the key and the route: the route's parts (required when it has `params`), then the query options. */
+export type RouteQueryArgs<K extends GetRouteKey> =
+  Record<never, never> extends Contracts.ApiCallInput<K>
+    ? [input?: Contracts.ApiCallInput<K>, options?: ApiQueryOptions<Contracts.ApiCallResult<K>>]
+    : [input: Contracts.ApiCallInput<K>, options?: ApiQueryOptions<Contracts.ApiCallResult<K>>];
+
+/**
+ * `useApiQuery` for a route of the contract: the parameters, the query and the result are typed by the route's
+ * entry (`apiCall`), so the data a view reads has the shape the server answers, not one the view guessed.
+ */
+export function useRouteQuery<K extends GetRouteKey>(
+  key: readonly unknown[],
+  route: K,
+  ...args: RouteQueryArgs<K>
+) {
+  const [input, options] = args as [
+    Contracts.ApiCallInput<K> | undefined,
+    ApiQueryOptions<Contracts.ApiCallResult<K>> | undefined,
+  ];
+  return useQuery<Contracts.ApiCallResult<K>, Error, Contracts.ApiCallResult<K>, readonly unknown[]>({
+    queryKey: key,
+    // The query is cancelled with the request: the signal rides in the options slot of `apiCall`.
+    queryFn: ({ signal }) => apiCall(route, ...([input, { signal }] as unknown as CallArgs<K>)),
+    ...options,
+  });
+}
+
 export function useInvalidate() {
   const qc = useQueryClient();
   return (...keys: readonly (readonly unknown[])[]) =>
@@ -101,34 +125,49 @@ export function useInvalidate() {
 }
 
 /* ---- shared "useOs*" hooks: one cache entry per resource ------------------ */
-export const useOsMeta = (o?: ApiQueryOptions<Meta>) => useApiQuery<Meta>(qk.meta, "/api/meta", o);
-export const useOsProviders = (o?: ApiQueryOptions<ProviderSnapshot[]>) =>
-  useApiQuery<ProviderSnapshot[]>(qk.providers, "/api/providers", o);
-export const useOsSkills = (o?: ApiQueryOptions<Skill[]>) =>
-  useApiQuery<Skill[]>(qk.skills, "/api/skills", o);
-export const useOsRoutines = (o?: ApiQueryOptions<RoutineStatus[]>) =>
-  useApiQuery<RoutineStatus[]>(qk.routines, "/api/routines", o);
+type Result<K extends GetRouteKey> = Contracts.ApiCallResult<K>;
+export const useOsMeta = (o?: ApiQueryOptions<Result<"GET /api/meta">>) =>
+  useRouteQuery(qk.meta, "GET /api/meta", undefined, o);
+export const useOsProviders = (o?: ApiQueryOptions<Result<"GET /api/providers">>) =>
+  useRouteQuery(qk.providers, "GET /api/providers", undefined, o);
+export const useOsSkills = (o?: ApiQueryOptions<Result<"GET /api/skills">>) =>
+  useRouteQuery(qk.skills, "GET /api/skills", undefined, o);
+export const useOsRoutines = (o?: ApiQueryOptions<Result<"GET /api/routines">>) =>
+  useRouteQuery(qk.routines, "GET /api/routines", undefined, o);
 export const useOsRuns = (
-  params: { limit?: number; status?: string; origin?: string } = {},
-  o?: ApiQueryOptions<RunRecord[]>,
-) => {
-  const qs = Object.entries(params)
-    .filter(([, v]) => v !== undefined && v !== "")
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
-    .join("&");
-  return useApiQuery<RunRecord[]>(qk.runs(params), `/api/runs${qs ? `?${qs}` : ""}`, o);
-};
-export const useOsRun = (id: string, o?: ApiQueryOptions<RunRecord>) =>
-  useApiQuery<RunRecord>(qk.run(id), `/api/runs/${encodeURIComponent(id)}`, o);
-export const useOsMetrics = (o?: ApiQueryOptions<Metrics>) =>
-  useApiQuery<Metrics>(qk.metrics, "/api/metrics", o);
-export const useOsArtifacts = (o?: ApiQueryOptions<ArtifactEntry[]>) =>
-  useApiQuery<ArtifactEntry[]>(qk.artifacts, "/api/artifacts/recent", o);
-export const useOsConnectors = (o?: ApiQueryOptions<Connector[]>) =>
-  useApiQuery<Connector[]>(qk.connectors, "/api/connectors", o);
-export const useOsObjectives = (o?: ApiQueryOptions<Objective[]>) =>
-  useApiQuery<Objective[]>(qk.objectives, "/api/objectives", o);
-/** Every settings field, optional (an older server may omit some), plus room for fields this build does not know. */
-export type SettingsView = Partial<SettingsDoc> & { [key: string]: unknown };
+  params: { limit?: number; status?: Contracts.RunStatus; provider?: string } = {},
+  o?: ApiQueryOptions<Result<"GET /api/runs">>,
+) => useRouteQuery(qk.runs(params), "GET /api/runs", { query: params }, o);
+export const useOsMetrics = (o?: ApiQueryOptions<Result<"GET /api/metrics">>) =>
+  useRouteQuery(qk.metrics, "GET /api/metrics", undefined, o);
+export const useOsArtifacts = (o?: ApiQueryOptions<Result<"GET /api/artifacts/recent">>) =>
+  useRouteQuery(qk.artifacts, "GET /api/artifacts/recent", undefined, o);
+export const useOsConnectors = (o?: ApiQueryOptions<Result<"GET /api/connectors">>) =>
+  useRouteQuery(qk.connectors, "GET /api/connectors", undefined, o);
+export const useOsObjectives = (o?: ApiQueryOptions<Result<"GET /api/objectives">>) =>
+  useRouteQuery(qk.objectives, "GET /api/objectives", undefined, o);
+/**
+ * The settings document exactly as `GET /api/settings` returns it. It has no key
+ * that moved to the UI preferences and no index signature, so reading one
+ * (`settings.data?.themePreset`, a copy of `data`, a destructuring) does not
+ * compile: read it from `useOsUiPreferences`.
+ */
+export type SettingsView = SettingsDoc;
 export const useOsSettings = (o?: ApiQueryOptions<SettingsView>) =>
   useApiQuery<SettingsView>(qk.settings, "/api/settings", o);
+/** What only the Command Centre reads and writes; refreshed on `settings.changed`. */
+export const useOsUiPreferences = (o?: ApiQueryOptions<UiPreferencesDoc>) =>
+  useApiQuery<UiPreferencesDoc>(qk.uiPreferences, "/api/ui-preferences", o);
+
+/** Save part of the UI preferences and put the answer straight into the cache. */
+export function useSaveUiPreferences() {
+  const qc = useQueryClient();
+  return useCallback(
+    async (patch: UiPreferencesPatch): Promise<UiPreferencesDoc> => {
+      const doc = await api.putUiPreferences(patch);
+      qc.setQueryData(qk.uiPreferences, doc);
+      return doc;
+    },
+    [qc],
+  );
+}

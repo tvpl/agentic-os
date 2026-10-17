@@ -1,0 +1,12 @@
+{
+  "id": 18,
+  "type": "backup.created",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "name": "full-2026-10-11T10-00-00",
+    "path": "/home/u/.mordomo/backups/full-2026-10-11T10-00-00",
+    "createdAt": 1760000000000,
+    "sizeBytes": 204800
+  }
+}

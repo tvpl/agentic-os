@@ -4,6 +4,7 @@
  * pixel core. Glow comes from the sprite set.
  */
 import { TWO_PI } from "../engine/world";
+import { LABEL_FONT_PX, planetCountAlpha } from "./labels";
 import type { SpriteSet } from "./sprites";
 
 export function drawClock(
@@ -61,7 +62,28 @@ export function drawFolderGlyph(
   ctx.restore();
 }
 
-/** Sub-folder "planet": a small ringed disc with its file count beside it. */
+/**
+ * Text with a thin outline in the page colour, so it stays readable over the
+ * links and arcs it crosses. `k` is the camera scale: the outline is 3 screen px.
+ */
+export function drawHaloText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  fill: string,
+  halo: string,
+  k: number,
+): void {
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 3 / k;
+  ctx.strokeStyle = halo;
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = fill;
+  ctx.fillText(text, x, y);
+}
+
+/** Sub-folder "planet": a small ringed disc with its file count beside it (12px on screen at any zoom, or not drawn). */
 export function drawPlanet(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -72,6 +94,7 @@ export function drawPlanet(
   font: string,
   ink: string,
   alpha: number,
+  halo: string,
 ): void {
   const r = 3.6;
   ctx.save();
@@ -87,12 +110,14 @@ export function drawPlanet(
   ctx.beginPath();
   ctx.ellipse(0, 0, r * 2.1, r * 0.8, -0.5, 0, TWO_PI);
   ctx.stroke();
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = ink;
-  ctx.font = `800 ${8.5 / Math.max(0.8, k)}px ${font}`;
-  ctx.textAlign = "left";
-  ctx.textBaseline = "middle";
-  ctx.fillText(String(count), r * 2.4, 0);
+  const countAlpha = planetCountAlpha(k);
+  if (countAlpha > 0) {
+    ctx.globalAlpha = alpha * countAlpha;
+    ctx.font = `600 ${LABEL_FONT_PX / k}px ${font}`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    drawHaloText(ctx, String(count), r * 2.4, 0, ink, halo, k);
+  }
   ctx.restore();
 }
 

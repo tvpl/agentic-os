@@ -1,4 +1,7 @@
 import type { Db } from "../db/db.js";
+import type { MetricsSample } from "@mordomo/contracts";
+
+export type { MetricsSample };
 
 /**
  * Metrics history (plan follow-up 8): one snapshot per hour of what the
@@ -7,20 +10,6 @@ import type { Db } from "../db/db.js";
  * rides the hourly sweep; a restart inside the same hour overwrites the
  * bucket instead of adding a second row.
  */
-export interface MetricsSample {
-  /** Hour bucket (ms since epoch, floored to the hour). */
-  ts: number;
-  runsTotal: number;
-  runs24h: number;
-  failed24h: number;
-  costTodayUsd: number;
-  tokensToday: number;
-  spendWeekUsd: number;
-  inboxUnread: number;
-  approvalsPending: number;
-  /** Mean time pending → resolved over the last 24 h; null when nothing resolved. */
-  approvalWaitAvgMs: number | null;
-}
 
 export const HOUR_MS = 3_600_000;
 const RETENTION_DAYS = 90;

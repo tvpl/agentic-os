@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { dictionaries, plural, tf } from "./i18n";
+import { dictionaries, ownKeys, plural, tf } from "./i18n";
 
 describe("i18n dictionaries", () => {
   it("pt-BR and en carry exactly the same keys", () => {
-    const en = Object.keys(dictionaries.en).sort();
-    const pt = Object.keys(dictionaries["pt-BR"]).sort();
-    expect(pt).toEqual(en);
+    // The OWN keys of pt-BR: `dictionaries["pt-BR"]` starts from the English base, so it cannot miss a base key.
+    expect([...ownKeys["pt-BR"]].sort()).toEqual([...ownKeys.en].sort());
+  });
+
+  it("the pt-BR dictionary the app reads still answers every key of en (the runtime fallback is unchanged)", () => {
+    expect(Object.keys(dictionaries["pt-BR"]).sort()).toEqual(Object.keys(dictionaries.en).sort());
   });
 
   it("no value is empty", () => {
@@ -16,7 +19,7 @@ describe("i18n dictionaries", () => {
 
   it("interpolates placeholders", () => {
     expect(tf("en", "runs.count", { n: 3 })).toBe("3 run(s)");
-    expect(tf("pt-BR", "widget.more", { n: 2 })).toBe("mais 2");
+    expect(tf("pt-BR", "desktop.board.more", { n: 2 })).toBe("+2 rotinas");
   });
 
   it("picks the plural form from n", () => {
@@ -24,8 +27,13 @@ describe("i18n dictionaries", () => {
     expect(tf("en", "desktop.console.turns", { n: 2 })).toBe("2 turns");
     expect(tf("pt-BR", "desktop.console.turns", { n: 1 })).toBe("1 turno");
     expect(tf("pt-BR", "desktop.console.turns", { n: 0 })).toBe("0 turnos");
-    expect(tf("pt-BR", "desktop.pods.skills", { n: 1 })).toBe("1 skill pronta para executar");
-    expect(tf("pt-BR", "desktop.pods.skills", { n: 14 })).toBe("14 skills prontas para executar");
+    // A bracket whose halves are words, not a letter: the form the pt-BR "{n} skill[ pronta|s prontas]" strings take.
+    expect(plural("{n} skill[ pronta|s prontas] para executar", { n: 1 })).toBe(
+      "{n} skill pronta para executar",
+    );
+    expect(plural("{n} skill[ pronta|s prontas] para executar", { n: 14 })).toBe(
+      "{n} skills prontas para executar",
+    );
   });
 
   it("leaves brackets alone when there is no count", () => {

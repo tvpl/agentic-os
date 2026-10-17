@@ -1,0 +1,147 @@
+/**
+ * What a held write run would do, whole (.specs/features/escopos-dispositivo, rounds 1 and 2): who asked, the provider and
+ * model, the mode and folder, and the prompt or the skill with every input it is given. The approval's one-line
+ * description is a label and cuts long text; the person who approves reads this instead. Nothing is cut: a long
+ * text sits in a bounded box that scrolls and that the keyboard can reach (the box says its length), so a request
+ * cannot hide its end behind the part that fits.
+ */
+import { useT } from "../i18n";
+import type { ApprovalRecord } from "../api";
+import { approvalTarget, deviceRef, requiresFullReview, toolRequest } from "./approvals";
+import "./approvalRequest.css";
+
+function Long({ label, text, reference }: { label: string; text: string; reference: string }) {
+  const t = useT();
+  return (
+    <pre
+      className="approval-request-text mono"
+      tabIndex={0}
+      role="region"
+      aria-label={t("runs.request.scroll", { label, ref: reference, n: text.length })}
+    >
+      {text}
+    </pre>
+  );
+}
+
+/** Who asked, in words: the device by the name it was paired with (kept on the approval), else by a short id. */
+export function askedBy(requestedBy: string | null, name: string | null, t: ReturnType<typeof useT>): string {
+  if (requestedBy === "owner") return t("runs.request.byOwner");
+  if (requestedBy?.startsWith("device:")) {
+    return name
+      ? t("runs.request.byDevice", { name, id: deviceRef(requestedBy) ?? "" })
+      : t("runs.request.byDeviceUnnamed", { id: deviceRef(requestedBy) ?? "" });
+  }
+  // An approval from before who-asked was recorded, a routine, a sentinel, the command line: nothing says which.
+  return t("runs.request.byUnknown");
+}
+
+export function ApprovalRequest({ approval }: { approval: ApprovalRecord }) {
+  const t = useT();
+  // A write run, or a tool that a run a paired device started asks to use: the two a device chooses the text of.
+  if (approval.kind === "tool_use")
+    return requiresFullReview(approval) ? <ToolRequest approval={approval} /> : null;
+  if (approval.kind !== "write_run") return null;
+  const target = approvalTarget(approval);
+  const fromDevice = approval.requestedBy?.startsWith("device:") === true;
+  // Two held writes on one screen must not share a name: the short id tells their regions apart.
+  const reference = approval.id.slice(0, 8);
+  return (
+    <section
+      className={`approval-request${fromDevice ? " from-device" : ""}`}
+      aria-label={`${t("runs.request.title")} · ${reference}`}
+      data-testid="approval-request"
+    >
+      <dl>
+        <div>
+          <dt>{t("runs.request.askedBy")}</dt>
+          <dd>{askedBy(approval.requestedBy, target.requestedByName, t)}</dd>
+        </div>
+        {target.provider && (
+          <div>
+            <dt>{t("runs.request.provider")}</dt>
+            <dd className="mono">
+              {[target.provider, target.model, target.effort].filter(Boolean).join(" · ")}
+            </dd>
+          </div>
+        )}
+        {target.mode && (
+          <div>
+            <dt>{t("runs.request.mode")}</dt>
+            <dd className="mono">{target.mode}</dd>
+          </div>
+        )}
+        {target.cwd && (
+          <div>
+            <dt>{t("runs.request.folder")}</dt>
+            <dd className="mono approval-request-path">{target.cwd}</dd>
+          </div>
+        )}
+        {target.skillSlug && (
+          <div>
+            <dt>{t("runs.request.skill")}</dt>
+            <dd className="mono">/{target.skillSlug}</dd>
+          </div>
+        )}
+        {target.prompt !== null && (
+          <div className="wide">
+            <dt>{t("runs.request.prompt")}</dt>
+            <dd>
+              <Long label={t("runs.request.prompt")} text={target.prompt} reference={reference} />
+            </dd>
+          </div>
+        )}
+        {target.kind === "skill" &&
+          (target.inputs.length === 0 ? (
+            <div>
+              <dt>{t("runs.request.inputs")}</dt>
+              <dd>{t("runs.request.noInputs")}</dd>
+            </div>
+          ) : (
+            target.inputs.map(([key, value]) => (
+              <div className="wide" key={key}>
+                <dt className="mono">{key}</dt>
+                <dd>
+                  <Long label={key} text={value} reference={reference} />
+                </dd>
+              </div>
+            ))
+          ))}
+      </dl>
+    </section>
+  );
+}
+
+/** The tool a run a paired device started asks to use, with every field of its input whole. */
+function ToolRequest({ approval }: { approval: ApprovalRecord }) {
+  const t = useT();
+  const { tool, fields } = toolRequest(approval);
+  const target = approvalTarget(approval);
+  const reference = approval.id.slice(0, 8);
+  return (
+    <section
+      className="approval-request from-device"
+      aria-label={`${t("runs.request.toolTitle")} · ${reference}`}
+      data-testid="approval-request"
+    >
+      <dl>
+        <div>
+          <dt>{t("runs.request.askedBy")}</dt>
+          <dd>{askedBy(approval.requestedBy, target.requestedByName, t)}</dd>
+        </div>
+        <div>
+          <dt>{t("runs.request.tool")}</dt>
+          <dd className="mono">{tool}</dd>
+        </div>
+        {fields.map(([key, value]) => (
+          <div className="wide" key={key}>
+            <dt className="mono">{key}</dt>
+            <dd>
+              <Long label={key} text={value} reference={reference} />
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}

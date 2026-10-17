@@ -17,8 +17,20 @@
   overflow: auto;
   padding: 14px 2px 40px;
   scrollbar-width: thin;
-  mask-image: linear-gradient(to bottom, transparent, #000 14px, #000 calc(100% - 28px), transparent);
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 14px, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    var(--mask-ink) 14px,
+    var(--mask-ink) calc(100% - 28px),
+    transparent
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    var(--mask-ink) 14px,
+    var(--mask-ink) calc(100% - 28px),
+    transparent
+  );
   transition: right 0.55s var(--nu-ease);
 }
 /* Zero specificity, so every button below styles itself without a fight. */
@@ -33,7 +45,7 @@
   outline-offset: 3px;
 }
 .rs-eyebrow {
-  font: 500 var(--fs-0) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -41,7 +53,7 @@
 }
 .rs-quiet {
   margin: 28px 0 0;
-  font: 400 var(--fs-2) / 1.5 var(--font-mono);
+  font: 400 var(--fs-3) / 1.5 var(--font-mono);
   letter-spacing: 0.04em;
   color: var(--text-faint);
 }
@@ -133,7 +145,7 @@
   padding: 6px 8px;
   border: 0;
   background: none;
-  font: 500 var(--fs-1) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -181,7 +193,7 @@
   background: none;
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-faint) 40%, transparent);
   color: var(--text-dim);
-  font: 400 var(--fs-1) / 1.2 var(--font-mono);
+  font: 400 var(--fs-2) / 1.2 var(--font-mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -197,7 +209,7 @@
   gap: 8px 18px;
   min-height: 18px;
   margin: 0;
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   letter-spacing: 0.06em;
   color: var(--text-faint);
 }
@@ -205,7 +217,7 @@
   padding: 2px 0;
   border: 0;
   background: none;
-  font: 400 var(--fs-1) / 1.3 var(--font-mono);
+  font: 400 var(--fs-2) / 1.3 var(--font-mono);
   letter-spacing: 0.06em;
   color: var(--text-dim);
   text-decoration: underline;
@@ -227,7 +239,7 @@
   border: 0;
   background: none;
   box-shadow: inset 0 0 0 1px var(--accent-line);
-  font: 400 var(--fs-1) / 1.3 var(--font-mono);
+  font: 400 var(--fs-2) / 1.3 var(--font-mono);
   color: var(--accent-text);
   cursor: pointer;
 }
@@ -277,26 +289,6 @@
   opacity: 0.45;
   cursor: default;
 }
-.rs-x {
-  display: inline-grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  flex: none;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text-dim);
-  cursor: pointer;
-}
-.rs-x svg {
-  width: 15px;
-  height: 15px;
-}
-.rs-x:hover {
-  color: var(--text);
-  background: color-mix(in srgb, var(--text) 8%, transparent);
-}
 
 /* ---- the river ------------------------------------------------------------------ */
 .rs-river {
@@ -332,7 +324,7 @@
   padding: 4px 0;
   border: 0;
   background: none;
-  font: 500 var(--fs-0) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -340,7 +332,7 @@
   white-space: nowrap;
 }
 .rs-lane-name small {
-  font-size: var(--fs-0);
+  font-size: var(--fs-2);
   letter-spacing: 0.04em;
   opacity: 0.7;
 }
@@ -349,6 +341,8 @@
 }
 .rs-lane-name[aria-pressed="true"] {
   color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 .rs-flow {
   position: absolute;
@@ -435,7 +429,7 @@
   top: 50%;
   transform: translateY(-50%);
   white-space: nowrap;
-  font: 400 var(--fs-1) / 1 var(--font-mono);
+  font: 400 var(--fs-2) / 1 var(--font-mono);
   color: var(--text-dim);
   pointer-events: none;
   opacity: 0;
@@ -484,7 +478,7 @@
   inset: 0;
   display: grid;
   place-items: center;
-  font: 600 var(--fs-0) / 1 var(--font-mono);
+  font: 600 var(--fs-2) / 1 var(--font-mono);
   color: var(--text);
 }
 
@@ -513,7 +507,7 @@
   position: absolute;
   top: 0;
   transform: translateX(-50%);
-  font: 400 var(--fs-0) / 1 var(--font-mono);
+  font: 400 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.04em;
   color: var(--text-faint);
   white-space: nowrap;
@@ -541,46 +535,10 @@
 }
 
 /* ---- the trace, unfolded in place --------------------------------------------------- */
-.rs-trace {
-  margin-top: 40px;
-  scroll-margin-bottom: 24px;
-}
-.rs-trace.on {
-  animation: rs-unfold 0.6s var(--nu-ease) both;
-}
-@keyframes rs-unfold {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-}
-.rs-outside {
-  margin-bottom: 10px;
-}
-.rs-trace-top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px 16px;
-}
-.rs-trace-top h3 {
-  margin: 0;
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  font: 600 clamp(20px, 1.8vw, 26px) / 1.1 var(--font-display);
-  letter-spacing: 0.03em;
-}
-.rs-trace-top h3.mono {
-  font-family: var(--font-mono);
-  font-weight: 500;
-  font-size: var(--fs-6);
-  letter-spacing: 0;
-}
 .rs-pill {
   --c: var(--ok);
   padding: 5px 8px;
-  font: 500 var(--fs-0) / 1 var(--font-mono);
+  font: 500 var(--fs-2) / 1 var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--c);
@@ -603,13 +561,6 @@
   font-size: var(--fs-2);
   color: var(--text-faint);
   overflow-wrap: anywhere;
-}
-.rs-trace-acts {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
 }
 
 .rs-chain {
@@ -688,7 +639,7 @@
   color: var(--danger);
 }
 .rs-times {
-  font: 400 var(--fs-1) / 1 var(--font-mono);
+  font: 400 var(--fs-2) / 1 var(--font-mono);
   color: var(--text-faint);
 }
 .rs-subject {
@@ -697,13 +648,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: 400 var(--fs-1) / 1.4 var(--font-mono);
+  font: 400 var(--fs-2) / 1.4 var(--font-mono);
   color: var(--text-dim);
 }
 .rs-step small {
   display: block;
   margin-top: 3px;
-  font-size: var(--fs-0);
+  font-size: var(--fs-2);
   line-height: 1.5;
   color: var(--text-faint);
 }
@@ -713,7 +664,7 @@
   padding: 8px 10px;
   overflow: auto;
   overflow-wrap: anywhere;
-  font: 400 var(--fs-2) / 1.5 var(--font-mono);
+  font: 400 var(--fs-3) / 1.5 var(--font-mono);
   color: var(--danger);
   background: var(--danger-bg);
 }
@@ -721,7 +672,7 @@
   padding: 2px 0;
   border: 0;
   background: none;
-  font: 400 var(--fs-1) / 1.4 var(--font-mono);
+  font: 400 var(--fs-2) / 1.4 var(--font-mono);
   color: var(--text-faint);
   cursor: pointer;
 }
@@ -736,13 +687,6 @@
 }
 
 /* ---- what Mordomo says about it ----------------------------------------------------------- */
-.rs-agent {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  max-width: 860px;
-  margin-top: 24px;
-}
 .rs-agent-dot {
   width: 10px;
   height: 10px;
@@ -752,138 +696,8 @@
   background: var(--agent);
   box-shadow: 0 0 14px var(--agent);
 }
-.rs-agent-body {
-  min-width: 0;
-  color: var(--agent-text);
-  font-size: var(--fs-4);
-  line-height: 1.5;
-}
-.rs-agent-body p {
-  margin: 0;
-}
-.rs-agent-who {
-  margin-right: 6px;
-  font: 600 var(--fs-2) / 1 var(--font-display);
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--agent-text);
-}
-.rs-agent-body > .rs-agent-who {
-  display: block;
-  margin-bottom: 6px;
-}
-.rs-summary {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-}
-.rs-agent .failure-fix {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  gap: 12px;
-}
-.rs-agent .failure-cause {
-  font-size: var(--fs-4);
-  color: var(--agent-text);
-}
-.rs-agent .failure-actions {
-  gap: 10px;
-}
-.rs-agent .failure-actions code,
-.rs-login code {
-  padding: 3px 6px;
-  font: 400 var(--fs-2) / 1.3 var(--font-mono);
-  color: var(--text);
-  background: color-mix(in srgb, var(--text) 7%, transparent);
-}
-.rs-agent .failure-actions .go {
-  display: inline-flex;
-  align-items: center;
-  padding: 9px 13px;
-  border: 1px solid var(--agent-line);
-  background: none;
-  font: 600 var(--fs-2) / 1 var(--font-display);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--agent-text);
-  text-decoration: none;
-  cursor: pointer;
-  transition:
-    background 0.2s,
-    color 0.2s;
-}
-.rs-agent .failure-actions .go:hover:not(:disabled) {
-  background: var(--agent);
-  color: var(--bg);
-}
-.rs-agent .failure-actions .go:disabled {
-  opacity: 0.5;
-}
-.rs-agent-body .rs-login {
-  margin: 10px 0 0;
-  font-size: var(--fs-2);
-  color: var(--text-dim);
-}
 
 /* ---- the full detail, a sheet of glass from the right --------------------------------------- */
-.rs-sheet {
-  --cut: 18px;
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  width: min(700px, 54%);
-  background: var(--nu-glass);
-  backdrop-filter: blur(18px) saturate(1.2);
-  box-shadow:
-    inset 0 0 0 1px var(--nu-edge),
-    -30px 0 80px -40px rgba(0, 0, 0, 0.9);
-  clip-path: polygon(var(--cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--cut));
-  animation: rs-sheet-in 0.55s var(--nu-ease) both;
-}
-.rs-sheet::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--agent), transparent);
-  opacity: 0.7;
-}
-@keyframes rs-sheet-in {
-  from {
-    opacity: 0;
-    transform: translateX(40px);
-  }
-}
-.rs-sheet-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex: none;
-  padding: 12px 12px 4px 24px;
-}
-.rs-sheet-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  padding: 0 10px 18px 16px;
-  scrollbar-width: thin;
-  container-type: inline-size;
-}
-.rs-sheet-body .page {
-  padding: 4px 6px 24px;
-  background: transparent;
-}
 .rs-scene[data-detail] .rs-scroll {
   right: calc(min(700px, 54%) + 20px);
 }
@@ -947,7 +761,7 @@
 .rs-row-when,
 .rs-row-lane,
 .rs-row-prov {
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   color: var(--text-faint);
 }
 .rs-row-dot {
@@ -962,7 +776,7 @@
   font-size: var(--fs-2);
 }
 .rs-row-status {
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--c);
@@ -971,7 +785,7 @@
   color: var(--ok);
 }
 .rs-row-num {
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   color: var(--text-dim);
   text-align: right;
 }
@@ -989,9 +803,6 @@
   .rs-row-num:nth-of-type(8),
   .rs-row-prov {
     display: none;
-  }
-  .rs-sheet {
-    width: 100%;
   }
   .rs-scene[data-detail] .rs-scroll {
     right: 0;
@@ -1043,9 +854,6 @@
     top: 3px;
     margin: 0;
   }
-  .rs-trace-acts {
-    margin-left: 0;
-  }
   .rs-row {
     grid-template-columns: 86px 8px minmax(0, 1fr) auto;
     gap: 10px;
@@ -1096,8 +904,8 @@
   max-height: 112px;
   overflow: hidden;
   opacity: 0.85;
-  mask-image: linear-gradient(to bottom, #000 70%, transparent);
-  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
+  mask-image: linear-gradient(to bottom, var(--mask-ink) 70%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, var(--mask-ink) 70%, transparent);
 }
 .rs-scene[data-focus] .rs-river-wrap:hover {
   opacity: 1;
@@ -1120,7 +928,7 @@
   backdrop-filter: blur(18px) saturate(1.3);
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--agent) 20%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 1px 0 color-mix(in srgb, var(--highlight-ink) 5%, transparent),
     0 0 60px -28px var(--agent);
   animation: rs-run-in 0.5s cubic-bezier(0.2, 1.15, 0.35, 1) both;
 }
@@ -1192,37 +1000,7 @@
   padding-inline: 10px;
 }
 .rs-tabs {
-  display: flex;
-  gap: 4px;
   margin: 18px 0 0 50px;
-  padding: 4px;
-  width: fit-content;
-  border-radius: 999px;
-  box-shadow: inset 0 0 0 1px var(--border);
-}
-.rs-tabs button {
-  padding: 7px 16px;
-  border: 0;
-  border-radius: 999px;
-  background: none;
-  cursor: pointer;
-  font-size: var(--fs-2);
-  letter-spacing: 0.08em;
-  color: var(--text-dim);
-  transition:
-    background 0.25s,
-    color 0.2s,
-    box-shadow 0.25s;
-}
-.rs-tabs button:hover {
-  color: var(--text);
-}
-.rs-tabs button[aria-selected="true"] {
-  color: var(--agent-text);
-  background: color-mix(in srgb, var(--agent) 12%, transparent);
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--agent) 50%, transparent),
-    0 0 18px -8px var(--agent);
 }
 .rs-run-panel {
   flex: 1;

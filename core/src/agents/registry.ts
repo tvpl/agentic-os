@@ -5,33 +5,18 @@
  * native file layout, home config files, write-tool pattern) and created by a
  * *factory* (code: the adapter class). Everything in the core that used to
  * hard-code "claude / cursor / codex" — the sync compiler, the connector
- * auditor, the run manager's write detection, the API's adapter composition —
- * now iterates manifests, so adding a provider is: add its id to `ProviderId`
- * (settings validation), ship an adapter package with a manifest + factory,
- * and register it in `apps/api/src/providers.ts`.
+ * auditor, the run manager's write detection, the API's adapter composition,
+ * the executable allowlist — iterates the registered manifests, so adding a
+ * provider is: ship an adapter package with its manifest + factory and
+ * register it in `apps/api/src/providers.ts`. `ProviderId` is only the shape
+ * of an id; the core knows no provider by name.
  */
 import { ProviderId } from "../config/schema.js";
 import type { AgentAdapter } from "./types.js";
+import type { ProviderCapabilities, TestedVersions, VersionStatus } from "@mordomo/contracts";
+import type { SpawnPolicy } from "../spawn/policy.js";
 
-export interface ProviderCapabilities {
-  /** `read_only` is enforced by the CLI itself (sandbox / permission rules), not just asked for in the prompt. */
-  enforcesReadOnly: boolean;
-  /** The provider accepts an effort / reasoning budget. */
-  supportsEffort: boolean;
-  /** How the prompt reaches the CLI. `argv` is visible in `ps` and bounded by ARG_MAX. */
-  promptTransport: "stdin" | "argv";
-  /** The CLI streams structured events (tool calls, results) rather than plain text. */
-  streaming: boolean;
-  /**
-   * How the CLI continues a previous conversation:
-   * `flag` — an option on the normal invocation (`claude --resume <id>`);
-   * `subcommand` — a dedicated verb (`codex exec resume <id>`);
-   * `none` — the CLI cannot resume, so every run starts a fresh conversation.
-   * Adapters treat anything but `none` as best effort: when the installed CLI
-   * does not advertise it, the run starts fresh and says so in a text event.
-   */
-  resume: "flag" | "subcommand" | "none";
-}
+export type { ProviderCapabilities, TestedVersions, VersionStatus };
 
 /** Where the compiled views of the canonical skills/routers live for a provider (paths relative to the target dir). */
 export interface ProviderNativeLayout {
@@ -45,6 +30,7 @@ export interface ProviderNativeLayout {
   commandsDir: string | null;
 }
 
+/** A provider as data: identity, executable, capabilities and native file layout. */
 export interface ProviderManifest {
   id: ProviderId;
   displayName: string;
@@ -52,18 +38,76 @@ export interface ProviderManifest {
   binary: string;
   /** One-line install instruction shown when the binary is missing. */
   installHint: string;
+  /** What a person runs in a terminal to sign the CLI in (shown after an authentication failure). */
+  loginCommand: string;
   capabilities: ProviderCapabilities;
   layout: ProviderNativeLayout;
   /** Config files under the user's home dir that the connector auditor may scan (names/commands only, never credentials). */
   homeConfigFiles: string[];
   /** Tool names (case-insensitive prefix match) that mean "a file was written", for `filesChanged` detection. */
   writeToolPattern: RegExp;
+  /**
+   * The CLI versions this MordomoOS release was developed against (see
+   * `TestedVersions`). Optional: a provider without a range reads as `unknown`.
+   * The provider snapshot compares the installed CLI with it (`versionStatus`).
+   */
+  testedVersions?: TestedVersions;
 }
 
+const SEMVER = /(\d+)\.(\d+)\.(\d+)/;
+
+function semverOf(text: string | null | undefined): [number, number, number] | null {
+  const m = text ? SEMVER.exec(text) : null;
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+function compareSemver(a: [number, number, number], b: [number, number, number]): number {
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i]! - b[i]!;
+  return 0;
+}
+
+/**
+ * The `major.minor.patch` a CLI's `--version` output starts with (the first one
+ * found: the contract is that the CLI names its own version before anything
+ * else), or null when there is none. A pre-release tag (`2.1.0-beta.1`) is
+ * ignored, so it reads as the release.
+ */
+export function installedVersion(versionOutput: string | null | undefined): string | null {
+  const v = semverOf(versionOutput);
+  return v ? v.join(".") : null;
+}
+
+/**
+ * Where the installed CLI falls in the range this release was developed
+ * against (`min` and `max` included). This is a version check, not a
+ * certification: `unknown` when the output has no version, or the provider
+ * declares no range, or the range is malformed. The one place this is computed
+ * (the provider snapshot); a pre-release compares equal to its release.
+ */
+export function versionStatus(
+  range: TestedVersions | undefined,
+  versionOutput: string | null,
+): VersionStatus {
+  const installed = semverOf(versionOutput);
+  const min = semverOf(range?.min);
+  const max = semverOf(range?.max);
+  if (!installed || !min || !max) return "unknown";
+  if (compareSemver(installed, min) < 0) return "older";
+  if (compareSemver(installed, max) > 0) return "newer";
+  return "tested";
+}
+
+/** What the engine gives an adapter factory. */
 export interface AdapterFactoryOptions {
   binaryPath: string | null;
   homeDir?: string;
+  /**
+   * The engine's spawn policy (the executables it allows, what its probes do not inherit). A factory hands it to
+   * the adapter it builds; without one the adapter allows only `node` and its own binary.
+   */
+  spawn?: SpawnPolicy;
 }
+/** Builds the adapter of one provider for one engine. */
 export type AdapterFactory = (opts: AdapterFactoryOptions) => AgentAdapter;
 
 interface Entry {
@@ -71,6 +115,7 @@ interface Entry {
   factory: AdapterFactory;
 }
 
+/** A rule of the registry was broken: a malformed or repeated id, an unknown id, a factory that built another provider's adapter. */
 export class ProviderRegistryError extends Error {
   constructor(message: string) {
     super(message);
@@ -78,6 +123,7 @@ export class ProviderRegistryError extends Error {
   }
 }
 
+/** The providers an engine can run: one manifest and one adapter factory each. */
 export class ProviderRegistry {
   private readonly entries = new Map<ProviderId, Entry>();
 
@@ -85,7 +131,7 @@ export class ProviderRegistry {
     const parsed = ProviderId.safeParse(manifest.id);
     if (!parsed.success) {
       throw new ProviderRegistryError(
-        `Provider id "${manifest.id}" is not declared in ProviderId (core/src/config/schema.ts).`,
+        `Provider id "${manifest.id}" is not a valid provider id (2-32 lowercase letters, digits or dashes).`,
       );
     }
     if (this.entries.has(manifest.id))
@@ -115,87 +161,23 @@ export class ProviderRegistry {
   create(id: ProviderId, opts: AdapterFactoryOptions): AgentAdapter {
     const entry = this.entries.get(id);
     if (!entry) throw new ProviderRegistryError(`Unknown provider "${id}".`);
-    return entry.factory(opts);
+    const adapter = entry.factory(opts);
+    if (adapter.id !== id)
+      throw new ProviderRegistryError(
+        `The factory of provider "${id}" created an adapter for "${adapter.id}".`,
+      );
+    return adapter;
   }
 
   /** Create one adapter per registered provider from a `binaryPath` lookup. */
   createAll(
     binaryPathOf: (id: ProviderId) => string | null,
     homeDir?: string,
+    spawn?: SpawnPolicy,
   ): Record<ProviderId, AgentAdapter> {
     const out = {} as Record<ProviderId, AgentAdapter>;
-    for (const id of this.ids()) out[id] = this.create(id, { binaryPath: binaryPathOf(id), homeDir });
+    for (const id of this.ids())
+      out[id] = this.create(id, { binaryPath: binaryPathOf(id), homeDir, ...(spawn ? { spawn } : {}) });
     return out;
   }
 }
-
-/** Every declared provider must have a manifest; the compiler and auditor rely on this table when no registry is wired. */
-export const BUILTIN_MANIFESTS: Record<ProviderId, ProviderManifest> = {
-  claude: {
-    id: "claude",
-    displayName: "Claude Code",
-    binary: "claude",
-    installHint: "npm install -g @anthropic-ai/claude-code",
-    capabilities: {
-      enforcesReadOnly: true,
-      supportsEffort: true,
-      promptTransport: "stdin",
-      streaming: true,
-      resume: "flag",
-    },
-    layout: {
-      instructionsFile: "CLAUDE.md",
-      skillsDir: ".claude/skills",
-      rulesFile: null,
-      commandsDir: null,
-    },
-    homeConfigFiles: [".claude.json", ".claude/settings.json"],
-    writeToolPattern: /^(write|edit|multiedit|notebookedit|create_file)/i,
-  },
-  cursor: {
-    id: "cursor",
-    displayName: "Cursor Agent",
-    binary: "cursor-agent",
-    installHint: "curl https://cursor.com/install -fsS | bash",
-    capabilities: {
-      enforcesReadOnly: false,
-      supportsEffort: false,
-      promptTransport: "argv",
-      streaming: true,
-      // No resume flag is documented for cursor-agent -p; runs always start fresh.
-      resume: "none",
-    },
-    layout: {
-      instructionsFile: "AGENTS.md",
-      skillsDir: null,
-      rulesFile: ".cursor/rules/mordomo.mdc",
-      commandsDir: ".cursor/commands",
-    },
-    homeConfigFiles: [".cursor/mcp.json"],
-    writeToolPattern: /^(write|edit|multiedit|create_file|str_replace)/i,
-  },
-  codex: {
-    id: "codex",
-    displayName: "OpenAI Codex",
-    binary: "codex",
-    installHint: "npm install -g @openai/codex",
-    capabilities: {
-      enforcesReadOnly: true,
-      supportsEffort: true,
-      promptTransport: "argv",
-      streaming: true,
-      resume: "subcommand",
-    },
-    layout: {
-      instructionsFile: "AGENTS.md",
-      skillsDir: ".agents/skills",
-      rulesFile: null,
-      commandsDir: null,
-    },
-    homeConfigFiles: [".codex/config.toml"],
-    writeToolPattern: /^(apply_patch|write|edit|create_file)/i,
-  },
-};
-
-export const builtinManifests = (): ProviderManifest[] =>
-  ProviderId.options.map((id) => BUILTIN_MANIFESTS[id]);

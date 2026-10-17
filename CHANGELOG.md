@@ -2,6 +2,148 @@
 
 ## Unreleased
 
+- **Desktop app, signed installers and releases by tag (distribuicao)**: `apps/desktop` is a Tauri 2 app (Rust) that
+  starts the bundled service as a child on a free loopback port with a secret made for that launch, waits for it to
+  serve the Command Centre, shows it in its own window and stops it when the window closes; a service that cannot start
+  shows a failure screen (English and Portuguese) with *Try again* and *Quit*, a second launch comes forward, and the
+  window loads only its own pages and the service's origin (a strict content-security-policy, one capability of three app
+  commands, every other address to the system browser). The service has a sidecar mode for it (`mordomo start --foreground
+  --sidecar`: ready line, stops when its stdin closes, never stops another service) and `GET /` hands the owner's token
+  only to a window that has the launch secret, which closes the "any program that sends a browser's headers" path for the
+  app (`docs/security.md`, T1). `mordomo --version`, `-v` and `mordomo version` print the version, and
+  `node scripts/version-sync.mjs --check` keeps the nine `package.json`, the lockfile, `tauri.conf.json`, `Cargo.toml` and
+  `Cargo.lock` on one version. Pushing a tag `v<version>` builds installers for macOS (arm64, Intel), Windows and Linux
+  (`.deb`, `.AppImage`) and writes a **draft** release with `SHA256SUMS.txt`, both SBOMs, both third-party notices, the
+  notes of the CHANGELOG section and, when everything was signed, `latest.json` for the signed updater (a Tauri updater
+  with a minisign key, off unless `updates.check` is on or the person asks from the menu, declared in the network policy
+  and the privacy text). Secrets the owner registers (`docs/release.md`): macOS Developer ID and notarization, Windows
+  Authenticode, the updater key; without them the installers are built and named `UNSIGNED`, and nothing is invented.
+  `npm run licenses:check` also checks the 476 Rust crates against a `rust` policy (five `MPL-2.0` crates of the Tauri tree
+  are named exceptions) and `legal/THIRD_PARTY_NOTICES.desktop.md` and `legal/sbom.desktop.cdx.json` carry them. What was
+  never run here (Windows, macOS, notarization, the workflow on GitHub, a real update) is listed in `docs/release.md` §8.
+  Changes to what existed: `legal/network-policy.json` gains the desktop updater and the signing timestamp and
+  `github-links` no longer owns `github.com`; `tests/legal.network.test.ts` counts 41 network points and 17 entries (was 37 and
+  15); the release workflow no longer publishes the portable archive and no longer has a manual-only trigger.
+- **Legacy cleanup (limpeza-legado)**: what the two interfaces, the design system and the primitives left behind,
+  removed only where a scan that a test repeats proves nothing reaches it. Removed: 39 exported names with no user,
+  `runs/policy.ts` and the hook only a dead line reached, the `SkillMatrixModal` component; 55 CSS classes, 20
+  `@keyframes` and 4 custom properties; 276 translation keys; the three Markdown renderers (now one, with the same
+  HTML and one rule for what a link may be: `http`, `https` and `mailto` only, always `rel="noreferrer noopener"`; a
+  skill body now draws its tables and a `#anchor` in it is text); the arcs of the Setup's last step, which now only
+  picks the look ("Appearance"). Kept, because it is reachable: the 12 widgets of `desktop/` and `desktop.css` (the
+  frame's Today page and the Núcleo's lâminas use them) and both brains (the frame mounts the Second Brain, the
+  Núcleo the constellation and the Second Brain as its "classic map"). Pixel Studio is registered through an
+  `AppPlugin` in `src/plugins/pixel/` (still its own chunk); the build is 7.1 KB lighter in JS gzip. `docs/` keeps
+  the guides, the history moved to `docs/internal/`; the README describes the two interfaces, lists every CLI
+  command and the development scripts. Nothing changes for an existing `ui-preferences.json`: the `hud` field is
+  still read, served and kept, it is only no longer arranged in the Setup.
+- **License and legal texts (licenca-comercial)**: the product is licensed under the Functional Source License
+  1.1 with the Apache-2.0 future license (FSL-1.1-ALv2; the canonical text from fsl.software in `LICENSE`, the
+  `license` field of the 8 manifests is the SPDX id `FSL-1.1-ALv2`); `CONTRIBUTING.md` asks for a DCO sign-off and no
+  CLA. `legal/` holds an EULA, a privacy policy and a product notice, **all drafts for the owner's legal review, not
+  legal advice**, with every blank marked `[A PREENCHER PELO DONO: …]`. `npm run licenses:write` generates
+  `legal/THIRD_PARTY_NOTICES.md` from the lockfile (the npm packages of the lockfile's runtime dependency set, a superset of what the installer's bundles contain, with the full text of each license, plus Node.js, SQLite and the two bundled fonts), `npm run licenses:check` rejects a license outside
+  `legal/license-policy.json` (GPL, AGPL, SSPL, MPL, unknown… in what ships; MPL-2.0 and CC-BY-4.0 only in build tools)
+  and a stale notice, and `npm run sbom` writes a CycloneDX SBOM of the same set (a test validates it against the official 1.5 schema); the installer carries `LICENSE`,
+  `legal/` and the SBOM. `npm run network:scan` lists every network point and host in the code and its `--check`
+  (run by the tests) fails on one that `legal/network-policy.json` and the privacy policy do not name. There is no
+  telemetry and none was added; the privacy policy says so and says what would have to hold if one is ever added.
+  The lockfile entries of `@clack/core` and `ret` said 0.6.0 while their tarballs are 0.5.0 (a version bump had
+  rewritten them); corrected.
+- **SDK (sdk-core)**: `@mordomo/core` is now a small public surface - `createEngine`, `engine.execution`
+  (`startPrompt`, `startSkill`, `retry`, `resolveApproval`, `get`, `list`, `cancel`, `events`, `subscribe`, `wait`),
+  `engine.events`, the provider contract and the errors (`docs/sdk.md`) - and everything else moved to
+  `@mordomo/core/internal`. The logic that decides whether a run may start (write policy, working folders, who asked,
+  `submissionId` receipts, the approval flow) moved from the HTTP routes into the core, and the routes and the CLI are
+  clients of it. The event bus, the allowlist of executables (`SpawnPolicy`) and the memo of related files are per
+  engine instead of per process, so two engines in one process no longer hear or overwrite each other.
+  `@mordomo/core` and `@mordomo/contracts` carry the metadata to be packed (`license` `FSL-1.1-ALv2` with a `LICENSE`
+  that is a copy of the repository's, `repository`, `exports`, `files`, `engines`, `sideEffects`, README; the core also
+  names `@types/node` as an optional peer dependency, as its declarations use it); nothing is published.
+  What does not answer as before, and how to go back (the defaults and the reasons are in `.specs/STATE.md`, AD-022 e,
+  questions 7 to 9 and 12 to 15):
+  - `mordomo run` also refuses a disabled skill, a provider that is not enabled, a provider the skill does not list and a
+    missing required input (as the Command Centre always did), and applies the skill's daily budget (exit 1 when it is
+    spent) and the cost cap that what is left of it puts on the run. To go back, `launchSkillRun` in
+    `core/src/execution/launch.ts` would need a parameter that skips the budget for the CLI.
+  - The replay of a retry that was parked for approval (same `submissionId`) answers `202`, like the call it repeats,
+    where it answered `200` with the same body. To go back, the route must be told that an answer is a replay.
+  - A `startedBy` of `"null"` or `"program"` is refused (the receipts keep the program under those names). To go back,
+    drop the `refine` of `StartedBy` in `core/src/execution/schemas.ts`.
+  - A restart that marks runs `interrupted` announces `run.finished` for each, so a `wait` on one ends, the memory
+    journal gets a line, and an objective step whose run was `running` is blocked with `Interrupted by service
+    restart` / `Reconcile workspace effects before retrying` (it was `Previous attempt may have changed external state` /
+    `Reconcile effects before retrying`; it stays blocked with the effects uncertain, and one more `objective.changed`
+    is announced). To go back, use `transition` instead of `settle` in `recoverInterrupted` (`core/src/runs/runManager.ts`).
+  - A second `start()` on the same home in the same process throws `EngineLockedError` instead of taking the lock,
+    also through a link or a renamed folder and from another copy of the package; it holds per JavaScript realm (a
+    worker thread has its own registry), and an engine that was started and never stopped, with its reference lost,
+    holds the home until the process ends. To go back, remove the registry in `core/src/ownerLock.ts`.
+  - Approvals that were decided or expired are refused with a `MordomoError` (`approval_resolved`, `approval_expired`,
+    both 409 as before). Nothing to go back to: the HTTP answer is the same.
+  - A connector command named like a provider binary (`claude`, `codex`, `cursor-agent`) now needs
+    `connectors.allowedCommands`. To go back, add an optional `spawnPolicy` to `FetchOptions` (`core/src/connectors/client.ts`; it has none today, only `allowedCommands`), pass it as the third argument of `assertAllowed` at the three places that call it there (lines ~150, ~552 and ~672), and set it to `engine.spawnPolicy` where the API (`routes/connectors.ts`) and the sentinels call `fetchConnectorData`.
+  - The 3 600 000 ms cap is for the `timeoutMs` a caller asks for; the default of the setting `limits.defaultTimeoutMs`
+    is taken as it is (as before this change). To cap the setting too, give it a maximum in `contracts/src/settings.ts`
+    (a `settings.json` with a larger value would then be read as the default and kept in `settings.json.invalid`).
+- **API (contratos-rest)**: one table (`API` in `@mordomo/contracts`) describes every route under `/api` — method,
+  path, scope, `params`/`query`/`body` and a response schema per status, the errors the route raises and the headers
+  it sets — and the server registers routes only through it (`bind`): a part that fails answers `400 validation`
+  before the handler runs, a handler cannot return a body the entry does not name, a route without an entry or an
+  entry without a route stops the service from starting. In development and tests every JSON answer is checked
+  against its entry (off in the installed service; `MORDOMO_VALIDATE_RESPONSES=1|0` decides either way). `GET
+  /api/v1/openapi.json` now carries the request and response schemas and the error envelope of each documented
+  status (`400`, `401`, `403`, `404`, `409`, `413`, `415`, `422`, `429`, ...), validated by a real OpenAPI 3.1
+  validator in the tests. Events are versioned per type (`EVENT_VERSIONS`, a union discriminated by `type` and `v`),
+  the frames of a run's stream carry `v`, a client ignores an unknown type or version (`@mordomo/contracts/events`),
+  and `docs/events.md` is generated from the schemas. The Command Centre calls the routes through `apiCall("GET
+  /api/runs/:id", { params })`, typed by the table; `useRouteQuery` does the same for queries. Routes, error codes
+  and the error envelope are unchanged, and `/api/*` still answers like `/api/v1/*`. One bug of the base is fixed on the
+  way: the flags of a query (`unread`, `refresh`, `related`, `record`, `includeExpired`) read `0` and `false` as off
+  (they read as on), and other text is a `400 validation`.
+- **Interface (primitivas)**: dialogs, popovers, tabs, switches, the "+" menu and icon-button hints
+  are built on Radix (`apps/command-centre/src/ui`, six `@radix-ui/*` packages at exact versions) and
+  drawn by one stylesheet in both interfaces; the Núcleo keeps its glass and the frame its flat sheet
+  through `--ui-*` tokens, not through rules of its own. Focus enters, Tab stays inside, Escape closes
+  the top layer only and focus goes back to what held it. The Settings navigation is one tab stop
+  with arrow keys; the bell and the console popovers no longer trap focus or freeze the page; an
+  icon-only button shows its name in a themed hint that also appears with the keyboard (the native
+  `title` stays only on data and where the design names it). The page still has one command listener:
+  the listeners Radix adds are listed by package, with count and reason, and the runtime probe attributes
+  them. The gallery shows the primitives bare and in both layers (JS gzip +7.1%, recorded by
+  `node scripts/bundle-size.mjs`).
+- **Data (dados-v2)**: opening the database from two processes at once migrates it once (the
+  migration runs in an exclusive transaction that re-reads the schema version; a failing
+  migration rolls back and names itself; a database from a newer version is refused untouched;
+  the pre-migration copy is a consistent `VACUUM INTO` snapshot); a process no longer drops
+  SQLite's locks by tightening file modes on an open database. The owner lock records the
+  start identity of its process, so a recycled pid is not mistaken for the owner, and two
+  processes taking over a stale lock can no longer both win. A `settings.json` with an
+  invalid field reads that field as its default, keeps the rest, logs it to
+  `logs/settings.jsonl` and keeps the original in `settings.json.invalid` instead of stopping
+  the service. Backups carry a `manifest.json` with SHA-256 per file; restore refuses a backup
+  that is truncated, edited or incomplete (`422 backup_invalid`), refuses one without a manifest
+  unless `mordomo restore --allow-unverified`, installs all or nothing (undone if the process
+  dies), and `limits.backupRetention` (default 10) keeps the number of backups bounded. A restore holds a lock
+  (`config/run/restore.lock`): exclusive for a restore, the undoing of a dead one and a staged restore,
+  shared for a backup (all of it, so a backup is never sealed across a restore) and for an engine being
+  built (until its database is open). Two commands cannot undo the same dead restore, a dead restore is
+  undone whatever the spelling of the path to the home, and what cannot be placed is left alone and
+  refuses backup, restore and engine (`restore_leftover`) until it is removed by hand (with a `MAPA.txt`
+  that says what each original is). A restore that finished and is killed while its staging folder is
+  deleted no longer locks the home: the folder is renamed to `.removing-…` first. `doctor`, `status`,
+  `stop` and `backup --list` work on a blocked home, explain it and exit 3. A `settings.json` field
+  that cannot be read never opens a permission: fifteen security fields (profile, indexed folders,
+  provider binaries, Telegram approvers, memory skills, spend alert, approval and device lifetimes,
+  triage budget, the owner's exclusions and the sentinel switches) read as their most restrictive value, the others as their default.
+- **Security (seguranca-p1)**: an agent run with no working directory now starts
+  in `<home>/workspace` instead of the home (the home holds `config/token`, and an
+  agent reads everything below its working directory without asking); the home
+  as a working directory is mapped there, and a granted folder that contains the
+  home is refused. The run diff reads only the file the filter judged (literal
+  pathspecs, explicit git directory and work tree), files the engine writes into
+  folders an agent can write to are never written through a link or a second name
+  for the token, and a folder import copies files only.
 - **Packaged distributable** (`npm run dist`, `scripts/package.mjs`): one
   minified bundle for the API + CLI, the SQLite addon, the built Command
   Centre, seed data and an official Node.js runtime, with double-click
@@ -115,7 +257,7 @@ suggested, each shipped with its tests.
 
 ## 0.7.0 — 2026-09-04
 
-Every remaining item of the evolution plan (`docs/plan-2026-09/`): the rest
+Every remaining item of the evolution plan (`docs/internal/plan-2026-09/`): the rest
 of Onda 1 and 2, Onda 3 and Onda 4. Nothing in the plan is pending.
 
 - **Tool approvals mid-run** (Onda 1): in `review_before_write` and
@@ -164,7 +306,7 @@ of Onda 1 and 2, Onda 3 and Onda 4. Nothing in the plan is pending.
 
 ## 0.6.0 — 2026-09-04
 
-The evolution plan (`docs/plan-2026-09/`) executed: Onda 0 in full, the
+The evolution plan (`docs/internal/plan-2026-09/`) executed: Onda 0 in full, the
 desktop harmony pass, the "HUD Mordomo" visual layer, sessions with a
 conversational Console (Onda 1) and the first slice of Onda 2 (budget,
 persisted inbox).
@@ -216,7 +358,7 @@ persisted inbox).
 
 ## 0.5.0 — 2026-09-03
 
-The September analysis (`docs/analysis-2026-09/`) executed end to end: the frame
+The September analysis (`docs/internal/analysis-2026-09/`) executed end to end: the frame
 by frame study of the RUBRIC "Agentic OS" plus the open-source state of the art,
 turned into code across seven frontiers.
 
@@ -278,7 +420,7 @@ turned into code across seven frontiers.
 
 ## 0.4.0 — 2026-09-02
 
-Hardening release: the September audit (`docs/audit-2026-09/`) executed end to end.
+Hardening release: the September audit (`docs/internal/audit-2026-09/`) executed end to end.
 
 - **Security**: every `:id`/`:slug` route parameter validated (path traversal in
   `DELETE /api/routines` and `/api/connectors` closed, also at the store level);

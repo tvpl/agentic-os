@@ -1,0 +1,38 @@
+# Roteiro — da análise crítica de 06/10/2026 ao produto comercial
+
+Cada linha é uma feature no fluxo tlc-spec-lean (plan → checks → build → verify), executada em
+ordem. Uma feature só começa depois que a anterior tem `verification.md` aprovado pelo
+`validate_verification.py`. As decisões que atravessam features ficam em `STATE.md`.
+
+| #   | Feature (`.specs/features/…`) | Fase | Entrega                                                                                                                                                                                             | Decisão do dono pendente                       |
+| --- | ----------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| 1   | `seguranca-p0`                | P0   | Autenticação pela rota casada (fecha `/%61pi/…`), token só para socket loopback, credencial do broker por execução e fora do argv, `memory/open` sem executáveis, prompt posicional sem `-` inicial | —                                              |
+| 2   | `ci-gate`                     | P0   | CI em push e PR; teste de árvore de processos que distingue zumbi                                                                                                                                   | —                                              |
+| 3   | `motor-composicao`            | P1   | `createEngine()` no core com `start()`/`stop()` e lock de dono; política de escrita e contenção de diretório dentro do core; `busy_timeout`; CLI não recupera estado do servidor                    | —                                              |
+| 4   | `capacidades-aplicadas`       | P1   | Perfil exige capacidade declarada (`enforcesReadOnly`, broker de permissão); ambiente dos processos filhos por allowlist                                                                            | —                                              |
+| 5   | `contratos`                   | P1   | Pacote `@mordomo/contracts` (tipos do fio, schema de configurações, eventos tipados com `v`, `writeDecision`); interface importa em vez de espelhar                                                 | —                                              |
+| 5b  | `preferencias-ui`             | P1   | `UiPreferences` separado de `EngineSettings` (layout, HUD, tema visual, cérebro, micro-apps), com migração e `version` lido                                                                         | —                                              |
+| 6   | `provedores-plugaveis`        | P1   | `ProviderId` aberto, manifestos nos adaptadores, allowlist derivado dos manifestos                                                                                                                  | —                                              |
+| 7   | `api-v1`                      | P1   | `/api/v1` com OpenAPI, envelope de erro único, escopos de token (dono, dispositivo, broker), Telegram por usuário, rate limit                                                                       | —                                              |
+| 8   | `adaptadores-tipados`         | P1   | Eventos de cada CLI tipados no contrato, parsers endurecidos e testados contra gravações reais; SDKs oficiais reavaliados depois da licença (AD-006)                                                | decidido (AD-006)                              |
+| 9   | `moldura-app`                 | P2   | Moldura de app (barra lateral, lista/detalhe, chat fixo à direita, página "Hoje") como segundo shell completo, alternável com o Núcleo nas preferências                                             | decidido (AD-005)                              |
+| 10  | `design-system`               | P2   | Piso de tipografia de 12px, cores só por token com stylelint, axe WCAG A/AA nas duas interfaces, galeria cobrindo as duas camadas                                                                   | depende da 9                                   |
+| 10b | `primitivas`                  | P2   | Primitivas sobre Radix (Dialog, Popover, Tabs, Switch, Menu, Tooltip), migração dos widgets feitos à mão e uma linguagem visual única nos dois shells                                               | depende da 10                                  |
+| 11  | `comandos-atalhos`            | P2   | Registro tipado de comandos e um gerenciador de atalhos com escopo                                                                                                                                  | —                                              |
+| 12  | `limpeza-legado`              | P2   | Remove widgets, desktop.css, dois dos três cérebros, passo HUD do setup, chaves i18n órfãs, Pixel como plugin                                                                                       | depende da 9                                   |
+| 13  | `cerebro-v2`                  | P3   | Captura e edição de notas, backlinks, embeddings (sqlite-vec) e indexação em worker                                                                                                                 | —                                              |
+| 14  | `distribuicao`                | P3   | Shell Tauri 2, instaladores assinados (Apple Developer ID, certificado Windows), updater assinado, workflow de release por tag                                                                      | decidido (AD-008); o dono cadastra os segredos |
+| 15  | `licenca-comercial`           | P3   | Licença FSL-1.1 (futura Apache-2.0), EULA, privacidade, telemetria opt-in                                                                                                                           | decidido (AD-007); revisão jurídica do dono    |
+
+Itens fora do código, que dependem só do dono: remover o zip do histórico (`git filter-repo` e
+force-push na `main`), revisão jurídica dos termos dos CLIs e das marcas.
+
+Itens acrescentados pela revisão de arquitetura de 07/10/2026 (`review-arch`), em ordem de prioridade:
+
+| #   | Feature               | Fase | Entrega                                                                                                                                                                      |
+| --- | --------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S1  | `seguranca-p1`        | P0   | `config/` e `logs/` do home fora da API (o token era legível por pré-visualização), git sem executar o repositório, modos de arquivo, token exclusivo, `stream.reset` no SSE |
+| S2  | `escopos-dispositivo` | P0   | dispositivo pareado por allowlist de rotas, aprovação que o dispositivo criou não é resolvida por ele, TLS ou túnel obrigatório para acesso remoto, ticket de SSE            |
+| S3  | `dados-v2`            | P1   | migração sem corrida, lock de dono sem PID reciclado, configurações tolerantes a campo inválido, backups com checksum e retenção                                             |
+| S4  | `sdk-core`            | P1   | fachada de execução no core, barril público enxuto, eventos e travas por instância (sem singletons), pacote publicável com `types` e docs                                    |
+| S5  | `contratos-rest`      | P1   | corpos de requisição e resposta no contrato, OpenAPI com schemas, versão por tipo de evento                                                                                  |

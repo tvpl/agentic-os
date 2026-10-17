@@ -1,5 +1,5 @@
 /**
- * The immersive shell (docs/plans/nucleo-imersivo.md, rounds 1–3): one
+ * The immersive shell (docs/internal/plans/nucleo-imersivo.md, rounds 1–3): one
  * scene at a time, reached through the module spine on the left; what waits
  * on you in the pendências (top-left) and resolved in focus; at most two
  * lâminas beside the core; one voice line in the same place everywhere, with
@@ -498,7 +498,7 @@ test.describe("on a phone", () => {
     page,
   }) => {
     // A long pendência, so the hub's ticker has something to run into.
-    await page.route("**/api/notifications?*", (route) =>
+    await page.route("**/api/v1/notifications?*", (route) =>
       route.fulfill({
         json: {
           items: [
@@ -734,7 +734,7 @@ test("deep links land inside a scene: a skill's detail sheet, a routine's line, 
 /** A pending approval and a fresh failure, as the API would list them. */
 async function stubDecisionAndFailure(page: Page) {
   const now = Date.now();
-  await page.route("**/api/approvals", (route) =>
+  await page.route("**/api/v1/approvals", (route) =>
     route.fulfill({
       json: [
         {
@@ -749,7 +749,7 @@ async function stubDecisionAndFailure(page: Page) {
       ],
     }),
   );
-  await page.route("**/api/runs?*", (route) =>
+  await page.route("**/api/v1/runs?*", (route) =>
     route.fulfill({
       json: [
         { id: "f1", status: "failed", createdAt: now, finishedAt: now, promptSummary: "fixture failure" },
@@ -838,7 +838,7 @@ test("a decision from the voice line waits in the pendências, not in the conver
     "true",
   );
   const posted = page.waitForResponse(
-    (r) => r.url().endsWith("/api/runs") && r.request().method() === "POST",
+    (r) => r.url().endsWith("/api/v1/runs") && r.request().method() === "POST",
   );
   await voice.locator("textarea").fill("write a note for the focus approval test");
   await voice.locator("textarea").press("Enter");

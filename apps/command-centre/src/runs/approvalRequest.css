@@ -1,0 +1,52 @@
+/* The whole request behind a held write run (ApprovalRequest.tsx). Long text scrolls inside a bounded, focusable box. */
+.approval-request {
+  min-width: 0;
+  flex: 1 1 100%;
+  margin-top: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2, 6px);
+  background: var(--bg-raise, transparent);
+  font-size: var(--fs-3);
+}
+.approval-request.from-device {
+  /* A shape as well as a colour: a heavier left rule marks what a paired device asked for. */
+  border-left-width: 4px;
+  border-left-color: var(--warn, var(--accent));
+}
+.approval-request dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--s-2) var(--s-4);
+  margin: 0;
+}
+.approval-request dl > div {
+  min-width: 0;
+}
+.approval-request dl > div.wide {
+  grid-column: 1 / -1;
+}
+.approval-request dt {
+  color: var(--text-faint);
+  font-size: var(--fs-2);
+}
+.approval-request dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.approval-request-text {
+  margin: var(--s-1) 0 0;
+  max-height: 14rem;
+  overflow: auto;
+  padding: var(--s-2);
+  border-radius: var(--r-1, 4px);
+  background: var(--bg-sunken, var(--bg-raise-2));
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-3);
+}
+.approval-request-text:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

@@ -193,19 +193,19 @@ const noticeRow = (id: string, title: string, extra: Record<string, unknown> = {
 /** Replace everything the pendências read with the seed; resolving an approval removes it. */
 async function seedPending(page: Page, seed: PendingSeed) {
   const state = { approvals: [...(seed.approvals ?? [])] };
-  await page.route("**/api/approvals", (route) => route.fulfill({ json: state.approvals }));
-  await page.route("**/api/approvals/*/resolve", async (route) => {
+  await page.route("**/api/v1/approvals", (route) => route.fulfill({ json: state.approvals }));
+  await page.route("**/api/v1/approvals/*/resolve", async (route) => {
     const id = decodeURIComponent(route.request().url().split("/approvals/")[1]!.split("/")[0]!);
     state.approvals = state.approvals.filter((a) => a.id !== id);
     await route.fulfill({ json: { ok: true } });
   });
-  await page.route("**/api/runs/*/retry", (route) => route.fulfill({ json: { runId: null } }));
-  await page.route("**/api/runs?*", async (route) => {
+  await page.route("**/api/v1/runs/*/retry", (route) => route.fulfill({ json: { runId: null } }));
+  await page.route("**/api/v1/runs?*", async (route) => {
     const real = (await (await route.fetch()).json()) as Array<{ status: string }>;
     const quiet = real.filter((r) => r.status !== "failed" && r.status !== "timed_out");
     await route.fulfill({ json: [...(seed.runs ?? []), ...quiet] });
   });
-  await page.route(/\/api\/routines(\?.*)?$/, async (route) => {
+  await page.route(/\/api\/v1\/routines(\?.*)?$/, async (route) => {
     const real = (await (await route.fetch()).json()) as Array<Record<string, unknown>>;
     await route.fulfill({
       json: real.map((r, i) =>
@@ -224,21 +224,21 @@ async function seedPending(page: Page, seed: PendingSeed) {
       ),
     });
   });
-  await page.route("**/api/notifications?*", (route) =>
+  await page.route("**/api/v1/notifications?*", (route) =>
     route.fulfill({ json: { items: seed.notices ?? [], unread: (seed.notices ?? []).length } }),
   );
-  await page.route(/\/api\/settings(\?.*)?$/, async (route) => {
+  await page.route(/\/api\/v1\/settings(\?.*)?$/, async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     const real = (await (await route.fetch()).json()) as { limits?: Record<string, unknown> };
     await route.fulfill({ json: { ...real, limits: { ...(real.limits ?? {}), dailyBudgetUsd: 10 } } });
   });
-  await page.route(/\/api\/metrics(\?.*)?$/, async (route) => {
+  await page.route(/\/api\/v1\/metrics(\?.*)?$/, async (route) => {
     const real = (await (await route.fetch()).json()) as { cost?: Record<string, unknown> };
     await route.fulfill({
       json: { ...real, cost: { ...(real.cost ?? {}), todayUsd: seed.budgetOver ? 1_000 : 0 } },
     });
   });
-  await page.route(/\/api\/providers(\?.*)?$/, async (route) => {
+  await page.route(/\/api\/v1\/providers(\?.*)?$/, async (route) => {
     const real = (await (await route.fetch()).json()) as Array<Record<string, unknown>>;
     if (!seed.providerLogin) return route.fulfill({ json: real });
     const def = real.find((p) => p.isDefault) ?? real[0]!;
@@ -467,11 +467,11 @@ async function seedRun(page: Page, request: APIRequestContext) {
     failure: null,
     skillSlug: "consolidate-memory",
   });
-  await page.route("**/api/runs?*", async (route) => {
+  await page.route("**/api/v1/runs?*", async (route) => {
     const real = (await (await route.fetch()).json()) as Array<Record<string, unknown>>;
     await route.fulfill({ json: real.map((r) => (r.id === RUN_ID ? failed(r) : r)) });
   });
-  await page.route(`**/api/runs/${RUN_ID}`, async (route) => {
+  await page.route(`**/api/v1/runs/${RUN_ID}`, async (route) => {
     const real = (await (await route.fetch()).json()) as {
       run: Record<string, unknown>;
       events: Array<Record<string, unknown>>;
@@ -504,7 +504,6 @@ test("C14 the runs overview is only the river", async ({ page, request }) => {
   await expect(riverWrap(page)).toBeVisible();
   await expect(page.locator(".rs-head")).toBeVisible();
   await expect(runView(page)).toHaveCount(0);
-  await expect(page.locator(".rs-sheet, .rs-trace.on")).toHaveCount(0);
 });
 
 test("C15 a chosen run replaces the overview", async ({ page, request }) => {
@@ -512,7 +511,6 @@ test("C15 a chosen run replaces the overview", async ({ page, request }) => {
   await chooseRun(page);
   await expect.poll(async () => (await riverWrap(page).boundingBox())!.height).toBeLessThanOrEqual(120);
   await expect(runView(page)).toHaveCount(1);
-  await expect(page.locator(".rs-sheet")).toHaveCount(0);
   // The run view takes the rest of the scene: below the strip, down to the voice line.
   const strip = (await riverWrap(page).boundingBox())!;
   const view = (await runView(page).boundingBox())!;
@@ -765,8 +763,9 @@ test("C22 skill filters are one search and one row of chips", async ({ page }) =
   const barBox = (await bar.boundingBox())!;
   const stageBox = (await page.locator(".sks-stage").boundingBox())!;
   expect(barBox.y + barBox.height).toBeLessThanOrEqual(stageBox.y + 1);
-  // Nothing else filters on the side any more.
-  await expect(page.locator(".sks-filters")).toHaveCount(0);
+  // Nothing else filters on the side any more: the one row of chips is the bar's.
+  await expect(page.locator(".sks-chips")).toHaveCount(1);
+  await expect(bar.locator(".sks-chips")).toHaveCount(1);
 });
 
 test("C23 one plus menu holds marketplace, export and new", async ({ page }) => {
@@ -836,7 +835,7 @@ test("C25 skill dialogs are the shell's sheet", async ({ page }) => {
 });
 
 test("C26 an empty marketplace says so and offers one action", async ({ page }) => {
-  await page.route("**/api/skills/registry*", async (route) => {
+  await page.route("**/api/v1/skills/registry*", async (route) => {
     const real = (await (await route.fetch()).json()) as Record<string, unknown>;
     await route.fulfill({ json: { ...real, registries: [], skills: [], errors: [] } });
   });
@@ -873,7 +872,7 @@ async function seedArtifacts(page: Page) {
     skillSlug,
     runId: null,
   });
-  await page.route(/\/api\/artifacts\/list(\?.*)?$/, (route) =>
+  await page.route(/\/api\/v1\/artifacts\/list(\?.*)?$/, (route) =>
     route.fulfill({
       json: {
         items: [
@@ -1121,7 +1120,7 @@ for (const theme of ["dark", "light"] as const)
     {
       for (const [name, open] of surfaces) {
         await page.unrouteAll({ behavior: "ignoreErrors" });
-        await page.route("**/api/meta", async (interception) => {
+        await page.route("**/api/v1/meta", async (interception) => {
           const response = await interception.fetch();
           await interception.fulfill({ response, json: { ...(await response.json()), theme } });
         });

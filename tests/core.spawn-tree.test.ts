@@ -1,5 +1,8 @@
+import { spawn } from "node:child_process";
+import fs from "node:fs";
 import { it, expect } from "vitest";
-import { safeSpawn } from "@mordomo/core";
+import { safeSpawn } from "@mordomo/core/internal";
+import { processAlive } from "./helpers.js";
 
 it.skipIf(process.platform === "win32")(
   "cancellation kills a TERM-resistant descendant even when its parent exits first",
@@ -15,14 +18,7 @@ it.skipIf(process.platform === "win32")(
       },
     });
     const pid = await ready.promise;
-    const alive = () => {
-      try {
-        process.kill(pid, 0);
-        return true;
-      } catch {
-        return false;
-      }
-    };
+    const alive = () => processAlive(pid);
     try {
       handle.cancel("fixture", 50);
       await handle.result;
@@ -38,3 +34,30 @@ it.skipIf(process.platform === "win32")(
     }
   },
 );
+
+it("C3 liveness: alive, gone", () => {
+  expect(processAlive(process.pid)).toBe(true);
+  // PIDs are bounded well below this on every supported OS.
+  expect(processAlive(2 ** 30)).toBe(false);
+});
+
+it.skipIf(process.platform !== "linux")("C4 liveness: a zombie is not alive", async () => {
+  // `sh` starts a short-lived child in the background, then becomes `sleep`,
+  // which never waits: the child exits after the exec and stays a zombie of
+  // `sleep`, on any Linux. (An instant child could exit while `sh` is still
+  // `sh`, which reaps it — the race that made this test flaky under load.)
+  const parent = spawn("sh", ["-c", "sleep 0.3 & echo $!; exec sleep 5"], {
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  try {
+    const zombie = await new Promise<number>((resolve) =>
+      parent.stdout!.once("data", (chunk: Buffer) => resolve(Number(String(chunk).trim()))),
+    );
+    await expect
+      .poll(() => fs.readFileSync(`/proc/${zombie}/stat`, "utf8").split(") ")[1]![0], { timeout: 2000 })
+      .toBe("Z");
+    expect(processAlive(zombie)).toBe(false);
+  } finally {
+    parent.kill("SIGKILL");
+  }
+});

@@ -10,6 +10,9 @@ const approval = (over: Partial<ApprovalRecord> = {}): ApprovalRecord => ({
   payload: {},
   status: "pending",
   resolvedAt: null,
+  resolvedBy: null,
+  requestedBy: null,
+  expiresAt: 0,
   ...over,
 });
 
@@ -44,6 +47,11 @@ describe("approval payloads", () => {
       prompt: "hi",
       cwd: "/w",
       provider: "claude",
+      model: null,
+      effort: null,
+      mode: null,
+      inputs: [],
+      requestedByName: null,
     });
     expect(approvalTarget(approval({ payload: { kind: "skill", input: { slug: "tidy" } } })).skillSlug).toBe(
       "tidy",
@@ -54,6 +62,43 @@ describe("approval payloads", () => {
       prompt: null,
       cwd: null,
       provider: null,
+      model: null,
+      effort: null,
+      mode: null,
+      inputs: [],
+      requestedByName: null,
+    });
+    // A skill held for approval writes, and says so though its input does not carry a mode; the name is kept.
+    expect(
+      approvalTarget(
+        approval({ payload: { kind: "skill", requestedByName: "Pixel", input: { slug: "tidy" } } }),
+      ),
+    ).toMatchObject({ mode: "write", requestedByName: "Pixel" });
+    // A skill's inputs keep their order; a value that is not text is shown as JSON, never dropped.
+    expect(
+      approvalTarget(
+        approval({
+          payload: {
+            kind: "skill",
+            input: {
+              slug: "s",
+              inputs: { b: "two", a: 1, c: { x: true } },
+              model: "m",
+              effort: "low",
+              mode: "write",
+            },
+          },
+        }),
+      ),
+    ).toMatchObject({
+      inputs: [
+        ["b", "two"],
+        ["a", "1"],
+        ["c", '{"x":true}'],
+      ],
+      model: "m",
+      effort: "low",
+      mode: "write",
     });
   });
 
@@ -93,5 +138,43 @@ describe("approvalForRun", () => {
       approvalLabel(approval({ payload: { kind: "prompt", input: { prompt: "line one\nline two" } } }), "?"),
     ).toBe("line one");
     expect(approvalLabel(approval({ description: "" }), "fallback")).toBe("fallback");
+  });
+});
+
+describe("which approvals are a device's to choose", () => {
+  it("is a write run with a device behind it, and nothing else", async () => {
+    const { requiresFullReview } = await import("./approvals");
+    expect(requiresFullReview({ kind: "write_run", requestedBy: "device:abc" })).toBe(true);
+    for (const requestedBy of ["owner", null, "telegram:42", "broker:r1"]) {
+      expect(requiresFullReview({ kind: "write_run", requestedBy }), String(requestedBy)).toBe(false);
+    }
+    expect(requiresFullReview({ kind: "tool_use", requestedBy: "device:abc" })).toBe(true);
+    expect(requiresFullReview({ kind: "tool_use", requestedBy: "owner" })).toBe(false);
+    expect(requiresFullReview({ kind: "expose_port", requestedBy: "device:abc" })).toBe(false);
+  });
+});
+
+describe("what a tool approval and a device carry", () => {
+  it("reads every field of a tool's input, objects as JSON, and the short id of a device", async () => {
+    const { toolRequest, deviceRef } = await import("./approvals");
+    expect(
+      toolRequest(
+        approval({
+          kind: "tool_use",
+          payload: { toolName: "Edit", input: { file_path: "/a", n: 2, o: { k: [1] } } },
+        }),
+      ),
+    ).toEqual({
+      tool: "Edit",
+      fields: [
+        ["file_path", "/a"],
+        ["n", "2"],
+        ["o", JSON.stringify({ k: [1] }, null, 2)],
+      ],
+    });
+    expect(toolRequest(approval({ kind: "tool_use", payload: {} }))).toEqual({ tool: "tool", fields: [] });
+    expect(deviceRef("device:0123456789abcdef")).toBe("012345");
+    expect(deviceRef("owner")).toBeNull();
+    expect(deviceRef(null)).toBeNull();
   });
 });

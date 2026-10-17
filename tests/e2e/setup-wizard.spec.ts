@@ -46,7 +46,7 @@ test("a fresh home is configured entirely from the browser", async ({ browser })
     await expect(page.getByText("npx mordomo setup")).toBeHidden();
     await page.getByRole("button", { name: "Next" }).click();
 
-    // Identity → Folders → Connect data → Desktop → Finish.
+    // Identity → Folders → Connect data → Appearance → Finish.
     await page.getByLabel("System name").fill("Wizard OS");
     await page.getByRole("button", { name: "Next" }).click();
     await page.getByRole("button", { name: "Next" }).click();

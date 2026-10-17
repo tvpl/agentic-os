@@ -1,16 +1,14 @@
 /**
  * Model × Effort matrix. `ModelEffortMatrix` is the reusable controlled grid
- * (also used by the Runs "run a prompt" box); `SkillMatrixModal` wraps it and
- * persists the choice to the canonical skill. `useSaveSkillMatrix` is the
- * shared persistence used by the modal and by the anchored deck popover.
+ * (the skill detail and the console use it). `useSaveSkillMatrix` is the
+ * persistence the anchored deck popover and the skill detail share.
  */
-import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type ModelishOption, type ProviderId, type ProviderSnapshot, type Skill } from "../api";
+import { type ModelishOption, type ProviderId, type ProviderSnapshot, type Skill } from "../api";
+import { apiCall } from "../apiCall";
 import { useT } from "../i18n";
 import { qk, useApiQuery } from "../queries";
-import { Modal, useToast } from "../components/ui";
-import { Segmented } from "../components/primitives";
+import { useToast } from "../components/ui";
 
 export const EFFORTS = ["low", "medium", "high", "default"] as const;
 export type Effort = (typeof EFFORTS)[number];
@@ -66,9 +64,12 @@ export function useSaveSkillMatrix(skill: Skill, onSaved: (model: string | null,
         ...front
       } = skill as Skill & Record<string, unknown>;
       delete (front as Record<string, unknown>).dir;
-      await api.put(`/api/skills/${encodeURIComponent(skill.slug)}`, {
-        frontmatter: { ...front, recommendedModel: model, recommendedEffort: effort },
-        body,
+      await apiCall("PUT /api/skills/:slug", {
+        params: { slug: skill.slug },
+        body: {
+          frontmatter: { ...front, recommendedModel: model, recommendedEffort: effort },
+          body,
+        },
       });
       return { model, effort };
     },
@@ -148,44 +149,4 @@ export function pickProvider(
     enabled,
     initial: providers.find((p) => p.isDefault && enabled.includes(p))?.id ?? enabled[0]?.id ?? "claude",
   };
-}
-
-export default function SkillMatrixModal({
-  skill,
-  providers,
-  onClose,
-  onSaved,
-}: {
-  skill: Skill;
-  providers: ProviderSnapshot[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const t = useT();
-  const { enabled, initial } = pickProvider(skill, providers);
-  const [provider, setProvider] = useState<ProviderId>(initial);
-  const save = useSaveSkillMatrix(skill, onSaved);
-
-  return (
-    <Modal title={`/${skill.slug} — ${t("matrix.title")}`} onClose={onClose}>
-      <p className="modal-hint">{t("matrix.hint")}</p>
-      {enabled.length > 1 && (
-        <Segmented
-          size="sm"
-          ariaLabel={t("skills.provider")}
-          value={provider}
-          onChange={setProvider}
-          options={enabled.map((p) => ({ value: p.id, label: p.id }))}
-          className="matrix-provider"
-        />
-      )}
-      <ModelEffortMatrix
-        provider={provider}
-        model={skill.recommendedModel ?? null}
-        effort={skillEffort(skill)}
-        busy={save.isPending}
-        onPick={(model, effort) => save.mutate({ model, effort })}
-      />
-    </Modal>
-  );
 }

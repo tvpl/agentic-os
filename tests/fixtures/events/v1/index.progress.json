@@ -1,0 +1,13 @@
+{
+  "id": 8,
+  "type": "index.progress",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "scanned": 120,
+    "total": 400,
+    "added": 3,
+    "updated": 1,
+    "removed": 0
+  }
+}

@@ -1,6 +1,5 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { events } from "@mordomo/core";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { makeTempHome } from "./helpers.js";
@@ -33,7 +32,7 @@ const auth = () => ({ "x-mordomo-token": token });
 
 describe("notifications API", () => {
   it("persists index failures with recovery guidance and a brain destination", async () => {
-    events.emit("index.failed", { code: "index_scan_incomplete", previousIndexPreserved: true });
+    ctx.events.emit("index.failed", { code: "index_scan_incomplete", previousIndexPreserved: true });
     const res = await app.inject({ method: "GET", url: "/api/notifications", headers: auth() });
     expect(res.json().items).toContainEqual(
       expect.objectContaining({
@@ -48,7 +47,11 @@ describe("notifications API", () => {
   });
 
   it("records an approval request from the bus and serves it", async () => {
-    events.emit("approval.requested", { id: "ap-1", kind: "write_run", description: "Write to notes.md" });
+    ctx.events.emit("approval.requested", {
+      id: "ap-1",
+      kind: "write_run",
+      description: "Write to notes.md",
+    });
     const res = await app.inject({ method: "GET", url: "/api/notifications", headers: auth() });
     expect(res.statusCode).toBe(200);
     const body = res.json() as {
@@ -64,7 +67,7 @@ describe("notifications API", () => {
   });
 
   it("marks rows read by id and all at once", async () => {
-    events.emit("budget.crossed", { level: 80, day: "2026-09-04", spentUsd: 8, budgetUsd: 10 });
+    ctx.events.emit("budget.crossed", { level: 80, day: "2026-09-04", spentUsd: 8, budgetUsd: 10 });
     const list = (
       await app.inject({ method: "GET", url: "/api/notifications?unread=true", headers: auth() })
     ).json() as {

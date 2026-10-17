@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { ApprovalStore, openDb } from "../core/src/index.js";
+import { ApprovalStore, openDb } from "../core/src/internal.js";
 import { makeTempHome } from "./helpers.js";
 
 describe("approval store", () => {

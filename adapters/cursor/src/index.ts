@@ -2,24 +2,20 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  executeInvocation,
-  findExecutable,
-  parseHelpFlags,
-  probe,
+  SpawnPolicy,
   type AgentAdapter,
   type AgentRun,
   type AuthStatus,
   type DetectionResult,
   type HealthStatus,
-  type LineParser,
   type ModelOption,
   type RunEvent,
   type SafeInvocation,
   type ValidationResult,
-  BUILTIN_MANIFESTS,
-  type ProviderManifest,
   type AdapterFactoryOptions,
 } from "@mordomo/core";
+import { executeInvocation, findExecutable, parseHelpFlags, type LineParser } from "@mordomo/core/internal";
+import { cursorManifest } from "./manifest.js";
 
 /**
  * Cursor Agent adapter — headless (`cursor-agent -p`) with stream-json output
@@ -33,18 +29,29 @@ import {
  * and never asks this adapter to resume. The warning below only fires for a
  * caller that bypasses the run manager.
  */
-export const cursorManifest: ProviderManifest = BUILTIN_MANIFESTS.cursor;
+export { cursorManifest };
 
 /** Factory used by the provider registry (`apps/api/src/providers.ts`). */
 export const createCursorAdapter = (opts: AdapterFactoryOptions): AgentAdapter =>
-  new CursorAdapter({ binaryPath: opts.binaryPath, ...(opts.homeDir ? { homeDir: opts.homeDir } : {}) });
+  new CursorAdapter({
+    binaryPath: opts.binaryPath,
+    ...(opts.homeDir ? { homeDir: opts.homeDir } : {}),
+    ...(opts.spawn ? { spawn: opts.spawn } : {}),
+  });
 
 export class CursorAdapter implements AgentAdapter {
   readonly id = "cursor" as const;
   readonly manifest = cursorManifest;
   private detection: DetectionResult | null = null;
 
-  constructor(private readonly opts: { binaryPath?: string | null; homeDir?: string } = {}) {}
+  /** The engine's spawn policy; an adapter built alone allows only `node` and its own binary. */
+  private readonly spawn: SpawnPolicy;
+
+  constructor(
+    private readonly opts: { binaryPath?: string | null; homeDir?: string; spawn?: SpawnPolicy } = {},
+  ) {
+    this.spawn = opts.spawn ?? new SpawnPolicy({ binaries: [cursorManifest.binary] });
+  }
 
   private binary(): string {
     return this.opts.binaryPath ?? findExecutable("cursor-agent") ?? "cursor-agent";
@@ -69,13 +76,13 @@ export class CursorAdapter implements AgentAdapter {
     let version: string | null = null;
     let supportedFlags: string[] = [];
     try {
-      const v = await probe(binaryPath, ["--version"], os.tmpdir());
+      const v = await this.spawn.probe(binaryPath, ["--version"], os.tmpdir());
       version = (v.stdout || v.stderr).trim().split("\n")[0] ?? null;
     } catch (err) {
       notes.push(`--version failed: ${(err as Error).message}`);
     }
     try {
-      const h = await probe(binaryPath, ["--help"], os.tmpdir());
+      const h = await this.spawn.probe(binaryPath, ["--help"], os.tmpdir());
       supportedFlags = parseHelpFlags(h.stdout + h.stderr);
       if (!supportedFlags.includes("--print") && !supportedFlags.includes("-p")) {
         notes.push("Installed cursor-agent does not advertise --print; headless runs may fail.");
@@ -86,7 +93,13 @@ export class CursorAdapter implements AgentAdapter {
     } catch (err) {
       notes.push(`--help probe failed: ${(err as Error).message}`);
     }
-    this.detection = { installed: true, binaryPath, version, supportedFlags, notes };
+    this.detection = {
+      installed: true,
+      binaryPath,
+      version,
+      supportedFlags,
+      notes,
+    };
     return this.detection;
   }
 
@@ -95,7 +108,7 @@ export class CursorAdapter implements AgentAdapter {
     if (!binaryPath) return { authenticated: false, method: null, detail: "cursor-agent is not installed." };
     try {
       // `cursor-agent status` prints login state without exposing tokens.
-      const res = await probe(binaryPath, ["status"], os.tmpdir());
+      const res = await this.spawn.probe(binaryPath, ["status"], os.tmpdir());
       const out = (res.stdout + res.stderr).toLowerCase();
       // Negated status contains the positive substring: inspect it first.
       if (/not logged in|unauthenticated|not authenticated|login required/.test(out)) {
@@ -146,7 +159,8 @@ export class CursorAdapter implements AgentAdapter {
     if (run.mode === "write" && detection.supportedFlags.includes("--force")) {
       args.push("--force");
     }
-    args.push(run.prompt);
+    // A prompt is never an option: a leading space keeps "-…" from being parsed as a flag.
+    args.push(run.prompt.startsWith("-") ? ` ${run.prompt}` : run.prompt);
     return {
       executable: this.binary(),
       args,
@@ -238,21 +252,27 @@ export function cursorStreamParser(): LineParser {
   });
   return {
     parseLine(line: string): RunEvent[] | null {
-      let obj: Record<string, unknown>;
+      let parsed: unknown;
       try {
-        obj = JSON.parse(line) as Record<string, unknown>;
+        parsed = JSON.parse(line);
       } catch {
         return null;
       }
+      // Valid JSON that is not an object (`null`, a number, an array) is a banner, not a message: show it as text.
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+      const obj = parsed as Record<string, unknown>;
       const ts = Date.now();
       const type = obj.type as string;
       if (type === "assistant") {
-        const message = obj.message as
-          { content?: Array<Record<string, unknown>>; usage?: unknown; model?: unknown } | undefined;
+        const message = obj.message as { content?: unknown; usage?: unknown; model?: unknown } | undefined;
         const events: RunEvent[] = [];
         const turn = parseCursorUsage(message?.usage ?? obj.usage);
         if (turn) events.push(usageEvent(ts, "turn", turn, message?.model ?? obj.model));
-        for (const block of message?.content ?? []) {
+        // `content` and its blocks come from the CLI: only an array of objects is read.
+        const content: unknown[] = Array.isArray(message?.content) ? message.content : [];
+        for (const item of content) {
+          if (item === null || typeof item !== "object") continue;
+          const block = item as Record<string, unknown>;
           if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
             lastText = block.text;
             events.push({ type: "assistant", ts, text: block.text });

@@ -7,7 +7,8 @@
 import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Play } from "lucide-react";
-import { api, type LaunchRunResponse } from "../api";
+
+import { apiCall } from "../apiCall";
 import { Button, Field } from "../components/primitives";
 import { useToast } from "../components/ui";
 import { useLang, useT } from "../i18n";
@@ -32,8 +33,7 @@ export default function SkillInputsPanel({ slug, onDone }: { slug: string; onDon
   );
 
   const run = useMutation({
-    mutationFn: () =>
-      api.post<LaunchRunResponse>(`/api/skills/${encodeURIComponent(slug)}/run`, { inputs: values }),
+    mutationFn: () => apiCall("POST /api/skills/:slug/run", { params: { slug }, body: { inputs: values } }),
     onSuccess: (res) => {
       onDone();
       if (res.status === "waiting_approval" || !res.runId) {

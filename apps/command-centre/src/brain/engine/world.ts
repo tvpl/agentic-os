@@ -489,13 +489,6 @@ export function buildWorld(w: World, src: WorldSources): void {
   ];
 }
 
-/** Edge indices whose kind is currently enabled. */
-export function activeEdgeIndices(w: Pick<World, "edges" | "edgeKinds">): number[] {
-  const out: number[] = [];
-  for (let i = 0; i < w.edges.length; i++) if (w.edgeKinds.has(w.edges[i]!.kind)) out.push(i);
-  return out;
-}
-
 /**
  * Recompute adjacency, degrees and radii over the enabled edge kinds. Call
  * after `buildWorld` and whenever `edgeKinds` changes.

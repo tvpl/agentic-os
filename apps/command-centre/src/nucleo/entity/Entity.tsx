@@ -24,7 +24,6 @@ import { stateWord, type EntityActivity } from "./entityParams";
 import "./entity.css";
 
 export { SPEAK_EVENT } from "./entityEngine";
-export { TYPING_EVENT } from "../CoreOrb";
 export type { EntityActivity } from "./entityParams";
 
 export interface EntityProps {

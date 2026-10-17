@@ -1,8 +1,15 @@
-import fs from "node:fs";
 import path from "node:path";
 import type { Db } from "../db/db.js";
 import type { MordomoPaths } from "../paths.js";
 import type { Settings } from "../config/schema.js";
+import {
+  grantedReadScope,
+  homeReadScope,
+  inspectPath,
+  listWorkspaceDir,
+  readWorkspaceText,
+  type ReadScope,
+} from "../security/safeFs.js";
 import { fileRowFromDb, type FileRow } from "./indexer.js";
 import { areaSlug } from "./routers.js";
 
@@ -35,6 +42,11 @@ export interface RecallOptions {
   candidateLimit?: number;
   /** Pointer targets followed per chosen section (default 2, 0 disables). */
   pointerLimit?: number;
+  /**
+   * The folders recall may read. Default: the home and the enabled indexed folders. A run's credential passes
+   * `memory/` only, so what it recalls is the second brain and not the owner's other folders.
+   */
+  scope?: ReadScope;
 }
 
 export interface RecallContext {
@@ -68,7 +80,7 @@ export interface RecallResult {
 
 // ------------------------------------------------------------ keywords ----
 
-const STOPWORDS = new Set(
+export const STOPWORDS = new Set(
   (
     "a an the and or but if then else when while of to in on at by for from with without about into over under " +
     "is are was were be been being am do does did doing have has had having can could should would will shall may might must " +
@@ -153,20 +165,26 @@ export function extractKeywords(question: string): string[] {
 
 // ------------------------------------------------------- router pointers ----
 
+/** Router files are small hand-readable indexes; one past this is not one. */
+const MAX_ROUTER_BYTES = 1024 * 1024;
+
 /** Absolute paths referenced by memory/ROUTER.md and memory/areas/*.md. */
 export function routerPointers(paths: MordomoPaths): Map<string, string> {
   const out = new Map<string, string>();
-  const files: string[] = [];
-  const master = path.join(paths.memory, "ROUTER.md");
-  if (fs.existsSync(master)) files.push(master);
+  const scope = homeReadScope(paths.home, [paths.memory]);
+  const files: string[] = [path.join(paths.memory, "ROUTER.md")];
   const areasDir = path.join(paths.memory, "areas");
-  if (fs.existsSync(areasDir)) {
-    for (const f of fs.readdirSync(areasDir).sort()) if (f.endsWith(".md")) files.push(path.join(areasDir, f));
+  try {
+    for (const entry of listWorkspaceDir(scope, areasDir).sort((a, b) => a.name.localeCompare(b.name))) {
+      if (entry.isFile && entry.name.endsWith(".md")) files.push(path.join(areasDir, entry.name));
+    }
+  } catch {
+    /* no areas folder yet, or it is not one the scope grants */
   }
   for (const file of files) {
     let content: string;
     try {
-      content = fs.readFileSync(file, "utf8");
+      content = readWorkspaceText(scope, file, { maxBytes: MAX_ROUTER_BYTES }).text;
     } catch {
       continue;
     }
@@ -203,7 +221,7 @@ function ftsTerm(keyword: string): string {
   return `"${keyword.replace(/["*]/g, "")}"*`;
 }
 
-function scoreCandidates(db: Db, paths: MordomoPaths, settings: Settings, keywords: string[], opts: RecallOptions): Scored[] {
+function scoreCandidates(db: Db, paths: MordomoPaths, settings: Settings, scope: ReadScope, keywords: string[], opts: RecallOptions): Scored[] {
   const limit = Math.min(Math.max(opts.candidateLimit ?? 60, 5), 500);
   const byId = new Map<number, Scored>();
   const areaFilter = opts.area ? "AND f.area = ?" : "";
@@ -227,6 +245,9 @@ function scoreCandidates(db: Db, paths: MordomoPaths, settings: Settings, keywor
     for (const row of rows) {
       const file = fileRowFromDb(row);
       if (isGeneratedRouter(paths, file.path)) continue;
+      // The index is old data: a row indexed before a path became private (the home's config/, a folder
+      // since revoked) is judged now, not when it was written, and is neither opened nor reported.
+      if (!isReadable(scope, file.path)) continue;
       const bm = Math.max(0, -(row.bm as number)); // bm25(): lower is better, negative for matches
       const entry = byId.get(file.id) ?? { file, score: 0, reasons: [], matched: new Set<string>() };
       entry.matched.add(kw);
@@ -357,18 +378,26 @@ export function scoreSection(section: Section, keywords: string[]): { score: num
   return { score: Math.round(score * 100) / 100, matched };
 }
 
+/** Whether the scope grants this indexed path today (real path, roots, filter). */
+function isReadable(scope: ReadScope, filePath: string): boolean {
+  try {
+    return inspectPath(scope, filePath).blockedReason === null;
+  } catch {
+    return false;
+  }
+}
+
 interface OpenedFile {
   file: FileRow;
   sections: Section[];
   best: { section: Section; score: number; matched: string[]; index: number } | null;
 }
 
-function openFile(file: FileRow, keywords: string[], maxBytes: number): OpenedFile | null {
+function openFile(scope: ReadScope, file: FileRow, keywords: string[], maxBytes: number): OpenedFile | null {
   let content: string;
   try {
-    const stat = fs.statSync(file.path);
-    if (!stat.isFile() || stat.size > maxBytes) return null;
-    content = fs.readFileSync(file.path, "utf8");
+    // Through the safe-read primitive: the path comes from the index, so it is checked now, on its real path.
+    content = readWorkspaceText(scope, file.path, { maxBytes, strict: true }).text;
   } catch {
     return null;
   }
@@ -430,7 +459,8 @@ export function recall(db: Db, paths: MordomoPaths, settings: Settings, question
   };
   if (keywords.length === 0) return { ...empty, durationMs: Date.now() - started };
 
-  const scored = scoreCandidates(db, paths, settings, keywords, opts);
+  const scope = opts.scope ?? grantedReadScope(settings, paths.home);
+  const scored = scoreCandidates(db, paths, settings, scope, keywords, opts);
   const maxBytes = settings.limits.maxIndexedFileBytes;
   const answer: RecallContext[] = [];
   const openedPaths = new Set<string>();
@@ -440,7 +470,7 @@ export function recall(db: Db, paths: MordomoPaths, settings: Settings, question
   for (const cand of scored.slice(0, k)) {
     if (openedPaths.has(cand.file.path)) continue; // already reached by a pointer — never read a file twice
     openedPaths.add(cand.file.path);
-    const file = openFile(cand.file, keywords, maxBytes);
+    const file = openFile(scope, cand.file, keywords, maxBytes);
     opened++;
     if (!file || !file.best) continue;
     const best = file.best;
@@ -458,7 +488,7 @@ export function recall(db: Db, paths: MordomoPaths, settings: Settings, question
       const row = lookup.get(target) as Record<string, unknown> | undefined;
       if (!row) continue; // only indexed files — same exclusion policy as the index
       openedPaths.add(target);
-      const pointed = openFile(fileRowFromDb(row), keywords, maxBytes);
+      const pointed = openFile(scope, fileRowFromDb(row), keywords, maxBytes);
       opened++;
       if (!pointed || !pointed.best) continue;
       if (pointed.best.score > best.score) {

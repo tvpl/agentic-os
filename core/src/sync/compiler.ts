@@ -4,15 +4,26 @@ import path from "node:path";
 import type { MordomoPaths } from "../paths.js";
 import type { Settings, ProviderId } from "../config/schema.js";
 import type { Skill } from "../skills/types.js";
-import { builtinManifests, type ProviderManifest } from "../agents/registry.js";
+import type { ProviderManifest } from "../agents/registry.js";
+import { PathAccessError } from "../security/paths.js";
+import {
+  FileTooLargeError,
+  NotRegularFileError,
+  assertWritablePath,
+  grantedReadScope,
+  homeReadScope,
+  readWorkspaceFile,
+  readWorkspaceText,
+} from "../security/safeFs.js";
+import { writeWorkspaceFile } from "../security/safeWrite.js";
 import { unifiedDiff } from "./diff.js";
 
 /**
  * Configuration compiler / synchronizer.
  *
  * One canonical source (skills/, memory/ routers, settings) is compiled into the
- * native files of each provider, as declared by its manifest's `layout`
- * (`core/src/agents/registry.ts`). With the built-in manifests:
+ * native files of each registered provider, as declared by its manifest's
+ * `layout` (`core/src/agents/registry.ts`). With the built-in manifests:
  *   Claude  → CLAUDE.md, .claude/skills/<slug>/**
  *   Cursor  → AGENTS.md, .cursor/rules/mordomo.mdc, .cursor/commands/<slug>.md
  *   Codex   → AGENTS.md, .agents/skills/<slug>/**
@@ -52,6 +63,9 @@ export interface SyncApplyResult {
 
 type Manifest = Record<string, string>; // absolute path -> sha256 of last written content
 
+/** A generated instructions or skill file is text a person reads; past this it is not one. */
+const MAX_SYNC_FILE_BYTES = 2 * 1024 * 1024;
+
 function sha256(content: string): string {
   return crypto.createHash("sha256").update(content).digest("hex");
 }
@@ -61,11 +75,13 @@ export class SyncCompiler {
     private readonly paths: MordomoPaths,
     private readonly getSettings: () => Settings,
     private readonly listSkills: () => Skill[],
-    private readonly getManifests: () => ProviderManifest[] = builtinManifests,
+    /** The registered providers' manifests (`ProviderRegistry.manifests`). */
+    private readonly getManifests: () => ProviderManifest[],
   ) {}
 
   private loadManifest(): Manifest {
     try {
+      // The engine's own file in config/ (the one place the safe-read scope refuses by design).
       return JSON.parse(fs.readFileSync(this.paths.syncManifest, "utf8")) as Manifest;
     } catch {
       return {};
@@ -121,7 +137,14 @@ export class SyncCompiler {
           for (const res of skill.resources) {
             files.push({
               filePath: path.join(targetDir, m.layout.skillsDir, skill.slug, res),
-              content: fs.readFileSync(path.join(skill.dir, res), "utf8"),
+              content: readWorkspaceText(
+                homeReadScope(this.paths.home, [this.paths.skills]),
+                path.join(skill.dir, res),
+                {
+                  maxBytes: MAX_SYNC_FILE_BYTES,
+                  strict: true,
+                },
+              ).text,
               provider: m.id,
             });
           }
@@ -143,9 +166,31 @@ export class SyncCompiler {
   plan(targetDir: string): SyncPlan {
     const manifest = this.loadManifest();
     const actions: SyncAction[] = [];
+    // The files already in the target are read through the safe-read primitive: one of them may be a link
+    // to the owner's token, and the plan shows its content as a diff.
+    const scope = grantedReadScope(this.getSettings(), this.paths.home);
     for (const desired of this.desiredFiles(targetDir)) {
-      const exists = fs.existsSync(desired.filePath);
-      if (!exists) {
+      let current: string | null = null;
+      try {
+        current = readWorkspaceText(scope, desired.filePath, {
+          maxBytes: MAX_SYNC_FILE_BYTES,
+          strict: true,
+        }).text;
+      } catch (err) {
+        if (isUnreadableTarget(err)) {
+          actions.push({
+            filePath: desired.filePath,
+            kind: "conflict",
+            provider: desired.provider,
+            reason: `The existing file is not read: ${(err as Error).message}`,
+            diff: null,
+            newContent: desired.content,
+          });
+          continue;
+        }
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      }
+      if (current === null) {
         actions.push({
           filePath: desired.filePath,
           kind: "create",
@@ -156,7 +201,6 @@ export class SyncCompiler {
         });
         continue;
       }
-      const current = fs.readFileSync(desired.filePath, "utf8");
       if (current === desired.content) {
         actions.push({
           filePath: desired.filePath,
@@ -204,6 +248,7 @@ export class SyncCompiler {
     const written: string[] = [];
     const skippedConflicts: string[] = [];
     let backupDir: string | null = null;
+    const scope = grantedReadScope(this.getSettings(), this.paths.home);
 
     for (const action of plan.actions) {
       if (action.kind === "unchanged") {
@@ -214,16 +259,38 @@ export class SyncCompiler {
         skippedConflicts.push(action.filePath);
         continue;
       }
-      if (fs.existsSync(action.filePath)) {
+      // A write follows a link wherever it points: a target that is a link, or outside the granted
+      // folders, is skipped (it shows as a conflict in the plan) instead of being overwritten.
+      let existing: Buffer | null = null;
+      try {
+        assertWritablePath(scope, action.filePath);
+        existing = readWorkspaceFile(scope, action.filePath, {
+          maxBytes: MAX_SYNC_FILE_BYTES,
+          strict: true,
+        }).bytes;
+      } catch (err) {
+        if (isUnreadableTarget(err)) {
+          skippedConflicts.push(action.filePath);
+          continue;
+        }
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      }
+      if (existing !== null) {
         if (!backupDir) {
           backupDir = path.join(this.paths.backups, `sync-${new Date().toISOString().replace(/[:.]/g, "-")}`);
         }
         const backupPath = path.join(backupDir, sanitizeForBackup(action.filePath));
         fs.mkdirSync(path.dirname(backupPath), { recursive: true });
-        fs.copyFileSync(action.filePath, backupPath);
+        fs.writeFileSync(backupPath, existing, { mode: 0o600 });
       }
-      fs.mkdirSync(path.dirname(action.filePath), { recursive: true });
-      fs.writeFileSync(action.filePath, action.newContent, "utf8");
+      try {
+        writeWorkspaceFile(scope, action.filePath, action.newContent);
+      } catch (err) {
+        // The target became a link, or a second name for a private file, since it was read.
+        if (!(err instanceof PathAccessError)) throw err;
+        skippedConflicts.push(action.filePath);
+        continue;
+      }
       manifest[action.filePath] = sha256(action.newContent);
       written.push(action.filePath);
     }
@@ -233,11 +300,14 @@ export class SyncCompiler {
 
   private routerBody(): string {
     const routerPath = path.join(this.paths.memory, "ROUTER.md");
-    if (fs.existsSync(routerPath)) {
-      return fs
-        .readFileSync(routerPath, "utf8")
-        .replace(/^<!--.*?-->\n?/s, "")
+    try {
+      return readWorkspaceText(homeReadScope(this.paths.home, [this.paths.memory]), routerPath, {
+        maxBytes: MAX_SYNC_FILE_BYTES,
+      })
+        .text.replace(/^<!--.*?-->\n?/s, "")
         .trim();
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT" && !isUnreadableTarget(err)) throw err;
     }
     return "_No memory routers generated yet. Open MordomoOS → Second Brain → Refresh index._";
   }
@@ -328,6 +398,13 @@ export class SyncCompiler {
       ].join("\n") + "\n"
     );
   }
+}
+
+/** A target the scope will not read (a link out of the granted folders, a directory, a huge file). */
+function isUnreadableTarget(err: unknown): boolean {
+  return (
+    err instanceof PathAccessError || err instanceof NotRegularFileError || err instanceof FileTooLargeError
+  );
 }
 
 function oneLine(text: string): string {

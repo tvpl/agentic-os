@@ -1,0 +1,12 @@
+{
+  "id": 12,
+  "type": "approval.resolved",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "id": "a1",
+    "kind": "write_run",
+    "status": "approved",
+    "runId": "3f1d2c4a-0b7e-4c1a-9a55-2b6d8e0f1a11"
+  }
+}

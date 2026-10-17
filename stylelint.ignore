@@ -1,0 +1,4 @@
+# Deliberately empty. `lint:css` and lint-staged pass `--ignore-path stylelint.ignore` so that no other
+# ignore list applies to them: not a `.stylelintignore` in the working directory, and not `.gitignore`
+# (which names dist, build, coverage and test-results, where a stray stylesheet would be skipped).
+# The C5/C6 tests in apps/command-centre/src/typography.test.ts fail if a pattern is added here.

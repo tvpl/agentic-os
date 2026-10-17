@@ -39,7 +39,7 @@ test("interactive journey visits real apps, practices safely and hands off a dra
     // (Settings writes are the tour's own bookkeeping.)
     if (
       request.url().includes("/api/") &&
-      !request.url().includes("/api/settings") &&
+      !request.url().includes("/api/v1/settings") &&
       ["POST", "PUT", "DELETE", "PATCH"].includes(request.method())
     )
       writes.push(request.url());
@@ -139,7 +139,7 @@ test("interactive journey visits real apps, practices safely and hands off a dra
 test("mobile, Portuguese, reduced motion, keyboard and accessible welcome", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.route("**/api/meta", async (route) => {
+  await page.route("**/api/v1/meta", async (route) => {
     const response = await route.fetch();
     await route.fulfill({ response, json: { ...(await response.json()), language: "pt-BR" } });
   });

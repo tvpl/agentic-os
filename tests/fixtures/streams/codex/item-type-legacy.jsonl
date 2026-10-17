@@ -1,0 +1,11 @@
+{"type":"thread.started","thread_id":"019a0c2e-7d41-7b20-9c3e-5f6a7b8c9d0e"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","item_type":"reasoning","text":"**Listing the files**"}}
+{"type":"item.started","item":{"id":"item_1","item_type":"command_execution","command":"bash -lc ls","aggregated_output":"","status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","item_type":"command_execution","command":"bash -lc ls","aggregated_output":"README.md\nsrc\n","exit_code":0,"status":"completed"}}
+{"type":"item.started","item":{"id":"item_2","item_type":"file_change","changes":[{"path":"/home/owner/project/README.md","kind":"update"}],"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","item_type":"file_change","changes":[{"path":"/home/owner/project/README.md","kind":"update"}],"status":"completed"}}
+{"type":"item.started","item":{"id":"item_3","item_type":"mcp_tool_call","server":"mordomo","tool":"search","arguments":{"q":"notes"},"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_3","item_type":"mcp_tool_call","server":"mordomo","tool":"search","arguments":{"q":"notes"},"result":{"content":[{"type":"text","text":"2 hits"}],"structured_content":null},"status":"failed","error":{"message":"server closed"}}}
+{"type":"item.completed","item":{"id":"item_4","item_type":"agent_message","text":"Updated the README."}}
+{"type":"turn.completed","usage":{"input_tokens":2400,"cached_input_tokens":1800,"cache_write_input_tokens":0,"output_tokens":310,"reasoning_output_tokens":120}}

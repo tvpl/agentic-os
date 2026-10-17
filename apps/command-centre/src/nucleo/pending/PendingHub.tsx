@@ -10,6 +10,7 @@ import { useT } from "../../i18n";
 import type { Pending } from "./usePending";
 import type { PendingItem } from "./model";
 import { describePending } from "./describe";
+import { Tooltip } from "../../ui";
 
 const TICK_MS = 4200;
 const SLIP_MS = 6500;
@@ -66,21 +67,22 @@ export default function PendingHub({ pending, onOpen }: { pending: Pending; onOp
     pending.count > 0 ? t("nucleo.pending.count", { n: pending.count }) : t("nucleo.pending.none");
   return (
     <div className="nu-hub" data-level={level ?? "clear"}>
-      <button
-        type="button"
-        className="nu-hub-beacon"
-        onClick={onOpen}
-        aria-label={`${t("nucleo.pending.open")} · ${label}`}
-        title={t("nucleo.pending.open")}
-        data-testid="pending-hub"
-      >
-        <svg viewBox="0 0 48 48" aria-hidden className="nu-hub-ring">
-          <circle cx="24" cy="24" r="21" className="track" />
-          <circle cx="24" cy="24" r="21" className="arc" />
-          <circle cx="24" cy="24" r="15" className="inner" />
-        </svg>
-        <span className="nu-hub-n mono">{pending.count > 0 ? pending.count : "✓"}</span>
-      </button>
+      <Tooltip label={t("nucleo.pending.open")}>
+        <button
+          type="button"
+          className="nu-hub-beacon"
+          onClick={onOpen}
+          aria-label={`${t("nucleo.pending.open")} · ${label}`}
+          data-testid="pending-hub"
+        >
+          <svg viewBox="0 0 48 48" aria-hidden className="nu-hub-ring">
+            <circle cx="24" cy="24" r="21" className="track" />
+            <circle cx="24" cy="24" r="21" className="arc" />
+            <circle cx="24" cy="24" r="15" className="inner" />
+          </svg>
+          <span className="nu-hub-n mono">{pending.count > 0 ? pending.count : "✓"}</span>
+        </button>
+      </Tooltip>
       <button type="button" className="nu-hub-text" onClick={onOpen} tabIndex={-1} aria-hidden>
         <span className="nu-hub-k">{t("nucleo.pending.title")}</span>
         <span className="nu-hub-tick" key={shown?.id ?? "none"}>

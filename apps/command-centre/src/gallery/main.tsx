@@ -6,23 +6,43 @@
  *
  * Open with `npm run gallery` (Vite dev) or `/gallery.html?theme=light` on the
  * built app (`&preset=forest|ocean|mono` picks a theme preset). Each story section has a stable `#story-<id>` for screenshots.
+ *
+ * The first sections show the primitives bare (theme.css); `nucleo-layer` and
+ * `frame-layer` show the same primitives inside the two interfaces, each with
+ * the stylesheet that dresses them there (luz.css, moldura.css).
  */
 import { StrictMode, useMemo, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Bell, Play, Sparkles, Trash2 } from "lucide-react";
+import { Bell, Copy, Pencil, Play, Sparkles, Trash2 } from "lucide-react";
 import "../theme.css";
+import "../ui/ui.css";
 import "../desktop/desktop.css";
 import "../nucleo/nucleo.css";
+import "../nucleo/luz.css";
+import "../moldura/moldura.css";
 import "./gallery.css";
 import { I18nContext, type Lang } from "../i18n";
 import { qk } from "../queries";
 import { applyAccentTokens, applyPreset, isPresetId } from "../theme";
-import { ToastProvider, Modal, StatusBadge, Skeleton, useToast } from "../components/ui";
-import { Badge, Button, EmptyState, Field, Popover, Segmented, Tabs } from "../components/primitives";
+import { ToastProvider, StatusBadge, Skeleton, useToast } from "../components/ui";
+import { Badge, Button, EmptyState, Field, Segmented } from "../components/primitives";
+import {
+  DropdownMenu,
+  Modal,
+  Popover,
+  Switch,
+  Tabs,
+  Tooltip,
+  UiProvider,
+  type TabItem,
+  type TabsVariant,
+} from "../ui";
 import { CommandPalette } from "../components/CommandPalette";
 import { ShortcutsHelp } from "../components/ShortcutsHelp";
+import { CommandsProvider } from "../commands/registry";
+import { useGlobalCommands, type GlobalCommandsOptions } from "../commands/global";
 import { ConfirmProvider, useConfirm } from "../hooks/useConfirm";
 import { NotificationsProvider, useNotifications } from "../hooks/useNotifications";
 import type { ArtifactEntry, Meta, Metrics, RoutineStatus, RunRecord, Skill } from "../api";
@@ -44,7 +64,7 @@ const skills: Skill[] = ["workspace-digest", "code-review", "daily-tech-news", "
     inputs: [],
     providers: ["claude", "cursor", "codex"],
     recommendedModel: i % 2 ? "claude-sonnet-5" : null,
-    recommendedEffort: ["low", "medium", "high", "default"][i % 4]!,
+    recommendedEffort: (["low", "medium", "high", "default"] as const)[i % 4]!,
     mode: i === 1 ? "write" : "read_only",
     enabled: true,
     version: "1.0.0",
@@ -114,8 +134,39 @@ const routines: RoutineStatus[] = [
     createdAt: NOW - 86_400_000 * 30,
   },
 ];
+/** A gallery run: the fields the cards show, the rest of the contract at its neutral value. */
+const run = (
+  fields: Partial<RunRecord> & Pick<RunRecord, "id" | "status" | "origin" | "provider">,
+): RunRecord => ({
+  createdAt: NOW,
+  startedAt: null,
+  finishedAt: null,
+  model: null,
+  effort: "default",
+  exitCode: null,
+  durationMs: null,
+  cwd: null,
+  promptSummary: "",
+  request: null,
+  skillSlug: null,
+  routineId: null,
+  maxCostUsd: null,
+  parentRunId: null,
+  sessionId: null,
+  pid: null,
+  error: null,
+  failure: null,
+  artifacts: [],
+  filesChanged: [],
+  attempts: 1,
+  timeoutMs: null,
+  permissionProfile: null,
+  startedBy: null,
+  usage: null,
+  ...fields,
+});
 const runs: RunRecord[] = [
-  {
+  run({
     id: "11111111-1111-4111-8111-111111111111",
     createdAt: NOW - 120_000,
     finishedAt: null,
@@ -130,8 +181,8 @@ const runs: RunRecord[] = [
     error: null,
     artifacts: [],
     exitCode: null,
-  },
-  {
+  }),
+  run({
     id: "22222222-2222-4222-8222-222222222222",
     createdAt: NOW - 3_600_000,
     finishedAt: NOW - 3_500_000,
@@ -146,8 +197,8 @@ const runs: RunRecord[] = [
     error: null,
     artifacts: ["digest.md"],
     exitCode: 0,
-  },
-  {
+  }),
+  run({
     id: "33333333-3333-4333-8333-333333333333",
     createdAt: NOW - 7_200_000,
     finishedAt: NOW - 7_100_000,
@@ -162,7 +213,7 @@ const runs: RunRecord[] = [
     error: "Provider exited with code 1.",
     artifacts: [],
     exitCode: 1,
-  },
+  }),
 ];
 const metrics: Metrics = {
   total: 42,
@@ -339,6 +390,163 @@ function Dialogs() {
   );
 }
 
+/** A dialog drawn in place (the real Modal portals to the page and traps focus), for the layer stories. */
+function StaticDialog({ title, idPrefix }: { title: string; idPrefix: string }) {
+  return (
+    <div className="modal narrow story-dialog" role="dialog" aria-label={title}>
+      <div className="modal-head">
+        <h2>{title}</h2>
+      </div>
+      <Field label="Name" htmlFor={`${idPrefix}-name`}>
+        <input id={`${idPrefix}-name`} className="input" defaultValue="Weekly report" />
+      </Field>
+      <div className="modal-actions">
+        <Button variant="secondary">Cancel</Button>
+        <Button variant="primary">Save</Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * An open menu and a visible hint drawn in place. The real ones are portaled and
+ * placed by Radix on open, so a screenshot would need a pointer; these are the
+ * same markup and classes, with the first item highlighted as the arrow keys leave it.
+ */
+function StaticMenu({ label }: { label: string }) {
+  return (
+    <div className="ui-menu story-menu" role="menu" aria-label={label}>
+      <div className="ui-menu-item" role="menuitem" data-highlighted="">
+        <Pencil aria-hidden />
+        Rename
+      </div>
+      <div className="ui-menu-item" role="menuitem">
+        <Copy aria-hidden />
+        Duplicate
+      </div>
+      <div className="ui-menu-item" role="menuitem" aria-disabled="true" data-disabled="">
+        <Trash2 aria-hidden />
+        Delete
+      </div>
+    </div>
+  );
+}
+
+function StaticTip({ children }: { children: ReactNode }) {
+  return (
+    <span className="ui-tip story-tip" role="tooltip">
+      {children}
+    </span>
+  );
+}
+
+/** A tab strip with the panel its active tab opens: a tab always points at a panel that exists. */
+function TabsDemo({
+  id,
+  label,
+  tabs,
+  variant,
+  orientation,
+}: {
+  id: string;
+  label: string;
+  tabs: TabItem[];
+  variant?: TabsVariant;
+  orientation?: "horizontal" | "vertical";
+}) {
+  const [active, setActive] = useState(tabs[0]!.id);
+  return (
+    <div className="story-tabs">
+      <Tabs
+        id={id}
+        ariaLabel={label}
+        variant={variant}
+        orientation={orientation}
+        active={active}
+        onChange={setActive}
+        tabs={tabs}
+      >
+        <p>The {active} panel.</p>
+      </Tabs>
+    </div>
+  );
+}
+
+const tabsOf = (...ids: string[]): TabItem[] => ids.map((id) => ({ id, label: id }));
+
+/** Switch, a tab strip, an open menu and a hint: the Radix primitives, as a layer dresses them. */
+function LayerRadix({ idPrefix }: { idPrefix: string }) {
+  const [on, setOn] = useState(true);
+  return (
+    <>
+      <Row label="switch">
+        <Switch
+          checked={on}
+          onCheckedChange={setOn}
+          aria-label="Run on schedule"
+          data-testid={`${idPrefix}-switch`}
+        />
+        <Switch checked={false} onCheckedChange={() => undefined} aria-label="Off" />
+        <Switch checked disabled onCheckedChange={() => undefined} aria-label="Locked on" />
+      </Row>
+      <Row label="tabs">
+        <TabsDemo id={`${idPrefix}-tabs`} label="Run views" tabs={tabsOf("runs", "events", "output")} />
+      </Row>
+      <Row label="menu">
+        <StaticMenu label={`${idPrefix} actions`} />
+      </Row>
+      <Row label="tooltip">
+        <Button variant="ghost" icon={<Trash2 aria-hidden />} aria-label="Delete run" />
+        <StaticTip>Delete run</StaticTip>
+      </Row>
+    </>
+  );
+}
+
+/** What a layer draws with the shared primitives: buttons, badges, a field and a dialog. */
+function LayerPrimitives({ idPrefix }: { idPrefix: string }) {
+  return (
+    <div className="story-body">
+      <Row label="buttons">
+        {(["primary", "secondary", "ghost", "danger"] as const).map((variant) => (
+          <Button key={variant} variant={variant}>
+            {variant}
+          </Button>
+        ))}
+        <Button variant="secondary" icon={<Play aria-hidden />}>
+          With icon
+        </Button>
+        <Button variant="secondary" disabled>
+          Disabled
+        </Button>
+      </Row>
+      <Row label="badges">
+        {(["ok", "warn", "danger", "info", "accent", "dim"] as const).map((tone) => (
+          <Badge key={tone} kind="state" tone={tone}>
+            {tone}
+          </Badge>
+        ))}
+        <Badge kind="meta">18 lines</Badge>
+      </Row>
+      <Row label="field">
+        <Field label="Cron" htmlFor={`${idPrefix}-cron`} hint="Shown in the launcher.">
+          <input id={`${idPrefix}-cron`} className="input mono" defaultValue="30 7 * * 1-5" />
+        </Field>
+      </Row>
+      <LayerRadix idPrefix={idPrefix} />
+      <Row label="dialog">
+        <StaticDialog title="New skill" idPrefix={idPrefix} />
+      </Row>
+    </div>
+  );
+}
+
+/** The palette and the sheet list what the registry holds: the global commands, as the shell registers them. */
+function GalleryCommands(props: GlobalCommandsOptions) {
+  useGlobalCommands(props);
+  return null;
+}
+
 function Overlays() {
   const [pop, setPop] = useState(false);
   const [palette, setPalette] = useState(false);
@@ -368,17 +576,25 @@ function Overlays() {
         </Popover>
       </Row>
       <Row label="palette">
-        <Button onClick={() => setPalette(true)}>Command palette</Button>
-        <Button onClick={() => setHelp(true)}>Shortcuts sheet</Button>
-        {palette && (
-          <CommandPalette
-            meta={META}
-            onClose={() => setPalette(false)}
+        <CommandsProvider>
+          <GalleryCommands
+            shell="nucleo"
+            openPalette={() => setPalette(true)}
+            openHelp={() => setHelp(true)}
             onMetaChanged={() => undefined}
-            onShortcuts={() => setHelp(true)}
           />
-        )}
-        {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
+          <Button onClick={() => setPalette(true)}>Command palette</Button>
+          <Button onClick={() => setHelp(true)}>Shortcuts sheet</Button>
+          {palette && (
+            <CommandPalette
+              meta={META}
+              onClose={() => setPalette(false)}
+              onMetaChanged={() => undefined}
+              onShortcuts={() => setHelp(true)}
+            />
+          )}
+          {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
+        </CommandsProvider>
       </Row>
       <Row label="notifications">
         <Button
@@ -398,9 +614,62 @@ function Overlays() {
   );
 }
 
+function Primitives() {
+  const [on, setOn] = useState(true);
+  return (
+    <>
+      <Row label="switch">
+        <Switch checked={on} onCheckedChange={setOn} aria-label="Run on schedule" />
+        <Switch checked={!on} onCheckedChange={(v) => setOn(!v)} aria-label="Paused" />
+        <Switch checked disabled onCheckedChange={() => undefined} aria-label="Locked on" />
+        <Switch checked={false} disabled onCheckedChange={() => undefined} aria-label="Locked off" />
+      </Row>
+      <Row label="tabs line">
+        <TabsDemo id="g-prim-line" label="Run views" tabs={tabsOf("runs", "events", "output")} />
+      </Row>
+      <Row label="tabs list">
+        <TabsDemo
+          id="g-prim-list"
+          label="Settings sections"
+          variant="list"
+          orientation="vertical"
+          tabs={[
+            { id: "identity", label: "identity", group: "Workspace" },
+            { id: "providers", label: "providers" },
+            { id: "memory", label: "memory", group: "Data" },
+          ]}
+        />
+      </Row>
+      <Row label="tabs pill">
+        <TabsDemo
+          id="g-prim-pill"
+          label="Run scene"
+          variant="pill"
+          tabs={tabsOf("scene", "timeline", "files")}
+        />
+      </Row>
+      <Row label="menu">
+        <DropdownMenu
+          trigger={<Button variant="secondary">Actions</Button>}
+          items={[
+            { id: "rename", label: "Rename", icon: <Pencil aria-hidden />, onSelect: () => undefined },
+            { id: "copy", label: "Duplicate", icon: <Copy aria-hidden />, onSelect: () => undefined },
+          ]}
+        />
+        <StaticMenu label="Open menu" />
+      </Row>
+      <Row label="tooltip">
+        <Tooltip label="Delete run">
+          <Button variant="ghost" icon={<Trash2 aria-hidden />} aria-label="Delete run" />
+        </Tooltip>
+        <StaticTip>Delete run</StaticTip>
+      </Row>
+    </>
+  );
+}
+
 function Gallery() {
   const [seg, setSeg] = useState("rings");
-  const [tab, setTab] = useState("identity");
   return (
     <main className="gallery">
       <header className="gallery-head">
@@ -495,12 +764,10 @@ function Gallery() {
           />
         </Row>
         <Row label="tabs">
-          <Tabs
+          <TabsDemo
             id="g-tabs"
-            ariaLabel="Settings"
-            active={tab}
-            onChange={setTab}
-            tabs={["identity", "providers", "memory", "security"].map((id) => ({ id, label: id }))}
+            label="Settings"
+            tabs={tabsOf("identity", "providers", "memory", "security")}
           />
         </Row>
       </Story>
@@ -525,6 +792,13 @@ function Gallery() {
 
       <Story id="overlays" title="Popover, command palette, shortcuts, notifications">
         <Overlays />
+      </Story>
+
+      <Story id="primitives" title="Switch, tabs, menu and tooltip">
+        {/* The page also holds the Núcleo's layer, whose glass would reach this story: it shows the default. */}
+        <div className="ui-material-default">
+          <Primitives />
+        </div>
       </Story>
 
       <Story id="widgets" title="Instruments as lâminas">
@@ -556,6 +830,22 @@ function Gallery() {
         </div>
       </Story>
 
+      <Story id="nucleo-layer" title="Núcleo layer">
+        <div className="nu-shell story-layer">
+          <div className="nu-scene luz story-layer-scene">
+            <LayerPrimitives idPrefix="g-nu" />
+          </div>
+        </div>
+      </Story>
+
+      <Story id="frame-layer" title="App frame layer">
+        <div className="mold story-layer" data-shell="moldura">
+          <div className="story-layer-scene">
+            <LayerPrimitives idPrefix="g-fr" />
+          </div>
+        </div>
+      </Story>
+
       <Story id="now" title="Now panel">
         <div className="story-now">
           <NowPanel />
@@ -580,15 +870,17 @@ function Root() {
   return (
     <QueryClientProvider client={client}>
       <I18nContext.Provider value={i18n}>
-        <ToastProvider>
-          <ConfirmProvider>
-            <NotificationsProvider>
-              <HashRouter>
-                <Gallery />
-              </HashRouter>
-            </NotificationsProvider>
-          </ConfirmProvider>
-        </ToastProvider>
+        <UiProvider>
+          <ToastProvider>
+            <ConfirmProvider>
+              <NotificationsProvider>
+                <HashRouter>
+                  <Gallery />
+                </HashRouter>
+              </NotificationsProvider>
+            </ConfirmProvider>
+          </ToastProvider>
+        </UiProvider>
       </I18nContext.Provider>
     </QueryClientProvider>
   );

@@ -440,4 +440,85 @@ CREATE INDEX IF NOT EXISTS idx_objective_steps_run ON objective_steps(run_id);
 `);
     },
   },
+  {
+    version: 16,
+    name: "approval-resolved-by",
+    // Who decided an approval (api-v1 door 6). Rows decided before keep NULL.
+    up(db) {
+      if (!hasColumn(db, "approvals", "resolved_by")) {
+        db.exec("ALTER TABLE approvals ADD COLUMN resolved_by TEXT");
+      }
+    },
+  },
+  {
+    version: 17,
+    name: "device-scopes-and-who-asked",
+    // escopos-dispositivo (doors 1 and 3): what a paired device may do (a JSON list; NULL reads as the default, so
+    // devices paired before keep working inside it), who asked for an approval and who started a run (the principal's
+    // name, no key: a revoked device's rows stay). Every column is nullable and rows already there keep NULL.
+    up(db) {
+      if (!hasColumn(db, "devices", "scopes")) db.exec("ALTER TABLE devices ADD COLUMN scopes TEXT");
+      if (!hasColumn(db, "approvals", "requested_by")) {
+        db.exec("ALTER TABLE approvals ADD COLUMN requested_by TEXT");
+      }
+      if (!hasColumn(db, "runs", "started_by")) db.exec("ALTER TABLE runs ADD COLUMN started_by TEXT");
+    },
+  },
+  {
+    version: 18,
+    name: "push-subscription-device",
+    // escopos-dispositivo, round 1: which paired device registered a push subscription (the device id, no key: a
+    // revoked device's rows are deleted with it). NULL is the owner's, and what was subscribed before this existed.
+    up(db) {
+      if (!hasColumn(db, "push_subscriptions", "device_id")) {
+        db.exec("ALTER TABLE push_subscriptions ADD COLUMN device_id TEXT");
+      }
+    },
+  },
+  {
+    version: 19,
+    name: "run-action-receipt-requester",
+    // escopos-dispositivo, round 1: who a retry receipt belongs to, so a replay hands a run back only to the principal
+    // that made it. Receipts from before have none and replay for nobody (they were one-shot idempotency keys).
+    up(db) {
+      if (!hasColumn(db, "run_action_receipts", "requested_by")) {
+        db.exec("ALTER TABLE run_action_receipts ADD COLUMN requested_by TEXT");
+      }
+    },
+  },
+  {
+    version: 20,
+    name: "note-links",
+    // cerebro-v2, door 1: what each Markdown file says about other files, as text. Which file a target is, is decided
+    // when somebody asks, so nothing here changes when a file appears, moves or goes. Created empty: the first index
+    // pass after this migration fills it from the content the index already holds (no file is read again).
+    sql: `
+CREATE TABLE IF NOT EXISTS note_links (
+  src_id INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  target TEXT NOT NULL,
+  label TEXT,
+  line INTEGER NOT NULL,
+  PRIMARY KEY (src_id, kind, target, line)
+);
+CREATE INDEX IF NOT EXISTS idx_note_links_target ON note_links(kind, target);
+`,
+  },
+  {
+    version: 21,
+    name: "file-vectors",
+    // cerebro-v2, door 2: at most one embedding per indexed file, as a plain BLOB (Float32 little-endian, L2 norm 1)
+    // with the provider that made it, its length, and the size and mtime of the file it was made from. Not a `vec0`
+    // virtual table: that fixes the dimension in the schema and would make the sqlite-vec extension mandatory.
+    sql: `
+CREATE TABLE IF NOT EXISTS file_vectors (
+  file_id INTEGER PRIMARY KEY,
+  provider TEXT NOT NULL,
+  dim INTEGER NOT NULL,
+  vec BLOB NOT NULL,
+  mtime INTEGER NOT NULL,
+  size INTEGER NOT NULL
+);
+`,
+  },
 ];

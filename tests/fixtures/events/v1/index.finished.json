@@ -1,0 +1,18 @@
+{
+  "id": 9,
+  "type": "index.finished",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "stats": {
+      "scanned": 400,
+      "added": 3,
+      "updated": 1,
+      "removed": 0,
+      "skippedExcluded": 12,
+      "skippedBinary": 2,
+      "related": 30,
+      "durationMs": 850
+    }
+  }
+}

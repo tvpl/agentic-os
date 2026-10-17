@@ -66,7 +66,8 @@ export class FsWatchSentinel {
     if (!settings.sentinels.fsWatch.enabled) return;
     this.running = true;
     const watch = this.deps.watch ?? fs.watch;
-    const filter = makeWorkspaceFilter(settings.excludes);
+    // Names only: the watcher reads no bytes (it re-indexes, and the indexer reads through the safe-read primitive).
+    const filter = makeWorkspaceFilter(settings.excludes, { homeDir: null });
     for (const folder of settings.indexedFolders.filter((f) => f.enabled)) {
       const root = path.resolve(folder.path);
       if (this.watchers.has(root)) continue;

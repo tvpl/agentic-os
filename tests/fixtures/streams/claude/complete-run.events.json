@@ -1,0 +1,95 @@
+[
+  {
+    "type": "session",
+    "providerSessionId": "9a3c1e2f-5b7d-4c8e-9f10-2a3b4c5d6e7f"
+  },
+  {
+    "type": "text",
+    "stream": "stdout",
+    "text": "[claude session started: model=claude-sonnet-5]"
+  },
+  {
+    "type": "usage",
+    "scope": "turn",
+    "inputTokens": 12,
+    "outputTokens": 8,
+    "cacheReadTokens": 1000,
+    "cacheWriteTokens": 200,
+    "costUsd": null,
+    "model": "claude-sonnet-5"
+  },
+  {
+    "type": "assistant",
+    "text": "I'll read the notes first."
+  },
+  {
+    "type": "usage",
+    "scope": "turn",
+    "inputTokens": 12,
+    "outputTokens": 30,
+    "cacheReadTokens": 1000,
+    "cacheWriteTokens": 200,
+    "costUsd": null,
+    "model": "claude-sonnet-5"
+  },
+  {
+    "type": "tool_use",
+    "tool": "Read",
+    "detail": "{\"file_path\":\"/home/owner/project/notes.md\"}",
+    "callId": "toolu_01",
+    "phase": "start"
+  },
+  {
+    "type": "usage",
+    "scope": "turn",
+    "inputTokens": 40,
+    "outputTokens": 25,
+    "cacheReadTokens": 1200,
+    "cacheWriteTokens": 0,
+    "costUsd": null,
+    "model": "claude-sonnet-5"
+  },
+  {
+    "type": "tool_use",
+    "tool": "Write",
+    "detail": "{\"file_path\":\"/etc/report.md\",\"content\":\"report\"}",
+    "callId": "toolu_02",
+    "phase": "start"
+  },
+  {
+    "type": "tool_use",
+    "tool": "tool_result",
+    "detail": "\"Claude requested permissions to write to /etc/report.md, but you haven't granted it yet.\"",
+    "callId": "toolu_02",
+    "phase": "end",
+    "outcome": "error"
+  },
+  {
+    "type": "permission",
+    "detail": "Tool call denied or failed: \"Claude requested permissions to write to /etc/report.md, but you haven't granted it yet.\""
+  },
+  {
+    "type": "usage",
+    "scope": "turn",
+    "inputTokens": 60,
+    "outputTokens": 18,
+    "cacheReadTokens": 1400,
+    "cacheWriteTokens": 0,
+    "costUsd": null,
+    "model": "claude-sonnet-5"
+  },
+  {
+    "type": "assistant",
+    "text": "The notes say to ship the report; writing to /etc was not allowed."
+  },
+  {
+    "type": "usage",
+    "scope": "total",
+    "inputTokens": 124,
+    "outputTokens": 81,
+    "cacheReadTokens": 3600,
+    "cacheWriteTokens": 200,
+    "costUsd": 0.0421,
+    "model": "claude-sonnet-5"
+  }
+]

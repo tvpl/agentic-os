@@ -241,7 +241,77 @@ stays client-side, since only the canvas knows what was expanded.
 
 ---
 
-## 7. Where things live
+## 7. Notes, backlinks and the index worker
+
+**Notes.** A note is a `.md` file under `memory/` that you create and edit: in the Second Brain
+(`N`, or "New note" in the palette; "Edit" on the preview of a note), with
+`mordomo note new "<title>"` / `note show <path>` / `note save <path> --base <version>`, through
+`POST /api/memory/notes` and `PUT /api/memory/notes`, or from an agent with the MCP tools `note_create`,
+`note_read` and `note_save`. A new note goes to `memory/notes/<slug>.md` (an area gives it a folder; a name
+that exists gets `-2`, `-3`…). Only the owner's token writes notes: a paired device and the credential of a
+run get `403`. `ROUTER.md`, `areas/` and `journal/` are generated or append-only and are never edited as notes.
+
+Every save names the **version** it read (`baseVersion`, `sha256:` of the exact bytes). If the file changed
+since, the answer is `409 edit_conflict` and nothing is written: the editor offers to load the version on disk
+or to save your text as a copy. The limit is the smaller of `limits.maxIndexedFileBytes` and 1 MiB.
+
+**Backlinks.** The index reads `[[wikilinks]]` (with `|label`, `#heading`, and `![[embeds]]`) and relative
+Markdown links, never the ones inside code blocks, code spans or the front matter. `GET /api/memory/links?id=`
+answers who points at a file and where its own links lead; a link that leads nowhere is listed as broken. A
+name that several files share resolves to the one in the same folder, else the shortest path, else the first
+alphabetically, and the others come back as `alternatives`. Names are compared without regard to case or to how an
+accent is spelled (`[[Édito]]`, `[[édito]]` and a file the system stored as `E` plus a combining accent are one name;
+without the accent it is another). **Renaming a note never rewrites other files**: the
+links that pointed at the old name show as broken in their sources until you fix them (or rename it back).
+
+**The index worker.** The pass that scans, reads, indexes, links and relates the files runs in a
+`worker_thread` with its own database connection (memory limit 512 MB), so the service keeps answering while
+it works. It reads through the same safe reader and the same filter as before (`config/`, `logs/`, secret names
+and your excludes are never indexed), takes the shared restore lock for as long as it runs (a restore refuses
+to start under it, and the pass refuses to start under a restore: `409 restore_in_progress`), reports
+`index.started`, `index.progress` (with `phase` and `runId`), `index.finished`, `index.failed` and
+`index.cancelled`, and stops at the next block when you call `POST /api/memory/index/cancel` (or press Cancel in
+the Second Brain). A pass that died with the service is taken up again at the next start; the passes are
+incremental, so what was committed stays. `GET /api/memory/status` says `indexing.mode`: `worker`, or `inline`
+when the worker script is not next to the service (a source checkout).
+
+**Semantic search (optional, off by default).** `GET /api/memory/search` ranks by words (BM25 over the
+full-text index; NUL bytes in `q` are ignored, so a `q` made only of them lists the recent files like an empty one). With `memory.embeddings.enabled` on (`PUT /api/settings`, owner only) the index also keeps one
+vector per Markdown or text file, and a search fuses the two orders (reciprocal rank fusion, k = 60): each hit says
+`via` `text`, `semantic` or `both`, and `mode` is `auto` (the default), `text` or `semantic` (`409 semantic_disabled`
+while the search is off). Nothing is embedded, no extension is loaded and no connection is opened while it is off;
+turning it off deletes the vectors at the next index pass.
+
+- **`provider: "hash"`** (the default once enabled) computes 256 numbers from the spelling of the words, in this
+  process, the same on every machine: no model, no download, no network. It finds a note by the words a question
+  shares with it even when other words of the question are not in the note (which the strict word search misses),
+  but it does **not** understand synonyms: "refund" and "reimbursement" are as far apart as any two words. On the
+  fixed corpus of `tests/fixtures/semantic-corpus.json` (24 notes, 12 questions) the hybrid search puts the right
+  note in the first three for 11 questions and the strict word search (every word of the question) for 5; the one it
+  misses asks for a synonym. **What that number does not show**: a search for _any_ of the words, ranked by BM25,
+  also gets the same 11, so on those questions the gain comes from not requiring every word, and the vectors add
+  nothing to it. What the `hash` vectors do add is measured on `tests/fixtures/semantic-morphology.json`: a question
+  made of the other number of Portuguese `-ção` and `-ão` words ("devoluções" for a note that says "devolução")
+  finds its note by the vectors, and neither the strict nor the any-word search finds it. Meaning (synonyms, a
+  question that shares no word with the note) needs the `http` provider.
+- **`provider: "http"`** sends the text of each indexed `.md` or `.txt` file (the folders you indexed, not only your
+  notes; cut at 8 000 characters, 16 per request) and **the question of every search** in mode `auto` or `semantic`
+  (once there is a vector; mode `text` sends nothing) to `endpoint`, an
+  OpenAI-style `POST` `{ "model", "input": [...] }` answering `{ "data": [{ "embedding": [...] }] }`, which gives real
+  semantics. It is sent only to a loopback address (an embeddings server on this machine) or, with `sendRemote`
+  on, to an `https` address; `model` and `dimensions` (the length of one vector) are required; the key is read from
+  the environment variable named by `apiKeyEnv` (capital letters, digits and `_`, not `MORDOMO_*`; its value goes to the
+  endpoint on every request, so name a key made for it), never from `settings.json`; there are no redirects, a 30-second
+  timeout and an 8 MB cap on the answer. If the endpoint fails, the pass still ends with the word index complete and
+  `GET /api/memory/status` (`semantic.error`) says why; the next pass embeds the rest. This is a network point:
+  `legal/PRIVACY.md` lists it, off by default.
+- **Ranking** uses the `sqlite-vec` extension when it loads (`semantic.backend: "sqlite-vec"`) and the same cosine in
+  JavaScript when it does not (a platform it does not ship for, a missing package): the order is the same, only
+  slower on a very large index. The installer carries the extension for the machine that built it.
+
+---
+
+## 8. Where things live
 
 | File | Role |
 |---|---|
@@ -252,6 +322,10 @@ stays client-side, since only the canvas knows what was expanded.
 | `core/src/memory/facts.ts` | Bi-temporal facts (`facts` table, migration 3) |
 | `core/src/memory/fields.ts` | `key:: value` parsing and `where=` queries |
 | `core/src/memory/indexer.ts` | Incremental index, links, inline fields |
+| `core/src/memory/notes.ts`, `frontMatter.ts` | Create and save notes (guarded replace), front matter |
+| `core/src/memory/linkParser.ts`, `links.ts` | Reading links out of Markdown; backlinks and broken links, resolved when asked |
+| `core/src/memory/indexHost.ts`, `indexWorker.ts`, `indexProtocol.ts` | The pass in a worker thread: host, worker, messages |
+| `core/src/memory/embeddings.ts`, `vectors.ts`, `semantic.ts` | Embedding providers and the endpoint policy; vectors and sqlite-vec ranking; fusion with the words |
 | `apps/api/src/routes/memory.ts` | All endpoints above; installs the journal hooks |
 | `skills/recall/`, `skills/consolidate-memory/` | The agent-facing side |
 | `routines/nightly-consolidation.json` | 03:00, disabled by default, `review_before_write` |

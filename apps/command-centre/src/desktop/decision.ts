@@ -6,7 +6,7 @@
  */
 import type { ApprovalRecord } from "../api";
 import { approvalLabel, approvalTarget } from "../runs/approvals";
-import { humanizeEvent, shortPath, toolInput, type Translate } from "../runs/humanize";
+import { humanizeEvent, shortPath, type Translate } from "../runs/humanize";
 
 /** Pending first, the paused agent (a tool call) before a run not yet launched. */
 export function pendingDecisions(approvals: readonly ApprovalRecord[] | undefined): ApprovalRecord[] {
@@ -102,6 +102,3 @@ export function previewLines(p: EditPreview, max = 12): Array<{ kind: "del" | "a
   if (p.after) for (const l of cut(p.after)) out.push({ kind: "add", text: l });
   return out;
 }
-
-/** Re-exported so the dock has one import. */
-export { toolInput };

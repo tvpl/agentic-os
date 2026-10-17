@@ -12,6 +12,9 @@ const rec = (over: Partial<ApprovalRecord>): ApprovalRecord => ({
   payload: {},
   status: "pending",
   resolvedAt: null,
+  resolvedBy: null,
+  requestedBy: null,
+  expiresAt: 0,
   ...over,
 });
 

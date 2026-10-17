@@ -25,18 +25,17 @@ import {
   type GraphData,
   type GraphNode,
   type IndexProgressPayload,
-  type MemoryPreview,
   type RoutineStatus,
   type Skill,
 } from "../../api";
-import { Popover } from "../../components/primitives";
+import { apiCall } from "../../apiCall";
+import { escapeLayerOpen, getDialogDepth, keyLayerOpen, Popover, Tooltip } from "../../ui";
 import { timeAgo, useToast } from "../../components/ui";
-import { getDialogDepth } from "../../components/dialog";
 import { useWorkspace } from "../../components/Workspace";
 import { useLang, useT, type TKey } from "../../i18n";
 import { useOsEvent } from "../../hooks/useEventStream";
 import { useOsNavigate } from "../../hooks/useViewTransition";
-import { qk, useApiQuery, useInvalidate, useOsSettings, useOsSkills } from "../../queries";
+import { qk, useApiQuery, useInvalidate, useOsSkills, useOsUiPreferences } from "../../queries";
 import { useDesktopActions } from "../../desktop/actions";
 import {
   CONSOLE_DRAFT_EVENT,
@@ -267,7 +266,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
 
   /* ---------- data ---------- */
   const graphQuery = useApiQuery<GraphData>(qk.memoryGraph(GRAPH_PARAMS), GRAPH_PATH);
-  const settingsQuery = useOsSettings();
+  const uiPreferencesQuery = useOsUiPreferences();
   const skillsQuery = useOsSkills();
   const graph = graphQuery.data ?? null;
   const skillSlugs = useMemo(
@@ -303,7 +302,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
     connectors: NO_CONNECTORS,
     ringLabels,
     timeline: cutoff,
-    serverBlob: settingsQuery.data?.brain,
+    serverBlob: uiPreferencesQuery.data?.brain,
     dirty,
   });
   const { ui, uiRef, patch, world, version } = brain;
@@ -471,8 +470,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
         continue;
       }
       inflight.current++;
-      void api
-        .get<MemoryPreview>(`/api/memory/preview?p=${encodeURIComponent(f.path)}`)
+      void apiCall("GET /api/memory/preview", { query: { p: f.path } })
         .then((pv) => EXCERPTS.set(key, pv.kind === "text" && pv.content ? excerptOf(pv.content, 160) : ""))
         .catch(() => EXCERPTS.set(key, ""))
         .finally(() => {
@@ -603,11 +601,16 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
     }
     let cancelled = false;
     setPreview({ node: selNode, content: null, kind: "loading", message: null });
-    void api
-      .get<MemoryPreview>(`/api/memory/preview?p=${encodeURIComponent(selNode.path)}`)
+    void apiCall("GET /api/memory/preview", { query: { p: selNode.path } })
       .then((pv) => {
         if (cancelled) return;
-        setPreview({ node: selNode, content: pv.content, kind: pv.kind, message: pv.message });
+        setPreview({
+          node: selNode,
+          content: pv.content,
+          kind: pv.kind,
+          message: pv.message,
+          editable: pv.editable,
+        });
         if (pv.kind === "text" && pv.content) EXCERPTS.set(excerptKey(selNode), excerptOf(pv.content, 160));
       })
       .catch((err: Error) => {
@@ -687,8 +690,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
     setRelated([]);
     if (!selNode) return;
     let cancelled = false;
-    void api
-      .get<Array<{ file: { id: number }; why: string }>>(`/api/memory/related?id=${selNode.id}`)
+    void apiCall("GET /api/memory/related", { query: { id: selNode.id } })
       .then((res) => {
         if (!cancelled) setRelated(res.map((r) => ({ id: r.file.id, why: r.why })));
       })
@@ -777,10 +779,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
     }
     let cancelled = false;
     const id = window.setTimeout(() => {
-      void api
-        .get<Array<{ id: number; name: string; rel: string }>>(
-          `/api/memory/search?q=${encodeURIComponent(q)}&limit=8`,
-        )
+      void apiCall("GET /api/memory/search", { query: { q: q, limit: 8 } })
         .then((res) => {
           if (!cancelled) setHits(res);
         })
@@ -1047,8 +1046,8 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
     setRefreshing(true);
     void (async () => {
       try {
-        const res = await api.post<{ stats: { scanned: number; added: number } }>("/api/memory/index");
-        await api.post("/api/memory/routers");
+        const res = await apiCall("POST /api/memory/index");
+        await apiCall("POST /api/memory/routers");
         await invalidate(qk.memoryGraph(GRAPH_PARAMS), qk.memoryStatus);
         toast(t("brain.indexed", { n: res.stats.scanned, added: res.stats.added }), "ok");
       } catch (err) {
@@ -1114,10 +1113,10 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
     const next = settingsFromUi(uiRef.current, workspaceOf(world.current));
     saveLocalSettings(next);
     void api
-      .put("/api/settings", { brain: next })
+      .putUiPreferences({ brain: next })
       .then(() => {
         toast(t("brain.savedServer"), "ok");
-        void invalidate(qk.settings);
+        void invalidate(qk.uiPreferences);
       })
       .catch(() => toast(t("brain.savedLocal"), "info"));
   }, [world, uiRef, toast, t, invalidate]);
@@ -1356,7 +1355,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
-      if (escState.current.menuOpen || getDialogDepth() > 0) return; // the popover / a dialog has it
+      if (escState.current.menuOpen || getDialogDepth() > 0 || escapeLayerOpen()) return; // a popover, a hint or a dialog has it
       const target = e.target instanceof Node ? e.target : null;
       const el = target instanceof Element ? target : null;
       if (el?.closest('[role="dialog"], .nu-voice, .nu-laminas')) return;
@@ -1381,7 +1380,7 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
   // Shift+1…4: the four arrangements.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || !e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.defaultPrevented || !e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || keyLayerOpen()) return;
       const m = /^Digit([1-4])$/.exec(e.code);
       if (!m) return;
       const el = e.target instanceof HTMLElement ? e.target : null;
@@ -1493,9 +1492,9 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
   }, [preview, toast, t]);
   const onEditor = useCallback(() => {
     if (!preview) return;
-    void api
-      .post("/api/memory/open", { p: preview.node.path })
-      .catch((e: Error) => toast(e.message, "danger"));
+    void apiCall("POST /api/memory/open", { body: { p: preview.node.path } }).catch((e: Error) =>
+      toast(e.message, "danger"),
+    );
   }, [preview, toast]);
 
   return (
@@ -1633,27 +1632,29 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
             <button type="button" className="bs-tour-btn" onClick={startTour} aria-pressed={tour !== null}>
               {t("scene.brain.tour")} <span aria-hidden>▸</span>
             </button>
-            <button
-              type="button"
-              className="bs-help-btn"
-              aria-label={t("scene.brain.help")}
-              title={t("scene.brain.help")}
-              aria-expanded={help}
-              onClick={toggleHelp}
-            >
-              ?
-            </button>
-            <button
-              ref={moreRef}
-              type="button"
-              className="bs-more"
-              aria-label={t("scene.brain.more")}
-              title={t("scene.brain.more")}
-              aria-expanded={menuOpen}
-              onClick={() => setMenuOpen((v) => !v)}
-            >
-              ⋯
-            </button>
+            <Tooltip label={t("scene.brain.help")}>
+              <button
+                type="button"
+                className="bs-help-btn"
+                aria-label={t("scene.brain.help")}
+                aria-expanded={help}
+                onClick={toggleHelp}
+              >
+                ?
+              </button>
+            </Tooltip>
+            <Tooltip label={t("scene.brain.more")}>
+              <button
+                ref={moreRef}
+                type="button"
+                className="bs-more"
+                aria-label={t("scene.brain.more")}
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((v) => !v)}
+              >
+                ⋯
+              </button>
+            </Tooltip>
           </div>
           {q && (
             <div className="bs-results" data-open={searchFocus || !sheetOpen ? "" : undefined}>
@@ -1804,46 +1805,46 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
             {caption}
           </p>
           <div className="bs-tour-ctl">
-            <button
-              type="button"
-              aria-label={t("scene.brain.tour.prev")}
-              title={t("scene.brain.tour.prev")}
-              disabled={tour.step === 0}
-              onClick={() =>
-                setTour((c) => (c ? { ...c, step: Math.max(0, c.step - 1), playing: false } : c))
-              }
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              aria-label={tour.playing ? t("scene.brain.tour.pause") : t("scene.brain.tour.play")}
-              title={tour.playing ? t("scene.brain.tour.pause") : t("scene.brain.tour.play")}
-              onClick={() => setTour((c) => (c ? { ...c, playing: !c.playing } : c))}
-            >
-              {tour.playing ? "❚❚" : "▶"}
-            </button>
-            <button
-              type="button"
-              aria-label={t("scene.brain.tour.next")}
-              title={t("scene.brain.tour.next")}
-              disabled={tour.step >= tour.plan.stops.length - 1}
-              onClick={() =>
-                setTour((c) =>
-                  c ? { ...c, step: Math.min(c.plan.stops.length - 1, c.step + 1), playing: false } : c,
-                )
-              }
-            >
-              ›
-            </button>
-            <button
-              type="button"
-              aria-label={t("scene.brain.tour.stop")}
-              title={t("scene.brain.tour.stop")}
-              onClick={() => setTour(null)}
-            >
-              ×
-            </button>
+            <Tooltip label={t("scene.brain.tour.prev")}>
+              <button
+                type="button"
+                aria-label={t("scene.brain.tour.prev")}
+                disabled={tour.step === 0}
+                onClick={() =>
+                  setTour((c) => (c ? { ...c, step: Math.max(0, c.step - 1), playing: false } : c))
+                }
+              >
+                ‹
+              </button>
+            </Tooltip>
+            <Tooltip label={tour.playing ? t("scene.brain.tour.pause") : t("scene.brain.tour.play")}>
+              <button
+                type="button"
+                aria-label={tour.playing ? t("scene.brain.tour.pause") : t("scene.brain.tour.play")}
+                onClick={() => setTour((c) => (c ? { ...c, playing: !c.playing } : c))}
+              >
+                {tour.playing ? "❚❚" : "▶"}
+              </button>
+            </Tooltip>
+            <Tooltip label={t("scene.brain.tour.next")}>
+              <button
+                type="button"
+                aria-label={t("scene.brain.tour.next")}
+                disabled={tour.step >= tour.plan.stops.length - 1}
+                onClick={() =>
+                  setTour((c) =>
+                    c ? { ...c, step: Math.min(c.plan.stops.length - 1, c.step + 1), playing: false } : c,
+                  )
+                }
+              >
+                ›
+              </button>
+            </Tooltip>
+            <Tooltip label={t("scene.brain.tour.stop")}>
+              <button type="button" aria-label={t("scene.brain.tour.stop")} onClick={() => setTour(null)}>
+                ×
+              </button>
+            </Tooltip>
           </div>
         </div>
       ) : (
@@ -1859,21 +1860,22 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
                 {dateLabel && <span className="bs-faint"> · {dateLabel}</span>}
                 <span className="bs-faint"> · {t("scene.brain.present", { n: present })}</span>
               </span>
-              <button
-                type="button"
-                className="bs-time-play"
-                aria-label={replaying ? t("scene.brain.pause") : t("scene.brain.play")}
-                title={replaying ? t("scene.brain.pause") : t("scene.brain.play")}
-                onClick={() => {
-                  if (replaying) setReplaying(false);
-                  else {
-                    setDaysAgo(span);
-                    setReplaying(true);
-                  }
-                }}
-              >
-                {replaying ? "❚❚" : "▶"}
-              </button>
+              <Tooltip label={replaying ? t("scene.brain.pause") : t("scene.brain.play")}>
+                <button
+                  type="button"
+                  className="bs-time-play"
+                  aria-label={replaying ? t("scene.brain.pause") : t("scene.brain.play")}
+                  onClick={() => {
+                    if (replaying) setReplaying(false);
+                    else {
+                      setDaysAgo(span);
+                      setReplaying(true);
+                    }
+                  }}
+                >
+                  {replaying ? "❚❚" : "▶"}
+                </button>
+              </Tooltip>
             </div>
             <div className="bs-hist" aria-hidden>
               {hist.map((v, i) => (

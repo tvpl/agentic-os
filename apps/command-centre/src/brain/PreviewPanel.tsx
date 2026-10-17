@@ -5,9 +5,11 @@ import { errorMessage } from "../views/shared";
  * `/skill` token that matches a skill orb highlights that orb — plus the
  * relations card (edges grouped by kind with counts, item 33).
  */
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Copy, ExternalLink, Pin, Sparkles, Terminal, X } from "lucide-react";
-import { api, type MemoryPreview } from "../api";
+import { useEffect, useMemo, useState } from "react";
+import { Copy, ExternalLink, Pencil, Pin, Sparkles, Terminal, X } from "lucide-react";
+
+import { apiCall } from "../apiCall";
+import { Markdown } from "../components/Markdown";
 import { formatBytes, timeAgo, useToast } from "../components/ui";
 import { useOsNavigate } from "../hooks/useViewTransition";
 import {
@@ -17,15 +19,19 @@ import {
   CONSOLE_DRAFT_EVENT,
 } from "../desktop/consoleDraft";
 import { useT } from "../i18n";
+import { LinksSection } from "./LinksSection";
+import { openNoteEditor } from "./noteEditor";
 import { relationsOf } from "./engine/graph";
 import type { EdgeKind, FileNode, World } from "./engine/world";
-import { collectReferences, parseMarkdown, resolveReference, type Block, type Inline } from "./markdown";
+import { collectReferences, parseMarkdown, resolveReference, type Block } from "./markdown";
 
 export interface PreviewState {
   node: FileNode;
   content: string | null;
   kind: string;
   message: string | null;
+  /** The file is a note the owner can edit (`GET /api/memory/preview`). */
+  editable?: boolean;
 }
 
 export interface PreviewPanelProps {
@@ -77,9 +83,7 @@ export function PreviewPanel({
     if (sending) return;
     setSending(true);
     try {
-      const latest = await api.get<MemoryPreview>(
-        `/api/memory/preview?p=${encodeURIComponent(preview.node.path)}`,
-      );
+      const latest = await apiCall("GET /api/memory/preview", { query: { p: preview.node.path } });
       if (latest.kind === "blocked") throw new Error(t("brain.blocked"));
       const base = readConsoleDraft();
       // "Ask for a summary" (refino item 24): the question comes with the file.
@@ -131,148 +135,6 @@ export function PreviewPanel({
   const relations = useMemo(() => relationsOf(world, node.id), [world, node.id]);
   const degree = relations.reduce((s, r) => s + r.count, 0);
 
-  const renderInline = (nodes: Inline[], keyBase = ""): ReactNode[] =>
-    nodes.map((n, i) => {
-      const key = `${keyBase}${i}`;
-      switch (n.type) {
-        case "text":
-          return n.text;
-        case "code":
-          return <code key={key}>{n.text}</code>;
-        case "strong":
-          return <strong key={key}>{renderInline(n.children, key + "s")}</strong>;
-        case "em":
-          return <em key={key}>{renderInline(n.children, key + "e")}</em>;
-        case "skill": {
-          const known = skills.has(n.slug);
-          return known ? (
-            <button
-              key={key}
-              type="button"
-              className="brain-md-chip skill"
-              onClick={() => onSkill(n.slug)}
-              title={t("brain.ring.skills")}
-            >
-              /{n.slug}
-            </button>
-          ) : (
-            <code key={key}>/{n.slug}</code>
-          );
-        }
-        case "path": {
-          const id = resolve(n.text);
-          return id !== null ? (
-            <button
-              key={key}
-              type="button"
-              className="brain-md-link"
-              onClick={() => onSelectId(id, true)}
-              title={t("brain.clickToSelect")}
-            >
-              {n.text}
-            </button>
-          ) : (
-            <span key={key} className="brain-md-dangling" title={t("brain.hygiene.dangling")}>
-              {n.text}
-            </span>
-          );
-        }
-        case "link": {
-          const id = resolve(n.href);
-          if (id !== null) {
-            return (
-              <button
-                key={key}
-                type="button"
-                className="brain-md-link"
-                onClick={() => onSelectId(id, true)}
-                title={n.href}
-              >
-                {n.text}
-              </button>
-            );
-          }
-          if (/^https?:\/\//i.test(n.href)) {
-            return (
-              <a key={key} href={n.href} target="_blank" rel="noreferrer noopener">
-                {n.text}
-              </a>
-            );
-          }
-          return (
-            <span key={key} className="brain-md-dangling" title={n.href}>
-              {n.text}
-            </span>
-          );
-        }
-      }
-    });
-
-  const renderBlocks = (list: Block[]): ReactNode[] =>
-    list.map((b, i) => {
-      switch (b.type) {
-        case "heading": {
-          const level = Math.min(4, b.level + 1);
-          const Tag = `h${level}` as "h2" | "h3" | "h4";
-          return <Tag key={i}>{renderInline(b.children, `h${i}`)}</Tag>;
-        }
-        case "paragraph":
-          return <p key={i}>{renderInline(b.children, `p${i}`)}</p>;
-        case "quote":
-          return <blockquote key={i}>{renderInline(b.children, `q${i}`)}</blockquote>;
-        case "code":
-          return (
-            <pre key={i} className="preview-pre">
-              {b.text}
-            </pre>
-          );
-        case "table":
-          return (
-            <table key={i} className="brain-md-table">
-              <thead>
-                <tr>
-                  {b.header.map((cell, ci) => (
-                    <th key={ci}>{renderInline(cell, `b${i}h${ci}`)}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {b.rows.map((row, ri) => (
-                  <tr key={ri}>
-                    {row.map((cell, ci) => (
-                      <td key={ci}>{renderInline(cell, `b${i}r${ri}c${ci}`)}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          );
-        case "hr":
-          return <hr key={i} />;
-        case "list": {
-          const Tag = b.ordered ? "ol" : "ul";
-          return (
-            <Tag key={i}>
-              {b.items.map((item, j) => (
-                <li key={j} className={item.label ? "labelled" : undefined}>
-                  {item.checked !== null && (
-                    <span
-                      className={`brain-md-task${item.checked ? " done" : ""}`}
-                      aria-label={item.checked ? "done" : "todo"}
-                    />
-                  )}
-                  {item.label && <span className="brain-md-label">{item.label}</span>}
-                  <span className={item.label ? "brain-md-chips" : undefined}>
-                    {renderInline(item.children, `l${i}-${j}`)}
-                  </span>
-                </li>
-              ))}
-            </Tag>
-          );
-        }
-      }
-    });
-
   return (
     <aside className="brain2-preview" aria-label={t("brain.preview")}>
       <div className="brain-preview-head">
@@ -319,6 +181,11 @@ export function PreviewPanel({
         >
           <Sparkles aria-hidden /> {t("brain.summarize")}
         </button>
+        {preview.editable && (
+          <button className="btn sm" onClick={() => openNoteEditor({ mode: "edit", path: node.path })}>
+            <Pencil aria-hidden /> {t("note.edit")}
+          </button>
+        )}
         <button
           className="btn sm"
           onClick={() => {
@@ -333,9 +200,9 @@ export function PreviewPanel({
         <button
           className="btn sm"
           onClick={() =>
-            void api
-              .post("/api/memory/open", { p: node.path })
-              .catch((e: Error) => toast(e.message, "danger"))
+            void apiCall("POST /api/memory/open", { body: { p: node.path } }).catch((e: Error) =>
+              toast(e.message, "danger"),
+            )
           }
         >
           <ExternalLink aria-hidden /> {t("brain.openEditor")}
@@ -371,11 +238,17 @@ export function PreviewPanel({
         </section>
       )}
 
+      {isMarkdown && <LinksSection fileId={node.id} onSelectId={onSelectId} />}
+
       <div className="brain-preview-body">
         {preview.kind === "loading" ? (
           <span className="spinner" aria-hidden />
         ) : blocks ? (
-          <div className="brain-md">{renderBlocks(blocks)}</div>
+          <Markdown
+            blocks={blocks}
+            shape="panel"
+            refs={{ resolve, skills, onNote: (id) => onSelectId(id, true), onSkill }}
+          />
         ) : preview.kind === "text" ? (
           <pre className="preview-pre">{preview.content}</pre>
         ) : (

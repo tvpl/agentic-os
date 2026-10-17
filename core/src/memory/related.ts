@@ -187,8 +187,22 @@ export function relatedFromTerms(
   return out.sort((a, b) => b.score - a.score);
 }
 
-const cache = new Map<string, RelatedEdge[]>();
+/**
+ * One memo per database: the (id, mtime) fingerprint names rows of ONE index, and two databases (two homes, two
+ * engines in a process) hold different content under the same ids and mtimes. Keyed by the `Db` object, the memo is
+ * dropped with it.
+ */
+const caches = new WeakMap<Db, Map<string, RelatedEdge[]>>();
 const CACHE_MAX = 8;
+
+function cacheOf(db: Db): Map<string, RelatedEdge[]> {
+  let cache = caches.get(db);
+  if (!cache) {
+    cache = new Map();
+    caches.set(db, cache);
+  }
+  return cache;
+}
 
 /**
  * Related edges among the given files, computed from the indexed content and
@@ -201,6 +215,7 @@ export function relatedEdges(
 ): RelatedEdge[] {
   if (files.length < 2) return [];
   const key = `${opts.topK ?? ""}|${opts.minSim ?? ""}|${files.map((f) => `${f.id}@${f.mtime}`).join(",")}`;
+  const cache = cacheOf(db);
   const hit = cache.get(key);
   if (hit) return hit;
 
@@ -226,7 +241,7 @@ export function relatedEdges(
   return out;
 }
 
-/** Test hook: drop the memo (the fingerprint already changes with mtime, this is for isolation). */
-export function clearRelatedCache(): void {
-  cache.clear();
+/** Test hook: drop the memo of one database (the fingerprint already changes with mtime, this is for isolation). */
+export function clearRelatedCache(db: Db): void {
+  caches.delete(db);
 }

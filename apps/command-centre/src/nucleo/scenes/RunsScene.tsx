@@ -53,6 +53,7 @@ import { useRiverRuns } from "./runsData";
 import RunsRiver from "./RunsSceneRiver";
 import RunsRun from "./RunsSceneRun";
 import RunsList from "./RunsSceneList";
+import { escapeLayerOpen } from "../../ui";
 import "./runsScene.css";
 
 const COUNT_FILTERS: ReadonlyArray<{ key: "done" | "failed" | "cancelled" | "live"; filter: StatusFilter }> =
@@ -200,9 +201,10 @@ export default function RunsScene(_props: SceneViewProps) {
   // then lets the shell go home. A lâmina that is up goes first (the shell's own Escape).
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented || getLaminas().length > 0) return;
+      if (e.key !== "Escape" || e.defaultPrevented || getLaminas().length > 0 || escapeLayerOpen()) return;
       const el = e.target instanceof Element ? e.target : null;
-      if (el?.closest('[role="dialog"]')) return;
+      // (a dialog that is leaving, `data-state="closed"`, no longer has the key)
+      if (el?.closest('[role="dialog"]:not([data-state="closed"])')) return;
       if (el instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName)) return;
       if (selectedId) {
         e.preventDefault();

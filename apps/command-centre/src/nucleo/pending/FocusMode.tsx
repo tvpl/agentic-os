@@ -9,6 +9,7 @@
  *
  * Keys: ↑/↓ (j/k) choose, A approve, D deny, Enter the primary action, Esc back.
  */
+import { escapeLayerOpen } from "../../ui";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -28,14 +29,14 @@ import {
   LogIn,
   X,
 } from "lucide-react";
-import { api } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useLocale, useT } from "../../i18n";
-import { qk } from "../../queries";
+import { qk, useOsProviders } from "../../queries";
 import { timeAgo, useToast } from "../../components/ui";
 import { useNotifications } from "../../hooks/useNotifications";
 import { useResolveApproval } from "../../runs/ApprovalCards";
+import { ApprovalRequest } from "../../runs/ApprovalRequest";
 import { failureFix } from "../../runs/failureFix";
-import { PROVIDER_LOGIN_COMMANDS } from "../../runs/authRecovery";
 import { useDesktopActions } from "../../desktop/actions";
 import { describeDecision, editPreview, previewLines } from "../../desktop/decision";
 import type { Pending } from "./usePending";
@@ -44,6 +45,7 @@ import { describePending, readingFor } from "./describe";
 import Entity from "../entity/Entity";
 import QuestionCard from "../QuestionCard";
 import { askAbout, refWord, type Subject } from "../subject";
+import { useCommandScope } from "../../commands/registry";
 
 const ICON: Record<PendingKind, ReactNode> = {
   question: <MessageCircleQuestion aria-hidden />,
@@ -54,8 +56,6 @@ const ICON: Record<PendingKind, ReactNode> = {
   routine: <CalendarClock aria-hidden />,
   notice: <Bell aria-hidden />,
 };
-
-export { askAgent } from "../subject";
 
 interface Act {
   key: string;
@@ -81,6 +81,8 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
   const live = useMemo(() => items.filter((i) => i.level !== "info"), [items]);
   const quiet = useMemo(() => items.filter((i) => i.level === "info"), [items]);
   const [selId, setSelId] = useState<string | null>(live[0]?.id ?? null);
+  // A layer over the shell: while it is up, the Núcleo's and the global keys stand down.
+  useCommandScope("overlay");
   const inQuiet = quiet.some((i) => i.id === selId);
   const list = inQuiet ? quiet : live;
   // When the chosen item is resolved, the next one comes forward.
@@ -135,8 +137,11 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
     mutationFn: (ids: string[]) =>
       Promise.all(
         ids.map((id) =>
-          api.post<{ runId: string | null }>(`/api/runs/${encodeURIComponent(id)}/retry`, {
-            submissionId: crypto.randomUUID(),
+          apiCall("POST /api/runs/:id/retry", {
+            params: { id },
+            body: {
+              submissionId: crypto.randomUUID(),
+            },
           }),
         ),
       ),
@@ -345,6 +350,8 @@ export default function FocusMode({ pending, onClose }: { pending: Pending; onCl
       if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key;
+      // A hint or a popover on a control inside the queue takes this Escape first.
+      if (k === "Escape" && escapeLayerOpen()) return;
       let handled = true;
       if (k === "Escape") onClose();
       else if (k === "ArrowDown" || k === "j") {
@@ -504,6 +511,7 @@ function subjectOf(item: PendingItem, title: string): Subject {
 function FocusDetail({ item }: { item: PendingItem }) {
   const t = useT();
   const locale = useLocale();
+  const providers = useOsProviders();
   const text = describePending(item, t);
   const head = (
     <>
@@ -538,6 +546,7 @@ function FocusDetail({ item }: { item: PendingItem }) {
         {d.subject && <code className="nu-focus-subject mono">{d.subject}</code>}
         {d.where && <p className="nu-focus-where mono">{d.where}</p>}
         {a.description && a.description !== d.headline && <p className="nu-focus-p">{a.description}</p>}
+        <ApprovalRequest approval={a} />
         {preview && lines.length > 0 && (
           <div className="nu-focus-diff">
             <p className="mono">
@@ -560,7 +569,7 @@ function FocusDetail({ item }: { item: PendingItem }) {
   }
   if (item.kind === "failure") {
     const r = item.run!;
-    const fix = failureFix(r.failure, r.provider, r.status)?.action;
+    const fix = failureFix(r.failure, r.provider, r.status, providers.data)?.action;
     return (
       <>
         {head}
@@ -585,9 +594,7 @@ function FocusDetail({ item }: { item: PendingItem }) {
   if (item.kind === "provider") {
     const p = item.provider!;
     const cmd =
-      p.problem === "not_installed"
-        ? (p.snapshot.installHint ?? null)
-        : ((PROVIDER_LOGIN_COMMANDS as Record<string, string>)[p.snapshot.id] ?? null);
+      p.problem === "not_installed" ? (p.snapshot.installHint ?? null) : (p.snapshot.loginCommand ?? null);
     return (
       <>
         {head}

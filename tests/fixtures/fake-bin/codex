@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Fake OpenAI Codex CLI for adapter tests (codex exec --json JSONL shapes).
+# Fake OpenAI Codex CLI for adapter tests (codex exec --json JSONL shapes,
+# `ThreadEvent` of @openai/codex-sdk 0.160.1: items carry `item.type`).
 if [[ "$1" == "--version" ]]; then echo "codex-cli 0.99.0-fake"; exit 0; fi
 if [[ "$1" == "exec" && "$2" == "--help" ]]; then
   echo "Run Codex non-interactively"
@@ -14,7 +15,19 @@ if [[ "$1" == "exec" && "$2" == "--help" ]]; then
 fi
 if [[ "$1" == "login" && "$2" == "status" ]]; then echo "Logged in using ChatGPT"; exit 0; fi
 echo '{"type":"thread.started","thread_id":"fake"}'
-echo '{"type":"item.completed","item":{"item_type":"command_execution","command":"ls","status":"completed"}}'
-echo '{"type":"item.completed","item":{"item_type":"agent_message","text":"Codex fake reply."}}'
+echo '{"type":"turn.started"}'
+echo '{"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"ls","aggregated_output":"","exit_code":0,"status":"completed"}}'
+# "[[patch]]" in the prompt: one file_change touching a POSIX path, a Windows path and a long absolute path (more than 400 characters of paths).
+if [[ "$*" == *"[[patch]]"* ]]; then
+  LONG="/home/owner/project/$(printf 'd%.0s' $(seq 1 80))"
+  echo "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_p\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/home/owner/project/a.md\",\"kind\":\"update\"},{\"path\":\"C:\\\\work\\\\b.ts\",\"kind\":\"add\"},{\"path\":\"$LONG/1.ts\",\"kind\":\"add\"},{\"path\":\"$LONG/2.ts\",\"kind\":\"add\"},{\"path\":\"$LONG/3.ts\",\"kind\":\"add\"},{\"path\":\"$LONG/4.ts\",\"kind\":\"add\"},{\"path\":\"$LONG/5.ts\",\"kind\":\"add\"}],\"status\":\"completed\"}}"
+fi
+# "[[wide]]" in the prompt: one ~4 MB file_change line whose `changes` is two million `1`s (a hostile wrong-shape array).
+if [[ "$*" == *"[[wide]]"* ]]; then
+  printf '{"type":"item.completed","item":{"id":"item_w","type":"file_change","changes":['
+  yes '1,' | head -n 1999999 | tr -d '\n'
+  printf '1]}}\n'
+fi
+echo '{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"Codex fake reply."}}'
 echo '{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5}}'
 exit 0

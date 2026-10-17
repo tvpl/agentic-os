@@ -22,6 +22,9 @@ export default tseslint.config(
       "config/**",
       "logs/**",
       "**/*.tsbuildinfo",
+      // the desktop shell: Cargo's output and the payload (a minified bundle) are not source
+      "apps/desktop/target/**",
+      "apps/desktop/payload/**",
     ],
   },
   js.configs.recommended,
@@ -67,9 +70,38 @@ export default tseslint.config(
     },
   },
   {
+    // Command Centre HTTP goes through `request()` in api.ts, which refuses a
+    // settings write carrying a UI preference key (.specs/features/preferencias-ui, C32).
+    files: ["apps/command-centre/src/**/*.{ts,tsx}"],
+    ignores: ["apps/command-centre/src/api.ts", "apps/command-centre/src/**/*.test.{ts,tsx}"],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        {
+          name: "fetch",
+          message: "Call the API through `api` (api.ts), whose request() guards the settings route.",
+        },
+        { name: "XMLHttpRequest", message: "Call the API through `api` (api.ts)." },
+      ],
+      "no-restricted-properties": [
+        "error",
+        { object: "window", property: "fetch", message: "Call the API through `api` (api.ts)." },
+        { object: "globalThis", property: "fetch", message: "Call the API through `api` (api.ts)." },
+        { object: "self", property: "fetch", message: "Call the API through `api` (api.ts)." },
+        { object: "navigator", property: "sendBeacon", message: "Call the API through `api` (api.ts)." },
+      ],
+    },
+  },
+  {
     // Plain scripts served as-is by the Command Centre (boot recovery, service worker).
     files: ["apps/command-centre/public/**/*.js"],
     languageOptions: { globals: { ...globals.browser, ...globals.serviceworker, ...globals.es2021 } },
+  },
+  {
+    // The shell's own two screens: plain scripts loaded by the webview (apps/desktop/ui), and the script the window
+    // injects into the service's pages (apps/desktop/src-tauri/src/new-window.js).
+    files: ["apps/desktop/ui/**/*.js", "apps/desktop/src-tauri/src/*.js"],
+    languageOptions: { globals: { ...globals.browser, ...globals.es2021 } },
   },
   {
     // Playwright scripts evaluate callbacks inside the browser page.

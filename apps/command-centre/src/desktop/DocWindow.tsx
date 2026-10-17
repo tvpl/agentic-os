@@ -9,7 +9,8 @@
  */
 import { useEffect, useState } from "react";
 import { ExternalLink, MessageCircleQuestion } from "lucide-react";
-import { api, artifactRawUrl, isRawViewable, type MemoryPreview } from "../api";
+import { artifactRawUrl, isRawViewable } from "../api";
+import { apiCall } from "../apiCall";
 import { useT } from "../i18n";
 import { WidgetGate } from "./widgets/WidgetGate";
 import { docPath } from "./docIds";
@@ -36,8 +37,7 @@ export default function DocWindow({ instanceId }: WidgetProps) {
     setText(null);
     setError(null);
     if (!path || media) return;
-    api
-      .get<MemoryPreview>(`/api/memory/preview?p=${encodeURIComponent(path)}`)
+    apiCall("GET /api/memory/preview", { query: { p: path } })
       .then((res) => {
         if (!alive) return;
         if (res.kind === "text" && res.content)

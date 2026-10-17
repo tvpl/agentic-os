@@ -159,6 +159,8 @@ describe("outcomes", () => {
     expect(fireOutcome(null, "failed")).toBe("fail");
     expect(fireOutcome("running")).toBe("live");
     expect(fireOutcome(null, "skipped")).toBe("skip");
+    expect(fireOutcome(null, "failed_to_fire")).toBe("fail");
+    expect(fireOutcome(null, "manual")).toBe("ok");
     expect(fireOutcome(null, null)).toBe("skip");
   });
 });

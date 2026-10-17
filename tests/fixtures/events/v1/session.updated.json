@@ -1,0 +1,12 @@
+{
+  "id": 15,
+  "type": "session.updated",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "sessionId": "5b7e1f0a-2c3d-4e5f-8a9b-0c1d2e3f4a5b",
+    "lastRunId": "3f1d2c4a-0b7e-4c1a-9a55-2b6d8e0f1a11",
+    "turns": 2,
+    "costUsd": 0.01
+  }
+}

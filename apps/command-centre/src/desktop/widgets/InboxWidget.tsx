@@ -5,10 +5,12 @@
  * The same list backs the top-bar bell.
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { BellOff, Check, ExternalLink, X } from "lucide-react";
-import { api, type ApprovalRecord } from "../../api";
+import { BellOff, Check, ExternalLink, ScanSearch, X } from "lucide-react";
+import { type ApprovalRecord } from "../../api";
+import { apiCall } from "../../apiCall";
 import { useLocale, useT } from "../../i18n";
 import { qk, useApiQuery } from "../../queries";
+import { requiresFullReview } from "../../runs/approvals";
 import { EmptyState } from "../../components/primitives";
 import { timeAgo, useToast } from "../../components/ui";
 import { useNotifications } from "../../hooks/useNotifications";
@@ -16,6 +18,7 @@ import { useOsNavigate } from "../../hooks/useViewTransition";
 import { notificationText } from "../../hooks/notificationText";
 import { triageNotifications, type NotificationGroup } from "../../hooks/notificationGroups";
 import type { WidgetProps } from "../widgetTypes";
+import { Tooltip } from "../../ui";
 
 export interface InboxListProps {
   limit: number;
@@ -35,10 +38,13 @@ export function InboxList({ limit, unreadOnly = false }: InboxListProps) {
     retry: false,
   });
   const pending = new Set((approvals.data ?? []).map((a) => a.id));
+  // A write a paired device asked for is not approved from a one-line row: the tick becomes "review", which opens the
+  // approvals screen where the whole request is shown.
+  const deviceWrites = new Set((approvals.data ?? []).filter(requiresFullReview).map((a) => a.id));
 
   const resolve = useMutation({
     mutationFn: ({ id, decision }: { id: string; decision: "approved" | "denied" }) =>
-      api.post(`/api/approvals/${encodeURIComponent(id)}/resolve`, { decision }),
+      apiCall("POST /api/approvals/:id/resolve", { params: { id }, body: { decision } }),
     onSuccess: (_data, vars) => {
       toast(
         vars.decision === "approved" ? t("desktop.prompt.approved") : t("desktop.prompt.denied"),
@@ -102,38 +108,57 @@ export function InboxList({ limit, unreadOnly = false }: InboxListProps) {
         <span className="inbox-age mono">{timeAgo(item.ts, locale)}</span>
         {actionable ? (
           <span className="inbox-actions">
-            <button
-              type="button"
-              className="btn sm outline-accent icon-only"
-              aria-label={t("desktop.inbox.approve")}
-              title={t("desktop.inbox.approve")}
-              disabled={resolve.isPending}
-              onClick={() => resolve.mutate({ id: item.approvalId!, decision: "approved" })}
-            >
-              <Check aria-hidden />
-            </button>
-            <button
-              type="button"
-              className="btn sm ghost icon-only"
-              aria-label={t("desktop.inbox.deny")}
-              title={t("desktop.inbox.deny")}
-              disabled={resolve.isPending}
-              onClick={() => resolve.mutate({ id: item.approvalId!, decision: "denied" })}
-            >
-              <X aria-hidden />
-            </button>
+            {deviceWrites.has(item.approvalId!) ? (
+              <Tooltip label={t("desktop.inbox.review")}>
+                <button
+                  type="button"
+                  className="btn sm outline-accent icon-only"
+                  aria-label={t("desktop.inbox.review")}
+                  onClick={() => {
+                    markRead(item.id);
+                    navigate("/settings?tab=security");
+                  }}
+                >
+                  <ScanSearch aria-hidden />
+                </button>
+              </Tooltip>
+            ) : (
+              <Tooltip label={t("desktop.inbox.approve")}>
+                <button
+                  type="button"
+                  className="btn sm outline-accent icon-only"
+                  aria-label={t("desktop.inbox.approve")}
+                  disabled={resolve.isPending}
+                  onClick={() => resolve.mutate({ id: item.approvalId!, decision: "approved" })}
+                >
+                  <Check aria-hidden />
+                </button>
+              </Tooltip>
+            )}
+            <Tooltip label={t("desktop.inbox.deny")}>
+              <button
+                type="button"
+                className="btn sm ghost icon-only"
+                aria-label={t("desktop.inbox.deny")}
+                disabled={resolve.isPending}
+                onClick={() => resolve.mutate({ id: item.approvalId!, decision: "denied" })}
+              >
+                <X aria-hidden />
+              </button>
+            </Tooltip>
           </span>
         ) : (
           item.href && (
-            <button
-              type="button"
-              className="btn sm ghost icon-only"
-              aria-label={t("desktop.inbox.open")}
-              title={t("desktop.inbox.open")}
-              onClick={() => open(group)}
-            >
-              <ExternalLink aria-hidden />
-            </button>
+            <Tooltip label={t("desktop.inbox.open")}>
+              <button
+                type="button"
+                className="btn sm ghost icon-only"
+                aria-label={t("desktop.inbox.open")}
+                onClick={() => open(group)}
+              >
+                <ExternalLink aria-hidden />
+              </button>
+            </Tooltip>
           )
         )}
       </div>

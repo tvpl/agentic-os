@@ -1,0 +1,12 @@
+{
+  "id": 21,
+  "type": "budget.crossed",
+  "ts": 1760000000000,
+  "v": 1,
+  "payload": {
+    "level": 80,
+    "day": "2026-10-11",
+    "spentUsd": 4,
+    "budgetUsd": 5
+  }
+}

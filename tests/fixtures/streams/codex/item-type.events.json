@@ -1,0 +1,63 @@
+[
+  {
+    "type": "session",
+    "providerSessionId": "019a0c2e-7d41-7b20-9c3e-5f6a7b8c9d0e"
+  },
+  {
+    "type": "tool_use",
+    "tool": "command_execution",
+    "detail": "{\"command\":\"bash -lc ls\",\"status\":\"in_progress\"}",
+    "callId": "item_1",
+    "phase": "start"
+  },
+  {
+    "type": "tool_use",
+    "tool": "command_execution",
+    "detail": "{\"command\":\"bash -lc ls\",\"status\":\"completed\"}",
+    "callId": "item_1",
+    "phase": "end",
+    "outcome": "ok"
+  },
+  {
+    "type": "tool_use",
+    "tool": "file_change",
+    "detail": "{\"status\":\"completed\"}",
+    "callId": "item_2",
+    "phase": "start"
+  },
+  {
+    "type": "tool_use",
+    "tool": "file_change",
+    "detail": "{\"status\":\"completed\"}",
+    "callId": "item_2",
+    "phase": "end",
+    "outcome": "ok"
+  },
+  {
+    "type": "tool_use",
+    "tool": "mcp_tool_call",
+    "detail": "{\"status\":\"in_progress\"}",
+    "callId": "item_3",
+    "phase": "start"
+  },
+  {
+    "type": "tool_use",
+    "tool": "mcp_tool_call",
+    "detail": "{\"status\":\"failed\"}",
+    "callId": "item_3",
+    "phase": "end",
+    "outcome": "error"
+  },
+  {
+    "type": "assistant",
+    "text": "Updated the README."
+  },
+  {
+    "type": "usage",
+    "scope": "total",
+    "inputTokens": 2400,
+    "outputTokens": 310,
+    "cacheReadTokens": 1800,
+    "costUsd": null
+  }
+]

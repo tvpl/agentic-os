@@ -1,7 +1,9 @@
 import { describe, expect, it, beforeEach, afterEach, beforeAll, afterAll, vi } from "vitest";
 import path from "node:path";
 import { Cron } from "croner";
+import { type AgentAdapter, type RunRecord } from "@mordomo/core";
 import {
+  EventBus,
   RoutineScheduler,
   RoutineStore,
   RoutineSchema,
@@ -9,15 +11,12 @@ import {
   SettingsStore,
   SkillCatalog,
   openDb,
-  events,
   previousScheduledTime,
   type Db,
   type MordomoPaths,
-  type AgentAdapter,
   type ProviderId,
   type Routine,
-  type RunRecord,
-} from "@mordomo/core";
+} from "@mordomo/core/internal";
 import { ClaudeAdapter } from "@mordomo/adapter-claude";
 import { FAKE_BIN, FAKE_CLIS_RUNNABLE, makeTempHome, withFakeBinPath } from "./helpers.js";
 
@@ -31,6 +30,7 @@ let ctx: { paths: MordomoPaths; cleanup: () => void };
 let db: Db;
 let settings: SettingsStore;
 let runs: RunManager;
+let bus: EventBus;
 let store: RoutineStore;
 let scheduler: RoutineScheduler;
 
@@ -51,11 +51,18 @@ function routine(overrides: Partial<Routine> & { id: string }): Routine {
 beforeEach(() => {
   ctx = makeTempHome();
   db = openDb(ctx.paths).db;
-  settings = new SettingsStore(ctx.paths);
-  runs = new RunManager(db, ctx.paths, () => settings.load(), adapterFor);
+  bus = new EventBus();
+  settings = new SettingsStore(ctx.paths, bus);
+  runs = new RunManager(db, ctx.paths, () => settings.load(), adapterFor, { bus });
   store = new RoutineStore(ctx.paths);
-  scheduler = new RoutineScheduler(db, ctx.paths, store, runs, new SkillCatalog(ctx.paths), () =>
-    settings.load(),
+  scheduler = new RoutineScheduler(
+    db,
+    ctx.paths,
+    store,
+    runs,
+    new SkillCatalog(ctx.paths),
+    () => settings.load(),
+    { bus },
   );
 });
 
@@ -73,7 +80,7 @@ describe("routine scheduler", () => {
   it.skipIf(!FAKE_CLIS_RUNNABLE)("fire() resolves with the real run id before the run finishes", async () => {
     store.save(routine({ id: "manual" }));
     const fired: unknown[] = [];
-    const off = events.subscribe((e) => e.type === "routine.fired" && fired.push(e.payload));
+    const off = bus.subscribe((e) => e.type === "routine.fired" && fired.push(e.payload));
     try {
       const { runId, status } = await scheduler.fire("manual");
       expect(status).toBe("queued");
@@ -308,14 +315,15 @@ describe("per-routine budgets", () => {
   it("skips a fire once the routine's daily budget is spent, alerts once, and caps the next run", async () => {
     store.save(routine({ id: "budgeted", budgetUsd: 0.5 }));
     const alerts: unknown[] = [];
-    const off = events.subscribe((e) => {
+    const off = bus.subscribe((e) => {
       if (e.type === "routine.alert") alerts.push(e.payload);
     });
     try {
       // First fire: nothing spent yet; the run carries the remaining budget as its cap.
       const first = await scheduler.fire("budgeted");
       expect(runs.get(first.runId)!.maxCostUsd).toBeCloseTo(0.5, 6);
-      await wait(400);
+      // Wait for the in-flight firing itself, not a fixed delay that loses the race under load.
+      await scheduler.drain();
       // Pretend the provider billed US$ 0.6 for it.
       db.prepare("UPDATE runs SET cost_usd = ? WHERE id = ?").run(0.6, first.runId);
       expect(runs.spentTodayUsd({ routineId: "budgeted" })).toBeCloseTo(0.6, 6);

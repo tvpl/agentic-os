@@ -8,13 +8,13 @@
 import "./runs.css";
 import { FailureFixCard } from "./FailureFixCard";
 import { recallFromEvents } from "./recallFromEvents";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, ClipboardList, Copy, CornerDownRight, FileText, RefreshCw, Square } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api";
+import { apiCall } from "../apiCall";
 import { useLocale, useT } from "../i18n";
-import { useOsArtifacts, useOsObjectives } from "../queries";
+import { useOsArtifacts, useOsObjectives, useOsProviders } from "../queries";
 import { ErrorBox, Skeleton, StatusBadge, formatDuration, timeAgo, useToast } from "../components/ui";
 import { Badge, Button, EmptyState, Segmented } from "../components/primitives";
 import { useConfirm } from "../hooks/useConfirm";
@@ -31,6 +31,8 @@ import { authRecovery } from "./authRecovery";
 import { contextWindowFor } from "./models";
 import { contextUsed, foldUsage, formatTokens, formatUsd, totalTokens } from "./usage";
 import { isNotFound, isRunActive, useRunQuery, useRunStream } from "./useRunStream";
+import { useCommands, type Command } from "../commands/registry";
+import { Tooltip } from "../ui";
 
 type DetailTab = "timeline" | "replay";
 
@@ -41,6 +43,7 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
   const confirm = useConfirm();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const providers = useOsProviders();
   const record = useRunQuery(id, {
     refetchInterval: (q) => (isRunActive(q.state.data?.run.status) ? 20_000 : false),
   });
@@ -82,7 +85,7 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
   const contextWindow = contextWindowFor(usage?.model ?? run?.model ?? null);
 
   const cancel = useMutation({
-    mutationFn: () => api.post(`/api/runs/${encodeURIComponent(id)}/cancel`),
+    mutationFn: () => apiCall("POST /api/runs/:id/cancel", { params: { id } }),
     onSuccess: () => {
       toast(t("runs.cancelled"), "ok");
       qc.invalidateQueries({ queryKey: ["run", id] }).catch(() => undefined);
@@ -125,8 +128,11 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
   };
   const repeat = useMutation({
     mutationFn: () =>
-      api.post<LaunchResponse>(`/api/runs/${encodeURIComponent(id)}/retry`, {
-        submissionId: receipt("retry"),
+      apiCall("POST /api/runs/:id/retry", {
+        params: { id },
+        body: {
+          submissionId: receipt("retry"),
+        },
       }),
     onSuccess: (res) => {
       onLaunched(res, "retry");
@@ -136,31 +142,35 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
   const continueRun = useMutation({
     mutationFn: (prompt: string) =>
       run?.sessionId
-        ? api.post<LaunchResponse>(`/api/sessions/${encodeURIComponent(run.sessionId)}/continue`, {
-            submissionId: receipt("continue"),
-            prompt,
-            mode: run.request?.mode ?? "read_only",
-            model: run.model,
-            effort: run.effort,
-            ...(run.timeoutMs ? { timeoutMs: run.timeoutMs } : {}),
+        ? apiCall("POST /api/sessions/:id/continue", {
+            params: { id: run.sessionId },
+            body: {
+              submissionId: receipt("continue"),
+              prompt,
+              mode: run.request?.mode ?? "read_only",
+              model: run.model,
+              effort: run.effort,
+              ...(run.timeoutMs ? { timeoutMs: run.timeoutMs } : {}),
+            },
           })
-        : api.post<LaunchResponse>("/api/runs", {
-            submissionId: receipt("continue"),
-            prompt,
-            mode: run?.request?.mode ?? "read_only",
-            provider: run?.provider,
-            model: run?.model,
-            effort: run?.effort,
-            cwd: run?.cwd,
-            ...(run?.timeoutMs ? { timeoutMs: run.timeoutMs } : {}),
+        : apiCall("POST /api/runs", {
+            body: {
+              submissionId: receipt("continue"),
+              prompt,
+              mode: run?.request?.mode ?? "read_only",
+              provider: run?.provider,
+              model: run?.model,
+              effort: run?.effort,
+              cwd: run?.cwd ?? undefined,
+              ...(run?.timeoutMs ? { timeoutMs: run.timeoutMs } : {}),
+            },
           }),
     onSuccess: (res) => onLaunched(res, "continue"),
     onError: (err: Error) => toast(err.message, "danger"),
   });
 
   const open = useMutation({
-    mutationFn: (p: string) =>
-      api.get<{ path: string; content: string | null }>(`/api/artifacts/file?p=${encodeURIComponent(p)}`),
+    mutationFn: (p: string) => apiCall("GET /api/artifacts/file", { query: { p: p } }),
     onSuccess: setPreview,
     onError: (err: Error) => toast(err.message, "danger"),
   });
@@ -184,31 +194,45 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
     window.setTimeout(() => followUpRef.current?.focus(), 0);
   };
 
-  // Shortcuts: never steal keys while the reader is typing. The handlers live
-  // in a ref so the listener is attached once, not on every streamed frame.
+  // Shortcuts (the `view:runs` scope; bare keys, so never while the reader is
+  // typing). The handlers live in a ref so the commands are registered once,
+  // not on every streamed frame. A run shown twice (a lâmina and the Runs
+  // scene) answers once: the newest instance holds the keys.
   const shortcuts = useRef({ runAgain, startFollowUp });
   shortcuts.current = { runAgain, startFollowUp };
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const el = e.target as HTMLElement | null;
-      const tag = el?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable) return;
-      if (e.key === "/") {
-        e.preventDefault();
-        setTab("timeline");
-        window.setTimeout(() => timelineRef.current?.focusSearch(), 0);
-      } else if (e.key === "r") {
-        e.preventDefault();
-        shortcuts.current.runAgain();
-      } else if (e.key === "c") {
-        e.preventDefault();
-        shortcuts.current.startFollowUp();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  const commands = useMemo<Command[]>(
+    () => [
+      {
+        id: "runs.search",
+        title: "cmd.runs.search",
+        group: "view",
+        scope: "view:runs",
+        keys: ["/"],
+        run: () => {
+          setTab("timeline");
+          window.setTimeout(() => timelineRef.current?.focusSearch(), 0);
+        },
+      },
+      {
+        id: "runs.again",
+        title: "cmd.runs.again",
+        group: "view",
+        scope: "view:runs",
+        keys: ["r"],
+        run: () => shortcuts.current.runAgain(),
+      },
+      {
+        id: "runs.followUp",
+        title: "cmd.runs.followUp",
+        group: "view",
+        scope: "view:runs",
+        keys: ["c"],
+        run: () => shortcuts.current.startFollowUp(),
+      },
+    ],
+    [],
+  );
+  useCommands(commands, { exclusive: "run-detail" });
 
   if (record.isError && isNotFound(record.error)) {
     return (
@@ -256,7 +280,7 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
     : formatDuration(run.durationMs, locale);
   const contextPct =
     contextTokens != null && contextWindow ? Math.min(100, (contextTokens / contextWindow) * 100) : null;
-  const recovery = authRecovery(run.provider, run.failure?.message ?? run.error);
+  const recovery = authRecovery(run.provider, run.failure?.message ?? run.error, providers.data);
 
   return (
     <div className={`page run-detail${embedded ? " embedded" : ""}`}>
@@ -365,14 +389,15 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
                 <code className="mono truncate" title={run.cwd}>
                   {run.cwd}
                 </code>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  icon={<Copy aria-hidden />}
-                  aria-label={t("brain.copyPath")}
-                  title={t("brain.copyPath")}
-                  onClick={() => void copy(run.cwd!)}
-                />
+                <Tooltip label={t("brain.copyPath")}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon={<Copy aria-hidden />}
+                    aria-label={t("brain.copyPath")}
+                    onClick={() => void copy(run.cwd!)}
+                  />
+                </Tooltip>
               </div>
             )}
             <p className="run-id mono">{run.id}</p>
@@ -635,14 +660,15 @@ export default function RunDetail({ id, embedded = false }: { id: string; embedd
                     >
                       {t("common.open")}
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      icon={<Copy aria-hidden />}
-                      aria-label={t("brain.copyPath")}
-                      title={t("brain.copyPath")}
-                      onClick={() => void copy(a.path!)}
-                    />
+                    <Tooltip label={t("brain.copyPath")}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        icon={<Copy aria-hidden />}
+                        aria-label={t("brain.copyPath")}
+                        onClick={() => void copy(a.path!)}
+                      />
+                    </Tooltip>
                   </>
                 )}
               </span>

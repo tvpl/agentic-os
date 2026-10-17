@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  api,
   type ProviderId,
   type RoutineDelivery,
   type RoutineHistoryEntry,
@@ -25,14 +24,17 @@ import {
   type RoutineSummary,
   type Skill,
 } from "../api";
+import { apiCall } from "../apiCall";
 import { useLocale, useT, type TKey } from "../i18n";
 import { qk, useApiQuery, useOsProviders, useOsRoutines, useOsSettings, useOsSkills } from "../queries";
-import { ErrorBox, Modal, Skeleton, StatusBadge, timeAgo, useToast } from "../components/ui";
+import { ErrorBox, Skeleton, StatusBadge, timeAgo, useToast } from "../components/ui";
+import { Modal, Tooltip } from "../ui";
 import { Badge, Button, EmptyState, Field, Segmented } from "../components/primitives";
 import { useConfirm } from "../hooks/useConfirm";
 import { errorMessage, isOffline } from "./shared";
 import { describeSchedule, isValidCron, isValidTimeZone, nextFires, timeZoneOptions } from "./cron";
 import { naturalToCron } from "./naturalSchedule";
+import { providerOptions } from "../providers/options";
 import { RoutinesTimeline } from "./RoutinesTimeline";
 import "./backend.css";
 // The timeline below is styled there.
@@ -126,7 +128,7 @@ export default function Routines() {
       })
     ) {
       act.mutate({
-        fn: () => api.del(`/api/routines/${encodeURIComponent(r.id)}`),
+        fn: () => apiCall("DELETE /api/routines/:id", { params: { id: r.id } }),
         okMsg: t("routines.deleted"),
       });
     }
@@ -134,7 +136,7 @@ export default function Routines() {
   const testRun = (r: RoutineStatus) =>
     act.mutate({
       fn: async () => {
-        const res = await api.post<{ runId: string | null }>(`/api/routines/${encodeURIComponent(r.id)}/run`);
+        const res = await apiCall("POST /api/routines/:id/run", { params: { id: r.id } });
         if (res.runId) navigate(`/runs/${res.runId}`);
       },
     });
@@ -246,43 +248,48 @@ export default function Routines() {
                   variant="secondary"
                   icon={r.enabled ? <Pause aria-hidden /> : <Play aria-hidden />}
                   onClick={() =>
-                    act.mutate({ fn: () => api.post(`/api/routines/${encodeURIComponent(r.id)}/toggle`) })
+                    act.mutate({
+                      fn: () => apiCall("POST /api/routines/:id/toggle", { params: { id: r.id } }),
+                    })
                   }
                 >
                   {r.enabled ? t("routines.pause") : t("routines.resume")}
                 </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  icon={<Pencil aria-hidden />}
-                  aria-label={`${t("common.edit")} ${r.name}`}
-                  title={t("common.edit")}
-                  onClick={() => setEditing(r)}
-                />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  icon={<Copy aria-hidden />}
-                  aria-label={t("routines.duplicate")}
-                  title={t("routines.duplicate")}
-                  onClick={() =>
-                    act.mutate({
-                      fn: () => api.post(`/api/routines/${encodeURIComponent(r.id)}/duplicate`),
-                      okMsg: t("routines.duplicated"),
-                    })
-                  }
-                />
+                <Tooltip label={t("common.edit")}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={<Pencil aria-hidden />}
+                    aria-label={`${t("common.edit")} ${r.name}`}
+                    onClick={() => setEditing(r)}
+                  />
+                </Tooltip>
+                <Tooltip label={t("routines.duplicate")}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={<Copy aria-hidden />}
+                    aria-label={t("routines.duplicate")}
+                    onClick={() =>
+                      act.mutate({
+                        fn: () => apiCall("POST /api/routines/:id/duplicate", { params: { id: r.id } }),
+                        okMsg: t("routines.duplicated"),
+                      })
+                    }
+                  />
+                </Tooltip>
                 <Button size="sm" variant="secondary" onClick={() => setHistoryFor(r)}>
                   {t("routines.history")}
                 </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  icon={<Trash2 aria-hidden />}
-                  aria-label={`${t("common.delete")} ${r.name}`}
-                  title={t("common.delete")}
-                  onClick={() => void remove(r)}
-                />
+                <Tooltip label={t("common.delete")}>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    icon={<Trash2 aria-hidden />}
+                    aria-label={`${t("common.delete")} ${r.name}`}
+                    onClick={() => void remove(r)}
+                  />
+                </Tooltip>
               </div>
             </div>
           );
@@ -358,7 +365,7 @@ export function RoutineModal({
     context: routine?.context ?? ("main" as "main" | "isolated"),
     delivery: routine?.delivery ?? ("announce" as RoutineDelivery),
     webhookUrl: routine?.webhookUrl ?? "",
-    provider: routine?.provider ?? ("claude" as ProviderId),
+    provider: routine?.provider ?? providers.data?.find((s) => s.isDefault)?.id ?? ("claude" as ProviderId),
     effort: routine?.effort ?? "default",
     missedPolicy: routine?.missedPolicy ?? "skip",
     timeoutMs: routine?.timeoutMs ?? 600000,
@@ -469,8 +476,8 @@ export function RoutineModal({
         artifactsSubdir: routine?.artifactsSubdir ?? null,
         createdAt: routine?.createdAt ?? Date.now(),
       };
-      if (routine) await api.put(`/api/routines/${encodeURIComponent(routine.id)}`, payload);
-      else await api.post("/api/routines", payload);
+      if (routine) await apiCall("PUT /api/routines/:id", { params: { id: routine.id }, body: payload });
+      else await apiCall("POST /api/routines", { body: payload });
     },
     onSuccess: () => {
       toast(t("common.saved"), "ok");
@@ -886,7 +893,7 @@ export function RoutineModal({
             value={form.provider}
             onChange={(e) => set({ provider: e.target.value as ProviderId })}
           >
-            {(["claude", "cursor", "codex"] as ProviderId[]).map((p) => (
+            {providerOptions(providers.data).map((p) => (
               <option key={p} value={p}>
                 {p}
                 {enabledProviders.length && !enabledProviders.includes(p) ? ` (${t("common.disabled")})` : ""}
@@ -899,7 +906,7 @@ export function RoutineModal({
             id="rt-missed"
             className="input"
             value={form.missedPolicy}
-            onChange={(e) => set({ missedPolicy: e.target.value })}
+            onChange={(e) => set({ missedPolicy: e.target.value as RoutineStatus["missedPolicy"] })}
           >
             <option value="skip">{t("routines.missed.skip")}</option>
             <option value="run_on_boot">{t("routines.missed.run_on_boot")}</option>
@@ -943,7 +950,7 @@ export function RoutineModal({
           id="rt-profile"
           className="input"
           value={form.profile}
-          onChange={(e) => set({ profile: e.target.value })}
+          onChange={(e) => set({ profile: e.target.value as RoutineStatus["profile"] })}
         >
           {PROFILES.map((prof) => (
             <option key={prof} value={prof}>

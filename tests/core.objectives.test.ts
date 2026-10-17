@@ -1,14 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  BUILTIN_MANIFESTS,
-  ObjectiveStore,
-  RunManager,
-  SettingsStore,
-  openDb,
-  type AgentAdapter,
-  type Db,
-  type RunEvent,
-} from "@mordomo/core";
+import { type AgentAdapter, type RunEvent } from "@mordomo/core";
+import { ObjectiveStore, RunManager, SettingsStore, openDb, type Db } from "@mordomo/core/internal";
+import { claudeManifest } from "@mordomo/adapter-claude";
 import { makeTempHome } from "./helpers.js";
 
 describe("durable objectives", () => {
@@ -24,7 +17,7 @@ describe("durable objectives", () => {
     settings.providers.claude.enabled = true;
     const adapter = {
       id: "claude",
-      manifest: BUILTIN_MANIFESTS.claude,
+      manifest: claudeManifest,
       async *execute(): AsyncIterable<RunEvent> {
         yield { type: "assistant", ts: Date.now(), text: "verified response" };
         yield { type: "result", ts: Date.now(), exitCode: 0, summary: "ok", durationMs: 1, timedOut: false };

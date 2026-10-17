@@ -19,6 +19,7 @@ import {
   type RunMark,
 } from "./runsRiver";
 import { formatTick, formatWhen } from "./runsFormat";
+import { Tooltip } from "../../ui";
 
 const ROW_PITCH = 18;
 const LANE_PAD = 17;
@@ -275,21 +276,22 @@ function Cluster({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      className={`rs-cap rs-cluster${selected ? " sel" : ""}`}
-      data-tone={m.tone}
-      data-mark={m.id}
-      aria-label={label}
-      title={label}
-      tabIndex={tabbable ? 0 : -1}
-      style={{ left: m.x, width: m.w, top: y }}
-      onFocus={onFocus}
-      onClick={onClick}
-    >
-      <span className="rs-cluster-n tnum" aria-hidden>
-        {m.ids.length}
-      </span>
-    </button>
+    <Tooltip label={label}>
+      <button
+        type="button"
+        className={`rs-cap rs-cluster${selected ? " sel" : ""}`}
+        data-tone={m.tone}
+        data-mark={m.id}
+        aria-label={label}
+        tabIndex={tabbable ? 0 : -1}
+        style={{ left: m.x, width: m.w, top: y }}
+        onFocus={onFocus}
+        onClick={onClick}
+      >
+        <span className="rs-cluster-n tnum" aria-hidden>
+          {m.ids.length}
+        </span>
+      </button>
+    </Tooltip>
   );
 }

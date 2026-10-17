@@ -3,7 +3,7 @@ import { arrived, openAppFromPalette, openBrainList, openClassicBrain, openShell
 
 test("a late file preview cannot reopen a selection the user already closed", async ({ page }) => {
   let pending: Route | undefined;
-  await page.route("**/api/memory/preview?*", (route) => {
+  await page.route("**/api/v1/memory/preview?*", (route) => {
     pending = route;
   });
   await openShell(page, "/brain");
@@ -14,7 +14,7 @@ test("a late file preview cannot reopen a selection the user already closed", as
   await expect.poll(() => Boolean(pending)).toBe(true);
   await sheet.getByRole("button", { name: /^(Close|Fechar) · Esc$/ }).click();
   await expect(sheet).toHaveCount(0);
-  const response = page.waitForResponse((r) => r.url().includes("/api/memory/preview?"));
+  const response = page.waitForResponse((r) => r.url().includes("/api/v1/memory/preview?"));
   await pending!.fulfill({ json: { kind: "text", content: "Late fixture", message: null } });
   await response;
   await page.evaluate(

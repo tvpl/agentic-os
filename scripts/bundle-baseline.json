@@ -1,0 +1,60 @@
+{
+  "tolerance": 1.05,
+  "before": {
+    "commit": "9c82fc1",
+    "jsRaw": 1445758,
+    "jsGzip": 470410,
+    "cssRaw": 337189,
+    "cssGzip": 70728
+  },
+  "after": [
+    {
+      "feature": "primitivas",
+      "reason": "Radix under the dialogs, popovers, tabs, switches, menu and hints, and the code that stood on them",
+      "jsRaw": 1552075,
+      "jsGzip": 503649,
+      "cssRaw": 340497,
+      "cssGzip": 71459
+    },
+    {
+      "feature": "primitivas-r1",
+      "reason": "the round 1 fixes: the menu as a command layer, the focus fallback, floatingLayerOpen in the scenes, the hint without a duplicate description",
+      "jsRaw": 1557112,
+      "jsGzip": 505237,
+      "cssRaw": 341343,
+      "cssGzip": 71930
+    },
+    {
+      "feature": "primitivas-r2",
+      "reason": "the round 2 fixes (two layer questions, the closing-layer Escape, the chained focus fallback) on top of the integrated escopos-dispositivo changes",
+      "jsRaw": 1559932,
+      "jsGzip": 505903,
+      "cssRaw": 341687,
+      "cssGzip": 71975
+    },
+    {
+      "feature": "primitivas-r3",
+      "reason": "the round 3 fixes (the dialog that is leaving leaves the stack and its Escape is the screen's, the registry reads which Escape was an open layer's) on top of the integrated contratos-rest changes",
+      "jsRaw": 1562270,
+      "jsGzip": 507021,
+      "cssRaw": 341687,
+      "cssGzip": 71975
+    },
+    {
+      "feature": "limpeza-legado",
+      "reason": "the legacy removed: 39 dead exports and their chains, 55 CSS classes, 20 @keyframes, 4 custom properties, 276 translation keys, the three Markdown renderers joined into one, and Pixel Studio's own rules moved out of the shared stylesheet into its chunk and, after round 1, 17 more dead selectors and the status.completed key; the numbers are the ones the final build measures (7.0 KB less JS gzip and 2.5 KB less CSS gzip than primitivas-r3)",
+      "jsRaw": 1535092,
+      "jsGzip": 499992,
+      "cssRaw": 326857,
+      "cssGzip": 69452
+    },
+    {
+      "feature": "cerebro-v2",
+      "reason": "the note editor and the new-note dialog as a lazy chunk (NoteEditor, 7.2 KB raw JS and 2.1 KB CSS, fetched on the first request and not by the entry), the links section of the preview, the index progress component, the editor and links strings in two languages, and the Cancel/phase/outcome states of the index bar (5.2 KB more JS gzip and 0.9 KB more CSS gzip than limpeza-legado)",
+      "jsRaw": 1550753,
+      "jsGzip": 505228,
+      "cssRaw": 329795,
+      "cssGzip": 70310
+    }
+  ]
+}

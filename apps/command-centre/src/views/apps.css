@@ -77,7 +77,7 @@
 }
 .apps-md code {
   font-family: var(--font-mono);
-  font-size: 0.92em;
+  font-size: max(var(--fs-2), 0.92em);
   background: var(--bg-raise-2);
   border: 1px solid var(--border);
   border-radius: var(--r-1);
@@ -187,7 +187,7 @@
   white-space: nowrap;
 }
 .apps-res-row .size {
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   color: var(--text-faint);
   font-family: var(--font-mono);
 }
@@ -219,7 +219,7 @@
   width: 100%;
   height: 60vh;
   border: 0;
-  background: #fff;
+  background: var(--paper);
 }
 .apps-res-img {
   display: block;
@@ -251,7 +251,7 @@
   margin: var(--s-2) 0 0;
 }
 .apps-run-hint .kbd {
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
 }
 .apps-run-actions {
   display: flex;
@@ -284,12 +284,6 @@
 .apps-approval p {
   margin: var(--s-1) 0 var(--s-2);
   color: var(--text-dim);
-}
-.apps-approval .desc {
-  font-size: var(--fs-2);
-  font-family: var(--font-mono);
-  color: var(--text);
-  word-break: break-word;
 }
 @media (prefers-reduced-motion: no-preference) {
   .apps-approval,
@@ -370,50 +364,7 @@
 }
 .apps-preset .accent {
   font-family: var(--font-mono);
-  font-size: var(--fs-1);
-  color: var(--text-faint);
-}
-.apps-widgets {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: var(--s-2);
-}
-.apps-widget-toggle {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--border);
-  border-radius: var(--r-2);
-  background: var(--bg-raise);
-  font: inherit;
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color var(--dur-fast) var(--ease-standard),
-    background var(--dur-fast) var(--ease-standard);
-}
-.apps-widget-toggle:hover {
-  border-color: var(--border-strong);
-}
-.apps-widget-toggle[aria-pressed="true"] {
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-}
-.apps-widget-toggle svg {
-  width: 14px;
-  height: 14px;
-  color: var(--text-dim);
-  flex-shrink: 0;
-}
-.apps-widget-toggle[aria-pressed="true"] svg {
-  color: var(--accent-text);
-}
-.apps-widget-toggle .id {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   color: var(--text-faint);
 }
 .apps-ma-row {
@@ -479,68 +430,6 @@
   margin-bottom: var(--s-4);
 }
 
-/* ---- Pixel Studio additions --------------------------------------------- */
-.pxs-recent {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-  margin-top: var(--s-2);
-  min-height: 22px;
-}
-.pxs-recent .pxs-swatch {
-  width: 22px;
-  height: 22px;
-}
-.pxs-brush {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  margin-top: var(--s-2);
-}
-.pxs-brush .pxs-brush-dots {
-  display: inline-flex;
-  gap: 3px;
-  align-items: center;
-}
-.pxs-brush .pxs-brush-dots i {
-  display: block;
-  width: 6px;
-  height: 6px;
-  border-radius: 1px;
-  background: var(--text-faint);
-}
-.pxs-brush .pxs-brush-dots i.on {
-  background: var(--accent);
-}
-.pxs-frame-nav {
-  display: flex;
-  gap: 6px;
-  margin-top: 10px;
-  flex-wrap: wrap;
-}
-.pxs-shortcuts {
-  font-size: var(--fs-1);
-  color: var(--text-faint);
-  margin: var(--s-2) 0 0;
-  line-height: 1.6;
-}
-.pxs-hint-row {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  margin-top: var(--s-2);
-  font-size: var(--fs-2);
-  color: var(--text-faint);
-}
-.pxs-secondary {
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  border: 1px solid var(--border-strong);
-  margin-left: -12px;
-  margin-top: 12px;
-  flex-shrink: 0;
-}
 .hud-slider {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -566,15 +455,69 @@
   color: var(--accent-text);
   text-shadow: 0 0 18px var(--accent-glow);
 }
+/* A device row wraps instead of squeezing: the name keeps at least 14rem, the actions drop under it when they do not fit. */
 .device-list li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: var(--s-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-3);
   align-items: center;
   padding: var(--s-2) 0;
   border-top: 1px solid var(--border);
 }
+.device-main {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.device-main strong {
+  overflow-wrap: anywhere;
+}
+.device-list .row-actions {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
 .device-list .meta {
+  color: var(--text-faint);
+  font-size: var(--fs-2);
+}
+.device-list .device-scopes,
+.device-list .device-editor {
+  flex: 1 0 100%;
+}
+.device-editor {
+  display: grid;
+  gap: var(--s-2);
+}
+.scope-picker {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.scope-picker .check {
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.scope-picker .check .meta {
+  flex: 1 1 10rem;
+}
+/* A box another one requires cannot be changed: it says so in words, and the pointer and the outline say it too. */
+.scope-picker .check:has(input:disabled) {
+  cursor: not-allowed;
+}
+.scope-picker input[type="checkbox"]:enabled {
+  cursor: pointer;
+}
+.scope-picker input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  outline: 1px dashed var(--text-dim);
+  outline-offset: 2px;
+}
+.scope-picker legend {
+  padding: 0 var(--s-1);
   color: var(--text-faint);
   font-size: var(--fs-2);
 }
@@ -633,7 +576,7 @@
 }
 .trend-card .card-head-row h3 {
   margin: 0;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-2);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -684,7 +627,7 @@
   stroke-dasharray: 3 3;
 }
 .trend-chart .axis-label {
-  font-size: var(--fs-0);
+  font-size: var(--fs-2);
   fill: var(--text-faint);
   font-family: var(--font-mono);
 }
@@ -705,7 +648,7 @@
 .trend-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-3);
   font-variant-numeric: tabular-nums;
 }
 .trend-table th,
@@ -721,16 +664,7 @@
 }
 
 .text-ok {
-  color: var(--ok, #4ade80);
-}
-
-/* the wizard's HUD builder (G6): two arcs, one toggle per instrument */
-.apps-hud-arc {
-  display: grid;
-  gap: var(--s-1);
-}
-.apps-hud-arc > .hud-label {
-  margin-top: var(--s-2);
+  color: var(--ok);
 }
 
 /* Settings by question (refino item 17): a vertical nav with search. */
@@ -756,49 +690,9 @@
 .settings-search {
   width: 100%;
 }
-.settings-group {
-  display: grid;
-  gap: 2px;
-  margin-bottom: var(--s-3);
-}
-.settings-group-label {
-  margin: 0 0 4px;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: var(--fs-0);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-.settings-nav-item {
-  display: block;
-  width: 100%;
-  padding: 6px 10px;
-  border: 1px solid transparent;
-  background: none;
-  color: var(--text-dim);
-  font: inherit;
-  font-size: var(--fs-3);
-  text-align: left;
-  cursor: pointer;
-  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
-  transition:
-    color var(--dur-fast) var(--ease-standard),
-    background var(--dur-fast) var(--ease-standard);
-}
-.settings-nav-item:hover,
-.settings-nav-item:focus-visible {
-  color: var(--text);
-  background: var(--bg-raise-2);
-}
-.settings-nav-item.on {
-  color: var(--accent-text);
-  background: var(--accent-soft);
-  border-color: var(--accent-line);
-}
 .settings-autosave {
   margin: 0;
-  font-size: var(--fs-1);
+  font-size: var(--fs-3);
 }
 .settings-section-title {
   margin: 0 0 var(--s-4);
@@ -814,18 +708,15 @@
   .settings-nav {
     position: static;
   }
-  .settings-nav [role="tablist"] {
+  .settings-nav .ui-tabs-list[data-variant="list"] {
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
   }
-  .settings-group {
-    display: contents;
-  }
-  .settings-group-label {
+  .settings-nav .ui-tabs-group {
     display: none;
   }
-  .settings-nav-item {
+  .settings-nav .ui-tabs-list[data-variant="list"] [role="tab"] {
     width: auto;
   }
 }
@@ -848,7 +739,7 @@
   top: 0;
   transform: translateX(-50%);
   font-family: var(--font-mono);
-  font-size: var(--fs-0);
+  font-size: var(--fs-2);
   color: var(--text-faint);
 }
 .rt-now {
@@ -903,9 +794,24 @@
   background: var(--ok);
   border-color: var(--ok);
 }
+/* A failed run is a diamond, a good one a disc: the outcome is not the hue alone. */
 .rt-dot.past.bad {
   background: var(--danger);
   border-color: var(--danger);
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+/* Still going: half a disc. Nothing ran (skipped, cancelled): a dash. */
+.rt-dot.past.live {
+  background: linear-gradient(90deg, var(--accent) 50%, transparent 50%);
+  border-color: var(--accent);
+}
+.rt-dot.past.skip {
+  top: 6px;
+  height: 2px;
+  border: 0;
+  border-radius: 0;
+  background: var(--text-faint);
 }
 .rt-dot.future {
   border-color: var(--agent);
@@ -919,5 +825,22 @@
   padding: 4px 8px;
   border-left: 2px solid var(--danger);
   background: var(--danger-bg);
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
+}
+.apps-md table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0 10px;
+  font-size: var(--fs-3);
+}
+.apps-md th,
+.apps-md td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.apps-md th {
+  font-weight: 700;
+  color: var(--text-dim);
 }

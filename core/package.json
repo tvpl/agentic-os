@@ -1,20 +1,59 @@
 {
   "name": "@mordomo/core",
   "version": "0.8.0",
-  "private": true,
+  "description": "The MordomoOS engine as a library: run an agent from a program, with the write policy, the working-folder rules and the approvals of the app.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tvpl/agentic-os.git",
+    "directory": "core"
+  },
+  "license": "FSL-1.1-ALv2",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "sideEffects": false,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": "./dist/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "default": "./dist/internal.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.map",
+    "!dist/**/*.tsbuildinfo",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
+    "@mordomo/contracts": "0.8.0",
     "better-sqlite3": "^12.2.0",
     "croner": "^9.0.0",
     "gray-matter": "^4.0.3",
     "zod": "^3.25.0"
   },
+  "peerDependencies": {
+    "@types/node": ">=22"
+  },
+  "peerDependenciesMeta": {
+    "@types/node": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11"
+  },
+  "optionalDependencies": {
+    "sqlite-vec": "0.1.9"
   }
 }

@@ -4,8 +4,10 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
-import { events } from "@mordomo/core";
+import { z } from "zod";
+import { route } from "@mordomo/contracts";
 import { AppContext, readRestorePending } from "../apps/api/src/context.js";
+import { registerSyntheticEntry } from "./helpers/syntheticEntry.js";
 import { buildServer, isAllowedHost, safeUrl, tokenMatches } from "../apps/api/src/server.js";
 import { deepMergeSettings, SettingsPatchSchema } from "../apps/api/src/routes/system.js";
 import { FAKE_BIN, makeTempHome, withFakeBinPath } from "./helpers.js";
@@ -42,10 +44,6 @@ beforeAll(async () => {
   ctx.reloadAdapters();
   token = ctx.token();
   app = await buildServer(ctx);
-  // A route that throws an internal error, to assert the 500 envelope hides details.
-  app.get("/api/__boom", async () => {
-    throw new Error(`secret path ${home}/config/token`);
-  });
 });
 
 afterAll(async () => {
@@ -133,14 +131,32 @@ describe("error envelope (audit #7)", () => {
   });
 
   it("unknown errors → 500 without leaking the message", async () => {
-    const res = await app.inject({ method: "GET", url: "/api/__boom", headers: auth() });
-    expect(res.statusCode).toBe(500);
-    expect(res.json()).toEqual({
-      error: { code: "internal", message: "Internal error" },
-      message: "Internal error",
+    // A route that throws an internal error, to assert the 500 envelope hides details. Registered through the test
+    // helper, as the table is frozen: its entry belongs to this server alone and goes with it.
+    const boomApp = await buildServer(ctx);
+    const boom = route({
+      method: "GET",
+      path: "/api/__boom",
+      scope: "owner",
+      summary: "A route that throws an internal error",
+      tag: "test",
+      responses: { 200: z.object({}) },
     });
-    expect(res.body).not.toContain("secret path");
-    expect(res.body).not.toContain(home);
+    try {
+      registerSyntheticEntry(boomApp, "zz.boom", boom, async () => {
+        throw new Error(`secret path ${home}/config/token`);
+      });
+      const res = await boomApp.inject({ method: "GET", url: "/api/__boom", headers: auth() });
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({
+        error: { code: "internal", message: "Internal error" },
+        message: "Internal error",
+      });
+      expect(res.body).not.toContain("secret path");
+      expect(res.body).not.toContain(home);
+    } finally {
+      await boomApp.close();
+    }
   });
 
   it("statusCode errors keep their status and a code", async () => {
@@ -195,8 +211,9 @@ describe("host and token checks (audit #8)", () => {
       headers: { "x-mordomo-token": flipped },
     });
     expect(wrong.statusCode).toBe(401);
+    // api-v1 door 4: the right token in the URL is refused outside the stream/file GETs.
     const viaQuery = await app.inject({ method: "GET", url: `/api/settings?token=${token}` });
-    expect(viaQuery.statusCode).toBe(200);
+    expect(viaQuery.statusCode).toBe(401);
   });
 });
 
@@ -224,7 +241,7 @@ describe("settings deep-merge + adapter reload (audit #6)", () => {
     expect(binaryPath).toBeTruthy();
     const adapterBefore = ctx.adapters.claude;
     let seen = 0;
-    const unsub = events.subscribe((e) => {
+    const unsub = ctx.events.subscribe((e) => {
       if (e.type === "settings.changed") seen++;
     });
     const res = await app.inject({
@@ -470,7 +487,8 @@ describe("health, version and request log (audit #25)", () => {
       .map((l) => JSON.parse(l));
     const metrics = lines.find((l) => typeof l.url === "string" && l.url.startsWith("/api/metrics"));
     expect(metrics).toBeTruthy();
-    expect(metrics).toMatchObject({ method: "GET", status: 200 });
+    // Refused (api-v1: no token in the URL outside streams), and logged without it.
+    expect(metrics).toMatchObject({ method: "GET", status: 401 });
     expect(typeof metrics.ms).toBe("number");
     expect(typeof metrics.ts).toBe("number");
     expect(metrics.reqId).toBeTruthy();
@@ -573,18 +591,19 @@ describe("SSE streams (audit #23, #27)", () => {
   });
 
   it("/api/events replays from Last-Event-ID / ?since and streams live events", async () => {
-    const a = events.emit("settings.changed", { keys: ["a"] });
-    const b = events.emit("settings.changed", { keys: ["b"] });
+    // Payloads as the service sends them (the settings document); the system name tells the two events apart.
+    const a = ctx.events.emit("settings.changed", { settings: { ...ctx.settings(), systemName: "event-a" } });
+    const b = ctx.events.emit("settings.changed", { settings: { ...ctx.settings(), systemName: "event-b" } });
     const pending = readSse(`${base}/api/events?token=${token}&since=${a.id}`, {}, 700);
     await new Promise((r) => setTimeout(r, 200));
-    const live = events.emit("routine.changed", { id: "x", action: "test" });
+    const live = ctx.events.emit("routine.changed", { id: "x", action: "test" });
     const out = await pending;
     expect(out.status).toBe(200);
     expect(out.contentType).toContain("text/event-stream");
     expect(out.text).not.toContain(`id: ${a.id}\n`);
     expect(out.text).toContain(`id: ${b.id}\nevent: settings.changed\n`);
     expect(out.text).toContain(`id: ${live.id}\nevent: routine.changed\n`);
-    expect(out.text).toContain('"keys":["b"]');
+    expect(out.text).toContain('"systemName":"event-b"');
 
     const viaHeader = await readSse(
       `${base}/api/events?token=${token}`,

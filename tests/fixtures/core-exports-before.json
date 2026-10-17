@@ -1,0 +1,2424 @@
+{
+  "base": "795306e",
+  "note": "The 603 names core/src/index.ts exported before sdk-core (375 values, 228 types), read by the TypeScript checker. removed: names dropped on purpose, with the reason; sharedByBoth: names whose zod schema stays internal while their type is public.",
+  "removed": {
+    "events": "the process-wide event bus is gone: every engine owns its EventBus (door 3)",
+    "setProviderBinaries": "the allowlist of executables is a SpawnPolicy owned by each engine (door 4)",
+    "probe": "a probe runs through a SpawnPolicy (SpawnPolicy.probe), so it uses the allowlist and the environment of one engine (door 4)"
+  },
+  "sharedByBoth": ["ProviderId", "EffortLevel", "SecurityProfile"],
+  "names": {
+    "ActiveHours": {
+      "value": false,
+      "type": true
+    },
+    "AdapterFactory": {
+      "value": false,
+      "type": true
+    },
+    "AdapterFactoryOptions": {
+      "value": false,
+      "type": true
+    },
+    "AgentAdapter": {
+      "value": false,
+      "type": true
+    },
+    "AgentRun": {
+      "value": false,
+      "type": true
+    },
+    "Approval": {
+      "value": false,
+      "type": true
+    },
+    "ApprovalKind": {
+      "value": false,
+      "type": true
+    },
+    "ApprovalStore": {
+      "value": true,
+      "type": true
+    },
+    "AssertFactInput": {
+      "value": false,
+      "type": true
+    },
+    "AssertFactResult": {
+      "value": false,
+      "type": true
+    },
+    "AuditReport": {
+      "value": false,
+      "type": true
+    },
+    "AuthStatus": {
+      "value": false,
+      "type": true
+    },
+    "BUILTIN_PROVIDER_IDS": {
+      "value": true,
+      "type": false
+    },
+    "BackupInfo": {
+      "value": false,
+      "type": true
+    },
+    "BackupOptions": {
+      "value": false,
+      "type": true
+    },
+    "BackupVerificationError": {
+      "value": true,
+      "type": true
+    },
+    "BudgetCrossedPayload": {
+      "value": false,
+      "type": true
+    },
+    "BuiltinProviderId": {
+      "value": false,
+      "type": true
+    },
+    "BytesRead": {
+      "value": false,
+      "type": true
+    },
+    "CURRENT_SETTINGS_VERSION": {
+      "value": true,
+      "type": false
+    },
+    "ChannelSettings": {
+      "value": false,
+      "type": true
+    },
+    "ChannelSettingsSchema": {
+      "value": true,
+      "type": false
+    },
+    "ClaudeStreamMessage": {
+      "value": true,
+      "type": true
+    },
+    "CodexStreamEvent": {
+      "value": true,
+      "type": true
+    },
+    "Connector": {
+      "value": false,
+      "type": true
+    },
+    "ConnectorData": {
+      "value": false,
+      "type": true
+    },
+    "ConnectorDataCache": {
+      "value": true,
+      "type": true
+    },
+    "ConnectorDelta": {
+      "value": false,
+      "type": true
+    },
+    "ConnectorDeltaDeps": {
+      "value": false,
+      "type": true
+    },
+    "ConnectorDeltaMark": {
+      "value": false,
+      "type": true
+    },
+    "ConnectorItem": {
+      "value": false,
+      "type": true
+    },
+    "ConnectorRegistry": {
+      "value": true,
+      "type": true
+    },
+    "ConnectorSchema": {
+      "value": true,
+      "type": false
+    },
+    "CopyLimits": {
+      "value": false,
+      "type": true
+    },
+    "CreateObjectiveInput": {
+      "value": false,
+      "type": true
+    },
+    "CreateRunInput": {
+      "value": false,
+      "type": true
+    },
+    "CreateSessionInput": {
+      "value": false,
+      "type": true
+    },
+    "DEDUPE_MS": {
+      "value": true,
+      "type": false
+    },
+    "DEFAULT_COPY_LIMITS": {
+      "value": true,
+      "type": false
+    },
+    "DEFAULT_DEVICE_SCOPES": {
+      "value": true,
+      "type": false
+    },
+    "DEFAULT_EXCLUDES": {
+      "value": true,
+      "type": false
+    },
+    "DEFAULT_JOURNAL_BUDGET_TOKENS": {
+      "value": true,
+      "type": false
+    },
+    "DEFAULT_SIMILARITY": {
+      "value": true,
+      "type": false
+    },
+    "DEVICE_NAME_MAX": {
+      "value": true,
+      "type": false
+    },
+    "DEVICE_SCOPES": {
+      "value": true,
+      "type": false
+    },
+    "DailyPoint": {
+      "value": false,
+      "type": true
+    },
+    "DataMapping": {
+      "value": false,
+      "type": true
+    },
+    "DataMappingSchema": {
+      "value": true,
+      "type": false
+    },
+    "Db": {
+      "value": false,
+      "type": true
+    },
+    "DbNewerVersionError": {
+      "value": true,
+      "type": true
+    },
+    "DedupeLookup": {
+      "value": false,
+      "type": true
+    },
+    "DetectionResult": {
+      "value": false,
+      "type": true
+    },
+    "DeviceRecord": {
+      "value": false,
+      "type": true
+    },
+    "DeviceScope": {
+      "value": false,
+      "type": true
+    },
+    "DeviceStore": {
+      "value": true,
+      "type": true
+    },
+    "DiscoveredMcpServer": {
+      "value": false,
+      "type": true
+    },
+    "EffortLevel": {
+      "value": true,
+      "type": true
+    },
+    "EndpointVerdict": {
+      "value": false,
+      "type": true
+    },
+    "EngineLockedError": {
+      "value": true,
+      "type": true
+    },
+    "EngineOptions": {
+      "value": false,
+      "type": true
+    },
+    "EventBus": {
+      "value": true,
+      "type": true
+    },
+    "Every": {
+      "value": false,
+      "type": true
+    },
+    "ExecutableNotAllowedError": {
+      "value": true,
+      "type": true
+    },
+    "Fact": {
+      "value": false,
+      "type": true
+    },
+    "FactQuery": {
+      "value": false,
+      "type": true
+    },
+    "FailClosedField": {
+      "value": false,
+      "type": true
+    },
+    "FailureRun": {
+      "value": false,
+      "type": true
+    },
+    "FetchOptions": {
+      "value": false,
+      "type": true
+    },
+    "Fetcher": {
+      "value": false,
+      "type": true
+    },
+    "FieldHit": {
+      "value": false,
+      "type": true
+    },
+    "FieldQuery": {
+      "value": false,
+      "type": true
+    },
+    "FieldSpec": {
+      "value": false,
+      "type": true
+    },
+    "FileRow": {
+      "value": false,
+      "type": true
+    },
+    "FileTooLargeError": {
+      "value": true,
+      "type": true
+    },
+    "FireOptions": {
+      "value": false,
+      "type": true
+    },
+    "FireReason": {
+      "value": false,
+      "type": true
+    },
+    "FireResult": {
+      "value": false,
+      "type": true
+    },
+    "FolderTooLargeError": {
+      "value": true,
+      "type": true
+    },
+    "FsWatchDeps": {
+      "value": false,
+      "type": true
+    },
+    "FsWatchSentinel": {
+      "value": true,
+      "type": true
+    },
+    "GatedRunPayload": {
+      "value": false,
+      "type": true
+    },
+    "GraphData": {
+      "value": false,
+      "type": true
+    },
+    "GraphEdge": {
+      "value": false,
+      "type": true
+    },
+    "GraphNode": {
+      "value": false,
+      "type": true
+    },
+    "HARD_BLOCKED_DIRS": {
+      "value": true,
+      "type": false
+    },
+    "HOME_PRIVATE_DIRS": {
+      "value": true,
+      "type": false
+    },
+    "HOUR_MS": {
+      "value": true,
+      "type": false
+    },
+    "HealthStatus": {
+      "value": false,
+      "type": true
+    },
+    "Heartbeat": {
+      "value": false,
+      "type": true
+    },
+    "HistoryEntry": {
+      "value": false,
+      "type": true
+    },
+    "HostResolver": {
+      "value": false,
+      "type": true
+    },
+    "HourlyReport": {
+      "value": false,
+      "type": true
+    },
+    "HygieneAction": {
+      "value": false,
+      "type": true
+    },
+    "HygieneItem": {
+      "value": false,
+      "type": true
+    },
+    "HygieneKind": {
+      "value": false,
+      "type": true
+    },
+    "HygieneOptions": {
+      "value": false,
+      "type": true
+    },
+    "HygieneReport": {
+      "value": false,
+      "type": true
+    },
+    "HygieneSources": {
+      "value": false,
+      "type": true
+    },
+    "ID_PATTERN": {
+      "value": true,
+      "type": false
+    },
+    "INDEX_CHUNK_SIZE": {
+      "value": true,
+      "type": false
+    },
+    "IgnoredBinaryPath": {
+      "value": false,
+      "type": true
+    },
+    "InboundDeps": {
+      "value": false,
+      "type": true
+    },
+    "IndexProgress": {
+      "value": false,
+      "type": true
+    },
+    "IndexStats": {
+      "value": false,
+      "type": true
+    },
+    "IndexedFolder": {
+      "value": false,
+      "type": true
+    },
+    "IndexedFolderSchema": {
+      "value": true,
+      "type": false
+    },
+    "InvalidIdError": {
+      "value": true,
+      "type": true
+    },
+    "ItemFields": {
+      "value": false,
+      "type": true
+    },
+    "JOURNAL_SECTIONS": {
+      "value": true,
+      "type": false
+    },
+    "JournalDay": {
+      "value": false,
+      "type": true
+    },
+    "JournalEntry": {
+      "value": false,
+      "type": true
+    },
+    "JournalHookOptions": {
+      "value": false,
+      "type": true
+    },
+    "JournalSection": {
+      "value": false,
+      "type": true
+    },
+    "JsonlLogger": {
+      "value": true,
+      "type": true
+    },
+    "KNOWN_PUSH_HOSTS": {
+      "value": true,
+      "type": false
+    },
+    "KnownStreamTypes": {
+      "value": true,
+      "type": false
+    },
+    "LastRunSummary": {
+      "value": false,
+      "type": true
+    },
+    "LineParser": {
+      "value": false,
+      "type": true
+    },
+    "LockRecord": {
+      "value": false,
+      "type": true
+    },
+    "MAX_CAPTURED_BYTES": {
+      "value": true,
+      "type": false
+    },
+    "MAX_COMPARED_TOKENS": {
+      "value": true,
+      "type": false
+    },
+    "MAX_EVENT_PATHS": {
+      "value": true,
+      "type": false
+    },
+    "MAX_EVENT_PATH_CHARS": {
+      "value": true,
+      "type": false
+    },
+    "MAX_FIELDS_PER_FILE": {
+      "value": true,
+      "type": false
+    },
+    "MAX_LINE_CHARS": {
+      "value": true,
+      "type": false
+    },
+    "MIGRATIONS": {
+      "value": true,
+      "type": false
+    },
+    "McpProtocolError": {
+      "value": true,
+      "type": true
+    },
+    "McpStdioClient": {
+      "value": true,
+      "type": true
+    },
+    "McpTool": {
+      "value": false,
+      "type": true
+    },
+    "MemoryIndexer": {
+      "value": true,
+      "type": true
+    },
+    "MetricsHistory": {
+      "value": true,
+      "type": true
+    },
+    "MetricsSample": {
+      "value": false,
+      "type": true
+    },
+    "Migration": {
+      "value": false,
+      "type": true
+    },
+    "MigrationError": {
+      "value": true,
+      "type": true
+    },
+    "MigrationResult": {
+      "value": false,
+      "type": true
+    },
+    "ModelOption": {
+      "value": false,
+      "type": true
+    },
+    "MordomoEngine": {
+      "value": true,
+      "type": true
+    },
+    "MordomoPaths": {
+      "value": false,
+      "type": true
+    },
+    "NOTIFICATION_KINDS": {
+      "value": true,
+      "type": false
+    },
+    "NotRegularFileError": {
+      "value": true,
+      "type": true
+    },
+    "NotificationInput": {
+      "value": false,
+      "type": true
+    },
+    "NotificationKind": {
+      "value": false,
+      "type": true
+    },
+    "NotificationRecord": {
+      "value": false,
+      "type": true
+    },
+    "NotificationRecorderOptions": {
+      "value": false,
+      "type": true
+    },
+    "NotificationStore": {
+      "value": true,
+      "type": true
+    },
+    "NotificationTone": {
+      "value": false,
+      "type": true
+    },
+    "OS_EVENT_VERSION": {
+      "value": true,
+      "type": false
+    },
+    "Objective": {
+      "value": false,
+      "type": true
+    },
+    "ObjectiveContext": {
+      "value": false,
+      "type": true
+    },
+    "ObjectiveStatus": {
+      "value": false,
+      "type": true
+    },
+    "ObjectiveStep": {
+      "value": false,
+      "type": true
+    },
+    "ObjectiveStepStatus": {
+      "value": false,
+      "type": true
+    },
+    "ObjectiveStore": {
+      "value": true,
+      "type": true
+    },
+    "OnExit": {
+      "value": false,
+      "type": true
+    },
+    "OsEvent": {
+      "value": false,
+      "type": true
+    },
+    "OsEventListener": {
+      "value": false,
+      "type": true
+    },
+    "OsEventMap": {
+      "value": false,
+      "type": true
+    },
+    "OsEventType": {
+      "value": false,
+      "type": true
+    },
+    "OwnerLock": {
+      "value": true,
+      "type": true
+    },
+    "PAIRING_MAX_ATTEMPTS": {
+      "value": true,
+      "type": false
+    },
+    "PAIRING_TTL_MS": {
+      "value": true,
+      "type": false
+    },
+    "PRIVATE_DIR_MODE": {
+      "value": true,
+      "type": false
+    },
+    "PRIVATE_FILE_MODE": {
+      "value": true,
+      "type": false
+    },
+    "PROFILES": {
+      "value": true,
+      "type": false
+    },
+    "PairingCode": {
+      "value": false,
+      "type": true
+    },
+    "ParsedSkillFile": {
+      "value": false,
+      "type": true
+    },
+    "PathAccessError": {
+      "value": true,
+      "type": true
+    },
+    "PathVerdict": {
+      "value": false,
+      "type": true
+    },
+    "PendingApprovalView": {
+      "value": false,
+      "type": true
+    },
+    "PermissionBroker": {
+      "value": false,
+      "type": true
+    },
+    "PreviewResult": {
+      "value": false,
+      "type": true
+    },
+    "ProbeIo": {
+      "value": false,
+      "type": true
+    },
+    "ProcessProbe": {
+      "value": false,
+      "type": true
+    },
+    "ProfileCapabilities": {
+      "value": false,
+      "type": true
+    },
+    "PromptRunInput": {
+      "value": false,
+      "type": true
+    },
+    "ProviderCapabilities": {
+      "value": false,
+      "type": true
+    },
+    "ProviderId": {
+      "value": true,
+      "type": true
+    },
+    "ProviderManifest": {
+      "value": false,
+      "type": true
+    },
+    "ProviderNativeLayout": {
+      "value": false,
+      "type": true
+    },
+    "ProviderRegistry": {
+      "value": true,
+      "type": true
+    },
+    "ProviderRegistryError": {
+      "value": true,
+      "type": true
+    },
+    "ProviderSettings": {
+      "value": false,
+      "type": true
+    },
+    "ProviderSettingsSchema": {
+      "value": true,
+      "type": false
+    },
+    "PruneOptions": {
+      "value": false,
+      "type": true
+    },
+    "PruneResult": {
+      "value": false,
+      "type": true
+    },
+    "PublishOptions": {
+      "value": false,
+      "type": true
+    },
+    "PublishResult": {
+      "value": false,
+      "type": true
+    },
+    "PushChannelDeps": {
+      "value": false,
+      "type": true
+    },
+    "PushStore": {
+      "value": true,
+      "type": true
+    },
+    "PushSubscriptionJson": {
+      "value": false,
+      "type": true
+    },
+    "PushSubscriptionRecord": {
+      "value": false,
+      "type": true
+    },
+    "RESTORE_PENDING_DIR": {
+      "value": true,
+      "type": false
+    },
+    "ReadOnlyViolationError": {
+      "value": true,
+      "type": true
+    },
+    "ReadOptions": {
+      "value": false,
+      "type": true
+    },
+    "ReadScope": {
+      "value": false,
+      "type": true
+    },
+    "ReadScopeOptions": {
+      "value": false,
+      "type": true
+    },
+    "RecallCandidate": {
+      "value": false,
+      "type": true
+    },
+    "RecallContext": {
+      "value": false,
+      "type": true
+    },
+    "RecallOptions": {
+      "value": false,
+      "type": true
+    },
+    "RecallPathStat": {
+      "value": false,
+      "type": true
+    },
+    "RecallResult": {
+      "value": false,
+      "type": true
+    },
+    "RecallStats": {
+      "value": false,
+      "type": true
+    },
+    "RecordRunInput": {
+      "value": false,
+      "type": true
+    },
+    "RegistryEntry": {
+      "value": false,
+      "type": true
+    },
+    "RegistryIndex": {
+      "value": false,
+      "type": true
+    },
+    "RegistrySkill": {
+      "value": false,
+      "type": true
+    },
+    "RejectedLine": {
+      "value": false,
+      "type": true
+    },
+    "RejectionReason": {
+      "value": false,
+      "type": true
+    },
+    "RelatedEdge": {
+      "value": false,
+      "type": true
+    },
+    "RepeatDetectorDeps": {
+      "value": false,
+      "type": true
+    },
+    "RepeatGroup": {
+      "value": false,
+      "type": true
+    },
+    "RepeatRun": {
+      "value": false,
+      "type": true
+    },
+    "RepeatedFailureDeps": {
+      "value": false,
+      "type": true
+    },
+    "RestoreInProgressError": {
+      "value": true,
+      "type": true
+    },
+    "RestoreLeftoverError": {
+      "value": true,
+      "type": true
+    },
+    "RestoreLock": {
+      "value": true,
+      "type": true
+    },
+    "RestoreLockError": {
+      "value": true,
+      "type": true
+    },
+    "RestoreLockMode": {
+      "value": false,
+      "type": true
+    },
+    "RestoreOptions": {
+      "value": false,
+      "type": true
+    },
+    "RestorePending": {
+      "value": false,
+      "type": true
+    },
+    "RestoreRecoveryError": {
+      "value": true,
+      "type": true
+    },
+    "RestoreState": {
+      "value": false,
+      "type": true
+    },
+    "RouterIssue": {
+      "value": false,
+      "type": true
+    },
+    "Routine": {
+      "value": false,
+      "type": true
+    },
+    "RoutineContext": {
+      "value": true,
+      "type": true
+    },
+    "RoutineDelivery": {
+      "value": true,
+      "type": true
+    },
+    "RoutineRunner": {
+      "value": true,
+      "type": true
+    },
+    "RoutineScheduler": {
+      "value": true,
+      "type": true
+    },
+    "RoutineSchema": {
+      "value": true,
+      "type": false
+    },
+    "RoutineStatus": {
+      "value": false,
+      "type": true
+    },
+    "RoutineStore": {
+      "value": true,
+      "type": true
+    },
+    "RoutineSummary": {
+      "value": false,
+      "type": true
+    },
+    "RoutineValidationOptions": {
+      "value": false,
+      "type": true
+    },
+    "RunEvent": {
+      "value": false,
+      "type": true
+    },
+    "RunFailure": {
+      "value": false,
+      "type": true
+    },
+    "RunManager": {
+      "value": true,
+      "type": true
+    },
+    "RunMode": {
+      "value": false,
+      "type": true
+    },
+    "RunOrigin": {
+      "value": false,
+      "type": true
+    },
+    "RunRecord": {
+      "value": false,
+      "type": true
+    },
+    "RunRequestSpec": {
+      "value": false,
+      "type": true
+    },
+    "RunStatus": {
+      "value": false,
+      "type": true
+    },
+    "RunUsage": {
+      "value": false,
+      "type": true
+    },
+    "RunUsageEvent": {
+      "value": false,
+      "type": true
+    },
+    "SECRET_FILE_PATTERNS": {
+      "value": true,
+      "type": false
+    },
+    "SENTINEL_IDS": {
+      "value": true,
+      "type": false
+    },
+    "SETTINGS_FAIL_CLOSED": {
+      "value": true,
+      "type": false
+    },
+    "SETTINGS_MIGRATIONS": {
+      "value": true,
+      "type": false
+    },
+    "SKILL_OVERLAP_TOKENS": {
+      "value": true,
+      "type": false
+    },
+    "SafeInvocation": {
+      "value": false,
+      "type": true
+    },
+    "SampleSource": {
+      "value": false,
+      "type": true
+    },
+    "ScheduleKind": {
+      "value": true,
+      "type": true
+    },
+    "SchedulerOptions": {
+      "value": false,
+      "type": true
+    },
+    "SearchFilters": {
+      "value": false,
+      "type": true
+    },
+    "SearchHit": {
+      "value": false,
+      "type": true
+    },
+    "Section": {
+      "value": false,
+      "type": true
+    },
+    "SecurityProfile": {
+      "value": true,
+      "type": true
+    },
+    "SentinelFiredPayload": {
+      "value": false,
+      "type": true
+    },
+    "SentinelId": {
+      "value": false,
+      "type": true
+    },
+    "SentinelRunner": {
+      "value": true,
+      "type": true
+    },
+    "SentinelRunnerDeps": {
+      "value": false,
+      "type": true
+    },
+    "SentinelSettings": {
+      "value": false,
+      "type": true
+    },
+    "SentinelSettingsSchema": {
+      "value": true,
+      "type": false
+    },
+    "SentinelSeverity": {
+      "value": false,
+      "type": true
+    },
+    "SessionRecord": {
+      "value": false,
+      "type": true
+    },
+    "SessionStore": {
+      "value": true,
+      "type": true
+    },
+    "SessionSummary": {
+      "value": false,
+      "type": true
+    },
+    "Settings": {
+      "value": false,
+      "type": true
+    },
+    "SettingsIssue": {
+      "value": false,
+      "type": true
+    },
+    "SettingsMigration": {
+      "value": false,
+      "type": true
+    },
+    "SettingsPatch": {
+      "value": false,
+      "type": true
+    },
+    "SettingsSchema": {
+      "value": true,
+      "type": false
+    },
+    "SettingsStore": {
+      "value": true,
+      "type": true
+    },
+    "SigningKeys": {
+      "value": false,
+      "type": true
+    },
+    "SilentRoutine": {
+      "value": false,
+      "type": true
+    },
+    "SilentRoutineCandidate": {
+      "value": false,
+      "type": true
+    },
+    "SilentRoutineDeps": {
+      "value": false,
+      "type": true
+    },
+    "Skill": {
+      "value": false,
+      "type": true
+    },
+    "SkillCatalog": {
+      "value": true,
+      "type": true
+    },
+    "SkillFrontmatter": {
+      "value": false,
+      "type": true
+    },
+    "SkillFrontmatterSchema": {
+      "value": true,
+      "type": false
+    },
+    "SkillI18n": {
+      "value": false,
+      "type": true
+    },
+    "SkillI18nSchema": {
+      "value": true,
+      "type": false
+    },
+    "SkillInput": {
+      "value": false,
+      "type": true
+    },
+    "SkillInputSchema": {
+      "value": true,
+      "type": false
+    },
+    "SkillRegistry": {
+      "value": true,
+      "type": true
+    },
+    "SkillRunInput": {
+      "value": false,
+      "type": true
+    },
+    "SpawnHandle": {
+      "value": false,
+      "type": true
+    },
+    "SpawnOptions": {
+      "value": false,
+      "type": true
+    },
+    "SpawnResult": {
+      "value": false,
+      "type": true
+    },
+    "StartupServicePlan": {
+      "value": false,
+      "type": true
+    },
+    "StepEvidence": {
+      "value": false,
+      "type": true
+    },
+    "StoreProblem": {
+      "value": false,
+      "type": true
+    },
+    "SyncAction": {
+      "value": false,
+      "type": true
+    },
+    "SyncApplyResult": {
+      "value": false,
+      "type": true
+    },
+    "SyncCompiler": {
+      "value": true,
+      "type": true
+    },
+    "SyncPlan": {
+      "value": false,
+      "type": true
+    },
+    "TELEGRAM_API_HOST": {
+      "value": true,
+      "type": false
+    },
+    "TELEGRAM_API_ORIGIN": {
+      "value": true,
+      "type": false
+    },
+    "TELEGRAM_TIMEOUT_MS": {
+      "value": true,
+      "type": false
+    },
+    "TERMINAL_STATUSES": {
+      "value": true,
+      "type": false
+    },
+    "THICK_LINE_THRESHOLD": {
+      "value": true,
+      "type": false
+    },
+    "TelegramChannelDeps": {
+      "value": false,
+      "type": true
+    },
+    "TelegramPoller": {
+      "value": true,
+      "type": true
+    },
+    "TelegramSendOptions": {
+      "value": false,
+      "type": true
+    },
+    "TelegramSendResult": {
+      "value": false,
+      "type": true
+    },
+    "TelegramUpdate": {
+      "value": false,
+      "type": true
+    },
+    "TestedVersions": {
+      "value": false,
+      "type": true
+    },
+    "TextRead": {
+      "value": false,
+      "type": true
+    },
+    "TlsMaterial": {
+      "value": false,
+      "type": true
+    },
+    "TolerantOptions": {
+      "value": false,
+      "type": true
+    },
+    "ToolMapping": {
+      "value": false,
+      "type": true
+    },
+    "ToolMappingSchema": {
+      "value": true,
+      "type": false
+    },
+    "TriageAction": {
+      "value": false,
+      "type": true
+    },
+    "TriageDecision": {
+      "value": false,
+      "type": true
+    },
+    "TriageDeps": {
+      "value": false,
+      "type": true
+    },
+    "TriageInbox": {
+      "value": false,
+      "type": true
+    },
+    "TriageOutcome": {
+      "value": false,
+      "type": true
+    },
+    "TriageRunner": {
+      "value": false,
+      "type": true
+    },
+    "TypedLine": {
+      "value": false,
+      "type": true
+    },
+    "UI_PREFERENCE_KEYS": {
+      "value": true,
+      "type": false
+    },
+    "UiPreferenceKey": {
+      "value": false,
+      "type": true
+    },
+    "UiPreferences": {
+      "value": false,
+      "type": true
+    },
+    "UiPreferencesSchema": {
+      "value": true,
+      "type": false
+    },
+    "UiPreferencesStore": {
+      "value": true,
+      "type": true
+    },
+    "UnrecognizedTally": {
+      "value": false,
+      "type": true
+    },
+    "ValidationResult": {
+      "value": false,
+      "type": true
+    },
+    "VapidKeys": {
+      "value": false,
+      "type": true
+    },
+    "VersionStatus": {
+      "value": false,
+      "type": true
+    },
+    "WorkspaceAccessOptions": {
+      "value": false,
+      "type": true
+    },
+    "WorkspaceEntry": {
+      "value": false,
+      "type": true
+    },
+    "WorkspaceFile": {
+      "value": false,
+      "type": true
+    },
+    "WorkspaceFilter": {
+      "value": false,
+      "type": true
+    },
+    "WorkspaceFilterOptions": {
+      "value": false,
+      "type": true
+    },
+    "WorkspacePathCheck": {
+      "value": false,
+      "type": true
+    },
+    "WriteDecision": {
+      "value": false,
+      "type": true
+    },
+    "WriteGate": {
+      "value": false,
+      "type": true
+    },
+    "WriteMode": {
+      "value": false,
+      "type": true
+    },
+    "WriteOptions": {
+      "value": false,
+      "type": true
+    },
+    "WriteOrigin": {
+      "value": false,
+      "type": true
+    },
+    "allowPathsFrom": {
+      "value": true,
+      "type": false
+    },
+    "allowedTools": {
+      "value": true,
+      "type": false
+    },
+    "appendJournal": {
+      "value": true,
+      "type": false
+    },
+    "applyPendingRestore": {
+      "value": true,
+      "type": false
+    },
+    "approvalKeyboard": {
+      "value": true,
+      "type": false
+    },
+    "areaSlug": {
+      "value": true,
+      "type": false
+    },
+    "assertAllowed": {
+      "value": true,
+      "type": false
+    },
+    "assertFact": {
+      "value": true,
+      "type": false
+    },
+    "assertValidId": {
+      "value": true,
+      "type": false
+    },
+    "assertWritablePath": {
+      "value": true,
+      "type": false
+    },
+    "atomicWrite": {
+      "value": true,
+      "type": false
+    },
+    "augmentedPath": {
+      "value": true,
+      "type": false
+    },
+    "b64url": {
+      "value": true,
+      "type": false
+    },
+    "boundedPaths": {
+      "value": true,
+      "type": false
+    },
+    "budgetDedupeKey": {
+      "value": true,
+      "type": false
+    },
+    "buildGraph": {
+      "value": true,
+      "type": false
+    },
+    "buildTriagePrompt": {
+      "value": true,
+      "type": false
+    },
+    "candidatesFromStatus": {
+      "value": true,
+      "type": false
+    },
+    "canonicalJson": {
+      "value": true,
+      "type": false
+    },
+    "certificateHosts": {
+      "value": true,
+      "type": false
+    },
+    "checkConnectorDeltas": {
+      "value": true,
+      "type": false
+    },
+    "checkPushEndpoint": {
+      "value": true,
+      "type": false
+    },
+    "checkRepeatedFailure": {
+      "value": true,
+      "type": false
+    },
+    "checkRouters": {
+      "value": true,
+      "type": false
+    },
+    "checkSilentRoutines": {
+      "value": true,
+      "type": false
+    },
+    "checkWorkspacePath": {
+      "value": true,
+      "type": false
+    },
+    "classifyPushEndpoint": {
+      "value": true,
+      "type": false
+    },
+    "classifyRunFailure": {
+      "value": true,
+      "type": false
+    },
+    "clearRestorePending": {
+      "value": true,
+      "type": false
+    },
+    "closeDeviceScopes": {
+      "value": true,
+      "type": false
+    },
+    "connectorDeltaPayload": {
+      "value": true,
+      "type": false
+    },
+    "connectorMetaKey": {
+      "value": true,
+      "type": false
+    },
+    "copyTreeWithoutLinks": {
+      "value": true,
+      "type": false
+    },
+    "createBackup": {
+      "value": true,
+      "type": false
+    },
+    "createEngine": {
+      "value": true,
+      "type": false
+    },
+    "createSelfSignedCertificate": {
+      "value": true,
+      "type": false
+    },
+    "createUnrecognizedTally": {
+      "value": true,
+      "type": false
+    },
+    "cronNextAfter": {
+      "value": true,
+      "type": false
+    },
+    "dailyPoints": {
+      "value": true,
+      "type": false
+    },
+    "decryptPayload": {
+      "value": true,
+      "type": false
+    },
+    "deepMergeSettings": {
+      "value": true,
+      "type": false
+    },
+    "defaultSettings": {
+      "value": true,
+      "type": false
+    },
+    "defaultUiPreferences": {
+      "value": true,
+      "type": false
+    },
+    "defaultUserDataDir": {
+      "value": true,
+      "type": false
+    },
+    "deliverPush": {
+      "value": true,
+      "type": false
+    },
+    "deliverToTelegram": {
+      "value": true,
+      "type": false
+    },
+    "detectRepeatedPrompts": {
+      "value": true,
+      "type": false
+    },
+    "detectTimezone": {
+      "value": true,
+      "type": false
+    },
+    "diffConnectorItems": {
+      "value": true,
+      "type": false
+    },
+    "discoverMcpServers": {
+      "value": true,
+      "type": false
+    },
+    "emitSentinel": {
+      "value": true,
+      "type": false
+    },
+    "encryptPayload": {
+      "value": true,
+      "type": false
+    },
+    "endpointProblem": {
+      "value": true,
+      "type": false
+    },
+    "ensureDirs": {
+      "value": true,
+      "type": false
+    },
+    "ensureJournal": {
+      "value": true,
+      "type": false
+    },
+    "ensureSigningKeys": {
+      "value": true,
+      "type": false
+    },
+    "ensureTlsMaterial": {
+      "value": true,
+      "type": false
+    },
+    "events": {
+      "value": true,
+      "type": false
+    },
+    "executableName": {
+      "value": true,
+      "type": false
+    },
+    "executeInvocation": {
+      "value": true,
+      "type": false
+    },
+    "expectedIntervalMs": {
+      "value": true,
+      "type": false
+    },
+    "extractKeywords": {
+      "value": true,
+      "type": false
+    },
+    "factStats": {
+      "value": true,
+      "type": false
+    },
+    "failureKey": {
+      "value": true,
+      "type": false
+    },
+    "failureLabel": {
+      "value": true,
+      "type": false
+    },
+    "fetchConnectorData": {
+      "value": true,
+      "type": false
+    },
+    "fieldsFromDb": {
+      "value": true,
+      "type": false
+    },
+    "fileRowFromDb": {
+      "value": true,
+      "type": false
+    },
+    "findExecutable": {
+      "value": true,
+      "type": false
+    },
+    "findOnPath": {
+      "value": true,
+      "type": false
+    },
+    "findPrivateLink": {
+      "value": true,
+      "type": false
+    },
+    "fingerprintOf": {
+      "value": true,
+      "type": false
+    },
+    "formatNotification": {
+      "value": true,
+      "type": false
+    },
+    "fsWatchPayload": {
+      "value": true,
+      "type": false
+    },
+    "generateRouters": {
+      "value": true,
+      "type": false
+    },
+    "generateSigningKeys": {
+      "value": true,
+      "type": false
+    },
+    "generateVapidKeys": {
+      "value": true,
+      "type": false
+    },
+    "grantedReadScope": {
+      "value": true,
+      "type": false
+    },
+    "groupPrompts": {
+      "value": true,
+      "type": false
+    },
+    "hasColumn": {
+      "value": true,
+      "type": false
+    },
+    "hasStagingFolders": {
+      "value": true,
+      "type": false
+    },
+    "hashId": {
+      "value": true,
+      "type": false
+    },
+    "hashIds": {
+      "value": true,
+      "type": false
+    },
+    "hashToken": {
+      "value": true,
+      "type": false
+    },
+    "hashTokens": {
+      "value": true,
+      "type": false
+    },
+    "homeConfigFilesOf": {
+      "value": true,
+      "type": false
+    },
+    "homeReadScope": {
+      "value": true,
+      "type": false
+    },
+    "ignoredBinaryPaths": {
+      "value": true,
+      "type": false
+    },
+    "inspectLockFile": {
+      "value": true,
+      "type": false
+    },
+    "inspectPath": {
+      "value": true,
+      "type": false
+    },
+    "inspectRestoreState": {
+      "value": true,
+      "type": false
+    },
+    "installJournalHooks": {
+      "value": true,
+      "type": false
+    },
+    "installNotificationRecorder": {
+      "value": true,
+      "type": false
+    },
+    "installPushChannel": {
+      "value": true,
+      "type": false
+    },
+    "installSentinelTriage": {
+      "value": true,
+      "type": false
+    },
+    "installTelegramChannel": {
+      "value": true,
+      "type": false
+    },
+    "installedVersion": {
+      "value": true,
+      "type": false
+    },
+    "intervalMs": {
+      "value": true,
+      "type": false
+    },
+    "isBinaryBuffer": {
+      "value": true,
+      "type": false
+    },
+    "isDeviceActor": {
+      "value": true,
+      "type": false
+    },
+    "isHardBlockedPath": {
+      "value": true,
+      "type": false
+    },
+    "isHeartbeatOk": {
+      "value": true,
+      "type": false
+    },
+    "isInside": {
+      "value": true,
+      "type": false
+    },
+    "isInsideAny": {
+      "value": true,
+      "type": false
+    },
+    "isJournalDate": {
+      "value": true,
+      "type": false
+    },
+    "isKnownPushHost": {
+      "value": true,
+      "type": false
+    },
+    "isPublicAddress": {
+      "value": true,
+      "type": false
+    },
+    "isSealed": {
+      "value": true,
+      "type": false
+    },
+    "isSecretFile": {
+      "value": true,
+      "type": false
+    },
+    "isStartupServiceInstalled": {
+      "value": true,
+      "type": false
+    },
+    "isValidId": {
+      "value": true,
+      "type": false
+    },
+    "isWithinActiveHours": {
+      "value": true,
+      "type": false
+    },
+    "isWriteLikeTool": {
+      "value": true,
+      "type": false
+    },
+    "isoWeek": {
+      "value": true,
+      "type": false
+    },
+    "itemsFromParsed": {
+      "value": true,
+      "type": false
+    },
+    "jaccard": {
+      "value": true,
+      "type": false
+    },
+    "journalDir": {
+      "value": true,
+      "type": false
+    },
+    "journalPath": {
+      "value": true,
+      "type": false
+    },
+    "journalSections": {
+      "value": true,
+      "type": false
+    },
+    "journalTemplate": {
+      "value": true,
+      "type": false
+    },
+    "killProcessGroup": {
+      "value": true,
+      "type": false
+    },
+    "listBackups": {
+      "value": true,
+      "type": false
+    },
+    "listFacets": {
+      "value": true,
+      "type": false
+    },
+    "listJournalDates": {
+      "value": true,
+      "type": false
+    },
+    "listWorkspaceDir": {
+      "value": true,
+      "type": false
+    },
+    "localDateString": {
+      "value": true,
+      "type": false
+    },
+    "localDay": {
+      "value": true,
+      "type": false
+    },
+    "localLink": {
+      "value": true,
+      "type": false
+    },
+    "lockIsStale": {
+      "value": true,
+      "type": false
+    },
+    "makeExcludeMatcher": {
+      "value": true,
+      "type": false
+    },
+    "makeWorkspaceFilter": {
+      "value": true,
+      "type": false
+    },
+    "manualPromptRuns": {
+      "value": true,
+      "type": false
+    },
+    "memoryHygiene": {
+      "value": true,
+      "type": false
+    },
+    "metricsLocalDay": {
+      "value": true,
+      "type": false
+    },
+    "migrateSettings": {
+      "value": true,
+      "type": false
+    },
+    "minimalEnv": {
+      "value": true,
+      "type": false
+    },
+    "nextAtRun": {
+      "value": true,
+      "type": false
+    },
+    "nextEveryRun": {
+      "value": true,
+      "type": false
+    },
+    "nextHeartbeatRun": {
+      "value": true,
+      "type": false
+    },
+    "nextIntervalSlot": {
+      "value": true,
+      "type": false
+    },
+    "nextRunAt": {
+      "value": true,
+      "type": false
+    },
+    "nextRunFor": {
+      "value": true,
+      "type": false
+    },
+    "normalizeFieldKey": {
+      "value": true,
+      "type": false
+    },
+    "normalizeTokens": {
+      "value": true,
+      "type": false
+    },
+    "openDb": {
+      "value": true,
+      "type": false
+    },
+    "openWorkspaceFile": {
+      "value": true,
+      "type": false
+    },
+    "parseCommand": {
+      "value": true,
+      "type": false
+    },
+    "parseHelpFlags": {
+      "value": true,
+      "type": false
+    },
+    "parseIndex": {
+      "value": true,
+      "type": false
+    },
+    "parseInlineFields": {
+      "value": true,
+      "type": false
+    },
+    "parseSkillFile": {
+      "value": true,
+      "type": false
+    },
+    "parseTolerant": {
+      "value": true,
+      "type": false
+    },
+    "parseToolText": {
+      "value": true,
+      "type": false
+    },
+    "parseTriageDecision": {
+      "value": true,
+      "type": false
+    },
+    "parseWhere": {
+      "value": true,
+      "type": false
+    },
+    "pidAlive": {
+      "value": true,
+      "type": false
+    },
+    "plainText": {
+      "value": true,
+      "type": false
+    },
+    "planStartupService": {
+      "value": true,
+      "type": false
+    },
+    "previewFile": {
+      "value": true,
+      "type": false
+    },
+    "previousScheduledTime": {
+      "value": true,
+      "type": false
+    },
+    "probe": {
+      "value": true,
+      "type": false
+    },
+    "processStartMarker": {
+      "value": true,
+      "type": false
+    },
+    "promptHead": {
+      "value": true,
+      "type": false
+    },
+    "promptRunFields": {
+      "value": true,
+      "type": false
+    },
+    "providerSearchDirs": {
+      "value": true,
+      "type": false
+    },
+    "pruneBackups": {
+      "value": true,
+      "type": false
+    },
+    "pruneRotated": {
+      "value": true,
+      "type": false
+    },
+    "publishRegistry": {
+      "value": true,
+      "type": false
+    },
+    "pushPayload": {
+      "value": true,
+      "type": false
+    },
+    "queryFacts": {
+      "value": true,
+      "type": false
+    },
+    "queryFilesByField": {
+      "value": true,
+      "type": false
+    },
+    "readJournal": {
+      "value": true,
+      "type": false
+    },
+    "readLock": {
+      "value": true,
+      "type": false
+    },
+    "readMetaJson": {
+      "value": true,
+      "type": false
+    },
+    "readRestorePending": {
+      "value": true,
+      "type": false
+    },
+    "readScope": {
+      "value": true,
+      "type": false
+    },
+    "readTypedLine": {
+      "value": true,
+      "type": false
+    },
+    "readWorkspaceFile": {
+      "value": true,
+      "type": false
+    },
+    "readWorkspaceText": {
+      "value": true,
+      "type": false
+    },
+    "realProbe": {
+      "value": true,
+      "type": false
+    },
+    "realProbeIo": {
+      "value": true,
+      "type": false
+    },
+    "realpathLenient": {
+      "value": true,
+      "type": false
+    },
+    "recall": {
+      "value": true,
+      "type": false
+    },
+    "recallStats": {
+      "value": true,
+      "type": false
+    },
+    "recentFailures": {
+      "value": true,
+      "type": false
+    },
+    "recentJournals": {
+      "value": true,
+      "type": false
+    },
+    "recordRecall": {
+      "value": true,
+      "type": false
+    },
+    "recoverInterruptedRestore": {
+      "value": true,
+      "type": false
+    },
+    "redactObject": {
+      "value": true,
+      "type": false
+    },
+    "redactSecrets": {
+      "value": true,
+      "type": false
+    },
+    "relatedEdges": {
+      "value": true,
+      "type": false
+    },
+    "relatedFiles": {
+      "value": true,
+      "type": false
+    },
+    "relatedFromTexts": {
+      "value": true,
+      "type": false
+    },
+    "renderArgs": {
+      "value": true,
+      "type": false
+    },
+    "renderJournalBlock": {
+      "value": true,
+      "type": false
+    },
+    "repeatDedupeKey": {
+      "value": true,
+      "type": false
+    },
+    "repeatNotification": {
+      "value": true,
+      "type": false
+    },
+    "repeatedFailureAlert": {
+      "value": true,
+      "type": false
+    },
+    "requiresFullReview": {
+      "value": true,
+      "type": false
+    },
+    "resolveCommand": {
+      "value": true,
+      "type": false
+    },
+    "resolveInsideDir": {
+      "value": true,
+      "type": false
+    },
+    "resolveInsideRoots": {
+      "value": true,
+      "type": false
+    },
+    "resolveOpenablePath": {
+      "value": true,
+      "type": false
+    },
+    "resolvePath": {
+      "value": true,
+      "type": false
+    },
+    "resolvePaths": {
+      "value": true,
+      "type": false
+    },
+    "resolveReadable": {
+      "value": true,
+      "type": false
+    },
+    "resolveWorkspaceCwd": {
+      "value": true,
+      "type": false
+    },
+    "restoreBackup": {
+      "value": true,
+      "type": false
+    },
+    "restorePendingDir": {
+      "value": true,
+      "type": false
+    },
+    "resumableSessionId": {
+      "value": true,
+      "type": false
+    },
+    "retractFact": {
+      "value": true,
+      "type": false
+    },
+    "rotateFile": {
+      "value": true,
+      "type": false
+    },
+    "routerPointers": {
+      "value": true,
+      "type": false
+    },
+    "runAudit": {
+      "value": true,
+      "type": false
+    },
+    "runMigrations": {
+      "value": true,
+      "type": false
+    },
+    "safeSpawn": {
+      "value": true,
+      "type": false
+    },
+    "sanitizeDeviceName": {
+      "value": true,
+      "type": false
+    },
+    "scoreSection": {
+      "value": true,
+      "type": false
+    },
+    "searchFiles": {
+      "value": true,
+      "type": false
+    },
+    "seedHome": {
+      "value": true,
+      "type": false
+    },
+    "sendMessageUrl": {
+      "value": true,
+      "type": false
+    },
+    "sendTelegramMessage": {
+      "value": true,
+      "type": false
+    },
+    "sendWebPush": {
+      "value": true,
+      "type": false
+    },
+    "sentinelDay": {
+      "value": true,
+      "type": false
+    },
+    "sentinelDedupeKey": {
+      "value": true,
+      "type": false
+    },
+    "sessionTitle": {
+      "value": true,
+      "type": false
+    },
+    "setProviderBinaries": {
+      "value": true,
+      "type": false
+    },
+    "settingsVersion": {
+      "value": true,
+      "type": false
+    },
+    "setupChecklist": {
+      "value": true,
+      "type": false
+    },
+    "shiftDate": {
+      "value": true,
+      "type": false
+    },
+    "signIndex": {
+      "value": true,
+      "type": false
+    },
+    "silentRoutineAlerts": {
+      "value": true,
+      "type": false
+    },
+    "skillCoversGroup": {
+      "value": true,
+      "type": false
+    },
+    "splitRegistryUrl": {
+      "value": true,
+      "type": false
+    },
+    "splitSections": {
+      "value": true,
+      "type": false
+    },
+    "startOfDayIn": {
+      "value": true,
+      "type": false
+    },
+    "statWorkspacePath": {
+      "value": true,
+      "type": false
+    },
+    "stemLite": {
+      "value": true,
+      "type": false
+    },
+    "substituteEnv": {
+      "value": true,
+      "type": false
+    },
+    "systemResolver": {
+      "value": true,
+      "type": false
+    },
+    "telegramToken": {
+      "value": true,
+      "type": false
+    },
+    "tightenHomeFiles": {
+      "value": true,
+      "type": false
+    },
+    "tightenMode": {
+      "value": true,
+      "type": false
+    },
+    "toNotification": {
+      "value": true,
+      "type": false
+    },
+    "tokenizeForRelated": {
+      "value": true,
+      "type": false
+    },
+    "toneAtLeast": {
+      "value": true,
+      "type": false
+    },
+    "triageNotification": {
+      "value": true,
+      "type": false
+    },
+    "triageSentinel": {
+      "value": true,
+      "type": false
+    },
+    "triageSpendToday": {
+      "value": true,
+      "type": false
+    },
+    "unifiedDiff": {
+      "value": true,
+      "type": false
+    },
+    "validateCron": {
+      "value": true,
+      "type": false
+    },
+    "validateRoutine": {
+      "value": true,
+      "type": false
+    },
+    "vapidAuthorization": {
+      "value": true,
+      "type": false
+    },
+    "verifyBackup": {
+      "value": true,
+      "type": false
+    },
+    "verifyIndex": {
+      "value": true,
+      "type": false
+    },
+    "verifyVapidToken": {
+      "value": true,
+      "type": false
+    },
+    "versionStatus": {
+      "value": true,
+      "type": false
+    },
+    "wallMinutes": {
+      "value": true,
+      "type": false
+    },
+    "withRestoreLock": {
+      "value": true,
+      "type": false
+    },
+    "workspaceScope": {
+      "value": true,
+      "type": false
+    },
+    "writeDecision": {
+      "value": true,
+      "type": false
+    },
+    "writeMetaJson": {
+      "value": true,
+      "type": false
+    },
+    "writeRestorePending": {
+      "value": true,
+      "type": false
+    },
+    "writeWorkspaceFile": {
+      "value": true,
+      "type": false
+    }
+  }
+}

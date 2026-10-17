@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { openClassicBrain } from "./shell";
 
 test("unverified authentication is not green or labelled OK and can be checked again", async ({ page }) => {
-  await page.route("**/api/providers?*", async (route) => {
+  await page.route("**/api/v1/providers?*", async (route) => {
     const response = await route.fetch();
     const verified = new URL(route.request().url()).searchParams.get("force") === "1";
     const data = (await response.json()).map((provider: { id: string; health: object }) => ({
@@ -18,7 +18,7 @@ test("unverified authentication is not green or labelled OK and can be checked a
     await route.fulfill({ response, json: data });
   });
   // Both the ordinary query and the explicit forced query are covered.
-  await page.route("**/api/providers", async (route) => {
+  await page.route("**/api/v1/providers", async (route) => {
     const response = await route.fetch();
     const data = (await response.json()).map((provider: { id: string; health: object }) => ({
       ...provider,
@@ -40,11 +40,11 @@ test("unverified authentication is not green or labelled OK and can be checked a
 });
 
 test("failed indexing preserves the brain and explains recovery in Portuguese", async ({ page }) => {
-  await page.route("**/api/meta", async (route) => {
+  await page.route("**/api/v1/meta", async (route) => {
     const response = await route.fetch();
     await route.fulfill({ response, json: { ...(await response.json()), language: "pt-BR" } });
   });
-  await page.route("**/api/memory/index", (route) =>
+  await page.route("**/api/v1/memory/index", (route) =>
     route.fulfill({
       status: 409,
       json: { error: { code: "index_scan_incomplete", message: "Index scan incomplete" } },
@@ -84,7 +84,8 @@ test("a remote indexing failure clears an observer's progress through the event 
         const detail = (event as CustomEvent<{ type: string; payload: unknown }>).detail;
         this.dispatchEvent(
           new MessageEvent(detail.type, {
-            data: JSON.stringify({ ...detail, id: 100, ts: Date.now() }),
+            // A frame of the real feed carries its version (`v`); the client drops one that does not.
+            data: JSON.stringify({ ...detail, id: 100, ts: Date.now(), v: 1 }),
           }),
         );
       };
