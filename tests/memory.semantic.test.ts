@@ -14,6 +14,7 @@ import {
   chooseProvider,
   endpointPolicy,
   hashEmbed,
+  httpProvider,
   type EmbeddingSettings,
 } from "../core/src/memory/embeddings.js";
 import { STOPWORDS } from "../core/src/memory/recall.js";
@@ -447,11 +448,11 @@ function manyNotes(count: number, words = 30): Corpus["notes"] {
 describe("S4 the http provider", () => {
   it("C48 sends the note text in batches of 16, each cut at 8000 characters, with the key from the environment, once per batch, and never writes the key down", async () => {
     const server = await endpoint();
-    process.env.MORDOMO_TEST_EMBEDDINGS_KEY = "sk-test-0123456789";
-    cleanups.push(() => void delete process.env.MORDOMO_TEST_EMBEDDINGS_KEY);
+    process.env.EMBEDDINGS_TEST_KEY = "sk-test-0123456789";
+    cleanups.push(() => void delete process.env.EMBEDDINGS_TEST_KEY);
     const notes = manyNotes(37);
     notes.push({ name: "enorme", text: `# Enorme\n\n${"palavra ".repeat(5000)}\n` });
-    const r = rig(httpSettings(server.url, { apiKeyEnv: "MORDOMO_TEST_EMBEDDINGS_KEY" }), notes);
+    const r = rig(httpSettings(server.url, { apiKeyEnv: "EMBEDDINGS_TEST_KEY" }), notes);
     const stats = await r.ctx.indexer.indexAllAsync();
     expect(stats.embedded).toBe(38);
     expect(server.requests.map((q) => q.body.input.length)).toEqual([16, 16, 6]);
@@ -475,7 +476,7 @@ describe("S4 the http provider", () => {
     // the key is in no file the home holds
     const settingsText = fs.readFileSync(r.ctx.paths.settingsFile, "utf8");
     expect(settingsText).not.toContain("sk-test-0123456789");
-    expect(settingsText).toContain("MORDOMO_TEST_EMBEDDINGS_KEY");
+    expect(settingsText).toContain("EMBEDDINGS_TEST_KEY");
     const walk = (dir: string): string[] =>
       fs
         .readdirSync(dir, { withFileTypes: true })
@@ -483,7 +484,7 @@ describe("S4 the http provider", () => {
     for (const file of walk(r.home).filter((f) => !f.endsWith(".db") && !f.includes(".db-")))
       expect(fs.readFileSync(file, "utf8").includes("sk-test-0123456789"), file).toBe(false);
     // without the variable no header is sent
-    delete process.env.MORDOMO_TEST_EMBEDDINGS_KEY;
+    delete process.env.EMBEDDINGS_TEST_KEY;
     fs.writeFileSync(path.join(r.dir, "nova.md"), "# Nova\n\numa nota nova\n");
     server.requests.length = 0;
     await r.ctx.indexer.indexAllAsync();
@@ -623,6 +624,100 @@ describe("S4 the http provider", () => {
     expect(
       server.requests.flatMap((q) => q.body.input as string[]).some((t) => t.includes("SEGREDO-QUE-NAO-SAI")),
     ).toBe(false);
+  }, 120_000);
+
+  it("C52 the question of a search goes to the http endpoint, once per search, in auto and semantic and never in text mode: it is what PRIVACY.md says", async () => {
+    const server = await endpoint();
+    const r = rig(httpSettings(server.url), manyNotes(6));
+    const asked = () => server.requests.flatMap((q) => q.body.input as string[]);
+    // no vector yet: nothing to compare the question with, nothing sent
+    await r.ctx.semantic.search({ query: "PERGUNTA-DIGITADA-ANTES" }, "auto");
+    expect(asked()).toEqual([]);
+    await r.ctx.indexer.indexAllAsync();
+    server.requests.length = 0;
+    const question = "PERGUNTA-DIGITADA palavra3 palavra7";
+    await r.ctx.semantic.search({ query: question }, "text");
+    expect(asked()).toEqual([]);
+    await r.ctx.semantic.search({ query: question }, "auto");
+    expect(asked()).toEqual([question]);
+    await r.ctx.semantic.search({ query: question }, "semantic");
+    expect(asked()).toEqual([question, question]);
+    expect(server.requests.every((q) => q.method === "POST" && q.body.model === "test-model")).toBe(true);
+    // through the route, as the screen, the CLI and MCP ask
+    const app = await buildServer(r.ctx);
+    cleanups.push(() => app.close());
+    server.requests.length = 0;
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/memory/search?q=${encodeURIComponent("OUTRA-PERGUNTA palavra4")}`,
+      headers: { "x-mordomo-token": r.ctx.token() },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(asked()).toEqual(["OUTRA-PERGUNTA palavra4"]);
+    // a question longer than a note's cut is cut the same
+    server.requests.length = 0;
+    await r.ctx.semantic.search({ query: `palavra3 ${"x".repeat(9000)}` }, "auto");
+    expect(asked()[0]!.length).toBe(HTTP_MAX_CHARS);
+    // the hash provider sends it nowhere
+    const local = rig({ enabled: true, provider: "hash" }, manyNotes(6));
+    await local.ctx.indexer.indexAllAsync();
+    const fetched = vi.spyOn(globalThis, "fetch");
+    await local.ctx.semantic.search({ query: question }, "auto");
+    expect(fetched).not.toHaveBeenCalled();
+  }, 120_000);
+
+  it("C52 apiKeyEnv: a name that is not a conventional variable is refused by PUT /api/settings; one the request meets is never read (MORDOMO_*, lower case)", async () => {
+    const server = await endpoint();
+    process.env.MORDOMO_SECRET_THAT_MUST_STAY = "service-own-secret";
+    process.env.lowercase_key = "lowercase-secret";
+    process.env.EMBEDDINGS_TEST_KEY = "sk-fine";
+    cleanups.push(() => {
+      delete process.env.MORDOMO_SECRET_THAT_MUST_STAY;
+      delete process.env.lowercase_key;
+      delete process.env.EMBEDDINGS_TEST_KEY;
+    });
+    const r = rig(undefined, manyNotes(3));
+    const app = await buildServer(r.ctx);
+    cleanups.push(() => app.close());
+    const headers = { "x-mordomo-token": r.ctx.token(), "content-type": "application/json" };
+    for (const name of ["MORDOMO_SECRET_THAT_MUST_STAY", "lowercase_key", "HOME DIR", "X".repeat(65)]) {
+      const refused = await app.inject({
+        method: "PUT",
+        url: "/api/settings",
+        headers,
+        payload: { memory: { embeddings: { ...httpSettings(server.url), apiKeyEnv: name } } },
+      });
+      expect(refused.statusCode, name).toBe(400);
+      expect(r.ctx.settings().memory.embeddings.apiKeyEnv, name).toBeUndefined();
+    }
+    const accepted = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers,
+      payload: { memory: { embeddings: { ...httpSettings(server.url), apiKeyEnv: "EMBEDDINGS_TEST_KEY" } } },
+    });
+    expect(accepted.statusCode).toBe(200);
+    // the request itself checks the name again, whatever put it in the settings
+    const provider = httpProvider(
+      new URL(server.url),
+      { ...(httpSettings(server.url) as EmbeddingSettings), apiKeyEnv: "MORDOMO_SECRET_THAT_MUST_STAY" },
+      8,
+    );
+    await provider.embed(["um texto"], new AbortController().signal);
+    const lower = httpProvider(
+      new URL(server.url),
+      { ...(httpSettings(server.url) as EmbeddingSettings), apiKeyEnv: "lowercase_key" },
+      8,
+    );
+    await lower.embed(["um texto"], new AbortController().signal);
+    expect(server.requests.map((q) => q.headers.authorization)).toEqual([undefined, undefined]);
+    const fine = httpProvider(
+      new URL(server.url),
+      { ...(httpSettings(server.url) as EmbeddingSettings), apiKeyEnv: "EMBEDDINGS_TEST_KEY" },
+      8,
+    );
+    await fine.embed(["um texto"], new AbortController().signal);
+    expect(server.requests.at(-1)!.headers.authorization).toBe("Bearer sk-fine");
   }, 120_000);
 
   it("C50 a provider that times out, answers 500, answers the wrong length or garbage leaves the pass finished with the words complete, names the failure, and the next pass embeds the rest", async () => {

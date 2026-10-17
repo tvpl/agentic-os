@@ -225,6 +225,13 @@ export const ChannelSettingsSchema = z.object({
 export type ChannelSettings = z.infer<typeof ChannelSettingsSchema>;
 
 /** Version of `settings.json` this code reads and writes; older files are migrated on load (core/src/config/migrations.ts). */
+/**
+ * What `memory.embeddings.apiKeyEnv` may name: a conventional environment variable (capital letters, digits, `_`), at most
+ * 64 characters, and never one of the service's own (`MORDOMO_*`). The value of the variable named goes to the
+ * configured endpoint on every request, so the name is the whole of the setting's reach.
+ */
+export const EMBEDDINGS_KEY_ENV = /^(?!MORDOMO_)[A-Z][A-Z0-9_]{0,63}$/;
+
 export const CURRENT_SETTINGS_VERSION = 2;
 
 /** The engine's settings. What only the Command Centre reads lives in `UiPreferences` (preferences.ts). */
@@ -401,7 +408,19 @@ export const SettingsSchema = z.object({
           provider: z.enum(["hash", "http"]).default("hash"),
           endpoint: z.string().max(2000).optional(),
           model: z.string().max(200).optional(),
-          apiKeyEnv: z.string().max(200).optional(),
+          /**
+           * The NAME of the environment variable that holds the key (never the key): its value is sent as
+           * `Authorization: Bearer` to `endpoint` on every request. Capital letters, digits and `_`, at most 64, and not
+           * one of the service's own (`MORDOMO_*`): a name that does not fit is refused, so that this setting cannot be
+           * pointed at the variable of some other credential by accident. See `EMBEDDINGS_KEY_ENV`.
+           */
+          apiKeyEnv: z
+            .string()
+            .refine(
+              (name) => name === "" || EMBEDDINGS_KEY_ENV.test(name),
+              "apiKeyEnv: capital letters, digits and _ (at most 64), not starting with MORDOMO_",
+            )
+            .optional(),
           /** What the `http` endpoint answers: the length of one vector (8 to 4096). */
           dimensions: z.number().int().min(8).max(4096).optional(),
           /** A non-loopback endpoint receives note text only when this is on. */

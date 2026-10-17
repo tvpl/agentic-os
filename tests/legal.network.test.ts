@@ -417,6 +417,43 @@ describe("C25 the privacy policy repeats the network policy", () => {
   });
 });
 
+// ---- C52 --------------------------------------------------------------------------------------------------------------
+
+describe("C52 the embeddings entry says what it sends", () => {
+  const entry = policy.hosts.find((h) => h.id === "embeddings")!;
+
+  it("C52 it names both kinds of text that leave the machine (the files it indexes and the question of each search), the header and the shape of the variable name, in the policy and in PRIVACY.md", () => {
+    expect(entry).toBeDefined();
+    for (const source of [entry.data, privacy]) {
+      // the indexed files: every .md and .txt of the folders indexed, not only notes
+      expect(source).toContain("o texto de cada arquivo `.md` e `.txt` indexado");
+      expect(source).toContain("de qualquer pasta indexada e não só das notas do MordomoOS");
+      // the question: the most personal string of the feature, one request per search, in the two modes that use vectors
+      expect(source).toContain("a cada busca em modo `auto` ou `semantic`");
+      expect(source).toContain("a pergunta digitada");
+      expect(source).toContain("numa requisição por busca");
+      expect(source).toContain("seja a busca da tela, do CLI, do MCP ou de um dispositivo pareado");
+      // the key: the value of ANY variable the owner names goes to the endpoint, so the name is held to a shape
+      expect(source).toContain(
+        "`Authorization: Bearer` com o valor da variável de ambiente cujo nome o dono escreveu",
+      );
+      expect(source).toContain("qualquer que seja, vai a esse endereço em toda requisição");
+      expect(source).toContain("letras maiúsculas, dígitos e `_` (até 64) e nunca começa com `MORDOMO_`");
+      expect(source).toContain("sem nome nenhum (o padrão) não há cabeçalho");
+    }
+    // and it no longer says that only notes are sent
+    expect(entry.data).not.toContain("o texto de cada nota indexada");
+  });
+
+  it("C52 the sentence about the question is true of the code: the request is made in the search path, once, with the typed text", () => {
+    const semantic = fs.readFileSync(path.join(ROOT, "core/src/memory/semantic.ts"), "utf8");
+    const embeds = semantic.match(/provider\.embed\(\[question\]/g) ?? [];
+    expect(embeds).toHaveLength(1);
+    // (the behaviour is proved in memory.semantic.test.ts: a search in auto and semantic sends the question, text does not)
+    expect(semantic).toContain("const question = filters.query.trim();");
+  });
+});
+
 // ---- C26 --------------------------------------------------------------------------------------------------------------
 
 describe("C26 a conditional destination is off, or empty, until the owner turns it on", () => {

@@ -354,9 +354,14 @@ validated (absolute, existing directory, outside `config/`) but not approval-gat
 
 - **Semantic search sends nothing unless the owner turns it on and names an endpoint.** `memory.embeddings`
   is off by default and reads off when it cannot be read (`SETTINGS_FAIL_CLOSED`). The `hash` provider never
-  leaves the process. The `http` provider sends note text only to a loopback address, or over `https` with
+  leaves the process. The `http` provider sends text only to a loopback address, or over `https` with
   `sendRemote` on, never to an address with a credential in it, with no redirects, a 30 s timeout and an 8 MB cap
-  on the answer; the API key is read from the environment, never stored. A paired device cannot change these
+  on the answer. **What it sends**: the text of every indexed `.md` and `.txt` file (the owner's folders too, not
+  only notes), and **the question of each search** in mode `auto` or `semantic` once a vector exists (the screen, the
+  CLI, MCP and paired devices alike); `mode=text` and a search with embeddings off send nothing. The API key is read
+  from the environment, never stored; `apiKeyEnv` names the variable and its value goes to the endpoint on every
+  request, so the name is held to capital letters, digits and `_`, and never `MORDOMO_*` (the service's own); an
+  owner who names the variable of another credential sends that credential there (the setting is the owner's). A paired device cannot change these
   settings (`PUT /api/settings` is an owner route). The destination is in `legal/network-policy.json` and
   `legal/PRIVACY.md`. The `sqlite-vec` extension is a native library loaded only when the search is on; it is
   MIT OR Apache-2.0 and is pinned exactly in `core/package.json`.

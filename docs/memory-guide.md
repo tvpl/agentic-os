@@ -294,11 +294,14 @@ turning it off deletes the vectors at the next index pass.
   made of the other number of Portuguese `-ção` and `-ão` words ("devoluções" for a note that says "devolução")
   finds its note by the vectors, and neither the strict nor the any-word search finds it. Meaning (synonyms, a
   question that shares no word with the note) needs the `http` provider.
-- **`provider: "http"`** sends the text of each note (cut at 8 000 characters, 16 per request) to `endpoint`, an
+- **`provider: "http"`** sends the text of each indexed `.md` or `.txt` file (the folders you indexed, not only your
+  notes; cut at 8 000 characters, 16 per request) and **the question of every search** in mode `auto` or `semantic`
+  (once there is a vector; mode `text` sends nothing) to `endpoint`, an
   OpenAI-style `POST` `{ "model", "input": [...] }` answering `{ "data": [{ "embedding": [...] }] }`, which gives real
   semantics. It is sent only to a loopback address (an embeddings server on this machine) or, with `sendRemote`
   on, to an `https` address; `model` and `dimensions` (the length of one vector) are required; the key is read from
-  the environment variable named by `apiKeyEnv`, never from `settings.json`; there are no redirects, a 30-second
+  the environment variable named by `apiKeyEnv` (capital letters, digits and `_`, not `MORDOMO_*`; its value goes to the
+  endpoint on every request, so name a key made for it), never from `settings.json`; there are no redirects, a 30-second
   timeout and an 8 MB cap on the answer. If the endpoint fails, the pass still ends with the word index complete and
   `GET /api/memory/status` (`semantic.error`) says why; the next pass embeds the rest. This is a network point:
   `legal/PRIVACY.md` lists it, off by default.

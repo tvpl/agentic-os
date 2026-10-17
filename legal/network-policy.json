@@ -121,7 +121,7 @@
       "match": [],
       "trigger": "só com `memory.embeddings.enabled` ligado, `memory.embeddings.provider` igual a `http` e um `endpoint` que o dono escreveu: um endereço de loopback (um servidor de embeddings na própria máquina) ou, com `memory.embeddings.sendRemote` ligado, um endereço https; com o provedor `hash` (o padrão) nada é enviado a lugar nenhum",
       "default": "desligado",
-      "data": "POST com o modelo e o texto de cada nota indexada (até 8000 caracteres, em lotes de até 16) e, no cabeçalho, a chave lida da variável de ambiente `memory.embeddings.apiKeyEnv`; a chave nunca fica em `settings.json`; sem redirecionamento, 30 segundos de limite e 8 MB de resposta",
+      "data": "POST com o modelo e texto que sai da máquina de dois modos: (1) ao indexar, o texto de cada arquivo `.md` e `.txt` indexado, de qualquer pasta indexada e não só das notas do MordomoOS (até 8000 caracteres de cada um, em lotes de até 16); (2) a cada busca em modo `auto` ou `semantic`, enquanto houver ao menos um vetor, a pergunta digitada, que é o dado mais pessoal da função, numa requisição por busca, seja a busca da tela, do CLI, do MCP ou de um dispositivo pareado. No cabeçalho vai `Authorization: Bearer` com o valor da variável de ambiente cujo nome o dono escreveu em `memory.embeddings.apiKeyEnv`: o valor dessa variável, qualquer que seja, vai a esse endereço em toda requisição, então use uma chave feita para ele; o nome só aceita letras maiúsculas, dígitos e `_` (até 64) e nunca começa com `MORDOMO_`, e sem nome nenhum (o padrão) não há cabeçalho. A chave nunca fica em `settings.json`; sem redirecionamento, 30 segundos de limite e 8 MB de resposta",
       "defaultState": "off",
       "gate": {
         "setting": "memory.embeddings.enabled"
