@@ -46,7 +46,7 @@ interface FakeEvent {
  * bubble. A listener registered with `true` or `{ capture: true }` is a capturing one; with nothing, a bubbling one.
  */
 function page(
-  location: { protocol: string; hostname: string },
+  location: { protocol: string; hostname: string; port?: string },
   pageHandlers: Array<(event: FakeEvent) => void> = [],
 ) {
   const listeners: Array<{ type: string; run: (event: FakeEvent) => void; capture: boolean }> = [];
@@ -187,8 +187,11 @@ describe("C63 a click on a link that asks for a new window is handed to window.o
     expect(untouched.opened).toEqual([{ address: "https://example.com/", name: "_blank" }]);
   });
 
-  it("C63 the script listens on pages of the service's origin only; the shell's own screens and any other origin get no listener", () => {
+  it("C63 the script listens on pages of http://127.0.0.1 (any port: the window can only be on the service's own); the shell's own screens and any other host get no listener", () => {
     expect(page(SERVICE).listeners.map((l) => l.type)).toEqual(["click"]);
+    // the port is not part of the guard: the script does not know the service's, `on_navigation` keeps the window on it
+    for (const port of ["4777", "41234", ""])
+      expect(page({ ...SERVICE, port }).listeners, `port ${port}`).toHaveLength(1);
     for (const location of [
       { protocol: "tauri:", hostname: "localhost" },
       { protocol: "http:", hostname: "tauri.localhost" },

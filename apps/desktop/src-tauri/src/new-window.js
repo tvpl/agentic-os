@@ -10,7 +10,9 @@
 // So a plain click on such a link is turned into that call. It grants the page nothing it could not do itself:
 // `window.open` is the page's own, and no command of the shell is reachable from here.
 (function () {
-  // Only the service's own origin (http://127.0.0.1:<port>) has links of this kind; the shell's screens have none.
+  // Only pages of http://127.0.0.1 (any port) have links of this kind; the shell's screens have none. The script does not
+  // know the service's port (the window is built before the service is up), and does not need to: `on_navigation` lets
+  // the window sit on no other page of 127.0.0.1 than the service's own.
   if (location.protocol !== "http:" || location.hostname !== "127.0.0.1") return;
   document.addEventListener("click", function (event) {
     // The page's own handler (a router, a menu) comes first and may have taken the click.
