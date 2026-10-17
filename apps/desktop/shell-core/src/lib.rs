@@ -12,6 +12,7 @@ pub mod payload;
 pub mod policy;
 pub mod probe;
 pub mod ready;
+pub mod shell;
 pub mod state;
 pub mod supervisor;
 pub mod token;

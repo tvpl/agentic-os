@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DESKTOP = path.join(ROOT, "apps", "desktop");
 const TAURI = path.join(DESKTOP, "src-tauri");
+const SHELL_CORE = path.join(DESKTOP, "shell-core");
 const read = (...parts: string[]) => fs.readFileSync(path.join(...parts), "utf8");
 const conf = JSON.parse(read(TAURI, "tauri.conf.json")) as Record<string, any>;
 const cargoToml = read(TAURI, "Cargo.toml");
@@ -144,23 +145,25 @@ describe("C27 the webview loads only its own files and the service's loopback or
     expect(shell).not.toMatch(/=>\s*(true|false)\b/); // no arm of the shell decides by itself
     expect(shell).not.toMatch(/\bdecide\(/); // the policy is reached through on_navigation / on_new_window only
     expect(shell).toContain("on_new_window(url.as_str()");
-    // a service that ends after it was ready is reported as `stopped` (the kind is proven in failure.rs)
-    expect(shell).toContain("Failure::stopped(sidecar.exit_code(), sidecar.stderr_tail())");
+    // a service that ends after it was ready is reported as `stopped` (the kind is proven in failure.rs); that report is
+    // made in shell-core's `Shell::watch` now, which `tests/shell.rs` runs, and the Tauri side holds no decision at all
+    const core = read(SHELL_CORE, "src", "shell.rs");
+    expect(core).toContain("Failure::stopped(sidecar.exit_code(), sidecar.stderr_tail())");
+    expect(core).not.toMatch(/=>\s*(true|false)\b/);
   });
 
-  it("C64 a start that fails puts the window on the shell's own screen unless it is there (policy::failure_needs_the_shell_screen, tested in shell-core), so a failed restart after a failed install never leaves it on a dead service", () => {
+  it("C64 the Tauri side only hands the window to the shell-core `Shell`, which moves it after a failed start (cargo test -p mordomo-shell-core --test shell is the proof of the behaviour), so a failed restart after a failed install never leaves it on a dead service", () => {
     const shell = read(TAURI, "src", "shell.rs");
-    // the failure arm of `start` records the failure for the generation it belongs to, then moves the window
-    const arm = /Err\(failure\) => \{([\s\S]*?)\n {8}\}\n {8}Ok\(\(sidecar/.exec(shell)?.[1] ?? "";
-    expect(arm).toContain("inner.status = Status::Failed(failure);");
-    expect(arm).toContain("show_failure_on_shell_screen(app, local);");
-    expect(arm.indexOf("inner.generation == generation")).toBeGreaterThan(-1);
-    expect(arm.indexOf("inner.generation == generation")).toBeLessThan(
-      arm.indexOf("show_failure_on_shell_screen"),
-    );
-    const mover = /fn show_failure_on_shell_screen\([^)]*\) \{([\s\S]*?)\n\}/.exec(shell)?.[1] ?? "";
-    expect(mover).toContain("mordomo_shell_core::policy::failure_needs_the_shell_screen(");
-    expect(mover).toContain("window.navigate(local)");
+    // `start`, `monitor` and the window the shell remembers go through `Shell`: no state or decision is kept on this side
+    expect(shell).toContain("let generation = shell.begin_start();");
+    expect(shell).toContain("Err(failure) => shell.start_failed(generation, failure, &MainWindow::of(app)),");
+    expect(shell).toContain("shell.start_ready(generation, sidecar, &MainWindow::of(app))");
+    expect(shell).toContain("shell.watch(generation, &MainWindow::of(&app)) == Watch::Done");
+    expect(shell).toContain(".remember_local_screen(window.url().ok().map(String::from));");
+    expect(shell).not.toMatch(/\bstruct (Inner|Shell)\b/);
+    expect(shell).not.toContain("failure_needs_the_shell_screen");
+    // the decision itself is the policy's, called from the one place that moves the window after a failure
+    expect(read(SHELL_CORE, "src", "shell.rs")).toContain("policy::failure_needs_the_shell_screen(");
     // and the install path starts the service again through `start`, which is the arm above
     expect(read(TAURI, "src", "updater.rs")).toContain("|| crate::shell::spawn_start(app.clone()),");
   });
