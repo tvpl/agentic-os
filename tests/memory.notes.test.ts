@@ -595,6 +595,27 @@ describe("S1 create and edit a note", () => {
     expect([refused.status, errorCode(refused)]).toEqual([403, "scope_required"]);
   });
 
+  it("C15 a search query with a NUL byte is answered like the same query without it, never a 500", async () => {
+    const strict = await buildServer(ctx, { validateResponses: true }); // an answer the contract does not declare is a 500
+    cleanups.push(() => strict.close());
+    const made = await create({ title: "Com nulo", content: "palavranulaqrs está aqui" });
+    await ctx.indexer.requestIndexPaths([]);
+    const ask = async (q: string) => {
+      const res = await strict.inject({
+        method: "GET",
+        url: `/api/memory/search?q=${encodeURIComponent(q)}`,
+        headers: owner(),
+      });
+      return { status: res.statusCode, paths: (res.json() as Array<{ path: string }>).map((h) => h.path) };
+    };
+    const empty = await ask("");
+    expect(empty.status).toBe(200);
+    for (const q of ["\0", "\0\0 \0"]) expect(await ask(q), JSON.stringify(q)).toEqual(empty);
+    const plain = await ask("palavranulaqrs");
+    expect(plain.paths).toEqual([made.body.path]);
+    expect(await ask("palavra\0nulaqrs")).toEqual(plain);
+  });
+
   it("C15 a created or saved note is indexed by a pass over its path only and then found by search", async () => {
     await ctx.indexer.indexAllAsync();
     const finished: unknown[] = [];

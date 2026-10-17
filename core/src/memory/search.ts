@@ -23,11 +23,14 @@ export interface SearchHit extends FileRow {
   via: SearchVia;
 }
 
-/** Escape user input for FTS5: quote each term so no query syntax leaks through. */
+/**
+ * Escape user input for FTS5: quote each term so no query syntax leaks through. A NUL byte is dropped with the quote
+ * and the star (FTS5 fails on it): a query that is only that is an empty query.
+ */
 function toFtsQuery(input: string): string {
   const terms = input
     .split(/\s+/)
-    .map((t) => t.replace(/["*]/g, "").trim())
+    .map((t) => t.replace(/["*\0]/g, "").trim())
     .filter((t) => t.length > 0)
     .slice(0, 8);
   if (terms.length === 0) return "";

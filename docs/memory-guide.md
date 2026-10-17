@@ -276,7 +276,7 @@ incremental, so what was committed stays. `GET /api/memory/status` says `indexin
 when the worker script is not next to the service (a source checkout).
 
 **Semantic search (optional, off by default).** `GET /api/memory/search` ranks by words (BM25 over the
-full-text index). With `memory.embeddings.enabled` on (`PUT /api/settings`, owner only) the index also keeps one
+full-text index; NUL bytes in `q` are ignored, so a `q` made only of them lists the recent files like an empty one). With `memory.embeddings.enabled` on (`PUT /api/settings`, owner only) the index also keeps one
 vector per Markdown or text file, and a search fuses the two orders (reciprocal rank fusion, k = 60): each hit says
 `via` `text`, `semantic` or `both`, and `mode` is `auto` (the default), `text` or `semantic` (`409 semantic_disabled`
 while the search is off). Nothing is embedded, no extension is loaded and no connection is opened while it is off;
