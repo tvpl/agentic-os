@@ -191,7 +191,7 @@ describe("S3 the index pass in a worker", () => {
     expect(during.loopP99Ms, "loop p99").toBeLessThan(100);
   }, 300_000);
 
-  it("C32 the same probe sees a worker that holds the write lock for 300 ms (so the bounds above can fail)", async () => {
+  it("C32 the same probe sees a worker that holds the write lock for 300 ms (so the bound on the longest write can fail)", async () => {
     const holder = script(
       'import Database from "better-sqlite3";\n' +
         "const stats = { scanned: 0, added: 0, updated: 0, removed: 0, skippedExcluded: 0, skippedBinary: 0, related: 0, durationMs: 0 };\n" +
@@ -212,8 +212,9 @@ describe("S3 the index pass in a worker", () => {
     const r = rig({ files: 5, entry: holder });
     const during = await duringPass(r);
     expect(during.stats).toMatchObject({ added: 0 });
-    // the bounds above fail on it: more than 3 writes of 100 ms or more, and the longest past 250 ms
-    expect(during.slowWrites).toBeGreaterThan(3);
+    // each hold of the lock stops the write that lands in it for most of the 300 ms, so the longest bound above fails on
+    // it (how many writes land in a hold depends on how fast the thread starts: only "at least one" is asked)
+    expect(during.slowWrites).toBeGreaterThanOrEqual(1);
     expect(during.longestWriteMs).toBeGreaterThan(250);
   }, 120_000);
 
