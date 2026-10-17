@@ -1184,6 +1184,8 @@ describe("C59 a signature is checked against the public key before a file or a m
       ["1.2.3", "1.2.3"],
       ["v1.2.3", "1.2.3"],
       ["1.2.3", "v1.2.3"],
+      ["vv1.2.3", "1.2.3"], // every leading `v`, as the plugin's `trim_start_matches('v')` drops them
+      ["1.2.3", "vvv1.2.3"],
       ["1.2.3-rc.1", "1.2.3-rc.1"],
       ["nightly", "nightly"], // not semver on either side: the two strings as written
     ])

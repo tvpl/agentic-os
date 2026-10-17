@@ -117,6 +117,24 @@ mod tests {
     }
 
     #[test]
+    fn the_services_port_is_compared_whole_not_as_the_start_of_the_address() {
+        // the settings default is a four-digit port; a service on it must not pass for one on 47770, 47771, ...
+        let short = Some(4777);
+        assert_eq!(decide("http://127.0.0.1:4777/", short), Allow);
+        assert_eq!(decide("http://127.0.0.1:4777/settings", short), Allow);
+        assert_eq!(decide("http://127.0.0.1:47770/", short), OpenExternally);
+        assert_eq!(decide("http://127.0.0.1:47770/?next=/", short), OpenExternally);
+        // and the same prefix with userinfo in front of another host
+        for address in [
+            "http://127.0.0.1:47770@evil.example/",
+            "http://127.0.0.1:4777@evil.example/",
+            "http://127.0.0.1:4777:x@evil.example/",
+        ] {
+            assert_eq!(decide(address, short), OpenExternally, "{address}");
+        }
+    }
+
+    #[test]
     fn look_alikes_and_userinfo_do_not_pass_for_the_origin() {
         for address in [
             "http://127.0.0.1.evil.example:41234/",
