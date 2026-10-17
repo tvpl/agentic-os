@@ -7,6 +7,7 @@ import type * as Instances from "../apps/api/src/instances.js";
 import type * as SafeFs from "../core/src/security/safeFs.js";
 import { API, declaredErrors, routeKey, type RouteDefinition } from "@mordomo/contracts";
 import { buildWorld, entryOf, SCENARIOS, type Result, type World } from "./helpers/contractWorld.js";
+import { CEREBRO_V2_ROUTES } from "./helpers/routeScopes.js";
 
 /**
  * The refusals of the path filter and of the safe reader, and of a settings file the engine will not replace
@@ -275,6 +276,20 @@ describe("S1 the refusals of the file readers", () => {
       // A probe that finds nothing would pass every comparison below.
       expect(answering(fault).length, `${fault} answered`).toBeGreaterThan(5);
     }
+  });
+
+  it("C53 the probe has a scenario for each of the five routes of the second brain, and finds the refusals exactly where the contract lists them", () => {
+    for (const key of Object.keys(CEREBRO_V2_ROUTES)) expect(Object.keys(SCENARIOS), key).toContain(key);
+    for (const fault of FAULTS) {
+      const here = answering(fault).filter((k) => k in CEREBRO_V2_ROUTES);
+      const declaredHere = Object.keys(CEREBRO_V2_ROUTES).filter((k) =>
+        declares(API[CEREBRO_V2_ROUTES[k]!.id]!, fault),
+      );
+      expect(here, fault).toEqual(declaredHere.sort());
+    }
+    // the note reader is the route of the five that opens a file the person names
+    expect(answering("forbidden_path")).toContain("GET /api/memory/note");
+    expect(answering("not_a_file")).toContain("GET /api/memory/note");
   });
 
   for (const fault of FAULTS) {

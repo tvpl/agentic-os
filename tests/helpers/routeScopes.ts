@@ -152,3 +152,62 @@ export function routesOf(scope: RouteScope): string[] {
     .filter(([, s]) => s === scope)
     .map(([route]) => route);
 }
+
+/**
+ * The five routes cerebro-v2 added (.specs/features/cerebro-v2, C53), with what each is meant to be: its scope, the
+ * statuses of its successes, the part of the request it reads and the errors it declares besides the common ones.
+ * Written from the check, not from the table: the tests that use it compare the table, the document, the scope list and
+ * the docs with it.
+ */
+export const CEREBRO_V2_ROUTES: Record<
+  string,
+  {
+    id: string;
+    scope: "owner" | "content";
+    success: number[];
+    reads: "query" | "body" | "none";
+    errors: string[];
+  }
+> = {
+  "GET /api/memory/note": {
+    id: "memory.note",
+    scope: "content",
+    success: [200],
+    reads: "query",
+    errors: ["403 forbidden_path", "404 not_a_file", "404 note_missing", "413 note_too_large"],
+  },
+  "POST /api/memory/notes": {
+    id: "memory.notes.create",
+    scope: "owner",
+    success: [201],
+    reads: "body",
+    errors: ["400 unknown_area", "403 forbidden_path", "409 note_exists", "413 note_too_large"],
+  },
+  "PUT /api/memory/notes": {
+    id: "memory.notes.save",
+    scope: "owner",
+    success: [200],
+    reads: "body",
+    errors: [
+      "403 forbidden_path",
+      "403 note_not_editable",
+      "404 note_missing",
+      "409 edit_conflict",
+      "413 note_too_large",
+    ],
+  },
+  "GET /api/memory/links": {
+    id: "memory.links",
+    scope: "content",
+    success: [200],
+    reads: "query",
+    errors: ["404 not_found"],
+  },
+  "POST /api/memory/index/cancel": {
+    id: "memory.index.cancel",
+    scope: "owner",
+    success: [200],
+    reads: "none",
+    errors: [],
+  },
+};

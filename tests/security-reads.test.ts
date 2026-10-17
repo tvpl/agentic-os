@@ -2320,6 +2320,36 @@ describe("C31 the raw-read detector sees every way of calling fs", () => {
   });
 });
 
+describe("C55 the raw-fs list did not grow for the second brain", () => {
+  it("C55 the list holds 70 rows, and the only one under core/src/memory is the scan of the indexer; the new modules read through the primitives", () => {
+    expect(ALLOWED).toHaveLength(70);
+    const memory = ALLOWED.filter(
+      (a) => a.file.startsWith("core/src/memory/") || a.file.includes("routes/memory"),
+    );
+    expect(memory.map((a) => `${a.file} ${a.api} ${a.count}`)).toEqual([
+      "core/src/memory/indexer.ts readdirSync 1",
+    ]);
+    for (const file of [
+      "core/src/memory/notes.ts",
+      "core/src/memory/links.ts",
+      "core/src/memory/linkParser.ts",
+      "core/src/memory/indexHost.ts",
+      "core/src/memory/indexWorker.ts",
+      "core/src/memory/indexProtocol.ts",
+      "core/src/memory/semantic.ts",
+      "core/src/memory/embeddings.ts",
+      "core/src/memory/vectors.ts",
+      "apps/api/src/routes/memory.ts",
+    ])
+      expect(
+        ALLOWED.map((a) => a.file),
+        file,
+      ).not.toContain(file);
+    // the one primitive that gained a mode (the guarded replace) is already a primitive row, not a new one
+    expect(ALLOWED.filter((a) => a.file === "core/src/security/safeWrite.ts")).toHaveLength(1);
+  });
+});
+
 describe("C32 every raw fs read in core/src and apps/api/src is on the reviewed list", () => {
   let reads: RawRead[] = [];
   beforeAll(() => {

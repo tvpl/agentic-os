@@ -19,7 +19,7 @@ const bounds = path.join(root, "scripts", "bundle-bounds.mjs");
 const baseline = JSON.parse(fs.readFileSync(path.join(root, "scripts", "bundle-baseline.json"), "utf8")) as {
   tolerance: number;
   before: { commit: string; jsGzip: number };
-  after: Array<{ feature: string; reason: string; jsGzip: number }>;
+  after: Array<{ feature: string; reason: string; jsGzip: number; cssGzip: number }>;
 };
 
 const dirs: string[] = [];
@@ -178,5 +178,31 @@ describe("C31 the weight guard", () => {
     const build = job.steps.findIndex((other) => other.run === "npm run build");
     expect(build, "after the build").toBeGreaterThanOrEqual(0);
     expect(at).toBeGreaterThan(build);
+  });
+});
+
+describe("C23 what the weight guard enforces for cerebro-v2", () => {
+  // `bundle:check` compares a build with the newest recorded entry, and cerebro-v2 recorded that entry itself: by itself
+  // it cannot fail for this feature. What holds the feature to a number is the growth over the entry before it
+  // (limpeza-legado), pinned here on the recorded numbers (and on the measured build in pixel.plugin C28).
+  const GROWTH = { jsGzip: 8 * 1024, cssGzip: 1.5 * 1024 };
+
+  it("C23 the cerebro-v2 entry follows limpeza-legado, says why, and grew the build by at most 8 KB of JS gzip and 1.5 KB of CSS gzip", () => {
+    const i = baseline.after.findIndex((e) => e.feature === "cerebro-v2");
+    expect(i, "the entry exists and a build came before it").toBeGreaterThan(0);
+    const [before, entry] = [baseline.after[i - 1]!, baseline.after[i]!];
+    expect(before.feature).toBe("limpeza-legado");
+    expect(entry.reason.length).toBeGreaterThan(40);
+    expect(entry.jsGzip - before.jsGzip).toBeGreaterThan(0);
+    expect(entry.jsGzip - before.jsGzip).toBeLessThanOrEqual(GROWTH.jsGzip);
+    expect(entry.cssGzip - before.cssGzip).toBeLessThanOrEqual(GROWTH.cssGzip);
+  });
+
+  it("C23 a build that grew more than that over limpeza-legado is not within the bound, though it passes bundle:check against its own entry", () => {
+    const before = baseline.after.find((e) => e.feature === "limpeza-legado")!;
+    const entry = baseline.after.find((e) => e.feature === "cerebro-v2")!;
+    // 5% of the entry is 25 KB: the guard alone would let a build 20 KB heavier than limpeza-legado through
+    expect(entry.jsGzip * baseline.tolerance - entry.jsGzip).toBeGreaterThan(GROWTH.jsGzip * 3);
+    expect(before.jsGzip + GROWTH.jsGzip).toBeLessThan(entry.jsGzip * baseline.tolerance);
   });
 });

@@ -160,6 +160,10 @@ describe("C28 the weight of the build is recorded", () => {
       // entry is the newest, the build weighs no more JS gzip than the build before it recorded. Once a later feature
       // appends its entry, its own reason and `bundle:check` (1.05 x the newest) are the rule.
       if (newest.feature === "limpeza-legado") expect(now.jsGzip).toBeLessThanOrEqual(own().before.jsGzip);
+      // cerebro-v2 recorded its own entry, so `bundle:check` alone cannot fail for it: while it is the newest, the
+      // measured build is held to the bound over limpeza-legado that tests/bundle-size.test.ts C23 pins on the numbers.
+      if (newest.feature === "cerebro-v2")
+        expect(now.jsGzip).toBeLessThanOrEqual(own().entry.jsGzip + 8 * 1024);
     },
   );
 });
