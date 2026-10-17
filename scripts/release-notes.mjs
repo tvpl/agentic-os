@@ -65,7 +65,6 @@ export function renderNotes(version, section, statuses) {
     "## What is attached",
     "",
     "- the installers, `SHA256SUMS.txt`",
-    "- `sbom.cdx.json` and `sbom.desktop.cdx.json` (CycloneDX 1.5: the npm side and the Rust crates), `THIRD_PARTY_NOTICES.md` and `THIRD_PARTY_NOTICES.desktop.md`",
     "- `latest.json` (the updater manifest), only when every platform signed",
     "",
   );

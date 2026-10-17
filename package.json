@@ -37,11 +37,7 @@
     "dist": "node scripts/package.mjs",
     "dist:quick": "node scripts/package.mjs --skip-build --node none --no-archive",
     "bundle:check": "node scripts/bundle-size.mjs --check",
-    "licenses:write": "node scripts/licenses.mjs --write",
-    "licenses:check": "node scripts/licenses.mjs --check && node scripts/licenses-rust.mjs --check",
-    "sbom": "node scripts/sbom.mjs",
     "network:scan": "node scripts/network-scan.mjs",
-    "licenses:write:rust": "node scripts/licenses-rust.mjs --write",
     "version:check": "node scripts/version-sync.mjs --check",
     "desktop:payload": "node scripts/package.mjs --payload apps/desktop/payload"
   },

@@ -1,7 +1,7 @@
 name: Release
 
 # Pushing a tag `v<version>` builds the desktop installers (macOS arm64 and x64, Windows x64, Linux x64) and attaches them
-# to a DRAFT release, with SHA256SUMS.txt, the two SBOMs, the third-party notices, the notes of the version's CHANGELOG
+# to a DRAFT release, with SHA256SUMS.txt, the notes of the version's CHANGELOG
 # section and, when everything was signed, the updater manifest latest.json. Nothing is published without the tag, and
 # this workflow never publishes: the owner reads the draft and publishes it. `workflow_dispatch` builds the same
 # installers and keeps them as artifacts of the run, with no release.
@@ -108,8 +108,6 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npx vitest run
-      - run: node scripts/licenses.mjs --check
-      - run: node scripts/licenses-rust.mjs --check --require-cargo
       - run: node scripts/network-scan.mjs --check
       - name: Desktop shell tests (no webview needed)
         working-directory: apps/desktop
@@ -184,14 +182,6 @@ jobs:
       - name: Payload
         if: runner.os != 'macOS' || needs.plan.outputs.mac_signed != 'true'
         run: node scripts/package.mjs --payload apps/desktop/payload --skip-build
-      - name: The license and the legal texts are in the payload
-        shell: bash
-        run: |
-          set -euo pipefail
-          for file in LICENSE legal/EULA.md legal/PRIVACY.md legal/NOTICE.md legal/THIRD_PARTY_NOTICES.md legal/THIRD_PARTY_NOTICES.desktop.md legal/sbom.cdx.json legal/sbom.desktop.cdx.json; do
-            test -f "apps/desktop/payload/$file" || { echo "::error::apps/desktop/payload/$file is missing"; exit 1; }
-          done
-
       - name: Build installers (macOS)
         if: runner.os == 'macOS'
         env:
@@ -308,7 +298,7 @@ jobs:
           pattern: release-*
           path: artifacts
           merge-multiple: true
-      - name: Notes, updater manifest, SBOM, notices, checksums
+      - name: Notes, updater manifest, checksums
         env:
           VERSION: ${{ needs.plan.outputs.version }}
           TAG: ${{ github.ref_name }}
@@ -319,9 +309,6 @@ jobs:
           node scripts/updater-manifest.mjs --dir artifacts --version "$VERSION" --tag "$TAG" --notes notes.md --out artifacts/latest.json || status=$?
           if [ "$status" -ne 0 ] && [ "$status" -ne 3 ]; then exit "$status"; fi
           if [ "$status" -eq 3 ]; then echo "latest.json is not part of this release: not every platform was signed (see above)."; fi
-          node scripts/sbom.mjs --out artifacts/sbom.cdx.json
-          node scripts/sbom-rust.mjs --out artifacts/sbom.desktop.cdx.json
-          cp legal/THIRD_PARTY_NOTICES.md legal/THIRD_PARTY_NOTICES.desktop.md artifacts/
           rm -f artifacts/status-*.json
           (cd artifacts && sha256sum -- * > ../SHA256SUMS.txt && mv ../SHA256SUMS.txt SHA256SUMS.txt && cat SHA256SUMS.txt)
       - name: Create or refresh the draft release

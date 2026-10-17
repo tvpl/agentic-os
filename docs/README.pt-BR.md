@@ -99,12 +99,6 @@ O MordomoOS é licenciado sob a **Functional Source License 1.1 com licença fut
 redistribuí-lo para qualquer fim que não seja um _Competing Use_ (como a licença define), e **cada versão passa
 a poder ser usada também sob a Apache License 2.0 na segunda data de aniversário da sua disponibilização**.
 
-- Os textos jurídicos ([EULA](../legal/EULA.md), [privacidade](../legal/PRIVACY.md),
-  [NOTICE](../legal/NOTICE.md), [CONTRIBUTING](../CONTRIBUTING.md) e os dados do titular no `LICENSE`) são
-  **minutas para revisão do dono, não aconselhamento jurídico**; os pontos em aberto estão marcados com
-  `[A PREENCHER PELO DONO: …]`.
-- [`legal/THIRD_PARTY_NOTICES.md`](../legal/THIRD_PARTY_NOTICES.md) reúne os componentes de terceiros que o
-  instalador leva, cada um com a sua licença.
 - O MordomoOS **orquestra** o Claude Code, o Codex e o Cursor Agent e **não os inclui, não os redistribui nem os
   sublicencia**: você os instala, entra com a sua própria conta, e cada um segue os termos do seu fornecedor.
 - Seus dados ficam no seu computador, o MordomoOS não envia nada a servidores do licenciante e **não tem

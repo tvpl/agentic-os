@@ -249,10 +249,6 @@
       "reason": "identificador do DTD de um arquivo plist, nunca contatado"
     },
     {
-      "match": "cyclonedx.org",
-      "reason": "identificador do esquema do SBOM, nunca contatado"
-    },
-    {
       "match": "example.com",
       "reason": "exemplo escrito num texto de ajuda de formulário"
     },

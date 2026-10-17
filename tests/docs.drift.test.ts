@@ -274,16 +274,8 @@ describe("C32 the internal papers have a folder of their own", () => {
 });
 
 describe("C33 the installer does not carry the documents", () => {
-  const WALK_SKIP = new Set(["node_modules"]);
-  const filesUnder = (dir: string): string[] =>
-    fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-      if (WALK_SKIP.has(e.name)) return [];
-      const p = path.join(dir, e.name);
-      return e.isDirectory() ? [p, ...filesUnder(p)] : [p];
-    });
-
-  it("C33 scripts/package.mjs and scripts/legal-stage.mjs never name the docs folder as something to copy", () => {
-    for (const file of ["scripts/package.mjs", "scripts/legal-stage.mjs"]) {
+    it("C33 scripts/package.mjs never name the docs folder as something to copy", () => {
+    for (const file of ["scripts/package.mjs"]) {
       const sf = ts.createSourceFile(file, read(file), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
       const named: string[] = [];
       const visit = (n: ts.Node) => {
@@ -292,25 +284,6 @@ describe("C33 the installer does not carry the documents", () => {
       };
       visit(sf);
       expect(named, file).toEqual([]);
-    }
-  });
-
-  it("C33 what stageLegal puts in the payload has no docs folder, and the notices cite no internal paper", async () => {
-    const { stageLegal } = (await import(
-      pathToFileURL(path.join(root, "scripts", "legal-stage.mjs")).href
-    )) as {
-      stageLegal: (root: string, payload: string) => void;
-    };
-    const payload = fs.mkdtempSync(path.join(os.tmpdir(), "mordomo-payload-"));
-    try {
-      stageLegal(root, payload);
-      const all = filesUnder(payload).map((p) => path.relative(payload, p).split(path.sep).join("/"));
-      expect(all.length).toBeGreaterThan(5);
-      expect(all.filter((p) => /(^|\/)docs(\/|$)/.test(p))).toEqual([]);
-      for (const file of ["legal/THIRD_PARTY_NOTICES.md", "legal/sbom.cdx.json"])
-        expect(fs.readFileSync(path.join(payload, file), "utf8"), file).not.toContain("docs/internal");
-    } finally {
-      fs.rmSync(payload, { recursive: true, force: true });
     }
   });
 });
