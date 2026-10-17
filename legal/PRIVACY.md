@@ -159,10 +159,16 @@ nenhuma configuração com `telemetry`, `analytics` ou `crash` no nome.
   de uma variável não é), uma macro que gera código, um `include!` e o que um `build.rs` baixa ao compilar não são
   lidos, e o que está em `#[cfg(test)]` é deixado de lado (o código depois dele é lido; o atributo só vale como
   código, no começo da linha, não citado num comentário). Um `Command::new("sh")` com o `curl` ou o `wget` na
-  cadeia do mesmo comando (`.arg("-c").arg("curl …")`) é lido; uma cadeia composta ou montada em tempo de execução
-  não é. No `Cargo.toml`, a tabela, o nome renomeado (`package = "…"`) e a dependência escrita em chave com ponto
-  (`reqwest.workspace = true`) são lidos; uma crate de rede que chega por outra crate (dependência indireta) não
-  aparece no `Cargo.toml` do app e vem pelo `Cargo.lock`, que a varredura não lê;
+  mesma instrução (`Command::new("sh").arg("-c").arg("curl -s https://…")`, até o `;` que a fecha ou o fim do bloco
+  em que ela é a última expressão) é lido, e só quando a cadeia **começa** por `curl` ou `wget` seguido de `-` ou
+  de `http(s):`. Não são lidos: o comando guardado numa variável e alimentado por instruções seguintes
+  (`let mut c = Command::new("sh"); c.arg("-c").arg("curl …");`), uma cadeia composta (`cd x && curl …`), e uma
+  cadeia montada em tempo de execução (`"curl $URL"`, `format!("curl {}", u)`). No `Cargo.toml`, a tabela, o nome
+  renomeado (`package = "…"`) e a dependência escrita em chave com ponto no começo da linha, sem recuo, sem espaço
+  em volta do ponto e sem aspas (`reqwest.workspace = true`) são lidos, uma vez por seção; a mesma dependência
+  escrita de outro jeito (`reqwest . workspace = true`, `"reqwest".workspace = true`, ou com recuo) não é; uma crate
+  de rede que chega por outra crate (dependência indireta) não aparece no `Cargo.toml` do app e vem pelo
+  `Cargo.lock`, que a varredura não lê;
 - um endereço escrito sem esquema só é lido quando a cadeia começa por `//` (`"//host/arquivo.js"`) ou, num
   arquivo de texto, vem logo depois de aspas, de `(` ou de `=`; montado por partes, ou numa constante cujo nome
   não diz que é um endereço e cujo domínio de topo não está na lista conhecida da varredura, não é.

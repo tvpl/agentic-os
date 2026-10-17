@@ -89,33 +89,67 @@ const NETWORK_PROGRAMS = new Map([
 const NETWORK_CRATES =
   "tauri-plugin-(?:updater|http|websocket|upload)|reqwest|hyper|ureq|isahc|surf|attohttpc";
 
+/**
+ * If a comment, a string, a raw string or a character starts at `j`, the index of its last character (-1: it never
+ * ends); otherwise `undefined`. A `'` that is a lifetime starts nothing.
+ */
+function literalEnd(text, j) {
+  const c = text[j];
+  if (c === "/" && text[j + 1] === "/") {
+    const nl = text.indexOf("\n", j);
+    return nl < 0 ? -1 : nl;
+  }
+  if (c === "/" && text[j + 1] === "*") {
+    const close = text.indexOf("*/", j + 2);
+    return close < 0 ? -1 : close + 1;
+  }
+  if (c === "r" && /^r#*"/.test(text.slice(j, j + 40)) && !/[\w]/.test(text[j - 1] ?? " ")) {
+    const hashes = /^r(#*)"/.exec(text.slice(j, j + 40))[1];
+    const close = text.indexOf(`"${hashes}`, j + 2 + hashes.length);
+    return close < 0 ? -1 : close + hashes.length;
+  }
+  if (c === '"') {
+    let k = j + 1;
+    for (; k < text.length && text[k] !== '"'; k++) if (text[k] === "\\") k++;
+    return k < text.length ? k : -1;
+  }
+  if (c === "'") {
+    const ch = /^'(?:\\.[^']*|[^\\'])'/.exec(text.slice(j, j + 12));
+    if (ch) return j + ch[0].length - 1; // a character; otherwise a lifetime
+  }
+  return undefined;
+}
+
 /** The index of the `}` that closes the `{` at `open`, skipping strings, characters and comments; -1 if none does. */
 function endOfBlock(text, open) {
   let depth = 0;
   for (let j = open; j < text.length; j++) {
-    const c = text[j];
-    if (c === "/" && text[j + 1] === "/") {
-      const nl = text.indexOf("\n", j);
-      if (nl < 0) return -1;
-      j = nl;
-    } else if (c === "/" && text[j + 1] === "*") {
-      const close = text.indexOf("*/", j + 2);
-      if (close < 0) return -1;
-      j = close + 1;
-    } else if (c === "r" && /^r#*"/.test(text.slice(j, j + 40)) && !/[\w]/.test(text[j - 1] ?? " ")) {
-      const hashes = /^r(#*)"/.exec(text.slice(j, j + 40))[1];
-      const close = text.indexOf(`"${hashes}`, j + 2 + hashes.length);
-      if (close < 0) return -1;
-      j = close + hashes.length;
-    } else if (c === '"') {
-      for (j++; j < text.length && text[j] !== '"'; j++) if (text[j] === "\\") j++;
-    } else if (c === "'") {
-      const ch = /^'(?:\\.[^']*|[^\\'])'/.exec(text.slice(j, j + 12));
-      if (ch) j += ch[0].length - 1; // a character; otherwise a lifetime
-    } else if (c === "{") depth++;
-    else if (c === "}" && --depth === 0) return j;
+    const end = literalEnd(text, j);
+    if (end === -1) return -1;
+    if (end !== undefined) j = end;
+    else if (text[j] === "{") depth++;
+    else if (text[j] === "}" && --depth === 0) return j;
   }
   return -1;
+}
+
+/**
+ * The index where the Rust statement that starts at `from` ends: its `;` outside any bracket, or the closing bracket of
+ * the block it is the last expression of (a function that returns `Command::new("sh")` has no `;`). Strings, characters
+ * and comments are skipped, so a `;` or a `}` inside one ends nothing. Where it never ends: the end of the text (the scan
+ * then reads more, never less).
+ */
+function endOfStatement(text, from) {
+  let depth = 0;
+  for (let j = from; j < text.length; j++) {
+    const end = literalEnd(text, j);
+    if (end === -1) return text.length;
+    if (end !== undefined) j = end;
+    else if ("({[".includes(text[j])) depth++;
+    else if (")}]".includes(text[j]) && --depth < 0) return j;
+    else if (text[j] === ";" && depth === 0) return j;
+  }
+  return text.length;
 }
 
 /**
@@ -372,12 +406,12 @@ export function scanText(text, fileName = "") {
       if (NETWORK_PROGRAMS.has(name)) point(`program:${NETWORK_PROGRAMS.get(name)}`);
     }
     // A shell given the command as an argument (`Command::new("sh").arg("-c").arg("curl …")`): the strings of that
-    // statement are read for a command that starts with curl / wget (a chain or a name built at run time is a limit).
+    // one statement (to its `;`, or to the end of the block it closes) are read for a command that starts with curl /
+    // wget. A builder kept in a variable and fed by later statements, a chain, and a name built at run time are limits.
     for (const m of text.matchAll(
       /\bCommand::new\(\s*"(?:[^"]*[\\/])?(?:sh|bash|dash|zsh|ash|cmd|powershell|pwsh)(?:\.exe)?"/gi,
     )) {
-      const end = text.indexOf(";", m.index);
-      const statement = text.slice(m.index, end < 0 ? text.length : end);
+      const statement = text.slice(m.index, endOfStatement(text, m.index));
       for (const arg of statement.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
         const command = DOWNLOAD_COMMAND.exec(arg[1].replace(/^[\s]+/, ""));
         if (command) point(`program:${command[0].trim().split(/\s/)[0]}`);

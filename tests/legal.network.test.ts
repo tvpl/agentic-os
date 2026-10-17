@@ -1226,6 +1226,12 @@ describe("C57 the scan of the desktop shell's Rust and Cargo files has no blind 
     expect(
       kinds('serde.version = "1"\nreqwest-like.workspace = true\n# reqwest.workspace = true\n', "Cargo.toml"),
     ).toEqual({});
+    // once per section, not once per file: the same crate spelled dotted in two sections is two dependencies
+    const twice = '[dependencies]\nreqwest.version = "1"\n[dev-dependencies]\nreqwest.version = "1"\n';
+    expect(kinds(twice, "apps/desktop/Cargo.toml")).toEqual({ "rust:crate:reqwest": 2 });
+    expect(
+      kinds(`${twice}[target.'cfg(unix)'.dependencies]\nreqwest.features = ["json"]\n`, "Cargo.toml"),
+    ).toEqual({ "rust:crate:reqwest": 3 });
     // a crate that is not a client, and a comment about one, are not points
     expect(
       kinds('serde = "1"\n# reqwest = "0.12"\n[dependencies.serde_json]\nversion = "1"\n', "Cargo.toml"),
@@ -1264,6 +1270,57 @@ describe("C57 the scan of the desktop shell's Rust and Cargo files has no blind 
     ).toEqual({});
   });
 
+  it("C57 the statement of a shell ends at its own `;` or at the end of the block it closes, not at the next `;` of the file", () => {
+    // a function whose last expression is the shell, with no `;`: what follows is another function's
+    expect(
+      kinds(
+        'fn shell() -> Command { Command::new("sh") }\nfn other() { log("curl -s http://q"); }\n',
+        "a.rs",
+      ),
+    ).toEqual({});
+    expect(
+      kinds(
+        'fn shell() -> Command {\n    let mut c = Command::new("bash");\n    c\n}\nstatic HINT: &str = "wget -q http://q";\n',
+        "a.rs",
+      ),
+    ).toEqual({});
+    expect(
+      kinds(
+        'fn shell(c: &mut Cmd) { c.run(Command::new("sh")) }\nconst HINT: &str = "curl -s http://q";\n',
+        "a.rs",
+      ),
+    ).toEqual({});
+    // a `;` or a bracket inside a string or a comment, and a `;` inside a block argument, end nothing
+    expect(
+      kinds(
+        'fn f() { Command::new("sh").arg("-c; )").arg("curl -s https://x.example.com").spawn(); }',
+        "a.rs",
+      ),
+    ).toEqual({ "program:curl": 1 });
+    expect(
+      kinds(
+        'fn f() { Command::new("sh").arg(/* a; b) */ "-c").arg("curl -s https://x.example.com").spawn(); }',
+        "a.rs",
+      ),
+    ).toEqual({ "program:curl": 1 });
+    expect(
+      kinds(
+        'fn f() { Command::new("sh").arg({ let c = "-c"; c }).arg("curl -s https://x.example.com").spawn(); }',
+        "a.rs",
+      ),
+    ).toEqual({ "program:curl": 1 });
+    expect(
+      kinds(
+        'fn f() {\n    Command::new("sh").arg("-c") // done)\n        .arg("curl -s https://x.example.com")\n        .spawn();\n}\n',
+        "a.rs",
+      ),
+    ).toEqual({ "program:curl": 1 });
+    // a statement that never ends is read to the end of the file: more, never less
+    expect(kinds('fn f() { Command::new("sh").arg("curl -s https://x.example.com")', "a.rs")).toEqual({
+      "program:curl": 1,
+    });
+  });
+
   it("C57 the privacy text lists what is left: a program or a macro the scan cannot name in the Rust of the shell", () => {
     const f = privacy.replace(/\s+/g, " ");
     expect(f).toContain("No que é Rust");
@@ -1271,6 +1328,12 @@ describe("C57 the scan of the desktop shell's Rust and Cargo files has no blind 
     // the shell form that is read, and the ones that are not
     expect(f).toContain('`Command::new("sh")` com o `curl`');
     expect(f).toContain("a dependência escrita em chave com ponto");
+    // and the limits of that rule, which C57 states as "one statement": the builder in a variable, the command built at
+    // run time, and the dotted key spelled another way
+    expect(f).toContain("na mesma instrução");
+    expect(f).toContain('`let mut c = Command::new("sh"); c.arg("-c").arg("curl …");`');
+    expect(f).toContain('`"curl $URL"`, `format!("curl {}", u)`');
+    expect(f).toContain('`reqwest . workspace = true`, `"reqwest".workspace = true`');
   });
 });
 
