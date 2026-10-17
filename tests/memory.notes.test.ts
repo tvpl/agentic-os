@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { slugify } from "../core/src/memory/notes.js";
 import { AppContext } from "../apps/api/src/context.js";
@@ -234,6 +234,26 @@ describe("S1 create and edit a note", () => {
     expect(fs.readFileSync(made.body.path, "utf8")).toBe("v3");
   });
 
+  it("C7 a full index pass removes the temporary file of a save that died, and only that", async () => {
+    const dir = path.join(memory(), "notes", "varredura");
+    fs.mkdirSync(dir, { recursive: true });
+    const old = path.join(dir, ".mordomo-save-0123456789abcdef0123456789abcdef.tmp");
+    const fresh = path.join(dir, ".mordomo-save-fedcba9876543210fedcba9876543210.tmp");
+    const user = path.join(dir, "rascunho.tmp");
+    const note = path.join(dir, "nota.md");
+    for (const file of [old, fresh, user, note]) fs.writeFileSync(file, "# texto\n");
+    const longAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    for (const file of [old, user]) fs.utimesSync(file, longAgo, longAgo);
+    await ctx.indexer.indexAllAsync();
+    expect(fs.readdirSync(dir).sort()).toEqual(
+      [".mordomo-save-fedcba9876543210fedcba9876543210.tmp", "nota.md", "rascunho.tmp"].sort(),
+    );
+    expect(fs.existsSync(old)).toBe(false);
+    // the note is still indexed, the sweep did not touch what is not a temporary file
+    const row = ctx.db.prepare("SELECT path FROM files WHERE path = ?").get(note);
+    expect(row).toBeTruthy();
+  });
+
   it("C6 a PUT with a malformed baseVersion is 400 validation and writes nothing", async () => {
     const made = await create({ title: "Versão torta" });
     const file = made.body.path as string;
@@ -275,6 +295,25 @@ describe("S1 create and edit a note", () => {
     const tricky = await save({ path: file, content: "meu texto", baseVersion: sha(before) });
     expect([tricky.status, errorCode(tricky)]).toEqual([409, "edit_conflict"]);
     expect(fs.readFileSync(file, "utf8")).toBe(same);
+  });
+
+  it("C8 an editor that replaces the note by a rename of its own while ours is written is 409 edit_conflict, not 403, and its text stays", async () => {
+    const made = await create({ title: "Editor externo" });
+    const file = made.body.path as string;
+    const spy = vi.spyOn(fs, "fsyncSync").mockImplementationOnce(() => {
+      const editor = path.join(path.dirname(file), "editor-swap");
+      fs.writeFileSync(editor, "# Editor externo\n\ntexto do editor\n");
+      fs.renameSync(editor, file); // the temporary file of ours is being flushed: the name is another file now
+    });
+    let res;
+    try {
+      res = await save({ path: file, content: "meu texto", baseVersion: made.body.version });
+    } finally {
+      spy.mockRestore();
+    }
+    expect([res.status, errorCode(res)]).toEqual([409, "edit_conflict"]);
+    expect(fs.readFileSync(file, "utf8")).toBe("# Editor externo\n\ntexto do editor\n");
+    expect(fs.readdirSync(path.dirname(file)).filter((f) => f.endsWith(".tmp"))).toEqual([]);
   });
 
   it("C9 a PUT on a path that does not exist is 404 and does not create it", async () => {

@@ -51,6 +51,11 @@ export interface WriteOptions {
    * same permission bits), are flushed to the disk, are checked against the digest once more, and replace the name by
    * a `rename`. A write that fails halfway (the disk is full, the power goes) leaves the old file whole; the temporary
    * file is removed. The file is a new file afterwards (another inode: a hard link to the note keeps the old text).
+   *
+   * Where a rename cannot be done (the folder is read-only for this user, the file is a mount point, another device:
+   * `EACCES`, `EPERM`, `EBUSY`, `EXDEV` from creating the temporary file or from the rename) the file is rewritten in
+   * place instead, after the same checks on a descriptor opened again (see `replaceInPlace`). A file replaced by
+   * another one while the save ran (an editor's own atomic save) is `EditConflictError`, never overwritten.
    */
   expectSha256?: string;
 }
@@ -121,16 +126,20 @@ export function writeWorkspaceFile(
     if (assertWritablePath(scope, candidate) !== real) throw changed(candidate);
     if (process.platform !== "win32") {
       const named = fs.lstatSync(real);
-      if (named.ino !== stat.ino || named.dev !== stat.dev) throw changed(candidate);
+      // another file under the name: for a guarded replace that is an edit this save never saw (an editor that saves
+      // by replacing the file), not a path that moved
+      if (named.ino !== stat.ino || named.dev !== stat.dev)
+        throw expected !== undefined ? new EditConflictError() : changed(candidate);
     }
     if (expected !== undefined && sha256OfDescriptor(fd, stat.size) !== expected)
       throw new EditConflictError();
     const bytes = typeof data === "string" ? Buffer.from(data, "utf8") : data;
     if (expected !== undefined) {
-      replaceBeside(scope, candidate, real, stat, fd, expected, bytes, () => {
+      const replaced = replaceBeside(scope, candidate, real, stat, fd, expected, bytes, () => {
         open = false;
         fs.closeSync(fd);
       });
+      if (!replaced) replaceInPlace(scope, candidate, real, expected, bytes);
       return real;
     }
     if (mode === "replace") fs.ftruncateSync(fd, 0);
@@ -152,9 +161,25 @@ function writeAll(fd: number, bytes: Uint8Array, append: boolean): void {
 }
 
 /**
+ * Why a rename cannot do what an in-place write could: the folder is not writable for this user (the note is), the file
+ * is a mount point of its own (a Docker single-file mount: `EBUSY`), the folder is on another device (`EXDEV`). These
+ * are the only answers that send a guarded replace to `replaceInPlace`; a full disk or a failing one is an error.
+ */
+const IN_PLACE_CODES = new Set(["EACCES", "EPERM", "EBUSY", "EXDEV"]);
+const needsInPlace = (err: unknown): boolean => IN_PLACE_CODES.has((err as NodeJS.ErrnoException).code ?? "");
+
+/** `.mordomo-save-<hex>.tmp`: the temporary file of a guarded replace (and, 12 hex digits, of the first build). */
+export const SAVE_TEMP_PATTERN = /^\.mordomo-save-[0-9a-f]{12,32}\.tmp$/;
+/** A temporary file this old belongs to a save that died (a save lasts milliseconds). */
+export const STALE_SAVE_TEMP_MS = 60 * 60 * 1000;
+
+/**
  * The write of a guarded replace (see `WriteOptions.expectSha256`): temporary file beside the target, `fsync`, the
  * digest and the name checked again, `rename`. `fd` is the descriptor the first check read through; it is closed
  * (`closeTarget`) before the rename, since a file with an open handle cannot always be replaced on Windows.
+ *
+ * Returns `false`, with nothing written and no temporary file left, when the folder or the file cannot take a
+ * rename (`IN_PLACE_CODES`, from creating the temporary file or from the rename): the caller writes in place.
  */
 function replaceBeside(
   scope: ReadScope,
@@ -165,10 +190,11 @@ function replaceBeside(
   expected: string,
   bytes: Uint8Array,
   closeTarget: () => void,
-): void {
-  // a short name of a fixed shape: the note's own name may already be as long as a name can be
-  const temp = path.join(path.dirname(real), `.mordomo-save-${crypto.randomBytes(6).toString("hex")}.tmp`);
+): boolean {
+  // a short name of a fixed shape (the note's own name may already be as long as a name can be), unguessable
+  const temp = path.join(path.dirname(real), `.mordomo-save-${crypto.randomBytes(16).toString("hex")}.tmp`);
   let tempFd: number | undefined;
+  let created = false;
   try {
     // O_EXCL does not follow a link either: a name planted in the folder fails the save instead of being written through
     tempFd = fs.openSync(
@@ -176,6 +202,7 @@ function replaceBeside(
       fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | O_NOFOLLOW,
       0o600,
     );
+    created = true;
     // the bits of the file it replaces, not the umask's reading of them
     if (process.platform !== "win32") fs.fchmodSync(tempFd, stat.mode & 0o7777);
     writeAll(tempFd, bytes, false);
@@ -188,7 +215,10 @@ function replaceBeside(
     if (assertWritablePath(scope, candidate) !== real) throw changed(candidate);
     if (process.platform !== "win32") {
       const named = fs.lstatSync(real);
-      if (named.ino !== stat.ino || named.dev !== stat.dev) throw changed(candidate);
+      // An editor that saves by a rename of its own put another file under the name while this one was written: its
+      // text is the file now, and the digest above (read through the old descriptor) cannot see it. The same answer as
+      // an edit in place.
+      if (named.ino !== stat.ino || named.dev !== stat.dev) throw new EditConflictError();
     }
     closeTarget();
     fs.renameSync(temp, real);
@@ -200,10 +230,102 @@ function replaceBeside(
         /* closed already */
       }
     }
-    fs.rmSync(temp, { force: true }); // the name is random and was created here: nobody else's file
+    // only a file this call made: when the open failed with EEXIST the name belongs to somebody else
+    if (created) fs.rmSync(temp, { force: true });
+    if (needsInPlace(err)) return false;
     throw err;
   }
   syncFolder(path.dirname(real));
+  return true;
+}
+
+/** The most a note replaced in place is held in memory to be put back if the write fails halfway. */
+const RESTORE_LIMIT_BYTES = 8 * 1024 * 1024;
+
+/**
+ * The fallback of a guarded replace where a rename is not possible: the file is rewritten in place, as before the
+ * temporary file existed. Every check the rename path makes is made again, on a descriptor opened now (the one the
+ * first check used may be closed): not a link (`O_NOFOLLOW`), a regular file, not a name for a private file, the
+ * same path, the name still that very file, and the bytes still the expected digest (a file replaced under the name
+ * is `EditConflictError`). The old text is kept in memory (up to `RESTORE_LIMIT_BYTES`) and written back if
+ * the write fails halfway, so a failed save does not leave a truncated note.
+ */
+function replaceInPlace(
+  scope: ReadScope,
+  candidate: string,
+  real: string,
+  expected: string,
+  bytes: Uint8Array,
+): void {
+  let fd: number;
+  try {
+    fd = fs.openSync(real, fs.constants.O_RDWR | O_NOFOLLOW | O_NONBLOCK);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ELOOP" || code === "EMLINK") throw changed(candidate);
+    throw err;
+  }
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) throw new NotRegularFileError(candidate);
+    if (sharesInodeWithPrivateFile(scope, stat)) throw hardLinked(candidate);
+    if (assertWritablePath(scope, candidate) !== real) throw changed(candidate);
+    if (process.platform !== "win32") {
+      const named = fs.lstatSync(real);
+      // the name must still be the file this descriptor holds: a write into a file that has no name any more is lost
+      if (named.ino !== stat.ino || named.dev !== stat.dev) throw new EditConflictError();
+    }
+    const old = stat.size <= RESTORE_LIMIT_BYTES ? readAll(fd, stat.size) : null;
+    const digest = old
+      ? crypto.createHash("sha256").update(old).digest("hex")
+      : sha256OfDescriptor(fd, stat.size);
+    if (digest !== expected) throw new EditConflictError();
+    try {
+      fs.ftruncateSync(fd, 0);
+      writeAll(fd, bytes, false);
+    } catch (err) {
+      try {
+        fs.ftruncateSync(fd, 0);
+        if (old) writeAll(fd, old, false);
+      } catch {
+        /* the disk that refused the new text may refuse the old one: the error below is the answer */
+      }
+      throw err;
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/** The first `size` bytes of an open file. */
+function readAll(fd: number, size: number): Buffer {
+  const buffer = Buffer.allocUnsafe(size);
+  let at = 0;
+  while (at < size) {
+    const n = fs.readSync(fd, buffer, at, size - at, at);
+    if (n === 0) break;
+    at += n;
+  }
+  return buffer.subarray(0, at);
+}
+
+/**
+ * Remove the temporary file of a save that died (`SAVE_TEMP_PATTERN`) when `full` is one: our name, a regular file (a
+ * link is never followed), owned by this user and writable by its owner, and untouched for `STALE_SAVE_TEMP_MS`.
+ * Returns whether it was removed. Never throws.
+ */
+export function removeStaleSaveTemp(full: string, now: number = Date.now()): boolean {
+  try {
+    if (!SAVE_TEMP_PATTERN.test(path.basename(full))) return false;
+    const info = fs.lstatSync(full);
+    if (!info.isFile() || (info.mode & 0o200) === 0) return false;
+    if (typeof process.getuid === "function" && info.uid !== process.getuid()) return false;
+    if (now - info.mtimeMs < STALE_SAVE_TEMP_MS) return false;
+    fs.unlinkSync(full);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Make the rename durable. Best effort: a folder cannot be opened for this on Windows, and the data is safe already. */

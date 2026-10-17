@@ -7,7 +7,7 @@ import { PathAccessError } from "@mordomo/core";
 import crypto from "node:crypto";
 import {
   DEFAULT_COPY_LIMITS,
-  EditConflictError,
+  STALE_SAVE_TEMP_MS,
   atomicWrite,
   ensureJournal,
   copyTreeWithoutLinks,
@@ -15,6 +15,7 @@ import {
   openWorkspaceFile,
   readScope,
   readWorkspaceText,
+  removeStaleSaveTemp,
   resolveWorkspaceCwd,
   tightenMode,
   writeWorkspaceFile,
@@ -34,6 +35,8 @@ import { FAKE_BIN, makeTempHome } from "./helpers.js";
  */
 
 const POSIX = process.platform !== "win32";
+/** An `EditConflictError` by what it answers (409 `edit_conflict`), whichever copy of the class a test imported. */
+const conflict = () => expect.objectContaining({ code: "edit_conflict", statusCode: 409 });
 const real = (p: string) => fs.realpathSync(p);
 const write = (file: string, content: string) => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -1295,7 +1298,7 @@ describe.skipIf(!POSIX)("C57 the guarded replace of the write primitive (cerebro
     const info = fs.statSync(note());
     expect(() =>
       writeWorkspaceFile(scope(), note(), "x", { mode: "replace", expectSha256: sha(first) }),
-    ).toThrow(EditConflictError);
+    ).toThrow(conflict());
     expect(fs.readFileSync(note(), "utf8")).toBe("versão dois\n");
     expect(fs.statSync(note()).mtimeMs).toBe(info.mtimeMs);
     // a larger file than one read block is hashed whole
@@ -1315,7 +1318,7 @@ describe.skipIf(!POSIX)("C57 the guarded replace of the write primitive (cerebro
   it.each([
     ["the write of the new bytes runs out of space", "writeSync", "ENOSPC"],
     ["the flush to the disk fails", "fsyncSync", "EIO"],
-    ["the rename fails", "renameSync", "EXDEV"],
+    ["the rename fails", "renameSync", "EIO"],
   ] as const)(
     "C57 when %s the old text is still the file's, whole, and no temporary file is left",
     (_why, call, code) => {
@@ -1349,7 +1352,7 @@ describe.skipIf(!POSIX)("C57 the guarded replace of the write primitive (cerebro
     try {
       expect(() =>
         writeWorkspaceFile(scope(), note(), "meu texto\n", { mode: "replace", expectSha256: sha("base\n") }),
-      ).toThrow(EditConflictError);
+      ).toThrow(conflict());
     } finally {
       spy.mockRestore();
     }
@@ -1402,6 +1405,349 @@ describe.skipIf(!POSIX)("C57 the guarded replace of the write primitive (cerebro
       writeWorkspaceFile(scope(), path.join(home, "memory"), "x", { mode: "replace", expectSha256: sha("") }),
     ).toThrow();
     expect(fs.readFileSync(token, "utf8")).toBe(TOKEN);
+  });
+
+  // ---- the two guards before the rename, the fallback where a rename cannot be done, the temporary file (round 2) ----
+  const dirOf = () => path.dirname(note());
+  /** What an editor does when it saves: its own temporary file, renamed over the note (another inode). */
+  const editorSaves = (text: string) => {
+    const editor = path.join(dirOf(), "editor-swap");
+    fs.writeFileSync(editor, text);
+    fs.renameSync(editor, note());
+  };
+  const realOpen = fs.openSync.bind(fs) as (...args: unknown[]) => number;
+  /** Creating the temporary file is refused with `code` (after `before`), as in a folder this user cannot write to. */
+  const refuseTemp = (code: string, before: () => void = () => {}) =>
+    vi.spyOn(fs, "openSync").mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+      if (String(p).endsWith(".tmp")) {
+        before();
+        throw failing(code);
+      }
+      return realOpen(p, ...rest);
+    }) as typeof fs.openSync);
+  const guarded = (text: string, base: string) =>
+    writeWorkspaceFile(scope(), note(), text, { mode: "replace", expectSha256: sha(base) });
+
+  it("C57 an editor that replaces the note by a rename of its own while ours is written is a conflict, and its text stays", () => {
+    fs.writeFileSync(note(), "base\n");
+    const spy = vi.spyOn(fs, "fsyncSync").mockImplementationOnce(() => editorSaves("EDITOR TEXT\n"));
+    try {
+      // the old inode still hashes to the digest: only the name pointing at another file shows the edit
+      expect(() => guarded("meu texto\n", "base\n")).toThrow(conflict());
+    } finally {
+      spy.mockRestore();
+    }
+    expect(fs.readFileSync(note(), "utf8")).toBe("EDITOR TEXT\n");
+    expect(strays()).toEqual([]);
+  });
+
+  it("C57 the same replacement between the open and the first look at the name is a conflict too", () => {
+    fs.writeFileSync(note(), "base\n");
+    const fstat = fs.fstatSync.bind(fs) as (...args: unknown[]) => fs.Stats;
+    const spy = vi.spyOn(fs, "fstatSync").mockImplementationOnce(((...args: unknown[]) => {
+      const stat = fstat(...args);
+      editorSaves("EDITOR TEXT\n");
+      return stat;
+    }) as typeof fs.fstatSync);
+    try {
+      expect(() => guarded("meu texto\n", "base\n")).toThrow(conflict());
+    } finally {
+      spy.mockRestore();
+    }
+    expect(fs.readFileSync(note(), "utf8")).toBe("EDITOR TEXT\n");
+    expect(strays()).toEqual([]);
+  });
+
+  it("C57 a folder on the way that becomes a link while the new bytes are written is refused, and nothing is replaced", () => {
+    const dir = path.join(home, "memory", "troca");
+    const away = `${dir}-away`;
+    const inside = path.join(dir, "n.md");
+    write(inside, "base\n");
+    const spy = vi.spyOn(fs, "fsyncSync").mockImplementationOnce(() => {
+      fs.renameSync(dir, away); // the very same file, now reached through a link: only the path differs
+      fs.symlinkSync(away, dir);
+    });
+    try {
+      expect(() =>
+        writeWorkspaceFile(scope(), inside, "meu texto\n", { mode: "replace", expectSha256: sha("base\n") }),
+      ).toThrow(PathAccessError);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(fs.readFileSync(path.join(away, "n.md"), "utf8")).toBe("base\n");
+    expect(fs.readdirSync(away).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+    fs.rmSync(dir, { force: true });
+    fs.rmSync(away, { recursive: true, force: true });
+  });
+
+  it.each([
+    ["the temporary file cannot be created in the folder", "EACCES", "open"],
+    ["the temporary file cannot be created (EPERM)", "EPERM", "open"],
+    ["the rename is refused, the file is a mount point", "EBUSY", "rename"],
+    ["the rename crosses a device", "EXDEV", "rename"],
+    ["the rename is refused by the folder", "EACCES", "rename"],
+  ] as const)(
+    "C57 where a rename cannot be done (%s) the guarded replace is written in place, whole, with the bits and the inode kept",
+    (_why, code, step) => {
+      const before = "versão antiga\n".repeat(20);
+      fs.writeFileSync(note(), before);
+      fs.chmodSync(note(), 0o640);
+      const ino = fs.statSync(note()).ino;
+      const spy =
+        step === "open"
+          ? refuseTemp(code)
+          : vi.spyOn(fs, "renameSync").mockImplementationOnce(() => {
+              throw failing(code);
+            });
+      try {
+        guarded("texto novo, no lugar\n", before);
+      } finally {
+        spy.mockRestore();
+      }
+      expect(fs.readFileSync(note(), "utf8")).toBe("texto novo, no lugar\n");
+      expect(fs.statSync(note()).ino).toBe(ino);
+      expect(fs.statSync(note()).mode & 0o777).toBe(0o640);
+      expect(strays()).toEqual([]);
+      fs.chmodSync(note(), 0o644);
+    },
+  );
+
+  it.skipIf(process.getuid?.() === 0)(
+    "C57 a note in a folder this user cannot write to is saved (the real permission, not an injected one)",
+    () => {
+      const dir = path.join(home, "memory", "so-leitura");
+      const inside = path.join(dir, "n.md");
+      write(inside, "base\n");
+      fs.chmodSync(dir, 0o555);
+      try {
+        writeWorkspaceFile(scope(), inside, "novo\n", { mode: "replace", expectSha256: sha("base\n") });
+      } finally {
+        fs.chmodSync(dir, 0o755);
+      }
+      expect(fs.readFileSync(inside, "utf8")).toBe("novo\n");
+      expect(fs.readdirSync(dir)).toEqual(["n.md"]);
+    },
+  );
+
+  it("C57 the in-place fallback still refuses bytes that changed since the edit began, and keeps them", () => {
+    fs.writeFileSync(note(), "base\n");
+    const spy = vi.spyOn(fs, "renameSync").mockImplementationOnce(() => {
+      fs.writeFileSync(note(), "alguém escreveu aqui\n");
+      throw failing("EBUSY");
+    });
+    try {
+      expect(() => guarded("meu texto\n", "base\n")).toThrow(conflict());
+    } finally {
+      spy.mockRestore();
+    }
+    expect(fs.readFileSync(note(), "utf8")).toBe("alguém escreveu aqui\n");
+    expect(strays()).toEqual([]);
+  });
+
+  it("C57 the in-place fallback refuses a name that is another file by the time it is open, and loses nothing", () => {
+    fs.writeFileSync(note(), "base\n");
+    let armed = false;
+    const spy = vi.spyOn(fs, "openSync").mockImplementation(((
+      p: fs.PathLike,
+      flags: number,
+      ...rest: unknown[]
+    ) => {
+      if (String(p).endsWith(".tmp")) {
+        armed = true;
+        throw failing("EACCES");
+      }
+      const fd = realOpen(p, flags, ...rest);
+      // the editor's file has the very bytes of the old one: the digest cannot tell, only the name can
+      if (armed && String(p) === note()) editorSaves("base\n");
+      return fd;
+    }) as typeof fs.openSync);
+    try {
+      expect(() => guarded("meu texto\n", "base\n")).toThrow(conflict());
+    } finally {
+      spy.mockRestore();
+    }
+    expect(fs.readFileSync(note(), "utf8")).toBe("base\n");
+  });
+
+  it("C57 the in-place fallback never writes through a link or a hard link of a private file", () => {
+    const token = path.join(home, "config", "token");
+    for (const kind of ["symlink", "hardlink"] as const) {
+      fs.writeFileSync(note(), "base\n");
+      const spy = refuseTemp("EACCES", () => {
+        const swap = path.join(dirOf(), "swap-link");
+        if (kind === "symlink") fs.symlinkSync(token, swap);
+        else fs.linkSync(token, swap);
+        fs.renameSync(swap, note());
+      });
+      try {
+        expect(() => guarded("meu texto\n", "base\n"), kind).toThrow(PathAccessError);
+      } finally {
+        spy.mockRestore();
+      }
+      expect(fs.readFileSync(token, "utf8"), kind).toBe(TOKEN);
+      fs.rmSync(note(), { force: true });
+    }
+    fs.writeFileSync(note(), "base\n");
+  });
+
+  it("C57 the in-place fallback does not write through a folder that became a link", () => {
+    const dir = path.join(home, "memory", "troca-2");
+    const away = `${dir}-away`;
+    const inside = path.join(dir, "n.md");
+    write(inside, "base\n");
+    const spy = refuseTemp("EACCES", () => {
+      fs.renameSync(dir, away);
+      fs.symlinkSync(away, dir);
+    });
+    try {
+      expect(() =>
+        writeWorkspaceFile(scope(), inside, "meu texto\n", { mode: "replace", expectSha256: sha("base\n") }),
+      ).toThrow(PathAccessError);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(fs.readFileSync(path.join(away, "n.md"), "utf8")).toBe("base\n");
+    fs.rmSync(dir, { force: true });
+    fs.rmSync(away, { recursive: true, force: true });
+  });
+
+  it("C57 a write that fails halfway in the fallback puts the old text back", () => {
+    const before = "versão antiga, inteira\n".repeat(50);
+    fs.writeFileSync(note(), before);
+    const open = refuseTemp("EACCES");
+    const writing = vi.spyOn(fs, "writeSync").mockImplementationOnce(() => {
+      throw failing("ENOSPC");
+    });
+    try {
+      expect(() => guarded("texto novo\n", before)).toThrow(expect.objectContaining({ code: "ENOSPC" }));
+    } finally {
+      writing.mockRestore();
+      open.mockRestore();
+    }
+    expect(fs.readFileSync(note(), "utf8")).toBe(before);
+    expect(strays()).toEqual([]);
+  });
+
+  it("C57 an error that is not about the rename (a full disk) is not sent to the fallback", () => {
+    const before = "antes\n";
+    fs.writeFileSync(note(), before);
+    const spy = vi.spyOn(fs, "writeSync").mockImplementationOnce(() => {
+      throw failing("ENOSPC");
+    });
+    const inPlace = vi.spyOn(fs, "ftruncateSync");
+    try {
+      expect(() => guarded("depois\n", before)).toThrow(expect.objectContaining({ code: "ENOSPC" }));
+      expect(inPlace).not.toHaveBeenCalled();
+    } finally {
+      inPlace.mockRestore();
+      spy.mockRestore();
+    }
+    expect(fs.readFileSync(note(), "utf8")).toBe(before);
+  });
+
+  it("C57 a temporary name that is taken is somebody else's file: the save fails and the file is left alone", () => {
+    fs.writeFileSync(note(), "base\n");
+    const fixed = Buffer.alloc(16, 0xab);
+    const theirs = path.join(dirOf(), `.mordomo-save-${fixed.toString("hex")}.tmp`);
+    fs.writeFileSync(theirs, "do utilizador\n");
+    const spy = vi
+      .spyOn(crypto, "randomBytes")
+      .mockImplementationOnce((() => fixed) as typeof crypto.randomBytes);
+    try {
+      expect(() => guarded("meu texto\n", "base\n")).toThrow(expect.objectContaining({ code: "EEXIST" }));
+    } finally {
+      spy.mockRestore();
+    }
+    expect(fs.readFileSync(theirs, "utf8")).toBe("do utilizador\n");
+    expect(fs.readFileSync(note(), "utf8")).toBe("base\n");
+    fs.rmSync(theirs);
+  });
+
+  it("C57 the temporary name is 128 random bits, a new one every save", () => {
+    fs.writeFileSync(note(), "0\n");
+    const names: string[] = [];
+    const spy = vi.spyOn(fs, "openSync").mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+      if (String(p).endsWith(".tmp")) names.push(path.basename(String(p)));
+      return realOpen(p, ...rest);
+    }) as typeof fs.openSync);
+    try {
+      for (let i = 0; i < 3; i++) guarded(`${i + 1}\n`, `${i}\n`);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(names).toHaveLength(3);
+    for (const name of names) expect(name).toMatch(/^\.mordomo-save-[0-9a-f]{32}\.tmp$/);
+    expect(new Set(names).size).toBe(3);
+  });
+
+  describe("C57 the temporary file of a save that died is swept (removeStaleSaveTemp)", () => {
+    const own = ".mordomo-save-0123456789abcdef.tmp";
+    const aged = (file: string, ms: number) => {
+      const at = new Date(Date.now() - ms);
+      fs.utimesSync(file, at, at);
+    };
+    const folder = () => fs.mkdtempSync(path.join(base, "sweep-"));
+
+    it("removes an old file of our own name and keeps a recent one (a save under way)", () => {
+      const dir = folder();
+      const old = path.join(dir, own);
+      const fresh = path.join(dir, ".mordomo-save-fedcba9876543210fedcba9876543210.tmp");
+      fs.writeFileSync(old, "texto\n");
+      fs.writeFileSync(fresh, "texto\n");
+      aged(old, STALE_SAVE_TEMP_MS + 60_000);
+      aged(fresh, STALE_SAVE_TEMP_MS - 60_000);
+      expect(removeStaleSaveTemp(old)).toBe(true);
+      expect(removeStaleSaveTemp(fresh)).toBe(false);
+      expect(fs.readdirSync(dir)).toEqual([path.basename(fresh)]);
+    });
+
+    it("keeps a file that only looks like one: another name, a link, a folder, a file the owner cannot write", () => {
+      const dir = folder();
+      const keep: string[] = [];
+      for (const name of [
+        "meu.tmp",
+        ".mordomo-save-zz.tmp",
+        ".mordomo-save-0123456789abcdef.tmp.bak",
+        ".mordomo-save-0123456789ab.txt",
+        "mordomo-save-0123456789abcdef.tmp",
+      ]) {
+        const file = path.join(dir, name);
+        fs.writeFileSync(file, "do utilizador\n");
+        aged(file, 10 * STALE_SAVE_TEMP_MS);
+        keep.push(name);
+      }
+      const target = path.join(dir, "alvo.md");
+      fs.writeFileSync(target, "alvo\n");
+      const link = path.join(dir, ".mordomo-save-aaaaaaaaaaaa.tmp");
+      fs.symlinkSync(target, link);
+      const long = new Date(Date.now() - 10 * STALE_SAVE_TEMP_MS);
+      fs.lutimesSync(link, long, long); // an old link: only that it is a link keeps it
+      keep.push(".mordomo-save-aaaaaaaaaaaa.tmp", "alvo.md");
+      fs.mkdirSync(path.join(dir, ".mordomo-save-bbbbbbbbbbbb.tmp"));
+      keep.push(".mordomo-save-bbbbbbbbbbbb.tmp");
+      const readOnly = path.join(dir, ".mordomo-save-cccccccccccc.tmp");
+      fs.writeFileSync(readOnly, "x\n");
+      fs.chmodSync(readOnly, 0o444);
+      aged(readOnly, 10 * STALE_SAVE_TEMP_MS);
+      keep.push(path.basename(readOnly));
+      for (const name of keep) expect(removeStaleSaveTemp(path.join(dir, name)), name).toBe(false);
+      expect(fs.readdirSync(dir).sort()).toEqual([...new Set(keep)].sort());
+      expect(fs.readFileSync(target, "utf8")).toBe("alvo\n");
+    });
+
+    it.skipIf(process.getuid?.() !== 0)("keeps an old file that belongs to another user", () => {
+      const dir = folder();
+      const theirs = path.join(dir, own);
+      fs.writeFileSync(theirs, "dele\n");
+      fs.chownSync(theirs, 12345, 12345);
+      aged(theirs, 10 * STALE_SAVE_TEMP_MS);
+      expect(removeStaleSaveTemp(theirs)).toBe(false);
+      expect(fs.existsSync(theirs)).toBe(true);
+    });
+
+    it("never throws for a name that is not there", () => {
+      expect(removeStaleSaveTemp(path.join(folder(), own))).toBe(false);
+    });
   });
 
   it("C57 the guard is a property of replace: append and create refuse it", () => {

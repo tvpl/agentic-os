@@ -253,10 +253,13 @@ export {
   type WorkspaceEntry,
   type WorkspaceFile,
 } from "./security/safeFs.js";
+export { EditConflictError } from "./errors.js";
 export {
   DEFAULT_COPY_LIMITS,
   FolderTooLargeError,
+  STALE_SAVE_TEMP_MS,
   copyTreeWithoutLinks,
+  removeStaleSaveTemp,
   writeWorkspaceFile,
   type CopyLimits,
   type WriteMode,

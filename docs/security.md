@@ -339,7 +339,13 @@ validated (absolute, existing directory, outside `config/`) but not approval-gat
   `expectSha256`, checked on the very descriptor the file was opened through and again before the swap, so a file
   that changed is `409 edit_conflict` with its bytes and mtime untouched. The new text is written to a temporary
   file beside the note, flushed to the disk and renamed over it: a write that fails halfway (disk full, power) leaves
-  the old text whole. A link on the way, a hard link of a private file, a path
+  the old text whole. An editor that saves by renaming its own file over the note while the engine's temporary file is
+  being written is `409 edit_conflict` too (its text stays). Where a rename cannot be done (the folder is read-only for
+  the user, the note is a bind-mounted file, another device: `EACCES`, `EPERM`, `EBUSY`, `EXDEV`) the note is
+  rewritten in place after the same checks (digest, name, link, hard link), and put back if that write fails
+  halfway. The temporary file is `.mordomo-save-<32 hex>.tmp`, never removed unless this save created it; one left by
+  a process that died is deleted by the next full index pass once it is an hour old (own name, regular file, owned by
+  the user). A link on the way, a hard link of a private file, a path
   outside `memory/`, `ROUTER.md`, `areas/` and `journal/` are refused (`403 forbidden_path`, `403
   note_not_editable`).
 - **The worker is not the engine.** The index worker thread opens its own connection to the database and runs

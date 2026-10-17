@@ -6,6 +6,7 @@ import type { EventBus } from "../events.js";
 import { relatedFromTerms, termFrequencies } from "./related.js";
 import { PathAccessError, realpathLenient } from "../security/paths.js";
 import { openWorkspaceFile, readScope, statWorkspacePath, type ReadScope } from "../security/safeFs.js";
+import { removeStaleSaveTemp } from "../security/safeWrite.js";
 import { isBinaryBuffer, makeWorkspaceFilter } from "./excludes.js";
 import { fieldsFromDb, parseInlineFields } from "./fields.js";
 import { parseFrontMatter } from "./frontMatter.js";
@@ -555,6 +556,8 @@ export class MemoryIndexer {
               continue;
             }
             if (!entry.isFile()) continue;
+            // the temporary file of a save that died (the walk is a full pass; `only` names its paths)
+            if (entry.name.startsWith(".mordomo-save-") && removeStaleSaveTemp(full)) continue;
             stats.scanned++;
             candidates.push({ root, full, rel, area });
           }
