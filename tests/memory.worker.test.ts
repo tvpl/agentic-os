@@ -101,7 +101,15 @@ const snapshot = (ctx: AppContext) => ({
       "SELECT f.path AS path, l.kind, l.target, l.line FROM note_links l JOIN files f ON f.id = l.src_id ORDER BY f.path, l.line, l.rowid",
     )
     .all(),
-  related: ctx.db.prepare("SELECT COUNT(*) AS c FROM file_related").get(),
+  // the edges themselves (which file, which file, how strongly, through which words), not how many there are
+  related: ctx.db
+    .prepare(
+      `SELECT s.path AS src, d.path AS dst, r.score AS score, r.terms AS terms
+         FROM file_related r JOIN files s ON s.id = r.src_id JOIN files d ON d.id = r.dst_id
+        ORDER BY s.path, d.path`,
+    )
+    .all()
+    .map((r: any) => ({ ...r })),
 });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -403,6 +411,11 @@ describe("S3 the index pass in a worker", () => {
         path: x.path.replace(/^.*\/corpus/, ""),
         target: x.target.replace(/^.*\/corpus/, ""),
       })),
+      related: s.related.map((x: any) => ({
+        ...x,
+        src: x.src.replace(/^.*\/corpus/, ""),
+        dst: x.dst.replace(/^.*\/corpus/, ""),
+      })),
     });
     const a = strip(snapshot(killed.ctx));
     const b = strip(snapshot(clean.ctx));
@@ -410,6 +423,8 @@ describe("S3 the index pass in a worker", () => {
     expect(a.files.map(({ mtime: _mtime, ...f }) => f)).toEqual(b.files.map(({ mtime: _mtime, ...f }) => f));
     expect(a.fts).toEqual(b.fts);
     expect(a.links).toEqual(b.links);
+    // a corpus this size has related edges (a pass that never related would leave two empty sets that agree)
+    expect(b.related.length).toBeGreaterThan(100);
     expect(a.related).toEqual(b.related);
   }, 300_000);
 
