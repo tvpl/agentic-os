@@ -1211,3 +1211,107 @@ describe("C54 an optional package built for another platform", () => {
     expect(report.environment.map((line) => line.split(":")[0])).toEqual(["c@1.0.0"]);
   });
 });
+
+describe("C54 the licence text of a package that ships none", () => {
+  const VEC = [
+    "sqlite-vec",
+    "sqlite-vec-darwin-arm64",
+    "sqlite-vec-darwin-x64",
+    "sqlite-vec-linux-arm64",
+    "sqlite-vec-linux-x64",
+    "sqlite-vec-windows-x64",
+  ];
+  const MIT = path.join(ROOT, "legal/vendor/sqlite-vec/LICENSE-MIT");
+  const APACHE = path.join(ROOT, "legal/vendor/sqlite-vec/LICENSE-APACHE");
+
+  it("C54 the notice reproduces the MIT and the Apache-2.0 texts of the author's repository once, for the six sqlite-vec packages", () => {
+    const mit = lic.normalizeText(fs.readFileSync(MIT, "utf8"));
+    const apache = lic.normalizeText(fs.readFileSync(APACHE, "utf8"));
+    expect(mit).toContain("Copyright (c) 2024 Alex Garcia");
+    expect(mit).toContain("Permission is hereby granted, free of charge");
+    expect(apache).toContain("Apache License\n");
+    expect(apache).toContain("Version 2.0, January 2004");
+    const notice = lic.normalizeText(committed);
+    // one block, named by the six packages, holding both texts whole
+    const block = `${VEC.map((n) => `${n}@0.1.9`).join(", ")}\n\n`;
+    const at = notice.indexOf(block);
+    expect(at).toBeGreaterThan(0);
+    const body = notice.slice(at, notice.indexOf("#### Texto", at));
+    expect(body).toContain(`[LICENSE-MIT]\n${mit}`);
+    expect(body).toContain(`[LICENSE-APACHE]\n${apache}`);
+    expect(notice.split("Copyright (c) 2024 Alex Garcia").length - 1).toBe(1);
+    // and the sentence that says the package itself ships nothing
+    expect(body).toContain("(O pacote não inclui arquivo de licença. Licença declarada: MIT OR Apache.");
+    // every one of the six is named by the policy, with a reason
+    for (const name of VEC) {
+      const entry = lic.loadPolicy(ROOT).licenseTexts[`${name}@0.1.9`];
+      expect(entry?.files, name).toEqual([
+        "legal/vendor/sqlite-vec/LICENSE-MIT",
+        "legal/vendor/sqlite-vec/LICENSE-APACHE",
+      ]);
+      expect(entry?.reason, name).toBeTruthy();
+    }
+  });
+
+  it("C54 (fixture) the installed package's own text wins; with none, the files the policy names are read; the render is repeatable", () => {
+    const policy = {
+      licenseTexts: {
+        "bare@1.0.0": {
+          files: ["legal/vendor/b/LICENSE-ONE", "legal/vendor/b/LICENSE-TWO"],
+          source: "https://example.test/bare",
+          reason: "the package ships none",
+        },
+        "owned@1.0.0": {
+          files: ["legal/vendor/b/LICENSE-ONE"],
+          source: "https://example.test/owned",
+          reason: "in case",
+        },
+      },
+    };
+    const dir = tree(
+      {
+        pkgs: [
+          { name: "bare", license: "MIT OR Apache", files: {} },
+          { name: "owned", license: "MIT", files: { LICENSE: "the package's own text\n" } },
+          { name: "plain", license: "ISC", files: {} },
+        ],
+        policy,
+      },
+      { notice: false },
+    );
+    fs.mkdirSync(path.join(dir, "legal/vendor/b"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "legal/vendor/b/LICENSE-ONE"), "text one\r\n");
+    fs.writeFileSync(path.join(dir, "legal/vendor/b/LICENSE-TWO"), "text two\n");
+    const first = lic.buildReport(dir).notice!;
+    expect(first).toContain("[LICENSE-ONE]\ntext one\n\n[LICENSE-TWO]\ntext two");
+    expect(first).toContain(
+      "(O pacote não inclui arquivo de licença. Licença declarada: MIT OR Apache. Os textos abaixo são os do repositório do autor, copiados sem alteração de https://example.test/bare;",
+    );
+    // the package that has its own file is not given the policy's
+    expect(first).toContain("the package's own text");
+    expect(first.split("text one").length - 1).toBe(1);
+    // a package with neither keeps the plain sentence
+    expect(first).toContain("(O pacote não inclui arquivo de licença. Licença declarada: ISC.)");
+    expect(lic.buildReport(dir).notice).toBe(first);
+  });
+
+  it("C54 (fixture) a policy entry without files, source or reason is an environment error, and a file it names that is missing is too", () => {
+    const entry = { files: ["legal/vendor/x"], source: "https://example.test", reason: "r" };
+    for (const bad of [
+      { ...entry, files: [] },
+      { ...entry, source: undefined },
+      { ...entry, reason: " " },
+    ]) {
+      const dir = tree(
+        { pkgs: [{ name: "x", files: {} }], policy: { licenseTexts: { "x@1.0.0": bad } } },
+        { notice: false },
+      );
+      expect(() => lic.buildReport(dir)).toThrow(/licenseTexts/);
+    }
+    const dir = tree(
+      { pkgs: [{ name: "x", files: {} }], policy: { licenseTexts: { "x@1.0.0": entry } } },
+      { notice: false },
+    );
+    expect(() => lic.buildReport(dir)).toThrow(/ENOENT/);
+  });
+});
