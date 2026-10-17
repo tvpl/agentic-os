@@ -12,6 +12,7 @@ import { OPEN_PANEL_EVENT } from "../components/CommandPalette";
 import { CONSOLE_DRAFT_EVENT, readConsoleDraft, storeConsoleDraft } from "./consoleDraft";
 import { PANEL_ACTION_EVENT, type OpenPanel } from "./panelKinds";
 import {
+  focusSkillDeck,
   referencePanel,
   useActiveRunCount,
   usePanelEventBridge,
@@ -94,6 +95,17 @@ describe("C54 runs in flight", () => {
     expect(renderHook(() => useActiveRunCount(runs)).result.current).toBe(3);
     expect([...renderHook(() => useRunningSkills(runs)).result.current].sort()).toEqual(["a", "c"]);
     expect(renderHook(() => useActiveRunCount(undefined)).result.current).toBe(0);
+  });
+});
+
+describe("C54 focusSkillDeck", () => {
+  it("focuses the first skill of the mounted deck, and does nothing without one", () => {
+    expect(() => focusSkillDeck()).not.toThrow();
+    document.body.innerHTML =
+      '<div class="skill-deck"><button class="deck-skill" id="a"></button><button class="deck-skill" id="b"></button></div>';
+    focusSkillDeck();
+    expect(document.activeElement?.id).toBe("a");
+    document.body.innerHTML = "";
   });
 });
 

@@ -67,9 +67,9 @@ export function useRunningSkills(runs: readonly RunLike[] | undefined): Readonly
   );
 }
 
-/** Move focus to the first card of the skill deck (the empty-state call to action). */
+/** Move focus to the first skill of the skill deck (the empty-state call to action); nothing when no deck is mounted. */
 export function focusSkillDeck(): void {
-  document.querySelector<HTMLElement>(".deck-card .btn")?.focus();
+  document.querySelector<HTMLElement>(".skill-deck .deck-skill")?.focus();
 }
 
 /** Put `@ref` of an open panel on the conversation's line; an unknown id does nothing. */
