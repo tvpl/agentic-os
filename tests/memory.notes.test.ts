@@ -188,6 +188,8 @@ describe("S1 create and edit a note", () => {
   });
 
   it("C6 an empty title, a long title, too many tags and a bad tag are 400 and write nothing", async () => {
+    // its own folder: the proof line runs this test alone (`-t "C6 "`), with no earlier test to have made it
+    fs.mkdirSync(path.join(memory(), "notes"), { recursive: true });
     const before = () => fs.readdirSync(path.join(memory(), "notes"), { recursive: true }).sort();
     const snapshot = before();
     const bad: Array<Record<string, unknown>> = [
@@ -412,6 +414,8 @@ describe("S1 create and edit a note", () => {
   });
 
   it("C13 a path with a NUL byte or a 300-character name answers the 403 forbidden_path of the preview on GET note and PUT notes", async () => {
+    // its own folder: the proof line runs this test alone (`-t "C13 "`); without memory/notes the long names are 404
+    fs.mkdirSync(path.join(memory(), "notes"), { recursive: true });
     const strict = await buildServer(ctx, { validateResponses: true }); // an answer the contract does not declare is a 500
     cleanups.push(() => strict.close());
     const version = sha("x");
