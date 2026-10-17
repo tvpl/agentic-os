@@ -21,13 +21,15 @@ de criação abaixo e depois este), "Editar" no preview de uma nota editável, e
 
 - Cabeçalho: o título da nota (o `# ` da primeira linha ou o nome do arquivo), o caminho em fonte mono 12px, e à direita o
   estado: ícone + texto (`Salvo` com `Check`, `Alterações não salvas` com `Circle`, `Salvando…` com `Loader`, `Conflito` com
-  `AlertTriangle`, `Erro ao salvar` com `AlertTriangle`). O estado é `role="status"`; o conflito e o erro repetem-se no corpo.
+  `AlertTriangle`, `Erro ao salvar` com `CircleAlert`: dois estados, dois ícones, como a prova C19 pede). O estado é `role="status"`; o conflito e o erro repetem-se no corpo.
 - Corpo: um `<textarea>` com rótulo (`aria-label` = "Texto da nota"), fonte mono 13px, `spellcheck` ligado, ocupa a altura toda,
   sem editor rico. Abaixo, uma linha de apoio: tamanho em bytes / limite (`12 KB de 1 MB`).
 - Rodapé: "Fechar" (`.btn`), "Salvar" (`.btn.primary`, desabilitado enquanto o texto é igual ao salvo ou enquanto salva).
   ⌘S / Ctrl+S salva (tecla do campo, registrada no escopo `modal` do registro).
 - Carregando: spinner + "Carregando…" no lugar do corpo. Erro de leitura: mensagem + "Tentar de novo". Não editável: a razão
-  (`reason`) no lugar do campo e nenhum "Salvar".
+  (`reason`) acima do campo, que fica somente leitura (o texto continua legível e copiável), o selo "Somente leitura" no lugar do
+  estado e nenhum "Salvar" (emenda da rodada 1: o desenho dizia que a razão tomava o lugar do campo; a tela construída mantém o
+  texto, a prova C22 afirma `readOnly` e a ausência de "Salvar", e ver o texto de um arquivo que não se edita é o que o preview já faz).
 - Conflito: faixa `role="alert"` acima do campo: "Esta nota mudou no disco depois que você a abriu." com "Carregar a versão do disco"
   (troca o texto pelo do disco, descarta o seu) e "Salvar como cópia" (cria `<título> (cópia)` com o seu texto e abre a cópia).
   Enquanto a faixa está, "Salvar" fica desabilitado; o texto da pessoa nunca é apagado sem ela escolher.
@@ -56,40 +58,45 @@ Na barra do Segundo Cérebro (onde "Reindexar" já mora): enquanto roda, a fase 
 
 ## Texto (as duas línguas; as chaves entram em `locales/brain.ts`, `en` e `ptBR` com as mesmas chaves)
 
-| Chave                       | en                                             | pt-BR                                             |
-| --------------------------- | ---------------------------------------------- | ------------------------------------------------- |
-| `note.new`                  | New note                                       | Nova nota                                         |
-| `note.new.title`            | Title                                          | Título                                            |
-| `note.new.area`             | Area (optional)                                | Área (opcional)                                   |
-| `note.new.frontMatter`      | YAML header                                    | Cabeçalho YAML                                    |
-| `note.new.create`           | Create                                         | Criar                                             |
-| `note.edit`                 | Edit                                           | Editar                                            |
-| `note.edit.title`           | Edit note                                      | Editar nota                                       |
-| `note.field`                | Note text                                      | Texto da nota                                     |
-| `note.save`                 | Save                                           | Salvar                                            |
-| `note.state.saved`          | Saved                                          | Salvo                                             |
-| `note.state.dirty`          | Unsaved changes                                | Alterações não salvas                             |
-| `note.state.saving`         | Saving…                                        | Salvando…                                         |
-| `note.state.conflict`       | Conflict                                       | Conflito                                          |
-| `note.state.error`          | Could not save                                 | Erro ao salvar                                    |
-| `note.loading`              | Loading…                                       | Carregando…                                       |
-| `note.conflict.body`        | This note changed on disk after you opened it. | Esta nota mudou no disco depois que você a abriu. |
-| `note.conflict.reload`      | Load the version on disk                       | Carregar a versão do disco                        |
-| `note.conflict.copy`        | Save as a copy                                 | Salvar como cópia                                 |
-| `note.discard.title`        | Discard unsaved changes?                       | Descartar as alterações não salvas?               |
-| `note.discard.confirm`      | Discard                                        | Descartar                                         |
-| `note.discard.keep`         | Keep editing                                   | Continuar editando                                |
-| `note.size`                 | {size} of {limit}                              | {size} de {limit}                                 |
-| `brain.links`               | Links                                          | Links                                             |
-| `brain.links.backlinks`     | Backlinks                                      | Backlinks                                         |
-| `brain.links.broken`        | Links to nothing                               | Links quebrados                                   |
-| `brain.links.none`          | No note points here.                           | Nenhuma nota aponta para esta.                    |
-| `brain.links.retry`         | Try again                                      | Tentar de novo                                    |
-| `brain.links.line`          | line {n}                                       | linha {n}                                         |
-| `brain.index.phase.scan`    | Scanning                                       | Varrendo                                          |
-| `brain.index.phase.index`   | Indexing                                       | Indexando                                         |
-| `brain.index.phase.prune`   | Removing                                       | Removendo                                         |
-| `brain.index.phase.related` | Computing relations                            | Calculando relações                               |
-| `brain.index.phase.vectors` | Vectors                                        | Vetores                                           |
-| `brain.index.cancel`        | Cancel                                         | Cancelar                                          |
-| `brain.index.cancelled`     | Indexing cancelled                             | Indexação cancelada                               |
+| Chave                       | en                                                | pt-BR                                             |
+| --------------------------- | ------------------------------------------------- | ------------------------------------------------- |
+| `note.new`                  | New note                                          | Nova nota                                         |
+| `note.new.title`            | Title                                             | Título                                            |
+| `note.new.area`             | Area (optional)                                   | Área (opcional)                                   |
+| `note.new.frontMatter`      | YAML header                                       | Cabeçalho YAML                                    |
+| `note.new.create`           | Create                                            | Criar                                             |
+| `note.edit`                 | Edit                                              | Editar                                            |
+| `note.edit.title`           | Edit note                                         | Editar nota                                       |
+| `note.field`                | Note text                                         | Texto da nota                                     |
+| `note.save`                 | Save                                              | Salvar                                            |
+| `note.state.saved`          | Saved                                             | Salvo                                             |
+| `note.state.dirty`          | Unsaved changes                                   | Alterações não salvas                             |
+| `note.state.saving`         | Saving…                                           | Salvando…                                         |
+| `note.state.conflict`       | Conflict                                          | Conflito                                          |
+| `note.state.error`          | Could not save                                    | Erro ao salvar                                    |
+| `note.loading`              | Loading…                                          | Carregando…                                       |
+| `note.conflict.body`        | This note changed on disk after you opened it.    | Esta nota mudou no disco depois que você a abriu. |
+| `note.conflict.reload`      | Load the version on disk                          | Carregar a versão do disco                        |
+| `note.conflict.copy`        | Save as a copy                                    | Salvar como cópia                                 |
+| `note.discard.title`        | Discard unsaved changes?                          | Descartar as alterações não salvas?               |
+| `note.discard.confirm`      | Discard                                           | Descartar                                         |
+| `note.discard.keep`         | Keep editing                                      | Continuar editando                                |
+| `note.size`                 | {size} of {limit}                                 | {size} de {limit}                                 |
+| `note.readonly`             | Read-only                                         | Somente leitura                                   |
+| `note.copySuffix`           | (copy)                                            | (cópia)                                           |
+| `note.loadFailed`           | Could not open the note.                          | Não foi possível abrir a nota.                    |
+| `note.noArea`               | No area                                           | Sem área                                          |
+| `brain.index.failed`        | The indexer stopped; the previous index was kept. | O indexador parou; o índice anterior foi mantido. |
+| `brain.links`               | Links                                             | Links                                             |
+| `brain.links.backlinks`     | Backlinks                                         | Backlinks                                         |
+| `brain.links.broken`        | Links to nothing                                  | Links quebrados                                   |
+| `brain.links.none`          | No note points here.                              | Nenhuma nota aponta para esta.                    |
+| `brain.links.retry`         | Try again                                         | Tentar de novo                                    |
+| `brain.links.line`          | line {n}                                          | linha {n}                                         |
+| `brain.index.phase.scan`    | Scanning                                          | Varrendo                                          |
+| `brain.index.phase.index`   | Indexing                                          | Indexando                                         |
+| `brain.index.phase.prune`   | Removing                                          | Removendo                                         |
+| `brain.index.phase.related` | Computing relations                               | Calculando relações                               |
+| `brain.index.phase.vectors` | Vectors                                           | Vetores                                           |
+| `brain.index.cancel`        | Cancel                                            | Cancelar                                          |
+| `brain.index.cancelled`     | Indexing cancelled                                | Indexação cancelada                               |
