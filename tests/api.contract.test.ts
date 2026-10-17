@@ -142,6 +142,22 @@ async function freshResources() {
 }
 
 describe("S1 the route table and the registration", () => {
+  it("C53 the scope list and docs/security.md name the five routes of the second brain with the scope they have", () => {
+    const page = fs.readFileSync(path.join(repoRoot, "docs", "security.md"), "utf8");
+    const row = (scope: string) =>
+      page.split("\n").find((l) => new RegExp(`^\\| \`${scope}\` \\(\\d+\\) \\|`).test(l)) ?? "";
+    for (const [key, want] of Object.entries(CEREBRO_V2_ROUTES)) {
+      expect(EXPECTED_ROUTE_SCOPES[key], key).toBe(want.scope);
+      expect(API[want.id]!.scope, key).toBe(want.scope);
+      const other = want.scope === "owner" ? "content" : "owner";
+      expect(row(want.scope), key).toContain(`\`${key}\``);
+      expect(row(other), key).not.toContain(`\`${key}\``);
+    }
+    // the prose about the notes says the same as the table
+    expect(page).toContain("`POST /api/memory/notes` and `PUT /api/memory/notes` are `owner` routes");
+    expect(page).toContain("(`GET /api/memory/note`) is `content`");
+  });
+
   it("C53 the table holds the five routes of the second brain with scope, what they read, a schema per success status and their declared errors", () => {
     expect(entries).toHaveLength(132);
     for (const [key, want] of Object.entries(CEREBRO_V2_ROUTES)) {

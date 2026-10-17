@@ -26,7 +26,7 @@ import { registerSyntheticEntry } from "./helpers/syntheticEntry.js";
 import { buildServer, deviceVerdict, type RouteScope } from "../apps/api/src/server.js";
 import { resolveApprovalForChat } from "../apps/api/src/approvalActions.js";
 import { FAKE_BIN, makeTempHome } from "./helpers.js";
-import { CEREBRO_V2_ROUTES, EXPECTED_ROUTE_SCOPES, PUBLIC_ROUTES, routesOf } from "./helpers/routeScopes.js";
+import { EXPECTED_ROUTE_SCOPES, PUBLIC_ROUTES, routesOf } from "./helpers/routeScopes.js";
 
 /**
  * Device scopes (.specs/features/escopos-dispositivo): what a paired device may call, what it may start, and that it
@@ -1185,21 +1185,6 @@ describe("S3 who asked does not approve", () => {
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 
 describe("S6 the documents say the same as the router", () => {
-  it("C53 the scope list and docs/security.md name the five routes of the second brain with the scope they have", () => {
-    const page = fs.readFileSync(path.join(repoRoot, "docs", "security.md"), "utf8");
-    const row = (scope: string) =>
-      page.split("\n").find((l) => new RegExp(`^\\| \`${scope}\` \\(\\d+\\) \\|`).test(l)) ?? "";
-    for (const [key, want] of Object.entries(CEREBRO_V2_ROUTES)) {
-      expect(EXPECTED_ROUTE_SCOPES[key], key).toBe(want.scope);
-      const other = want.scope === "owner" ? "content" : "owner";
-      expect(row(want.scope), key).toContain(`\`${key}\``);
-      expect(row(other), key).not.toContain(`\`${key}\``);
-    }
-    // the prose about the notes says the same as the table
-    expect(page).toContain("`POST /api/memory/notes` and `PUT /api/memory/notes` are `owner` routes");
-    expect(page).toContain("(`GET /api/memory/note`) is `content`");
-  });
-
   it("C39 docs list every route with its scope and say what stays open", () => {
     const page = fs.readFileSync(path.join(repoRoot, "docs", "security.md"), "utf8");
     // The table: one row per scope, the routes of the scope in backticks.
