@@ -628,6 +628,9 @@ export class MemoryIndexer {
       // What this pass changed, and what an earlier pass changed and died before it could relate (their terms are
       // newer than the last refresh): a pass that is cut short and then repeated ends with the same edges as one that
       // was not.
+      // `relatedFrom` must be later than every term stored so far: `relatedOwed` keeps `updated_at >= since` (a write that
+      // shares the millisecond is never lost), so a term stored in this very millisecond would be owed again next pass.
+      for (const tick = Date.now(); Date.now() === tick; ) continue;
       const relatedFrom = Date.now();
       const owing = this.relatedOwed();
       for (const id of this.touched) owing.add(id);

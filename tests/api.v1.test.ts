@@ -1394,8 +1394,9 @@ describe("Round 3 - the second verification's gaps", () => {
     expect(
       await rawStatus(`http://127.0.0.1:${rawPort}/api/v1/runs?token=${token}`),
       "absolute-form /api/v1",
-    ).toMatch(/^HTTP\/1\.1 40[13]/);
-    // (an absolute-form `/api/v1` target is not rewritten, so it never reaches a route: refused either way)
+    ).toMatch(/^HTTP\/1\.1 40[134]/);
+    // (an absolute-form `/api/v1` target is not rewritten, so it never reaches a route: refused either way, and what
+    // matters is that `?token=` authenticates nothing. The router may answer 404 (CI) or the guard 401/403.)
     // The streams that take one still do, in the spelling they take it.
     const base = await listening();
     expect((await openStream(`${base}/api/v1/events?token=${token}`)).status).toBe(200);
