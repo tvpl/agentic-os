@@ -229,7 +229,7 @@ The rules below hold for every route, present and future (`.specs/STATE.md`, AD-
 - **The page only carries the token to a browser on this machine.** `GET /` injects the local token
   into `<meta name="mordomo-token">` only when the TCP peer (`req.socket.remoteAddress`) and the `Host`
   header are loopback AND the request looks like a browser opening the page: `Sec-Fetch-Dest: document`
-  with `Sec-Fetch-Mode: navigate`, or neither header with a `Mozilla/5.0` user agent (a web view that
+  (or `empty`, which a reload can report) with `Sec-Fetch-Mode: navigate`, or neither header with a `Mozilla/5.0` user agent (a web view that
   predates Fetch Metadata), and no `Origin` that is not this host (`looksLikeBrowserNavigation`). A forged
   `Host: localhost` from the network, `curl http://127.0.0.1:4777/` and a script's `fetch()` get an empty
   meta. **This is a reduction, not a boundary:** a program that sends those headers (it is one line)

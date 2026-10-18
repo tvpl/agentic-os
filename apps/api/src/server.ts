@@ -174,7 +174,9 @@ export function looksLikeBrowserNavigation(req: FastifyRequest): boolean {
   if (dest === undefined && mode === undefined) {
     return /^Mozilla\/5\.0 /.test(String(req.headers["user-agent"] ?? ""));
   }
-  return dest === "document" && mode === "navigate";
+  // A reload can report `Sec-Fetch-Dest: empty` with `Sec-Fetch-Mode: navigate` (headless Chromium 141 does). A script's
+  // fetch() is never `navigate`, and a frame says `iframe`/`frame`, so `empty` here adds no caller that was refused.
+  return (dest === "document" || dest === "empty") && mode === "navigate";
 }
 
 /** Whether the connection this request arrived on is TLS (the second listener of `startServer`, or an https test). */
