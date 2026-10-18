@@ -1,5 +1,12 @@
 import { test, expect, type Route } from "@playwright/test";
-import { arrived, openAppFromPalette, openBrainList, openClassicBrain, openShell, travel } from "./shell";
+import {
+  arrived,
+  openAppFromPalette,
+  openBrainList,
+  openClassicBrain,
+  openShell,
+  travelBySpine,
+} from "./shell";
 
 test("a late file preview cannot reopen a selection the user already closed", async ({ page }) => {
   let pending: Route | undefined;
@@ -46,8 +53,9 @@ test("the brain keeps its selection and query while you travel to another scene 
   await openAppFromPalette(page, "Pixel Studio");
   await arrived(page, "pixel");
   await expect(page.locator(".pxs-stage")).toBeVisible();
-  // Back to the bare `/brain` (key 2 travels to it): where you were comes back.
-  await travel(page, "2", "brain");
+  // Back to the bare `/brain`: where you were comes back. (Pixel Studio owns the digit keys as its tools, so the
+  // way back is the spine, not key 2.)
+  await travelBySpine(page, "brain");
   await expect(page.locator(".bs-sheet .bs-sheet-path")).toHaveAttribute("title", second);
   await expect(page.locator(".bs-search input")).toHaveValue("brain");
   // And the Back button walks the same way.
@@ -74,7 +82,7 @@ test("the classic map keeps its zoom, query and selected source across scenes", 
   await openAppFromPalette(page, "Pixel Studio");
   await arrived(page, "pixel");
   await expect(page.locator(".pxs-stage")).toBeVisible();
-  await travel(page, "2", "brain");
+  await travelBySpine(page, "brain");
   // Still the classic map, where it was left.
   const back = page.locator(".bs-classic .brain2");
   await expect(back.locator(".brain2-panel input").first()).toHaveValue(name);

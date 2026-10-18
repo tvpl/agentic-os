@@ -273,7 +273,10 @@ for (const shell of SHELLS) {
     await page.keyboard.press("Control+k");
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.locator(".palette-help").click();
-    await expect(page.getByRole("dialog", { name: /Keyboard shortcuts/i })).toBeVisible();
+    const help = page.getByRole("dialog", { name: /Keyboard shortcuts/i });
+    await expect(help).toBeVisible();
+    // Visible is not ready: the dialog takes the focus, and listens for Escape, a moment after it is drawn.
+    await expect.poll(() => help.evaluate((el) => el.contains(document.activeElement))).toBe(true);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(holder).toBeFocused();
