@@ -20,7 +20,7 @@ import {
 } from "../desktop/consoleDraft";
 import { useT } from "../i18n";
 import { LinksSection } from "./LinksSection";
-import { openNoteEditor } from "./noteEditor";
+import { openNoteEditor } from "./noteEvents";
 import { relationsOf } from "./engine/graph";
 import type { EdgeKind, FileNode, World } from "./engine/world";
 import { collectReferences, parseMarkdown, resolveReference, type Block } from "./markdown";

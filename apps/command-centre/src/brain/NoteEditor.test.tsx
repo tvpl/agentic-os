@@ -14,7 +14,7 @@ import { installPage, mount, motion, tick } from "../ui/testkit";
 import { ENTRIES, edgesOf, loadTree, reachable } from "../testing/sourceGraph";
 import NoteEditor, { StateBadge } from "./NoteEditor";
 import { NoteEditorHost } from "./NoteEditorHost";
-import { openNoteEditor, type NoteEditorRequest } from "./noteEditor";
+import { openNoteEditor, type NoteEditorRequest } from "./noteEvents";
 
 const h = vi.hoisted(() => ({
   handler: null as
@@ -416,7 +416,7 @@ describe("S1b the note editor", () => {
     expect([...staticOnly].filter((f) => /brain\/NoteEditor\.tsx$|brain\/noteEditor\.css$/.test(f))).toEqual(
       [],
     );
-    expect(staticOnly.has("brain/noteEditor.ts")).toBe(true);
+    expect(staticOnly.has("brain/noteEvents.ts")).toBe(true);
     expect(staticOnly.has("brain/NoteEditorHost.tsx")).toBe(true);
     const all = reachable(tree);
     expect(all.has("brain/NoteEditor.tsx")).toBe(true);

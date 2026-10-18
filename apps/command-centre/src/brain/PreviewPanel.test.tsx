@@ -14,7 +14,7 @@ import { ToastProvider } from "../components/ui";
 import { installPage, mount } from "../ui/testkit";
 import type { FileNode, World } from "./engine/world";
 import { PreviewPanel, type PreviewState } from "./PreviewPanel";
-import { OPEN_NOTE_EVENT, type NoteEditorRequest } from "./noteEditor";
+import { OPEN_NOTE_EVENT, type NoteEditorRequest } from "./noteEvents";
 
 const h = vi.hoisted(() => ({
   handler: null as null | ((key: string, input: unknown) => Promise<unknown>),
