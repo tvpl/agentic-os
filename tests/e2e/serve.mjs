@@ -13,6 +13,8 @@ const child = spawn(process.execPath, [CLI, "start", "--foreground"], {
   env: {
     ...process.env,
     MORDOMO_HOME: E2E_HOME,
+    // The suite models a signed-in user whatever the machine has in ~/.claude (CI runners have none).
+    FAKE_CLAUDE_LOGGED_IN: "1",
     PATH: `${FAKE_BIN}${path.delimiter}${process.env.PATH ?? ""}`,
   },
 });

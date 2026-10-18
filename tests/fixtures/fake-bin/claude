@@ -18,7 +18,13 @@ case "$1" in
     echo "  -r, --resume [value]         resume a conversation by session id"
     echo "  --session-id <uuid>          use a specific session id for this conversation"
     echo "  --verbose                    verbose"
+    # FAKE_CLAUDE_LOGGED_IN=1: advertise `claude auth` like the real CLI, so a machine without ~/.claude still reads as signed in.
+    if [[ -n "$FAKE_CLAUDE_LOGGED_IN" ]]; then echo "  auth                         manage authentication"; fi
     exit 0 ;;
+  auth)
+    if [[ -n "$FAKE_CLAUDE_LOGGED_IN" && "$2" == "status" ]]; then
+      echo '{"loggedIn":true,"authMethod":"fake"}'; exit 0
+    fi ;;
 esac
 
 # Headless run: prompt arrives on stdin. Simulate a small stream-json session.
