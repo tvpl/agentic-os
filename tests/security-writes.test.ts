@@ -1801,7 +1801,8 @@ describe.skipIf(!POSIX)("C57 the guarded replace of the write primitive (cerebro
         `.mordomo-save-${hex(11)}.tmp`, // one digit short of the first build's names
         `.mordomo-save-${hex(33)}.tmp`, // one digit over the longest name
         `.mordomo-save-${hex(40)}.tmp`,
-        `.mordomo-save-${hex(16).toUpperCase()}.tmp`,
+        // uppercase digits, spelled differently from `ours`: on a file system that ignores case they would be one file
+        ".mordomo-save-FEDCBA9876543210.tmp",
         `x.mordomo-save-${hex(16)}.tmp`, // something before the dot: the name is anchored at its start
         `x.mordomo-save-${hex(32)}.tmp`,
       ];

@@ -290,6 +290,8 @@ describe("S2 the lock knows its owner", () => {
         "  try { lock.acquire(); locks.push(lock); outcomes.push('won'); }",
         "  catch (err) { outcomes.push(err instanceof EngineLockedError ? 'locked' : 'error:' + err.message); }",
         "}",
+        // Nobody leaves while another is still acquiring: a lock whose owner already exited is rightly stale.
+        '  barrier(process.env.BARRIER_DIR, "done", Number(process.env.CONTENDERS));',
         "process.stdout.write(JSON.stringify({ pid: process.pid, outcomes }));",
         "db.close();",
       ].join("\n"),
