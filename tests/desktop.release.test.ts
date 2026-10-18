@@ -991,11 +991,7 @@ describe("C45 the payload is lib, ui, seed, LICENSE and the manifest, and nothin
       expect(res.status, res.stderr).toBe(0);
       // no `runtime/` here: --node none; the desktop build always has it (the CI step lists it)
       expect(fs.readdirSync(out).sort()).toEqual(["LICENSE", "lib", "package.json", "seed", "ui"]);
-      for (const file of [
-        "LICENSE",
-        "lib/mordomo.mjs",
-        "ui/index.html",
-      ])
+      for (const file of ["LICENSE", "lib/mordomo.mjs", "ui/index.html"])
         expect(fs.existsSync(path.join(out, file)), file).toBe(true);
       const manifest = JSON.parse(fs.readFileSync(path.join(out, "package.json"), "utf8")) as {
         name: string;
@@ -1416,5 +1412,19 @@ describe("C59 a re-run of a tag leaves the draft with this run's files only", ()
     expect(empty.code).toBe(1);
     expect(empty.out).toBe("");
     expect(run(staleAssets.main, ["--dir", dir]).code).toBe(2);
+  });
+});
+
+describe("the Rust toolchain", () => {
+  it("is one version: rust-toolchain.toml and every `rustup toolchain install` of the workflows", () => {
+    const toolchain = fs.readFileSync(path.join(ROOT, "apps", "desktop", "rust-toolchain.toml"), "utf8");
+    const channel = /^channel = "([^"]+)"$/m.exec(toolchain)?.[1];
+    expect(channel, "the channel of rust-toolchain.toml").toBeTruthy();
+    for (const name of ["ci.yml", "release.yml"]) {
+      const workflow = fs.readFileSync(path.join(ROOT, ".github", "workflows", name), "utf8");
+      const installs = [...workflow.matchAll(/rustup toolchain install (\S+)/g)].map((m) => m[1]);
+      expect(installs.length, `${name} installs the toolchain`).toBeGreaterThan(0);
+      for (const version of installs) expect(version, `${name}`).toBe(channel);
+    }
   });
 });

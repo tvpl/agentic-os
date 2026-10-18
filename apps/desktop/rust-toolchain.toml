@@ -1,5 +1,5 @@
 # The toolchain the desktop app is built and tested with, on every machine and in CI (the workflows install exactly this
-# version: tests/release.workflow.test.ts keeps the two equal). Raise it on purpose, in its own commit.
+# version: tests/desktop.release.test.ts keeps the two equal). Raise it on purpose, in its own commit.
 [toolchain]
 channel = "1.97.0"
 profile = "minimal"
