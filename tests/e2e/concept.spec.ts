@@ -391,6 +391,7 @@ test("C11 moving through the queue animates and counts", async ({ page }) => {
 });
 
 test("C12 a resolved item leaves and the next takes focus", async ({ page }) => {
+  test.setTimeout(60_000); // five items, each resolved through the service: about 22 s, near the 30 s default
   await seedPending(page, {
     approvals: [question("q-1"), decision("d-ok"), decision("d-no", Date.now() - 90_000)],
     runs: [failedRun("f-rerun"), failedRun("f-hush", { finishedAt: Date.now() - 200_000 })],
@@ -401,9 +402,20 @@ test("C12 a resolved item leaves and the next takes focus", async ({ page }) => 
   const resolveOne = async (id: string, act: () => Promise<void>) => {
     await focus.locator(`nav.nu-focus-queue button[data-id="${id}"]`).click();
     await expect(focus.locator("section.nu-focus-item")).toHaveAttribute("data-id", id);
+    // The ghost of a resolved item lives 480 ms: watch for it from before the action instead of polling a window
+    // that a loaded machine can miss.
+    await page.evaluate(() => {
+      const seen = window as unknown as { __ghostSeen: boolean };
+      seen.__ghostSeen = false;
+      new MutationObserver(() => {
+        if (document.querySelector(".nu-focus-ghost")) seen.__ghostSeen = true;
+      }).observe(document.body, { childList: true, subtree: true });
+    });
     await act();
     await expect(focus.locator(`nav.nu-focus-queue button[data-id="${id}"]`)).toHaveCount(0);
-    await expect(focus.locator(".nu-focus-ghost")).toHaveCount(1);
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __ghostSeen: boolean }).__ghostSeen))
+      .toBe(true);
     await expect(focus.locator("nav.nu-focus-queue button[aria-current='true']")).toHaveCount(1);
     await expect(focus.locator("section.nu-focus-item")).not.toHaveAttribute("data-id", id);
   };
@@ -726,13 +738,24 @@ test("C3 a dialog rises as a sheet over the veil", async ({ page }) => {
 
 test("C4 a dialog folds on Esc and on the veil and gives focus back", async ({ page }) => {
   const first = await openWriteGate(page);
+  // Visible is not ready: a dialog takes the focus, and listens for Escape, a moment after it is drawn.
+  const ready = () =>
+    expect
+      .poll(() => page.getByRole("dialog").evaluate((el) => el.contains(document.activeElement)))
+      .toBe(true);
+  await ready();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(first.trigger).toBeFocused();
   await first.trigger.click();
   await expect(page.getByRole("dialog")).toBeVisible();
-  await page.mouse.click(8, 8);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await ready();
+  // The layer arms its click-outside a tick after it mounts: click again only while the dialog is still there (the
+  // corner is the pending hub once it is gone).
+  await expect(async () => {
+    if (await page.getByRole("dialog").count()) await page.mouse.click(8, 8);
+    await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 1000 });
+  }).toPass({ timeout: 10_000 });
   await expect(first.trigger).toBeFocused();
 });
 

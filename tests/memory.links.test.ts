@@ -321,9 +321,10 @@ describe("S2 backlinks and broken links", () => {
     expect((await links(alvo)).backlinks).toEqual([]);
 
     const opened: string[] = [];
+    const realRoot = fs.realpathSync(root); // (macOS spells the temp folder through a link: watch both spellings)
     const realOpen = fs.openSync;
     (fs as any).openSync = (file: fs.PathLike, ...rest: unknown[]) => {
-      if (String(file).startsWith(root)) opened.push(String(file));
+      if (String(file).startsWith(root) || String(file).startsWith(realRoot)) opened.push(String(file));
       return (realOpen as (...a: unknown[]) => number)(file, ...rest);
     };
     try {
@@ -354,14 +355,20 @@ describe("S2 backlinks and broken links", () => {
 
     const target = put(path.join(dir, "futuro27.md"), "# Futuro\n");
     const opened: string[] = [];
+    const realMemory = fs.realpathSync(temp.paths.memory);
     const realOpen = fs.openSync;
     vi.spyOn(fs, "openSync").mockImplementation(((file: fs.PathLike, ...rest: unknown[]) => {
-      if (String(file).startsWith(temp.paths.memory)) opened.push(String(file));
+      // (macOS spells the temp folder through a link, /var for /private/var: compare real paths)
+      if (String(file).startsWith(realMemory) || String(file).startsWith(temp.paths.memory)) {
+        opened.push(fs.realpathSync(String(file)));
+      }
       return (realOpen as (...a: unknown[]) => number)(file, ...rest);
     }) as typeof fs.openSync);
     await ctx.indexer.indexAllAsync();
     // only the new file was opened; the source that points at it was not read again
-    expect(opened.filter((f) => f.startsWith(dir)).sort()).toEqual([target]);
+    expect(opened.filter((f) => f.startsWith(fs.realpathSync(dir))).sort()).toEqual([
+      fs.realpathSync(target),
+    ]);
     expect((await links(source)).outgoing.map((o) => o.resolved?.path)).toEqual([target, target]);
     expect((await links(target)).backlinks.map((b) => [b.file.path, b.kind])).toEqual([
       [source, "markdown-link"],

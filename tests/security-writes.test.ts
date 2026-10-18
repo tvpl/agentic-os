@@ -1754,6 +1754,34 @@ describe.skipIf(!POSIX)("C57 the guarded replace of the write primitive (cerebro
       expect(fs.readFileSync(target, "utf8")).toBe("alvo\n");
     });
 
+    it("reads 12 to 32 hex digits, anchored at both ends: 11 or 33 digits, upper case or a prefix are the user's", () => {
+      const dir = folder();
+      const swept = [".mordomo-save-" + "a".repeat(12) + ".tmp", ".mordomo-save-" + "b".repeat(32) + ".tmp"];
+      const kept = [
+        ".mordomo-save-" + "a".repeat(11) + ".tmp",
+        ".mordomo-save-" + "a".repeat(33) + ".tmp",
+        ".mordomo-save-" + "A".repeat(16) + ".tmp",
+        "x.mordomo-save-" + "a".repeat(16) + ".tmp",
+      ];
+      for (const name of [...swept, ...kept]) {
+        const file = path.join(dir, name);
+        fs.writeFileSync(file, "texto\n");
+        aged(file, 10 * STALE_SAVE_TEMP_MS);
+      }
+      for (const name of swept) expect(removeStaleSaveTemp(path.join(dir, name)), name).toBe(true);
+      for (const name of kept) expect(removeStaleSaveTemp(path.join(dir, name)), name).toBe(false);
+      expect(fs.readdirSync(dir).sort()).toEqual([...kept].sort());
+    });
+
+    it("keeps a file touched exactly one hour ago minus a second, and removes one an hour and a second old", () => {
+      const dir = folder();
+      const file = path.join(dir, own);
+      fs.writeFileSync(file, "texto\n");
+      const mtime = fs.statSync(file).mtimeMs;
+      expect(removeStaleSaveTemp(file, mtime + STALE_SAVE_TEMP_MS - 1000)).toBe(false);
+      expect(removeStaleSaveTemp(file, mtime + STALE_SAVE_TEMP_MS + 1000)).toBe(true);
+    });
+
     it.skipIf(process.getuid?.() !== 0)("keeps an old file that belongs to another user", () => {
       const dir = folder();
       const theirs = path.join(dir, own);
@@ -1773,7 +1801,8 @@ describe.skipIf(!POSIX)("C57 the guarded replace of the write primitive (cerebro
         `.mordomo-save-${hex(11)}.tmp`, // one digit short of the first build's names
         `.mordomo-save-${hex(33)}.tmp`, // one digit over the longest name
         `.mordomo-save-${hex(40)}.tmp`,
-        `.mordomo-save-${hex(16).toUpperCase()}.tmp`,
+        // uppercase digits, spelled differently from `ours`: on a file system that ignores case they would be one file
+        ".mordomo-save-FEDCBA9876543210.tmp",
         `x.mordomo-save-${hex(16)}.tmp`, // something before the dot: the name is anchored at its start
         `x.mordomo-save-${hex(32)}.tmp`,
       ];

@@ -20,7 +20,7 @@ import { useT, type TKey } from "../i18n";
 import { useOsSettings } from "../queries";
 import { DialogSurface, Modal } from "../ui";
 import { errorMessage } from "../views/shared";
-import type { NoteEditorRequest } from "./noteEditor";
+import type { NoteEditorRequest } from "./noteEvents";
 import "./noteEditor.css";
 
 /** What `GET /api/memory/note` answers. */

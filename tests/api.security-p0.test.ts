@@ -533,6 +533,10 @@ describe("round 2: members the first verification found unproven", () => {
       ["navigation", NAVIGATION],
       ["navigation with this origin", { ...NAVIGATION, origin: "http://127.0.0.1:4777" }],
       ["opaque origin", { ...NAVIGATION, origin: "null" }],
+      [
+        "a reload that reports no destination",
+        { ...NAVIGATION, "sec-fetch-dest": "empty", "sec-fetch-site": "same-origin" },
+      ],
       ["a web view before Fetch Metadata", { "user-agent": "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15" }],
     ] as const) {
       expect(meta((await page(headers)).body), who).toBe(token);

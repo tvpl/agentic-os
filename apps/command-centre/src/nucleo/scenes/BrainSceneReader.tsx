@@ -24,7 +24,7 @@ import {
   resolveReference,
   type Block,
 } from "../../brain/markdown";
-import { openNoteEditor } from "../../brain/noteEditor";
+import { openNoteEditor } from "../../brain/noteEvents";
 import { BrainGlyph } from "./BrainGlyph";
 import type { ContentKind } from "./brainGlyphs";
 import { starLabel } from "./brainModel";

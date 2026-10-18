@@ -18,7 +18,7 @@ Pushing a tag `v<version>` runs [`.github/workflows/release.yml`](../.github/wor
 | --- | --- |
 | `plan` | Checks that the tag is `v` + the version of `package.json` and of everything else that carries one (`node scripts/version-sync.mjs --check --tag`), that `CHANGELOG.md` has a section for it, and that the updater configuration is well formed; then reads which signing secrets are registered and writes the answer in the run's summary. |
 | `verify` | The same gate as CI on Linux: typecheck, lint, the whole `vitest` suite, the npm and Rust license checks, the network scan, and the Rust tests of the shell. |
-| `package` (4 in parallel) | Builds the payload (`scripts/package.mjs --payload`: the API and CLI bundle, the SQLite addon, the Command Centre, the seed data, a Node.js runtime, `legal/` with both SBOMs and notices), checks that the license and the legal texts are in it, builds the installers with Tauri, starts the **installed** app's service to prove it serves the Command Centre, verifies the signatures it made, names the files and writes `status-<platform>.json`. |
+| `package` (4 in parallel) | Builds the payload (`scripts/package.mjs --payload`: the API and CLI bundle, the SQLite addon, the Command Centre, the seed data, a Node.js runtime) builds the installers with Tauri, starts the **installed** app's service to prove it serves the Command Centre, verifies the signatures it made, names the files and writes `status-<platform>.json`. |
 | `publish` | Only on a tag. Downloads the four sets, writes the release notes (the CHANGELOG section plus a signature table), the updater manifest `latest.json` **if every platform signed**, the SBOMs, the third-party notices and `SHA256SUMS.txt`, and creates or refreshes a **draft** release. |
 
 It never publishes. `workflow_dispatch` (Actions › Release › Run workflow) runs everything except `publish`: the installers
@@ -88,7 +88,7 @@ Until both halves exist the build has no updater at all (no plugin, no menu item
 node scripts/version-sync.mjs --write 0.9.0
 # 2. CHANGELOG.md: rename "## Unreleased" to "## 0.9.0 — 2026-MM-DD" (the workflow refuses a version with no section).
 # 3. The gate, then commit.
-npm run version:check && npm run typecheck && npm run lint && npx vitest run && npm run licenses:check && npm run network:scan -- --check
+npm run version:check && npm run typecheck && npm run lint && npx vitest run && npm run network:scan -- --check
 git commit -am "chore(release): 0.9.0"
 # 4. The tag. Pushing it is what starts the release; nothing else does.
 git tag v0.9.0 && git push origin main v0.9.0
@@ -138,11 +138,6 @@ node -e 'const c=require("./apps/desktop/src-tauri/tauri.updater.conf.json");con
 base64 -d MordomoOS_0.9.0_linux-x64.AppImage.sig > MordomoOS_0.9.0_linux-x64.AppImage.minisig
 minisign -Vm MordomoOS_0.9.0_linux-x64.AppImage -x MordomoOS_0.9.0_linux-x64.AppImage.minisig -P <that key line>
 ```
-
-**SBOMs and notices**: `sbom.cdx.json` (what npm brings and the bundled components) and `sbom.desktop.cdx.json` (the Rust
-crates) are CycloneDX 1.5; `THIRD_PARTY_NOTICES.md` and `THIRD_PARTY_NOTICES.desktop.md` are what the installers carry in
-`legal/`. The same `legal/` folder and `LICENSE` are inside every installer, and the workflow fails a platform's job if
-one is missing from the payload.
 
 **`latest.json`**: `version`, `notes`, `pub_date` and four platforms, each with the `.sig` content and a
 `https://github.com/tvpl/agentic-os/releases/download/<tag>/<file>` address. If it is not attached, the notes say not every

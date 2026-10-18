@@ -21,9 +21,7 @@ npm run build
 ```
 
 Os commits seguem [Conventional Commits](https://www.conventionalcommits.org/) (`feat(core): …`,
-`fix(api): …`). Mudou a lista de dependências? Rode também `npm run licenses:write` e comite
-`legal/THIRD_PARTY_NOTICES.md`; uma dependência com licença fora da lista de `legal/license-policy.json`
-reprova (`npm run licenses:check`). Acrescentou um destino de rede? Acrescente-o a
+`fix(api): …`). Acrescentou um destino de rede? Acrescente-o a
 `legal/network-policy.json` e a `legal/PRIVACY.md` (`npm run network:scan -- --check`).
 
 ## Origem da contribuição (DCO)

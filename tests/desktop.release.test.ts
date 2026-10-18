@@ -971,12 +971,12 @@ describe("C41 the build passes only the signing material this machine has, never
 
 // ---- the payload ---------------------------------------------------------------------------------------------------
 
-describe("C45 the payload is lib, ui, seed, legal, LICENSE and the manifest, and nothing else", () => {
+describe("C45 the payload is lib, ui, seed, LICENSE and the manifest, and nothing else", () => {
   const built =
     fs.existsSync(path.join(ROOT, "apps", "api", "dist", "cli.js")) &&
     fs.existsSync(path.join(ROOT, "apps", "command-centre", "dist", "index.html"));
   it.runIf(built)(
-    "C45 `package.mjs --payload <dir> --node none` writes those and no launcher, README or archive, with the eight legal files",
+    "C45 `package.mjs --payload <dir> --node none` writes those and no launcher, README or archive",
     async () => {
       const { spawnSync } = await import("node:child_process");
       const out = path.join(temp("mordomo-payload-"), "payload");
@@ -990,21 +990,9 @@ describe("C45 the payload is lib, ui, seed, legal, LICENSE and the manifest, and
       );
       expect(res.status, res.stderr).toBe(0);
       // no `runtime/` here: --node none; the desktop build always has it (the CI step lists it)
-      expect(fs.readdirSync(out).sort()).toEqual(["LICENSE", "legal", "lib", "package.json", "seed", "ui"]);
-      for (const file of [
-        "LICENSE",
-        "legal/EULA.md",
-        "legal/PRIVACY.md",
-        "legal/NOTICE.md",
-        "legal/THIRD_PARTY_NOTICES.md",
-        "legal/THIRD_PARTY_NOTICES.desktop.md",
-        "legal/sbom.cdx.json",
-        "legal/sbom.desktop.cdx.json",
-        "lib/mordomo.mjs",
-        "ui/index.html",
-      ])
+      expect(fs.readdirSync(out).sort()).toEqual(["LICENSE", "lib", "package.json", "seed", "ui"]);
+      for (const file of ["LICENSE", "lib/mordomo.mjs", "ui/index.html"])
         expect(fs.existsSync(path.join(out, file)), file).toBe(true);
-      expect(fs.existsSync(path.join(out, "legal", "vendor", "cyclonedx"))).toBe(false);
       const manifest = JSON.parse(fs.readFileSync(path.join(out, "package.json"), "utf8")) as {
         name: string;
         version: string;
@@ -1424,5 +1412,19 @@ describe("C59 a re-run of a tag leaves the draft with this run's files only", ()
     expect(empty.code).toBe(1);
     expect(empty.out).toBe("");
     expect(run(staleAssets.main, ["--dir", dir]).code).toBe(2);
+  });
+});
+
+describe("the Rust toolchain", () => {
+  it("is one version: rust-toolchain.toml and every `rustup toolchain install` of the workflows", () => {
+    const toolchain = fs.readFileSync(path.join(ROOT, "apps", "desktop", "rust-toolchain.toml"), "utf8");
+    const channel = /^channel = "([^"]+)"$/m.exec(toolchain)?.[1];
+    expect(channel, "the channel of rust-toolchain.toml").toBeTruthy();
+    for (const name of ["ci.yml", "release.yml"]) {
+      const workflow = fs.readFileSync(path.join(ROOT, ".github", "workflows", name), "utf8");
+      const installs = [...workflow.matchAll(/rustup toolchain install (\S+)/g)].map((m) => m[1]);
+      expect(installs.length, `${name} installs the toolchain`).toBeGreaterThan(0);
+      for (const version of installs) expect(version, `${name}`).toBe(channel);
+    }
   });
 });

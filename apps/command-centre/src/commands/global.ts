@@ -37,7 +37,7 @@ import { useOsNavigate } from "../hooks/useViewTransition";
 import { getNotifySound, setNotifySound, useNotifications } from "../hooks/useNotifications";
 import { errorMessage } from "../views/shared";
 import { openOnboarding } from "../onboarding/state";
-import { openNoteEditor } from "../brain/noteEditor";
+import { openNoteEditor } from "../brain/noteEvents";
 import { useCommands, type Command } from "./registry";
 
 /** Opens the palette (and closes it: the palette registers the same keys in its own `modal` scope). */

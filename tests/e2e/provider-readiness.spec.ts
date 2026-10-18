@@ -33,9 +33,11 @@ test("unverified authentication is not green or labelled OK and can be checked a
   await expect(page.getByTestId("provider-state")).toHaveText("login not verified");
   await page.goto("/#/settings?tab=providers");
   const provider = page.locator(".provider-row").first();
-  await expect(provider.locator(".meta")).toContainText("not verified");
+  // (the version note under it, role=note, is another .meta: the fake claude is newer than the tested range)
+  const status = provider.locator(".meta:not([role=note])");
+  await expect(status).toContainText("not verified");
   await page.getByRole("button", { name: "Verify providers again" }).click();
-  await expect(provider.locator(".meta")).toContainText(/auth.*ok/i);
+  await expect(status).toContainText(/auth.*ok/i);
   await expect(provider.locator(".provider-head .dot")).toHaveClass(/ok/);
 });
 

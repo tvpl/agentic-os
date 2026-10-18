@@ -165,6 +165,7 @@ test("the spine travels by click, by 1–5 and by [ ], and reaches every scene",
 test("a transition leaves exactly one interactive scene, even when you turn back mid-way", async ({
   page,
 }) => {
+  test.setTimeout(60_000); // about 22 s here, near the 30 s default
   await openShell(page);
   await arrived(page, "nucleo");
   const live = () =>
@@ -174,11 +175,24 @@ test("a transition leaves exactly one interactive scene, even when you turn back
         .map((s) => `${s.dataset.scene}${s.classList.contains("on") ? ":on" : ""}`),
     );
 
-  // Mid-travel, read in one frame: both scenes are drawn, but only the
-  // arriving one is a place.
-  const midway = async () =>
-    (
-      await page.waitForFunction(() => {
+  // Mid-travel, read in one frame: both scenes are drawn, but only the arriving one is a place. The two scenes
+  // share the stage for about 100 ms, shorter than a round trip to the page, so the page watches for that frame
+  // from before the key is pressed (`arm`) and keeps the first one it sees.
+  type Midway = {
+    leaving: string | undefined;
+    leavingClass: string;
+    hidden: string | null;
+    inert: boolean;
+    arriving: string | undefined;
+    arrivingClass: string;
+    live: string[];
+  };
+  const arm = () =>
+    page.evaluate(() => {
+      const win = window as unknown as { __midway: unknown; __midwayWatch?: MutationObserver };
+      win.__midway = null;
+      win.__midwayWatch?.disconnect();
+      const read = () => {
         const out = document.querySelector<HTMLElement>('section.nu-scene[class*="out-"]');
         const on = document.querySelector<HTMLElement>("section.nu-scene.on");
         if (!out || !on) return null;
@@ -190,15 +204,30 @@ test("a transition leaves exactly one interactive scene, even when you turn back
           arriving: on.dataset.scene,
           arrivingClass: on.className,
           live: Array.from(document.querySelectorAll<HTMLElement>("section.nu-scene"))
-            .filter((s) => !s.hasAttribute("inert") && s.getAttribute("aria-hidden") !== "true")
-            .map((s) => `${s.dataset.scene}${s.classList.contains("on") ? ":on" : ""}`),
+            .filter((el) => !el.hasAttribute("inert") && el.getAttribute("aria-hidden") !== "true")
+            .map((el) => `${el.dataset.scene}${el.classList.contains("on") ? ":on" : ""}`),
         };
-      })
-    ).jsonValue();
+      };
+      win.__midwayWatch = new MutationObserver(() => {
+        if (win.__midway) return;
+        win.__midway = read();
+      });
+      win.__midwayWatch.observe(document.body, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ["class", "inert", "aria-hidden"],
+      });
+    });
+  const midway = async () =>
+    (await (
+      await page.waitForFunction(() => (window as unknown as { __midway: unknown }).__midway ?? null)
+    ).jsonValue()) as Midway;
 
   // Going into a scene zooms through its module, the Núcleo rushing past.
+  await arm();
   await page.keyboard.press("2");
-  const into = (await midway())!;
+  const into = await midway();
   expect(into).toMatchObject({ leaving: "nucleo", hidden: "true", inert: true, arriving: "brain" });
   expect(into.leavingClass).toMatch(/\bout-zoom\b/);
   expect(into.arrivingClass).toMatch(/\bin-zoom\b/);
@@ -206,8 +235,9 @@ test("a transition leaves exactly one interactive scene, even when you turn back
   await arrived(page, "brain");
   expect(await live()).toEqual(["brain:on"]);
   // Going home folds the scene back into its module.
+  await arm();
   await page.keyboard.press("1");
-  const home = (await midway())!;
+  const home = await midway();
   expect(home).toMatchObject({ leaving: "brain", hidden: "true", inert: true, arriving: "nucleo" });
   expect(home.leavingClass).toMatch(/\bout-home\b/);
   expect(home.arrivingClass).toMatch(/\bin-home\b/);

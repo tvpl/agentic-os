@@ -6,11 +6,8 @@ architecture as they were on the day each was written (many mention screens, wid
 exist), some contain absolute paths of the machine they were written on, and nothing here is the source of a
 statement the product makes.
 
-- The installer does not carry this folder: `scripts/package.mjs` copies `ui`, `seed`, `package.json` and `legal/`,
+- The installer does not carry this folder: `scripts/package.mjs` copies `ui`, `seed` and `package.json`,
   and `tests/docs.drift.test.ts` fails if a path under `docs/` ever enters that list.
-- `legal/THIRD_PARTY_NOTICES.md` lists npm packages, not documents; this folder is not in it.
-- The trademark sweep (`tests/legal.docs.test.ts`, C20) still reads every file here, because the repository is
-  public: a brand cited in these notes is listed in `legal/` like any other.
 - The product guides stay one level up, in [`docs/`](..): [user manual](../user-manual.md),
   [architecture](../architecture.md), [security](../security.md), [install](../install.md), [SDK](../sdk.md).
 

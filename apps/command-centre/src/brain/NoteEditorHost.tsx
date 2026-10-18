@@ -3,7 +3,7 @@
  * stylesheet that goes with it) is fetched only when a person first asks for a note.
  */
 import { Suspense, lazy, useEffect, useState } from "react";
-import { OPEN_NOTE_EVENT, type NoteEditorRequest } from "./noteEditor";
+import { OPEN_NOTE_EVENT, type NoteEditorRequest } from "./noteEvents";
 
 const NoteEditor = lazy(() => import("./NoteEditor"));
 

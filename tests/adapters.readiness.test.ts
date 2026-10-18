@@ -25,6 +25,15 @@ describe("provider readiness evidence", () => {
       }
     });
   }
+  it("the e2e fake claude reads as signed in on a machine with no ~/.claude (FAKE_CLAUDE_LOGGED_IN)", async () => {
+    vi.stubEnv("FAKE_CLAUDE_LOGGED_IN", "1");
+    try {
+      const adapter = new ClaudeAdapter({ binaryPath: path.join(FAKE_BIN, "claude") });
+      expect((await adapter.authenticate()).authenticated).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   for (const Adapter of [ClaudeAdapter, CodexAdapter, CursorAdapter]) {
     it(`${Adapter.name}: unknown auth must not produce a green health status`, async () => {
       const adapter = new Adapter();

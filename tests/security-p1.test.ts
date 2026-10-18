@@ -258,7 +258,15 @@ describe("S1 the home is not readable through the API", () => {
       indexed.filter((p) => p.startsWith(path.join(home, "config")) || p.startsWith(path.join(home, "logs"))),
     ).toEqual([]);
     // door 1: a config/ folder in a user's project is indexed and previewed.
-    expect(indexed).toContain(path.join(fs.realpathSync(userFolder), "config", "app.json"));
+    // (compared by real path: macOS spells the temp folder through a link, /var for /private/var)
+    const indexedReal = indexed.map((p) => {
+      try {
+        return fs.realpathSync(p);
+      } catch {
+        return p;
+      }
+    });
+    expect(indexedReal).toContain(path.join(fs.realpathSync(userFolder), "config", "app.json"));
     const userConfig = await preview(path.join(userFolder, "config", "app.json"), asDevice());
     expect(userConfig.statusCode).toBe(200);
     expect(userConfig.json().content).toContain("CONFIG-OF-A-PROJECT");

@@ -57,7 +57,7 @@ import {
 import { saveLocalSettings, settingsFromUi } from "../brain/state";
 import "../brain/brain.css";
 import { useCommands, type Command } from "../commands/registry";
-import { openNoteEditor } from "../brain/noteEditor";
+import { openNoteEditor } from "../brain/noteEvents";
 
 const GRAPH_PARAMS = { maxNodes: 3000 };
 /**
