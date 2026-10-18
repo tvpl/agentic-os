@@ -750,8 +750,12 @@ test("C4 a dialog folds on Esc and on the veil and gives focus back", async ({ p
   await first.trigger.click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await ready();
-  await page.mouse.click(8, 8);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // The layer arms its click-outside a tick after it mounts: click again only while the dialog is still there (the
+  // corner is the pending hub once it is gone).
+  await expect(async () => {
+    if (await page.getByRole("dialog").count()) await page.mouse.click(8, 8);
+    await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 1000 });
+  }).toPass({ timeout: 10_000 });
   await expect(first.trigger).toBeFocused();
 });
 
