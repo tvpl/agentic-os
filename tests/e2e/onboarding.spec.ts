@@ -31,15 +31,18 @@ test("first visit can skip, stays dismissed after reload, and resumes from Setti
 });
 
 test("interactive journey visits real apps, practices safely and hands off a draft", async ({ page }) => {
+  // Twelve steps across the real scenes and a reload: about 35 s, over the 30 s default.
+  test.setTimeout(90_000);
   const errors: string[] = [];
   const writes: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("request", (request) => {
     // What must stay untouched is the user's work: runs, skills, routines.
-    // (Settings writes are the tour's own bookkeeping.)
+    // (Settings writes are the tour's own bookkeeping, and so is the ticket the page asks for to open its event stream.)
     if (
       request.url().includes("/api/") &&
       !request.url().includes("/api/v1/settings") &&
+      !request.url().includes("/api/v1/stream-tickets") &&
       ["POST", "PUT", "DELETE", "PATCH"].includes(request.method())
     )
       writes.push(request.url());
