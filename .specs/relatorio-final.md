@@ -50,3 +50,11 @@ Windows, macOS, notarização, o workflow de release no GitHub e uma atualizaç�
 - Um telefone pareado recebe `monitor`, `content` e `run` por padrão. Aprovar escritas depende do escopo `approve`, e uma escrita pedida pelo telefone espera aprovação humana.
 - Acesso remoto por HTTP puro dá `403 tls_required`. Use TLS ou um túnel.
 - Backups feitos antes do `dados-v2` só restauram com `mordomo restore <nome> --allow-unverified`.
+
+## Decisões do dono (18/10/2026)
+
+- **Agentes (Codex e Cursor) leem o `config/token`:** aceito para uso local. O risco já está documentado em `docs/security.md` (seção "An agent with a shell, or a provider sandbox that reads the whole disk…"). Nenhum código novo.
+- **`GET /` entrega o token a quem imita um navegador:** aceito para uso local. O app desktop já fecha esse caminho para ele mesmo. Nenhum código novo.
+- **Corrigidos em 17/10/2026:** `focusSkillDeck` (seletor que não casava com nenhum elemento) e testes dos limites da varredura de `.mordomo-save-*.tmp`.
+- **Deixados como estão, por serem raros ou de custo alto para o uso local:** nota truncada se o processo morrer no caminho de salvar no próprio arquivo, dois salvamentos simultâneos pela CLI e pela API, e `restore.lock` trocado ou apagado enquanto preso.
+- **Falhas que já existiam na `main`:** `api.v1` C38 (URL absoluta para `/api/v1` responde 404 em vez de 401/403, provavelmente por versão do Node) e `sdk.api-thin` C29 (cita um commit que não existe neste clone raso).
