@@ -1,5 +1,9 @@
 # Windows setup
 
+> **Not validated.** Windows is not in the CI matrix and the test suite has never passed on it (POSIX
+> signals, CRLF line endings and path spelling in the tests). The product is used locally on macOS; treat this page
+> as untested guidance, and prefer WSL 2.
+
 > No terminal needed: the packaged app (`MordomoOS.cmd` + `bin\mordomo.cmd`,
 > built with `npm run dist --platform win32` or downloaded) runs on native
 > Windows with its bundled Node.js; see [install.md](install.md). The

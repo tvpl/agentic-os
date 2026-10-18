@@ -166,7 +166,7 @@ describe("C31 the weight guard", () => {
     for (const key of ["if", "continue-on-error", "needs"]) expect(job[key], `job ${key}`).toBeUndefined();
     const matrix = job.strategy?.matrix ?? {};
     for (const key of ["exclude", "include"]) expect(matrix[key], `matrix ${key}`).toBeUndefined();
-    expect(matrix.os).toEqual(["ubuntu-latest", "macos-latest", "windows-latest"]);
+    expect(matrix.os).toEqual(["ubuntu-latest", "macos-latest"]);
     const at = job.steps.findIndex((step) => typeof step.run === "string" && /bundle:check/.test(step.run));
     expect(at, "the step exists").toBeGreaterThan(0);
     const step = job.steps[at]!;
