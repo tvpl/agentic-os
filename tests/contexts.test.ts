@@ -3,11 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
-import type { DeviceScope } from "@mordomo/contracts";
+import { API, type DeviceScope, type RouteDefinition } from "@mordomo/contracts";
 import { AppContext } from "../apps/api/src/context.js";
 import { buildServer } from "../apps/api/src/server.js";
 import { generateRouters } from "../core/src/memory/routers.js";
 import { makeTempHome } from "./helpers.js";
+import { buildWorld, SCENARIOS } from "./helpers/contractWorld.js";
+import { EXPECTED_ROUTE_SCOPES } from "./helpers/routeScopes.js";
 
 /**
  * .specs/features/cerebro-contextos, batch A: defining work contexts (S1), the reads that follow one (S2) and the map
@@ -836,5 +838,177 @@ describe("S4 the map of a context", () => {
     } finally {
       restore();
     }
+  });
+});
+
+describe("S1 door 9 the brief of a context, made from the template", () => {
+  it("door 9 PATCH with brief makes _resumo.md from the template once, keeps one that exists, and leaves settings.json alone", async () => {
+    const folder = dir("resumo");
+    const made = await create({ name: "Projeto com resumo", paths: [folder] });
+    expect(made.status).toBe(201);
+    const id = made.body.id as string;
+    expect(made.body.brief).toBeNull();
+    const file = path.join(temp.paths.memory, "notes", id, "_resumo.md");
+    expect(fs.existsSync(file)).toBe(false);
+    const before = settingsBytes();
+    const first = await call("PATCH", `/api/contexts/${id}`, { brief: true });
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    expect(first.body.brief).toBe(file);
+    expect(first.body.name).toBe("Projeto com resumo");
+    expect(fs.readFileSync(file, "utf8")).toBe(
+      "---\ntype: brief\nstatus: active\n---\n\n# Projeto com resumo\n\n## O que é\n\n## O que importa\n\n## Metas\n\n## O que ignorar\n",
+    );
+    expect(settingsBytes()).toBe(before);
+    // A brief that exists keeps every byte.
+    fs.writeFileSync(file, "# meu resumo\n");
+    const again = await call("PATCH", `/api/contexts/${id}`, { brief: true });
+    expect(again.status).toBe(200);
+    expect(again.body.brief).toBe(file);
+    expect(fs.readFileSync(file, "utf8")).toBe("# meu resumo\n");
+    // With a name too, the name changes and the brief stays.
+    const renamed = await call("PATCH", `/api/contexts/${id}`, { name: "Outro nome", brief: true });
+    expect(renamed.body.name).toBe("Outro nome");
+    expect(fs.readFileSync(file, "utf8")).toBe("# meu resumo\n");
+    const unknown = await call("PATCH", "/api/contexts/nao-existe", { brief: true });
+    expect(unknown.status).toBe(404);
+    expect(errorCode(unknown)).toBe("context_not_found");
+  });
+});
+
+describe("S5 door 5 the active context is written in the shape of an id", () => {
+  const prefsFile = () => path.join(temp.paths.config, "ui-preferences.json");
+  it("door 5 PUT /api/ui-preferences refuses an activeContext that is not an id with 400 validation and keeps the stored one", async () => {
+    const ok = await call("PUT", "/api/ui-preferences", { activeContext: "cliente-x" });
+    expect(ok.status).toBe(200);
+    expect(ok.body.activeContext).toBe("cliente-x");
+    const stored = fs.readFileSync(prefsFile(), "utf8");
+    for (const bad of ["Cliente X", "", "-x", "a".repeat(41), 7, "../config"]) {
+      const res = await call("PUT", "/api/ui-preferences", { activeContext: bad });
+      expect(res.status, JSON.stringify(bad)).toBe(400);
+      expect(errorCode(res), JSON.stringify(bad)).toBe("validation");
+      expect(fs.readFileSync(prefsFile(), "utf8")).toBe(stored);
+    }
+    const none = await call("PUT", "/api/ui-preferences", { activeContext: null });
+    expect(none.status).toBe(200);
+    expect(none.body.activeContext).toBeNull();
+  });
+
+  it("door 5 an unreadable activeContext on disk still reads as null (AD-013)", async () => {
+    const prefs = JSON.parse(fs.readFileSync(prefsFile(), "utf8")) as Json;
+    fs.writeFileSync(prefsFile(), JSON.stringify({ ...prefs, activeContext: { not: "an id" } }));
+    const read = await get("/api/ui-preferences");
+    expect(read.status).toBe(200);
+    expect(read.body.activeContext).toBeNull();
+    // ...and a patch of another field still saves over it.
+    const saved = await call("PUT", "/api/ui-preferences", { activeSpace: "work" });
+    expect(saved.status).toBe(200);
+    expect(saved.body.activeContext).toBeNull();
+  });
+});
+
+describe("Cross-cutting the contract of the work contexts", () => {
+  const NEW_ROUTES: Array<{
+    id: string;
+    key: string;
+    scope: "owner" | "content";
+    success: number;
+    errors: string[];
+    body?: string[];
+  }> = [
+    { id: "contexts.list", key: "GET /api/contexts", scope: "content", success: 200, errors: [] },
+    {
+      id: "contexts.create",
+      key: "POST /api/contexts",
+      scope: "owner",
+      success: 201,
+      errors: ["400 context_path_not_indexed", "409 context_exists"],
+      body: ["name", "paths", "id"],
+    },
+    {
+      id: "contexts.update",
+      key: "PATCH /api/contexts/:id",
+      scope: "owner",
+      success: 200,
+      errors: ["400 context_path_not_indexed", "404 context_not_found"],
+      body: ["name", "paths", "brief"],
+    },
+    {
+      id: "contexts.delete",
+      key: "DELETE /api/contexts/:id",
+      scope: "owner",
+      success: 200,
+      errors: ["404 context_not_found"],
+    },
+  ];
+  const codes = (entry: RouteDefinition) => (entry.errors ?? []).map((e) => `${e.status} ${e.code}`);
+  const shape = (schema: unknown): Record<string, unknown> =>
+    ((schema as { shape?: Record<string, unknown> } | undefined)?.shape ?? {}) as Record<string, unknown>;
+
+  it("C46 the four new routes are in the API table with their schemas, scope and errors, in EXPECTED_ROUTE_SCOPES and in docs/security.md, each with a scenario of the refusal probe", async () => {
+    const security = fs.readFileSync(path.join(__dirname, "..", "docs", "security.md"), "utf8");
+    const scopeRow = (scope: string) =>
+      security.split("\n").find((l) => l.startsWith(`| \`${scope}\` (`)) ?? "";
+    const world = await buildWorld();
+    try {
+      for (const want of NEW_ROUTES) {
+        const entry = API[want.id as keyof typeof API] as RouteDefinition | undefined;
+        expect(entry, want.id).toBeDefined();
+        expect(`${entry!.method} ${entry!.path}`).toBe(want.key);
+        expect(entry!.scope, want.id).toBe(want.scope);
+        expect(entry!.summary.length, want.id).toBeGreaterThan(20);
+        expect(Object.keys(entry!.responses).map(Number), want.id).toEqual([want.success]);
+        expect(codes(entry!), want.id).toEqual(expect.arrayContaining(want.errors));
+        if (want.body) expect(Object.keys(shape(entry!.body)).sort(), want.id).toEqual([...want.body].sort());
+        else expect(entry!.body, want.id).toBeUndefined();
+        expect(EXPECTED_ROUTE_SCOPES[want.key], want.key).toBe(want.scope);
+        // docs/security.md lists the route in the row of its scope, and in no other row.
+        const name = `\`${want.key}\``;
+        expect(scopeRow(want.scope), want.key).toContain(name);
+        for (const other of ["monitor", "content", "run", "approve", "owner"].filter((s) => s !== want.scope))
+          expect(scopeRow(other).includes(name), `${want.key} under ${other}`).toBe(false);
+        // The refusal probe calls every route by its scenario: the new ones have one, and it reaches the route.
+        const scenario = SCENARIOS[want.key];
+        expect(scenario, want.key).toBeDefined();
+        const answer = await scenario!.run(world);
+        expect(answer.status, `${want.key} ${JSON.stringify(answer.body)}`).toBe(want.success);
+      }
+      // The document of the API describes them: operation id, scope, success and every declared error.
+      const res = await world.call("GET", "/api/openapi.json");
+      expect(res.status).toBe(200);
+      const doc = res.body as { paths: Record<string, Record<string, any>> };
+      for (const want of NEW_ROUTES) {
+        const entry = API[want.id as keyof typeof API] as RouteDefinition;
+        const op =
+          doc.paths[`/api/v1${entry.path.slice(4)}`.replace(/:(\w+)/g, "{$1}")]?.[entry.method.toLowerCase()];
+        expect(op, want.key).toBeDefined();
+        expect(op.operationId).toBe(want.id);
+        expect(op["x-mordomo-scope"]).toBe(want.scope);
+        expect(Object.keys(op.responses)).toContain(String(want.success));
+        for (const error of want.errors) {
+          const [status, code] = error.split(" ");
+          expect(JSON.stringify(op.responses[status!]), `${want.key} ${error}`).toContain(code!);
+        }
+      }
+    } finally {
+      await world.close();
+    }
+  }, 120_000);
+
+  it("C46 the changed routes declare their new query or body field and their new errors", () => {
+    const declares = (id: string, part: "query" | "body", field: string, errors: string[]) => {
+      const entry = API[id as keyof typeof API] as RouteDefinition;
+      expect(Object.keys(shape(entry[part])), `${id} ${part}`).toContain(field);
+      expect(codes(entry), id).toEqual(expect.arrayContaining(errors));
+    };
+    for (const id of ["memory.search", "memory.recall", "memory.graph", "memory.related", "memory.status"])
+      declares(id, "query", "context", ["404 context_not_found"]);
+    for (const id of ["runs.create", "skills.run", "sessions.continue"])
+      declares(id, "body", "contextId", ["404 context_not_found", "409 context_unavailable"]);
+    declares("sync.plan", "query", "context", ["404 context_not_found", "409 context_unavailable"]);
+    declares("sync.apply", "body", "context", ["404 context_not_found", "409 context_unavailable"]);
+    declares("uiPreferences.update", "body", "activeContext", []);
+    // The run read back carries the context it was started in.
+    const run = shape(shape((API["runs.get" as keyof typeof API] as RouteDefinition).responses[200]).run);
+    expect(Object.keys(run)).toContain("contextId");
   });
 });

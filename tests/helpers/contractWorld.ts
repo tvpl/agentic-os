@@ -671,7 +671,9 @@ export const SCENARIOS: Record<string, Scenario> = {
     run: (w) => w.call("POST", "/api/contexts", { name: "Cenário de contexto", paths: [w.workspace] }),
   },
   [key("PATCH", "/api/contexts/:id")]: {
-    run: (w) => w.call("PATCH", "/api/contexts/contract-context", { name: "Contexto renomeado" }),
+    // With the brief too (door 9), so the probe reaches the write that makes it.
+    run: (w) =>
+      w.call("PATCH", "/api/contexts/contract-context", { name: "Contexto renomeado", brief: true }),
   },
   [key("POST", "/api/memory/open")]: {
     run: (w) => w.call("POST", "/api/memory/open", { p: path.join(w.workspace, "plan.md") }),

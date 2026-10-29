@@ -4,6 +4,7 @@ import {
   changedContext,
   contextMembership,
   describeContexts,
+  ensureContextBrief,
   findContext,
   newContext,
   removeContextMap,
@@ -50,13 +51,20 @@ export function registerContextRoutes(app: FastifyInstance, ctx: AppContext): vo
     return describeContexts(ctx.db, envOf(ctx, saved), created!)[0]!;
   });
 
-  bind(app, "contexts.update", async ({ params: { id }, body }) => {
+  bind(app, "contexts.update", async ({ params: { id }, body: { brief, ...patch } }) => {
     let changed: WorkContext | null = null;
-    const saved = ctx.settingsStore.update((current) => {
-      const next = changedContext(envOf(ctx, current), id, body);
-      changed = next;
-      return { contexts: current.contexts.map((c) => (c.id === id ? next : c)) };
-    });
+    let saved = ctx.settings();
+    if (patch.name !== undefined || patch.paths !== undefined) {
+      saved = ctx.settingsStore.update((current) => {
+        const next = changedContext(envOf(ctx, current), id, patch);
+        changed = next;
+        return { contexts: current.contexts.map((c) => (c.id === id ? next : c)) };
+      });
+    } else {
+      changed = changedContext(envOf(ctx, saved), id, {});
+    }
+    // "Edit brief" (door 9): the brief is made from the template when it is missing, never written over.
+    if (brief) ensureContextBrief(envOf(ctx, saved), changed!);
     return describeContexts(ctx.db, envOf(ctx, saved), changed!)[0]!;
   });
 

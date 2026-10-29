@@ -38,8 +38,8 @@ de comandos (AD-014); nenhuma segunda política de caminhos, de escrita ou de co
 1. Definir → `POST`/`PATCH`/`DELETE /api/contexts` (new, door 3) → `core/src/memory/contexts.ts` (new, no door - placement per
    conventions) confere cada caminho (realpath dentro de uma pasta indexada habilitada ou de `memory/`, permitido pelo filtro) e
    grava em `settings.contexts` pelo `SettingsStore` (exists), persiste `contexts` (door 1).
-2. Escolher → a interface grava `UiPreferences.activeContext` (door 5) por `PUT /api/ui-preferences` (exists); a CLI lê o mesmo
-   campo.
+2. Escolher → a interface grava `UiPreferences.activeContext` (door 5) por `PUT /api/ui-preferences` (exists), que recusa com
+   `400 validation` um valor fora da forma de um `id`; a CLI lê o mesmo campo.
 3. Ler com escopo → as rotas `memory.search` (exists), `memory.recall` (exists), `memory.graph` (exists), `memory.related` (exists) e `memory.status` (exists, as facetas) recebem
    `context` (door 3); `contexts.ts` traduz o id nos caminhos reais e o teste de pertença (door 6) entra junto do `rowFilter`: no
    `allow` da busca, e como `within` ao lado do `allow` no grafo, nos relacionados, no recall e nas facetas de `core/src/memory`
@@ -55,7 +55,9 @@ de comandos (AD-014); nenhuma segunda política de caminhos, de escrita ou de co
    pedem ao `SyncCompiler` (exists) que compile esse mapa, em vez do `ROUTER.md`, no `CLAUDE.md`/`AGENTS.md` do primeiro caminho
    `ok` do contexto.
 7. Interface → o seletor de contexto (design.md) nos dois shells, o chip no chat, "Novo contexto…" e Configurações › Memória ›
-   Contextos chamam as rotas por `apiCall` (exists); o comando "Trocar de contexto" entra no registro (exists).
+   Contextos chamam as rotas por `apiCall` (exists); "Editar resumo" pede `PATCH /api/contexts/:id` com `brief` (door 9) e abre
+   o `NoteEditor` (exists) no caminho que volta; o comando "Trocar de contexto" entra no registro (exists); `settings.changed`
+   invalida a lista dos contextos.
 
 ## Impact
 
@@ -86,16 +88,18 @@ estrangeira, porque um contexto vive em `settings.json` e uma execução antiga 
 
 ## Surface
 
-| Route                                                                                     | In                                 | Out                                                                                                                     | Status                        |
-| ----------------------------------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| `GET /api/contexts`                                                                       | —                                  | `contexts[]`: `id` · `name` · `paths[]` (`path` · `state`) · `notesDir` · `brief` (caminho ou `null`) · `map` · `files` | `200`                         |
-| `POST /api/contexts`                                                                      | `name`, `paths[]`, `id?`           | o contexto                                                                                                              | `201`, `400`, `409`           |
-| `PATCH /api/contexts/:id`                                                                 | `name?`, `paths[]?`                | o contexto                                                                                                              | `200`, `400`, `404`           |
-| `DELETE /api/contexts/:id`                                                                | —                                  | `deleted` · `id`                                                                                                        | `200`, `404`                  |
-| `GET /api/memory/search`, `recall`, `graph`, `related`, `status` (mudam)                  | query `context?` (`<id>` ou `all`) | as mesmas respostas, só com arquivos do contexto                                                                        | os de hoje, mais `404`        |
-| `POST /api/runs`, `POST /api/skills/:slug/run`, `POST /api/sessions/:id/continue` (mudam) | `contextId?`                       | a execução; `RunRecord.contextId`                                                                                       | os de hoje, mais `404`, `409` |
-| `GET /api/sync/plan`, `POST /api/sync/apply` (mudam)                                      | `context?`                         | o plano e o resultado de hoje, com o mapa do contexto                                                                   | os de hoje, mais `404`        |
-| `GET /api/sync/plan`, `POST /api/sync/apply`, contexto sem caminho `ok` (nova)            | `context`                          | —                                                                                                                       | `409 context_unavailable`     |
+| Route                                                                                     | In                                  | Out                                                                                                                     | Status                                                              |
+| ----------------------------------------------------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `GET /api/contexts`                                                                       | —                                   | `contexts[]`: `id` · `name` · `paths[]` (`path` · `state`) · `notesDir` · `brief` (caminho ou `null`) · `map` · `files` | `200`                                                               |
+| `POST /api/contexts`                                                                      | `name`, `paths[]`, `id?`            | o contexto                                                                                                              | `201`, `400`, `409`                                                 |
+| `PATCH /api/contexts/:id`                                                                 | `name?`, `paths[]?`                 | o contexto                                                                                                              | `200`, `400`, `404`                                                 |
+| `DELETE /api/contexts/:id`                                                                | —                                   | `deleted` · `id`                                                                                                        | `200`, `404`                                                        |
+| `GET /api/memory/search`, `recall`, `graph`, `related`, `status` (mudam)                  | query `context?` (`<id>` ou `all`)  | as mesmas respostas, só com arquivos do contexto                                                                        | os de hoje, mais `404`                                              |
+| `POST /api/runs`, `POST /api/skills/:slug/run`, `POST /api/sessions/:id/continue` (mudam) | `contextId?`                        | a execução; `RunRecord.contextId`                                                                                       | os de hoje, mais `404`, `409`                                       |
+| `GET /api/sync/plan`, `POST /api/sync/apply` (mudam)                                      | `context?`                          | o plano e o resultado de hoje, com o mapa do contexto                                                                   | os de hoje, mais `404`                                              |
+| `GET /api/sync/plan`, `POST /api/sync/apply`, contexto sem caminho `ok` (nova)            | `context`                           | —                                                                                                                       | `409 context_unavailable`                                           |
+| `PATCH /api/contexts/:id` com `brief` (nova)                                              | `brief?: true`                      | o contexto, com `brief` = o caminho de `_resumo.md`, criado pelo modelo de design.md quando falta                       | `200`, `404`                                                        |
+| `PUT /api/ui-preferences` (muda)                                                          | `activeContext?` (`<id>` ou `null`) | as preferências de hoje                                                                                                 | os de hoje; `400 validation` para um valor fora da forma de um `id` |
 
 ## Landing
 
@@ -109,6 +113,8 @@ estrangeira, porque um contexto vive em `settings.json` e uma execução antiga 
 | 6. Pertença a um contexto           | um arquivo é do contexto quando o realpath do seu `path` é igual a um realpath dos `paths` do contexto ou começa por ele seguido do separador da plataforma; comparado como a plataforma compara nomes (o `grantedReadScope` de hoje)                                                                                                                                             | `dir LIKE '<pasta>%'`, o filtro de hoje: casa `/projetos/app-antigo` com `/projetos/app`                                                                                                                                                                                          |
 | 7. Recall e busca da execução       | chamadas com a credencial de uma execução que tem `context_id` e sem `context` usam o contexto da execução; `context=all` volta ao acervo inteiro; chamadas com o token do dono e sem `context` valem para o acervo inteiro                                                                                                                                                       | o agente decidir pelo prompt: o recall seria um pedido que o agente pode esquecer de filtrar; a credencial da execução nunca vale fora do contexto: um agente que precisa de uma nota geral (o `MEMORY.md`) ficaria sem ela                                                       |
 | 8. A credencial na busca            | `GET /api/memory/search` entra em `RUN_API_READ_ROUTES`; com a credencial de uma execução, o recall e a busca leem só arquivos sob `memory/` e sob os caminhos `ok` do contexto da execução (a pasta de trabalho e as pastas adicionadas que ela já recebe, door 4 e AC 18), e `context` escolhe entre esses arquivos como na door 7 (`all`: todos eles)                          | o acervo inteiro para a credencial: amplia a AD-012 (o agente leria pela API pastas do dono que a execução não recebeu); só `memory/`, como hoje: num contexto de projeto o recall da execução não teria o que devolver; a busca fora da credencial: o AC 22 a pede               |
+
+| 9. Criar o resumo | `PATCH /api/contexts/:id` com `brief: true` cria `memory/notes/<id>/_resumo.md` pelo modelo (front matter `type: brief`, `status: active`, `# <nome>` e as quatro seções de design.md) em modo `create` pelo `writeWorkspaceFile`, nunca sobrescreve um que exista, e responde o contexto com `brief` preenchido; sem `name` nem `paths` não grava `settings.json` | uma rota nova `POST /api/contexts/:id/brief`: uma quinta rota para um efeito do mesmo recurso, e o AC 46 conta quatro; `POST /api/memory/notes` pela interface: só escreve em `memory/notes/[<área>/]<slug>.md`, e `_resumo` não sai de um título nem `<id>` de uma área |
 
 - Nothing else in this change is hard to reverse: o texto do bloco do contexto no prompt, a ordem dos arquivos do mapa, o
   desenho do seletor e os atalhos mudam por refatoração.

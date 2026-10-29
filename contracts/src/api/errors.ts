@@ -60,6 +60,8 @@ const FORBIDDEN_PATH_ROUTES: ReadonlySet<string> = new Set([
   "GET /api/skills/:slug/resource",
   "GET /api/skills/registry",
   "GET /api/sync/plan",
+  // cerebro-contextos, door 9: "Edit brief" writes memory/notes/<id>/_resumo.md through the guarded writer.
+  "PATCH /api/contexts/:id",
   "POST /api/connectors",
   "POST /api/memory/journal/append",
   "POST /api/memory/open",

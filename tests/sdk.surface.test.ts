@@ -124,6 +124,8 @@ describe("S5 the surface is a closed list", () => {
         "contextOkPaths",
         "contextSyncTarget",
         "describeContexts",
+        // cerebro-contextos, batch C: "Edit brief" makes the brief from the template (door 9)
+        "ensureContextBrief",
         "findContext",
         "newContext",
         "removeContextMap",

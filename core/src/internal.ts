@@ -142,6 +142,7 @@ export {
   contextOkPaths,
   contextSyncTarget,
   describeContexts,
+  ensureContextBrief,
   findContext,
   newContext,
   removeContextMap,

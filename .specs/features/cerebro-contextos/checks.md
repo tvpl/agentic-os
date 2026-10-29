@@ -336,3 +336,11 @@ context_unavailable`, and a conversation without a context does not take one on;
   resolving a given `cwd` before checking it against the context (a folder outside the granted ones would be `403
 forbidden_path`); keeping the run credential's reads in `memory/` (a project context would recall nothing); a
   `contextId` on `SessionRecord`; continuing a conversation whose context was deleted without a context.
+
+Status of batch C (updated in the commit that closes each piece):
+
+- the cross-cutting checks (C46, C47): closed, C46's proofs green in `tests/contexts.test.ts` (the four new routes in
+  the table, `EXPECTED_ROUTE_SCOPES`, `docs/security.md`, the OpenAPI document and a scenario each that reaches the
+  route; the changed routes' fields and errors) and `api.openapi` C16, C47's two sweeps green and unchanged (70 rows;
+  the module-state list); with them `PUT /api/ui-preferences` refuses an `activeContext` that is not an id and
+  `PATCH /api/contexts/:id` makes the brief (door 9)

@@ -13,6 +13,7 @@ import {
   statWorkspacePath,
   type ReadScope,
 } from "../security/safeFs.js";
+import { writeWorkspaceFile } from "../security/safeWrite.js";
 import { comparableSegments } from "./excludes.js";
 import { slugify } from "./notes.js";
 
@@ -330,6 +331,29 @@ export function changedContext(
     name: patch.name !== undefined ? patch.name.trim() : current.name,
     paths: patch.paths !== undefined ? [...patch.paths] : current.paths,
   };
+}
+
+/** The brief a context starts from (.specs/features/cerebro-contextos/design.md, "Modelo do resumo"). */
+export function contextBriefTemplate(name: string): string {
+  return `---\ntype: brief\nstatus: active\n---\n\n# ${name}\n\n## O que é\n\n## O que importa\n\n## Metas\n\n## O que ignorar\n`;
+}
+
+/**
+ * Make the brief of a context, `memory/notes/<id>/_resumo.md`, from the template when it is missing (door 9). It is
+ * written in `create` mode through the guarded writer, so a brief that exists keeps every byte and a link on the way is
+ * refused. Returns the path and whether it was made now.
+ */
+export function ensureContextBrief(env: ContextEnv, context: WorkContext): { path: string; created: boolean } {
+  const file = contextBriefFile(env.paths, context.id);
+  try {
+    writeWorkspaceFile(homeReadScope(env.paths.home, [env.paths.memory], env.settings.excludes), file, contextBriefTemplate(context.name), {
+      mode: "create",
+    });
+    return { path: file, created: true };
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") return { path: file, created: false };
+    throw err;
+  }
 }
 
 /**

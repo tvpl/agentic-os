@@ -86,11 +86,17 @@ export const contextRoutes = {
   "contexts.update": route({
     method: "PATCH",
     path: "/api/contexts/:id",
-    summary: "Rename a work context or change its paths; the id never changes",
+    summary:
+      "Rename a work context or change its paths (the id never changes); brief creates its brief from the template when missing",
     tag: "contexts",
     scope: "owner",
     params: IdParams,
-    body: z.object({ name: ContextNameSchema.optional(), paths: ContextPaths.optional() }),
+    body: z.object({
+      name: ContextNameSchema.optional(),
+      paths: ContextPaths.optional(),
+      /** Create `memory/notes/<id>/_resumo.md` from the template when it is missing (door 9); one that exists is kept. */
+      brief: z.literal(true).optional(),
+    }),
     responses: { 200: ContextSchema },
     errors: [pathNotIndexed, contextNotFound, ...settingsWriteErrors],
   }),

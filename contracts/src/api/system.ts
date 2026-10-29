@@ -4,6 +4,7 @@ import { UI_PREFERENCE_KEYS, UiPreferencesSchema } from "../preferences.js";
 import { EffortLevel, ProviderId, ProviderSettingsSchema, SettingsSchema } from "../settings.js";
 import { BackupNameParams, UuidParams, err, notFound, settingsWriteErrors } from "./common.js";
 import { ContextQuery, contextNotFound, contextUnavailable } from "./contexts.js";
+import { CONTEXT_ID } from "../workContext.js";
 import { binary, route } from "./route.js";
 import {
   ApprovalSchema,
@@ -31,6 +32,11 @@ export const UiPreferencesPatchSchema = UiPreferencesSchema.partial().extend({
   shell: UiPreferencesSchema.shape.shell.removeCatch().optional(),
   /** The layout this writer started from; a different stored layout means another window saved first. */
   dashboardLayoutBase: UiPreferencesSchema.shape.dashboardLayout.removeDefault().optional(),
+  /**
+   * Strict on write (.specs/features/cerebro-contextos, door 5): the shape of a context id or `null`; a stored value
+   * this version cannot read is still read back as `null`.
+   */
+  activeContext: z.string().regex(CONTEXT_ID, "the id of a work context").nullable().optional(),
 });
 
 const BuildStatusSchema = z.object({ installedAt: z.number(), startedAt: z.number(), stale: z.boolean() });
