@@ -28,8 +28,8 @@ export const MAX_TAGS = 20;
 export const TAG_PATTERN = /^[\p{L}\d_-]{2,30}$/u;
 /** `-2` to `-99`: how many notes may share one title. */
 export const MAX_SAME_NAME = 99;
-/** Folders of `memory/` the engine writes itself (the routers) or only appends to (the journal). */
-const GENERATED_DIRS = new Set(["areas", "journal"]);
+/** Folders of `memory/` the engine writes itself (the routers, the maps of the work contexts) or only appends to (the journal). */
+const GENERATED_DIRS = new Set(["areas", "journal", "contexts"]);
 const GENERATED_FILES = new Set(["router.md"]);
 const WINDOWS_DEVICE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
 const VERSION_PATTERN = /^sha256:([0-9a-f]{64})$/;
@@ -204,7 +204,9 @@ function classify(ctx: NoteContext, candidate: string): Classified {
       reason:
         parts[0]!.toLowerCase() === "journal"
           ? "The journal only grows; add a line to it instead of editing it."
-          : "The area indexes are generated; regenerate them instead of editing them.",
+          : parts[0]!.toLowerCase() === "contexts"
+            ? "The context maps are generated; change the context or regenerate the routers instead of editing them."
+            : "The area indexes are generated; regenerate them instead of editing them.",
     };
   }
   const ext = path.extname(real).toLowerCase();

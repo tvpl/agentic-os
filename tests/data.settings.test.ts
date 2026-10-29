@@ -53,6 +53,7 @@ function leafVariants(node: unknown): unknown[] {
       [...node, "extra-entry"],
       [...node, "https://example.com/index.json"],
       [...node, { path: "/tmp/kept-folder" }],
+      [...node, { id: "kept-context", name: "Kept", paths: ["/tmp/kept-folder"] }],
     ];
   if (node !== null && typeof node === "object") {
     return Object.entries(node).flatMap(([key, value]) =>
@@ -111,7 +112,7 @@ const CLOSED_WHEN_DROPPED: Record<string, unknown> = {
 describe("S3 settings tolerate an invalid field", () => {
   it("C19 an invalid value in any top-level field costs only that field", () => {
     const keys = Object.keys(SettingsSchema.shape);
-    expect(keys).toHaveLength(27);
+    expect(keys).toHaveLength(28);
     const good: Record<string, unknown> = {};
     for (const key of keys) good[key] = key === "version" ? defaults.version : variantOf(key, defaults[key]);
     // The base document is itself accepted as written.
@@ -549,6 +550,8 @@ describe("S3 settings tolerate an invalid field", () => {
       "indexedFolders.*.path": "names a folder; an entry without a readable path is removed whole",
       "indexedFolders.*.area": "a label",
       areas: "labels",
+      contexts:
+        "work contexts only narrow what a read sees; an entry this version cannot read is dropped whole (cerebro-contextos AC 8)",
       "limits.maxConcurrentRuns": "resource use, not permission",
       "limits.skillNotesMax": "size",
       "limits.defaultTimeoutMs": "size",

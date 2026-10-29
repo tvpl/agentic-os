@@ -50,9 +50,15 @@ export function buildGraph(
     related?: boolean;
     /** Today's policy over stored rows (`MemoryIndexer.rowFilter`): a row it refuses is no node, no edge, no count. */
     allow?: (row: { root: string; rel: string }) => boolean;
+    /**
+     * The files of a work context (.specs/features/cerebro-contextos, door 6): only they are nodes and counted, and an
+     * edge joins two of them. The links still resolve as they do for the whole index (`allow`).
+     */
+    within?: (row: { root: string; rel: string }) => boolean;
   } = {},
 ): GraphData {
   const allow = opts.allow ?? (() => true);
+  const within = opts.within ?? (() => true);
   const maxNodes = Math.min(opts.maxNodes ?? 400, 4000);
   const clauses: string[] = [];
   const params: unknown[] = [];
@@ -76,7 +82,7 @@ export function buildGraph(
     .prepare(`SELECT * FROM files ${where} ORDER BY mtime DESC`)
     .iterate(...params) as IterableIterator<Record<string, unknown>>) {
     const file = fileRowFromDb(row);
-    if (!allow(file)) continue;
+    if (!allow(file) || !within(file)) continue;
     totalFiles++;
     if (files.length < maxNodes) files.push(file);
   }
@@ -194,12 +200,14 @@ export function relatedFiles(
   db: Db,
   fileId: number,
   allow: (row: { root: string; rel: string }) => boolean = () => true,
+  /** The files of a work context: the file and every one listed must be one of them (the links resolve by `allow`). */
+  within: (row: { root: string; rel: string }) => boolean = () => true,
 ): Array<{ file: FileRow; why: string }> | null {
   const byId = db.prepare("SELECT * FROM files WHERE id = ?");
   const fileOf = (id: number): FileRow | null => {
     const row = byId.get(id) as Record<string, unknown> | undefined;
     const file = row ? fileRowFromDb(row) : null;
-    return file && allow(file) ? file : null;
+    return file && allow(file) && within(file) ? file : null;
   };
   if (!fileOf(fileId)) return null;
   const out: Array<{ file: FileRow; why: string }> = [];

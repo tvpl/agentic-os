@@ -122,6 +122,11 @@ export const UiPreferencesSchema = z.object({
   hud: SafeHudSchema.default(DEFAULT_HUD),
   /** Second Brain view preferences; the shape is owned by the frontend (`brain/engine/world.ts`). */
   brain: BrainSettingsSchema.default({}),
+  /**
+   * The active work context of this machine (.specs/features/cerebro-contextos, door 5): one for the frame, the Núcleo
+   * and the CLI; `null` is "the whole brain". Deleting the context it names sets it back to `null`.
+   */
+  activeContext: z.string().nullable().catch(null),
 });
 export type UiPreferences = z.infer<typeof UiPreferencesSchema>;
 

@@ -100,7 +100,7 @@ export interface WorkspaceFilter {
  * drops, and on macOS in one Unicode form (APFS and HFS+ treat `é` written as one character or as `e` plus an
  * accent as the same name).
  */
-function comparableSegments(p: string, platform: NodeJS.Platform): string[] {
+export function comparableSegments(p: string, platform: NodeJS.Platform = process.platform): string[] {
   const insensitive = platform === "darwin" || platform === "win32";
   return segmentsOf(p).map((seg) => {
     const trimmed = platform === "win32" ? seg.replace(/[. ]+$/, "") : seg;

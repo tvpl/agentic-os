@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CONTEXT_LIMITS, WorkContextSchema } from "./workContext.js";
 
 /**
  * The shape of a provider id, not the list of providers: the providers are the
@@ -234,6 +235,9 @@ export const EMBEDDINGS_KEY_ENV = /^(?!MORDOMO_)[A-Z][A-Z0-9_]{0,63}$/;
 
 export const CURRENT_SETTINGS_VERSION = 2;
 
+/** The work contexts (door 1 of cerebro-contextos): the id rule and the bounds are the package's; the schema is not. */
+export { CONTEXT_ID, CONTEXT_LIMITS, type WorkContext } from "./workContext.js";
+
 /** The engine's settings. What only the Command Centre reads lives in `UiPreferences` (preferences.ts). */
 export const SettingsSchema = z.object({
   version: z.number().default(CURRENT_SETTINGS_VERSION),
@@ -312,6 +316,24 @@ export const SettingsSchema = z.object({
   indexedFolders: z.array(IndexedFolderSchema).default([]),
   excludes: z.array(z.string()).default(DEFAULT_EXCLUDES),
   areas: z.array(z.string()).default(["Worker", "Documentos", "Finanças", "Projetos"]),
+  /**
+   * The work contexts (.specs/features/cerebro-contextos, door 1), at most 50, each `id` once. A duplicate `id` or an
+   * entry past the 50th is refused as that entry, so the tolerant read drops it and keeps the others.
+   */
+  contexts: z
+    .array(WorkContextSchema)
+    .superRefine((list, issues) => {
+      const seen = new Set<string>();
+      list.forEach((entry, index) => {
+        if (index >= CONTEXT_LIMITS.contexts) {
+          issues.addIssue({ code: "custom", path: [index], message: "at most 50 contexts" });
+        } else if (seen.has(entry.id)) {
+          issues.addIssue({ code: "custom", path: [index], message: `the id ${entry.id} is taken` });
+        }
+        seen.add(entry.id);
+      });
+    })
+    .default([]),
   limits: z
     .object({
       maxConcurrentRuns: z.number().int().min(1).max(16).default(3),

@@ -158,12 +158,19 @@ export function searchFiles(db: Db, filters: SearchFilters): SearchHit[] {
   return [...all, ...some].slice(0, limit);
 }
 
-export function listFacets(db: Db): {
+export interface Facets {
   areas: Array<{ area: string; count: number }>;
   exts: Array<{ ext: string; count: number }>;
   tags: Array<{ tag: string; count: number }>;
   total: number;
-} {
+}
+
+/**
+ * The facets of the index. With `within` (the files of a work context, .specs/features/cerebro-contextos), counted only
+ * over the rows it accepts, in the same order and with the same cuts as the counts of the whole index.
+ */
+export function listFacets(db: Db, within?: (row: { root: string; rel: string }) => boolean): Facets {
+  if (within) return facetsWithin(db, within);
   const areas = db
     .prepare("SELECT area, COUNT(*) count FROM files WHERE area IS NOT NULL GROUP BY area ORDER BY count DESC")
     .all() as Array<{ area: string; count: number }>;
@@ -183,4 +190,36 @@ export function listFacets(db: Db): {
     .slice(0, 30);
   const total = (db.prepare("SELECT COUNT(*) c FROM files").get() as { c: number }).c;
   return { areas, exts, tags, total };
+}
+
+function facetsWithin(db: Db, within: (row: { root: string; rel: string }) => boolean): Facets {
+  const areaCounts = new Map<string, number>();
+  const extCounts = new Map<string, number>();
+  const tagCounts = new Map<string, number>();
+  let total = 0;
+  const bump = (map: Map<string, number>, key: string) => map.set(key, (map.get(key) ?? 0) + 1);
+  for (const row of db.prepare("SELECT root, rel, area, ext, tags FROM files").iterate() as IterableIterator<{
+    root: string;
+    rel: string;
+    area: string | null;
+    ext: string;
+    tags: string;
+  }>) {
+    if (!within(row)) continue;
+    total++;
+    if (row.area !== null) bump(areaCounts, row.area);
+    if (row.ext !== "") bump(extCounts, row.ext);
+    if (row.tags !== "[]") for (const tag of JSON.parse(row.tags) as string[]) bump(tagCounts, tag);
+  }
+  const ranked = (map: Map<string, number>) => [...map.entries()].sort((a, b) => b[1] - a[1]);
+  return {
+    areas: ranked(areaCounts).map(([area, count]) => ({ area, count })),
+    exts: ranked(extCounts)
+      .slice(0, 30)
+      .map(([ext, count]) => ({ ext, count })),
+    tags: ranked(tagCounts)
+      .slice(0, 30)
+      .map(([tag, count]) => ({ tag, count })),
+    total,
+  };
 }

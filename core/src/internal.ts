@@ -136,6 +136,14 @@ export {
 } from "./memory/related.js";
 export { previewFile, type PreviewResult } from "./memory/preview.js";
 export { generateRouters, checkRouters, areaSlug, type RouterIssue } from "./memory/routers.js";
+export {
+  changedContext,
+  contextMembership,
+  describeContexts,
+  findContext,
+  newContext,
+  removeContextMap,
+} from "./memory/contexts.js";
 export { SkillCatalog, THICK_LINE_THRESHOLD } from "./skills/catalog.js";
 export {
   SkillFrontmatterSchema,

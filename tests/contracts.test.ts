@@ -83,6 +83,8 @@ describe("S1 the contracts package", () => {
         "BUILTIN_PROVIDER_IDS",
         "BrainSettingsSchema",
         "COMMON_ERRORS",
+        "CONTEXT_ID",
+        "CONTEXT_LIMITS",
         "CURRENT_SETTINGS_VERSION",
         "ChannelSettingsSchema",
         "ClaudeStreamMessage",

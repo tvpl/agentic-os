@@ -1,6 +1,7 @@
 /** The second brain: the file index, search, graph, previews, recall, the journal, hygiene and bi-temporal facts. */
 import { z } from "zod";
 import { QueryFlag, err, notFound } from "./common.js";
+import { ContextQuery, contextNotFound } from "./contexts.js";
 import { route } from "./route.js";
 
 // ---- schemas ---------------------------------------------------------------------------------------------------
@@ -253,6 +254,9 @@ const journalDate = z
   .refine(isJournalDate, { message: "expected YYYY-MM-DD" });
 
 const memoryScopeNote = "A run's own credential recalls from the memory folder only";
+/** What `context` does to a read (.specs/features/cerebro-contextos, S2). */
+const contextNote =
+  "context=<id> limits it to the files of that work context, context=all (or none) is the whole index";
 
 // ---- routes ----------------------------------------------------------------------------------------------------
 
@@ -260,9 +264,10 @@ export const memoryRoutes = {
   "memory.status": route({
     method: "GET",
     path: "/api/memory/status",
-    summary: "The last index run and the facets of the index (areas, extensions, tags)",
+    summary: `The last index run and the facets of the index (areas, extensions, tags); ${contextNote}`,
     tag: "memory",
     scope: "monitor",
+    query: z.object({ context: ContextQuery }),
     responses: {
       200: z.object({
         lastIndex: z.object({ at: z.number(), stats: IndexStatsSchema }).nullable(),
@@ -276,6 +281,7 @@ export const memoryRoutes = {
         semantic: SemanticStatusSchema,
       }),
     },
+    errors: [contextNotFound],
   }),
   "memory.index": route({
     method: "POST",
@@ -319,8 +325,7 @@ export const memoryRoutes = {
   "memory.search": route({
     method: "GET",
     path: "/api/memory/search",
-    summary:
-      "Full-text search over the index; with the semantic search on, the words and the vectors fused (mode auto, text or semantic)",
+    summary: `Full-text search over the index; with the semantic search on, the words and the vectors fused (mode auto, text or semantic); ${contextNote}`,
     tag: "memory",
     scope: "content",
     query: z.object({
@@ -332,9 +337,11 @@ export const memoryRoutes = {
       tag: z.string().optional(),
       modifiedAfter: z.coerce.number().optional(),
       limit: z.coerce.number().int().min(1).max(200).optional(),
+      context: ContextQuery,
     }),
     responses: { 200: z.array(SearchHitSchema) },
     errors: [
+      contextNotFound,
       err(
         409,
         "semantic_disabled",
@@ -345,7 +352,7 @@ export const memoryRoutes = {
   "memory.graph": route({
     method: "GET",
     path: "/api/memory/graph",
-    summary: "Files and their links for the visual second brain",
+    summary: `Files and their links for the visual second brain; ${contextNote}`,
     tag: "memory",
     scope: "content",
     query: z.object({
@@ -354,18 +361,20 @@ export const memoryRoutes = {
       q: z.string().optional(),
       maxNodes: z.coerce.number().int().min(10).max(4000).optional(),
       related: QueryFlag,
+      context: ContextQuery,
     }),
     responses: { 200: GraphDataSchema },
+    errors: [contextNotFound],
   }),
   "memory.related": route({
     method: "GET",
     path: "/api/memory/related",
-    summary: "The files linked to one indexed file, and why",
+    summary: `The files linked to one indexed file, and why; ${contextNote}`,
     tag: "memory",
     scope: "content",
-    query: z.object({ id: z.coerce.number().int() }),
+    query: z.object({ id: z.coerce.number().int(), context: ContextQuery }),
     responses: { 200: z.array(z.object({ file: FileRowSchema, why: z.string() })) },
-    errors: [notFound("The file")],
+    errors: [notFound("The file, or the file in the work context"), contextNotFound],
   }),
   "memory.links": route({
     method: "GET",
@@ -503,7 +512,7 @@ export const memoryRoutes = {
   "memory.recall": route({
     method: "GET",
     path: "/api/memory/recall",
-    summary: `Layered recall: keywords, index, top files, sections, pointers. ${memoryScopeNote}`,
+    summary: `Layered recall: keywords, index, top files, sections, pointers. ${memoryScopeNote}; ${contextNote}`,
     tag: "memory",
     scope: "content",
     query: z.object({
@@ -513,8 +522,10 @@ export const memoryRoutes = {
       excerptChars: z.coerce.number().int().min(200).max(20_000).optional(),
       /** Skip the frequency bookkeeping (dry runs, UI previews). */
       record: QueryFlag,
+      context: ContextQuery,
     }),
     responses: { 200: RecallResultSchema },
+    errors: [contextNotFound],
   }),
   "memory.recall.stats": route({
     method: "GET",

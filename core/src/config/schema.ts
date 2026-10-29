@@ -5,6 +5,8 @@
  */
 export {
   BUILTIN_PROVIDER_IDS,
+  CONTEXT_ID,
+  CONTEXT_LIMITS,
   BrainSettingsSchema,
   CURRENT_SETTINGS_VERSION,
   UI_PREFERENCE_KEYS,
@@ -33,4 +35,5 @@ export {
   type Settings,
   type UiPreferenceKey,
   type UiPreferences,
+  type WorkContext,
 } from "@mordomo/contracts";

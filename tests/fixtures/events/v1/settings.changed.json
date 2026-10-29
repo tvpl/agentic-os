@@ -89,6 +89,7 @@
         ".gnupg"
       ],
       "areas": ["Worker", "Documentos", "Finanças", "Projetos"],
+      "contexts": [],
       "limits": {
         "maxConcurrentRuns": 3,
         "skillNotesMax": 40,

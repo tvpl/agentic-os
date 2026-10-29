@@ -247,3 +247,8 @@ The estimate exceeds the 150k budget, so the build stops here for the mechanism 
   - **B** (execution, CLI and MCP): S3 + S6 ≈ 59k + tests ≈ 20k = ≈ 79k
   - **C** (the interface and the cross-cutting checks): S5 + C46, C47 ≈ 65k + tests ≈ 25k = ≈ 90k
 - Mechanism: handoff (the owner chose it on 2026-10-29: three batches A, B, C, sequential, each only on green)
+
+Status of batch A (updated in the commit that closes each piece):
+
+- S1 (C1-C9), S2 (C10-C16) and the S4 map with its notes rule (C26-C29): closed, every proof green in
+  `tests/contexts.test.ts`

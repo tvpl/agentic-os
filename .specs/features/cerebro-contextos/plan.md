@@ -41,17 +41,18 @@ de comandos (AD-014); nenhuma segunda política de caminhos, de escrita ou de co
 2. Escolher → a interface grava `UiPreferences.activeContext` (door 5) por `PUT /api/ui-preferences` (exists); a CLI lê o mesmo
    campo.
 3. Ler com escopo → as rotas `memory.search` (exists), `memory.recall` (exists), `memory.graph` (exists), `memory.related` (exists) e `memory.status` (exists, as facetas) recebem
-   `context` (door 3); `contexts.ts` traduz o id nos caminhos reais e o teste de pertença (door 6) entra junto do `rowFilter` como
-   o `allow` que as funções de `core/src/memory` (exist) já recebem.
+   `context` (door 3); `contexts.ts` traduz o id nos caminhos reais e o teste de pertença (door 6) entra junto do `rowFilter`: no
+   `allow` da busca, e como `within` ao lado do `allow` no grafo, nos relacionados, no recall e nas facetas de `core/src/memory`
+   (exist), para que os links continuem resolvidos como no índice inteiro e só os arquivos do contexto saiam.
 4. Executar com escopo → `POST /api/runs` (exists), `POST /api/skills/:slug/run` (exists) e `POST /api/sessions/:id/continue` (exists) recebem
    `contextId` (door 3); o `RunManager` (exists) resolve o `cwd` para o caminho principal do contexto pelo `resolveCwd` (exists),
    soma os outros caminhos e a pasta de notas do contexto aos `readDirs`, guarda `context_id` na execução e na sessão (door 4) e o
    `SkillCatalog.buildRunPrompt` (exists) põe o bloco do contexto antes do resto.
 5. Recall da execução → a rota de recall, chamada com a credencial de uma execução que tem contexto e sem `context`, usa o
    contexto da execução (door 7).
-6. Mapa → `generateRouters` (exists) escreve `memory/contexts/<id>.md` por contexto (door 2), sob o orçamento em tokens; o
-   `SyncCompiler` (exists) ganha `context` em `sync.plan`/`sync.apply` e compila esse mapa, em vez do `ROUTER.md`, no `CLAUDE.md`/
-   `AGENTS.md` da pasta principal.
+6. Mapa → `generateRouters` (exists) escreve `memory/contexts/<id>.md` por contexto (door 2), sob o orçamento em tokens, e apaga
+   o mapa de um contexto que não existe mais; o `SyncCompiler` (exists) ganha `context` em `sync.plan`/`sync.apply` e compila
+   esse mapa, em vez do `ROUTER.md`, no `CLAUDE.md`/`AGENTS.md` da pasta principal.
 7. Interface → o seletor de contexto (design.md) nos dois shells, o chip no chat, "Novo contexto…" e Configurações › Memória ›
    Contextos chamam as rotas por `apiCall` (exists); o comando "Trocar de contexto" entra no registro (exists).
 
@@ -63,6 +64,7 @@ de comandos (AD-014); nenhuma segunda política de caminhos, de escrita ou de co
 | domain        | new term: `contexto ativo` - o contexto que a interface e a CLI desta máquina usam quando a chamada não diz outro; nenhum = "Todo o cérebro"                                                                                                                                                                                                                                                     |
 | domain        | nome que já existe e não muda: `context` de uma rotina (`isolated` \| `main`, `contracts/src/routines.ts:95-96`) e de um objetivo (`ObjectiveContext`, `core/src/objectives/objectiveStore.ts`) — por isso o campo das execuções se chama `contextId`, e nenhuma rotina ganha contexto nesta feature                                                                                             |
 | domain        | existing term: nota editável (AD-031) era um `.md` sob `memory/` fora de `ROUTER.md`, `areas/` e `journal/`; `contexts/` entra na lista dos gerados (`core/src/memory/notes.ts:31-32`) — quem ramifica hoje: `GET /api/memory/note` (`editable`), `PUT /api/memory/notes`, o preview e o editor                                                                                                  |
+| domain        | existing term: roteador gerado (`ROUTER.md`, `areas/`); `memory/contexts/` entra entre eles: o recall não abre um mapa de contexto e os índices de área não o listam (`core/src/memory/recall.ts`, `routers.ts`)                                                                                                                                                                                 |
 | domain        | existing term: prompt de execução começava pelo bloco de lugares; com contexto, começa pelo bloco do contexto — quem lê hoje: `SkillCatalog.buildRunPrompt`, os testes de prompt de `tests/core.capabilities.test.ts`                                                                                                                                                                            |
 | stored data   | `settings.json` ganha `contexts` (padrão `[]`; uma entrada ilegível é descartada sozinha, como os outros campos da AD-013); `ui-preferences.json` ganha `activeContext` (padrão `null`); a migração 23 acrescenta `runs.context_id` e `sessions.context_id` (`TEXT NULL`), e execuções e sessões antigas leem `null`                                                                             |
 | arquivos      | `memory/contexts/` e `memory/notes/<id>/` passam a existir quando há contexto; apagar um contexto não apaga nenhum dos dois                                                                                                                                                                                                                                                                      |

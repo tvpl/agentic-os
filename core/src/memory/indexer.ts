@@ -134,6 +134,26 @@ interface PreparedFile {
   markdown: boolean;
 }
 
+/**
+ * Today's policy over stored rows (`MemoryIndexer.rowFilter`), for a reader that has the settings and the home but no
+ * indexer (the routers): true when the row's file may still be shown.
+ */
+export function storedRowFilter(
+  excludes: readonly string[],
+  options: { homeDir: string; platform?: NodeJS.Platform },
+): (row: { root: string; rel: string }) => boolean {
+  const filter = makeWorkspaceFilter(excludes, options);
+  const realRoots = new Map<string, string>();
+  return (row) => {
+    let real = realRoots.get(row.root);
+    if (real === undefined) {
+      real = realpathLenient(row.root);
+      realRoots.set(row.root, real);
+    }
+    return !filter.isExcluded(row.rel, path.join(real, row.rel));
+  };
+}
+
 /** Top terms of a file (first 20k chars), kept for the related-edge refresh. */
 function termsOf(name: string, content: string): string | null {
   const body = content.slice(0, 20_000);
@@ -189,16 +209,7 @@ export class MemoryIndexer {
    * written before a path became private (the home's `config/`, a new exclude).
    */
   rowFilter(): (row: { root: string; rel: string }) => boolean {
-    const filter = makeWorkspaceFilter(this.getSettings().excludes, this.filterOptions);
-    const realRoots = new Map<string, string>();
-    return (row) => {
-      let real = realRoots.get(row.root);
-      if (real === undefined) {
-        real = realpathLenient(row.root);
-        realRoots.set(row.root, real);
-      }
-      return !filter.isExcluded(row.rel, path.join(real, row.rel));
-    };
+    return storedRowFilter(this.getSettings().excludes, this.filterOptions);
   }
 
   /**

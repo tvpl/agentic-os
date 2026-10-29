@@ -114,7 +114,7 @@ describe("S3 the document", () => {
   it("C15 every route has parameters, request body and a response schema", () => {
     expect(doc.openapi).toBe("3.1.0");
     const operations = Object.values(doc.paths).reduce((n, methods) => n + Object.keys(methods).length, 0);
-    expect(operations).toBe(132);
+    expect(operations).toBe(136);
     for (const [id, entry] of entries) {
       const op = operationOf(entry);
       expect(op, id).toBeDefined();
@@ -343,7 +343,7 @@ describe("S3 the document", () => {
 
   it("C17 the refusals of the file readers are in the document where the contract declares them, and only there", () => {
     // Which routes answer `403 forbidden_path`, `404 not_a_file` and `413 file_too_large` is not decided here: the probe
-    // of tests/api.refusals.test.ts (C46) calls the 132 routes with the path filter and the safe reader refusing and
+    // of tests/api.refusals.test.ts (C46) calls the 136 routes with the path filter and the safe reader refusing and
     // compares the routes that answered with the contract. The document must say what the contract says.
     for (const [status, code] of [
       [403, "forbidden_path"],
@@ -629,7 +629,7 @@ describe("S3 the document", () => {
       check(content["application/json"]!.schema, answer.body, key);
       checked += 1;
     }
-    expect(checked).toBe(130);
+    expect(checked).toBe(134);
     // The check is not asleep either: a body that departs from the schema of the document is refused.
     const run = results.find((r) => r.key === "GET /api/runs/:id")!;
     const schema = operationOf(run.entry).responses["200"]!.content!["application/json"]!.schema;

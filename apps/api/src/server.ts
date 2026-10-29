@@ -45,6 +45,7 @@ import { registerChannelRoutes } from "./routes/channels.js";
 import { registerPushRoutes } from "./routes/push.js";
 import { resolveApprovalForChat } from "./approvalActions.js";
 import { registerMemoryRoutes } from "./routes/memory.js";
+import { registerContextRoutes } from "./routes/contexts.js";
 import { registerRoutineRoutes } from "./routes/routines.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
 import { registerMicroappRoutes } from "./routes/microapps.js";
@@ -634,6 +635,7 @@ export async function buildServer(
   registerChannelRoutes(app, ctx);
   registerPushRoutes(app, ctx);
   registerMemoryRoutes(app, ctx);
+  registerContextRoutes(app, ctx);
   registerRoutineRoutes(app, ctx);
   registerConnectorRoutes(app, ctx);
   registerMicroappRoutes(app, ctx);

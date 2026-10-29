@@ -118,6 +118,11 @@ export async function buildWorld(options: { validateResponses?: boolean } = {}):
   settings.providers.claude.binaryPath = path.join(FAKE_BIN, "claude");
   settings.indexedFolders = [{ path: workspace, area: "Projetos", enabled: true }];
   settings.areas = ["Projetos"];
+  // Two work contexts the scenarios change and delete (cerebro-contextos): they live in settings.json, like the rest.
+  settings.contexts = [
+    { id: "contract-context", name: "Contexto do contrato", paths: [workspace] },
+    { id: "contract-context-gone", name: "Contexto que some", paths: [workspace] },
+  ];
   settings.channels.telegram.botTokenEnv = TELEGRAM_ENV;
   settings.channels.telegram.chatId = "12345";
   settings.channels.push.enabled = true;
@@ -438,6 +443,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     run: (w) =>
       w.call("GET", `/api/memory/note?p=${encodeURIComponent(noteOf(w, "Cenário de leitura").path)}`),
   },
+  [key("GET", "/api/contexts")]: { run: (w) => w.call("GET", "/api/contexts") },
   [key("GET", "/api/devices")]: { run: (w) => w.call("GET", "/api/devices") },
   [key("GET", "/api/notifications")]: { run: (w) => w.call("GET", "/api/notifications") },
   [key("GET", "/api/push/vapid")]: { run: (w) => w.call("GET", "/api/push/vapid") },
@@ -661,6 +667,12 @@ export const SCENARIOS: Record<string, Scenario> = {
       });
     },
   },
+  [key("POST", "/api/contexts")]: {
+    run: (w) => w.call("POST", "/api/contexts", { name: "Cenário de contexto", paths: [w.workspace] }),
+  },
+  [key("PATCH", "/api/contexts/:id")]: {
+    run: (w) => w.call("PATCH", "/api/contexts/contract-context", { name: "Contexto renomeado" }),
+  },
   [key("POST", "/api/memory/open")]: {
     run: (w) => w.call("POST", "/api/memory/open", { p: path.join(w.workspace, "plan.md") }),
   },
@@ -758,6 +770,9 @@ export const SCENARIOS: Record<string, Scenario> = {
   [key("DELETE", "/api/sessions/:id")]: { run: (w) => w.call("DELETE", `/api/sessions/${w.ids.sessionId}`) },
   [key("DELETE", "/api/skills/:slug")]: { run: (w) => w.call("DELETE", `/api/skills/${w.ids.skillSlug}`) },
   [key("DELETE", "/api/routines/:id")]: { run: (w) => w.call("DELETE", "/api/routines/contract-routine") },
+  [key("DELETE", "/api/contexts/:id")]: {
+    run: (w) => w.call("DELETE", "/api/contexts/contract-context-gone"),
+  },
   [key("DELETE", "/api/connectors/:id")]: {
     run: (w) => w.call("DELETE", "/api/connectors/contract-connector"),
   },

@@ -37,6 +37,7 @@ import {
 import type { AppContext } from "../context.js";
 import { bind } from "../contract.js";
 import { httpError } from "./common.js";
+import { contextFilter } from "./contexts.js";
 
 /**
  * What `POST /api/memory/open` hands to the OS (docs/security.md): documents
@@ -85,9 +86,11 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
     disposeJournalHooks();
   });
 
-  bind(app, "memory.status", async () => {
+  bind(app, "memory.status", async ({ query: q }) => {
+    // A work context counts the facets over its own files; the rest of the answer is the index's (cerebro-contextos AC 14).
+    const within = contextFilter(ctx, q.context);
     const last = ctx.indexer.lastIndex();
-    const facets = listFacets(ctx.db);
+    const facets = listFacets(ctx.db, within);
     return { lastIndex: last, facets, indexing: ctx.indexHost.status(), semantic: ctx.semantic.status() };
   });
 
@@ -101,11 +104,15 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   bind(app, "memory.search", async ({ query: q }) => {
     // Rows are judged by today's policy as they are read (an old index may still hold a private path).
-    const { mode, ...filters } = q;
-    return ctx.semantic.search({ ...filters, query: q.q, allow: ctx.indexer.rowFilter() }, mode ?? "auto");
+    const { mode, context, ...filters } = q;
+    const within = contextFilter(ctx, context);
+    const policy = ctx.indexer.rowFilter();
+    const allow = within ? (row: { root: string; rel: string }) => policy(row) && within(row) : policy;
+    return ctx.semantic.search({ ...filters, query: q.q, allow }, mode ?? "auto");
   });
 
   bind(app, "memory.graph", async ({ query: q }) => {
+    const within = contextFilter(ctx, q.context);
     return buildGraph(ctx.db, {
       area: q.area,
       dir: q.dir,
@@ -114,11 +121,13 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
       related: q.related,
       // Rows are judged by today's policy as they are read: an excluded file is no node, no edge, no count.
       allow: ctx.indexer.rowFilter(),
+      ...(within ? { within } : {}),
     });
   });
 
-  bind(app, "memory.related", async ({ query: { id } }) => {
-    const related = relatedFiles(ctx.db, id, ctx.indexer.rowFilter());
+  bind(app, "memory.related", async ({ query: { id, context } }) => {
+    const within = contextFilter(ctx, context);
+    const related = relatedFiles(ctx.db, id, ctx.indexer.rowFilter(), within);
     if (!related) throw httpError(404, "File not found", "not_found");
     return related;
   });
@@ -210,12 +219,14 @@ export function registerMemoryRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   /** Layered retrieval (the deterministic `brain.js`): keywords → index → top-K → sections → pointers. */
   bind(app, "memory.recall", async ({ query: q }, req) => {
+    const within = contextFilter(ctx, q.context);
     const result = recall(ctx.db, ctx.paths, ctx.settings(), q.q, {
       k: q.k,
       area: q.area,
       excerptChars: q.excerptChars,
       // A run's credential recalls from the memory folder, not from every folder the owner granted.
       ...(req.principal?.kind === "run" ? { scope: homeReadScope(ctx.paths.home, [ctx.paths.memory]) } : {}),
+      ...(within ? { within } : {}),
     });
     if (q.record !== false) recordRecall(ctx.db, result);
     return result;

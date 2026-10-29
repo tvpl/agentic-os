@@ -117,6 +117,13 @@ describe("S5 the surface is a closed list", () => {
         "linksOf",
         "readNote",
         "saveNote",
+        // cerebro-contextos: the work contexts the routes define and read by
+        "changedContext",
+        "contextMembership",
+        "describeContexts",
+        "findContext",
+        "newContext",
+        "removeContextMap",
       ].sort(),
     );
   });

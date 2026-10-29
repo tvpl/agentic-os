@@ -159,7 +159,7 @@ describe("S1 the route table and the registration", () => {
   });
 
   it("C53 the table holds the five routes of the second brain with scope, what they read, a schema per success status and their declared errors", () => {
-    expect(entries).toHaveLength(132);
+    expect(entries).toHaveLength(136);
     for (const [key, want] of Object.entries(CEREBRO_V2_ROUTES)) {
       const entry = API[want.id];
       expect(entry, key).toBeDefined();
@@ -191,10 +191,10 @@ describe("S1 the route table and the registration", () => {
     try {
       const router = app.apiRoutes.map((r) => `${r.method} ${r.url}`).sort();
       const table = entries.map(([, e]) => routeKey(e)).sort();
-      expect(router).toHaveLength(132);
+      expect(router).toHaveLength(136);
       expect(table).toEqual(router);
-      expect(new Set(table).size).toBe(132);
-      expect(new Set(entries.map(([id]) => id)).size).toBe(132);
+      expect(new Set(table).size).toBe(136);
+      expect(new Set(entries.map(([id]) => id)).size).toBe(136);
       for (const [id, entry] of entries) {
         expect(id, id).toMatch(/^[a-zA-Z]+(\.[a-zA-Z]+)+$/);
         expect(entry.summary.length, `${id} summary`).toBeGreaterThan(8);
@@ -223,7 +223,7 @@ describe("S1 the route table and the registration", () => {
         const k = e.public ? "public" : e.scope!;
         counts[k] = (counts[k] ?? 0) + 1;
       }
-      expect(counts).toEqual({ owner: 66, monitor: 33, content: 24, run: 6, approve: 1, public: 2 });
+      expect(counts).toEqual({ owner: 69, monitor: 33, content: 25, run: 6, approve: 1, public: 2 });
       expect(entries.filter(([, e]) => e.public && e.scope !== undefined)).toEqual([]);
 
       expect(
@@ -436,6 +436,7 @@ describe("S1 the route table and the registration", () => {
   const ACCEPTS_ANYTHING: Record<string, string[]> = {
     "GET /api/connectors/:id/data": ["query"],
     "GET /api/events": ["query"],
+    "GET /api/memory/status": ["query"],
     "GET /api/providers": ["query"],
     "GET /api/runs/:id/stream": ["query"],
     "GET /api/sync/plan": ["query"],
@@ -756,7 +757,7 @@ describe("S2 the real answer is checked", () => {
     // A route with no scenario, or a scenario for no route: both are a hole in this proof.
     expect(Object.keys(SCENARIOS).sort()).toEqual(router);
     expect(Object.keys(SCENARIOS).sort()).toEqual(tabled);
-    expect(results).toHaveLength(132);
+    expect(results).toHaveLength(136);
     const problems: string[] = [];
     for (const { key, entry, answer, id } of results) {
       const scenario = SCENARIOS[key]!;
@@ -1029,7 +1030,8 @@ describe("S2 the real answer is checked", () => {
       .map(([pair, where]) => `${pair} (${where})`);
     expect(undocumented).toEqual([]);
     // The set the scan reads today, pinned: a raise that appears or disappears is a change to the contract of some route.
-    expect(raised.size).toBe(60);
+    // cerebro-contextos: three more (context_path_not_indexed, context_exists, context_not_found).
+    expect(raised.size).toBe(63);
     expect([...raised.keys()].filter((pair) => pair.includes("<unresolved>"))).toEqual([]);
     expect(raised.has("409 approval_resolved")).toBe(true);
     // The other way: every pair an entry lists as its own is raised somewhere in the tree. A documented answer no code

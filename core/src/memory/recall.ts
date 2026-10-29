@@ -49,6 +49,11 @@ export interface RecallOptions {
    * `memory/` only, so what it recalls is the second brain and not the owner's other folders.
    */
   scope?: ReadScope;
+  /**
+   * The files of a work context (.specs/features/cerebro-contextos, door 6): a candidate or a pointer target it refuses
+   * is neither opened nor reported. Without it, every file the scope grants.
+   */
+  within?: (row: { root: string; rel: string }) => boolean;
 }
 
 export interface RecallContext {
@@ -207,7 +212,7 @@ export function routerPointers(paths: MordomoPaths): Map<string, string> {
 
 function isGeneratedRouter(paths: MordomoPaths, filePath: string): boolean {
   const rel = path.relative(paths.memory, filePath);
-  return rel === "ROUTER.md" || rel.startsWith(`areas${path.sep}`);
+  return rel === "ROUTER.md" || rel.startsWith(`areas${path.sep}`) || rel.startsWith(`contexts${path.sep}`);
 }
 
 // ------------------------------------------------------------ candidates ----
@@ -235,26 +240,32 @@ function scoreCandidates(db: Db, paths: MordomoPaths, settings: Settings, scope:
   );
   // (b1) one FTS pass per keyword: coverage (how many keywords a file matches)
   // matters more than raw term frequency.
+  // Within a work context the rows of other files would fill the page: read deeper and keep `limit` of its own.
+  const read = opts.within ? Math.max(limit, 5000) : limit;
   for (const kw of keywords) {
     const term = ftsTerm(kw);
     if (term === '""*') continue;
     let rows: Array<Record<string, unknown>>;
     try {
-      rows = (opts.area ? stmt.all(term, opts.area, limit) : stmt.all(term, limit)) as Array<Record<string, unknown>>;
+      rows = (opts.area ? stmt.all(term, opts.area, read) : stmt.all(term, read)) as Array<Record<string, unknown>>;
     } catch {
       continue;
     }
+    let kept = 0;
     for (const row of rows) {
+      if (kept >= limit) break;
       const file = fileRowFromDb(row);
       if (isGeneratedRouter(paths, file.path)) continue;
       // The index is old data: a row indexed before a path became private (the home's config/, a folder
       // since revoked) is judged now, not when it was written, and is neither opened nor reported.
       if (!isReadable(scope, file.path)) continue;
+      if (opts.within && !opts.within(file)) continue;
       const bm = Math.max(0, -(row.bm as number)); // bm25(): lower is better, negative for matches
       const entry = byId.get(file.id) ?? { file, score: 0, reasons: [], matched: new Set<string>() };
       entry.matched.add(kw);
       entry.score += Math.min(bm, 10);
       byId.set(file.id, entry);
+      kept++;
     }
   }
   // Area slugs named by the question, memoised: the configured areas are seeded
@@ -488,8 +499,10 @@ export function recall(db: Db, paths: MordomoPaths, settings: Settings, question
       if (openedPaths.has(target)) continue;
       const row = lookup.get(target) as Record<string, unknown> | undefined;
       if (!row) continue; // only indexed files — same exclusion policy as the index
+      const pointedRow = fileRowFromDb(row);
+      if (opts.within && !opts.within(pointedRow)) continue; // a pointer out of the work context is not followed
       openedPaths.add(target);
-      const pointed = openFile(scope, fileRowFromDb(row), keywords, maxBytes);
+      const pointed = openFile(scope, pointedRow, keywords, maxBytes);
       opened++;
       if (!pointed || !pointed.best) continue;
       if (pointed.best.score > best.score) {

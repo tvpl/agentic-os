@@ -624,6 +624,45 @@ describe("S3 the API and the CLI start nothing of their own", () => {
       base: ["    expect(operations).toBe(127);"],
       head: ["    expect(operations).toBe(132);"],
     },
+    // cerebro-contextos added four routes (the work contexts: one list for content, three writes for the owner): only
+    // the totals the suite pins moved again, on top of the ones above.
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-contextos: four routes more under /api",
+      base: ["    expect(routes).toHaveLength(130);"],
+      head: ["    expect(routes).toHaveLength(134);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-contextos: owners and scoped routes",
+      base: ["    expect([owners, scoped]).toEqual([66, 64]);"],
+      head: ["    expect([owners, scoped]).toEqual([69, 65]);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-contextos: the registered routes",
+      base: ["    expect(Object.keys(registered)).toHaveLength(130);"],
+      head: ["    expect(Object.keys(registered)).toHaveLength(134);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-contextos: the routes of each scope, in the router and in the document",
+      times: 2,
+      base: ["toEqual({ owner: 66, monitor: 33, content: 24, run: 6, approve: 1 });"],
+      head: ["toEqual({ owner: 69, monitor: 33, content: 25, run: 6, approve: 1 });"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-contextos: the routes after the pairing passes",
+      base: ["    expect(apiRoutes()).toHaveLength(130);"],
+      head: ["    expect(apiRoutes()).toHaveLength(134);"],
+    },
+    {
+      suite: "tests/device-scopes.test.ts",
+      why: "cerebro-contextos: the operations of the route document",
+      base: ["    expect(operations).toBe(132);"],
+      head: ["    expect(operations).toBe(136);"],
+    },
   ];
 
   function amended(suite: string, comparableBase: string): string {

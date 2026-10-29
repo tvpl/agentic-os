@@ -4,6 +4,7 @@
  * not start with a route that has none, nor with an entry no route was bound to.
  */
 import { deepFreeze } from "../freeze.js";
+import { contextRoutes } from "./contexts.js";
 import { deviceRoutes } from "./devices.js";
 import { memoryRoutes } from "./memory.js";
 import { routineRoutes } from "./routines.js";
@@ -20,6 +21,7 @@ export const API = deepFreeze({
   ...skillRoutes,
   ...routineRoutes,
   ...memoryRoutes,
+  ...contextRoutes,
   ...deviceRoutes,
   ...streamRoutes,
 } as const);
