@@ -3,13 +3,15 @@
 Profile: ui
 Plan: `.specs/features/cerebro-contextos/plan.md`
 
-47 checks in 6 slices + cross-cutting · 9 one-way doors (doors 8 and 9
+50 checks in 6 slices + cross-cutting (C48-C50 added after the verification, round 1) · 9 one-way doors (doors 8 and 9
 added mid-build) · 0 open questions of the plan (as duas foram respondidas pelo dono em 29/10/2026); one owner question
 from the build, `.specs/STATE.md` "Perguntas ao dono", cerebro-contextos 1 (C22).
 
 Every proof is `npx vitest run <file> -t "<C-id> "` from the repository root (root tests) or
 `npm run test -w apps/command-centre -- <file> -t "<C-id> "` (UI tests); a test title starts with its check id. `E2E`
 proofs use `MORDOMO_E2E_PORT=4901 npx playwright test --config tests/e2e/playwright.config.ts <spec> -g "<C-id> "`.
+A proof `-t "<C-id> own layer"` in `tests/contexts.layer.test.ts` calls the deciding code itself, with no HTTP
+(`Test policy` rows 1 and 2).
 
 ## Checks
 
@@ -23,6 +25,7 @@ Proof: `npx vitest run tests/contexts.test.ts -t "C2 "`
 
 **C3** - Each of: a path outside every enabled indexed folder and outside `memory/`, the home's `config/`, the home's `logs/`, a user-excluded folder, a secret file name, and a folder holding a link into the home's `config/`, answers `400 context_path_not_indexed` naming the path and stores nothing (AC 3)
 Proof: `npx vitest run tests/contexts.test.ts -t "C3 "`
+Proof: `npx vitest run tests/contexts.layer.test.ts -t "C3 own layer"`
 
 **C4** - An empty or whitespace name, a name of 61 characters, a name with a line break, `paths: []`, 9 paths, two paths with the same real path, and a 51st context each answer `400 validation` and store nothing (AC 4)
 Proof: `npx vitest run tests/contexts.test.ts -t "C4 "`
@@ -35,6 +38,7 @@ Proof: `npx vitest run tests/contexts.test.ts -t "C6 "`
 
 **C7** - `GET /api/contexts` gives each path `state` `ok`, `missing` (folder deleted) or `not_indexed` (its indexed folder disabled, or a new exclude covering it), and `files` equal to the number of indexed rows that belong to the context by door 6 (AC 7)
 Proof: `npx vitest run tests/contexts.test.ts -t "C7 "`
+Proof: `npx vitest run tests/contexts.layer.test.ts -t "C7 own layer"`
 
 **C8** - A `settings.json` with one unreadable `contexts` entry (bad `id`, 9 paths, a name with a line break) starts with that entry dropped and the others kept (AC 8)
 Proof: `npx vitest run tests/contexts.test.ts -t "C8 "`
@@ -46,6 +50,7 @@ Proof: `npx vitest run tests/contexts.test.ts -t "C9 "`
 
 **C10** - With `projetos/app` and `projetos/app-antigo` indexed and a context on `projetos/app`, `GET /api/memory/search?context=<id>&q=<palavra dos dois>` returns only files under `projetos/app/`, and none under `app-antigo` (AC 10, door 6)
 Proof: `npx vitest run tests/contexts.test.ts -t "C10 "`
+Proof: `npx vitest run tests/contexts.layer.test.ts -t "C10 own layer"`
 
 **C11** - `GET /api/memory/recall?context=<id>` returns candidates and sections only of the context, and a pointer from a context note to a file outside it is not followed (AC 11)
 Proof: `npx vitest run tests/contexts.test.ts -t "C11 "`
@@ -69,24 +74,30 @@ Proof: `npx vitest run tests/contexts.test.ts -t "C16 "`
 
 **C17** - `POST /api/runs` and `POST /api/skills/:slug/run` with `contextId` and no `cwd` record `cwd` equal to the real path of the first `ok` path (the first deleted, the second used) and `RunRecord.contextId` equal to the id (AC 17)
 Proof: `npx vitest run tests/contexts.runs.test.ts -t "C17 "`
+Proof: `npx vitest run tests/contexts.layer.test.ts -t "C17 own layer"`
 
 **C18** - The run's `readDirs` hold the other `ok` paths and the context's `notesDir` when it exists, in that order, besides the folders it already receives (AC 18)
 Proof: `npx vitest run tests/contexts.runs.test.ts -t "C18 "`
+Proof: `npx vitest run tests/contexts.layer.test.ts -t "C18 own layer"`
 
 **C19** - With `cwd` and `contextId`, a `cwd` inside a context path is kept; one outside every context path answers `400 validation` and no run is recorded (AC 19)
 Proof: `npx vitest run tests/contexts.runs.test.ts -t "C19 "`
+Proof: `npx vitest run tests/contexts.layer.test.ts -t "C19 own layer"`
 
 **C20** - An unknown `contextId` answers `404 context_not_found` and a context with no `ok` path `409 context_unavailable` on the three routes, and no run is recorded (AC 20)
 Proof: `npx vitest run tests/contexts.runs.test.ts -t "C20 "`
+Proof: `npx vitest run tests/contexts.layer.test.ts -t "C20 own layer"`
 
 **C21** - The prompt of a run with a context starts with a block holding `Work context: <name>`, the paths, the path of `memory/contexts/<id>.md`, the first 2 000 characters of `_resumo.md` (and not the 2 001st), and the line naming `memory/ROUTER.md` for anything outside the context (AC 21)
 Proof: `npx vitest run tests/contexts.runs.test.ts -t "C21 "`
+Proof: `npx vitest run tests/contexts.layer.test.ts -t "C21 own layer"`
 
 **C22** - With a run credential of a run that has a context, `GET /api/memory/recall` and `GET /api/memory/search` without `context` answer only files of the context, and with `context=all` everything that credential reads (the context's files and the notes of `memory/`); a run credential of a run without a context finds the notes of `memory/`; neither ever answers a file of an indexed folder outside its run, which the owner token without `context` still finds (AC 22 and door 7 as narrowed by door 8: `plan.md`, "Emendas depois da aprovação"; owner question cerebro-contextos 1)
 Proof: `npx vitest run tests/contexts.runs.test.ts -t "C22 "`
 
 **C23** - `POST /api/sessions/:id/continue` of a session whose first run had a context records the new run with the same `contextId`; a different `contextId` in the body answers `409 context_unavailable` (AC 23)
 Proof: `npx vitest run tests/contexts.runs.test.ts -t "C23 "`
+Proof: `npx vitest run tests/contexts.layer.test.ts -t "C23 own layer"`
 
 **C24** - After the context of a recorded run is deleted, `GET /api/runs/:id` still answers its `contextId`, and the run detail of the interface shows the id with "Contexto apagado" / "Deleted context" (AC 24)
 Proof: `npx vitest run tests/contexts.runs.test.ts -t "C24 "`
@@ -172,31 +183,46 @@ Proof: `npx vitest run tests/api.openapi.test.ts -t "C16 the document validates"
 **C47** - The raw `fs` allowlist and the module-state list do not grow (AC 47)
 Proof: `npx vitest run tests/security-reads.test.ts -t "C55 the list holds 70 rows"`
 Proof: `npx vitest run tests/sdk.instances.test.ts -t "C30 the module-level mutable state"`
+Proof: `npx vitest run tests/security-reads.test.ts -t "C32 every raw fs read in core/src and apps/api/src is on the reviewed list finds nothing outside the list"`
+
+### Added after the verification, round 1 (Surface rows and design.md elements that had no check)
+
+**C48** - `GET /api/sync/plan?context=<id>` and `POST /api/sync/apply` with `context` for a context none of whose paths is `ok` (one deleted, one excluded since) answer `409 context_unavailable`, with or without `approvedConflicts`, and write nothing in the context's folder (Surface row "contexto sem caminho `ok`", S4)
+Proof: `npx vitest run tests/contexts.test.ts -t "C48 "`
+
+**C49** - `PATCH /api/contexts/:id {brief:true}` answers `200` with `brief` = `<home>/memory/notes/<id>/_resumo.md`, made from design.md's template (front matter `type: brief`, `status: active`, `# <nome>` and the four sections) when missing, keeps every byte of one that exists, does not write `settings.json` without `name` or `paths`, and answers `404 context_not_found` for an unknown id (door 9, Surface row "com `brief`", S1)
+Proof: `npx vitest run tests/contexts.test.ts -t "C49 "`
+
+**C50** - `PUT /api/ui-preferences` with an `activeContext` that is not in the shape of an id (`"Cliente X"`, `""`, `"-x"`, 41 characters, a number, `"../config"`) answers `400 validation` and leaves `ui-preferences.json` byte for byte; an id or `null` is stored (door 5, Surface row of `PUT /api/ui-preferences`, S5)
+Proof: `npx vitest run tests/contexts.test.ts -t "C50 "`
 
 ## Coverage
 
-| Set (size)                                              | Member -> proof                                                                                                                   | Unproven |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| `GET /api/contexts` statuses (1)                        | 200 C7, C9                                                                                                                        | -        |
-| `POST /api/contexts` statuses (3)                       | 201 C1 · 400 C3, C4 · 409 C2                                                                                                      | -        |
-| `PATCH /api/contexts/:id` statuses (3)                  | 200 C5 · 400 C5 · 404 C15                                                                                                         | -        |
-| `DELETE /api/contexts/:id` statuses (2)                 | 200 C6 · 404 C15                                                                                                                  | -        |
-| memory reads with `context` (5)                         | search C10, C15 · recall C11, C15 · graph C12, C15 · related C13, C15 · status C14, C15                                           | -        |
-| run routes with `contextId` (3)                         | runs C17, C20 · skills run C17, C20 · sessions continue C20, C23                                                                  | -        |
-| sync routes with `context` (2)                          | plan C30 · apply C30                                                                                                              | -        |
-| error codes (4)                                         | `context_not_found` C15, C20, C30, C42 · `context_path_not_indexed` C3, C5 · `context_exists` C2 · `context_unavailable` C20, C23 | -        |
-| path states (3)                                         | `ok` C7 · `missing` C7, C16 · `not_indexed` C7, C16                                                                               | -        |
-| refused path kinds (6)                                  | outside C3 · `config/` C3 · `logs/` C3 · user exclude C3 · secret name C3 · link into `config/` C3                                | -        |
-| doors (7)                                               | 1 C1, C2, C8 · 2 C26, C29 · 3 C46 · 4 C25 · 5 C6, C32, C42 · 6 C10 · 7 C22                                                        | -        |
-| entities of Relations (4)                               | contexto C1 · runs C17, C25 · sessions C23, C25 · mapa C26                                                                        | -        |
-| selector states (4)                                     | empty C37 · loading C37 · error C37 · gone C38                                                                                    | -        |
-| shells with the selector (2)                            | moldura C31, C32 · Núcleo C31, C32                                                                                                | -        |
-| CLI subcommands and flags (5)                           | `list` C41 · `use` C42 · `use --none` C42 · `show` C43 · `--context` C44                                                          | -        |
-| MCP tools (2)                                           | `recall` C45 · `skills_run` C45                                                                                                   | -        |
-| startup config: `settings.contexts` read (2 assemblies) | the service (`AppContext`) C8 · the CLI C41                                                                                       | -        |
+| Set (size)                                              | Member -> proof                                                                                                                        | Unproven |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `GET /api/contexts` statuses (1)                        | 200 C7, C9                                                                                                                             | -        |
+| `POST /api/contexts` statuses (3)                       | 201 C1 · 400 C3, C4 · 409 C2                                                                                                           | -        |
+| `PATCH /api/contexts/:id` statuses (3)                  | 200 C5 · 400 C5 · 404 C15                                                                                                              | -        |
+| `PATCH /api/contexts/:id` with `brief: true` (2)        | 200 C49 · 404 C49                                                                                                                      | -        |
+| `DELETE /api/contexts/:id` statuses (2)                 | 200 C6 · 404 C15                                                                                                                       | -        |
+| memory reads with `context` (5)                         | search C10, C15 · recall C11, C15 · graph C12, C15 · related C13, C15 · status C14, C15                                                | -        |
+| run routes with `contextId` (3)                         | runs C17, C20 · skills run C17, C20 · sessions continue C20, C23                                                                       | -        |
+| sync routes with `context` (2)                          | plan C30 · apply C30                                                                                                                   | -        |
+| sync routes, context with no `ok` path (2)              | plan `409` C48 · apply `409` C48                                                                                                       | -        |
+| `PUT /api/ui-preferences` with `activeContext` (2)      | `200` C50 · `400 validation` C50                                                                                                       | -        |
+| error codes (4)                                         | `context_not_found` C15, C20, C30, C42 · `context_path_not_indexed` C3, C5 · `context_exists` C2 · `context_unavailable` C20, C23, C48 | -        |
+| path states (3)                                         | `ok` C7 · `missing` C7, C16 · `not_indexed` C7, C16                                                                                    | -        |
+| refused path kinds (6)                                  | outside C3 · `config/` C3 · `logs/` C3 · user exclude C3 · secret name C3 · link into `config/` C3                                     | -        |
+| doors (9)                                               | 1 C1, C2, C8 · 2 C26, C29 · 3 C46 · 4 C25 · 5 C6, C32, C42, C50 · 6 C10 · 7 C22 · 8 C22 · 9 C49                                        | -        |
+| entities of Relations (4)                               | contexto C1 · runs C17, C25 · sessions C23, C25 · mapa C26                                                                             | -        |
+| selector states (4)                                     | empty C37 · loading C37 · error C37 · gone C38                                                                                         | -        |
+| shells with the selector (2)                            | moldura C31, C32 · Núcleo C31, C32                                                                                                     | -        |
+| CLI subcommands and flags (5)                           | `list` C41 · `use` C42 · `use --none` C42 · `show` C43 · `--context` C44                                                               | -        |
+| MCP tools (2)                                           | `recall` C45 · `skills_run` C45                                                                                                        | -        |
+| startup config: `settings.contexts` read (2 assemblies) | the service (`AppContext`) C8 · the CLI C41                                                                                            | -        |
 
-- Claims naming a status code, route or response shape: C1-C7, C9-C20, C22-C24, C29, C30, C46 - each proven through
-  `app.inject` against `buildServer`
+- Claims naming a status code, route or response shape: C1-C7, C9-C20, C22-C24, C29, C30, C46, C48-C50 - each proven
+  through `app.inject` against `buildServer`; C3, C7, C10, C17-C21 and C23 also at their own layer, with no HTTP
 - Claims about the screens: C31-C40 in rendered components; C31, C32, C40 also in a real browser
 
 ## Binding sources
@@ -222,16 +248,20 @@ Evidence:
 
 - `contexts.ts` (new): path validation over 6 refused kinds and 3 states, membership by real path and separator -> decides
 - `RunManager` with a context: `cwd` precedence (given, first `ok`, none `ok`) and `readDirs` order -> decides
+- own layer: `tests/contexts.layer.test.ts` calls `newContext`/`changedContext` (each refused kind and the ok case),
+  `contextPathStates`, `contextMembership`/`insideContext` (equal, child, the sibling with the same prefix, by real
+  path, the platform's case folding), `contextPromptBlock` and `SkillCatalog.buildRunPrompt`, `Execution.startPrompt`
+  and `startSkill` (where a run of a context starts) and the `RunManager` (the folders it hands over), with no HTTP
 - closest analogue: `tests/memory.notes.test.ts` (`cerebro-v2` S1), the same validation table proven at the boundary and
   in the core
 
 ## Swept
 
 - validation: C3, C4, C19
-- failure modes: C16 (a path gone or not indexed), C20 (no `ok` path), C37 (the list fails to load)
+- failure modes: C16 (a path gone or not indexed), C20 and C48 (no `ok` path), C37 (the list fails to load)
 - idempotency: C2 (an id that exists), C25 (migration twice), C28 (map rewritten on rename)
 - authorization: C9 (owner-only writes), C22 (the run credential reads `memory/` and its context's `ok` paths, `all`
-  included, never the owner's other folders)
+  included, never the owner's other folders), C50 (the active context is written only in the shape of an id)
 - concurrency: n/a - a context write goes through the `SettingsStore`, whose writes are already atomic and serialized (AD-013); no new shared state
 - data lifecycle: C6 (deleting keeps the notes, removes the map), C24 (a run keeps a deleted context's id), C28
 - dependency failure: C16, C38 (the active context disappears)

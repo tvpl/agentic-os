@@ -158,7 +158,9 @@ describe("S1 defining contexts", () => {
       s.excludes = [...s.excludes, path.basename(secretsDir)];
     });
     try {
-      const secretFile = put(path.join(dir("chaves"), ".env"), "KEY=1\n");
+      // A folder (not a file, which the folder rule would refuse anyway) whose name the secret-file rule refuses.
+      const secretFolder = path.join(dir("chaves"), ".env");
+      fs.mkdirSync(secretFolder);
       const linky = dir("linky");
       fs.symlinkSync(path.join(home, "config"), path.join(linky, "cfg"));
       const refused: Array<[string, string]> = [
@@ -166,7 +168,7 @@ describe("S1 defining contexts", () => {
         ["the home's config/", path.join(home, "config")],
         ["the home's logs/", path.join(home, "logs")],
         ["a user exclude", secretsDir],
-        ["a secret file name", secretFile],
+        ["a secret file name", secretFolder],
         ["a folder holding a link into config/", linky],
       ];
       fs.mkdirSync(path.join(home, "logs"), { recursive: true });
@@ -178,6 +180,9 @@ describe("S1 defining contexts", () => {
         expect(res.body.error.message, kind).toContain(p);
         expect(settingsBytes(), kind).toBe(before);
       }
+      // The secret folder is refused for its name, not for being something other than a folder.
+      const secret = await create({ name: "Recusado pelo nome", paths: [secretFolder] });
+      expect(secret.body.error.message).toMatch(/secret-file blocklist/);
     } finally {
       restore();
     }
@@ -841,8 +846,48 @@ describe("S4 the map of a context", () => {
   });
 });
 
+describe("S4 the sync of a context none of whose paths is ok", () => {
+  it("C48 GET /api/sync/plan and POST /api/sync/apply with a context that has no ok path answer 409 context_unavailable and write nothing", async () => {
+    const hidden = dir("sync-escondida");
+    const restore = withSettings((s) => {
+      for (const id of ["claude", "codex", "cursor"] as const)
+        s.providers[id] = { ...s.providers[id], enabled: true };
+    });
+    try {
+      const gone = dir("sync-sumiu");
+      const id = (await create({ name: "Sync sem caminho", paths: [gone, hidden] })).body.id as string;
+      fs.rmSync(gone, { recursive: true });
+      // The folder that is left exists but is no longer allowed: not_indexed.
+      const s = ctx.settings();
+      s.excludes = [...s.excludes, path.basename(hidden)];
+      ctx.settingsStore.save(s);
+      expect(
+        ((await get("/api/contexts")).body.contexts as Json[])
+          .find((c) => c.id === id)!
+          .paths.map((p: Json) => p.state),
+      ).toEqual(["missing", "not_indexed"]);
+      const before = fs.readdirSync(hidden);
+      for (const res of [
+        await get(`/api/sync/plan?context=${id}`),
+        await call("POST", "/api/sync/apply", { context: id }),
+        await call("POST", "/api/sync/apply", {
+          context: id,
+          approvedConflicts: [path.join(hidden, "CLAUDE.md")],
+        }),
+      ]) {
+        expect(res.status, JSON.stringify(res.body)).toBe(409);
+        expect(errorCode(res)).toBe("context_unavailable");
+      }
+      expect(fs.readdirSync(hidden)).toEqual(before);
+      expect(fs.existsSync(gone)).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+});
+
 describe("S1 door 9 the brief of a context, made from the template", () => {
-  it("door 9 PATCH with brief makes _resumo.md from the template once, keeps one that exists, and leaves settings.json alone", async () => {
+  it("C49 door 9 PATCH with brief makes _resumo.md from the template once, keeps one that exists, and leaves settings.json alone", async () => {
     const folder = dir("resumo");
     const made = await create({ name: "Projeto com resumo", paths: [folder] });
     expect(made.status).toBe(201);
@@ -877,7 +922,7 @@ describe("S1 door 9 the brief of a context, made from the template", () => {
 
 describe("S5 door 5 the active context is written in the shape of an id", () => {
   const prefsFile = () => path.join(temp.paths.config, "ui-preferences.json");
-  it("door 5 PUT /api/ui-preferences refuses an activeContext that is not an id with 400 validation and keeps the stored one", async () => {
+  it("C50 door 5 PUT /api/ui-preferences refuses an activeContext that is not an id with 400 validation and keeps the stored one", async () => {
     const ok = await call("PUT", "/api/ui-preferences", { activeContext: "cliente-x" });
     expect(ok.status).toBe(200);
     expect(ok.body.activeContext).toBe("cliente-x");
