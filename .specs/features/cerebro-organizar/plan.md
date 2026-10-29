@@ -1,0 +1,227 @@
+# Cérebro: organizar — skill de organização com entrevista, notas-índice por pasta e metas no mapa dos agentes
+
+## Problem
+
+Quem aponta o MordomoOS para uma pasta bagunçada, ou cria uma subpasta nova, recebe um índice que sabe **onde** estão os
+arquivos e não sabe **o que** cada pasta é nem **o que importa** para o dono. O código de `chore/cerebro-v3-roteiro` (a partir
+de `main` em `b2f1e70`) mostra isso:
+
+- **Nenhuma pasta se explica.** O `ROUTER.md` lista áreas e pastas, e cada `areas/<área>.md` lista os 30 arquivos mais recentes
+  (`core/src/memory/routers.ts:131-151`). Não há nota que diga o que vive numa pasta, que subpastas ela tem e por onde começar;
+  um agente que abre uma pasta de 400 arquivos começa pelo `grep`.
+- **Nada pergunta o que importa.** O `mordomo setup` pergunta nome do sistema, tema, idioma e porta
+  (`apps/api/src/cli.ts:756-790`). Ninguém pergunta quem é o dono, o negócio, o cliente, a voz, as metas; as skills partem do zero
+  a cada conversa e o vídeo de referência e a pesquisa de 29/10/2026 (`reports/Segundo cérebro para agentes.md`, M6;
+  `research_notes/Segundo cérebro para agentes/metodos_pkm_agentes.md`: `/init-bootstrap` do Claudesidian, `/onboard` do
+  obsidian-claude-pkm) põem essa entrevista no primeiro dia.
+- **Os agentes não sabem das metas.** O `AGENTS.md`/`CLAUDE.md` compilado tem o roteador, a lista de skills e quatro regras
+  genéricas (`core/src/sync/compiler.ts:314-342`); nada diz o que o dono quer alcançar, e nada pede ao agente que conteste um
+  pedido que vai contra isso.
+- **Um agente que quisesse organizar não tem como fazer isso com segurança.** Uma skill de memória recebe `memory/` e a skill
+  folder (`core/src/runs/runManager.ts:528-539`); uma pasta do usuário só entra como diretório de trabalho, onde o agente pode
+  escrever, e a decisão do dono é que as pastas do usuário seguem somente leitura (`.specs/STATE.md`, cerebro-v2, pergunta 1).
+- **Uma subpasta nova passa em silêncio.** Nada percebe que uma pasta ganhou filhos e que o que se sabia dela envelheceu.
+
+Ninguém deu número de uso; a evidência é o código acima e a prática levantada pela pesquisa.
+
+Quando isto sair: o dono roda a skill **Organizar o Cérebro**; ela entrevista (uma nota de entrevista no inbox que o dono
+preenche no editor), grava as notas de contexto do negócio e o arquivo de metas em `memory/notes/contexto/`, escreve uma
+nota-índice por pasta (dentro de `memory/`, nunca na pasta do usuário), diz quais pastas não têm índice ou têm índice velho, e
+o `AGENTS.md`/`CLAUDE.md` compilado passa a abrir com as metas do dono e, se ele ligar, a instrução de contestar o que conflita
+com elas.
+
+## Flow
+
+Reutiliza o catálogo de skills e a injeção de caminhos de `SkillCatalog.locationsBlock` (exists), as `readDirs`/`protectedDirs`
+da execução e o bloqueio de edição do adaptador do Claude (exists), a credencial de execução e a sua lista fechada de rotas
+(`RUN_API_READ_ROUTES`, exists), o indexador e as linhas de `files`, o leitor de front matter, `generateRouters`, o compilador de
+sincronização e o editor de notas do `cerebro-v2`; nenhuma segunda forma de dar pasta a um agente, nem de ler front matter.
+
+1. Pedido de execução → `RunManager` (exists) recebe `skillSlug: "organize-brain"` e a entrada `folder` (door 5); confere que a
+   pasta está dentro de uma das `settings.folders`, fora do que a política esconde, e que o provedor declara `protectsDirs`
+   (door 5); acrescenta a pasta a `readDirs` e a `protectedDirs`, ao lado de `memory/`.
+2. A execução lê `skills/organize-brain/SKILL.md` (new, door 1), `resources/guia.md` e `resources/perguntas.md` (new, door 1), e
+   pede `GET /api/memory/maps` (new, door 4) com a sua credencial para saber quais pastas não têm índice ou o têm velho.
+3. Etapa `entrevista` → a execução escreve `memory/inbox/entrevista-<AAAA-MM-DD>.md` (door 2) com as perguntas que faltam; o dono
+   a preenche no `NoteEditor` (exists, `cerebro-v2`); etapa `aplicar` → a execução lê as respostas e grava as notas de
+   `memory/notes/contexto/` (door 2), entre elas `metas.md`.
+4. Etapa `indexar` → a execução grava uma nota-índice `_index.md` por pasta (door 2, door 3): dentro de `memory/notes/…` ao lado
+   das notas, ou em `memory/maps/<raiz>/<subcaminho>/_index.md` para uma pasta do usuário; escreve em `artifacts/` o relatório do
+   que propôs e do que não fez.
+5. Indexação → `MemoryIndexer` (exists) lê do front matter `type`, `status`, `updated` e `last_reviewed` para `fields` (door 6);
+   `folderDigests` (new, door 4) calcula o resumo dos filhos de cada pasta a partir das linhas de `files`.
+6. Roteadores → `generateRouters` (exists) lista no `ROUTER.md` as notas-índice e as pastas sem índice ou com índice velho.
+7. Compilação → `SyncCompiler.agentsFileContent` (exists) acrescenta a seção "Goals and priorities" a partir de
+   `memory/notes/contexto/metas.md` e, com `memory.agentStance` (door 7) em `contest-conflicts`, a instrução de contestar.
+8. Interface → a tela de Configurações (exists), seção Memória, ganha o seletor de `memory.agentStance`.
+
+## Impact
+
+| Front       | What changes                                                                                                                                                                                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| domain      | new term: `nota-índice` - um `_index.md` que diz o que uma pasta é e aponta para as notas-índice das subpastas; vive em `memory/`, nunca na pasta do usuário                                                                                                       |
+| domain      | new term: `resumo dos filhos` (`children-digest`) - `sha256:` da lista ordenada dos filhos diretos de uma pasta como o índice os conhece; uma nota-índice com outro resumo está velha                                                                              |
+| domain      | new term: `postura do agente` (`memory.agentStance`) - `neutral` ou `contest-conflicts`; só o dono muda                                                                                                                                                            |
+| domain      | existing term: entrada `path` de uma skill era só texto no prompt; numa skill de memória, a entrada chamada `folder` passa a dar uma pasta somente leitura à execução - quem ramifica hoje: nenhuma skill embarcada tem entrada `folder` (`skills/*/SKILL.md`)     |
+| domain      | existing term: `fields` de um arquivo eram só os `chave:: valor` do texto; passam a ter também `type`, `status`, `updated` e `last_reviewed` do front matter - quem lê hoje: o grafo (`graph.ts:132`) e a interface que mostra `fields` (`brain/PreviewPanel.tsx`) |
+| stored data | nada migra: `fields` é JSON livre e a próxima passada que tocar um arquivo com front matter grava os novos campos; arquivos que não mudaram ganham os campos na passada completa seguinte (eles só são relidos quando mudam - fica dito na Assumptions)            |
+| settings    | `settings.memory.agentStance` (padrão `neutral`); `settings.memorySkills` passa a ter `organize-brain` no padrão - um `settings.json` que já grava `memorySkills` não muda e a skill, sem `memory/`, para dizendo como ligar                                       |
+| contrato    | manifesto de provedor ganha `capabilities.protectsDirs` (Claude `true`, Codex e Cursor `false`)                                                                                                                                                                    |
+| arquivos    | `memory/inbox/`, `memory/notes/contexto/` e `memory/maps/` passam a existir quando a skill roda; `ROUTER.md` ganha a seção de notas-índice; o `AGENTS.md`/`CLAUDE.md` compilado ganha uma seção                                                                    |
+
+## Relations
+
+`None - no stored-data shape change`: `fields` já existe e é JSON; as notas-índice e as notas de contexto são arquivos `.md`
+indexados como qualquer outro.
+
+## Surface
+
+| Route                      | In                                    | Out                                                                                                                                                   | Status              |
+| -------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| `GET /api/memory/maps`     | query `root?`                         | `folders[]`: `path` · `rel` · `children` · `digest` · `index` (caminho ou `null`) · `indexDigest` (ou `null`) · `state` (`missing`, `stale`, `fresh`) | `200`, `400`, `404` |
+| `PUT /api/settings` (muda) | `memory.agentStance`                  | as configurações                                                                                                                                      | `200`, `400`        |
+| `POST /api/runs` (muda)    | `inputs.folder` numa skill de memória | a execução                                                                                                                                            | `202`, `400`, `409` |
+
+## Landing
+
+| One-way door                            | Literal shape                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Alternative rejected                                                                                                                                                                                                                                                                                                                                 |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. A skill e os seus recursos           | `skills/organize-brain/SKILL.md` (`mode: write`, `providers: [claude]`, entradas `etapa` (`select`: `entrevista`, `aplicar`, `indexar`; padrão `entrevista`) e `folder` (`path`, opcional)), `resources/guia.md` (vocabulário, estrutura, formato da nota-índice, regras) e `resources/perguntas.md` (banco de perguntas por tema)                                                                                                                                                                                 | uma skill por etapa: três entradas no catálogo para um só trabalho, e o guia duplicado; um comando do motor (`mordomo organize`) sem agente: a parte que exige ler e entender texto é exatamente a do agente                                                                                                                                         |
+| 2. Onde a skill escreve                 | só sob `memory/`: `memory/inbox/entrevista-AAAA-MM-DD.md`; `memory/notes/contexto/{perfil,estrategia,cliente-ideal,marca,voz,oferta,organizacao,stakeholders,dores,crencas,respostas,metas}.md`; `_index.md` dentro de uma pasta de `memory/notes/` que já existe ou que a entrevista aprovou; `memory/maps/<slug da raiz>/<subcaminho>/_index.md` para uma pasta do usuário; nada no topo de `memory/notes/`                                                                                                      | escrever a nota-índice dentro da pasta do usuário (o `CLAUDE.md` por pasta do produto de inspiração): fere a decisão do dono de pastas do usuário somente leitura e colide com o `CLAUDE.md` que `mordomo sync` compila; guardar perfil e metas em `settings.json`: o backup e a interface tratam configurações como máquina, não como texto do dono |
+| 3. Formato da nota-índice               | front matter `type: index`, `status: active`, `tags: [...]`, `source: <caminho absoluto da pasta>`, `children-digest: sha256:<64 hex>`, `generated-by: organize-brain`, `updated: AAAA-MM-DD`, `last_reviewed: AAAA-MM-DD`; corpo: `# <nome>`, um parágrafo do que a pasta é, a tabela `\| Categoria \| O que vive ali \| Índice \|` com um link `[…](…/_index.md)` por subpasta, e "Comece por" com até 5 links                                                                                                   | o nome `CLAUDE.md` ou `AGENTS.md`: só um provedor o carrega e o compilador já escreve esses nomes; `README.md`: o usuário já tem os seus e a skill não sobrescreve arquivo que não criou; conteúdo copiado das notas: envelhece, e a pesquisa diz "ponteiros, não conteúdo"                                                                          |
+| 4. Resumo dos filhos e a rota de mapas  | `children-digest = "sha256:" + hex(SHA-256(join("\n", sort(["d:" + nome da subpasta] ∪ ["f:" + nome do arquivo]))))` sobre os filhos diretos que `files` conhece, sem `_index.md` e sem nomes que começam com `.`; `GET /api/memory/maps` com escopo `content` e na `RUN_API_READ_ROUTES`                                                                                                                                                                                                                          | ler o disco para o resumo: a rota da execução passaria a abrir pastas do usuário fora do índice e da política; `mtime` da pasta: muda com um arquivo editado, e um índice que só fala de estrutura ficaria "velho" a cada salvamento                                                                                                                 |
+| 5. Pasta somente leitura para uma skill | numa skill de `memorySkills`, a entrada `folder` resolvida (realpath) tem de estar dentro de uma de `settings.folders` e ser permitida pelo filtro; entra em `readDirs` e em `protectedDirs`; provedor sem `capabilities.protectsDirs: true` → `409 folder_protection_unsupported`; fora das pastas indexadas → `400 folder_not_indexed`                                                                                                                                                                           | dar a pasta como diretório de trabalho: o agente escreve nela; confiar na regra escrita no `SKILL.md`: o arquivo é editável por agente e por dispositivo (`skills/types.ts:31-35`), então a regra não é mecanismo                                                                                                                                    |
+| 6. Campos do front matter               | `parseFrontMatter` lê também `type`, `status`, `updated`, `last_reviewed` (texto até 64 caracteres); eles entram em `fields` com essas chaves, e um `chave:: valor` do corpo com a mesma chave vence                                                                                                                                                                                                                                                                                                               | uma coluna por campo em `files`: migração para um vocabulário que o dono personaliza; ler todo o YAML: o leitor é pequeno de propósito (`frontMatter.ts:1-5`)                                                                                                                                                                                        |
+| 7. Postura e metas no mapa dos agentes  | `settings.memory.agentStance: "neutral" \| "contest-conflicts"` (padrão `neutral`, valor ilegível lido como `neutral`); o compilado ganha, depois do título, `## Goals and priorities` com até 10 itens de primeiro nível da seção `## Metas` de `memory/notes/contexto/metas.md` (cada um cortado em 160 caracteres) e a linha `Full goals: <caminho>`; com `contest-conflicts`, mais a linha `- When a request conflicts with these goals, say so and propose the alternative that serves them before doing it.` | a postura escrita pela própria skill no arquivo de metas: uma nota que um agente escreve passaria a mudar as instruções de todo agente (envenenamento de memória, OWASP ASI06); o arquivo de metas inteiro no compilado: o compilado é lido em toda conversa e deve ser um mapa                                                                      |
+
+- Nothing else in this change is hard to reverse: o texto do guia e das perguntas, a ordem das perguntas e o relatório em
+  `artifacts/` mudam por edição.
+
+## Criteria
+
+### S1: a skill, o guia e o banco de perguntas (P1)
+
+A skill existe no catálogo, com um guia que define a estrutura e o vocabulário e um banco de perguntas por tema.
+
+**Acceptance Criteria**
+
+1. WHEN the catalog loads THEN it SHALL list `organize-brain` with `mode: write`, `providers: [claude]`, the inputs `etapa` (`select` of `entrevista`, `aplicar`, `indexar`, default `entrevista`) and `folder` (`path`, optional), and pt-BR name "Organizar o Cérebro".
+2. The skill folder SHALL hold `resources/guia.md` and `resources/perguntas.md`, and the catalog SHALL list both as markdown resources.
+3. The guide SHALL define the `type` values `context`, `guide`, `project`, `decision`, `reference`, `log`, `goals`, `profile`, `index`, `inbox` and the `status` values `active`, `draft`, `archived`, and SHALL say the owner may add values in the interview.
+4. The guide SHALL state the rules: write only under `memory/`; never create a file at the top of `memory/notes/`; never move, rename, edit or delete a file outside `memory/`; never overwrite a file whose front matter lacks `generated-by: organize-brain`; an index note holds pointers, not copied content.
+5. The question bank SHALL have one section per theme `perfil`, `estrategia`, `cliente-ideal`, `marca`, `voz`, `oferta`, `organizacao`, `stakeholders`, `dores`, `crencas`, `respostas`, `metas`, `estrutura` (folders and areas to approve) and `preferencias` (vocabulary of `type`/`status`, what never to index), each with 3 to 8 questions and the file under `memory/notes/contexto/` it fills.
+6. The `SKILL.md` procedure SHALL say, per `etapa`, what it reads and writes: `entrevista` writes only `memory/inbox/entrevista-AAAA-MM-DD.md` with the questions still unanswered; `aplicar` reads the newest interview note and writes `memory/notes/contexto/*.md`; `indexar` calls `GET /api/memory/maps` and writes `_index.md` only for folders whose `state` is `missing` or `stale`.
+7. WHEN the `entrevista` stage finds a `memory/notes/contexto/` note already holding an answer THEN the procedure SHALL tell the agent to skip that question and list it under "Já respondido" in the interview note.
+8. WHEN a run of `organize-brain` starts THEN the run prompt SHALL hold the memory locations block (memory folder, long-term memory, journal) and, when `folder` is given, the line `Folder to organize (read-only): <real path>`.
+9. The default `settings.memorySkills` SHALL be `["recall", "consolidate-memory", "organize-brain"]`, and IF a run of `organize-brain` has no memory access THEN the run prompt SHALL say the skill is not in `memorySkills` and how to add it.
+
+**Independent test:** carregar o catálogo e conferir a skill, as entradas e os recursos; montar o prompt de uma execução com
+`folder` e ler as linhas.
+
+### S2: uma pasta do usuário, só para ler (P1)
+
+**Acceptance Criteria**
+
+10. WHEN a run of a skill in `memorySkills` has the input `folder` naming a folder inside one of `settings.folders` THEN the run SHALL receive that folder's real path in `readDirs` and in `protectedDirs`, besides the skill folder and `memory/`.
+11. IF `folder` resolves outside every `settings.folders` entry THEN `POST /api/runs` SHALL answer `400 folder_not_indexed` and start nothing.
+12. IF `folder` resolves to a path today's policy hides (the home's `config/` or `logs/`, a user exclude, a secret name), or holds a link into the home's `config/` or `logs/` THEN `POST /api/runs` SHALL answer `400 folder_not_indexed` and start nothing.
+13. IF the run's provider does not declare `capabilities.protectsDirs: true` and `folder` is given THEN `POST /api/runs` SHALL answer `409 folder_protection_unsupported` and start nothing.
+14. WHEN the Claude adapter builds a run with `folder` THEN its arguments SHALL hold `--add-dir <folder>` and a deny rule for each edit tool under that folder, as for the skill folder today.
+15. IF the skill is not in `memorySkills` THEN the input `folder` SHALL stay text in the prompt only and SHALL NOT be added to `readDirs`.
+16. The manifests SHALL declare `capabilities.protectsDirs`: `true` for Claude, `false` for Codex and Cursor.
+
+**Independent test:** pedir uma execução com `folder` dentro e fora das pastas indexadas, e com o Codex; ler os argumentos do
+adaptador do Claude.
+
+### S3: mapa de pastas, notas-índice e o roteador (P1)
+
+**Acceptance Criteria**
+
+17. WHEN `GET /api/memory/maps` is called THEN the system SHALL return one entry per folder that holds an indexed file or an indexed subfolder, under the indexed roots and `memory/notes/`, with `children` as the count of direct children the index knows.
+18. The system SHALL compute `digest` as `sha256:` of the sorted, newline-joined `d:<name>`/`f:<name>` list of direct children, without `_index.md` and names starting with `.`, and two calls over the same index SHALL return the same digest.
+19. WHEN a folder has no `_index.md` (inside it for `memory/notes/…`, under `memory/maps/<root slug>/<subpath>/` for a user folder) THEN its `state` SHALL be `missing` and `index` `null`.
+20. WHEN its `_index.md` front matter `children-digest` equals `digest` THEN `state` SHALL be `fresh`, and WHEN it differs or is absent THEN `state` SHALL be `stale`.
+21. WHEN a file is added to a folder that had a `fresh` index and the pass finished THEN the next `GET /api/memory/maps` SHALL report that folder `stale`, and editing a file's text without adding or removing a child SHALL keep it `fresh`.
+22. IF `root` names no indexed root and is not `memory` THEN the route SHALL answer `404 not_found`, and IF it is not an absolute path or `memory` THEN `400 validation`.
+23. IF a folder is hidden by today's policy THEN `GET /api/memory/maps` SHALL NOT return it, nor count it as a child.
+24. WHEN a run credential calls `GET /api/memory/maps` THEN the route SHALL answer `200`, and a device without `content` SHALL get `403`.
+25. WHEN a Markdown file's front matter holds `type`, `status`, `updated` or `last_reviewed` THEN the index SHALL store them in the file's `fields` with those keys, and an inline `key:: value` with the same key SHALL win.
+26. WHEN `generateRouters` runs THEN `ROUTER.md` SHALL hold a section "Folder indexes" listing each `fresh` or `stale` index note as a link with its folder, and a section "Folders without an index" listing up to 20 `missing` or `stale` folders by number of children (most first), and SHALL omit both sections when empty.
+
+**Independent test:** indexar um acervo com três pastas, gravar à mão um `_index.md` com o resumo certo numa e errado noutra,
+pedir a rota de mapas e gerar o roteador.
+
+### S4: metas e postura no mapa dos agentes (P1)
+
+**Acceptance Criteria**
+
+27. WHEN `memory/notes/contexto/metas.md` has a `## Metas` section THEN the compiled `AGENTS.md` and `CLAUDE.md` SHALL hold `## Goals and priorities` right after the title with up to 10 of its first-level list items, each cut at 160 characters, and the line `Full goals: <path of metas.md>`.
+28. IF `metas.md` is missing, has no `## Metas` section, or is a link out of `memory/` THEN the compiled files SHALL have no `## Goals and priorities` section and `mordomo sync` SHALL still succeed.
+29. WHILE `settings.memory.agentStance` is `contest-conflicts` the goals section SHALL end with the line "- When a request conflicts with these goals, say so and propose the alternative that serves them before doing it.", and WHILE it is `neutral` that line SHALL be absent.
+30. The system SHALL read an unreadable `memory.agentStance` in `settings.json` as `neutral`, and `PUT /api/settings` with any other value SHALL answer `400 validation`.
+31. WHEN the owner opens Settings › Memória THEN the screen SHALL show "Postura dos agentes" with the two options "Neutra" and "Contestar o que conflita com as metas", the current value selected, and a line saying it takes effect at the next `mordomo sync`.
+32. IF saving the stance fails THEN the setting SHALL show the error text beside an icon and keep the previous value selected.
+33. The new text SHALL be 12px minimum, colors only from tokens, and the Settings screen SHALL pass axe at WCAG A/AA in both themes.
+
+**Independent test:** escrever um `metas.md` com 12 itens, mudar a postura, rodar `mordomo sync` e ler os dois compilados.
+
+## Out of scope
+
+| Excluded                                                                 | Why                                                                                                                                              |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Mover, renomear ou acrescentar front matter a arquivos fora de `memory/` | decisão do dono: pastas do usuário somente leitura (cerebro-v2, pergunta 1); a skill propõe no relatório, não aplica                             |
+| Aplicar pelo motor as propostas do relatório (mover, mesclar, arquivar)  | exige uma rota de escrita em pasta do usuário com `dryRun`, a operação de maior estrago do módulo; feature própria                               |
+| Membros, papéis, sincronização de equipe, permissões por pessoa          | o produto é de um dono só (AD-005, AD-015); o vídeo de referência fala de equipe, e isso fica fora                                               |
+| Triagem do inbox e revisão semanal                                       | entram em `cerebro-higiene-rituais`                                                                                                              |
+| Organização por embeddings (agrupar por similaridade de vetor)           | depende do provedor de embeddings que o dono ainda não escolheu (cerebro-v2, pergunta 5); a skill organiza por leitura do agente e por estrutura |
+| Uma tela própria de entrevista ou de mapa de pastas                      | a entrevista é uma nota no editor que já existe; a vista nova de notas é `cerebro-vista-notas`                                                   |
+| Codex e Cursor para esta skill                                           | não protegem pasta (door 5); a skill declara só o Claude                                                                                         |
+
+## Assumptions
+
+| Assumption                               | Chosen default                                                                                                       | Rationale                                                                                                                                          | Confirmed? |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Entrevista assíncrona                    | a etapa `entrevista` grava a nota de perguntas e para; o dono preenche no editor; a etapa `aplicar` lê               | continuar a conversa (`POST /api/sessions/:id/continue`) é um prompt solto, sem a skill e sem `memory/` (`routes/sessions.ts:27-35`)               | n          |
+| Campos novos em arquivos que não mudaram | só aparecem quando o arquivo muda ou numa passada depois de um "Reindexar tudo"                                      | a passada não relê arquivo sem mudança (cerebro-v2, AC 35); reler tudo uma vez é o que o botão já faz                                              | n          |
+| Raiz de `memory/notes` congelada         | regra no guia mais o relatório da execução; nenhuma trava no motor                                                   | a execução escreve com as ferramentas do agente, não pela rota de notas; a detecção de nota fora do lugar é da higiene (`cerebro-higiene-rituais`) | n          |
+| Limite de leitura por execução           | o guia manda ler no máximo 200 arquivos por execução, por cabeçalhos e primeiras linhas, e dizer o que ficou de fora | uma pasta de milhares de arquivos estouraria o contexto; a reexecução continua pelas pastas ainda `missing` ou `stale`                             | n          |
+| Nomes das notas de contexto              | em português, sem acento, os de door 2                                                                               | o produto de inspiração usa os nomes em inglês de uma marca; os nossos seguem o idioma do dono e o slug das notas (cerebro-v2, AC 3)               | n          |
+
+**Open questions:**
+
+| #   | Kind           | Question                                                                                                                                                               | Until answered                                                                                                          |
+| --- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 1   | open           | A postura padrão deve ser `neutral` (recomendo: o dono liga quando quiser) ou `contest-conflicts` (o vídeo de referência põe a "regra de ouro" ligada desde o início)? | `neutral`; AC 29 vale para os dois valores                                                                              |
+| 2   | blocks go-live | A skill pode rodar sob o perfil `controlled_write` em `memory/` sem aprovação a cada escrita, ou fica no `review_before_write` (cada escrita espera o dono)?           | o perfil que o dono já usa vale; sob `review_before_write` a etapa `indexar` de uma pasta grande pede muitas aprovações |
+
+## Observable
+
+| Surface                                    | Decision                                          | Landing                                                                                                |
+| ------------------------------------------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| screen Configurações › Memória (postura)   | empty state                                       | n/a - sempre há um valor (padrão `neutral`)                                                            |
+| screen Configurações › Memória (postura)   | loading state                                     | existing - a tela de Configurações carrega as configurações inteiras                                   |
+| screen Configurações › Memória (postura)   | error state                                       | AC 32                                                                                                  |
+| screen Configurações › Memória (postura)   | unauthorised                                      | existing - `PUT /api/settings` é `owner`; um dispositivo recebe `403` e cai no AC 32                   |
+| screen Configurações › Memória (postura)   | density and ordering                              | AC 31                                                                                                  |
+| screen Configurações › Memória (postura)   | destructive action confirms                       | n/a - trocar a postura não apaga nada e volta com um clique                                            |
+| API `GET /api/memory/maps`                 | error shape and codes                             | AC 22                                                                                                  |
+| API `GET /api/memory/maps`                 | who may call                                      | AC 24                                                                                                  |
+| API `POST /api/runs` (entrada `folder`)    | error shape and codes                             | AC 11, AC 12, AC 13                                                                                    |
+| all new or changed routes                  | versioning, rate limits                           | n/a - `/api/v1` é o mesmo conjunto de rotas; a rota de mapas só lê e entra no limite geral da API      |
+| command `mordomo run organize-brain`       | output, flags, exit codes                         | existing - `mordomo run <skill>` com as entradas da skill; os erros de `POST /api/runs` saem como hoje |
+| document `resources/guia.md`               | structure, tone, depth, what the reader does next | AC 3, AC 4                                                                                             |
+| document `resources/perguntas.md`          | structure, what the reader does next              | AC 5, AC 7                                                                                             |
+| document nota-índice `_index.md`           | structure, what the reader does next              | door 3; AC 6                                                                                           |
+| document `AGENTS.md`/`CLAUDE.md` compilado | structure, what the reader does next              | AC 27, AC 29                                                                                           |
+| collection pastas do mapa                  | grouping, naming, ordering, duplicates, exception | AC 17, AC 18, AC 26; exceção: pasta escondida pela política (AC 23)                                    |
+| collection notas de contexto               | naming, duplicates                                | door 2; AC 7 (pergunta já respondida não gera nota nova)                                               |
+
+## Sources
+
+- Pedido do dono (29/10/2026): "uma skill interna para rodar com as IAs para organizar e indexar de forma semântica e útil
+  para o segundo cérebro para estruturas desorganizadas ou subpastas novas, oferecendo um guia e perguntas para personalizar o
+  que realmente importa e como quer"; prints do produto de inspiração (nota de guia por pasta com tabela de categorias, pasta
+  `Context/`, front matter `type`/`status`/`tags`/`updated`) — inspiração, não cópia.
+- `reports/Segundo cérebro para agentes.md`, roteiro M6 (onboarding por entrevista, metas no compilado).
+- `.specs/STATE.md`, cerebro-v2, pergunta 1 (pastas do usuário somente leitura) e AD-012 (caminhos absolutos e credencial da
+  execução para skills de memória).
