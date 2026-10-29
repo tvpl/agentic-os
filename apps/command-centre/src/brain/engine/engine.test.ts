@@ -108,7 +108,7 @@ function graph(n: number, areas = ["Worker", "Docs"]): GraphData {
       { source: 1, target: 2, kind: "markdown-link", why: "link" },
       { source: 1, target: 999, kind: "markdown-link", why: "dangling" },
       { source: 2, target: 3, kind: "same-dir", why: "" },
-      { source: 3, target: 4, kind: "same-area", why: "area" },
+      { source: 3, target: 4, kind: "related", why: "area" },
     ],
     truncated: false,
     totalFiles: n,
@@ -144,7 +144,7 @@ describe("world", () => {
     expect(w.edges).toEqual([
       { a: 0, b: 1, kind: "markdown-link", why: "link" },
       { a: 1, b: 2, kind: "same-dir", why: "" },
-      { a: 2, b: 3, kind: "same-area", why: "area" },
+      { a: 2, b: 3, kind: "related", why: "area" },
     ]);
     expect(w.colorOf.get("Worker")).not.toBe(w.colorOf.get("Docs"));
   });
@@ -203,9 +203,9 @@ describe("typed edges, degree and sizing", () => {
     const w = world(9);
     // default kinds: markdown-link + same-dir → node 2 (index 1) touches both
     expect(w.files[1]!.degree).toBe(2);
-    expect(w.files[3]!.degree).toBe(0); // only a same-area edge
+    expect(w.files[3]!.degree).toBe(0); // only a related edge (off by default)
     expect(w.files[1]!.r).toBeGreaterThan(w.files[3]!.r);
-    w.edgeKinds = new Set(["markdown-link", "same-dir", "same-area"]);
+    w.edgeKinds = new Set(["markdown-link", "same-dir", "related"]);
     refreshGraphDerived(w, NOW);
     expect(w.files[3]!.degree).toBe(1);
     expect(w.adjacency[2]).toEqual([1, 3]);
@@ -226,8 +226,8 @@ describe("typed edges, degree and sizing", () => {
   it("selection only lights up edges of enabled kinds", () => {
     const w = world(9);
     setSelected(w, 3);
-    expect([...w.selectedEdges]).toEqual([1]); // same-dir edge only; same-area is off
-    w.edgeKinds.add("same-area");
+    expect([...w.selectedEdges]).toEqual([1]); // same-dir edge only; related is off
+    w.edgeKinds.add("related");
     setSelected(w, 3);
     expect([...w.selectedEdges]).toEqual([1, 2]);
   });
@@ -658,7 +658,7 @@ describe("local mode, timeline and hygiene", () => {
     const rel = relationsOf(w, 3);
     expect(rel.map((r) => [r.kind, r.count])).toEqual([
       ["same-dir", 1],
-      ["same-area", 1],
+      ["related", 1],
     ]);
     expect(rel[0]!.entries[0]).toEqual({ id: 2, name: "file-1.md", why: "" });
     expect(relationsOf(w, 999)).toEqual([]);

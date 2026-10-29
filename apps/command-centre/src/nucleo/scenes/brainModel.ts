@@ -57,7 +57,7 @@ export function starSize(degree: number, recent: boolean): number {
 
 /** Structural edges (same folder / area) are many and weak; authored ones (links, related) are strong. */
 export function isStrongKind(kind: string): boolean {
-  return kind === "markdown-link" || kind === "related";
+  return kind === "markdown-link" || kind === "wikilink" || kind === "related";
 }
 
 export function buildModel(

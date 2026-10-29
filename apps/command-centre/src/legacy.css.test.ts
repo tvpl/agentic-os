@@ -61,7 +61,7 @@ const SET_BY_A_VALUE: Record<string, { file: string; why: string }> = {
   "markdown-link": { file: "brain/engine/world.ts", why: "`brain-kind-swatch ${k}`: `EDGE_KINDS`" },
   related: { file: "brain/engine/world.ts", why: "`brain-kind-swatch ${k}`: `EDGE_KINDS`" },
   "same-dir": { file: "brain/engine/world.ts", why: "`brain-kind-swatch ${k}`: `EDGE_KINDS`" },
-  "same-area": { file: "brain/engine/world.ts", why: "`brain-kind-swatch ${k}`: `EDGE_KINDS`" },
+  wikilink: { file: "brain/engine/world.ts", why: "`brain-kind-swatch ${k}`: `EDGE_KINDS`" },
   other: { file: "brain/engine/world.ts", why: "`brain-kind-swatch ${k}`: `EDGE_KINDS`" },
   outline: {
     file: "components/primitives.tsx",

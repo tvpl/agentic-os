@@ -992,7 +992,7 @@ export class Painter {
         const travelling = e === travelEdge;
         const v = Math.min(stage.alpha[ed.a]!, stage.alpha[ed.b]!) * egoMix;
         const kindCol =
-          ed.kind === "markdown-link"
+          ed.kind === "markdown-link" || ed.kind === "wikilink"
             ? tk.agent
             : ed.kind === "related"
               ? tk.accent

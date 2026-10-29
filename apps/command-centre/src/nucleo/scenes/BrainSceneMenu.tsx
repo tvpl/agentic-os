@@ -20,9 +20,9 @@ import { Switch } from "../../ui";
 
 const KIND_KEYS: Record<EdgeKind, TKey> = {
   "markdown-link": "brain.kind.markdown-link",
+  wikilink: "brain.kind.wikilink",
   related: "brain.kind.related",
   "same-dir": "brain.kind.same-dir",
-  "same-area": "brain.kind.same-area",
   other: "brain.kind.other",
 };
 const MOD_KEYS: Record<ModifiedRange, TKey> = {

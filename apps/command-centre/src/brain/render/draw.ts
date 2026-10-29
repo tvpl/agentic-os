@@ -515,7 +515,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, w: World, o: FrameOptio
   ctx.restore();
 }
 
-const KIND_ORDER: EdgeKind[] = ["same-area", "other", "same-dir", "related", "markdown-link"];
+const KIND_ORDER: EdgeKind[] = ["other", "same-dir", "related", "wikilink", "markdown-link"];
 const RELATED_COLOR = "#4ade80";
 
 function drawEdges(
@@ -537,7 +537,7 @@ function drawEdges(
   for (const kind of [...KIND_ORDER].reverse()) {
     const c = counts.get(kind) ?? 0;
     if (c === 0) continue;
-    if (used + c > EDGE_BUDGET && kind !== "markdown-link") continue;
+    if (used + c > EDGE_BUDGET && kind !== "markdown-link" && kind !== "wikilink") continue;
     drawn.add(kind);
     used += c;
   }

@@ -113,6 +113,8 @@ import {
 } from "./brainTrail";
 import { distanceForLevel } from "./brainZoom";
 import "./brainScene.css";
+import { RequestFailed } from "../../brain/RequestFailed";
+import { useBrainSearch } from "../../brain/useBrainSearch";
 
 const GRAPH_PARAMS = { maxNodes: 3000 };
 const GRAPH_PATH = "/api/memory/graph?maxNodes=3000";
@@ -127,9 +129,9 @@ const HIST_BINS = 48;
 const NARROW = "(max-width: 760px)";
 const KIND_KEYS: Record<EdgeKind, TKey> = {
   "markdown-link": "brain.kind.markdown-link",
+  wikilink: "brain.kind.wikilink",
   related: "brain.kind.related",
   "same-dir": "brain.kind.same-dir",
-  "same-area": "brain.kind.same-area",
   other: "brain.kind.other",
 };
 const CONTENT_KEYS: Record<ContentKind, TKey> = {
@@ -686,19 +688,25 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
   }, [pinnedKey, stage]);
 
   const [related, setRelated] = useState<Array<{ id: number; why: string }>>([]);
+  // A failed request is said (and can be asked again), never shown as "nothing related" (cerebro-correcoes, AC 25).
+  const [relatedFailed, setRelatedFailed] = useState(false);
+  const [relatedAttempt, setRelatedAttempt] = useState(0);
   useEffect(() => {
     setRelated([]);
+    setRelatedFailed(false);
     if (!selNode) return;
     let cancelled = false;
     void apiCall("GET /api/memory/related", { query: { id: selNode.id } })
       .then((res) => {
         if (!cancelled) setRelated(res.map((r) => ({ id: r.file.id, why: r.why })));
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setRelatedFailed(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, [selNode]);
+  }, [selNode, relatedAttempt]);
 
   const kindOfIdx = useCallback((i: number): ContentKind => stage.model?.kind[i] ?? "note", [stage]);
   const entryOf = useCallback(
@@ -769,27 +777,9 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
   }, [railGroups, nearby, need]);
 
   /* ---------- search: the sky's matches + the server's content hits ---------- */
-  const [hits, setHits] = useState<Array<{ id: number; name: string; rel: string }>>([]);
+  const search = useBrainSearch(ui.query);
+  const hits = search.hits;
   const [searchFocus, setSearchFocus] = useState(false);
-  useEffect(() => {
-    const q = ui.query.trim();
-    if (!q) {
-      setHits([]);
-      return;
-    }
-    let cancelled = false;
-    const id = window.setTimeout(() => {
-      void apiCall("GET /api/memory/search", { query: { q: q, limit: 8 } })
-        .then((res) => {
-          if (!cancelled) setHits(res);
-        })
-        .catch(() => undefined);
-    }, 180);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(id);
-    };
-  }, [ui.query]);
 
   const [lit, setLit] = useState<number[] | null>(null);
   useEffect(() => {
@@ -1661,7 +1651,8 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
               <p className="bs-eyebrow" role="status">
                 {litCount > 0 ? t("scene.brain.matches", { n: litCount }) : t("scene.brain.noMatches", { q })}
               </p>
-              {hits.length > 0 && (searchFocus || !sheetOpen) && (
+              {search.failed && <RequestFailed message={t("brain.search.failed")} onRetry={search.retry} />}
+              {!search.failed && hits.length > 0 && (searchFocus || !sheetOpen) && (
                 <ul className="bs-hits" aria-label={t("scene.brain.inContent")}>
                   {hits.map((h) => (
                     <li key={h.id}>
@@ -1776,6 +1767,8 @@ function Constellation({ onClassic }: { onClassic: () => void }) {
           trail={narrow ? trailNode : undefined}
           context={railGroups}
           nearby={nearby}
+          relatedFailed={relatedFailed}
+          onRelatedRetry={() => setRelatedAttempt((n) => n + 1)}
           terms={noteTerms}
           pinned={pinned}
           kindOfId={kindOfId}

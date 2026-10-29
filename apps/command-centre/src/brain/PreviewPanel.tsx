@@ -52,15 +52,15 @@ const MD_EXT = new Set([".md", ".markdown", ".mdx", ".mdown"]);
 const KIND_KEYS: Record<
   EdgeKind,
   | "brain.kind.markdown-link"
+  | "brain.kind.wikilink"
   | "brain.kind.related"
   | "brain.kind.same-dir"
-  | "brain.kind.same-area"
   | "brain.kind.other"
 > = {
   "markdown-link": "brain.kind.markdown-link",
+  wikilink: "brain.kind.wikilink",
   related: "brain.kind.related",
   "same-dir": "brain.kind.same-dir",
-  "same-area": "brain.kind.same-area",
   other: "brain.kind.other",
 };
 

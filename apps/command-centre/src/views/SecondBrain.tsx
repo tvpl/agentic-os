@@ -56,6 +56,7 @@ import {
 } from "../brain/engine/world";
 import { saveLocalSettings, settingsFromUi } from "../brain/state";
 import "../brain/brain.css";
+import { useBrainSearch } from "../brain/useBrainSearch";
 import { useCommands, type Command } from "../commands/registry";
 import { openNoteEditor } from "../brain/noteEvents";
 
@@ -115,7 +116,6 @@ export default function SecondBrain() {
   const [missingSelection, setMissingSelection] = useState(false);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
-  const [hits, setHits] = useState<Array<{ id: number; name: string; rel: string }>>([]);
   const [dangling, setDangling] = useState<string[]>([]);
   const [timeline, setTimeline] = useState<{ value: number | null; playing: boolean }>({
     value: null,
@@ -313,25 +313,7 @@ export default function SecondBrain() {
   }, [ui.sel, version, world, dirty, centerOn, wantFocus, t]);
 
   /* ---------- search-as-you-type (server hits) ---------- */
-  useEffect(() => {
-    const q = ui.query.trim();
-    if (!q) {
-      setHits([]);
-      return;
-    }
-    let cancelled = false;
-    const id = window.setTimeout(() => {
-      void apiCall("GET /api/memory/search", { query: { q: q, limit: 8 } })
-        .then((res) => {
-          if (!cancelled) setHits(res);
-        })
-        .catch(() => undefined);
-    }, 180);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(id);
-    };
-  }, [ui.query]);
+  const search = useBrainSearch(ui.query);
 
   /* ---------- timeline playback ---------- */
   const range = brain.range;
@@ -752,7 +734,9 @@ export default function SecondBrain() {
           ui={ui}
           patch={patch}
           searchRef={searchRef}
-          hits={hits}
+          hits={search.hits}
+          searchFailed={search.failed}
+          onSearchRetry={search.retry}
           facets={brain.facets}
           kindCounts={brain.kindCounts}
           timeline={{ range, value: timeline.value, playing: timeline.playing }}

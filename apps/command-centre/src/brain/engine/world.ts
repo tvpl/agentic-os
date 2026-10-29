@@ -17,8 +17,8 @@ export type LayoutKind = "arcs" | "force" | "circle" | "hex" | "rings";
 export type ViewKind = "areas" | "folders";
 export type OrbKind = "skill" | "routine" | "app";
 /** Edge kinds produced by `/api/memory/graph`. Unknown kinds are kept under "other". */
-export type EdgeKind = "markdown-link" | "related" | "same-dir" | "same-area" | "other";
-export const EDGE_KINDS: readonly EdgeKind[] = ["markdown-link", "related", "same-dir", "same-area", "other"];
+export type EdgeKind = "markdown-link" | "wikilink" | "related" | "same-dir" | "other";
+export const EDGE_KINDS: readonly EdgeKind[] = ["markdown-link", "wikilink", "related", "same-dir", "other"];
 export type ModifiedRange = "24h" | "7d" | "30d" | "all";
 export type SizeRange = "any" | "small" | "medium" | "large";
 
@@ -171,7 +171,7 @@ export const DEFAULT_SETTINGS: BrainSettings = {
   linkSpring: 0.05,
   nodeScale: 1,
   clusterSize: 1,
-  edgeKinds: ["markdown-link", "same-dir"],
+  edgeKinds: ["markdown-link", "wikilink", "same-dir"],
   localHops: 1,
   focusMode: true,
 };
@@ -346,7 +346,7 @@ export function clampZoom(k: number): number {
 }
 
 export function normalizeEdgeKind(kind: string): EdgeKind {
-  return kind === "markdown-link" || kind === "related" || kind === "same-dir" || kind === "same-area"
+  return kind === "markdown-link" || kind === "wikilink" || kind === "related" || kind === "same-dir"
     ? kind
     : "other";
 }

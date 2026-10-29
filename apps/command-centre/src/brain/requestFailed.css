@@ -1,0 +1,19 @@
+/* A failed request of the brain screens (RequestFailed): text and icon, then the retry button. */
+.brain-request-failed {
+  margin: var(--s-2) 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-3);
+  color: var(--text);
+}
+.brain-request-failed-text {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+.brain-request-failed-text svg {
+  flex: none;
+  color: var(--danger);
+}

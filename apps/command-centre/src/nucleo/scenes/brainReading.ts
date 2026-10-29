@@ -146,9 +146,9 @@ export interface ContextEntry {
 }
 
 function relationOf(kind: string, fromSelf: boolean): RelationKind {
-  if (kind === "markdown-link") return fromSelf ? "outgoing" : "backlink";
+  if (kind === "markdown-link" || kind === "wikilink") return fromSelf ? "outgoing" : "backlink";
   if (kind === "related") return "similar";
-  if (kind === "same-dir" || kind === "same-area") return "sibling";
+  if (kind === "same-dir") return "sibling";
   return "other";
 }
 
